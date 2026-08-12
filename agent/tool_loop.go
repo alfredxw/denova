@@ -12,6 +12,17 @@ import (
 
 const toolProgressTruncatedMarker = "\n[tool progress truncated]"
 
+type durableToolStartContextKey struct{}
+
+func contextWithDurableToolStart(ctx context.Context) context.Context {
+	return context.WithValue(ctx, durableToolStartContextKey{}, struct{}{})
+}
+
+func durableToolStartRequired(ctx context.Context) bool {
+	_, required := ctx.Value(durableToolStartContextKey{}).(struct{})
+	return required
+}
+
 type toolExecutionResult struct {
 	message        *Message
 	result         ToolResult
@@ -46,12 +57,12 @@ var fallbackToolResultDescriptor = ToolDescriptor{
 
 // executeToolBatch schedules calls in descriptor-defined stages. Parallel reads
 // share one bounded stage; exclusive and child calls are source-order barriers.
-func (agent *Loop) executeToolBatch(
+func (agent *modelToolLoop) executeToolBatch(
 	ctx context.Context,
 	registry *Registry,
 	calls []ToolCall,
 	modelResponseOrdinal int,
-	events *AsyncGenerator[*AgentEvent],
+	events *asyncGenerator[*loopEvent],
 	cancel *cancelControl,
 ) ([]toolExecutionResult, error) {
 	if ctx == nil {
@@ -64,7 +75,7 @@ func (agent *Loop) executeToolBatch(
 		if err := ctx.Err(); err != nil {
 			return results, err
 		}
-		if cancel.pending(CancelAfterToolCalls | CancelAfterChatModel) {
+		if cancel.pending(cancelAfterTools | cancelAfterModel) {
 			agent.fillSteeringSkipped(prepared[index:], results, events)
 			return results, nil
 		}
@@ -115,7 +126,7 @@ func (agent *Loop) executeToolBatch(
 	return results, nil
 }
 
-func (agent *Loop) prepareToolCalls(ctx context.Context, registry *Registry, calls []ToolCall, modelResponseOrdinal int) []preparedToolCall {
+func (agent *modelToolLoop) prepareToolCalls(ctx context.Context, registry *Registry, calls []ToolCall, modelResponseOrdinal int) []preparedToolCall {
 	prepared := make([]preparedToolCall, len(calls))
 	for index, call := range calls {
 		call = cloneToolCalls([]ToolCall{call})[0]
@@ -163,10 +174,10 @@ func (agent *Loop) prepareToolCalls(ctx context.Context, registry *Registry, cal
 	return prepared
 }
 
-func (agent *Loop) runOneToolCall(
+func (agent *modelToolLoop) runOneToolCall(
 	ctx context.Context,
 	call preparedToolCall,
-	events *AsyncGenerator[*AgentEvent],
+	events *asyncGenerator[*loopEvent],
 	cancel *cancelControl,
 ) (toolExecutionResult, error) {
 	completed := make(chan toolExecutionResult, 1)
@@ -179,10 +190,10 @@ func (agent *Loop) runOneToolCall(
 	}
 }
 
-func (agent *Loop) runParallelToolStage(
+func (agent *modelToolLoop) runParallelToolStage(
 	ctx context.Context,
 	calls []preparedToolCall,
-	events *AsyncGenerator[*AgentEvent],
+	events *asyncGenerator[*loopEvent],
 	cancel *cancelControl,
 ) ([]toolExecutionResult, int, error) {
 	results := make([]toolExecutionResult, len(calls))
@@ -207,7 +218,7 @@ func (agent *Loop) runParallelToolStage(
 		running++
 	}
 
-	for running < agent.toolParallelism && started < len(calls) && !cancel.pending(CancelAfterToolCalls|CancelAfterChatModel) {
+	for running < agent.toolParallelism && started < len(calls) && !cancel.pending(cancelAfterTools|cancelAfterModel) {
 		launch(started)
 	}
 	for running > 0 {
@@ -219,7 +230,7 @@ func (agent *Loop) runParallelToolStage(
 				terminalErr = completion.result.err
 			}
 			for terminalErr == nil && running < agent.toolParallelism && started < len(calls) &&
-				!cancel.pending(CancelAfterToolCalls|CancelAfterChatModel) {
+				!cancel.pending(cancelAfterTools|cancelAfterModel) {
 				launch(started)
 			}
 		case <-ctx.Done():
@@ -229,10 +240,10 @@ func (agent *Loop) runParallelToolStage(
 	return results, started, terminalErr
 }
 
-func (agent *Loop) launchToolCall(
+func (agent *modelToolLoop) launchToolCall(
 	ctx context.Context,
 	call preparedToolCall,
-	events *AsyncGenerator[*AgentEvent],
+	events *asyncGenerator[*loopEvent],
 	cancel *cancelControl,
 	completed chan<- toolExecutionResult,
 ) {
@@ -246,21 +257,25 @@ func (agent *Loop) launchToolCall(
 	})
 }
 
-func (agent *Loop) executePreparedTool(
+func (agent *modelToolLoop) executePreparedTool(
 	ctx context.Context,
 	prepared preparedToolCall,
-	events *AsyncGenerator[*AgentEvent],
+	events *asyncGenerator[*loopEvent],
 	cancel *cancelControl,
 ) toolExecutionResult {
+	authorizedArguments := prepared.call.Function.Arguments
 	callCtx := contextWithToolExecution(ctx, prepared.executionID, prepared.call.ID, prepared.call.Function.Name)
-	callCtx = ContextWithEventSink(callCtx, func(event *AgentEvent) {
-		if event != nil {
-			events.Send(event)
-		}
+	callCtx = contextWithNestedEventForwarder(callCtx, func(event NestedEvent) error {
+		cloned := cloneNestedEvent(event)
+		events.Send(&loopEvent{
+			AgentName: agent.name, RunPath: []loopRunStep{newLoopRunStep(agent.name)},
+			Output: &loopOutput{NestedEvent: &cloned},
+		})
+		return nil
 	})
 	callCtx = contextWithToolSteering(callCtx, toolSteeringSignal{
 		done:    cancel.requestedSignal(),
-		pending: func() bool { return cancel.pending(CancelAfterToolCalls | CancelAfterChatModel) },
+		pending: func() bool { return cancel.pending(cancelAfterTools | cancelAfterModel) },
 	})
 
 	var progressMu sync.Mutex
@@ -291,7 +306,7 @@ func (agent *Loop) executePreparedTool(
 		progress.WriteString(content)
 		progressMu.Unlock()
 		if emitted != "" {
-			events.Send(agent.toolExecutionEvent(prepared, ToolExecutionProgress, emitted, nil))
+			events.Send(agent.toolExecutionEvent(prepared, toolExecutionProgress, emitted, nil))
 		}
 	})
 
@@ -303,7 +318,7 @@ func (agent *Loop) executePreparedTool(
 			safeGo(func() {
 				select {
 				case <-signal:
-					if cancel.pending(CancelAfterToolCalls | CancelAfterChatModel) {
+					if cancel.pending(cancelAfterTools | cancelAfterModel) {
 						stop()
 					}
 				case <-interruptibleCtx.Done():
@@ -313,7 +328,12 @@ func (agent *Loop) executePreparedTool(
 	}
 
 	var started sync.Once
+	var startErr error
 	endpoint := ToolCallEndpoint(func(runCtx context.Context, arguments string, options ...ToolOption) (ToolResult, error) {
+		// Tool-call middleware may derive a context but cannot replace the fixed
+		// Definition artifact authority. Rebind at the concrete execution seam so
+		// both permission and arbitrary wrappers are outside this invariant.
+		runCtx = contextWithDefinitionToolArtifactStorage(runCtx, agent.artifacts)
 		if err := runCtx.Err(); err != nil {
 			return ToolResult{}, err
 		}
@@ -321,12 +341,29 @@ func (agent *Loop) executePreparedTool(
 		if err != nil {
 			return invalidToolArgumentsToolResult(prepared.call.Function.Name, err), nil
 		}
-		// Product middleware performs policy checks and durable preflight before
-		// it reaches this concrete execution seam. Emit "started" only now so a
-		// pending/denied approval is never presented as an executing process.
+		if agent.permission != nil && normalizedArguments != authorizedArguments {
+			return ToolResult{}, fmt.Errorf("%w: tool %q", ErrPermissionArgumentsChanged, prepared.call.Function.Name)
+		}
+		// The fixed permission fence and caller middleware have both completed at
+		// this concrete seam. A pending/denied approval is therefore never
+		// presented as an executing process.
 		started.Do(func() {
-			events.Send(agent.toolExecutionEvent(prepared, ToolExecutionStarted, "", nil))
+			event := agent.toolExecutionEvent(prepared, toolExecutionStarted, "", nil)
+			if durableToolStartRequired(runCtx) {
+				event.Output.ToolExecution.startReceipt = make(chan error, 1)
+			}
+			events.Send(event)
+			if receipt := event.Output.ToolExecution.startReceipt; receipt != nil {
+				select {
+				case startErr = <-receipt:
+				case <-runCtx.Done():
+					startErr = context.Cause(runCtx)
+				}
+			}
 		})
+		if startErr != nil {
+			return ToolResult{}, startErr
+		}
 		result, err := runToolSafely(prepared.definition.Tool, runCtx, normalizedArguments, options...)
 		if err == nil && result.ModelContent == "" && result.DisplayContent == "" {
 			progressMu.Lock()
@@ -375,22 +412,32 @@ func (agent *Loop) executePreparedTool(
 		}
 		endpoint = wrapped
 	}
+	if agent.permission != nil {
+		wrapped, err := agent.permission.WrapToolCall(callCtx, endpoint, toolContext)
+		if err != nil {
+			result := toolFailureResult(prepared.call, fmt.Errorf("build permission fence for tool %q: %w", prepared.call.Function.Name, err))
+			bindToolExecutionIdentity(&result, prepared)
+			agent.emitToolFinished(events, prepared, result.result)
+			return result
+		}
+		if wrapped == nil {
+			result := toolFailureResult(prepared.call, fmt.Errorf("permission fence for tool %q returned nil endpoint", prepared.call.Function.Name))
+			bindToolExecutionIdentity(&result, prepared)
+			agent.emitToolFinished(events, prepared, result.result)
+			return result
+		}
+		endpoint = wrapped
+	}
 
 	result, err := endpoint(callCtx, prepared.call.Function.Arguments)
 	var terminalErr error
 	if err != nil {
 		if prepared.snapshot.Descriptor.Steering == SteeringInterruptibleWait &&
-			cancel.pending(CancelAfterToolCalls|CancelAfterChatModel) && errors.Is(callCtx.Err(), context.Canceled) {
+			cancel.pending(cancelAfterTools|cancelAfterModel) && errors.Is(callCtx.Err(), context.Canceled) {
 			result = SyntheticToolResult(ToolResultSkipped, ToolSyntheticSteeringInterrupted,
 				fmt.Sprintf("tool %q was interrupted to apply pending user steering", prepared.call.Function.Name))
 			err = nil
 		} else if IsToolControlError(err) {
-			terminalErr = err
-			if result.Status == "" {
-				result = ToolErrorResult(toolErrorContent(prepared.call, err), err.Error())
-			}
-			err = nil
-		} else if IsInterruptError(err) {
 			terminalErr = err
 			if result.Status == "" {
 				result = ToolErrorResult(toolErrorContent(prepared.call, err), err.Error())
@@ -406,6 +453,20 @@ func (agent *Loop) executePreparedTool(
 	if result.Status == "" {
 		result.Status = ToolResultSuccess
 	}
+	if agent.resultProcessor != nil {
+		processed, processErr := agent.resultProcessor.Process(callCtx, ToolResultProcessRequest{
+			ToolName: prepared.call.Function.Name, Arguments: prepared.call.Function.Arguments,
+			ExecutionID: prepared.executionID, ProviderCallID: prepared.call.ID,
+			Definition: prepared.snapshot, Result: result,
+		})
+		result = processed
+		if processErr != nil {
+			if IsToolControlError(processErr) {
+				terminalErr = processErr
+			}
+			result = retainToolResultProcessorFailure(prepared.call, result, processErr)
+		}
+	}
 	normalized, normalizeErr := NormalizeToolResult(result, prepared.snapshot.Descriptor)
 	if normalizeErr != nil {
 		normalized, _ = NormalizeToolResult(
@@ -419,6 +480,27 @@ func (agent *Loop) executePreparedTool(
 	}
 	agent.emitToolFinished(events, prepared, normalized)
 	return completion
+}
+
+// retainToolResultProcessorFailure preserves every valid partial projection
+// while pairing it with a bounded, model-visible diagnostic. Processor errors
+// must never erase already-published artifacts, receipts, structured details,
+// or display output merely to change the outcome status.
+func retainToolResultProcessorFailure(call ToolCall, result ToolResult, err error) ToolResult {
+	diagnostic := toolErrorContent(call, err)
+	result.Status = ToolResultError
+	result.SyntheticReason = ""
+	if strings.TrimSpace(result.ModelContent) == "" {
+		result.ModelContent = diagnostic
+	} else {
+		result.ModelContent += "\n\n[Tool result processing failed]\n" + diagnostic
+	}
+	if strings.TrimSpace(result.DisplayContent) == "" {
+		result.DisplayContent = diagnostic
+	} else {
+		result.DisplayContent += "\n\nTool result processing failed: " + err.Error()
+	}
+	return result
 }
 
 // runToolSafely converts a concrete extension panic before it can jump across
@@ -437,10 +519,10 @@ func runToolSafely(tool Tool, ctx context.Context, arguments string, options ...
 	return tool.Run(ctx, arguments, options...)
 }
 
-func (agent *Loop) fillSteeringSkipped(
+func (agent *modelToolLoop) fillSteeringSkipped(
 	calls []preparedToolCall,
 	results []toolExecutionResult,
-	events *AsyncGenerator[*AgentEvent],
+	events *asyncGenerator[*loopEvent],
 ) {
 	for _, prepared := range calls {
 		if prepared.precomputed != nil {
@@ -460,10 +542,10 @@ func (agent *Loop) fillSteeringSkipped(
 	}
 }
 
-func (agent *Loop) fillPolicySkipped(
+func (agent *modelToolLoop) fillPolicySkipped(
 	calls []preparedToolCall,
 	results []toolExecutionResult,
-	events *AsyncGenerator[*AgentEvent],
+	events *asyncGenerator[*loopEvent],
 	reason string,
 ) {
 	for _, prepared := range calls {
@@ -484,16 +566,16 @@ func (agent *Loop) fillPolicySkipped(
 	}
 }
 
-func (agent *Loop) emitToolFinished(events *AsyncGenerator[*AgentEvent], prepared preparedToolCall, result ToolResult) {
-	events.Send(agent.toolExecutionEvent(prepared, ToolExecutionFinished, "", &result))
+func (agent *modelToolLoop) emitToolFinished(events *asyncGenerator[*loopEvent], prepared preparedToolCall, result ToolResult) {
+	events.Send(agent.toolExecutionEvent(prepared, toolExecutionFinished, "", &result))
 }
 
-func (agent *Loop) toolExecutionEvent(
+func (agent *modelToolLoop) toolExecutionEvent(
 	prepared preparedToolCall,
-	phase ToolExecutionPhase,
+	phase toolExecutionPhase,
 	delta string,
 	result *ToolResult,
-) *AgentEvent {
+) *loopEvent {
 	var cloned *ToolResult
 	if result != nil {
 		value := *result
@@ -502,10 +584,10 @@ func (agent *Loop) toolExecutionEvent(
 		value.Effects = cloneEffects(result.Effects)
 		cloned = &value
 	}
-	return &AgentEvent{
+	return &loopEvent{
 		AgentName: agent.name,
-		RunPath:   []RunStep{NewRunStep(agent.name)},
-		Output: &AgentOutput{ToolExecution: &ToolExecutionEvent{
+		RunPath:   []loopRunStep{newLoopRunStep(agent.name)},
+		Output: &loopOutput{ToolExecution: &toolExecutionEvent{
 			Phase: phase, Index: prepared.index, ExecutionID: prepared.executionID,
 			ProviderCallID: prepared.call.ID,
 			ToolName:       prepared.call.Function.Name, Arguments: json.RawMessage(prepared.call.Function.Arguments), Definition: prepared.snapshot,
@@ -571,7 +653,7 @@ func invalidToolArgumentsToolResult(toolName string, err error) ToolResult {
 func toolFailureResult(call ToolCall, err error) toolExecutionResult {
 	result := ToolErrorResult(toolErrorContent(call, err), err.Error())
 	var terminalErr error
-	if IsToolControlError(err) || IsInterruptError(err) || errors.Is(err, context.Canceled) {
+	if IsToolControlError(err) || errors.Is(err, context.Canceled) {
 		terminalErr = err
 	}
 	return toolExecutionResult{
@@ -628,12 +710,43 @@ func toolErrorContent(call ToolCall, err error) string {
 	return string(payload)
 }
 
-func (agent *Loop) lengthToolResults(ctx context.Context, calls []ToolCall, registry *Registry, modelResponseOrdinal int, events *AsyncGenerator[*AgentEvent]) []toolExecutionResult {
+// modelFinishReasonBlocksToolExecution normalizes provider-specific terminal
+// reasons that make an assistant tool-call batch unsafe to execute. A tool call
+// can contain valid JSON while still being only a truncated or filtered prefix
+// of the model's intended arguments, so this check must happen before any tool
+// middleware or implementation can produce side effects.
+func modelFinishReasonBlocksToolExecution(meta *ResponseMeta) (string, bool) {
+	if meta == nil {
+		return "", false
+	}
+	reason := strings.TrimSpace(meta.FinishReason)
+	normalized := strings.ToLower(reason)
+	normalized = strings.NewReplacer("-", "_", " ", "_").Replace(normalized)
+	switch normalized {
+	case "length", "max_tokens", "max_output_tokens", "token_limit", "content_filter", "incomplete":
+		return reason, true
+	default:
+		return reason, false
+	}
+}
+
+func (agent *modelToolLoop) incompleteModelToolResults(
+	ctx context.Context,
+	calls []ToolCall,
+	registry *Registry,
+	modelResponseOrdinal int,
+	finishReason string,
+	events *asyncGenerator[*loopEvent],
+) []toolExecutionResult {
 	results := make([]toolExecutionResult, len(calls))
+	finishReason = strings.TrimSpace(finishReason)
+	if finishReason == "" {
+		finishReason = "incomplete"
+	}
 	for index, call := range calls {
 		prepared := preparedToolCall{index: index, call: call, executionID: ToolExecutionIDForOrdinal(ctx, modelResponseOrdinal, index)}
 		result := syntheticCallResult(call, ToolResultSkipped, ToolSyntheticModelIncomplete,
-			"tool call was not executed because the model response ended with finish_reason length; arguments may be incomplete")
+			fmt.Sprintf("tool call was not executed because the model response ended with finish_reason %q; arguments may be incomplete", finishReason))
 		if snapshot, ok := registry.Snapshot(call.Function.Name); ok {
 			prepared.snapshot = snapshot
 			normalizeToolExecutionResult(&result, snapshot.Descriptor)

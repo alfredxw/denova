@@ -125,16 +125,20 @@ describe('StoryStateLedger', () => {
       />,
     )
 
+    const statePanel = screen.getByRole('region', { name: '当前状态' })
+    expect(statePanel).toHaveAttribute('data-nova-chat-after-content-height-scope', 'preview')
     expect(sectionLabels(container)).toEqual(['概览', '持有与资源'])
     expectVitalityVisible()
     expect(screen.queryByText(LONG_DETAIL_TEXT)).not.toBeInTheDocument()
     expect(screen.getByText('被赵师兄盯上')).toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: '展开全部（还有 1 个分区）' }))
+    expect(statePanel).toHaveAttribute('data-nova-chat-after-content-height-scope', 'expanded')
     expect(sectionLabels(container)).toEqual(['概览', '持有与资源', '详情'])
     expect(screen.getByText(LONG_DETAIL_TEXT)).toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: '收起为预览' }))
+    expect(statePanel).toHaveAttribute('data-nova-chat-after-content-height-scope', 'preview')
     expect(sectionLabels(container)).toEqual(['概览', '持有与资源'])
 
     // Manual expansion survives same-turn updates but resets on a new turn.

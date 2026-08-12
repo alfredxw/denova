@@ -32,13 +32,6 @@ const (
 	ContextMaintenanceCompaction ContextMaintenanceAction = "compaction"
 )
 
-type ToolResultCleanupExecutionMode string
-
-const (
-	ToolResultCleanupLocalProjection ToolResultCleanupExecutionMode = "local_projection"
-	ToolResultCleanupNativeCacheEdit ToolResultCleanupExecutionMode = "native_cache_edit"
-)
-
 // ContextPressurePolicy is the provider-neutral policy shared by writing and
 // game conversations. Provider adapters expose cache capability/state but do
 // not decide which result has semantic value.
@@ -63,7 +56,6 @@ type ContextPressurePolicy struct {
 	CompactionPromptTokens  int
 	CheckpointOutputReserve int
 	SafetyMarginTokens      int
-	CleanupExecutionMode    ToolResultCleanupExecutionMode
 	ProviderCacheState      ProviderCacheState
 	ObservedPromptTokens    int
 }
@@ -139,9 +131,6 @@ func (policy ContextPressurePolicy) normalized() ContextPressurePolicy {
 	if policy.ProviderCacheState == "" {
 		policy.ProviderCacheState = ProviderCacheUnknown
 	}
-	if policy.CleanupExecutionMode != ToolResultCleanupNativeCacheEdit {
-		policy.CleanupExecutionMode = ToolResultCleanupLocalProjection
-	}
 	return policy
 }
 
@@ -150,7 +139,6 @@ type ContextPressureDecision struct {
 	Reason               string
 	Scope                ContextPressureScope
 	ProviderCacheState   ProviderCacheState
-	CleanupExecutionMode ToolResultCleanupExecutionMode
 	LocalProjectedTokens int
 	ObservedPromptTokens int
 	EffectiveTokens      int
@@ -177,7 +165,7 @@ func PlanContextPressure(messages []*agent.Message, tools []*agent.ToolInfo, pol
 	policy = policy.normalized()
 	decision := ContextPressureDecision{
 		Action: ContextMaintenanceNone, Reason: "disabled", Scope: policy.Scope,
-		ProviderCacheState: policy.ProviderCacheState, CleanupExecutionMode: policy.CleanupExecutionMode,
+		ProviderCacheState: policy.ProviderCacheState,
 	}
 	if !policy.Enabled || policy.ContextWindowTokens <= 0 {
 		return decision

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	agentsession "github.com/alfredxw/denova/agent/session"
 )
@@ -98,10 +99,25 @@ type ContextFragment struct {
 type TurnReason string
 
 const (
-	TurnReasonStart    TurnReason = "start"
-	TurnReasonSteer    TurnReason = "steer"
-	TurnReasonFollowUp TurnReason = "follow_up"
-	TurnReasonRecovery TurnReason = "recovery"
+	TurnReasonStart        TurnReason = "start"
+	TurnReasonSteer        TurnReason = "steer"
+	TurnReasonFollowUp     TurnReason = "follow_up"
+	TurnReasonNextTurn     TurnReason = "next_turn"
+	TurnReasonRecovery     TurnReason = "recovery"
+	TurnReasonGoalMutation TurnReason = "goal_mutation"
+	TurnReasonStructural   TurnReason = "structural"
+)
+
+// TurnDelivery is the exact durable admission semantic. Reason describes why
+// Source is being called; Delivery continues to identify the accepted input
+// even during a recovery call.
+type TurnDelivery string
+
+const (
+	TurnDeliveryStart    TurnDelivery = "start"
+	TurnDeliverySteer    TurnDelivery = "steer"
+	TurnDeliveryFollowUp TurnDelivery = "follow_up"
+	TurnDeliveryNextTurn TurnDelivery = "next_turn"
 )
 
 type SessionView struct {
@@ -113,6 +129,12 @@ type RunView struct {
 	ID        string
 	CommandID string
 	Cycle     int
+	// StartedAt is captured by the durable lifecycle exactly once when this
+	// cycle starts. Context sources should use it instead of reading the wall
+	// clock when their output must survive recovery unchanged.
+	StartedAt  time.Time
+	Delivery   TurnDelivery
+	Autonomous bool
 }
 
 type PrepareRequest struct {
@@ -125,11 +147,17 @@ type PrepareRequest struct {
 	RestoreKey    string
 	HostData      *HostData
 	Compaction    *CompactionState
+	Cleanup       *CleanupState
 }
 
-// Source prepares a complete immutable Definition for one cycle.
+// Source prepares a complete immutable Definition for one cycle. CanonicalInput
+// is the deliberately narrow, provider-free admission phase: Runtime invokes
+// it after the Input is durable and before any model/context/tool preparation.
+// Implementations must resolve only the CanonicalAdapter needed to persist the
+// accepted user input; it must not assemble model context or call a provider.
 type Source interface {
 	Prepare(context.Context, PrepareRequest) (Definition, error)
+	CanonicalInput(context.Context, PrepareRequest) (CanonicalAdapter, error)
 }
 
 type SourceFunc func(context.Context, PrepareRequest) (Definition, error)
@@ -139,6 +167,13 @@ func (prepare SourceFunc) Prepare(ctx context.Context, request PrepareRequest) (
 		return Definition{}, errors.New("agent Definition Source is nil")
 	}
 	return prepare(ctx, request)
+}
+
+// CanonicalInput makes SourceFunc the simple no-product-canonical composition
+// helper. Dynamic hosts that return Definition.Canonical must implement Source
+// directly so accepted input can cross the canonical barrier before Prepare.
+func (SourceFunc) CanonicalInput(context.Context, PrepareRequest) (CanonicalAdapter, error) {
+	return nil, nil
 }
 
 // Definition is the complete composition root for one Agent cycle.
@@ -153,9 +188,17 @@ type Definition struct {
 	ModelIdentity CapabilityIdentity
 	Instructions  string
 
-	Tools       Toolset
+	Tools Toolset
+	// ResultProcessor is the single fixed post-tool projection authority. It
+	// runs outside host middleware so every tool path receives identical
+	// materialization, recovery, cleanup, and transcript semantics.
+	ResultProcessor ToolResultProcessor
+	// Artifacts is used both by streaming tools and ResultProcessor. Its stable
+	// identity affects exact recovery, never the model prefix fingerprint.
+	Artifacts   ToolArtifactStorage
 	Context     ContextSource
 	Goal        GoalManager
+	Cleanup     CleanupManager
 	Compaction  CompactionManager
 	Permission  PermissionPolicy
 	Interaction InteractionPolicy
@@ -214,6 +257,10 @@ func (definition Definition) Prepare(context.Context, PrepareRequest) (Definitio
 	return definition, nil
 }
 
+func (definition Definition) CanonicalInput(context.Context, PrepareRequest) (CanonicalAdapter, error) {
+	return definition.Canonical, nil
+}
+
 type ExecutionPolicy struct {
 	Retry *RetryConfig
 	// RetryIdentity is required for durable Sessions when Retry is non-nil.
@@ -222,6 +269,15 @@ type ExecutionPolicy struct {
 	RetryIdentity   CapabilityIdentity
 	ToolParallelism int
 	MaxIterations   int
+	// IdleTimeout limits only a continuous period with no model chunk, tool
+	// lifecycle/progress event, or Interaction request. Zero means unlimited;
+	// it is never interpreted as a total run deadline.
+	IdleTimeout time.Duration
+	// MaxAutomaticCompactionFailures opens the durable failure fuse for one
+	// unchanged final model request. Zero uses the Agent default. A changed
+	// request automatically gets a fresh attempt; explicit Compact calls are
+	// never blocked by this policy.
+	MaxAutomaticCompactionFailures int
 }
 
 func validateDefinition(definition Definition) error {
@@ -231,26 +287,52 @@ func validateDefinition(definition Definition) error {
 	if definition.Execution.MaxIterations < 0 {
 		return errors.New("agent Definition MaxIterations cannot be negative")
 	}
+	if definition.Execution.IdleTimeout < 0 {
+		return errors.New("agent Definition IdleTimeout cannot be negative")
+	}
+	if definition.Execution.MaxAutomaticCompactionFailures < 0 {
+		return errors.New("agent Definition MaxAutomaticCompactionFailures cannot be negative")
+	}
 	if strings.TrimSpace(definition.Key) != definition.Key {
 		return errors.New("agent Definition Key cannot contain surrounding whitespace")
 	}
 	if definition.Compaction != nil && definition.Compaction.SummaryLimitBytes() <= 0 {
 		return errors.New("agent Definition Compaction summary limit must be positive")
 	}
+	if definition.Cleanup != nil {
+		if err := definition.Cleanup.Identity().validate("Cleanup"); err != nil {
+			return err
+		}
+	}
+	if definition.ResultProcessor != nil {
+		if err := definition.ResultProcessor.Identity().validate("ToolResultProcessor"); err != nil {
+			return err
+		}
+	}
+	if definition.Artifacts != nil {
+		if err := definition.Artifacts.Identity().validate("ToolArtifactStorage"); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
 type preparedDefinition struct {
-	definition        Definition
-	tools             []ToolDefinition
-	toolSnapshots     []ToolDefinitionSnapshot
-	fragments         []ContextFragment
-	goalFragments     []ContextFragment
-	definitionKey     string
-	restoreKey        string
-	prefixFingerprint string
-	hostData          *HostData
-	clearRevision     uint64
+	definition              Definition
+	tools                   []ToolDefinition
+	toolSnapshots           []ToolDefinitionSnapshot
+	fragments               []ContextFragment
+	goalFragments           []ContextFragment
+	definitionKey           string
+	restoreKey              string
+	prefixFingerprint       string
+	materializedFingerprint string
+	definitionOperationID   string
+	definitionCommandID     string
+	definitionCycle         int
+	preparationStage        enginePreparationStage
+	hostData                *HostData
+	clearRevision           uint64
 }
 
 func prepareDefinition(
@@ -284,17 +366,7 @@ func prepareDefinitionBase(
 	if err := validateDefinition(definition); err != nil {
 		return preparedDefinition{}, err
 	}
-	identity := definitionIdentity{
-		DefinitionKey: definition.Key,
-		Name:          definition.Name, Model: definition.ModelIdentity,
-		Instructions: definition.Instructions, Execution: identityOfExecution(definition.Execution),
-		Toolset: identityOfToolset(definition.Tools), Context: identityOfContext(definition.Context),
-		Goal: identityOfGoal(definition.Goal), Compaction: identityOfCompaction(definition.Compaction),
-		Permission: identityOfPermission(definition.Permission), Interaction: identityOfInteraction(definition.Interaction),
-		Canonical:   identityOfCanonical(definition.Canonical),
-		Middlewares: middlewareIdentities(definition.Middlewares),
-	}
-	restoreKey, err := hashCanonical(identity)
+	restoreKey, err := DefinitionBehaviorIdentity(definition)
 	if err != nil {
 		return preparedDefinition{}, err
 	}
@@ -305,6 +377,28 @@ func prepareDefinitionBase(
 	return preparedDefinition{
 		definition: definition, definitionKey: definitionKey, restoreKey: restoreKey,
 	}, nil
+}
+
+// DefinitionBehaviorIdentity returns the exact stable restore identity used by
+// Agent before materializing tools or Context. Composition catalogs may embed
+// it to fence a child Definition without duplicating the lifecycle's identity
+// vocabulary. It hashes behavior only; credentials and process addresses must
+// stay out of every CapabilityIdentity supplied by the caller.
+func DefinitionBehaviorIdentity(definition Definition) (string, error) {
+	if err := validateDefinition(definition); err != nil {
+		return "", err
+	}
+	return hashCanonical(definitionIdentity{
+		DefinitionKey: definition.Key,
+		Name:          definition.Name, Model: definition.ModelIdentity,
+		Instructions: definition.Instructions, Execution: identityOfExecution(definition.Execution),
+		Toolset: identityOfToolset(definition.Tools), ResultProcessor: identityOfToolResultProcessor(definition.ResultProcessor),
+		Artifacts: identityOfToolArtifactStorage(definition.Artifacts), Context: identityOfContext(definition.Context),
+		Goal: identityOfGoal(definition.Goal), Cleanup: identityOfCleanup(definition.Cleanup), Compaction: identityOfCompaction(definition.Compaction),
+		Permission: identityOfPermission(definition.Permission), Interaction: identityOfInteraction(definition.Interaction),
+		Canonical:   identityOfCanonical(definition.Canonical),
+		Middlewares: middlewareIdentities(definition.Middlewares),
+	})
 }
 
 func materializeDefinitionCapabilities(
@@ -406,25 +500,30 @@ func updatePreparedPrefixFingerprint(prepared *preparedDefinition) error {
 }
 
 type definitionIdentity struct {
-	DefinitionKey string
-	Name          string
-	Model         CapabilityIdentity
-	Instructions  string
-	Execution     executionPolicyIdentity
-	Toolset       CapabilityIdentity
-	Context       CapabilityIdentity
-	Goal          CapabilityIdentity
-	Compaction    CapabilityIdentity
-	Permission    CapabilityIdentity
-	Interaction   CapabilityIdentity
-	Canonical     CapabilityIdentity
-	Middlewares   []CapabilityIdentity
+	DefinitionKey   string
+	Name            string
+	Model           CapabilityIdentity
+	Instructions    string
+	Execution       executionPolicyIdentity
+	Toolset         CapabilityIdentity
+	ResultProcessor CapabilityIdentity
+	Artifacts       CapabilityIdentity
+	Context         CapabilityIdentity
+	Goal            CapabilityIdentity
+	Cleanup         CapabilityIdentity
+	Compaction      CapabilityIdentity
+	Permission      CapabilityIdentity
+	Interaction     CapabilityIdentity
+	Canonical       CapabilityIdentity
+	Middlewares     []CapabilityIdentity
 }
 
 type executionPolicyIdentity struct {
-	Retry           CapabilityIdentity
-	ToolParallelism int
-	MaxIterations   int
+	Retry                          CapabilityIdentity
+	ToolParallelism                int
+	MaxIterations                  int
+	IdleTimeout                    time.Duration
+	MaxAutomaticCompactionFailures int
 }
 
 func identityOfExecution(policy ExecutionPolicy) executionPolicyIdentity {
@@ -434,6 +533,8 @@ func identityOfExecution(policy ExecutionPolicy) executionPolicyIdentity {
 	}
 	return executionPolicyIdentity{
 		Retry: retry, ToolParallelism: policy.ToolParallelism, MaxIterations: policy.MaxIterations,
+		IdleTimeout:                    policy.IdleTimeout,
+		MaxAutomaticCompactionFailures: normalizedAutomaticCompactionFailureLimit(policy),
 	}
 }
 
@@ -501,6 +602,13 @@ func identityOfGoal(manager GoalManager) CapabilityIdentity {
 func identityOfCompaction(manager CompactionManager) CapabilityIdentity {
 	if manager == nil {
 		return CapabilityIdentity{Kind: "compaction.none", Version: 1}
+	}
+	return manager.Identity()
+}
+
+func identityOfCleanup(manager CleanupManager) CapabilityIdentity {
+	if manager == nil {
+		return CapabilityIdentity{Kind: "cleanup.none", Version: 1}
 	}
 	return manager.Identity()
 }

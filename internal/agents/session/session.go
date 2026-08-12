@@ -76,6 +76,7 @@ func sanitizeMessageMetadata(metadata MessageMetadata) MessageMetadata {
 	metadata.AgentOperationID = strings.TrimSpace(metadata.AgentOperationID)
 	metadata.DomainCommitHash = strings.TrimSpace(metadata.DomainCommitHash)
 	metadata.AgentCanonicalHash = strings.TrimSpace(metadata.AgentCanonicalHash)
+	metadata.ResolveInterruptionID = strings.TrimSpace(metadata.ResolveInterruptionID)
 	metadata.AgentKind = strings.TrimSpace(metadata.AgentKind)
 	metadata.AgentName = strings.TrimSpace(metadata.AgentName)
 	metadata.RootAgentName = strings.TrimSpace(metadata.RootAgentName)
@@ -326,25 +327,6 @@ func (s *Session) History() []HistoryEntry {
 				SSEHiddenReason:      record.display.SSEHiddenReason,
 				SSEDisplayNotice:     record.display.SSEDisplayNotice,
 				SSEGeneratedChars:    record.display.SSEGeneratedChars,
-			})
-		case historyTypeAsk:
-			if record.ask == nil {
-				continue
-			}
-			interaction := cloneAskInteraction(*record.ask)
-			content := ""
-			if len(interaction.Questions) > 0 {
-				content = interaction.Questions[0].Question
-			}
-			result = append(result, HistoryEntry{
-				Type:      historyTypeAsk,
-				ID:        interaction.ID,
-				Role:      historyTypeAsk,
-				Content:   content,
-				Status:    interaction.Status,
-				Ask:       &interaction,
-				CreatedAt: interaction.CreatedAt,
-				AgentKind: interaction.AgentKind,
 			})
 		}
 	}

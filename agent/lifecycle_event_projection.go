@@ -3,13 +3,80 @@ package agent
 import (
 	"encoding/json"
 	"fmt"
+	"unicode/utf8"
 
-	runstate "github.com/alfredxw/denova/agent/runtime"
+	runstate "github.com/alfredxw/denova/agent/internal/runtime"
 )
 
+func publicCleanupMetrics(metrics runstate.CleanupMetrics) CleanupMetrics {
+	return CleanupMetrics{
+		EstimatedTokensBefore:      metrics.EstimatedTokensBefore,
+		LocalProjectedTokens:       metrics.LocalProjectedTokens,
+		ObservedPromptTokens:       metrics.ObservedPromptTokens,
+		EffectiveTokens:            metrics.EffectiveTokens,
+		EstimatedTokensAfter:       metrics.EstimatedTokensAfter,
+		ReclaimedTokens:            metrics.ReclaimedTokens,
+		ContextWindowTokens:        metrics.ContextWindowTokens,
+		PressureBefore:             metrics.PressureBefore,
+		PressureAfter:              metrics.PressureAfter,
+		BodyPressureBefore:         metrics.BodyPressureBefore,
+		BodyPressureAfter:          metrics.BodyPressureAfter,
+		StablePrefixTokens:         metrics.StablePrefixTokens,
+		CandidateTokens:            metrics.CandidateTokens,
+		CacheViableCandidateTokens: metrics.CacheViableCandidateTokens,
+		SkippedBelowMinimumCount:   metrics.SkippedBelowMinimumCount,
+		SkippedWarmSuffixCount:     metrics.SkippedWarmSuffixCount,
+		EagerCandidateCount:        metrics.EagerCandidateCount,
+		EagerSelectedCount:         metrics.EagerSelectedCount,
+		SupersededCandidateCount:   metrics.SupersededCandidateCount,
+		DiscardableCandidateCount:  metrics.DiscardableCandidateCount,
+		MinimumCleanupTokens:       metrics.MinimumCleanupTokens,
+		ProtectedResults:           metrics.ProtectedResults,
+		EarliestChanged:            metrics.EarliestChanged,
+		WarmSuffixTokens:           metrics.WarmSuffixTokens,
+		PlaceholderTokens:          metrics.PlaceholderTokens,
+		ReplacementCount:           metrics.ReplacementCount,
+		EagerOnly:                  metrics.EagerOnly,
+		PressureScope:              metrics.PressureScope,
+		ProviderCacheState:         metrics.ProviderCacheState,
+		ExecutionMode:              metrics.ExecutionMode,
+		RendererVersion:            metrics.RendererVersion,
+	}
+}
+
+func publicCompactionMetrics(metrics runstate.CompactionMetrics) CompactionMetrics {
+	return CompactionMetrics{
+		EstimatedTokensBefore:     metrics.EstimatedTokensBefore,
+		ObservedPromptTokens:      metrics.ObservedPromptTokens,
+		ObservedEstimateTokens:    metrics.ObservedEstimateTokens,
+		EstimatedTokensAfter:      metrics.EstimatedTokensAfter,
+		ProjectedTokensBefore:     metrics.ProjectedTokensBefore,
+		ProjectedTokensAfter:      metrics.ProjectedTokensAfter,
+		ReservedTokens:            metrics.ReservedTokens,
+		ContextWindowTokens:       metrics.ContextWindowTokens,
+		Threshold:                 metrics.Threshold,
+		RecoveryBand:              metrics.RecoveryBand,
+		RecoveryTargetTokens:      metrics.RecoveryTargetTokens,
+		RecoveryBandMet:           metrics.RecoveryBandMet,
+		Degraded:                  metrics.Degraded,
+		StablePrefixTokens:        metrics.StablePrefixTokens,
+		SourceMessageCount:        metrics.SourceMessageCount,
+		MessageCountBefore:        metrics.MessageCountBefore,
+		MessageCountAfter:         metrics.MessageCountAfter,
+		CacheExpectedPrefixTokens: metrics.CacheExpectedPrefixTokens,
+		CacheReadTokens:           metrics.CacheReadTokens,
+		CandidateFingerprint:      metrics.CandidateFingerprint,
+		CandidateGeneration:       metrics.CandidateGeneration,
+	}
+}
+
 type trackedToolCall struct {
-	runID  string
-	source EventSource
+	runID          string
+	providerCallID string
+	name           string
+	index          int
+	descriptor     *ToolDescriptor
+	source         EventSource
 }
 
 func mapRunEvent(event runstate.Event, runID, commandID string, trackedCalls map[string]trackedToolCall) (Event, bool) {
@@ -54,8 +121,17 @@ func mapRunEvent(event runstate.Event, runID, commandID string, trackedCalls map
 			if state.Removed {
 				mapped.Payload = CompactionRemoved{ID: state.ID, Revision: state.Revision}
 			} else {
-				mapped.Payload = CompactionCommitted{State: state}
+				mapped.Payload = CompactionCommitted{State: state, Automatic: payload.Cycle > 0}
 			}
+		case cleanupCapability:
+			if payload.Deleted {
+				return Event{}, false
+			}
+			state, err := decodeCleanupState(payload.State)
+			if err != nil || state.Removed {
+				return Event{}, false
+			}
+			mapped.Payload = CleanupCommitted{State: state, Automatic: payload.Cycle > 0}
 		case clearCapability:
 			if payload.Deleted {
 				return Event{}, false
@@ -65,6 +141,15 @@ func mapRunEvent(event runstate.Event, runID, commandID string, trackedCalls map
 				return Event{}, false
 			}
 			mapped.Payload = SessionCleared{Revision: state.Revision}
+		case transcriptSyncCapability:
+			if payload.Deleted {
+				return Event{}, false
+			}
+			state, _, err := transcriptSyncStateFrom(map[string]json.RawMessage{transcriptSyncCapability: payload.State})
+			if err != nil {
+				return Event{}, false
+			}
+			mapped.Payload = TranscriptSynchronized{State: state}
 		case TodoCapability:
 			if payload.Deleted {
 				return Event{}, false
@@ -108,11 +193,65 @@ func mapRunEvent(event runstate.Event, runID, commandID string, trackedCalls map
 			ID:     payload.Structural.Ref.CompactionID,
 			Remove: payload.Structural.Kind == runstate.StructuralRemoveCompaction,
 		}
+	case runstate.CompactionStartedEvent:
+		if string(payload.OperationID) != runID {
+			return Event{}, false
+		}
+		mapped.Payload = CompactionStarted{
+			ID: payload.ID, Automatic: payload.Automatic, Metrics: publicCompactionMetrics(payload.Metrics),
+		}
+	case runstate.CleanupStartedEvent:
+		if string(payload.OperationID) != runID {
+			return Event{}, false
+		}
+		mapped.Payload = CleanupStarted{ID: payload.ID, Reason: payload.Reason, Automatic: payload.Automatic, Transient: payload.Transient, Metrics: publicCleanupMetrics(payload.Metrics)}
+	case runstate.ContextNormalizedEvent:
+		if string(payload.OperationID) != runID {
+			return Event{}, false
+		}
+		mapped.Payload = ContextNormalized{
+			RepairCount: payload.RepairCount, MessagesBefore: payload.MessagesBefore, MessagesAfter: payload.MessagesAfter,
+		}
+	case runstate.CleanupCompletedEvent:
+		if string(payload.OperationID) != runID {
+			return Event{}, false
+		}
+		mapped.Payload = CleanupCompleted{ID: payload.ID, Reason: payload.Reason, Automatic: payload.Automatic, Transient: payload.Transient, Metrics: publicCleanupMetrics(payload.Metrics)}
+	case runstate.CleanupFailedEvent:
+		if string(payload.OperationID) != runID {
+			return Event{}, false
+		}
+		mapped.Payload = CleanupFailed{ID: payload.ID, Reason: payload.Reason, Automatic: payload.Automatic, Metrics: publicCleanupMetrics(payload.Metrics)}
+	case runstate.CleanupSkippedEvent:
+		if string(payload.OperationID) != runID {
+			return Event{}, false
+		}
+		mapped.Payload = CleanupSkipped{ID: payload.ID, Reason: payload.Reason, Automatic: payload.Automatic, Metrics: publicCleanupMetrics(payload.Metrics)}
+	case runstate.CompactionFailedEvent:
+		if string(payload.OperationID) != runID {
+			return Event{}, false
+		}
+		mapped.Payload = CompactionFailed{
+			ID: payload.ID, Reason: payload.Reason, Automatic: payload.Automatic,
+			ConsecutiveFailures: payload.ConsecutiveFailures, FailureFuseOpen: payload.FailureFuseOpen,
+			Metrics: publicCompactionMetrics(payload.Metrics),
+		}
+	case runstate.CompactionSkippedEvent:
+		if string(payload.OperationID) != runID {
+			return Event{}, false
+		}
+		mapped.Payload = CompactionSkipped{
+			ID: payload.ID, Reason: payload.Reason, Automatic: payload.Automatic,
+			ConsecutiveFailures: payload.ConsecutiveFailures, FailureFuseOpen: payload.FailureFuseOpen,
+			Metrics: publicCompactionMetrics(payload.Metrics),
+		}
 	case runstate.CycleStartedEvent:
 		if string(payload.OperationID) != runID {
 			return Event{}, false
 		}
-		mapped.Payload = RunStarted{Cycle: payload.Cycle}
+		mapped.Payload = RunStarted{
+			Cycle: payload.Cycle, CommandID: string(payload.CommandID), Delivery: payload.Delivery,
+		}
 	case runstate.AssistantDeltaEvent:
 		if string(payload.OperationID) != runID {
 			return Event{}, false
@@ -123,6 +262,20 @@ func mapRunEvent(event runstate.Event, runID, commandID string, trackedCalls map
 			return Event{}, false
 		}
 		mapped.Payload = ThinkingDelta{Source: publicEventSource(payload.Source), Delta: payload.Delta, DisplayOnly: payload.DisplayOnly}
+	case runstate.NestedEventEvent:
+		if string(payload.OperationID) != runID {
+			return Event{}, false
+		}
+		nested, err := decodeNestedEvent(nestedEventRecord{
+			Source: publicEventSource(payload.Source), SessionID: payload.SessionID,
+			ChildCursor: Cursor(payload.ChildCursor), ChildDurability: EventDurability(payload.ChildDurability),
+			ChildRunID: payload.ChildRunID, PayloadType: payload.PayloadType,
+			Payload: append(json.RawMessage(nil), payload.Payload...),
+		})
+		if err != nil {
+			return Event{}, false
+		}
+		mapped.Payload = nested
 	case runstate.ModelCompletedEvent:
 		if string(payload.OperationID) != runID {
 			return Event{}, false
@@ -153,7 +306,8 @@ func mapRunEvent(event runstate.Event, runID, commandID string, trackedCalls map
 		}
 		mapped.Payload = ToolInputStarted{
 			CallID: payload.CallID, ProviderCallID: payload.ProviderCallID,
-			Name: payload.Name, Source: publicEventSource(payload.Source),
+			Name: payload.Name, Index: payload.Index, Descriptor: decodeToolDescriptorMetadata(payload.Metadata),
+			Source: publicEventSource(payload.Source),
 		}
 	case runstate.ToolInputDeltaEvent:
 		if string(payload.OperationID) != runID {
@@ -168,10 +322,14 @@ func mapRunEvent(event runstate.Event, runID, commandID string, trackedCalls map
 			return Event{}, false
 		}
 		source := publicEventSource(payload.Source)
-		trackedCalls[payload.CallID] = trackedToolCall{runID: runID, source: source}
+		descriptor := decodeToolDescriptorMetadata(payload.Metadata)
+		trackedCalls[payload.CallID] = trackedToolCall{
+			runID: runID, providerCallID: payload.ProviderCallID, name: payload.Name,
+			index: payload.Index, descriptor: descriptor, source: source,
+		}
 		mapped.Payload = ToolStarted{
-			CallID: payload.CallID, Name: payload.Name,
-			Arguments: append(json.RawMessage(nil), payload.Arguments...), Source: source,
+			CallID: payload.CallID, ProviderCallID: payload.ProviderCallID, Name: payload.Name, Index: payload.Index,
+			Arguments: append(json.RawMessage(nil), payload.Arguments...), Descriptor: descriptor, Source: source,
 		}
 	case runstate.ToolOutputEvent:
 		if string(payload.OperationID) != runID {
@@ -186,9 +344,18 @@ func mapRunEvent(event runstate.Event, runID, commandID string, trackedCalls map
 				projection = &decoded
 			}
 		}
+		descriptor := decodeToolDescriptorMetadata(payload.Metadata)
+		if descriptor == nil {
+			descriptor = tracked.descriptor
+		}
+		providerCallID := payload.ProviderCallID
+		if providerCallID == "" {
+			providerCallID = tracked.providerCallID
+		}
 		mapped.Payload = ToolFinished{
-			CallID: payload.CallID, Name: payload.Name, IsError: payload.IsError,
-			Result: payload.Result, Projection: projection, Source: publicEventSource(payload.Source),
+			CallID: payload.CallID, ProviderCallID: providerCallID, Name: payload.Name, Index: payload.Index,
+			IsError: payload.IsError, Result: payload.Result, Descriptor: descriptor,
+			Projection: projection, Source: publicEventSource(payload.Source),
 		}
 		if eventSourceEmpty(mapped.Payload.(ToolFinished).Source) {
 			finished := mapped.Payload.(ToolFinished)
@@ -205,7 +372,22 @@ func mapRunEvent(event runstate.Event, runID, commandID string, trackedCalls map
 		if eventSourceEmpty(source) {
 			source = tracked.source
 		}
-		mapped.Payload = ToolProgress{CallID: payload.CallID, Delta: payload.Delta, Source: source}
+		descriptor := decodeToolDescriptorMetadata(payload.Metadata)
+		if descriptor == nil {
+			descriptor = tracked.descriptor
+		}
+		providerCallID := payload.ProviderCallID
+		if providerCallID == "" {
+			providerCallID = tracked.providerCallID
+		}
+		name := payload.Name
+		if name == "" {
+			name = tracked.name
+		}
+		mapped.Payload = ToolProgress{
+			CallID: payload.CallID, ProviderCallID: providerCallID, Name: name, Index: payload.Index,
+			Delta: payload.Delta, Descriptor: descriptor, Source: source,
+		}
 	case runstate.ArtifactProducedEvent:
 		tracked, ok := trackedCalls[payload.CallID]
 		if !ok || (runID != "" && tracked.runID != runID) {
@@ -248,6 +430,17 @@ func mapRunEvent(event runstate.Event, runID, commandID string, trackedCalls map
 	return mapped, true
 }
 
+func decodeToolDescriptorMetadata(metadata json.RawMessage) *ToolDescriptor {
+	if len(metadata) == 0 {
+		return nil
+	}
+	var descriptor ToolDescriptor
+	if err := json.Unmarshal(metadata, &descriptor); err != nil || descriptor.Execution == "" {
+		return nil
+	}
+	return &descriptor
+}
+
 func mapResultStatus(status runstate.OperationStatus) ResultStatus {
 	switch status {
 	case runstate.OperationSucceeded:
@@ -263,7 +456,7 @@ func mapResultStatus(status runstate.OperationStatus) ResultStatus {
 	}
 }
 
-func mapObservation(key SessionKey, observation runstate.Observation) Observation {
+func mapObservation(key SessionKey, observation runstate.Observation, projectionTextMaxBytes int) Observation {
 	events := make(chan Event, publicRunEventBuffer)
 	errorsChannel := make(chan error, 1)
 	safeGo(func() {
@@ -272,6 +465,15 @@ func mapObservation(key SessionKey, observation runstate.Observation) Observatio
 		state := sessionEventMappingState{
 			trackedCalls: make(map[string]trackedToolCall), commandRuns: make(map[string]string),
 		}
+		if observation.Snapshot.ActiveCommandID != "" && observation.Snapshot.ActiveOperation != "" {
+			state.commandRuns[string(observation.Snapshot.ActiveCommandID)] = string(observation.Snapshot.ActiveOperation)
+		}
+		for _, queued := range observation.Snapshot.Queue {
+			state.commandRuns[string(queued.CommandID)] = string(queued.OperationID)
+		}
+		for _, settled := range observation.Snapshot.RecentOperations {
+			state.commandRuns[string(settled.CommandID)] = string(settled.OperationID)
+		}
 		for _, call := range observation.Snapshot.OpenToolCalls {
 			state.trackedCalls[call.CallID] = trackedToolCall{
 				runID: string(call.OperationID), source: publicEventSource(call.Source),
@@ -279,6 +481,7 @@ func mapObservation(key SessionKey, observation runstate.Observation) Observatio
 		}
 		runtimeEvents := observation.Events
 		runtimeErrors := observation.Errors
+		drops := eventDropState{}
 		for {
 			if runtimeEvents == nil && runtimeErrors == nil {
 				return
@@ -291,7 +494,7 @@ func mapObservation(key SessionKey, observation runstate.Observation) Observatio
 				}
 				mapped, ok := mapSessionEvent(event, &state)
 				if ok {
-					events <- mapped
+					publishLatestEvent(events, mapped, &drops)
 				}
 			case err, ok := <-runtimeErrors:
 				if !ok {
@@ -306,7 +509,7 @@ func mapObservation(key SessionKey, observation runstate.Observation) Observatio
 	}, func(err error) {
 		errorsChannel <- fmt.Errorf("map Agent Observation: %w", err)
 	})
-	return Observation{Snapshot: mapSessionSnapshot(key, observation.Snapshot), Events: events, Errors: errorsChannel}
+	return Observation{Snapshot: mapSessionSnapshot(key, observation.Snapshot, projectionTextMaxBytes), Events: events, Errors: errorsChannel}
 }
 
 type sessionEventMappingState struct {
@@ -340,6 +543,8 @@ func runtimeEventRunID(payload runstate.EventPayload) string {
 		return string(payload.OperationID)
 	case runstate.ThinkingDeltaEvent:
 		return string(payload.OperationID)
+	case runstate.NestedEventEvent:
+		return string(payload.OperationID)
 	case runstate.ModelCompletedEvent:
 		return string(payload.OperationID)
 	case runstate.AssistantMessageCommittedEvent:
@@ -347,6 +552,22 @@ func runtimeEventRunID(payload runstate.EventPayload) string {
 	case runstate.ToolCallStartedEvent:
 		return string(payload.Call.OperationID)
 	case runstate.CapabilityStateCommittedEvent:
+		return string(payload.OperationID)
+	case runstate.CompactionStartedEvent:
+		return string(payload.OperationID)
+	case runstate.CleanupStartedEvent:
+		return string(payload.OperationID)
+	case runstate.ContextNormalizedEvent:
+		return string(payload.OperationID)
+	case runstate.CleanupCompletedEvent:
+		return string(payload.OperationID)
+	case runstate.CleanupFailedEvent:
+		return string(payload.OperationID)
+	case runstate.CleanupSkippedEvent:
+		return string(payload.OperationID)
+	case runstate.CompactionFailedEvent:
+		return string(payload.OperationID)
+	case runstate.CompactionSkippedEvent:
 		return string(payload.OperationID)
 	case runstate.InteractionRequestedEvent:
 		return string(payload.OperationID)
@@ -384,14 +605,17 @@ func runtimeEventRunID(payload runstate.EventPayload) string {
 }
 
 func publicEventSource(source runstate.EventSource) EventSource {
-	return EventSource{Name: source.Name, Path: append([]string(nil), source.Path...)}
+	return EventSource{
+		Name: source.Name, Path: append([]string(nil), source.Path...),
+		InvocationID: source.InvocationID, InvocationType: source.InvocationType,
+	}
 }
 
 func eventSourceEmpty(source EventSource) bool {
-	return source.Name == "" && len(source.Path) == 0
+	return source.Name == "" && len(source.Path) == 0 && source.InvocationID == "" && source.InvocationType == ""
 }
 
-func mapSessionSnapshot(key SessionKey, snapshot runstate.StateSnapshot) SessionSnapshot {
+func mapSessionSnapshot(key SessionKey, snapshot runstate.StateSnapshot, projectionTextMaxBytes int) SessionSnapshot {
 	result := SessionSnapshot{
 		Key: key, Cursor: Cursor(snapshot.Cursor), RetentionStart: Cursor(snapshot.TimelineStartCursor),
 		ActiveRunID: string(snapshot.ActiveOperation), ActiveCommandID: string(snapshot.ActiveCommandID),
@@ -411,21 +635,25 @@ func mapSessionSnapshot(key SessionKey, snapshot runstate.StateSnapshot) Session
 		if queued.Autonomous {
 			continue
 		}
+		text, truncated := boundPublicProjectionText(queued.Input.Text, projectionTextMaxBytes)
 		result.QueuedRuns = append(result.QueuedRuns, QueuedRunSnapshot{
 			ID: string(queued.OperationID), CommandID: string(queued.CommandID),
 			ReceiptCursor: Cursor(queued.ReceiptCursor), Delivery: publicRecoveryDelivery(queued.Delivery),
+			Text: text, TextTruncated: truncated,
+			InterruptRequested: queued.CommandID == snapshot.PreemptQueuedCommandID,
 		})
 	}
 	for _, tool := range snapshot.OpenToolCalls {
-		result.OpenTools = append(result.OpenTools, ToolStarted{
-			CallID: tool.CallID, Name: tool.Name, Source: publicEventSource(tool.Source),
+		result.OpenTools = append(result.OpenTools, OpenToolSnapshot{
+			CallID: tool.CallID, Name: tool.Name, RunID: string(tool.OperationID), Cycle: tool.Cycle,
+			Source: publicEventSource(tool.Source),
 		})
 	}
 	for _, operation := range snapshot.RecentOperations {
 		result.RecentRuns = append(result.RecentRuns, RunSummary{
 			ID: string(operation.OperationID), CommandID: string(operation.CommandID),
 			CommandFingerprint: operation.CommandFingerprint, ReceiptCursor: Cursor(operation.ReceiptCursor),
-			Status: mapResultStatus(operation.Status), Reason: operation.Reason,
+			Status: mapResultStatus(operation.Status), Reason: operation.Reason, ReasonTruncated: operation.ReasonTruncated,
 		})
 	}
 	if encoded, ok := snapshot.CapabilityStates[goalCapability]; ok {
@@ -443,11 +671,27 @@ func mapSessionSnapshot(key SessionKey, snapshot runstate.StateSnapshot) Session
 	if clearPresent {
 		result.ClearRevision = clearState.Revision
 	}
+	var compaction CompactionState
+	compactionPresent := false
 	if encoded, ok := snapshot.CapabilityStates[compactionCapability]; ok {
-		if state, err := decodeCompactionState(encoded); err == nil && !state.Removed &&
+		if state, err := decodeCompactionState(encoded); err == nil &&
 			(!clearPresent || state.Revision > clearState.CompactionRevisionAtClear) {
-			result.Compaction = &state
+			compaction, compactionPresent = state, true
+			if !state.Removed {
+				result.Compaction = &state
+			}
 		}
+	}
+	if encoded, ok := snapshot.CapabilityStates[cleanupCapability]; ok {
+		if state, err := decodeCleanupState(encoded); err == nil && !state.Removed &&
+			(!clearPresent || state.Revision > clearState.CleanupRevisionAtClear) {
+			if visible, present := cleanupAfterCompaction(state, true, compaction, compactionPresent); present {
+				result.Cleanup = cloneCleanupState(&visible)
+			}
+		}
+	}
+	if state, present, err := transcriptSyncStateFrom(snapshot.CapabilityStates); err == nil && present {
+		result.TranscriptSync = &state
 	}
 	for _, pending := range snapshot.Interactions {
 		if pending.Resolved {
@@ -459,4 +703,16 @@ func mapSessionSnapshot(key SessionKey, snapshot runstate.StateSnapshot) Session
 		}
 	}
 	return result
+}
+
+func boundPublicProjectionText(value string, limit int) (string, bool) {
+	limit = normalizedProjectionTextMaxBytes(limit)
+	if len(value) <= limit {
+		return value, false
+	}
+	value = value[:limit]
+	for len(value) > 0 && !utf8.ValidString(value) {
+		value = value[:len(value)-1]
+	}
+	return value, true
 }

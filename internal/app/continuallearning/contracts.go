@@ -9,9 +9,7 @@ import (
 	"time"
 
 	"denova/config"
-	agentconversation "denova/internal/agents/conversation"
 	agentexecution "denova/internal/agents/execution"
-	"denova/internal/agents/session"
 	"denova/internal/agents/trajectory"
 
 	agentstate "github.com/alfredxw/denova/agent/state"
@@ -70,7 +68,6 @@ type Host interface {
 	Runtime() Runtime
 	AcquireRootOperation(context.Context) (Operation, error)
 	TrajectorySources(context.Context) ([]trajectory.Source, error)
-	ResolveAsk(context.Context, *session.Session, string, string, []agentconversation.HostAskAnswer, string) (agentconversation.HostAskResolution, error)
 }
 
 type Request struct {

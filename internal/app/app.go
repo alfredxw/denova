@@ -73,7 +73,6 @@ type App struct {
 	closed                          bool
 	closeOnce                       sync.Once
 	activeTaskReplay                apptask.ReplayAdmission
-	agentAskResolutionMu            sync.Mutex
 
 	// terminals owns the pty sessions behind the AgentChat terminal tabs. They are decoupled from
 	// the workspace: each session keeps its own cwd, so switching books never kills a running command.
@@ -124,7 +123,21 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 		ctx,
 		dataDir,
 		agentexecution.WithProfiles(app.executionProfiles()...),
+		agentexecution.WithChildDefinitionResolver(agentexecution.ChildDefinitionResolverFunc(app.prepareChildDefinition)),
 		agentexecution.WithHostEffectReconciler(app.automationApp.ReconcileHostEffect),
+		agentexecution.WithPermissionRuleStore(agentexecution.PermissionRuleStore{
+			Load: func(context.Context) ([]config.AgentApprovalRule, error) {
+				layered, err := app.SettingsService().Snapshot(settingsapp.Global())
+				if err != nil {
+					return nil, err
+				}
+				return config.NormalizeAgentApprovalRules(layered.Effective.AgentApprovalRules), nil
+			},
+			Persist: func(ctx context.Context, rule config.AgentApprovalRule) error {
+				_, err := app.SettingsService().EnsureAgentApprovalRule(rule)
+				return err
+			},
+		}),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("initialize Agent runtime: %w", err)

@@ -11,6 +11,7 @@ func TestCommitDirectorPlanRunReplaysCanonicalReceiptAfterStoreRestart(t *testin
 	run := startDirectorPatchTestRun(t, workspace, "导演提交重放")
 	intent, err := NewDirectorPlanDomainCommitIntent(
 		DirectorPlanDomainCommitIdentity{CommandID: "command-1", OperationID: "operation-1", Cycle: 1},
+		"agent-output-hash-1",
 		run.token,
 		run.turn.ID,
 		`{"mode":"keep","reason":"当前规划仍然有效"}`,
@@ -49,6 +50,7 @@ func TestCommitDirectorPlanRunReplaysCanonicalReceiptAfterStoreRestart(t *testin
 
 	conflict, err := NewDirectorPlanDomainCommitIntent(
 		intent.Identity,
+		"agent-output-hash-1",
 		run.token,
 		run.turn.ID,
 		`{"mode":"keep","reason":"同一命令却换了语义"}`,

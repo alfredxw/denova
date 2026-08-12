@@ -18,6 +18,7 @@ import (
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 
+	agent "github.com/alfredxw/denova/agent"
 	agenttools "github.com/alfredxw/denova/agent/tools"
 )
 
@@ -72,7 +73,10 @@ func NewReadAdapter(catalog Catalog) (agenttools.ReadAdapter, error) {
 	if catalog.Sources == nil {
 		return nil, errors.New("trajectory source provider is required")
 	}
-	return agenttools.NewReadAdapter("trajectory", func(_ context.Context, resource string) (bool, error) {
+	return agenttools.NewReadAdapter(agent.CapabilityIdentity{
+		Kind: "denova.read.trajectory", Version: 1,
+		ConfigHash: fmt.Sprintf("limit=%d", effectiveTrajectoryLimit(catalog.Limit)),
+	}, "trajectory", func(_ context.Context, resource string) (bool, error) {
 		return strings.HasPrefix(strings.ToLower(strings.TrimSpace(resource)), Scheme), nil
 	}, catalog.read)
 }
@@ -104,10 +108,7 @@ func (catalog Catalog) read(ctx context.Context, input readInput) (agenttools.Re
 	}
 	limit := input.Limit
 	if limit <= 0 {
-		limit = catalog.Limit
-	}
-	if limit <= 0 || limit > 500 {
-		limit = 50
+		limit = effectiveTrajectoryLimit(catalog.Limit)
 	}
 	segments := pathSegments(parsed)
 	if parsed.Host == "index" && len(segments) == 0 {
@@ -153,6 +154,13 @@ func (catalog Catalog) read(ctx context.Context, input readInput) (agenttools.Re
 	default:
 		return agenttools.ReadResult{}, fs.ErrNotExist
 	}
+}
+
+func effectiveTrajectoryLimit(limit int) int {
+	if limit <= 0 || limit > 500 {
+		return 50
+	}
+	return limit
 }
 
 func (catalog Catalog) readIndex(ctx context.Context, resource string, limit int) (agenttools.ReadResult, error) {

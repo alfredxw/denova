@@ -409,7 +409,7 @@ describe('InputArea command menu', () => {
 })
 
 describe('InputArea active generation controls', () => {
-  it('keeps one contextual action that sends a draft or stops an empty active run', async () => {
+  it('keeps Stop available while an active run has a sendable draft', async () => {
     const user = userEvent.setup()
     const handleSend = vi.fn()
     const handleStop = vi.fn()
@@ -430,16 +430,20 @@ describe('InputArea active generation controls', () => {
 
     const sendButton = screen.getByRole('button', { name: '发送' })
     expect(sendButton).toBeEnabled()
-    expect(screen.queryByRole('button', { name: '中断 AI 执行' })).not.toBeInTheDocument()
+    const stopButton = screen.getByRole('button', { name: '中断 AI 执行' })
+    expect(stopButton).toBeEnabled()
+
+    await user.click(stopButton)
+    expect(handleStop).toHaveBeenCalledTimes(1)
+    expect(handleSend).not.toHaveBeenCalled()
 
     await user.click(sendButton)
     expect(handleSend).toHaveBeenCalledWith('Add more atmosphere')
-    expect(handleStop).not.toHaveBeenCalled()
 
-    const stopButton = screen.getByRole('button', { name: '中断 AI 执行' })
+    const emptyDraftStopButton = screen.getByRole('button', { name: '中断 AI 执行' })
     expect(screen.queryByRole('button', { name: '发送' })).not.toBeInTheDocument()
-    await user.click(stopButton)
-    expect(handleStop).toHaveBeenCalledTimes(1)
+    await user.click(emptyDraftStopButton)
+    expect(handleStop).toHaveBeenCalledTimes(2)
   })
 
   it('shows an accepted instruction above the composer with steer, delete, and return-to-edit actions', async () => {

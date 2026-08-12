@@ -11,8 +11,29 @@ import (
 	agentrun "denova/internal/agents/run"
 	"denova/internal/automation"
 
-	runstate "github.com/alfredxw/denova/agent/runtime"
+	agent "github.com/alfredxw/denova/agent"
+	sessionfile "github.com/alfredxw/denova/agent/session/file"
 )
+
+type automationAbortBlockingModel struct{ started chan struct{} }
+
+func (model *automationAbortBlockingModel) Generate(ctx context.Context, _ []*agent.Message, _ ...agent.ModelOption) (*agent.Message, error) {
+	select {
+	case <-model.started:
+	default:
+		close(model.started)
+	}
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func (model *automationAbortBlockingModel) Stream(ctx context.Context, messages []*agent.Message, options ...agent.ModelOption) (*agent.StreamReader[*agent.Message], error) {
+	message, err := model.Generate(ctx, messages, options...)
+	if err != nil {
+		return nil, err
+	}
+	return agent.StreamReaderFromArray([]*agent.Message{message}), nil
+}
 
 func TestAutomationAbortReplaysPersistedReceiptAfterRestart(t *testing.T) {
 	root := t.TempDir()
@@ -33,14 +54,68 @@ func TestAutomationAbortReplaysPersistedReceiptAfterRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	const runID = "run-abort-replay"
-	const operationID = runstate.OperationID("operation-abort-replay")
 	const commandID = "abort-command-replay"
+	ref := automationRuntimeBindingForTest(application.Workspace(), automationRunSessionID(runID), runID, taskDef.Target.ProjectID)
+	key, err := ref.AgentSessionKey()
+	if err != nil {
+		application.Close()
+		t.Fatal(err)
+	}
+	publicStore, err := sessionfile.New(filepath.Join(root, "agent-sessions"))
+	if err != nil {
+		application.Close()
+		t.Fatal(err)
+	}
+	model := &automationAbortBlockingModel{started: make(chan struct{})}
+	owner, err := agent.New(context.Background(), agent.Definition{
+		Name: "automation-replay", Model: model,
+		ModelIdentity: agent.CapabilityIdentity{Kind: "test.automation.abort-replay", Version: 1},
+	}, agent.WithSessionStore(publicStore))
+	if err != nil {
+		application.Close()
+		t.Fatal(err)
+	}
+	session, err := owner.Session(context.Background(), key)
+	if err != nil {
+		application.Close()
+		t.Fatal(err)
+	}
+	publicRun, err := session.Run(context.Background(), agent.Input{
+		Text: "run automation", IdempotencyKey: automationRunAgentCommandID(runID),
+	})
+	if err != nil {
+		application.Close()
+		t.Fatal(err)
+	}
+	select {
+	case <-model.started:
+	case <-time.After(time.Second):
+		application.Close()
+		t.Fatal("public Automation Run did not reach its model")
+	}
+	abortReceipt, err := publicRun.Abort(context.Background(), agent.AbortRequest{Reason: "user_requested", IdempotencyKey: commandID})
+	if err != nil {
+		application.Close()
+		t.Fatal(err)
+	}
+	if result, waitErr := publicRun.Wait(context.Background()); waitErr != nil || result.Status != agent.ResultAborted {
+		application.Close()
+		t.Fatalf("public Abort settlement=%#v error=%v", result, waitErr)
+	}
+	if err := session.Close(context.Background()); err != nil {
+		application.Close()
+		t.Fatal(err)
+	}
+	if err := owner.Close(context.Background()); err != nil {
+		application.Close()
+		t.Fatal(err)
+	}
 	run := automation.RunRecord{
 		ID: runID, TaskID: taskDef.ID, SessionID: automationRunSessionID(runID),
 		ProjectID: taskDef.Target.ProjectID,
 		Scope:     taskDef.Scope, Workspace: application.Workspace(), Trigger: automation.TriggerManual,
-		RuntimeCommandID: automationRunAgentCommandID(runID), RuntimeOperationID: string(operationID),
-		RuntimeReceiptCursor: 1, Status: automation.RunStatusAborted,
+		RuntimeCommandID: automationRunAgentCommandID(runID), RuntimeOperationID: publicRun.ID(),
+		RuntimeReceiptCursor: uint64(publicRun.Receipt().Cursor), Status: automation.RunStatusAborted,
 		StartedAt: time.Now().UTC(), FinishedAt: time.Now().UTC(),
 	}
 	if application.cfg.ProjectID != run.ProjectID {
@@ -52,20 +127,6 @@ func TestAutomationAbortReplaysPersistedReceiptAfterRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ref := automationRuntimeBindingForTest(run.Workspace, run.SessionID, run.ID, run.ProjectID)
-	abort := runstate.Abort{ID: commandID, OperationID: operationID, Reason: "user_requested"}
-	abortFingerprint, err := runstate.CommandFingerprint(abort)
-	if err != nil {
-		application.Close()
-		t.Fatal(err)
-	}
-	seedAutomationAgentSession(t, root, ref, []runstate.EventPayload{
-		runstate.CommandAcceptedEvent{CommandID: runstate.CommandID(automationRunAgentCommandID(runID)), CommandKind: "start_turn", OperationID: operationID, Fingerprint: "seed-start"},
-		runstate.OperationStartedEvent{OperationID: operationID},
-		runstate.CommandAcceptedEvent{CommandID: commandID, CommandKind: "abort", OperationID: operationID, Fingerprint: abortFingerprint},
-		runstate.AbortRequestedEvent{OperationID: operationID, Reason: abort.Reason},
-		runstate.OperationSettledEvent{OperationID: operationID, Status: runstate.OperationAborted, Reason: abort.Reason},
-	})
 	application.Close()
 
 	reopened, err := New(context.Background(), &config.Config{NovaDir: root, Workspace: workspace, OpenAIModel: "test-model"})
@@ -77,14 +138,15 @@ func TestAutomationAbortReplaysPersistedReceiptAfterRestart(t *testing.T) {
 		t.Fatalf("reopened Project identity = %q, want %q", reopened.cfg.ProjectID, run.ProjectID)
 	}
 	reopenedRef := automationRuntimeBindingForTest(run.Workspace, run.SessionID, run.ID, reopened.cfg.ProjectID)
-	if !reopenedRef.Equal(ref) {
+	if reopenedRef != ref {
 		t.Fatalf("reopened runtime binding = %#v, seeded %#v", reopenedRef, ref)
 	}
-	receipt, err := reopened.AbortAutomationRunCommand(context.Background(), runID, commandID, agentrun.OperationID(operationID), abort.Reason)
+	receipt, err := reopened.AbortAutomationRunCommand(context.Background(), runID, commandID, agentrun.OperationID(publicRun.ID()), "user_requested")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !receipt.Replayed || receipt.CommandID != agentrun.CommandID(commandID) || receipt.OperationID != agentrun.OperationID(operationID) || receipt.Cursor != 3 {
+	if !receipt.Replayed || receipt.CommandID != agentrun.CommandID(commandID) ||
+		receipt.OperationID != agentrun.OperationID(publicRun.ID()) || receipt.Cursor != agentrun.Cursor(abortReceipt.Cursor) {
 		t.Fatalf("replayed abort receipt = %#v", receipt)
 	}
 }

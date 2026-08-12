@@ -17,7 +17,7 @@ const sessionToolArtifactDirectorySuffix = ".artifacts"
 // session. Artifact lifetime follows the session journal lifetime. The shared
 // store implementation applies the same boundary and publication rules used
 // by writing and game conversations.
-func (s *Session) ToolArtifactStore() agent.ToolArtifactStore {
+func (s *Session) ToolArtifactStore() agent.ToolArtifactBackend {
 	if s == nil || strings.TrimSpace(s.filePath) == "" {
 		return nil
 	}
@@ -35,6 +35,10 @@ type failedToolArtifactStore struct{ err error }
 
 func (store failedToolArtifactStore) BeginToolArtifact(context.Context, agent.ToolArtifactRequest) (agent.ToolArtifactWriter, error) {
 	return nil, fmt.Errorf("initialize session tool artifact store: %w", store.err)
+}
+
+func (store failedToolArtifactStore) VerifyToolArtifact(context.Context, agent.ToolArtifactRef, agent.ToolArtifactRequest) error {
+	return fmt.Errorf("initialize session tool artifact store: %w", store.err)
 }
 
 func sessionToolArtifactDirectory(journalPath string) string {

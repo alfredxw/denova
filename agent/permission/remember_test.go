@@ -71,7 +71,7 @@ func TestRememberedRuleCommitsBeforeResolutionAndFutureToolExecution(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	toolset := agent.StaticToolsIdentified(agent.CapabilityIdentity{Kind: "tools.permission-remember", Version: 1}, agent.ToolDefinition{
+	toolset, err := agent.StaticToolsIdentified(agent.CapabilityIdentity{Kind: "tools.permission-remember", Version: 1}, agent.ToolDefinition{
 		Tool: tool, Descriptor: agent.ToolDescriptor{
 			Source: agent.ToolSourceWrite, Execution: agent.ToolExecutionWorkspaceExclusive,
 			MutationScope: agent.ToolMutationWorkspace, PostCheck: agent.ToolPostCheckWorkspaceChange,
@@ -80,8 +80,15 @@ func TestRememberedRuleCommitsBeforeResolutionAndFutureToolExecution(t *testing.
 			MaxResultBytes: 64 << 10,
 		},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy, err := permission.CodingWithRules(store)
+	if err != nil {
+		t.Fatal(err)
+	}
 	owner, err := agent.New(context.Background(), agent.Definition{
-		Model: model, Tools: toolset, Permission: permission.Coding(store),
+		Model: model, Tools: toolset, Permission: policy,
 	})
 	if err != nil {
 		t.Fatal(err)

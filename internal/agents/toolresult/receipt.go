@@ -9,6 +9,7 @@ import (
 
 	agent "github.com/alfredxw/denova/agent"
 
+	"denova/config"
 	workspacechange "denova/internal/workspace/change"
 )
 
@@ -126,28 +127,35 @@ func buildRetainedToolReceipt(manifest Manifest, result agent.ToolResult) Receip
 		Target: projectRetainedTarget(result.Metadata.Target), IdempotencyKey: result.Metadata.IdempotencyKey,
 		OriginalBytes: result.Metadata.OriginalModelBytes, ModelTruncated: result.Metadata.ModelTruncated,
 		Artifacts: artifacts,
-		Note:      retainedToolResultNote(manifest.Source, retainedRecoverableArtifactAvailable(result.Artifacts)),
+		Note:      retainedToolResultNote(manifest, retainedRecoverableArtifactAvailable(result.Artifacts)),
 	}
 	if len(result.Details) > 0 {
 		modelSafeDetails := workspacechange.ToolReceiptForModel(manifest.Name, string(result.Details))
 		receipt.Details = compactRetainedJSON(json.RawMessage(modelSafeDetails))
 	}
-	if manifest.Source == agent.ToolSourceLore && result.Status == agent.ToolResultSuccess {
+	if isLoreManifest(manifest) && result.Status == agent.ToolResultSuccess {
 		receipt.SourceIDs, receipt.Names = retainedLoreEvidence(result.ModelContent)
 	}
 	return receipt
 }
 
-func retainedToolResultNote(source agent.ToolSource, hasArtifact bool) string {
+func retainedToolResultNote(manifest Manifest, hasArtifact bool) string {
 	if hasArtifact {
 		return "The complete tool output is stored in the referenced artifact; retrieve it only if exact evidence is needed."
 	}
-	switch source {
-	case agent.ToolSourceRead, agent.ToolSourceLore, agent.ToolSourceHistory, agent.ToolSourceWeb:
+	if isLoreManifest(manifest) {
+		return "The result body was available in the source turn and is omitted across turns; repeat the retained call if exact evidence is needed."
+	}
+	switch manifest.Source {
+	case agent.ToolSourceRead, agent.ToolSourceHistory, agent.ToolSourceWeb:
 		return "The result body was available in the source turn and is omitted across turns; repeat the retained call if exact evidence is needed."
 	default:
 		return "The result body was available in the source turn; this stable receipt preserves the outcome and recovery metadata."
 	}
+}
+
+func isLoreManifest(manifest Manifest) bool {
+	return manifest.Capability == config.AgentToolLoreRead || manifest.Capability == config.AgentToolLoreWrite
 }
 
 func marshalRetainedProjection(receipt Receipt, limit int, toolName string, status agent.ToolResultStatus, original string) string {

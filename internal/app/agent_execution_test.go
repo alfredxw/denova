@@ -130,16 +130,16 @@ func startPublicExecutionCycle(
 var _ agentlifecycle.ConversationCommitter = publicReplayConversationCommitter{}
 
 func executionProfileForTest(application *App, binding agentrun.RuntimeBinding) (agentexecution.Profile, error) {
-	ref, err := binding.Ref()
+	profileID, err := binding.ProfileID()
 	if err != nil {
 		return nil, err
 	}
 	for _, profile := range application.executionProfiles() {
-		if profile.ID() == agentexecution.ProfileID(ref.Profile) {
+		if profile.ID() == agentexecution.ProfileID(profileID) {
 			return profile, nil
 		}
 	}
-	return nil, fmt.Errorf("%w: %q", agentexecution.ErrProfileNotFound, ref.Profile)
+	return nil, fmt.Errorf("%w: %q", agentexecution.ErrProfileNotFound, profileID)
 }
 
 func prepareProfileCycleForTest(application *App, ctx context.Context, request agentexecution.CycleRestoreRequest) (agentexecution.Cycle, error) {

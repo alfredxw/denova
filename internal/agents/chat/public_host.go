@@ -3,7 +3,6 @@ package chat
 import (
 	"context"
 
-	agentinteractive "denova/internal/agents/interactive"
 	agentrun "denova/internal/agents/run"
 	agenttoolruntime "denova/internal/agents/toolruntime"
 	producttools "denova/internal/agents/tools"
@@ -11,26 +10,30 @@ import (
 	agent "github.com/alfredxw/denova/agent"
 )
 
-// PublicHostMiddleware installs Denova-only execution context around the
-// reusable Agent loop. Product interactions and artifact storage stay here;
-// the public Agent package remains independent from Denova session types.
+// PublicHostMiddleware installs Denova-only trace, review scope, and plan-mode
+// context around the public Agent lifecycle. Interaction and artifact storage
+// are bound through their dedicated Definition capabilities; the Agent package
+// remains independent from Denova session types.
 type PublicHostMiddleware struct {
 	*agent.BaseMiddleware
-	conversation Conversation
-	request      ChatRequest
-	options      agentrun.Options
-	emit         func(agentrun.Event)
+	request ChatRequest
+	options agentrun.Options
+	trace   PublicRunTraceBinder
+}
+
+// PublicRunTraceBinder attaches the Denova run ledger to the generic Agent
+// context after the public lifecycle has assigned its durable Run ID.
+type PublicRunTraceBinder interface {
+	BindPublicRunTrace(context.Context, string) context.Context
 }
 
 func NewPublicHostMiddleware(
-	conversation Conversation,
 	request ChatRequest,
 	options agentrun.Options,
-	emit func(agentrun.Event),
+	trace PublicRunTraceBinder,
 ) *PublicHostMiddleware {
 	return &PublicHostMiddleware{
-		BaseMiddleware: &agent.BaseMiddleware{}, conversation: conversation,
-		request: request, options: options, emit: emit,
+		BaseMiddleware: &agent.BaseMiddleware{}, request: request, options: options, trace: trace,
 	}
 }
 
@@ -50,30 +53,15 @@ func (middleware *PublicHostMiddleware) BeforeAgent(
 			}
 		}
 	}
+	if middleware.trace != nil {
+		ctx = middleware.trace.BindPublicRunTrace(ctx, runID)
+	}
 	ctx = producttools.ContextWithWorkspaceChangeScope(ctx, producttools.WorkspaceChangeScope{
 		RunID: runID, SessionID: middleware.options.SessionID,
 		ReviewThreadID: middleware.options.ReviewThreadID,
 	})
-	if provider, ok := middleware.conversation.(toolArtifactStoreProvider); ok {
-		ctx = agent.ContextWithToolArtifactStore(ctx, provider.ToolArtifactStore())
-	}
 	if middleware.request.PlanMode {
 		ctx = agenttoolruntime.ContextWithToolAccessMode(ctx, agenttoolruntime.ToolAccessModePlanReadOnly)
-	}
-	if interaction := newRunAskInteraction(middleware.conversation, middleware.options, middleware.emit); interaction != nil {
-		ctx = producttools.ContextWithAskInteraction(ctx, interaction)
-		ctx = agenttoolruntime.ContextWithApprovalHost(ctx, interaction)
-	}
-	// Public Agent exposes a provider-neutral completion safe point. These
-	// Denova contexts remain for direct/legacy Runner tests and custom tools.
-	if middleware.options.AgentKind == agentrun.AgentKindInteractiveStory {
-		ctx = agentinteractive.WithTurnCancel(ctx, func(...agent.AgentCancelOption) (*agent.CancelHandle, bool) {
-			return nil, agent.RequestCompletionAfterTools(ctx)
-		})
-	} else if agentinteractive.IsDirectorPlanRun(middleware.options.AgentKind, middleware.options.MaintenanceTask) {
-		ctx = agentinteractive.WithDirectorPlanCancel(ctx, func(...agent.AgentCancelOption) (*agent.CancelHandle, bool) {
-			return nil, agent.RequestCompletionAfterTools(ctx)
-		})
 	}
 	return ctx, run, nil
 }

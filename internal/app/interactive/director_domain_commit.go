@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 
+	agent "github.com/alfredxw/denova/agent"
+
 	agentrun "denova/internal/agents/run"
 	"denova/internal/interactive"
 )
@@ -23,10 +25,11 @@ type interactiveDirectorPlanCommit struct {
 	draft        *interactive.DirectorPlanUpdateDraft
 	draftMu      *sync.Mutex
 
-	mu       sync.Mutex
-	identity agentrun.CycleIdentity
-	pending  *interactive.DirectorPlanDomainCommitIntent
-	receipt  *interactive.DirectorPlanDomainCommitReceipt
+	mu              sync.Mutex
+	identity        agentrun.CycleIdentity
+	agentOutputHash string
+	pending         *interactive.DirectorPlanDomainCommitIntent
+	receipt         *interactive.DirectorPlanDomainCommitReceipt
 }
 
 func newInteractiveDirectorPlanCommit(store *interactive.Store, storyID, branchID, sourceTurnID string, token interactive.DirectorPlanRunToken, draft *interactive.DirectorPlanUpdateDraft, draftMu *sync.Mutex) *interactiveDirectorPlanCommit {
@@ -45,6 +48,7 @@ func (c *interactiveDirectorPlanCommit) BindAgentCycleIdentity(identity agentrun
 	}
 	c.mu.Lock()
 	c.identity = identity
+	c.agentOutputHash = ""
 	c.pending = nil
 	c.receipt = nil
 	c.mu.Unlock()
@@ -56,6 +60,7 @@ func (c *interactiveDirectorPlanCommit) PendingAgentCycleCommit(stage agentrun.D
 	}
 	c.mu.Lock()
 	identity := c.identity
+	agentOutputHash := c.agentOutputHash
 	c.mu.Unlock()
 	if strings.TrimSpace(string(identity.CommandID)) == "" || strings.TrimSpace(string(identity.OperationID)) == "" || identity.Cycle <= 0 {
 		return agentrun.DomainCommitIntent{}, false, fmt.Errorf("互动导演输出缺少 durable cycle identity")
@@ -79,6 +84,7 @@ func (c *interactiveDirectorPlanCommit) PendingAgentCycleCommit(stage agentrun.D
 		interactive.DirectorPlanDomainCommitIdentity{
 			CommandID: string(identity.CommandID), OperationID: string(identity.OperationID), Cycle: identity.Cycle,
 		},
+		agentOutputHash,
 		c.token,
 		c.sourceTurnID,
 		string(summary),
@@ -98,6 +104,68 @@ func (c *interactiveDirectorPlanCommit) PendingAgentCycleCommit(stage agentrun.D
 	}
 	c.pending = &intent
 	return agentrun.DomainCommitIntent{Identity: identity, Stage: stage, Hash: intent.Hash}, true, nil
+}
+
+func (c *interactiveDirectorPlanCommit) CommitDirectorCanonicalOutput(
+	ctx context.Context,
+	request agent.OutputCommitRequest,
+) (agent.OutputCommitReceipt, error) {
+	if c == nil || request.Identity.Stage != agent.CommitOutput {
+		return agent.OutputCommitReceipt{}, fmt.Errorf("互动导演 canonical output 请求无效")
+	}
+	identity := agentrun.CycleIdentity{
+		CommandID:   agentrun.CommandID(request.Identity.CommandID),
+		OperationID: agentrun.OperationID(request.Identity.RunID),
+		Cycle:       request.Identity.Cycle,
+	}
+	c.mu.Lock()
+	if c.identity != identity {
+		c.mu.Unlock()
+		return agent.OutputCommitReceipt{}, fmt.Errorf("互动导演 canonical output identity 与已绑定 cycle 不一致")
+	}
+	agentOutputHash := strings.TrimSpace(request.Hash)
+	c.agentOutputHash = agentOutputHash
+	c.mu.Unlock()
+	if agentOutputHash == "" {
+		return agent.OutputCommitReceipt{}, fmt.Errorf("互动导演 canonical output 缺少 Agent hash")
+	}
+	if _, pending, err := c.PendingAgentCycleCommit(agentrun.DomainCommitOutput); err != nil {
+		return agent.OutputCommitReceipt{}, err
+	} else if !pending {
+		return agent.OutputCommitReceipt{}, fmt.Errorf("互动导演没有待提交的 canonical output")
+	}
+	if err := c.CommitAgentCycleStage(ctx, agentrun.DomainCommitOutput, agentrun.Outcome{Status: agentrun.OutcomeCompleted}); err != nil {
+		return agent.OutputCommitReceipt{}, err
+	}
+	receipt, ok := c.LastAgentCycleCommitReceipt(agentrun.DomainCommitOutput)
+	if !ok || strings.TrimSpace(receipt.Revision) == "" {
+		return agent.OutputCommitReceipt{}, fmt.Errorf("互动导演 canonical output 没有 durable receipt")
+	}
+	return agent.OutputCommitReceipt{Revision: receipt.Revision}, nil
+}
+
+func (c *interactiveDirectorPlanCommit) ReconcileDirectorCanonicalOutput(
+	ctx context.Context,
+	request agent.ReconcileRequest,
+) (agent.ReconcileResult, error) {
+	if c == nil || request.Identity.Stage != agent.CommitOutput {
+		return agent.ReconcileResult{}, fmt.Errorf("互动导演 canonical output reconcile 请求无效")
+	}
+	if err := ctx.Err(); err != nil {
+		return agent.ReconcileResult{}, err
+	}
+	receipt, found, err := c.store.FindDirectorPlanDomainCommit(
+		c.storyID,
+		c.branchID,
+		interactive.DirectorPlanDomainCommitIdentity{
+			CommandID: request.Identity.CommandID, OperationID: request.Identity.RunID, Cycle: request.Identity.Cycle,
+		},
+		request.Hash,
+	)
+	if err != nil || !found {
+		return agent.ReconcileResult{Found: found}, err
+	}
+	return agent.ReconcileResult{Found: true, Revision: receipt.Revision}, nil
 }
 
 func (c *interactiveDirectorPlanCommit) CommitAgentCycleStage(_ context.Context, stage agentrun.DomainCommitStage, outcome agentrun.Outcome) error {
@@ -172,6 +240,9 @@ func (c *interactiveDirectorPlanCommit) commitCustomGenerator(ctx context.Contex
 		return err
 	}
 	c.BindAgentCycleIdentity(identity)
+	c.mu.Lock()
+	c.agentOutputHash = "custom:" + string(identity.CommandID)
+	c.mu.Unlock()
 	if _, pending, err := c.PendingAgentCycleCommit(agentrun.DomainCommitOutput); err != nil {
 		return err
 	} else if !pending {

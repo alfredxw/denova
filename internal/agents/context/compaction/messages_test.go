@@ -10,6 +10,7 @@ import (
 
 	agent "github.com/alfredxw/denova/agent"
 	basecontext "github.com/alfredxw/denova/agent/context"
+	agenttoolresult "github.com/alfredxw/denova/agent/toolresult"
 
 	"denova/config"
 	agentcontext "denova/internal/agents/context"
@@ -136,22 +137,21 @@ func TestCompactMessagesReinjectsSanitizedProtectedArtifactReceipt(t *testing.T)
 		ContentType: "text/plain", EstimatedBytes: 42_000, EstimatedTokens: 10_500, Complete: true,
 		SHA256: strings.Repeat("a", 64),
 	}}
-	decision := toolresult.Call{
-		ToolName: "read", ProviderCallID: "call-old",
-		Descriptor: agent.ToolDescriptor{
-			Source: agent.ToolSourceRead, Execution: agent.ToolExecutionParallelRead,
-			MutationScope: agent.ToolMutationNone, PostCheck: agent.ToolPostCheckNone,
-			Recovery: agent.ToolRecoveryReadOnly, ResultRecoveryKind: agent.ToolResultRecoveryRead,
-			ResultProjection: agent.ToolResultBoundedModelContext,
-			ResultRetention:  agent.ToolResultProtected, Steering: agent.SteeringFinishCurrent,
-			MaxResultBytes: 1024,
-		},
+	descriptor := agent.ToolDescriptor{
+		Source: agent.ToolSourceRead, Execution: agent.ToolExecutionParallelRead,
+		MutationScope: agent.ToolMutationNone, PostCheck: agent.ToolPostCheckNone,
+		Recovery: agent.ToolRecoveryReadOnly, ResultRecoveryKind: agent.ToolResultRecoveryRead,
+		ResultProjection: agent.ToolResultBoundedModelContext,
+		ResultRetention:  agent.ToolResultProtected, Steering: agent.SteeringFinishCurrent,
+		MaxResultBytes: 1024,
 	}
-	processed, err := toolresult.Process(
-		context.Background(), decision,
-		`{"path":"lore/cast.md","authorization":"Bearer do-not-persist"}`,
-		result, toolresult.ProcessingPolicy{MaxBytes: 16 * 1024, EagerMinTokens: 32_000, ContextWindowTokens: 160_000},
-	)
+	processed, err := agenttoolresult.Standard(agenttoolresult.Policy{
+		MaxBytes: 16 * 1024, EagerMinTokens: 32_000, ContextWindowTokens: 160_000,
+	}).Process(context.Background(), agent.ToolResultProcessRequest{
+		ToolName: "read", ProviderCallID: "call-old",
+		Arguments:  `{"path":"lore/cast.md","authorization":"Bearer do-not-persist"}`,
+		Definition: agent.ToolDefinitionSnapshot{Descriptor: descriptor}, Result: result,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

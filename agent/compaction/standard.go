@@ -10,14 +10,16 @@ import (
 	"strings"
 
 	agent "github.com/alfredxw/denova/agent"
+	cleanup "github.com/alfredxw/denova/agent/cleanup"
 )
 
 type SummaryRequest struct {
-	Session      agent.SessionView
-	Run          agent.RunView
-	Messages     []*agent.Message
-	ModelRequest []*agent.Message
-	Plan         agent.CompactionPlan
+	Session       agent.SessionView
+	Run           agent.RunView
+	Messages      []*agent.Message
+	ModelRequest  []*agent.Message
+	ModelSnapshot *agent.ModelRequestSnapshot
+	Plan          agent.CompactionPlan
 }
 
 type Summary struct {
@@ -48,8 +50,15 @@ type StandardConfig struct {
 	Summarizer        Summarizer
 	TriggerBytes      int
 	KeepRecentBytes   int
+	KeepRecentTurns   int
 	HardLimitBytes    int
 	SummaryLimitBytes int
+
+	ContextWindowTokens int
+	ReservedTokens      int
+	TriggerRatio        float64
+	RecoveryBand        float64
+	MinimumChangeTokens int
 }
 
 type standardManager struct {
@@ -70,6 +79,9 @@ func Standard(config StandardConfig) (agent.CompactionManager, error) {
 	if config.KeepRecentBytes <= 0 {
 		config.KeepRecentBytes = 512 << 10
 	}
+	if config.KeepRecentTurns <= 0 {
+		config.KeepRecentTurns = 1
+	}
 	if config.HardLimitBytes <= 0 {
 		return nil, errors.New("Compaction HardLimitBytes must be positive")
 	}
@@ -79,13 +91,34 @@ func Standard(config StandardConfig) (agent.CompactionManager, error) {
 	if config.KeepRecentBytes >= config.TriggerBytes || config.TriggerBytes >= config.HardLimitBytes {
 		return nil, errors.New("Compaction requires KeepRecentBytes < TriggerBytes < HardLimitBytes")
 	}
+	if config.ContextWindowTokens < 0 || config.ReservedTokens < 0 || config.MinimumChangeTokens < 0 {
+		return nil, errors.New("Compaction token limits cannot be negative")
+	}
+	if config.ContextWindowTokens > 0 {
+		if config.TriggerRatio <= 0 || config.TriggerRatio >= 1 {
+			config.TriggerRatio = .85
+		}
+		if config.RecoveryBand <= 0 || config.RecoveryBand > 1 {
+			config.RecoveryBand = .80
+		}
+		if config.MinimumChangeTokens == 0 {
+			config.MinimumChangeTokens = max(256, config.ContextWindowTokens/100)
+		}
+	}
 	encoded, _ := json.Marshal(struct {
-		Summarizer        agent.CapabilityIdentity
-		TriggerBytes      int
-		KeepRecentBytes   int
-		HardLimitBytes    int
-		SummaryLimitBytes int
-	}{config.Summarizer.Identity(), config.TriggerBytes, config.KeepRecentBytes, config.HardLimitBytes, config.SummaryLimitBytes})
+		Summarizer          agent.CapabilityIdentity
+		TriggerBytes        int
+		KeepRecentBytes     int
+		KeepRecentTurns     int
+		HardLimitBytes      int
+		SummaryLimitBytes   int
+		ContextWindowTokens int
+		ReservedTokens      int
+		TriggerRatio        float64
+		RecoveryBand        float64
+		MinimumChangeTokens int
+	}{config.Summarizer.Identity(), config.TriggerBytes, config.KeepRecentBytes, config.KeepRecentTurns, config.HardLimitBytes, config.SummaryLimitBytes,
+		config.ContextWindowTokens, config.ReservedTokens, config.TriggerRatio, config.RecoveryBand, config.MinimumChangeTokens})
 	digest := sha256.Sum256(encoded)
 	return &standardManager{config: config, identity: agent.CapabilityIdentity{
 		Kind: "compaction.standard", Version: 1, ConfigHash: hex.EncodeToString(digest[:]),
@@ -106,8 +139,27 @@ func (manager *standardManager) Plan(_ context.Context, request agent.Compaction
 	if len(request.ModelRequest) == 0 {
 		bytes = messageBytes(request.Messages)
 	}
-	if !request.Force && bytes <= manager.config.TriggerBytes {
-		return agent.CompactionPlan{Action: agent.CompactionNone}, nil
+	metrics := compactionPlanMetrics(request)
+	policy := agent.CompactionValidationPolicy{
+		ContextWindowTokens: manager.config.ContextWindowTokens,
+		ReservedTokens:      manager.config.ReservedTokens,
+		Threshold:           manager.config.TriggerRatio,
+		RecoveryBand:        manager.config.RecoveryBand,
+		MinimumChangeTokens: manager.config.MinimumChangeTokens,
+		HardLimitBytes:      manager.config.HardLimitBytes,
+	}
+	metrics.ReservedTokens = policy.ReservedTokens
+	metrics.ContextWindowTokens = policy.ContextWindowTokens
+	metrics.Threshold = policy.Threshold
+	metrics.RecoveryBand = policy.RecoveryBand
+	metrics.ProjectedTokensBefore = metrics.CalibratedTokens(metrics.EstimatedTokensBefore) + policy.ReservedTokens
+	triggered := bytes > manager.config.TriggerBytes
+	if manager.config.ContextWindowTokens > 0 {
+		trigger := int(float64(manager.config.ContextWindowTokens) * manager.config.TriggerRatio)
+		triggered = metrics.ProjectedTokensBefore >= trigger
+	}
+	if !request.Force && !triggered {
+		return agent.CompactionPlan{Action: agent.CompactionNone, SkippedReason: "below_trigger", Validation: policy, Metrics: metrics}, nil
 	}
 	if bytes > manager.config.HardLimitBytes && len(request.Messages) < 2 {
 		return agent.CompactionPlan{}, fmt.Errorf("%w: %d bytes exceed the %d-byte Compaction limit", agent.ErrContextLimit, bytes, manager.config.HardLimitBytes)
@@ -118,27 +170,127 @@ func (manager *standardManager) Plan(_ context.Context, request agent.Compaction
 		sourceTo--
 		keep += messageBytes(request.Messages[sourceTo : sourceTo+1])
 	}
+	// A checkpoint range ends at a complete user-turn boundary. This keeps an
+	// assistant tool-call batch and every result on the same side of the
+	// replacement, even when the byte target lands inside a very large batch.
+	// Move forward to the next boundary rather than retaining half of the batch;
+	// KeepRecentTurns remains the non-negotiable semantic minimum.
+	turnBoundary := retainedTurnBoundary(request.Messages, manager.config.KeepRecentTurns)
+	aligned := -1
+	for index := sourceTo; index < len(request.Messages); index++ {
+		if request.Messages[index] != nil && request.Messages[index].Role == agent.User {
+			aligned = index
+			break
+		}
+	}
+	if aligned < 0 || turnBoundary < aligned {
+		aligned = turnBoundary
+	}
+	sourceTo = aligned
+	newSourceTokens := 0
+	if request.Present && request.Current.ReplacementTo >= 0 && request.Current.ReplacementTo < sourceTo && sourceTo <= len(request.Messages) {
+		newSourceTokens = cleanup.EstimateMessages(request.Messages[request.Current.ReplacementTo:sourceTo])
+	}
+	if !request.Force && request.Present && !request.Current.Removed &&
+		request.Current.ReplacementFrom == 0 && newSourceTokens < manager.config.MinimumChangeTokens &&
+		request.Current.Metrics.Degraded &&
+		request.Current.Metrics.CandidateFingerprint != "" &&
+		request.Current.Metrics.CandidateFingerprint == metrics.CandidateFingerprint &&
+		request.Current.Metrics.CandidateGeneration == metrics.CandidateGeneration {
+		// The active checkpoint already covers every raw message that can be
+		// removed without entering the protected recent suffix. Retrying it
+		// cannot reduce the provider-visible request.
+		return agent.CompactionPlan{Action: agent.CompactionNone, SkippedReason: "degraded_no_progress_latch", Validation: policy, Metrics: metrics}, nil
+	}
 	if sourceTo <= 0 {
 		if bytes > manager.config.HardLimitBytes {
 			return agent.CompactionPlan{}, fmt.Errorf("%w: final model request cannot be reduced below the %d-byte limit", agent.ErrContextLimit, manager.config.HardLimitBytes)
 		}
-		return agent.CompactionPlan{Action: agent.CompactionNone}, nil
+		return agent.CompactionPlan{Action: agent.CompactionNone, SkippedReason: "insufficient_history", Validation: policy, Metrics: metrics}, nil
 	}
-	return agent.CompactionPlan{Action: agent.CompactionCreate, SourceFrom: 0, SourceTo: sourceTo}, nil
+	metrics.SourceMessageCount = sourceTo
+	return agent.CompactionPlan{
+		Action: agent.CompactionCreate, SourceFrom: 0, SourceTo: sourceTo,
+		Validation: policy, Metrics: metrics,
+	}, nil
+}
+
+func compactionPlanMetrics(request agent.CompactionPlanRequest) agent.CompactionMetrics {
+	messages := request.ModelRequest
+	if len(messages) == 0 {
+		messages = request.Messages
+	}
+	estimated := cleanup.EstimateTokens(messages, request.ModelSnapshot)
+	observed, observedEstimate, cached := latestPromptUsage(messages, request.ModelSnapshot)
+	metrics := agent.CompactionMetrics{
+		EstimatedTokensBefore: estimated, ObservedPromptTokens: observed, ObservedEstimateTokens: observedEstimate,
+		MessageCountBefore: len(messages), CacheReadTokens: cached,
+	}
+	metrics.ProjectedTokensBefore = metrics.CalibratedTokens(estimated)
+	if request.ModelSnapshot != nil {
+		boundary := min(request.ModelSnapshot.StablePrefixMessages(), len(messages))
+		metrics.StablePrefixTokens = cleanup.EstimateTokens(messages[:boundary], request.ModelSnapshot)
+		metrics.CacheExpectedPrefixTokens = metrics.StablePrefixTokens
+	}
+	metrics.CandidateFingerprint, metrics.CandidateGeneration = candidateIdentity(messages)
+	return metrics
+}
+
+func latestPromptUsage(messages []*agent.Message, snapshot *agent.ModelRequestSnapshot) (prompt, estimated, cached int) {
+	for index := len(messages) - 1; index >= 0; index-- {
+		message := messages[index]
+		if message == nil || message.ResponseMeta == nil || message.ResponseMeta.Usage == nil || message.ResponseMeta.Usage.PromptTokens <= 0 {
+			continue
+		}
+		return message.ResponseMeta.Usage.PromptTokens,
+			cleanup.EstimateTokens(messages[:index], snapshot),
+			message.ResponseMeta.Usage.PromptTokenDetails.CachedTokens
+	}
+	return 0, 0, 0
+}
+
+func candidateIdentity(messages []*agent.Message) (string, uint64) {
+	type candidate struct {
+		Index  int    `json:"index"`
+		CallID string `json:"call_id,omitempty"`
+		Tool   string `json:"tool,omitempty"`
+		Bytes  int    `json:"bytes"`
+	}
+	values := make([]candidate, 0)
+	for index, message := range messages {
+		if message == nil || message.Role != agent.ToolRole {
+			continue
+		}
+		values = append(values, candidate{Index: index, CallID: message.ToolCallID, Tool: message.ToolName, Bytes: len(message.Content)})
+	}
+	encoded, _ := json.Marshal(values)
+	digest := sha256.Sum256(encoded)
+	return "sha256:" + hex.EncodeToString(digest[:]), uint64(len(values))
 }
 
 func (manager *standardManager) Compact(ctx context.Context, request agent.CompactionCompactRequest) (agent.CompactionCheckpoint, error) {
 	if request.Plan.SourceFrom < 0 || request.Plan.SourceTo > len(request.Messages) || request.Plan.SourceTo <= request.Plan.SourceFrom {
 		return agent.CompactionCheckpoint{}, errors.New("Compaction source range is invalid")
 	}
+	source := request.SourceMessages
+	if len(source) == 0 {
+		source = request.Messages[request.Plan.SourceFrom:request.Plan.SourceTo]
+	}
 	summary, err := manager.config.Summarizer.Summarize(ctx, SummaryRequest{
 		Session: request.Session, Run: request.Run,
-		Messages:     cloneMessages(request.Messages[request.Plan.SourceFrom:request.Plan.SourceTo]),
-		ModelRequest: cloneMessages(request.ModelRequest), Plan: request.Plan,
+		Messages:      cloneMessages(source),
+		ModelRequest:  cloneMessages(request.ModelRequest),
+		ModelSnapshot: request.ModelSnapshot,
+		Plan:          request.Plan,
 	})
 	if err != nil {
 		return agent.CompactionCheckpoint{}, err
 	}
+	summary.Content = mergeProtectedReceiptContext(
+		summary.Content, request.Current.Summary,
+		request.Messages[request.Plan.SourceFrom:request.Plan.SourceTo],
+		manager.config.SummaryLimitBytes,
+	)
 	summary.Content = strings.TrimSpace(summary.Content)
 	if summary.Content == "" || summary.TokenEstimate < 0 {
 		return agent.CompactionCheckpoint{}, errors.New("Compaction Summarizer returned an invalid result")
@@ -147,6 +299,20 @@ func (manager *standardManager) Compact(ctx context.Context, request agent.Compa
 		return agent.CompactionCheckpoint{}, fmt.Errorf("%w: Compaction summary is %d bytes and exceeds the target Agent limit %d", agent.ErrContextLimit, len(summary.Content), manager.config.SummaryLimitBytes)
 	}
 	return agent.CompactionCheckpoint{Summary: summary.Content, TokenEstimate: summary.TokenEstimate}, nil
+}
+
+func retainedTurnBoundary(messages []*agent.Message, turns int) int {
+	seen := 0
+	for index := len(messages) - 1; index >= 0; index-- {
+		if messages[index] == nil || messages[index].Role != agent.User {
+			continue
+		}
+		seen++
+		if seen == turns {
+			return index
+		}
+	}
+	return 0
 }
 
 type disabledManager struct {
@@ -175,7 +341,7 @@ func (manager *disabledManager) Plan(_ context.Context, request agent.Compaction
 	if bytes > manager.hardLimit {
 		return agent.CompactionPlan{}, fmt.Errorf("%w: %d bytes exceed disabled Compaction limit %d", agent.ErrContextLimit, bytes, manager.hardLimit)
 	}
-	return agent.CompactionPlan{Action: agent.CompactionNone}, nil
+	return agent.CompactionPlan{Action: agent.CompactionNone, SkippedReason: "disabled"}, nil
 }
 
 func (*disabledManager) Compact(context.Context, agent.CompactionCompactRequest) (agent.CompactionCheckpoint, error) {

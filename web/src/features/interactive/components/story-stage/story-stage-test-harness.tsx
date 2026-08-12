@@ -193,7 +193,6 @@ export function persistedTurnEvent(): InteractiveTurnPersistedEvent {
     },
     branches: [{ id: 'main', head: 'turn-1', created_at: '2026-06-28T00:00:00Z', current: true }],
     context_compaction: null,
-    context_compaction_removal: null,
   }
 }
 

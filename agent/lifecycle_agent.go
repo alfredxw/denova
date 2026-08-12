@@ -5,9 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"sort"
 	"sync"
 
-	runstate "github.com/alfredxw/denova/agent/runtime"
+	runstate "github.com/alfredxw/denova/agent/internal/runtime"
 	agentsession "github.com/alfredxw/denova/agent/session"
 )
 
@@ -31,11 +32,17 @@ type Limits struct {
 type Option func(*agentOptions) error
 
 type agentOptions struct {
-	store  agentsession.Store
-	limits Limits
-	trace  TraceSink
-	runIDs RunIDGenerator
+	store     agentsession.Store
+	limits    Limits
+	trace     TraceSink
+	runIDs    RunIDGenerator
+	cacheKeys CacheKeyGenerator
 }
+
+// CacheKeyGenerator derives a privacy-safe, stable provider cache-routing key
+// from public Session identity. Implementations must return an opaque value;
+// raw paths, user identifiers, and other PII must never be returned.
+type CacheKeyGenerator func(SessionKey) (string, error)
 
 func WithSessionStore(store agentsession.Store) Option {
 	return func(options *agentOptions) error {
@@ -74,19 +81,51 @@ func WithRunIDGenerator(generate RunIDGenerator) Option {
 	}
 }
 
+func WithCacheKeyGenerator(generate CacheKeyGenerator) Option {
+	return func(options *agentOptions) error {
+		if generate == nil {
+			return errors.New("Agent Cache Key generator is nil")
+		}
+		options.cacheKeys = generate
+		return nil
+	}
+}
+
 // Agent is the deep public Module that owns Session, Run, durable admission,
 // model/tool execution, recovery, and Event publication.
 type Agent struct {
-	ctx     context.Context
-	cancel  context.CancelFunc
-	source  Source
-	store   agentsession.Store
-	trace   TraceSink
-	runtime *runstate.Runtime
+	ctx       context.Context
+	cancel    context.CancelFunc
+	source    Source
+	store     agentsession.Store
+	trace     TraceSink
+	cacheKeys CacheKeyGenerator
+	runtime   *runstate.Runtime
+	// projectionTextMaxBytes is the public Session status bound. Keep it next
+	// to the Runtime configuration so SessionSnapshot never has to expose the
+	// internal Harness merely to project queued display text safely.
+	projectionTextMaxBytes int
 
-	mu       sync.RWMutex
-	sessions map[string]SessionKey
-	closed   bool
+	mu                  sync.RWMutex
+	sessions            map[string]SessionKey
+	sessionOpenSequence uint64
+	sessionOpenings     map[uint64]sessionOpening
+	sessionDeletion     *sessionDeletionFence
+	closed              bool
+}
+
+// sessionOpening bridges the small interval between the public Agent registry
+// and Runtime.Open. DeleteSessions waits these calls before installing the
+// runtime scope barrier, so an Open that has passed the public fence cannot
+// appear between runtime eviction and Store deletion.
+type sessionOpening struct {
+	key  SessionKey
+	done chan struct{}
+}
+
+type sessionDeletionFence struct {
+	matches func(SessionKey) bool
+	done    chan struct{}
 }
 
 func New(lifecycle context.Context, source Source, options ...Option) (*Agent, error) {
@@ -108,11 +147,21 @@ func New(lifecycle context.Context, source Source, options ...Option) (*Agent, e
 	ctx, cancel := context.WithCancel(lifecycle)
 	owner := &Agent{
 		ctx: ctx, cancel: cancel, source: source, store: configured.store, trace: configured.trace,
-		sessions: make(map[string]SessionKey),
+		sessions:               make(map[string]SessionKey),
+		sessionOpenings:        make(map[uint64]sessionOpening),
+		projectionTextMaxBytes: normalizedProjectionTextMaxBytes(configured.limits.ProjectionTextMaxBytes),
 	}
-	factory := &definitionEngineFactory{source: source, persistent: isPersistentStore(configured.store), trace: configured.trace}
+	cacheKeys := configured.cacheKeys
+	if cacheKeys == nil {
+		cacheKeys = defaultCacheKey
+	}
+	owner.cacheKeys = cacheKeys
+	factory := &definitionEngineFactory{
+		source: source, persistent: isPersistentStore(configured.store), trace: configured.trace,
+		cacheKeys: cacheKeys,
+	}
 	runtime, err := runstate.NewRuntime(
-		factory, runtimeStoreAdapter{store: configured.store}, runtimeConfig(configured.limits, ctx, configured.runIDs),
+		factory, journalStoreFor(configured.store), runtimeConfig(configured.limits, ctx, configured.runIDs),
 	)
 	if err != nil {
 		cancel()
@@ -120,6 +169,28 @@ func New(lifecycle context.Context, source Source, options ...Option) (*Agent, e
 	}
 	owner.runtime = runtime
 	return owner, nil
+}
+
+func defaultCacheKey(key SessionKey) (string, error) {
+	canonical, err := agentsession.CanonicalKey(key)
+	if err != nil {
+		return "", err
+	}
+	digest, err := hashCanonical(struct {
+		Version uint16
+		Session string
+	}{1, canonical})
+	if err != nil {
+		return "", err
+	}
+	return "agent-" + digest[:32], nil
+}
+
+func normalizedProjectionTextMaxBytes(limit int) int {
+	if limit <= 0 {
+		return 1 << 20
+	}
+	return limit
 }
 
 func runtimeConfig(limits Limits, lifecycle context.Context, runIDs RunIDGenerator) runstate.RuntimeConfig {
@@ -159,12 +230,13 @@ func (agent *Agent) Run(ctx context.Context, input Input) (*Run, error) {
 	if err != nil {
 		return nil, err
 	}
-	run, err := session.Run(ctx, input)
+	run, err := session.start(ctx, input, "", false, runOwnsTemporarySession)
 	if err != nil {
-		_ = session.Close(context.Background())
+		if deleteErr := session.Delete(context.Background()); deleteErr != nil {
+			return nil, errors.Join(err, fmt.Errorf("delete temporary Agent Session after rejected Run: %w", deleteErr))
+		}
 		return nil, err
 	}
-	run.closeSessionWhenSettled()
 	return run, nil
 }
 
@@ -179,22 +251,99 @@ func (agent *Agent) Session(ctx context.Context, key SessionKey) (*Session, erro
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	agent.mu.RLock()
-	closed := agent.closed
-	agent.mu.RUnlock()
-	if closed {
-		return nil, ErrAgentClosed
+	var openingID uint64
+	var opening sessionOpening
+	for {
+		agent.mu.Lock()
+		if agent.closed {
+			agent.mu.Unlock()
+			return nil, ErrAgentClosed
+		}
+		if deletion := agent.sessionDeletion; deletion != nil && deletion.matches != nil && deletion.matches(key) {
+			done := deletion.done
+			agent.mu.Unlock()
+			select {
+			case <-done:
+				continue
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-agent.ctx.Done():
+				return nil, ErrAgentClosed
+			}
+		}
+		agent.sessionOpenSequence++
+		openingID = agent.sessionOpenSequence
+		opening = sessionOpening{key: key, done: make(chan struct{})}
+		agent.sessionOpenings[openingID] = opening
+		agent.mu.Unlock()
+		break
 	}
 	binding := bindingForSession(key)
 	harness, err := agent.runtime.Open(ctx, binding)
+	canonical, _ := agentsession.CanonicalKey(key)
+	agent.mu.Lock()
+	delete(agent.sessionOpenings, openingID)
+	closed := agent.closed
+	if err == nil && !closed {
+		agent.sessions[canonical] = key
+	}
+	close(opening.done)
+	agent.mu.Unlock()
 	if err != nil {
 		return nil, mapRuntimeError(err)
 	}
-	canonical, _ := agentsession.CanonicalKey(key)
-	agent.mu.Lock()
-	agent.sessions[canonical] = key
-	agent.mu.Unlock()
+	if closed {
+		_ = agent.runtime.CloseBinding(context.Background(), binding)
+		return nil, ErrAgentClosed
+	}
 	return &Session{agent: agent, key: key, binding: binding, harness: harness}, nil
+}
+
+// ListSessions returns the exact durable Session identities in one constrained
+// scope. It is a read-only catalog operation; callers must still reopen a
+// returned key through Session before observing or controlling its lifecycle.
+func (agent *Agent) ListSessions(ctx context.Context, selector SessionSelector) ([]SessionKey, error) {
+	if agent == nil || agent.runtime == nil || agent.store == nil {
+		return nil, ErrAgentClosed
+	}
+	if err := selector.Validate(); err != nil {
+		return nil, err
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	keys, err := agent.store.List(ctx, selector)
+	if err != nil {
+		return nil, err
+	}
+	byCanonical := make(map[string]SessionKey, len(keys))
+	for _, key := range keys {
+		canonical, canonicalErr := agentsession.CanonicalKey(key)
+		if canonicalErr != nil {
+			return nil, canonicalErr
+		}
+		byCanonical[canonical] = key
+	}
+	// Include a binding admitted in this process even when a custom Store's
+	// catalog is eventually consistent. Canonical sorting keeps callers and
+	// restore fingerprints deterministic across implementations.
+	agent.mu.RLock()
+	for canonical, key := range agent.sessions {
+		if selector.Matches(key) {
+			byCanonical[canonical] = key
+		}
+	}
+	agent.mu.RUnlock()
+	canonicalKeys := make([]string, 0, len(byCanonical))
+	for canonical := range byCanonical {
+		canonicalKeys = append(canonicalKeys, canonical)
+	}
+	sort.Strings(canonicalKeys)
+	result := make([]SessionKey, len(canonicalKeys))
+	for index, canonical := range canonicalKeys {
+		result[index] = byCanonical[canonical]
+	}
+	return result, nil
 }
 
 func (agent *Agent) CloseSessions(ctx context.Context, selector SessionSelector) error {
@@ -253,6 +402,8 @@ func mapRuntimeError(err error) error {
 		return nil
 	case errors.Is(err, runstate.ErrRuntimeClosed), errors.Is(err, runstate.ErrHarnessClosed):
 		return errors.Join(ErrAgentClosed, err)
+	case errors.Is(err, runstate.ErrInvalidCommand):
+		return errors.Join(ErrInvalidInput, err)
 	case errors.Is(err, runstate.ErrBusy), errors.Is(err, runstate.ErrQueueConflict):
 		return errors.Join(ErrSessionBusy, err)
 	case errors.Is(err, runstate.ErrCursorExpired):
@@ -261,6 +412,8 @@ func mapRuntimeError(err error) error {
 		return errors.Join(ErrInteractionStale, err)
 	case errors.Is(err, runstate.ErrRecoveryActionChanged):
 		return errors.Join(ErrRecoveryStale, err)
+	case errors.Is(err, runstate.ErrDomainCommitRejected):
+		return errors.Join(ErrCanonicalCommitRejected, err)
 	case errors.Is(err, runstate.ErrHostEffectRequired):
 		return errors.Join(ErrRecoveryRequired, err)
 	default:

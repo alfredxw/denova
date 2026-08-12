@@ -2,10 +2,12 @@ package agent
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 )
 
 type PermissionDecisionKind string
@@ -26,8 +28,25 @@ type PermissionRequest struct {
 }
 
 type PermissionDecision struct {
-	Kind   PermissionDecisionKind
-	Reason LocalizedText
+	Kind    PermissionDecisionKind
+	Reason  LocalizedText
+	Details PermissionDetails
+}
+
+// PermissionDetails is policy-owned audit and presentation metadata. Agent
+// supplies the exact tool, call, canonical arguments, and argument hash so a
+// host never needs to reconstruct authorization evidence from product state.
+type PermissionDetails struct {
+	Mode               string `json:"mode,omitempty"`
+	Command            string `json:"command,omitempty"`
+	Details            string `json:"details,omitempty"`
+	Cwd                string `json:"cwd,omitempty"`
+	Risk               string `json:"risk,omitempty"`
+	RuleID             string `json:"rule_id,omitempty"`
+	CanRemember        bool   `json:"can_remember,omitempty"`
+	RuleMatcherVersion int    `json:"rule_matcher_version,omitempty"`
+	RuleCommandKey     string `json:"rule_command_key,omitempty"`
+	RuleCommandPattern string `json:"rule_command_pattern,omitempty"`
 }
 
 type PermissionResolveRequest struct {
@@ -88,6 +107,76 @@ func effectivePermissionPolicy(policy PermissionPolicy) PermissionPolicy {
 	return policy
 }
 
+const permissionDetailsMaxBytes = 16 << 10
+
+func permissionPresentation(request PermissionRequest, decision PermissionDecision) PermissionPresentation {
+	details := decision.Details
+	if strings.TrimSpace(details.Mode) == "" {
+		details.Mode = "custom"
+	}
+	if strings.TrimSpace(details.Risk) == "" {
+		details.Risk = "high"
+	}
+	if strings.TrimSpace(details.RuleID) == "" {
+		details.RuleID = "permission_required"
+	}
+	if strings.TrimSpace(details.Command) == "" && strings.TrimSpace(details.Details) == "" {
+		details.Details = truncatePermissionDetails(string(request.Arguments))
+	}
+	digest := sha256.Sum256(request.Arguments)
+	return PermissionPresentation{
+		Tool: request.Tool, CallID: request.CallID,
+		Arguments: append(json.RawMessage(nil), request.Arguments...), Reason: decision.Reason,
+		Mode: details.Mode, Command: details.Command, Details: details.Details, Cwd: details.Cwd,
+		Risk: details.Risk, RuleID: details.RuleID, ArgsHash: fmt.Sprintf("%x", digest[:]),
+		CanRemember: details.CanRemember, RuleMatcherVersion: details.RuleMatcherVersion,
+		RuleCommandKey: details.RuleCommandKey, RuleCommandPattern: details.RuleCommandPattern,
+		Options: permissionOptions(details.CanRemember),
+	}
+}
+
+func truncatePermissionDetails(value string) string {
+	value = strings.TrimSpace(strings.ToValidUTF8(value, "\uFFFD"))
+	if len(value) <= permissionDetailsMaxBytes {
+		return value
+	}
+	const marker = "\n… [details truncated / 详情已截断]"
+	value = value[:permissionDetailsMaxBytes-len(marker)]
+	for len(value) > 0 && !utf8.ValidString(value) {
+		value = value[:len(value)-1]
+	}
+	return value + marker
+}
+
+func permissionOptions(canRemember bool) []InteractionOption {
+	options := []InteractionOption{{
+		Value: string(PermissionAllowOnce),
+		Label: LocalizedText{Chinese: "仅允许这一次", English: "Allow once"},
+		Description: LocalizedText{
+			Chinese: "仅执行当前调用，不保存权限规则。",
+			English: "Execute only this call without saving a permission rule.",
+		},
+	}}
+	if canRemember {
+		options = append(options, InteractionOption{
+			Value: string(PermissionRemember),
+			Label: LocalizedText{Chinese: "在当前工作区始终允许", English: "Always allow here"},
+			Description: LocalizedText{
+				Chinese: "保存当前展示的命令匹配规则。",
+				English: "Save the displayed command matching rule for this workspace.",
+			},
+		})
+	}
+	return append(options, InteractionOption{
+		Value: string(PermissionDeny),
+		Label: LocalizedText{Chinese: "拒绝", English: "Deny"},
+		Description: LocalizedText{
+			Chinese: "阻止这次调用，让 Agent 选择其他方案。",
+			English: "Block this call and let the Agent choose another approach.",
+		},
+	})
+}
+
 type permissionMiddleware struct {
 	*BaseMiddleware
 	policy  PermissionPolicy
@@ -126,12 +215,10 @@ func (middleware *permissionMiddleware) WrapToolCall(
 			if strings.TrimSpace(tool.ExecutionID) == "" {
 				return ToolResult{}, errors.New("Permission requires a durable tool execution ID")
 			}
+			presentation := permissionPresentation(request, decision)
 			resolution, err := RequestInteraction(ctx, InteractionRequest{
 				ID: interactionID, Kind: InteractionPermission,
-				Permission: &PermissionPresentation{
-					Tool: tool.Name, CallID: tool.ExecutionID,
-					Arguments: append(json.RawMessage(nil), request.Arguments...), Reason: decision.Reason,
-				},
+				Permission: &presentation,
 			})
 			if err != nil {
 				return ToolResult{}, err

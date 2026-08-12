@@ -110,6 +110,9 @@ func (r *RecoveryObservation) Wait(ctx context.Context, emit func(agentrun.Event
 		terminalDelivered := r.publicTerminalDelivered
 		r.mu.Unlock()
 		if !terminalDelivered {
+			terminalDelivered = r.publicBackend.runTerminalProjected(handle)
+		}
+		if !terminalDelivered {
 			emitRecoveryTerminal(emit, outcome)
 		}
 		return outcome
@@ -147,6 +150,21 @@ func (r *RecoveryObservation) Wait(ctx context.Context, emit func(agentrun.Event
 			return agentrun.NewOutcome(agentrun.OutcomeAborted, ctx.Err(), ctx.Err().Error(), "", "")
 		}
 	}
+}
+
+func (backend *publicBackend) runTerminalProjected(handle *publicRunHandle) bool {
+	if backend == nil || handle == nil || handle.run == nil {
+		return false
+	}
+	for _, item := range backend.runCycleRegistrations(handle.run.ID(), handle.registration) {
+		item.registration.mu.RLock()
+		projector := item.registration.projector
+		item.registration.mu.RUnlock()
+		if projector != nil && projector.TerminalProjected() {
+			return true
+		}
+	}
+	return false
 }
 
 func emitRecoveryTerminal(emit func(agentrun.Event), outcome agentrun.Outcome) {

@@ -8,7 +8,7 @@ import (
 	"io"
 	"strings"
 
-	runstate "github.com/alfredxw/denova/agent/runtime"
+	runstate "github.com/alfredxw/denova/agent/internal/runtime"
 	agentsession "github.com/alfredxw/denova/agent/session"
 )
 
@@ -29,8 +29,31 @@ func (engine *definitionEngine) applyGoalPreparation(
 			return err
 		}
 	}
-	session := SessionView{Key: engine.key, Revision: uint64(request.Snapshot.ContextCursor)}
-	run := runViewForTurn(request.Snapshot)
+	return applyPreparedGoal(
+		ctx,
+		prepared,
+		SessionView{Key: engine.key, Revision: uint64(request.Snapshot.ContextCursor)},
+		runViewForTurn(request.Snapshot),
+		state,
+		present,
+	)
+}
+
+// applyPreparedGoal is the single model-facing Goal assembly seam shared by
+// real runs and read-only Session inspection. Durable mutation and CAS remain
+// in the lifecycle; this helper only materializes tools and context from an
+// already selected Goal state.
+func applyPreparedGoal(
+	ctx context.Context,
+	prepared *preparedDefinition,
+	session SessionView,
+	run RunView,
+	state GoalState,
+	present bool,
+) error {
+	if prepared == nil || prepared.definition.Goal == nil {
+		return nil
+	}
 	goalPreparation, err := prepared.definition.Goal.Prepare(ctx, GoalPrepareRequest{
 		Session: session, Run: run, State: state, Present: present,
 	})
@@ -69,6 +92,38 @@ func sessionKeyFromBinding(binding runstate.BindingRef) (SessionKey, error) {
 func runViewForTurn(snapshot runstate.TurnSnapshot) RunView {
 	return RunView{
 		ID: string(snapshot.OperationID), CommandID: string(snapshot.CommandID), Cycle: snapshot.Cycle,
+		StartedAt: snapshot.StartedAt,
+		Delivery:  publicTurnDelivery(snapshot.Delivery), Autonomous: snapshot.Autonomous,
+	}
+}
+
+func publicTurnDelivery(delivery runstate.DeliveryKind) TurnDelivery {
+	switch delivery {
+	case runstate.DeliveryStart:
+		return TurnDeliveryStart
+	case runstate.DeliverySteer:
+		return TurnDeliverySteer
+	case runstate.DeliveryFollowUp:
+		return TurnDeliveryFollowUp
+	case runstate.DeliveryNextTurn:
+		return TurnDeliveryNextTurn
+	default:
+		return ""
+	}
+}
+
+func turnReasonForSnapshot(snapshot runstate.TurnSnapshot) (TurnReason, error) {
+	switch snapshot.Delivery {
+	case runstate.DeliveryStart:
+		return TurnReasonStart, nil
+	case runstate.DeliverySteer:
+		return TurnReasonSteer, nil
+	case runstate.DeliveryFollowUp:
+		return TurnReasonFollowUp, nil
+	case runstate.DeliveryNextTurn:
+		return TurnReasonNextTurn, nil
+	default:
+		return "", fmt.Errorf("unsupported Agent turn delivery %q", snapshot.Delivery)
 	}
 }
 
@@ -84,6 +139,7 @@ func assembleCycleMessages(
 	fragments []ContextFragment,
 ) ([]*Message, *Message, error) {
 	messages := make([]*Message, 0, len(transcript)+len(fragments)+1)
+	messages = append(messages, leadingContextMessages(fragments)...)
 	var prefixes []string
 	var finalUserMessage string
 	hasFinalUserMessage := false
@@ -91,12 +147,6 @@ func assembleCycleMessages(
 		rendered := renderContextFragment(fragment)
 		switch fragment.Placement {
 		case ContextLeadingMessage:
-			switch effectiveContextRole(fragment) {
-			case User:
-				messages = append(messages, UserMessage(rendered))
-			default:
-				messages = append(messages, SystemMessage(rendered))
-			}
 		case ContextFinalUserPrefix:
 			prefixes = append(prefixes, rendered)
 		case ContextFinalUserMessage:
@@ -117,6 +167,118 @@ func assembleCycleMessages(
 	return messages, CloneMessage(user), nil
 }
 
+func recoveryModelMessages(
+	transcript []*Message,
+	activeModelUser *Message,
+	activeUserIndex int,
+) ([]*Message, error) {
+	if activeModelUser == nil || activeModelUser.Role != User {
+		return nil, errors.New("Agent interaction recovery lost the active model user projection")
+	}
+	if activeUserIndex < 0 || activeUserIndex >= len(transcript) ||
+		transcript[activeUserIndex] == nil || transcript[activeUserIndex].Role != User {
+		return nil, errors.New("Agent interaction recovery has an invalid raw user boundary")
+	}
+	messages := cloneMessages(transcript)
+	messages[activeUserIndex] = CloneMessage(activeModelUser)
+	return messages, nil
+}
+
+// leadingContextMessages is the single assembly rule for lifecycle-owned
+// stable fragments. Normal turns, retries, and structural Compaction snapshots
+// must preserve the exact same role and bytes for provider cache identity.
+func leadingContextMessages(fragments []ContextFragment) []*Message {
+	messages := make([]*Message, 0, len(fragments))
+	for _, fragment := range fragments {
+		if fragment.Placement != ContextLeadingMessage {
+			continue
+		}
+		rendered := renderContextFragment(fragment)
+		switch effectiveContextRole(fragment) {
+		case User:
+			messages = append(messages, UserMessage(rendered))
+		default:
+			messages = append(messages, SystemMessage(rendered))
+		}
+	}
+	return messages
+}
+
+func newPreparedDefinitionLoop(
+	ctx context.Context,
+	prepared preparedDefinition,
+	middlewares []Middleware,
+	permission *permissionMiddleware,
+	gate modelCallGate,
+) (*modelToolLoop, error) {
+	return newModelToolLoop(ctx, loopConfig{
+		Name: prepared.definition.Name, Description: prepared.definition.Description,
+		Instruction: prepared.definition.Instructions, Model: prepared.definition.Model,
+		Tools: prepared.tools, Middlewares: middlewares,
+		ResultProcessor: prepared.definition.ResultProcessor, Artifacts: prepared.definition.Artifacts,
+		Retry:           prepared.definition.Execution.Retry,
+		MaxIterations:   prepared.definition.Execution.MaxIterations,
+		IdleTimeout:     prepared.definition.Execution.IdleTimeout,
+		ToolParallelism: prepared.definition.Execution.ToolParallelism,
+		modelCallGate:   gate,
+		permission:      permission,
+	})
+}
+
+// prepareDefinitionModelRequest runs the exact provider-neutral assembly
+// pipeline without invoking the provider. Durable structural operations and
+// public read-only inspection share this seam so caller Middleware, tool
+// schemas, cache routing, and stable-prefix authentication cannot drift.
+func prepareDefinitionModelRequest(
+	ctx context.Context,
+	prepared preparedDefinition,
+	session SessionView,
+	run RunView,
+	messages []*Message,
+	stablePrefixMessages int,
+) (*ModelRequestSnapshot, error) {
+	permission := effectivePermissionPolicy(prepared.definition.Permission)
+	permissionStage := &permissionMiddleware{
+		BaseMiddleware: &BaseMiddleware{}, policy: permission, session: session, run: run,
+	}
+	loop, err := newPreparedDefinitionLoop(
+		ctx,
+		prepared,
+		append([]Middleware(nil), prepared.definition.Middlewares...),
+		permissionStage,
+		nil,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return newLoopRunner(loopRunnerConfig{Agent: loop, EnableStreaming: true}).prepareModelRequest(
+		ctx,
+		messages,
+		stablePrefixMessages,
+	)
+}
+
+// stableContextPrefixMessages returns the Definition-owned contiguous prefix
+// assembled before canonical conversation body messages. The checkpoint is
+// stable only when it replaces from raw index zero; a custom interior
+// replacement cannot extend the provider cache prefix across mutable history.
+func stableContextPrefixMessages(
+	fragments []ContextFragment,
+	compaction CompactionState,
+	compactionPresent bool,
+) int {
+	count := 0
+	for _, fragment := range fragments {
+		if fragment.Placement == ContextLeadingMessage {
+			count++
+		}
+	}
+	if compactionPresent && !compaction.Removed && compaction.ReplacementFrom == 0 {
+		count++
+	}
+	return count
+}
+
 func renderContextFragment(fragment ContextFragment) string {
 	if effectiveContextRendering(fragment.Rendering) == ContextRenderVerbatim {
 		return fragment.Content
@@ -131,7 +293,7 @@ func renderContextFragment(fragment ContextFragment) string {
 	return "# Context\n\n" + provenance + "\n\n" + fragment.Content
 }
 
-func consumeMessageVariant(variant *MessageVariant, source runstate.EventSource, displayOnly bool, emit runstate.EngineEventSink) (*Message, error) {
+func consumeMessageVariant(variant *loopMessage, source runstate.EventSource, displayOnly bool, emit runstate.EngineEventSink) (*Message, error) {
 	if variant == nil {
 		return nil, nil
 	}
@@ -156,7 +318,7 @@ func consumeMessageVariant(variant *MessageVariant, source runstate.EventSource,
 		return message, nil
 	}
 	if variant.MessageStream == nil {
-		return nil, errors.New("Agent Loop returned a nil Message stream")
+		return nil, errors.New("Agent modelToolLoop returned a nil Message stream")
 	}
 	defer variant.MessageStream.Close()
 	assembler := NewMessageAssembler()
@@ -169,7 +331,7 @@ func consumeMessageVariant(variant *MessageVariant, source runstate.EventSource,
 			return nil, err
 		}
 		if chunk == nil {
-			return nil, errors.New("Agent Loop streamed a nil Message chunk")
+			return nil, errors.New("Agent modelToolLoop streamed a nil Message chunk")
 		}
 		if chunk.Content != "" {
 			if err := emit(runstate.EngineAssistantDelta{Source: source, Delta: chunk.Content, DisplayOnly: displayOnly}); err != nil {
@@ -197,7 +359,7 @@ func consumeMessageVariant(variant *MessageVariant, source runstate.EventSource,
 func (engine *definitionEngine) emitToolExecution(
 	ctx context.Context,
 	request runstate.EngineRequest,
-	execution *ToolExecutionEvent,
+	execution *toolExecutionEvent,
 	source runstate.EventSource,
 	canonical CanonicalAdapter,
 	started map[string]bool,
@@ -210,14 +372,20 @@ func (engine *definitionEngine) emitToolExecution(
 	if callID == "" {
 		callID = execution.ProviderCallID
 	}
-	if execution.Phase == ToolExecutionStarted {
+	metadata, err := toolExecutionMetadata(execution.Definition.Descriptor)
+	if err != nil {
+		return err
+	}
+	if execution.Phase == toolExecutionStarted {
 		if !started[callID] {
 			emitTrace(ctx, engine.trace, TraceEvent{
 				Kind: TraceToolStarted, Session: engine.key, RunID: string(request.Snapshot.OperationID),
 				Cycle: request.Snapshot.Cycle, ToolCallID: execution.ExecutionID, ToolName: execution.ToolName,
 			})
 			if err := emit(runstate.EngineToolStarted{
-				CallID: callID, Name: execution.ToolName, Arguments: append(json.RawMessage(nil), execution.Arguments...), Source: source,
+				CallID: callID, ProviderCallID: execution.ProviderCallID, Name: execution.ToolName, Index: execution.Index,
+				Arguments: append(json.RawMessage(nil), execution.Arguments...), Metadata: metadata, Source: source,
+				ExecutionAuthorized: true,
 			}); err != nil {
 				return err
 			}
@@ -226,15 +394,19 @@ func (engine *definitionEngine) emitToolExecution(
 		return nil
 	}
 	switch execution.Phase {
-	case ToolExecutionProgress:
-		return emit(runstate.EngineToolProgress{CallID: callID, Delta: execution.Delta, Source: source})
-	case ToolExecutionFinished:
+	case toolExecutionProgress:
+		return emit(runstate.EngineToolProgress{
+			CallID: callID, ProviderCallID: execution.ProviderCallID, Name: execution.ToolName, Index: execution.Index,
+			Delta: execution.Delta, Metadata: metadata, Source: source,
+		})
+	case toolExecutionFinished:
 		// Policy denial and invalid preflight can finish before concrete Tool.Run.
 		// Record a paired zero-side-effect start immediately before the result so
 		// runtime recovery remains structurally complete.
 		if !started[callID] {
 			if err := emit(runstate.EngineToolStarted{
-				CallID: callID, Name: execution.ToolName, Arguments: append(json.RawMessage(nil), execution.Arguments...), Source: source,
+				CallID: callID, ProviderCallID: execution.ProviderCallID, Name: execution.ToolName, Index: execution.Index,
+				Arguments: append(json.RawMessage(nil), execution.Arguments...), Metadata: metadata, Source: source,
 			}); err != nil {
 				return err
 			}
@@ -282,13 +454,25 @@ func (engine *definitionEngine) emitToolExecution(
 			Cycle: request.Snapshot.Cycle, ToolCallID: callID, ToolName: execution.ToolName,
 		})
 		return emit(runstate.EngineToolFinished{
-			CallID: callID, Name: execution.ToolName, Result: result.DisplayContent,
+			CallID: callID, ProviderCallID: execution.ProviderCallID, Name: execution.ToolName, Index: execution.Index,
+			Result:  result.DisplayContent,
 			IsError: result.IsError(), RetrySafety: retrySafety(execution.Definition.Descriptor.Recovery),
-			Source: source, Projection: encodedProjection, HostEffects: hostEffects,
+			Metadata: metadata, Source: source, Projection: encodedProjection, HostEffects: hostEffects,
 		})
 	default:
 		return fmt.Errorf("unsupported Tool execution phase %q", execution.Phase)
 	}
+}
+
+func toolExecutionMetadata(descriptor ToolDescriptor) (json.RawMessage, error) {
+	if descriptor.Execution == "" {
+		return nil, nil
+	}
+	metadata, err := json.Marshal(descriptor)
+	if err != nil {
+		return nil, fmt.Errorf("encode tool live metadata: %w", err)
+	}
+	return metadata, nil
 }
 
 func modelRequestedToolNames(calls []ToolCall) []string {
@@ -311,11 +495,14 @@ func modelRequestedToolNames(calls []ToolCall) []string {
 	return result
 }
 
-func runtimeEventSource(event *AgentEvent) runstate.EventSource {
+func runtimeEventSource(event *loopEvent) runstate.EventSource {
 	if event == nil {
 		return runstate.EventSource{}
 	}
-	source := runstate.EventSource{Name: strings.TrimSpace(event.AgentName)}
+	source := runstate.EventSource{
+		Name: strings.TrimSpace(event.AgentName), InvocationID: strings.TrimSpace(event.InvocationID),
+		InvocationType: strings.TrimSpace(event.InvocationType),
+	}
 	for _, step := range event.RunPath {
 		if name := strings.TrimSpace(step.String()); name != "" {
 			source.Path = append(source.Path, name)
@@ -327,7 +514,7 @@ func runtimeEventSource(event *AgentEvent) runstate.EventSource {
 	return source
 }
 
-func rootAgentEvent(event *AgentEvent, rootName string) bool {
+func rootAgentEvent(event *loopEvent, rootName string) bool {
 	if event == nil {
 		return false
 	}

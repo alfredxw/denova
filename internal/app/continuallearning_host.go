@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	agentconversation "denova/internal/agents/conversation"
-	"denova/internal/agents/session"
 	"denova/internal/agents/trajectory"
 	appagentruntime "denova/internal/app/agentruntime"
 	continuallearningapp "denova/internal/app/continuallearning"
@@ -63,17 +61,4 @@ func (host continualLearningHost) TrajectorySources(ctx context.Context) ([]traj
 		})
 	}
 	return sources, nil
-}
-
-func (host continualLearningHost) ResolveAsk(
-	ctx context.Context,
-	target *session.Session,
-	askID, status string,
-	answers []agentconversation.HostAskAnswer,
-	cancelReason string,
-) (agentconversation.HostAskResolution, error) {
-	if host.app == nil {
-		return agentconversation.HostAskResolution{}, appagentruntime.ErrNoWorkspace
-	}
-	return host.app.resolveAgentAsk(ctx, target, "", "", askID, status, answers, cancelReason)
 }

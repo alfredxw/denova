@@ -64,16 +64,16 @@ func TestToolExecutionIDsAreUniqueAcrossProviderCallIDReuse(t *testing.T) {
 		{message: AssistantMessage("done", nil)},
 	}}
 	tool := testToolDefinition(&functionTool{name: "echo", run: func(context.Context, string) (string, error) { return "ok", nil }})
-	native, err := NewLoop(context.Background(), LoopConfig{Name: "root", Model: model, Tools: []ToolDefinition{tool}})
+	native, err := newModelToolLoop(context.Background(), loopConfig{Name: "root", Model: model, Tools: []ToolDefinition{tool}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	ctx := ContextWithInvocationIdentity(context.Background(), InvocationIdentity{
 		Scope: "workspace:one", OperationID: "operation-reuse", Cycle: 2,
 	})
-	iterator := NewRunner(RunnerConfig{Agent: native}).Query(ctx, "go")
-	var started []ToolExecutionEvent
-	var results []MessageVariant
+	iterator := newLoopRunner(loopRunnerConfig{Agent: native}).Query(ctx, "go")
+	var started []toolExecutionEvent
+	var results []loopMessage
 	for {
 		event, ok := iterator.Next()
 		if !ok {
@@ -85,7 +85,7 @@ func TestToolExecutionIDsAreUniqueAcrossProviderCallIDReuse(t *testing.T) {
 		if event.Output == nil {
 			continue
 		}
-		if execution := event.Output.ToolExecution; execution != nil && execution.Phase == ToolExecutionStarted {
+		if execution := event.Output.ToolExecution; execution != nil && execution.Phase == toolExecutionStarted {
 			started = append(started, *execution)
 		}
 		if message := event.Output.MessageOutput; message != nil && message.Role == ToolRole {

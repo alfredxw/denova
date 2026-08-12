@@ -3,8 +3,6 @@ package interactive
 import (
 	"errors"
 	"testing"
-
-	agentcontext "denova/internal/agents/context"
 )
 
 func TestSwitchTurnVersionRejectsHistoricalTurnWithoutMutatingParents(t *testing.T) {
@@ -63,129 +61,6 @@ func TestSwitchTurnVersionRejectsHistoricalTurnWithoutMutatingParents(t *testing
 		if record.Envelope.Type == StoryEventTypeTurnVersionSelected {
 			t.Fatalf("rejected historical switch appended a selection event: %#v", record.Raw)
 		}
-	}
-}
-
-func TestRejectedHistoricalVersionSwitchKeepsCompactionActive(t *testing.T) {
-	store := NewStore(t.TempDir())
-	story, err := store.CreateStory(CreateStoryRequest{Title: "版本切换压缩失效", StoryTellerID: "classic"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	first, err := store.AppendTurn(story.ID, AppendTurnRequest{BranchID: "main", User: "观察", Narrative: "旧版本的大厅。"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := store.RewindToTurnParent(story.ID, RewindTurnRequest{BranchID: "main", TurnID: first.ID}); err != nil {
-		t.Fatal(err)
-	}
-	firstAlt, err := store.AppendTurn(story.ID, AppendTurnRequest{BranchID: "main", User: "观察", Narrative: "新版本的大厅。"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	second, err := store.AppendTurn(story.ID, AppendTurnRequest{BranchID: "main", User: "前进", Narrative: "你走到旋转楼梯旁。"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	expected := second.ID
-	compaction, err := store.AppendContextCompaction(story.ID, "main", ContextCompactionEvent{
-		CompactionCheckpoint: agentcontext.CompactionCheckpoint{Summary: "大厅通往旋转楼梯。", RetainedTurns: 1},
-		SourceTurnCount:      2,
-		ExpectedParentID:     &expected,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	third, err := store.AppendTurn(story.ID, AppendTurnRequest{BranchID: "main", User: "上楼", Narrative: "二楼传来乐声。"})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if err := store.SwitchTurnVersion(story.ID, SwitchTurnVersionRequest{
-		BranchID: "main", TurnID: firstAlt.ID, VersionTurnID: first.ID,
-	}); !errors.Is(err, ErrHistoricalTurnRequiresBranch) {
-		t.Fatalf("historical version switch error = %v", err)
-	}
-	snapshot, err := store.Snapshot(story.ID, "main")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if snapshot.ContextCompaction == nil || snapshot.ContextCompaction.ID != compaction.ID {
-		t.Fatalf("rejected switch changed the active compaction: %#v", snapshot.ContextCompaction)
-	}
-	if snapshot.ContextCompactionRemoval != nil {
-		t.Fatalf("rejected switch appended a compaction removal: %#v", snapshot.ContextCompactionRemoval)
-	}
-	if len(snapshot.Turns) != 3 || snapshot.Turns[0].ID != firstAlt.ID || snapshot.Turns[1].ID != second.ID || snapshot.Turns[2].ID != third.ID {
-		t.Fatalf("rejected switch changed the active path: %#v", snapshot.Turns)
-	}
-	if historical, ok, err := store.ContextCompactionByID(story.ID, compaction.ID); err != nil || !ok || historical.ID != compaction.ID {
-		t.Fatalf("historical compaction must remain auditable: event=%#v ok=%t err=%v", historical, ok, err)
-	}
-}
-
-func TestRejectedHistoricalVersionSwitchPreservesPrefixCompactionRemoval(t *testing.T) {
-	store := NewStore(t.TempDir())
-	story, err := store.CreateStory(CreateStoryRequest{Title: "前缀压缩撤销投影", StoryTellerID: "classic"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	first, err := store.AppendTurn(story.ID, AppendTurnRequest{BranchID: "main", User: "进入", Narrative: "你进入钟楼。"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	expected := first.ID
-	compaction, err := store.AppendContextCompaction(story.ID, "main", ContextCompactionEvent{
-		CompactionCheckpoint: agentcontext.CompactionCheckpoint{Summary: "你已经进入钟楼。", RetainedTurns: 1},
-		SourceTurnCount:      1,
-		ExpectedParentID:     &expected,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	second, err := store.AppendTurn(story.ID, AppendTurnRequest{BranchID: "main", User: "上楼", Narrative: "旧版本的二楼空无一人。"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := store.RewindToTurnParent(story.ID, RewindTurnRequest{BranchID: "main", TurnID: second.ID}); err != nil {
-		t.Fatal(err)
-	}
-	secondAlt, err := store.AppendTurn(story.ID, AppendTurnRequest{BranchID: "main", User: "上楼", Narrative: "新版本的二楼有人弹琴。"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.AppendTurn(story.ID, AppendTurnRequest{BranchID: "main", User: "靠近", Narrative: "琴声突然停了。"}); err != nil {
-		t.Fatal(err)
-	}
-	removeExpected := branchHeadForTest(t, store, story.ID, "main")
-	removal, err := store.AppendContextCompactionRemoval(story.ID, "main", ContextCompactionRemovalEvent{
-		CompactionID: compaction.ID, SourceTurnCount: 1, Reason: "user_removed", ExpectedParentID: &removeExpected,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if err := store.SwitchTurnVersion(story.ID, SwitchTurnVersionRequest{
-		BranchID: "main", TurnID: secondAlt.ID, VersionTurnID: second.ID,
-	}); !errors.Is(err, ErrHistoricalTurnRequiresBranch) {
-		t.Fatalf("historical version switch error = %v", err)
-	}
-	snapshot, err := store.Snapshot(story.ID, "main")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if snapshot.ContextCompaction != nil {
-		t.Fatalf("projecting the suffix resurrected a removed prefix compaction: %#v", snapshot.ContextCompaction)
-	}
-	if snapshot.ContextCompactionRemoval == nil || snapshot.ContextCompactionRemoval.ID != removal.ID || snapshot.ContextCompactionRemoval.CompactionID != compaction.ID {
-		t.Fatalf("rejected switch changed the prefix compaction removal: %#v", snapshot.ContextCompactionRemoval)
-	}
-	_, lines, err := store.readStoryJournalLocked(story.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := eventParentForTest(t, lines, removal.ID); got != removeExpected {
-		t.Fatalf("historical removal parent was mutated to %q, want %q", got, removeExpected)
 	}
 }
 

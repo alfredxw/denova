@@ -10,8 +10,7 @@ import (
 
 	"denova/config"
 	"denova/internal/automation"
-
-	runstate "github.com/alfredxw/denova/agent/runtime"
+	agent "github.com/alfredxw/denova/agent"
 )
 
 func TestAutomationManualRunIDIsStableAndScoped(t *testing.T) {
@@ -57,8 +56,8 @@ func TestAutomationManualRunIDRequiresCallerIdentity(t *testing.T) {
 	if _, err := automationManualRunID("task", ""); !errors.Is(err, ErrAgentCommandIDRequired) {
 		t.Fatalf("error = %v, want ErrAgentCommandIDRequired", err)
 	}
-	if _, err := automationManualRunID("task", strings.Repeat("x", 4097)); !errors.Is(err, runstate.ErrInvalidCommand) {
-		t.Fatalf("oversized error = %v, want ErrInvalidCommand", err)
+	if _, err := automationManualRunID("task", strings.Repeat("x", 4097)); !errors.Is(err, agent.ErrInvalidInput) {
+		t.Fatalf("oversized error = %v, want ErrInvalidInput", err)
 	}
 }
 
@@ -92,12 +91,6 @@ func TestAutomationManualCommandCanonicalizesTaskAliasBeforeAdmission(t *testing
 	if _, err := store.AppendRun(taskDef.ID, run); err != nil {
 		t.Fatal(err)
 	}
-	seedAutomationRuntimeJournal(t, dataDir, taskDef, run, []runstate.EventPayload{
-		runstate.CommandAcceptedEvent{CommandID: runstate.CommandID(rootCommandID), CommandKind: "start_turn", OperationID: "manual-root-operation", Fingerprint: "manual-root"},
-		runstate.OperationStartedEvent{OperationID: "manual-root-operation"},
-		runstate.OperationSettledEvent{OperationID: "manual-root-operation", Status: runstate.OperationSucceeded},
-	})
-
 	application, err := New(context.Background(), &config.Config{NovaDir: dataDir, Workspace: workspace, OpenAIModel: "test-model"})
 	if err != nil {
 		t.Fatal(err)
@@ -120,15 +113,7 @@ func TestAutomationManualCommandCanonicalizesTaskAliasBeforeAdmission(t *testing
 	<-secondTask.Done()
 	application.Close()
 
-	ref := automationRuntimeBindingForTest(workspace, run.SessionID, run.ID, run.ProjectID)
-	events := readAutomationAgentSessionEvents(t, dataDir, ref)
-	accepted := 0
-	for _, event := range events {
-		if payload, ok := event.Payload.(runstate.CommandAcceptedEvent); ok && payload.CommandKind == "start_turn" {
-			accepted++
-		}
-	}
-	if accepted != 1 {
-		t.Fatalf("canonical task aliases admitted %d StartTurn commands, want 1", accepted)
+	if first.ID != second.ID {
+		t.Fatalf("canonical aliases did not reuse one durable Automation run: first=%q second=%q", first.ID, second.ID)
 	}
 }

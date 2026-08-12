@@ -262,7 +262,7 @@ describe('useVirtuosoBottomLock', () => {
     expect(scroller.scrollTop).toBe(600)
   })
 
-  it('retains only the unconsumed runway when a short response completes', () => {
+  it('removes the response runway and returns a locked viewport to the real bottom when output completes', () => {
     const scroller = document.createElement('div')
     let scrollHeight = 1500
     Object.defineProperty(scroller, 'scrollHeight', { configurable: true, get: () => scrollHeight })
@@ -283,8 +283,36 @@ describe('useVirtuosoBottomLock', () => {
     scrollHeight = 1600
     rerender({ autoFollowEnabled: false })
 
-    expect(result.current.streamingSpacerPx).toBeCloseTo(476)
-    expect(scroller.scrollTop).toBe(600)
+    expect(result.current.streamingSpacerPx).toBeUndefined()
+
+    // The virtualizer reports the total again after the temporary 576px
+    // runway collapses back to the persistent 120px composer inset.
+    scrollHeight = 1144
+    act(() => result.current.syncIdleBottomLayout())
+    expect(scroller.scrollTop).toBe(244)
+  })
+
+  it('does not restore idle bottom lock after explicit upward scrolling', () => {
+    const scroller = document.createElement('div')
+    let scrollHeight = 500
+    Object.defineProperty(scroller, 'scrollHeight', { configurable: true, get: () => scrollHeight })
+    Object.defineProperty(scroller, 'clientHeight', { configurable: true, value: 100 })
+    scroller.scrollTop = 400
+    const { result } = renderHook(() => useVirtuosoBottomLock({
+      itemCount: 1,
+      autoFollowEnabled: false,
+      resolveScroller: () => scroller,
+    }))
+    flushAnimationFrames(frames)
+
+    act(() => {
+      result.current.onWheel({ deltaY: -20 } as never)
+      scroller.scrollTop = 280
+    })
+    scrollHeight = 620
+    act(() => result.current.syncIdleBottomLayout())
+
+    expect(scroller.scrollTop).toBe(280)
   })
 
   it('restores a locked streaming viewport after its persistent tab becomes visible again', () => {

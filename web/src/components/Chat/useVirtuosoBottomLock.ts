@@ -128,6 +128,20 @@ export function useVirtuosoBottomLock({ resetKey, itemCount, autoFollowEnabled, 
     }
   }, [currentScrollerElement, itemCount, scrollLatestIntoView, updateAwayFromBottom])
 
+  const syncIdleBottomLayout = useCallback(() => {
+    if (
+      autoFollowEnabledRef.current ||
+      !visibleRef.current ||
+      !lockedRef.current ||
+      afterContentInteractionRef.current
+    ) return
+    const element = currentScrollerElement()
+    if (!element || element.clientHeight <= 0) return
+    element.scrollTop = Math.max(0, element.scrollHeight - element.clientHeight)
+    viewportScrollTopRef.current = element.scrollTop
+    setIsAwayFromBottom(false)
+  }, [currentScrollerElement])
+
   const unlockFromBottom = useCallback(() => {
     lockedRef.current = false
     cancelScheduledScroll()
@@ -409,6 +423,7 @@ export function useVirtuosoBottomLock({ resetKey, itemCount, autoFollowEnabled, 
     onAtBottomStateChange,
     streamingRowRef,
     syncStreamingTailLayout,
+    syncIdleBottomLayout,
     streamingSpacerPx,
     isAwayFromBottom,
     scrollToBottom,

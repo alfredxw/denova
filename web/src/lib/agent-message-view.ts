@@ -144,7 +144,7 @@ function todoPlanScope(view: AgentMessageView) {
 
 function todoPlanIsEmpty(view: AgentMessageView) {
   const output = parseStructuredValue(view.output)
-  if (output && output.schema === 'todo.plan.v1' && Array.isArray(output.plan)) return output.plan.length === 0
+  if (output && output.schema === 'agent.todo.v1' && Array.isArray(output.items)) return output.items.length === 0
   return false
 }
 

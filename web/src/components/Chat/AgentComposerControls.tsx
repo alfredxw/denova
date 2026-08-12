@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 
 interface AgentComposerControlsProps {
   generationActive: boolean
-  /** Selects Send while a run is active; otherwise the single action becomes Stop. */
+  /** Keeps Send beside Stop when the user has drafted a follow-up during an active run. */
   hasSendableContent: boolean
   onStop?: () => void
   onSend: () => void
@@ -19,7 +19,7 @@ interface AgentComposerControlsProps {
   sendIcon?: ReactNode
 }
 
-/** Single operation-aware action shared by writing and game composers. */
+/** Operation-aware actions shared by writing and game composers. */
 export function AgentComposerControls({
   generationActive,
   hasSendableContent,
@@ -38,24 +38,39 @@ export function AgentComposerControls({
   const resolvedSendLabel = sendLabel || t('chat.input.send')
   const commandControlsDisabled = disabled || activeControlsDisabled || abortPending || actionPending
   const stopControlDisabled = disabled || (stopDisabled ?? activeControlsDisabled) || abortPending || actionPending
-  const stopMode = generationActive && !hasSendableContent && Boolean(onStop)
-  const actionLabel = stopMode ? t('chat.input.stop') : resolvedSendLabel
+  const showStop = generationActive && Boolean(onStop)
+  const showSend = !showStop || hasSendableContent
+
   return (
-    <div className="flex shrink-0 items-center" aria-busy={abortPending || actionPending || undefined}>
-      <Button
-        type="button"
-        data-action={stopMode ? 'stop' : 'send'}
-        onClick={stopMode ? onStop : onSend}
-        disabled={stopMode ? stopControlDisabled : commandControlsDisabled || sendDisabled}
-        variant={stopMode ? 'destructive' : 'default'}
-        size="icon-lg"
-        className={stopMode
-          ? 'nova-agent-composer-stop rounded-[10px]'
-          : 'nova-agent-composer-submit rounded-[10px] bg-[var(--nova-active)] text-[var(--nova-text)] shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] hover:bg-[var(--nova-hover)] disabled:bg-[var(--nova-active)]'}
-        aria-label={actionLabel}
-      >
-        {stopMode ? <Square className="fill-current" /> : sendIcon || <Send />}
-      </Button>
+    <div className="flex shrink-0 items-center gap-2" aria-busy={abortPending || actionPending || undefined}>
+      {showStop ? (
+        <Button
+          type="button"
+          data-action="stop"
+          onClick={onStop}
+          disabled={stopControlDisabled}
+          variant="destructive"
+          size="icon-lg"
+          className="nova-agent-composer-stop rounded-[10px]"
+          aria-label={t('chat.input.stop')}
+        >
+          <Square className="fill-current" />
+        </Button>
+      ) : null}
+      {showSend ? (
+        <Button
+          type="button"
+          data-action="send"
+          onClick={onSend}
+          disabled={commandControlsDisabled || sendDisabled}
+          variant="default"
+          size="icon-lg"
+          className="nova-agent-composer-submit rounded-[10px] bg-[var(--nova-active)] text-[var(--nova-text)] shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] hover:bg-[var(--nova-hover)] disabled:bg-[var(--nova-active)]"
+          aria-label={resolvedSendLabel}
+        >
+          {sendIcon || <Send />}
+        </Button>
+      ) : null}
     </div>
   )
 }

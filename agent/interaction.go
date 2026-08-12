@@ -5,10 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"sync"
 
-	runstate "github.com/alfredxw/denova/agent/runtime"
+	runstate "github.com/alfredxw/denova/agent/internal/runtime"
 )
 
 type InteractionKind string
@@ -49,10 +50,22 @@ const (
 )
 
 type PermissionPresentation struct {
-	Tool      string          `json:"tool"`
-	CallID    string          `json:"call_id"`
-	Arguments json.RawMessage `json:"arguments"`
-	Reason    LocalizedText   `json:"reason"`
+	Tool               string              `json:"tool"`
+	CallID             string              `json:"call_id"`
+	Arguments          json.RawMessage     `json:"arguments"`
+	Reason             LocalizedText       `json:"reason"`
+	Mode               string              `json:"mode"`
+	Command            string              `json:"command,omitempty"`
+	Details            string              `json:"details,omitempty"`
+	Cwd                string              `json:"cwd,omitempty"`
+	Risk               string              `json:"risk"`
+	RuleID             string              `json:"rule_id"`
+	ArgsHash           string              `json:"args_hash"`
+	CanRemember        bool                `json:"can_remember,omitempty"`
+	RuleMatcherVersion int                 `json:"rule_matcher_version,omitempty"`
+	RuleCommandKey     string              `json:"rule_command_key,omitempty"`
+	RuleCommandPattern string              `json:"rule_command_pattern,omitempty"`
+	Options            []InteractionOption `json:"options"`
 }
 
 // InteractionRequest is the only durable host-input vocabulary. Exactly one
@@ -93,13 +106,24 @@ type InteractionPolicy interface {
 
 type standardInteractionPolicy struct{}
 
+const (
+	maxInteractionRequestBytes      = 128 << 10
+	maxInteractionStableIDBytes     = 256
+	maxInteractionQuestionTextBytes = 8 << 10
+	maxInteractionOptionTextBytes   = 4 << 10
+	maxInteractionAnswerTextBytes   = 64 << 10
+	reservedInteractionOtherValue   = "other"
+)
+
+var interactionStableIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]*$`)
+
 func (standardInteractionPolicy) Identity() CapabilityIdentity {
 	return CapabilityIdentity{Kind: "interaction.standard", Version: 1}
 }
 
 func (standardInteractionPolicy) ValidateRequest(_ context.Context, request InteractionRequest) error {
-	if strings.TrimSpace(request.ID) == "" || request.ID != strings.TrimSpace(request.ID) {
-		return errors.New("Interaction Request ID is required")
+	if err := validateInteractionStableID("Interaction Request ID", request.ID); err != nil {
+		return err
 	}
 	switch request.Kind {
 	case InteractionAsk:
@@ -116,13 +140,25 @@ func (standardInteractionPolicy) ValidateRequest(_ context.Context, request Inte
 			}
 			seen[question.ID] = struct{}{}
 		}
+		encoded, err := json.Marshal(request.Questions)
+		if err != nil {
+			return fmt.Errorf("encode ask Interaction questions: %w", err)
+		}
+		if len(encoded) > maxInteractionRequestBytes {
+			return fmt.Errorf("ask Interaction question payload exceeds %d bytes", maxInteractionRequestBytes)
+		}
 	case InteractionPermission:
 		if request.Permission == nil || len(request.Questions) != 0 || strings.TrimSpace(request.Permission.Tool) == "" ||
-			strings.TrimSpace(request.Permission.CallID) == "" || !json.Valid(request.Permission.Arguments) {
+			strings.TrimSpace(request.Permission.CallID) == "" || !json.Valid(request.Permission.Arguments) ||
+			strings.TrimSpace(request.Permission.Mode) == "" || strings.TrimSpace(request.Permission.Risk) == "" ||
+			strings.TrimSpace(request.Permission.RuleID) == "" || strings.TrimSpace(request.Permission.ArgsHash) == "" {
 			return errors.New("permission Interaction requires tool, call ID, and valid arguments")
 		}
 		if err := validateLocalizedText(request.Permission.Reason); err != nil {
 			return fmt.Errorf("permission Interaction reason: %w", err)
+		}
+		if err := validatePermissionOptions(request.Permission.Options, request.Permission.CanRemember); err != nil {
+			return err
 		}
 	default:
 		return fmt.Errorf("unsupported Interaction kind %q", request.Kind)
@@ -130,20 +166,59 @@ func (standardInteractionPolicy) ValidateRequest(_ context.Context, request Inte
 	return nil
 }
 
+func validatePermissionOptions(options []InteractionOption, canRemember bool) error {
+	want := map[string]bool{
+		string(PermissionAllowOnce): true,
+		string(PermissionDeny):      true,
+		string(PermissionRemember):  canRemember,
+	}
+	seen := make(map[string]bool, len(options))
+	for _, option := range options {
+		if !want[option.Value] || seen[option.Value] {
+			return fmt.Errorf("permission Interaction has invalid option %q", option.Value)
+		}
+		seen[option.Value] = true
+		if err := validateLocalizedText(option.Label); err != nil {
+			return fmt.Errorf("permission option %q label: %w", option.Value, err)
+		}
+		if err := validateLocalizedText(option.Description); err != nil {
+			return fmt.Errorf("permission option %q description: %w", option.Value, err)
+		}
+	}
+	if !seen[string(PermissionAllowOnce)] || !seen[string(PermissionDeny)] ||
+		canRemember != seen[string(PermissionRemember)] {
+		return errors.New("permission Interaction options do not match policy choices")
+	}
+	return nil
+}
+
 func validateInteractionQuestion(question InteractionQuestion) error {
-	if strings.TrimSpace(question.ID) == "" || question.ID != strings.TrimSpace(question.ID) {
-		return errors.New("ID is required")
+	if err := validateInteractionStableID("ID", question.ID); err != nil {
+		return err
 	}
 	if err := validateLocalizedText(question.Prompt); err != nil {
 		return fmt.Errorf("prompt: %w", err)
 	}
-	if len(question.Options) == 0 && !question.AllowFreeText {
-		return errors.New("question requires options or free text")
+	if localizedTextBytes(question.Prompt) > maxInteractionQuestionTextBytes {
+		return fmt.Errorf("prompt exceeds %d bytes", maxInteractionQuestionTextBytes)
+	}
+	if len(question.Options) == 0 {
+		if !question.AllowFreeText || question.Multiple {
+			return errors.New("free-text question must allow text and cannot be multi-select")
+		}
+		return nil
+	}
+	if len(question.Options) < 2 || len(question.Options) > 3 {
+		return errors.New("choice question requires two to three options")
 	}
 	seen := make(map[string]struct{}, len(question.Options))
+	recommended := 0
 	for _, option := range question.Options {
-		if strings.TrimSpace(option.Value) == "" || option.Value != strings.TrimSpace(option.Value) {
-			return errors.New("option value is required")
+		if err := validateInteractionStableID("option value", option.Value); err != nil {
+			return err
+		}
+		if strings.EqualFold(option.Value, reservedInteractionOtherValue) {
+			return fmt.Errorf("option value %q is reserved for the host-provided Other choice", option.Value)
 		}
 		if _, duplicate := seen[option.Value]; duplicate {
 			return fmt.Errorf("option %q is duplicated", option.Value)
@@ -157,6 +232,15 @@ func validateInteractionQuestion(question InteractionQuestion) error {
 				return fmt.Errorf("option %q description: %w", option.Value, err)
 			}
 		}
+		if localizedTextBytes(option.Label)+localizedTextBytes(option.Description) > maxInteractionOptionTextBytes {
+			return fmt.Errorf("option %q text exceeds %d bytes", option.Value, maxInteractionOptionTextBytes)
+		}
+		if option.Recommended {
+			recommended++
+		}
+	}
+	if recommended != 1 {
+		return errors.New("choice question requires exactly one recommended option")
 	}
 	return nil
 }
@@ -166,6 +250,18 @@ func validateLocalizedText(value LocalizedText) error {
 		return errors.New("both Chinese and English text are required")
 	}
 	return nil
+}
+
+func validateInteractionStableID(field, value string) error {
+	if value == "" || strings.TrimSpace(value) != value || len(value) > maxInteractionStableIDBytes ||
+		!interactionStableIDPattern.MatchString(value) {
+		return fmt.Errorf("%s must contain 1..%d bytes using letters, numbers, '.', '_', ':', or '-'", field, maxInteractionStableIDBytes)
+	}
+	return nil
+}
+
+func localizedTextBytes(value LocalizedText) int {
+	return len(value.Chinese) + len(value.English)
 }
 
 func (policy standardInteractionPolicy) Resolve(ctx context.Context, request InteractionRequest, response InteractionResponse) (InteractionResolution, error) {
@@ -197,6 +293,9 @@ func resolveAskInteraction(request InteractionRequest, response InteractionRespo
 	}
 	answers := make(map[string]InteractionAnswer, len(response.Answers))
 	for _, answer := range response.Answers {
+		if len(answer.Text) > maxInteractionAnswerTextBytes {
+			return InteractionResolution{}, fmt.Errorf("custom answer for %q exceeds %d bytes", answer.QuestionID, maxInteractionAnswerTextBytes)
+		}
 		question, exists := questions[answer.QuestionID]
 		if !exists {
 			return InteractionResolution{}, fmt.Errorf("answer targets unknown question %q", answer.QuestionID)
@@ -221,8 +320,18 @@ func resolveAskInteraction(request InteractionRequest, response InteractionRespo
 			}
 			seen[value] = struct{}{}
 		}
-		if strings.TrimSpace(answer.Text) != "" && !question.AllowFreeText && !request.AllowOther {
-			return InteractionResolution{}, fmt.Errorf("question %q does not accept free text", answer.QuestionID)
+		answer.Text = strings.TrimSpace(answer.Text)
+		if len(question.Options) == 0 {
+			if len(answer.Values) != 0 || answer.Text == "" {
+				return InteractionResolution{}, fmt.Errorf("free-text question %q requires text and no option", answer.QuestionID)
+			}
+		} else if answer.Text != "" {
+			if !request.AllowOther {
+				return InteractionResolution{}, fmt.Errorf("question %q does not accept free text", answer.QuestionID)
+			}
+			if len(answer.Values) != 0 && !question.Multiple {
+				return InteractionResolution{}, fmt.Errorf("question %q cannot combine Other with a selected option", answer.QuestionID)
+			}
 		}
 		if len(answer.Values) == 0 && strings.TrimSpace(answer.Text) == "" {
 			return InteractionResolution{}, fmt.Errorf("question %q has an empty answer", answer.QuestionID)
@@ -319,6 +428,7 @@ func (client *engineInteractionClient) Request(ctx context.Context, request Inte
 		client.mu.Unlock()
 		return InteractionResolution{}, err
 	}
+	touchIdleActivity(ctx)
 	select {
 	case response := <-waiter:
 		return decodeInteractionResolution(response)

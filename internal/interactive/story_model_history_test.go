@@ -11,8 +11,9 @@ func TestReadModelHistoryProjectsExactRangeBeyondDisplayPage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	requests := make([]AppendTurnRequest, 0, 110)
 	for index := 0; index < 110; index++ {
-		_, err := store.AppendTurn(story.ID, AppendTurnRequest{
+		requests = append(requests, AppendTurnRequest{
 			User:      fmt.Sprintf("行动-%03d", index),
 			Narrative: fmt.Sprintf("剧情-%03d", index),
 			Thinking:  "不应进入模型历史投影",
@@ -23,10 +24,8 @@ func TestReadModelHistoryProjectsExactRangeBeyondDisplayPage(t *testing.T) {
 				Role: "tool", Content: fmt.Sprintf("证据-%03d", index), ToolCallID: fmt.Sprintf("call-%03d", index), ToolName: "inspect_story",
 			}},
 		})
-		if err != nil {
-			t.Fatal(err)
-		}
 	}
+	appendStoryTurns(t, store, story.ID, "main", requests)
 
 	snapshot, err := store.Snapshot(story.ID, "main")
 	if err != nil {

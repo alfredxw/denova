@@ -34,10 +34,12 @@ type ReadResult struct {
 // must not claim paths from another URI scheme.
 type ReadMatcher func(context.Context, string) (bool, error)
 
-// ReadAdapter is the internal seam behind the single model-visible read tool.
-// Each Adapter contributes its exact argument schema and validates the same
-// arguments again after the router selects it.
+// ReadAdapter is the seam behind the single model-visible read tool. Identity
+// must change whenever routing or read semantics change. Each Adapter
+// contributes its exact argument schema and validates the same arguments again
+// after the router selects it.
 type ReadAdapter interface {
+	Identity() agent.CapabilityIdentity
 	Name() string
 	Parameters() *jsonschema.Schema
 	Match(context.Context, string) (bool, error)
@@ -45,6 +47,7 @@ type ReadAdapter interface {
 }
 
 type typedReadAdapter[T any] struct {
+	identity   agent.CapabilityIdentity
 	name       string
 	parameters *jsonschema.Schema
 	match      ReadMatcher
@@ -54,7 +57,10 @@ type typedReadAdapter[T any] struct {
 // NewReadAdapter constructs a typed Adapter with a provider-visible schema and
 // strict runtime decoding. Products use this to add URI-backed resources
 // without changing the read tool or weakening another Adapter's parameters.
-func NewReadAdapter[T any](name string, match ReadMatcher, invoke func(context.Context, T) (ReadResult, error)) (ReadAdapter, error) {
+func NewReadAdapter[T any](identity agent.CapabilityIdentity, name string, match ReadMatcher, invoke func(context.Context, T) (ReadResult, error)) (ReadAdapter, error) {
+	if err := validateAdapterIdentity("read Adapter", identity); err != nil {
+		return nil, err
+	}
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return nil, errors.New("read adapter name is required")
@@ -73,7 +79,17 @@ func NewReadAdapter[T any](name string, match ReadMatcher, invoke func(context.C
 	if err != nil {
 		return nil, fmt.Errorf("materialize read adapter %q schema: %w", name, err)
 	}
-	return &typedReadAdapter[T]{name: name, parameters: schema, match: match, invoke: invoke}, nil
+	return &typedReadAdapter[T]{
+		identity: identity,
+		name:     name, parameters: schema, match: match, invoke: invoke,
+	}, nil
+}
+
+func (adapter *typedReadAdapter[T]) Identity() agent.CapabilityIdentity {
+	if adapter == nil {
+		return agent.CapabilityIdentity{}
+	}
+	return adapter.identity
 }
 
 func (adapter *typedReadAdapter[T]) Name() string { return adapter.name }
@@ -118,7 +134,14 @@ func Read(adapters []ReadAdapter, options ...DefinitionOption) (agent.ToolDefini
 	if err != nil {
 		return agent.ToolDefinition{}, err
 	}
-	return agent.ToolDefinition{Tool: tool, Descriptor: descriptor}, nil
+	identities := make([]agent.CapabilityIdentity, len(adapters))
+	for index := range adapters {
+		identities[index] = adapters[index].Identity()
+	}
+	return agent.ToolDefinition{
+		Tool: tool, Descriptor: descriptor,
+		ImplementationIdentity: toolsetIdentity("tools.read", identities),
+	}, nil
 }
 
 func newReadTool(adapters []ReadAdapter, maxResultBytes int) (*readTool, error) {
@@ -132,6 +155,9 @@ func newReadTool(adapters []ReadAdapter, maxResultBytes int) (*readTool, error) 
 	for _, adapter := range adapters {
 		if adapter == nil {
 			return nil, errors.New("read adapter is nil")
+		}
+		if err := validateAdapterIdentity("read Adapter", adapter.Identity()); err != nil {
+			return nil, err
 		}
 		name := strings.TrimSpace(adapter.Name())
 		if name == "" {

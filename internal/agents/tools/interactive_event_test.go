@@ -7,6 +7,7 @@ import (
 	"sync"
 	"testing"
 
+	agent "github.com/alfredxw/denova/agent"
 	agenttools "github.com/alfredxw/denova/agent/tools"
 
 	"denova/config"
@@ -15,7 +16,10 @@ import (
 
 func TestEventCardReadAdapterUsesCanonicalURIAndAdapterSpecificSchema(t *testing.T) {
 	scope := testEventCardReadScope(9)
-	adapter, err := agenttools.NewReadAdapter("event_card", matchEventCardURI, scope.readCard)
+	adapter, err := agenttools.NewReadAdapter(
+		agent.CapabilityIdentity{Kind: "test.read.event_card", Version: 1},
+		"event_card", matchEventCardURI, scope.readCard,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}

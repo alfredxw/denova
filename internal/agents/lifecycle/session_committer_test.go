@@ -2,6 +2,7 @@ package lifecycle
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	agentchat "denova/internal/agents/chat"
@@ -30,9 +31,12 @@ func TestSessionConversationBoundaryCommitsAndReconcilesPublicHashes(t *testing.
 	committer, err := NewSessionConversationCommitter(SessionCommitterConfig{
 		Conversation: conversation, Session: sess, Options: options,
 		Request: agentchat.ChatRequest{CommandID: "command-1", Message: "first request"},
-		InputCommitted: func(context.Context) error {
-			inputCallbacks++
-			return nil
+		InputEffect: agentrun.InputCommitEffectFuncs{
+			ApplyFunc: func(context.Context, agentrun.InputCommitEffectRequest) error {
+				inputCallbacks++
+				return nil
+			},
+			ReconcileFunc: func(context.Context, agentrun.InputCommitEffectRequest) (bool, error) { return inputCallbacks > 0, nil },
 		},
 	})
 	if err != nil {
@@ -90,5 +94,79 @@ func TestSessionConversationBoundaryCommitsAndReconcilesPublicHashes(t *testing.
 	if len(history) != 2 || history[0].Content != "first request" || history[1].Content != "answer" ||
 		history[0].AgentCanonicalHash != "public-input-hash" || history[1].AgentCanonicalHash != "public-output-hash" {
 		t.Fatalf("session history=%#v", history)
+	}
+}
+
+func TestSessionInputEffectReconcilesCrashAfterProductSideEffect(t *testing.T) {
+	store, err := session.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := store.GetOrCreate("input-effect-crash")
+	if err != nil {
+		t.Fatal(err)
+	}
+	conversation := agentconversation.NewSessionConversationForAgent(sess, nil, agentrun.AgentKindIDE)
+	request := agentchat.ChatRequest{CommandID: "command-1", Message: "review this"}
+	identity := agent.CommitIdentity{CommandID: "command-1", RunID: "run-1", Cycle: 1, Stage: agent.CommitInput}
+	durableEffect := false
+	committer, err := NewSessionConversationCommitter(SessionCommitterConfig{
+		Conversation: conversation, Session: sess, Request: request,
+		InputEffect: agentrun.InputCommitEffectFuncs{
+			ApplyFunc: func(context.Context, agentrun.InputCommitEffectRequest) error {
+				durableEffect = true
+				return errors.New("crash before Agent receipt")
+			},
+			ReconcileFunc: func(context.Context, agentrun.InputCommitEffectRequest) (bool, error) { return durableEffect, nil },
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	boundary, err := NewConversationBoundary(ConversationBoundaryConfig{
+		Conversation: conversation, Request: request,
+		ContextIdentity:   agent.CapabilityIdentity{Kind: "context.input-effect-crash", Version: 1},
+		CanonicalIdentity: agent.CapabilityIdentity{Kind: "canonical.input-effect-crash", Version: 1},
+		Committer:         committer,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := boundary.CanonicalAdapter().MaterializeInput(context.Background(), agent.InputCommitRequest{
+		Identity: identity, Hash: "input-hash", Input: agent.Text("review this"),
+	}); err == nil {
+		t.Fatal("materialization unexpectedly returned a receipt")
+	}
+
+	coldCommitter, err := NewSessionConversationCommitter(SessionCommitterConfig{
+		Conversation: conversation, Session: sess, Request: request,
+		InputEffect: agentrun.InputCommitEffectFuncs{
+			ReconcileFunc: func(context.Context, agentrun.InputCommitEffectRequest) (bool, error) { return durableEffect, nil },
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	coldBoundary, err := NewConversationBoundary(ConversationBoundaryConfig{
+		Conversation: conversation, Request: request,
+		ContextIdentity:   agent.CapabilityIdentity{Kind: "context.input-effect-crash", Version: 1},
+		CanonicalIdentity: agent.CapabilityIdentity{Kind: "canonical.input-effect-crash", Version: 1},
+		Committer:         coldCommitter,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := coldBoundary.CanonicalAdapter().Reconcile(context.Background(), agent.ReconcileRequest{
+		Identity: identity, Hash: "input-hash",
+	})
+	if err != nil || !result.Found || result.Revision == "" {
+		t.Fatalf("cold input effect reconciliation=%#v err=%v", result, err)
+	}
+	durableEffect = false
+	result, err = coldBoundary.CanonicalAdapter().Reconcile(context.Background(), agent.ReconcileRequest{
+		Identity: identity, Hash: "input-hash",
+	})
+	if err != nil || result.Found || result.Revision != "" {
+		t.Fatalf("message without effect receipt was acknowledged: %#v err=%v", result, err)
 	}
 }

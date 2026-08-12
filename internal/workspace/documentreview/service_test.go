@@ -75,6 +75,37 @@ func TestDocumentReviewCommentLifecyclePersistsAndRotatesThread(t *testing.T) {
 	}
 }
 
+func TestAgentInputDocumentReviewReceiptIsEffectSpecificAndPersistent(t *testing.T) {
+	workspace := t.TempDir()
+	service, err := NewService(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot := Snapshot{Content: "target", Revision: workspacechange.Revision([]byte("target"))}
+	thread, comment, err := service.AddComment(context.Background(), AddCommentRequest{
+		Target: fileReviewTarget("chapters/ch01.md"), Body: "review", Anchor: testAnchor(snapshot, "target"),
+	}, snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.ConsumeReviewCommentsForAgentInput(context.Background(), thread.ID, []string{comment.ID}, "effect-one"); err != nil {
+		t.Fatal(err)
+	}
+	if replay, err := service.ConsumeReviewCommentsForAgentInput(context.Background(), thread.ID, []string{comment.ID}, "effect-one"); err != nil || len(replay) != 0 {
+		t.Fatalf("exact replay=%#v err=%v", replay, err)
+	}
+	if found, err := service.ReviewCommentsConsumed(context.Background(), thread.ID, []string{comment.ID}, "effect-two"); err != nil || found {
+		t.Fatalf("different effect receipt found=%t err=%v", found, err)
+	}
+	reloaded, err := NewService(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found, err := reloaded.ReviewCommentsConsumed(context.Background(), thread.ID, []string{comment.ID}, "effect-one"); err != nil || !found {
+		t.Fatalf("reloaded receipt found=%t err=%v", found, err)
+	}
+}
+
 func TestProjectDocumentReviewStorageFollowsStateRootAcrossRelink(t *testing.T) {
 	contentParent := t.TempDir()
 	workspace := filepath.Join(contentParent, "book-before-relink")

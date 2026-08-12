@@ -5,7 +5,8 @@ import (
 	"testing"
 
 	"denova/config"
-	"denova/internal/agents/goal"
+
+	agent "github.com/alfredxw/denova/agent"
 )
 
 func TestConversationGoalIsScopedToWritingAndAgentChat(t *testing.T) {
@@ -28,7 +29,7 @@ func TestConversationGoalIsScopedToWritingAndAgentChat(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if created.Status != goal.StatusActive || created.Revision != 1 {
+	if created.Status != agent.GoalActive || created.Revision != 1 {
 		t.Fatalf("created Writing goal = %#v", created)
 	}
 	loaded, found, err := application.ConversationGoal(ctx, writing)
@@ -52,7 +53,7 @@ func TestConversationGoalIsScopedToWritingAndAgentChat(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if chatGoal.Status != goal.StatusActive || chatGoal.ID == created.ID {
+	if chatGoal.Status != agent.GoalActive || chatGoal.ID == created.ID {
 		t.Fatalf("created Agent Chat goal = %#v", chatGoal)
 	}
 

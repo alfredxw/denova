@@ -3,7 +3,7 @@ package agent
 import (
 	"testing"
 
-	runstate "github.com/alfredxw/denova/agent/runtime"
+	runstate "github.com/alfredxw/denova/agent/internal/runtime"
 )
 
 func TestRecoveryCandidatesExposeOpaqueCurrentChoices(t *testing.T) {

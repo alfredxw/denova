@@ -384,7 +384,6 @@ export interface TurnEvent {
 
 export interface UpdateTurnNarrativeResult {
   turn: TurnEvent
-  context_compaction_invalidated: boolean
 }
 
 export interface TurnResult {
@@ -859,9 +858,7 @@ export interface Snapshot {
   pending_model_context_batches?: ModelContextBatchEvent[]
   current_turn?: TurnEvent
   token_usage_events?: TokenUsageEvent[]
-  context_compaction?: ContextCompactionEvent | null
-  context_compaction_removal?: ContextCompactionRemovalEvent | null
-  tool_result_cleanup?: ToolResultCleanupEvent
+  context_compaction?: ContextCompactionProjection | null
   // Client-only enrichment used by the Director workspace. The snapshot API
   // never returns this field; it is loaded from the dedicated Director API.
   director_plan?: DirectorPlan
@@ -888,9 +885,7 @@ export interface InteractiveSnapshotResponse {
   pending_model_context_batches?: ModelContextBatchEvent[]
   current_turn?: TurnEvent
   token_usage_events?: TokenUsageEvent[]
-  context_compaction?: ContextCompactionEvent
-  context_compaction_removal?: ContextCompactionRemovalEvent
-  tool_result_cleanup?: ToolResultCleanupEvent
+  context_compaction?: ContextCompactionProjection
   director_plan_status?: DirectorPlanStatus
   state: Record<string, unknown>
   actor_state_schema?: ActorStateSchemaSnapshot
@@ -1054,13 +1049,11 @@ export interface StateSchemaInitializationStatus {
   updated_at?: string
 }
 
-export interface ContextCompactionEvent {
-  v: number
-  type: string
+// Read-only projection of the public Agent checkpoint bound to this branch.
+// Story persistence never owns or mutates this state.
+export interface ContextCompactionProjection {
   id: string
-  parent_id?: string
   branch_id: string
-  ts: string
   agent_kind?: string
   epoch: number
   summary: string
@@ -1080,43 +1073,6 @@ export interface ContextCompactionEvent {
   candidate_fingerprint?: string
   candidate_generation?: number
   source_turn_count: number
-}
-
-export interface ContextCompactionRemovalEvent {
-  v: number
-  type: string
-  id: string
-  parent_id?: string
-  branch_id: string
-  ts: string
-  agent_kind?: string
-  compaction_id?: string
-  source_turn_count: number
-  reason?: string
-}
-
-export interface ToolResultReplacement {
-  message_index: number
-  tool_call_id: string
-  placeholder: string
-}
-
-export interface ToolResultCleanupEvent {
-  v: number
-  type: string
-  id: string
-  parent_id?: string
-  branch_id: string
-  ts: string
-  agent_kind?: string
-  source_start: number
-  source_end: number
-  replacements: ToolResultReplacement[]
-  reclaimed_tokens: number
-  triggered_at_usage: number
-  earliest_changed: number
-  warm_suffix_tokens: number
-  renderer_version: string
 }
 
 export interface BranchSummary {
@@ -1156,8 +1112,7 @@ export interface InteractiveTurnPersistedEvent {
   state: Record<string, unknown>
   graph: StoryGraph
   branches: BranchSummary[]
-  context_compaction: ContextCompactionEvent | null
-  context_compaction_removal: ContextCompactionRemovalEvent | null
+  context_compaction: ContextCompactionProjection | null
 }
 
 export type InteractiveSSEEvent = SSEEvent

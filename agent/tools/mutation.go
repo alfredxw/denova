@@ -41,16 +41,13 @@ type EditRequest struct {
 	Edits     []EditReplacement
 }
 
-// MutationAdapter is the product seam behind write and edit. Implementations
-// own concurrency control, durable review history, and structured receipts.
+// MutationAdapter is the product seam behind write and edit. Identity must
+// change with mutation/review semantics. Implementations own concurrency
+// control, durable review history, and structured receipts.
 type MutationAdapter interface {
+	Identity() agent.CapabilityIdentity
 	Write(context.Context, WriteRequest) (agent.ToolResult, error)
 	Edit(context.Context, EditRequest) (agent.ToolResult, error)
-}
-
-type IdentifiedMutationAdapter interface {
-	MutationAdapter
-	Identity() agent.CapabilityIdentity
 }
 
 type writeInput struct {
@@ -62,6 +59,9 @@ type writeInput struct {
 func Write(adapter MutationAdapter, options ...DefinitionOption) (agent.ToolDefinition, error) {
 	if adapter == nil {
 		return agent.ToolDefinition{}, errors.New("write MutationAdapter is nil")
+	}
+	if err := validateAdapterIdentity("write MutationAdapter", adapter.Identity()); err != nil {
+		return agent.ToolDefinition{}, err
 	}
 	tool, err := agent.InferTool("write", `Create or completely replace one workspace file through the configured mutation adapter. Use edit for localized changes.
 
@@ -79,7 +79,10 @@ func Write(adapter MutationAdapter, options ...DefinitionOption) (agent.ToolDefi
 		}
 		return result, err
 	})
-	return agent.ToolDefinition{Tool: tool, Descriptor: writeDescriptor(options...)}, err
+	return agent.ToolDefinition{
+		Tool: tool, Descriptor: writeDescriptor(options...),
+		ImplementationIdentity: toolsetIdentity("tools.write", adapter.Identity()),
+	}, err
 }
 
 type editInput struct {
@@ -98,6 +101,9 @@ type editEntryInput struct {
 func Edit(adapter MutationAdapter, options ...DefinitionOption) (agent.ToolDefinition, error) {
 	if adapter == nil {
 		return agent.ToolDefinition{}, errors.New("edit MutationAdapter is nil")
+	}
+	if err := validateAdapterIdentity("edit MutationAdapter", adapter.Identity()); err != nil {
+		return agent.ToolDefinition{}, err
 	}
 	tool, err := agent.InferTool("edit", `Replace text in or delete one workspace file as one atomic, reviewable change. Omit operation for ordinary replacement and provide edits. File deletion must be explicit with operation=delete and no edits. For replacement, every edits item is matched against the same current file snapshot, not against earlier replacements in the list. Without replace_all, old_string must occur exactly once. All ranges must be non-overlapping; if any item is invalid, the file is not changed. The file may have changed since an earlier read as long as every old_string still matches the current content exactly as required.
 
@@ -135,5 +141,8 @@ func Edit(adapter MutationAdapter, options ...DefinitionOption) (agent.ToolDefin
 		}
 		return result, err
 	})
-	return agent.ToolDefinition{Tool: tool, Descriptor: writeDescriptor(options...)}, err
+	return agent.ToolDefinition{
+		Tool: tool, Descriptor: writeDescriptor(options...),
+		ImplementationIdentity: toolsetIdentity("tools.edit", adapter.Identity()),
+	}, err
 }

@@ -6,14 +6,11 @@ import (
 	"denova/internal/agents/tool"
 	"fmt"
 	"strings"
-	"sync"
-	"time"
 	"unicode/utf8"
 
 	agent "github.com/alfredxw/denova/agent"
 
 	"denova/config"
-	"denova/internal/agents/toolapproval"
 	"denova/internal/agents/toolresult"
 	producttools "denova/internal/agents/tools"
 )
@@ -21,60 +18,41 @@ import (
 const maxToolErrorDiagnosticBytes = 4 * 1024
 
 // OrchestratorMiddleware is Denova's single product-level tool seam. It
-// preserves authorization, workspace coordination, lifecycle receipts, and
-// result projection without owning batch scheduling.
+// preserves product tool settings, workspace coordination, lifecycle receipts,
+// and result projection without owning permission or batch scheduling.
 type OrchestratorMiddleware struct {
 	*agent.BaseMiddleware
-	agentKind                string
-	policyKind               string
-	toolSettings             config.ResolvedAgentToolSettings
-	enforceToolSettings      bool
-	enforceApprovalPolicy    bool
-	approvalMode             config.AgentApprovalMode
-	projectID                string
-	workspace                string
-	approvalRulesMu          sync.RWMutex
-	approvalRules            []config.AgentApprovalRule
-	toolResultMaxBytes       int
-	toolResultEagerMinTokens int
-	contextWindowTokens      int
-	executionGate            *toolExecutionGate
+	agentKind           string
+	policyKind          string
+	toolSettings        config.ResolvedAgentToolSettings
+	enforceToolSettings bool
+	workspace           string
+	toolResultMaxBytes  int
+	executionGate       *toolExecutionGate
 }
 
 // OrchestratorConfig declares the product policy applied around every tool
 // call. Construction owns the shared workspace execution gate so callers
 // cannot accidentally create competing mutation coordinators.
 type OrchestratorConfig struct {
-	AgentKind                string
-	PolicyKind               string
-	ToolSettings             config.ResolvedAgentToolSettings
-	EnforceToolSettings      bool
-	EnforceApprovalPolicy    bool
-	ApprovalMode             config.AgentApprovalMode
-	ProjectID                string
-	Workspace                string
-	ApprovalRules            []config.AgentApprovalRule
-	ToolResultMaxBytes       int
-	ToolResultEagerMinTokens int
-	ContextWindowTokens      int
+	AgentKind           string
+	PolicyKind          string
+	ToolSettings        config.ResolvedAgentToolSettings
+	EnforceToolSettings bool
+	Workspace           string
+	ToolResultMaxBytes  int
 }
 
 func NewOrchestratorMiddleware(cfg OrchestratorConfig) *OrchestratorMiddleware {
 	return &OrchestratorMiddleware{
-		BaseMiddleware:           &agent.BaseMiddleware{},
-		agentKind:                cfg.AgentKind,
-		policyKind:               cfg.PolicyKind,
-		toolSettings:             cfg.ToolSettings,
-		enforceToolSettings:      cfg.EnforceToolSettings,
-		enforceApprovalPolicy:    cfg.EnforceApprovalPolicy,
-		approvalMode:             cfg.ApprovalMode,
-		projectID:                strings.TrimSpace(cfg.ProjectID),
-		workspace:                cfg.Workspace,
-		approvalRules:            config.NormalizeAgentApprovalRules(cfg.ApprovalRules),
-		toolResultMaxBytes:       cfg.ToolResultMaxBytes,
-		toolResultEagerMinTokens: cfg.ToolResultEagerMinTokens,
-		contextWindowTokens:      cfg.ContextWindowTokens,
-		executionGate:            sharedToolExecutionGate(cfg.Workspace),
+		BaseMiddleware:      &agent.BaseMiddleware{},
+		agentKind:           cfg.AgentKind,
+		policyKind:          cfg.PolicyKind,
+		toolSettings:        cfg.ToolSettings,
+		enforceToolSettings: cfg.EnforceToolSettings,
+		workspace:           cfg.Workspace,
+		toolResultMaxBytes:  cfg.ToolResultMaxBytes,
+		executionGate:       sharedToolExecutionGate(cfg.Workspace),
 	}
 }
 
@@ -87,11 +65,8 @@ func (m *OrchestratorMiddleware) Configuration() OrchestratorConfig {
 	}
 	return OrchestratorConfig{
 		AgentKind: m.agentKind, PolicyKind: m.effectivePolicyKind(), ToolSettings: m.toolSettings,
-		EnforceToolSettings: m.enforceToolSettings, EnforceApprovalPolicy: m.enforceApprovalPolicy,
-		ApprovalMode: m.approvalMode, ProjectID: m.projectID, Workspace: m.workspace,
-		ApprovalRules:      m.approvalRulesSnapshot(),
-		ToolResultMaxBytes: m.toolResultLimitBytes(), ToolResultEagerMinTokens: m.toolResultEagerMinTokens,
-		ContextWindowTokens: m.contextWindowTokens,
+		EnforceToolSettings: m.enforceToolSettings, Workspace: m.workspace,
+		ToolResultMaxBytes: m.toolResultLimitBytes(),
 	}
 }
 
@@ -199,11 +174,6 @@ func (m *OrchestratorMiddleware) WrapToolCall(
 		}
 		decision = applyModelOutputToolSafety(decision, outcome)
 		decision = applyToolArgumentValidation(decision, args, outcome)
-		var approvalErr error
-		decision, approvalErr = m.applyApprovalPolicy(ctx, decision, args)
-		if approvalErr != nil {
-			return agent.ToolResult{}, approvalErr
-		}
 		if observer != nil {
 			observer.RecordToolDecision(decision)
 		}
@@ -219,11 +189,11 @@ func (m *OrchestratorMiddleware) WrapToolCall(
 			if decision.ArgsComplete != nil && !*decision.ArgsComplete && decision.ModelFinishReason != "" {
 				reason = agent.ToolSyntheticModelIncomplete
 			}
-			filtered := toolresult.FilterStructured(
+			prepared := toolresult.PrepareStructured(
 				decision.ToolName, decision.Descriptor, args,
-				agent.SyntheticToolResult(agent.ToolResultBlocked, reason, message), m.toolResultLimitBytes(),
+				agent.SyntheticToolResult(agent.ToolResultBlocked, reason, message),
 			)
-			return filtered.Result, nil
+			return prepared.Result, nil
 		}
 
 		release, err := m.acquireToolExecution(ctx, decision)
@@ -247,7 +217,7 @@ func (m *OrchestratorMiddleware) WrapToolCall(
 			if decision.Descriptor.Steering == agent.SteeringInterruptibleWait && agent.ToolSteeringPending(ctx) {
 				result = agent.SyntheticToolResult(agent.ToolResultSkipped, agent.ToolSyntheticSteeringInterrupted,
 					fmt.Sprintf("tool %q was interrupted to apply pending user steering", decision.ToolName))
-			} else if agent.IsInterruptError(err) || ctx.Err() != nil {
+			} else if ctx.Err() != nil {
 				// Immediate abort keeps an unmatched durable start. Recovery will
 				// materialize effect_unknown and never auto-retry the side effect.
 				return agent.ToolResult{}, err
@@ -267,39 +237,25 @@ func (m *OrchestratorMiddleware) WrapToolCall(
 			}
 		}
 
-		processed, processErr := processToolResult(ctx, decision, args, result, toolresult.ProcessingPolicy{
-			MaxBytes: m.toolResultLimitBytes(), EagerMinTokens: m.toolResultEagerMinTokens,
-			ContextWindowTokens: m.contextWindowTokens,
-		})
-		if processErr != nil {
-			projected, record := projectToolError(decision, args, processed, processErr, m.toolResultLimitBytes())
-			projected, effectErr := appendAgentMutationEffect(projected, record)
-			if effectErr != nil {
-				return projected, effectErr
-			}
-			if recordErr := recordToolFinish(ctx, record); recordErr != nil {
-				return projected, recordErr
-			}
-			if agent.IsToolControlError(processErr) {
-				return projected, processErr
-			}
-			return projected, nil
-		}
-		result = processed
-		filtered := toolresult.FilterStructured(
-			toolName(toolCtx), decision.Descriptor, args, result, m.toolResultLimitBytes(),
-		)
+		// Lossless materialization and protected receipts are owned by the
+		// public Loop's fixed ResultProcessor stage. This middleware persists
+		// only Denova's product mutation/audit projection; it must never truncate
+		// or artifact-process the result first.
+		prepared := toolresult.PrepareStructured(toolName(toolCtx), decision.Descriptor, args, result)
+		// The execution ledger receives a separately bounded audit projection.
+		// The returned value remains lossless for the public fixed processor.
+		filtered := toolresult.ProjectAudit(toolName(toolCtx), decision.Descriptor, args, prepared.Result, m.toolResultLimitBytes())
 		record := toolExecutionRecordFromFiltered(decision, filtered, string(filtered.Result.Status))
-		applyToolMutationReceiptToExecutionRecord(&record, result)
-		applyInteractiveTurnReceiptToExecutionRecord(&record, filtered.Result)
-		filtered.Result, err = appendAgentMutationEffect(filtered.Result, record)
+		applyToolMutationReceiptToExecutionRecord(&record, prepared.Result)
+		applyInteractiveTurnReceiptToExecutionRecord(&record, prepared.Result)
+		prepared.Result, err = appendAgentMutationEffect(prepared.Result, record)
 		if err != nil {
-			return filtered.Result, err
+			return prepared.Result, err
 		}
 		if err := recordToolFinish(ctx, record); err != nil {
-			return filtered.Result, err
+			return prepared.Result, err
 		}
-		return filtered.Result, nil
+		return prepared.Result, nil
 	}, nil
 }
 
@@ -310,105 +266,6 @@ func appendAgentMutationEffect(result agent.ToolResult, record agenttool.Executi
 	}
 	result.Effects = append(result.Effects, effect)
 	return result, nil
-}
-
-func (m *OrchestratorMiddleware) applyApprovalPolicy(
-	ctx context.Context,
-	decision agenttool.Decision,
-	args string,
-) (agenttool.Decision, error) {
-	if m == nil || !m.enforceApprovalPolicy || decision.Action == "blocked" {
-		return decision, nil
-	}
-	mode := config.NormalizeAgentApprovalMode(m.approvalMode)
-	policyDecision := toolapproval.Evaluate(toolapproval.Request{
-		Mode: mode, ProjectID: m.projectID, Workspace: m.workspace, ToolName: decision.ToolName,
-		Arguments: args, Descriptor: decision.Descriptor,
-		Rules: m.approvalRulesSnapshot(),
-	})
-	if err := policyDecision.Validate(); err != nil {
-		return decision, fmt.Errorf("evaluate tool approval policy: %w", err)
-	}
-	decision.ApprovalMode = mode
-	decision.ApprovalRuleID = policyDecision.RuleID
-	decision.ApprovalRisk = policyDecision.Risk
-	switch policyDecision.Action {
-	case toolapproval.ActionAllow:
-		return decision, nil
-	case toolapproval.ActionDeny:
-		decision.Action = "blocked"
-		decision.Reason = "[tool error] " + policyDecision.Reason
-		return decision, nil
-	case toolapproval.ActionPrompt:
-		decision.ApprovalRequired = true
-		host, ok := approvalHostFromContext(ctx)
-		if !ok {
-			granted := false
-			decision.ApprovalGranted = &granted
-			decision.Action = "blocked"
-			decision.Reason = "[tool error] This call requires approval, but the run has no recoverable interactive host and was safely blocked."
-			return decision, nil
-		}
-		approval, err := host.ApproveTool(ctx, ApprovalRequest{
-			Mode: mode, ToolName: decision.ToolName,
-			ProviderCallID: decision.ProviderCallID, ExecutionID: decision.ExecutionID,
-			Arguments: args, Decision: policyDecision,
-		})
-		if err != nil {
-			return decision, fmt.Errorf("await approval for tool %q: %w", decision.ToolName, err)
-		}
-		if err := approval.Validate(); err != nil {
-			return decision, err
-		}
-		granted := approval.Choice != ApprovalDenied
-		decision.ApprovalGranted = &granted
-		if !granted {
-			decision.Action = "blocked"
-			decision.Reason = "[tool error] The user denied this tool call."
-			return decision, nil
-		}
-		if approval.Choice == ApprovalAllowWorkspace {
-			if policyDecision.Remember == nil {
-				return decision, fmt.Errorf("tool approval rule %q cannot be remembered", policyDecision.RuleID)
-			}
-			rule, ruleErr := toolapproval.NewWorkspaceRule(
-				m.projectID, m.workspace, decision.ToolName, *policyDecision.Remember,
-				toolapproval.ArgumentsHash(args), policyDecision.Command, policyDecision.Cwd,
-				policyDecision.RuleID, time.Now(),
-			)
-			if ruleErr != nil {
-				return decision, ruleErr
-			}
-			m.rememberApprovalRule(rule)
-		}
-		return decision, nil
-	default:
-		return decision, fmt.Errorf("unhandled tool approval action %q", policyDecision.Action)
-	}
-}
-
-func (m *OrchestratorMiddleware) approvalRulesSnapshot() []config.AgentApprovalRule {
-	if m == nil {
-		return nil
-	}
-	m.approvalRulesMu.RLock()
-	defer m.approvalRulesMu.RUnlock()
-	return config.NormalizeAgentApprovalRules(m.approvalRules)
-}
-
-func (m *OrchestratorMiddleware) rememberApprovalRule(rule config.AgentApprovalRule) {
-	if m == nil {
-		return
-	}
-	m.approvalRulesMu.Lock()
-	defer m.approvalRulesMu.Unlock()
-	for index := range m.approvalRules {
-		if m.approvalRules[index].ID == rule.ID {
-			m.approvalRules[index] = rule
-			return
-		}
-	}
-	m.approvalRules = append(m.approvalRules, rule)
 }
 
 func toolEndpointErrorMessage(toolName string, err error) string {
@@ -434,14 +291,15 @@ func projectToolError(decision agenttool.Decision, args string, returned agent.T
 	errorResult.Metadata.ModelTruncated = returned.Metadata.ModelTruncated
 	errorResult.Metadata.DisplayTruncated = returned.Metadata.DisplayTruncated
 	errorResult.Metadata.ArtifactPersistence = returned.Metadata.ArtifactPersistence
-	filtered := toolresult.FilterStructured(
+	prepared := toolresult.PrepareStructured(
 		decision.ToolName, decision.Descriptor, args,
-		errorResult, maxBytes,
+		errorResult,
 	)
+	filtered := toolresult.ProjectAudit(decision.ToolName, decision.Descriptor, args, prepared.Result, maxBytes)
 	record := toolExecutionRecordFromFiltered(decision, filtered, "error")
 	record.Error = boundedToolErrorDiagnostic(err)
 	applyToolMutationReceiptToExecutionRecord(&record, returned)
-	return filtered.Result, record
+	return prepared.Result, record
 }
 
 func toolExecutionRecordFromFiltered(decision agenttool.Decision, filtered toolresult.Filtered, status string) agenttool.ExecutionRecord {

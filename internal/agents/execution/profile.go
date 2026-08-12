@@ -5,6 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	agentchat "denova/internal/agents/chat"
+	agentrun "denova/internal/agents/run"
+
+	agent "github.com/alfredxw/denova/agent"
 )
 
 // ProfileID is the stable product execution profile persisted in a durable
@@ -40,6 +45,30 @@ type QueuedCycleProfile interface {
 	PrepareCycle(context.Context, CycleRestoreRequest) (Cycle, error)
 }
 
+// CanonicalInputRequest is the provider-free accepted turn descriptor. It is
+// deliberately smaller than CycleRestoreRequest: implementations may append
+// the exact user input, but must not build a model, toolset, context, or UI
+// route at this admission boundary.
+type CanonicalInputRequest struct {
+	Session   agent.SessionKey
+	Identity  agent.CapabilityIdentity
+	Binding   agentrun.RuntimeBinding
+	Kind      CommandKind
+	CommandID agentrun.CommandID
+	RunID     agentrun.OperationID
+	Cycle     int
+	Request   agentchat.ChatRequest
+	Options   agentrun.Options
+	Input     agent.Input
+}
+
+// CanonicalInputProfile returns only the canonical product adapter needed to
+// close the user-input outbox before queued cycle preparation can block.
+type CanonicalInputProfile interface {
+	Profile
+	CanonicalInput(context.Context, CanonicalInputRequest) (agent.CanonicalAdapter, error)
+}
+
 type profileRegistry struct {
 	profiles map[ProfileID]Profile
 }
@@ -59,6 +88,9 @@ func newProfileRegistry(profiles []Profile) (*profileRegistry, error) {
 		}
 		if _, ok := profile.(QueuedCycleProfile); !ok {
 			return nil, fmt.Errorf("%w: profile %q cannot prepare a cycle", ErrProfileInvalid, id)
+		}
+		if _, ok := profile.(CanonicalInputProfile); !ok {
+			return nil, fmt.Errorf("%w: profile %q has no provider-free canonical input boundary", ErrProfileInvalid, id)
 		}
 		registry.profiles[id] = profile
 	}

@@ -78,7 +78,7 @@ func New(provider Provider) (agent.Toolset, error) {
 	}
 	return agent.StaticToolsIdentified(pluginIdentity("tools.plugin.websearch", identity), agent.ToolDefinition{
 		Tool: tool, Descriptor: webReadDescriptor("web_search"),
-	}), nil
+	})
 }
 
 func jsonResult(value any) (agent.ToolResult, error) {

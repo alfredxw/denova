@@ -79,30 +79,9 @@ type Fragment struct {
 	Note      string    `json:"note,omitempty"`
 }
 
-// ContextDescriptor is the stable provenance and budget contract owned by one
-// ContextProjector. A projector may return multiple content fragments, but it
-// cannot change these fields per call without registering a different
-// descriptor.
-type ContextDescriptor struct {
-	ID        string    `json:"id"`
-	Source    string    `json:"source"`
-	Purpose   string    `json:"purpose"`
-	Placement Placement `json:"placement"`
-	Limit     int       `json:"limit"`
-}
-
-// ContextProjector is the extension seam for registered context sources. It
-// returns source content only; Assembler owns provenance validation, budgets,
-// hashing, and final message placement.
-type ContextProjector interface {
-	Descriptor() ContextDescriptor
-	Project(stdcontext.Context) ([]Fragment, error)
-}
-
 type AssembleRequest struct {
 	Messages     []*agent.Message
 	Fragments    []Fragment
-	Projectors   []ContextProjector
 	PreviewChars int
 }
 
@@ -155,13 +134,7 @@ func (a *Assembler) Assemble(ctx stdcontext.Context, req AssembleRequest) (Resul
 	if len(req.Fragments) > budget.MaxFragments {
 		return Result{}, fmt.Errorf("context fragment count %d exceeds limit %d", len(req.Fragments), budget.MaxFragments)
 	}
-	projected, err := projectFragments(ctx, req.Projectors, budget.MaxFragments, len(req.Fragments), budget.MaxMetadataFieldBytes)
-	if err != nil {
-		return Result{}, err
-	}
-	requestedFragments := make([]Fragment, 0, len(req.Fragments)+len(projected))
-	requestedFragments = append(requestedFragments, req.Fragments...)
-	requestedFragments = append(requestedFragments, projected...)
+	requestedFragments := append([]Fragment(nil), req.Fragments...)
 	messages := cloneMessages(req.Messages)
 	fragments := make([]Fragment, 0, len(requestedFragments))
 	leading := make([]Fragment, 0, len(requestedFragments))
@@ -246,70 +219,6 @@ func renderedFragmentBytes(renderer Renderer, fragment Fragment, priorFinalUser 
 	default:
 		return 0
 	}
-}
-
-func projectFragments(ctx stdcontext.Context, projectors []ContextProjector, maxFragments, existingFragments, maxMetadataFieldBytes int) ([]Fragment, error) {
-	var result []Fragment
-	for _, projector := range projectors {
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
-		if projector == nil {
-			continue
-		}
-		descriptor := normalizeDescriptor(projector.Descriptor(), maxMetadataFieldBytes)
-		fragments, err := projector.Project(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("project context %q: %w", descriptor.ID, err)
-		}
-		if len(fragments) > maxFragments-existingFragments-len(result) {
-			return nil, fmt.Errorf("context fragment count %d exceeds limit %d", existingFragments+len(result)+len(fragments), maxFragments)
-		}
-		for index, fragment := range fragments {
-			fragment, err = applyDescriptor(fragment, descriptor, index, len(fragments), maxMetadataFieldBytes)
-			if err != nil {
-				return nil, err
-			}
-			result = append(result, fragment)
-		}
-	}
-	return result, nil
-}
-
-func normalizeDescriptor(descriptor ContextDescriptor, maxMetadataFieldBytes int) ContextDescriptor {
-	descriptor.ID, _ = truncateMetadataField(descriptor.ID, maxMetadataFieldBytes)
-	descriptor.Source, _ = truncateMetadataField(descriptor.Source, maxMetadataFieldBytes)
-	descriptor.Purpose, _ = truncateMetadataField(descriptor.Purpose, maxMetadataFieldBytes)
-	if descriptor.Placement == "" {
-		descriptor.Placement = PlacementAuditOnly
-	}
-	return descriptor
-}
-
-func applyDescriptor(fragment Fragment, descriptor ContextDescriptor, index, count, maxMetadataFieldBytes int) (Fragment, error) {
-	fragment = boundFragmentMetadata(fragment, maxMetadataFieldBytes)
-	if fragment.ID == "" {
-		fragment.ID = descriptor.ID
-		if count > 1 {
-			fragment.ID = fmt.Sprintf("%s:%d", descriptor.ID, index+1)
-		}
-	}
-	if fragment.Source != "" && strings.TrimSpace(fragment.Source) != descriptor.Source {
-		return Fragment{}, fmt.Errorf("context projector %q changed descriptor source", descriptor.ID)
-	}
-	if fragment.Purpose != "" && strings.TrimSpace(fragment.Purpose) != descriptor.Purpose {
-		return Fragment{}, fmt.Errorf("context projector %q changed descriptor purpose", descriptor.ID)
-	}
-	if fragment.Placement != "" && fragment.Placement != descriptor.Placement {
-		return Fragment{}, fmt.Errorf("context projector %q changed descriptor placement", descriptor.ID)
-	}
-	fragment.Source = descriptor.Source
-	fragment.Purpose = descriptor.Purpose
-	fragment.Placement = descriptor.Placement
-	if fragment.Limit <= 0 || (descriptor.Limit > 0 && fragment.Limit > descriptor.Limit) {
-		fragment.Limit = descriptor.Limit
-	}
-	return fragment, nil
 }
 
 func resolveFragment(fragment Fragment, budget Budget, hasFinalMessage bool) (Fragment, error) {

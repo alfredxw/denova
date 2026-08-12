@@ -7,7 +7,7 @@ import (
 
 // ToolArtifactStore gives game conversations the same workspace-bounded,
 // ordinary-read-compatible artifact contract used by writing sessions.
-func (c *Conversation) ToolArtifactStore() agents.ToolArtifactStore {
+func (c *Conversation) ToolArtifactStore() agents.ToolArtifactBackend {
 	if c == nil {
 		return nil
 	}

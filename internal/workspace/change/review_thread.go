@@ -236,6 +236,136 @@ func (s *Service) ConsumeReviewComments(ctx context.Context, threadID, sessionID
 	return consumed, nil
 }
 
+// ConsumeReviewCommentsForAgentInput is the idempotent outbox writer for one
+// exact canonical Agent input. Exact retries return no newly changed rows;
+// deletion by a user or another input is a conflict, never a false receipt.
+func (s *Service) ConsumeReviewCommentsForAgentInput(ctx context.Context, threadID, sessionID string, commentIDs []string, effectID string) ([]Comment, error) {
+	if s == nil {
+		return nil, newError(ErrorCodeConflict, "change service is nil", nil)
+	}
+	effectID = strings.TrimSpace(effectID)
+	if effectID == "" || len(effectID) > 128 {
+		return nil, newError(ErrorCodeInvalidEdit, "Agent input effect id is invalid", nil)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.contextError(ctx); err != nil {
+		return nil, err
+	}
+	if err := s.reconcilePendingDurabilityLocked(); err != nil {
+		return nil, err
+	}
+	pending, err := s.reviewCommentsForAgentInputLocked(threadID, sessionID, commentIDs, effectID)
+	if err != nil || len(pending) == 0 {
+		return nil, err
+	}
+	now := time.Now().UTC()
+	for index := range pending {
+		pending[index].Deleted = true
+		pending[index].AgentInputEffectID = effectID
+		pending[index].UpdatedAt = now
+	}
+	if err := s.appendAndApply(ledgerEvent{Type: eventCommentsUpserted, Comments: pending}); err != nil {
+		return nil, err
+	}
+	return pending, nil
+}
+
+func (s *Service) ValidateReviewCommentsForAgentInput(ctx context.Context, threadID, sessionID string, commentIDs []string, effectID string) error {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if err := s.contextError(ctx); err != nil {
+		return err
+	}
+	_, err := s.reviewCommentsForAgentInputLocked(threadID, sessionID, commentIDs, strings.TrimSpace(effectID))
+	return err
+}
+
+// ReviewCommentsConsumed is the read-only receipt query for the Agent input
+// outbox. It proves the requested comments reached their one-shot terminal
+// state without replaying a ledger mutation.
+func (s *Service) ReviewCommentsConsumed(ctx context.Context, threadID, sessionID string, commentIDs []string, effectID string) (bool, error) {
+	if s == nil {
+		return false, newError(ErrorCodeConflict, "change service is nil", nil)
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if err := s.contextError(ctx); err != nil {
+		return false, err
+	}
+	threadID = strings.TrimSpace(threadID)
+	sessionID = strings.TrimSpace(sessionID)
+	effectID = strings.TrimSpace(effectID)
+	if effectID == "" {
+		return false, newError(ErrorCodeInvalidEdit, "Agent input effect id is required", nil)
+	}
+	groups := s.reviewThreadGroupsLocked(threadID)
+	if len(groups) == 0 {
+		return false, newError(ErrorCodeNotFound, "review thread not found", map[string]any{"review_thread_id": threadID})
+	}
+	for _, group := range groups {
+		if sessionID == "" || group.SessionID != sessionID {
+			return false, newError(ErrorCodeConflict, "review thread does not belong to the active session", map[string]any{"review_thread_id": threadID, "session_id": sessionID})
+		}
+	}
+	for _, requestedID := range commentIDs {
+		comment := s.comments[strings.TrimSpace(requestedID)]
+		if comment == nil {
+			return false, newError(ErrorCodeNotFound, "review comment not found", map[string]any{"comment_id": requestedID})
+		}
+		group := s.groups[comment.GroupID]
+		if group == nil || reviewThreadID(group) != threadID {
+			return false, newError(ErrorCodeConflict, "review comment does not belong to the requested thread", map[string]any{"comment_id": requestedID})
+		}
+		if !comment.Deleted || comment.AgentInputEffectID != effectID {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+func (s *Service) reviewCommentsForAgentInputLocked(threadID, sessionID string, commentIDs []string, effectID string) ([]Comment, error) {
+	threadID = strings.TrimSpace(threadID)
+	sessionID = strings.TrimSpace(sessionID)
+	if effectID == "" {
+		return nil, newError(ErrorCodeInvalidEdit, "Agent input effect id is required", nil)
+	}
+	groups := s.reviewThreadGroupsLocked(threadID)
+	if len(groups) == 0 {
+		return nil, newError(ErrorCodeNotFound, "review thread not found", map[string]any{"review_thread_id": threadID})
+	}
+	for _, group := range groups {
+		if sessionID == "" || group.SessionID != sessionID {
+			return nil, newError(ErrorCodeConflict, "review thread does not belong to the active session", map[string]any{"review_thread_id": threadID, "session_id": sessionID})
+		}
+	}
+	seen := make(map[string]bool, len(commentIDs))
+	pending := make([]Comment, 0, len(commentIDs))
+	for _, requestedID := range commentIDs {
+		id := strings.TrimSpace(requestedID)
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		comment := s.comments[id]
+		if comment == nil {
+			return nil, newError(ErrorCodeNotFound, "review comment not found", map[string]any{"comment_id": id})
+		}
+		group := s.groups[comment.GroupID]
+		if group == nil || reviewThreadID(group) != threadID {
+			return nil, newError(ErrorCodeConflict, "review comment does not belong to the requested thread", map[string]any{"comment_id": id})
+		}
+		if comment.Deleted {
+			if comment.AgentInputEffectID != effectID {
+				return nil, newError(ErrorCodeConflict, "review comment was consumed by another action", map[string]any{"comment_id": id})
+			}
+			continue
+		}
+		pending = append(pending, *comment)
+	}
+	return pending, nil
+}
+
 // RestoreConsumedReviewComments compensates a failed cross-ledger feedback
 // batch. It only restores the exact comment versions returned by consumption.
 func (s *Service) RestoreConsumedReviewComments(ctx context.Context, threadID, sessionID string, consumed []Comment) ([]Comment, error) {
@@ -289,6 +419,7 @@ func (s *Service) RestoreConsumedReviewComments(ctx context.Context, threadID, s
 		}
 		next := *current
 		next.Deleted = false
+		next.AgentInputEffectID = ""
 		next.UpdatedAt = now
 		restored = append(restored, next)
 	}

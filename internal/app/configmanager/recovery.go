@@ -2,7 +2,7 @@ package configmanager
 
 import (
 	"context"
-	agentconversation "denova/internal/agents/conversation"
+	agentchat "denova/internal/agents/chat"
 	agentexecution "denova/internal/agents/execution"
 	apptask "denova/internal/app/task"
 	"errors"
@@ -82,20 +82,8 @@ func (service *Service) ActiveView(ctx context.Context, request Request) ActiveV
 		taskSnapshot = &snapshot
 	}
 	var pendingAsk *session.AskInteraction
-	if store := runtime.SessionStore; store != nil {
-		if sess, loadErr := store.Get(sessionID); loadErr == nil {
-			if projected {
-				reconciled, reconcileErr := agentconversation.ReconcileColdPendingAsk(operation.Context(), sess, runtimeSnapshot)
-				if reconcileErr != nil {
-					slog.ErrorContext(ctx, fmt.Sprintf("[agent-ask-recovery] reconcile Config Manager Ask failed workspace=%s session_id=%s operation_id=%s cycle=%d err=%v", workspace, sessionID, runtimeSnapshot.ActiveOperation, runtimeSnapshot.ActiveCycle, reconcileErr))
-				} else if reconciled {
-					slog.InfoContext(ctx, fmt.Sprintf("[agent-ask-recovery] cancelled orphaned Config Manager Ask workspace=%s session_id=%s operation_id=%s cycle=%d", workspace, sessionID, runtimeSnapshot.ActiveOperation, runtimeSnapshot.ActiveCycle))
-				}
-			}
-			// Never project a cold durable Ask as answerable unless this process
-			// owns the waiter that resumes the exact model continuation.
-			pendingAsk = sess.LivePendingAsk("")
-		}
+	if projected && len(runtimeSnapshot.PendingInteractions) > 0 {
+		pendingAsk = agentchat.ProjectPendingInteraction(runtimeSnapshot.PendingInteractions[0], runtimeSnapshot)
 	}
 	return ActiveView{
 		Task: taskSnapshot, CommandID: record.CommandID,
@@ -290,9 +278,10 @@ func (service *Service) ClearContext(ctx context.Context, request Request) error
 			return err
 		}
 	}
-	if err := appagentruntime.CloseBindings(runtime.ExecutionRuntime, func(chat *agentexecution.Runtime) error {
-		return chat.CloseSessionBindings(operation.Context(), agentrun.AgentKindConfigManager, workspace, sessionID)
-	}); err != nil {
+	if runtime.ExecutionRuntime == nil {
+		return appagentruntime.ErrNoWorkspace
+	}
+	if err := runtime.ExecutionRuntime.ClearSession(operation.Context(), runOptions(projectID, workspace, runtime.Config.ProjectStateDir, sessionID)); err != nil {
 		return err
 	}
 	sess, err := runtime.SessionStore.GetOrCreate(sessionID)
@@ -335,8 +324,7 @@ func (service *Service) Recover(
 		return appagentruntime.RecoveryResult{}, err
 	}
 	defer operation.Release()
-	sess, err := runtime.SessionStore.GetOrCreate(sessionID)
-	if err != nil {
+	if _, err := runtime.SessionStore.GetOrCreate(sessionID); err != nil {
 		return appagentruntime.RecoveryResult{}, err
 	}
 
@@ -367,10 +355,6 @@ func (service *Service) Recover(
 	if err := appagentruntime.ValidateRecoveryAction(recovery.InitialStatus(), request.Action); err != nil {
 		recovery.Close()
 		return appagentruntime.RecoveryResult{}, err
-	}
-	if _, err := agentconversation.ReconcileColdPendingAsk(operation.Context(), sess, recovery.InitialStatus()); err != nil {
-		recovery.Close()
-		return appagentruntime.RecoveryResult{}, fmt.Errorf("reconcile orphaned Ask before Config Manager recovery: %w", err)
 	}
 	run := &recoveryRun{
 		projectID: projectID, sessionID: sessionID, recovery: recovery,

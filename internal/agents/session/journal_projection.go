@@ -15,14 +15,12 @@ import (
 
 	"denova/internal/agents/conversationconfig"
 	"denova/internal/agents/conversationjournal"
-	"denova/internal/agents/goal"
 )
 
 const (
-	sessionProjectionVersion      = 15
+	sessionProjectionVersion      = 17
 	sessionRecentTransactionLimit = 200
 	sessionRecentCommitLimit      = 200
-	sessionStructuralRecordLimit  = 64
 	sessionHistoryAnchorEvery     = 256
 )
 
@@ -45,14 +43,6 @@ type domainCommitLocator struct {
 	Cursor       conversationjournal.Cursor `json:"cursor"`
 	Role         agent.RoleType             `json:"role"`
 	Metadata     MessageMetadata            `json:"metadata"`
-}
-
-type structuralProjectionRecord struct {
-	Cursor     conversationjournal.Cursor `json:"cursor"`
-	Compaction *ContextCompaction         `json:"compaction,omitempty"`
-	Removal    *ContextCompactionRemoval  `json:"removal,omitempty"`
-	Health     *ContextCompactionHealth   `json:"health,omitempty"`
-	Cleanup    *ToolResultCleanupRecord   `json:"cleanup,omitempty"`
 }
 
 // assistantRunCheckpoint stores only a resumable SHA-256 state. It lets an
@@ -88,19 +78,14 @@ type sessionJournalProjection struct {
 	ContextRevision       uint64                     `json:"context_revision"`
 	RuntimeConfig         *conversationconfig.Config `json:"runtime_config,omitempty"`
 	RuntimeConfigRevision uint64                     `json:"runtime_config_revision,omitempty"`
-	Goal                  *goal.State                `json:"goal,omitempty"`
 
 	RecentCursors              []conversationjournal.Cursor `json:"recent_cursors,omitempty"`
 	MessageLocators            []messageLocator             `json:"message_locators,omitempty"`
 	MessageTransactionLocators []messageLocator             `json:"message_transaction_locators,omitempty"`
-	MessageAnchors             []messageLocator             `json:"message_anchors,omitempty"`
 	HistoryAnchors             []historyAnchor              `json:"history_anchors,omitempty"`
 	RecentCommits              []domainCommitLocator        `json:"recent_commits,omitempty"`
-	Structural                 []structuralProjectionRecord `json:"structural,omitempty"`
 	PendingInterrupt           *Interruption                `json:"pending_interrupt,omitempty"`
 	PendingInterruptCursor     conversationjournal.Cursor   `json:"pending_interrupt_cursor,omitempty"`
-	PendingAsk                 *AskInteraction              `json:"pending_ask,omitempty"`
-	PendingAskCursor           conversationjournal.Cursor   `json:"pending_ask_cursor,omitempty"`
 	AssistantRuns              []assistantRunCheckpoint     `json:"active_assistant_runs,omitempty"`
 	AssistantTargets           []assistantTargetCheckpoint  `json:"active_assistant_targets,omitempty"`
 
@@ -169,14 +154,6 @@ func (projection *sessionJournalProjection) Checkpoint() (json.RawMessage, error
 		pending.Reason = ""
 		checkpoint.PendingInterrupt = &pending
 	}
-	if projection.PendingAsk != nil {
-		pending := cloneAskInteraction(*projection.PendingAsk)
-		// The canonical journal owns model-generated question text. The sidecar
-		// needs only enough identity to locate that pending record during reload.
-		pending.Questions = nil
-		pending.Answers = nil
-		checkpoint.PendingAsk = &pending
-	}
 	return json.Marshal(&checkpoint)
 }
 
@@ -196,21 +173,6 @@ func (projection *sessionJournalProjection) Apply(record conversationjournal.Rec
 		return projection.applyLegacyMessage(record)
 	case historyTypeMessage, historyTypeContextMessage:
 		return projection.applyMessage(record, typed.Type)
-	case historyTypeGoalChanged:
-		var changed goalChangedRecord
-		if err := json.Unmarshal(record.Payload, &changed); err != nil {
-			return err
-		}
-		if changed.Goal.Revision == 0 || strings.TrimSpace(changed.Goal.ID) == "" {
-			return fmt.Errorf("goal change is missing identity or revision")
-		}
-		if projection.Goal != nil && changed.Goal.Revision <= projection.Goal.Revision {
-			return fmt.Errorf("goal revision is not monotonic")
-		}
-		value := changed.Goal
-		projection.Goal = &value
-		projection.advanceUpdatedAt(value.UpdatedAt)
-		return nil
 	case historyTypeClear:
 		var marker clearRecord
 		if err := json.Unmarshal(record.Payload, &marker); err != nil {
@@ -222,7 +184,6 @@ func (projection *sessionJournalProjection) Apply(record conversationjournal.Rec
 		projection.ClearCursor = record.Location.Cursor
 		projection.advanceRevision(marker.ContextRevision)
 		projection.advanceUpdatedAt(marker.CreatedAt)
-		projection.Structural = nil
 		return nil
 	case historyTypeDisplay:
 		var display displayRecord
@@ -305,83 +266,6 @@ func (projection *sessionJournalProjection) Apply(record conversationjournal.Rec
 			}
 		}
 		projection.advanceUpdatedAt(patch.UpdatedAt)
-		return nil
-	case historyTypeAsk:
-		var marker askRecord
-		if err := json.Unmarshal(record.Payload, &marker); err != nil {
-			return err
-		}
-		interaction, err := normalizeAskInteraction(marker.AskInteraction)
-		if err != nil {
-			return err
-		}
-		projection.PendingAsk = &interaction
-		projection.PendingAskCursor = record.Location.Cursor
-		projection.rememberHistoryRow(record.Location.Cursor, false)
-		projection.advanceUpdatedAt(interaction.CreatedAt)
-		return nil
-	case historyTypeAskPatch:
-		var patch askPatchRecord
-		if err := json.Unmarshal(record.Payload, &patch); err != nil {
-			return err
-		}
-		if projection.PendingAsk == nil || projection.PendingAsk.ID != patch.TargetID {
-			return fmt.Errorf("ask patch target does not match the pending interaction: %s", patch.TargetID)
-		}
-		projection.PendingAsk = nil
-		projection.PendingAskCursor = 0
-		projection.advanceUpdatedAt(patch.UpdatedAt)
-		return nil
-	case historyTypeCompaction:
-		var compaction ContextCompaction
-		if err := json.Unmarshal(record.Payload, &compaction); err != nil {
-			return err
-		}
-		compaction.Type = historyTypeCompaction
-		if compaction.SourceStartCursor == 0 && compaction.SourceStartIndex < compaction.SourceEndIndex {
-			compaction.SourceStartCursor = projection.messageCursorAt(compaction.SourceStartIndex)
-		}
-		if compaction.SourceEndCursor == 0 && compaction.SourceEndIndex > 0 {
-			compaction.SourceEndCursor = projection.messageCursorAt(compaction.SourceEndIndex - 1)
-		}
-		projection.rememberStructural(structuralProjectionRecord{Cursor: record.Location.Cursor, Compaction: &compaction})
-		projection.advanceRevision(compaction.ContextRevision)
-		projection.advanceUpdatedAt(compaction.CreatedAt)
-		return nil
-	case historyTypeCompactionRemoved:
-		var removal ContextCompactionRemoval
-		if err := json.Unmarshal(record.Payload, &removal); err != nil {
-			return err
-		}
-		removal.Type = historyTypeCompactionRemoved
-		projection.rememberStructural(structuralProjectionRecord{Cursor: record.Location.Cursor, Removal: &removal})
-		projection.advanceRevision(removal.ContextRevision)
-		projection.advanceUpdatedAt(removal.CreatedAt)
-		return nil
-	case historyTypeCompactionHealth:
-		var health ContextCompactionHealth
-		if err := json.Unmarshal(record.Payload, &health); err != nil {
-			return err
-		}
-		normalized, err := normalizeContextCompactionHealth(health)
-		if err != nil {
-			return err
-		}
-		projection.rememberStructural(structuralProjectionRecord{Cursor: record.Location.Cursor, Health: &normalized})
-		projection.advanceUpdatedAt(normalized.CreatedAt)
-		return nil
-	case historyTypeToolResultCleanup:
-		var cleanup ToolResultCleanupRecord
-		if err := json.Unmarshal(record.Payload, &cleanup); err != nil {
-			return err
-		}
-		normalized, err := normalizeToolResultCleanupRecord(cleanup)
-		if err != nil {
-			return err
-		}
-		projection.rememberStructural(structuralProjectionRecord{Cursor: record.Location.Cursor, Cleanup: &normalized})
-		projection.advanceRevision(normalized.ContextRevision)
-		projection.advanceUpdatedAt(normalized.CreatedAt)
 		return nil
 	case "session":
 		return fmt.Errorf("session header can only be the first record")
@@ -502,9 +386,6 @@ func (projection *sessionJournalProjection) rememberMessage(location conversatio
 		if overflow := len(projection.MessageTransactionLocators) - sessionRecentTransactionLimit; overflow > 0 {
 			projection.MessageTransactionLocators = append([]messageLocator(nil), projection.MessageTransactionLocators[overflow:]...)
 		}
-	}
-	if index%sessionHistoryAnchorEvery == 0 {
-		projection.MessageAnchors = append(projection.MessageAnchors, locator)
 	}
 	projection.MessageLocators = append(projection.MessageLocators, locator)
 	if overflow := len(projection.MessageLocators) - sessionRecentTransactionLimit; overflow > 0 {
@@ -687,13 +568,6 @@ func (projection *sessionJournalProjection) restoreAssistantDigests() error {
 	return nil
 }
 
-func (projection *sessionJournalProjection) rememberStructural(record structuralProjectionRecord) {
-	projection.Structural = append(projection.Structural, record)
-	if overflow := len(projection.Structural) - sessionStructuralRecordLimit; overflow > 0 {
-		projection.Structural = append([]structuralProjectionRecord(nil), projection.Structural[overflow:]...)
-	}
-}
-
 func (projection *sessionJournalProjection) advanceRevision(persisted uint64) {
 	if persisted > projection.ContextRevision {
 		projection.ContextRevision = persisted
@@ -730,33 +604,4 @@ func (projection *sessionJournalProjection) messageBaseForCursor(cursor conversa
 		}
 	}
 	return projection.MessageCount
-}
-
-func (projection *sessionJournalProjection) messageCursorAt(index int) conversationjournal.Cursor {
-	return projection.messageLocationAt(index).Cursor
-}
-
-func (projection *sessionJournalProjection) messageLocationAt(index int) conversationjournal.Location {
-	for _, locator := range projection.MessageLocators {
-		if locator.Index == index {
-			return conversationjournal.Location{Cursor: locator.Cursor, RecordIndex: locator.RecordIndex}
-		}
-	}
-	for _, locator := range projection.MessageAnchors {
-		if locator.Index == index {
-			return conversationjournal.Location{Cursor: locator.Cursor, RecordIndex: locator.RecordIndex}
-		}
-	}
-	return conversationjournal.Location{}
-}
-
-func (projection *sessionJournalProjection) messageAnchorAt(index int) messageLocator {
-	anchor := messageLocator{Index: 0, Cursor: 1}
-	for _, candidate := range projection.MessageAnchors {
-		if candidate.Index > index {
-			break
-		}
-		anchor = candidate
-	}
-	return anchor
 }

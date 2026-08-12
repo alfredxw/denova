@@ -1,13 +1,10 @@
 package chat
 
 import (
-	"encoding/json"
 	"fmt"
-	"log/slog"
 	"strings"
 
 	agentcontext "denova/internal/agents/context"
-	agentrun "denova/internal/agents/run"
 	novaskills "denova/internal/agents/skills"
 )
 
@@ -49,32 +46,4 @@ func validateExplicitSkillProjection(result agentcontext.Result, invocations []n
 		}
 	}
 	return nil
-}
-
-func (r *chatRun) emitExplicitSkillLoads(invocations []novaskills.Invocation) {
-	if len(invocations) == 0 {
-		return
-	}
-	meta := agentEventMetadata{
-		AgentKind: r.options.AgentKind, RunID: r.runID,
-		AgentName: r.options.RootAgentName, RootAgentName: r.options.RootAgentName,
-	}
-	if r.options.RootAgentName != "" {
-		meta.RunPath = []string{r.options.RootAgentName}
-	}
-	for index, invocation := range invocations {
-		args, err := json.Marshal(map[string]string{"name": invocation.Name})
-		if err != nil {
-			r.logger.ErrorContext(r.ctx, "explicit_skill_args_failed", slog.String("skill", invocation.Name), slog.String("error_class", agentrun.ErrorClass(err.Error())))
-			continue
-		}
-		id := fmt.Sprintf("%s-explicit-skill-%02d", firstNonEmpty(r.runID, "run"), index+1)
-		r.emit(agentrun.Event{Type: "tool_call", Data: meta.appendTo(map[string]interface{}{
-			"id": id, "name": "skill", "args": string(args),
-		})})
-		r.emit(agentrun.Event{Type: "tool_result", Data: meta.appendTo(map[string]interface{}{
-			"id": id, "name": "skill", "content": invocation.Instructions,
-		})})
-		r.logger.InfoContext(r.ctx, "explicit_skill_loaded", slog.String("skill", invocation.Name), slog.String("base_directory", invocation.BaseDirectory))
-	}
 }

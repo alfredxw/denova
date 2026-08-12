@@ -181,14 +181,6 @@ func (catalog *Catalog) SkillReference(backend *novaskills.Backend) (ReadAdapter
 	return newReadAdapterBinding(config.AgentToolSkills, adapter)
 }
 
-func (catalog *Catalog) Todo() (agent.ToolDefinition, error) { return newTodoTool() }
-
-func (catalog *Catalog) Ask() (agent.ToolDefinition, error) { return newAskTool() }
-
-func (catalog *Catalog) Task(ctx context.Context, subAgents []agent.Runnable) (agent.ToolDefinition, error) {
-	return newTaskTool(ctx, subAgents)
-}
-
 func loreToolsFactory(cfg *config.Config, forceReadOnly bool) Factory {
 	return func(settings config.ResolvedAgentToolSettings) ([]agent.ToolDefinition, error) {
 		readEnabled := settings.Allows(config.AgentToolLoreRead)

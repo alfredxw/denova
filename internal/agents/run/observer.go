@@ -28,7 +28,10 @@ type Observer struct {
 	llmSpanID      string
 	lastLLMOutcome LLMOutcome
 	pendingTools   map[string]*Span
+	toolDecisions  map[string]struct{}
+	toolResults    map[string]struct{}
 	toolExecutions []agenttool.ExecutionRecord
+	llmSpanCount   int
 	mu             sync.Mutex
 }
 
@@ -49,6 +52,8 @@ func NewObserverWithIdentity(ledger *Ledger, rootSpanID, runID, sessionID, revie
 		reviewThreadID: strings.TrimSpace(reviewThreadID),
 		rootSpanID:     rootSpanID,
 		pendingTools:   map[string]*Span{},
+		toolDecisions:  map[string]struct{}{},
+		toolResults:    map[string]struct{}{},
 	}
 }
 
@@ -73,7 +78,20 @@ func (o *Observer) RecordLLMSpan(spanID string) {
 	}
 	o.mu.Lock()
 	o.llmSpanID = spanID
+	o.llmSpanCount++
 	o.mu.Unlock()
+}
+
+// LLMSpanCount reports how many model calls were traced through the provider
+// boundary. Lifecycle adapters use it to avoid adding a lower-fidelity
+// duplicate when a custom Definition omits that middleware.
+func (o *Observer) LLMSpanCount() int {
+	if o == nil {
+		return 0
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.llmSpanCount
 }
 
 func (o *Observer) RecordLLMOutcome(outcome LLMOutcome) {
@@ -132,6 +150,7 @@ func (o *Observer) RecordToolDecision(decision agenttool.Decision) {
 	}
 	o.mu.Lock()
 	defer o.mu.Unlock()
+	o.toolDecisions[o.toolKey(decision.ExecutionID, decision.ToolName)] = struct{}{}
 	_ = o.ledger.RecordToolDecision(decision)
 	attrs := map[string]any{
 		"tool_name":        decision.ToolName,
@@ -157,6 +176,28 @@ func (o *Observer) RecordToolDecision(decision agenttool.Decision) {
 	o.pendingTools[o.toolKey(decision.ExecutionID, decision.ToolName)] = newSpan(o.ledger.ID(), o.ledger, o.parentSpanID(), "tool_call", attrs)
 }
 
+// HasToolDecision and HasToolExecution distinguish rich middleware records
+// from lifecycle fallbacks without exposing trace storage internals.
+func (o *Observer) HasToolDecision(executionID, toolName string) bool {
+	if o == nil {
+		return false
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	_, ok := o.toolDecisions[o.toolKey(executionID, toolName)]
+	return ok
+}
+
+func (o *Observer) HasToolExecution(executionID, toolName string) bool {
+	if o == nil {
+		return false
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	_, ok := o.toolResults[o.toolKey(executionID, toolName)]
+	return ok
+}
+
 func (o *Observer) RecordToolExecution(result agenttool.ExecutionRecord) {
 	if o == nil {
 		return
@@ -166,6 +207,7 @@ func (o *Observer) RecordToolExecution(result agenttool.ExecutionRecord) {
 	result.DeletedLoreItemIDs = append([]string(nil), result.DeletedLoreItemIDs...)
 	o.mu.Lock()
 	defer o.mu.Unlock()
+	o.toolResults[o.toolKey(result.ExecutionID, result.ToolName)] = struct{}{}
 	o.toolExecutions = append(o.toolExecutions, result)
 	if o.ledger == nil {
 		return

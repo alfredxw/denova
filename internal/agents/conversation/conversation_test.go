@@ -1,9 +1,6 @@
 package conversation
 
 import (
-	"context"
-	"fmt"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -11,76 +8,10 @@ import (
 
 	"denova/config"
 	agentcontext "denova/internal/agents/context"
-	agentcompaction "denova/internal/agents/context/compaction"
 	"denova/internal/agents/session"
 )
 
-func TestCompactionIncrementalSourceReadsCanonicalHistoryBeforeResidentWindow(t *testing.T) {
-	store, err := session.NewStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	sess, err := store.GetOrCreate("canonical-compaction-source")
-	if err != nil {
-		t.Fatal(err)
-	}
-	total := 209
-	messages := make([]*agent.Message, total)
-	for index := 0; index < total; index++ {
-		messages[index] = agent.UserMessage(fmt.Sprintf("source-%03d", index))
-	}
-	if err := sess.AppendContextMessages(messages...); err != nil {
-		t.Fatal(err)
-	}
-	conversation := NewSessionConversation(sess)
-	source, checkpoint, start, end, err := conversation.compactionIncrementalSource(context.Background(), true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if checkpoint != "" || start != 0 || end != total || len(source) != total {
-		t.Fatalf("source = checkpoint:%q range:[%d,%d) len:%d", checkpoint, start, end, len(source))
-	}
-	if source[0].Content != "source-000" || source[len(source)-1].Content != "source-208" {
-		t.Fatalf("canonical compaction endpoints = %q ... %q", source[0].Content, source[len(source)-1].Content)
-	}
-}
-
-func TestCompactionIncrementalSourceExcludesOnlyAnActualLatestUser(t *testing.T) {
-	store, err := session.NewStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	sess, err := store.GetOrCreate("compaction-latest-user")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := sess.AppendContextMessages(
-		agent.UserMessage("previous user"),
-		agent.AssistantMessage("assistant result", nil),
-	); err != nil {
-		t.Fatal(err)
-	}
-	conversation := NewSessionConversation(sess)
-	source, _, _, end, err := conversation.compactionIncrementalSource(context.Background(), false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if end != 2 || len(source) != 2 || source[1].Content != "assistant result" {
-		t.Fatalf("assistant tail was mistaken for current user: end=%d source=%#v", end, source)
-	}
-	if err := sess.AppendContextMessage(agent.UserMessage("current user")); err != nil {
-		t.Fatal(err)
-	}
-	source, _, _, end, err = conversation.compactionIncrementalSource(context.Background(), false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if end != 2 || len(source) != 2 || source[1].Content != "assistant result" {
-		t.Fatalf("latest user was not excluded: end=%d source=%#v", end, source)
-	}
-}
-
-func TestSessionConversationKeepsFullEffectiveHistoryBeforeCompaction(t *testing.T) {
+func TestSessionConversationKeepsRichRawHistoryForAgentOwnedMaintenance(t *testing.T) {
 	store, err := session.NewStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -247,11 +178,7 @@ func TestSessionConversationPrependsStableContextBeforeHistory(t *testing.T) {
 	}
 }
 
-func TestSessionConversationKeepsStableContextBeforeCompactionSummary(t *testing.T) {
-	summarize := func(context.Context, *config.Config, agentcompaction.SummaryRequest, func(int, string)) (string, error) {
-		return "压缩摘要：旧对话已合并。", nil
-	}
-
+func TestSessionConversationKeepsStableContextBeforeAgentTranscript(t *testing.T) {
 	store, err := session.NewStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -283,194 +210,8 @@ func TestSessionConversationKeepsStableContextBeforeCompactionSummary(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	compacted, result, err := conversation.CompactContextIfNeeded(context.Background(), coldCompactionTestInput(agentcompaction.Input{
-		Messages: history,
-		Force:    true,
-	}, summarize))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !result.Triggered {
-		t.Fatalf("expected compaction to trigger: %#v", result)
-	}
-	if len(compacted) < 3 {
-		t.Fatalf("compacted messages too short: %#v", compacted)
-	}
-	if !strings.Contains(compacted[0].Content, "# 稳定作品上下文") {
-		t.Fatalf("stable context should remain first after compaction: %#v", messageContents(compacted))
-	}
-	if !agentcontext.IsCompactionSummaryMessage(compacted[1]) {
-		t.Fatalf("compaction summary should follow stable context: %#v", messageContents(compacted))
-	}
-}
-
-func TestSessionConversationPreparesIncrementalCompactionWithoutAdvancingCanonicalCheckpoint(t *testing.T) {
-	var capturedTranscript string
-	summarize := func(_ context.Context, _ *config.Config, request agentcompaction.SummaryRequest, _ func(int, string)) (string, error) {
-		capturedTranscript = strings.Join(messageContents(request.Messages), "\n")
-		return "新压缩摘要：旧目标与新增进展都已合并。", nil
-	}
-
-	store, err := session.NewStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	sess, err := store.GetOrCreate("default")
-	if err != nil {
-		t.Fatal(err)
-	}
-	messages := []*agent.Message{
-		agent.UserMessage(strings.Repeat("已压缩用户 1 ", 700)),
-		agent.AssistantMessage(strings.Repeat("已压缩助手 1 ", 700), nil),
-		agent.UserMessage("新增用户 2"),
-		agent.AssistantMessage("新增助手 2", nil),
-	}
-	for _, msg := range messages {
-		if err := sess.Append(msg); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if _, err := sess.AppendContextCompaction(session.ContextCompaction{
-		CompactionCheckpoint: agentcompaction.NewCheckpoint(config.AgentKindIDE, agentcompaction.Result{
-			Epoch: 1, Summary: "旧压缩摘要：用户 1 已处理。", RetainedTurns: 1,
-		}),
-		SourceStartIndex: 0,
-		SourceEndIndex:   2,
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	conversation := NewSessionConversationForAgent(sess, &config.Config{}, config.AgentKindIDE)
-	projection, err := conversation.SnapshotContextCompaction(context.Background(), true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got, want := messageContents(projection.Source), []string{"新增用户 2", "新增助手 2"}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("incremental source = %#v, want %#v", got, want)
-	}
-	_, result, err := conversation.CompactContextIfNeeded(context.Background(), coldCompactionTestInput(agentcompaction.Input{
-		Messages:       sess.GetEffectiveMessages(),
-		Force:          true,
-		KeepLatestUser: true,
-	}, summarize))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !result.Triggered {
-		t.Fatalf("expected compaction to trigger: %#v", result)
-	}
-	if !strings.Contains(capturedTranscript, "旧压缩摘要：用户 1 已处理。") ||
-		!strings.Contains(capturedTranscript, "新增用户 2") || !strings.Contains(capturedTranscript, "新增助手 2") {
-		t.Fatalf("incremental summary request = %q", capturedTranscript)
-	}
-	if record, ok := sess.LatestContextCompaction(config.AgentKindIDE); !ok || record.SourceStartIndex != 0 || record.SourceEndIndex != 2 || record.Epoch != 1 {
-		t.Fatalf("transient compaction must not advance canonical checkpoint before a structural command: ok=%v record=%#v", ok, record)
-	}
-}
-
-func TestSessionConversationUsesCompactionSummaryRetainedTailAndAppendedMessages(t *testing.T) {
-	store, err := session.NewStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	sess, err := store.GetOrCreate("default")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for i := 1; i <= 2; i++ {
-		if err := sess.Append(agent.UserMessage("user " + string(rune('0'+i)))); err != nil {
-			t.Fatal(err)
-		}
-		if err := sess.Append(agent.AssistantMessage("assistant "+string(rune('0'+i)), nil)); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if _, err := sess.AppendContextCompaction(session.ContextCompaction{
-		CompactionCheckpoint: agentcompaction.NewCheckpoint(config.AgentKindIDE, agentcompaction.Result{
-			Summary: "用户目标：继续写作。", RetainedTurns: 2,
-		}),
-		SourceStartIndex: 0,
-		SourceEndIndex:   2,
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	cfg := &config.Config{}
-	conversation := NewSessionConversationForAgent(sess, cfg, config.AgentKindIDE)
-	history, err := assembleAndCommitModelContextForTest(conversation, "user 3", "agent user 3")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(history) != 6 {
-		t.Fatalf("history length = %d, want 6: %#v", len(history), history)
-	}
-	if !agentcontext.IsCompactionSummaryMessage(history[0]) || history[0].Role != agent.Assistant {
-		t.Fatalf("first message should be compaction summary: %#v", history[0])
-	}
-	if history[1].Content != "user 1" || history[2].Content != "assistant 1" || history[3].Content != "user 2" || history[4].Content != "assistant 2" || history[5].Content != "agent user 3" {
-		t.Fatalf("unexpected compacted history tail: %#v", history)
-	}
-	if visible := sess.History(); len(visible) != 5 {
-		t.Fatalf("visible raw history should include only raw messages and current user: %#v", visible)
-	}
-}
-
-func TestSessionConversationKeepsPostCompactionTurnsUntilNextCompaction(t *testing.T) {
-	store, err := session.NewStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	sess, err := store.GetOrCreate("default")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for i := 1; i <= 5; i++ {
-		if err := sess.Append(agent.UserMessage("user " + string(rune('0'+i)))); err != nil {
-			t.Fatal(err)
-		}
-		if err := sess.Append(agent.AssistantMessage("assistant "+string(rune('0'+i)), nil)); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if _, err := sess.AppendContextCompaction(session.ContextCompaction{
-		CompactionCheckpoint: agentcompaction.NewCheckpoint(config.AgentKindIDE, agentcompaction.Result{
-			Summary: "用户目标：继续写作。", RetainedTurns: 1,
-		}),
-		SourceStartIndex: 0,
-		SourceEndIndex:   4,
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	cfg := &config.Config{}
-	conversation := NewSessionConversationForAgent(sess, cfg, config.AgentKindIDE)
-	history, err := assembleAndCommitModelContextForTest(conversation, "user 6", "agent user 6")
-	if err != nil {
-		t.Fatal(err)
-	}
-	got := messageContents(history)
-	want := []string{
-		history[0].Content,
-		"user 2",
-		"assistant 2",
-		"user 3",
-		"assistant 3",
-		"user 4",
-		"assistant 4",
-		"user 5",
-		"assistant 5",
-		"agent user 6",
-	}
-	if !agentcontext.IsCompactionSummaryMessage(history[0]) {
-		t.Fatalf("first message should be compaction summary: %#v", history[0])
-	}
-	if len(got) != len(want) {
-		t.Fatalf("history length = %d, want %d: %#v", len(got), len(want), got)
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("history[%d] = %q, want %q; all=%#v", i, got[i], want[i], got)
-		}
+	if len(history) < 2 || !strings.Contains(history[0].Content, "# 稳定作品上下文") {
+		t.Fatalf("stable context should remain before the Agent-owned transcript: %#v", messageContents(history))
 	}
 }
 

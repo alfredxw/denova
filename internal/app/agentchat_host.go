@@ -4,9 +4,7 @@ import (
 	"context"
 
 	"denova/config"
-	agentconversation "denova/internal/agents/conversation"
 	agentexecution "denova/internal/agents/execution"
-	"denova/internal/agents/session"
 	agenttool "denova/internal/agents/tool"
 	"denova/internal/book"
 )
@@ -48,19 +46,6 @@ func (host agentChatHost) CurrentWorkspace() string {
 	host.app.mu.RLock()
 	defer host.app.mu.RUnlock()
 	return host.app.workspace
-}
-
-func (host agentChatHost) ResolveAsk(
-	ctx context.Context,
-	target *session.Session,
-	projectID, workspace, askID, status string,
-	answers []agentconversation.HostAskAnswer,
-	cancelReason string,
-) (agentconversation.HostAskResolution, error) {
-	if host.app == nil {
-		return agentconversation.HostAskResolution{}, ErrNoWorkspace
-	}
-	return host.app.resolveAgentAsk(ctx, target, projectID, workspace, askID, status, answers, cancelReason)
 }
 
 func (host agentChatHost) OnVerifiedMutations(

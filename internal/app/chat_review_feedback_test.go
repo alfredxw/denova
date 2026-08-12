@@ -6,6 +6,7 @@ import (
 	agentconversation "denova/internal/agents/conversation"
 	agentexecution "denova/internal/agents/execution"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -422,15 +423,15 @@ func TestCommittedReviewFeedbackPersistsWithUserMessageAndDisappearsAfterReload(
 		SessionID: sess.ID,
 		Workspace: workspace,
 	}, runtime, req)
-	consumeFeedback := options.OnUserMessageCommitted
-	options.OnUserMessageCommitted = func(ctx context.Context) error {
+	consumeFeedback := options.InputCommitEffect
+	options.InputCommitEffect = agentrun.InputCommitEffectFuncs{ApplyFunc: func(ctx context.Context, effect agentrun.InputCommitEffectRequest) error {
 		history := sess.History()
 		if len(history) != 1 || len(history[0].UserReferences) != 1 {
-			return errors.New("review reference was not durable before comment consumption")
+			return fmt.Errorf("review reference was not durable before comment consumption: %#v", history)
 		}
 		callbackSawDurableReference = history[0].UserReferences[0].ID == comment.ID
-		return consumeFeedback(ctx)
-	}
+		return consumeFeedback.Apply(ctx, effect)
+	}, ReconcileFunc: consumeFeedback.Reconcile}
 	executionRuntime := agentexecution.NewEphemeralRuntime()
 	t.Cleanup(func() { _ = executionRuntime.Close(context.Background()) })
 	operation, err := startPublicExecutionCycle(

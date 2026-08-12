@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strings"
 
+	agent "github.com/alfredxw/denova/agent"
 	agenttools "github.com/alfredxw/denova/agent/tools"
 
 	"denova/config"
@@ -53,7 +54,10 @@ func newEventCardReadAdapter(ctx InteractiveContext) (agenttools.ReadAdapter, er
 	if len(scope.cards) == 0 {
 		return nil, nil
 	}
-	return agenttools.NewReadAdapter("event_card", matchEventCardURI, scope.readCard)
+	return agenttools.NewReadAdapter(
+		agent.CapabilityIdentity{Kind: "denova.read.event_card", Version: 1},
+		"event_card", matchEventCardURI, scope.readCard,
+	)
 }
 
 func interactiveDirectorReadAdapterFactory(toolContext InteractiveContext) ReadAdapterFactory {

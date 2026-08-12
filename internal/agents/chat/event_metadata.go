@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	agent "github.com/alfredxw/denova/agent"
-
 	agentplan "denova/internal/agents/plan"
 )
 
@@ -36,96 +34,6 @@ func planEventEmitter(emit func(agentrun.Event)) func(agentplan.Event) {
 	return func(event agentplan.Event) {
 		emit(agentrun.Event{Type: event.Type, Data: event.Data})
 	}
-}
-
-func metadataForAgentEvent(event *agent.AgentEvent, rootAgentName string) agentEventMetadata {
-	meta := agentEventMetadata{
-		RootAgentName: strings.TrimSpace(rootAgentName),
-	}
-	if event == nil {
-		return meta
-	}
-	meta.AgentName = strings.TrimSpace(event.AgentName)
-	if len(event.RunPath) > 0 {
-		meta.RunPath = make([]string, 0, len(event.RunPath))
-		for _, step := range event.RunPath {
-			name := strings.TrimSpace(step.String())
-			if name == "" {
-				continue
-			}
-			meta.RunPath = append(meta.RunPath, name)
-		}
-	}
-	if meta.AgentName == "" && len(meta.RunPath) > 0 {
-		meta.AgentName = meta.RunPath[len(meta.RunPath)-1]
-	}
-	if meta.RootAgentName == "" {
-		if len(meta.RunPath) > 0 {
-			meta.RootAgentName = meta.RunPath[0]
-		} else {
-			meta.RootAgentName = meta.AgentName
-		}
-	}
-	meta.SubAgent = meta.AgentName != "" && meta.RootAgentName != "" && meta.AgentName != meta.RootAgentName
-	if meta.SubAgent {
-		meta.SubAgentType = meta.AgentName
-	}
-	return meta
-}
-
-type subAgentSessionTracker struct {
-	runID        string
-	counter      int
-	activeSource string
-	activeID     string
-}
-
-func newSubAgentSessionTracker(runID string) *subAgentSessionTracker {
-	return &subAgentSessionTracker{runID: strings.TrimSpace(runID)}
-}
-
-func (t *subAgentSessionTracker) decorate(meta agentEventMetadata) agentEventMetadata {
-	if t == nil {
-		return meta
-	}
-	meta.RunID = t.runID
-	if !meta.SubAgent {
-		t.activeSource = ""
-		t.activeID = ""
-		return meta
-	}
-	if meta.SubAgentType == "" {
-		meta.SubAgentType = meta.AgentName
-	}
-	source := subAgentSourceKey(meta)
-	if source == "" {
-		source = meta.AgentName
-	}
-	if source != t.activeSource || t.activeID == "" {
-		t.counter++
-		t.activeSource = source
-		t.activeID = buildSubAgentSessionID(t.runID, meta.AgentName, t.counter)
-	}
-	meta.SubAgentSessionID = t.activeID
-	return meta
-}
-
-func subAgentSourceKey(meta agentEventMetadata) string {
-	parts := []string{meta.RootAgentName, meta.AgentName}
-	parts = append(parts, meta.RunPath...)
-	return strings.Join(parts, "\x00")
-}
-
-func buildSubAgentSessionID(runID, agentName string, index int) string {
-	runID = sanitizeSubAgentSessionPart(runID)
-	if runID == "" {
-		runID = "run"
-	}
-	agentName = sanitizeSubAgentSessionPart(agentName)
-	if agentName == "" {
-		agentName = "subagent"
-	}
-	return fmt.Sprintf("%s-subagent-%02d-%s", runID, index, agentName)
 }
 
 func sanitizeSubAgentSessionPart(value string) string {

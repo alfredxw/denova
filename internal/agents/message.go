@@ -14,17 +14,13 @@ type Message = agent.Message
 // ToolArtifactStore is the stable facade used by application conversations
 // without coupling them directly to the underlying Agent module package.
 type ToolArtifactStore = agent.ToolArtifactStore
+type ToolArtifactBackend = agent.ToolArtifactBackend
 
 type Role = agent.RoleType
 type ToolCall = agent.ToolCall
 type FunctionCall = agent.FunctionCall
 type ToolInfo = agent.ToolInfo
 type StreamReader[T any] = agent.StreamReader[T]
-
-// Runner and Runnable keep the application layer coupled to Denova's Agent
-// facade instead of the concrete Agent module.
-type Runner = agent.Runner
-type Runnable = agent.Runnable
 
 const (
 	RoleSystem    = agent.System

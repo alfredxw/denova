@@ -262,17 +262,17 @@ func runInteractiveDirectorMaintenance(ctx context.Context, cfg *config.Config, 
 		return result, err
 	}
 	_, err = generator(ctx, cfg, state, agentinteractive.InteractiveStoryToolContext{
-		Store:                   conversation.store,
-		CommandID:               commandID,
-		StoryID:                 conversation.storyID,
-		BranchID:                turn.BranchID,
-		TurnID:                  turn.ID,
-		MaintenanceTask:         effectiveTask,
-		StableContextTitle:      stableContext.Title,
-		StableContext:           stableContext.Content,
-		StableContextMaxBytes:   stableContext.MaxBytes,
-		DisplayConversation:     conversation,
-		DomainCommitParticipant: planCommit,
+		Store:                 conversation.store,
+		CommandID:             commandID,
+		StoryID:               conversation.storyID,
+		BranchID:              turn.BranchID,
+		TurnID:                turn.ID,
+		MaintenanceTask:       effectiveTask,
+		StableContextTitle:    stableContext.Title,
+		StableContext:         stableContext.Content,
+		StableContextMaxBytes: stableContext.MaxBytes,
+		DisplayConversation:   conversation,
+		CanonicalOutput:       planCommit,
 		OnLoreItemsRead: func(ids []string) {
 			planSubmissionMu.Lock()
 			defer planSubmissionMu.Unlock()

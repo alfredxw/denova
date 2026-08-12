@@ -69,15 +69,16 @@ func (service *Service) resolveAsk(
 	answers []agentconversation.HostAskAnswer,
 	cancelReason string,
 ) (agentconversation.HostAskResolution, error) {
-	sess, err := service.conversationSession(request)
-	if err != nil {
-		return agentconversation.HostAskResolution{}, err
-	}
 	runtime, err := service.runtime(ctx, request)
 	if err != nil {
 		return agentconversation.HostAskResolution{}, err
 	}
-	return service.host.ResolveAsk(
-		ctx, sess, runtime.Config.ProjectID, runtime.Workspace, askID, status, answers, cancelReason,
+	sessionID, err := SessionID(request)
+	if err != nil {
+		return agentconversation.HostAskResolution{}, err
+	}
+	return runtime.ExecutionRuntime.ResolveAsk(
+		ctx, runOptions(runtime.ProjectID, runtime.Workspace, runtime.Config.ProjectStateDir, sessionID),
+		askID, status, answers, cancelReason,
 	)
 }

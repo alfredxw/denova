@@ -41,100 +41,6 @@ func appendInterruptionRecordLine(sess *Session, line []byte, lineNumber int) er
 	return nil
 }
 
-func appendAskRecordLine(sess *Session, line []byte) error {
-	var marker askRecord
-	if err := json.Unmarshal(line, &marker); err != nil {
-		return err
-	}
-	interaction, err := normalizeAskInteraction(marker.AskInteraction)
-	if err != nil {
-		return err
-	}
-	copy := cloneAskInteraction(interaction)
-	sess.records = append(sess.records, historyRecord{kind: historyTypeAsk, ask: &copy, createdAt: interaction.CreatedAt})
-	advanceUpdatedAt(sess, interaction.CreatedAt)
-	return nil
-}
-
-func appendCompactionRecordLine(sess *Session, line []byte, lineNumber int) error {
-	var record ContextCompaction
-	if err := json.Unmarshal(line, &record); err != nil {
-		return err
-	}
-	if strings.TrimSpace(record.ID) == "" {
-		record.ID = legacyJournalRecordID("compaction", lineNumber)
-	}
-	if record.CreatedAt.IsZero() {
-		record.CreatedAt = sess.UpdatedAt
-	}
-	record.Type = historyTypeCompaction
-	sess.records = append(sess.records, historyRecord{kind: historyTypeCompaction, compaction: &record, createdAt: record.CreatedAt})
-	advanceContextRevision(sess, record.ContextRevision)
-	advanceUpdatedAt(sess, record.CreatedAt)
-	return nil
-}
-
-func appendCompactionRemovalRecordLine(sess *Session, line []byte, lineNumber int) error {
-	var record ContextCompactionRemoval
-	if err := json.Unmarshal(line, &record); err != nil {
-		return err
-	}
-	if strings.TrimSpace(record.ID) == "" {
-		record.ID = legacyJournalRecordID("compaction-removal", lineNumber)
-	}
-	if record.CreatedAt.IsZero() {
-		record.CreatedAt = sess.UpdatedAt
-	}
-	record.Type = historyTypeCompactionRemoved
-	sess.records = append(sess.records, historyRecord{kind: historyTypeCompactionRemoved, compactionRemoval: &record, createdAt: record.CreatedAt})
-	advanceContextRevision(sess, record.ContextRevision)
-	advanceUpdatedAt(sess, record.CreatedAt)
-	return nil
-}
-
-func appendCompactionHealthRecordLine(sess *Session, line []byte, lineNumber int) error {
-	var record ContextCompactionHealth
-	if err := json.Unmarshal(line, &record); err != nil {
-		return err
-	}
-	if strings.TrimSpace(record.ID) == "" {
-		record.ID = legacyJournalRecordID("compaction-health", lineNumber)
-	}
-	if record.CreatedAt.IsZero() {
-		record.CreatedAt = sess.UpdatedAt
-	}
-	normalized, err := normalizeContextCompactionHealth(record)
-	if err != nil {
-		return err
-	}
-	sess.records = append(sess.records, historyRecord{kind: historyTypeCompactionHealth, compactionHealth: &normalized, createdAt: normalized.CreatedAt})
-	advanceUpdatedAt(sess, normalized.CreatedAt)
-	return nil
-}
-
-func appendToolResultCleanupRecordLine(sess *Session, line []byte, lineNumber int) error {
-	var record ToolResultCleanupRecord
-	if err := json.Unmarshal(line, &record); err != nil {
-		return err
-	}
-	if strings.TrimSpace(record.ID) == "" {
-		record.ID = legacyJournalRecordID("tool-result-cleanup", lineNumber)
-	}
-	if record.CreatedAt.IsZero() {
-		record.CreatedAt = sess.UpdatedAt
-	}
-	normalized, err := normalizeToolResultCleanupRecord(record)
-	if err != nil {
-		return err
-	}
-	sess.records = append(sess.records, historyRecord{
-		kind: historyTypeToolResultCleanup, toolResultCleanup: &normalized, createdAt: normalized.CreatedAt,
-	})
-	advanceContextRevision(sess, normalized.ContextRevision)
-	advanceUpdatedAt(sess, normalized.CreatedAt)
-	return nil
-}
-
 func appendDisplayRecordLine(sess *Session, line []byte, lineNumber int) error {
 	var marker displayRecord
 	if err := json.Unmarshal(line, &marker); err != nil {
@@ -259,31 +165,6 @@ func applyInterruptionPatchLine(sess *Session, line []byte) error {
 		return nil
 	}
 	return fmt.Errorf("interruption patch target 不存在: %s", patch.TargetID)
-}
-
-func applyAskPatchLine(sess *Session, line []byte) error {
-	var patch askPatchRecord
-	if err := json.Unmarshal(line, &patch); err != nil {
-		return err
-	}
-	for index := range sess.records {
-		record := &sess.records[index]
-		if record.kind != historyTypeAsk || record.ask == nil || record.ask.ID != patch.TargetID {
-			continue
-		}
-		resolvedAt := patch.ResolvedAt
-		record.ask.Status = patch.Status
-		record.ask.Answers = cloneAskAnswerResults(patch.Answers)
-		record.ask.CancelReason = patch.CancelReason
-		record.ask.ResolvedAt = &resolvedAt
-		advanceUpdatedAt(sess, patch.UpdatedAt)
-		return nil
-	}
-	if sess.partialMaterialization {
-		advanceUpdatedAt(sess, patch.UpdatedAt)
-		return nil
-	}
-	return fmt.Errorf("ask patch target does not exist: %s", patch.TargetID)
 }
 
 func appendMessageRecordLine(sess *Session, line []byte, kind string) error {

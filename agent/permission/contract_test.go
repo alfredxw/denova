@@ -10,6 +10,10 @@ import (
 
 func TestCodingPolicyContract(t *testing.T) {
 	permissiontest.RunPolicyContract(t, func(testing.TB) agent.PermissionPolicy {
-		return permission.Coding(permission.MemoryRules())
+		policy, err := permission.CodingWithRules(permission.MemoryRules())
+		if err != nil {
+			t.Fatal(err)
+		}
+		return policy
 	})
 }

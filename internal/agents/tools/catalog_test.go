@@ -39,6 +39,7 @@ func TestCatalogReadCapabilityFollowsTheBroadestRegisteredAdapter(t *testing.T) 
 		Path string `json:"path"`
 	}
 	reference, err := agenttools.NewReadAdapter(
+		agent.CapabilityIdentity{Kind: "test.read.reference", Version: 1},
 		"reference",
 		func(_ context.Context, path string) (bool, error) { return strings.HasPrefix(path, "skill://"), nil },
 		func(_ context.Context, input referenceInput) (agenttools.ReadResult, error) {

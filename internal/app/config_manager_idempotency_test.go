@@ -19,8 +19,6 @@ import (
 	"denova/internal/agents/session"
 	configmanagerapp "denova/internal/app/configmanager"
 	projectdomain "denova/internal/project"
-
-	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 func TestConfigManagerInitialStartReusesExactTaskAndRejectsConflict(t *testing.T) {
@@ -69,7 +67,7 @@ func TestConfigManagerInitialStartRequiresCallerCommandID(t *testing.T) {
 func TestConfigManagerInitialStartRejectsOversizedCommandIDBeforeWorkspaceAccess(t *testing.T) {
 	service := configmanagerapp.NewService(nil)
 	request := configmanagerapp.Request{CommandID: strings.Repeat("x", 4097), Instruction: "update"}
-	if task, err := service.StartTaskWithError(context.Background(), request); task != nil || !errors.Is(err, runstate.ErrInvalidCommand) {
+	if task, err := service.StartTaskWithError(context.Background(), request); task != nil || !errors.Is(err, agentrun.ErrInvalidCommand) {
 		t.Fatalf("oversized command_id = task=%v err=%v", task, err)
 	}
 }

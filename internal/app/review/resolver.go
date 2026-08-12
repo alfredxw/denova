@@ -21,8 +21,9 @@ import (
 // editing N switch statements.
 type reviewFeedbackResolver interface {
 	Resolve(ctx context.Context, runtime Runtime, threadID string, commentIDs []string, feedback *agentreview.Context) error
-	Validate(ctx context.Context, sessionID, threadID string, commentIDs []string) error
-	Consume(ctx context.Context, sessionID, threadID string, commentIDs []string) (reviewFeedbackConsumption, error)
+	Validate(ctx context.Context, sessionID, threadID string, commentIDs []string, effectID string) error
+	Consume(ctx context.Context, sessionID, threadID string, commentIDs []string, effectID string) (reviewFeedbackConsumption, error)
+	Consumed(ctx context.Context, sessionID, threadID string, commentIDs []string, effectID string) (bool, error)
 	Restore(ctx context.Context, sessionID, threadID string, consumption reviewFeedbackConsumption) error
 }
 
@@ -73,17 +74,30 @@ func (r workspaceChangeReviewFeedbackResolver) Resolve(ctx context.Context, runt
 	return nil
 }
 
-func (r workspaceChangeReviewFeedbackResolver) Validate(ctx context.Context, sessionID, threadID string, commentIDs []string) error {
+func (r workspaceChangeReviewFeedbackResolver) Validate(ctx context.Context, sessionID, threadID string, commentIDs []string, effectID string) error {
+	if effectID != "" {
+		return r.changes.ValidateReviewCommentsForAgentInput(ctx, threadID, sessionID, commentIDs, effectID)
+	}
 	_, err := r.changes.GetReviewComments(ctx, threadID, sessionID, commentIDs)
 	return err
 }
 
-func (r workspaceChangeReviewFeedbackResolver) Consume(ctx context.Context, sessionID, threadID string, commentIDs []string) (reviewFeedbackConsumption, error) {
-	comments, err := r.changes.ConsumeReviewComments(ctx, threadID, sessionID, commentIDs)
+func (r workspaceChangeReviewFeedbackResolver) Consume(ctx context.Context, sessionID, threadID string, commentIDs []string, effectID string) (reviewFeedbackConsumption, error) {
+	var comments []workspacechange.Comment
+	var err error
+	if effectID == "" {
+		comments, err = r.changes.ConsumeReviewComments(ctx, threadID, sessionID, commentIDs)
+	} else {
+		comments, err = r.changes.ConsumeReviewCommentsForAgentInput(ctx, threadID, sessionID, commentIDs, effectID)
+	}
 	return reviewFeedbackConsumption{
 		source: agentreview.SourceWorkspaceChange, threadID: threadID, commentIDs: commentIDs,
 		workspaceComments: comments,
 	}, err
+}
+
+func (r workspaceChangeReviewFeedbackResolver) Consumed(ctx context.Context, sessionID, threadID string, commentIDs []string, effectID string) (bool, error) {
+	return r.changes.ReviewCommentsConsumed(ctx, threadID, sessionID, commentIDs, effectID)
 }
 
 func (r workspaceChangeReviewFeedbackResolver) Restore(ctx context.Context, sessionID, threadID string, consumption reviewFeedbackConsumption) error {
@@ -138,17 +152,30 @@ func (r documentReviewFeedbackResolver) Resolve(ctx context.Context, runtime Run
 	return nil
 }
 
-func (r documentReviewFeedbackResolver) Validate(ctx context.Context, sessionID, threadID string, commentIDs []string) error {
+func (r documentReviewFeedbackResolver) Validate(ctx context.Context, sessionID, threadID string, commentIDs []string, effectID string) error {
+	if effectID != "" {
+		return r.documents.ValidateReviewCommentsForAgentInput(ctx, threadID, commentIDs, effectID)
+	}
 	_, err := r.documents.GetReviewComments(ctx, threadID, commentIDs)
 	return err
 }
 
-func (r documentReviewFeedbackResolver) Consume(ctx context.Context, sessionID, threadID string, commentIDs []string) (reviewFeedbackConsumption, error) {
-	comments, err := r.documents.ConsumeReviewComments(ctx, threadID, commentIDs)
+func (r documentReviewFeedbackResolver) Consume(ctx context.Context, sessionID, threadID string, commentIDs []string, effectID string) (reviewFeedbackConsumption, error) {
+	var comments []documentreview.Comment
+	var err error
+	if effectID == "" {
+		comments, err = r.documents.ConsumeReviewComments(ctx, threadID, commentIDs)
+	} else {
+		comments, err = r.documents.ConsumeReviewCommentsForAgentInput(ctx, threadID, commentIDs, effectID)
+	}
 	return reviewFeedbackConsumption{
 		source: agentreview.SourceDocument, threadID: threadID, commentIDs: commentIDs,
 		documentComments: comments,
 	}, err
+}
+
+func (r documentReviewFeedbackResolver) Consumed(ctx context.Context, _ string, threadID string, commentIDs []string, effectID string) (bool, error) {
+	return r.documents.ReviewCommentsConsumed(ctx, threadID, commentIDs, effectID)
 }
 
 func (r documentReviewFeedbackResolver) Restore(ctx context.Context, sessionID, threadID string, consumption reviewFeedbackConsumption) error {

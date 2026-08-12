@@ -10,6 +10,8 @@ interface StableAfterContentBoundaryProps {
   onLayoutStabilized: () => void
 }
 
+const HEIGHT_SCOPE_ATTRIBUTE = 'data-nova-chat-after-content-height-scope'
+
 /**
  * Keeps a virtualized footer's total height stable while its directly
  * interacted content switches between layouts of different heights.
@@ -17,8 +19,10 @@ interface StableAfterContentBoundaryProps {
  * Inactive tab panels use `hidden`, so pre-mounting them preserves React state
  * but contributes no layout height. The reserve below the visible content
  * carries the difference from the tallest layout observed for the current
- * footer identity, preventing the browser from clamping the message scroller
- * before the scroll controller can restore the interaction anchor.
+ * footer identity and optional height scope, preventing the browser from
+ * clamping the message scroller before the scroll controller can restore the
+ * interaction anchor. A scoped footer can therefore keep peer tabs stable
+ * without letting an expanded layout inflate its compact preview.
  */
 export function StableAfterContentBoundary({
   children,
@@ -37,21 +41,35 @@ export function StableAfterContentBoundary({
     const reserve = reserveRef.current
     if (!content || !reserve) return
 
-    let tallestObservedHeight = 0
+    const tallestObservedHeightByScope = new Map<string, number>()
     reserve.style.height = '0px'
     onInteractionReset()
 
     const stabilizeLayout = () => {
       const currentHeight = content.getBoundingClientRect().height
-      tallestObservedHeight = Math.max(tallestObservedHeight, currentHeight)
+      const heightScope = content.querySelector<HTMLElement>(`[${HEIGHT_SCOPE_ATTRIBUTE}]`)
+        ?.getAttribute(HEIGHT_SCOPE_ATTRIBUTE) || ''
+      const tallestObservedHeight = Math.max(tallestObservedHeightByScope.get(heightScope) || 0, currentHeight)
+      tallestObservedHeightByScope.set(heightScope, tallestObservedHeight)
       reserve.style.height = `${Math.max(0, tallestObservedHeight - currentHeight)}px`
       onLayoutStabilized()
     }
 
     stabilizeLayout()
-    const observer = new ResizeObserver(stabilizeLayout)
-    observer.observe(content)
-    return () => observer.disconnect()
+    const resizeObserver = new ResizeObserver(stabilizeLayout)
+    resizeObserver.observe(content)
+    const scopeObserver = typeof MutationObserver === 'undefined'
+      ? null
+      : new MutationObserver(stabilizeLayout)
+    scopeObserver?.observe(content, {
+      attributes: true,
+      attributeFilter: [HEIGHT_SCOPE_ATTRIBUTE],
+      subtree: true,
+    })
+    return () => {
+      resizeObserver.disconnect()
+      scopeObserver?.disconnect()
+    }
   }, [onInteractionReset, onLayoutStabilized, resetKey])
 
   return (

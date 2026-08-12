@@ -33,13 +33,9 @@ func NewToolEffectApplier(
 		return nil, errors.New("Denova Tool effect reconciler is required")
 	}
 	options = options.Normalize(options.Workspace)
-	bindingRef, err := agentrun.BindingForOptions(options)
+	binding, err := agentrun.RuntimeBindingForOptions(options)
 	if err != nil {
 		return nil, fmt.Errorf("resolve Denova Tool effect binding: %w", err)
-	}
-	binding, err := agentrun.ParseRuntimeBinding(bindingRef)
-	if err != nil {
-		return nil, fmt.Errorf("decode Denova Tool effect binding: %w", err)
 	}
 	return func(ctx context.Context, requests []agent.EffectRequest) ([]agent.EffectResult, error) {
 		results := make([]agent.EffectResult, len(requests))

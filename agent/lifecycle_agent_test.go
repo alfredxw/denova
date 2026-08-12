@@ -28,7 +28,8 @@ func (fixedCompactionManager) Plan(_ context.Context, request CompactionPlanRequ
 	if !request.Force || len(request.Messages) < 2 {
 		return CompactionPlan{Action: CompactionNone}, nil
 	}
-	return CompactionPlan{Action: CompactionCreate, SourceFrom: 0, SourceTo: 2}, nil
+	return CompactionPlan{Action: CompactionCreate, SourceFrom: 0, SourceTo: 2,
+		Validation: CompactionValidationPolicy{HardLimitBytes: 8 << 20}}, nil
 }
 
 func (fixedCompactionManager) Compact(context.Context, CompactionCompactRequest) (CompactionCheckpoint, error) {
@@ -47,7 +48,8 @@ func (contextDataCompactionManager) Plan(_ context.Context, request CompactionPl
 	if !request.Force || len(request.Messages) < 2 {
 		return CompactionPlan{Action: CompactionNone}, nil
 	}
-	return CompactionPlan{Action: CompactionCreate, SourceFrom: 0, SourceTo: 2}, nil
+	return CompactionPlan{Action: CompactionCreate, SourceFrom: 0, SourceTo: 2,
+		Validation: CompactionValidationPolicy{HardLimitBytes: 8 << 20}}, nil
 }
 
 func (contextDataCompactionManager) Compact(context.Context, CompactionCompactRequest) (CompactionCheckpoint, error) {
@@ -65,6 +67,8 @@ type recordingContextSource struct {
 type automaticContextDataCompactionManager struct {
 	mu                 sync.Mutex
 	sawFullHostContext bool
+	sawFinalSnapshot   bool
+	cacheKey           string
 }
 
 func (*automaticContextDataCompactionManager) Identity() CapabilityIdentity {
@@ -77,7 +81,8 @@ func (*automaticContextDataCompactionManager) Plan(_ context.Context, request Co
 	if len(request.Messages) < 2 {
 		return CompactionPlan{Action: CompactionNone}, nil
 	}
-	return CompactionPlan{Action: CompactionCreate, SourceFrom: 0, SourceTo: 2}, nil
+	return CompactionPlan{Action: CompactionCreate, SourceFrom: 0, SourceTo: 2,
+		Validation: CompactionValidationPolicy{HardLimitBytes: 8 << 20}}, nil
 }
 
 func (manager *automaticContextDataCompactionManager) Compact(_ context.Context, request CompactionCompactRequest) (CompactionCheckpoint, error) {
@@ -85,6 +90,14 @@ func (manager *automaticContextDataCompactionManager) Compact(_ context.Context,
 	for _, message := range request.ModelRequest {
 		if message != nil && strings.Contains(message.Content, "FULL_HOST_CONTEXT") {
 			manager.sawFullHostContext = true
+		}
+	}
+	if request.ModelSnapshot != nil {
+		manager.cacheKey = request.ModelSnapshot.ResolvedOptions().SessionKey
+		for _, message := range request.ModelSnapshot.Messages() {
+			if message != nil && strings.Contains(message.Content, "FINAL_MIDDLEWARE_CONTEXT") {
+				manager.sawFinalSnapshot = true
+			}
 		}
 	}
 	manager.mu.Unlock()
@@ -98,6 +111,213 @@ func (manager *automaticContextDataCompactionManager) sawFullContext() bool {
 	manager.mu.Lock()
 	defer manager.mu.Unlock()
 	return manager.sawFullHostContext
+}
+
+func (manager *automaticContextDataCompactionManager) sawMiddlewareSnapshot() bool {
+	manager.mu.Lock()
+	defer manager.mu.Unlock()
+	return manager.sawFinalSnapshot
+}
+
+func (manager *automaticContextDataCompactionManager) snapshotCacheKey() string {
+	manager.mu.Lock()
+	defer manager.mu.Unlock()
+	return manager.cacheKey
+}
+
+type appendFinalContextMiddleware struct{ BaseMiddleware }
+
+func (*appendFinalContextMiddleware) BeforeModelCall(
+	ctx context.Context,
+	call *ModelCall,
+	_ *ModelContext,
+) (context.Context, *ModelCall, error) {
+	next := *call
+	next.Messages = append(cloneMessages(call.Messages), UserMessage("FINAL_MIDDLEWARE_CONTEXT"))
+	return ctx, &next, nil
+}
+
+type maintenanceAwareCompactionManager struct {
+	mu           sync.Mutex
+	planCalls    int
+	compactCalls int
+}
+
+type postToolCompactionManager struct {
+	mu           sync.Mutex
+	planCalls    int
+	compactCalls int
+}
+
+func (*postToolCompactionManager) Identity() CapabilityIdentity {
+	return CapabilityIdentity{Kind: "compaction.post-tool-model-seam-test", Version: 1}
+}
+
+func (*postToolCompactionManager) SummaryLimitBytes() int { return 64 << 10 }
+
+func (manager *postToolCompactionManager) Plan(_ context.Context, request CompactionPlanRequest) (CompactionPlan, error) {
+	manager.mu.Lock()
+	manager.planCalls++
+	manager.mu.Unlock()
+	for _, message := range request.ModelRequest {
+		if message != nil && message.Role == ToolRole && len(request.Messages) >= 2 {
+			return CompactionPlan{
+				Action: CompactionCreate, SourceFrom: 0, SourceTo: 2,
+				Validation: CompactionValidationPolicy{HardLimitBytes: 8 << 20},
+			}, nil
+		}
+	}
+	return CompactionPlan{Action: CompactionNone, SkippedReason: "below_trigger"}, nil
+}
+
+func (manager *postToolCompactionManager) Compact(context.Context, CompactionCompactRequest) (CompactionCheckpoint, error) {
+	manager.mu.Lock()
+	manager.compactCalls++
+	manager.mu.Unlock()
+	return CompactionCheckpoint{Summary: "checkpoint selected at the post-tool model seam", TokenEstimate: 9}, nil
+}
+
+func (manager *postToolCompactionManager) calls() (int, int) {
+	manager.mu.Lock()
+	defer manager.mu.Unlock()
+	return manager.planCalls, manager.compactCalls
+}
+
+type failingAutomaticCompactionManager struct {
+	mu        sync.Mutex
+	planCalls int
+}
+
+type hardOverflowCleanupManager struct{}
+
+func (hardOverflowCleanupManager) Identity() CapabilityIdentity {
+	return CapabilityIdentity{Kind: "cleanup.hard-overflow-lifecycle-test", Version: 1}
+}
+
+func (hardOverflowCleanupManager) Plan(_ context.Context, request CleanupPlanRequest) (CleanupPlan, error) {
+	if len(request.Messages) < 4 {
+		return CleanupPlan{Action: CleanupNone, Reason: "below_cleanup_threshold"}, nil
+	}
+	for index, message := range request.ModelRequest {
+		if message == nil || message.Role != ToolRole {
+			continue
+		}
+		return CleanupPlan{
+			Action: CleanupCompact, Reason: "hard_overflow", Renderer: "cleanup.hard-overflow-test.v1",
+			FallbackToCompaction: true,
+			Replacements: []CleanupReplacement{{
+				MessageIndex: index, ToolCallID: message.ToolCallID,
+				Placeholder: "[recoverable result removed before checkpoint]", OriginalTokens: 2_000, PlaceholderTokens: 12,
+			}},
+			Metrics: CleanupMetrics{PressureBefore: 1.2, BodyPressureBefore: 1.2},
+		}, nil
+	}
+	return CleanupPlan{Action: CleanupNone, Reason: "below_cleanup_threshold"}, nil
+}
+
+type hardOverflowCompactionManager struct {
+	mu                   sync.Mutex
+	compactCalls         int
+	sawCleanupProjection bool
+}
+
+func (*hardOverflowCompactionManager) Identity() CapabilityIdentity {
+	return CapabilityIdentity{Kind: "compaction.hard-overflow-lifecycle-test", Version: 1}
+}
+
+func (*hardOverflowCompactionManager) SummaryLimitBytes() int { return 64 << 10 }
+
+func (manager *hardOverflowCompactionManager) Plan(_ context.Context, request CompactionPlanRequest) (CompactionPlan, error) {
+	if len(request.Messages) < 4 {
+		return CompactionPlan{Action: CompactionNone}, nil
+	}
+	return CompactionPlan{Action: CompactionCreate, SourceFrom: 0, SourceTo: len(request.Messages),
+		Validation: CompactionValidationPolicy{HardLimitBytes: 8 << 20}}, nil
+}
+
+func (manager *hardOverflowCompactionManager) Compact(_ context.Context, request CompactionCompactRequest) (CompactionCheckpoint, error) {
+	manager.mu.Lock()
+	defer manager.mu.Unlock()
+	manager.compactCalls++
+	for _, message := range request.ModelRequest {
+		if message != nil && message.Role == ToolRole && message.Content == "[recoverable result removed before checkpoint]" {
+			manager.sawCleanupProjection = true
+		}
+	}
+	return CompactionCheckpoint{Summary: "bounded checkpoint after transient cleanup", TokenEstimate: 9}, nil
+}
+
+func (manager *hardOverflowCompactionManager) observed() (int, bool) {
+	manager.mu.Lock()
+	defer manager.mu.Unlock()
+	return manager.compactCalls, manager.sawCleanupProjection
+}
+
+func (*failingAutomaticCompactionManager) Identity() CapabilityIdentity {
+	return CapabilityIdentity{Kind: "compaction.failure-fuse-test", Version: 1}
+}
+
+func (*failingAutomaticCompactionManager) SummaryLimitBytes() int { return 64 << 10 }
+
+func (manager *failingAutomaticCompactionManager) Plan(context.Context, CompactionPlanRequest) (CompactionPlan, error) {
+	manager.mu.Lock()
+	manager.planCalls++
+	manager.mu.Unlock()
+	return CompactionPlan{}, errors.New("checkpoint fork failed")
+}
+
+func (*failingAutomaticCompactionManager) Compact(context.Context, CompactionCompactRequest) (CompactionCheckpoint, error) {
+	return CompactionCheckpoint{}, errors.New("unexpected Compact call")
+}
+
+func (manager *failingAutomaticCompactionManager) calls() int {
+	manager.mu.Lock()
+	defer manager.mu.Unlock()
+	return manager.planCalls
+}
+
+func (*maintenanceAwareCompactionManager) Identity() CapabilityIdentity {
+	return CapabilityIdentity{Kind: "compaction.maintenance-order-test", Version: 1}
+}
+
+func (*maintenanceAwareCompactionManager) SummaryLimitBytes() int { return 64 << 10 }
+
+func (manager *maintenanceAwareCompactionManager) Plan(_ context.Context, request CompactionPlanRequest) (CompactionPlan, error) {
+	manager.mu.Lock()
+	manager.planCalls++
+	manager.mu.Unlock()
+	if len(request.Messages) < 2 {
+		return CompactionPlan{Action: CompactionNone}, nil
+	}
+	return CompactionPlan{Action: CompactionCreate, SourceFrom: 0, SourceTo: 2}, nil
+}
+
+func (manager *maintenanceAwareCompactionManager) Compact(context.Context, CompactionCompactRequest) (CompactionCheckpoint, error) {
+	manager.mu.Lock()
+	manager.compactCalls++
+	manager.mu.Unlock()
+	return CompactionCheckpoint{Summary: "unexpected checkpoint", TokenEstimate: 2}, nil
+}
+
+func (manager *maintenanceAwareCompactionManager) calls() (int, int) {
+	manager.mu.Lock()
+	defer manager.mu.Unlock()
+	return manager.planCalls, manager.compactCalls
+}
+
+type maintenanceProjectionMiddleware struct{ BaseMiddleware }
+
+func (*maintenanceProjectionMiddleware) BeforeModelCall(
+	ctx context.Context,
+	call *ModelCall,
+	_ *ModelContext,
+) (context.Context, *ModelCall, error) {
+	if len(call.Messages) < 2 {
+		return ctx, call, nil
+	}
+	next := *call
+	next.Messages = []*Message{UserMessage("REVERSIBLE_CLEANUP_PROJECTION")}
+	return ctx, &next, nil
 }
 
 type projectingContextSource struct{}
@@ -145,6 +365,7 @@ type lifecycleModel struct {
 	mu        sync.Mutex
 	responses []*Message
 	inputs    [][]*Message
+	options   []*Options
 }
 
 type streamingToolInputLifecycleModel struct {
@@ -199,7 +420,7 @@ func TestPublicRunStreamsToolInputBeforeToolExecutionStarts(t *testing.T) {
 	}
 	owner, err := New(context.Background(), Definition{
 		Name: "streaming-tool-input", Model: model,
-		Tools: StaticToolsIdentified(
+		Tools: mustStaticToolsIdentified(t,
 			CapabilityIdentity{Kind: "tools.streaming-input-test", Version: 1},
 			testToolDefinition(tool),
 		),
@@ -245,7 +466,8 @@ func TestPublicRunStreamsToolInputBeforeToolExecutionStarts(t *testing.T) {
 		_, ok := payload.(ToolInputDelta)
 		return ok
 	}).(ToolInputDelta)
-	if inputStarted.CallID == "" || inputStarted.ProviderCallID != "provider-call" || inputStarted.Name != "read" {
+	if inputStarted.CallID == "" || inputStarted.ProviderCallID != "provider-call" || inputStarted.Name != "read" ||
+		inputStarted.Index != 0 || inputStarted.Descriptor == nil || inputStarted.Descriptor.Source != ToolSourceRead {
 		t.Fatalf("tool input start = %#v", inputStarted)
 	}
 	if firstDelta.CallID != inputStarted.CallID || firstDelta.Delta != `{"path":"` {
@@ -278,7 +500,9 @@ func TestPublicRunStreamsToolInputBeforeToolExecutionStarts(t *testing.T) {
 		_, ok := payload.(ToolStarted)
 		return ok
 	}).(ToolStarted)
-	if started.CallID != inputStarted.CallID || started.Name != "read" || string(started.Arguments) != `{"path":"draft.md"}` {
+	if started.CallID != inputStarted.CallID || started.ProviderCallID != "provider-call" || started.Name != "read" ||
+		started.Index != 0 || started.Descriptor == nil || started.Descriptor.Source != ToolSourceRead ||
+		string(started.Arguments) != `{"path":"draft.md"}` {
 		t.Fatalf("tool execution start = %#v, input start = %#v", started, inputStarted)
 	}
 	select {
@@ -301,7 +525,7 @@ func TestPermissionInteractionIsDurableBeforeConcreteToolStarts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	toolset := StaticToolsIdentified(CapabilityIdentity{Kind: "tools.permission-test", Version: 1}, ToolDefinition{
+	toolset := mustStaticToolsIdentified(t, CapabilityIdentity{Kind: "tools.permission-test", Version: 1}, ToolDefinition{
 		Tool: tool,
 		Descriptor: ToolDescriptor{
 			Source: ToolSourceWrite, Execution: ToolExecutionWorkspaceExclusive,
@@ -333,6 +557,16 @@ func TestPermissionInteractionIsDurableBeforeConcreteToolStarts(t *testing.T) {
 	if request.Kind != InteractionPermission || request.Permission == nil {
 		t.Fatalf("permission request = %#v", request)
 	}
+	if request.Permission.Mode == "" || request.Permission.Risk == "" || request.Permission.RuleID == "" ||
+		request.Permission.ArgsHash == "" || len(request.Permission.Options) != 2 || request.Permission.CanRemember {
+		t.Fatalf("permission presentation lost audit/options metadata: %#v", request.Permission)
+	}
+	for _, option := range request.Permission.Options {
+		if option.Label.Chinese == "" || option.Label.English == "" ||
+			option.Description.Chinese == "" || option.Description.English == "" {
+			t.Fatalf("permission option is not bilingual: %#v", option)
+		}
+	}
 	if executed.Load() {
 		t.Fatal("concrete tool started before permission resolution")
 	}
@@ -351,13 +585,13 @@ func TestNestedAgentEventsRemainDisplayOnlyAndToolEventsRetainLiveDetails(t *tes
 	tool, err := InferTool("delegate", "delegate work", func(ctx context.Context, input struct {
 		Prompt string `json:"prompt"`
 	}) (ToolResult, error) {
-		EmitEvent(ctx, &AgentEvent{
-			AgentName: "child",
-			RunPath:   []RunStep{NewRunStep("root"), NewRunStep("child")},
-			Output: &AgentOutput{MessageOutput: &MessageVariant{
-				Message: AssistantMessage("child display", nil), Role: Assistant,
-			}},
-		})
+		if err := ForwardNestedEvent(ctx, NestedEvent{
+			Source:    EventSource{Name: "child", Path: []string{"root", "child"}, InvocationID: "child-session/child-run", InvocationType: "task"},
+			SessionID: "child-session",
+			Child:     Event{Cursor: 1, Durability: EphemeralEvent, RunID: "child-run", Payload: AssistantDelta{Delta: "child display"}},
+		}); err != nil {
+			return ToolResult{}, err
+		}
 		return TextToolResult("delegated result"), nil
 	})
 	if err != nil {
@@ -378,7 +612,7 @@ func TestNestedAgentEventsRemainDisplayOnlyAndToolEventsRetainLiveDetails(t *tes
 	}}
 	owner, err := New(context.Background(), Definition{
 		Name: "root", Model: model,
-		Tools: StaticToolsIdentified(CapabilityIdentity{Kind: "tools.nested-display-test", Version: 1}, definition),
+		Tools: mustStaticToolsIdentified(t, CapabilityIdentity{Kind: "tools.nested-display-test", Version: 1}, definition),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -391,12 +625,12 @@ func TestNestedAgentEventsRemainDisplayOnlyAndToolEventsRetainLiveDetails(t *tes
 	if result, err := run.Wait(context.Background()); err != nil || result.Status != ResultCompleted {
 		t.Fatalf("result=%#v error=%v", result, err)
 	}
-	var nested AssistantDelta
+	var nested NestedEvent
 	var started ToolStarted
 	var finished ToolFinished
 	for event := range run.Events() {
 		switch payload := event.Payload.(type) {
-		case AssistantDelta:
+		case NestedEvent:
 			if payload.Source.Name == "child" {
 				nested = payload
 			}
@@ -406,7 +640,8 @@ func TestNestedAgentEventsRemainDisplayOnlyAndToolEventsRetainLiveDetails(t *tes
 			finished = payload
 		}
 	}
-	if nested.Delta != "child display" || !nested.DisplayOnly || len(nested.Source.Path) != 2 {
+	childDelta, ok := nested.Child.Payload.(AssistantDelta)
+	if !ok || childDelta.Delta != "child display" || len(nested.Source.Path) != 2 || nested.SessionID != "child-session" {
 		t.Fatalf("nested delta=%#v", nested)
 	}
 	if started.Name != "delegate" || string(started.Arguments) != `{"prompt":"research"}` {
@@ -443,7 +678,7 @@ func TestToolCanRequestSuccessfulCompletionAtTheCompletedBatchBoundary(t *testin
 	}}
 	owner, err := New(context.Background(), Definition{
 		Name: "submitter", Model: model,
-		Tools: StaticToolsIdentified(CapabilityIdentity{Kind: "tools.completion-test", Version: 1}, ToolDefinition{
+		Tools: mustStaticToolsIdentified(t, CapabilityIdentity{Kind: "tools.completion-test", Version: 1}, ToolDefinition{
 			Tool: tool,
 			Descriptor: ToolDescriptor{
 				Source: ToolSourceOther, Execution: ToolExecutionSessionExclusive,
@@ -510,28 +745,39 @@ func (model *gatedLifecycleModel) next(ctx context.Context, input []*Message) (*
 	}
 }
 
-func (model *lifecycleModel) Generate(_ context.Context, input []*Message, _ ...ModelOption) (*Message, error) {
-	return model.next(input)
+func (model *lifecycleModel) Generate(_ context.Context, input []*Message, options ...ModelOption) (*Message, error) {
+	return model.next(input, options...)
 }
 
-func (model *lifecycleModel) Stream(_ context.Context, input []*Message, _ ...ModelOption) (*StreamReader[*Message], error) {
-	message, err := model.next(input)
+func (model *lifecycleModel) Stream(_ context.Context, input []*Message, options ...ModelOption) (*StreamReader[*Message], error) {
+	message, err := model.next(input, options...)
 	if err != nil {
 		return nil, err
 	}
 	return StreamReaderFromArray([]*Message{message}), nil
 }
 
-func (model *lifecycleModel) next(input []*Message) (*Message, error) {
+func (model *lifecycleModel) next(input []*Message, options ...ModelOption) (*Message, error) {
 	model.mu.Lock()
 	defer model.mu.Unlock()
 	model.inputs = append(model.inputs, cloneMessages(input))
+	model.options = append(model.options, GetCommonOptions(&Options{}, options...))
 	if len(model.responses) == 0 {
 		return nil, errors.New("lifecycle model exhausted")
 	}
 	message := CloneMessage(model.responses[0])
 	model.responses = model.responses[1:]
 	return message, nil
+}
+
+func (model *lifecycleModel) cacheKeys() []string {
+	model.mu.Lock()
+	defer model.mu.Unlock()
+	keys := make([]string, len(model.options))
+	for index, options := range model.options {
+		keys[index] = options.SessionKey
+	}
+	return keys
 }
 
 func (model *lifecycleModel) calls() [][]*Message {
@@ -612,6 +858,52 @@ func TestAgentNamedSessionRetainsProviderNeutralTranscript(t *testing.T) {
 	}
 }
 
+func TestAgentBindsStableOpaqueProviderCacheKeyPerSession(t *testing.T) {
+	model := &lifecycleModel{responses: []*Message{
+		AssistantMessage("first", nil), AssistantMessage("second", nil), AssistantMessage("other", nil),
+	}}
+	owner, err := New(context.Background(), Definition{Model: model})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer owner.Close(context.Background())
+	first, err := owner.Session(context.Background(), SessionKey{
+		Namespace: "private", ID: "session-one", Attributes: map[string]string{"workspace": "/secret/book"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index, text := range []string{"one", "two"} {
+		run, runErr := first.Run(context.Background(), Input{Text: text, IdempotencyKey: fmt.Sprintf("cache-first-%d", index)})
+		if runErr != nil {
+			t.Fatal(runErr)
+		}
+		if _, waitErr := run.Wait(context.Background()); waitErr != nil {
+			t.Fatal(waitErr)
+		}
+	}
+	second, err := owner.Session(context.Background(), SessionKey{Namespace: "private", ID: "session-two"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, err := second.Run(context.Background(), Input{Text: "other", IdempotencyKey: "cache-second"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := run.Wait(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	keys := model.cacheKeys()
+	if len(keys) != 3 || keys[0] == "" || keys[0] != keys[1] || keys[0] == keys[2] {
+		t.Fatalf("provider cache keys = %#v", keys)
+	}
+	for _, key := range keys {
+		if strings.Contains(key, "session-") || strings.Contains(key, "/secret/book") {
+			t.Fatalf("provider cache key exposed Session identity: %q", key)
+		}
+	}
+}
+
 func TestSessionCompactionRemoveAndClearPreserveRawHistorySemantics(t *testing.T) {
 	model := &lifecycleModel{responses: []*Message{
 		AssistantMessage("answer one", nil), AssistantMessage("answer two", nil),
@@ -627,7 +919,8 @@ func TestSessionCompactionRemoveAndClearPreserveRawHistorySemantics(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	for index, text := range []string{"question one", "question two"} {
+	questionOne := strings.TrimSpace(strings.Repeat("question one with substantial context ", 80))
+	for index, text := range []string{questionOne, "question two"} {
 		run, runErr := session.Run(context.Background(), Input{Text: text, IdempotencyKey: fmt.Sprintf("before-%d", index)})
 		if runErr != nil {
 			t.Fatal(runErr)
@@ -667,7 +960,7 @@ func TestSessionCompactionRemoveAndClearPreserveRawHistorySemantics(t *testing.T
 		t.Fatal(err)
 	}
 	calls = model.calls()
-	if len(calls[3]) != 7 || calls[3][0].Content != "question one" || calls[3][6].Content != "question four" {
+	if len(calls[3]) != 7 || calls[3][0].Content != questionOne || calls[3][6].Content != "question four" {
 		t.Fatalf("restored raw history=%#v", calls[3])
 	}
 	if err := session.Clear(context.Background()); err != nil {
@@ -686,6 +979,29 @@ func TestSessionCompactionRemoveAndClearPreserveRawHistorySemantics(t *testing.T
 	}
 }
 
+func TestCompactionIncrementalSourceUsesCheckpointAndOnlyNewRawTail(t *testing.T) {
+	messages := []*Message{
+		UserMessage("old request"), AssistantMessage("old answer", nil),
+		UserMessage("new request"), AssistantMessage("new answer", nil),
+	}
+	current := CompactionState{
+		ID: "checkpoint-one", Revision: 1, Summary: "old checkpoint summary",
+		ReplacementFrom: 0, ReplacementTo: 2,
+	}
+	source := compactionIncrementalSource(messages, CompactionPlan{
+		Action: CompactionCreate, SourceFrom: 0, SourceTo: 3,
+	}, current, true, 64<<10)
+	if len(source) != 2 || source[0].Role != System || !strings.Contains(source[0].Content, current.Summary) ||
+		source[1].Content != "new request" {
+		t.Fatalf("incremental Compaction source = %#v", source)
+	}
+	for _, message := range source {
+		if message.Content == "old request" || message.Content == "old answer" {
+			t.Fatalf("hidden raw history leaked back into incremental source: %#v", source)
+		}
+	}
+}
+
 func TestAutomaticCompactionRematerializesHostContextBeforeSameCycleModelCall(t *testing.T) {
 	model := &lifecycleModel{responses: []*Message{
 		AssistantMessage("answer one", nil), AssistantMessage("answer two", nil),
@@ -693,6 +1009,7 @@ func TestAutomaticCompactionRematerializesHostContextBeforeSameCycleModelCall(t 
 	manager := &automaticContextDataCompactionManager{}
 	owner, err := New(context.Background(), Definition{
 		Model: model, Context: projectingContextSource{}, Compaction: manager,
+		Middlewares: []Middleware{&appendFinalContextMiddleware{}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -702,7 +1019,7 @@ func TestAutomaticCompactionRematerializesHostContextBeforeSameCycleModelCall(t 
 	if err != nil {
 		t.Fatal(err)
 	}
-	for index, text := range []string{"question one", "question two"} {
+	for index, text := range []string{strings.Repeat("question one with host state ", 80), "question two"} {
 		run, runErr := session.Run(context.Background(), Input{
 			Text: text, IdempotencyKey: fmt.Sprintf("same-cycle-%d", index),
 		})
@@ -716,7 +1033,14 @@ func TestAutomaticCompactionRematerializesHostContextBeforeSameCycleModelCall(t 
 	if !manager.sawFullContext() {
 		t.Fatal("Compaction manager did not summarize the exact pre-compaction host context")
 	}
+	if !manager.sawMiddlewareSnapshot() {
+		t.Fatal("Compaction manager did not receive the final post-middleware model snapshot")
+	}
 	calls := model.calls()
+	cacheKeys := model.cacheKeys()
+	if len(cacheKeys) != 2 || cacheKeys[1] == "" || manager.snapshotCacheKey() != cacheKeys[1] {
+		t.Fatalf("automatic Compaction cache key=%q primary=%#v", manager.snapshotCacheKey(), cacheKeys)
+	}
 	if len(calls) != 2 {
 		t.Fatalf("model calls=%d", len(calls))
 	}
@@ -729,6 +1053,271 @@ func TestAutomaticCompactionRematerializesHostContextBeforeSameCycleModelCall(t 
 	}
 	if !strings.Contains(second.String(), "BOUNDED_HOST_CONTEXT") || strings.Contains(second.String(), "FULL_HOST_CONTEXT") {
 		t.Fatalf("same-cycle model context was not rematerialized: %#v", calls[1])
+	}
+}
+
+func TestMiddlewareProjectionCannotSkipFixedAutomaticCompaction(t *testing.T) {
+	model := &lifecycleModel{responses: []*Message{
+		AssistantMessage("answer one", nil), AssistantMessage("answer two", nil),
+	}}
+	manager := &maintenanceAwareCompactionManager{}
+	owner, err := New(context.Background(), Definition{
+		Model: model, Compaction: manager,
+		Middlewares: []Middleware{&maintenanceProjectionMiddleware{}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = owner.Close(context.Background()) })
+	session, err := owner.Session(context.Background(), NamedSession("maintenance-before-compaction"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index, text := range []string{strings.TrimSpace(strings.Repeat("question one with host state ", 80)), "question two"} {
+		run, runErr := session.Run(context.Background(), Input{
+			Text: text, IdempotencyKey: fmt.Sprintf("maintenance-order-%d", index),
+		})
+		if runErr != nil {
+			t.Fatal(runErr)
+		}
+		if _, waitErr := run.Wait(context.Background()); waitErr != nil {
+			t.Fatal(waitErr)
+		}
+	}
+	planCalls, compactCalls := manager.calls()
+	if planCalls != 2 || compactCalls != 1 {
+		t.Fatalf("fixed compaction calls after middleware projection: plan=%d compact=%d", planCalls, compactCalls)
+	}
+	calls := model.calls()
+	if len(calls) != 2 || len(calls[1]) != 1 || calls[1][0].Content != "REVERSIBLE_CLEANUP_PROJECTION" {
+		t.Fatalf("final cleanup projection = %#v", calls)
+	}
+}
+
+func TestAutomaticCompactionFailureContinuesPrimaryModelAndOpensDurableFuse(t *testing.T) {
+	model := &lifecycleModel{responses: []*Message{
+		AssistantMessage("answer one", nil), AssistantMessage("answer two", nil),
+		AssistantMessage("answer three", nil), AssistantMessage("answer four", nil),
+	}}
+	manager := &failingAutomaticCompactionManager{}
+	owner, err := New(context.Background(), Definition{
+		Model: model, Compaction: manager,
+		Execution: ExecutionPolicy{MaxAutomaticCompactionFailures: 3},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = owner.Close(context.Background()) })
+	session, err := owner.Session(context.Background(), NamedSession("automatic-compaction-failure-fuse"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	failedEvents := 0
+	skippedEvents := 0
+	for index := range 4 {
+		run, runErr := session.Run(context.Background(), Input{
+			Text: fmt.Sprintf("question %d", index+1), IdempotencyKey: fmt.Sprintf("failure-fuse-%d", index),
+		})
+		if runErr != nil {
+			t.Fatal(runErr)
+		}
+		result, waitErr := run.Wait(context.Background())
+		if waitErr != nil || result.Status != ResultCompleted {
+			t.Fatalf("run %d result=%#v err=%v", index, result, waitErr)
+		}
+		for event := range run.Events() {
+			switch payload := event.Payload.(type) {
+			case CompactionFailed:
+				failedEvents++
+				if payload.ConsecutiveFailures != index+1 || payload.FailureFuseOpen != (index == 2) {
+					t.Fatalf("failure event %d = %#v", index, payload)
+				}
+			case CompactionSkipped:
+				skippedEvents++
+				if payload.Reason != "consecutive_failure_fuse" || !payload.FailureFuseOpen || payload.ConsecutiveFailures != 3 {
+					t.Fatalf("skip event = %#v", payload)
+				}
+			}
+		}
+	}
+	if manager.calls() != 3 || len(model.calls()) != 4 || failedEvents != 3 || skippedEvents != 1 {
+		t.Fatalf("plan=%d model=%d failed=%d skipped=%d", manager.calls(), len(model.calls()), failedEvents, skippedEvents)
+	}
+}
+
+func TestAdvanceCompactionHealthCountsOnlySameStructure(t *testing.T) {
+	first := nextCompactionHealth(compactionHealthState{}, false, "structure-a", errors.New("failed"))
+	same := nextCompactionHealth(first, true, "structure-a", errors.New("failed again"))
+	changed := nextCompactionHealth(same, true, "structure-b", errors.New("different structure"))
+	if first.ConsecutiveFailures != 1 || same.ConsecutiveFailures != 2 || changed.ConsecutiveFailures != 1 ||
+		changed.Fingerprint != "structure-b" {
+		t.Fatalf("Compaction health sequence first=%#v same=%#v changed=%#v", first, same, changed)
+	}
+}
+
+func TestFailedCompactionForkIsNotRetriedAfterAToolCallInTheSameRun(t *testing.T) {
+	model := &lifecycleModel{responses: []*Message{
+		cleanupToolCall("after-compaction-failure"), AssistantMessage("done", nil),
+	}}
+	manager := &failingAutomaticCompactionManager{}
+	owner, err := New(context.Background(), Definition{
+		Model: model, Tools: cleanupLifecycleTools(t), Compaction: manager,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = owner.Close(context.Background()) })
+	run, err := owner.Run(context.Background(), Input{Text: "inspect", IdempotencyKey: "compaction-failure-one-run"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result, waitErr := run.Wait(context.Background()); waitErr != nil || result.Status != ResultCompleted {
+		t.Fatalf("result=%#v err=%v", result, waitErr)
+	}
+	if manager.calls() != 1 || len(model.calls()) != 2 {
+		t.Fatalf("Compaction plan calls=%d model calls=%d", manager.calls(), len(model.calls()))
+	}
+}
+
+func TestContextMaintenanceRunsAtEveryModelSeamButMutatesOnlyOncePerRun(t *testing.T) {
+	model := &lifecycleModel{responses: []*Message{
+		AssistantMessage("seed answer", nil), cleanupToolCall("post-tool-pressure"), AssistantMessage("done", nil),
+	}}
+	manager := &postToolCompactionManager{}
+	owner, err := New(context.Background(), Definition{
+		Model: model, Tools: cleanupLifecycleTools(t), Compaction: manager,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = owner.Close(context.Background()) })
+	session, err := owner.Session(context.Background(), NamedSession("compaction-every-model-seam"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index, text := range []string{strings.Repeat("seed context ", 200), "inspect with a tool"} {
+		run, runErr := session.Run(context.Background(), Input{
+			Text: text, IdempotencyKey: fmt.Sprintf("compaction-every-seam-%d", index),
+		})
+		if runErr != nil {
+			t.Fatal(runErr)
+		}
+		if result, waitErr := run.Wait(context.Background()); waitErr != nil || result.Status != ResultCompleted {
+			t.Fatalf("run %d result=%#v err=%v", index, result, waitErr)
+		}
+	}
+	planCalls, compactCalls := manager.calls()
+	if planCalls != 3 || compactCalls != 1 {
+		t.Fatalf("maintenance calls plan=%d compact=%d, want every seam and one mutation", planCalls, compactCalls)
+	}
+	if calls := model.calls(); len(calls) != 3 || calls[2][0].Role != System ||
+		!strings.Contains(calls[2][0].Content, "post-tool model seam") {
+		t.Fatalf("post-tool Compaction was not applied before the final provider call: %#v", calls)
+	}
+}
+
+func TestContextCompactionHealthPersistsAcrossTranscriptRevisionsAndReload(t *testing.T) {
+	store, err := sessionfile.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	definition := func(model BaseChatModel, manager CompactionManager) Definition {
+		return Definition{
+			Key: "compaction-health-reload", Model: model,
+			ModelIdentity: CapabilityIdentity{Kind: "model.compaction-health-reload", Version: 1},
+			Compaction:    manager, Execution: ExecutionPolicy{MaxAutomaticCompactionFailures: 3},
+		}
+	}
+	firstManager := &failingAutomaticCompactionManager{}
+	firstOwner, err := New(context.Background(), definition(
+		&lifecycleModel{responses: []*Message{AssistantMessage("first", nil)}}, firstManager,
+	), WithSessionStore(store))
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstSession, err := firstOwner.Session(context.Background(), NamedSession("compaction-health-reload"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := firstSession.Run(context.Background(), Input{Text: "one", IdempotencyKey: "health-reload-one"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result, waitErr := first.Wait(context.Background()); waitErr != nil || result.Status != ResultCompleted {
+		t.Fatalf("first result=%#v err=%v", result, waitErr)
+	}
+	if err := firstOwner.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	secondManager := &failingAutomaticCompactionManager{}
+	secondOwner, err := New(context.Background(), definition(
+		&lifecycleModel{responses: []*Message{AssistantMessage("second", nil)}}, secondManager,
+	), WithSessionStore(store))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = secondOwner.Close(context.Background()) })
+	secondSession, err := secondOwner.Session(context.Background(), NamedSession("compaction-health-reload"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := secondSession.Run(context.Background(), Input{Text: "two", IdempotencyKey: "health-reload-two"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result, waitErr := second.Wait(context.Background()); waitErr != nil || result.Status != ResultCompleted {
+		t.Fatalf("second result=%#v err=%v", result, waitErr)
+	}
+	wantFailures := 2
+	found := false
+	for event := range second.Events() {
+		if payload, ok := event.Payload.(CompactionFailed); ok {
+			found = true
+			if payload.ConsecutiveFailures != wantFailures {
+				t.Fatalf("reloaded Compaction health=%#v", payload)
+			}
+		}
+	}
+	if !found || firstManager.calls() != 1 || secondManager.calls() != 1 {
+		t.Fatalf("reloaded failure found=%v calls=(%d,%d)", found, firstManager.calls(), secondManager.calls())
+	}
+}
+
+func TestContextMaintenanceHardOverflowCleansToolResultsBeforeCompaction(t *testing.T) {
+	model := &lifecycleModel{responses: []*Message{
+		cleanupToolCall("large-result"), AssistantMessage("seed complete", nil), AssistantMessage("done", nil),
+	}}
+	compaction := &hardOverflowCompactionManager{}
+	owner, err := New(context.Background(), Definition{
+		Model: model, Tools: cleanupLifecycleTools(t), Cleanup: hardOverflowCleanupManager{}, Compaction: compaction,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = owner.Close(context.Background()) })
+	session, err := owner.Session(context.Background(), NamedSession("hard-overflow-cleanup-before-compaction"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index, text := range []string{"seed", "continue"} {
+		run, runErr := session.Run(context.Background(), Input{Text: text, IdempotencyKey: fmt.Sprintf("hard-overflow-%d", index)})
+		if runErr != nil {
+			t.Fatal(runErr)
+		}
+		if result, waitErr := run.Wait(context.Background()); waitErr != nil || result.Status != ResultCompleted {
+			t.Fatalf("run %d result=%#v err=%v", index, result, waitErr)
+		}
+	}
+	compactCalls, sawProjection := compaction.observed()
+	if compactCalls != 1 || !sawProjection {
+		t.Fatalf("Compaction calls=%d saw transient Cleanup=%v", compactCalls, sawProjection)
+	}
+	if _, present, cleanupErr := session.Cleanup(context.Background()); cleanupErr != nil || present {
+		t.Fatalf("transient Cleanup became durable present=%v err=%v", present, cleanupErr)
+	}
+	if _, present, compactionErr := session.compactionState(context.Background()); compactionErr != nil || !present {
+		t.Fatalf("checkpoint missing present=%v err=%v", present, compactionErr)
 	}
 }
 
@@ -968,7 +1557,7 @@ func TestAgentRestoresCompactionContextDataAndPassesItToContextSource(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	for index, text := range []string{"question one", "question two"} {
+	for index, text := range []string{strings.TrimSpace(strings.Repeat("question one with durable host context ", 80)), "question two"} {
 		run, runErr := firstSession.Run(context.Background(), Input{Text: text, IdempotencyKey: fmt.Sprintf("context-before-%d", index)})
 		if runErr != nil {
 			t.Fatal(runErr)
@@ -1066,6 +1655,110 @@ func TestRunSteerPreservesAcceptedInputAcrossPreemption(t *testing.T) {
 	model.responses <- AssistantMessage("corrected", nil)
 	if result, err := run.Wait(context.Background()); err != nil || result.Status != ResultCompleted {
 		t.Fatalf("steered result=%#v err=%v", result, err)
+	}
+}
+
+type blockingFirstDefinitionSource struct {
+	started   chan struct{}
+	canceled  chan struct{}
+	calls     atomic.Int32
+	model     BaseChatModel
+	canonical CanonicalAdapter
+}
+
+func (source *blockingFirstDefinitionSource) Prepare(ctx context.Context, _ PrepareRequest) (Definition, error) {
+	if source.calls.Add(1) == 1 {
+		close(source.started)
+		<-ctx.Done()
+		close(source.canceled)
+		return Definition{}, ctx.Err()
+	}
+	return Definition{Model: source.model, Canonical: source.canonical}, nil
+}
+
+func (source *blockingFirstDefinitionSource) CanonicalInput(context.Context, PrepareRequest) (CanonicalAdapter, error) {
+	return source.canonical, nil
+}
+
+func TestRunControlInterruptsPreparationBeforeModelEffects(t *testing.T) {
+	tests := []struct {
+		name       string
+		control    func(context.Context, *Run) error
+		wantStatus ResultStatus
+		wantCalls  int
+	}{
+		{
+			name: "steer",
+			control: func(ctx context.Context, run *Run) error {
+				_, err := run.Steer(ctx, Input{Text: "correction", IdempotencyKey: "prepare-control-steer"})
+				return err
+			},
+			wantStatus: ResultCompleted, wantCalls: 1,
+		},
+		{
+			name: "abort",
+			control: func(ctx context.Context, run *Run) error {
+				_, err := run.Abort(ctx, AbortRequest{Reason: "stop preparation", IdempotencyKey: "prepare-control-abort"})
+				return err
+			},
+			wantStatus: ResultAborted,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			model := &lifecycleModel{responses: []*Message{AssistantMessage("controlled answer", nil)}}
+			canonical := &identityCanonicalAdapter{identity: CapabilityIdentity{
+				Kind: "canonical.preparation-control-test", Version: 1,
+			}}
+			source := &blockingFirstDefinitionSource{
+				started: make(chan struct{}), canceled: make(chan struct{}), model: model, canonical: canonical,
+			}
+			owner, err := New(context.Background(), source)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = owner.Close(context.Background()) })
+			session, err := owner.Session(context.Background(), NamedSession("preparation-control-"+test.name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			run, err := session.Run(context.Background(), Input{Text: "original", IdempotencyKey: "prepare-control-start-" + test.name})
+			if err != nil {
+				t.Fatal(err)
+			}
+			select {
+			case <-source.started:
+			case <-time.After(time.Second):
+				t.Fatal("Definition preparation did not start")
+			}
+			if err := test.control(context.Background(), run); err != nil {
+				t.Fatal(err)
+			}
+			select {
+			case <-source.canceled:
+			case <-time.After(time.Second):
+				t.Fatal("accepted control did not cancel Definition preparation")
+			}
+			result, err := run.Wait(context.Background())
+			if err != nil || result.Status != test.wantStatus {
+				t.Fatalf("controlled result=%#v err=%v", result, err)
+			}
+			if calls := len(model.calls()); calls != test.wantCalls {
+				t.Fatalf("model calls=%d, want %d", calls, test.wantCalls)
+			}
+			wantCanonicalInputs := 1
+			if test.name == "steer" {
+				wantCanonicalInputs = 2
+				calls := model.calls()
+				if len(calls[0]) != 2 || calls[0][0].Content != "original" || calls[0][1].Content != "correction" {
+					t.Fatalf("steered model input=%#v", calls[0])
+				}
+			}
+			canonicalInputs := int(canonical.materializeCalls.Load())
+			if canonicalInputs != wantCanonicalInputs {
+				t.Fatalf("canonical input writes=%d, want exactly one per accepted input (%d)", canonicalInputs, wantCanonicalInputs)
+			}
+		})
 	}
 }
 

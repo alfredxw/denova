@@ -7,6 +7,7 @@ import (
 
 	"denova/config"
 	agentconversation "denova/internal/agents/conversation"
+	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 )
 
@@ -25,6 +26,15 @@ func (s *ChatAppService) ClearSession() error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if err := fence.validateLocked(a, true); err != nil {
+		return err
+	}
+	if fence.chat == nil {
+		return ErrNoWorkspace
+	}
+	if err := fence.chat.ClearSession(context.Background(), agentrun.Options{
+		AgentKind: agentrun.AgentKindIDE, StateRoot: fence.stateRoot,
+		Workspace: fence.workspace, SessionID: fence.sessionID, Mode: "ide",
+	}); err != nil {
 		return err
 	}
 	cursor := fence.selected.ContextCursor()
@@ -187,6 +197,12 @@ func (s *ChatAppService) DeleteSession(id string) (*session.Session, error) {
 		return nil, fmt.Errorf("不能删除当前唯一会话")
 	}
 
+	if fence.chat == nil {
+		return nil, ErrNoWorkspace
+	}
+	if err := fence.chat.DeleteSessionBindings(context.Background(), agentrun.AgentKindIDE, fence.workspace, id); err != nil {
+		return nil, err
+	}
 	if err := fence.store.Delete(id); err != nil {
 		return nil, err
 	}

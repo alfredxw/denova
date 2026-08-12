@@ -3,11 +3,11 @@ package toolruntime_test
 import (
 	"context"
 	agenttool "denova/internal/agents/tool"
-	agenttoolruntime "denova/internal/agents/toolruntime"
 	"strings"
 	"testing"
 
 	agent "github.com/alfredxw/denova/agent"
+	publictools "github.com/alfredxw/denova/agent/tools"
 
 	"denova/config"
 	"denova/internal/agents/toolresult"
@@ -15,10 +15,15 @@ import (
 )
 
 func TestToolDescriptorDeclaresExecutionAndRecoveryPolicy(t *testing.T) {
-	definition, err := agenttoolruntime.NewCatalog(nil).Todo()
+	toolset, err := publictools.Todo()
 	if err != nil {
 		t.Fatal(err)
 	}
+	definitions, err := toolset.PrepareTools(context.Background(), agent.ToolRequest{})
+	if err != nil || len(definitions) != 1 {
+		t.Fatalf("prepare public todo definition=%#v err=%v", definitions, err)
+	}
+	definition := definitions[0]
 	info, err := definition.Tool.Info(context.Background())
 	if err != nil {
 		t.Fatal(err)

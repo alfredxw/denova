@@ -55,6 +55,7 @@ export function useWritingAgentRuntimeRecovery({
   const [recoveryPending, setRecoveryPending] = useState(false)
   const [recoveryAttempt, setRecoveryAttempt] = useState(0)
   const runtimeProjectionRef = useRef<ActiveChatTask | null>(null)
+  const streamCycleProjectionVersionRef = useRef(0)
   const recoveryActionInFlightRef = useRef(false)
   const checkInFlightRef = useRef<{ sessionID: string; promise: Promise<void> } | null>(null)
   const attachedRecoveryRetryNeededRef = useRef(false)
@@ -79,6 +80,27 @@ export function useWritingAgentRuntimeRecovery({
   if (displayRehydrateRequest && displayRehydrateRequest.signal > displayRehydrateCompletedSignalRef.current) {
     displayRehydrateRef.current = displayRehydrateRequest
   }
+
+  const projectStreamCycle = useCallback((operationID: string, cycle?: number) => {
+    const normalizedOperationID = operationID.trim()
+    if (!normalizedOperationID) return
+    streamCycleProjectionVersionRef.current += 1
+    const current = runtimeProjectionRef.current
+    const projection: ActiveChatTask = {
+      ...(current || {}),
+      active: true,
+      status: 'running',
+      phase: 'running',
+      recovery_paused: false,
+      runtime_recoverable: false,
+      stream_attached: true,
+      recovery_actions: [],
+      active_operation_id: normalizedOperationID,
+      ...(Number.isSafeInteger(cycle) && (cycle || 0) > 0 ? { active_cycle: cycle } : {}),
+    }
+    runtimeProjectionRef.current = projection
+    setRuntimeProjection(projection)
+  }, [])
 
   const markRecoveryRetry = useCallback((retryImmediately: boolean, projectionFingerprint?: string) => {
     retryNeededRef.current = true
@@ -290,6 +312,7 @@ export function useWritingAgentRuntimeRecovery({
     displayRehydrateInFlightRef.current = false
     retryNeededRef.current = false
     attachedRecoveryRetryNeededRef.current = false
+    streamCycleProjectionVersionRef.current += 1
     runtimeProjectionRef.current = null
     setRuntimeProjection(null)
     setRecoveryPending(false)
@@ -298,29 +321,63 @@ export function useWritingAgentRuntimeRecovery({
 
   useEffect(() => {
     if (transportStatus !== 'error' || !wasStreamingRef.current) return
+    if (!activeSessionIdRef.current.trim()) {
+      retryNeededRef.current = false
+      wasStreamingRef.current = false
+      setRecoveryPending(false)
+      transport.clearActiveStreamTarget()
+      onSettledRef.current()
+      return
+    }
     if (transportError) {
       console.warn(
         '[use-agent-runtime-recovery.ts] writing Agent stream entered the AI SDK error state; waiting for a safe retry opportunity',
         transportError,
       )
     }
-    markRecoveryRetry(true)
-  }, [markRecoveryRetry, transportError, transportStatus])
+    // The status transition below performs the first canonical inspection.
+    // Remember its projection so a late resumeStream resolution cannot queue
+    // the same inspection a second time.
+    immediateRetryProjectionRef.current = writingRecoveryProjectionFingerprint(runtimeProjectionRef.current)
+    markRecoveryRetry(false)
+  }, [markRecoveryRetry, transport, transportError, transportStatus])
 
-  // `submitted` can precede server-side Task registration. Refresh again when
-  // the response starts streaming so operation-scoped controls get the exact ID.
+  // `submitted` only means the browser started the POST. Do not treat it as
+  // durable acceptance: a deterministic 4xx (for example context_changed)
+  // must return to the composer instead of entering runtime recovery. Once the
+  // response stream starts, the server has accepted the Run and `/active` can
+  // bind operation-scoped controls to its exact identity.
   useEffect(() => {
     if (displayRehydrateRef.current) return
-    if (transportStreaming) {
+    if (transportStatus === 'submitted') {
       immediateRetryProjectionRef.current = ''
+      retryNeededRef.current = false
+      wasStreamingRef.current = false
+      setRecoveryPending(false)
+      return
+    }
+    if (transportResponseStreaming) {
+      immediateRetryProjectionRef.current = ''
+      const sessionID = activeSessionIdRef.current.trim()
+      if (!sessionID) {
+        retryNeededRef.current = false
+        wasStreamingRef.current = false
+        setRecoveryPending(false)
+        transport.clearActiveStreamTarget()
+        return
+      }
       wasStreamingRef.current = true
       retryNeededRef.current = false
       setRecoveryPending(false)
       let cancelled = false
-      const sessionID = activeSessionIdRef.current.trim()
+      const streamCycleProjectionVersion = streamCycleProjectionVersionRef.current
       client.getActiveChatTask(sessionID)
         .then((projection) => {
           if (cancelled || activeSessionIdRef.current !== sessionID) return
+          // `agent_cycle_started` is emitted after durable Run acceptance. An
+          // older `/active` request may still return the pre-registration idle
+          // projection and must not revoke that newer exact Run identity.
+          if (streamCycleProjectionVersionRef.current !== streamCycleProjectionVersion) return
           runtimeProjectionRef.current = projection
           setRuntimeProjection(projection)
           const taskID = projection.task_id?.trim()
@@ -336,7 +393,7 @@ export function useWritingAgentRuntimeRecovery({
     }
     if (!wasStreamingRef.current) return
     void inspectAndAttach(true)
-  }, [client, inspectAndAttach, recoveryAttempt, transport, transportResponseStreaming, transportStreaming])
+  }, [activeSessionId, client, inspectAndAttach, recoveryAttempt, transport, transportResponseStreaming, transportStatus])
 
   useEffect(() => {
     if (runtimeRecoverySignal <= 0) return
@@ -442,6 +499,7 @@ export function useWritingAgentRuntimeRecovery({
 
   return {
     abortRecovery,
+    projectStreamCycle,
     recoveryPending,
     resumeActiveChat,
     runtimeProjection,

@@ -3,6 +3,8 @@ package session
 import (
 	"context"
 	"fmt"
+	"maps"
+	"sort"
 	"sync"
 )
 
@@ -10,15 +12,13 @@ import (
 // replay, and atomic CAS behavior. Data lasts for the Store lifetime.
 func Memory() Store {
 	return &memoryStore{
-		logs:   make(map[string]*memoryData),
-		leases: make(map[string]chan struct{}),
+		entries: make(map[string]*memoryEntry),
 	}
 }
 
 type memoryStore struct {
-	mu     sync.Mutex
-	logs   map[string]*memoryData
-	leases map[string]chan struct{}
+	mu      sync.Mutex
+	entries map[string]*memoryEntry
 }
 
 func (*memoryStore) Volatile() bool { return true }
@@ -28,9 +28,19 @@ type memoryData struct {
 	records []Record
 }
 
+type memoryEntry struct {
+	key   Key
+	data  *memoryData
+	lease chan struct{}
+}
+
 func (store *memoryStore) Open(ctx context.Context, key Key) (Log, error) {
 	if store == nil {
 		return nil, fmt.Errorf("open memory agent session: store is nil")
+	}
+	key, err := NormalizeKey(key)
+	if err != nil {
+		return nil, err
 	}
 	canonical, err := CanonicalKey(key)
 	if err != nil {
@@ -39,25 +49,100 @@ func (store *memoryStore) Open(ctx context.Context, key Key) (Log, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	store.mu.Lock()
-	data := store.logs[canonical]
-	if data == nil {
-		data = &memoryData{}
-		store.logs[canonical] = data
-	}
-	lease := store.leases[canonical]
-	if lease == nil {
-		lease = make(chan struct{}, 1)
-		lease <- struct{}{}
-		store.leases[canonical] = lease
-	}
-	store.mu.Unlock()
+	for {
+		store.mu.Lock()
+		entry := store.entries[canonical]
+		if entry == nil {
+			entry = &memoryEntry{key: key, data: &memoryData{}, lease: make(chan struct{}, 1)}
+			entry.lease <- struct{}{}
+			store.entries[canonical] = entry
+		}
+		store.mu.Unlock()
 
+		select {
+		case <-entry.lease:
+			// Delete can replace the catalog entry while this Open waits for the
+			// old lease. Revalidate after acquisition so deleted records can never
+			// be reopened through a stale waiter.
+			store.mu.Lock()
+			current := store.entries[canonical]
+			store.mu.Unlock()
+			if current != entry {
+				entry.lease <- struct{}{}
+				continue
+			}
+			return &memoryLog{data: entry.data, release: func() { entry.lease <- struct{}{} }}, nil
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+}
+
+func (store *memoryStore) List(ctx context.Context, selector Selector) ([]Key, error) {
+	if store == nil {
+		return nil, fmt.Errorf("list memory agent sessions: store is nil")
+	}
+	if err := selector.Validate(); err != nil {
+		return nil, err
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	result := make([]Key, 0, len(store.entries))
+	for _, entry := range store.entries {
+		if selector.Matches(entry.key) {
+			key := entry.key
+			key.Attributes = maps.Clone(key.Attributes)
+			result = append(result, key)
+		}
+	}
+	sort.Slice(result, func(left, right int) bool {
+		leftKey, _ := CanonicalKey(result[left])
+		rightKey, _ := CanonicalKey(result[right])
+		return leftKey < rightKey
+	})
+	return result, nil
+}
+
+func (store *memoryStore) Delete(ctx context.Context, key Key) error {
+	if store == nil {
+		return fmt.Errorf("delete memory agent session: store is nil")
+	}
+	key, err := NormalizeKey(key)
+	if err != nil {
+		return err
+	}
+	canonical, err := CanonicalKey(key)
+	if err != nil {
+		return err
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	store.mu.Lock()
+	entry := store.entries[canonical]
+	store.mu.Unlock()
+	if entry == nil {
+		return nil
+	}
 	select {
-	case <-lease:
-		return &memoryLog{data: data, release: func() { lease <- struct{}{} }}, nil
+	case <-entry.lease:
+		store.mu.Lock()
+		if store.entries[canonical] == entry {
+			delete(store.entries, canonical)
+		}
+		store.mu.Unlock()
+		// Wake stale Open waiters. They revalidate the catalog generation and
+		// retry against a fresh, empty entry.
+		entry.lease <- struct{}{}
+		return nil
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return ctx.Err()
 	}
 }
 

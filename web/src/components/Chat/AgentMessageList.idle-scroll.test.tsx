@@ -4,6 +4,7 @@ import type { AgentUIMessage } from '@/lib/agent-ui'
 import { MessageList } from './AgentMessageList'
 
 const virtuosoBoundary = vi.hoisted(() => ({
+  alignToBottom: undefined as unknown,
   followOutput: undefined as unknown,
   totalListHeightChanged: undefined as unknown,
   scrollToIndex: vi.fn(),
@@ -12,7 +13,8 @@ const virtuosoBoundary = vi.hoisted(() => ({
 vi.mock('react-virtuoso', async () => {
   const React = await import('react')
   return {
-    Virtuoso: React.forwardRef<unknown, { className?: string; followOutput?: unknown; totalListHeightChanged?: unknown }>(function VirtuosoBoundary(props, ref) {
+    Virtuoso: React.forwardRef<unknown, { alignToBottom?: boolean; className?: string; followOutput?: unknown; totalListHeightChanged?: unknown }>(function VirtuosoBoundary(props, ref) {
+      virtuosoBoundary.alignToBottom = props.alignToBottom
       virtuosoBoundary.followOutput = props.followOutput
       virtuosoBoundary.totalListHeightChanged = props.totalListHeightChanged
       React.useImperativeHandle(ref, () => ({ scrollToIndex: virtuosoBoundary.scrollToIndex }))
@@ -22,7 +24,7 @@ vi.mock('react-virtuoso', async () => {
 })
 
 describe('Agent MessageList bottom following', () => {
-  it('disables virtualizer bottom following when output is not streaming', () => {
+  it('keeps an idle height observer without enabling virtualizer bottom following', () => {
     render(
       <MessageList
         isStreaming={false}
@@ -33,8 +35,9 @@ describe('Agent MessageList bottom following', () => {
       />,
     )
 
+    expect(virtuosoBoundary.alignToBottom).toBe(true)
     expect(virtuosoBoundary.followOutput).toBeUndefined()
-    expect(virtuosoBoundary.totalListHeightChanged).toBeUndefined()
+    expect(virtuosoBoundary.totalListHeightChanged).toBeTypeOf('function')
   })
 
   it('does not run the message-list bottom scheduler for idle footer changes', () => {

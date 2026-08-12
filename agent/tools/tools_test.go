@@ -143,6 +143,7 @@ func TestReadReportsAdapterNotFoundWithoutMaskingOtherFailures(t *testing.T) {
 	}
 	missingErr := fmt.Errorf("read missing reference: %w", os.ErrNotExist)
 	missingAdapter, err := NewReadAdapter(
+		agent.CapabilityIdentity{Kind: "test.read.reference", Version: 1},
 		"reference",
 		func(context.Context, string) (bool, error) { return true, nil },
 		func(context.Context, referenceInput) (ReadResult, error) { return ReadResult{}, missingErr },
@@ -173,6 +174,7 @@ func TestReadReportsAdapterNotFoundWithoutMaskingOtherFailures(t *testing.T) {
 
 	permissionErr := errors.New("permission denied")
 	brokenAdapter, err := NewReadAdapter(
+		agent.CapabilityIdentity{Kind: "test.read.broken", Version: 1},
 		"broken",
 		func(context.Context, string) (bool, error) { return false, permissionErr },
 		func(context.Context, referenceInput) (ReadResult, error) { return ReadResult{}, nil },
@@ -181,6 +183,7 @@ func TestReadReportsAdapterNotFoundWithoutMaskingOtherFailures(t *testing.T) {
 		t.Fatal(err)
 	}
 	missingMatcher, err := NewReadAdapter(
+		agent.CapabilityIdentity{Kind: "test.read.missing", Version: 1},
 		"missing",
 		func(context.Context, string) (bool, error) { return false, os.ErrNotExist },
 		func(context.Context, referenceInput) (ReadResult, error) { return ReadResult{}, nil },
@@ -202,7 +205,7 @@ func TestReadRejectsAmbiguousAdapters(t *testing.T) {
 		Path string `json:"path"`
 	}
 	makeAdapter := func(name string) ReadAdapter {
-		adapter, err := NewReadAdapter(name, func(context.Context, string) (bool, error) { return true, nil }, func(_ context.Context, in input) (ReadResult, error) {
+		adapter, err := NewReadAdapter(agent.CapabilityIdentity{Kind: "test.read." + name, Version: 1}, name, func(context.Context, string) (bool, error) { return true, nil }, func(_ context.Context, in input) (ReadResult, error) {
 			return ReadResult{Path: in.Path, Kind: name, Content: name}, nil
 		})
 		if err != nil {
@@ -228,13 +231,13 @@ func TestReadRejectsConflictingSharedAdapterParameters(t *testing.T) {
 		Path  string `json:"path"`
 		Limit string `json:"limit,omitempty"`
 	}
-	first, err := NewReadAdapter("first", func(context.Context, string) (bool, error) { return true, nil }, func(context.Context, firstInput) (ReadResult, error) {
+	first, err := NewReadAdapter(agent.CapabilityIdentity{Kind: "test.read.first", Version: 1}, "first", func(context.Context, string) (bool, error) { return true, nil }, func(context.Context, firstInput) (ReadResult, error) {
 		return ReadResult{}, nil
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := NewReadAdapter("second", func(context.Context, string) (bool, error) { return false, nil }, func(context.Context, secondInput) (ReadResult, error) {
+	second, err := NewReadAdapter(agent.CapabilityIdentity{Kind: "test.read.second", Version: 1}, "second", func(context.Context, string) (bool, error) { return false, nil }, func(context.Context, secondInput) (ReadResult, error) {
 		return ReadResult{}, nil
 	})
 	if err != nil {
@@ -359,6 +362,10 @@ func TestReadRejectsTraversalEscapingSymlinkOversizeAndBinary(t *testing.T) {
 type recordingMutationAdapter struct {
 	write WriteRequest
 	edit  EditRequest
+}
+
+func (*recordingMutationAdapter) Identity() agent.CapabilityIdentity {
+	return agent.CapabilityIdentity{Kind: "test.recording-mutation", Version: 1}
 }
 
 func (adapter *recordingMutationAdapter) Write(_ context.Context, request WriteRequest) (agent.ToolResult, error) {
@@ -638,6 +645,10 @@ func TestSearchProjectionBudgetsEnvelopeAndRewritesCursor(t *testing.T) {
 type recordingSearcher struct {
 	glob GlobRequest
 	grep GrepRequest
+}
+
+func (*recordingSearcher) Identity() agent.CapabilityIdentity {
+	return agent.CapabilityIdentity{Kind: "test.recording-searcher", Version: 1}
 }
 
 func (searcher *recordingSearcher) Glob(_ context.Context, request GlobRequest) (SearchResult, error) {
@@ -972,8 +983,93 @@ func TestBashSupportsCwdEnvTimeoutMergedOrderAndPTY(t *testing.T) {
 
 type fakeCommandRunner struct{ result CommandResult }
 
+func (fakeCommandRunner) Identity() agent.CapabilityIdentity {
+	return agent.CapabilityIdentity{Kind: "test.fake-command-runner", Version: 1}
+}
+
 func (runner fakeCommandRunner) Run(context.Context, CommandRequest, func(string)) (CommandResult, error) {
 	return runner.result, nil
+}
+
+type zeroIdentityReadAdapter struct{ ReadAdapter }
+
+func (zeroIdentityReadAdapter) Identity() agent.CapabilityIdentity { return agent.CapabilityIdentity{} }
+
+type zeroIdentitySearcher struct{ *recordingSearcher }
+
+func (zeroIdentitySearcher) Identity() agent.CapabilityIdentity { return agent.CapabilityIdentity{} }
+
+type zeroIdentityMutationAdapter struct{ *recordingMutationAdapter }
+
+func (zeroIdentityMutationAdapter) Identity() agent.CapabilityIdentity {
+	return agent.CapabilityIdentity{}
+}
+
+type zeroIdentityCommandRunner struct{ fakeCommandRunner }
+
+func (zeroIdentityCommandRunner) Identity() agent.CapabilityIdentity {
+	return agent.CapabilityIdentity{}
+}
+
+type zeroIdentityTodoStore struct{}
+
+func (zeroIdentityTodoStore) Identity() agent.CapabilityIdentity { return agent.CapabilityIdentity{} }
+func (zeroIdentityTodoStore) Load(context.Context) ([]TodoItem, uint64, error) {
+	return nil, 0, nil
+}
+func (zeroIdentityTodoStore) Apply(context.Context, TodoApplyRequest) (TodoApplyResult, error) {
+	return TodoApplyResult{}, nil
+}
+
+func TestBuiltInToolFactoriesRejectInvalidAdapterIdentity(t *testing.T) {
+	validRead, err := NewReadAdapter(agent.CapabilityIdentity{Kind: "test.read.identity-probe", Version: 1}, "identity-probe", func(context.Context, string) (bool, error) {
+		return true, nil
+	}, func(context.Context, struct {
+		Path string `json:"path"`
+	}) (ReadResult, error) {
+		return ReadResult{}, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name string
+		err  error
+	}{
+		{"read", func() error { _, err := Read([]ReadAdapter{zeroIdentityReadAdapter{validRead}}); return err }()},
+		{"glob", func() error { _, err := Glob(zeroIdentitySearcher{&recordingSearcher{}}); return err }()},
+		{"grep", func() error { _, err := Grep(zeroIdentitySearcher{&recordingSearcher{}}); return err }()},
+		{"write", func() error { _, err := Write(zeroIdentityMutationAdapter{&recordingMutationAdapter{}}); return err }()},
+		{"edit", func() error { _, err := Edit(zeroIdentityMutationAdapter{&recordingMutationAdapter{}}); return err }()},
+		{"bash", func() error { _, err := Bash(zeroIdentityCommandRunner{}); return err }()},
+		{"todo", func() error { _, err := Todo(zeroIdentityTodoStore{}); return err }()},
+	}
+	for _, test := range tests {
+		if test.err == nil {
+			t.Fatalf("%s accepted an invalid adapter identity", test.name)
+		}
+	}
+}
+
+func TestSingleRequiresExplicitStableIdentity(t *testing.T) {
+	tool, err := agent.InferTool("single_identity", "identity fixture", func(context.Context, struct{}) (string, error) {
+		return "ok", nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	definition := agent.ToolDefinition{Tool: tool, Descriptor: readDescriptor()}
+	if set, err := Single(agent.CapabilityIdentity{}, definition); err == nil || set != nil {
+		t.Fatalf("Single accepted invalid identity: set=%#v error=%v", set, err)
+	}
+	identity := agent.CapabilityIdentity{Kind: "test.single-identity", Version: 1, ConfigHash: "v1"}
+	set, err := Single(identity, definition)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if set.Identity().Kind != identity.Kind || set.Identity().Version != identity.Version || set.Identity().ConfigHash == "" {
+		t.Fatalf("Single identity = %#v", set.Identity())
+	}
 }
 
 type memoryToolArtifactStore struct {

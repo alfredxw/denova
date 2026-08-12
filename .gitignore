@@ -19,6 +19,8 @@ internal/webfs/dist/
 plan.md
 docs/*
 !docs/continual-learning-user-state-design.md
+!docs/agent-package-api-design.md
+!docs/agent-package-migration-parity-audit.md
 .worktrees/
 .pnpm-store/
 .DS_Store

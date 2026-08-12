@@ -81,7 +81,7 @@ describe('MessageItem', () => {
     expect(container.querySelector('.chat-agent-message')).toHaveTextContent('第二行内容')
   })
 
-  it('流式正文保持单个文本节点，持久化后生成完整 Markdown DOM', () => {
+  it('流式正文使用与持久化 Markdown 一致的段落结构，完成后再解析块级语法', () => {
     const content = '# 标题\n\n第一段。\n\n- 条目 A\n- 条目 B\n\n> 引用'
     const { container, rerender } = render(<MessageItem message={{ role: 'assistant', content, streaming: true }} />)
     const streamedTags = Array.from(container.querySelector('.chat-agent-message')?.children || []).map((node) => node.tagName)
@@ -89,7 +89,7 @@ describe('MessageItem', () => {
     rerender(<MessageItem message={{ role: 'assistant', content, streaming: false }} />)
     const persistedTags = Array.from(container.querySelector('.chat-agent-message')?.children || []).map((node) => node.tagName)
 
-    expect(streamedTags).toEqual(['DIV'])
+    expect(streamedTags).toEqual(['P', 'P', 'P', 'P'])
     expect(persistedTags).toEqual(['H1', 'P', 'UL', 'BLOCKQUOTE'])
   })
 
@@ -854,16 +854,16 @@ describe('MessageItem', () => {
 
   it('todo 工具卡片以成功结果为真源，并显示进度', () => {
     const args = JSON.stringify({
-      plan: [
-        { step: '过时步骤', status: 'pending' },
+      action: 'update', expected_revision: 0, mutations: [
+        { id: 'old', text: '过时步骤', status: 'pending' },
       ],
     })
     const result = JSON.stringify({
-      schema: 'todo.plan.v1',
-      plan: [
-        { step: '梳理需求', status: 'completed' },
-        { step: '实现接口', status: 'in_progress' },
-        { step: '补充测试', status: 'pending' },
+      schema: 'agent.todo.v1', revision: 1,
+      items: [
+        { id: 'requirements', text: '梳理需求', status: 'completed' },
+        { id: 'implementation', text: '实现接口', status: 'in_progress' },
+        { id: 'tests', text: '补充测试', status: 'pending' },
       ],
     })
 
@@ -889,7 +889,7 @@ describe('MessageItem', () => {
   })
 
   it('todo 工具卡片在流式不完整 JSON 时仍能渲染已完整的步骤', () => {
-    const partial = '{"plan":[{"step":"第一项","status":"completed"},{"step":"第二项","stat'
+    const partial = '{"action":"update","mutations":[{"id":"first","text":"第一项","status":"completed"},{"id":"second","text":"第二项","stat'
 
     render(
       <MessageItem
@@ -905,6 +905,25 @@ describe('MessageItem', () => {
 
     expect(screen.getByText('待办列表')).toBeInTheDocument()
     expect(screen.getByText('第一项')).toBeInTheDocument()
+  })
+
+  it('todo 完整替换在流式 items 中逐项展示双语内容', () => {
+    const partial = '{"action":"replace","items":[{"id":"first","text":"Draft outline / 起草大纲","status":"completed"},{"id":"second","text":"Write scene / 撰写场景","stat'
+
+    render(
+      <MessageItem
+        message={{
+          role: 'tool_call',
+          content: 'todo',
+          name: 'todo',
+          args: partial,
+          status: 'running',
+        }}
+      />,
+    )
+
+    expect(screen.getByText('Draft outline / 起草大纲')).toBeInTheDocument()
+    expect(screen.queryByText('Write scene / 撰写场景')).not.toBeInTheDocument()
   })
 
   it('task 工具卡片展示委派目标和结果', async () => {

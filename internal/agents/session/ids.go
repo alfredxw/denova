@@ -40,15 +40,3 @@ func newInterruptionID() string {
 func newDisplayRecordID() string {
 	return "display-" + strings.TrimPrefix(newSessionID(), "s-")
 }
-
-func newContextCompactionID() string {
-	return "cc-" + strings.TrimPrefix(newSessionID(), "s-")
-}
-
-func newContextCompactionRemovalID() string {
-	return "ccr-" + strings.TrimPrefix(newSessionID(), "s-")
-}
-
-func newToolResultCleanupID() string {
-	return "trc-" + strings.TrimPrefix(newSessionID(), "s-")
-}

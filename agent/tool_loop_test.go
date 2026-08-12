@@ -10,45 +10,6 @@ import (
 	"testing"
 )
 
-func TestNativeLoopToolInterruptPairsResultAndStops(t *testing.T) {
-	model := &scriptedModel{responses: []scriptedModelResponse{
-		{message: AssistantMessage("", []ToolCall{{ID: "approval", Type: "function", Function: FunctionCall{Name: "approval", Arguments: `{}`}}})},
-		{message: AssistantMessage("must not run", nil)},
-	}}
-	interrupt := &InterruptError{Reason: "approval required", ResumeToken: []byte(`{"request":"approval"}`)}
-	definition := testToolDefinition(&functionTool{name: "approval", run: func(context.Context, string) (string, error) {
-		return "", fmt.Errorf("request approval: %w", interrupt)
-	}})
-	native, err := NewLoop(context.Background(), LoopConfig{Name: "interrupt", Model: model, Tools: []ToolDefinition{definition}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	events := NewRunner(RunnerConfig{Agent: native}).Query(context.Background(), "go")
-	var paired *Message
-	var gotInterrupt *InterruptError
-	for {
-		event, ok := events.Next()
-		if !ok {
-			break
-		}
-		if event.Output != nil && event.Output.MessageOutput != nil && event.Output.MessageOutput.Role == ToolRole {
-			paired = event.Output.MessageOutput.Message
-		}
-		if errors.As(event.Err, &gotInterrupt) {
-			break
-		}
-	}
-	if paired == nil || paired.ToolCallID != "approval" || !strings.Contains(paired.Content, "approval required") {
-		t.Fatalf("paired interrupt result = %#v", paired)
-	}
-	if gotInterrupt != interrupt {
-		t.Fatalf("interrupt = %#v, want %#v", gotInterrupt, interrupt)
-	}
-	if len(model.capturedInputs()) != 1 {
-		t.Fatalf("model calls = %d, want 1", len(model.capturedInputs()))
-	}
-}
-
 type receiptProbeMiddleware struct {
 	BaseMiddleware
 	mu     sync.Mutex
@@ -91,14 +52,14 @@ func TestConcreteToolPanicCrossesLifecycleWrapperAsPairedError(t *testing.T) {
 		panic("effect panic")
 	}}
 	receipts := &receiptProbeMiddleware{}
-	native, err := NewLoop(context.Background(), LoopConfig{
+	native, err := newModelToolLoop(context.Background(), loopConfig{
 		Name: "panic-receipt", Model: model, Tools: []ToolDefinition{testToolDefinition(tool)},
 		Middlewares: []Middleware{receipts},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	iterator := NewRunner(RunnerConfig{Agent: native}).Query(context.Background(), "go")
+	iterator := newLoopRunner(loopRunnerConfig{Agent: native}).Query(context.Background(), "go")
 	var result *Message
 	for {
 		event, ok := iterator.Next()
@@ -147,14 +108,14 @@ func TestNativeLoopChecksContextImmediatelyBeforeToolExecution(t *testing.T) {
 		calls.Add(1)
 		return "unexpected", nil
 	}})
-	native, err := NewLoop(context.Background(), LoopConfig{
+	native, err := newModelToolLoop(context.Background(), loopConfig{
 		Name: "cancel-before-tool", Model: model, Tools: []ToolDefinition{definition},
 		Middlewares: []Middleware{&cancelBeforeToolExecutionMiddleware{cancel: cancel}},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	events := NewRunner(RunnerConfig{Agent: native}).Query(ctx, "go")
+	events := newLoopRunner(loopRunnerConfig{Agent: native}).Query(ctx, "go")
 	var canceled bool
 	for {
 		event, ok := events.Next()
@@ -192,14 +153,14 @@ func TestToolStartedEventIsEmittedOnlyAfterMiddlewarePreflight(t *testing.T) {
 		calls.Add(1)
 		return "unexpected", nil
 	}})
-	native, err := NewLoop(context.Background(), LoopConfig{
+	native, err := newModelToolLoop(context.Background(), loopConfig{
 		Name: "preflight-before-start", Model: model, Tools: []ToolDefinition{definition},
 		Middlewares: []Middleware{&blockBeforeConcreteExecutionMiddleware{}},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	events := NewRunner(RunnerConfig{Agent: native}).Query(context.Background(), "go")
+	events := newLoopRunner(loopRunnerConfig{Agent: native}).Query(context.Background(), "go")
 	var started, finished int
 	for {
 		event, ok := events.Next()
@@ -213,9 +174,9 @@ func TestToolStartedEventIsEmittedOnlyAfterMiddlewarePreflight(t *testing.T) {
 			continue
 		}
 		switch event.Output.ToolExecution.Phase {
-		case ToolExecutionStarted:
+		case toolExecutionStarted:
 			started++
-		case ToolExecutionFinished:
+		case toolExecutionFinished:
 			finished++
 		}
 	}
@@ -247,14 +208,14 @@ func TestMiddlewareArgumentRewriteCannotBypassSchema(t *testing.T) {
 		{message: AssistantMessage("", []ToolCall{{ID: "typed", Type: "function", Function: FunctionCall{Name: "typed", Arguments: `{"value":1}`}}})},
 		{message: AssistantMessage("done", nil)},
 	}}
-	native, err := NewLoop(context.Background(), LoopConfig{
+	native, err := newModelToolLoop(context.Background(), loopConfig{
 		Name: "schema-rewrite", Model: model, Tools: []ToolDefinition{testToolDefinition(tool)},
 		Middlewares: []Middleware{&rewriteArgumentsMiddleware{}},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	events := NewRunner(RunnerConfig{Agent: native}).Query(context.Background(), "go")
+	events := newLoopRunner(loopRunnerConfig{Agent: native}).Query(context.Background(), "go")
 	var result *Message
 	for {
 		event, ok := events.Next()
@@ -286,13 +247,13 @@ func TestInvalidArgumentsRemainModelVisibleAndCanBeRetried(t *testing.T) {
 		{message: AssistantMessage("", []ToolCall{{ID: "fixed", Type: "function", Function: FunctionCall{Name: "typed_retry", Arguments: `{"value":"7"}`}}})},
 		{message: AssistantMessage("done", nil)},
 	}}
-	native, err := NewLoop(context.Background(), LoopConfig{
+	native, err := newModelToolLoop(context.Background(), loopConfig{
 		Name: "argument-retry", Model: model, Tools: []ToolDefinition{testToolDefinition(tool)},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	events := NewRunner(RunnerConfig{Agent: native}).Query(context.Background(), "go")
+	events := newLoopRunner(loopRunnerConfig{Agent: native}).Query(context.Background(), "go")
 	var invalid, successful *Message
 	for {
 		event, ok := events.Next()
@@ -339,11 +300,11 @@ func TestProgressCollectorBuildsMissingFinalContent(t *testing.T) {
 		{message: AssistantMessage("", []ToolCall{{ID: "p", Type: "function", Function: FunctionCall{Name: "progress", Arguments: `{}`}}})},
 		{message: AssistantMessage("done", nil)},
 	}}
-	native, err := NewLoop(context.Background(), LoopConfig{Name: "progress", Model: model, Tools: []ToolDefinition{testToolDefinition(&progressOnlyTool{})}})
+	native, err := newModelToolLoop(context.Background(), loopConfig{Name: "progress", Model: model, Tools: []ToolDefinition{testToolDefinition(&progressOnlyTool{})}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	events := NewRunner(RunnerConfig{Agent: native}).Query(context.Background(), "go")
+	events := newLoopRunner(loopRunnerConfig{Agent: native}).Query(context.Background(), "go")
 	var progress strings.Builder
 	var result *Message
 	for {
@@ -351,7 +312,7 @@ func TestProgressCollectorBuildsMissingFinalContent(t *testing.T) {
 		if !ok {
 			break
 		}
-		if event.Output != nil && event.Output.ToolExecution != nil && event.Output.ToolExecution.Phase == ToolExecutionProgress {
+		if event.Output != nil && event.Output.ToolExecution != nil && event.Output.ToolExecution.Phase == toolExecutionProgress {
 			progress.WriteString(event.Output.ToolExecution.Delta)
 		}
 		if event.Output != nil && event.Output.MessageOutput != nil && event.Output.MessageOutput.Role == ToolRole {
@@ -383,11 +344,11 @@ func TestProgressCollectorEmitsOneBoundedTruncationAndStops(t *testing.T) {
 	}}
 	definition := testToolDefinition(&overflowingProgressTool{})
 	definition.Descriptor.MaxResultBytes = 64
-	native, err := NewLoop(context.Background(), LoopConfig{Name: "progress", Model: model, Tools: []ToolDefinition{definition}})
+	native, err := newModelToolLoop(context.Background(), loopConfig{Name: "progress", Model: model, Tools: []ToolDefinition{definition}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	events := NewRunner(RunnerConfig{Agent: native}).Query(context.Background(), "go")
+	events := newLoopRunner(loopRunnerConfig{Agent: native}).Query(context.Background(), "go")
 	var progress strings.Builder
 	progressEvents := 0
 	var result *Message
@@ -396,7 +357,7 @@ func TestProgressCollectorEmitsOneBoundedTruncationAndStops(t *testing.T) {
 		if !ok {
 			break
 		}
-		if event.Output != nil && event.Output.ToolExecution != nil && event.Output.ToolExecution.Phase == ToolExecutionProgress {
+		if event.Output != nil && event.Output.ToolExecution != nil && event.Output.ToolExecution.Phase == toolExecutionProgress {
 			progress.WriteString(event.Output.ToolExecution.Delta)
 			progressEvents++
 		}

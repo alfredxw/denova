@@ -4,30 +4,26 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
-	"sort"
+	"fmt"
 	"strings"
 
 	"denova/config"
 
-	runstate "github.com/alfredxw/denova/agent/runtime"
+	agent "github.com/alfredxw/denova/agent"
+	agentsession "github.com/alfredxw/denova/agent/session"
 )
 
 const sessionKeyPrefix = "denova-"
 
-// SessionKeyForBinding derives an opaque, stable provider cache-routing key
-// from one durable runtime identity. Raw workspace and product identifiers are
-// never sent to a model provider.
-func SessionKeyForBinding(binding runstate.BindingRef) string {
-	parts := []string{"runtime", binding.Kind, binding.Profile, binding.Key}
-	labelNames := make([]string, 0, len(binding.Labels))
-	for name := range binding.Labels {
-		labelNames = append(labelNames, name)
+// SessionKeyForAgentSession derives an opaque, stable provider cache-routing
+// key from one public Agent Session identity. Raw workspace and product
+// identifiers are never sent to a model provider.
+func SessionKeyForAgentSession(key agent.SessionKey) (string, error) {
+	canonical, err := agentsession.CanonicalKey(key)
+	if err != nil {
+		return "", fmt.Errorf("derive provider cache key: %w", err)
 	}
-	sort.Strings(labelNames)
-	for _, name := range labelNames {
-		parts = append(parts, name, binding.Labels[name])
-	}
-	return deriveSessionKey(parts...)
+	return deriveSessionKey("agent-session", canonical), nil
 }
 
 // StandaloneSessionKey derives a stable cache-routing key for model-backed

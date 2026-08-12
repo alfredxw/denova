@@ -93,21 +93,14 @@ func TestInteractiveModelProjectionKeepsInterruptedBatchesStableAcrossSettlement
 		t.Fatalf("cold Game projection differs from settled projection:\nsettled=%#v\ncold=%#v", after, cold)
 	}
 
-	storyContext, err := store.StoryContext(story.ID, "main")
-	if err != nil {
-		t.Fatal(err)
-	}
-	expectedParent := storyContext.Meta.Branches["main"].Head
-	checkpoint, err := store.AppendContextCompaction(story.ID, "main", interactive.ContextCompactionEvent{
+	checkpoint := &interactive.ContextCompactionProjection{
+		ID: "public-checkpoint-1",
 		CompactionCheckpoint: agentcompaction.NewCheckpoint("interactive_story", agentcompaction.Result{
 			Epoch: 1, Summary: "completed prefix checkpoint", RetainedTurns: 1,
 		}),
-		SourceTurnCount: 1, ExpectedParentID: &expectedParent,
-	})
-	if err != nil {
-		t.Fatal(err)
+		SourceTurnCount: 1,
 	}
-	durable := interactiveProjectionFromStoreForTest(t, store, story.ID, agentrun.CycleIdentity{})
+	durable := interactiveProjectionFromStoreForTest(t, store, story.ID, agentrun.CycleIdentity{}, checkpoint)
 	expectedDurable := append(
 		[]*agents.Message{agentcontext.NewCompactionSummaryMessage(checkpoint.Epoch, checkpoint.Summary)},
 		after.Messages...,
@@ -135,20 +128,14 @@ func TestInteractiveModelProjectionKeepsInterruptedBatchesStableAcrossSettlement
 		t.Fatalf("resolved source interval order changed: %q", durableSource)
 	}
 
-	storyContext, err = store.StoryContext(story.ID, "main")
-	if err != nil {
-		t.Fatal(err)
-	}
-	expectedParent = storyContext.Meta.Branches["main"].Head
-	if _, err := store.AppendContextCompaction(story.ID, "main", interactive.ContextCompactionEvent{
+	advancedCheckpoint := &interactive.ContextCompactionProjection{
+		ID: "public-checkpoint-2",
 		CompactionCheckpoint: agentcompaction.NewCheckpoint("interactive_story", agentcompaction.Result{
 			Epoch: 2, Summary: "fully resolved checkpoint", RetainedTurns: 1,
 		}),
-		SourceTurnCount: 3, ExpectedParentID: &expectedParent,
-	}); err != nil {
-		t.Fatal(err)
+		SourceTurnCount: 3,
 	}
-	fullyCompacted := interactiveProjectionFromStoreForTest(t, store, story.ID, agentrun.CycleIdentity{})
+	fullyCompacted := interactiveProjectionFromStoreForTest(t, store, story.ID, agentrun.CycleIdentity{}, advancedCheckpoint)
 	fullyCompactedText := joinedInteractiveProjectionContent(fullyCompacted.Messages)
 	if fullyCompacted.SourceTurnCount != 3 || len(fullyCompacted.SourceMessages) != 0 ||
 		strings.Contains(fullyCompactedText, "interrupted-input-") ||
@@ -158,7 +145,7 @@ func TestInteractiveModelProjectionKeepsInterruptedBatchesStableAcrossSettlement
 		t.Fatalf("resolved interval was not absorbed by the advanced checkpoint: %#v", fullyCompacted)
 	}
 	reloadedAfterCheckpoint := interactive.NewStore(workspace)
-	coldCheckpoint := interactiveProjectionFromStoreForTest(t, reloadedAfterCheckpoint, story.ID, agentrun.CycleIdentity{})
+	coldCheckpoint := interactiveProjectionFromStoreForTest(t, reloadedAfterCheckpoint, story.ID, agentrun.CycleIdentity{}, advancedCheckpoint)
 	if !reflect.DeepEqual(coldCheckpoint, fullyCompacted) {
 		t.Fatalf("cold checkpoint projection differs from canonical view:\ncanonical=%#v\ncold=%#v", fullyCompacted, coldCheckpoint)
 	}
@@ -225,6 +212,7 @@ func interactiveProjectionFromStoreForTest(
 	store *interactive.Store,
 	storyID string,
 	current agentrun.CycleIdentity,
+	boundCompaction ...*interactive.ContextCompactionProjection,
 ) ModelContextProjection {
 	t.Helper()
 	storyContext, err := store.StoryContext(storyID, "main")
@@ -232,6 +220,12 @@ func interactiveProjectionFromStoreForTest(
 		t.Fatal(err)
 	}
 	start, end, compaction := ModelHistoryRange(storyContext.Snapshot)
+	if len(boundCompaction) > 0 {
+		compaction = boundCompaction[0]
+		if compaction != nil {
+			start = max(0, compaction.SourceTurnCount-retainedTurnsForInteractiveCompaction(compaction))
+		}
+	}
 	history, err := store.ReadModelHistory(storyID, interactive.StoryModelHistoryQuery{BranchID: "main", StartTurn: start, EndTurn: end})
 	if err != nil {
 		t.Fatal(err)

@@ -100,7 +100,9 @@ func TestStreamEncoderMapsAgentEventsToUIStream(t *testing.T) {
 	assertChunk(t, chunks, DataTypeWorkspaceChange, "id", "tool-change-1")
 	assertChunk(t, chunks, DataTypeRuleRoll, "id", "roll-1")
 	assertChunk(t, chunks, DataTypeAsk, "id", "ask-1")
+	assertChunk(t, chunks, "tool-input-start", "toolName", "read")
 	assertChunk(t, chunks, "tool-input-available", "toolCallId", "tool-1")
+	assertStreamingToolInput(t, chunks, "tool-1", `{"path":"a.md"}`)
 	assertChunk(t, chunks, "error", "errorText", "失败 · 日志 ID / Log ID: 0198-stream-request")
 	assertStartMetadata(t, chunks[0])
 }
@@ -234,6 +236,32 @@ func assertChunkAgentMetadata(t *testing.T, chunks []map[string]any, chunkType, 
 		}
 	}
 	t.Fatalf("missing chunk type=%s providerMetadata.agent.%s=%s in %#v", chunkType, key, value, chunks)
+}
+
+func assertStreamingToolInput(t *testing.T, chunks []map[string]any, toolCallID, want string) {
+	t.Helper()
+	var got strings.Builder
+	for _, chunk := range chunks {
+		if chunk["type"] != "tool-input-delta" || chunk["toolCallId"] != toolCallID {
+			continue
+		}
+		delta, _ := chunk["inputTextDelta"].(string)
+		got.WriteString(delta)
+	}
+	if got.String() != want {
+		t.Fatalf("streaming tool input %q = %q, want %q in %#v", toolCallID, got.String(), want, chunks)
+	}
+	for _, chunk := range chunks {
+		if chunk["type"] != "tool-input-available" || chunk["toolCallId"] != toolCallID {
+			continue
+		}
+		input, _ := chunk["input"].(map[string]any)
+		if input["path"] == "a.md" {
+			return
+		}
+		t.Fatalf("available tool input %q = %#v, want parsed path", toolCallID, chunk["input"])
+	}
+	t.Fatalf("missing available tool input for %q in %#v", toolCallID, chunks)
 }
 
 func assertStartMetadata(t *testing.T, chunk map[string]any) {

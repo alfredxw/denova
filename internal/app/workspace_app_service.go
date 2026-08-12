@@ -95,7 +95,7 @@ func (s *workspaceService) ExecutionRuntime() *agentexecution.Runtime {
 	return s.app.executionRuntime
 }
 
-// SwitchWorkspace 切换工作区，并重建状态、会话和 Agent Runner。
+// SwitchWorkspace switches the workspace and rebuilds state, sessions, and the Agent runtime.
 func (a *App) SwitchWorkspace(ctx context.Context, path string) (string, error) {
 	return a.workspaceService().SwitchWorkspace(ctx, path)
 }

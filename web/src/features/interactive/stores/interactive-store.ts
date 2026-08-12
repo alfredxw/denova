@@ -258,7 +258,6 @@ export function mergeInteractiveTurnPersistedSnapshot(current: Snapshot | null, 
     state: event.state || base.state || {},
     graph: event.graph || base.graph,
     context_compaction: event.context_compaction === undefined ? base.context_compaction : event.context_compaction,
-    context_compaction_removal: event.context_compaction_removal === undefined ? base.context_compaction_removal : event.context_compaction_removal,
   }
 }
 

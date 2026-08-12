@@ -2,7 +2,7 @@ package app
 
 import (
 	"context"
-	agentconversation "denova/internal/agents/conversation"
+	agentchat "denova/internal/agents/chat"
 	agentexecution "denova/internal/agents/execution"
 	apptask "denova/internal/app/task"
 	"errors"
@@ -77,18 +77,8 @@ func (a *App) WritingAgentActiveView(ctx context.Context) WritingAgentActiveView
 	}
 	recoveryActions := agentexecution.RuntimeRecoveryActions(runtimeSnapshot)
 	var pendingAsk *session.AskInteraction
-	if selectedSession != nil {
-		if projected {
-			reconciled, reconcileErr := agentconversation.ReconcileColdPendingAsk(operation.Context(), selectedSession, runtimeSnapshot)
-			if reconcileErr != nil {
-				slog.ErrorContext(ctx, fmt.Sprintf("[agent-ask-recovery] reconcile writing Ask failed workspace=%s session_id=%s operation_id=%s cycle=%d err=%v", workspace, sessionID, runtimeSnapshot.ActiveOperation, runtimeSnapshot.ActiveCycle, reconcileErr))
-			} else if reconciled {
-				slog.InfoContext(ctx, fmt.Sprintf("[agent-ask-recovery] cancelled orphaned writing Ask workspace=%s session_id=%s operation_id=%s cycle=%d", workspace, sessionID, runtimeSnapshot.ActiveOperation, runtimeSnapshot.ActiveCycle))
-			}
-		}
-		// A durable pending Ask is displayable only when this process owns the
-		// waiter that can deliver its answer back to the model continuation.
-		pendingAsk = selectedSession.LivePendingAsk("")
+	if projected && len(runtimeSnapshot.PendingInteractions) > 0 {
+		pendingAsk = agentchat.ProjectPendingInteraction(runtimeSnapshot.PendingInteractions[0], runtimeSnapshot)
 	}
 
 	a.mu.RLock()

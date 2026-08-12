@@ -39,7 +39,7 @@ func (s *Store) UpdateTurnNarrative(storyID string, req UpdateTurnNarrativeReque
 	if branchID == "" {
 		branchID = meta.CurrentBranch
 	}
-	branch, ok := meta.Branches[branchID]
+	_, ok := meta.Branches[branchID]
 	if !ok {
 		return UpdateTurnNarrativeResult{}, fmt.Errorf("分支不存在 / Branch does not exist: %s", branchID)
 	}
@@ -51,14 +51,14 @@ func (s *Store) UpdateTurnNarrative(storyID string, req UpdateTurnNarrativeReque
 	if err != nil {
 		return UpdateTurnNarrativeResult{}, err
 	}
-	turnIndex := -1
+	turnOnPath := false
 	for index := range snapshot.Turns {
 		if snapshot.Turns[index].ID == turnID {
-			turnIndex = index
+			turnOnPath = true
 			break
 		}
 	}
-	if turnIndex < 0 {
+	if !turnOnPath {
 		return UpdateTurnNarrativeResult{}, fmt.Errorf("只能编辑当前剧情路径上的 AI 回复 / Only AI replies on the current story path can be edited: %s", turnID)
 	}
 
@@ -86,24 +86,6 @@ func (s *Store) UpdateTurnNarrative(storyID string, req UpdateTurnNarrativeReque
 		V: schemaVersion, Type: StoryEventTypeTurnNarrativeRevised, ID: newID("tnr"),
 		ParentID: turnID, BranchID: branchID, Ts: now, TurnID: turnID, Narrative: narrative,
 	}}
-	if compaction := snapshot.ContextCompaction; compaction != nil && turnIndex < compaction.SourceTurnCount {
-		removal := ContextCompactionRemovalEvent{
-			V:               schemaVersion,
-			Type:            StoryEventTypeCompactionRemoved,
-			ID:              newID("ccr"),
-			ParentID:        branch.Head,
-			BranchID:        branchID,
-			Ts:              now,
-			AgentKind:       compaction.AgentKind,
-			CompactionID:    compaction.ID,
-			SourceTurnCount: compaction.SourceTurnCount,
-			Reason:          "turn_narrative_edited",
-		}
-		branch.Head = removal.ID
-		meta.Branches[branchID] = branch
-		newEvents = append(newEvents, removal)
-		result.ContextCompactionInvalidated = true
-	}
 
 	meta.UpdatedAt = now
 	if err := s.appendStoryTransactionLocked(storyID, meta, newEvents...); err != nil {

@@ -112,7 +112,7 @@ func (*panicBeforeAgentMiddleware) BeforeAgent(context.Context, *RunContext) (co
 
 func TestNativeLoopReportsRecoveredRunPanicBeforeClosingIterator(t *testing.T) {
 	model := &scriptedModel{responses: []scriptedModelResponse{{message: AssistantMessage("unused", nil)}}}
-	agent, err := NewLoop(context.Background(), LoopConfig{
+	agent, err := newModelToolLoop(context.Background(), loopConfig{
 		Name:        "panic",
 		Model:       model,
 		Middlewares: []Middleware{&panicBeforeAgentMiddleware{}},
@@ -121,7 +121,7 @@ func TestNativeLoopReportsRecoveredRunPanicBeforeClosingIterator(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	iterator := agent.Run(context.Background(), &AgentInput{Messages: []*Message{UserMessage("go")}})
+	iterator := agent.Run(context.Background(), &loopInput{Messages: []*Message{UserMessage("go")}})
 	event, ok := iterator.Next()
 	if !ok {
 		t.Fatal("missing recovered panic event")
@@ -141,11 +141,11 @@ func TestNativeLoopSingleStreamingTurn(t *testing.T) {
 		{Content: "lo", ReasoningContent: "son"},
 		{ResponseMeta: &ResponseMeta{FinishReason: "stop", Usage: &TokenUsage{TotalTokens: 9}}},
 	}}}}
-	agent, err := NewLoop(context.Background(), LoopConfig{Name: "writer", Instruction: "be useful", Model: model})
+	agent, err := newModelToolLoop(context.Background(), loopConfig{Name: "writer", Instruction: "be useful", Model: model})
 	if err != nil {
 		t.Fatal(err)
 	}
-	iterator := NewRunner(RunnerConfig{Agent: agent, EnableStreaming: true}).Query(context.Background(), "hi")
+	iterator := newLoopRunner(loopRunnerConfig{Agent: agent, EnableStreaming: true}).Query(context.Background(), "hi")
 	event, ok := iterator.Next()
 	if !ok || event.Err != nil || event.Output == nil || event.Output.MessageOutput == nil || !event.Output.MessageOutput.IsStreaming {
 		t.Fatalf("assistant event = %#v", event)
@@ -187,11 +187,11 @@ func TestNativeLoopConcurrentToolsKeepResultAndTranscriptSourceOrder(t *testing.
 			return "result-" + name, nil
 		}})
 	}
-	agent, err := NewLoop(context.Background(), LoopConfig{Name: "parallel", Model: model, Tools: []ToolDefinition{makeTool("slow"), makeTool("fast")}})
+	agent, err := newModelToolLoop(context.Background(), loopConfig{Name: "parallel", Model: model, Tools: []ToolDefinition{makeTool("slow"), makeTool("fast")}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	iterator := NewRunner(RunnerConfig{Agent: agent}).Query(context.Background(), "go")
+	iterator := newLoopRunner(loopRunnerConfig{Agent: agent}).Query(context.Background(), "go")
 	first, ok := iterator.Next()
 	if !ok || first.Output.MessageOutput.Message.Role != Assistant {
 		t.Fatalf("first event = %#v", first)
@@ -270,11 +270,11 @@ func TestNativeLoopMergesStreamingToolCalls(t *testing.T) {
 			return name, nil
 		}})
 	}
-	agent, err := NewLoop(context.Background(), LoopConfig{Name: "stream-tools", Model: model, Tools: []ToolDefinition{makeTool("alpha"), makeTool("beta")}})
+	agent, err := newModelToolLoop(context.Background(), loopConfig{Name: "stream-tools", Model: model, Tools: []ToolDefinition{makeTool("alpha"), makeTool("beta")}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	iterator := NewRunner(RunnerConfig{Agent: agent, EnableStreaming: true}).Query(context.Background(), "go")
+	iterator := newLoopRunner(loopRunnerConfig{Agent: agent, EnableStreaming: true}).Query(context.Background(), "go")
 	var roles []RoleType
 	var toolNames []string
 	for {
@@ -361,6 +361,26 @@ func TestNativeLoopToolFailuresBecomeToolMessages(t *testing.T) {
 			},
 			wantContent: "was not executed", wantReason: ToolSyntheticModelIncomplete, wantCalls: 0,
 		},
+		{
+			name: "openai responses max output tokens", call: ToolCall{ID: "1", Type: "function", Function: FunctionCall{Name: "never", Arguments: `{\"path\":\"chapter.md\",\"content\":\"valid but truncated\"}`}}, finish: "max_output_tokens",
+			tools: func(count *atomic.Int32) []ToolDefinition {
+				return []ToolDefinition{testToolDefinition(&functionTool{name: "never", run: func(context.Context, string) (string, error) {
+					count.Add(1)
+					return "unexpected", nil
+				}})}
+			},
+			wantContent: "was not executed", wantReason: ToolSyntheticModelIncomplete, wantCalls: 0,
+		},
+		{
+			name: "content filter", call: ToolCall{ID: "1", Type: "function", Function: FunctionCall{Name: "never", Arguments: `{\"command\":\"valid but filtered\"}`}}, finish: "content_filter",
+			tools: func(count *atomic.Int32) []ToolDefinition {
+				return []ToolDefinition{testToolDefinition(&functionTool{name: "never", run: func(context.Context, string) (string, error) {
+					count.Add(1)
+					return "unexpected", nil
+				}})}
+			},
+			wantContent: "was not executed", wantReason: ToolSyntheticModelIncomplete, wantCalls: 0,
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -371,11 +391,11 @@ func TestNativeLoopToolFailuresBecomeToolMessages(t *testing.T) {
 				{message: first},
 				{message: AssistantMessage("recovered", nil)},
 			}}
-			agent, err := NewLoop(context.Background(), LoopConfig{Name: test.name, Model: model, Tools: test.tools(&calls)})
+			agent, err := newModelToolLoop(context.Background(), loopConfig{Name: test.name, Model: model, Tools: test.tools(&calls)})
 			if err != nil {
 				t.Fatal(err)
 			}
-			iterator := NewRunner(RunnerConfig{Agent: agent}).Query(context.Background(), "go")
+			iterator := newLoopRunner(loopRunnerConfig{Agent: agent}).Query(context.Background(), "go")
 			var toolResult *Message
 			for {
 				event, ok := iterator.Next()
@@ -424,25 +444,25 @@ func (model *blockingStreamModel) Stream(ctx context.Context, _ []*Message, _ ..
 
 func TestNativeLoopImmediateCancelClosesPublicStream(t *testing.T) {
 	model := &blockingStreamModel{started: make(chan struct{})}
-	agent, err := NewLoop(context.Background(), LoopConfig{Name: "cancel", Model: model})
+	agent, err := newModelToolLoop(context.Background(), loopConfig{Name: "cancel", Model: model})
 	if err != nil {
 		t.Fatal(err)
 	}
-	runOption, cancel := WithCancel()
-	iterator := NewRunner(RunnerConfig{Agent: agent, EnableStreaming: true}).Query(context.Background(), "go", runOption)
+	runOption, cancel := newLoopCancellation()
+	iterator := newLoopRunner(loopRunnerConfig{Agent: agent, EnableStreaming: true}).Query(context.Background(), "go", runOption)
 	event, ok := iterator.Next()
 	if !ok || event.Output == nil || event.Output.MessageOutput == nil {
 		t.Fatalf("stream event = %#v", event)
 	}
 	<-model.started
-	handle, contributed := cancel(WithAgentCancelMode(CancelImmediate))
+	handle, contributed := cancel(withCancelMode(cancelImmediately))
 	if !contributed {
 		t.Fatal("cancel did not contribute")
 	}
-	if _, err := event.Output.MessageOutput.GetMessage(); !errors.Is(err, ErrStreamCanceled) {
+	if _, err := event.Output.MessageOutput.GetMessage(); !errors.Is(err, errStreamCanceled) {
 		t.Fatalf("public stream error = %v", err)
 	}
-	var cancelEvent *AgentEvent
+	var cancelEvent *loopEvent
 	for {
 		event, available := iterator.Next()
 		if !available {
@@ -456,8 +476,8 @@ func TestNativeLoopImmediateCancelClosesPublicStream(t *testing.T) {
 	if cancelEvent == nil {
 		t.Fatal("missing cancel event")
 	}
-	var cancelErr *CancelError
-	if !errors.As(cancelEvent.Err, &cancelErr) || cancelErr.Info.Mode != CancelImmediate {
+	var cancelErr *cancelError
+	if !errors.As(cancelEvent.Err, &cancelErr) || cancelErr.Info.Mode != cancelImmediately {
 		t.Fatalf("cancel event = %#v", cancelEvent)
 	}
 	if _, ok := iterator.Next(); ok {
@@ -487,18 +507,18 @@ func (model *blockingModelStart) Stream(context.Context, []*Message, ...ModelOpt
 func TestNativeLoopImmediateCancelDoesNotWaitForBlockingModelCall(t *testing.T) {
 	model := &blockingModelStart{started: make(chan struct{}), release: make(chan struct{})}
 	defer close(model.release)
-	agent, err := NewLoop(context.Background(), LoopConfig{Name: "blocking-model", Model: model})
+	agent, err := newModelToolLoop(context.Background(), loopConfig{Name: "blocking-model", Model: model})
 	if err != nil {
 		t.Fatal(err)
 	}
-	runOption, cancel := WithCancel()
-	iterator := NewRunner(RunnerConfig{Agent: agent, EnableStreaming: true}).Query(context.Background(), "go", runOption)
+	runOption, cancel := newLoopCancellation()
+	iterator := newLoopRunner(loopRunnerConfig{Agent: agent, EnableStreaming: true}).Query(context.Background(), "go", runOption)
 	<-model.started
-	handle, contributed := cancel(WithAgentCancelMode(CancelImmediate))
+	handle, contributed := cancel(withCancelMode(cancelImmediately))
 	if !contributed {
 		t.Fatal("cancel did not contribute")
 	}
-	var cancelErr *CancelError
+	var cancelErr *cancelError
 	deadline := time.After(100 * time.Millisecond)
 	for cancelErr == nil {
 		result := make(chan nextAgentEventResult, 1)
@@ -520,7 +540,7 @@ func TestNativeLoopImmediateCancelDoesNotWaitForBlockingModelCall(t *testing.T) 
 			t.Fatal("timed out waiting for immediate cancel")
 		}
 	}
-	if cancelErr.Info.Mode != CancelImmediate {
+	if cancelErr.Info.Mode != cancelImmediately {
 		t.Fatalf("cancel mode = %#v", cancelErr.Info)
 	}
 	if err := handle.Wait(); err != nil {
@@ -531,24 +551,24 @@ func TestNativeLoopImmediateCancelDoesNotWaitForBlockingModelCall(t *testing.T) 
 func TestNativeLoopImmediateCancelEscalatesPendingSafePoint(t *testing.T) {
 	model := &blockingModelStart{started: make(chan struct{}), release: make(chan struct{})}
 	defer close(model.release)
-	agent, err := NewLoop(context.Background(), LoopConfig{Name: "escalated-model", Model: model})
+	agent, err := newModelToolLoop(context.Background(), loopConfig{Name: "escalated-model", Model: model})
 	if err != nil {
 		t.Fatal(err)
 	}
-	runOption, cancel := WithCancel()
-	iterator := NewRunner(RunnerConfig{Agent: agent, EnableStreaming: true}).Query(context.Background(), "go", runOption)
+	runOption, cancel := newLoopCancellation()
+	iterator := newLoopRunner(loopRunnerConfig{Agent: agent, EnableStreaming: true}).Query(context.Background(), "go", runOption)
 	<-model.started
-	preemptHandle, contributed := cancel(WithAgentCancelMode(CancelAfterChatModel | CancelAfterToolCalls))
+	preemptHandle, contributed := cancel(withCancelMode(cancelAfterModel | cancelAfterTools))
 	if !contributed {
 		t.Fatal("safe-point cancel did not contribute")
 	}
-	abortHandle, contributed := cancel(WithAgentCancelMode(CancelImmediate))
+	abortHandle, contributed := cancel(withCancelMode(cancelImmediately))
 	if !contributed {
 		t.Fatal("immediate escalation did not contribute")
 	}
 	event, ok := nextAgentEventWithin(t, iterator, 100*time.Millisecond)
-	var cancelErr *CancelError
-	if !ok || !errors.As(event.Err, &cancelErr) || cancelErr.Info.Mode != CancelImmediate {
+	var cancelErr *cancelError
+	if !ok || !errors.As(event.Err, &cancelErr) || cancelErr.Info.Mode != cancelImmediately {
 		t.Fatalf("escalated cancel event = %#v", event)
 	}
 	if err := preemptHandle.Wait(); err != nil {
@@ -572,22 +592,22 @@ func TestNativeLoopImmediateCancelDoesNotWaitForBlockingToolCall(t *testing.T) {
 		<-release
 		return "late", nil
 	}}
-	agent, err := NewLoop(context.Background(), LoopConfig{Name: "blocking-tool", Model: model, Tools: []ToolDefinition{testToolDefinition(tool)}})
+	agent, err := newModelToolLoop(context.Background(), loopConfig{Name: "blocking-tool", Model: model, Tools: []ToolDefinition{testToolDefinition(tool)}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	runOption, cancel := WithCancel()
-	iterator := NewRunner(RunnerConfig{Agent: agent}).Query(context.Background(), "go", runOption)
+	runOption, cancel := newLoopCancellation()
+	iterator := newLoopRunner(loopRunnerConfig{Agent: agent}).Query(context.Background(), "go", runOption)
 	first, ok := iterator.Next()
 	if !ok || first.Err != nil || first.Output == nil || first.Output.MessageOutput == nil {
 		t.Fatalf("assistant event = %#v", first)
 	}
 	<-started
-	handle, contributed := cancel(WithAgentCancelMode(CancelImmediate))
+	handle, contributed := cancel(withCancelMode(cancelImmediately))
 	if !contributed {
 		t.Fatal("cancel did not contribute")
 	}
-	var cancelErr *CancelError
+	var cancelErr *cancelError
 	deadline := time.Now().Add(100 * time.Millisecond)
 	for cancelErr == nil {
 		remaining := time.Until(deadline)
@@ -602,7 +622,7 @@ func TestNativeLoopImmediateCancelDoesNotWaitForBlockingToolCall(t *testing.T) {
 			t.Fatalf("cancel event = %#v", event)
 		}
 	}
-	if cancelErr.Info.Mode != CancelImmediate {
+	if cancelErr.Info.Mode != cancelImmediately {
 		t.Fatalf("cancel mode = %#v", cancelErr.Info)
 	}
 	if err := handle.Wait(); err != nil {
@@ -611,12 +631,12 @@ func TestNativeLoopImmediateCancelDoesNotWaitForBlockingToolCall(t *testing.T) {
 }
 
 type nextAgentEventResult struct {
-	event *AgentEvent
+	event *loopEvent
 	ok    bool
 	err   error
 }
 
-func nextAgentEventWithin(t *testing.T, iterator *AsyncIterator[*AgentEvent], limit time.Duration) (*AgentEvent, bool) {
+func nextAgentEventWithin(t *testing.T, iterator *asyncIterator[*loopEvent], limit time.Duration) (*loopEvent, bool) {
 	t.Helper()
 	result := make(chan nextAgentEventResult, 1)
 	safeGo(func() {
@@ -660,14 +680,14 @@ func TestNativeLoopCancelAfterModelSkipsTools(t *testing.T) {
 		calls.Add(1)
 		return "unexpected", nil
 	}}
-	agent, err := NewLoop(context.Background(), LoopConfig{Name: "safe-cancel", Model: model, Tools: []ToolDefinition{testToolDefinition(current)}})
+	agent, err := newModelToolLoop(context.Background(), loopConfig{Name: "safe-cancel", Model: model, Tools: []ToolDefinition{testToolDefinition(current)}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	runOption, cancel := WithCancel()
-	iterator := NewRunner(RunnerConfig{Agent: agent}).Query(context.Background(), "go", runOption)
+	runOption, cancel := newLoopCancellation()
+	iterator := newLoopRunner(loopRunnerConfig{Agent: agent}).Query(context.Background(), "go", runOption)
 	<-model.started
-	handle, contributed := cancel(WithAgentCancelMode(CancelAfterChatModel))
+	handle, contributed := cancel(withCancelMode(cancelAfterModel))
 	if !contributed {
 		t.Fatal("cancel did not contribute")
 	}
@@ -676,7 +696,7 @@ func TestNativeLoopCancelAfterModelSkipsTools(t *testing.T) {
 	if !ok || assistantEvent.Err != nil || assistantEvent.Output.MessageOutput.Role != Assistant {
 		t.Fatalf("assistant event = %#v", assistantEvent)
 	}
-	var cancelErr *CancelError
+	var cancelErr *cancelError
 	for {
 		cancelEvent, next := iterator.Next()
 		if !next {
@@ -685,7 +705,7 @@ func TestNativeLoopCancelAfterModelSkipsTools(t *testing.T) {
 		if cancelEvent.Err == nil {
 			continue
 		}
-		if !errors.As(cancelEvent.Err, &cancelErr) || cancelErr.Info.Mode != CancelAfterChatModel {
+		if !errors.As(cancelEvent.Err, &cancelErr) || cancelErr.Info.Mode != cancelAfterModel {
 			t.Fatalf("cancel event = %#v", cancelEvent)
 		}
 		break
@@ -705,19 +725,23 @@ func TestNativeLoopRetryAndNestedEventSink(t *testing.T) {
 		{message: AssistantMessage("done", nil)},
 	}}
 	child := &functionTool{name: "child", run: func(ctx context.Context, _ string) (string, error) {
-		if !EmitEvent(ctx, &AgentEvent{AgentName: "nested", Output: &AgentOutput{CustomizedOutput: "progress"}}) {
-			return "", errors.New("event sink missing")
+		if err := ForwardNestedEvent(ctx, NestedEvent{
+			Source:    EventSource{Name: "nested", Path: []string{"retry", "nested"}, InvocationID: "nested-session/nested-run", InvocationType: "task"},
+			SessionID: "nested-session",
+			Child:     Event{Cursor: 1, Durability: EphemeralEvent, RunID: "nested-run", Payload: ToolProgress{Delta: "progress"}},
+		}); err != nil {
+			return "", err
 		}
 		return "child-result", nil
 	}}
-	agent, err := NewLoop(context.Background(), LoopConfig{
+	agent, err := newModelToolLoop(context.Background(), loopConfig{
 		Name: "retry", Model: model, Tools: []ToolDefinition{testToolDefinition(child)},
 		Retry: &RetryConfig{MaxRetries: 1},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	iterator := NewRunner(RunnerConfig{Agent: agent}).Query(context.Background(), "go")
+	iterator := newLoopRunner(loopRunnerConfig{Agent: agent}).Query(context.Background(), "go")
 	var names []string
 	for {
 		event, ok := iterator.Next()
@@ -728,6 +752,10 @@ func TestNativeLoopRetryAndNestedEventSink(t *testing.T) {
 			t.Fatal(event.Err)
 		}
 		if event.Output != nil && event.Output.ToolExecution != nil {
+			continue
+		}
+		if event.Output != nil && event.Output.NestedEvent != nil {
+			names = append(names, event.Output.NestedEvent.Source.Name)
 			continue
 		}
 		names = append(names, event.AgentName)
@@ -742,12 +770,12 @@ func TestNativeLoopRetryAndNestedEventSink(t *testing.T) {
 
 func TestExternalContextCancelTerminatesLoop(t *testing.T) {
 	model := &blockingStreamModel{started: make(chan struct{})}
-	agent, err := NewLoop(context.Background(), LoopConfig{Name: "context-cancel", Model: model})
+	agent, err := newModelToolLoop(context.Background(), loopConfig{Name: "context-cancel", Model: model})
 	if err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	iterator := NewRunner(RunnerConfig{Agent: agent, EnableStreaming: true}).Query(ctx, "go")
+	iterator := newLoopRunner(loopRunnerConfig{Agent: agent, EnableStreaming: true}).Query(ctx, "go")
 	event, ok := iterator.Next()
 	if !ok {
 		t.Fatal("missing streaming event")

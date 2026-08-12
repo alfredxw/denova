@@ -184,6 +184,35 @@ func TestNormalizeToolResultRejectsUnsafeContextHints(t *testing.T) {
 	}
 }
 
+func TestNormalizeToolResultMarksTruncatedReferenceCollections(t *testing.T) {
+	object := make(map[string]any, toolResultHintMaxCollectionEntries+2)
+	items := make([]any, toolResultHintMaxCollectionEntries+2)
+	for index := range items {
+		object["field_"+string(rune(0x100+index))] = index
+		items[index] = index
+	}
+	result := TextToolResult("result")
+	result.ContextHints = &ToolResultContextHints{Recovery: ToolResultRecoveryHint{
+		Kind: ToolResultRecoveryRerun,
+		Reference: map[string]any{
+			"object": object,
+			"items":  items,
+		},
+	}}
+	normalized, err := NormalizeToolResult(result, resultTestDescriptor(1024))
+	if err != nil {
+		t.Fatal(err)
+	}
+	reference := normalized.ContextHints.Recovery.Reference
+	normalizedObject := reference["object"].(map[string]any)
+	normalizedItems := reference["items"].([]any)
+	if normalizedObject["_truncated"] != toolResultHintTruncatedValue ||
+		len(normalizedItems) != toolResultHintMaxCollectionEntries+1 ||
+		normalizedItems[len(normalizedItems)-1] != toolResultHintTruncatedValue {
+		t.Fatalf("truncation markers = object:%#v items:%#v", normalizedObject, normalizedItems)
+	}
+}
+
 func TestNormalizeToolResultArtifactContractDoesNotRequireDigest(t *testing.T) {
 	result := TextToolResult("preview")
 	result.Artifacts = []ToolArtifactRef{{

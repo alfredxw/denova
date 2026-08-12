@@ -1,9 +1,7 @@
 package conversation
 
 import (
-	"bytes"
 	"context"
-	"encoding/xml"
 	"errors"
 	"fmt"
 	"strings"
@@ -11,7 +9,6 @@ import (
 	agent "github.com/alfredxw/denova/agent"
 
 	agentcontext "denova/internal/agents/context"
-	agentcompaction "denova/internal/agents/context/compaction"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 	"denova/internal/agents/toolresult"
@@ -48,7 +45,6 @@ func (c *SessionConversation) AssembleModelContext(ctx context.Context, _ string
 	)
 	if durableInput {
 		snapshot, inputIndex, materialized, err = c.session.SnapshotContextForDomainCommit(
-			c.agentKind,
 			intent.Identity,
 			agent.User,
 			intent.Hash,
@@ -60,21 +56,14 @@ func (c *SessionConversation) AssembleModelContext(ctx context.Context, _ string
 		// Context analysis deliberately has no durable cycle identity. It may
 		// reuse the exact pure assembly path, but CommitModelInput below remains
 		// fail-closed so production cannot cross the provider boundary this way.
-		snapshot, err = c.session.SnapshotContext(c.agentKind)
+		snapshot, err = c.session.SnapshotContext()
 		if err != nil {
 			return agentcontext.ModelContextResult{}, fmt.Errorf("snapshot session model context: %w", err)
 		}
 	}
-	fragments := make([]agentcontext.Fragment, 0, len(input.Fragments)+2)
+	fragments := make([]agentcontext.Fragment, 0, len(input.Fragments)+1)
 	fragments = append(fragments, input.Fragments...)
 	fragments = append(fragments, c.runtimeContextFragments()...)
-	goalFragment, err := c.goalContextFragment(ctx)
-	if err != nil {
-		return agentcontext.ModelContextResult{}, err
-	}
-	if goalFragment != nil {
-		fragments = append(fragments, *goalFragment)
-	}
 	canonicalMessages := c.modelMessagesWithAcceptedInput(snapshot, inputIndex, materialized, input.UserMessage)
 	assembled, err := agentcontext.NewAssembler(input.Budget).Assemble(ctx, agentcontext.AssembleRequest{
 		Messages:  canonicalMessages,
@@ -90,30 +79,6 @@ func (c *SessionConversation) AssembleModelContext(ctx context.Context, _ string
 			canonicalMessages: agentcontext.CloneMessages(canonicalMessages),
 			effectiveMessages: agentcontext.CloneMessages(assembled.Messages),
 		},
-	}, nil
-}
-
-func (c *SessionConversation) goalContextFragment(ctx context.Context) (*agentcontext.Fragment, error) {
-	current, ok, err := c.session.Goal(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("read active conversation goal: %w", err)
-	}
-	if !ok || !current.IsActive() {
-		return nil, nil
-	}
-	var objective bytes.Buffer
-	if err := xml.EscapeText(&objective, []byte(current.Objective)); err != nil {
-		return nil, fmt.Errorf("encode conversation goal objective: %w", err)
-	}
-	content := fmt.Sprintf(`<active_goal id=%q revision=%q>
-<objective>%s</objective>
-Continue working autonomously toward this complete objective. Treat each response as one progress cycle, not as permission to stop early. Call goal_finish with outcome "completed" only when the full objective and its measurable outcomes are achieved. Call goal_finish with outcome "blocked" only when further progress requires user input or an external state change. Do not call goal_finish for an intermediate milestone.
-</active_goal>`, current.ID, fmt.Sprint(current.Revision), objective.String())
-	return &agentcontext.Fragment{
-		ID: "active_conversation_goal", Source: "session.goal", Title: "Active goal",
-		Purpose: "provide the durable user-owned objective and its completion protocol",
-		Content: content, Placement: agentcontext.PlacementFinalUserPrefix, Included: true,
-		Note: "source=canonical session goal; placement=dynamic final-user prefix for prefix-cache stability",
 	}, nil
 }
 
@@ -155,7 +120,6 @@ func (c *SessionConversation) CommitModelInput(ctx context.Context, _ string, as
 	if appendErr != nil {
 		return appendErr
 	}
-	c.rememberCompactionModelBase(state.canonicalMessages, state.effectiveMessages)
 	c.rememberContextAssembly(assembled.Context)
 	return nil
 }
@@ -209,7 +173,6 @@ func (c *SessionConversation) ApplyAgentPreparedContext(assembled agentcontext.M
 	c.cycleMu.Lock()
 	c.cycleCursor = state.cursor
 	c.cycleMu.Unlock()
-	c.rememberCompactionModelBase(state.canonicalMessages, state.effectiveMessages)
 	c.rememberContextAssembly(assembled.Context)
 	return nil
 }
@@ -251,22 +214,6 @@ func (c *SessionConversation) modelMessagesWithAcceptedInput(
 
 func (c *SessionConversation) modelHistory(snapshot session.ContextSnapshot) []*agent.Message {
 	history := append([]*agent.Message(nil), snapshot.EffectiveMessages...)
-	policy := c.compactionPolicy()
-	effectiveStart := snapshot.Cursor.MessageCount - len(history)
-	if snapshot.ToolResultCleanup != nil {
-		history = applyToolResultCleanupProjection(history, effectiveStart, *snapshot.ToolResultCleanup)
-	}
-	if snapshot.Compaction != nil && strings.TrimSpace(snapshot.Compaction.Summary) != "" {
-		compaction := *snapshot.Compaction
-		retainedTurns := compaction.RetainedTurns
-		if retainedTurns <= 0 {
-			retainedTurns = policy.RetainedTurns
-		}
-		tail := agentcompaction.TailAfterSource(history, effectiveStart, compaction.SourceEndIndex, retainedTurns)
-		history = make([]*agent.Message, 0, 1+len(tail))
-		history = append(history, agentcontext.NewCompactionSummaryMessage(compaction.Epoch, compaction.Summary))
-		history = append(history, tail...)
-	}
 	return toolresult.ApplyContextPolicy(history, c.ToolResultContextPolicy())
 }
 

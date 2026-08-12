@@ -102,11 +102,12 @@ export function AgentSubAgentSessionPanel({ projectId, messages, sessionKey, onC
             onKeyDown={scrollLock.onKeyDown}
             atBottomStateChange={scrollLock.onAtBottomStateChange}
             atBottomThreshold={VIRTUOSO_BOTTOM_THRESHOLD}
-            totalListHeightChanged={running ? scrollLock.syncStreamingTailLayout : undefined}
+            totalListHeightChanged={running ? scrollLock.syncStreamingTailLayout : scrollLock.syncIdleBottomLayout}
             initialItemCount={Math.min(sessionViews.length, 40)}
             data={sessionViews}
             context={virtuosoContext}
             components={SUBAGENT_SESSION_COMPONENTS}
+            alignToBottom
             computeItemKey={(index, view) => subAgentSessionMessageKey(view, index)}
             itemContent={itemContent}
             overscan={{ main: 360, reverse: 180 }}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 
+	agent "github.com/alfredxw/denova/agent"
 	agenttools "github.com/alfredxw/denova/agent/tools"
 
 	novaskills "denova/internal/agents/skills"
@@ -21,6 +22,7 @@ func newSkillReferenceReadAdapter(backend *novaskills.Backend) (agenttools.ReadA
 		return nil, errors.New("skill reference backend is nil")
 	}
 	return agenttools.NewReadAdapter(
+		agent.CapabilityIdentity{Kind: "denova.read.skill_reference", Version: 1},
 		"skill_reference",
 		func(_ context.Context, path string) (bool, error) {
 			return strings.HasPrefix(strings.ToLower(strings.TrimSpace(path)), "skill://"), nil

@@ -40,7 +40,12 @@ export function sanitizeThinkTags(text: string): string {
 }
 
 export const PlainTextContent = memo(function PlainTextContent({ content }: { content: string }) {
-  return <div className="whitespace-pre-wrap break-words">{content}</div>
+  return content
+    .split(/\n[ \t]*\n+/)
+    .filter((paragraph) => paragraph.length > 0)
+    .map((paragraph, index) => (
+      <p key={index} className="whitespace-pre-wrap break-words">{paragraph}</p>
+    ))
 })
 
 export function isPlainAssistantText(content: string) {

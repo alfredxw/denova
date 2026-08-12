@@ -8,7 +8,7 @@ import (
 	"strings"
 	"sync"
 
-	runstate "github.com/alfredxw/denova/agent/runtime"
+	runstate "github.com/alfredxw/denova/agent/internal/runtime"
 	agentsession "github.com/alfredxw/denova/agent/session"
 )
 
@@ -46,10 +46,16 @@ func (session *Session) Run(ctx context.Context, input Input) (*Run, error) {
 			input.Goal.MutationID = newPublicID("goal-mutation")
 		}
 	}
-	return session.start(ctx, input, "", false)
+	return session.start(ctx, input, "", false, runUsesDurableSession)
 }
 
-func (session *Session) start(ctx context.Context, input Input, afterRunID string, queued bool) (*Run, error) {
+func (session *Session) start(
+	ctx context.Context,
+	input Input,
+	afterRunID string,
+	queued bool,
+	ownership runSessionOwnership,
+) (*Run, error) {
 	if err := session.usable(); err != nil {
 		return nil, err
 	}
@@ -94,7 +100,7 @@ func (session *Session) start(ctx context.Context, input Input, afterRunID strin
 		stopObserving()
 		return nil, mapRuntimeError(err)
 	}
-	return newPublicRun(session, receipt, observation, stopObserving), nil
+	return newPublicRun(session, receipt, observation, observeCtx, stopObserving, ownership), nil
 }
 
 func encodeInput(input Input) (json.RawMessage, runstate.UserInput, error) {
@@ -150,6 +156,7 @@ func cloneGoalMutation(mutation *GoalMutation) *GoalMutation {
 		return nil
 	}
 	cloned := *mutation
+	cloned.Data = append(json.RawMessage(nil), mutation.Data...)
 	return &cloned
 }
 
@@ -182,7 +189,7 @@ func (session *Session) Active(ctx context.Context) (*Run, bool, error) {
 	receipt := runstate.Receipt{
 		CommandID: status.ActiveCommandID, OperationID: status.ActiveOperation, Cursor: status.ActiveReceiptCursor,
 	}
-	return newPublicRun(session, receipt, observation, stopObserving), true, nil
+	return newPublicRun(session, receipt, observation, observeCtx, stopObserving, runUsesDurableSession), true, nil
 }
 
 // AttachRun reconstructs a handle for an active, queued, or recently settled
@@ -237,7 +244,7 @@ func (session *Session) AttachRun(ctx context.Context, runID string) (*Run, bool
 		return nil, false, mapRuntimeError(err)
 	}
 	receipt := runstate.Receipt{CommandID: commandID, OperationID: runstate.OperationID(runID), Cursor: cursor}
-	return newPublicRun(session, receipt, observation, stopObserving), true, nil
+	return newPublicRun(session, receipt, observation, observeCtx, stopObserving, runUsesDurableSession), true, nil
 }
 
 // RunInput returns the exact admitted input for an active, queued, or retained
@@ -298,7 +305,7 @@ func (session *Session) Observe(ctx context.Context, after Cursor) (Observation,
 	if err != nil {
 		return Observation{}, mapRuntimeError(err)
 	}
-	return mapObservation(session.key, observation), nil
+	return mapObservation(session.key, observation, session.agent.projectionTextMaxBytes), nil
 }
 
 // Snapshot returns the current bounded Session projection without retaining a
@@ -316,9 +323,54 @@ func (session *Session) Snapshot(ctx context.Context) (SessionSnapshot, error) {
 		cancel()
 		return SessionSnapshot{}, mapRuntimeError(err)
 	}
-	snapshot := mapSessionSnapshot(session.key, observation.Snapshot)
+	snapshot := mapSessionSnapshot(session.key, observation.Snapshot, session.agent.projectionTextMaxBytes)
 	cancel()
 	return snapshot, nil
+}
+
+// RecoveryInput returns the exact accepted input selected by a current opaque
+// recovery action. Product hosts use it only to rebuild display routing; Agent
+// remains the authority that validates and executes the action itself.
+func (session *Session) RecoveryInput(ctx context.Context, action RecoveryAction) (Input, bool, error) {
+	if err := session.usable(); err != nil {
+		return Input{}, false, err
+	}
+	if strings.TrimSpace(action.ID) == "" || strings.TrimSpace(action.RunID) == "" {
+		return Input{}, false, ErrRecoveryStale
+	}
+	current, err := session.RecoveryActions(ctx)
+	if err != nil {
+		return Input{}, false, err
+	}
+	var selected *RecoveryAction
+	for index := range current {
+		if current[index].ID == action.ID {
+			candidate := current[index]
+			selected = &candidate
+			break
+		}
+	}
+	if selected == nil || *selected != action {
+		return Input{}, false, ErrRecoveryStale
+	}
+	if selected.Kind == RecoveryResumeCompaction {
+		return Input{}, false, nil
+	}
+	if selected.CommandID == "" {
+		return session.RunInput(ctx, selected.RunID)
+	}
+	runtimeInput, found, err := session.harness.RecoveryInput(
+		ctx, runstate.CommandID(selected.CommandID), runstate.OperationID(selected.RunID),
+	)
+	if err != nil || !found {
+		return Input{}, found, mapRuntimeError(err)
+	}
+	input, err := decodeInput(runtimeInput)
+	if err != nil {
+		return Input{}, false, err
+	}
+	input.IdempotencyKey = selected.CommandID
+	return input, true, nil
 }
 
 func (session *Session) Goal(ctx context.Context) (GoalState, bool, error) {
@@ -348,6 +400,7 @@ func (session *Session) UpdateGoal(ctx context.Context, mutation GoalMutation) (
 	}
 	definition, err := session.agent.source.Prepare(ctx, PrepareRequest{
 		Session: SessionView{Key: session.key}, Input: Input{Goal: cloneGoalMutation(&mutation)},
+		Reason: TurnReasonGoalMutation,
 	})
 	if err != nil {
 		return GoalState{}, fmt.Errorf("prepare Goal Manager: %w", err)
@@ -371,7 +424,7 @@ func (session *Session) UpdateGoal(ctx context.Context, mutation GoalMutation) (
 			return GoalState{}, err
 		}
 	}
-	next, err := definition.Goal.Apply(ctx, GoalApplyRequest{
+	next, err := applyGoalMutation(ctx, definition.Goal, GoalApplyRequest{
 		Session: SessionView{Key: session.key}, Current: state, Present: current.Exists,
 		Mutation: mutation,
 	})

@@ -309,6 +309,65 @@ describe('Agent MessageList', () => {
     expect(scroller.scrollTop).toBe(480)
   })
 
+  it('tracks the tallest footer tab separately for preview and expanded layouts', () => {
+    const resizeCallbacks = new Map<Element, ResizeObserverCallback>()
+    vi.stubGlobal('ResizeObserver', class ResizeObserverHarness {
+      private readonly callback: ResizeObserverCallback
+
+      constructor(callback: ResizeObserverCallback) {
+        this.callback = callback
+      }
+
+      observe = (target: Element) => resizeCallbacks.set(target, this.callback)
+      unobserve = (target: Element) => resizeCallbacks.delete(target)
+      disconnect = vi.fn()
+    })
+
+    const renderList = (heightScope: 'preview' | 'expanded') => (
+      <VirtuosoMockContext.Provider value={{ viewportHeight: 180, itemHeight: 52 }}>
+        <MessageList
+          isStreaming={false}
+          activityContent=""
+          messages={agentTurnMessages()}
+          afterContent={(
+            <button type="button" data-nova-chat-after-content-height-scope={heightScope}>
+              {heightScope}
+            </button>
+          )}
+          afterContentKey="turn-2"
+          bottomPaddingPx={120}
+        />
+      </VirtuosoMockContext.Provider>
+    )
+
+    const { container, rerender } = render(renderList('expanded'))
+    const footer = container.querySelector<HTMLElement>('[data-nova-chat-after-content]')
+    const reserve = container.querySelector<HTMLElement>('[data-nova-chat-after-content-reserve]')
+    if (!footer || !reserve) throw new Error('Expected message footer scroll geometry')
+
+    let footerHeight = 200
+    footer.getBoundingClientRect = () => ({ height: footerHeight }) as DOMRect
+    const notifyResize = () => act(() => resizeCallbacks.get(footer)?.([{ target: footer } as unknown as ResizeObserverEntry], {} as ResizeObserver))
+
+    notifyResize()
+    expect(reserve).toHaveStyle({ height: '0px' })
+
+    footerHeight = 80
+    rerender(renderList('preview'))
+    notifyResize()
+    expect(reserve).toHaveStyle({ height: '0px' })
+
+    footerHeight = 120
+    rerender(renderList('expanded'))
+    notifyResize()
+    expect(reserve).toHaveStyle({ height: '80px' })
+
+    footerHeight = 60
+    rerender(renderList('preview'))
+    notifyResize()
+    expect(reserve).toHaveStyle({ height: '20px' })
+  })
+
   it('有可见流式 thinking 时不再追加会被动态内容推动的活动卡片', () => {
     renderMessageList(
       <MessageList

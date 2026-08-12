@@ -4,7 +4,9 @@ package agentrun
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
@@ -18,6 +20,53 @@ type RestoreData struct {
 	Type    string
 	Version uint16
 	Data    json.RawMessage
+}
+
+// InputCommitEffect is a product side effect coupled to canonical accepted
+// input. Apply must be idempotent; Reconcile is read-only and proves the exact
+// effect reached durable product state after a crash before the Agent receipt.
+type InputCommitEffectRequest struct {
+	CommandID   string
+	OperationID string
+	Cycle       int
+	Hash        string
+}
+
+func (request InputCommitEffectRequest) ID() (string, error) {
+	request.CommandID = strings.TrimSpace(request.CommandID)
+	request.OperationID = strings.TrimSpace(request.OperationID)
+	request.Hash = strings.TrimSpace(request.Hash)
+	if request.CommandID == "" || request.OperationID == "" || request.Cycle <= 0 || request.Hash == "" {
+		return "", fmt.Errorf("input commit effect requires command, operation, cycle, and hash")
+	}
+	digest := sha256.Sum256([]byte(request.CommandID + "\x00" + request.OperationID + "\x00" + fmt.Sprint(request.Cycle) + "\x00" + request.Hash))
+	return fmt.Sprintf("agent-input-%x", digest[:16]), nil
+}
+
+type InputCommitEffect interface {
+	Apply(context.Context, InputCommitEffectRequest) error
+	Reconcile(context.Context, InputCommitEffectRequest) (bool, error)
+}
+
+// InputCommitEffectFuncs adapts small host implementations while preserving
+// the explicit Apply/Reconcile contract.
+type InputCommitEffectFuncs struct {
+	ApplyFunc     func(context.Context, InputCommitEffectRequest) error
+	ReconcileFunc func(context.Context, InputCommitEffectRequest) (bool, error)
+}
+
+func (effect InputCommitEffectFuncs) Apply(ctx context.Context, request InputCommitEffectRequest) error {
+	if effect.ApplyFunc == nil {
+		return nil
+	}
+	return effect.ApplyFunc(ctx, request)
+}
+
+func (effect InputCommitEffectFuncs) Reconcile(ctx context.Context, request InputCommitEffectRequest) (bool, error) {
+	if effect.ReconcileFunc == nil {
+		return false, nil
+	}
+	return effect.ReconcileFunc(ctx, request)
 }
 
 const (
@@ -56,11 +105,11 @@ type Options struct {
 	IdleTimeout        time.Duration
 	ToolResultMaxBytes int
 	// Controls carries lifecycle requests for this run only. Closing it is a no-op.
-	Controls               <-chan Control
-	SystemPromptLog        prompts.SystemPromptComposition
-	OnMutationsVerified    func(context.Context, []agenttool.Mutation, agenttool.Verification)
-	OnUserMessageCommitted func(context.Context) error
-	RestoreData            *RestoreData
+	Controls            <-chan Control
+	SystemPromptLog     prompts.SystemPromptComposition
+	OnMutationsVerified func(context.Context, []agenttool.Mutation, agenttool.Verification)
+	InputCommitEffect   InputCommitEffect
+	RestoreData         *RestoreData
 }
 
 // Normalize applies defaults and canonical string forms without changing the

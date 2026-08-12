@@ -76,23 +76,6 @@ func (s *Store) SwitchTurnVersion(storyID string, req SwitchTurnVersionRequest) 
 		return err
 	}
 	newEvents := append([]any(nil), projectedEvents...)
-	invalidated := activeDescendantCompaction(path, currentIndex)
-	if invalidated != nil {
-		removal := ContextCompactionRemovalEvent{
-			V:               schemaVersion,
-			Type:            StoryEventTypeCompactionRemoved,
-			ID:              newID("ccr"),
-			ParentID:        projectedHead,
-			BranchID:        branchID,
-			Ts:              now,
-			AgentKind:       invalidated.AgentKind,
-			CompactionID:    invalidated.ID,
-			SourceTurnCount: invalidated.SourceTurnCount,
-			Reason:          "turn_version_switched",
-		}
-		projectedHead = removal.ID
-		newEvents = append(newEvents, removal)
-	}
 
 	selection := TurnVersionSelectionEvent{
 		V:               schemaVersion,
@@ -124,9 +107,6 @@ func (s *Store) SwitchTurnVersion(storyID string, req SwitchTurnVersionRequest) 
 			selection.CurrentDepth++
 		}
 	}
-	if invalidated != nil {
-		selection.InvalidatedCompactionID = invalidated.ID
-	}
 	newEvents = append(newEvents, selection)
 
 	branch.Head = projectedHead
@@ -147,10 +127,9 @@ func turnRecordOnPath(path []StoryEventRecord, turnID string) (int, *StoryEventR
 	return -1, nil
 }
 
-// projectTurnVersionSuffix creates new envelopes for the active suffix. A
-// compaction summaries and cleanup projections are never copied onto a changed
-// ancestor. Existing removal markers are copied so a checkpoint active before
-// the selected turn cannot accidentally reappear after projecting the suffix.
+// projectTurnVersionSuffix creates new envelopes for the active suffix. Agent
+// maintenance is not part of the Story journal, so every canonical event is
+// projected exactly once onto the selected version path.
 func projectTurnVersionSuffix(
 	suffix []StoryEventRecord,
 	selectedTurnID, selectionID string,
@@ -159,9 +138,6 @@ func projectTurnVersionSuffix(
 	projected := make([]any, 0, len(suffix))
 	projections := make([]TurnVersionProjection, 0, len(suffix))
 	for _, record := range suffix {
-		if record.Envelope.Type == StoryEventTypeCompaction || record.Envelope.Type == StoryEventTypeCompactionHealth || record.Envelope.Type == StoryEventTypeToolResultCleanup {
-			continue
-		}
 		clonedRaw, projection, err := cloneTurnVersionPathEvent(record, parentID, selectionID)
 		if err != nil {
 			return "", nil, nil, err
@@ -198,28 +174,4 @@ func cloneTurnVersionPathEvent(record StoryEventRecord, parentID, selectionID st
 	return clonedRaw, TurnVersionProjection{
 		SourceID: record.Envelope.ID, ProjectedID: projectedID, EventType: record.Envelope.Type,
 	}, nil
-}
-
-func activeDescendantCompaction(path []StoryEventRecord, selectedIndex int) *ContextCompactionEvent {
-	activeIndex := -1
-	var active *ContextCompactionEvent
-	for index, record := range path {
-		switch record.Envelope.Type {
-		case StoryEventTypeCompaction:
-			var event ContextCompactionEvent
-			if err := mapToStruct(record.Raw, &event); err != nil {
-				continue
-			}
-			active = &event
-			activeIndex = index
-		case StoryEventTypeCompactionRemoved:
-			active = nil
-			activeIndex = -1
-		}
-	}
-	if active == nil || activeIndex <= selectedIndex {
-		return nil
-	}
-	copy := *active
-	return &copy
 }

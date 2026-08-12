@@ -81,6 +81,7 @@ export function useAgentChat(options: ChatOptions = {}) {
   const { projectId = '', client = writingAgentChatClient, onAgentFileChange, onWorkspaceChange } = options
   const transport = useMemo(() => new AgentChatTransport(client.transportOptions), [client])
   const [runtimeRecoverySignal, setRuntimeRecoverySignal] = useState(0)
+  const projectStreamCycleRef = useRef<(operationID: string, cycle?: number) => void>(() => undefined)
   const messageNormalizerRef = useRef<AgentUIMessageNormalizer | null>(null)
   messageNormalizerRef.current ??= new AgentUIMessageNormalizer()
   const [displayRehydrateRequest, setDisplayRehydrateRequest] = useState<WritingDisplayRehydrateRequest | null>(null)
@@ -105,6 +106,12 @@ export function useAgentChat(options: ChatOptions = {}) {
       }
       if (part.type === 'data-agent-activity') {
         const data = part.data as Record<string, unknown>
+        if (data.event === 'agent_cycle_started') {
+          const operationID = typeof data.operation_id === 'string' ? data.operation_id.trim() : ''
+          const cycle = typeof data.cycle === 'number' ? data.cycle : Number(data.cycle)
+          projectStreamCycleRef.current(operationID, Number.isSafeInteger(cycle) ? cycle : undefined)
+          return
+        }
         if (data.event === 'task_rehydrate_required' || data.code === 'agent_stream.rehydrate_required') {
           const taskID = typeof data.task_id === 'string' ? data.task_id.trim() : ''
           const cursor = typeof data.cursor === 'number' ? data.cursor : Number(data.cursor)
@@ -231,7 +238,7 @@ export function useAgentChat(options: ChatOptions = {}) {
     [t],
   )
 
-  const { abortRecovery, recoveryPending, resumeActiveChat, runtimeProjection, setRuntimeProjection } = useWritingAgentRuntimeRecovery({
+  const { abortRecovery, projectStreamCycle, recoveryPending, resumeActiveChat, runtimeProjection, setRuntimeProjection } = useWritingAgentRuntimeRecovery({
     activeSessionId,
     displayRehydrateRequest,
     loadHistoryAuthoritative,
@@ -246,6 +253,7 @@ export function useAgentChat(options: ChatOptions = {}) {
     transportStreaming,
     client,
   })
+  projectStreamCycleRef.current = projectStreamCycle
   const isStreaming = transportStreaming || recoveryPending
   // Recovery inspection temporarily sets recoveryPending even for an idle
   // conversation. Project-level running state must represent real execution,
@@ -338,7 +346,17 @@ export function useAgentChat(options: ChatOptions = {}) {
   const send = useCallback(
     async (input: string, sendOptions: ChatSendOptions = {}) => {
       if (sessionTransitionPendingRef.current) return false
-      const targetSessionID = (client.fixedSessionId || activeSessionId).trim()
+      let targetSessionID = (client.fixedSessionId || activeSessionId).trim()
+      if (!targetSessionID) {
+        const availableSessions = await loadSessions()
+        targetSessionID = (
+          client.fixedSessionId || availableSessions.find((session) => session.active)?.id || availableSessions[0]?.id || ''
+        ).trim()
+        if (!targetSessionID) {
+          toast.error(t('chat.sessionUnavailable'))
+          return false
+        }
+      }
       const command = isStreaming ? '' : agentBypassCommand(input)
       if (command) {
         const result = await client.executeCommand(command)
@@ -484,6 +502,7 @@ export function useAgentChat(options: ChatOptions = {}) {
           setTextSelections((current) => [...prepared.composerTextSelections.filter((item) => !current.includes(item)), ...current])
           sendOptions.onSubmissionError?.()
         }
+        if (acceptance === 'uncertain') await resumeActiveChat(targetSessionID)
         toast.error(t('chat.activity.requestFailed', { error: String(e) }))
         return false
       }
@@ -497,6 +516,7 @@ export function useAgentChat(options: ChatOptions = {}) {
       loadHistory,
       loadSessions,
       prepareAgentRequest,
+      resumeActiveChat,
       runtimeProjection,
       sendMessage,
       setActivePlanMode,

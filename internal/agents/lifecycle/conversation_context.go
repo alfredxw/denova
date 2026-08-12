@@ -12,9 +12,10 @@ import (
 	"denova/internal/book"
 
 	agent "github.com/alfredxw/denova/agent"
+	publiccontext "github.com/alfredxw/denova/agent/context"
 )
 
-const minimumDenovaContextHardLimit = 64 << 10
+const minimumDenovaContextHardLimit = publiccontext.DefaultLifecycleHardLimit
 
 // ConversationContextConfig adapts Denova's product context projection to the
 // public Agent transcript boundary. Conversation owns current workspace/story
@@ -66,6 +67,7 @@ func (source *conversationContextSource) Materialize(ctx context.Context, reques
 		source.config.Request,
 		source.config.BookService,
 		source.config.Options.Workspace,
+		request.Run.StartedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -109,28 +111,9 @@ func projectConversationContext(
 	}
 	hardLimit := max(minimumDenovaContextHardLimit, budget.MaxTotalBytes+len(request.Input.Text)+minimumDenovaContextHardLimit)
 	hardLimit = max(hardLimit, len(modelUser.Content))
-	fragments := make([]agent.ContextFragment, 0, len(prepared.ModelContext.Context.Fragments)+1)
-	for index, fragment := range prepared.ModelContext.Context.Fragments {
-		if !fragment.Included || strings.TrimSpace(fragment.Content) == "" {
-			continue
-		}
-		resource := firstContextValue(strings.TrimSpace(fragment.ID), strings.TrimSpace(fragment.Source), fmt.Sprintf("fragment-%d", index+1))
-		purpose := firstContextValue(strings.TrimSpace(fragment.Purpose), "retain Denova context provenance")
-		limit := max(minimumDenovaContextHardLimit, fragment.Limit)
-		limit = max(limit, len(fragment.Content))
-		projected := agent.ContextFragment{
-			Source: fragment.Source, Purpose: purpose, Resource: resource,
-			Revision: fragment.Hash, Placement: agent.ContextAuditOnly,
-			Content: fragment.Content, HardLimit: limit,
-		}
-		if fragment.Placement == agentcontext.PlacementLeadingMessage {
-			projected.Placement = agent.ContextLeadingMessage
-			projected.Rendering = agent.ContextRenderVerbatim
-			projected.Role = agent.User
-			projected.Content = agentcontext.StandaloneMessage(fragment.Title, fragment.Content, "")
-			projected.HardLimit = max(projected.HardLimit, len(projected.Content))
-		}
-		fragments = append(fragments, projected)
+	fragments, err := publiccontext.ExportLifecycleFragments(prepared.ModelContext.Context)
+	if err != nil {
+		return nil, fmt.Errorf("export Denova model context to Agent lifecycle: %w", err)
 	}
 	fragments = append(fragments, agent.ContextFragment{
 		Source: "denova.turn.context", Purpose: "preserve the exact localized Denova turn assembly",

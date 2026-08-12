@@ -1,10 +1,11 @@
 package agent
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
-	runstate "github.com/alfredxw/denova/agent/runtime"
+	runstate "github.com/alfredxw/denova/agent/internal/runtime"
 )
 
 type projectedToolInput struct {
@@ -17,12 +18,12 @@ type projectedToolInput struct {
 // the native loop, so live display deltas and eventual execution share one
 // execution identity and one append-only argument stream.
 type toolInputProjector struct {
-	variant *MessageVariant
+	variant *loopMessage
 	source  runstate.EventSource
 	calls   map[int]projectedToolInput
 }
 
-func newToolInputProjector(variant *MessageVariant, source runstate.EventSource) *toolInputProjector {
+func newToolInputProjector(variant *loopMessage, source runstate.EventSource) *toolInputProjector {
 	return &toolInputProjector{
 		variant: variant, source: source, calls: make(map[int]projectedToolInput),
 	}
@@ -49,8 +50,13 @@ func (projector *toolInputProjector) observe(message *Message, emit runstate.Eng
 			return fmt.Errorf("assistant tool %q at ordinal %d is missing an execution ID", name, ordinal)
 		}
 		if !state.started {
+			metadata, err := projector.toolMetadata(name)
+			if err != nil {
+				return err
+			}
 			if err := emit(runstate.EngineToolInputStarted{
-				CallID: callID, ProviderCallID: call.ID, Name: name, Source: projector.source,
+				CallID: callID, ProviderCallID: call.ID, Name: name, Index: ordinal,
+				Metadata: metadata, Source: projector.source,
 			}); err != nil {
 				return err
 			}
@@ -68,4 +74,21 @@ func (projector *toolInputProjector) observe(message *Message, emit runstate.Eng
 		projector.calls[ordinal] = state
 	}
 	return nil
+}
+
+func (projector *toolInputProjector) toolMetadata(name string) (json.RawMessage, error) {
+	if projector == nil || projector.variant == nil {
+		return nil, nil
+	}
+	for _, definition := range projector.variant.ToolDefinitions {
+		if definition.Info == nil || definition.Info.Name != name {
+			continue
+		}
+		metadata, err := json.Marshal(definition.Descriptor)
+		if err != nil {
+			return nil, fmt.Errorf("encode tool %q live metadata: %w", name, err)
+		}
+		return metadata, nil
+	}
+	return nil, nil
 }

@@ -348,6 +348,104 @@ func (s *Service) ConsumeReviewComments(ctx context.Context, threadID string, co
 	return append([]Comment{}, consumed...), nil
 }
 
+// ConsumeReviewCommentsForAgentInput persists an exact canonical-input
+// receipt on every consumed comment. Exact retries are no-ops; unrelated
+// deletions cannot satisfy the Agent outbox.
+func (s *Service) ConsumeReviewCommentsForAgentInput(ctx context.Context, threadID string, commentIDs []string, effectID string) ([]Comment, error) {
+	effectID = strings.TrimSpace(effectID)
+	if effectID == "" || len(effectID) > 128 {
+		return nil, newError(ErrorCodeInvalid, "Agent input effect id is invalid", nil)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := contextError(ctx); err != nil {
+		return nil, err
+	}
+	pending, err := s.reviewCommentsForAgentInputLocked(threadID, commentIDs, effectID)
+	if err != nil || len(pending) == 0 {
+		return nil, err
+	}
+	now := time.Now().UTC()
+	for index := range pending {
+		pending[index].Deleted = true
+		pending[index].AgentInputEffectID = effectID
+		pending[index].UpdatedAt = now
+	}
+	if err := s.appendAndApply(ledgerEvent{Type: eventCommentsUpserted, CreatedAt: now, Comments: pending}); err != nil {
+		return nil, err
+	}
+	return append([]Comment(nil), pending...), nil
+}
+
+func (s *Service) ValidateReviewCommentsForAgentInput(ctx context.Context, threadID string, commentIDs []string, effectID string) error {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if err := contextError(ctx); err != nil {
+		return err
+	}
+	_, err := s.reviewCommentsForAgentInputLocked(threadID, commentIDs, strings.TrimSpace(effectID))
+	return err
+}
+
+// ReviewCommentsConsumed is the read-only receipt query for an Agent input
+// obligation. It never mutates or resurrects comment state.
+func (s *Service) ReviewCommentsConsumed(ctx context.Context, threadID string, commentIDs []string, effectID string) (bool, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if err := contextError(ctx); err != nil {
+		return false, err
+	}
+	threadID = strings.TrimSpace(threadID)
+	effectID = strings.TrimSpace(effectID)
+	if effectID == "" {
+		return false, newError(ErrorCodeInvalid, "Agent input effect id is required", nil)
+	}
+	if s.threads[threadID] == nil {
+		return false, newError(ErrorCodeNotFound, "document review thread not found", map[string]any{"review_thread_id": threadID})
+	}
+	for _, requestedID := range commentIDs {
+		comment := s.comments[strings.TrimSpace(requestedID)]
+		if comment == nil || comment.ThreadID != threadID {
+			return false, newError(ErrorCodeConflict, "document review comment is unavailable", map[string]any{"review_thread_id": threadID, "comment_id": requestedID})
+		}
+		if !comment.Deleted || comment.AgentInputEffectID != effectID {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+func (s *Service) reviewCommentsForAgentInputLocked(threadID string, commentIDs []string, effectID string) ([]Comment, error) {
+	threadID = strings.TrimSpace(threadID)
+	if effectID == "" {
+		return nil, newError(ErrorCodeInvalid, "Agent input effect id is required", nil)
+	}
+	if s.threads[threadID] == nil {
+		return nil, newError(ErrorCodeNotFound, "document review thread not found", map[string]any{"review_thread_id": threadID})
+	}
+	seen := make(map[string]bool, len(commentIDs))
+	pending := make([]Comment, 0, len(commentIDs))
+	for _, requestedID := range commentIDs {
+		id := strings.TrimSpace(requestedID)
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		comment := s.comments[id]
+		if comment == nil || comment.ThreadID != threadID {
+			return nil, newError(ErrorCodeConflict, "document review comment is unavailable", map[string]any{"review_thread_id": threadID, "comment_id": id})
+		}
+		if comment.Deleted {
+			if comment.AgentInputEffectID != effectID {
+				return nil, newError(ErrorCodeConflict, "document review comment was consumed by another action", map[string]any{"comment_id": id})
+			}
+			continue
+		}
+		pending = append(pending, *comment)
+	}
+	return pending, nil
+}
+
 // RestoreConsumedReviewComments compensates a failed cross-ledger feedback
 // batch. It only restores the exact comment versions returned by consumption.
 func (s *Service) RestoreConsumedReviewComments(ctx context.Context, threadID string, consumed []Comment) ([]Comment, error) {
@@ -383,6 +481,7 @@ func (s *Service) RestoreConsumedReviewComments(ctx context.Context, threadID st
 		}
 		next := *current
 		next.Deleted = false
+		next.AgentInputEffectID = ""
 		next.UpdatedAt = now
 		restored = append(restored, next)
 	}

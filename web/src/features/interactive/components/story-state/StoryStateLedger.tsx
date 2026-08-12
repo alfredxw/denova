@@ -113,6 +113,7 @@ export function StoryStateLedger({ snapshot, displayPreference, onDisplayPrefere
       <section
         aria-label={t('storyStage.state.current')}
         data-state-panel-mode={panelMode}
+        data-nova-chat-after-content-height-scope={panelMode}
         className="story-state-ledger mt-3 overflow-hidden rounded-xl border border-[var(--nova-border)] bg-[var(--story-state-canvas)]"
       >
         <header className="flex h-10 min-w-0 items-center gap-2 px-2.5">

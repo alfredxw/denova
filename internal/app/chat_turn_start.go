@@ -122,16 +122,11 @@ func (s *ChatAppService) startTaskWithError(ctx context.Context, expectedSession
 		return nil, ErrAgentOperationActive
 	}
 
-	goalTools, err := appagentruntime.GoalTools(ctx, runtime.sess)
-	if err != nil {
-		return nil, err
-	}
 	builtAgent, err := appagentruntime.BuildConversationAgent(
 		ctx, &runtime.cfg, runtime.state, runtime.ideTeller, agentrun.AgentKindIDE,
-		goalTools...,
 	)
 	if err != nil {
-		slog.ErrorContext(ctx, fmt.Sprintf("[agent-task] 刷新 Agent Runner 失败 workspace=%s err=%v", runtime.workspace, err))
+		slog.ErrorContext(ctx, fmt.Sprintf("[agent-task] failed to refresh Agent runtime workspace=%s err=%v", runtime.workspace, err))
 		return nil, err
 	}
 	systemPrompt := builtAgent.Composition
@@ -221,7 +216,6 @@ func (s *ChatAppService) startTaskWithError(ctx context.Context, expectedSession
 			BookService:  runtime.bookService,
 			Request:      req,
 			Options:      startOptions,
-			Successor:    s.writingGoalSuccessor(runtime, task, req.Locale),
 		},
 		Emit: task.Emit,
 	})

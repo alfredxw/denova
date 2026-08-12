@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"strings"
 
+	agent "github.com/alfredxw/denova/agent"
+
 	agentconversation "denova/internal/agents/conversation"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
@@ -16,7 +18,7 @@ type AgentAskSelectedOption = agentconversation.HostAskSelectedOption
 type AgentAskAnswerResult = agentconversation.HostAskAnswerResult
 type AgentAskResolution = agentconversation.HostAskResolution
 
-var ErrAgentAskNotFound = agentconversation.ErrAskNotFound
+var ErrAgentAskNotFound = agent.ErrInteractionStale
 
 func (a *App) persistAgentCall(agentKind, instruction, response string) {
 	a.mu.RLock()
@@ -104,12 +106,13 @@ func (a *App) resolveSessionAsk(ctx context.Context, sessionID, askID, status st
 	store := a.sessionStore
 	selected := a.session
 	workspace := a.workspace
-	projectID := ""
+	executionRuntime := a.executionRuntime
+	stateRoot := ""
 	if a.cfg != nil {
-		projectID = a.cfg.ProjectID
+		stateRoot = a.cfg.ProjectStateDir
 	}
 	a.mu.RUnlock()
-	if store == nil || selected == nil {
+	if store == nil || selected == nil || executionRuntime == nil {
 		return AgentAskResolution{}, ErrNoWorkspace
 	}
 	sessionID = strings.TrimSpace(sessionID)
@@ -119,11 +122,13 @@ func (a *App) resolveSessionAsk(ctx context.Context, sessionID, askID, status st
 	if isAgentSessionID(sessionID) {
 		return AgentAskResolution{}, fmt.Errorf("cannot resolve a fixed Agent ask through the IDE session endpoint: %s", sessionID)
 	}
-	sess, err := store.Get(sessionID)
-	if err != nil {
+	if _, err := store.Get(sessionID); err != nil {
 		return AgentAskResolution{}, err
 	}
-	return a.resolveAgentAsk(ctx, sess, projectID, workspace, askID, status, answers, cancelReason)
+	return executionRuntime.ResolveAsk(ctx, agentrun.Options{
+		AgentKind: agentrun.AgentKindIDE, StateRoot: stateRoot,
+		Workspace: workspace, SessionID: sessionID, Mode: "ide",
+	}, askID, status, answers, cancelReason)
 }
 
 func (a *App) AgentRunTraces(limit int) ([]agentrun.RunTraceSummary, error) {

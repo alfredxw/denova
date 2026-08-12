@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -176,7 +177,11 @@ func (s *Store) List(activeID string) ([]SessionMeta, error) {
 		visible[id] = struct{}{}
 		meta, err := s.metadataLocked(id, file, activeID)
 		if err != nil {
-			return nil, err
+			// One obsolete or damaged Session must not hide every healthy
+			// conversation. The canonical journal remains untouched and the
+			// exact failure stays observable for manual repair.
+			slog.Error("[session.Store.List] skipped unreadable Session metadata", "session_id", id, "path", file, "error", err)
+			continue
 		}
 		result = append(result, meta)
 	}
@@ -208,7 +213,8 @@ func (s *Store) ListByPrefix(prefix string) ([]SessionMeta, error) {
 		}
 		meta, err := s.metadataLocked(id, file, activeID)
 		if err != nil {
-			return nil, err
+			slog.Error("[session.Store.ListByPrefix] skipped unreadable Session metadata", "session_id", id, "path", file, "error", err)
+			continue
 		}
 		result = append(result, meta)
 	}

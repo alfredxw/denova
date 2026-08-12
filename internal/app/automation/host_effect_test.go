@@ -13,8 +13,6 @@ import (
 	agentrun "denova/internal/agents/run"
 	agenttool "denova/internal/agents/tool"
 	"denova/internal/automation"
-
-	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 func TestAutomationHostEffectBridgeSurvivesRunMaterializationGap(t *testing.T) {
@@ -287,7 +285,7 @@ func TestCommittedAutomationHostEffectEnablesOneTriggerPassAcrossRedelivery(t *t
 
 func TestDecodeAdmittedToolMutationRejectsIncompleteIdentity(t *testing.T) {
 	_, err := decodeAdmittedToolMutation(automation.HostEffectObligation{
-		ID: "incomplete", Kind: string(runstate.HostEffectToolMutationCommitted),
+		ID: "incomplete", Kind: agentrun.HostEffectToolMutationCommitted,
 		Payload: []byte(`{"version":1}`),
 	})
 	if err == nil {

@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	agent "github.com/alfredxw/denova/agent"
-	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 // ErrInvalidModelContextProtocol means the final provider-neutral transcript
@@ -357,7 +356,7 @@ func completeUnknownToolResults(messages []*agent.Message) []*agent.Message {
 				continue
 			}
 			completed = append(completed, agent.ToolMessage(
-				agent.SyntheticToolResult(agent.ToolResultError, agent.ToolSyntheticEffectUnknown, runstate.UnknownToolEffectResult),
+				agent.SyntheticToolResult(agent.ToolResultError, agent.ToolSyntheticEffectUnknown, agent.UnknownToolEffectResult),
 				callID,
 				agent.WithToolName(call.Function.Name),
 			))
@@ -375,5 +374,5 @@ func completeUnknownToolResults(messages []*agent.Message) []*agent.Message {
 // IsUnknownToolEffectResult identifies the deterministic recovery projection
 // used when a durable tool start has no matching completion.
 func IsUnknownToolEffectResult(content string) bool {
-	return strings.TrimSpace(content) == runstate.UnknownToolEffectResult
+	return strings.TrimSpace(content) == agent.UnknownToolEffectResult
 }

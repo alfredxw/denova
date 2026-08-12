@@ -85,14 +85,14 @@ func (*appendBeforeModelCallMiddleware) BeforeModelCall(ctx context.Context, cal
 
 func TestBeforeModelCallRewritesTheRequestUsedByTheNativeLoop(t *testing.T) {
 	model := &scriptedModel{responses: []scriptedModelResponse{{message: AssistantMessage("done", nil)}}}
-	built, err := NewLoop(context.Background(), LoopConfig{
+	built, err := newModelToolLoop(context.Background(), loopConfig{
 		Name: "model-call-seam", Model: model,
 		Middlewares: []Middleware{&appendBeforeModelCallMiddleware{}},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	iterator := built.Run(context.Background(), &AgentInput{Messages: []*Message{UserMessage("source")}})
+	iterator := built.Run(context.Background(), &loopInput{Messages: []*Message{UserMessage("source")}})
 	for {
 		event, ok := iterator.Next()
 		if !ok {
@@ -114,14 +114,14 @@ func TestBeforeModelCallRewritesTheRequestUsedByTheNativeLoop(t *testing.T) {
 
 func TestRunnerPrepareModelRequestUsesFinalAssemblyWithoutCallingProvider(t *testing.T) {
 	model := &optionCapturingModel{}
-	built, err := NewLoop(context.Background(), LoopConfig{
+	built, err := newModelToolLoop(context.Background(), loopConfig{
 		Name: "request-preparation", Instruction: "stable system", Model: model,
 		Middlewares: []Middleware{&appendBeforeModelCallMiddleware{}},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	runner := NewRunner(RunnerConfig{Agent: built, EnableStreaming: true})
+	runner := newLoopRunner(loopRunnerConfig{Agent: built, EnableStreaming: true})
 	ctx := ContextWithSessionKey(context.Background(), "conversation-prepare")
 	snapshot, err := runner.PrepareModelRequest(ctx, []*Message{UserMessage("source")})
 	if err != nil {

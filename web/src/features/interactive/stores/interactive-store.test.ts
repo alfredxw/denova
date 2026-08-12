@@ -350,7 +350,6 @@ function persistedEvent(turnEvent: TurnEvent): InteractiveTurnPersistedEvent {
     },
     branches: [{ id: 'main', head: turnEvent.id, created_at: '', current: true }],
     context_compaction: null,
-    context_compaction_removal: null,
   }
 }
 

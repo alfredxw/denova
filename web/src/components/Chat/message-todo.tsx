@@ -4,6 +4,7 @@ import type { ToolCallChatMessage } from '@/lib/api'
 import { stripToolResultMetadata } from './message-tool'
 
 interface TodoItem {
+	id?: string
   step: string
   status: 'pending' | 'in_progress' | 'completed' | string
 }
@@ -81,8 +82,12 @@ function TodoListItem({ todo }: { todo: TodoItem }) {
 function parseTodoPlanResult(result: string): TodoItem[] | null {
   if (!result) return null
   try {
-    const data = JSON.parse(result) as { schema?: string; plan?: TodoItem[] }
-    if (data.schema === 'todo.plan.v1' && Array.isArray(data.plan)) return data.plan
+    const data = JSON.parse(result) as { schema?: string; items?: Array<{ id?: string; text?: string; status?: string }> }
+    if (data.schema === 'agent.todo.v1' && Array.isArray(data.items)) {
+      return data.items
+        .filter((item) => typeof item.text === 'string' && item.text.trim() !== '')
+        .map((item) => ({ id: item.id, step: item.text || '', status: item.status || 'pending' }))
+    }
   } catch {
     // Unstructured or incomplete output is not an authoritative success result.
   }
@@ -96,13 +101,17 @@ function parseTodoPlanFromArgs(args: string): TodoItem[] {
   if (!trimmed) return []
   // Prefer the complete payload when it is already available.
   try {
-    const data = JSON.parse(trimmed) as { plan?: TodoItem[] }
-    if (Array.isArray(data?.plan)) return data.plan
+    const data = JSON.parse(trimmed) as {
+      items?: Array<{ id?: string; text?: string; status?: string }>
+      mutations?: Array<{ id?: string; text?: string; status?: string; delete?: boolean }>
+    }
+    if (Array.isArray(data?.items)) return todoItemsFromMutations(data.items)
+    if (Array.isArray(data?.mutations)) return todoItemsFromMutations(data.mutations)
   } catch {
     // Partial or truncated arguments are expected during streaming.
   }
   // Fall back to completed objects already present in the plan array.
-  const arrayMatch = trimmed.match(/"plan"\s*:\s*\[([\s\S]*)$/)
+  const arrayMatch = trimmed.match(/"(?:items|mutations)"\s*:\s*\[([\s\S]*)$/)
   if (!arrayMatch) return []
   const body = arrayMatch[1]
   const items: TodoItem[] = []
@@ -124,7 +133,10 @@ function parseTodoPlanFromArgs(args: string): TodoItem[] {
       if (depth === 0 && start >= 0) {
         const piece = body.slice(start, i + 1)
         try {
-          items.push(JSON.parse(piece) as TodoItem)
+          const mutation = JSON.parse(piece) as { id?: string; text?: string; status?: string; delete?: boolean }
+          if (!mutation.delete && typeof mutation.text === 'string' && mutation.text.trim() !== '') {
+            items.push({ id: mutation.id, step: mutation.text, status: mutation.status || 'pending' })
+          }
         } catch {
           // A partial object does not invalidate earlier completed entries.
         }
@@ -133,4 +145,10 @@ function parseTodoPlanFromArgs(args: string): TodoItem[] {
     }
   }
   return items
+}
+
+function todoItemsFromMutations(mutations: Array<{ id?: string; text?: string; status?: string; delete?: boolean }>): TodoItem[] {
+  return mutations
+    .filter((mutation) => !mutation.delete && typeof mutation.text === 'string' && mutation.text.trim() !== '')
+    .map((mutation) => ({ id: mutation.id, step: mutation.text || '', status: mutation.status || 'pending' }))
 }

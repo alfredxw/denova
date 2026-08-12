@@ -144,6 +144,13 @@ type DefinitionResolver interface {
 	ResolveDefinition(context.Context, DefinitionRequest) (agent.Definition, error)
 }
 
+// CanonicalInputResolver is the narrow admission counterpart to
+// DefinitionResolver. It must not prepare a model, Toolset, or Context; the
+// public Runtime calls it before Definition preparation can be preempted.
+type CanonicalInputResolver interface {
+	ResolveCanonicalInput(context.Context, DefinitionRequest) (agent.CanonicalAdapter, error)
+}
+
 type DefinitionResolverFunc func(context.Context, DefinitionRequest) (agent.Definition, error)
 
 func (resolve DefinitionResolverFunc) ResolveDefinition(ctx context.Context, request DefinitionRequest) (agent.Definition, error) {
@@ -153,16 +160,45 @@ func (resolve DefinitionResolverFunc) ResolveDefinition(ctx context.Context, req
 	return resolve(ctx, request)
 }
 
+type denovaSource struct{ resolver DefinitionResolver }
+
 // NewSource adapts Denova Session identity to the public Agent Source seam.
 func NewSource(resolver DefinitionResolver) (agent.Source, error) {
 	if resolver == nil {
 		return nil, errors.New("Denova Agent Definition resolver is required")
 	}
-	return agent.SourceFunc(func(ctx context.Context, request agent.PrepareRequest) (agent.Definition, error) {
-		binding, err := agentrun.RuntimeBindingFromAgentSessionKey(request.Session.Key)
-		if err != nil {
+	return denovaSource{resolver: resolver}, nil
+}
+
+func (source denovaSource) Prepare(ctx context.Context, request agent.PrepareRequest) (agent.Definition, error) {
+	return source.resolve(ctx, request)
+}
+
+func (source denovaSource) CanonicalInput(ctx context.Context, request agent.PrepareRequest) (agent.CanonicalAdapter, error) {
+	if strings.HasPrefix(request.Session.Key.Namespace, "task.") || request.Reason == agent.TurnReasonGoalMutation {
+		return nil, nil
+	}
+	resolver, ok := source.resolver.(CanonicalInputResolver)
+	if !ok {
+		return nil, errors.New("Denova Agent Definition resolver has no provider-free canonical input boundary")
+	}
+	binding, err := agentrun.RuntimeBindingFromAgentSessionKey(request.Session.Key)
+	if err != nil {
+		return nil, fmt.Errorf("resolve Denova Agent Session binding: %w", err)
+	}
+	return resolver.ResolveCanonicalInput(ctx, DefinitionRequest{Binding: binding, Agent: request})
+}
+
+func (source denovaSource) resolve(ctx context.Context, request agent.PrepareRequest) (agent.Definition, error) {
+	binding, err := agentrun.RuntimeBindingFromAgentSessionKey(request.Session.Key)
+	if err != nil {
+		// Delegated Sessions intentionally use the public task namespace. Their
+		// resolver reconstructs the parent product binding from immutable child
+		// key attributes and therefore receives a zero Binding here.
+		if !strings.HasPrefix(request.Session.Key.Namespace, "task.") {
 			return agent.Definition{}, fmt.Errorf("resolve Denova Agent Session binding: %w", err)
 		}
-		return resolver.ResolveDefinition(ctx, DefinitionRequest{Binding: binding, Agent: request})
-	}), nil
+		return source.resolver.ResolveDefinition(ctx, DefinitionRequest{Agent: request})
+	}
+	return source.resolver.ResolveDefinition(ctx, DefinitionRequest{Binding: binding, Agent: request})
 }

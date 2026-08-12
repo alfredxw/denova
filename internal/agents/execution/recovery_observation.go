@@ -89,7 +89,21 @@ func (r *RecoveryObservation) DisplayMetadata(ctx context.Context, action Runtim
 	if action.Kind == RuntimeRecoveryCompactContext || action.Kind == RuntimeRecoveryRemoveCompaction {
 		return RuntimeRecoveryDisplayMetadata{}, nil
 	}
-	input, found, err := r.publicSession.RunInput(ctx, string(action.OperationID))
+	selected, found := publicRecoveryAction(r.publicInitial.RecoveryActions, action.ActionID)
+	if !found {
+		snapshot, snapshotErr := r.publicSession.Snapshot(ctx)
+		if snapshotErr != nil {
+			return RuntimeRecoveryDisplayMetadata{}, snapshotErr
+		}
+		selected, found = publicRecoveryAction(snapshot.RecoveryActions, action.ActionID)
+	}
+	var input agent.Input
+	var err error
+	if found {
+		input, found, err = r.publicSession.RecoveryInput(ctx, selected)
+	} else {
+		input, found, err = r.publicSession.RunInput(ctx, string(action.OperationID))
+	}
 	if err != nil || !found {
 		return RuntimeRecoveryDisplayMetadata{}, err
 	}
@@ -100,4 +114,13 @@ func (r *RecoveryObservation) DisplayMetadata(ctx context.Context, action Runtim
 	return RuntimeRecoveryDisplayMetadata{
 		Message: strings.TrimSpace(data.Caller.Message), RegenerateFromTurnID: data.TurnID,
 	}, nil
+}
+
+func publicRecoveryAction(actions []agent.RecoveryAction, id string) (agent.RecoveryAction, bool) {
+	for _, action := range actions {
+		if action.ID == id {
+			return action, true
+		}
+	}
+	return agent.RecoveryAction{}, false
 }

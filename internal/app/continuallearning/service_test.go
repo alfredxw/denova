@@ -12,7 +12,6 @@ import (
 	"unicode/utf8"
 
 	"denova/config"
-	agentconversation "denova/internal/agents/conversation"
 	"denova/internal/agents/session"
 	"denova/internal/agents/trajectory"
 )
@@ -30,10 +29,6 @@ func (testHost) AcquireRootOperation(context.Context) (Operation, error) {
 
 func (host testHost) TrajectorySources(context.Context) ([]trajectory.Source, error) {
 	return append([]trajectory.Source(nil), host.sources...), nil
-}
-
-func (testHost) ResolveAsk(context.Context, *session.Session, string, string, []agentconversation.HostAskAnswer, string) (agentconversation.HostAskResolution, error) {
-	return agentconversation.HostAskResolution{}, errors.New("unexpected Ask resolution")
 }
 
 func TestDisabledServiceDoesNotInitializeState(t *testing.T) {

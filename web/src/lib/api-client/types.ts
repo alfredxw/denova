@@ -204,6 +204,7 @@ export interface AgentAskInteraction {
   agent_kind: string
   status: 'pending' | 'answered' | 'cancelled'
   questions: AgentAskQuestion[]
+  allow_other?: boolean
   approval?: AgentToolApprovalPresentation
   answers?: AgentAskAnswerResult[]
   cancel_reason?: string

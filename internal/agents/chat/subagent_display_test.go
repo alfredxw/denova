@@ -2,36 +2,13 @@ package chat
 
 import (
 	"context"
-	"strings"
 	"testing"
 
 	agentcontext "denova/internal/agents/context"
 	"denova/internal/agents/run"
 	"denova/internal/agents/session"
 
-	agent "github.com/alfredxw/denova/agent"
 )
-
-func TestSubAgentStreamingDoesNotAppendParentAssistantContent(t *testing.T) {
-	var fullContent, fullThinking strings.Builder
-	var events []agentrun.Event
-	meta := agentEventMetadata{AgentName: "researcher", RootAgentName: "DenovaAgent", RunPath: []string{"DenovaAgent", "researcher"}, SubAgent: true}
-	processNonStreamingEvent(&agent.MessageVariant{Message: agent.AssistantMessage("sub draft", nil)}, &fullContent, &fullThinking, 0, meta, nil, func(event agentrun.Event) {
-		events = append(events, event)
-	})
-	if fullContent.Len() != 0 || fullThinking.Len() != 0 {
-		t.Fatalf("subagent output must not append to parent builders content=%q thinking=%q", fullContent.String(), fullThinking.String())
-	}
-	if len(events) != 1 || events[0].Type != "chunk" || !eventDataBool(events[0].Data, "subagent") {
-		t.Fatalf("subagent chunk should still be emitted with metadata: %#v", events)
-	}
-
-	rootMeta := agentEventMetadata{AgentName: "DenovaAgent", RootAgentName: "DenovaAgent", RunPath: []string{"DenovaAgent"}}
-	processNonStreamingEvent(&agent.MessageVariant{Message: agent.AssistantMessage("root final", nil)}, &fullContent, &fullThinking, 0, rootMeta, nil, func(agentrun.Event) {})
-	if got := fullContent.String(); got != "root final" {
-		t.Fatalf("root output should append to parent builder, got %q", got)
-	}
-}
 
 func TestDisplayRecorderPersistsSubAgentAssistantChunks(t *testing.T) {
 	appender := &fakeDisplayAppender{}

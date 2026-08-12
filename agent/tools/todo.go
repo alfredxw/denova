@@ -14,6 +14,7 @@ type TodoStatus = agent.TodoStatus
 type TodoItem = agent.TodoItem
 
 const (
+	TodoSchema     = "agent.todo.v1"
 	TodoPending    = agent.TodoPending
 	TodoInProgress = agent.TodoInProgress
 	TodoCompleted  = agent.TodoCompleted
@@ -26,10 +27,31 @@ type TodoMutation struct {
 	Delete bool        `json:"delete,omitempty"`
 }
 
+type TodoApplyMode string
+
+const (
+	TodoApplyUpdate  TodoApplyMode = "update"
+	TodoApplyReplace TodoApplyMode = "replace"
+	TodoApplyClear   TodoApplyMode = "clear"
+)
+
+// TodoApplyRequest is the complete durable mutation contract for both the
+// built-in Session store and custom stores. Replace is a complete plan
+// replacement (an empty Items slice clears it); Clear is its explicit concise
+// form. Update retains per-item partial-success semantics.
+type TodoApplyRequest struct {
+	ExpectedRevision uint64         `json:"expected_revision"`
+	Mode             TodoApplyMode  `json:"mode"`
+	Mutations        []TodoMutation `json:"mutations,omitempty"`
+	Items            []TodoItem     `json:"items,omitempty"`
+}
+
+// TodoStore is the optional durable state adapter. Identity covers storage
+// scope and mutation semantics, while revisions provide per-call concurrency.
 type TodoStore interface {
 	Identity() agent.CapabilityIdentity
 	Load(context.Context) ([]TodoItem, uint64, error)
-	Apply(context.Context, uint64, []TodoMutation) (TodoApplyResult, error)
+	Apply(context.Context, TodoApplyRequest) (TodoApplyResult, error)
 }
 
 type TodoMutationResult struct {
@@ -39,15 +61,17 @@ type TodoMutationResult struct {
 }
 
 type TodoApplyResult struct {
+	Schema   string               `json:"schema"`
 	Items    []TodoItem           `json:"items"`
 	Revision uint64               `json:"revision"`
 	Results  []TodoMutationResult `json:"results"`
 }
 
 type todoToolInput struct {
-	Action           string         `json:"action" jsonschema:"enum=read,enum=update"`
+	Action           string         `json:"action" jsonschema:"enum=read,enum=update,enum=replace,enum=clear"`
 	ExpectedRevision uint64         `json:"expected_revision,omitempty"`
 	Mutations        []TodoMutation `json:"mutations,omitempty" jsonschema:"maxItems=256"`
+	Items            []TodoItem     `json:"items,omitempty" jsonschema:"maxItems=256"`
 }
 
 // Todo exposes revisioned read/update semantics. With no Store it uses the
@@ -57,13 +81,18 @@ func Todo(stores ...TodoStore) (agent.Toolset, error) {
 		return nil, errors.New("todo Toolset accepts at most one TodoStore")
 	}
 	var store TodoStore
+	var storeIdentity agent.CapabilityIdentity
 	if len(stores) == 1 {
 		store = stores[0]
 		if store == nil {
 			return nil, errors.New("todo Toolset received a nil TodoStore")
 		}
+		storeIdentity = store.Identity()
+		if err := validateAdapterIdentity("todo Store", storeIdentity); err != nil {
+			return nil, err
+		}
 	}
-	tool, err := agent.InferTool("todo", "Read or atomically update the current task list using an explicit revision.\n\n读取或使用显式版本号原子更新当前任务列表。", func(ctx context.Context, input todoToolInput) (agent.ToolResult, error) {
+	tool, err := agent.InferTool("todo", "Read, partially update, completely replace, or clear the durable task list using an explicit revision. Updates report every item independently; IDs are stable and at most one item may be in_progress.\n\n读取、逐项更新、完整替换或清空持久任务列表；更新逐项返回结果，ID 稳定，且最多一个任务可为 in_progress。", func(ctx context.Context, input todoToolInput) (agent.ToolResult, error) {
 		var result TodoApplyResult
 		var err error
 		switch input.Action {
@@ -73,36 +102,46 @@ func Todo(stores ...TodoStore) (agent.Toolset, error) {
 			} else {
 				result.Items, result.Revision, err = store.Load(ctx)
 			}
-		case "update":
+		case "update", "replace", "clear":
 			if len(input.Mutations) == 0 {
-				return agent.ToolResult{}, errors.New("todo update requires at least one mutation")
+				if input.Action == "update" {
+					return agent.ToolResult{}, errors.New("todo update requires at least one mutation")
+				}
+			}
+			request := TodoApplyRequest{
+				ExpectedRevision: input.ExpectedRevision, Mode: TodoApplyMode(input.Action),
+				Mutations: input.Mutations, Items: input.Items,
 			}
 			if store == nil {
-				result, err = applySessionTodo(ctx, input.ExpectedRevision, input.Mutations)
+				result, err = applySessionTodo(ctx, request)
 			} else {
-				result, err = store.Apply(ctx, input.ExpectedRevision, input.Mutations)
+				result, err = store.Apply(ctx, request)
 			}
 		default:
-			return agent.ToolResult{}, errors.New("todo action must be read or update")
+			return agent.ToolResult{}, errors.New("todo action must be read, update, replace, or clear")
 		}
 		if err != nil {
 			return agent.ToolResult{}, err
 		}
+		result.Schema = TodoSchema
 		return JSONResult(result)
 	})
 	if err != nil {
 		return nil, err
 	}
 	descriptor := writeDescriptor()
+	descriptor.Capability = "todo"
 	descriptor.MutationScope = agent.ToolMutationSession
 	descriptor.Execution = agent.ToolExecutionSessionExclusive
 	descriptor.PostCheck = agent.ToolPostCheckSessionState
 	descriptor.Recovery = agent.ToolRecoveryIdempotent
-	identity := agent.CapabilityIdentity{Kind: "tools.todo.session", Version: 1}
+	identity := agent.CapabilityIdentity{Kind: "tools.todo.session", Version: 2}
 	if store != nil {
-		identity = toolsetIdentity("tools.todo.custom", store.Identity())
+		identity = toolsetIdentity("tools.todo.custom", storeIdentity)
 	}
-	return agent.StaticToolsIdentified(identity, agent.ToolDefinition{Tool: tool, Descriptor: descriptor}), nil
+	return agent.StaticToolsIdentified(identity, agent.ToolDefinition{
+		Tool: tool, Descriptor: descriptor, ImplementationIdentity: identity,
+	})
 }
 
 func loadSessionTodo(ctx context.Context) ([]TodoItem, uint64, error) {
@@ -114,7 +153,7 @@ func loadSessionTodo(ctx context.Context) ([]TodoItem, uint64, error) {
 	return append([]TodoItem(nil), state.Items...), state.Revision, nil
 }
 
-func applySessionTodo(ctx context.Context, expected uint64, mutations []TodoMutation) (TodoApplyResult, error) {
+func applySessionTodo(ctx context.Context, request TodoApplyRequest) (TodoApplyResult, error) {
 	var result TodoApplyResult
 	err := agent.UpdateSessionState(ctx, agent.TodoCapability, func(raw json.RawMessage, present bool) (json.RawMessage, bool, error) {
 		state := agent.TodoState{}
@@ -123,12 +162,15 @@ func applySessionTodo(ctx context.Context, expected uint64, mutations []TodoMuta
 				return nil, false, fmt.Errorf("decode Todo state: %w", err)
 			}
 		}
-		if state.Revision != expected {
-			return nil, false, fmt.Errorf("Todo revision conflict: have=%d want=%d", state.Revision, expected)
+		if state.Revision != request.ExpectedRevision {
+			return nil, false, fmt.Errorf("Todo revision conflict: have=%d want=%d", state.Revision, request.ExpectedRevision)
 		}
-		items, outcomes := applyTodoMutations(state.Items, mutations)
+		items, outcomes, applyErr := applyTodoRequest(state.Items, request)
+		if applyErr != nil {
+			return nil, false, applyErr
+		}
 		if !hasTodoSuccess(outcomes) {
-			result = TodoApplyResult{Items: append([]TodoItem(nil), state.Items...), Revision: state.Revision, Results: outcomes}
+			result = TodoApplyResult{Schema: TodoSchema, Items: append([]TodoItem(nil), state.Items...), Revision: state.Revision, Results: outcomes}
 			if !present {
 				return nil, false, nil
 			}
@@ -136,21 +178,48 @@ func applySessionTodo(ctx context.Context, expected uint64, mutations []TodoMuta
 		}
 		state.Revision++
 		state.Items = items
-		result = TodoApplyResult{Items: append([]TodoItem(nil), items...), Revision: state.Revision, Results: outcomes}
+		result = TodoApplyResult{Schema: TodoSchema, Items: append([]TodoItem(nil), items...), Revision: state.Revision, Results: outcomes}
 		encoded, err := json.Marshal(state)
 		return encoded, false, err
 	})
 	return result, err
 }
 
+func applyTodoRequest(current []TodoItem, request TodoApplyRequest) ([]TodoItem, []TodoMutationResult, error) {
+	switch request.Mode {
+	case TodoApplyUpdate:
+		items, results := applyTodoMutations(current, request.Mutations)
+		return items, results, nil
+	case TodoApplyReplace:
+		if len(request.Items) == 0 {
+			return nil, []TodoMutationResult{{Index: 0}}, nil
+		}
+		mutations := make([]TodoMutation, len(request.Items))
+		for index := range request.Items {
+			item := request.Items[index]
+			if item.Status == "" {
+				item.Status = TodoPending
+			}
+			text, status := item.Text, item.Status
+			mutations[index] = TodoMutation{ID: item.ID, Text: &text, Status: &status}
+		}
+		items, results := applyTodoMutations(nil, mutations)
+		return items, results, nil
+	case TodoApplyClear:
+		if len(request.Items) != 0 || len(request.Mutations) != 0 {
+			return nil, nil, errors.New("todo clear does not accept items or mutations")
+		}
+		return nil, []TodoMutationResult{{Index: 0}}, nil
+	default:
+		return nil, nil, fmt.Errorf("unsupported Todo apply mode %q", request.Mode)
+	}
+}
+
 func applyTodoMutations(current []TodoItem, mutations []TodoMutation) ([]TodoItem, []TodoMutationResult) {
 	items := append([]TodoItem(nil), current...)
-	indexByID := make(map[string]int, len(items))
-	for index, item := range items {
-		indexByID[item.ID] = index
-	}
 	seen := make(map[string]bool, len(mutations))
 	results := make([]TodoMutationResult, len(mutations))
+	valid := make([]bool, len(mutations))
 	for index, mutation := range mutations {
 		id := strings.TrimSpace(mutation.ID)
 		results[index] = TodoMutationResult{Index: index, ID: id}
@@ -159,17 +228,13 @@ func applyTodoMutations(current []TodoItem, mutations []TodoMutation) ([]TodoIte
 			continue
 		}
 		seen[id] = true
-		itemIndex, exists := indexByID[id]
+		_, exists := todoIndex(items, id)
 		if mutation.Delete {
 			if !exists {
 				results[index].Error = "Todo item does not exist"
 				continue
 			}
-			items = append(items[:itemIndex], items[itemIndex+1:]...)
-			indexByID = make(map[string]int, len(items))
-			for position, item := range items {
-				indexByID[item.ID] = position
-			}
+			valid[index] = true
 			continue
 		}
 		if mutation.Text == nil && mutation.Status == nil {
@@ -180,33 +245,94 @@ func applyTodoMutations(current []TodoItem, mutations []TodoMutation) ([]TodoIte
 			results[index].Error = "New Todo item requires text"
 			continue
 		}
-		item := TodoItem{ID: id, Status: TodoPending}
-		if exists {
-			item = items[itemIndex]
-		}
 		if mutation.Text != nil {
 			text := strings.TrimSpace(*mutation.Text)
 			if text == "" || len(text) > 64<<10 {
 				results[index].Error = "Todo text must contain 1..65536 bytes"
 				continue
 			}
-			item.Text = text
 		}
 		if mutation.Status != nil {
 			if *mutation.Status != TodoPending && *mutation.Status != TodoInProgress && *mutation.Status != TodoCompleted {
 				results[index].Error = "Todo status is invalid"
 				continue
 			}
-			item.Status = *mutation.Status
 		}
-		if exists {
-			items[itemIndex] = item
-		} else {
-			indexByID[id] = len(items)
-			items = append(items, item)
+		valid[index] = true
+	}
+	// Apply deletions and every mutation whose final state is not entering
+	// in_progress first. This validates the batch's final intent instead of
+	// rejecting the common `[next -> in_progress, current -> completed]` order.
+	for index, mutation := range mutations {
+		if !valid[index] || mutationEntersInProgress(items, mutation) {
+			continue
 		}
+		items = applyTodoMutation(items, mutation)
+	}
+	for index, mutation := range mutations {
+		if !valid[index] || !mutationEntersInProgress(items, mutation) {
+			continue
+		}
+		id := strings.TrimSpace(mutation.ID)
+		if hasOtherInProgress(items, id) {
+			results[index].Error = "Todo plan may contain at most one in_progress item"
+			continue
+		}
+		items = applyTodoMutation(items, mutation)
 	}
 	return items, results
+}
+
+func mutationEntersInProgress(items []TodoItem, mutation TodoMutation) bool {
+	if mutation.Delete {
+		return false
+	}
+	if mutation.Status != nil {
+		return *mutation.Status == TodoInProgress
+	}
+	index, exists := todoIndex(items, strings.TrimSpace(mutation.ID))
+	return exists && items[index].Status == TodoInProgress
+}
+
+func applyTodoMutation(items []TodoItem, mutation TodoMutation) []TodoItem {
+	id := strings.TrimSpace(mutation.ID)
+	index, exists := todoIndex(items, id)
+	if mutation.Delete {
+		return append(items[:index], items[index+1:]...)
+	}
+	item := TodoItem{ID: id, Status: TodoPending}
+	if exists {
+		item = items[index]
+	}
+	if mutation.Text != nil {
+		item.Text = strings.TrimSpace(*mutation.Text)
+	}
+	if mutation.Status != nil {
+		item.Status = *mutation.Status
+	}
+	if exists {
+		items[index] = item
+		return items
+	}
+	return append(items, item)
+}
+
+func todoIndex(items []TodoItem, id string) (int, bool) {
+	for index := range items {
+		if items[index].ID == id {
+			return index, true
+		}
+	}
+	return 0, false
+}
+
+func hasOtherInProgress(items []TodoItem, id string) bool {
+	for _, item := range items {
+		if item.ID != id && item.Status == TodoInProgress {
+			return true
+		}
+	}
+	return false
 }
 
 func hasTodoSuccess(results []TodoMutationResult) bool {

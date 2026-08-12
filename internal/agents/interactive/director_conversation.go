@@ -1,7 +1,6 @@
 package interactive
 
 import (
-	"context"
 	"sync"
 
 	"denova/internal/agents/conversation"
@@ -12,19 +11,19 @@ import (
 // DirectorConversationOptions binds the reusable single-instruction model
 // conversation to optional display and durable domain-commit participants.
 type DirectorConversationOptions struct {
-	Instruction  conversation.InstructionOptions
-	Display      any
-	DomainCommit agentrun.DomainCommitParticipant
+	Instruction     conversation.InstructionOptions
+	Display         any
+	CanonicalOutput DirectorCanonicalOutput
 }
 
 // DirectorConversation adapts an interactive Director maintenance task to the
 // shared chat runtime without mixing Director display policy into chat itself.
 type DirectorConversation struct {
 	*conversation.InstructionConversation
-	display       any
-	domainCommit  agentrun.DomainCommitParticipant
-	mu            sync.Mutex
-	directorTools map[string]*directorToolDisplayState
+	display         any
+	canonicalOutput DirectorCanonicalOutput
+	mu              sync.Mutex
+	directorTools   map[string]*directorToolDisplayState
 }
 
 // NewDirectorConversation creates a Director-specific conversation adapter.
@@ -32,42 +31,29 @@ func NewDirectorConversation(options DirectorConversationOptions) *DirectorConve
 	return &DirectorConversation{
 		InstructionConversation: conversation.NewInstructionConversation(options.Instruction),
 		display:                 options.Display,
-		domainCommit:            options.DomainCommit,
+		canonicalOutput:         options.CanonicalOutput,
 		directorTools:           make(map[string]*directorToolDisplayState),
 	}
+}
+
+// CanonicalOutput returns the product-owned Director plan commit adapter. It
+// may be nil only for read-only Session inspection, which never executes the
+// canonical commit methods.
+func (c *DirectorConversation) CanonicalOutput() DirectorCanonicalOutput {
+	if c == nil {
+		return nil
+	}
+	return c.canonicalOutput
 }
 
 // BindAgentCycleIdentity forwards the durable coordinator identity to the
 // App-owned Director commit participant. The model conversation itself never
 // invents a domain identity.
 func (c *DirectorConversation) BindAgentCycleIdentity(identity agentrun.CycleIdentity) {
-	if c == nil || c.domainCommit == nil {
+	if c == nil || c.canonicalOutput == nil {
 		return
 	}
-	if binder, ok := c.domainCommit.(agentrun.CycleIdentityBinder); ok {
-		binder.BindAgentCycleIdentity(identity)
-	}
-}
-
-func (c *DirectorConversation) PendingAgentCycleCommit(stage agentrun.DomainCommitStage) (agentrun.DomainCommitIntent, bool, error) {
-	if c == nil || c.domainCommit == nil {
-		return agentrun.DomainCommitIntent{}, false, nil
-	}
-	return c.domainCommit.PendingAgentCycleCommit(stage)
-}
-
-func (c *DirectorConversation) CommitAgentCycleStage(ctx context.Context, stage agentrun.DomainCommitStage, outcome agentrun.Outcome) error {
-	if c == nil || c.domainCommit == nil {
-		return nil
-	}
-	return c.domainCommit.CommitAgentCycleStage(ctx, stage, outcome)
-}
-
-func (c *DirectorConversation) LastAgentCycleCommitReceipt(stage agentrun.DomainCommitStage) (agentrun.DomainCommitReceipt, bool) {
-	if c == nil || c.domainCommit == nil {
-		return agentrun.DomainCommitReceipt{}, false
-	}
-	return c.domainCommit.LastAgentCycleCommitReceipt(stage)
+	c.canonicalOutput.BindAgentCycleIdentity(identity)
 }
 
 type displayEventAppender interface {

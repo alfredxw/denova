@@ -87,7 +87,7 @@ func TestToolBatchSchedulerBoundsParallelReads(t *testing.T) {
 		parallelism int
 		want        int
 	}{
-		{name: "default", want: DefaultToolParallelism},
+		{name: "default", want: defaultToolParallelism},
 		{name: "configured", parallelism: 3, want: 3},
 	}
 	for _, test := range tests {
@@ -120,13 +120,13 @@ func TestToolBatchSchedulerBoundsParallelReads(t *testing.T) {
 				active.Add(-1)
 				return TextToolResult("ok"), nil
 			})
-			native, err := NewLoop(context.Background(), LoopConfig{
+			native, err := newModelToolLoop(context.Background(), loopConfig{
 				Name: "parallel-limit", Model: model, Tools: []ToolDefinition{definition}, ToolParallelism: test.parallelism,
 			})
 			if err != nil {
 				t.Fatal(err)
 			}
-			iterator := NewRunner(RunnerConfig{Agent: native}).Query(context.Background(), "go")
+			iterator := newLoopRunner(loopRunnerConfig{Agent: native}).Query(context.Background(), "go")
 			if event, ok := iterator.Next(); !ok || event.Output == nil || event.Output.MessageOutput == nil || event.Output.MessageOutput.Role != Assistant {
 				t.Fatalf("assistant event = %#v", event)
 			}
@@ -161,7 +161,7 @@ func TestToolParallelismConfigurationNormalization(t *testing.T) {
 		configured int
 		want       int
 	}{{configured: 0, want: 8}, {configured: -1, want: 8}, {configured: 1, want: 1}, {configured: 65, want: 64}} {
-		native, err := NewLoop(context.Background(), LoopConfig{Name: "normalization", Model: model, ToolParallelism: test.configured})
+		native, err := newModelToolLoop(context.Background(), loopConfig{Name: "normalization", Model: model, ToolParallelism: test.configured})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -219,11 +219,11 @@ func TestToolBatchSchedulerEnforcesReadExclusiveAndChildBarriers(t *testing.T) {
 			return TextToolResult("four"), nil
 		}),
 	}
-	native, err := NewLoop(context.Background(), LoopConfig{Name: "barriers", Model: model, Tools: definitions})
+	native, err := newModelToolLoop(context.Background(), loopConfig{Name: "barriers", Model: model, Tools: definitions})
 	if err != nil {
 		t.Fatal(err)
 	}
-	iterator := NewRunner(RunnerConfig{Agent: native}).Query(context.Background(), "go")
+	iterator := newLoopRunner(loopRunnerConfig{Agent: native}).Query(context.Background(), "go")
 	if _, ok := iterator.Next(); !ok {
 		t.Fatal("missing assistant event")
 	}
@@ -284,11 +284,11 @@ func TestToolCompletionEventsUseCompletionOrderWhileTranscriptUsesSourceOrder(t 
 			return ToolResult{ModelContent: "model-fast", DisplayContent: "display-fast", Status: ToolResultSuccess}, nil
 		}),
 	}
-	native, err := NewLoop(context.Background(), LoopConfig{Name: "completion-order", Model: model, Tools: definitions})
+	native, err := newModelToolLoop(context.Background(), loopConfig{Name: "completion-order", Model: model, Tools: definitions})
 	if err != nil {
 		t.Fatal(err)
 	}
-	iterator := NewRunner(RunnerConfig{Agent: native}).Query(context.Background(), "go")
+	iterator := newLoopRunner(loopRunnerConfig{Agent: native}).Query(context.Background(), "go")
 	if _, ok := iterator.Next(); !ok {
 		t.Fatal("missing assistant event")
 	}
@@ -309,7 +309,7 @@ func TestToolCompletionEventsUseCompletionOrderWhileTranscriptUsesSourceOrder(t 
 		if !ok || event.Err != nil {
 			t.Fatalf("event before fast completion = %#v", event)
 		}
-		if event.Output != nil && event.Output.ToolExecution != nil && event.Output.ToolExecution.Phase == ToolExecutionFinished {
+		if event.Output != nil && event.Output.ToolExecution != nil && event.Output.ToolExecution.Phase == toolExecutionFinished {
 			finished = append(finished, event.Output.ToolExecution.ToolName)
 		}
 	}
@@ -326,7 +326,7 @@ func TestToolCompletionEventsUseCompletionOrderWhileTranscriptUsesSourceOrder(t 
 		if event.Err != nil {
 			t.Fatal(event.Err)
 		}
-		if event.Output != nil && event.Output.ToolExecution != nil && event.Output.ToolExecution.Phase == ToolExecutionFinished {
+		if event.Output != nil && event.Output.ToolExecution != nil && event.Output.ToolExecution.Phase == toolExecutionFinished {
 			finished = append(finished, event.Output.ToolExecution.ToolName)
 		}
 		if event.Output != nil && event.Output.MessageOutput != nil && event.Output.MessageOutput.Role == ToolRole {
@@ -365,12 +365,12 @@ func TestSteeringFillsCurrentStageTailAndAllLaterStages(t *testing.T) {
 			return TextToolResult("unexpected"), nil
 		}),
 	}
-	native, err := NewLoop(context.Background(), LoopConfig{Name: "steer-tail", Model: model, Tools: definitions, ToolParallelism: 1})
+	native, err := newModelToolLoop(context.Background(), loopConfig{Name: "steer-tail", Model: model, Tools: definitions, ToolParallelism: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
-	runOption, cancel := WithCancel()
-	iterator := NewRunner(RunnerConfig{Agent: native}).Query(context.Background(), "go", runOption)
+	runOption, cancel := newLoopCancellation()
+	iterator := newLoopRunner(loopRunnerConfig{Agent: native}).Query(context.Background(), "go", runOption)
 	if _, ok := iterator.Next(); !ok {
 		t.Fatal("missing assistant event")
 	}
@@ -379,13 +379,13 @@ func TestSteeringFillsCurrentStageTailAndAllLaterStages(t *testing.T) {
 	case <-time.After(200 * time.Millisecond):
 		t.Fatal("first tool did not start")
 	}
-	handle, contributed := cancel(WithAgentCancelMode(CancelAfterToolCalls))
+	handle, contributed := cancel(withCancelMode(cancelAfterTools))
 	if !contributed {
 		t.Fatal("steering request did not contribute")
 	}
 	close(firstRelease)
 	results := map[string]*ToolResultSummary{}
-	var cancelErr *CancelError
+	var cancelErr *cancelError
 	for {
 		event, ok := iterator.Next()
 		if !ok {
@@ -404,7 +404,7 @@ func TestSteeringFillsCurrentStageTailAndAllLaterStages(t *testing.T) {
 		results["write"].SyntheticReason != ToolSyntheticSteeringBeforeStart {
 		t.Fatalf("executed=%d results=%#v", executed.Load(), results)
 	}
-	if cancelErr == nil || cancelErr.Info.Mode&CancelAfterToolCalls == 0 {
+	if cancelErr == nil || cancelErr.Info.Mode&cancelAfterTools == 0 {
 		t.Fatalf("cancel error = %#v", cancelErr)
 	}
 	if err := handle.Wait(); err != nil {
@@ -438,12 +438,12 @@ func TestSteeringInterruptsOnlyInterruptibleWaits(t *testing.T) {
 			return TextToolResult("unexpected"), nil
 		}),
 	}
-	native, err := NewLoop(context.Background(), LoopConfig{Name: "steering-policy", Model: model, Tools: definitions})
+	native, err := newModelToolLoop(context.Background(), loopConfig{Name: "steering-policy", Model: model, Tools: definitions})
 	if err != nil {
 		t.Fatal(err)
 	}
-	runOption, cancel := WithCancel()
-	iterator := NewRunner(RunnerConfig{Agent: native}).Query(context.Background(), "go", runOption)
+	runOption, cancel := newLoopCancellation()
+	iterator := newLoopRunner(loopRunnerConfig{Agent: native}).Query(context.Background(), "go", runOption)
 	if _, ok := iterator.Next(); !ok {
 		t.Fatal("missing assistant event")
 	}
@@ -451,7 +451,7 @@ func TestSteeringInterruptsOnlyInterruptibleWaits(t *testing.T) {
 	if !started["wait"] || !started["finish"] {
 		t.Fatalf("started = %#v", started)
 	}
-	handle, contributed := cancel(WithAgentCancelMode(CancelAfterToolCalls))
+	handle, contributed := cancel(withCancelMode(cancelAfterTools))
 	if !contributed {
 		t.Fatal("steering request did not contribute")
 	}
@@ -462,7 +462,7 @@ func TestSteeringInterruptsOnlyInterruptibleWaits(t *testing.T) {
 			t.Fatalf("event before wait interruption = %#v", event)
 		}
 		if event.Output != nil && event.Output.ToolExecution != nil &&
-			event.Output.ToolExecution.Phase == ToolExecutionFinished && event.Output.ToolExecution.ToolName == "wait" {
+			event.Output.ToolExecution.Phase == toolExecutionFinished && event.Output.ToolExecution.ToolName == "wait" {
 			result := event.Output.ToolExecution.Result
 			waitInterrupted = result != nil && result.SyntheticReason == ToolSyntheticSteeringInterrupted
 		}
@@ -472,7 +472,7 @@ func TestSteeringInterruptsOnlyInterruptibleWaits(t *testing.T) {
 	}
 	releaseFinish()
 	results := map[string]*ToolResultSummary{}
-	var cancelErr *CancelError
+	var cancelErr *cancelError
 	for {
 		event, ok := iterator.Next()
 		if !ok {
@@ -523,11 +523,11 @@ func TestDurabilityFailureWaitsStartedStageAndPairsUnstartedCalls(t *testing.T) 
 			return TextToolResult("unexpected"), nil
 		}),
 	}
-	native, err := NewLoop(context.Background(), LoopConfig{Name: "durability", Model: model, Tools: definitions})
+	native, err := newModelToolLoop(context.Background(), loopConfig{Name: "durability", Model: model, Tools: definitions})
 	if err != nil {
 		t.Fatal(err)
 	}
-	iterator := NewRunner(RunnerConfig{Agent: native}).Query(context.Background(), "go")
+	iterator := newLoopRunner(loopRunnerConfig{Agent: native}).Query(context.Background(), "go")
 	if _, ok := iterator.Next(); !ok {
 		t.Fatal("missing assistant event")
 	}
@@ -542,7 +542,7 @@ func TestDurabilityFailureWaitsStartedStageAndPairsUnstartedCalls(t *testing.T) 
 			t.Fatal("iterator closed before control completion")
 		}
 		if event.Output != nil && event.Output.ToolExecution != nil &&
-			event.Output.ToolExecution.Phase == ToolExecutionFinished && event.Output.ToolExecution.ToolName == "control" {
+			event.Output.ToolExecution.Phase == toolExecutionFinished && event.Output.ToolExecution.ToolName == "control" {
 			break
 		}
 	}
@@ -566,7 +566,7 @@ func TestDurabilityFailureWaitsStartedStageAndPairsUnstartedCalls(t *testing.T) 
 	}
 	toolResults := map[string]*ToolResultSummary{}
 	var controlErr error
-	consume := func(event *AgentEvent) {
+	consume := func(event *loopEvent) {
 		if event == nil {
 			return
 		}
@@ -612,13 +612,13 @@ func TestPolicyBlockedToolProducesOnePairedStructuredResult(t *testing.T) {
 		calls.Add(1)
 		return TextToolResult("unexpected"), nil
 	})
-	native, err := NewLoop(context.Background(), LoopConfig{
+	native, err := newModelToolLoop(context.Background(), loopConfig{
 		Name: "policy", Model: model, Tools: []ToolDefinition{definition}, Middlewares: []Middleware{&blockingToolMiddleware{}},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	iterator := NewRunner(RunnerConfig{Agent: native}).Query(context.Background(), "go")
+	iterator := newLoopRunner(loopRunnerConfig{Agent: native}).Query(context.Background(), "go")
 	results := make([]*Message, 0, 1)
 	for {
 		event, ok := iterator.Next()

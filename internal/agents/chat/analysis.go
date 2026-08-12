@@ -14,7 +14,6 @@ import (
 	agentconversation "denova/internal/agents/conversation"
 	"denova/internal/agents/prompts"
 	agentrun "denova/internal/agents/run"
-	"denova/internal/agents/session"
 	"denova/internal/book"
 	"denova/internal/interactive"
 )
@@ -188,129 +187,6 @@ func contextAnalysisToolCallsContent(calls []agent.ToolCall) string {
 	return strings.TrimRight(sb.String(), "\n")
 }
 
-func BuildIDEContextAnalysis(cfg *config.Config, state *book.State, teller prompts.IDEStoryTeller, bookService *book.Service, compaction *session.ContextCompaction, pending *session.Interruption, req ChatRequest, conversation Conversation) (ContextAnalysis, error) {
-	if len(teller.StyleRules) == 0 && len(req.StyleRules) > 0 {
-		teller.StyleRules = req.StyleRules
-	}
-	systemPrompt, systemParts, err := buildIDESystemPromptAnalysis(cfg, state, teller)
-	if err != nil {
-		return ContextAnalysis{}, err
-	}
-	policy := agentrun.DefaultLoopPolicy().Normalize()
-	turn, err := prepareTurnContext(context.Background(), turnContextPreparationInput{
-		Conversation:        conversation,
-		Request:             req,
-		PendingInterruption: pending,
-		BookService:         bookService,
-		Environment:         newTurnRuntimeEnvironment(contextAnalysisWorkspace(cfg, bookService)),
-	})
-	if err != nil {
-		return ContextAnalysis{}, err
-	}
-	messages := turn.ModelContext.Messages
-	runtimeContexts := prompts.IDEWorkspaceRuntimeContextsForContext(state, req.IDEContext)
-	contextMessages := make([]ContextAnalysisPart, 0, len(messages))
-	stableMessageCount := 0
-	for _, fragment := range turn.ModelContext.Context.Fragments {
-		if fragment.Included && fragment.Placement == agentcontext.PlacementLeadingMessage {
-			stableMessageCount++
-		}
-	}
-	for i, msg := range messages {
-		if msg == nil {
-			continue
-		}
-		source := "会话历史"
-		title := fmt.Sprintf("历史消息 %d", i+1)
-		if i < stableMessageCount {
-			source = "稳定作品上下文"
-			title = runtimeContexts.StableTitle
-		} else if agentcontext.IsCompactionSummaryMessage(msg) {
-			source = "上下文压缩"
-			title = "模型可见历史检查点"
-		} else if i == len(messages)-1 {
-			source = "本轮上下文"
-			if strings.TrimSpace(runtimeContexts.Dynamic) != "" {
-				title = "动态作品状态与本轮用户请求"
-			} else {
-				title = "本轮发送给 Agent 的用户消息"
-			}
-		}
-		contextMessages = append(contextMessages, contextAnalysisPartFromMessage(fmt.Sprintf("message_%d", i+1), source, title, msg))
-	}
-	usage := analyzeContextUsage(cfg, config.AgentKindIDE, systemPrompt, messages, 0)
-	return ContextAnalysis{
-		AgentKind:                config.AgentKindIDE,
-		Mode:                     "ide",
-		SystemPrompt:             systemPrompt,
-		SystemPromptParts:        systemParts,
-		ContextParts:             contextBuildLogFromAssembly(policy.ContextLedger, turn.OriginalMessage, turn.ModelContext.Context).FullParts(),
-		ContextMessages:          contextMessages,
-		MessageCount:             len(contextMessages),
-		TokenEstimate:            usage.tokens,
-		ProjectedTokenEstimate:   usage.projectedTokens,
-		ReservedCompletionTokens: usage.completionReserve,
-		ReservedToolResultTokens: usage.toolResultReserve,
-		ContextWindowTokens:      usage.window,
-		ContextUsageRatio:        usage.ratio,
-		CompactionEpoch:          usage.compactionEpoch(compaction),
-		CompactionActive:         compaction != nil && strings.TrimSpace(compaction.Summary) != "",
-		WouldCompact:             usage.wouldCompact,
-		Compaction:               contextAnalysisCompactionFromSession(compaction),
-	}, nil
-}
-
-// BuildGeneralContextAnalysis mirrors the exact General Agent turn assembly
-// without injecting book-only creator, lore, teller, or dynamic writing state.
-func BuildGeneralContextAnalysis(cfg *config.Config, bookService *book.Service, compaction *session.ContextCompaction, pending *session.Interruption, req ChatRequest, conversation Conversation) (ContextAnalysis, error) {
-	composition, err := prompts.ComposeGeneralInstruction(cfg)
-	if err != nil {
-		return ContextAnalysis{}, err
-	}
-	systemPrompt := composition.Instruction()
-	policy := agentrun.DefaultLoopPolicy().Normalize()
-	turn, err := prepareTurnContext(context.Background(), turnContextPreparationInput{
-		Conversation: conversation, Request: req, PendingInterruption: pending,
-		BookService: bookService,
-		Environment: newTurnRuntimeEnvironment(contextAnalysisWorkspace(cfg, bookService)),
-	})
-	if err != nil {
-		return ContextAnalysis{}, err
-	}
-	messages := turn.ModelContext.Messages
-	contextMessages := make([]ContextAnalysisPart, 0, len(messages))
-	for index, message := range messages {
-		if message == nil {
-			continue
-		}
-		source := "会话历史"
-		title := fmt.Sprintf("历史消息 %d", index+1)
-		if agentcontext.IsCompactionSummaryMessage(message) {
-			source = "上下文压缩"
-			title = "模型可见历史检查点"
-		} else if index == len(messages)-1 {
-			source = "本轮上下文"
-			title = "本轮发送给 General Agent 的用户消息"
-		}
-		contextMessages = append(contextMessages, contextAnalysisPartFromMessage(
-			fmt.Sprintf("message_%d", index+1), source, title, message,
-		))
-	}
-	usage := analyzeContextUsage(cfg, config.AgentKindGeneral, systemPrompt, messages, 0)
-	return ContextAnalysis{
-		AgentKind: config.AgentKindGeneral, Mode: "general",
-		SystemPrompt: systemPrompt, SystemPromptParts: systemPromptAnalysisParts(composition),
-		ContextParts:    contextBuildLogFromAssembly(policy.ContextLedger, turn.OriginalMessage, turn.ModelContext.Context).FullParts(),
-		ContextMessages: contextMessages, MessageCount: len(contextMessages),
-		TokenEstimate: usage.tokens, ProjectedTokenEstimate: usage.projectedTokens,
-		ReservedCompletionTokens: usage.completionReserve, ReservedToolResultTokens: usage.toolResultReserve,
-		ContextWindowTokens: usage.window, ContextUsageRatio: usage.ratio,
-		CompactionEpoch:  usage.compactionEpoch(compaction),
-		CompactionActive: compaction != nil && strings.TrimSpace(compaction.Summary) != "",
-		WouldCompact:     usage.wouldCompact, Compaction: contextAnalysisCompactionFromSession(compaction),
-	}, nil
-}
-
 func contextAnalysisWorkspace(cfg *config.Config, bookService *book.Service) string {
 	if cfg != nil && strings.TrimSpace(cfg.Workspace) != "" {
 		return cfg.Workspace
@@ -321,7 +197,7 @@ func contextAnalysisWorkspace(cfg *config.Config, bookService *book.Service) str
 	return ""
 }
 
-func BuildInteractiveStoryContextAnalysis(cfg *config.Config, state *book.State, teller prompts.InteractiveStorySystemInstructionInput, bookService *book.Service, req ChatRequest, compaction *interactive.ContextCompactionEvent, conversation Conversation) (ContextAnalysis, error) {
+func BuildInteractiveStoryContextAnalysis(cfg *config.Config, state *book.State, teller prompts.InteractiveStorySystemInstructionInput, bookService *book.Service, req ChatRequest, compaction *interactive.ContextCompactionProjection, conversation Conversation) (ContextAnalysis, error) {
 	if len(teller.StyleRules) == 0 && len(req.StyleRules) > 0 {
 		teller.StyleRules = req.StyleRules
 	}
@@ -441,30 +317,14 @@ func BuildInteractiveDirectorContextAnalysisWithStableContext(cfg *config.Config
 	}, nil
 }
 
-func interactiveCompactionEpoch(compaction *interactive.ContextCompactionEvent, fallback int) int {
+func interactiveCompactionEpoch(compaction *interactive.ContextCompactionProjection, fallback int) int {
 	if compaction == nil {
 		return fallback
 	}
 	return compaction.Epoch
 }
 
-func contextAnalysisCompactionFromSession(compaction *session.ContextCompaction) *ContextAnalysisCompaction {
-	if compaction == nil || strings.TrimSpace(compaction.Summary) == "" {
-		return nil
-	}
-	return &ContextAnalysisCompaction{
-		ID:                 compaction.ID,
-		Epoch:              compaction.Epoch,
-		Summary:            compaction.Summary,
-		TokensBefore:       compaction.TokensBefore,
-		TokensAfter:        compaction.TokensAfter,
-		TargetRatio:        compaction.TargetRatio,
-		SourceMessageCount: compaction.SourceMessageCount,
-		Removable:          true,
-	}
-}
-
-func contextAnalysisCompactionFromInteractive(compaction *interactive.ContextCompactionEvent) *ContextAnalysisCompaction {
+func contextAnalysisCompactionFromInteractive(compaction *interactive.ContextCompactionProjection) *ContextAnalysisCompaction {
 	if compaction == nil || strings.TrimSpace(compaction.Summary) == "" {
 		return nil
 	}
@@ -488,13 +348,6 @@ type contextUsageAnalysis struct {
 	window            int
 	ratio             float64
 	wouldCompact      bool
-}
-
-func (u contextUsageAnalysis) compactionEpoch(compaction *session.ContextCompaction) int {
-	if compaction == nil {
-		return 0
-	}
-	return compaction.Epoch
 }
 
 func analyzeContextUsage(cfg *config.Config, agentKind, systemPrompt string, messages []*agent.Message, expectedOutputChars int) contextUsageAnalysis {

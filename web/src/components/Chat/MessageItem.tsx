@@ -104,7 +104,7 @@ export const MessageItem = memo(function MessageItem({ projectId = '', message, 
           <div className="w-full">
             <div className="nova-message-body-with-meta nova-message-body-with-meta-assistant">
               <AIMessageContent className="chat-agent-message block w-full gap-0 px-1 text-sm text-[var(--nova-text)]" style={messageStyle}>
-                {/* Streaming keeps one cheap text node. Plain completed text keeps that node mounted;
+                {/* Streaming keeps a cheap paragraph tree whose spacing matches persisted Markdown;
                     only completed Markdown pays the parser cost. */}
                 {message.streaming && !visibleContent ? (
                   <StreamingPlaceholder />

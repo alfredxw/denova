@@ -107,10 +107,11 @@ func normalizeToolResultHintMap(values map[string]any, depth int) (map[string]an
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
+	truncated := len(keys) > toolResultHintMaxCollectionEntries
 	if len(keys) > toolResultHintMaxCollectionEntries {
 		keys = keys[:toolResultHintMaxCollectionEntries]
 	}
-	normalized := make(map[string]any, len(keys))
+	normalized := make(map[string]any, len(keys)+1)
 	for _, key := range keys {
 		safeKey := boundedToolResultHintString(strings.ToValidUTF8(key, "\uFFFD"))
 		value, err := normalizeToolResultHintValue(values[key], depth+1, IsSensitiveToolContextKey(key))
@@ -118,6 +119,9 @@ func normalizeToolResultHintMap(values map[string]any, depth int) (map[string]an
 			return nil, err
 		}
 		normalized[safeKey] = value
+	}
+	if truncated {
+		normalized["_truncated"] = toolResultHintTruncatedValue
 	}
 	return normalized, nil
 }
@@ -141,13 +145,16 @@ func normalizeToolResultHintValue(value any, depth int, redact bool) (any, error
 		return normalizeToolResultHintMap(typed, depth)
 	case []any:
 		limit := min(len(typed), toolResultHintMaxCollectionEntries)
-		result := make([]any, 0, limit)
+		result := make([]any, 0, limit+1)
 		for index := 0; index < limit; index++ {
 			normalized, err := normalizeToolResultHintValue(typed[index], depth+1, false)
 			if err != nil {
 				return nil, err
 			}
 			result = append(result, normalized)
+		}
+		if len(typed) > limit {
+			result = append(result, toolResultHintTruncatedValue)
 		}
 		return result, nil
 	default:

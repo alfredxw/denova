@@ -277,7 +277,9 @@ func TestInteractiveInitialStartColdInterruptedReplayDoesNotRunGameCycle(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if replayed.Task != result.Task || replayed.Receipt.CommandID != actions[1].CommandID {
+	// Abort is selected by an opaque recovery ActionID; its durable Run receipt
+	// remains tied to the original accepted player input.
+	if replayed.Task != result.Task || replayed.Receipt.CommandID != "game-cold-interrupted" || replayed.Receipt.OperationID != actions[1].OperationID {
 		t.Fatalf("repeated cold Game abort = %#v first_task=%p", replayed, result.Task)
 	}
 	activeTask, info := reopened.ActiveInteractiveTaskFor(story.ID, "main")

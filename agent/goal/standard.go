@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"html"
 	"strings"
 	"time"
 
@@ -53,6 +54,9 @@ func (*standardManager) Identity() agent.CapabilityIdentity {
 func (manager *standardManager) Apply(_ context.Context, request agent.GoalApplyRequest) (agent.GoalState, error) {
 	current := request.Current
 	mutation := request.Mutation
+	if len(mutation.Data) != 0 {
+		return agent.GoalState{}, errors.New("standard Goal does not accept custom mutation data")
+	}
 	if mutation.MutationID != "" && current.LastMutationID == mutation.MutationID {
 		return current, nil
 	}
@@ -90,20 +94,22 @@ func (manager *standardManager) Apply(_ context.Context, request agent.GoalApply
 }
 
 func (*standardManager) Prepare(_ context.Context, request agent.GoalPrepareRequest) (agent.GoalPreparation, error) {
-	preparation := agent.GoalPreparation{StandardTool: true}
 	if !request.Present || !request.State.Active() {
-		return preparation, nil
+		return agent.GoalPreparation{}, nil
 	}
 	content := fmt.Sprintf(
-		"# Active Goal\n\nGoal ID: %s\nRevision: %d\nObjective:\n%s\n\nUse the goal tool to complete or block this exact revision when the objective reaches a terminal state.",
-		request.State.ID, request.State.Revision, request.State.Objective,
+		"<active_goal id=\"%s\" revision=\"%d\">\n<objective>%s</objective>\n</active_goal>\n\n"+
+			"Goal terminal protocol / 目标终态协议:\n"+
+			"- Complete this exact revision only when the entire objective is achieved. An intermediate milestone is never completion. / 仅当完整目标已实现时完成此版本；中间里程碑绝不等于完成。\n"+
+			"- Block it only when meaningful progress genuinely requires user input or an external state change. / 仅当继续推进确实需要用户输入或外部状态变化时阻塞。\n"+
+			"- Otherwise keep working and do not call the goal tool. / 其他情况继续推进，不要调用 goal 工具。",
+		html.EscapeString(request.State.ID), request.State.Revision, html.EscapeString(request.State.Objective),
 	)
-	preparation.Context = []agent.ContextFragment{{
+	return agent.GoalPreparation{StandardTool: true, Context: []agent.ContextFragment{{
 		Source: "goal.standard", Purpose: "active objective", Resource: "session-goal",
 		Revision: fmt.Sprintf("%d", request.State.Revision), Placement: agent.ContextFinalUserPrefix,
 		Content: content, HardLimit: 128 << 10,
-	}}
-	return preparation, nil
+	}}}, nil
 }
 
 func (*standardManager) AfterRun(_ context.Context, request agent.GoalAfterRunRequest) (agent.GoalContinuation, error) {
@@ -112,7 +118,7 @@ func (*standardManager) AfterRun(_ context.Context, request agent.GoalAfterRunRe
 	}
 	return agent.GoalContinuation{
 		Continue: true,
-		Prompt:   "Continue working autonomously on the active goal. Reassess the complete objective and current workspace state, make the next meaningful progress, and use the goal tool only when the objective is fully completed or genuinely blocked.\n\n继续自主推进当前目标。重新检查完整目标与当前工作区状态，完成下一项有意义的工作；仅当整个目标已完成或确实受阻时使用 goal 工具。",
+		Input:    agent.Input{Text: "Continue working autonomously on the active goal. Reassess the complete objective and current workspace state, make the next meaningful progress, and use the goal tool only when the objective is fully completed or genuinely blocked.\n\n继续自主推进当前目标。重新检查完整目标与当前工作区状态，完成下一项有意义的工作；仅当整个目标已完成或确实受阻时使用 goal 工具。"},
 	}, nil
 }
 

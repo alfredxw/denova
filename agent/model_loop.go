@@ -5,10 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
+	"strings"
 	"time"
 )
 
-func (agent *Loop) modelForCall(ctx context.Context, modelContext *ModelContext) (BaseChatModel, error) {
+func (agent *modelToolLoop) modelForCall(ctx context.Context, modelContext *ModelContext) (BaseChatModel, error) {
 	model := agent.model
 	if toolCalling, ok := model.(ToolCallingChatModel); ok {
 		bound, err := toolCalling.WithTools(modelContext.Tools)
@@ -30,20 +32,27 @@ func (agent *Loop) modelForCall(ctx context.Context, modelContext *ModelContext)
 	return model, nil
 }
 
-func (agent *Loop) callModelWithRetry(
+func (agent *modelToolLoop) callModelWithRetry(
 	ctx context.Context,
-	model BaseChatModel,
+	initial *ModelCall,
+	initialContext *ModelContext,
 	registry *Registry,
-	messages []*Message,
-	modelOptions []ModelOption,
-	streaming bool,
-	events *AsyncGenerator[*AgentEvent],
+	events *asyncGenerator[*loopEvent],
 	cancel *cancelControl,
-) (*Message, int, error) {
-	currentMessages := messages
-	currentOptions := modelOptions
+) (*Message, int, []*Message, context.Context, error) {
+	if initial == nil || initial.Model == nil || initialContext == nil {
+		return nil, 0, nil, ctx, errors.New("model retry boundary requires an initial model call and context")
+	}
+	currentCall := &ModelCall{
+		Model: initial.Model, Messages: cloneMessages(initial.Messages),
+		Options: append([]ModelOption(nil), initial.Options...), Streaming: initial.Streaming,
+		stablePrefixMessages: initial.stablePrefixMessages,
+	}
+	acceptedMessages := cloneMessages(initial.Messages)
+	stableOptions := initial.Snapshot().ResolvedOptions()
+	var retryFeedback []*Message
 	var streamOutput *modelStreamOutput
-	if streaming {
+	if initial.Streaming {
 		streamOutput = &modelStreamOutput{agent: agent, events: events, registry: registry}
 		defer streamOutput.close()
 	}
@@ -52,6 +61,18 @@ func (agent *Loop) callModelWithRetry(
 		maxRetries = agent.retry.MaxRetries
 	}
 	for attempt := 0; ; attempt++ {
+		if attempt > 0 {
+			preparedCtx, preparedCall, preparedBase, prepareErr := agent.prepareRetryModelCall(
+				ctx, currentCall, initialContext, acceptedMessages, retryFeedback, stableOptions, attempt,
+			)
+			if prepareErr != nil {
+				if streamOutput != nil {
+					streamOutput.sendError(prepareErr)
+				}
+				return nil, 0, acceptedMessages, ctx, prepareErr
+			}
+			ctx, currentCall, acceptedMessages = preparedCtx, preparedCall, preparedBase
+		}
 		responseOrdinal := 0
 		if streamOutput != nil {
 			responseOrdinal = streamOutput.openResponseOrdinal()
@@ -59,31 +80,34 @@ func (agent *Loop) callModelWithRetry(
 		if responseOrdinal == 0 {
 			responseOrdinal = nextModelResponseOrdinal(ctx)
 		}
-		message, err, deliveredOnStream := agent.callModel(ctx, model, registry, currentMessages, currentOptions, streaming, events, cancel, streamOutput, responseOrdinal)
+		message, err, deliveredOnStream := agent.callModel(
+			ctx, currentCall.Model, registry, currentCall.Messages, currentCall.Options,
+			currentCall.Streaming, events, cancel, streamOutput, responseOrdinal,
+		)
 		if contextErr := agent.contextError(ctx, cancel); contextErr != nil {
 			if streamOutput != nil && !deliveredOnStream {
 				streamOutput.sendError(publicStreamError(contextErr, cancel))
 			}
-			return nil, 0, contextErr
+			return nil, 0, acceptedMessages, ctx, contextErr
 		}
 		if err != nil && deliveredOnStream {
-			return nil, 0, err
+			return nil, 0, acceptedMessages, ctx, err
 		}
-		decision := agent.retryDecision(ctx, attempt, currentMessages, currentOptions, message, err)
+		decision := agent.retryDecision(ctx, attempt, currentCall.Messages, currentCall.Options, message, err)
 		if decision == nil || !decision.Retry {
 			if err != nil && streamOutput != nil {
 				streamOutput.sendError(err)
 			}
-			return message, responseOrdinal, err
+			return message, responseOrdinal, acceptedMessages, ctx, err
 		}
 		if attempt >= maxRetries {
 			if err != nil {
 				if streamOutput != nil {
 					streamOutput.sendError(err)
 				}
-				return nil, 0, err
+				return nil, 0, acceptedMessages, ctx, err
 			}
-			return nil, 0, fmt.Errorf("model output rejected after %d retries", maxRetries)
+			return nil, 0, acceptedMessages, ctx, fmt.Errorf("model output rejected after %d retries", maxRetries)
 		}
 		if deliveredOnStream && streamOutput != nil {
 			// A completed response rejected by policy remains one visible stream;
@@ -92,10 +116,15 @@ func (agent *Loop) callModelWithRetry(
 			streamOutput.close()
 		}
 		if decision.Messages != nil {
-			currentMessages = cloneMessages(decision.Messages)
+			feedback, feedbackErr := retryFeedbackSuffix(acceptedMessages, decision.Messages)
+			if feedbackErr != nil {
+				return nil, 0, acceptedMessages, ctx, feedbackErr
+			}
+			retryFeedback = feedback
+			currentCall.Messages = cloneMessages(decision.Messages)
 		}
 		if decision.Options != nil {
-			currentOptions = append([]ModelOption(nil), decision.Options...)
+			currentCall.Options = append([]ModelOption(nil), decision.Options...)
 		}
 		backoff := decision.Backoff
 		if backoff == 0 && agent.retry != nil && agent.retry.BackoffFunc != nil {
@@ -106,19 +135,225 @@ func (agent *Loop) callModelWithRetry(
 				if streamOutput != nil {
 					streamOutput.sendError(publicStreamError(err, cancel))
 				}
-				return nil, 0, err
+				return nil, 0, acceptedMessages, ctx, err
 			}
 		}
 	}
 }
 
+func (agent *modelToolLoop) prepareRetryModelCall(
+	ctx context.Context,
+	current *ModelCall,
+	initial *ModelContext,
+	accepted, feedback []*Message,
+	stable *Options,
+	attempt int,
+) (context.Context, *ModelCall, []*Message, error) {
+	modelContext := &ModelContext{
+		Tools: cloneToolInfos(initial.Tools), Retry: initial.Retry,
+		Iteration: initial.Iteration, Attempt: attempt,
+		stablePrefixSeed: cloneMessages(initial.stablePrefixSeed),
+	}
+	messages := append(cloneMessages(accepted), cloneMessages(feedback)...)
+	options := append([]ModelOption(nil), current.Options...)
+	options = append(options, WithTools(modelContext.Tools))
+	if stable != nil && stable.SessionKey != "" {
+		options = append(options, WithSessionKey(stable.SessionKey))
+	}
+	for restartCount := 0; ; restartCount++ {
+		if restartCount > 1 {
+			return ctx, nil, nil, errors.New("model retry maintenance restarted more than once")
+		}
+		model, err := agent.modelForCall(ctx, modelContext)
+		if err != nil {
+			return ctx, nil, nil, err
+		}
+		call := &ModelCall{
+			Model: model, Messages: markedRetryMessages(accepted, feedback), Options: append([]ModelOption(nil), options...),
+			Streaming: current.Streaming,
+		}
+		modelContext.maintenanceMessages = cloneMessages(messages)
+		for _, middleware := range agent.middlewares {
+			ctx, call, err = middleware.BeforeModelCall(ctx, call, modelContext)
+			if err != nil {
+				return ctx, nil, nil, fmt.Errorf("before model call middleware: %w", err)
+			}
+			if ctx == nil {
+				return nil, nil, nil, errors.New("before model call middleware returned nil Go context")
+			}
+			if call == nil || call.Model == nil {
+				return ctx, nil, nil, errors.New("before model call middleware returned nil model call")
+			}
+		}
+		// Tool schemas and cache routing are stable provider-input identity. A
+		// retry policy may alter output/tool choice, but cannot silently fork the
+		// conversation cache or drop schemas used by maintenance estimates.
+		call.Options = append(call.Options, WithTools(modelContext.Tools))
+		if stable != nil && stable.SessionKey != "" {
+			call.Options = append(call.Options, WithSessionKey(stable.SessionKey))
+		}
+		cleaned, feedbackIndexes, markerErr := stripRetryFeedbackMarkers(call.Messages, len(feedback))
+		if markerErr != nil {
+			return ctx, nil, nil, markerErr
+		}
+		call.Messages = cleaned
+		call.stablePrefixMessages = authenticatedStablePrefixMessages(call.Messages, modelContext.stablePrefixSeed)
+		if agent.modelCallGate != nil {
+			restart, gateErr := agent.modelCallGate(ctx, call, modelContext)
+			if gateErr != nil {
+				return ctx, nil, nil, fmt.Errorf("agent model call gate: %w", gateErr)
+			}
+			if restart != nil {
+				if len(restart.Messages) == 0 {
+					return ctx, nil, nil, errors.New("agent model call gate returned an empty restart context")
+				}
+				accepted = cloneMessages(restart.Messages)
+				stablePrefixMessages := min(max(0, restart.stablePrefixMessages), len(accepted))
+				modelContext.stablePrefixSeed = cloneMessages(accepted[:stablePrefixMessages])
+				messages = append(cloneMessages(accepted), cloneMessages(feedback)...)
+				ctx = contextWithMaintenanceCommitted(ctx)
+				continue
+			}
+		}
+		call.stablePrefixMessages = authenticatedStablePrefixMessages(call.Messages, modelContext.stablePrefixSeed)
+		projectedBase, splitErr := removeRetryFeedbackIndexes(call.Messages, feedbackIndexes)
+		if splitErr != nil {
+			return ctx, nil, nil, splitErr
+		}
+		return ctx, call, projectedBase, nil
+	}
+}
+
+func authenticatedStablePrefixMessages(messages, seed []*Message) int {
+	if len(seed) == 0 || len(messages) < len(seed) {
+		return 0
+	}
+	for index := range seed {
+		equal, err := canonicalMessagesEqual(messages[index], seed[index])
+		if err != nil || !equal {
+			// A middleware that changes lifecycle-owned prefix bytes invalidates the
+			// whole cache boundary. Falling back to zero is safe and observable in
+			// maintenance telemetry; content can never extend the trusted prefix.
+			return 0
+		}
+	}
+	return len(seed)
+}
+
+func retryFeedbackSuffix(base, decision []*Message) ([]*Message, error) {
+	if len(decision) < len(base) {
+		return nil, errors.New("RetryDecision Messages must preserve the complete accepted model request prefix")
+	}
+	for index := range base {
+		equal, err := canonicalMessagesEqual(base[index], decision[index])
+		if err != nil {
+			return nil, err
+		}
+		if !equal {
+			return nil, errors.New("RetryDecision Messages must preserve the complete accepted model request prefix")
+		}
+	}
+	return cloneMessages(decision[len(base):]), nil
+}
+
+const (
+	retryFeedbackMarker       = "__agent_internal_retry_feedback_v1"
+	retryFeedbackMarkerPrefix = "feedback:"
+)
+
+func markedRetryMessages(accepted, feedback []*Message) []*Message {
+	result := cloneMessages(accepted)
+	for index, message := range cloneMessages(feedback) {
+		if message == nil {
+			message = &Message{}
+		}
+		if message.Extra == nil {
+			message.Extra = make(map[string]any)
+		}
+		// Use a string so a middleware JSON round-trip cannot coerce the marker
+		// from int to float64 and make an otherwise valid retry unrecoverable.
+		message.Extra[retryFeedbackMarker] = retryFeedbackMarkerPrefix + strconv.Itoa(index+1)
+		result = append(result, message)
+	}
+	return result
+}
+
+func stripRetryFeedbackMarkers(messages []*Message, want int) ([]*Message, []int, error) {
+	result := cloneMessages(messages)
+	indexes := make([]int, 0, want)
+	seen := make(map[int]struct{}, want)
+	for index, message := range result {
+		if message == nil || message.Extra == nil {
+			continue
+		}
+		value, marked := message.Extra[retryFeedbackMarker]
+		if !marked {
+			continue
+		}
+		encoded, ok := value.(string)
+		if !ok || !strings.HasPrefix(encoded, retryFeedbackMarkerPrefix) {
+			return nil, nil, errors.New("retry middleware corrupted an ephemeral feedback marker")
+		}
+		ordinal, parseErr := strconv.Atoi(strings.TrimPrefix(encoded, retryFeedbackMarkerPrefix))
+		if parseErr != nil || ordinal <= 0 || ordinal > want {
+			return nil, nil, errors.New("retry middleware corrupted an ephemeral feedback marker")
+		}
+		if _, duplicate := seen[ordinal]; duplicate {
+			return nil, nil, errors.New("retry middleware duplicated an ephemeral feedback message")
+		}
+		seen[ordinal] = struct{}{}
+		delete(message.Extra, retryFeedbackMarker)
+		if len(message.Extra) == 0 {
+			message.Extra = nil
+		}
+		indexes = append(indexes, index)
+	}
+	if len(indexes) != want {
+		return nil, nil, errors.New("retry middleware removed an ephemeral feedback message")
+	}
+	return result, indexes, nil
+}
+
+func removeRetryFeedbackIndexes(messages []*Message, indexes []int) ([]*Message, error) {
+	if len(indexes) == 0 {
+		return cloneMessages(messages), nil
+	}
+	remove := make(map[int]struct{}, len(indexes))
+	for _, index := range indexes {
+		if index < 0 || index >= len(messages) {
+			return nil, errors.New("context maintenance changed the retry feedback message layout")
+		}
+		remove[index] = struct{}{}
+	}
+	result := make([]*Message, 0, len(messages)-len(remove))
+	for index, message := range messages {
+		if _, ephemeral := remove[index]; !ephemeral {
+			result = append(result, message.Clone())
+		}
+	}
+	return result, nil
+}
+
+func canonicalMessagesEqual(left, right *Message) (bool, error) {
+	leftHash, err := hashCanonical(left)
+	if err != nil {
+		return false, err
+	}
+	rightHash, err := hashCanonical(right)
+	if err != nil {
+		return false, err
+	}
+	return leftHash == rightHash, nil
+}
+
 type modelStreamOutput struct {
-	agent                  *Loop
-	events                 *AsyncGenerator[*AgentEvent]
+	agent                  *modelToolLoop
+	events                 *asyncGenerator[*loopEvent]
 	writer                 *StreamWriter[*Message]
 	registry               *Registry
 	toolExecutionNamespace string
 	modelResponseOrdinal   int
+	activity               func()
 }
 
 // openResponseOrdinal returns the identity of the one stream already exposed
@@ -139,6 +374,7 @@ func (output *modelStreamOutput) expose(ctx context.Context, responseOrdinal int
 		return
 	}
 	output.modelResponseOrdinal = responseOrdinal
+	output.activity = idleActivityFromContext(ctx)
 	if scope, ok := InvocationScopeFromContext(ctx); ok {
 		output.toolExecutionNamespace = scope.ToolNamespace
 	}
@@ -156,6 +392,9 @@ func (output *modelStreamOutput) send(message *Message, err error) {
 	if output == nil || output.writer == nil {
 		return
 	}
+	if output.activity != nil {
+		output.activity()
+	}
 	output.writer.Send(message, err)
 }
 
@@ -172,14 +411,14 @@ func (output *modelStreamOutput) close() {
 }
 
 func publicStreamError(err error, cancel *cancelControl) error {
-	var cancelErr *CancelError
+	var cancelErr *cancelError
 	if errors.As(err, &cancelErr) || (cancel != nil && cancel.isImmediateRequested()) {
-		return ErrStreamCanceled
+		return errStreamCanceled
 	}
 	return err
 }
 
-func (agent *Loop) retryDecision(
+func (agent *modelToolLoop) retryDecision(
 	ctx context.Context,
 	attempt int,
 	messages []*Message,
@@ -209,14 +448,14 @@ func (agent *Loop) retryDecision(
 	return &RetryDecision{Retry: true}
 }
 
-func (agent *Loop) callModel(
+func (agent *modelToolLoop) callModel(
 	ctx context.Context,
 	model BaseChatModel,
 	registry *Registry,
 	messages []*Message,
 	options []ModelOption,
 	streaming bool,
-	events *AsyncGenerator[*AgentEvent],
+	events *asyncGenerator[*loopEvent],
 	cancel *cancelControl,
 	streamOutput *modelStreamOutput,
 	responseOrdinal int,

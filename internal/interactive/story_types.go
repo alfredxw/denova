@@ -89,11 +89,11 @@ type UpdateTurnNarrativeRequest struct {
 	ExpectedNarrative *string `json:"expected_narrative,omitempty"`
 }
 
-// UpdateTurnNarrativeResult reports the durable turn and whether a checkpoint
-// was invalidated so future model context is rebuilt from the edited prose.
+// UpdateTurnNarrativeResult reports the durable edited turn. Public Agent
+// transcript synchronization observes ContextRevision and atomically rebuilds
+// its derived history before the next turn.
 type UpdateTurnNarrativeResult struct {
-	Turn                         TurnEvent `json:"turn"`
-	ContextCompactionInvalidated bool      `json:"context_compaction_invalidated"`
+	Turn TurnEvent `json:"turn"`
 }
 
 type InteractiveImageGenerateRequest struct {
@@ -409,80 +409,15 @@ type StateDeltaEvent struct {
 	ActorOps      []ActorStateOp        `json:"actor_ops,omitempty"`
 }
 
-type ContextCompactionEvent struct {
-	V        int    `json:"v"`
-	Type     string `json:"type"`
+// ContextCompactionProjection is the read-only product projection of the
+// public Agent checkpoint currently bound to a Story branch. Story Store never
+// persists this value and therefore cannot become a second maintenance
+// authority.
+type ContextCompactionProjection struct {
 	ID       string `json:"id"`
-	ParentID string `json:"parent_id,omitempty"`
 	BranchID string `json:"branch_id"`
-	Ts       string `json:"ts"`
 	agentcontext.CompactionCheckpoint
 	SourceTurnCount int `json:"source_turn_count"`
-	// ExpectedParentID is a write-only compare-and-swap guard. It is never
-	// serialized into the story journal; ParentID records the parent that
-	// actually won the commit.
-	ExpectedParentID *string `json:"-"`
-}
-
-type ContextCompactionRemovalEvent struct {
-	V               int    `json:"v"`
-	Type            string `json:"type"`
-	ID              string `json:"id"`
-	ParentID        string `json:"parent_id,omitempty"`
-	BranchID        string `json:"branch_id"`
-	Ts              string `json:"ts"`
-	AgentKind       string `json:"agent_kind,omitempty"`
-	CompactionID    string `json:"compaction_id,omitempty"`
-	SourceTurnCount int    `json:"source_turn_count"`
-	Reason          string `json:"reason,omitempty"`
-	// ExpectedParentID rejects removal requests prepared from an obsolete
-	// branch snapshot.
-	ExpectedParentID *string `json:"-"`
-}
-
-// ContextCompactionHealthEvent is model-invisible durable failure-fuse state
-// for one stable Game context structure.
-type ContextCompactionHealthEvent struct {
-	V                    int    `json:"v"`
-	Type                 string `json:"type"`
-	ID                   string `json:"id"`
-	ParentID             string `json:"parent_id,omitempty"`
-	BranchID             string `json:"branch_id"`
-	Ts                   string `json:"ts"`
-	AgentKind            string `json:"agent_kind,omitempty"`
-	BasisRevision        uint64 `json:"basis_revision"`
-	StructureFingerprint string `json:"structure_fingerprint"`
-	Outcome              string `json:"outcome"`
-	FailureCode          string `json:"failure_code,omitempty"`
-	ConsecutiveFailures  int    `json:"consecutive_failures"`
-	// ExpectedContextRevision is a write-only CAS guard. Health rows do not
-	// advance the guarded revision or the canonical branch head.
-	ExpectedContextRevision uint64 `json:"-"`
-}
-
-// ToolResultReplacement shares the same frozen substitution contract across
-// writing sessions and game journals.
-type ToolResultReplacement = agentcontext.ToolResultReplacement
-
-// ToolResultCleanupEvent projects bounded placeholders over canonical rich
-// tool results without changing the stored TurnEvent or UI timeline.
-type ToolResultCleanupEvent struct {
-	V                int                     `json:"v"`
-	Type             string                  `json:"type"`
-	ID               string                  `json:"id"`
-	ParentID         string                  `json:"parent_id,omitempty"`
-	BranchID         string                  `json:"branch_id"`
-	Ts               string                  `json:"ts"`
-	AgentKind        string                  `json:"agent_kind,omitempty"`
-	SourceStart      int64                   `json:"source_start"`
-	SourceEnd        int64                   `json:"source_end"`
-	Replacements     []ToolResultReplacement `json:"replacements"`
-	ReclaimedTokens  int                     `json:"reclaimed_tokens"`
-	TriggeredAtUsage int                     `json:"triggered_at_usage"`
-	EarliestChanged  int64                   `json:"earliest_changed"`
-	WarmSuffixTokens int                     `json:"warm_suffix_tokens"`
-	RendererVersion  string                  `json:"renderer_version"`
-	ExpectedParentID *string                 `json:"-"`
 }
 
 // TurnVersionProjection records one immutable event copied from the previous
@@ -498,21 +433,20 @@ type TurnVersionProjection struct {
 // version choice. It deliberately stays off the active ancestry: ProjectedHeadID
 // is the branch head, while ParentID only links the audit record to that result.
 type TurnVersionSelectionEvent struct {
-	V                       int                     `json:"v"`
-	Type                    string                  `json:"type"`
-	ID                      string                  `json:"id"`
-	ParentID                string                  `json:"parent_id,omitempty"`
-	BranchID                string                  `json:"branch_id"`
-	Ts                      string                  `json:"ts"`
-	ReplacedTurnID          string                  `json:"replaced_turn_id"`
-	SelectedTurnID          string                  `json:"selected_turn_id"`
-	PreviousHeadID          string                  `json:"previous_head_id,omitempty"`
-	ProjectedHeadID         string                  `json:"projected_head_id,omitempty"`
-	ProjectedEvents         []TurnVersionProjection `json:"projected_events,omitempty"`
-	InvalidatedCompactionID string                  `json:"invalidated_compaction_id,omitempty"`
-	CurrentState            map[string]any          `json:"current_state,omitempty"`
-	CurrentTurnID           string                  `json:"current_turn_id,omitempty"`
-	CurrentDepth            int                     `json:"current_depth,omitempty"`
+	V               int                     `json:"v"`
+	Type            string                  `json:"type"`
+	ID              string                  `json:"id"`
+	ParentID        string                  `json:"parent_id,omitempty"`
+	BranchID        string                  `json:"branch_id"`
+	Ts              string                  `json:"ts"`
+	ReplacedTurnID  string                  `json:"replaced_turn_id"`
+	SelectedTurnID  string                  `json:"selected_turn_id"`
+	PreviousHeadID  string                  `json:"previous_head_id,omitempty"`
+	ProjectedHeadID string                  `json:"projected_head_id,omitempty"`
+	ProjectedEvents []TurnVersionProjection `json:"projected_events,omitempty"`
+	CurrentState    map[string]any          `json:"current_state,omitempty"`
+	CurrentTurnID   string                  `json:"current_turn_id,omitempty"`
+	CurrentDepth    int                     `json:"current_depth,omitempty"`
 }
 
 type BranchEvent struct {
@@ -538,9 +472,7 @@ type Snapshot struct {
 	PendingModelContextBatches []ModelContextBatchEvent         `json:"pending_model_context_batches,omitempty"`
 	CurrentTurn                *TurnEvent                       `json:"current_turn,omitempty"`
 	TokenUsageEvents           []TokenUsageEvent                `json:"token_usage_events,omitempty"`
-	ContextCompaction          *ContextCompactionEvent          `json:"context_compaction,omitempty"`
-	ContextCompactionRemoval   *ContextCompactionRemovalEvent   `json:"context_compaction_removal,omitempty"`
-	ToolResultCleanup          *ToolResultCleanupEvent          `json:"tool_result_cleanup,omitempty"`
+	ContextCompaction          *ContextCompactionProjection     `json:"context_compaction,omitempty"`
 	DirectorPlan               *DirectorPlan                    `json:"-"`
 	DirectorPlanStatus         *DirectorPlanStatus              `json:"director_plan_status,omitempty"`
 	State                      map[string]any                   `json:"state"`

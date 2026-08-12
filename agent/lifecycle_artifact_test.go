@@ -25,7 +25,7 @@ func TestArtifactProducedIsDurableAndPrecedesToolFinished(t *testing.T) {
 	}}
 	owner, err := New(context.Background(), Definition{
 		Model: model,
-		Tools: StaticTools(ToolDefinition{Tool: tool, Descriptor: ToolDescriptor{
+		Tools: mustStaticTools(t, ToolDefinition{Tool: tool, Descriptor: ToolDescriptor{
 			Source: ToolSourceRead, Execution: ToolExecutionParallelRead,
 			MutationScope: ToolMutationNone, PostCheck: ToolPostCheckNone,
 			Recovery: ToolRecoveryReadOnly, ResultProjection: ToolResultBoundedModelContext,

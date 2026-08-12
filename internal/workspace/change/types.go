@@ -287,17 +287,18 @@ type CommentAnchor struct {
 }
 
 type Comment struct {
-	ID          string        `json:"id"`
-	GroupID     string        `json:"group_id"`
-	ChangeSetID string        `json:"change_set_id,omitempty"`
-	EditID      string        `json:"edit_id,omitempty"`
-	HunkID      string        `json:"hunk_id,omitempty"`
-	Body        string        `json:"body"`
-	Author      string        `json:"author,omitempty"`
-	CreatedAt   time.Time     `json:"created_at"`
-	UpdatedAt   time.Time     `json:"updated_at"`
-	Deleted     bool          `json:"deleted,omitempty"`
-	Anchor      CommentAnchor `json:"anchor,omitempty"`
+	ID                 string        `json:"id"`
+	GroupID            string        `json:"group_id"`
+	ChangeSetID        string        `json:"change_set_id,omitempty"`
+	EditID             string        `json:"edit_id,omitempty"`
+	HunkID             string        `json:"hunk_id,omitempty"`
+	Body               string        `json:"body"`
+	Author             string        `json:"author,omitempty"`
+	CreatedAt          time.Time     `json:"created_at"`
+	UpdatedAt          time.Time     `json:"updated_at"`
+	Deleted            bool          `json:"deleted,omitempty"`
+	AgentInputEffectID string        `json:"agent_input_effect_id,omitempty"`
+	Anchor             CommentAnchor `json:"anchor,omitempty"`
 }
 
 type AddCommentRequest struct {

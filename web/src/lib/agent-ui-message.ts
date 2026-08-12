@@ -86,7 +86,9 @@ export function agentMessageText(message: AgentUIMessage) {
 }
 
 export function agentMessageDisplayText(message: AgentUIMessage) {
-  return message.metadata?.streaming_target_content ?? agentMessageText(message)
+  if (message.metadata?.streaming_target_content !== undefined) return message.metadata.streaming_target_content
+  const part = message.parts.find((candidate) => candidate.type === 'text' || candidate.type === 'reasoning') as Record<string, unknown> | undefined
+  return typeof part?.text === 'string' ? part.text : ''
 }
 
 export function agentMessageHasDataPart(message: AgentUIMessage, type: keyof AgentDataParts) {

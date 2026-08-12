@@ -2,7 +2,6 @@ package conversation
 
 import (
 	"context"
-	agentcontext "denova/internal/agents/context"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/toolresult"
 	"fmt"
@@ -14,7 +13,6 @@ import (
 	"github.com/alfredxw/denova/agent/providers"
 
 	"denova/config"
-	agentcompaction "denova/internal/agents/context/compaction"
 	"denova/internal/agents/session"
 	novaskills "denova/internal/agents/skills"
 )
@@ -30,18 +28,12 @@ type SessionConversation struct {
 	lastContextSummary  string
 	inputVisibility     agentrun.InputVisibility
 
-	cycleMu                 sync.Mutex
-	cycleIdentity           agentrun.CycleIdentity
-	cycleCursor             session.ContextCursor
-	structuralCursor        *session.ContextCursor
-	structuralCommit        func(func() error) error
-	pendingCommits          map[agentrun.DomainCommitStage]*session.DomainCommitIntent
-	lastCommitReceipts      map[agentrun.DomainCommitStage]*session.DomainCommitReceipt
-	inputCommit             func() error
-	pendingCompaction       *preparedSessionContextCompaction
-	pendingCompactionHealth *preparedSessionContextCompactionHealth
-	pendingCleanup          *preparedSessionToolResultCleanup
-	compactionModelBase     *compactionModelBase
+	cycleMu            sync.Mutex
+	cycleIdentity      agentrun.CycleIdentity
+	cycleCursor        session.ContextCursor
+	pendingCommits     map[agentrun.DomainCommitStage]*session.DomainCommitIntent
+	lastCommitReceipts map[agentrun.DomainCommitStage]*session.DomainCommitReceipt
+	inputCommit        func() error
 }
 
 // WithInputVisibility binds the transcript projection chosen by the host for
@@ -139,33 +131,6 @@ func WithSessionStableRuntimeContext(title, content string) SessionConversationO
 	}
 }
 
-// WithContextCursorBarrier pins structural context writes to an immutable
-// session snapshot even when the conversation is not running inside a Harness
-// cycle (for example a manual compaction request).
-func (c *SessionConversation) WithContextCursorBarrier(cursor session.ContextCursor) *SessionConversation {
-	if c == nil {
-		return c
-	}
-	c.cycleMu.Lock()
-	c.cycleCursor = cursor
-	c.structuralCursor = &cursor
-	c.cycleMu.Unlock()
-	return c
-}
-
-// WithContextCommitGate lets the App revalidate its workspace generation and
-// hold its short admission lock across the final journal append. The gate must
-// not perform model work or wait for task settlement.
-func (c *SessionConversation) WithContextCommitGate(gate func(func() error) error) *SessionConversation {
-	if c == nil {
-		return c
-	}
-	c.cycleMu.Lock()
-	c.structuralCommit = gate
-	c.cycleMu.Unlock()
-	return c
-}
-
 func (c *SessionConversation) ContextSourceSummary() string {
 	if c == nil {
 		return ""
@@ -173,241 +138,6 @@ func (c *SessionConversation) ContextSourceSummary() string {
 	c.cycleMu.Lock()
 	defer c.cycleMu.Unlock()
 	return c.lastContextSummary
-}
-
-func (c *SessionConversation) CompactContextIfNeeded(ctx context.Context, input agentcompaction.Input) ([]*agent.Message, agentcompaction.Result, error) {
-	policy := c.compactionPolicy()
-	if input.ContextWindowTokens > 0 {
-		policy.ContextWindowTokens = input.ContextWindowTokens
-	}
-	if strings.TrimSpace(input.Phase) == "" {
-		input.Phase = agentcompaction.PhasePreRun
-	}
-	source, existingCheckpoint, sourceStart, sourceEnd, err := c.compactionIncrementalSource(ctx, input.KeepLatestUser)
-	if err != nil {
-		return input.Messages, agentcompaction.Result{}, fmt.Errorf("read canonical compaction source: %w", err)
-	}
-	providerSource := source
-	if mapped, ok := c.providerVisibleCompactionSource(source, sourceStart); ok {
-		providerSource = mapped
-	}
-	if strings.TrimSpace(input.ExistingCheckpoint) != "" {
-		existingCheckpoint = input.ExistingCheckpoint
-	}
-	if !input.Force {
-		if removal, ok := c.session.LatestContextCompactionRemoval(c.agentKind); ok && removal.SourceStartIndex == sourceStart && removal.SourceEndIndex >= sourceEnd {
-			input.PreflightSkipReason = "removed_same_source"
-		}
-	}
-
-	input.SourceMessages = source
-	input.SourceMessagesSet = true
-	input.ProviderSourceMessages = providerSource
-	input.ExistingCheckpoint = existingCheckpoint
-	if input.Summarize == nil {
-		input.Summarize = agentcompaction.GenerateSummary
-	}
-	input.CandidateFingerprint, input.CandidateGeneration = agentcompaction.CandidateIdentity(input.Messages, 0)
-	healthCursor := c.session.ContextCursor()
-	structureFingerprint := c.compactionStructureFingerprint(input)
-	if health, ok := c.session.LatestContextCompactionHealth(c.agentKind); ok &&
-		(agentcompaction.FailureState{
-			StructureFingerprint: health.StructureFingerprint,
-			ConsecutiveFailures:  health.ConsecutiveFailures,
-		}).Blocks(structureFingerprint, policy.MaxConsecutiveFailures, input.Automatic) {
-		input.PreflightSkipReason = "consecutive_failure_fuse"
-		input.ConsecutiveFailures = health.ConsecutiveFailures
-		input.FailureFuseOpen = true
-	}
-	if input.Automatic && input.PreflightSkipReason == "" {
-		cleanupMinimum := agentcontext.EffectiveToolResultCleanupMinimum(
-			input.Messages, input.Tools, resolveContextPressurePolicy(c.cfg, c.agentKind, input.Messages),
-		)
-		if previous, ok := c.session.LatestContextCompaction(c.agentKind); ok && agentcompaction.NoProgressLatched(
-			previous.TokensAfter, previous.ContextWindowTokens, previous.Threshold, policy.RecoveryBand,
-			agentcontext.EstimateTokens(source, nil), cleanupMinimum,
-			previous.CandidateFingerprint, previous.CandidateGeneration,
-			input.CandidateFingerprint, input.CandidateGeneration,
-		) {
-			input.PreflightSkipReason = "degraded_no_progress_latch"
-		}
-	}
-
-	newMessages, result, err := agentcompaction.Prepare(
-		ctx, c.cfg, c.agentKind, input, c.nextCompactionEpoch(),
-	)
-	if err != nil {
-		c.stageSessionCompactionHealth(healthCursor, structureFingerprint, agentcompaction.HealthFailure, &result)
-		return input.Messages, result, err
-	}
-	if !result.Triggered {
-		return newMessages, result, nil
-	}
-	if !input.Force && result.Phase == agentcompaction.PhaseModelStep {
-		c.stagePreparedSessionCompaction(preparedSessionContextCompaction{
-			Result: result, SourceStartIndex: sourceStart, SourceEndIndex: sourceEnd,
-		})
-	}
-	c.stageSessionCompactionHealth(healthCursor, structureFingerprint, agentcompaction.HealthSuccess, &result)
-	// Automatic model-step compaction stays transient until the harness commits
-	// its typed structural operation after the turn settles.
-	return newMessages, result, nil
-}
-
-func (c *SessionConversation) compactionPolicy() agentcompaction.Policy {
-	if c == nil {
-		return agentcompaction.Policy{}
-	}
-	agentKind := c.agentKind
-	if strings.TrimSpace(agentKind) == "" {
-		agentKind = config.AgentKindIDE
-	}
-	policy := agentcompaction.ResolvePolicy(c.cfg, agentKind)
-	return policy
-}
-
-func (c *SessionConversation) nextCompactionEpoch() int {
-	return c.session.NextContextCompactionEpoch(c.agentKind)
-}
-
-// SessionContextCompactionProjection freezes the canonical model branch and
-// its raw persistence boundary under one Session revision. Messages are the
-// provider-neutral model projection; Source excludes checkpoint records and
-// transient runtime wrappers.
-type SessionContextCompactionProjection struct {
-	Messages           []*agent.Message
-	Source             []*agent.Message
-	ExistingCheckpoint string
-	SourceStartIndex   int
-	SourceEndIndex     int
-	Cursor             session.ContextCursor
-}
-
-// SnapshotContextCompaction returns one exact source/projection pair for both
-// automatic and manual compaction.
-func (c *SessionConversation) SnapshotContextCompaction(ctx context.Context, keepLatestUser bool) (SessionContextCompactionProjection, error) {
-	if c == nil || c.session == nil {
-		return SessionContextCompactionProjection{}, nil
-	}
-	snapshot, err := c.session.SnapshotContext(c.agentKind)
-	if err != nil {
-		return SessionContextCompactionProjection{}, err
-	}
-	source, checkpoint, sourceStart, sourceEnd, err := c.compactionIncrementalSourceFromSnapshot(ctx, snapshot, keepLatestUser)
-	if err != nil {
-		return SessionContextCompactionProjection{}, err
-	}
-	return SessionContextCompactionProjection{
-		Messages: c.modelHistory(snapshot), Source: source, ExistingCheckpoint: checkpoint,
-		SourceStartIndex: sourceStart, SourceEndIndex: sourceEnd, Cursor: snapshot.Cursor,
-	}, nil
-}
-
-func (c *SessionConversation) compactionIncrementalSource(ctx context.Context, keepLatestUser bool) ([]*agent.Message, string, int, int, error) {
-	projection, err := c.SnapshotContextCompaction(ctx, keepLatestUser)
-	if err != nil {
-		return nil, "", 0, 0, err
-	}
-	return projection.Source, projection.ExistingCheckpoint, projection.SourceStartIndex, projection.SourceEndIndex, nil
-}
-
-func (c *SessionConversation) compactionIncrementalSourceFromSnapshot(
-	ctx context.Context,
-	snapshot session.ContextSnapshot,
-	keepLatestUser bool,
-) ([]*agent.Message, string, int, int, error) {
-	total := snapshot.Cursor.MessageCount
-	sourceStart := snapshot.Cursor.ClearAfterIndex
-	if sourceStart < 0 {
-		sourceStart = 0
-	}
-	existingCheckpoint := ""
-	if snapshot.Compaction != nil {
-		compaction := *snapshot.Compaction
-		existingCheckpoint = compaction.Summary
-		if compaction.SourceEndIndex > sourceStart {
-			sourceStart = compaction.SourceEndIndex
-		}
-	}
-	if sourceStart > total {
-		sourceStart = total
-	}
-	sourceEnd := total
-	if !keepLatestUser && sourceEnd > sourceStart {
-		latest, err := c.session.ReadMessageRange(ctx, sourceEnd-1, sourceEnd)
-		if err != nil {
-			return nil, "", sourceStart, sourceEnd, err
-		}
-		if len(latest) == 1 && latest[0] != nil && latest[0].Role == agent.User {
-			sourceEnd--
-		}
-	}
-	if sourceEnd < sourceStart {
-		sourceEnd = sourceStart
-	}
-	messages, err := c.session.ReadMessageRange(ctx, sourceStart, sourceEnd)
-	if err != nil {
-		return nil, "", sourceStart, sourceEnd, err
-	}
-	// Match the exact projection already assembled for the primary provider
-	// request. Canonical rich results remain append-only, but a persisted cleanup
-	// placeholder is what both compaction and the next model can see.
-	if cleanup := snapshot.ToolResultCleanup; cleanup != nil {
-		messages = applyToolResultCleanupProjection(messages, sourceStart, *cleanup)
-	}
-	source := compactionSourceMessages(toolresult.ApplyContextPolicy(messages, c.ToolResultContextPolicy()), true)
-	return source, existingCheckpoint, sourceStart, sourceEnd, nil
-}
-
-func compactionSourceMessages(messages []*agent.Message, keepLatestUser bool) []*agent.Message {
-	source := make([]*agent.Message, 0, len(messages))
-	for _, msg := range messages {
-		if msg == nil {
-			continue
-		}
-		if agentcontext.IsCompactionSummaryMessage(msg) {
-			continue
-		}
-		source = append(source, sanitizeCompactionSourceMessage(msg))
-	}
-	if !keepLatestUser && len(source) > 0 && source[len(source)-1].Role == agent.User {
-		source = source[:len(source)-1]
-	}
-	return source
-}
-
-func sanitizeCompactionSourceMessage(msg *agent.Message) *agent.Message {
-	if msg == nil {
-		return nil
-	}
-	copied := *msg
-	copied.ReasoningContent = ""
-	return &copied
-}
-
-func retainTailByUserTurns(messages []*agent.Message, retainedTurns int) []*agent.Message {
-	if retainedTurns <= 0 {
-		retainedTurns = config.DefaultContextCompactionRetainedTurns
-	}
-	if retainedTurns > config.MaxContextCompactionRetainedTurns {
-		retainedTurns = config.MaxContextCompactionRetainedTurns
-	}
-	userCount := 0
-	start := 0
-	for i := len(messages) - 1; i >= 0; i-- {
-		if messages[i] == nil || messages[i].Role != agent.User {
-			continue
-		}
-		userCount++
-		if userCount == retainedTurns {
-			start = i
-			break
-		}
-	}
-	if userCount < retainedTurns {
-		return messages
-	}
-	return append([]*agent.Message(nil), messages[start:]...)
 }
 
 func (c *SessionConversation) AppendAssistant(content string) error {
@@ -493,15 +223,9 @@ func (c *SessionConversation) BindAgentCycleIdentity(identity agentrun.CycleIden
 	c.cycleMu.Lock()
 	c.cycleIdentity = identity
 	c.cycleCursor = cursor
-	c.structuralCursor = nil
-	c.structuralCommit = nil
 	c.pendingCommits = make(map[agentrun.DomainCommitStage]*session.DomainCommitIntent)
 	c.lastCommitReceipts = make(map[agentrun.DomainCommitStage]*session.DomainCommitReceipt)
 	c.inputCommit = nil
-	c.pendingCompaction = nil
-	c.pendingCompactionHealth = nil
-	c.pendingCleanup = nil
-	c.compactionModelBase = nil
 	c.cycleMu.Unlock()
 }
 
@@ -607,9 +331,6 @@ func (c *SessionConversation) advanceCycleCursor() {
 	cursor := c.session.ContextCursor()
 	c.cycleMu.Lock()
 	c.cycleCursor = cursor
-	if c.structuralCursor != nil {
-		*c.structuralCursor = cursor
-	}
 	c.cycleMu.Unlock()
 }
 
@@ -620,9 +341,8 @@ func (c *SessionConversation) agentCycleCursorSnapshot() session.ContextCursor {
 	c.cycleMu.Lock()
 	identity := c.cycleIdentity
 	cursor := c.cycleCursor
-	structural := c.structuralCursor != nil
 	c.cycleMu.Unlock()
-	if !structural && !agentrun.ValidCycleIdentity(identity) {
+	if !agentrun.ValidCycleIdentity(identity) {
 		return c.session.ContextCursor()
 	}
 	return cursor
@@ -643,23 +363,10 @@ func (c *SessionConversation) AppendContextMessages(messages ...*agent.Message) 
 		return nil
 	}
 	identity := c.agentCycleIdentitySnapshot()
-	c.cycleMu.Lock()
-	structural := c.structuralCursor != nil
-	c.cycleMu.Unlock()
-	var err error
-	if structural || agentrun.ValidCycleIdentity(identity) {
-		commit := func() error { return c.session.AppendContextMessagesAt(c.agentCycleCursorSnapshot(), messages...) }
-		c.cycleMu.Lock()
-		gate := c.structuralCommit
-		c.cycleMu.Unlock()
-		if gate != nil {
-			err = gate(commit)
-		} else {
-			err = commit()
-		}
-	} else {
+	if !agentrun.ValidCycleIdentity(identity) {
 		return ErrMissingAgentCycleIdentity
 	}
+	err := c.session.AppendContextMessagesAt(c.agentCycleCursorSnapshot(), messages...)
 	if err != nil {
 		return err
 	}
@@ -678,7 +385,7 @@ func (c *SessionConversation) ToolResultContextPolicy() toolresult.ContextPolicy
 	return toolresult.ResolveContextPolicy(c.cfg, agentKind)
 }
 
-func (c *SessionConversation) ToolArtifactStore() agent.ToolArtifactStore {
+func (c *SessionConversation) ToolArtifactStore() agent.ToolArtifactBackend {
 	if c == nil || c.session == nil {
 		return nil
 	}

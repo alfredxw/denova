@@ -2,6 +2,7 @@ package agents
 
 import (
 	"context"
+	agentdelegation "denova/internal/agents/delegation"
 	agentinteractive "denova/internal/agents/interactive"
 	agenttoolruntime "denova/internal/agents/toolruntime"
 	"os"
@@ -9,60 +10,12 @@ import (
 	"testing"
 
 	agent "github.com/alfredxw/denova/agent"
+	publictools "github.com/alfredxw/denova/agent/tools"
 
 	"denova/config"
 	producttools "denova/internal/agents/tools"
 	"denova/internal/interactive"
 )
-
-func TestNativeAgentBuiltInToolsPassDescriptorGuard(t *testing.T) {
-	ctx := context.Background()
-	chatModel := &descriptorGuardProbeModel{}
-	todoTool, err := agenttoolruntime.NewCatalog(nil).Todo()
-	if err != nil {
-		t.Fatal(err)
-	}
-	taskTool, err := agenttoolruntime.NewCatalog(nil).Task(ctx, []agent.Runnable{fakeAgent{name: producttools.GeneralSubAgentName, description: "test"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	builtAgent, err := agent.NewLoop(ctx, agent.LoopConfig{
-		Name:          "tool-descriptor-native-agent-test",
-		Description:   "verify the final model-visible tool surface",
-		Instruction:   "Reply without calling tools.",
-		Model:         chatModel,
-		MaxIterations: 1,
-		Tools:         []agent.ToolDefinition{todoTool, taskTool},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	iterator := agent.NewRunner(agent.RunnerConfig{Agent: builtAgent}).Query(ctx, "hello")
-	for {
-		event, ok := iterator.Next()
-		if !ok {
-			break
-		}
-		if event.Err != nil {
-			t.Fatalf("native Agent rejected its final tool surface before the provider call: %v", event.Err)
-		}
-	}
-	if chatModel.calls != 1 {
-		t.Fatalf("provider calls = %d, want 1", chatModel.calls)
-	}
-	toolNames := make(map[string]bool, len(chatModel.tools))
-	for _, info := range chatModel.tools {
-		if info != nil {
-			toolNames[info.Name] = true
-		}
-	}
-	for _, name := range []string{"todo", "task"} {
-		if !toolNames[name] {
-			t.Fatalf("native Agent provider tool surface missing %q: %v", name, toolNames)
-		}
-	}
-}
 
 func TestWritingAgentFinalRuntimeToolSurfacePassesDescriptorGuard(t *testing.T) {
 	ctx := context.Background()
@@ -79,62 +32,49 @@ func TestWritingAgentFinalRuntimeToolSurfacePassesDescriptorGuard(t *testing.T) 
 		t.Fatal(err)
 	}
 	cfg := &config.Config{
-		Workspace:  workspace,
-		SkillsDir:  skillsDir,
-		AgentTools: config.DefaultAgentToolSettings(),
+		Workspace:     workspace,
+		SkillsDir:     skillsDir,
+		OpenAIBaseURL: "https://example.invalid",
+		OpenAIModel:   "descriptor-test-model",
+		AgentTools:    config.DefaultAgentToolSettings(),
 	}
 	cfg.SetDataDir(filepath.Join(root, "data"))
-	settings := config.ResolveAgentTools(cfg, config.AgentKindIDE)
-	assembly, err := buildChatModelAgentAssembly(ctx, cfg, chatModelAgentAssemblySpec{
-		Kind:              config.AgentKindIDE,
-		ToolSettings:      settings,
+	definition, err := buildAgentDefinition(ctx, cfg, agentBuildSpec{
+		Kind: config.AgentKindIDE, Name: "DenovaAgent", Description: "tool surface test",
+		Composition:       mustTestPromptComposition(t, config.AgentKindIDE, "Reply without calling tools."),
 		EnableSkills:      true,
 		ExtraToolsFactory: agenttoolruntime.NewCatalog(cfg).IDE(),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	todoTool, err := agenttoolruntime.NewCatalog(cfg).Todo()
+	toolset := definition.Tools
+	if catalog, ok := agentdelegation.AsCatalog(toolset); ok {
+		children := catalog.Children()
+		candidates := make([]publictools.LocalTaskAgent, len(children))
+		for index, child := range children {
+			candidates[index] = publictools.LocalTaskAgent{
+				Name: child.Name, Description: child.Description,
+				Opener: descriptorTestSessionOpener{}, Identity: child.Identity,
+			}
+		}
+		executor, bindErr := publictools.NewLocalTasks(candidates...)
+		if bindErr != nil {
+			t.Fatal(bindErr)
+		}
+		toolset, bindErr = catalog.Bind(executor)
+		if bindErr != nil {
+			t.Fatal(bindErr)
+		}
+	}
+	tools, err := toolset.PrepareTools(ctx, agent.ToolRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	taskTool, err := agenttoolruntime.NewCatalog(cfg).Task(ctx, []agent.Runnable{fakeAgent{name: producttools.GeneralSubAgentName, description: "test"}})
-	if err != nil {
-		t.Fatal(err)
+	if _, err := agent.NewRegistry(ctx, tools...); err != nil {
+		t.Fatalf("writing Agent rejected its final tool surface: %v", err)
 	}
-	tools := append([]agent.ToolDefinition(nil), assembly.Tools...)
-	tools = append(tools, todoTool, taskTool)
-
-	chatModel := &descriptorGuardProbeModel{}
-	builtAgent, err := agent.NewLoop(ctx, agent.LoopConfig{
-		Name:          "writing-tool-surface-test",
-		Description:   "verify the writing Agent's final model-visible tool surface",
-		Instruction:   "Reply without calling tools.",
-		Model:         chatModel,
-		MaxIterations: 1,
-		Middlewares:   assembly.Middlewares,
-		Tools:         tools,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	iterator := agent.NewRunner(agent.RunnerConfig{Agent: builtAgent}).Query(ctx, "hello")
-	for {
-		event, ok := iterator.Next()
-		if !ok {
-			break
-		}
-		if event.Err != nil {
-			t.Fatalf("writing Agent rejected its final tool surface: %v", event.Err)
-		}
-	}
-	toolNames := make(map[string]bool, len(chatModel.tools))
-	for _, info := range chatModel.tools {
-		if info != nil {
-			toolNames[info.Name] = true
-		}
-	}
+	toolNames := toolNameSet(t, tools)
 	for _, name := range []string{
 		"todo", "task", "skill",
 		"read", "glob", "grep", "write", "edit", "bash",
@@ -144,6 +84,19 @@ func TestWritingAgentFinalRuntimeToolSurfacePassesDescriptorGuard(t *testing.T) 
 			t.Fatalf("writing Agent provider tool surface missing %q: %v", name, toolNames)
 		}
 	}
+	if catalog, ok := agentdelegation.AsCatalog(definition.Tools); !ok || len(catalog.Children()) == 0 {
+		t.Fatal("writing Agent did not retain a durable task catalog")
+	}
+}
+
+type descriptorTestSessionOpener struct{}
+
+func (descriptorTestSessionOpener) Session(context.Context, agent.SessionKey) (*agent.Session, error) {
+	return nil, nil
+}
+
+func (descriptorTestSessionOpener) ListSessions(context.Context, agent.SessionSelector) ([]agent.SessionKey, error) {
+	return nil, nil
 }
 
 func TestProductToolFactoriesDeclareEveryConcreteTool(t *testing.T) {
@@ -302,23 +255,4 @@ func TestRestrictedAgentOverridesDoNotReachGenericToolCatalog(t *testing.T) {
 			}
 		})
 	}
-}
-
-type descriptorGuardProbeModel struct {
-	calls int
-	tools []*agent.ToolInfo
-}
-
-func (m *descriptorGuardProbeModel) Generate(_ context.Context, _ []*agent.Message, opts ...agent.ModelOption) (*agent.Message, error) {
-	m.calls++
-	m.tools = agent.GetCommonOptions(&agent.Options{}, opts...).Tools
-	return agent.AssistantMessage("ok", nil), nil
-}
-
-func (m *descriptorGuardProbeModel) Stream(ctx context.Context, messages []*agent.Message, opts ...agent.ModelOption) (*agent.StreamReader[*agent.Message], error) {
-	message, err := m.Generate(ctx, messages, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return agent.StreamReaderFromArray([]*agent.Message{message}), nil
 }

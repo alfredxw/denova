@@ -52,14 +52,15 @@ type Anchor struct {
 // editable workspace resource. It remains visible until the author deletes it
 // or a durable chat message consumes it.
 type Comment struct {
-	ID        string    `json:"id"`
-	ThreadID  string    `json:"thread_id"`
-	Target    Target    `json:"target"`
-	Body      string    `json:"body"`
-	Anchor    Anchor    `json:"anchor"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-	Deleted   bool      `json:"deleted,omitempty"`
+	ID                 string    `json:"id"`
+	ThreadID           string    `json:"thread_id"`
+	Target             Target    `json:"target"`
+	Body               string    `json:"body"`
+	Anchor             Anchor    `json:"anchor"`
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
+	Deleted            bool      `json:"deleted,omitempty"`
+	AgentInputEffectID string    `json:"agent_input_effect_id,omitempty"`
 }
 
 // Thread is the hidden batching boundary for all pending text-resource comments in

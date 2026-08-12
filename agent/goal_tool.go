@@ -7,21 +7,26 @@ import (
 )
 
 type goalToolInput struct {
-	Action           GoalMutationKind `json:"action" jsonschema:"enum=set,enum=pause,enum=resume,enum=complete,enum=block,enum=clear"`
-	Objective        string           `json:"objective,omitempty" jsonschema:"maxLength=65536"`
-	ExpectedID       string           `json:"expected_id,omitempty"`
-	ExpectedRevision uint64           `json:"expected_revision,omitempty"`
+	Action           GoalMutationKind `json:"action" jsonschema:"enum=complete,enum=block"`
+	ExpectedID       string           `json:"expected_id"`
+	ExpectedRevision uint64           `json:"expected_revision"`
 	Report           string           `json:"report,omitempty" jsonschema:"maxLength=1048576"`
 }
 
 func standardGoalTool(manager GoalManager, session SessionView, run RunView) (ToolDefinition, error) {
-	tool, err := InferTool("goal", "Set, pause, resume, complete, block, or clear the durable Session goal using exact revision fences.\n\n使用精确版本约束来设置、暂停、恢复、完成、阻塞或清除持久化会话目标。", func(ctx context.Context, input goalToolInput) (ToolResult, error) {
+	tool, err := InferTool("goal", "Complete the exact active Session goal only after the entire objective is achieved, or block it only when progress genuinely requires user input or an external state change. Never use it for an intermediate milestone. Goal creation, pause, resume, and clear remain host-owned.\n\n仅当完整目标已实现时完成当前目标；仅当推进确实需要用户输入或外部状态变化时阻塞。不得将中间里程碑标记为终态。创建、暂停、恢复与清除仍由宿主控制。", func(ctx context.Context, input goalToolInput) (ToolResult, error) {
+		if !IsRootInvocation(ctx) {
+			return ToolResult{}, errors.New("Goal tool is available only in a root Agent invocation")
+		}
 		client := capabilityStateFromContext(ctx)
 		if client == nil {
 			return ToolResult{}, errors.New("Goal state client is unavailable")
 		}
+		if input.Action != GoalComplete && input.Action != GoalBlock {
+			return ToolResult{}, errors.New("Goal tool may only complete or block the active Goal")
+		}
 		state, err := client.updateGoal(ctx, manager, session, run, GoalMutation{
-			Kind: input.Action, Objective: input.Objective, ExpectedID: input.ExpectedID,
+			Kind: input.Action, ExpectedID: input.ExpectedID,
 			ExpectedRevision: input.ExpectedRevision, Report: input.Report,
 		})
 		if err != nil {

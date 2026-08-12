@@ -11,22 +11,100 @@ import (
 
 	"denova/config"
 	agentcontext "denova/internal/agents/context"
+	"denova/internal/agents/toolresult"
 
 	agent "github.com/alfredxw/denova/agent"
 	publiccompaction "github.com/alfredxw/denova/agent/compaction"
 )
 
 type denovaSummarizer struct {
-	model         agent.BaseChatModel
-	modelIdentity agent.CapabilityIdentity
-	agentKind     string
+	cfg                 *config.Config
+	model               agent.BaseChatModel
+	modelIdentity       agent.CapabilityIdentity
+	agentKind           string
+	contextWindowTokens int
+}
+
+// denovaManager preserves the generic manager contract while adding Denova's
+// cache-safety preflight. It advances a checkpoint before the exact primary
+// request no longer has room for the appended summary instruction and output
+// reserve, avoiding an unnecessary cold-prefix fallback.
+type denovaManager struct {
+	delegate            agent.CompactionManager
+	cfg                 *config.Config
+	agentKind           string
+	contextWindowTokens int
+	toolContextPolicy   toolresult.ContextPolicy
+	identity            agent.CapabilityIdentity
+}
+
+func newDenovaManager(delegate agent.CompactionManager, cfg *config.Config, agentKind string, contextWindowTokens int) agent.CompactionManager {
+	if delegate == nil {
+		return nil
+	}
+	return &denovaManager{
+		delegate: delegate, cfg: cfg, agentKind: agentKind, contextWindowTokens: contextWindowTokens,
+		toolContextPolicy: toolresult.ResolveContextPolicy(cfg, agentKind),
+		identity: capabilityIdentity("denova.compaction.manager", struct {
+			Delegate            agent.CapabilityIdentity
+			AgentKind           string
+			ContextWindowTokens int
+			ToolContext         toolresult.ContextPolicy
+		}{delegate.Identity(), agentKind, contextWindowTokens, toolresult.ResolveContextPolicy(cfg, agentKind)}),
+	}
+}
+
+func (manager *denovaManager) Identity() agent.CapabilityIdentity { return manager.identity }
+
+func (manager *denovaManager) SummaryLimitBytes() int { return manager.delegate.SummaryLimitBytes() }
+
+func (manager *denovaManager) Plan(
+	ctx context.Context,
+	request agent.CompactionPlanRequest,
+) (agent.CompactionPlan, error) {
+	plan, err := manager.delegate.Plan(ctx, request)
+	if err != nil || plan.Action != agent.CompactionNone || plan.SkippedReason != "below_trigger" || request.Force || request.ModelSnapshot == nil {
+		return plan, err
+	}
+	options := request.ModelSnapshot.ResolvedOptions()
+	window := manager.contextWindowTokens
+	completionReserve, toolReserve := estimateProjectionReservesAtWindow(manager.cfg, manager.agentKind, 0, window)
+	observedPromptTokens, _ := LatestPromptUsageCalibration(request.ModelRequest, options.Tools)
+	policy := agentcontext.ContextPressurePolicy{
+		AgentKind: manager.agentKind, ContextWindowTokens: window,
+		ReservedTokens: completionReserve + toolReserve, ObservedPromptTokens: observedPromptTokens,
+		CompactionPromptTokens:  ForkPromptReserve,
+		CheckpointOutputReserve: max(1024, min(8192, window/25)),
+		SafetyMarginTokens:      max(512, window/100),
+	}
+	if !ForkCapacityPressure(request.ModelRequest, options.Tools, policy, options) {
+		return plan, nil
+	}
+	forced := request
+	forced.Force = true
+	return manager.delegate.Plan(ctx, forced)
+}
+
+func (manager *denovaManager) Compact(
+	ctx context.Context,
+	request agent.CompactionCompactRequest,
+) (agent.CompactionCheckpoint, error) {
+	// SourceFrom/SourceTo and SourceHash remain authenticated raw transcript
+	// coordinates. Only the summarizer input is projected through the exact
+	// product visibility policy, so a checkpoint cannot resurrect tool bodies
+	// hidden from the provider while removal still restores complete raw data.
+	request.SourceMessages = toolresult.ApplyContextPolicy(
+		request.SourceMessages, manager.toolContextPolicy,
+	)
+	return manager.delegate.Compact(ctx, request)
 }
 
 func (summarizer denovaSummarizer) Identity() agent.CapabilityIdentity {
 	return capabilityIdentity("denova.compaction.summarizer", struct {
-		Model     agent.CapabilityIdentity
-		AgentKind string
-	}{summarizer.modelIdentity, summarizer.agentKind})
+		Model               agent.CapabilityIdentity
+		AgentKind           string
+		ContextWindowTokens int
+	}{summarizer.modelIdentity, summarizer.agentKind, summarizer.contextWindowTokens})
 }
 
 func (summarizer denovaSummarizer) Summarize(
@@ -36,22 +114,52 @@ func (summarizer denovaSummarizer) Summarize(
 	if summarizer.model == nil {
 		return publiccompaction.Summary{}, errors.New("Denova Compaction model is unavailable")
 	}
-	// ModelRequest is the exact provider-visible context. It includes custom
-	// host context such as interactive story history, while Messages alone is
-	// only the Agent-owned transcript range selected for replacement.
-	messages := cloneMessages(request.ModelRequest)
-	if len(messages) == 0 {
-		messages = cloneMessages(request.Messages)
+	policy := ResolvePolicy(summarizer.cfg, summarizer.agentKind)
+	policy.ContextWindowTokens = summarizer.contextWindowTokens
+	source := cloneMessages(request.Messages)
+	sourceTokens := agentcontext.EstimateTokens(source, nil)
+	coldFallback := func(
+		forkCtx context.Context,
+		_ *config.Config,
+		input SummaryRequest,
+		_ func(int, string),
+	) (string, error) {
+		messages := cloneMessages(input.Messages)
+		result, err := summarizer.model.Generate(forkCtx, messages, agent.WithToolChoice(agent.ToolChoiceForbidden))
+		if err != nil {
+			return "", err
+		}
+		if result == nil || strings.TrimSpace(result.Content) == "" || len(result.ToolCalls) != 0 {
+			return "", errors.New("Denova Compaction model returned an invalid checkpoint")
+		}
+		return strings.TrimSpace(result.Content), nil
 	}
-	messages = append(messages, agent.UserMessage(checkpointInstruction(summarizer.agentKind)))
-	result, err := summarizer.model.Generate(ctx, messages, agent.WithToolChoice(agent.ToolChoiceForbidden))
+	coldReason := ""
+	if request.ModelSnapshot == nil {
+		// Explicit structural compaction has no active provider call to fork.
+		// Preserve functionality through the bounded layered path; automatic
+		// compaction always supplies an exact snapshot.
+		coldReason = FallbackNoSnapshot
+	}
+	content, _, _, err := summarizeContextInLayers(
+		ctx,
+		summarizer.cfg,
+		summarizer.agentKind,
+		"",
+		source,
+		source,
+		"",
+		sourceTokens,
+		policy,
+		request.ModelSnapshot,
+		coldReason,
+		coldFallback,
+		nil,
+	)
 	if err != nil {
 		return publiccompaction.Summary{}, fmt.Errorf("generate Denova Compaction checkpoint: %w", err)
 	}
-	if result == nil || strings.TrimSpace(result.Content) == "" {
-		return publiccompaction.Summary{}, errors.New("Denova Compaction model returned an empty checkpoint")
-	}
-	content := strings.TrimSpace(result.Content)
+	content = strings.TrimSpace(content)
 	return publiccompaction.Summary{
 		Content: content, TokenEstimate: agentcontext.EstimateStringTokens(content),
 	}, nil
@@ -66,14 +174,32 @@ func NewAgentManager(
 	model agent.BaseChatModel,
 	modelIdentity agent.CapabilityIdentity,
 ) (agent.CompactionManager, error) {
-	settings := config.ResolveAgentContext(cfg, agentKind)
+	modelSettings := config.ResolveAgentModel(cfg, agentKind)
+	return NewAgentManagerForModel(cfg, agentKind, modelSettings.ContextWindowTokens, model, modelIdentity)
+}
+
+// NewAgentManagerForModel applies policy from policyKind while sizing every
+// pressure, reserve, validation, and summarization decision for the concrete
+// model used by this Definition. It is the correct seam for child Agents that
+// inherit a product policy but override their model.
+func NewAgentManagerForModel(
+	cfg *config.Config,
+	policyKind string,
+	contextWindowTokens int,
+	model agent.BaseChatModel,
+	modelIdentity agent.CapabilityIdentity,
+) (agent.CompactionManager, error) {
+	if contextWindowTokens <= 0 {
+		return nil, errors.New("Denova Compaction context window must be positive")
+	}
+	settings := config.ResolveAgentContext(cfg, policyKind)
 	hardLimit := settings.MaxProviderInputBytes
 	summaryLimit := min(settings.MaxFragmentBytes, settings.MaxTotalInjectedBytes, settings.MaxProviderInputBytes)
 	if !settings.CompactionEnabled {
 		return publiccompaction.Disabled(hardLimit, summaryLimit), nil
 	}
-	modelSettings := config.ResolveAgentModel(cfg, agentKind)
-	trigger := int(float64(modelSettings.ContextWindowTokens*4) * settings.CompactionThreshold)
+	completionReserve, toolReserve := estimateProjectionReservesAtWindow(cfg, policyKind, 0, contextWindowTokens)
+	trigger := int(float64(contextWindowTokens*4) * settings.CompactionThreshold)
 	if trigger <= 0 || trigger >= hardLimit {
 		trigger = int(float64(hardLimit) * settings.CompactionThreshold)
 	}
@@ -81,13 +207,23 @@ func NewAgentManager(
 	if keepRecent >= trigger {
 		keepRecent = trigger / 2
 	}
-	return publiccompaction.Standard(publiccompaction.StandardConfig{
+	manager, err := publiccompaction.Standard(publiccompaction.StandardConfig{
 		Summarizer: denovaSummarizer{
-			model: model, modelIdentity: modelIdentity, agentKind: agentKind,
+			cfg: cfg, model: model, modelIdentity: modelIdentity, agentKind: policyKind,
+			contextWindowTokens: contextWindowTokens,
 		},
 		TriggerBytes: trigger, KeepRecentBytes: keepRecent, HardLimitBytes: hardLimit,
-		SummaryLimitBytes: summaryLimit,
+		SummaryLimitBytes:   summaryLimit,
+		ContextWindowTokens: contextWindowTokens,
+		ReservedTokens:      completionReserve + toolReserve,
+		TriggerRatio:        settings.CompactionThreshold,
+		RecoveryBand:        config.DefaultContextCompactionRecoveryBand,
+		MinimumChangeTokens: max(256, contextWindowTokens/100),
 	})
+	if err != nil {
+		return nil, err
+	}
+	return newDenovaManager(manager, cfg, policyKind, contextWindowTokens), nil
 }
 
 func cloneMessages(messages []*agent.Message) []*agent.Message {
@@ -98,14 +234,6 @@ func cloneMessages(messages []*agent.Message) []*agent.Message {
 	return result
 }
 
-func checkpointInstruction(agentKind string) string {
-	mode := "Preserve the user's objective and constraints, current draft or implementation state, file and artifact references, decisions and rationale, verified results, rejected approaches, unresolved risks, and dependency-ordered next actions."
-	if agentKind == config.AgentKindInteractiveStory || agentKind == config.AgentKindInteractiveDirector {
-		mode = "Preserve event order and causality, source turn IDs, actor-state changes, lore sources, director-plan status, relationships, quests, foreshadowing, secrets, dangers, and countdowns."
-	}
-	return "Create a durable Markdown context checkpoint from the preceding conversation. " + mode + " Never invent missing evidence. Exclude private reasoning, UI-only logs, streaming fragments, and transport noise. Return only the checkpoint in concise Markdown.\n\n根据前述对话创建可持久恢复的 Markdown 上下文检查点。保留事实、约束、决策、验证结果和后续行动，不得编造缺失信息；排除私有推理、仅 UI 日志、流式片段和传输噪音。只返回简洁的检查点正文。"
-}
-
 func capabilityIdentity(kind string, configuration any) agent.CapabilityIdentity {
 	encoded, _ := json.Marshal(configuration)
 	digest := sha256.Sum256(encoded)
@@ -113,3 +241,4 @@ func capabilityIdentity(kind string, configuration any) agent.CapabilityIdentity
 }
 
 var _ publiccompaction.Summarizer = denovaSummarizer{}
+var _ agent.CompactionManager = (*denovaManager)(nil)

@@ -4,8 +4,6 @@ import (
 	"strings"
 
 	agent "github.com/alfredxw/denova/agent"
-
-	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 // CompleteUnknownToolResults repairs only a missing result half. A durable
@@ -54,7 +52,7 @@ func CompleteUnknownToolResults(messages []*agent.Message) []*agent.Message {
 				continue
 			}
 			completed = append(completed, agent.ToolMessage(
-				agent.SyntheticToolResult(agent.ToolResultError, agent.ToolSyntheticEffectUnknown, runstate.UnknownToolEffectResult),
+				agent.SyntheticToolResult(agent.ToolResultError, agent.ToolSyntheticEffectUnknown, agent.UnknownToolEffectResult),
 				callID,
 				agent.WithToolName(call.Function.Name),
 			))
@@ -70,5 +68,5 @@ func CompleteUnknownToolResults(messages []*agent.Message) []*agent.Message {
 }
 
 func IsUnknownEffectResult(content string) bool {
-	return strings.TrimSpace(content) == runstate.UnknownToolEffectResult
+	return strings.TrimSpace(content) == agent.UnknownToolEffectResult
 }

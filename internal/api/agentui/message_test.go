@@ -18,10 +18,6 @@ func TestMessagesFromHistoryConvertsLegacyEntries(t *testing.T) {
 		{ID: "tool-result-1", Role: "tool_result", Name: "read", Content: "ok"},
 		{ID: "ctx-1", Role: "context_compaction", Content: "压缩"},
 		{ID: "usage-1", Role: "token_usage", Content: "用量", TotalTokens: 12},
-		{ID: "ask-1", Role: "ask", Content: "选择方向", Status: session.AskPending, Ask: &session.AskInteraction{
-			Schema: "ask.pending.v1", ID: "ask-1", ToolCallID: "ask-1", AgentKind: "ide", Status: session.AskPending,
-			Questions: []session.AskQuestion{{ID: "q1", Question: "选择方向"}},
-		}},
 		{ID: "plan-1", Role: "proposed_plan", Content: "计划"},
 		{ID: "roll-1", Role: "rule_roll", Content: "检定"},
 		{ID: "image-1", Role: "interactive_image", Content: "图像"},
@@ -42,13 +38,12 @@ func TestMessagesFromHistoryConvertsLegacyEntries(t *testing.T) {
 	assertMessagePartType(t, messages[4], "assistant", DataTypeToolResult)
 	assertMessagePartType(t, messages[5], "assistant", DataTypeContextCompaction)
 	assertMessagePartType(t, messages[6], "assistant", DataTypeTokenUsage)
-	assertMessagePartType(t, messages[7], "assistant", DataTypeAsk)
-	assertMessagePartType(t, messages[8], "assistant", DataTypeProposedPlan)
-	assertMessagePartType(t, messages[9], "assistant", DataTypeRuleRoll)
-	assertMessagePartType(t, messages[10], "assistant", DataTypeInteractiveImage)
-	assertMessagePartType(t, messages[11], "assistant", DataTypeSystem)
-	assertMessagePartType(t, messages[12], "assistant", DataTypeError)
-	assertMessagePartType(t, messages[13], "assistant", DataTypeClear)
+	assertMessagePartType(t, messages[7], "assistant", DataTypeProposedPlan)
+	assertMessagePartType(t, messages[8], "assistant", DataTypeRuleRoll)
+	assertMessagePartType(t, messages[9], "assistant", DataTypeInteractiveImage)
+	assertMessagePartType(t, messages[10], "assistant", DataTypeSystem)
+	assertMessagePartType(t, messages[11], "assistant", DataTypeError)
+	assertMessagePartType(t, messages[12], "assistant", DataTypeClear)
 
 	if messages[1].Metadata["run_id"] != "run-1" {
 		t.Fatalf("expected run metadata to be preserved, got %#v", messages[1].Metadata)
@@ -59,9 +54,6 @@ func TestMessagesFromHistoryConvertsLegacyEntries(t *testing.T) {
 	}
 	if messages[6].Parts[0]["data"].(map[string]any)["total_tokens"] != 12 {
 		t.Fatalf("expected token usage payload, got %#v", messages[6].Parts[0]["data"])
-	}
-	if messages[7].Parts[0]["data"].(map[string]any)["id"] != "ask-1" {
-		t.Fatalf("expected Ask payload, got %#v", messages[7].Parts[0]["data"])
 	}
 }
 

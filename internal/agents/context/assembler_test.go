@@ -9,11 +9,6 @@ import (
 	agent "github.com/alfredxw/denova/agent"
 )
 
-type fixedProjector struct {
-	descriptor ContextDescriptor
-	fragments  []Fragment
-}
-
 func TestAssemblerRejectsUnknownPlacement(t *testing.T) {
 	_, err := NewAssembler(Budget{}).Assemble(stdcontext.Background(), AssembleRequest{
 		Messages: []*agent.Message{agent.UserMessage("继续写")},
@@ -193,39 +188,6 @@ func TestAssemblerBoundsMetadataFieldsAndLedgerPreviewAtUTF8Boundaries(t *testin
 	}
 }
 
-func TestAssemblerBoundsMatchingProjectorMetadataBeforeValidation(t *testing.T) {
-	result, err := NewAssembler(Budget{
-		MaxFragments:          2,
-		MaxMetadataFieldBytes: 7,
-		MaxFragmentBytes:      64,
-		MaxTotalBytes:         512,
-	}).Assemble(stdcontext.Background(), AssembleRequest{
-		Messages: []*agent.Message{agent.UserMessage("继续写")},
-		Projectors: []ContextProjector{fixedProjector{
-			descriptor: ContextDescriptor{
-				ID:        "标识标识",
-				Source:    "来源来源",
-				Purpose:   "用途用途",
-				Placement: PlacementFinalUserPrefix,
-			},
-			fragments: []Fragment{{
-				Source:   "来源来源",
-				Purpose:  "用途用途",
-				Title:    "标题标题",
-				Content:  "正文",
-				Included: true,
-			}},
-		}},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	fragment := result.Fragments[0]
-	if fragment.ID != "标识" || fragment.Source != "来源" || fragment.Purpose != "用途" || fragment.Title != "标题" {
-		t.Fatalf("projector metadata was not bounded consistently: %#v", fragment)
-	}
-}
-
 func TestAuditOnlyFragmentDoesNotEnterModelMessages(t *testing.T) {
 	result, err := NewAssembler(Budget{}).Assemble(stdcontext.Background(), AssembleRequest{
 		Messages: []*agent.Message{agent.UserMessage("继续写")},
@@ -286,14 +248,6 @@ func TestAssemblerDoesNotPrefixNonUserFinalMessage(t *testing.T) {
 	}
 }
 
-func (p fixedProjector) Descriptor() ContextDescriptor {
-	return p.descriptor
-}
-
-func (p fixedProjector) Project(stdcontext.Context) ([]Fragment, error) {
-	return append([]Fragment(nil), p.fragments...), nil
-}
-
 func TestAssemblerEnforcesFragmentBudgetsAndAccountsCompleteInjection(t *testing.T) {
 	const userMessage = "继续写"
 	const wantMessage = "# 作品大纲\n\n状态快照可能过期，以工具读取为准。\n\nabcde\n\n> " + truncationNotice + "\n\n---\n\n# 作品进度\n\n状态快照可能过期，以工具读取为准。\n\nwxyzw\n\n> " + truncationNotice + "\n\n---\n\n# 本轮用户请求（最高优先级）\n\n继续写"
@@ -347,35 +301,5 @@ func TestAssemblerEnforcesFragmentBudgetsAndAccountsCompleteInjection(t *testing
 	}
 	if len(result.Ledger) != 2 || result.Ledger[0].Hash == "" || result.Ledger[1].Hash == "" {
 		t.Fatalf("ledger must retain fragment hashes: %#v", result.Ledger)
-	}
-}
-
-func TestAssemblerAppliesProjectorDescriptorToEveryFragment(t *testing.T) {
-	assembler := NewAssembler(Budget{MaxFragmentBytes: 64, MaxTotalBytes: 512})
-	result, err := assembler.Assemble(stdcontext.Background(), AssembleRequest{
-		Messages: []*agent.Message{agent.UserMessage("继续写")},
-		Projectors: []ContextProjector{fixedProjector{
-			descriptor: ContextDescriptor{
-				ID:        "writing.progress",
-				Source:    "workspace.progress",
-				Purpose:   "定位本轮续写起点",
-				Placement: PlacementFinalUserPrefix,
-				Limit:     4,
-			},
-			fragments: []Fragment{{Title: "当前进度", Content: "abcdef", Included: true}},
-		}},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(result.Fragments) != 1 {
-		t.Fatalf("fragments = %d, want 1", len(result.Fragments))
-	}
-	fragment := result.Fragments[0]
-	if fragment.ID != "writing.progress" || fragment.Source != "workspace.progress" || fragment.Purpose != "定位本轮续写起点" || fragment.Placement != PlacementFinalUserPrefix {
-		t.Fatalf("projector descriptor was not applied: %#v", fragment)
-	}
-	if fragment.Content != "abcd" || fragment.Limit != 4 || !fragment.Truncated || fragment.Hash == "" {
-		t.Fatalf("projected fragment was not bounded and audited: %#v", fragment)
 	}
 }

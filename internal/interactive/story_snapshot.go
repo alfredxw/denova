@@ -75,34 +75,6 @@ func snapshotFromLines(storyID, branchID string, meta StoryMeta, lines []StoryEv
 			for _, op := range delta.ActorOps {
 				applyActorStateOp(state, op)
 			}
-		case StoryEventTypeCompaction:
-			var compaction ContextCompactionEvent
-			if err := mapToStruct(record.Raw, &compaction); err != nil {
-				return Snapshot{}, err
-			}
-			snapshot.ContextCompaction = &compaction
-			snapshot.ToolResultCleanup = nil
-		case StoryEventTypeCompactionRemoved:
-			var removal ContextCompactionRemovalEvent
-			if err := mapToStruct(record.Raw, &removal); err != nil {
-				return Snapshot{}, err
-			}
-			snapshot.ContextCompaction = nil
-			snapshot.ContextCompactionRemoval = &removal
-			snapshot.ToolResultCleanup = nil
-		case StoryEventTypeCompactionHealth:
-			// Health is an audit-only branch projection and never part of UI or
-			// model-visible snapshots.
-		case StoryEventTypeToolResultCleanup:
-			var cleanup ToolResultCleanupEvent
-			if err := mapToStruct(record.Raw, &cleanup); err != nil {
-				return Snapshot{}, err
-			}
-			normalized, err := normalizeToolResultCleanupEvent(cleanup)
-			if err != nil {
-				return Snapshot{}, err
-			}
-			snapshot.ToolResultCleanup = &normalized
 		case StoryEventTypePlayerInput, StoryEventTypeModelContextBatch, StoryEventTypeBranch, StoryEventTypeHotChoices, StoryEventTypeTurnVersionSelected:
 			// These are side/audit events. They are projected separately or are
 			// intentionally absent from model-visible turn/state history.
@@ -454,25 +426,6 @@ func nearestTurnAncestor(head string, events map[string]StoryEventRecord) string
 		id = parentIDFromRaw(record.Raw)
 	}
 	return ""
-}
-
-func nextContextCompactionEpoch(lines []StoryEventRecord, head string) int {
-	events := eventsByID(lines)
-	path, _ := eventPath(head, events)
-	epoch := 0
-	for _, record := range path {
-		if record.Envelope.Type != StoryEventTypeCompaction {
-			continue
-		}
-		var compaction ContextCompactionEvent
-		if err := mapToStruct(record.Raw, &compaction); err != nil {
-			continue
-		}
-		if compaction.Epoch > epoch {
-			epoch = compaction.Epoch
-		}
-	}
-	return epoch + 1
 }
 
 func branchSummaries(meta StoryMeta) []BranchSummary {

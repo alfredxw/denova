@@ -1,14 +1,41 @@
 package agent
 
 import (
+	"context"
 	"errors"
 	"strings"
+	"sync/atomic"
 	"testing"
+
+	agentsession "github.com/alfredxw/denova/agent/session"
 )
+
+type boundedTestContextSource struct {
+	identity  CapabilityIdentity
+	fragments []ContextFragment
+}
+
+func (source boundedTestContextSource) Identity() CapabilityIdentity { return source.identity }
+
+func (source boundedTestContextSource) Materialize(context.Context, ContextRequest) ([]ContextFragment, error) {
+	return append([]ContextFragment(nil), source.fragments...), nil
+}
+
+type contextBoundaryModel struct{ calls atomic.Int32 }
+
+func (model *contextBoundaryModel) Generate(context.Context, []*Message, ...ModelOption) (*Message, error) {
+	model.calls.Add(1)
+	return AssistantMessage("unexpected", nil), nil
+}
+
+func (model *contextBoundaryModel) Stream(context.Context, []*Message, ...ModelOption) (*StreamReader[*Message], error) {
+	model.calls.Add(1)
+	return StreamReaderFromArray([]*Message{AssistantMessage("unexpected", nil)}), nil
+}
 
 func TestAssembleCycleMessagesPreservesVerbatimHostRendering(t *testing.T) {
 	transcript := []*Message{UserMessage("earlier"), AssistantMessage("answer", nil)}
-	messages, persisted, err := assembleCycleMessages(transcript, "raw request", []ContextFragment{
+	messages, modelUser, err := assembleCycleMessages(transcript, "raw request", []ContextFragment{
 		{
 			Source: "denova.stable", Purpose: "preserve localized stable context", Resource: "CREATOR.md",
 			Revision: "1", Placement: ContextLeadingMessage, Rendering: ContextRenderVerbatim,
@@ -27,8 +54,49 @@ func TestAssembleCycleMessagesPreservesVerbatimHostRendering(t *testing.T) {
 		messages[3].Content != "# 本轮上下文\n\n状态\n\n---\n\n# 本轮用户请求（最高优先级）\n\nraw request" {
 		t.Fatalf("messages = %#v", messages)
 	}
-	if persisted == nil || persisted.Content != messages[3].Content {
-		t.Fatalf("persisted user = %#v", persisted)
+	if modelUser == nil || modelUser.Content != messages[3].Content {
+		t.Fatalf("model user = %#v", modelUser)
+	}
+}
+
+func TestFinalUserRenderingDoesNotReplaceDurableRawTranscript(t *testing.T) {
+	model := &lifecycleModel{responses: []*Message{AssistantMessage("answer", nil)}}
+	owner, err := New(context.Background(), Definition{
+		Key: "raw-final-user", Model: model,
+		ModelIdentity: CapabilityIdentity{Kind: "model.raw-final-user", Version: 1},
+		Context:       &mutableFinalContext{content: "localized model-only turn"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = owner.Close(context.Background()) })
+	session, err := owner.Session(context.Background(), NamedSession("raw-final-user"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, err := session.Run(context.Background(), Text("raw player action"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result, waitErr := run.Wait(context.Background()); waitErr != nil || result.Status != ResultCompleted {
+		t.Fatalf("result=%#v error=%v", result, waitErr)
+	}
+	checkpoint, err := session.harness.EngineCheckpoint(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	transcript, err := decodeEngineTranscript(checkpoint.State)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(transcript.Messages) != 2 || transcript.Messages[0].Content != "raw player action" ||
+		transcript.Messages[1].Content != "answer" || transcript.ActiveModelUser != nil {
+		t.Fatalf("durable transcript = %#v", transcript)
+	}
+	calls := model.calls()
+	if len(calls) != 1 || len(calls[0]) == 0 ||
+		!strings.Contains(calls[0][len(calls[0])-1].Content, "localized model-only turn") {
+		t.Fatalf("model-visible messages = %#v", calls)
 	}
 }
 
@@ -78,5 +146,68 @@ func TestAttributedContextOmitsEmptyRevision(t *testing.T) {
 		if !strings.Contains(rendered, required) {
 			t.Fatalf("attributed context missing %q:\n%s", required, rendered)
 		}
+	}
+}
+
+func TestContextSourceIdentityAndDeclaredBoundsFailClosedBeforeModel(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		identity   CapabilityIdentity
+		fragments  []ContextFragment
+		wantError  string
+		persistent bool
+	}{
+		{
+			name: "durable source requires identity", persistent: true,
+			fragments: []ContextFragment{{
+				Source: "host", Purpose: "test", Resource: "state", Placement: ContextLeadingMessage,
+				Content: "bounded", HardLimit: 64 << 10,
+			}},
+			wantError: "Context capability identity is incomplete",
+		},
+		{
+			name:     "fragment cannot raise its declared bound after rendering",
+			identity: CapabilityIdentity{Kind: "context.test.bounded", Version: 1},
+			fragments: []ContextFragment{{
+				Source: "host", Purpose: "test", Resource: "state", Placement: ContextLeadingMessage,
+				Content: "sixbytes", HardLimit: 5,
+			}},
+			wantError: "exceeds its 5-byte hard limit",
+		},
+		{
+			name:     "fragment provenance is mandatory",
+			identity: CapabilityIdentity{Kind: "context.test.provenance", Version: 1},
+			fragments: []ContextFragment{{
+				Purpose: "test", Resource: "state", Placement: ContextLeadingMessage,
+				Content: "bounded", HardLimit: 64 << 10,
+			}},
+			wantError: "requires source, purpose, resource, and HardLimit",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			model := &contextBoundaryModel{}
+			options := []Option(nil)
+			if test.persistent {
+				options = append(options, WithSessionStore(&persistentMemoryStore{Store: agentsession.Memory()}))
+			}
+			owner, err := New(context.Background(), Definition{
+				Model: model, ModelIdentity: CapabilityIdentity{Kind: "model.test.context-boundary", Version: 1},
+				Context: boundedTestContextSource{identity: test.identity, fragments: test.fragments},
+			}, options...)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = owner.Close(context.Background()) })
+			run, err := owner.Run(context.Background(), Input{Text: "inspect", IdempotencyKey: "context-boundary-" + test.name})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := run.Wait(context.Background()); err == nil || !strings.Contains(err.Error(), test.wantError) {
+				t.Fatalf("Run error = %v, want %q", err, test.wantError)
+			}
+			if calls := model.calls.Load(); calls != 0 {
+				t.Fatalf("invalid Context reached model %d time(s)", calls)
+			}
+		})
 	}
 }

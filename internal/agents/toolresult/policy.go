@@ -72,10 +72,19 @@ func FilterStructured(toolName string, descriptor agent.ToolDescriptor, args str
 	return filterWithManifest(ManifestForDefinition(toolName, descriptor), args, result, maxBytes)
 }
 
+// ProjectAudit creates a separately bounded ledger projection without
+// mutating the lossless result that continues to the public ResultProcessor.
+func ProjectAudit(toolName string, descriptor agent.ToolDescriptor, args string, result agent.ToolResult, maxBytes int) Filtered {
+	result.Artifacts = append([]agent.ToolArtifactRef(nil), result.Artifacts...)
+	result.Effects = append([]agent.Effect(nil), result.Effects...)
+	return filterWithManifest(ManifestForDefinition(toolName, descriptor), args, result, maxBytes)
+}
+
 func filterWithManifest(manifest Manifest, args string, result agent.ToolResult, maxBytes int) Filtered {
+	prepared := PrepareStructured(manifest.Name, manifest.ToolDescriptor, args, result)
+	manifest = prepared.Manifest
+	result = prepared.Result
 	manifest.MaxResultBytes = NormalizeLimitBytes(firstPositive(maxBytes, manifest.MaxResultBytes))
-	result.ModelContent = workspacechange.ToolReceiptForModel(manifest.Name, result.ModelContent)
-	prepareToolResultProjectionMetadata(manifest, args, &result)
 
 	normalized, err := agent.NormalizeToolResult(result, manifest.ToolDescriptor)
 	if err != nil {
@@ -85,6 +94,17 @@ func filterWithManifest(manifest Manifest, args string, result agent.ToolResult,
 	}
 	normalized = ProjectReceipt(manifest, args, normalized)
 	return Filtered{Result: normalized, Manifest: manifest}
+}
+
+// PrepareStructured applies Denova's semantic model projection and stable
+// audit metadata without bounding or normalizing the result. The public
+// Agent ResultProcessor must receive this lossless value; callers that need a
+// bounded ledger copy must create one independently through ProjectAudit.
+func PrepareStructured(toolName string, descriptor agent.ToolDescriptor, args string, result agent.ToolResult) Filtered {
+	manifest := ManifestForDefinition(toolName, descriptor)
+	result.ModelContent = workspacechange.ToolReceiptForModel(manifest.Name, result.ModelContent)
+	prepareToolResultProjectionMetadata(manifest, args, &result)
+	return Filtered{Result: result, Manifest: manifest}
 }
 
 func prepareToolResultProjectionMetadata(manifest Manifest, args string, result *agent.ToolResult) {

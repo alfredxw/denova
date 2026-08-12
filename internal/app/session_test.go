@@ -8,6 +8,7 @@ import (
 	"denova/config"
 	agents "denova/internal/agents"
 	agentchat "denova/internal/agents/chat"
+	agentexecution "denova/internal/agents/execution"
 	"denova/internal/agents/session"
 	configmanagerapp "denova/internal/app/configmanager"
 )
@@ -84,6 +85,7 @@ func TestAppSwitchSessionUsesCurrentSessionHistoryOnly(t *testing.T) {
 }
 
 func TestAppDeleteActiveSessionSwitchesToRemainingSession(t *testing.T) {
+	workspace := t.TempDir()
 	store, err := session.NewStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -92,7 +94,12 @@ func TestAppDeleteActiveSessionSwitchesToRemainingSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	app := &App{sessionStore: store, session: first}
+	executionRuntime := agentexecution.NewEphemeralRuntime()
+	t.Cleanup(func() { _ = executionRuntime.Close(context.Background()) })
+	app := &App{
+		sessionStore: store, session: first, workspace: workspace,
+		executionRuntime: executionRuntime, cfg: &config.Config{Workspace: workspace, ProjectStateDir: t.TempDir()},
+	}
 	second, err := app.CreateSession("会话 B")
 	if err != nil {
 		t.Fatal(err)

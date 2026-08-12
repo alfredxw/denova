@@ -40,9 +40,9 @@ type SessionCommitterConfig struct {
 	Options      agentrun.Options
 	Request      agentchat.ChatRequest
 
-	ProjectOutput  SessionOutputProjector
-	ApplyEffects   func(context.Context, []agent.EffectRequest) ([]agent.EffectResult, error)
-	InputCommitted func(context.Context) error
+	ProjectOutput SessionOutputProjector
+	ApplyEffects  func(context.Context, []agent.EffectRequest) ([]agent.EffectResult, error)
+	InputEffect   agentrun.InputCommitEffect
 }
 
 type sessionConversationCommitter struct {
@@ -72,12 +72,13 @@ func (committer *sessionConversationCommitter) MaterializeInput(
 	if err != nil {
 		return agent.CommitReceipt{}, err
 	}
-	if committer.config.InputCommitted != nil {
+	if committer.config.InputEffect != nil {
+		effectRequest := inputEffectRequest(request.Identity, request.Hash)
 		committer.mu.Lock()
 		_, called := committer.inputCallbacks[request.Hash]
 		committer.mu.Unlock()
 		if !called {
-			if err := committer.config.InputCommitted(ctx); err != nil {
+			if err := committer.config.InputEffect.Apply(ctx, effectRequest); err != nil {
 				return agent.CommitReceipt{}, fmt.Errorf("run Denova input-commit callback: %w", err)
 			}
 			committer.mu.Lock()
@@ -108,6 +109,9 @@ func (committer *sessionConversationCommitter) CommitOutput(
 	if options.RootAgentName != "" {
 		metadata.RunPath = []string{options.RootAgentName}
 	}
+	if prepared.ResumeInterruption != nil {
+		metadata.ResolveInterruptionID = prepared.ResumeInterruption.ID
+	}
 	projection := SessionOutputCommit{Message: request.Message.Clone(), Metadata: metadata}
 	var err error
 	if committer.config.ProjectOutput != nil {
@@ -125,18 +129,13 @@ func (committer *sessionConversationCommitter) CommitOutput(
 	if err != nil {
 		return agent.OutputCommitReceipt{}, err
 	}
-	if prepared.ResumeInterruption != nil {
-		if err := committer.config.Conversation.ResolveInterruption(prepared.ResumeInterruption.ID); err != nil {
-			return agent.OutputCommitReceipt{}, fmt.Errorf("resolve Denova interruption: %w", err)
-		}
-	}
 	return agent.OutputCommitReceipt{
 		Revision: strconv.FormatUint(receipt.ContextRevision, 10), Transcript: projection.Transcript,
 	}, nil
 }
 
 func (committer *sessionConversationCommitter) Reconcile(
-	_ context.Context,
+	ctx context.Context,
 	request agent.ReconcileRequest,
 ) (agent.ReconcileResult, error) {
 	identity := session.DomainCommitIdentity{
@@ -154,9 +153,21 @@ func (committer *sessionConversationCommitter) Reconcile(
 	if err != nil || !found {
 		return agent.ReconcileResult{Found: found}, err
 	}
+	if request.Identity.Stage == agent.CommitInput && committer.config.InputEffect != nil {
+		found, err = committer.config.InputEffect.Reconcile(ctx, inputEffectRequest(request.Identity, request.Hash))
+		if err != nil || !found {
+			return agent.ReconcileResult{Found: found}, err
+		}
+	}
 	return agent.ReconcileResult{
 		Found: true, Revision: strconv.FormatUint(receipt.ContextRevision, 10),
 	}, nil
+}
+
+func inputEffectRequest(identity agent.CommitIdentity, hash string) agentrun.InputCommitEffectRequest {
+	return agentrun.InputCommitEffectRequest{
+		CommandID: identity.CommandID, OperationID: identity.RunID, Cycle: identity.Cycle, Hash: hash,
+	}
 }
 
 func (committer *sessionConversationCommitter) ApplyEffects(

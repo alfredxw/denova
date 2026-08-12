@@ -27,6 +27,15 @@ type Cycle struct {
 	Successor    SuccessorPolicy
 }
 
+// CanonicalTranscriptSynchronizer is the narrow product-history bootstrap
+// seam used before public Run admission. It must be provider-free and return a
+// complete canonical raw transcript for this exact durable Session lane.
+// Session.SyncTranscript owns idle fencing, provenance CAS, validation, and
+// structural rebuild semantics.
+type CanonicalTranscriptSynchronizer interface {
+	CanonicalTranscript(context.Context) (agent.TranscriptSyncRequest, error)
+}
+
 type SuccessorPolicy func(context.Context, agentrun.OperationID, agentrun.Outcome) error
 
 type CycleRestoreRequest struct {

@@ -44,10 +44,11 @@ type EffectResult = agent.EffectResult
 // Config declares Denova-owned storage and operational limits. The durable
 // root is explicit so tests and alternative hosts do not rely on globals.
 type Config struct {
-	StoreRoot      string
-	Limits         agent.Limits
-	Trace          agent.TraceSink
-	RunIDGenerator agent.RunIDGenerator
+	StoreRoot         string
+	Limits            agent.Limits
+	Trace             agent.TraceSink
+	RunIDGenerator    agent.RunIDGenerator
+	CacheKeyGenerator agent.CacheKeyGenerator
 }
 
 // DefaultRunIDGenerator is Denova's application-owned execution identity
@@ -74,6 +75,9 @@ func New(ctx context.Context, source agent.Source, config Config) (*Agent, error
 	}
 	options := []agent.Option{
 		agent.WithSessionStore(store), agent.WithLimits(config.Limits), agent.WithRunIDGenerator(runIDs),
+	}
+	if config.CacheKeyGenerator != nil {
+		options = append(options, agent.WithCacheKeyGenerator(config.CacheKeyGenerator))
 	}
 	if config.Trace != nil {
 		options = append(options, agent.WithTrace(config.Trace))

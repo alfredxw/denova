@@ -105,7 +105,10 @@ func TestConcurrentColdWritingRecoveryCreatesOneDisplayTask(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if replayed.Task != task || replayed.Receipt.CommandID != abortAction.CommandID {
+	// Abort is authorized by its opaque recovery ActionID and deliberately has
+	// no caller command ID. The attached durable Run receipt still identifies
+	// the original accepted input that owns the interrupted operation.
+	if replayed.Task != task || replayed.Receipt.CommandID != "writing-recovery-start" || replayed.Receipt.OperationID != abortAction.OperationID {
 		t.Fatalf("repeated abort recovery = %#v task=%p", replayed, task)
 	}
 	select {

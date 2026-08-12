@@ -2,6 +2,9 @@ package chat
 
 import (
 	"context"
+
+	agent "github.com/alfredxw/denova/agent"
+
 	agentcontext "denova/internal/agents/context"
 	agentconversation "denova/internal/agents/conversation"
 	agentrun "denova/internal/agents/run"
@@ -40,7 +43,7 @@ func TestPrepareTurnContextIsPureUntilExplicitCommit(t *testing.T) {
 	if prepared.OriginalMessage != "告诉我当前时间" || prepared.ResumeInterruption != nil {
 		t.Fatalf("prepared turn identity = %#v", prepared)
 	}
-	final := finalModelUserMessage(prepared.ModelContext.Messages, "")
+	final := lastUserMessageContent(prepared.ModelContext.Messages)
 	if !strings.Contains(final, "Captured at: 2026-07-24T07:30:20Z") ||
 		!strings.HasSuffix(strings.TrimSpace(final), "告诉我当前时间") {
 		t.Fatalf("prepared model input is missing the runtime snapshot or raw request:\n%s", final)
@@ -53,6 +56,15 @@ func TestPrepareTurnContextIsPureUntilExplicitCommit(t *testing.T) {
 	if len(visible) != 1 || visible[0].Content != "告诉我当前时间" {
 		t.Fatalf("commit must persist only the raw user message: %#v", visible)
 	}
+}
+
+func lastUserMessageContent(messages []*agent.Message) string {
+	for index := len(messages) - 1; index >= 0; index-- {
+		if messages[index] != nil && messages[index].Role == agent.User {
+			return messages[index].Content
+		}
+	}
+	return ""
 }
 
 func TestPrepareTurnContextCarriesUserReferencesIntoCommitState(t *testing.T) {

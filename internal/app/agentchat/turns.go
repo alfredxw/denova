@@ -209,13 +209,8 @@ func (service *Service) AcceptTurn(ctx context.Context, input TurnRequest) (*Acc
 	if err := applyTurnPolicy(&runtime, input.Policy); err != nil {
 		return nil, err
 	}
-	goalTools, err := appagentruntime.GoalTools(ctx, runtime.Session)
-	if err != nil {
-		return nil, fmt.Errorf("build AgentChat goal tool: %w", err)
-	}
 	builtAgent, err := appagentruntime.BuildConversationAgent(
 		ctx, &runtime.Config, runtime.State, runtime.IDETeller, runtime.AgentKind,
-		goalTools...,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("build AgentChat Project Agent: %w", err)
@@ -270,7 +265,6 @@ func (service *Service) AcceptTurn(ctx context.Context, input TurnRequest) (*Acc
 			BookService:  runtime.BookService,
 			Request:      request,
 			Options:      options,
-			Successor:    service.goalSuccessor(active),
 		},
 		Emit: emit,
 	})
@@ -379,30 +373,6 @@ func (service *Service) SubmitCommand(ctx context.Context, binding Binding, comm
 	})
 }
 
-func (service *Service) goalSuccessor(active *run) agentexecution.SuccessorPolicy {
-	var successor agentexecution.SuccessorPolicy
-	successor = func(ctx context.Context, parent agentrun.OperationID, _ agentrun.Outcome) error {
-		if active == nil || active.task == nil || active.runtime.Session == nil {
-			return nil
-		}
-		if !config.ResolveAgentTools(&active.runtime.Config, active.runtime.AgentKind).Allows(config.AgentToolGoal) {
-			return nil
-		}
-		current, ok, err := active.runtime.Session.Goal(ctx)
-		if err != nil || !ok || !current.IsActive() {
-			return err
-		}
-		commandID, input := appagentruntime.GoalContinuationRequest(current, parent, active.request.Locale)
-		_, err = active.runtime.ExecutionRuntime.SubmitCommand(ctx, agentexecution.CommandRequest{
-			Kind: agentexecution.CommandNextTurn, CommandID: commandID,
-			AfterOperationID: parent, Request: input, Emit: active.task.Emit,
-			Options: runtimeOptions(active.binding, active.task.ID()),
-		})
-		return err
-	}
-	return successor
-}
-
 func (service *Service) prepareCommandExecution(ctx context.Context, active *run, request chatagent.ChatRequest) (agentexecution.Cycle, error) {
 	runtime, resolved, err := conversationapp.Prepare(ctx, active.runtime, request)
 	if err != nil {
@@ -411,13 +381,8 @@ func (service *Service) prepareCommandExecution(ctx context.Context, active *run
 	if err := applyTurnPolicy(&runtime, active.policy); err != nil {
 		return agentexecution.Cycle{}, err
 	}
-	goalTools, err := appagentruntime.GoalTools(ctx, runtime.Session)
-	if err != nil {
-		return agentexecution.Cycle{}, err
-	}
 	builtAgent, err := appagentruntime.BuildConversationAgent(
 		ctx, &runtime.Config, runtime.State, runtime.IDETeller, runtime.AgentKind,
-		goalTools...,
 	)
 	if err != nil {
 		return agentexecution.Cycle{}, err

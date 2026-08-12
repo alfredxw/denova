@@ -6,13 +6,13 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"denova/config"
-	agentconversation "denova/internal/agents/conversation"
 	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
@@ -26,7 +26,7 @@ import (
 	projectdomain "denova/internal/project"
 	workspacechange "denova/internal/workspace/change"
 
-	runstate "github.com/alfredxw/denova/agent/runtime"
+	agent "github.com/alfredxw/denova/agent"
 )
 
 // Legacy test names remain local to this package while the tests are migrated
@@ -127,6 +127,53 @@ func (profile testAgentChatExecutionProfile) PrepareCycle(
 		return agentexecution.Cycle{}, agentexecution.ErrCyclePreparationUnavailable
 	}
 	return profile.application.agentChatApp.PrepareCycle(ctx, request, request.Binding)
+}
+
+func (profile testAgentChatExecutionProfile) CanonicalInput(
+	ctx context.Context,
+	request agentexecution.CanonicalInputRequest,
+) (agent.CanonicalAdapter, error) {
+	if profile.application == nil {
+		return nil, agentexecution.ErrCyclePreparationUnavailable
+	}
+	target := automation.ExecutionTarget{
+		Kind: automation.TargetKindWorkspace, ProjectID: request.Binding.ProjectID, Workspace: request.Binding.Workspace,
+	}
+	runtime, err := profile.application.RuntimeForTarget(ctx, target)
+	if err != nil {
+		return nil, err
+	}
+	if runtime.SessionStore == nil {
+		return nil, errors.New("test AgentChat canonical Session store is unavailable")
+	}
+	sess, err := runtime.SessionStore.Get(request.Binding.SessionID)
+	if err != nil {
+		return nil, err
+	}
+	identity := session.DomainCommitIdentity{
+		CommandID: string(request.CommandID), OperationID: string(request.RunID), Cycle: request.Cycle,
+	}
+	return agent.CanonicalAdapterFuncs{
+		CapabilityIdentity: request.Identity,
+		MaterializeInputFn: func(ctx context.Context, input agent.InputCommitRequest) (agent.CommitReceipt, error) {
+			intent, err := session.NewDomainCommitIntent(identity, agent.UserMessage(request.Input.Text), session.MessageMetadata{
+				AgentKind: request.Options.AgentKind,
+			})
+			if err != nil {
+				return agent.CommitReceipt{}, err
+			}
+			intent, err = intent.WithAgentCanonicalHash(input.Hash)
+			if err != nil {
+				return agent.CommitReceipt{}, err
+			}
+			receipt, err := sess.CommitDomainMessageContext(ctx, intent)
+			return agent.CommitReceipt{Revision: strconv.FormatUint(receipt.ContextRevision, 10)}, err
+		},
+		ReconcileFn: func(_ context.Context, reconcile agent.ReconcileRequest) (agent.ReconcileResult, error) {
+			receipt, found, err := sess.FindAgentCanonicalCommit(identity, agent.User, reconcile.Hash)
+			return agent.ReconcileResult{Found: found, Revision: strconv.FormatUint(receipt.ContextRevision, 10)}, err
+		},
+	}, nil
 }
 
 func New(ctx context.Context, cfg *config.Config) (*App, error) {
@@ -234,16 +281,6 @@ func (host testAgentChatHost) ProjectVersionService(projectID string) (*book.Ver
 
 func (host testAgentChatHost) CurrentWorkspace() string {
 	return host.app.CurrentWorkspace()
-}
-
-func (host testAgentChatHost) ResolveAsk(
-	ctx context.Context,
-	target *session.Session,
-	_, _, askID, status string,
-	answers []agentconversation.HostAskAnswer,
-	cancelReason string,
-) (agentconversation.HostAskResolution, error) {
-	return agentconversation.ResolveAsk(ctx, target, askID, status, answers, cancelReason)
 }
 
 func (host testAgentChatHost) OnVerifiedMutations(
@@ -795,23 +832,19 @@ func (application *App) WithWorkspaceChangeMutation(
 	return runtime.Workspace, nil
 }
 
-func appRuntimeBindingForTest(binding agentrun.RuntimeBinding) runstate.BindingRef {
-	ref, err := binding.Ref()
-	if err != nil {
-		panic(err)
-	}
-	return ref
-}
-
-func automationRuntimeBindingForTest(workspace, sessionID, _ string, projectIDs ...string) runstate.BindingRef {
+func automationRuntimeBindingForTest(workspace, sessionID, _ string, projectIDs ...string) agentrun.RuntimeBinding {
 	projectID := ""
 	if len(projectIDs) > 0 {
 		projectID = projectIDs[0]
 	}
-	return appRuntimeBindingForTest(agentrun.RuntimeBinding{
+	binding, err := agentrun.RuntimeBindingForOptions(agentrun.Options{
 		AgentKind: agentrun.AgentKindIDE, ProjectID: projectID, Mode: agentrun.ModeAgentChat,
 		Workspace: workspace, SessionID: sessionID,
 	})
+	if err != nil {
+		panic(err)
+	}
+	return binding
 }
 
 func settledTaskWithReplay(t *testing.T, content string) *apptask.Task {

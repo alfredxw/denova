@@ -19,7 +19,7 @@ import (
 
 func TestAgentBuildFailsClosedBeforeModelConstructionOnPromptAdmission(t *testing.T) {
 	cfg := builderPromptBudgetConfig(8, 1024, 16, 256)
-	_, _, err := BuildWithComposition(context.Background(), cfg, nil, prompts.IDEStoryTeller{})
+	_, _, err := BuildDefinitionWithCompositionForHost(context.Background(), cfg, nil, prompts.IDEStoryTeller{}, AgentHostCapabilities{})
 	if err == nil || !strings.Contains(err.Error(), "per-source limit") {
 		t.Fatalf("Agent build should fail before model construction, got %v", err)
 	}
@@ -98,16 +98,7 @@ func TestHarnessPromptIsLiveContextWithoutChangingAuditedInstruction(t *testing.
 	}
 }
 
-func TestBuildWithCompositionReturnsExactRunnerInstructionArtifact(t *testing.T) {
-	var captured string
-	previous := newNativeAgent
-	newNativeAgent = func(_ context.Context, cfg agent.LoopConfig) (agent.Runnable, error) {
-		if cfg.Name == "DenovaAgent" {
-			captured = cfg.Instruction
-		}
-		return fakeAgent{name: cfg.Name, description: cfg.Description}, nil
-	}
-	t.Cleanup(func() { newNativeAgent = previous })
+func TestBuildDefinitionReturnsExactAuditedInstructionArtifact(t *testing.T) {
 	cfg := &config.Config{
 		OpenAIBaseURL: "https://example.invalid", OpenAIModel: "test-model",
 		AgentTools: config.AgentToolSettings{Default: config.AgentToolOverride{
@@ -118,13 +109,13 @@ func TestBuildWithCompositionReturnsExactRunnerInstructionArtifact(t *testing.T)
 			config.AgentToolWebFetch: false, config.AgentToolDelegation: false,
 		}},
 	}
-	_, composition, err := BuildWithComposition(context.Background(), cfg, nil, prompts.IDEStoryTeller{})
+	definition, composition, err := BuildDefinitionWithCompositionForHost(context.Background(), cfg, nil, prompts.IDEStoryTeller{}, AgentHostCapabilities{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	options := agentrun.Options{SystemPromptLog: composition}
-	if captured != composition.Instruction() || options.SystemPromptLog.InstructionHash() != promptInstructionSHA(captured) {
-		t.Fatalf("runner and agentrun.Options must share exact composition: runner_sha=%s option_sha=%s", promptInstructionSHA(captured), options.SystemPromptLog.InstructionHash())
+	if definition.Instructions != composition.Instruction() || options.SystemPromptLog.InstructionHash() != promptInstructionSHA(definition.Instructions) {
+		t.Fatalf("Definition and agentrun.Options must share exact composition: definition_sha=%s option_sha=%s", promptInstructionSHA(definition.Instructions), options.SystemPromptLog.InstructionHash())
 	}
 }
 

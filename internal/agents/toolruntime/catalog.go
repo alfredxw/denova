@@ -93,9 +93,9 @@ func agentWorkspaceChangeMetadata(ctx context.Context) workspacechange.ChangeMet
 	runID := scope.RunID
 	sessionID := scope.SessionID
 	reviewThreadID := scope.ReviewThreadID
-	// Direct Runner compositions still carry the same product identity through
-	// the tracing observer. The public Agent lifecycle uses the explicit scope
-	// above and does not depend on the legacy tracing implementation.
+	// Host-owned tool invocations that do not carry an explicit workspace-change
+	// scope may still supply the same product identity through the tracing
+	// observer. Public Agent runs normally use the explicit scope above.
 	if observer := agentrun.ObserverFromContext(ctx); observer != nil && runID == "" {
 		runID = strings.TrimSpace(observer.RunID())
 		sessionID = strings.TrimSpace(observer.SessionID())

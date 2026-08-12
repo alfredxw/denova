@@ -271,7 +271,7 @@ func (service *Service) Clear(ctx context.Context) error {
 		return appagentruntime.ErrOperationActive
 	}
 	if runtime.Execution != nil {
-		if err := runtime.Execution.CloseSessionBindings(ctx, agentrun.AgentKindHarnessOptimizer, "", sessionID); err != nil {
+		if err := runtime.Execution.ClearSession(ctx, optimizerRunOptions(service.dataDir, sessionID)); err != nil {
 			return err
 		}
 	}
@@ -287,25 +287,27 @@ func (service *Service) Clear(ctx context.Context) error {
 }
 
 func (service *Service) AnswerAsk(ctx context.Context, askID string, answers []agentconversation.HostAskAnswer) (agentconversation.HostAskResolution, error) {
-	if _, err := service.requireEnabled(); err != nil {
-		return agentconversation.HostAskResolution{}, err
-	}
-	target, err := service.optimizerSession()
+	runtime, err := service.requireEnabled()
 	if err != nil {
 		return agentconversation.HostAskResolution{}, err
 	}
-	return service.host.ResolveAsk(ctx, target, askID, session.AskAnswered, answers, "")
+	sessionID, err := optimizerSessionID()
+	if err != nil {
+		return agentconversation.HostAskResolution{}, err
+	}
+	return runtime.Execution.ResolveAsk(ctx, optimizerRunOptions(service.dataDir, sessionID), askID, session.AskAnswered, answers, "")
 }
 
 func (service *Service) CancelAsk(ctx context.Context, askID, reason string) (agentconversation.HostAskResolution, error) {
-	if _, err := service.requireEnabled(); err != nil {
-		return agentconversation.HostAskResolution{}, err
-	}
-	target, err := service.optimizerSession()
+	runtime, err := service.requireEnabled()
 	if err != nil {
 		return agentconversation.HostAskResolution{}, err
 	}
-	return service.host.ResolveAsk(ctx, target, askID, session.AskCancelled, nil, reason)
+	sessionID, err := optimizerSessionID()
+	if err != nil {
+		return agentconversation.HostAskResolution{}, err
+	}
+	return runtime.Execution.ResolveAsk(ctx, optimizerRunOptions(service.dataDir, sessionID), askID, session.AskCancelled, nil, reason)
 }
 
 func (service *Service) optimizerSession() (*session.Session, error) {

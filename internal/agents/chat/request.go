@@ -1,16 +1,10 @@
 package chat
 
 import (
-	"context"
-	"errors"
-
 	"denova/internal/agents/run"
-
-	agent "github.com/alfredxw/denova/agent"
 
 	"denova/internal/agents/prompts"
 	agentreview "denova/internal/agents/review"
-	"denova/internal/book"
 )
 
 // ReferenceFileByteLimit bounds one caller-selected workspace reference in the
@@ -125,41 +119,4 @@ type TextSelectionRef struct {
 	StartLine int    `json:"start_line"`
 	EndLine   int    `json:"end_line"`
 	Content   string `json:"content"`
-}
-
-// Executor owns one task-level Agent loop. Durable production callers should
-// invoke it through execution.Service so command admission is never bypassed.
-type Executor struct {
-	policy agentrun.LoopPolicy
-}
-
-// NewExecutor creates a chat loop executor with a normalized policy.
-func NewExecutor(policy agentrun.LoopPolicy) *Executor {
-	return &Executor{policy: policy.Normalize()}
-}
-
-// Run executes one already-admitted turn.
-func (r *Executor) Run(
-	ctx context.Context,
-	runner *agent.Runner,
-	conversation Conversation,
-	bookService *book.Service,
-	req ChatRequest,
-	options agentrun.Options,
-	emit func(agentrun.Event),
-) agentrun.Outcome {
-	run := newChatRun(r, ctx, runner, conversation, bookService, req, options, emit)
-	return run.execute()
-}
-
-func interactiveTurnCompletedByCancel(err error, agentKind string, conversation Conversation, generatedBytes int) bool {
-	if err == nil || agentKind != agentrun.AgentKindInteractiveStory || generatedBytes == 0 {
-		return false
-	}
-	reporter, ok := conversation.(InteractiveNarrativeReadinessReporter)
-	if !ok || !reporter.InteractiveNarrativeReady() {
-		return false
-	}
-	var cancelErr *agent.CancelError
-	return errors.As(err, &cancelErr) && cancelErr.Info != nil && cancelErr.Info.Mode&agent.CancelAfterToolCalls != 0
 }

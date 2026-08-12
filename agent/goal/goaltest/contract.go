@@ -1,5 +1,6 @@
-// Package goaltest provides reusable behavioral checks for GoalManager
-// implementations.
+// Package goaltest provides reusable behavioral checks for the built-in
+// standard Goal protocol. A custom GoalManager owns its own mutation kinds and
+// Data schema and must define a domain-specific contract instead.
 package goaltest
 
 import (
@@ -13,7 +14,7 @@ import (
 
 type Factory func(testing.TB) agent.GoalManager
 
-func RunManagerContract(t *testing.T, factory Factory) {
+func RunStandardManagerContract(t *testing.T, factory Factory) {
 	t.Helper()
 	t.Run("identity_and_revision_fences", func(t *testing.T) {
 		manager := factory(t)
@@ -66,7 +67,7 @@ func RunManagerContract(t *testing.T, factory Factory) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if continuation.Continue && strings.TrimSpace(continuation.Prompt) == "" {
+		if continuation.Continue && strings.TrimSpace(continuation.Input.Text) == "" {
 			t.Fatal("continuation has no prompt")
 		}
 		completed, err := manager.Apply(context.Background(), agent.GoalApplyRequest{

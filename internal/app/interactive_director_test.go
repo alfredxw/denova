@@ -2,9 +2,11 @@ package app
 
 import (
 	"context"
+	agentexecution "denova/internal/agents/execution"
 	agentinteractive "denova/internal/agents/interactive"
 	interactivestate "denova/internal/interactive/state"
 	"errors"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -298,35 +300,54 @@ func TestAnalyzeInteractiveDirectorContextUsesCurrentDirectorInputs(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
+	executionRuntime := agentexecution.NewEphemeralRuntime()
+	t.Cleanup(func() { _ = executionRuntime.Close(context.Background()) })
 	app := &App{
-		cfg:         &config.Config{Workspace: workspace, NovaDir: novaDir},
-		workspace:   workspace,
-		bookState:   book.NewState(workspace),
-		bookService: book.NewService(workspace),
-		interactive: store,
+		cfg: &config.Config{
+			Workspace: workspace, NovaDir: novaDir,
+			OpenAIBaseURL: "https://example.invalid", OpenAIModel: "director-inspection-model",
+		},
+		workspace:        workspace,
+		bookState:        book.NewState(workspace),
+		bookService:      book.NewService(workspace),
+		interactive:      store,
+		executionRuntime: executionRuntime,
+	}
+	beforeStory, err := store.Snapshot(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	beforePlan, err := store.DirectorPlan(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	analysis, err := app.AnalyzeInteractiveDirectorContext(story.ID, "main", turn.ID, "")
 	if err != nil {
 		t.Fatal(err)
 	}
+	afterStory, err := store.Snapshot(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	afterPlan, err := store.DirectorPlan(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(beforeStory, afterStory) || !reflect.DeepEqual(beforePlan, afterPlan) {
+		t.Fatalf("Director public inspection mutated canonical Story state: story_before=%#v story_after=%#v plan_before=%#v plan_after=%#v", beforeStory, afterStory, beforePlan, afterPlan)
+	}
 	if analysis.AgentKind != config.AgentKindInteractiveDirector || analysis.Mode != "interactive_director" {
 		t.Fatalf("unexpected director analysis identity: %#v", analysis)
 	}
-	var sawLore, sawTurnAudit, sawDirectorPlan bool
-	for _, part := range analysis.ContextMessages {
-		if strings.Contains(part.Source, "lore") && strings.Contains(part.Content, "沈凝") {
-			sawLore = true
-		}
-		if part.Title == "本回合 TurnResult / RuleResolution / StateDelta 审计 JSON" && strings.Contains(part.Content, turn.ID) {
-			sawTurnAudit = true
-		}
-		if (part.Title == "当前导演规划文档快照" && strings.Contains(part.Content, "agent-brief.md")) || strings.Contains(part.Title, "agent-brief.md") {
-			sawDirectorPlan = true
+	joined := contextAnalysisJoined(analysis.ContextMessages)
+	for _, want := range []string{"沈凝", turn.ID, `"branch_id": "main"`, "agent-brief.md"} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("exact Director inspection is missing %q: %s", want, joined)
 		}
 	}
-	if !sawLore || !sawTurnAudit || !sawDirectorPlan {
-		t.Fatalf("director context should include lore, turn audit, and director.md snapshot: lore=%v audit=%v plan=%v parts=%#v", sawLore, sawTurnAudit, sawDirectorPlan, analysis.ContextMessages)
+	if analysis.SystemPrompt == "" || analysis.TokenEstimate <= 0 || analysis.MessageCount != len(analysis.ContextMessages) {
+		t.Fatalf("incomplete Director public inspection: %#v", analysis)
 	}
 }
 

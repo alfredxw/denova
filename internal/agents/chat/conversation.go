@@ -23,8 +23,11 @@ type ContextSourceReporter interface {
 	ContextSourceSummary() string
 }
 
-type toolArtifactStoreProvider interface {
-	ToolArtifactStore() agent.ToolArtifactStore
+// ToolArtifactStoreProvider lets the public lifecycle bind Denova's scoped
+// store as Definition.Artifacts. Product middleware must not inject a second
+// process-local storage authority.
+type ToolArtifactStoreProvider interface {
+	ToolArtifactStore() agent.ToolArtifactBackend
 }
 
 // ContextLedgerReporter reports bounded metadata for assembled domain context.

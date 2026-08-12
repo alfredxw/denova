@@ -11,6 +11,7 @@ const chat = {
   'chat.status.idle': 'Idle',
   'chat.current': 'Current: ',
   'chat.noSession': 'No session',
+  'chat.sessionUnavailable': 'The current session is not ready. Select or create a session, then try again.',
   'chat.newSession': 'New Session',
   'chat.untitledSession': 'New Session',
   'chat.renameSession': 'Rename Session',

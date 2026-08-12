@@ -151,6 +151,41 @@ func TestReviewThreadAggregatesRunsFiltersCommentsAndKeepsUndoBoundary(t *testin
 	}
 }
 
+func TestAgentInputReviewReceiptIsEffectSpecificIdempotentAndPersistent(t *testing.T) {
+	service, path := newTestServiceWithFile(t, "before")
+	ctx := context.Background()
+	change, err := service.ReplaceFile(ctx, ReplaceFileRequest{
+		Path: path, Content: "after", BaseRevision: Revision([]byte("before")),
+		Metadata: ChangeMetadata{Origin: OriginAgent, ChangeGroupID: "effect-group", ReviewThreadID: "effect-thread", SessionID: "effect-session"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	comment, err := service.AddComment(ctx, AddCommentRequest{GroupID: change.GroupID, ChangeSetID: change.ID, Body: "review"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.ConsumeReviewCommentsForAgentInput(ctx, "effect-thread", "effect-session", []string{comment.ID}, "effect-one"); err != nil {
+		t.Fatal(err)
+	}
+	if replay, err := service.ConsumeReviewCommentsForAgentInput(ctx, "effect-thread", "effect-session", []string{comment.ID}, "effect-one"); err != nil || len(replay) != 0 {
+		t.Fatalf("exact replay=%#v err=%v", replay, err)
+	}
+	if found, err := service.ReviewCommentsConsumed(ctx, "effect-thread", "effect-session", []string{comment.ID}, "effect-one"); err != nil || !found {
+		t.Fatalf("effect receipt found=%t err=%v", found, err)
+	}
+	if found, err := service.ReviewCommentsConsumed(ctx, "effect-thread", "effect-session", []string{comment.ID}, "effect-two"); err != nil || found {
+		t.Fatalf("different effect receipt found=%t err=%v", found, err)
+	}
+	reloaded, err := NewService(service.workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found, err := reloaded.ReviewCommentsConsumed(ctx, "effect-thread", "effect-session", []string{comment.ID}, "effect-one"); err != nil || !found {
+		t.Fatalf("reloaded receipt found=%t err=%v", found, err)
+	}
+}
+
 func TestReviewThreadMarksRevisionGapAndShowsLatestContiguousSegment(t *testing.T) {
 	service, path := newTestServiceWithFile(t, "zero")
 	ctx := context.Background()

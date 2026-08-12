@@ -126,7 +126,7 @@ func buildCleanupPlan(messages []*agent.Message, groups []*toolInteractionGroup,
 // retained groups remains inside the same suffix budget because its earliest
 // member has already passed this monotonic gate.
 func cacheViableCleanupGroups(messages []*agent.Message, groups []*toolInteractionGroup, policy ContextPressurePolicy) []*toolInteractionGroup {
-	if policy.CleanupExecutionMode == ToolResultCleanupNativeCacheEdit || policy.ProviderCacheState == ProviderCacheCold {
+	if policy.ProviderCacheState == ProviderCacheCold {
 		return groups
 	}
 	viable := make([]*toolInteractionGroup, 0, len(groups))

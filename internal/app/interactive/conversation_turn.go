@@ -102,105 +102,6 @@ func (c *Conversation) InteractiveNarrativeReady() bool {
 	return c.turnProtocol.narrativeReady()
 }
 
-func (c *Conversation) CompactContextIfNeeded(ctx context.Context, input agentcompaction.Input) ([]*agents.Message, agentcompaction.Result, error) {
-	if c == nil || c.store == nil {
-		return input.Messages, agentcompaction.Result{}, fmt.Errorf("互动故事不存在")
-	}
-	storyCtx, err := c.storyContextForCycle()
-	if err != nil {
-		return input.Messages, agentcompaction.Result{}, err
-	}
-	modelHistory, activeCompaction, err := c.modelHistoryForCycle(storyCtx)
-	if err != nil {
-		return input.Messages, agentcompaction.Result{}, err
-	}
-	if !input.Force && storyCtx.Snapshot.ContextCompactionRemoval != nil && storyCtx.Snapshot.ContextCompactionRemoval.SourceTurnCount >= modelHistory.EndTurn {
-		return input.Messages, agentcompaction.Result{SkippedReason: "removed_same_source"}, nil
-	}
-	modelProjection, err := BuildModelContextProjection(
-		modelHistory, activeCompaction, storyCtx.Snapshot, c.ToolResultContextPolicy(), c.AgentCycleIdentitySnapshot(),
-	)
-	if err != nil {
-		return input.Messages, agentcompaction.Result{}, err
-	}
-	source := modelProjection.SourceMessages
-	existingCheckpoint := modelProjection.ExistingCheckpoint
-	input.CandidateFingerprint, input.CandidateGeneration = agentcompaction.CandidateIdentity(input.Messages, 0)
-	healthRevision, health, hasHealth, err := c.store.ContextCompactionHealthState(
-		c.storyID, storyCtx.Snapshot.BranchID, config.AgentKindInteractiveStory,
-	)
-	if err != nil {
-		return input.Messages, agentcompaction.Result{}, err
-	}
-	structureFingerprint, err := c.contextCompactionStructureFingerprint(storyCtx, input)
-	if err != nil {
-		return input.Messages, agentcompaction.Result{}, err
-	}
-	maximumFailures := config.DefaultContextCompactionMaxConsecutiveFailures
-	if hasHealth && (agentcompaction.FailureState{
-		StructureFingerprint: health.StructureFingerprint,
-		ConsecutiveFailures:  health.ConsecutiveFailures,
-	}).Blocks(structureFingerprint, maximumFailures, input.Automatic) {
-		input.PreflightSkipReason = "consecutive_failure_fuse"
-		input.ConsecutiveFailures = health.ConsecutiveFailures
-		input.FailureFuseOpen = true
-	}
-	if input.Automatic && strings.TrimSpace(input.PreflightSkipReason) == "" && activeCompaction != nil &&
-		agentcompaction.NoProgressLatched(
-			activeCompaction.TokensAfter, activeCompaction.ContextWindowTokens, activeCompaction.Threshold,
-			config.DefaultContextCompactionRecoveryBand,
-			agentcontext.EstimateTokens(source, nil),
-			agentcontext.EffectiveToolResultCleanupMinimum(input.Messages, input.Tools, c.ContextPressurePolicy(input.Messages)),
-			activeCompaction.CandidateFingerprint, activeCompaction.CandidateGeneration,
-			input.CandidateFingerprint, input.CandidateGeneration,
-		) {
-		input.PreflightSkipReason = "degraded_no_progress_latch"
-	}
-	epoch := 1
-	if activeCompaction != nil {
-		epoch = activeCompaction.Epoch + 1
-	}
-	input.SourceMessages = source
-	input.SourceMessagesSet = true
-	if strings.TrimSpace(input.ExistingCheckpoint) == "" {
-		input.ExistingCheckpoint = existingCheckpoint
-	}
-	input.KeepLatestUser = true
-	stableLeadingMessage := c.stableLeadingMessageSnapshot()
-	completionReserve, toolReserve := agentcompaction.EstimateProjectionReserves(c.cfg, config.AgentKindInteractiveStory, c.replyTargetChars)
-	if input.ReservedCompletionTokens <= 0 {
-		input.ReservedCompletionTokens = completionReserve
-	}
-	if input.ReservedToolResultTokens <= 0 {
-		input.ReservedToolResultTokens = toolReserve
-	}
-	newMessages, result, err := agentcompaction.Prepare(ctx, c.cfg, config.AgentKindInteractiveStory, input, epoch)
-	if err != nil {
-		c.stageInteractiveCompactionHealth(healthRevision, storyCtx.Snapshot.BranchID, structureFingerprint, agentcompaction.HealthFailure, &result)
-		return newMessages, result, err
-	}
-	if !result.Triggered {
-		return newMessages, result, err
-	}
-	newMessages = PreserveStableLeadingMessage(newMessages, stableLeadingMessage)
-	newMessages, result, err = ValidateCompactionProjection(input.Messages, newMessages, result, input.Tools)
-	if err != nil {
-		c.stageInteractiveCompactionHealth(healthRevision, storyCtx.Snapshot.BranchID, structureFingerprint, agentcompaction.HealthFailure, &result)
-		return newMessages, result, err
-	}
-	c.stageInteractiveCompactionHealth(healthRevision, storyCtx.Snapshot.BranchID, structureFingerprint, agentcompaction.HealthSuccess, &result)
-	if !input.Force && result.Phase == "model_step" {
-		c.stagePreparedInteractiveCompaction(preparedInteractiveContextCompaction{
-			Result: result, SourceTurnCount: modelProjection.SourceTurnCount,
-		})
-	}
-	// Model-cycle compaction remains a transient projection. Canonical story
-	// checkpoints are branch-head mutations and therefore run only through the
-	// binding's durable CompactIfNeeded structural command after settlement or
-	// on an explicit manual request.
-	return newMessages, result, nil
-}
-
 // ValidateCompactionProjection is the final safety boundary after
 // Game-specific stable context has been re-injected. A candidate that no
 // longer shrinks the true provider-visible context must not replace the live
@@ -336,11 +237,11 @@ func schemaToolCallsFromInteractive(calls []interactive.ModelContextToolCall) []
 	return result
 }
 
-func interactiveCompactionSource(turns []interactive.TurnEvent, compaction *interactive.ContextCompactionEvent) ([]*agents.Message, string) {
+func interactiveCompactionSource(turns []interactive.TurnEvent, compaction *interactive.ContextCompactionProjection) ([]*agents.Message, string) {
 	return interactiveCompactionWindowSource(turns, 0, compaction)
 }
 
-func interactiveCompactionWindowSource(turns []interactive.TurnEvent, turnStart int, compaction *interactive.ContextCompactionEvent) ([]*agents.Message, string) {
+func interactiveCompactionWindowSource(turns []interactive.TurnEvent, turnStart int, compaction *interactive.ContextCompactionProjection) ([]*agents.Message, string) {
 	sourceStart := 0
 	existingCheckpoint := ""
 	if compaction != nil && strings.TrimSpace(compaction.Summary) != "" {

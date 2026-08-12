@@ -116,12 +116,11 @@ func (s *InteractiveAppService) UpdateInteractiveTurnNarrative(storyID string, r
 		return interactive.UpdateTurnNarrativeResult{}, err
 	}
 	slog.WarnContext(context.Background(), fmt.Sprintf(
-		"[interactive-turn-edit] narrative updated story_id=%s branch_id=%s turn_id=%s narrative_bytes=%d context_compaction_invalidated=%t",
+		"[interactive-turn-edit] narrative updated story_id=%s branch_id=%s turn_id=%s narrative_bytes=%d",
 		storyID,
 		result.Turn.BranchID,
 		result.Turn.ID,
 		len([]byte(result.Turn.Narrative)),
-		result.ContextCompactionInvalidated,
 	))
 	return result, nil
 }
@@ -145,6 +144,12 @@ func (s *InteractiveAppService) DeleteInteractiveBranch(storyID, branchID string
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if err := fence.validateLocked(a); err != nil {
+		return err
+	}
+	if fence.chat == nil {
+		return ErrNoWorkspace
+	}
+	if err := fence.chat.DeleteStoryBindings(context.Background(), fence.workspace, storyID, branchID); err != nil {
 		return err
 	}
 	return store.DeleteBranch(storyID, branchID)

@@ -131,7 +131,10 @@ export function AskInteractionCard({ message, onResolve }: AskInteractionCardPro
               <legend className="mb-2 block text-sm font-medium leading-5 text-[var(--nova-text)]">{question.question}</legend>
               {question.options?.length ? (
                 <div className="grid gap-2">
-                  {[...question.options, { id: 'other', label: t('chat.ask.other') }].map((option) => {
+                  {[
+                    ...question.options,
+                    ...(interaction.allow_other === false ? [] : [{ id: 'other', label: t('chat.ask.other') }]),
+                  ].map((option) => {
                     const checked = draft.selectedOptionIDs.includes(option.id)
                     const recommended = option.id === question.recommended_option_id
                     return (

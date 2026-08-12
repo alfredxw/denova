@@ -167,6 +167,40 @@ func TestTurnInputProjectionProvidesCurrentRuntimeEnvironment(t *testing.T) {
 	}
 }
 
+func TestPrepareAgentContextUsesDurableCycleStartAndOmitsClockFromStructuralPreparation(t *testing.T) {
+	startedAt := time.Date(2026, 8, 13, 9, 45, 30, 0, time.FixedZone("UTC+08:00", 8*60*60))
+	prepared, err := PrepareAgentContext(
+		context.Background(),
+		pureTurnTestConversation{budget: agentcontext.DefaultBudget()},
+		ChatRequest{Message: "继续写作"},
+		nil,
+		"/workspace/book",
+		startedAt,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	final := finalAssembledUserMessage(t, prepared.ModelContext)
+	if !strings.Contains(final, "Captured at: 2026-08-13T09:45:30+08:00") {
+		t.Fatalf("real turn did not use durable cycle time:\n%s", final)
+	}
+
+	structural, err := PrepareAgentContext(
+		context.Background(),
+		pureTurnTestConversation{budget: agentcontext.DefaultBudget()},
+		ChatRequest{Message: "compact"},
+		nil,
+		"/workspace/book",
+		time.Time{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if final := finalAssembledUserMessage(t, structural.ModelContext); strings.Contains(final, "Captured at:") {
+		t.Fatalf("structural preparation injected a process wall clock:\n%s", final)
+	}
+}
+
 func TestSessionConversationAssemblesTurnAndRuntimeFragmentsUnderOneBudget(t *testing.T) {
 	store, err := session.NewStore(t.TempDir())
 	if err != nil {

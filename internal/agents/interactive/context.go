@@ -5,7 +5,18 @@ import (
 	agentrun "denova/internal/agents/run"
 
 	story "denova/internal/interactive"
+
+	agent "github.com/alfredxw/denova/agent"
 )
+
+// DirectorCanonicalOutput is the single product authority used by the public
+// Agent output-commit fence for background Director work. Implementations must
+// atomically publish and query the exact Agent output identity and hash.
+type DirectorCanonicalOutput interface {
+	BindAgentCycleIdentity(agentrun.CycleIdentity)
+	CommitDirectorCanonicalOutput(context.Context, agent.OutputCommitRequest) (agent.OutputCommitReceipt, error)
+	ReconcileDirectorCanonicalOutput(context.Context, agent.ReconcileRequest) (agent.ReconcileResult, error)
+}
 
 // InteractiveStoryToolContext is the application-facing input used to build
 // story and director tool surfaces. Runtime-only collaborators stay here in
@@ -34,10 +45,9 @@ type InteractiveStoryToolContext struct {
 		context.Context,
 		story.DirectorPlanUpdateSubmission,
 	) (story.DirectorPlanUpdateReceipt, error)
-	// DomainCommitParticipant owns the canonical Director result. The App
-	// supplies it so the durable harness can authorize and acknowledge the
-	// final plan write before settling the model cycle successfully.
-	DomainCommitParticipant agentrun.DomainCommitParticipant
+	// CanonicalOutput owns the single durable Director publication boundary.
+	// The public Agent supplies its cycle identity before any model/tool work.
+	CanonicalOutput DirectorCanonicalOutput
 	// DisplayConversation receives display-only progress for background helper
 	// agents. It must not receive final assistant text as model-visible context.
 	DisplayConversation any

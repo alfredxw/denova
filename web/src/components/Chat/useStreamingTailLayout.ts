@@ -52,11 +52,9 @@ export function useStreamingTailLayout({
   const pendingStartAnchorRef = useRef(enabled)
   const targetStartSpacerRef = useRef<number | null>(null)
   const [spacerPx, setSpacerPx] = useState<number | undefined>()
-  const spacerPxRef = useRef<number | undefined>(spacerPx)
 
   enabledRef.current = enabled
   visibleRef.current = visible
-  spacerPxRef.current = spacerPx
   const explicitInset = normaliseInset(bottomInsetPx)
   if (explicitInset !== null) bottomInsetRef.current = explicitInset
 
@@ -167,14 +165,10 @@ export function useStreamingTailLayout({
     if (!enabled && wasEnabled) {
       pendingStartAnchorRef.current = false
       targetStartSpacerRef.current = null
-      const currentSpacer = spacerPxRef.current
-      if (phaseRef.current === 'growing' && currentSpacer !== undefined) {
-        const distanceFromEnd = Math.max(0, scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop)
-        const retainedSpacer = calculateRetainedTailSpacer(currentSpacer, bottomInset, distanceFromEnd)
-        setSpacer(retainedSpacer > bottomInset + LAYOUT_EPSILON_PX ? retainedSpacer : undefined)
-      } else {
-        setSpacer(undefined)
-      }
+      // The runway exists only while output can still grow. Keeping its unused
+      // remainder after completion turns the temporary response space into a
+      // permanent blank footer and leaves the viewport short of the real end.
+      setSpacer(undefined)
       phaseRef.current = 'idle'
     }
   }, [enabled, explicitInset, resetKey, resolveBottomInset, resolveScroller, setSpacer, updateGrowingSpacer, visible])
@@ -230,10 +224,6 @@ export function calculateStreamingTailSpacer(viewportHeight: number, bottomInset
   const contextHeight = Math.min(safeHeight, Math.max(STREAM_CONTEXT_MIN_PX, safeHeight * STREAM_CONTEXT_RATIO))
   const responseHeight = Math.max(0, safeHeight - contextHeight)
   return bottomInset + Math.max(0, responseHeight - STREAM_TAIL_GAP_PX)
-}
-
-export function calculateRetainedTailSpacer(currentSpacer: number, bottomInset: number, distanceFromEnd: number): number {
-  return Math.max(bottomInset, currentSpacer - Math.max(0, distanceFromEnd))
 }
 
 function normaliseInset(value: number | undefined): number | null {

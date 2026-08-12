@@ -30,9 +30,9 @@ func (service *Service) ActiveView(ctx context.Context, binding Binding) ActiveV
 		snapshot := active.task.Snapshot()
 		taskSnapshot = &snapshot
 		streamAttached = !snapshot.Finished
-		if active.runtime.Session != nil {
-			pendingAsk = active.runtime.Session.LivePendingAsk("")
-		}
+	}
+	if projected && len(runtime.PendingInteractions) > 0 {
+		pendingAsk = chatagent.ProjectPendingInteraction(runtime.PendingInteractions[0], runtime)
 	}
 	return ActiveView{
 		Task: taskSnapshot, Runtime: runtime, RuntimeProjectionOK: projected,
@@ -89,23 +89,17 @@ func (service *Service) AnalyzeContext(ctx context.Context, binding Binding, req
 	if err != nil {
 		return chatagent.ContextAnalysis{}, err
 	}
-	var pending *session.Interruption
-	if strings.TrimSpace(request.Message) != "" {
-		pending = runtime.Session.PendingInterruption()
-	}
-	status, err := project.executionRuntime.RuntimeStatusProjection(ctx, runtimeOptions(binding, ""))
+	inspected, err := conversationapp.InspectPrepared(ctx, runtime, request, runtimeOptions(binding, ""))
 	if err != nil {
 		return chatagent.ContextAnalysis{}, err
 	}
-	compaction := appagentruntime.ProjectSessionCompaction(status.Compaction, runtime.AgentKind)
-	conversation := conversationapp.ProjectConversation(runtime, request)
+	mode := "ide"
 	if runtime.AgentKind == agentrun.AgentKindGeneral {
-		return chatagent.BuildGeneralContextAnalysis(&runtime.Config, runtime.BookService, compaction, pending, request, conversation)
+		mode = "general"
 	}
-	return chatagent.BuildIDEContextAnalysis(
-		&runtime.Config, runtime.State, runtime.IDETeller, runtime.BookService,
-		compaction, pending, request, conversation,
-	)
+	return chatagent.BuildInspectedContextAnalysis(
+		&runtime.Config, runtime.AgentKind, mode, inspected.Composition, inspected.Inspection,
+	), nil
 }
 
 func (service *Service) AnswerAsk(ctx context.Context, binding Binding, askID string, answers []agentconversation.HostAskAnswer) (agentconversation.HostAskResolution, error) {
@@ -131,16 +125,7 @@ func (service *Service) resolveAsk(
 	if err != nil {
 		return agentconversation.HostAskResolution{}, err
 	}
-	sess, err := project.store.Get(binding.SessionID)
-	if err != nil {
-		return agentconversation.HostAskResolution{}, err
-	}
-	if service.host == nil {
-		return agentconversation.ResolveAsk(ctx, sess, askID, status, answers, cancelReason)
-	}
-	return service.host.ResolveAsk(
-		ctx, sess, binding.ProjectID, binding.Workspace, askID, status, answers, cancelReason,
-	)
+	return project.executionRuntime.ResolveAsk(ctx, runtimeOptions(binding, ""), askID, status, answers, cancelReason)
 }
 
 // ClearSession drains exactly one binding and appends the durable clear marker.
@@ -158,7 +143,7 @@ func (service *Service) ClearSession(ctx context.Context, binding Binding) error
 	if err != nil {
 		return err
 	}
-	if err := project.executionRuntime.CloseProjectSessionBindings(ctx, binding.ProjectID, binding.SessionID); err != nil {
+	if err := project.executionRuntime.ClearSession(ctx, runtimeOptions(binding, "")); err != nil {
 		return err
 	}
 	sess, err := project.store.Get(binding.SessionID)

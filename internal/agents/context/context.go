@@ -31,8 +31,6 @@ const (
 
 type Budget = agentcontext.Budget
 type Fragment = agentcontext.Fragment
-type ContextDescriptor = agentcontext.ContextDescriptor
-type ContextProjector = agentcontext.ContextProjector
 type AssembleRequest = agentcontext.AssembleRequest
 type Result = agentcontext.Result
 type Source = agentcontext.Source

@@ -10,11 +10,21 @@ import (
 	agent "github.com/alfredxw/denova/agent"
 )
 
-// AgentCompactionContextProvider lets a Denova product conversation attach a
-// bounded cursor to an Agent-owned checkpoint. Agent persists the data opaquely
-// and returns it to ContextSource on later cycles.
-type AgentCompactionContextProvider interface {
-	AgentCompactionContext(context.Context, agent.CompactionCompactRequest) (*agent.HostData, error)
+// ProductCompactionProjection is the product-owned portion of one Agent
+// checkpoint. SourceMessages is the exact canonical history delta to summarize;
+// ContextData is the bounded cursor needed to re-project that summary later.
+// Agent still owns source-range CAS, revisioning, persistence, and recovery.
+type ProductCompactionProjection struct {
+	SourceMessages []*agent.Message
+	ContextData    *agent.HostData
+}
+
+// AgentCompactionProjectionProvider lets a product conversation replace the
+// generic transcript summary source with its canonical domain history. This is
+// required by projections such as Game, whose current user message contains a
+// rendered view of story turns rather than the turns themselves.
+type AgentCompactionProjectionProvider interface {
+	PrepareAgentCompaction(context.Context, agent.CompactionCompactRequest) (ProductCompactionProjection, error)
 }
 
 // AgentCompactionBinder lets a conversation project the current Agent-owned
@@ -26,7 +36,7 @@ type AgentCompactionBinder interface {
 
 type conversationCompactionManager struct {
 	delegate agent.CompactionManager
-	provider AgentCompactionContextProvider
+	provider AgentCompactionProjectionProvider
 	identity agent.CapabilityIdentity
 }
 
@@ -37,7 +47,7 @@ func BindConversationCompaction(
 	manager agent.CompactionManager,
 	conversation any,
 ) agent.CompactionManager {
-	provider, ok := conversation.(AgentCompactionContextProvider)
+	provider, ok := conversation.(AgentCompactionProjectionProvider)
 	if manager == nil || !ok || provider == nil {
 		return manager
 	}
@@ -81,18 +91,39 @@ func (manager *conversationCompactionManager) Compact(
 	request agent.CompactionCompactRequest,
 ) (agent.CompactionCheckpoint, error) {
 	if manager == nil || manager.delegate == nil || manager.provider == nil {
-		return agent.CompactionCheckpoint{}, errors.New("Denova Compaction context provider is unavailable")
+		return agent.CompactionCheckpoint{}, errors.New("Denova Compaction projection provider is unavailable")
 	}
+	projection, err := manager.provider.PrepareAgentCompaction(ctx, request)
+	if err != nil {
+		return agent.CompactionCheckpoint{}, err
+	}
+	if len(projection.SourceMessages) == 0 {
+		return agent.CompactionCheckpoint{}, errors.New("Denova Compaction canonical source is empty")
+	}
+	request.SourceMessages = productCompactionSource(request, projection.SourceMessages)
 	checkpoint, err := manager.delegate.Compact(ctx, request)
 	if err != nil {
 		return agent.CompactionCheckpoint{}, err
 	}
-	data, err := manager.provider.AgentCompactionContext(ctx, request)
-	if err != nil {
-		return agent.CompactionCheckpoint{}, err
-	}
-	checkpoint.ContextData = data
+	checkpoint.ContextData = projection.ContextData
 	return checkpoint, nil
+}
+
+func productCompactionSource(request agent.CompactionCompactRequest, canonical []*agent.Message) []*agent.Message {
+	result := make([]*agent.Message, 0, len(canonical)+1)
+	if request.Present && !request.Current.Removed &&
+		request.Current.ReplacementFrom == request.Plan.SourceFrom &&
+		request.Current.ReplacementTo >= request.Plan.SourceFrom &&
+		request.Current.ReplacementTo <= request.Plan.SourceTo && len(request.SourceMessages) > 0 {
+		// Agent already rendered the exact active checkpoint marker as the first
+		// incremental source message. Preserve it, but replace the repeated host
+		// prompt tail with the product's canonical delta.
+		result = append(result, request.SourceMessages[0].Clone())
+	}
+	for _, message := range canonical {
+		result = append(result, message.Clone())
+	}
+	return result
 }
 
 func bindAgentCompaction(conversation any, state *agent.CompactionState) error {

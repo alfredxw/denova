@@ -7,17 +7,20 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"strings"
 
 	agent "github.com/alfredxw/denova/agent"
 )
 
 // Combine preserves Toolset order. Duplicate tool names are rejected by Agent
 // when a cycle is prepared.
-func Combine(toolsets ...agent.Toolset) agent.Toolset { return agent.CombineToolsets(toolsets...) }
+func Combine(toolsets ...agent.Toolset) (agent.Toolset, error) {
+	return agent.CombineToolsets(toolsets...)
+}
 
 // Single selects one independently constructed common tool.
-func Single(identity string, definition agent.ToolDefinition) agent.Toolset {
-	return agent.StaticToolsIdentified(agent.CapabilityIdentity{Kind: identity, Version: 1}, definition)
+func Single(identity agent.CapabilityIdentity, definition agent.ToolDefinition) (agent.Toolset, error) {
+	return agent.StaticToolsIdentified(identity, definition)
 }
 
 type WorkspaceAccess string
@@ -73,12 +76,13 @@ func Workspace(config WorkspaceConfig) (agent.Toolset, error) {
 		return nil, err
 	}
 	definitions := []agent.ToolDefinition{read, glob, grep}
+	var mutation agent.CapabilityIdentity
 	if config.Access == WorkspaceReadWrite {
 		if config.Mutation == nil {
 			return nil, errors.New("read-write workspace requires a MutationAdapter")
 		}
-		identified, ok := config.Mutation.(IdentifiedMutationAdapter)
-		if !ok || identified.Identity().Kind == "" || identified.Identity().Version == 0 {
+		mutation = config.Mutation.Identity()
+		if err := validateAdapterIdentity("workspace MutationAdapter", mutation); err != nil {
 			return nil, errors.New("read-write workspace MutationAdapter requires a stable Identity")
 		}
 		write, err := Write(config.Mutation)
@@ -91,17 +95,29 @@ func Workspace(config WorkspaceConfig) (agent.Toolset, error) {
 		}
 		definitions = append(definitions, write, edit)
 	}
-	var mutation agent.CapabilityIdentity
-	if identified, ok := config.Mutation.(IdentifiedMutationAdapter); ok {
-		mutation = identified.Identity()
-	}
 	identity := toolsetIdentity("tools.workspace", struct {
-		Root     string
-		Access   WorkspaceAccess
-		Limits   WorkspaceLimits
-		Mutation agent.CapabilityIdentity
-	}{Root: workspace.Root(), Access: config.Access, Limits: workspace.Limits(), Mutation: mutation})
-	return agent.StaticToolsIdentified(identity, definitions...), nil
+		Workspace agent.CapabilityIdentity
+		Access    WorkspaceAccess
+		Read      []agent.CapabilityIdentity
+		Mutation  agent.CapabilityIdentity
+	}{
+		Workspace: workspace.Identity(), Access: config.Access,
+		Read: []agent.CapabilityIdentity{localText.Identity(), directory.Identity()}, Mutation: mutation,
+	})
+	return agent.StaticToolsIdentified(identity, definitions...)
+}
+
+// Identity describes the exact local workspace/search behavior shared by the
+// built-in read, glob, grep, and process adapters.
+func (workspace *LocalWorkspace) Identity() agent.CapabilityIdentity {
+	if workspace == nil {
+		return agent.CapabilityIdentity{}
+	}
+	return toolsetIdentity("tools.workspace.local", struct {
+		Root              string
+		RipgrepExecutable string
+		Limits            WorkspaceLimits
+	}{workspace.Root(), workspace.ripgrepExecutable, workspace.Limits()})
 }
 
 type ShellConfig struct {
@@ -115,8 +131,8 @@ func Shell(config ShellConfig) (agent.Toolset, error) {
 	if config.Runner == nil {
 		return nil, errors.New("shell Toolset requires a CommandRunner")
 	}
-	identified, ok := config.Runner.(IdentifiedCommandRunner)
-	if !ok || identified.Identity().Kind == "" || identified.Identity().Version == 0 {
+	runnerIdentity := config.Runner.Identity()
+	if err := validateAdapterIdentity("shell CommandRunner", runnerIdentity); err != nil {
 		return nil, errors.New("shell CommandRunner requires a stable Identity")
 	}
 	shells := append([]ShellKind(nil), config.Shells...)
@@ -152,11 +168,21 @@ func Shell(config ShellConfig) (agent.Toolset, error) {
 	return agent.StaticToolsIdentified(toolsetIdentity("tools.shell", struct {
 		Runner agent.CapabilityIdentity
 		Shells []ShellKind
-	}{identified.Identity(), shells}), definitions...), nil
+	}{runnerIdentity, shells}), definitions...)
+}
+
+func validateAdapterIdentity(name string, identity agent.CapabilityIdentity) error {
+	if strings.TrimSpace(identity.Kind) == "" || identity.Version == 0 {
+		return fmt.Errorf("%s requires a stable Identity", name)
+	}
+	return nil
 }
 
 func toolsetIdentity(kind string, config any) agent.CapabilityIdentity {
-	encoded, _ := json.Marshal(config)
+	encoded, err := json.Marshal(config)
+	if err != nil {
+		return agent.CapabilityIdentity{}
+	}
 	digest := sha256.Sum256(encoded)
 	return agent.CapabilityIdentity{Kind: kind, Version: 1, ConfigHash: hex.EncodeToString(digest[:])}
 }

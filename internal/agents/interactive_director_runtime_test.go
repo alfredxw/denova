@@ -11,7 +11,7 @@ import (
 	"denova/config"
 	"denova/internal/book"
 
-	runstate "github.com/alfredxw/denova/agent/runtime"
+	agent "github.com/alfredxw/denova/agent"
 )
 
 func TestGenerateInteractiveDirectorWithToolsRequiresOwnedRuntime(t *testing.T) {
@@ -57,7 +57,7 @@ func TestGenerateInteractiveDirectorWithToolsRequiresCommandIDBeforeBuildingAgen
 		agentinteractive.InteractiveStoryToolContext{StoryID: "story-1", BranchID: "main"},
 		"更新导演规划",
 	)
-	if !errors.Is(err, runstate.ErrInvalidCommand) || !strings.Contains(err.Error(), "command_id") {
+	if !errors.Is(err, agent.ErrInvalidInput) || !strings.Contains(err.Error(), "command_id") {
 		t.Fatalf("missing Director command_id error = %v", err)
 	}
 }

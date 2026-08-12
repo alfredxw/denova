@@ -70,32 +70,6 @@ func TestAssemblerKeepsAuditOnlyContentOutOfModelMessages(t *testing.T) {
 	}
 }
 
-type testProjector struct{}
-
-func (testProjector) Descriptor() ContextDescriptor {
-	return ContextDescriptor{
-		ID: "state", Source: "workspace.state", Purpose: "resume", Placement: PlacementLeadingMessage, Limit: 4,
-	}
-}
-
-func (testProjector) Project(stdcontext.Context) ([]Fragment, error) {
-	return []Fragment{{Title: "State", Content: "abcdef", Included: true}}, nil
-}
-
-func TestProjectorCannotEscapeDescriptorOrHardLimit(t *testing.T) {
-	result, err := NewAssembler(Budget{MaxFragmentBytes: 64, MaxTotalBytes: 256}).Assemble(stdcontext.Background(), AssembleRequest{
-		Messages:   []*agent.Message{agent.UserMessage("continue")},
-		Projectors: []ContextProjector{testProjector{}},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	fragment := result.Fragments[0]
-	if fragment.ID != "state" || fragment.Source != "workspace.state" || fragment.Content != "abcd" || !fragment.Truncated {
-		t.Fatalf("projected fragment = %#v", fragment)
-	}
-}
-
 func TestAssemblerRejectsUnboundedFragmentCountAndUnknownPlacement(t *testing.T) {
 	fragments := []Fragment{{Content: "one"}, {Content: "two"}}
 	_, err := NewAssembler(Budget{MaxFragments: 1}).Assemble(stdcontext.Background(), AssembleRequest{Fragments: fragments})

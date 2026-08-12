@@ -87,10 +87,14 @@ type Selector struct {
 	ID         string
 	IDPrefix   string
 	Attributes map[string]string
+	// All is reserved for owner-level catalog operations such as recursive
+	// descendant deletion. Product lifecycle calls should prefer constrained
+	// selectors so accidental broad mutations remain impossible.
+	All bool
 }
 
 func (selector Selector) Validate() error {
-	if strings.TrimSpace(selector.Namespace) == "" && strings.TrimSpace(selector.ID) == "" &&
+	if !selector.All && strings.TrimSpace(selector.Namespace) == "" && strings.TrimSpace(selector.ID) == "" &&
 		strings.TrimSpace(selector.IDPrefix) == "" && len(selector.Attributes) == 0 {
 		return fmt.Errorf("%w: selector must constrain at least one field", ErrInvalidKey)
 	}
@@ -117,6 +121,9 @@ func (selector Selector) Matches(key Key) bool {
 	key, err := NormalizeKey(key)
 	if err != nil {
 		return false
+	}
+	if selector.All {
+		return true
 	}
 	if selector.Namespace != "" && selector.Namespace != key.Namespace ||
 		selector.ID != "" && selector.ID != key.ID ||
@@ -155,9 +162,14 @@ type ReplayStats struct {
 	BytesRead   int64
 }
 
-// Store opens an exclusively leased append-only Log for one exact Key.
+// Store owns the durable catalog and append-only Log for every Session Key.
+// List and Delete are part of the contract because closing an execution lease
+// is not equivalent to deleting user data. Delete is idempotent; implementations
+// must not expose a partially deleted Session and must serialize it with Open.
 type Store interface {
 	Open(context.Context, Key) (Log, error)
+	List(context.Context, Selector) ([]Key, error)
+	Delete(context.Context, Key) error
 }
 
 // VolatileStore marks process-local implementations that never restore after

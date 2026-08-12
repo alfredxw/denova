@@ -1,8 +1,11 @@
 package execution
 
 import (
+	"context"
 	"fmt"
+	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	agentrun "denova/internal/agents/run"
@@ -15,11 +18,15 @@ import (
 // bounded local trace. Public Agent events are the canonical source here: they
 // cover every model/tool cycle without introducing a second execution ID.
 type publicAgentRunTrace struct {
+	mu             sync.Mutex
 	runID          string
 	enabled        bool
 	ledger         *agentrun.Ledger
+	rootSpan       *agentrun.Span
+	observer       *agentrun.Observer
 	openAttempted  bool
 	finished       bool
+	closed         bool
 	modelCallCount int
 	toolArgsBytes  map[string]int
 }
@@ -30,11 +37,92 @@ func newPublicAgentRunTrace(runID string, enabled bool) *publicAgentRunTrace {
 	}
 }
 
+func (registration *publicCycleRegistration) BindPublicRunTrace(ctx context.Context, runID string) context.Context {
+	if registration == nil {
+		return ctx
+	}
+	registration.mu.Lock()
+	if registration.trace == nil {
+		registration.trace = newPublicAgentRunTrace(runID, true)
+	}
+	trace := registration.trace
+	options := registration.options
+	registration.mu.Unlock()
+	return trace.bindContext(ctx, options, runID)
+}
+
+func publicTraceForRun(registration *publicCycleRegistration, runID string, enabled bool) *publicAgentRunTrace {
+	if registration == nil {
+		return newPublicAgentRunTrace(runID, enabled)
+	}
+	registration.mu.Lock()
+	if registration.trace == nil {
+		registration.trace = newPublicAgentRunTrace(runID, enabled)
+	}
+	trace := registration.trace
+	registration.mu.Unlock()
+	trace.configure(runID, enabled)
+	return trace
+}
+
+func (trace *publicAgentRunTrace) configure(runID string, enabled bool) {
+	if trace == nil {
+		return
+	}
+	trace.mu.Lock()
+	defer trace.mu.Unlock()
+	if trace.runID == "" {
+		trace.runID = strings.TrimSpace(runID)
+	}
+	if !enabled && trace.ledger == nil {
+		trace.enabled = false
+	}
+}
+
+func (trace *publicAgentRunTrace) bindContext(ctx context.Context, options agentrun.Options, runID string) context.Context {
+	if trace == nil {
+		return ctx
+	}
+	trace.mu.Lock()
+	if trace.runID == "" {
+		trace.runID = strings.TrimSpace(runID)
+	}
+	if err := trace.openLocked(options); err != nil {
+		trace.mu.Unlock()
+		slog.WarnContext(ctx, "[agent-public-runtime] bind run trace failed", "run_id", runID, "error", err)
+		return ctx
+	}
+	ledger := trace.ledger
+	rootSpan := trace.rootSpan
+	observer := trace.observer
+	trace.mu.Unlock()
+	if ledger == nil || observer == nil {
+		return ctx
+	}
+	parentSpanID := ""
+	if rootSpan != nil {
+		parentSpanID = rootSpan.SpanID()
+	}
+	ctx = agentrun.ContextWithRunTrace(ctx, ledger.ID(), ledger, parentSpanID)
+	return agentrun.ContextWithObserver(ctx, observer)
+}
+
 func (trace *publicAgentRunTrace) record(registration *publicCycleRegistration, event agent.Event) error {
-	if trace == nil || !trace.enabled || trace.finished {
+	if trace == nil {
 		return nil
 	}
-	if err := trace.open(registration); err != nil || trace.ledger == nil {
+	trace.mu.Lock()
+	defer trace.mu.Unlock()
+	if !trace.enabled || trace.finished || trace.closed {
+		return nil
+	}
+	options := agentrun.Options{}
+	if registration != nil {
+		registration.mu.RLock()
+		options = registration.options
+		registration.mu.RUnlock()
+	}
+	if err := trace.openLocked(options); err != nil || trace.ledger == nil {
 		return err
 	}
 	switch payload := event.Payload.(type) {
@@ -48,6 +136,9 @@ func (trace *publicAgentRunTrace) record(registration *publicCycleRegistration, 
 		})
 	case agent.ModelCompleted:
 		trace.modelCallCount++
+		if trace.observer != nil && trace.observer.LLMSpanCount() >= trace.modelCallCount {
+			return nil
+		}
 		now := time.Now().UTC()
 		cachedTokens := payload.Usage.PromptTokenDetails.CachedTokens
 		uncachedTokens := payload.Usage.PromptTokens - cachedTokens
@@ -73,30 +164,48 @@ func (trace *publicAgentRunTrace) record(registration *publicCycleRegistration, 
 			},
 		})
 	case agent.ToolStarted:
+		if trace.observer != nil && trace.observer.HasToolDecision(payload.CallID, payload.Name) {
+			return nil
+		}
 		argsComplete := true
 		trace.toolArgsBytes[payload.CallID] = len(payload.Arguments)
+		providerCallID := strings.TrimSpace(payload.ProviderCallID)
+		if providerCallID == "" {
+			providerCallID = payload.CallID
+		}
+		source := agenttool.ToolSourceOther
+		descriptor := agent.ToolDescriptor{}
+		if payload.Descriptor != nil {
+			source = agenttool.ToolSource(payload.Descriptor.Source)
+			descriptor = *payload.Descriptor
+		}
 		return trace.ledger.RecordToolDecision(agenttool.Decision{
-			ToolName: payload.Name, ProviderCallID: payload.CallID, ExecutionID: payload.CallID,
-			Source: agenttool.ToolSourceOther, Action: "allowed",
+			ToolName: payload.Name, ProviderCallID: providerCallID, ExecutionID: payload.CallID,
+			Source: source, Capability: descriptor.Capability, Action: "allowed",
+			MutationScope: descriptor.MutationScope, PostCheck: descriptor.PostCheck, Descriptor: descriptor,
 			ArgsBytes: len(payload.Arguments), ArgsComplete: &argsComplete,
 		})
 	case agent.ToolFinished:
+		if trace.observer != nil && trace.observer.HasToolExecution(payload.CallID, payload.Name) {
+			return nil
+		}
 		return trace.recordToolFinished(payload)
 	case agent.RunSettled:
 		trace.finished = true
-		return trace.ledger.RecordFinish(publicTraceStatus(payload.Status), payload.Reason, 0)
+		status := publicTraceStatus(payload.Status)
+		if trace.rootSpan != nil {
+			trace.rootSpan.Finish(status, nil)
+		}
+		return trace.ledger.RecordFinish(status, payload.Reason, 0)
 	default:
 		return nil
 	}
 }
 
-func (trace *publicAgentRunTrace) open(registration *publicCycleRegistration) error {
-	if trace == nil || !trace.enabled || trace.ledger != nil || trace.openAttempted || registration == nil {
+func (trace *publicAgentRunTrace) openLocked(options agentrun.Options) error {
+	if trace == nil || !trace.enabled || trace.ledger != nil || trace.openAttempted || trace.runID == "" {
 		return nil
 	}
-	registration.mu.RLock()
-	options := registration.options
-	registration.mu.RUnlock()
 	trace.openAttempted = true
 	ledger, err := agentrun.NewLedgerForRun(
 		options.Workspace, agentrun.DefaultLoopPolicy().RunLedger, options, trace.runID,
@@ -105,13 +214,32 @@ func (trace *publicAgentRunTrace) open(registration *publicCycleRegistration) er
 		return err
 	}
 	trace.ledger = ledger
+	if ledger != nil {
+		trace.rootSpan = agentrun.StartRootTraceSpan(ledger, map[string]any{
+			"workspace": options.Workspace, "agent_kind": options.AgentKind, "mode": options.Mode,
+		})
+		rootSpanID := ""
+		if trace.rootSpan != nil {
+			rootSpanID = trace.rootSpan.SpanID()
+		}
+		trace.observer = agentrun.NewObserverWithIdentity(
+			ledger, rootSpanID, trace.runID, options.SessionID, options.ReviewThreadID,
+		)
+	}
 	return nil
 }
 
 func (trace *publicAgentRunTrace) recordToolFinished(payload agent.ToolFinished) error {
 	status := "success"
+	providerCallID := strings.TrimSpace(payload.ProviderCallID)
+	if providerCallID == "" {
+		providerCallID = payload.CallID
+	}
 	record := agenttool.ExecutionRecord{
-		ToolName: payload.Name, ProviderCallID: payload.CallID, ExecutionID: payload.CallID,
+		ToolName: payload.Name, ProviderCallID: providerCallID, ExecutionID: payload.CallID,
+	}
+	if payload.Descriptor != nil {
+		record.Descriptor = *payload.Descriptor
 	}
 	if argsBytes, ok := trace.toolArgsBytes[payload.CallID]; ok {
 		argsComplete := true
@@ -141,10 +269,19 @@ func (trace *publicAgentRunTrace) recordToolFinished(payload agent.ToolFinished)
 }
 
 func (trace *publicAgentRunTrace) close() error {
-	if trace == nil || !trace.enabled || trace.ledger == nil {
+	if trace == nil {
 		return nil
 	}
+	trace.mu.Lock()
+	defer trace.mu.Unlock()
+	if !trace.enabled || trace.ledger == nil || trace.closed {
+		return nil
+	}
+	trace.closed = true
 	if !trace.finished {
+		if trace.rootSpan != nil {
+			trace.rootSpan.Finish("error", nil)
+		}
 		if err := trace.ledger.RecordFinish("error", "public Agent event stream closed before settlement", 0); err != nil {
 			_ = trace.ledger.Close()
 			return err

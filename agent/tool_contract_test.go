@@ -97,6 +97,21 @@ func TestToolDescriptorRequiresExplicitResultRetention(t *testing.T) {
 	}
 }
 
+func TestToolDescriptorAcceptsApplicationOwnedToolSource(t *testing.T) {
+	descriptor := validDescriptorForScope(ToolMutationNone)
+	descriptor.Source = ToolSource("denova.lore")
+	if err := descriptor.Validate(); err != nil {
+		t.Fatalf("custom tool source: %v", err)
+	}
+
+	for _, source := range []ToolSource{"", "Lore", " denova.lore", ".lore", "denova/lore"} {
+		descriptor.Source = source
+		if err := descriptor.Validate(); err == nil {
+			t.Fatalf("invalid custom tool source %q was accepted", source)
+		}
+	}
+}
+
 func TestToolDescriptorAcceptsStableResultRetentionModes(t *testing.T) {
 	for _, mode := range []ToolResultRetentionMode{
 		ToolResultDeferred,

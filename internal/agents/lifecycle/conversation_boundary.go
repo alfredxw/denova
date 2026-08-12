@@ -52,6 +52,9 @@ type ConversationBoundaryConfig struct {
 	CanonicalIdentity agent.CapabilityIdentity
 	Committer         ConversationCommitter
 	OnPrepared        func(agentchat.AgentContextPreparation)
+	// ProjectOutput may replace the provider-neutral final message while the
+	// Boundary preserves the original Agent hash as the idempotency identity.
+	ProjectOutput func(*agent.Message) (*agent.Message, *agent.OutputProjection)
 }
 
 type ConversationBoundary struct {
@@ -60,6 +63,10 @@ type ConversationBoundary struct {
 	mu       sync.Mutex
 	prepared *agentchat.AgentContextPreparation
 	run      agent.RunView
+	// contextRevision identifies the Agent-owned checkpoint used to assemble
+	// prepared. A same-cycle checkpoint must invalidate host context while the
+	// canonical output still reuses the newest successful preparation.
+	contextRevision string
 }
 
 type conversationBoundaryContext struct{ boundary *ConversationBoundary }
@@ -111,7 +118,7 @@ func (source conversationBoundaryContext) Materialize(ctx context.Context, reque
 	if err := bindAgentCompaction(source.boundary.config.Conversation, request.Compaction); err != nil {
 		return nil, err
 	}
-	return source.boundary.materializeContext(ctx, request)
+	return source.boundary.materializeContext(ctx, request, compactionContextRevision(request.Compaction))
 }
 
 func (adapter conversationBoundaryCanonical) Identity() agent.CapabilityIdentity {
@@ -134,8 +141,12 @@ func (adapter conversationBoundaryCanonical) ApplyEffects(ctx context.Context, r
 	return adapter.boundary.config.Committer.ApplyEffects(ctx, requests)
 }
 
-func (boundary *ConversationBoundary) materializeContext(ctx context.Context, request agent.ContextRequest) ([]agent.ContextFragment, error) {
-	prepared, err := boundary.prepare(ctx, request.Run)
+func (boundary *ConversationBoundary) materializeContext(
+	ctx context.Context,
+	request agent.ContextRequest,
+	contextRevision string,
+) ([]agent.ContextFragment, error) {
+	prepared, err := boundary.prepare(ctx, request.Run, contextRevision)
 	if err != nil {
 		return nil, err
 	}
@@ -162,14 +173,37 @@ func (boundary *ConversationBoundary) commitOutput(ctx context.Context, request 
 		return agent.OutputCommitReceipt{}, errors.New("Denova Conversation Boundary received a non-output commit")
 	}
 	run := agent.RunView{ID: request.Identity.RunID, CommandID: request.Identity.CommandID, Cycle: request.Identity.Cycle}
-	prepared, err := boundary.prepare(ctx, run)
+	// Context materialization is guaranteed to precede output commit in the
+	// fixed Agent lifecycle. Empty revision therefore means: reuse the newest
+	// successful preparation for this exact cycle.
+	prepared, err := boundary.prepare(ctx, run, "")
 	if err != nil {
 		return agent.OutputCommitReceipt{}, err
 	}
-	return boundary.config.Committer.CommitOutput(ctx, prepared, request)
+	var transcript *agent.OutputProjection
+	if boundary.config.ProjectOutput != nil {
+		message, projectedTranscript := boundary.config.ProjectOutput(&request.Message)
+		if message == nil {
+			return agent.OutputCommitReceipt{}, errors.New("Denova Conversation Boundary output projector returned no canonical message")
+		}
+		request.Message = *message
+		transcript = projectedTranscript
+	}
+	receipt, err := boundary.config.Committer.CommitOutput(ctx, prepared, request)
+	if err != nil {
+		return agent.OutputCommitReceipt{}, err
+	}
+	if receipt.Transcript == nil {
+		receipt.Transcript = transcript
+	}
+	return receipt, nil
 }
 
-func (boundary *ConversationBoundary) prepare(ctx context.Context, run agent.RunView) (agentchat.AgentContextPreparation, error) {
+func (boundary *ConversationBoundary) prepare(
+	ctx context.Context,
+	run agent.RunView,
+	contextRevision string,
+) (agentchat.AgentContextPreparation, error) {
 	if boundary == nil || boundary.config.Conversation == nil {
 		return agentchat.AgentContextPreparation{}, errors.New("Denova Conversation Boundary is unavailable")
 	}
@@ -179,10 +213,16 @@ func (boundary *ConversationBoundary) prepare(ctx context.Context, run agent.Run
 	boundary.mu.Lock()
 	defer boundary.mu.Unlock()
 	if boundary.prepared != nil {
-		if boundary.run != run {
+		// Delivery and Autonomous describe how this already-identified cycle was
+		// admitted. Canonical commit identities intentionally need only the exact
+		// Run/command/cycle tuple, so compare that durable identity rather than
+		// requiring callers to reconstruct incidental preparation metadata.
+		if boundary.run.ID != run.ID || boundary.run.CommandID != run.CommandID || boundary.run.Cycle != run.Cycle {
 			return agentchat.AgentContextPreparation{}, errors.New("Denova Conversation Boundary was reused across Agent cycles")
 		}
-		return *boundary.prepared, nil
+		if contextRevision == "" || boundary.contextRevision == contextRevision {
+			return *boundary.prepared, nil
+		}
 	}
 	prepared, err := agentchat.PrepareAgentContext(
 		ctx,
@@ -190,19 +230,30 @@ func (boundary *ConversationBoundary) prepare(ctx context.Context, run agent.Run
 		boundary.config.Request,
 		boundary.config.BookService,
 		boundary.config.Options.Workspace,
+		run.StartedAt,
 	)
 	if err != nil {
 		return agentchat.AgentContextPreparation{}, err
 	}
-	if err := boundary.config.Committer.ApplyPreparedContext(ctx, prepared); err != nil {
-		return agentchat.AgentContextPreparation{}, fmt.Errorf("apply prepared Denova context: %w", err)
+	if !agent.IsInspection(ctx) {
+		if err := boundary.config.Committer.ApplyPreparedContext(ctx, prepared); err != nil {
+			return agentchat.AgentContextPreparation{}, fmt.Errorf("apply prepared Denova context: %w", err)
+		}
 	}
 	boundary.prepared = &prepared
 	boundary.run = run
-	if boundary.config.OnPrepared != nil {
+	boundary.contextRevision = contextRevision
+	if boundary.config.OnPrepared != nil && !agent.IsInspection(ctx) {
 		boundary.config.OnPrepared(prepared)
 	}
 	return prepared, nil
+}
+
+func compactionContextRevision(state *agent.CompactionState) string {
+	if state == nil {
+		return "none"
+	}
+	return fmt.Sprintf("%s:%d:%t", state.ID, state.Revision, state.Removed)
 }
 
 var _ agent.ContextSource = conversationBoundaryContext{}

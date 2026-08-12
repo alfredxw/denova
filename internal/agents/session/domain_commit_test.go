@@ -151,6 +151,51 @@ func TestAgentCanonicalHashPersistsAtomicallyAndReconcilesExactly(t *testing.T) 
 	}
 }
 
+func TestCanonicalOutputAtomicallyResolvesInterruption(t *testing.T) {
+	store, err := NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := store.GetOrCreate("atomic-interruption-output")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.MarkInterrupted("continue", "partial", "connection lost"); err != nil {
+		t.Fatal(err)
+	}
+	pending := sess.PendingInterruption()
+	if pending == nil {
+		t.Fatal("expected pending interruption")
+	}
+	identity := DomainCommitIdentity{CommandID: "command-1", OperationID: "operation-1", Cycle: 1}
+	intent, err := NewDomainCommitIntent(identity, agent.AssistantMessage("recovered", nil), MessageMetadata{
+		ResolveInterruptionID: pending.ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	intent, err = intent.WithAgentCanonicalHash("output-hash")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sess.CommitDomainMessage(intent); err != nil {
+		t.Fatal(err)
+	}
+	if got := sess.PendingInterruption(); got != nil {
+		t.Fatalf("interruption remained pending after atomic output: %#v", got)
+	}
+	reopened, err := loadSession(sess.filePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := reopened.PendingInterruption(); got != nil {
+		t.Fatalf("reopened interruption remained pending: %#v", got)
+	}
+	if _, found, err := reopened.FindAgentCanonicalCommit(identity, agent.Assistant, "output-hash"); err != nil || !found {
+		t.Fatalf("canonical output not recoverable found=%t err=%v", found, err)
+	}
+}
+
 func TestContextCursorRejectsStaleStructuralMutation(t *testing.T) {
 	store, err := NewStore(t.TempDir())
 	if err != nil {

@@ -6,7 +6,6 @@ import (
 	"context"
 
 	"denova/config"
-	agentconversation "denova/internal/agents/conversation"
 	agentexecution "denova/internal/agents/execution"
 	"denova/internal/agents/session"
 	agenttool "denova/internal/agents/tool"
@@ -54,7 +53,6 @@ type Operation interface {
 // owns Config Manager policy; Host never consults foreground navigation state.
 type Host interface {
 	ProjectRuntime(context.Context, string) (Runtime, error)
-	ResolveAsk(context.Context, *session.Session, string, string, string, string, []agentconversation.HostAskAnswer, string) (agentconversation.HostAskResolution, error)
 	AcquireProjectOperation(context.Context, string) (Operation, error)
 	IsCurrent(Runtime) bool
 	RegisterTask(*apptask.Task, Runtime) error

@@ -47,7 +47,7 @@ type interactivePendingContext struct {
 
 func BuildModelContextProjection(
 	history interactive.StoryModelHistory,
-	compaction *interactive.ContextCompactionEvent,
+	compaction *interactive.ContextCompactionProjection,
 	snapshot interactive.Snapshot,
 	policy toolresult.ContextPolicy,
 	current agentrun.CycleIdentity,
@@ -74,7 +74,7 @@ func BuildModelContextProjection(
 	}
 
 	turns, resolved, checkpointMessages, err := projectInteractiveCompletedContext(
-		history, compaction, snapshot.ToolResultCleanup, policy, sourceStart,
+		history, compaction, policy, sourceStart,
 	)
 	if err != nil {
 		return ModelContextProjection{}, err
@@ -152,8 +152,7 @@ func BuildModelContextProjection(
 
 func projectInteractiveCompletedContext(
 	history interactive.StoryModelHistory,
-	compaction *interactive.ContextCompactionEvent,
-	cleanup *interactive.ToolResultCleanupEvent,
+	compaction *interactive.ContextCompactionProjection,
 	policy toolresult.ContextPolicy,
 	sourceStart int,
 ) ([]interactiveProjectedTurn, []interactiveResolvedContext, []*agents.Message, error) {
@@ -220,22 +219,14 @@ func projectInteractiveCompletedContext(
 		raw = append(raw, agents.AssistantMessage(turn.Narrative, nil))
 		turnSpans[index] = messageSpan{start: start, end: len(raw)}
 	}
-	visible := raw
-	if cleanup != nil {
-		visible = applyInteractiveToolResultCleanup(raw, *cleanup)
-		if len(visible) != len(raw) {
-			return nil, nil, nil, fmt.Errorf("Game tool-result cleanup changed model-history message cardinality")
-		}
-	}
-
-	checkpoint := append([]*agents.Message(nil), visible[:checkpointCount]...)
+	checkpoint := append([]*agents.Message(nil), raw[:checkpointCount]...)
 	for index := range turns {
 		span := turnSpans[index]
-		turns[index].messages = toolresult.ApplyContextPolicy(visible[span.start:span.end], policy)
+		turns[index].messages = toolresult.ApplyContextPolicy(raw[span.start:span.end], policy)
 	}
 	for index := range resolved {
 		span := resolvedSpans[index]
-		resolved[index].messages = toolresult.ApplyContextPolicy(visible[span.start:span.end], policy)
+		resolved[index].messages = toolresult.ApplyContextPolicy(raw[span.start:span.end], policy)
 	}
 	return turns, resolved, checkpoint, nil
 }

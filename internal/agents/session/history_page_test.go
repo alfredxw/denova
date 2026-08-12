@@ -9,10 +9,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	agent "github.com/alfredxw/denova/agent"
 
-	agentcontext "denova/internal/agents/context"
 	"denova/internal/agents/conversationjournal"
 )
 
@@ -34,22 +34,6 @@ func TestHistoryPageReadsIndexedRangesWithoutOmissions(t *testing.T) {
 			t.Fatal(writeErr)
 		}
 	}
-	legacyCompaction, err := json.Marshal(ContextCompaction{
-		Type: historyTypeCompaction,
-		ID:   "legacy-long-compaction",
-		CompactionCheckpoint: agentcontext.CompactionCheckpoint{
-			AgentKind: "ide", Epoch: 1, Summary: "旧格式长会话摘要",
-		},
-		SourceStartIndex:   123,
-		SourceEndIndex:     701,
-		SourceMessageCount: 578,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := writer.Write(append(legacyCompaction, '\n')); err != nil {
-		t.Fatal(err)
-	}
 	if err := writer.Flush(); err != nil {
 		t.Fatal(err)
 	}
@@ -67,10 +51,6 @@ func TestHistoryPageReadsIndexedRangesWithoutOmissions(t *testing.T) {
 	}
 	if len(sess.messages) > sessionRecentTransactionLimit {
 		t.Fatalf("resident messages=%d want<=%d", len(sess.messages), sessionRecentTransactionLimit)
-	}
-	compaction, ok := sess.LatestContextCompaction("ide")
-	if !ok || compaction.SourceStartCursor == 0 || compaction.SourceEndCursor == 0 {
-		t.Fatalf("legacy compaction indexes were not migrated to stable cursors: %#v", compaction)
 	}
 	if err := store.Close(); err != nil {
 		t.Fatal(err)
@@ -164,28 +144,9 @@ func TestHistoryPageKeepsSegmentedRunsWholeAcrossSparseAnchors(t *testing.T) {
 		displaysPerRun = 19
 		visiblePerRun  = displaysPerRun + 1
 	) // The 260 visible rows cross the 256-row anchor interval.
+	var contextRevision uint64
 	for index := 0; index < runs; index++ {
-		runID := fmt.Sprintf("run-%03d", index)
-		if err := sess.Append(agent.UserMessage("user-" + runID)); err != nil {
-			t.Fatal(err)
-		}
-		var canonical strings.Builder
-		for displayIndex := 0; displayIndex < displaysPerRun; displayIndex++ {
-			role := "thinking"
-			content := fmt.Sprintf("think-%02d-%s", displayIndex, runID)
-			if displayIndex%2 == 1 {
-				role = "assistant"
-				content = fmt.Sprintf("answer-%02d-%s", displayIndex, runID)
-				canonical.WriteString(content)
-			}
-			event := DisplayEvent{ID: fmt.Sprintf("%s-display-%02d", runID, displayIndex), Role: role, Content: content, RunID: runID}
-			if err := sess.AppendDisplayEvent(event); err != nil {
-				t.Fatal(err)
-			}
-		}
-		if err := sess.AppendWithMetadata(agent.AssistantMessage(canonical.String(), nil), MessageMetadata{RunID: runID}); err != nil {
-			t.Fatal(err)
-		}
+		appendSegmentedHistoryRun(t, sess, fmt.Sprintf("run-%03d", index), displaysPerRun, &contextRevision)
 	}
 	if err := store.Close(); err != nil {
 		t.Fatal(err)
@@ -233,6 +194,51 @@ func TestHistoryPageKeepsSegmentedRunsWholeAcrossSparseAnchors(t *testing.T) {
 				t.Fatalf("run %s display %d changed: %#v", runID, displayIndex, entry)
 			}
 		}
+	}
+}
+
+// appendSegmentedHistoryRun keeps each logical run in one physical journal
+// transaction. The production runtime already commits a completed run in
+// batches; this fixture should exercise sparse history anchors, not hundreds
+// of unrelated fsync calls.
+func appendSegmentedHistoryRun(t *testing.T, sess *Session, runID string, displaysPerRun int, contextRevision *uint64) {
+	t.Helper()
+	now := time.Now().UTC()
+	*contextRevision++
+	user := agent.UserMessage("user-" + runID)
+	records := make([]any, 0, displaysPerRun+2)
+	records = append(records, messageRecord{
+		Type: historyTypeMessage, CreatedAt: now, Message: *user,
+		MessageMetadata: MessageMetadata{RunID: runID, ContextRevision: *contextRevision},
+	})
+	var canonical strings.Builder
+	for displayIndex := 0; displayIndex < displaysPerRun; displayIndex++ {
+		role := "thinking"
+		content := fmt.Sprintf("think-%02d-%s", displayIndex, runID)
+		if displayIndex%2 == 1 {
+			role = "assistant"
+			content = fmt.Sprintf("answer-%02d-%s", displayIndex, runID)
+			canonical.WriteString(content)
+		}
+		records = append(records, displayRecord{
+			Type: historyTypeDisplay, RecordID: newDisplayRecordID(),
+			DisplayEvent: DisplayEvent{
+				ID: fmt.Sprintf("%s-display-%02d", runID, displayIndex), Role: role,
+				Content: content, RunID: runID, CreatedAt: now,
+			},
+		})
+	}
+	*contextRevision++
+	assistant := agent.AssistantMessage(canonical.String(), nil)
+	records = append(records, messageRecord{
+		Type: historyTypeMessage, CreatedAt: now, Message: *assistant,
+		MessageMetadata: MessageMetadata{RunID: runID, ContextRevision: *contextRevision},
+	})
+	if err := sess.withCanonicalMutation(context.Background(), "append segmented history fixture", func() error {
+		_, err := sess.appendJournalRecordsLocked(records...)
+		return err
+	}); err != nil {
+		t.Fatal(err)
 	}
 }
 

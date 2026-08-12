@@ -10,13 +10,17 @@ import (
 	"denova/config"
 	agentconversation "denova/internal/agents/conversation"
 	"denova/internal/agents/conversationconfig"
-	"denova/internal/agents/goal"
+	agentexecution "denova/internal/agents/execution"
+	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 	agentchatapp "denova/internal/app/agentchat"
 	configmanagerapp "denova/internal/app/configmanager"
 	interactiveapp "denova/internal/app/interactive"
 	appsettings "denova/internal/app/settings"
 	"denova/internal/interactive"
+
+	agent "github.com/alfredxw/denova/agent"
+	publicgoal "github.com/alfredxw/denova/agent/goal"
 )
 
 const (
@@ -56,77 +60,93 @@ type ConversationGoalMutation struct {
 }
 
 func IsConversationGoalRevisionConflict(err error) bool {
-	return errors.Is(err, goal.ErrRevisionConflict) || agentchatapp.IsGoalRevisionConflict(err)
+	return errors.Is(err, publicgoal.ErrRevisionConflict) || agentchatapp.IsGoalRevisionConflict(err)
 }
 
 func IsConversationGoalStateChanged(err error) bool {
-	return errors.Is(err, goal.ErrNotFound) || errors.Is(err, goal.ErrNotActive)
+	return errors.Is(err, publicgoal.ErrNotFound) || errors.Is(err, publicgoal.ErrNotActive)
 }
 
-func (a *App) ConversationGoal(ctx context.Context, binding ConversationConfigBinding) (goal.State, bool, error) {
+func (a *App) ConversationGoal(ctx context.Context, binding ConversationConfigBinding) (agent.GoalState, bool, error) {
 	switch normalizeConversationMode(binding.Mode) {
 	case ConversationModeWriting:
 		if err := a.requireForegroundConversationProject(binding.ProjectID); err != nil {
-			return goal.State{}, false, err
+			return agent.GoalState{}, false, err
 		}
 		service := a.chat()
 		service.admission.Lock()
 		defer service.admission.Unlock()
-		sess, _, err := a.writingGoalSession(binding.SessionID)
+		runtime, options, _, err := a.writingGoalRuntime(binding.SessionID)
 		if err != nil {
-			return goal.State{}, false, err
+			return agent.GoalState{}, false, err
 		}
-		return sess.Goal(ctx)
+		return runtime.Goal(ctx, options)
 	case ConversationModeAgentChat:
 		return a.AgentChat().ConversationGoal(ctx, agentchatapp.Binding{ProjectID: binding.ProjectID, SessionID: binding.SessionID})
 	default:
-		return goal.State{}, false, fmt.Errorf("goal is unsupported for conversation mode %q", binding.Mode)
+		return agent.GoalState{}, false, fmt.Errorf("goal is unsupported for conversation mode %q", binding.Mode)
 	}
 }
 
-func (a *App) MutateConversationGoal(ctx context.Context, binding ConversationConfigBinding, mutation ConversationGoalMutation) (goal.State, error) {
+func (a *App) MutateConversationGoal(ctx context.Context, binding ConversationConfigBinding, mutation ConversationGoalMutation) (agent.GoalState, error) {
 	action := strings.TrimSpace(mutation.Action)
 	switch normalizeConversationMode(binding.Mode) {
 	case ConversationModeWriting:
 		if err := a.requireForegroundConversationProject(binding.ProjectID); err != nil {
-			return goal.State{}, err
+			return agent.GoalState{}, err
 		}
 		service := a.chat()
 		service.admission.Lock()
 		defer service.admission.Unlock()
-		sess, runtimeCfg, err := a.writingGoalSession(binding.SessionID)
+		runtime, options, runtimeCfg, err := a.writingGoalRuntime(binding.SessionID)
 		if err != nil {
-			return goal.State{}, err
+			return agent.GoalState{}, err
 		}
 		if (action == "set" || action == "resume") && !config.ResolveAgentTools(&runtimeCfg, config.AgentKindIDE).Allows(config.AgentToolGoal) {
-			return goal.State{}, errors.New("conversation goal is disabled for the Writing Agent")
+			return agent.GoalState{}, errors.New("conversation goal is disabled for the Writing Agent")
 		}
+		goalMutation := agent.GoalMutation{ExpectedRevision: mutation.ExpectedRevision}
 		switch action {
 		case "set":
-			return sess.SetGoal(ctx, mutation.Objective, mutation.ExpectedRevision)
+			goalMutation.Kind, goalMutation.Objective = agent.GoalSet, mutation.Objective
 		case "pause":
-			return sess.PauseGoal(ctx, mutation.ExpectedRevision)
+			goalMutation.Kind = agent.GoalPause
 		case "resume":
-			return sess.ResumeGoal(ctx, mutation.ExpectedRevision)
+			goalMutation.Kind = agent.GoalResume
 		case "clear":
-			return sess.ClearGoal(ctx, mutation.ExpectedRevision)
+			goalMutation.Kind = agent.GoalClear
 		default:
-			return goal.State{}, fmt.Errorf("unsupported goal action %q", action)
+			return agent.GoalState{}, fmt.Errorf("unsupported goal action %q", action)
 		}
+		return runtime.UpdateGoal(ctx, options, goalMutation)
 	case ConversationModeAgentChat:
 		return a.AgentChat().MutateConversationGoal(ctx, agentchatapp.Binding{ProjectID: binding.ProjectID, SessionID: binding.SessionID}, action, mutation.Objective, mutation.ExpectedRevision)
 	default:
-		return goal.State{}, fmt.Errorf("goal is unsupported for conversation mode %q", binding.Mode)
+		return agent.GoalState{}, fmt.Errorf("goal is unsupported for conversation mode %q", binding.Mode)
 	}
 }
 
-func (a *App) writingGoalSession(requestedSessionID string) (*session.Session, config.Config, error) {
+func (a *App) writingGoalRuntime(requestedSessionID string) (*agentexecution.Runtime, agentrun.Options, config.Config, error) {
 	store, runtimeCfg, sessionID, err := a.foregroundConversationRuntime(requestedSessionID)
 	if err != nil {
-		return nil, config.Config{}, err
+		return nil, agentrun.Options{}, config.Config{}, err
 	}
-	sess, err := store.Get(sessionID)
-	return sess, runtimeCfg, err
+	// The product Session remains the canonical writing-history owner, but Goal
+	// state is held only by the public Agent Session.
+	if _, err := store.Get(sessionID); err != nil {
+		return nil, agentrun.Options{}, config.Config{}, err
+	}
+	a.mu.RLock()
+	executionRuntime := a.executionRuntime
+	workspace := strings.TrimSpace(a.workspace)
+	a.mu.RUnlock()
+	if executionRuntime == nil || workspace == "" {
+		return nil, agentrun.Options{}, config.Config{}, ErrNoWorkspace
+	}
+	return executionRuntime, agentrun.Options{
+		AgentKind: agentrun.AgentKindIDE, StateRoot: runtimeCfg.ProjectStateDir,
+		Workspace: workspace, SessionID: sessionID, Mode: "ide",
+	}, runtimeCfg, nil
 }
 
 // UnmarshalJSON delegates the strict omitted-versus-null validation to the

@@ -308,7 +308,7 @@ func TestToolOrchestratorKeepsExecutionMetadataOutOfModelResult(t *testing.T) {
 	}
 }
 
-func TestToolOrchestratorTruncatesResultWhenLimitConfigured(t *testing.T) {
+func TestToolOrchestratorPreservesResultForFixedProcessorWhenLimitConfigured(t *testing.T) {
 	middleware := &OrchestratorMiddleware{agentKind: agentrun.AgentKindIDE, toolResultMaxBytes: 128}
 	ctx := agent.ContextWithToolArtifactStore(context.Background(), &processorArtifactStore{})
 	endpoint, err := wrapTextToolCallForTest(middleware,
@@ -320,12 +320,13 @@ func TestToolOrchestratorTruncatesResultWhenLimitConfigured(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	want := strings.Repeat("正文", 200)
 	result, err := endpoint(ctx, `{"path":"chapters/ch01.md"}`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result, "[tool result truncated]") || len(result) > 128 {
-		t.Fatalf("configured limit should truncate result: %s", result)
+	if result != want {
+		t.Fatalf("middleware truncated the result before the fixed processor: got=%d want=%d", len(result), len(want))
 	}
 }
 

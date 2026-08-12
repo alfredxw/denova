@@ -12,25 +12,6 @@ import (
 	"denova/internal/agents/session"
 )
 
-func TestSessionConversationStructuralCursorRejectsStaleContextWrite(t *testing.T) {
-	store, err := session.NewStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	sess, err := store.GetOrCreate("stale-structural-cursor")
-	if err != nil {
-		t.Fatal(err)
-	}
-	cursor := sess.ContextCursor()
-	conversation := NewSessionConversation(sess).WithContextCursorBarrier(cursor)
-	if err := sess.Append(agent.UserMessage("concurrent input")); err != nil {
-		t.Fatal(err)
-	}
-	if err := conversation.AppendContextMessage(agent.UserMessage("stale structural context")); !errors.Is(err, session.ErrContextRevisionConflict) {
-		t.Fatalf("stale structural write error = %v, want %v", err, session.ErrContextRevisionConflict)
-	}
-}
-
 func TestSessionConversationRejectsCanonicalWritesWithoutDurableCycleIdentity(t *testing.T) {
 	store, err := session.NewStore(t.TempDir())
 	if err != nil {

@@ -10,7 +10,7 @@ type runCompletionControlKey struct{}
 type runCompletionControl struct {
 	mu        sync.RWMutex
 	requested bool
-	cancel    AgentCancelFunc
+	cancel    cancelFunc
 }
 
 // RequestCompletionAfterTools asks the current root Agent to settle
@@ -29,7 +29,7 @@ func RequestCompletionAfterTools(ctx context.Context) bool {
 	if cancel == nil {
 		return false
 	}
-	_, contributed := cancel(WithAgentCancelMode(CancelAfterToolCalls))
+	_, contributed := cancel(withCancelMode(cancelAfterTools))
 	return contributed
 }
 

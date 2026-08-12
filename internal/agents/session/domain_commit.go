@@ -46,8 +46,6 @@ type ContextCursor struct {
 type ContextSnapshot struct {
 	EffectiveMessages []*agent.Message
 	Cursor            ContextCursor
-	Compaction        *ContextCompaction
-	ToolResultCleanup *ToolResultCleanupRecord
 }
 
 // DomainCommitIntent is staged by a conversation and authorized by the
@@ -157,7 +155,7 @@ func (s *Session) CommitDomainMessageContext(ctx context.Context, intent DomainC
 		if metadata.ContextOnly {
 			kind = historyTypeContextMessage
 		}
-		if err := s.appendMessageLocked(&message, metadata, kind); err != nil {
+		if err := s.appendDomainMessageLocked(&message, metadata, kind); err != nil {
 			recoveryErr := s.refreshCanonicalTailLocked()
 			if recoveryErr == nil {
 				reconciled, found, reconcileErr := s.findDomainCommitLocked(identity, intent.Message.Role, actualHash, canonicalHash)
@@ -179,6 +177,77 @@ func (s *Session) CommitDomainMessageContext(ctx context.Context, intent DomainC
 		return nil
 	})
 	return receipt, resultErr
+}
+
+// appendDomainMessageLocked publishes the canonical message and its optional
+// interruption resolution as one physical journal transaction. Callers hold
+// s.mu under the canonical journal lease.
+func (s *Session) appendDomainMessageLocked(message *agent.Message, metadata MessageMetadata, kind string) error {
+	if message == nil {
+		return errors.New("domain commit message is nil")
+	}
+	now := time.Now().UTC()
+	metadata = sanitizeMessageMetadata(metadata)
+	metadata.ContextRevision = s.contextRevision + 1
+	records := []any{messageRecord{Type: kind, CreatedAt: now, Message: *message, MessageMetadata: metadata}}
+	var interruptionPatch *interruptionPatchRecord
+	if id := metadata.ResolveInterruptionID; id != "" {
+		if !s.pendingInterruptionLocked(id) {
+			return fmt.Errorf("canonical output interruption %q is not pending", id)
+		}
+		patch := interruptionPatchRecord{
+			Type: historyTypeInterruptionPatch, TargetID: id, Status: InterruptionResolved,
+			ResolvedAt: &now, UpdatedAt: now,
+		}
+		interruptionPatch = &patch
+		records = append(records, patch)
+	}
+	if _, err := s.appendJournalRecordsLocked(records...); err != nil {
+		return err
+	}
+	s.messages = append(s.messages, message)
+	s.messageCount++
+	s.records = append(s.records, historyRecord{
+		kind: kind, message: message, messageMetadata: metadata, createdAt: now,
+	})
+	if s.title == defaultSessionTitle && message.Role == agent.User && strings.TrimSpace(message.Content) != "" {
+		s.title = deriveTitle(message.Content)
+	}
+	s.contextRevision = metadata.ContextRevision
+	if interruptionPatch != nil {
+		s.applyInterruptionResolutionLocked(*interruptionPatch)
+	}
+	advanceUpdatedAt(s, now)
+	return nil
+}
+
+func (s *Session) pendingInterruptionLocked(id string) bool {
+	if s.projection != nil && s.projection.PendingInterrupt != nil &&
+		s.projection.PendingInterrupt.ID == id && s.projection.PendingInterrupt.Status == InterruptionPending {
+		return true
+	}
+	for index := len(s.records) - 1; index >= 0; index-- {
+		record := s.records[index]
+		if record.kind == historyTypeInterrupt && record.interruption != nil && record.interruption.ID == id {
+			return record.interruption.Status == InterruptionPending
+		}
+	}
+	return false
+}
+
+func (s *Session) applyInterruptionResolutionLocked(patch interruptionPatchRecord) {
+	for index := range s.records {
+		interruption := s.records[index].interruption
+		if interruption == nil || interruption.ID != patch.TargetID {
+			continue
+		}
+		interruption.Status = patch.Status
+		interruption.ResolvedAt = patch.ResolvedAt
+	}
+	if s.projection != nil && s.projection.PendingInterrupt != nil && s.projection.PendingInterrupt.ID == patch.TargetID {
+		s.projection.PendingInterrupt = nil
+		s.projection.PendingInterruptCursor = 0
+	}
 }
 
 // RefreshCanonical reloads the complete append-only journal under the same
@@ -274,13 +343,13 @@ func (s *Session) GetEffectiveMessagesWithCursor() ([]*agent.Message, ContextCur
 // SnapshotContext captures effective messages, structural projections, and
 // their shared revision under one lock. Corrupt durable projections are an
 // error so callers cannot silently fall back to discarded raw transcript.
-func (s *Session) SnapshotContext(agentKind string) (ContextSnapshot, error) {
+func (s *Session) SnapshotContext() (ContextSnapshot, error) {
 	if s == nil {
 		return ContextSnapshot{}, nil
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.snapshotContextLocked(agentKind)
+	return s.snapshotContextLocked()
 }
 
 // SnapshotContextForDomainCommit atomically returns model-visible context and
@@ -288,7 +357,6 @@ func (s *Session) SnapshotContext(agentKind string) (ContextSnapshot, error) {
 // behind /clear remains durable but returns found=false so the current turn can
 // still project its accepted input once.
 func (s *Session) SnapshotContextForDomainCommit(
-	agentKind string,
 	identity DomainCommitIdentity,
 	role agent.RoleType,
 	hash string,
@@ -302,7 +370,7 @@ func (s *Session) SnapshotContextForDomainCommit(
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	snapshot, err := s.snapshotContextLocked(agentKind)
+	snapshot, err := s.snapshotContextLocked()
 	if err != nil {
 		return ContextSnapshot{}, 0, false, err
 	}
@@ -321,15 +389,8 @@ func (s *Session) SnapshotContextForDomainCommit(
 	return snapshot, effectiveIndex, true, nil
 }
 
-func (s *Session) snapshotContextLocked(agentKind string) (ContextSnapshot, error) {
-	snapshot := ContextSnapshot{EffectiveMessages: s.effectiveTranscriptMessagesLocked(), Cursor: s.contextCursorLocked()}
-	if compaction, ok := s.latestActiveContextCompactionLocked(agentKind); ok {
-		snapshot.Compaction = &compaction
-	}
-	if cleanup, ok := s.latestActiveToolResultCleanupLocked(agentKind); ok {
-		snapshot.ToolResultCleanup = &cleanup
-	}
-	return snapshot, nil
+func (s *Session) snapshotContextLocked() (ContextSnapshot, error) {
+	return ContextSnapshot{EffectiveMessages: s.effectiveTranscriptMessagesLocked(), Cursor: s.contextCursorLocked()}, nil
 }
 
 func (s *Session) AppendContextMessageAt(expected ContextCursor, msg *agent.Message) error {
@@ -367,187 +428,6 @@ func (s *Session) AppendClearMarkerAt(expected ContextCursor) error {
 	})
 }
 
-func (s *Session) AppendContextCompactionAt(expected ContextCursor, record ContextCompaction) (ContextCompaction, error) {
-	return s.AppendContextCompactionAtContext(context.Background(), expected, record)
-}
-
-// AppendContextCompactionAtContext serializes structural checkpoints across
-// independently loaded Session instances. The canonical tail is refreshed
-// while holding the same file lease used by Agent message publication, so the
-// revision comparison observes every previously committed mutation.
-func (s *Session) AppendContextCompactionAtContext(
-	ctx context.Context,
-	expected ContextCursor,
-	record ContextCompaction,
-) (ContextCompaction, error) {
-	result := record
-	err := s.withCanonicalMutation(ctx, "append context compaction with revision", func() error {
-		if existing, ok := s.contextCompactionByIDLocked(record.ID); ok {
-			if !sameContextCompactionIntent(existing, record) {
-				return fmt.Errorf("%w: compaction id %q has different content", ErrDomainCommitIdentityConflict, record.ID)
-			}
-			result = existing
-			return nil
-		}
-		if current := s.contextCursorLocked(); current.Revision != expected.Revision {
-			return fmt.Errorf("%w: expected=%d current=%d", ErrContextRevisionConflict, expected.Revision, current.Revision)
-		}
-		var appendErr error
-		result, appendErr = s.appendContextCompactionLocked(record)
-		return appendErr
-	})
-	return result, err
-}
-
-// CommitContextCompactionRemovalAt publishes a deterministic soft-removal.
-// Exact retries return the original record before evaluating the stale cursor;
-// this reconciles an append that reached disk before its caller saw success.
-func (s *Session) CommitContextCompactionRemovalAt(expected ContextCursor, record ContextCompactionRemoval) (ContextCompactionRemoval, bool, error) {
-	return s.CommitContextCompactionRemovalAtContext(context.Background(), expected, record)
-}
-
-// CommitContextCompactionRemovalAtContext is the leased, refresh-before-CAS
-// removal counterpart to AppendContextCompactionAtContext.
-func (s *Session) CommitContextCompactionRemovalAtContext(
-	ctx context.Context,
-	expected ContextCursor,
-	record ContextCompactionRemoval,
-) (ContextCompactionRemoval, bool, error) {
-	result := record
-	removed := false
-	err := s.withCanonicalMutation(ctx, "remove context compaction with revision", func() error {
-		if existing, ok := s.contextCompactionRemovalByIDLocked(record.ID); ok {
-			if !sameContextCompactionRemovalIntent(existing, record) {
-				return fmt.Errorf("%w: compaction removal id %q has different content", ErrDomainCommitIdentityConflict, record.ID)
-			}
-			result = existing
-			removed = true
-			return nil
-		}
-		if current := s.contextCursorLocked(); current.Revision != expected.Revision {
-			return fmt.Errorf("%w: expected=%d current=%d", ErrContextRevisionConflict, expected.Revision, current.Revision)
-		}
-		compaction, ok := s.latestActiveContextCompactionLocked(record.AgentKind)
-		if !ok {
-			return nil
-		}
-		if strings.TrimSpace(record.CompactionID) != "" && record.CompactionID != compaction.ID {
-			return fmt.Errorf("%w: expected compaction=%s current=%s", ErrContextRevisionConflict, record.CompactionID, compaction.ID)
-		}
-		now := time.Now().UTC()
-		result.Type = historyTypeCompactionRemoved
-		if strings.TrimSpace(result.ID) == "" {
-			result.ID = newContextCompactionRemovalID()
-		}
-		if strings.TrimSpace(result.AgentKind) == "" {
-			result.AgentKind = compaction.AgentKind
-		}
-		result.CompactionID = compaction.ID
-		result.SourceStartIndex = compaction.SourceStartIndex
-		result.SourceEndIndex = compaction.SourceEndIndex
-		result.SourceStartCursor = compaction.SourceStartCursor
-		result.SourceEndCursor = compaction.SourceEndCursor
-		if result.CreatedAt.IsZero() {
-			result.CreatedAt = now
-		}
-		result.ContextRevision = s.contextRevision + 1
-		if err := s.appendJournalRecordLocked(result); err != nil {
-			return err
-		}
-		s.contextRevision = result.ContextRevision
-		s.records = append(s.records, historyRecord{kind: historyTypeCompactionRemoved, compactionRemoval: &result, createdAt: result.CreatedAt})
-		advanceUpdatedAt(s, result.CreatedAt)
-		removed = true
-		return nil
-	})
-	return result, removed, err
-}
-
-func (s *Session) RemoveLatestContextCompactionAt(expected ContextCursor, agentKind, reason string) (ContextCompactionRemoval, bool, error) {
-	var result ContextCompactionRemoval
-	var removed bool
-	err := s.withCanonicalMutation(context.Background(), "remove latest context compaction with revision", func() error {
-		if current := s.contextCursorLocked(); current.Revision != expected.Revision {
-			return fmt.Errorf("%w: expected=%d current=%d", ErrContextRevisionConflict, expected.Revision, current.Revision)
-		}
-		var removeErr error
-		result, removed, removeErr = s.removeLatestContextCompactionLocked(agentKind, reason)
-		return removeErr
-	})
-	return result, removed, err
-}
-
-func (s *Session) ContextCompactionByID(id string) (ContextCompaction, bool) {
-	if s == nil {
-		return ContextCompaction{}, false
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.contextCompactionByIDLocked(id)
-}
-
-func (s *Session) ContextCompactionRemovalByID(id string) (ContextCompactionRemoval, bool) {
-	if s == nil {
-		return ContextCompactionRemoval{}, false
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.contextCompactionRemovalByIDLocked(id)
-}
-
-func (s *Session) contextCompactionByIDLocked(id string) (ContextCompaction, bool) {
-	id = strings.TrimSpace(id)
-	if id == "" {
-		return ContextCompaction{}, false
-	}
-	if s.projection != nil {
-		for _, record := range s.projection.Structural {
-			if record.Compaction != nil && record.Compaction.ID == id {
-				return *record.Compaction, true
-			}
-		}
-		return ContextCompaction{}, false
-	}
-	for _, record := range s.records {
-		if record.kind == historyTypeCompaction && record.compaction != nil && record.compaction.ID == id {
-			return *record.compaction, true
-		}
-	}
-	return ContextCompaction{}, false
-}
-
-func (s *Session) contextCompactionRemovalByIDLocked(id string) (ContextCompactionRemoval, bool) {
-	id = strings.TrimSpace(id)
-	if id == "" {
-		return ContextCompactionRemoval{}, false
-	}
-	if s.projection != nil {
-		for _, record := range s.projection.Structural {
-			if record.Removal != nil && record.Removal.ID == id {
-				return *record.Removal, true
-			}
-		}
-		return ContextCompactionRemoval{}, false
-	}
-	for _, record := range s.records {
-		if record.kind == historyTypeCompactionRemoved && record.compactionRemoval != nil && record.compactionRemoval.ID == id {
-			return *record.compactionRemoval, true
-		}
-	}
-	return ContextCompactionRemoval{}, false
-}
-
-func sameContextCompactionIntent(existing, requested ContextCompaction) bool {
-	return existing.ID == requested.ID && existing.CompactionCheckpoint == requested.CompactionCheckpoint &&
-		existing.SourceStartIndex == requested.SourceStartIndex && existing.SourceEndIndex == requested.SourceEndIndex &&
-		existing.SourceMessageCount == requested.SourceMessageCount
-}
-
-func sameContextCompactionRemovalIntent(existing, requested ContextCompactionRemoval) bool {
-	return existing.ID == requested.ID && existing.AgentKind == requested.AgentKind &&
-		existing.CompactionID == requested.CompactionID && existing.Reason == requested.Reason
-}
-
 func normalizeDomainCommitIdentity(identity DomainCommitIdentity) DomainCommitIdentity {
 	identity.CommandID = strings.TrimSpace(identity.CommandID)
 	identity.OperationID = strings.TrimSpace(identity.OperationID)
@@ -566,16 +446,17 @@ func domainMessageHash(message agent.Message, metadata MessageMetadata) (string,
 	payload := struct {
 		Message  agent.Message `json:"message"`
 		Metadata struct {
-			RunID             string                       `json:"run_id,omitempty"`
-			AgentKind         string                       `json:"agent_kind,omitempty"`
-			AgentName         string                       `json:"agent_name,omitempty"`
-			RootAgentName     string                       `json:"root_agent_name,omitempty"`
-			RunPath           []string                     `json:"run_path,omitempty"`
-			SubAgent          bool                         `json:"subagent,omitempty"`
-			SubAgentSessionID string                       `json:"subagent_session_id,omitempty"`
-			SubAgentType      string                       `json:"subagent_type,omitempty"`
-			UserReferences    []agentcontext.UserReference `json:"user_references,omitempty"`
-			ContextOnly       bool                         `json:"context_only,omitempty"`
+			RunID                 string                       `json:"run_id,omitempty"`
+			AgentKind             string                       `json:"agent_kind,omitempty"`
+			AgentName             string                       `json:"agent_name,omitempty"`
+			RootAgentName         string                       `json:"root_agent_name,omitempty"`
+			RunPath               []string                     `json:"run_path,omitempty"`
+			SubAgent              bool                         `json:"subagent,omitempty"`
+			SubAgentSessionID     string                       `json:"subagent_session_id,omitempty"`
+			SubAgentType          string                       `json:"subagent_type,omitempty"`
+			UserReferences        []agentcontext.UserReference `json:"user_references,omitempty"`
+			ContextOnly           bool                         `json:"context_only,omitempty"`
+			ResolveInterruptionID string                       `json:"resolve_interruption_id,omitempty"`
 		} `json:"metadata"`
 	}{Message: message}
 	payload.Metadata.RunID = metadata.RunID
@@ -588,6 +469,7 @@ func domainMessageHash(message agent.Message, metadata MessageMetadata) (string,
 	payload.Metadata.SubAgentType = metadata.SubAgentType
 	payload.Metadata.UserReferences = append([]agentcontext.UserReference(nil), metadata.UserReferences...)
 	payload.Metadata.ContextOnly = metadata.ContextOnly
+	payload.Metadata.ResolveInterruptionID = metadata.ResolveInterruptionID
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return "", fmt.Errorf("hash domain message: %w", err)
@@ -726,7 +608,6 @@ func (s *Session) replaceCanonicalStateLocked(recovered *Session) {
 	s.contextRevision = recovered.contextRevision
 	s.runtimeConfig = nil
 	s.runtimeConfigRevision = recovered.runtimeConfigRevision
-	s.goal = recovered.goal
 	if recovered.runtimeConfig != nil {
 		value := *recovered.runtimeConfig
 		s.runtimeConfig = &value

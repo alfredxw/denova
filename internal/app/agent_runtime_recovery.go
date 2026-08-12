@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	agentconversation "denova/internal/agents/conversation"
 	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
 	appagentruntime "denova/internal/app/agentruntime"
@@ -83,10 +82,6 @@ func (s *ChatAppService) RecoverAgentRuntime(ctx context.Context, expectedSessio
 	if err := validateSelectedRecoveryAction(recovery.InitialStatus(), request.Action); err != nil {
 		recovery.Close()
 		return AgentRuntimeRecoveryResult{}, err
-	}
-	if _, err := agentconversation.ReconcileColdPendingAsk(operation.Context(), sess, recovery.InitialStatus()); err != nil {
-		recovery.Close()
-		return AgentRuntimeRecoveryResult{}, fmt.Errorf("reconcile orphaned Ask before writing recovery: %w", err)
 	}
 	runtime := ideChatRuntime{app: a, sess: sess, bookService: bookService, executionRuntime: executionRuntime, workspace: workspace, projectState: stateRoot}
 	key := recoveryActionKey(request.Action)

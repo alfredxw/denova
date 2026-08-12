@@ -110,24 +110,6 @@ func (s *Store) boundedStorySnapshotWithLimitLocked(storyID, branchID string, li
 		}
 	}
 	applyLegacyActorStateAliases(snapshot.State, loaded.meta.ActorStateSchema)
-	if loaded.projection.Compaction != nil {
-		compaction := *loaded.projection.Compaction
-		snapshot.ContextCompaction = &compaction
-	} else {
-		snapshot.ContextCompaction = nil
-	}
-	if loaded.projection.CompactionRemoval != nil {
-		removal := *loaded.projection.CompactionRemoval
-		snapshot.ContextCompactionRemoval = &removal
-	} else {
-		snapshot.ContextCompactionRemoval = nil
-	}
-	if loaded.projection.ToolResultCleanup != nil {
-		cleanup := cloneToolResultCleanupEvent(*loaded.projection.ToolResultCleanup)
-		snapshot.ToolResultCleanup = &cleanup
-	} else {
-		snapshot.ToolResultCleanup = nil
-	}
 	snapshot.TurnCount = loaded.totalTurns
 	snapshot.TurnStart = loaded.turnStart
 	snapshot.HistoryBeforeCursor = loaded.page.BeforeCursor

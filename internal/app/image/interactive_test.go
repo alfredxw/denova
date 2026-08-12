@@ -14,8 +14,6 @@ import (
 	apptask "denova/internal/app/task"
 	imagepreset "denova/internal/image/preset"
 	"denova/internal/interactive"
-
-	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 func TestInteractiveImageRequiresBoundedCallerCommandIDBeforeWorkspaceAccess(t *testing.T) {
@@ -24,7 +22,7 @@ func TestInteractiveImageRequiresBoundedCallerCommandIDBeforeWorkspaceAccess(t *
 		t.Fatalf("missing command_id error = %v", err)
 	}
 	request := interactive.InteractiveImageGenerateRequest{CommandID: strings.Repeat("x", 4097)}
-	if _, err := service.GenerateInteractiveImage(context.Background(), "story", request); !errors.Is(err, runstate.ErrInvalidCommand) {
+	if _, err := service.GenerateInteractiveImage(context.Background(), "story", request); !errors.Is(err, agentrun.ErrInvalidCommand) {
 		t.Fatalf("oversized command_id error = %v", err)
 	}
 }

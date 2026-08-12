@@ -3,13 +3,13 @@ package tools
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 	"sync"
 	"testing"
 
 	agent "github.com/alfredxw/denova/agent"
+	agentpermission "github.com/alfredxw/denova/agent/permission"
 
 	"denova/config"
 	"denova/internal/webaccess"
@@ -66,8 +66,12 @@ func (model *webAccessLifecycleModel) Generate(context.Context, []*agent.Message
 	return agent.AssistantMessage("done", nil), nil
 }
 
-func (*webAccessLifecycleModel) Stream(context.Context, []*agent.Message, ...agent.ModelOption) (*agent.StreamReader[*agent.Message], error) {
-	return nil, errors.New("stream is not used")
+func (model *webAccessLifecycleModel) Stream(ctx context.Context, messages []*agent.Message, options ...agent.ModelOption) (*agent.StreamReader[*agent.Message], error) {
+	message, err := model.Generate(ctx, messages, options...)
+	if err != nil {
+		return nil, err
+	}
+	return agent.StreamReaderFromArray([]*agent.Message{message}), nil
 }
 
 func (stub stubWebAccessClient) Search(context.Context, webaccess.SearchRequest) (webaccess.SearchResponse, error) {
@@ -138,22 +142,29 @@ func TestInvocationWebAccessClientClosesOneRuntimePerAgentRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	native, err := agent.NewLoop(context.Background(), agent.LoopConfig{
-		Name: "web-access-lifecycle", Model: &webAccessLifecycleModel{}, Tools: []agent.ToolDefinition{fetch},
+	toolset, err := agent.StaticTools(fetch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner, err := agent.New(context.Background(), agent.Definition{
+		Name: "web-access-lifecycle", Model: &webAccessLifecycleModel{},
+		Tools: toolset, Permission: agentpermission.FullAccess(),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	for run := 0; run < 2; run++ {
-		events := agent.NewRunner(agent.RunnerConfig{Agent: native}).Query(context.Background(), "fetch")
-		for {
-			event, ok := events.Next()
-			if !ok {
-				break
-			}
-			if event != nil && event.Err != nil {
-				t.Fatal(event.Err)
-			}
+	t.Cleanup(func() { _ = owner.Close(context.Background()) })
+	for index := 0; index < 2; index++ {
+		run, err := owner.Run(context.Background(), agent.Input{
+			Text: "fetch", IdempotencyKey: fmt.Sprintf("web-access-lifecycle-%d", index),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for range run.Events() {
+		}
+		if result, err := run.Wait(context.Background()); err != nil || result.Status != agent.ResultCompleted {
+			t.Fatalf("web access lifecycle run %d result=%#v error=%v", index, result, err)
 		}
 	}
 	probe.mu.Lock()

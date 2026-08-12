@@ -6,52 +6,52 @@ import (
 	"fmt"
 
 	"denova/config"
-	"denova/internal/agents/goal"
+
+	agent "github.com/alfredxw/denova/agent"
+	publicgoal "github.com/alfredxw/denova/agent/goal"
 )
 
-func (service *Service) ConversationGoal(ctx context.Context, binding Binding) (goal.State, bool, error) {
+func (service *Service) ConversationGoal(ctx context.Context, binding Binding) (agent.GoalState, bool, error) {
 	service.admission.Lock()
 	defer service.admission.Unlock()
 	resolved, project, _, err := service.conversationRuntime(ctx, binding)
 	if err != nil {
-		return goal.State{}, false, err
+		return agent.GoalState{}, false, err
 	}
 	if !project.store.Exists(resolved.SessionID) {
-		return goal.State{}, false, nil
+		return agent.GoalState{}, false, nil
 	}
-	sess, err := project.store.Get(resolved.SessionID)
-	if err != nil {
-		return goal.State{}, false, err
-	}
-	return sess.Goal(ctx)
+	return project.executionRuntime.Goal(ctx, runtimeOptions(resolved, ""))
 }
 
-func (service *Service) MutateConversationGoal(ctx context.Context, binding Binding, action string, objective string, expectedRevision uint64) (goal.State, error) {
+func (service *Service) MutateConversationGoal(ctx context.Context, binding Binding, action string, objective string, expectedRevision uint64) (agent.GoalState, error) {
 	service.admission.Lock()
 	defer service.admission.Unlock()
 	resolved, project, runtimeCfg, err := service.conversationRuntime(ctx, binding)
 	if err != nil {
-		return goal.State{}, err
+		return agent.GoalState{}, err
 	}
 	if (action == "set" || action == "resume") && !config.ResolveAgentTools(&runtimeCfg, resolved.agentKind).Allows(config.AgentToolGoal) {
-		return goal.State{}, errors.New("conversation goal is disabled for Agent Chat")
+		return agent.GoalState{}, errors.New("conversation goal is disabled for Agent Chat")
 	}
-	sess, _, err := getOrCreateConversation(project, resolved)
+	_, _, err = getOrCreateConversation(project, resolved)
 	if err != nil {
-		return goal.State{}, err
+		return agent.GoalState{}, err
 	}
+	mutation := agent.GoalMutation{ExpectedRevision: expectedRevision}
 	switch action {
 	case "set":
-		return sess.SetGoal(ctx, objective, expectedRevision)
+		mutation.Kind, mutation.Objective = agent.GoalSet, objective
 	case "pause":
-		return sess.PauseGoal(ctx, expectedRevision)
+		mutation.Kind = agent.GoalPause
 	case "resume":
-		return sess.ResumeGoal(ctx, expectedRevision)
+		mutation.Kind = agent.GoalResume
 	case "clear":
-		return sess.ClearGoal(ctx, expectedRevision)
+		mutation.Kind = agent.GoalClear
 	default:
-		return goal.State{}, fmt.Errorf("unsupported goal action %q", action)
+		return agent.GoalState{}, fmt.Errorf("unsupported goal action %q", action)
 	}
+	return project.executionRuntime.UpdateGoal(ctx, runtimeOptions(resolved, ""), mutation)
 }
 
-func IsGoalRevisionConflict(err error) bool { return errors.Is(err, goal.ErrRevisionConflict) }
+func IsGoalRevisionConflict(err error) bool { return errors.Is(err, publicgoal.ErrRevisionConflict) }

@@ -11,16 +11,23 @@ import (
 	"testing"
 )
 
-const adkRuntimeImport = "github.com/alfredxw/denova/agent/runtime"
+const (
+	adkRuntimeImport       = "github.com/alfredxw/denova/agent/internal/runtime"
+	legacyADKRuntimeImport = "github.com/alfredxw/denova/agent/runtime"
+)
 
-func TestADKRuntimeDependencyStopsAtAgentsLayer(t *testing.T) {
+func TestADKRuntimeIsNotAnAppOrAPIDependency(t *testing.T) {
 	for _, dir := range []string{"../app", "../api"} {
-		assertGoFilesDoNotImport(t, dir, true, adkRuntimeImport)
+		assertGoFilesDoNotImport(t, dir, true, adkRuntimeImport, legacyADKRuntimeImport)
 	}
 }
 
+func TestADKRuntimeIsNotAProductDependency(t *testing.T) {
+	assertGoFilesDoNotImport(t, ".", true, adkRuntimeImport, legacyADKRuntimeImport)
+}
+
 func TestConcreteToolsDoNotDependOnAgentOrchestration(t *testing.T) {
-	assertGoFilesDoNotImport(t, "tools", false, adkRuntimeImport, "denova/internal/agents")
+	assertGoFilesDoNotImport(t, "tools", false, adkRuntimeImport, legacyADKRuntimeImport, "denova/internal/agents")
 }
 
 func TestReusableAgentPackagesDoNotDependOnCompositionRoot(t *testing.T) {
@@ -34,6 +41,24 @@ func TestReusableAgentPackagesDoNotDependOnCompositionRoot(t *testing.T) {
 
 func TestChatDoesNotDependOnProductExecution(t *testing.T) {
 	assertGoFilesDoNotImport(t, "chat", false, "denova/internal/agents/execution")
+}
+
+func TestProductToolExecutionHasNoLegacyPermissionOrResultProcessorAuthority(t *testing.T) {
+	assertGoFilesDoNotContain(t, ".", true,
+		"EnforceApprovalPolicy",
+		"ContextWithApprovalHost",
+		"approvalHostFromContext",
+		"type ProcessingPolicy struct",
+		"toolresult.Process(",
+	)
+	for _, obsolete := range []string{
+		"toolruntime/approval.go",
+		"toolresult/processor.go",
+	} {
+		if _, err := os.Stat(obsolete); !os.IsNotExist(err) {
+			t.Fatalf("legacy product execution authority still exists: %s", obsolete)
+		}
+	}
 }
 
 func TestAgentsRootContainsOnlyCompositionResponsibilities(t *testing.T) {
@@ -88,5 +113,30 @@ func assertGoFilesDoNotImport(t *testing.T, dir string, skipTests bool, forbidde
 	})
 	if err != nil {
 		t.Fatalf("inspect package boundary %s: %v", dir, err)
+	}
+}
+
+func assertGoFilesDoNotContain(t *testing.T, dir string, skipTests bool, forbidden ...string) {
+	t.Helper()
+	err := filepath.WalkDir(dir, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || !strings.HasSuffix(path, ".go") || (skipTests && strings.HasSuffix(path, "_test.go")) {
+			return nil
+		}
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		for _, denied := range forbidden {
+			if strings.Contains(string(content), denied) {
+				t.Errorf("%s contains obsolete product authority %q", path, denied)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("inspect product source %s: %v", dir, err)
 	}
 }

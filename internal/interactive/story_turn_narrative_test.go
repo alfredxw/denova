@@ -5,11 +5,9 @@ import (
 	"os"
 	"strings"
 	"testing"
-
-	agentcontext "denova/internal/agents/context"
 )
 
-func TestUpdateLatestTurnNarrativePreservesStoryPathAndInvalidatesCoveredCompaction(t *testing.T) {
+func TestUpdateLatestTurnNarrativePreservesStoryPathAndAdvancesCanonicalRevision(t *testing.T) {
 	store := NewStore(t.TempDir())
 	story, err := store.CreateStory(CreateStoryRequest{Title: "正文修正", StoryTellerID: "classic"})
 	if err != nil {
@@ -33,17 +31,10 @@ func TestUpdateLatestTurnNarrativePreservesStoryPathAndInvalidatesCoveredCompact
 	if err != nil {
 		t.Fatal(err)
 	}
-	compaction, err := store.AppendContextCompaction(story.ID, "main", ContextCompactionEvent{
-		CompactionCheckpoint: agentcontext.CompactionCheckpoint{
-			AgentKind: "interactive_story", Summary: "朋友住在旧地址。", RetainedTurns: 1,
-			TokensBefore: 1200, TokensAfter: 200,
-		},
-		SourceTurnCount: 2,
-	})
+	beforeSnapshot, err := store.Snapshot(story.ID, "main")
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	beforeEdit, err := os.ReadFile(store.storyPath(story.ID))
 	if err != nil {
 		t.Fatal(err)
@@ -57,9 +48,6 @@ func TestUpdateLatestTurnNarrativePreservesStoryPathAndInvalidatesCoveredCompact
 	})
 	if err != nil {
 		t.Fatal(err)
-	}
-	if !result.ContextCompactionInvalidated {
-		t.Fatal("editing compacted prose must invalidate the stale checkpoint")
 	}
 	if result.Turn.ID != second.ID || result.Turn.Narrative != "朋友住在 4 楼 403 室。\n  门牌上贴着姓名。" {
 		t.Fatalf("unexpected updated turn: %#v", result.Turn)
@@ -85,11 +73,8 @@ func TestUpdateLatestTurnNarrativePreservesStoryPathAndInvalidatesCoveredCompact
 	if snapshot.Turns[0].Narrative != first.Narrative || snapshot.Turns[1].Narrative != result.Turn.Narrative {
 		t.Fatalf("unexpected persisted narratives: %#v", snapshot.Turns)
 	}
-	if snapshot.ContextCompaction != nil {
-		t.Fatalf("stale compaction remains active: %#v", snapshot.ContextCompaction)
-	}
-	if snapshot.ContextCompactionRemoval == nil || snapshot.ContextCompactionRemoval.CompactionID != compaction.ID || snapshot.ContextCompactionRemoval.Reason != "turn_narrative_edited" {
-		t.Fatalf("missing edit-driven compaction removal: %#v", snapshot.ContextCompactionRemoval)
+	if snapshot.ContextRevision <= beforeSnapshot.ContextRevision {
+		t.Fatalf("canonical context revision did not advance: before=%d after=%d", beforeSnapshot.ContextRevision, snapshot.ContextRevision)
 	}
 	if snapshot.CurrentTurn == nil || snapshot.CurrentTurn.ID != second.ID {
 		t.Fatalf("later current turn changed: %#v", snapshot.CurrentTurn)

@@ -107,7 +107,7 @@ describe('StoryStage active runtime commands', () => {
       await user.type(input, '再检查门后的脚印')
       const sendButton = screen.getByRole('button', { name: '发送' })
       expect(sendButton).toBeEnabled()
-      expect(screen.queryByRole('button', { name: '中断 AI 执行' })).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: '中断 AI 执行' })).toBeEnabled()
       await user.click(sendButton)
 
       await waitFor(() => expect(submitInteractiveAgentCommandMock).toHaveBeenCalledWith({
@@ -226,7 +226,7 @@ describe('StoryStage active runtime commands', () => {
 
       expect(stopButton).toBeDisabled()
       await user.type(input, '不能在中断后发送')
-      expect(screen.queryByRole('button', { name: '中断 AI 执行' })).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: '中断 AI 执行' })).toBeDisabled()
       expect(screen.getByRole('button', { name: '发送' })).toBeDisabled()
     } finally {
       stream.close()

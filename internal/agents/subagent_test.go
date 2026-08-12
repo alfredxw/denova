@@ -2,15 +2,14 @@ package agents
 
 import (
 	"context"
-	agenttoolruntime "denova/internal/agents/toolruntime"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 
 	"denova/config"
+	agentdelegation "denova/internal/agents/delegation"
 	"denova/internal/agents/harnessstate"
-	producttools "denova/internal/agents/tools"
+	agenttoolruntime "denova/internal/agents/toolruntime"
 
 	agent "github.com/alfredxw/denova/agent"
 	agentstate "github.com/alfredxw/denova/agent/state"
@@ -25,106 +24,7 @@ func TestConfigMaxIterationDefaultsToNativeUnlimited(t *testing.T) {
 	}
 }
 
-func TestTaskAndChildWriteWithSameProviderIDHaveDistinctExecutionIDs(t *testing.T) {
-	child := executionIdentityChild{}
-	task, err := producttools.NewTask(context.Background(), []agent.Runnable{child})
-	if err != nil {
-		t.Fatal(err)
-	}
-	root, err := agent.NewLoop(context.Background(), agent.LoopConfig{
-		Name: "root", Model: &taskExecutionIdentityModel{}, Tools: []agent.ToolDefinition{task},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx := agent.ContextWithInvocationIdentity(context.Background(), agent.InvocationIdentity{
-		Scope: "workspace:identity", OperationID: "operation-task-child", Cycle: 1,
-	})
-	events := root.Run(ctx, &agent.AgentInput{Messages: []*agent.Message{agent.UserMessage("delegate")}})
-	executionIDs := map[string]string{}
-	providerIDs := map[string]string{}
-	for {
-		event, ok := events.Next()
-		if !ok {
-			break
-		}
-		if event.Err != nil {
-			t.Fatal(event.Err)
-		}
-		if event.Output == nil || event.Output.ToolExecution == nil || event.Output.ToolExecution.Phase != agent.ToolExecutionStarted {
-			continue
-		}
-		execution := event.Output.ToolExecution
-		executionIDs[execution.ToolName] = execution.ExecutionID
-		providerIDs[execution.ToolName] = execution.ProviderCallID
-	}
-	if providerIDs["task"] != "provider-same" || providerIDs["write"] != "provider-same" ||
-		executionIDs["task"] == "" || executionIDs["write"] == "" || executionIDs["task"] == executionIDs["write"] {
-		t.Fatalf("execution IDs=%v provider IDs=%v", executionIDs, providerIDs)
-	}
-}
-
-type taskExecutionIdentityModel struct {
-	mu    sync.Mutex
-	calls int
-}
-
-func (model *taskExecutionIdentityModel) Generate(context.Context, []*agent.Message, ...agent.ModelOption) (*agent.Message, error) {
-	model.mu.Lock()
-	defer model.mu.Unlock()
-	model.calls++
-	if model.calls == 1 {
-		return agent.AssistantMessage("", []agent.ToolCall{{
-			ID: "provider-same", Type: "function",
-			Function: agent.FunctionCall{Name: "task", Arguments: `{"subagent_type":"writer","description":"write"}`},
-		}}), nil
-	}
-	return agent.AssistantMessage("done", nil), nil
-}
-
-func (model *taskExecutionIdentityModel) Stream(ctx context.Context, messages []*agent.Message, options ...agent.ModelOption) (*agent.StreamReader[*agent.Message], error) {
-	message, err := model.Generate(ctx, messages, options...)
-	if err != nil {
-		return nil, err
-	}
-	reader, writer := agent.Pipe[*agent.Message](1)
-	writer.Send(message, nil)
-	writer.Close()
-	return reader, nil
-}
-
-type executionIdentityChild struct{}
-
-func (executionIdentityChild) Name(context.Context) string        { return "writer" }
-func (executionIdentityChild) Description(context.Context) string { return "Writes one bounded file." }
-func (executionIdentityChild) Run(ctx context.Context, _ *agent.AgentInput, _ ...agent.AgentRunOption) *agent.AsyncIterator[*agent.AgentEvent] {
-	iterator, generator := agent.NewAsyncIteratorPair[*agent.AgentEvent]()
-	generator.Send(&agent.AgentEvent{
-		AgentName: "writer", RunPath: []agent.RunStep{agent.NewRunStep("writer")},
-		Output: &agent.AgentOutput{ToolExecution: &agent.ToolExecutionEvent{
-			Phase: agent.ToolExecutionStarted, Index: 0,
-			ExecutionID: agent.ToolExecutionIDForOrdinal(ctx, 1, 0), ProviderCallID: "provider-same", ToolName: "write",
-		}},
-	})
-	generator.Send(&agent.AgentEvent{
-		AgentName: "writer", RunPath: []agent.RunStep{agent.NewRunStep("writer")},
-		Output: &agent.AgentOutput{MessageOutput: &agent.MessageVariant{
-			Message: agent.AssistantMessage("written", nil), Role: agent.Assistant,
-		}},
-	})
-	generator.Close()
-	return iterator
-}
-
 func TestBuildAgentExposesGeneralAndConfiguredSubAgentsThroughTask(t *testing.T) {
-	var captured []agent.LoopConfig
-	previous := newNativeAgent
-	newNativeAgent = func(_ context.Context, cfg agent.LoopConfig) (agent.Runnable, error) {
-		captured = append(captured, cfg)
-		return fakeAgent{name: cfg.Name, description: cfg.Description}, nil
-	}
-	t.Cleanup(func() { newNativeAgent = previous })
-
 	cfg := &config.Config{
 		DenovaDir:     filepath.Join(t.TempDir(), ".denova"),
 		OpenAIBaseURL: "https://example.invalid",
@@ -166,7 +66,7 @@ Return concise findings.`)}},
 	}); err != nil {
 		t.Fatal(err)
 	}
-	_, err = buildAgent(context.Background(), cfg, agentBuildSpec{
+	definition, err := buildAgentDefinition(context.Background(), cfg, agentBuildSpec{
 		Kind:        config.AgentKindIDE,
 		Name:        "DenovaAgent",
 		Description: "test",
@@ -175,29 +75,39 @@ Return concise findings.`)}},
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(captured) != 3 {
-		t.Fatalf("native Agent constructions = %d, want configured + general + root", len(captured))
+	catalog, ok := agentdelegation.AsCatalog(definition.Tools)
+	if !ok {
+		t.Fatal("root Definition did not expose the durable child catalog")
 	}
-	if captured[0].Name != "researcher" || captured[1].Name != producttools.GeneralSubAgentName || captured[2].Name != "DenovaAgent" {
-		t.Fatalf("unexpected native Agent construction order: %q %q %q", captured[0].Name, captured[1].Name, captured[2].Name)
+	children := catalog.Children()
+	if len(children) != 2 || children[0].Name != "general-purpose" || children[1].Name != "researcher" {
+		names := make([]string, 0, len(children))
+		for _, child := range children {
+			names = append(names, child.Name)
+		}
+		t.Fatalf("delegated child names = %v", names)
 	}
 	var generalOrchestrator, rootOrchestrator *agenttoolruntime.OrchestratorMiddleware
-	for _, middleware := range captured[1].Middlewares {
-		if current, ok := middleware.(*agenttoolruntime.OrchestratorMiddleware); ok {
+	for _, middleware := range children[0].Definition.Middlewares {
+		if current, ok := agent.MiddlewareImplementation(middleware).(*agenttoolruntime.OrchestratorMiddleware); ok {
 			generalOrchestrator = current
 		}
 	}
-	for _, middleware := range captured[2].Middlewares {
-		if current, ok := middleware.(*agenttoolruntime.OrchestratorMiddleware); ok {
+	for _, middleware := range definition.Middlewares {
+		if current, ok := agent.MiddlewareImplementation(middleware).(*agenttoolruntime.OrchestratorMiddleware); ok {
 			rootOrchestrator = current
 		}
 	}
 	if generalOrchestrator == nil || rootOrchestrator == nil || generalOrchestrator == rootOrchestrator {
 		t.Fatalf("general/root orchestrators must be independent: general=%p root=%p", generalOrchestrator, rootOrchestrator)
 	}
-	rootTools := toolNamesForTest(t, captured[2].Tools)
-	if !rootTools["task"] {
-		t.Fatalf("root Agent task tool missing: %v", rootTools)
+	for _, child := range children {
+		if child.Definition.Goal != nil {
+			t.Fatalf("delegated child %q unexpectedly inherited root Goal authority", child.Name)
+		}
+		if child.Definition.Cleanup == nil || child.Definition.Compaction == nil || child.Definition.ResultProcessor == nil || child.Definition.Permission == nil {
+			t.Fatalf("delegated child %q lost public lifecycle capabilities: %#v", child.Name, child.Definition)
+		}
 	}
 }
 
@@ -259,15 +169,7 @@ func TestBuildSubAgentInstructionInheritsInteractiveStoryBoundary(t *testing.T) 
 
 func TestBuildAgentCanDisableGeneralSubAgent(t *testing.T) {
 	off := false
-	var captured []agent.LoopConfig
-	previous := newNativeAgent
-	newNativeAgent = func(_ context.Context, cfg agent.LoopConfig) (agent.Runnable, error) {
-		captured = append(captured, cfg)
-		return fakeAgent{name: cfg.Name, description: cfg.Description}, nil
-	}
-	t.Cleanup(func() { newNativeAgent = previous })
-
-	_, err := buildAgent(context.Background(), &config.Config{
+	definition, err := buildAgentDefinition(context.Background(), &config.Config{
 		OpenAIBaseURL: "https://example.invalid",
 		OpenAIModel:   "test-model",
 		GeneralSubAgents: config.AgentGeneralSubAgentSettings{
@@ -296,10 +198,14 @@ func TestBuildAgentCanDisableGeneralSubAgent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(captured) != 1 || captured[0].Name != "DenovaAgent" {
-		t.Fatalf("general subagent should be absent when configured off: %#v", captured)
+	if _, ok := agentdelegation.AsCatalog(definition.Tools); ok {
+		t.Fatal("delegation catalog should be absent when no child Agent is enabled")
 	}
-	if toolNamesForTest(t, captured[0].Tools)["task"] {
+	tools, err := definition.Tools.PrepareTools(context.Background(), agent.ToolRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if toolNamesForTest(t, tools)["task"] {
 		t.Fatalf("task tool should be absent without any available subagent")
 	}
 }
@@ -349,121 +255,6 @@ func TestBuildChatModelAgentAssemblyPassesToolResultLimit(t *testing.T) {
 	if got := orchestrator.Configuration().ToolResultMaxBytes; got != 64*1024 {
 		t.Fatalf("tool result limit bytes = %d, want %d", got, 64*1024)
 	}
-}
-
-func TestRunSubAgentForwardsDrainedChildEvents(t *testing.T) {
-	child := &streamingSubAgent{}
-	var forwarded []*agent.AgentEvent
-	ctx := context.Background()
-	ctx = agent.ContextWithEventSink(ctx, func(event *agent.AgentEvent) {
-		forwarded = append(forwarded, event)
-	})
-
-	task, err := agenttoolruntime.NewCatalog(nil).Task(ctx, []agent.Runnable{child})
-	if err != nil {
-		t.Fatal(err)
-	}
-	toolResult, err := task.Tool.Run(ctx, `{"subagent_type":"reviewer","description":"inspect the draft"}`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	result := toolResult.ModelContent
-	if result != "child result" || child.request != "inspect the draft" {
-		t.Fatalf("subagent result=%q request=%q", result, child.request)
-	}
-	if len(forwarded) != 1 || forwarded[0].AgentName != "reviewer" || len(forwarded[0].RunPath) != 1 {
-		t.Fatalf("forwarded events = %#v", forwarded)
-	}
-	if child.scope.Depth != 1 {
-		t.Fatalf("child scope=%#v", child.scope)
-	}
-	variant := forwarded[0].Output.MessageOutput
-	if variant == nil || variant.IsStreaming || variant.MessageStream != nil || variant.Message == nil || variant.Message.Content != "child result" {
-		t.Fatalf("forwarded child stream must become one reusable complete message: %#v", variant)
-	}
-}
-
-func TestRunSubAgentPreservesParentPathForEveryNestedEvent(t *testing.T) {
-	parentCtx, finishParent, err := agent.BeginChildInvocation(context.Background(), "root")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		if err := finishParent(); err != nil {
-			t.Errorf("finish parent invocation: %v", err)
-		}
-	}()
-
-	child := &streamingSubAgent{emitToolEvent: true}
-	var forwarded []*agent.AgentEvent
-	parentCtx = agent.ContextWithEventSink(parentCtx, func(event *agent.AgentEvent) {
-		forwarded = append(forwarded, event)
-	})
-	task, err := agenttoolruntime.NewCatalog(nil).Task(parentCtx, []agent.Runnable{child})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := task.Tool.Run(parentCtx, `{"subagent_type":"reviewer","description":"inspect the draft"}`); err != nil {
-		t.Fatal(err)
-	}
-	if len(forwarded) != 2 {
-		t.Fatalf("forwarded events = %#v, want tool event and assistant event", forwarded)
-	}
-	for index, event := range forwarded {
-		if len(event.RunPath) != 2 || event.RunPath[0].String() != "root" || event.RunPath[1].String() != "reviewer" {
-			t.Fatalf("forwarded event %d path = %#v, want root/reviewer", index, event.RunPath)
-		}
-	}
-}
-
-type streamingSubAgent struct {
-	request       string
-	scope         agent.InvocationScope
-	emitToolEvent bool
-}
-
-func (*streamingSubAgent) Name(context.Context) string        { return "reviewer" }
-func (*streamingSubAgent) Description(context.Context) string { return "Reviews delegated work." }
-func (child *streamingSubAgent) Run(ctx context.Context, input *agent.AgentInput, _ ...agent.AgentRunOption) *agent.AsyncIterator[*agent.AgentEvent] {
-	child.scope, _ = agent.InvocationScopeFromContext(ctx)
-	if input != nil && len(input.Messages) > 0 && input.Messages[0] != nil {
-		child.request = input.Messages[0].Content
-	}
-	stream, writer := agent.Pipe[*agent.Message](-1)
-	writer.Send(agent.AssistantMessage("child result", nil), nil)
-	writer.Close()
-	iterator, generator := agent.NewAsyncIteratorPair[*agent.AgentEvent]()
-	if child.emitToolEvent {
-		generator.Send(&agent.AgentEvent{
-			AgentName: "reviewer",
-			RunPath:   []agent.RunStep{agent.NewRunStep("reviewer")},
-			Output: &agent.AgentOutput{ToolExecution: &agent.ToolExecutionEvent{
-				Phase: agent.ToolExecutionStarted, ExecutionID: "reviewer-read-1", ToolName: "read",
-			}},
-		})
-	}
-	generator.Send(&agent.AgentEvent{
-		AgentName: "reviewer",
-		RunPath:   []agent.RunStep{agent.NewRunStep("reviewer")},
-		Output: &agent.AgentOutput{MessageOutput: &agent.MessageVariant{
-			IsStreaming: true, MessageStream: stream, Role: agent.Assistant,
-		}},
-	})
-	generator.Close()
-	return iterator
-}
-
-type fakeAgent struct {
-	name        string
-	description string
-}
-
-func (f fakeAgent) Name(context.Context) string        { return f.name }
-func (f fakeAgent) Description(context.Context) string { return f.description }
-func (f fakeAgent) Run(context.Context, *agent.AgentInput, ...agent.AgentRunOption) *agent.AsyncIterator[*agent.AgentEvent] {
-	iter, gen := agent.NewAsyncIteratorPair[*agent.AgentEvent]()
-	gen.Close()
-	return iter
 }
 
 func toolNamesForTest(t *testing.T, tools []agent.ToolDefinition) map[string]bool {

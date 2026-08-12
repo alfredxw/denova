@@ -3,14 +3,11 @@ package interactive
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-
-	agentcontext "denova/internal/agents/context"
 )
 
 func TestStoryHotAppendsPreserveCanonicalPrefixWithoutFullRewrite(t *testing.T) {
@@ -189,56 +186,6 @@ func TestStoryReaderRejectsCompleteChecksumCorruptionWithoutRepair(t *testing.T)
 	backups, _ := filepath.Glob(path + ".recovery.*.bak")
 	if len(backups) != 0 {
 		t.Fatalf("complete checksum corruption created recovery backup: %v", backups)
-	}
-}
-
-func TestStoryMutationLeaseLinearizesConcurrentCASAcrossStoreInstances(t *testing.T) {
-	root := t.TempDir()
-	firstStore := NewStore(root)
-	story, err := firstStore.CreateStory(CreateStoryRequest{Title: "shared lease", StoryTellerID: "classic"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	turn, err := firstStore.AppendTurn(story.ID, AppendTurnRequest{BranchID: "main", User: "开始", Narrative: "共同父节点"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	secondStore := NewStore(root)
-	expected := turn.ID
-	results := make(chan error, 2)
-	start := make(chan struct{})
-	appendCompaction := func(store *Store, id string) {
-		defer func() {
-			if recovered := recover(); recovered != nil {
-				results <- fmt.Errorf("append compaction panic: %v", recovered)
-			}
-		}()
-		<-start
-		_, err := store.AppendContextCompaction(story.ID, "main", ContextCompactionEvent{
-			ID: id, CompactionCheckpoint: agentcontext.CompactionCheckpoint{Summary: id, RetainedTurns: 1},
-			SourceTurnCount: 1, ExpectedParentID: &expected,
-		})
-		results <- err
-	}
-	go appendCompaction(firstStore, "compaction-a")
-	go appendCompaction(secondStore, "compaction-b")
-	close(start)
-
-	firstErr, secondErr := <-results, <-results
-	successes := 0
-	conflicts := 0
-	for _, err := range []error{firstErr, secondErr} {
-		switch {
-		case err == nil:
-			successes++
-		case errors.Is(err, ErrStoryContextRevisionConflict):
-			conflicts++
-		default:
-			t.Fatalf("unexpected concurrent CAS error: %v", err)
-		}
-	}
-	if successes != 1 || conflicts != 1 {
-		t.Fatalf("concurrent CAS results: success=%d conflict=%d errors=[%v, %v]", successes, conflicts, firstErr, secondErr)
 	}
 }
 

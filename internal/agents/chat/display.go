@@ -19,46 +19,6 @@ import (
 const displaySegmentIDEventKey = "display_segment_id"
 const displayPhaseEventKey = "display_phase"
 
-// appendAssistantIfAny persists generated output and returns the persistence
-// error to the run loop. A completed stream must never hide a failed commit.
-func appendAssistantIfAny(conversation Conversation, content, thinking *strings.Builder, metadata session.MessageMetadata) (string, error) {
-	if content == nil || content.Len() == 0 {
-		return "", nil
-	}
-	generated := ""
-	if content != nil {
-		generated = content.String()
-	}
-	reasoning := ""
-	if thinking != nil && thinking.Len() > 0 {
-		reasoning = thinking.String()
-	}
-	var persistErr error
-	if appender, ok := conversation.(interface {
-		AppendAssistantWithMetadata(content, thinking string, metadata session.MessageMetadata) error
-	}); ok {
-		persistErr = appender.AppendAssistantWithMetadata(generated, reasoning, metadata)
-	} else if appender, ok := conversation.(interface {
-		AppendAssistantWithThinking(content, thinking string) error
-	}); ok {
-		persistErr = appender.AppendAssistantWithThinking(generated, reasoning)
-	} else {
-		persistErr = conversation.AppendAssistant(generated)
-	}
-	if persistErr != nil {
-		slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-run] persist assistant message failed err=%v", persistErr))
-		return generated, persistErr
-	}
-	slog.InfoContext(context.Background(), fmt.Sprintf("[agent-run] persisted assistant message bytes=%d thinking_bytes=%d", len(generated), len(reasoning)))
-	if content != nil {
-		content.Reset()
-	}
-	if thinking != nil {
-		thinking.Reset()
-	}
-	return generated, nil
-}
-
 // PersistAgentAssistant publishes one public Agent output through the existing
 // product conversation boundary. It deliberately does not own the surrounding
 // Agent canonical intent/receipt; callers invoke it only from CanonicalAdapter.
@@ -66,24 +26,17 @@ func PersistAgentAssistant(conversation Conversation, content, thinking string, 
 	if conversation == nil {
 		return fmt.Errorf("persist Agent assistant: conversation is required")
 	}
-	var output strings.Builder
-	output.WriteString(content)
-	var reasoning strings.Builder
-	reasoning.WriteString(thinking)
-	_, err := appendAssistantIfAny(conversation, &output, &reasoning, metadata)
-	return err
-}
-
-func discardPlanAssistantContentIfNeeded(planMode bool, planParser *agentplan.Parser, content, thinking *strings.Builder) {
-	if !planMode || planParser == nil || !planParser.HasSuccessfulBlock() {
-		return
+	if appender, ok := conversation.(interface {
+		AppendAssistantWithMetadata(content, thinking string, metadata session.MessageMetadata) error
+	}); ok {
+		return appender.AppendAssistantWithMetadata(content, thinking, metadata)
 	}
-	if content != nil {
-		content.Reset()
+	if appender, ok := conversation.(interface {
+		AppendAssistantWithThinking(content, thinking string) error
+	}); ok {
+		return appender.AppendAssistantWithThinking(content, thinking)
 	}
-	if thinking != nil {
-		thinking.Reset()
-	}
+	return conversation.AppendAssistant(content)
 }
 
 type displayEventAppender interface {

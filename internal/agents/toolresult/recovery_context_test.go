@@ -2,6 +2,7 @@ package toolresult_test
 
 import (
 	"context"
+	agentcontext "denova/internal/agents/context"
 	agentconversation "denova/internal/agents/conversation"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/toolresult"
@@ -129,11 +130,13 @@ func TestCanonicalSessionHistoryProjectsUnknownToolEffectIntoNextModelContext(t 
 		t.Fatal(err)
 	}
 	conversation := agentconversation.NewSessionConversationForAgent(sess, &config.Config{}, agentrun.AgentKindIDE)
-	projection, err := conversation.SnapshotContextCompaction(context.Background(), true)
+	projection, err := conversation.AssembleModelContext(context.Background(), "", agentcontext.ModelContextInput{
+		UserMessage: "next request", Budget: conversation.ModelContextBudget(),
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	messages := projection.Messages
+	messages := projection.Messages[:len(projection.Messages)-1]
 	if len(messages) != 3 || messages[1].Role != agent.Assistant || len(messages[1].ToolCalls) != 1 ||
 		messages[2].Role != agent.ToolRole || messages[2].ToolCallID != "canonical-call" ||
 		!toolresult.IsUnknownEffectResult(messages[2].Content) {

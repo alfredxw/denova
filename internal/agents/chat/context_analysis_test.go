@@ -14,7 +14,6 @@ import (
 	agent "github.com/alfredxw/denova/agent"
 
 	"denova/config"
-	agentcompaction "denova/internal/agents/context/compaction"
 	"denova/internal/agents/prompts"
 	"denova/internal/agents/session"
 	"denova/internal/book"
@@ -35,7 +34,7 @@ func (contextAnalysisConversation) MarkInterrupted(string, string, string) error
 func (contextAnalysisConversation) PendingInterruption() *session.Interruption   { return nil }
 func (contextAnalysisConversation) ResolveInterruption(string) error             { return nil }
 
-func buildIDEContextAnalysisForTest(t *testing.T, cfg *config.Config, state *book.State, teller prompts.IDEStoryTeller, bookService *book.Service, messages []*agent.Message, compaction *session.ContextCompaction, pending *session.Interruption, req ChatRequest) (ContextAnalysis, *agentconversation.SessionConversation) {
+func buildIDEContextAnalysisForTest(t *testing.T, cfg *config.Config, state *book.State, teller prompts.IDEStoryTeller, bookService *book.Service, messages []*agent.Message, compaction *agentrun.AgentCompactionState, pending *session.Interruption, req ChatRequest) (ContextAnalysis, *agentconversation.SessionConversation) {
 	t.Helper()
 	store, err := session.NewStore(t.TempDir())
 	if err != nil {
@@ -52,23 +51,44 @@ func buildIDEContextAnalysisForTest(t *testing.T, cfg *config.Config, state *boo
 			}
 		}
 	}
-	if compaction != nil {
-		record := *compaction
-		record.AgentKind = config.AgentKindIDE
-		if _, err := sess.AppendContextCompaction(record); err != nil {
-			t.Fatal(err)
-		}
-	}
 	runtimeContexts := prompts.IDEWorkspaceRuntimeContextsForContext(state, req.IDEContext)
 	conversation := agentconversation.NewSessionConversationForAgentWithRuntimeContexts(
 		sess, cfg, config.AgentKindIDE,
 		runtimeContexts.StableTitle, runtimeContexts.Stable,
 		runtimeContexts.DynamicTitle, runtimeContexts.Dynamic,
 	)
-	analysis, err := BuildIDEContextAnalysis(cfg, state, teller, bookService, compaction, pending, req, conversation)
+	if len(teller.StyleRules) == 0 && len(req.StyleRules) > 0 {
+		teller.StyleRules = req.StyleRules
+	}
+	composition, err := prompts.ComposeInstruction(cfg, state, teller)
 	if err != nil {
 		t.Fatal(err)
 	}
+	turn, err := prepareTurnContext(context.Background(), turnContextPreparationInput{
+		Conversation: conversation, Request: req, PendingInterruption: pending,
+		BookService: bookService, Environment: newTurnRuntimeEnvironment(contextAnalysisWorkspace(cfg, bookService)),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	modelMessages := append([]*agent.Message{agent.SystemMessage(composition.Instruction())}, turn.ModelContext.Messages...)
+	stablePrefix := 1
+	for _, fragment := range turn.ModelContext.Context.Fragments {
+		if fragment.Included && fragment.Placement == agentcontext.PlacementLeadingMessage {
+			stablePrefix++
+		}
+	}
+	inspection := agent.Inspection{ModelRequest: agent.ModelRequestInspection{
+		Messages: modelMessages, StablePrefixMessages: stablePrefix,
+	}}
+	if compaction != nil && strings.TrimSpace(compaction.Summary) != "" {
+		inspection.Compaction = &agent.CompactionState{
+			ID: compaction.ID, Revision: compaction.Revision, Summary: compaction.Summary,
+			TokenEstimate:   compaction.TokenEstimate,
+			ReplacementFrom: compaction.ReplacementFrom, ReplacementTo: compaction.ReplacementTo,
+		}
+	}
+	analysis := BuildInspectedContextAnalysis(cfg, config.AgentKindIDE, "ide", composition, inspection)
 	return analysis, conversation
 }
 
@@ -421,31 +441,19 @@ func TestIDEContextAnalysisUsesPreparedTurnWithoutSideEffects(t *testing.T) {
 		agent.UserMessage("user 3"),
 		agent.AssistantMessage("assistant 3", nil),
 	}
-	compaction := &session.ContextCompaction{
-		CompactionCheckpoint: agentcompaction.NewCheckpoint("", agentcompaction.Result{
-			Epoch: 1, Summary: "压缩摘要：保留早期约束。", RetainedTurns: 1,
-		}),
-		SourceEndIndex: 2,
+	compaction := &agentrun.AgentCompactionState{
+		Revision: 2,
+		Summary:  "压缩摘要：保留早期约束。",
 	}
 	cfg := &config.Config{}
 	req := ChatRequest{Message: "continue after compaction"}
 	analysis, conversation := buildIDEContextAnalysisForTest(t, cfg, nil, prompts.IDEStoryTeller{}, nil, messages, compaction, nil, req)
-	projection, err := conversation.SnapshotContextCompaction(context.Background(), true)
-	if err != nil {
-		t.Fatal(err)
+	if analysis.Compaction == nil || analysis.Compaction.Epoch != int(compaction.Revision) ||
+		analysis.Compaction.Summary != compaction.Summary || !analysis.Compaction.Removable {
+		t.Fatalf("context analysis did not read the Agent-owned Compaction projection: %#v", analysis.Compaction)
 	}
-	if after := projection.Cursor.MessageCount; after != len(messages) {
+	if after := conversation.CanonicalSession().ContextCursor().MessageCount; after != len(messages) {
 		t.Fatalf("context analysis changed session history: before=%d after=%d", len(messages), after)
-	}
-	sawRuntimeEnvironment := false
-	for _, part := range analysis.ContextParts {
-		if part.Source == "runtime.environment" {
-			sawRuntimeEnvironment = true
-			break
-		}
-	}
-	if !sawRuntimeEnvironment {
-		t.Fatalf("context analysis is missing runtime.environment: %#v", analysis.ContextParts)
 	}
 	if _, pending, err := conversation.PendingAgentCycleCommit(agentrun.DomainCommitInput); err != nil || pending {
 		t.Fatalf("analysis staged an input intent pending=%t err=%v", pending, err)
@@ -521,7 +529,7 @@ func TestIDEContextAnalysisSplitsStableAndDynamicWorkspaceState(t *testing.T) {
 		t.Fatal("context analysis should include final model messages")
 	}
 	first := analysis.ContextMessages[0]
-	if first.Source != "稳定作品上下文" || first.Title != "稳定作品上下文" {
+	if first.Source != "Stable context / 稳定上下文" || first.Title != "Stable model-prefix message / 稳定模型前缀消息" {
 		t.Fatalf("first message should carry stable workspace state: %#v", first)
 	}
 	for _, want := range []string{"# 稳定作品上下文", "主角进入废城", "## 角色小标题", "林川长期设定"} {
@@ -535,7 +543,7 @@ func TestIDEContextAnalysisSplitsStableAndDynamicWorkspaceState(t *testing.T) {
 		}
 	}
 	final := analysis.ContextMessages[len(analysis.ContextMessages)-1]
-	if final.Source != "本轮上下文" || final.Title != "动态作品状态与本轮用户请求" {
+	if final.Source != "Current turn / 本轮上下文" || final.Title != "Current user message / 本轮用户消息" {
 		t.Fatalf("final message should carry dynamic workspace state label: %#v", final)
 	}
 	for _, want := range []string{"# 本轮动态作品状态", "章节组：探索废城", "chapters/ch0001-开局.md", "当前进度：抵达废城入口", "林川：警惕", "## IDE 当前状态", "当前聚焦文件：chapters/ch0001-开局.md", "当前打开文件：chapters/ch0001-开局.md、setting/progress.md", "# 本轮用户请求（最高优先级）"} {

@@ -314,11 +314,7 @@ func (service *Service) MessagesPage(ctx context.Context, request Request, befor
 }
 
 func (service *Service) Clear(request Request) error {
-	sess, err := service.conversationSession(request)
-	if err != nil {
-		return err
-	}
-	return sess.Clear()
+	return service.ClearContext(context.Background(), request)
 }
 
 func (service *Service) conversationSession(request Request) (*session.Session, error) {

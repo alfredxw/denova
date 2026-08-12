@@ -8,40 +8,132 @@ import (
 	"strings"
 	"sync"
 
-	runstate "github.com/alfredxw/denova/agent/runtime"
+	runstate "github.com/alfredxw/denova/agent/internal/runtime"
 )
 
-func (engine *definitionEngine) commitCanonicalInput(
+func (engine *definitionEngine) canonicalInputRequest(
+	request runstate.TurnSnapshot,
+) (PrepareRequest, Input, error) {
+	input, err := decodeInput(request.Input)
+	if err != nil {
+		return PrepareRequest{}, Input{}, err
+	}
+	input.IdempotencyKey = string(request.CommandID)
+	reason, err := turnReasonForSnapshot(request)
+	if err != nil {
+		return PrepareRequest{}, Input{}, err
+	}
+	return PrepareRequest{
+		Session:  SessionView{Key: engine.key, Revision: uint64(request.ContextCursor)},
+		Run:      runViewForTurn(request),
+		Input:    input,
+		Reason:   reason,
+		HostData: cloneHostData(input.HostData),
+	}, input, nil
+}
+
+// PlanInputMaterialization resolves only the product canonical-input adapter.
+// Runtime invokes this after durable acceptance and before Engine.Run, closing
+// the split-brain window where an Abort could cancel Definition preparation
+// after Agent had retained the user message but before the product store did.
+func (engine *definitionEngine) PlanInputMaterialization(
 	ctx context.Context,
-	request runstate.EngineRequest,
-	input Input,
-	adapter CanonicalAdapter,
-	emit runstate.EngineEventSink,
-) error {
+	request runstate.InputMaterializationRequest,
+) (runstate.InputMaterializationPlan, error) {
+	prepare, input, err := engine.canonicalInputRequest(request.Snapshot)
+	if err != nil {
+		return runstate.InputMaterializationPlan{}, err
+	}
+	adapter, err := engine.source.CanonicalInput(ctx, prepare)
+	if err != nil {
+		return runstate.InputMaterializationPlan{}, fmt.Errorf("resolve canonical Agent input: %w", err)
+	}
 	if adapter == nil {
-		return nil
+		return runstate.InputMaterializationPlan{}, nil
+	}
+	hash, err := canonicalInputHash(input, adapter.Identity())
+	if err != nil {
+		return runstate.InputMaterializationPlan{}, err
+	}
+	return runstate.InputMaterializationPlan{Required: true, Hash: hash}, nil
+}
+
+func (engine *definitionEngine) MaterializeInput(
+	ctx context.Context,
+	request runstate.InputMaterializationRequest,
+	plan runstate.InputMaterializationPlan,
+) (runstate.InputMaterializationReceipt, error) {
+	prepare, input, err := engine.canonicalInputRequest(request.Snapshot)
+	if err != nil {
+		return runstate.InputMaterializationReceipt{}, err
+	}
+	adapter, err := engine.source.CanonicalInput(ctx, prepare)
+	if err != nil {
+		return runstate.InputMaterializationReceipt{}, fmt.Errorf("resolve canonical Agent input: %w", err)
+	}
+	if adapter == nil || !plan.Required {
+		return runstate.InputMaterializationReceipt{}, errors.New("canonical Agent input materializer is unavailable")
+	}
+	want, err := canonicalInputHash(input, adapter.Identity())
+	if err != nil {
+		return runstate.InputMaterializationReceipt{}, err
+	}
+	if plan.Hash != want {
+		return runstate.InputMaterializationReceipt{}, fmt.Errorf("%w: canonical Agent input changed after planning", runstate.ErrDomainCommitRejected)
 	}
 	identity := canonicalCommitIdentity(engine.key, request.Snapshot, CommitInput)
-	hash, err := hashCanonical(struct {
+	receipt, err := adapter.MaterializeInput(ctx, InputCommitRequest{Identity: identity, Hash: want, Input: input})
+	if err != nil {
+		return runstate.InputMaterializationReceipt{}, fmt.Errorf("materialize canonical Agent input: %w", err)
+	}
+	revision := strings.TrimSpace(receipt.Revision)
+	if revision == "" {
+		return runstate.InputMaterializationReceipt{}, errors.New("materialize canonical Agent input returned an empty revision")
+	}
+	return runstate.InputMaterializationReceipt{Revision: revision}, nil
+}
+
+func canonicalInputHash(input Input, adapter CapabilityIdentity) (string, error) {
+	if err := adapter.validate("Canonical"); err != nil {
+		return "", err
+	}
+	return hashCanonical(struct {
 		Version uint16
+		Adapter CapabilityIdentity
 		Input   Input
-	}{Version: 1, Input: input})
+	}{Version: 2, Adapter: adapter, Input: input})
+}
+
+// verifyCanonicalInputCommit proves that the provider-free admission adapter
+// and the fully prepared Definition describe the same canonical boundary.
+// Runtime is the only input writer; Engine.Run must never replay that write.
+func (engine *definitionEngine) verifyCanonicalInputCommit(
+	snapshot runstate.TurnSnapshot,
+	input Input,
+	adapter CanonicalAdapter,
+) error {
+	commit := snapshot.InputCommit
+	if adapter == nil {
+		if commit != nil {
+			return fmt.Errorf("%w: canonical Agent input was committed but the prepared Definition has no Canonical Adapter", ErrDefinitionMismatch)
+		}
+		return nil
+	}
+	if commit == nil {
+		return fmt.Errorf("%w: prepared Definition requires a canonical Agent input receipt", runstate.ErrDomainCommitRejected)
+	}
+	wantIdentity := runtimeCommitIdentity(canonicalCommitIdentity(engine.key, snapshot, CommitInput))
+	if commit.Identity != wantIdentity || commit.Abandoned {
+		return fmt.Errorf("%w: canonical Agent input receipt identity does not match the active cycle", runstate.ErrDomainCommitRejected)
+	}
+	wantHash, err := canonicalInputHash(input, adapter.Identity())
 	if err != nil {
 		return err
 	}
-	runtimeIdentity := runtimeCommitIdentity(identity)
-	if err := emit(runstate.EngineDomainCommitIntent{Identity: runtimeIdentity, Hash: hash}); err != nil {
-		return err
+	if commit.Hash != wantHash || strings.TrimSpace(commit.Revision) == "" {
+		return fmt.Errorf("%w: canonical Agent input receipt does not match the prepared Definition", ErrDefinitionMismatch)
 	}
-	receipt, err := adapter.MaterializeInput(ctx, InputCommitRequest{Identity: identity, Hash: hash, Input: input})
-	if err != nil {
-		return fmt.Errorf("materialize canonical Agent input: %w", err)
-	}
-	receipt.Revision = strings.TrimSpace(receipt.Revision)
-	if receipt.Revision == "" {
-		return errors.New("materialize canonical Agent input returned an empty revision")
-	}
-	return emit(runstate.EngineDomainCommitReceipt{Identity: runtimeIdentity, Hash: hash, Revision: receipt.Revision})
+	return nil
 }
 
 func (engine *definitionEngine) commitCanonicalOutput(
@@ -159,9 +251,40 @@ func (engine *definitionEngine) ReconcileDomainCommit(
 	ctx context.Context,
 	request runstate.DomainCommitReconcileRequest,
 ) (runstate.DomainCommitReconcileResult, error) {
-	adapter, err := engine.recoveryCanonical(ctx, string(request.Commit.Identity.CommandID), string(request.Commit.Identity.OperationID), request.Commit.Identity.Cycle, request.State)
+	var (
+		adapter CanonicalAdapter
+		err     error
+	)
+	if request.Commit.Identity.Stage == runstate.DomainCommitInput && request.Structural == nil {
+		prepare, input, prepareErr := engine.canonicalInputRequest(request.Snapshot)
+		if prepareErr != nil {
+			return runstate.DomainCommitReconcileResult{}, prepareErr
+		}
+		adapter, err = engine.source.CanonicalInput(ctx, prepare)
+		if err == nil && adapter != nil {
+			wantIdentity := runtimeCommitIdentity(canonicalCommitIdentity(engine.key, request.Snapshot, CommitInput))
+			wantHash, hashErr := canonicalInputHash(input, adapter.Identity())
+			if hashErr != nil {
+				return runstate.DomainCommitReconcileResult{}, hashErr
+			}
+			if request.Commit.Identity != wantIdentity || request.Commit.Hash != wantHash {
+				return runstate.DomainCommitReconcileResult{}, fmt.Errorf("%w: canonical Agent input reconciliation identity changed", ErrDefinitionMismatch)
+			}
+		}
+	} else {
+		adapter, err = engine.recoveryCanonical(
+			ctx,
+			string(request.Commit.Identity.CommandID),
+			string(request.Commit.Identity.OperationID),
+			request.Commit.Identity.Cycle,
+			request.State,
+		)
+	}
 	if err != nil {
 		return runstate.DomainCommitReconcileResult{}, err
+	}
+	if adapter == nil {
+		return runstate.DomainCommitReconcileResult{}, ErrCapabilityUnsupported
 	}
 	identity, err := publicCommitIdentity(engine.key, request.Commit.Identity)
 	if err != nil {
@@ -215,6 +338,7 @@ func (engine *definitionEngine) ResolveInteraction(
 	if err != nil {
 		return nil, err
 	}
+	input.IdempotencyKey = string(request.Snapshot.CommandID)
 	transcript, err := decodeEngineTranscript(request.Snapshot.State)
 	if err != nil {
 		return nil, err
@@ -253,14 +377,29 @@ func (engine *definitionEngine) ResolveInteraction(
 	if transcript.RestoreKey != "" && transcript.RestoreKey != prepared.restoreKey {
 		return nil, fmt.Errorf("%w: interaction restore identity changed", ErrDefinitionMismatch)
 	}
-	if err := materializeDefinitionCapabilities(ctx, PrepareRequest{
+	prepareRequest := PrepareRequest{
 		Session: SessionView{Key: engine.key, Revision: uint64(request.Snapshot.ContextCursor)},
 		Run:     runViewForTurn(request.Snapshot), Input: input, Reason: TurnReasonRecovery,
 		DefinitionKey: transcript.DefinitionKey, RestoreKey: transcript.RestoreKey,
 		HostData:   cloneHostData(input.HostData),
 		Compaction: compaction,
-	}, &prepared); err != nil {
+	}
+	if err := materializeDefinitionCapabilities(ctx, prepareRequest, &prepared); err != nil {
 		return nil, err
+	}
+	if err := engine.applyGoalPreparation(ctx, runstate.EngineRequest{Snapshot: request.Snapshot}, &prepared); err != nil {
+		return nil, err
+	}
+	materialized, err := materializedDefinitionFingerprint(prepared)
+	if err != nil {
+		return nil, err
+	}
+	if transcript.PreparationStage == enginePreparationMaterialized &&
+		transcript.MaterializedFingerprint != materialized {
+		return nil, fmt.Errorf(
+			"%w: interaction materialized Definition changed (durable=%s current=%s)",
+			ErrDefinitionMismatch, transcript.MaterializedFingerprint, materialized,
+		)
 	}
 	var interactionRequest InteractionRequest
 	if err := json.Unmarshal(request.Interaction.Request, &interactionRequest); err != nil {
@@ -282,6 +421,21 @@ func (engine *definitionEngine) ResolveInteraction(
 		presentation := interactionRequest.Permission
 		if presentation == nil {
 			return nil, errors.New("durable Permission Interaction has no presentation")
+		}
+		if resolution.Cancelled {
+			// Cancellation is never authorization and has no policy-owned work to
+			// persist. In particular, do not call a custom policy with an empty
+			// choice: a cancelled UI response must not accidentally enter its
+			// remember path.
+			resolution.Permission = PermissionDeny
+			encoded, encodeErr := json.Marshal(resolution)
+			if encodeErr != nil {
+				return nil, fmt.Errorf("encode cancelled Permission resolution: %w", encodeErr)
+			}
+			return encoded, nil
+		}
+		if resolution.Permission == PermissionRemember && !presentation.CanRemember {
+			return nil, errors.New("Permission Interaction cannot remember this request")
 		}
 		var descriptor ToolDescriptor
 		found := false
@@ -310,12 +464,21 @@ func (engine *definitionEngine) ResolveInteraction(
 		if resolveErr != nil {
 			return nil, resolveErr
 		}
-		if resolved.Allowed {
-			if resolution.Permission != PermissionAllowOnce && resolution.Permission != PermissionRemember {
-				return nil, errors.New("Permission Policy allowed a denied resolution")
+		switch resolution.Permission {
+		case PermissionAllowOnce:
+			if !resolved.Allowed || resolved.Remembered {
+				return nil, errors.New("Permission Policy returned an inconsistent allow-once decision")
 			}
-		} else {
-			resolution.Permission = PermissionDeny
+		case PermissionRemember:
+			if !resolved.Allowed || !resolved.Remembered {
+				return nil, errors.New("Permission Policy returned success before the remembered rule was durable")
+			}
+		case PermissionDeny:
+			if resolved.Allowed || resolved.Remembered {
+				return nil, errors.New("Permission Policy returned an inconsistent deny decision")
+			}
+		default:
+			return nil, errors.New("Permission Policy received an invalid resolution")
 		}
 	}
 	encoded, err := json.Marshal(resolution)
@@ -333,14 +496,19 @@ func (engine *definitionEngine) PrepareAdmission(
 	if err != nil || input.Goal == nil {
 		return nil, err
 	}
+	input.IdempotencyKey = string(request.Snapshot.CommandID)
 	transcript, err := decodeEngineTranscript(request.Snapshot.State)
+	if err != nil {
+		return nil, err
+	}
+	reason, err := turnReasonForSnapshot(request.Snapshot)
 	if err != nil {
 		return nil, err
 	}
 	prepared, err := prepareDefinitionBase(ctx, engine.source, PrepareRequest{
 		Session: SessionView{Key: engine.key, Revision: uint64(request.Snapshot.ContextCursor)},
 		Run:     runViewForTurn(request.Snapshot),
-		Input:   input, Reason: TurnReasonStart,
+		Input:   input, Reason: reason,
 		DefinitionKey: transcript.DefinitionKey, RestoreKey: transcript.RestoreKey,
 		HostData: cloneHostData(input.HostData),
 	})
@@ -363,7 +531,7 @@ func (engine *definitionEngine) PrepareAdmission(
 			return nil, err
 		}
 	}
-	next, err := prepared.definition.Goal.Apply(ctx, GoalApplyRequest{
+	next, err := applyGoalMutation(ctx, prepared.definition.Goal, GoalApplyRequest{
 		Session: SessionView{Key: engine.key, Revision: uint64(request.Snapshot.ContextCursor)},
 		Run:     runViewForTurn(request.Snapshot),
 		Current: current, Present: present, Mutation: *input.Goal,
@@ -374,6 +542,9 @@ func (engine *definitionEngine) PrepareAdmission(
 	encoded, err := json.Marshal(next)
 	if err != nil {
 		return nil, err
+	}
+	if present && string(encoded) == string(raw) {
+		return nil, nil
 	}
 	return []runstate.EngineCapabilityState{{
 		Capability: goalCapability, Expected: describeCapabilityState(raw), State: encoded,
@@ -412,43 +583,10 @@ func (state *engineControlState) err() error {
 	return state.failure
 }
 
-func watchEngineControls(
-	ctx context.Context,
-	controls <-chan runstate.EngineControl,
-	done <-chan struct{},
-	state *engineControlState,
-	cancel AgentCancelFunc,
-	interactions *engineInteractionClient,
-) {
-	for {
-		select {
-		case control, ok := <-controls:
-			if !ok {
-				return
-			}
-			switch control.Kind {
-			case runstate.EngineControlPreempt:
-				state.set(control.Kind)
-				_, _ = cancel(WithAgentCancelMode(CancelAfterChatModel | CancelAfterToolCalls))
-			case runstate.EngineControlAbort:
-				state.set(control.Kind)
-				_, _ = cancel(WithAgentCancelMode(CancelImmediate))
-			case runstate.EngineControlInteractionResolved:
-				if interactions != nil {
-					interactions.deliver(control.InteractionID, control.Response)
-				}
-			}
-		case <-done:
-			return
-		case <-ctx.Done():
-			return
-		}
-	}
-}
-
 var _ runstate.EngineFactory = (*definitionEngineFactory)(nil)
 var _ runstate.Engine = (*definitionEngine)(nil)
 var _ runstate.EngineDomainCommitReconciler = (*definitionEngine)(nil)
 var _ runstate.EngineHostEffectReconciler = (*definitionEngine)(nil)
 var _ runstate.EngineInteractionResolver = (*definitionEngine)(nil)
 var _ runstate.EngineAdmissionPreparer = (*definitionEngine)(nil)
+var _ runstate.EngineInputMaterializer = (*definitionEngine)(nil)

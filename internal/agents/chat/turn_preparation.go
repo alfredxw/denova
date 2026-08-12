@@ -4,6 +4,8 @@ import (
 	"context"
 	agentcontext "denova/internal/agents/context"
 	"fmt"
+	"strings"
+	"time"
 
 	"denova/internal/agents/session"
 	novaskills "denova/internal/agents/skills"
@@ -50,10 +52,18 @@ func PrepareAgentContext(
 	request ChatRequest,
 	bookService *book.Service,
 	workspace string,
+	startedAt time.Time,
 ) (AgentContextPreparation, error) {
+	// Real turns receive a timestamp from the durable CycleStarted event.
+	// Structural operations deliberately pass zero: compaction must not inject
+	// a fresh wall-clock value into an otherwise replayable Definition.
+	environment := turnRuntimeEnvironment{
+		CapturedAt: startedAt,
+		Workspace:  strings.TrimSpace(workspace),
+	}
 	prepared, err := prepareTurnContext(ctx, turnContextPreparationInput{
 		Conversation: conversation, Request: request, BookService: bookService,
-		Environment: newTurnRuntimeEnvironment(workspace),
+		Environment: environment,
 	})
 	if err != nil {
 		return AgentContextPreparation{}, err

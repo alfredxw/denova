@@ -48,12 +48,6 @@ func modelPromptUsageInvalidatedBy(record historyRecord, agentKind string) bool 
 	switch record.kind {
 	case historyTypeClear:
 		return true
-	case historyTypeCompaction:
-		return record.compaction != nil && contextRecordMatchesAgent(record.compaction.AgentKind, agentKind)
-	case historyTypeCompactionRemoved:
-		return record.compactionRemoval != nil && contextRecordMatchesAgent(record.compactionRemoval.AgentKind, agentKind)
-	case historyTypeToolResultCleanup:
-		return record.toolResultCleanup != nil && contextRecordMatchesAgent(record.toolResultCleanup.AgentKind, agentKind)
 	default:
 		return false
 	}

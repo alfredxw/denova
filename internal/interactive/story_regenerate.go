@@ -44,6 +44,12 @@ func (s *Store) StoryContextAtTurnParent(storyID, branchID, turnID string) (Stor
 			snapshot.TurnCount = projection.Depth - 1
 		}
 	}
+	// This historical parent is a distinct canonical model-history revision.
+	// Reusing the live branch's monotonically accumulated counter would let
+	// Session.SyncTranscript mistake different regenerate content for an exact
+	// retry. The projected prefix depth is stable for the same target and always
+	// advances once the replacement turn becomes the live branch.
+	snapshot.ContextRevision = uint64(snapshot.TurnCount)
 	// Director plan documents and token-usage telemetry are mutable branch
 	// sidecars, not events on the parent path. Attaching the latest sidecar here
 	// would leak facts learned after the regenerated turn into its replacement

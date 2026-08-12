@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"strings"
 
-	agentconversation "denova/internal/agents/conversation"
 	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
 	appagentruntime "denova/internal/app/agentruntime"
@@ -46,10 +45,6 @@ func (service *Service) Recover(ctx context.Context, binding Binding, request ap
 	if err := appagentruntime.ValidateRecoveryAction(recovery.InitialStatus(), request.Action); err != nil {
 		recovery.Close()
 		return appagentruntime.RecoveryResult{}, err
-	}
-	if _, err := agentconversation.ReconcileColdPendingAsk(ctx, sess, recovery.InitialStatus()); err != nil {
-		recovery.Close()
-		return appagentruntime.RecoveryResult{}, fmt.Errorf("reconcile orphaned AgentChat Ask before recovery: %w", err)
 	}
 	active := &run{
 		binding: binding, runtime: project.conversation(sess), recovery: recovery,
@@ -149,13 +144,6 @@ func (service *Service) PrepareCycle(
 	}
 	if cycle.Options.Mode != RuntimeMode || cycle.Options.ProjectID != scope.ProjectID || cycle.Options.Workspace != scope.Workspace || cycle.Options.SessionID != scope.SessionID {
 		return agentexecution.Cycle{}, fmt.Errorf("%w: prepared AgentChat runtime does not match durable binding", agentexecution.ErrCyclePreparationUnavailable)
-	}
-	cycle.Successor = func(ctx context.Context, parent agentrun.OperationID, outcome agentrun.Outcome) error {
-		active := service.activeRun(scope)
-		if active == nil {
-			return appagentruntime.ErrContextChanged
-		}
-		return service.goalSuccessor(active)(ctx, parent, outcome)
 	}
 	return cycle, nil
 }

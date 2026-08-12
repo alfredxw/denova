@@ -10,8 +10,6 @@ import (
 	"denova/config"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/interactive"
-
-	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 func TestAppRestoresWritingAndGameQueuedTurnDependencies(t *testing.T) {
@@ -66,12 +64,12 @@ func TestAppRestoresWritingAndGameQueuedTurnDependencies(t *testing.T) {
 func TestExecutionProfilesExposeOnlySupportedCapabilities(t *testing.T) {
 	application := newExecutionProfileTestApp(t)
 	want := map[agentexecution.ProfileID]bool{
-		agentexecution.ProfileWriting:       true,
-		agentexecution.ProfileAgentChat:     true,
-		agentexecution.ProfileGame:          true,
-		agentexecution.ProfileConfigManager: true,
+		agentexecution.ProfileWriting:          true,
+		agentexecution.ProfileAgentChat:        true,
+		agentexecution.ProfileGame:             true,
+		agentexecution.ProfileConfigManager:    true,
 		agentexecution.ProfileHarnessOptimizer: true,
-		agentexecution.ProfileImage:         true,
+		agentexecution.ProfileImage:            true,
 	}
 	profiles := application.executionProfiles()
 	if len(profiles) != len(want) {
@@ -105,7 +103,7 @@ func TestAppRejectsQueuedTurnRecoveryForUnsupportedProfile(t *testing.T) {
 	_, err := prepareProfileCycleForTest(application, context.Background(), agentexecution.CycleRestoreRequest{
 		Binding: agentrun.RuntimeBinding{AgentKind: "unsupported"},
 	})
-	if !errors.Is(err, runstate.ErrInvalidBinding) {
+	if !errors.Is(err, agentrun.ErrInvalidBinding) {
 		t.Fatalf("unsupported profile restore error = %v", err)
 	}
 }

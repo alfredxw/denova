@@ -132,26 +132,6 @@ func cloneHistoryRecordForTailReplay(record historyRecord) historyRecord {
 		}
 		clone.interruption = &interruption
 	}
-	if record.ask != nil {
-		interaction := cloneAskInteraction(*record.ask)
-		clone.ask = &interaction
-	}
-	if record.compaction != nil {
-		compaction := *record.compaction
-		clone.compaction = &compaction
-	}
-	if record.compactionRemoval != nil {
-		removal := *record.compactionRemoval
-		clone.compactionRemoval = &removal
-	}
-	if record.compactionHealth != nil {
-		health := *record.compactionHealth
-		clone.compactionHealth = &health
-	}
-	if record.toolResultCleanup != nil {
-		cleanup := cloneToolResultCleanupRecord(*record.toolResultCleanup)
-		clone.toolResultCleanup = &cleanup
-	}
 	return clone
 }
 

@@ -29,6 +29,9 @@ func (backend *publicBackend) start(ctx context.Context, request StartRequest) (
 	if commandID == "" {
 		return nil, errors.New("Denova public Agent Start requires command_id")
 	}
+	if err := agentrun.ValidateCommandID(commandID); err != nil {
+		return nil, err
+	}
 	key, err := agentrun.AgentSessionKeyForOptions(cycle.Options)
 	if err != nil {
 		return nil, err
@@ -37,8 +40,12 @@ func (backend *publicBackend) start(ctx context.Context, request StartRequest) (
 	if err != nil {
 		return nil, err
 	}
+	if err := syncCanonicalTranscript(ctx, sessionHandle, cycle.Conversation); err != nil {
+		return nil, err
+	}
 	registration := &publicCycleRegistration{
 		cycle: &cycle, request: cycle.Request, options: cycle.Options, emit: request.Emit,
+		commandKind:    CommandStartTurn,
 		projector:      agentchat.NewPublicEventProjector(cycle.Conversation, cycle.Request, cycle.Options, request.Emit),
 		projectorBound: cycle.Conversation != nil,
 	}
@@ -57,6 +64,23 @@ func (backend *publicBackend) start(ctx context.Context, request StartRequest) (
 	}, nil
 }
 
+func syncCanonicalTranscript(
+	ctx context.Context,
+	session *agent.Session,
+	conversation agentchat.Conversation,
+) error {
+	synchronizer, ok := conversation.(CanonicalTranscriptSynchronizer)
+	if !ok {
+		return nil
+	}
+	request, err := synchronizer.CanonicalTranscript(ctx)
+	if err != nil {
+		return err
+	}
+	_, err = session.SyncTranscript(ctx, request)
+	return err
+}
+
 func (backend *publicBackend) submit(ctx context.Context, spec CommandRequest) (agentrun.CommandReceipt, error) {
 	spec.Request = agentchat.CaptureChatRequestCallerInput(spec.Request)
 	spec.Options = spec.Options.Normalize(spec.Options.Workspace)
@@ -67,6 +91,9 @@ func (backend *publicBackend) submit(ctx context.Context, spec CommandRequest) (
 	commandID := strings.TrimSpace(spec.CommandID)
 	if commandID == "" {
 		return agentrun.CommandReceipt{}, errors.New("Denova public Agent command requires command_id")
+	}
+	if err := agentrun.ValidateCommandID(commandID); err != nil {
+		return agentrun.CommandReceipt{}, err
 	}
 	backend.mu.RLock()
 	target := backend.runs[string(spec.OperationID)]
@@ -122,7 +149,7 @@ func (backend *publicBackend) submit(ctx context.Context, spec CommandRequest) (
 		return mapPublicCommandReceipt(receipt), nil
 	}
 	spec.Request.CommandID = commandID
-	registration := &publicCycleRegistration{request: spec.Request, options: spec.Options, emit: spec.Emit}
+	registration := &publicCycleRegistration{request: spec.Request, options: spec.Options, emit: spec.Emit, commandKind: spec.Kind}
 	backend.rememberRegistration(key, commandID, registration)
 	turnKind, err := publicTurnKind(spec.Kind)
 	if err != nil {
@@ -163,7 +190,10 @@ func (backend *publicBackend) trackRun(
 	registration *publicCycleRegistration,
 	parentRunID string,
 ) *publicRunHandle {
-	handle := &publicRunHandle{session: sessionHandle, run: publicRun, registration: registration, done: make(chan struct{})}
+	trace := publicTraceForRun(registration, publicRun.ID(), !publicRun.Replayed())
+	handle := &publicRunHandle{
+		session: sessionHandle, run: publicRun, registration: registration, trace: trace, done: make(chan struct{}),
+	}
 	backend.mu.Lock()
 	backend.runs[publicRun.ID()] = handle
 	if parentRunID != "" {
@@ -174,7 +204,6 @@ func (backend *publicBackend) trackRun(
 		defer close(handle.done)
 		// An idempotent cold replay already owns a completed trace under this Run
 		// ID. Preserve it instead of projecting replayed lifecycle events again.
-		trace := newPublicAgentRunTrace(publicRun.ID(), !publicRun.Replayed())
 		defer func() {
 			if err := trace.close(); err != nil {
 				slog.Warn("[agent-public-runtime] close run trace failed", "run_id", publicRun.ID(), "error", err)
@@ -187,8 +216,15 @@ func (backend *publicBackend) trackRun(
 		}()
 		currentCycle := 0
 		for event := range publicRun.Events() {
-			if started, ok := event.Payload.(agent.RunStarted); ok {
+			started, cycleStarted := event.Payload.(agent.RunStarted)
+			if cycleStarted {
 				currentCycle = started.Cycle
+				cycleRegistration := backend.bindStartedCycleRegistration(
+					publicRun.ID(), sessionHandle.Key(), started, registration,
+				)
+				if cycleRegistration != nil {
+					cycleRegistration.projectOrDeferRunStarted(event.RunID, started)
+				}
 			}
 			cycleRegistration := backend.cycleRegistration(publicRun.ID(), currentCycle, registration)
 			if err := trace.record(cycleRegistration, event); err != nil {
@@ -201,6 +237,42 @@ func (backend *publicBackend) trackRun(
 		}
 	}()
 	return handle
+}
+
+func (backend *publicBackend) bindStartedCycleRegistration(
+	runID string,
+	key agent.SessionKey,
+	started agent.RunStarted,
+	fallback *publicCycleRegistration,
+) *publicCycleRegistration {
+	registration := backend.registration(key, started.CommandID)
+	if registration == nil {
+		registration = fallback
+	}
+	if registration == nil || started.Cycle <= 0 {
+		return registration
+	}
+	backend.mu.Lock()
+	if backend.cycles[runID] == nil {
+		backend.cycles[runID] = make(map[int]*publicCycleRegistration)
+	}
+	backend.cycles[runID][started.Cycle] = registration
+	backend.mu.Unlock()
+	return registration
+}
+
+func (registration *publicCycleRegistration) projectOrDeferRunStarted(runID string, started agent.RunStarted) {
+	registration.mu.Lock()
+	projector := registration.projector
+	if projector == nil {
+		registration.pendingRunStart = &pendingPublicRunStart{runID: runID, started: started}
+		registration.mu.Unlock()
+		return
+	}
+	commandID := firstPublicCycleValue(started.CommandID, registration.request.CommandID)
+	delivery := firstPublicCycleValue(started.Delivery, string(registration.commandKind))
+	registration.mu.Unlock()
+	projector.ProjectRunStarted(runID, started.Cycle, commandID, delivery)
 }
 
 func (backend *publicBackend) projector(

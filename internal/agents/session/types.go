@@ -9,7 +9,6 @@ import (
 	agentcontext "denova/internal/agents/context"
 	"denova/internal/agents/conversationconfig"
 	"denova/internal/agents/conversationjournal"
-	"denova/internal/agents/goal"
 )
 
 const (
@@ -22,12 +21,6 @@ const (
 	historyTypeDisplay             = "display"
 	historyTypeClear               = "clear"
 	historyTypeInterrupt           = "interrupt"
-	historyTypeAsk                 = "ask"
-	historyTypeCompaction          = "context_compaction"
-	historyTypeCompactionRemoved   = "context_compaction_removed"
-	historyTypeCompactionHealth    = "context_compaction_health"
-	historyTypeToolResultCleanup   = "tool_result_cleanup"
-	historyTypeGoalChanged         = "goal_changed"
 
 	InterruptionPending  = "pending"
 	InterruptionResolved = "resolved"
@@ -36,6 +29,11 @@ const (
 	AskCancelled         = "cancelled"
 	AskKindQuestion      = "question"
 	AskKindToolApproval  = "tool_approval"
+	// Tool approval option IDs are stable transport values used by the current
+	// web UI. Public Agent PermissionChoice remains the lifecycle vocabulary.
+	ToolApprovalAllowOnceOptionID      = "allow-once"
+	ToolApprovalAllowWorkspaceOptionID = "allow-workspace"
+	ToolApprovalDenyOptionID           = "deny"
 
 	// Display phases classify root assistant prose without changing the
 	// canonical transcript that is assembled for the model.
@@ -60,7 +58,6 @@ type HistoryEntry struct {
 	Status           string               `json:"status,omitempty"`
 	Result           string               `json:"result,omitempty"`
 	Illustration     *ChapterIllustration `json:"illustration,omitempty"`
-	Ask              *AskInteraction      `json:"ask,omitempty"`
 	Message          *agent.Message       `json:"-"`
 	CreatedAt        time.Time            `json:"created_at,omitempty"`
 
@@ -107,17 +104,21 @@ type MessageMetadata struct {
 	// stored atomically with the product message, while DomainCommitHash guards
 	// the richer Denova payload. Recovery must query this value, never infer a
 	// successful Agent commit from cycle identity alone.
-	AgentCanonicalHash string                       `json:"agent_canonical_hash,omitempty"`
-	ContextRevision    uint64                       `json:"context_revision,omitempty"`
-	RunID              string                       `json:"run_id,omitempty"`
-	AgentKind          string                       `json:"agent_kind,omitempty"`
-	AgentName          string                       `json:"agent_name,omitempty"`
-	RootAgentName      string                       `json:"root_agent_name,omitempty"`
-	RunPath            []string                     `json:"run_path,omitempty"`
-	SubAgent           bool                         `json:"subagent,omitempty"`
-	SubAgentSessionID  string                       `json:"subagent_session_id,omitempty"`
-	SubAgentType       string                       `json:"subagent_type,omitempty"`
-	UserReferences     []agentcontext.UserReference `json:"user_references,omitempty"`
+	AgentCanonicalHash string `json:"agent_canonical_hash,omitempty"`
+	// ResolveInterruptionID is committed in the same journal transaction as
+	// the canonical assistant output. It closes the crash window where output
+	// was visible but its recovery marker remained pending.
+	ResolveInterruptionID string                       `json:"resolve_interruption_id,omitempty"`
+	ContextRevision       uint64                       `json:"context_revision,omitempty"`
+	RunID                 string                       `json:"run_id,omitempty"`
+	AgentKind             string                       `json:"agent_kind,omitempty"`
+	AgentName             string                       `json:"agent_name,omitempty"`
+	RootAgentName         string                       `json:"root_agent_name,omitempty"`
+	RunPath               []string                     `json:"run_path,omitempty"`
+	SubAgent              bool                         `json:"subagent,omitempty"`
+	SubAgentSessionID     string                       `json:"subagent_session_id,omitempty"`
+	SubAgentType          string                       `json:"subagent_type,omitempty"`
+	UserReferences        []agentcontext.UserReference `json:"user_references,omitempty"`
 	// ContextOnly keeps host-owned continuation instructions in model history
 	// without projecting them as user-authored chat messages.
 	ContextOnly bool `json:"context_only,omitempty"`
@@ -134,11 +135,6 @@ type historyRecord struct {
 	messageMetadata              MessageMetadata
 	display                      *DisplayEvent
 	interruption                 *Interruption
-	ask                          *AskInteraction
-	compaction                   *ContextCompaction
-	compactionRemoval            *ContextCompactionRemoval
-	compactionHealth             *ContextCompactionHealth
-	toolResultCleanup            *ToolResultCleanupRecord
 	createdAt                    time.Time
 	displayArgsPersistedBytes    int
 	displayContentPersistedBytes int
@@ -288,8 +284,8 @@ type ToolApprovalPresentation struct {
 	RuleCommandPattern string `json:"rule_command_pattern,omitempty"`
 }
 
-// AskInteraction is append-only session state for one blocking ask call. The
-// ordinary tool call/result remains the model and display representation.
+// AskInteraction is the read-only transport projection of one public Agent
+// Interaction. It is never persisted or resolved by the product Session.
 type AskInteraction struct {
 	Schema string `json:"schema"`
 	ID     string `json:"id"`
@@ -309,100 +305,12 @@ type AskInteraction struct {
 	AgentCycle       int                       `json:"agent_cycle,omitempty"`
 	Status           string                    `json:"status"`
 	Questions        []AskQuestion             `json:"questions,omitempty"`
+	AllowOther       bool                      `json:"allow_other,omitempty"`
 	Approval         *ToolApprovalPresentation `json:"approval,omitempty"`
 	Answers          []AskAnswerResult         `json:"answers,omitempty"`
 	CancelReason     string                    `json:"cancel_reason,omitempty"`
 	CreatedAt        time.Time                 `json:"created_at"`
 	ResolvedAt       *time.Time                `json:"resolved_at,omitempty"`
-}
-
-// AskCycleIdentity is the narrow runtime identity Session needs to reconcile a
-// pending Ask after the process-local model continuation has been lost.
-type AskCycleIdentity struct {
-	CommandID   string
-	OperationID string
-	Cycle       int
-}
-
-// AskResolution is a normal structured result. Cancellation is not an error
-// and must never be represented as an abnormal Agent interruption.
-type AskResolution struct {
-	Schema       string            `json:"schema"`
-	ID           string            `json:"id"`
-	Status       string            `json:"status"`
-	Answers      []AskAnswerResult `json:"answers,omitempty"`
-	CancelReason string            `json:"cancel_reason,omitempty"`
-}
-
-// ContextCompaction records a model-visible summary epoch without modifying the
-// raw user-facing transcript.
-type ContextCompaction struct {
-	Type string `json:"type"`
-	ID   string `json:"id"`
-	agentcontext.CompactionCheckpoint
-	SourceStartIndex int `json:"source_start_index"`
-	SourceEndIndex   int `json:"source_end_index"`
-	// Cursor fields are the stable v2 boundary. Index fields remain readable
-	// for legacy journals and are populated during the transition.
-	SourceStartCursor  conversationjournal.Cursor `json:"source_start_cursor,omitempty"`
-	SourceEndCursor    conversationjournal.Cursor `json:"source_end_cursor,omitempty"`
-	SourceMessageCount int                        `json:"source_message_count"`
-	CreatedAt          time.Time                  `json:"created_at"`
-	ContextRevision    uint64                     `json:"context_revision,omitempty"`
-}
-
-// ContextCompactionRemoval soft-disables the active model-visible compaction
-// without deleting raw transcript or historical compaction records.
-type ContextCompactionRemoval struct {
-	Type              string                     `json:"type"`
-	ID                string                     `json:"id"`
-	AgentKind         string                     `json:"agent_kind,omitempty"`
-	CompactionID      string                     `json:"compaction_id,omitempty"`
-	SourceStartIndex  int                        `json:"source_start_index"`
-	SourceEndIndex    int                        `json:"source_end_index"`
-	SourceStartCursor conversationjournal.Cursor `json:"source_start_cursor,omitempty"`
-	SourceEndCursor   conversationjournal.Cursor `json:"source_end_cursor,omitempty"`
-	Reason            string                     `json:"reason,omitempty"`
-	CreatedAt         time.Time                  `json:"created_at"`
-	ContextRevision   uint64                     `json:"context_revision,omitempty"`
-}
-
-// ContextCompactionHealth durably records the failure fuse for one stable
-// provider-neutral context structure. It is model-invisible and never replaces
-// a successful ContextCompaction checkpoint.
-type ContextCompactionHealth struct {
-	Type                 string    `json:"type"`
-	ID                   string    `json:"id"`
-	AgentKind            string    `json:"agent_kind,omitempty"`
-	BasisRevision        uint64    `json:"basis_revision"`
-	StructureFingerprint string    `json:"structure_fingerprint"`
-	Outcome              string    `json:"outcome"`
-	FailureCode          string    `json:"failure_code,omitempty"`
-	ConsecutiveFailures  int       `json:"consecutive_failures"`
-	CreatedAt            time.Time `json:"created_at"`
-}
-
-// ToolResultReplacement shares the same frozen substitution contract across
-// writing sessions and game journals.
-type ToolResultReplacement = agentcontext.ToolResultReplacement
-
-// ToolResultCleanupRecord records a model-visible projection without changing
-// the canonical rich tool result or the user-facing transcript. SourceEnd is
-// exclusive, matching the Session message range APIs.
-type ToolResultCleanupRecord struct {
-	Type             string                  `json:"type"`
-	ID               string                  `json:"id"`
-	AgentKind        string                  `json:"agent_kind,omitempty"`
-	SourceStart      int64                   `json:"source_start"`
-	SourceEnd        int64                   `json:"source_end"`
-	Replacements     []ToolResultReplacement `json:"replacements"`
-	ReclaimedTokens  int                     `json:"reclaimed_tokens"`
-	TriggeredAtUsage int                     `json:"triggered_at_usage"`
-	EarliestChanged  int64                   `json:"earliest_changed"`
-	WarmSuffixTokens int                     `json:"warm_suffix_tokens"`
-	RendererVersion  string                  `json:"renderer_version"`
-	CreatedAt        time.Time               `json:"created_at"`
-	ContextRevision  uint64                  `json:"context_revision,omitempty"`
 }
 
 // Session 保存单个会话的内存状态。
@@ -426,7 +334,6 @@ type Session struct {
 	lastReplayRecords      int
 	journal                *conversationjournal.Journal
 	projection             *sessionJournalProjection
-	goal                   goal.State
 	materializedCursor     conversationjournal.Cursor
 	messageBaseIndex       int
 	messageCount           int
@@ -435,7 +342,6 @@ type Session struct {
 	mu                     sync.Mutex
 	messages               []*agent.Message
 	records                []historyRecord
-	askWaiters             map[string]chan AskResolution
 }
 
 // SessionMeta 是会话列表摘要。

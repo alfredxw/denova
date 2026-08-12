@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"denova/config"
 	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
 	appagentruntime "denova/internal/app/agentruntime"
@@ -77,30 +76,6 @@ func (s *ChatAppService) submitAgentCommand(ctx context.Context, command ChatAge
 			Mode:      "ide",
 		},
 	})
-}
-
-func (s *ChatAppService) writingGoalSuccessor(runtime ideChatRuntime, task *apptask.Task, locale string) agentexecution.SuccessorPolicy {
-	var successor agentexecution.SuccessorPolicy
-	successor = func(ctx context.Context, parent agentrun.OperationID, _ agentrun.Outcome) error {
-		if !config.ResolveAgentTools(&runtime.cfg, config.AgentKindIDE).Allows(config.AgentToolGoal) {
-			return nil
-		}
-		current, ok, err := runtime.sess.Goal(ctx)
-		if err != nil || !ok || !current.IsActive() {
-			return err
-		}
-		commandID, input := appagentruntime.GoalContinuationRequest(current, parent, locale)
-		_, err = runtime.executionRuntime.SubmitCommand(ctx, agentexecution.CommandRequest{
-			Kind: agentexecution.CommandNextTurn, CommandID: commandID,
-			AfterOperationID: parent, Request: input, Emit: task.Emit,
-			Options: agentrun.Options{
-				AgentKind: agentrun.AgentKindIDE, StateRoot: runtime.projectState,
-				TaskID: task.ID(), SessionID: runtime.sess.ID, Workspace: runtime.workspace, Mode: "ide",
-			},
-		})
-		return err
-	}
-	return successor
 }
 
 func (s *ChatAppService) confirmActiveCommandRuntime(expected ideChatRuntime, task *apptask.Task) error {

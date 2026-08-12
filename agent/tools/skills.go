@@ -97,7 +97,7 @@ func Skills(source SkillSource) (agent.Toolset, error) {
 		return nil, errors.New("skills SkillSource requires a stable Identity")
 	}
 	definition := agent.ToolDefinition{Tool: tool, Descriptor: readDescriptor()}
-	return agent.StaticToolsIdentified(toolsetIdentity("tools.skills", identity), definition), nil
+	return agent.StaticToolsIdentified(toolsetIdentity("tools.skills", identity), definition)
 }
 
 // JSONResult constructs a successful bounded structured Tool result.

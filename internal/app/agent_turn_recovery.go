@@ -13,6 +13,8 @@ import (
 	agentrun "denova/internal/agents/run"
 	appagentruntime "denova/internal/app/agentruntime"
 	apptask "denova/internal/app/task"
+
+	agent "github.com/alfredxw/denova/agent"
 )
 
 func (a *App) prepareWritingProfileCycle(
@@ -49,16 +51,6 @@ func (a *App) prepareWritingProfileCycle(
 		if err := a.chat().confirmActiveCommandRuntime(activeRuntime, task); err != nil {
 			return agentexecution.Cycle{}, err
 		}
-	}
-	cycle.Successor = func(ctx context.Context, parent agentrun.OperationID, outcome agentrun.Outcome) error {
-		runtime, task, err := a.chat().activeCommandRuntime()
-		if err != nil {
-			return err
-		}
-		if runtime.sess == nil || runtime.sess.ID != binding.SessionID || runtime.workspace != binding.Workspace {
-			return ErrAgentContextChanged
-		}
-		return a.chat().writingGoalSuccessor(runtime, task, request.Request.Locale)(ctx, parent, outcome)
 	}
 	return cycle, nil
 }
@@ -119,13 +111,8 @@ func (s *ChatAppService) prepareWritingCycle(
 	if err != nil {
 		return agentexecution.Cycle{}, ideChatRuntime{}, err
 	}
-	goalTools, err := appagentruntime.GoalTools(ctx, runtime.sess)
-	if err != nil {
-		return agentexecution.Cycle{}, ideChatRuntime{}, err
-	}
 	builtAgent, err := appagentruntime.BuildConversationAgent(
 		ctx, &runtime.cfg, runtime.state, runtime.ideTeller, agentrun.AgentKindIDE,
-		goalTools...,
 	)
 	if err != nil {
 		return agentexecution.Cycle{}, ideChatRuntime{}, err
@@ -158,8 +145,9 @@ func (s *ChatAppService) prepareWritingCycle(
 }
 
 type queuedExecutionProfile struct {
-	id      agentexecution.ProfileID
-	prepare func(context.Context, agentexecution.CycleRestoreRequest) (agentexecution.Cycle, error)
+	id        agentexecution.ProfileID
+	prepare   func(context.Context, agentexecution.CycleRestoreRequest) (agentexecution.Cycle, error)
+	canonical func(context.Context, agentexecution.CanonicalInputRequest) (agent.CanonicalAdapter, error)
 }
 
 func (profile queuedExecutionProfile) ID() agentexecution.ProfileID {
@@ -176,31 +164,42 @@ func (profile queuedExecutionProfile) PrepareCycle(
 	return profile.prepare(ctx, request)
 }
 
+func (profile queuedExecutionProfile) CanonicalInput(
+	ctx context.Context,
+	request agentexecution.CanonicalInputRequest,
+) (agent.CanonicalAdapter, error) {
+	if profile.canonical == nil {
+		return nil, fmt.Errorf("%w: profile %q has no canonical input boundary", agentexecution.ErrProfileInvalid, profile.ID())
+	}
+	return profile.canonical(ctx, request)
+}
+
 func (app *App) executionProfiles() []agentexecution.Profile {
 	profile := func(
 		id agentexecution.ProfileID,
 		prepare func(context.Context, agentexecution.CycleRestoreRequest) (agentexecution.Cycle, error),
+		canonical func(context.Context, agentexecution.CanonicalInputRequest) (agent.CanonicalAdapter, error),
 	) queuedExecutionProfile {
-		return queuedExecutionProfile{id: id, prepare: prepare}
+		return queuedExecutionProfile{id: id, prepare: prepare, canonical: canonical}
 	}
 	return []agentexecution.Profile{
 		profile(agentexecution.ProfileWriting, func(ctx context.Context, request agentexecution.CycleRestoreRequest) (agentexecution.Cycle, error) {
 			return app.prepareWritingProfileCycle(ctx, request, request.Binding)
-		}),
+		}, app.sessionCanonicalInput),
 		profile(agentexecution.ProfileAgentChat, func(ctx context.Context, request agentexecution.CycleRestoreRequest) (agentexecution.Cycle, error) {
 			return app.AgentChat().PrepareCycle(ctx, request, request.Binding)
-		}),
+		}, app.sessionCanonicalInput),
 		profile(agentexecution.ProfileGame, func(ctx context.Context, request agentexecution.CycleRestoreRequest) (agentexecution.Cycle, error) {
 			return app.prepareInteractiveProfileCycle(ctx, request, request.Binding)
-		}),
+		}, app.gameCanonicalInput),
 		profile(agentexecution.ProfileConfigManager, func(ctx context.Context, request agentexecution.CycleRestoreRequest) (agentexecution.Cycle, error) {
 			return app.ConfigManager().PrepareCycle(ctx, request, request.Binding)
-		}),
+		}, app.sessionCanonicalInput),
 		profile(agentexecution.ProfileHarnessOptimizer, func(ctx context.Context, request agentexecution.CycleRestoreRequest) (agentexecution.Cycle, error) {
 			return app.ContinualLearning().PrepareCycle(ctx, request, request.Binding)
-		}),
+		}, app.sessionCanonicalInput),
 		profile(agentexecution.ProfileImage, func(ctx context.Context, request agentexecution.CycleRestoreRequest) (agentexecution.Cycle, error) {
 			return app.Images().PrepareCycle(ctx, request, request.Binding)
-		}),
+		}, app.sessionCanonicalInput),
 	}
 }

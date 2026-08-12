@@ -15,7 +15,15 @@ import (
 // target when one exists; otherwise a small model-relative reserve is used.
 func EstimateProjectionReserves(cfg *config.Config, agentKind string, expectedOutputChars int) (completionTokens, toolResultTokens int) {
 	model := config.ResolveAgentModel(cfg, agentKind)
-	window := model.ContextWindowTokens
+	return estimateProjectionReservesAtWindow(cfg, agentKind, expectedOutputChars, model.ContextWindowTokens)
+}
+
+func estimateProjectionReservesAtWindow(
+	cfg *config.Config,
+	agentKind string,
+	expectedOutputChars int,
+	window int,
+) (completionTokens, toolResultTokens int) {
 	completionTokens = expectedOutputChars
 	if completionTokens <= 0 {
 		completionTokens = max(2048, window/50)

@@ -98,5 +98,5 @@ func New(provider Provider) (agent.Toolset, error) {
 		Recovery: agent.ToolRecoveryReadOnly, ResultRecoveryKind: agent.ToolResultRecoveryRefetch,
 		ResultProjection: agent.ToolResultBoundedModelContext, ResultRetention: agent.ToolResultEagerCandidate,
 		Steering: agent.SteeringFinishCurrent, MaxResultBytes: 8 << 20,
-	}}), nil
+	}})
 }

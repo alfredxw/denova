@@ -4,8 +4,6 @@ import (
 	"context"
 
 	"denova/config"
-	agentconversation "denova/internal/agents/conversation"
-	"denova/internal/agents/session"
 	agenttool "denova/internal/agents/tool"
 	appagentruntime "denova/internal/app/agentruntime"
 	configmanagerapp "denova/internal/app/configmanager"
@@ -15,19 +13,6 @@ import (
 
 type configManagerHost struct {
 	app *App
-}
-
-func (host configManagerHost) ResolveAsk(
-	ctx context.Context,
-	target *session.Session,
-	projectID, workspace, askID, status string,
-	answers []agentconversation.HostAskAnswer,
-	cancelReason string,
-) (agentconversation.HostAskResolution, error) {
-	if host.app == nil {
-		return agentconversation.HostAskResolution{}, appagentruntime.ErrNoWorkspace
-	}
-	return host.app.resolveAgentAsk(ctx, target, projectID, workspace, askID, status, answers, cancelReason)
 }
 
 func (host configManagerHost) ProjectRuntime(ctx context.Context, projectID string) (configmanagerapp.Runtime, error) {

@@ -51,11 +51,11 @@ func buildInteractiveTurnHistory(turns []interactive.TurnEvent) interactiveTurnH
 	return interactiveTurnHistory{Turns: interactiveStoryModelTurns(turns)}
 }
 
-func buildInteractiveModelVisibleTurnHistory(turns []interactive.TurnEvent, compaction *interactive.ContextCompactionEvent) interactiveTurnHistory {
+func buildInteractiveModelVisibleTurnHistory(turns []interactive.TurnEvent, compaction *interactive.ContextCompactionProjection) interactiveTurnHistory {
 	return buildInteractiveTurnHistoryWithCompaction(turns, compaction, retainedTurnsForInteractiveCompaction(compaction))
 }
 
-func buildInteractiveModelVisibleHistory(history interactive.StoryModelHistory, compaction *interactive.ContextCompactionEvent) interactiveTurnHistory {
+func buildInteractiveModelVisibleHistory(history interactive.StoryModelHistory, compaction *interactive.ContextCompactionProjection) interactiveTurnHistory {
 	result := interactiveTurnHistory{Turns: append([]interactive.StoryModelTurn(nil), history.Turns...)}
 	if compaction != nil && strings.TrimSpace(compaction.Summary) != "" {
 		result.PreviousCount = compaction.SourceTurnCount
@@ -64,7 +64,7 @@ func buildInteractiveModelVisibleHistory(history interactive.StoryModelHistory, 
 	return result
 }
 
-func retainedTurnsForInteractiveCompaction(compaction *interactive.ContextCompactionEvent) int {
+func retainedTurnsForInteractiveCompaction(compaction *interactive.ContextCompactionProjection) int {
 	if compaction == nil || strings.TrimSpace(compaction.Summary) == "" {
 		return 0
 	}
@@ -74,11 +74,11 @@ func retainedTurnsForInteractiveCompaction(compaction *interactive.ContextCompac
 	return config.DefaultContextCompactionRetainedTurns
 }
 
-func buildInteractiveTurnHistoryWithCompaction(turns []interactive.TurnEvent, compaction *interactive.ContextCompactionEvent, retainedTurns int) interactiveTurnHistory {
+func buildInteractiveTurnHistoryWithCompaction(turns []interactive.TurnEvent, compaction *interactive.ContextCompactionProjection, retainedTurns int) interactiveTurnHistory {
 	return buildInteractiveTurnHistoryWindowWithCompaction(turns, 0, compaction, retainedTurns)
 }
 
-func buildInteractiveTurnHistoryWindowWithCompaction(turns []interactive.TurnEvent, turnStart int, compaction *interactive.ContextCompactionEvent, retainedTurns int) interactiveTurnHistory {
+func buildInteractiveTurnHistoryWindowWithCompaction(turns []interactive.TurnEvent, turnStart int, compaction *interactive.ContextCompactionProjection, retainedTurns int) interactiveTurnHistory {
 	if compaction == nil || strings.TrimSpace(compaction.Summary) == "" {
 		return buildInteractiveTurnHistory(turns)
 	}
@@ -132,7 +132,7 @@ func SnapshotTurnCount(snapshot interactive.Snapshot) int {
 	return len(snapshot.Turns)
 }
 
-func interactiveModelCompaction(snapshot interactive.Snapshot) *interactive.ContextCompactionEvent {
+func interactiveModelCompaction(snapshot interactive.Snapshot) *interactive.ContextCompactionProjection {
 	compaction := snapshot.ContextCompaction
 	if compaction == nil || strings.TrimSpace(compaction.Summary) == "" {
 		return nil
@@ -144,7 +144,7 @@ func interactiveModelCompaction(snapshot interactive.Snapshot) *interactive.Cont
 	return compaction
 }
 
-func ModelHistoryRange(snapshot interactive.Snapshot) (startTurn, endTurn int, compaction *interactive.ContextCompactionEvent) {
+func ModelHistoryRange(snapshot interactive.Snapshot) (startTurn, endTurn int, compaction *interactive.ContextCompactionProjection) {
 	endTurn = SnapshotTurnCount(snapshot)
 	compaction = interactiveModelCompaction(snapshot)
 	if compaction != nil {
@@ -153,7 +153,7 @@ func ModelHistoryRange(snapshot interactive.Snapshot) (startTurn, endTurn int, c
 	return startTurn, endTurn, compaction
 }
 
-func (c *Conversation) modelHistoryForCycle(storyCtx interactive.StoryContext) (interactive.StoryModelHistory, *interactive.ContextCompactionEvent, error) {
+func (c *Conversation) modelHistoryForCycle(storyCtx interactive.StoryContext) (interactive.StoryModelHistory, *interactive.ContextCompactionProjection, error) {
 	if c == nil || c.store == nil {
 		return interactive.StoryModelHistory{}, nil, fmt.Errorf("互动故事不存在")
 	}
@@ -214,7 +214,7 @@ func formatInteractiveTurnHistory(turns []interactive.StoryModelTurn, emptyMessa
 	return strings.TrimSpace(sb.String())
 }
 
-func formatInteractiveTurnHistoryWithCheckpoint(turnHistory interactiveTurnHistory, compaction *interactive.ContextCompactionEvent, emptyMessage string) string {
+func formatInteractiveTurnHistoryWithCheckpoint(turnHistory interactiveTurnHistory, compaction *interactive.ContextCompactionProjection, emptyMessage string) string {
 	var sb strings.Builder
 	if compaction != nil && strings.TrimSpace(compaction.Summary) != "" {
 		sb.WriteString("[历史上下文检查点]\n")

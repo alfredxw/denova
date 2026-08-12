@@ -5,8 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	agent "github.com/alfredxw/denova/agent"
-
 	agentplan "denova/internal/agents/plan"
 	agentrun "denova/internal/agents/run"
 )
@@ -102,49 +100,6 @@ func TestPlanProtocolParserCarriesRunMetadata(t *testing.T) {
 			eventDataString(event.Data, "agent_name") != "DenovaAgent" {
 			t.Fatalf("plan event lost run metadata: %#v", event)
 		}
-	}
-}
-
-func TestPlanModeSuccessfulProposalDiscardsAssistantPreamble(t *testing.T) {
-	parser := agentplan.NewParser(agentplan.Metadata{}, nil)
-	var content strings.Builder
-	var thinking strings.Builder
-
-	content.WriteString(parser.Push("先解释一下"))
-	content.WriteString(parser.Push(`<proposed_plan># 计划</proposed_plan>`))
-	content.WriteString("卡片后说明")
-	thinking.WriteString("正在整理计划")
-
-	if !parser.HasSuccessfulBlock() {
-		t.Fatal("expected a successful proposed-plan block")
-	}
-	discardPlanAssistantContentIfNeeded(true, parser, &content, &thinking)
-	if content.Len() != 0 || thinking.Len() != 0 {
-		t.Fatalf("successful plan card should discard surrounding assistant output, content=%q thinking=%q", content.String(), thinking.String())
-	}
-}
-
-func TestPlanProtocolToolCallEmitsProposalCardInsteadOfToolCall(t *testing.T) {
-	var events []agentrun.Event
-	parser := agentplan.NewParser(agentplan.Metadata{AgentKind: agentrun.AgentKindIDE, RunID: "run-plan-tool"}, nil)
-	message := agent.AssistantMessage("", []agent.ToolCall{{
-		ID: "call-plan", Function: agent.FunctionCall{Name: "proposed_plan", Arguments: `{"content":"# Plan"}`},
-	}})
-	var content strings.Builder
-	var thinking strings.Builder
-
-	processNonStreamingEvent(&agent.MessageVariant{Message: message}, &content, &thinking, 0, agentEventMetadata{
-		AgentKind: agentrun.AgentKindIDE, RunID: "run-plan-tool",
-	}, parser, func(event agentrun.Event) { events = append(events, event) })
-
-	if len(events) != 1 || events[0].Type != "proposed_plan" || eventDataString(events[0].Data, "status") != "success" {
-		t.Fatalf("unexpected proposal tool events: %#v", events)
-	}
-	if eventDataString(events[0].Data, "id") != agentplan.ToolEventID || eventDataString(events[0].Data, "content") != "# Plan" {
-		t.Fatalf("unexpected proposal tool event: %#v", events[0])
-	}
-	if !parser.HasSuccessfulBlock() || content.Len() != 0 || thinking.Len() != 0 {
-		t.Fatalf("proposal tool call should replace assistant text, content=%q thinking=%q", content.String(), thinking.String())
 	}
 }
 

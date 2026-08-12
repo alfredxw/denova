@@ -13,9 +13,7 @@ func TestSnapshotJSONContractIncludesRuntimeProjectionAndOmitsDirectorPlan(t *te
 		PendingModelContextBatches: []ModelContextBatchEvent{{ID: "batch"}},
 		CurrentTurn:                &TurnEvent{ID: "turn"},
 		TokenUsageEvents:           []TokenUsageEvent{{ID: "usage"}},
-		ContextCompaction:          &ContextCompactionEvent{ID: "compaction"},
-		ContextCompactionRemoval:   &ContextCompactionRemovalEvent{ID: "removal"},
-		ToolResultCleanup:          &ToolResultCleanupEvent{ID: "cleanup"},
+		ContextCompaction:          &ContextCompactionProjection{ID: "compaction"},
 		DirectorPlan:               &DirectorPlan{},
 		DirectorPlanStatus:         &DirectorPlanStatus{StoryID: "story"},
 		State:                      map[string]any{},
@@ -37,7 +35,7 @@ func TestSnapshotJSONContractIncludesRuntimeProjectionAndOmitsDirectorPlan(t *te
 	for _, name := range []string{
 		"story_id", "branch_id", "context_revision", "turns", "pending_player_inputs",
 		"pending_model_context_batches", "current_turn", "token_usage_events", "context_compaction",
-		"context_compaction_removal", "tool_result_cleanup", "director_plan_status", "state",
+		"director_plan_status", "state",
 		"actor_state_schema", "state_schema_initialization", "graph", "turn_count", "turn_start",
 		"history_before_cursor", "has_earlier_turns",
 	} {

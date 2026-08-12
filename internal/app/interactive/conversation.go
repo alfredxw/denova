@@ -57,10 +57,7 @@ type Conversation struct {
 	agentCycleIdentity       agentrun.CycleIdentity
 	pendingDomainCommit      *interactive.DomainCommitIntent
 	lastDomainReceipt        *interactive.DomainCommitReceipt
-	pendingCompaction        *preparedInteractiveContextCompaction
-	pendingCompactionHealth  *preparedInteractiveContextCompactionHealth
-	pendingCleanup           *preparedInteractiveToolResultCleanup
-	agentCompaction          *interactive.ContextCompactionEvent
+	agentCompaction          *interactive.ContextCompactionProjection
 	modelHistoryKey          string
 	modelHistory             *interactive.StoryModelHistory
 	openingStateSchemaDraft  *interactive.ActorStateSchemaBatchDraft
@@ -101,9 +98,6 @@ func (c *Conversation) BindAgentCycleIdentity(identity agentrun.CycleIdentity) {
 	c.modelContextBatchOrdinal = 0
 	c.pendingDomainCommit = nil
 	c.lastDomainReceipt = nil
-	c.pendingCompaction = nil
-	c.pendingCompactionHealth = nil
-	c.pendingCleanup = nil
 	c.mu.Unlock()
 }
 

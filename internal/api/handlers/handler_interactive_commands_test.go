@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"testing"
 
-	runstate "github.com/alfredxw/denova/agent/runtime"
 	"github.com/cloudwego/hertz/pkg/app"
 
 	appsvc "denova/internal/app"
@@ -33,7 +32,7 @@ func TestInteractiveAgentCommandKindIsClosed(t *testing.T) {
 
 func TestAgentCommandErrorMapsDomainCommitWinnerToConflict(t *testing.T) {
 	requestContext := app.NewContext(0)
-	(&Handlers{}).writeAgentCommandError(requestContext, runstate.ErrDomainCommitRejected, "operation-commit")
+	(&Handlers{}).writeAgentCommandError(requestContext, appsvc.ErrAgentDomainCommitRejected, "operation-commit")
 
 	if got := requestContext.Response.StatusCode(); got != http.StatusConflict {
 		t.Fatalf("status = %d, want %d", got, http.StatusConflict)

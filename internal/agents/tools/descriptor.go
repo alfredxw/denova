@@ -8,12 +8,13 @@ import (
 	agent "github.com/alfredxw/denova/agent"
 
 	"denova/config"
+	agenttool "denova/internal/agents/tool"
 )
 
 const defaultToolResultMaxBytes = config.DefaultAgentToolResultLimitKB * 1024
 
 const (
-	ToolSourceLore    = agent.ToolSourceLore
+	ToolSourceLore    = agenttool.ToolSourceLore
 	ToolSourceHistory = agent.ToolSourceHistory
 	ToolSourceWeb     = agent.ToolSourceWeb
 	ToolSourceImage   = agent.ToolSourceImage

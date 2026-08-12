@@ -349,12 +349,13 @@ export function MessageList({ projectId, messages, isStreaming, visible = true, 
         onPointerCancel={scrollLock.onPointerCancel}
         atBottomStateChange={scrollLock.onAtBottomStateChange}
         atBottomThreshold={VIRTUOSO_BOTTOM_THRESHOLD}
-        totalListHeightChanged={tailFollowActive ? scrollLock.syncStreamingTailLayout : undefined}
+        totalListHeightChanged={tailFollowActive ? scrollLock.syncStreamingTailLayout : scrollLock.syncIdleBottomLayout}
         initialItemCount={Math.min(listItems.length, 40)}
         firstItemIndex={firstItemIndex}
         data={listItems}
         context={virtuosoContext}
         components={MESSAGE_LIST_COMPONENTS}
+        alignToBottom
         computeItemKey={(index, item) => item?.key || listItems[index - firstItemIndex]?.key || `agent-chat-item-${index}`}
         itemContent={itemContent}
         itemsRendered={handleItemsRendered}

@@ -19,10 +19,6 @@ const (
 	StoryEventTypeStateDelta           = "state_delta"
 	StoryEventTypeBranch               = "branch"
 	StoryEventTypeHotChoices           = "hot_choices"
-	StoryEventTypeCompaction           = "context_compaction"
-	StoryEventTypeCompactionRemoved    = "context_compaction_removed"
-	StoryEventTypeCompactionHealth     = "context_compaction_health"
-	StoryEventTypeToolResultCleanup    = "tool_result_cleanup"
 	StoryEventTypeTurnVersionSelected  = "turn_version_selected"
 	StoryEventTypeTurnNarrativeRevised = "turn_narrative_revised"
 	StoryEventTypeTurnDisplayAppended  = "turn_display_appended"
@@ -45,10 +41,6 @@ var persistedStoryEventModelContextChanges = map[string]bool{
 	StoryEventTypeStateDelta:           true,
 	StoryEventTypeBranch:               true,
 	StoryEventTypeHotChoices:           false,
-	StoryEventTypeCompaction:           true,
-	StoryEventTypeCompactionRemoved:    true,
-	StoryEventTypeCompactionHealth:     false,
-	StoryEventTypeToolResultCleanup:    true,
 	StoryEventTypeTurnVersionSelected:  true,
 	StoryEventTypeTurnNarrativeRevised: true,
 	StoryEventTypeTurnDisplayAppended:  false,
@@ -146,24 +138,6 @@ func mapToStoryEventRecord(raw map[string]any) (StoryEventRecord, error) {
 			if err := validateStateDelta(*revision.StateDelta); err != nil {
 				return StoryEventRecord{}, fmt.Errorf("校验回合状态修订失败: %w", err)
 			}
-		}
-	}
-	if envelope.Type == StoryEventTypeToolResultCleanup {
-		var cleanup ToolResultCleanupEvent
-		if err := mapToStruct(raw, &cleanup); err != nil {
-			return StoryEventRecord{}, err
-		}
-		if _, err := normalizeToolResultCleanupEvent(cleanup); err != nil {
-			return StoryEventRecord{}, err
-		}
-	}
-	if envelope.Type == StoryEventTypeCompactionHealth {
-		var health ContextCompactionHealthEvent
-		if err := mapToStruct(raw, &health); err != nil {
-			return StoryEventRecord{}, err
-		}
-		if _, err := normalizeContextCompactionHealthEvent(health); err != nil {
-			return StoryEventRecord{}, err
 		}
 	}
 	if envelope.Type == StoryEventTypeModelContextBatch {

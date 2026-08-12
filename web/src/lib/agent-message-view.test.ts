@@ -11,6 +11,28 @@ import {
 } from './agent-message-view'
 
 describe('agent-message-view', () => {
+  it('工具名和参数流到达时立即更新同一张 Writing 工具卡', () => {
+    const message = (state: 'input-streaming' | 'input-available', input: unknown) => ({
+      id: 'assistant-live-tool',
+      role: 'assistant' as const,
+      metadata: { run_id: 'run-live-tool' },
+      parts: [{
+        type: 'dynamic-tool', toolName: 'read', toolCallId: 'tool-live', state, input,
+      }],
+    }) as AgentUIMessage
+
+    const live = buildAgentMessageViews([message('input-streaming', `{"path":"draft`)])[0]
+    const started = buildAgentMessageViews([message('input-available', { path: 'draft.md' })])[0]
+
+    expect(agentViewToRenderMessage(live)).toMatchObject({
+      id: 'tool-live', role: 'tool_call', name: 'read', args: `{"path":"draft`, streaming: true,
+    })
+    expect(agentViewToRenderMessage(started)).toMatchObject({
+      id: 'tool-live', role: 'tool_call', name: 'read', args: '{"path":"draft.md"}', streaming: false,
+    })
+    expect(agentViewStableKey(started)).toBe(agentViewStableKey(live))
+  })
+
   it('uses provider display segment identity across live and persisted message shapes', () => {
     const view = (messageId: string) => buildAgentMessageViews([{
       id: messageId,
@@ -116,8 +138,8 @@ describe('agent-message-view', () => {
       metadata: { run_id: 'run-todo' },
       parts: [{
         type: 'dynamic-tool', toolName: 'todo', toolCallId: id, state: 'output-available',
-        input: { plan: [{ step, status: 'pending' }] },
-        output: { schema: 'todo.plan.v1', plan: outputPlan },
+        input: { action: 'update', expected_revision: 0, mutations: [{ id, text: step, status: 'pending' }] },
+        output: { schema: 'agent.todo.v1', revision: 1, items: outputPlan.map((item, index) => ({ id: `${id}-${index}`, text: item.step, status: item.status })) },
       }],
     })
 
@@ -139,11 +161,11 @@ describe('agent-message-view', () => {
     const messages = [
       {
         id: 'root-plan', role: 'assistant', metadata: { run_id: 'run-1', run_path: ['root'] },
-        parts: [{ type: 'dynamic-tool', toolName: 'todo', toolCallId: 'root-todo', state: 'output-available', input: { plan: [] }, output: { schema: 'todo.plan.v1', plan: [{ step: 'root', status: 'pending' }] } }],
+        parts: [{ type: 'dynamic-tool', toolName: 'todo', toolCallId: 'root-todo', state: 'output-available', input: { action: 'update', mutations: [] }, output: { schema: 'agent.todo.v1', revision: 1, items: [{ id: 'root', text: 'root', status: 'pending' }] } }],
       },
       {
         id: 'child-plan', role: 'assistant', metadata: { run_id: 'run-1', run_path: ['root', 'child'], subagent: true },
-        parts: [{ type: 'dynamic-tool', toolName: 'todo', toolCallId: 'child-todo', state: 'output-available', input: { plan: [] }, output: { schema: 'todo.plan.v1', plan: [{ step: 'child', status: 'pending' }] } }],
+        parts: [{ type: 'dynamic-tool', toolName: 'todo', toolCallId: 'child-todo', state: 'output-available', input: { action: 'update', mutations: [] }, output: { schema: 'agent.todo.v1', revision: 1, items: [{ id: 'child', text: 'child', status: 'pending' }] } }],
       },
     ] as AgentUIMessage[]
     expect(buildAgentMessageViews(messages).filter((view) => view.toolName === 'todo')).toHaveLength(2)
@@ -160,8 +182,8 @@ describe('agent-message-view', () => {
           toolName: 'todo',
           toolCallId: 'todo-committed',
           state: 'output-available',
-          input: { plan: [{ step: '保留计划', status: 'in_progress' }] },
-          output: { schema: 'todo.plan.v1', plan: [{ step: '保留计划', status: 'in_progress' }] },
+          input: { action: 'update', mutations: [{ id: 'keep', text: '保留计划', status: 'in_progress' }] },
+          output: { schema: 'agent.todo.v1', revision: 1, items: [{ id: 'keep', text: '保留计划', status: 'in_progress' }] },
         }],
       },
       {
@@ -173,7 +195,7 @@ describe('agent-message-view', () => {
           toolName: 'todo',
           toolCallId: 'todo-rejected',
           state: 'output-error',
-          input: { plan: [{ step: '不应覆盖', status: 'pending' }] },
+          input: { action: 'update', mutations: [{ id: 'rejected', text: '不应覆盖', status: 'pending' }] },
           errorText: 'todo plan must contain at most one in_progress item',
         }],
       },

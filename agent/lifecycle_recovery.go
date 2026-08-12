@@ -5,7 +5,7 @@ import (
 	"errors"
 	"strings"
 
-	runstate "github.com/alfredxw/denova/agent/runtime"
+	runstate "github.com/alfredxw/denova/agent/internal/runtime"
 )
 
 type recoveryCandidate struct {
@@ -92,14 +92,14 @@ func (session *Session) Recover(ctx context.Context, actionID string) error {
 
 func recoveryCandidatesFromStatus(status runstate.StatusSnapshot) []recoveryCandidate {
 	return buildRecoveryCandidates(
-		status.Phase, status.RecoveryPaused, status.ActiveOperation,
+		status.Phase, status.RecoveryPaused, status.ActiveOperation, status.ActiveCycle,
 		status.InputRecovery, status.ActiveStructural, status.Queue,
 	)
 }
 
 func recoveryCandidatesFromState(state runstate.StateSnapshot) []recoveryCandidate {
 	return buildRecoveryCandidates(
-		state.Phase, state.RecoveryPaused, state.ActiveOperation,
+		state.Phase, state.RecoveryPaused, state.ActiveOperation, state.ActiveCycle,
 		state.InputRecovery, state.ActiveStructural, state.Queue,
 	)
 }
@@ -108,12 +108,13 @@ func buildRecoveryCandidates(
 	phase runstate.Phase,
 	paused bool,
 	active runstate.OperationID,
+	activeCycle int,
 	input *runstate.InputMaterializationRecovery,
 	structural *runstate.StructuralOperationSnapshot,
 	queue []runstate.QueuedInput,
 ) []recoveryCandidate {
 	candidates := make([]recoveryCandidate, 0, 3)
-	appendCandidate := func(kind RecoveryActionKind, command runstate.CommandID, operation runstate.OperationID, delivery runstate.DeliveryKind, structural *runstate.StructuralOperationSnapshot) {
+	appendCandidate := func(kind RecoveryActionKind, command runstate.CommandID, operation runstate.OperationID, cycle int, delivery runstate.DeliveryKind, structural *runstate.StructuralOperationSnapshot) {
 		if operation == "" {
 			return
 		}
@@ -128,7 +129,8 @@ func buildRecoveryCandidates(
 		}
 		candidate := recoveryCandidate{
 			action: RecoveryAction{
-				ID: id[:32], Kind: kind, RunID: string(operation), Delivery: publicRecoveryDelivery(delivery),
+				ID: id[:32], Kind: kind, RunID: string(operation), CommandID: string(command), Cycle: cycle,
+				Delivery:   publicRecoveryDelivery(delivery),
 				Compaction: publicRecoveryCompaction(structural),
 			},
 			commandID: command, operation: operation, delivery: delivery,
@@ -140,14 +142,14 @@ func buildRecoveryCandidates(
 		candidates = append(candidates, candidate)
 	}
 	if paused && phase == runstate.PhaseCompacting && structural != nil {
-		appendCandidate(RecoveryResumeCompaction, structural.CommandID, structural.OperationID, "", structural)
+		appendCandidate(RecoveryResumeCompaction, structural.CommandID, structural.OperationID, structural.Cycle, "", structural)
 		return candidates
 	}
 	if paused && phase == runstate.PhaseRunning && active != "" {
-		appendCandidate(RecoveryAbortRun, "", active, "", nil)
+		appendCandidate(RecoveryAbortRun, "", active, activeCycle, "", nil)
 	}
 	if input != nil && !input.Autonomous {
-		appendCandidate(RecoveryResumeInput, input.CommandID, input.OperationID, input.Delivery, nil)
+		appendCandidate(RecoveryResumeInput, input.CommandID, input.OperationID, input.Cycle, input.Delivery, nil)
 		return candidates
 	}
 	eligible := func(delivery runstate.DeliveryKind) bool {
@@ -161,7 +163,11 @@ func buildRecoveryCandidates(
 			if queued.Autonomous || queued.Delivery != delivery {
 				continue
 			}
-			appendCandidate(RecoveryResumeInput, queued.CommandID, queued.OperationID, queued.Delivery, nil)
+			cycle := 1
+			if queued.OperationID == active && queued.Delivery != runstate.DeliveryNextTurn {
+				cycle = activeCycle + 1
+			}
+			appendCandidate(RecoveryResumeInput, queued.CommandID, queued.OperationID, cycle, queued.Delivery, nil)
 			return candidates
 		}
 	}

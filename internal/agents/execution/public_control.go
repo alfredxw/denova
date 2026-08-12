@@ -2,14 +2,12 @@ package execution
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
 	agentrun "denova/internal/agents/run"
 
 	agent "github.com/alfredxw/denova/agent"
-	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 func (backend *publicBackend) openSession(ctx context.Context, options agentrun.Options) (*agent.Session, agentrun.RuntimeBinding, error) {
@@ -17,11 +15,7 @@ func (backend *publicBackend) openSession(ctx context.Context, options agentrun.
 		return nil, agentrun.RuntimeBinding{}, ErrRuntimeProjectionUnavailable
 	}
 	options = options.Normalize(options.Workspace)
-	ref, err := agentrun.BindingForOptions(options)
-	if err != nil {
-		return nil, agentrun.RuntimeBinding{}, err
-	}
-	binding, err := agentrun.ParseRuntimeBinding(ref)
+	binding, err := agentrun.RuntimeBindingForOptions(options)
 	if err != nil {
 		return nil, agentrun.RuntimeBinding{}, err
 	}
@@ -48,6 +42,30 @@ func (backend *publicBackend) status(ctx context.Context, options agentrun.Optio
 	return publicRuntimeStatus(binding, snapshot), nil
 }
 
+func (backend *publicBackend) goal(ctx context.Context, options agentrun.Options) (agent.GoalState, bool, error) {
+	session, _, err := backend.openSession(ctx, options)
+	if err != nil {
+		return agent.GoalState{}, false, err
+	}
+	return session.Goal(ctx)
+}
+
+func (backend *publicBackend) updateGoal(ctx context.Context, options agentrun.Options, mutation agent.GoalMutation) (agent.GoalState, error) {
+	session, _, err := backend.openSession(ctx, options)
+	if err != nil {
+		return agent.GoalState{}, err
+	}
+	return session.UpdateGoal(ctx, mutation)
+}
+
+func (backend *publicBackend) clearSession(ctx context.Context, options agentrun.Options) error {
+	session, _, err := backend.openSession(ctx, options)
+	if err != nil {
+		return err
+	}
+	return session.Clear(ctx)
+}
+
 func publicRuntimeStatus(binding agentrun.RuntimeBinding, snapshot agent.SessionSnapshot) agentrun.RuntimeStatus {
 	status := agentrun.RuntimeStatus{
 		Binding: binding, Cursor: agentrun.Cursor(snapshot.Cursor), Phase: agentrun.RunPhaseIdle,
@@ -68,28 +86,24 @@ func publicRuntimeStatus(binding agentrun.RuntimeBinding, snapshot agent.Session
 	if snapshot.ActiveRunID != "" {
 		status.Phase = agentrun.RunPhaseRunning
 	}
-	commandForRun := make(map[string]string, len(snapshot.QueuedRuns)+1)
-	if snapshot.ActiveRunID != "" {
-		commandForRun[snapshot.ActiveRunID] = snapshot.ActiveCommandID
-	}
 	for _, item := range snapshot.QueuedRuns {
-		commandForRun[item.ID] = item.CommandID
 		status.Queue = append(status.Queue, agentrun.QueuedCommand{
 			CommandID: agentrun.CommandID(item.CommandID), OperationID: agentrun.OperationID(item.ID),
-			Delivery: publicDeliveryKind(item.Delivery),
+			Delivery: publicDeliveryKind(item.Delivery), Message: item.Text,
+			MessageTruncated: item.TextTruncated, SteerRequested: item.InterruptRequested,
 		})
 	}
 	for _, tool := range snapshot.OpenTools {
 		status.OpenToolCalls = append(status.OpenToolCalls, agentrun.OpenToolCall{
 			CallID: tool.CallID, Name: tool.Name,
-			OperationID: agentrun.OperationID(snapshot.ActiveRunID), Cycle: snapshot.ActiveCycle,
+			OperationID: agentrun.OperationID(tool.RunID), Cycle: tool.Cycle,
 		})
 	}
 	for _, run := range snapshot.RecentRuns {
 		summary := agentrun.OperationSummary{
 			OperationID: agentrun.OperationID(run.ID), CommandID: agentrun.CommandID(run.CommandID),
 			CommandFingerprint: run.CommandFingerprint, ReceiptCursor: agentrun.Cursor(run.ReceiptCursor),
-			Status: publicOperationStatus(run.Status), Reason: run.Reason,
+			Status: publicOperationStatus(run.Status), Reason: run.Reason, ReasonTruncated: run.ReasonTruncated,
 		}
 		status.RecentOperations = append(status.RecentOperations, summary)
 	}
@@ -100,11 +114,25 @@ func publicRuntimeStatus(binding agentrun.RuntimeBinding, snapshot agent.Session
 	for _, recovery := range snapshot.RecoveryActions {
 		status.AgentRecoveryActions = append(status.AgentRecoveryActions, agentrun.AgentRecoveryAction{
 			ID: recovery.ID, Kind: string(recovery.Kind), RunID: recovery.RunID,
-			CommandID: commandForRun[recovery.RunID], Delivery: string(recovery.Delivery),
+			CommandID: recovery.CommandID, Delivery: string(recovery.Delivery),
 			Compaction: string(recovery.Compaction),
 		})
+		if recovery.Kind == agent.RecoveryResumeInput {
+			status.InputRecovery = &agentrun.InputRecovery{
+				CommandID: agentrun.CommandID(recovery.CommandID), OperationID: agentrun.OperationID(recovery.RunID),
+				Cycle: recovery.Cycle, Delivery: publicDeliveryKind(recovery.Delivery),
+			}
+		}
 		if recovery.Kind == agent.RecoveryResumeCompaction {
 			status.Phase = agentrun.RunPhaseCompacting
+			kind := agentrun.StructuralCompactContext
+			if recovery.Compaction == agent.RecoveryCompactionRemove {
+				kind = agentrun.StructuralRemoveCompaction
+			}
+			status.ActiveStructural = &agentrun.StructuralOperation{
+				Binding: binding, CommandID: agentrun.CommandID(recovery.CommandID),
+				OperationID: agentrun.OperationID(recovery.RunID), Cycle: recovery.Cycle, Kind: kind,
+			}
 		}
 	}
 	if snapshot.Compaction != nil {
@@ -122,7 +150,58 @@ func publicRuntimeStatus(binding agentrun.RuntimeBinding, snapshot agent.Session
 		}
 		status.Compaction = projected
 	}
+	if snapshot.Cleanup != nil {
+		projected := *snapshot.Cleanup
+		projected.Replacements = append([]agent.CleanupReplacement(nil), snapshot.Cleanup.Replacements...)
+		status.Cleanup = &projected
+	}
+	if snapshot.TranscriptSync != nil {
+		projected := *snapshot.TranscriptSync
+		status.TranscriptSync = &projected
+	}
+	status.PendingInteractions = append([]agent.InteractionRequest(nil), snapshot.PendingInteractions...)
 	return status
+}
+
+func (backend *publicBackend) resolveInteraction(
+	ctx context.Context,
+	options agentrun.Options,
+	interactionID string,
+	response agent.InteractionResponse,
+) (agent.InteractionRequest, agent.InteractionResolution, error) {
+	session, _, err := backend.openSession(ctx, options)
+	if err != nil {
+		return agent.InteractionRequest{}, agent.InteractionResolution{}, err
+	}
+	snapshot, err := session.Snapshot(ctx)
+	if err != nil {
+		return agent.InteractionRequest{}, agent.InteractionResolution{}, err
+	}
+	var request agent.InteractionRequest
+	for _, candidate := range snapshot.PendingInteractions {
+		if candidate.ID == strings.TrimSpace(interactionID) {
+			request = candidate
+			break
+		}
+	}
+	if request.ID == "" {
+		return agent.InteractionRequest{}, agent.InteractionResolution{}, fmt.Errorf("%w: id=%q", agent.ErrInteractionStale, interactionID)
+	}
+	resolution, err := agent.StandardInteraction().Resolve(ctx, request, response)
+	if err != nil {
+		return agent.InteractionRequest{}, agent.InteractionResolution{}, err
+	}
+	run, found, err := session.AttachRun(ctx, snapshot.ActiveRunID)
+	if err != nil {
+		return agent.InteractionRequest{}, agent.InteractionResolution{}, err
+	}
+	if !found || run == nil {
+		return agent.InteractionRequest{}, agent.InteractionResolution{}, agent.ErrRunSettled
+	}
+	if err := run.Respond(ctx, request.ID, response); err != nil {
+		return agent.InteractionRequest{}, agent.InteractionResolution{}, err
+	}
+	return request, resolution, nil
 }
 
 func publicDeliveryKind(delivery agent.RecoveryInputDelivery) agentrun.DeliveryKind {
@@ -149,32 +228,16 @@ func publicOperationStatus(status agent.ResultStatus) agentrun.OperationStatus {
 	}
 }
 
-func (backend *publicBackend) closeSessions(ctx context.Context, selector runstate.BindingSelector) error {
+func (backend *publicBackend) closeSessions(ctx context.Context, selector agent.SessionSelector) error {
 	if backend == nil || backend.agent == nil {
 		return ErrRuntimeProjectionUnavailable
 	}
-	publicSelector := agent.SessionSelector{
-		ID: selector.Key, Attributes: clonePublicLabels(selector.Labels),
-	}
-	if selector.Kind != "" || selector.Profile != "" {
-		if selector.Kind == "" || selector.Profile == "" {
-			return errors.New("Denova public Agent close requires an exact kind/profile pair")
-		}
-		publicSelector.Namespace = "denova." + strings.TrimSpace(selector.Kind) + "." + strings.TrimSpace(selector.Profile)
-	}
-	if err := publicSelector.Validate(); err != nil {
-		return fmt.Errorf("derive public Agent Session selector: %w", err)
-	}
-	return backend.agent.CloseSessions(ctx, publicSelector)
+	return backend.agent.CloseSessions(ctx, selector)
 }
 
-func clonePublicLabels(labels map[string]string) map[string]string {
-	if len(labels) == 0 {
-		return nil
+func (backend *publicBackend) deleteSessions(ctx context.Context, selector agent.SessionSelector) error {
+	if backend == nil || backend.agent == nil {
+		return ErrRuntimeProjectionUnavailable
 	}
-	result := make(map[string]string, len(labels))
-	for key, value := range labels {
-		result[key] = value
-	}
-	return result
+	return backend.agent.DeleteSessions(ctx, selector)
 }

@@ -251,14 +251,14 @@ func (service *Service) RuntimeStatus(ctx context.Context) (agentrun.RuntimeStat
 }
 
 func (service *Service) PendingAsk() *session.AskInteraction {
-	if service == nil || service.initialize() != nil {
+	if service == nil {
 		return nil
 	}
-	target, err := service.optimizerSession()
-	if err != nil {
+	status, ok := service.RuntimeStatus(context.Background())
+	if !ok || len(status.PendingInteractions) == 0 {
 		return nil
 	}
-	return target.LivePendingAsk("")
+	return chatagent.ProjectPendingInteraction(status.PendingInteractions[0], status)
 }
 
 func normalizeTrigger(value string) string {

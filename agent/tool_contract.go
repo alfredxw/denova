@@ -27,7 +27,6 @@ const (
 	ToolSourceRead    ToolSource = "read"
 	ToolSourceWrite   ToolSource = "write"
 	ToolSourceShell   ToolSource = "shell"
-	ToolSourceLore    ToolSource = "lore"
 	ToolSourceHistory ToolSource = "history"
 	ToolSourceWeb     ToolSource = "web"
 	ToolSourceImage   ToolSource = "image"
@@ -127,10 +126,7 @@ type ToolDescriptor struct {
 
 // Validate rejects incomplete descriptors and inconsistent safety claims.
 func (descriptor ToolDescriptor) Validate() error {
-	switch descriptor.Source {
-	case ToolSourceOther, ToolSourceRead, ToolSourceWrite, ToolSourceShell,
-		ToolSourceLore, ToolSourceHistory, ToolSourceWeb, ToolSourceImage:
-	default:
+	if !validToolSource(descriptor.Source) {
 		return fmt.Errorf("invalid tool source %q", descriptor.Source)
 	}
 	switch descriptor.Execution {
@@ -200,6 +196,27 @@ func (descriptor ToolDescriptor) Validate() error {
 	return nil
 }
 
+// validToolSource keeps built-in descriptors predictable while allowing an
+// application to name its own state domain. ToolSource is deliberately an
+// open extension point: product concepts such as a lore database belong to
+// the product adapter, not to the provider-neutral Agent vocabulary.
+func validToolSource(source ToolSource) bool {
+	value := string(source)
+	if value == "" || len(value) > 128 || value != strings.TrimSpace(value) {
+		return false
+	}
+	for index, current := range []byte(value) {
+		if current >= 'a' && current <= 'z' || current >= '0' && current <= '9' {
+			continue
+		}
+		if index > 0 && (current == '.' || current == '_' || current == '-') {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
 func validateToolExecutionMutation(execution ToolExecutionClass, scope ToolMutationScope) error {
 	switch execution {
 	case ToolExecutionParallelRead, ToolExecutionChild:
@@ -248,6 +265,11 @@ func validateToolPostCheck(scope ToolMutationScope, policy ToolPostCheckPolicy) 
 type ToolDefinition struct {
 	Tool       Tool
 	Descriptor ToolDescriptor
+	// ImplementationIdentity describes behavior not represented by the
+	// provider-visible schema/descriptor. Built-in Adapter-backed tools always
+	// set it. StaticToolsIdentified folds it into restore identity without
+	// polluting the model-prefix fingerprint.
+	ImplementationIdentity CapabilityIdentity
 }
 
 // Validate checks the concrete schema and its execution contract.
@@ -262,6 +284,11 @@ func (definition ToolDefinition) snapshot(ctx context.Context) (ToolDefinitionSn
 	}
 	if err := definition.Descriptor.Validate(); err != nil {
 		return ToolDefinitionSnapshot{}, fmt.Errorf("tool descriptor: %w", err)
+	}
+	if definition.ImplementationIdentity != (CapabilityIdentity{}) {
+		if err := definition.ImplementationIdentity.validate("tool implementation"); err != nil {
+			return ToolDefinitionSnapshot{}, err
+		}
 	}
 	info, err := definition.Tool.Info(ctx)
 	if err != nil {
@@ -394,7 +421,11 @@ const (
 )
 
 // ToolResultRecoveryHint is bounded and redacted by NormalizeToolResult before
-// it can be persisted or consumed by context planning.
+// it can be persisted or consumed by context planning. For read, refetch, and
+// rerun, Reference is the complete replayable tool-argument object; Cleanup
+// rejects the entire hint if normalization had to redact or truncate any
+// nested value. Artifact recovery instead authenticates ArtifactPath through
+// ToolArtifactVerifier and does not use Reference as proof.
 type ToolResultRecoveryHint struct {
 	Kind            ToolResultRecoveryKind `json:"kind,omitempty"`
 	Reference       map[string]any         `json:"reference,omitempty"`

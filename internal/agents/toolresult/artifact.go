@@ -26,6 +26,20 @@ func CanonicalArtifact(artifact agent.ToolArtifactRef) agent.ToolArtifactRef {
 	return artifact
 }
 
+// recoverableToolResultArtifact selects a complete, addressable artifact for
+// Denova's read-only receipt projection. Artifact creation and verification are
+// owned by the public Agent ResultProcessor.
+func recoverableToolResultArtifact(artifacts []agent.ToolArtifactRef) *agent.ToolArtifactRef {
+	for index := range artifacts {
+		artifact := CanonicalArtifact(artifacts[index])
+		if artifact.Complete && artifact.ReadablePath != "" && artifact.ContentType != "" &&
+			RecoverableArtifactPurpose(artifact.Purpose) {
+			return &artifact
+		}
+	}
+	return nil
+}
+
 // EstimatedTokens converts a byte count to the conservative result estimate
 // used by retention policy and diagnostics.
 func EstimatedTokens(byteSize int64) int {

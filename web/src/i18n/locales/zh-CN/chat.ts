@@ -11,6 +11,7 @@ const chat = {
   'chat.status.idle': '等待',
   'chat.current': '当前：',
   'chat.noSession': '暂无会话',
+  'chat.sessionUnavailable': '当前会话尚未就绪，请重新选择或新建会话后重试',
   'chat.newSession': '新建会话',
   'chat.untitledSession': '新会话',
   'chat.renameSession': '重命名会话',

@@ -96,8 +96,6 @@ func messageFromHistoryEntry(entry appsvc.AgentSessionHistoryEntry, index int) (
 			Metadata: metadataFromHistoryEntry(entry),
 			Parts:    []map[string]any{toolPartFromHistory(entry)},
 		}, true
-	case "ask":
-		return assistantDataMessage(entry, index, DataTypeAsk, askPayload(entry)), true
 	case "tool_result":
 		return assistantDataMessage(entry, index, DataTypeToolResult, entryPayload(entry)), true
 	case "rule_roll":
@@ -174,21 +172,6 @@ func entryPayload(entry appsvc.AgentSessionHistoryEntry) map[string]any {
 	}
 	addUsagePayload(payload, entry)
 	addMetadataPayload(payload, entry)
-	return payload
-}
-
-func askPayload(entry appsvc.AgentSessionHistoryEntry) map[string]any {
-	if entry.Ask == nil {
-		return entryPayload(entry)
-	}
-	raw, err := json.Marshal(entry.Ask)
-	if err != nil {
-		return entryPayload(entry)
-	}
-	var payload map[string]any
-	if err := json.Unmarshal(raw, &payload); err != nil {
-		return entryPayload(entry)
-	}
 	return payload
 }
 

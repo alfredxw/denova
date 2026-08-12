@@ -3,13 +3,11 @@ package execution
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	agentcompaction "denova/internal/agents/context/compaction"
 	agentstructural "denova/internal/agents/context/structural"
 
 	agent "github.com/alfredxw/denova/agent"
-	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 // ExecuteStructuralOperation applies one manual compaction mutation to the
@@ -22,8 +20,13 @@ func (s *Runtime) ExecuteStructuralOperation(ctx context.Context, spec agentstru
 }
 
 func (backend *publicBackend) executeStructural(ctx context.Context, spec agentstructural.Spec) (agentstructural.Result, error) {
-	if strings.TrimSpace(spec.CommandID) == "" {
-		return agentstructural.Result{}, fmt.Errorf("%w: structural command_id is required", runstate.ErrInvalidCommand)
+	if err := agent.ValidateIdempotencyKey(spec.CommandID); err != nil {
+		return agentstructural.Result{}, fmt.Errorf("structural command_id is invalid: %w", err)
+	}
+	switch spec.Action {
+	case agentstructural.Compact, agentstructural.Remove:
+	default:
+		return agentstructural.Result{}, fmt.Errorf("%w: unsupported structural action %q", agent.ErrInvalidInput, spec.Action)
 	}
 	session, _, err := backend.openSession(ctx, spec.Options)
 	if err != nil {
@@ -42,7 +45,7 @@ func (backend *publicBackend) executeStructural(ctx context.Context, spec agents
 		})
 		return agentstructural.Result{Removed: removed}, err
 	default:
-		return agentstructural.Result{}, fmt.Errorf("%w: unsupported structural action %q", runstate.ErrInvalidCommand, spec.Action)
+		return agentstructural.Result{}, fmt.Errorf("%w: structural action changed after validation", agent.ErrInvalidInput)
 	}
 }
 

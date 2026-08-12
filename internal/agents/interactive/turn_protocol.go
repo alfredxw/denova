@@ -30,7 +30,6 @@ const (
 )
 
 type interactiveTurnProtocolStateKey struct{}
-type interactiveTurnCancelKey struct{}
 
 type interactiveTurnProtocolRunState struct {
 	narrativeCandidateReady atomic.Bool
@@ -65,21 +64,12 @@ func interactiveTurnProtocolState(ctx context.Context) *interactiveTurnProtocolR
 	return state
 }
 
-func WithTurnCancel(ctx context.Context, cancel agent.AgentCancelFunc) context.Context {
-	return context.WithValue(ctx, interactiveTurnCancelKey{}, cancel)
-}
-
 func RequestTurnCompletion(ctx context.Context) bool {
 	state := interactiveTurnProtocolState(ctx)
 	if state == nil || !state.narrativeCandidateReady.Load() {
 		return false
 	}
-	cancel, _ := ctx.Value(interactiveTurnCancelKey{}).(agent.AgentCancelFunc)
-	if cancel == nil {
-		return agent.RequestCompletionAfterTools(ctx)
-	}
-	_, contributed := cancel(agent.WithAgentCancelMode(agent.CancelAfterToolCalls))
-	return contributed
+	return agent.RequestCompletionAfterTools(ctx)
 }
 
 type CompletionRetryReason struct {

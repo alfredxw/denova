@@ -9,7 +9,6 @@ import (
 
 	"denova/config"
 	chatagent "denova/internal/agents/chat"
-	agentconversation "denova/internal/agents/conversation"
 	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
@@ -28,7 +27,6 @@ type Host interface {
 	BaseRuntime() (config.Config, *agentexecution.Runtime)
 	ProjectVersionService(string) (*book.VersionService, error)
 	CurrentWorkspace() string
-	ResolveAsk(context.Context, *session.Session, string, string, string, string, []agentconversation.HostAskAnswer, string) (agentconversation.HostAskResolution, error)
 	OnVerifiedMutations(context.Context, string, *book.VersionService, config.Config, []agenttool.Mutation, agenttool.Verification)
 }
 

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"sync"
 
-	runstate "github.com/alfredxw/denova/agent/runtime"
+	runstate "github.com/alfredxw/denova/agent/internal/runtime"
 )
 
 const publicRunEventBuffer = 1024
@@ -22,6 +22,7 @@ type Run struct {
 	replayed  bool
 	events    chan Event
 	done      chan struct{}
+	observe   context.Context
 	stop      context.CancelFunc
 
 	mu           sync.RWMutex
@@ -31,16 +32,27 @@ type Run struct {
 	closeSession bool
 }
 
+type runSessionOwnership uint8
+
+const (
+	runUsesDurableSession runSessionOwnership = iota
+	runOwnsTemporarySession
+)
+
 func newPublicRun(
 	session *Session,
 	receipt runstate.Receipt,
 	observation runstate.Observation,
+	observeCtx context.Context,
 	stop context.CancelFunc,
+	ownership runSessionOwnership,
 ) *Run {
 	run := &Run{
 		session: session, id: string(receipt.OperationID), commandID: string(receipt.CommandID),
 		cursor: receipt.Cursor, replayed: receipt.Replayed,
 		events: make(chan Event, publicRunEventBuffer), done: make(chan struct{}), stop: stop,
+		observe:      observeCtx,
+		closeSession: ownership == runOwnsTemporarySession,
 	}
 	safeGo(func() { run.consume(observation) }, func(err error) { run.finish(Result{Status: ResultFailed, Reason: err.Error()}, err) })
 	return run
@@ -118,7 +130,7 @@ func (run *Run) FollowUp(ctx context.Context, input Input) (*Run, error) {
 	if err := run.usable(); err != nil {
 		return nil, err
 	}
-	return run.session.start(ctx, input, run.id, true)
+	return run.session.start(ctx, input, run.id, true, runUsesDurableSession)
 }
 
 // Queue accepts an input that should run as the next cycle of this same Run
@@ -375,12 +387,29 @@ func (run *Run) consume(observation runstate.Observation) {
 	}
 	events := observation.Events
 	errorsChannel := observation.Errors
+	lastCursor := runstate.Cursor(run.cursor)
+	drops := eventDropState{}
 	for {
 		if events == nil && errorsChannel == nil {
-			if !run.isSettled() {
-				run.finish(Result{Status: ResultFailed, Reason: "Agent observation closed before settlement"}, errors.New("Agent observation closed before settlement"))
+			if run.isSettled() {
+				return
 			}
-			return
+			reconnected, result, err := run.reconnectObservation(lastCursor)
+			if err != nil {
+				run.finish(Result{Status: ResultFailed, Reason: err.Error()}, err)
+				return
+			}
+			if result != nil {
+				publishLatestEvent(run.events, Event{
+					Cursor: Cursor(lastCursor), Durability: DurableEvent, RunID: run.id,
+					Payload: RunSettled{Status: result.Status, Reason: result.Reason},
+				}, &drops)
+				run.finishResult(*result)
+				return
+			}
+			observation = reconnected
+			events, errorsChannel = observation.Events, observation.Errors
+			continue
 		}
 		select {
 		case event, ok := <-events:
@@ -388,23 +417,16 @@ func (run *Run) consume(observation runstate.Observation) {
 				events = nil
 				continue
 			}
+			if event.Cursor > lastCursor {
+				lastCursor = event.Cursor
+			}
 			mapped, include := mapRunEvent(event, run.id, run.commandID, trackedCalls)
 			if !include {
 				continue
 			}
-			select {
-			case run.events <- mapped:
-			default:
-				run.finish(Result{Status: ResultIncomplete, Reason: "Agent Event consumer is too slow"}, errors.New("Agent Event consumer is too slow"))
-				return
-			}
+			publishLatestEvent(run.events, mapped, &drops)
 			if settled, ok := mapped.Payload.(RunSettled); ok {
-				result := Result{Status: settled.Status, Reason: settled.Reason}
-				var err error
-				if result.Status == ResultFailed || result.Status == ResultIncomplete || result.Status == ResultBlocked {
-					err = &RunError{Result: result}
-				}
-				run.finish(result, err)
+				run.finishResult(Result{Status: settled.Status, Reason: settled.Reason})
 				return
 			}
 		case err, ok := <-errorsChannel:
@@ -413,24 +435,48 @@ func (run *Run) consume(observation runstate.Observation) {
 				continue
 			}
 			if err != nil {
-				run.finish(Result{Status: ResultFailed, Reason: err.Error()}, err)
-				return
+				events, errorsChannel = nil, nil
 			}
 		}
 	}
 }
 
-func (run *Run) closeSessionWhenSettled() {
-	if run == nil {
-		return
+func (run *Run) reconnectObservation(after runstate.Cursor) (runstate.Observation, *Result, error) {
+	ctx := run.observe
+	if ctx == nil {
+		ctx = context.Background()
 	}
-	run.mu.Lock()
-	run.closeSession = true
-	settled := run.settled
-	run.mu.Unlock()
-	if settled && run.session != nil {
-		_ = run.session.Close(context.Background())
+	status, err := run.session.harness.Status(ctx)
+	if err != nil {
+		return runstate.Observation{}, nil, mapRuntimeError(err)
 	}
+	for _, summary := range status.RecentOperations {
+		if string(summary.OperationID) == run.id {
+			result := Result{Status: mapResultStatus(summary.Status), Reason: summary.Reason}
+			return runstate.Observation{}, &result, nil
+		}
+	}
+	observation, err := run.session.harness.Observe(ctx, after)
+	if errors.Is(err, runstate.ErrCursorExpired) {
+		observation, err = run.session.harness.ObserveFromNow(ctx)
+		if err == nil {
+			gap := Event{Cursor: Cursor(observation.Snapshot.Cursor), Durability: EphemeralEvent, RunID: run.id,
+				Payload: EventStreamGap{ResumeAfter: Cursor(observation.Snapshot.Cursor)}}
+			publishLatestEvent(run.events, gap, &eventDropState{})
+		}
+	}
+	if err != nil {
+		return runstate.Observation{}, nil, mapRuntimeError(err)
+	}
+	return observation, nil, nil
+}
+
+func (run *Run) finishResult(result Result) {
+	var err error
+	if result.Status == ResultFailed || result.Status == ResultIncomplete || result.Status == ResultBlocked {
+		err = &RunError{Result: result}
+	}
+	run.finish(result, err)
 }
 
 func (run *Run) finish(result Result, err error) {
@@ -447,19 +493,29 @@ func (run *Run) finish(result Result, err error) {
 	run.err = err
 	closeSession := run.closeSession
 	run.mu.Unlock()
+	if run.stop != nil {
+		run.stop()
+	}
+	// Agent.Run promises an anonymous Session, so settlement is not complete
+	// until its durable records have been removed. Close done only after the
+	// delete barrier; otherwise Wait can return while the temporary Session is
+	// still visible in the Store catalog (and can be observed or backed up by a
+	// concurrent owner).
+	if closeSession && run.session != nil {
+		if deleteErr := run.session.Delete(context.Background()); deleteErr != nil {
+			err = errors.Join(err, fmt.Errorf("delete temporary Agent Session: %w", deleteErr))
+			run.mu.Lock()
+			run.err = err
+			run.mu.Unlock()
+		}
+	}
 	if run.session != nil && run.session.agent != nil {
 		emitTrace(context.Background(), run.session.agent.trace, TraceEvent{
 			Kind: TraceRunSettled, Session: run.session.key, RunID: run.id, Err: err,
 		})
 	}
-	if run.stop != nil {
-		run.stop()
-	}
 	close(run.done)
 	close(run.events)
-	if closeSession && run.session != nil {
-		_ = run.session.Close(context.Background())
-	}
 }
 
 func (run *Run) isSettled() bool {

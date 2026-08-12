@@ -22,6 +22,7 @@ func TestReadAdapterComposesWithGenericReadContract(t *testing.T) {
 		Limit  int    `json:"limit,omitempty" jsonschema:"minimum=1"`
 	}
 	generic, err := agenttools.NewReadAdapter(
+		agent.CapabilityIdentity{Kind: "test.read.skill_reference", Version: 1},
 		"skill_reference",
 		func(_ context.Context, path string) (bool, error) { return strings.HasPrefix(path, "skill://"), nil },
 		func(_ context.Context, input genericReadInput) (agenttools.ReadResult, error) {

@@ -40,14 +40,6 @@ func TestInteractiveDirectorAssemblyRegistersOneEventReadAndIgnoresWorkspaceOver
 		t.Fatalf("event-card scope = %#v error=%v", cards, err)
 	}
 
-	var captured agent.LoopConfig
-	previous := newNativeAgent
-	newNativeAgent = func(_ context.Context, cfg agent.LoopConfig) (agent.Runnable, error) {
-		captured = cfg
-		return fakeAgent{name: cfg.Name, description: cfg.Description}, nil
-	}
-	t.Cleanup(func() { newNativeAgent = previous })
-
 	tests := []struct {
 		name          string
 		workspaceRead bool
@@ -57,14 +49,13 @@ func TestInteractiveDirectorAssemblyRegistersOneEventReadAndIgnoresWorkspaceOver
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			captured = agent.LoopConfig{}
 			cfg := &config.Config{
 				OpenAIBaseURL: "https://example.invalid", OpenAIModel: "test-model", Workspace: workspace,
 			}
 			if test.workspaceRead {
 				cfg.AgentTools.InteractiveDirector = config.AgentToolOverride{config.AgentToolWorkspaceRead: true}
 			}
-			_, buildErr := BuildInteractiveDirector(context.Background(), cfg, nil, agentinteractive.InteractiveStoryToolContext{
+			definition, _, buildErr := BuildInteractiveDirectorDefinitionWithComposition(context.Background(), cfg, nil, agentinteractive.InteractiveStoryToolContext{
 				Store: store, StoryID: story.ID, BranchID: "main", TurnID: sourceTurn,
 				MaintenanceTask: "director_plan_update",
 			})
@@ -72,16 +63,20 @@ func TestInteractiveDirectorAssemblyRegistersOneEventReadAndIgnoresWorkspaceOver
 				t.Fatal(buildErr)
 			}
 
+			definitions, prepareErr := definition.Tools.PrepareTools(context.Background(), agent.ToolRequest{})
+			if prepareErr != nil {
+				t.Fatal(prepareErr)
+			}
 			var read *agent.ToolDefinition
 			readCount := 0
-			for index := range captured.Tools {
-				definition := &captured.Tools[index]
-				info, infoErr := definition.Tool.Info(context.Background())
+			for index := range definitions {
+				candidate := &definitions[index]
+				info, infoErr := candidate.Tool.Info(context.Background())
 				if infoErr != nil {
 					t.Fatal(infoErr)
 				}
 				if info.Name == "read" {
-					read = definition
+					read = candidate
 					readCount++
 				}
 			}

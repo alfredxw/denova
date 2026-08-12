@@ -7,44 +7,65 @@ import (
 	"fmt"
 	"strings"
 
-	runstate "github.com/alfredxw/denova/agent/runtime"
+	runstate "github.com/alfredxw/denova/agent/internal/runtime"
 )
 
 func (session *Session) Compact(ctx context.Context, request CompactionRequest) (CompactionResult, error) {
 	if err := session.usable(); err != nil {
 		return CompactionResult{}, err
 	}
-	definition, _, checkpoint, err := session.prepareStructuralDefinition(ctx)
-	if err != nil {
-		return CompactionResult{}, err
-	}
-	if definition.Compaction == nil {
-		return CompactionResult{}, ErrCapabilityUnsupported
-	}
-	current, present, _, err := compactionStateFrom(checkpoint.Capabilities)
-	if err != nil {
-		return CompactionResult{}, err
-	}
-	if request.ExpectedID != "" && (!present || current.ID != request.ExpectedID) ||
-		request.ExpectedRevision != 0 && (!present || current.Revision != request.ExpectedRevision) {
-		return CompactionResult{}, ErrDefinitionMismatch
-	}
-	envelope := compactionCommandEnvelope{Version: 1, Manager: definition.Compaction.Identity(), Compact: &request}
-	encoded, err := json.Marshal(envelope)
-	if err != nil {
-		return CompactionResult{}, err
-	}
 	commandID := strings.TrimSpace(request.IdempotencyKey)
 	if commandID == "" {
 		commandID = newPublicID("compact")
 	}
-	ref, err := session.compactionRef(checkpoint.Cursor, encoded, "create bounded conversation checkpoint", "")
+	preparation, err := session.prepareStructuralDefinition(ctx, runstate.CommandID(commandID))
+	if err != nil {
+		return CompactionResult{}, err
+	}
+	if preparation.prepared.definition.Compaction == nil {
+		return CompactionResult{}, ErrCapabilityUnsupported
+	}
+	current, present := preparation.compaction, preparation.compactionPresent
+	if request.ExpectedID != "" && (!present || current.ID != request.ExpectedID) ||
+		request.ExpectedRevision != 0 && (!present || current.Revision != request.ExpectedRevision) {
+		return CompactionResult{}, ErrDefinitionMismatch
+	}
+	forkCtx, err := contextWithProviderCacheKey(ctx, session.key, session.agent.cacheKeys)
+	if err != nil {
+		return CompactionResult{}, err
+	}
+	modelSnapshot, err := prepareStructuralCompactionSnapshot(
+		forkCtx, preparation.prepared,
+		SessionView{Key: session.key, Revision: uint64(preparation.checkpoint.Cursor)},
+		structuralDefinitionRun(runstate.CommandID(commandID)),
+		preparation.transcript.Messages, preparation.cleanup, preparation.cleanupPresent,
+		current, present,
+	)
+	if err != nil {
+		return CompactionResult{}, err
+	}
+	modelFingerprint, err := modelRequestSnapshotFingerprint(modelSnapshot)
+	if err != nil {
+		return CompactionResult{}, err
+	}
+	envelope := compactionCommandEnvelope{
+		Version:       compactionCommandVersion,
+		DefinitionKey: preparation.prepared.definitionKey, RestoreKey: preparation.prepared.restoreKey,
+		MaterializedFingerprint: preparation.prepared.materializedFingerprint,
+		ModelRequestFingerprint: modelFingerprint,
+		Manager:                 preparation.prepared.definition.Compaction.Identity(), Compact: &request,
+	}
+	encoded, err := json.Marshal(envelope)
+	if err != nil {
+		return CompactionResult{}, err
+	}
+	ref, err := session.compactionRef(preparation.checkpoint.Cursor, encoded, "create bounded conversation checkpoint", "")
 	if err != nil {
 		return CompactionResult{}, err
 	}
 	observeCtx, stopObserving := context.WithCancel(ctx)
 	defer stopObserving()
-	observation, err := session.harness.Observe(observeCtx, checkpoint.Cursor)
+	observation, err := session.harness.Observe(observeCtx, preparation.checkpoint.Cursor)
 	if err != nil {
 		return CompactionResult{}, mapRuntimeError(err)
 	}
@@ -67,17 +88,18 @@ func (session *Session) RemoveCompaction(ctx context.Context, request Compaction
 	if err := session.usable(); err != nil {
 		return false, err
 	}
-	definition, _, checkpoint, err := session.prepareStructuralDefinition(ctx)
+	commandID := strings.TrimSpace(request.IdempotencyKey)
+	if commandID == "" {
+		commandID = newPublicID("remove-compaction")
+	}
+	preparation, err := session.prepareStructuralDefinition(ctx, runstate.CommandID(commandID))
 	if err != nil {
 		return false, err
 	}
-	if definition.Compaction == nil {
+	if preparation.prepared.definition.Compaction == nil {
 		return false, ErrCapabilityUnsupported
 	}
-	current, present, _, err := compactionStateFrom(checkpoint.Capabilities)
-	if err != nil {
-		return false, err
-	}
+	current, present := preparation.compaction, preparation.compactionPresent
 	if !present || current.Removed {
 		return false, nil
 	}
@@ -87,22 +109,23 @@ func (session *Session) RemoveCompaction(ctx context.Context, request Compaction
 	if request.ID != current.ID || request.ExpectedRevision != 0 && request.ExpectedRevision != current.Revision {
 		return false, ErrDefinitionMismatch
 	}
-	envelope := compactionCommandEnvelope{Version: 1, Manager: definition.Compaction.Identity(), Remove: &request}
+	envelope := compactionCommandEnvelope{
+		Version:       compactionCommandVersion,
+		DefinitionKey: preparation.prepared.definitionKey, RestoreKey: preparation.prepared.restoreKey,
+		MaterializedFingerprint: preparation.prepared.materializedFingerprint,
+		Manager:                 preparation.prepared.definition.Compaction.Identity(), Remove: &request,
+	}
 	encoded, err := json.Marshal(envelope)
 	if err != nil {
 		return false, err
 	}
-	commandID := strings.TrimSpace(request.IdempotencyKey)
-	if commandID == "" {
-		commandID = newPublicID("remove-compaction")
-	}
-	ref, err := session.compactionRef(checkpoint.Cursor, encoded, "restore raw conversation history", current.ID)
+	ref, err := session.compactionRef(preparation.checkpoint.Cursor, encoded, "restore raw conversation history", current.ID)
 	if err != nil {
 		return false, err
 	}
 	observeCtx, stopObserving := context.WithCancel(ctx)
 	defer stopObserving()
-	observation, err := session.harness.Observe(observeCtx, checkpoint.Cursor)
+	observation, err := session.harness.Observe(observeCtx, preparation.checkpoint.Cursor)
 	if err != nil {
 		return false, mapRuntimeError(err)
 	}
@@ -120,43 +143,66 @@ func (session *Session) RemoveCompaction(ctx context.Context, request Compaction
 	return exists && updated.Removed && updated.Revision > current.Revision, nil
 }
 
-func (session *Session) prepareStructuralDefinition(ctx context.Context) (Definition, engineTranscript, runstate.EngineCheckpointSnapshot, error) {
+type structuralDefinitionPreparation struct {
+	prepared          preparedDefinition
+	transcript        engineTranscript
+	checkpoint        runstate.EngineCheckpointSnapshot
+	compaction        CompactionState
+	compactionPresent bool
+	cleanup           CleanupState
+	cleanupPresent    bool
+}
+
+func (session *Session) prepareStructuralDefinition(ctx context.Context, commandID runstate.CommandID) (structuralDefinitionPreparation, error) {
 	checkpoint, err := session.harness.EngineCheckpoint(ctx)
 	if err != nil {
-		return Definition{}, engineTranscript{}, runstate.EngineCheckpointSnapshot{}, mapRuntimeError(err)
+		return structuralDefinitionPreparation{}, mapRuntimeError(err)
 	}
 	transcript, err := decodeEngineTranscript(checkpoint.State)
 	if err != nil {
-		return Definition{}, engineTranscript{}, runstate.EngineCheckpointSnapshot{}, err
+		return structuralDefinitionPreparation{}, err
+	}
+	clearState, clearPresent, err := applyClearToTranscript(&transcript, checkpoint.Capabilities)
+	if err != nil {
+		return structuralDefinitionPreparation{}, err
 	}
 	current, present, _, err := compactionStateFrom(checkpoint.Capabilities)
 	if err != nil {
-		return Definition{}, engineTranscript{}, runstate.EngineCheckpointSnapshot{}, err
-	}
-	clearState, clearPresent, err := clearStateFrom(checkpoint.Capabilities)
-	if err != nil {
-		return Definition{}, engineTranscript{}, runstate.EngineCheckpointSnapshot{}, err
+		return structuralDefinitionPreparation{}, err
 	}
 	current, present = clearCompaction(current, present, clearState, clearPresent)
+	cleanup, cleanupPresent, _, err := cleanupStateFrom(checkpoint.Capabilities)
+	if err != nil {
+		return structuralDefinitionPreparation{}, err
+	}
+	cleanup, cleanupPresent = clearCleanup(cleanup, cleanupPresent, clearState, clearPresent)
+	cleanup, cleanupPresent = cleanupAfterCompaction(cleanup, cleanupPresent, current, present)
 	prepared, err := prepareDefinition(ctx, session.agent.source, PrepareRequest{
-		Session: SessionView{Key: session.key, Revision: uint64(checkpoint.Cursor)},
-		Reason:  TurnReasonRecovery, DefinitionKey: transcript.DefinitionKey, RestoreKey: transcript.RestoreKey,
+		Session:    SessionView{Key: session.key, Revision: uint64(checkpoint.Cursor)},
+		Run:        structuralDefinitionRun(commandID),
+		Reason:     TurnReasonStructural,
 		HostData:   cloneHostData(transcript.HostData),
 		Compaction: compactionStatePointer(current, present),
+		Cleanup:    cloneCleanupStateIfPresent(cleanup, cleanupPresent),
 	})
 	if err != nil {
-		return Definition{}, engineTranscript{}, runstate.EngineCheckpointSnapshot{}, err
+		return structuralDefinitionPreparation{}, err
 	}
 	if session.agent != nil && isPersistentStore(session.agent.store) {
 		if err := validatePersistentDefinition(prepared.definition); err != nil {
-			return Definition{}, engineTranscript{}, runstate.EngineCheckpointSnapshot{}, err
+			return structuralDefinitionPreparation{}, err
 		}
 	}
-	if transcript.DefinitionKey != "" && prepared.definitionKey != transcript.DefinitionKey ||
-		transcript.RestoreKey != "" && prepared.restoreKey != transcript.RestoreKey {
-		return Definition{}, engineTranscript{}, runstate.EngineCheckpointSnapshot{}, ErrDefinitionMismatch
+	materialized, err := materializedDefinitionFingerprint(prepared)
+	if err != nil {
+		return structuralDefinitionPreparation{}, err
 	}
-	return prepared.definition, transcript, checkpoint, nil
+	prepared.materializedFingerprint = materialized
+	return structuralDefinitionPreparation{
+		prepared: prepared, transcript: transcript, checkpoint: checkpoint,
+		compaction: current, compactionPresent: present,
+		cleanup: cleanup, cleanupPresent: cleanupPresent,
+	}, nil
 }
 
 func (session *Session) compactionRef(cursor runstate.Cursor, descriptor json.RawMessage, purpose, id string) (runstate.ContextCompactionRef, error) {

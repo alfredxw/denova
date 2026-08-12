@@ -24,7 +24,7 @@ func LocalTextAdapter(workspace *LocalWorkspace) (ReadAdapter, error) {
 	if workspace == nil {
 		return nil, errors.New("local text adapter workspace is nil")
 	}
-	return NewReadAdapter("local_text", func(ctx context.Context, input string) (bool, error) {
+	return NewReadAdapter(toolsetIdentity("tools.read.local_text", workspace.Identity()), "local_text", func(ctx context.Context, input string) (bool, error) {
 		if err := contextError(ctx); err != nil {
 			return false, err
 		}
@@ -87,7 +87,7 @@ func DirectoryAdapter(workspace *LocalWorkspace) (ReadAdapter, error) {
 	if workspace == nil {
 		return nil, errors.New("directory adapter workspace is nil")
 	}
-	return NewReadAdapter("directory", func(ctx context.Context, input string) (bool, error) {
+	return NewReadAdapter(toolsetIdentity("tools.read.directory", workspace.Identity()), "directory", func(ctx context.Context, input string) (bool, error) {
 		if err := contextError(ctx); err != nil {
 			return false, err
 		}

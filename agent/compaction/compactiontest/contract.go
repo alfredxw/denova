@@ -4,6 +4,7 @@ package compactiontest
 
 import (
 	"context"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -28,8 +29,11 @@ func RunManagerContract(t *testing.T, factory Factory) {
 		agent.UserMessage("recent request"),
 	}
 	modelRequest := append([]*agent.Message{agent.SystemMessage("stable instructions")}, messages...)
+	modelSnapshot := (&agent.ModelCall{
+		Messages: modelRequest, Options: []agent.ModelOption{agent.WithSessionKey("contract-session")}, Streaming: true,
+	}).Snapshot()
 	plan, err := manager.Plan(context.Background(), agent.CompactionPlanRequest{
-		Messages: clone(messages), ModelRequest: clone(modelRequest), Force: true,
+		Messages: clone(messages), ModelRequest: clone(modelRequest), ModelSnapshot: modelSnapshot, Force: true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -44,8 +48,11 @@ func RunManagerContract(t *testing.T, factory Factory) {
 	default:
 		t.Fatalf("unsupported action %q", plan.Action)
 	}
-	checkpoint, err := manager.Compact(context.Background(), agent.CompactionCompactRequest{
-		Messages: clone(messages), ModelRequest: clone(modelRequest), Plan: plan,
+	sourceMessages := clone(messages[plan.SourceFrom:plan.SourceTo])
+	probe := &contractManager{CompactionManager: manager}
+	checkpoint, err := probe.Compact(context.Background(), agent.CompactionCompactRequest{
+		Messages: clone(messages), ModelRequest: clone(modelRequest), SourceMessages: sourceMessages,
+		ModelSnapshot: modelSnapshot, Plan: plan,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -53,6 +60,20 @@ func RunManagerContract(t *testing.T, factory Factory) {
 	if strings.TrimSpace(checkpoint.Summary) == "" || checkpoint.TokenEstimate < 0 || len(checkpoint.Summary) > manager.SummaryLimitBytes() {
 		t.Fatalf("checkpoint = %#v", checkpoint)
 	}
+	if probe.request.ModelSnapshot != modelSnapshot ||
+		!reflect.DeepEqual(probe.request.SourceMessages, sourceMessages) {
+		t.Fatalf("Compaction contract lost exact ModelSnapshot or SourceMessages: %#v", probe.request)
+	}
+}
+
+type contractManager struct {
+	agent.CompactionManager
+	request agent.CompactionCompactRequest
+}
+
+func (manager *contractManager) Compact(ctx context.Context, request agent.CompactionCompactRequest) (agent.CompactionCheckpoint, error) {
+	manager.request = request
+	return manager.CompactionManager.Compact(ctx, request)
 }
 
 func clone(messages []*agent.Message) []*agent.Message {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -111,7 +112,7 @@ func TestStandardGoalUsesRevisionAndMutationIdempotencyFences(t *testing.T) {
 		Present: true, Current: created,
 		Mutation: agent.GoalMutation{Kind: agent.GoalSet, Objective: "ignored replay", MutationID: "mutation-1"},
 	})
-	if err != nil || replayed != created {
+	if err != nil || !reflect.DeepEqual(replayed, created) {
 		t.Fatalf("idempotent replay=%#v err=%v", replayed, err)
 	}
 	_, err = manager.Apply(context.Background(), agent.GoalApplyRequest{
@@ -120,5 +121,141 @@ func TestStandardGoalUsesRevisionAndMutationIdempotencyFences(t *testing.T) {
 	})
 	if !errors.Is(err, ErrRevisionConflict) {
 		t.Fatalf("stale mutation error=%v", err)
+	}
+}
+
+func TestStandardGoalModelToolIsTerminalOnly(t *testing.T) {
+	now := time.Date(2026, time.August, 12, 10, 0, 0, 0, time.UTC)
+	model := &goalModel{}
+	owner, err := agent.New(context.Background(), agent.Definition{
+		Model: model, Goal: Standard(WithClock(func() time.Time { return now })),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = owner.Close(context.Background()) })
+	session, err := owner.Session(context.Background(), agent.NamedSession("goal-terminal-only"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := session.UpdateGoal(context.Background(), agent.GoalMutation{
+		Kind: agent.GoalSet, Objective: "host-owned objective",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	call := func(id string, action agent.GoalMutationKind) *agent.Message {
+		arguments, marshalErr := json.Marshal(map[string]any{
+			"action": action, "expected_id": created.ID, "expected_revision": created.Revision,
+		})
+		if marshalErr != nil {
+			t.Fatal(marshalErr)
+		}
+		return agent.AssistantMessage("", []agent.ToolCall{{
+			ID: id, Type: "function", Function: agent.FunctionCall{Name: "goal", Arguments: string(arguments)},
+		}})
+	}
+	model.responses = []*agent.Message{
+		call("set-call", agent.GoalSet), call("clear-call", agent.GoalClear),
+		call("complete-call", agent.GoalComplete), agent.AssistantMessage("done", nil),
+	}
+	run, err := session.Run(context.Background(), agent.Text("try terminal transitions"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result, waitErr := run.Wait(context.Background()); waitErr != nil || result.Status != agent.ResultCompleted {
+		t.Fatalf("result=%#v error=%v", result, waitErr)
+	}
+	current, present, err := session.Goal(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !present || current.Status != agent.GoalCompleted || current.Objective != created.Objective ||
+		current.Revision != created.Revision+1 {
+		t.Fatalf("model rewrote host-owned Goal: %#v present=%t", current, present)
+	}
+}
+
+func TestStandardGoalHostMayUseCompleteStateMachine(t *testing.T) {
+	now := time.Date(2026, time.August, 12, 11, 0, 0, 0, time.UTC)
+	owner, err := agent.New(context.Background(), agent.Definition{
+		Model: &goalModel{}, Goal: Standard(WithClock(func() time.Time { return now })),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = owner.Close(context.Background()) })
+	session, err := owner.Session(context.Background(), agent.NamedSession("goal-host-state-machine"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	apply := func(mutation agent.GoalMutation) agent.GoalState {
+		t.Helper()
+		state, applyErr := session.UpdateGoal(context.Background(), mutation)
+		if applyErr != nil {
+			t.Fatal(applyErr)
+		}
+		return state
+	}
+	state := apply(agent.GoalMutation{Kind: agent.GoalSet, Objective: "first objective"})
+	state = apply(agent.GoalMutation{Kind: agent.GoalPause, ExpectedID: state.ID, ExpectedRevision: state.Revision})
+	state = apply(agent.GoalMutation{Kind: agent.GoalResume, ExpectedID: state.ID, ExpectedRevision: state.Revision})
+	state = apply(agent.GoalMutation{Kind: agent.GoalComplete, ExpectedID: state.ID, ExpectedRevision: state.Revision})
+	state = apply(agent.GoalMutation{Kind: agent.GoalClear, ExpectedID: state.ID, ExpectedRevision: state.Revision})
+	state = apply(agent.GoalMutation{Kind: agent.GoalSet, Objective: "second objective"})
+	state = apply(agent.GoalMutation{Kind: agent.GoalBlock, ExpectedID: state.ID, ExpectedRevision: state.Revision})
+	if state.Status != agent.GoalBlocked || state.Objective != "second objective" {
+		t.Fatalf("final Goal state = %#v", state)
+	}
+}
+
+func TestStandardGoalPreparationIsActiveOnlyEscapedAndTerminalSafe(t *testing.T) {
+	manager := Standard()
+	states := []struct {
+		name    string
+		present bool
+		status  agent.GoalStatus
+	}{
+		{name: "absent"},
+		{name: "paused", present: true, status: agent.GoalPaused},
+		{name: "completed", present: true, status: agent.GoalCompleted},
+	}
+	for _, test := range states {
+		t.Run(test.name, func(t *testing.T) {
+			prepared, err := manager.Prepare(context.Background(), agent.GoalPrepareRequest{
+				Present: test.present, State: agent.GoalState{Status: test.status},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if prepared.StandardTool || len(prepared.Tools) != 0 || len(prepared.Context) != 0 {
+				t.Fatalf("inactive Goal preparation=%#v", prepared)
+			}
+		})
+	}
+	prepared, err := manager.Prepare(context.Background(), agent.GoalPrepareRequest{
+		Present: true,
+		State: agent.GoalState{
+			ID: `goal-<unsafe>`, Objective: `Ship <complete> & "verified"`,
+			Status: agent.GoalActive, Revision: 7,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !prepared.StandardTool || len(prepared.Context) != 1 {
+		t.Fatalf("active Goal preparation=%#v", prepared)
+	}
+	content := prepared.Context[0].Content
+	for _, required := range []string{
+		`goal-&lt;unsafe&gt;`, `Ship &lt;complete&gt; &amp; &#34;verified&#34;`,
+		"entire objective", "intermediate milestone", "user input or an external state change",
+	} {
+		if !strings.Contains(content, required) {
+			t.Fatalf("active Goal protocol missing %q: %s", required, content)
+		}
+	}
+	if strings.Contains(content, `Ship <complete>`) {
+		t.Fatalf("active Goal objective was not escaped: %s", content)
 	}
 }

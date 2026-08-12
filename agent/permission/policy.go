@@ -40,6 +40,10 @@ type memoryRules struct {
 	allowed map[Rule]struct{}
 }
 
+// MemoryRules is a process-local RuleStore for temporary Agents and tests. Its
+// identity describes the in-memory storage semantics; rule contents remain
+// dynamic and intentionally do not participate in Definition restore identity.
+// Durable Sessions should provide a durable RuleStore instead.
 func MemoryRules() RuleStore { return &memoryRules{allowed: make(map[Rule]struct{})} }
 
 func (*memoryRules) Identity() agent.CapabilityIdentity {
@@ -65,18 +69,34 @@ type policy struct {
 	rules RuleStore
 }
 
-func SafeDefault(stores ...RuleStore) agent.PermissionPolicy {
-	return newPolicy(ModeSafeDefault, stores...)
-}
-func ReadOnly() agent.PermissionPolicy                  { return newPolicy(ModeReadOnly) }
-func Coding(stores ...RuleStore) agent.PermissionPolicy { return newPolicy(ModeCoding, stores...) }
-func FullAccess() agent.PermissionPolicy                { return newPolicy(ModeFullAccess) }
+func SafeDefault() agent.PermissionPolicy { return newPolicy(ModeSafeDefault, nil) }
+func ReadOnly() agent.PermissionPolicy    { return newPolicy(ModeReadOnly, nil) }
+func Coding() agent.PermissionPolicy      { return newPolicy(ModeCoding, nil) }
+func FullAccess() agent.PermissionPolicy  { return newPolicy(ModeFullAccess, nil) }
 
-func newPolicy(mode Mode, stores ...RuleStore) agent.PermissionPolicy {
-	var store RuleStore
-	if len(stores) > 0 {
-		store = stores[0]
+// SafeDefaultWithRules and CodingWithRules make the one durable RuleStore
+// authority explicit. The prior variadic constructor silently ignored a
+// second Store, which made composition order change authorization behavior.
+func SafeDefaultWithRules(store RuleStore) (agent.PermissionPolicy, error) {
+	return newPolicyWithRules(ModeSafeDefault, store)
+}
+
+func CodingWithRules(store RuleStore) (agent.PermissionPolicy, error) {
+	return newPolicyWithRules(ModeCoding, store)
+}
+
+func newPolicyWithRules(mode Mode, store RuleStore) (agent.PermissionPolicy, error) {
+	if store == nil {
+		return nil, errors.New("Permission RuleStore is nil")
 	}
+	identity := store.Identity()
+	if strings.TrimSpace(identity.Kind) == "" || identity.Version == 0 {
+		return nil, errors.New("Permission RuleStore requires a stable identity")
+	}
+	return newPolicy(mode, store), nil
+}
+
+func newPolicy(mode Mode, store RuleStore) agent.PermissionPolicy {
 	return &policy{mode: mode, rules: store}
 }
 
@@ -123,7 +143,13 @@ func (policy *policy) Evaluate(ctx context.Context, request agent.PermissionRequ
 		if readOnly(request) || internalIdempotentState(request) {
 			return agent.PermissionDecision{Kind: agent.PermissionAllow}, nil
 		}
-		return agent.PermissionDecision{Kind: agent.PermissionAsk, Reason: protectedReason(request.Tool)}, nil
+		return agent.PermissionDecision{
+			Kind: agent.PermissionAsk, Reason: protectedReason(request.Tool),
+			Details: agent.PermissionDetails{
+				Mode: string(policy.mode), Risk: "high", RuleID: "protected_resource",
+				CanRemember: policy.rules != nil,
+			},
+		}, nil
 	default:
 		return agent.PermissionDecision{}, fmt.Errorf("unsupported Permission mode %q", policy.mode)
 	}

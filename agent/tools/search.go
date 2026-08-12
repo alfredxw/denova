@@ -38,15 +38,19 @@ type SearchResult struct {
 	Warnings   []string
 }
 
-// GlobSearcher is the reusable workspace path-discovery seam.
+// GlobSearcher is the reusable workspace path-discovery seam. Identity covers
+// workspace scope, search policy, and implementation semantics.
 type GlobSearcher interface {
+	Identity() agent.CapabilityIdentity
 	Glob(context.Context, GlobRequest) (SearchResult, error)
 }
 
-// GrepSearcher is the reusable workspace text-search seam. It is deliberately
-// separate from GlobSearcher because command compilation and logical result
-// pagination are grep-specific responsibilities.
+// GrepSearcher is the reusable workspace text-search seam. Identity covers
+// workspace scope, search policy, and implementation semantics. The interface
+// is deliberately separate from GlobSearcher because command compilation and
+// logical result pagination are grep-specific responsibilities.
 type GrepSearcher interface {
+	Identity() agent.CapabilityIdentity
 	Grep(context.Context, GrepRequest) (SearchResult, error)
 }
 
@@ -71,6 +75,9 @@ func Glob(searcher GlobSearcher, options ...DefinitionOption) (agent.ToolDefinit
 	if searcher == nil {
 		return agent.ToolDefinition{}, errors.New("glob GlobSearcher is nil")
 	}
+	if err := validateAdapterIdentity("glob Searcher", searcher.Identity()); err != nil {
+		return agent.ToolDefinition{}, err
+	}
 	descriptor := readDescriptor(options...)
 	descriptor.ResultRecoveryKind = agent.ToolResultRecoveryRerun
 	tool, err := agent.InferTool("glob", `Find workspace files or directories by path. A call may include several files, directories, or glob patterns; results are de-duplicated and bounded. Use read on a directory when you need its structure.
@@ -91,7 +98,10 @@ func Glob(searcher GlobSearcher, options ...DefinitionOption) (agent.ToolDefinit
 			return encodeGlobCursor(result.Entries[returned-1], request)
 		})
 	})
-	return agent.ToolDefinition{Tool: tool, Descriptor: descriptor}, err
+	return agent.ToolDefinition{
+		Tool: tool, Descriptor: descriptor,
+		ImplementationIdentity: toolsetIdentity("tools.glob", searcher.Identity()),
+	}, err
 }
 
 type grepInput struct {
@@ -103,6 +113,9 @@ type grepInput struct {
 func Grep(searcher GrepSearcher, options ...DefinitionOption) (agent.ToolDefinition, error) {
 	if searcher == nil {
 		return agent.ToolDefinition{}, errors.New("grep GrepSearcher is nil")
+	}
+	if err := validateAdapterIdentity("grep Searcher", searcher.Identity()); err != nil {
+		return agent.ToolDefinition{}, err
 	}
 	descriptor := readDescriptor(options...)
 	descriptor.ResultRecoveryKind = agent.ToolResultRecoveryRerun
@@ -126,7 +139,10 @@ func Grep(searcher GrepSearcher, options ...DefinitionOption) (agent.ToolDefinit
 			return encodeGrepCursor(next, request)
 		})
 	})
-	return agent.ToolDefinition{Tool: tool, Descriptor: descriptor}, err
+	return agent.ToolDefinition{
+		Tool: tool, Descriptor: descriptor,
+		ImplementationIdentity: toolsetIdentity("tools.grep", searcher.Identity()),
+	}, err
 }
 
 type searchEnvelope struct {

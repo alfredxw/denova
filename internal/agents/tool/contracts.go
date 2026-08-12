@@ -9,8 +9,6 @@ import (
 
 	agent "github.com/alfredxw/denova/agent"
 
-	"denova/config"
-	"denova/internal/agents/toolapproval"
 	"denova/internal/agents/toolresult"
 )
 
@@ -24,11 +22,13 @@ type ToolPostCheckPolicy = agent.ToolPostCheckPolicy
 type ToolRecoveryClass = agent.ToolRecoveryClass
 
 const (
-	ToolSourceOther   = agent.ToolSourceOther
-	ToolSourceRead    = agent.ToolSourceRead
-	ToolSourceWrite   = agent.ToolSourceWrite
-	ToolSourceShell   = agent.ToolSourceShell
-	ToolSourceLore    = agent.ToolSourceLore
+	ToolSourceOther = agent.ToolSourceOther
+	ToolSourceRead  = agent.ToolSourceRead
+	ToolSourceWrite = agent.ToolSourceWrite
+	ToolSourceShell = agent.ToolSourceShell
+	// ToolSourceLore is Denova's product-specific lore capability. Public Agent
+	// tool vocabulary intentionally remains product-neutral.
+	ToolSourceLore    = agent.ToolSource("denova.lore")
 	ToolSourceHistory = agent.ToolSourceHistory
 	ToolSourceWeb     = agent.ToolSourceWeb
 	ToolSourceImage   = agent.ToolSourceImage
@@ -97,25 +97,20 @@ type Mutation struct {
 // Decision is the bounded authorization and execution projection for one tool
 // call. It contains no raw tool result or model content.
 type Decision struct {
-	ToolName          string                   `json:"tool_name"`
-	ProviderCallID    string                   `json:"provider_call_id,omitempty"`
-	ExecutionID       string                   `json:"execution_id,omitempty"`
-	Source            ToolSource               `json:"source"`
-	Capability        string                   `json:"capability,omitempty"`
-	Action            string                   `json:"action"`
-	Reason            string                   `json:"reason,omitempty"`
-	MutationScope     ToolMutationScope        `json:"mutation_scope"`
-	PostCheck         ToolPostCheckPolicy      `json:"post_check"`
-	Target            string                   `json:"target,omitempty"`
-	ArgsBytes         int                      `json:"args_bytes,omitempty"`
-	ArgsComplete      *bool                    `json:"args_complete,omitempty"`
-	ModelFinishReason string                   `json:"model_finish_reason,omitempty"`
-	Descriptor        agent.ToolDescriptor     `json:"descriptor"`
-	ApprovalMode      config.AgentApprovalMode `json:"approval_mode,omitempty"`
-	ApprovalRuleID    string                   `json:"approval_rule_id,omitempty"`
-	ApprovalRisk      toolapproval.Risk        `json:"approval_risk,omitempty"`
-	ApprovalRequired  bool                     `json:"approval_required,omitempty"`
-	ApprovalGranted   *bool                    `json:"approval_granted,omitempty"`
+	ToolName          string               `json:"tool_name"`
+	ProviderCallID    string               `json:"provider_call_id,omitempty"`
+	ExecutionID       string               `json:"execution_id,omitempty"`
+	Source            ToolSource           `json:"source"`
+	Capability        string               `json:"capability,omitempty"`
+	Action            string               `json:"action"`
+	Reason            string               `json:"reason,omitempty"`
+	MutationScope     ToolMutationScope    `json:"mutation_scope"`
+	PostCheck         ToolPostCheckPolicy  `json:"post_check"`
+	Target            string               `json:"target,omitempty"`
+	ArgsBytes         int                  `json:"args_bytes,omitempty"`
+	ArgsComplete      *bool                `json:"args_complete,omitempty"`
+	ModelFinishReason string               `json:"model_finish_reason,omitempty"`
+	Descriptor        agent.ToolDescriptor `json:"descriptor"`
 }
 
 // ExecutionRecord is the bounded lifecycle projection stored by the durable

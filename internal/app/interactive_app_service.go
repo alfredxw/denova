@@ -29,16 +29,15 @@ type InteractiveAppService struct {
 // appended, allowing the UI to merge the new turn without a blocking snapshot
 // reload.
 type InteractiveTurnPersistedEvent struct {
-	StoryID                  string                                     `json:"story_id"`
-	BranchID                 string                                     `json:"branch_id"`
-	TurnCount                int                                        `json:"turn_count"`
-	Turn                     interactive.TurnEvent                      `json:"turn"`
-	DirectorPlanStatus       *interactive.DirectorPlanStatus            `json:"director_plan_status,omitempty"`
-	State                    map[string]any                             `json:"state"`
-	Graph                    interactive.StoryGraph                     `json:"graph"`
-	Branches                 []interactive.BranchSummary                `json:"branches"`
-	ContextCompaction        *interactive.ContextCompactionEvent        `json:"context_compaction"`
-	ContextCompactionRemoval *interactive.ContextCompactionRemovalEvent `json:"context_compaction_removal"`
+	StoryID            string                                   `json:"story_id"`
+	BranchID           string                                   `json:"branch_id"`
+	TurnCount          int                                      `json:"turn_count"`
+	Turn               interactive.TurnEvent                    `json:"turn"`
+	DirectorPlanStatus *interactive.DirectorPlanStatus          `json:"director_plan_status,omitempty"`
+	State              map[string]any                           `json:"state"`
+	Graph              interactive.StoryGraph                   `json:"graph"`
+	Branches           []interactive.BranchSummary              `json:"branches"`
+	ContextCompaction  *interactive.ContextCompactionProjection `json:"context_compaction"`
 }
 
 func (a *App) InteractiveStories() (interactive.Index, error) {
@@ -357,6 +356,12 @@ func (s *InteractiveAppService) DeleteInteractiveStory(storyID string) error {
 	if err := fence.validateLocked(a); err != nil {
 		return err
 	}
+	if fence.chat == nil {
+		return ErrNoWorkspace
+	}
+	if err := fence.chat.DeleteStoryBindings(context.Background(), fence.workspace, storyID, ""); err != nil {
+		return err
+	}
 	if err := store.DeleteStory(storyID); err != nil {
 		return err
 	}
@@ -387,7 +392,6 @@ func (s *InteractiveAppService) InteractiveSnapshot(storyID, branchID string) (i
 	// own turns and state, while this API projects the current checkpoint into
 	// the established game response shape.
 	snapshot.ContextCompaction = nil
-	snapshot.ContextCompactionRemoval = nil
 	if executionRuntime == nil {
 		return snapshot, nil
 	}

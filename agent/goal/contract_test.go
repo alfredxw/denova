@@ -9,7 +9,7 @@ import (
 )
 
 func TestStandardManagerContract(t *testing.T) {
-	goaltest.RunManagerContract(t, func(testing.TB) agent.GoalManager {
+	goaltest.RunStandardManagerContract(t, func(testing.TB) agent.GoalManager {
 		return goal.Standard()
 	})
 }

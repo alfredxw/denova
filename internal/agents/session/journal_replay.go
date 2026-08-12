@@ -68,33 +68,6 @@ func loadSession(filePath string) (*Session, error) {
 		messages: make([]*agent.Message, 0), records: make([]historyRecord, 0),
 		partialMaterialization: true,
 	}
-	if projection.Goal != nil {
-		sess.goal = *projection.Goal
-	}
-	if err := sess.migrateProjectionCompactionCursorsLocked(context.Background()); err != nil {
-		return nil, fmt.Errorf("迁移会话压缩游标 %s: %w", filePath, err)
-	}
-	for _, structural := range projection.Structural {
-		if structural.Cursor >= startCursor {
-			continue
-		}
-		if structural.Compaction != nil {
-			value := *structural.Compaction
-			sess.records = append(sess.records, historyRecord{kind: historyTypeCompaction, compaction: &value, createdAt: value.CreatedAt})
-		}
-		if structural.Removal != nil {
-			value := *structural.Removal
-			sess.records = append(sess.records, historyRecord{kind: historyTypeCompactionRemoved, compactionRemoval: &value, createdAt: value.CreatedAt})
-		}
-		if structural.Health != nil {
-			value := *structural.Health
-			sess.records = append(sess.records, historyRecord{kind: historyTypeCompactionHealth, compactionHealth: &value, createdAt: value.CreatedAt})
-		}
-		if structural.Cleanup != nil {
-			value := cloneToolResultCleanupRecord(*structural.Cleanup)
-			sess.records = append(sess.records, historyRecord{kind: historyTypeToolResultCleanup, toolResultCleanup: &value, createdAt: value.CreatedAt})
-		}
-	}
 	if projection.PendingInterrupt != nil && projection.PendingInterruptCursor < startCursor {
 		pendingRecords, readErr := journal.ReadRange(context.Background(), conversationjournal.Range{
 			After: projection.PendingInterruptCursor - 1, Through: projection.PendingInterruptCursor,
@@ -105,19 +78,6 @@ func loadSession(filePath string) (*Session, error) {
 		for _, record := range pendingRecords {
 			if err := appendConversationRecord(sess, record); err != nil {
 				return nil, fmt.Errorf("恢复待处理中断 %s: %w", filePath, err)
-			}
-		}
-	}
-	if projection.PendingAsk != nil && projection.PendingAskCursor < startCursor {
-		pendingRecords, readErr := journal.ReadRange(context.Background(), conversationjournal.Range{
-			After: projection.PendingAskCursor - 1, Through: projection.PendingAskCursor,
-		})
-		if readErr != nil {
-			return nil, fmt.Errorf("read pending ask %s: %w", filePath, readErr)
-		}
-		for _, record := range pendingRecords {
-			if err := appendConversationRecord(sess, record); err != nil {
-				return nil, fmt.Errorf("restore pending ask %s: %w", filePath, err)
 			}
 		}
 	}
@@ -232,36 +192,16 @@ func appendRecordLine(sess *Session, line []byte, lineNumber int) error {
 		return appendClearRecordLine(sess, line)
 	case historyTypeInterrupt:
 		return appendInterruptionRecordLine(sess, line, lineNumber)
-	case historyTypeAsk:
-		return appendAskRecordLine(sess, line)
-	case historyTypeCompaction:
-		return appendCompactionRecordLine(sess, line, lineNumber)
-	case historyTypeCompactionRemoved:
-		return appendCompactionRemovalRecordLine(sess, line, lineNumber)
-	case historyTypeCompactionHealth:
-		return appendCompactionHealthRecordLine(sess, line, lineNumber)
-	case historyTypeToolResultCleanup:
-		return appendToolResultCleanupRecordLine(sess, line, lineNumber)
 	case historyTypeDisplay:
 		return appendDisplayRecordLine(sess, line, lineNumber)
 	case historyTypeMessage, historyTypeContextMessage:
 		return appendMessageRecordLine(sess, line, typed.Type)
-	case historyTypeGoalChanged:
-		var changed goalChangedRecord
-		if err := json.Unmarshal(line, &changed); err != nil {
-			return err
-		}
-		sess.goal = changed.Goal
-		advanceUpdatedAt(sess, changed.Goal.UpdatedAt)
-		return nil
 	case historyTypeSessionPatch:
 		return applySessionPatchLine(sess, line)
 	case historyTypeDisplayPatch:
 		return applyDisplayPatchLine(sess, line)
 	case historyTypeInterruptionPatch:
 		return applyInterruptionPatchLine(sess, line)
-	case historyTypeAskPatch:
-		return applyAskPatchLine(sess, line)
 	case "":
 		return appendLegacyMessageLine(sess, line)
 	case "session":

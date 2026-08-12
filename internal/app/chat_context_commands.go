@@ -2,16 +2,11 @@ package app
 
 import (
 	"context"
-	agentchat "denova/internal/agents/chat"
-	agentconversation "denova/internal/agents/conversation"
-	"strings"
 
-	"denova/config"
+	agentchat "denova/internal/agents/chat"
 	agentcompaction "denova/internal/agents/context/compaction"
-	"denova/internal/agents/prompts"
 	agentrun "denova/internal/agents/run"
-	"denova/internal/agents/session"
-	appagentruntime "denova/internal/app/agentruntime"
+	conversationapp "denova/internal/app/conversation"
 )
 
 func (a *App) AnalyzeContext(ctx context.Context, req agentchat.ChatRequest) (agentchat.ContextAnalysis, error) {
@@ -33,25 +28,16 @@ func (s *ChatAppService) AnalyzeContext(ctx context.Context, req agentchat.ChatR
 	if err != nil {
 		return agentchat.ContextAnalysis{}, err
 	}
-	var pending *session.Interruption
-	if shouldResume := strings.TrimSpace(req.Message); shouldResume != "" {
-		pending = runtime.sess.PendingInterruption()
-	}
-	status, err := runtime.executionRuntime.RuntimeStatusProjection(ctx, agentrun.Options{
+	inspected, err := conversationapp.InspectPrepared(ctx, sharedConversationRuntime(runtime), req, agentrun.Options{
 		AgentKind: agentrun.AgentKindIDE, StateRoot: runtime.projectState,
 		Workspace: runtime.workspace, SessionID: runtime.sess.ID, Mode: "ide",
 	})
 	if err != nil {
 		return agentchat.ContextAnalysis{}, err
 	}
-	compaction := appagentruntime.ProjectSessionCompaction(status.Compaction, config.AgentKindIDE)
-	runtimeContexts := prompts.IDEWorkspaceRuntimeContextsForContext(runtime.state, req.IDEContext)
-	conversation := agentconversation.NewSessionConversationForAgentWithRuntimeContexts(
-		runtime.sess, &runtime.cfg, config.AgentKindIDE,
-		runtimeContexts.StableTitle, runtimeContexts.Stable,
-		runtimeContexts.DynamicTitle, runtimeContexts.Dynamic,
-	)
-	return agentchat.BuildIDEContextAnalysis(&runtime.cfg, runtime.state, runtime.ideTeller, runtime.bookService, compaction, pending, req, conversation)
+	return agentchat.BuildInspectedContextAnalysis(
+		&runtime.cfg, agentrun.AgentKindIDE, "ide", inspected.Composition, inspected.Inspection,
+	), nil
 }
 
 func (a *App) CompactContext(ctx context.Context) (agentcompaction.Result, error) {

@@ -74,15 +74,21 @@ type RunAccepted struct{ CommandID string }
 
 func (RunAccepted) eventPayload() {}
 
-type RunStarted struct{ Cycle int }
+type RunStarted struct {
+	Cycle     int
+	CommandID string
+	Delivery  string
+}
 
 func (RunStarted) eventPayload() {}
 
 // EventSource identifies the Agent invocation that produced a live event.
 // Path is ordered from the root Agent to Source.Name.
 type EventSource struct {
-	Name string
-	Path []string
+	Name           string
+	Path           []string
+	InvocationID   string
+	InvocationType string
 }
 
 type AssistantDelta struct {
@@ -112,6 +118,17 @@ type ModelCompleted struct {
 
 func (ModelCompleted) eventPayload() {}
 
+// ContextNormalized is bounded telemetry for provider-protocol repairs made
+// immediately before fixed context maintenance. Message content is never
+// exposed through this event.
+type ContextNormalized struct {
+	RepairCount    int
+	MessagesBefore int
+	MessagesAfter  int
+}
+
+func (ContextNormalized) eventPayload() {}
+
 type AssistantFinal struct {
 	Content  string
 	Thinking string
@@ -125,6 +142,8 @@ type ToolInputStarted struct {
 	CallID         string
 	ProviderCallID string
 	Name           string
+	Index          int
+	Descriptor     *ToolDescriptor
 	Source         EventSource
 }
 
@@ -146,29 +165,39 @@ func (ToolInputDelta) eventPayload() {}
 // establishes the paired tool lifecycle. Concrete execution normally follows;
 // a synthetic preflight failure instead emits ToolFinished immediately.
 type ToolStarted struct {
-	CallID    string
-	Name      string
-	Arguments json.RawMessage
-	Source    EventSource
+	CallID         string
+	ProviderCallID string
+	Name           string
+	Index          int
+	Arguments      json.RawMessage
+	Descriptor     *ToolDescriptor
+	Source         EventSource
 }
 
 func (ToolStarted) eventPayload() {}
 
 type ToolProgress struct {
-	CallID string
-	Delta  string
-	Source EventSource
+	CallID         string
+	ProviderCallID string
+	Name           string
+	Index          int
+	Delta          string
+	Descriptor     *ToolDescriptor
+	Source         EventSource
 }
 
 func (ToolProgress) eventPayload() {}
 
 type ToolFinished struct {
-	CallID     string
-	Name       string
-	IsError    bool
-	Result     string
-	Projection *ToolResult
-	Source     EventSource
+	CallID         string
+	ProviderCallID string
+	Name           string
+	Index          int
+	IsError        bool
+	Result         string
+	Descriptor     *ToolDescriptor
+	Projection     *ToolResult
+	Source         EventSource
 }
 
 func (ToolFinished) eventPayload() {}
@@ -189,6 +218,17 @@ type RecoveryResumed struct{}
 
 func (RecoveryResumed) eventPayload() {}
 
+// EventStreamGap reports that a bounded live observer discarded older display
+// events to stay detached from authoritative execution. Callers can rehydrate
+// from Session.Snapshot and reconnect with Session.Observe after ResumeAfter.
+// A gap never changes Run settlement.
+type EventStreamGap struct {
+	Dropped     int
+	ResumeAfter Cursor
+}
+
+func (EventStreamGap) eventPayload() {}
+
 type RecoveryActionKind string
 
 const (
@@ -201,9 +241,15 @@ const (
 // Callers persist only ID if they need a transport round trip; internal command
 // and operation identities never cross the public Agent boundary.
 type RecoveryAction struct {
-	ID         string
-	Kind       RecoveryActionKind
-	RunID      string
+	ID    string
+	Kind  RecoveryActionKind
+	RunID string
+	// CommandID is the caller-owned idempotency identity of the accepted input
+	// or structural command selected by this opaque action. The action ID remains
+	// the only recovery authority; CommandID exists for exact display routing and
+	// must never be accepted in place of ID.
+	CommandID  string
+	Cycle      int
 	Delivery   RecoveryInputDelivery
 	Compaction RecoveryCompactionAction
 }
@@ -267,13 +313,18 @@ type InteractionResolved struct {
 func (InteractionResolved) eventPayload() {}
 
 type CompactionStarted struct {
-	ID     string
-	Remove bool
+	ID        string
+	Remove    bool
+	Automatic bool
+	Metrics   CompactionMetrics
 }
 
 func (CompactionStarted) eventPayload() {}
 
-type CompactionCommitted struct{ State CompactionState }
+type CompactionCommitted struct {
+	State     CompactionState
+	Automatic bool
+}
 
 func (CompactionCommitted) eventPayload() {}
 
@@ -284,9 +335,80 @@ type CompactionRemoved struct {
 
 func (CompactionRemoved) eventPayload() {}
 
+type CompactionFailed struct {
+	ID                  string
+	Reason              string
+	Automatic           bool
+	ConsecutiveFailures int
+	FailureFuseOpen     bool
+	Metrics             CompactionMetrics
+}
+
+func (CompactionFailed) eventPayload() {}
+
+type CompactionSkipped struct {
+	ID                  string
+	Reason              string
+	Automatic           bool
+	ConsecutiveFailures int
+	FailureFuseOpen     bool
+	Metrics             CompactionMetrics
+}
+
+func (CompactionSkipped) eventPayload() {}
+
+type CleanupStarted struct {
+	ID        string
+	Reason    string
+	Automatic bool
+	Transient bool
+	Metrics   CleanupMetrics
+}
+
+func (CleanupStarted) eventPayload() {}
+
+type CleanupCompleted struct {
+	ID        string
+	Reason    string
+	Automatic bool
+	Transient bool
+	Metrics   CleanupMetrics
+}
+
+func (CleanupCompleted) eventPayload() {}
+
+type CleanupFailed struct {
+	ID        string
+	Reason    string
+	Automatic bool
+	Metrics   CleanupMetrics
+}
+
+func (CleanupFailed) eventPayload() {}
+
+type CleanupSkipped struct {
+	ID        string
+	Reason    string
+	Automatic bool
+	Metrics   CleanupMetrics
+}
+
+func (CleanupSkipped) eventPayload() {}
+
+type CleanupCommitted struct {
+	State     CleanupState
+	Automatic bool
+}
+
+func (CleanupCommitted) eventPayload() {}
+
 type SessionCleared struct{ Revision uint64 }
 
 func (SessionCleared) eventPayload() {}
+
+type TranscriptSynchronized struct{ State TranscriptSyncState }
+
+func (TranscriptSynchronized) eventPayload() {}
 
 type ContextLimitReached struct {
 	Scope string
@@ -341,11 +463,13 @@ type SessionSnapshot struct {
 	RecoveryActions          []RecoveryAction
 	ActiveOutput             ActiveOutputSnapshot
 	QueuedRuns               []QueuedRunSnapshot
-	OpenTools                []ToolStarted
+	OpenTools                []OpenToolSnapshot
 	RecentRuns               []RunSummary
 	Goal                     *GoalState
 	Todo                     *TodoState
+	Cleanup                  *CleanupState
 	Compaction               *CompactionState
+	TranscriptSync           *TranscriptSyncState
 	ClearRevision            uint64
 	PendingInteractions      []InteractionRequest
 	MessagesTruncated        bool
@@ -358,6 +482,7 @@ type RunSummary struct {
 	ReceiptCursor      Cursor
 	Status             ResultStatus
 	Reason             string
+	ReasonTruncated    bool
 }
 
 type QueuedRunSnapshot struct {
@@ -365,6 +490,22 @@ type QueuedRunSnapshot struct {
 	CommandID     string
 	ReceiptCursor Cursor
 	Delivery      RecoveryInputDelivery
+	Text          string
+	TextTruncated bool
+	// InterruptRequested means this accepted FollowUp has already been promoted
+	// to the active Run's next safe preemption boundary.
+	InterruptRequested bool
+}
+
+// OpenToolSnapshot is bounded reconnect evidence for one unfinished tool. It
+// deliberately excludes arguments and results; those remain in live Events
+// and durable artifacts rather than Session status.
+type OpenToolSnapshot struct {
+	CallID string
+	Name   string
+	RunID  string
+	Cycle  int
+	Source EventSource
 }
 
 type Observation struct {
@@ -374,20 +515,24 @@ type Observation struct {
 }
 
 var (
-	ErrAgentClosed           = errors.New("agent is closed")
-	ErrSessionBusy           = errors.New("agent session is busy")
-	ErrSessionClosed         = errors.New("agent session is closed")
-	ErrRunSettled            = errors.New("agent run is settled")
-	ErrNoActiveRun           = errors.New("agent session has no active run")
-	ErrDefinitionUnavailable = errors.New("agent Definition is unavailable")
-	ErrDefinitionMismatch    = errors.New("agent Definition does not match durable state")
-	ErrCursorExpired         = errors.New("agent event cursor expired")
-	ErrCapabilityUnsupported = errors.New("agent capability is unsupported")
-	ErrInteractionStale      = errors.New("agent interaction is stale")
-	ErrPermissionDenied      = errors.New("agent permission denied")
-	ErrContextLimit          = errors.New("agent context limit reached")
-	ErrRecoveryRequired      = errors.New("agent recovery action is required")
-	ErrRecoveryStale         = errors.New("agent recovery action is stale")
+	ErrAgentClosed                = errors.New("agent is closed")
+	ErrInvalidInput               = errors.New("agent input is invalid")
+	ErrSessionBusy                = errors.New("agent session is busy")
+	ErrSessionClosed              = errors.New("agent session is closed")
+	ErrRunSettled                 = errors.New("agent run is settled")
+	ErrNoActiveRun                = errors.New("agent session has no active run")
+	ErrDefinitionUnavailable      = errors.New("agent Definition is unavailable")
+	ErrDefinitionMismatch         = errors.New("agent Definition does not match durable state")
+	ErrCursorExpired              = errors.New("agent event cursor expired")
+	ErrCapabilityUnsupported      = errors.New("agent capability is unsupported")
+	ErrInteractionStale           = errors.New("agent interaction is stale")
+	ErrPermissionDenied           = errors.New("agent permission denied")
+	ErrPermissionArgumentsChanged = errors.New("agent tool arguments changed after authorization")
+	ErrContextLimit               = errors.New("agent context limit reached")
+	ErrIdleTimeout                = errors.New("agent execution idle timeout")
+	ErrRecoveryRequired           = errors.New("agent recovery action is required")
+	ErrRecoveryStale              = errors.New("agent recovery action is stale")
+	ErrCanonicalCommitRejected    = errors.New("agent canonical commit was rejected")
 )
 
 type RunError struct {

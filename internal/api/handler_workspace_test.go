@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	runtimeapp "denova/internal/app"
 	"denova/internal/book"
 	"net/http"
 	"net/url"
@@ -138,7 +139,16 @@ func TestProjectFileWriteUsesRouteIdentityWhenAnotherBookIsForeground(t *testing
 	}
 }
 
-func TestProjectSearchReplaceAndVersionsUseRouteIdentityWhenAnotherBookIsForeground(t *testing.T) {
+type routeIdentityWorkspaceFixture struct {
+	application         *runtimeapp.App
+	server              *Server
+	backgroundProject   string
+	backgroundWorkspace string
+	foregroundProject   string
+}
+
+func newRouteIdentityWorkspaceFixture(t *testing.T) routeIdentityWorkspaceFixture {
+	t.Helper()
 	application := newTestApplication(t)
 	server := NewServer(application, "0")
 	backgroundProjectID := application.ProjectID()
@@ -151,16 +161,18 @@ func TestProjectSearchReplaceAndVersionsUseRouteIdentityWhenAnotherBookIsForegro
 	if created.Code != http.StatusOK || application.ProjectID() == backgroundProjectID {
 		t.Fatalf("create foreground Book status=%d project_id=%q body=%s", created.Code, application.ProjectID(), created.Body.String())
 	}
-	foregroundProjectID := application.ProjectID()
-	backgroundAPI := "/api/projects/" + url.PathEscape(backgroundProjectID)
-	checkpoint := performJSONRequest(t, server, http.MethodPost, backgroundAPI+"/versions", map[string]string{
-		"message": "Background checkpoint",
-	})
-	if checkpoint.Code != http.StatusOK {
-		t.Fatalf("background version status=%d body=%s", checkpoint.Code, checkpoint.Body.String())
+	return routeIdentityWorkspaceFixture{
+		application: application, server: server,
+		backgroundProject: backgroundProjectID, backgroundWorkspace: backgroundWorkspace,
+		foregroundProject: application.ProjectID(),
 	}
+}
 
-	search := performJSONRequest(t, server, http.MethodGet, backgroundAPI+"/workspace/search?q=alpha", nil)
+func TestProjectSearchReplaceUsesRouteIdentityWhenAnotherBookIsForeground(t *testing.T) {
+	fixture := newRouteIdentityWorkspaceFixture(t)
+	backgroundAPI := "/api/projects/" + url.PathEscape(fixture.backgroundProject)
+
+	search := performJSONRequest(t, fixture.server, http.MethodGet, backgroundAPI+"/workspace/search?q=alpha", nil)
 	if search.Code != http.StatusOK {
 		t.Fatalf("background search status=%d body=%s", search.Code, search.Body.String())
 	}
@@ -172,22 +184,33 @@ func TestProjectSearchReplaceAndVersionsUseRouteIdentityWhenAnotherBookIsForegro
 		t.Fatalf("background search escaped its Project: %#v", searchBody.Results)
 	}
 
-	replace := performJSONRequest(t, server, http.MethodPost, backgroundAPI+"/workspace/replace", map[string]any{
+	replace := performJSONRequest(t, fixture.server, http.MethodPost, backgroundAPI+"/workspace/replace", map[string]any{
 		"query": "alpha", "replacement": "beta",
 	})
 	if replace.Code != http.StatusOK {
 		t.Fatalf("background replace status=%d body=%s", replace.Code, replace.Body.String())
 	}
-	content, err := os.ReadFile(filepath.Join(backgroundWorkspace, "notes.txt"))
+	content, err := os.ReadFile(filepath.Join(fixture.backgroundWorkspace, "notes.txt"))
 	if err != nil || string(content) != "beta marker" {
 		t.Fatalf("background replacement content=%q err=%v", content, err)
 	}
-	if _, err := application.BookService().ReadFile("notes.txt"); !os.IsNotExist(err) {
+	if _, err := fixture.application.BookService().ReadFile("notes.txt"); !os.IsNotExist(err) {
 		t.Fatalf("foreground Book received background replacement, err=%v", err)
 	}
+}
 
-	backgroundHistory := performJSONRequest(t, server, http.MethodGet, backgroundAPI+"/versions?limit=10", nil)
-	foregroundHistory := performJSONRequest(t, server, http.MethodGet, "/api/projects/"+url.PathEscape(foregroundProjectID)+"/versions?limit=10", nil)
+func TestProjectVersionsUseRouteIdentityWhenAnotherBookIsForeground(t *testing.T) {
+	fixture := newRouteIdentityWorkspaceFixture(t)
+	backgroundAPI := "/api/projects/" + url.PathEscape(fixture.backgroundProject)
+	checkpoint := performJSONRequest(t, fixture.server, http.MethodPost, backgroundAPI+"/versions", map[string]string{
+		"message": "Background checkpoint",
+	})
+	if checkpoint.Code != http.StatusOK {
+		t.Fatalf("background version status=%d body=%s", checkpoint.Code, checkpoint.Body.String())
+	}
+
+	backgroundHistory := performJSONRequest(t, fixture.server, http.MethodGet, backgroundAPI+"/versions?limit=10", nil)
+	foregroundHistory := performJSONRequest(t, fixture.server, http.MethodGet, "/api/projects/"+url.PathEscape(fixture.foregroundProject)+"/versions?limit=10", nil)
 	if backgroundHistory.Code != http.StatusOK {
 		t.Fatalf("background history status=%d body=%s", backgroundHistory.Code, backgroundHistory.Body.String())
 	}

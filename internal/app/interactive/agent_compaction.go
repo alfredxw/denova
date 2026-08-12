@@ -9,6 +9,7 @@ import (
 
 	"denova/config"
 	agentcontext "denova/internal/agents/context"
+	agentlifecycle "denova/internal/agents/lifecycle"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/interactive"
 
@@ -22,43 +23,54 @@ type interactiveCompactionContext struct {
 	BranchID        string `json:"branch_id"`
 	SourceTurnCount int    `json:"source_turn_count"`
 	RetainedTurns   int    `json:"retained_turns"`
-	SourceHead      string `json:"source_head,omitempty"`
 }
 
-// AgentCompactionContext freezes the product cursor needed to project an
-// Agent-owned summary over interactive story history on later cycles.
-func (c *Conversation) AgentCompactionContext(
+// PrepareAgentCompaction supplies the exact canonical story-turn delta and the
+// bounded product cursor for one Agent-owned checkpoint. The generic Agent
+// transcript contains rendered story prompts, so summarizing it directly would
+// repeatedly summarize the same history and lose Game-specific boundaries.
+func (c *Conversation) PrepareAgentCompaction(
 	ctx context.Context,
 	_ agent.CompactionCompactRequest,
-) (*agent.HostData, error) {
+) (agentlifecycle.ProductCompactionProjection, error) {
 	if c == nil || c.store == nil {
-		return nil, errors.New("interactive Compaction context is unavailable")
+		return agentlifecycle.ProductCompactionProjection{}, errors.New("interactive Compaction context is unavailable")
 	}
-	storyContext, err := c.store.StoryContext(c.storyID, c.branchID)
+	storyContext, err := c.storyContextForCycle()
 	if err != nil {
-		return nil, err
+		return agentlifecycle.ProductCompactionProjection{}, err
 	}
 	if ctx != nil {
 		if err := ctx.Err(); err != nil {
-			return nil, err
+			return agentlifecycle.ProductCompactionProjection{}, err
 		}
 	}
-	branchID := storyContext.Snapshot.BranchID
-	sourceHead := ""
-	if branch, ok := storyContext.Meta.Branches[branchID]; ok {
-		sourceHead = branch.Head
+	history, active, err := c.modelHistoryForCycle(storyContext)
+	if err != nil {
+		return agentlifecycle.ProductCompactionProjection{}, err
+	}
+	projection, err := BuildModelContextProjection(
+		history, active, storyContext.Snapshot, c.ToolResultContextPolicy(), c.AgentCycleIdentitySnapshot(),
+	)
+	if err != nil {
+		return agentlifecycle.ProductCompactionProjection{}, err
+	}
+	if len(projection.SourceMessages) == 0 {
+		return agentlifecycle.ProductCompactionProjection{}, errors.New("interactive Compaction has no complete canonical turns to summarize")
 	}
 	metadata := interactiveCompactionContext{
-		StoryID: c.storyID, BranchID: branchID,
-		SourceTurnCount: SnapshotTurnCount(storyContext.Snapshot),
+		StoryID: c.storyID, BranchID: storyContext.Snapshot.BranchID,
+		SourceTurnCount: projection.SourceTurnCount,
 		RetainedTurns:   config.DefaultContextCompactionRetainedTurns,
-		SourceHead:      sourceHead,
 	}
 	encoded, err := json.Marshal(metadata)
 	if err != nil {
-		return nil, fmt.Errorf("encode interactive Compaction context: %w", err)
+		return agentlifecycle.ProductCompactionProjection{}, fmt.Errorf("encode interactive Compaction context: %w", err)
 	}
-	return &agent.HostData{Type: interactiveCompactionContextType, Version: 1, Data: encoded}, nil
+	return agentlifecycle.ProductCompactionProjection{
+		SourceMessages: projection.SourceMessages,
+		ContextData:    &agent.HostData{Type: interactiveCompactionContextType, Version: 1, Data: encoded},
+	}, nil
 }
 
 // BindAgentCompaction applies the Agent-owned checkpoint to process-local
@@ -106,7 +118,7 @@ func (c *Conversation) BindAgentCompaction(state *agent.CompactionState) error {
 func ProjectAgentCompaction(
 	state *agentrun.AgentCompactionState,
 	storyID, branchID string,
-) (*interactive.ContextCompactionEvent, error) {
+) (*interactive.ContextCompactionProjection, error) {
 	if state == nil {
 		return nil, nil
 	}
@@ -154,8 +166,8 @@ func interactiveAgentCompactionEvent(
 	summary string,
 	tokenEstimate int,
 	metadata interactiveCompactionContext,
-) *interactive.ContextCompactionEvent {
-	return &interactive.ContextCompactionEvent{
+) *interactive.ContextCompactionProjection {
+	return &interactive.ContextCompactionProjection{
 		ID: id, BranchID: metadata.BranchID,
 		CompactionCheckpoint: agentcontext.CompactionCheckpoint{
 			AgentKind: config.AgentKindInteractiveStory, Epoch: int(revision),
@@ -166,7 +178,7 @@ func interactiveAgentCompactionEvent(
 	}
 }
 
-func (c *Conversation) boundAgentCompaction(snapshot interactive.Snapshot) *interactive.ContextCompactionEvent {
+func (c *Conversation) boundAgentCompaction(snapshot interactive.Snapshot) *interactive.ContextCompactionProjection {
 	if c == nil {
 		return nil
 	}
@@ -182,6 +194,6 @@ func (c *Conversation) boundAgentCompaction(snapshot interactive.Snapshot) *inte
 
 // AgentCompactionProjection returns the current process-local projection for
 // an authoritative Story snapshot. It never reads a Story Store checkpoint.
-func (c *Conversation) AgentCompactionProjection(snapshot interactive.Snapshot) *interactive.ContextCompactionEvent {
+func (c *Conversation) AgentCompactionProjection(snapshot interactive.Snapshot) *interactive.ContextCompactionProjection {
 	return c.boundAgentCompaction(snapshot)
 }

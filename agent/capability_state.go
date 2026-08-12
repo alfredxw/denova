@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"sync"
 
-	runstate "github.com/alfredxw/denova/agent/runtime"
+	runstate "github.com/alfredxw/denova/agent/internal/runtime"
 )
 
 // LoadSessionState reads one Agent-owned durable capability slot from the
@@ -127,10 +127,7 @@ func (client *capabilityStateClient) updateGoal(
 	if mutation.MutationID == "" {
 		mutation.MutationID = CurrentToolExecutionID(ctx)
 	}
-	if mutation.MutationID == "" {
-		return GoalState{}, errors.New("Goal mutation requires a stable mutation identity")
-	}
-	next, err := manager.Apply(ctx, GoalApplyRequest{
+	next, err := applyGoalMutation(ctx, manager, GoalApplyRequest{
 		Session: session, Run: run, Current: current, Present: present, Mutation: mutation,
 	})
 	if err != nil {

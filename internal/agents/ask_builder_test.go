@@ -10,25 +10,21 @@ import (
 )
 
 func TestAskRegistrationRequiresInteractiveTopLevelHost(t *testing.T) {
-	var captured agent.LoopConfig
-	previous := newNativeAgent
-	newNativeAgent = func(_ context.Context, cfg agent.LoopConfig) (agent.Runnable, error) {
-		captured = cfg
-		return fakeAgent{name: cfg.Name, description: cfg.Description}, nil
-	}
-	t.Cleanup(func() { newNativeAgent = previous })
-
 	build := func(kind string, interactive bool) map[string]bool {
 		t.Helper()
-		captured = agent.LoopConfig{}
 		cfg := askOnlyAgentConfig(t, kind)
-		if _, err := buildAgent(context.Background(), cfg, agentBuildSpec{
+		definition, err := buildAgentDefinition(context.Background(), cfg, agentBuildSpec{
 			Kind: kind, Name: "ask-registration-test", Description: "test",
 			Composition: mustTestPromptComposition(t, kind, "test"), InteractiveHost: interactive, DisableWriteTodos: true,
-		}); err != nil {
+		})
+		if err != nil {
 			t.Fatal(err)
 		}
-		return toolNamesForTest(t, captured.Tools)
+		tools, err := definition.Tools.PrepareTools(context.Background(), agent.ToolRequest{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return toolNamesForTest(t, tools)
 	}
 
 	if build(config.AgentKindIDE, false)["ask"] {

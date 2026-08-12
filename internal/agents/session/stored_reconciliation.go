@@ -31,6 +31,23 @@ func FindStoredDomainCommit(
 	return sess.FindDomainCommit(identity, role, hash)
 }
 
+// FindStoredAgentCanonicalCommit proves the exact public Agent stage hash
+// without creating or mutating the product Session during cold recovery.
+func FindStoredAgentCanonicalCommit(
+	dir string,
+	sessionID string,
+	identity DomainCommitIdentity,
+	role agent.RoleType,
+	hash string,
+) (DomainCommitReceipt, bool, error) {
+	sess, found, err := openStoredSession(context.Background(), dir, sessionID)
+	if err != nil || !found {
+		return DomainCommitReceipt{}, false, err
+	}
+	defer sess.Close()
+	return sess.FindAgentCanonicalCommit(identity, role, hash)
+}
+
 // CommitStoredDomainMessage opens an existing canonical Session without
 // mutating active-session UI state and publishes one exact idempotent message.
 // Missing sessions are retryable errors: recovery must never silently invent a
@@ -50,99 +67,6 @@ func CommitStoredDomainMessage(
 	}
 	defer sess.Close()
 	return sess.CommitDomainMessageContext(ctx, intent)
-}
-
-// FindStoredContextCompaction reads an existing stable checkpoint by ID.
-func FindStoredContextCompaction(dir, sessionID, id string) (ContextCompaction, bool, error) {
-	sess, found, err := openStoredSession(context.Background(), dir, sessionID)
-	if err != nil || !found {
-		return ContextCompaction{}, false, err
-	}
-	defer sess.Close()
-	record, found := sess.ContextCompactionByID(id)
-	return record, found, nil
-}
-
-// FindStoredContextCompactionRemoval reads an existing stable removal by ID.
-func FindStoredContextCompactionRemoval(dir, sessionID, id string) (ContextCompactionRemoval, bool, error) {
-	sess, found, err := openStoredSession(context.Background(), dir, sessionID)
-	if err != nil || !found {
-		return ContextCompactionRemoval{}, false, err
-	}
-	defer sess.Close()
-	record, found := sess.ContextCompactionRemovalByID(id)
-	return record, found, nil
-}
-
-// FindStoredToolResultCleanup reads one stable cleanup projection by ID.
-func FindStoredToolResultCleanup(dir, sessionID, id string) (ToolResultCleanupRecord, bool, error) {
-	sess, found, err := openStoredSession(context.Background(), dir, sessionID)
-	if err != nil || !found {
-		return ToolResultCleanupRecord{}, false, err
-	}
-	defer sess.Close()
-	record, found := sess.ToolResultCleanupByID(id)
-	return record, found, nil
-}
-
-// CommitStoredContextCompaction publishes one frozen structural mutation for
-// a durable binding that is not necessarily open in the UI process.
-func CommitStoredContextCompaction(
-	ctx context.Context,
-	dir string,
-	sessionID string,
-	expectedRevision uint64,
-	record ContextCompaction,
-) (ContextCompaction, error) {
-	sess, found, err := openStoredSession(ctx, dir, sessionID)
-	if err != nil {
-		return ContextCompaction{}, err
-	}
-	if !found {
-		return ContextCompaction{}, fmt.Errorf("%w: %s", ErrStoredSessionNotFound, sessionID)
-	}
-	defer sess.Close()
-	return sess.AppendContextCompactionAtContext(ctx, ContextCursor{Revision: expectedRevision}, record)
-}
-
-// CommitStoredContextCompactionRemoval is the removal counterpart used by
-// cold structural recovery.
-func CommitStoredContextCompactionRemoval(
-	ctx context.Context,
-	dir string,
-	sessionID string,
-	expectedRevision uint64,
-	record ContextCompactionRemoval,
-) (ContextCompactionRemoval, bool, error) {
-	sess, found, err := openStoredSession(ctx, dir, sessionID)
-	if err != nil {
-		return ContextCompactionRemoval{}, false, err
-	}
-	if !found {
-		return ContextCompactionRemoval{}, false, fmt.Errorf("%w: %s", ErrStoredSessionNotFound, sessionID)
-	}
-	defer sess.Close()
-	return sess.CommitContextCompactionRemovalAtContext(ctx, ContextCursor{Revision: expectedRevision}, record)
-}
-
-// CommitStoredToolResultCleanup publishes one frozen cleanup projection for a
-// durable Session binding that is not necessarily open in the UI process.
-func CommitStoredToolResultCleanup(
-	ctx context.Context,
-	dir string,
-	sessionID string,
-	expectedRevision uint64,
-	record ToolResultCleanupRecord,
-) (ToolResultCleanupRecord, error) {
-	sess, found, err := openStoredSession(ctx, dir, sessionID)
-	if err != nil {
-		return ToolResultCleanupRecord{}, err
-	}
-	if !found {
-		return ToolResultCleanupRecord{}, fmt.Errorf("%w: %s", ErrStoredSessionNotFound, sessionID)
-	}
-	defer sess.Close()
-	return sess.AppendToolResultCleanupAtContext(ctx, ContextCursor{Revision: expectedRevision}, record)
 }
 
 func openStoredSession(_ context.Context, dir, sessionID string) (*Session, bool, error) {

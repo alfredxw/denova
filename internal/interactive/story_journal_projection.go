@@ -35,25 +35,20 @@ type storyCommitLocator struct {
 }
 
 type storyBranchProjection struct {
-	Head                  string                         `json:"head"`
-	ContextRevision       uint64                         `json:"context_revision"`
-	LatestTurnID          string                         `json:"latest_turn_id,omitempty"`
-	LatestTurnParentID    string                         `json:"latest_turn_parent_id,omitempty"`
-	Depth                 int                            `json:"depth"`
-	State                 map[string]any                 `json:"state"`
-	StateBeforeLatest     map[string]any                 `json:"state_before_latest,omitempty"`
-	Compaction            *ContextCompactionEvent        `json:"compaction,omitempty"`
-	CompactionRemoval     *ContextCompactionRemovalEvent `json:"compaction_removal,omitempty"`
-	CompactionHealth      *ContextCompactionHealthEvent  `json:"compaction_health,omitempty"`
-	ToolResultCleanup     *ToolResultCleanupEvent        `json:"tool_result_cleanup,omitempty"`
-	PendingPlayerInputIDs []string                       `json:"pending_player_input_ids,omitempty"`
-	TailCursor            conversationjournal.Cursor     `json:"tail_cursor,omitempty"`
+	Head                  string                     `json:"head"`
+	ContextRevision       uint64                     `json:"context_revision"`
+	LatestTurnID          string                     `json:"latest_turn_id,omitempty"`
+	LatestTurnParentID    string                     `json:"latest_turn_parent_id,omitempty"`
+	Depth                 int                        `json:"depth"`
+	State                 map[string]any             `json:"state"`
+	StateBeforeLatest     map[string]any             `json:"state_before_latest,omitempty"`
+	PendingPlayerInputIDs []string                   `json:"pending_player_input_ids,omitempty"`
+	TailCursor            conversationjournal.Cursor `json:"tail_cursor,omitempty"`
 }
 
 // storyJournalProjection is the bounded game reducer checkpoint. It stores
 // current branch state and sparse locators, never historical narrative,
-// thinking, rich tool results, or prior state snapshots. The current cleanup
-// projection stores only already-bounded recovery placeholders.
+// thinking, rich tool results, maintenance state, or prior state snapshots.
 type storyJournalProjection struct {
 	Version       int                               `json:"version"`
 	StoryID       string                            `json:"story_id"`
@@ -225,54 +220,6 @@ func (projection *storyJournalProjection) applyEvent(cursor conversationjournal.
 			applyStateDeltaToProjection(branch.State, StateDelta{SchemaVersion: delta.SchemaVersion, Ops: delta.Ops, ActorOps: delta.ActorOps})
 			branch.Head = record.Envelope.ID
 		}
-	case StoryEventTypeCompaction:
-		var event ContextCompactionEvent
-		if err := mapToStruct(record.Raw, &event); err != nil {
-			return err
-		}
-		branch.Compaction = &event
-		branch.CompactionRemoval = nil
-		branch.CompactionHealth = nil
-		branch.ToolResultCleanup = nil
-		if parentID == branch.Head {
-			branch.Head = event.ID
-		}
-	case StoryEventTypeCompactionRemoved:
-		var event ContextCompactionRemovalEvent
-		if err := mapToStruct(record.Raw, &event); err != nil {
-			return err
-		}
-		branch.Compaction = nil
-		branch.CompactionRemoval = &event
-		branch.CompactionHealth = nil
-		branch.ToolResultCleanup = nil
-		if parentID == branch.Head {
-			branch.Head = event.ID
-		}
-	case StoryEventTypeCompactionHealth:
-		var event ContextCompactionHealthEvent
-		if err := mapToStruct(record.Raw, &event); err != nil {
-			return err
-		}
-		normalized, err := normalizeContextCompactionHealthEvent(event)
-		if err != nil {
-			return err
-		}
-		branch.CompactionHealth = &normalized
-	case StoryEventTypeToolResultCleanup:
-		var event ToolResultCleanupEvent
-		if err := mapToStruct(record.Raw, &event); err != nil {
-			return err
-		}
-		normalized, err := normalizeToolResultCleanupEvent(event)
-		if err != nil {
-			return err
-		}
-		branch.ToolResultCleanup = &normalized
-		branch.CompactionHealth = nil
-		if parentID == branch.Head {
-			branch.Head = normalized.ID
-		}
 	case StoryEventTypePlayerInput:
 		var event PlayerInputAcceptedEvent
 		if err := mapToStruct(record.Raw, &event); err != nil {
@@ -309,6 +256,10 @@ func (projection *storyJournalProjection) applyEvent(cursor conversationjournal.
 		branch.Head = event.ParentID
 		branch.LatestTurnID = event.LatestTurnID
 		branch.Depth = event.Depth
+		// A fork inherits the complete model-visible prefix at its parent. Its
+		// revision therefore starts at that canonical depth rather than at the
+		// number of branch-creation records observed for the new branch.
+		branch.ContextRevision = uint64(event.Depth)
 		if event.StateCheckpoint != nil {
 			branch.State = cloneStoryState(event.StateCheckpoint)
 		}
@@ -322,10 +273,6 @@ func (projection *storyJournalProjection) applyEvent(cursor conversationjournal.
 		branch.Depth = event.NextDepth
 		branch.State = cloneStoryState(event.StateCheckpoint)
 		branch.StateBeforeLatest = nil
-		branch.Compaction = nil
-		branch.CompactionRemoval = nil
-		branch.CompactionHealth = nil
-		branch.ToolResultCleanup = nil
 	case StoryEventTypeTurnVersionSelected:
 		var event TurnVersionSelectionEvent
 		if err := mapToStruct(record.Raw, &event); err != nil {
@@ -338,10 +285,6 @@ func (projection *storyJournalProjection) applyEvent(cursor conversationjournal.
 			branch.State = cloneStoryState(event.CurrentState)
 		}
 		branch.StateBeforeLatest = nil
-		branch.Compaction = nil
-		branch.CompactionRemoval = nil
-		branch.CompactionHealth = nil
-		branch.ToolResultCleanup = nil
 	case StoryEventTypeHotChoices,
 		StoryEventTypeTurnNarrativeRevised, StoryEventTypeTurnDisplayAppended,
 		StoryEventTypeStoryConfigUpdated, StoryEventTypeBranchSwitched, StoryEventTypeBranchArchived:
@@ -349,7 +292,7 @@ func (projection *storyJournalProjection) applyEvent(cursor conversationjournal.
 	default:
 		return fmt.Errorf("story projection does not handle persisted event type %q", record.Envelope.Type)
 	}
-	if changesModelContext {
+	if changesModelContext && record.Envelope.Type != StoryEventTypeBranch {
 		branch.ContextRevision++
 	}
 	return nil
