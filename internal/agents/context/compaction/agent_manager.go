@@ -68,8 +68,9 @@ func NewAgentManager(
 ) (agent.CompactionManager, error) {
 	settings := config.ResolveAgentContext(cfg, agentKind)
 	hardLimit := settings.MaxProviderInputBytes
+	summaryLimit := min(settings.MaxFragmentBytes, settings.MaxTotalInjectedBytes, settings.MaxProviderInputBytes)
 	if !settings.CompactionEnabled {
-		return publiccompaction.Disabled(hardLimit), nil
+		return publiccompaction.Disabled(hardLimit, summaryLimit), nil
 	}
 	modelSettings := config.ResolveAgentModel(cfg, agentKind)
 	trigger := int(float64(modelSettings.ContextWindowTokens*4) * settings.CompactionThreshold)
@@ -85,6 +86,7 @@ func NewAgentManager(
 			model: model, modelIdentity: modelIdentity, agentKind: agentKind,
 		},
 		TriggerBytes: trigger, KeepRecentBytes: keepRecent, HardLimitBytes: hardLimit,
+		SummaryLimitBytes: summaryLimit,
 	})
 }
 

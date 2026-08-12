@@ -15,7 +15,7 @@ type transactionRecord struct {
 	Stage             string `json:"stage"`
 }
 
-func (store *Store) publish(base, candidate Snapshot) (Result, error) {
+func (store *Store) apply(base, candidate Snapshot) (Result, error) {
 	if base.Revision == candidate.Revision {
 		return Result{Snapshot: base}, nil
 	}
@@ -33,13 +33,13 @@ func (store *Store) publish(base, candidate Snapshot) (Result, error) {
 		return Result{}, fmt.Errorf("prepare Agent state transaction: %w", err)
 	}
 	if err := writeSnapshot(store.root, candidate); err != nil {
-		publishErr := fmt.Errorf("publish Agent state files: %w", err)
+		applyErr := fmt.Errorf("apply Agent state files: %w", err)
 		if rollbackErr := store.rollbackPreparedTransaction(marker, base); rollbackErr != nil {
-			return Result{}, errors.Join(publishErr, rollbackErr)
+			return Result{}, errors.Join(applyErr, rollbackErr)
 		}
-		return Result{}, publishErr
+		return Result{}, applyErr
 	}
-	transaction.Stage = "published"
+	transaction.Stage = "applied"
 	if err := atomicJSON(marker, transaction); err != nil {
 		confirmErr := fmt.Errorf("confirm Agent state transaction: %w", err)
 		if rollbackErr := store.rollbackPreparedTransaction(marker, base); rollbackErr != nil {
@@ -48,7 +48,7 @@ func (store *Store) publish(base, candidate Snapshot) (Result, error) {
 		return Result{}, confirmErr
 	}
 	if err := removeDurable(marker); err != nil {
-		// The candidate and the published marker are both durable. Recovery can
+		// The candidate and the applied marker are both durable. Recovery can
 		// safely retry marker cleanup; reporting a failed State mutation here
 		// would invite callers to retry an operation that already committed.
 		return Result{
@@ -71,14 +71,14 @@ func (store *Store) recoverTransaction() error {
 	if !validRevision(transaction.BaseRevision) || !validRevision(transaction.CandidateRevision) {
 		return errors.New("recover Agent state transaction: invalid revision")
 	}
-	if transaction.Stage != "prepared" && transaction.Stage != "published" {
+	if transaction.Stage != "prepared" && transaction.Stage != "applied" {
 		return fmt.Errorf("recover Agent state transaction: invalid stage %q", transaction.Stage)
 	}
 	base, err := store.loadCachedSnapshot(transaction.BaseRevision)
 	if err != nil {
 		return fmt.Errorf("recover Agent state transaction base: %w", err)
 	}
-	if transaction.Stage == "published" {
+	if transaction.Stage == "applied" {
 		current, err := scanFiles(store.root)
 		if err == nil && snapshotFromFiles(current).Revision == transaction.CandidateRevision {
 			return removeDurable(marker)

@@ -154,7 +154,7 @@ func (service *Service) UpdateState(ctx context.Context, request StateUpdateRequ
 			return err
 		}
 		if updated.CleanupError != nil {
-			slog.WarnContext(ctx, "[continual-learning] published State with deferred cleanup", "error", updated.CleanupError)
+			slog.WarnContext(ctx, "[continual-learning] updated State with deferred cleanup", "error", updated.CleanupError)
 		}
 		version, _, err := service.history.record(updated.Snapshot, request.Summary)
 		if err != nil {
@@ -170,11 +170,17 @@ func (service *Service) Versions(ctx context.Context, limit int) ([]StateVersion
 	if _, err := service.requireEnabled(); err != nil {
 		return nil, err
 	}
-	snapshot, err := service.manager.Store().Current(ctx)
+	snapshot, err := service.manager.ValidatedSnapshot(ctx)
 	if err != nil {
-		return nil, err
+		var validation *agentstate.ValidationError
+		if !errors.As(err, &validation) {
+			return nil, err
+		}
+		// Keep committed Git history available so management can restore a
+		// failed live edit even when the current directory is invalid.
+		return service.history.versions(ctx, nil, limit)
 	}
-	return service.history.versions(ctx, snapshot, limit)
+	return service.history.versions(ctx, &snapshot, limit)
 }
 
 func (service *Service) Diff(ctx context.Context, from, to StateVersionID) (StateVersionDiff, error) {

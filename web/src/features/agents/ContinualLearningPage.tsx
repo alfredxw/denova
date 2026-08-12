@@ -17,8 +17,11 @@ import type {
 } from '@/lib/api'
 import { formatDateTime } from '@/i18n'
 import { AGENTS } from './agent-registry'
+import { SwitchWithInheritance } from './agent-form-controls'
+import { SettingsFieldRow } from '@/components/forms/settings-field-row'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
@@ -40,7 +43,22 @@ import {
 
 type PendingAction = { kind: 'delete'; path: string } | { kind: 'restore'; version: HarnessStateVersion }
 
-export function ContinualLearningPage({ refreshToken = 0 }: { refreshToken?: number }) {
+export interface ContinualLearningScheduleSettings {
+  enabled: boolean | null
+  inheritedEnabled: boolean
+  intervalHours: number | null
+  inheritedIntervalHours: number
+  onEnabledChange: (enabled: boolean | null) => void
+  onIntervalHoursChange: (hours: number | null) => void
+}
+
+export function ContinualLearningPage({
+  refreshToken = 0,
+  scheduleSettings,
+}: {
+  refreshToken?: number
+  scheduleSettings: ContinualLearningScheduleSettings
+}) {
   const { t } = useTranslation()
   const [snapshot, setSnapshot] = useState<HarnessStateSnapshot | null>(null)
   const [versions, setVersions] = useState<HarnessStateVersion[]>([])
@@ -84,7 +102,8 @@ export function ContinualLearningPage({ refreshToken = 0 }: { refreshToken?: num
 
   useEffect(() => {
     void load(selectedPath)
-    // refreshToken is an explicit publication signal from Harness Optimizer.
+    // refreshToken signals that a Harness Optimizer run settled and the live
+    // directory plus Git-backed management history should be reloaded.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshToken])
 
@@ -212,27 +231,80 @@ export function ContinualLearningPage({ refreshToken = 0 }: { refreshToken?: num
 
   const dirty = content !== savedContent
   const pathGroups = useMemo(() => groupFiles(snapshot?.files.map((file) => file.path) || []), [snapshot])
+  const scheduleEnabled = scheduleSettings.enabled ?? scheduleSettings.inheritedEnabled
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--nova-bg)]">
       <header className="shrink-0 border-b border-[var(--nova-border)] px-4 py-3 sm:px-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h1 className="text-sm font-semibold text-[var(--nova-text)]">{t('continualLearning.title')}</h1>
-              <Badge variant="outline" className="h-4 px-1.5 text-[9px] tracking-[0.12em]">LAB</Badge>
-            </div>
-            <p className="mt-1 max-w-2xl text-[11px] leading-4 text-[var(--nova-text-faint)]">{t('continualLearning.description')}</p>
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <h1 className="text-sm font-semibold text-[var(--nova-text)]">{t('continualLearning.title')}</h1>
+            <Badge variant="outline" className="h-4 px-1.5 text-[9px] tracking-[0.12em]">LAB</Badge>
           </div>
-          {schedule && (
-            <div className="flex items-center gap-2 text-[10px] text-[var(--nova-text-muted)]">
-              <Clock3 className="h-3.5 w-3.5" />
-              {schedule.enabled
-                ? t('continualLearning.schedule.enabled', { hours: schedule.interval_hours })
-                : t('continualLearning.schedule.disabled')}
-              {schedule.last_success && <span>· {formatDateTime(schedule.last_success)}</span>}
-            </div>
-          )}
+          <p className="mt-1 max-w-2xl text-[11px] leading-4 text-[var(--nova-text-faint)]">{t('continualLearning.description')}</p>
         </div>
+        <section className="mt-3 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-3" aria-labelledby="continual-learning-schedule-title">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div className="flex min-w-0 items-start gap-2">
+              <Clock3 className="h-3.5 w-3.5" />
+              <div className="min-w-0">
+                <h2 id="continual-learning-schedule-title" className="text-xs font-medium text-[var(--nova-text)]">
+                  {t('settings.labs.continualLearningSchedule')}
+                </h2>
+                <p className="mt-0.5 text-[11px] leading-4 text-[var(--nova-text-faint)]">
+                  {t('continualLearning.schedule.description')}
+                </p>
+              </div>
+            </div>
+            <span className="text-[10px] text-[var(--nova-text-muted)]">
+              {schedule?.last_success
+                ? t('continualLearning.schedule.lastSuccess', { time: formatDateTime(schedule.last_success) })
+                : t('continualLearning.schedule.neverRun')}
+            </span>
+          </div>
+          <div className="mt-3 grid gap-2">
+            <SettingsFieldRow
+              title={t('continualLearning.schedule.switch')}
+              description={t('continualLearning.schedule.switchDescription')}
+              className="bg-[var(--nova-surface)]"
+              controlClassName="items-center justify-end sm:w-28"
+            >
+              <SwitchWithInheritance
+                checked={scheduleEnabled}
+                inherited={scheduleSettings.enabled === null}
+                onChange={scheduleSettings.onEnabledChange}
+                onReset={() => scheduleSettings.onEnabledChange(null)}
+                ariaLabel={t('continualLearning.schedule.switch')}
+              />
+            </SettingsFieldRow>
+            <SettingsFieldRow
+              title={t('settings.labs.continualLearningIntervalHours')}
+              description={t('continualLearning.schedule.intervalDescription')}
+              disabled={!scheduleEnabled}
+              className="bg-[var(--nova-surface)]"
+              controlClassName="items-center sm:w-28"
+            >
+              <Input
+                type="number"
+                min={1}
+                max={720}
+                value={scheduleSettings.intervalHours ?? ''}
+                placeholder={String(scheduleSettings.inheritedIntervalHours)}
+                disabled={!scheduleEnabled}
+                aria-label={t('settings.labs.continualLearningIntervalHours')}
+                onChange={(event) => {
+                  if (event.target.value === '') {
+                    scheduleSettings.onIntervalHoursChange(null)
+                    return
+                  }
+                  const parsed = Number(event.target.value)
+                  if (Number.isFinite(parsed)) {
+                    scheduleSettings.onIntervalHoursChange(Math.min(720, Math.max(1, Math.trunc(parsed))))
+                  }
+                }}
+              />
+            </SettingsFieldRow>
+          </div>
+        </section>
       </header>
       {error && <div className="shrink-0 border-b border-[var(--nova-border)] bg-red-500/5 px-4 py-2 text-xs text-red-400">{error}</div>}
       <Tabs defaultValue="state" className="min-h-0 flex-1 gap-0">

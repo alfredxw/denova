@@ -82,6 +82,10 @@ type CompactionCheckpoint struct {
 // raw-history retention, effective markers, recovery, and Event publication.
 type CompactionManager interface {
 	Identity() CapabilityIdentity
+	// SummaryLimitBytes is the maximum checkpoint size that this Agent can
+	// inject as one context fragment. It must already be aligned with the
+	// target Agent's fragment, aggregate-context, and provider-input limits.
+	SummaryLimitBytes() int
 	Plan(context.Context, CompactionPlanRequest) (CompactionPlan, error)
 	Compact(context.Context, CompactionCompactRequest) (CompactionCheckpoint, error)
 }

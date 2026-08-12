@@ -8,7 +8,6 @@ import (
 
 	"denova/config"
 	agents "denova/internal/agents"
-	"denova/internal/agents/harnessstate"
 	agentinteractive "denova/internal/agents/interactive"
 	"denova/internal/agents/prompts"
 	agentrun "denova/internal/agents/run"
@@ -18,12 +17,6 @@ import (
 
 	agent "github.com/alfredxw/denova/agent"
 )
-
-// WithHarnessRun binds all Agent builders in this application layer to the
-// immutable State snapshot selected for one accepted command or public Run.
-func WithHarnessRun(ctx context.Context, runID string) context.Context {
-	return harnessstate.WithRunID(ctx, runID)
-}
 
 type BuiltAgent struct {
 	Definition  agents.Definition

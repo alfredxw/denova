@@ -25,7 +25,7 @@ import { resolveAgentAskAndRefresh } from '@/lib/agent-ask'
 
 const CHAT_KEY = 'harness-optimizer:user'
 
-export function HarnessOptimizerChat({ onPublished }: { onPublished: () => void }) {
+export function HarnessOptimizerChat({ onSettled }: { onSettled: () => void }) {
   const { t } = useTranslation()
   const mountedRef = useRef(false)
   const attachedTaskRef = useRef('')
@@ -87,13 +87,13 @@ export function HarnessOptimizerChat({ onPublished }: { onPublished: () => void 
       const projection = await getActiveHarnessOptimizer()
       if (!mountedRef.current) return
       applyProjection(projection)
-      if (!projection.active) onPublished()
+      if (!projection.active) onSettled()
     } catch (cause) {
       if (mountedRef.current) setError(`${t('continualLearning.chat.refreshFailed')}: ${errorMessage(cause)}`)
     } finally {
       if (mountedRef.current) setConnecting(false)
     }
-  }, [applyProjection, loadMessages, onPublished, t])
+  }, [applyProjection, loadMessages, onSettled, t])
 
   const consume = useCallback(async (stream: ReadableStream<UIMessageChunk>, taskID: string) => {
     try {

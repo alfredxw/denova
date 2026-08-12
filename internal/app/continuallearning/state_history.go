@@ -73,11 +73,13 @@ func (history *stateHistory) withLock(ctx context.Context, operation func() erro
 	return operation()
 }
 
-func (history *stateHistory) versions(ctx context.Context, snapshot agentstate.Snapshot, limit int) ([]StateVersion, error) {
+func (history *stateHistory) versions(ctx context.Context, snapshot *agentstate.Snapshot, limit int) ([]StateVersion, error) {
 	versions := make([]StateVersion, 0)
 	err := history.withLock(ctx, func() error {
-		if _, _, err := history.record(snapshot, "Observe current Harness State"); err != nil {
-			return err
+		if snapshot != nil {
+			if _, _, err := history.record(*snapshot, "Observe current Harness State"); err != nil {
+				return err
+			}
 		}
 		if limit <= 0 || limit > 500 {
 			limit = 100

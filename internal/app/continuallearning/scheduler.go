@@ -31,8 +31,8 @@ type scheduleRecord struct {
 }
 
 // StartScheduler starts the user-level periodic trigger. Manual and scheduled
-// learning converge on StartTask, so validation and publication semantics are
-// identical.
+// learning converge on StartTask, so live-State validation and Git history
+// recording are identical.
 func (service *Service) StartScheduler(ctx context.Context) {
 	if service == nil || service.host == nil {
 		return

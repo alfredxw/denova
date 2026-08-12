@@ -21,6 +21,8 @@ func (fixedCompactionManager) Identity() CapabilityIdentity {
 	return CapabilityIdentity{Kind: "compaction.fixed-test", Version: 1}
 }
 
+func (fixedCompactionManager) SummaryLimitBytes() int { return 64 << 10 }
+
 func (fixedCompactionManager) Plan(_ context.Context, request CompactionPlanRequest) (CompactionPlan, error) {
 	if !request.Force || len(request.Messages) < 2 {
 		return CompactionPlan{Action: CompactionNone}, nil
@@ -37,6 +39,8 @@ type contextDataCompactionManager struct{}
 func (contextDataCompactionManager) Identity() CapabilityIdentity {
 	return CapabilityIdentity{Kind: "compaction.context-data-test", Version: 1}
 }
+
+func (contextDataCompactionManager) SummaryLimitBytes() int { return 64 << 10 }
 
 func (contextDataCompactionManager) Plan(_ context.Context, request CompactionPlanRequest) (CompactionPlan, error) {
 	if !request.Force || len(request.Messages) < 2 {
@@ -65,6 +69,8 @@ type automaticContextDataCompactionManager struct {
 func (*automaticContextDataCompactionManager) Identity() CapabilityIdentity {
 	return CapabilityIdentity{Kind: "compaction.same-cycle-host-context-test", Version: 1}
 }
+
+func (*automaticContextDataCompactionManager) SummaryLimitBytes() int { return 64 << 10 }
 
 func (*automaticContextDataCompactionManager) Plan(_ context.Context, request CompactionPlanRequest) (CompactionPlan, error) {
 	if len(request.Messages) < 2 {

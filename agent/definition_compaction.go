@@ -12,7 +12,6 @@ import (
 )
 
 const (
-	maxCompactionSummaryBytes     = 8 << 20
 	maxCompactionContextDataBytes = 8 << 20
 )
 
@@ -145,13 +144,15 @@ func executeCompaction(
 		request.ExpectedRevision != 0 && (!present || current.Revision != request.ExpectedRevision) {
 		return CompactionState{}, false, ErrDefinitionMismatch
 	}
+	summaryLimit := prepared.definition.Compaction.SummaryLimitBytes()
 	modelRequest, err := compactionModelRequest(prepared, messages, currentInput, current, present)
 	if err != nil {
 		return CompactionState{}, false, err
 	}
 	plan, err := prepared.definition.Compaction.Plan(ctx, CompactionPlanRequest{
 		Session: session, Run: run, Messages: cloneMessages(messages), ModelRequest: modelRequest,
-		Force: request.Force, Current: current, Present: present,
+		Force:   request.Force || present && len(current.Summary) > summaryLimit,
+		Current: current, Present: present,
 	})
 	if err != nil {
 		return CompactionState{}, false, err
@@ -182,8 +183,11 @@ func executeCompaction(
 		return CompactionState{}, false, err
 	}
 	checkpoint.Summary = strings.TrimSpace(checkpoint.Summary)
-	if checkpoint.Summary == "" || len(checkpoint.Summary) > maxCompactionSummaryBytes || checkpoint.TokenEstimate < 0 {
+	if checkpoint.Summary == "" || checkpoint.TokenEstimate < 0 {
 		return CompactionState{}, false, errors.New("Compaction Manager returned an invalid checkpoint")
+	}
+	if len(checkpoint.Summary) > summaryLimit {
+		return CompactionState{}, false, fmt.Errorf("%w: Compaction checkpoint is %d bytes and exceeds the target Agent summary limit %d", ErrContextLimit, len(checkpoint.Summary), summaryLimit)
 	}
 	if err := validateCompactionContextData(checkpoint.ContextData); err != nil {
 		return CompactionState{}, false, err
@@ -305,7 +309,15 @@ func compactionModelRequest(
 	if prepared.definition.Instructions != "" {
 		result = append(result, SystemMessage(prepared.definition.Instructions))
 	}
-	effective := effectiveCompactionMessages(messages, current, present)
+	effective, err := effectiveCompactionMessages(messages, current, present, prepared.definition.Compaction.SummaryLimitBytes())
+	if err != nil {
+		// Raw history is retained specifically so an oversized checkpoint can be
+		// regenerated after the target Agent's configured limits are lowered.
+		if !errors.Is(err, ErrContextLimit) {
+			return nil, err
+		}
+		effective = cloneMessages(messages)
+	}
 	if strings.TrimSpace(currentInput) == "" {
 		for _, fragment := range prepared.fragments {
 			if fragment.Placement == ContextLeadingMessage {
@@ -323,19 +335,25 @@ func compactionModelRequest(
 	return result, nil
 }
 
-func effectiveCompactionMessages(messages []*Message, state CompactionState, present bool) []*Message {
+func effectiveCompactionMessages(messages []*Message, state CompactionState, present bool, summaryLimit int) ([]*Message, error) {
 	if !present || state.Removed || state.ReplacementFrom < 0 || state.ReplacementTo > len(messages) || state.ReplacementTo <= state.ReplacementFrom {
-		return cloneMessages(messages)
+		return cloneMessages(messages), nil
+	}
+	if summaryLimit <= 0 {
+		return nil, errors.New("Compaction summary limit must be positive")
+	}
+	if len(state.Summary) > summaryLimit {
+		return nil, fmt.Errorf("%w: durable Compaction checkpoint is %d bytes and exceeds the target Agent summary limit %d", ErrContextLimit, len(state.Summary), summaryLimit)
 	}
 	result := make([]*Message, 0, len(messages)-(state.ReplacementTo-state.ReplacementFrom)+1)
 	result = append(result, cloneMessages(messages[:state.ReplacementFrom])...)
 	result = append(result, SystemMessage(renderContextFragment(ContextFragment{
 		Source: "agent.compaction", Purpose: "replace compacted conversation history",
 		Resource: state.ID, Revision: fmt.Sprintf("%d", state.Revision),
-		Placement: ContextCompactionCheckpoint, Content: state.Summary, HardLimit: maxCompactionSummaryBytes,
+		Placement: ContextCompactionCheckpoint, Content: state.Summary, HardLimit: summaryLimit,
 	})))
 	result = append(result, cloneMessages(messages[state.ReplacementTo:])...)
-	return result
+	return result, nil
 }
 
 var _ runstate.StructuralEngine = (*definitionEngine)(nil)

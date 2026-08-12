@@ -15,7 +15,7 @@ import type { SectionedNavigationGroup } from '@/components/navigation/sectioned
 import { Button } from '@/components/ui/button'
 import { LoadingState } from '@/components/common/LoadingState'
 import { Input } from '@/components/ui/input'
-import type { AgentContextOverride, AgentModelOverride, AgentSkillOverride, AgentToolOverride, ImageAPIProfileSettings, LayeredSettings, ModelProfileSettings, Settings, SettingsLayer } from '@/features/settings/types'
+import type { AgentContextOverride, AgentModelOverride, AgentSkillOverride, AgentToolOverride, ImageAPIProfileSettings, LabSettings, LayeredSettings, ModelProfileSettings, Settings, SettingsLayer } from '@/features/settings/types'
 import { modelProfileID, modelProfileLabel, modelProfilesWithDefault } from '@/features/settings/model-profiles'
 import { imageAPIProfileID, imageAPIProfileLabel, imageAPIProfilesWithDefault } from '@/features/settings/image-profiles'
 import { useLayeredSettingsDraft } from '@/features/settings/use-layered-settings-draft'
@@ -93,6 +93,8 @@ export function AgentsView({ target, onClose }: { target: ResourceTarget; onClos
   const contextValue = draft.agent_context?.[activeAgent] ?? {}
   const resolvedContext = layered?.resolved_agent_contexts?.[activeAgent]
   const inheritedToolParallelism = resolveInheritedToolParallelism(layered, activeLayer)
+  const inheritedScheduleEnabled = resolveInheritedLabBoolean(layered, 'continual_learning_schedule', false)
+  const inheritedScheduleIntervalHours = resolveInheritedLabNumber(layered, 'continual_learning_interval_hours', 24, 1, 720)
   const configManagerContext = useMemo(() => ({
     active_settings_layer: activeLayer,
     active_agent: activeAgent,
@@ -117,7 +119,7 @@ export function AgentsView({ target, onClose }: { target: ResourceTarget; onClos
       .catch(() => undefined)
   }, [activeLayer, notifyUpdated, reload, saveNow])
 
-  const handleStatePublished = useCallback(() => {
+  const handleOptimizerSettled = useCallback(() => {
     setStateRefreshToken((value) => value + 1)
   }, [])
 
@@ -129,6 +131,20 @@ export function AgentsView({ target, onClose }: { target: ResourceTarget; onClos
     } catch {
       // The layered settings hook already exposes the actionable save error.
     }
+  }
+
+  const openContinualLearning = async () => {
+    if (activeLayer !== 'user') {
+      try {
+        await saveNow()
+        setActiveLayer('user')
+      } catch {
+        // The layered settings hook already exposes the actionable save error.
+        return
+      }
+    }
+    setContinualLearningActive(true)
+    setOptimizerOpen(true)
   }
 
   const setAgentModel = (patch: Partial<AgentModelOverride>) => {
@@ -178,6 +194,13 @@ export function AgentsView({ target, onClose }: { target: ResourceTarget; onClos
 
   const setToolParallelism = (value: number | null) => {
     setDraft((current) => ({ ...current, agent_tool_parallelism: value }))
+  }
+
+  const setLabField = <K extends keyof LabSettings>(key: K, value: LabSettings[K]) => {
+    setDraft((current) => ({
+      ...current,
+      labs: { ...current.labs, [key]: value },
+    }))
   }
 
   const setImageProfile = (profileID: string) => {
@@ -263,8 +286,7 @@ export function AgentsView({ target, onClose }: { target: ResourceTarget; onClos
           icon: <Bot className="h-4 w-4" />,
           content: <div className="h-full min-h-0 overflow-y-auto bg-[var(--nova-surface-2)] p-3"><AgentList active={continualLearningActive ? 'continual_learning' : activeAgent} continualLearningEnabled={continualLearningEnabled} onSelect={(item) => {
             if (item === 'continual_learning') {
-              setContinualLearningActive(true)
-              setOptimizerOpen(true)
+              void openContinualLearning()
               return
             }
             setContinualLearningActive(false)
@@ -281,7 +303,7 @@ export function AgentsView({ target, onClose }: { target: ResourceTarget; onClos
           icon: <Sparkles className="h-4 w-4" />,
           content: (
             <div className="h-full min-h-0 bg-[var(--nova-surface)]">
-              <HarnessOptimizerChat onPublished={handleStatePublished} />
+              <HarnessOptimizerChat onSettled={handleOptimizerSettled} />
             </div>
           ),
           desktopClassName: 'min-h-0 border-l border-[var(--nova-border)]',
@@ -335,7 +357,17 @@ export function AgentsView({ target, onClose }: { target: ResourceTarget; onClos
               </div>
             )}
             {continualLearningActive ? (
-              <ContinualLearningPage refreshToken={stateRefreshToken} />
+              <ContinualLearningPage
+                refreshToken={stateRefreshToken}
+                scheduleSettings={{
+                  enabled: draft.labs?.continual_learning_schedule ?? null,
+                  inheritedEnabled: inheritedScheduleEnabled,
+                  intervalHours: draft.labs?.continual_learning_interval_hours ?? null,
+                  inheritedIntervalHours: inheritedScheduleIntervalHours,
+                  onEnabledChange: (value) => setLabField('continual_learning_schedule', value),
+                  onIntervalHoursChange: (value) => setLabField('continual_learning_interval_hours', value),
+                }}
+              />
             ) : <div className="mx-auto flex w-full min-w-0 max-w-5xl flex-col gap-5 px-4 py-5 sm:px-6">
               <AgentHeader agent={selected} />
               <AgentToolSchedulingSection
@@ -457,6 +489,32 @@ function resolveInheritedToolParallelism(layered: LayeredSettings | null, layer:
     const candidate = settings?.agent_tool_parallelism
     if (candidate === null || candidate === undefined) continue
     value = candidate <= 0 ? 8 : Math.min(64, Math.trunc(candidate))
+  }
+  return value
+}
+
+function resolveInheritedLabBoolean(layered: LayeredSettings | null, key: keyof LabSettings, fallback: boolean) {
+  let value = fallback
+  for (const settings of [layered?.default, layered?.global]) {
+    const candidate = settings?.labs?.[key]
+    if (typeof candidate === 'boolean') value = candidate
+  }
+  return value
+}
+
+function resolveInheritedLabNumber(
+  layered: LayeredSettings | null,
+  key: keyof LabSettings,
+  fallback: number,
+  minimum: number,
+  maximum: number,
+) {
+  let value = fallback
+  for (const settings of [layered?.default, layered?.global]) {
+    const candidate = settings?.labs?.[key]
+    if (typeof candidate === 'number' && Number.isFinite(candidate) && candidate >= minimum && candidate <= maximum) {
+      value = candidate
+    }
   }
   return value
 }

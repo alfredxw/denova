@@ -12,7 +12,57 @@ import (
 	"denova/internal/agents/session"
 
 	agent "github.com/alfredxw/denova/agent"
+	agenttools "github.com/alfredxw/denova/agent/tools"
 )
+
+func TestReadAdapterComposesWithGenericReadContract(t *testing.T) {
+	type genericReadInput struct {
+		Path   string `json:"path"`
+		Offset int    `json:"offset,omitempty" jsonschema:"minimum=1"`
+		Limit  int    `json:"limit,omitempty" jsonschema:"minimum=1"`
+	}
+	generic, err := agenttools.NewReadAdapter(
+		"skill_reference",
+		func(_ context.Context, path string) (bool, error) { return strings.HasPrefix(path, "skill://"), nil },
+		func(_ context.Context, input genericReadInput) (agenttools.ReadResult, error) {
+			return agenttools.ReadResult{Path: input.Path, Content: "reference"}, nil
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	trajectory, err := NewReadAdapter(Catalog{Sources: func(context.Context) ([]Source, error) { return nil, nil }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := agenttools.Read([]agenttools.ReadAdapter{generic, trajectory}); err != nil {
+		t.Fatalf("compose generic and trajectory read adapters: %v", err)
+	}
+}
+
+func TestReadAdapterRejectsOversizedResourceURI(t *testing.T) {
+	adapter, err := NewReadAdapter(Catalog{Sources: func(context.Context) ([]Source, error) { return nil, nil }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	arguments, err := json.Marshal(map[string]string{"path": Scheme + strings.Repeat("x", maxResourceURIBytes)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := adapter.Read(context.Background(), string(arguments)); err == nil || !strings.Contains(err.Error(), "exceeds 4096 bytes") {
+		t.Fatalf("oversized trajectory resource URI was accepted: %v", err)
+	}
+}
+
+func TestReadAdapterRejectsLimitAboveCatalogMaximum(t *testing.T) {
+	adapter, err := NewReadAdapter(Catalog{Sources: func(context.Context) ([]Source, error) { return nil, nil }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := adapter.Read(context.Background(), `{"path":"trajectory://index","limit":501}`); err == nil || !strings.Contains(err.Error(), "cannot exceed 500") {
+		t.Fatalf("oversized trajectory limit was accepted: %v", err)
+	}
+}
 
 func TestCatalogReadsExistingSessionsWithoutExposingMachinePaths(t *testing.T) {
 	dataDir := t.TempDir()

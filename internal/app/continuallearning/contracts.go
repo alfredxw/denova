@@ -1,5 +1,5 @@
-// Package continuallearning owns Denova's user-level Harness State product
-// workflow. Generic State mechanics stay in agent/state; Git history, Agent
+// Package continuallearning owns Denova's user-level Harness State management
+// workflow. The live directory is authoritative; Git history, optimizer
 // execution, trajectory discovery, scheduling, and UI contracts live here.
 package continuallearning
 
@@ -23,7 +23,7 @@ const (
 	TriggerScheduled   = "scheduled"
 	userScope          = "user"
 	restoreDataType    = "denova.harness_optimizer.request"
-	restoreDataVersion = 1
+	restoreDataVersion = 2
 )
 
 type Outcome = trajectory.Outcome

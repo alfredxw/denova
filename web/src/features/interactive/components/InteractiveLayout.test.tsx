@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { InteractiveLayout } from './InteractiveLayout'
 import { useInteractiveStore } from '../stores/interactive-store'
 import { createInteractiveBranch, createInteractiveStory, deleteInteractiveStory, getInteractiveBranches, getInteractiveDirectorStatus, getInteractiveSnapshot, getInteractiveStories, getInteractiveTellers, getStoryDirectors, selectInteractiveStory, updateInteractiveStory } from '../api'
-import type { Snapshot, StoryDirector, StorySummary, Teller } from '../types'
+import type { InteractiveSnapshotResponse, StoryDirector, StorySummary, Teller } from '../types'
 
 vi.mock('@/hooks/useIsMobile', () => ({
   useIsMobile: () => false,
@@ -121,7 +121,7 @@ beforeEach(() => {
   vi.mocked(getInteractiveTellers).mockResolvedValue([])
   vi.mocked(getStoryDirectors).mockResolvedValue([])
   vi.mocked(selectInteractiveStory).mockResolvedValue(undefined)
-  vi.mocked(getInteractiveSnapshot).mockResolvedValue({ story_id: 'st_new', branch_id: 'main', turns: [], state: {} })
+  vi.mocked(getInteractiveSnapshot).mockResolvedValue(snapshotResponse())
   vi.mocked(getInteractiveBranches).mockResolvedValue([{ id: 'main', head: '', title: '主线', created_at: '2026-07-04T00:00:00Z', current: true }])
   vi.mocked(getInteractiveDirectorStatus).mockResolvedValue(directorStatus('ready'))
 })
@@ -196,13 +196,13 @@ describe('InteractiveLayout polling lifecycle', () => {
 
   it('polls Director progress through the lightweight status projection', async () => {
     vi.useFakeTimers()
-    const runningSnapshot: Snapshot = {
+    const runningSnapshot: InteractiveSnapshotResponse = snapshotResponse({
       story_id: 'st_new',
       branch_id: 'main',
       turns: [{ id: 'turn-1', parent_id: null, branch_id: 'main', ts: '2026-07-04T00:00:00Z', user: '继续', narrative: '结果' }],
       state: {},
       director_plan_status: directorStatus('running'),
-    }
+    })
     useInteractiveStore.setState({
       stories: [story('st_new', '故事')],
       currentStoryId: 'st_new',
@@ -357,11 +357,9 @@ describe('InteractiveLayout branch creation', () => {
       current_story_id: 'st_1',
       stories: [story('st_1', '故事线')],
     })
-    vi.mocked(getInteractiveSnapshot).mockImplementation(async (storyId, branchId) => ({
+    vi.mocked(getInteractiveSnapshot).mockImplementation(async (storyId, branchId) => snapshotResponse({
       story_id: storyId,
       branch_id: branchId || 'main',
-      turns: [],
-      state: {},
     }))
     vi.mocked(createInteractiveBranch).mockResolvedValue({
       id: 'br-1',
@@ -426,7 +424,7 @@ function deferred<T>() {
   return { promise, resolve, reject }
 }
 
-function pendingInteractiveSnapshot(): Snapshot {
+function pendingInteractiveSnapshot(): InteractiveSnapshotResponse {
   const turn = {
     id: 'turn-1',
     parent_id: null,
@@ -436,12 +434,26 @@ function pendingInteractiveSnapshot(): Snapshot {
     narrative: '待处理',
     state_status: 'pending' as const,
   }
-  return {
+  return snapshotResponse({
     story_id: 'st_new',
     branch_id: 'main',
     turns: [turn],
     state: {},
     current_turn: turn,
+  })
+}
+
+function snapshotResponse(overrides: Partial<InteractiveSnapshotResponse> = {}): InteractiveSnapshotResponse {
+  return {
+    story_id: 'st_new',
+    branch_id: 'main',
+    turns: [],
+    state: {},
+    graph: { nodes: [], branches: [] },
+    turn_count: 0,
+    turn_start: 0,
+    has_earlier_turns: false,
+    ...overrides,
   }
 }
 

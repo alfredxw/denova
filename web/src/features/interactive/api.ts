@@ -1,7 +1,7 @@
 import { createAgentCommandID, fetchAPI, jsonHeaders, parseSSEStream, requestJSON, responseAPIError } from '@/lib/api-client'
 import type { AgentCommandReceipt, AgentRuntimeActiveOutput, AgentRuntimeOpenTool, AgentRuntimeOperation, AgentRuntimeQueuedCommand, AgentRuntimeRecoveryAction, AgentRuntimeRecoveryReceipt, ContextAnalysis, InteractiveImage } from '@/lib/api-client'
 import { isKnownAgentCommandOutcome } from '@/lib/agent-command'
-import type { ActorStateModule, ActorTraitRollRequest, ActorTraitRollResult, BranchSummary, DirectorPlan, DirectorPlanStatus, EventPackageModule, ImagePreset, InitialActorTraitRoll, InteractiveSSEEvent, RuleResolution, RuleResolutionRerollInput, RuleSystemModule, Snapshot, StoryDirector, StoryDirectorModuleRefs, StoryDirectorRunPolicy, StoryHistoryPage, StoryStateSchemaPolicy, StyleReference, StyleReferenceFileDocument, StoryImageSettings, StoryIndex, StoryOpeningConfig, StorySummary, Teller, UpdateDirectorPlanInput, UpdateTurnNarrativeResult } from './types'
+import type { ActorStateModule, ActorTraitRollRequest, ActorTraitRollResult, BranchSummary, DirectorPlan, DirectorPlanStatus, EventPackageModule, ImagePreset, InitialActorTraitRoll, InteractiveSnapshotResponse, InteractiveSSEEvent, RuleResolution, RuleResolutionRerollInput, RuleSystemModule, StoryDirector, StoryDirectorModuleRefs, StoryDirectorRunPolicy, StoryHistoryPage, StoryStateSchemaPolicy, StyleReference, StyleReferenceFileDocument, StoryImageSettings, StoryIndex, StoryOpeningConfig, StorySummary, Teller, UpdateDirectorPlanInput, UpdateTurnNarrativeResult } from './types'
 
 function presetMutationBody<T extends object>(input: T, baseRevision?: string) {
   return {
@@ -65,9 +65,9 @@ export function deleteInteractiveStory(id: string): Promise<void> {
   })
 }
 
-export function getInteractiveSnapshot(storyId: string, branchId?: string): Promise<Snapshot> {
+export function getInteractiveSnapshot(storyId: string, branchId?: string): Promise<InteractiveSnapshotResponse> {
   const query = branchId ? `?branch=${encodeURIComponent(branchId)}` : ''
-  return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/snapshot${query}`)
+  return requestJSON<InteractiveSnapshotResponse>(`/api/interactive/stories/${encodeURIComponent(storyId)}/snapshot${query}`)
 }
 
 export function getInteractiveHistoryPage(storyId: string, branchId: string, before: string, limit = 100): Promise<StoryHistoryPage> {

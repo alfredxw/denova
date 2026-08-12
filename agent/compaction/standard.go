@@ -45,10 +45,11 @@ func (summarizer SummarizerFunc) Summarize(ctx context.Context, request SummaryR
 }
 
 type StandardConfig struct {
-	Summarizer      Summarizer
-	TriggerBytes    int
-	KeepRecentBytes int
-	HardLimitBytes  int
+	Summarizer        Summarizer
+	TriggerBytes      int
+	KeepRecentBytes   int
+	HardLimitBytes    int
+	SummaryLimitBytes int
 }
 
 type standardManager struct {
@@ -70,17 +71,21 @@ func Standard(config StandardConfig) (agent.CompactionManager, error) {
 		config.KeepRecentBytes = 512 << 10
 	}
 	if config.HardLimitBytes <= 0 {
-		config.HardLimitBytes = 8 << 20
+		return nil, errors.New("Compaction HardLimitBytes must be positive")
+	}
+	if config.SummaryLimitBytes <= 0 || config.SummaryLimitBytes > config.HardLimitBytes {
+		return nil, errors.New("Compaction SummaryLimitBytes must be positive and no larger than HardLimitBytes")
 	}
 	if config.KeepRecentBytes >= config.TriggerBytes || config.TriggerBytes >= config.HardLimitBytes {
 		return nil, errors.New("Compaction requires KeepRecentBytes < TriggerBytes < HardLimitBytes")
 	}
 	encoded, _ := json.Marshal(struct {
-		Summarizer      agent.CapabilityIdentity
-		TriggerBytes    int
-		KeepRecentBytes int
-		HardLimitBytes  int
-	}{config.Summarizer.Identity(), config.TriggerBytes, config.KeepRecentBytes, config.HardLimitBytes})
+		Summarizer        agent.CapabilityIdentity
+		TriggerBytes      int
+		KeepRecentBytes   int
+		HardLimitBytes    int
+		SummaryLimitBytes int
+	}{config.Summarizer.Identity(), config.TriggerBytes, config.KeepRecentBytes, config.HardLimitBytes, config.SummaryLimitBytes})
 	digest := sha256.Sum256(encoded)
 	return &standardManager{config: config, identity: agent.CapabilityIdentity{
 		Kind: "compaction.standard", Version: 1, ConfigHash: hex.EncodeToString(digest[:]),
@@ -88,6 +93,13 @@ func Standard(config StandardConfig) (agent.CompactionManager, error) {
 }
 
 func (manager *standardManager) Identity() agent.CapabilityIdentity { return manager.identity }
+
+func (manager *standardManager) SummaryLimitBytes() int {
+	if manager == nil {
+		return 0
+	}
+	return manager.config.SummaryLimitBytes
+}
 
 func (manager *standardManager) Plan(_ context.Context, request agent.CompactionPlanRequest) (agent.CompactionPlan, error) {
 	bytes := messageBytes(request.ModelRequest)
@@ -131,24 +143,32 @@ func (manager *standardManager) Compact(ctx context.Context, request agent.Compa
 	if summary.Content == "" || summary.TokenEstimate < 0 {
 		return agent.CompactionCheckpoint{}, errors.New("Compaction Summarizer returned an invalid result")
 	}
+	if len(summary.Content) > manager.config.SummaryLimitBytes {
+		return agent.CompactionCheckpoint{}, fmt.Errorf("%w: Compaction summary is %d bytes and exceeds the target Agent limit %d", agent.ErrContextLimit, len(summary.Content), manager.config.SummaryLimitBytes)
+	}
 	return agent.CompactionCheckpoint{Summary: summary.Content, TokenEstimate: summary.TokenEstimate}, nil
 }
 
 type disabledManager struct {
-	hardLimit int
-	identity  agent.CapabilityIdentity
+	hardLimit    int
+	summaryLimit int
+	identity     agent.CapabilityIdentity
 }
 
-func Disabled(hardLimitBytes int) agent.CompactionManager {
-	if hardLimitBytes <= 0 {
-		hardLimitBytes = 8 << 20
-	}
-	return &disabledManager{hardLimit: hardLimitBytes, identity: agent.CapabilityIdentity{
-		Kind: "compaction.disabled", Version: 1, ConfigHash: fmt.Sprintf("bytes:%d", hardLimitBytes),
+func Disabled(hardLimitBytes, summaryLimitBytes int) agent.CompactionManager {
+	return &disabledManager{hardLimit: hardLimitBytes, summaryLimit: summaryLimitBytes, identity: agent.CapabilityIdentity{
+		Kind: "compaction.disabled", Version: 1, ConfigHash: fmt.Sprintf("input:%d;summary:%d", hardLimitBytes, summaryLimitBytes),
 	}}
 }
 
 func (manager *disabledManager) Identity() agent.CapabilityIdentity { return manager.identity }
+
+func (manager *disabledManager) SummaryLimitBytes() int {
+	if manager == nil {
+		return 0
+	}
+	return manager.summaryLimit
+}
 
 func (manager *disabledManager) Plan(_ context.Context, request agent.CompactionPlanRequest) (agent.CompactionPlan, error) {
 	bytes := messageBytes(request.Messages)

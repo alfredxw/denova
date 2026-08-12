@@ -234,6 +234,9 @@ func validateDefinition(definition Definition) error {
 	if strings.TrimSpace(definition.Key) != definition.Key {
 		return errors.New("agent Definition Key cannot contain surrounding whitespace")
 	}
+	if definition.Compaction != nil && definition.Compaction.SummaryLimitBytes() <= 0 {
+		return errors.New("agent Definition Compaction summary limit must be positive")
+	}
 	return nil
 }
 

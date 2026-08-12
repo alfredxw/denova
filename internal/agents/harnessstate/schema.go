@@ -15,35 +15,15 @@ import (
 	agentstate "github.com/alfredxw/denova/agent/state"
 )
 
-type runContextKey struct{}
-
-// WithRunID binds Agent construction to one durable public Run snapshot.
-func WithRunID(ctx context.Context, runID string) context.Context {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	return context.WithValue(ctx, runContextKey{}, strings.TrimSpace(runID))
-}
-
-func RunID(ctx context.Context) string {
-	if ctx == nil {
-		return ""
-	}
-	value, _ := ctx.Value(runContextKey{}).(string)
-	return strings.TrimSpace(value)
-}
-
 const (
 	stateDirectoryName = "state"
 	toolsFilePath      = "tools.toml"
 )
 
-// Harness is the complete, immutable contribution produced from one State
-// snapshot. Maps and slices are private so callers cannot mutate a Run's
-// effective policy after it has been admitted.
+// Harness is the complete contribution produced from the live State
+// directory. Maps and slices are private so callers cannot mutate one Agent
+// build after it has been admitted.
 type Harness struct {
-	revision         string
-	token            string
 	prompts          map[string]string
 	contexts         []ContextFragment
 	toolDescriptions map[string]string
@@ -58,10 +38,6 @@ type ContextFragment struct {
 	Content   string
 	Resource  string
 }
-
-func (h Harness) Revision() string { return h.revision }
-
-func (h Harness) Token() string { return h.token }
 
 func (h Harness) Prompt(agentKind string) string {
 	return h.prompts[strings.TrimSpace(agentKind)]
@@ -157,31 +133,42 @@ func (m *Manager) Store() *agentstate.Store {
 }
 
 func (m *Manager) Current(ctx context.Context) (Harness, error) {
+	_, harness, err := m.readValidated(ctx)
+	return harness, err
+}
+
+// ValidatedSnapshot returns the exact live files after full schema and budget
+// validation. Management callers use it when a history record must match the
+// same validated contents.
+func (m *Manager) ValidatedSnapshot(ctx context.Context) (agentstate.Snapshot, error) {
+	snapshot, _, err := m.readValidated(ctx)
+	return snapshot, err
+}
+
+func (m *Manager) readValidated(ctx context.Context) (agentstate.Snapshot, Harness, error) {
 	if m == nil || m.store == nil {
-		return Harness{}, fmt.Errorf("Harness State manager is unavailable")
+		return agentstate.Snapshot{}, Harness{}, fmt.Errorf("Harness State manager is unavailable")
 	}
 	snapshot, err := m.store.Current(ctx)
 	if err != nil {
-		return Harness{}, err
+		return agentstate.Snapshot{}, Harness{}, err
 	}
-	return parse(snapshot, m.config())
-}
-
-// ForRun pins the current State to a stable public Agent Run identity. The
-// same identity restores the exact content snapshot after a cold restart.
-func (m *Manager) ForRun(ctx context.Context, runID string) (Harness, error) {
-	if m == nil || m.store == nil {
-		return Harness{}, fmt.Errorf("Harness State manager is unavailable")
-	}
-	snapshot, err := m.store.ForRun(ctx, runID)
+	harness, err := parse(snapshot, m.config())
 	if err != nil {
-		return Harness{}, err
+		return agentstate.Snapshot{}, Harness{}, err
 	}
-	return parse(snapshot, m.config())
+	return snapshot, harness, nil
 }
 
-// Load opens and validates the user State, pinning it when WithRunID is
-// present. Build-time callers without a durable identity receive Current.
+// Validate checks the complete live directory. It is used by management tools
+// after direct file edits and does not mutate files or record Git history.
+func (m *Manager) Validate(ctx context.Context) error {
+	_, err := m.Current(ctx)
+	return err
+}
+
+// Load opens and validates the current user State directory. Every Agent
+// build observes the files that are live at that moment.
 func Load(ctx context.Context, cfg *config.Config) (Harness, error) {
 	if cfg == nil {
 		return Harness{}, fmt.Errorf("load Harness State: config is nil")
@@ -195,9 +182,6 @@ func Load(ctx context.Context, cfg *config.Config) (Harness, error) {
 	manager, err := Open(cfg)
 	if err != nil {
 		return Harness{}, err
-	}
-	if runID := RunID(ctx); runID != "" {
-		return manager.ForRun(ctx, runID)
 	}
 	return manager.Current(ctx)
 }

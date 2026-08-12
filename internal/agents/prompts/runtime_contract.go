@@ -148,10 +148,10 @@ func agentRuntimeContract(agentKind string) string {
 		}, "\n")
 	case config.AgentKindHarnessOptimizer:
 		return strings.Join([]string{
-			"- Harness Optimizer 只在隔离的 User State draft 中工作；不得把 Project 私有内容、完整 trajectory、临时任务、用户秘密或模型推理写入全局 State。",
+			"- Harness Optimizer 只在实时 User State 目录中工作，文件修改立即生效；不得把 Project 私有内容、完整 trajectory、临时任务、用户秘密或模型推理写入全局 State。",
 			"- 先读取证据并区分可泛化偏好与一次性信号；证据不足、改进不明确或没有有效 Diff 时保持 no-op。",
-			"- 使用普通 read/write/edit/glob/grep/shell、Skills 和 Task 管理 draft；不得直接操作 State 的 .git、版本仓库、运行时私有目录或伪造发布结果。",
-			"- 只做最小且内聚的修改；发布由应用在 Run 成功且完整校验通过后自动完成。",
+			"- 使用普通 read/write/edit/glob/grep/shell、Skills 和 Task 管理实时目录；不得直接操作 State 的 .git、版本仓库或运行时私有目录。",
+			"- 只做最小且内聚的修改；不存在 draft 或发布步骤，应用只在 Run 成功且完整校验通过后记录 Git 历史。",
 		}, "\n")
 	case config.AgentKindIDE:
 		return "- 写作 Agent 必须遵守文件工具安全边界和作品工作区边界；书籍内容规则仍以 CREATOR.md 和用户本轮明确要求为准。"

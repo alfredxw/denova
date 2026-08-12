@@ -46,7 +46,7 @@ func (service *Service) prepareAgentCycle(runtime *Runtime, request AgentGenerat
 	if err != nil {
 		return agentexecution.Cycle{}, nil, err
 	}
-	builtAgent, err := appagentruntime.BuildImageAgent(appagentruntime.WithHarnessRun(runtime.Context(), request.CommandID), &cfg, runtime.BookState, request.SystemPrompt)
+	builtAgent, err := appagentruntime.BuildImageAgent(runtime.Context(), &cfg, runtime.BookState, request.SystemPrompt)
 	if err != nil {
 		return agentexecution.Cycle{}, nil, err
 	}

@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"path/filepath"
 	"strings"
-	"sync"
 
 	"denova/config"
 	chatagent "denova/internal/agents/chat"
@@ -20,61 +19,10 @@ import (
 	appagentruntime "denova/internal/app/agentruntime"
 	appsettings "denova/internal/app/settings"
 	apptask "denova/internal/app/task"
-
-	agentstate "github.com/alfredxw/denova/agent/state"
 )
 
 type optimizerRestoreData struct {
-	DraftID      string `json:"draft_id"`
-	BaseRevision string `json:"base_revision"`
-	Summary      string `json:"summary"`
-	Trigger      string `json:"trigger"`
-}
-
-type managedDraft struct {
-	mu      sync.Mutex
-	draft   *agentstate.Draft
-	history *stateHistory
-	settled bool
-}
-
-func (draft *managedDraft) publish(ctx context.Context, summary string) error {
-	draft.mu.Lock()
-	defer draft.mu.Unlock()
-	if draft.settled {
-		return nil
-	}
-	published := false
-	err := draft.history.withLock(ctx, func() error {
-		result, err := draft.draft.Publish(ctx)
-		if err != nil {
-			return err
-		}
-		published = true
-		if result.CleanupError != nil {
-			slog.Warn("[harness-optimizer] published State with deferred cleanup",
-				"draft_id", draft.draft.ID(), "error", result.CleanupError)
-		}
-		_, _, err = draft.history.record(result.Snapshot, summary)
-		return err
-	})
-	if published {
-		draft.settled = true
-	}
-	return err
-}
-
-func (draft *managedDraft) discard() {
-	draft.mu.Lock()
-	defer draft.mu.Unlock()
-	if draft.settled {
-		return
-	}
-	if err := draft.draft.Discard(); err != nil {
-		slog.Warn("[harness-optimizer] discard draft failed", "draft_id", draft.draft.ID(), "error", err)
-		return
-	}
-	draft.settled = true
+	Trigger string `json:"trigger"`
 }
 
 func (service *Service) StartTask(ctx context.Context, request Request) (*apptask.Task, error) {
@@ -124,20 +72,8 @@ func (service *Service) StartTask(ctx context.Context, request Request) (*apptas
 	if err != nil {
 		return nil, err
 	}
-	current, err := service.manager.Current(operation.Context())
+	cycle, err := service.buildCycle(operation.Context(), runtime, request, chatRequest, sessionID)
 	if err != nil {
-		operation.Release()
-		return nil, err
-	}
-	draft, err := service.manager.Store().BeginDraft(operation.Context(), current.Revision())
-	if err != nil {
-		operation.Release()
-		return nil, err
-	}
-	managed := &managedDraft{draft: draft, history: service.history}
-	cycle, err := service.buildCycle(operation.Context(), runtime, request, chatRequest, sessionID, managed)
-	if err != nil {
-		managed.discard()
 		operation.Release()
 		return nil, err
 	}
@@ -145,14 +81,12 @@ func (service *Service) StartTask(ctx context.Context, request Request) (*apptas
 		return task.BindLifetime(operation.Context())
 	})
 	if err != nil {
-		managed.discard()
 		operation.Release()
 		return nil, err
 	}
 	reservation, err := service.starts.Reserve(apptask.StartRecord{Identity: identity, Task: task})
 	if err != nil {
 		task.RejectStart(err)
-		managed.discard()
 		operation.Release()
 		return nil, err
 	}
@@ -163,22 +97,17 @@ func (service *Service) StartTask(ctx context.Context, request Request) (*apptas
 	if err != nil {
 		reservation.Rollback()
 		task.RejectStart(err)
-		managed.discard()
 		operation.Release()
 		return nil, err
 	}
 	if err := task.Start(func(runCtx context.Context, _ *apptask.Task, _ func(agentrun.Event)) {
 		defer operation.Release()
 		outcome := accepted.Wait(runCtx)
-		if outcome.Status != agentrun.OutcomeCompleted {
-			managed.discard()
-		}
 		slog.InfoContext(runCtx, "[harness-optimizer] run settled", "command_id", request.CommandID, "status", outcome.Status, "trigger", request.Trigger)
 	}); err != nil {
 		reservation.Rollback()
 		task.Abort()
 		_ = accepted.Wait(task.Context())
-		managed.discard()
 		operation.Release()
 		return nil, err
 	}
@@ -192,13 +121,12 @@ func (service *Service) buildCycle(
 	request Request,
 	chatRequest chatagent.ChatRequest,
 	sessionID string,
-	draft *managedDraft,
 ) (agentexecution.Cycle, error) {
 	runtimeConfig := runtime.Config
 	appsettings.ApplyLocale(&runtimeConfig, request.Locale)
-	runtimeConfig.Workspace = draft.draft.Root()
+	runtimeConfig.Workspace = service.manager.Root()
 	runtimeConfig.ProjectID = ""
-	runtimeConfig.ProjectStateDir = filepath.Join(service.dataDir, "runtime", "harness-optimizer", "drafts", draft.draft.ID())
+	runtimeConfig.ProjectStateDir = filepath.Join(service.dataDir, "runtime", "harness-optimizer")
 	target, _, err := agentconversation.GetOrCreateSession(service.sessions, sessionID, &runtimeConfig, config.AgentKindHarnessOptimizer)
 	if err != nil {
 		return agentexecution.Cycle{}, err
@@ -218,16 +146,13 @@ func (service *Service) buildCycle(
 		return agentexecution.Cycle{}, err
 	}
 	built, err := appagentruntime.BuildHarnessOptimizerAgent(
-		appagentruntime.WithHarnessRun(ctx, request.CommandID), &runtimeConfig, []agenttools.ReadAdapterBinding{binding},
-		newOptimizerCompletionGuard(draft.draft.Validate),
+		ctx, &runtimeConfig, []agenttools.ReadAdapterBinding{binding},
+		newOptimizerCompletionGuard(service.manager.Validate),
 	)
 	if err != nil {
 		return agentexecution.Cycle{}, err
 	}
-	restore, err := encodeRestoreData(optimizerRestoreData{
-		DraftID: draft.draft.ID(), BaseRevision: draft.draft.BaseRevision(),
-		Summary: optimizerVersionSummary(request), Trigger: request.Trigger,
-	})
+	restore, err := encodeRestoreData(optimizerRestoreData{Trigger: request.Trigger})
 	if err != nil {
 		return agentexecution.Cycle{}, err
 	}
@@ -243,10 +168,21 @@ func (service *Service) buildCycle(
 			ToolResultMaxBytes: appagentruntime.ToolResultMaxBytes(runtimeConfig),
 			SystemPromptLog:    built.Composition, RestoreData: restore,
 		},
-		Successor: func(publishCtx context.Context, _ agentrun.OperationID, _ agentrun.Outcome) error {
-			return draft.publish(publishCtx, optimizerVersionSummary(request))
+		Successor: func(recordCtx context.Context, _ agentrun.OperationID, _ agentrun.Outcome) error {
+			return service.recordCurrentState(recordCtx, optimizerVersionSummary(request))
 		},
 	}, nil
+}
+
+func (service *Service) recordCurrentState(ctx context.Context, summary string) error {
+	return service.history.withLock(ctx, func() error {
+		snapshot, err := service.manager.ValidatedSnapshot(ctx)
+		if err != nil {
+			return err
+		}
+		_, _, err = service.history.record(snapshot, summary)
+		return err
+	})
 }
 
 func (service *Service) PrepareCycle(ctx context.Context, recovery agentexecution.CycleRestoreRequest, binding agentrun.RuntimeBinding) (agentexecution.Cycle, error) {
@@ -265,15 +201,11 @@ func (service *Service) PrepareCycle(ctx context.Context, recovery agentexecutio
 	if err := json.Unmarshal(data.Data, &restored); err != nil {
 		return agentexecution.Cycle{}, fmt.Errorf("decode Harness Optimizer restore data: %w", err)
 	}
-	draft, err := service.manager.Store().ResumeDraft(ctx, restored.DraftID, restored.BaseRevision)
-	if err != nil {
-		return agentexecution.Cycle{}, err
-	}
 	request := Request{
 		CommandID: string(recovery.CommandID), Instruction: recovery.Request.Message,
 		Trigger: restored.Trigger, Locale: recovery.Request.Locale,
 	}
-	cycle, err := service.buildCycle(ctx, runtime, request, recovery.Request, binding.SessionID, &managedDraft{draft: draft, history: service.history})
+	cycle, err := service.buildCycle(ctx, runtime, request, recovery.Request, binding.SessionID)
 	if err != nil {
 		return agentexecution.Cycle{}, err
 	}
@@ -338,7 +270,7 @@ func optimizerMessage(request Request) string {
 - explicit_outcomes: trajectory://outcomes
 
 [Task / 任务]
-Evaluate the available trajectory evidence, critique recurring harness failures or durable user preferences, then update the isolated State draft only when a minimal reusable improvement is justified. Read specific session or run resources before drawing conclusions. Never copy project content or private reasoning into State.
+Evaluate the available trajectory evidence, critique recurring harness failures or durable user preferences, then update the live Harness State directory only when a minimal reusable improvement is justified. Every file edit takes effect immediately. Read specific session or run resources before drawing conclusions. Never copy project content or private reasoning into State.
 
 [User Instruction / 用户指令]
 %s`, normalizeTrigger(request.Trigger), strings.TrimSpace(request.Instruction)))

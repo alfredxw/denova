@@ -214,7 +214,7 @@ func (service *Service) AcceptTurn(ctx context.Context, input TurnRequest) (*Acc
 		return nil, fmt.Errorf("build AgentChat goal tool: %w", err)
 	}
 	builtAgent, err := appagentruntime.BuildConversationAgent(
-		appagentruntime.WithHarnessRun(ctx, request.CommandID), &runtime.Config, runtime.State, runtime.IDETeller, runtime.AgentKind,
+		ctx, &runtime.Config, runtime.State, runtime.IDETeller, runtime.AgentKind,
 		goalTools...,
 	)
 	if err != nil {
@@ -416,7 +416,7 @@ func (service *Service) prepareCommandExecution(ctx context.Context, active *run
 		return agentexecution.Cycle{}, err
 	}
 	builtAgent, err := appagentruntime.BuildConversationAgent(
-		appagentruntime.WithHarnessRun(ctx, request.CommandID), &runtime.Config, runtime.State, runtime.IDETeller, runtime.AgentKind,
+		ctx, &runtime.Config, runtime.State, runtime.IDETeller, runtime.AgentKind,
 		goalTools...,
 	)
 	if err != nil {

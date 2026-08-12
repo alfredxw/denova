@@ -23,6 +23,8 @@ import (
 
 const Scheme = "trajectory://"
 
+const maxResourceURIBytes = 4096
+
 type Source struct {
 	ProjectID string `json:"project_id"`
 	Name      string `json:"name"`
@@ -39,8 +41,8 @@ type Catalog struct {
 }
 
 type readInput struct {
-	Path  string `json:"path" jsonschema:"pattern=^trajectory://,maxLength=4096" jsonschema_description:"Trajectory resource URI: trajectory://index, trajectory://outcomes, trajectory://projects/{project_id}/sessions/{session_id}, or trajectory://projects/{project_id}/runs/{run_id}."`
-	Limit int    `json:"limit,omitempty" jsonschema:"minimum=1,maximum=500" jsonschema_description:"Maximum index or outcome entries. Defaults to the configured trajectory cap."`
+	Path  string `json:"path" jsonschema_description:"Trajectory resource URI: trajectory://index, trajectory://outcomes, trajectory://projects/{project_id}/sessions/{session_id}, or trajectory://projects/{project_id}/runs/{run_id}."`
+	Limit int    `json:"limit,omitempty" jsonschema:"minimum=1" jsonschema_description:"Maximum index or outcome entries. Defaults to the configured trajectory cap and cannot exceed 500."`
 }
 
 type projectIndex struct {
@@ -68,9 +70,15 @@ func NewReadAdapter(catalog Catalog) (agenttools.ReadAdapter, error) {
 
 func (catalog Catalog) read(ctx context.Context, input readInput) (agenttools.ReadResult, error) {
 	resource := strings.TrimSpace(input.Path)
+	if len(resource) > maxResourceURIBytes {
+		return agenttools.ReadResult{}, fmt.Errorf("trajectory resource URI exceeds %d bytes", maxResourceURIBytes)
+	}
 	parsed, err := url.Parse(resource)
 	if err != nil || parsed.Scheme != "trajectory" {
 		return agenttools.ReadResult{}, fmt.Errorf("invalid trajectory resource %q", resource)
+	}
+	if input.Limit > 500 {
+		return agenttools.ReadResult{}, errors.New("trajectory limit cannot exceed 500")
 	}
 	limit := input.Limit
 	if limit <= 0 {

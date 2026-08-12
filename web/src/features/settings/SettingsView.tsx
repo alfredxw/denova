@@ -329,50 +329,6 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
       ),
     },
     {
-      id: 'labs',
-      group: t('settings.group.common'),
-      title: t('settings.section.labs'),
-      children: (
-        <>
-          <div className="mb-3 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-[11px] leading-4 text-[var(--nova-text-muted)]">
-            {t('settings.labs.continualLearningHint')}
-          </div>
-          <BoolTri
-            label={t('settings.labs.continualLearning')}
-            value={draft.labs?.continual_learning ?? null}
-            inherited={inherited.labs?.continual_learning}
-            onChange={(value) => setLabField('continual_learning', value)}
-          />
-          {(draft.labs?.continual_learning ?? inherited.labs?.continual_learning ?? false) && (
-            <>
-              <BoolTri
-                label={t('settings.labs.continualLearningSchedule')}
-                value={draft.labs?.continual_learning_schedule ?? null}
-                inherited={inherited.labs?.continual_learning_schedule}
-                onChange={(value) => setLabField('continual_learning_schedule', value)}
-              />
-              <Num
-                label={t('settings.labs.continualLearningIntervalHours')}
-                value={draft.labs?.continual_learning_interval_hours ?? null}
-                placeholder={String(inherited.labs?.continual_learning_interval_hours ?? 24)}
-                min={1}
-                max={720}
-                onChange={(value) => setLabField('continual_learning_interval_hours', value)}
-              />
-              <Num
-                label={t('settings.labs.continualLearningTrajectoryCap')}
-                value={draft.labs?.continual_learning_trajectory_cap ?? null}
-                placeholder={String(inherited.labs?.continual_learning_trajectory_cap ?? 50)}
-                min={1}
-                max={500}
-                onChange={(value) => setLabField('continual_learning_trajectory_cap', value)}
-              />
-            </>
-          )}
-        </>
-      ),
-    },
-    {
       id: 'model',
       group: t('settings.group.common'),
       title: t('settings.section.model'),
@@ -685,6 +641,34 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
                placeholder={placeholderFor('interactive_stage_line_height')}
                step={0.05}
                onChange={(v) => setField('interactive_stage_line_height', v)} />
+        </>
+      ),
+    },
+    {
+      id: 'labs',
+      group: t('settings.section.labs'),
+      title: t('settings.labs.sectionTitle'),
+      children: (
+        <>
+          <div className="mb-3 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-[11px] leading-4 text-[var(--nova-text-muted)]">
+            {t('settings.labs.continualLearningHint')}
+          </div>
+          <BoolTri
+            label={t('settings.labs.continualLearning')}
+            value={draft.labs?.continual_learning ?? null}
+            inherited={inherited.labs?.continual_learning}
+            onChange={(value) => setLabField('continual_learning', value)}
+          />
+          {(draft.labs?.continual_learning ?? inherited.labs?.continual_learning ?? false) && (
+            <Num
+              label={t('settings.labs.continualLearningTrajectoryCap')}
+              value={draft.labs?.continual_learning_trajectory_cap ?? null}
+              placeholder={String(inherited.labs?.continual_learning_trajectory_cap ?? 50)}
+              min={1}
+              max={500}
+              onChange={(value) => setLabField('continual_learning_trajectory_cap', value)}
+            />
+          )}
         </>
       ),
     },

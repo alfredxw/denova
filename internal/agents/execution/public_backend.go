@@ -7,13 +7,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"sync"
 
 	agentchat "denova/internal/agents/chat"
 	agentconversation "denova/internal/agents/conversation"
-	"denova/internal/agents/harnessstate"
 	agentlifecycle "denova/internal/agents/lifecycle"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
@@ -23,7 +21,6 @@ import (
 	agent "github.com/alfredxw/denova/agent"
 	agentpermission "github.com/alfredxw/denova/agent/permission"
 	agentsession "github.com/alfredxw/denova/agent/session"
-	agentstate "github.com/alfredxw/denova/agent/state"
 )
 
 type publicBackend struct {
@@ -32,7 +29,6 @@ type publicBackend struct {
 	agent     *agent.Agent
 	profiles  *profileRegistry
 	effects   agenttoolruntime.HostEffectReconciler
-	state     *agentstate.Store
 
 	mu            sync.RWMutex
 	registrations map[string]*publicCycleRegistration
@@ -84,12 +80,6 @@ func NewAgentRuntime(ctx context.Context, dataDir string, options ...Option) (*R
 	if resolved.hostEffectReconciler == nil {
 		return nil, errors.New("Agent runtime requires a Tool effect reconciler")
 	}
-	stateStore, err := agentstate.Open(agentstate.Options{
-		Root: filepath.Join(root, "state"), RuntimeRoot: filepath.Join(root, "runtime", "harness-state"),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("open Harness State Run pins: %w", err)
-	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -97,7 +87,6 @@ func NewAgentRuntime(ctx context.Context, dataDir string, options ...Option) (*R
 	backend := &publicBackend{
 		lifecycle: lifecycle, cancel: cancel, profiles: profiles,
 		effects:       resolved.hostEffectReconciler,
-		state:         stateStore,
 		registrations: make(map[string]*publicCycleRegistration),
 		cycles:        make(map[string]map[int]*publicCycleRegistration), runs: make(map[string]*publicRunHandle),
 		successors: make(map[string]*publicRunHandle),
@@ -197,11 +186,6 @@ func (backend *publicBackend) resolveDefinition(
 	if cycle.Definition.Model == nil {
 		return agent.Definition{}, errors.New("Denova public Agent cycle has no Definition")
 	}
-	if backend.state != nil {
-		if _, err := backend.state.BindRun(ctx, request.Agent.Run.ID, commandID); err != nil {
-			return agent.Definition{}, fmt.Errorf("bind Harness State to public Agent Run: %w", err)
-		}
-	}
 	definition, err := backend.bindDefinition(ctx, request.Agent, cycle, registration)
 	if err != nil {
 		return agent.Definition{}, err
@@ -241,7 +225,6 @@ func (backend *publicBackend) restoreCycle(
 	if kind == "" {
 		return Cycle{}, fmt.Errorf("restore Denova Agent cycle: invalid turn kind %q", data.Kind)
 	}
-	ctx = harnessstate.WithRunID(ctx, request.Run.ID)
 	return queued.PrepareCycle(ctx, CycleRestoreRequest{
 		Binding: binding, Kind: kind, CommandID: agentrun.CommandID(commandID),
 		OperationID: agentrun.OperationID(request.Run.ID), Request: chatRequest,

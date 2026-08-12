@@ -148,6 +148,40 @@ func TestStateHistoryRejectsPrivateGitSymlink(t *testing.T) {
 	}
 }
 
+func TestCommittedHistoryCanRestoreInvalidLiveState(t *testing.T) {
+	dataDir := filepath.Join(t.TempDir(), ".denova")
+	cfg := config.Config{DenovaDir: dataDir}
+	cfg.Labs.ContinualLearning = true
+	service := NewService(testHost{runtime: Runtime{Config: cfg}})
+	current, err := service.State(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated, err := service.UpdateState(context.Background(), StateUpdateRequest{
+		BaseRevision: current.Revision, Summary: "Add valid State",
+		Changes: []StateChange{{Path: "prompts/general.md", Content: "Lead with evidence."}},
+	})
+	if err != nil || updated.Version == nil {
+		t.Fatalf("create valid State: result=%#v err=%v", updated, err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, "state", "unsupported.txt"), []byte("invalid"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.State(context.Background()); err != nil {
+		t.Fatalf("management read hid invalid live files: %v", err)
+	}
+	versions, err := service.Versions(context.Background(), 10)
+	if err != nil || len(versions) != 1 {
+		t.Fatalf("committed history unavailable while live State is invalid: versions=%#v err=%v", versions, err)
+	}
+	if _, err := service.Restore(context.Background(), updated.Version.ID); err != nil {
+		t.Fatalf("restore could not repair invalid live State: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dataDir, "state", "unsupported.txt")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("restore retained invalid live file: %v", err)
+	}
+}
+
 func TestServiceRetriesInitializationAfterStorageIsRepaired(t *testing.T) {
 	dataDir := filepath.Join(t.TempDir(), ".denova")
 	stateRoot := filepath.Join(dataDir, "state")

@@ -138,7 +138,14 @@ func (engine *definitionEngine) Run(
 		}
 	}
 
-	effectiveTranscript := effectiveCompactionMessages(state.Messages, compaction, compactionPresent)
+	summaryLimit := 0
+	if prepared.definition.Compaction != nil {
+		summaryLimit = prepared.definition.Compaction.SummaryLimitBytes()
+	}
+	effectiveTranscript, err := effectiveCompactionMessages(state.Messages, compaction, compactionPresent, summaryLimit)
+	if err != nil {
+		return runstate.EngineResult{}, err
+	}
 	resumeTools := recoverableInteractionBoundary(state.Messages, request.Snapshot.Interactions)
 	var modelMessages []*Message
 	var persistedUser *Message

@@ -13,19 +13,28 @@ import (
 	agent "github.com/alfredxw/denova/agent"
 )
 
-// ContextSource materializes only fragments explicitly targeted at agentKind.
-// The State revision participates in the identity without exposing private Git
-// metadata or timestamps to the model prefix.
+// ContextSource materializes the live prompt and only fragments explicitly
+// targeted at agentKind. Its capability identity is intentionally independent
+// of file contents: State changes update the next model prefix without turning
+// State into a versioned Agent definition.
 func (h Harness) ContextSource(cfg *config.Config, agentKind string) agent.ContextSource {
-	fragments := make([]agent.ContextFragment, 0, len(h.contexts))
+	fragments := make([]agent.ContextFragment, 0, len(h.contexts)+1)
 	limit := config.ResolveAgentContext(cfg, agentKind).MaxFragmentBytes
+	if prompt := strings.TrimSpace(h.Prompt(agentKind)); prompt != "" {
+		fragments = append(fragments, agent.ContextFragment{
+			Source: "Denova User State", Purpose: "apply user-managed Agent behavior and preferences without overriding runtime or tool contracts",
+			Resource:  "prompts/" + strings.TrimSpace(agentKind) + ".md",
+			Placement: agent.ContextLeadingMessage, Rendering: agent.ContextRenderAttributed,
+			Role: agent.System, Content: prompt, HardLimit: limit,
+		})
+	}
 	for _, fragment := range h.contexts {
 		if !contains(fragment.Agents, agentKind) {
 			continue
 		}
 		fragments = append(fragments, agent.ContextFragment{
 			Source: "Denova User State", Purpose: fragment.Purpose,
-			Resource: fragment.Resource, Revision: h.revision,
+			Resource:  fragment.Resource,
 			Placement: fragment.Placement, Rendering: agent.ContextRenderAttributed,
 			Role: agent.System, Content: fragment.Content, HardLimit: limit,
 		})
@@ -33,8 +42,7 @@ func (h Harness) ContextSource(cfg *config.Config, agentKind string) agent.Conte
 	return staticContextSource{
 		identity: identity("denova.harness_state.context", struct {
 			AgentKind string
-			Revision  string
-		}{agentKind, h.revision}),
+		}{agentKind}),
 		fragments: fragments,
 	}
 }

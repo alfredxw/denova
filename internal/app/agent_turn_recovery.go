@@ -124,7 +124,7 @@ func (s *ChatAppService) prepareWritingCycle(
 		return agentexecution.Cycle{}, ideChatRuntime{}, err
 	}
 	builtAgent, err := appagentruntime.BuildConversationAgent(
-		appagentruntime.WithHarnessRun(ctx, resolved.CommandID), &runtime.cfg, runtime.state, runtime.ideTeller, agentrun.AgentKindIDE,
+		ctx, &runtime.cfg, runtime.state, runtime.ideTeller, agentrun.AgentKindIDE,
 		goalTools...,
 	)
 	if err != nil {

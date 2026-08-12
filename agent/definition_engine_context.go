@@ -121,10 +121,14 @@ func renderContextFragment(fragment ContextFragment) string {
 	if effectiveContextRendering(fragment.Rendering) == ContextRenderVerbatim {
 		return fragment.Content
 	}
-	return fmt.Sprintf(
-		"# Context\n\nSource: %s\nPurpose: %s\nResource: %s\nRevision: %s\n\n%s",
-		fragment.Source, fragment.Purpose, fragment.Resource, fragment.Revision, fragment.Content,
+	provenance := fmt.Sprintf(
+		"Source: %s\nPurpose: %s\nResource: %s",
+		fragment.Source, fragment.Purpose, fragment.Resource,
 	)
+	if revision := strings.TrimSpace(fragment.Revision); revision != "" {
+		provenance += "\nRevision: " + revision
+	}
+	return "# Context\n\n" + provenance + "\n\n" + fragment.Content
 }
 
 func consumeMessageVariant(variant *MessageVariant, source runstate.EventSource, displayOnly bool, emit runstate.EngineEventSink) (*Message, error) {

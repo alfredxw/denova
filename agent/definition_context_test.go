@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"errors"
 	"strings"
 	"testing"
 )
@@ -31,6 +32,25 @@ func TestAssembleCycleMessagesPreservesVerbatimHostRendering(t *testing.T) {
 	}
 }
 
+func TestCompactionCheckpointUsesTargetAgentSummaryLimit(t *testing.T) {
+	messages := []*Message{UserMessage("old"), AssistantMessage("answer", nil)}
+	state := CompactionState{
+		ID: "checkpoint", Revision: 1, Summary: strings.Repeat("x", 65<<10),
+		ReplacementFrom: 0, ReplacementTo: 2,
+	}
+	if _, err := effectiveCompactionMessages(messages, state, true, 64<<10); !errors.Is(err, ErrContextLimit) {
+		t.Fatalf("oversized checkpoint error = %v, want ErrContextLimit", err)
+	}
+	state.Summary = strings.Repeat("x", 64<<10)
+	effective, err := effectiveCompactionMessages(messages, state, true, 64<<10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(effective) != 1 || !strings.Contains(effective[0].Content, state.Summary) {
+		t.Fatalf("valid checkpoint was not injected: %#v", effective)
+	}
+}
+
 func TestContextFinalUserMessageIsUnambiguous(t *testing.T) {
 	base := ContextFragment{
 		Source: "host", Purpose: "test", Resource: "turn", Placement: ContextFinalUserMessage,
@@ -43,5 +63,20 @@ func TestContextFinalUserMessageIsUnambiguous(t *testing.T) {
 	prefix.Placement = ContextFinalUserPrefix
 	if err := validateContextFragments([]ContextFragment{base, prefix}); err == nil || !strings.Contains(err.Error(), "cannot be combined") {
 		t.Fatalf("mixed final user context error = %v", err)
+	}
+}
+
+func TestAttributedContextOmitsEmptyRevision(t *testing.T) {
+	rendered := renderContextFragment(ContextFragment{
+		Source: "Denova User State", Purpose: "apply live user instructions", Resource: "prompts/ide.md",
+		Placement: ContextLeadingMessage, Content: "Prefer verified edits.", HardLimit: 64 << 10,
+	})
+	if strings.Contains(rendered, "Revision:") {
+		t.Fatalf("unversioned live context exposed a revision field:\n%s", rendered)
+	}
+	for _, required := range []string{"Source: Denova User State", "Resource: prompts/ide.md", "Prefer verified edits."} {
+		if !strings.Contains(rendered, required) {
+			t.Fatalf("attributed context missing %q:\n%s", required, rendered)
+		}
 	}
 }

@@ -57,7 +57,36 @@ vi.mock('@/components/Chat/ConfigManagerChat', () => ({
 }))
 
 vi.mock('./ContinualLearningPage', () => ({
-  ContinualLearningPage: () => <div data-testid="continual-learning-page" />,
+  ContinualLearningPage: (props: {
+    scheduleSettings: {
+      enabled: boolean | null
+      inheritedEnabled: boolean
+      intervalHours: number | null
+      inheritedIntervalHours: number
+      onEnabledChange: (enabled: boolean | null) => void
+      onIntervalHoursChange: (hours: number | null) => void
+    }
+  }) => {
+    const enabled = props.scheduleSettings.enabled ?? props.scheduleSettings.inheritedEnabled
+    return (
+      <div data-testid="continual-learning-page">
+        <button
+          type="button"
+          role="switch"
+          aria-label="自动运行"
+          aria-checked={enabled}
+          onClick={() => props.scheduleSettings.onEnabledChange(!enabled)}
+        />
+        <input
+          type="number"
+          aria-label="学习间隔（小时）"
+          value={props.scheduleSettings.intervalHours ?? ''}
+          placeholder={String(props.scheduleSettings.inheritedIntervalHours)}
+          onChange={(event) => props.scheduleSettings.onIntervalHoursChange(Number(event.target.value))}
+        />
+      </div>
+    )
+  },
 }))
 
 vi.mock('./HarnessOptimizerChat', () => ({
@@ -116,6 +145,47 @@ describe('AgentsView', () => {
     expect(screen.getByTestId('continual-learning-page')).toBeInTheDocument()
     expect(screen.getByTestId('harness-optimizer-chat')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '当前工作区' })).not.toBeInTheDocument()
+  })
+
+  it('persists scheduled learning controls from the Continual Learning page to user settings', async () => {
+    const user = userEvent.setup()
+    vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({
+      default: {
+        labs: {
+          continual_learning: false,
+          continual_learning_schedule: false,
+          continual_learning_interval_hours: 24,
+        },
+      },
+      user: { labs: { continual_learning: true } },
+      effective: {
+        labs: {
+          continual_learning: true,
+          continual_learning_schedule: false,
+          continual_learning_interval_hours: 24,
+        },
+      },
+    }))
+
+    render(<AgentsView />)
+
+    await user.click(await screen.findByRole('button', { name: /持续进化/ }))
+    await user.click(screen.getByRole('switch', { name: '自动运行' }))
+    fireEvent.change(screen.getByRole('spinbutton', { name: '学习间隔（小时）' }), { target: { value: '48' } })
+    flushAgentsAutosave()
+
+    await waitFor(() => {
+      expect(updateUserSettings).toHaveBeenCalledWith(
+        expect.objectContaining({
+          labs: expect.objectContaining({
+            continual_learning: true,
+            continual_learning_schedule: true,
+            continual_learning_interval_hours: 48,
+          }),
+        }),
+      )
+    })
+    expect(updateWorkspaceSettings).not.toHaveBeenCalled()
   })
 
   it('hides the Continual Learning Lab by default', async () => {

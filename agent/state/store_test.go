@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-func TestStoreCurrentAndUpdate(t *testing.T) {
+func TestStoreCurrentAlwaysReadsLiveDirectory(t *testing.T) {
 	store := openTestStore(t)
 	ctx := context.Background()
 
@@ -18,7 +18,7 @@ func TestStoreCurrentAndUpdate(t *testing.T) {
 	}
 	result, err := store.Update(ctx, ChangeSet{
 		BaseRevision: empty.Revision,
-		Changes:      []Change{{Path: "prompts/general.md", Content: []byte("Be concise.")}},
+		Changes:      []Change{{Path: "prompts/general.md", Content: []byte("first")}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -26,116 +26,63 @@ func TestStoreCurrentAndUpdate(t *testing.T) {
 	if !result.Changed {
 		t.Fatalf("expected an update, got %#v", result)
 	}
-	content, err := result.Snapshot.Read("prompts/general.md")
-	if err != nil || string(content) != "Be concise." {
-		t.Fatalf("unexpected current prompt %q err=%v", content, err)
+	path := filepath.Join(store.Root(), "prompts", "general.md")
+	if err := os.WriteFile(path, []byte("second"), 0o600); err != nil {
+		t.Fatal(err)
 	}
 
-}
-
-func TestStorePinsStatePerRunWhileNewRunUsesCurrent(t *testing.T) {
-	store := openTestStore(t)
-	ctx := context.Background()
 	current, err := store.Current(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	first, err := store.Update(ctx, ChangeSet{
+	assertSnapshotFile(t, current, "prompts/general.md", "second")
+	if current.Revision == result.Snapshot.Revision {
+		t.Fatal("live directory edit reused the previous management revision")
+	}
+}
+
+func TestStoreAllowsManagementToRepairInvalidLiveFiles(t *testing.T) {
+	store := openTestStore(t)
+	ctx := context.Background()
+	invalidPath := filepath.Join(store.Root(), "invalid.md")
+	if err := os.WriteFile(invalidPath, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	current, err := store.Current(ctx)
+	if err != nil {
+		t.Fatalf("raw management read must expose invalid live files: %v", err)
+	}
+	result, err := store.Update(ctx, ChangeSet{
 		BaseRevision: current.Revision,
-		Changes:      []Change{{Path: "prompts/general.md", Content: []byte("first")}},
+		Changes:      []Change{{Path: "invalid.md", Content: []byte("repaired")}},
 	})
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("management update could not repair invalid live State: %v", err)
 	}
-	runOne, err := store.ForRun(ctx, "run-one")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.Update(ctx, ChangeSet{
-		BaseRevision: first.Snapshot.Revision,
-		Changes:      []Change{{Path: "prompts/general.md", Content: []byte("second")}},
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	recovered, err := store.ForRun(ctx, "run-one")
-	if err != nil {
-		t.Fatal(err)
-	}
-	newRun, err := store.ForRun(ctx, "run-two")
-	if err != nil {
-		t.Fatal(err)
-	}
-	assertSnapshotFile(t, runOne, "prompts/general.md", "first")
-	assertSnapshotFile(t, recovered, "prompts/general.md", "first")
-	assertSnapshotFile(t, newRun, "prompts/general.md", "second")
-	if recovered.Token == "" || recovered.Token != runOne.Token || newRun.Token == runOne.Token {
-		t.Fatalf("unexpected Run tokens first=%q recovered=%q new=%q", runOne.Token, recovered.Token, newRun.Token)
-	}
+	assertSnapshotFile(t, result.Snapshot, "invalid.md", "repaired")
 }
 
-func TestDraftValidatesCompleteSnapshotBeforePublish(t *testing.T) {
+func TestStoreRejectsInvalidCandidateWithoutChangingLiveDirectory(t *testing.T) {
 	store := openTestStore(t)
-	ctx := context.Background()
-	current, err := store.Current(ctx)
+	before, err := store.Current(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	draft, err := store.BeginDraft(ctx, current.Revision)
+	_, err = store.Update(context.Background(), ChangeSet{
+		BaseRevision: before.Revision,
+		Changes:      []Change{{Path: "invalid.md", Content: nil}},
+	})
+	var validation *ValidationError
+	if !errors.As(err, &validation) {
+		t.Fatalf("expected ValidationError, got %v", err)
+	}
+	after, err := store.Current(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(filepath.Join(draft.Root(), "prompts"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(draft.Root(), "prompts", "general.md"), nil, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := draft.Publish(ctx); err == nil {
-		t.Fatal("expected complete snapshot validation to reject the draft")
-	} else {
-		var validation *ValidationError
-		if !errors.As(err, &validation) {
-			t.Fatalf("expected ValidationError, got %v", err)
-		}
-	}
-	after, err := store.Current(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if after.Revision != current.Revision {
-		t.Fatalf("invalid draft changed current State: before=%s after=%s", current.Revision, after.Revision)
-	}
-}
-
-func TestResumeDraftAllowsRepairingTemporarilyInvalidFiles(t *testing.T) {
-	store := openTestStore(t)
-	ctx := context.Background()
-	current, err := store.Current(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	draft, err := store.BeginDraft(ctx, current.Revision)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(draft.Root(), "invalid.md"), nil, 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	resumed, err := store.ResumeDraft(ctx, draft.ID(), draft.BaseRevision())
-	if err != nil {
-		t.Fatalf("temporarily invalid draft must remain recoverable: %v", err)
-	}
-	if err := resumed.Validate(ctx); err == nil {
-		t.Fatal("invalid resumed draft unexpectedly passed validation")
-	}
-	if err := os.WriteFile(filepath.Join(resumed.Root(), "invalid.md"), []byte("repaired"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	result, err := resumed.Publish(ctx)
-	if err != nil || !result.Changed {
-		t.Fatalf("repaired resumed draft was not published: result=%#v err=%v", result, err)
+	if after.Revision != before.Revision {
+		t.Fatalf("invalid management update changed live State: before=%s after=%s", before.Revision, after.Revision)
 	}
 }
 
@@ -148,6 +95,9 @@ func TestPreparedTransactionRetainsMarkerUntilRollbackSucceeds(t *testing.T) {
 	}
 	candidate, err := applyChanges(base, []Change{{Path: "prompts/general.md", Content: []byte("candidate")}})
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.cacheSnapshot(base); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.cacheSnapshot(candidate); err != nil {
@@ -181,21 +131,6 @@ func TestPreparedTransactionRetainsMarkerUntilRollbackSucceeds(t *testing.T) {
 	}
 }
 
-func TestStoreRejectsCorruptExistingSnapshotCache(t *testing.T) {
-	store := openTestStore(t)
-	snapshot, err := store.Current(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	cacheRoot := filepath.Join(store.private, "snapshots", snapshot.Revision)
-	if err := os.WriteFile(filepath.Join(cacheRoot, "corrupt"), []byte("unexpected"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.Current(context.Background()); err == nil {
-		t.Fatal("corrupt immutable snapshot cache was silently trusted")
-	}
-}
-
 func TestUpdateRejectsRevisionConflict(t *testing.T) {
 	store := openTestStore(t)
 	_, err := store.Update(context.Background(), ChangeSet{
@@ -204,36 +139,6 @@ func TestUpdateRejectsRevisionConflict(t *testing.T) {
 	})
 	if !errors.Is(err, ErrConflict) {
 		t.Fatalf("expected revision conflict, got %v", err)
-	}
-}
-
-func TestStoreBindsAcceptedCommandSnapshotToPublicRun(t *testing.T) {
-	store := openTestStore(t)
-	ctx := context.Background()
-	first, err := store.Update(ctx, ChangeSet{Changes: []Change{{Path: "prompts/general.md", Content: []byte("first")}}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	command, err := store.ForRun(ctx, "command-one")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.Update(ctx, ChangeSet{
-		BaseRevision: first.Snapshot.Revision,
-		Changes:      []Change{{Path: "prompts/general.md", Content: []byte("second")}},
-	}); err != nil {
-		t.Fatal(err)
-	}
-	found, err := store.BindRun(ctx, "public-run", "command-one")
-	if err != nil || !found {
-		t.Fatalf("BindRun() = (%v, %v), want (true, nil)", found, err)
-	}
-	bound, err := store.ForRun(ctx, "public-run")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if bound.Revision != command.Revision {
-		t.Fatalf("bound revision = %q, want %q", bound.Revision, command.Revision)
 	}
 }
 

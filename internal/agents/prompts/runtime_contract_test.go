@@ -13,7 +13,7 @@ func TestUserStatePromptFollowsContractAndBuiltInPrompt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	composition, err := AppendUserStatePrompt(cfg, base, "revision-one", "USER STATE PROMPT")
+	composition, err := AppendUserStatePrompt(cfg, base, "USER STATE PROMPT")
 	if err != nil {
 		t.Fatal(err)
 	}

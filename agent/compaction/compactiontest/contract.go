@@ -19,6 +19,9 @@ func RunManagerContract(t *testing.T, factory Factory) {
 	if strings.TrimSpace(identity.Kind) == "" || identity.Version == 0 {
 		t.Fatalf("identity = %#v", identity)
 	}
+	if manager.SummaryLimitBytes() <= 0 {
+		t.Fatalf("summary limit = %d", manager.SummaryLimitBytes())
+	}
 	messages := []*agent.Message{
 		agent.UserMessage(strings.Repeat("old request ", 32)),
 		agent.AssistantMessage(strings.Repeat("old answer ", 32), nil),
@@ -47,7 +50,7 @@ func RunManagerContract(t *testing.T, factory Factory) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.TrimSpace(checkpoint.Summary) == "" || checkpoint.TokenEstimate < 0 {
+	if strings.TrimSpace(checkpoint.Summary) == "" || checkpoint.TokenEstimate < 0 || len(checkpoint.Summary) > manager.SummaryLimitBytes() {
 		t.Fatalf("checkpoint = %#v", checkpoint)
 	}
 }

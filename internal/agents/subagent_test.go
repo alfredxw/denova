@@ -148,12 +148,12 @@ func TestBuildAgentExposesGeneralAndConfiguredSubAgentsThroughTask(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	current, err := manager.Current(context.Background())
+	current, err := manager.Store().Current(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := manager.Store().Update(context.Background(), agentstate.ChangeSet{
-		BaseRevision: current.Revision(),
+		BaseRevision: current.Revision,
 		Changes: []agentstate.Change{{Path: "subagents/researcher.md", Content: []byte(`---
 id: researcher
 name: Researcher

@@ -1,8 +1,9 @@
-// Package state manages revisioned, file-backed Agent harness state.
+// Package state manages the live, file-backed Agent harness directory.
 //
-// Current files remain the source of truth. Draft isolation, crash recovery,
-// and Run-scoped snapshots are hidden behind Store. Product applications own
-// any history provider (Git, database, or remote service) independently.
+// The directory is always the source of truth. Revision hashes exist only as
+// optimistic-concurrency tokens for management writes; runtime Agents never
+// receive or restore a revisioned State snapshot. Product applications own
+// history (Git, database, or remote service) independently.
 package state
 
 import (
@@ -16,7 +17,6 @@ import (
 var (
 	ErrConflict    = errors.New("agent state revision conflict")
 	ErrInvalidPath = errors.New("agent state path is invalid")
-	ErrDraftClosed = errors.New("agent state draft is closed")
 )
 
 // Diagnostic is one actionable validation failure. Code and Path are stable
@@ -59,9 +59,9 @@ func (validate ValidatorFunc) Validate(ctx context.Context, snapshot Snapshot) [
 
 type Options struct {
 	Root string
-	// RuntimeRoot stores private Run pins, immutable snapshot cache, drafts,
-	// locks, and crash-recovery markers. It must be outside Root so an
-	// application can independently version the visible State directory.
+	// RuntimeRoot stores only locks, rollback snapshots, and crash-recovery
+	// markers. It must be outside Root so an application can independently
+	// version the visible State directory.
 	RuntimeRoot string
 	Validator   Validator
 }
@@ -73,12 +73,10 @@ type File struct {
 	Content []byte `json:"-"`
 }
 
-// Snapshot is an immutable, validated view of all current State files.
-// Revision is content-derived. Token is an opaque Run recovery handle and is
-// empty for snapshots that are not pinned to a Run.
+// Snapshot is an immutable view of all current State files. Revision is a
+// content-derived management token and is never injected into an Agent.
 type Snapshot struct {
 	Revision string `json:"revision"`
-	Token    string `json:"token,omitempty"`
 	files    []File
 }
 
@@ -113,7 +111,7 @@ func RevisionForFiles(files []File) string {
 }
 
 // Change replaces or removes one file. Delete ignores Content. A ChangeSet is
-// published atomically as one complete candidate snapshot.
+// applied atomically to the live directory as one complete candidate.
 type Change struct {
 	Path    string
 	Content []byte
@@ -129,7 +127,7 @@ type Result struct {
 	Snapshot Snapshot `json:"snapshot"`
 	Changed  bool     `json:"changed"`
 
-	// CleanupError reports non-fatal housekeeping after a State publication has
+	// CleanupError reports non-fatal housekeeping after a State update has
 	// already committed. Callers must treat the update as successful and may
 	// surface the error through operational logging.
 	CleanupError error `json:"-"`

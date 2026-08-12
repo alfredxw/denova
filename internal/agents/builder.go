@@ -421,10 +421,12 @@ func buildAgentDefinition(ctx context.Context, cfg *config.Config, spec agentBui
 	if err != nil {
 		return agent.Definition{}, fmt.Errorf("load Harness State for Agent %s: %w", spec.Kind, err)
 	}
-	composition, err = prompts.AppendUserStatePrompt(cfg, composition, harness.Revision(), harness.Prompt(spec.Kind))
+	childComposition, err := prompts.AppendUserStatePrompt(cfg, composition, harness.Prompt(spec.Kind))
 	if err != nil {
-		return agent.Definition{}, fmt.Errorf("compose Harness State prompt for Agent %s: %w", spec.Kind, err)
+		return agent.Definition{}, fmt.Errorf("compose Harness State prompt for child Agents of %s: %w", spec.Kind, err)
 	}
+	childSpec := spec
+	childSpec.Composition = childComposition
 	modelCfg, err := modelio.ConfigForAgent(cfg, spec.Kind)
 	if err != nil {
 		return agent.Definition{}, fmt.Errorf("resolve model configuration: %w", err)
@@ -460,7 +462,7 @@ func buildAgentDefinition(ctx context.Context, cfg *config.Config, spec agentBui
 	}
 	var taskAgents []agent.Runnable
 	if toolSettings.Allows(config.AgentToolDelegation) {
-		configuredSubAgents, err := buildConfiguredSubAgents(ctx, cfg, spec, toolSettings, harness.SubAgents())
+		configuredSubAgents, err := buildConfiguredSubAgents(ctx, cfg, childSpec, toolSettings, harness.SubAgents())
 		if err != nil {
 			return agent.Definition{}, err
 		}
@@ -482,7 +484,7 @@ func buildAgentDefinition(ctx context.Context, cfg *config.Config, spec agentBui
 			general, err := newNativeAgent(ctx, agent.LoopConfig{
 				Name:            producttools.GeneralSubAgentName,
 				Description:     "通用子 Agent，用于研究复杂问题、搜索代码和执行独立的多步骤任务。",
-				Instruction:     composition.Instruction(),
+				Instruction:     childComposition.Instruction(),
 				Model:           chatModel,
 				Tools:           generalAssembly.Tools,
 				Middlewares:     generalAssembly.Middlewares,
@@ -543,8 +545,7 @@ func buildAgentDefinition(ctx context.Context, cfg *config.Config, spec agentBui
 			ProjectID string
 			Workspace string
 			Settings  config.ResolvedAgentToolSettings
-			State     string
-		}{spec.Kind, configProjectID(cfg), configWorkspace(cfg), toolSettings, harness.Revision()}), tools...),
+		}{spec.Kind, configProjectID(cfg), configWorkspace(cfg), toolSettings}), tools...),
 		Middlewares: middlewares,
 		Compaction:  compaction,
 		Execution: agent.ExecutionPolicy{

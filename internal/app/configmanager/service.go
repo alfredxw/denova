@@ -202,7 +202,7 @@ func (service *Service) buildCycle(
 	if _, err := agentconversation.ApplySession(sess, &runtimeConfig, config.AgentKindConfigManager); err != nil {
 		return agentexecution.Cycle{}, err
 	}
-	builtAgent, err := appagentruntime.BuildConfigManagerAgent(appagentruntime.WithHarnessRun(ctx, request.CommandID), &runtimeConfig, runtime.State, resourceSkills...)
+	builtAgent, err := appagentruntime.BuildConfigManagerAgent(ctx, &runtimeConfig, runtime.State, resourceSkills...)
 	if err != nil {
 		return agentexecution.Cycle{}, err
 	}

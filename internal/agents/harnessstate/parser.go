@@ -44,7 +44,6 @@ type toolDescriptionFile struct {
 
 func parseAll(_ context.Context, snapshot agentstate.Snapshot, cfg *config.Config) (Harness, []agentstate.Diagnostic) {
 	harness := Harness{
-		revision: snapshot.Revision, token: snapshot.Token,
 		prompts: make(map[string]string), toolDescriptions: make(map[string]string),
 	}
 	var diagnostics []agentstate.Diagnostic

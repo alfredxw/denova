@@ -258,6 +258,9 @@ describe('SettingsView user scope', () => {
     const labLabel = await screen.findByText('持续进化 Lab')
     const labRow = labLabel.closest('.nova-settings-row')
     expect(labRow).not.toBeNull()
+    const labSection = labRow?.closest('section')
+    const settingsSections = [...document.querySelectorAll('[data-nova-settings-content="true"] section')]
+    expect(labSection).toBe(settingsSections.at(-1))
     const toggle = within(labRow as HTMLElement).getByRole('combobox')
     expect(toggle).toHaveTextContent('继承（false）')
     expect(screen.queryByText('定时学习')).not.toBeInTheDocument()
@@ -265,9 +268,8 @@ describe('SettingsView user scope', () => {
     vi.useFakeTimers()
     fireEvent.click(toggle)
     fireEvent.click(screen.getByRole('option', { name: '开启' }))
-    const scheduleRow = screen.getByText('定时学习').closest('.nova-settings-row')
-    expect(scheduleRow).not.toBeNull()
-    expect(within(scheduleRow as HTMLElement).getByRole('combobox')).toBeInTheDocument()
+    expect(screen.queryByText('定时学习')).not.toBeInTheDocument()
+    expect(screen.getByText('每个项目读取的 trajectory 条数')).toBeInTheDocument()
     await act(async () => { await vi.advanceTimersByTimeAsync(1100) })
 
     expect(updateUserSettings).toHaveBeenCalledWith(

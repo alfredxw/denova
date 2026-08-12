@@ -161,7 +161,7 @@ func (s *InteractiveAppService) prepareInteractiveAgentCycle(ctx context.Context
 		interactiveapp.SnapshotTurnCount(storyContext.Snapshot) == 0 {
 		submitOpeningStateSchema = cycle.conversation.SubmitOpeningStateSchemaBatch
 	}
-	builtAgent, err := appagentruntime.BuildInteractiveAgent(appagentruntime.WithHarnessRun(ctx, request.CommandID), &cycle.runtimeCfg, cycle.state, cycle.tellerInput, agentinteractive.InteractiveStoryToolContext{
+	builtAgent, err := appagentruntime.BuildInteractiveAgent(ctx, &cycle.runtimeCfg, cycle.state, cycle.tellerInput, agentinteractive.InteractiveStoryToolContext{
 		Store:                  cycle.store,
 		StoryID:                cycle.storyID,
 		BranchID:               cycle.branchID,

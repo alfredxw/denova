@@ -59,6 +59,13 @@ func (manager *conversationCompactionManager) Identity() agent.CapabilityIdentit
 	return manager.identity
 }
 
+func (manager *conversationCompactionManager) SummaryLimitBytes() int {
+	if manager == nil || manager.delegate == nil {
+		return 0
+	}
+	return manager.delegate.SummaryLimitBytes()
+}
+
 func (manager *conversationCompactionManager) Plan(
 	ctx context.Context,
 	request agent.CompactionPlanRequest,

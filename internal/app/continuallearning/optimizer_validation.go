@@ -13,16 +13,16 @@ import (
 
 const (
 	optimizerValidationFeedbackPrefix = "[Harness State validation feedback / Harness State 校验反馈]"
-	optimizerValidationRetryCode      = "harness_state_draft_invalid"
+	optimizerValidationRetryCode      = "harness_state_invalid"
 )
 
 type optimizerValidationRetryReason struct {
 	Code string `json:"code"`
 }
 
-// newOptimizerCompletionGuard validates the complete draft only when the
-// model tries to finish. Ordinary tool calls remain untouched, while an
-// invalid final draft is returned to the same bounded model loop for repair.
+// newOptimizerCompletionGuard validates the complete live directory only when
+// the model tries to finish. Ordinary tool calls remain untouched, while an
+// invalid final State is returned to the same bounded model loop for repair.
 func newOptimizerCompletionGuard(validate func(context.Context) error) func(context.Context, *agent.RetryContext) *agent.RetryDecision {
 	return func(ctx context.Context, retryCtx *agent.RetryContext) *agent.RetryDecision {
 		if validate == nil || retryCtx == nil || retryCtx.Err != nil || retryCtx.OutputMessage == nil || len(retryCtx.OutputMessage.ToolCalls) > 0 {
@@ -61,16 +61,16 @@ func optimizerValidationFeedback(err error) string {
 		encoded, marshalErr := json.MarshalIndent(validation.Diagnostics, "", "  ")
 		if marshalErr == nil {
 			return fmt.Sprintf(`%s
-The isolated draft is not publishable. Repair every diagnostic with the ordinary file tools, validate the complete State mentally, and only then finish. Do not discard otherwise useful edits.
-当前隔离草稿无法发布。请使用普通文件工具修复下面的全部问题，确认完整 State 有效后再结束；不要丢弃其他有效修改。
+The live Harness State directory is invalid. Repair every diagnostic with the ordinary file tools, validate the complete State mentally, and only then finish. Every edit is already effective.
+当前 Harness State 目录无效。请使用普通文件工具修复下面的全部问题，确认完整 State 有效后再结束。所有修改均已立即生效。
 
 diagnostics:
 %s`, optimizerValidationFeedbackPrefix, encoded)
 		}
 	}
 	return fmt.Sprintf(`%s
-The isolated draft is not publishable. Inspect and repair the draft with ordinary file tools before finishing.
-当前隔离草稿无法发布。请先使用普通文件工具检查并修复草稿，再结束本轮。
+The live Harness State directory is invalid. Inspect and repair it with ordinary file tools before finishing.
+当前 Harness State 目录无效。请先使用普通文件工具检查并修复，再结束本轮。
 
 error: %s`, optimizerValidationFeedbackPrefix, err)
 }

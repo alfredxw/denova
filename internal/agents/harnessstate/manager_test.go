@@ -19,7 +19,7 @@ func TestLoadSkipsDisabledContinualLearningState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if harness.Revision() != "" || len(harness.SubAgents()) != 0 || len(harness.ToolDescriptions()) != 0 {
+	if harness.Prompt(config.AgentKindGeneral) != "" || len(harness.SubAgents()) != 0 || len(harness.ToolDescriptions()) != 0 {
 		t.Fatalf("disabled Harness State = %#v", harness)
 	}
 	if _, err := os.Stat(filepath.Join(dataDir, "state")); !errors.Is(err, os.ErrNotExist) {
@@ -27,15 +27,15 @@ func TestLoadSkipsDisabledContinualLearningState(t *testing.T) {
 	}
 }
 
-func TestManagerParsesAndPinsCompleteHarness(t *testing.T) {
+func TestManagerParsesCompleteHarnessAndReadsLiveEdits(t *testing.T) {
 	manager := openTestManager(t)
 	ctx := context.Background()
-	current, err := manager.Current(ctx)
+	current, err := manager.Store().Current(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	result, err := manager.Store().Update(ctx, agentstate.ChangeSet{
-		BaseRevision: current.Revision(),
+		BaseRevision: current.Revision,
 		Changes: []agentstate.Change{
 			{Path: "prompts/general.md", Content: []byte("Prefer concrete answers.")},
 			{Path: "context/review-style.md", Content: []byte(`---
@@ -87,33 +87,33 @@ Return concrete findings with evidence.`)},
 		t.Fatalf("caller mutated immutable Harness SubAgents: %#v", stable)
 	}
 
-	pinned, err := manager.ForRun(ctx, "run-one")
+	current, err = manager.Store().Current(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := manager.Store().Update(ctx, agentstate.ChangeSet{
-		BaseRevision: updated.Revision(),
+		BaseRevision: current.Revision,
 		Changes:      []agentstate.Change{{Path: "prompts/general.md", Content: []byte("Prefer short answers.")}},
 	}); err != nil {
 		t.Fatal(err)
 	}
-	restored, err := manager.ForRun(ctx, "run-one")
+	live, err := manager.Current(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if restored.Revision() != pinned.Revision() || restored.Prompt(config.AgentKindGeneral) != "Prefer concrete answers." {
-		t.Fatalf("Run State changed: before=%s after=%s prompt=%q", pinned.Revision(), restored.Revision(), restored.Prompt(config.AgentKindGeneral))
+	if live.Prompt(config.AgentKindGeneral) != "Prefer short answers." {
+		t.Fatalf("Agent build did not observe the live State prompt: %q", live.Prompt(config.AgentKindGeneral))
 	}
 }
 
 func TestManagerReturnsAllSchemaDiagnostics(t *testing.T) {
 	manager := openTestManager(t)
-	current, err := manager.Current(context.Background())
+	current, err := manager.Store().Current(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
 	_, err = manager.Store().Update(context.Background(), agentstate.ChangeSet{
-		BaseRevision: current.Revision(),
+		BaseRevision: current.Revision,
 		Changes: []agentstate.Change{
 			{Path: "prompts/unknown.md", Content: []byte("unknown")},
 			{Path: "context/bad.md", Content: []byte("missing frontmatter")},
@@ -141,12 +141,12 @@ func TestManagerRejectsStateThatWouldBeTruncatedAtRuntime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	current, err := manager.Current(context.Background())
+	current, err := manager.Store().Current(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
 	_, err = manager.Store().Update(context.Background(), agentstate.ChangeSet{
-		BaseRevision: current.Revision(),
+		BaseRevision: current.Revision,
 		Changes: []agentstate.Change{
 			{Path: "tools.toml", Content: []byte("[tools.read]\ndescription = \"" + strings.Repeat("x", metadataLimit+1) + "\"\n")},
 			{Path: "subagents/large.md", Content: []byte(`---
@@ -168,18 +168,18 @@ tools: [workspace_read]
 		codes[diagnostic.Code] = true
 	}
 	if !codes["fragment_too_large"] || !codes["metadata_too_large"] {
-		t.Fatalf("runtime truncation risks were not rejected before publish: %#v", validation.Diagnostics)
+		t.Fatalf("runtime truncation risks were not rejected before update: %#v", validation.Diagnostics)
 	}
 }
 
 func TestManagerRejectsMultipleFrontmatterDocuments(t *testing.T) {
 	manager := openTestManager(t)
-	current, err := manager.Current(context.Background())
+	current, err := manager.Store().Current(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
 	_, err = manager.Store().Update(context.Background(), agentstate.ChangeSet{
-		BaseRevision: current.Revision(),
+		BaseRevision: current.Revision,
 		Changes: []agentstate.Change{{Path: "context/invalid.md", Content: []byte(`---
 id: invalid
 purpose: one
@@ -203,7 +203,7 @@ func TestManagerUsesCurrentConfigurationForStateReferences(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	current, err := manager.Current(context.Background())
+	current, err := manager.Store().Current(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -217,7 +217,7 @@ tools: [workspace_read]
 
 Review the supplied artifact.`)}
 	if _, err := manager.Store().Update(context.Background(), agentstate.ChangeSet{
-		BaseRevision: current.Revision(), Changes: []agentstate.Change{change},
+		BaseRevision: current.Revision, Changes: []agentstate.Change{change},
 	}); err == nil {
 		t.Fatal("unknown model profile unexpectedly passed validation")
 	}
@@ -226,7 +226,7 @@ Review the supplied artifact.`)}
 		ModelProfiles: []config.ModelProfileSettings{{ID: "future", Model: "future-model"}},
 	}
 	result, err := manager.Store().Update(context.Background(), agentstate.ChangeSet{
-		BaseRevision: current.Revision(), Changes: []agentstate.Change{change},
+		BaseRevision: current.Revision, Changes: []agentstate.Change{change},
 	})
 	if err != nil || !result.Changed {
 		t.Fatalf("long-lived Manager kept stale model profiles: result=%#v err=%v", result, err)
