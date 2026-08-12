@@ -15,6 +15,8 @@ interface AgentChangeSummaryCardProps {
   projectId: string
   summary: WorkspaceChangeGroupSummary
   disabled?: boolean
+  /** Keeps the live card lightweight until its Agent run stops appending changes. */
+  deferDetails?: boolean
   eagerPreload?: boolean
   onReview: (reviewThreadID: string, groupID: string) => void
   onWorkspaceChanged?: (paths: string[]) => void | Promise<void>
@@ -27,25 +29,27 @@ interface FileChangeSummary {
 }
 
 /** Codex-style, durable summary for one Agent run. */
-export function AgentChangeSummaryCard({ projectId, summary, disabled = false, eagerPreload = false, onReview, onWorkspaceChanged }: AgentChangeSummaryCardProps) {
+export function AgentChangeSummaryCard({ projectId, summary, disabled = false, deferDetails = false, eagerPreload = false, onReview, onWorkspaceChanged }: AgentChangeSummaryCardProps) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [expanded, setExpanded] = useState(false)
   const groupQuery = useQuery({
     queryKey: projectChangeKeys.detail(projectId, summary.id),
     queryFn: () => getProjectChangeGroup(projectId, summary.id),
-    enabled: Boolean(projectId && summary.id),
+    enabled: Boolean(projectId && summary.id && !deferDetails),
     staleTime: 10_000,
   })
   const files = useMemo(() => summarizeGroupFiles(groupQuery.data), [groupQuery.data])
+  const filesByPath = useMemo(() => new Map(files.map((file) => [file.path, file])), [files])
+  const visiblePaths = files.length ? files.map((file) => file.path) : (summary.paths ?? [])
   const totals = useMemo(() => files.reduce(
     (result, file) => ({ additions: result.additions + file.additions, deletions: result.deletions + file.deletions }),
     { additions: 0, deletions: 0 },
   ), [files])
-  const visibleFiles = expanded ? files : files.slice(0, 3)
+  const displayedPaths = expanded ? visiblePaths : visiblePaths.slice(0, 3)
   const reviewThreadID = summary.review_thread_id || groupQuery.data?.review_thread_id || summary.id
   const preloadReview = useCallback(() => {
-    if (!projectId || !reviewThreadID) return
+    if (disabled || deferDetails || !projectId || !reviewThreadID) return
     void Promise.all([
       prefetchProjectChangeReviewThread(queryClient, projectId, reviewThreadID),
       preloadReviewDiffEditor(),
@@ -56,7 +60,7 @@ export function AgentChangeSummaryCard({ projectId, summary, disabled = false, e
         error,
       })
     })
-  }, [projectId, queryClient, reviewThreadID])
+  }, [deferDetails, disabled, projectId, queryClient, reviewThreadID])
 
   useEffect(() => {
     if (eagerPreload) preloadReview()
@@ -100,7 +104,7 @@ export function AgentChangeSummaryCard({ projectId, summary, disabled = false, e
     >
       <header className="flex min-h-16 items-center gap-3 px-3 py-3">
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[var(--nova-bg)] text-[var(--nova-text-muted)]">
-          {groupQuery.isLoading
+          {groupQuery.isLoading && !deferDetails
             ? <Loader2 className="h-4 w-4 animate-spin" />
             : groupQuery.isError
               ? <AlertTriangle className="h-4 w-4 text-[var(--nova-warning)]" />
@@ -110,12 +114,12 @@ export function AgentChangeSummaryCard({ projectId, summary, disabled = false, e
           <div className="truncate text-sm font-semibold">{t('changes.summary.title', { count: fileCount })}</div>
           {groupQuery.isError ? (
             <div className="mt-0.5 text-[11px] text-[var(--nova-warning)]">{t('changes.loadFailed')}</div>
-          ) : (
+          ) : files.length > 0 ? (
             <div className="mt-0.5 flex gap-2 font-mono text-xs">
               <span className="text-[var(--nova-success)]">+{totals.additions}</span>
               <span className="text-[var(--nova-danger)]">−{totals.deletions}</span>
             </div>
-          )}
+          ) : null}
         </div>
         {groupQuery.isError && (
           <Button type="button" size="icon-xs" variant="ghost" onClick={() => void groupQuery.refetch()} aria-label={t('changes.retry')}>
@@ -133,32 +137,40 @@ export function AgentChangeSummaryCard({ projectId, summary, disabled = false, e
           {undoMutation.isPending ? <Loader2 className="animate-spin" /> : <RotateCcw />}
           {t('changes.undo')}
         </Button>
-        <Button type="button" size="sm" variant="outline" onClick={openReview} className="shrink-0">
+        <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={openReview} className="shrink-0">
           {t('changes.review')}
         </Button>
       </header>
 
-      {visibleFiles.length > 0 && (
+      {displayedPaths.length > 0 && (
         <div className="border-t border-[var(--nova-border)]">
-          {visibleFiles.map((file) => (
-            <button
-              key={file.path}
-              type="button"
-              onClick={openReview}
-              className="flex w-full items-center gap-3 border-b border-[var(--nova-border-soft)] px-3 py-2 text-left last:border-b-0 hover:bg-[var(--nova-hover)]"
-            >
-              <span className="min-w-0 flex-1 truncate">{file.path}</span>
-              <span className="shrink-0 font-mono text-[var(--nova-success)]">+{file.additions}</span>
-              <span className="shrink-0 font-mono text-[var(--nova-danger)]">−{file.deletions}</span>
-            </button>
-          ))}
-          {files.length > 3 && (
+          {displayedPaths.map((path) => {
+            const file = filesByPath.get(path)
+            return (
+              <button
+                key={path}
+                type="button"
+                disabled={disabled}
+                onClick={openReview}
+                className="flex w-full items-center gap-3 border-b border-[var(--nova-border-soft)] px-3 py-2 text-left last:border-b-0 enabled:hover:bg-[var(--nova-hover)]"
+              >
+                <span className="min-w-0 flex-1 truncate">{path}</span>
+                {file ? (
+                  <>
+                    <span className="shrink-0 font-mono text-[var(--nova-success)]">+{file.additions}</span>
+                    <span className="shrink-0 font-mono text-[var(--nova-danger)]">−{file.deletions}</span>
+                  </>
+                ) : null}
+              </button>
+            )
+          })}
+          {visiblePaths.length > 3 && (
             <button
               type="button"
               onClick={() => setExpanded((value) => !value)}
               className="flex w-full items-center gap-2 border-t border-[var(--nova-border)] px-3 py-2 text-left text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
             >
-              {expanded ? t('changes.summary.showLess') : t('changes.summary.showMore', { count: files.length - 3 })}
+              {expanded ? t('changes.summary.showLess') : t('changes.summary.showMore', { count: visiblePaths.length - 3 })}
               {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
             </button>
           )}

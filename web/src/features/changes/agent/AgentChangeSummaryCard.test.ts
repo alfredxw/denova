@@ -96,9 +96,19 @@ describe('AgentChangeSummaryCard review preload', () => {
     await waitFor(() => expect(apiMocks.getProjectChangeReviewThread).toHaveBeenCalledWith('project-book', 'thread-1'))
     expect(preloadReviewDiffEditorMock).toHaveBeenCalledTimes(1)
   })
+
+  it('renders the live summary without loading or opening an incomplete Diff review', () => {
+    const { getByRole, getByText } = renderSummaryCard(false, { disabled: true, deferDetails: true })
+
+    expect(getByText('draft.md')).toBeInTheDocument()
+    expect(getByRole('button', { name: '审阅' })).toBeDisabled()
+    expect(apiMocks.getProjectChangeGroup).not.toHaveBeenCalled()
+    expect(apiMocks.getProjectChangeReviewThread).not.toHaveBeenCalled()
+    expect(preloadReviewDiffEditorMock).not.toHaveBeenCalled()
+  })
 })
 
-function renderSummaryCard(eagerPreload: boolean) {
+function renderSummaryCard(eagerPreload: boolean, options: { disabled?: boolean; deferDetails?: boolean } = {}) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
   const summary = {
     id: 'group-1',
@@ -117,6 +127,7 @@ function renderSummaryCard(eagerPreload: boolean) {
       projectId: 'project-book',
       summary,
       eagerPreload,
+      ...options,
       onReview: vi.fn(),
     }),
   ))

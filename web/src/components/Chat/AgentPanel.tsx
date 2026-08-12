@@ -412,7 +412,7 @@ function AgentPanelComponent({
   const timelineAttachments = useMemo(
     () =>
       (changeGroupsQuery.data ?? [])
-        .filter((summary) => Boolean(summary.run_id) && summary.run_id !== activeRunID)
+        .filter((summary) => Boolean(summary.run_id))
         .map((summary, index) => ({
           id: summary.id,
           runId: summary.run_id || '',
@@ -420,14 +420,15 @@ function AgentPanelComponent({
             <AgentChangeSummaryCard
               projectId={projectId}
               summary={summary}
-              disabled={isStreaming}
-              eagerPreload={!isStreaming && index === 0}
+              disabled={isExecutionActive}
+              deferDetails={summary.run_id === activeRunID}
+              eagerPreload={!isExecutionActive && index === 0}
               onReview={(reviewThreadID, groupID) => onOpenChangeReview?.(reviewThreadID, groupID)}
               onWorkspaceChanged={onWorkspaceChanged}
             />
           ),
         })),
-    [activeRunID, changeGroupsQuery.data, isStreaming, onOpenChangeReview, onWorkspaceChanged, projectId],
+    [activeRunID, changeGroupsQuery.data, isExecutionActive, onOpenChangeReview, onWorkspaceChanged, projectId],
   )
 
   const sendWithWritingSkill = async (message: string) => {

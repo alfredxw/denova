@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import userEvent from '@testing-library/user-event'
 import type { ComponentProps } from 'react'
 import { VirtuosoMockContext } from 'react-virtuoso'
@@ -73,7 +74,8 @@ vi.mock('@/hooks/useWritingSkillOptions', () => ({
   useWritingSkillOptions: useWritingSkillOptionsMock,
 }))
 
-vi.mock('@/features/changes/use-change-review', () => ({
+vi.mock('@/features/changes/use-change-review', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/features/changes/use-change-review')>(),
   useProjectChangeGroups: useProjectChangeGroupsMock,
 }))
 
@@ -282,6 +284,37 @@ describe('AgentPanel', () => {
 
     expect(screen.getByRole('button', { name: /正在执行/ })).toHaveAttribute('aria-expanded', 'true')
     expect(screen.getByText('正在读取章节上下文')).toBeInTheDocument()
+  })
+
+  it('运行中在时间线预留轻量变更摘要', () => {
+    useProjectChangeGroupsMock.mockReturnValue({
+      data: [{
+        id: 'run-live-review',
+        review_thread_id: 'run-live-review',
+        run_id: 'run-live-review',
+        session_id: 'session-1',
+        created_at: '2026-08-13T00:00:00Z',
+        review_status: 'pending',
+        apply_state: 'applied',
+        can_undo: true,
+        change_set_count: 1,
+        paths: ['draft.md'],
+      }],
+    })
+
+    renderAgentPanel({
+      isStreaming: true,
+      isExecutionActive: true,
+      messages: [{
+        id: 'assistant-live-review',
+        role: 'assistant',
+        metadata: { run_id: 'run-live-review' },
+        parts: [{ type: 'text', text: '正在修改', state: 'streaming' }],
+      }],
+    })
+
+    expect(screen.getByText('draft.md')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '审阅' })).toBeDisabled()
   })
 
   it('空闲恢复探测不会展开已完成的执行过程', () => {
@@ -751,6 +784,7 @@ describe('AgentPanel', () => {
 type AgentPanelOverrides = Partial<Omit<ComponentProps<typeof AgentPanel>, 'composerSettings'>>
 
 function renderAgentPanel(overrides: AgentPanelOverrides = {}) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
   function Owner() {
     const composerSettings = usePersistedUserSettings({
       workspace: overrides.workspace || '/workspace',
@@ -759,9 +793,11 @@ function renderAgentPanel(overrides: AgentPanelOverrides = {}) {
     return <AgentPanel {...defaultAgentPanelProps(overrides, composerSettings)} />
   }
   return render(
-    <VirtuosoMockContext.Provider value={{ viewportHeight: 1200, itemHeight: 52 }}>
-      <Owner />
-    </VirtuosoMockContext.Provider>,
+    <QueryClientProvider client={queryClient}>
+      <VirtuosoMockContext.Provider value={{ viewportHeight: 1200, itemHeight: 52 }}>
+        <Owner />
+      </VirtuosoMockContext.Provider>
+    </QueryClientProvider>,
   )
 }
 

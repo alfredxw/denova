@@ -25,6 +25,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 修复写作、游戏与 AgentChat 会话在历史内容稍晚完成测量时脱离底部，以及短回复结束后继续保留流式响应跑道、在回复下方留下大块空白的问题。共享消息列表现在仅在用户未主动上翻时跟随非流式布局变化，生成结束会立即收起临时跑道；短会话使用虚拟列表原生贴底布局，最新回复稳定停在输入区上方。无需新增配置。
+- Fixed Writing, Game, and AgentChat conversations drifting away from the bottom when restored content finished measuring late, and short responses retaining their streaming runway after completion and leaving a large blank area below. The shared message list now follows idle layout changes only while the user has not explicitly scrolled up, removes the temporary runway as soon as generation ends, and uses the virtualizer's native bottom alignment for short conversations so the latest reply remains above the composer. No new setting is required.
 - 修复游戏会话末尾状态面板把展开态最高 Tab 的高度继续保留到预览态、导致下方出现大块空白的问题。会话尾部现在按折叠、预览、展开状态分别记录已访问 Tab 的最高高度：同一状态内切换 Tab 仍保持滚动位置稳定，不同状态之间则立即适应各自内容高度；无需新增配置。
 - Fixed the Game conversation's trailing state panel retaining the tallest expanded tab height in preview mode and leaving a large blank area below. The conversation footer now tracks the tallest visited tab independently for collapsed, preview, and expanded layouts, preserving scroll stability within one layout while adapting immediately between layouts. No new setting is required.
 - 修复写作模式因单个已淘汰或损坏的旧会话 journal 阻断整个会话列表，继而以空 `session_id` 发送新指令，并把明确的绑定或上下文变化错误误判为“正在恢复已接受运行”的问题。会话列表现在隔离不可读项且不改写原始 journal；发送前会解析精确会话绑定，只有响应流已经开始或 HTTP 接受结果不确定的请求才会检查持久运行，服务端明确拒绝的请求会立即恢复可操作状态。写作与 AgentChat 共用绑定和恢复边界；游戏会话列表共用损坏项隔离能力。无需新增配置。
