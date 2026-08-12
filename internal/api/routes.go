@@ -27,6 +27,8 @@ func (s *Server) registerRoutes(h *hertzserver.Hertz) {
 		learning.GET("/versions", apiHandlers.HandleContinualLearningVersions)
 		learning.GET("/versions/diff", apiHandlers.HandleContinualLearningVersionDiff)
 		learning.POST("/versions/:id/restore", apiHandlers.HandleContinualLearningVersionRestore)
+		learning.GET("/trajectories", apiHandlers.HandleContinualLearningTrajectories)
+		learning.GET("/trajectories/content", apiHandlers.HandleContinualLearningTrajectory)
 		learning.POST("/optimize/stream", apiHandlers.HandleHarnessOptimizerStream)
 		learning.GET("/optimize/stream", apiHandlers.HandleHarnessOptimizerTaskStream)
 		learning.GET("/optimize/active", apiHandlers.HandleHarnessOptimizerActive)

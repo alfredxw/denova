@@ -25,7 +25,15 @@ import { resolveAgentAskAndRefresh } from '@/lib/agent-ask'
 
 const CHAT_KEY = 'harness-optimizer:user'
 
-export function HarnessOptimizerChat({ onSettled }: { onSettled: () => void }) {
+export function HarnessOptimizerChat({
+  evidence,
+  evidenceReady,
+  onSettled,
+}: {
+  evidence: string[]
+  evidenceReady: boolean
+  onSettled: () => void
+}) {
   const { t } = useTranslation()
   const mountedRef = useRef(false)
   const attachedTaskRef = useRef('')
@@ -184,16 +192,17 @@ export function HarnessOptimizerChat({ onSettled }: { onSettled: () => void }) {
       }
       return
     }
+    if (!evidenceReady) return
     if (showUserMessage && !instruction) return
     if (showUserMessage) {
       setMessages((current) => [...current, createAgentTextMessage({ role: 'user', text: instruction })])
     }
     setError(null)
     setConnecting(true)
-    const retryKey = agentCommandRetryKey(CHAT_KEY, 'start', { instruction })
+    const retryKey = agentCommandRetryKey(CHAT_KEY, 'start', { instruction, evidence })
     const commandID = rememberAgentCommandID(startCommandIDsRef.current, retryKey, createAgentCommandID)
     try {
-      const stream = await runHarnessOptimizer(commandID, instruction)
+      const stream = await runHarnessOptimizer(commandID, instruction, evidence)
       startCommandIDsRef.current.delete(retryKey)
       if (!mountedRef.current) {
         await stream.cancel().catch(() => {})
@@ -216,7 +225,7 @@ export function HarnessOptimizerChat({ onSettled }: { onSettled: () => void }) {
         void inspect()
       }
     }
-  }, [active?.active, appendError, applyProjection, connecting, consume, inspect, isStreaming, setMessages, t])
+  }, [active?.active, appendError, applyProjection, connecting, consume, evidence, evidenceReady, inspect, isStreaming, setMessages, t])
 
   const resolveAsk = useCallback(async (view: AgentMessageView, action: { status: 'answered'; answers: AgentAskAnswer[] } | { status: 'cancelled' }) => {
     const askID = agentViewAskID(view)
@@ -233,9 +242,13 @@ export function HarnessOptimizerChat({ onSettled }: { onSettled: () => void }) {
       <div className="flex min-h-12 items-center justify-between gap-3 border-b border-[var(--nova-border)] px-3 py-2">
         <div className="min-w-0">
           <div className="truncate text-xs font-medium text-[var(--nova-text)]">{t('continualLearning.optimizer.title')}</div>
-          <div className="truncate text-[10px] text-[var(--nova-text-faint)]">{t('continualLearning.optimizer.subtitle')}</div>
+          <div className="truncate text-[10px] text-[var(--nova-text-faint)]">
+            {evidenceReady
+              ? t('continualLearning.optimizer.evidenceCount', { count: evidence.length })
+              : t('continualLearning.optimizer.evidenceLoading')}
+          </div>
         </div>
-        <Button type="button" size="xs" variant="outline" disabled={busy} onClick={() => void start('', false)}>
+        <Button type="button" size="xs" variant="outline" disabled={busy || !evidenceReady} onClick={() => void start('', false)}>
           {busy ? <RotateCcw className="animate-spin" /> : <Sparkles />}
           {t('continualLearning.optimizeNow')}
         </Button>
@@ -259,7 +272,7 @@ export function HarnessOptimizerChat({ onSettled }: { onSettled: () => void }) {
         onSend={(value) => start(value, true)}
         disabled={false}
         generationActive={busy}
-        sendBlocked={busy}
+        sendBlocked={busy || !evidenceReady}
         draftKey={CHAT_KEY}
         commandScope="all"
         builtinCommands={['/clear']}

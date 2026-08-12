@@ -168,6 +168,28 @@ type EngineContinuation struct {
 	Autonomous bool
 }
 
+// EngineToolInputStarted and EngineToolInputDelta are live projections of the
+// model constructing a tool call. They never establish execution authority or
+// enter the durable journal.
+type EngineToolInputStarted struct {
+	CallID         string
+	ProviderCallID string
+	Name           string
+	Source         EventSource
+}
+
+func (EngineToolInputStarted) engineEvent() {}
+
+type EngineToolInputDelta struct {
+	CallID         string
+	ProviderCallID string
+	Name           string
+	Delta          string
+	Source         EventSource
+}
+
+func (EngineToolInputDelta) engineEvent() {}
+
 type EngineToolStarted struct {
 	CallID    string
 	Name      string

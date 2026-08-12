@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Clock3, FileCode2, FilePlus2, History, Plus, RotateCcw, Save, Trash2 } from 'lucide-react'
+import { FileCode2, FilePlus2, History, Plus, Route, RotateCcw, Save, ShieldCheck, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import {
@@ -17,13 +17,15 @@ import type {
 } from '@/lib/api'
 import { formatDateTime } from '@/i18n'
 import { AGENTS } from './agent-registry'
-import { SwitchWithInheritance } from './agent-form-controls'
-import { SettingsFieldRow } from '@/components/forms/settings-field-row'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { VersionTimeline } from '@/features/versions/components/version-timeline'
+import type { VersionItem } from '@/features/versions/components/version-timeline'
+import { HarnessOptimizationSchedule } from './HarnessOptimizationSchedule'
+import type { HarnessOptimizationScheduleSettings } from './HarnessOptimizationSchedule'
+import { HarnessTrajectoryPanel } from './HarnessTrajectoryPanel'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -43,21 +45,16 @@ import {
 
 type PendingAction = { kind: 'delete'; path: string } | { kind: 'restore'; version: HarnessStateVersion }
 
-export interface ContinualLearningScheduleSettings {
-  enabled: boolean | null
-  inheritedEnabled: boolean
-  intervalHours: number | null
-  inheritedIntervalHours: number
-  onEnabledChange: (enabled: boolean | null) => void
-  onIntervalHoursChange: (hours: number | null) => void
-}
+export type ContinualLearningScheduleSettings = HarnessOptimizationScheduleSettings
 
 export function ContinualLearningPage({
   refreshToken = 0,
   scheduleSettings,
+  onEvidenceChange,
 }: {
   refreshToken?: number
   scheduleSettings: ContinualLearningScheduleSettings
+  onEvidenceChange: (uris: string[], ready: boolean) => void
 }) {
   const { t } = useTranslation()
   const [snapshot, setSnapshot] = useState<HarnessStateSnapshot | null>(null)
@@ -71,6 +68,7 @@ export function ContinualLearningPage({
   const [error, setError] = useState<string | null>(null)
   const [diff, setDiff] = useState('')
   const [diffLoading, setDiffLoading] = useState(false)
+  const [selectedVersionID, setSelectedVersionID] = useState('')
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null)
 
   const load = useCallback(async (preferredPath?: string) => {
@@ -178,6 +176,7 @@ export function ContinualLearningPage({
   const showDiff = async (index: number) => {
     const current = versions[index]
     const previous = versions[index + 1]
+    setSelectedVersionID(current?.id || '')
     if (!current || !previous) {
       setDiff(t('continualLearning.history.firstVersion'))
       return
@@ -231,7 +230,13 @@ export function ContinualLearningPage({
 
   const dirty = content !== savedContent
   const pathGroups = useMemo(() => groupFiles(snapshot?.files.map((file) => file.path) || []), [snapshot])
-  const scheduleEnabled = scheduleSettings.enabled ?? scheduleSettings.inheritedEnabled
+  const versionItems = useMemo<VersionItem[]>(() => versions.map((version) => ({
+    id: version.id,
+    title: version.summary,
+    description: version.revision.slice(0, 10),
+    createdAt: formatDateTime(version.created_at),
+    changedPaths: [],
+  })), [versions])
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--nova-bg)]">
       <header className="shrink-0 border-b border-[var(--nova-border)] px-4 py-3 sm:px-5">
@@ -242,79 +247,23 @@ export function ContinualLearningPage({
           </div>
           <p className="mt-1 max-w-2xl text-[11px] leading-4 text-[var(--nova-text-faint)]">{t('continualLearning.description')}</p>
         </div>
-        <section className="mt-3 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-3" aria-labelledby="continual-learning-schedule-title">
-          <div className="flex flex-wrap items-start justify-between gap-2">
-            <div className="flex min-w-0 items-start gap-2">
-              <Clock3 className="h-3.5 w-3.5" />
-              <div className="min-w-0">
-                <h2 id="continual-learning-schedule-title" className="text-xs font-medium text-[var(--nova-text)]">
-                  {t('settings.labs.continualLearningSchedule')}
-                </h2>
-                <p className="mt-0.5 text-[11px] leading-4 text-[var(--nova-text-faint)]">
-                  {t('continualLearning.schedule.description')}
-                </p>
-              </div>
-            </div>
-            <span className="text-[10px] text-[var(--nova-text-muted)]">
-              {schedule?.last_success
-                ? t('continualLearning.schedule.lastSuccess', { time: formatDateTime(schedule.last_success) })
-                : t('continualLearning.schedule.neverRun')}
-            </span>
-          </div>
-          <div className="mt-3 grid gap-2">
-            <SettingsFieldRow
-              title={t('continualLearning.schedule.switch')}
-              description={t('continualLearning.schedule.switchDescription')}
-              className="bg-[var(--nova-surface)]"
-              controlClassName="items-center justify-end sm:w-28"
-            >
-              <SwitchWithInheritance
-                checked={scheduleEnabled}
-                inherited={scheduleSettings.enabled === null}
-                onChange={scheduleSettings.onEnabledChange}
-                onReset={() => scheduleSettings.onEnabledChange(null)}
-                ariaLabel={t('continualLearning.schedule.switch')}
-              />
-            </SettingsFieldRow>
-            <SettingsFieldRow
-              title={t('settings.labs.continualLearningIntervalHours')}
-              description={t('continualLearning.schedule.intervalDescription')}
-              disabled={!scheduleEnabled}
-              className="bg-[var(--nova-surface)]"
-              controlClassName="items-center sm:w-28"
-            >
-              <Input
-                type="number"
-                min={1}
-                max={720}
-                value={scheduleSettings.intervalHours ?? ''}
-                placeholder={String(scheduleSettings.inheritedIntervalHours)}
-                disabled={!scheduleEnabled}
-                aria-label={t('settings.labs.continualLearningIntervalHours')}
-                onChange={(event) => {
-                  if (event.target.value === '') {
-                    scheduleSettings.onIntervalHoursChange(null)
-                    return
-                  }
-                  const parsed = Number(event.target.value)
-                  if (Number.isFinite(parsed)) {
-                    scheduleSettings.onIntervalHoursChange(Math.min(720, Math.max(1, Math.trunc(parsed))))
-                  }
-                }}
-              />
-            </SettingsFieldRow>
-          </div>
-        </section>
+        <HarnessOptimizationSchedule status={schedule} settings={scheduleSettings} />
       </header>
       {error && <div className="shrink-0 border-b border-[var(--nova-border)] bg-red-500/5 px-4 py-2 text-xs text-red-400">{error}</div>}
-      <Tabs defaultValue="state" className="min-h-0 flex-1 gap-0">
+      <Tabs defaultValue="trajectories" className="min-h-0 flex-1 gap-0">
         <TabsList variant="line" className="mx-4 h-10 shrink-0 sm:mx-5">
+          <TabsTrigger value="trajectories"><Route />{t('continualLearning.trajectories')}</TabsTrigger>
           <TabsTrigger value="state"><FileCode2 />{t('continualLearning.state')}</TabsTrigger>
           <TabsTrigger value="history"><History />{t('continualLearning.history')}</TabsTrigger>
         </TabsList>
+        <TabsContent value="trajectories" className="min-h-0 overflow-hidden border-t border-[var(--nova-border)]">
+          <HarnessTrajectoryPanel refreshToken={refreshToken} onEvidenceChange={onEvidenceChange} />
+        </TabsContent>
         <TabsContent value="state" className="min-h-0 overflow-hidden border-t border-[var(--nova-border)]">
           {loading ? (
             <div className="grid h-full place-items-center text-xs text-[var(--nova-text-faint)]">{t('common.loading')}</div>
+          ) : snapshot?.source === 'builtin' && !selectedPath ? (
+            <BuiltinStateOverview onCreate={() => createFile('prompt')} />
           ) : (
             <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] md:grid-cols-[220px_minmax(0,1fr)] md:grid-rows-1">
               <aside className="min-h-0 border-b border-[var(--nova-border)] bg-[var(--nova-surface-2)] md:border-r md:border-b-0">
@@ -386,18 +335,22 @@ export function ContinualLearningPage({
         <TabsContent value="history" className="min-h-0 overflow-hidden border-t border-[var(--nova-border)]">
           <div className="grid h-full min-h-0 md:grid-cols-[minmax(240px,34%)_minmax(0,1fr)]">
             <div className="min-h-0 overflow-y-auto border-b border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-3 md:border-r md:border-b-0">
-              {versions.length === 0 && <div className="py-8 text-center text-xs text-[var(--nova-text-faint)]">{t('continualLearning.history.empty')}</div>}
-              {versions.map((version, index) => (
-                <div key={version.id} className="mb-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-3">
-                  <button type="button" className="w-full text-left" onClick={() => void showDiff(index)}>
-                    <div className="line-clamp-2 text-xs font-medium text-[var(--nova-text)]">{version.summary}</div>
-                    <div className="mt-1 font-mono text-[9px] text-[var(--nova-text-faint)]">{formatDateTime(version.created_at)} · {version.revision.slice(0, 10)}</div>
-                  </button>
-                  <Button type="button" size="xs" variant="ghost" className="mt-2" disabled={saving || version.revision === snapshot?.revision} onClick={() => setPendingAction({ kind: 'restore', version })}>
-                    <RotateCcw />{t('continualLearning.history.restore')}
-                  </Button>
-                </div>
-              ))}
+              {versions.length === 0 ? (
+                <div className="py-8 text-center text-xs text-[var(--nova-text-faint)]">{t('continualLearning.history.empty')}</div>
+              ) : (
+                <VersionTimeline
+                  versions={versionItems}
+                  selectedVersionId={selectedVersionID}
+                  loading={saving}
+                  canRollbackVersion={(item) => versions.find((version) => version.id === item.id)?.revision !== snapshot?.revision}
+                  onSelectVersion={(item) => void showDiff(versions.findIndex((version) => version.id === item.id))}
+                  onOpenDiff={(item) => void showDiff(versions.findIndex((version) => version.id === item.id))}
+                  onRollback={(item) => {
+                    const version = versions.find((candidate) => candidate.id === item.id)
+                    if (version) setPendingAction({ kind: 'restore', version })
+                  }}
+                />
+              )}
             </div>
             <pre className="min-h-0 overflow-auto whitespace-pre-wrap break-words p-4 font-mono text-[11px] leading-5 text-[var(--nova-text-muted)]">{diffLoading ? t('common.loading') : diff || t('continualLearning.history.select')}</pre>
           </div>
@@ -437,6 +390,36 @@ function groupFiles(paths: string[]) {
   return [...groups.entries()]
     .sort(([left], [right]) => order.indexOf(left) - order.indexOf(right))
     .map(([name, groupedPaths]) => ({ name, paths: groupedPaths.sort() }))
+}
+
+function BuiltinStateOverview({ onCreate }: { onCreate: () => void }) {
+  const { t } = useTranslation()
+  return (
+    <div className="grid h-full min-h-0 place-items-center overflow-y-auto px-5 py-8">
+      <section className="w-full max-w-xl border-y border-[var(--nova-border)] py-5">
+        <div className="flex items-start gap-3">
+          <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-emerald-500/30 bg-emerald-500/5 text-emerald-500">
+            <ShieldCheck className="h-4 w-4" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-xs font-semibold text-[var(--nova-text)]">{t('continualLearning.builtin.title')}</h2>
+              <Badge variant="outline" className="h-5 px-1.5 text-[9px]">{t('continualLearning.builtin.badge')}</Badge>
+            </div>
+            <p className="mt-1 text-[11px] leading-5 text-[var(--nova-text-muted)]">{t('continualLearning.builtin.description')}</p>
+            <ul className="mt-3 grid gap-1.5 text-[10px] leading-4 text-[var(--nova-text-faint)] sm:grid-cols-3">
+              <li className="border-l border-[var(--nova-border-strong)] pl-2">{t('continualLearning.builtin.prompts')}</li>
+              <li className="border-l border-[var(--nova-border-strong)] pl-2">{t('continualLearning.builtin.tools')}</li>
+              <li className="border-l border-[var(--nova-border-strong)] pl-2">{t('continualLearning.builtin.modes')}</li>
+            </ul>
+            <Button type="button" size="sm" variant="outline" className="mt-4" onClick={onCreate}>
+              <FilePlus2 />{t('continualLearning.newFile')}
+            </Button>
+          </div>
+        </div>
+      </section>
+    </div>
+  )
 }
 
 function newFile(kind: 'prompt' | 'context' | 'tools' | 'subagent', existing: Set<string>) {

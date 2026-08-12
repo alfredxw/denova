@@ -28,4 +28,23 @@ describe('VersionTimeline', () => {
 
     expect(handleRestorePath).toHaveBeenCalledWith(version, 'chapters/ch01.md')
   })
+
+  it('disables rollback when the version predicate rejects the target', async () => {
+    const user = userEvent.setup()
+    const handleRollback = vi.fn()
+
+    render(
+      <VersionTimeline
+        versions={[version]}
+        canRollbackVersion={() => false}
+        onRollback={handleRollback}
+      />,
+    )
+
+    const rollbackButton = screen.getByRole('button', { name: '回滚' })
+    expect(rollbackButton).toBeDisabled()
+
+    await user.click(rollbackButton)
+    expect(handleRollback).not.toHaveBeenCalled()
+  })
 })

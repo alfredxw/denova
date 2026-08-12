@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"path/filepath"
 	"strings"
 
@@ -40,8 +41,12 @@ func (service *Service) StartTask(ctx context.Context, request Request) (*apptas
 		return nil, err
 	}
 	request.Trigger = normalizeTrigger(request.Trigger)
+	request.Evidence, err = normalizeTrajectoryEvidence(request.Evidence)
+	if err != nil {
+		return nil, err
+	}
 	if request.Trigger == TriggerManual && strings.TrimSpace(request.Instruction) == "" {
-		request.Instruction = "Review recent trajectory evidence and improve Harness State only when the evidence supports a reusable change."
+		request.Instruction = "Review the selected trajectory evidence and improve Harness State only when the evidence supports a reusable change."
 	}
 	if request.Trigger == TriggerScheduled {
 		request.Instruction = "Review recent trajectory evidence since prior optimization. Make only evidence-backed, reusable Harness State improvements; use a no-op when no change is justified."
@@ -264,16 +269,58 @@ func normalizeTrigger(value string) string {
 }
 
 func optimizerMessage(request Request) string {
-	return strings.TrimSpace(fmt.Sprintf(`[Learning Trigger / 学习触发]
+	evidenceScope := "Discover relevant recent evidence through trajectory://index."
+	if request.Evidence != nil {
+		if len(request.Evidence) == 0 {
+			evidenceScope = "No trajectory was selected. Do not broaden the analysis to other trajectory resources unless the user explicitly asks."
+		} else {
+			evidenceScope = "Use only these user-selected trajectory resources as the analysis basis:\n- " + strings.Join(request.Evidence, "\n- ")
+		}
+	}
+	return strings.TrimSpace(fmt.Sprintf(`[Optimization Trigger / 优化触发]
 - trigger: %s
 - trajectory_index: trajectory://index
 - explicit_outcomes: trajectory://outcomes
+
+[Analysis Evidence / 分析依据]
+%s
 
 [Task / 任务]
 Evaluate the available trajectory evidence, critique recurring harness failures or durable user preferences, then update the live Harness State directory only when a minimal reusable improvement is justified. Every file edit takes effect immediately. Read specific session or run resources before drawing conclusions. Never copy project content or private reasoning into State.
 
 [User Instruction / 用户指令]
-%s`, normalizeTrigger(request.Trigger), strings.TrimSpace(request.Instruction)))
+%s`, normalizeTrigger(request.Trigger), evidenceScope, strings.TrimSpace(request.Instruction)))
+}
+
+func normalizeTrajectoryEvidence(values []string) ([]string, error) {
+	if values == nil {
+		return nil, nil
+	}
+	if len(values) > 500 {
+		return nil, fmt.Errorf("trajectory evidence cannot exceed 500 resources")
+	}
+	result := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" || len(value) > 4096 || strings.ContainsAny(value, "\r\n") {
+			return nil, fmt.Errorf("invalid trajectory evidence resource")
+		}
+		parsed, err := url.Parse(value)
+		if err != nil || parsed == nil {
+			return nil, fmt.Errorf("invalid trajectory evidence resource %q", value)
+		}
+		segments := strings.Split(strings.Trim(parsed.EscapedPath(), "/"), "/")
+		if parsed.Scheme != "trajectory" || parsed.Host != "projects" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || len(segments) != 3 || (segments[1] != "sessions" && segments[1] != "runs") {
+			return nil, fmt.Errorf("invalid trajectory evidence resource %q", value)
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	return result, nil
 }
 
 func optimizerVersionSummary(request Request) string {

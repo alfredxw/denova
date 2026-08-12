@@ -8,6 +8,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	agentsession "github.com/alfredxw/denova/agent/session"
 	sessionfile "github.com/alfredxw/denova/agent/session/file"
@@ -144,6 +145,151 @@ type lifecycleModel struct {
 	mu        sync.Mutex
 	responses []*Message
 	inputs    [][]*Message
+}
+
+type streamingToolInputLifecycleModel struct {
+	mu          sync.Mutex
+	streamCalls int
+	first       *StreamReader[*Message]
+	writer      *StreamWriter[*Message]
+}
+
+func newStreamingToolInputLifecycleModel() *streamingToolInputLifecycleModel {
+	reader, writer := Pipe[*Message](-1)
+	return &streamingToolInputLifecycleModel{first: reader, writer: writer}
+}
+
+func (model *streamingToolInputLifecycleModel) Generate(context.Context, []*Message, ...ModelOption) (*Message, error) {
+	return nil, errors.New("streaming tool input test unexpectedly used Generate")
+}
+
+func (model *streamingToolInputLifecycleModel) Stream(context.Context, []*Message, ...ModelOption) (*StreamReader[*Message], error) {
+	model.mu.Lock()
+	defer model.mu.Unlock()
+	model.streamCalls++
+	if model.streamCalls == 1 {
+		return model.first, nil
+	}
+	return StreamReaderFromArray([]*Message{AssistantMessage("done", nil)}), nil
+}
+
+func TestPublicRunStreamsToolInputBeforeToolExecutionStarts(t *testing.T) {
+	model := newStreamingToolInputLifecycleModel()
+	toolEntered := make(chan struct{})
+	releaseTool := make(chan struct{})
+	var enterOnce sync.Once
+	var releaseOnce sync.Once
+	t.Cleanup(func() {
+		model.writer.Close()
+		releaseOnce.Do(func() { close(releaseTool) })
+	})
+	tool, err := InferTool("read", "read a file", func(ctx context.Context, input struct {
+		Path string `json:"path"`
+	}) (string, error) {
+		enterOnce.Do(func() { close(toolEntered) })
+		select {
+		case <-releaseTool:
+			return input.Path, nil
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner, err := New(context.Background(), Definition{
+		Name: "streaming-tool-input", Model: model,
+		Tools: StaticToolsIdentified(
+			CapabilityIdentity{Kind: "tools.streaming-input-test", Version: 1},
+			testToolDefinition(tool),
+		),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = owner.Close(context.Background()) })
+	run, err := owner.Run(context.Background(), Text("read the draft"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	nextEvent := func(match func(EventPayload) bool) EventPayload {
+		t.Helper()
+		timer := time.NewTimer(time.Second)
+		defer timer.Stop()
+		for {
+			select {
+			case event, ok := <-run.Events():
+				if !ok {
+					t.Fatal("public Run events closed before the expected event")
+				}
+				if match(event.Payload) {
+					return event.Payload
+				}
+			case <-timer.C:
+				t.Fatal("timed out waiting for the expected public Run event")
+			}
+		}
+	}
+
+	index := 0
+	model.writer.Send(&Message{Role: Assistant, ToolCalls: []ToolCall{{
+		Index: &index, ID: "provider-call", Type: "function",
+		Function: FunctionCall{Name: "read", Arguments: `{"path":"`},
+	}}}, nil)
+	inputStarted := nextEvent(func(payload EventPayload) bool {
+		_, ok := payload.(ToolInputStarted)
+		return ok
+	}).(ToolInputStarted)
+	firstDelta := nextEvent(func(payload EventPayload) bool {
+		_, ok := payload.(ToolInputDelta)
+		return ok
+	}).(ToolInputDelta)
+	if inputStarted.CallID == "" || inputStarted.ProviderCallID != "provider-call" || inputStarted.Name != "read" {
+		t.Fatalf("tool input start = %#v", inputStarted)
+	}
+	if firstDelta.CallID != inputStarted.CallID || firstDelta.Delta != `{"path":"` {
+		t.Fatalf("first tool input delta = %#v, start = %#v", firstDelta, inputStarted)
+	}
+	select {
+	case <-toolEntered:
+		t.Fatal("tool execution started before the model input stream completed")
+	default:
+	}
+
+	model.writer.Send(&Message{ToolCalls: []ToolCall{{
+		Index: &index, Function: FunctionCall{Arguments: `draft.md"}`},
+	}}}, nil)
+	secondDelta := nextEvent(func(payload EventPayload) bool {
+		_, ok := payload.(ToolInputDelta)
+		return ok
+	}).(ToolInputDelta)
+	if secondDelta.CallID != inputStarted.CallID || secondDelta.Delta != `draft.md"}` {
+		t.Fatalf("second tool input delta = %#v, start = %#v", secondDelta, inputStarted)
+	}
+	select {
+	case <-toolEntered:
+		t.Fatal("tool execution started before the model input stream completed")
+	default:
+	}
+
+	model.writer.Close()
+	started := nextEvent(func(payload EventPayload) bool {
+		_, ok := payload.(ToolStarted)
+		return ok
+	}).(ToolStarted)
+	if started.CallID != inputStarted.CallID || started.Name != "read" || string(started.Arguments) != `{"path":"draft.md"}` {
+		t.Fatalf("tool execution start = %#v, input start = %#v", started, inputStarted)
+	}
+	select {
+	case <-toolEntered:
+	case <-time.After(time.Second):
+		t.Fatal("tool did not execute after its model input stream completed")
+	}
+	releaseOnce.Do(func() { close(releaseTool) })
+	if result, err := run.Wait(context.Background()); err != nil || result.Status != ResultCompleted {
+		t.Fatalf("result=%#v err=%v", result, err)
+	}
 }
 
 func TestPermissionInteractionIsDurableBeforeConcreteToolStarts(t *testing.T) {

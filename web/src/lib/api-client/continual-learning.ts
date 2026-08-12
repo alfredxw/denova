@@ -14,6 +14,7 @@ export interface HarnessStateFile {
 export interface HarnessStateSnapshot {
   revision: string
   files: HarnessStateFile[]
+  source: 'user' | 'builtin'
 }
 
 export interface HarnessStateChange {
@@ -53,6 +54,40 @@ export interface ContinualLearningScheduleStatus {
   last_task_id?: string
 }
 
+export interface HarnessTrajectorySummary {
+  uri: string
+  kind: 'session' | 'run'
+  project_id: string
+  project_name: string
+  id: string
+  title?: string
+  agent_kind?: string
+  status?: string
+  created_at: string
+  updated_at: string
+  message_count?: number
+  event_count?: number
+  tool_calls?: number
+  duration_ms?: number
+}
+
+export interface HarnessTrajectoryIssue {
+  project_id: string
+  message: string
+}
+
+export interface HarnessTrajectoryList {
+  since: string
+  items: HarnessTrajectorySummary[]
+  issues?: HarnessTrajectoryIssue[]
+}
+
+export interface HarnessTrajectoryContent {
+  uri: string
+  kind: string
+  content: string
+}
+
 export function getHarnessState(): Promise<HarnessStateSnapshot> {
   return requestJSON(`${ROOT}/state`)
 }
@@ -86,11 +121,21 @@ export function getContinualLearningSchedule(): Promise<ContinualLearningSchedul
   return requestJSON(`${ROOT}/schedule`)
 }
 
-export async function runHarnessOptimizer(commandId: string, instruction = ''): Promise<ReadableStream<UIMessageChunk>> {
+export function getHarnessTrajectories(since: string, limit = 100): Promise<HarnessTrajectoryList> {
+  const params = new URLSearchParams({ since, limit: String(limit) })
+  return requestJSON(`${ROOT}/trajectories?${params.toString()}`)
+}
+
+export function getHarnessTrajectory(uri: string): Promise<HarnessTrajectoryContent> {
+  const params = new URLSearchParams({ uri })
+  return requestJSON(`${ROOT}/trajectories/content?${params.toString()}`)
+}
+
+export async function runHarnessOptimizer(commandId: string, instruction = '', evidence?: string[]): Promise<ReadableStream<UIMessageChunk>> {
   const response = await fetchAPI(`${ROOT}/optimize/stream`, {
     method: 'POST',
     headers: jsonHeaders,
-    body: JSON.stringify({ command_id: commandId, instruction }),
+    body: JSON.stringify({ command_id: commandId, instruction, ...(evidence === undefined ? {} : { evidence }) }),
   })
   if (!response.ok) throw await responseAPIError(response)
   if (!response.body) throw new Error('Harness Optimizer returned no response body')

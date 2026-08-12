@@ -147,7 +147,23 @@ func mapRunEvent(event runstate.Event, runID, commandID string, trackedCalls map
 		// below so arguments and bounded display results are never misleadingly
 		// represented as empty durable data.
 		return Event{}, false
-	case runstate.ToolInputEvent:
+	case runstate.ToolInputStartedEvent:
+		if string(payload.OperationID) != runID {
+			return Event{}, false
+		}
+		mapped.Payload = ToolInputStarted{
+			CallID: payload.CallID, ProviderCallID: payload.ProviderCallID,
+			Name: payload.Name, Source: publicEventSource(payload.Source),
+		}
+	case runstate.ToolInputDeltaEvent:
+		if string(payload.OperationID) != runID {
+			return Event{}, false
+		}
+		mapped.Payload = ToolInputDelta{
+			CallID: payload.CallID, ProviderCallID: payload.ProviderCallID,
+			Name: payload.Name, Delta: payload.Delta, Source: publicEventSource(payload.Source),
+		}
+	case runstate.ToolStartedEvent:
 		if string(payload.OperationID) != runID {
 			return Event{}, false
 		}
@@ -340,7 +356,11 @@ func runtimeEventRunID(payload runstate.EventPayload) string {
 		return string(payload.OperationID)
 	case runstate.ToolProgressEvent:
 		return ""
-	case runstate.ToolInputEvent:
+	case runstate.ToolInputStartedEvent:
+		return string(payload.OperationID)
+	case runstate.ToolInputDeltaEvent:
+		return string(payload.OperationID)
+	case runstate.ToolStartedEvent:
 		return string(payload.OperationID)
 	case runstate.ToolOutputEvent:
 		return string(payload.OperationID)

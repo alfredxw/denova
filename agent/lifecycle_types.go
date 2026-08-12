@@ -119,6 +119,32 @@ type AssistantFinal struct {
 
 func (AssistantFinal) eventPayload() {}
 
+// ToolInputStarted marks the point at which the model has identified a tool
+// call. It precedes ToolStarted and does not authorize tool execution.
+type ToolInputStarted struct {
+	CallID         string
+	ProviderCallID string
+	Name           string
+	Source         EventSource
+}
+
+func (ToolInputStarted) eventPayload() {}
+
+// ToolInputDelta carries one append-only fragment of model-generated tool
+// arguments while the assistant response is still streaming.
+type ToolInputDelta struct {
+	CallID         string
+	ProviderCallID string
+	Name           string
+	Delta          string
+	Source         EventSource
+}
+
+func (ToolInputDelta) eventPayload() {}
+
+// ToolStarted is emitted only after the complete model response, when Runtime
+// establishes the paired tool lifecycle. Concrete execution normally follows;
+// a synthetic preflight failure instead emits ToolFinished immediately.
 type ToolStarted struct {
 	CallID    string
 	Name      string

@@ -339,10 +339,35 @@ type ModelCompletedEvent struct {
 
 func (ModelCompletedEvent) eventPayload() {}
 
-// ToolInputEvent is the live, bounded parameter projection published only
+// ToolInputStartedEvent and ToolInputDeltaEvent project model-generated tool
+// input before execution. They are ephemeral and never enter restart state.
+type ToolInputStartedEvent struct {
+	OperationID    OperationID
+	Cycle          int
+	CallID         string
+	ProviderCallID string
+	Name           string
+	Source         EventSource
+}
+
+func (ToolInputStartedEvent) eventPayload() {}
+
+type ToolInputDeltaEvent struct {
+	OperationID    OperationID
+	Cycle          int
+	CallID         string
+	ProviderCallID string
+	Name           string
+	Delta          string
+	Source         EventSource
+}
+
+func (ToolInputDeltaEvent) eventPayload() {}
+
+// ToolStartedEvent is the live, bounded parameter projection published only
 // after the matching durable ToolCallStartedEvent commits. Arguments stay out
 // of journals and restart snapshots by design.
-type ToolInputEvent struct {
+type ToolStartedEvent struct {
 	OperationID OperationID
 	Cycle       int
 	CallID      string
@@ -351,7 +376,7 @@ type ToolInputEvent struct {
 	Source      EventSource
 }
 
-func (ToolInputEvent) eventPayload() {}
+func (ToolStartedEvent) eventPayload() {}
 
 // ToolOutputEvent is the live display projection paired with a durable tool
 // completion. Rich result bytes stay ephemeral; the journal retains their

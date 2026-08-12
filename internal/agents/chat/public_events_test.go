@@ -77,6 +77,46 @@ func TestPublicEventProjectorPreservesUsageAndStructuredToolDisplay(t *testing.T
 	}
 }
 
+func TestPublicEventProjectorStreamsToolInputWithoutDuplicatingExecutionStart(t *testing.T) {
+	var events []agentrun.Event
+	projector := NewPublicEventProjector(nil, ChatRequest{}, agentrun.Options{
+		AgentKind: "ide", TaskID: "task", RootAgentName: "root",
+	}, func(event agentrun.Event) { events = append(events, event) })
+	projector.Project(agent.Event{RunID: "run", Payload: agent.ToolInputStarted{
+		CallID: "execution-call", ProviderCallID: "provider-call", Name: "read",
+	}})
+	projector.Project(agent.Event{RunID: "run", Payload: agent.ToolInputDelta{
+		CallID: "execution-call", ProviderCallID: "provider-call", Name: "read", Delta: `{"path":"`,
+	}})
+	projector.Project(agent.Event{RunID: "run", Payload: agent.ToolInputDelta{
+		CallID: "execution-call", ProviderCallID: "provider-call", Name: "read", Delta: `draft.md"}`,
+	}})
+	projector.Project(agent.Event{RunID: "run", Payload: agent.ToolStarted{
+		CallID: "execution-call", Name: "read", Arguments: json.RawMessage(`{"path":"draft.md"}`),
+	}})
+	projector.Project(agent.Event{RunID: "run", Payload: agent.ToolFinished{
+		CallID: "execution-call", Name: "read", Result: "draft",
+	}})
+
+	wantTypes := []string{"tool_call", "tool_args_delta", "tool_args_delta", "tool_started", "tool_result"}
+	if len(events) != len(wantTypes) {
+		t.Fatalf("projected events = %#v", events)
+	}
+	for index, event := range events {
+		if event.Type != wantTypes[index] {
+			t.Fatalf("projected event types = %#v, want %v", events, wantTypes)
+		}
+	}
+	call := events[0]
+	if call.DataString("id") != "execution-call" || call.DataString("provider_call_id") != "provider-call" ||
+		call.DataString("name") != "read" || call.DataString("args") != "" {
+		t.Fatalf("tool call = %#v", call.Data)
+	}
+	if events[1].DataString("delta")+events[2].DataString("delta") != `{"path":"draft.md"}` {
+		t.Fatalf("tool argument deltas = %#v", events[1:3])
+	}
+}
+
 func TestPublicEventProjectorPublishesAndBindsAgentCompaction(t *testing.T) {
 	conversation := &publicEventCompactionConversation{}
 	var events []agentrun.Event

@@ -129,9 +129,12 @@ func (service *Service) State(ctx context.Context) (StateSnapshot, error) {
 	if err != nil {
 		return StateSnapshot{}, err
 	}
-	result := StateSnapshot{Revision: snapshot.Revision, Files: make([]StateFile, 0, len(snapshot.Files()))}
+	result := StateSnapshot{Revision: snapshot.Revision, Files: make([]StateFile, 0, len(snapshot.Files())), Source: StateSourceUser}
 	for _, file := range snapshot.Files() {
 		result.Files = append(result.Files, StateFile{Path: file.Path, Content: string(file.Content)})
+	}
+	if len(result.Files) == 0 {
+		result.Source = StateSourceBuiltin
 	}
 	return result, nil
 }

@@ -135,6 +135,7 @@ func consumeMessageVariant(variant *MessageVariant, source runstate.EventSource,
 	if variant == nil {
 		return nil, nil
 	}
+	toolInputs := newToolInputProjector(variant, source)
 	if !variant.IsStreaming {
 		message := CloneMessage(variant.Message)
 		if message != nil && message.Role == Assistant {
@@ -148,6 +149,9 @@ func consumeMessageVariant(variant *MessageVariant, source runstate.EventSource,
 					return nil, err
 				}
 			}
+		}
+		if err := toolInputs.observe(message, emit); err != nil {
+			return nil, err
 		}
 		return message, nil
 	}
@@ -178,6 +182,13 @@ func consumeMessageVariant(variant *MessageVariant, source runstate.EventSource,
 			}
 		}
 		if err := assembler.Append(chunk); err != nil {
+			return nil, err
+		}
+		message, err := assembler.Message()
+		if err != nil {
+			return nil, err
+		}
+		if err := toolInputs.observe(message, emit); err != nil {
 			return nil, err
 		}
 	}

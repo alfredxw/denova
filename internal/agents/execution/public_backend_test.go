@@ -2,16 +2,20 @@ package execution
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 
+	"denova/config"
 	agentchat "denova/internal/agents/chat"
 	agentconversation "denova/internal/agents/conversation"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 	agenttool "denova/internal/agents/tool"
 	agenttoolruntime "denova/internal/agents/toolruntime"
+	workspacechange "denova/internal/workspace/change"
 
 	agent "github.com/alfredxw/denova/agent"
 	agentpermission "github.com/alfredxw/denova/agent/permission"
@@ -166,6 +170,105 @@ func TestAgentRuntimeVerifiesCommittedMutationsBeforeTerminalDisplay(t *testing.
 	}
 	if verificationIndex < 0 || doneIndex < 0 || verificationIndex >= doneIndex {
 		t.Fatalf("verification must precede done: %#v", events)
+	}
+}
+
+func TestAgentRuntimeWorkspaceMutationsRetainConversationDiffReviewScope(t *testing.T) {
+	ctx := context.Background()
+	workspace := t.TempDir()
+	if err := os.WriteFile(filepath.Join(workspace, "edited.md"), []byte("before edit\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(workspace, "deleted.md"), []byte("before delete\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	store, err := session.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := store.GetOrCreate("public-runtime-diff-review")
+	if err != nil {
+		t.Fatal(err)
+	}
+	definitions, err := agenttoolruntime.NewCatalog(&config.Config{Workspace: workspace}).Workspace(
+		config.ResolvedAgentToolSettings{config.AgentToolWorkspaceWrite: true},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	model := &publicBackendTestModel{responses: []*agent.Message{
+		agent.AssistantMessage("", []agent.ToolCall{
+			{ID: "provider-write", Type: "function", Function: agent.FunctionCall{
+				Name: "write", Arguments: `{"path":"created.md","content":"created\n"}`,
+			}},
+			{ID: "provider-edit", Type: "function", Function: agent.FunctionCall{
+				Name: "edit", Arguments: `{"path":"edited.md","edits":[{"old_string":"before edit","new_string":"after edit"}]}`,
+			}},
+			{ID: "provider-delete", Type: "function", Function: agent.FunctionCall{
+				Name: "edit", Arguments: `{"path":"deleted.md","operation":"delete"}`,
+			}},
+		}),
+		agent.AssistantMessage("finished", nil),
+	}}
+	runtime, err := NewAgentRuntime(ctx, t.TempDir(), WithHostEffectReconciler(
+		func(context.Context, agenttoolruntime.CommittedToolMutation) error { return nil },
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = runtime.Close(context.Background()) })
+	operation, err := runtime.Start(ctx, StartRequest{Cycle: Cycle{
+		Definition: agent.Definition{
+			Key: "public-backend-diff-review", Name: "root", Model: model,
+			ModelIdentity: agent.CapabilityIdentity{Kind: "model.public-backend-diff-review", Version: 1},
+			Tools: agent.StaticToolsIdentified(
+				agent.CapabilityIdentity{Kind: "tools.public-backend-diff-review", Version: 1}, definitions...,
+			),
+		},
+		Conversation: agentconversation.NewSessionConversationForAgent(sess, nil, agentrun.AgentKindIDE),
+		Request:      agentchatRequest("diff-review-command", "mutate three files"),
+		Options: agentrun.Options{
+			AgentKind: agentrun.AgentKindIDE, SessionID: sess.ID, Workspace: workspace,
+			TaskID: "diff-review-task", RootAgentName: "root",
+		},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if outcome := operation.Wait(ctx); outcome.Status != agentrun.OutcomeCompleted {
+		t.Fatalf("outcome = %#v", outcome)
+	}
+	runID := string(operation.Receipt().OperationID)
+	changes, err := workspacechange.ForWorkspace(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	groups, err := changes.ListGroups(ctx, workspacechange.ChangeFilter{SessionID: sess.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(groups) != 1 || groups[0].ID != runID || groups[0].ReviewThreadID != runID ||
+		groups[0].ChangeSetCount != 3 {
+		t.Fatalf("conversation Diff review groups = %#v, run_id=%q", groups, runID)
+	}
+	thread, err := changes.GetReviewThread(ctx, runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := make(map[string]workspacechange.ReviewThreadFile, len(thread.Files))
+	for _, file := range thread.Files {
+		files[file.Path] = file
+	}
+	if created := files["created.md"]; created.BeforeExists || !created.AfterExists || created.AfterContent != "created\n" {
+		t.Fatalf("created file Diff = %#v", created)
+	}
+	if edited := files["edited.md"]; !edited.BeforeExists || !edited.AfterExists ||
+		edited.BeforeContent != "before edit\n" || edited.AfterContent != "after edit\n" {
+		t.Fatalf("edited file Diff = %#v", edited)
+	}
+	if deleted := files["deleted.md"]; !deleted.BeforeExists || deleted.AfterExists ||
+		deleted.BeforeContent != "before delete\n" || deleted.AfterContent != "" {
+		t.Fatalf("deleted file Diff = %#v", deleted)
 	}
 }
 

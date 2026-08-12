@@ -26,6 +26,40 @@ type workspaceChangeService interface {
 
 type WorkspaceMetadataProvider func(context.Context) workspacechange.ChangeMetadata
 
+type workspaceChangeScopeKey struct{}
+
+// WorkspaceChangeScope binds one product Run to the durable change journal.
+// It is installed by Denova's public Agent host and inherited by delegated
+// tools so every workspace mutation remains discoverable from the owning
+// conversation and Diff review thread.
+type WorkspaceChangeScope struct {
+	RunID          string
+	SessionID      string
+	ReviewThreadID string
+}
+
+// ContextWithWorkspaceChangeScope installs the owning conversation identity
+// for workspace mutations executed below this context.
+func ContextWithWorkspaceChangeScope(ctx context.Context, scope WorkspaceChangeScope) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	scope.RunID = strings.TrimSpace(scope.RunID)
+	scope.SessionID = strings.TrimSpace(scope.SessionID)
+	scope.ReviewThreadID = strings.TrimSpace(scope.ReviewThreadID)
+	return context.WithValue(ctx, workspaceChangeScopeKey{}, scope)
+}
+
+// WorkspaceChangeScopeFromContext returns the Denova review identity inherited
+// by the current workspace mutation tool call.
+func WorkspaceChangeScopeFromContext(ctx context.Context) WorkspaceChangeScope {
+	if ctx == nil {
+		return WorkspaceChangeScope{}
+	}
+	scope, _ := ctx.Value(workspaceChangeScopeKey{}).(WorkspaceChangeScope)
+	return scope
+}
+
 type workspaceMutationAdapter struct {
 	changes   workspaceChangeService
 	workspace string

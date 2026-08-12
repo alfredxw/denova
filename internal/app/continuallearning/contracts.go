@@ -76,8 +76,12 @@ type Host interface {
 type Request struct {
 	CommandID   string `json:"command_id"`
 	Instruction string `json:"instruction,omitempty"`
-	Trigger     string `json:"trigger,omitempty"`
-	Locale      string `json:"-"`
+	// Evidence is nil for autonomous scheduled discovery and non-nil for an
+	// explicit UI selection. An empty selection therefore means "analyze no
+	// trajectories" instead of silently broadening back to the whole catalog.
+	Evidence []string `json:"evidence"`
+	Trigger  string   `json:"trigger,omitempty"`
+	Locale   string   `json:"-"`
 }
 
 type StateFile struct {
@@ -88,6 +92,46 @@ type StateFile struct {
 type StateSnapshot struct {
 	Revision string      `json:"revision"`
 	Files    []StateFile `json:"files"`
+	Source   string      `json:"source"`
+}
+
+const (
+	StateSourceUser    = "user"
+	StateSourceBuiltin = "builtin"
+)
+
+type TrajectorySummary struct {
+	URI          string    `json:"uri"`
+	Kind         string    `json:"kind"`
+	ProjectID    string    `json:"project_id"`
+	ProjectName  string    `json:"project_name"`
+	ID           string    `json:"id"`
+	Title        string    `json:"title,omitempty"`
+	AgentKind    string    `json:"agent_kind,omitempty"`
+	Status       string    `json:"status,omitempty"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+	MessageCount int       `json:"message_count,omitempty"`
+	EventCount   int       `json:"event_count,omitempty"`
+	ToolCalls    int       `json:"tool_calls,omitempty"`
+	DurationMS   int64     `json:"duration_ms,omitempty"`
+}
+
+type TrajectoryIssue struct {
+	ProjectID string `json:"project_id"`
+	Message   string `json:"message"`
+}
+
+type TrajectoryList struct {
+	Since  time.Time           `json:"since"`
+	Items  []TrajectorySummary `json:"items"`
+	Issues []TrajectoryIssue   `json:"issues,omitempty"`
+}
+
+type TrajectoryContent struct {
+	URI     string `json:"uri"`
+	Kind    string `json:"kind"`
+	Content string `json:"content"`
 }
 
 type StateChange struct {

@@ -50,6 +50,8 @@ export function AgentsView({ target, onClose }: { target: ResourceTarget; onClos
   const [skills, setSkills] = useState<SkillSummary[]>([])
   const [agentChatOpen, setAgentChatOpen] = useState(false)
   const [optimizerOpen, setOptimizerOpen] = useState(false)
+  const [optimizerEvidence, setOptimizerEvidence] = useState<string[]>([])
+  const [optimizerEvidenceReady, setOptimizerEvidenceReady] = useState(false)
   const [stateRefreshToken, setStateRefreshToken] = useState(0)
   const [sidebarVisible, setSidebarVisible] = useState(true)
 
@@ -123,6 +125,11 @@ export function AgentsView({ target, onClose }: { target: ResourceTarget; onClos
     setStateRefreshToken((value) => value + 1)
   }, [])
 
+  const handleOptimizerEvidenceChange = useCallback((uris: string[], ready: boolean) => {
+    setOptimizerEvidence(uris)
+    setOptimizerEvidenceReady(ready)
+  }, [])
+
   const switchLayer = async (layer: SettingsLayer) => {
     if (layer === activeLayer) return
     try {
@@ -143,6 +150,8 @@ export function AgentsView({ target, onClose }: { target: ResourceTarget; onClos
         return
       }
     }
+    setOptimizerEvidence([])
+    setOptimizerEvidenceReady(false)
     setContinualLearningActive(true)
     setOptimizerOpen(true)
   }
@@ -303,7 +312,11 @@ export function AgentsView({ target, onClose }: { target: ResourceTarget; onClos
           icon: <Sparkles className="h-4 w-4" />,
           content: (
             <div className="h-full min-h-0 bg-[var(--nova-surface)]">
-              <HarnessOptimizerChat onSettled={handleOptimizerSettled} />
+              <HarnessOptimizerChat
+                evidence={optimizerEvidence}
+                evidenceReady={optimizerEvidenceReady}
+                onSettled={handleOptimizerSettled}
+              />
             </div>
           ),
           desktopClassName: 'min-h-0 border-l border-[var(--nova-border)]',
@@ -359,6 +372,7 @@ export function AgentsView({ target, onClose }: { target: ResourceTarget; onClos
             {continualLearningActive ? (
               <ContinualLearningPage
                 refreshToken={stateRefreshToken}
+                onEvidenceChange={handleOptimizerEvidenceChange}
                 scheduleSettings={{
                   enabled: draft.labs?.continual_learning_schedule ?? null,
                   inheritedEnabled: inheritedScheduleEnabled,

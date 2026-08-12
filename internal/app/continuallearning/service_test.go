@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	"denova/config"
@@ -16,7 +17,10 @@ import (
 	"denova/internal/agents/trajectory"
 )
 
-type testHost struct{ runtime Runtime }
+type testHost struct {
+	runtime Runtime
+	sources []trajectory.Source
+}
 
 func (host testHost) Runtime() Runtime { return host.runtime }
 
@@ -24,7 +28,9 @@ func (testHost) AcquireRootOperation(context.Context) (Operation, error) {
 	return nil, errors.New("unexpected root operation")
 }
 
-func (testHost) TrajectorySources(context.Context) ([]trajectory.Source, error) { return nil, nil }
+func (host testHost) TrajectorySources(context.Context) ([]trajectory.Source, error) {
+	return append([]trajectory.Source(nil), host.sources...), nil
+}
 
 func (testHost) ResolveAsk(context.Context, *session.Session, string, string, []agentconversation.HostAskAnswer, string) (agentconversation.HostAskResolution, error) {
 	return agentconversation.HostAskResolution{}, errors.New("unexpected Ask resolution")
@@ -64,6 +70,9 @@ func TestStateUpdateAndApplicationVersionHistory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if current.Source != StateSourceBuiltin {
+		t.Fatalf("empty State source = %q, want %q", current.Source, StateSourceBuiltin)
+	}
 	updated, err := service.UpdateState(context.Background(), StateUpdateRequest{
 		BaseRevision: current.Revision,
 		Summary:      "Add durable response preference",
@@ -86,6 +95,9 @@ func TestStateUpdateAndApplicationVersionHistory(t *testing.T) {
 	}
 	if len(snapshot.Files) != 1 || snapshot.Files[0].Path != "prompts/general.md" || snapshot.Files[0].Content != "Lead with the result." {
 		t.Fatalf("unexpected State snapshot %#v", snapshot)
+	}
+	if snapshot.Source != StateSourceUser {
+		t.Fatalf("non-empty State source = %q, want %q", snapshot.Source, StateSourceUser)
 	}
 	updated, err = service.UpdateState(context.Background(), StateUpdateRequest{
 		BaseRevision: snapshot.Revision,
@@ -128,6 +140,49 @@ func TestStateUpdateAndApplicationVersionHistory(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dataDir, "state", ".git")); err != nil {
 		t.Fatalf("application layer did not create State version repository: %v", err)
+	}
+}
+
+func TestTrajectoryCatalogListsAndReadsRecentSessionEvidence(t *testing.T) {
+	root := t.TempDir()
+	dataDir := filepath.Join(root, ".denova")
+	projectState := filepath.Join(dataDir, "project-state", "project-1")
+	store, err := session.NewStore(filepath.Join(projectState, "sessions"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := store.Create("Opening revision")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Config{DenovaDir: dataDir}
+	cfg.Labs.ContinualLearning = true
+	service := NewService(testHost{
+		runtime: Runtime{Config: cfg},
+		sources: []trajectory.Source{{
+			ProjectID: "project-1", Name: "First Book", Workspace: filepath.Join(root, "book"), StateRoot: projectState,
+		}},
+	})
+
+	result, err := service.Trajectories(context.Background(), time.Now().UTC().Add(-time.Hour), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Items) != 1 || result.Items[0].Kind != trajectoryKindSession || result.Items[0].Title != "Opening revision" {
+		t.Fatalf("unexpected trajectory list %#v", result)
+	}
+	if !strings.Contains(result.Items[0].URI, created.ID) {
+		t.Fatalf("trajectory URI %q does not contain Session %q", result.Items[0].URI, created.ID)
+	}
+	detail, err := service.Trajectory(context.Background(), result.Items[0].URI)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if detail.Kind != "trajectory_session" || !strings.Contains(detail.Content, `"schema": "denova.trajectory.session.v1"`) {
+		t.Fatalf("unexpected trajectory detail %#v", detail)
 	}
 }
 

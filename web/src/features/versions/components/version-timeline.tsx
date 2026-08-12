@@ -15,6 +15,7 @@ interface VersionTimelineProps {
   selectedVersionId?: string
   loading?: boolean
   canRollback?: boolean
+  canRollbackVersion?: (version: VersionItem) => boolean
   onSelectVersion?: (version: VersionItem) => void
   onOpenDiff?: (version: VersionItem) => void
   onOpenDiffPath?: (version: VersionItem, path: string) => void
@@ -28,6 +29,7 @@ export function VersionTimeline({
   selectedVersionId,
   loading = false,
   canRollback = true,
+  canRollbackVersion,
   onSelectVersion,
   onOpenDiff,
   onOpenDiffPath,
@@ -43,6 +45,7 @@ export function VersionTimeline({
     <div className="min-w-0 space-y-1 border-l border-[var(--nova-border)] pl-2">
       {versions.map((version) => {
         const selected = version.id === selectedVersionId
+        const versionCanRollback = canRollback && (canRollbackVersion?.(version) ?? true)
         return (
           <div
             key={version.id}
@@ -116,7 +119,7 @@ export function VersionTimeline({
                   type="button"
                   className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-accent)] disabled:cursor-not-allowed disabled:opacity-40"
                   onClick={() => onRollback(version)}
-                  disabled={loading || !canRollback}
+                  disabled={loading || !versionCanRollback}
                 >
                   <RotateCcw className="h-3 w-3" />
                   {t('versions.rollback')}

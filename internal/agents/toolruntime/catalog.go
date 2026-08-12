@@ -89,10 +89,14 @@ func ProjectInteractiveContext(contexts ...agentinteractive.InteractiveStoryTool
 func agentWorkspaceChangeMetadata(ctx context.Context) workspacechange.ChangeMetadata {
 	providerCallID := strings.TrimSpace(agent.ToolCallID(ctx))
 	executionID := agent.ToolExecutionID(ctx, providerCallID)
-	runID := ""
-	sessionID := ""
-	reviewThreadID := ""
-	if observer := agentrun.ObserverFromContext(ctx); observer != nil {
+	scope := producttools.WorkspaceChangeScopeFromContext(ctx)
+	runID := scope.RunID
+	sessionID := scope.SessionID
+	reviewThreadID := scope.ReviewThreadID
+	// Direct Runner compositions still carry the same product identity through
+	// the tracing observer. The public Agent lifecycle uses the explicit scope
+	// above and does not depend on the legacy tracing implementation.
+	if observer := agentrun.ObserverFromContext(ctx); observer != nil && runID == "" {
 		runID = strings.TrimSpace(observer.RunID())
 		sessionID = strings.TrimSpace(observer.SessionID())
 		reviewThreadID = strings.TrimSpace(observer.ReviewThreadID())

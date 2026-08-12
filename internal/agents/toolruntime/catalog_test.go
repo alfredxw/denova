@@ -2,9 +2,11 @@ package toolruntime
 
 import (
 	"context"
+	"testing"
+
 	agentinteractive "denova/internal/agents/interactive"
 	agentrun "denova/internal/agents/run"
-	"testing"
+	producttools "denova/internal/agents/tools"
 )
 
 func TestAgentWorkspaceChangeMetadataUsesStableRunIdentityWithoutLedger(t *testing.T) {
@@ -16,6 +18,18 @@ func TestAgentWorkspaceChangeMetadataUsesStableRunIdentityWithoutLedger(t *testi
 	}
 	if metadata.SessionID != "session-1" || metadata.ReviewThreadID != "review-thread-1" {
 		t.Fatalf("review linkage metadata was lost: %#v", metadata)
+	}
+}
+
+func TestAgentWorkspaceChangeMetadataUsesPublicAgentScope(t *testing.T) {
+	ctx := producttools.ContextWithWorkspaceChangeScope(context.Background(), producttools.WorkspaceChangeScope{
+		RunID: "run-public", SessionID: "session-public", ReviewThreadID: "review-public",
+	})
+	metadata := agentWorkspaceChangeMetadata(ctx)
+
+	if metadata.ChangeGroupID != "run-public" || metadata.RunID != "run-public" ||
+		metadata.SessionID != "session-public" || metadata.ReviewThreadID != "review-public" {
+		t.Fatalf("public Agent workspace change scope was lost: %#v", metadata)
 	}
 }
 

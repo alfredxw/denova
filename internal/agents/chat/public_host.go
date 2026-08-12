@@ -38,6 +38,22 @@ func (middleware *PublicHostMiddleware) BeforeAgent(
 	ctx context.Context,
 	run *agent.RunContext,
 ) (context.Context, *agent.RunContext, error) {
+	runID := ""
+	if scope, ok := agent.InvocationScopeFromContext(ctx); ok {
+		runID = scope.OperationID
+	}
+	if runID == "" {
+		if identity, ok := agent.InvocationIdentityFromContext(ctx); ok {
+			runID = identity.OperationID
+			if runID == "" {
+				runID = identity.RunID
+			}
+		}
+	}
+	ctx = producttools.ContextWithWorkspaceChangeScope(ctx, producttools.WorkspaceChangeScope{
+		RunID: runID, SessionID: middleware.options.SessionID,
+		ReviewThreadID: middleware.options.ReviewThreadID,
+	})
 	if provider, ok := middleware.conversation.(toolArtifactStoreProvider); ok {
 		ctx = agent.ContextWithToolArtifactStore(ctx, provider.ToolArtifactStore())
 	}

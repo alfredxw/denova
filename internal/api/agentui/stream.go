@@ -19,21 +19,23 @@ type StreamEncoder struct {
 	started  bool
 	finished bool
 
-	textID      string
-	textSeq     int
-	reasonID    string
-	reasonSeq   int
-	toolSeq     int
-	toolInputs  map[string]string
-	startedTool map[string]string
+	textID        string
+	textSeq       int
+	reasonID      string
+	reasonSeq     int
+	toolSeq       int
+	toolInputs    map[string]string
+	startedTool   map[string]string
+	availableTool map[string]bool
 }
 
 func NewStreamEncoder(w io.Writer, requestID string) *StreamEncoder {
 	return &StreamEncoder{
-		w:           w,
-		requestID:   strings.TrimSpace(requestID),
-		toolInputs:  make(map[string]string),
-		startedTool: make(map[string]string),
+		w:             w,
+		requestID:     strings.TrimSpace(requestID),
+		toolInputs:    make(map[string]string),
+		startedTool:   make(map[string]string),
+		availableTool: make(map[string]bool),
 	}
 }
 
@@ -65,6 +67,11 @@ func (e *StreamEncoder) WriteEvent(ev appsvc.AgentEvent) error {
 		return e.writeToolCall(data, meta)
 	case "tool_args_delta":
 		return e.writeToolArgsDelta(data)
+	case "tool_started":
+		if err := e.closeOpenContent(); err != nil {
+			return err
+		}
+		return e.writeToolStarted(data, meta)
 	case "tool_result":
 		if err := e.closeOpenContent(); err != nil {
 			return err
@@ -309,6 +316,19 @@ func (e *StreamEncoder) writeToolArgsDelta(data map[string]any) error {
 	})
 }
 
+func (e *StreamEncoder) writeToolStarted(data map[string]any, providerMetadata map[string]any) error {
+	toolID := toolCallID(data, &e.toolSeq)
+	toolName := firstNonEmpty(e.startedTool[toolID], readString(data, "name"), "unknown_tool")
+	if e.startedTool[toolID] == "" {
+		if err := e.writeToolCall(map[string]any{
+			"id": toolID, "name": toolName,
+		}, providerMetadata); err != nil {
+			return err
+		}
+	}
+	return e.writeToolInputAvailable(toolID, toolName, providerMetadata)
+}
+
 func (e *StreamEncoder) writeToolResult(data map[string]any, providerMetadata map[string]any) error {
 	toolID := toolCallID(data, &e.toolSeq)
 	toolName := firstNonEmpty(e.startedTool[toolID], readString(data, "name"), "unknown_tool")
@@ -355,10 +375,14 @@ func (e *StreamEncoder) writeToolResult(data map[string]any, providerMetadata ma
 	}
 	delete(e.toolInputs, toolID)
 	delete(e.startedTool, toolID)
+	delete(e.availableTool, toolID)
 	return e.writeChunk(chunk)
 }
 
 func (e *StreamEncoder) writeToolInputAvailable(toolID, toolName string, providerMetadata map[string]any) error {
+	if e.availableTool[toolID] {
+		return nil
+	}
 	inputRaw := e.toolInputs[toolID]
 	chunk := map[string]any{
 		"type":       "tool-input-available",
@@ -370,7 +394,11 @@ func (e *StreamEncoder) writeToolInputAvailable(toolID, toolName string, provide
 	if len(providerMetadata) > 0 {
 		chunk["providerMetadata"] = providerMetadata
 	}
-	return e.writeChunk(chunk)
+	if err := e.writeChunk(chunk); err != nil {
+		return err
+	}
+	e.availableTool[toolID] = true
+	return nil
 }
 
 func (e *StreamEncoder) settlePendingTools() error {
@@ -388,6 +416,7 @@ func (e *StreamEncoder) settlePendingTools() error {
 		}
 		delete(e.toolInputs, toolID)
 		delete(e.startedTool, toolID)
+		delete(e.availableTool, toolID)
 	}
 	return nil
 }

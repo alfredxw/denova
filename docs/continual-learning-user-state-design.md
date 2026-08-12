@@ -1,7 +1,7 @@
-# User State 持续进化 V1 设计
+# Harness 优化 V1 设计
 
 > 状态：Implemented；2026-08-12 完成实现一致性与故障恢复审计
-> 范围：仅 User State 与 Harness Learning，不包含 Project State 和 Weight Learner
+> 范围：仅 User State 与 Harness Optimization，不包含 Project State 和 Weight Learner
 
 ## 1. 结论
 
@@ -27,8 +27,8 @@ flowchart LR
 4. `agent/state` 不依赖 Git，只提供 snapshot、CAS、draft、原子发布、恢复和 Run pin。
 5. `internal/agents/harnessstate` 只定义 Denova Harness schema、校验和运行时物化。
 6. `internal/app/continuallearning` 独占 go-git、版本、Diff、Restore、Optimizer、schedule 和产品 API 编排。
-7. 不增加 `/refine`；手动触发只在 Agents → Continual Learning 页面。
-8. 定时学习属于 V1，与手动学习汇合到同一个 `StartTask` 用例。
+7. 不增加 `/refine`；手动触发只在 Agents → Harness 优化页面。
+8. 定时优化属于 V1，与手动优化汇合到同一个 `StartTask` 用例。
 9. Harness Optimizer 使用普通 `read/write/edit/glob/grep/shell/skill/task` 等能力，不增加 Git、State lifecycle 或 delete 专用工具。
 10. Lab 默认关闭；关闭时页面、Optimizer、schedule 和 State 注入均不生效，已有 State 文件和历史保留。
 
@@ -225,7 +225,7 @@ Optimizer contract 明确禁止把 Project 私有正文、完整 trajectory、�
 
 ### 手动
 
-- 用户打开 Agents → Continual Learning。
+- 用户打开 Agents → Harness 优化。
 - 页面自动打开 Harness Optimizer Chat。
 - “立即优化”或自然语言消息调用同一个 manual trigger。
 - 不存在 `/refine` 命令。
@@ -249,7 +249,7 @@ continual_learning_trajectory_cap = 50
 
 ## 9. 页面
 
-Lab 默认关闭。开启后，Agents 页面增加实验功能分组中的“持续进化 / Continual Learning”，点击不会切换写作或游戏模式。
+Lab 默认关闭。开启后，Agents 页面增加实验功能分组中的“Harness 优化 / Harness optimization”，点击不会切换写作或游戏模式。
 
 页面包含：
 

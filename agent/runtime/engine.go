@@ -154,6 +154,50 @@ func (h *Harness) handleEngineEvent(state *harnessState, request engineEventRequ
 			},
 		})
 		return nil
+	case EngineToolInputStarted:
+		if strings.TrimSpace(event.CallID) == "" || strings.TrimSpace(event.Name) == "" {
+			return fmt.Errorf("tool input start requires call id and name")
+		}
+		if err := validateEventSource(event.Source); err != nil {
+			return err
+		}
+		state.publish(Event{
+			Cursor: state.cursor, Durability: EventEphemeral,
+			Payload: ToolInputStartedEvent{
+				OperationID: state.activeOperation, Cycle: state.activeCycle,
+				CallID: event.CallID, ProviderCallID: event.ProviderCallID, Name: event.Name,
+				Source: cloneEventSource(event.Source),
+			},
+		})
+		return nil
+	case EngineToolInputDelta:
+		if strings.TrimSpace(event.CallID) == "" || strings.TrimSpace(event.Name) == "" {
+			return fmt.Errorf("tool input delta requires call id and name")
+		}
+		if event.Delta == "" {
+			return nil
+		}
+		if err := validateEventSource(event.Source); err != nil {
+			return err
+		}
+		if int64(len(event.Delta)) > state.memoryLimits.normalized().MaxActiveOutputBytes {
+			err := &ByteBudgetError{
+				Scope: ByteBudgetActiveOutput, Incoming: int64(len(event.Delta)),
+				Limit: state.memoryLimits.normalized().MaxActiveOutputBytes,
+			}
+			state.activeOutputError = err
+			h.publishByteBudgetExceeded(state, err)
+			return err
+		}
+		state.publish(Event{
+			Cursor: state.cursor, Durability: EventEphemeral,
+			Payload: ToolInputDeltaEvent{
+				OperationID: state.activeOperation, Cycle: state.activeCycle,
+				CallID: event.CallID, ProviderCallID: event.ProviderCallID, Name: event.Name,
+				Delta: event.Delta, Source: cloneEventSource(event.Source),
+			},
+		})
+		return nil
 	case EngineModelCompleted:
 		if err := validateEventSource(event.Source); err != nil {
 			return err
@@ -281,7 +325,7 @@ func (h *Harness) handleEngineEvent(state *harnessState, request engineEventRequ
 		if existing, exists := state.openToolCalls[event.CallID]; exists {
 			if existing.OperationID == state.activeOperation && existing.Cycle == state.activeCycle && existing.Name == event.Name &&
 				existing.ArgumentsDescriptor == describePayload(event.Arguments) && eventSourcesEqual(existing.Source, event.Source) {
-				state.publish(Event{Cursor: state.cursor, Durability: EventEphemeral, Payload: ToolInputEvent{
+				state.publish(Event{Cursor: state.cursor, Durability: EventEphemeral, Payload: ToolStartedEvent{
 					OperationID: state.activeOperation, Cycle: state.activeCycle,
 					CallID: event.CallID, Name: event.Name, Arguments: cloneRawMessage(event.Arguments),
 					Source: cloneEventSource(event.Source),
@@ -299,7 +343,7 @@ func (h *Harness) handleEngineEvent(state *harnessState, request engineEventRequ
 			}},
 		})
 		if err == nil {
-			state.publish(Event{Cursor: state.cursor, Durability: EventEphemeral, Payload: ToolInputEvent{
+			state.publish(Event{Cursor: state.cursor, Durability: EventEphemeral, Payload: ToolStartedEvent{
 				OperationID: state.activeOperation, Cycle: state.activeCycle,
 				CallID: event.CallID, Name: event.Name, Arguments: cloneRawMessage(event.Arguments),
 				Source: cloneEventSource(event.Source),

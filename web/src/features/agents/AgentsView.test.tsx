@@ -73,13 +73,13 @@ vi.mock('./ContinualLearningPage', () => ({
         <button
           type="button"
           role="switch"
-          aria-label="自动运行"
+          aria-label="启用"
           aria-checked={enabled}
           onClick={() => props.scheduleSettings.onEnabledChange(!enabled)}
         />
         <input
           type="number"
-          aria-label="学习间隔（小时）"
+          aria-label="优化间隔（小时）"
           value={props.scheduleSettings.intervalHours ?? ''}
           placeholder={String(props.scheduleSettings.inheritedIntervalHours)}
           onChange={(event) => props.scheduleSettings.onIntervalHoursChange(Number(event.target.value))}
@@ -133,7 +133,7 @@ describe('AgentsView', () => {
     expect(separator).toHaveAttribute('aria-hidden', 'false')
   })
 
-  it('shows the Continual Learning Lab only when the user enables it', async () => {
+  it('shows Harness optimization only when the user enables the Lab', async () => {
     const user = userEvent.setup()
     vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({
       effective: { labs: { continual_learning: true } },
@@ -141,13 +141,13 @@ describe('AgentsView', () => {
 
     render(<AgentsView />)
 
-    await user.click(await screen.findByRole('button', { name: /持续进化/ }))
+    await user.click(await screen.findByRole('button', { name: /Harness 优化/ }))
     expect(screen.getByTestId('continual-learning-page')).toBeInTheDocument()
     expect(screen.getByTestId('harness-optimizer-chat')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '当前工作区' })).not.toBeInTheDocument()
   })
 
-  it('persists scheduled learning controls from the Continual Learning page to user settings', async () => {
+  it('persists scheduled optimization controls from the Harness optimization page to user settings', async () => {
     const user = userEvent.setup()
     vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({
       default: {
@@ -169,9 +169,9 @@ describe('AgentsView', () => {
 
     render(<AgentsView />)
 
-    await user.click(await screen.findByRole('button', { name: /持续进化/ }))
-    await user.click(screen.getByRole('switch', { name: '自动运行' }))
-    fireEvent.change(screen.getByRole('spinbutton', { name: '学习间隔（小时）' }), { target: { value: '48' } })
+    await user.click(await screen.findByRole('button', { name: /Harness 优化/ }))
+    await user.click(screen.getByRole('switch', { name: '启用' }))
+    fireEvent.change(screen.getByRole('spinbutton', { name: '优化间隔（小时）' }), { target: { value: '48' } })
     flushAgentsAutosave()
 
     await waitFor(() => {
@@ -188,13 +188,13 @@ describe('AgentsView', () => {
     expect(updateWorkspaceSettings).not.toHaveBeenCalled()
   })
 
-  it('hides the Continual Learning Lab by default', async () => {
+  it('hides Harness optimization by default', async () => {
     vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({}))
 
     render(<AgentsView />)
 
     await screen.findByText('模型与思考')
-    expect(screen.queryByRole('button', { name: /持续进化/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Harness 优化/ })).not.toBeInTheDocument()
   })
 
   it('reloads model profiles when settings are updated elsewhere', async () => {

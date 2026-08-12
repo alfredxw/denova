@@ -31,6 +31,12 @@ type PublicEventProjector struct {
 	flushed        bool
 	terminal       bool
 	compaction     publicCompactionBinder
+	toolInputs     map[string]publicToolInput
+}
+
+type publicToolInput struct {
+	providerCallID string
+	name           string
 }
 
 type publicCompactionBinder interface {
@@ -43,7 +49,10 @@ func NewPublicEventProjector(
 	options agentrun.Options,
 	emit func(agentrun.Event),
 ) *PublicEventProjector {
-	projector := &PublicEventProjector{request: request, options: options, emit: emit}
+	projector := &PublicEventProjector{
+		request: request, options: options, emit: emit,
+		toolInputs: make(map[string]publicToolInput),
+	}
 	projector.compaction, _ = conversation.(publicCompactionBinder)
 	projector.recorder = newDisplayEventRecorder(conversation, displayEventRecorderOptions{
 		SuppressRootAssistantSegments: request.PlanMode,
@@ -127,6 +136,51 @@ func (projector *PublicEventProjector) Project(event agent.Event) {
 			Role: agent.Assistant, ToolCalls: calls,
 			ResponseMeta: &agent.ResponseMeta{FinishReason: payload.FinishReason, Usage: &usage},
 		})
+	case agent.ToolInputStarted:
+		meta = projector.metadata(event.RunID, payload.Source)
+		if agentplan.EmitToolRunning(payload.Name, meta.planMetadata(), planEventEmitter(projector.emitEvent)) {
+			return
+		}
+		if _, exists := projector.toolInputs[payload.CallID]; exists {
+			return
+		}
+		providerCallID := payload.ProviderCallID
+		if providerCallID == "" {
+			providerCallID = payload.CallID
+		}
+		projector.toolInputs[payload.CallID] = publicToolInput{
+			providerCallID: providerCallID, name: payload.Name,
+		}
+		projector.emitEvent(agentrun.Event{Type: "tool_call", Data: meta.appendTo(map[string]any{
+			"id": payload.CallID, "provider_call_id": providerCallID, "name": payload.Name, "args": "",
+		})})
+	case agent.ToolInputDelta:
+		meta = projector.metadata(event.RunID, payload.Source)
+		if agentplan.IsToolName(payload.Name) || payload.Delta == "" {
+			return
+		}
+		input, exists := projector.toolInputs[payload.CallID]
+		if !exists {
+			providerCallID := payload.ProviderCallID
+			if providerCallID == "" {
+				providerCallID = payload.CallID
+			}
+			input = publicToolInput{providerCallID: providerCallID, name: payload.Name}
+			projector.emitEvent(agentrun.Event{Type: "tool_call", Data: meta.appendTo(map[string]any{
+				"id": payload.CallID, "provider_call_id": providerCallID, "name": payload.Name, "args": "",
+			})})
+		}
+		if payload.ProviderCallID != "" {
+			input.providerCallID = payload.ProviderCallID
+		}
+		if payload.Name != "" {
+			input.name = payload.Name
+		}
+		projector.toolInputs[payload.CallID] = input
+		projector.emitEvent(agentrun.Event{Type: "tool_args_delta", Data: meta.appendTo(map[string]any{
+			"id": payload.CallID, "provider_call_id": input.providerCallID,
+			"name": input.name, "delta": payload.Delta,
+		})})
 	case agent.ToolStarted:
 		meta = projector.metadata(event.RunID, payload.Source)
 		arguments := string(payload.Arguments)
@@ -136,8 +190,16 @@ func (projector *PublicEventProjector) Project(event agent.Event) {
 			}
 			return
 		}
-		projector.emitEvent(agentrun.Event{Type: "tool_call", Data: meta.appendTo(map[string]any{
-			"id": payload.CallID, "provider_call_id": payload.CallID, "name": payload.Name, "args": arguments,
+		input, streamed := projector.toolInputs[payload.CallID]
+		if !streamed {
+			input = publicToolInput{providerCallID: payload.CallID, name: payload.Name}
+			projector.toolInputs[payload.CallID] = input
+			projector.emitEvent(agentrun.Event{Type: "tool_call", Data: meta.appendTo(map[string]any{
+				"id": payload.CallID, "provider_call_id": input.providerCallID, "name": payload.Name, "args": arguments,
+			})})
+		}
+		projector.emitEvent(agentrun.Event{Type: "tool_started", Data: meta.appendTo(map[string]any{
+			"id": payload.CallID, "provider_call_id": input.providerCallID, "name": payload.Name,
 		})})
 	case agent.ToolProgress:
 		meta = projector.metadata(event.RunID, payload.Source)
@@ -146,6 +208,7 @@ func (projector *PublicEventProjector) Project(event agent.Event) {
 		})})
 	case agent.ToolFinished:
 		meta = projector.metadata(event.RunID, payload.Source)
+		delete(projector.toolInputs, payload.CallID)
 		data := meta.appendTo(map[string]any{
 			"id": payload.CallID, "name": payload.Name, "content": payload.Result,
 		})

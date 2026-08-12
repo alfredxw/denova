@@ -238,7 +238,7 @@ describe('SettingsView user scope', () => {
     )
   })
 
-  it('keeps Continual Learning disabled by default and persists the user Lab switch', async () => {
+  it('keeps Harness optimization disabled by default and persists the user Lab switch', async () => {
     const settings = layeredSettings({ devMode: false })
     settings.effective = {
       ...settings.effective,
@@ -255,7 +255,7 @@ describe('SettingsView user scope', () => {
 
     render(<SettingsView />)
 
-    const labLabel = await screen.findByText('持续进化 Lab')
+    const labLabel = await screen.findByText('Harness 优化 Lab')
     const labRow = labLabel.closest('.nova-settings-row')
     expect(labRow).not.toBeNull()
     const labSection = labRow?.closest('section')
@@ -263,12 +263,12 @@ describe('SettingsView user scope', () => {
     expect(labSection).toBe(settingsSections.at(-1))
     const toggle = within(labRow as HTMLElement).getByRole('combobox')
     expect(toggle).toHaveTextContent('继承（false）')
-    expect(screen.queryByText('定时学习')).not.toBeInTheDocument()
+    expect(screen.queryByText('定时优化')).not.toBeInTheDocument()
 
     vi.useFakeTimers()
     fireEvent.click(toggle)
     fireEvent.click(screen.getByRole('option', { name: '开启' }))
-    expect(screen.queryByText('定时学习')).not.toBeInTheDocument()
+    expect(screen.queryByText('定时优化')).not.toBeInTheDocument()
     expect(screen.getByText('每个项目读取的 trajectory 条数')).toBeInTheDocument()
     await act(async () => { await vi.advanceTimersByTimeAsync(1100) })
 

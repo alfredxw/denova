@@ -40,6 +40,15 @@ type Catalog struct {
 	Limit    int
 }
 
+// Resource is one redacted, model-visible trajectory document. Product
+// surfaces use the same projection as the read adapter so viewing evidence and
+// asking Harness Optimizer to analyze it can never drift into two contracts.
+type Resource struct {
+	URI     string `json:"uri"`
+	Kind    string `json:"kind"`
+	Content string `json:"content"`
+}
+
 type readInput struct {
 	Path  string `json:"path" jsonschema_description:"Trajectory resource URI: trajectory://index, trajectory://outcomes, trajectory://projects/{project_id}/sessions/{session_id}, or trajectory://projects/{project_id}/runs/{run_id}."`
 	Limit int    `json:"limit,omitempty" jsonschema:"minimum=1" jsonschema_description:"Maximum index or outcome entries. Defaults to the configured trajectory cap and cannot exceed 500."`
@@ -66,6 +75,19 @@ func NewReadAdapter(catalog Catalog) (agenttools.ReadAdapter, error) {
 	return agenttools.NewReadAdapter("trajectory", func(_ context.Context, resource string) (bool, error) {
 		return strings.HasPrefix(strings.ToLower(strings.TrimSpace(resource)), Scheme), nil
 	}, catalog.read)
+}
+
+// Read returns the exact redacted resource exposed through the ordinary Agent
+// read tool. The limit applies only to index and outcome resources.
+func (catalog Catalog) Read(ctx context.Context, resource string, limit int) (Resource, error) {
+	if catalog.Sources == nil {
+		return Resource{}, errors.New("trajectory source provider is required")
+	}
+	result, err := catalog.read(ctx, readInput{Path: resource, Limit: limit})
+	if err != nil {
+		return Resource{}, err
+	}
+	return Resource{URI: result.Path, Kind: result.Kind, Content: result.Content}, nil
 }
 
 func (catalog Catalog) read(ctx context.Context, input readInput) (agenttools.ReadResult, error) {
