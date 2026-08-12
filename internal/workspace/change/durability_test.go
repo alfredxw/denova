@@ -207,7 +207,7 @@ func TestPreparedRecoverySyncsParentBeforeTerminalProjection(t *testing.T) {
 	if err := service.appendAndApply(ledgerEvent{Type: eventChangePrepared, Metadata: &metadata, ChangeSet: &change}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.atomicWriteVisibleFile(path, []byte("after")); err != nil {
+	if _, err := service.atomicWriteVisibleFile(path, []byte("after"), nil); err != nil {
 		t.Fatal(err)
 	}
 

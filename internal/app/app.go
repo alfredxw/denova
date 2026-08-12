@@ -18,6 +18,7 @@ import (
 	automationapp "denova/internal/app/automation"
 	bookapp "denova/internal/app/book"
 	configmanagerapp "denova/internal/app/configmanager"
+	continuallearningapp "denova/internal/app/continuallearning"
 	imageapp "denova/internal/app/image"
 	interactiveapp "denova/internal/app/interactive"
 	loreapp "denova/internal/app/lore"
@@ -78,22 +79,23 @@ type App struct {
 	// the workspace: each session keeps its own cwd, so switching books never kills a running command.
 	terminals *terminal.Manager
 
-	workspaceApp    *workspaceService
-	chatApp         *ChatAppService
-	agentChatApp    *agentchatapp.Service
-	interactiveApp  *InteractiveAppService
-	loreApp         *loreapp.Service
-	configApp       *configmanagerapp.Service
-	automationApp   *automationapp.Service
-	activityApp     *activityapp.Service
-	bookApp         *bookapp.Service
-	resourceCatalog *resourcecatalogapp.Service
-	settingsApp     *settingsapp.Service
-	modelsApp       *modelsapp.Service
-	imageApp        *imageapp.Service
-	projectBook     *projectbookapp.Service
-	projectFiles    *projectfilesapp.Service
-	servicesOnce    sync.Once
+	workspaceApp      *workspaceService
+	chatApp           *ChatAppService
+	agentChatApp      *agentchatapp.Service
+	interactiveApp    *InteractiveAppService
+	loreApp           *loreapp.Service
+	configApp         *configmanagerapp.Service
+	continualLearning *continuallearningapp.Service
+	automationApp     *automationapp.Service
+	activityApp       *activityapp.Service
+	bookApp           *bookapp.Service
+	resourceCatalog   *resourcecatalogapp.Service
+	settingsApp       *settingsapp.Service
+	modelsApp         *modelsapp.Service
+	imageApp          *imageapp.Service
+	projectBook       *projectbookapp.Service
+	projectFiles      *projectfilesapp.Service
+	servicesOnce      sync.Once
 
 	mu sync.RWMutex
 }
@@ -148,6 +150,7 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 		slog.InfoContext(ctx, "[app] 启动时未指定 workspace 且无上次打开的书籍，进入无书籍状态，等待用户在前端选择")
 		cfg.Workspace = ""
 		app.Automation().StartScheduler(ctx)
+		app.ContinualLearning().StartScheduler(ctx)
 		return app, nil
 	}
 
@@ -178,6 +181,7 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 	app.applyRuntime(runtime)
 	app.mu.Unlock()
 	app.Automation().StartScheduler(ctx)
+	app.ContinualLearning().StartScheduler(ctx)
 	return app, nil
 }
 
@@ -213,6 +217,7 @@ func (a *App) ensureServices() {
 		a.agentChatApp = agentchatapp.NewService(agentChatHost{app: a}, a.projectRegistry)
 		a.interactiveApp = &InteractiveAppService{app: a}
 		a.configApp = configmanagerapp.NewService(configManagerHost{app: a})
+		a.continualLearning = continuallearningapp.NewService(continualLearningHost{app: a})
 		if a.automationApp == nil {
 			a.automationApp = automationapp.NewService(automationHost{app: a})
 		}
@@ -290,6 +295,12 @@ func (a *App) Images() *imageapp.Service {
 func (a *App) ConfigManager() *configmanagerapp.Service {
 	a.ensureServices()
 	return a.configApp
+}
+
+// ContinualLearning exposes user-level Harness State and optimization.
+func (a *App) ContinualLearning() *continuallearningapp.Service {
+	a.ensureServices()
+	return a.continualLearning
 }
 
 // Automation exposes the automation domain service without duplicating its API
@@ -427,6 +438,11 @@ func (a *App) Close() {
 		if a.automationApp != nil {
 			if err := a.automationApp.Close(context.Background()); err != nil {
 				slog.ErrorContext(context.Background(), fmt.Sprintf("[app] close automation service failed: %v", err))
+			}
+		}
+		if a.continualLearning != nil {
+			if err := a.continualLearning.Close(context.Background()); err != nil {
+				slog.ErrorContext(context.Background(), fmt.Sprintf("[app] close continual learning service failed: %v", err))
 			}
 		}
 		if a.agentChatApp != nil {

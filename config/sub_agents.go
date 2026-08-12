@@ -29,6 +29,7 @@ type AgentGeneralSubAgentSettings struct {
 
 var subAgentParentKinds = []string{
 	AgentKindGeneral,
+	AgentKindHarnessOptimizer,
 	AgentKindIDE,
 	AgentKindInteractiveStory,
 	AgentKindConfigManager,

@@ -69,6 +69,7 @@ func ApplyLayered(cfg *config.Config, layered config.LayeredSettings) {
 	cfg.GeneralSubAgents = effective.GeneralSubAgents
 	cfg.SubAgents = effective.SubAgents
 	cfg.WebAccess = config.ResolveWebAccessSettings(effective.WebAccess)
+	cfg.Labs = config.ResolveLabs(effective.Labs)
 	if cfg.SkillsDir == "" && effective.SkillsDir != "" {
 		cfg.SkillsDir = effective.SkillsDir
 	}

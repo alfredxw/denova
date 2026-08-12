@@ -288,36 +288,51 @@ func (s *Service) visibleRelPath(input string) (string, error) {
 }
 
 func (s *Service) readVisibleFile(rel string) ([]byte, error) {
+	data, _, err := s.readVisibleFileWithMode(rel)
+	return data, err
+}
+
+func (s *Service) readVisibleFileWithMode(rel string) ([]byte, os.FileMode, error) {
 	root, err := s.openWorkspaceRoot()
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer root.Close()
-	file, err := root.Open(filepath.FromSlash(rel))
+	entryInfo, err := root.Lstat(filepath.FromSlash(rel))
 	if errors.Is(err, os.ErrNotExist) {
-		return nil, newError(ErrorCodeNotFound, "workspace file not found", map[string]any{"path": rel})
+		return nil, 0, newError(ErrorCodeNotFound, "workspace file not found", map[string]any{"path": rel})
 	}
 	if err != nil {
-		return nil, err
+		return nil, 0, err
+	}
+	if entryInfo.Mode()&os.ModeSymlink != 0 || !entryInfo.Mode().IsRegular() {
+		return nil, 0, newError(ErrorCodeConflict, "workspace mutation only supports regular non-symlink files", map[string]any{"path": rel})
+	}
+	file, err := root.Open(filepath.FromSlash(rel))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, 0, newError(ErrorCodeNotFound, "workspace file not found", map[string]any{"path": rel})
+	}
+	if err != nil {
+		return nil, 0, err
 	}
 	defer file.Close()
 	info, err := file.Stat()
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	if !info.Mode().IsRegular() {
-		return nil, newError(ErrorCodeConflict, "workspace mutation only supports regular files", map[string]any{"path": rel})
+	if !info.Mode().IsRegular() || !os.SameFile(entryInfo, info) {
+		return nil, 0, newError(ErrorCodeConflict, "workspace file changed while it was being opened", map[string]any{"path": rel})
 	}
 	data, err := io.ReadAll(io.LimitReader(file, maxWorkspaceMutationFileBytes+1))
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	if len(data) > maxWorkspaceMutationFileBytes {
-		return nil, newError(ErrorCodeConflict, "workspace file exceeds the mutation limit", map[string]any{
+		return nil, 0, newError(ErrorCodeConflict, "workspace file exceeds the mutation limit", map[string]any{
 			"path": rel, "max_bytes": maxWorkspaceMutationFileBytes,
 		})
 	}
-	return data, nil
+	return data, info.Mode().Perm(), nil
 }
 
 func (s *Service) openWorkspaceRoot() (*os.Root, error) {

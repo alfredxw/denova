@@ -14,14 +14,16 @@ const (
 	runtimeBindingKindProject    = "project"
 	runtimeBindingKindGame       = "game"
 	runtimeBindingKindAutomation = "automation"
+	runtimeBindingKindUser       = "user"
 
-	runtimeBindingProfileWriting       = "writing"
-	runtimeBindingProfileAgentChat     = "agent_chat"
-	runtimeBindingProfileGame          = "game"
-	runtimeBindingProfileAutomation    = "automation"
-	runtimeBindingProfileConfigManager = "config_manager"
-	runtimeBindingProfileImage         = "image"
-	runtimeBindingProfileDirector      = "director"
+	runtimeBindingProfileWriting          = "writing"
+	runtimeBindingProfileAgentChat        = "agent_chat"
+	runtimeBindingProfileGame             = "game"
+	runtimeBindingProfileAutomation       = "automation"
+	runtimeBindingProfileConfigManager    = "config_manager"
+	runtimeBindingProfileHarnessOptimizer = "harness_optimizer"
+	runtimeBindingProfileImage            = "image"
+	runtimeBindingProfileDirector         = "director"
 
 	runtimeBindingLabelWorkspace = "workspace"
 	runtimeBindingLabelProject   = "project_id"
@@ -110,6 +112,11 @@ func (binding RuntimeBinding) Ref() (runstate.BindingRef, error) {
 			return runstate.BindingRef{}, runstate.ErrInvalidBinding
 		}
 		ref = runstate.BindingRef{Kind: runtimeBindingKindWriting, Profile: runtimeBindingProfileConfigManager, Key: labels[runtimeBindingLabelSession], Labels: labels}
+	case AgentKindHarnessOptimizer:
+		if labels[runtimeBindingLabelSession] == "" || binding.ProjectID != "" || binding.Workspace != "" || binding.StoryID != "" || binding.BranchID != "" || binding.TaskID != "" {
+			return runstate.BindingRef{}, runstate.ErrInvalidBinding
+		}
+		ref = runstate.BindingRef{Kind: runtimeBindingKindUser, Profile: runtimeBindingProfileHarnessOptimizer, Key: labels[runtimeBindingLabelSession], Labels: labels}
 	case AgentKindImage:
 		if labels[runtimeBindingLabelWorkspace] == "" || labels[runtimeBindingLabelSession] == "" || binding.StoryID != "" || binding.BranchID != "" || binding.TaskID != "" {
 			return runstate.BindingRef{}, runstate.ErrInvalidBinding
@@ -168,6 +175,8 @@ func ParseRuntimeBinding(ref runstate.BindingRef) (RuntimeBinding, error) {
 		binding.AgentKind = AgentKindInteractiveStory
 	case ref.Kind == runtimeBindingKindWriting && ref.Profile == runtimeBindingProfileConfigManager:
 		binding.AgentKind = AgentKindConfigManager
+	case ref.Kind == runtimeBindingKindUser && ref.Profile == runtimeBindingProfileHarnessOptimizer:
+		binding.AgentKind = AgentKindHarnessOptimizer
 	case ref.Kind == runtimeBindingKindWriting && ref.Profile == runtimeBindingProfileImage:
 		binding.AgentKind = AgentKindImage
 	case ref.Kind == runtimeBindingKindAutomation && ref.Profile == runtimeBindingProfileAutomation:
@@ -201,6 +210,8 @@ func BindingSelector(agentKind, workspace string) (runstate.BindingSelector, err
 		selector.Kind, selector.Profile = runtimeBindingKindGame, runtimeBindingProfileGame
 	case AgentKindConfigManager:
 		selector.Kind, selector.Profile = runtimeBindingKindWriting, runtimeBindingProfileConfigManager
+	case AgentKindHarnessOptimizer:
+		selector.Kind, selector.Profile = runtimeBindingKindUser, runtimeBindingProfileHarnessOptimizer
 	case AgentKindImage:
 		selector.Kind, selector.Profile = runtimeBindingKindWriting, runtimeBindingProfileImage
 	case AgentKindAutomation:

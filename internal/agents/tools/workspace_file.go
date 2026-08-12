@@ -21,6 +21,7 @@ type workspaceChangeService interface {
 	ReadFile(string) (content string, revision string, err error)
 	ApplyEdits(context.Context, workspacechange.ApplyEditsRequest) (workspacechange.ChangeSet, error)
 	ReplaceFile(context.Context, workspacechange.ReplaceFileRequest) (workspacechange.ChangeSet, error)
+	DeleteFile(context.Context, workspacechange.DeleteFileRequest) (workspacechange.ChangeSet, error)
 }
 
 type WorkspaceMetadataProvider func(context.Context) workspacechange.ChangeMetadata
@@ -61,9 +62,31 @@ func (adapter *workspaceMutationAdapter) Edit(ctx context.Context, request agent
 	if adapter == nil || adapter.changes == nil {
 		return agent.ToolResult{}, fmt.Errorf("workspace mutation adapter is not configured")
 	}
+	switch request.Operation {
+	case "", agenttools.EditOperationReplace:
+		if len(request.Edits) == 0 {
+			return agent.ToolResult{}, fmt.Errorf("edit replace requires at least one edits item")
+		}
+	case agenttools.EditOperationDelete:
+		if len(request.Edits) != 0 {
+			return agent.ToolResult{}, fmt.Errorf("edit delete must not include edits")
+		}
+	default:
+		return agent.ToolResult{}, fmt.Errorf("unsupported edit operation %q", request.Operation)
+	}
 	baseRevision, err := currentWorkspaceBaseRevision(adapter.changes, request.Path)
 	if err != nil {
 		return agent.ToolResult{}, err
+	}
+	if request.Operation == agenttools.EditOperationDelete {
+		changeSet, deleteErr := adapter.changes.DeleteFile(ctx, workspacechange.DeleteFileRequest{
+			Path: request.Path, BaseRevision: baseRevision,
+			Metadata: workspaceChangeMetadata(ctx, adapter.metadata),
+		})
+		if deleteErr != nil {
+			return agent.ToolResult{}, deleteErr
+		}
+		return workspaceChangeToolResult(adapter.workspace, changeSet)
 	}
 	edits := make([]workspacechange.TextEdit, len(request.Edits))
 	for index, edit := range request.Edits {

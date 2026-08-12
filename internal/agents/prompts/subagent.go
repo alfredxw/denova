@@ -36,7 +36,7 @@ func ComposeSubAgentInstruction(cfg *config.Config, parent SystemPromptCompositi
 		ID: "subagent_custom_prompt", Source: "SubAgent configuration", Title: "专属系统提示",
 		Purpose: "apply the delegated Agent's custom behavior and output preferences",
 		Content: sub.SystemPrompt, Prefix: "\n\n## 专属系统提示\n\n",
-		Overflow: SystemPromptOverflowTruncate,
+		Overflow: SystemPromptOverflowReject,
 	})
 
 	composition, err := composeSystemPrompt(cfg, parent.agentKind, "subagent", parent.workspace, fragments)

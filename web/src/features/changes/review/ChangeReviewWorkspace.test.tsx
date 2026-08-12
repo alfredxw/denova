@@ -254,6 +254,29 @@ describe('ChangeReviewWorkspace', () => {
     expect(scopeButton()).toBeEnabled()
   })
 
+  it('marks deleted files and does not offer an open action for an absent target', async () => {
+    const thread = reviewThread()
+    thread.files[0] = {
+      ...thread.files[0],
+      after_content: '',
+      revision: 'missing',
+      before_exists: true,
+      after_exists: false,
+    }
+    queryMocks.useProjectChangeReviewThread.mockReturnValue({
+      data: thread,
+      isLoading: false,
+      isError: false,
+      isFetching: false,
+      refetch: vi.fn(),
+    })
+    renderWorkspace({ onOpenFile: vi.fn() })
+
+    expect(await screen.findByText(/已删除|Deleted/i)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /打开文件|Open file/i })).not.toBeInTheDocument()
+    expect(await screen.findByTestId('review-diff-editor')).toHaveTextContent('chapters/ch01.md')
+  })
+
   it('switches the review surface to a historical Agent run from the scope menu', async () => {
     const historical = reviewGroup()
     queryMocks.useProjectChangeGroup.mockImplementation((_projectId: string, groupID: string) => (

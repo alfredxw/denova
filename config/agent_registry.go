@@ -9,6 +9,7 @@ import (
 const (
 	AgentKindIDE                 = "ide"
 	AgentKindGeneral             = "general"
+	AgentKindHarnessOptimizer    = "harness_optimizer"
 	AgentKindInteractiveStory    = "interactive_story"
 	AgentKindConfigManager       = "config_manager"
 	AgentKindInteractiveDirector = "interactive_director"
@@ -41,6 +42,24 @@ type AgentKindDefinition struct {
 var agentKindRegistry = []AgentKindDefinition{
 	{
 		Kind: AgentKindGeneral,
+		ToolCapabilities: []string{
+			AgentToolWorkspaceRead, AgentToolWorkspaceWrite, AgentToolShell,
+			AgentToolWebSearch, AgentToolWebFetch, AgentToolBrowser,
+			AgentToolAsk, AgentToolTodo, AgentToolGoal, AgentToolSkills, AgentToolDelegation,
+		},
+		ModelOverride:    func(settings AgentModelSettings) AgentModelOverride { return settings.General },
+		SetModelOverride: func(settings *AgentModelSettings, override AgentModelOverride) { settings.General = override },
+		ToolOverride:     func(settings AgentToolSettings) AgentToolOverride { return settings.General },
+		PromptOverride:   func(settings AgentPromptSettings) AgentPromptOverride { return settings.General },
+		SkillOverride:    func(settings AgentSkillSettings) AgentSkillOverride { return settings.General },
+		ContextOverride:  func(settings AgentContextSettings) AgentContextOverride { return settings.General },
+	},
+	{
+		Kind:      AgentKindHarnessOptimizer,
+		SessionID: "harness-optimizer-agent",
+		// Continual learning deliberately shares General's model, capability,
+		// Skill, and context policies. This keeps the optimizer aligned as the
+		// common Agent surface evolves instead of creating a second preset.
 		ToolCapabilities: []string{
 			AgentToolWorkspaceRead, AgentToolWorkspaceWrite, AgentToolShell,
 			AgentToolWebSearch, AgentToolWebFetch, AgentToolBrowser,

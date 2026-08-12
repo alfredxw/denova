@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 const (
@@ -39,7 +41,7 @@ func (s *Service) ApplyEdits(ctx context.Context, req ApplyEditsRequest) (Change
 	if err != nil {
 		return ChangeSet{}, err
 	}
-	before, err := s.readVisibleFile(rel)
+	before, beforeMode, err := s.readVisibleFileWithMode(rel)
 	if err != nil {
 		return ChangeSet{}, err
 	}
@@ -53,6 +55,8 @@ func (s *Service) ApplyEdits(ctx context.Context, req ApplyEditsRequest) (Change
 	}
 	metadata := normalizeMetadata(req.Metadata)
 	change := newChangeSet(rel, before, []byte(after), true, true, edits, metadata)
+	change.BeforeMode = uint32(beforeMode)
+	change.AfterMode = uint32(beforeMode)
 	if err := s.commitChangeLocked(ctx, &change, before, []byte(after), metadata); err != nil {
 		return ChangeSet{}, err
 	}
@@ -86,7 +90,7 @@ func (s *Service) ReplaceFile(ctx context.Context, req ReplaceFileRequest) (Chan
 	if err != nil {
 		return ChangeSet{}, err
 	}
-	before, readErr := s.readVisibleFile(rel)
+	before, beforeMode, readErr := s.readVisibleFileWithMode(rel)
 	beforeExists := readErr == nil
 	if readErr != nil {
 		var typed *Error
@@ -126,7 +130,73 @@ func (s *Service) ReplaceFile(ctx context.Context, req ReplaceFileRequest) (Chan
 		}},
 	}}
 	change := newChangeSet(rel, before, after, beforeExists, true, edits, metadata)
+	change.BeforeMode = uint32(beforeMode)
+	if beforeExists {
+		change.AfterMode = uint32(beforeMode)
+	}
 	if err := s.commitChangeLocked(ctx, &change, before, after, metadata); err != nil {
+		return ChangeSet{}, err
+	}
+	return cloneChangeSet(change), nil
+}
+
+// DeleteFile records a complete-file deletion through the same durable journal
+// as write and edit. Missing, non-text, non-regular, and unsafe paths fail
+// before a prepared change can become visible.
+func (s *Service) DeleteFile(ctx context.Context, req DeleteFileRequest) (ChangeSet, error) {
+	if s == nil {
+		return ChangeSet{}, newError(ErrorCodeConflict, "change service is nil", nil)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.contextError(ctx); err != nil {
+		return ChangeSet{}, err
+	}
+	if err := s.reconcilePendingDurabilityLocked(); err != nil {
+		return ChangeSet{}, err
+	}
+	rel, err := s.visibleRelPath(req.Path)
+	if err != nil {
+		return ChangeSet{}, err
+	}
+	expectedRevision, err := requireBaseRevision(rel, req.BaseRevision)
+	if err != nil {
+		return ChangeSet{}, err
+	}
+	before, beforeMode, err := s.readVisibleFileWithMode(rel)
+	if err != nil {
+		return ChangeSet{}, err
+	}
+	if !utf8.Valid(before) {
+		return ChangeSet{}, newError(ErrorCodeInvalidEdit, "workspace edit deletion only supports UTF-8 text files", map[string]any{
+			"path": rel, "workspace_mutated": false,
+		})
+	}
+	baseRevision := Revision(before)
+	if err := requireRevision(rel, expectedRevision, baseRevision); err != nil {
+		return ChangeSet{}, err
+	}
+	metadata := normalizeMetadata(req.Metadata)
+	reviewStatus := ReviewStatusPending
+	if metadata.AutoAccept {
+		reviewStatus = ReviewStatusAccepted
+	}
+	edit := AppliedEdit{
+		ID:           newID("edit"),
+		OldString:    string(before),
+		NewString:    "",
+		ReviewStatus: reviewStatus,
+		Hunks: []Hunk{{
+			ID:          newID("hunk"),
+			BeforeStart: 0,
+			BeforeEnd:   len(before),
+			AfterStart:  0,
+			AfterEnd:    0,
+		}},
+	}
+	change := newChangeSet(rel, before, nil, true, false, []AppliedEdit{edit}, metadata)
+	change.BeforeMode = uint32(beforeMode)
+	if err := s.commitChangeLocked(ctx, &change, before, nil, metadata); err != nil {
 		return ChangeSet{}, err
 	}
 	return cloneChangeSet(change), nil
@@ -179,6 +249,13 @@ func newChangeSet(path string, before, after []byte, beforeExists, afterExists b
 	if afterExists {
 		revision = Revision(after)
 	}
+	var beforeMode, afterMode uint32
+	if beforeExists {
+		beforeMode = uint32(defaultVisibleFileMode)
+	}
+	if afterExists {
+		afterMode = uint32(defaultVisibleFileMode)
+	}
 	var afterFileStats *FileStats
 	if afterExists {
 		stats := measureFileStats(after)
@@ -192,6 +269,8 @@ func newChangeSet(path string, before, after []byte, beforeExists, afterExists b
 		Revision:       revision,
 		BeforeExists:   beforeExists,
 		AfterExists:    afterExists,
+		BeforeMode:     beforeMode,
+		AfterMode:      afterMode,
 		afterFileStats: afterFileStats,
 		Edits:          edits,
 		ReviewStatus:   reviewStatus,
@@ -297,7 +376,11 @@ func (s *Service) verifyChangeBase(change ChangeSet) error {
 
 func (s *Service) writeChangeTarget(change ChangeSet, after []byte) (mutationResult, error) {
 	if change.AfterExists {
-		return s.atomicWriteVisibleFile(change.Path, after)
+		if change.BeforeExists != change.AfterExists {
+			mode := os.FileMode(change.AfterMode)
+			return s.atomicWriteVisibleFile(change.Path, after, &mode)
+		}
+		return s.atomicWriteVisibleFile(change.Path, after, nil)
 	}
 	return s.atomicRemoveVisibleFile(change.Path)
 }

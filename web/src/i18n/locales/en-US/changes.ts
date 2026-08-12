@@ -29,6 +29,7 @@ const changes = {
   'changes.acceptAll': 'Accept run',
   'changes.rejectAll': 'Reject run',
   'changes.openFile': 'Open',
+  'changes.fileDeleted': 'Deleted',
   'changes.viewDiff': 'Full diff',
   'changes.collapseAllDiffs': 'Collapse all diffs',
   'changes.expandAllDiffs': 'Expand all diffs',

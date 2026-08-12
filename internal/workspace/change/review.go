@@ -16,6 +16,8 @@ type inversePlan struct {
 	after        []byte
 	beforeExists bool
 	afterExists  bool
+	beforeMode   uint32
+	afterMode    uint32
 	selectedIDs  []string
 	allRejected  bool
 }
@@ -26,6 +28,8 @@ type pathInversePlan struct {
 	after        []byte
 	beforeExists bool
 	afterExists  bool
+	beforeMode   uint32
+	afterMode    uint32
 	decisions    []inversePlan
 }
 
@@ -144,6 +148,8 @@ func (s *Service) ReviewWithResult(ctx context.Context, req ReviewRequest) (Revi
 			}},
 		}
 		inverse := newChangeSet(plan.path, plan.before, plan.after, plan.beforeExists, plan.afterExists, []AppliedEdit{edit}, metadata)
+		inverse.BeforeMode = plan.beforeMode
+		inverse.AfterMode = plan.afterMode
 		if len(plan.decisions) == 1 {
 			inverse.RevertsID = plan.decisions[0].target.ID
 		}
@@ -315,9 +321,13 @@ func (s *Service) planReviewRejections(targets []*ChangeSet, wanted map[string]b
 			if selected == 0 {
 				continue
 			}
+			if len(plan.decisions) == 0 {
+				plan.beforeMode = decision.beforeMode
+			}
 			plan.decisions = append(plan.decisions, decision)
 			current = decision.after
 			currentExists = decision.afterExists
+			plan.afterMode = decision.afterMode
 		}
 		if len(plan.decisions) == 0 {
 			continue
@@ -398,8 +408,10 @@ func (s *Service) planReviewRejection(target ChangeSet, wanted map[string]bool, 
 	}
 	allRejected := nonRejected == 0
 	afterExists := currentExists
+	afterMode := target.AfterMode
 	if allRejected && target.BeforeExists != target.AfterExists {
 		afterExists = target.BeforeExists
+		afterMode = target.BeforeMode
 	}
 	return inversePlan{
 		target:       s.changeSets[target.ID],
@@ -407,6 +419,8 @@ func (s *Service) planReviewRejection(target ChangeSet, wanted map[string]bool, 
 		after:        []byte(after),
 		beforeExists: currentExists,
 		afterExists:  afterExists,
+		beforeMode:   target.AfterMode,
+		afterMode:    afterMode,
 		selectedIDs:  selectedIDs,
 		allRejected:  allRejected,
 	}, len(selected), nil

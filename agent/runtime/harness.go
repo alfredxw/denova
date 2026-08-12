@@ -21,6 +21,7 @@ type Harness struct {
 	retainedMessageLimit   int
 	retainedCommandLimit   int
 	memoryLimits           BindingMemoryLimits
+	operationIDs           OperationIDGenerator
 	requests               chan any
 	done                   chan struct{}
 	failureMu              sync.RWMutex
@@ -139,6 +140,7 @@ func newHarness(
 	retainedMessageLimit int,
 	retainedCommandLimit int,
 	memoryLimits BindingMemoryLimits,
+	operationIDs OperationIDGenerator,
 ) (*Harness, error) {
 	state := newHarnessState(binding)
 	state.maxRetainedEvents = retainedEventLimit
@@ -163,6 +165,7 @@ func newHarness(
 		retainedMessageLimit:   retainedMessageLimit,
 		retainedCommandLimit:   retainedCommandLimit,
 		memoryLimits:           memoryLimits.normalized(),
+		operationIDs:           operationIDs,
 		requests:               make(chan any, 64),
 		done:                   make(chan struct{}),
 		lifecycle:              lifecycle,

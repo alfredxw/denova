@@ -29,6 +29,7 @@ const changes = {
   'changes.acceptAll': '接受本轮',
   'changes.rejectAll': '驳回本轮',
   'changes.openFile': '打开文件',
+  'changes.fileDeleted': '已删除',
   'changes.viewDiff': '完整 Diff',
   'changes.collapseAllDiffs': '折叠全部 Diff',
   'changes.expandAllDiffs': '展开全部 Diff',

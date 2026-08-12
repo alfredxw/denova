@@ -18,6 +18,7 @@ web/dist/
 internal/webfs/dist/
 plan.md
 docs/*
+!docs/continual-learning-user-state-design.md
 .worktrees/
 .pnpm-store/
 .DS_Store

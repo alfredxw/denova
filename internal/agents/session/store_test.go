@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -323,6 +324,60 @@ func TestOrderedAssistantDisplaySegmentsReplaceAggregatedAssistantInHistory(t *t
 	}
 	if effective := reloaded.GetEffectiveMessages(); len(effective) != 2 || effective[1].Content != "第一段正文。第二段正文。" {
 		t.Fatalf("ordered display segments must not change model context: %#v", effective)
+	}
+}
+
+func TestTerminalAssistantDisplaySegmentReplacesCanonicalAssistantAfterProgress(t *testing.T) {
+	dir := t.TempDir()
+	store, err := NewStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := store.GetOrCreate("terminal-display")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.Append(agent.UserMessage("删除 ideas.md")); err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range []DisplayEvent{
+		{ID: "progress", Role: "assistant", DisplayPhase: DisplayPhaseProgress, Content: "我先确认文件位置。", RunID: "run-1"},
+		{ID: "final", Role: "assistant", DisplayPhase: DisplayPhaseFinal, Content: "已完成，ideas.md 已删除。", RunID: "run-1"},
+	} {
+		if err := sess.AppendDisplayEvent(event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := sess.AppendWithMetadata(
+		agent.AssistantMessage("已完成，ideas.md 已删除。", nil),
+		MessageMetadata{RunID: "run-1"},
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	history := sess.History()
+	if len(history) != 3 || history[0].Role != "user" || history[1].DisplayPhase != DisplayPhaseProgress || history[2].DisplayPhase != DisplayPhaseFinal {
+		t.Fatalf("resident history kept duplicate canonical assistant: %#v", history)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	reopenedStore, err := NewStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = reopenedStore.Close() })
+	reopened, err := reopenedStore.Get("terminal-display")
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, err := reopened.ReadHistoryPage(context.Background(), -1, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.Total != 3 || len(page.Entries) != 3 || page.Entries[2].DisplayPhase != DisplayPhaseFinal {
+		t.Fatalf("paged history kept duplicate canonical assistant: %#v", page)
 	}
 }
 

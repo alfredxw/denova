@@ -111,6 +111,11 @@ func (r *Runtime) ValidateCommandID(commandID string) error {
 }
 
 func normalizeRuntimeConfig(config RuntimeConfig) RuntimeConfig {
+	if config.OperationIDGenerator == nil {
+		config.OperationIDGenerator = func(BindingRef) (OperationID, error) {
+			return OperationID(newID("")), nil
+		}
+	}
 	if config.ObservationBuffer <= 0 {
 		config.ObservationBuffer = 256
 	}
@@ -303,6 +308,7 @@ func (r *Runtime) openHarness(ref BindingRef, key string) (_ *Harness, resultErr
 		r.config.RetainedMessageLimit,
 		r.config.RetainedCommandLimit,
 		r.config.MemoryLimits,
+		r.config.OperationIDGenerator,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("initialize agent harness: %w", err)

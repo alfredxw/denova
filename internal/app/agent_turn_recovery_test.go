@@ -70,6 +70,7 @@ func TestExecutionProfilesExposeOnlySupportedCapabilities(t *testing.T) {
 		agentexecution.ProfileAgentChat:     true,
 		agentexecution.ProfileGame:          true,
 		agentexecution.ProfileConfigManager: true,
+		agentexecution.ProfileHarnessOptimizer: true,
 		agentexecution.ProfileImage:         true,
 	}
 	profiles := application.executionProfiles()

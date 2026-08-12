@@ -3,14 +3,17 @@ package agents
 import (
 	"context"
 	agenttoolruntime "denova/internal/agents/toolruntime"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 
 	"denova/config"
+	"denova/internal/agents/harnessstate"
 	producttools "denova/internal/agents/tools"
 
 	agent "github.com/alfredxw/denova/agent"
+	agentstate "github.com/alfredxw/denova/agent/state"
 )
 
 func TestConfigMaxIterationDefaultsToNativeUnlimited(t *testing.T) {
@@ -122,7 +125,8 @@ func TestBuildAgentExposesGeneralAndConfiguredSubAgentsThroughTask(t *testing.T)
 	}
 	t.Cleanup(func() { newNativeAgent = previous })
 
-	_, err := buildAgent(context.Background(), &config.Config{
+	cfg := &config.Config{
+		DenovaDir:     filepath.Join(t.TempDir(), ".denova"),
 		OpenAIBaseURL: "https://example.invalid",
 		OpenAIModel:   "test-model",
 		AgentTools: config.AgentToolSettings{
@@ -138,14 +142,31 @@ func TestBuildAgentExposesGeneralAndConfiguredSubAgentsThroughTask(t *testing.T)
 				config.AgentToolWebFetch:       false,
 			},
 		},
-		SubAgents: []config.SubAgentConfig{{
-			ID:           "researcher",
-			Name:         "Researcher",
-			Description:  "Researches delegated context",
-			SystemPrompt: "Return concise findings.",
-			Parents:      []string{config.AgentKindIDE},
-		}},
-	}, agentBuildSpec{
+	}
+	cfg.Labs.ContinualLearning = true
+	manager, err := harnessstate.Open(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	current, err := manager.Current(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Store().Update(context.Background(), agentstate.ChangeSet{
+		BaseRevision: current.Revision(),
+		Changes: []agentstate.Change{{Path: "subagents/researcher.md", Content: []byte(`---
+id: researcher
+name: Researcher
+description: Researches delegated context
+parents: [ide]
+tools: []
+---
+
+Return concise findings.`)}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	_, err = buildAgent(context.Background(), cfg, agentBuildSpec{
 		Kind:        config.AgentKindIDE,
 		Name:        "DenovaAgent",
 		Description: "test",

@@ -270,16 +270,20 @@ func fingerprintCommand(command Command) string {
 func newID(prefix string) string {
 	var random [16]byte
 	if _, err := rand.Read(random[:]); err == nil {
-		return prefix + "-" + hex.EncodeToString(random[:])
+		value := hex.EncodeToString(random[:])
+		if prefix == "" {
+			return value
+		}
+		return prefix + "-" + value
 	}
 	// Losing the OS random source must not tear down the single-writer actor.
 	// The fallback combines process, wall-clock, and monotonic identities so it
 	// remains collision-resistant across both goroutines and process restarts.
-	return fmt.Sprintf(
-		"%s-fallback-%x-%x-%x",
-		prefix,
-		time.Now().UTC().UnixNano(),
-		os.Getpid(),
-		fallbackIDSequence.Add(1),
+	value := fmt.Sprintf(
+		"fallback-%x-%x-%x", time.Now().UTC().UnixNano(), os.Getpid(), fallbackIDSequence.Add(1),
 	)
+	if prefix == "" {
+		return value
+	}
+	return prefix + "-" + value
 }

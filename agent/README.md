@@ -46,6 +46,11 @@ assistant, err := agent.New(
     appCtx,
     source,
     agent.WithSessionStore(store),
+    // Run identity is an application policy. Agent validates and persists this
+    // value but does not define its prefix, trace filename, or storage layout.
+    agent.WithRunIDGenerator(func(agent.RunIDRequest) (string, error) {
+        return applicationRunID(), nil
+    }),
 )
 if err != nil {
     return err

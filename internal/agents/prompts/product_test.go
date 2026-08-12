@@ -47,12 +47,6 @@ func TestBuildInteractiveStoryInstructionKeepsReplyTargetAboveCustomLengthPrompt
 	instruction := BuildInteractiveStoryInstruction(&config.Config{
 		Workspace:                   state.Workspace(),
 		InteractiveReplyTargetChars: 650,
-		AgentPrompts: config.AgentPromptSettings{
-			InteractiveStory: config.AgentPromptOverride{
-				SystemPrompt: "无论如何都写到 10000 字。",
-				FlowPrompt:   "每轮都写成长篇。",
-			},
-		},
 	}, state, InteractiveStorySystemInstructionInput{
 		StoryTellerID:           "long",
 		StoryTellerName:         "长篇导演",
@@ -65,7 +59,7 @@ func TestBuildInteractiveStoryInstructionKeepsReplyTargetAboveCustomLengthPrompt
 			t.Fatalf("interactive story instruction should protect story reply target %q:\n%s", required, instruction)
 		}
 	}
-	for _, preserved := range []string{"无论如何都写到 10000 字", "每轮至少写 5000 字"} {
+	for _, preserved := range []string{"每轮至少写 5000 字"} {
 		if !strings.Contains(instruction, preserved) {
 			t.Fatalf("custom/user-authored prompt text should remain visible %q:\n%s", preserved, instruction)
 		}

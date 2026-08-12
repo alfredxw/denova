@@ -47,6 +47,17 @@ func NewLedger(workspace string, policy LedgerPolicy) (*Ledger, error) {
 }
 
 func NewLedgerWithOptions(workspace string, policy LedgerPolicy, options Options) (*Ledger, error) {
+	return newLedger(workspace, policy, options, "")
+}
+
+// NewLedgerForRun creates the bounded local trace for an execution identity
+// already assigned by the public Agent lifecycle. The filename and every
+// record use that same ID so conversation links resolve without translation.
+func NewLedgerForRun(workspace string, policy LedgerPolicy, options Options, runID string) (*Ledger, error) {
+	return newLedger(workspace, policy, options, runID)
+}
+
+func newLedger(workspace string, policy LedgerPolicy, options Options, runID string) (*Ledger, error) {
 	traceCfg := traceRuntimeConfigSnapshot()
 	if !policy.Enabled || traceCfg.CaptureLevel == TraceCaptureOff || strings.TrimSpace(workspace) == "" {
 		return nil, nil
@@ -62,7 +73,12 @@ func NewLedgerWithOptions(workspace string, policy LedgerPolicy, options Options
 	if traceCfg.CaptureLevel == TraceCaptureDebug && policy.PreviewChars < defaultDebugRunLedgerPreviewChars {
 		policy.PreviewChars = defaultDebugRunLedgerPreviewChars
 	}
-	id := NewID("run")
+	id := strings.TrimSpace(runID)
+	if id == "" {
+		id = NewID("run")
+	} else if id == "." || id == ".." || strings.ContainsAny(id, `/\\`) {
+		return nil, fmt.Errorf("invalid run ledger id")
+	}
 	dir := filepath.Join(workspace, filepath.FromSlash(policy.Directory))
 	if policy.Directory == defaults.Directory {
 		dir = primaryRunTraceDir(TraceLocation{Workspace: workspace, StateRoot: options.StateRoot})

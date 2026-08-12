@@ -13,6 +13,8 @@ type historyPlan struct {
 	after        []byte
 	beforeExists bool
 	afterExists  bool
+	beforeMode   uint32
+	afterMode    uint32
 	targetID     string
 }
 
@@ -164,11 +166,15 @@ func (s *Service) planHistory(group *ChangeGroup, undo bool) ([]historyPlan, []*
 			plan.after = []byte(first.BeforeContent)
 			plan.beforeExists = last.AfterExists
 			plan.afterExists = first.BeforeExists
+			plan.beforeMode = last.AfterMode
+			plan.afterMode = first.BeforeMode
 		} else {
 			plan.before = []byte(first.BeforeContent)
 			plan.after = []byte(last.AfterContent)
 			plan.beforeExists = first.BeforeExists
 			plan.afterExists = last.AfterExists
+			plan.beforeMode = first.BeforeMode
+			plan.afterMode = last.AfterMode
 		}
 		actualRevision, actualExists := s.currentRevision(path)
 		expectedRevision := "missing"
@@ -230,5 +236,8 @@ func historyChangeSet(plan historyPlan, metadata ChangeMetadata) ChangeSet {
 			AfterEnd:    len(plan.after),
 		}},
 	}
-	return newChangeSet(plan.path, plan.before, plan.after, plan.beforeExists, plan.afterExists, []AppliedEdit{edit}, metadata)
+	change := newChangeSet(plan.path, plan.before, plan.after, plan.beforeExists, plan.afterExists, []AppliedEdit{edit}, metadata)
+	change.BeforeMode = plan.beforeMode
+	change.AfterMode = plan.afterMode
+	return change
 }

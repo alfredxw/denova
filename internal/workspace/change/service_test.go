@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -433,6 +434,129 @@ func TestUndoAndRedoCreatedFile(t *testing.T) {
 	}
 }
 
+func TestDeleteFileReviewRejectAndHistoryRestoreExactFile(t *testing.T) {
+	workspace := t.TempDir()
+	path := "scripts/cleanup.sh"
+	content := []byte("#!/bin/sh\necho cleanup\n")
+	writeTestFile(t, workspace, path, string(content))
+	abs := filepath.Join(workspace, filepath.FromSlash(path))
+	expectedMode := os.FileMode(0o644)
+	if runtime.GOOS != "windows" {
+		expectedMode = 0o751
+		if err := os.Chmod(abs, expectedMode); err != nil {
+			t.Fatal(err)
+		}
+	}
+	service, err := NewService(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	change, err := service.DeleteFile(context.Background(), DeleteFileRequest{
+		Path: path, BaseRevision: Revision(content),
+		Metadata: ChangeMetadata{Origin: OriginAgent, ChangeGroupID: "delete-review-group"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !change.BeforeExists || change.AfterExists || change.BeforeMode != uint32(expectedMode) || change.AfterMode != 0 ||
+		change.Revision != "missing" || change.ReviewStatus != ReviewStatusPending {
+		t.Fatalf("delete change = %#v", change)
+	}
+	if _, statErr := os.Stat(abs); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("delete left file visible: %v", statErr)
+	}
+	if _, err := service.Review(context.Background(), ReviewRequest{
+		GroupID: change.GroupID, Decision: ReviewDecisionReject,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got := readTestFile(t, workspace, path); got != string(content) {
+		t.Fatalf("review rejection restored content %q", got)
+	}
+	info, err := os.Stat(abs)
+	if err != nil {
+		t.Fatalf("review rejection did not restore file metadata: %v", err)
+	}
+	if info.Mode().Perm() != expectedMode {
+		t.Fatalf("review rejection restored mode=%v", info.Mode().Perm())
+	}
+
+	historyChange, err := service.DeleteFile(context.Background(), DeleteFileRequest{
+		Path: path, BaseRevision: Revision(content),
+		Metadata: ChangeMetadata{Origin: OriginAgent, ChangeGroupID: "delete-history-group"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Undo(context.Background(), HistoryRequest{GroupID: historyChange.GroupID}); err != nil {
+		t.Fatal(err)
+	}
+	info, err = os.Stat(abs)
+	if err != nil || info.Mode().Perm() != expectedMode || readTestFile(t, workspace, path) != string(content) {
+		t.Fatalf("undo did not restore exact file: info=%#v err=%v", info, err)
+	}
+	if _, err := service.Redo(context.Background(), HistoryRequest{GroupID: historyChange.GroupID}); err != nil {
+		t.Fatal(err)
+	}
+	if _, statErr := os.Stat(abs); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("redo did not delete file: %v", statErr)
+	}
+}
+
+func TestDeleteFileRejectsUnsafeTargetsWithoutMutation(t *testing.T) {
+	workspace := t.TempDir()
+	writeTestFile(t, workspace, "kept.md", "kept")
+	writeTestFile(t, workspace, "target.md", "target")
+	if err := os.WriteFile(filepath.Join(workspace, "binary.bin"), []byte{0xff, 0xfe}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(workspace, "folder"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if runtime.GOOS != "windows" {
+		if err := os.Symlink("target.md", filepath.Join(workspace, "link.md")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	service, err := NewService(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name     string
+		request  DeleteFileRequest
+		wantCode string
+	}{
+		{name: "missing", request: DeleteFileRequest{Path: "missing.md", BaseRevision: "missing"}, wantCode: ErrorCodeNotFound},
+		{name: "directory", request: DeleteFileRequest{Path: "folder", BaseRevision: "missing"}, wantCode: ErrorCodeConflict},
+		{name: "binary", request: DeleteFileRequest{Path: "binary.bin", BaseRevision: Revision([]byte{0xff, 0xfe})}, wantCode: ErrorCodeInvalidEdit},
+		{name: "revision conflict", request: DeleteFileRequest{Path: "kept.md", BaseRevision: Revision([]byte("stale"))}, wantCode: ErrorCodeRevisionConflict},
+	}
+	if runtime.GOOS != "windows" {
+		tests = append(tests, struct {
+			name     string
+			request  DeleteFileRequest
+			wantCode string
+		}{name: "symlink", request: DeleteFileRequest{Path: "link.md", BaseRevision: Revision([]byte("target"))}, wantCode: ErrorCodeConflict})
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, deleteErr := service.DeleteFile(context.Background(), test.request)
+			assertChangeErrorCode(t, deleteErr, test.wantCode)
+		})
+	}
+	if got := readTestFile(t, workspace, "kept.md"); got != "kept" {
+		t.Fatalf("rejected delete changed kept file: %q", got)
+	}
+	if got := readTestFile(t, workspace, "target.md"); got != "target" {
+		t.Fatalf("rejected delete changed symlink target: %q", got)
+	}
+	groups, err := service.ListGroups(context.Background(), ChangeFilter{})
+	if err != nil || len(groups) != 0 {
+		t.Fatalf("rejected deletes created review history: groups=%#v err=%v", groups, err)
+	}
+}
+
 func TestForWorkspaceReturnsSharedService(t *testing.T) {
 	workspace := t.TempDir()
 	first, err := ForWorkspace(workspace)
@@ -640,7 +764,7 @@ func TestPreparedRecoveryRecognizesAlreadyWrittenAfterState(t *testing.T) {
 	if err := service.appendAndApply(ledgerEvent{Type: eventChangePrepared, Metadata: &metadata, ChangeSet: &change}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.atomicWriteVisibleFile(path, []byte("after")); err != nil {
+	if _, err := service.atomicWriteVisibleFile(path, []byte("after"), nil); err != nil {
 		t.Fatal(err)
 	}
 	reloaded, err := NewService(service.workspace)

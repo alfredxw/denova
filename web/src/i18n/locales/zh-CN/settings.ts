@@ -236,6 +236,12 @@ const settings = {
   'settings.motion.off': '关闭',
   'settings.versions.timedAuto': '自动创建 Git 版本',
   'settings.versions.timedInterval': '自动版本最小间隔（分钟）',
+  'settings.section.labs': '实验功能',
+  'settings.labs.continualLearning': '持续进化 Lab',
+  'settings.labs.continualLearningHint': '开启后，Agents 页面会出现用户级 Harness State。当前 State 对所有项目和新运行生效；已经开始的运行继续使用启动时固定的 State。',
+  'settings.labs.continualLearningSchedule': '定时学习',
+  'settings.labs.continualLearningIntervalHours': '学习间隔（小时）',
+  'settings.labs.continualLearningTrajectoryCap': '每个项目读取的 trajectory 条数',
 } as const
 
 export default settings

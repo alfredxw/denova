@@ -236,6 +236,12 @@ const settings = {
   'settings.motion.off': 'Off',
   'settings.versions.timedAuto': 'Create Git Versions Automatically',
   'settings.versions.timedInterval': 'Minimum Auto-Version Interval (minutes)',
+  'settings.section.labs': 'Labs',
+  'settings.labs.continualLearning': 'Continual Learning Lab',
+  'settings.labs.continualLearningHint': 'Enables the user-level Harness State page under Agents. Current State applies to all projects and new runs; active runs keep the State they started with.',
+  'settings.labs.continualLearningSchedule': 'Scheduled learning',
+  'settings.labs.continualLearningIntervalHours': 'Learning interval (hours)',
+  'settings.labs.continualLearningTrajectoryCap': 'Trajectory entries per project',
 } as const
 
 export default settings

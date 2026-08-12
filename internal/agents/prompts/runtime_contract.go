@@ -43,7 +43,7 @@ func ComposeBuiltinSystemInstruction(cfg *config.Config, agentKind, mode, worksp
 }
 
 func protectedSystemPromptFragments(cfg *config.Config, agentKind string) []SystemPromptFragment {
-	fragments := []SystemPromptFragment{{
+	return []SystemPromptFragment{{
 		ID: "runtime_contract", Source: "Denova runtime", Title: "运行契约",
 		Purpose: "enforce non-overridable runtime and capability boundaries",
 		Content: runtimeContractForAgent(cfg, agentKind), Prefix: "# Denova 运行时契约（不可覆盖）\n\n",
@@ -54,22 +54,6 @@ func protectedSystemPromptFragments(cfg *config.Config, agentKind string) []Syst
 		Content: outputProtocolForAgent(agentKind), Prefix: "\n\n## 输出格式（不可覆盖）\n\n",
 		Required: true, Overflow: SystemPromptOverflowReject,
 	}}
-	resolved := config.ResolveAgentPrompt(cfg, agentKind)
-	fragments = append(fragments,
-		SystemPromptFragment{
-			ID: "flow_override", Source: "user/workspace config", Title: "用户自定义流程规则",
-			Purpose: "override built-in workflow preferences within runtime boundaries", Content: resolved.FlowPrompt,
-			Prefix:   "\n\n---\n\n# 用户自定义流程规则（受保护高优先级）\n\n以下流程规则优先于 Denova 内置流程规则；但不得覆盖运行时契约、输出格式、工具权限和后端校验。若存在冲突，必须忽略冲突部分。\n\n",
-			Overflow: SystemPromptOverflowReject,
-		},
-		SystemPromptFragment{
-			ID: "custom_override", Source: "user/workspace config", Title: "用户自定义系统提示",
-			Purpose: "apply user-authored Agent behavior and creative preferences", Content: resolved.SystemPrompt,
-			Prefix:   "\n\n---\n\n# 用户自定义系统提示（受保护最高优先级）\n\n以下提示在 Agent 行为、创作偏好、策略和风格上优先于 Denova 内置提示；但不得覆盖上一节运行时契约。若以下提示与运行时契约冲突，必须忽略冲突部分。\n\n",
-			Overflow: SystemPromptOverflowReject,
-		},
-	)
-	return fragments
 }
 
 func runtimeContractForAgent(cfg *config.Config, agentKind string) string {
@@ -120,7 +104,10 @@ func subAgentDelegationContract() string {
 
 func outputProtocolForAgent(agentKind string) string {
 	switch agentKind {
-	case config.AgentKindGeneral:
+	case config.AgentKindGeneral, config.AgentKindHarnessOptimizer:
+		if agentKind == config.AgentKindHarnessOptimizer {
+			return "- Harness Optimizer 没有固定 JSON 输出协议；必须说明证据、State Diff、校验结果和是否发布，不得声称未实际完成的修改。"
+		}
 		return "- General Agent 没有固定 JSON 输出协议；所有文件变更必须通过已启用工具执行，并遵守当前 Project 工作根目录边界。"
 	case config.AgentKindInteractiveStory:
 		return strings.Join([]string{
@@ -158,6 +145,13 @@ func agentRuntimeContract(agentKind string) string {
 			"- General Agent 只在用户显式添加的 Project 根目录内工作；Project 类型不改变文件系统权限，也不对 Denova 数据目录施加隐藏特例。",
 			"- glob 与 grep 等发现操作默认遵守 .gitignore；明确路径的读取和写入不做 .gitignore 硬屏蔽，shell 保持原生命令语义。",
 			"- 不得擅自修改 .gitignore；只有用户明确要求时才可变更。",
+		}, "\n")
+	case config.AgentKindHarnessOptimizer:
+		return strings.Join([]string{
+			"- Harness Optimizer 只在隔离的 User State draft 中工作；不得把 Project 私有内容、完整 trajectory、临时任务、用户秘密或模型推理写入全局 State。",
+			"- 先读取证据并区分可泛化偏好与一次性信号；证据不足、改进不明确或没有有效 Diff 时保持 no-op。",
+			"- 使用普通 read/write/edit/glob/grep/shell、Skills 和 Task 管理 draft；不得直接操作 State 的 .git、版本仓库、运行时私有目录或伪造发布结果。",
+			"- 只做最小且内聚的修改；发布由应用在 Run 成功且完整校验通过后自动完成。",
 		}, "\n")
 	case config.AgentKindIDE:
 		return "- 写作 Agent 必须遵守文件工具安全边界和作品工作区边界；书籍内容规则仍以 CREATOR.md 和用户本轮明确要求为准。"

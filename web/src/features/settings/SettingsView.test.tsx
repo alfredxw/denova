@@ -238,6 +238,44 @@ describe('SettingsView user scope', () => {
     )
   })
 
+  it('keeps Continual Learning disabled by default and persists the user Lab switch', async () => {
+    const settings = layeredSettings({ devMode: false })
+    settings.effective = {
+      ...settings.effective,
+      labs: {
+        continual_learning: false,
+        continual_learning_schedule: false,
+        continual_learning_interval_hours: 24,
+        continual_learning_trajectory_cap: 50,
+      },
+    }
+    settings.default = { ...settings.default, labs: settings.effective.labs }
+    vi.mocked(fetchSettings).mockResolvedValue(settings)
+    vi.mocked(updateUserSettings).mockResolvedValue(settings)
+
+    render(<SettingsView />)
+
+    const labLabel = await screen.findByText('持续进化 Lab')
+    const labRow = labLabel.closest('.nova-settings-row')
+    expect(labRow).not.toBeNull()
+    const toggle = within(labRow as HTMLElement).getByRole('combobox')
+    expect(toggle).toHaveTextContent('继承（false）')
+    expect(screen.queryByText('定时学习')).not.toBeInTheDocument()
+
+    vi.useFakeTimers()
+    fireEvent.click(toggle)
+    fireEvent.click(screen.getByRole('option', { name: '开启' }))
+    const scheduleRow = screen.getByText('定时学习').closest('.nova-settings-row')
+    expect(scheduleRow).not.toBeNull()
+    expect(within(scheduleRow as HTMLElement).getByRole('combobox')).toBeInTheDocument()
+    await act(async () => { await vi.advanceTimersByTimeAsync(1100) })
+
+    expect(updateUserSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ labs: expect.objectContaining({ continual_learning: true }) }),
+      'user-rev',
+    )
+  })
+
   it('edits preset CLI shortcuts and persists new commands through the shared registry', async () => {
     const settings = layeredSettings({ devMode: false })
     vi.mocked(fetchSettings).mockResolvedValue(settings)

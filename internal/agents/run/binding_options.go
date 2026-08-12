@@ -27,6 +27,8 @@ func BindingForOptions(options Options) (runstate.BindingRef, error) {
 		}).Ref()
 	case AgentKindConfigManager:
 		return (RuntimeBinding{AgentKind: options.AgentKind, Workspace: options.Workspace, SessionID: options.SessionID}).Ref()
+	case AgentKindHarnessOptimizer:
+		return (RuntimeBinding{AgentKind: options.AgentKind, SessionID: options.SessionID}).Ref()
 	case AgentKindImage:
 		sessionID := options.SessionID
 		if sessionID == "" {

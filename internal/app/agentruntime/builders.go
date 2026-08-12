@@ -8,13 +8,22 @@ import (
 
 	"denova/config"
 	agents "denova/internal/agents"
+	"denova/internal/agents/harnessstate"
 	agentinteractive "denova/internal/agents/interactive"
 	"denova/internal/agents/prompts"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 	agenttools "denova/internal/agents/tools"
 	"denova/internal/book"
+
+	agent "github.com/alfredxw/denova/agent"
 )
+
+// WithHarnessRun binds all Agent builders in this application layer to the
+// immutable State snapshot selected for one accepted command or public Run.
+func WithHarnessRun(ctx context.Context, runID string) context.Context {
+	return harnessstate.WithRunID(ctx, runID)
+}
 
 type BuiltAgent struct {
 	Definition  agents.Definition
@@ -81,6 +90,24 @@ func BuildConversationDefinition(
 	default:
 		return agents.Definition{}, prompts.SystemPromptComposition{}, fmt.Errorf("unsupported conversation Agent kind %q", agentKind)
 	}
+}
+
+func BuildHarnessOptimizerAgent(
+	ctx context.Context,
+	cfg *config.Config,
+	readAdapters []agenttools.ReadAdapterBinding,
+	completionGuard func(context.Context, *agent.RetryContext) *agent.RetryDecision,
+	rootTools ...agents.ToolDefinition,
+) (BuiltAgent, error) {
+	definition, composition, err := agents.BuildHarnessOptimizerDefinitionWithCompositionForHost(
+		ctx, cfg, agents.AgentHostCapabilities{
+			Interactive: true, RootTools: rootTools, ReadAdapters: readAdapters, CompletionGuard: completionGuard,
+		},
+	)
+	if err != nil {
+		return BuiltAgent{}, fmt.Errorf("build Harness Optimizer Definition: %w", err)
+	}
+	return BuiltAgent{Definition: definition, Composition: composition}, nil
 }
 
 func BuildInteractiveAgent(ctx context.Context, cfg *config.Config, state *book.State, teller prompts.InteractiveStorySystemInstructionInput, toolContexts ...agentinteractive.InteractiveStoryToolContext) (BuiltAgent, error) {

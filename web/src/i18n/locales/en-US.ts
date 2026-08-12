@@ -42,6 +42,7 @@ import narrativeStyle from './en-US/narrativeStyle'
 import agentChat from './en-US/agentChat'
 import agentApproval from './en-US/agentApproval'
 import files from './en-US/files'
+import continualLearning from './en-US/continualLearning'
 
 const enUS = {
   ...common,
@@ -88,6 +89,7 @@ const enUS = {
   ...agentChat,
   ...agentApproval,
   ...files,
+  ...continualLearning,
   'agents.tool.availability.runtimeCheck': 'Runtime check',
 } as const
 

@@ -76,6 +76,23 @@ func TestVerifyPostRunMutationsRejectsAbsolutePathOutsideWorkspace(t *testing.T)
 	}
 }
 
+func TestVerifyPostRunMutationsAcceptsEditDeletionReceipt(t *testing.T) {
+	workspace := t.TempDir()
+	bookService := book.NewService(workspace)
+	result := agenttool.VerifyPostRunMutations(bookService, []agenttool.Mutation{{
+		ToolName:      "edit",
+		Target:        "obsolete.md",
+		Revision:      "missing",
+		Source:        agenttool.ToolSourceWrite,
+		MutationScope: agenttool.ToolMutationWorkspace,
+		PostCheck:     agenttool.ToolPostCheckWorkspaceChange,
+	}})
+	if result.Status != "ok" || len(result.Checks) != 1 || result.Checks[0].Status != "ok" ||
+		result.Checks[0].Message != "deleted target is absent" {
+		t.Fatalf("edit deletion verification = %#v", result)
+	}
+}
+
 func TestReadOnlyMutationReceiptAddsWarningWithoutRejectingMutation(t *testing.T) {
 	verification := agenttoolruntime.ApplyMutationWarnings(
 		agentrun.Options{WriteMode: agentrun.WriteModeReadOnly, WriteScope: "none"},

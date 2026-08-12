@@ -7,29 +7,29 @@ import (
 	"denova/config"
 )
 
-func TestProtectedSystemInstructionOrdersContractUserAndBuiltIn(t *testing.T) {
-	cfg := &config.Config{
-		AgentPrompts: config.AgentPromptSettings{
-			IDE: config.AgentPromptOverride{FlowPrompt: "USER FLOW PROMPT", SystemPrompt: "USER CUSTOM PROMPT"},
-		},
+func TestUserStatePromptFollowsContractAndBuiltInPrompt(t *testing.T) {
+	cfg := &config.Config{}
+	base, err := ComposeBuiltinSystemInstruction(cfg, config.AgentKindIDE, "test", "", "builtin", "Built in", "test", "BUILT IN PROMPT")
+	if err != nil {
+		t.Fatal(err)
 	}
-	instruction := protectedSystemInstruction(cfg, config.AgentKindIDE, "BUILT IN PROMPT")
+	composition, err := AppendUserStatePrompt(cfg, base, "revision-one", "USER STATE PROMPT")
+	if err != nil {
+		t.Fatal(err)
+	}
+	instruction := composition.Instruction()
 
 	contractIndex := strings.Index(instruction, "Denova 运行时契约")
-	flowIndex := strings.Index(instruction, "USER FLOW PROMPT")
-	userIndex := strings.Index(instruction, "USER CUSTOM PROMPT")
 	builtInIndex := strings.Index(instruction, "BUILT IN PROMPT")
-	if contractIndex < 0 || flowIndex < 0 || userIndex < 0 || builtInIndex < 0 {
+	stateIndex := strings.Index(instruction, "USER STATE PROMPT")
+	if contractIndex < 0 || builtInIndex < 0 || stateIndex < 0 {
 		t.Fatalf("instruction missing expected sections:\n%s", instruction)
 	}
-	if !(contractIndex < flowIndex && flowIndex < userIndex && userIndex < builtInIndex) {
-		t.Fatalf("wrong system prompt order: contract=%d flow=%d user=%d built_in=%d\n%s", contractIndex, flowIndex, userIndex, builtInIndex, instruction)
+	if !(contractIndex < builtInIndex && builtInIndex < stateIndex) {
+		t.Fatalf("wrong system prompt order: contract=%d built_in=%d state=%d\n%s", contractIndex, builtInIndex, stateIndex, instruction)
 	}
-	if !strings.Contains(instruction, "不得覆盖运行时契约、输出格式、工具权限和后端校验") {
-		t.Fatalf("flow prompt section should state protected boundary:\n%s", instruction)
-	}
-	if !strings.Contains(instruction, "不得覆盖上一节运行时契约") {
-		t.Fatalf("custom prompt section should state protected boundary:\n%s", instruction)
+	if !strings.Contains(instruction, "不得覆盖运行时契约、工具权限、Schema、持久化边界或输出协议") {
+		t.Fatalf("State prompt section should state protected boundary:\n%s", instruction)
 	}
 }
 
@@ -83,6 +83,7 @@ func TestSubAgentParentRuntimeContractsIncludeDelegationProtocol(t *testing.T) {
 func TestRuntimeContractsCoverAllAgentKinds(t *testing.T) {
 	tests := map[string]string{
 		config.AgentKindGeneral:             "General Agent",
+		config.AgentKindHarnessOptimizer:    "Harness Optimizer",
 		config.AgentKindIDE:                 "CREATOR.md",
 		config.AgentKindInteractiveStory:    "只输出本回合可展示在故事舞台上的故事正文",
 		config.AgentKindImage:               "图像 Agent",

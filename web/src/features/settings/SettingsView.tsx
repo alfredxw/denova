@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { ChevronDown, ChevronUp, Download, ExternalLink, Loader2, Plus, RefreshCw, Settings as SettingsIcon, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import type { AgentApprovalMode, ImageAPIProfileSettings, LayeredSettings, ModelProfileSettings, Settings, SettingsLayer, ShellEnvironmentMode, UpdateApplyResult, UpdateCheckResult, UpdateInstallProgress, UpdateInstallResult, WebAccessSettings } from './types'
+import type { AgentApprovalMode, ImageAPIProfileSettings, LabSettings, LayeredSettings, ModelProfileSettings, Settings, SettingsLayer, ShellEnvironmentMode, UpdateApplyResult, UpdateCheckResult, UpdateInstallProgress, UpdateInstallResult, WebAccessSettings } from './types'
 import { applyUpdate, checkForUpdate, GLOBAL_SETTINGS_TARGET, installUpdateStream, revokeAgentApprovalRule } from './api'
 import { FONT_OPTIONS, fontLabelKeyFor } from './font-options'
 import { useLayeredSettingsDraft } from './use-layered-settings-draft'
@@ -42,9 +42,9 @@ import { ApprovalRulesEditor } from './ApprovalRulesEditor'
 import { ApiKeyInput } from './ApiKeyInput'
 import { ImageProfilePingButton } from './ImageProfilePingButton'
 
-type SettingsSectionId = 'model' | 'image' | 'paths' | 'access' | 'appearance' | 'updates' | 'agent' | 'terminal' | 'web-access' | 'debug' | 'ide-editor' | 'ide-output' | 'versions' | 'interactive'
+type SettingsSectionId = 'model' | 'image' | 'paths' | 'access' | 'appearance' | 'updates' | 'labs' | 'agent' | 'terminal' | 'web-access' | 'debug' | 'ide-editor' | 'ide-output' | 'versions' | 'interactive'
 
-const SETTINGS_SECTION_IDS: SettingsSectionId[] = ['model', 'image', 'paths', 'access', 'appearance', 'updates', 'agent', 'terminal', 'web-access', 'debug', 'ide-editor', 'ide-output', 'versions', 'interactive']
+const SETTINGS_SECTION_IDS: SettingsSectionId[] = ['model', 'image', 'paths', 'access', 'appearance', 'updates', 'labs', 'agent', 'terminal', 'web-access', 'debug', 'ide-editor', 'ide-output', 'versions', 'interactive']
 
 type SettingsSection = {
   id: SettingsSectionId
@@ -93,6 +93,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
     access: true,
     appearance: true,
     updates: true,
+    labs: true,
     agent: true,
     terminal: true,
     'web-access': true,
@@ -213,6 +214,12 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
       web_access: { ...current.web_access, [key]: value },
     }))
 
+  const setLabField = <K extends keyof LabSettings>(key: K, value: LabSettings[K]) =>
+    setDraft((current) => ({
+      ...current,
+      labs: { ...current.labs, [key]: value },
+    }))
+
   const setModelProfiles = (profiles: ModelProfileSettings[]) => {
     setDraft((d) => ({
       ...d,
@@ -318,6 +325,50 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
             onInstall={() => void runUpdateInstall()}
             onApply={() => void runUpdateApply()}
           />
+        </>
+      ),
+    },
+    {
+      id: 'labs',
+      group: t('settings.group.common'),
+      title: t('settings.section.labs'),
+      children: (
+        <>
+          <div className="mb-3 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-[11px] leading-4 text-[var(--nova-text-muted)]">
+            {t('settings.labs.continualLearningHint')}
+          </div>
+          <BoolTri
+            label={t('settings.labs.continualLearning')}
+            value={draft.labs?.continual_learning ?? null}
+            inherited={inherited.labs?.continual_learning}
+            onChange={(value) => setLabField('continual_learning', value)}
+          />
+          {(draft.labs?.continual_learning ?? inherited.labs?.continual_learning ?? false) && (
+            <>
+              <BoolTri
+                label={t('settings.labs.continualLearningSchedule')}
+                value={draft.labs?.continual_learning_schedule ?? null}
+                inherited={inherited.labs?.continual_learning_schedule}
+                onChange={(value) => setLabField('continual_learning_schedule', value)}
+              />
+              <Num
+                label={t('settings.labs.continualLearningIntervalHours')}
+                value={draft.labs?.continual_learning_interval_hours ?? null}
+                placeholder={String(inherited.labs?.continual_learning_interval_hours ?? 24)}
+                min={1}
+                max={720}
+                onChange={(value) => setLabField('continual_learning_interval_hours', value)}
+              />
+              <Num
+                label={t('settings.labs.continualLearningTrajectoryCap')}
+                value={draft.labs?.continual_learning_trajectory_cap ?? null}
+                placeholder={String(inherited.labs?.continual_learning_trajectory_cap ?? 50)}
+                min={1}
+                max={500}
+                onChange={(value) => setLabField('continual_learning_trajectory_cap', value)}
+              />
+            </>
+          )}
         </>
       ),
     },
@@ -1749,9 +1800,21 @@ function mergeSettingsLayer(parent: Settings, child: Settings): Settings {
   override('writing_skill_default', isNonEmptyString)
   override('interactive_stage_font_size', isNonNull)
   override('interactive_stage_line_height', isNonNull)
+  if (child.labs) {
+    out.labs = mergeLabSettings(parent.labs ?? {}, child.labs)
+  }
   if (child.web_access) {
     out.web_access = mergeWebAccess(parent.web_access ?? {}, child.web_access)
   }
+  return out
+}
+
+function mergeLabSettings(parent: NonNullable<Settings['labs']>, child: NonNullable<Settings['labs']>): NonNullable<Settings['labs']> {
+  const out = { ...parent }
+  if (child.continual_learning !== null && child.continual_learning !== undefined) out.continual_learning = child.continual_learning
+  if (child.continual_learning_schedule !== null && child.continual_learning_schedule !== undefined) out.continual_learning_schedule = child.continual_learning_schedule
+  if (child.continual_learning_interval_hours !== null && child.continual_learning_interval_hours !== undefined) out.continual_learning_interval_hours = child.continual_learning_interval_hours
+  if (child.continual_learning_trajectory_cap !== null && child.continual_learning_trajectory_cap !== undefined) out.continual_learning_trajectory_cap = child.continual_learning_trajectory_cap
   return out
 }
 

@@ -601,6 +601,41 @@ func TestAgentRunOwnsAndClosesTemporarySession(t *testing.T) {
 	}
 }
 
+func TestAgentUsesApplicationRunIDGenerator(t *testing.T) {
+	model := &lifecycleModel{responses: []*Message{AssistantMessage("done", nil)}}
+	var request RunIDRequest
+	owner, err := New(
+		context.Background(),
+		Definition{Model: model},
+		WithRunIDGenerator(func(value RunIDRequest) (string, error) {
+			request = value
+			return "host-run-42", nil
+		}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = owner.Close(context.Background()) })
+
+	session, err := owner.Session(context.Background(), NamedSession("custom-identity"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, err := session.Run(context.Background(), Text("work"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.ID() != "host-run-42" {
+		t.Fatalf("run id = %q, want application identity", run.ID())
+	}
+	if request.Session.Namespace != agentsession.DefaultNamespace || request.Session.ID != "custom-identity" {
+		t.Fatalf("run ID request = %#v", request)
+	}
+	if result, err := run.Wait(context.Background()); err != nil || result.Status != ResultCompleted {
+		t.Fatalf("result = %#v, err = %v", result, err)
+	}
+}
+
 func TestDurableAgentRejectsUnidentifiedCapabilities(t *testing.T) {
 	model := &lifecycleModel{responses: []*Message{AssistantMessage("unused", nil)}}
 	store := &persistentMemoryStore{Store: agentsession.Memory()}

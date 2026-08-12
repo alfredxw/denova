@@ -39,6 +39,7 @@ type Settings struct {
 	GeneralSubAgents          AgentGeneralSubAgentSettings `toml:"general_sub_agents,omitempty" json:"general_sub_agents,omitempty"`
 	SubAgents                 []SubAgentConfig             `toml:"sub_agents,omitempty" json:"sub_agents,omitempty"`
 	WebAccess                 WebAccessSettings            `toml:"web_access,omitempty" json:"web_access,omitempty"`
+	Labs                      LabSettings                  `toml:"labs,omitempty" json:"labs,omitempty"`
 
 	// 路径
 	SkillsDir    string `toml:"skills_dir,omitempty" json:"skills_dir,omitempty"`
@@ -204,6 +205,7 @@ func DefaultSettings() Settings {
 		},
 		AgentTools:                 DefaultAgentToolSettings(),
 		WebAccess:                  DefaultWebAccessSettings(),
+		Labs:                       DefaultLabSettings(),
 		AgentSkills:                AgentSkillSettings{},
 		AgentContexts:              DefaultAgentContextSettings(),
 		GeneralSubAgents:           DefaultAgentGeneralSubAgentSettings(),
@@ -258,6 +260,7 @@ func Merge(parent, child Settings) Settings {
 	out.GeneralSubAgents = MergeAgentGeneralSubAgentSettings(out.GeneralSubAgents, child.GeneralSubAgents)
 	out.SubAgents = MergeSubAgents(out.SubAgents, child.SubAgents)
 	out.WebAccess = MergeWebAccessSettings(out.WebAccess, child.WebAccess)
+	out.Labs = MergeLabSettings(out.Labs, child.Labs)
 	if child.SkillsDir != "" {
 		out.SkillsDir = child.SkillsDir
 	}

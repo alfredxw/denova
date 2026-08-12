@@ -32,6 +32,13 @@ func newReadAdapterBinding(capability string, adapter agenttools.ReadAdapter) (R
 	return ReadAdapterBinding{capability: capability, adapter: adapter}, nil
 }
 
+// NewReadAdapterBinding attaches an application-owned URI adapter to an
+// existing tool capability. This keeps one model-visible read tool while
+// allowing product layers to expose bounded resources such as trajectories.
+func NewReadAdapterBinding(capability string, adapter agenttools.ReadAdapter) (ReadAdapterBinding, error) {
+	return newReadAdapterBinding(capability, adapter)
+}
+
 func enabledReadAdapterBindings(settings config.ResolvedAgentToolSettings, bindings []ReadAdapterBinding) ([]ReadAdapterBinding, error) {
 	enabled := make([]ReadAdapterBinding, 0, len(bindings))
 	for index, binding := range bindings {

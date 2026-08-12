@@ -80,7 +80,8 @@ func (a *App) prepareInteractiveProfileCycle(
 		}
 	}
 	cycle, err := a.interactiveService().prepareInteractiveAgentCycle(ctx, interactiveAgentCycleRequest{
-		StoryID: binding.StoryID, BranchID: binding.BranchID,
+		CommandID: string(request.CommandID),
+		StoryID:   binding.StoryID, BranchID: binding.BranchID,
 		Message: request.Request.Message, StyleScenes: request.Request.StyleScenes,
 		Locale: request.Request.Locale,
 	})
@@ -123,7 +124,7 @@ func (s *ChatAppService) prepareWritingCycle(
 		return agentexecution.Cycle{}, ideChatRuntime{}, err
 	}
 	builtAgent, err := appagentruntime.BuildConversationAgent(
-		ctx, &runtime.cfg, runtime.state, runtime.ideTeller, agentrun.AgentKindIDE,
+		appagentruntime.WithHarnessRun(ctx, resolved.CommandID), &runtime.cfg, runtime.state, runtime.ideTeller, agentrun.AgentKindIDE,
 		goalTools...,
 	)
 	if err != nil {
@@ -194,6 +195,9 @@ func (app *App) executionProfiles() []agentexecution.Profile {
 		}),
 		profile(agentexecution.ProfileConfigManager, func(ctx context.Context, request agentexecution.CycleRestoreRequest) (agentexecution.Cycle, error) {
 			return app.ConfigManager().PrepareCycle(ctx, request, request.Binding)
+		}),
+		profile(agentexecution.ProfileHarnessOptimizer, func(ctx context.Context, request agentexecution.CycleRestoreRequest) (agentexecution.Cycle, error) {
+			return app.ContinualLearning().PrepareCycle(ctx, request, request.Binding)
 		}),
 		profile(agentexecution.ProfileImage, func(ctx context.Context, request agentexecution.CycleRestoreRequest) (agentexecution.Cycle, error) {
 			return app.Images().PrepareCycle(ctx, request, request.Binding)

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useId, useMemo, useState } from 'react'
-import { Bot } from 'lucide-react'
+import { Bot, Sparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { ConfigManagerChat } from '@/components/Chat/ConfigManagerChat'
+import { HarnessOptimizerChat } from './HarnessOptimizerChat'
+import { ContinualLearningPage } from './ContinualLearningPage'
 import { AutosaveStatusIndicator } from '@/components/forms/autosave-status'
 import { SettingsFieldRow } from '@/components/forms/settings-field-row'
 import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
@@ -9,20 +11,20 @@ import { FeaturePageShell } from '@/components/layout/feature-page-shell'
 import { MobilePaneTrigger } from '@/components/layout/mobile-pane-trigger'
 import { SidebarVisibilityToggle } from '@/components/layout/sidebar-visibility-toggle'
 import { SectionedNavigation } from '@/components/navigation/sectioned-navigation'
+import type { SectionedNavigationGroup } from '@/components/navigation/sectioned-navigation'
 import { Button } from '@/components/ui/button'
 import { LoadingState } from '@/components/common/LoadingState'
 import { Input } from '@/components/ui/input'
-import type { AgentContextOverride, AgentModelOverride, AgentPromptOverride, AgentSkillOverride, AgentToolOverride, ImageAPIProfileSettings, LayeredSettings, ModelProfileSettings, Settings, SettingsLayer, SubAgentConfig } from '@/features/settings/types'
+import type { AgentContextOverride, AgentModelOverride, AgentSkillOverride, AgentToolOverride, ImageAPIProfileSettings, LayeredSettings, ModelProfileSettings, Settings, SettingsLayer } from '@/features/settings/types'
 import { modelProfileID, modelProfileLabel, modelProfilesWithDefault } from '@/features/settings/model-profiles'
 import { imageAPIProfileID, imageAPIProfileLabel, imageAPIProfilesWithDefault } from '@/features/settings/image-profiles'
 import { useLayeredSettingsDraft } from '@/features/settings/use-layered-settings-draft'
 import { getSkills, resourceTargetKey } from '@/lib/api'
 import type { ResourceTarget, SkillSummary } from '@/lib/api'
 import { AgentRuntimeContextSection } from './AgentRuntimeContextSection'
-import { AgentBuiltInCapabilitySection, AgentContextSection, AgentImageModelSection, AgentModelOnlySection, AgentModelSection, AgentPromptSection, AgentSkillSection, AgentToolSection, mergeAgentModelOverride, mergeAgentPromptOverride } from './agent-configuration-sections'
-import { AgentSubAgentSection, isSubAgentParent, previewGeneralSubAgentSettings } from './agent-subagent-section'
+import { AgentBuiltInCapabilitySection, AgentContextSection, AgentImageModelSection, AgentModelOnlySection, AgentModelSection, AgentSkillSection, AgentToolSection, mergeAgentModelOverride } from './agent-configuration-sections'
 import { AGENTS, toolDefinitionsFromManifest } from './agent-registry'
-import type { AgentViewDefinition, SubAgentParentKey, ToolKey, VisibleAgentKey } from './agent-registry'
+import type { AgentViewDefinition, ToolKey, VisibleAgentKey } from './agent-registry'
 
 const tabCls = 'nova-nav-item rounded-[var(--nova-radius)] px-2.5 py-1 text-xs'
 
@@ -44,8 +46,11 @@ export function AgentsView({ target, onClose }: { target: ResourceTarget; onClos
     sourcePrefix: 'agents-view',
   })
   const [activeAgent, setActiveAgent] = useState<VisibleAgentKey>('ide')
+  const [continualLearningActive, setContinualLearningActive] = useState(false)
   const [skills, setSkills] = useState<SkillSummary[]>([])
   const [agentChatOpen, setAgentChatOpen] = useState(false)
+  const [optimizerOpen, setOptimizerOpen] = useState(false)
+  const [stateRefreshToken, setStateRefreshToken] = useState(0)
   const [sidebarVisible, setSidebarVisible] = useState(true)
 
   useEffect(() => {
@@ -73,17 +78,13 @@ export function AgentsView({ target, onClose }: { target: ResourceTarget; onClos
   }, [resourceTarget, targetKey])
 
   const effective = layered?.effective ?? {}
+  const continualLearningEnabled = effective.labs?.continual_learning === true
   const selected = AGENTS.find((agent) => agent.key === activeAgent) ?? AGENTS[0]
   const profileOptions = useMemo(() => buildProfileOptions(draft, effective, t), [draft, effective, t])
   const imageProfileOptions = useMemo(() => buildImageProfileOptions(draft, effective, t), [draft, effective, t])
   const inheritedImageProfileID = resolveInheritedImageProfileID(layered, activeLayer)
   const modelValue = draft.agent_models?.[activeAgent] ?? {}
   const inheritedModel = mergeAgentModelOverride(effective.agent_models?.default ?? {}, effective.agent_models?.[activeAgent] ?? {})
-  const promptValue = draft.agent_prompts?.[activeAgent] ?? {}
-  const inheritedPrompt = mergeAgentPromptOverride(effective.agent_prompts?.default ?? {}, effective.agent_prompts?.[activeAgent] ?? {})
-  const builtinPrompt = layered?.builtin_agent_prompts?.[activeAgent]?.system_prompt ?? ''
-  const builtinBlocks = layered?.builtin_agent_prompt_blocks?.[activeAgent]
-  const promptSources = layered?.builtin_agent_prompt_sources?.[activeAgent]?.sources
   const toolValue = draft.agent_tools?.[activeAgent] ?? {}
   const resolvedToolManifest = layered?.resolved_agent_tool_manifests?.[activeAgent]
   const toolRows = useMemo(() => toolDefinitionsFromManifest(resolvedToolManifest), [resolvedToolManifest])
@@ -91,10 +92,7 @@ export function AgentsView({ target, onClose }: { target: ResourceTarget; onClos
   const skillValue = draft.agent_skills?.[activeAgent] ?? {}
   const contextValue = draft.agent_context?.[activeAgent] ?? {}
   const resolvedContext = layered?.resolved_agent_contexts?.[activeAgent]
-  const generalSubAgents = draft.general_sub_agents ?? {}
   const inheritedToolParallelism = resolveInheritedToolParallelism(layered, activeLayer)
-  const previewGeneralSubAgents = useMemo(() => previewGeneralSubAgentSettings(layered, activeLayer, draft), [activeLayer, draft, layered])
-  const subAgents = draft.sub_agents ?? []
   const configManagerContext = useMemo(() => ({
     active_settings_layer: activeLayer,
     active_agent: activeAgent,
@@ -102,6 +100,13 @@ export function AgentsView({ target, onClose }: { target: ResourceTarget; onClos
     write_scope_required: 'true',
     write_scope_hint: activeLayer,
   }), [activeAgent, activeLayer, selected.titleKey, t])
+
+  useEffect(() => {
+    if (!continualLearningEnabled) {
+      setContinualLearningActive(false)
+      setOptimizerOpen(false)
+    }
+  }, [continualLearningEnabled])
 
   const reloadAfterAgentMutation = useCallback(() => {
     void saveNow()
@@ -111,6 +116,10 @@ export function AgentsView({ target, onClose }: { target: ResourceTarget; onClos
       })
       .catch(() => undefined)
   }, [activeLayer, notifyUpdated, reload, saveNow])
+
+  const handleStatePublished = useCallback(() => {
+    setStateRefreshToken((value) => value + 1)
+  }, [])
 
   const switchLayer = async (layer: SettingsLayer) => {
     if (layer === activeLayer) return
@@ -143,16 +152,6 @@ export function AgentsView({ target, onClose }: { target: ResourceTarget; onClos
     })
   }
 
-  const setAgentPrompt = (patch: Partial<AgentPromptOverride>) => {
-    setDraft((current) => ({
-      ...current,
-      agent_prompts: {
-        ...(current.agent_prompts ?? {}),
-        [activeAgent]: { ...(current.agent_prompts?.[activeAgent] ?? {}), ...patch },
-      },
-    }))
-  }
-
   const setAgentSkill = (name: string, value: boolean | null) => {
     setDraft((current) => {
       const nextAgentSkills = { ...(current.agent_skills ?? {}) }
@@ -175,22 +174,6 @@ export function AgentsView({ target, onClose }: { target: ResourceTarget; onClos
         [activeAgent]: { ...(current.agent_context?.[activeAgent] ?? {}), ...patch },
       },
     }))
-  }
-
-  const setSubAgents = (updater: (current: SubAgentConfig[]) => SubAgentConfig[]) => {
-    setDraft((current) => ({
-      ...current,
-      sub_agents: updater(current.sub_agents ?? []),
-    }))
-  }
-
-  const setGeneralSubAgent = (agent: SubAgentParentKey, value: boolean | null) => {
-    setDraft((current) => {
-      const next = { ...(current.general_sub_agents ?? {}) }
-      if (value === null) delete next[agent]
-      else next[agent] = value
-      return { ...current, general_sub_agents: next }
-    })
   }
 
   const setToolParallelism = (value: number | null) => {
@@ -221,7 +204,7 @@ export function AgentsView({ target, onClose }: { target: ResourceTarget; onClos
       closeLabel={t('agents.close')}
       onSaveShortcut={() => saveNow().catch(() => undefined)}
       headerContent={(
-        <div className="flex shrink-0 gap-1 border-l border-[var(--nova-border)] pl-2 sm:ml-3 sm:pl-3">
+        !continualLearningActive ? <div className="flex shrink-0 gap-1 border-l border-[var(--nova-border)] pl-2 sm:ml-3 sm:pl-3">
           {(targetKind === 'project' ? ['user', 'workspace'] as SettingsLayer[] : ['user'] as SettingsLayer[]).map((layer) => (
             <Button
               key={layer}
@@ -234,7 +217,7 @@ export function AgentsView({ target, onClose }: { target: ResourceTarget; onClos
               {layer === 'workspace' ? t('agents.layer.workspace') : t('agents.layer.user')}
             </Button>
           ))}
-        </div>
+        </div> : null
       )}
       actions={(
         <>
@@ -243,7 +226,18 @@ export function AgentsView({ target, onClose }: { target: ResourceTarget; onClos
             error={autosaveError}
             onRetry={() => saveNow().catch(() => undefined)}
           />
-          {agentAvailable && (
+          {continualLearningActive ? (
+            <Button
+              type="button"
+              onClick={() => setOptimizerOpen((value) => !value)}
+              variant={optimizerOpen ? 'secondary' : 'outline'}
+              size="sm"
+              aria-pressed={optimizerOpen}
+            >
+              <Sparkles data-icon="inline-start" />
+              {t('continualLearning.openOptimizer')}
+            </Button>
+          ) : agentAvailable && (
             <Button
               type="button"
               onClick={() => setAgentChatOpen((value) => !value)}
@@ -267,12 +261,32 @@ export function AgentsView({ target, onClose }: { target: ResourceTarget; onClos
           title: 'Agents',
           side: 'left',
           icon: <Bot className="h-4 w-4" />,
-          content: <div className="h-full min-h-0 overflow-y-auto bg-[var(--nova-surface-2)] p-3"><AgentList active={activeAgent} onSelect={setActiveAgent} /></div>,
+          content: <div className="h-full min-h-0 overflow-y-auto bg-[var(--nova-surface-2)] p-3"><AgentList active={continualLearningActive ? 'continual_learning' : activeAgent} continualLearningEnabled={continualLearningEnabled} onSelect={(item) => {
+            if (item === 'continual_learning') {
+              setContinualLearningActive(true)
+              setOptimizerOpen(true)
+              return
+            }
+            setContinualLearningActive(false)
+            setActiveAgent(item)
+          }} /></div>,
           desktopClassName: 'min-h-0 border-r border-[var(--nova-border)]',
           desktopVisible: sidebarVisible,
           mobileClassName: 'w-[min(88vw,340px)]',
         }}
-        right={agentAvailable && agentChatOpen ? {
+        right={continualLearningActive && optimizerOpen ? {
+          id: 'harness-optimizer',
+          title: t('continualLearning.optimizer.title'),
+          side: 'right',
+          icon: <Sparkles className="h-4 w-4" />,
+          content: (
+            <div className="h-full min-h-0 bg-[var(--nova-surface)]">
+              <HarnessOptimizerChat onPublished={handleStatePublished} />
+            </div>
+          ),
+          desktopClassName: 'min-h-0 border-l border-[var(--nova-border)]',
+          mobileClassName: 'w-[min(94vw,460px)]',
+        } : agentAvailable && agentChatOpen ? {
           id: 'agents-config-manager',
           title: t('agents.configAgent.title'),
           side: 'right',
@@ -314,13 +328,15 @@ export function AgentsView({ target, onClose }: { target: ResourceTarget; onClos
             {isMobile && (
               <div className="sticky top-0 z-10 flex h-10 items-center gap-2 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-3">
                 <MobilePaneTrigger side="left" label={t('workbench.mobile.openSidePanel', { label: 'Agents' })} onClick={openLeft} />
-                <span className="min-w-0 truncate text-[11px] text-[var(--nova-text-muted)]">{t(selected.titleKey)}</span>
-                {agentAvailable && agentChatOpen && (
-                  <MobilePaneTrigger side="right" label={t('workbench.mobile.openSidePanel', { label: t('agents.configAgent.title') })} onClick={openRight} className="ml-auto" />
+                <span className="min-w-0 truncate text-[11px] text-[var(--nova-text-muted)]">{continualLearningActive ? t('continualLearning.title') : t(selected.titleKey)}</span>
+                {((continualLearningActive && optimizerOpen) || (!continualLearningActive && agentAvailable && agentChatOpen)) && (
+                  <MobilePaneTrigger side="right" label={t('workbench.mobile.openSidePanel', { label: continualLearningActive ? t('continualLearning.optimizer.title') : t('agents.configAgent.title') })} onClick={openRight} className="ml-auto" />
                 )}
               </div>
             )}
-            <div className="mx-auto flex w-full min-w-0 max-w-5xl flex-col gap-5 px-4 py-5 sm:px-6">
+            {continualLearningActive ? (
+              <ContinualLearningPage refreshToken={stateRefreshToken} />
+            ) : <div className="mx-auto flex w-full min-w-0 max-w-5xl flex-col gap-5 px-4 py-5 sm:px-6">
               <AgentHeader agent={selected} />
               <AgentToolSchedulingSection
                 value={draft.agent_tool_parallelism ?? null}
@@ -347,14 +363,6 @@ export function AgentsView({ target, onClose }: { target: ResourceTarget; onClos
                   onChange={setImageProfile}
                 />
               )}
-              <AgentPromptSection
-                value={promptValue}
-                inherited={inheritedPrompt}
-                builtin={builtinPrompt}
-                blocks={builtinBlocks}
-                sources={promptSources}
-                onChange={setAgentPrompt}
-              />
               {resolvedContext && (
                 <AgentRuntimeContextSection
                   agent={activeAgent}
@@ -370,19 +378,6 @@ export function AgentsView({ target, onClose }: { target: ResourceTarget; onClos
                     rows={toolRows}
                     onChange={setAgentTool}
                   />
-                  {isSubAgentParent(activeAgent) && (
-                    <AgentSubAgentSection
-                      agent={activeAgent}
-                      toolRows={toolRows}
-                      generalSettings={generalSubAgents}
-                      effectiveGeneralSettings={previewGeneralSubAgents}
-                      subAgents={subAgents}
-                      effectiveSubAgents={effective.sub_agents ?? []}
-                      profiles={profileOptions}
-                      onGeneralChange={setGeneralSubAgent}
-                      onChange={setSubAgents}
-                    />
-                  )}
                   {skillsAllowed && (
                     <AgentSkillSection
                       agent={activeAgent}
@@ -399,7 +394,7 @@ export function AgentsView({ target, onClose }: { target: ResourceTarget; onClos
                 <AgentModelOnlySection />
               )}
               <AgentContextSection agent={selected.key} effective={effective} resolved={resolvedContext} />
-            </div>
+            </div>}
           </main>
         )}
       </AdaptiveSurface>
@@ -478,7 +473,9 @@ function resolveInheritedImageProfileID(layered: LayeredSettings | null, layer: 
   return value
 }
 
-function AgentList({ active, onSelect }: { active: VisibleAgentKey; onSelect: (agent: VisibleAgentKey) => void }) {
+type AgentNavigationItem = VisibleAgentKey | 'continual_learning'
+
+function AgentList({ active, continualLearningEnabled, onSelect }: { active: AgentNavigationItem; continualLearningEnabled: boolean; onSelect: (agent: AgentNavigationItem) => void }) {
   const { t } = useTranslation()
   const groups = AGENTS.reduce<Array<{ group: string; agents: typeof AGENTS }>>((acc, agent) => {
     const last = acc[acc.length - 1]
@@ -487,18 +484,31 @@ function AgentList({ active, onSelect }: { active: VisibleAgentKey; onSelect: (a
     return acc
   }, [])
 
+  const navigationGroups: SectionedNavigationGroup<AgentNavigationItem>[] = groups.map((group, index) => ({
+    id: `${group.group}:${index}`,
+    title: t(group.group),
+    items: group.agents.map((agent) => ({
+      id: agent.key,
+      title: t(agent.titleKey),
+      description: t(agent.subtitleKey),
+      icon: agent.icon,
+    })),
+  }))
+  if (continualLearningEnabled) {
+    navigationGroups.unshift({
+      id: 'labs',
+      title: t('continualLearning.group'),
+      items: [{
+        id: 'continual_learning',
+        title: t('continualLearning.title'),
+        description: t('continualLearning.navDescription'),
+        icon: Sparkles,
+      }],
+    })
+  }
   return (
     <SectionedNavigation
-      groups={groups.map((group, index) => ({
-        id: `${group.group}:${index}`,
-        title: t(group.group),
-        items: group.agents.map((agent) => ({
-          id: agent.key,
-          title: t(agent.titleKey),
-          description: t(agent.subtitleKey),
-          icon: agent.icon,
-        })),
-      }))}
+      groups={navigationGroups}
       activeId={active}
       onSelect={onSelect}
       itemClassName="py-2"

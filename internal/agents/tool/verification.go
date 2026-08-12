@@ -85,7 +85,10 @@ func verifyMutation(bookService *book.Service, mutation Mutation) []Verification
 		}}
 	}
 	info, statErr := os.Stat(abs)
-	deletion := isDeletionMutation(mutation.ToolName)
+	// Structured file deletion remains model-visible as the edit tool. The
+	// durable workspace receipt identifies its after-state with revision=missing,
+	// while delete-like product tools retain the name-based fallback.
+	deletion := strings.TrimSpace(mutation.Revision) == "missing" || isDeletionMutation(mutation.ToolName)
 	switch {
 	case deletion && errors.Is(statErr, os.ErrNotExist):
 		checks = append(checks, VerificationCheck{Type: "path_exists", Target: target, Status: "ok", Message: "deleted target is absent"})

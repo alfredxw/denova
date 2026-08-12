@@ -42,6 +42,7 @@ import narrativeStyle from './zh-CN/narrativeStyle'
 import agentChat from './zh-CN/agentChat'
 import agentApproval from './zh-CN/agentApproval'
 import files from './zh-CN/files'
+import continualLearning from './zh-CN/continualLearning'
 
 const zhCN = {
   ...common,
@@ -88,6 +89,7 @@ const zhCN = {
   ...agentChat,
   ...agentApproval,
   ...files,
+  ...continualLearning,
   'agents.tool.availability.runtimeCheck': '运行时检查',
 } as const
 

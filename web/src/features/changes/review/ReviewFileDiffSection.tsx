@@ -68,6 +68,7 @@ export function ReviewFileDiffSection({
   const [measuredHeight, setMeasuredHeight] = useState(estimatedHeight)
   const measuredHeightRef = useRef(estimatedHeight)
   const conflicted = file.continuity !== 'continuous' || file.apply_state === 'conflicted'
+  const deleted = file.after_exists === false
   const renderEditor = hasDraft || (!collapsed && (comments.length > 0 || nearViewport || active || preRender))
 
   useEffect(() => {
@@ -116,9 +117,10 @@ export function ReviewFileDiffSection({
         </button>
         {hasDraft && <span className="mr-2 hidden text-[10px] text-[var(--nova-accent-blue)] sm:inline">{t('changes.commentDraft')}</span>}
         {conflicted && <AlertTriangle className="mr-2 h-3.5 w-3.5 shrink-0 text-[var(--nova-warning)]" aria-label={t('changes.applyState.conflicted')} />}
+        {deleted && <span className="mr-2 text-[10px] text-[var(--nova-danger)]">{t('changes.fileDeleted')}</span>}
         <span className="mr-1.5 font-mono text-[10px] text-[var(--nova-success)]">+{stats.additions}</span>
         <span className="mr-1.5 font-mono text-[10px] text-[var(--nova-danger)]">−{stats.deletions}</span>
-        {onOpenFile && (
+        {onOpenFile && !deleted && (
           <Button type="button" size="xs" variant="ghost" disabled={navigationLocked} onClick={() => void onOpenFile(file.path)}>
             <ExternalLink />{t('changes.openFile')}
           </Button>

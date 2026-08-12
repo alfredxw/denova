@@ -15,6 +15,7 @@ import (
 
 	"denova/config"
 	agentcompaction "denova/internal/agents/context/compaction"
+	"denova/internal/agents/harnessstate"
 	"denova/internal/agents/modelio"
 	"denova/internal/agents/prompts"
 	agentrun "denova/internal/agents/run"
@@ -52,6 +53,12 @@ type AgentHostCapabilities struct {
 	// RootTools are host-owned session tools. They are intentionally excluded
 	// from every sub-Agent assembly.
 	RootTools []agent.ToolDefinition
+	// ReadAdapters extend the single read tool with application-owned URI
+	// resources without exposing extra model-visible state-management tools.
+	ReadAdapters []producttools.ReadAdapterBinding
+	// CompletionGuard lets an interactive host reject a premature final answer
+	// and return actionable feedback without adding a model-visible tool.
+	CompletionGuard func(context.Context, *agent.RetryContext) *agent.RetryDecision
 }
 
 // BuildWithCompositionForHost builds the top-level IDE Agent for a concrete
@@ -96,6 +103,7 @@ func BuildGeneralAgentWithCompositionForHost(ctx context.Context, cfg *config.Co
 		EnableSkills:    true,
 		InteractiveHost: host.Interactive,
 		ExtraTools:      host.RootTools,
+		ReadAdapters:    host.ReadAdapters,
 	})
 	return built, composition, err
 }
@@ -115,6 +123,29 @@ func BuildGeneralDefinitionWithCompositionForHost(ctx context.Context, cfg *conf
 		EnableSkills:    true,
 		InteractiveHost: host.Interactive,
 		ExtraTools:      host.RootTools,
+		ReadAdapters:    host.ReadAdapters,
+	})
+	return definition, composition, err
+}
+
+// BuildHarnessOptimizerDefinitionWithCompositionForHost assembles the
+// user-level continual-learning Agent over an isolated State draft. Its common
+// capability policy is resolved from the same preset as General Agent.
+func BuildHarnessOptimizerDefinitionWithCompositionForHost(ctx context.Context, cfg *config.Config, host AgentHostCapabilities) (agent.Definition, prompts.SystemPromptComposition, error) {
+	composition, err := prompts.ComposeHarnessOptimizerInstruction(cfg)
+	if err != nil {
+		return agent.Definition{}, prompts.SystemPromptComposition{}, err
+	}
+	definition, err := buildAgentDefinition(ctx, cfg, agentBuildSpec{
+		Kind:             config.AgentKindHarnessOptimizer,
+		Name:             "DenovaHarnessOptimizer",
+		Description:      "Optimizes user-level Harness State from trajectory evidence",
+		Composition:      composition,
+		EnableSkills:     true,
+		InteractiveHost:  host.Interactive,
+		ExtraTools:       host.RootTools,
+		ReadAdapters:     host.ReadAdapters,
+		ModelOutputGuard: host.CompletionGuard,
 	})
 	return definition, composition, err
 }
@@ -335,6 +366,7 @@ type agentBuildSpec struct {
 	DisableWriteTodos   bool
 	ExtraMiddlewares    []agent.Middleware
 	ExtraTools          []agent.ToolDefinition
+	ReadAdapters        []producttools.ReadAdapterBinding
 	ReadAdaptersFactory producttools.ReadAdapterFactory
 	ExtraToolsFactory   func(config.ResolvedAgentToolSettings) ([]agent.ToolDefinition, error)
 	ModelOutputGuard    func(context.Context, *agent.RetryContext) *agent.RetryDecision
@@ -385,6 +417,14 @@ func buildAgentDefinition(ctx context.Context, cfg *config.Config, spec agentBui
 	if err != nil {
 		return agent.Definition{}, err
 	}
+	harness, err := harnessstate.Load(ctx, cfg)
+	if err != nil {
+		return agent.Definition{}, fmt.Errorf("load Harness State for Agent %s: %w", spec.Kind, err)
+	}
+	composition, err = prompts.AppendUserStatePrompt(cfg, composition, harness.Revision(), harness.Prompt(spec.Kind))
+	if err != nil {
+		return agent.Definition{}, fmt.Errorf("compose Harness State prompt for Agent %s: %w", spec.Kind, err)
+	}
 	modelCfg, err := modelio.ConfigForAgent(cfg, spec.Kind)
 	if err != nil {
 		return agent.Definition{}, fmt.Errorf("resolve model configuration: %w", err)
@@ -406,6 +446,7 @@ func buildAgentDefinition(ctx context.Context, cfg *config.Config, spec agentBui
 		EnableSkills:        spec.EnableSkills,
 		ExtraMiddlewares:    spec.ExtraMiddlewares,
 		ExtraTools:          spec.ExtraTools,
+		ReadAdapters:        spec.ReadAdapters,
 		ReadAdaptersFactory: spec.ReadAdaptersFactory,
 		ExtraToolsFactory:   spec.ExtraToolsFactory,
 		// Agent.Definition.Compaction is the only root checkpoint authority.
@@ -419,7 +460,7 @@ func buildAgentDefinition(ctx context.Context, cfg *config.Config, spec agentBui
 	}
 	var taskAgents []agent.Runnable
 	if toolSettings.Allows(config.AgentToolDelegation) {
-		configuredSubAgents, err := buildConfiguredSubAgents(ctx, cfg, spec, toolSettings)
+		configuredSubAgents, err := buildConfiguredSubAgents(ctx, cfg, spec, toolSettings, harness.SubAgents())
 		if err != nil {
 			return agent.Definition{}, err
 		}
@@ -464,7 +505,7 @@ func buildAgentDefinition(ctx context.Context, cfg *config.Config, spec agentBui
 		}
 		tools = append(tools, todoTool)
 	}
-	if spec.InteractiveHost && toolSettings.Allows(config.AgentToolAsk) && (spec.Kind == config.AgentKindGeneral || spec.Kind == config.AgentKindIDE || spec.Kind == config.AgentKindConfigManager) {
+	if spec.InteractiveHost && toolSettings.Allows(config.AgentToolAsk) && (spec.Kind == config.AgentKindGeneral || spec.Kind == config.AgentKindIDE || spec.Kind == config.AgentKindConfigManager || spec.Kind == config.AgentKindHarnessOptimizer) {
 		askTool, err := toolCatalog.Ask()
 		if err != nil {
 			return agent.Definition{}, fmt.Errorf("创建 ask 工具失败: %w", err)
@@ -478,6 +519,7 @@ func buildAgentDefinition(ctx context.Context, cfg *config.Config, spec agentBui
 			tools = append(tools, taskTool)
 		}
 	}
+	tools = harness.ApplyToolDescriptions(tools)
 	if err := producttools.Validate(ctx, tools); err != nil {
 		return agent.Definition{}, err
 	}
@@ -495,12 +537,14 @@ func buildAgentDefinition(ctx context.Context, cfg *config.Config, spec agentBui
 		Model:         chatModel,
 		ModelIdentity: modelIdentity,
 		Instructions:  composition.Instruction(),
+		Context:       harness.ContextSource(cfg, spec.Kind),
 		Tools: agent.StaticToolsIdentified(denovaCapabilityIdentity("denova.tools", struct {
 			Kind      string
 			ProjectID string
 			Workspace string
 			Settings  config.ResolvedAgentToolSettings
-		}{spec.Kind, configProjectID(cfg), configWorkspace(cfg), toolSettings}), tools...),
+			State     string
+		}{spec.Kind, configProjectID(cfg), configWorkspace(cfg), toolSettings, harness.Revision()}), tools...),
 		Middlewares: middlewares,
 		Compaction:  compaction,
 		Execution: agent.ExecutionPolicy{
@@ -564,6 +608,7 @@ type chatModelAgentAssemblySpec struct {
 	EnableSkills          bool
 	ExtraMiddlewares      []agent.Middleware
 	ExtraTools            []agent.ToolDefinition
+	ReadAdapters          []producttools.ReadAdapterBinding
 	ReadAdaptersFactory   producttools.ReadAdapterFactory
 	ExtraToolsFactory     func(config.ResolvedAgentToolSettings) ([]agent.ToolDefinition, error)
 	ContextWindowTokens   int
@@ -613,6 +658,7 @@ func buildChatModelAgentAssembly(ctx context.Context, cfg *config.Config, spec c
 	if err != nil {
 		return chatModelAgentAssembly{}, err
 	}
+	readAdapters = append(readAdapters, spec.ReadAdapters...)
 	if spec.ReadAdaptersFactory != nil {
 		extraReadAdapters, err := spec.ReadAdaptersFactory(settings)
 		if err != nil {
@@ -672,11 +718,11 @@ func buildSkillTools(ctx context.Context, cfg *config.Config, agentKind string, 
 	return []agent.ToolDefinition{skillTool}, []producttools.ReadAdapterBinding{referenceAdapter}, nil
 }
 
-func buildConfiguredSubAgents(ctx context.Context, cfg *config.Config, parent agentBuildSpec, parentTools config.ResolvedAgentToolSettings) ([]agent.Runnable, error) {
+func buildConfiguredSubAgents(ctx context.Context, cfg *config.Config, parent agentBuildSpec, parentTools config.ResolvedAgentToolSettings, subConfigs []config.SubAgentConfig) ([]agent.Runnable, error) {
 	if cfg == nil || !config.IsSubAgentParentKind(parent.Kind) {
 		return nil, nil
 	}
-	subConfigs := config.SanitizeSubAgents(cfg.SubAgents)
+	subConfigs = config.SanitizeSubAgents(subConfigs)
 	if len(subConfigs) == 0 {
 		return nil, nil
 	}

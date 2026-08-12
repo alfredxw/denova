@@ -21,6 +21,7 @@ export interface Settings {
   general_sub_agents?: AgentGeneralSubAgentSettings
   sub_agents?: SubAgentConfig[]
   web_access?: WebAccessSettings
+  labs?: LabSettings
   skills_dir?: string
   backend_port?: number | null
   frontend_port?: number | null
@@ -73,6 +74,13 @@ export interface Settings {
   writing_skill_default?: string
   interactive_stage_font_size?: number | null
   interactive_stage_line_height?: number | null
+}
+
+export interface LabSettings {
+  continual_learning?: boolean | null
+  continual_learning_schedule?: boolean | null
+  continual_learning_interval_hours?: number | null
+  continual_learning_trajectory_cap?: number | null
 }
 
 export type ShellEnvironmentMode = 'auto' | 'process'

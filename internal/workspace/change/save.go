@@ -58,7 +58,7 @@ func (s *Service) SaveFile(ctx context.Context, path, content, baseRevision stri
 	if beforeExists && actualRevision == revision {
 		return SaveResult{Revision: revision, Changed: false}, nil
 	}
-	mutation, writeErr := s.atomicWriteVisibleFile(rel, after)
+	mutation, writeErr := s.atomicWriteVisibleFile(rel, after, nil)
 	if writeErr != nil {
 		if mutation.Stage == mutationStageVisible {
 			s.markPendingParentSync(rel, mutation.ParentRel)

@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	sessionProjectionVersion      = 14
+	sessionProjectionVersion      = 15
 	sessionRecentTransactionLimit = 200
 	sessionRecentCommitLimit      = 200
 	sessionStructuralRecordLimit  = 64
@@ -67,6 +67,7 @@ type assistantRunCheckpoint struct {
 type assistantTargetCheckpoint struct {
 	RecordID string `json:"record_id"`
 	RunID    string `json:"run_id"`
+	State    []byte `json:"state"`
 }
 
 // sessionJournalProjection is the bounded, rebuildable domain section of the
@@ -108,6 +109,7 @@ type sessionJournalProjection struct {
 	lastCursor         conversationjournal.Cursor
 	assistantDigests   map[string]hash.Hash
 	assistantTargets   map[string]string
+	assistantSegments  map[string]hash.Hash
 }
 
 func newSessionJournalProjection(id, generation string) *sessionJournalProjection {
@@ -122,7 +124,7 @@ func (projection *sessionJournalProjection) Reset() error {
 	*projection = sessionJournalProjection{
 		Version: sessionProjectionVersion, SessionID: expectedID, Generation: expectedGeneration,
 		Title: defaultSessionTitle, expectedID: expectedID, expectedGeneration: expectedGeneration,
-		assistantDigests: make(map[string]hash.Hash), assistantTargets: make(map[string]string),
+		assistantDigests: make(map[string]hash.Hash), assistantTargets: make(map[string]string), assistantSegments: make(map[string]hash.Hash),
 	}
 	return nil
 }
@@ -535,6 +537,9 @@ func (projection *sessionJournalProjection) rememberAssistantDisplay(display dis
 	_, _ = digest.Write([]byte(display.Content))
 	if recordID := strings.TrimSpace(display.RecordID); recordID != "" {
 		projection.assistantTargets[recordID] = runID
+		segment := sha256.New()
+		_, _ = segment.Write([]byte(display.Content))
+		projection.assistantSegments[recordID] = segment
 	}
 }
 
@@ -547,6 +552,9 @@ func (projection *sessionJournalProjection) appendAssistantDisplayPatch(patch di
 		return
 	}
 	_, _ = projection.assistantDigest(runID).Write([]byte(patch.ContentAppend))
+	if segment := projection.assistantSegments[strings.TrimSpace(patch.TargetRecordID)]; segment != nil {
+		_, _ = segment.Write([]byte(patch.ContentAppend))
+	}
 }
 
 func (projection *sessionJournalProjection) consumeCompleteAssistantRun(runID, content string) bool {
@@ -557,10 +565,22 @@ func (projection *sessionJournalProjection) consumeCompleteAssistantRun(runID, c
 	}
 	want := sha256.Sum256([]byte(content))
 	complete := bytes.Equal(digest.Sum(nil), want[:])
+	if !complete {
+		for recordID, targetRunID := range projection.assistantTargets {
+			if targetRunID != runID {
+				continue
+			}
+			if segment := projection.assistantSegments[recordID]; segment != nil && bytes.Equal(segment.Sum(nil), want[:]) {
+				complete = true
+				break
+			}
+		}
+	}
 	delete(projection.assistantDigests, runID)
 	for recordID, targetRunID := range projection.assistantTargets {
 		if targetRunID == runID {
 			delete(projection.assistantTargets, recordID)
+			delete(projection.assistantSegments, recordID)
 		}
 	}
 	return complete
@@ -584,6 +604,7 @@ func (projection *sessionJournalProjection) assistantDigest(runID string) hash.H
 func (projection *sessionJournalProjection) clearAssistantDigests() {
 	projection.assistantDigests = make(map[string]hash.Hash)
 	projection.assistantTargets = make(map[string]string)
+	projection.assistantSegments = make(map[string]hash.Hash)
 }
 
 func (projection *sessionJournalProjection) captureAssistantDigests() error {
@@ -611,7 +632,18 @@ func (projection *sessionJournalProjection) captureAssistantDigests() error {
 	}
 	sort.Strings(recordIDs)
 	for _, recordID := range recordIDs {
-		projection.AssistantTargets = append(projection.AssistantTargets, assistantTargetCheckpoint{RecordID: recordID, RunID: projection.assistantTargets[recordID]})
+		segment := projection.assistantSegments[recordID]
+		marshaler, ok := segment.(encoding.BinaryMarshaler)
+		if !ok {
+			return fmt.Errorf("assistant segment digest for record %q cannot be checkpointed", recordID)
+		}
+		state, err := marshaler.MarshalBinary()
+		if err != nil {
+			return fmt.Errorf("checkpoint assistant segment digest for record %q: %w", recordID, err)
+		}
+		projection.AssistantTargets = append(projection.AssistantTargets, assistantTargetCheckpoint{
+			RecordID: recordID, RunID: projection.assistantTargets[recordID], State: state,
+		})
 	}
 	return nil
 }
@@ -619,6 +651,7 @@ func (projection *sessionJournalProjection) captureAssistantDigests() error {
 func (projection *sessionJournalProjection) restoreAssistantDigests() error {
 	projection.assistantDigests = make(map[string]hash.Hash, len(projection.AssistantRuns))
 	projection.assistantTargets = make(map[string]string, len(projection.AssistantTargets))
+	projection.assistantSegments = make(map[string]hash.Hash, len(projection.AssistantTargets))
 	for _, checkpoint := range projection.AssistantRuns {
 		runID := strings.TrimSpace(checkpoint.RunID)
 		if runID == "" {
@@ -640,7 +673,16 @@ func (projection *sessionJournalProjection) restoreAssistantDigests() error {
 		if recordID == "" || projection.assistantDigests[runID] == nil {
 			return fmt.Errorf("assistant target checkpoint is inconsistent")
 		}
+		digest := sha256.New()
+		unmarshaler, ok := digest.(encoding.BinaryUnmarshaler)
+		if !ok {
+			return fmt.Errorf("assistant segment digest for record %q cannot be restored", recordID)
+		}
+		if err := unmarshaler.UnmarshalBinary(checkpoint.State); err != nil {
+			return fmt.Errorf("restore assistant segment digest for record %q: %w", recordID, err)
+		}
 		projection.assistantTargets[recordID] = runID
+		projection.assistantSegments[recordID] = digest
 	}
 	return nil
 }

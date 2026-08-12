@@ -23,11 +23,22 @@ type EditReplacement struct {
 	ReplaceAll bool
 }
 
-// EditRequest applies non-overlapping exact replacements to one file as one
-// mutation. Every replacement is evaluated against the same current snapshot.
+// EditOperation selects the single-file mutation performed by edit. The empty
+// value is equivalent to replace so ordinary text edits keep the compact form.
+type EditOperation string
+
+const (
+	EditOperationReplace EditOperation = "replace"
+	EditOperationDelete  EditOperation = "delete"
+)
+
+// EditRequest applies one explicit single-file mutation. Replace evaluates all
+// exact replacements against the same current snapshot. Delete requires no
+// replacements and removes the complete file through the mutation Adapter.
 type EditRequest struct {
-	Path  string
-	Edits []EditReplacement
+	Path      string
+	Operation EditOperation
+	Edits     []EditReplacement
 }
 
 // MutationAdapter is the product seam behind write and edit. Implementations
@@ -72,8 +83,9 @@ func Write(adapter MutationAdapter, options ...DefinitionOption) (agent.ToolDefi
 }
 
 type editInput struct {
-	Path  string           `json:"path" jsonschema:"maxLength=4096" jsonschema_description:"Absolute or workspace-relative path of the single file to edit."`
-	Edits []editEntryInput `json:"edits" jsonschema:"minItems=1,maxItems=256" jsonschema_description:"Non-overlapping exact replacements evaluated against the same original file snapshot and committed together."`
+	Path      string           `json:"path" jsonschema:"maxLength=4096" jsonschema_description:"Absolute or workspace-relative path of the single file to edit or delete."`
+	Operation EditOperation    `json:"operation,omitempty" jsonschema:"enum=replace,enum=delete" jsonschema_description:"Optional operation. Omit for replace. Delete must be explicit and must not include edits."`
+	Edits     []editEntryInput `json:"edits,omitempty" jsonschema:"minItems=1,maxItems=256" jsonschema_description:"Required for replace: non-overlapping exact replacements evaluated against the same original file snapshot and committed together. Omit for delete."`
 }
 
 type editEntryInput struct {
@@ -82,23 +94,34 @@ type editEntryInput struct {
 	ReplaceAll bool   `json:"replace_all,omitempty" jsonschema_description:"Replace every exact occurrence in the original snapshot; otherwise old_string must match exactly once."`
 }
 
-// Edit defines one single-file atomic exact-replacement batch.
+// Edit defines one single-file atomic replace or delete operation.
 func Edit(adapter MutationAdapter, options ...DefinitionOption) (agent.ToolDefinition, error) {
 	if adapter == nil {
 		return agent.ToolDefinition{}, errors.New("edit MutationAdapter is nil")
 	}
-	tool, err := agent.InferTool("edit", `Apply one or more exact replacements to a single workspace file as one atomic change. Every edits item is matched against the same current file snapshot, not against earlier replacements in the list. Without replace_all, old_string must occur exactly once. All ranges must be non-overlapping; if any item is invalid, the file is not changed. The file may have changed since an earlier read as long as every old_string still matches the current content exactly as required.
+	tool, err := agent.InferTool("edit", `Replace text in or delete one workspace file as one atomic, reviewable change. Omit operation for ordinary replacement and provide edits. File deletion must be explicit with operation=delete and no edits. For replacement, every edits item is matched against the same current file snapshot, not against earlier replacements in the list. Without replace_all, old_string must occur exactly once. All ranges must be non-overlapping; if any item is invalid, the file is not changed. The file may have changed since an earlier read as long as every old_string still matches the current content exactly as required.
 
-将一个或多个精确替换作为一次原子变更应用到同一个工作区文件。edits 中每一项都匹配同一份当前文件快照，而不是前一项替换后的结果。未设置 replace_all 时，old_string 必须恰好出现一次；所有区间必须互不重叠，任一项无效时文件都不会改变。只要每个 old_string 仍按要求精确匹配，文件可以在之前读取后发生其它变化。`, func(ctx context.Context, input editInput) (agent.ToolResult, error) {
+将文本替换或整个文件删除作为一次原子、可审阅的工作区变更。普通替换可省略 operation 并提供 edits；删除必须显式使用 operation=delete 且不能提供 edits。替换时，edits 中每一项都匹配同一份当前文件快照，而不是前一项替换后的结果。未设置 replace_all 时，old_string 必须恰好出现一次；所有区间必须互不重叠，任一项无效时文件都不会改变。`, func(ctx context.Context, input editInput) (agent.ToolResult, error) {
 		path := strings.TrimSpace(input.Path)
 		if path == "" {
 			return agent.ToolResult{}, errors.New("edit path is required")
 		}
-		if len(input.Edits) == 0 {
-			return agent.ToolResult{}, errors.New("edit requires at least one edits item")
-		}
-		if len(input.Edits) > maxMutationEdits {
-			return agent.ToolResult{}, fmt.Errorf("edit exceeds the %d-item mutation limit", maxMutationEdits)
+		operation := EditOperation(strings.TrimSpace(string(input.Operation)))
+		switch operation {
+		case "", EditOperationReplace:
+			operation = EditOperationReplace
+			if len(input.Edits) == 0 {
+				return agent.ToolResult{}, errors.New("edit replace requires at least one edits item")
+			}
+			if len(input.Edits) > maxMutationEdits {
+				return agent.ToolResult{}, fmt.Errorf("edit exceeds the %d-item mutation limit", maxMutationEdits)
+			}
+		case EditOperationDelete:
+			if len(input.Edits) != 0 {
+				return agent.ToolResult{}, errors.New("edit delete must not include edits")
+			}
+		default:
+			return agent.ToolResult{}, fmt.Errorf("unsupported edit operation %q", operation)
 		}
 		replacements := make([]EditReplacement, len(input.Edits))
 		for index, edit := range input.Edits {
@@ -106,7 +129,7 @@ func Edit(adapter MutationAdapter, options ...DefinitionOption) (agent.ToolDefin
 				OldString: edit.OldString, NewString: edit.NewString, ReplaceAll: edit.ReplaceAll,
 			}
 		}
-		result, err := adapter.Edit(ctx, EditRequest{Path: path, Edits: replacements})
+		result, err := adapter.Edit(ctx, EditRequest{Path: path, Operation: operation, Edits: replacements})
 		if err == nil && result.Status == "" {
 			result.Status = agent.ToolResultSuccess
 		}

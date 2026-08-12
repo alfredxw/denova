@@ -79,6 +79,14 @@ type ReplaceFileRequest struct {
 	Metadata     ChangeMetadata `json:"metadata"`
 }
 
+// DeleteFileRequest removes one existing regular text file while retaining its
+// complete pre-delete snapshot in durable review history.
+type DeleteFileRequest struct {
+	Path         string         `json:"path"`
+	BaseRevision string         `json:"base_revision"`
+	Metadata     ChangeMetadata `json:"metadata"`
+}
+
 // SaveResult reports whether a local editor save changed workspace bytes.
 type SaveResult struct {
 	Revision string `json:"revision"`
@@ -123,6 +131,8 @@ type ChangeSet struct {
 	AfterBlob      string        `json:"after_blob"`
 	BeforeExists   bool          `json:"before_exists"`
 	AfterExists    bool          `json:"after_exists"`
+	BeforeMode     uint32        `json:"before_mode,omitempty"`
+	AfterMode      uint32        `json:"after_mode,omitempty"`
 	BeforeContent  string        `json:"before_content,omitempty"`
 	AfterContent   string        `json:"after_content,omitempty"`
 	Edits          []AppliedEdit `json:"edits"`

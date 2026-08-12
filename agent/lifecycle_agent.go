@@ -34,6 +34,7 @@ type agentOptions struct {
 	store  agentsession.Store
 	limits Limits
 	trace  TraceSink
+	runIDs RunIDGenerator
 }
 
 func WithSessionStore(store agentsession.Store) Option {
@@ -56,6 +57,19 @@ func WithLimits(limits Limits) Option {
 func WithTrace(sink TraceSink) Option {
 	return func(options *agentOptions) error {
 		options.trace = sink
+		return nil
+	}
+}
+
+// WithRunIDGenerator delegates externally visible Run identity to the
+// embedding application. Storage, tracing, and display layers can then share
+// that exact identity without Agent knowing their naming conventions.
+func WithRunIDGenerator(generate RunIDGenerator) Option {
+	return func(options *agentOptions) error {
+		if generate == nil {
+			return errors.New("Agent Run ID generator is nil")
+		}
+		options.runIDs = generate
 		return nil
 	}
 }
@@ -97,7 +111,9 @@ func New(lifecycle context.Context, source Source, options ...Option) (*Agent, e
 		sessions: make(map[string]SessionKey),
 	}
 	factory := &definitionEngineFactory{source: source, persistent: isPersistentStore(configured.store), trace: configured.trace}
-	runtime, err := runstate.NewRuntime(factory, runtimeStoreAdapter{store: configured.store}, runtimeConfig(configured.limits, ctx))
+	runtime, err := runstate.NewRuntime(
+		factory, runtimeStoreAdapter{store: configured.store}, runtimeConfig(configured.limits, ctx, configured.runIDs),
+	)
 	if err != nil {
 		cancel()
 		return nil, err
@@ -106,7 +122,7 @@ func New(lifecycle context.Context, source Source, options ...Option) (*Agent, e
 	return owner, nil
 }
 
-func runtimeConfig(limits Limits, lifecycle context.Context) runstate.RuntimeConfig {
+func runtimeConfig(limits Limits, lifecycle context.Context, runIDs RunIDGenerator) runstate.RuntimeConfig {
 	config := runstate.RuntimeConfig{
 		Lifecycle:              lifecycle,
 		ObservationBuffer:      limits.ObservationBuffer,
@@ -121,6 +137,14 @@ func runtimeConfig(limits Limits, lifecycle context.Context) runstate.RuntimeCon
 	config.MemoryLimits.MaxEngineStateBytes = limits.MaxEngineStateBytes
 	config.MemoryLimits.MaxInteractionBytes = limits.MaxInteractionBytes
 	config.MemoryLimits.MaxPendingInteractions = limits.MaxPendingInteractions
+	if runIDs != nil {
+		config.OperationIDGenerator = func(binding runstate.BindingRef) (runstate.OperationID, error) {
+			id, err := runIDs(RunIDRequest{Session: SessionKey{
+				Namespace: binding.Kind, ID: binding.Key, Attributes: maps.Clone(binding.Labels),
+			}})
+			return runstate.OperationID(id), err
+		}
+	}
 	return config
 }
 

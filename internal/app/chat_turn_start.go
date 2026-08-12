@@ -127,7 +127,7 @@ func (s *ChatAppService) startTaskWithError(ctx context.Context, expectedSession
 		return nil, err
 	}
 	builtAgent, err := appagentruntime.BuildConversationAgent(
-		ctx, &runtime.cfg, runtime.state, runtime.ideTeller, agentrun.AgentKindIDE,
+		appagentruntime.WithHarnessRun(ctx, req.CommandID), &runtime.cfg, runtime.state, runtime.ideTeller, agentrun.AgentKindIDE,
 		goalTools...,
 	)
 	if err != nil {

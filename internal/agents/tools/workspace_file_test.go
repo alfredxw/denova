@@ -21,8 +21,10 @@ type recordingWorkspaceChangeService struct {
 	readErr        error
 	applyCalls     int
 	replaceCalls   int
+	deleteCalls    int
 	applyRequest   workspacechange.ApplyEditsRequest
 	replaceRequest workspacechange.ReplaceFileRequest
+	deleteRequest  workspacechange.DeleteFileRequest
 	changeSet      workspacechange.ChangeSet
 	err            error
 }
@@ -51,6 +53,12 @@ func (service *recordingWorkspaceChangeService) ApplyEdits(_ context.Context, re
 func (service *recordingWorkspaceChangeService) ReplaceFile(_ context.Context, request workspacechange.ReplaceFileRequest) (workspacechange.ChangeSet, error) {
 	service.replaceCalls++
 	service.replaceRequest = request
+	return service.changeSet, service.err
+}
+
+func (service *recordingWorkspaceChangeService) DeleteFile(_ context.Context, request workspacechange.DeleteFileRequest) (workspacechange.ChangeSet, error) {
+	service.deleteCalls++
+	service.deleteRequest = request
 	return service.changeSet, service.err
 }
 
@@ -144,6 +152,89 @@ func TestWorkspaceEditUsesCurrentContentAfterEarlierExternalChange(t *testing.T)
 	}
 	if string(content) != "context\nagent update" {
 		t.Fatalf("edit did not preserve unrelated current content: %q", content)
+	}
+}
+
+func TestWorkspaceEditDeleteUsesDurableChangeServiceAndReturnsReviewReceipt(t *testing.T) {
+	service := &recordingWorkspaceChangeService{
+		workspace: t.TempDir(), readRevision: "sha256:before",
+		changeSet: workspacechange.ChangeSet{
+			ID: "delete-1", GroupID: "run-delete", ReviewThreadID: "review-delete",
+			Path: "chapters/obsolete.md", BaseRevision: "sha256:before", Revision: "missing",
+			BeforeExists: true, AfterExists: false,
+			Edits:        []workspacechange.AppliedEdit{{ID: "edit-delete", Hunks: []workspacechange.Hunk{{ID: "whole-file"}}}},
+			ReviewStatus: workspacechange.ReviewStatusPending, ApplyState: workspacechange.ApplyStateApplied,
+		},
+	}
+	adapter, err := newWorkspaceMutationAdapter(service, func(context.Context) workspacechange.ChangeMetadata {
+		return workspacechange.ChangeMetadata{Origin: workspacechange.OriginAgent, ChangeGroupID: "run-delete"}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := adapter.Edit(context.Background(), agenttools.EditRequest{
+		Path: "chapters/obsolete.md", Operation: agenttools.EditOperationDelete,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if service.readCalls != 1 || service.deleteCalls != 1 || service.applyCalls != 0 ||
+		service.deleteRequest.Path != "chapters/obsolete.md" || service.deleteRequest.BaseRevision != "sha256:before" ||
+		service.deleteRequest.Metadata.ChangeGroupID != "run-delete" {
+		t.Fatalf("delete request = %#v service=%#v", service.deleteRequest, service)
+	}
+	receipt, ok := workspacechange.ParseToolReceipt("edit", result.ModelContent)
+	if !ok || receipt.ChangeSetID != "delete-1" || receipt.Path != "chapters/obsolete.md" || receipt.Revision != "missing" {
+		t.Fatalf("delete receipt = %s", result.ModelContent)
+	}
+}
+
+func TestWorkspaceEditDeleteAppearsInReviewAndRejectRestoresFile(t *testing.T) {
+	workspace := t.TempDir()
+	path := filepath.Join(workspace, "obsolete.md")
+	if err := os.WriteFile(path, []byte("remove me\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	service, err := workspacechange.NewService(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapter, err := newWorkspaceMutationAdapter(service)
+	if err != nil {
+		t.Fatal(err)
+	}
+	definition, err := agenttools.Edit(adapter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := definition.Tool.Run(context.Background(), `{"path":"obsolete.md","operation":"delete"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, statErr := os.Stat(path); !os.IsNotExist(statErr) {
+		t.Fatalf("deleted file remains visible: %v", statErr)
+	}
+	receipt, ok := workspacechange.ParseToolReceipt("edit", result.ModelContent)
+	if !ok {
+		t.Fatalf("delete result has no review receipt: %s", result.ModelContent)
+	}
+	group, err := service.GetGroup(context.Background(), receipt.ChangeGroupID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(group.ChangeSets) != 1 || !group.ChangeSets[0].BeforeExists || group.ChangeSets[0].AfterExists ||
+		group.ChangeSets[0].BeforeContent != "remove me\n" || group.ChangeSets[0].AfterContent != "" ||
+		group.PendingEditCount != 1 {
+		t.Fatalf("delete review group = %#v", group)
+	}
+	if _, err := service.Review(context.Background(), workspacechange.ReviewRequest{
+		GroupID: receipt.ChangeGroupID, Decision: workspacechange.ReviewDecisionReject,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil || string(content) != "remove me\n" {
+		t.Fatalf("review rejection did not restore file: content=%q err=%v", content, err)
 	}
 }
 

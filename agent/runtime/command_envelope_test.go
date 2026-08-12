@@ -18,6 +18,7 @@ func TestCommandEnvelopeIsBoundedBeforeAdmission(t *testing.T) {
 		Result:   runstate.EngineResult{Status: runstate.EngineCompleted},
 	})
 	runtime, err := runstate.NewRuntime(engine, runstate.NewMemoryJournalStore(), runstate.RuntimeConfig{
+		OperationIDGenerator: func(runstate.BindingRef) (runstate.OperationID, error) { return "op-1", nil },
 		InputLimits: runstate.InputLimits{
 			MaxCommandIDBytes:   8,
 			MaxOperationIDBytes: 8,

@@ -9,7 +9,9 @@ import (
 	"path/filepath"
 )
 
-func (s *Service) atomicWriteVisibleFile(rel string, content []byte) (mutationResult, error) {
+const defaultVisibleFileMode os.FileMode = 0o644
+
+func (s *Service) atomicWriteVisibleFile(rel string, content []byte, requestedMode *os.FileMode) (mutationResult, error) {
 	result := mutationResult{Stage: mutationStageUnchanged, ParentRel: visibleParentRel(rel)}
 	root, err := s.openWorkspaceRoot()
 	if err != nil {
@@ -20,8 +22,10 @@ func (s *Service) atomicWriteVisibleFile(rel string, content []byte) (mutationRe
 	if err := s.ensureVisibleParentDurable(root, parent); err != nil {
 		return result, err
 	}
-	mode := os.FileMode(0o644)
-	if info, err := root.Stat(filepath.FromSlash(rel)); err == nil {
+	mode := defaultVisibleFileMode
+	if requestedMode != nil {
+		mode = requestedMode.Perm()
+	} else if info, err := root.Stat(filepath.FromSlash(rel)); err == nil {
 		if !info.Mode().IsRegular() {
 			return result, newError(ErrorCodeConflict, "workspace path is not a regular file", map[string]any{"path": rel})
 		}
@@ -47,6 +51,14 @@ func (s *Service) atomicWriteVisibleFile(rel string, content []byte) (mutationRe
 			_ = root.Remove(tempPath)
 		}
 	}()
+	if requestedMode != nil {
+		// Creation permissions are filtered through the process umask. Apply the
+		// recorded mode explicitly so review rejection and undo restore the exact
+		// pre-delete permissions.
+		if err := file.Chmod(mode); err != nil {
+			return result, err
+		}
+	}
 	if _, err := file.Write(content); err != nil {
 		return result, err
 	}

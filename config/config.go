@@ -34,6 +34,7 @@ type Config struct {
 	GeneralSubAgents          AgentGeneralSubAgentSettings `toml:"general_sub_agents"`
 	SubAgents                 []SubAgentConfig             `toml:"sub_agents"`
 	WebAccess                 WebAccessConfig              `toml:"web_access"`
+	Labs                      ResolvedLabs                 `toml:"labs"`
 	SkillsDir                 string                       `toml:"skills_dir"`
 	BackendPort               int                          `toml:"backend_port"`
 	FrontendPort              int                          `toml:"frontend_port"`
@@ -126,6 +127,7 @@ func configFromLayered(novaDir, workspace string, layered LayeredSettings) *Conf
 		GeneralSubAgents:            s.GeneralSubAgents,
 		SubAgents:                   s.SubAgents,
 		WebAccess:                   ResolveWebAccessSettings(s.WebAccess),
+		Labs:                        ResolveLabs(s.Labs),
 		SkillsDir:                   s.SkillsDir,
 		BackendPort:                 settingsInt(s.BackendPort, 8080),
 		FrontendPort:                settingsInt(s.FrontendPort, 5173),
@@ -259,6 +261,12 @@ func settingsFromConfig(cfg *Config) Settings {
 		GeneralSubAgents:         cfg.GeneralSubAgents,
 		SubAgents:                cfg.SubAgents,
 		WebAccess:                settingsFromWebAccessConfig(cfg.WebAccess),
+		Labs: LabSettings{
+			ContinualLearning:              boolPtr(cfg.Labs.ContinualLearning),
+			ContinualLearningSchedule:      boolPtr(cfg.Labs.ContinualLearningSchedule),
+			ContinualLearningIntervalHours: intPtr(cfg.Labs.ContinualLearningIntervalHours),
+			ContinualLearningTrajectoryCap: intPtr(cfg.Labs.ContinualLearningTrajectoryCap),
+		},
 		SkillsDir:                cfg.SkillsDir,
 		DenovaDir:                firstNonEmpty(cfg.DenovaDir, cfg.NovaDir),
 		NovaDir:                  firstNonEmpty(cfg.DenovaDir, cfg.NovaDir),

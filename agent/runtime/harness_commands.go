@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 )
 
 func (h *Harness) handleSubmit(state *harnessState, ctx context.Context, command Command) (Receipt, error) {
@@ -68,7 +69,11 @@ func (h *Harness) handleSubmit(state *harnessState, ctx context.Context, command
 		if state.phase != PhaseIdle || state.hasQueued(DeliveryNextTurn) {
 			return Receipt{}, ErrBusy
 		}
-		return h.beginOperation(ctx, state, commandID, "start_turn", fingerprint, OperationID(newID("operation")), command.Input)
+		operationID, err := h.newOperationID()
+		if err != nil {
+			return Receipt{}, err
+		}
+		return h.beginOperation(ctx, state, commandID, "start_turn", fingerprint, operationID, command.Input)
 	case Steer:
 		return h.enqueueCurrent(ctx, state, commandID, fingerprint, command.OperationID, DeliverySteer, command.Input)
 	case FollowUp:
@@ -84,7 +89,10 @@ func (h *Harness) handleSubmit(state *harnessState, ctx context.Context, command
 		if command.AfterOperationID != state.activeOperation {
 			return Receipt{}, ErrStaleOperation
 		}
-		operationID := OperationID(newID("operation"))
+		operationID, err := h.newOperationID()
+		if err != nil {
+			return Receipt{}, err
+		}
 		if state.phase == PhaseIdle {
 			return h.beginOperation(ctx, state, commandID, "next_turn", fingerprint, operationID, command.Input)
 		}
@@ -242,7 +250,10 @@ func (h *Harness) beginStructuralOperation(
 	if err := state.admitStructuralRef(ref); err != nil {
 		return Receipt{}, err
 	}
-	operationID := OperationID(newID("operation"))
+	operationID, err := h.newOperationID()
+	if err != nil {
+		return Receipt{}, err
+	}
 	snapshot := StructuralOperationSnapshot{
 		Binding: h.binding.Clone(), CommandID: commandID, OperationID: operationID,
 		Cycle: 1, Kind: kind, Ref: cloneContextCompactionRef(ref), ContextCursor: state.cursor + 2,
@@ -256,6 +267,24 @@ func (h *Harness) beginStructuralOperation(
 	}
 	h.startStructuralEngine(state, *state.activeStructural)
 	return receiptFromEvents(committed), nil
+}
+
+func (h *Harness) newOperationID() (OperationID, error) {
+	if h == nil || h.operationIDs == nil {
+		return "", fmt.Errorf("%w: operation ID generator is unavailable", ErrInvalidCommand)
+	}
+	operationID, err := h.operationIDs(h.binding.Clone())
+	if err != nil {
+		return "", fmt.Errorf("generate agent operation ID: %w", err)
+	}
+	value := string(operationID)
+	if strings.TrimSpace(value) == "" || value != strings.TrimSpace(value) {
+		return "", fmt.Errorf("%w: generated operation ID is empty or contains surrounding whitespace", ErrInvalidCommand)
+	}
+	if len(value) > h.inputLimits.MaxOperationIDBytes {
+		return "", fmt.Errorf("%w: generated operation ID exceeds %d bytes", ErrInvalidCommand, h.inputLimits.MaxOperationIDBytes)
+	}
+	return operationID, nil
 }
 
 func (h *Harness) beginOperation(

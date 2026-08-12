@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"strings"
 	"time"
@@ -224,20 +225,25 @@ func (s *Session) History() []HistoryEntry {
 	defer s.mu.Unlock()
 
 	// Root assistant display segments preserve the exact interleaving of prose,
-	// reasoning, and tools. Suppress the canonical display copy only when those
-	// segments reconstruct it completely; otherwise retain the canonical fallback.
-	segmentedAssistantContentByRun := make(map[string]*strings.Builder)
+	// reasoning, and tools. Suppress the canonical copy when either the terminal
+	// segment or the complete segment sequence already carries the same content.
+	type assistantDisplayCoverage struct {
+		combined strings.Builder
+		segments map[[sha256.Size]byte]struct{}
+	}
+	segmentedAssistantContentByRun := make(map[string]*assistantDisplayCoverage)
 	for _, record := range s.records {
 		if record.kind != historyTypeDisplay || record.display == nil || record.display.Role != "assistant" || record.display.SubAgent {
 			continue
 		}
 		if runID := strings.TrimSpace(record.display.RunID); runID != "" {
-			content := segmentedAssistantContentByRun[runID]
-			if content == nil {
-				content = &strings.Builder{}
-				segmentedAssistantContentByRun[runID] = content
+			coverage := segmentedAssistantContentByRun[runID]
+			if coverage == nil {
+				coverage = &assistantDisplayCoverage{segments: make(map[[sha256.Size]byte]struct{})}
+				segmentedAssistantContentByRun[runID] = coverage
 			}
-			content.WriteString(record.display.Content)
+			coverage.combined.WriteString(record.display.Content)
+			coverage.segments[sha256.Sum256([]byte(record.display.Content))] = struct{}{}
 		}
 	}
 
@@ -251,8 +257,11 @@ func (s *Session) History() []HistoryEntry {
 				continue
 			}
 			if record.message.Role == agent.Assistant {
-				if segmented := segmentedAssistantContentByRun[strings.TrimSpace(record.messageMetadata.RunID)]; segmented != nil && segmented.String() == record.message.Content {
-					continue
+				if coverage := segmentedAssistantContentByRun[strings.TrimSpace(record.messageMetadata.RunID)]; coverage != nil {
+					_, segmentMatches := coverage.segments[sha256.Sum256([]byte(record.message.Content))]
+					if segmentMatches || coverage.combined.String() == record.message.Content {
+						continue
+					}
 				}
 			}
 			result = append(result, HistoryEntry{

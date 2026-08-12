@@ -172,6 +172,14 @@ func (backend *publicBackend) trackRun(
 	backend.mu.Unlock()
 	go func() {
 		defer close(handle.done)
+		// An idempotent cold replay already owns a completed trace under this Run
+		// ID. Preserve it instead of projecting replayed lifecycle events again.
+		trace := newPublicAgentRunTrace(publicRun.ID(), !publicRun.Replayed())
+		defer func() {
+			if err := trace.close(); err != nil {
+				slog.Warn("[agent-public-runtime] close run trace failed", "run_id", publicRun.ID(), "error", err)
+			}
+		}()
 		defer func() {
 			if recovered := recover(); recovered != nil {
 				slog.Error("[agent-public-runtime] event projection panicked", "run_id", publicRun.ID(), "panic", recovered)
@@ -182,7 +190,11 @@ func (backend *publicBackend) trackRun(
 			if started, ok := event.Payload.(agent.RunStarted); ok {
 				currentCycle = started.Cycle
 			}
-			projector := backend.projector(publicRun.ID(), currentCycle, registration)
+			cycleRegistration := backend.cycleRegistration(publicRun.ID(), currentCycle, registration)
+			if err := trace.record(cycleRegistration, event); err != nil {
+				slog.Warn("[agent-public-runtime] record run trace failed", "run_id", publicRun.ID(), "error", err)
+			}
+			projector := projectorForRegistration(cycleRegistration)
 			if projector != nil {
 				projector.Project(event)
 			}
@@ -196,12 +208,24 @@ func (backend *publicBackend) projector(
 	cycle int,
 	fallback *publicCycleRegistration,
 ) *agentchat.PublicEventProjector {
+	return projectorForRegistration(backend.cycleRegistration(runID, cycle, fallback))
+}
+
+func (backend *publicBackend) cycleRegistration(
+	runID string,
+	cycle int,
+	fallback *publicCycleRegistration,
+) *publicCycleRegistration {
 	backend.mu.RLock()
 	registration := backend.cycles[runID][cycle]
 	backend.mu.RUnlock()
 	if registration == nil {
-		registration = fallback
+		return fallback
 	}
+	return registration
+}
+
+func projectorForRegistration(registration *publicCycleRegistration) *agentchat.PublicEventProjector {
 	if registration == nil {
 		return nil
 	}

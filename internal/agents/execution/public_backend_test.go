@@ -2,6 +2,7 @@ package execution
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"testing"
 
@@ -145,6 +146,15 @@ func TestAgentRuntimeVerifiesCommittedMutationsBeforeTerminalDisplay(t *testing.
 	if hostEffects != 1 || len(verified) != 1 || verification.Mutations != 1 {
 		t.Fatalf("host_effects=%d verified=%#v verification=%#v", hostEffects, verified, verification)
 	}
+	trace, err := agentrun.ReadRunTrace(
+		agentrun.TraceLocation{Workspace: workspace}, string(operation.Receipt().OperationID),
+	)
+	if err != nil {
+		t.Fatalf("read public Agent run trace: %v", err)
+	}
+	if trace.Summary.ToolCalls != 1 || trace.Summary.ToolSuccesses != 1 || trace.Summary.LLMCalls != 2 || trace.Summary.Status != "success" {
+		t.Fatalf("public Agent run trace summary = %#v", trace.Summary)
+	}
 	verificationIndex, doneIndex := -1, -1
 	for index, event := range events {
 		switch event.Type {
@@ -214,6 +224,18 @@ func TestAgentRuntimeCommitsARealDenovaSessionAndFinalizesDisplay(t *testing.T) 
 	if outcome.Status != agentrun.OutcomeCompleted || outcome.Content != "public runtime answer" {
 		t.Fatalf("outcome = %#v", outcome)
 	}
+	runID := string(operation.Receipt().OperationID)
+	if !strings.HasPrefix(runID, "run-") {
+		t.Fatalf("public run id = %q, want run- prefix", runID)
+	}
+	trace, err := agentrun.ReadRunTrace(agentrun.TraceLocation{Workspace: workspace}, runID)
+	if err != nil {
+		t.Fatalf("read public Agent run trace: %v", err)
+	}
+	if trace.Summary.ID != runID || trace.Summary.Status != "success" || trace.Summary.LLMCalls != 1 ||
+		trace.Summary.PromptTokens != 20 || trace.Summary.CachedPromptTokens != 12 || trace.Summary.UncachedPromptTokens != 8 {
+		t.Fatalf("public Agent run trace summary = %#v", trace.Summary)
+	}
 	if inputCallbacks != 1 {
 		t.Fatalf("input callbacks = %d", inputCallbacks)
 	}
@@ -274,6 +296,14 @@ func TestAgentRuntimeColdReplayUsesDurableOutputWithoutCallingModel(t *testing.T
 	if outcome := firstOperation.Wait(ctx); outcome.Status != agentrun.OutcomeCompleted {
 		t.Fatalf("first outcome = %#v", outcome)
 	}
+	runID := string(firstOperation.Receipt().OperationID)
+	initialTrace, err := agentrun.ReadRunTrace(agentrun.TraceLocation{Workspace: workspace}, runID)
+	if err != nil {
+		t.Fatalf("read initial public Agent trace: %v", err)
+	}
+	if initialTrace.Summary.LLMCalls != 1 || initialTrace.Summary.Status != "success" {
+		t.Fatalf("initial public Agent trace = %#v", initialTrace.Summary)
+	}
 	if err := first.Close(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -299,6 +329,13 @@ func TestAgentRuntimeColdReplayUsesDurableOutputWithoutCallingModel(t *testing.T
 	}
 	if len(replayEvents) == 0 || replayEvents[len(replayEvents)-1].Type != "done" {
 		t.Fatalf("replay events = %#v", replayEvents)
+	}
+	replayedTrace, err := agentrun.ReadRunTrace(agentrun.TraceLocation{Workspace: workspace}, runID)
+	if err != nil {
+		t.Fatalf("read replayed public Agent trace: %v", err)
+	}
+	if replayedTrace.Summary.LLMCalls != 1 || replayedTrace.Summary.Status != "success" {
+		t.Fatalf("cold replay changed public Agent trace = %#v", replayedTrace.Summary)
 	}
 }
 

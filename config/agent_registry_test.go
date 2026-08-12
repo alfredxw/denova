@@ -123,16 +123,20 @@ func TestAgentKindRegistryDefinesUniqueKindsAndConfigAccessors(t *testing.T) {
 	}
 
 	for _, definition := range definitions {
-		if got := definition.ModelOverride(models).ProfileID; got != definition.Kind {
+		expectedKind := definition.Kind
+		if definition.Kind == AgentKindHarnessOptimizer {
+			expectedKind = AgentKindGeneral
+		}
+		if got := definition.ModelOverride(models).ProfileID; got != expectedKind {
 			t.Fatalf("model accessor for %s returned %q", definition.Kind, got)
 		}
-		if got := definition.PromptOverride(prompts).SystemPrompt; got != definition.Kind {
+		if got := definition.PromptOverride(prompts).SystemPrompt; got != expectedKind {
 			t.Fatalf("prompt accessor for %s returned %q", definition.Kind, got)
 		}
 		if got := definition.ToolOverride(tools); len(got) == 0 {
 			t.Fatalf("tool accessor for %s returned zero override", definition.Kind)
 		}
-		if got := definition.ContextOverride(contexts).CompactionThreshold; got == nil || *got != *thresholds[definition.Kind] {
+		if got := definition.ContextOverride(contexts).CompactionThreshold; got == nil || *got != *thresholds[expectedKind] {
 			t.Fatalf("context accessor for %s returned %#v", definition.Kind, got)
 		}
 	}

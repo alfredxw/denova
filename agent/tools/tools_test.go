@@ -404,6 +404,7 @@ func TestWriteAndEditPublishSmallExactInterfaces(t *testing.T) {
 		t.Fatalf("write request = %#v", adapter.write)
 	}
 	if adapter.edit.Path != "ideas.md" || len(adapter.edit.Edits) != 2 ||
+		adapter.edit.Operation != EditOperationReplace ||
 		adapter.edit.Edits[0].OldString != "old" || adapter.edit.Edits[0].NewString != "new" || !adapter.edit.Edits[0].ReplaceAll ||
 		adapter.edit.Edits[1].OldString != "ending" || adapter.edit.Edits[1].NewString != "finale" || adapter.edit.Edits[1].ReplaceAll {
 		t.Fatalf("edit request = %#v", adapter.edit)
@@ -429,8 +430,28 @@ func TestWriteAndEditPublishSmallExactInterfaces(t *testing.T) {
 			t.Fatalf("edit item must require %q: %#v", required, editsSchema.Items)
 		}
 	}
+	operationSchema, ok := schema.Properties.Get("operation")
+	if !ok || len(operationSchema.Enum) != 2 || containsTestString(schema.Required, "operation") || containsTestString(schema.Required, "edits") {
+		t.Fatalf("edit operation schema = %#v; required=%#v", operationSchema, schema.Required)
+	}
 	if _, err := editDefinition.Tool.Run(context.Background(), `{"path":"ideas.md","edits":[]}`); err == nil {
 		t.Fatal("edit accepted an empty batch")
+	}
+	if _, err := editDefinition.Tool.Run(context.Background(), `{"path":"ideas.md","operation":"delete"}`); err != nil {
+		t.Fatalf("explicit delete failed: %v", err)
+	}
+	if adapter.edit.Operation != EditOperationDelete || len(adapter.edit.Edits) != 0 {
+		t.Fatalf("delete request = %#v", adapter.edit)
+	}
+	for _, invalid := range []string{
+		`{"path":"ideas.md"}`,
+		`{"path":"ideas.md","operation":"replace"}`,
+		`{"path":"ideas.md","operation":"delete","edits":[{"old_string":"old","new_string":"new"}]}`,
+		`{"path":"ideas.md","operation":"remove"}`,
+	} {
+		if _, err := editDefinition.Tool.Run(context.Background(), invalid); err == nil {
+			t.Fatalf("edit accepted invalid operation shape: %s", invalid)
+		}
 	}
 }
 

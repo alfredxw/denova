@@ -8,6 +8,10 @@ import (
 
 type RuntimeConfig struct {
 	ObservationBuffer int
+	// OperationIDGenerator lets the embedding application own the externally
+	// visible execution identity. The runtime validates and persists the result;
+	// its zero value generates a product-neutral opaque ID.
+	OperationIDGenerator OperationIDGenerator
 	// MaxOpenBindings bounds actor goroutines and durable journal leases. The
 	// Runtime evicts only least-recently-used idle actors; active or observed
 	// bindings may temporarily exceed the limit until their state becomes idle.
@@ -31,6 +35,10 @@ type RuntimeConfig struct {
 	// cancellation must not be used here; App/workspace shutdown should be.
 	Lifecycle context.Context
 }
+
+// OperationIDGenerator assigns one identity for a newly accepted durable
+// operation. Binding is defensively cloned before crossing this seam.
+type OperationIDGenerator func(BindingRef) (OperationID, error)
 
 // BindingMemoryLimits are aggregate byte budgets for one durable binding.
 // Defaults intentionally leave room for large bounded context fragments while
