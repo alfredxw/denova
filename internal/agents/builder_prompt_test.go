@@ -3,18 +3,21 @@ package agents
 import (
 	"context"
 	"crypto/sha256"
-	"denova/internal/agents/run"
 	"encoding/hex"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	agent "github.com/alfredxw/denova/agent"
+	agentsession "github.com/alfredxw/denova/agent/session"
 	agentstate "github.com/alfredxw/denova/agent/state"
 
 	"denova/config"
 	"denova/internal/agents/harnessstate"
 	"denova/internal/agents/prompts"
+	"denova/internal/agents/run"
+	"denova/internal/book"
 )
 
 func TestAgentBuildFailsClosedBeforeModelConstructionOnPromptAdmission(t *testing.T) {
@@ -116,6 +119,110 @@ func TestBuildDefinitionReturnsExactAuditedInstructionArtifact(t *testing.T) {
 	options := agentrun.Options{SystemPromptLog: composition}
 	if definition.Instructions != composition.Instruction() || options.SystemPromptLog.InstructionHash() != promptInstructionSHA(definition.Instructions) {
 		t.Fatalf("Definition and agentrun.Options must share exact composition: definition_sha=%s option_sha=%s", promptInstructionSHA(definition.Instructions), options.SystemPromptLog.InstructionHash())
+	}
+}
+
+func TestProjectAgentsInjectCreatorExactlyOnceAsLeadingContext(t *testing.T) {
+	workspace := t.TempDir()
+	creator := "Keep the narration restrained and concrete."
+	if err := os.WriteFile(filepath.Join(workspace, book.CreatorFileName), []byte(creator), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	state := book.NewState(workspace)
+	cfg := &config.Config{
+		Workspace: workspace, DenovaDir: filepath.Join(t.TempDir(), ".denova"),
+		OpenAIBaseURL: "https://example.invalid", OpenAIModel: "test-model",
+		AgentTools: config.AgentToolSettings{Default: config.AgentToolOverride{
+			config.AgentToolWorkspaceRead: false, config.AgentToolWorkspaceWrite: false,
+			config.AgentToolShell: false, config.AgentToolSkills: false,
+			config.AgentToolLoreRead: false, config.AgentToolLoreWrite: false,
+			config.AgentToolTodo: false, config.AgentToolWebSearch: false,
+			config.AgentToolWebFetch: false, config.AgentToolDelegation: false,
+		}},
+	}
+	builders := map[string]func() (agent.Definition, error){
+		"general": func() (agent.Definition, error) {
+			definition, _, err := BuildGeneralDefinitionWithCompositionForHost(context.Background(), cfg, state, AgentHostCapabilities{})
+			return definition, err
+		},
+		"writing": func() (agent.Definition, error) {
+			definition, _, err := BuildDefinitionWithCompositionForHost(context.Background(), cfg, state, prompts.IDEStoryTeller{}, AgentHostCapabilities{})
+			return definition, err
+		},
+		"game": func() (agent.Definition, error) {
+			definition, _, err := BuildInteractiveStoryDefinitionWithComposition(context.Background(), cfg, state, prompts.InteractiveStorySystemInstructionInput{})
+			return definition, err
+		},
+		"director": func() (agent.Definition, error) {
+			definition, _, err := BuildInteractiveDirectorDefinitionWithComposition(context.Background(), cfg, state)
+			return definition, err
+		},
+		"config": func() (agent.Definition, error) {
+			definition, _, err := BuildConfigManagerDefinitionWithCompositionForHost(context.Background(), cfg, state, AgentHostCapabilities{})
+			return definition, err
+		},
+		"image": func() (agent.Definition, error) {
+			definition, _, err := BuildImageDefinitionWithComposition(context.Background(), cfg, state, "")
+			return definition, err
+		},
+	}
+	for name, build := range builders {
+		t.Run(name, func(t *testing.T) {
+			definition, err := build()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(definition.Instructions, creator) {
+				t.Fatalf("CREATOR.md body must not be duplicated in the durable system prompt:\n%s", definition.Instructions)
+			}
+			fragments, err := definition.Context.Materialize(context.Background(), agent.ContextRequest{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			matches := 0
+			for _, fragment := range fragments {
+				if fragment.Resource != book.CreatorFileName {
+					continue
+				}
+				matches++
+				if fragment.Placement != agent.ContextLeadingMessage || fragment.Role != agent.User || strings.Count(fragment.Content, creator) != 1 || fragment.HardLimit <= 50*1024 {
+					t.Fatalf("unexpected CREATOR.md fragment: %#v", fragment)
+				}
+			}
+			if matches != 1 {
+				t.Fatalf("CREATOR.md context fragment count = %d, want 1: %#v", matches, fragments)
+			}
+
+			owner, err := agent.New(context.Background(), definition, agent.WithSessionStore(agentsession.Memory()))
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = owner.Close(context.Background()) })
+			session, err := owner.Session(context.Background(), agent.NamedSession("creator-inspection-"+name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			inspection, err := session.Inspect(context.Background(), agent.Text("CURRENT_REQUEST"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var visible strings.Builder
+			for _, message := range inspection.ModelRequest.Messages {
+				if message != nil {
+					visible.WriteString(message.Content)
+					visible.WriteByte('\n')
+				}
+			}
+			modelInput := visible.String()
+			creatorIndex := strings.Index(modelInput, creator)
+			requestIndex := strings.Index(modelInput, "CURRENT_REQUEST")
+			if strings.Count(modelInput, creator) != 1 || creatorIndex < 0 || requestIndex < 0 || creatorIndex >= requestIndex {
+				t.Fatalf("provider-visible CREATOR.md placement is invalid: stable=%d\n%s", inspection.ModelRequest.StablePrefixMessages, modelInput)
+			}
+			if inspection.ModelRequest.StablePrefixMessages < 2 {
+				t.Fatalf("system plus project instructions must form a stable leading prefix: %#v", inspection.ModelRequest)
+			}
+		})
 	}
 }
 

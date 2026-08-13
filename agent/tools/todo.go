@@ -21,10 +21,10 @@ const (
 )
 
 type TodoMutation struct {
-	ID     string      `json:"id"`
-	Text   *string     `json:"text,omitempty"`
-	Status *TodoStatus `json:"status,omitempty"`
-	Delete bool        `json:"delete,omitempty"`
+	ID     string      `json:"id" jsonschema:"minLength=1,maxLength=256" jsonschema_description:"Stable item ID; use an existing ID to update or delete it."`
+	Text   *string     `json:"text,omitempty" jsonschema:"minLength=1,maxLength=65536" jsonschema_description:"Complete task text; required when creating a new ID."`
+	Status *TodoStatus `json:"status,omitempty" jsonschema:"enum=pending,enum=in_progress,enum=completed" jsonschema_description:"New task status; at most one plan item may be in_progress."`
+	Delete bool        `json:"delete,omitempty" jsonschema_description:"Delete the existing ID; omit text and status when true."`
 }
 
 type TodoApplyMode string
@@ -74,6 +74,33 @@ type todoToolInput struct {
 	Items            []TodoItem     `json:"items,omitempty" jsonschema:"maxItems=256"`
 }
 
+type todoReadInput struct {
+	Action string `json:"action" jsonschema:"required,enum=read" jsonschema_description:"Read the current plan and revision."`
+}
+
+type todoUpdateInput struct {
+	Action           string         `json:"action" jsonschema:"required,enum=update" jsonschema_description:"Partially update the current plan."`
+	ExpectedRevision uint64         `json:"expected_revision" jsonschema:"required" jsonschema_description:"Revision returned by the latest read or mutation."`
+	Mutations        []TodoMutation `json:"mutations" jsonschema:"required,minItems=1,maxItems=256" jsonschema_description:"Independent item mutations; every item returns its own outcome."`
+}
+
+type todoItemSchema struct {
+	ID     string     `json:"id" jsonschema:"required,minLength=1,maxLength=256" jsonschema_description:"Stable task ID."`
+	Text   string     `json:"text" jsonschema:"required,minLength=1,maxLength=65536" jsonschema_description:"Complete task text."`
+	Status TodoStatus `json:"status" jsonschema:"required,enum=pending,enum=in_progress,enum=completed" jsonschema_description:"Task status; at most one item may be in_progress."`
+}
+
+type todoReplaceInput struct {
+	Action           string           `json:"action" jsonschema:"required,enum=replace" jsonschema_description:"Replace the complete plan."`
+	ExpectedRevision uint64           `json:"expected_revision" jsonschema:"required" jsonschema_description:"Revision returned by the latest read or mutation."`
+	Items            []todoItemSchema `json:"items" jsonschema:"required,maxItems=256" jsonschema_description:"Complete replacement plan; an empty array clears it."`
+}
+
+type todoClearInput struct {
+	Action           string `json:"action" jsonschema:"required,enum=clear" jsonschema_description:"Clear the complete plan."`
+	ExpectedRevision uint64 `json:"expected_revision" jsonschema:"required" jsonschema_description:"Revision returned by the latest read or mutation."`
+}
+
 // Todo exposes revisioned read/update semantics. With no Store it uses the
 // current Session's durable Agent state; callers may inject a product Store.
 func Todo(stores ...TodoStore) (agent.Toolset, error) {
@@ -92,7 +119,7 @@ func Todo(stores ...TodoStore) (agent.Toolset, error) {
 			return nil, err
 		}
 	}
-	tool, err := agent.InferTool("todo", "Read, partially update, completely replace, or clear the durable task list using an explicit revision. Updates report every item independently; IDs are stable and at most one item may be in_progress.", func(ctx context.Context, input todoToolInput) (agent.ToolResult, error) {
+	invoke := func(ctx context.Context, input todoToolInput) (agent.ToolResult, error) {
 		var result TodoApplyResult
 		var err error
 		switch input.Action {
@@ -125,7 +152,11 @@ func Todo(stores ...TodoStore) (agent.Toolset, error) {
 		}
 		result.Schema = TodoSchema
 		return JSONResult(result)
-	})
+	}
+	tool, err := newUnionTool(
+		"todo", "Read or revise the durable task plan. Mutations use optimistic revisions; updates return one outcome per item, and at most one item may be in_progress.", invoke,
+		toolSchemaFor[todoReadInput](), toolSchemaFor[todoUpdateInput](), toolSchemaFor[todoReplaceInput](), toolSchemaFor[todoClearInput](),
+	)
 	if err != nil {
 		return nil, err
 	}

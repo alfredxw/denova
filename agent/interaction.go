@@ -22,23 +22,23 @@ const (
 // LocalizedText keeps host-visible interaction copy bilingual without tying
 // the Agent package to a presentation framework.
 type LocalizedText struct {
-	Chinese string `json:"zh"`
-	English string `json:"en"`
+	Chinese string `json:"zh" jsonschema:"minLength=1,maxLength=8192" jsonschema_description:"Simplified Chinese user-visible text."`
+	English string `json:"en" jsonschema:"minLength=1,maxLength=8192" jsonschema_description:"English translation of the same user-visible text."`
 }
 
 type InteractionOption struct {
-	Value       string        `json:"value"`
-	Label       LocalizedText `json:"label"`
-	Description LocalizedText `json:"description,omitempty"`
-	Recommended bool          `json:"recommended,omitempty"`
+	Value       string        `json:"value" jsonschema:"minLength=1,maxLength=256,pattern=^[A-Za-z0-9][A-Za-z0-9._:-]*$" jsonschema_description:"Stable option ID; other is reserved for the host-provided free-text choice."`
+	Label       LocalizedText `json:"label" jsonschema_description:"Concise bilingual option label."`
+	Description LocalizedText `json:"description,omitempty" jsonschema_description:"Optional bilingual consequence or tradeoff."`
+	Recommended bool          `json:"recommended,omitempty" jsonschema_description:"True for the single recommended option."`
 }
 
 type InteractionQuestion struct {
-	ID            string              `json:"id"`
-	Prompt        LocalizedText       `json:"prompt"`
-	Options       []InteractionOption `json:"options,omitempty"`
-	Multiple      bool                `json:"multiple,omitempty"`
-	AllowFreeText bool                `json:"allow_free_text,omitempty"`
+	ID            string              `json:"id" jsonschema:"minLength=1,maxLength=256,pattern=^[A-Za-z0-9][A-Za-z0-9._:-]*$" jsonschema_description:"Stable question ID used to correlate the answer."`
+	Prompt        LocalizedText       `json:"prompt" jsonschema_description:"The same user-facing question in Chinese and English."`
+	Options       []InteractionOption `json:"options,omitempty" jsonschema_description:"Two or three choices; the host adds Other automatically."`
+	Multiple      bool                `json:"multiple,omitempty" jsonschema_description:"Allow more than one listed option."`
+	AllowFreeText bool                `json:"allow_free_text,omitempty" jsonschema_description:"True only for a free-text question without options."`
 }
 
 type PermissionChoice string
@@ -79,9 +79,9 @@ type InteractionRequest struct {
 }
 
 type InteractionAnswer struct {
-	QuestionID string   `json:"question_id"`
-	Values     []string `json:"values,omitempty"`
-	Text       string   `json:"text,omitempty"`
+	QuestionID string   `json:"question_id" jsonschema:"minLength=1,maxLength=256" jsonschema_description:"Question ID being answered."`
+	Values     []string `json:"values,omitempty" jsonschema_description:"Selected option values for a choice question."`
+	Text       string   `json:"text,omitempty" jsonschema:"maxLength=65536" jsonschema_description:"User-entered answer for a free-text or Other choice."`
 }
 
 type InteractionResponse struct {

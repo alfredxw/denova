@@ -63,6 +63,7 @@ func BuildDefinitionWithCompositionForHost(ctx context.Context, cfg *config.Conf
 		Name:              "DenovaAgent",
 		Description:       "AI novel-writing assistant",
 		Composition:       composition,
+		ProjectState:      state,
 		EnableSkills:      true,
 		InteractiveHost:   host.Interactive,
 		ExtraTools:        host.RootTools,
@@ -73,7 +74,7 @@ func BuildDefinitionWithCompositionForHost(ctx context.Context, cfg *config.Conf
 
 // BuildGeneralDefinitionWithCompositionForHost returns the complete public
 // Agent composition for a general Project Session.
-func BuildGeneralDefinitionWithCompositionForHost(ctx context.Context, cfg *config.Config, host AgentHostCapabilities) (agent.Definition, prompts.SystemPromptComposition, error) {
+func BuildGeneralDefinitionWithCompositionForHost(ctx context.Context, cfg *config.Config, state *book.State, host AgentHostCapabilities) (agent.Definition, prompts.SystemPromptComposition, error) {
 	composition, err := prompts.ComposeGeneralInstruction(cfg)
 	if err != nil {
 		return agent.Definition{}, prompts.SystemPromptComposition{}, err
@@ -83,6 +84,7 @@ func BuildGeneralDefinitionWithCompositionForHost(ctx context.Context, cfg *conf
 		Name:            "DenovaGeneralAgent",
 		Description:     "General-purpose project Agent",
 		Composition:     composition,
+		ProjectState:    state,
 		EnableSkills:    true,
 		InteractiveHost: host.Interactive,
 		ExtraTools:      host.RootTools,
@@ -129,6 +131,7 @@ func BuildInteractiveStoryDefinitionWithComposition(ctx context.Context, cfg *co
 		Name:              "DenovaInteractiveStoryAgent",
 		Description:       "AI interactive-story narrator",
 		Composition:       composition,
+		ProjectState:      state,
 		EnableSkills:      true,
 		DisableWriteTodos: true,
 		ExtraMiddlewares:  handlers,
@@ -149,6 +152,7 @@ func BuildInteractiveDirectorDefinitionWithComposition(ctx context.Context, cfg 
 		Name:                "DenovaInteractiveDirectorAgent",
 		Description:         "AI background director for interactive stories",
 		Composition:         composition,
+		ProjectState:        state,
 		EnableSkills:        false,
 		DisableWriteTodos:   true,
 		ExtraMiddlewares:    []agent.Middleware{agenttoolruntime.NewInteractiveDirectorPlanFileMiddleware()},
@@ -168,6 +172,7 @@ func BuildConfigManagerDefinitionWithCompositionForHost(ctx context.Context, cfg
 		Name:              "DenovaConfigManagerAgent",
 		Description:       "AI configuration and resource-management assistant",
 		Composition:       composition,
+		ProjectState:      state,
 		EnableSkills:      true,
 		InteractiveHost:   host.Interactive,
 		ExtraToolsFactory: agenttoolruntime.NewCatalog(cfg).ConfigManager(),
@@ -185,6 +190,7 @@ func BuildImageDefinitionWithComposition(ctx context.Context, cfg *config.Config
 		Name:              "DenovaImageAgent",
 		Description:       "AI image-generation assistant",
 		Composition:       composition,
+		ProjectState:      state,
 		EnableSkills:      true,
 		DisableWriteTodos: true,
 		ExtraToolsFactory: agenttoolruntime.NewCatalog(cfg).Image(),
@@ -197,6 +203,7 @@ type agentBuildSpec struct {
 	Name                string
 	Description         string
 	Composition         prompts.SystemPromptComposition
+	ProjectState        *book.State
 	EnableSkills        bool
 	InteractiveHost     bool
 	DisableWriteTodos   bool
@@ -219,6 +226,14 @@ func buildAgentDefinition(ctx context.Context, cfg *config.Config, spec agentBui
 	harness, err := harnessstate.Load(ctx, cfg)
 	if err != nil {
 		return agent.Definition{}, fmt.Errorf("load Harness State for Agent %s: %w", spec.Kind, err)
+	}
+	projectContext, err := agentlifecycle.NewProjectInstructionContextSource(cfg, spec.Kind, spec.ProjectState)
+	if err != nil {
+		return agent.Definition{}, fmt.Errorf("create project instruction context for Agent %s: %w", spec.Kind, err)
+	}
+	definitionContext, err := agent.CombineContextSources(projectContext, harness.ContextSource(cfg, spec.Kind))
+	if err != nil {
+		return agent.Definition{}, fmt.Errorf("compose ContextSource for Agent %s: %w", spec.Kind, err)
 	}
 	childComposition, err := prompts.AppendUserStatePrompt(cfg, composition, harness.Prompt(spec.Kind))
 	if err != nil {
@@ -261,7 +276,7 @@ func buildAgentDefinition(ctx context.Context, cfg *config.Config, spec agentBui
 	}
 	var taskAgents []agentdelegation.Child
 	if toolSettings.Allows(config.AgentToolDelegation) {
-		configuredSubAgents, err := buildConfiguredSubAgents(ctx, cfg, childSpec, toolSettings, harness.SubAgents())
+		configuredSubAgents, err := buildConfiguredSubAgents(ctx, cfg, childSpec, toolSettings, projectContext, harness.SubAgents())
 		if err != nil {
 			return agent.Definition{}, err
 		}
@@ -283,8 +298,9 @@ func buildAgentDefinition(ctx context.Context, cfg *config.Config, spec agentBui
 			general, err := buildChildDefinition(cfg, childDefinitionSpec{
 				ParentKind:  spec.Kind,
 				Name:        producttools.GeneralSubAgentName,
-				Description: "General-purpose sub-Agent for researching complex questions, searching code, and executing independent multi-step tasks.",
+				Description: "Use for an independently scoped research, code-investigation, or multi-step execution task that returns findings to the parent Agent.",
 				Composition: childComposition,
+				Context:     projectContext,
 				Model:       chatModel, ModelIdentity: modelIdentity,
 				ModelContextWindow: config.ResolveAgentModel(cfg, spec.Kind).ContextWindowTokens,
 				Tools:              generalAssembly.Tools, Middlewares: generalAssembly.Middlewares,
@@ -385,7 +401,7 @@ func buildAgentDefinition(ctx context.Context, cfg *config.Config, spec agentBui
 		Model:         chatModel,
 		ModelIdentity: modelIdentity,
 		Instructions:  composition.Instruction(),
-		Context:       harness.ContextSource(cfg, spec.Kind),
+		Context:       definitionContext,
 		Tools:         definitionTools,
 		Middlewares:   middlewares,
 		ResultProcessor: agenttoolresult.Standard(agenttoolresult.Policy{
@@ -563,7 +579,7 @@ func buildSkillTools(ctx context.Context, cfg *config.Config, agentKind string, 
 	return []agent.ToolDefinition{skillTool}, []producttools.ReadAdapterBinding{referenceAdapter}, nil
 }
 
-func buildConfiguredSubAgents(ctx context.Context, cfg *config.Config, parent agentBuildSpec, parentTools config.ResolvedAgentToolSettings, subConfigs []config.SubAgentConfig) ([]agentdelegation.Child, error) {
+func buildConfiguredSubAgents(ctx context.Context, cfg *config.Config, parent agentBuildSpec, parentTools config.ResolvedAgentToolSettings, projectContext agent.ContextSource, subConfigs []config.SubAgentConfig) ([]agentdelegation.Child, error) {
 	if cfg == nil || !config.IsSubAgentParentKind(parent.Kind) {
 		return nil, nil
 	}
@@ -576,7 +592,7 @@ func buildConfiguredSubAgents(ctx context.Context, cfg *config.Config, parent ag
 		if !config.SubAgentAllowedForParent(sub, parent.Kind) {
 			continue
 		}
-		subAgent, err := buildConfiguredSubAgent(ctx, cfg, parent, parentTools, sub)
+		subAgent, err := buildConfiguredSubAgent(ctx, cfg, parent, parentTools, projectContext, sub)
 		if err != nil {
 			return nil, err
 		}
@@ -585,7 +601,7 @@ func buildConfiguredSubAgents(ctx context.Context, cfg *config.Config, parent ag
 	return subAgents, nil
 }
 
-func buildConfiguredSubAgent(ctx context.Context, cfg *config.Config, parent agentBuildSpec, parentTools config.ResolvedAgentToolSettings, sub config.SubAgentConfig) (agentdelegation.Child, error) {
+func buildConfiguredSubAgent(ctx context.Context, cfg *config.Config, parent agentBuildSpec, parentTools config.ResolvedAgentToolSettings, projectContext agent.ContextSource, sub config.SubAgentConfig) (agentdelegation.Child, error) {
 	composition, err := composeSubAgentInstruction(cfg, parent, sub)
 	if err != nil {
 		return agentdelegation.Child{}, fmt.Errorf("assemble sub Agent system prompt id=%s: %w", sub.ID, err)
@@ -620,6 +636,7 @@ func buildConfiguredSubAgent(ctx context.Context, cfg *config.Config, parent age
 	return buildChildDefinition(cfg, childDefinitionSpec{
 		ParentKind: parent.Kind, Name: sub.ID, Description: sub.Description,
 		Composition: composition, Model: subChatModel, ModelIdentity: modelIdentity,
+		Context:            projectContext,
 		ModelContextWindow: resolvedModel.ContextWindowTokens,
 		Tools:              assembly.Tools, Middlewares: assembly.Middlewares,
 	})
@@ -630,6 +647,7 @@ type childDefinitionSpec struct {
 	Name               string
 	Description        string
 	Composition        prompts.SystemPromptComposition
+	Context            agent.ContextSource
 	Model              agent.BaseChatModel
 	ModelIdentity      agent.CapabilityIdentity
 	ModelContextWindow int
@@ -667,7 +685,7 @@ func buildChildDefinition(cfg *config.Config, spec childDefinitionSpec) (agentde
 		Key:  "denova." + spec.ParentKind + ".child." + spec.Name,
 		Name: spec.Name, Description: spec.Description,
 		Model: spec.Model, ModelIdentity: spec.ModelIdentity,
-		Instructions: spec.Composition.Instruction(), Tools: tools,
+		Instructions: spec.Composition.Instruction(), Context: spec.Context, Tools: tools,
 		Middlewares: identifyDenovaMiddlewares(spec.ParentKind+".child."+spec.Name, cfg, spec.Middlewares),
 		ResultProcessor: agenttoolresult.Standard(agenttoolresult.Policy{
 			MaxBytes: toolresult.LimitBytes(cfg), EagerMinTokens: config.DefaultToolResultEagerMinTokens,

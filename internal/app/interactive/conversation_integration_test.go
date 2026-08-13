@@ -2,7 +2,6 @@ package interactiveapp
 
 import (
 	"context"
-	interactivestate "denova/internal/interactive/state"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,9 +11,11 @@ import (
 	"denova/config"
 	agents "denova/internal/agents"
 	agentcompaction "denova/internal/agents/context/compaction"
+	"denova/internal/agents/prompts"
 	"denova/internal/agents/session"
 	"denova/internal/book/lore"
 	"denova/internal/interactive"
+	interactivestate "denova/internal/interactive/state"
 
 	agent "github.com/alfredxw/denova/agent"
 )
@@ -198,18 +199,20 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
+	directorContract := prompts.BuildInteractiveDirectorSystemInstruction() + "\n" + directorInstruction
 	for _, want := range []string{
 		"keep, patch, or replan",
-		"Never rewrite historical Turn or Actor State",
-		"Prefer lore",
-		"do not choose the user's next action",
+		"never rewrite Turn or Actor State",
+		"Prefer important existing lore",
+		"list_lore_items",
+		"Do not write story prose or choose the user's next action",
 	} {
-		if !strings.Contains(directorInstruction, want) {
-			t.Fatalf("director instruction should include maintenance guidance %q: %s", want, directorInstruction)
+		if !strings.Contains(directorContract, want) {
+			t.Fatalf("director system plus turn instruction should include maintenance guidance %q: %s", want, directorContract)
 		}
 	}
-	if !strings.Contains(directorInstruction, "黄泉酒馆") || !strings.Contains(directorInstruction, "list_lore_items") {
-		t.Fatalf("director instruction should include the bounded lore-name roster and retrieval workflow: %s", directorInstruction)
+	if !strings.Contains(directorInstruction, "黄泉酒馆") || !strings.Contains(directorInstruction, "Non-resident Lore Name Roster") {
+		t.Fatalf("director turn instruction should include the bounded lore-name roster: %s", directorInstruction)
 	}
 	if strings.Contains(directorInstruction, "黄泉酒馆据点索引") || strings.Contains(directorInstruction, "黄泉酒馆完整设定") {
 		t.Fatalf("director lore-name roster should not preload briefs or bodies: %s", directorInstruction)

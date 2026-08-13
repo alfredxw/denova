@@ -24,12 +24,12 @@ func buildInteractiveStoryInstructionContextParts(content string) []ContextAnaly
 
 func buildInteractiveTurnInstructionParts(content string) []ContextAnalysisPart {
 	const (
-		actionPrefix        = "User action for this turn:\n"
+		actionPrefix        = "User action:\n"
 		directorRulesPrefix = "\n\nStoryteller context rule for this turn:\n"
 		directorRulesEnd    = "\n\nThe rule above must materially affect"
 		builtInPrefix       = "\n\nContinue the interactive story"
 	)
-	if !strings.Contains(content, "[Interactive Input]") {
+	if !strings.HasPrefix(content, "# Current turn") {
 		return nil
 	}
 	actionPrefixIndex := strings.Index(content, actionPrefix)

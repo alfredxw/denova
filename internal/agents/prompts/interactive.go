@@ -6,7 +6,6 @@ import (
 )
 
 type InteractiveStorySystemInstructionInput struct {
-	CreatorPrompt           string
 	Workspace               string
 	ReplyTargetChars        int
 	ChoiceCount             int
@@ -68,11 +67,6 @@ const interactiveLoreCharacterGroundingInstruction = "Before a named lore charac
 
 func BuildInteractiveStorySystemInstruction(in InteractiveStorySystemInstructionInput) string {
 	var sb strings.Builder
-	if creator := strings.TrimSpace(in.CreatorPrompt); creator != "" {
-		sb.WriteString("# Creator Instructions\n\n")
-		sb.WriteString(creator)
-		sb.WriteString("\n\n---\n\n")
-	}
 	if tellerSystem := strings.TrimSpace(in.StoryTellerSystemPrompt); tellerSystem != "" {
 		sb.WriteString("# Storyteller System Rules\n\n")
 		writeField(&sb, "Storyteller ID", in.StoryTellerID)
@@ -201,30 +195,18 @@ func writeInteractiveReplyTargetInstruction(sb *strings.Builder, value int, bull
 func InteractiveStoryTurnInstruction(message, turnContext, runtimeContext string) string {
 	runtimeContext = strings.TrimSpace(runtimeContext)
 	turnBlock := InteractiveStoryTurnContextRule(turnContext)
+	parts := []string{"# Current turn", "User action:\n" + strings.TrimSpace(message)}
 	if turnBlock != "" {
-		turnBlock = "\n" + turnBlock
+		parts = append(parts, turnBlock)
 	}
-	contextBlock := ""
+	parts = append(parts,
+		"Continue the interactive story for one turn using the supplied context and the system workflow. Output only player-visible prose. Do not output plans, explanations, state JSON, Markdown headings, tool instructions, or XML wrappers.",
+		"After the complete prose, call submit_interactive_turn with the state changes and choices established by this turn. End immediately when the receipt is ready.",
+	)
 	if runtimeContext != "" {
-		contextBlock = "\n\n" + runtimeContext
+		parts = append(parts, runtimeContext)
 	}
-	return fmt.Sprintf(`[Interactive Input]
-User action for this turn:
-%s
-%s
-
-Continue the interactive story for one turn from the supplied context. Output only prose the reader can see directly. Do not output plans, explanations, state JSON, Markdown headings, tool instructions, or XML wrappers.
-Implicitly identify the user's action, determine relevant characters and world rules, adjudicate consequences, create new choices, and preserve character and world consistency. Do not expose this analysis.
-%s
-%s
-Not every action needs a check. Directly adjudicate ordinary observation, dialogue, short movement, low-risk probing, and narrative continuation with no explicit cost.
-Call prepare_interactive_turn only when a fixed-rule ruling is required because this turn has explicit risk, resource/relationship/numeric changes, matches the current TRPG check configuration, has failure tiers, irreversible consequences, or a terminal candidate. The tool handles fixed d20, advantage/disadvantage, and four-tier outcome selection; it does not interpret the story or choose events for you.
-Before calling prepare_interactive_turn, use trigger, must_check_examples, skip_check_examples, difficulty_guidance, and state_effect_guidance to decide whether to check, set difficulty/bonuses, and write four outcomes.*.result values. outcomes does not accept state_changes. Prefer direct adjudication for skip_check_examples and a fixed check for must_check_examples. When state_bindings exist, choose binding_id before the roll and provide actor_id plus target_actor_id when needed. modifiers and outcome_state_changes are computed from fields automatically; narrative_state_refs help write the four consequences. adjudication must explain the reason, stakes, difficulty basis, and advantage/disadvantage basis. State references use actor_id + field_id. difficulty is one of very_easy/easy/normal/hard/very_hard; use normal for ordinary difficulty, never medium or moderate. rule is optional; when present it uses template=dice_check and roll_mode=normal/advantage/disadvantage.
-%s
-Output all prose first, then call submit_interactive_turn with state_changes and choices in the first call. state_changes uses replace/delta/create with exact actor_id, field_id, optional subpath, and template_id values from the state handbook; do not assemble path strings. A new Actor's actor_id must exactly equal name in the story language. State-panel object records use stable, readable story-language map keys as IDs and need no redundant internal name field. Every turn must at least replace actor_id=story, field_id=当前事件, and must also update 当前详细地点 on initialization or location change. Do not repeat fields consumed by RuleResolution. Non-terminal choices contain the configured number of distinct suggestions; only a terminal_candidate turn uses an empty array. Omit director_update unless established events materially change the objective, phase, key relationship or faction, major clue, or planning premise. The backend parses and retains both modules independently. When ready=false, resubmit only fields named by retry_modules through the same tool. End immediately at ready=true without repeating prose. Never put TurnResult, tool results, or state JSON in prose.
-If this action clearly depends on an earlier clue, promise, or established branch fact, use search_story_history and cite the returned turn_id as the source.
-Let the protagonist interact normally with the environment, objects, and other characters. Show the feedback, cost, discovery, obstacle, or opportunity created by the action instead of stopping after every minor movement.
-Other characters should respond proactively from their personalities, goals, relationships, and situation. End at a meaningful choice, suspense point, or decision point without making a major decision for the user.%s`, strings.TrimSpace(message), turnBlock, interactiveLoreCharacterReuseInstruction, interactiveLoreCharacterGroundingInstruction, interactiveTrackableActorInstruction, contextBlock)
+	return strings.Join(parts, "\n\n")
 }
 
 // InteractiveStoryTurnContextRule keeps the selected storyteller's turn rule
@@ -241,28 +223,47 @@ func InteractiveStoryTurnContextRule(turnContext string) string {
 }
 
 func BuildInteractiveDirectorSystemInstruction() string {
-	return strings.Join([]string{
-		"You are Denova's background Director Agent for Game Mode.",
-		"Before the first foreground interactive turn, establish director.md, agent-brief.md, and lore-context.md. After subsequent turns are committed, decide whether the plan needs keep, patch, or replan.",
-		"Do not continue or rewrite this turn's story and do not choose the user's next action.",
-		"Turn, including RuleResolution and StateDelta, is the source of established facts; Actor State is the current projection; director.md is future planning; lore is stable canon. You may read only committed Actor State and must not write it or rewrite historical turns. Use search_story_history for older evidence.",
-		"Prefer important existing lore characters, factions, world rules, locations, and relationships. Do not invent core characters, organizations, rules, or locations unless lore is insufficient and a temporary candidate is necessary.",
-		"Plan an interactive novel advanced through TRPG turns, checks, and branches, not a pure TRPG module. Appearing characters are not merely NPCs; prioritize protagonists, key companions, arc antagonists, important faction representatives, and relationship nodes.",
-		"Keep the story information-dense and serial-fiction readable. Each playable turn should advance at least one meaningful fact, relationship change, pressure escalation, benefit or cost, or new suspense point. Avoid consecutive idle turns, low-information atmosphere, and irrelevant details.",
-		"The three current director Markdown files are injected as complete, sourced, bounded snapshots. Do not read or write them with file tools. You may inspect candidates with lore tools and read event cards.",
-		"director.md stores private background planning only. agent-brief.md stores only facts and adjudication boundaries safe for the prose Agent. Never put hidden truth, future answers, or backstage motivation in agent-brief.md.",
-		"lore-context.md is the current branch's lore working set. Use only [[资料名称]] references and do not copy lore bodies. Its required level-two headings are 当前, 候场, and 暂离场; organize lore types under flexible level-three headings. The 当前 section is provided automatically to the prose Agent, while 候场 and 暂离场 remain private planning.",
-		"Each turn includes at most 64 KiB of lore names. Call read_lore_items for a known unique name; use list_lore_items for semantic filtering and detail=full when a body is needed. Read the real lore body before adding a reference to 当前 or 候场.",
-		"Submit incremental Markdown patches with submit_director_plan_update. keep uses empty updates and finalize=true; patch/replan submit only changed files and sections. Files are accepted or rejected independently, so retry only retry_documents. End immediately after finalize succeeds without outputting a summary, JSON, complete Markdown, or story prose.",
-	}, "\n")
+	return strings.TrimSpace(`# Background Director
+
+You maintain the current Game Mode branch plan. Build director.md, agent-brief.md, and lore-context.md before opening prose; after each committed turn, choose keep, patch, or replan. Do not write story prose or choose the user's next action.
+
+## Sources and decisions
+
+- Turn, including RuleResolution and StateDelta, is the source of established facts. Actor State is the current projection, director.md is future planning, and lore is stable canon. Use search_story_history for older evidence; never rewrite Turn or Actor State.
+- keep means the current plan remains valid. patch normally updates only agent-brief.md. replan is for a missing plan, a replaced scene objective, several failed premises, or an irreversible change to a key character, faction, or terminal outcome.
+- Prefer important existing lore characters, factions, rules, locations, and relationships. Add a temporary candidate only when lore has no natural fit.
+- Plan an interactive serial novel advanced through TRPG turns, checks, and branches. Preserve user freedom while making each playable turn advance information, a relationship, pressure, a benefit or cost, or suspense.
+
+## Documents and submission
+
+- Injected document snapshots are the complete baseline and include base_hash. Do not read or edit them with file tools.
+- Submit incremental changes through submit_director_plan_update. Prefer replace_section; replace_text must match exactly once. Use replace_document only for opening initialization or a replan that cannot be expressed safely as sections.
+- keep uses empty updates with finalize=true. patch changes at least one file and normally only agent-brief.md. replan changes director.md and agent-brief.md; lore-context.md is optional.
+- Files are accepted independently. Retry only retry_documents. The backend publishes atomically after finalize succeeds; then end without a summary, JSON, complete Markdown, or story prose.
+- director.md stores phase-level private planning, hidden information, and casting reasoning. agent-brief.md stores only next-turn visible facts, action space, and adjudication boundaries. Change director.md only when phase premises fail, the phase ends, or a major irreversible deviation occurs.
+- director.md must retain: 阶段目标与隐藏钩子; 资料库锚点; 选角覆盖; 核心角色与关系张力; 重要势力与阶段阻力; 当前场景幕后信息; 信息揭示与线索密度; 遭遇、检定与代价; 爽点、危机与反转; 状态连续性; 最近分支安排; 伏笔与回收.
+- agent-brief.md must retain: 当前目标与可见钩子; 当前场景与行动空间; 当前角色与可见关系; 已公开信息与可发现线索; 遭遇、检定与可见代价; 状态连续性; 最近分支承接.
+
+## Lore working set
+
+- lore-context.md contains only [[资料名称]] references and one-line current purposes. Do not copy lore bodies or repeat director.md planning. It must retain level-two headings 当前, 候场, and 暂离场; only 当前 is exposed to the prose Agent.
+- Each turn includes at most 64 KiB of lore names. Continue paginated catalogs with next_offset. Call read_lore_items for a known unique name; use list_lore_items for semantic filtering and detail=full when a body is needed. Read complete items and necessary related characters before adding 当前 or 候场 references.
+- Resident lore is already loaded and must not be repeated. Change lore-context.md only when the working-set membership changes.
+
+## Events and continuity
+
+- The event catalog is planning input, not a forced queue. Omit event_decision when EventOpportunity.due=false. When due=true and kind=new, choose none or seed and seed only an event_ref from the current catalog; read at most eight distinct event cards per run.
+- For kind=active, omit event_decision when nothing changes. advance, payoff, resolve, and abandon require factual evidence; advance, payoff, and resolve cite current-branch evidence_turn_ids.
+- At most one event is active per branch. Event runtime stays in metadata, never Turn history or Actor State.
+- Carry terminal outcomes, major failures, and departures forward as branch state and future cost. Do not force the story back onto the original line.`)
 }
 
 func InteractiveDirectorInstruction(in InteractiveDirectorPromptInput) string {
 	var sb strings.Builder
 	if in.OpeningInitialization {
-		sb.WriteString("Before opening prose is generated, build the first director plan and lore working set for this branch from explicitly sourced story setup, initial state, and the lore catalog.\n\n")
+		sb.WriteString("Build the first branch plan before opening prose. Use mode=replan and update all three documents from the supplied setup, initial state, and lore; do not claim unprovided history.\n\n")
 	} else {
-		sb.WriteString("Use the committed audit data for this turn to maintain the current branch in the background.\n\n")
+		sb.WriteString("Maintain the branch plan from this committed turn. Choose keep, patch, or replan using the supplied audit, state, and current documents.\n\n")
 	}
 	sb.WriteString("## Task\n")
 	taskHint := strings.TrimSpace(in.TaskHint)
@@ -271,51 +272,6 @@ func InteractiveDirectorInstruction(in InteractiveDirectorPromptInput) string {
 	}
 	sb.WriteString(taskHint)
 	sb.WriteString("\n\n")
-	sb.WriteString("## Planning Decision Protocol\n")
-	if in.OpeningInitialization {
-		sb.WriteString("- No prose has been committed yet. Build the first plan from the opening input, use mode=replan, and do not claim unprovided historical facts.\n")
-		sb.WriteString("- Determine the opening scene, near-term objective, current and staged characters or factions, information release, risks and costs, and playable action space before updating all three planning files.\n")
-	} else {
-		sb.WriteString("- Choose mode=keep, patch, or replan from final prose, RuleResolution, StateDelta, current state, and the existing plan.\n")
-		sb.WriteString("- keep: the current plan remains valid; do not edit director.md.\n")
-		sb.WriteString("- patch: by default update only agent-brief.md so next-turn visible guidance reflects established facts while preserving valid phase planning.\n")
-		sb.WriteString("- replan: use only when the scene objective is replaced, several planning premises fail, a key character/faction/terminal fact changes irreversibly, or the plan is missing.\n")
-	}
-	sb.WriteString("- Established facts come from Turn and current values from Actor State. Use search_story_history for older evidence. Never rewrite historical Turn or Actor State.\n\n")
-	sb.WriteString("## Structured Submission\n")
-	sb.WriteString("- The injected director-document snapshots are this turn's complete baseline. Do not read or edit them with file tools.\n")
-	sb.WriteString("- Each snapshot has base_hash. updates includes only changed files. Prefer replace_section; replace_text must match exactly once; use replace_document only for opening initialization, explicit reconstruction, or a true replan that cannot be edited safely in sections.\n")
-	sb.WriteString("- Files validate independently in the turn draft. Retry only retry_documents and do not resend accepted files. The workspace changes only when finalize succeeds, then the backend publishes atomically.\n")
-	sb.WriteString("- keep uses empty updates with finalize=true. patch changes at least one file and normally only agent-brief.md. replan changes director.md and agent-brief.md; lore-context.md remains optional.\n")
-	sb.WriteString("- director.md stores phase-level background direction, hidden information, and casting reasoning, not a turn log. agent-brief.md stores next-turn visible facts, action space, and adjudication boundaries.\n")
-	sb.WriteString("- Change director.md only when phase premises fail, the phase ends, or a major irreversible deviation occurs. Change lore-context.md only when the 当前/候场/暂离场 sets actually change.\n\n")
-	sb.WriteString("## Lore Working Set\n")
-	sb.WriteString("- lore-context.md contains only lore references and one-line current purposes. Do not copy lore bodies or repeat director.md plot planning.\n")
-	sb.WriteString("- Each turn injects at most 64 KiB of real lore names. Discover candidates from names, continue paginated catalogs with next_offset, and use list_lore_items when semantic narrowing is needed.\n")
-	sb.WriteString("- Call read_lore_items for a known unique name. Use list_lore_items detail=full to filter and read bodies together. Before adding a 当前 or 候场 reference, read the full item and any necessary related characters; do not invent relationships from names or summaries.\n")
-	sb.WriteString("- lore-context.md requires level-two headings 当前, 候场, and 暂离场. Character, faction, location, item, and other types are flexible level-three headings. The 当前 section loads for the prose Agent; the others are private planning.\n")
-	sb.WriteString("- When the player or Game Agent temporarily recalls material outside the working set, decide whether it remains temporary or moves into 候场, 当前, or 暂离场.\n")
-	sb.WriteString("- Lore references use the unique-name syntax [[资料名称]]. Resident lore is already loaded and must not be repeated in lore-context.md. Put on-demand rules in 当前 only when actually needed.\n\n")
-	sb.WriteString("## Required Headings\n")
-	sb.WriteString("- director.md must retain: 阶段目标与隐藏钩子; 资料库锚点; 选角覆盖; 核心角色与关系张力; 重要势力与阶段阻力; 当前场景幕后信息; 信息揭示与线索密度; 遭遇、检定与代价; 爽点、危机与反转; 状态连续性; 最近分支安排; 伏笔与回收.\n")
-	sb.WriteString("- agent-brief.md must retain: 当前目标与可见钩子; 当前场景与行动空间; 当前角色与可见关系; 已公开信息与可发现线索; 遭遇、检定与可见代价; 状态连续性; 最近分支承接.\n")
-	sb.WriteString("- lore-context.md must retain level-two headings 当前, 候场, and 暂离场.\n\n")
-	sb.WriteString("## Update Principles\n")
-	sb.WriteString("- Maintain background planning only. Do not continue or rewrite prose and do not choose the user's next action.\n")
-	sb.WriteString("- Plan for subsequent interactive turns through important characters, relationship tension, faction resistance, information release, encounters and checks, benefits and costs, and state continuity.\n")
-	sb.WriteString("- Prefer lore. Reuse important existing characters, factions, rules, locations, and relationships. When lore is insufficient, add only a temporary candidate and explain how it fits established canon.\n")
-	sb.WriteString("- Prioritize protagonists, key companions, arc antagonists, important faction representatives, and relationship nodes. Add ordinary NPCs only when they serve information, conflict, choice cost, or pacing.\n")
-	sb.WriteString("- Keep recent planning information-dense: every playable turn should deliver meaningful information, relationship change, pressure escalation, benefit or cost, or suspense. Avoid idle turns and pure atmosphere.\n")
-	sb.WriteString("- Preserve user freedom. Provide mainline pull and plausible follow-up without locking a single solution or choosing for the user.\n")
-	sb.WriteString("- agent-brief.md contains only information safe for the prose Agent after this turn. Keep spoilers, hidden motivation, and future answers in director.md.\n")
-	sb.WriteString("- In director.md heading 选角覆盖, record scene scale and reviewed candidates. Suggested current/staged counts are 1-3/2-4 for intimate scenes, 2-5/4-8 for standard scenes, and 4-8/6-12 for ensemble scenes. Lower counts are valid only when no relationship, information, or conflict role is missing.\n")
-	sb.WriteString("- The event catalog is planning input, not a forced or disabled queue. Integrate events with canon, relationships, conflict sources, and RuleResolution.\n")
-	sb.WriteString("- Omit event_decision when EventOpportunity.due=false. When due=true and kind=new, event_decision is required and mode is none or seed.\n")
-	sb.WriteString("- For kind=new, the catalog contains event_ref indexes only. Read at most eight distinct event://<package>/<card> URIs per Director run when card details are needed. Seed only an event_ref from the current catalog.\n")
-	sb.WriteString("- For kind=active, omit event_decision when nothing changes. With factual evidence, use advance, payoff, resolve, or abandon; advance/payoff/resolve must cite real current-branch evidence_turn_ids.\n")
-	sb.WriteString("- The first version supports at most one active event per branch. The backend stores event runtime in metadata.json; never represent it as historical Turn or Actor State.\n")
-	sb.WriteString("- Carry a terminal outcome, major failure, or user departure from the mainline forward as branch state and future cost; do not force it back onto the original line.\n")
-	sb.WriteString("- All three saved files must contain every required heading and remain within backend byte and lore-body budgets.\n\n")
 	writeBlock(&sb, "Story Title", in.Title)
 	writeBlock(&sb, "Opening Setup", in.Origin)
 	writeBlock(&sb, "Opening Input (source: first Game Agent request, bounded)", in.OpeningContext)
@@ -350,7 +306,7 @@ func strategyPromptWithPriorityNote(prompt string) string {
 	if prompt == "" {
 		return ""
 	}
-	return "[Priority] Structured director strategy, tool permissions, output protocols, RuleResolution, context limits, and safety boundaries take precedence. This Markdown only supplements director preferences, prohibitions, pacing, and scheduling guidance.\n\n" + prompt
+	return "Apply this Director strategy to planning preferences, pacing, and scheduling:\n\n" + prompt
 }
 
 func normalizeInteractiveChoiceCount(value int) int {

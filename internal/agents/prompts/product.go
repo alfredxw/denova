@@ -13,63 +13,6 @@ import (
 	"denova/internal/book"
 )
 
-func buildIDEBuiltinInstruction(cfg *config.Config, state *book.State, teller IDEStoryTeller) (string, string, string, string) {
-	if cfg == nil {
-		cfg = &config.Config{}
-	}
-	creator := ""
-	stateContext := ""
-	workspace := ""
-	workspace = cfg.Workspace
-	if state != nil {
-		creator = state.ReadCreatorPrompt()
-		stateContext = state.CompactContext()
-		if workspace == "" {
-			workspace = state.Workspace()
-		}
-	}
-	builtIn := BuildSystemInstruction(SystemInstructionInput{
-		CreatorPrompt:          creator,
-		Workspace:              workspace,
-		StateContext:           stateContext,
-		StoryTellerID:          teller.ID,
-		StoryTellerName:        teller.Name,
-		StoryTellerDescription: teller.Description,
-		StoryTellerPrompt:      teller.Prompt,
-		StyleRules:             teller.StyleRules,
-		ChapterFilenameFormat:  cfg.ChapterFilenameFormat,
-		VolumeDirFormat:        cfg.VolumeDirFormat,
-		ChapterGroupMin:        cfg.ChapterGroupMin,
-		ChapterGroupMax:        cfg.ChapterGroupMax,
-	})
-	if imagePresetSystem := imagePresetSystemInstruction(teller); imagePresetSystem != "" {
-		builtIn = strings.TrimSpace(builtIn) + "\n\n" + imagePresetSystem
-	}
-	return builtIn, workspace, creator, stateContext
-}
-
-func imagePresetSystemInstruction(teller IDEStoryTeller) string {
-	prompt := strings.TrimSpace(teller.ImagePresetSystemPrompt)
-	if prompt == "" {
-		return ""
-	}
-	var sb strings.Builder
-	sb.WriteString("## Image Preset System Rules (Image Generation Only)\n\n")
-	if id := strings.TrimSpace(teller.ImagePresetID); id != "" {
-		sb.WriteString("- id: ")
-		sb.WriteString(id)
-		sb.WriteString("\n")
-	}
-	if name := strings.TrimSpace(teller.ImagePresetName); name != "" {
-		sb.WriteString("- name: ")
-		sb.WriteString(name)
-		sb.WriteString("\n")
-	}
-	sb.WriteString("\nThe following rules apply only when constructing an image prompt for generate_image. Do not apply these visual constraints to ordinary prose, lore changes, or non-image tasks.\n\n")
-	sb.WriteString(prompt)
-	return strings.TrimSpace(sb.String())
-}
-
 const (
 	ideWorkspaceStableContextTitle  = "Stable Work Context"
 	ideWorkspaceDynamicContextTitle = "Dynamic Work State for This Turn"
@@ -214,39 +157,12 @@ func BuildInteractiveStoryInstruction(cfg *config.Config, state *book.State, tel
 	return BuildInteractiveStoryInstructionComposition(cfg, state, teller).Instruction()
 }
 
-func buildInteractiveStoryBuiltinInstruction(cfg *config.Config, state *book.State, teller InteractiveStorySystemInstructionInput) (string, string, string) {
-	workspace := ""
-	replyTargetChars := 0
-	if cfg != nil {
-		workspace = cfg.Workspace
-		replyTargetChars = cfg.InteractiveReplyTargetChars
-	}
-	creator := ""
-	if state != nil {
-		creator = state.ReadCreatorPrompt()
-	}
-	builtIn := BuildInteractiveStorySystemInstruction(InteractiveStorySystemInstructionInput{
-		CreatorPrompt:           creator,
-		Workspace:               workspace,
-		ReplyTargetChars:        replyTargetChars,
-		ChoiceCount:             teller.ChoiceCount,
-		StoryTellerID:           teller.StoryTellerID,
-		StoryTellerName:         teller.StoryTellerName,
-		StoryTellerDescription:  teller.StoryTellerDescription,
-		StoryTellerSystemPrompt: teller.StoryTellerSystemPrompt,
-		StyleRules:              teller.StyleRules,
-	})
-	return builtIn, workspace, creator
-}
-
-func buildImageBuiltinInstruction(cfg *config.Config, state *book.State, systemPrompt string) (string, string, string) {
+func buildImageBuiltinInstruction(cfg *config.Config, state *book.State, systemPrompt string) (string, string) {
 	workspace := ""
 	if cfg != nil {
 		workspace = cfg.Workspace
 	}
-	creator := ""
 	if state != nil {
-		creator = state.ReadCreatorPrompt()
 		if workspace == "" {
 			workspace = state.Workspace()
 		}
@@ -258,13 +174,10 @@ func buildImageBuiltinInstruction(cfg *config.Config, state *book.State, systemP
 		"Image prompts should clearly describe the subject, scene, composition, lighting, visual style, mood, and any text, watermark, or logo to avoid.",
 		"If the caller requires a Skill, load the complete Skill with the skill tool before calling generate_image.",
 	}
-	if strings.TrimSpace(creator) != "" {
-		parts = append(parts, "You may use the work's stable tone from CREATOR.md, but do not copy long passages.")
-	}
 	if trimmed := strings.TrimSpace(systemPrompt); trimmed != "" {
 		parts = append(parts, "## Caller System Prompt\n\n"+trimmed)
 	}
-	return strings.Join(parts, "\n\n"), workspace, creator
+	return strings.Join(parts, "\n\n"), workspace
 }
 
 const versionSummarySystemInstruction = "You are Denova's version-summary generator. Infer the core creative change in this save from the file changes. Output exactly one Chinese version summary of 10 to 30 Han characters. Do not include numbering, quotation marks, a colon, a final period, or any explanation."
@@ -313,8 +226,8 @@ func BuiltinAgentPromptBlocks(cfg *config.Config, state *book.State, ideTeller I
 		copy.AgentPrompts = config.AgentPromptSettings{}
 		promptCfg = &copy
 	}
-	_, ideWorkspace, _, _ := buildIDEBuiltinInstruction(promptCfg, state, ideTeller)
-	_, interactiveWorkspace, _ := buildInteractiveStoryBuiltinInstruction(promptCfg, state, InteractiveStorySystemInstructionInput{})
+	ideWorkspace := workspaceForPrompt(promptCfg, state)
+	interactiveWorkspace := workspaceForPrompt(promptCfg, state)
 	configManagerFlow := configManagerFlowInstruction(promptCfg, state)
 	return config.AgentPromptBlockSettings{
 		General:             builtinPromptBlocks(promptCfg, config.AgentKindGeneral, generalAgentFlowInstruction(promptCfg)),
@@ -335,23 +248,16 @@ func BuiltinAgentPromptSources(cfg *config.Config, state *book.State, ideTeller 
 		copy.AgentPrompts = config.AgentPromptSettings{}
 		promptCfg = &copy
 	}
-	_, ideWorkspace, ideCreator, _ := buildIDEBuiltinInstruction(promptCfg, state, ideTeller)
-	_, interactiveWorkspace, interactiveCreator := buildInteractiveStoryBuiltinInstruction(promptCfg, state, InteractiveStorySystemInstructionInput{})
+	ideWorkspace := workspaceForPrompt(promptCfg, state)
+	interactiveWorkspace := workspaceForPrompt(promptCfg, state)
 	configManagerFlow := configManagerFlowInstruction(promptCfg, state)
-	configManagerCreator := ""
-	if state != nil {
-		configManagerCreator = state.ReadCreatorPrompt()
-	}
 	return config.AgentPromptSourceSettings{
 		General: builtinPromptSourceList(promptCfg, config.AgentKindGeneral, generalAgentFlowInstruction(promptCfg)),
 		IDE: builtinPromptSourceList(promptCfg, config.AgentKindIDE, ideFlowInstruction(promptCfg, ideWorkspace),
-			readonlyPromptSource("creator", "CREATOR.md", "CREATOR.md", ideCreator),
 			readonlyPromptSource("teller", "Default IDE Storyteller Rules", ideTeller.ID, ideTeller.Prompt),
 		),
-		InteractiveStory: builtinPromptSourceList(promptCfg, config.AgentKindInteractiveStory, interactiveStoryFlowInstruction(promptCfg, interactiveWorkspace),
-			readonlyPromptSource("creator", "CREATOR.md", "CREATOR.md", interactiveCreator),
-		),
-		ConfigManager:       builtinPromptSourceList(promptCfg, config.AgentKindConfigManager, configManagerFlow, readonlyPromptSource("creator", "CREATOR.md", "CREATOR.md", configManagerCreator)),
+		InteractiveStory:    builtinPromptSourceList(promptCfg, config.AgentKindInteractiveStory, interactiveStoryFlowInstruction(promptCfg, interactiveWorkspace)),
+		ConfigManager:       builtinPromptSourceList(promptCfg, config.AgentKindConfigManager, configManagerFlow),
 		InteractiveDirector: builtinPromptSourceList(promptCfg, config.AgentKindInteractiveDirector, BuildInteractiveDirectorSystemInstruction()),
 		VersionSummary:      builtinPromptSourceList(promptCfg, config.AgentKindVersionSummary, versionSummarySystemInstruction),
 		ToolAgent:           builtinPromptSourceList(promptCfg, config.AgentKindToolAgent, ChapterSplitRegexSystemInstruction()),
@@ -492,66 +398,16 @@ func BuildConfigManagerInstruction(cfg *config.Config, state *book.State, resour
 	return BuildConfigManagerInstructionComposition(cfg, state, resourceSkills...).Instruction()
 }
 
-func appendConfigManagerResourceSkills(builtIn string, resourceSkills []ConfigManagerResourceSkill) string {
-	var sb strings.Builder
-	for _, skill := range resourceSkills {
-		name := strings.TrimSpace(skill.Name)
-		content := strings.TrimSpace(skill.Content)
-		if name == "" || content == "" {
-			continue
-		}
-		if sb.Len() == 0 {
-			sb.WriteString("\n\n## Configuration Management Skill\n\n")
-			sb.WriteString("The following content comes from the active config-manager Skill. Resource details are in references; read only what is needed instead of injecting every reference at once. The runtime contract and backend validation take precedence over conflicts.\n")
-		}
-		sb.WriteString("\n### /")
-		sb.WriteString(name)
-		sb.WriteString("\n\n")
-		if description := strings.TrimSpace(skill.Description); description != "" {
-			sb.WriteString("description: ")
-			sb.WriteString(description)
-			sb.WriteString("\n\n")
-		}
-		sb.WriteString(content)
-		sb.WriteString("\n")
-	}
-	if sb.Len() == 0 {
-		return builtIn
-	}
-	return strings.TrimSpace(builtIn) + sb.String()
-}
-
-func buildConfigManagerBuiltinInstruction(cfg *config.Config, state *book.State) (string, string, string) {
-	workspace := ""
-	creator := ""
-	if cfg != nil {
-		workspace = cfg.Workspace
-	}
-	if state != nil {
-		if workspace == "" {
-			workspace = state.Workspace()
-		}
-		creator = state.ReadCreatorPrompt()
-	}
-	return configManagerFlowInstructionFor(workspace, creator), workspace, creator
-}
-
 func configManagerFlowInstruction(cfg *config.Config, state *book.State) string {
-	builtIn, _, _ := buildConfigManagerBuiltinInstruction(cfg, state)
-	return builtIn
+	return configManagerFlowInstructionFor(workspaceForPrompt(cfg, state))
 }
 
-func configManagerFlowInstructionFor(workspace, creator string) string {
+func configManagerFlowInstructionFor(workspace string) string {
 	var sb strings.Builder
 	sb.WriteString("You are Denova's unified Configuration Manager Agent. Through embedded module entry points, help users manage lore, presets for narrative style, story direction, state systems, and images, as well as automations, Skills, and Agent configuration.\n\n")
 	if strings.TrimSpace(workspace) != "" {
 		sb.WriteString("Current work workspace: ")
 		sb.WriteString(strings.TrimSpace(workspace))
-		sb.WriteString("\n\n")
-	}
-	if strings.TrimSpace(creator) != "" {
-		sb.WriteString("## CREATOR.md Creative Constraints\n\n")
-		sb.WriteString(strings.TrimSpace(creator))
 		sb.WriteString("\n\n")
 	}
 	sb.WriteString(strings.Join([]string{
@@ -580,49 +436,6 @@ type promptSource struct {
 	title   string
 	content string
 	note    string
-}
-
-func systemPromptSourceSummary(mode, creator string, stateParts []book.CompactContextPart, extraSources ...promptSource) string {
-	type summaryPart struct {
-		source  string
-		title   string
-		content string
-		note    string
-	}
-	parts := make([]summaryPart, 0, len(stateParts)+len(extraSources)+2)
-	if strings.TrimSpace(creator) != "" {
-		parts = append(parts, summaryPart{source: "System prompt", title: "CREATOR.md", content: creator, note: "Creator instructions"})
-	}
-	for _, source := range extraSources {
-		if strings.TrimSpace(source.content) == "" {
-			continue
-		}
-		parts = append(parts, summaryPart{source: source.source, title: source.title, content: source.content, note: source.note})
-	}
-	for _, section := range stateParts {
-		if strings.TrimSpace(section.Content) == "" {
-			continue
-		}
-		parts = append(parts, summaryPart{source: "Work state", title: section.Title, content: section.Content, note: section.Source})
-	}
-	parts = append(parts, summaryPart{source: "System prompt", title: "Denova " + mode + " built-in rules", content: "Base rules, tool boundaries, and workflow constraints"})
-
-	summaries := make([]string, 0, len(parts))
-	for i, part := range parts {
-		content := strings.TrimSpace(part.content)
-		fields := []string{
-			fmt.Sprintf("%d:source=%q", i, strings.TrimSpace(part.source)),
-			fmt.Sprintf("title=%q", strings.TrimSpace(part.title)),
-			"bytes=" + strconv.Itoa(len(content)),
-			"chars=" + strconv.Itoa(utf8.RuneCountInString(content)),
-			"included=true",
-		}
-		if note := strings.TrimSpace(part.note); note != "" {
-			fields = append(fields, "note="+strconv.Quote(note))
-		}
-		summaries = append(summaries, strings.Join(fields, ","))
-	}
-	return fmt.Sprintf("count=%d parts=[%s]", len(parts), strings.Join(summaries, "; "))
 }
 
 // PartSummary returns a bounded, content-safe diagnostic summary for one

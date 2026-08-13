@@ -22,7 +22,7 @@ func (h Harness) ContextSource(cfg *config.Config, agentKind string) agent.Conte
 	limit := config.ResolveAgentContext(cfg, agentKind).MaxFragmentBytes
 	if prompt := strings.TrimSpace(h.Prompt(agentKind)); prompt != "" {
 		fragments = append(fragments, agent.ContextFragment{
-			Source: "Denova User State", Purpose: "apply user-managed Agent behavior and preferences without overriding runtime or tool contracts",
+			Source: "Denova User State", Purpose: "apply user-managed Agent behavior and preferences",
 			Resource:  "prompts/" + strings.TrimSpace(agentKind) + ".md",
 			Placement: agent.ContextLeadingMessage, Rendering: agent.ContextRenderAttributed,
 			Role: agent.System, Content: prompt, HardLimit: limit,

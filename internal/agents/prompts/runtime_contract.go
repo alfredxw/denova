@@ -45,24 +45,23 @@ func ComposeBuiltinSystemInstruction(cfg *config.Config, agentKind, mode, worksp
 func protectedSystemPromptFragments(cfg *config.Config, agentKind string) []SystemPromptFragment {
 	return []SystemPromptFragment{{
 		ID: "runtime_contract", Source: "Denova runtime", Title: "Runtime contract",
-		Purpose: "enforce non-overridable runtime and capability boundaries",
-		Content: runtimeContractForAgent(cfg, agentKind), Prefix: "# Denova Runtime Contract (Non-overridable)\n\n",
+		Purpose: "define shared runtime behavior",
+		Content: runtimeContractForAgent(cfg, agentKind), Prefix: "# Denova Runtime Contract\n\n",
 		Required: true, Overflow: SystemPromptOverflowReject,
 	}, {
 		ID: "output_protocol", Source: "Denova runtime", Title: "Output protocol",
-		Purpose: "enforce the Agent output protocol",
-		Content: outputProtocolForAgent(agentKind), Prefix: "\n\n## Output Protocol (Non-overridable)\n\n",
+		Purpose: "define the Agent output protocol",
+		Content: outputProtocolForAgent(agentKind), Prefix: "\n\n## Output Protocol\n\n",
 		Required: true, Overflow: SystemPromptOverflowReject,
 	}}
 }
 
 func runtimeContractForAgent(cfg *config.Config, agentKind string) string {
 	common := strings.Join([]string{
-		"- The runtime contract takes precedence over user-defined system prompts and Denova built-in instructions.",
-		"- A user-defined system prompt may adjust behavior strategy, creative preferences, tone, style, and task-handling tendencies only.",
-		"- A user-defined system prompt cannot override tool permissions, output protocols, persistence boundaries, structured-format requirements, or backend validation.",
-		"- Use only tools enabled for the current Agent. Never fabricate calls to disabled, unavailable, or nonexistent tools.",
-		"- When Skills are enabled, the runtime deterministically loads one or more explicitly named /<skill-name> references found anywhere in the user message before the first model request. Do not call the skill tool merely to reread a Skill already marked as runtime-loaded in context. The skill tool remains available when the task requires selecting an unspecified Skill by description. Never pretend to use Skills when they are disabled.",
+		"- Follow the current user request, applicable project instructions, and this Agent's workflow.",
+		"- Use the available tools and their schemas; backend receipts determine which operations were accepted.",
+		"- If a tool call or permission is denied, adapt to the result instead of repeating the same request unchanged.",
+		"- Explicitly named /<skill-name> instructions may already be loaded in context. Use the skill tool only to load an additional Skill selected by description.",
 	}, "\n")
 	sections := []string{common, thinkingLanguageContract(cfg)}
 	if config.IsSubAgentParentKind(agentKind) {
@@ -95,10 +94,9 @@ func thinkingLanguageContract(cfg *config.Config) string {
 
 func subAgentDelegationContract() string {
 	return strings.Join([]string{
-		"- Do not proactively start a SubAgent by default. Call the task tool only when the user explicitly requests delegation or a loaded Skill explicitly requires a SubAgent.",
-		"- SubAgent delegation protocol: the task description must state the user's goal, necessary context, known constraints, file paths or resource IDs, expected output, and whether writes are allowed.",
-		"- For files, lore, or historical events the child can read with tools, pass only paths, IDs, or search clues. Do not copy large bodies of text, complete logs, complete history, or other unbounded content.",
-		"- SubAgent results are visible only to the parent by default. The parent must verify them and summarize the result to the user in its final response.",
+		"- Use the task tool only when the user or a loaded Skill requests delegation.",
+		"- Give the SubAgent a self-contained goal, constraints, relevant paths or resource IDs, expected output, and write scope. Pass references instead of copying content it can read itself.",
+		"- Verify the returned result before reporting it to the user.",
 	}, "\n")
 }
 
@@ -139,11 +137,7 @@ func outputProtocolForAgent(agentKind string) string {
 func agentRuntimeContract(agentKind string) string {
 	switch agentKind {
 	case config.AgentKindGeneral:
-		return strings.Join([]string{
-			"- General Agent works only within the root of a Project explicitly added by the user. Project type does not change filesystem permissions or create hidden exceptions for Denova data directories.",
-			"- Discovery operations such as glob and grep respect .gitignore by default. Explicit-path reads and writes are not blocked by .gitignore, and shell commands retain native semantics.",
-			"- Do not modify .gitignore unless the user explicitly requests it.",
-		}, "\n")
+		return "- Stay within the current Project root. Discovery respects .gitignore; explicitly named paths remain addressable and shell commands retain native semantics. Modify .gitignore only when the user explicitly requests it."
 	case config.AgentKindHarnessOptimizer:
 		return strings.Join([]string{
 			"- Harness Optimizer works only in the live User State directory, where file edits take effect immediately. Never write Project-private content, complete trajectories, temporary tasks, user secrets, or model reasoning into global State.",
@@ -155,23 +149,11 @@ func agentRuntimeContract(agentKind string) string {
 		return "- Writing Agent must respect file-tool safety and book-workspace boundaries. CREATOR.md and the user's explicit current request remain authoritative for book content."
 	case config.AgentKindInteractiveStory:
 		return strings.Join([]string{
-			"- Interactive Story Agent may use read-only file tools for shared prose-style references explicitly listed by the system prompt. It must not modify workspace files or call write, delete, task-planning, or other mutation tools.",
-			"- If initialize_story_state_schema is present, this is the opening turn of a dynamic-state-schema story. Finalize the schema draft first and obtain finalized=true, then output prose and call submit_interactive_turn. The schema tool changes templates and fields only; Actor creation and values belong exclusively in state_changes.",
-			"- Each turn, output the complete player-visible prose first, then call submit_interactive_turn. state_changes and choices are parsed and accepted independently through one model-facing entry point. The backend compiles StateDelta and atomically commits the first prose candidate with state only when both succeed. Omit director_update by default; include it only when established events materially change future planning.",
-			"- The submission tool returns structured per-module receipts. When ready=false, resubmit only failed or missing fields named by retry_modules through the same tool. When ready=true, end the turn immediately without repeating or rewriting prose.",
-			"- Interactive Story Agent must follow the built-in output protocol. Story-stage prose is the final response and must not include state JSON, tool explanations, or XML wrappers.",
+			"- Game Mode is read-only for workspace files. Use only listed read-only references; persist prose, state, and choices through the Game Mode submission tools.",
 			"- The current story's per-turn target character count is the highest length constraint. Other built-in prompts, CREATOR.md chapter-length rules, Director guidance, and custom prompts must not require exceeding it.",
 		}, "\n")
 	case config.AgentKindConfigManager:
-		return strings.Join([]string{
-			"- Config Manager Agent configures, creates, and maintains lore, solution presets, automation tasks, Skills, and settings exposed on the Agents page.",
-			"- Except for dedicated lore tools, manage all configuration resources through config_read and config_apply. Do not edit underlying configuration files with file tools.",
-			"- Do not change ports, theme, remote access, editor appearance, or other settings outside the Agents page. Those changes belong in Settings.",
-			"- For an unfamiliar resource, call config_read describe first. Usually list before get; update and delete must use the latest read revision.",
-			"- Submit one independent change per config_apply call. Read resource shapes from config-manager Skill references only as needed.",
-			"- Deletion, hiding, replacement, and broad rewrites require explicit user instruction. When uncertain, explain the intended change and request confirmation first.",
-			"- Lore stores long-lived stable facts only. Do not write short-term post-chapter state to lore by default.",
-		}, "\n")
+		return "- Manage only Agents-page resources, using dedicated lore tools or config_read/config_apply. Do not edit backing configuration files or Settings-only options."
 	case config.AgentKindInteractiveDirector:
 		return strings.Join([]string{
 			"- Director creates or maintains director.md, agent-brief.md, and lore-context.md for the current branch only. It does not initialize or review the state schema.",

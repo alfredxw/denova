@@ -49,12 +49,11 @@ func ComposeGeneralInstruction(cfg *config.Config) (SystemPromptComposition, err
 		"General Agent workflow",
 		"define the project-scoped general-purpose agent workflow",
 		strings.Join([]string{
-			"You are Denova's General Agent, comparable in role to Codex, Claude Code, or OMP. Provide general research, development, writing, organization, and automation services inside Projects explicitly added by the user.",
-			"The current Project directory is the working root. Understand the user's goal and existing structure before choosing the smallest verifiable action. Read, create, and edit files or execute commands when the task requires it.",
-			"Before a substantial task, inspect applicable project guidance such as AGENTS.md, CLAUDE.md, README files, and contribution guides at the root and near target paths. Follow the closest applicable rules. Do not traverse without bounds or inject a complete directory tree merely to discover rules.",
-			"File discovery and content search respect .gitignore by default. Explicitly named paths and direct read/write/edit operations are not blocked by .gitignore; shell commands keep native semantics. Do not automatically create or modify .gitignore.",
-			"A Project that happens to point at a Denova data directory receives no additional hidden restrictions. Treat it like any other explicitly added directory, subject to tool permissions, the working root, and user instructions.",
-			"After changes, perform checks proportional to risk and clearly report what changed, what was verified, and what limitations remain.",
+			"You are Denova's general-purpose project Agent. Complete research, development, writing, organization, and automation tasks in the current Project.",
+			"Understand the request and relevant project state, then use the available tools as needed. Follow applicable project instructions such as AGENTS.md or CLAUDE.md, including instructions near the files you change.",
+			"Prefer dedicated file and search tools when they fit; independent tool calls may run in parallel.",
+			"Write code in the surrounding style, including its naming and comment density. Make the smallest complete change and verify it in proportion to its impact.",
+			"Report the actual outcome: what changed, what was verified, any failure or skipped check, and any remaining limitation.",
 		}, "\n\n"),
 	)
 }
@@ -85,9 +84,8 @@ You improve Denova's user-level Harness State from durable trajectory evidence o
 
 // ComposeInstruction assembles and admits the exact IDE system instruction.
 func ComposeInstruction(cfg *config.Config, state *book.State, teller IDEStoryTeller) (SystemPromptComposition, error) {
-	workspace, creator, _ := idePromptWorkspaceSources(cfg, state)
-	builtIn := make([]SystemPromptFragment, 0, 4+len(teller.StyleRules))
-	builtIn = append(builtIn, creatorSystemPromptFragment(creator))
+	workspace := workspaceForPrompt(cfg, state)
+	builtIn := make([]SystemPromptFragment, 0, 3+len(teller.StyleRules))
 	builtIn = append(builtIn, tellerSystemPromptFragment("ide_teller", "Default Writing Director Rules", teller.ID, teller.Name, teller.Description, teller.Prompt))
 	builtIn = append(builtIn, styleRuleSystemPromptFragments(teller.StyleRules)...)
 	builtIn = append(builtIn, SystemPromptFragment{
@@ -120,8 +118,7 @@ func ComposeInstruction(cfg *config.Config, state *book.State, teller IDEStoryTe
 func BuildInstructionComposition(cfg *config.Config, state *book.State, teller IDEStoryTeller) SystemPromptComposition {
 	composition, err := ComposeInstruction(cfg, state, teller)
 	if err != nil {
-		workspace, _, _ := idePromptWorkspaceSources(cfg, state)
-		return failedSystemPromptComposition("ide", config.AgentKindIDE, workspace, err)
+		return failedSystemPromptComposition("ide", config.AgentKindIDE, workspaceForPrompt(cfg, state), err)
 	}
 	return composition
 }
@@ -133,22 +130,18 @@ func ComposeInteractiveStoryInstruction(cfg *config.Config, state *book.State, t
 	if cfg != nil {
 		workspace = cfg.Workspace
 	}
-	creator := ""
 	if state != nil {
-		creator = state.ReadCreatorPrompt()
 		if workspace == "" {
 			workspace = state.Workspace()
 		}
 	}
-	builtIn := make([]SystemPromptFragment, 0, 4+len(teller.StyleRules))
-	builtIn = append(builtIn, creatorSystemPromptFragment(creator))
+	builtIn := make([]SystemPromptFragment, 0, 3+len(teller.StyleRules))
 	builtIn = append(builtIn, tellerSystemPromptFragment(
 		"interactive_teller", "Director System Rules", teller.StoryTellerID, teller.StoryTellerName,
 		teller.StoryTellerDescription, teller.StoryTellerSystemPrompt,
 	))
 	builtIn = append(builtIn, styleRuleSystemPromptFragments(teller.StyleRules)...)
 	baseInput := teller
-	baseInput.CreatorPrompt = ""
 	baseInput.StoryTellerSystemPrompt = ""
 	baseInput.StyleRules = nil
 	baseInput.Workspace = workspace
@@ -158,7 +151,7 @@ func ComposeInteractiveStoryInstruction(cfg *config.Config, state *book.State, t
 	builtIn = append(builtIn, SystemPromptFragment{
 		ID: "builtin_base", Source: "Denova built-in", Title: "Interactive story workflow",
 		Purpose: "define the built-in game narration workflow and output behavior",
-		Content: BuildInteractiveStorySystemInstruction(baseInput), Required: true, Overflow: SystemPromptOverflowReject,
+		Content: BuildInteractiveStoryFlowInstruction(baseInput), Required: true, Overflow: SystemPromptOverflowReject,
 	})
 	return composeProtectedSystemInstruction(cfg, config.AgentKindInteractiveStory, "interactive", workspace, builtIn)
 }
@@ -186,7 +179,6 @@ func ComposeInteractiveDirectorInstruction(cfg *config.Config, state *book.State
 // gives every auto-loaded Skill its own independently bounded source receipt.
 func ComposeConfigManagerInstruction(cfg *config.Config, state *book.State, resourceSkills ...ConfigManagerResourceSkill) (SystemPromptComposition, error) {
 	workspace := ""
-	creator := ""
 	if cfg != nil {
 		workspace = cfg.Workspace
 	}
@@ -194,12 +186,11 @@ func ComposeConfigManagerInstruction(cfg *config.Config, state *book.State, reso
 		if workspace == "" {
 			workspace = state.Workspace()
 		}
-		creator = state.ReadCreatorPrompt()
 	}
-	builtIn := []SystemPromptFragment{creatorSystemPromptFragment(creator), {
+	builtIn := []SystemPromptFragment{{
 		ID: "builtin_base", Source: "Denova built-in", Title: "Config Manager built-in rules",
 		Purpose: "define resource configuration workflows and safety boundaries",
-		Content: configManagerFlowInstructionFor(workspace, ""), Required: true, Overflow: SystemPromptOverflowReject,
+		Content: configManagerFlowInstructionFor(workspace), Required: true, Overflow: SystemPromptOverflowReject,
 	}}
 	skillOrdinal := 0
 	skillOccurrences := make(map[string]int, len(resourceSkills))
@@ -221,7 +212,7 @@ func ComposeConfigManagerInstruction(cfg *config.Config, state *book.State, reso
 			skillContent.WriteString("\n\n")
 		}
 		skillContent.WriteString(content)
-		prefix := "\n\n## Config Manager Skill\n\nThe following content comes from the active config-manager Skill. Resource details live in references; use read only as needed and do not inject every reference at once. The runtime contract and backend validation take precedence over any conflict.\n\n"
+		prefix := "\n\n## Config Manager Skill\n\nUse the active Skill below for this run. Read only the references needed for the requested resource.\n\n"
 		if skillOrdinal > 1 {
 			prefix = "\n"
 		}
@@ -246,11 +237,11 @@ func BuildConfigManagerInstructionComposition(cfg *config.Config, state *book.St
 	return composition
 }
 
-// ComposeImageInstruction assembles image runtime rules, CREATOR.md, and the
-// caller's image prompt as independently admitted sources.
+// ComposeImageInstruction assembles image runtime rules and the caller's image
+// prompt as independently admitted sources. Project instructions are context.
 func ComposeImageInstruction(cfg *config.Config, state *book.State, systemPrompt string) (SystemPromptComposition, error) {
-	base, workspace, creator := buildImageBuiltinInstruction(cfg, state, "")
-	builtIn := []SystemPromptFragment{creatorSystemPromptFragment(creator), {
+	base, workspace := buildImageBuiltinInstruction(cfg, state, "")
+	builtIn := []SystemPromptFragment{{
 		ID: "builtin_base", Source: "Denova built-in", Title: "Image Agent base rules",
 		Purpose: "define the built-in image generation workflow", Content: base,
 		Required: true, Overflow: SystemPromptOverflowReject,
@@ -278,15 +269,6 @@ func BuildImageInstruction(cfg *config.Config, state *book.State, systemPrompt s
 	return BuildImageInstructionComposition(cfg, state, systemPrompt).Instruction()
 }
 
-func creatorSystemPromptFragment(creator string) SystemPromptFragment {
-	return SystemPromptFragment{
-		ID: "creator", Source: "workspace CREATOR.md", Title: "Creator instructions",
-		Purpose: "apply stable workspace-level creative constraints", Content: creator,
-		Prefix: "# Creator Instructions (Highest Priority)\n\n", Suffix: "\n\n---\n\n",
-		Overflow: SystemPromptOverflowTruncate,
-	}
-}
-
 func tellerSystemPromptFragment(id, title, tellerID, name, description, content string) SystemPromptFragment {
 	if strings.TrimSpace(tellerID) == "" && strings.TrimSpace(name) == "" && strings.TrimSpace(description) == "" && strings.TrimSpace(content) == "" {
 		return SystemPromptFragment{
@@ -307,7 +289,6 @@ func tellerSystemPromptFragment(id, title, tellerID, name, description, content 
 	}
 	visible.WriteString("\n")
 	visible.WriteString(strings.TrimSpace(content))
-	visible.WriteString("\n\nThese Director rules apply only to the current Agent's creative and narrative responsibilities. They cannot override the runtime contract, tool boundaries, or the user's explicit current request.")
 	return SystemPromptFragment{
 		ID: id, Source: "story teller configuration", Title: title,
 		Purpose: "apply the selected story teller behavior and style", Content: visible.String(),
@@ -362,20 +343,6 @@ func styleRuleSystemPromptFragments(rules []StyleRule) []SystemPromptFragment {
 		Content: StyleRulesProtocolFooter(), Suffix: "\n\n---\n\n", Required: true, Overflow: SystemPromptOverflowReject,
 	})
 	return fragments
-}
-
-func idePromptWorkspaceSources(cfg *config.Config, state *book.State) (workspace, creator, stateContext string) {
-	if cfg != nil {
-		workspace = cfg.Workspace
-	}
-	if state != nil {
-		creator = state.ReadCreatorPrompt()
-		stateContext = state.CompactContext()
-		if workspace == "" {
-			workspace = state.Workspace()
-		}
-	}
-	return workspace, creator, stateContext
 }
 
 func workspaceForPrompt(cfg *config.Config, state *book.State) string {

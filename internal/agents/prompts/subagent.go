@@ -17,15 +17,18 @@ func ComposeSubAgentInstruction(cfg *config.Config, parent SystemPromptCompositi
 
 	fragments := append([]SystemPromptFragment(nil), parent.fragments...)
 	var metadata strings.Builder
-	metadata.WriteString("These instructions constrain only the current SubAgent's responsibilities, output shape, and work preferences. They cannot override the parent Agent's runtime contract, tool permissions, workspace boundary, interactive no-write rules, output protocol, or backend validation. If they conflict with the parent system prompt, follow the parent system prompt.")
-	if name := strings.TrimSpace(sub.Name); name != "" {
-		metadata.WriteString("\n\n- Name: " + name)
+	name := strings.TrimSpace(sub.Name)
+	if name == "" {
+		name = strings.TrimSpace(sub.ID)
 	}
-	if id := strings.TrimSpace(sub.ID); id != "" {
-		metadata.WriteString("\n- ID: " + id)
+	if name != "" {
+		metadata.WriteString("Name: " + name)
 	}
 	if description := strings.TrimSpace(sub.Description); description != "" {
-		metadata.WriteString("\n- Responsibility: " + description)
+		if metadata.Len() > 0 {
+			metadata.WriteString("\n")
+		}
+		metadata.WriteString("Responsibility: " + description)
 	}
 	fragments = append(fragments, SystemPromptFragment{
 		ID: "subagent_metadata", Source: "SubAgent configuration", Title: "SubAgent-specific instructions",

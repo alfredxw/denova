@@ -76,13 +76,8 @@ func StyleRulesProtocolFooter() string {
 
 // SystemInstructionInput 用于构建 Agent 系统指令的可注入上下文。
 type SystemInstructionInput struct {
-	// CreatorPrompt 来自 workspace 根目录 CREATOR.md 的内容；为空则不注入“创作者指令”块。
-	CreatorPrompt string
 	// Workspace 当前作品工作目录的绝对路径，用于在指令中提示文件位置。
 	Workspace string
-	// StateContext is no longer embedded in the system prompt; keep the field for callers
-	// that still resolve workspace state before appending it to the final user message.
-	StateContext string
 	// StoryTellerID 是写作模式默认导演 ID；为空则不注入导演规则。
 	StoryTellerID string
 	// StoryTellerName 是写作模式默认导演名称。
@@ -102,16 +97,10 @@ type SystemInstructionInput struct {
 	ChapterGroupMax int
 }
 
-// BuildSystemInstruction 拼装 Denova Agent 的稳定系统指令：
-// 创作者指令（最高优先级）+ 导演规则 + 基础规则。作品状态由运行时追加到本轮用户消息末尾。
+// BuildSystemInstruction assembles the stable writing-agent system prompt.
+// Project instructions and workspace state are injected by ContextSource.
 func BuildSystemInstruction(in SystemInstructionInput) string {
 	var sb strings.Builder
-
-	if creator := strings.TrimSpace(in.CreatorPrompt); creator != "" {
-		sb.WriteString("# Creator Instructions (Highest Priority)\n\n")
-		sb.WriteString(creator)
-		sb.WriteString("\n\n---\n\n")
-	}
 
 	if tellerPrompt := strings.TrimSpace(in.StoryTellerPrompt); tellerPrompt != "" {
 		sb.WriteString("# Default Writing Director Rules\n\n")

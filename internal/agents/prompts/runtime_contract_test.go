@@ -28,8 +28,11 @@ func TestUserStatePromptFollowsContractAndBuiltInPrompt(t *testing.T) {
 	if !(contractIndex < builtInIndex && builtInIndex < stateIndex) {
 		t.Fatalf("wrong system prompt order: contract=%d built_in=%d state=%d\n%s", contractIndex, builtInIndex, stateIndex, instruction)
 	}
-	if !strings.Contains(instruction, "cannot override the runtime contract, tool permissions, schemas, persistence boundaries, or output protocol") {
-		t.Fatalf("State prompt section should state protected boundary:\n%s", instruction)
+	if strings.Count(instruction, "# User State Prompt") != 1 || strings.Count(instruction, "USER STATE PROMPT") != 1 {
+		t.Fatalf("State prompt should be injected once without a repeated generic wrapper:\n%s", instruction)
+	}
+	if strings.Contains(instruction, "cannot override the runtime contract") {
+		t.Fatalf("State prompt should not repeat generic precedence language:\n%s", instruction)
 	}
 }
 
@@ -64,13 +67,10 @@ func TestSubAgentParentRuntimeContractsIncludeDelegationProtocol(t *testing.T) {
 		t.Run(agentKind, func(t *testing.T) {
 			instruction := protectedSystemInstruction(&config.Config{}, agentKind, "BUILT IN PROMPT")
 			for _, required := range []string{
-				"SubAgent delegation protocol",
-				"Do not proactively start a SubAgent by default",
-				"user explicitly requests delegation",
-				"loaded Skill explicitly requires a SubAgent",
-				"user's goal, necessary context, known constraints, file paths or resource IDs, expected output",
-				"Do not copy large bodies of text, complete logs, complete history, or other unbounded content",
-				"parent must verify them",
+				"Use the task tool only when the user or a loaded Skill requests delegation",
+				"self-contained goal, constraints, relevant paths or resource IDs, expected output, and write scope",
+				"Pass references instead of copying content it can read itself",
+				"Verify the returned result before reporting it to the user",
 			} {
 				if !strings.Contains(instruction, required) {
 					t.Fatalf("deep parent %s should include subagent delegation protocol %q:\n%s", agentKind, required, instruction)
@@ -87,7 +87,7 @@ func TestRuntimeContractsCoverAllAgentKinds(t *testing.T) {
 		config.AgentKindIDE:                 "CREATOR.md",
 		config.AgentKindInteractiveStory:    "Output only the story prose",
 		config.AgentKindImage:               "Image Agent",
-		config.AgentKindConfigManager:       "Config Manager Agent",
+		config.AgentKindConfigManager:       "Agents-page resources",
 		config.AgentKindInteractiveDirector: "does not initialize or review the state schema",
 		config.AgentKindVersionSummary:      "Version Summary Agent",
 		config.AgentKindToolAgent:           "model-only",
@@ -115,12 +115,14 @@ func TestGeneralAgentInstructionUsesProjectNeutralFilesystemRules(t *testing.T) 
 	}
 	instruction := composition.Instruction()
 	for _, required := range []string{
-		"General Agent",
-		"current Project directory is the working root",
-		"File discovery and content search respect .gitignore by default",
-		"direct read/write/edit operations are not blocked by .gitignore",
-		"Do not automatically create or modify .gitignore",
-		"Denova data directory",
+		"general-purpose project Agent",
+		"current Project root",
+		"Prefer dedicated file and search tools",
+		"independent tool calls may run in parallel",
+		"Discovery respects .gitignore",
+		"explicitly named paths remain addressable",
+		"Write code in the surrounding style",
+		"Report the actual outcome",
 	} {
 		if !strings.Contains(instruction, required) {
 			t.Fatalf("General Agent instruction missing %q:\n%s", required, instruction)

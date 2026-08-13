@@ -129,14 +129,15 @@ func TestBuildSubAgentInstructionInheritsParentSystemPrompt(t *testing.T) {
 		"父级工具权限边界",
 		"SubAgent-specific Instructions",
 		"Researcher",
-		"researcher",
 		"Researches delegated context",
 		"Return concise findings.",
-		"cannot override the parent Agent's runtime contract, tool permissions, workspace boundary",
 	} {
 		if !strings.Contains(instruction, required) {
 			t.Fatalf("subagent instruction missing %q:\n%s", required, instruction)
 		}
+	}
+	if strings.Contains(instruction, "cannot override the parent Agent's runtime contract") {
+		t.Fatalf("subagent prompt should inherit the parent contract without repeating a generic precedence wrapper:\n%s", instruction)
 	}
 	if parentIndex, subIndex := strings.Index(instruction, parentInstruction), strings.Index(instruction, "SubAgent-specific Instructions"); parentIndex < 0 || subIndex < 0 || parentIndex >= subIndex {
 		t.Fatalf("parent prompt should appear before subagent prompt:\n%s", instruction)
@@ -156,9 +157,8 @@ func TestBuildSubAgentInstructionInheritsInteractiveStoryBoundary(t *testing.T) 
 	})
 
 	for _, required := range []string{
-		"must not modify workspace files",
+		"Game Mode is read-only for workspace files",
 		"Output only the story prose that can be shown on the story stage for this turn",
-		"interactive no-write rules",
 		"Only return context findings.",
 	} {
 		if !strings.Contains(instruction, required) {

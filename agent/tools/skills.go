@@ -16,8 +16,8 @@ type SkillQuery struct {
 }
 
 type SkillRef struct {
-	Source string `json:"source"`
-	ID     string `json:"id"`
+	Source string `json:"source" jsonschema:"minLength=1,maxLength=1024" jsonschema_description:"Exact source identifier returned by list."`
+	ID     string `json:"id" jsonschema:"minLength=1,maxLength=4096" jsonschema_description:"Exact Skill identifier returned by list."`
 }
 
 type Skill struct {
@@ -45,6 +45,17 @@ type skillToolInput struct {
 	Refs   []SkillRef `json:"refs,omitempty" jsonschema:"maxItems=64" jsonschema_description:"Exact references to read. Every item produces its own success or error result."`
 }
 
+type skillListInput struct {
+	Action string `json:"action" jsonschema:"required,enum=list" jsonschema_description:"List configured Skills."`
+	Query  string `json:"query,omitempty" jsonschema:"maxLength=4096" jsonschema_description:"Optional name or description query; omit to browse."`
+	Limit  int    `json:"limit,omitempty" jsonschema:"minimum=1,maximum=1000" jsonschema_description:"Maximum results; omit to use the source default."`
+}
+
+type skillReadInput struct {
+	Action string     `json:"action" jsonschema:"required,enum=read" jsonschema_description:"Read exact Skill references."`
+	Refs   []SkillRef `json:"refs" jsonschema:"required,minItems=1,maxItems=64" jsonschema_description:"Exact references from list; every item returns its own success or error."`
+}
+
 type skillReadResult struct {
 	Ref     SkillRef      `json:"ref"`
 	Content *SkillContent `json:"content,omitempty"`
@@ -58,7 +69,7 @@ func Skills(source SkillSource) (agent.Toolset, error) {
 	if source == nil {
 		return nil, errors.New("skills Toolset requires a SkillSource")
 	}
-	tool, err := agent.InferTool("skill", "List and read explicitly configured reusable skills. Batch reads report an outcome for every reference.", func(ctx context.Context, input skillToolInput) (agent.ToolResult, error) {
+	invoke := func(ctx context.Context, input skillToolInput) (agent.ToolResult, error) {
 		switch strings.TrimSpace(input.Action) {
 		case "list":
 			items, err := source.List(ctx, SkillQuery{Query: input.Query, Limit: input.Limit})
@@ -88,7 +99,11 @@ func Skills(source SkillSource) (agent.Toolset, error) {
 		default:
 			return agent.ToolResult{}, fmt.Errorf("unsupported skill action %q", input.Action)
 		}
-	})
+	}
+	tool, err := newUnionTool(
+		"skill", "List configured Skills or read exact references. Batch reads return one outcome per reference.", invoke,
+		toolSchemaFor[skillListInput](), toolSchemaFor[skillReadInput](),
+	)
 	if err != nil {
 		return nil, err
 	}

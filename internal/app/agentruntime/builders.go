@@ -50,7 +50,7 @@ func BuildConversationDefinition(
 	host := agents.AgentHostCapabilities{Interactive: true, RootTools: rootTools}
 	switch agentKind {
 	case agentrun.AgentKindGeneral:
-		definition, composition, err := agents.BuildGeneralDefinitionWithCompositionForHost(ctx, cfg, host)
+		definition, composition, err := agents.BuildGeneralDefinitionWithCompositionForHost(ctx, cfg, state, host)
 		if err != nil {
 			return agents.Definition{}, prompts.SystemPromptComposition{}, fmt.Errorf("build General Agent Definition: %w", err)
 		}

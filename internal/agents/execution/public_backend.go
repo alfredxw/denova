@@ -707,7 +707,10 @@ func (backend *publicBackend) bindDefinition(
 		}
 	}
 	definition.Compaction = agentlifecycle.BindConversationCompaction(definition.Compaction, cycle.Conversation)
-	definition.Context = boundary.ContextSource()
+	definition.Context, err = agent.CombineContextSources(definition.Context, boundary.ContextSource())
+	if err != nil {
+		return agent.Definition{}, fmt.Errorf("compose project and conversation ContextSources: %w", err)
+	}
 	definition.Canonical = boundary.CanonicalAdapter()
 	definition.Permission = agentlifecycle.BindPermissionRuleStore(
 		definition.Permission, backend.permissionRuleStore.Load, backend.permissionRuleStore.Persist,

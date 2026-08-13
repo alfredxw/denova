@@ -149,7 +149,7 @@ func TestPrepareInteractiveDirectorBeforeOpeningBuildsLoreWorksetForFirstGameTur
 		if toolContext.MaintenanceTask != interactiveapp.DirectorTaskOpeningPlan || toolContext.TurnID != interactiveapp.DirectorOpeningSourceID {
 			t.Fatalf("unexpected opening tool context: %#v", toolContext)
 		}
-		for _, want := range []string{"Before opening prose is generated", "Lore Name Catalog", "沈凝", "戒律堂", "我报名公开比试"} {
+		for _, want := range []string{"Build the first branch plan before opening prose", "Non-resident Lore Name Roster", "沈凝", "戒律堂", "我报名公开比试"} {
 			if !strings.Contains(instruction, want) {
 				t.Fatalf("opening director instruction missing %q:\n%s", want, instruction)
 			}

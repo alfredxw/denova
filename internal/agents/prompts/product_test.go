@@ -27,7 +27,7 @@ func TestBuildInteractiveStoryInstructionIsIsolatedFromIDEPrompt(t *testing.T) {
 			t.Fatalf("interactive story instruction should not contain IDE-only prompt %q:\n%s", forbidden, instruction)
 		}
 	}
-	for _, required := range []string{"Game Mode", "interactive text adventures", "Output only the story prose", "hidden-state blocks", "shortcut-choice blocks", "Do not use write, edit", "todo", "<invoke>", "prose RPG", "identify the action", "meaningful new options", "check consistency", "list_lore_items", "read_lore_items", "search_story_history"} {
+	for _, required := range []string{"Game Mode", "interactive text adventures", "Output only the story prose", "hidden state blocks", "shortcut-choice blocks", "Do not use write, edit", "todo", "<invoke>", "prose RPG", "identify the action", "meaningful new options", "check consistency", "list_lore_items", "read_lore_items", "search_story_history"} {
 		if !strings.Contains(instruction, required) {
 			t.Fatalf("interactive story instruction should contain %q:\n%s", required, instruction)
 		}
@@ -256,19 +256,6 @@ func TestBuildInteractiveStoryInstructionIncludesStyleRulesInSystemPrompt(t *tes
 	}
 }
 
-func TestSystemPromptSourceSummaryUsesStructuredStateParts(t *testing.T) {
-	got := systemPromptSourceSummary("ide", "", []book.CompactContextPart{{
-		Source:  "setting/character-states.md",
-		Title:   "角色状态",
-		Content: "林川在废城东区地下仓库。",
-	}})
-	for _, want := range []string{"Work state", "角色状态", "setting/character-states.md"} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("system prompt source summary missing %q:\n%s", want, got)
-		}
-	}
-}
-
 func TestBuiltinAgentPromptsExposeTurnHistorySearchWithoutCustomPrompt(t *testing.T) {
 	state := book.NewState(t.TempDir())
 	cfg := &config.Config{
@@ -290,7 +277,7 @@ func TestBuiltinAgentPromptsExposeTurnHistorySearchWithoutCustomPrompt(t *testin
 
 	blocks := BuiltinAgentPromptBlocks(cfg, state, IDEStoryTeller{})
 	interactive := blocks.InteractiveStory
-	if !strings.Contains(interactive.RuntimeContract, "runtime contract") {
+	if !strings.Contains(interactive.RuntimeContract, "Follow the current user request") {
 		t.Fatalf("runtime contract should be populated: %#v", interactive)
 	}
 	if !strings.Contains(interactive.OutputProtocol, "Output only the story prose") {
@@ -329,15 +316,15 @@ func TestBuiltinInteractiveDirectorPromptUsesMaintenanceToolContract(t *testing.
 	builtin := BuiltinAgentPrompts(cfg, state, IDEStoryTeller{})
 	got := builtin.InteractiveDirector.SystemPrompt
 	for _, required := range []string{
-		"background Director Agent",
-		"Turn and StateDelta",
+		"# Background Director",
+		"Turn, including RuleResolution and StateDelta",
 		"search_story_history",
 		"turn_id",
 		"director.md",
 		"submit_director_plan_update",
 		"keep uses empty updates",
 		"Ordinary updates change agent-brief.md by default",
-		"retry only retry_documents",
+		"Retry only retry_documents",
 	} {
 		if !strings.Contains(got, required) {
 			t.Fatalf("builtin interactive director prompt missing %q:\n%s", required, got)
@@ -381,7 +368,7 @@ func TestContextCompactionPromptIsAnInternalSourceAgentProtocol(t *testing.T) {
 	}
 }
 
-func TestInteractiveFlowSourceKeepsRecallFlowWithCreatorPrompt(t *testing.T) {
+func TestInteractiveFlowSourceExcludesProjectInstructionsAndKeepsRecallFlow(t *testing.T) {
 	state := book.NewState(t.TempDir())
 	if err := os.WriteFile(filepath.Join(state.Workspace(), "CREATOR.md"), []byte("只使用第一人称。"), 0o644); err != nil {
 		t.Fatal(err)

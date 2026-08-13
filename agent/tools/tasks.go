@@ -10,16 +10,16 @@ import (
 )
 
 type TaskRef struct {
-	Agent   string `json:"agent"`
-	Session string `json:"session"`
-	Run     string `json:"run"`
+	Agent   string `json:"agent" jsonschema:"minLength=1,maxLength=256" jsonschema_description:"Delegated Agent name returned by start."`
+	Session string `json:"session" jsonschema:"minLength=1,maxLength=1024" jsonschema_description:"Durable child Session ID returned by start."`
+	Run     string `json:"run" jsonschema:"minLength=1,maxLength=1024" jsonschema_description:"Durable child Run ID returned by start."`
 }
 
 type TaskRequest struct {
-	Agent          string `json:"agent" jsonschema:"description=Stable name of the delegated Agent"`
-	Prompt         string `json:"prompt" jsonschema:"description=Complete self-contained task including context constraints and expected output,maxLength=1048576"`
-	Detached       bool   `json:"detached,omitempty" jsonschema:"description=Return immediately and use observe/steer/respond/abort to control the task"`
-	IdempotencyKey string `json:"idempotency_key,omitempty" jsonschema:"description=Optional stable retry identity,maxLength=65536"`
+	Agent          string `json:"agent" jsonschema:"minLength=1,maxLength=256" jsonschema_description:"Stable delegated Agent name from the catalog in this tool description."`
+	Prompt         string `json:"prompt" jsonschema:"minLength=1,maxLength=1048576" jsonschema_description:"Self-contained goal, constraints, relevant references, expected output, and write scope."`
+	Detached       bool   `json:"detached,omitempty" jsonschema_description:"Return immediately so the task can be controlled with later task calls."`
+	IdempotencyKey string `json:"idempotency_key,omitempty" jsonschema:"maxLength=65536" jsonschema_description:"Stable retry identity; omit to derive it from this tool execution."`
 }
 
 type Task struct {
@@ -42,9 +42,9 @@ type TaskObservation struct {
 // InteractionID are sufficient after a process restart; no executor-local
 // waiter or task map participates in resolution.
 type TaskInteractionResponse struct {
-	Ref           TaskRef                   `json:"ref"`
-	InteractionID string                    `json:"interaction_id"`
-	Response      agent.InteractionResponse `json:"response"`
+	Ref           TaskRef                   `json:"ref" jsonschema_description:"Child task waiting for this response."`
+	InteractionID string                    `json:"interaction_id" jsonschema:"minLength=1,maxLength=1024" jsonschema_description:"Interaction ID returned by observe."`
+	Response      agent.InteractionResponse `json:"response" jsonschema_description:"Answer, permission choice, or cancellation for the child interaction."`
 }
 
 // TaskEvent is the bounded reconnect projection returned by observe. Live
@@ -88,6 +88,34 @@ type taskToolInput struct {
 	Reason    string                    `json:"reason,omitempty" jsonschema:"maxLength=65536"`
 }
 
+type taskStartInput struct {
+	Action string        `json:"action" jsonschema:"required,enum=start" jsonschema_description:"Start delegated tasks."`
+	Starts []TaskRequest `json:"starts" jsonschema:"required,minItems=1,maxItems=32" jsonschema_description:"Independent task requests; every item returns its own outcome."`
+}
+
+type taskObserveInput struct {
+	Action string    `json:"action" jsonschema:"required,enum=observe" jsonschema_description:"Read current task output, events, and interactions."`
+	Refs   []TaskRef `json:"refs" jsonschema:"required,minItems=1,maxItems=32" jsonschema_description:"Tasks to observe; every reference returns its own outcome."`
+	Cursor string    `json:"cursor,omitempty" jsonschema:"maxLength=65536" jsonschema_description:"Opaque event cursor returned by a previous observation."`
+}
+
+type taskSteerInput struct {
+	Action string    `json:"action" jsonschema:"required,enum=steer" jsonschema_description:"Add instructions to running tasks."`
+	Refs   []TaskRef `json:"refs" jsonschema:"required,minItems=1,maxItems=32" jsonschema_description:"Tasks that receive the same steering input."`
+	Input  string    `json:"input" jsonschema:"required,minLength=1,maxLength=1048576" jsonschema_description:"Additional instruction for the referenced tasks."`
+}
+
+type taskRespondInput struct {
+	Action    string                    `json:"action" jsonschema:"required,enum=respond" jsonschema_description:"Resolve child task interactions."`
+	Responses []TaskInteractionResponse `json:"responses" jsonschema:"required,minItems=1,maxItems=32" jsonschema_description:"Independent interaction responses; every item returns its own outcome."`
+}
+
+type taskAbortInput struct {
+	Action string    `json:"action" jsonschema:"required,enum=abort" jsonschema_description:"Abort running tasks."`
+	Refs   []TaskRef `json:"refs" jsonschema:"required,minItems=1,maxItems=32" jsonschema_description:"Tasks to abort; every reference returns its own outcome."`
+	Reason string    `json:"reason" jsonschema:"required,minLength=1,maxLength=65536" jsonschema_description:"Reason recorded with the abort request."`
+}
+
 type taskItemResult struct {
 	Index       int              `json:"index"`
 	Task        *Task            `json:"task,omitempty"`
@@ -111,7 +139,7 @@ func Tasks(executor TaskExecutor) (agent.Toolset, error) {
 			description += fmt.Sprintf("\n- %s: %s", candidate.Name, candidate.Description)
 		}
 	}
-	tool, err := agent.InferTool("task", description, func(ctx context.Context, input taskToolInput) (agent.ToolResult, error) {
+	invoke := func(ctx context.Context, input taskToolInput) (agent.ToolResult, error) {
 		results := make([]taskItemResult, 0)
 		switch strings.TrimSpace(input.Action) {
 		case "start":
@@ -181,7 +209,12 @@ func Tasks(executor TaskExecutor) (agent.Toolset, error) {
 		return JSONResult(struct {
 			Results []taskItemResult `json:"results"`
 		}{Results: results})
-	})
+	}
+	tool, err := newUnionTool(
+		"task", description, invoke,
+		toolSchemaFor[taskStartInput](), toolSchemaFor[taskObserveInput](), toolSchemaFor[taskSteerInput](),
+		toolSchemaFor[taskRespondInput](), toolSchemaFor[taskAbortInput](),
+	)
 	if err != nil {
 		return nil, err
 	}
