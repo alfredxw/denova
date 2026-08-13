@@ -399,22 +399,37 @@ function App() {
     if (!workspaceLoaded) return
     if (!workspace) return
 
+    let cancelled = false
     const restoreWorkspaceView = async () => {
       const tabs = readTabsFor(workspace)
       const storedKey = readActiveTabKeyFor(workspace)
-      const activeKey = storedKey && tabs.some((tab) => tabKey(tab) === storedKey) ? storedKey : (tabs.length > 0 ? tabKey(tabs[0]) : null)
+      let activeKey = storedKey && tabs.some((tab) => tabKey(tab) === storedKey) ? storedKey : (tabs.length > 0 ? tabKey(tabs[0]) : null)
       tabActivationsRef.current = new Map()
       tabActivationCounterRef.current = 0
       for (const tab of tabs) touchTab(tabKey(tab))
       if (activeKey) touchTab(activeKey)
-      const limited = limitTabs(tabs, activeKey)
-      setOpenTabs(limited)
+      let restoredTabs = limitTabs(tabs, activeKey)
+
+      // A file can disappear while the app is closed. Resolve the restored target
+      // before publishing the tab state so a deleted file cannot become a ghost tab.
+      while (activeKey) {
+        const target = restoredTabs.find((tab) => tabKey(tab) === activeKey)
+        if (!target || target.kind === 'lore') break
+        const result = await selectFile(target.path)
+        if (cancelled) return
+        if (result !== 'missing') break
+        restoredTabs = restoredTabs.filter((tab) => tabKey(tab) !== activeKey)
+        activeKey = restoredTabs.length > 0 ? tabKey(restoredTabs[0]) : null
+      }
+
+      if (cancelled) return
+      setOpenTabs(restoredTabs)
       setActiveTabKey(activeKey)
-      const target = activeKey ? tabs.find((tab) => tabKey(tab) === activeKey) : null
-      if (target?.kind === 'file') await selectFile(target.path)
-      else clearSelectedFile()
+      const target = activeKey ? restoredTabs.find((tab) => tabKey(tab) === activeKey) : null
+      if (!target || target.kind === 'lore') clearSelectedFile()
     }
     void restoreWorkspaceView()
+    return () => { cancelled = true }
   // This boundary intentionally follows workspace identity; callbacks remain stable.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspace, workspaceLoaded])
@@ -537,13 +552,19 @@ function App() {
     const key = `file:${path}`
     if (selectedFile === path && activeTabKey === key) return true
     if (selectedFile !== path && !(await flushEditorDraft())) return false
+    if (selectedFile !== path) {
+      const result = await selectFile(path)
+      if (result === 'missing') {
+        setOpenTabs((prev) => prev.filter((tab) => tabKey(tab) !== key))
+      }
+      if (result !== 'selected') return false
+    }
     setSelectedChapterId(path)
     setOpenTabs((prev) => {
       const next: Tab[] = prev.some((tab) => tabKey(tab) === key) ? prev : [...prev, { kind: 'file', path }]
       return limitTabs(next, key)
     })
     setActiveTabKey(key)
-    if (selectedFile !== path) await selectFile(path)
     return true
   }, [activeTabKey, flushEditorDraft, limitTabs, selectFile, selectedFile, setSelectedChapterId])
 

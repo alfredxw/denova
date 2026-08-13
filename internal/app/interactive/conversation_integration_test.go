@@ -522,6 +522,25 @@ func TestInteractiveConversationPersistsRuleResolution(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	lockedResolution, err := conversation.PrepareInteractiveTurn(
+		context.Background(),
+		interactive.TurnCheckRequest{
+			Action: "我改为绕开入口", Intent: "规避风险", Challenge: "寻找侧路", Cost: "浪费时间", State: "主角仍在入口。",
+			Difficulty: "easy",
+			Outcomes: interactive.TurnCheckOutcomes{
+				CriticalSuccess: interactive.TurnCheckOutcome{Result: "找到捷径。"},
+				Success:         interactive.TurnCheckOutcome{Result: "找到侧路。"},
+				Failure:         interactive.TurnCheckOutcome{Result: "没有找到。"},
+				CriticalFailure: interactive.TurnCheckOutcome{Result: "触发新的禁制。"},
+			},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lockedResolution.ID != resolution.ID || lockedResolution.Result.ID != resolution.Result.ID || lockedResolution.Seed != resolution.Seed {
+		t.Fatalf("repeated turn checks must return the first locked resolution: first=%#v repeated=%#v", resolution, lockedResolution)
+	}
 	submitTestTurnResult(t, conversation, "闯入秘境", "裁定入口禁制")
 	if err := commitInteractiveAssistantForTest(t, conversation, "秘境入口的白光猛然坍缩，主角被禁制震回台阶。", ""); err != nil {
 		t.Fatal(err)

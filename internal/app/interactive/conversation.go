@@ -32,6 +32,7 @@ type Conversation struct {
 	replyTargetChars         int
 	directorTask             string
 	modelContextAppendMu     sync.Mutex
+	turnCheckMu              sync.Mutex
 	mu                       sync.Mutex
 	lastTurn                 *interactive.TurnEvent
 	lastStateReady           bool

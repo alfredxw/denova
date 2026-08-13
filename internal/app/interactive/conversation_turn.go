@@ -22,6 +22,16 @@ func (c *Conversation) PrepareInteractiveTurn(ctx context.Context, request inter
 	if c == nil || c.store == nil {
 		return interactive.RuleResolution{}, fmt.Errorf("互动故事不存在")
 	}
+	c.turnCheckMu.Lock()
+	defer c.turnCheckMu.Unlock()
+	c.mu.Lock()
+	if c.ruleResolution != nil {
+		resolution := *c.ruleResolution
+		c.mu.Unlock()
+		slog.WarnContext(ctx, fmt.Sprintf("[interactive-agent] reused locked turn check story_id=%s branch_id=%s rule_resolution_id=%s", c.storyID, c.branchID, resolution.ID))
+		return resolution, nil
+	}
+	c.mu.Unlock()
 	storyCtx, err := c.storyContextForCycle()
 	if err != nil {
 		return interactive.RuleResolution{}, err

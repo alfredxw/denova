@@ -198,6 +198,34 @@ describe('useAgentChat', () => {
     })
   })
 
+  it('refreshes session summaries after a completed turn', async () => {
+    writingAgentChatClient.fixedSessionId = ''
+    const stale = {
+      id: 'session-current',
+      title: 'current chat',
+      active: true,
+      message_count: 4,
+      created_at: '2026-08-13T01:13:00Z',
+      updated_at: '2026-08-13T01:13:00Z',
+    }
+    const fresh = {
+      ...stale,
+      message_count: 12,
+      updated_at: '2026-08-13T01:17:00Z',
+    }
+    vi.mocked(getSessions).mockResolvedValueOnce([stale]).mockResolvedValue([fresh])
+
+    const { result } = renderHook(() => useAgentChat())
+    await act(async () => {
+      await result.current.loadSessions()
+    })
+    expect(result.current.sessions[0]?.message_count).toBe(4)
+
+    act(() => chatMock.options?.onFinish?.())
+
+    await waitFor(() => expect(result.current.sessions[0]?.message_count).toBe(12))
+  })
+
   it('resolves an exact Session before sending when startup selection is still empty', async () => {
     writingAgentChatClient.fixedSessionId = ''
     vi.mocked(getSessions).mockResolvedValue([

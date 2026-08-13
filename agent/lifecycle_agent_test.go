@@ -710,6 +710,65 @@ func TestToolCanRequestSuccessfulCompletionAtTheCompletedBatchBoundary(t *testin
 	}
 }
 
+func TestToolCompletionPreservesProseFromEarlierToolBoundary(t *testing.T) {
+	prepare, err := InferTool("prepare", "prepare the completed result", func(context.Context, struct{}) (string, error) {
+		return "prepared", nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	submit, err := InferTool("submit", "submit the completed result", func(ctx context.Context, _ struct{}) (string, error) {
+		if !RequestCompletionAfterTools(ctx) {
+			return "", errors.New("run completion controller is unavailable")
+		}
+		return "submitted", nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	model := &lifecycleModel{responses: []*Message{
+		AssistantMessage("streamed narrative", []ToolCall{{
+			ID: "prepare-call", Type: "function", Function: FunctionCall{Name: "prepare", Arguments: `{}`},
+		}}),
+		AssistantMessage("", []ToolCall{{
+			ID: "submit-call", Type: "function", Function: FunctionCall{Name: "submit", Arguments: `{}`},
+		}}),
+	}}
+	descriptor := ToolDescriptor{
+		Source: ToolSourceOther, Execution: ToolExecutionSessionExclusive,
+		MutationScope: ToolMutationSession, PostCheck: ToolPostCheckSessionState,
+		Recovery: ToolRecoveryIdempotent, ResultProjection: ToolResultBoundedModelContext,
+		ResultRetention: ToolResultProtected, Steering: SteeringFinishCurrent, MaxResultBytes: 64 << 10,
+	}
+	owner, err := New(context.Background(), Definition{
+		Name: "submitter", Model: model,
+		Tools: mustStaticToolsIdentified(t, CapabilityIdentity{Kind: "tools.completion-prose-test", Version: 1},
+			ToolDefinition{Tool: prepare, Descriptor: descriptor},
+			ToolDefinition{Tool: submit, Descriptor: descriptor},
+		),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = owner.Close(context.Background()) })
+	run, err := owner.Run(context.Background(), Text("finish"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result, err := run.Wait(context.Background()); err != nil || result.Status != ResultCompleted {
+		t.Fatalf("result=%#v err=%v", result, err)
+	}
+	var final AssistantFinal
+	for event := range run.Events() {
+		if payload, ok := event.Payload.(AssistantFinal); ok {
+			final = payload
+		}
+	}
+	if final.Content != "streamed narrative" {
+		t.Fatalf("final assistant lost the earlier streamed prose: %#v", final)
+	}
+}
+
 type gatedLifecycleModel struct {
 	calls     chan []*Message
 	responses chan *Message

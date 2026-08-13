@@ -760,8 +760,7 @@ loopControlsStopped:
 		return engine.controlledResult(runstate.EngineAborted, prepared, baseTranscript, emit)
 	}
 	if completion.requestedCompletion() && final != nil && len(final.ToolCalls) != 0 {
-		final = final.Clone()
-		final.ToolCalls = nil
+		final = completionFinalAssistant(transcript[len(baseTranscript):], final)
 		transcript = append(transcript, final.Clone())
 	}
 	if final == nil || len(final.ToolCalls) != 0 {
@@ -813,6 +812,28 @@ loopControlsStopped:
 		return runstate.EngineResult{}, err
 	}
 	return runstate.EngineResult{Status: runstate.EngineCompleted}, nil
+}
+
+// completionFinalAssistant turns the tool-call boundary that requested
+// completion into the canonical assistant output. Some provider protocols
+// emit the player-visible prose in an earlier assistant message and then send
+// a tool-only submission message. Preserve that prose instead of publishing an
+// empty final response.
+func completionFinalAssistant(transcript []*Message, final *Message) *Message {
+	completed := final.Clone()
+	completed.ToolCalls = nil
+	if strings.TrimSpace(completed.Content) != "" {
+		return completed
+	}
+	for index := len(transcript) - 1; index >= 0; index-- {
+		candidate := transcript[index]
+		if candidate == nil || candidate.Role != Assistant || strings.TrimSpace(candidate.Content) == "" {
+			continue
+		}
+		completed.Content = candidate.Content
+		return completed
+	}
+	return completed
 }
 
 func (engine *definitionEngine) goalContinuation(

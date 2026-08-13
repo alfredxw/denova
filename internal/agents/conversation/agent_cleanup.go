@@ -56,7 +56,7 @@ func (manager *agentCleanupManager) Identity() agent.CapabilityIdentity { return
 func (manager *agentCleanupManager) Plan(_ context.Context, request agent.CleanupPlanRequest) (agent.CleanupPlan, error) {
 	messages := request.ModelRequest
 	policy := resolveContextPressurePolicy(manager.cfg, manager.agentKind, messages)
-	policy.CompactionEnabled = request.CompactionAvailable
+	policy.CompactionEnabled = policy.CompactionEnabled && request.CompactionAvailable
 	options := request.ModelInspection.Options
 	tools := options.Tools
 	if options.MaxTokens != nil {
@@ -65,7 +65,7 @@ func (manager *agentCleanupManager) Plan(_ context.Context, request agent.Cleanu
 	decision := agentcontext.PlanContextPressure(messages, tools, policy)
 	plan := agent.CleanupPlan{
 		Reason: decision.Reason, Renderer: decision.Cleanup.RendererVersion,
-		FallbackToCompaction: request.CompactionAvailable &&
+		FallbackToCompaction: policy.CompactionEnabled &&
 			(decision.Pressure >= policy.CompactionThreshold ||
 				decision.FullPressure >= policy.CompactionThreshold ||
 				decision.EffectiveTokens+max(0, policy.CompactionPromptTokens)+max(0, policy.CheckpointOutputReserve)+max(0, policy.SafetyMarginTokens) > policy.ContextWindowTokens),
@@ -106,6 +106,7 @@ func (manager *agentCleanupManager) Plan(_ context.Context, request agent.Cleanu
 	if plan.Metrics.EstimatedTokensAfter <= 0 {
 		plan.Metrics.EstimatedTokensAfter = plan.Metrics.EstimatedTokensBefore
 		plan.Metrics.PressureAfter = plan.Metrics.PressureBefore
+		plan.Metrics.BodyPressureAfter = plan.Metrics.BodyPressureBefore
 	}
 	for _, replacement := range decision.Cleanup.Replacements {
 		plan.Replacements = append(plan.Replacements, agent.CleanupReplacement{

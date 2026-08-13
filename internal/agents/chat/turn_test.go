@@ -158,6 +158,8 @@ func TestTurnContextBoundaryEmphasizesCurrentRequest(t *testing.T) {
 	assertContains(t, got, "背景是什么")
 	assertContains(t, got, "历史对话只能辅助理解")
 	assertContains(t, got, "以当前请求为准")
+	assertContains(t, got, "必须在本轮实际调用并基于本轮工具结果作答")
+	assertContains(t, got, "不得声称已调用、已读取、已检索、已验证或已修改")
 	assertContains(t, got, "本轮请求：")
 	assertContains(t, got, "# 本轮用户请求（最高优先级）\n\n帮我写第三章")
 }

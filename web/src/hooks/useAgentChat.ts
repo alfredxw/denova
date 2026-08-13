@@ -82,6 +82,7 @@ export function useAgentChat(options: ChatOptions = {}) {
   const transport = useMemo(() => new AgentChatTransport(client.transportOptions), [client])
   const [runtimeRecoverySignal, setRuntimeRecoverySignal] = useState(0)
   const projectStreamCycleRef = useRef<(operationID: string, cycle?: number) => void>(() => undefined)
+  const refreshSessionsRef = useRef<() => Promise<SessionSummary[]>>(async () => [])
   const messageNormalizerRef = useRef<AgentUIMessageNormalizer | null>(null)
   messageNormalizerRef.current ??= new AgentUIMessageNormalizer()
   const [displayRehydrateRequest, setDisplayRehydrateRequest] = useState<WritingDisplayRehydrateRequest | null>(null)
@@ -141,6 +142,7 @@ export function useAgentChat(options: ChatOptions = {}) {
     },
     onFinish: () => {
       void onAgentFileChange?.()
+      void refreshSessionsRef.current()
     },
   })
   const messages = useMemo(() => (
@@ -163,6 +165,7 @@ export function useAgentChat(options: ChatOptions = {}) {
     sessions,
     setActiveSessionId,
   } = useWritingAgentHistory({ setMessages: setUIMessages, client })
+  refreshSessionsRef.current = loadSessions
   const [references, setReferences] = useState<string[]>([])
   const [loreReferences, setLoreReferences] = useState<string[]>([])
   const [styleScenes, setStyleScenes] = useState<string[]>([])

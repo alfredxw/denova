@@ -37,6 +37,8 @@ interface WorkspaceRefreshOptions {
   clearOnError?: boolean
 }
 
+type SelectFileResult = 'selected' | 'missing' | 'unavailable'
+
 interface UseWorkspaceOptions {
   autoRefreshEnabled?: boolean
 }
@@ -319,31 +321,40 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
   }, [autoRefreshEnabled, fetchBookSnapshot, loading, projectId, workspace, workspaceLoaded])
 
   /** 选中文件并加载内容 */
-  const selectFile = useCallback(async (path: string) => {
+  const selectFile = useCallback(async (path: string): Promise<SelectFileResult> => {
     // Explicit refresh paths use refreshSelectedFile. Re-selecting the active file here
     // only replaces the same document object and wakes the entire writing workbench.
-    if (selectedFileRef.current === path) return
+    if (selectedFileRef.current === path) return 'selected'
     const targetProjectId = projectIdRef.current
     const requestID = selectFileRequestRef.current + 1
     selectFileRequestRef.current = requestID
     if (workspaceFileKind(path) === 'image') {
       setSelectedFile(path)
       setFileDocument({ content: '', revision: '' })
-      return
+      return 'selected'
     }
-    if (!targetProjectId) return
+    if (!targetProjectId) return 'unavailable'
     const { key, generation } = beginFileRead(targetProjectId, path)
     try {
       const data = await readProjectFile(targetProjectId, path)
-      if (requestID !== selectFileRequestRef.current) return
-      if (!isLatestFileRead(key, generation)) return
-      if (projectIdRef.current !== targetProjectId || data.project_id !== targetProjectId) return
+      if (requestID !== selectFileRequestRef.current) return 'unavailable'
+      if (!isLatestFileRead(key, generation)) return 'unavailable'
+      if (projectIdRef.current !== targetProjectId || data.project_id !== targetProjectId) return 'unavailable'
       // React 18 自动批量：两个 setState 合并为一次渲染，确保 MarkdownEditor 拿到一致的 (fileName, content)
       setSelectedFile(path)
       setFileDocument({ content: data.content || '', revision: data.revision || '' })
       recordFileVersion(data.project_id, path, data.revision || '')
+      return 'selected'
     } catch (e) {
+      if (e instanceof APIError && e.status === 404) {
+        console.info('[hooks/useWorkspace.ts] selected project file no longer exists', {
+          projectId: targetProjectId,
+          path,
+        })
+        return 'missing'
+      }
       console.error('[hooks/useWorkspace.ts] failed to read the selected project file', e)
+      return 'unavailable'
     }
   }, [beginFileRead, isLatestFileRead, recordFileVersion, setFileDocument])
 

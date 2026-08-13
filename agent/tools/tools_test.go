@@ -637,7 +637,7 @@ func TestSearchProjectionBudgetsEnvelopeAndRewritesCursor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if envelope.Limits.Returned != visible || state.Offset != 7+visible || !envelope.Limits.Truncated {
+	if envelope.Limits.Returned != visible || envelope.Limits.Unit != "output_entries" || state.Offset != 7+visible || !envelope.Limits.Truncated {
 		t.Fatalf("search envelope = %#v cursor=%#v visible=%d", envelope, state, visible)
 	}
 }

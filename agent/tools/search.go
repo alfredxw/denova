@@ -119,9 +119,9 @@ func Grep(searcher GrepSearcher, options ...DefinitionOption) (agent.ToolDefinit
 	}
 	descriptor := readDescriptor(options...)
 	descriptor.ResultRecoveryKind = agent.ToolResultRecoveryRerun
-	tool, err := agent.InferTool("grep", `Search workspace text with one controlled rg command or an rg-only pipeline. Commands never run through a shell. Safe ripgrep search flags and native PATTERN [PATH ...] or repeated -e/--regexp syntax are supported. The first stage searches workspace-relative paths; each later rg stage filters only the preceding stdout. Redirects, substitutions, non-rg pipeline stages, external configuration, process-spawning flags, and paths outside the workspace are rejected. Results are deterministic and bounded; repeat the identical command with next_cursor to continue after a partial result.
+	tool, err := agent.InferTool("grep", `Search workspace text with one controlled rg command or an rg-only pipeline. Commands never run through a shell. Safe ripgrep search flags and native PATTERN [PATH ...] or repeated -e/--regexp syntax are supported. The first stage searches workspace-relative paths; each later rg stage filters only the preceding stdout. Redirects, substitutions, non-rg pipeline stages, external configuration, process-spawning flags, and paths outside the workspace are rejected. Results are deterministic and bounded; repeat the identical command with next_cursor to continue after a partial result. The limits.returned field counts returned output entries, not distinct files; use -l/--files-with-matches when an exact file list or file count is required.
 
-使用一条受控的 rg 命令或仅由 rg 组成的管道搜索工作区文本，命令绝不会经过 shell。支持安全的 ripgrep 参数，以及原生 PATTERN [PATH ...] 和重复 -e/--regexp 语法。第一段搜索工作区相对路径，后续每段 rg 只能过滤上一段的标准输出。重定向、替换、非 rg 管道段、外部配置、可启动进程的参数和工作区外路径都会被拒绝。结果稳定且有界；结果为 partial 时，用相同 command 携带 next_cursor 继续。`, func(ctx context.Context, input grepInput) (agent.ToolResult, error) {
+使用一条受控的 rg 命令或仅由 rg 组成的管道搜索工作区文本，命令绝不会经过 shell。支持安全的 ripgrep 参数，以及原生 PATTERN [PATH ...] 和重复 -e/--regexp 语法。第一段搜索工作区相对路径，后续每段 rg 只能过滤上一段的标准输出。重定向、替换、非 rg 管道段、外部配置、可启动进程的参数和工作区外路径都会被拒绝。结果稳定且有界；结果为 partial 时，用相同 command 携带 next_cursor 继续。limits.returned 表示返回的输出条目数，不是去重文件数；需要精确文件列表或数量时必须使用 -l/--files-with-matches。`, func(ctx context.Context, input grepInput) (agent.ToolResult, error) {
 		request := normalizeGrepRequest(GrepRequest{Command: input.Command, Cursor: input.Cursor})
 		result, err := searcher.Grep(ctx, request)
 		if err != nil {
@@ -160,6 +160,7 @@ type searchSource struct {
 
 type searchLimits struct {
 	Returned   int    `json:"returned"`
+	Unit       string `json:"unit"`
 	Truncated  bool   `json:"truncated"`
 	NextCursor string `json:"next_cursor,omitempty"`
 }
@@ -188,7 +189,11 @@ func searchToolResult(
 			nextCursor = ""
 		}
 		status := "success"
-		limits := searchLimits{Returned: visible, Truncated: truncated, NextCursor: nextCursor}
+		unit := "output_entries"
+		if kind == "glob" {
+			unit = "paths"
+		}
+		limits := searchLimits{Returned: visible, Unit: unit, Truncated: truncated, NextCursor: nextCursor}
 		var recovery *searchRecovery
 		if truncated {
 			status = "partial"
