@@ -13,8 +13,12 @@ type goalToolInput struct {
 	Report           string           `json:"report,omitempty" jsonschema:"maxLength=1048576"`
 }
 
+// StandardGoalToolName is the model-visible name of the Goal tool injected by
+// the Definition engine.
+const StandardGoalToolName = "goal"
+
 func standardGoalTool(manager GoalManager, session SessionView, run RunView) (ToolDefinition, error) {
-	tool, err := InferTool("goal", "Complete the exact active Session goal only after the entire objective is achieved, or block it only when progress genuinely requires user input or an external state change. Never use it for an intermediate milestone. Goal creation, pause, resume, and clear remain host-owned.", func(ctx context.Context, input goalToolInput) (ToolResult, error) {
+	tool, err := InferTool(StandardGoalToolName, "Complete the exact active Session goal only after the entire objective is achieved, or block it only when progress genuinely requires user input or an external state change. Never use it for an intermediate milestone. Goal creation, pause, resume, and clear remain host-owned.", func(ctx context.Context, input goalToolInput) (ToolResult, error) {
 		if !IsRootInvocation(ctx) {
 			return ToolResult{}, errors.New("Goal tool is available only in a root Agent invocation")
 		}
@@ -49,10 +53,19 @@ func standardGoalTool(manager GoalManager, session SessionView, run RunView) (To
 	if err != nil {
 		return ToolDefinition{}, err
 	}
-	return ToolDefinition{Tool: tool, Descriptor: ToolDescriptor{
-		Source: ToolSourceWrite, Execution: ToolExecutionSessionExclusive,
+	return ToolDefinition{Tool: tool, Descriptor: StandardGoalToolDescriptor()}, nil
+}
+
+// StandardGoalToolDescriptor is the stable execution contract for the Goal
+// tool injected by the Definition engine after ordinary tools are prepared.
+// Product registries can use it to validate that late injection without
+// duplicating the contract.
+func StandardGoalToolDescriptor() ToolDescriptor {
+	return ToolDescriptor{
+		Source: ToolSourceWrite, Capability: "goal", Execution: ToolExecutionSessionExclusive,
 		MutationScope: ToolMutationSession, PostCheck: ToolPostCheckSessionState,
 		Recovery: ToolRecoveryIdempotent, ResultProjection: ToolResultBoundedModelContext,
 		ResultRetention: ToolResultProtected, Steering: SteeringFinishCurrent, MaxResultBytes: 128 << 10,
-	}}, nil
+		Presentation: UniformToolPresentation(ToolPresentationGeneric),
+	}
 }

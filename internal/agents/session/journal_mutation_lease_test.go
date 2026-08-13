@@ -261,7 +261,7 @@ func TestCanonicalRefreshKeepsLocalDisplayTailPending(t *testing.T) {
 	if err := remoteWriter.UpdateDisplayToolStatus("call-1", "read", "running"); err != nil {
 		t.Fatal(err)
 	}
-	if err := localWriter.UpdateDisplayToolResult("call-1", "read", "success", "ok"); err != nil {
+	if err := localWriter.UpdateDisplayToolResult("call-1", "read", "success", "ok", nil); err != nil {
 		t.Fatal(err)
 	}
 

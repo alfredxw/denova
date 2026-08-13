@@ -52,7 +52,7 @@ const agents = {
   'agents.tool.todo.title': 'Task List',
   'agents.tool.todo.subtitle': 'todo',
   'agents.tool.goal.title': 'Goal Completion',
-  'agents.tool.goal.subtitle': 'goal_finish',
+  'agents.tool.goal.subtitle': 'goal',
   'agents.tool.delegation.title': 'Task Delegation',
   'agents.tool.delegation.subtitle': 'task',
   'agents.tool.configRead.title': 'Read Configuration',

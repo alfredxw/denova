@@ -10,6 +10,7 @@ import type { AskInteractionResolver } from './AskInteractionCard'
 import { AgentSourceBadge } from './message-source-badge'
 import { ToolStatusIcon } from './message-tool-status'
 import { toolDisplayName } from './tool-display-name'
+import { toolPresentationKind } from '@/lib/tool-presentation'
 
 export function ToolExecutionBlock({ message, onResolve, onLayoutChange }: { message: ToolCallChatMessage; onResolve?: AskInteractionResolver; onLayoutChange?: (element: HTMLElement) => void }) {
   const { t } = useTranslation()
@@ -22,7 +23,7 @@ export function ToolExecutionBlock({ message, onResolve, onLayoutChange }: { mes
   const args = formatMaybeJSON(rawArgs)
   const status = message.status || 'running'
   const result = message.result || ''
-  const isDelegationTool = name === 'task'
+  const isDelegationTool = toolPresentationKind(message, 'call') === 'delegation'
   const taskSubAgent = isDelegationTool ? (message.subagent_type || parseTaskSubagentType(rawArgs)) : ''
   const isChapterBodyHidden = message.sse_display_notice === 'chapter_body_hidden'
   const isDirectorPlanHidden = isChapterBodyHidden && message.agent_kind === 'interactive_director'

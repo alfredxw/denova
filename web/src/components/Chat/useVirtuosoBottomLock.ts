@@ -16,6 +16,8 @@ export interface ScrollElementBottomIntoViewOptions {
 
 interface VirtuosoBottomLockOptions {
   resetKey?: string
+  /** Initial position applied only when the list is mounted or reset. */
+  resetPosition?: 'start' | 'end'
   itemCount: number
   autoFollowEnabled: boolean
   /** Persistent AgentChat tabs stay mounted under `display: none`; hidden geometry is not measurable. */
@@ -26,7 +28,7 @@ interface VirtuosoBottomLockOptions {
   resolveScroller?: () => HTMLElement | null
 }
 
-export function useVirtuosoBottomLock({ resetKey, itemCount, autoFollowEnabled, visible = true, bottomInsetPx, awayFromBottomThreshold = VIRTUOSO_AWAY_FROM_BOTTOM_THRESHOLD, resolveScroller }: VirtuosoBottomLockOptions) {
+export function useVirtuosoBottomLock({ resetKey, resetPosition = 'end', itemCount, autoFollowEnabled, visible = true, bottomInsetPx, awayFromBottomThreshold = VIRTUOSO_AWAY_FROM_BOTTOM_THRESHOLD, resolveScroller }: VirtuosoBottomLockOptions) {
   const virtuosoRef = useRef<VirtuosoHandle | null>(null)
   const scrollerElementRef = useRef<HTMLElement | null>(null)
   const viewportScrollTopRef = useRef<number | null>(null)
@@ -38,9 +40,11 @@ export function useVirtuosoBottomLock({ resetKey, itemCount, autoFollowEnabled, 
   const previousAutoFollowEnabledRef = useRef(autoFollowEnabled)
   const previousVisibleRef = useRef(visible)
   const visibleRef = useRef(visible)
+  const resetPositionRef = useRef(resetPosition)
   const visibilitySettlingRef = useRef(!visible)
   autoFollowEnabledRef.current = autoFollowEnabled
   visibleRef.current = visible
+  resetPositionRef.current = resetPosition
   const schedulerRef = useRef(createDeferredBottomScrollScheduler())
   const scheduleScrollRef = useRef<() => void>(() => {})
   const [isAwayFromBottom, setIsAwayFromBottom] = useState(false)
@@ -128,6 +132,24 @@ export function useVirtuosoBottomLock({ resetKey, itemCount, autoFollowEnabled, 
     }
   }, [currentScrollerElement, itemCount, scrollLatestIntoView, updateAwayFromBottom])
 
+  const scrollToStartNow = useCallback(() => {
+    lockedRef.current = false
+    if (itemCount <= 0) {
+      setIsAwayFromBottom(false)
+      return
+    }
+    if (virtuosoRef.current) {
+      virtuosoRef.current.scrollToIndex({ index: 0, align: 'start', behavior: 'auto' })
+      return
+    }
+    const element = currentScrollerElement()
+    if (element) {
+      element.scrollTop = 0
+      viewportScrollTopRef.current = 0
+      updateAwayFromBottom(element)
+    }
+  }, [currentScrollerElement, itemCount, updateAwayFromBottom])
+
   const syncIdleBottomLayout = useCallback(() => {
     if (
       autoFollowEnabledRef.current ||
@@ -183,6 +205,12 @@ export function useVirtuosoBottomLock({ resetKey, itemCount, autoFollowEnabled, 
     lockedRef.current = true
     schedulerRef.current.schedule(scrollToBottomNow, () => lockedRef.current)
   }, [resetAfterContentInteraction, scrollToBottomNow])
+
+  const scrollToStart = useCallback(() => {
+    resetAfterContentInteraction()
+    lockedRef.current = false
+    schedulerRef.current.schedule(scrollToStartNow, () => resetPositionRef.current === 'start')
+  }, [resetAfterContentInteraction, scrollToStartNow])
 
   const scrollElementIntoView = useCallback((element: HTMLElement) => {
     resetAfterContentInteraction()
@@ -333,8 +361,8 @@ export function useVirtuosoBottomLock({ resetKey, itemCount, autoFollowEnabled, 
   useLayoutEffect(() => {
     // Resetting a list is an explicit one-shot navigation and remains separate
     // from automatic following, which is active only while output is streaming.
-    scheduleScrollRef.current = scrollToBottom
-  }, [scrollToBottom])
+    scheduleScrollRef.current = resetPosition === 'start' ? scrollToStart : scrollToBottom
+  }, [resetPosition, scrollToBottom, scrollToStart])
 
   useLayoutEffect(() => {
     const wasEnabled = previousAutoFollowEnabledRef.current
@@ -394,7 +422,7 @@ export function useVirtuosoBottomLock({ resetKey, itemCount, autoFollowEnabled, 
 
   useLayoutEffect(() => {
     resetAfterContentInteraction()
-    lockedRef.current = true
+    lockedRef.current = resetPositionRef.current === 'end'
     if (visibleRef.current) {
       visibilitySettlingRef.current = false
       scheduleScrollRef.current()

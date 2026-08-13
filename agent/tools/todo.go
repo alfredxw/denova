@@ -166,6 +166,7 @@ func Todo(stores ...TodoStore) (agent.Toolset, error) {
 	descriptor.Execution = agent.ToolExecutionSessionExclusive
 	descriptor.PostCheck = agent.ToolPostCheckSessionState
 	descriptor.Recovery = agent.ToolRecoveryIdempotent
+	descriptor.Presentation = agent.UniformToolPresentation(agent.ToolPresentationTodo)
 	identity := agent.CapabilityIdentity{Kind: "tools.todo.session", Version: 2}
 	if store != nil {
 		identity = toolsetIdentity("tools.todo.custom", storeIdentity)

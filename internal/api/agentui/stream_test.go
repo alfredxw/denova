@@ -24,7 +24,7 @@ func TestStreamEncoderMapsAgentEventsToUIStream(t *testing.T) {
 			"turn_version_index": 0,
 		}},
 		{Type: "chunk", Data: map[string]any{"content": "正文", "run_id": "run-1"}},
-		{Type: "tool_call", Data: map[string]any{"id": "tool-1", "name": "read", "args": `{"path"`}},
+		{Type: "tool_call", Data: map[string]any{"id": "tool-1", "name": "read", "args": `{"path"`, "tool_presentation": map[string]any{"call": "search", "result": "search"}}},
 		{Type: "tool_args_delta", Data: map[string]any{"id": "tool-1", "delta": `:"a.md"}`}},
 		{Type: "tool_started", Data: map[string]any{"id": "tool-1", "name": "read"}},
 		{Type: "tool_result", Data: map[string]any{"id": "tool-1", "name": "read", "content": "ok"}},
@@ -41,9 +41,10 @@ func TestStreamEncoderMapsAgentEventsToUIStream(t *testing.T) {
 		{Type: "proposed_plan", Data: map[string]any{"id": "plan-1", "content": "执行计划"}},
 		{Type: "rule_roll", Data: map[string]any{"id": "roll-1", "rule_roll": map[string]any{"label": "检定"}}},
 		{Type: "tool_result", Data: map[string]any{
-			"id":      "tool-2",
-			"name":    "generate_interactive_image",
-			"content": `{"schema":"interactive_image.v1"}`,
+			"id":                "tool-2",
+			"name":              "generate_interactive_image",
+			"content":           `{"schema":"interactive_image.v1"}`,
+			"tool_presentation": map[string]any{"call": "image", "result": "interactive_media"},
 			"interactive_image": map[string]any{
 				"schema":     "interactive_image.v1",
 				"image_path": "assets/interactive/images/scene.png",
@@ -97,14 +98,33 @@ func TestStreamEncoderMapsAgentEventsToUIStream(t *testing.T) {
 	}
 
 	assertChunk(t, chunks, DataTypeInteractiveImage, "id", "tool-2")
+	assertChunkAgentPresentation(t, chunks, "tool-output-available", "image", "interactive_media")
+	assertChunkAgentPresentation(t, chunks, DataTypeInteractiveImage, "image", "interactive_media")
 	assertChunk(t, chunks, DataTypeWorkspaceChange, "id", "tool-change-1")
 	assertChunk(t, chunks, DataTypeRuleRoll, "id", "roll-1")
 	assertChunk(t, chunks, DataTypeAsk, "id", "ask-1")
 	assertChunk(t, chunks, "tool-input-start", "toolName", "read")
+	assertChunkAgentPresentation(t, chunks, "tool-input-start", "search", "search")
 	assertChunk(t, chunks, "tool-input-available", "toolCallId", "tool-1")
 	assertStreamingToolInput(t, chunks, "tool-1", `{"path":"a.md"}`)
 	assertChunk(t, chunks, "error", "errorText", "失败 · 日志 ID / Log ID: 0198-stream-request")
 	assertStartMetadata(t, chunks[0])
+}
+
+func assertChunkAgentPresentation(t *testing.T, chunks []map[string]any, chunkType, call, result string) {
+	t.Helper()
+	for _, chunk := range chunks {
+		if chunk["type"] != chunkType {
+			continue
+		}
+		provider, _ := chunk["providerMetadata"].(map[string]any)
+		agentMeta, _ := provider["agent"].(map[string]any)
+		presentation, _ := agentMeta["tool_presentation"].(map[string]any)
+		if presentation["call"] == call && presentation["result"] == result {
+			return
+		}
+	}
+	t.Fatalf("missing chunk type=%s tool presentation call=%s result=%s in %#v", chunkType, call, result, chunks)
 }
 
 func TestStreamEncoderUsesPersistedDisplaySegmentIDs(t *testing.T) {

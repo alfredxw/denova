@@ -26,6 +26,7 @@ import {
 } from './message-metadata'
 import { ToolExecutionBlock, ToolResultBlock } from './message-tool'
 import { TodoListBlock } from './message-todo'
+import { toolCallRenderer, toolResultRenderer } from '@/lib/tool-presentation'
 
 interface MessageItemProps {
   projectId?: string
@@ -143,21 +144,34 @@ export const MessageItem = memo(function MessageItem({ projectId = '', message, 
     case 'thinking':
       return <ThinkingBlock message={message} content={content} streaming={message.streaming === true} />
 
-    case 'tool_call':
-      if ((message.name || '') === 'generate_interactive_image') {
+    case 'tool_call': {
+      // A completed AI SDK dynamic-tool part contains both call and result
+      // phases. Result refinement must win for interactive media when no richer
+      // data part is available (for example after reopening Writing history).
+      if (message.status !== 'running' && toolResultRenderer(message) === 'interactive_media') {
         return <InteractiveImageBlock message={message} projectId={projectId} />
       }
-      if (['generate_image', 'generate_chapter_illustration'].includes(message.name || '') && message.illustration) {
-        return <ChapterIllustrationBlock message={message} projectId={projectId} onInsert={onInsertIllustration} />
+      const renderer = toolCallRenderer(message)
+      switch (renderer) {
+        case 'interactive_media':
+          return <InteractiveImageBlock message={message} projectId={projectId} />
+        case 'image':
+          return message.illustration
+            ? <ChapterIllustrationBlock message={message} projectId={projectId} onInsert={onInsertIllustration} />
+            : <ToolExecutionBlock message={message} onResolve={onResolveAsk} onLayoutChange={onInteractiveCardLayoutChange} />
+        case 'todo':
+          return <TodoListBlock message={message} />
+        case 'interaction':
+          if (message.ask?.kind === 'tool_approval') return <ToolApprovalCard message={message} onResolve={onResolveAsk} />
+          return <AskInteractionCard message={message} onResolve={onResolveAsk} />
+        case 'generic':
+          return <ToolExecutionBlock message={message} onResolve={onResolveAsk} onLayoutChange={onInteractiveCardLayoutChange} />
+        default: {
+          const exhaustive: never = renderer
+          return exhaustive
+        }
       }
-      if ((message.name || '') === 'todo') {
-        return <TodoListBlock message={message} />
-      }
-      if ((message.name || '') === 'ask') {
-        if (message.ask?.kind === 'tool_approval') return <ToolApprovalCard message={message} onResolve={onResolveAsk} />
-        return <AskInteractionCard message={message} onResolve={onResolveAsk} />
-      }
-      return <ToolExecutionBlock message={message} onResolve={onResolveAsk} onLayoutChange={onInteractiveCardLayoutChange} />
+    }
 
     case 'ask':
       if (message.ask?.kind === 'tool_approval') return <ToolApprovalCard message={message} onResolve={onResolveAsk} />
@@ -166,14 +180,23 @@ export const MessageItem = memo(function MessageItem({ projectId = '', message, 
     case 'rule_roll':
       return <RuleRollBlock message={message} />
 
-    case 'tool_result':
-      if ((message.name || '') === 'generate_interactive_image' || message.interactive_image) {
-        return <InteractiveImageBlock message={message} projectId={projectId} />
+    case 'tool_result': {
+      const renderer = toolResultRenderer(message)
+      switch (renderer) {
+        case 'interactive_media':
+          return <InteractiveImageBlock message={message} projectId={projectId} />
+        case 'image':
+          return message.illustration
+            ? <ChapterIllustrationBlock message={message} projectId={projectId} onInsert={onInsertIllustration} />
+            : <ToolResultBlock content={content} />
+        case 'generic':
+          return <ToolResultBlock content={content} />
+        default: {
+          const exhaustive: never = renderer
+          return exhaustive
+        }
       }
-      if (message.illustration) {
-        return <ChapterIllustrationBlock message={message} projectId={projectId} onInsert={onInsertIllustration} />
-      }
-      return <ToolResultBlock content={content} />
+    }
 
     case 'context_compaction':
       return <ContextCompactionBlock message={message} />

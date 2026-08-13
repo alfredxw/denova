@@ -1,5 +1,6 @@
 import type { AgentMessageMetadata, AgentUIMessage } from '@/lib/agent-ui'
 import { agentMessageDisplayText, createAgentReasoningMessage, createAgentTextMessage } from '@/lib/agent-ui-message'
+import { readToolPresentation } from '@/lib/tool-presentation'
 
 export type BufferedLiveMessage = {
   id?: string
@@ -66,6 +67,7 @@ export function streamMetadataFromPayload(payload: Record<string, unknown>): Age
     subagent: readStreamBool(payload.subagent),
     subagent_session_id: typeof payload.subagent_session_id === 'string' ? payload.subagent_session_id : undefined,
     subagent_type: typeof payload.subagent_type === 'string' ? payload.subagent_type : undefined,
+    tool_presentation: readToolPresentation(payload.tool_presentation),
   }
 }
 

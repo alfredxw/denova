@@ -35,6 +35,7 @@ export function displayEventToAgentUIMessage(event: TurnDisplayEvent, fallbackID
     sse_hidden_reason: event.sse_hidden_reason,
     sse_display_notice: event.sse_display_notice,
     sse_generated_chars: event.sse_generated_chars,
+    tool_presentation: event.tool_presentation,
   }
   switch (event.role) {
     case 'thinking':

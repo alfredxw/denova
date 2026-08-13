@@ -570,6 +570,19 @@ function resolvedTool(
   availableToSubAgents = true,
   availability: ResolvedAgentToolCapability['availability'] = allowed ? 'available' : 'unavailable',
 ): ResolvedAgentToolCapability {
+  const descriptor: ResolvedAgentToolCapability['descriptor'] = {
+    source: 'read',
+    execution: 'parallel_read',
+    mutation_scope: 'none',
+    post_check: 'none',
+    recovery: 'read_only',
+    result_projection: 'bounded_model_context',
+    result_retention: 'receipt',
+    steering: 'finish_current',
+    max_result_bytes: 128 << 10,
+    call_presentation: 'generic',
+    result_presentation: 'generic',
+  }
   return {
     capability,
     title_key: titleKey,
@@ -579,14 +592,7 @@ function resolvedTool(
     availability,
     unavailable_reason_key: availability === 'unavailable' ? 'agents.tool.unavailable.disabledByPolicy' : undefined,
     available_to_subagents: availableToSubAgents,
-    descriptor: {
-      execution: 'parallel_read',
-      mutation_scope: 'none',
-      post_check: 'none',
-      recovery: 'read_only',
-      result_projection: 'bounded_model_context',
-      result_retention: 'receipt',
-      steering: 'finish_current',
-    },
+    descriptor,
+    tool_descriptors: Object.fromEntries(toolNames.map((name) => [name, descriptor])),
   }
 }

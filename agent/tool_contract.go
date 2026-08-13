@@ -105,8 +105,71 @@ const (
 	SteeringInterruptibleWait SteeringPolicy = "interruptible_wait"
 )
 
-// ToolDescriptor is the complete execution, recovery, and context contract for
-// one model-visible tool.
+// ToolPresentationKind is a product-neutral render intent for one tool call
+// or result. It never enters model context and deliberately describes semantic
+// shape rather than a concrete frontend component.
+type ToolPresentationKind string
+
+const (
+	ToolPresentationGeneric          ToolPresentationKind = "generic"
+	ToolPresentationFile             ToolPresentationKind = "file"
+	ToolPresentationSearch           ToolPresentationKind = "search"
+	ToolPresentationTerminal         ToolPresentationKind = "terminal"
+	ToolPresentationWeb              ToolPresentationKind = "web"
+	ToolPresentationBrowser          ToolPresentationKind = "browser"
+	ToolPresentationImage            ToolPresentationKind = "image"
+	ToolPresentationInteractiveMedia ToolPresentationKind = "interactive_media"
+	ToolPresentationTodo             ToolPresentationKind = "todo"
+	ToolPresentationInteraction      ToolPresentationKind = "interaction"
+	ToolPresentationDelegation       ToolPresentationKind = "delegation"
+)
+
+// ToolPresentation keeps call and result rendering colocated with the tool
+// contract. The host remains responsible for localized copy, visual styling,
+// and the concrete renderer selected for each kind.
+type ToolPresentation struct {
+	Call   ToolPresentationKind `json:"call"`
+	Result ToolPresentationKind `json:"result"`
+}
+
+// UniformToolPresentation declares the same semantic presentation for a call
+// and its result.
+func UniformToolPresentation(kind ToolPresentationKind) ToolPresentation {
+	return ToolPresentation{Call: kind, Result: kind}
+}
+
+// Normalize fills the generic default and rejects unknown render intents.
+// An omitted result inherits the call kind so partially authored descriptors
+// still have one deterministic, repairable outcome.
+func (presentation ToolPresentation) Normalize() (ToolPresentation, error) {
+	if presentation.Call == "" {
+		presentation.Call = ToolPresentationGeneric
+	}
+	if presentation.Result == "" {
+		presentation.Result = presentation.Call
+	}
+	if !validToolPresentationKind(presentation.Call) {
+		return ToolPresentation{}, fmt.Errorf("invalid tool call presentation %q", presentation.Call)
+	}
+	if !validToolPresentationKind(presentation.Result) {
+		return ToolPresentation{}, fmt.Errorf("invalid tool result presentation %q", presentation.Result)
+	}
+	return presentation, nil
+}
+
+func validToolPresentationKind(kind ToolPresentationKind) bool {
+	switch kind {
+	case ToolPresentationGeneric, ToolPresentationFile, ToolPresentationSearch, ToolPresentationTerminal,
+		ToolPresentationWeb, ToolPresentationBrowser, ToolPresentationImage, ToolPresentationInteractiveMedia, ToolPresentationTodo,
+		ToolPresentationInteraction, ToolPresentationDelegation:
+		return true
+	default:
+		return false
+	}
+}
+
+// ToolDescriptor is the complete execution, recovery, context, and display
+// contract for one model-visible tool.
 type ToolDescriptor struct {
 	Source        ToolSource          `json:"source"`
 	Capability    string              `json:"capability,omitempty"`
@@ -122,10 +185,17 @@ type ToolDescriptor struct {
 	ResultRetention    ToolResultRetentionMode `json:"result_retention"`
 	Steering           SteeringPolicy          `json:"steering"`
 	MaxResultBytes     int                     `json:"max_result_bytes"`
+	// Presentation is display-only. Excluding it from descriptor JSON keeps
+	// frontend-only changes out of model-prefix and recovery fingerprints;
+	// lifecycle events persist it through their dedicated metadata envelope.
+	Presentation ToolPresentation `json:"-"`
 }
 
 // Validate rejects incomplete descriptors and inconsistent safety claims.
 func (descriptor ToolDescriptor) Validate() error {
+	if _, err := descriptor.Presentation.Normalize(); err != nil {
+		return err
+	}
 	if !validToolSource(descriptor.Source) {
 		return fmt.Errorf("invalid tool source %q", descriptor.Source)
 	}
@@ -307,7 +377,12 @@ func (definition ToolDefinition) snapshot(ctx context.Context) (ToolDefinitionSn
 	if err := validateToolSchema(schema); err != nil {
 		return ToolDefinitionSnapshot{}, fmt.Errorf("tool %q schema: %w", info.Name, err)
 	}
-	return ToolDefinitionSnapshot{Info: cloneToolInfo(info), Descriptor: definition.Descriptor}, nil
+	descriptor := definition.Descriptor
+	descriptor.Presentation, err = descriptor.Presentation.Normalize()
+	if err != nil {
+		return ToolDefinitionSnapshot{}, fmt.Errorf("tool %q presentation: %w", info.Name, err)
+	}
+	return ToolDefinitionSnapshot{Info: cloneToolInfo(info), Descriptor: descriptor}, nil
 }
 
 // ToolDefinitionSnapshot contains immutable call metadata without exposing the

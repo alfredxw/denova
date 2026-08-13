@@ -3,6 +3,8 @@ package interactive
 import (
 	"sync"
 
+	agent "github.com/alfredxw/denova/agent"
+
 	"denova/internal/agents/conversation"
 	"denova/internal/agents/run"
 	"denova/internal/agents/session"
@@ -66,7 +68,7 @@ type displayToolArgsAppender interface {
 }
 
 type displayToolResultUpdater interface {
-	UpdateDisplayToolResult(id, name, status, result string) error
+	UpdateDisplayToolResult(id, name, status, result string, presentation *agent.ToolPresentation) error
 }
 
 type displayEventContentAppender interface {

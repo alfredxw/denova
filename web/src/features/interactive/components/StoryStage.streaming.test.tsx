@@ -235,7 +235,7 @@ describe('StoryStage streaming rendering', () => {
 
       act(() => {
         stream.enqueue({ event: 'interactive_content_reclassified', data: JSON.stringify({ content: '我先检查资料，再开始写正文。' }) })
-        stream.enqueue({ event: 'tool_call', data: JSON.stringify({ id: 'call-lore', name: 'list_lore_items', args: '{}' }) })
+        stream.enqueue({ event: 'tool_call', data: JSON.stringify({ id: 'call-lore', name: 'list_lore_items', args: '{}', tool_presentation: { call: 'generic', result: 'generic' } }) })
       })
 
       const trace = await screen.findByRole('button', { name: /正在执行.*1 次工具调用/ })
@@ -277,19 +277,19 @@ describe('StoryStage streaming rendering', () => {
 
       act(() => {
         stream.enqueue({ event: 'thinking', data: JSON.stringify({ content: '正在检查开场资料。' }) })
-        stream.enqueue({ event: 'tool_call', data: JSON.stringify({ id: 'call-lore', name: 'list_lore_items', args: '{}' }) })
+        stream.enqueue({ event: 'tool_call', data: JSON.stringify({ id: 'call-lore', name: 'list_lore_items', args: '{}', tool_presentation: { call: 'generic', result: 'generic' } }) })
       })
 
       expect(await screen.findByRole('button', { name: /正在执行.*1 次工具调用/ })).toBeInTheDocument()
       expect(screen.getByText('正在检查开场资料。')).toBeInTheDocument()
-      expect(screen.getByText('list_lore_items')).toBeInTheDocument()
+      expect(screen.getByText('浏览资料库')).toBeInTheDocument()
 
       act(() => {
         stream.enqueue({ event: 'tool_result', data: JSON.stringify({ id: 'call-lore', name: 'list_lore_items', content: '找到 3 条资料' }) })
       })
 
       await waitFor(() => expect(screen.getByText('正在检查开场资料。')).toBeInTheDocument())
-      expect(screen.getByText('list_lore_items')).toBeInTheDocument()
+      expect(screen.getByText('浏览资料库')).toBeInTheDocument()
 
 		act(() => {
         stream.enqueue({ event: 'chunk', data: JSON.stringify({ content: '门外有灯。' }) })
@@ -303,11 +303,11 @@ describe('StoryStage streaming rendering', () => {
 
       await waitFor(() => expect(handleDone).toHaveBeenCalled())
       await waitFor(() => expect(screen.queryByText('正在检查开场资料。')).not.toBeInTheDocument())
-      expect(screen.queryByText('list_lore_items')).not.toBeInTheDocument()
+      expect(screen.queryByText('浏览资料库')).not.toBeInTheDocument()
 
       await user.click(screen.getByRole('button', { name: /执行过程.*1 次工具调用/ }))
       expect(screen.getByText('正在检查开场资料。')).toBeInTheDocument()
-      expect(screen.getByText('list_lore_items')).toBeInTheDocument()
+      expect(screen.getByText('浏览资料库')).toBeInTheDocument()
     } finally {
       refresh.resolve(undefined)
       stream.close()
@@ -337,6 +337,7 @@ describe('StoryStage streaming rendering', () => {
           content: 'list_lore_items',
           status: 'success',
           agent_kind: 'interactive_story',
+          tool_presentation: { call: 'generic', result: 'generic' },
         },
         {
           id: 'director-thinking',
@@ -375,7 +376,7 @@ describe('StoryStage streaming rendering', () => {
     const traceButton = screen.getByRole('button', { name: /执行过程.*1 次工具调用/ })
     await user.click(traceButton)
     expect(screen.getByText('正在判断石门后的威胁。')).toBeInTheDocument()
-    expect(screen.getByText('list_lore_items')).toBeInTheDocument()
+    expect(screen.getByText('浏览资料库')).toBeInTheDocument()
     expect(screen.queryByText('正在重新安排后续分支。')).not.toBeInTheDocument()
     expect(screen.queryByText('write')).not.toBeInTheDocument()
   })

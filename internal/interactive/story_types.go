@@ -283,26 +283,27 @@ const DisplayEventRoleNarrative = "narrative"
 // Role 为 narrative 的事件是正文位置锚点：正文本身不进入 DisplayEvents，
 // 锚点只标记正文在事件流中的相对位置，供前端按真实顺序穿插渲染。
 type DisplayEvent struct {
-	ID                string   `json:"id,omitempty"`
-	Role              string   `json:"role"`
-	Content           string   `json:"content,omitempty"`
-	Name              string   `json:"name,omitempty"`
-	Args              string   `json:"args,omitempty"`
-	Status            string   `json:"status,omitempty"`
-	Result            string   `json:"result,omitempty"`
-	CreatedAt         string   `json:"created_at,omitempty"`
-	AgentKind         string   `json:"agent_kind,omitempty"`
-	AgentName         string   `json:"agent_name,omitempty"`
-	RootAgentName     string   `json:"root_agent_name,omitempty"`
-	RunPath           []string `json:"run_path,omitempty"`
-	SubAgent          bool     `json:"subagent,omitempty"`
-	RunID             string   `json:"run_id,omitempty"`
-	SubAgentSessionID string   `json:"subagent_session_id,omitempty"`
-	SubAgentType      string   `json:"subagent_type,omitempty"`
-	SSEHiddenFields   []string `json:"sse_hidden_fields,omitempty"`
-	SSEHiddenReason   string   `json:"sse_hidden_reason,omitempty"`
-	SSEDisplayNotice  string   `json:"sse_display_notice,omitempty"`
-	SSEGeneratedChars int      `json:"sse_generated_chars,omitempty"`
+	ID                string                  `json:"id,omitempty"`
+	Role              string                  `json:"role"`
+	Content           string                  `json:"content,omitempty"`
+	Name              string                  `json:"name,omitempty"`
+	Args              string                  `json:"args,omitempty"`
+	Status            string                  `json:"status,omitempty"`
+	Result            string                  `json:"result,omitempty"`
+	ToolPresentation  *agent.ToolPresentation `json:"tool_presentation,omitempty"`
+	CreatedAt         string                  `json:"created_at,omitempty"`
+	AgentKind         string                  `json:"agent_kind,omitempty"`
+	AgentName         string                  `json:"agent_name,omitempty"`
+	RootAgentName     string                  `json:"root_agent_name,omitempty"`
+	RunPath           []string                `json:"run_path,omitempty"`
+	SubAgent          bool                    `json:"subagent,omitempty"`
+	RunID             string                  `json:"run_id,omitempty"`
+	SubAgentSessionID string                  `json:"subagent_session_id,omitempty"`
+	SubAgentType      string                  `json:"subagent_type,omitempty"`
+	SSEHiddenFields   []string                `json:"sse_hidden_fields,omitempty"`
+	SSEHiddenReason   string                  `json:"sse_hidden_reason,omitempty"`
+	SSEDisplayNotice  string                  `json:"sse_display_notice,omitempty"`
+	SSEGeneratedChars int                     `json:"sse_generated_chars,omitempty"`
 }
 
 // ModelContextMessage is model-visible turn evidence hidden from the chat UI.

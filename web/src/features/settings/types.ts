@@ -1,4 +1,5 @@
 import type { AgentApprovalMode } from '@/features/agent-approval/modes'
+import type { ToolPresentationKind } from '@/lib/api-client/types'
 
 export type { AgentApprovalMode } from '@/features/agent-approval/modes'
 
@@ -296,6 +297,7 @@ export type AgentToolCapability =
   | 'browser'
   | 'ask'
   | 'todo'
+  | 'goal'
   | 'skills'
   | 'delegation'
   | 'config_read'
@@ -308,13 +310,18 @@ export type AgentToolCapability =
 export type AgentToolOverride = Partial<Record<AgentToolCapability, boolean>>
 
 export interface AgentToolDescriptorSummary {
+  source: string
   execution: string
   mutation_scope: string
   post_check: string
   recovery: string
+  result_recovery_kind?: string
   result_projection: string
   result_retention: string
   steering: string
+  max_result_bytes: number
+  call_presentation: ToolPresentationKind
+  result_presentation: ToolPresentationKind
 }
 
 export interface AgentToolCapabilityCatalogEntry {
@@ -323,6 +330,7 @@ export interface AgentToolCapabilityCatalogEntry {
   description_key: string
   tool_names: string[]
   descriptor: AgentToolDescriptorSummary
+  tool_descriptors: Record<string, AgentToolDescriptorSummary>
   available_to_subagents: boolean
 }
 

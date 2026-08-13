@@ -123,7 +123,7 @@ func TestDisplayUpdateAppendsPatchAndReloadsMaterializedState(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := sess.UpdateDisplayToolResult("call-1", "read", "success", "章节内容"); err != nil {
+	if err := sess.UpdateDisplayToolResult("call-1", "read", "success", "章节内容", nil); err != nil {
 		t.Fatal(err)
 	}
 	after, err := os.ReadFile(path)
@@ -264,7 +264,7 @@ func TestLegacyDisplayRecordCanBePatchedAndReloaded(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := sess.UpdateDisplayToolResult("call-1", "read", "success", "旧记录结果"); err != nil {
+	if err := sess.UpdateDisplayToolResult("call-1", "read", "success", "旧记录结果", nil); err != nil {
 		t.Fatal(err)
 	}
 	after, err := os.ReadFile(path)
@@ -556,7 +556,7 @@ func TestFailedDisplayPatchDoesNotMutateSessionMemory(t *testing.T) {
 	}
 	beforeUpdated := sess.UpdatedAt
 	restore := blockSessionJournal(t, filepath.Join(dir, "default.jsonl"))
-	if err := sess.UpdateDisplayToolResult("call-1", "write", "success", "不应进入内存"); err == nil {
+	if err := sess.UpdateDisplayToolResult("call-1", "write", "success", "不应进入内存", nil); err == nil {
 		restore()
 		t.Fatal("display patch should fail while journal path is blocked")
 	}

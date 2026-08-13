@@ -690,6 +690,10 @@ func appendToolDescriptorProjection(data map[string]any, descriptor *agent.ToolD
 	data["mutation_scope"] = string(descriptor.MutationScope)
 	data["post_check"] = string(descriptor.PostCheck)
 	data["max_result_bytes"] = descriptor.MaxResultBytes
+	presentation, err := descriptor.Presentation.Normalize()
+	if err == nil {
+		data["tool_presentation"] = presentation
+	}
 }
 
 // ProjectRunStarted restores Denova's product cycle edge from the public

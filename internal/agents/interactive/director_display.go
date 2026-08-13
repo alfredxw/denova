@@ -1,13 +1,15 @@
 package interactive
 
 import (
-	producttools "denova/internal/agents/tools"
 	"encoding/json"
 	"strings"
 	"unicode/utf8"
 
+	agent "github.com/alfredxw/denova/agent"
+
 	"denova/config"
 	"denova/internal/agents/session"
+	producttools "denova/internal/agents/tools"
 )
 
 const (
@@ -91,7 +93,7 @@ func (c *DirectorConversation) UpdateDisplayToolStatus(id, name, status string) 
 	return nil
 }
 
-func (c *DirectorConversation) UpdateDisplayToolResult(id, name, status, result string) error {
+func (c *DirectorConversation) UpdateDisplayToolResult(id, name, status, result string, presentation *agent.ToolPresentation) error {
 	if c == nil {
 		return nil
 	}
@@ -103,7 +105,7 @@ func (c *DirectorConversation) UpdateDisplayToolResult(id, name, status, result 
 		}
 	}
 	if updater, ok := c.display.(displayToolResultUpdater); ok {
-		return updater.UpdateDisplayToolResult(id, name, status, result)
+		return updater.UpdateDisplayToolResult(id, name, status, result, presentation)
 	}
 	if updater, ok := c.display.(displayEventAppender); ok {
 		return updater.UpdateDisplayToolStatus(id, name, status)

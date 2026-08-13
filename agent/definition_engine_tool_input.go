@@ -84,7 +84,7 @@ func (projector *toolInputProjector) toolMetadata(name string) (json.RawMessage,
 		if definition.Info == nil || definition.Info.Name != name {
 			continue
 		}
-		metadata, err := json.Marshal(definition.Descriptor)
+		metadata, err := toolExecutionMetadata(definition.Descriptor)
 		if err != nil {
 			return nil, fmt.Errorf("encode tool %q live metadata: %w", name, err)
 		}

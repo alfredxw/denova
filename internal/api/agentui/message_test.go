@@ -4,17 +4,23 @@ import (
 	"testing"
 	"time"
 
+	agent "github.com/alfredxw/denova/agent"
+
 	agentcontext "denova/internal/agents/context"
 	"denova/internal/agents/session"
 )
 
 func TestMessagesFromHistoryConvertsLegacyEntries(t *testing.T) {
 	createdAt := time.Date(2026, 7, 8, 12, 0, 0, 0, time.UTC)
+	presentation := agent.ToolPresentation{
+		Call:   agent.ToolPresentationImage,
+		Result: agent.ToolPresentationInteractiveMedia,
+	}
 	entries := []session.HistoryEntry{
 		{ID: "user-1", Role: "user", Content: "你好", CreatedAt: createdAt, UserReferences: []agentcontext.UserReference{{Kind: "file", Label: "chapters/ch01.md"}}},
 		{ID: "assistant-1", Role: "assistant", Content: "回复", RunID: "run-1"},
 		{ID: "thinking-1", Role: "thinking", Content: "思考"},
-		{ID: "tool-1", Role: "tool_call", Name: "read", Args: `{"path":"a.md"}`, Status: "success", Result: "ok"},
+		{ID: "tool-1", Role: "tool_call", Name: "read", Args: `{"path":"a.md"}`, Status: "success", Result: "ok", ToolPresentation: &presentation},
 		{ID: "tool-result-1", Role: "tool_result", Name: "read", Content: "ok"},
 		{ID: "ctx-1", Role: "context_compaction", Content: "压缩"},
 		{ID: "usage-1", Role: "token_usage", Content: "用量", TotalTokens: 12},
@@ -54,6 +60,10 @@ func TestMessagesFromHistoryConvertsLegacyEntries(t *testing.T) {
 	}
 	if messages[6].Parts[0]["data"].(map[string]any)["total_tokens"] != 12 {
 		t.Fatalf("expected token usage payload, got %#v", messages[6].Parts[0]["data"])
+	}
+	agentMetadata := messages[3].Metadata["tool_presentation"].(agent.ToolPresentation)
+	if agentMetadata.Call != agent.ToolPresentationImage || agentMetadata.Result != agent.ToolPresentationInteractiveMedia {
+		t.Fatalf("tool presentation metadata = %#v", agentMetadata)
 	}
 }
 

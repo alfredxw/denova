@@ -276,6 +276,7 @@ func browserDescriptor() agent.ToolDescriptor {
 		ResultRetention:  agent.ToolResultProtected,
 		Steering:         agent.SteeringFinishCurrent,
 		MaxResultBytes:   defaultToolResultMaxBytes,
+		Presentation:     agent.UniformToolPresentation(agent.ToolPresentationBrowser),
 	}
 }
 

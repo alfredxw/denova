@@ -97,6 +97,7 @@ func New(provider Provider) (agent.Toolset, error) {
 		MutationScope: agent.ToolMutationNone, PostCheck: agent.ToolPostCheckNone,
 		Recovery: agent.ToolRecoveryReadOnly, ResultRecoveryKind: agent.ToolResultRecoveryRefetch,
 		ResultProjection: agent.ToolResultBoundedModelContext, ResultRetention: agent.ToolResultEagerCandidate,
-		Steering: agent.SteeringFinishCurrent, MaxResultBytes: 8 << 20,
+		Steering: agent.SteeringInterruptibleWait, MaxResultBytes: 8 << 20,
+		Presentation: agent.UniformToolPresentation(agent.ToolPresentationWeb),
 	}})
 }

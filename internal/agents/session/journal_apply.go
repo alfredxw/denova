@@ -126,6 +126,9 @@ func applyDisplayPatchLine(sess *Session, line []byte) error {
 	if patch.Result != nil {
 		event.Result = *patch.Result
 	}
+	if normalized := cloneSessionToolPresentation(patch.ToolPresentation); normalized != nil {
+		event.ToolPresentation = normalized
+	}
 	if patch.ArgsAppend != "" {
 		persistedBytes := min(max(record.displayArgsPersistedBytes, 0), len(event.Args))
 		pending := event.Args[persistedBytes:]

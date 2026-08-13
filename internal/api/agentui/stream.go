@@ -422,11 +422,15 @@ func (e *StreamEncoder) settlePendingTools() error {
 }
 
 func (e *StreamEncoder) writeData(dataType, id string, data map[string]any) error {
-	return e.writeChunk(map[string]any{
+	chunk := map[string]any{
 		"type": dataType,
 		"id":   id,
 		"data": data,
-	})
+	}
+	if providerMetadata := providerMetadataFromData(data); len(providerMetadata) > 0 {
+		chunk["providerMetadata"] = providerMetadata
+	}
+	return e.writeChunk(chunk)
 }
 
 func (e *StreamEncoder) writeChunk(chunk map[string]any) error {
@@ -493,6 +497,7 @@ func messageMetadataFromData(data map[string]any) map[string]any {
 		"navigation_turn_id",
 		"turn_versions",
 		"turn_version_index",
+		"tool_presentation",
 	}
 	meta := map[string]any{}
 	for _, key := range keys {

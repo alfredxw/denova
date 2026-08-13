@@ -3,6 +3,8 @@ package session
 import (
 	"time"
 
+	agent "github.com/alfredxw/denova/agent"
+
 	"denova/internal/agents/conversationconfig"
 )
 
@@ -83,15 +85,16 @@ type sessionPatchRecord struct {
 // displayPatchRecord stores only the mutation. Pointer fields distinguish an
 // explicit empty value from an omitted field.
 type displayPatchRecord struct {
-	Type           string               `json:"type"`
-	TargetRecordID string               `json:"target_record_id"`
-	CreatedAt      time.Time            `json:"created_at"`
-	DisplayPhase   *string              `json:"display_phase,omitempty"`
-	Status         *string              `json:"status,omitempty"`
-	Result         *string              `json:"result,omitempty"`
-	ArgsAppend     string               `json:"args_append,omitempty"`
-	ContentAppend  string               `json:"content_append,omitempty"`
-	Illustration   *ChapterIllustration `json:"illustration,omitempty"`
+	Type             string                  `json:"type"`
+	TargetRecordID   string                  `json:"target_record_id"`
+	CreatedAt        time.Time               `json:"created_at"`
+	DisplayPhase     *string                 `json:"display_phase,omitempty"`
+	Status           *string                 `json:"status,omitempty"`
+	Result           *string                 `json:"result,omitempty"`
+	ToolPresentation *agent.ToolPresentation `json:"tool_presentation,omitempty"`
+	ArgsAppend       string                  `json:"args_append,omitempty"`
+	ContentAppend    string                  `json:"content_append,omitempty"`
+	Illustration     *ChapterIllustration    `json:"illustration,omitempty"`
 }
 
 type interruptionPatchRecord struct {

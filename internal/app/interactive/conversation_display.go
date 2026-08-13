@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	agent "github.com/alfredxw/denova/agent"
+
 	"denova/internal/agents/session"
 	"denova/internal/interactive"
 )
@@ -53,6 +55,7 @@ func (c *Conversation) AppendDisplayEvent(event session.DisplayEvent) error {
 		Args:              event.Args,
 		Status:            status,
 		Result:            event.Result,
+		ToolPresentation:  cloneDisplayToolPresentation(event.ToolPresentation),
 		CreatedAt:         createdAt,
 		AgentKind:         event.AgentKind,
 		RunID:             event.RunID,
@@ -92,6 +95,14 @@ func (c *Conversation) AppendDisplayEvent(event session.DisplayEvent) error {
 	err := store.AppendTurnDisplayEvent(storyID, branchID, turnID, next)
 	c.mu.Lock()
 	return err
+}
+
+func cloneDisplayToolPresentation(presentation *agent.ToolPresentation) *agent.ToolPresentation {
+	if presentation == nil {
+		return nil
+	}
+	cloned := *presentation
+	return &cloned
 }
 
 func (c *Conversation) AppendDisplayToolArgs(id, name, delta string) error {
@@ -227,7 +238,7 @@ func (c *Conversation) UpdateDisplayToolStatus(id, name, status string) error {
 	return nil
 }
 
-func (c *Conversation) UpdateDisplayToolResult(id, name, status, result string) error {
+func (c *Conversation) UpdateDisplayToolResult(id, name, status, result string, presentation *agent.ToolPresentation) error {
 	if c == nil {
 		return nil
 	}
@@ -242,6 +253,9 @@ func (c *Conversation) UpdateDisplayToolResult(id, name, status, result string) 
 	if index := findInteractiveDisplayToolEventIndex(c.displayEvents, id, name); index >= 0 {
 		c.displayEvents[index].Status = status
 		c.displayEvents[index].Result = result
+		if normalized := cloneDisplayToolPresentation(presentation); normalized != nil {
+			c.displayEvents[index].ToolPresentation = normalized
+		}
 		return c.persistLastTurnDisplayEventLocked(c.displayEvents[index])
 	}
 	return nil

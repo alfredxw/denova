@@ -3,6 +3,8 @@ package interactiveapp
 import (
 	"testing"
 
+	agent "github.com/alfredxw/denova/agent"
+
 	"denova/internal/agents/session"
 	"denova/internal/interactive"
 )
@@ -57,10 +59,11 @@ func TestInteractiveConversationPersistsStreamedDisplayEventsAtStableBoundaries(
 	if got := persistedDisplayEventByID(t, store, story.ID, "tool-1").Args; got != "" {
 		t.Fatalf("streamed tool args were persisted before completion: %q", got)
 	}
-	if err := conversation.UpdateDisplayToolResult("tool-1", "read", "success", "ok"); err != nil {
+	presentation := agent.ToolPresentation{Call: agent.ToolPresentationImage, Result: agent.ToolPresentationInteractiveMedia}
+	if err := conversation.UpdateDisplayToolResult("tool-1", "read", "success", "ok", &presentation); err != nil {
 		t.Fatal(err)
 	}
-	if got := persistedDisplayEventByID(t, store, story.ID, "tool-1"); got.Args != `{"path":"chapters/ch01.md"}` || got.Result != "ok" {
+	if got := persistedDisplayEventByID(t, store, story.ID, "tool-1"); got.Args != `{"path":"chapters/ch01.md"}` || got.Result != "ok" || got.ToolPresentation == nil || got.ToolPresentation.Result != agent.ToolPresentationInteractiveMedia {
 		t.Fatalf("terminal tool event mismatch: %#v", got)
 	}
 

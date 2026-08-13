@@ -198,50 +198,56 @@ type AgentToolCapability struct {
 	Descriptor     AgentToolDescriptorSummary
 
 	toolNames           []string
+	toolDescriptors     map[string]agent.ToolDescriptor
 	windowsToolNames    []string
 	runtimeAvailability bool
+	runtimeResultLimits map[string]struct{}
 	subAgentUnavailable bool
 }
 
 var agentToolCapabilities = []AgentToolCapability{
-	capabilityDefinition(AgentToolWorkspaceRead, "agents.tool.workspaceRead.title", "agents.tool.workspaceRead.subtitle", []string{"read", "glob", "grep"}, readOnlyDescriptor()),
-	capabilityDefinition(AgentToolWorkspaceWrite, "agents.tool.workspaceWrite.title", "agents.tool.workspaceWrite.subtitle", []string{"write", "edit"}, workspaceWriteDescriptor(agent.ToolRecoveryReconcilable)),
-	runtimePlatformCapabilityDefinition(AgentToolShell, "agents.tool.shell.title", "agents.tool.shell.subtitle", []string{"bash"}, []string{"pwsh"}, descriptorSummary(
+	withRuntimeResultLimit(capabilityDefinitionWithToolDescriptors(AgentToolWorkspaceRead, "agents.tool.workspaceRead.title", "agents.tool.workspaceRead.subtitle", []string{"read", "glob", "grep"},
+		descriptorWithSource(readOnlyDescriptor(agent.ToolPresentationGeneric, agent.ToolResultRecoveryRead), agent.ToolSourceRead),
+		map[string]agent.ToolDescriptor{
+			"glob": descriptorWithSource(readOnlyDescriptor(agent.ToolPresentationGeneric, agent.ToolResultRecoveryRerun), agent.ToolSourceRead),
+			"grep": descriptorWithSource(readOnlyDescriptor(agent.ToolPresentationGeneric, agent.ToolResultRecoveryRerun), agent.ToolSourceRead),
+		})),
+	withRuntimeResultLimit(capabilityDefinition(AgentToolWorkspaceWrite, "agents.tool.workspaceWrite.title", "agents.tool.workspaceWrite.subtitle", []string{"write", "edit"}, descriptorWithSource(workspaceWriteDescriptor(agent.ToolRecoveryReconcilable, agent.ToolPresentationFile), agent.ToolSourceWrite))),
+	withRuntimeResultLimit(runtimePlatformCapabilityDefinition(AgentToolShell, "agents.tool.shell.title", "agents.tool.shell.subtitle", []string{"bash"}, []string{"pwsh"}, descriptorWithSource(descriptorSummary(
 		agent.ToolExecutionWorkspaceExclusive, agent.ToolMutationExternal, agent.ToolPostCheckExternalReceipt,
-		agent.ToolRecoveryNonIdempotent, agent.SteeringFinishCurrent,
-	)),
-	capabilityDefinition(AgentToolWebSearch, "agents.tool.webSearch.title", "agents.tool.webSearch.subtitle", []string{"web_search"}, interruptibleReadDescriptor()),
-	capabilityDefinition(AgentToolWebFetch, "agents.tool.webFetch.title", "agents.tool.webFetch.subtitle", []string{"web_fetch"}, interruptibleReadDescriptor()),
-	runtimeCapabilityDefinition(AgentToolBrowser, "agents.tool.browser.title", "agents.tool.browser.subtitle", []string{"browser"}, descriptorSummary(
+		agent.ToolRecoveryNonIdempotent, agent.SteeringFinishCurrent, agent.ToolPresentationTerminal,
+	), agent.ToolSourceShell))),
+	capabilityDefinition(AgentToolWebSearch, "agents.tool.webSearch.title", "agents.tool.webSearch.subtitle", []string{"web_search"}, descriptorWithSource(interruptibleReadDescriptor(agent.ToolPresentationSearch, agent.ToolResultRecoveryRerun, agent.ToolResultDeferred), agent.ToolSourceWeb)),
+	capabilityDefinition(AgentToolWebFetch, "agents.tool.webFetch.title", "agents.tool.webFetch.subtitle", []string{"web_fetch"}, descriptorWithSource(interruptibleReadDescriptor(agent.ToolPresentationWeb, agent.ToolResultRecoveryRefetch, agent.ToolResultEagerCandidate), agent.ToolSourceWeb)),
+	withRuntimeResultLimit(runtimeCapabilityDefinition(AgentToolBrowser, "agents.tool.browser.title", "agents.tool.browser.subtitle", []string{"browser"}, descriptorWithSource(descriptorSummary(
 		agent.ToolExecutionSessionExclusive, agent.ToolMutationExternal, agent.ToolPostCheckExternalReceipt,
-		agent.ToolRecoveryNonIdempotent, agent.SteeringFinishCurrent,
-	)),
-	runtimeSubAgentUnavailableCapabilityDefinition(AgentToolAsk, "agents.tool.ask.title", "agents.tool.ask.subtitle", []string{"ask"}, transientDescriptorSummary(descriptorSummary(
-		agent.ToolExecutionInteractiveWait, agent.ToolMutationSession, agent.ToolPostCheckSessionState,
-		agent.ToolRecoveryReconcilable, agent.SteeringFinishCurrent,
-	))),
-	subAgentUnavailableCapabilityDefinition(AgentToolTodo, "agents.tool.todo.title", "agents.tool.todo.subtitle", []string{"todo"}, transientDescriptorSummary(descriptorSummary(
+		agent.ToolRecoveryNonIdempotent, agent.SteeringFinishCurrent, agent.ToolPresentationBrowser,
+	), agent.ToolSourceWeb))),
+	runtimeSubAgentUnavailableCapabilityDefinition(AgentToolAsk, "agents.tool.ask.title", "agents.tool.ask.subtitle", []string{"ask"}, descriptorWithMaxResultBytes(descriptorWithRetention(descriptorSummary(
+		agent.ToolExecutionInteractiveWait, agent.ToolMutationNone, agent.ToolPostCheckNone,
+		agent.ToolRecoveryReadOnly, agent.SteeringInterruptibleWait, agent.ToolPresentationInteraction,
+	), agent.ToolResultProtected), 256<<10)),
+	subAgentUnavailableCapabilityDefinition(AgentToolTodo, "agents.tool.todo.title", "agents.tool.todo.subtitle", []string{"todo"}, descriptorWithSource(descriptorSummary(
 		agent.ToolExecutionSessionExclusive, agent.ToolMutationSession, agent.ToolPostCheckSessionState,
-		agent.ToolRecoveryIdempotent, agent.SteeringFinishCurrent,
-	))),
-	subAgentUnavailableCapabilityDefinition(AgentToolGoal, "agents.tool.goal.title", "agents.tool.goal.subtitle", []string{"goal_finish"}, transientDescriptorSummary(descriptorSummary(
-		agent.ToolExecutionSessionExclusive, agent.ToolMutationSession, agent.ToolPostCheckSessionState,
-		agent.ToolRecoveryIdempotent, agent.SteeringFinishCurrent,
-	))),
-	runtimeCapabilityDefinition(AgentToolSkills, "agents.tool.skills.title", "agents.tool.skills.subtitle", []string{"skill", "read"}, readOnlyDescriptor()),
-	runtimeSubAgentUnavailableCapabilityDefinition(AgentToolDelegation, "agents.tool.delegation.title", "agents.tool.delegation.subtitle", []string{"task"}, transientDescriptorSummary(descriptorSummary(
+		agent.ToolRecoveryIdempotent, agent.SteeringFinishCurrent, agent.ToolPresentationTodo,
+	), agent.ToolSourceWrite)),
+	subAgentUnavailableCapabilityDefinition(AgentToolGoal, "agents.tool.goal.title", "agents.tool.goal.subtitle", []string{agent.StandardGoalToolName}, agent.StandardGoalToolDescriptor()),
+	withRuntimeResultLimit(runtimeCapabilityDefinitionWithToolDescriptors(AgentToolSkills, "agents.tool.skills.title", "agents.tool.skills.subtitle", []string{"skill", "read"}, readOnlyDescriptor(agent.ToolPresentationGeneric, agent.ToolResultRecoveryRerun), map[string]agent.ToolDescriptor{
+		"read": descriptorWithSource(readOnlyDescriptor(agent.ToolPresentationGeneric, agent.ToolResultRecoveryRead), agent.ToolSourceRead),
+	}), "read"),
+	withRuntimeResultLimit(runtimeSubAgentUnavailableCapabilityDefinition(AgentToolDelegation, "agents.tool.delegation.title", "agents.tool.delegation.subtitle", []string{"task"}, descriptorWithRetention(descriptorSummary(
 		agent.ToolExecutionChild, agent.ToolMutationNone, agent.ToolPostCheckNone,
-		agent.ToolRecoveryNonIdempotent, agent.SteeringFinishCurrent,
-	))),
-	capabilityDefinition(AgentToolConfigRead, "agents.tool.configRead.title", "agents.tool.configRead.subtitle", []string{"config_read"}, readOnlyDescriptor()),
-	capabilityDefinition(AgentToolConfigApply, "agents.tool.configApply.title", "agents.tool.configApply.subtitle", []string{"config_apply"}, descriptorSummary(
+		agent.ToolRecoveryReconcilable, agent.SteeringFinishCurrent, agent.ToolPresentationDelegation,
+	), agent.ToolResultProtected))),
+	withRuntimeResultLimit(capabilityDefinition(AgentToolConfigRead, "agents.tool.configRead.title", "agents.tool.configRead.subtitle", []string{"config_read"}, descriptorWithSource(readOnlyDescriptor(agent.ToolPresentationGeneric, agent.ToolResultRecoveryRerun), agent.ToolSourceRead))),
+	withRuntimeResultLimit(capabilityDefinition(AgentToolConfigApply, "agents.tool.configApply.title", "agents.tool.configApply.subtitle", []string{"config_apply"}, descriptorWithSource(descriptorSummary(
 		agent.ToolExecutionConfigExclusive, agent.ToolMutationConfig, agent.ToolPostCheckConfigRevision,
-		agent.ToolRecoveryReconcilable, agent.SteeringFinishCurrent,
-	)),
-	runtimeSubAgentUnavailableCapabilityDefinition(AgentToolEventRead, "agents.tool.eventRead.title", "agents.tool.eventRead.subtitle", []string{"read"}, readOnlyDescriptor()),
-	capabilityDefinition(AgentToolLoreRead, "agents.tool.loreRead.title", "agents.tool.loreRead.subtitle", []string{"list_lore_items", "read_lore_items"}, readOnlyDescriptor()),
-	capabilityDefinition(AgentToolLoreWrite, "agents.tool.loreWrite.title", "agents.tool.loreWrite.subtitle", []string{"write_lore_items"}, workspaceWriteDescriptor(agent.ToolRecoveryReconcilable)),
-	capabilityDefinition(AgentToolImageGeneration, "agents.tool.imageGeneration.title", "agents.tool.imageGeneration.subtitle", []string{"generate_image"}, workspaceWriteDescriptor(agent.ToolRecoveryNonIdempotent)),
+		agent.ToolRecoveryReconcilable, agent.SteeringFinishCurrent, agent.ToolPresentationGeneric,
+	), agent.ToolSourceWrite))),
+	withRuntimeResultLimit(runtimeSubAgentUnavailableCapabilityDefinition(AgentToolEventRead, "agents.tool.eventRead.title", "agents.tool.eventRead.subtitle", []string{"read"}, descriptorWithSource(readOnlyDescriptor(agent.ToolPresentationGeneric, agent.ToolResultRecoveryRead), agent.ToolSourceRead))),
+	capabilityDefinition(AgentToolLoreRead, "agents.tool.loreRead.title", "agents.tool.loreRead.subtitle", []string{"list_lore_items", "read_lore_items"}, descriptorWithSource(readOnlyDescriptor(agent.ToolPresentationGeneric, agent.ToolResultRecoveryRerun), agent.ToolSource("denova.lore"))),
+	capabilityDefinition(AgentToolLoreWrite, "agents.tool.loreWrite.title", "agents.tool.loreWrite.subtitle", []string{"write_lore_items"}, descriptorWithSource(workspaceWriteDescriptor(agent.ToolRecoveryReconcilable, agent.ToolPresentationFile), agent.ToolSource("denova.lore"))),
+	capabilityDefinition(AgentToolImageGeneration, "agents.tool.imageGeneration.title", "agents.tool.imageGeneration.subtitle", []string{"generate_image"}, descriptorWithSource(workspaceWriteDescriptor(agent.ToolRecoveryNonIdempotent, agent.ToolPresentationImage), agent.ToolSourceImage)),
 }
 
 func AgentToolCapabilities() []AgentToolCapability {
@@ -252,28 +258,34 @@ func AgentToolCapabilities() []AgentToolCapability {
 	return out
 }
 
-// AgentToolDescriptorSummary is the stable scheduling and recovery contract
-// shared by every concrete tool represented by one capability family.
+// AgentToolDescriptorSummary is the complete stable execution, recovery, and
+// presentation contract for one concrete model-visible tool.
 type AgentToolDescriptorSummary struct {
-	Execution        agent.ToolExecutionClass      `json:"execution"`
-	MutationScope    agent.ToolMutationScope       `json:"mutation_scope"`
-	PostCheck        agent.ToolPostCheckPolicy     `json:"post_check"`
-	Recovery         agent.ToolRecoveryClass       `json:"recovery"`
-	ResultProjection agent.ToolResultProjection    `json:"result_projection"`
-	ResultRetention  agent.ToolResultRetentionMode `json:"result_retention"`
-	Steering         agent.SteeringPolicy          `json:"steering"`
+	Source             agent.ToolSource              `json:"source"`
+	Execution          agent.ToolExecutionClass      `json:"execution"`
+	MutationScope      agent.ToolMutationScope       `json:"mutation_scope"`
+	PostCheck          agent.ToolPostCheckPolicy     `json:"post_check"`
+	Recovery           agent.ToolRecoveryClass       `json:"recovery"`
+	ResultRecoveryKind agent.ToolResultRecoveryKind  `json:"result_recovery_kind,omitempty"`
+	ResultProjection   agent.ToolResultProjection    `json:"result_projection"`
+	ResultRetention    agent.ToolResultRetentionMode `json:"result_retention"`
+	Steering           agent.SteeringPolicy          `json:"steering"`
+	MaxResultBytes     int                           `json:"max_result_bytes"`
+	CallPresentation   agent.ToolPresentationKind    `json:"call_presentation"`
+	ResultPresentation agent.ToolPresentationKind    `json:"result_presentation"`
 }
 
 // AgentToolCapabilityCatalogEntry is one platform-resolved capability. Its
 // order comes from the registry and its concrete tool names match the target
 // GOOS (bash on Unix-like hosts, pwsh on Windows).
 type AgentToolCapabilityCatalogEntry struct {
-	Capability           string                     `json:"capability"`
-	TitleKey             string                     `json:"title_key"`
-	DescriptionKey       string                     `json:"description_key"`
-	ToolNames            []string                   `json:"tool_names"`
-	Descriptor           AgentToolDescriptorSummary `json:"descriptor"`
-	AvailableToSubAgents bool                       `json:"available_to_subagents"`
+	Capability           string                                `json:"capability"`
+	TitleKey             string                                `json:"title_key"`
+	DescriptionKey       string                                `json:"description_key"`
+	ToolNames            []string                              `json:"tool_names"`
+	Descriptor           AgentToolDescriptorSummary            `json:"descriptor"`
+	ToolDescriptors      map[string]AgentToolDescriptorSummary `json:"tool_descriptors"`
+	AvailableToSubAgents bool                                  `json:"available_to_subagents"`
 }
 
 type AgentToolAvailability string
@@ -300,7 +312,7 @@ func AgentToolCapabilityCatalogForGOOS(goos string) []AgentToolCapabilityCatalog
 	capabilities := AgentToolCapabilities()
 	result := make([]AgentToolCapabilityCatalogEntry, 0, len(capabilities))
 	for _, capability := range capabilities {
-		result = append(result, catalogEntryForCapability(capability, goos))
+		result = append(result, catalogEntryForCapability(capability, goos, 0))
 	}
 	return result
 }
@@ -308,13 +320,13 @@ func AgentToolCapabilityCatalogForGOOS(goos string) []AgentToolCapabilityCatalog
 // ResolveAgentToolManifest retains the complete catalog view for callers that
 // do not select an Agent kind. Product settings should use the per-Agent form.
 func ResolveAgentToolManifest(settings ResolvedAgentToolSettings) []ResolvedAgentToolCapability {
-	return resolveAgentToolCapabilities(settings, AgentToolCapabilities(), runtime.GOOS)
+	return resolveAgentToolCapabilities(settings, AgentToolCapabilities(), runtime.GOOS, 0)
 }
 
 // ResolveAgentToolManifestForGOOS resolves only capabilities supported by the
 // selected Agent assembly. Dynamic host dependencies remain runtime_check
 // instead of being guessed by the config package.
-func ResolveAgentToolManifestForGOOS(settings ResolvedAgentToolSettings, agentKind, goos string) []ResolvedAgentToolCapability {
+func ResolveAgentToolManifestForGOOS(settings ResolvedAgentToolSettings, agentKind, goos string, maxResultBytes ...int) []ResolvedAgentToolCapability {
 	definition, ok := LookupAgentKind(agentKind)
 	if !ok {
 		return []ResolvedAgentToolCapability{}
@@ -325,7 +337,7 @@ func ResolveAgentToolManifestForGOOS(settings ResolvedAgentToolSettings, agentKi
 			capabilities = append(capabilities, capability)
 		}
 	}
-	return resolveAgentToolCapabilities(settings, capabilities, goos)
+	return resolveAgentToolCapabilities(settings, capabilities, goos, firstPositiveInt(maxResultBytes...))
 }
 
 // ResolveAgentToolManifestsForGOOS builds the settings API projection for all
@@ -335,7 +347,7 @@ func ResolveAgentToolManifestsForGOOS(cfg *Config, goos string) map[string][]Res
 	result := make(map[string][]ResolvedAgentToolCapability, len(agentKindRegistry))
 	for _, definition := range AgentKindDefinitions() {
 		settings := ResolveAgentTools(cfg, definition.Kind)
-		result[definition.Kind] = ResolveAgentToolManifestForGOOS(settings, definition.Kind, goos)
+		result[definition.Kind] = ResolveAgentToolManifestForGOOS(settings, definition.Kind, goos, agentToolResultLimitBytes(cfg))
 	}
 	return result
 }
@@ -349,7 +361,7 @@ func AgentToolAllowed(settings ResolvedAgentToolSettings, source string) bool {
 	return false
 }
 
-func resolveAgentToolCapabilities(settings ResolvedAgentToolSettings, capabilities []AgentToolCapability, goos string) []ResolvedAgentToolCapability {
+func resolveAgentToolCapabilities(settings ResolvedAgentToolSettings, capabilities []AgentToolCapability, goos string, maxResultBytes int) []ResolvedAgentToolCapability {
 	result := make([]ResolvedAgentToolCapability, 0, len(capabilities))
 	for _, capability := range capabilities {
 		allowed := AgentToolAllowed(settings, capability.Source)
@@ -363,7 +375,7 @@ func resolveAgentToolCapabilities(settings ResolvedAgentToolSettings, capabiliti
 			availability = AgentToolAvailabilityRuntimeCheck
 		}
 		result = append(result, ResolvedAgentToolCapability{
-			AgentToolCapabilityCatalogEntry: catalogEntryForCapability(capability, goos),
+			AgentToolCapabilityCatalogEntry: catalogEntryForCapability(capability, goos, maxResultBytes),
 			Allowed:                         allowed,
 			Availability:                    availability,
 			UnavailableReasonKey:            reasonKey,
@@ -381,19 +393,50 @@ func lookupAgentToolCapability(source string) (AgentToolCapability, bool) {
 	return AgentToolCapability{}, false
 }
 
-func catalogEntryForCapability(capability AgentToolCapability, goos string) AgentToolCapabilityCatalogEntry {
+func catalogEntryForCapability(capability AgentToolCapability, goos string, maxResultBytes int) AgentToolCapabilityCatalogEntry {
 	names := capability.toolNames
 	if normalizedGOOS(goos) == "windows" && len(capability.windowsToolNames) != 0 {
 		names = capability.windowsToolNames
+	}
+	descriptor := capability.Descriptor
+	toolDescriptors := summarizeToolDescriptors(capability.toolDescriptors, names)
+	if maxResultBytes > 0 {
+		for name, summary := range toolDescriptors {
+			if _, dynamic := capability.runtimeResultLimits[name]; !dynamic {
+				continue
+			}
+			summary.MaxResultBytes = maxResultBytes
+			toolDescriptors[name] = summary
+		}
+		if len(capability.runtimeResultLimits) == len(capability.toolDescriptors) {
+			descriptor.MaxResultBytes = maxResultBytes
+		}
 	}
 	return AgentToolCapabilityCatalogEntry{
 		Capability:           capability.Source,
 		TitleKey:             capability.TitleKey,
 		DescriptionKey:       capability.DescriptionKey,
 		ToolNames:            append([]string{}, names...),
-		Descriptor:           capability.Descriptor,
+		Descriptor:           descriptor,
+		ToolDescriptors:      toolDescriptors,
 		AvailableToSubAgents: !capability.subAgentUnavailable,
 	}
+}
+
+func agentToolResultLimitBytes(cfg *Config) int {
+	if cfg == nil || cfg.AgentToolResultLimitKB <= 0 {
+		return DefaultAgentToolResultLimitKB * 1024
+	}
+	return cfg.AgentToolResultLimitKB * 1024
+}
+
+func firstPositiveInt(values ...int) int {
+	for _, value := range values {
+		if value > 0 {
+			return value
+		}
+	}
+	return 0
 }
 
 func normalizedGOOS(goos string) string {
@@ -405,80 +448,189 @@ func normalizedGOOS(goos string) string {
 
 func cloneAgentToolCapability(capability AgentToolCapability) AgentToolCapability {
 	capability.toolNames = append([]string(nil), capability.toolNames...)
+	capability.toolDescriptors = cloneToolDescriptors(capability.toolDescriptors)
 	capability.windowsToolNames = append([]string(nil), capability.windowsToolNames...)
+	capability.runtimeResultLimits = cloneStringSet(capability.runtimeResultLimits)
 	return capability
 }
 
-func capabilityDefinition(source, titleKey, descriptionKey string, toolNames []string, descriptor AgentToolDescriptorSummary) AgentToolCapability {
+func capabilityDefinition(source, titleKey, descriptionKey string, toolNames []string, descriptor agent.ToolDescriptor) AgentToolCapability {
+	toolDescriptors := make(map[string]agent.ToolDescriptor, len(toolNames))
+	for _, name := range toolNames {
+		toolDescriptors[name] = descriptor
+	}
 	return AgentToolCapability{
 		Source: source, TitleKey: titleKey, DescriptionKey: descriptionKey,
-		toolNames: append([]string(nil), toolNames...), Descriptor: descriptor,
+		toolNames: append([]string(nil), toolNames...), Descriptor: mustSummarizeAgentToolDescriptor(descriptor),
+		toolDescriptors: toolDescriptors,
 	}
 }
 
-func platformCapabilityDefinition(source, titleKey, descriptionKey string, toolNames, windowsToolNames []string, descriptor AgentToolDescriptorSummary) AgentToolCapability {
+func capabilityDefinitionWithToolDescriptors(source, titleKey, descriptionKey string, toolNames []string, descriptor agent.ToolDescriptor, overrides map[string]agent.ToolDescriptor) AgentToolCapability {
 	definition := capabilityDefinition(source, titleKey, descriptionKey, toolNames, descriptor)
-	definition.windowsToolNames = append([]string(nil), windowsToolNames...)
+	for name, override := range overrides {
+		definition.toolDescriptors[name] = override
+	}
 	return definition
 }
 
-func runtimePlatformCapabilityDefinition(source, titleKey, descriptionKey string, toolNames, windowsToolNames []string, descriptor AgentToolDescriptorSummary) AgentToolCapability {
+func platformCapabilityDefinition(source, titleKey, descriptionKey string, toolNames, windowsToolNames []string, descriptor agent.ToolDescriptor) AgentToolCapability {
+	definition := capabilityDefinition(source, titleKey, descriptionKey, toolNames, descriptor)
+	definition.windowsToolNames = append([]string(nil), windowsToolNames...)
+	for _, name := range windowsToolNames {
+		definition.toolDescriptors[name] = descriptor
+	}
+	return definition
+}
+
+func runtimePlatformCapabilityDefinition(source, titleKey, descriptionKey string, toolNames, windowsToolNames []string, descriptor agent.ToolDescriptor) AgentToolCapability {
 	definition := platformCapabilityDefinition(source, titleKey, descriptionKey, toolNames, windowsToolNames, descriptor)
 	definition.runtimeAvailability = true
 	return definition
 }
 
-func runtimeCapabilityDefinition(source, titleKey, descriptionKey string, toolNames []string, descriptor AgentToolDescriptorSummary) AgentToolCapability {
+func runtimeCapabilityDefinition(source, titleKey, descriptionKey string, toolNames []string, descriptor agent.ToolDescriptor) AgentToolCapability {
 	definition := capabilityDefinition(source, titleKey, descriptionKey, toolNames, descriptor)
 	definition.runtimeAvailability = true
 	return definition
 }
 
-func subAgentUnavailableCapabilityDefinition(source, titleKey, descriptionKey string, toolNames []string, descriptor AgentToolDescriptorSummary) AgentToolCapability {
+func runtimeCapabilityDefinitionWithToolDescriptors(source, titleKey, descriptionKey string, toolNames []string, descriptor agent.ToolDescriptor, overrides map[string]agent.ToolDescriptor) AgentToolCapability {
+	definition := capabilityDefinitionWithToolDescriptors(source, titleKey, descriptionKey, toolNames, descriptor, overrides)
+	definition.runtimeAvailability = true
+	return definition
+}
+
+func subAgentUnavailableCapabilityDefinition(source, titleKey, descriptionKey string, toolNames []string, descriptor agent.ToolDescriptor) AgentToolCapability {
 	definition := capabilityDefinition(source, titleKey, descriptionKey, toolNames, descriptor)
 	definition.subAgentUnavailable = true
 	return definition
 }
 
-func runtimeSubAgentUnavailableCapabilityDefinition(source, titleKey, descriptionKey string, toolNames []string, descriptor AgentToolDescriptorSummary) AgentToolCapability {
+func runtimeSubAgentUnavailableCapabilityDefinition(source, titleKey, descriptionKey string, toolNames []string, descriptor agent.ToolDescriptor) AgentToolCapability {
 	definition := runtimeCapabilityDefinition(source, titleKey, descriptionKey, toolNames, descriptor)
 	definition.subAgentUnavailable = true
 	return definition
 }
 
-func descriptorSummary(execution agent.ToolExecutionClass, mutation agent.ToolMutationScope, postCheck agent.ToolPostCheckPolicy, recovery agent.ToolRecoveryClass, steering agent.SteeringPolicy) AgentToolDescriptorSummary {
+func withRuntimeResultLimit(definition AgentToolCapability, toolNames ...string) AgentToolCapability {
+	if len(toolNames) == 0 {
+		toolNames = append(append([]string(nil), definition.toolNames...), definition.windowsToolNames...)
+	}
+	definition.runtimeResultLimits = make(map[string]struct{}, len(toolNames))
+	for _, name := range toolNames {
+		definition.runtimeResultLimits[name] = struct{}{}
+	}
+	return definition
+}
+
+func descriptorSummary(execution agent.ToolExecutionClass, mutation agent.ToolMutationScope, postCheck agent.ToolPostCheckPolicy, recovery agent.ToolRecoveryClass, steering agent.SteeringPolicy, presentation agent.ToolPresentationKind) agent.ToolDescriptor {
 	retention := agent.ToolResultDeferred
 	if mutation != agent.ToolMutationNone || recovery == agent.ToolRecoveryNonIdempotent {
 		retention = agent.ToolResultProtected
 	}
-	return AgentToolDescriptorSummary{
+	return agent.ToolDescriptor{
+		Source:    agent.ToolSourceOther,
 		Execution: execution, MutationScope: mutation, PostCheck: postCheck,
 		Recovery: recovery, ResultProjection: agent.ToolResultBoundedModelContext,
-		ResultRetention: retention, Steering: steering,
+		ResultRetention: retention, Steering: steering, MaxResultBytes: 128 << 10,
+		Presentation: agent.UniformToolPresentation(presentation),
 	}
 }
 
-func transientDescriptorSummary(summary AgentToolDescriptorSummary) AgentToolDescriptorSummary {
-	summary.ResultRetention = agent.ToolResultDeferred
-	return summary
-}
-
-func readOnlyDescriptor() AgentToolDescriptorSummary {
-	return descriptorSummary(
-		agent.ToolExecutionParallelRead, agent.ToolMutationNone, agent.ToolPostCheckNone,
-		agent.ToolRecoveryReadOnly, agent.SteeringFinishCurrent,
-	)
-}
-
-func interruptibleReadDescriptor() AgentToolDescriptorSummary {
-	descriptor := readOnlyDescriptor()
-	descriptor.Steering = agent.SteeringInterruptibleWait
+func descriptorWithRetention(descriptor agent.ToolDescriptor, retention agent.ToolResultRetentionMode) agent.ToolDescriptor {
+	descriptor.ResultRetention = retention
 	return descriptor
 }
 
-func workspaceWriteDescriptor(recovery agent.ToolRecoveryClass) AgentToolDescriptorSummary {
+func descriptorWithSource(descriptor agent.ToolDescriptor, source agent.ToolSource) agent.ToolDescriptor {
+	descriptor.Source = source
+	return descriptor
+}
+
+func descriptorWithMaxResultBytes(descriptor agent.ToolDescriptor, maxResultBytes int) agent.ToolDescriptor {
+	descriptor.MaxResultBytes = maxResultBytes
+	return descriptor
+}
+
+func readOnlyDescriptor(presentation agent.ToolPresentationKind, recoveryKind agent.ToolResultRecoveryKind) agent.ToolDescriptor {
+	descriptor := descriptorSummary(
+		agent.ToolExecutionParallelRead, agent.ToolMutationNone, agent.ToolPostCheckNone,
+		agent.ToolRecoveryReadOnly, agent.SteeringFinishCurrent, presentation,
+	)
+	descriptor.ResultRecoveryKind = recoveryKind
+	return descriptor
+}
+
+func interruptibleReadDescriptor(presentation agent.ToolPresentationKind, recoveryKind agent.ToolResultRecoveryKind, retention agent.ToolResultRetentionMode) agent.ToolDescriptor {
+	descriptor := readOnlyDescriptor(presentation, recoveryKind)
+	descriptor.Steering = agent.SteeringInterruptibleWait
+	descriptor.ResultRetention = retention
+	return descriptor
+}
+
+func workspaceWriteDescriptor(recovery agent.ToolRecoveryClass, presentation agent.ToolPresentationKind) agent.ToolDescriptor {
 	return descriptorSummary(
 		agent.ToolExecutionWorkspaceExclusive, agent.ToolMutationWorkspace, agent.ToolPostCheckWorkspaceChange,
-		recovery, agent.SteeringFinishCurrent,
+		recovery, agent.SteeringFinishCurrent, presentation,
 	)
+}
+
+// SummarizeAgentToolDescriptor derives the settings/catalog projection from
+// the same runtime descriptor shape used by Agent execution. Display-only
+// presentation is normalized here but remains excluded from model identity.
+func SummarizeAgentToolDescriptor(descriptor agent.ToolDescriptor) (AgentToolDescriptorSummary, error) {
+	if err := descriptor.Validate(); err != nil {
+		return AgentToolDescriptorSummary{}, err
+	}
+	presentation, err := descriptor.Presentation.Normalize()
+	if err != nil {
+		return AgentToolDescriptorSummary{}, err
+	}
+	return AgentToolDescriptorSummary{
+		Source:             descriptor.Source,
+		Execution:          descriptor.Execution,
+		MutationScope:      descriptor.MutationScope,
+		PostCheck:          descriptor.PostCheck,
+		Recovery:           descriptor.Recovery,
+		ResultRecoveryKind: descriptor.ResultRecoveryKind,
+		ResultProjection:   descriptor.ResultProjection,
+		ResultRetention:    descriptor.ResultRetention,
+		Steering:           descriptor.Steering,
+		MaxResultBytes:     descriptor.MaxResultBytes,
+		CallPresentation:   presentation.Call,
+		ResultPresentation: presentation.Result,
+	}, nil
+}
+
+func summarizeToolDescriptors(descriptors map[string]agent.ToolDescriptor, names []string) map[string]AgentToolDescriptorSummary {
+	result := make(map[string]AgentToolDescriptorSummary, len(names))
+	for _, name := range names {
+		result[name] = mustSummarizeAgentToolDescriptor(descriptors[name])
+	}
+	return result
+}
+
+func cloneStringSet(values map[string]struct{}) map[string]struct{} {
+	result := make(map[string]struct{}, len(values))
+	for value := range values {
+		result[value] = struct{}{}
+	}
+	return result
+}
+
+func cloneToolDescriptors(descriptors map[string]agent.ToolDescriptor) map[string]agent.ToolDescriptor {
+	result := make(map[string]agent.ToolDescriptor, len(descriptors))
+	for name, descriptor := range descriptors {
+		result[name] = descriptor
+	}
+	return result
+}
+
+func mustSummarizeAgentToolDescriptor(descriptor agent.ToolDescriptor) AgentToolDescriptorSummary {
+	summary, err := SummarizeAgentToolDescriptor(descriptor)
+	if err != nil {
+		panic(err)
+	}
+	return summary
 }

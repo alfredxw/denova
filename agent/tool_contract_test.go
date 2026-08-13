@@ -1,6 +1,40 @@
 package agent
 
-import "testing"
+import (
+	"encoding/json"
+	"strings"
+	"testing"
+)
+
+func TestToolPresentationIsDisplayOnlyAndRoundTripsThroughLifecycleMetadata(t *testing.T) {
+	descriptor := validDescriptorForScope(ToolMutationNone)
+	descriptor.Presentation = ToolPresentation{Call: ToolPresentationSearch}
+
+	encodedDescriptor, err := json.Marshal(descriptor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encodedDescriptor), "presentation") {
+		t.Fatalf("display presentation entered descriptor identity JSON: %s", encodedDescriptor)
+	}
+
+	metadata, err := toolExecutionMetadata(descriptor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	projected := decodeToolDescriptorMetadata(metadata)
+	if projected == nil || projected.Presentation.Call != ToolPresentationSearch || projected.Presentation.Result != ToolPresentationSearch {
+		t.Fatalf("lifecycle presentation = %#v, want uniform search", projected)
+	}
+}
+
+func TestToolPresentationRejectsUnknownKind(t *testing.T) {
+	descriptor := validDescriptorForScope(ToolMutationNone)
+	descriptor.Presentation = UniformToolPresentation(ToolPresentationKind("future"))
+	if err := descriptor.Validate(); err == nil {
+		t.Fatal("descriptor accepted an unknown presentation kind")
+	}
+}
 
 func TestToolDescriptorExecutionMutationMatrix(t *testing.T) {
 	executions := []ToolExecutionClass{

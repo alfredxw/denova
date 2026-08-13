@@ -181,7 +181,7 @@ func TestInteractiveConversationToolResultFallsBackToNameWhenIDMissing(t *testin
 	if err := conversation.AppendDisplayEvent(session.DisplayEvent{ID: "call-execute", Role: "tool_call", Name: "bash", Content: "bash", Status: "running"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := conversation.UpdateDisplayToolResult("", "bash", "success", "command done"); err != nil {
+	if err := conversation.UpdateDisplayToolResult("", "bash", "success", "command done", nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -199,7 +199,7 @@ func TestInteractiveConversationToolResultDoesNotFallbackWhenIDDiffers(t *testin
 	if err := conversation.AppendDisplayEvent(session.DisplayEvent{ID: "call-execute", Role: "tool_call", Name: "bash", Content: "bash", Status: "running"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := conversation.UpdateDisplayToolResult("stale-id", "bash", "success", "stale result"); err != nil {
+	if err := conversation.UpdateDisplayToolResult("stale-id", "bash", "success", "stale result", nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -220,7 +220,7 @@ func TestInteractiveConversationToolResultDoesNotFallbackWhenNameIsAmbiguous(t *
 	if err := conversation.AppendDisplayEvent(session.DisplayEvent{ID: "execute-2", Role: "tool_call", Name: "bash", Content: "bash", Status: "running"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := conversation.UpdateDisplayToolResult("stale-id", "bash", "success", "ambiguous result"); err != nil {
+	if err := conversation.UpdateDisplayToolResult("stale-id", "bash", "success", "ambiguous result", nil); err != nil {
 		t.Fatal(err)
 	}
 

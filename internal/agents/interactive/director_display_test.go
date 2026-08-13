@@ -2,11 +2,13 @@ package interactive
 
 import (
 	"context"
-	agentcontext "denova/internal/agents/context"
 	"strings"
 	"testing"
 
+	agent "github.com/alfredxw/denova/agent"
+
 	"denova/config"
+	agentcontext "denova/internal/agents/context"
 	"denova/internal/agents/session"
 )
 
@@ -59,7 +61,7 @@ func TestInteractiveDirectorDisplayStreamsHiddenDirectorPlanCharCount(t *testing
 	if err := conversation.AppendDisplayToolArgs("call-1", "write", `尾"}`); err != nil {
 		t.Fatal(err)
 	}
-	if err := conversation.UpdateDisplayToolResult("call-1", "write", "success", "ok"); err != nil {
+	if err := conversation.UpdateDisplayToolResult("call-1", "write", "success", "ok", nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -179,7 +181,7 @@ func (c *directorDisplayConversation) UpdateDisplayToolStatus(id, _ string, stat
 	return nil
 }
 
-func (c *directorDisplayConversation) UpdateDisplayToolResult(id, _ string, status, result string) error {
+func (c *directorDisplayConversation) UpdateDisplayToolResult(id, _ string, status, result string, _ *agent.ToolPresentation) error {
 	for i := len(c.events) - 1; i >= 0; i-- {
 		if c.events[i].ID == id {
 			c.events[i].Status = status

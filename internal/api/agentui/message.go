@@ -170,6 +170,12 @@ func entryPayload(entry appsvc.AgentSessionHistoryEntry) map[string]any {
 	if entry.Illustration != nil {
 		payload["illustration"] = entry.Illustration
 	}
+	if entry.ToolPresentation != nil {
+		presentation, err := entry.ToolPresentation.Normalize()
+		if err == nil {
+			payload["tool_presentation"] = presentation
+		}
+	}
 	addUsagePayload(payload, entry)
 	addMetadataPayload(payload, entry)
 	return payload
@@ -197,6 +203,12 @@ func metadataFromHistoryEntry(entry appsvc.AgentSessionHistoryEntry) map[string]
 }
 
 func addMetadataPayload(target map[string]any, entry appsvc.AgentSessionHistoryEntry) {
+	if entry.ToolPresentation != nil {
+		presentation, err := entry.ToolPresentation.Normalize()
+		if err == nil {
+			target["tool_presentation"] = presentation
+		}
+	}
 	if entry.DisplayPhase != "" {
 		target["display_phase"] = entry.DisplayPhase
 	}

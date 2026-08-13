@@ -400,6 +400,7 @@ export interface TurnDisplayEvent {
   args?: string
   status?: 'running' | 'success' | 'error'
   result?: string
+  tool_presentation?: import('@/lib/api').ToolPresentation
   created_at?: string
   run_id?: string
   agent_kind?: string

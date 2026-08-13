@@ -87,12 +87,14 @@ function settingsWithSkills(): LayeredSettings {
 }
 
 function skillsCapability(): ResolvedAgentToolCapability {
+  const descriptor: ResolvedAgentToolCapability['descriptor'] = {
+    source: 'other', execution: 'parallel', mutation_scope: 'none', post_check: 'none', recovery: 'retry',
+    result_projection: 'summary', result_retention: 'receipt', steering: 'interruptible',
+    max_result_bytes: 128 << 10, call_presentation: 'generic', result_presentation: 'generic',
+  }
   return {
     capability: 'skills', title_key: 'agents.tool.skills.title', description_key: 'agents.tool.skills.subtitle',
-    tool_names: ['skill'], descriptor: {
-      execution: 'parallel', mutation_scope: 'none', post_check: 'none', recovery: 'retry',
-      result_projection: 'summary', result_retention: 'receipt', steering: 'interruptible',
-    },
+    tool_names: ['skill'], descriptor, tool_descriptors: { skill: descriptor },
     available_to_subagents: true, allowed: true, availability: 'available',
   }
 }

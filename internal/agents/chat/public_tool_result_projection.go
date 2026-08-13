@@ -3,6 +3,8 @@ package chat
 import (
 	"strings"
 
+	agent "github.com/alfredxw/denova/agent"
+
 	agentrun "denova/internal/agents/run"
 	producttools "denova/internal/agents/tools"
 	workspacechange "denova/internal/workspace/change"
@@ -33,6 +35,16 @@ func projectPublicToolResult(
 	} else if image != nil {
 		data["interactive_image"] = image
 		data["target"] = image.MetaPath
+		// The generate_image tool has a general image descriptor, while this
+		// particular result is interactive media. Preserve the call renderer and
+		// refine only the result renderer so reconnect/replay never invents a
+		// second call card.
+		presentation := agent.UniformToolPresentation(agent.ToolPresentationImage)
+		if projected := eventDataToolPresentation(data); projected != nil {
+			presentation = *projected
+		}
+		presentation.Result = agent.ToolPresentationInteractiveMedia
+		data["tool_presentation"] = presentation
 	} else if target := producttools.ParseGeneratedImageTarget(toolName, payload); target != "" {
 		data["target"] = target
 	}

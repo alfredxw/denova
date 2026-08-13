@@ -272,6 +272,7 @@ describe('agent-ui', () => {
           {
             type: 'data-agent-interactive-image',
             id: 'image-1',
+            providerMetadata: { agent: { tool_presentation: { call: 'image', result: 'interactive_media' } } },
             data: {
               name: 'generate_interactive_image',
               status: 'success',
@@ -324,6 +325,7 @@ describe('agent-ui', () => {
       name: 'generate_interactive_image',
       interactive_image_status: 'success',
       interactive_image: { image_path: 'assets/interactive/images/scene.png' },
+      tool_presentation: { call: 'image', result: 'interactive_media' },
     })
   })
 
@@ -339,7 +341,7 @@ describe('agent-ui', () => {
     }
     const normalized = normalizeAgentUIMessages([
       {
-        id: 'stream-pending', role: 'assistant', parts: [
+        id: 'stream-pending', role: 'assistant', metadata: { tool_presentation: { call: 'interaction', result: 'interaction' } }, parts: [
           { type: 'dynamic-tool', toolName: 'ask', toolCallId: 'ask-1', state: 'input-available', input: { questions: pending.questions } },
           { type: 'data-agent-ask', id: 'ask-1', data: pending },
         ],

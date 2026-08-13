@@ -127,6 +127,7 @@ func newWebSearchTool(client webSearchClient, capability string) (agent.ToolDefi
 	}
 	searchDescriptor := boundedReadDescriptor(ToolSourceWeb, capability, agent.ToolResultRecoveryRerun)
 	searchDescriptor.Steering = agent.SteeringInterruptibleWait
+	searchDescriptor.Presentation = agent.UniformToolPresentation(agent.ToolPresentationSearch)
 	definedSearchTool, err := defineTool(searchTool, searchDescriptor)
 	if err != nil {
 		return agent.ToolDefinition{}, err
@@ -166,6 +167,7 @@ func newWebFetchTool(client webFetchClient, capability string) (agent.ToolDefini
 	// results at the next turn boundary.
 	fetchDescriptor.ResultRetention = agent.ToolResultEagerCandidate
 	fetchDescriptor.Steering = agent.SteeringInterruptibleWait
+	fetchDescriptor.Presentation = agent.UniformToolPresentation(agent.ToolPresentationWeb)
 	definedFetchTool, err := defineTool(fetchTool, fetchDescriptor)
 	if err != nil {
 		return agent.ToolDefinition{}, err

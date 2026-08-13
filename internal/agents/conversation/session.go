@@ -434,11 +434,11 @@ func (c *SessionConversation) FinalizeDisplayAssistantRun(runID, finalSegmentID,
 	return c.session.FinalizeDisplayAssistantRun(runID, finalSegmentID, terminalPhase)
 }
 
-func (c *SessionConversation) UpdateDisplayToolResult(id, name, status, result string) error {
+func (c *SessionConversation) UpdateDisplayToolResult(id, name, status, result string, presentation *agent.ToolPresentation) error {
 	if c == nil || c.session == nil {
 		return fmt.Errorf("会话不存在")
 	}
-	return c.session.UpdateDisplayToolResult(id, name, status, result)
+	return c.session.UpdateDisplayToolResult(id, name, status, result, presentation)
 }
 
 func (c *SessionConversation) UpdateDisplayToolIllustration(id, name string, illustration *session.ChapterIllustration) error {

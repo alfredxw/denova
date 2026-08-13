@@ -5,6 +5,7 @@ import type { AgentAskAnswer, AgentAskInteraction, AgentAskQuestion, AgentAskRes
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import type { AgentAskResolveAction } from '@/lib/agent-ask'
+import { toolPresentationKind } from '@/lib/tool-presentation'
 
 export type AskResolveAction = AgentAskResolveAction
 
@@ -241,7 +242,7 @@ function askAnswerSummary(answer: NonNullable<AgentAskInteraction['answers']>[nu
 }
 
 function parseAskToolInput(message: AskInteractionMessage): AgentAskInteraction | undefined {
-  if (message.role !== 'tool_call' || (message.name || '') !== 'ask' || !message.id) return undefined
+  if (message.role !== 'tool_call' || toolPresentationKind(message, 'call') !== 'interaction' || !message.id) return undefined
   try {
     const input = JSON.parse(message.args || '') as { questions?: AgentAskQuestion[] }
     if (!Array.isArray(input.questions) || input.questions.length === 0) return undefined

@@ -97,6 +97,7 @@ describe('agent-message-view', () => {
           {
             type: 'data-agent-interactive-image',
             id: 'image-1',
+            providerMetadata: { agent: { tool_presentation: { call: 'image', result: 'interactive_media' } } },
             data: {
               name: 'generate_interactive_image',
               status: 'success',
@@ -128,14 +129,75 @@ describe('agent-message-view', () => {
     expect(views[1]).toMatchObject({ partId: 'reason-1', streaming: true, metadata: { run_id: 'run-1' } })
     expect(views[2]).toMatchObject({ partId: 'text-1', metadata: { run_id: 'run-1', display_phase: 'final' } })
     expect(views[3]).toMatchObject({ partId: 'tool-1', toolName: 'read', status: 'success' })
+    expect(views[8]).toMatchObject({
+      partId: 'image-1',
+      metadata: { tool_presentation: { call: 'image', result: 'interactive_media' } },
+    })
     expect(views[5].ref).toEqual({ messageId: 'assistant-1', partId: 'plan-1', partIndex: 4, type: 'data-agent-proposed-plan' })
+  })
+
+  it('按 AI SDK resultProviderMetadata 覆盖工具结果展示契约', () => {
+    const views = buildAgentMessageViews([{
+      id: 'assistant-result-metadata',
+      role: 'assistant',
+      parts: [{
+        type: 'dynamic-tool',
+        toolName: 'renamed_media_generator',
+        toolCallId: 'media-call',
+        state: 'output-available',
+        input: { purpose: 'interactive_image' },
+        output: { image_path: 'assets/interactive/images/scene.png' },
+        callProviderMetadata: { agent: { tool_presentation: { call: 'image', result: 'image' } } },
+        resultProviderMetadata: { agent: { tool_presentation: { call: 'image', result: 'interactive_media' } } },
+      }],
+    }] as AgentUIMessage[])
+
+    expect(views).toHaveLength(1)
+    expect(views[0].metadata.tool_presentation).toEqual({ call: 'image', result: 'interactive_media' })
+    expect(agentViewToRenderMessage(views[0])).toMatchObject({
+      role: 'tool_call',
+      name: 'renamed_media_generator',
+      tool_presentation: { call: 'image', result: 'interactive_media' },
+    })
+  })
+
+  it('专用互动图片 data part 覆盖同一工具的标准 result card', () => {
+    const views = buildAgentMessageViews([{
+      id: 'assistant-live-media',
+      role: 'assistant',
+      metadata: { run_id: 'run-media' },
+      parts: [
+        {
+          type: 'dynamic-tool',
+          toolName: 'renamed_media_generator',
+          toolCallId: 'media-call',
+          state: 'output-available',
+          input: { purpose: 'interactive_image' },
+          output: { schema: 'interactive_image.v1', image_path: 'assets/interactive/images/scene.png' },
+          resultProviderMetadata: { agent: { run_id: 'run-media', tool_presentation: { call: 'image', result: 'interactive_media' } } },
+        },
+        {
+          type: 'data-agent-interactive-image',
+          id: 'media-call',
+          providerMetadata: { agent: { run_id: 'run-media', tool_presentation: { call: 'image', result: 'interactive_media' } } },
+          data: {
+            name: 'renamed_media_generator',
+            status: 'success',
+            interactive_image: { schema: 'interactive_image.v1', image_path: 'assets/interactive/images/scene.png' },
+          },
+        },
+      ],
+    }] as AgentUIMessage[])
+
+    expect(views).toHaveLength(1)
+    expect(views[0]).toMatchObject({ kind: 'interactive-image', partId: 'media-call' })
   })
 
   it('todo 在同一 run 内替换旧计划，空计划会清除当前卡片', () => {
     const plan = (id: string, step: string, outputPlan: Array<{ step: string; status: string }>) => ({
       id,
       role: 'assistant' as const,
-      metadata: { run_id: 'run-todo' },
+      metadata: { run_id: 'run-todo', tool_presentation: { call: 'todo', result: 'todo' } },
       parts: [{
         type: 'dynamic-tool', toolName: 'todo', toolCallId: id, state: 'output-available',
         input: { action: 'update', expected_revision: 0, mutations: [{ id, text: step, status: 'pending' }] },
@@ -160,11 +222,11 @@ describe('agent-message-view', () => {
   it('todo 计划按 root/subagent run 隔离替换状态', () => {
     const messages = [
       {
-        id: 'root-plan', role: 'assistant', metadata: { run_id: 'run-1', run_path: ['root'] },
+        id: 'root-plan', role: 'assistant', metadata: { run_id: 'run-1', run_path: ['root'], tool_presentation: { call: 'todo', result: 'todo' } },
         parts: [{ type: 'dynamic-tool', toolName: 'todo', toolCallId: 'root-todo', state: 'output-available', input: { action: 'update', mutations: [] }, output: { schema: 'agent.todo.v1', revision: 1, items: [{ id: 'root', text: 'root', status: 'pending' }] } }],
       },
       {
-        id: 'child-plan', role: 'assistant', metadata: { run_id: 'run-1', run_path: ['root', 'child'], subagent: true },
+        id: 'child-plan', role: 'assistant', metadata: { run_id: 'run-1', run_path: ['root', 'child'], subagent: true, tool_presentation: { call: 'todo', result: 'todo' } },
         parts: [{ type: 'dynamic-tool', toolName: 'todo', toolCallId: 'child-todo', state: 'output-available', input: { action: 'update', mutations: [] }, output: { schema: 'agent.todo.v1', revision: 1, items: [{ id: 'child', text: 'child', status: 'pending' }] } }],
       },
     ] as AgentUIMessage[]

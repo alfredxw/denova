@@ -49,17 +49,18 @@ type HistoryEntry struct {
 	ID   string `json:"id,omitempty"`
 	// DisplaySegmentID distinguishes display transcript identity from a
 	// canonical message ID when both are projected as ordinary history rows.
-	DisplaySegmentID string               `json:"display_segment_id,omitempty"`
-	DisplayPhase     string               `json:"display_phase,omitempty"`
-	Role             string               `json:"role,omitempty"`
-	Content          string               `json:"content,omitempty"`
-	Name             string               `json:"name,omitempty"`
-	Args             string               `json:"args,omitempty"`
-	Status           string               `json:"status,omitempty"`
-	Result           string               `json:"result,omitempty"`
-	Illustration     *ChapterIllustration `json:"illustration,omitempty"`
-	Message          *agent.Message       `json:"-"`
-	CreatedAt        time.Time            `json:"created_at,omitempty"`
+	DisplaySegmentID string                  `json:"display_segment_id,omitempty"`
+	DisplayPhase     string                  `json:"display_phase,omitempty"`
+	Role             string                  `json:"role,omitempty"`
+	Content          string                  `json:"content,omitempty"`
+	Name             string                  `json:"name,omitempty"`
+	Args             string                  `json:"args,omitempty"`
+	Status           string                  `json:"status,omitempty"`
+	Result           string                  `json:"result,omitempty"`
+	ToolPresentation *agent.ToolPresentation `json:"tool_presentation,omitempty"`
+	Illustration     *ChapterIllustration    `json:"illustration,omitempty"`
+	Message          *agent.Message          `json:"-"`
+	CreatedAt        time.Time               `json:"created_at,omitempty"`
 
 	RunID                string                       `json:"run_id,omitempty"`
 	AgentKind            string                       `json:"agent_kind,omitempty"`
@@ -149,16 +150,17 @@ type messageRecord struct {
 
 // DisplayEvent 表示只用于前端展示的非上下文事件，例如 thinking 和工具卡片。
 type DisplayEvent struct {
-	ID           string               `json:"id,omitempty"`
-	Role         string               `json:"role"`
-	DisplayPhase string               `json:"display_phase,omitempty"`
-	Content      string               `json:"content,omitempty"`
-	Name         string               `json:"name,omitempty"`
-	Args         string               `json:"args,omitempty"`
-	Status       string               `json:"status,omitempty"`
-	Result       string               `json:"result,omitempty"`
-	Illustration *ChapterIllustration `json:"illustration,omitempty"`
-	CreatedAt    time.Time            `json:"created_at,omitempty"`
+	ID               string                  `json:"id,omitempty"`
+	Role             string                  `json:"role"`
+	DisplayPhase     string                  `json:"display_phase,omitempty"`
+	Content          string                  `json:"content,omitempty"`
+	Name             string                  `json:"name,omitempty"`
+	Args             string                  `json:"args,omitempty"`
+	Status           string                  `json:"status,omitempty"`
+	Result           string                  `json:"result,omitempty"`
+	ToolPresentation *agent.ToolPresentation `json:"tool_presentation,omitempty"`
+	Illustration     *ChapterIllustration    `json:"illustration,omitempty"`
+	CreatedAt        time.Time               `json:"created_at,omitempty"`
 
 	RunID                string           `json:"run_id,omitempty"`
 	AgentKind            string           `json:"agent_kind,omitempty"`

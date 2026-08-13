@@ -220,11 +220,12 @@ func Tasks(executor TaskExecutor) (agent.Toolset, error) {
 	}
 	descriptor := writeDescriptor()
 	descriptor.Source = agent.ToolSourceOther
-	descriptor.Capability = "task"
+	descriptor.Capability = "delegation"
 	descriptor.Execution = agent.ToolExecutionChild
 	descriptor.MutationScope = agent.ToolMutationNone
 	descriptor.PostCheck = agent.ToolPostCheckNone
 	descriptor.Recovery = agent.ToolRecoveryReconcilable
+	descriptor.Presentation = agent.UniformToolPresentation(agent.ToolPresentationDelegation)
 	return agent.StaticToolsIdentified(toolsetIdentity("tools.tasks", identity), agent.ToolDefinition{Tool: tool, Descriptor: descriptor})
 }
 

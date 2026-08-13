@@ -83,6 +83,7 @@ func writeDescriptor(options ...DefinitionOption) agent.ToolDescriptor {
 		ResultRetention:  agent.ToolResultProtected,
 		Steering:         agent.SteeringFinishCurrent,
 		MaxResultBytes:   defaultResultBytes,
+		Presentation:     agent.UniformToolPresentation(agent.ToolPresentationFile),
 	}, options)
 }
 
@@ -101,6 +102,7 @@ func shellDescriptor(options ...DefinitionOption) agent.ToolDescriptor {
 		ResultRetention:  agent.ToolResultProtected,
 		Steering:         agent.SteeringFinishCurrent,
 		MaxResultBytes:   defaultResultBytes,
+		Presentation:     agent.UniformToolPresentation(agent.ToolPresentationTerminal),
 	}, options)
 }
 

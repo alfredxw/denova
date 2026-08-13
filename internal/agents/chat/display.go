@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	agent "github.com/alfredxw/denova/agent"
+
 	agentplan "denova/internal/agents/plan"
 	"denova/internal/agents/session"
 )
@@ -49,7 +51,7 @@ type displayToolArgsAppender interface {
 }
 
 type displayToolResultUpdater interface {
-	UpdateDisplayToolResult(id, name, status, result string) error
+	UpdateDisplayToolResult(id, name, status, result string, presentation *agent.ToolPresentation) error
 }
 
 type displayToolIllustrationUpdater interface {
@@ -182,6 +184,7 @@ func (r *displayEventRecorder) Record(ev agentrun.Event) {
 			Name:              name,
 			Args:              args,
 			Status:            "running",
+			ToolPresentation:  eventDataToolPresentation(ev.Data),
 			RunID:             meta.RunID,
 			AgentKind:         meta.AgentKind,
 			AgentName:         meta.AgentName,
@@ -225,7 +228,7 @@ func (r *displayEventRecorder) Record(ev agentrun.Event) {
 			return
 		}
 		if resultUpdater, ok := r.appender.(displayToolResultUpdater); ok {
-			if err := resultUpdater.UpdateDisplayToolResult(id, name, status, result); err != nil {
+			if err := resultUpdater.UpdateDisplayToolResult(id, name, status, result, eventDataToolPresentation(ev.Data)); err != nil {
 				slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-run] persist display tool_result failed name=%s id=%s err=%v", name, id, err))
 			}
 		} else if err := r.appender.UpdateDisplayToolStatus(id, name, status); err != nil {
@@ -589,6 +592,30 @@ func eventDataChapterIllustration(data interface{}, key string) *session.Chapter
 		return nil
 	}
 	return &result
+}
+
+func eventDataToolPresentation(data interface{}) *agent.ToolPresentation {
+	typed, ok := data.(map[string]interface{})
+	if !ok {
+		return nil
+	}
+	value, ok := typed["tool_presentation"]
+	if !ok || value == nil {
+		return nil
+	}
+	raw, err := json.Marshal(value)
+	if err != nil {
+		return nil
+	}
+	var presentation agent.ToolPresentation
+	if err := json.Unmarshal(raw, &presentation); err != nil {
+		return nil
+	}
+	normalized, err := presentation.Normalize()
+	if err != nil {
+		return nil
+	}
+	return &normalized
 }
 
 func usageCallsForSession(calls []runTokenUsageCall) []session.TokenUsageCall {

@@ -194,6 +194,24 @@ describe('useVirtuosoBottomLock', () => {
     expect(scrollToIndex).toHaveBeenCalledWith({ index: 'LAST', align: 'end', behavior: 'auto' })
   })
 
+  it('can reset completed history to its first item without enabling bottom following', () => {
+    const scrollToIndex = vi.fn()
+    const { result } = renderHook(() => useVirtuosoBottomLock({
+      resetKey: 'completed-subagent-session',
+      resetPosition: 'start',
+      itemCount: 3,
+      autoFollowEnabled: false,
+    }))
+    act(() => {
+      result.current.virtuosoRef.current = { scrollToIndex } as unknown as VirtuosoHandle
+      result.current.onAtBottomStateChange(true)
+    })
+
+    flushAnimationFrames(frames)
+
+    expect(scrollToIndex).toHaveBeenCalledWith({ index: 0, align: 'start', behavior: 'auto' })
+  })
+
   it('anchors a new stream directly without delegating to Virtuoso bottom following', () => {
     const scroller = document.createElement('div')
     Object.defineProperty(scroller, 'scrollHeight', { configurable: true, value: 500 })

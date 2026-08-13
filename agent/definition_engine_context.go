@@ -468,7 +468,17 @@ func toolExecutionMetadata(descriptor ToolDescriptor) (json.RawMessage, error) {
 	if descriptor.Execution == "" {
 		return nil, nil
 	}
-	metadata, err := json.Marshal(descriptor)
+	presentation, err := descriptor.Presentation.Normalize()
+	if err != nil {
+		return nil, fmt.Errorf("normalize tool live presentation: %w", err)
+	}
+	// Keep descriptor fields flat so existing durable metadata readers can
+	// continue decoding execution semantics while presentation remains a
+	// separate, model-invisible concern.
+	metadata, err := json.Marshal(struct {
+		ToolDescriptor
+		Presentation ToolPresentation `json:"presentation"`
+	}{ToolDescriptor: descriptor, Presentation: presentation})
 	if err != nil {
 		return nil, fmt.Errorf("encode tool live metadata: %w", err)
 	}

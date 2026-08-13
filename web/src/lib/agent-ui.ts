@@ -1,7 +1,7 @@
 import type { ChatTransport, UIMessage } from 'ai'
 import { DefaultChatTransport } from 'ai'
 import { fetchAPI, responseAPIError } from './api-client/client'
-import type { UserMessageReference } from './api-client/types'
+import type { ToolPresentation, UserMessageReference } from './api-client/types'
 
 export type AgentDisplayRole = 'user' | 'assistant' | 'thinking' | 'tool_call' | 'tool_result' | 'ask' | 'rule_roll' | 'context_compaction' | 'token_usage' | 'proposed_plan' | 'system' | 'error'
 
@@ -30,6 +30,7 @@ export interface AgentMessageMetadata {
   turn_versions?: { turn_id: string; ts: string; current?: boolean }[]
   turn_version_index?: number
   user_references?: UserMessageReference[]
+  tool_presentation?: ToolPresentation
 }
 
 type AgentDataPayload = Record<string, unknown>

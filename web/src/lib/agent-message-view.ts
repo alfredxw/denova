@@ -1,5 +1,6 @@
 import type { AgentAskInteraction, ChapterIllustration, ChatMessage, ChatPlanAction, InteractiveImage, InteractiveImageError, InteractiveImageStatus, PublicRuleRoll, TokenUsageCall } from './api-client/types'
 import type { AgentMessageMetadata, AgentUIMessage } from './agent-ui'
+import { readToolPresentation } from './tool-presentation'
 
 export type AgentMessageViewKind =
   | 'user'
@@ -87,7 +88,29 @@ export function buildAgentMessageViews(messages: AgentUIMessage[]): AgentMessage
     messageViewsCache.set(message, messageViews)
     views.push(...messageViews)
   })
-  return projectToolApprovals(projectCurrentTodoPlans(views))
+  return projectToolApprovals(projectCurrentTodoPlans(projectInteractiveMediaResults(views)))
+}
+
+// Interactive image results have both the standard AI SDK tool result and a
+// richer durable data part. Prefer the data part when both describe the same
+// call; result-only histories still keep the standard tool result renderer.
+function projectInteractiveMediaResults(views: AgentMessageView[]): AgentMessageView[] {
+  const durableResults = new Set(
+    views
+      .filter((view) => view.kind === 'interactive-image')
+      .map(interactiveMediaResultKey),
+  )
+  if (durableResults.size === 0) return views
+  return views.filter((view) => !(
+    view.kind === 'tool' &&
+    view.metadata.tool_presentation?.result === 'interactive_media' &&
+    durableResults.has(interactiveMediaResultKey(view))
+  ))
+}
+
+function interactiveMediaResultKey(view: AgentMessageView) {
+  const runID = view.metadata.run_id?.trim()
+  return `${runID ? `run:${runID}` : `message:${view.messageId}`}:part:${view.partId}`
 }
 
 // Tool approvals are lifecycle state for an existing tool call, not a new
@@ -123,7 +146,7 @@ function projectCurrentTodoPlans(views: AgentMessageView[]): AgentMessageView[] 
   const selected = new Map<string, number | null>()
   const projected = new Set<number>()
   views.forEach((view, index) => {
-    if (view.kind !== 'tool' || view.toolName !== 'todo' || view.status === 'error') return
+    if (view.kind !== 'tool' || view.metadata.tool_presentation?.call !== 'todo' || view.status === 'error') return
     projected.add(index)
     const scope = todoPlanScope(view)
     if (view.status === 'success' && todoPlanIsEmpty(view)) {
@@ -194,7 +217,7 @@ export function agentViewNavigationAnchor(view: AgentMessageView) {
 
 export function isAgentTraceView(view: AgentMessageView) {
   if (view.kind === 'interactive-image') return false
-  if (view.toolName === 'generate_interactive_image') return false
+  if (view.metadata.tool_presentation?.call === 'interactive_media' || view.metadata.tool_presentation?.result === 'interactive_media') return false
   return view.kind === 'reasoning' || view.kind === 'tool' || view.kind === 'tool-result' ||
     (view.kind === 'ask' && agentViewAskInteraction(view)?.kind === 'tool_approval')
 }
@@ -410,7 +433,7 @@ export function agentViewToRenderMessage(view: AgentMessageView, options: { forc
 function buildAgentMessageView(message: AgentUIMessage, part: AgentUIMessage['parts'][number], partIndex: number): AgentMessageView | null {
   const raw = part as Record<string, any>
   const type = readString(raw.type)
-  const metadata = mergeMetadata(message.metadata, raw.providerMetadata, raw.callProviderMetadata)
+  const metadata = mergeMetadata(message.metadata, raw.providerMetadata, raw.callProviderMetadata, raw.resultProviderMetadata)
   const partId = readString(raw.id) || readString(raw.toolCallId) || `${message.id}:${partIndex}`
   const ref = { messageId: message.id, partId, partIndex, type }
   const base = {
@@ -453,7 +476,7 @@ function buildAgentMessageView(message: AgentUIMessage, part: AgentUIMessage['pa
     const toolName = type === 'dynamic-tool' ? firstNonEmpty(readString(raw.toolName), 'unknown_tool') : type.replace(/^tool-/, '')
     // ask has a dedicated durable data part emitted only after pending state is
     // committed. Hiding the speculative model tool frame avoids duplicate UI.
-    if (toolName === 'ask') return null
+    if (metadata.tool_presentation?.call === 'interaction') return null
     const status = toolStatus(readString(raw.state))
     return {
       ...base,
@@ -549,6 +572,7 @@ function metadataToChatFields(view: AgentMessageView): Partial<ChatMessage> {
     turn_versions: metadata.turn_versions,
     turn_version_index: metadata.turn_version_index,
     user_references: metadata.user_references,
+    tool_presentation: metadata.tool_presentation,
   }
 }
 
@@ -789,6 +813,7 @@ function providerAgentMetadata(value: unknown): AgentMessageMetadata {
     turn_versions: readTurnVersions(agent.turn_versions),
     turn_version_index: readNumber(agent.turn_version_index),
     user_references: readUserMessageReferences(agent.user_references),
+    tool_presentation: readToolPresentation(agent.tool_presentation),
   }
 }
 

@@ -9,6 +9,8 @@ import (
 	"log/slog"
 	"strings"
 
+	agent "github.com/alfredxw/denova/agent"
+
 	apptask "denova/internal/app/task"
 	imageasset "denova/internal/image/asset"
 	imagepreset "denova/internal/image/preset"
@@ -90,6 +92,7 @@ func (service *Service) GenerateInteractiveImage(ctx context.Context, storyID st
 			return store.AppendTurnDisplayEvent(storyID, storyCtx.Snapshot.BranchID, turn.ID, interactive.DisplayEvent{
 				ID: eventID, Role: "tool_call", Content: interactiveImageToolName, Name: interactiveImageToolName,
 				Status: "running", Args: interactiveImageEventArgs(req.CommandID, source, req.Force),
+				ToolPresentation: interactiveImageToolPresentation(),
 			})
 		},
 		OnInteractiveImage: func(image *imageasset.InteractiveResult) error {
@@ -119,26 +122,28 @@ func (service *Service) GenerateInteractiveImage(ctx context.Context, storyID st
 			resultErr = runtime.Context().Err()
 		}
 		_ = store.AppendTurnDisplayEvent(storyID, storyCtx.Snapshot.BranchID, turn.ID, interactive.DisplayEvent{
-			ID:      eventID,
-			Role:    "tool_call",
-			Content: interactiveImageToolName,
-			Name:    interactiveImageToolName,
-			Status:  "error",
-			Args:    interactiveImageEventArgs(req.CommandID, source, req.Force),
-			Result:  interactiveImageErrorResult(resultErr),
+			ID:               eventID,
+			Role:             "tool_call",
+			Content:          interactiveImageToolName,
+			Name:             interactiveImageToolName,
+			Status:           "error",
+			Args:             interactiveImageEventArgs(req.CommandID, source, req.Force),
+			Result:           interactiveImageErrorResult(resultErr),
+			ToolPresentation: interactiveImageToolPresentation(),
 		})
 		return InteractiveGenerateResult{}, fmt.Errorf("%w: %v", ErrExecution, resultErr)
 	}
 	if result.InteractiveImage == nil {
 		err := fmt.Errorf("image Agent returned no interactive image")
 		_ = store.AppendTurnDisplayEvent(storyID, storyCtx.Snapshot.BranchID, turn.ID, interactive.DisplayEvent{
-			ID:      eventID,
-			Role:    "tool_call",
-			Content: interactiveImageToolName,
-			Name:    interactiveImageToolName,
-			Status:  "error",
-			Args:    interactiveImageEventArgs(req.CommandID, source, req.Force),
-			Result:  interactiveImageErrorResult(err),
+			ID:               eventID,
+			Role:             "tool_call",
+			Content:          interactiveImageToolName,
+			Name:             interactiveImageToolName,
+			Status:           "error",
+			Args:             interactiveImageEventArgs(req.CommandID, source, req.Force),
+			Result:           interactiveImageErrorResult(err),
+			ToolPresentation: interactiveImageToolPresentation(),
 		})
 		return InteractiveGenerateResult{}, fmt.Errorf("%w: %v", ErrExecution, err)
 	}
@@ -278,7 +283,13 @@ func appendInteractiveImageSuccess(
 	return store.AppendTurnDisplayEvent(storyID, branchID, turnID, interactive.DisplayEvent{
 		ID: eventID, Role: "tool_call", Content: interactiveImageToolName, Name: interactiveImageToolName,
 		Status: "success", Args: interactiveImageEventArgs(commandID, source, force), Result: string(data),
+		ToolPresentation: interactiveImageToolPresentation(),
 	})
+}
+
+func interactiveImageToolPresentation() *agent.ToolPresentation {
+	presentation := agent.UniformToolPresentation(agent.ToolPresentationInteractiveMedia)
+	return &presentation
 }
 
 func interactiveImageEventID(commandID string) string {

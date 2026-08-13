@@ -39,6 +39,10 @@ func TestPublicEventProjectorPreservesDenovaToolResultDisplayAdapters(t *testing
 	if image["interactive_image"] == nil || image["target"] != "assets/interactive/images/turn.json" {
 		t.Fatalf("interactive image display projection = %#v", image)
 	}
+	presentation, ok := image["tool_presentation"].(agent.ToolPresentation)
+	if !ok || presentation.Call != agent.ToolPresentationImage || presentation.Result != agent.ToolPresentationInteractiveMedia {
+		t.Fatalf("interactive image presentation = %#v", image["tool_presentation"])
+	}
 }
 
 func TestPublicToolResultProjectionRecognizesEveryArtifactLayout(t *testing.T) {

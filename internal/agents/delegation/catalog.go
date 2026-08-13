@@ -28,9 +28,11 @@ type Child struct {
 // Config contains the Denova policy projection for the common task tool.
 // These values affect the model-visible tool contract and are fingerprinted.
 type Config struct {
-	Capability     string
-	Description    string
-	MaxResultBytes int
+	Capability         string
+	Description        string
+	MaxResultBytes     int
+	ValidationIdentity agent.CapabilityIdentity
+	Validate           func(context.Context, []agent.ToolDefinition) error `json:"-"`
 }
 
 // Catalog is deliberately unusable until an execution owner binds a durable
@@ -53,8 +55,9 @@ func NewCatalog(base agent.Toolset, config Config, children ...Child) (*Catalog,
 	}
 	config.Capability = strings.TrimSpace(config.Capability)
 	config.Description = strings.TrimSpace(config.Description)
-	if config.Capability == "" || config.MaxResultBytes <= 0 {
-		return nil, errors.New("delegation Catalog requires capability and positive result limit")
+	if config.Capability == "" || config.MaxResultBytes <= 0 || config.Validate == nil ||
+		config.ValidationIdentity.Kind == "" || config.ValidationIdentity.Version == 0 {
+		return nil, errors.New("delegation Catalog requires capability, positive result limit, and identified manifest validation")
 	}
 	resolved := make([]Child, len(children))
 	seen := make(map[string]struct{}, len(children))
@@ -71,14 +74,18 @@ func NewCatalog(base agent.Toolset, config Config, children ...Child) (*Catalog,
 		resolved[index] = child
 	}
 	encoded, _ := json.Marshal(struct {
-		Base     agent.CapabilityIdentity
-		Config   Config
-		Children []struct {
+		Base               agent.CapabilityIdentity
+		Capability         string
+		Description        string
+		MaxResultBytes     int
+		ValidationIdentity agent.CapabilityIdentity
+		Children           []struct {
 			Name, Description string
 			Identity          agent.CapabilityIdentity
 		}
 	}{
-		Base: base.Identity(), Config: config,
+		Base: base.Identity(), Capability: config.Capability, Description: config.Description,
+		MaxResultBytes: config.MaxResultBytes, ValidationIdentity: config.ValidationIdentity,
 		Children: childIdentities(resolved),
 	})
 	digest := sha256.Sum256(encoded)
@@ -167,7 +174,11 @@ func (bound *boundCatalog) PrepareTools(ctx context.Context, request agent.ToolR
 			tasks[index].Tool = describedTaskTool{Tool: tasks[index].Tool, description: bound.catalog.config.Description}
 		}
 	}
-	return append(base, tasks...), nil
+	definitions := append(base, tasks...)
+	if err := bound.catalog.config.Validate(ctx, definitions); err != nil {
+		return nil, fmt.Errorf("validate delegated Agent tool manifest: %w", err)
+	}
+	return definitions, nil
 }
 
 type describedTaskTool struct {

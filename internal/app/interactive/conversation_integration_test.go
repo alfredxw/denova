@@ -637,7 +637,7 @@ func TestInteractiveConversationPersistsDisplayEventTimeline(t *testing.T) {
 	if err := conversation.AppendDisplayToolArgs("call-1", "list_lore_items", `{"keywords":["档案室"]}`); err != nil {
 		t.Fatal(err)
 	}
-	if err := conversation.UpdateDisplayToolResult("call-1", "list_lore_items", "success", "找到档案室设定"); err != nil {
+	if err := conversation.UpdateDisplayToolResult("call-1", "list_lore_items", "success", "找到档案室设定", nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := conversation.AppendDisplayEvent(session.DisplayEvent{Role: "thinking", Content: "第二轮基于工具结果继续判断。"}); err != nil {
@@ -646,7 +646,7 @@ func TestInteractiveConversationPersistsDisplayEventTimeline(t *testing.T) {
 	if err := conversation.AppendDisplayEvent(session.DisplayEvent{ID: "call-2", Role: "tool_call", Name: "search_story_history", Content: "search_story_history", Args: `{"keywords":["钟楼"]}`, Status: "running"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := conversation.UpdateDisplayToolResult("call-2", "search_story_history", "success", "找到 1 个历史回合"); err != nil {
+	if err := conversation.UpdateDisplayToolResult("call-2", "search_story_history", "success", "找到 1 个历史回合", nil); err != nil {
 		t.Fatal(err)
 	}
 	submitTestTurnResult(t, conversation, "调查档案柜", "找到档案室线索")

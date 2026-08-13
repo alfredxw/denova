@@ -303,6 +303,7 @@ func (s *Session) History() []HistoryEntry {
 				Args:                 record.display.Args,
 				Status:               record.display.Status,
 				Result:               record.display.Result,
+				ToolPresentation:     cloneSessionToolPresentation(record.display.ToolPresentation),
 				Illustration:         cloneChapterIllustration(record.display.Illustration),
 				CreatedAt:            record.display.CreatedAt,
 				RunID:                record.display.RunID,
@@ -331,6 +332,14 @@ func (s *Session) History() []HistoryEntry {
 		}
 	}
 	return normalizeCompletedToolDisplayEntries(result)
+}
+
+func cloneSessionToolPresentation(presentation *agent.ToolPresentation) *agent.ToolPresentation {
+	if presentation == nil {
+		return nil
+	}
+	cloned := *presentation
+	return &cloned
 }
 
 func normalizeCompletedToolDisplayEntries(entries []HistoryEntry) []HistoryEntry {

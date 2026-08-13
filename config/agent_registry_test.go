@@ -21,7 +21,7 @@ func TestAgentToolDescriptorSummaryMatchesFrontendContract(t *testing.T) {
 	if len(interfaceMatch) != 2 {
 		t.Fatal("frontend AgentToolDescriptorSummary interface is missing")
 	}
-	fieldMatches := regexp.MustCompile(`(?m)^\s*([a-z][a-z0-9_]*)\??:\s*string\s*$`).FindAllSubmatch(interfaceMatch[1], -1)
+	fieldMatches := regexp.MustCompile(`(?m)^\s*([a-z][a-z0-9_]*)\??:\s*(?:string|number|ToolPresentationKind)\s*$`).FindAllSubmatch(interfaceMatch[1], -1)
 	frontendFields := make([]string, 0, len(fieldMatches))
 	for _, match := range fieldMatches {
 		frontendFields = append(frontendFields, string(match[1]))
@@ -40,6 +40,35 @@ func TestAgentToolDescriptorSummaryMatchesFrontendContract(t *testing.T) {
 	slices.Sort(backendFields)
 	if !slices.Equal(frontendFields, backendFields) {
 		t.Fatalf("frontend descriptor fields = %v, backend JSON fields = %v", frontendFields, backendFields)
+	}
+}
+
+func TestGoalCapabilityUsesStandardInjectedToolContract(t *testing.T) {
+	manifest := ResolveAgentToolManifestForGOOS(
+		ResolvedAgentToolSettings{AgentToolGoal: true}, AgentKindIDE, "linux",
+	)
+	var goal *ResolvedAgentToolCapability
+	for index := range manifest {
+		if manifest[index].Capability == AgentToolGoal {
+			goal = &manifest[index]
+			break
+		}
+	}
+	if goal == nil {
+		t.Fatal("IDE manifest has no Goal capability")
+	}
+	want, err := SummarizeAgentToolDescriptor(agent.StandardGoalToolDescriptor())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(goal.ToolNames, []string{agent.StandardGoalToolName}) {
+		t.Fatalf("Goal tool names = %v", goal.ToolNames)
+	}
+	if descriptor := agent.StandardGoalToolDescriptor(); descriptor.Capability != AgentToolGoal {
+		t.Fatalf("Goal descriptor capability = %q, want %q", descriptor.Capability, AgentToolGoal)
+	}
+	if got := goal.ToolDescriptors[agent.StandardGoalToolName]; got != want {
+		t.Fatalf("Goal descriptor = %+v, want %+v", got, want)
 	}
 }
 
@@ -228,11 +257,20 @@ func TestAgentToolCapabilityCatalogResolvesPlatformNamesAndDescriptors(t *testin
 		if len(entry.ToolNames) == 0 {
 			t.Fatalf("catalog capability %q has no concrete tool names", entry.Capability)
 		}
-		if entry.Descriptor.Execution == "" || entry.Descriptor.MutationScope == "" ||
+		if entry.Descriptor.Source == "" || entry.Descriptor.Execution == "" || entry.Descriptor.MutationScope == "" ||
 			entry.Descriptor.PostCheck == "" || entry.Descriptor.Recovery == "" ||
 			entry.Descriptor.ResultProjection == "" || entry.Descriptor.ResultRetention == "" ||
-			entry.Descriptor.Steering == "" {
+			entry.Descriptor.Steering == "" || entry.Descriptor.MaxResultBytes <= 0 || entry.Descriptor.CallPresentation == "" ||
+			entry.Descriptor.ResultPresentation == "" {
 			t.Fatalf("catalog capability %q has incomplete descriptor: %#v", entry.Capability, entry.Descriptor)
+		}
+		if len(entry.ToolDescriptors) != len(entry.ToolNames) {
+			t.Fatalf("catalog capability %q descriptor count = %d, names = %v", entry.Capability, len(entry.ToolDescriptors), entry.ToolNames)
+		}
+		for _, name := range entry.ToolNames {
+			if _, present := entry.ToolDescriptors[name]; !present {
+				t.Fatalf("catalog capability %q has no descriptor for %q", entry.Capability, name)
+			}
 		}
 	}
 	if got := catalogToolNames(linux, AgentToolShell); len(got) != 1 || got[0] != "bash" {
@@ -240,6 +278,33 @@ func TestAgentToolCapabilityCatalogResolvesPlatformNamesAndDescriptors(t *testin
 	}
 	if got := catalogToolNames(windows, AgentToolShell); len(got) != 1 || got[0] != "pwsh" {
 		t.Fatalf("windows shell names = %#v, want [pwsh]", got)
+	}
+}
+
+func TestResolvedManifestProjectsRuntimeResultLimitPerConcreteTool(t *testing.T) {
+	const runtimeLimit = 64 << 10
+	manifest := ResolveAgentToolManifestForGOOS(ResolvedAgentToolSettings{
+		AgentToolWorkspaceRead: true,
+		AgentToolSkills:        true,
+		AgentToolWebSearch:     true,
+	}, AgentKindIDE, "linux", runtimeLimit)
+	entries := make(map[string]ResolvedAgentToolCapability, len(manifest))
+	for _, entry := range manifest {
+		entries[entry.Capability] = entry
+	}
+	for _, name := range []string{"read", "glob", "grep"} {
+		if got := entries[AgentToolWorkspaceRead].ToolDescriptors[name].MaxResultBytes; got != runtimeLimit {
+			t.Fatalf("workspace %s result limit = %d, want %d", name, got, runtimeLimit)
+		}
+	}
+	if got := entries[AgentToolSkills].ToolDescriptors["read"].MaxResultBytes; got != runtimeLimit {
+		t.Fatalf("Skill reference read result limit = %d, want %d", got, runtimeLimit)
+	}
+	if got := entries[AgentToolSkills].ToolDescriptors["skill"].MaxResultBytes; got != DefaultAgentToolResultLimitKB*1024 {
+		t.Fatalf("Skill loader result limit = %d, want stable default", got)
+	}
+	if got := entries[AgentToolWebSearch].ToolDescriptors["web_search"].MaxResultBytes; got != DefaultAgentToolResultLimitKB*1024 {
+		t.Fatalf("web_search result limit = %d, want stable default", got)
 	}
 }
 

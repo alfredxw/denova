@@ -47,6 +47,7 @@ func sanitizeDisplayEvents(events []DisplayEvent) []DisplayEvent {
 			Args:              event.Args,
 			Status:            status,
 			Result:            event.Result,
+			ToolPresentation:  normalizedToolPresentation(event.ToolPresentation),
 			CreatedAt:         strings.TrimSpace(event.CreatedAt),
 			AgentKind:         strings.TrimSpace(event.AgentKind),
 			AgentName:         strings.TrimSpace(event.AgentName),
@@ -67,6 +68,17 @@ func sanitizeDisplayEvents(events []DisplayEvent) []DisplayEvent {
 		return nil
 	}
 	return result
+}
+
+func normalizedToolPresentation(presentation *agent.ToolPresentation) *agent.ToolPresentation {
+	if presentation == nil {
+		return nil
+	}
+	normalized, err := presentation.Normalize()
+	if err != nil {
+		return nil
+	}
+	return &normalized
 }
 
 func trimStringSlice(values []string) []string {

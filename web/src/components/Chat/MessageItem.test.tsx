@@ -646,6 +646,7 @@ describe('MessageItem', () => {
           content: 'generate_image',
           name: 'generate_image',
           status: 'success',
+          tool_presentation: { call: 'image', result: 'image' },
           illustration,
         }}
         onInsertIllustration={handleInsert}
@@ -720,6 +721,64 @@ describe('MessageItem', () => {
 
     await user.click(screen.getByRole('button', { name: '上一张互动图像' }))
     expect(screen.getByRole('img', { name: '第一张互动图像' })).toHaveAttribute('src', '/api/projects/project-message/files/asset?path=assets%2Finteractive%2Fimages%2Fstory-1%2Fmain%2Fturn-1%2Frun-a%2Fimage.png')
+  })
+
+  it('互动媒体 contract 不依赖工具名渲染互动图像', () => {
+    render(
+      <MessageItem
+        message={{
+          role: 'tool_result',
+          content: '',
+          name: 'renamed_media_generator',
+          status: 'success',
+          tool_presentation: { call: 'interactive_media', result: 'interactive_media' },
+          interactive_image_status: 'success',
+          interactive_image: {
+            schema: 'interactive_image.v1',
+            story_id: 'story-1',
+            branch_id: 'main',
+            turn_id: 'turn-1',
+            image_path: 'assets/interactive/images/story-1/main/turn-1/run-a/image.png',
+            meta_path: 'assets/interactive/images/story-1/main/turn-1/run-a/meta.json',
+            alt_text: '契约驱动的互动图像',
+          },
+        }}
+      />,
+    )
+
+    expect(screen.getByRole('img', { name: '契约驱动的互动图像' })).toHaveAttribute(
+      'src',
+      '/api/projects/project-message/files/asset?path=assets%2Finteractive%2Fimages%2Fstory-1%2Fmain%2Fturn-1%2Frun-a%2Fimage.png',
+    )
+  })
+
+  it('已完成工具按 result contract 恢复 Writing 互动图像', () => {
+    render(
+      <MessageItem
+        message={{
+          role: 'tool_call',
+          content: '',
+          name: 'renamed_media_generator',
+          status: 'success',
+          result: JSON.stringify({
+            schema: 'interactive_image.v1',
+            story_id: 'story-1',
+            branch_id: 'main',
+            turn_id: 'turn-1',
+            image_path: 'assets/interactive/images/story-1/main/turn-1/reopened/image.png',
+            meta_path: 'assets/interactive/images/story-1/main/turn-1/reopened/meta.json',
+            alt_text: '冷重载恢复的互动图像',
+          }),
+          tool_presentation: { call: 'image', result: 'interactive_media' },
+        }}
+      />,
+    )
+
+    expect(screen.getByRole('img', { name: '冷重载恢复的互动图像' })).toHaveAttribute(
+      'src',
+      '/api/projects/project-message/files/asset?path=assets%2Finteractive%2Fimages%2Fstory-1%2Fmain%2Fturn-1%2Freopened%2Fimage.png',
+    )
+    expect(screen.queryByText('renamed_media_generator')).not.toBeInTheDocument()
   })
 
   it('assistant 回合互动图像新增版本后自动切到最新图像', async () => {
@@ -827,6 +886,7 @@ describe('MessageItem', () => {
           content: 'generate_image',
           name: 'generate_image',
           status: 'success',
+          tool_presentation: { call: 'image', result: 'image' },
           illustration: {
             schema: 'chapter_illustration.v1',
             chapter_path: 'chapters/ch01.txt',
@@ -914,6 +974,7 @@ describe('MessageItem', () => {
           args,
           status: 'success',
           result,
+          tool_presentation: { call: 'todo', result: 'todo' },
         }}
       />,
     )
@@ -937,6 +998,7 @@ describe('MessageItem', () => {
           name: 'todo',
           args: partial,
           status: 'running',
+          tool_presentation: { call: 'todo', result: 'todo' },
         }}
       />,
     )
@@ -956,6 +1018,7 @@ describe('MessageItem', () => {
           name: 'todo',
           args: partial,
           status: 'running',
+          tool_presentation: { call: 'todo', result: 'todo' },
         }}
       />,
     )
@@ -975,6 +1038,7 @@ describe('MessageItem', () => {
           args: '{"subagent_type":"researcher","description":"查找线索"}',
           status: 'success',
           result: '找到三条线索',
+          tool_presentation: { call: 'delegation', result: 'delegation' },
         }}
       />,
     )

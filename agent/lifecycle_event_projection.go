@@ -434,11 +434,19 @@ func decodeToolDescriptorMetadata(metadata json.RawMessage) *ToolDescriptor {
 	if len(metadata) == 0 {
 		return nil
 	}
-	var descriptor ToolDescriptor
-	if err := json.Unmarshal(metadata, &descriptor); err != nil || descriptor.Execution == "" {
+	var decoded struct {
+		ToolDescriptor
+		Presentation ToolPresentation `json:"presentation"`
+	}
+	if err := json.Unmarshal(metadata, &decoded); err != nil || decoded.Execution == "" {
 		return nil
 	}
-	return &descriptor
+	presentation, err := decoded.Presentation.Normalize()
+	if err != nil {
+		return nil
+	}
+	decoded.ToolDescriptor.Presentation = presentation
+	return &decoded.ToolDescriptor
 }
 
 func mapResultStatus(status runstate.OperationStatus) ResultStatus {

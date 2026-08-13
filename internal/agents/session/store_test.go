@@ -232,13 +232,15 @@ func TestDisplayEventsPersistOutsideEffectiveContext(t *testing.T) {
 	if err := sess.AppendDisplayEvent(DisplayEvent{Role: "thinking", Content: "先分析角色动机"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := sess.AppendDisplayEvent(DisplayEvent{ID: "call-1", Role: "tool_call", Name: "read", Content: "read", Status: "running"}); err != nil {
+	presentation := agent.UniformToolPresentation(agent.ToolPresentationSearch)
+	if err := sess.AppendDisplayEvent(DisplayEvent{ID: "call-1", Role: "tool_call", Name: "read", Content: "read", Status: "running", ToolPresentation: &presentation}); err != nil {
 		t.Fatal(err)
 	}
 	if err := sess.AppendDisplayToolArgs("call-1", "read", `{"path":"chapters/1.md"}`); err != nil {
 		t.Fatal(err)
 	}
-	if err := sess.UpdateDisplayToolResult("call-1", "read", "success", "章节内容"); err != nil {
+	resultPresentation := agent.ToolPresentation{Call: agent.ToolPresentationSearch, Result: agent.ToolPresentationInteractiveMedia}
+	if err := sess.UpdateDisplayToolResult("call-1", "read", "success", "章节内容", &resultPresentation); err != nil {
 		t.Fatal(err)
 	}
 	if err := sess.Append(agent.AssistantMessage("规划完成", nil)); err != nil {
@@ -258,6 +260,15 @@ func TestDisplayEventsPersistOutsideEffectiveContext(t *testing.T) {
 		t.Fatalf("展示事件不应进入 Agent 有效上下文: %#v", effective)
 	}
 	history := reloaded.History()
+	var persistedPresentation *agent.ToolPresentation
+	for _, entry := range history {
+		if entry.ID == "call-1" {
+			persistedPresentation = entry.ToolPresentation
+		}
+	}
+	if persistedPresentation == nil || persistedPresentation.Call != agent.ToolPresentationSearch || persistedPresentation.Result != agent.ToolPresentationInteractiveMedia {
+		t.Fatalf("display presentation changed across reload: %#v", persistedPresentation)
+	}
 	if len(history) != 4 {
 		t.Fatalf("历史应包含 user/thinking/tool/assistant: %#v", history)
 	}
@@ -598,7 +609,7 @@ func TestDisplayToolArgsDeltasAreBatchedAndFlushedOnFinalResult(t *testing.T) {
 		t.Fatalf("小块流式参数应等待工具终态批量落盘: %#v", history)
 	}
 
-	if err := sess.UpdateDisplayToolResult("call-1", "write", "success", "ok"); err != nil {
+	if err := sess.UpdateDisplayToolResult("call-1", "write", "success", "ok", nil); err != nil {
 		t.Fatal(err)
 	}
 	reloadedAfterResult, err := NewStore(dir)
@@ -632,7 +643,7 @@ func TestDisplayToolArgsArePersistedWithoutTruncation(t *testing.T) {
 	if err := sess.AppendDisplayToolArgs("call-1", "write", largeArgs); err != nil {
 		t.Fatal(err)
 	}
-	if err := sess.UpdateDisplayToolResult("call-1", "write", "success", "ok"); err != nil {
+	if err := sess.UpdateDisplayToolResult("call-1", "write", "success", "ok", nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -665,7 +676,7 @@ func TestUpdateDisplayToolResultFallsBackToNameWhenIDMissing(t *testing.T) {
 	if err := sess.AppendDisplayEvent(DisplayEvent{ID: "call-execute", Role: "tool_call", Name: "bash", Content: "bash", Status: "running"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := sess.UpdateDisplayToolResult("", "bash", "success", "command done"); err != nil {
+	if err := sess.UpdateDisplayToolResult("", "bash", "success", "command done", nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -690,7 +701,7 @@ func TestUpdateDisplayToolResultDoesNotFallbackWhenIDDiffers(t *testing.T) {
 	if err := sess.AppendDisplayEvent(DisplayEvent{ID: "call-execute", Role: "tool_call", Name: "bash", Content: "bash", Status: "running"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := sess.UpdateDisplayToolResult("stale-id", "bash", "success", "stale result"); err != nil {
+	if err := sess.UpdateDisplayToolResult("stale-id", "bash", "success", "stale result", nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -718,7 +729,7 @@ func TestUpdateDisplayToolResultDoesNotFallbackWhenNameIsAmbiguous(t *testing.T)
 	if err := sess.AppendDisplayEvent(DisplayEvent{ID: "execute-2", Role: "tool_call", Name: "bash", Content: "bash", Status: "running"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := sess.UpdateDisplayToolResult("stale-id", "bash", "success", "ambiguous result"); err != nil {
+	if err := sess.UpdateDisplayToolResult("stale-id", "bash", "success", "ambiguous result", nil); err != nil {
 		t.Fatal(err)
 	}
 

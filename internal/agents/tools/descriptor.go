@@ -2,6 +2,9 @@ package tools
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -32,6 +35,162 @@ func validateToolDescriptors(ctx context.Context, tools []agent.ToolDefinition) 
 // an explicit execution/recovery descriptor.
 func Validate(ctx context.Context, concrete []agent.ToolDefinition) error {
 	return validateToolDescriptors(ctx, concrete)
+}
+
+// ValidateAgainstManifest proves that every product-owned capability assembled
+// for an Agent matches the generated settings catalog. Application extensions
+// with unknown capability names remain outside this product policy seam.
+func ValidateAgainstManifest(ctx context.Context, concrete []agent.ToolDefinition, manifest []config.ResolvedAgentToolCapability) error {
+	if err := Validate(ctx, concrete); err != nil {
+		return err
+	}
+	known := make(map[string]config.AgentToolCapabilityCatalogEntry)
+	for _, entry := range config.AgentToolCapabilityCatalogForGOOS("") {
+		known[entry.Capability] = entry
+	}
+	resolved := make(map[string]config.ResolvedAgentToolCapability, len(manifest))
+	for _, entry := range manifest {
+		resolved[entry.Capability] = entry
+	}
+	for index, definition := range concrete {
+		capability := strings.TrimSpace(definition.Descriptor.Capability)
+		if _, productOwned := known[capability]; !productOwned {
+			continue
+		}
+		entry, present := resolved[capability]
+		if !present {
+			return fmt.Errorf("tool capability %q at index %d is outside the selected Agent manifest", capability, index)
+		}
+		if !entry.Allowed || entry.Availability == config.AgentToolAvailabilityUnavailable {
+			return fmt.Errorf("tool capability %q at index %d was assembled while disabled by the selected Agent manifest", capability, index)
+		}
+		info, err := definition.Tool.Info(ctx)
+		if err != nil {
+			return fmt.Errorf("read tool capability %q at index %d: %w", capability, index, err)
+		}
+		if info == nil || !containsToolName(entry.ToolNames, info.Name) {
+			return fmt.Errorf("tool capability %q assembled undeclared tool name %q; declared names are %v", capability, toolInfoName(info), entry.ToolNames)
+		}
+		expected, declared := descriptorSummaryForTool(entry.ToolDescriptors, info.Name)
+		if !declared {
+			return fmt.Errorf("tool capability %q has no generated descriptor for declared tool %q", capability, info.Name)
+		}
+		summary, err := config.SummarizeAgentToolDescriptor(definition.Descriptor)
+		if err != nil {
+			return fmt.Errorf("summarize tool %q capability %q: %w", info.Name, capability, err)
+		}
+		if summary != expected {
+			return fmt.Errorf("tool %q capability %q descriptor drift: runtime=%+v catalog=%+v", info.Name, capability, summary, expected)
+		}
+	}
+	return nil
+}
+
+// ManifestValidator returns an identified validation seam suitable for a
+// late-bound Toolset such as delegation. Its policy identity participates in
+// the owning Toolset's recovery fingerprint.
+func ManifestValidator(manifest []config.ResolvedAgentToolCapability) (agent.CapabilityIdentity, func(context.Context, []agent.ToolDefinition) error, error) {
+	cloned := append([]config.ResolvedAgentToolCapability(nil), manifest...)
+	for index := range cloned {
+		cloned[index].ToolNames = append([]string(nil), cloned[index].ToolNames...)
+		cloned[index].ToolDescriptors = cloneDescriptorSummaries(cloned[index].ToolDescriptors)
+	}
+	encoded, err := json.Marshal(manifestValidatorIdentityProjection(cloned))
+	if err != nil {
+		return agent.CapabilityIdentity{}, nil, fmt.Errorf("encode tool manifest validator identity: %w", err)
+	}
+	digest := sha256.Sum256(encoded)
+	identity := agent.CapabilityIdentity{
+		Kind: "denova.tools.manifest_validator", Version: 1, ConfigHash: hex.EncodeToString(digest[:]),
+	}
+	return identity, func(ctx context.Context, definitions []agent.ToolDefinition) error {
+		return ValidateAgainstManifest(ctx, definitions, cloned)
+	}, nil
+}
+
+// manifestValidatorIdentityProjection excludes catalog copy and presentation
+// fields that never affect model context or execution recovery. The validator
+// still checks presentation at materialization time, but display-only changes
+// must not rotate the owning Toolset's durable identity or cache prefix.
+type manifestValidatorIdentityEntry struct {
+	Capability      string                                 `json:"capability"`
+	ToolNames       []string                               `json:"tool_names"`
+	Allowed         bool                                   `json:"allowed"`
+	Availability    config.AgentToolAvailability           `json:"availability"`
+	ToolDescriptors map[string]manifestValidatorDescriptor `json:"tool_descriptors"`
+}
+
+type manifestValidatorDescriptor struct {
+	Source             agent.ToolSource              `json:"source"`
+	Execution          agent.ToolExecutionClass      `json:"execution"`
+	MutationScope      agent.ToolMutationScope       `json:"mutation_scope"`
+	PostCheck          agent.ToolPostCheckPolicy     `json:"post_check"`
+	Recovery           agent.ToolRecoveryClass       `json:"recovery"`
+	ResultRecoveryKind agent.ToolResultRecoveryKind  `json:"result_recovery_kind,omitempty"`
+	ResultProjection   agent.ToolResultProjection    `json:"result_projection"`
+	ResultRetention    agent.ToolResultRetentionMode `json:"result_retention"`
+	Steering           agent.SteeringPolicy          `json:"steering"`
+	MaxResultBytes     int                           `json:"max_result_bytes"`
+}
+
+func manifestValidatorIdentityProjection(manifest []config.ResolvedAgentToolCapability) []manifestValidatorIdentityEntry {
+	projected := make([]manifestValidatorIdentityEntry, len(manifest))
+	for index, entry := range manifest {
+		projected[index] = manifestValidatorIdentityEntry{
+			Capability: entry.Capability, ToolNames: append([]string(nil), entry.ToolNames...),
+			Allowed: entry.Allowed, Availability: entry.Availability,
+			ToolDescriptors: manifestValidatorDescriptors(entry.ToolDescriptors),
+		}
+	}
+	return projected
+}
+
+func manifestValidatorDescriptors(summaries map[string]config.AgentToolDescriptorSummary) map[string]manifestValidatorDescriptor {
+	result := make(map[string]manifestValidatorDescriptor, len(summaries))
+	for name, summary := range summaries {
+		result[name] = manifestValidatorDescriptor{
+			Source: summary.Source, Execution: summary.Execution, MutationScope: summary.MutationScope,
+			PostCheck: summary.PostCheck, Recovery: summary.Recovery, ResultRecoveryKind: summary.ResultRecoveryKind,
+			ResultProjection: summary.ResultProjection, ResultRetention: summary.ResultRetention,
+			Steering: summary.Steering, MaxResultBytes: summary.MaxResultBytes,
+		}
+	}
+	return result
+}
+
+func descriptorSummaryForTool(summaries map[string]config.AgentToolDescriptorSummary, name string) (config.AgentToolDescriptorSummary, bool) {
+	normalized := normalizeToolName(name)
+	for candidate, summary := range summaries {
+		if normalizeToolName(candidate) == normalized {
+			return summary, true
+		}
+	}
+	return config.AgentToolDescriptorSummary{}, false
+}
+
+func cloneDescriptorSummaries(summaries map[string]config.AgentToolDescriptorSummary) map[string]config.AgentToolDescriptorSummary {
+	result := make(map[string]config.AgentToolDescriptorSummary, len(summaries))
+	for name, summary := range summaries {
+		result[name] = summary
+	}
+	return result
+}
+
+func containsToolName(names []string, candidate string) bool {
+	candidate = normalizeToolName(candidate)
+	for _, name := range names {
+		if normalizeToolName(name) == candidate {
+			return true
+		}
+	}
+	return false
+}
+
+func toolInfoName(info *agent.ToolInfo) string {
+	if info == nil {
+		return ""
+	}
+	return info.Name
 }
 
 func validatedConcreteToolNames(ctx context.Context, tools []agent.ToolDefinition) ([]string, error) {
@@ -85,7 +244,7 @@ func boundedReadDescriptor(source agent.ToolSource, capability string, recoveryK
 	if len(recoveryKinds) > 0 {
 		resultRecovery = recoveryKinds[0]
 	}
-	return agent.ToolDescriptor{
+	descriptor := agent.ToolDescriptor{
 		Source: source, Capability: capability,
 		Execution:          agent.ToolExecutionParallelRead,
 		MutationScope:      agent.ToolMutationNone,
@@ -97,6 +256,13 @@ func boundedReadDescriptor(source agent.ToolSource, capability string, recoveryK
 		Steering:           agent.SteeringFinishCurrent,
 		MaxResultBytes:     defaultToolResultMaxBytes,
 	}
+	switch source {
+	case ToolSourceWeb:
+		descriptor.Presentation = agent.UniformToolPresentation(agent.ToolPresentationWeb)
+	default:
+		descriptor.Presentation = agent.UniformToolPresentation(agent.ToolPresentationGeneric)
+	}
+	return descriptor
 }
 
 // BoundedReadDescriptor declares a parallel, read-only tool whose result may
@@ -112,7 +278,7 @@ func BoundedRecoverableReadDescriptor(source agent.ToolSource, capability string
 }
 
 func workspaceWriteDescriptor(source agent.ToolSource, capability string, recovery agent.ToolRecoveryClass) agent.ToolDescriptor {
-	return agent.ToolDescriptor{
+	descriptor := agent.ToolDescriptor{
 		Source: source, Capability: capability,
 		Execution:        agent.ToolExecutionWorkspaceExclusive,
 		MutationScope:    agent.ToolMutationWorkspace,
@@ -123,6 +289,12 @@ func workspaceWriteDescriptor(source agent.ToolSource, capability string, recove
 		Steering:         agent.SteeringFinishCurrent,
 		MaxResultBytes:   defaultToolResultMaxBytes,
 	}
+	if source == ToolSourceImage {
+		descriptor.Presentation = agent.UniformToolPresentation(agent.ToolPresentationImage)
+	} else {
+		descriptor.Presentation = agent.UniformToolPresentation(agent.ToolPresentationFile)
+	}
+	return descriptor
 }
 
 // interactiveStoryWorkflowDescriptor classifies the game-owned turn and state

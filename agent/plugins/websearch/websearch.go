@@ -99,8 +99,9 @@ func webReadDescriptor(capability string) agent.ToolDescriptor {
 	return agent.ToolDescriptor{
 		Source: agent.ToolSourceWeb, Capability: capability, Execution: agent.ToolExecutionParallelRead,
 		MutationScope: agent.ToolMutationNone, PostCheck: agent.ToolPostCheckNone,
-		Recovery: agent.ToolRecoveryReadOnly, ResultRecoveryKind: agent.ToolResultRecoveryRefetch,
-		ResultProjection: agent.ToolResultBoundedModelContext, ResultRetention: agent.ToolResultEagerCandidate,
-		Steering: agent.SteeringFinishCurrent, MaxResultBytes: 2 << 20,
+		Recovery: agent.ToolRecoveryReadOnly, ResultRecoveryKind: agent.ToolResultRecoveryRerun,
+		ResultProjection: agent.ToolResultBoundedModelContext, ResultRetention: agent.ToolResultDeferred,
+		Steering: agent.SteeringInterruptibleWait, MaxResultBytes: 2 << 20,
+		Presentation: agent.UniformToolPresentation(agent.ToolPresentationSearch),
 	}
 }

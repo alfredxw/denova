@@ -168,7 +168,7 @@ function projectPersistedTurn(turn: TurnEvent, options: {
         }))
         break
       case 'tool_call': {
-        if (event.name === 'generate_interactive_image') {
+        if (event.tool_presentation?.result === 'interactive_media') {
           deferredImageEvents.push(event)
           break
         }
@@ -250,6 +250,9 @@ function projectNarrativeMessage(
       {
         type: 'data-agent-interactive-image',
         id: `${id}:interactive-image`,
+        providerMetadata: {
+          agent: { tool_presentation: { call: 'interactive_media', result: 'interactive_media' } },
+        },
         data: {
           id,
           role: 'assistant',
@@ -279,6 +282,7 @@ function displayEventMetadata(event: TurnDisplayEvent): AgentMessageMetadata {
     sse_hidden_reason: event.sse_hidden_reason,
     sse_display_notice: event.sse_display_notice,
     sse_generated_chars: event.sse_generated_chars,
+    tool_presentation: event.tool_presentation,
   }
 }
 

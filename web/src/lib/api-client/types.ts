@@ -6,6 +6,24 @@ export type ChatMessageStatus = 'running' | 'success' | 'error'
 export type ChatPlanAction = 'approved' | 'continue' | 'exited'
 export type InteractiveImageStatus = ChatMessageStatus
 
+export type ToolPresentationKind =
+  | 'generic'
+  | 'file'
+  | 'search'
+  | 'terminal'
+  | 'web'
+  | 'browser'
+  | 'image'
+  | 'interactive_media'
+  | 'todo'
+  | 'interaction'
+  | 'delegation'
+
+export interface ToolPresentation {
+  call: ToolPresentationKind
+  result: ToolPresentationKind
+}
+
 interface ChatMessageBase {
   type?: 'message' | 'clear'
   content?: string
@@ -30,6 +48,7 @@ interface ChatMessageBase {
   sse_generated_chars?: number
   streaming?: boolean
   created_at?: string
+  tool_presentation?: ToolPresentation
   turn_versions?: { turn_id: string; ts: string; current?: boolean }[]
   turn_version_index?: number
 }

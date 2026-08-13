@@ -90,7 +90,7 @@ func TestRefreshCanonicalAppliesDisplayPatchToIsolatedSnapshot(t *testing.T) {
 	}
 	previousDisplay := reader.records[0].display
 
-	if err := writer.UpdateDisplayToolResult("call-1", "read", "success", "chapter"); err != nil {
+	if err := writer.UpdateDisplayToolResult("call-1", "read", "success", "chapter", nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := reader.RefreshCanonical(context.Background()); err != nil {

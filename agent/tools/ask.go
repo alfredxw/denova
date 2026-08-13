@@ -77,6 +77,7 @@ func Ask() (agent.Toolset, error) {
 		Recovery: agent.ToolRecoveryReadOnly, ResultProjection: agent.ToolResultBoundedModelContext,
 		ResultRetention: agent.ToolResultProtected, Steering: agent.SteeringInterruptibleWait,
 		MaxResultBytes: 256 << 10,
+		Presentation:   agent.UniformToolPresentation(agent.ToolPresentationInteraction),
 	}}
 	return agent.StaticToolsIdentified(agent.CapabilityIdentity{Kind: "tools.ask", Version: 2}, definition)
 }

@@ -358,7 +358,8 @@ func buildAgentDefinitionWithComposition(ctx context.Context, cfg *config.Config
 		}
 	}
 	tools = harness.ApplyToolDescriptions(tools)
-	if err := producttools.Validate(ctx, tools); err != nil {
+	manifest := config.ResolveAgentToolManifestForGOOS(toolSettings, spec.Kind, "", toolresult.LimitBytes(cfg))
+	if err := producttools.ValidateAgainstManifest(ctx, tools, manifest); err != nil {
 		return agentDefinitionAssembly{}, err
 	}
 
@@ -397,11 +398,17 @@ func buildAgentDefinitionWithComposition(ctx context.Context, cfg *config.Config
 	}
 	var definitionTools agent.Toolset = rootTools
 	if len(taskAgents) > 0 {
+		validationIdentity, validateManifest, validationErr := producttools.ManifestValidator(manifest)
+		if validationErr != nil {
+			return agentDefinitionAssembly{}, fmt.Errorf("identify Agent tool manifest kind=%s: %w", spec.Kind, validationErr)
+		}
 		taskDescription := harness.ToolDescriptions()["task"]
 		catalog, err := agentdelegation.NewCatalog(rootTools, agentdelegation.Config{
-			Capability:     config.AgentToolDelegation,
-			Description:    taskDescription,
-			MaxResultBytes: toolresult.LimitBytes(cfg),
+			Capability:         config.AgentToolDelegation,
+			Description:        taskDescription,
+			MaxResultBytes:     toolresult.LimitBytes(cfg),
+			ValidationIdentity: validationIdentity,
+			Validate:           validateManifest,
 		}, taskAgents...)
 		if err != nil {
 			return agentDefinitionAssembly{}, fmt.Errorf("create durable task Toolset: %w", err)

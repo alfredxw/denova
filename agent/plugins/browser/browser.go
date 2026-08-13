@@ -97,5 +97,6 @@ func New(controller Controller) (agent.Toolset, error) {
 		MutationScope: agent.ToolMutationExternal, PostCheck: agent.ToolPostCheckExternalReceipt,
 		Recovery: agent.ToolRecoveryNonIdempotent, ResultProjection: agent.ToolResultBoundedModelContext,
 		ResultRetention: agent.ToolResultProtected, Steering: agent.SteeringFinishCurrent, MaxResultBytes: 8 << 20,
+		Presentation: agent.UniformToolPresentation(agent.ToolPresentationBrowser),
 	}})
 }

@@ -96,6 +96,7 @@ func TestPublicEventProjectorStreamsToolInputWithoutDuplicatingExecutionStart(t 
 		MutationScope: agent.ToolMutationNone, PostCheck: agent.ToolPostCheckNone,
 		Recovery: agent.ToolRecoveryReadOnly, ResultProjection: agent.ToolResultBoundedModelContext,
 		ResultRetention: agent.ToolResultDeferred, Steering: agent.SteeringFinishCurrent, MaxResultBytes: 4096,
+		Presentation: agent.UniformToolPresentation(agent.ToolPresentationSearch),
 	}
 	projector.Project(agent.Event{RunID: "run", Payload: agent.ToolInputStarted{
 		CallID: "execution-call", ProviderCallID: "provider-call", Name: "read", Index: 2, Descriptor: descriptor,
@@ -129,6 +130,10 @@ func TestPublicEventProjectorStreamsToolInputWithoutDuplicatingExecutionStart(t 
 		call.DataString("name") != "read" || call.DataString("args") != "" || call.DataString("source") != "read" ||
 		eventDataInt(call.Data, "index") != 2 || eventDataInt(call.Data, "max_result_bytes") != 4096 {
 		t.Fatalf("tool call = %#v", call.Data)
+	}
+	presentation := eventDataToolPresentation(call.Data)
+	if presentation == nil || presentation.Call != agent.ToolPresentationSearch || presentation.Result != agent.ToolPresentationSearch {
+		t.Fatalf("tool presentation = %#v, want search", presentation)
 	}
 	if events[1].DataString("delta")+events[3].DataString("delta") != `{"path":"draft.md"}` ||
 		events[2].DataString("target") != "draft.md" || eventDataInt(events[1].Data, "index") != 2 ||

@@ -43,6 +43,7 @@ export function AgentSubAgentSessionPanel({ projectId, messages, sessionKey, onC
   const running = sessionViews.some((view) => view.streaming)
   const scrollLock = useVirtuosoBottomLock({
     resetKey: sessionKey,
+    resetPosition: running ? 'end' : 'start',
     itemCount: sessionViews.length,
     autoFollowEnabled: running,
     bottomInsetPx: 16,
@@ -107,8 +108,9 @@ export function AgentSubAgentSessionPanel({ projectId, messages, sessionKey, onC
             data={sessionViews}
             context={virtuosoContext}
             components={SUBAGENT_SESSION_COMPONENTS}
-            // Keep one vertical-position owner while the child response grows.
-            alignToBottom={!running}
+            // Completed history opens from its beginning; only a live child owns
+            // bottom following while its response grows.
+            alignToBottom={false}
             computeItemKey={(index, view) => subAgentSessionMessageKey(view, index)}
             itemContent={itemContent}
             overscan={{ main: 360, reverse: 180 }}
