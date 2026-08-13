@@ -239,10 +239,11 @@ func (c *SessionConversation) runtimeContextFragments() []agentcontext.Fragment 
 			title = "Stable Context"
 		}
 		fragments = append(fragments, agentcontext.Fragment{
-			ID: "workspace_runtime_stable", Source: "workspace.runtime.stable", Title: title,
-			Purpose: "provide stable workspace state for the current agent turn",
+			ID: "workspace_runtime_stable", StateID: "workspace_runtime", Source: "workspace.runtime.stable", Title: title,
+			Purpose: "provide revisioned workspace state for the current agent session",
 			Content: c.stableContext, Placement: agentcontext.PlacementLeadingMessage, Included: true,
-			Note: "source=workspace snapshot; placement=stable prefix",
+			Stability: agent.ContextSessionState,
+			Note:      "source=workspace snapshot; lifecycle=session state",
 		})
 	}
 	if strings.TrimSpace(c.dynamicContext) != "" {

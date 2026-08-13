@@ -107,7 +107,7 @@ func (*standardManager) Prepare(_ context.Context, request agent.GoalPrepareRequ
 	)
 	return agent.GoalPreparation{StandardTool: true, Context: []agent.ContextFragment{{
 		Source: "goal.standard", Purpose: "active objective", Resource: "session-goal",
-		Revision: fmt.Sprintf("%d", request.State.Revision), Placement: agent.ContextFinalUserPrefix,
+		Revision: fmt.Sprintf("%d", request.State.Revision), Stability: agent.ContextTurn, Placement: agent.ContextFinalUserPrefix,
 		Content: content, HardLimit: 128 << 10,
 	}}}, nil
 }

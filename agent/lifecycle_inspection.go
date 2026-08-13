@@ -107,9 +107,18 @@ func (session *Session) Inspect(ctx context.Context, input Input) (Inspection, e
 		return Inspection{}, err
 	}
 	prepared.materializedFingerprint = materialized
+	prepared.contextState = cloneContextStateSnapshot(transcript.ContextState)
+	stateMessages, inspectedContextState, err := advanceContextState(
+		transcript.Messages, prepared.fragments, prepared.contextState, compaction, compactionPresent,
+	)
+	if err != nil {
+		return Inspection{}, err
+	}
+	prepared.contextState = inspectedContextState
+	inspectionTranscript := append(cloneMessages(transcript.Messages), cloneMessages(stateMessages)...)
 
 	visible, err := effectiveCleanupMessages(
-		transcript.Messages,
+		inspectionTranscript,
 		cleanup,
 		cleanupPresent,
 		compaction,

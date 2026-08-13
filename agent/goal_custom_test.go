@@ -49,7 +49,7 @@ func (customGoalManager) Prepare(_ context.Context, request GoalPrepareRequest) 
 	}
 	return GoalPreparation{Context: []ContextFragment{{
 		Source: "goal.custom", Purpose: "custom Goal state", Resource: request.State.ID,
-		Revision: fmt.Sprintf("%d", request.State.Revision), Placement: ContextFinalUserPrefix,
+		Revision: fmt.Sprintf("%d", request.State.Revision), Stability: ContextTurn, Placement: ContextFinalUserPrefix,
 		Content: fmt.Sprintf("Custom step %d: %s", data.Step, data.Label), HardLimit: 64 << 10,
 	}}}, nil
 }

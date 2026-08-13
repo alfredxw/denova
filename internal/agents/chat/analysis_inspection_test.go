@@ -37,7 +37,7 @@ func TestBuildInspectedContextAnalysisUsesExactMaintainedMiddlewareFinalRequest(
 		ContextFragments: []agent.ContextFragment{
 			{
 				Source: "workspace.review.feedback", Purpose: "trusted review feedback",
-				Resource: "review-feedback", Revision: "review:4", Placement: agent.ContextAuditOnly,
+				Resource: "review-feedback", Revision: "review:4", Stability: agent.ContextAudit, Placement: agent.ContextAuditOnly,
 				Content: "EXACT_CURRENT_TURN", HardLimit: 64 << 10,
 			},
 			{

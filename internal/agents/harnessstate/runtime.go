@@ -24,7 +24,7 @@ func (h Harness) ContextSource(cfg *config.Config, agentKind string) agent.Conte
 		fragments = append(fragments, agent.ContextFragment{
 			Source: "Denova User State", Purpose: "apply user-managed Agent behavior and preferences",
 			Resource:  "prompts/" + strings.TrimSpace(agentKind) + ".md",
-			Placement: agent.ContextLeadingMessage, Rendering: agent.ContextRenderAttributed,
+			Stability: agent.ContextStablePrefix, Placement: agent.ContextLeadingMessage, Rendering: agent.ContextRenderAttributed,
 			Role: agent.System, Content: prompt, HardLimit: limit,
 		})
 	}
@@ -35,7 +35,7 @@ func (h Harness) ContextSource(cfg *config.Config, agentKind string) agent.Conte
 		fragments = append(fragments, agent.ContextFragment{
 			Source: "Denova User State", Purpose: fragment.Purpose,
 			Resource:  fragment.Resource,
-			Placement: fragment.Placement, Rendering: agent.ContextRenderAttributed,
+			Stability: agent.ContextStablePrefix, Placement: fragment.Placement, Rendering: agent.ContextRenderAttributed,
 			Role: agent.System, Content: fragment.Content, HardLimit: limit,
 		})
 	}

@@ -101,7 +101,7 @@ func (source projectInstructionsContextSource) Materialize(context.Context, agen
 		fragments = append(fragments, agent.ContextFragment{
 			Source: definition.source, Purpose: definition.purpose,
 			Resource: definition.resource, Revision: hex.EncodeToString(digest[:]),
-			Placement: agent.ContextLeadingMessage, Rendering: agent.ContextRenderVerbatim, Role: agent.User,
+			Stability: agent.ContextStablePrefix, Placement: agent.ContextLeadingMessage, Rendering: agent.ContextRenderVerbatim, Role: agent.User,
 			Content: content, HardLimit: source.limit,
 		})
 	}

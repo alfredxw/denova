@@ -335,7 +335,7 @@ func (projectingContextSource) Materialize(_ context.Context, request ContextReq
 	}
 	return []ContextFragment{{
 		Source: "test.host", Purpose: "verify same-cycle host projection", Resource: "host-state",
-		Revision: revision, Placement: ContextLeadingMessage, Content: content, HardLimit: 64 << 10,
+		Revision: revision, Stability: ContextStablePrefix, Placement: ContextLeadingMessage, Content: content, HardLimit: 64 << 10,
 	}}, nil
 }
 

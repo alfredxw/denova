@@ -5,6 +5,7 @@ import (
 	agentexecution "denova/internal/agents/execution"
 	agentinteractive "denova/internal/agents/interactive"
 	"fmt"
+	agent "github.com/alfredxw/denova/agent"
 	"log/slog"
 	"strings"
 	"sync"
@@ -570,10 +571,11 @@ func (c *Conversation) AssembleModelContext(ctx context.Context, originalMessage
 	fragments := append([]agentcontext.Fragment(nil), input.Fragments...)
 	if strings.TrimSpace(residentLore) != "" {
 		fragments = append(fragments, agentcontext.Fragment{
-			ID: "interactive_resident_lore", Source: "interactive.resident_lore", Title: "Resident Lore",
-			Purpose: "provide complete enabled resident lore as a stable model prefix",
+			ID: "interactive_resident_lore", StateID: "interactive_resident_lore", Source: "interactive.resident_lore", Title: "Resident Lore",
+			Purpose: "provide revisioned enabled resident lore for the current agent session",
 			Content: residentLore, Placement: agentcontext.PlacementLeadingMessage, Limit: interactiveResidentLoreMessageMaxBytes, Included: true,
-			Note: "source=enabled resident lore; stable leading context; revision=" + strings.TrimSpace(loreRevision),
+			Stability: agent.ContextSessionState,
+			Note:      "source=enabled resident lore; lifecycle=session state; revision=" + strings.TrimSpace(loreRevision),
 		})
 	}
 	if strings.TrimSpace(tellerTurnContextPrompt) != "" {

@@ -59,7 +59,11 @@ type ContextRequest struct {
 type ContextPlacement string
 
 const (
-	ContextLeadingMessage       ContextPlacement = "leading_message"
+	ContextLeadingMessage ContextPlacement = "leading_message"
+	// ContextStateMessage appends a durable, model-visible state update to the
+	// raw transcript. Agent emits a new message only when the named state
+	// changes, is removed, or must be restored after Compaction.
+	ContextStateMessage         ContextPlacement = "state_message"
 	ContextCompactionCheckpoint ContextPlacement = "compaction_checkpoint"
 	ContextFinalUserPrefix      ContextPlacement = "final_user_prefix"
 	// ContextFinalUserMessage replaces the model-visible user message for this
@@ -68,6 +72,19 @@ const (
 	// without moving their presentation policy into the Agent module.
 	ContextFinalUserMessage ContextPlacement = "final_user_message"
 	ContextAuditOnly        ContextPlacement = "audit_only"
+)
+
+// ContextStability defines the lifecycle of a model-visible fragment
+// independently from where it is rendered. Keeping this contract explicit
+// prevents mutable state from accidentally invalidating a stable cache prefix.
+type ContextStability string
+
+const (
+	ContextStablePrefix ContextStability = "stable_prefix"
+	ContextSessionState ContextStability = "session_state"
+	ContextTurn         ContextStability = "turn"
+	ContextCheckpoint   ContextStability = "checkpoint"
+	ContextAudit        ContextStability = "audit"
 )
 
 // ContextRendering controls only the model-visible wrapper. Provenance and
@@ -82,10 +99,14 @@ const (
 // ContextFragment makes the provenance and hard bound of every injected byte
 // explicit. Content over HardLimit is rejected instead of silently truncated.
 type ContextFragment struct {
-	Source    string
-	Purpose   string
-	Resource  string
-	Revision  string
+	Source   string
+	Purpose  string
+	Resource string
+	Revision string
+	// StateID is required for session_state fragments and must remain stable
+	// across revisions of the same logical state section.
+	StateID   string
+	Stability ContextStability
 	Placement ContextPlacement
 	Rendering ContextRendering
 	// Role applies to leading messages. Empty selects System; User is useful
@@ -333,6 +354,7 @@ type preparedDefinition struct {
 	preparationStage        enginePreparationStage
 	hostData                *HostData
 	clearRevision           uint64
+	contextState            contextStateSnapshot
 }
 
 func prepareDefinition(
@@ -550,6 +572,8 @@ func middlewareIdentities(middlewares []Middleware) []CapabilityIdentity {
 
 type contextFragmentIdentity struct {
 	Source, Purpose, Resource, Revision string
+	StateID                             string
+	Stability                           ContextStability
 	Placement                           ContextPlacement
 	Rendering                           ContextRendering
 	Role                                RoleType
@@ -563,6 +587,7 @@ func contextFragmentIdentities(fragments []ContextFragment) []contextFragmentIde
 		hash := sha256.Sum256([]byte(fragment.Content))
 		identities = append(identities, contextFragmentIdentity{
 			Source: fragment.Source, Purpose: fragment.Purpose, Resource: fragment.Resource,
+			StateID: fragment.StateID, Stability: fragment.Stability,
 			Revision: fragment.Revision, Placement: fragment.Placement, Rendering: effectiveContextRendering(fragment.Rendering),
 			Role:        effectiveContextRole(fragment),
 			ContentHash: hex.EncodeToString(hash[:]), Bytes: len(fragment.Content),
@@ -645,13 +670,37 @@ func validateContextFragments(fragments []ContextFragment) error {
 			return fmt.Errorf("agent Context fragment %d exceeds its %d-byte hard limit", index, fragment.HardLimit)
 		}
 		switch fragment.Placement {
-		case ContextLeadingMessage, ContextCompactionCheckpoint, ContextAuditOnly:
+		case ContextLeadingMessage, ContextStateMessage, ContextCompactionCheckpoint, ContextAuditOnly:
 		case ContextFinalUserPrefix:
 			finalUserPrefixes++
 		case ContextFinalUserMessage:
 			finalUserMessages++
 		default:
 			return fmt.Errorf("agent Context fragment %d has invalid placement %q", index, fragment.Placement)
+		}
+		switch fragment.Stability {
+		case ContextStablePrefix:
+			if fragment.Placement != ContextLeadingMessage {
+				return fmt.Errorf("agent Context fragment %d stable_prefix requires leading_message placement", index)
+			}
+		case ContextSessionState:
+			if fragment.Placement != ContextStateMessage || strings.TrimSpace(fragment.StateID) == "" {
+				return fmt.Errorf("agent Context fragment %d session_state requires state_message placement and StateID", index)
+			}
+		case ContextTurn:
+			if fragment.Placement != ContextFinalUserPrefix && fragment.Placement != ContextFinalUserMessage {
+				return fmt.Errorf("agent Context fragment %d turn stability requires final user placement", index)
+			}
+		case ContextCheckpoint:
+			if fragment.Placement != ContextCompactionCheckpoint {
+				return fmt.Errorf("agent Context fragment %d checkpoint stability requires compaction_checkpoint placement", index)
+			}
+		case ContextAudit:
+			if fragment.Placement != ContextAuditOnly {
+				return fmt.Errorf("agent Context fragment %d audit stability requires audit_only placement", index)
+			}
+		default:
+			return fmt.Errorf("agent Context fragment %d requires an explicit stability", index)
 		}
 		switch effectiveContextRendering(fragment.Rendering) {
 		case ContextRenderAttributed, ContextRenderVerbatim:
@@ -666,6 +715,16 @@ func validateContextFragments(fragments []ContextFragment) error {
 		} else if fragment.Role != "" {
 			return fmt.Errorf("agent Context fragment %d sets a role outside leading_message placement", index)
 		}
+	}
+	stateIDs := make(map[string]int)
+	for index, fragment := range fragments {
+		if fragment.Placement != ContextStateMessage {
+			continue
+		}
+		if previous, exists := stateIDs[fragment.StateID]; exists {
+			return fmt.Errorf("agent Context fragments %d and %d reuse StateID %q", previous, index, fragment.StateID)
+		}
+		stateIDs[fragment.StateID] = index
 	}
 	if finalUserMessages > 1 {
 		return errors.New("agent Context permits at most one final user message")

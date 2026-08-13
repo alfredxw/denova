@@ -34,6 +34,7 @@ func ExportLifecycleFragments(result Result) ([]agent.ContextFragment, error) {
 		}
 		content := fragment.Content
 		placement := agent.ContextAuditOnly
+		stability := agent.ContextAudit
 		rendering := agent.ContextRenderAttributed
 		role := agent.RoleType("")
 		if fragment.Placement == PlacementLeadingMessage {
@@ -43,13 +44,20 @@ func ExportLifecycleFragments(result Result) ([]agent.ContextFragment, error) {
 			content = leading[leadingIndex].Content
 			leadingIndex++
 			placement = agent.ContextLeadingMessage
+			stability = agent.ContextStablePrefix
 			rendering = agent.ContextRenderVerbatim
 			role = agent.User
+		}
+		if fragment.Stability == agent.ContextSessionState {
+			placement = agent.ContextStateMessage
+			stability = agent.ContextSessionState
+			rendering = agent.ContextRenderVerbatim
+			role = ""
 		}
 		hardLimit := max(DefaultLifecycleHardLimit, fragment.Limit, len(content))
 		fragments = append(fragments, agent.ContextFragment{
 			Source: strings.TrimSpace(fragment.Source), Purpose: strings.TrimSpace(fragment.Purpose),
-			Resource: resource, Revision: fragment.Hash, Placement: placement,
+			Resource: resource, Revision: fragment.Hash, StateID: fragment.StateID, Stability: stability, Placement: placement,
 			Rendering: rendering, Role: role, Content: content, HardLimit: hardLimit,
 		})
 	}

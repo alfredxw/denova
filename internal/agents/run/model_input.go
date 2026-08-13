@@ -3,7 +3,6 @@ package agentrun
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -19,6 +18,7 @@ import (
 	"github.com/alfredxw/denova/agent/providers"
 
 	"denova/internal/agents/modelio"
+	"denova/internal/agents/prompts"
 )
 
 var (
@@ -37,15 +37,17 @@ const (
 )
 
 type modelInputLogOptions struct {
-	CallID    string
-	RunID     string
-	SpanID    string
-	AgentKind string
-	Source    string
-	Mode      string
-	Config    providers.ModelConfig
-	Messages  []*agent.Message
-	Tools     []*agent.ToolInfo
+	CallID         string
+	RunID          string
+	SpanID         string
+	CacheScope     string
+	SystemSections []modelInputLogSystemSectionFingerprint
+	AgentKind      string
+	Source         string
+	Mode           string
+	Config         providers.ModelConfig
+	Messages       []*agent.Message
+	Tools          []*agent.ToolInfo
 }
 
 type modelInputLogRecord struct {
@@ -67,18 +69,20 @@ type modelInputLogRecord struct {
 }
 
 type modelInputLogInputJob struct {
-	Timestamp    string
-	CallID       string
-	RunID        string
-	SpanID       string
-	AgentKind    string
-	Source       string
-	Mode         string
-	Config       providers.ModelConfig
-	MessageCount int
-	ToolCount    int
-	Messages     []*agent.Message
-	Tools        []*agent.ToolInfo
+	Timestamp      string
+	CallID         string
+	RunID          string
+	SpanID         string
+	CacheScope     string
+	SystemSections []modelInputLogSystemSectionFingerprint
+	AgentKind      string
+	Source         string
+	Mode           string
+	Config         providers.ModelConfig
+	MessageCount   int
+	ToolCount      int
+	Messages       []*agent.Message
+	Tools          []*agent.ToolInfo
 }
 
 type modelInputLogProviderRequestIDRecord struct {
@@ -94,9 +98,22 @@ type modelInputLogProviderRequestIDRecord struct {
 	ProviderID string `json:"provider_request_id"`
 }
 
+type modelInputLogCacheResultRecord struct {
+	Type                  string  `json:"type"`
+	Timestamp             string  `json:"timestamp"`
+	CallID                string  `json:"call_id"`
+	RunID                 string  `json:"run_id,omitempty"`
+	PromptTokens          int     `json:"prompt_tokens"`
+	CacheReadTokens       int     `json:"cache_read_tokens"`
+	UncachedPromptTokens  int     `json:"uncached_prompt_tokens"`
+	CacheReadRatio        float64 `json:"cache_read_ratio"`
+	CacheWriteTokensKnown bool    `json:"cache_write_tokens_known"`
+}
+
 type modelInputLogJob struct {
 	input             *modelInputLogInputJob
 	providerRequestID *modelInputLogProviderRequestIDRecord
+	cacheResult       *modelInputLogCacheResultRecord
 }
 
 type modelInputLogModelConfig struct {
@@ -116,21 +133,6 @@ type modelInputLogTool struct {
 	Extra           map[string]any `json:"extra,omitempty"`
 	Parameters      any            `json:"parameters,omitempty"`
 	ParametersError string         `json:"parameters_error,omitempty"`
-}
-
-type modelInputLogCache struct {
-	MessageFingerprint      string                         `json:"message_fingerprint,omitempty"`
-	SystemPromptFingerprint string                         `json:"system_prompt_fingerprint,omitempty"`
-	ToolSchemaFingerprint   string                         `json:"tool_schema_fingerprint,omitempty"`
-	ToolNames               []string                       `json:"tool_names,omitempty"`
-	ToolFingerprints        []modelInputLogToolFingerprint `json:"tool_fingerprints,omitempty"`
-	MessageCount            int                            `json:"message_count"`
-	ToolCount               int                            `json:"tool_count"`
-}
-
-type modelInputLogToolFingerprint struct {
-	Name        string `json:"name"`
-	Fingerprint string `json:"fingerprint"`
 }
 
 // SetModelInputLoggingEnabled controls full model input logging.
@@ -154,18 +156,20 @@ func logFullModelInput(opts modelInputLogOptions) string {
 	}
 
 	input := modelInputLogInputJob{
-		Timestamp:    time.Now().UTC().Format(time.RFC3339Nano),
-		CallID:       callID,
-		RunID:        strings.TrimSpace(opts.RunID),
-		SpanID:       strings.TrimSpace(opts.SpanID),
-		AgentKind:    opts.AgentKind,
-		Source:       opts.Source,
-		Mode:         opts.Mode,
-		Config:       opts.Config,
-		MessageCount: len(opts.Messages),
-		ToolCount:    len(opts.Tools),
-		Messages:     append([]*agent.Message(nil), opts.Messages...),
-		Tools:        cloneToolInfos(opts.Tools),
+		Timestamp:      time.Now().UTC().Format(time.RFC3339Nano),
+		CallID:         callID,
+		RunID:          strings.TrimSpace(opts.RunID),
+		SpanID:         strings.TrimSpace(opts.SpanID),
+		CacheScope:     strings.TrimSpace(opts.CacheScope),
+		AgentKind:      opts.AgentKind,
+		Source:         opts.Source,
+		Mode:           opts.Mode,
+		Config:         opts.Config,
+		MessageCount:   len(opts.Messages),
+		ToolCount:      len(opts.Tools),
+		Messages:       append([]*agent.Message(nil), opts.Messages...),
+		Tools:          cloneToolInfos(opts.Tools),
+		SystemSections: append([]modelInputLogSystemSectionFingerprint(nil), opts.SystemSections...),
 	}
 
 	if !enqueueModelInputLogJob(modelInputLogJob{input: &input}) {
@@ -315,7 +319,7 @@ func writeModelInputLogJob(job modelInputLogJob) error {
 			ModelConfig:  modelInputLogConfig(input.Config),
 			MessageCount: input.MessageCount,
 			ToolCount:    input.ToolCount,
-			Cache:        modelInputLogCacheAttribution(input.Messages, tools),
+			Cache:        modelInputLogCacheObservation(input.CallID, input.CacheScope, input.Config, input.Messages, tools, input.SystemSections),
 			Messages:     input.Messages,
 			Tools:        tools,
 		}
@@ -326,6 +330,12 @@ func writeModelInputLogJob(job modelInputLogJob) error {
 		return appendModelInputLog(payload)
 	case job.providerRequestID != nil:
 		payload, err := marshalModelInputLogProviderRequestIDRecord(*job.providerRequestID)
+		if err != nil {
+			return err
+		}
+		return appendModelInputLog(payload)
+	case job.cacheResult != nil:
+		payload, err := marshalModelInputLogCacheResultRecord(*job.cacheResult)
 		if err != nil {
 			return err
 		}
@@ -372,6 +382,16 @@ func marshalModelInputLogRecord(record modelInputLogRecord) ([]byte, error) {
 }
 
 func marshalModelInputLogProviderRequestIDRecord(record modelInputLogProviderRequestIDRecord) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(record); err != nil {
+		return nil, err
+	}
+	return bytes.TrimRight(buf.Bytes(), "\n"), nil
+}
+
+func marshalModelInputLogCacheResultRecord(record modelInputLogCacheResultRecord) ([]byte, error) {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)
@@ -482,88 +502,22 @@ func modelInputLogTools(tools []*agent.ToolInfo) []modelInputLogTool {
 	return result
 }
 
-func modelInputLogCacheAttribution(messages []*agent.Message, tools []modelInputLogTool) modelInputLogCache {
-	return modelInputLogCache{
-		MessageFingerprint:      modelInputLogFingerprint(messages),
-		SystemPromptFingerprint: modelInputLogFingerprint(modelInputLogSystemMessages(messages)),
-		ToolSchemaFingerprint:   modelInputLogFingerprint(tools),
-		ToolNames:               modelInputLogToolNames(tools),
-		ToolFingerprints:        modelInputLogToolFingerprints(tools),
-		MessageCount:            len(messages),
-		ToolCount:               len(tools),
-	}
-}
-
-func modelInputLogSystemMessages(messages []*agent.Message) []*agent.Message {
-	if len(messages) == 0 {
-		return nil
-	}
-	var result []*agent.Message
-	for _, msg := range messages {
-		if msg == nil || msg.Role != agent.System {
-			continue
-		}
-		result = append(result, msg)
-	}
-	return result
-}
-
-func modelInputLogToolNames(tools []modelInputLogTool) []string {
-	if len(tools) == 0 {
-		return nil
-	}
-	names := make([]string, 0, len(tools))
-	for _, item := range tools {
-		name := strings.TrimSpace(item.Name)
-		if name == "" {
-			continue
-		}
-		names = append(names, name)
-	}
-	return names
-}
-
-func modelInputLogToolFingerprints(tools []modelInputLogTool) []modelInputLogToolFingerprint {
-	if len(tools) == 0 {
-		return nil
-	}
-	result := make([]modelInputLogToolFingerprint, 0, len(tools))
-	for _, item := range tools {
-		name := strings.TrimSpace(item.Name)
-		if name == "" {
-			continue
-		}
-		result = append(result, modelInputLogToolFingerprint{
-			Name:        name,
-			Fingerprint: modelInputLogFingerprint(item),
-		})
-	}
-	return result
-}
-
-func modelInputLogFingerprint(value any) string {
-	payload, err := json.Marshal(value)
-	if err != nil || len(payload) == 0 || bytes.Equal(payload, []byte("null")) {
-		return ""
-	}
-	sum := sha256.Sum256(payload)
-	return fmt.Sprintf("sha256:%x", sum[:8])
-}
-
 type modelInputLoggingMiddleware struct {
 	*agent.BaseMiddleware
 	agentKind             string
 	config                providers.ModelConfig
 	contextWindowTokens   int
 	providerInputMaxBytes int
+	systemSections        []modelInputLogSystemSectionFingerprint
 }
 
 // NewModelInputLoggingMiddleware creates the single provider boundary that
 // validates, traces, and optionally logs the exact model request.
-func NewModelInputLoggingMiddleware(agentKind string, cfg providers.ModelConfig, contextWindowTokens, providerInputMaxBytes int) agent.Middleware {
+func NewModelInputLoggingMiddleware(agentKind string, cfg providers.ModelConfig, contextWindowTokens, providerInputMaxBytes int, composition prompts.SystemPromptComposition) agent.Middleware {
 	return &modelInputLoggingMiddleware{
 		BaseMiddleware: &agent.BaseMiddleware{}, agentKind: agentKind, config: cfg,
 		contextWindowTokens: contextWindowTokens, providerInputMaxBytes: providerInputMaxBytes,
+		systemSections: modelInputLogSystemSections(composition),
 	}
 }
 
@@ -575,6 +529,7 @@ func (m *modelInputLoggingMiddleware) WrapModel(ctx context.Context, wrapped age
 		tools:                 modelInputToolsFromContext(mc),
 		contextWindowTokens:   m.contextWindowTokens,
 		providerInputMaxBytes: m.providerInputMaxBytes,
+		systemSections:        append([]modelInputLogSystemSectionFingerprint(nil), m.systemSections...),
 	}, nil
 }
 
@@ -585,12 +540,14 @@ type modelInputLoggingChatModel struct {
 	tools                 []*agent.ToolInfo
 	contextWindowTokens   int
 	providerInputMaxBytes int
+	systemSections        []modelInputLogSystemSectionFingerprint
 }
 
 func (m *modelInputLoggingChatModel) Generate(ctx context.Context, input []*agent.Message, opts ...agent.ModelOption) (*agent.Message, error) {
 	if err := modelio.ValidateInput(m.agentKind, input, m.tools, m.providerInputMaxBytes, m.contextWindowTokens); err != nil {
 		return nil, err
 	}
+	ctx = contextWithModelInputSystemSections(ctx, m.systemSections)
 	source := modelio.TraceSource(ctx)
 	span, callID, spanCtx := BeginLLMCallTrace(ctx, m.agentKind, source, "generate", m.config, input, m.tools, false)
 	msg, err := m.inner.Generate(spanCtx, input, stableToolModelOptions(opts, m.tools)...)
@@ -602,6 +559,7 @@ func (m *modelInputLoggingChatModel) Stream(ctx context.Context, input []*agent.
 	if err := modelio.ValidateInput(m.agentKind, input, m.tools, m.providerInputMaxBytes, m.contextWindowTokens); err != nil {
 		return nil, err
 	}
+	ctx = contextWithModelInputSystemSections(ctx, m.systemSections)
 	source := modelio.TraceSource(ctx)
 	span, callID, spanCtx := BeginLLMCallTrace(ctx, m.agentKind, source, "stream", m.config, input, m.tools, true)
 	started := time.Now()

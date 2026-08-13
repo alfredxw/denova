@@ -150,7 +150,7 @@ func groupAllowsEager(messages []*agent.Message, group *interactionGroup) bool {
 		if message.Role == agent.Assistant && len(message.ToolCalls) == 0 {
 			modelStep = true
 		}
-		if modelStep && message.Role == agent.User {
+		if modelStep && message.Role == agent.User && !agent.IsContextStateMessage(message) {
 			return true
 		}
 	}

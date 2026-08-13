@@ -176,7 +176,7 @@ func recoveryModelMessages(
 		return nil, errors.New("Agent interaction recovery lost the active model user projection")
 	}
 	if activeUserIndex < 0 || activeUserIndex >= len(transcript) ||
-		transcript[activeUserIndex] == nil || transcript[activeUserIndex].Role != User {
+		transcript[activeUserIndex] == nil || transcript[activeUserIndex].Role != User || IsContextStateMessage(transcript[activeUserIndex]) {
 		return nil, errors.New("Agent interaction recovery has an invalid raw user boundary")
 	}
 	messages := cloneMessages(transcript)

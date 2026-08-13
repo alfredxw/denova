@@ -178,7 +178,7 @@ func (manager *standardManager) Plan(_ context.Context, request agent.Compaction
 	turnBoundary := retainedTurnBoundary(request.Messages, manager.config.KeepRecentTurns)
 	aligned := -1
 	for index := sourceTo; index < len(request.Messages); index++ {
-		if request.Messages[index] != nil && request.Messages[index].Role == agent.User {
+		if request.Messages[index] != nil && request.Messages[index].Role == agent.User && !agent.IsContextStateMessage(request.Messages[index]) {
 			aligned = index
 			break
 		}
@@ -304,7 +304,7 @@ func (manager *standardManager) Compact(ctx context.Context, request agent.Compa
 func retainedTurnBoundary(messages []*agent.Message, turns int) int {
 	seen := 0
 	for index := len(messages) - 1; index >= 0; index-- {
-		if messages[index] == nil || messages[index].Role != agent.User {
+		if messages[index] == nil || messages[index].Role != agent.User || agent.IsContextStateMessage(messages[index]) {
 			continue
 		}
 		seen++

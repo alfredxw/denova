@@ -12,7 +12,7 @@ import (
 	agentsession "github.com/alfredxw/denova/agent/session"
 )
 
-const engineTranscriptVersion = 4
+const engineTranscriptVersion = 5
 
 type enginePreparationStage string
 
@@ -32,6 +32,7 @@ type engineTranscript struct {
 	DefinitionCycle         int                    `json:"definition_cycle,omitempty"`
 	PreparationStage        enginePreparationStage `json:"preparation_stage,omitempty"`
 	Messages                []*Message             `json:"messages,omitempty"`
+	ContextState            contextStateSnapshot   `json:"context_state,omitempty"`
 	// ActiveModelUser is the model-only rendering of the accepted raw user
 	// message while a tool batch may still need interaction/crash recovery.
 	// Messages remains the canonical raw transcript. Once the cycle settles,
@@ -183,6 +184,7 @@ func (engine *definitionEngine) Run(
 	}
 	prepared.hostData = cloneHostData(input.HostData)
 	prepared.clearRevision = state.ClearRevision
+	prepared.contextState = cloneContextStateSnapshot(state.ContextState)
 	prepared.definitionOperationID = string(request.Snapshot.OperationID)
 	prepared.definitionCommandID = string(request.Snapshot.CommandID)
 	prepared.definitionCycle = request.Snapshot.Cycle
@@ -232,12 +234,20 @@ func (engine *definitionEngine) Run(
 	}
 	compaction, compactionPresent := currentCompaction, currentCompactionPresent
 	cleanupState, cleanupPresent := currentCleanup, currentCleanupPresent
+	stateMessages, nextContextState, err := advanceContextState(
+		state.Messages, prepared.fragments, prepared.contextState, compaction, compactionPresent,
+	)
+	if err != nil {
+		return runstate.EngineResult{}, err
+	}
+	prepared.contextState = nextContextState
+	cycleStateTranscript := append(cloneMessages(state.Messages), cloneMessages(stateMessages)...)
 
 	summaryLimit := 0
 	if prepared.definition.Compaction != nil {
 		summaryLimit = prepared.definition.Compaction.SummaryLimitBytes()
 	}
-	cleanupTranscript, err := effectiveCleanupMessages(state.Messages, cleanupState, cleanupPresent, compaction, compactionPresent)
+	cleanupTranscript, err := effectiveCleanupMessages(cycleStateTranscript, cleanupState, cleanupPresent, compaction, compactionPresent)
 	if err != nil {
 		return runstate.EngineResult{}, err
 	}
@@ -251,6 +261,9 @@ func (engine *definitionEngine) Run(
 	activeUserIndex := state.ActiveUserIndex
 	stablePrefixMessages := 0
 	if resumeTools {
+		if len(stateMessages) != 0 {
+			return runstate.EngineResult{}, errors.New("Agent interaction recovery Context State changed after its durable checkpoint")
+		}
 		modelMessages, err = recoveryModelMessages(cleanupTranscript, state.ActiveModelUser, activeUserIndex)
 		if err != nil {
 			return runstate.EngineResult{}, err
@@ -261,10 +274,10 @@ func (engine *definitionEngine) Run(
 		if err != nil {
 			return runstate.EngineResult{}, err
 		}
-		activeUserIndex = len(state.Messages)
+		activeUserIndex = len(cycleStateTranscript)
 		stablePrefixMessages = stableContextPrefixMessages(prepared.fragments, compaction, compactionPresent)
 	}
-	baseTranscript := cloneMessages(state.Messages)
+	baseTranscript := cloneMessages(cycleStateTranscript)
 	if !resumeTools {
 		baseTranscript = append(baseTranscript, UserMessage(strings.TrimSpace(input.Text)))
 	}
@@ -288,6 +301,7 @@ func (engine *definitionEngine) Run(
 	}
 	maintenanceSelected := false
 	var pendingCleanup *stagedCleanup
+	var transcript []*Message
 	modelCallGate := modelCallGate(nil)
 	if len(prepared.definition.Middlewares) != 0 || prepared.definition.Cleanup != nil || prepared.definition.Compaction != nil {
 		modelCallGate = func(
@@ -333,7 +347,7 @@ func (engine *definitionEngine) Run(
 				modelSnapshot := call.Snapshot()
 				plan, planErr := manager.Plan(gateCtx, CleanupPlanRequest{
 					Session: SessionView{Key: engine.key, Revision: uint64(request.Snapshot.ContextCursor)},
-					Run:     runViewForTurn(request.Snapshot), Messages: cloneMessages(state.Messages),
+					Run:     runViewForTurn(request.Snapshot), Messages: cloneMessages(cycleStateTranscript),
 					ModelRequest: modelSnapshot.Messages(), ModelInspection: modelRequestInspection(modelSnapshot),
 					Current: cleanupState, Present: cleanupPresent,
 					CompactionAvailable: prepared.definition.Compaction != nil,
@@ -479,7 +493,15 @@ func (engine *definitionEngine) Run(
 				if err := rematerializeDefinitionContext(gateCtx, nextRequest, &nextPrepared); err != nil {
 					return nil, err
 				}
-				projectedRaw, err := effectiveCleanupMessages(state.Messages, cleanupState, cleanupPresent, next, true)
+				candidateStateMessages, candidateContextState, err := advanceContextState(
+					cycleStateTranscript, nextPrepared.fragments, nextPrepared.contextState, next, true,
+				)
+				if err != nil {
+					return nil, err
+				}
+				nextPrepared.contextState = candidateContextState
+				candidateRaw := append(cloneMessages(cycleStateTranscript), cloneMessages(candidateStateMessages)...)
+				projectedRaw, err := effectiveCleanupMessages(candidateRaw, cleanupState, cleanupPresent, next, true)
 				if err != nil {
 					return nil, err
 				}
@@ -509,7 +531,7 @@ func (engine *definitionEngine) Run(
 				return newLoopRunner(loopRunnerConfig{Agent: loop, EnableStreaming: true}).prepareModelRequest(gateCtx, messages, stable)
 			}
 			next, nextPresent, changed, compactMetrics, compactErr := engine.applyAutomaticCompaction(
-				gateCtx, request, prepared, state.Messages, modelSnapshot,
+				gateCtx, request, prepared, cycleStateTranscript, modelSnapshot,
 				compaction, compactionPresent,
 				currentCompactionStorage, currentCompactionRaw,
 				cleanupRevision(cleanupState, cleanupPresent),
@@ -558,8 +580,22 @@ func (engine *definitionEngine) Run(
 			if rematerializeErr := rematerializeDefinitionContext(gateCtx, prepareRequest, &prepared); rematerializeErr != nil {
 				return nil, rematerializeErr
 			}
+			restoredStateMessages, restoredContextState, stateErr := advanceContextState(
+				cycleStateTranscript, prepared.fragments, prepared.contextState, compaction, compactionPresent,
+			)
+			if stateErr != nil {
+				return nil, stateErr
+			}
+			if len(restoredStateMessages) > 0 {
+				insertAt := activeUserIndex
+				cycleStateTranscript = append(cycleStateTranscript, cloneMessages(restoredStateMessages)...)
+				baseTranscript = insertMessagesAt(baseTranscript, insertAt, restoredStateMessages)
+				transcript = insertMessagesAt(transcript, insertAt, restoredStateMessages)
+				activeUserIndex += len(restoredStateMessages)
+			}
+			prepared.contextState = restoredContextState
 			var restarted []*Message
-			projectedRaw, projectionErr := effectiveCleanupMessages(state.Messages, cleanupState, cleanupPresent, compaction, compactionPresent)
+			projectedRaw, projectionErr := effectiveCleanupMessages(cycleStateTranscript, cleanupState, cleanupPresent, compaction, compactionPresent)
 			if projectionErr != nil {
 				return nil, projectionErr
 			}
@@ -625,7 +661,7 @@ func (engine *definitionEngine) Run(
 		Messages: modelMessages, EnableStreaming: true, ResumeToolCalls: resumeTools,
 		stablePrefixMessages: stablePrefixMessages,
 	}, runOption)
-	transcript := cloneMessages(baseTranscript)
+	transcript = cloneMessages(baseTranscript)
 	startedTools := make(map[string]bool)
 	var final *Message
 	for {
@@ -919,7 +955,7 @@ func encodeActiveEngineTranscript(
 		return nil, errors.New("encode active Agent transcript requires a model user projection")
 	}
 	if activeUserIndex < 0 || activeUserIndex >= len(messages) ||
-		messages[activeUserIndex] == nil || messages[activeUserIndex].Role != User {
+		messages[activeUserIndex] == nil || messages[activeUserIndex].Role != User || IsContextStateMessage(messages[activeUserIndex]) {
 		return nil, errors.New("encode active Agent transcript requires an exact raw user boundary")
 	}
 	return encodeEngineTranscriptState(prepared, messages, activeModelUser, activeUserIndex)
@@ -938,7 +974,7 @@ func encodeEngineTranscriptState(
 		DefinitionOperationID:   prepared.definitionOperationID,
 		DefinitionCommandID:     prepared.definitionCommandID,
 		DefinitionCycle:         prepared.definitionCycle, PreparationStage: prepared.preparationStage,
-		Messages:        cloneMessages(messages),
+		Messages: cloneMessages(messages), ContextState: cloneContextStateSnapshot(prepared.contextState),
 		ActiveModelUser: CloneMessage(activeModelUser), ActiveUserIndex: activeUserIndex,
 		HostData: cloneHostData(prepared.hostData), ClearRevision: prepared.clearRevision,
 	})
@@ -980,14 +1016,18 @@ func decodeEngineTranscript(encoded json.RawMessage) (engineTranscript, error) {
 		return engineTranscript{}, fmt.Errorf("unsupported Agent transcript version %d", state.Version)
 	}
 	state.Messages = cloneMessages(state.Messages)
+	state.ContextState = cloneContextStateSnapshot(state.ContextState)
 	state.ActiveModelUser = CloneMessage(state.ActiveModelUser)
 	state.HostData = cloneHostData(state.HostData)
 	if state.ActiveModelUser != nil {
 		if state.ActiveModelUser.Role != User || state.ActiveUserIndex < 0 ||
 			state.ActiveUserIndex >= len(state.Messages) || state.Messages[state.ActiveUserIndex] == nil ||
-			state.Messages[state.ActiveUserIndex].Role != User {
+			state.Messages[state.ActiveUserIndex].Role != User || IsContextStateMessage(state.Messages[state.ActiveUserIndex]) {
 			return engineTranscript{}, errors.New("Agent transcript has an invalid active model user projection")
 		}
+	}
+	if err := validateContextStateSnapshot(state.ContextState, state.Messages); err != nil {
+		return engineTranscript{}, err
 	}
 	return state, nil
 }

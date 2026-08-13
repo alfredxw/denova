@@ -2,7 +2,7 @@
 
 > 日期：2026-08-13
 >
-> 状态：设计建议，未实施代码变更
+> 状态：P0 / P1 已实现并验证；P2 Tool Schema 延迟发现按测量门槛暂缓
 >
 > 范围：Denova 当前工作树，以及本地 `oh-my-pi`、`codex`、`claude-code`、`prime-agent` 参考仓库
 >
@@ -31,6 +31,20 @@ Denova 不需要推翻现有提示词 Composer。当前实现已经具备几个�
 | P2 | 工具 schema 延迟发现 | 工具数量很大时缩短固定前缀 | 先测量，暂不实现 |
 
 不建议引入另一套 Prompt Framework，也不建议照搬 Python/IPython 控制环境、通用 Prompt Template 产品、provider 专属缓存编辑协议或复杂的兼容层。
+
+### 1.1 实施结果（2026-08-13）
+
+本轮已经按本文建议完成以下改造：
+
+- `ContextFragment` 新增穷尽的稳定性契约，明确区分 stable prefix、session state、turn、checkpoint 与 audit；placement 继续只负责模型可见位置。
+- Agent Engine 新增持久化 Context State snapshot。首次出现、内容更新、显式删除均追加独立 User-role 状态消息；未变化 section 零注入，不回写历史。
+- 同一状态注册表同时驱动自动压缩、手动压缩、只读 inspection、重试与恢复后的 rehydrate；状态更新和 removal tombstone 被压缩遮蔽时只恢复一次当前版本。
+- 写作模式的 workspace runtime snapshot 与游戏模式的 resident lore 已迁入共享 session-state 协议；本轮 focus、动态工作区信息和游戏 turn runtime 仍保持 turn-scoped。
+- general workflow、Harness Optimizer、Background Director 与 context compaction 四段长静态提示词已迁到 `internal/agents/prompts/assets/*.md`，继续通过 `SystemPromptComposition` 进行来源登记、预算准入、manifest 与 hash 认证。
+- 开发模型输入日志新增有序 system section、message、Context State 与 tool schema 指纹；同一 session / agent 相邻请求会记录首个分叉组件，并用同一 `call_id` 关联 provider 返回的 prompt tokens、cache read tokens、未命中 tokens 与命中比例。provider 未提供 cache write 时明确记录为 unknown，而不是推断。
+- 没有增加用户配置，也没有引入 provider 专属 cache 协议或第二套 Prompt Framework。
+
+Beta 不兼容说明：Agent 内部 transcript 升级到 v5，旧版内部 checkpoint 不保留兼容读取路径；产品拥有的工作区文件和 canonical conversation 数据不做迁移或覆盖。
 
 ## 2. 审计范围与基线
 
@@ -93,15 +107,16 @@ Denova 已经具备：
 
 ### 3.5 已有 provider-visible 诊断基础
 
-[`internal/agents/run/model_input.go`](../internal/agents/run/model_input.go) 已记录：
+[`internal/agents/run/model_input.go`](../internal/agents/run/model_input.go) 与
+[`internal/agents/run/model_input_cache.go`](../internal/agents/run/model_input_cache.go) 现在记录：
 
-- message fingerprint；
-- system prompt fingerprint；
-- tool schema aggregate fingerprint；
-- 每个 tool 的 fingerprint；
+- 有序 system section、message 与 Context State fingerprint；
+- tool schema aggregate 与逐 tool fingerprint；
+- 相邻请求的首个分叉位置及原因；
+- 通过同一 `call_id` 关联的 provider cache-read token、未命中 token 与命中比例；
 - 完整 provider-visible messages 与 tools（仅开发模式）。
 
-下一步只需要补齐有序 section/message 指纹、相邻请求 diff 和实际 cache read/write 结果的关联，不需要重新建设日志体系。
+provider 未提供 cache-write 指标时会明确记录 unknown，不用估算值制造错误结论。该能力沿用既有开发日志体系，没有新增用户配置或第二套 tracing 管道。
 
 ## 4. 四个参考实现的可吸收设计
 
@@ -264,7 +279,7 @@ placement 解决“放在哪里”，稳定性解决“何时可以变化、变�
 
 ### 5.2 在现有 ContextSource 后面增加一个深模块
 
-不要再暴露一组平行的 Context API。建议让现有 `ContextSource` 调用一个内部 `ContextStateCoordinator`，其对上层只有一个主要操作：
+不要再暴露一组平行的 Context API。实现由 Agent 在现有 `ContextSource` 产出片段后统一调用内部 Context State coordinator，其主要操作为：
 
 ```text
 Materialize(current state, previous snapshot, compaction checkpoint)
@@ -370,9 +385,9 @@ observed_cache_read_tokens=18196
 
 恢复后必须满足：当前状态只出现一次、旧 revision 不可见、动态 turn context 不被误当成长期状态。
 
-## 6. 推荐落地顺序
+## 6. 落地顺序与完成状态
 
-### 阶段 0：先建立测量基线
+### 阶段 0：先建立测量基线（已完成）
 
 目标：不改变模型行为，只让缓存变化可解释。
 
@@ -384,7 +399,7 @@ observed_cache_read_tokens=18196
 
 完成标准：任一次缓存命中下降，都能判断是 system、tool、leading context、历史改写还是 provider/TTL 原因。
 
-### 阶段 1：外置长篇稳定 Prompt
+### 阶段 1：外置长篇稳定 Prompt（已完成首批四项）
 
 目标：只改善维护边界，不同时改变上下文生命周期。
 
@@ -396,7 +411,7 @@ observed_cache_read_tokens=18196
 
 不保留旧 Go 字符串 fallback；切换完成后直接删除旧路径。
 
-### 阶段 2：实现最小 Context State 闭环
+### 阶段 2：实现最小 Context State 闭环（已完成）
 
 目标：先证明“snapshot → diff → compaction rehydrate”端到端可工作，再扩展 section。
 
@@ -410,7 +425,7 @@ observed_cache_read_tokens=18196
 
 不要第一步就迁移高优先级 system instruction，也不要一次把所有 ContextSource 改成 diff。
 
-### 阶段 3：统一压缩恢复登记
+### 阶段 3：统一压缩恢复登记（Context State 范围已完成）
 
 目标：让恢复义务从调用点散落逻辑变成 section 自描述策略。
 
@@ -419,7 +434,7 @@ observed_cache_read_tokens=18196
 - 删除手写且重复的 post-compaction reinjection；
 - Context Analysis 展示恢复来源、revision、字节数和是否当前可见。
 
-### 阶段 4：根据数据决定是否延迟 Tool Schema
+### 阶段 4：根据数据决定是否延迟 Tool Schema（暂缓）
 
 只有同时满足以下条件才值得实施：
 
@@ -498,6 +513,8 @@ Denova 当前是 beta，落地时应：
 
 这是四个参考实现优点的最小交集，也是最适合 Denova 长期演进的方向。它能同时服务写作和游戏，不会增加新的用户概念，并且把缓存、压缩、恢复和上下文审计收敛到同一份状态真源。
 
+上述目标现已完成 P0 / P1 实现。后续仅在日志数据证明常驻 Tool Schema 已成为显著固定成本时，再评估阶段 4；在此之前不增加 Tool Search 或延迟 schema 复杂度。
+
 ## 10. 参考源码索引
 
 ### Denova
@@ -507,11 +524,14 @@ Denova 当前是 beta，落地时应：
 - [`agent/definition.go`](../agent/definition.go)
 - [`agent/model_loop.go`](../agent/model_loop.go)
 - [`agent/context/assembler.go`](../agent/context/assembler.go)
+- [`agent/context_state.go`](../agent/context_state.go)
 - [`internal/agents/lifecycle/project_context.go`](../internal/agents/lifecycle/project_context.go)
 - [`internal/agents/conversation/model_context.go`](../internal/agents/conversation/model_context.go)
 - [`agent/cleanup/standard.go`](../agent/cleanup/standard.go)
 - [`agent/compaction/standard.go`](../agent/compaction/standard.go)
 - [`internal/agents/run/model_input.go`](../internal/agents/run/model_input.go)
+- [`internal/agents/run/model_input_cache.go`](../internal/agents/run/model_input_cache.go)
+- [`internal/agents/prompts/assets/`](../internal/agents/prompts/assets/)
 
 ### 参考项目
 

@@ -66,17 +66,19 @@ func (b Budget) normalized() Budget {
 // deliberately not represented by this type unless a caller explicitly
 // projects them into a bounded fragment.
 type Fragment struct {
-	ID        string    `json:"id,omitempty"`
-	Source    string    `json:"source"`
-	Title     string    `json:"title,omitempty"`
-	Purpose   string    `json:"purpose"`
-	Content   string    `json:"content"`
-	Placement Placement `json:"placement"`
-	Limit     int       `json:"limit"`
-	Hash      string    `json:"hash"`
-	Included  bool      `json:"included"`
-	Truncated bool      `json:"truncated,omitempty"`
-	Note      string    `json:"note,omitempty"`
+	ID        string                 `json:"id,omitempty"`
+	StateID   string                 `json:"state_id,omitempty"`
+	Source    string                 `json:"source"`
+	Title     string                 `json:"title,omitempty"`
+	Purpose   string                 `json:"purpose"`
+	Content   string                 `json:"content"`
+	Placement Placement              `json:"placement"`
+	Stability agent.ContextStability `json:"stability,omitempty"`
+	Limit     int                    `json:"limit"`
+	Hash      string                 `json:"hash"`
+	Included  bool                   `json:"included"`
+	Truncated bool                   `json:"truncated,omitempty"`
+	Note      string                 `json:"note,omitempty"`
 }
 
 type AssembleRequest struct {
@@ -230,6 +232,19 @@ func resolveFragment(fragment Fragment, budget Budget, hasFinalMessage bool) (Fr
 	if !validPlacement(fragment.Placement) {
 		placement, _ := truncateMetadataField(string(fragment.Placement), budget.MaxMetadataFieldBytes)
 		return Fragment{}, fmt.Errorf("invalid context fragment placement %q", placement)
+	}
+	if fragment.Stability == "" {
+		switch fragment.Placement {
+		case PlacementLeadingMessage:
+			fragment.Stability = agent.ContextStablePrefix
+		case PlacementFinalUserPrefix:
+			fragment.Stability = agent.ContextTurn
+		case PlacementAuditOnly:
+			fragment.Stability = agent.ContextAudit
+		}
+	}
+	if fragment.Stability == agent.ContextSessionState && strings.TrimSpace(fragment.StateID) == "" {
+		return Fragment{}, fmt.Errorf("session-state context fragment requires StateID: source=%s", fragment.Source)
 	}
 	if fragment.Included && fragment.Placement != PlacementAuditOnly {
 		if fragment.Source == "" {

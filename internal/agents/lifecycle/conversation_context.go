@@ -118,7 +118,7 @@ func projectConversationContext(
 	fragments = append(fragments, agent.ContextFragment{
 		Source: "denova.turn.context", Purpose: "preserve the exact localized Denova turn assembly",
 		Resource: firstContextValue(request.Run.CommandID, request.Run.ID, "turn"), Revision: request.Run.ID,
-		Placement: agent.ContextFinalUserMessage, Rendering: agent.ContextRenderVerbatim,
+		Stability: agent.ContextTurn, Placement: agent.ContextFinalUserMessage, Rendering: agent.ContextRenderVerbatim,
 		Content: modelUser.Content, HardLimit: hardLimit,
 	})
 	return fragments, nil

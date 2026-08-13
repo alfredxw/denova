@@ -334,15 +334,17 @@ func BeginLLMCallTrace(ctx context.Context, agentKind, source, mode string, cfg 
 		traceID = traceContextFromContext(spanCtx).traceID
 	}
 	logFullModelInput(modelInputLogOptions{
-		CallID:    callID,
-		RunID:     traceID,
-		SpanID:    spanID,
-		AgentKind: agentKind,
-		Source:    source,
-		Mode:      mode,
-		Config:    cfg,
-		Messages:  messages,
-		Tools:     tools,
+		CallID:         callID,
+		RunID:          traceID,
+		SpanID:         spanID,
+		AgentKind:      agentKind,
+		Source:         source,
+		Mode:           mode,
+		Config:         cfg,
+		Messages:       messages,
+		Tools:          tools,
+		CacheScope:     modelInputCacheScope(ctx, agentKind),
+		SystemSections: modelInputSystemSectionsFromContext(ctx),
 	})
 	return span, callID, spanCtx
 }
@@ -363,6 +365,7 @@ func FinishLLMCallTrace(span *Span, callID, agentKind, source, mode, modelName s
 			outcome.FinishReason = strings.TrimSpace(msg.ResponseMeta.FinishReason)
 			attrs["finish_reason"] = outcome.FinishReason
 			addTokenUsageAttrs(attrs, msg.ResponseMeta.Usage)
+			logModelInputCacheResult(callID, runID, msg.ResponseMeta.Usage)
 		}
 		if tools := toolNamesFromCalls(msg.ToolCalls); len(tools) > 0 {
 			attrs["requested_tools"] = tools
@@ -382,6 +385,16 @@ func FinishLLMCallTrace(span *Span, callID, agentKind, source, mode, modelName s
 	if span != nil {
 		span.Finish("success", attrs)
 	}
+}
+
+func modelInputCacheScope(ctx context.Context, agentKind string) string {
+	sessionKey, ok := agent.SessionKeyFromContext(ctx)
+	if !ok {
+		return ""
+	}
+	return strings.Join([]string{
+		strings.TrimSpace(sessionKey), strings.TrimSpace(agentKind),
+	}, "\x00")
 }
 
 func addTokenUsageAttrs(attrs map[string]any, usage *agent.TokenUsage) {

@@ -34,7 +34,7 @@ func (source *inspectionContextSource) Materialize(ctx context.Context, _ Contex
 	source.called.Store(true)
 	return []ContextFragment{{
 		Source: "test.inspection", Purpose: "verify exact read-only assembly", Resource: "stable-context",
-		Revision: "1", Placement: ContextLeadingMessage, Content: "INSPECTION_STABLE_CONTEXT", HardLimit: 64 << 10,
+		Revision: "1", Stability: ContextStablePrefix, Placement: ContextLeadingMessage, Content: "INSPECTION_STABLE_CONTEXT", HardLimit: 64 << 10,
 	}}, nil
 }
 

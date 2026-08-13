@@ -41,3 +41,26 @@ func TestExportLifecycleFragmentsPreservesExactLeadingRenderingAndAuditsFinalUse
 		}
 	}
 }
+
+func TestExportLifecycleFragmentsMapsSessionStateToDurableStateMessage(t *testing.T) {
+	result, err := NewAssembler(Budget{}).Assemble(context.Background(), AssembleRequest{
+		Messages: []*agent.Message{agent.UserMessage("continue")},
+		Fragments: []Fragment{{
+			ID: "workspace", StateID: "workspace", Source: "workspace.snapshot", Purpose: "current workspace state",
+			Content: "revision one", Placement: PlacementLeadingMessage, Stability: agent.ContextSessionState,
+			Limit: 128 << 10, Included: true,
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fragments, err := ExportLifecycleFragments(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fragments) != 1 || fragments[0].StateID != "workspace" ||
+		fragments[0].Stability != agent.ContextSessionState || fragments[0].Placement != agent.ContextStateMessage ||
+		fragments[0].Rendering != agent.ContextRenderVerbatim || fragments[0].Role != "" {
+		t.Fatalf("session-state lifecycle fragment = %#v", fragments)
+	}
+}

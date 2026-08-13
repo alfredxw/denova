@@ -83,6 +83,7 @@ func (engine *definitionEngine) RunStructural(
 	if prepared.definition.Compaction == nil {
 		return runstate.EngineResult{}, ErrCapabilityUnsupported
 	}
+	prepared.contextState = cloneContextStateSnapshot(transcript.ContextState)
 	materialized, materializedErr := materializedDefinitionFingerprint(prepared)
 	if materializedErr != nil {
 		return runstate.EngineResult{}, materializedErr
@@ -216,6 +217,14 @@ func prepareStructuralCompactionSnapshot(
 	compaction CompactionState,
 	compactionPresent bool,
 ) (*ModelRequestSnapshot, error) {
+	stateMessages, nextContextState, err := advanceContextState(
+		raw, prepared.fragments, prepared.contextState, compaction, compactionPresent,
+	)
+	if err != nil {
+		return nil, err
+	}
+	prepared.contextState = nextContextState
+	raw = append(cloneMessages(raw), cloneMessages(stateMessages)...)
 	visible, err := effectiveCleanupMessages(raw, cleanup, cleanupPresent, compaction, compactionPresent)
 	if err != nil {
 		return nil, err
@@ -785,7 +794,7 @@ func compactionCheckpointMessage(state CompactionState, summaryLimit int) *Messa
 	return SystemMessage(renderContextFragment(ContextFragment{
 		Source: "agent.compaction", Purpose: "replace compacted conversation history",
 		Resource: state.ID, Revision: fmt.Sprintf("%d", state.Revision),
-		Placement: ContextCompactionCheckpoint, Content: state.Summary, HardLimit: summaryLimit,
+		Stability: ContextCheckpoint, Placement: ContextCompactionCheckpoint, Content: state.Summary, HardLimit: summaryLimit,
 	}))
 }
 

@@ -120,7 +120,7 @@ func (userLeadingPrefixSource) Identity() CapabilityIdentity {
 func (userLeadingPrefixSource) Materialize(context.Context, ContextRequest) ([]ContextFragment, error) {
 	return []ContextFragment{{
 		Source: "test.leading", Purpose: "verify authenticated stable prefix", Resource: "stable-user-context",
-		Placement: ContextLeadingMessage, Role: User, Rendering: ContextRenderVerbatim,
+		Stability: ContextStablePrefix, Placement: ContextLeadingMessage, Role: User, Rendering: ContextRenderVerbatim,
 		Content: strings.Repeat("stable user context ", 80), HardLimit: 64 << 10,
 	}}, nil
 }

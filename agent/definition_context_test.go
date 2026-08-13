@@ -38,7 +38,7 @@ func TestAssembleCycleMessagesPreservesVerbatimHostRendering(t *testing.T) {
 	messages, modelUser, err := assembleCycleMessages(transcript, "raw request", []ContextFragment{
 		{
 			Source: "denova.stable", Purpose: "preserve localized stable context", Resource: "CREATOR.md",
-			Revision: "1", Placement: ContextLeadingMessage, Rendering: ContextRenderVerbatim,
+			Revision: "1", Stability: ContextStablePrefix, Placement: ContextLeadingMessage, Rendering: ContextRenderVerbatim,
 			Content: "# 创作者指令\n\n完整内容", HardLimit: 64 << 10,
 		},
 		{
@@ -121,7 +121,7 @@ func TestCompactionCheckpointUsesTargetAgentSummaryLimit(t *testing.T) {
 
 func TestContextFinalUserMessageIsUnambiguous(t *testing.T) {
 	base := ContextFragment{
-		Source: "host", Purpose: "test", Resource: "turn", Placement: ContextFinalUserMessage,
+		Source: "host", Purpose: "test", Resource: "turn", Stability: ContextTurn, Placement: ContextFinalUserMessage,
 		Rendering: ContextRenderVerbatim, Content: "request", HardLimit: 64 << 10,
 	}
 	if err := validateContextFragments([]ContextFragment{base, base}); err == nil || !strings.Contains(err.Error(), "at most one") {
@@ -137,7 +137,7 @@ func TestContextFinalUserMessageIsUnambiguous(t *testing.T) {
 func TestAttributedContextOmitsEmptyRevision(t *testing.T) {
 	rendered := renderContextFragment(ContextFragment{
 		Source: "Denova User State", Purpose: "apply live user instructions", Resource: "prompts/ide.md",
-		Placement: ContextLeadingMessage, Content: "Prefer verified edits.", HardLimit: 64 << 10,
+		Stability: ContextStablePrefix, Placement: ContextLeadingMessage, Content: "Prefer verified edits.", HardLimit: 64 << 10,
 	})
 	if strings.Contains(rendered, "Revision:") {
 		t.Fatalf("unversioned live context exposed a revision field:\n%s", rendered)
@@ -160,7 +160,7 @@ func TestContextSourceIdentityAndDeclaredBoundsFailClosedBeforeModel(t *testing.
 		{
 			name: "durable source requires identity", persistent: true,
 			fragments: []ContextFragment{{
-				Source: "host", Purpose: "test", Resource: "state", Placement: ContextLeadingMessage,
+				Source: "host", Purpose: "test", Resource: "state", Stability: ContextStablePrefix, Placement: ContextLeadingMessage,
 				Content: "bounded", HardLimit: 64 << 10,
 			}},
 			wantError: "Context capability identity is incomplete",
@@ -169,7 +169,7 @@ func TestContextSourceIdentityAndDeclaredBoundsFailClosedBeforeModel(t *testing.
 			name:     "fragment cannot raise its declared bound after rendering",
 			identity: CapabilityIdentity{Kind: "context.test.bounded", Version: 1},
 			fragments: []ContextFragment{{
-				Source: "host", Purpose: "test", Resource: "state", Placement: ContextLeadingMessage,
+				Source: "host", Purpose: "test", Resource: "state", Stability: ContextStablePrefix, Placement: ContextLeadingMessage,
 				Content: "sixbytes", HardLimit: 5,
 			}},
 			wantError: "exceeds its 5-byte hard limit",
@@ -178,7 +178,7 @@ func TestContextSourceIdentityAndDeclaredBoundsFailClosedBeforeModel(t *testing.
 			name:     "fragment provenance is mandatory",
 			identity: CapabilityIdentity{Kind: "context.test.provenance", Version: 1},
 			fragments: []ContextFragment{{
-				Purpose: "test", Resource: "state", Placement: ContextLeadingMessage,
+				Purpose: "test", Resource: "state", Stability: ContextStablePrefix, Placement: ContextLeadingMessage,
 				Content: "bounded", HardLimit: 64 << 10,
 			}},
 			wantError: "requires source, purpose, resource, and HardLimit",

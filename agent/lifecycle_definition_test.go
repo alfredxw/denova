@@ -108,7 +108,7 @@ func (source *mutableFinalContext) Materialize(context.Context, ContextRequest) 
 	source.mu.RUnlock()
 	return []ContextFragment{{
 		Source: "test.dynamic", Purpose: "same-cycle recovery fence", Resource: "dynamic-final",
-		Revision: "stable-identity", Placement: ContextFinalUserMessage, Content: content, HardLimit: 64 << 10,
+		Revision: "stable-identity", Stability: ContextTurn, Placement: ContextFinalUserMessage, Content: content, HardLimit: 64 << 10,
 	}}, nil
 }
 
@@ -212,7 +212,7 @@ func (manager *mutableGoalPreparation) Prepare(context.Context, GoalPrepareReque
 	return GoalPreparation{
 		Context: []ContextFragment{{
 			Source: "test.goal", Purpose: "dynamic Goal recovery fence", Resource: "goal-context",
-			Revision: "stable-identity", Placement: ContextLeadingMessage, Content: "goal context " + variant,
+			Revision: "stable-identity", Stability: ContextStablePrefix, Placement: ContextLeadingMessage, Content: "goal context " + variant,
 			HardLimit: 64 << 10,
 		}},
 		Tools: []ToolDefinition{{

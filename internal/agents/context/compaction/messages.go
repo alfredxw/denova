@@ -24,7 +24,7 @@ func compactionSourceMessages(messages []*agent.Message, keepLatestUser bool) []
 		cloned.ReasoningContent = ""
 		source = append(source, &cloned)
 	}
-	if !keepLatestUser && len(source) > 0 && source[len(source)-1].Role == agent.User {
+	if !keepLatestUser && len(source) > 0 && source[len(source)-1].Role == agent.User && !agent.IsContextStateMessage(source[len(source)-1]) {
 		source = source[:len(source)-1]
 	}
 	return source
@@ -40,7 +40,7 @@ func retainTailByUserTurns(messages []*agent.Message, retainedTurns int) []*agen
 	userCount := 0
 	start := 0
 	for index := len(messages) - 1; index >= 0; index-- {
-		if messages[index] == nil || messages[index].Role != agent.User {
+		if messages[index] == nil || messages[index].Role != agent.User || agent.IsContextStateMessage(messages[index]) {
 			continue
 		}
 		userCount++

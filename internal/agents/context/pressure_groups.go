@@ -173,7 +173,7 @@ func groupAllowsEager(messages []*agent.Message, group *toolInteractionGroup) bo
 		if message.Role == agent.Assistant && len(message.ToolCalls) == 0 {
 			hasModelStep = true
 		}
-		if hasModelStep && message.Role == agent.User {
+		if hasModelStep && message.Role == agent.User && !agent.IsContextStateMessage(message) {
 			hasLaterUser = true
 			break
 		}

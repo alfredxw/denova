@@ -15,6 +15,7 @@ import (
 	agentchat "denova/internal/agents/chat"
 	agentconversation "denova/internal/agents/conversation"
 	agentlifecycle "denova/internal/agents/lifecycle"
+	agentprompts "denova/internal/agents/prompts"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 	novaskills "denova/internal/agents/skills"
@@ -614,6 +615,7 @@ func TestAgentRuntimeBindsProviderTraceToDurablePublicRun(t *testing.T) {
 					providers.ModelConfig{Provider: providers.ProviderOpenAI, Protocol: providers.ProtocolOpenAIResponses, Model: "test-model"},
 					0,
 					0,
+					agentprompts.SystemPromptComposition{},
 				),
 				agent.CapabilityIdentity{Kind: "middleware.provider-trace", Version: 1},
 			)},
@@ -884,6 +886,7 @@ func TestAgentRuntimeSteerPreemptsAndContinuesSamePublicRun(t *testing.T) {
 				providers.ModelConfig{Provider: providers.ProviderOpenAI, Protocol: providers.ProtocolOpenAIResponses, Model: "steer-model"},
 				0,
 				0,
+				agentprompts.SystemPromptComposition{},
 			),
 			agent.CapabilityIdentity{Kind: "middleware.public-backend-steer", Version: 1},
 		)},
@@ -1022,6 +1025,7 @@ func TestAgentRuntimeFollowUpQueuesAndContinuesSamePublicRun(t *testing.T) {
 				providers.ModelConfig{Provider: providers.ProviderOpenAI, Protocol: providers.ProtocolOpenAIResponses, Model: "follow-up-model"},
 				0,
 				0,
+				agentprompts.SystemPromptComposition{},
 			),
 			agent.CapabilityIdentity{Kind: "middleware.public-backend-follow-up", Version: 1},
 		)},

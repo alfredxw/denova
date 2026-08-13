@@ -194,6 +194,7 @@ func (session *Session) SyncTranscript(ctx context.Context, request TranscriptSy
 // it for recovery and audit. A product revision that settles the same visible
 // response can therefore advance without discarding maintenance capabilities.
 func transcriptSourceEquivalent(current, canonical []*Message) (bool, error) {
+	current = productOwnedTranscriptMessages(current)
 	if len(current) != len(canonical) {
 		return false, nil
 	}
@@ -229,6 +230,17 @@ func transcriptSourceEquivalent(current, canonical []*Message) (bool, error) {
 		return false, err
 	}
 	return leftHash == rightHash, nil
+}
+
+func productOwnedTranscriptMessages(messages []*Message) []*Message {
+	projected := make([]*Message, 0, len(messages))
+	for _, message := range messages {
+		if IsContextStateMessage(message) {
+			continue
+		}
+		projected = append(projected, message)
+	}
+	return projected
 }
 
 func transcriptSyncStateFrom(capabilities map[string]json.RawMessage) (TranscriptSyncState, bool, error) {

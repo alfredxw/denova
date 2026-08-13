@@ -257,6 +257,7 @@ func buildAgentDefinition(ctx context.Context, cfg *config.Config, spec agentBui
 
 	assembly, err := buildChatModelAgentAssembly(ctx, cfg, chatModelAgentAssemblySpec{
 		Kind:                spec.Kind,
+		SystemPrompt:        composition,
 		ModelCfg:            modelCfg,
 		ToolSettings:        toolSettings,
 		EnableSkills:        spec.EnableSkills,
@@ -284,6 +285,7 @@ func buildAgentDefinition(ctx context.Context, cfg *config.Config, spec agentBui
 		if config.GeneralSubAgentEnabled(cfg, spec.Kind) {
 			generalAssembly, err := buildChatModelAgentAssembly(ctx, cfg, chatModelAgentAssemblySpec{
 				Kind:                  producttools.GeneralSubAgentName,
+				SystemPrompt:          childComposition,
 				ToolPolicyKind:        spec.Kind,
 				ModelCfg:              modelCfg,
 				ToolSettings:          toolSettings,
@@ -473,6 +475,7 @@ func resolveAgentSystemPrompt(_ *config.Config, spec agentBuildSpec) (prompts.Sy
 
 type chatModelAgentAssemblySpec struct {
 	Kind                  string
+	SystemPrompt          prompts.SystemPromptComposition
 	ToolPolicyKind        string
 	ModelCfg              providers.ModelConfig
 	ToolSettings          config.ResolvedAgentToolSettings
@@ -506,7 +509,7 @@ func buildChatModelAgentAssembly(ctx context.Context, cfg *config.Config, spec c
 			Workspace: workspace, ToolResultMaxBytes: toolresult.LimitBytes(cfg),
 		}),
 		agentrun.NewModelInputLoggingMiddleware(
-			spec.Kind, spec.ModelCfg, spec.ContextWindowTokens, spec.ProviderInputMaxBytes,
+			spec.Kind, spec.ModelCfg, spec.ContextWindowTokens, spec.ProviderInputMaxBytes, spec.SystemPrompt,
 		),
 	)
 	// Context maintenance must observe the final model call after every
@@ -618,6 +621,7 @@ func buildConfiguredSubAgent(ctx context.Context, cfg *config.Config, parent age
 	toolSettings := config.ResolveSubAgentTools(parentTools, sub.Tools)
 	assembly, err := buildChatModelAgentAssembly(ctx, cfg, chatModelAgentAssemblySpec{
 		Kind:                  sub.ID,
+		SystemPrompt:          composition,
 		ToolPolicyKind:        parent.Kind,
 		ModelCfg:              modelCfg,
 		ToolSettings:          toolSettings,

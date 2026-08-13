@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -91,59 +90,6 @@ func TestLogFullModelInputWritesUntruncatedMessages(t *testing.T) {
 	}
 	if record.ModelConfig.Model != "test-model" || record.ModelConfig.BaseURL != "https://example.test/v1" {
 		t.Fatalf("unexpected model metadata: %#v", record.ModelConfig)
-	}
-}
-
-func TestModelInputLogCacheAttributionFingerprintsToolSchema(t *testing.T) {
-	messages := []*agent.Message{
-		agent.SystemMessage("system"),
-		agent.UserMessage("hello"),
-	}
-	tools := []*agent.ToolInfo{
-		{
-			Name: "read",
-			Desc: "Read a file",
-			ParamsOneOf: agent.NewParamsOneOfByParams(map[string]*agent.ParameterInfo{
-				"path": {Type: agent.String, Desc: "File path", Required: true},
-			}),
-		},
-	}
-	firstTools := modelInputLogTools(tools)
-	first := modelInputLogCacheAttribution(messages, firstTools)
-	second := modelInputLogCacheAttribution(messages, modelInputLogTools(tools))
-	if first.MessageFingerprint == "" || first.ToolSchemaFingerprint == "" {
-		t.Fatalf("fingerprints should be populated: %#v", first)
-	}
-	if len(first.ToolFingerprints) != 1 || first.ToolFingerprints[0].Name != "read" || first.ToolFingerprints[0].Fingerprint == "" {
-		t.Fatalf("per-tool fingerprints should be populated without schema details: %#v", first.ToolFingerprints)
-	}
-	cachePayload, err := json.Marshal(first)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(cachePayload), "File path") || strings.Contains(string(cachePayload), "parameters") {
-		t.Fatalf("cache attribution must not expose full tool schema: %s", string(cachePayload))
-	}
-	if !reflect.DeepEqual(first, second) {
-		t.Fatalf("same input should produce stable attribution: first=%#v second=%#v", first, second)
-	}
-
-	changedTools := modelInputLogTools([]*agent.ToolInfo{
-		{
-			Name: "read",
-			Desc: "Read a file with line offsets",
-			ParamsOneOf: agent.NewParamsOneOfByParams(map[string]*agent.ParameterInfo{
-				"path":   {Type: agent.String, Desc: "File path", Required: true},
-				"offset": {Type: agent.Number, Desc: "Line offset"},
-			}),
-		},
-	})
-	changed := modelInputLogCacheAttribution(messages, changedTools)
-	if changed.ToolSchemaFingerprint == first.ToolSchemaFingerprint {
-		t.Fatalf("tool schema fingerprint should change when schema changes: before=%#v after=%#v", first, changed)
-	}
-	if changed.MessageFingerprint != first.MessageFingerprint || changed.SystemPromptFingerprint != first.SystemPromptFingerprint {
-		t.Fatalf("tool-only changes should not alter message/system fingerprints: before=%#v after=%#v", first, changed)
 	}
 }
 
