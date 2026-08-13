@@ -297,8 +297,10 @@ func TestContextCompactionForkFallsBackColdOnlyWhenCapacityDoesNotFit(t *testing
 		agent.UserMessage(strings.Repeat("history ", 500)),
 		agent.UserMessage("current"),
 	}
-	call := &agent.ModelCall{Model: model, Messages: primary, Options: []agent.ModelOption{agent.WithTools(nil)}}
-	policy := Policy{AgentKind: config.AgentKindIDE, ContextWindowTokens: 1000, RetainedTurns: 1}
+	call := &agent.ModelCall{Model: model, Messages: primary, Options: []agent.ModelOption{
+		agent.WithTools(nil), agent.WithMaxTokens(8_000),
+	}}
+	policy := Policy{AgentKind: config.AgentKindIDE, ContextWindowTokens: 10_000, RetainedTurns: 1}
 	source := primary[1:2]
 
 	coldCalls := 0

@@ -439,13 +439,6 @@ function contextRowsFor(
       { title: t('agents.context.sessionContext'), value: compactionValue },
     ]
   }
-  if (agent === 'context_compaction') {
-    return [
-      { title: t('agents.context.inputSource'), value: t('agents.context.compactionInputValue') },
-      { title: t('agents.context.outputShape'), value: t('agents.context.compactionOutputValue') },
-      { title: t('agents.context.historyBoundary'), value: t('agents.context.backendManagedValue') },
-    ]
-  }
   return [
     { title: t('agents.context.inputSource'), value: t('agents.context.inputSourceValue') },
     { title: t('agents.context.outputShape'), value: t('agents.context.outputShapeValue') },

@@ -350,39 +350,34 @@ func TestBuiltinInteractiveDirectorPromptUsesMaintenanceToolContract(t *testing.
 	}
 }
 
-func TestBuiltinContextCompactionPromptIsConfigurableInAgentsView(t *testing.T) {
-	state := book.NewState(t.TempDir())
-	cfg := &config.Config{Workspace: state.Workspace()}
-
-	builtin := BuiltinAgentPrompts(cfg, state, IDEStoryTeller{})
-	if !strings.Contains(builtin.ContextCompaction.SystemPrompt, "context checkpoint compiler") {
-		t.Fatalf("builtin context compaction prompt missing role:\n%s", builtin.ContextCompaction.SystemPrompt)
+func TestContextCompactionPromptIsAnInternalSourceAgentProtocol(t *testing.T) {
+	cfg := &config.Config{AgentPrompts: config.AgentPromptSettings{IDE: config.AgentPromptOverride{
+		FlowPrompt:   "MUST NOT REPLACE INTERNAL PROTOCOL",
+		SystemPrompt: "MUST NOT EXTEND INTERNAL PROTOCOL",
+	}}}
+	composition, err := ComposeContextCompactionInstruction(cfg, config.AgentKindIDE)
+	if err != nil {
+		t.Fatal(err)
+	}
+	instruction := composition.Instruction()
+	if !strings.Contains(instruction, "internal context checkpoint maintenance protocol") {
+		t.Fatalf("internal context compaction prompt missing role:\n%s", instruction)
 	}
 	requiredParts := strings.Split(strings.TrimSpace(agentcontext.CompactionCheckpointSchema()), "\n")
 	requiredParts = append(requiredParts, "source_agent_kind", "user message provides the target length range")
 	for _, required := range requiredParts {
-		if !strings.Contains(builtin.ContextCompaction.SystemPrompt, required) {
-			t.Fatalf("builtin context compaction prompt missing %q:\n%s", required, builtin.ContextCompaction.SystemPrompt)
+		if !strings.Contains(instruction, required) {
+			t.Fatalf("internal context compaction prompt missing %q:\n%s", required, instruction)
 		}
 	}
-	if !strings.Contains(builtin.ContextCompaction.SystemPrompt, "checkpoint is not a new source of truth") ||
-		!strings.Contains(builtin.ContextCompaction.SystemPrompt, "readable artifact paths") {
-		t.Fatalf("builtin context compaction prompt should define the checkpoint boundary:\n%s", builtin.ContextCompaction.SystemPrompt)
+	if !strings.Contains(instruction, "checkpoint is not a new source of truth") ||
+		!strings.Contains(instruction, "readable artifact paths") {
+		t.Fatalf("internal context compaction prompt should define the checkpoint boundary:\n%s", instruction)
 	}
-
-	blocks := BuiltinAgentPromptBlocks(cfg, state, IDEStoryTeller{})
-	if !strings.Contains(blocks.ContextCompaction.EditableSystemPrompt, requiredParts[0]) {
-		t.Fatalf("context compaction editable prompt missing target rule:\n%s", blocks.ContextCompaction.EditableSystemPrompt)
-	}
-
-	sources := BuiltinAgentPromptSources(cfg, state, IDEStoryTeller{})
-	flowSource := findPromptSource(sources.ContextCompaction.Sources, "flow")
-	if flowSource == nil || !flowSource.Editable || flowSource.Field != "flow_prompt" {
-		t.Fatalf("context compaction flow source should be editable flow_prompt: %#v", flowSource)
-	}
-	customSource := findPromptSource(sources.ContextCompaction.Sources, "custom")
-	if customSource == nil || !customSource.Editable || customSource.Field != "system_prompt" {
-		t.Fatalf("context compaction custom source should be editable system_prompt: %#v", customSource)
+	for _, forbidden := range []string{"MUST NOT REPLACE INTERNAL PROTOCOL", "MUST NOT EXTEND INTERNAL PROTOCOL"} {
+		if strings.Contains(instruction, forbidden) {
+			t.Fatalf("source Agent prompt override leaked into internal compaction protocol: %q", forbidden)
+		}
 	}
 }
 

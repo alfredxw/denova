@@ -1,6 +1,5 @@
 import type { LucideIcon } from 'lucide-react'
 import {
-  Archive,
   Bot,
   BookOpen,
   Database,
@@ -118,14 +117,6 @@ export const AGENTS: AgentViewDefinition[] = [
     groupKey: 'agents.group.utility',
     capabilityMode: 'model_only',
     icon: Wrench,
-  },
-  {
-    key: 'context_compaction',
-    titleKey: 'agents.contextCompaction.title',
-    subtitleKey: 'agents.contextCompaction.subtitle',
-    groupKey: 'agents.group.utility',
-    capabilityMode: 'model_only',
-    icon: Archive,
   },
 ]
 

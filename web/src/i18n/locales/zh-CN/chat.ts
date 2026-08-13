@@ -284,7 +284,7 @@ const chat = {
   'chat.contextCompaction.sourceMessages': '来源 {{count}} 条',
   'chat.contextCompaction.threshold': '阈值 {{percent}}%',
   'chat.contextCompaction.attempt': '第 {{count}} 次',
-  'chat.contextCompaction.waiting': '正在等待压缩器输出…',
+  'chat.contextCompaction.waiting': '正在等待 checkpoint 输出…',
   'chat.contextCompaction.empty': '没有压缩摘要内容',
   'chat.contextCleared': '上下文已清理',
   'chat.contextClearedDetail': '上下文已清理，之前消息不再参与创作Agent上下文{{time}}',

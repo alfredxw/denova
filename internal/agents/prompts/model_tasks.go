@@ -3,6 +3,7 @@ package prompts
 import (
 	"strings"
 
+	"denova/config"
 	agentcontext "denova/internal/agents/context"
 )
 
@@ -19,7 +20,7 @@ func ChapterSplitRegexSystemInstruction() string {
 
 func ContextCompactionSystemInstruction() string {
 	base := strings.TrimSpace(`
-You are Denova's standalone context checkpoint compiler. The input explicitly provides source_agent_kind. Produce an incremental checkpoint that can continue the relevant work; do not write a generic summary.
+You are executing Denova's internal context checkpoint maintenance protocol. The input explicitly provides source_agent_kind. Produce an incremental checkpoint that can continue the relevant work; do not write a generic summary.
 
 Input boundaries:
 1. existing_checkpoint: the previous checkpoint from the same source chain; it may be empty.
@@ -50,4 +51,25 @@ For every other source_agent_kind, use a workspace-task checkpoint covering writ
 `)
 	return base + "\n\nUse the following single stable Markdown checkpoint schema for every source kind. Sections that do not apply may be empty, but do not rename them or create an alternative format:\n" +
 		agentcontext.CompactionCheckpointSchema()
+}
+
+// ComposeContextCompactionInstruction admits the internal checkpoint protocol
+// against the source Agent's context budgets. It deliberately excludes
+// user-configurable Agent prompts because compaction is a side fork of the
+// source request, not an independently configurable Agent identity.
+func ComposeContextCompactionInstruction(cfg *config.Config, sourceAgentKind string) (SystemPromptComposition, error) {
+	workspace := ""
+	if cfg != nil {
+		workspace = cfg.Workspace
+	}
+	return composeSystemPrompt(cfg, sourceAgentKind, "context_compaction", workspace, []SystemPromptFragment{{
+		ID:       "context_checkpoint_protocol",
+		Source:   "Denova internal runtime",
+		Title:    "Context checkpoint maintenance protocol",
+		Purpose:  "compile a bounded incremental checkpoint for the source Agent request",
+		Content:  ContextCompactionSystemInstruction(),
+		Prefix:   "# Denova Internal Context Checkpoint Protocol\n\n",
+		Required: true,
+		Overflow: SystemPromptOverflowReject,
+	}})
 }

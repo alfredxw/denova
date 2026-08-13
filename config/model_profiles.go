@@ -45,7 +45,6 @@ type AgentModelSettings struct {
 	ToolAgent           AgentModelOverride `toml:"tool_agent,omitempty" json:"tool_agent,omitempty"`
 	Image               AgentModelOverride `toml:"image,omitempty" json:"image,omitempty"`
 	Automation          AgentModelOverride `toml:"automation,omitempty" json:"automation,omitempty"`
-	ContextCompaction   AgentModelOverride `toml:"context_compaction,omitempty" json:"context_compaction,omitempty"`
 }
 
 type AgentModelOverride struct {
@@ -81,7 +80,6 @@ func MergeAgentModelSettings(parent, child AgentModelSettings) AgentModelSetting
 		ToolAgent:           mergeAgentModelOverride(parent.ToolAgent, child.ToolAgent),
 		Image:               mergeAgentModelOverride(parent.Image, child.Image),
 		Automation:          mergeAgentModelOverride(parent.Automation, child.Automation),
-		ContextCompaction:   mergeAgentModelOverride(parent.ContextCompaction, child.ContextCompaction),
 	}
 }
 

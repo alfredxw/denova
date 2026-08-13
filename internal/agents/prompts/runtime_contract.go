@@ -129,8 +129,6 @@ func outputProtocolForAgent(agentKind string) string {
 		return "- There is no fixed JSON output protocol. Perform all lore, preset, automation, and Skills changes through their corresponding module tools."
 	case config.AgentKindAutomation:
 		return "- The final output must report what was actually completed, written paths, and items awaiting user confirmation. Writes remain subject to the task write policy and tool permissions."
-	case config.AgentKindContextCompaction:
-		return "- Output only the compacted Markdown context summary. Do not include explanations, reasoning, code fences, or extra wrappers."
 	case config.AgentKindIDE:
 		return "- Writing Agent has no fixed JSON output protocol. Perform all file changes through enabled tools and respect workspace boundaries."
 	default:
@@ -202,12 +200,6 @@ func agentRuntimeContract(agentKind string) string {
 			"- Automation Agent may use enabled tools to read files, lore, and Project state necessary for the task objective.",
 			"- File and lore writes require both the task write policy and Agent tool permission. If either disallows writing, do not write.",
 			"- Automation Agent must not read complete history, logs, large files, or an entire book without bounds. Locate the relevant scope first, then read only what is needed.",
-		}, "\n")
-	case config.AgentKindContextCompaction:
-		return strings.Join([]string{
-			"- Context Compaction Agent is a model-only summarization Agent. It must not read or write the workspace or call file, command, lore, Skills, or todo tools.",
-			"- Context Compaction Agent summarizes only the bounded conversation source and reference context supplied by the caller. Do not introduce external facts or fill in missing information.",
-			"- Context Compaction Agent must omit thinking, tool-card noise, and display-only logs while preserving the core intent and order of user messages.",
 		}, "\n")
 	default:
 		return fmt.Sprintf("- The current Agent kind is %s. Follow the output protocol and backend validation for its call site.", strings.TrimSpace(agentKind))

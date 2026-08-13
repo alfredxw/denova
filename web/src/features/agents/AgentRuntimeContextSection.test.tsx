@@ -19,7 +19,6 @@ describe('AgentRuntimeContextSection', () => {
     const onChange = vi.fn()
     render(
       <AgentRuntimeContextSection
-        agent="ide"
         value={{}}
         resolved={resolvedContext}
         onChange={onChange}
@@ -37,7 +36,6 @@ describe('AgentRuntimeContextSection', () => {
   it('uses the local draft while waiting for the normalized server snapshot', () => {
     render(
       <AgentRuntimeContextSection
-        agent="ide"
         value={{ compaction_threshold: 0.72, max_fragments: 64 }}
         resolved={resolvedContext}
         onChange={vi.fn()}
@@ -46,20 +44,5 @@ describe('AgentRuntimeContextSection', () => {
 
     expect(screen.getByLabelText('触发阈值 (%)')).toHaveValue(72)
     expect(screen.getByLabelText('本轮片段数量上限')).toHaveValue(64)
-  })
-
-  it('keeps backend-managed compactor mechanics out of the editor', () => {
-    render(
-      <AgentRuntimeContextSection
-        agent="context_compaction"
-        value={{}}
-        resolved={{ ...resolvedContext, tool_result_context_enabled: false }}
-        onChange={vi.fn()}
-      />,
-    )
-
-    expect(screen.queryByLabelText('触发阈值 (%)')).not.toBeInTheDocument()
-    expect(screen.queryByRole('switch', { name: '工具结果上下文' })).not.toBeInTheDocument()
-    expect(screen.getByLabelText('单片段上限 (KB)')).toHaveValue(256)
   })
 })

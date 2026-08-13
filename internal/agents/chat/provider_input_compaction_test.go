@@ -13,11 +13,12 @@ import (
 
 func TestCompactionSummarizerLayersOversizedSourceWithoutDroppingBytes(t *testing.T) {
 	maxBytes := 48 * 1024
-	cfg := &config.Config{AgentContexts: config.AgentContextSettings{ContextCompaction: config.AgentContextOverride{
+	cfg := &config.Config{AgentContexts: config.AgentContextSettings{IDE: config.AgentContextOverride{
 		MaxProviderInputBytes: &maxBytes,
 	}}}
 	calls := 0
 	observedBytes := 0
+	maxRequestBytes := 0
 	summarize := func(_ context.Context, _ *config.Config, request agentcompaction.SummaryRequest, _ func(int, string)) (string, error) {
 		calls++
 		batchBytes := 0
@@ -27,6 +28,7 @@ func TestCompactionSummarizerLayersOversizedSourceWithoutDroppingBytes(t *testin
 			}
 		}
 		observedBytes += batchBytes
+		maxRequestBytes = max(maxRequestBytes, batchBytes)
 		return strings.Repeat("摘要", 32), nil
 	}
 	payload := strings.Repeat("不可丢失的历史事实。", 2500)
@@ -44,5 +46,8 @@ func TestCompactionSummarizerLayersOversizedSourceWithoutDroppingBytes(t *testin
 	}
 	if observedBytes < len(payload)*3 {
 		t.Fatalf("layered summarization silently dropped source bytes: observed=%d source=%d", observedBytes, len(payload)*3)
+	}
+	if maxRequestBytes > maxBytes {
+		t.Fatalf("fallback request exceeded source Agent provider limit: request=%d limit=%d", maxRequestBytes, maxBytes)
 	}
 }

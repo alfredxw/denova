@@ -54,7 +54,7 @@ func TestResolveAgentToolsDefaults(t *testing.T) {
 			}
 		})
 	}
-	for _, kind := range []string{AgentKindVersionSummary, AgentKindToolAgent, AgentKindContextCompaction} {
+	for _, kind := range []string{AgentKindVersionSummary, AgentKindToolAgent} {
 		resolved := ResolveAgentTools(&Config{}, kind)
 		for _, capability := range AgentToolCapabilities() {
 			if resolved.Allows(capability.Source) {
@@ -104,7 +104,6 @@ func TestResolveAgentToolsEnforcesRegisteredCapabilityCeilings(t *testing.T) {
 		ToolAgent:           allEnabled,
 		Image:               allEnabled,
 		Automation:          allEnabled,
-		ContextCompaction:   allEnabled,
 	}}
 
 	for _, definition := range AgentKindDefinitions() {

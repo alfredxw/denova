@@ -2,11 +2,9 @@ import { FolderOpen } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Input } from '@/components/ui/input'
 import type { AgentContextOverride, ResolvedAgentContextSettings } from '@/features/settings/types'
-import type { VisibleAgentKey } from './agent-registry'
 import { Field, SectionTitle, SwitchWithInheritance } from './agent-form-controls'
 
-export function AgentRuntimeContextSection({ agent, value, resolved, onChange }: {
-  agent: VisibleAgentKey
+export function AgentRuntimeContextSection({ value, resolved, onChange }: {
   value: AgentContextOverride
   resolved: ResolvedAgentContextSettings
   onChange: (patch: Partial<AgentContextOverride>) => void
@@ -20,8 +18,6 @@ export function AgentRuntimeContextSection({ agent, value, resolved, onChange }:
   const hasMaxFragments = value.max_fragments != null
   const hasMaxMetadataFieldBytes = value.max_metadata_field_bytes != null
   const hasMaxProviderInputBytes = value.max_provider_input_bytes != null
-  const isCompactionAgent = agent === 'context_compaction'
-
   const compactionEnabled = value.compaction_enabled ?? resolved.compaction_enabled
   const compactionThreshold = value.compaction_threshold ?? resolved.compaction_threshold
   const toolResultContextEnabled = value.tool_result_context_enabled ?? resolved.tool_result_context_enabled
@@ -35,46 +31,42 @@ export function AgentRuntimeContextSection({ agent, value, resolved, onChange }:
     <section className="flex flex-col gap-3 border-b border-[var(--nova-border)] pb-5">
       <SectionTitle icon={FolderOpen} title={t('agents.section.runtimeContext')} />
       <div className="grid gap-3 md:grid-cols-2">
-        {!isCompactionAgent && (
-          <>
-            <Field label={t('agents.field.compactionEnabled')}>
-              <SwitchWithInheritance
-                checked={compactionEnabled}
-                onChange={(checked) => onChange({ compaction_enabled: checked })}
-                ariaLabel={t('agents.field.compactionEnabled')}
-                inherited={!hasCompactionEnabled}
-                onReset={hasCompactionEnabled ? () => onChange({ compaction_enabled: null }) : undefined}
-              />
-            </Field>
-            <Field
-              label={t('agents.field.compactionThreshold')}
-              inherited={!hasCompactionThreshold}
-              onReset={hasCompactionThreshold ? () => onChange({ compaction_threshold: null }) : undefined}
-            >
-              <Input
-                type="number"
-                aria-label={t('agents.field.compactionThreshold')}
-                min={50}
-                max={98}
-                step={1}
-                value={Math.round(compactionThreshold * 100)}
-                onChange={(event) => onChange({
-                  compaction_threshold: event.target.value === '' ? null : Number(event.target.value) / 100,
-                })}
-                className="h-7 flex-1 text-xs"
-              />
-            </Field>
-            <Field label={t('agents.field.toolResultContext')}>
-              <SwitchWithInheritance
-                checked={toolResultContextEnabled}
-                onChange={(checked) => onChange({ tool_result_context_enabled: checked })}
-                ariaLabel={t('agents.field.toolResultContext')}
-                inherited={!hasToolResultContext}
-                onReset={hasToolResultContext ? () => onChange({ tool_result_context_enabled: null }) : undefined}
-              />
-            </Field>
-          </>
-        )}
+        <Field label={t('agents.field.compactionEnabled')}>
+          <SwitchWithInheritance
+            checked={compactionEnabled}
+            onChange={(checked) => onChange({ compaction_enabled: checked })}
+            ariaLabel={t('agents.field.compactionEnabled')}
+            inherited={!hasCompactionEnabled}
+            onReset={hasCompactionEnabled ? () => onChange({ compaction_enabled: null }) : undefined}
+          />
+        </Field>
+        <Field
+          label={t('agents.field.compactionThreshold')}
+          inherited={!hasCompactionThreshold}
+          onReset={hasCompactionThreshold ? () => onChange({ compaction_threshold: null }) : undefined}
+        >
+          <Input
+            type="number"
+            aria-label={t('agents.field.compactionThreshold')}
+            min={50}
+            max={98}
+            step={1}
+            value={Math.round(compactionThreshold * 100)}
+            onChange={(event) => onChange({
+              compaction_threshold: event.target.value === '' ? null : Number(event.target.value) / 100,
+            })}
+            className="h-7 flex-1 text-xs"
+          />
+        </Field>
+        <Field label={t('agents.field.toolResultContext')}>
+          <SwitchWithInheritance
+            checked={toolResultContextEnabled}
+            onChange={(checked) => onChange({ tool_result_context_enabled: checked })}
+            ariaLabel={t('agents.field.toolResultContext')}
+            inherited={!hasToolResultContext}
+            onReset={hasToolResultContext ? () => onChange({ tool_result_context_enabled: null }) : undefined}
+          />
+        </Field>
         <Field
           label={t('agents.field.maxFragmentKB')}
           inherited={!hasMaxFragmentBytes}
@@ -157,8 +149,8 @@ export function AgentRuntimeContextSection({ agent, value, resolved, onChange }:
         </Field>
       </div>
       <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-[11px] leading-5 text-[var(--nova-text-faint)]">
-        {isCompactionAgent ? t('agents.context.backendManagedPolicyNote') : t('agents.context.compactionNote')}
-        {!isCompactionAgent && <div className="mt-1">{t('agents.context.toolResultContextNote')}</div>}
+        {t('agents.context.compactionNote')}
+        <div className="mt-1">{t('agents.context.toolResultContextNote')}</div>
         <div className="mt-1">{t('agents.context.assemblyBudgetNote')}</div>
       </div>
     </section>

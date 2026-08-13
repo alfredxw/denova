@@ -14,9 +14,9 @@ import (
 	"denova/internal/agents/prompts"
 )
 
-// summarizeContextInLayers keeps every compactor provider request below the
-// same hard input boundary as normal Agents. Oversized history is folded in
-// ordered batches; no source bytes are discarded.
+// summarizeContextInLayers keeps every fallback request below the source
+// Agent's hard input boundary. Oversized history is folded in ordered batches;
+// no source bytes are discarded.
 func summarizeContextInLayers(
 	ctx context.Context,
 	cfg *config.Config,
@@ -65,13 +65,9 @@ func summarizeContextInColdLayers(
 	inputChars int,
 	execution contextCompactionSummaryExecution,
 ) (string, int, contextCompactionSummaryExecution, error) {
-	resolved := config.ResolveAgentContext(cfg, config.AgentKindContextCompaction)
+	resolved := config.ResolveAgentContext(cfg, agentKind)
 	maxBytes := resolved.MaxProviderInputBytes
-	workspace := ""
-	if cfg != nil {
-		workspace = cfg.Workspace
-	}
-	composition, err := prompts.ComposeBuiltinSystemInstruction(cfg, config.AgentKindContextCompaction, "context_compaction", workspace, "builtin_base", "Context compaction rules", "define the bounded context compaction task", prompts.ContextCompactionSystemInstruction())
+	composition, err := prompts.ComposeContextCompactionInstruction(cfg, agentKind)
 	if err != nil {
 		return "", inputChars, execution, err
 	}
@@ -79,12 +75,12 @@ func summarizeContextInColdLayers(
 		agent.SystemMessage(composition.Instruction()),
 		agent.UserMessage(buildContextCompactionTranscript(source, existingCheckpoint, referenceContext, sourceTokens, inputChars, policy)),
 	}
-	modelWindow := config.ResolveAgentModel(cfg, config.AgentKindContextCompaction).ContextWindowTokens
-	if modelio.ValidateInput(config.AgentKindContextCompaction, probe, nil, maxBytes, modelWindow) == nil {
+	modelWindow := policy.ContextWindowTokens
+	if modelio.ValidateInput(agentKind, probe, nil, maxBytes, modelWindow) == nil {
 		summary, err := executeColdCompactionSummary(ctx, cfg, summarize, SummaryRequest{
 			SourceAgentKind: agentKind, Messages: probe, SourceMessages: len(source),
 			SourceTokens: sourceTokens, InputChars: inputChars,
-		}, emitDelta)
+		}, maxBytes, modelWindow, emitDelta)
 		execution.LayerCount = 1
 		execution.InputTokens = agentcontext.EstimateTokens(probe, nil)
 		execution.PromptTokens = execution.InputTokens
@@ -115,7 +111,7 @@ func summarizeContextInColdLayers(
 		summary, err := executeColdCompactionSummary(ctx, cfg, summarize, SummaryRequest{
 			SourceAgentKind: agentKind, Messages: layerInput, SourceMessages: len(batch),
 			SourceTokens: layerTokens, InputChars: layerChars,
-		}, layerEmit)
+		}, maxBytes, modelWindow, layerEmit)
 		if err != nil {
 			return "", inputChars, execution, fmt.Errorf("context compaction layer %d/%d: %w", index+1, len(batches), err)
 		}
@@ -129,14 +125,14 @@ func executeColdCompactionSummary(
 	cfg *config.Config,
 	summarize SummaryFunc,
 	request SummaryRequest,
+	maxProviderInputBytes int,
+	modelWindowTokens int,
 	emitDelta func(attempt int, delta string),
 ) (string, error) {
 	if summarize == nil {
 		return "", fmt.Errorf("context compaction summarizer is unavailable")
 	}
-	resolved := config.ResolveAgentContext(cfg, config.AgentKindContextCompaction)
-	modelWindow := config.ResolveAgentModel(cfg, config.AgentKindContextCompaction).ContextWindowTokens
-	if err := modelio.ValidateInput(config.AgentKindContextCompaction, request.Messages, nil, resolved.MaxProviderInputBytes, modelWindow); err != nil {
+	if err := modelio.ValidateInput(request.SourceAgentKind, request.Messages, nil, maxProviderInputBytes, modelWindowTokens); err != nil {
 		return "", err
 	}
 	summary, err := summarize(ctx, cfg, request, emitDelta)
@@ -157,13 +153,10 @@ func compactionSourceBatches(existingCheckpoint, referenceContext string, source
 	// Reserve most of the request for the system prompt, rolling checkpoint,
 	// JSON envelope, and completion-policy instructions.
 	payloadLimit := maxProviderBytes / 3
-	if maxProviderTokens > 0 && maxProviderTokens/3 < payloadLimit {
+	if maxProviderTokens > 0 {
 		// Estimated tokens never exceed UTF-8 bytes in our estimator, so this
 		// conservative byte allowance also bounds token-heavy CJK source.
-		payloadLimit = maxProviderTokens / 3
-	}
-	if payloadLimit < 4*1024 {
-		payloadLimit = maxProviderBytes / 2
+		payloadLimit = min(payloadLimit, maxProviderTokens/3)
 	}
 	if payloadLimit < 512 {
 		payloadLimit = 512

@@ -18,8 +18,7 @@ const (
 	AgentKindImage               = "image"
 	// AgentKindAutomation is retained only to decode Beta runtime journals.
 	// New automation turns always run as their owning Project Agent.
-	AgentKindAutomation        = "automation"
-	AgentKindContextCompaction = "context_compaction"
+	AgentKindAutomation = "automation"
 )
 
 // AgentKindDefinition is the registry entry for one runtime Agent kind.
@@ -165,16 +164,6 @@ var agentKindRegistry = []AgentKindDefinition{
 		PromptOverride:   func(settings AgentPromptSettings) AgentPromptOverride { return settings.Image },
 		SkillOverride:    func(settings AgentSkillSettings) AgentSkillOverride { return settings.Image },
 		ContextOverride:  func(settings AgentContextSettings) AgentContextOverride { return settings.Image },
-	},
-	{
-		Kind:             AgentKindContextCompaction,
-		SessionID:        "context-compaction-agent",
-		ModelOverride:    func(settings AgentModelSettings) AgentModelOverride { return settings.ContextCompaction },
-		SetModelOverride: func(settings *AgentModelSettings, override AgentModelOverride) { settings.ContextCompaction = override },
-		ToolOverride:     func(settings AgentToolSettings) AgentToolOverride { return settings.ContextCompaction },
-		PromptOverride:   func(settings AgentPromptSettings) AgentPromptOverride { return settings.ContextCompaction },
-		SkillOverride:    func(settings AgentSkillSettings) AgentSkillOverride { return settings.ContextCompaction },
-		ContextOverride:  func(settings AgentContextSettings) AgentContextOverride { return settings.ContextCompaction },
 	},
 }
 

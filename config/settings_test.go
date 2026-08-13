@@ -683,7 +683,7 @@ func TestLoadLayeredPublishesResolvedAgentToolCatalogAndManifests(t *testing.T) 
 	if len(shell.ToolNames) != 1 || shell.ToolNames[0] != wantShell {
 		t.Fatalf("resolved shell tools = %#v, want [%s]", shell.ToolNames, wantShell)
 	}
-	for _, kind := range []string{AgentKindVersionSummary, AgentKindToolAgent, AgentKindContextCompaction} {
+	for _, kind := range []string{AgentKindVersionSummary, AgentKindToolAgent} {
 		manifest, present := layered.ResolvedAgentToolManifests[kind]
 		if !present || manifest == nil || len(manifest) != 0 {
 			t.Fatalf("model-only manifest %q = %#v, present=%v", kind, manifest, present)

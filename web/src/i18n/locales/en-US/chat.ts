@@ -284,7 +284,7 @@ const chat = {
   'chat.contextCompaction.sourceMessages': '{{count}} source messages',
   'chat.contextCompaction.threshold': '{{percent}}% threshold',
   'chat.contextCompaction.attempt': 'Attempt {{count}}',
-  'chat.contextCompaction.waiting': 'Waiting for compactor output...',
+  'chat.contextCompaction.waiting': 'Waiting for checkpoint output...',
   'chat.contextCompaction.empty': 'No compaction summary content',
   'chat.contextCleared': 'Context cleared',
   'chat.contextClearedDetail': 'Context cleared. Previous messages are no longer included in the Writing Agent context{{time}}',

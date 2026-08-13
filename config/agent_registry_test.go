@@ -71,6 +71,9 @@ func TestAgentKindRegistryDefinesUniqueKindsAndConfigAccessors(t *testing.T) {
 			seenCapabilities[capability] = true
 		}
 	}
+	if seen["context_compaction"] {
+		t.Fatal("context_compaction is an internal event/protocol type, not an Agent kind")
+	}
 
 	models := AgentModelSettings{
 		General:             AgentModelOverride{ProfileID: AgentKindGeneral},
@@ -81,7 +84,6 @@ func TestAgentKindRegistryDefinesUniqueKindsAndConfigAccessors(t *testing.T) {
 		InteractiveDirector: AgentModelOverride{ProfileID: AgentKindInteractiveDirector},
 		VersionSummary:      AgentModelOverride{ProfileID: AgentKindVersionSummary},
 		ToolAgent:           AgentModelOverride{ProfileID: AgentKindToolAgent},
-		ContextCompaction:   AgentModelOverride{ProfileID: AgentKindContextCompaction},
 	}
 	prompts := AgentPromptSettings{
 		General:             AgentPromptOverride{SystemPrompt: AgentKindGeneral},
@@ -92,7 +94,6 @@ func TestAgentKindRegistryDefinesUniqueKindsAndConfigAccessors(t *testing.T) {
 		InteractiveDirector: AgentPromptOverride{SystemPrompt: AgentKindInteractiveDirector},
 		VersionSummary:      AgentPromptOverride{SystemPrompt: AgentKindVersionSummary},
 		ToolAgent:           AgentPromptOverride{SystemPrompt: AgentKindToolAgent},
-		ContextCompaction:   AgentPromptOverride{SystemPrompt: AgentKindContextCompaction},
 	}
 	tools := AgentToolSettings{
 		General:             AgentToolOverride{AgentToolWorkspaceRead: true},
@@ -103,7 +104,6 @@ func TestAgentKindRegistryDefinesUniqueKindsAndConfigAccessors(t *testing.T) {
 		InteractiveDirector: AgentToolOverride{AgentToolLoreWrite: true},
 		VersionSummary:      AgentToolOverride{AgentToolTodo: true},
 		ToolAgent:           AgentToolOverride{AgentToolWebSearch: true},
-		ContextCompaction:   AgentToolOverride{AgentToolSkills: true},
 	}
 	thresholds := map[string]*float64{}
 	for _, definition := range definitions {
@@ -119,7 +119,6 @@ func TestAgentKindRegistryDefinesUniqueKindsAndConfigAccessors(t *testing.T) {
 		InteractiveDirector: AgentContextOverride{CompactionThreshold: thresholds[AgentKindInteractiveDirector]},
 		VersionSummary:      AgentContextOverride{CompactionThreshold: thresholds[AgentKindVersionSummary]},
 		ToolAgent:           AgentContextOverride{CompactionThreshold: thresholds[AgentKindToolAgent]},
-		ContextCompaction:   AgentContextOverride{CompactionThreshold: thresholds[AgentKindContextCompaction]},
 	}
 
 	for _, definition := range definitions {
@@ -288,7 +287,7 @@ func TestResolveAgentToolManifestIsAgentSpecificAndHonestAboutAvailability(t *te
 
 func TestResolveAgentToolManifestsDeclareEmptyModelOnlyAgents(t *testing.T) {
 	manifests := ResolveAgentToolManifestsForGOOS(&Config{}, "linux")
-	for _, kind := range []string{AgentKindVersionSummary, AgentKindToolAgent, AgentKindContextCompaction} {
+	for _, kind := range []string{AgentKindVersionSummary, AgentKindToolAgent} {
 		manifest, found := manifests[kind]
 		if !found || manifest == nil || len(manifest) != 0 {
 			t.Fatalf("model-only Agent %q manifest = %#v, found=%v", kind, manifest, found)

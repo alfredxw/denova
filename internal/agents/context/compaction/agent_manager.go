@@ -112,7 +112,7 @@ func (summarizer denovaSummarizer) Summarize(
 	request publiccompaction.SummaryRequest,
 ) (publiccompaction.Summary, error) {
 	if summarizer.model == nil {
-		return publiccompaction.Summary{}, errors.New("Denova Compaction model is unavailable")
+		return publiccompaction.Summary{}, errors.New("source Agent model is unavailable for context checkpoint fallback")
 	}
 	policy := ResolvePolicy(summarizer.cfg, summarizer.agentKind)
 	policy.ContextWindowTokens = summarizer.contextWindowTokens
@@ -130,7 +130,7 @@ func (summarizer denovaSummarizer) Summarize(
 			return "", err
 		}
 		if result == nil || strings.TrimSpace(result.Content) == "" || len(result.ToolCalls) != 0 {
-			return "", errors.New("Denova Compaction model returned an invalid checkpoint")
+			return "", errors.New("source Agent model returned an invalid context checkpoint")
 		}
 		return strings.TrimSpace(result.Content), nil
 	}

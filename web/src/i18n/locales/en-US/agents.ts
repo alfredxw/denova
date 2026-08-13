@@ -26,8 +26,6 @@ const agents = {
   'agents.versionSummary.subtitle': 'Automatic version summaries',
   'agents.toolAgent.title': 'Tool Agent',
   'agents.toolAgent.subtitle': 'Detects chapter splitting regex during novel import',
-  'agents.contextCompaction.title': 'Context Compaction Agent',
-  'agents.contextCompaction.subtitle': 'Independently compresses old chat and game-story context',
   'agents.tool.workspaceRead.title': 'Read and Search Workspace',
   'agents.tool.workspaceRead.subtitle': 'read / glob / grep',
   'agents.tool.webSearch.title': 'Web Search',
@@ -181,12 +179,10 @@ const agents = {
   'agents.context.compactionValue': '{{threshold}}% auto compaction; before compaction, use the current effective transcript.',
   'agents.context.compactionNote':
     'Auto compaction starts at the configured share of the model context window. Denova derives recovery headroom and cache-safe cleanup watermarks as one backend policy.',
-  'agents.context.backendManagedPolicyNote':
-    'Checkpoint shape, retained raw history, recovery headroom, and failure protection are managed together by the backend to keep prefix caching stable.',
   'agents.context.toolResultContextNote':
     'When enabled, recoverable tool results remain model-visible until backend-managed pressure cleanup replaces eligible old bodies with traceable receipts. Visible tool cards are unchanged.',
   'agents.context.assemblyBudgetNote':
-    'Fragment budgets cover only turn injections and never trim display history. The provider hard limit covers complete messages and tool schemas, defaults to 4 MB, cannot be bypassed by disabling semantic compaction, and fails before send; the compactor layers oversized sources.',
+    'Fragment budgets cover only turn injections and never trim display history. The provider hard limit covers complete messages and tool schemas, defaults to 4 MB, cannot be bypassed by disabling semantic compaction, and fails before send; the internal checkpoint fallback layers oversized sources within this Agent\'s limits.',
   'agents.context.storyState': 'Story State',
   'agents.context.teller': 'Narrative',
   'agents.context.currentStoryTeller': 'Current narrative',
@@ -194,13 +190,10 @@ const agents = {
   'agents.context.loreIndexValue': 'Resident and auto-matched lore',
   'agents.context.inputSource': 'Input Source',
   'agents.context.inputSourceValue': 'Current operation request',
-  'agents.context.compactionInputValue': 'Raw effective transcript + bounded reference context',
   'agents.context.outputShape': 'Output Shape',
   'agents.context.outputShapeValue': 'Structured JSON or summary',
-  'agents.context.compactionOutputValue': 'Context compaction summary',
   'agents.context.historyBoundary': 'History Boundary',
   'agents.context.historyBoundaryValue': 'Does not read writing-chat context',
-  'agents.context.backendManagedValue': 'Backend-managed cache-safe boundary',
   'agents.builtIn.loreRead.title': 'Read Lore',
   'agents.builtIn.loreRead.value': 'Read current lore items and user-referenced lore context.',
   'agents.builtIn.loreWrite.title': 'Write Lore',

@@ -220,32 +220,13 @@ describe('AgentsView', () => {
     expect(await screen.findByText('deepseek（DeepSeek V3）')).toBeInTheDocument()
   })
 
-  it('keeps context compaction mechanics backend-managed', async () => {
-    const user = userEvent.setup()
-    vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({
-      builtin_agent_prompt_sources: {
-        context_compaction: {
-          sources: [
-            { id: 'flow', title: '流程规则', source: 'Nova built-in', content: '压缩流程', editable: true, field: 'flow_prompt' },
-            { id: 'custom', title: '用户自定义', source: 'user/workspace config', editable: true, field: 'system_prompt' },
-          ],
-        },
-      },
-    }))
+  it('does not expose internal context compaction as an Agent', async () => {
+    vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({}))
 
     render(<AgentsView />)
 
-    await user.click(await screen.findByRole('button', { name: /上下文压缩 Agent/ }))
-
-    expect(screen.queryByText('压缩目标下限 (%)')).not.toBeInTheDocument()
-    expect(screen.queryByText('压缩目标上限 (%)')).not.toBeInTheDocument()
-    expect(screen.queryByText('压缩后保留回合')).not.toBeInTheDocument()
-    expect(screen.queryByText('流程规则')).not.toBeInTheDocument()
-    expect(screen.getByText('后端管理的缓存安全边界')).toBeInTheDocument()
-    expect(screen.getByRole('spinbutton', { name: '单片段上限 (KB)' })).toHaveValue(256)
-    expect(screen.getByRole('spinbutton', { name: '本轮注入总上限 (KB)' })).toHaveValue(1024)
-    expect(screen.getByRole('spinbutton', { name: '本轮片段数量上限' })).toHaveValue(256)
-    expect(screen.getByRole('spinbutton', { name: '来源元数据上限 (KB)' })).toHaveValue(4)
+    await screen.findByText('模型与思考')
+    expect(screen.queryByRole('button', { name: /上下文压缩 Agent/ })).not.toBeInTheDocument()
   })
 
   it('does not expose legacy prompt or SubAgent state in ordinary Agent settings', async () => {
@@ -552,7 +533,6 @@ function defaultAgentContexts(): NonNullable<LayeredSettings['resolved_agent_con
     tool_agent: { ...base },
     image: { ...base },
     automation: { ...base },
-    context_compaction: { ...base },
   }
 }
 

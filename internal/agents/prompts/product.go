@@ -287,7 +287,6 @@ func BuiltinAgentPrompts(cfg *config.Config, state *book.State, ideTeller IDESto
 	version, versionErr := ComposeBuiltinSystemInstruction(promptCfg, config.AgentKindVersionSummary, "version_summary", workspaceForPrompt(promptCfg, state), "builtin_base", "Version Summary Generation Rules", "define the version summary task and output constraint", versionSummarySystemInstruction)
 	toolAgent, toolErr := ComposeBuiltinSystemInstruction(promptCfg, config.AgentKindToolAgent, "tool_agent", workspaceForPrompt(promptCfg, state), "builtin_base", "Chapter Split Regex Task", "define the structured chapter-regex inference task", ChapterSplitRegexSystemInstruction())
 	image, imageErr := ComposeImageInstruction(promptCfg, state, "")
-	compaction, compactionErr := ComposeBuiltinSystemInstruction(promptCfg, config.AgentKindContextCompaction, "context_compaction", workspaceForPrompt(promptCfg, state), "builtin_base", "Context Compaction Rules", "define the bounded context compaction task", ContextCompactionSystemInstruction())
 	return config.AgentPromptSettings{
 		General:             config.AgentPromptOverride{SystemPrompt: systemPromptPreview(general, generalErr)},
 		IDE:                 config.AgentPromptOverride{SystemPrompt: systemPromptPreview(ide, ideErr)},
@@ -297,7 +296,6 @@ func BuiltinAgentPrompts(cfg *config.Config, state *book.State, ideTeller IDESto
 		VersionSummary:      config.AgentPromptOverride{SystemPrompt: systemPromptPreview(version, versionErr)},
 		ToolAgent:           config.AgentPromptOverride{SystemPrompt: systemPromptPreview(toolAgent, toolErr)},
 		Image:               config.AgentPromptOverride{SystemPrompt: systemPromptPreview(image, imageErr)},
-		ContextCompaction:   config.AgentPromptOverride{SystemPrompt: systemPromptPreview(compaction, compactionErr)},
 	}
 }
 
@@ -327,7 +325,6 @@ func BuiltinAgentPromptBlocks(cfg *config.Config, state *book.State, ideTeller I
 		VersionSummary:      builtinPromptBlocks(promptCfg, config.AgentKindVersionSummary, versionSummarySystemInstruction),
 		ToolAgent:           builtinPromptBlocks(promptCfg, config.AgentKindToolAgent, ChapterSplitRegexSystemInstruction()),
 		Image:               builtinPromptBlocks(promptCfg, config.AgentKindImage, ""),
-		ContextCompaction:   builtinPromptBlocks(promptCfg, config.AgentKindContextCompaction, ContextCompactionSystemInstruction()),
 	}
 }
 
@@ -359,7 +356,6 @@ func BuiltinAgentPromptSources(cfg *config.Config, state *book.State, ideTeller 
 		VersionSummary:      builtinPromptSourceList(promptCfg, config.AgentKindVersionSummary, versionSummarySystemInstruction),
 		ToolAgent:           builtinPromptSourceList(promptCfg, config.AgentKindToolAgent, ChapterSplitRegexSystemInstruction()),
 		Image:               builtinPromptSourceList(promptCfg, config.AgentKindImage, ""),
-		ContextCompaction:   builtinPromptSourceList(promptCfg, config.AgentKindContextCompaction, ContextCompactionSystemInstruction()),
 	}
 }
 

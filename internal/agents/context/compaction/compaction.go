@@ -234,7 +234,7 @@ func ResolvePolicy(cfg *config.Config, agentKind string) Policy {
 	return Policy{
 		AgentKind:              agentKind,
 		Enabled:                contextSettings.CompactionEnabled,
-		Strategy:               config.AgentContextCompactionStrategySummaryAgent,
+		Strategy:               config.AgentContextCompactionStrategyCheckpointFork,
 		ContextWindowTokens:    modelSettings.ContextWindowTokens,
 		Threshold:              contextSettings.CompactionThreshold,
 		RecoveryBand:           config.DefaultContextCompactionRecoveryBand,

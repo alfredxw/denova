@@ -319,8 +319,8 @@ func TestContextCompactionPolicyUsesBackendOwnedMechanics(t *testing.T) {
 	if policy.RetainedTurns != config.DefaultContextCompactionRetainedTurns {
 		t.Fatalf("retained turns = %d, want default %d", policy.RetainedTurns, config.DefaultContextCompactionRetainedTurns)
 	}
-	if policy.Strategy != config.AgentContextCompactionStrategySummaryAgent {
-		t.Fatalf("strategy = %q, want summary_agent", policy.Strategy)
+	if policy.Strategy != config.AgentContextCompactionStrategyCheckpointFork {
+		t.Fatalf("strategy = %q, want checkpoint_fork", policy.Strategy)
 	}
 }
 

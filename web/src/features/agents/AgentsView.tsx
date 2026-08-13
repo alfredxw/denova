@@ -411,7 +411,6 @@ export function AgentsView({ target, onClose }: { target: ResourceTarget; onClos
               )}
               {resolvedContext && (
                 <AgentRuntimeContextSection
-                  agent={activeAgent}
                   value={contextValue}
                   resolved={resolvedContext}
                   onChange={setAgentContext}

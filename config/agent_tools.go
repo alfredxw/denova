@@ -35,7 +35,6 @@ type AgentToolSettings struct {
 	ToolAgent           AgentToolOverride `toml:"tool_agent,omitempty" json:"tool_agent,omitempty"`
 	Image               AgentToolOverride `toml:"image,omitempty" json:"image,omitempty"`
 	Automation          AgentToolOverride `toml:"automation,omitempty" json:"automation,omitempty"`
-	ContextCompaction   AgentToolOverride `toml:"context_compaction,omitempty" json:"context_compaction,omitempty"`
 }
 
 // AgentToolOverride is a sparse capability set. A missing key inherits from
@@ -117,9 +116,8 @@ func DefaultAgentToolSettings() AgentToolSettings {
 			AgentToolEventRead,
 			AgentToolLoreRead,
 		)),
-		VersionSummary:    noToolAgentOverride(),
-		ToolAgent:         noToolAgentOverride(),
-		ContextCompaction: noToolAgentOverride(),
+		VersionSummary: noToolAgentOverride(),
+		ToolAgent:      noToolAgentOverride(),
 		Image: mergeAgentToolOverride(noToolAgentOverride(), on(
 			AgentToolSkills,
 			AgentToolImageGeneration,
@@ -158,7 +156,6 @@ func MergeAgentToolSettings(parent, child AgentToolSettings) AgentToolSettings {
 		ToolAgent:           mergeAgentToolOverride(parent.ToolAgent, child.ToolAgent),
 		Image:               mergeAgentToolOverride(parent.Image, child.Image),
 		Automation:          mergeAgentToolOverride(parent.Automation, child.Automation),
-		ContextCompaction:   mergeAgentToolOverride(parent.ContextCompaction, child.ContextCompaction),
 	}
 }
 

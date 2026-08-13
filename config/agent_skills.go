@@ -14,7 +14,6 @@ type AgentSkillSettings struct {
 	ToolAgent           AgentSkillOverride `toml:"tool_agent,omitempty" json:"tool_agent,omitempty"`
 	Image               AgentSkillOverride `toml:"image,omitempty" json:"image,omitempty"`
 	Automation          AgentSkillOverride `toml:"automation,omitempty" json:"automation,omitempty"`
-	ContextCompaction   AgentSkillOverride `toml:"context_compaction,omitempty" json:"context_compaction,omitempty"`
 }
 
 // AgentSkillOverride maps skill name to an explicit availability override.
@@ -32,7 +31,6 @@ func MergeAgentSkillSettings(parent, child AgentSkillSettings) AgentSkillSetting
 		ToolAgent:           mergeAgentSkillOverride(parent.ToolAgent, child.ToolAgent),
 		Image:               mergeAgentSkillOverride(parent.Image, child.Image),
 		Automation:          mergeAgentSkillOverride(parent.Automation, child.Automation),
-		ContextCompaction:   mergeAgentSkillOverride(parent.ContextCompaction, child.ContextCompaction),
 	}
 }
 

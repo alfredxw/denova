@@ -8,7 +8,7 @@ const (
 	MaxContextCompactionRetainedTurns              = 30
 	DefaultContextCompactionTargetMinRatio         = 0.05
 	DefaultContextCompactionTargetMaxRatio         = 0.20
-	AgentContextCompactionStrategySummaryAgent     = "summary_agent"
+	AgentContextCompactionStrategyCheckpointFork   = "checkpoint_fork"
 	DefaultToolResultCleanupThreshold              = 0.70
 	DefaultToolResultCleanupTarget                 = 0.60
 	DefaultToolResultCleanupMinTokens              = 20_000
@@ -53,7 +53,6 @@ type AgentContextSettings struct {
 	ToolAgent           AgentContextOverride `toml:"tool_agent,omitempty" json:"tool_agent,omitempty"`
 	Image               AgentContextOverride `toml:"image,omitempty" json:"image,omitempty"`
 	Automation          AgentContextOverride `toml:"automation,omitempty" json:"automation,omitempty"`
-	ContextCompaction   AgentContextOverride `toml:"context_compaction,omitempty" json:"context_compaction,omitempty"`
 }
 
 type AgentContextOverride struct {
@@ -106,7 +105,6 @@ func MergeAgentContextSettings(parent, child AgentContextSettings) AgentContextS
 		ToolAgent:           mergeAgentContextOverride(parent.ToolAgent, child.ToolAgent),
 		Image:               mergeAgentContextOverride(parent.Image, child.Image),
 		Automation:          mergeAgentContextOverride(parent.Automation, child.Automation),
-		ContextCompaction:   mergeAgentContextOverride(parent.ContextCompaction, child.ContextCompaction),
 	}
 }
 
@@ -197,7 +195,6 @@ func sanitizeAgentContextSettings(settings AgentContextSettings) AgentContextSet
 	settings.ToolAgent = sanitizeAgentContextOverride(settings.ToolAgent)
 	settings.Image = sanitizeAgentContextOverride(settings.Image)
 	settings.Automation = sanitizeAgentContextOverride(settings.Automation)
-	settings.ContextCompaction = sanitizeAgentContextOverride(settings.ContextCompaction)
 	return settings
 }
 
