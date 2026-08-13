@@ -9,6 +9,7 @@ import { ToolApprovalPanel } from './ToolApprovalCard'
 import type { AskInteractionResolver } from './AskInteractionCard'
 import { AgentSourceBadge } from './message-source-badge'
 import { ToolStatusIcon } from './message-tool-status'
+import { toolDisplayName } from './tool-display-name'
 
 export function ToolExecutionBlock({ message, onResolve, onLayoutChange }: { message: ToolCallChatMessage; onResolve?: AskInteractionResolver; onLayoutChange?: (element: HTMLElement) => void }) {
   const { t } = useTranslation()
@@ -27,7 +28,7 @@ export function ToolExecutionBlock({ message, onResolve, onLayoutChange }: { mes
   const isDirectorPlanHidden = isChapterBodyHidden && message.agent_kind === 'interactive_director'
   const chapterBodyHiddenPath = isChapterBodyHidden ? extractToolArgPath(rawArgs) : ''
   const chapterGeneratedChars = isChapterBodyHidden && typeof message.sse_generated_chars === 'number' ? message.sse_generated_chars : undefined
-  const displayName = isDelegationTool ? t('chat.subagent.taskLabel') : name
+  const displayName = isDelegationTool ? t('chat.subagent.taskLabel') : toolDisplayName(name, t)
   const detailArgs = isDelegationTool ? formatTaskDelegationArgs(rawArgs) : (isChapterBodyHidden ? '' : args)
   const hasResult = status === 'success'
   useLayoutEffect(() => {
@@ -77,12 +78,12 @@ export function ToolExecutionBlock({ message, onResolve, onLayoutChange }: { mes
         >
           <ToolStatusIcon status={resultSeverity === 'error' ? 'error' : status} warning={resultSeverity === 'warning'} />
           <div className="flex min-w-0 items-center gap-2 overflow-hidden">
-            <span className="shrink-0 font-medium text-[var(--nova-text)]">{t('chat.tool.calling')}</span>
-            <code
-              className="min-w-0 truncate rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--nova-text-muted)]"
+            <span
+              className="min-w-0 max-w-[42%] shrink-0 truncate font-medium text-[var(--nova-text)]"
+              title={displayName === name ? undefined : name}
             >
               {displayName}
-            </code>
+            </span>
             {taskSubAgent && (
               <span
                 className="min-w-0 truncate rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-muted)]"
@@ -502,4 +503,3 @@ function skipJSONWhitespace(source: string, start: number): number {
   while (offset < source.length && /\s/.test(source[offset])) offset += 1
   return offset
 }
-

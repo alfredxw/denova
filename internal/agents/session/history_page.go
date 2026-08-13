@@ -44,13 +44,13 @@ func (s *Session) ReadHistoryPage(ctx context.Context, before, limit int) (Histo
 	if before >= 0 {
 		end = min(before, total)
 	}
-	start := max(0, end-limit)
-	if start == end {
-		return HistoryPage{Entries: []HistoryEntry{}, NextBefore: start, HasMore: start > 0, Total: total}, nil
+	requestedStart := max(0, end-limit)
+	if requestedStart == end {
+		return HistoryPage{Entries: []HistoryEntry{}, NextBefore: requestedStart, HasMore: requestedStart > 0, Total: total}, nil
 	}
 	anchor := historyAnchor{Before: 0, Cursor: 1}
 	for _, candidate := range s.projection.HistoryAnchors {
-		if candidate.Before > start {
+		if candidate.Before > requestedStart {
 			break
 		}
 		anchor = candidate
@@ -79,6 +79,19 @@ func (s *Session) ReadHistoryPage(ctx context.Context, before, limit int) (Histo
 		}
 	}
 	entries := temporary.History()
+	// The row limit is a paging target, not permission to split one Agent
+	// turn. Display progress and tool events can make a single turn much larger
+	// than the target, so align the page to the latest user/clear boundary at
+	// or before it. The sparse anchor bounds the extra scan for normal turns
+	// while still restoring an unusually large turn as one coherent unit.
+	start := anchor.Before
+	boundaryLimit := min(len(entries)-1, requestedStart-anchor.Before)
+	for index := 0; index <= boundaryLimit; index++ {
+		entry := entries[index]
+		if entry.Role == string(agent.User) || entry.Type == historyTypeClear {
+			start = anchor.Before + index
+		}
+	}
 	from := max(0, start-anchor.Before)
 	to := min(len(entries), end-anchor.Before)
 	if from > to {

@@ -129,6 +129,34 @@ func TestHistoryPageReadsIndexedRangesWithoutOmissions(t *testing.T) {
 	}
 }
 
+func TestHistoryPageDoesNotSplitSingleLongRun(t *testing.T) {
+	directory := t.TempDir()
+	store, err := NewStore(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := store.GetOrCreate("single-long-run")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var contextRevision uint64
+	appendSegmentedHistoryRun(t, sess, "run-long", 138, &contextRevision)
+
+	page, err := sess.ReadHistoryPage(context.Background(), -1, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.Total != 139 || len(page.Entries) != 139 {
+		t.Fatalf("long turn page rows=%d total=%d want=139", len(page.Entries), page.Total)
+	}
+	if page.Entries[0].Role != "user" || page.Entries[0].Content != "user-run-long" {
+		t.Fatalf("long turn lost its user boundary: %#v", page.Entries[0])
+	}
+	if page.NextBefore != 0 || page.HasMore {
+		t.Fatalf("single complete turn exposed false earlier history: before=%d has_more=%t", page.NextBefore, page.HasMore)
+	}
+}
+
 func TestHistoryPageKeepsSegmentedRunsWholeAcrossSparseAnchors(t *testing.T) {
 	directory := t.TempDir()
 	store, err := NewStore(directory)
@@ -166,6 +194,9 @@ func TestHistoryPageKeepsSegmentedRunsWholeAcrossSparseAnchors(t *testing.T) {
 		page, pageErr := reopened.ReadHistoryPage(context.Background(), before, 37)
 		if pageErr != nil {
 			t.Fatal(pageErr)
+		}
+		if len(page.Entries) > 0 && page.Entries[0].Role != "user" {
+			t.Fatalf("history page split a turn at role %q", page.Entries[0].Role)
 		}
 		all = append(append([]HistoryEntry(nil), page.Entries...), all...)
 		if !page.HasMore {

@@ -285,12 +285,12 @@ describe('AgentPanel', () => {
 
     expect(screen.getByRole('button', { name: /执行过程.*1 次工具调用/ })).toBeInTheDocument()
     expect(screen.queryByText('读取章节上下文')).not.toBeInTheDocument()
-    expect(screen.queryByText('read')).not.toBeInTheDocument()
+    expect(screen.queryByText('读取')).not.toBeInTheDocument()
     expect(screen.getByText('已完成续写。')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: /执行过程.*1 次工具调用/ }))
     expect(screen.getByText('读取章节上下文')).toBeInTheDocument()
-    expect(screen.getByText('read')).toBeInTheDocument()
+    expect(screen.getByText('读取')).toBeInTheDocument()
   })
 
   it('创作 Agent 运行中自动展开执行过程', () => {

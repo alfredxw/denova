@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { renderToStaticMarkup } from 'react-dom/server'
 import type { ComponentProps } from 'react'
 import { describe, expect, it, vi } from 'vitest'
+import { setConfiguredLocale } from '@/i18n'
 import { MessageItem as ProjectMessageItem } from './MessageItem'
 
 function MessageItem(props: ComponentProps<typeof ProjectMessageItem>) {
@@ -323,9 +324,43 @@ describe('MessageItem', () => {
       />,
     )
 
-    expect(screen.getByText('调用工具')).toBeInTheDocument()
-    expect(screen.getByText('write')).toBeInTheDocument()
+    expect(screen.queryByText('调用工具')).not.toBeInTheDocument()
+    expect(screen.getByText('写入文件')).toHaveAttribute('title', 'write')
     expect(screen.getByText('写入完成')).toBeInTheDocument()
+  })
+
+  it('工具调用卡片支持英文名称并原样保留自定义工具名', () => {
+    act(() => setConfiguredLocale('en-US'))
+    try {
+      const { rerender } = render(
+        <MessageItem
+          message={{
+            role: 'tool_call',
+            content: 'write',
+            name: 'write',
+            status: 'success',
+          }}
+        />,
+      )
+
+      expect(screen.queryByText('Calling Tool')).not.toBeInTheDocument()
+      expect(screen.getByText('Write file')).toHaveAttribute('title', 'write')
+
+      rerender(
+        <MessageItem
+          message={{
+            role: 'tool_call',
+            content: 'publish_manuscript',
+            name: 'publish_manuscript',
+            status: 'success',
+          }}
+        />,
+      )
+
+      expect(screen.getByText('publish_manuscript')).not.toHaveAttribute('title')
+    } finally {
+      act(() => setConfiguredLocale('zh-CN'))
+    }
   })
 
   it('工具卡详情随卡片宽度换行且仅保留纵向滚动', async () => {
@@ -500,8 +535,8 @@ describe('MessageItem', () => {
       />,
     )
 
-    expect(screen.getByText('调用工具')).toBeInTheDocument()
-    expect(screen.getByText('skill')).toBeInTheDocument()
+    expect(screen.queryByText('调用工具')).not.toBeInTheDocument()
+    expect(screen.getByText('加载 Skill')).toHaveAttribute('title', 'skill')
     expect(screen.getByText('# Skill: alpha ALPHA_BODY')).toBeInTheDocument()
   })
 

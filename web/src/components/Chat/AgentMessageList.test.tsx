@@ -1101,12 +1101,12 @@ describe('Agent MessageList', () => {
     const traceButton = screen.getByRole('button', { name: /正在执行.*1 次工具调用/ })
     expect(traceButton).toHaveAttribute('aria-expanded', 'false')
     expect(screen.queryByText('正在检查资料')).not.toBeInTheDocument()
-    expect(screen.queryByText('read')).not.toBeInTheDocument()
+    expect(screen.queryByText('读取')).not.toBeInTheDocument()
 
     fireEvent.click(traceButton)
     expect(traceButton).toHaveAttribute('aria-expanded', 'true')
     expect(screen.getByText('正在检查资料')).toBeInTheDocument()
-    expect(screen.getByText('read')).toBeInTheDocument()
+    expect(screen.getByText('读取')).toBeInTheDocument()
 
     rerender(
       <VirtuosoMockContext.Provider value={{ viewportHeight: 180, itemHeight: 52 }}>
@@ -1130,7 +1130,7 @@ describe('Agent MessageList', () => {
     )
 
     expect(screen.getByText('正在检查资料')).toBeInTheDocument()
-    expect(screen.getByText('read')).toBeInTheDocument()
+    expect(screen.getByText('读取')).toBeInTheDocument()
 
     rerender(
       <VirtuosoMockContext.Provider value={{ viewportHeight: 180, itemHeight: 52 }}>
