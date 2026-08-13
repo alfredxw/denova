@@ -69,6 +69,7 @@ const handledEventSchemas = {
     code: z.string().optional(),
     error: z.string().optional(),
     message: z.string().optional(),
+    request_id: z.string().optional(),
   }).passthrough(),
   done: z.object({}).passthrough(),
   aborted: z.object({

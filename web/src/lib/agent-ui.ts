@@ -1,6 +1,6 @@
 import type { ChatTransport, UIMessage } from 'ai'
 import { DefaultChatTransport } from 'ai'
-import { fetchAPI } from './api-client/client'
+import { fetchAPI, responseAPIError } from './api-client/client'
 import type { UserMessageReference } from './api-client/types'
 
 export type AgentDisplayRole = 'user' | 'assistant' | 'thinking' | 'tool_call' | 'tool_result' | 'ask' | 'rule_roll' | 'context_compaction' | 'token_usage' | 'proposed_plan' | 'system' | 'error'
@@ -103,9 +103,12 @@ export class AgentChatTransport implements ChatTransport<AgentUIMessage> {
         try {
           const response = await fetchAPI(input, init)
           if (commandID) this.initialSubmissionOutcomes.set(commandID, initialSubmissionOutcomeForStatus(response.status))
+          if (!response.ok) throw await responseAPIError(response)
           return response
         } catch (error) {
-          if (commandID) this.initialSubmissionOutcomes.set(commandID, 'uncertain')
+          if (commandID && !this.initialSubmissionOutcomes.has(commandID)) {
+            this.initialSubmissionOutcomes.set(commandID, 'uncertain')
+          }
           throw error
         }
       },
@@ -153,9 +156,15 @@ export class AgentChatTransport implements ChatTransport<AgentUIMessage> {
   }
 
   /** Consume the acceptance classification captured at the HTTP boundary. */
-  takeInitialSubmissionOutcome(commandID: string): InitialSubmissionOutcome {
+  takeInitialSubmissionOutcome(
+    commandID: string,
+    missingOutcome: InitialSubmissionOutcome = 'uncertain',
+  ): InitialSubmissionOutcome {
     const key = commandID.trim()
-    const outcome = this.initialSubmissionOutcomes.get(key) || 'uncertain'
+    // Every real HTTP path records an outcome. Missing means the transport was
+    // substituted by a caller, so the send/catch boundary chooses the proof
+    // appropriate to its own result.
+    const outcome = this.initialSubmissionOutcomes.get(key) || missingOutcome
     this.initialSubmissionOutcomes.delete(key)
     return outcome
   }

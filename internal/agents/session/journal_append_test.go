@@ -2,6 +2,8 @@ package session
 
 import (
 	"bytes"
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +11,47 @@ import (
 
 	agent "github.com/alfredxw/denova/agent"
 )
+
+func TestColdReplayKeepsCanonicalMessagesAcrossLargeDisplayWindow(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "sparse-canonical.jsonl")
+	lines := []string{`{"type":"session","id":"sparse-canonical","created_at":"2026-01-01T00:00:00Z"}`}
+	appendJSON := func(value any) {
+		t.Helper()
+		encoded, err := json.Marshal(value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		lines = append(lines, string(encoded))
+	}
+	appendJSON(agent.UserMessage("canonical user input"))
+	for index := 0; index < sessionRecentTransactionLimit+5; index++ {
+		appendJSON(displayRecord{
+			Type: historyTypeDisplay,
+			DisplayEvent: DisplayEvent{
+				ID: fmt.Sprintf("progress-%03d", index), Role: "thinking", Content: "display-only progress",
+			},
+		})
+	}
+	appendJSON(agent.AssistantMessage("canonical assistant output", nil))
+	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	store, err := NewStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := store.Get("sparse-canonical")
+	if err != nil {
+		t.Fatal(err)
+	}
+	messages := sess.GetEffectiveMessages()
+	if len(messages) != 2 || messages[0].Role != agent.User || messages[0].Content != "canonical user input" ||
+		messages[1].Role != agent.Assistant || messages[1].Content != "canonical assistant output" {
+		t.Fatalf("cold canonical transcript = %#v", messages)
+	}
+}
 
 func TestLegacyJournalAppendPreservesExistingBytesAndReloads(t *testing.T) {
 	dir := t.TempDir()

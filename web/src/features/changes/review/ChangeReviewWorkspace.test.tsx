@@ -159,7 +159,7 @@ describe('ChangeReviewWorkspace', () => {
     await flushAnimationFrames()
     expect(HTMLElement.prototype.scrollIntoView).not.toHaveBeenCalled()
 
-    fireEvent.click(screen.getByRole('option', { name: /chapters\/b\.md/ }))
+    fireEvent.click(screen.getByRole('treeitem', { name: /chapters\/b\.md/ }))
     expect(scopeSelector).toHaveTextContent(/全部审阅变更|All review changes/i)
     await waitFor(() => expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(1))
 
@@ -240,7 +240,7 @@ describe('ChangeReviewWorkspace', () => {
     expect(scopeButton()).toBeDisabled()
     expect(screen.getByRole('button', { name: /\u5237\u65b0|Refresh/i })).toBeDisabled()
     expect(screen.getByRole('button', { name: /\u6253\u5f00\u6587\u4ef6|Open file/i })).toBeDisabled()
-    expect(screen.getByRole('option', { name: /chapters\/ch01\.md/ })).toBeEnabled()
+    expect(screen.getByRole('treeitem', { name: /chapters\/ch01\.md/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /折叠全部 Diff|Collapse all diffs/i })).toBeEnabled()
     expect(screen.getByRole('button', { name: /\u64a4\u9500\u6574\u7ec4|Undo group/i })).toBeDisabled()
     expect(screen.getByRole('button', { name: /\u63a5\u53d7\u672c\u8f6e|Accept run/i })).toBeDisabled()

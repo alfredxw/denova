@@ -592,6 +592,18 @@ func (projection *sessionJournalProjection) recentStartCursor() conversationjour
 	return projection.RecentCursors[0]
 }
 
+// messageTransactionsBefore returns retained canonical message transactions
+// that precede the mixed-event resident window. A long Agent turn can emit
+// hundreds of display transactions between two canonical messages; those
+// messages must remain resident even after the display prefix is paged out.
+func (projection *sessionJournalProjection) messageTransactionsBefore(cursor conversationjournal.Cursor) []messageLocator {
+	end := 0
+	for end < len(projection.MessageTransactionLocators) && projection.MessageTransactionLocators[end].Cursor < cursor {
+		end++
+	}
+	return projection.MessageTransactionLocators[:end]
+}
+
 func (projection *sessionJournalProjection) messageBaseForCursor(cursor conversationjournal.Cursor) int {
 	for _, locator := range projection.MessageTransactionLocators {
 		if locator.Cursor >= cursor {

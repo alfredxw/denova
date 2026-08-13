@@ -1,4 +1,4 @@
-import type { NodeApi, NodeRendererProps, RowRendererProps } from 'react-arborist'
+import type { NodeApi, NodeRendererProps } from 'react-arborist'
 import {
   ChevronDown,
   ChevronRight,
@@ -35,6 +35,7 @@ import { cn } from '@/lib/utils'
 import type { ProjectFileExplorerNode } from './model'
 import type { ProjectFileClipboard } from './operations'
 import type { ProjectExplorerExtensions } from './types'
+import { ProjectFileTreeNodeName } from './ProjectFileTreeChrome'
 
 export interface ProjectExplorerTreeActions {
   beginCreate: (parentPath: string, type: 'file' | 'dir') => void
@@ -55,29 +56,6 @@ interface ProjectExplorerRenderContextValue {
 }
 
 export const ProjectExplorerRenderContext = createContext<ProjectExplorerRenderContextValue | null>(null)
-
-export function ExplorerRow({ node, attrs, innerRef, children }: RowRendererProps<ProjectFileExplorerNode>) {
-  return (
-    <div
-      {...attrs}
-      style={{ ...attrs.style, minWidth: 0 }}
-      ref={innerRef}
-      onFocus={(event) => event.stopPropagation()}
-      onClick={node.handleClick}
-      className={cn(
-        'group/tree-row flex min-w-0 cursor-default items-center overflow-hidden rounded-sm outline-none',
-        node.isSelected && 'bg-[var(--nova-active)] text-[var(--nova-text)]',
-        // Keyboard focus uses the same quiet fill language as hover; reserve the bright ring for drop targeting.
-        node.isFocused && !node.isSelected && 'bg-[var(--nova-hover)] text-[var(--nova-text)]',
-        !node.isSelected && !node.isFocused && 'hover:bg-[var(--nova-hover)]',
-        node.isDragging && 'opacity-40',
-        node.willReceiveDrop && 'bg-[var(--nova-active)] ring-1 ring-inset ring-[var(--nova-accent)]',
-      )}
-    >
-      {children}
-    </div>
-  )
-}
 
 export function ExplorerNode({ node, style, dragHandle }: NodeRendererProps<ProjectFileExplorerNode>) {
   const { t } = useTranslation()
@@ -145,7 +123,7 @@ export function ExplorerNode({ node, style, dragHandle }: NodeRendererProps<Proj
             : <FileText className="size-4 shrink-0 text-[var(--nova-tree-icon)]" />}
           {node.isEditing
             ? <RenameInput node={node} onCancelDraft={actions.cancelDraft} />
-            : <ExplorerNodeName name={data.name} type={data.type} />}
+            : <ProjectFileTreeNodeName name={data.name} type={data.type} />}
           {!data.draft ? extensions.renderNodeMeta?.(data) : null}
           {data.symlink ? <span className="shrink-0 text-[9px] text-[var(--nova-text-faint)]">↗</span> : null}
           {!data.draft ? <NodeActionDropdown node={node} actionPaths={actionPaths} actions={actions} /> : null}
@@ -157,20 +135,6 @@ export function ExplorerNode({ node, style, dragHandle }: NodeRendererProps<Proj
         </ContextMenuContent>
       ) : null}
     </ContextMenu>
-  )
-}
-
-function ExplorerNodeName({ name, type }: { name: string; type: 'file' | 'dir' }) {
-  if (type === 'dir') return <span className="min-w-0 flex-1 truncate">{name}</span>
-  const extensionIndex = name.lastIndexOf('.')
-  const hasExtension = extensionIndex > 0 && extensionIndex < name.length - 1
-  const stem = hasExtension ? name.slice(0, extensionIndex) : name
-  const extension = hasExtension ? name.slice(extensionIndex) : ''
-  return (
-    <span className="flex min-w-0 flex-1" aria-label={name}>
-      <span className="truncate">{stem}</span>
-      {extension ? <span className="shrink-0">{extension}</span> : null}
-    </span>
   )
 }
 

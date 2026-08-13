@@ -1765,6 +1765,40 @@ html[data-nova-motion="off"] *::after {
   transition: none;
 }
 
+/* Review swaps a live editor for another Monaco-heavy surface. Its outer geometry settles in one
+   frame, then the review layer enters using compositor-only properties, avoiding repeated editor
+   layout while the sidebar is contracting. */
+[data-nova-panel-motion-group][data-nova-layout-emphasis="center"] {
+  --nova-panel-motion-duration: 1ms;
+}
+
+.nova-change-review-layer {
+  animation: nova-change-review-enter var(--nova-motion-normal) var(--nova-panel-motion-ease) both;
+}
+
+html[data-nova-motion="reduced"] .nova-change-review-layer,
+html[data-nova-motion="off"] .nova-change-review-layer {
+  animation-duration: 1ms;
+}
+
+@keyframes nova-change-review-enter {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html:not([data-nova-motion="full"]) .nova-change-review-layer {
+    animation-duration: 1ms;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html:not([data-nova-motion="full"]) {
     --nova-panel-motion-duration: 1ms;

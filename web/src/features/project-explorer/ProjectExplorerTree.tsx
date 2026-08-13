@@ -1,5 +1,4 @@
 import type { NodeApi, TreeApi } from 'react-arborist'
-import { Tree } from 'react-arborist'
 import { ClipboardPaste, FileText, FolderPlus } from 'lucide-react'
 import {
   forwardRef,
@@ -27,10 +26,10 @@ import type { ProjectFileExplorerNode } from './model'
 import { ProjectExplorerDragPreview } from './ProjectExplorerDragPreview'
 import {
   ExplorerNode,
-  ExplorerRow,
   ProjectExplorerRenderContext,
   type ProjectExplorerTreeActions,
 } from './ProjectExplorerNode'
+import { ProjectFileTreeRow } from './ProjectFileTreeChrome'
 import {
   absoluteProjectPath,
   buildProjectFilePastePlan,
@@ -44,6 +43,7 @@ import {
   type ProjectFileDraft,
 } from './operations'
 import type { ProjectExplorerExtensions } from './types'
+import { ProjectFileTreeView } from './ProjectFileTreeView'
 import {
   actionableFocusedNode,
   actionableSelection,
@@ -96,8 +96,6 @@ export const ProjectExplorerTree = forwardRef<ProjectExplorerTreeHandle, Project
   extensions = {},
 }, ref) {
   const { t } = useTranslation()
-  const hostRef = useRef<HTMLDivElement>(null)
-  const size = useElementSize(hostRef)
   const draftSequenceRef = useRef(0)
   const pendingSelectionRef = useRef<readonly string[] | null>(null)
   const [draft, setDraft] = useState<ProjectFileDraft | null>(null)
@@ -115,11 +113,6 @@ export const ProjectExplorerTree = forwardRef<ProjectExplorerTreeHandle, Project
     visit(renderedNodes)
     return index
   }, [renderedNodes])
-  const initialOpenState = useMemo(
-    () => Object.fromEntries(expandedPaths.map((path) => [path, true])),
-    [expandedPaths],
-  )
-
   const requestSelection = useCallback((paths: readonly string[]) => {
     pendingSelectionRef.current = paths
     if (applyExplorerSelection(treeRef.current, paths)) pendingSelectionRef.current = null
@@ -329,47 +322,36 @@ export const ProjectExplorerTree = forwardRef<ProjectExplorerTreeHandle, Project
     <>
       <ContextMenu>
         <ContextMenuTrigger asChild>
-          <div
-            ref={hostRef}
-            className="relative h-full min-h-0 min-w-0 overflow-hidden"
+          <ProjectFileTreeView
+            nodes={renderedNodes}
+            treeRef={treeRef}
+            selectedPath={selectedPath}
+            expandedPaths={expandedPaths}
+            ariaLabel={t('files.tree.title')}
             onKeyDownCapture={handleKeyDownCapture}
             onClick={handleBlankAreaInteraction}
             onContextMenu={handleBlankAreaInteraction}
-          >
-            <ProjectExplorerRenderContext.Provider value={renderContext}>
-              <Tree<ProjectFileExplorerNode>
-                ref={treeRef}
-                data={renderedNodes}
-                idAccessor="id"
-                childrenAccessor="children"
-                width={Math.max(size.width, 1)}
-                height={Math.max(size.height, 1)}
-                rowHeight={26}
-                indent={14}
-                overscanCount={12}
-                openByDefault={false}
-                selection={selectedPath ?? undefined}
-                initialOpenState={initialOpenState}
-                aria-label={t('files.tree.title')}
-                disableEdit={disableProjectFileEdit}
-                disableDrag={disableProjectFileDrag}
-                disableDrop={disableProjectFileDrop}
-                onActivate={handleActivate}
-                onToggle={handleToggle}
-                onRename={handleRename}
-                onMove={handleMove}
-                renderRow={ExplorerRow}
-                renderDragPreview={ProjectExplorerDragPreview}
-              >
-                {ExplorerNode}
-              </Tree>
-            </ProjectExplorerRenderContext.Provider>
-            {renderedNodes.length === 0 ? (
+            disableEdit={disableProjectFileEdit}
+            disableDrag={disableProjectFileDrag}
+            disableDrop={disableProjectFileDrop}
+            onActivate={handleActivate}
+            onToggle={handleToggle}
+            onRename={handleRename}
+            onMove={handleMove}
+            renderNode={ExplorerNode}
+            renderRow={ProjectFileTreeRow}
+            renderDragPreview={ProjectExplorerDragPreview}
+            renderTree={(tree) => (
+              <ProjectExplorerRenderContext.Provider value={renderContext}>
+                {tree}
+              </ProjectExplorerRenderContext.Provider>
+            )}
+            overlay={renderedNodes.length === 0 ? (
               <div className="pointer-events-none absolute inset-x-3 top-8 text-center text-xs text-[var(--nova-text-faint)]">
                 {t('files.tree.empty')}
               </div>
             ) : null}
-          </div>
+          />
         </ContextMenuTrigger>
         <ContextMenuContent>
           <ContextMenuItem onSelect={() => beginCreate('file', '')}><FileText />{t('sidebar.createFile')}</ContextMenuItem>
@@ -404,23 +386,4 @@ function consumeKeyboardEvent(event: KeyboardEvent) {
 async function writeClipboardText(value: string) {
   if (!navigator.clipboard?.writeText) throw new Error('Clipboard API is unavailable')
   await navigator.clipboard.writeText(value)
-}
-
-function useElementSize(ref: RefObject<HTMLElement | null>) {
-  const [size, setSize] = useState({ width: 280, height: 400 })
-  useEffect(() => {
-    const element = ref.current
-    if (!element) return
-    const update = () => {
-      const bounds = element.getBoundingClientRect()
-      const next = { width: Math.round(bounds.width), height: Math.round(bounds.height) }
-      setSize((current) => current.width === next.width && current.height === next.height ? current : next)
-    }
-    update()
-    if (typeof ResizeObserver === 'undefined') return
-    const observer = new ResizeObserver(update)
-    observer.observe(element)
-    return () => observer.disconnect()
-  }, [ref])
-  return size
 }

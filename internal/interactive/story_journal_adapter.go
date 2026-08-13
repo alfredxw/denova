@@ -23,6 +23,14 @@ func (s *Store) openStoryJournalLocked(storyID string) (*storyJournalHandle, err
 			return handle, nil
 		}
 	}
+	releaseStory, err := s.acquireStoryReadLeaseLocked(storyID)
+	if err != nil {
+		return nil, err
+	}
+	defer releaseStory()
+	if _, err := s.migrateReleasedStoryCompactionJournal(storyID); err != nil {
+		return nil, err
+	}
 	meta, err := readStoryJournalHeader(s.storyPath(storyID))
 	if err != nil {
 		return nil, err

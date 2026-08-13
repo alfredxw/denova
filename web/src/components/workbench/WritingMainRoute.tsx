@@ -124,24 +124,15 @@ export function WritingMainRoute({
   emptyLoreAction,
   onRequestWritingInit,
 }: WritingMainRouteProps) {
+  const reviewVisible = Boolean(activeReviewThreadID)
   return (
     <WorkbenchRouteLayer visible={visible} loadingLabel={loadingLabel}>
-      {activeReviewThreadID ? (
-        <StableChangeReviewWorkspace
-          projectId={projectId}
-          threadID={activeReviewThreadID}
-          scopeRequest={activeReviewRequest}
-          disabled={isStreaming}
-          selectedPath={selectedFile}
-          agentVisible={agentVisible}
-          onToggleAgent={onToggleAgent}
-          onClose={onCloseReview}
-          onOpenFile={onOpenReviewFile}
-          onWorkspaceChanged={onWorkspaceChanged}
-          onFeedbackCommentsChange={onFeedbackCommentsChange}
-          hiddenCommentIDs={submittedReviewCommentIDs}
-        />
-      ) : (
+      <div
+        data-writing-content-layer="true"
+        aria-hidden={reviewVisible}
+        inert={reviewVisible}
+        className={`absolute inset-0 flex min-h-0 flex-col ${reviewVisible ? 'pointer-events-none' : ''}`}
+      >
         <>
           <StableTabController
             tabs={tabs}
@@ -205,7 +196,25 @@ export function WritingMainRoute({
             )}
           </div>
         </>
-      )}
+      </div>
+      {activeReviewThreadID ? (
+        <div data-change-review-layer="true" className="nova-change-review-layer absolute inset-0 min-h-0">
+          <StableChangeReviewWorkspace
+            projectId={projectId}
+            threadID={activeReviewThreadID}
+            scopeRequest={activeReviewRequest}
+            disabled={isStreaming}
+            selectedPath={selectedFile}
+            agentVisible={agentVisible}
+            onToggleAgent={onToggleAgent}
+            onClose={onCloseReview}
+            onOpenFile={onOpenReviewFile}
+            onWorkspaceChanged={onWorkspaceChanged}
+            onFeedbackCommentsChange={onFeedbackCommentsChange}
+            hiddenCommentIDs={submittedReviewCommentIDs}
+          />
+        </div>
+      ) : null}
     </WorkbenchRouteLayer>
   )
 }

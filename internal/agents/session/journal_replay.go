@@ -56,7 +56,11 @@ func loadSession(filePath string) (*Session, error) {
 		updatedAt = createdAt
 	}
 	startCursor := projection.recentStartCursor()
+	priorMessageTransactions := projection.messageTransactionsBefore(startCursor)
 	messageBase := projection.messageBaseForCursor(startCursor)
+	if len(priorMessageTransactions) > 0 {
+		messageBase = priorMessageTransactions[0].Index
+	}
 	sess := &Session{
 		ID: id, CreatedAt: createdAt, UpdatedAt: updatedAt,
 		filePath: filePath, title: projection.Title,
@@ -79,6 +83,24 @@ func loadSession(filePath string) (*Session, error) {
 			if err := appendConversationRecord(sess, record); err != nil {
 				return nil, fmt.Errorf("恢复待处理中断 %s: %w", filePath, err)
 			}
+		}
+	}
+	// The mixed-event window is bounded by physical transactions, while the
+	// canonical transcript is bounded by logical messages. Read older retained
+	// message transactions directly so a tool-heavy turn cannot evict its user
+	// input merely because it produced many display updates.
+	for _, locator := range priorMessageTransactions {
+		messageRecords, readErr := journal.ReadRange(context.Background(), conversationjournal.Range{
+			After: locator.Cursor - 1, Through: locator.Cursor,
+		})
+		if readErr != nil {
+			return nil, fmt.Errorf("read session canonical message transaction %s cursor %d: %w", filePath, locator.Cursor, readErr)
+		}
+		if len(messageRecords) != 1 || messageRecords[0].Location.Cursor != locator.Cursor {
+			return nil, fmt.Errorf("session canonical message transaction missing %s cursor %d", filePath, locator.Cursor)
+		}
+		if err := appendConversationRecord(sess, messageRecords[0]); err != nil {
+			return nil, fmt.Errorf("restore session canonical message transaction %s cursor %d: %w", filePath, locator.Cursor, err)
 		}
 	}
 	records, err := journal.ReadRange(context.Background(), conversationjournal.Range{After: startCursor - 1})

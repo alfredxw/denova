@@ -12,6 +12,7 @@ import {
   type SessionSummary,
 } from '@/lib/api'
 import { AgentChatTransport } from '@/lib/agent-ui'
+import { APIError } from '@/lib/api-client'
 import { writingAgentChatClient } from './agent-chat-client'
 import { useAgentChat } from './useAgentChat'
 
@@ -574,6 +575,19 @@ describe('useAgentChat', () => {
 
     expect(toastMock.error).toHaveBeenCalledWith(expect.stringContaining('0198f2cb-e980-7a21-81ba-e49998698090'))
     expect(result.current.messages).toEqual([])
+  })
+
+  it('shows the server error and request ID when initial chat admission fails', () => {
+    renderHook(() => useAgentChat())
+    const error = new APIError('Agent transcript source revision conflict', {
+      status: 500,
+      requestID: '019ffb1f-0171-7436-828c-1d8f45095fe4',
+    })
+
+    act(() => chatMock.options?.onError?.(error))
+
+    expect(toastMock.error).toHaveBeenCalledWith(expect.stringContaining('Agent transcript source revision conflict'))
+    expect(toastMock.error).toHaveBeenCalledWith(expect.stringContaining('019ffb1f-0171-7436-828c-1d8f45095fe4'))
   })
 
   it('targets the operation already projected to the user instead of resolving a newer operation at click time', async () => {

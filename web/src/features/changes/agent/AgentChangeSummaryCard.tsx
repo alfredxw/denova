@@ -33,6 +33,7 @@ export function AgentChangeSummaryCard({ projectId, summary, disabled = false, d
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [expanded, setExpanded] = useState(false)
+  const [openingReview, setOpeningReview] = useState(false)
   const groupQuery = useQuery({
     queryKey: projectChangeKeys.detail(projectId, summary.id),
     queryFn: () => getProjectChangeGroup(projectId, summary.id),
@@ -48,18 +49,20 @@ export function AgentChangeSummaryCard({ projectId, summary, disabled = false, d
   ), [files])
   const displayedPaths = expanded ? visiblePaths : visiblePaths.slice(0, 3)
   const reviewThreadID = summary.review_thread_id || groupQuery.data?.review_thread_id || summary.id
-  const preloadReview = useCallback(() => {
+  const preloadReview = useCallback(async () => {
     if (disabled || deferDetails || !projectId || !reviewThreadID) return
-    void Promise.all([
-      prefetchProjectChangeReviewThread(queryClient, projectId, reviewThreadID),
-      preloadReviewDiffEditor(),
-    ]).catch((error) => {
+    try {
+      await Promise.all([
+        prefetchProjectChangeReviewThread(queryClient, projectId, reviewThreadID),
+        preloadReviewDiffEditor(),
+      ])
+    } catch (error) {
       console.warn('[AgentChangeSummaryCard.tsx] failed to preload Diff review; the click path will retry', {
         projectId,
         reviewThreadID,
         error,
       })
-    })
+    }
   }, [deferDetails, disabled, projectId, queryClient, reviewThreadID])
 
   useEffect(() => {
@@ -89,9 +92,12 @@ export function AgentChangeSummaryCard({ projectId, summary, disabled = false, d
   })
 
   const fileCount = files.length || summary.paths?.length || summary.change_set_count || 0
-  const openReview = () => {
-    preloadReview()
+  const openReview = async () => {
+    if (disabled || openingReview) return
+    setOpeningReview(true)
+    await preloadReview()
     onReview(reviewThreadID, summary.id)
+    setOpeningReview(false)
   }
 
   return (
@@ -137,7 +143,8 @@ export function AgentChangeSummaryCard({ projectId, summary, disabled = false, d
           {undoMutation.isPending ? <Loader2 className="animate-spin" /> : <RotateCcw />}
           {t('changes.undo')}
         </Button>
-        <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={openReview} className="shrink-0">
+        <Button type="button" size="sm" variant="outline" disabled={disabled || openingReview} onClick={() => void openReview()} className="shrink-0">
+          {openingReview ? <Loader2 className="animate-spin" /> : null}
           {t('changes.review')}
         </Button>
       </header>
@@ -150,8 +157,8 @@ export function AgentChangeSummaryCard({ projectId, summary, disabled = false, d
               <button
                 key={path}
                 type="button"
-                disabled={disabled}
-                onClick={openReview}
+                disabled={disabled || openingReview}
+                onClick={() => void openReview()}
                 className="flex w-full items-center gap-3 border-b border-[var(--nova-border-soft)] px-3 py-2 text-left last:border-b-0 enabled:hover:bg-[var(--nova-hover)]"
               >
                 <span className="min-w-0 flex-1 truncate">{path}</span>

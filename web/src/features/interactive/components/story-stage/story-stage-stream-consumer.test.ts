@@ -137,6 +137,27 @@ describe('story stage stream event contract', () => {
     expect(outcome).toMatchObject({ finishedNormally: true, streamFailed: false, terminalEventReceived: true })
     warn.mockRestore()
   })
+
+  it('shows the server error and request ID from a Game stream failure', async () => {
+    const fixture = consumerFixture()
+
+    const outcome = await fixture.consumer.consume(
+      eventStream([{
+        id: '1',
+        event: 'error',
+        data: JSON.stringify({
+          error: 'Agent transcript source revision conflict',
+          request_id: '019ffb1f-0171-7436-828c-1d8f45095fe4',
+        }),
+      }]),
+      fixture.consumer.initialOutcome(),
+    )
+
+    const error = buildAgentMessageViews(fixture.messages()).find((view) => view.kind === 'error')
+    expect(error?.content).toContain('Agent transcript source revision conflict')
+    expect(error?.content).toContain('019ffb1f-0171-7436-828c-1d8f45095fe4')
+    expect(outcome).toMatchObject({ streamFailed: true, terminalStatus: 'error', terminalEventReceived: true })
+  })
 })
 
 describe('story stage display checkpoint recovery', () => {

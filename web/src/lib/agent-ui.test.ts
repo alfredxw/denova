@@ -7,6 +7,7 @@ import {
   normalizeAgentUIMessages,
   type AgentUIMessage,
 } from './agent-ui'
+import { APIError } from './api-client'
 import { agentViewToRenderMessage, buildAgentMessageViews } from './agent-message-view'
 
 describe('agent-ui', () => {
@@ -397,6 +398,31 @@ describe('agent-ui', () => {
       })
       expect(requestBody).not.toHaveProperty('messages')
       expect(chunks.map((chunk) => chunk.type)).toEqual(['start', 'text-start', 'text-delta', 'text-end', 'finish'])
+    } finally {
+      fetchSpy.mockRestore()
+    }
+  })
+
+  it('preserves structured API errors and request IDs from a rejected initial turn', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(
+      JSON.stringify({
+        error: 'Agent transcript source revision conflict',
+        request_id: '019ffb1f-0171-7436-828c-1d8f45095fe4',
+      }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } },
+    ))
+
+    try {
+      const transport = new AgentChatTransport()
+      await expect(transport.sendMessages({
+        ...agentSendOptions(),
+        body: { command_id: 'command-correlated', message: 'continue' },
+      })).rejects.toMatchObject({
+        name: 'APIError',
+        status: 500,
+        requestID: '019ffb1f-0171-7436-828c-1d8f45095fe4',
+      } satisfies Partial<APIError>)
+      expect(transport.takeInitialSubmissionOutcome('command-correlated')).toBe('uncertain')
     } finally {
       fetchSpy.mockRestore()
     }

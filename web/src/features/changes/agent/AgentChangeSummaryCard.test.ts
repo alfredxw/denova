@@ -106,9 +106,25 @@ describe('AgentChangeSummaryCard review preload', () => {
     expect(apiMocks.getProjectChangeReviewThread).not.toHaveBeenCalled()
     expect(preloadReviewDiffEditorMock).not.toHaveBeenCalled()
   })
+
+  it('opens only after the review editor preload settles', async () => {
+    let finishPreload: (() => void) | undefined
+    preloadReviewDiffEditorMock.mockReturnValue(new Promise<void>((resolve) => {
+      finishPreload = resolve
+    }))
+    const onReview = vi.fn()
+    const view = renderSummaryCard(false, { onReview })
+
+    fireEvent.click(view.getByRole('button', { name: '审阅' }))
+    expect(view.getByRole('button', { name: '审阅' })).toBeDisabled()
+    expect(onReview).not.toHaveBeenCalled()
+
+    finishPreload?.()
+    await waitFor(() => expect(onReview).toHaveBeenCalledWith('thread-1', 'group-1'))
+  })
 })
 
-function renderSummaryCard(eagerPreload: boolean, options: { disabled?: boolean; deferDetails?: boolean } = {}) {
+function renderSummaryCard(eagerPreload: boolean, options: { disabled?: boolean; deferDetails?: boolean; onReview?: (reviewThreadID: string, groupID: string) => void } = {}) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
   const summary = {
     id: 'group-1',
@@ -127,8 +143,9 @@ function renderSummaryCard(eagerPreload: boolean, options: { disabled?: boolean;
       projectId: 'project-book',
       summary,
       eagerPreload,
-      ...options,
-      onReview: vi.fn(),
+      disabled: options.disabled,
+      deferDetails: options.deferDetails,
+      onReview: options.onReview ?? vi.fn(),
     }),
   ))
 }

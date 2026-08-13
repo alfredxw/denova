@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { InlineCollapsiblePane } from '@/components/layout/panel-motion'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { lineDiffStats } from '../diff-stats'
 import { logWorkspaceChangeError, workspaceChangeErrorMessage } from '../errors'
 import {
   createProjectChangeComment,
@@ -90,6 +91,14 @@ export function ChangeReviewWorkspace({ projectId, threadID, scopeRequest, disab
   const reviewFiles = useMemo(() => selectedScopeID === REVIEW_SCOPE_THREAD
     ? (thread?.files ?? [])
     : projectReviewGroupFiles(historicalGroup), [historicalGroup, selectedScopeID, thread?.files])
+  const reviewTotals = useMemo(() => reviewFiles.reduce((totals, file) => {
+    const stats = file.additions === undefined || file.deletions === undefined
+      ? lineDiffStats(file.before_content, file.after_content)
+      : { additions: file.additions, deletions: file.deletions }
+    totals.additions += stats.additions
+    totals.deletions += stats.deletions
+    return totals
+  }, { additions: 0, deletions: 0 }), [reviewFiles])
   // Pre-render the editors of the active file's immediate neighbors so they are
   // already mounted and measured before the user scrolls across the boundary.
   // Without this, scrolling up into the previous file mounts its editor inside
@@ -383,6 +392,8 @@ export function ChangeReviewWorkspace({ projectId, threadID, scopeRequest, disab
         selectedGroup={selectedGroup}
         selectedScopeID={selectedScopeID}
         fileCount={reviewFiles.length}
+        additions={reviewTotals.additions}
+        deletions={reviewTotals.deletions}
         layout={layout}
         busy={reviewLocked}
         refreshing={threadQuery.isFetching || historicalGroupQuery.isFetching}
@@ -462,7 +473,7 @@ export function ChangeReviewWorkspace({ projectId, threadID, scopeRequest, disab
           <InlineCollapsiblePane
             visible={navigatorVisible}
             side="right"
-            size="14rem"
+            size="clamp(14rem, 19vw, 17rem)"
             className="nova-review-file-navigator-motion"
           >
             <ReviewFileNavigator

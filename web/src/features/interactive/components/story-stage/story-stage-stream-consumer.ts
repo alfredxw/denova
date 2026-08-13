@@ -1,5 +1,6 @@
 import type { TFunction } from 'i18next'
 import type { AgentMessageMetadata, AgentUIMessage } from '@/lib/agent-ui'
+import { withErrorLogID } from '@/lib/api-client'
 import { agentMessageHasDataPart, createAgentDataMessage } from '@/lib/agent-ui-message'
 import { createInteractiveNarrativeFilter } from '../../stream-parser'
 import type { StoryStageRunState } from '../../stores/interactive-store'
@@ -351,11 +352,12 @@ export function createStoryStageStreamConsumer({
           setActivity('')
           streamFailed = true
           terminalStatus = 'error'
-          terminalReason = typeof data.message === 'string' ? data.message : typeof data.error === 'string' ? data.error : undefined
+          const message = withErrorLogID(data.message || data.error || t('storyStage.activity.unknownError'), data)
+          terminalReason = message
           terminalEventReceived = true
           setMessages((current) => [
             ...current,
-            errorMessage(data.message || data.error || t('storyStage.activity.unknownError')),
+            errorMessage(message),
           ])
           break
         }

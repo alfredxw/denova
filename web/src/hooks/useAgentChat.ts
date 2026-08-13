@@ -141,6 +141,9 @@ export function useAgentChat(options: ChatOptions = {}) {
       window.dispatchEvent(new CustomEvent('nova:workspace-change', { detail: event }))
       void onWorkspaceChange?.(event)
     },
+    onError: (error) => {
+      toast.error(withErrorLogID(error.message || t('chat.activity.unknownError'), error))
+    },
     onFinish: () => {
       void onAgentFileChange?.()
       void refreshSessionsRef.current()
@@ -493,9 +496,19 @@ export function useAgentChat(options: ChatOptions = {}) {
         submissionStarted = true
         sendOptions.onSubmissionStart?.()
         await pendingRequest
-        transport.takeInitialSubmissionOutcome(initialCommandID)
-        initialStartCommandIDsRef.current.delete(initialRetryKey)
-        return true
+        const acceptance = transport.takeInitialSubmissionOutcome(initialCommandID, 'accepted')
+        if (acceptance === 'accepted') {
+          initialStartCommandIDsRef.current.delete(initialRetryKey)
+          return true
+        }
+        if (acceptance === 'rejected') initialStartCommandIDsRef.current.delete(initialRetryKey)
+        setReferences((current) => Array.from(new Set([...prepared.composerReferences, ...current])))
+        setLoreReferences((current) => Array.from(new Set([...prepared.composerLoreReferences, ...current])))
+        setStyleScenes((current) => Array.from(new Set([...prepared.composerStyleScenes, ...current])))
+        setTextSelections((current) => [...prepared.composerTextSelections.filter((item) => !current.includes(item)), ...current])
+        sendOptions.onSubmissionError?.()
+        if (acceptance === 'uncertain') await resumeActiveChat(targetSessionID)
+        return false
       } catch (e) {
         const acceptance = transport.takeInitialSubmissionOutcome(initialCommandID)
         if (acceptance !== 'uncertain') initialStartCommandIDsRef.current.delete(initialRetryKey)
