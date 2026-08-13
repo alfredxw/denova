@@ -3,8 +3,6 @@ package tools
 import (
 	"context"
 	"errors"
-	"fmt"
-	"sort"
 	"strings"
 
 	agent "github.com/alfredxw/denova/agent"
@@ -16,34 +14,19 @@ import (
 const GeneralSubAgentName = "general-purpose"
 
 type skillToolInput struct {
-	Name string `json:"name" jsonschema:"description=Name of the Skill to load"`
+	Name string `json:"name" jsonschema:"description=Exact name of the Skill to load from the available Skills catalog"`
 }
 
-// newSkillTool exposes progressive Skill disclosure without coupling the Skill
-// catalog to the Agent. The catalog summary is part of the stable tool
-// description; full instructions are loaded only after an explicit call.
-func newSkillTool(ctx context.Context, backend *novaskills.Backend, maxBytes int) (agent.ToolDefinition, error) {
+const skillToolDescription = "Load the complete instructions for one Skill from the available Skills catalog. Call this tool with the exact Skill name after the user names a Skill or the current task clearly matches its catalog description. Do not call it for a Skill whose full instructions are already loaded in context."
+
+// newSkillTool exposes progressive Skill disclosure. The available catalog is
+// injected into the system instruction so this provider-visible schema remains
+// stable when Skills are added, removed, or edited.
+func newSkillTool(_ context.Context, backend *novaskills.Backend, maxBytes int) (agent.ToolDefinition, error) {
 	if backend == nil {
 		return agent.ToolDefinition{}, nil
 	}
-	available, err := backend.List(ctx)
-	if err != nil {
-		return agent.ToolDefinition{}, fmt.Errorf("list skills: %w", err)
-	}
-	if len(available) == 0 {
-		return agent.ToolDefinition{}, nil
-	}
-	sort.Slice(available, func(i, j int) bool { return available[i].Name < available[j].Name })
-	var description strings.Builder
-	description.WriteString("Load one available Skill's full instructions when its description matches the current task. Available Skills:\n")
-	for _, item := range available {
-		description.WriteString("- ")
-		description.WriteString(item.Name)
-		description.WriteString(": ")
-		description.WriteString(item.Description)
-		description.WriteByte('\n')
-	}
-	tool, err := agent.InferTool("skill", strings.TrimSpace(description.String()), func(callCtx context.Context, input skillToolInput) (string, error) {
+	tool, err := agent.InferTool("skill", skillToolDescription, func(callCtx context.Context, input skillToolInput) (string, error) {
 		name := strings.TrimSpace(input.Name)
 		if name == "" {
 			return "", errors.New("skill name is required")

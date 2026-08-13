@@ -66,6 +66,6 @@ func (invocation Invocation) ModelContent() string {
 }
 
 func runtimeNotice(name string) string {
-	return "[Denova runtime] 用户已显式指定 /" + name + "；运行时已在首轮模型请求前加载该 Skill。" +
-		"不要仅为了再次读取同一 Skill 而调用 `skill` 工具；直接遵循下列说明继续处理。"
+	return "[Denova runtime] The user explicitly selected /" + name + ", so the runtime loaded this Skill before the first model request. " +
+		"Do not call the `skill` tool only to load the same Skill again; follow the instructions below and continue."
 }
