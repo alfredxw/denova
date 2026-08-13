@@ -1,5 +1,6 @@
 import type { TFunction } from 'i18next'
 import type { AgentRuntimeQueuedCommand } from '@/lib/api'
+import { withErrorLogID } from '@/lib/api-client'
 
 /** Stable fingerprint for retaining one idempotency key across an uncertain retry. */
 export function agentCommandRetryKey(operationID: string, type: string, payload: unknown) {
@@ -39,19 +40,19 @@ export function agentCommandErrorMessage(error: unknown, t: TFunction) {
     : ''
   switch (code) {
     case 'agent_runtime.target_operation_mismatch':
-      return t('chat.runtime.operationChanged')
+      return withErrorLogID(t('chat.runtime.operationChanged'), error)
     case 'agent_runtime.queue_conflict':
-      return t('chat.runtime.queueConflict')
+      return withErrorLogID(t('chat.runtime.queueConflict'), error)
     case 'agent_runtime.invalid_phase':
-      return t('chat.runtime.operationUnavailable')
+      return withErrorLogID(t('chat.runtime.operationUnavailable'), error)
     case 'agent_runtime.busy':
-      return t('chat.runtime.busy')
+      return withErrorLogID(t('chat.runtime.busy'), error)
     case 'agent_runtime.invalid_command':
     case 'agent_runtime.command_conflict':
-      return t('chat.runtime.invalidCommand')
+      return withErrorLogID(t('chat.runtime.invalidCommand'), error)
     default: {
       const detail = error instanceof Error ? error.message : t('chat.runtime.commandFailed')
-      return t('chat.activity.requestFailed', { error: detail })
+      return withErrorLogID(t('chat.activity.requestFailed', { error: detail }), error)
     }
   }
 }

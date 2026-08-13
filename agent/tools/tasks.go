@@ -105,7 +105,7 @@ func Tasks(executor TaskExecutor) (agent.Toolset, error) {
 	if strings.TrimSpace(identity.Kind) == "" || identity.Version == 0 {
 		return nil, errors.New("tasks TaskExecutor requires a stable Identity")
 	}
-	description := "Start, observe, steer, respond to, or abort delegated tasks. Batch operations return per-item outcomes.\n\n启动、观察、引导、回应或终止委派任务；批量操作逐项返回结果。"
+	description := "Start, observe, steer, respond to, or abort delegated tasks. Batch operations return per-item outcomes."
 	if catalog, ok := executor.(taskAgentCatalog); ok {
 		for _, candidate := range catalog.TaskAgents() {
 			description += fmt.Sprintf("\n- %s: %s", candidate.Name, candidate.Description)

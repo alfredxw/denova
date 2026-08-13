@@ -63,9 +63,7 @@ func Write(adapter MutationAdapter, options ...DefinitionOption) (agent.ToolDefi
 	if err := validateAdapterIdentity("write MutationAdapter", adapter.Identity()); err != nil {
 		return agent.ToolDefinition{}, err
 	}
-	tool, err := agent.InferTool("write", `Create or completely replace one workspace file through the configured mutation adapter. Use edit for localized changes.
-
-通过已配置的变更适配器创建或完整替换一个工作区文件；局部修改请使用 edit。`, func(ctx context.Context, input writeInput) (agent.ToolResult, error) {
+	tool, err := agent.InferTool("write", `Create or completely replace one workspace file through the configured mutation adapter. Use edit for localized changes.`, func(ctx context.Context, input writeInput) (agent.ToolResult, error) {
 		path := strings.TrimSpace(input.Path)
 		if path == "" {
 			return agent.ToolResult{}, errors.New("write path is required")
@@ -105,9 +103,7 @@ func Edit(adapter MutationAdapter, options ...DefinitionOption) (agent.ToolDefin
 	if err := validateAdapterIdentity("edit MutationAdapter", adapter.Identity()); err != nil {
 		return agent.ToolDefinition{}, err
 	}
-	tool, err := agent.InferTool("edit", `Replace text in or delete one workspace file as one atomic, reviewable change. Omit operation for ordinary replacement and provide edits. File deletion must be explicit with operation=delete and no edits. For replacement, every edits item is matched against the same current file snapshot, not against earlier replacements in the list. Without replace_all, old_string must occur exactly once. All ranges must be non-overlapping; if any item is invalid, the file is not changed. The file may have changed since an earlier read as long as every old_string still matches the current content exactly as required.
-
-将文本替换或整个文件删除作为一次原子、可审阅的工作区变更。普通替换可省略 operation 并提供 edits；删除必须显式使用 operation=delete 且不能提供 edits。替换时，edits 中每一项都匹配同一份当前文件快照，而不是前一项替换后的结果。未设置 replace_all 时，old_string 必须恰好出现一次；所有区间必须互不重叠，任一项无效时文件都不会改变。`, func(ctx context.Context, input editInput) (agent.ToolResult, error) {
+	tool, err := agent.InferTool("edit", `Replace text in or delete one workspace file as one atomic, reviewable change. Omit operation for ordinary replacement and provide edits. File deletion must be explicit with operation=delete and no edits. For replacement, every edits item is matched against the same current file snapshot, not against earlier replacements in the list. Without replace_all, old_string must occur exactly once. All ranges must be non-overlapping; if any item is invalid, the file is not changed. The file may have changed since an earlier read as long as every old_string still matches the current content exactly as required.`, func(ctx context.Context, input editInput) (agent.ToolResult, error) {
 		path := strings.TrimSpace(input.Path)
 		if path == "" {
 			return agent.ToolResult{}, errors.New("edit path is required")

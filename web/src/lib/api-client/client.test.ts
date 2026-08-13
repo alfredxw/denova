@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { toast } from 'sonner'
 import { setConfiguredLocale } from '@/i18n'
-import { APIError, clearRemoteAccessCredentials, fetchAPI, parseSSEStream, requestJSON, responseAPIError, setRemoteAccessCredentials } from './client'
+import { APIError, clearRemoteAccessCredentials, fetchAPI, parseSSEStream, requestJSON, responseAPIError, setRemoteAccessCredentials, withErrorLogID } from './client'
 
 vi.mock('sonner', () => ({
   toast: {
@@ -134,6 +134,14 @@ describe('api client backend availability toast', () => {
 
     expect(error.requestID).toBe('0198f2cb-e980-7a21-81ba-e4999869808d')
     expect(error.message).toContain('0198f2cb-e980-7a21-81ba-e4999869808d')
+  })
+
+  it('keeps a request ID when localized UI copy replaces the backend message', () => {
+    const requestID = '0198f2cb-e980-7a21-81ba-e4999869808e'
+
+    expect(withErrorLogID('保存失败', { request_id: requestID })).toBe(`保存失败 · 日志 ID: ${requestID}`)
+    expect(withErrorLogID('保存失败', new Error(`upstream failed · Log ID: ${requestID}`))).toBe(`保存失败 · 日志 ID: ${requestID}`)
+    expect(withErrorLogID(`保存失败 · 日志 ID: ${requestID}`, { request_id: requestID })).toBe(`保存失败 · 日志 ID: ${requestID}`)
   })
 })
 

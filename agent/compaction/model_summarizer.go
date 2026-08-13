@@ -21,7 +21,7 @@ func ModelSummarizer(config ModelSummarizerConfig) (Summarizer, error) {
 		return nil, errors.New("Model Compaction Summarizer requires Model and stable Identity")
 	}
 	if strings.TrimSpace(config.Prompt) == "" {
-		config.Prompt = "Summarize the supplied conversation faithfully for future continuation. Preserve decisions, constraints, unresolved work, tool results, and named entities. Do not invent facts.\n\n忠实总结所提供的对话以便后续继续。保留决策、约束、未完成工作、工具结果和专有名词，不要编造事实。"
+		config.Prompt = "Summarize the supplied conversation faithfully for future continuation. Preserve decisions, constraints, unresolved work, tool results, and named entities. Do not invent facts."
 	}
 	return &modelSummarizer{config: config}, nil
 }

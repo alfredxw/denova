@@ -3,6 +3,8 @@ package app
 import (
 	"context"
 	agentchat "denova/internal/agents/chat"
+	agentrun "denova/internal/agents/run"
+	agentsession "denova/internal/agents/session"
 	apptask "denova/internal/app/task"
 	"errors"
 	"os"
@@ -14,6 +16,22 @@ import (
 	"denova/internal/automation"
 	"denova/internal/interactive"
 )
+
+func TestIDEChatRuntimeAgentOptionsCarriesProjectRoute(t *testing.T) {
+	runtime := ideChatRuntime{
+		projectID:    "project-current",
+		projectState: "/state/project-current",
+		workspace:    "/books/current",
+		sess:         &agentsession.Session{ID: "session-current"},
+	}
+
+	options := runtime.agentOptions("task-current")
+	if options.AgentKind != agentrun.AgentKindIDE || options.ProjectID != runtime.projectID ||
+		options.StateRoot != runtime.projectState || options.Workspace != runtime.workspace ||
+		options.SessionID != runtime.sess.ID || options.TaskID != "task-current" || options.Mode != "ide" {
+		t.Fatalf("Writing Agent options lost runtime route: %#v", options)
+	}
+}
 
 func TestApplyWritingSkillRuntimePolicyKeepsAvailableDefault(t *testing.T) {
 	skillsDir := t.TempDir()

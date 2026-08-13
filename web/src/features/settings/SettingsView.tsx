@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { ChevronDown, ChevronUp, Download, ExternalLink, Loader2, Plus, RefreshCw, Settings as SettingsIcon, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import { withErrorLogID } from '@/lib/api-client'
 import type { AgentApprovalMode, ImageAPIProfileSettings, LabSettings, LayeredSettings, ModelProfileSettings, Settings, SettingsLayer, ShellEnvironmentMode, UpdateApplyResult, UpdateCheckResult, UpdateInstallProgress, UpdateInstallResult, WebAccessSettings } from './types'
 import { applyUpdate, checkForUpdate, GLOBAL_SETTINGS_TARGET, installUpdateStream, revokeAgentApprovalRule } from './api'
 import { FONT_OPTIONS, fontLabelKeyFor } from './font-options'
@@ -132,7 +133,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
       toast.success(t('agentApproval.rules.revokeSucceeded'))
     } catch (cause) {
       console.error(`[settings] failed to revoke agent approval rule id=${id}`, cause)
-      toast.error(t('agentApproval.rules.revokeFailed'))
+      toast.error(withErrorLogID(t('agentApproval.rules.revokeFailed'), cause))
     } finally {
       setRevokingApprovalRuleID('')
     }

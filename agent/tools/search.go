@@ -80,9 +80,7 @@ func Glob(searcher GlobSearcher, options ...DefinitionOption) (agent.ToolDefinit
 	}
 	descriptor := readDescriptor(options...)
 	descriptor.ResultRecoveryKind = agent.ToolResultRecoveryRerun
-	tool, err := agent.InferTool("glob", `Find workspace files or directories by path. A call may include several files, directories, or glob patterns; results are de-duplicated and bounded. Use read on a directory when you need its structure.
-
-按路径查找工作区文件或目录。一次可传入多个文件、目录或 glob 模式；结果会去重并受限。需要理解目录结构时请使用 read。`, func(ctx context.Context, input globInput) (agent.ToolResult, error) {
+	tool, err := agent.InferTool("glob", `Find workspace files or directories by path. A call may include several files, directories, or glob patterns; results are de-duplicated and bounded. Use read on a directory when you need its structure.`, func(ctx context.Context, input globInput) (agent.ToolResult, error) {
 		request := normalizeGlobRequest(GlobRequest{
 			Paths: input.Paths, Hidden: boolDefault(input.Hidden, true),
 			Gitignore: boolDefault(input.Gitignore, true), Limit: input.Limit, Cursor: input.Cursor,
@@ -119,9 +117,7 @@ func Grep(searcher GrepSearcher, options ...DefinitionOption) (agent.ToolDefinit
 	}
 	descriptor := readDescriptor(options...)
 	descriptor.ResultRecoveryKind = agent.ToolResultRecoveryRerun
-	tool, err := agent.InferTool("grep", `Search workspace text with one controlled rg command or an rg-only pipeline. Commands never run through a shell. Safe ripgrep search flags and native PATTERN [PATH ...] or repeated -e/--regexp syntax are supported. The first stage searches workspace-relative paths; each later rg stage filters only the preceding stdout. Redirects, substitutions, non-rg pipeline stages, external configuration, process-spawning flags, and paths outside the workspace are rejected. Results are deterministic and bounded; repeat the identical command with next_cursor to continue after a partial result. The limits.returned field counts returned output entries, not distinct files; use -l/--files-with-matches when an exact file list or file count is required.
-
-使用一条受控的 rg 命令或仅由 rg 组成的管道搜索工作区文本，命令绝不会经过 shell。支持安全的 ripgrep 参数，以及原生 PATTERN [PATH ...] 和重复 -e/--regexp 语法。第一段搜索工作区相对路径，后续每段 rg 只能过滤上一段的标准输出。重定向、替换、非 rg 管道段、外部配置、可启动进程的参数和工作区外路径都会被拒绝。结果稳定且有界；结果为 partial 时，用相同 command 携带 next_cursor 继续。limits.returned 表示返回的输出条目数，不是去重文件数；需要精确文件列表或数量时必须使用 -l/--files-with-matches。`, func(ctx context.Context, input grepInput) (agent.ToolResult, error) {
+	tool, err := agent.InferTool("grep", `Search workspace text with one controlled rg command or an rg-only pipeline. Commands never run through a shell. Safe ripgrep search flags and native PATTERN [PATH ...] or repeated -e/--regexp syntax are supported. The first stage searches workspace-relative paths; each later rg stage filters only the preceding stdout. Redirects, substitutions, non-rg pipeline stages, external configuration, process-spawning flags, and paths outside the workspace are rejected. Results are deterministic and bounded; repeat the identical command with next_cursor to continue after a partial result. The limits.returned field counts returned output entries, not distinct files; use -l/--files-with-matches when an exact file list or file count is required.`, func(ctx context.Context, input grepInput) (agent.ToolResult, error) {
 		request := normalizeGrepRequest(GrepRequest{Command: input.Command, Cursor: input.Cursor})
 		result, err := searcher.Grep(ctx, request)
 		if err != nil {
@@ -199,7 +195,7 @@ func searchToolResult(
 			status = "partial"
 			recovery = &searchRecovery{
 				Retryable:  true,
-				Suggestion: "Use next_cursor when present, otherwise narrow the search scope. / 如有 next_cursor 请继续分页，否则缩小搜索范围。",
+				Suggestion: "Use next_cursor when present, otherwise narrow the search scope.",
 			}
 		}
 		metadata := searchEnvelope{
@@ -293,14 +289,14 @@ func decodeGlobCursor(value string, request GlobRequest) (string, error) {
 	}
 	decoded, err := base64.RawURLEncoding.DecodeString(value)
 	if err != nil {
-		return "", errors.New("glob cursor is invalid / glob 游标无效")
+		return "", errors.New("glob cursor is invalid")
 	}
 	var cursor globCursor
 	if err := json.Unmarshal(decoded, &cursor); err != nil || cursor.Version != 1 || strings.TrimSpace(cursor.After) == "" {
-		return "", errors.New("glob cursor is invalid / glob 游标无效")
+		return "", errors.New("glob cursor is invalid")
 	}
 	if cursor.Fingerprint != globRequestFingerprint(request) {
-		return "", errors.New("glob cursor does not belong to this query / glob 游标不属于当前查询")
+		return "", errors.New("glob cursor does not belong to this query")
 	}
 	return cursor.After, nil
 }
@@ -332,15 +328,15 @@ func decodeGrepCursor(value string, request GrepRequest) (grepCursorState, error
 	}
 	decoded, err := base64.RawURLEncoding.DecodeString(value)
 	if err != nil {
-		return grepCursorState{}, errors.New("grep cursor is invalid / grep 游标无效")
+		return grepCursorState{}, errors.New("grep cursor is invalid")
 	}
 	var cursor grepCursor
 	if err := json.Unmarshal(decoded, &cursor); err != nil || cursor.Version != 2 || cursor.Offset < 0 ||
 		(cursor.Offset == 0 && cursor.Prefix != "") || (cursor.Offset > 0 && cursor.Prefix == "") {
-		return grepCursorState{}, errors.New("grep cursor is invalid / grep 游标无效")
+		return grepCursorState{}, errors.New("grep cursor is invalid")
 	}
 	if cursor.Fingerprint != grepRequestFingerprint(request) {
-		return grepCursorState{}, errors.New("grep cursor does not belong to this query / grep 游标不属于当前查询")
+		return grepCursorState{}, errors.New("grep cursor does not belong to this query")
 	}
 	return grepCursorState{Offset: cursor.Offset, Prefix: cursor.Prefix}, nil
 }

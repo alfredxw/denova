@@ -92,7 +92,7 @@ func Todo(stores ...TodoStore) (agent.Toolset, error) {
 			return nil, err
 		}
 	}
-	tool, err := agent.InferTool("todo", "Read, partially update, completely replace, or clear the durable task list using an explicit revision. Updates report every item independently; IDs are stable and at most one item may be in_progress.\n\n读取、逐项更新、完整替换或清空持久任务列表；更新逐项返回结果，ID 稳定，且最多一个任务可为 in_progress。", func(ctx context.Context, input todoToolInput) (agent.ToolResult, error) {
+	tool, err := agent.InferTool("todo", "Read, partially update, completely replace, or clear the durable task list using an explicit revision. Updates report every item independently; IDs are stable and at most one item may be in_progress.", func(ctx context.Context, input todoToolInput) (agent.ToolResult, error) {
 		var result TodoApplyResult
 		var err error
 		switch input.Action {

@@ -165,7 +165,7 @@ func (workspace *LocalWorkspace) Glob(ctx context.Context, request GlobRequest) 
 		return SearchResult{}, err
 	}
 	if stoppedEarly {
-		return SearchResult{}, errors.New("glob directory scan stopped before producing a stable page / 目录扫描未完成，无法生成稳定分页")
+		return SearchResult{}, errors.New("glob directory scan stopped before producing a stable page")
 	}
 	visible := min(limit, len(matches))
 	outputBytes := 0
@@ -235,7 +235,7 @@ func (workspace *LocalWorkspace) globTargets(inputs []string) ([]globTarget, []s
 			if len(inputs) == 1 {
 				return nil, nil, err
 			}
-			warnings = append(warnings, fmt.Sprintf("Skipped missing path %q. / 已跳过不存在的路径 %q。", input, input))
+			warnings = append(warnings, fmt.Sprintf("Skipped missing path %q.", input))
 			continue
 		}
 		kind := globTargetFile

@@ -58,7 +58,7 @@ func Skills(source SkillSource) (agent.Toolset, error) {
 	if source == nil {
 		return nil, errors.New("skills Toolset requires a SkillSource")
 	}
-	tool, err := agent.InferTool("skill", "List and read explicitly configured reusable skills. Batch reads report an outcome for every reference.\n\n列出并读取宿主明确配置的可复用技能；批量读取会逐项返回结果。", func(ctx context.Context, input skillToolInput) (agent.ToolResult, error) {
+	tool, err := agent.InferTool("skill", "List and read explicitly configured reusable skills. Batch reads report an outcome for every reference.", func(ctx context.Context, input skillToolInput) (agent.ToolResult, error) {
 		switch strings.TrimSpace(input.Action) {
 		case "list":
 			items, err := source.List(ctx, SkillQuery{Query: input.Query, Limit: input.Limit})

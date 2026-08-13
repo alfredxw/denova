@@ -16,7 +16,19 @@ func RuntimeBindingForOptions(options Options) (RuntimeBinding, error) {
 	options = options.Normalize(options.Workspace)
 	var binding RuntimeBinding
 	switch options.AgentKind {
-	case AgentKindGeneral, AgentKindIDE:
+	case AgentKindIDE:
+		// Foreground Writing remains workspace/session-owned. ProjectID is
+		// routing metadata for product events and must not fork the public
+		// Agent Session identity when a Project is relinked or reindexed.
+		projectID := options.ProjectID
+		if options.Mode != ModeAgentChat {
+			projectID = ""
+		}
+		binding = RuntimeBinding{
+			AgentKind: options.AgentKind, ProjectID: projectID, Mode: options.Mode,
+			Workspace: options.Workspace, SessionID: options.SessionID,
+		}
+	case AgentKindGeneral:
 		binding = RuntimeBinding{
 			AgentKind: options.AgentKind, ProjectID: options.ProjectID, Mode: options.Mode,
 			Workspace: options.Workspace, SessionID: options.SessionID,

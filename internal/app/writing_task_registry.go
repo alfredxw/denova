@@ -39,17 +39,20 @@ func (s *ChatAppService) replayDurableWritingStart(
 	sess := a.session
 	bookService := a.bookService
 	stateRoot := ""
+	projectID := ""
 	if a.cfg != nil {
 		stateRoot = a.cfg.ProjectStateDir
+		projectID = a.cfg.ProjectID
 	}
 	a.mu.RUnlock()
 	if executionRuntime == nil || sess == nil || sess.ID != sessionID {
 		return nil, false, nil
 	}
-	options := agentrun.Options{
-		AgentKind: agentrun.AgentKindIDE, SessionID: sessionID,
-		StateRoot: stateRoot, Workspace: workspace, Mode: "ide",
+	runtime := ideChatRuntime{
+		app: a, projectID: projectID, sess: sess, bookService: bookService,
+		executionRuntime: executionRuntime, workspace: workspace, projectState: stateRoot,
 	}
+	options := runtime.agentOptions("")
 	status, err := executionRuntime.RuntimeStatusProjection(ctx, options)
 	if err != nil {
 		return nil, false, err
@@ -58,10 +61,6 @@ func (s *ChatAppService) replayDurableWritingStart(
 		return nil, false, nil
 	}
 
-	runtime := ideChatRuntime{
-		app: a, sess: sess, bookService: bookService,
-		executionRuntime: executionRuntime, workspace: workspace, projectState: stateRoot,
-	}
 	var accepted *agentexecution.Operation
 	task, err := apptask.NewDeferredWithContext(ctx, func(task *apptask.Task) error {
 		a.mu.Lock()

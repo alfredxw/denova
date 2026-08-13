@@ -51,7 +51,7 @@ func New(controller Controller) (agent.Toolset, error) {
 	if strings.TrimSpace(identity.Kind) == "" || identity.Version == 0 {
 		return nil, errors.New("browser Controller requires a stable Identity")
 	}
-	tool, err := agent.InferTool("browser", "Execute an ordered browser action sequence through the configured controller. Each action reports its own outcome and later actions continue when safe.\n\n通过已配置的控制器按顺序执行浏览器操作；每个操作逐项返回结果，在安全时继续后续操作。", func(ctx context.Context, request input) (agent.ToolResult, error) {
+	tool, err := agent.InferTool("browser", "Execute an ordered browser action sequence through the configured controller. Each action reports its own outcome and later actions continue when safe.", func(ctx context.Context, request input) (agent.ToolResult, error) {
 		if len(request.Actions) == 0 || len(request.Actions) > 32 {
 			return agent.ToolResult{}, errors.New("browser requires 1..32 actions")
 		}

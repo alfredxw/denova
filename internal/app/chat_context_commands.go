@@ -28,10 +28,7 @@ func (s *ChatAppService) AnalyzeContext(ctx context.Context, req agentchat.ChatR
 	if err != nil {
 		return agentchat.ContextAnalysis{}, err
 	}
-	inspected, err := conversationapp.InspectPrepared(ctx, sharedConversationRuntime(runtime), req, agentrun.Options{
-		AgentKind: agentrun.AgentKindIDE, StateRoot: runtime.projectState,
-		Workspace: runtime.workspace, SessionID: runtime.sess.ID, Mode: "ide",
-	})
+	inspected, err := conversationapp.InspectPrepared(ctx, sharedConversationRuntime(runtime), req, runtime.agentOptions(""))
 	if err != nil {
 		return agentchat.ContextAnalysis{}, err
 	}

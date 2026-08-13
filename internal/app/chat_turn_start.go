@@ -194,21 +194,15 @@ func (s *ChatAppService) startTaskWithError(ctx context.Context, expectedSession
 		return nil, err
 	}
 	acceptCtx, releaseAcceptance := apptask.AcceptanceContext(ctx, task)
-	startOptions := s.bindReviewFeedbackInputCommit(agentrun.Options{
-		AgentKind:          agentrun.AgentKindIDE,
-		StateRoot:          runtime.projectState,
-		TaskID:             task.ID(),
-		SessionID:          runtime.sess.ID,
-		Workspace:          runtime.workspace,
-		Mode:               "ide",
-		IdleTimeout:        appagentruntime.IdleTimeout(runtime.cfg),
-		ToolResultMaxBytes: appagentruntime.ToolResultMaxBytes(runtime.cfg),
-		SystemPromptLog:    systemPrompt,
-		OnMutationsVerified: func(_ context.Context, mutations []agenttool.Mutation, verification agenttool.Verification) {
-			verifiedMutations = append([]agenttool.Mutation(nil), mutations...)
-			postRunVerification = verification
-		},
-	}, runtime, req)
+	startOptions := runtime.agentOptions(task.ID())
+	startOptions.IdleTimeout = appagentruntime.IdleTimeout(runtime.cfg)
+	startOptions.ToolResultMaxBytes = appagentruntime.ToolResultMaxBytes(runtime.cfg)
+	startOptions.SystemPromptLog = systemPrompt
+	startOptions.OnMutationsVerified = func(_ context.Context, mutations []agenttool.Mutation, verification agenttool.Verification) {
+		verifiedMutations = append([]agenttool.Mutation(nil), mutations...)
+		postRunVerification = verification
+	}
+	startOptions = s.bindReviewFeedbackInputCommit(startOptions, runtime, req)
 	accepted, err = runtime.executionRuntime.Start(acceptCtx, agentexecution.StartRequest{
 		Cycle: agentexecution.Cycle{
 			Definition:   builtAgent.Definition,

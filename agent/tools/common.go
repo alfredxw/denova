@@ -24,7 +24,7 @@ const (
 	maxWorkspaceIgnoreRules  = 10_000
 	maxMutationFileBytes     = 16 * 1024 * 1024
 	maxMutationEdits         = 256
-	resultTruncatedMarker    = "[workspace result truncated at the configured safety limit; use pagination or narrow the path or pattern / 工作区结果已在配置的安全上限处截断；请分页或缩小路径或模式]"
+	resultTruncatedMarker    = "[workspace result truncated at the configured safety limit; use pagination or narrow the path or pattern]"
 	processTruncatedMarker   = "[process output truncated; inspect a narrower command]"
 )
 

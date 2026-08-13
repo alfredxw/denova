@@ -96,6 +96,39 @@ function formatAPIErrorMessage(message: string, requestID?: string): string {
   return `${message} · ${i18next.t('common.logId')}: ${normalized}`
 }
 
+/** Keeps localized UI copy while retaining the server correlation ID for support. */
+export function withErrorLogID(message: string, source: unknown): string {
+  const requestID = requestIDFromError(source)
+  if (!requestID || message.includes(requestID)) return message
+  return formatAPIErrorMessage(message, requestID)
+}
+
+function requestIDFromError(source: unknown, seen = new Set<object>()): string | undefined {
+  if (typeof source === 'string') return requestIDFromText(source)
+  if (!source || typeof source !== 'object' || seen.has(source)) return undefined
+  seen.add(source)
+
+  const record = source as Record<string, unknown>
+  for (const key of ['requestID', 'requestId', 'request_id', 'logID', 'logId', 'log_id']) {
+    const value = record[key]
+    if (typeof value === 'string' && value.trim()) return value.trim()
+  }
+  if (typeof record.message === 'string') {
+    const requestID = requestIDFromText(record.message)
+    if (requestID) return requestID
+  }
+  for (const key of ['payload', 'details', 'cause']) {
+    const requestID = requestIDFromError(record[key], seen)
+    if (requestID) return requestID
+  }
+  return undefined
+}
+
+function requestIDFromText(value: string): string | undefined {
+  const match = value.match(/(?:日志\s*ID(?:\s*\/\s*Log\s*ID)?|Log\s*ID|request_id)\s*[:=]\s*([A-Za-z0-9][A-Za-z0-9._:-]*)/i)
+  return match?.[1]
+}
+
 export async function readErrorMessage(res: Response): Promise<string> {
   let message = `HTTP ${res.status}`
   let requestID = res.headers.get(REQUEST_ID_HEADER)?.trim() || undefined

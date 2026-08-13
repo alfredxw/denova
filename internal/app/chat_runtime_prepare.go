@@ -6,9 +6,25 @@ import (
 
 	"denova/config"
 	agentchat "denova/internal/agents/chat"
+	agentrun "denova/internal/agents/run"
 	appconversation "denova/internal/app/conversation"
 	"denova/internal/app/task"
 )
+
+// agentOptions is the single foreground Writing runtime route. ProjectID is
+// product event metadata; the public Agent Session remains workspace/session
+// scoped in agentrun.RuntimeBindingForOptions.
+func (runtime ideChatRuntime) agentOptions(taskID string) agentrun.Options {
+	return agentrun.Options{
+		AgentKind: agentrun.AgentKindIDE,
+		ProjectID: strings.TrimSpace(runtime.projectID),
+		StateRoot: strings.TrimSpace(runtime.projectState),
+		TaskID:    strings.TrimSpace(taskID),
+		SessionID: runtime.sess.ID,
+		Workspace: strings.TrimSpace(runtime.workspace),
+		Mode:      "ide",
+	}
+}
 
 func (service *ChatAppService) prepareIDEChatRuntime(ctx context.Context, request agentchat.ChatRequest) (ideChatRuntime, agentchat.ChatRequest, error) {
 	app := service.app

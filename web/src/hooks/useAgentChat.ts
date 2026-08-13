@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { createAgentCommandID } from '@/lib/api'
 import type { AgentQueuedCommandAction, AgentRuntimeQueuedCommand, ContextAnalysis, IDEContext, SessionSummary, TextSelection } from '@/lib/api'
+import { withErrorLogID } from '@/lib/api-client'
 import { fetchProjectSettings, fetchSettings } from '@/features/settings/api'
 import { formatApprovedPlanExecutionMessage } from '@/lib/plan-mode'
 import { agentCommandErrorMessage, agentCommandRetryKey, isKnownAgentCommandOutcome, mergeProjectedAgentQueue, rememberAgentCommandID } from '@/lib/agent-command'
@@ -102,7 +103,7 @@ export function useAgentChat(options: ChatOptions = {}) {
         const data = part.data as Record<string, unknown>
         const content = [data.content, data.message, data.error]
           .find((value): value is string => typeof value === 'string' && Boolean(value.trim()))
-        toast.error(content?.trim() || t('chat.activity.unknownError'))
+        toast.error(withErrorLogID(content?.trim() || t('chat.activity.unknownError'), data))
         return
       }
       if (part.type === 'data-agent-activity') {

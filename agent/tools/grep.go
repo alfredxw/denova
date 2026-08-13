@@ -17,7 +17,7 @@ import (
 // record proves that the bounded page is partial.
 func (workspace *LocalWorkspace) Grep(ctx context.Context, request GrepRequest) (SearchResult, error) {
 	if workspace == nil || workspace.Root() == "" {
-		return SearchResult{}, errors.New("grep workspace is not configured / grep 工作区未配置")
+		return SearchResult{}, errors.New("grep workspace is not configured")
 	}
 	request = normalizeGrepRequest(request)
 	command, err := workspace.compileGrepCommand(request.Command)
@@ -85,13 +85,13 @@ func (workspace *LocalWorkspace) Grep(ctx context.Context, request GrepRequest) 
 		return SearchResult{}, err
 	}
 	if cursorStale || !prefixVerified {
-		return SearchResult{}, errors.New("grep cursor is stale because preceding results changed; rerun without cursor / grep 游标已因前序结果变化而失效；请移除 cursor 后重新搜索")
+		return SearchResult{}, errors.New("grep cursor is stale because preceding results changed; rerun without cursor")
 	}
 	if stopped {
 		truncated = true
 	}
 	if oversizedEntry {
-		return SearchResult{}, fmt.Errorf("grep result block exceeds the %d-byte result limit; reduce context or narrow the command / grep 结果块超过 %d 字节上限；请减少上下文或缩小命令范围", limits.MaxResultBytes, limits.MaxResultBytes)
+		return SearchResult{}, fmt.Errorf("grep result block exceeds the %d-byte result limit; reduce context or narrow the command", limits.MaxResultBytes)
 	}
 	result := SearchResult{Entries: entries, Truncated: truncated, Warnings: command.warnings}
 	if truncated {
@@ -115,7 +115,7 @@ func (workspace *LocalWorkspace) runGrepCommand(
 	consume func(string) bool,
 ) (bool, error) {
 	if len(plan.stages) == 0 {
-		return false, errors.New("grep execution plan has no stages / grep 执行计划不包含命令")
+		return false, errors.New("grep execution plan has no stages")
 	}
 	commands := make([]*exec.Cmd, len(plan.stages))
 	stdoutPipes := make([]io.ReadCloser, len(plan.stages))
@@ -208,7 +208,7 @@ func (workspace *LocalWorkspace) runGrepCommand(
 			additional++
 		}
 		if block.Len()+additional > maxBytes {
-			scanErr = fmt.Errorf("grep context block exceeds the %d-byte result limit; reduce context or narrow the command / grep 上下文结果块超过 %d 字节上限；请减少上下文或缩小命令范围", maxBytes, maxBytes)
+			scanErr = fmt.Errorf("grep context block exceeds the %d-byte result limit; reduce context or narrow the command", maxBytes)
 			stopPipeline()
 			return false
 		}
@@ -229,7 +229,7 @@ func (workspace *LocalWorkspace) runGrepCommand(
 		}
 		line := strings.TrimSuffix(scanner.Text(), "\r")
 		if !utf8.ValidString(line) {
-			scanErr = errors.New("grep encountered non-UTF-8 output; select a compatible encoding or narrow the command / grep 遇到非 UTF-8 输出；请选择兼容编码或缩小命令范围")
+			scanErr = errors.New("grep encountered non-UTF-8 output; select a compatible encoding or narrow the command")
 			stopPipeline()
 			break
 		}
@@ -280,7 +280,7 @@ func (workspace *LocalWorkspace) runGrepCommand(
 				if message == "" {
 					message = waitErrors[index].Error()
 				}
-				return false, fmt.Errorf("ripgrep pipeline stage %d failed / ripgrep 管道第 %d 段执行失败: %s", index+1, index+1, boundedString(message, maxBytes))
+				return false, fmt.Errorf("ripgrep pipeline stage %d failed: %s", index+1, boundedString(message, maxBytes))
 			}
 		}
 	}

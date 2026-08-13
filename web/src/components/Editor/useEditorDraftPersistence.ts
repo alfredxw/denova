@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { useTranslation } from 'react-i18next'
 
 import type { PreservedAutosaveConflict } from '@/lib/api-client/autosave-conflicts'
+import { withErrorLogID } from '@/lib/api-client'
 import { rebaseTextWithConflicts } from '@/lib/three-way-rebase'
 import { WorkspaceFileRevisionConflictError } from '@/lib/autosave/workspace-file-revision-conflict'
 import { useSaveLane } from '@/hooks/use-save-lane'
@@ -223,7 +224,7 @@ export function useEditorDraftPersistence({
         })
         if (workspaceRef.current === conflict.workspace && fileNameRef.current === conflict.fileName) {
           setSaveStatus('error')
-          toast.error(tRef.current('editor.externalConflict.archiveFailed'))
+          toast.error(withErrorLogID(tRef.current('editor.externalConflict.archiveFailed'), error))
         }
       })
       return promise
@@ -477,7 +478,9 @@ export function useEditorDraftPersistence({
         setSaveStatus('error')
         scheduleSaveStatusClear('error', request.mode === 'auto' ? 1400 : 2000)
       }
-      if (!activeFailure || request.mode === 'manual') toast.error(tRef.current('editor.saveFailed'))
+      if (!activeFailure || request.mode === 'manual') {
+        toast.error(withErrorLogID(tRef.current('editor.saveFailed'), failed.error))
+      }
     },
   })
   const {

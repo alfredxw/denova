@@ -46,8 +46,10 @@ func (s *ChatAppService) RecoverAgentRuntime(ctx context.Context, expectedSessio
 	bookService := a.bookService
 	existing := a.activeWritingRun
 	stateRoot := ""
+	projectID := ""
 	if a.cfg != nil {
 		stateRoot = a.cfg.ProjectStateDir
+		projectID = a.cfg.ProjectID
 	}
 	a.mu.RUnlock()
 	if expectedSessionID != "" && (sess == nil || strings.TrimSpace(sess.ID) != expectedSessionID) {
@@ -74,7 +76,11 @@ func (s *ChatAppService) RecoverAgentRuntime(ctx context.Context, expectedSessio
 		return AgentRuntimeRecoveryResult{}, ErrAgentOperationActive
 	}
 
-	options := agentrun.Options{AgentKind: agentrun.AgentKindIDE, StateRoot: stateRoot, Workspace: workspace, SessionID: sess.ID, Mode: "ide"}
+	runtime := ideChatRuntime{
+		app: a, projectID: projectID, sess: sess, bookService: bookService,
+		executionRuntime: executionRuntime, workspace: workspace, projectState: stateRoot,
+	}
+	options := runtime.agentOptions("")
 	recovery, err := executionRuntime.OpenRecoveryObservation(operation.Context(), options)
 	if err != nil {
 		return AgentRuntimeRecoveryResult{}, err
@@ -83,7 +89,6 @@ func (s *ChatAppService) RecoverAgentRuntime(ctx context.Context, expectedSessio
 		recovery.Close()
 		return AgentRuntimeRecoveryResult{}, err
 	}
-	runtime := ideChatRuntime{app: a, sess: sess, bookService: bookService, executionRuntime: executionRuntime, workspace: workspace, projectState: stateRoot}
 	key := recoveryActionKey(request.Action)
 	var run *writingTaskRun
 	task, err := apptask.NewDeferredWithContext(ctx, func(task *apptask.Task) error {

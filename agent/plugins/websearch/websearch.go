@@ -50,7 +50,7 @@ func New(provider Provider) (agent.Toolset, error) {
 	if strings.TrimSpace(identity.Kind) == "" || identity.Version == 0 {
 		return nil, errors.New("web_search Provider requires a stable Identity")
 	}
-	tool, err := agent.InferTool("web_search", "Search the web through the configured provider. Batch queries return independent outcomes.\n\n通过已配置的供应商搜索互联网；批量查询会逐项返回结果。", func(ctx context.Context, request input) (agent.ToolResult, error) {
+	tool, err := agent.InferTool("web_search", "Search the web through the configured provider. Batch queries return independent outcomes.", func(ctx context.Context, request input) (agent.ToolResult, error) {
 		if len(request.Queries) == 0 || len(request.Queries) > 16 {
 			return agent.ToolResult{}, errors.New("web_search requires 1..16 queries")
 		}

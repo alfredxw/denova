@@ -124,20 +124,14 @@ func (s *ChatAppService) prepareWritingCycle(
 		runtimeContexts.StableTitle, runtimeContexts.Stable,
 		runtimeContexts.DynamicTitle, runtimeContexts.Dynamic,
 	).WithInputVisibility(resolved.InputVisibility)
-	options := s.bindReviewFeedbackInputCommit(agentrun.Options{
-		AgentKind:          agentrun.AgentKindIDE,
-		StateRoot:          runtime.projectState,
-		TaskID:             strings.TrimSpace(taskID),
-		SessionID:          runtime.sess.ID,
-		Workspace:          runtime.workspace,
-		Mode:               "ide",
-		IdleTimeout:        appagentruntime.IdleTimeout(runtime.cfg),
-		ToolResultMaxBytes: appagentruntime.ToolResultMaxBytes(runtime.cfg),
-		SystemPromptLog:    systemPrompt,
-		OnMutationsVerified: s.app.writingMutationCallback(
-			strings.TrimSpace(taskID), conversation,
-		),
-	}, runtime, resolved)
+	options := runtime.agentOptions(taskID)
+	options.IdleTimeout = appagentruntime.IdleTimeout(runtime.cfg)
+	options.ToolResultMaxBytes = appagentruntime.ToolResultMaxBytes(runtime.cfg)
+	options.SystemPromptLog = systemPrompt
+	options.OnMutationsVerified = s.app.writingMutationCallback(
+		strings.TrimSpace(taskID), conversation,
+	)
+	options = s.bindReviewFeedbackInputCommit(options, runtime, resolved)
 	return agentexecution.Cycle{
 		Definition: builtAgent.Definition, Conversation: conversation, BookService: runtime.bookService, Request: resolved,
 		Options: options,

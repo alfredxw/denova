@@ -107,8 +107,7 @@ func commandTool(name string, shell ShellKind, runner CommandRunner, options ...
 	if err := validateAdapterIdentity(name+" CommandRunner", runner.Identity()); err != nil {
 		return agent.ToolDefinition{}, err
 	}
-	description := "Execute one foreground " + string(shell) + " command from a workspace directory. stdout and stderr are streamed in arrival order. Optional env, timeout, and PTY are explicit; background jobs are unsupported.\n\n" +
-		"在工作区目录中以前台方式执行一条 " + string(shell) + " 命令，stdout 与 stderr 按到达顺序流式展示。可显式设置 env、timeout 和 PTY；不支持后台任务。"
+	description := "Execute one foreground " + string(shell) + " command from a workspace directory. stdout and stderr are streamed in arrival order. Optional env, timeout, and PTY are explicit; background jobs are unsupported."
 	descriptor := shellDescriptor(options...)
 	tool, err := agent.InferTool(name, description, func(ctx context.Context, input commandInput) (agent.ToolResult, error) {
 		if strings.TrimSpace(input.Command) == "" {
@@ -185,9 +184,9 @@ func commandToolResult(result CommandResult, maxResultBytes int) (agent.ToolResu
 	switch result.Status {
 	case ProcessStatusSuccess:
 	case ProcessStatusFailed:
-		recovery = processRecovery{Retryable: true, Suggestion: "Inspect the merged output and correct the command. / 检查合并输出并修正命令。"}
+		recovery = processRecovery{Retryable: true, Suggestion: "Inspect the merged output and correct the command."}
 	case ProcessStatusTimedOut:
-		recovery = processRecovery{Retryable: true, Suggestion: "Narrow the command or explicitly increase timeout_seconds. / 缩小命令范围或显式增加 timeout_seconds。"}
+		recovery = processRecovery{Retryable: true, Suggestion: "Narrow the command or explicitly increase timeout_seconds."}
 	case ProcessStatusCancelled:
 		recovery = processRecovery{Retryable: false}
 	default:

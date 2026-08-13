@@ -49,11 +49,7 @@ func (s *ChatAppService) submitAgentCommand(ctx context.Context, command ChatAge
 		return runtime.executionRuntime.SubmitCommand(ctx, agentexecution.CommandRequest{
 			Kind: command.Kind, CommandID: command.CommandID,
 			OperationID: command.OperationID, TargetCommandID: command.TargetCommandID, Reason: command.Reason,
-			Options: agentrun.Options{
-				AgentKind: agentrun.AgentKindIDE, TaskID: task.ID(),
-				StateRoot: runtime.projectState,
-				SessionID: runtime.sess.ID, Workspace: runtime.workspace, Mode: "ide",
-			},
+			Options: runtime.agentOptions(task.ID()),
 		})
 	}
 	if command.Kind != agentexecution.CommandSteer && command.Kind != agentexecution.CommandFollowUp && command.Kind != agentexecution.CommandNextTurn {
@@ -67,14 +63,7 @@ func (s *ChatAppService) submitAgentCommand(ctx context.Context, command ChatAge
 		Kind: command.Kind, CommandID: command.CommandID,
 		OperationID: command.OperationID, AfterOperationID: command.OperationID,
 		Request: command.Input, Emit: task.Emit,
-		Options: agentrun.Options{
-			AgentKind: agentrun.AgentKindIDE,
-			StateRoot: activeRuntime.projectState,
-			TaskID:    task.ID(),
-			SessionID: activeRuntime.sess.ID,
-			Workspace: activeRuntime.workspace,
-			Mode:      "ide",
-		},
+		Options: activeRuntime.agentOptions(task.ID()),
 	})
 }
 

@@ -559,6 +559,23 @@ describe('useAgentChat', () => {
     expect(result.current.messages).toEqual([])
   })
 
+  it('shows the stream request ID when an Agent error uses localized fallback copy', () => {
+    const errorPart = {
+      type: 'data-agent-error',
+      id: 'error-part-correlated',
+      data: {
+        content: 'provider exploded',
+        request_id: '0198f2cb-e980-7a21-81ba-e49998698090',
+      },
+    }
+    const { result } = renderHook(() => useAgentChat())
+
+    act(() => chatMock.options?.onData?.(errorPart))
+
+    expect(toastMock.error).toHaveBeenCalledWith(expect.stringContaining('0198f2cb-e980-7a21-81ba-e49998698090'))
+    expect(result.current.messages).toEqual([])
+  })
+
   it('targets the operation already projected to the user instead of resolving a newer operation at click time', async () => {
     chatMock.status = 'streaming'
     vi.mocked(getActiveChatTask)

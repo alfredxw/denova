@@ -3,6 +3,7 @@ import { BookMarked, Bot, Database, Image as ImageIcon, Images, Search, SlidersH
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { abortLoreImagesGenerate, APIError, clearLoreItemImage, createProjectLoreItem, deleteProjectLoreItem, generateLoreItemImage, getProjectLoreItems, projectFileAssetURL, readOptionalProjectFile, readProjectFile, streamLoreImagesGenerate, type LoreImageProgressEvent, type LoreItem, type SSEEvent } from '@/lib/api'
+import { withErrorLogID } from '@/lib/api-client'
 import { rebaseJSONValue, rebaseText } from '@/lib/three-way-rebase'
 import { rebaseJSONWithRecovery, rebaseTextWithRecovery } from '@/lib/autosave/rebase-with-recovery'
 import { cn } from '@/lib/utils'
@@ -879,8 +880,8 @@ function LoreSettingPanel({
       return
     }
     if (event.event === 'error') {
-      const result = parseSSEData<{ message?: string }>(event)
-      toast.error(result?.message || t('settingPanel.loreImage.failed'))
+      const result = parseSSEData<{ message?: string; request_id?: string }>(event)
+      toast.error(withErrorLogID(result?.message || t('settingPanel.loreImage.failed'), result))
     }
   }
 

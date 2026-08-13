@@ -17,7 +17,7 @@ type askInput struct {
 func Ask() (agent.Toolset, error) {
 	tool, err := agent.InferTool(
 		"ask",
-		"Ask the user one to three bilingual questions when required information cannot be inferred safely.\n\n当无法安全推断必要信息时，向用户提出一到三个双语问题。",
+		"Ask the user one to three bilingual questions when required information cannot be inferred safely.",
 		func(ctx context.Context, input askInput) (agent.ToolResult, error) {
 			if !agent.IsRootInvocation(ctx) {
 				return agent.ToolResult{}, errors.New("ask is available only in a root Agent invocation")

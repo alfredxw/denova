@@ -25,6 +25,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 修复写作 Agent 的工作区变更流式事件遗漏当前 Project 身份，导致新一轮运行中的 Diff review 查询缓存不会实时刷新、审阅卡片只能在页面重载后出现的问题。首轮、续轮与恢复运行现在统一携带 Project 路由身份，同时 Writing Agent Session 继续严格按 workspace/session 定位，不会因 Project 元数据产生会话分叉；无需新增配置。
+- Fixed Writing Agent workspace-change stream events omitting the active Project identity, which prevented the current session's Diff review query cache from refreshing during a new run and left the review card visible only after a page reload. Initial, continued, and recovered turns now share one Project-aware runtime route, while Writing Agent Sessions remain strictly workspace/session-scoped and cannot fork on Project metadata. No new setting is required.
+- 修复右下角红色错误提示在使用本地化通用文案时丢失服务端请求标识的问题；API、Agent 流式事件、文档审阅、自动保存与变更审阅等错误现在会在可用时统一保留「日志 ID / Log ID」，且不会重复追加。纯前端校验错误不会伪造 ID，无需新增配置。
+- Fixed bottom-right error toasts losing the server request identifier when localized fallback copy replaced the original failure. API, Agent stream, document-review, autosave, and change-review errors now consistently retain the localized Log ID when available without duplicating it; client-only validation failures do not invent an ID. No new setting is required.
 - 修复关闭 Agent 自动上下文压缩后，Tool Result Cleanup 因 disabled Compaction 边界管理器仍存在而误判压缩可用、在高上下文压力下反复安排无效压缩的问题；Cleanup 现在同时遵守产品配置与公共 capability 可用性，并在未发生投影时保持前后 body pressure 遥测一致。写作与游戏模式共用该修复，无需新增配置。
 - Fixed Tool Result Cleanup treating the disabled Compaction boundary manager as an executable compactor after automatic context compaction was turned off, repeatedly scheduling no-op compaction under high context pressure. Cleanup now requires both product configuration and public capability availability, and preserves before/after body-pressure telemetry when no projection occurs. Writing and Game share the fix, with no new setting required.
 - 修复写作 Agent 完成一轮后会话消息数不实时刷新、已删除文件在刷新后恢复为空白标签的问题；会话摘要现在随 Run 完成更新，文件恢复会识别 404、清理失效标签并保留可用回退页。无需新增配置。

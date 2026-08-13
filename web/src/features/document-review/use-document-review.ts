@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import type { ReviewFeedbackSelection } from '@/features/changes/agent/ReviewFeedbackTray'
 import { isProjectChangeForProject, type WorkspaceChangeEvent } from '@/features/changes/types'
+import { withErrorLogID } from '@/lib/api-client'
 import { createDocumentComment, deleteDocumentComment, getDocumentReview, updateDocumentComment } from './api'
 import type { CreateDocumentCommentRequest, DocumentReviewComment, DocumentReviewThread } from './types'
 
@@ -141,7 +142,7 @@ export function useDocumentReview({ projectId, agentVisible, onShowAgent }: UseD
         commentID,
         error,
       })
-      toast.error(t('editor.review.deleteFailed'))
+      toast.error(withErrorLogID(t('editor.review.deleteFailed'), error))
     })
   }, [projectId, removeComment, t, thread.comments])
 

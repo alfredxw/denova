@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { TFunction } from 'i18next'
+import { APIError } from '@/lib/api-client'
 import { agentCommandErrorMessage, rememberAgentCommandID } from './agent-command'
 
 describe('rememberAgentCommandID', () => {
@@ -28,5 +29,17 @@ describe('agentCommandErrorMessage', () => {
     const t = vi.fn((key: string) => key) as unknown as TFunction
 
     expect(agentCommandErrorMessage({ code: 'agent_runtime.command_conflict' }, t)).toBe('chat.runtime.invalidCommand')
+  })
+
+  it('retains the log ID when a stable code replaces the backend message', () => {
+    const t = vi.fn((key: string) => key) as unknown as TFunction
+    const error = new APIError('command conflict', {
+      status: 409,
+      code: 'agent_runtime.command_conflict',
+      requestID: '0198f2cb-e980-7a21-81ba-e4999869808f',
+    })
+
+    expect(agentCommandErrorMessage(error, t)).toContain('chat.runtime.invalidCommand')
+    expect(agentCommandErrorMessage(error, t)).toContain('0198f2cb-e980-7a21-81ba-e4999869808f')
   })
 })

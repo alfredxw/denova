@@ -6,6 +6,7 @@ import { applyFontSettings, fontSettingsFromEffective } from '@/features/setting
 import { markAutoUpdateChecked, shouldRunAutoUpdateCheck, UPDATE_CHECK_RESULT_EVENT } from '@/features/settings/update-check-cache'
 import type { UpdateCheckResult } from '@/features/settings/types'
 import { getProjectLoreItems, importCharacterCard, previewCharacterCard, setProjectChapterConfirmed, switchWorkspace, type CharacterCardPreview, type LoreItem, type WorkspaceSearchResult } from '@/lib/api'
+import { withErrorLogID } from '@/lib/api-client'
 import { CommandPalette } from '@/components/common/command-palette'
 import { useWorkspace } from '@/hooks/useWorkspace'
 import { useAgentChat } from '@/hooks/useAgentChat'
@@ -151,7 +152,7 @@ function App() {
       return await handler()
     } catch (error) {
       console.error('[App.tsx] failed to flush the editor draft before navigation', error)
-      toast.error(t('editor.saveFailed'))
+      toast.error(withErrorLogID(t('editor.saveFailed'), error))
       return false
     }
   }, [t])

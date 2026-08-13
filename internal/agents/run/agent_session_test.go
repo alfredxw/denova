@@ -125,3 +125,21 @@ func TestProjectAgentSessionIdentitySurvivesWorkspaceRelink(t *testing.T) {
 		t.Fatalf("mutable workspace leaked into project Session attributes: %#v", after.Attributes)
 	}
 }
+
+func TestWritingAgentSessionIdentityIgnoresProjectRoutingMetadata(t *testing.T) {
+	withoutProject, err := AgentSessionKeyForOptions(Options{
+		AgentKind: AgentKindIDE, Workspace: "/books/current", SessionID: "session-1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	withProject, err := AgentSessionKeyForOptions(Options{
+		AgentKind: AgentKindIDE, ProjectID: "project-1", Workspace: "/books/current", SessionID: "session-1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(withProject, withoutProject) {
+		t.Fatalf("Project event metadata forked Writing Session identity: without=%#v with=%#v", withoutProject, withProject)
+	}
+}

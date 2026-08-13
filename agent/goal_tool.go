@@ -14,7 +14,7 @@ type goalToolInput struct {
 }
 
 func standardGoalTool(manager GoalManager, session SessionView, run RunView) (ToolDefinition, error) {
-	tool, err := InferTool("goal", "Complete the exact active Session goal only after the entire objective is achieved, or block it only when progress genuinely requires user input or an external state change. Never use it for an intermediate milestone. Goal creation, pause, resume, and clear remain host-owned.\n\n仅当完整目标已实现时完成当前目标；仅当推进确实需要用户输入或外部状态变化时阻塞。不得将中间里程碑标记为终态。创建、暂停、恢复与清除仍由宿主控制。", func(ctx context.Context, input goalToolInput) (ToolResult, error) {
+	tool, err := InferTool("goal", "Complete the exact active Session goal only after the entire objective is achieved, or block it only when progress genuinely requires user input or an external state change. Never use it for an intermediate milestone. Goal creation, pause, resume, and clear remain host-owned.", func(ctx context.Context, input goalToolInput) (ToolResult, error) {
 		if !IsRootInvocation(ctx) {
 			return ToolResult{}, errors.New("Goal tool is available only in a root Agent invocation")
 		}

@@ -184,8 +184,7 @@ func newReadTool(adapters []ReadAdapter, maxResultBytes int) (*readTool, error) 
 		schema:         &jsonschema.Schema{Type: "object", AnyOf: variants},
 		maxResultBytes: maxResultBytes,
 		desc: "Read one bounded resource using the parameters supported by its registered adapter. " +
-			"HTTP(S) URLs are not supported; use web_fetch. Available adapters: " + strings.Join(names, ", ") + ".\n\n" +
-			"使用已注册适配器支持的参数读取一个有界资源。不支持 HTTP(S) URL，请使用 web_fetch。可用适配器：" + strings.Join(names, "、") + "。",
+			"HTTP(S) URLs are not supported; use web_fetch. Available adapters: " + strings.Join(names, ", ") + ".",
 	}, nil
 }
 
@@ -463,11 +462,11 @@ func readResultEnvelope(result ReadResult) readEnvelope {
 	var recovery *readRecovery
 	if result.Truncated {
 		status = "partial"
-		suggestion := "Narrow the resource path or requested limit. / 请缩小资源路径或请求范围。"
+		suggestion := "Narrow the resource path or requested limit."
 		if result.NextOffset > 0 && result.NextByteOffset > 0 {
-			suggestion = fmt.Sprintf("Continue with offset=%d and byte_offset=%d. / 使用 offset=%d、byte_offset=%d 继续读取。", result.NextOffset, result.NextByteOffset, result.NextOffset, result.NextByteOffset)
+			suggestion = fmt.Sprintf("Continue with offset=%d and byte_offset=%d.", result.NextOffset, result.NextByteOffset)
 		} else if result.NextOffset > 0 {
-			suggestion = fmt.Sprintf("Continue with offset=%d. / 使用 offset=%d 继续读取。", result.NextOffset, result.NextOffset)
+			suggestion = fmt.Sprintf("Continue with offset=%d.", result.NextOffset)
 		}
 		recovery = &readRecovery{Retryable: true, Suggestion: suggestion}
 	}
