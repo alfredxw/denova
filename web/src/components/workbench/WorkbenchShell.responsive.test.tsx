@@ -300,6 +300,51 @@ describe('WorkbenchShell responsive main content', () => {
     expect(activityIDs.slice(0, 2)).toEqual([primaryID, 'agentchat'])
   })
 
+  it('keeps Trajectory hidden until developer mode is enabled', () => {
+    const { rerender } = render(<WorkbenchShell {...workbenchProps(<div />)} />)
+    expect(screen.queryByRole('button', { name: '轨迹' })).not.toBeInTheDocument()
+
+    rerender(<WorkbenchShell {...workbenchProps(<div />)} developerMode />)
+    expect(screen.getByRole('button', { name: '轨迹' })).toBeInTheDocument()
+  })
+
+  it.each([
+    ['writing', 'ide', 'writing'],
+    ['game', 'interactive', 'interactive'],
+  ] as const)('opens Trajectory from %s without changing the explicit content mode', (_label, mode, presentedLayout) => {
+    const frames: FrameRequestCallback[] = []
+    const requestFrame = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      frames.push(callback)
+      return frames.length
+    })
+    const cancelFrame = vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {})
+    const onSetMode = vi.fn()
+    const onSetInteractiveSubmode = vi.fn()
+
+    render(
+      <WorkbenchShell
+        {...workbenchProps(<div />)}
+        mode={mode}
+        presentedLayout={presentedLayout}
+        booksReturnMode={mode}
+        developerMode
+        onSetMode={onSetMode}
+        onSetInteractiveSubmode={onSetInteractiveSubmode}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '轨迹' }))
+    act(() => { frames.shift()?.(0) })
+    act(() => { frames.shift()?.(16) })
+
+    expect(onSetMode).toHaveBeenCalledTimes(1)
+    expect(onSetMode).toHaveBeenCalledWith('trajectory')
+    expect(onSetInteractiveSubmode).not.toHaveBeenCalled()
+
+    requestFrame.mockRestore()
+    cancelFrame.mockRestore()
+  })
+
   it('shows editor updated time and line in the global bottom status bar', () => {
     const updatedAt = '2026-07-11 22:00'
     render(<WorkbenchShell {...workbenchProps(<div />)}

@@ -286,6 +286,7 @@ func TestRunLedgerRecordsStructuredTraceSpans(t *testing.T) {
 	llm.Finish("success", map[string]any{
 		"provider_request_id":  "provider-1",
 		"finish_reason":        "tool_calls",
+		"ttft_ms":              420,
 		"prompt_tokens":        12,
 		"cached_prompt_tokens": 4,
 		"completion_tokens":    6,
@@ -343,7 +344,7 @@ func TestRunLedgerRecordsStructuredTraceSpans(t *testing.T) {
 		t.Fatalf("tool parent span should point at llm span: tool=%#v llm=%#v", toolData, llmData)
 	}
 	llmAttrs := llmData["attrs"].(map[string]any)
-	if llmAttrs["provider_request_id"] != "provider-1" || llmAttrs["total_tokens"].(float64) != 18 {
+	if llmAttrs["provider_request_id"] != "provider-1" || llmAttrs["total_tokens"].(float64) != 18 || llmAttrs["ttft_ms"].(float64) != 420 {
 		t.Fatalf("llm attrs should include provider id and tokens: %#v", llmAttrs)
 	}
 	if _, exists := llmAttrs["prompt"]; exists {

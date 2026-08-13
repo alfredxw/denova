@@ -82,6 +82,7 @@ function App() {
   const [editorAutoSaveEnabled, setEditorAutoSaveEnabled] = useState(AUTO_SAVE_ENABLED_FALLBACK)
   const [editorAutoSaveDelayMs, setEditorAutoSaveDelayMs] = useState(AUTO_SAVE_DELAY_FALLBACK_MS)
   const [updateCheckEnabled, setUpdateCheckEnabled] = useState<boolean | null>(null)
+  const [developerMode, setDeveloperMode] = useState<boolean | null>(null)
   const [motionIntensity, setMotionIntensity] = useState('system')
   const [novaDir, setNovaDir] = useState('')
   const [sidebarView, setSidebarView] = useState<SidebarView>('outline')
@@ -312,6 +313,7 @@ function App() {
           setEditorAutoSaveEnabled(effective?.auto_save_enabled ?? AUTO_SAVE_ENABLED_FALLBACK)
           setEditorAutoSaveDelayMs(normalizeAutoSaveDelayMs(effective?.auto_save_interval_ms))
           setUpdateCheckEnabled(effective?.update_check_enabled !== false)
+          setDeveloperMode(effective?.labs?.developer_mode === true)
           setNovaDir(data?.paths?.denova_dir || data?.paths?.nova_dir || '')
           setConfiguredLocale(effective?.language)
           setTheme(normalizeAppTheme(effective?.theme))
@@ -749,6 +751,9 @@ function App() {
     setSettingsOpen(false)
     setMode(nextMode)
   }, [mode, setMode])
+  useEffect(() => {
+    if (developerMode === false && mode === 'trajectory') handleSetMode(booksReturnModeRef.current)
+  }, [developerMode, handleSetMode, mode])
   const handleSetRightPanel = useCallback((panel: RightPanel) => {
     setSettingsOpen(false)
     if (isIdeWorkspacePanel(panel)) {
@@ -893,6 +898,7 @@ function App() {
         activityBarExpanded={activityBarExpanded}
         rightPanel={rightPanel}
         settingsOpen={settingsOpen}
+        developerMode={developerMode === true}
         interactiveRightVisible={interactiveRightVisible}
         novaDir={novaDir}
         books={books}

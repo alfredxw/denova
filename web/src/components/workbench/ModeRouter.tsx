@@ -70,6 +70,7 @@ export function ModeRouter(props: ModeRouterProps) {
     activityBarExpanded,
     rightPanel,
     settingsOpen,
+    developerMode = false,
     interactiveRightVisible,
     novaDir,
     books,
@@ -779,6 +780,7 @@ export function ModeRouter(props: ModeRouterProps) {
       rightPanelWide={agentSubAgentDetailsOpen && !reviewVisible}
       centerFocus={reviewVisible}
       settingsOpen={settingsOpen}
+      developerMode={developerMode}
       interactiveSubmode={interactiveSubmode}
       sidebar={sidebar}
       main={main}

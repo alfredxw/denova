@@ -238,6 +238,8 @@ const settings = {
   'settings.versions.timedInterval': '自动版本最小间隔（分钟）',
   'settings.section.labs': '实验功能',
   'settings.labs.sectionTitle': '实验功能开关',
+  'settings.labs.developerMode': '开发者模式',
+  'settings.labs.developerModeHint': '开启后，写作和游戏模式的一级菜单都会增加“轨迹”页面，用于分析 Agent 调用链、模型与工具耗时、TTFT、token 和缓存数据。',
   'settings.labs.continualLearning': 'Harness 优化 Lab',
   'settings.labs.continualLearningHint': '开启后，Agents 页面会出现用户级 Harness State。当前 State 对所有项目和新运行生效；已经开始的运行继续使用启动时固定的 State。',
   'settings.labs.continualLearningSchedule': '定时优化',

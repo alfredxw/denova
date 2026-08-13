@@ -9,6 +9,7 @@ const AgentsView = memo(lazy(() => import('@/features/agents/AgentsView').then((
 const AutomationsView = memo(lazy(() => import('@/features/automations/AutomationsView').then((module) => ({ default: module.AutomationsView }))))
 const SkillsView = memo(lazy(() => import('@/features/skills/SkillsView').then((module) => ({ default: module.SkillsView }))))
 const SettingsView = memo(lazy(() => import('@/features/settings/SettingsView').then((module) => ({ default: module.SettingsView }))))
+const TrajectoryPage = memo(lazy(() => import('@/features/trajectory/TrajectoryPage').then((module) => ({ default: module.TrajectoryPage }))))
 
 interface SharedWorkbenchRoutesProps {
   route: WorkbenchRouteId
@@ -52,6 +53,11 @@ export function SharedWorkbenchRoutes({
       {isMounted('automations') && (
         <WorkbenchRouteLayer visible={route === 'automations'} loadingLabel={loadingLabel}>
           <AutomationsView {...automations} />
+        </WorkbenchRouteLayer>
+      )}
+      {isMounted('trajectory') && (
+        <WorkbenchRouteLayer visible={route === 'trajectory'} loadingLabel={loadingLabel}>
+          <TrajectoryPage target={resourceTarget} onClose={onReturnToContentMode} />
         </WorkbenchRouteLayer>
       )}
       {isMounted('settings') && (

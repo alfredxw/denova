@@ -43,6 +43,7 @@ export interface ModeRouterProps {
   activityBarExpanded: boolean
   rightPanel: RightPanel
   settingsOpen: boolean
+  developerMode?: boolean
   interactiveRightVisible: boolean
   novaDir: string
   books: BookRecord[]

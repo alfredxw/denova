@@ -37,10 +37,10 @@ describe('useWorkspaceStore', () => {
     expect(window.localStorage.getItem('nova:right-panel')).toBeNull()
   })
 
-  it('classifies AgentChat as a user-owned surface that does not require a foreground Book', () => {
-    const modes: WorkspaceMode[] = ['ide', 'interactive', 'books', 'skills', 'agents', 'automations', 'agentchat']
+  it('classifies shared primary-menu surfaces without changing the foreground content mode', () => {
+    const modes: WorkspaceMode[] = ['ide', 'interactive', 'books', 'skills', 'agents', 'automations', 'agentchat', 'trajectory']
 
-    expect(modes.filter(isSharedWorkspaceMode)).toEqual(['books', 'skills', 'agents', 'automations', 'agentchat'])
+    expect(modes.filter(isSharedWorkspaceMode)).toEqual(['books', 'skills', 'agents', 'automations', 'agentchat', 'trajectory'])
   })
 
   it('migrates the legacy change-review right panel back to the Agent panel', async () => {

@@ -471,6 +471,7 @@ func sanitizeDirectRunLedgerRecord(recordType string, data map[string]any) map[s
 func sanitizeTraceAttrs(attrs map[string]any) map[string]any {
 	out := selectLedgerFields(attrs,
 		"agent_kind", "source", "mode", "model", "call_id", "provider_request_id", "finish_reason",
+		"ttft_ms",
 		"attempt", "message_count", "tool_count", "history_messages", "context_parts", "message_chars",
 		"agent_message_chars", "plan_mode", "writing_skill", "prompt_tokens", "cached_prompt_tokens",
 		"uncached_prompt_tokens", "completion_tokens", "reasoning_tokens", "total_tokens", "generated_bytes",

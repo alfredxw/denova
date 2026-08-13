@@ -6,7 +6,7 @@ import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, us
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { Group, Panel, Separator } from 'react-resizable-panels'
-import { BookOpen, Bot, Clock3, Database, History, MessageSquareText, PanelLeft, PenLine, Search, Settings, SlidersHorizontal, Sparkles, Terminal } from 'lucide-react'
+import { BookOpen, Bot, Clock3, Database, History, MessageSquareText, PanelLeft, PenLine, Route, Search, Settings, SlidersHorizontal, Sparkles, Terminal } from 'lucide-react'
 import { AnimatePresence, LayoutGroup, motion } from 'motion/react'
 import { WorkspaceLayout } from '@/components/layout/workspace-layout'
 import { WorkspaceMobileLayout, type MobileNavItem } from '@/components/layout/workspace-mobile-layout'
@@ -46,6 +46,7 @@ interface WorkbenchShellProps {
   activityBarExpanded: boolean
   rightPanel: RightPanel
   settingsOpen: boolean
+  developerMode?: boolean
   interactiveSubmode: InteractiveSubmode
   sidebar: ReactNode
   main: ReactNode
@@ -64,7 +65,7 @@ interface WorkbenchShellProps {
   onDismissNotice?: () => void
 }
 
-type ActivityItemId = 'writing' | 'story' | 'lore' | 'teller' | 'versions' | 'books' | 'agentchat' | 'skills' | 'agents' | 'automations'
+type ActivityItemId = 'writing' | 'story' | 'lore' | 'teller' | 'versions' | 'books' | 'agentchat' | 'skills' | 'agents' | 'automations' | 'trajectory'
 type PrimaryNavigationId = ActivityItemId | 'settings'
 type ActivityOrderScope = 'ide' | 'interactive'
 type SortableActivityItemId = `${ActivityOrderScope}:${ActivityItemId}`
@@ -86,8 +87,8 @@ const ACTIVITY_ORDER_STORAGE_KEYS: Record<ActivityOrderScope, string> = {
   ide: 'nova.activity.order.ide.v2',
   interactive: 'nova.activity.order.interactive.v2',
 }
-const DEFAULT_IDE_ACTIVITY_ORDER: ActivityItemId[] = ['writing', 'agentchat', 'lore', 'teller', 'versions', 'books', 'skills', 'agents', 'automations']
-const DEFAULT_INTERACTIVE_ACTIVITY_ORDER: ActivityItemId[] = ['story', 'agentchat', 'lore', 'teller', 'versions', 'books', 'skills', 'agents', 'automations']
+const DEFAULT_IDE_ACTIVITY_ORDER: ActivityItemId[] = ['writing', 'agentchat', 'trajectory', 'lore', 'teller', 'versions', 'books', 'skills', 'agents', 'automations']
+const DEFAULT_INTERACTIVE_ACTIVITY_ORDER: ActivityItemId[] = ['story', 'agentchat', 'trajectory', 'lore', 'teller', 'versions', 'books', 'skills', 'agents', 'automations']
 // User-level width preference; it should survive reloads and development hot updates.
 const ACTIVITY_BAR_WIDTH_STORAGE_KEY = 'nova.layout.activityBarWidth'
 const ACTIVITY_BAR_COLLAPSED_WIDTH = 64
@@ -125,6 +126,7 @@ export function WorkbenchShell({
   activityBarExpanded,
   rightPanel,
   settingsOpen,
+  developerMode = false,
   interactiveSubmode,
   sidebar,
   main,
@@ -202,12 +204,13 @@ export function WorkbenchShell({
   const agentsActive = mode === 'agents' && !settingsOpen
   const automationsActive = mode === 'automations' && !settingsOpen
   const agentChatActive = mode === 'agentchat' && !settingsOpen
+  const trajectoryActive = mode === 'trajectory' && !settingsOpen
   // Navigation state updates optimistically, while heavyweight route content is deferred.
   // Layout must follow the content that is actually painted; mixing it with the newer
   // navigation state briefly squeezes or stretches the outgoing page.
   const writingContentVisible = presentedLayout === 'writing'
   const interactiveContentVisible = presentedLayout === 'interactive'
-  const modeLabel = settingsOpen ? t('workbench.mode.settings') : versionsVisible ? t('workbench.activity.versions') : mode === 'interactive' ? t('workbench.mode.interactive') : mode === 'books' ? t('workbench.mode.books') : mode === 'skills' ? t('workbench.mode.skills') : mode === 'agents' ? t('workbench.mode.agents') : mode === 'automations' ? t('workbench.mode.automations') : mode === 'agentchat' ? t('workbench.mode.agentchat') : t('workbench.mode.ide')
+  const modeLabel = settingsOpen ? t('workbench.mode.settings') : versionsVisible ? t('workbench.activity.versions') : mode === 'interactive' ? t('workbench.mode.interactive') : mode === 'books' ? t('workbench.mode.books') : mode === 'skills' ? t('workbench.mode.skills') : mode === 'agents' ? t('workbench.mode.agents') : mode === 'automations' ? t('workbench.mode.automations') : mode === 'agentchat' ? t('workbench.mode.agentchat') : mode === 'trajectory' ? t('workbench.mode.trajectory') : t('workbench.mode.ide')
   const navigationMode = isSharedWorkspaceMode(mode) ? booksReturnMode : mode
   const activityOrderScope: ActivityOrderScope = navigationMode === 'interactive' ? 'interactive' : 'ide'
   const activityOrder = activityOrders[activityOrderScope]
@@ -317,6 +320,16 @@ export function WorkbenchShell({
     onSetMode('automations')
   }
 
+  const openTrajectory = () => {
+    if (mode === 'trajectory' && !settingsOpen) {
+      returnFromBooks()
+      return
+    }
+    closeSettingsIfOpen()
+    if (versionsVisible) onSetRightPanel(null)
+    onSetMode('trajectory')
+  }
+
   const openAutomationNotification = (target: AutomationMessageNavigation) => {
     closeSettingsIfOpen()
     if (versionsVisible) onSetRightPanel(null)
@@ -387,6 +400,13 @@ export function WorkbenchShell({
       active: mode === 'books' && !settingsOpen,
       icon: <BookOpen className="h-4 w-4" />,
     },
+    ...(developerMode ? [{
+      id: 'trajectory' as const,
+      label: t('workbench.activity.trajectory'),
+      onClick: openTrajectory,
+      active: trajectoryActive,
+      icon: <Route className="h-4 w-4" />,
+    }] : []),
     {
       id: 'versions',
       label: t('workbench.activity.versions'),
@@ -422,7 +442,7 @@ export function WorkbenchShell({
       ...(navigationMode === 'interactive' ? interactiveActivityItems : ideActivityItems),
       ...sharedActivityItems,
     ], activityOrder, defaultActivityOrderForScope(activityOrderScope)),
-    [activityOrder, activityOrderScope, agentChatActive, agentsActive, automationInboxUnread, automationRunning, automationsActive, booksReturnMode, ideModeActive, interactiveModeActive, interactiveSubmode, loreVisible, mode, navigationMode, settingsOpen, skillsActive, t, tellerVisible, versionsVisible],
+    [activityOrder, activityOrderScope, agentChatActive, agentsActive, automationInboxUnread, automationRunning, automationsActive, booksReturnMode, developerMode, ideModeActive, interactiveModeActive, interactiveSubmode, loreVisible, mode, navigationMode, settingsOpen, skillsActive, t, tellerVisible, trajectoryActive, versionsVisible],
   )
 
   const handleActivityDragEnd = (event: DragEndEvent) => {

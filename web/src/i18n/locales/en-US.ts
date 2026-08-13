@@ -43,6 +43,7 @@ import agentChat from './en-US/agentChat'
 import agentApproval from './en-US/agentApproval'
 import files from './en-US/files'
 import continualLearning from './en-US/continualLearning'
+import trajectory from './en-US/trajectory'
 
 const enUS = {
   ...common,
@@ -90,6 +91,7 @@ const enUS = {
   ...agentApproval,
   ...files,
   ...continualLearning,
+  ...trajectory,
   'agents.tool.availability.runtimeCheck': 'Runtime check',
 } as const
 

@@ -652,6 +652,15 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
       children: (
         <>
           <div className="mb-3 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-[11px] leading-4 text-[var(--nova-text-muted)]">
+            {t('settings.labs.developerModeHint')}
+          </div>
+          <BoolTri
+            label={t('settings.labs.developerMode')}
+            value={draft.labs?.developer_mode ?? null}
+            inherited={inherited.labs?.developer_mode}
+            onChange={(value) => setLabField('developer_mode', value)}
+          />
+          <div className="mb-3 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-[11px] leading-4 text-[var(--nova-text-muted)]">
             {t('settings.labs.continualLearningHint')}
           </div>
           <BoolTri
@@ -1796,6 +1805,7 @@ function mergeSettingsLayer(parent: Settings, child: Settings): Settings {
 
 function mergeLabSettings(parent: NonNullable<Settings['labs']>, child: NonNullable<Settings['labs']>): NonNullable<Settings['labs']> {
   const out = { ...parent }
+  if (child.developer_mode !== null && child.developer_mode !== undefined) out.developer_mode = child.developer_mode
   if (child.continual_learning !== null && child.continual_learning !== undefined) out.continual_learning = child.continual_learning
   if (child.continual_learning_schedule !== null && child.continual_learning_schedule !== undefined) out.continual_learning_schedule = child.continual_learning_schedule
   if (child.continual_learning_interval_hours !== null && child.continual_learning_interval_hours !== undefined) out.continual_learning_interval_hours = child.continual_learning_interval_hours
