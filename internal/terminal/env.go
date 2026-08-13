@@ -8,7 +8,7 @@ import (
 
 // baseEnv returns the environment delta applied on top of the backend process env.
 // Only variables the terminal renderer needs are added; everything else is inherited so
-// the shell keeps the existing PATH and login state that CLIs such as codex or claude rely on.
+// the shell keeps the existing PATH and login state required by configured CLIs.
 func baseEnv(spec Spec) []string {
 	env := []string{
 		"TERM=xterm-256color",
@@ -31,7 +31,7 @@ func baseEnv(spec Spec) []string {
 // terminalProcessEnv builds the exact child environment instead of passing through renderer
 // hints from Denova's own host process. In particular, desktop/agent launchers commonly set
 // NO_COLOR for their logs; leaking it into an interactive PTY makes color-aware programs such as
-// Claude Code disable their UI palette even though the terminal advertises truecolor support.
+// Some interactive CLIs disable their UI palette even though the terminal advertises truecolor support.
 func terminalProcessEnv(inherited, overrides []string) []string {
 	overridden := make(map[string]struct{}, len(overrides))
 	for _, entry := range overrides {

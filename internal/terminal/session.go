@@ -31,7 +31,7 @@ type Spec struct {
 	Command   string
 	Args      []string
 	// StartupCommand is entered once into an interactive shell after it starts. Built-in
-	// Codex/Claude profiles use this instead of replacing the shell process, so leaving the CLI
+	// Configured CLI profiles use this instead of replacing the shell process, so leaving the CLI
 	// returns to the same workspace prompt. It is intentionally omitted from Info and logs.
 	StartupCommand string
 	Cwd            string

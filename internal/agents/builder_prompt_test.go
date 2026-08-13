@@ -122,9 +122,13 @@ func TestBuildDefinitionReturnsExactAuditedInstructionArtifact(t *testing.T) {
 	}
 }
 
-func TestProjectAgentsInjectCreatorExactlyOnceAsLeadingContext(t *testing.T) {
+func TestProjectAgentsInjectInstructionFilesExactlyOnceAsLeadingContext(t *testing.T) {
 	workspace := t.TempDir()
+	agentInstructions := "Keep project changes focused and verify the result."
 	creator := "Keep the narration restrained and concrete."
+	if err := os.WriteFile(filepath.Join(workspace, book.AgentInstructionsFileName), []byte(agentInstructions), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(workspace, book.CreatorFileName), []byte(creator), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -172,25 +176,37 @@ func TestProjectAgentsInjectCreatorExactlyOnceAsLeadingContext(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if strings.Contains(definition.Instructions, creator) {
-				t.Fatalf("CREATOR.md body must not be duplicated in the durable system prompt:\n%s", definition.Instructions)
+			if strings.Contains(definition.Instructions, agentInstructions) || strings.Contains(definition.Instructions, creator) {
+				t.Fatalf("project instruction bodies must not be duplicated in the durable system prompt:\n%s", definition.Instructions)
 			}
 			fragments, err := definition.Context.Materialize(context.Background(), agent.ContextRequest{})
 			if err != nil {
 				t.Fatal(err)
 			}
-			matches := 0
-			for _, fragment := range fragments {
-				if fragment.Resource != book.CreatorFileName {
+			expected := map[string]string{
+				book.AgentInstructionsFileName: agentInstructions,
+				book.CreatorFileName:           creator,
+			}
+			counts := make(map[string]int, len(expected))
+			positions := make(map[string]int, len(expected))
+			for index, fragment := range fragments {
+				body, ok := expected[fragment.Resource]
+				if !ok {
 					continue
 				}
-				matches++
-				if fragment.Placement != agent.ContextLeadingMessage || fragment.Role != agent.User || strings.Count(fragment.Content, creator) != 1 || fragment.HardLimit <= 50*1024 {
-					t.Fatalf("unexpected CREATOR.md fragment: %#v", fragment)
+				counts[fragment.Resource]++
+				positions[fragment.Resource] = index
+				if fragment.Placement != agent.ContextLeadingMessage || fragment.Role != agent.User || strings.Count(fragment.Content, body) != 1 || fragment.HardLimit <= 50*1024 {
+					t.Fatalf("unexpected %s fragment: %#v", fragment.Resource, fragment)
 				}
 			}
-			if matches != 1 {
-				t.Fatalf("CREATOR.md context fragment count = %d, want 1: %#v", matches, fragments)
+			for resource := range expected {
+				if counts[resource] != 1 {
+					t.Fatalf("%s context fragment count = %d, want 1: %#v", resource, counts[resource], fragments)
+				}
+			}
+			if positions[book.AgentInstructionsFileName] >= positions[book.CreatorFileName] {
+				t.Fatalf("project instruction order is unstable: %#v", fragments)
 			}
 
 			owner, err := agent.New(context.Background(), definition, agent.WithSessionStore(agentsession.Memory()))
@@ -198,7 +214,7 @@ func TestProjectAgentsInjectCreatorExactlyOnceAsLeadingContext(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = owner.Close(context.Background()) })
-			session, err := owner.Session(context.Background(), agent.NamedSession("creator-inspection-"+name))
+			session, err := owner.Session(context.Background(), agent.NamedSession("project-instruction-inspection-"+name))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -214,12 +230,14 @@ func TestProjectAgentsInjectCreatorExactlyOnceAsLeadingContext(t *testing.T) {
 				}
 			}
 			modelInput := visible.String()
+			agentInstructionsIndex := strings.Index(modelInput, agentInstructions)
 			creatorIndex := strings.Index(modelInput, creator)
 			requestIndex := strings.Index(modelInput, "CURRENT_REQUEST")
-			if strings.Count(modelInput, creator) != 1 || creatorIndex < 0 || requestIndex < 0 || creatorIndex >= requestIndex {
-				t.Fatalf("provider-visible CREATOR.md placement is invalid: stable=%d\n%s", inspection.ModelRequest.StablePrefixMessages, modelInput)
+			if strings.Count(modelInput, agentInstructions) != 1 || strings.Count(modelInput, creator) != 1 ||
+				agentInstructionsIndex < 0 || creatorIndex <= agentInstructionsIndex || requestIndex <= creatorIndex {
+				t.Fatalf("provider-visible project instruction placement is invalid: stable=%d\n%s", inspection.ModelRequest.StablePrefixMessages, modelInput)
 			}
-			if inspection.ModelRequest.StablePrefixMessages < 2 {
+			if inspection.ModelRequest.StablePrefixMessages < 3 {
 				t.Fatalf("system plus project instructions must form a stable leading prefix: %#v", inspection.ModelRequest)
 			}
 		})

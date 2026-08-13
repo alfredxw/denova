@@ -36,7 +36,7 @@ interface TerminalTabViewProps {
   onStatusChange: (tabId: string, status: AgentChatTerminalStatus | null) => void
 }
 
-/** Terminal surface backed by a backend pty session (used to run codex / claude code / any shell). */
+/** Terminal surface backed by a backend PTY session for configured CLIs or a shell. */
 export function TerminalTabView({ tab, active, onSessionEstablished, onTitleChange, onStatusChange }: TerminalTabViewProps) {
   const { t } = useTranslation()
   const { resolvedTheme } = useTheme()

@@ -31,7 +31,7 @@ func TestSSEWriteChapterBodyMiddlewareShowsOnlyPathForToolCall(t *testing.T) {
 
 func TestSSEWriteChapterBodyMiddlewareShowsOnlyPathForAbsoluteNovaChapterToolCall(t *testing.T) {
 	collector, handler := newWriteChapterBodySSETestHandler()
-	path := `/Users/huangyongquan/.codex/worktrees/999d/nova/.nova/测试/chapters/v00001-第一卷-废材逆袭/ch00001-第1章-陨落.md`
+	path := `/Users/writer/.workspace/worktrees/999d/nova/.nova/测试/chapters/v00001-第一卷-废材逆袭/ch00001-第1章-陨落.md`
 	args := `{"path":"` + path + `","content":"第一行\n第二行"}`
 
 	got := mustForwardSSEEvent(t, collector, handler, agentrun.Event{Type: "tool_call", Data: map[string]interface{}{
@@ -55,7 +55,7 @@ func TestSSEWriteChapterBodyMiddlewareShowsOnlyPathForAbsoluteNovaChapterToolCal
 
 func TestSSEWriteChapterBodyMiddlewareShowsOnlyPathForPastedDetailArgs(t *testing.T) {
 	collector, handler := newWriteChapterBodySSETestHandler()
-	path := `/Users/huangyongquan/.codex/worktrees/999d/nova/.nova/测试/chapters/v00001-第一卷-废材逆袭/ch00011-第11章-水乳交融.md`
+	path := `/Users/writer/.workspace/worktrees/999d/nova/.nova/测试/chapters/v00001-第一卷-废材逆袭/ch00011-第11章-水乳交融.md`
 	args := `"path": "` + path + `", "content": "第一行\n第二行"`
 
 	got := mustForwardSSEEvent(t, collector, handler, agentrun.Event{Type: "tool_call", Data: map[string]interface{}{
@@ -79,7 +79,7 @@ func TestSSEWriteChapterBodyMiddlewareShowsOnlyPathForPastedDetailArgs(t *testin
 
 func TestSSEWriteChapterBodyMiddlewareUsesTargetWhenArgsCannotRevealPath(t *testing.T) {
 	collector, handler := newWriteChapterBodySSETestHandler()
-	path := `/Users/huangyongquan/.codex/worktrees/999d/nova/.nova/测试/chapters/v00001/ch00001.md`
+	path := `/Users/writer/.workspace/worktrees/999d/nova/.nova/测试/chapters/v00001/ch00001.md`
 	args := `{"content":"第一行\n第二行`
 
 	got := mustForwardSSEEvent(t, collector, handler, agentrun.Event{Type: "tool_call", Data: map[string]interface{}{
@@ -119,7 +119,7 @@ func TestSSEWriteChapterBodyMiddlewareHoldsUnknownToolCallArgs(t *testing.T) {
 
 func TestSSEWriteChapterBodyMiddlewareProjectsToolTargetToArgsDelta(t *testing.T) {
 	collector, handler := newWriteChapterBodySSETestHandler()
-	path := `/Users/huangyongquan/.codex/worktrees/999d/nova/.nova/测试/chapters/v00001/ch00001.md`
+	path := `/Users/writer/.workspace/worktrees/999d/nova/.nova/测试/chapters/v00001/ch00001.md`
 	_ = mustForwardSSEEvent(t, collector, handler, agentrun.Event{Type: "tool_call", Data: map[string]interface{}{
 		"agent_kind": agentrun.AgentKindIDE,
 		"id":         "call-1",
@@ -358,7 +358,7 @@ func TestSSEWriteChapterBodyMiddlewareDropsAbsoluteNovaChapterContentDeltas(t *t
 		"agent_kind": agentrun.AgentKindIDE,
 		"id":         "call-1",
 		"name":       "write",
-		"delta":      `{"path":"/Users/huangyongquan/.codex/worktrees/999d/nova/.nova/测试/chapters/v00001-第一卷-废材逆袭/ch00001-第1章-陨落.md","content":"第一行`,
+		"delta":      `{"path":"/Users/writer/.workspace/worktrees/999d/nova/.nova/测试/chapters/v00001-第一卷-废材逆袭/ch00001-第1章-陨落.md","content":"第一行`,
 	}})
 	mustSuppressSSEEvent(t, collector, handler, agentrun.Event{Type: "tool_args_delta", Data: map[string]interface{}{
 		"agent_kind": agentrun.AgentKindIDE,

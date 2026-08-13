@@ -6,9 +6,6 @@ import (
 	"path/filepath"
 )
 
-// CreatorFileName 创作者指令文件名，存于 workspace 根目录。
-const CreatorFileName = "CREATOR.md"
-
 // ensureCreatorTemplate 在 workspace 根目录写入 CREATOR.md 模板（仅当文件不存在时）。
 func ensureCreatorTemplate(workspace string) error {
 	path := filepath.Join(workspace, CreatorFileName)

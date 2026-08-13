@@ -405,15 +405,6 @@ func (s *State) readSettingFile(name string) string {
 	return string(data)
 }
 
-// ReadCreatorPrompt 读取 workspace 根目录下的 CREATOR.md 自定义指令。
-func (s *State) ReadCreatorPrompt() string {
-	data, err := os.ReadFile(filepath.Join(s.workspace, "CREATOR.md"))
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(data))
-}
-
 // BookMeta 书籍元信息，存储在工作区根目录的 book.json 中。
 type BookMeta struct {
 	Title       string `json:"title"`

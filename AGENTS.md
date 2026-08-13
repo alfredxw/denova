@@ -19,6 +19,7 @@
 - 设计 agent tool 输入参数或者任何受限于 agent 输出的 schema 时，需要充分考虑到 agent 可能犯错的情况，尽可能去包容可修正的错误，以及对于list的情况下的部分成功与部分失败，避免大块输入整体失败导致昂贵的重试。
 - 所有面向用户的交互，都要支持双语（展示中文和英文）
 - 所有注入模型的提示词、上下文片段、工具描述、schema 描述和模型可见工具反馈统一使用英文，不得中英双语重复；仅面向用户的本地化交互保留中英双语。
+- Denova 内置的模型可见内容保持产品中立，不得提及或类比其他 Agent 产品、CLI 或品牌；对照研究只保留在明确的审计文档中。
 - 影响模型上下文相关设计的改动必须将缓存命中率（即前缀匹配）放在高优先级考虑事项。
 - 所有注入模型的片段都要有明确来源、用途、需要注意硬上限需要配置高一些（&gt;50KB），避免随意截断。
 - Do not preserve backward compatibility. Remove obsolete paths instead of adding compatibility layers, fallbacks, or migrations.

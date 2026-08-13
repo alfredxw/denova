@@ -28,7 +28,7 @@ interface FileChangeSummary {
   deletions: number
 }
 
-/** Codex-style, durable summary for one Agent run. */
+/** Durable summary for one Agent run. */
 export function AgentChangeSummaryCard({ projectId, summary, disabled = false, deferDetails = false, eagerPreload = false, onReview, onWorkspaceChanged }: AgentChangeSummaryCardProps) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()

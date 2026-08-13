@@ -1,6 +1,7 @@
 package prompts
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 
@@ -131,6 +132,32 @@ func TestGeneralAgentInstructionUsesProjectNeutralFilesystemRules(t *testing.T) 
 	for _, forbidden := range []string{"CREATOR.md", "资料库写入", "图像生成"} {
 		if strings.Contains(instruction, forbidden) {
 			t.Fatalf("General Agent instruction leaked writing-only contract %q:\n%s", forbidden, instruction)
+		}
+	}
+}
+
+func TestBuiltinAgentPromptsDoNotMentionOtherAgentProducts(t *testing.T) {
+	prompts := BuiltinAgentPrompts(&config.Config{}, nil, IDEStoryTeller{})
+	values := map[string]string{
+		"general": prompts.General.SystemPrompt, "ide": prompts.IDE.SystemPrompt,
+		"interactive_story":    prompts.InteractiveStory.SystemPrompt,
+		"config_manager":       prompts.ConfigManager.SystemPrompt,
+		"interactive_director": prompts.InteractiveDirector.SystemPrompt,
+		"version_summary":      prompts.VersionSummary.SystemPrompt,
+		"tool_agent":           prompts.ToolAgent.SystemPrompt, "image": prompts.Image.SystemPrompt,
+	}
+	productNames := []string{
+		"co" + "dex", "clau" + "de", "o" + "mp",
+		"cur" + "sor", "co" + "pilot", "gem" + "ini",
+	}
+	patterns := make([]string, len(productNames))
+	for index, name := range productNames {
+		patterns[index] = regexp.QuoteMeta(name)
+	}
+	competitor := regexp.MustCompile(`(?i)\b(?:` + strings.Join(patterns, "|") + `)\b`)
+	for name, prompt := range values {
+		if match := competitor.FindString(prompt); match != "" {
+			t.Fatalf("built-in %s prompt mentions another Agent product %q:\n%s", name, match, prompt)
 		}
 	}
 }

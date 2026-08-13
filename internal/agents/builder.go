@@ -227,9 +227,9 @@ func buildAgentDefinition(ctx context.Context, cfg *config.Config, spec agentBui
 	if err != nil {
 		return agent.Definition{}, fmt.Errorf("load Harness State for Agent %s: %w", spec.Kind, err)
 	}
-	projectContext, err := agentlifecycle.NewProjectInstructionContextSource(cfg, spec.Kind, spec.ProjectState)
+	projectContext, err := agentlifecycle.NewProjectInstructionsContextSource(cfg, spec.Kind, spec.ProjectState)
 	if err != nil {
-		return agent.Definition{}, fmt.Errorf("create project instruction context for Agent %s: %w", spec.Kind, err)
+		return agent.Definition{}, fmt.Errorf("create project instructions context for Agent %s: %w", spec.Kind, err)
 	}
 	definitionContext, err := agent.CombineContextSources(projectContext, harness.ContextSource(cfg, spec.Kind))
 	if err != nil {

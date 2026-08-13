@@ -52,7 +52,7 @@ func (h *Handlers) HandleTerminalSessions(_ context.Context, c *hertzapp.Request
 	}
 	cfg := manager.Config()
 	// The list also carries attach tokens: this endpoint is authenticated, and after a reload the
-	// frontend uses them to re-attach to sessions still running (e.g. codex / claude code in a tab).
+	// The frontend uses them to reattach to CLI sessions still running in a tab.
 	infos := manager.List()
 	sessions := make([]terminalSessionResponse, 0, len(infos))
 	for _, info := range infos {

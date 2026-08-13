@@ -25,26 +25,26 @@ Denova 不需要推倒重写 Prompt 基础设施。现有 composition、context 
 1. **Context 信噪比不足。** 部分 Agent 一次收到身份、工作流、来源边界、字段表示、重试方式、完整目录和动态状态；其中很多内容当前回合用不到，且可以由 Tool、Schema 或按需读取承担。
 2. **同一语义重复出现。** 文件读写、状态同步、游戏提交、导演 Patch 和重试规则同时出现在 system prompt、回合注入、Skill、tool description、字段 description 和工具反馈中。每个副本都看似正确，合在一起却稀释了当前目标。
 3. **自然语言承担了本应由 Schema 表达的结构。** `ask`、`task`、`skill`、`todo` 的分支条件没有完整进入 `required`、enum、长度约束或 `oneOf`，迫使长 description 补充结构规则。
-4. **`CREATOR.md` 的语义归属可以更准确。** 它与 `AGENTS.md`/`CLAUDE.md` 一样，是低频变化、项目级、用户拥有的长期指令，适合作为历史之前的 stable leading context，而不是多个 Agent 内建 system definition 的重复组成部分。
+4. **项目指令需要统一边界。** 根目录 `AGENTS.md` 与 `CREATOR.md` 都是低频变化、项目级、用户拥有的长期指令，适合作为历史之前各自独立的 stable leading context，而不是 Agent 内建 system definition 的组成部分。
 5. **缺少完整的 provider-visible 请求快照。** 现有测试不能一次性显示每类 Agent 最终收到的 system、project instruction、历史、当前请求、工具 description 和 Schema，因此难以审查总长度、语义重复和无效 context。
 
 审计建议的顺序是：
 
 1. 先渲染完整 provider-visible 请求，量出每段 context 的字节、token 和语义重复；
 2. 建立本文的 Prompt/Schema 写作规范，删除不能影响当前决策的文字；
-3. 把 `CREATOR.md` 迁移为唯一的早期项目指令，并保持行为等价；
+3. 把根目录 `AGENTS.md` 与 `CREATOR.md` 统一为早期项目指令，并保持独立来源和稳定顺序；
 4. 让 Schema 承担结构约束，再按 Agent 做效果评测。
 
 ### 本轮实施结果
 
 | 领域 | 已落地的设计 | 模型实际看到的变化 |
 | --- | --- | --- |
-| Project instructions | 新增通用 `CombineContextSources` 和唯一 `CREATOR.md` ContextSource；General、写作、游戏、后台 Director、Config Manager、Image 及其子 Agent 复用同一边界。 | system definition 不再包含 Creator 正文；一个 User-role leading message 在历史和当前请求前出现一次。 |
-| Cache boundary | ContextSource identity 由 Agent kind、workspace、resource 和注入上限构成；正文 revision 在 materialize 时计算。 | Creator 不变时前缀字节稳定；配置或正文变化时从对应边界开始可解释地旋转缓存。 |
+| Project instructions | 新增通用 `CombineContextSources` 和统一 Project Instructions ContextSource；General、写作、游戏、后台 Director、Config Manager、Image 及其子 Agent 复用同一边界。 | 根目录 `AGENTS.md` 与 `CREATOR.md` 分别成为一个 User-role leading message；缺失文件跳过，两者都存在时按该顺序位于历史和当前请求前。 |
+| Cache boundary | ContextSource identity 由 Agent kind、workspace、resource 列表和注入上限构成；每个文件的正文 revision 在 materialize 时独立计算。 | 修改 `CREATOR.md` 不改变更早的 `AGENTS.md` message；配置或正文变化时只从对应边界开始旋转缓存。 |
 | Prompt ownership | 缩短通用 runtime contract、User State wrapper、SubAgent wrapper、Game turn prompt 和 Director per-run prompt；稳定规则留在 system/tool，本轮消息只保留当前动作和动态上下文。 | 不再每回合重复 difficulty enum、Actor/lore 生命周期、通用优先级声明和完整 Director 文档教程。 |
 | Tool Schema | `ask`、`task`、`skill`、`todo` 使用 provider-visible JSON Schema；action 分支改为关闭的 `oneOf`。 | 每个分支只显示合法字段、required、enum、数量与长度边界；`ask` 区分 free-text/choice，并表达唯一 recommended option。 |
 | Batch resilience | 保留 task/skill/todo 的逐项执行和逐项回执，没有因 Schema 变严而退回整批失败。 | 模型首次更容易构造合法输入；单个坏 item 仍不会丢掉其他成功结果。 |
-| Provider-visible verification | 复用 `Session.Inspect` 的真实组装管线，增加项目 Agent 集成断言和 ToolInfo Schema contract 测试。 | 测试直接检查最终 message 顺序、stable-prefix 计数、Creator 唯一性和完整 `oneOf` Schema，不另造模拟 renderer。 |
+| Provider-visible verification | 复用 `Session.Inspect` 的真实组装管线，增加项目 Agent 集成断言和 ToolInfo Schema contract 测试。 | 测试直接检查最终 message 顺序、stable-prefix 计数、两个项目指令文件的唯一性和完整 `oneOf` Schema，不另造模拟 renderer。 |
 
 这一批改动不引入 Tool Search、新配置或兼容层。Denova 现有的 capability-based tool registration 已经可以只向每个 Agent 暴露所需工具；在没有 Schema token 占比证据前，再加一轮工具发现反而会增加 context 和延迟。
 
@@ -202,7 +202,7 @@ Turn context
 3. 当前回合是否真的需要，还是可以通过工具按需取得？
 4. 能否用约束、枚举、字段名或更短的正向句子表达？
 
-`CLAUDE.md` 与 `AGENTS.md` 的早期注入仍值得采用：它们是高相关、低频变化的项目指令。共同点不是“低频内容都应该注入”，而是这些内容确实持续影响项目内的大多数决策。Denova 的 `CREATOR.md` 符合这个条件；完整 lore 目录、所有 Skill reference 或与当前回合无关的状态则不符合。
+成熟产品对项目指令文件的早期注入值得采用：这类文件高相关、低频变化，并持续影响项目内的大多数决策。Denova 根目录的 `AGENTS.md` 与 `CREATOR.md` 都符合这个条件；完整 lore 目录、所有 Skill reference 或与当前回合无关的状态则不符合。
 
 ### 3.5 参考 Prompt 与 Denova 当前写法对照
 
@@ -528,7 +528,7 @@ and choices established by this turn. End immediately when the receipt is ready.
 - 多个高成本批量操作返回逐项结果；
 - 游戏状态操作已经采用互斥 `oneOf`。
 
-### 4.2 `CREATOR.md` 迁移后的归属
+### 4.2 `AGENTS.md` 与 `CREATOR.md` 的归属
 
 审计时，IDE 和 Interactive Story 的顺序大致是：
 
@@ -555,7 +555,8 @@ system: runtime contract                 Denova/Agent immutable
 system: output protocol                  Denova/Agent immutable
 system: built-in workflow                Denova/Agent immutable
 
-user leading context: CREATOR.md         project instruction; low churn
+user leading context: AGENTS.md          project/workflow instructions; low churn
+user leading context: CREATOR.md         creative instructions; low churn
 other stable leading context             project/configuration snapshots
 
 conversation history                     session history
@@ -563,9 +564,9 @@ turn-dynamic context                     current state/evidence
 current user request                     current instruction
 ```
 
-`CREATOR.md` fragment 现使用 User role 和稳定的短 framing，位于历史与当前请求之前，因此可以与 system definition 一起形成长稳定前缀。General、写作、游戏、Director、Config Manager、Image 及其项目子 Agent 使用同一来源；Harness Optimizer 等非项目 Agent 不注入。`Source`、`Purpose`、`Resource=CREATOR.md`、revision/hash 和硬上限保存在 host metadata；模型只看到 `# Project instructions`、正文和一句“较新的显式用户请求优先”。
+两个 fragment 都使用 User role 和稳定的短 framing，按 `AGENTS.md`、`CREATOR.md` 排序并位于历史与当前请求之前，因此可以与 system definition 一起形成长稳定前缀。General、写作、游戏、Director、Config Manager、Image 及其项目子 Agent 使用同一来源；Harness Optimizer 等非项目 Agent 不注入。每个文件的 `Source`、`Purpose`、`Resource`、revision/hash 和硬上限分别保存在 host metadata；模型只看到对应短标题、正文和一句“较新的显式用户请求优先”。
 
-这项调整的首要收益是让一份高相关项目指令只出现一次，并把 Agent 固有 Prompt 留给真正跨项目成立的行为；来源审计和跨 Agent 复用由 host 侧同时获得。它不是为了修复不存在的 steady-state cache 问题。
+这项调整的首要收益是让每份高相关项目指令各自只出现一次，并把 Agent 固有 Prompt 留给真正跨项目成立的行为；来源审计和跨 Agent 复用由 host 侧同时获得。它不是为了修复不存在的 steady-state cache 问题。
 
 ## 五、主要问题与建议
 
@@ -589,7 +590,7 @@ current user request                     current instruction
 
 关键代码证据：
 
-- Creator 唯一 ContextSource 及其硬上限/revision：`internal/agents/lifecycle/project_context.go`；
+- Project Instructions ContextSource、稳定顺序及逐文件硬上限/revision：`internal/agents/lifecycle/project_context.go`；
 - 书籍 Agent 的统一组装与子 Agent 复用：`internal/agents/builder.go`；
 - ContextSource 有序组合：`agent/context_sources.go`；
 - system fragment admission 与 manifest：`internal/agents/prompts/composer.go:28`；
@@ -619,7 +620,7 @@ General Prompt 比较克制，已经清楚表达：Project root、就近读取�
 建议边界：
 
 - system：写作身份、创作目标、每轮都成立的不变量和完成条件；
-- project instruction：`CREATOR.md` 作为 User-role stable leading context，独立于 Agent system definition；
+- project instruction：根目录 `AGENTS.md` 与 `CREATOR.md` 作为独立 User-role stable leading context，独立于 Agent system definition；
 - writing Skill：lite/standard 编排差异与完成标准；
 - file/lore tool：精确读写、编辑和重试机制；
 - director/style：带来源和优先级的低频配置数据；
@@ -673,7 +674,7 @@ Image 流程已经把 `purpose`、有界 `source_context`、call-site system pro
 建议：
 
 - `source_context` 只用一个短标签说明它是生成素材；除非内容的使用方式确实不同，不增加通用风险说明；
-- Image system definition 只保留 Agent 固有工作流；`CREATOR.md` 由共通 project-instruction leading context 注入，preset/call-site 继续作为各自独立来源；
+- Image system definition 只保留 Agent 固有工作流；`AGENTS.md` 与 `CREATOR.md` 由共通 project-instruction leading context 注入，preset/call-site 继续作为各自独立来源；
 - 图片参数编码由 image tool Schema 负责，不在每个图片 Skill 重复；
 - “生成中文图片 Prompt”如果是明确 provider/产品要求，应保留。它不同于把同一内部提示写成中英双份。
 
@@ -799,7 +800,7 @@ system definition
   runtime contract、output protocol、Agent built-in workflow
 
 project instructions (early User-role context)
-  CREATOR.md、其他明确属于当前 Project 的长期用户规则
+  AGENTS.md、CREATOR.md、其他明确属于当前 Project 的长期用户规则
 
 other stable leading context
   selected preset/director、User State、stable reference snapshot
@@ -814,16 +815,16 @@ current user request
 
 这里的 `stable` 只决定排序与缓存方式，不决定是否注入。preset、Director、User State 或 reference 仍必须与当前 Agent 和当前任务相关；否则即使内容完全稳定，也应省略或按需读取。
 
-`CREATOR.md` 的目标 fragment contract：
+项目指令文件的目标 fragment contract：
 
-- host metadata 保存 `Source=workspace CREATOR.md`、`Purpose`、规范化 `Resource`、revision/hash 和硬上限；
+- 每个文件分别保存 `Source`、`Purpose`、规范化 `Resource`、revision/hash 和硬上限；
 - `Placement`: `ContextLeadingMessage`；
 - `Role`: `User`；
 - 模型可见内容只需要一个固定短标题和正文；除非 revision 会影响模型决策，否则不要把完整 metadata 渲染进 context；
 - 使用 Agent context 配置中的高上限并在超限时明确失败，不静默截断指令；
-- 生命周期：每轮位于 transcript 之前；内容未变时 exact bytes 不变；Compaction 不把它折叠进 checkpoint。
+- 生命周期：根目录 `AGENTS.md` 在前、`CREATOR.md` 在后，每轮位于 transcript 之前；缺失或空文件跳过，内容未变时 exact bytes 不变；Compaction 不把它们折叠进 checkpoint。
 
-优先级用一句稳定规则说明即可：当前用户明确修改创作规则时，以较新的请求为准；否则持续遵守 Creator。工具输入输出格式由工具本身决定，不在 Creator wrapper 中重复。
+优先级用一句稳定规则说明即可：当前用户明确修改项目或创作规则时，以较新的请求为准；否则持续遵守对应项目指令。工具输入输出格式由工具本身决定，不在项目指令 wrapper 中重复。
 
 迁移后已删除 `creatorSystemPromptFragment` 及所有平行 inline Creator 注入路径，不保留 fallback 或兼容层。所有项目 Agent 共用这个边界；是否让某个 Agent 不再消费 Creator 应作为单独的产品 scope 决策，而不是再引入另一种注入路径。
 
@@ -866,22 +867,22 @@ System/context fragment 的完整 provenance、revision、budget 和截断状态
 
 ### Phase 0：建立基线（核心路径已复用现有真实组装管线）
 
-- General、写作、游戏、Director、Config Manager 和 Image 已通过真实 `Session.Inspect` 检查 provider-visible message 顺序与 Creator 唯一性；
+- General、写作、游戏、Director、Config Manager 和 Image 已通过真实 `Session.Inspect` 检查 provider-visible message 顺序与两个项目指令文件的唯一性；
 - 记录 system/context/tool 的 section bytes 与 token estimate；
 - 标记每段内容改变的模型决策、语义 owner 和是否可按需读取；
 - 统计完全重复和语义重复的规则；
 - 记录 invalid tool call、repair call、output-protocol failure、cache ratio；
 - 先建立写作和游戏代表性评测样本。
 
-### Phase 1：把 Creator 迁移为早期项目指令（已完成）
+### Phase 1：统一早期项目指令（已完成）
 
 - 从各 Agent system composition 中移除 inline `CREATOR.md`；
-- 通过现有 `ContextSource`/`ContextLeadingMessage` 注入一个 User-role Project instruction；host 保存 attribution、revision 和硬上限，模型侧使用短固定标题；
+- 通过现有 `ContextSource`/`ContextLeadingMessage` 分别注入根目录 `AGENTS.md` 与 `CREATOR.md`；host 保存逐文件 attribution、revision 和硬上限，模型侧使用短固定标题；
 - 固定 provider-visible wrapper、消息位置与字节顺序；
 - 统一覆盖 General、IDE、Interactive Story、Director、Image、Config Manager 及其项目子 Agent，不保留双路径；
-- 明确 runtime contract、Creator 和当前用户请求的优先级；
-- 断言同一 workspace/session 未修改 Creator 时 stable prefix 与 tool ordering 完全一致；
-- 同时测写作与游戏的行为 parity、cache ratio，以及 Creator 修改后的单次 cache rotation。
+- 明确 runtime contract、项目指令文件和当前用户请求的优先级；
+- 断言同一 workspace/session 未修改项目指令时 stable prefix 与 tool ordering 完全一致；
+- 同时测写作与游戏的行为 parity、cache ratio，以及单个项目指令文件修改后的局部 cache rotation。
 
 ### Phase 2：移除跨层重复（核心路径已完成）
 
@@ -917,9 +918,9 @@ System/context fragment 的完整 provenance、revision、budget 和截断状态
 - 普通回合间 stable-prefix bytes 完全一致；
 - 每个模型可见 block 都能映射到一个当前决策和唯一语义 owner；
 - 同一规则不在 system、Skill、turn context、Tool 和 Schema 中完整重复；
-- system definition 中不再含 `CREATOR.md` 正文；
-- `CREATOR.md` 恰好注入一次，并始终位于 transcript 和当前请求之前；
-- 修改 `CREATOR.md` 只更新其 revision/content，下一回合形成可解释的一次 cache rotation；
+- system definition 中不再含项目指令正文；
+- `AGENTS.md` 与 `CREATOR.md` 各自最多注入一次，并始终位于 transcript 和当前请求之前；
+- 修改 `CREATOR.md` 只更新其 revision/content，不改变更早的 `AGENTS.md` cache message；
 - 每个注入 source 的 host metadata 都有 provenance、purpose、placement 和 hard limit，但模型可见 framing 只保留必要字段；
 - 截断不能移除 closing delimiter；
 - 工具顺序和 Schema Hash 可重复。
@@ -1030,4 +1031,4 @@ Codex：
 
 后续仍应把这项工作定位成“Provider-visible context 质量优化”：目标不是让 Prompt 看起来覆盖所有情况，而是让模型在每个决策点只看到精简、足够、无重复的信息。
 
-本轮已经把 `CREATOR.md` 迁移为唯一的 User-role stable leading context，将游戏与 Director 的稳定/动态指令分层，并让 required、enum、边界和操作分支进入 Ask/Task/Skill/Todo Schema。后续修改应继续通过 `Session.Inspect` 审查真实最终请求，并用写作与游戏任务成功率、首次合法工具调用、input tokens、延迟和缓存表现验证；没有行为收益证据的通用安全说明不作为默认保留项。
+本轮已经把根目录 `AGENTS.md` 与 `CREATOR.md` 统一为独立的 User-role stable leading context，将游戏与 Director 的稳定/动态指令分层，并让 required、enum、边界和操作分支进入 Ask/Task/Skill/Todo Schema。后续修改应继续通过 `Session.Inspect` 审查真实最终请求，并用写作与游戏任务成功率、首次合法工具调用、input tokens、延迟和缓存表现验证；没有行为收益证据的通用安全说明不作为默认保留项。
