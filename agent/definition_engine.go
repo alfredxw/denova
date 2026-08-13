@@ -14,6 +14,14 @@ import (
 
 const engineTranscriptVersion = 5
 
+type unsupportedEngineTranscriptVersionError struct {
+	version uint16
+}
+
+func (err *unsupportedEngineTranscriptVersionError) Error() string {
+	return fmt.Sprintf("unsupported Agent transcript version %d", err.version)
+}
+
 type enginePreparationStage string
 
 const (
@@ -1008,12 +1016,18 @@ func decodeEngineTranscript(encoded json.RawMessage) (engineTranscript, error) {
 	if len(encoded) == 0 || string(encoded) == "null" {
 		return engineTranscript{Version: engineTranscriptVersion}, nil
 	}
+	var header struct {
+		Version uint16 `json:"version"`
+	}
+	if err := json.Unmarshal(encoded, &header); err != nil {
+		return engineTranscript{}, fmt.Errorf("decode Agent transcript header: %w", err)
+	}
+	if header.Version != engineTranscriptVersion {
+		return engineTranscript{}, &unsupportedEngineTranscriptVersionError{version: header.Version}
+	}
 	var state engineTranscript
 	if err := json.Unmarshal(encoded, &state); err != nil {
 		return engineTranscript{}, fmt.Errorf("decode Agent transcript: %w", err)
-	}
-	if state.Version != engineTranscriptVersion {
-		return engineTranscript{}, fmt.Errorf("unsupported Agent transcript version %d", state.Version)
 	}
 	state.Messages = cloneMessages(state.Messages)
 	state.ContextState = cloneContextStateSnapshot(state.ContextState)

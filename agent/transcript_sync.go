@@ -89,6 +89,11 @@ func (session *Session) SyncTranscript(ctx context.Context, request TranscriptSy
 	if err != nil {
 		return TranscriptSyncResult{}, err
 	}
+	currentTranscript, transcriptErr := decodeEngineTranscript(checkpoint.State)
+	var incompatibleTranscript *unsupportedEngineTranscriptVersionError
+	if transcriptErr != nil && !errors.As(transcriptErr, &incompatibleTranscript) {
+		return TranscriptSyncResult{}, transcriptErr
+	}
 	if present {
 		switch {
 		case request.Source != current.Source:
@@ -108,6 +113,9 @@ func (session *Session) SyncTranscript(ctx context.Context, request TranscriptSy
 					ErrTranscriptSyncConflict, request.SourceRevision,
 				)
 			}
+			if incompatibleTranscript != nil {
+				break
+			}
 			// Verify the idle fence and exact sync generation inside the actor.
 			// Do not overwrite messages appended after this imported base.
 			err = session.harness.ReplaceEngineCheckpoint(ctx, runstate.EngineCheckpointUpdate{
@@ -119,22 +127,23 @@ func (session *Session) SyncTranscript(ctx context.Context, request TranscriptSy
 			return TranscriptSyncResult{State: current}, mapRuntimeError(err)
 		}
 	}
-	currentTranscript, err := decodeEngineTranscript(checkpoint.State)
-	if err != nil {
-		return TranscriptSyncResult{}, err
-	}
-	if _, _, err := applyClearToTranscript(&currentTranscript, checkpoint.Capabilities); err != nil {
-		return TranscriptSyncResult{}, err
-	}
-	sourceEquivalent, err := transcriptSourceEquivalent(currentTranscript.Messages, request.Messages)
-	if err != nil {
-		return TranscriptSyncResult{}, fmt.Errorf("compare current Agent transcript with canonical source: %w", err)
+	sourceEquivalent := false
+	if incompatibleTranscript == nil {
+		if _, _, err := applyClearToTranscript(&currentTranscript, checkpoint.Capabilities); err != nil {
+			return TranscriptSyncResult{}, err
+		}
+		sourceEquivalent, err = transcriptSourceEquivalent(currentTranscript.Messages, request.Messages)
+		if err != nil {
+			return TranscriptSyncResult{}, fmt.Errorf("compare current Agent transcript with canonical source: %w", err)
+		}
 	}
 	// The first import always establishes a clean product-owned generation.
 	// Later revisions that already equal the complete raw Agent transcript only
 	// advance provenance: normal product settlement must not discard a useful
-	// Cleanup/Compaction/Todo projection on every turn.
-	rebuild := !present || !sourceEquivalent
+	// Cleanup/Compaction/Todo projection on every turn. An obsolete internal
+	// checkpoint is never decoded; canonical product history replaces it even
+	// when the source revision and hash are an exact retry.
+	rebuild := incompatibleTranscript != nil || !present || !sourceEquivalent
 
 	transcript := engineTranscript{Version: engineTranscriptVersion, Messages: cloneMessages(request.Messages)}
 	encodedTranscript, err := json.Marshal(transcript)

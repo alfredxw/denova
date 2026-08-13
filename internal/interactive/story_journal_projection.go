@@ -89,8 +89,11 @@ func (projection *storyJournalProjection) Restore(data json.RawMessage) error {
 	if err := json.Unmarshal(data, &restored); err != nil {
 		return err
 	}
-	if restored.Version != storyProjectionVersion || restored.StoryID != expectedID || restored.Generation != expectedGeneration {
-		return fmt.Errorf("story projection identity or version mismatch")
+	if restored.Version != storyProjectionVersion {
+		return fmt.Errorf("%w: unsupported story projection version %d", conversationjournal.ErrProjectionCheckpointIncompatible, restored.Version)
+	}
+	if restored.StoryID != expectedID || restored.Generation != expectedGeneration {
+		return fmt.Errorf("story projection identity mismatch")
 	}
 	if restored.Branches == nil {
 		restored.Branches = make(map[string]*storyBranchProjection)

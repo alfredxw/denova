@@ -2,11 +2,13 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
 	"time"
 
+	runstate "github.com/alfredxw/denova/agent/internal/runtime"
 	agentsession "github.com/alfredxw/denova/agent/session"
 )
 
@@ -192,6 +194,75 @@ func TestSessionSyncTranscriptAtomicallyRebuildsCanonicalHistoryAcrossColdReopen
 	}
 	if calls[0][len(imported)].Role != User || calls[0][len(imported)].Content != "continue the branch" {
 		t.Fatalf("current model input=%#v", calls[0][len(imported)])
+	}
+}
+
+func TestSessionSyncTranscriptRebuildsObsoleteInternalCheckpointOnExactCanonicalRetry(t *testing.T) {
+	owner, err := New(context.Background(), Definition{
+		Model:         &lifecycleModel{},
+		ModelIdentity: CapabilityIdentity{Kind: "model.transcript-version-rebuild-test", Version: 1},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = owner.Close(context.Background()) })
+	session, err := owner.Session(context.Background(), NamedSession("transcript-version-rebuild"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := CapabilityIdentity{Kind: "test.transcript-version-rebuild", Version: 1}
+	canonical := []*Message{UserMessage("canonical product history")}
+	initial, err := session.SyncTranscript(context.Background(), TranscriptSyncRequest{
+		Source: source, SourceRevision: 3, Messages: canonical,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	setClearTestCapability(t, session, TodoCapability, TodoState{
+		Revision: 1, Items: []TodoItem{{ID: "obsolete", Text: "discard with obsolete generation", Status: TodoPending}},
+	})
+
+	checkpoint, err := session.harness.EngineCheckpoint(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	obsolete, err := json.Marshal(engineTranscript{
+		Version:  engineTranscriptVersion - 1,
+		Messages: []*Message{UserMessage("obsolete private transcript")},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := session.harness.ReplaceEngineCheckpoint(context.Background(), runstate.EngineCheckpointUpdate{
+		ExpectedState: checkpoint.StateDescriptor,
+		State:         obsolete,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	rebuilt, err := session.SyncTranscript(context.Background(), TranscriptSyncRequest{
+		Source: source, SourceRevision: 3, Messages: canonical,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rebuilt.Applied || !rebuilt.Rebuilt || rebuilt.State.Revision != initial.State.Revision+1 {
+		t.Fatalf("obsolete checkpoint rebuild=%#v", rebuilt)
+	}
+	current, err := session.harness.EngineCheckpoint(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	transcript, err := decodeEngineTranscript(current.State)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if transcript.Version != engineTranscriptVersion || len(transcript.Messages) != 1 ||
+		transcript.Messages[0].Content != canonical[0].Content {
+		t.Fatalf("rebuilt transcript=%#v", transcript)
+	}
+	if _, exists := current.Capabilities[TodoCapability]; exists {
+		t.Fatalf("obsolete transcript rebuild retained %q", TodoCapability)
 	}
 }
 

@@ -199,8 +199,8 @@ export const MessageItem = memo(function MessageItem({ projectId = '', message, 
       return (
         <div className="flex justify-center">
           <div className="nova-message-body-with-meta max-w-full">
-            <div className="inline-flex max-w-full flex-wrap items-center justify-center gap-2 rounded-full border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-3 py-1 text-xs text-[var(--nova-danger)]">
-              <span className="min-w-0 truncate">{content}</span>
+            <div role="alert" className="flex max-w-full items-start gap-2 rounded-lg border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-3 py-2 text-xs leading-relaxed text-[var(--nova-danger)]">
+              <span className="min-w-0 whitespace-pre-wrap break-words">{content}</span>
               <TraceLinkButton runID={message.run_id} onOpenTrace={onOpenTrace} />
             </div>
             <MessageInlineMeta message={message} content={content} align="left" onRegenerate={canRegenerate ? onRegenerate : undefined} />

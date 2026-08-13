@@ -291,6 +291,9 @@ function AgentPanelComponent({
     }
     return ''
   }, [isExecutionActive, messages])
+  const lastRuntimeFailure = !runtimeProjection?.active && runtimeProjection?.last_operation?.status === 'failed'
+    ? runtimeProjection.last_operation.reason?.trim() || ''
+    : ''
   const messageListBottomPadding = inputAreaHeight > 0 ? inputAreaHeight + 20 : undefined
   const styleSceneSuggestions = useMemo(() => {
     const teller = resolveNarrativeStyle(tellers, ideTellerId, 'writing')
@@ -566,6 +569,17 @@ function AgentPanelComponent({
     onExitPlanMode,
     onOpenTrace: openTraceRun,
     onResolveAsk: resolveAsk,
+    afterContent: lastRuntimeFailure ? (
+      <div
+        role="alert"
+        className="whitespace-pre-wrap break-words rounded-lg border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-3 py-2 text-xs leading-relaxed text-[var(--nova-danger)]"
+      >
+        {t('chat.activity.requestFailed', { error: lastRuntimeFailure })}
+      </div>
+    ) : undefined,
+    afterContentKey: lastRuntimeFailure
+      ? `runtime-failure:${runtimeProjection?.last_operation?.operation_id || lastRuntimeFailure}`
+      : undefined,
   }
   const inputAreaProps = {
     onSend: sendWithWritingSkill,
@@ -836,7 +850,8 @@ function AgentQuickActions({
       {
         label: t('chat.quick.continueParagraph'),
         icon: PenLine,
-        prompt: `请基于${target}的上下文，续写下一段正文，保持原有叙事节奏和人物状态。`,
+        prompt:
+          'Continue the actual latest non-empty chapter with the next prose passage. Determine the target from existing chapter files and their non-empty content, not from the currently selected editor file or setting/progress.md. Read the end of that chapter and the necessary recent context, then append directly to the same chapter file while preserving narrative rhythm and character state. Do not create a new chapter or advance to the next outline item.',
       },
       {
         label: t('chat.quick.polishChapter'),

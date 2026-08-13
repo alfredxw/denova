@@ -230,6 +230,36 @@ describe('AgentPanel', () => {
     expect(handleSend.mock.calls[0][0]).not.toContain('由我在章节列表确认后再标记为成章')
   })
 
+  it('续写下一段以实际最新非空章节为目标而非当前选中文件', async () => {
+    const user = userEvent.setup()
+    const handleSend = vi.fn()
+    renderAgentPanel({
+      currentChapter: {
+        path: 'chapters/volume-1/ch00001.md',
+        file_name: 'ch00001.md',
+        display_title: '第一章 穿越与觉醒',
+        index: 1,
+        words: 3067,
+        status: 'confirmed',
+        confirmed: true,
+        updated_at: '',
+        volume: '第一卷',
+        volume_path: 'chapters/volume-1',
+      },
+      onSend: handleSend,
+    })
+
+    await user.click(screen.getByRole('button', { name: '续写下一段' }))
+
+    expect(handleSend).toHaveBeenCalledWith(
+      expect.stringContaining('actual latest non-empty chapter'),
+      expect.objectContaining({ writingSkill: 'novel-lite' }),
+    )
+    expect(handleSend.mock.calls[0][0]).toContain('not from the currently selected editor file')
+    expect(handleSend.mock.calls[0][0]).toContain('Do not create a new chapter')
+    expect(handleSend.mock.calls[0][0]).not.toContain('第一章 穿越与觉醒')
+  })
+
   it('创作 Agent 将思考和工具调用折叠到同一个执行过程', async () => {
     const user = userEvent.setup()
     renderAgentPanel({
@@ -728,6 +758,30 @@ describe('AgentPanel', () => {
     expect(screen.queryByRole('button', { name: /发送方式/ })).not.toBeInTheDocument()
     expect(screen.getByRole('textbox')).toHaveAttribute('contenteditable', 'true')
     expect(screen.getByRole('button', { name: '中断 AI 执行' })).toBeEnabled()
+  })
+
+  it('持久展示已接收请求的运行失败原因', () => {
+    renderAgentPanel({
+      messages: [
+        {
+          id: 'failed-user-message',
+          role: 'user',
+          parts: [{ type: 'text', text: '续写下一段' }],
+        },
+      ],
+      runtimeProjection: {
+        active: false,
+        phase: 'idle',
+        last_operation: {
+          operation_id: 'failed-operation',
+          command_id: 'failed-command',
+          status: 'failed',
+          reason: 'provider rejected the tool schema',
+        },
+      },
+    })
+
+    expect(screen.getByRole('alert')).toHaveTextContent('请求失败: provider rejected the tool schema')
   })
 
   it('已有多条指令排队时仍可继续发送下一条指令', async () => {

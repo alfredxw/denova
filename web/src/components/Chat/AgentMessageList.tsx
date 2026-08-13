@@ -355,10 +355,9 @@ export function MessageList({ projectId, messages, isStreaming, visible = true, 
         data={listItems}
         context={virtuosoContext}
         components={MESSAGE_LIST_COMPONENTS}
-        // The streaming tail owns vertical placement while a run is active.
-        // Virtuoso's short-list alignment uses a second flex coordinate system
-        // and can strand the viewport when activity/tool rows replace each other.
-        alignToBottom={!tailFollowActive}
+        // Keep short conversations top-aligned. Initial restoration still scrolls
+        // long history to its latest message, while the streaming tail owns active runs.
+        alignToBottom={false}
         computeItemKey={(index, item) => item?.key || listItems[index - firstItemIndex]?.key || `agent-chat-item-${index}`}
         itemContent={itemContent}
         itemsRendered={handleItemsRendered}

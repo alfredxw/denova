@@ -164,7 +164,7 @@ describe('Agent MessageList', () => {
     }
   })
 
-  it('leaves active-run alignment exclusively to the streaming tail controller', () => {
+  it('keeps short conversations top-aligned before and after an active run', () => {
     const renderList = (isStreaming: boolean) => (
       <VirtuosoMockContext.Provider value={{ viewportHeight: 180, itemHeight: 52 }}>
         <MessageList
@@ -181,7 +181,7 @@ describe('Agent MessageList', () => {
     expect(viewport).not.toHaveStyle({ display: 'flex' })
 
     rerender(renderList(false))
-    expect(viewport).toHaveStyle({ display: 'flex' })
+    expect(viewport).not.toHaveStyle({ display: 'flex' })
   })
 
   it('lets a multiline thinking replacement grow downward while runway remains', () => {

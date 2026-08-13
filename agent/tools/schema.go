@@ -43,5 +43,7 @@ func newUnionTool[T, D any](name, description string, invoke agent.InvokeFunc[T,
 		}
 		variants = append(variants, variant)
 	}
-	return newSchemaTool(name, description, &jsonschema.Schema{OneOf: variants}, invoke)
+	// Function-calling providers require the root parameters schema to declare an
+	// object even when the accepted shapes are expressed as a oneOf union.
+	return newSchemaTool(name, description, &jsonschema.Schema{Type: "object", OneOf: variants}, invoke)
 }

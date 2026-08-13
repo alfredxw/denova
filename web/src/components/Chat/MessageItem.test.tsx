@@ -181,13 +181,16 @@ describe('MessageItem', () => {
   })
 
   it('错误消息结束后展示复制和重试操作', () => {
-    render(
+    const { container } = render(
       <MessageItem
         message={{ role: 'error', content: '[NodeRunError] 400 Bad Request', streaming: false }}
         onRegenerate={vi.fn()}
       />,
     )
 
+    expect(screen.getByRole('alert')).toHaveTextContent('[NodeRunError] 400 Bad Request')
+    expect(container.querySelector('[role="alert"] span')).toHaveClass('whitespace-pre-wrap', 'break-words')
+    expect(container.querySelector('[role="alert"] span')).not.toHaveClass('truncate')
     expect(screen.getByRole('button', { name: '复制消息' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '重新生成这一轮' })).toBeInTheDocument()
   })

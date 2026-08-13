@@ -35,7 +35,7 @@ describe('Agent MessageList bottom following', () => {
       />,
     )
 
-    expect(virtuosoBoundary.alignToBottom).toBe(true)
+    expect(virtuosoBoundary.alignToBottom).toBe(false)
     expect(virtuosoBoundary.followOutput).toBeUndefined()
     expect(virtuosoBoundary.totalListHeightChanged).toBeTypeOf('function')
   })

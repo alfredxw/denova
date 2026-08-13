@@ -11,7 +11,33 @@ const (
 	historyTypeSessionPatch      = "session_patch"
 	historyTypeDisplayPatch      = "display_patch"
 	historyTypeInterruptionPatch = "interruption_patch"
+
+	retiredHistoryTypeAsk               = "ask"
+	retiredHistoryTypeAskPatch          = "ask_patch"
+	retiredHistoryTypeCompaction        = "context_compaction"
+	retiredHistoryTypeCompactionRemoved = "context_compaction_removed"
+	retiredHistoryTypeCompactionHealth  = "context_compaction_health"
+	retiredHistoryTypeToolResultCleanup = "tool_result_cleanup"
+	retiredHistoryTypeGoalChanged       = "goal_changed"
 )
+
+// isRetiredSessionJournalRecordType identifies records whose runtime feature
+// no longer exists and whose payload never owned canonical conversation text.
+// They remain explicit so genuinely unknown or corrupt records still fail.
+func isRetiredSessionJournalRecordType(recordType string) bool {
+	switch recordType {
+	case retiredHistoryTypeAsk,
+		retiredHistoryTypeAskPatch,
+		retiredHistoryTypeCompaction,
+		retiredHistoryTypeCompactionRemoved,
+		retiredHistoryTypeCompactionHealth,
+		retiredHistoryTypeToolResultCleanup,
+		retiredHistoryTypeGoalChanged:
+		return true
+	default:
+		return false
+	}
+}
 
 // sessionHeader is immutable journal metadata. Mutable session attributes are
 // persisted as patch records so an update never rewrites prior history.

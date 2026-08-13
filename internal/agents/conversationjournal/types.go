@@ -19,7 +19,13 @@ const (
 	defaultRecentRecords = 200
 )
 
-var ErrConflict = errors.New("conversation journal revision conflict")
+var (
+	ErrConflict = errors.New("conversation journal revision conflict")
+	// ErrProjectionCheckpointIncompatible marks a derived sidecar that cannot
+	// be restored by the current reducer. The canonical journal remains valid
+	// and must be replayed to replace the stale checkpoint.
+	ErrProjectionCheckpointIncompatible = errors.New("conversation projection checkpoint is incompatible")
+)
 
 // Cursor is the monotonically increasing physical transaction position. A
 // legacy JSONL record is treated as one transaction during mixed-format replay.

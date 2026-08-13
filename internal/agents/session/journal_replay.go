@@ -207,6 +207,9 @@ func appendRecordLine(sess *Session, line []byte, lineNumber int) error {
 	case "session":
 		return fmt.Errorf("session header 只能出现在首条记录")
 	default:
+		if isRetiredSessionJournalRecordType(typed.Type) {
+			return nil
+		}
 		return fmt.Errorf("未知 journal record type: %q", typed.Type)
 	}
 }

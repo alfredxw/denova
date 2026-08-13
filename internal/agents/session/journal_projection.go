@@ -122,7 +122,7 @@ func (projection *sessionJournalProjection) Restore(data json.RawMessage) error 
 		return err
 	}
 	if restored.Version != sessionProjectionVersion {
-		return fmt.Errorf("unsupported session projection version %d", restored.Version)
+		return fmt.Errorf("%w: unsupported session projection version %d", conversationjournal.ErrProjectionCheckpointIncompatible, restored.Version)
 	}
 	if strings.TrimSpace(restored.SessionID) != expectedID || strings.TrimSpace(restored.Generation) != expectedGeneration {
 		return fmt.Errorf("session projection identity mismatch")
@@ -270,6 +270,9 @@ func (projection *sessionJournalProjection) Apply(record conversationjournal.Rec
 	case "session":
 		return fmt.Errorf("session header can only be the first record")
 	default:
+		if isRetiredSessionJournalRecordType(typed.Type) {
+			return nil
+		}
 		return fmt.Errorf("unknown session journal record type %q", typed.Type)
 	}
 }

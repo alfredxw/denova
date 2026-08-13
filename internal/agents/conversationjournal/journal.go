@@ -130,7 +130,11 @@ func (journal *Journal) loadLocked(ctx context.Context) error {
 		_ = journal.reducer.Reset()
 	}
 	if indexErr != nil && !errors.Is(indexErr, os.ErrNotExist) {
-		slog.ErrorContext(ctx, fmt.Sprintf("[conversation-journal] rebuild invalid index path=%s error=%v", journal.indexPath, indexErr))
+		if errors.Is(indexErr, ErrProjectionCheckpointIncompatible) {
+			slog.InfoContext(ctx, fmt.Sprintf("[conversation-journal] rebuild stale index path=%s error=%v", journal.indexPath, indexErr))
+		} else {
+			slog.ErrorContext(ctx, fmt.Sprintf("[conversation-journal] rebuild invalid index path=%s error=%v", journal.indexPath, indexErr))
+		}
 	}
 	if err := journal.resetForReplayLocked(); err != nil {
 		return err

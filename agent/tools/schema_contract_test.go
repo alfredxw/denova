@@ -63,6 +63,9 @@ func TestActionToolsExposeDisjointOperationSchemas(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			schema := preparedToolSchema(t, test.build)
+			if schema.Type != "object" {
+				t.Fatalf("root schema type = %q, want object", schema.Type)
+			}
 			if len(schema.OneOf) != len(test.actions) {
 				t.Fatalf("oneOf variants = %d, want %d", len(schema.OneOf), len(test.actions))
 			}
