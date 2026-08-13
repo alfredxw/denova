@@ -81,11 +81,23 @@ export function useStreamingTailLayout({
     rowObserverRef.current = null
   }, [])
 
+  const resolveTailRow = useCallback((scroller: HTMLElement) => {
+    const rows = scroller.querySelectorAll<HTMLElement>('[data-nova-chat-tail-row]')
+    const renderedTail = rows.item(rows.length - 1)
+    if (renderedTail) return renderedTail
+    return rowElementRef.current
+  }, [])
+
   const syncLayout = useCallback(() => {
     if (!enabledRef.current || !visibleRef.current || !canAutoFollow()) return
-    const row = rowElementRef.current
     const scroller = resolveScroller()
-    if (!row || !scroller) return
+    if (!scroller) return
+    // Virtuoso can reuse a previously non-tail row when a transient activity or
+    // tool row disappears without re-firing that row's callback ref. Resolve
+    // the rendered tail from the stable scroll container on every size report;
+    // the ref remains only the fast path for immediate row-level resize events.
+    const row = resolveTailRow(scroller)
+    if (!row) return
 
     const bottomInset = resolveBottomInset(scroller)
     const rowBottom = row.getBoundingClientRect().bottom
@@ -103,7 +115,7 @@ export function useStreamingTailLayout({
 
     scroller.scrollTop += viewportDelta
     onScrollTopChange(scroller)
-  }, [canAutoFollow, onScrollTopChange, resolveBottomInset, resolveScroller, setSpacer])
+  }, [canAutoFollow, onScrollTopChange, resolveBottomInset, resolveScroller, resolveTailRow, setSpacer])
 
   const attachRowObserver = useCallback(() => {
     clearRowObserver()
@@ -124,9 +136,10 @@ export function useStreamingTailLayout({
   }, [attachRowObserver, clearRowObserver])
 
   const scrollLatestIntoView = useCallback(() => {
-    const row = rowElementRef.current
     const scroller = resolveScroller()
-    if (!row || !scroller) return false
+    if (!scroller) return false
+    const row = resolveTailRow(scroller)
+    if (!row) return false
     phaseRef.current = 'following'
     setSpacer(undefined)
     const bottomInset = resolveBottomInset(scroller)
@@ -135,7 +148,7 @@ export function useStreamingTailLayout({
     if (Math.abs(viewportDelta) >= LAYOUT_EPSILON_PX) scroller.scrollTop += viewportDelta
     onScrollTopChange(scroller)
     return true
-  }, [onScrollTopChange, resolveBottomInset, resolveScroller, setSpacer])
+  }, [onScrollTopChange, resolveBottomInset, resolveScroller, resolveTailRow, setSpacer])
 
   useLayoutEffect(() => {
     const wasEnabled = previousEnabledRef.current

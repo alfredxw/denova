@@ -236,7 +236,7 @@ func (c *SessionConversation) runtimeContextFragments() []agentcontext.Fragment 
 	if strings.TrimSpace(c.stableContext) != "" {
 		title := strings.TrimSpace(c.stableContextTitle)
 		if title == "" {
-			title = "稳定上下文"
+			title = "Stable Context"
 		}
 		fragments = append(fragments, agentcontext.Fragment{
 			ID: "workspace_runtime_stable", Source: "workspace.runtime.stable", Title: title,
@@ -248,7 +248,7 @@ func (c *SessionConversation) runtimeContextFragments() []agentcontext.Fragment 
 	if strings.TrimSpace(c.dynamicContext) != "" {
 		title := strings.TrimSpace(c.dynamicContextTitle)
 		if title == "" {
-			title = "本轮动态上下文"
+			title = "Current Turn Dynamic Context"
 		}
 		fragments = append(fragments, agentcontext.Fragment{
 			ID: "workspace_runtime_dynamic", Source: "workspace.runtime.dynamic", Title: title,

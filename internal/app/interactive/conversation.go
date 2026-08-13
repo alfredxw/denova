@@ -442,11 +442,11 @@ func (c *Conversation) directorTaskHint() string {
 	}
 	switch strings.TrimSpace(c.directorTask) {
 	case DirectorTaskOpeningPlan:
-		return "opening_plan：在首个 Game Agent 回合前建立 director.md、agent-brief.md 与 lore-context.md；基于开局设定和资料名称目录完成初始选角、场景与分支规划。"
+		return "opening_plan: establish director.md, agent-brief.md, and lore-context.md before the first Game Agent turn; use the opening setup and lore-name roster for initial casting, scene setup, and branch planning."
 	case "director_plan_update":
-		return "director_plan_update：Game Agent 已提示本回合对后续规划有实质影响；判断 keep、patch 或 replan。普通更新默认只 Patch agent-brief.md，只有重大偏差才修改 director.md，只有资料工作集变化才修改 lore-context.md。"
+		return "director_plan_update: the Game Agent reported that this turn materially affects future planning; choose keep, patch, or replan. Routine updates patch only agent-brief.md by default. Change director.md only for major deviations and lore-context.md only when the lore working set changes."
 	default:
-		return "director_plan_update：观察已提交事实并判断 keep、patch 或 replan；只 Patch 实际变化的导演 Markdown 文件，不得改写历史 Turn 或 Actor State。"
+		return "director_plan_update: inspect committed facts and choose keep, patch, or replan. Patch only Director Markdown files that actually changed; never rewrite historical Turn or Actor State."
 	}
 }
 
@@ -570,7 +570,7 @@ func (c *Conversation) AssembleModelContext(ctx context.Context, originalMessage
 	fragments := append([]agentcontext.Fragment(nil), input.Fragments...)
 	if strings.TrimSpace(residentLore) != "" {
 		fragments = append(fragments, agentcontext.Fragment{
-			ID: "interactive_resident_lore", Source: "interactive.resident_lore", Title: "常驻资料库",
+			ID: "interactive_resident_lore", Source: "interactive.resident_lore", Title: "Resident Lore",
 			Purpose: "provide complete enabled resident lore as a stable model prefix",
 			Content: residentLore, Placement: agentcontext.PlacementLeadingMessage, Limit: interactiveResidentLoreMessageMaxBytes, Included: true,
 			Note: "source=enabled resident lore; stable leading context; revision=" + strings.TrimSpace(loreRevision),
@@ -578,14 +578,14 @@ func (c *Conversation) AssembleModelContext(ctx context.Context, originalMessage
 	}
 	if strings.TrimSpace(tellerTurnContextPrompt) != "" {
 		fragments = append(fragments, agentcontext.Fragment{
-			ID: "interactive_turn_rules", Source: "interactive.turn_rules", Title: "导演本轮上下文规则",
+			ID: "interactive_turn_rules", Source: "interactive.turn_rules", Title: "Storyteller Rules for This Turn",
 			Purpose: "apply the selected storyteller rules to this game turn",
 			Content: prompts.InteractiveStoryTurnContextRule(tellerTurnContextPrompt), Placement: agentcontext.PlacementFinalUserPrefix, Limit: StoryRuntimeContextMaxBytes, Included: true,
 		})
 	}
 	if strings.TrimSpace(runtimeContext) != "" {
 		fragments = append(fragments, agentcontext.Fragment{
-			ID: "interactive_runtime", Source: "interactive.runtime", Title: "本轮互动运行时上下文",
+			ID: "interactive_runtime", Source: "interactive.runtime", Title: "Interactive Runtime Context for This Turn",
 			Purpose: "provide bounded story state, active lore, actor state, and turn policy",
 			Content: runtimeContext, Placement: agentcontext.PlacementFinalUserPrefix, Limit: StoryRuntimeContextMaxBytes, Included: true,
 		})
@@ -611,7 +611,7 @@ func (c *Conversation) AssembleModelContext(ctx context.Context, originalMessage
 	sourceParts := interactiveStoryContextSources(storyCtx.Meta.Title, storyCtx.Meta.Origin, teller, checkpointSummary, directorPlanVisible, residentVisible, loreRevision, loreRuntime, ruleSummary, actorStateRuntime, stateSchemaInitialization, strategyPrompt, turnHistory, input.UserMessage)
 	for index, message := range pendingInputMessages {
 		sourceParts = append(sourceParts, interactiveContextSource{
-			Source: "InterruptedPlayerInput", Title: fmt.Sprintf("已接收但未产出剧情的玩家输入 %d", index+1),
+			Source: "InterruptedPlayerInput", Title: fmt.Sprintf("Accepted Player Input Without Narrative Output %d", index+1),
 			Purpose: "retain accepted player intent after an interrupted cycle",
 			Content: message, ExactMessage: true,
 		})
@@ -649,8 +649,8 @@ func (c *Conversation) AssembleModelContext(ctx context.Context, originalMessage
 }
 
 func interruptedPlayerInputModelMessage(input interactive.PlayerInputAcceptedEvent) string {
-	return "[Accepted player input from an interrupted turn / 已接收但中断的玩家输入]\n" +
-		"No narrative was produced for this input. Treat it as player intent, not as a completed Turn. / 此输入尚未产出剧情，只代表玩家意图，不是已完成回合。\n\n" +
+	return "[Accepted player input from an interrupted turn]\n" +
+		"No narrative was produced for this input. Treat it as player intent, not as a completed Turn.\n\n" +
 		strings.TrimSpace(input.Text)
 }
 

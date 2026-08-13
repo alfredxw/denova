@@ -18,11 +18,11 @@ func TestBuildRunUserMessageIncludesScopeAndEvidence(t *testing.T) {
 	}
 	message := BuildRunUserMessage(task, run, "")
 	for _, expected := range []string{
-		"任务名称：每日回顾",
-		"触发来源：" + TriggerCondition,
+		"Task name: 每日回顾",
+		"Trigger source: " + TriggerCondition,
 		"[chapter] 新增第三章 — chapters/ch03.md",
 		"请回顾今日新增章节并按需修改。",
-		"请你自行使用可用工具读取完成任务所需的工作区文件",
+		"Use available tools to read the workspace files, lore, and state required by the task",
 	} {
 		if !strings.Contains(message, expected) {
 			t.Fatalf("message missing %q:\n%s", expected, message)
@@ -35,8 +35,8 @@ func TestBuildRunUserMessageLegacyConfirmationIncludesConfirmedSummary(t *testin
 	run := RunRecord{Trigger: TriggerWriteConfirmation}
 	message := BuildRunUserMessage(task, run, "已确认方案正文")
 	for _, expected := range []string{
-		"用户已经确认继续处理上一轮方案",
-		"已确认方案摘要：\n已确认方案正文\n",
+		"The user confirmed continuation of the previous proposal",
+		"Confirmed proposal summary:\n已确认方案正文\n",
 	} {
 		if !strings.Contains(message, expected) {
 			t.Fatalf("confirmation message missing %q:\n%s", expected, message)
@@ -51,7 +51,7 @@ func TestBuildRunUserMessageUsesGenericPromptAndUserScopeRestriction(t *testing.
 	if !strings.Contains(message, GenericTaskPrompt) {
 		t.Fatalf("empty prompt should fall back to GenericTaskPrompt:\n%s", message)
 	}
-	if !strings.Contains(message, "这是用户全局任务，没有书籍工作区") {
+	if !strings.Contains(message, "This is a user-global task with no book workspace") {
 		t.Fatalf("user-scope restriction missing:\n%s", message)
 	}
 }

@@ -81,14 +81,14 @@ func TestDirectorReceivesCommittedTemporaryLoreRecallForPromotion(t *testing.T) 
 			Role:       "tool",
 			ToolCallID: "call-read-lore",
 			ToolName:   "read_lore_items",
-			Content:    "# 资料库条目\n\n## 洛青衣（character / important / auto）\nID：luo\n\n```markdown\n洛青衣完整设定\n```",
+			Content:    "# Lore Items\n\n## 洛青衣（character / important / auto）\nID: luo\n\n```markdown\n洛青衣完整设定\n```",
 		},
 	}}
 	context, err := buildInteractiveDirectorLoreContext(workspace, plan, turn)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(context, "[[洛青衣]]") || !strings.Contains(context, "临时读取") || !strings.Contains(context, "首次资料审阅") {
+	if !strings.Contains(context, "[[洛青衣]]") || !strings.Contains(context, "temporarily read") || !strings.Contains(context, "first lore review") {
 		t.Fatalf("director lore context should expose temporary recall and revision state:\n%s", context)
 	}
 }
@@ -105,9 +105,9 @@ func TestDirectorRecognizesOnlySuccessfulFullLoreToolResultsAsTemporaryRecalls(t
 			{ID: "call-failed", Function: interactive.ModelContextFunctionCall{Name: "read_lore_items", Arguments: `{"ids":["failed"]}`}},
 			{ID: "call-index", Function: interactive.ModelContextFunctionCall{Name: "list_lore_items", Arguments: `{"keywords":["目录"]}`}},
 		}},
-		{Role: "tool", ToolCallID: "call-full", Content: "# 资料库条目\n\n## 完整命中（character / important / auto）\nID：full\n\n```markdown\n正文中可能出现并非回执的字段\nID：failed\n```"},
+		{Role: "tool", ToolCallID: "call-full", Content: "# Lore Items\n\n## 完整命中（character / important / auto）\nID: full\n\n```markdown\n正文中可能出现并非回执的字段\nID: failed\n```"},
 		{Role: "tool", ToolCallID: "call-failed", Content: "资料正文累计超过本任务上下文上限"},
-		{Role: "tool", ToolCallID: "call-index", Content: "# 资料库索引\n\n- [index] 目录命中"},
+		{Role: "tool", ToolCallID: "call-index", Content: "# Lore Index\n\n- [index] 目录命中"},
 	}
 
 	got := formatTemporaryLoreRecalls(items, messages)
@@ -145,7 +145,7 @@ func TestDirectorLoreRosterIsInjectedOnEveryRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"资料名称目录", "[character/major] 沈凝", "[faction/important] 戒律堂"} {
+	for _, want := range []string{"Lore Name Catalog", "[character/major] 沈凝", "[faction/important] 戒律堂"} {
 		if !strings.Contains(opening, want) {
 			t.Fatalf("opening roster missing %q:\n%s", want, opening)
 		}
@@ -170,7 +170,7 @@ func TestDirectorLoreRosterIsInjectedOnEveryRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(regular, "资料名称目录") || !strings.Contains(regular, "[character/major] 沈凝") {
+	if !strings.Contains(regular, "Lore Name Catalog") || !strings.Contains(regular, "[character/major] 沈凝") {
 		t.Fatalf("ordinary patches should retain the bounded discovery roster:\n%s", regular)
 	}
 

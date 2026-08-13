@@ -589,15 +589,15 @@ func buildContextCompactionTranscript(messages []*agent.Message, existingCheckpo
 	}
 	minChars, maxChars := compactionTargetCharRange(inputChars, policy)
 	var sb strings.Builder
-	sb.WriteString("请按系统要求增量编译以下 Denova 上下文 checkpoint。\n")
-	sb.WriteString(fmt.Sprintf("Source agent kind: %s. 请应用该来源的领域规则，并严格使用系统消息中的统一 Markdown checkpoint schema。\n", firstNonEmpty(strings.TrimSpace(policy.AgentKind), "unknown")))
-	sb.WriteString(fmt.Sprintf("Estimated new context tokens: %d. Input characters across existing checkpoint, reference context, and new context: %d. Target summary length: %d-%d characters (%s of input characters). 不得低于下限；信息密度高时使用目标范围上半区。\n\n", sourceTokens, inputChars, minChars, maxChars, compactionTargetRange(policy)))
+	sb.WriteString("Incrementally compile the following Denova context checkpoint according to the system instructions.\n")
+	sb.WriteString(fmt.Sprintf("Source agent kind: %s. Apply the domain rules for this source and use the single Markdown checkpoint schema from the system message exactly.\n", firstNonEmpty(strings.TrimSpace(policy.AgentKind), "unknown")))
+	sb.WriteString(fmt.Sprintf("Estimated new context tokens: %d. Input characters across existing checkpoint, reference context, and new context: %d. Target summary length: %d-%d characters (%s of input characters). Do not go below the lower bound; use the upper half of the range when information density is high.\n\n", sourceTokens, inputChars, minChars, maxChars, compactionTargetRange(policy)))
 	sb.WriteString("<existing_checkpoint>\n")
 	if existingCheckpoint = strings.TrimSpace(existingCheckpoint); existingCheckpoint != "" {
 		sb.WriteString(existingCheckpoint)
 		sb.WriteString("\n")
 	} else {
-		sb.WriteString("（未提供；本次输入从新增上下文与有界参考上下文初始化 checkpoint。）\n")
+		sb.WriteString("(Not provided; initialize the checkpoint from new context and bounded reference context.)\n")
 	}
 	sb.WriteString("</existing_checkpoint>\n\n")
 	if referenceContext = strings.TrimSpace(referenceContext); referenceContext != "" {
@@ -607,7 +607,7 @@ func buildContextCompactionTranscript(messages []*agent.Message, existingCheckpo
 	}
 	sb.WriteString("<new_context>\n")
 	if len(blocks) == 0 {
-		sb.WriteString("（无新增原始消息。）\n")
+		sb.WriteString("(No new raw messages.)\n")
 	} else {
 		for _, block := range blocks {
 			sb.WriteString(block)

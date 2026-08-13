@@ -362,7 +362,7 @@ func TestPrepareTurnSubmissionReportsAllInvalidNewActorFields(t *testing.T) {
 		if diagnostic.Expected == "" || diagnostic.Actual != "string" {
 			t.Fatalf("diagnostic should expose expected and actual types: %#v", diagnostic)
 		}
-		if !strings.Contains(diagnostic.MessageEN, diagnostic.Expected) || !strings.Contains(diagnostic.MessageEN, diagnostic.Actual) {
+		if !strings.Contains(diagnostic.Message, diagnostic.Expected) || !strings.Contains(diagnostic.Message, diagnostic.Actual) {
 			t.Fatalf("English diagnostic should explain the expected and actual types: %#v", diagnostic)
 		}
 	}

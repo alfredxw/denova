@@ -130,7 +130,7 @@ func (s *State) StableContextParts() []CompactContextPart {
 			ID:          "ideas",
 			Source:      IdeasFileName,
 			Title:       "创作灵感",
-			PromptTitle: fmt.Sprintf("创作灵感（%s，最多 %d 字）", IdeasFileName, ideasContextMaxRunes),
+			PromptTitle: fmt.Sprintf("Creative Ideas (%s, at most %d characters)", IdeasFileName, ideasContextMaxRunes),
 			Content:     ideasContext,
 		})
 	}
@@ -140,17 +140,18 @@ func (s *State) StableContextParts() []CompactContextPart {
 			ID:          "outline",
 			Source:      filepath.ToSlash(filepath.Join("setting", "outline.md")),
 			Title:       "当前大纲",
-			PromptTitle: "当前大纲",
+			PromptTitle: "Current Outline",
 			Content:     strings.TrimSpace(content),
 		})
 	}
 
 	if loreContext != "" {
 		parts = append(parts, CompactContextPart{
-			ID:      "lore",
-			Source:  lore.ItemsRelativePath,
-			Title:   "资料库",
-			Content: loreContext,
+			ID:          "lore",
+			Source:      lore.ItemsRelativePath,
+			Title:       "资料库",
+			PromptTitle: "Lore",
+			Content:     loreContext,
 		})
 	}
 
@@ -167,7 +168,7 @@ func (s *State) DynamicContextParts() []CompactContextPart {
 			ID:          "chapter_groups",
 			Source:      "setting/chapter-groups/",
 			Title:       "章节组细纲",
-			PromptTitle: "章节组细纲",
+			PromptTitle: "Chapter-group Plans",
 			Content:     groupContext,
 		})
 	}
@@ -177,7 +178,7 @@ func (s *State) DynamicContextParts() []CompactContextPart {
 			ID:          "chapter_paths",
 			Source:      "chapters/",
 			Title:       "章节目录概览",
-			PromptTitle: "章节目录概览",
+			PromptTitle: "Chapter Path Overview",
 			Content:     chapterContext,
 		})
 	}
@@ -187,8 +188,8 @@ func (s *State) DynamicContextParts() []CompactContextPart {
 		title string
 		id    string
 	}{
-		{"progress.md", "当前进度", "progress"},
-		{CharacterStatesFileName, "角色状态", "character_states"},
+		{"progress.md", "Current Progress", "progress"},
+		{CharacterStatesFileName, "Character State", "character_states"},
 	}
 
 	for _, sec := range dynamicSections {
@@ -290,7 +291,7 @@ func (s *State) IdeasContext() string {
 	if len(runes) <= ideasContextMaxRunes {
 		return content
 	}
-	return strings.TrimSpace(string(runes[:ideasContextMaxRunes])) + fmt.Sprintf("\n\n（已按 %d 字上限截断；如需全文请显式读取 %s。）", ideasContextMaxRunes, IdeasFileName)
+	return strings.TrimSpace(string(runes[:ideasContextMaxRunes])) + fmt.Sprintf("\n\n[Truncated at %d characters. Read %s explicitly for the complete content.]", ideasContextMaxRunes, IdeasFileName)
 }
 
 // ChapterGroupContext 返回最近的章节组细纲内容，用于提示 Agent 关注当前短期写作计划。
@@ -359,19 +360,19 @@ func (s *State) ChapterPathContext(limit int) string {
 		sb.WriteString("- ")
 		sb.WriteString(entry.Path)
 		if entry.Volume != "" {
-			sb.WriteString("（分卷：")
+			sb.WriteString(" (volume: ")
 			sb.WriteString(entry.Volume)
-			sb.WriteString("）")
+			sb.WriteString(")")
 		}
 		sb.WriteString("\n")
 	}
 	latest := entries[len(entries)-1]
-	sb.WriteString("\n最近定稿章节：")
+	sb.WriteString("\nLatest finalized chapter: ")
 	sb.WriteString(latest.Path)
 	if latest.Volume != "" && latest.Volume != "未分卷" {
-		sb.WriteString("；若大纲仍处于该卷，下一章应继续写入 chapters/")
+		sb.WriteString(". If the outline remains in this volume, write the next chapter under chapters/")
 		sb.WriteString(latest.Volume)
-		sb.WriteString("/。")
+		sb.WriteString("/.")
 	}
 	return strings.TrimSpace(sb.String())
 }

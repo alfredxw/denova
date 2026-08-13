@@ -80,7 +80,7 @@ func TestInteractiveDirectorTaskCompletesPlanMetadataAfterFileUpdate(t *testing.
 		if toolContext.DisplayConversation == nil {
 			t.Fatalf("director should receive display conversation for background progress")
 		}
-		if !strings.Contains(instruction, "资料库导演上下文") || !strings.Contains(instruction, "沈凝") {
+		if !strings.Contains(instruction, "Director Lore Context") || !strings.Contains(instruction, "沈凝") {
 			t.Fatalf("director should receive bounded lore context:\n%s", instruction)
 		}
 		plan, err := toolContext.Store.DirectorPlan(toolContext.StoryID, toolContext.BranchID)
@@ -149,7 +149,7 @@ func TestPrepareInteractiveDirectorBeforeOpeningBuildsLoreWorksetForFirstGameTur
 		if toolContext.MaintenanceTask != interactiveapp.DirectorTaskOpeningPlan || toolContext.TurnID != interactiveapp.DirectorOpeningSourceID {
 			t.Fatalf("unexpected opening tool context: %#v", toolContext)
 		}
-		for _, want := range []string{"开局正文生成前", "资料名称目录", "沈凝", "戒律堂", "我报名公开比试"} {
+		for _, want := range []string{"Before opening prose is generated", "Lore Name Catalog", "沈凝", "戒律堂", "我报名公开比试"} {
 			if !strings.Contains(instruction, want) {
 				t.Fatalf("opening director instruction missing %q:\n%s", want, instruction)
 			}

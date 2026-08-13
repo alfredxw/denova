@@ -49,7 +49,7 @@ func ResolveConfiguredInvocations(ctx context.Context, cfg *config.Config, agent
 		instructionsLimit := maxFragmentBytes - len(notice) - 2
 		instructions := FormatForModel(skill, instructionsLimit)
 		if instructionsLimit <= 0 || !strings.HasPrefix(instructions, "# Skill: "+skill.Name) {
-			return nil, fmt.Errorf("显式 Skill %q 无法放入当前单片段上下文上限 / explicit Skill %q cannot fit the configured context fragment limit", skill.Name, skill.Name)
+			return nil, fmt.Errorf("explicit Skill %q cannot fit the configured context fragment limit", skill.Name)
 		}
 		invocations = append(invocations, Invocation{
 			Name:          skill.Name,

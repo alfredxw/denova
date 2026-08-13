@@ -108,7 +108,7 @@ func (m *TurnProtocolMiddleware) AfterModelRewriteState(ctx context.Context, sta
 	}
 	last := state.Messages[len(state.Messages)-1]
 	if last != nil && len(last.ToolCalls) > 0 {
-		return ctx, state, errors.New("TurnResult 已提交，禁止继续调用工具 / tools are forbidden after TurnResult acceptance")
+		return ctx, state, errors.New("tools are forbidden after TurnResult acceptance")
 	}
 	return ctx, state, nil
 }
@@ -161,8 +161,8 @@ func NewCompletionGuard(ready func() bool) func(context.Context, *agent.RetryCon
 		}
 		feedback := truncateUTF8StringBytes(strings.Join([]string{
 			interactiveRetryFeedbackPrefix,
-			"你刚才尝试直接结束本回合，但 state_changes 与 choices 尚未全部成功提交。",
-			"首个正文候选已经锁定并展示。现在只调用 submit_interactive_turn，并只提供 retry_modules 指定的字段；已 accepted 的模块不要重交，ready=true 后不要重复输出或改写正文。",
+			"You attempted to finish the turn before both state_changes and choices were accepted.",
+			"The first prose candidate is locked and already displayed. Call only submit_interactive_turn now, providing only fields named by retry_modules. Do not resubmit accepted modules, and do not repeat or rewrite prose after ready=true.",
 			"Do not finish this turn before both submission modules are accepted.",
 		}, "\n"), interactiveRetryFeedbackMaxBytes)
 		messages = append(messages, agent.UserMessage(feedback))

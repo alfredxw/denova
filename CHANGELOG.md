@@ -25,6 +25,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 修复 Agent 对话在短会话中经历思考、工具调用与正文尾行替换后只能短暂锁底、随后内容继续增长但视口停止跟随的问题。流式控制器现在从稳定滚动容器解析真实尾行，不再依赖虚拟列表一定重新触发复用行的 ref；响应跑道独占运行中的垂直定位，短列表底部对齐仅在结束后恢复。写作、游戏、工作台与子 Agent 会话共用该修复，无需新增配置。
+- Fixed Agent conversations briefly following the bottom and then stopping after thinking, tool-call, and prose tail-row replacements in short sessions. The streaming controller now resolves the rendered tail from the stable scroller instead of assuming a virtualized reused row will re-fire its ref; the response runway exclusively owns active vertical placement, and short-list bottom alignment resumes after completion. Writing, Game, Workspace, and child-Agent conversations share the fix, with no new setting required.
 - 修复写作 Agent 的工作区变更流式事件遗漏当前 Project 身份，导致新一轮运行中的 Diff review 查询缓存不会实时刷新、审阅卡片只能在页面重载后出现的问题。首轮、续轮与恢复运行现在统一携带 Project 路由身份，同时 Writing Agent Session 继续严格按 workspace/session 定位，不会因 Project 元数据产生会话分叉；无需新增配置。
 - Fixed Writing Agent workspace-change stream events omitting the active Project identity, which prevented the current session's Diff review query cache from refreshing during a new run and left the review card visible only after a page reload. Initial, continued, and recovered turns now share one Project-aware runtime route, while Writing Agent Sessions remain strictly workspace/session-scoped and cannot fork on Project metadata. No new setting is required.
 - 修复右下角红色错误提示在使用本地化通用文案时丢失服务端请求标识的问题；API、Agent 流式事件、文档审阅、自动保存与变更审阅等错误现在会在可用时统一保留「日志 ID / Log ID」，且不会重复追加。纯前端校验错误不会伪造 ID，无需新增配置。

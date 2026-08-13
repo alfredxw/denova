@@ -102,15 +102,15 @@ func (m *interactiveDirectorPlanFileMiddleware) blockedDirectorToolMessage(name,
 		if strings.HasPrefix(path, "event://") {
 			return ""
 		}
-		return fmt.Sprintf("[tool error] Director 的 read 仅允许当前机会索引中的 event:// 事件卡；规划文档已在上下文中完整提供，请用 %s 提交带 base_hash 的 Markdown Patch。", SubmitDirectorPlanUpdateToolName)
+		return fmt.Sprintf("[tool error] Director read access is limited to event:// cards in the current opportunity index. Planning documents are already present in context; submit a Markdown Patch with base_hash through %s.", SubmitDirectorPlanUpdateToolName)
 	case "list_lore_items", "read_lore_items", "search_story_history", SubmitDirectorPlanUpdateToolName:
 		return ""
 	case "write", "edit":
-		return fmt.Sprintf("[tool error] Director 规划文档已在上下文中完整提供；请用 %s 提交带 base_hash 的 Markdown Patch，拒绝工具: %s", SubmitDirectorPlanUpdateToolName, name)
+		return fmt.Sprintf("[tool error] Director planning documents are already present in context. Submit a Markdown Patch with base_hash through %s. Blocked tool: %s", SubmitDirectorPlanUpdateToolName, name)
 	case "apply_actor_state_patch":
-		return fmt.Sprintf("[tool error] Director 只维护 ArcPlan，不能写 Actor State，拒绝工具: %s", name)
+		return fmt.Sprintf("[tool error] Director maintains ArcPlan only and cannot write Actor State. Blocked tool: %s", name)
 	default:
-		return fmt.Sprintf("[tool error] Director 只能使用 %s、历史检索、资料库只读和 read(event://...)，拒绝工具: %s", SubmitDirectorPlanUpdateToolName, name)
+		return fmt.Sprintf("[tool error] Director may use only %s, history search, read-only lore, and read(event://...). Blocked tool: %s", SubmitDirectorPlanUpdateToolName, name)
 	}
 }
 
@@ -157,7 +157,7 @@ func isInteractiveStoryWriteTool(name string) bool {
 }
 
 func interactiveStoryWriteToolBlockedMessage(name string) string {
-	return fmt.Sprintf("[tool error] 游戏模式禁止使用可能产生 workspace 或宿主副作用的工具 %q。请先直接输出完整故事正文，再用 submit_interactive_turn 提交一致的隐藏回合结果。 / Interactive story mode blocks tool %q because it may mutate the workspace or host. Output the complete story first, then submit the matching hidden turn result.", name, name)
+	return fmt.Sprintf("[tool error] Interactive story mode blocks tool %q because it may mutate the workspace or host. Output the complete story first, then submit the matching hidden turn result.", name)
 }
 
 func (m *OrchestratorMiddleware) WrapToolCall(
@@ -180,7 +180,7 @@ func (m *OrchestratorMiddleware) WrapToolCall(
 		if decision.Action == "blocked" {
 			message := decision.Reason
 			if message == "" {
-				message = fmt.Sprintf("[tool error] 工具 %q 被当前 Agent 策略阻止。", decision.ToolName)
+				message = fmt.Sprintf("[tool error] Tool %q was blocked by the current Agent policy.", decision.ToolName)
 			}
 			if observer != nil {
 				observer.RecordToolExecution(blockedToolExecutionRecord(decision, message))
@@ -392,7 +392,7 @@ func (m *OrchestratorMiddleware) buildToolDecision(ctx context.Context, toolCtx 
 	}
 	if m != nil && m.enforceToolSettings && !declared {
 		decision.Action = "blocked"
-		decision.Reason = fmt.Sprintf("[tool error] 工具 %q 没有显式 ToolDescriptor，已在执行前拒绝。 / Tool %q has no explicit ToolDescriptor and was rejected before execution.", manifest.Name, manifest.Name)
+		decision.Reason = fmt.Sprintf("[tool error] Tool %q has no explicit ToolDescriptor and was rejected before execution.", manifest.Name)
 		return decision
 	}
 	if mode := toolAccessModeFromContext(ctx); !toolAllowedByAccessMode(mode, manifest.ToolDescriptor) {
@@ -408,7 +408,7 @@ func (m *OrchestratorMiddleware) buildToolDecision(ctx context.Context, toolCtx 
 }
 
 func disabledToolCapabilityMessage(name, capability string) string {
-	return fmt.Sprintf("[tool error] 工具 %q 需要当前 Agent 启用 %s 能力，但该能力已关闭。请改用已授权工具，或请用户在 Agent Tools 中开启该能力。 / Tool %q requires capability %s, which is disabled for this Agent.", name, capability, name, capability)
+	return fmt.Sprintf("[tool error] Tool %q requires capability %s, which is disabled for this Agent. Use an authorized tool or ask the user to enable the capability in Agent Tools.", name, capability)
 }
 
 func (m *OrchestratorMiddleware) effectivePolicyKind() string {

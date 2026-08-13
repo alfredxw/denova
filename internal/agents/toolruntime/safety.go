@@ -62,8 +62,7 @@ args_bytes: %d
 model_finish_reason: %s
 target: %s
 
-中文：模型达到了输出 token 上限，工具参数不能视为完整意图。Denova 已阻止执行且未产生副作用；请缩短参数或拆分任务后重试。
-English: The model reached its output-token limit, so the tool arguments are incomplete. Denova blocked execution with no side effects; retry with shorter arguments or split the task.`, decision.ToolName, decision.ArgsBytes, finishReason, target)
+The model reached its output-token limit, so the tool arguments are incomplete. Denova blocked execution with no side effects; retry with shorter arguments or split the task.`, decision.ToolName, decision.ArgsBytes, finishReason, target)
 }
 
 func contentFilteredModelToolArgumentsMessage(decision agenttool.Decision, finishReason string) string {
@@ -82,8 +81,7 @@ args_bytes: %d
 model_finish_reason: %s
 target: %s
 
-中文：内容过滤中断了模型回复，工具参数不能视为完整意图；Denova 已阻止执行且未产生副作用。
-English: Content filtering interrupted the model response, so the tool arguments are incomplete. Denova blocked execution with no side effects.`, decision.ToolName, decision.ArgsBytes, finishReason, target)
+Content filtering interrupted the model response, so the tool arguments are incomplete. Denova blocked execution with no side effects.`, decision.ToolName, decision.ArgsBytes, finishReason, target)
 }
 
 func applyToolArgumentValidation(decision agenttool.Decision, args string, outcome agentrun.LLMOutcome) agenttool.Decision {
@@ -102,9 +100,9 @@ func applyToolArgumentValidation(decision agenttool.Decision, args string, outco
 
 func invalidToolArgumentsMessage(decision agenttool.Decision, args string, err error, outcome agentrun.LLMOutcome) string {
 	if isContentFilterInterruptedArguments(err, decision, outcome) {
-		return fmt.Sprintf("[tool error] 工具 %q 的参数被内容过滤中断，未执行：%v / Tool %q arguments were interrupted by content filtering and were not executed: %v", decision.ToolName, err, decision.ToolName, err)
+		return fmt.Sprintf("[tool error] Tool %q arguments were interrupted by content filtering and were not executed: %v", decision.ToolName, err)
 	}
-	return fmt.Sprintf("[tool error] 工具 %q 的参数不是完整 JSON 对象：%v。请修正 arguments 后重试。 / Tool %q arguments are not a complete JSON object: %v. Fix the arguments and retry. (bytes=%d)", decision.ToolName, err, decision.ToolName, err, len(args))
+	return fmt.Sprintf("[tool error] Tool %q arguments are not a complete JSON object: %v. Fix the arguments and retry. (bytes=%d)", decision.ToolName, err, len(args))
 }
 
 func isContentFilterInterruptedArguments(err error, decision agenttool.Decision, outcome agentrun.LLMOutcome) bool {

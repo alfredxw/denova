@@ -488,7 +488,7 @@ func (c *Conversation) turnResultSnapshot() *interactive.TurnResult {
 func interactiveTurnSubmissionDiagnosticSummary(diagnostics []interactive.TurnSubmissionDiagnostic) string {
 	parts := make([]string, 0, len(diagnostics))
 	for _, diagnostic := range diagnostics {
-		parts = append(parts, strings.Join([]string{diagnostic.Module, diagnostic.Code, diagnostic.Path, diagnostic.MessageZH}, ":"))
+		parts = append(parts, strings.Join([]string{diagnostic.Module, diagnostic.Code, diagnostic.Path, diagnostic.Message}, ":"))
 	}
 	return strings.Join(parts, "; ")
 }
@@ -505,8 +505,7 @@ func interactiveTurnResultAlreadyAcceptedReceipt() interactive.TurnSubmissionRec
 			Code:      "turn_result_already_accepted",
 			Severity:  "warning",
 			Retryable: false,
-			MessageZH: "本回合已有完整 TurnResult，已保留首次接受的模块；无需重试。",
-			MessageEN: "This turn already has a complete TurnResult; the first accepted modules were retained.",
+			Message:   "This turn already has a complete TurnResult; the first accepted modules were retained.",
 		}},
 	}
 }

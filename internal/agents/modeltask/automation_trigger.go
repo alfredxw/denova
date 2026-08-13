@@ -38,9 +38,9 @@ func GenerateAutomationTriggerEvaluation(ctx context.Context, cfg *config.Config
 		runErr = err
 		return "", fmt.Errorf("create automation trigger evaluation model: %w", err)
 	}
-	system := "你是 Denova 的自动化触发评估器。你的唯一任务是根据用户提供的有界创作上下文判断语义触发条件是否已经满足。不要使用工具，不要假设未给出的剧情，不要输出 JSON 以外的内容。"
+	system := "You are Denova's automation-trigger evaluator. Your only task is to decide whether a semantic trigger condition is satisfied from bounded creative context supplied by the user. Do not use tools, assume unprovided story facts, or output anything except JSON."
 	slog.InfoContext(ctx, fmt.Sprintf("[automation-trigger-agent] evaluate begin instruction=%s", prompts.PartSummary(instruction)))
-	composition, err := prompts.ComposeBuiltinSystemInstruction(cfg, agentKind, "automation_trigger", cfg.Workspace, "builtin_base", "自动化触发评估规则", "define the bounded semantic trigger evaluation task", system)
+	composition, err := prompts.ComposeBuiltinSystemInstruction(cfg, agentKind, "automation_trigger", cfg.Workspace, "builtin_base", "Automation Trigger Evaluation Rules", "define the bounded semantic trigger evaluation task", system)
 	if err != nil {
 		runErr = err
 		return "", err
@@ -58,7 +58,7 @@ func GenerateAutomationTriggerEvaluation(ctx context.Context, cfg *config.Config
 	if err != nil {
 		agentrun.FinishLLMCallTrace(span, callID, agentKind, "automation_trigger", "generate", modelCfg.Model, 0, nil, err, nil)
 		runErr = err
-		return "", fmt.Errorf("生成自动化触发评估失败: %w", err)
+		return "", fmt.Errorf("generate automation trigger evaluation: %w", err)
 	}
 	if msg == nil {
 		runErr = fmt.Errorf("automation trigger evaluation returned no message")

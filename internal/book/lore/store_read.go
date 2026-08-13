@@ -266,13 +266,13 @@ func (s *Store) ProgressiveContextMarkdown() (string, error) {
 	}
 	var sb strings.Builder
 	if resident != "" {
-		sb.WriteString("## 常驻资料库\n\n")
+		sb.WriteString("## Resident Lore\n\n")
 		sb.WriteString(resident)
 		sb.WriteString("\n\n")
 	}
 	if catalog != "" {
-		fmt.Fprintf(&sb, "## 按需资料名称目录（source: %s, max 64 KiB）\n\n", ItemsRelativePath)
-		sb.WriteString(strings.TrimSpace(strings.TrimPrefix(catalog, "# 资料名称目录")))
+		fmt.Fprintf(&sb, "## On-demand Lore Name Catalog (source: %s, max 64 KiB)\n\n", ItemsRelativePath)
+		sb.WriteString(strings.TrimSpace(strings.TrimPrefix(catalog, "# Lore Name Catalog")))
 		sb.WriteString("\n\n")
 	}
 	return strings.TrimSpace(sb.String()), nil

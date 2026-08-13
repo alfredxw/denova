@@ -105,7 +105,7 @@ func TestTurnContextReferenceProjectionDedupesAndReportsReadFailure(t *testing.T
 	assertContains(t, got, "# @chapters/ch01.md")
 	assertContains(t, got, "```markdown\n第一章正文\n```")
 	assertContains(t, got, "# @chapters/missing.md")
-	assertContains(t, got, "读取失败：")
+	assertContains(t, got, "Read failed:")
 	if count := strings.Count(got, "# @chapters/ch01.md"); count != 1 {
 		t.Fatalf("重复引用应去重，实际出现 %d 次\n%s", count, got)
 	}
@@ -131,19 +131,19 @@ func TestTurnContextPlanModeUsesDurableAskAndProposal(t *testing.T) {
 	_, assembled := assembleTurnForTest(t, ChatRequest{Message: "重构章节", PlanMode: true}, nil, nil, agentcontext.DefaultBudget())
 	got := finalAssembledUserMessage(t, assembled)
 
-	assertContains(t, got, "[Plan Mode / 规划模式]")
-	assertContains(t, got, "不要直接执行")
-	assertContains(t, got, "必须立即调用 ask")
-	assertContains(t, got, "所有交互式澄清都通过 ask 完成")
+	assertContains(t, got, "[Plan Mode]")
+	assertContains(t, got, "Do not call tools that change")
+	assertContains(t, got, "call ask immediately")
+	assertContains(t, got, "Use ask for all interactive clarification")
 	assertContains(t, got, "<proposed_plan>")
-	assertContains(t, got, "# 计划标题")
+	assertContains(t, got, "# Plan title")
 	assertContains(t, got, "## Summary")
 	assertContains(t, got, "## Key Changes")
-	assertContains(t, got, "# 本轮用户请求（最高优先级）\n\n重构章节")
+	assertContains(t, got, "# Current User Request (Highest Priority)\n\n重构章节")
 	if strings.Contains(got, "<plan_questions>...") || strings.Contains(got, `"questions":`) {
 		t.Fatalf("Plan Mode should not teach the retired question protocol:\n%s", got)
 	}
-	if strings.Contains(got, "Tests、Assumptions") || strings.Contains(got, "Test Plan") {
+	if strings.Contains(got, "## Test Plan") || strings.Contains(got, "## Assumptions") {
 		t.Fatalf("Plan Mode 最终方案模板不应强制输出测试或假设小节:\n%s", got)
 	}
 }
@@ -152,16 +152,15 @@ func TestTurnContextBoundaryEmphasizesCurrentRequest(t *testing.T) {
 	_, assembled := assembleTurnForTest(t, ChatRequest{Message: "帮我写第三章"}, nil, nil, agentcontext.DefaultBudget())
 	got := finalAssembledUserMessage(t, assembled)
 
-	assertContains(t, got, "[上下文边界]")
-	assertContains(t, got, "当前用户请求是“这次要做什么”")
-	assertContains(t, got, "已确认的小说状态")
-	assertContains(t, got, "背景是什么")
-	assertContains(t, got, "历史对话只能辅助理解")
-	assertContains(t, got, "以当前请求为准")
-	assertContains(t, got, "必须在本轮实际调用并基于本轮工具结果作答")
-	assertContains(t, got, "不得声称已调用、已读取、已检索、已验证或已修改")
-	assertContains(t, got, "本轮请求：")
-	assertContains(t, got, "# 本轮用户请求（最高优先级）\n\n帮我写第三章")
+	assertContains(t, got, "[Context Boundary]")
+	assertContains(t, got, "The current user request defines what to do now")
+	assertContains(t, got, "Workspace state and confirmed novel state provide background only")
+	assertContains(t, got, "Conversation history may help interpret context")
+	assertContains(t, got, "follow the current request")
+	assertContains(t, got, "actually call it in this turn")
+	assertContains(t, got, "do not claim to have called, read, searched, verified, or modified anything")
+	assertContains(t, got, "Current request:")
+	assertContains(t, got, "# Current User Request (Highest Priority)\n\n帮我写第三章")
 }
 
 func TestStyleRulesSystemInstructionEmitsSceneAndStyles(t *testing.T) {
@@ -173,22 +172,22 @@ func TestStyleRulesSystemInstructionEmitsSceneAndStyles(t *testing.T) {
 		{Scene: "空风格", StyleContents: []string{"", " "}}, // 空内容应被跳过
 	})
 
-	assertContains(t, got, "## 文风参考")
-	assertContains(t, got, "全局文风参考：所有正文生成默认生效")
+	assertContains(t, got, "## Prose Style References")
+	assertContains(t, got, "Global prose-style references: apply to all prose generation by default")
 	assertContains(t, got, "name: 默认克制")
-	assertContains(t, got, "场景：激烈打斗")
+	assertContains(t, got, "Scene: 激烈打斗")
 	assertContains(t, got, "短句留白")
 	assertContains(t, got, "强冲突快节奏")
 	assertContains(t, got, "name: 克制细腻")
 	assertContains(t, got, "path: /tmp/.denova/styles/restraint.md")
-	assertContains(t, got, "场景：日常对话")
+	assertContains(t, got, "Scene: 日常对话")
 	assertContains(t, got, "温吞对白")
-	assertContains(t, got, "全局文风参考默认适用于所有正文生成")
-	assertContains(t, got, "互动故事下一回合正文生成时")
-	assertContains(t, got, "编制故事正文前必须先用 read 读取这些全局参考文件")
-	assertContains(t, got, "分场景文风参考仍根据当前章节内容、互动场景或本轮 # 场景选择")
-	assertContains(t, got, "不要强行选择分场景参考")
-	assertContains(t, got, "完全忽略以上参考")
+	assertContains(t, got, "Global references apply to all prose generation by default")
+	assertContains(t, got, "Before writing an interactive-story turn")
+	assertContains(t, got, "use read to load every global reference path")
+	assertContains(t, got, "Choose scene-specific references only when they closely match")
+	assertContains(t, got, "do not force a match")
+	assertContains(t, got, "Ignore these references for brainstorming")
 	assertContains(t, got, "read")
 	if strings.Contains(got, "无效内容") {
 		t.Fatalf("空 scene 的规则应被跳过，但仍包含无效内容：\n%s", got)
@@ -218,8 +217,8 @@ func TestBuildInterruptedResumeMessageIncludesInterruptedContext(t *testing.T) {
 		Reason:           "runner error",
 	})
 
-	assertContains(t, got, "[异常中断恢复]")
-	assertContains(t, got, "用户当前要求继续")
+	assertContains(t, got, "[Interrupted Run Recovery]")
+	assertContains(t, got, "The user asked to continue")
 	assertContains(t, got, "写第一章")
 	assertContains(t, got, "已经写出的片段")
 	assertContains(t, got, "runner error")

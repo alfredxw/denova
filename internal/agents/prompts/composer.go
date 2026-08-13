@@ -19,7 +19,7 @@ type SystemPromptOverflowPolicy string
 const (
 	SystemPromptOverflowReject   SystemPromptOverflowPolicy = "reject"
 	SystemPromptOverflowTruncate SystemPromptOverflowPolicy = "truncate"
-	systemPromptTruncationMarker                            = "\n\n[System source truncated by configured context budget / 系统来源已按配置的上下文预算截断]"
+	systemPromptTruncationMarker                            = "\n\n[System source truncated by configured context budget]"
 )
 
 // SystemPromptFragment is one independently attributable source in the system

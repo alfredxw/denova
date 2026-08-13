@@ -74,7 +74,7 @@ func TestNewLoreToolsUsesListLoreItemsInsteadOfSearch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"# 资料名称目录", "source: setting/lore/items.json", "total: 1", "shown: 1", "next_offset: null", "[character/major] 林川"} {
+	for _, want := range []string{"# Lore Name Catalog", "source: setting/lore/items.json", "total: 1", "shown: 1", "next_offset: null", "[character/major] 林川"} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("list_lore_items output missing %q:\n%s", want, output)
 		}
@@ -89,7 +89,7 @@ func TestNewLoreToolsUsesListLoreItemsInsteadOfSearch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"id: hero", "名称: 林川", "匹配词: 档案柜", "匹配来源: 正文"} {
+	for _, want := range []string{"id: hero", "name: 林川", "matched_terms: 档案柜", "match_sources: content"} {
 		if !strings.Contains(queryOutput, want) {
 			t.Fatalf("keyword list_lore_items output missing %q:\n%s", want, queryOutput)
 		}
@@ -203,7 +203,7 @@ func TestWriteLoreItemsToolSupportsSparseCreateUpdateAndDelete(t *testing.T) {
 		t.Fatalf("explicit empty tags should clear the list: %#v", cleared.Tags)
 	}
 
-	if _, err := runToolForTest(context.Background(), writeTool, `{"items":[{"id":"黄泉酒馆"}]}`); err == nil || !strings.Contains(err.Error(), "至少提供一个实际变化字段") {
+	if _, err := runToolForTest(context.Background(), writeTool, `{"items":[{"id":"黄泉酒馆"}]}`); err == nil || !strings.Contains(err.Error(), "requires at least one changed field") {
 		t.Fatalf("id-only update should fail clearly, got %v", err)
 	}
 	if _, err := runToolForTest(context.Background(), writeTool, `{"delete_ids":["黄泉酒馆"]}`); err != nil {
@@ -212,10 +212,10 @@ func TestWriteLoreItemsToolSupportsSparseCreateUpdateAndDelete(t *testing.T) {
 	if _, err := store.Get("黄泉酒馆"); err == nil {
 		t.Fatal("delete-only call did not remove the lore item")
 	}
-	if _, err := runToolForTest(context.Background(), writeTool, `{}`); err == nil || !strings.Contains(err.Error(), "没有可写入的资料库条目") {
+	if _, err := runToolForTest(context.Background(), writeTool, `{}`); err == nil || !strings.Contains(err.Error(), "there are no lore changes to write") {
 		t.Fatalf("empty mutation should fail clearly, got %v", err)
 	}
-	if _, err := runToolForTest(context.Background(), writeTool, `{"items":[{"content":"缺少名称"}]}`); err == nil || !strings.Contains(err.Error(), "name 不能为空") {
+	if _, err := runToolForTest(context.Background(), writeTool, `{"items":[{"content":"缺少名称"}]}`); err == nil || !strings.Contains(err.Error(), "name is required when creating lore") {
 		t.Fatalf("create without name should fail clearly, got %v", err)
 	}
 }
@@ -316,7 +316,7 @@ func TestLoreReadAllowsLargeBatchesAndReportsPartialMisses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"规则 00 正文", "规则 18 正文", "## 未找到的资料", `names: ["不存在的规则"]`} {
+	for _, want := range []string{"规则 00 正文", "规则 18 正文", "## Missing Lore", `names: ["不存在的规则"]`} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("partial lore output missing %q:\n%s", want, output)
 		}
@@ -324,7 +324,7 @@ func TestLoreReadAllowsLargeBatchesAndReportsPartialMisses(t *testing.T) {
 	if strings.Join(reviewed, ",") != "rule-00,rule-18" {
 		t.Fatalf("only matched lore should be tracked: %v", reviewed)
 	}
-	if _, err := runToolForTest(context.Background(), readTool, `{"names":["不存在甲","不存在乙"]}`); err == nil || !strings.Contains(err.Error(), "未匹配到任何资料条目") {
+	if _, err := runToolForTest(context.Background(), readTool, `{"names":["不存在甲","不存在乙"]}`); err == nil || !strings.Contains(err.Error(), "no lore items matched") {
 		t.Fatalf("an all-missing batch should return one clear error, got %v", err)
 	}
 }

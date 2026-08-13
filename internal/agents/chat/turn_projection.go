@@ -66,21 +66,21 @@ func projectTurnContextFragments(input turnContextProjectionInput) []agentcontex
 	appendFragment(runtimeEnvironmentFragment(input.Environment))
 	if input.PendingInterruption != nil {
 		appendFragment(turnFragment(
-			"runtime_interruption_resume", "runtime.interruption", "异常中断恢复上下文",
+			"runtime_interruption_resume", "runtime.interruption", "Interrupted-turn Recovery Context",
 			"resume an interrupted request without replaying completed work",
 			buildInterruptedResumeMessage("", input.PendingInterruption), 0,
 		))
 	}
 	if req.PlanMode {
 		appendFragment(turnFragment(
-			"turn_rule_plan_mode", "turn.rule.plan_mode", "规划模式",
+			"turn_rule_plan_mode", "turn.rule.plan_mode", "Plan Mode",
 			"constrain this turn to collaborative planning",
 			prompts.PlanModeInstruction(), 0,
 		))
 	}
 	if skillName := strings.TrimSpace(req.WritingSkill); skillName != "" {
 		appendFragment(turnFragment(
-			"turn_skill_selection", "turn.skill.selection", "Writing Skill 按需加载提示",
+			"turn_skill_selection", "turn.skill.selection", "On-demand Writing Skill Loading",
 			"identify the explicitly selected writing skill without injecting its body",
 			writingSkillLoadHintContent(skillName), 0,
 		))
@@ -93,13 +93,13 @@ func projectTurnContextFragments(input turnContextProjectionInput) []agentcontex
 	fragments = append(fragments, projectSelectionFragments(req.Selections)...)
 	if block, ok := req.ResolvedReviewFeedback.ModelContextBlock(); ok {
 		appendFragment(turnFragment(
-			"workspace_review_feedback", "workspace.review.feedback", "用户明确引用的审阅意见",
+			"workspace_review_feedback", "workspace.review.feedback", "Review Feedback Explicitly Referenced by the User",
 			"apply trusted server-resolved review feedback to this turn",
 			block, agentreview.MaxContextBytes,
 		))
 	}
 	appendFragment(turnFragment(
-		"turn_rule_context_boundary", "turn.rule.context_boundary", "上下文边界",
+		"turn_rule_context_boundary", "turn.rule.context_boundary", "Context Boundary",
 		"keep the current user request authoritative over historical intent",
 		prompts.ContextBoundary(""), 0,
 	))
@@ -122,22 +122,22 @@ func runtimeEnvironmentFragment(environment turnRuntimeEnvironment) agentcontext
 	}
 
 	var content strings.Builder
-	content.WriteString("- 上下文快照时间 / Captured at: ")
+	content.WriteString("- Captured at: ")
 	content.WriteString(capturedAt.Format(time.RFC3339))
-	content.WriteString("\n- 时区 / Time zone: ")
+	content.WriteString("\n- Time zone: ")
 	content.WriteString(location)
 	content.WriteString(" (UTC")
 	content.WriteString(capturedAt.Format("-07:00"))
 	content.WriteString(")")
 	if workspace != "" {
-		content.WriteString("\n- 当前工作区 / Workspace: ")
+		content.WriteString("\n- Workspace: ")
 		content.WriteString(workspace)
 	}
-	content.WriteString("\n- 说明 / Note: 这是现实运行环境的本轮快照，不是作品或互动故事中的世界时间；作品时间线仍以作品状态为准。 / This is a turn-scoped real-world runtime snapshot, not in-story time; story chronology remains governed by workspace state.")
+	content.WriteString("\n- Note: this is a turn-scoped real-world runtime snapshot, not in-story time. Story chronology remains governed by workspace state.")
 	fragment := turnFragment(
 		"runtime_environment",
 		"runtime.environment",
-		"当前运行环境 / Current runtime environment",
+		"Current Runtime Environment",
 		"provide turn-scoped real-world time and active workspace without changing the stable system prompt",
 		content.String(),
 		0,
@@ -170,12 +170,12 @@ func projectReferenceFragments(bookService *book.Service, references []string, b
 		content := ""
 		note := "source=workspace file; explicit user reference"
 		if bookService == nil {
-			content = "读取失败：当前 workspace 不可用。"
+			content = "Read failed: the current workspace is unavailable."
 			note += "; read_failed"
 		} else {
 			read, err := readReferencedFile(bookService, ref)
 			if err != nil {
-				content = "读取失败：" + err.Error()
+				content = "Read failed: " + err.Error()
 				note += "; read_failed"
 			} else {
 				content = read
@@ -201,7 +201,7 @@ func projectLoreReferenceFragments(bookService *book.Service, references []strin
 	loadError := error(nil)
 	sourcePath := lore.ItemsRelativePath
 	if bookService == nil || bookService.Workspace() == "" {
-		loadError = fmt.Errorf("当前 workspace 不可用")
+		loadError = fmt.Errorf("the current workspace is unavailable")
 	} else {
 		items, err := lore.NewStore(bookService.Workspace()).List()
 		if err != nil {
@@ -221,17 +221,17 @@ func projectLoreReferenceFragments(bookService *book.Service, references []strin
 		}
 		seen[ref] = true
 		content := ""
-		title := "@资料:" + ref
+		title := "@Lore:" + ref
 		note := "source=" + sourcePath + "; explicit structured lore reference"
 		if loadError != nil {
-			content = "资料库读取失败：" + loadError.Error()
+			content = "Lore read failed: " + loadError.Error()
 			note += "; read_failed"
 		} else if item, ok := itemsByID[ref]; ok {
 			content = lore.ReferenceMarkdown(item)
-			title = "@资料:" + item.Name
+			title = "@Lore:" + item.Name
 			note += "; id=" + item.ID
 		} else {
-			content = "读取失败：资料条目不存在"
+			content = "Read failed: the lore item does not exist."
 			note += "; read_failed"
 		}
 		fragment := turnFragment(
@@ -255,7 +255,7 @@ func projectSelectionFragments(selections []TextSelectionRef) []agentcontext.Fra
 		}
 		title := strings.TrimSpace(selection.FileName)
 		if title == "" {
-			title = "未命名选区"
+			title = "Untitled Selection"
 		}
 		if selection.StartLine > 0 || selection.EndLine > 0 {
 			title = fmt.Sprintf("%s:L%d-L%d", title, selection.StartLine, selection.EndLine)
@@ -277,8 +277,8 @@ func writingSkillLoadHintContent(skillName string) string {
 	if skillName == "" {
 		return ""
 	}
-	return "当前创作 Agent 选中的 Writing Skill 是 `" + skillName + "`。\n\n" +
-		"- 若本轮请求涉及小说正文续写、章节正文创作、正文重写或润色，且当前 Agent 已启用 `skill` 工具，同时上下文没有标记该 Skill 已由运行时加载，请先调用 `skill` 工具加载 `" + skillName + "`，读取完整 SKILL.md 后再执行。\n" +
-		"- 若本轮请求是问答、分析、整理、大纲/设定讨论、配置或规划，不要加载 Writing Skill，直接按本轮请求处理。\n" +
-		"- 在调用 `skill` 工具前，不要假装已经读取了该 Skill 的完整说明；写作范围仍只由用户本轮自然语言指令决定，不存在单独的 `writing_scope` 字段。"
+	return "The Writing Skill selected for the current creative Agent is `" + skillName + "`.\n\n" +
+		"- If this request involves continuing novel prose, creating chapter prose, rewriting prose, or polishing prose, and the current Agent has the `skill` tool enabled while context does not mark the Skill as runtime-loaded, call `skill` to load `" + skillName + "` and read its complete SKILL.md before proceeding.\n" +
+		"- For Q&A, analysis, organization, outline or setting discussion, configuration, or planning, do not load the Writing Skill; handle the request directly.\n" +
+		"- Before calling `skill`, do not claim to have read its complete instructions. The writing scope is determined only by the user's natural-language request for this turn; there is no separate `writing_scope` field."
 }

@@ -28,14 +28,14 @@ type DirectorStableContext struct {
 func buildInteractiveDirectorStableContext(workspace string) (DirectorStableContext, error) {
 	resident, err := assembleResidentLore(lore.NewStore(workspace))
 	if err != nil {
-		return DirectorStableContext{}, fmt.Errorf("装配后台导演的完整常驻资料失败: %w", err)
+		return DirectorStableContext{}, fmt.Errorf("assemble complete resident lore for the background Director: %w", err)
 	}
-	if err := validateResidentLoreSnapshot(resident, "后台导演", interactiveResidentLoreMessageMaxBytes); err != nil {
+	if err := validateResidentLoreSnapshot(resident, "background Director", interactiveResidentLoreMessageMaxBytes); err != nil {
 		return DirectorStableContext{}, err
 	}
 	return DirectorStableContext{
 		Title: fmt.Sprintf(
-			"完整常驻资料（source: enabled resident lore bodies; complete=true; body_bytes=%d; max_body_bytes=%d; lore_revision=%s）",
+			"Complete Resident Lore (source: enabled resident lore bodies; complete=true; body_bytes=%d; max_body_bytes=%d; lore_revision=%s)",
 			resident.BodyBytes, lore.ResidentLoreSafetyMaxBytes, resident.Revision,
 		),
 		Content:   resident.Content,
@@ -48,7 +48,7 @@ func buildInteractiveDirectorStableContext(workspace string) (DirectorStableCont
 func buildInteractiveStoryLoreContext(workspace string, plan interactive.DirectorPlan, userAction string) (string, error) {
 	items, err := lore.NewStore(workspace).List()
 	if err != nil {
-		return "", fmt.Errorf("读取互动故事资料库失败: %w", err)
+		return "", fmt.Errorf("read interactive-story lore: %w", err)
 	}
 	byName := loreItemsByName(items)
 
@@ -70,7 +70,7 @@ func buildInteractiveStoryLoreContext(workspace string, plan interactive.Directo
 		selected = append(selected, item)
 		seen[item.ID] = true
 	}
-	selectedContext, err := formatBoundedCompleteLoreSection("当前分支资料工作集（source: lore-context.md active references, complete）", selected, ResolvedLoreContextMaxBytes)
+	selectedContext, err := formatBoundedCompleteLoreSection("Current Branch Lore Working Set (source: lore-context.md active references, complete)", selected, ResolvedLoreContextMaxBytes)
 	if err != nil {
 		return "", err
 	}
@@ -81,11 +81,11 @@ func buildInteractiveDirectorLoreContext(workspace string, plan interactive.Dire
 	store := lore.NewStore(workspace)
 	startRevision, err := store.Revision()
 	if err != nil {
-		return "", fmt.Errorf("读取资料库装配前 revision 失败: %w", err)
+		return "", fmt.Errorf("read lore revision before assembly: %w", err)
 	}
 	items, err := store.List()
 	if err != nil {
-		return "", fmt.Errorf("读取 Director 资料库失败: %w", err)
+		return "", fmt.Errorf("read Director lore: %w", err)
 	}
 	byName := loreItemsByName(items)
 	refs := interactive.ParseDirectorLoreContextReferences(plan.Docs.LoreContext)
@@ -95,36 +95,36 @@ func buildInteractiveDirectorLoreContext(workspace string, plan interactive.Dire
 			active = append(active, item)
 		}
 	}
-	activeContext, err := formatBoundedCompleteLoreSection("当前资料正文（source: lore-context.md active references, complete）", active, interactive.DirectorLoreActiveContextMaxBytes)
+	activeContext, err := formatBoundedCompleteLoreSection("Current Lore Content (source: lore-context.md active references, complete)", active, interactive.DirectorLoreActiveContextMaxBytes)
 	if err != nil {
 		return "", err
 	}
 	workset := strings.TrimSpace(plan.Docs.LoreContext)
 	if workset != "" {
-		workset = "## 分支资料工作集（source: lore-context.md）\n\n" + workset
+		workset = "## Branch Lore Working Set (source: lore-context.md)\n\n" + workset
 	}
 	roster, err := store.NameRosterMarkdown(interactiveDirectorLoreRosterMaxBytes, true)
 	if err != nil {
-		return "", fmt.Errorf("生成资料名称目录失败: %w", err)
+		return "", fmt.Errorf("generate lore name roster: %w", err)
 	}
 	if roster != "" {
-		roster = fmt.Sprintf("## 非驻留资料名称目录（source: %s, revision-bound, max 64 KiB）\n\n%s", lore.ItemsRelativePath, roster)
+		roster = fmt.Sprintf("## Non-resident Lore Name Roster (source: %s, revision-bound, max 64 KiB)\n\n%s", lore.ItemsRelativePath, roster)
 	}
 	currentRevision, err := store.Revision()
 	if err != nil {
-		return "", fmt.Errorf("读取资料库装配后 revision 失败: %w", err)
+		return "", fmt.Errorf("read lore revision after assembly: %w", err)
 	}
 	if strings.TrimSpace(startRevision) != strings.TrimSpace(currentRevision) {
-		return "", fmt.Errorf("资料库在导演发现上下文装配期间发生变化: before=%s after=%s", strings.TrimSpace(startRevision), strings.TrimSpace(currentRevision))
+		return "", fmt.Errorf("lore changed while assembling Director discovery context: before=%s after=%s", strings.TrimSpace(startRevision), strings.TrimSpace(currentRevision))
 	}
 	temporary := formatTemporaryLoreRecalls(items, turn.ModelContextMessages)
-	reviewStatus := "## 资料库审阅状态（source: lore revision）\n\n"
+	reviewStatus := "## Lore Review Status (source: lore revision)\n\n"
 	if strings.TrimSpace(plan.Metadata.LoreRevision) == "" {
-		reviewStatus += "这是当前分支首次资料审阅。名称目录已作为有界发现索引提供；选择候选后再按需读取简介或正文。"
+		reviewStatus += "This is the first lore review for the current branch. The name roster is provided as a bounded discovery index; read summaries or full content only after selecting candidates."
 	} else if plan.Metadata.LoreRevision != currentRevision {
-		reviewStatus += fmt.Sprintf("资料库已变化（上次：%s，当前：%s）。名称目录已刷新，请重新判断新增或修改后的候选资料。", plan.Metadata.LoreRevision, currentRevision)
+		reviewStatus += fmt.Sprintf("Lore changed (previous: %s, current: %s). The name roster was refreshed; reassess newly added or modified candidates.", plan.Metadata.LoreRevision, currentRevision)
 	} else {
-		reviewStatus += "资料库自上次 Director 完成审阅后没有变化；名称目录仍会每轮提供，遇到 replan、场景切换或角色功能空缺时据此扩展候选。"
+		reviewStatus += "Lore has not changed since the Director's previous review. The name roster is still provided every turn; use it to expand candidates during a replan, scene transition, or role gap."
 	}
 	return joinLoreContextSections(reviewStatus, roster, workset, activeContext, temporary), nil
 }
@@ -138,7 +138,7 @@ func formatBoundedCompleteLoreSection(title string, items []lore.Item, maxBytes 
 	for _, item := range items {
 		block := formatInteractiveLoreItem(item)
 		if sb.Len()+len([]byte(block))+2 > maxBytes {
-			return "", fmt.Errorf("%s合计超过 %d bytes；系统不会静默截断，请缩短资料正文、减少当前引用或调整资料类型", title, maxBytes)
+			return "", fmt.Errorf("%s exceeds %d bytes in total; the system will not truncate it silently, so shorten lore content, reduce active references, or adjust lore types", title, maxBytes)
 		}
 		sb.WriteString(block)
 		sb.WriteString("\n\n")
@@ -148,9 +148,9 @@ func formatBoundedCompleteLoreSection(title string, items []lore.Item, maxBytes 
 
 func formatInteractiveLoreItem(item lore.Item) string {
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "### [[%s]]（%s）\n", strings.TrimSpace(item.Name), strings.TrimSpace(item.Type))
+	fmt.Fprintf(&sb, "### [[%s]] (%s)\n", strings.TrimSpace(item.Name), strings.TrimSpace(item.Type))
 	if brief := strings.TrimSpace(item.BriefDescription); brief != "" {
-		fmt.Fprintf(&sb, "简介：%s\n", brief)
+		fmt.Fprintf(&sb, "Brief: %s\n", brief)
 	}
 	if content := strings.TrimSpace(item.Content); content != "" {
 		sb.WriteString("\n")
@@ -234,13 +234,13 @@ func formatTemporaryLoreRecalls(items []lore.Item, messages []interactive.ModelC
 				continue
 			}
 			seen[item.Name] = true
-			names = append(names, "- [["+item.Name+"]]：本回合由 Game Agent 临时读取；请判断是否应加入当前、候场或保持临时召回。")
+			names = append(names, "- [["+item.Name+"]]: temporarily read by the Game Agent this turn; decide whether it belongs in 当前, 候场, or remains a temporary recall.")
 		}
 	}
 	if len(names) == 0 {
 		return ""
 	}
-	return "## 本回合临时召回资料（source: committed tool calls）\n\n" + strings.Join(names, "\n")
+	return "## Temporary Lore Recalls for This Turn (source: committed tool calls)\n\n" + strings.Join(names, "\n")
 }
 
 func isLoreBodyReadTool(name string) bool {
@@ -257,7 +257,7 @@ func isLoreBodyReadTool(name string) bool {
 // document header, so they cannot create false read receipts.
 func successfulLoreResultIDs(content string) []string {
 	content = strings.TrimSpace(content)
-	if !strings.HasPrefix(content, "# 资料库条目") {
+	if !strings.HasPrefix(content, "# Lore Items") {
 		return nil
 	}
 	result := []string{}
@@ -272,10 +272,10 @@ func successfulLoreResultIDs(content string) []string {
 		if inFence {
 			continue
 		}
-		if !strings.HasPrefix(line, "ID：") {
+		if !strings.HasPrefix(line, "ID:") {
 			continue
 		}
-		id := strings.TrimSpace(strings.TrimPrefix(line, "ID："))
+		id := strings.TrimSpace(strings.TrimPrefix(line, "ID:"))
 		if id == "" || seen[id] {
 			continue
 		}

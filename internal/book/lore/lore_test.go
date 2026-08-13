@@ -211,10 +211,10 @@ func TestLoreStoreProgressiveContextSplitsResidentAndIndex(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(context, "## 常驻资料库") || !strings.Contains(context, "主角完整正文") {
+	if !strings.Contains(context, "## Resident Lore") || !strings.Contains(context, "主角完整正文") {
 		t.Fatalf("resident context missing full content: %s", context)
 	}
-	if !strings.Contains(context, "## 按需资料名称目录") || !strings.Contains(context, "黄泉酒馆") || !strings.Contains(context, "隐藏规则") || !strings.Contains(context, "候选角色11") {
+	if !strings.Contains(context, "## On-demand Lore Name Catalog") || !strings.Contains(context, "黄泉酒馆") || !strings.Contains(context, "隐藏规则") || !strings.Contains(context, "候选角色11") {
 		t.Fatalf("name catalog context missing non-resident items: %s", context)
 	}
 	if strings.Contains(context, "id: base") || strings.Contains(context, "黄泉酒馆索引简介") {
@@ -239,12 +239,12 @@ func TestLoreStoreCompactIndexOmitsHeavyFieldsAndDisabledItems(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"# 资料库索引", "id: base", "名称: 黄泉酒馆", "简介: 地点 黄泉酒馆。索引简介。"} {
+	for _, want := range []string{"# Lore Index", "id: base", "name: 黄泉酒馆", "brief: 地点 黄泉酒馆。索引简介。"} {
 		if !strings.Contains(index, want) {
 			t.Fatalf("compact index missing %q:\n%s", want, index)
 		}
 	}
-	for _, unexpected := range []string{"据点完整正文", "禁用规则", "类型:", "标签:", "重要度:", "加载策略:"} {
+	for _, unexpected := range []string{"据点完整正文", "禁用规则", "type:", "tags:", "importance:", "load_mode:"} {
 		if strings.Contains(index, unexpected) {
 			t.Fatalf("compact index should not contain %q:\n%s", unexpected, index)
 		}
@@ -277,7 +277,7 @@ func TestLoreStoreCompactIndexMatchesMultipleKeywordsWithAnyAndAll(t *testing.T)
 	if !strings.Contains(allIndex, "id: archive") || strings.Contains(allIndex, "id: hero") {
 		t.Fatalf("all keyword match should require every keyword:\n%s", allIndex)
 	}
-	if !strings.Contains(allIndex, "匹配词: 档案柜、完整原文") || !strings.Contains(allIndex, "匹配来源: 关键词、正文") {
+	if !strings.Contains(allIndex, "matched_terms: 档案柜, 完整原文") || !strings.Contains(allIndex, "match_sources: keywords, content") {
 		t.Fatalf("keyword result should explain matched terms and fields:\n%s", allIndex)
 	}
 	if strings.Contains(allIndex, "暗门后藏着完整原文线索") {
@@ -303,7 +303,7 @@ func TestLoreStoreCompactIndexFuzzyMatchesShortMetadataAndRanksExactFirst(t *tes
 	if strings.Index(index, "id: exact") > strings.Index(index, "id: fuzzy") {
 		t.Fatalf("exact name match should rank before fuzzy match:\n%s", index)
 	}
-	if !strings.Contains(index, "匹配来源: 模糊名称") {
+	if !strings.Contains(index, "match_sources: fuzzy name") {
 		t.Fatalf("fuzzy match should expose its source:\n%s", index)
 	}
 }
@@ -324,14 +324,14 @@ func TestLoreStoreCompactIndexPaginatesWithDefaultAndExplicitLimits(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Count(first, "- id:") != IndexDefaultLimit || !strings.Contains(first, "下一页使用 offset=10") {
+	if strings.Count(first, "- id:") != IndexDefaultLimit || !strings.Contains(first, "Use offset=10 for the next page") {
 		t.Fatalf("default page should return %d entries and the next offset:\n%s", IndexDefaultLimit, first)
 	}
 	second, err := store.SearchIndexMarkdown(IndexOptions{Paginate: true, Offset: 10, Limit: 2})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Count(second, "- id:") != 2 || strings.Contains(second, "下一页使用") {
+	if strings.Count(second, "- id:") != 2 || strings.Contains(second, "for the next page") {
 		t.Fatalf("explicit final page should return the remaining two entries:\n%s", second)
 	}
 	unbounded, err := store.SearchIndexMarkdown(IndexOptions{
@@ -342,7 +342,7 @@ func TestLoreStoreCompactIndexPaginatesWithDefaultAndExplicitLimits(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Count(unbounded, "- id:") != 11 || strings.Contains(unbounded, "下一页使用") {
+	if strings.Count(unbounded, "- id:") != 11 || strings.Contains(unbounded, "for the next page") {
 		t.Fatalf("an arbitrarily large caller limit should return every remaining entry without overflowing:\n%s", unbounded)
 	}
 }
@@ -363,7 +363,7 @@ func TestLoreStoreNameRosterIsBoundedAndOmitsResidentBodies(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"资料名称目录", "共 2 条", "[character/major] 林川", "[location/important] 黄泉酒馆"} {
+	for _, want := range []string{"Lore Name Catalog", "There are 2 enabled lore items", "[character/major] 林川", "[location/important] 黄泉酒馆"} {
 		if !strings.Contains(roster, want) {
 			t.Fatalf("name roster missing %q:\n%s", want, roster)
 		}
@@ -430,12 +430,12 @@ func TestLoreStoreCompactIndexNoMatchDoesNotClaimLibraryIsEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"资料库共有 1 条启用资料", "本次检索匹配 0 条", "未命中不代表资料库为空"} {
+	for _, want := range []string{"The lore library has 1 enabled items", "this search matched none", "No match does not mean the library is empty"} {
 		if !strings.Contains(index, want) {
 			t.Fatalf("no-match result missing %q:\n%s", want, index)
 		}
 	}
-	if strings.Contains(index, "资料库暂无") {
+	if strings.Contains(index, "has no enabled items") {
 		t.Fatalf("no-match result must not claim the library is empty:\n%s", index)
 	}
 }
@@ -457,15 +457,15 @@ func TestLoreStoreCompactIndexBudgetFallsBackToNameRoster(t *testing.T) {
 	if len([]byte(index)) > 1000 {
 		t.Fatalf("budgeted index bytes = %d, want <= 1000\n%s", len([]byte(index)), index)
 	}
-	if !strings.Contains(index, "已降级为仅 ID 和名称") {
+	if !strings.Contains(index, "showing IDs and names only") {
 		t.Fatalf("budgeted index should explain name-only fallback:\n%s", index)
 	}
-	if strings.Contains(index, "简介:") {
+	if strings.Contains(index, "brief:") {
 		t.Fatalf("name-only fallback should omit briefs:\n%s", index)
 	}
 	for i := 0; i < 8; i++ {
 		id := fmt.Sprintf("item_%02d", i)
-		if !strings.Contains(index, "id: "+id) || !strings.Contains(index, "名称: 资料"+id) {
+		if !strings.Contains(index, "id: "+id) || !strings.Contains(index, "name: 资料"+id) {
 			t.Fatalf("name-only fallback should retain full roster entry %s:\n%s", id, index)
 		}
 	}

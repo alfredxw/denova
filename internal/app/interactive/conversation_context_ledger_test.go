@@ -150,7 +150,7 @@ func TestInteractiveConversationSharesOneBudgetAcrossTurnRuntimeAndResidentLore(
 				t.Fatalf("interactive fragment lacks bounded provenance: %#v", fragment)
 			}
 			if fragment.Source == "interactive.turn_rules" && fragment.Included &&
-				(!strings.Contains(fragment.Content, "必须显著影响本轮剧情裁定") || !strings.Contains(fragment.Content, "不要把规则文本作为正文输出")) {
+				(!strings.Contains(fragment.Content, "must materially affect adjudication") || !strings.Contains(fragment.Content, "Do not output the rule text as prose")) {
 				t.Fatalf("storyteller fragment lost its behavioral contract: %#v", fragment)
 			}
 		}
@@ -245,7 +245,7 @@ func TestInteractiveContextLedgerUsesFinalCompactedMessages(t *testing.T) {
 			t.Fatalf("non-empty ledger parts must have a content hash: %#v", part)
 		}
 		switch {
-		case part.Source == "互动故事" && (part.Title == "故事标题" || part.Title == "开端"):
+		case part.Source == "InteractiveStory" && (part.Title == "Story Title" || part.Title == "Opening"):
 			metadataCount++
 			if part.Included || part.Truncated || !strings.Contains(part.Note, "metadata_only") {
 				t.Fatalf("story title/origin are audit metadata, not model input: %#v", part)
@@ -262,16 +262,16 @@ func TestInteractiveContextLedgerUsesFinalCompactedMessages(t *testing.T) {
 			// instead of depending on one summary word appearing in the preview.
 			compaction = part.Included && part.Purpose == "model-visible history checkpoint" &&
 				strings.Contains(part.Note, "final_message=true")
-		case part.Source == "历史回合" && strings.HasPrefix(part.Title, "第 1 回合"):
+		case part.Source == "HistoricalTurn" && strings.HasPrefix(part.Title, "Turn 1"):
 			removedOld = !part.Included && part.Truncated && strings.Contains(part.Note, "not_present_after_final_compaction")
-		case part.Source == "历史回合" && strings.HasPrefix(part.Title, "第 2 回合"):
+		case part.Source == "HistoricalTurn" && strings.HasPrefix(part.Title, "Turn 2"):
 			keptRecent = keptRecent || part.Included
-		case part.Source == "历史工具上下文" && strings.HasPrefix(part.Title, "工具调用"):
+		case part.Source == "HistoricalToolContext" && strings.HasPrefix(part.Title, "Tool Call"):
 			toolCalls++
 			if part.Limit != 0 || part.LimitUnit != "" || part.Truncated || !strings.Contains(part.Note, "preserved_exactly=true") || !strings.Contains(part.Note, "bounded_by=model_completion") {
 				t.Fatalf("tool-call ledger must describe exact model-produced arguments: %#v", part)
 			}
-		case part.Source == "历史工具上下文" && strings.HasPrefix(part.Title, "工具结果"):
+		case part.Source == "HistoricalToolContext" && strings.HasPrefix(part.Title, "Tool Result"):
 			toolResults++
 			if !strings.Contains(part.Preview, "完整资料正文") ||
 				!strings.Contains(part.Note, "context_policy_applied=true") ||

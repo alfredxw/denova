@@ -7,7 +7,6 @@ import (
 	agentcontext "denova/internal/agents/context"
 	"denova/internal/agents/run"
 	"denova/internal/agents/session"
-
 )
 
 func TestDisplayRecorderPersistsSubAgentAssistantChunks(t *testing.T) {

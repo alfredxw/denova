@@ -93,14 +93,12 @@ func toolAllowedByAccessMode(mode ToolAccessMode, descriptor agent.ToolDescripto
 func toolAccessModeBlockedMessage(mode ToolAccessMode, name string, descriptor agent.ToolDescriptor) string {
 	if mode != ToolAccessModePlanReadOnly {
 		return fmt.Sprintf(
-			"[tool error] Runtime access mode %q blocked tool %q (capability %q, mutation scope %s). / 运行时访问模式 %q 已阻止工具 %q（能力 %q，变更范围 %s）。",
-			mode, name, descriptor.Capability, descriptor.MutationScope,
+			"[tool error] Runtime access mode %q blocked tool %q (capability %q, mutation scope %s).",
 			mode, name, descriptor.Capability, descriptor.MutationScope,
 		)
 	}
 	return fmt.Sprintf(
-		"[tool error] Plan Mode is read-only and blocked tool %q (capability %q, mutation scope %s). Approve the plan or switch to Chat Mode before using it. / 规划模式为只读，工具 %q（能力 %q，变更范围 %s）已被阻止；请先确认计划或切换到 Chat Mode。",
-		name, descriptor.Capability, descriptor.MutationScope,
+		"[tool error] Plan Mode is read-only and blocked tool %q (capability %q, mutation scope %s). Approve the plan or switch to Chat Mode before using it.",
 		name, descriptor.Capability, descriptor.MutationScope,
 	)
 }

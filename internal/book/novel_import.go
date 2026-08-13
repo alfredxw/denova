@@ -517,8 +517,8 @@ func scanRegexMarkers(text, pattern string) ([]novelImportMarker, error) {
 func buildChapterSplitInferenceContext(sample string) string {
 	lines := strings.Split(sample, "\n")
 	var sb strings.Builder
-	sb.WriteString("以下是从小说样本中抽取的短行候选，不是完整正文。请只基于这些候选判断章节/分卷标题行正则。\n")
-	sb.WriteString("候选行：\n")
+	sb.WriteString("The following short-line candidates were extracted from a novel sample; they are not complete prose. Infer the chapter or volume title-line regex only from these candidates.\n")
+	sb.WriteString("Candidate lines:\n")
 	count := 0
 	for i, line := range lines {
 		trimmed := strings.TrimSpace(line)
@@ -532,7 +532,7 @@ func buildChapterSplitInferenceContext(sample string) string {
 		}
 	}
 	if count == 0 {
-		sb.WriteString("（未抽取到短行候选，下面提供样本开头片段）\n")
+		sb.WriteString("No short-line candidate was extracted; the beginning of the sample follows.\n")
 		sb.WriteString(firstRunes(sample, 3000))
 	}
 	return sb.String()

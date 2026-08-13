@@ -39,7 +39,7 @@ func TestSubmitTurnResultValidatesFrozenStatePathsAndRetainsChoicesAcrossRetry(t
 	}
 	wrongType := testTurnSubmissionInput([]interactivestate.Update{{Op: "replace", Path: "/protagonist/生命值", Value: "很多"}}, true)
 	receipt, err := invalidConversation.SubmitTurnResult(context.Background(), wrongType)
-	if err != nil || receipt.Ready || receipt.ModuleStatus.StateChanges != interactive.TurnSubmissionModuleRejected || receipt.ModuleStatus.Choices != interactive.TurnSubmissionModuleAccepted || len(receipt.Diagnostics) != 1 || !strings.Contains(receipt.Diagnostics[0].MessageZH, "生命值") {
+	if err != nil || receipt.Ready || receipt.ModuleStatus.StateChanges != interactive.TurnSubmissionModuleRejected || receipt.ModuleStatus.Choices != interactive.TurnSubmissionModuleAccepted || len(receipt.Diagnostics) != 1 || !strings.Contains(receipt.Diagnostics[0].Message, "Expected JSON number") {
 		t.Fatalf("wrong field type should return model-correctable feedback: receipt=%#v err=%v", receipt, err)
 	}
 	if invalidConversation.InteractiveNarrativeReady() {

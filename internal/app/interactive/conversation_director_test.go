@@ -41,7 +41,7 @@ func TestDirectorContextBudgetCountsExactComposedSystemInstruction(t *testing.T)
 	if budget.initialTokens != want {
 		t.Fatalf("source budget = %d, want %d from exact composition hash=%s", budget.initialTokens, want, composition.InstructionHash())
 	}
-	if !strings.Contains(composition.Instruction(), "Denova 运行时契约") || !strings.Contains(composition.Instruction(), "输出格式（不可覆盖）") {
+	if !strings.Contains(composition.Instruction(), "Denova Runtime Contract (Non-overridable)") || !strings.Contains(composition.Instruction(), "Output Protocol (Non-overridable)") {
 		t.Fatalf("test fixture must include runtime/output wrappers omitted by the former shadow prompt")
 	}
 }

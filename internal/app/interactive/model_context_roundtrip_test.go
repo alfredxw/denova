@@ -125,7 +125,7 @@ func TestInteractiveToolBatchSurvivesFailedCycleAndReload(t *testing.T) {
 		if message == nil {
 			continue
 		}
-		interrupted = interrupted || strings.Contains(message.Content, "检查门") && strings.Contains(message.Content, "中断")
+		interrupted = interrupted || strings.Contains(message.Content, "检查门") && strings.Contains(message.Content, "interrupted turn")
 		assistant = assistant || message.Role == agents.RoleAssistant && message.Content == "I will fetch the gate record." && len(message.ToolCalls) == 1
 		result = result || message.Role == agents.RoleTool && message.ToolCallID == "call-fetch" && message.Content == "The gate was opened recently."
 	}

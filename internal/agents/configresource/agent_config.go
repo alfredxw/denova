@@ -89,7 +89,7 @@ func loadAgentConfigLayered(cfg *config.Config) (config.LayeredSettings, error) 
 	}
 	layered, err := config.LoadLayeredWithStartupConfigAt(novaDir, workspace, projectConfigPath)
 	if err != nil {
-		return config.LayeredSettings{}, fmt.Errorf("读取 Agent 配置失败: %w", err)
+		return config.LayeredSettings{}, fmt.Errorf("read Agent configuration: %w", err)
 	}
 	return layered, nil
 }
@@ -109,11 +109,11 @@ func writableAgentConfigPath(cfg *config.Config, scope string) (string, error) {
 			return config.ProjectConfigPath(cfg.ProjectStateDir), nil
 		}
 		if strings.TrimSpace(workspace) == "" {
-			return "", fmt.Errorf("当前没有打开的工作区，无法写入 workspace 配置")
+			return "", fmt.Errorf("cannot write workspace configuration because no workspace is open")
 		}
 		return config.WorkspaceConfigPath(workspace), nil
 	default:
-		return "", fmt.Errorf("不支持的配置层级: %s", scope)
+		return "", fmt.Errorf("unsupported configuration scope: %s", scope)
 	}
 }
 

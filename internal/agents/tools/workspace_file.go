@@ -266,7 +266,7 @@ func FormatWorkspaceChangeError(toolName string, err error) (string, bool) {
 
 func workspaceChangeToolPublicErrorMessage(changeErr *workspacechange.Error) string {
 	if changeErr != nil && changeErr.Code == workspacechange.ErrorCodeRevisionConflict {
-		return "Workspace file changed during the tool call; retry the operation. / 工具调用期间文件发生变化，请重试。"
+		return "Workspace file changed during the tool call; retry the operation."
 	}
 	if changeErr == nil {
 		return ""

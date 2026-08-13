@@ -16,19 +16,19 @@ const (
 // ActorStateSchemaBatch incrementally adds independently retryable proposal
 // items to one run-local draft. Story state is not modified by this type.
 type ActorStateSchemaBatch struct {
-	Summary  string                      `json:"summary,omitempty" jsonschema:"description=本次审查的简短摘要；后续批次可更新"`
-	Items    []ActorStateSchemaBatchItem `json:"items" jsonschema:"description=本次新增的独立提案项；已 accepted 的 item_id 不要重传"`
-	Finalize bool                        `json:"finalize" jsonschema:"description=是否在接收本批成功项后完成草稿；失败或阻塞项存在时不会 finalize"`
+	Summary  string                      `json:"summary,omitempty" jsonschema:"description=Brief summary of this review; later batches may update it"`
+	Items    []ActorStateSchemaBatchItem `json:"items" jsonschema:"description=Independent proposal items added in this batch; do not resend accepted item_id values"`
+	Finalize bool                        `json:"finalize" jsonschema:"description=Whether to finalize after accepting successful items in this batch; rejected or blocked items prevent finalization"`
 }
 
 // ActorStateSchemaBatchItem groups one sourced requirement decision with the
 // minimal schema or Actor operations needed to satisfy it.
 type ActorStateSchemaBatchItem struct {
-	ItemID       string                              `json:"item_id" jsonschema:"description=稳定且唯一的幂等 ID，仅使用字母、数字、点、下划线、冒号或短横线"`
-	DependsOn    []string                            `json:"depends_on,omitempty" jsonschema:"description=本项依赖的其他 item_id；依赖项未 accepted 时本项返回 blocked"`
+	ItemID       string                              `json:"item_id" jsonschema:"description=Stable unique idempotency ID using only letters, digits, dots, underscores, colons, or hyphens"`
+	DependsOn    []string                            `json:"depends_on,omitempty" jsonschema:"description=Other item_id values this item depends on; the item is blocked until every dependency is accepted"`
 	Summary      string                              `json:"summary,omitempty"`
-	Requirements []ActorStateSchemaRequirementReview `json:"requirements" jsonschema:"description=本项自包含的来源化需求审查"`
-	Adaptation   ActorStateSchemaAdaptation          `json:"adaptation" jsonschema:"description=仅包含满足本项 requirements 所需的最小 diff"`
+	Requirements []ActorStateSchemaRequirementReview `json:"requirements" jsonschema:"description=Self-contained review of sourced requirements for this item"`
+	Adaptation   ActorStateSchemaAdaptation          `json:"adaptation" jsonschema:"description=Minimal diff needed to satisfy only this item's requirements"`
 }
 
 // ActorStateSchemaBatchAudit is supplied by the backend. Model input cannot
@@ -117,13 +117,13 @@ func (d *ActorStateSchemaBatchDraft) Submit(batch ActorStateSchemaBatch, audit A
 		Blocked:  []ActorStateSchemaBatchIssue{},
 	}
 	if d == nil {
-		result.Rejected = append(result.Rejected, actorStateSchemaBatchIssue("", "draft_unavailable", "", "状态结构 Batch 草稿不可用"))
+		result.Rejected = append(result.Rejected, actorStateSchemaBatchIssue("", "draft_unavailable", "", "State schema batch draft is unavailable."))
 		return result
 	}
 	requestedSummary := trimBytes(batch.Summary, maxInteractiveTextBytes)
 	if d.finalized != nil {
 		for index, item := range batch.Items {
-			result.Rejected = append(result.Rejected, actorStateSchemaBatchIssue(strings.TrimSpace(item.ItemID), "draft_finalized", fmt.Sprintf("items[%d]", index), "状态结构草稿已经 finalize，不能再增加或替换 item"))
+			result.Rejected = append(result.Rejected, actorStateSchemaBatchIssue(strings.TrimSpace(item.ItemID), "draft_finalized", fmt.Sprintf("items[%d]", index), "The state schema draft is finalized; items cannot be added or replaced."))
 		}
 		result.DraftAcceptedItems = len(d.order)
 		result.Finalized = true
@@ -152,18 +152,18 @@ func (d *ActorStateSchemaBatchDraft) Submit(batch ActorStateSchemaBatch, audit A
 			continue
 		}
 		if itemIDCounts[item.ItemID] > 1 {
-			result.Rejected = append(result.Rejected, actorStateSchemaBatchIssue(item.ItemID, "duplicate_item_id", path+".item_id", "同一 Batch 中 item_id 重复"))
+			result.Rejected = append(result.Rejected, actorStateSchemaBatchIssue(item.ItemID, "duplicate_item_id", path+".item_id", "item_id is duplicated within this batch."))
 			continue
 		}
 		if len(item.DependsOn) > maxActorStateSchemaBatchDependencies {
-			result.Rejected = append(result.Rejected, actorStateSchemaBatchIssue(item.ItemID, "too_many_dependencies", path+".depends_on", fmt.Sprintf("depends_on 过多: %d > %d", len(item.DependsOn), maxActorStateSchemaBatchDependencies)))
+			result.Rejected = append(result.Rejected, actorStateSchemaBatchIssue(item.ItemID, "too_many_dependencies", path+".depends_on", fmt.Sprintf("too many depends_on values: %d > %d", len(item.DependsOn), maxActorStateSchemaBatchDependencies)))
 			continue
 		}
 		dependenciesValid := true
 		for depIndex := range item.DependsOn {
 			item.DependsOn[depIndex] = strings.TrimSpace(item.DependsOn[depIndex])
 			if err := validateActorStateSchemaBatchItemID(item.DependsOn[depIndex]); err != nil || item.DependsOn[depIndex] == item.ItemID {
-				result.Rejected = append(result.Rejected, actorStateSchemaBatchIssue(item.ItemID, "invalid_dependency", fmt.Sprintf("%s.depends_on[%d]", path, depIndex), "depends_on 必须引用另一个合法 item_id"))
+				result.Rejected = append(result.Rejected, actorStateSchemaBatchIssue(item.ItemID, "invalid_dependency", fmt.Sprintf("%s.depends_on[%d]", path, depIndex), "depends_on must reference another valid item_id."))
 				dependenciesValid = false
 				break
 			}
@@ -174,7 +174,7 @@ func (d *ActorStateSchemaBatchDraft) Submit(batch ActorStateSchemaBatch, audit A
 		fingerprint := actorStateSchemaBatchItemFingerprint(item)
 		if stored, ok := d.items[item.ItemID]; ok {
 			if stored.fingerprint != fingerprint {
-				result.Rejected = append(result.Rejected, actorStateSchemaBatchIssue(item.ItemID, "item_id_conflict", path, "已 accepted 的 item_id 不能用于不同内容"))
+				result.Rejected = append(result.Rejected, actorStateSchemaBatchIssue(item.ItemID, "item_id_conflict", path, "An accepted item_id cannot be reused for different content."))
 				continue
 			}
 			result.Accepted = append(result.Accepted, ActorStateSchemaBatchAccepted{ItemID: item.ItemID, AlreadyAccepted: true, Preview: actorStateSchemaProposalPreview(stored.proposal)})
@@ -248,7 +248,7 @@ func (d *ActorStateSchemaBatchDraft) Submit(batch ActorStateSchemaBatch, audit A
 		missing := d.missingDependencies(candidate.item.DependsOn)
 		result.Blocked = append(result.Blocked, ActorStateSchemaBatchIssue{
 			ItemID: candidate.item.ItemID, Code: "dependency_not_accepted", Path: fmt.Sprintf("items[%d].depends_on", candidate.index),
-			Message: "依赖项尚未 accepted", Retryable: true, DependsOn: missing,
+			Message: "Dependencies have not been accepted yet.", Retryable: true, DependsOn: missing,
 		})
 	}
 	if strings.TrimSpace(requestedSummary) != "" && (len(result.Accepted) > 0 || len(batch.Items) == 0) {
@@ -260,7 +260,7 @@ func (d *ActorStateSchemaBatchDraft) Submit(batch ActorStateSchemaBatch, audit A
 		return result
 	}
 	if len(d.order) == 0 {
-		result.Rejected = append(result.Rejected, actorStateSchemaBatchIssue("", "empty_draft", "items", "状态结构草稿至少需要一个有来源的审查 item"))
+		result.Rejected = append(result.Rejected, actorStateSchemaBatchIssue("", "empty_draft", "items", "The state schema draft requires at least one sourced review item."))
 		return result
 	}
 	proposal := d.mergedProposal(nil, audit)
@@ -301,10 +301,10 @@ func (d *ActorStateSchemaBatchDraft) SubmitStructureOnly(batch ActorStateSchemaB
 		path := fmt.Sprintf("items[%d]", index)
 		switch {
 		case len(item.Adaptation.InitialActorOps) > 0:
-			issues = append(issues, actorStateSchemaBatchIssue(strings.TrimSpace(item.ItemID), "actor_values_not_allowed", path+".adaptation.initial_actor_ops", "开局结构工具不能修改 initial_actors；Actor 创建和值请在 submit_interactive_turn.state_changes 中提交"))
+			issues = append(issues, actorStateSchemaBatchIssue(strings.TrimSpace(item.ItemID), "actor_values_not_allowed", path+".adaptation.initial_actor_ops", "The opening schema tool cannot modify initial_actors; submit Actor creation and values through submit_interactive_turn.state_changes."))
 			continue
 		case len(item.Adaptation.ActorOps) > 0:
-			issues = append(issues, actorStateSchemaBatchIssue(strings.TrimSpace(item.ItemID), "actor_values_not_allowed", path+".adaptation.actor_ops", "开局结构工具不能写 Actor 值；初始状态请在 submit_interactive_turn.state_changes 中提交"))
+			issues = append(issues, actorStateSchemaBatchIssue(strings.TrimSpace(item.ItemID), "actor_values_not_allowed", path+".adaptation.actor_ops", "The opening schema tool cannot write Actor values; submit initial state through submit_interactive_turn.state_changes."))
 			continue
 		}
 		invalidPolicy := false
@@ -312,7 +312,7 @@ func (d *ActorStateSchemaBatchDraft) SubmitStructureOnly(batch ActorStateSchemaB
 			if strings.TrimSpace(requirement.ValuePolicy) == ActorStateSchemaValuePolicySchemaOnly {
 				continue
 			}
-			issues = append(issues, actorStateSchemaBatchIssue(strings.TrimSpace(item.ItemID), "value_policy_not_allowed", fmt.Sprintf("%s.requirements[%d].value_policy", path, requirementIndex), "开局结构工具的 requirement 只能使用 value_policy=schema_only"))
+			issues = append(issues, actorStateSchemaBatchIssue(strings.TrimSpace(item.ItemID), "value_policy_not_allowed", fmt.Sprintf("%s.requirements[%d].value_policy", path, requirementIndex), "Opening schema-tool requirements must use value_policy=schema_only."))
 			invalidPolicy = true
 			break
 		}
@@ -494,16 +494,16 @@ func actorStateSchemaBatchIssue(itemID, code, path, message string) ActorStateSc
 
 func validateActorStateSchemaBatchItemID(id string) error {
 	if id == "" {
-		return fmt.Errorf("item_id 不能为空")
+		return fmt.Errorf("item_id cannot be empty")
 	}
 	if len(id) > maxActorStateSchemaBatchItemIDBytes {
-		return fmt.Errorf("item_id 过长: %d > %d bytes", len(id), maxActorStateSchemaBatchItemIDBytes)
+		return fmt.Errorf("item_id is too long: %d > %d bytes", len(id), maxActorStateSchemaBatchItemIDBytes)
 	}
 	for index, r := range id {
 		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || (index > 0 && (r == '.' || r == '_' || r == ':' || r == '-')) {
 			continue
 		}
-		return fmt.Errorf("item_id 只能使用字母、数字、点、下划线、冒号或短横线，且必须以字母或数字开头")
+		return fmt.Errorf("item_id may contain only letters, digits, dots, underscores, colons, or hyphens and must start with a letter or digit")
 	}
 	return nil
 }
@@ -518,13 +518,13 @@ func actorStateSchemaBatchValidationCode(err error) string {
 	switch {
 	case strings.Contains(message, "expected_type"):
 		return "invalid_expected_type"
-	case strings.Contains(message, "来源"):
+	case strings.Contains(message, "source"):
 		return "invalid_source"
-	case strings.Contains(message, "覆盖字段不存在"):
+	case strings.Contains(message, "coverage field does not exist"):
 		return "target_field_not_found"
-	case strings.Contains(message, "schema 操作"):
+	case strings.Contains(message, "schema operation"):
 		return "missing_schema_operation"
-	case strings.Contains(message, "操作过多"):
+	case strings.Contains(message, "too many"):
 		return "too_many_operations"
 	default:
 		return "validation_failed"
@@ -538,7 +538,7 @@ func actorStateSchemaBatchValidationPath(basePath string, item ActorStateSchemaB
 			return fmt.Sprintf("%s.requirements[%d]", basePath, index)
 		}
 	}
-	if strings.Contains(message, "状态需求") || strings.Contains(message, "覆盖") || strings.Contains(message, "expected_type") {
+	if strings.Contains(message, "state requirement") || strings.Contains(message, "coverage") || strings.Contains(message, "expected_type") {
 		return basePath + ".requirements"
 	}
 	return basePath + ".adaptation"

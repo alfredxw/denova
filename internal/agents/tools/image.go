@@ -26,25 +26,25 @@ const (
 	generatedImageReceiptSchema             = "generated_image.receipt.v1"
 	generateImagePurposeChapterIllustration = "chapter_illustration"
 	generateImagePurposeInteractiveImage    = "interactive_image"
-	generateImageSupportedSizeDescription   = "可选图像尺寸，留空时由 Agent 按生成意图决定；仅支持 2K: 2048x2048、2304x1728、1728x2304、2848x1600、1600x2848、2496x1664、1664x2496、3136x1344；3K: 3072x3072、3456x2592、2592x3456、4096x2304、2304x4096、2496x3744、3744x2496、4704x2016；4K: 4096x4096、3520x4704、4704x3520、5504x3040、3040x5504、3328x4992、4992x3328、6240x2656"
-	generateImageDefaultAltText             = "生成图像"
+	generateImageSupportedSizeDescription   = " Optional image size; leave empty for the Agent to choose from intent. Supported sizes only: 2K: 2048x2048, 2304x1728, 1728x2304, 2848x1600, 1600x2848, 2496x1664, 1664x2496, 3136x1344; 3K: 3072x3072, 3456x2592, 2592x3456, 4096x2304, 2304x4096, 2496x3744, 3744x2496, 4704x2016; 4K: 4096x4096, 3520x4704, 4704x3520, 5504x3040, 3040x5504, 3328x4992, 4992x3328, 6240x2656."
+	generateImageDefaultAltText             = "Generated image"
 )
 
 const GenerateImageToolName = generateImageToolName
 
 type generateImageInput struct {
-	Purpose      string `json:"purpose,omitempty" jsonschema:"description=图像用途，普通图像留空或填 general；章节插画填 chapter_illustration；互动图像填 interactive_image"`
-	TargetPath   string `json:"target_path,omitempty" jsonschema:"description=关联的 workspace 相对路径。章节插画时填写章节路径，例如 chapters/001.md；普通图像可留空"`
-	StoryID      string `json:"story_id,omitempty" jsonschema:"description=互动图像所属故事 ID，仅 purpose=interactive_image 时填写"`
-	BranchID     string `json:"branch_id,omitempty" jsonschema:"description=互动图像所属分支 ID，仅 purpose=interactive_image 时填写"`
-	TurnID       string `json:"turn_id,omitempty" jsonschema:"description=互动图像所属回合 ID，仅 purpose=interactive_image 时填写"`
-	Prompt       string `json:"prompt" jsonschema:"required,description=给图像模型的完整视觉提示词，应说明主体、场景、构图、风格、光线、情绪和需要避免的文字水印"`
-	AltText      string `json:"alt_text,omitempty" jsonschema:"description=Markdown 图像 alt 文案；不填时由章节名生成"`
-	ProfileID    string `json:"profile_id,omitempty" jsonschema:"description=可选图像模型配置 ID；不填使用当前默认 image profile"`
-	N            int    `json:"n,omitempty" jsonschema:"description=生成图像数量，普通图像可填 1 到 10；章节插画和互动图像固定生成 1 张"`
-	Size         string `json:"size,omitempty" jsonschema:"description=可选图像尺寸，留空时由 Agent 按生成意图决定；仅支持 2K/3K/4K 预设尺寸，详见工具说明"`
-	Quality      string `json:"quality,omitempty" jsonschema:"description=可选图像质量，例如 auto、standard、hd、low、medium、high"`
-	OutputFormat string `json:"output_format,omitempty" jsonschema:"description=可选输出格式：png 或 jpeg"`
+	Purpose      string `json:"purpose,omitempty" jsonschema:"description=Image purpose. Leave empty or use general for ordinary images; use chapter_illustration for chapter art; use interactive_image for interactive art."`
+	TargetPath   string `json:"target_path,omitempty" jsonschema:"description=Related workspace-relative path. For chapter illustrations, provide a chapter path such as chapters/001.md; ordinary images may omit it."`
+	StoryID      string `json:"story_id,omitempty" jsonschema:"description=Story ID for an interactive image; provide only when purpose=interactive_image."`
+	BranchID     string `json:"branch_id,omitempty" jsonschema:"description=Branch ID for an interactive image; provide only when purpose=interactive_image."`
+	TurnID       string `json:"turn_id,omitempty" jsonschema:"description=Turn ID for an interactive image; provide only when purpose=interactive_image."`
+	Prompt       string `json:"prompt" jsonschema:"required,description=Complete visual prompt for the image model, including subject, scene, composition, style, lighting, mood, and text or watermarks to avoid."`
+	AltText      string `json:"alt_text,omitempty" jsonschema:"description=Markdown image alt text; generated from the chapter name when omitted."`
+	ProfileID    string `json:"profile_id,omitempty" jsonschema:"description=Optional image model profile ID; omit to use the current default image profile."`
+	N            int    `json:"n,omitempty" jsonschema:"description=Number of images. Ordinary images accept 1 to 10; chapter illustrations and interactive images always generate one."`
+	Size         string `json:"size,omitempty" jsonschema:"description=Optional image size. Leave empty for the Agent to infer it. Only supported 2K/3K/4K preset sizes are accepted; see the tool description."`
+	Quality      string `json:"quality,omitempty" jsonschema:"description=Optional image quality, such as auto, standard, hd, low, medium, or high."`
+	OutputFormat string `json:"output_format,omitempty" jsonschema:"description=Optional output format: png or jpeg."`
 }
 
 type generatedImageToolResult struct {
@@ -118,10 +118,10 @@ func newIllustrationTools(cfg *config.Config) ([]agent.ToolDefinition, error) {
 		return nil, nil
 	}
 	workspace := strings.TrimSpace(cfg.Workspace)
-	description := "生成图像并保存到 workspace。普通图像保存到 assets/image/generated/；purpose=chapter_illustration 时基于 target_path 指向的章节生成一张非剧透插画，保存到 assets/illustrations/ 并返回可手动插入正文的 Markdown 图像引用；purpose=interactive_image 时必须填写 story_id、branch_id、turn_id，保存到 assets/interactive/images/。只写图像和元数据，不会自动修改正文。" + generateImageSupportedSizeDescription
+	description := "Generate images and save them to the workspace. Ordinary images go to assets/image/generated/. With purpose=chapter_illustration, generate one spoiler-free illustration from the chapter at target_path, save it under assets/illustrations/, and return a Markdown image reference for manual insertion. With purpose=interactive_image, story_id, branch_id, and turn_id are required and the image goes to assets/interactive/images/. The tool writes only image files and metadata; it never edits prose automatically." + generateImageSupportedSizeDescription
 	generateTool, err := agent.InferTool(generateImageToolName, description, func(ctx context.Context, input generateImageInput) (agent.ToolResult, error) {
 		if workspace == "" {
-			return agent.ToolResult{}, fmt.Errorf("当前 workspace 不可用，无法生成图像")
+			return agent.ToolResult{}, fmt.Errorf("cannot generate an image because the current workspace is unavailable")
 		}
 		bookService := book.NewService(workspace)
 		result, err := generateImageForTool(ctx, cfg, bookService, input)
@@ -259,12 +259,12 @@ func mergeImagePresetToolPrompt(cfg *config.Config, prompt string) string {
 	if prompt == "" || cfg == nil || strings.TrimSpace(cfg.ImagePresetToolPrompt) == "" {
 		return prompt
 	}
-	return strings.TrimSpace(fmt.Sprintf("# 图像风格要求\n\n%s\n\n# 本次图像请求\n\n%s", strings.TrimSpace(cfg.ImagePresetToolPrompt), prompt))
+	return strings.TrimSpace(fmt.Sprintf("# Image Style Requirements\n\n%s\n\n# Current Image Request\n\n%s", strings.TrimSpace(cfg.ImagePresetToolPrompt), prompt))
 }
 
 func generateGeneralImageForTool(ctx context.Context, cfg *config.Config, bookService *book.Service, input generateImageInput) (generatedImageToolResult, error) {
 	if bookService == nil || strings.TrimSpace(bookService.Workspace()) == "" {
-		return generatedImageToolResult{}, fmt.Errorf("workspace 不可用")
+		return generatedImageToolResult{}, fmt.Errorf("workspace is unavailable")
 	}
 	prompt := strings.TrimSpace(input.Prompt)
 	if prompt == "" {
@@ -307,14 +307,14 @@ func persistGeneratedImages(bookService *book.Service, input generateImageInput,
 	for index, image := range generated.Images {
 		if len(image.Data) == 0 {
 			result.Failures = append(result.Failures, generatedImageToolFailure{
-				Index: index, Code: "empty_image", Message: "图像模型返回了空图像 / The image provider returned an empty image.",
+				Index: index, Code: "empty_image", Message: "The image provider returned an empty image.",
 			})
 			continue
 		}
 		ext := normalizeGeneratedImageExtension(image.Extension, generated.OutputFormat, input.OutputFormat)
 		if ext == "" {
 			result.Failures = append(result.Failures, generatedImageToolFailure{
-				Index: index, Code: "unknown_format", Message: "无法识别图像格式 / The generated image format is unknown.",
+				Index: index, Code: "unknown_format", Message: "The generated image format is unknown.",
 			})
 			continue
 		}
@@ -323,7 +323,7 @@ func persistGeneratedImages(bookService *book.Service, input generateImageInput,
 		}
 		imagePath := generatedToolImagePath(createdAt, index, ext)
 		if err := bookService.WriteBinaryFile(imagePath, image.Data); err != nil {
-			message := fmt.Sprintf("保存生成图像失败 / Failed to save generated image: %v", err)
+			message := fmt.Sprintf("Failed to save generated image: %v", err)
 			result.Failures = append(result.Failures, generatedImageToolFailure{
 				Index: index, Path: imagePath, Code: "save_failed", Message: message,
 			})
@@ -347,9 +347,9 @@ func persistGeneratedImages(bookService *book.Service, input generateImageInput,
 	}
 	if len(result.Images) == 0 {
 		if len(result.Failures) == 0 {
-			return generatedImageToolResult{}, fmt.Errorf("图像模型未返回图像 / The image provider returned no images")
+			return generatedImageToolResult{}, fmt.Errorf("the image provider returned no images")
 		}
-		return generatedImageToolResult{}, fmt.Errorf("所有生成图像均保存失败 / All generated images failed: %s", result.Failures[0].Message)
+		return generatedImageToolResult{}, fmt.Errorf("all generated images failed: %s", result.Failures[0].Message)
 	}
 	if len(result.Failures) > 0 {
 		result.Status = "partial"

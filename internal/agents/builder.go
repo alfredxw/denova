@@ -61,7 +61,7 @@ func BuildDefinitionWithCompositionForHost(ctx context.Context, cfg *config.Conf
 	definition, err := buildAgentDefinition(ctx, cfg, agentBuildSpec{
 		Kind:              config.AgentKindIDE,
 		Name:              "DenovaAgent",
-		Description:       "AI 小说创作助手",
+		Description:       "AI novel-writing assistant",
 		Composition:       composition,
 		EnableSkills:      true,
 		InteractiveHost:   host.Interactive,
@@ -127,7 +127,7 @@ func BuildInteractiveStoryDefinitionWithComposition(ctx context.Context, cfg *co
 	definition, err := buildAgentDefinition(ctx, cfg, agentBuildSpec{
 		Kind:              config.AgentKindInteractiveStory,
 		Name:              "DenovaInteractiveStoryAgent",
-		Description:       "AI 互动故事叙事助手",
+		Description:       "AI interactive-story narrator",
 		Composition:       composition,
 		EnableSkills:      true,
 		DisableWriteTodos: true,
@@ -147,7 +147,7 @@ func BuildInteractiveDirectorDefinitionWithComposition(ctx context.Context, cfg 
 	definition, err := buildAgentDefinition(ctx, cfg, agentBuildSpec{
 		Kind:                config.AgentKindInteractiveDirector,
 		Name:                "DenovaInteractiveDirectorAgent",
-		Description:         "AI 互动故事后台导演",
+		Description:         "AI background director for interactive stories",
 		Composition:         composition,
 		EnableSkills:        false,
 		DisableWriteTodos:   true,
@@ -166,7 +166,7 @@ func BuildConfigManagerDefinitionWithCompositionForHost(ctx context.Context, cfg
 	definition, err := buildAgentDefinition(ctx, cfg, agentBuildSpec{
 		Kind:              config.AgentKindConfigManager,
 		Name:              "DenovaConfigManagerAgent",
-		Description:       "AI 配置与资源管理助手",
+		Description:       "AI configuration and resource-management assistant",
 		Composition:       composition,
 		EnableSkills:      true,
 		InteractiveHost:   host.Interactive,
@@ -183,7 +183,7 @@ func BuildImageDefinitionWithComposition(ctx context.Context, cfg *config.Config
 	definition, err := buildAgentDefinition(ctx, cfg, agentBuildSpec{
 		Kind:              config.AgentKindImage,
 		Name:              "DenovaImageAgent",
-		Description:       "AI 图像生成助手",
+		Description:       "AI image-generation assistant",
 		Composition:       composition,
 		EnableSkills:      true,
 		DisableWriteTodos: true,
@@ -283,7 +283,7 @@ func buildAgentDefinition(ctx context.Context, cfg *config.Config, spec agentBui
 			general, err := buildChildDefinition(cfg, childDefinitionSpec{
 				ParentKind:  spec.Kind,
 				Name:        producttools.GeneralSubAgentName,
-				Description: "通用子 Agent，用于研究复杂问题、搜索代码和执行独立的多步骤任务。",
+				Description: "General-purpose sub-Agent for researching complex questions, searching code, and executing independent multi-step tasks.",
 				Composition: childComposition,
 				Model:       chatModel, ModelIdentity: modelIdentity,
 				ModelContextWindow: config.ResolveAgentModel(cfg, spec.Kind).ContextWindowTokens,

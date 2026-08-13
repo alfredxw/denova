@@ -1,32 +1,32 @@
 ---
 name: interactive-image
-description: 为互动故事已发生的回合生成一张互动图像。
+description: Generate one image for an already established interactive-story turn.
 category: image
 agent: image
 ---
 
-# 互动图像
+# Interactive Image
 
-当调用方的 `purpose` 是 `interactive_image` 时使用这个 Skill。
+Use this Skill when the caller's `purpose` is `interactive_image`.
 
-## 工作流程
+## Workflow
 
-1. 只基于 `source_context` 中已经发生的互动故事内容生成图像提示词。
-2. 选择当前回合里最有画面感、最能代表当前局面的瞬间；不要透露未来剧情、隐藏身份或未揭示设定。
-3. 如果调用方提供了图像方案预设，把它作为视觉倾向整合进图像提示词。
-4. 用中文写完整图像提示词，包含主体、场景、构图、光线、情绪和视觉风格，并明确避免文字、水印和 logo。
-5. 调用 `generate_image`，参数要求：
-   - `purpose` 填 `interactive_image`。
-   - `story_id`、`branch_id`、`turn_id` 必须原样填写调用方提供的值。
-   - `prompt` 填完整中文图像提示词。
-   - `alt_text` 使用调用方提供的值；没有时写一条简短中文描述。
-   - `size` 可按画面需要从工具支持的 2K/3K/4K 尺寸中选择；不确定时留空。
-   - `output_format` 只能填 `png` 或 `jpeg`；不确定时留空。
-6. 工具返回后，只简要说明生成结果，不要继续推进剧情。
+1. Build the image prompt only from interactive-story events already established in `source_context`.
+2. Choose the most visually compelling moment that best represents the current turn. Do not reveal future plot, hidden identities, or undisclosed canon.
+3. If the caller provides an image preset, incorporate it as the visual direction for the image prompt.
+4. Write a complete Chinese image prompt containing the subject, scene, composition, lighting, mood, and visual style, with explicit negative constraints against text, watermarks, and logos.
+5. Call `generate_image` with:
+   - `purpose`: `interactive_image`.
+   - `story_id`, `branch_id`, and `turn_id`: copy the caller-provided values exactly.
+   - `prompt`: the complete Chinese image prompt.
+   - `alt_text`: use the caller-provided value, or write a short Chinese description when it is absent.
+   - `size`: optionally choose a supported 2K, 3K, or 4K size based on the composition; otherwise omit it.
+   - `output_format`: `png` or `jpeg`; omit it when uncertain.
+6. After the tool returns, report the generation result briefly and do not advance the story.
 
-## 约束
+## Constraints
 
-- 每次只生成一张互动图像。
-- 不要生成批量候选。
-- 不要修改故事正文、章节、资料库或任何配置。
-- 不要把图像 Markdown 插入叙事文本。
+- Generate exactly one interactive image per request.
+- Do not generate batches of candidates.
+- Do not modify story prose, chapters, lore, or configuration.
+- Do not insert image Markdown into narrative text.

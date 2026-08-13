@@ -164,6 +164,26 @@ describe('Agent MessageList', () => {
     }
   })
 
+  it('leaves active-run alignment exclusively to the streaming tail controller', () => {
+    const renderList = (isStreaming: boolean) => (
+      <VirtuosoMockContext.Provider value={{ viewportHeight: 180, itemHeight: 52 }}>
+        <MessageList
+          isStreaming={isStreaming}
+          activityContent={isStreaming ? '正在思考…' : ''}
+          messages={isStreaming ? [] : agentTurnMessages()}
+        />
+      </VirtuosoMockContext.Provider>
+    )
+    const { container, rerender } = render(renderList(true))
+    const viewport = container.querySelector<HTMLElement>('[data-viewport-type="element"]')
+    if (!viewport) throw new Error('Expected Virtuoso viewport')
+
+    expect(viewport).not.toHaveStyle({ display: 'flex' })
+
+    rerender(renderList(false))
+    expect(viewport).toHaveStyle({ display: 'flex' })
+  })
+
   it('lets a multiline thinking replacement grow downward while runway remains', () => {
     let rowHeight = 28
     let rowExtent = 500

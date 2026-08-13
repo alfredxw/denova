@@ -328,7 +328,7 @@ func TestStageDirectorPlanRunUpdateRejectsChangedLoreRevision(t *testing.T) {
 		Finalize:           true,
 		SourceLoreRevision: run.loreRevision,
 	})
-	if err == nil || !strings.Contains(err.Error(), "资料库在导演审阅期间已变化") {
+	if err == nil || !strings.Contains(err.Error(), "lore changed during Director review") {
 		t.Fatalf("stale lore revision should be rejected: %v", err)
 	}
 }

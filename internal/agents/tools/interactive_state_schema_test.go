@@ -24,7 +24,7 @@ func TestOpeningGameStateSchemaToolUsesDedicatedStructureOnlyEntry(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Name != initializeStoryStateSchemaToolName || !strings.Contains(info.Desc, "schema_only") || !strings.Contains(info.Desc, `source={"kind":"opening","id":"opening-draft"}`) || !strings.Contains(info.Desc, "story 是 actor_id") || !strings.Contains(info.Desc, "template_id 是 story_context") || !strings.Contains(info.Desc, "必须主动") || !strings.Contains(info.Desc, "固定 d20 只是裁定随机性的方式") || !strings.Contains(info.Desc, "不能作为 D&D 状态字段的依据") || !strings.Contains(info.Desc, "关系阶段") || !strings.Contains(info.Desc, "initialization_guide") || !strings.Contains(info.Desc, "原子落盘") {
+	if info.Name != initializeStoryStateSchemaToolName || !strings.Contains(info.Desc, "schema_only") || !strings.Contains(info.Desc, `source={"kind":"opening","id":"opening-draft"}`) || !strings.Contains(info.Desc, "story is an actor_id") || !strings.Contains(info.Desc, "template_id is story_context") || !strings.Contains(info.Desc, "add or replace it with a dedicated") || !strings.Contains(info.Desc, "Fixed d20 resolves randomness only") || !strings.Contains(info.Desc, "does not justify D&D-style state fields") || !strings.Contains(info.Desc, "relationship stages") || !strings.Contains(info.Desc, "initialization_guide") || !strings.Contains(info.Desc, "persist atomically") {
 		t.Fatalf("unexpected opening schema tool contract: %#v", info)
 	}
 	parameters, err := info.ParamsOneOf.ToJSONSchema()

@@ -23,10 +23,10 @@ const (
 	DefaultMaxFragments          = agentcontext.DefaultMaxFragments
 	DefaultMaxMetadataFieldBytes = agentcontext.DefaultMaxMetadataFieldBytes
 
-	finalUserSourceNote     = "状态快照可能过期，以工具读取为准。"
-	truncationNotice        = "内容已截断；如需完整内容，请使用工具重新读取。 / Content truncated; use a tool to read the complete source if needed."
+	finalUserSourceNote     = "State snapshots may be stale; tool reads are authoritative."
+	truncationNotice        = "Content truncated; use a tool to read the complete source if needed."
 	contextSourceSeparator  = "\n\n---\n\n"
-	finalUserRequestWrapper = "\n\n---\n\n# 本轮用户请求（最高优先级）\n\n"
+	finalUserRequestWrapper = "\n\n---\n\n# Current User Request (Highest Priority)\n\n"
 )
 
 type Budget = agentcontext.Budget
@@ -56,11 +56,11 @@ func StandaloneMessage(title, content, note string) string {
 	}
 	title = strings.TrimSpace(title)
 	if title == "" {
-		title = "稳定上下文"
+		title = "Stable Context"
 	}
 	note = strings.TrimSpace(note)
 	if note == "" {
-		note = "以下内容来自当前 workspace 的低变更率有界状态快照，放在模型输入前部以提升前缀缓存稳定性。需要更完整或最新内容时，按来源路径使用工具读取确认。"
+		note = "The following content is a bounded, low-churn snapshot from the current workspace, placed near the beginning of model input for stable prefix caching. Use tools with the source path when more complete or current content is required."
 	}
 	var builder strings.Builder
 	builder.WriteString("# ")
@@ -101,7 +101,7 @@ func PrependFinalUserSources(agentMessage string, sources []Source) string {
 func finalUserSourceBlock(source Source) string {
 	title := strings.TrimSpace(source.Title)
 	if title == "" {
-		title = "本轮动态上下文"
+		title = "Current Dynamic Context"
 	}
 	var builder strings.Builder
 	builder.WriteString("# ")

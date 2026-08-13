@@ -14,12 +14,12 @@ func TestTurnInputProjectionAddsWritingSkillLoadHintWithoutSkillBody(t *testing.
 	}, nil, nil, agentcontext.DefaultBudget())
 	modelMessage := finalAssembledUserMessage(t, assembled)
 
-	for _, want := range []string{"Writing Skill 按需加载提示", "当前创作 Agent 选中的 Writing Skill 是 `novel-standard`", "当前 Agent 已启用 `skill` 工具", "调用 `skill` 工具加载 `novel-standard`", "不要假装已经读取了该 Skill 的完整说明", "不存在单独的 `writing_scope` 字段"} {
+	for _, want := range []string{"On-demand Writing Skill Loading", "The Writing Skill selected for the current creative Agent is `novel-standard`", "current Agent has the `skill` tool enabled", "call `skill` to load `novel-standard`", "do not claim to have read its complete instructions", "there is no separate `writing_scope` field"} {
 		if !strings.Contains(modelMessage, want) {
 			t.Fatalf("writing skill hint missing %q:\n%s", want, modelMessage)
 		}
 	}
-	for _, notWant := range []string{"```markdown", "SKILL.md 是本轮 IDE 创作 Agent 必须遵循"} {
+	for _, notWant := range []string{"```markdown", "SKILL.md is mandatory for this IDE creative Agent turn"} {
 		if strings.Contains(modelMessage, notWant) {
 			t.Fatalf("writing skill body should not be injected, found %q:\n%s", notWant, modelMessage)
 		}

@@ -54,7 +54,7 @@ func imagePresetSystemInstruction(teller IDEStoryTeller) string {
 		return ""
 	}
 	var sb strings.Builder
-	sb.WriteString("## 图像方案系统规则（仅用于图像生成）\n\n")
+	sb.WriteString("## Image Preset System Rules (Image Generation Only)\n\n")
 	if id := strings.TrimSpace(teller.ImagePresetID); id != "" {
 		sb.WriteString("- id: ")
 		sb.WriteString(id)
@@ -65,14 +65,14 @@ func imagePresetSystemInstruction(teller IDEStoryTeller) string {
 		sb.WriteString(name)
 		sb.WriteString("\n")
 	}
-	sb.WriteString("\n以下规则只在构造 `generate_image` 的图像提示词时生效；普通正文写作、资料库修改和非图像任务不要套用这些视觉约束。\n\n")
+	sb.WriteString("\nThe following rules apply only when constructing an image prompt for generate_image. Do not apply these visual constraints to ordinary prose, lore changes, or non-image tasks.\n\n")
 	sb.WriteString(prompt)
 	return strings.TrimSpace(sb.String())
 }
 
 const (
-	ideWorkspaceStableContextTitle  = "稳定作品上下文"
-	ideWorkspaceDynamicContextTitle = "本轮动态作品状态"
+	ideWorkspaceStableContextTitle  = "Stable Work Context"
+	ideWorkspaceDynamicContextTitle = "Dynamic Work State for This Turn"
 	ideContextMaxOpenFiles          = 20
 	ideContextMaxPathRunes          = 240
 )
@@ -119,8 +119,8 @@ func IDEWorkspaceRuntimeContextsForContext(state *book.State, ide IDEContextRef)
 	extra := book.FormatCompactContextParts([]book.CompactContextPart{{
 		ID:          "ide_current_state",
 		Source:      "frontend:ide_context",
-		Title:       "IDE 当前状态",
-		PromptTitle: fmt.Sprintf("IDE 当前状态（前端请求提供，仅路径；最多 %d 个打开文件）", ideContextMaxOpenFiles),
+		Title:       "Current IDE State",
+		PromptTitle: fmt.Sprintf("Current IDE State (provided by the frontend request; paths only; at most %d open files)", ideContextMaxOpenFiles),
 		Content:     ideContext,
 	}})
 	contexts.Dynamic = strings.TrimSpace(strings.Join(nonEmptyStrings(contexts.Dynamic, extra), "\n\n"))
@@ -134,23 +134,23 @@ func IDEContextRuntimeContext(ide IDEContextRef) string {
 		return ""
 	}
 	var sb strings.Builder
-	sb.WriteString("来源：前端 IDE 请求状态；仅描述当前打开/聚焦的文件路径，不包含文件正文。\n")
+	sb.WriteString("Source: frontend IDE request state. This contains only paths for open and focused files, never file contents.\n")
 	if currentFile != "" {
-		sb.WriteString("- 当前聚焦文件：")
+		sb.WriteString("- Focused file: ")
 		sb.WriteString(currentFile)
 		sb.WriteString("\n")
 	} else {
-		sb.WriteString("- 当前聚焦文件：无\n")
+		sb.WriteString("- Focused file: none\n")
 	}
 	if len(openFiles) > 0 {
-		sb.WriteString("- 当前打开文件：")
-		sb.WriteString(strings.Join(openFiles, "、"))
+		sb.WriteString("- Open files: ")
+		sb.WriteString(strings.Join(openFiles, ", "))
 		if len(ide.OpenFiles) > len(openFiles) {
-			sb.WriteString(fmt.Sprintf("（其余 %d 个已省略）", len(ide.OpenFiles)-len(openFiles)))
+			sb.WriteString(fmt.Sprintf(" (%d more omitted)", len(ide.OpenFiles)-len(openFiles)))
 		}
 		sb.WriteString("\n")
 	}
-	sb.WriteString("- 使用约束：如需读取正文，必须按路径显式使用工具读取；不要假设这里包含最新文件内容。")
+	sb.WriteString("- Constraint: use a tool to read any needed file explicitly by path. Do not assume this context contains current file contents.")
 	return strings.TrimSpace(sb.String())
 }
 
@@ -189,7 +189,7 @@ func boundedIDEContextPath(path string) string {
 	if len(runes) <= ideContextMaxPathRunes {
 		return path
 	}
-	return string(runes[:ideContextMaxPathRunes]) + "[已截断]"
+	return string(runes[:ideContextMaxPathRunes]) + "[truncated]"
 }
 
 func IDEWorkspaceRuntimeContext(state *book.State) string {
@@ -252,20 +252,22 @@ func buildImageBuiltinInstruction(cfg *config.Config, state *book.State, systemP
 		}
 	}
 	parts := []string{
-		"你是 Denova 的通用图像 Agent，负责把调用方提供的有界上下文转换成图像生成请求。",
-		"必须先理解本次 purpose、source_context、调用方系统提示和已加载 Skill，再调用 generate_image 工具生成图像。",
-		"只能生成图像和图像元数据，不得修改故事正文、章节正文、资料库、配置或其他 workspace 内容。",
-		"图像提示词应清晰描述主体、场景、构图、光线、视觉风格、情绪和需要避免的文字、水印、logo。",
-		"如果调用方要求加载 Skill，必须先用 skill 工具读取完整 Skill 后再调用 generate_image。",
+		"You are Denova's general Image Agent. Convert bounded context supplied by the caller into an image-generation request.",
+		"Understand purpose, source_context, the caller's system prompt, and loaded Skills before calling generate_image.",
+		"Generate only images and image metadata. Do not modify story prose, chapter prose, lore, configuration, or other workspace content.",
+		"Image prompts should clearly describe the subject, scene, composition, lighting, visual style, mood, and any text, watermark, or logo to avoid.",
+		"If the caller requires a Skill, load the complete Skill with the skill tool before calling generate_image.",
 	}
 	if strings.TrimSpace(creator) != "" {
-		parts = append(parts, "可参考 CREATOR.md 中稳定的作品基调，但不得复制大段原文。")
+		parts = append(parts, "You may use the work's stable tone from CREATOR.md, but do not copy long passages.")
 	}
 	if trimmed := strings.TrimSpace(systemPrompt); trimmed != "" {
-		parts = append(parts, "## 调用点系统提示\n\n"+trimmed)
+		parts = append(parts, "## Caller System Prompt\n\n"+trimmed)
 	}
 	return strings.Join(parts, "\n\n"), workspace, creator
 }
+
+const versionSummarySystemInstruction = "You are Denova's version-summary generator. Infer the core creative change in this save from the file changes. Output exactly one Chinese version summary of 10 to 30 Han characters. Do not include numbering, quotation marks, a colon, a final period, or any explanation."
 
 // BuiltinAgentPrompts returns the default system prompts shown in the Agents
 // settings page. The result is read-only display data; persisted overrides
@@ -281,11 +283,11 @@ func BuiltinAgentPrompts(cfg *config.Config, state *book.State, ideTeller IDESto
 	general, generalErr := ComposeGeneralInstruction(promptCfg)
 	interactiveStory, interactiveErr := ComposeInteractiveStoryInstruction(promptCfg, state, InteractiveStorySystemInstructionInput{})
 	configManager, configErr := ComposeConfigManagerInstruction(promptCfg, state)
-	director, directorErr := ComposeBuiltinSystemInstruction(promptCfg, config.AgentKindInteractiveDirector, "interactive_director", workspaceForPrompt(promptCfg, state), "builtin_base", "后台导演系统规则", "define the interactive director planning workflow", BuildInteractiveDirectorSystemInstruction())
-	version, versionErr := ComposeBuiltinSystemInstruction(promptCfg, config.AgentKindVersionSummary, "version_summary", workspaceForPrompt(promptCfg, state), "builtin_base", "版本说明生成规则", "define the version summary task and output constraint", "你是 Denova 小说工作台的版本说明生成器。根据文件变更推理这次保存的核心创作变化。只输出一句中文版本说明，10 到 30 个汉字，不要编号、引号、冒号、句号或解释。")
-	toolAgent, toolErr := ComposeBuiltinSystemInstruction(promptCfg, config.AgentKindToolAgent, "tool_agent", workspaceForPrompt(promptCfg, state), "builtin_base", "章节分割正则任务", "define the structured chapter-regex inference task", ChapterSplitRegexSystemInstruction())
+	director, directorErr := ComposeBuiltinSystemInstruction(promptCfg, config.AgentKindInteractiveDirector, "interactive_director", workspaceForPrompt(promptCfg, state), "builtin_base", "Background Director System Rules", "define the interactive director planning workflow", BuildInteractiveDirectorSystemInstruction())
+	version, versionErr := ComposeBuiltinSystemInstruction(promptCfg, config.AgentKindVersionSummary, "version_summary", workspaceForPrompt(promptCfg, state), "builtin_base", "Version Summary Generation Rules", "define the version summary task and output constraint", versionSummarySystemInstruction)
+	toolAgent, toolErr := ComposeBuiltinSystemInstruction(promptCfg, config.AgentKindToolAgent, "tool_agent", workspaceForPrompt(promptCfg, state), "builtin_base", "Chapter Split Regex Task", "define the structured chapter-regex inference task", ChapterSplitRegexSystemInstruction())
 	image, imageErr := ComposeImageInstruction(promptCfg, state, "")
-	compaction, compactionErr := ComposeBuiltinSystemInstruction(promptCfg, config.AgentKindContextCompaction, "context_compaction", workspaceForPrompt(promptCfg, state), "builtin_base", "上下文压缩规则", "define the bounded context compaction task", ContextCompactionSystemInstruction())
+	compaction, compactionErr := ComposeBuiltinSystemInstruction(promptCfg, config.AgentKindContextCompaction, "context_compaction", workspaceForPrompt(promptCfg, state), "builtin_base", "Context Compaction Rules", "define the bounded context compaction task", ContextCompactionSystemInstruction())
 	return config.AgentPromptSettings{
 		General:             config.AgentPromptOverride{SystemPrompt: systemPromptPreview(general, generalErr)},
 		IDE:                 config.AgentPromptOverride{SystemPrompt: systemPromptPreview(ide, ideErr)},
@@ -301,7 +303,7 @@ func BuiltinAgentPrompts(cfg *config.Config, state *book.State, ideTeller IDESto
 
 func systemPromptPreview(composition SystemPromptComposition, err error) string {
 	if err != nil {
-		return "System prompt admission failed / 系统提示准入失败: " + err.Error()
+		return "System prompt admission failed: " + err.Error()
 	}
 	return composition.Instruction()
 }
@@ -322,7 +324,7 @@ func BuiltinAgentPromptBlocks(cfg *config.Config, state *book.State, ideTeller I
 		InteractiveStory:    builtinPromptBlocks(promptCfg, config.AgentKindInteractiveStory, interactiveStoryFlowInstruction(promptCfg, interactiveWorkspace)),
 		ConfigManager:       builtinPromptBlocks(promptCfg, config.AgentKindConfigManager, configManagerFlow),
 		InteractiveDirector: builtinPromptBlocks(promptCfg, config.AgentKindInteractiveDirector, BuildInteractiveDirectorSystemInstruction()),
-		VersionSummary:      builtinPromptBlocks(promptCfg, config.AgentKindVersionSummary, "你是 Denova 小说工作台的版本说明生成器。根据文件变更推理这次保存的核心创作变化。只输出一句中文版本说明，10 到 30 个汉字，不要编号、引号、冒号、句号或解释。"),
+		VersionSummary:      builtinPromptBlocks(promptCfg, config.AgentKindVersionSummary, versionSummarySystemInstruction),
 		ToolAgent:           builtinPromptBlocks(promptCfg, config.AgentKindToolAgent, ChapterSplitRegexSystemInstruction()),
 		Image:               builtinPromptBlocks(promptCfg, config.AgentKindImage, ""),
 		ContextCompaction:   builtinPromptBlocks(promptCfg, config.AgentKindContextCompaction, ContextCompactionSystemInstruction()),
@@ -347,14 +349,14 @@ func BuiltinAgentPromptSources(cfg *config.Config, state *book.State, ideTeller 
 		General: builtinPromptSourceList(promptCfg, config.AgentKindGeneral, generalAgentFlowInstruction(promptCfg)),
 		IDE: builtinPromptSourceList(promptCfg, config.AgentKindIDE, ideFlowInstruction(promptCfg, ideWorkspace),
 			readonlyPromptSource("creator", "CREATOR.md", "CREATOR.md", ideCreator),
-			readonlyPromptSource("teller", "IDE 默认导演规则", ideTeller.ID, ideTeller.Prompt),
+			readonlyPromptSource("teller", "Default IDE Storyteller Rules", ideTeller.ID, ideTeller.Prompt),
 		),
 		InteractiveStory: builtinPromptSourceList(promptCfg, config.AgentKindInteractiveStory, interactiveStoryFlowInstruction(promptCfg, interactiveWorkspace),
 			readonlyPromptSource("creator", "CREATOR.md", "CREATOR.md", interactiveCreator),
 		),
 		ConfigManager:       builtinPromptSourceList(promptCfg, config.AgentKindConfigManager, configManagerFlow, readonlyPromptSource("creator", "CREATOR.md", "CREATOR.md", configManagerCreator)),
 		InteractiveDirector: builtinPromptSourceList(promptCfg, config.AgentKindInteractiveDirector, BuildInteractiveDirectorSystemInstruction()),
-		VersionSummary:      builtinPromptSourceList(promptCfg, config.AgentKindVersionSummary, "你是 Denova 小说工作台的版本说明生成器。根据文件变更推理这次保存的核心创作变化。只输出一句中文版本说明，10 到 30 个汉字，不要编号、引号、冒号、句号或解释。"),
+		VersionSummary:      builtinPromptSourceList(promptCfg, config.AgentKindVersionSummary, versionSummarySystemInstruction),
 		ToolAgent:           builtinPromptSourceList(promptCfg, config.AgentKindToolAgent, ChapterSplitRegexSystemInstruction()),
 		Image:               builtinPromptSourceList(promptCfg, config.AgentKindImage, ""),
 		ContextCompaction:   builtinPromptSourceList(promptCfg, config.AgentKindContextCompaction, ContextCompactionSystemInstruction()),
@@ -373,14 +375,14 @@ func builtinPromptSourceList(cfg *config.Config, agentKind, flow string, extraSo
 	sources := make([]config.AgentPromptSource, 0, len(extraSources)+4)
 	sources = append(sources, config.AgentPromptSource{
 		ID:      "runtime_contract",
-		Title:   "运行契约",
+		Title:   "Runtime Contract",
 		Source:  "Denova runtime",
 		Content: runtimeContractForAgent(cfg, agentKind),
 	})
 	if outputProtocol := strings.TrimSpace(outputProtocolForAgent(agentKind)); outputProtocol != "" {
 		sources = append(sources, config.AgentPromptSource{
 			ID:      "output_protocol",
-			Title:   "输出格式",
+			Title:   "Output Protocol",
 			Source:  "Denova runtime",
 			Content: outputProtocol,
 		})
@@ -392,7 +394,7 @@ func builtinPromptSourceList(cfg *config.Config, agentKind, flow string, extraSo
 	}
 	sources = append(sources, config.AgentPromptSource{
 		ID:       "flow",
-		Title:    "流程规则",
+		Title:    "Workflow Rules",
 		Source:   "Denova built-in",
 		Content:  editablePromptFlowForAgent(agentKind, flow),
 		Editable: true,
@@ -400,7 +402,7 @@ func builtinPromptSourceList(cfg *config.Config, agentKind, flow string, extraSo
 	})
 	sources = append(sources, config.AgentPromptSource{
 		ID:       "custom",
-		Title:    "用户自定义",
+		Title:    "User Customization",
 		Source:   "user/workspace config",
 		Editable: true,
 		Field:    "system_prompt",
@@ -431,15 +433,15 @@ func styleRulePromptSources(rules []StyleRule) []promptSource {
 		if strings.TrimSpace(content) == "" {
 			continue
 		}
-		title := "文风参考：全局"
+		title := "Prose Style Reference: Global"
 		if !rule.Global {
-			title = "文风参考：" + scene
+			title = "Prose Style Reference: " + scene
 		}
 		sources = append(sources, promptSource{
-			source:  "系统提示",
+			source:  "System prompt",
 			title:   title,
 			content: content,
-			note:    "当前叙事风格",
+			note:    "Current narrative style",
 		})
 	}
 	return sources
@@ -484,7 +486,7 @@ func editablePromptFlowForAgent(agentKind, flow string) string {
 	case config.AgentKindVersionSummary:
 		return ""
 	case config.AgentKindToolAgent:
-		return filterPromptLines(flow, "只输出 JSON", "不要返回 Markdown")
+		return filterPromptLines(flow, "Output JSON only", "Do not return Markdown")
 	default:
 		return strings.TrimSpace(flow)
 	}
@@ -503,8 +505,8 @@ func appendConfigManagerResourceSkills(builtIn string, resourceSkills []ConfigMa
 			continue
 		}
 		if sb.Len() == 0 {
-			sb.WriteString("\n\n## 配置管理 Skill\n\n")
-			sb.WriteString("以下内容来自当前生效的 config-manager Skill。资源细节位于 references；按需使用 read 读取，不要把全部参考一次性注入上下文。若与运行时契约或后端校验冲突，以运行时契约和后端校验为准。\n")
+			sb.WriteString("\n\n## Configuration Management Skill\n\n")
+			sb.WriteString("The following content comes from the active config-manager Skill. Resource details are in references; read only what is needed instead of injecting every reference at once. The runtime contract and backend validation take precedence over conflicts.\n")
 		}
 		sb.WriteString("\n### /")
 		sb.WriteString(name)
@@ -545,34 +547,34 @@ func configManagerFlowInstruction(cfg *config.Config, state *book.State) string 
 
 func configManagerFlowInstructionFor(workspace, creator string) string {
 	var sb strings.Builder
-	sb.WriteString("你是 Denova 的统一配置管理 Agent，负责在模块内嵌入口中帮助用户管理资料库、方案预设（叙事风格、故事导演、状态系统和图像方案）、自动化任务、Skills 和 Agent 配置。\n\n")
+	sb.WriteString("You are Denova's unified Configuration Manager Agent. Through embedded module entry points, help users manage lore, presets for narrative style, story direction, state systems, and images, as well as automations, Skills, and Agent configuration.\n\n")
 	if strings.TrimSpace(workspace) != "" {
-		sb.WriteString("当前作品 workspace: ")
+		sb.WriteString("Current work workspace: ")
 		sb.WriteString(strings.TrimSpace(workspace))
 		sb.WriteString("\n\n")
 	}
 	if strings.TrimSpace(creator) != "" {
-		sb.WriteString("## CREATOR.md 创作约束\n\n")
+		sb.WriteString("## CREATOR.md Creative Constraints\n\n")
 		sb.WriteString(strings.TrimSpace(creator))
 		sb.WriteString("\n\n")
 	}
 	sb.WriteString(strings.Join([]string{
-		"## 工作方式",
-		"- 配置资源只有两个入口：config_read 负责 describe/list/get，config_apply 负责一次 create/update/delete。",
-		"- 遇到不熟悉的 resource，先调用 config_read operation=describe，再按 config-manager Skill 中对应 reference 的结构操作。",
-		"- 读取先 list 缩小范围，再按精确 ID get；update/delete 必须携带最近一次 config_read 返回的 revision。",
-		"- config_apply 一次只提交一个独立资源变更；成功后根据回执中的新 revision 继续，禁止拿旧 revision 覆盖并发修改。",
-		"- Agent 页配置使用 resource=agent_profile，必须显式指定 scope=user 或 scope=workspace。",
-		"- 不要修改端口、主题、远程访问、编辑器外观等非 Agent 页设置。",
-		"- 不要通过文件工具直接改资料库、方案预设、自动化、Skills 或 Agent 配置的底层存储文件。",
-		"- 删除、隐藏、覆盖、大范围重写必须有用户明确指令；缺少明确指令时先询问。",
+		"## Working Method",
+		"- Configuration resources have two entry points: config_read handles describe/list/get, and config_apply handles one create/update/delete operation.",
+		"- For an unfamiliar resource, call config_read with operation=describe, then follow the corresponding reference in the config-manager Skill.",
+		"- Narrow reads with list before get by exact ID. update/delete must include the revision returned by the most recent config_read.",
+		"- Each config_apply call changes one independent resource. Continue with the new revision in the receipt; never overwrite concurrent changes with an old revision.",
+		"- Agent-page configuration uses resource=agent_profile and requires explicit scope=user or scope=workspace.",
+		"- Do not change ports, themes, remote access, editor appearance, or other settings outside the Agent page.",
+		"- Do not directly edit backing files for lore, presets, automations, Skills, or Agent configuration with file tools.",
+		"- Deletion, hiding, overwriting, and broad rewrites require an explicit user instruction. Ask first when the instruction is absent.",
 		"",
-		"## 模块边界",
-		"- 资料库记录长期稳定设定；游戏模式中已发生事实进入 Turn 历史，当前位置、伤势、关系、资源和规则值进入 Actor State，不默认写资料库。",
-		"- 叙事风格只维护文风、提示词槽位、场景风格和上下文策略；故事导演维护编排策略，并通过 module_refs 可插拔组合叙事风格、多个事件包、TRPG 检定、状态系统和图像方案；事件包只维护事件卡列表；每个 TRPG 检定资源代表一种 DM 检定风格，检定固定使用 d20，并可通过 state_bindings 绑定状态系统字段；状态系统是结构化状态、开局词条、当前时间地点、当前事件、可计算字段和规则消费字段的唯一真源，模板只是状态表 schema，可表示故事上下文、主角、重要角色、敌人、世界、故事倒计时、特定角色、势力、基地或副本等任意状态对象；图像方案只维护视觉风格、媒介、构图、限制和避免项。",
-		"- 新故事的状态结构策略由开局页面按故事配置；动态模式由前台 Game Agent 在首回合原子提交前完成结构草案，固定模式只更新状态值。故事导演不拥有或修改状态结构。",
-		"- resource=skill 写入 SKILL.md 文档，必须说明适用场景、上下文获取和具体工作流；内置预制 Skill 只能通过工作区同名覆盖修改，不得写入内置 Skills 目录。",
-		"- 自动化任务必须保持触发条件、通知/执行策略和写入权限清晰。",
+		"## Module Boundaries",
+		"- Lore stores stable, long-lived canon. In Game Mode, established events belong to Turn history, while current location, injuries, relationships, resources, and rule values belong to Actor State and do not enter lore by default.",
+		"- Narrative styles own prose style, prompt slots, scene styles, and context policy. Story directors own orchestration and combine narrative styles, event packages, TRPG checks, state systems, and image presets through module_refs. Event packages contain event cards. Each TRPG check resource represents a DM check style, always uses d20, and may bind state fields through state_bindings. The state system is the source of truth for structured state, opening traits, current time and location, current event, computed fields, and rule-consumed fields. Templates are state-table schemas and may represent story context, protagonists, important characters, enemies, worlds, countdowns, specific characters, factions, bases, instances, or other state objects. Image presets own visual style, medium, composition, constraints, and avoid lists.",
+		"- The opening page configures state-schema policy per new story. In dynamic mode, the foreground Game Agent completes the schema draft before the first atomic turn submission; fixed mode changes values only. The Story Director neither owns nor changes the state schema.",
+		"- resource=skill writes SKILL.md and must explain use cases, context acquisition, and a concrete workflow. A built-in preset Skill can be changed only through a same-name workspace override, never by writing the built-in Skills directory.",
+		"- Automation tasks must keep trigger conditions, notification or execution policy, and write permissions explicit.",
 	}, "\n"))
 	return sb.String()
 }
@@ -593,7 +595,7 @@ func systemPromptSourceSummary(mode, creator string, stateParts []book.CompactCo
 	}
 	parts := make([]summaryPart, 0, len(stateParts)+len(extraSources)+2)
 	if strings.TrimSpace(creator) != "" {
-		parts = append(parts, summaryPart{source: "系统提示", title: "CREATOR.md", content: creator, note: "创作者指令"})
+		parts = append(parts, summaryPart{source: "System prompt", title: "CREATOR.md", content: creator, note: "Creator instructions"})
 	}
 	for _, source := range extraSources {
 		if strings.TrimSpace(source.content) == "" {
@@ -605,9 +607,9 @@ func systemPromptSourceSummary(mode, creator string, stateParts []book.CompactCo
 		if strings.TrimSpace(section.Content) == "" {
 			continue
 		}
-		parts = append(parts, summaryPart{source: "作品状态", title: section.Title, content: section.Content, note: section.Source})
+		parts = append(parts, summaryPart{source: "Work state", title: section.Title, content: section.Content, note: section.Source})
 	}
-	parts = append(parts, summaryPart{source: "系统提示", title: "Denova " + mode + " 内置规则", content: "基础规则、工具边界、工作流约束"})
+	parts = append(parts, summaryPart{source: "System prompt", title: "Denova " + mode + " built-in rules", content: "Base rules, tool boundaries, and workflow constraints"})
 
 	summaries := make([]string, 0, len(parts))
 	for i, part := range parts {

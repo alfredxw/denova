@@ -39,7 +39,7 @@ func (m *contextNormalizerMiddleware) BeforeModelCall(
 	}
 	normalized, err := agentcontext.NormalizeModelContextMessages(call.Messages)
 	if err != nil {
-		return ctx, call, fmt.Errorf("规范化供应商无关模型上下文失败 / normalize provider-neutral model context: %w", err)
+		return ctx, call, fmt.Errorf("normalize provider-neutral model context: %w", err)
 	}
 	if !reflect.DeepEqual(call.Messages, normalized) {
 		modelContext.ReportContextNormalization(agent.ContextNormalizationMetrics{

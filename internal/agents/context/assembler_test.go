@@ -60,7 +60,7 @@ func TestAssemblerRejectsTotalBudgetThatCannotFitOneRune(t *testing.T) {
 
 func TestAssemblerTotalBudgetIncludesRenderedWrapperAndTitle(t *testing.T) {
 	const userMessage = "继续写"
-	const want = "# 动态状态\n\n状态快照可能过期，以工具读取为准。\n\n界\n\n---\n\n# 本轮用户请求（最高优先级）\n\n继续写"
+	const want = "# 动态状态\n\nState snapshots may be stale; tool reads are authoritative.\n\n界\n\n---\n\n# Current User Request (Highest Priority)\n\n继续写"
 	maxInjectedBytes := len(want) - len(userMessage)
 	result, err := NewAssembler(Budget{
 		MaxFragmentBytes: 64,
@@ -91,7 +91,7 @@ func TestAssemblerTotalBudgetIncludesRenderedWrapperAndTitle(t *testing.T) {
 }
 
 func TestAssemblerTotalBudgetIncludesLeadingMessageWrapper(t *testing.T) {
-	const wantLeading = "# 稳定标题\n\n以下内容来自当前 workspace 的低变更率有界状态快照，放在模型输入前部以提升前缀缓存稳定性。需要更完整或最新内容时，按来源路径使用工具读取确认。\n\n界"
+	const wantLeading = "# 稳定标题\n\nThe following content is a bounded, low-churn snapshot from the current workspace, placed near the beginning of model input for stable prefix caching. Use tools with the source path when more complete or current content is required.\n\n界"
 	result, err := NewAssembler(Budget{
 		MaxFragmentBytes: 64,
 		MaxTotalBytes:    len(wantLeading),
@@ -250,7 +250,7 @@ func TestAssemblerDoesNotPrefixNonUserFinalMessage(t *testing.T) {
 
 func TestAssemblerEnforcesFragmentBudgetsAndAccountsCompleteInjection(t *testing.T) {
 	const userMessage = "继续写"
-	const wantMessage = "# 作品大纲\n\n状态快照可能过期，以工具读取为准。\n\nabcde\n\n> " + truncationNotice + "\n\n---\n\n# 作品进度\n\n状态快照可能过期，以工具读取为准。\n\nwxyzw\n\n> " + truncationNotice + "\n\n---\n\n# 本轮用户请求（最高优先级）\n\n继续写"
+	const wantMessage = "# 作品大纲\n\nState snapshots may be stale; tool reads are authoritative.\n\nabcde\n\n> " + truncationNotice + "\n\n---\n\n# 作品进度\n\nState snapshots may be stale; tool reads are authoritative.\n\nwxyzw\n\n> " + truncationNotice + "\n\n---\n\n# Current User Request (Highest Priority)\n\n继续写"
 	assembler := NewAssembler(Budget{
 		MaxFragmentBytes: 5,
 		MaxTotalBytes:    4096,

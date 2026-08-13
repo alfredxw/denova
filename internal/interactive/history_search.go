@@ -159,7 +159,7 @@ func (s *Store) SearchStoryHistory(storyID, branchID string, req StoryHistorySea
 		cursor = loaded.page.BeforeCursor
 	}
 	if !foundHead {
-		return StoryHistorySearchResult{}, errors.New("search_story_history cursor is stale because its history head no longer exists / 历史头已变化，请重新检索")
+		return StoryHistorySearchResult{}, errors.New("search_story_history cursor is stale because its history head no longer exists; search again")
 	}
 
 	scored, scannedTurns, matchedTurns := beforeTop, beforeScanned, beforeMatches
@@ -198,7 +198,7 @@ func (s *Store) SearchStoryHistory(storyID, branchID string, req StoryHistorySea
 		}
 		if len(encoded) > req.MaxBytes {
 			if len(result.Hits) == 0 {
-				return StoryHistorySearchResult{}, fmt.Errorf("one story history hit exceeds the %d-byte shared result budget / 单条历史命中超过共享结果预算", req.MaxBytes)
+				return StoryHistorySearchResult{}, fmt.Errorf("one story history hit exceeds the %d-byte shared result budget", req.MaxBytes)
 			}
 			break
 		}
@@ -327,14 +327,14 @@ func decodeStoryHistorySearchCursor(value, fingerprint string) (storyHistorySear
 	}
 	decoded, err := base64.RawURLEncoding.DecodeString(value)
 	if err != nil {
-		return storyHistorySearchCursor{}, errors.New("search_story_history cursor is invalid / 历史检索游标无效")
+		return storyHistorySearchCursor{}, errors.New("search_story_history cursor is invalid")
 	}
 	var cursor storyHistorySearchCursor
 	if err := json.Unmarshal(decoded, &cursor); err != nil || cursor.Version != 1 || cursor.HeadTurnID == "" || cursor.AfterTurnID == "" {
-		return storyHistorySearchCursor{}, errors.New("search_story_history cursor is invalid / 历史检索游标无效")
+		return storyHistorySearchCursor{}, errors.New("search_story_history cursor is invalid")
 	}
 	if cursor.Fingerprint != fingerprint {
-		return storyHistorySearchCursor{}, errors.New("search_story_history cursor does not belong to this query / 历史检索游标不属于当前查询")
+		return storyHistorySearchCursor{}, errors.New("search_story_history cursor does not belong to this query")
 	}
 	return cursor, nil
 }

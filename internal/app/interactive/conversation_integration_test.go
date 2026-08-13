@@ -57,13 +57,13 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 	if len(history) != 4 {
 		t.Fatalf("history length = %d, want 4", len(history))
 	}
-	if history[0].Role != agents.RoleUser || !strings.Contains(history[0].Content, "常驻资料库") || !strings.Contains(history[0].Content, "林川：谨慎的幸存者") || !strings.Contains(history[0].Content, "世界已进入黄昏末日") {
+	if history[0].Role != agents.RoleUser || !strings.Contains(history[0].Content, "Resident Lore") || !strings.Contains(history[0].Content, "林川：谨慎的幸存者") || !strings.Contains(history[0].Content, "世界已进入黄昏末日") {
 		t.Fatalf("history[0] should be stable resident lore: %#v", history[0])
 	}
 	if history[1].Role != agents.RoleUser || history[1].Content != "我推开酒馆的门" {
 		t.Fatalf("history[0] mismatch: %#v", history[0])
 	}
-	if strings.Contains(history[1].Content, "历史 checkpoint") || strings.Contains(history[1].Content, "最高篇幅约束") {
+	if strings.Contains(history[1].Content, "History Checkpoint") || strings.Contains(history[1].Content, "Highest length constraint") {
 		t.Fatalf("history[1] should remain plain story history, got: %#v", history[1])
 	}
 	if history[2].Role != agents.RoleAssistant || history[2].Content != "门后传来低沉的风声。" {
@@ -73,20 +73,20 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 		t.Fatalf("history[3] mismatch: %#v", history[3])
 	}
 	for _, want := range []string{
-		"导演本轮上下文规则",
-		"[本轮动态上下文]",
-		"800 个中文字",
-		"最高篇幅约束",
+		"Storyteller Rules for This Turn",
+		"[Current Turn Runtime Context]",
+		"800 Chinese characters",
+		"Highest length constraint",
 		"list_lore_items",
 		"search_story_history",
 		"turn_id",
-		"正文 Agent 简报",
+		"Prose Agent Brief",
 		"source: agent-brief.md",
 		"bounded",
-		"# Actor 状态手册",
-		"Actor ID：`protagonist`",
-		"字段说明：",
-		"更新指引：",
+		"# Actor State Handbook",
+		"Actor ID: `protagonist`",
+		"Field description:",
+		"Update instruction:",
 		"submit_interactive_turn",
 		`"state_changes"`,
 	} {
@@ -117,15 +117,15 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 	}
 	sources := conversation.ContextSourceSummary()
 	for _, want := range []string{
-		"互动故事",
-		"故事标题",
+		"InteractiveStory",
+		"Story Title",
 		"末日开端",
-		"开端",
+		"Opening",
 		"主角醒来发现世界已末日",
-		"导演注入规则",
+		"StorytellerRule",
 		"本轮上下文",
 		"DirectorPlan",
-		"正文 Agent 简报",
+		"Prose Agent Brief",
 	} {
 		if !strings.Contains(sources, want) {
 			t.Fatalf("context sources should include %q: %s", want, sources)
@@ -137,10 +137,10 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 		if part.Source == "ResidentLore" && part.Bytes > 0 && part.Limit > lore.ResidentLoreSafetyMaxBytes && part.LimitUnit == "bytes" && strings.Contains(part.Note, "complete=true") && strings.Contains(part.Note, "revision=") && strings.Contains(part.Note, "exact_final_message=true") {
 			sawResidentLore = true
 		}
-		if part.Source == "LoreContext" && part.Title == "当前分支活动资料工作集" && part.Bytes > 0 {
+		if part.Source == "LoreContext" && part.Title == "Current Branch Active Lore Working Set" && part.Bytes > 0 {
 			sawActiveLore = true
 		}
-		if part.Source == "本轮行动" && part.Title == "当前用户行动" && part.Bytes > 0 {
+		if part.Source == "CurrentTurn" && part.Title == "Current User Action" && part.Bytes > 0 {
 			sawCurrentAction = true
 		}
 	}
@@ -199,10 +199,10 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		"keep、patch 或 replan",
-		"不得改写历史 Turn 或 Actor State",
-		"资料库优先",
-		"不负责替用户选择下一步行动",
+		"keep, patch, or replan",
+		"Never rewrite historical Turn or Actor State",
+		"Prefer lore",
+		"do not choose the user's next action",
 	} {
 		if !strings.Contains(directorInstruction, want) {
 			t.Fatalf("director instruction should include maintenance guidance %q: %s", want, directorInstruction)
@@ -215,19 +215,19 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 		t.Fatalf("director lore-name roster should not preload briefs or bodies: %s", directorInstruction)
 	}
 	for _, want := range []string{
-		"近期剧情历史",
-		"本回合 TurnResult / RuleResolution / StateDelta 审计 JSON",
+		"Recent Story History",
+		"TurnResult / RuleResolution / StateDelta Audit JSON",
 		"turn_result",
 		"我在黄泉酒馆点燃火把",
-		"状态系统 Schema",
-		"当前状态系统快照",
+		"State System Schema",
+		"Current State Snapshot",
 		"director.md",
 	} {
 		if !strings.Contains(directorInstruction, want) {
 			t.Fatalf("director instruction should include maintenance context %q: %s", want, directorInstruction)
 		}
 	}
-	if strings.Contains(directorInstruction, "经典叙事者") || strings.Contains(directorInstruction, "导演本轮上下文规则") {
+	if strings.Contains(directorInstruction, "经典叙事者") || strings.Contains(directorInstruction, "Storyteller Rules for This Turn") {
 		t.Fatalf("director instruction should not include story-only teller rules: %s", directorInstruction)
 	}
 	onStage := snapshot.State["on_stage"].([]any)
@@ -344,13 +344,13 @@ func TestInteractiveConversationInjectsStoryDirectorStrategyPrompt(t *testing.T)
 		t.Fatal(err)
 	}
 	turnInstruction := history[len(history)-1].Content
-	for _, want := range []string{"故事导演 Markdown 策略提示", "source: StoryDirector.strategy.prompt_markdown", "bounded", "避免连续两回合", "伏笔回收前"} {
+	for _, want := range []string{"Story Director Markdown Strategy Prompt", "source: StoryDirector.strategy.prompt_markdown", "bounded", "避免连续两回合", "伏笔回收前"} {
 		if !strings.Contains(turnInstruction, want) {
 			t.Fatalf("interactive turn instruction should include strategy prompt %q:\n%s", want, turnInstruction)
 		}
 	}
 	sources := conversation.ContextSourceSummary()
-	for _, want := range []string{"StoryDirector.strategy.prompt_markdown", "故事导演 Markdown 策略提示", "bounded"} {
+	for _, want := range []string{"StoryDirector.strategy.prompt_markdown", "Story Director Markdown Strategy Prompt", "bounded"} {
 		if !strings.Contains(sources, want) {
 			t.Fatalf("context sources should include strategy prompt %q:\n%s", want, sources)
 		}
@@ -359,7 +359,7 @@ func TestInteractiveConversationInjectsStoryDirectorStrategyPrompt(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"故事导演 Markdown 策略提示", "source: StoryDirector.strategy.prompt_markdown", "bounded", "避免连续两回合", "伏笔回收前"} {
+	for _, want := range []string{"Story Director Markdown Strategy Prompt", "source: StoryDirector.strategy.prompt_markdown", "bounded", "避免连续两回合", "伏笔回收前"} {
 		if !strings.Contains(directorInstruction, want) {
 			t.Fatalf("director instruction should include strategy prompt %q:\n%s", want, directorInstruction)
 		}
@@ -443,7 +443,7 @@ func TestInteractiveConversationKeepsEventCardsForDirectorOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"本轮事件机会", "cadence_not_due", "事件运行态"} {
+	for _, want := range []string{"Event Opportunity for This Turn", "cadence_not_due", "Event Runtime"} {
 		if !strings.Contains(directorInstruction, want) {
 			t.Fatalf("director instruction should include deterministic event context %q:\n%s", want, directorInstruction)
 		}
@@ -726,13 +726,13 @@ func TestInteractiveConversationIgnoresLegacyTellerReplyTargetChars(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(history) < 1 || !strings.Contains(history[len(history)-1].Content, "700 个中文字") {
+	if len(history) < 1 || !strings.Contains(history[len(history)-1].Content, "700 Chinese characters") {
 		t.Fatalf("story reply target chars should be used: %#v", history)
 	}
-	if !strings.Contains(history[len(history)-1].Content, "最高篇幅约束") {
+	if !strings.Contains(history[len(history)-1].Content, "Highest length constraint") {
 		t.Fatalf("story reply target chars should be marked as highest priority: %#v", history[len(history)-1])
 	}
-	if strings.Contains(history[len(history)-1].Content, "50 个中文字") {
+	if strings.Contains(history[len(history)-1].Content, "50 Chinese characters") {
 		t.Fatalf("legacy teller reply target chars should be ignored: %#v", history[len(history)-1])
 	}
 }

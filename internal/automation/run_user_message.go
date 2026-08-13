@@ -15,33 +15,33 @@ import (
 // this function stays free of storage concerns.
 func BuildRunUserMessage(task Task, run RunRecord, confirmedSummary string) string {
 	var sb strings.Builder
-	sb.WriteString("执行 Denova 自动化任务。\n\n")
-	sb.WriteString(fmt.Sprintf("任务名称：%s\n", task.Name))
-	sb.WriteString(fmt.Sprintf("触发来源：%s\n", run.Trigger))
+	sb.WriteString("Execute this Denova automation task.\n\n")
+	sb.WriteString(fmt.Sprintf("Task name: %s\n", task.Name))
+	sb.WriteString(fmt.Sprintf("Trigger source: %s\n", run.Trigger))
 	if len(run.TriggerEvidence) > 0 {
-		sb.WriteString("\n本次触发范围（有界证据，优先处理这些新增内容）：\n")
+		sb.WriteString("\nTrigger scope (bounded evidence; prioritize this new material):\n")
 		for _, item := range run.TriggerEvidence {
 			sb.WriteString(FormatTriggerEvidenceLine(item))
 		}
 	}
 	if run.Trigger == TriggerWriteConfirmation {
-		sb.WriteString("\n用户已经确认继续处理上一轮方案。\n")
+		sb.WriteString("\nThe user confirmed continuation of the previous proposal.\n")
 		if summary := strings.TrimSpace(confirmedSummary); summary != "" {
-			sb.WriteString("已确认方案摘要：\n")
+			sb.WriteString("Confirmed proposal summary:\n")
 			sb.WriteString(summary)
 			sb.WriteString("\n")
 		}
 	}
-	sb.WriteString("\n用户 Prompt：\n")
+	sb.WriteString("\nUser prompt:\n")
 	if task.Prompt != "" {
 		sb.WriteString(task.Prompt)
 	} else {
 		sb.WriteString(GenericTaskPrompt)
 	}
 	if task.Target.Kind == TargetKindUser {
-		sb.WriteString("\n\n这是用户全局任务，没有书籍工作区。只使用本轮启用的用户级 Skills、Todo 或 Web 能力；不得读取或修改作品文件、资料库和项目状态。")
+		sb.WriteString("\n\nThis is a user-global task with no book workspace. Use only user-level Skills, Todo, or Web capabilities enabled for this run. Do not read or modify work files, lore, or Project state.")
 	} else {
-		sb.WriteString("\n\n请你自行使用可用工具读取完成任务所需的工作区文件、资料库和状态；先定位范围，再读取和写入。")
+		sb.WriteString("\n\nUse available tools to read the workspace files, lore, and state required by the task. Locate the relevant scope before reading or writing.")
 	}
 	return sb.String()
 }

@@ -107,7 +107,8 @@ export function AgentSubAgentSessionPanel({ projectId, messages, sessionKey, onC
             data={sessionViews}
             context={virtuosoContext}
             components={SUBAGENT_SESSION_COMPONENTS}
-            alignToBottom
+            // Keep one vertical-position owner while the child response grows.
+            alignToBottom={!running}
             computeItemKey={(index, view) => subAgentSessionMessageKey(view, index)}
             itemContent={itemContent}
             overscan={{ main: 360, reverse: 180 }}
@@ -146,6 +147,7 @@ function SubAgentSessionRow({ projectId, view, streamingTail, streamingRowRef, s
     <div
       ref={streamingTail ? streamingRowRef : undefined}
       data-nova-chat-item="subagent-message"
+      data-nova-chat-tail-row
       className="min-w-0 px-4 pb-3 last:pb-0"
     >
       <AgentMessageItem

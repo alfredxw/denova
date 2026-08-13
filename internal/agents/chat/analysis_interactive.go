@@ -10,7 +10,7 @@ func buildInteractiveStoryInstructionContextParts(content string) []ContextAnaly
 	if content == "" {
 		return nil
 	}
-	dynamicStart := strings.Index(content, "[本轮动态上下文]")
+	dynamicStart := strings.Index(content, "[Current Turn Runtime Context]")
 	instruction := content
 	dynamic := ""
 	if dynamicStart >= 0 {
@@ -24,12 +24,12 @@ func buildInteractiveStoryInstructionContextParts(content string) []ContextAnaly
 
 func buildInteractiveTurnInstructionParts(content string) []ContextAnalysisPart {
 	const (
-		actionPrefix        = "用户本回合行动：\n"
-		directorRulesPrefix = "\n\n导演本轮上下文规则：\n"
-		directorRulesEnd    = "\n\n以上导演规则必须显著影响"
-		builtInPrefix       = "\n\n请基于互动故事上下文"
+		actionPrefix        = "User action for this turn:\n"
+		directorRulesPrefix = "\n\nStoryteller context rule for this turn:\n"
+		directorRulesEnd    = "\n\nThe rule above must materially affect"
+		builtInPrefix       = "\n\nContinue the interactive story"
 	)
-	if !strings.Contains(content, "[互动输入]") {
+	if !strings.Contains(content, "[Interactive Input]") {
 		return nil
 	}
 	actionPrefixIndex := strings.Index(content, actionPrefix)
@@ -49,8 +49,8 @@ func buildInteractiveTurnInstructionParts(content string) []ContextAnalysisPart 
 	parts := []ContextAnalysisPart{
 		NewContextAnalysisPart(ContextAnalysisPartInput{
 			ID:      "interactive_instruction_action",
-			Source:  "本轮行动",
-			Title:   "当前用户行动",
+			Source:  "Current turn action",
+			Title:   "Current user action",
 			Role:    "user",
 			Kind:    "body",
 			Content: strings.TrimSpace(actionTail[:actionEnd]),
@@ -66,7 +66,7 @@ func buildInteractiveTurnInstructionParts(content string) []ContextAnalysisPart 
 			parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
 				ID:      "interactive_instruction_director_rules",
 				Source:  "StoryTeller.turn_context",
-				Title:   "导演本轮上下文规则",
+				Title:   "Storyteller context rule for this turn",
 				Kind:    "body",
 				Content: strings.TrimSpace(rulesTail[:rulesEnd]),
 				Note:    "final_user_message",
@@ -81,7 +81,7 @@ func buildInteractiveTurnInstructionParts(content string) []ContextAnalysisPart 
 			parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
 				ID:      "interactive_instruction_runtime_rules",
 				Source:  "Denova built-in",
-				Title:   "互动回合执行规则",
+				Title:   "Interactive turn execution rules",
 				Kind:    "body",
 				Content: builtIn,
 				Note:    "final_user_message",
@@ -102,7 +102,7 @@ func buildInteractiveDynamicContextParts(content string) []ContextAnalysisPart {
 	if content == "" {
 		return nil
 	}
-	content = strings.TrimSpace(strings.TrimPrefix(content, "[本轮动态上下文]"))
+	content = strings.TrimSpace(strings.TrimPrefix(content, "[Current Turn Runtime Context]"))
 	sections := contextAnalysisHeadingSections(content, true)
 	if len(sections) == 0 {
 		sections = contextAnalysisHeadingSections(content, false)
@@ -116,7 +116,7 @@ func buildInteractiveDynamicContextParts(content string) []ContextAnalysisPart {
 		parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
 			ID:      "interactive_dynamic_rules",
 			Source:  "Denova built-in",
-			Title:   "动态上下文规则",
+			Title:   "Dynamic context rules",
 			Kind:    "body",
 			Content: preamble,
 			Note:    "final_user_message",
@@ -184,7 +184,7 @@ func contextAnalysisHeadingSections(content string, requireSource bool) []contex
 
 func interactiveDynamicContextHeadingMeta(heading string) (title, source, note string) {
 	title = strings.TrimSpace(heading)
-	source = "本轮动态上下文"
+	source = "Current turn dynamic context"
 	rawSource := ""
 	if before, after, ok := strings.Cut(title, "（source:"); ok {
 		title = strings.TrimSpace(before)
@@ -201,10 +201,10 @@ func interactiveDynamicContextHeadingMeta(heading string) (title, source, note s
 		}
 	}
 	if title == "" {
-		title = "动态上下文片段"
+		title = "Dynamic context fragment"
 	}
 	if source == "" {
-		source = "本轮动态上下文"
+		source = "Current turn dynamic context"
 	}
 	return title, source, note
 }

@@ -28,11 +28,11 @@ const (
 // InferChapterSplitRegex asks the model-only Tool Agent to infer a line-level Go regexp for chapter titles.
 func InferChapterSplitRegex(ctx context.Context, cfg *config.Config, sample string) (string, error) {
 	if cfg == nil {
-		return "", fmt.Errorf("配置不存在")
+		return "", fmt.Errorf("configuration is missing")
 	}
 	sample = strings.TrimSpace(sample)
 	if sample == "" {
-		return "", fmt.Errorf("样本为空")
+		return "", fmt.Errorf("sample is empty")
 	}
 	var runErr error
 	traceCtx, finishTrace := agentrun.WithStandaloneTrace(ctx, cfg, config.AgentKindToolAgent, "tool_agent_chapter_split_regex", "generate", map[string]any{
@@ -74,9 +74,9 @@ func generateChapterSplitRegex(ctx context.Context, cfg *config.Config, modelCfg
 	cm, err := modelio.NewChatModel(ctx, modelCfg)
 	if err != nil {
 		slog.ErrorContext(ctx, fmt.Sprintf("[tool-agent] create chapter regex model failed attempt=%s err=%v", attempt, err))
-		return "", fmt.Errorf("创建工具 Agent 模型失败: %w", err)
+		return "", fmt.Errorf("create Tool Agent model: %w", err)
 	}
-	composition, err := prompts.ComposeBuiltinSystemInstruction(cfg, config.AgentKindToolAgent, "tool_agent", cfg.Workspace, "builtin_base", "章节分割正则任务", "define the structured chapter-regex inference task", prompts.ChapterSplitRegexSystemInstruction())
+	composition, err := prompts.ComposeBuiltinSystemInstruction(cfg, config.AgentKindToolAgent, "tool_agent", cfg.Workspace, "builtin_base", "Chapter Split Regex Task", "define the structured chapter-regex inference task", prompts.ChapterSplitRegexSystemInstruction())
 	if err != nil {
 		return "", err
 	}
@@ -93,12 +93,12 @@ func generateChapterSplitRegex(ctx context.Context, cfg *config.Config, modelCfg
 	if err != nil {
 		agentrun.FinishLLMCallTrace(span, callID, config.AgentKindToolAgent, "tool_agent_chapter_split_regex", mode, modelCfg.Model, 0, nil, err, nil)
 		slog.ErrorContext(ctx, fmt.Sprintf("[tool-agent] infer chapter split regex generate failed attempt=%s err=%v", attempt, err))
-		return "", fmt.Errorf("工具 Agent 推断章节正则失败: %w", err)
+		return "", fmt.Errorf("Tool Agent chapter-regex inference: %w", err)
 	}
 	if msg == nil {
-		agentrun.FinishLLMCallTrace(span, callID, config.AgentKindToolAgent, "tool_agent_chapter_split_regex", mode, modelCfg.Model, 0, nil, fmt.Errorf("工具 Agent 返回为空"), nil)
+		agentrun.FinishLLMCallTrace(span, callID, config.AgentKindToolAgent, "tool_agent_chapter_split_regex", mode, modelCfg.Model, 0, nil, fmt.Errorf("Tool Agent returned an empty response"), nil)
 		slog.InfoContext(ctx, fmt.Sprintf("[tool-agent] infer chapter split regex nil response attempt=%s", attempt))
-		return "", fmt.Errorf("工具 Agent 返回为空")
+		return "", fmt.Errorf("Tool Agent returned an empty response")
 	}
 	agentrun.FinishLLMCallTrace(span, callID, config.AgentKindToolAgent, "tool_agent_chapter_split_regex", mode, modelCfg.Model, 0, msg, nil, nil)
 	slog.InfoContext(ctx, fmt.Sprintf("[tool-agent] infer chapter split regex raw output attempt=%s content=%s reasoning=%s", attempt, prompts.PartSummary(msg.Content), prompts.PartSummary(msg.ReasoningContent)))
@@ -117,7 +117,7 @@ func generateChapterSplitRegex(ctx context.Context, cfg *config.Config, modelCfg
 			modelio.LogPreview(msg.ReasoningContent, chapterSplitRegexFailureLogBytes),
 			modelio.LogPreview(extractJSONContent(msg.Content), chapterSplitRegexFailureLogBytes),
 		))
-		return "", fmt.Errorf("解析工具 Agent 输出失败: %w", err)
+		return "", fmt.Errorf("parse Tool Agent output: %w", err)
 	}
 	slog.InfoContext(ctx, fmt.Sprintf("[tool-agent] infer chapter split regex done attempt=%s regex=%q reason=%s", attempt, regex, prompts.PartSummary(reason)))
 	return regex, nil
@@ -130,7 +130,7 @@ func parseChapterSplitRegexContent(content string) (string, string, error) {
 	}
 	regex := strings.TrimSpace(payload.SplitRegex)
 	if regex == "" {
-		return "", strings.TrimSpace(payload.Reason), fmt.Errorf("工具 Agent 未返回 split_regex")
+		return "", strings.TrimSpace(payload.Reason), fmt.Errorf("Tool Agent did not return split_regex")
 	}
 	return regex, strings.TrimSpace(payload.Reason), nil
 }
@@ -155,9 +155,9 @@ func valueOrZero(v *int) int {
 
 func buildChapterSplitRegexInstruction(sample string) string {
 	var sb strings.Builder
-	sb.WriteString("请从以下小说开头样本的短行候选中推断章节/分卷标题行正则。\n")
-	sb.WriteString("要求：返回 Go regexp；逐行匹配；如果存在分卷标题，正则也要匹配分卷标题；命中行少于 2 个章节/分卷标题的正则不可用；优先匹配候选里重复出现的标题格式，不要匹配普通正文短句；只输出 JSON。\n\n")
-	sb.WriteString("候选上下文：\n")
+	sb.WriteString("Infer a regular expression for chapter or volume title lines from the short-line candidates in the opening novel sample below.\n")
+	sb.WriteString("Requirements: return a Go regexp; match line by line; include volume titles when present; reject a regex that matches fewer than two chapter or volume titles; prefer repeated title formats in the candidates and do not match ordinary short prose sentences; output JSON only.\n\n")
+	sb.WriteString("Candidate context:\n")
 	sb.WriteString(sample)
 	return sb.String()
 }

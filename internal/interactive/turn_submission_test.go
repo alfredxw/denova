@@ -119,7 +119,7 @@ func TestPrepareTurnSubmissionRequiresCompleteOpeningInitialState(t *testing.T) 
 	if receipt.Ready || receipt.ModuleStatus.StateChanges != TurnSubmissionModuleRejected || receipt.ModuleStatus.Choices != TurnSubmissionModuleAccepted {
 		t.Fatalf("an incomplete opening state must reject only state_changes: %#v", receipt)
 	}
-	if len(receipt.Diagnostics) != 1 || receipt.Diagnostics[0].Code != TurnSubmissionDiagnosticInitialStateIncomplete || !strings.Contains(receipt.Diagnostics[0].MessageZH, "protagonist/身份") {
+	if len(receipt.Diagnostics) != 1 || receipt.Diagnostics[0].Code != TurnSubmissionDiagnosticInitialStateIncomplete || !strings.Contains(receipt.Diagnostics[0].Message, "protagonist/身份") {
 		t.Fatalf("opening diagnostic must identify the missing field: %#v", receipt.Diagnostics)
 	}
 

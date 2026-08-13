@@ -200,7 +200,7 @@ func (c *imageAgentConversation) AssembleModelContext(ctx context.Context, _ str
 	fragments := append([]agentcontext.Fragment(nil), input.Fragments...)
 	if c.sourceContext != "" {
 		fragments = append(fragments, agentcontext.Fragment{
-			ID: "image_request_source_context", Source: "image.request.source_context", Title: "图像生成来源上下文",
+			ID: "image_request_source_context", Source: "image.request.source_context", Title: "Image Generation Source Context",
 			Purpose: "ground the generated image in the bounded source material selected for this request",
 			Content: c.sourceContext, Placement: agentcontext.PlacementFinalUserPrefix, Included: true,
 			Note: "source=image generation request; turn-scoped",
@@ -276,7 +276,7 @@ func imageAgentMessage(req AgentGenerateRequest) string {
 		sb.WriteString(skill)
 		sb.WriteString("\n\n")
 	}
-	sb.WriteString("# 图像生成请求\n\n")
+	sb.WriteString("# Image Generation Request\n\n")
 	writeImageAgentField(&sb, "purpose", req.Purpose)
 	writeImageAgentField(&sb, "story_id", req.StoryID)
 	writeImageAgentField(&sb, "branch_id", req.BranchID)
@@ -285,7 +285,7 @@ func imageAgentMessage(req AgentGenerateRequest) string {
 	writeImageAgentField(&sb, "source_context_sha256", imageAgentSemanticHash(req.SourceContext))
 	writeImageAgentField(&sb, "system_prompt_sha256", imageAgentSemanticHash(req.SystemPrompt))
 	writeImageAgentField(&sb, "tool_prompt_sha256", imageAgentSemanticHash(req.ToolPrompt))
-	sb.WriteString("\n请读取所需 Skill 后调用 generate_image 完成图像生成。")
+	sb.WriteString("\nLoad the required Skill, then call generate_image to complete the request.")
 	return strings.TrimSpace(sb.String())
 }
 

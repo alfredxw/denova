@@ -140,7 +140,7 @@ func truncatePermissionDetails(value string) string {
 	if len(value) <= permissionDetailsMaxBytes {
 		return value
 	}
-	const marker = "\n… [details truncated / 详情已截断]"
+	const marker = "\n… [details truncated]"
 	value = value[:permissionDetailsMaxBytes-len(marker)]
 	for len(value) > 0 && !utf8.ValidString(value) {
 		value = value[:len(value)-1]

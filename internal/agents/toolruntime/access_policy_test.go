@@ -89,8 +89,8 @@ func TestPlanReadOnlyAccessBlocksForgedMutationAtExecution(t *testing.T) {
 			if called {
 				t.Fatal("blocked tool reached its endpoint")
 			}
-			if !strings.Contains(result.ModelContent, "Plan Mode is read-only") || !strings.Contains(result.ModelContent, "规划模式为只读") {
-				t.Fatalf("blocked result must explain the policy bilingually: %q", result.ModelContent)
+			if !strings.Contains(result.ModelContent, "Plan Mode is read-only") {
+				t.Fatalf("blocked result must explain the policy in English: %q", result.ModelContent)
 			}
 		})
 	}

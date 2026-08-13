@@ -8,4 +8,4 @@ const DefaultContinueWritingPromptEnglish = "Write the next chapter. First read 
 
 const DefaultReviewPromptEnglish = "Review the new chapters in this trigger scope. When chapter paths are provided, review only those chapters as the new work; use necessary preceding chapters, CREATOR.md, outlines, progress, character states, and lore only as reference. Check alignment with the task and user prompt, CREATOR.md, the long-term outline, character continuity, world rules, plot progression, motivation, pacing, prose quality, and readability. Report issues by severity with evidence, impact, and actionable improvements."
 
-const GenericTaskPrompt = "根据任务配置完成这次自动化。请先自行读取必要信息，再执行；如果任务目标不明确，只输出你需要用户补充的配置建议。"
+const GenericTaskPrompt = "Complete this automation from its task configuration. Locate and read the necessary information before acting. If the objective is unclear, output only the configuration details the user must provide."

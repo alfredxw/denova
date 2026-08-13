@@ -73,7 +73,7 @@ func TestImageAgentMessageDeterministicallyLoadsRequestedSkill(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(resolved) != 1 || resolved[0].Name != "interactive-image" || !strings.Contains(resolved[0].Instructions, "# 互动图像") {
+	if len(resolved) != 1 || resolved[0].Name != "interactive-image" || !strings.Contains(resolved[0].Instructions, "# Interactive Image") {
 		t.Fatalf("resolved image Skills = %#v", resolved)
 	}
 }
@@ -163,7 +163,7 @@ func TestInteractiveImageSystemPromptUsesImagePreset(t *testing.T) {
 			{ID: "tool", Name: "请求", Target: imagepreset.TargetToolRequest, Enabled: true, Content: "原样请求风格。"},
 		},
 	})
-	if !strings.Contains(prompt, "图像方案预设") || !strings.Contains(prompt, "理解真实光影") {
+	if !strings.Contains(prompt, "## Image Preset") || !strings.Contains(prompt, "理解真实光影") {
 		t.Fatalf("system prompt should include image preset:\n%s", prompt)
 	}
 	if strings.Contains(prompt, "原样请求风格") || strings.Contains(prompt, "image_prompt") || strings.Contains(prompt, "叙事编排") {

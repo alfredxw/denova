@@ -261,10 +261,10 @@ func paginateCatalog(catalog Catalog, request ReadRequest) (ListResult, error) {
 		return ListResult{}, err
 	}
 	if cursor.CatalogHash != "" && cursor.CatalogHash != catalogHash {
-		return ListResult{}, errors.New("config_read cursor is stale because the catalog changed; restart list from the first page / 配置目录已变化，请从第一页重新读取")
+		return ListResult{}, errors.New("config_read cursor is stale because the catalog changed; restart list from the first page")
 	}
 	if cursor.Offset > len(catalog.Items) {
-		return ListResult{}, errors.New("config_read cursor is outside the current catalog / config_read 游标超出当前目录范围")
+		return ListResult{}, errors.New("config_read cursor is outside the current catalog")
 	}
 
 	result := ListResult{
@@ -291,7 +291,7 @@ func paginateCatalog(catalog Catalog, request ReadRequest) (ListResult, error) {
 		}
 		if exceedsReadBudget(candidate, request.ResultMaxBytes) {
 			if len(result.Items) == 0 {
-				return ListResult{}, fmt.Errorf("config resource %q contains a catalog item larger than the %d-byte shared result budget / 单项配置超过共享结果预算", request.Resource, request.ResultMaxBytes)
+				return ListResult{}, fmt.Errorf("config resource %q contains a catalog item larger than the %d-byte shared result budget", request.Resource, request.ResultMaxBytes)
 			}
 			break
 		}
@@ -322,7 +322,7 @@ func (r *Registry) readExactItems(ctx context.Context, adapter Adapter, request 
 		return GetResult{}, err
 	}
 	if cursor.Offset > len(request.IDs) {
-		return GetResult{}, errors.New("config_read cursor is outside the requested ids / config_read 游标超出请求 ID 范围")
+		return GetResult{}, errors.New("config_read cursor is outside the requested ids")
 	}
 	result := GetResult{
 		Schema: "config.read.v1", Status: "success", Resource: request.Resource,
@@ -368,7 +368,7 @@ func (r *Registry) readExactItems(ctx context.Context, adapter Adapter, request 
 		}
 		if exceedsReadBudget(candidate, request.ResultMaxBytes) {
 			if result.Processed == 0 {
-				return GetResult{}, fmt.Errorf("config resource %q item %q is larger than the %d-byte shared result budget / 单项配置超过共享结果预算", request.Resource, id, request.ResultMaxBytes)
+				return GetResult{}, fmt.Errorf("config resource %q item %q is larger than the %d-byte shared result budget", request.Resource, id, request.ResultMaxBytes)
 			}
 			break
 		}
@@ -393,7 +393,7 @@ func (r *Registry) readExactItems(ctx context.Context, adapter Adapter, request 
 		}
 	}
 	if !result.Truncated && successes == 0 {
-		return GetResult{}, fmt.Errorf("config_read found none of the %d requested %s ids / 请求的 ID 全部未找到或读取失败", len(request.IDs), request.Resource)
+		return GetResult{}, fmt.Errorf("config_read found none of the %d requested %s ids", len(request.IDs), request.Resource)
 	}
 	return result, nil
 }
@@ -447,14 +447,14 @@ func decodeReadCursor(value string, request ReadRequest, operation string) (read
 	}
 	decoded, err := base64.RawURLEncoding.DecodeString(value)
 	if err != nil {
-		return readCursor{}, errors.New("config_read cursor is invalid / config_read 游标无效")
+		return readCursor{}, errors.New("config_read cursor is invalid")
 	}
 	var cursor readCursor
 	if err := json.Unmarshal(decoded, &cursor); err != nil || cursor.Version != 1 || cursor.Operation != operation || cursor.Offset < 0 || cursor.Successes < 0 {
-		return readCursor{}, errors.New("config_read cursor is invalid / config_read 游标无效")
+		return readCursor{}, errors.New("config_read cursor is invalid")
 	}
 	if cursor.Fingerprint != readRequestFingerprint(request, operation) {
-		return readCursor{}, errors.New("config_read cursor does not belong to this request / config_read 游标不属于当前请求")
+		return readCursor{}, errors.New("config_read cursor does not belong to this request")
 	}
 	return cursor, nil
 }

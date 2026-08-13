@@ -191,7 +191,7 @@ func (service *Service) buildCycle(
 	appsettings.ApplyLocale(&runtimeConfig, request.Locale)
 	resourceSkills, err := loadResourceSkills(ctx, &runtimeConfig, request)
 	if err != nil {
-		return agentexecution.Cycle{}, fmt.Errorf("load Config Manager resource Skills / 加载配置管理资源 Skills 失败: %w", err)
+		return agentexecution.Cycle{}, fmt.Errorf("load Config Manager resource Skills: %w", err)
 	}
 	sess, _, err := agentconversation.GetOrCreateSession(
 		runtime.SessionStore, sessionID, &runtimeConfig, config.AgentKindConfigManager,
@@ -367,14 +367,14 @@ func (service *Service) conversationRuntime(request Request) (*session.Store, co
 // labels before it enters the model conversation.
 func BuildMessage(request Request) string {
 	instruction := strings.TrimSpace(request.Instruction)
-	lines := []string{"[Module Context / 模块上下文]"}
+	lines := []string{"[Module Context]"}
 	appendValue := func(key, value string) {
 		if strings.TrimSpace(value) == "" {
 			return
 		}
 		value, truncated := agentcontext.TrimUTF8Bytes(value, requestContextValueMaxBytes)
 		if truncated {
-			value += "\n  ... [truncated at request context limit / 已按请求上下文上限截断]"
+			value += "\n  ... [truncated at request context limit]"
 		}
 		lines = append(lines, fmt.Sprintf("- %s: %s", key, strings.TrimSpace(value)))
 	}
@@ -393,7 +393,7 @@ func BuildMessage(request Request) string {
 	if len(request.References) > 0 {
 		lines = append(lines, "- references: "+strings.Join(request.References, ", "))
 	}
-	lines = append(lines, "", "[User Instruction / 用户指令]", instruction)
+	lines = append(lines, "", "[User Instruction]", instruction)
 	return strings.TrimSpace(strings.Join(lines, "\n"))
 }
 
@@ -402,7 +402,7 @@ func BuildMessage(request Request) string {
 func SessionID(request Request) (string, error) {
 	base, ok := session.AgentSessionID(config.AgentKindConfigManager)
 	if !ok {
-		return "", fmt.Errorf("Config Manager Agent session is not configured / 未配置配置管理 Agent 会话")
+		return "", fmt.Errorf("Config Manager Agent session is not configured")
 	}
 	scopeValues := []string{
 		strings.TrimSpace(request.Origin), strings.TrimSpace(request.StoryID),

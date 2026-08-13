@@ -14,8 +14,8 @@ func TestBuiltinWritingPresetInstructionsCoverScopeInference(t *testing.T) {
 			"agent: ide",
 			"category: writing",
 			"writing-workflow",
-			"不要假设任务一定是下一章",
-			"没有 `writing_scope` 字段",
+			"Do not assume the task is the next chapter",
+			"There is no `writing_scope` field",
 		} {
 			if !strings.Contains(content, required) {
 				t.Fatalf("%s missing required instruction %q", name, required)
@@ -28,8 +28,8 @@ func TestBuiltinWritingPresetInstructionsCoverMultiChapterPlanning(t *testing.T)
 	for _, name := range []string{"novel-standard"} {
 		content := readBuiltinWritingPreset(t, name)
 		for _, required := range []string{
-			"整体计划",
-			"分章计划",
+			"overall",
+			"per-chapter plan",
 		} {
 			if !strings.Contains(content, required) {
 				t.Fatalf("%s missing multi-chapter planning instruction %q", name, required)
@@ -46,7 +46,7 @@ func TestBuiltinWritingPresetInstructionsCoverRequiredTools(t *testing.T) {
 			"`write`",
 			"`edit`",
 			"[tool error]",
-			"不得宣称已完成",
+			"do not claim completion",
 		} {
 			if !strings.Contains(content, required) {
 				t.Fatalf("%s missing required tool instruction %q", name, required)
@@ -67,7 +67,7 @@ func TestBuiltinWritingPresetInstructionsCoverTaskDelegation(t *testing.T) {
 			"task",
 			"description",
 			"general-purpose",
-			"不可用",
+			"unavailable",
 		} {
 			if !strings.Contains(content, required) {
 				t.Fatalf("%s missing task delegation instruction %q", name, required)
@@ -115,7 +115,7 @@ func TestBuiltinChapterIllustrationSkillIsIDEOnly(t *testing.T) {
 		"name: chapter-illustration",
 		"agent: ide",
 		"generate_image",
-		"不要自动编辑章节正文",
+		"Do not edit the chapter prose automatically",
 	} {
 		if !strings.Contains(content, required) {
 			t.Fatalf("chapter-illustration missing required instruction %q", required)

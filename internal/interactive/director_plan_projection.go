@@ -60,7 +60,7 @@ func DirectorPlanVisibleContext(plan DirectorPlan, limitBytes int) string {
 		limitBytes = DirectorContextMaxBytes
 	}
 	var sb strings.Builder
-	writeDirectorPlanContextBlock(&sb, "正文 Agent 简报（source: agent-brief.md）", plan.VisibleDocs.AgentBrief)
+	writeDirectorPlanContextBlock(&sb, "Prose Agent Brief (source: agent-brief.md)", plan.VisibleDocs.AgentBrief)
 	return strings.TrimSpace(trimBytes(sb.String(), limitBytes))
 }
 

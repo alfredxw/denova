@@ -70,17 +70,17 @@ func TestTellerLibraryMaterializesBuiltinsAndListsThem(t *testing.T) {
 }
 
 func TestBuiltInNarrativeStylePromptContracts(t *testing.T) {
-	if !strings.Contains(screenwriterSystemPrompt, "直接交付标准剧本") || !strings.Contains(screenwriterTurnContext, "不为了影视效果另造线索") {
+	if !strings.Contains(screenwriterSystemPrompt, "deliver a standard script directly") || !strings.Contains(screenwriterTurnContext, "do not invent clues") {
 		t.Fatalf("screenwriter prompt must request standard screenplay form without changing the plot")
 	}
-	if strings.Contains(screenwriterSystemPrompt, "人物不总是直说真实意图") {
+	if strings.Contains(screenwriterSystemPrompt, "characters never state their true intent directly") {
 		t.Fatalf("screenwriter prompt must not force hidden intent")
 	}
-	if !strings.Contains(rhythmSystemPrompt, "铺垫的兑现") || !strings.Contains(steadySystemPrompt, "从容不等于平淡") || !strings.Contains(bleakSystemPrompt, "压力不夺走人物的能动性") {
+	if !strings.Contains(rhythmSystemPrompt, "Honor setup with payoff") || !strings.Contains(steadySystemPrompt, "Measured pacing is not flatness") || !strings.Contains(bleakSystemPrompt, "Pressure does not remove agency") {
 		t.Fatalf("narrative style intent is incomplete")
 	}
 	got := fmt.Sprintf("%x", sha256.Sum256([]byte(directEroticaSystemPrompt+"\x00"+directEroticaTurnContext)))
-	const unchangedDirectEroticaHash = "30f2cd3843fb3adebe1c77920051a86c4b7449a723050175dd47f5c6de083f64"
+	const unchangedDirectEroticaHash = "de361809485bc4a80a8f5c4289ce5224776b342118f8b16d47e5e307f27319f8"
 	if got != unchangedDirectEroticaHash {
 		t.Fatalf("direct-erotica prompt changed: hash=%s", got)
 	}

@@ -15,7 +15,7 @@ const (
 
 	// OpeningStateSchemaFieldSelectionRules is shared by the opening prompt and
 	// tool description so the Agent sees one stable, cache-friendly contract.
-	OpeningStateSchemaFieldSelectionRules = "状态字段选择是硬规则：默认状态系统只预置最通用的等级与生命，模板未提供其他字段不表示可以省略。凡开局事实、已读取 Lore 或当前 TRPG state_binding 表明某项长期状态会独立变化、消耗、恢复、触发阈值、参与检定或需要单独展示，必须主动 add 或 replace 为专用的 number/string/bool/enum/object/list 字段，不能塞进当前处境、当前事件、世界局势或物品描述。固定 d20 只是裁定随机性的方式，不能作为 D&D 状态字段的依据；不得仅因使用 d20 就添加或保留力量、敏捷、体质、智力、感知、魅力、攻击 AC、防御 DC、法力、持续效果或冷却。covered/add/replace 均须有开局事实、已读取 Lore 或当前 TRPG state_binding 支持；继承字段没有独立追踪价值时必须 remove。等级与生命也不是每个故事的强制字段，不适用时仍须 remove 或 replace。"
+	OpeningStateSchemaFieldSelectionRules = "Field selection is a hard requirement. The default state system includes only broadly useful level and health fields; the absence of other fields from a template does not make them optional. When opening facts, loaded Lore, or the active TRPG state_binding show that a persistent value changes independently, is consumed or restored, triggers thresholds, participates in checks, or must be displayed separately, add or replace it with a dedicated number/string/bool/enum/object/list field. Do not bury it in current situation, current event, world state, or item descriptions. Fixed d20 resolves randomness only and does not justify D&D-style state fields. Do not add or retain strength, dexterity, constitution, intelligence, wisdom, charisma, attack AC, defense DC, mana, ongoing effects, or cooldowns merely because d20 is used. Every covered/add/replace decision requires support from opening facts, loaded Lore, or the active TRPG state_binding. Remove inherited fields that have no independent tracking value. Level and health are not mandatory for every story; remove or replace them when they do not apply."
 )
 
 // StoryStateSchemaPolicy is story-owned configuration. Director presets do
@@ -97,15 +97,15 @@ func OpeningGameStateSchemaInstruction(meta StoryMeta) string {
 	}
 	mode := NormalizeStoryStateSchemaPolicy(*meta.StateSchemaPolicy).Mode
 	base := strings.Join([]string{
-		"本故事的首回合必须先调用 initialize_story_state_schema，并在工具 finalized=true 后再输出正文。结构工具只定义模板与字段：开局来源必须精确填写 source.kind=opening、source.id=opening-draft；value_policy 固定为 schema_only；covered/add/replace 必须填写 template_id、field_id 与 number/string/bool/enum/object/list 之一的 expected_type；remove 必须填写已有 template_id、field_id、reason 和对应字段删除操作。结构 requirement 与 template_ops 使用状态手册中的 Template ID，不能使用 Actor ID；story 是 actor_id，对应的 template_id 是 story_context。不要提交 initial_actor_ops 或 actor_ops。",
+		"On the first turn of this story, call initialize_story_state_schema before producing narrative text, and wait until the tool returns finalized=true. The schema tool defines templates and fields only. Opening sources must use source.kind=opening and source.id=opening-draft exactly. value_policy must be schema_only. covered/add/replace decisions must include template_id, field_id, and an expected_type of number/string/bool/enum/object/list. remove decisions must include the existing template_id, field_id, a reason, and the matching field-removal operation. Schema requirements and template_ops use Template IDs from the state handbook, never Actor IDs. story is an actor_id whose template_id is story_context. Do not submit initial_actor_ops or actor_ops.",
 		OpeningStateSchemaFieldSelectionRules,
-		"关系类型、关系阶段和好感度是不同维度；朋友、恋爱、亲属、师徒、竞争、敌对等关系使用各自符合故事设定的阶段，不从好感度自动推导。只有确实不存在独立状态需求时才用一个具体字段的 covered 审查项。",
-		"finalize 后严格按回执 initialization_guide.required_state_changes，在首次 submit_interactive_turn.state_changes 中一次补齐所有仍缺初值的字段；不得使用空字符串、未设置、未知或待定占位。结构草案、开局正文、初始状态和 choices 只会在本轮成功结束时一起原子落盘。",
+		"Relationship type, relationship stage, and affinity are separate dimensions. Friend, romantic, family, mentor, rival, hostile, and other relationship types use stages appropriate to the story and must not be inferred automatically from affinity. Use a covered review for one concrete field only when no independent state requirement actually exists.",
+		"After finalization, follow initialization_guide.required_state_changes exactly and initialize every field that still lacks a value in the first submit_interactive_turn.state_changes call. Do not use empty strings or placeholders such as unset, unknown, or pending. The schema draft, opening narrative, initial state, and choices are persisted atomically only when this turn succeeds.",
 	}, " ")
 	if mode == StoryStateSchemaModeGenerate {
-		return base + " 当前手册只有 Denova 不可删除的主角与故事连续性核心；请根据实际开局补齐真正需要长期追踪的模板和字段，不要为了完整感添加无用途字段。"
+		return base + " The current handbook contains only Denova's non-removable protagonist and story-continuity core. Add only the templates and fields that the actual opening requires for persistent tracking; do not add unused fields merely for completeness."
 	}
-	return base + " 当前手册来自用户选择的状态模板；保留、添加、替换或删除字段，使其只承接本故事真正需要的独立状态；不为形式完整重复现有字段，也不要改动仍被 TRPG 规则绑定的字段。最终保留的每个开局 Actor 可写字段都必须能由来源事实、合理推断或适用的模板默认值获得具体初值。"
+	return base + " The current handbook comes from the user's selected state template. Keep, add, replace, or remove fields so it represents only independently tracked state that this story truly needs. Do not duplicate existing fields for formal completeness, and do not alter fields still bound by TRPG rules. Every writable field retained for an opening Actor must receive a concrete initial value from source facts, a justified inference, or an applicable template default."
 }
 
 // GeneratedStoryActorStateCore is the non-removable platform contract used by

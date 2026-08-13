@@ -277,18 +277,18 @@ func optimizerMessage(request Request) string {
 			evidenceScope = "Use only these user-selected trajectory resources as the analysis basis:\n- " + strings.Join(request.Evidence, "\n- ")
 		}
 	}
-	return strings.TrimSpace(fmt.Sprintf(`[Optimization Trigger / 优化触发]
+	return strings.TrimSpace(fmt.Sprintf(`[Optimization Trigger]
 - trigger: %s
 - trajectory_index: trajectory://index
 - explicit_outcomes: trajectory://outcomes
 
-[Analysis Evidence / 分析依据]
+[Analysis Evidence]
 %s
 
-[Task / 任务]
+[Task]
 Evaluate the available trajectory evidence, critique recurring harness failures or durable user preferences, then update the live Harness State directory only when a minimal reusable improvement is justified. Every file edit takes effect immediately. Read specific session or run resources before drawing conclusions. Never copy project content or private reasoning into State.
 
-[User Instruction / 用户指令]
+[User Instruction]
 %s`, normalizeTrigger(request.Trigger), evidenceScope, strings.TrimSpace(request.Instruction)))
 }
 

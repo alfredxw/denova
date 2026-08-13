@@ -13,23 +13,23 @@ func TestSystemInstructionRequiresIdeasAndCreatorDuringIdeation(t *testing.T) {
 	for _, required := range []string{
 		"/tmp/book/CREATOR.md",
 		"/tmp/book/ideas.md",
-		"新书构思阶段也必须基于模板和作者确认更新",
-		"先用 read 读取 ideas.md 和 CREATOR.md",
-		"阶段性结论和待确认点",
-		"CREATOR.md 负责“这本书长期怎么写、哪些规则必须一直遵守”",
-		"每章字数/篇幅目标",
-		"及时用 edit 或 write 更新 ideas.md",
-		"先分别用 write 更新 ideas.md 和 CREATOR.md",
-		"ideas.md 继续作为方向指引",
-		"CREATOR.md 继续作为每轮最高优先级创作者指令生效",
-		"内容保持短小、可扫读、方便作者评论和后续更新",
-		"建议控制在 800-1200 个中文字内",
-		"每章安排只写 3-5 条关键点",
+		"must be updated from the template with author confirmation during new-book ideation",
+		"Read ideas.md and CREATOR.md first",
+		"interim conclusion, open question, or tradeoff rationale",
+		"CREATOR.md describes how it should be written over time and which rules always apply",
+		"chapter-length goals",
+		"promptly update ideas.md with edit or write",
+		"update ideas.md and CREATOR.md separately with write",
+		"ideas.md remains the direction guide",
+		"CREATOR.md remains the highest-priority creator instruction",
+		"Keep it short and scannable for unified author review",
+		"preferably 800-1200 Han characters",
+		"Limit each chapter arrangement to 3-5 key points",
 		"ch{order:05}-{chapter}-{title}.md",
 		"v{order:05}-{volume}",
-		"不要自动重命名旧章节",
-		"尚未发生的后续剧情只用于规划",
-		"必须检查未来剧情泄漏",
+		"never automatically rename old chapters",
+		"Unwritten events from injected outlines and chapter-group plans are planning material",
+		"must check for future-plot leakage",
 	} {
 		if !strings.Contains(instruction, required) {
 			t.Fatalf("系统提示缺少 %q:\n%s", required, instruction)
@@ -46,14 +46,14 @@ func TestIDEWritingFlowKeepsChapterStatusIndependentFromStateSync(t *testing.T) 
 	})
 
 	for _, required := range []string{
-		"章节创作 -> 同步进度与角色状态",
-		"章节正文直接写入 chapters/",
-		"非空未确认章节可在 UI 中显示为初稿",
-		"章节状态只是编辑标记",
-		"不影响下一章判断、上下文选择或状态同步",
-		"用 write 写入 chapters/",
-		"在同一轮更新 setting/progress.md 和 setting/character-states.md",
-		"不等待作者另行确认成章",
+		"chapter writing -> synchronize progress and character state",
+		"Write chapter prose directly under chapters/",
+		"non-empty unconfirmed chapter as a draft",
+		"chapter status is only an editing marker",
+		"does not affect next-chapter detection, context selection, or state synchronization",
+		"Write the chapter with write",
+		"update setting/progress.md and setting/character-states.md in the same turn",
+		"without waiting for a separate author confirmation",
 	} {
 		if !strings.Contains(instruction, required) {
 			t.Fatalf("写作流程提示缺少 %q:\n%s", required, instruction)

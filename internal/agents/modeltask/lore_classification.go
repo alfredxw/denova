@@ -27,7 +27,7 @@ type loreClassificationPayload struct {
 // batch. Callers keep deterministic heuristic results if this call fails.
 func ClassifyLoreItems(ctx context.Context, cfg *config.Config, inputs []lore.ClassificationInput) ([]lore.ClassificationSuggestion, error) {
 	if cfg == nil {
-		return nil, fmt.Errorf("配置不存在")
+		return nil, fmt.Errorf("configuration is missing")
 	}
 	if len(inputs) == 0 {
 		return nil, nil
@@ -37,12 +37,12 @@ func ClassifyLoreItems(ctx context.Context, cfg *config.Config, inputs []lore.Cl
 		return nil, err
 	}
 	if len(data) > loreClassificationInputMaxBytes {
-		return nil, fmt.Errorf("资料分类输入超过 %d KiB 上限", loreClassificationInputMaxBytes/1024)
+		return nil, fmt.Errorf("lore classification input exceeds the %d KiB limit", loreClassificationInputMaxBytes/1024)
 	}
 	traceCtx, finishTrace := agentrun.WithStandaloneTrace(ctx, cfg, config.AgentKindToolAgent, "tool_agent_lore_classification", "generate", map[string]any{"items": len(inputs), "bytes": len(data)})
 	var runErr error
 	defer func() { finishTrace(runErr) }()
-	instruction := "请对以下资料条目进行语义分类。名称是最重要信号；只有名称不明确时才参考标签、关键词、简介和正文片段。\n\n输入 JSON：\n" + string(data)
+	instruction := "Classify the following lore items semantically. The name is the strongest signal; consult tags, keywords, descriptions, and body excerpts only when the name is ambiguous.\n\nInput JSON:\n" + string(data)
 	jsonCfg, err := modelio.ConfigForAgent(cfg, config.AgentKindToolAgent)
 	if err != nil {
 		runErr = err
@@ -70,9 +70,9 @@ func ClassifyLoreItems(ctx context.Context, cfg *config.Config, inputs []lore.Cl
 func generateLoreClassifications(ctx context.Context, cfg *config.Config, modelCfg providers.ModelConfig, instruction string, inputs []lore.ClassificationInput, attempt string) ([]lore.ClassificationSuggestion, error) {
 	cm, err := modelio.NewChatModel(ctx, modelCfg)
 	if err != nil {
-		return nil, fmt.Errorf("创建工具 Agent 模型失败: %w", err)
+		return nil, fmt.Errorf("create Tool Agent model: %w", err)
 	}
-	composition, err := prompts.ComposeBuiltinSystemInstruction(cfg, config.AgentKindToolAgent, "tool_agent", cfg.Workspace, "builtin_base", "资料分类任务", "define the structured lore classification task", loreClassificationSystemInstruction())
+	composition, err := prompts.ComposeBuiltinSystemInstruction(cfg, config.AgentKindToolAgent, "tool_agent", cfg.Workspace, "builtin_base", "Lore Classification Task", "define the structured lore classification task", loreClassificationSystemInstruction())
 	if err != nil {
 		return nil, err
 	}
@@ -88,10 +88,10 @@ func generateLoreClassifications(ctx context.Context, cfg *config.Config, modelC
 	msg, err := cm.Generate(traceCtx, messages)
 	if err != nil {
 		agentrun.FinishLLMCallTrace(span, callID, config.AgentKindToolAgent, "tool_agent_lore_classification", mode, modelCfg.Model, 0, nil, err, nil)
-		return nil, fmt.Errorf("工具 Agent 资料分类失败: %w", err)
+		return nil, fmt.Errorf("Tool Agent lore classification: %w", err)
 	}
 	if msg == nil {
-		err = fmt.Errorf("工具 Agent 返回为空")
+		err = fmt.Errorf("Tool Agent returned an empty response")
 		agentrun.FinishLLMCallTrace(span, callID, config.AgentKindToolAgent, "tool_agent_lore_classification", mode, modelCfg.Model, 0, nil, err, nil)
 		return nil, err
 	}
@@ -101,7 +101,7 @@ func generateLoreClassifications(ctx context.Context, cfg *config.Config, modelC
 		result, err = parseLoreClassificationContent(msg.ReasoningContent, inputs)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("解析工具 Agent 资料分类输出失败: %w", err)
+		return nil, fmt.Errorf("parse Tool Agent lore-classification output: %w", err)
 	}
 	slog.InfoContext(ctx, fmt.Sprintf("[tool-agent] lore classification done attempt=%s requested=%d returned=%d", attempt, len(inputs), len(result)))
 	return result, nil
@@ -124,10 +124,10 @@ func parseLoreClassificationContent(content string, inputs []lore.Classification
 		item.Confidence = strings.ToLower(strings.TrimSpace(item.Confidence))
 		item.Reason = strings.TrimSpace(item.Reason)
 		if !allowedIDs[item.ID] || seen[item.ID] {
-			return nil, fmt.Errorf("返回了未知或重复的资料 ID: %s", item.ID)
+			return nil, fmt.Errorf("response contains an unknown or duplicate lore ID: %s", item.ID)
 		}
 		if !isLoreClassificationType(item.Type) {
-			return nil, fmt.Errorf("资料 %s 返回了无效类型: %s", item.ID, item.Type)
+			return nil, fmt.Errorf("lore item %s has an invalid returned type: %s", item.ID, item.Type)
 		}
 		switch item.Confidence {
 		case lore.ClassificationConfidenceHigh, lore.ClassificationConfidenceMedium, lore.ClassificationConfidenceLow:
@@ -138,7 +138,7 @@ func parseLoreClassificationContent(content string, inputs []lore.Classification
 		result = append(result, item)
 	}
 	if len(result) == 0 {
-		return nil, fmt.Errorf("未返回分类结果")
+		return nil, fmt.Errorf("response contains no classification results")
 	}
 	return result, nil
 }
@@ -154,10 +154,10 @@ func isLoreClassificationType(value string) bool {
 
 func loreClassificationSystemInstruction() string {
 	return strings.Join([]string{
-		"你负责给 Denova 资料库条目分类。",
-		"只输出 JSON object：{\"items\":[{\"id\":\"输入 id\",\"type\":\"character|world|location|faction|rule|item|other\",\"confidence\":\"high|medium|low\",\"reason\":\"简短依据\"}]}。",
-		"名称优先于正文：人物详情、角色档案等名称应归为 character；地点、势力、规则、物品等明确名称同理。",
-		"world 只用于跨地点的世界观、历史、文化或时代背景；无法稳定判断时使用 other 和 low，不要猜测。",
-		"每个输入 id 最多返回一次，不得创造输入中不存在的 id，不要输出 Markdown。",
+		"Classify Denova lore items.",
+		"Output only a JSON object: {\"items\":[{\"id\":\"input id\",\"type\":\"character|world|location|faction|rule|item|other\",\"confidence\":\"high|medium|low\",\"reason\":\"brief rationale\"}]}.",
+		"Names take precedence over bodies. Names clearly denoting character details or profiles classify as character; apply the same principle to explicit location, faction, rule, and item names.",
+		"Use world only for worldbuilding, history, culture, or era background spanning locations. When classification is uncertain, use other with low confidence instead of guessing.",
+		"Return each input id at most once, never invent an id absent from the input, and do not output Markdown.",
 	}, "\n")
 }

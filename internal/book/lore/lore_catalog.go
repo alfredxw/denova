@@ -78,15 +78,15 @@ func (s *Store) NameCatalogMarkdown(options NameCatalogOptions) (string, error) 
 	}
 
 	// Very small caller-provided budgets still receive useful source metadata.
-	minimal := fmt.Sprintf("# 资料名称目录\nsource: %s\nrevision: %s\ntotal: %d\nshown: 0\nomitted: %d", ItemsRelativePath, revision, len(entries), len(entries)-offset)
+	minimal := fmt.Sprintf("# Lore Name Catalog\nsource: %s\nrevision: %s\ntotal: %d\nshown: 0\nomitted: %d", ItemsRelativePath, revision, len(entries), len(entries)-offset)
 	if len([]byte(minimal)) <= maxBytes {
 		return minimal, nil
 	}
-	compact := fmt.Sprintf("# 资料名称目录\n共 %d 条，省略 %d 条；使用 list_lore_items。", len(entries), len(entries)-offset)
+	compact := fmt.Sprintf("# Lore Name Catalog\nTotal: %d; omitted: %d. Use list_lore_items.", len(entries), len(entries)-offset)
 	if len([]byte(compact)) <= maxBytes {
 		return compact, nil
 	}
-	return "", fmt.Errorf("资料名称目录上限过小，至少需要 %d bytes", len([]byte(minimal)))
+	return "", fmt.Errorf("lore name catalog limit is too small; at least %d bytes are required", len([]byte(minimal)))
 }
 
 // QueryLoreItems returns the same deterministic page used by the index tool.
@@ -125,21 +125,21 @@ func renderLoreNameCatalogHeader(revision string, total, offset, shown int) stri
 		nextOffset = fmt.Sprintf("%d", offset+shown)
 	}
 	var sb strings.Builder
-	sb.WriteString("# 资料名称目录\n")
+	sb.WriteString("# Lore Name Catalog\n")
 	fmt.Fprintf(&sb, "source: %s\n", ItemsRelativePath)
 	fmt.Fprintf(&sb, "revision: %s\n", revision)
 	fmt.Fprintf(&sb, "total: %d\n", total)
 	fmt.Fprintf(&sb, "shown: %d\n", shown)
 	fmt.Fprintf(&sb, "omitted: %d\n", omitted)
 	fmt.Fprintf(&sb, "next_offset: %s\n\n", nextOffset)
-	fmt.Fprintf(&sb, "共 %d 条启用资料。以下仅用于发现候选；可直接按唯一名称读取正文，或带筛选条件检索。\n\n", total)
+	fmt.Fprintf(&sb, "There are %d enabled lore items. This catalog is for candidate discovery only; read a complete body directly by unique name or search with filters.\n\n", total)
 	return sb.String()
 }
 
 func boundedLoreCatalogName(value string, maxBytes int) string {
 	value = strings.Join(strings.Fields(strings.TrimSpace(value)), " ")
 	if value == "" {
-		return "（未命名）"
+		return "(unnamed)"
 	}
 	if maxBytes <= 0 || len([]byte(value)) <= maxBytes {
 		return value

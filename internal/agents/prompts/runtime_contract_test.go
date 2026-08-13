@@ -19,7 +19,7 @@ func TestUserStatePromptFollowsContractAndBuiltInPrompt(t *testing.T) {
 	}
 	instruction := composition.Instruction()
 
-	contractIndex := strings.Index(instruction, "Denova 运行时契约")
+	contractIndex := strings.Index(instruction, "Denova Runtime Contract")
 	builtInIndex := strings.Index(instruction, "BUILT IN PROMPT")
 	stateIndex := strings.Index(instruction, "USER STATE PROMPT")
 	if contractIndex < 0 || builtInIndex < 0 || stateIndex < 0 {
@@ -28,7 +28,7 @@ func TestUserStatePromptFollowsContractAndBuiltInPrompt(t *testing.T) {
 	if !(contractIndex < builtInIndex && builtInIndex < stateIndex) {
 		t.Fatalf("wrong system prompt order: contract=%d built_in=%d state=%d\n%s", contractIndex, builtInIndex, stateIndex, instruction)
 	}
-	if !strings.Contains(instruction, "不得覆盖运行时契约、工具权限、Schema、持久化边界或输出协议") {
+	if !strings.Contains(instruction, "cannot override the runtime contract, tool permissions, schemas, persistence boundaries, or output protocol") {
 		t.Fatalf("State prompt section should state protected boundary:\n%s", instruction)
 	}
 }
@@ -45,7 +45,7 @@ func TestProtectedSystemInstructionOmitsEmptyCustomPrompt(t *testing.T) {
 
 func TestProtectedSystemInstructionGuidesThinkingLanguageFromConfig(t *testing.T) {
 	zhInstruction := protectedSystemInstruction(&config.Config{Language: "zh-CN"}, config.AgentKindIDE, "BUILT IN PROMPT")
-	for _, required := range []string{"## 思考语言", "流式 thinking 内容都使用简体中文", "不要因此改变输出协议"} {
+	for _, required := range []string{"## Thinking Language", "Use Simplified Chinese for internal reasoning", "This controls thinking language only"} {
 		if !strings.Contains(zhInstruction, required) {
 			t.Fatalf("zh-CN thinking language contract missing %q:\n%s", required, zhInstruction)
 		}
@@ -64,13 +64,13 @@ func TestSubAgentParentRuntimeContractsIncludeDelegationProtocol(t *testing.T) {
 		t.Run(agentKind, func(t *testing.T) {
 			instruction := protectedSystemInstruction(&config.Config{}, agentKind, "BUILT IN PROMPT")
 			for _, required := range []string{
-				"SubAgent 委派协议",
-				"默认不要主动拉起 SubAgent",
-				"用户明确要求委派/拉起子 Agent",
-				"Skill 流程明确要求使用 SubAgent",
-				"用户目标、必要上下文、已知约束、文件路径或资源 ID、期望输出",
-				"不要复制大段正文、完整日志、完整历史或其他无界内容",
-				"父 Agent 必须自行核对结果",
+				"SubAgent delegation protocol",
+				"Do not proactively start a SubAgent by default",
+				"user explicitly requests delegation",
+				"loaded Skill explicitly requires a SubAgent",
+				"user's goal, necessary context, known constraints, file paths or resource IDs, expected output",
+				"Do not copy large bodies of text, complete logs, complete history, or other unbounded content",
+				"parent must verify them",
 			} {
 				if !strings.Contains(instruction, required) {
 					t.Fatalf("deep parent %s should include subagent delegation protocol %q:\n%s", agentKind, required, instruction)
@@ -85,14 +85,14 @@ func TestRuntimeContractsCoverAllAgentKinds(t *testing.T) {
 		config.AgentKindGeneral:             "General Agent",
 		config.AgentKindHarnessOptimizer:    "Harness Optimizer",
 		config.AgentKindIDE:                 "CREATOR.md",
-		config.AgentKindInteractiveStory:    "只输出本回合可展示在故事舞台上的故事正文",
-		config.AgentKindImage:               "图像 Agent",
-		config.AgentKindConfigManager:       "配置管理 Agent",
-		config.AgentKindInteractiveDirector: "不负责状态结构初始化或复审",
-		config.AgentKindVersionSummary:      "版本说明 Agent",
+		config.AgentKindInteractiveStory:    "Output only the story prose",
+		config.AgentKindImage:               "Image Agent",
+		config.AgentKindConfigManager:       "Config Manager Agent",
+		config.AgentKindInteractiveDirector: "does not initialize or review the state schema",
+		config.AgentKindVersionSummary:      "Version Summary Agent",
 		config.AgentKindToolAgent:           "model-only",
-		config.AgentKindAutomation:          "自动化Agent",
-		config.AgentKindContextCompaction:   "上下文压缩 Agent",
+		config.AgentKindAutomation:          "Automation Agent",
+		config.AgentKindContextCompaction:   "Context Compaction Agent",
 	}
 	for _, definition := range config.AgentKindDefinitions() {
 		required, ok := tests[definition.Kind]
@@ -117,11 +117,11 @@ func TestGeneralAgentInstructionUsesProjectNeutralFilesystemRules(t *testing.T) 
 	instruction := composition.Instruction()
 	for _, required := range []string{
 		"General Agent",
-		"当前 Project 目录就是工作根目录",
-		"发现与内容搜索默认遵守 .gitignore",
-		"明确指定路径、直接 read/write/edit 的文件不因 .gitignore 被硬屏蔽",
-		"不要自动创建或修改 .gitignore",
-		"Denova 数据目录",
+		"current Project directory is the working root",
+		"File discovery and content search respect .gitignore by default",
+		"direct read/write/edit operations are not blocked by .gitignore",
+		"Do not automatically create or modify .gitignore",
+		"Denova data directory",
 	} {
 		if !strings.Contains(instruction, required) {
 			t.Fatalf("General Agent instruction missing %q:\n%s", required, instruction)
@@ -136,7 +136,7 @@ func TestGeneralAgentInstructionUsesProjectNeutralFilesystemRules(t *testing.T) 
 
 func TestInteractiveDirectorContractRejectsStateSchemaOwnership(t *testing.T) {
 	instruction := protectedSystemInstruction(&config.Config{}, config.AgentKindInteractiveDirector, "BUILT IN PROMPT")
-	for _, required := range []string{"不负责状态结构初始化或复审", "不得调整已经冻结的状态结构", "开局 Game Agent"} {
+	for _, required := range []string{"does not initialize or review the state schema", "must not write, overwrite, or correct Actor State or alter a frozen state schema", "opening Game Agent"} {
 		if !strings.Contains(instruction, required) {
 			t.Fatalf("interactive Director boundary missing %q:\n%s", required, instruction)
 		}

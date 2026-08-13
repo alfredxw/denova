@@ -21,7 +21,7 @@ func TestActorStateRuntimeContextProjectsActiveActorsAndCompactArchiveIndex(t *t
 	}
 
 	context := ActorStateRuntimeContext(system, state, DirectorContextMaxBytes)
-	for _, expected := range []string{"Actor ID：`守门人`", "## 已归档 Actor（只读索引）", "Actor ID：`狼王`", "赤瞳狼王", "本回合已确认死亡", "turn-death", "`archive`", "`restore`"} {
+	for _, expected := range []string{"Actor ID: `守门人`", "## Archived Actors (Read-only Index)", "Actor ID: `狼王`", "赤瞳狼王", "本回合已确认死亡", "turn-death", "`archive`", "`restore`"} {
 		if !strings.Contains(context, expected) {
 			t.Fatalf("runtime context should expose active state and compact archive guidance; missing %q in:\n%s", expected, context)
 		}
@@ -29,7 +29,7 @@ func TestActorStateRuntimeContextProjectsActiveActorsAndCompactArchiveIndex(t *t
 	if strings.Contains(context, "不应进入下一轮上下文的完整遗言") {
 		t.Fatalf("archived Actor field values must not enter the next model turn:\n%s", context)
 	}
-	if strings.Count(context, "Actor ID：`狼王`") != 1 {
+	if strings.Count(context, "Actor ID: `狼王`") != 1 {
 		t.Fatalf("archived Actor should appear only in the compact index:\n%s", context)
 	}
 

@@ -33,9 +33,9 @@ type Op struct {
 // Update is the small, model-facing state mutation contract. Path is an RFC
 // 6901 JSON Pointer whose first segment is a stable Actor ID.
 type Update struct {
-	Op    string `json:"op" jsonschema:"enum=replace,enum=delta,enum=create,enum=archive,enum=restore" jsonschema_description:"状态操作：replace/delta 更新字段，create 新建 Actor，archive/restore 改变 Actor 是否参与运行时状态。"`
-	Path  string `json:"path" jsonschema_description:"以稳定 actor_id 开头的 schema-bound JSON Pointer，例如 /protagonist/生命值。"`
-	Value any    `json:"value" jsonschema_description:"replace/create 的目标值，或 delta 的数值变化量。"`
+	Op    string `json:"op" jsonschema:"enum=replace,enum=delta,enum=create,enum=archive,enum=restore" jsonschema_description:"State operation: replace/delta updates a field, create adds an Actor, and archive/restore changes runtime participation."`
+	Path  string `json:"path" jsonschema_description:"Schema-bound JSON Pointer beginning with a stable actor_id, for example /protagonist/health."`
+	Value any    `json:"value" jsonschema_description:"Target value for replace/create, or numeric change for delta."`
 }
 
 // NormalizeUpdates canonicalizes operation names and pointer whitespace while

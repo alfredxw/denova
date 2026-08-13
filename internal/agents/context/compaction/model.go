@@ -35,7 +35,7 @@ func GenerateSummary(
 	}
 	chatModel, err := modelio.NewChatModel(traceCtx, modelCfg)
 	if err != nil {
-		return "", fmt.Errorf("创建上下文压缩模型失败: %w", err)
+		return "", fmt.Errorf("create context compaction model: %w", err)
 	}
 
 	const attempt = 1
@@ -44,13 +44,13 @@ func GenerateSummary(
 	message, err := streamSummaryAttempt(llmTraceCtx, chatModel, request.Messages, attempt, emitDelta)
 	if err != nil {
 		agentrun.FinishLLMCallTrace(span, callID, config.AgentKindContextCompaction, "context_compaction", mode, modelCfg.Model, attempt, nil, err, nil)
-		return "", fmt.Errorf("上下文压缩失败: %w", err)
+		return "", fmt.Errorf("compact context: %w", err)
 	}
 	agentrun.FinishLLMCallTrace(span, callID, config.AgentKindContextCompaction, "context_compaction", mode, modelCfg.Model, attempt, message, nil, nil)
 
 	summary = strings.TrimSpace(message.Content)
 	if summary == "" {
-		return "", fmt.Errorf("上下文压缩结果为空")
+		return "", fmt.Errorf("context compaction result is empty")
 	}
 	return summary, nil
 }

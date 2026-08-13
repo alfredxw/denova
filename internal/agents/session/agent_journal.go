@@ -36,16 +36,16 @@ func PersistAgentCall(store *Store, agentKind, instruction, response string) err
 		return err
 	}
 	if instruction == "" {
-		instruction = "（空输入）"
+		instruction = "(empty input)"
 	}
 	if err := sess.Append(agent.UserMessage(instruction)); err != nil {
-		return fmt.Errorf("写入 Agent 输入失败: %w", err)
+		return fmt.Errorf("write Agent input: %w", err)
 	}
 	if response == "" {
-		response = "（空输出）"
+		response = "(empty output)"
 	}
 	if err := sess.Append(agent.AssistantMessage(response, nil)); err != nil {
-		return fmt.Errorf("写入 Agent 输出失败: %w", err)
+		return fmt.Errorf("write Agent output: %w", err)
 	}
 	return nil
 }

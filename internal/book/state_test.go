@@ -145,17 +145,17 @@ func TestCompactContextIncludesCharacterStates(t *testing.T) {
 
 	context := state.CompactContext()
 	for _, required := range []string{
-		"## 当前大纲",
+		"## Current Outline",
 		"大纲内容",
-		"## 常驻资料库",
+		"## Resident Lore",
 		"林川的长期人设",
-		"## 章节组细纲",
+		"## Chapter-group Plans",
 		"章节组内容",
-		"## 当前进度",
+		"## Current Progress",
 		"进度内容",
-		"## 角色状态",
+		"## Character State",
 		"林川在废城东区地下仓库",
-		"## 章节目录概览",
+		"## Chapter Path Overview",
 		"chapters/ch0001-开局.md",
 	} {
 		if !strings.Contains(context, required) {
@@ -165,12 +165,12 @@ func TestCompactContextIncludesCharacterStates(t *testing.T) {
 
 	lastIndex := -1
 	for _, marker := range []string{
-		"## 当前大纲",
-		"## 常驻资料库",
-		"## 章节组细纲",
-		"## 章节目录概览",
-		"## 当前进度",
-		"## 角色状态",
+		"## Current Outline",
+		"## Resident Lore",
+		"## Chapter-group Plans",
+		"## Chapter Path Overview",
+		"## Current Progress",
+		"## Character State",
 	} {
 		index := strings.Index(context, marker)
 		if index < 0 {
@@ -241,7 +241,7 @@ func TestCompactContextIncludesBoundedIdeasWhenEdited(t *testing.T) {
 	if err := state.InitWorkspace(); err != nil {
 		t.Fatalf("InitWorkspace 失败: %v", err)
 	}
-	if context := state.CompactContext(); strings.Contains(context, "## 创作灵感") {
+	if context := state.CompactContext(); strings.Contains(context, "## Creative Ideas") {
 		t.Fatalf("未编辑的 ideas 模板不应进入上下文:\n%s", context)
 	}
 	if err := os.WriteFile(state.IdeasPath(), []byte("# 灵感\n\n## 当前方向\n废土公路复仇。"), 0o644); err != nil {
@@ -250,7 +250,7 @@ func TestCompactContextIncludesBoundedIdeasWhenEdited(t *testing.T) {
 
 	context := state.CompactContext()
 	for _, required := range []string{
-		"## 创作灵感（ideas.md，最多 2000 字）",
+		"## Creative Ideas (ideas.md, at most 2000 characters)",
 		"废土公路复仇",
 	} {
 		if !strings.Contains(context, required) {

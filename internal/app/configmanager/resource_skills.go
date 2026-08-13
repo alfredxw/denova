@@ -54,13 +54,13 @@ func loadResourceSkills(ctx context.Context, cfg *config.Config, request Request
 		sourceBytes := len(content)
 		if sourceBytes > resourceSkillMaxSourceBytes {
 			return nil, fmt.Errorf(
-				"resource Skill exceeds hard source limit / 配置 Skill 超过加载硬上限: name=%s bytes=%d limit=%d",
+				"resource Skill exceeds hard source limit: name=%s bytes=%d limit=%d",
 				name, sourceBytes, resourceSkillMaxSourceBytes,
 			)
 		}
 		if sourceBytes > resourceSkillMaxTotalSourceBytes-totalSourceBytes {
 			return nil, fmt.Errorf(
-				"resource Skills exceed hard total source limit / 配置 Skills 超过加载总硬上限: next_name=%s loaded_bytes=%d next_bytes=%d limit=%d",
+				"resource Skills exceed hard total source limit: next_name=%s loaded_bytes=%d next_bytes=%d limit=%d",
 				name, totalSourceBytes, sourceBytes, resourceSkillMaxTotalSourceBytes,
 			)
 		}

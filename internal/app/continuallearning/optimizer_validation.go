@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	optimizerValidationFeedbackPrefix = "[Harness State validation feedback / Harness State 校验反馈]"
+	optimizerValidationFeedbackPrefix = "[Harness State Validation Feedback]"
 	optimizerValidationRetryCode      = "harness_state_invalid"
 )
 
@@ -62,7 +62,7 @@ func optimizerValidationFeedback(err error) string {
 		if marshalErr == nil {
 			return fmt.Sprintf(`%s
 The live Harness State directory is invalid. Repair every diagnostic with the ordinary file tools, validate the complete State mentally, and only then finish. Every edit is already effective.
-当前 Harness State 目录无效。请使用普通文件工具修复下面的全部问题，确认完整 State 有效后再结束。所有修改均已立即生效。
+The current Harness State directory is invalid. Use ordinary file tools to fix every issue below, verify that the complete State is valid, and only then end the turn. Every change takes effect immediately.
 
 diagnostics:
 %s`, optimizerValidationFeedbackPrefix, encoded)
@@ -70,7 +70,7 @@ diagnostics:
 	}
 	return fmt.Sprintf(`%s
 The live Harness State directory is invalid. Inspect and repair it with ordinary file tools before finishing.
-当前 Harness State 目录无效。请先使用普通文件工具检查并修复，再结束本轮。
+The current Harness State directory is invalid. Inspect and repair it with ordinary file tools before ending the turn.
 
 error: %s`, optimizerValidationFeedbackPrefix, err)
 }

@@ -39,7 +39,7 @@ func TestSingleInstructionConversationRejectsOversizedStableContext(t *testing.T
 	conversation := &InstructionConversation{
 		instruction: "dynamic", stableContext: "12345", stableContextMaxBytes: 4,
 	}
-	if _, err := conversation.AssembleModelContext(context.Background(), "", agentcontext.ModelContextInput{UserMessage: "dynamic", Budget: conversation.ModelContextBudget()}); err == nil || !strings.Contains(err.Error(), "超过上限") {
+	if _, err := conversation.AssembleModelContext(context.Background(), "", agentcontext.ModelContextInput{UserMessage: "dynamic", Budget: conversation.ModelContextBudget()}); err == nil || !strings.Contains(err.Error(), "exceeds its limit") {
 		t.Fatalf("oversized stable context must fail instead of truncating: %v", err)
 	}
 }
@@ -48,12 +48,12 @@ func TestSingleInstructionConversationCapsFinalStableMessageAndTitle(t *testing.
 	conversation := &InstructionConversation{
 		instruction: "dynamic", stableContextTitle: "1234567890", stableContext: "12345", stableContextMaxBytes: 18,
 	}
-	if _, err := conversation.AssembleModelContext(context.Background(), "", agentcontext.ModelContextInput{UserMessage: "dynamic", Budget: conversation.ModelContextBudget()}); err == nil || !strings.Contains(err.Error(), "最终消息超过上限") {
+	if _, err := conversation.AssembleModelContext(context.Background(), "", agentcontext.ModelContextInput{UserMessage: "dynamic", Budget: conversation.ModelContextBudget()}); err == nil || !strings.Contains(err.Error(), "rendered stable model context exceeds its limit") {
 		t.Fatalf("the title wrapper must count toward the stable message hard cap: %v", err)
 	}
 	conversation.stableContextTitle = strings.Repeat("a", maxInstructionStableContextTitleBytes+1)
 	conversation.stableContextMaxBytes = 2048
-	if _, err := conversation.AssembleModelContext(context.Background(), "", agentcontext.ModelContextInput{UserMessage: "dynamic", Budget: conversation.ModelContextBudget()}); err == nil || !strings.Contains(err.Error(), "标题超过上限") {
+	if _, err := conversation.AssembleModelContext(context.Background(), "", agentcontext.ModelContextInput{UserMessage: "dynamic", Budget: conversation.ModelContextBudget()}); err == nil || !strings.Contains(err.Error(), "title exceeds its limit") {
 		t.Fatalf("an unbounded title must be rejected: %v", err)
 	}
 }

@@ -33,7 +33,7 @@ func TestBuildConfigManagerMessageBoundsRequestContext(t *testing.T) {
 			"large": strings.Repeat("设", requestContextValueMaxBytes+100),
 		},
 	})
-	if !strings.Contains(message, "已按请求上下文上限截断") {
+	if !strings.Contains(message, "[truncated at request context limit]") {
 		t.Fatalf("message should mark truncated context:\n%s", message)
 	}
 	if len([]byte(message)) > requestContextValueMaxBytes+512 {
@@ -82,7 +82,7 @@ func TestLoadConfigManagerRootSkillRejectsOversizedSource(t *testing.T) {
 	builtin := filepath.Join(t.TempDir(), "builtin")
 	writeConfigManagerSkill(t, builtin, resourceSkillName, strings.Repeat("a", resourceSkillMaxSourceBytes+1), RuntimeMode)
 	got, err := loadResourceSkills(context.Background(), &config.Config{SkillsDir: builtin}, Request{})
-	if err == nil || !strings.Contains(err.Error(), "resource Skill exceeds hard source limit") || !strings.Contains(err.Error(), "配置 Skill 超过加载硬上限") {
+	if err == nil || !strings.Contains(err.Error(), "resource Skill exceeds hard source limit") {
 		t.Fatalf("oversized source error = %v", err)
 	}
 	if got != nil {

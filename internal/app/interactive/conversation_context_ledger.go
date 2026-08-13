@@ -57,26 +57,26 @@ func interactiveCompactionResultForMessages(result agentcompaction.Result, messa
 
 func interactiveStoryContextSources(title, origin string, teller teller.Definition, historyCheckpoint, directorPlanVisible, residentLore, loreRevision, loreRuntime, ruleSummary, actorStateRuntime, stateSchemaInitialization, strategyPrompt string, turnHistory interactiveTurnHistory, userAction string) []interactiveContextSource {
 	parts := []interactiveContextSource{
-		{Source: "互动故事", Title: "故事标题", Content: title, Note: "metadata_only", MetadataOnly: true},
-		{Source: "互动故事", Title: "开端", Content: origin, Note: "metadata_only", MetadataOnly: true},
+		{Source: "InteractiveStory", Title: "Story Title", Content: title, Note: "metadata_only", MetadataOnly: true},
+		{Source: "InteractiveStory", Title: "Opening", Content: origin, Note: "metadata_only", MetadataOnly: true},
 	}
 	parts = append(parts, interactiveTellerSlotSources(teller, "turn_context")...)
 	if strings.TrimSpace(historyCheckpoint) != "" {
 		parts = append(parts, interactiveContextSource{
-			Source: "HistoryCheckpoint", Title: "当前分支历史上下文 checkpoint", Content: historyCheckpoint,
+			Source: "HistoryCheckpoint", Title: "Current Branch History Checkpoint", Content: historyCheckpoint,
 			Purpose: "rebuildable context projection", Note: "source=committed turns; bounded", Limit: StoryRuntimeContextMaxBytes,
 		})
 	}
 	if strings.TrimSpace(directorPlanVisible) != "" {
 		parts = append(parts, interactiveContextSource{
-			Source: "DirectorPlan", Title: "正文 Agent 简报", Content: directorPlanVisible,
+			Source: "DirectorPlan", Title: "Prose Agent Brief", Content: directorPlanVisible,
 			Note: "source=agent-brief.md; bounded", Limit: StoryRuntimeContextMaxBytes,
 		})
 	}
 	if strings.TrimSpace(residentLore) != "" {
 		parts = append(parts, interactiveContextSource{
 			Source:  "ResidentLore",
-			Title:   "已启用常驻 Lore 正文",
+			Title:   "Enabled Resident Lore Content",
 			Purpose: "stable leading model context",
 			Content: residentLore,
 			Note:    fmt.Sprintf("complete=true; source=enabled resident lore; body_max_bytes=%d; revision=%s", lore.ResidentLoreSafetyMaxBytes, strings.TrimSpace(loreRevision)),
@@ -86,7 +86,7 @@ func interactiveStoryContextSources(title, origin string, teller teller.Definiti
 	if strings.TrimSpace(loreRuntime) != "" {
 		parts = append(parts, interactiveContextSource{
 			Source:  "LoreContext",
-			Title:   "当前分支活动资料工作集",
+			Title:   "Current Branch Active Lore Working Set",
 			Purpose: "turn-scoped active lore context",
 			Content: loreRuntime,
 			Note:    "complete=true; source=lore-context.md active references",
@@ -95,41 +95,41 @@ func interactiveStoryContextSources(title, origin string, teller teller.Definiti
 	}
 	if strings.TrimSpace(ruleSummary) != "" {
 		parts = append(parts, interactiveContextSource{
-			Source: "StoryDirector", Title: "故事导演规则清单", Content: ruleSummary,
+			Source: "StoryDirector", Title: "Story Director Rule Catalog", Content: ruleSummary,
 			Note: "bounded", Limit: StoryRuntimeContextMaxBytes,
 		})
 	}
 	if strings.TrimSpace(actorStateRuntime) != "" {
 		parts = append(parts, interactiveContextSource{
-			Source: "ActorState", Title: "当前 Actor 状态手册", Purpose: "turn-scoped state write guide",
+			Source: "ActorState", Title: "Current Actor State Handbook", Purpose: "turn-scoped state write guide",
 			Content: actorStateRuntime, Note: "source=effective Actor schema + Snapshot.State.actors; missing initial Actors projected in memory; bounded", Limit: StoryRuntimeContextMaxBytes,
 		})
 	}
 	if strings.TrimSpace(stateSchemaInitialization) != "" {
 		parts = append(parts, interactiveContextSource{
-			Source: "StoryMeta.state_schema_policy", Title: "开局状态结构契约", Purpose: "opening-only schema initialization protocol",
+			Source: "StoryMeta.state_schema_policy", Title: "Opening State Schema Contract", Purpose: "opening-only schema initialization protocol",
 			Content: stateSchemaInitialization, Note: "source=story policy + initialization status; bounded", Limit: StoryRuntimeContextMaxBytes,
 		})
 	}
 	if strings.TrimSpace(strategyPrompt) != "" {
 		parts = append(parts, interactiveContextSource{
-			Source: "StoryDirector.strategy.prompt_markdown", Title: "故事导演 Markdown 策略提示", Content: strategyPrompt,
+			Source: "StoryDirector.strategy.prompt_markdown", Title: "Story Director Markdown Strategy Prompt", Content: strategyPrompt,
 			Note: "bounded", Limit: StoryRuntimeContextMaxBytes,
 		})
 	}
 	if strings.TrimSpace(turnHistory.PreviousSummary) != "" {
 		parts = append(parts, interactiveContextSource{
-			Source: "历史回合", Title: fmt.Sprintf("较早 %d 回合历史检查点", turnHistory.PreviousCount),
+			Source: "HistoricalTurn", Title: fmt.Sprintf("Earlier %d-Turn History Checkpoint", turnHistory.PreviousCount),
 			Content: turnHistory.PreviousSummary, Note: "compressed", Limit: StoryRuntimeContextMaxBytes,
 		})
 	}
 	for i, turn := range turnHistory.Turns {
 		parts = append(parts,
-			interactiveContextSource{Source: "历史回合", Title: fmt.Sprintf("第 %d 回合用户行动", i+1), Content: turn.User, ExactMessage: true},
-			interactiveContextSource{Source: "历史回合", Title: fmt.Sprintf("第 %d 回合剧情", i+1), Content: turn.Narrative, ExactMessage: true},
+			interactiveContextSource{Source: "HistoricalTurn", Title: fmt.Sprintf("Turn %d User Action", i+1), Content: turn.User, ExactMessage: true},
+			interactiveContextSource{Source: "HistoricalTurn", Title: fmt.Sprintf("Turn %d Narrative", i+1), Content: turn.Narrative, ExactMessage: true},
 		)
 	}
-	parts = append(parts, interactiveContextSource{Source: "本轮行动", Title: "当前用户行动", Content: userAction})
+	parts = append(parts, interactiveContextSource{Source: "CurrentTurn", Title: "Current User Action", Content: userAction})
 	return parts
 }
 
@@ -237,7 +237,7 @@ func addFinalInteractiveMessageContextParts(ledger *agentcontext.AuditLedger, me
 		}
 		if agentcontext.IsCompactionSummaryMessage(msg) {
 			ledger.AddPart(
-				"ContextCompaction", fmt.Sprintf("模型可见历史检查点 %d", index+1), "model-visible history checkpoint",
+				"ContextCompaction", fmt.Sprintf("Model-visible History Checkpoint %d", index+1), "model-visible history checkpoint",
 				msg.Content, "source=committed context compaction; final_message=true", true, false, StoryRuntimeContextMaxBytes,
 			)
 		}
@@ -248,7 +248,7 @@ func addFinalInteractiveMessageContextParts(ledger *agentcontext.AuditLedger, me
 				toolID := strings.TrimSpace(call.ID)
 				note := fmt.Sprintf("tool_name=%s; tool_call_id=%s; source=model_tool_call; preserved_exactly=true; bounded_by=model_completion; final_message=true", toolName, toolID)
 				ledger.AddPart(
-					"历史工具上下文", interactiveToolContextTitle("工具调用", toolName, toolID), "paired cross-turn tool call",
+					"HistoricalToolContext", interactiveToolContextTitle("Tool Call", toolName, toolID), "paired cross-turn tool call",
 					string(data), note, true, false, 0,
 				)
 			}
@@ -258,7 +258,7 @@ func addFinalInteractiveMessageContextParts(ledger *agentcontext.AuditLedger, me
 			toolID := strings.TrimSpace(msg.ToolCallID)
 			note := fmt.Sprintf("tool_name=%s; tool_call_id=%s; context_policy_applied=true; single_result_limit_bytes=%d; final_message=true", toolName, toolID, resultLimit)
 			ledger.AddPart(
-				"历史工具上下文", interactiveToolContextTitle("工具结果", toolName, toolID), "paired model-visible tool result",
+				"HistoricalToolContext", interactiveToolContextTitle("Tool Result", toolName, toolID), "paired model-visible tool result",
 				msg.Content, note, true, interactiveToolContextTruncated(msg.Content), resultLimit,
 			)
 		}
@@ -292,7 +292,7 @@ func interactiveTellerSlotSources(teller teller.Definition, targets ...string) [
 			continue
 		}
 		parts = append(parts, interactiveContextSource{
-			Source: "导演注入规则", Title: fmt.Sprintf("%s（%s）", slot.Name, slot.Target),
+			Source: "StorytellerRule", Title: fmt.Sprintf("%s (%s)", slot.Name, slot.Target),
 			Content: slot.Content, Note: "teller=" + teller.ID,
 		})
 	}

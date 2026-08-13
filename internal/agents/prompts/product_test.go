@@ -27,15 +27,15 @@ func TestBuildInteractiveStoryInstructionIsIsolatedFromIDEPrompt(t *testing.T) {
 			t.Fatalf("interactive story instruction should not contain IDE-only prompt %q:\n%s", forbidden, instruction)
 		}
 	}
-	for _, required := range []string{"游戏模式", "互动文字冒险", "只输出本回合可展示在故事舞台上的故事正文", "隐藏状态块", "快捷选择块", "禁止使用 write、edit", "todo", "<invoke>", "文字小说 RPG", "回合裁定循环", "可选择", "一致性自检", "list_lore_items", "read_lore_items", "search_story_history"} {
+	for _, required := range []string{"Game Mode", "interactive text adventures", "Output only the story prose", "hidden-state blocks", "shortcut-choice blocks", "Do not use write, edit", "todo", "<invoke>", "prose RPG", "identify the action", "meaningful new options", "check consistency", "list_lore_items", "read_lore_items", "search_story_history"} {
 		if !strings.Contains(instruction, required) {
 			t.Fatalf("interactive story instruction should contain %q:\n%s", required, instruction)
 		}
 	}
-	if !strings.Contains(instruction, "导演系统规则") || !strings.Contains(instruction, "经典叙事者") {
+	if !strings.Contains(instruction, "Director System Rules") || !strings.Contains(instruction, "经典叙事者") {
 		t.Fatalf("interactive story instruction should include teller system rules:\n%s", instruction)
 	}
-	for _, required := range []string{"每轮目标字数为最高约束", "最高篇幅约束", "777 个中文字左右"} {
+	for _, required := range []string{"highest length constraint", "[Highest length constraint]", "about 777 Chinese characters"} {
 		if !strings.Contains(instruction, required) {
 			t.Fatalf("interactive story instruction should contain reply target priority %q:\n%s", required, instruction)
 		}
@@ -54,7 +54,7 @@ func TestBuildInteractiveStoryInstructionKeepsReplyTargetAboveCustomLengthPrompt
 		StoryTellerSystemPrompt: "每轮至少写 5000 字。",
 	})
 
-	for _, required := range []string{"每轮目标字数为最高约束", "都不得要求超过该目标", "650 个中文字左右"} {
+	for _, required := range []string{"highest length constraint", "must not require exceeding it", "about 650 Chinese characters"} {
 		if !strings.Contains(instruction, required) {
 			t.Fatalf("interactive story instruction should protect story reply target %q:\n%s", required, instruction)
 		}
@@ -111,7 +111,7 @@ func TestBuildConfigManagerInstructionIncludesResourceSkills(t *testing.T) {
 		Content:     "Read skill://config-manager/references/automation.md for automation details.",
 	})
 	instruction := composition.Instruction()
-	for _, want := range []string{"配置管理 Skill", "/config-manager", "skill://config-manager/references/automation.md"} {
+	for _, want := range []string{"Config Manager Skill", "/config-manager", "skill://config-manager/references/automation.md"} {
 		if !strings.Contains(instruction, want) {
 			t.Fatalf("config manager instruction missing %q:\n%s", want, instruction)
 		}
@@ -119,7 +119,7 @@ func TestBuildConfigManagerInstructionIncludesResourceSkills(t *testing.T) {
 
 	composition.LogAdmission("task-1", "session-1")
 	got := buf.String()
-	for _, want := range []string{"配置 Skill", "/config-manager", "task_id=task-1"} {
+	for _, want := range []string{"configuration Skill", "/config-manager", "task_id=task-1"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("composition log missing %q:\n%s", want, got)
 		}
@@ -129,7 +129,7 @@ func TestBuildConfigManagerInstructionIncludesResourceSkills(t *testing.T) {
 func TestBuildConfigManagerInstructionAllowsAgentConfigTools(t *testing.T) {
 	state := book.NewState(t.TempDir())
 	instruction := BuildConfigManagerInstruction(&config.Config{Workspace: state.Workspace()}, state)
-	for _, want := range []string{"config_read", "config_apply", "resource=agent_profile", "不要通过文件工具直接改", "Agent 配置"} {
+	for _, want := range []string{"config_read", "config_apply", "resource=agent_profile", "Do not directly edit backing files", "Agent configuration"} {
 		if !strings.Contains(instruction, want) {
 			t.Fatalf("config manager instruction missing %q:\n%s", want, instruction)
 		}
@@ -184,7 +184,7 @@ func TestIDEContextRuntimeContextIsBoundedPathOnlyState(t *testing.T) {
 		},
 	})
 
-	for _, want := range []string{"当前聚焦文件：chapters/ch01.md", "当前打开文件：chapters/ch01.md、", "不包含文件正文", "必须按路径显式使用工具读取", "[已截断]"} {
+	for _, want := range []string{"Focused file: chapters/ch01.md", "Open files: chapters/ch01.md,", "never file contents", "read any needed file explicitly by path", "[truncated]"} {
 		if !strings.Contains(context, want) {
 			t.Fatalf("IDE context missing %q:\n%s", want, context)
 		}
@@ -211,7 +211,7 @@ func TestBuildInstructionIncludesStyleRulesInSystemPrompt(t *testing.T) {
 	}
 	instruction := composition.Instruction()
 
-	for _, required := range []string{"## 文风参考", "场景：激烈打斗", "短句留白", "触发规则", "system prompt 注入了文风参考"} {
+	for _, required := range []string{"## Prose Style References", "Scene: 激烈打斗", "短句留白", "Trigger rule", "system prompt provides them"} {
 		if !strings.Contains(instruction, required) {
 			t.Fatalf("system prompt should include style rule %q:\n%s", required, instruction)
 		}
@@ -232,7 +232,7 @@ func TestBuildInstructionIncludesImagePresetSystemPrompt(t *testing.T) {
 	}
 	instruction := composition.Instruction()
 
-	for _, required := range []string{"## 图像方案系统规则（仅用于图像生成）", "realistic", "写实", "构造图像提示词时保持真实光影", "普通正文写作"} {
+	for _, required := range []string{"## Image Preset System Rules (Image Generation Only)", "realistic", "写实", "构造图像提示词时保持真实光影", "ordinary prose writing"} {
 		if !strings.Contains(instruction, required) {
 			t.Fatalf("system prompt should include image preset system rule %q:\n%s", required, instruction)
 		}
@@ -249,7 +249,7 @@ func TestBuildInteractiveStoryInstructionIncludesStyleRulesInSystemPrompt(t *tes
 		StyleRules:              []StyleRule{{Scene: "日常对话", StyleContents: []string{"克制对白"}}},
 	})
 
-	for _, required := range []string{"## 文风参考", "场景：日常对话", "克制对白", "system prompt 中的文风参考索引"} {
+	for _, required := range []string{"## Prose Style References", "Scene: 日常对话", "克制对白", "prose-style index in the system prompt"} {
 		if !strings.Contains(instruction, required) {
 			t.Fatalf("interactive system prompt should include style rule %q:\n%s", required, instruction)
 		}
@@ -262,7 +262,7 @@ func TestSystemPromptSourceSummaryUsesStructuredStateParts(t *testing.T) {
 		Title:   "角色状态",
 		Content: "林川在废城东区地下仓库。",
 	}})
-	for _, want := range []string{"作品状态", "角色状态", "setting/character-states.md"} {
+	for _, want := range []string{"Work state", "角色状态", "setting/character-states.md"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("system prompt source summary missing %q:\n%s", want, got)
 		}
@@ -290,16 +290,16 @@ func TestBuiltinAgentPromptsExposeTurnHistorySearchWithoutCustomPrompt(t *testin
 
 	blocks := BuiltinAgentPromptBlocks(cfg, state, IDEStoryTeller{})
 	interactive := blocks.InteractiveStory
-	if !strings.Contains(interactive.RuntimeContract, "运行时契约") {
+	if !strings.Contains(interactive.RuntimeContract, "runtime contract") {
 		t.Fatalf("runtime contract should be populated: %#v", interactive)
 	}
-	if !strings.Contains(interactive.OutputProtocol, "只输出本回合可展示在故事舞台上的故事正文") {
+	if !strings.Contains(interactive.OutputProtocol, "Output only the story prose") {
 		t.Fatalf("output protocol should require direct narrative text: %#v", interactive)
 	}
 	if !strings.Contains(interactive.EditableSystemPrompt, "search_story_history") || !strings.Contains(interactive.EditableSystemPrompt, "turn_id") {
 		t.Fatalf("editable prompt should include turn history recall flow: %#v", interactive)
 	}
-	if !strings.Contains(interactive.EditableSystemPrompt, "story 级运行参数") || strings.Contains(interactive.EditableSystemPrompt, "2000 个中文字") {
+	if !strings.Contains(interactive.EditableSystemPrompt, "story-level runtime parameter") || strings.Contains(interactive.EditableSystemPrompt, "2000 Chinese characters") {
 		t.Fatalf("editable prompt should describe dynamic story reply target without fixed fallback: %s", interactive.EditableSystemPrompt)
 	}
 
@@ -329,15 +329,15 @@ func TestBuiltinInteractiveDirectorPromptUsesMaintenanceToolContract(t *testing.
 	builtin := BuiltinAgentPrompts(cfg, state, IDEStoryTeller{})
 	got := builtin.InteractiveDirector.SystemPrompt
 	for _, required := range []string{
-		"后台导演 Agent",
-		"Turn 与 StateDelta",
+		"background Director Agent",
+		"Turn and StateDelta",
 		"search_story_history",
 		"turn_id",
 		"director.md",
 		"submit_director_plan_update",
-		"keep 使用空 updates",
-		"普通更新默认只改 agent-brief.md",
-		"只重试 retry_documents",
+		"keep uses empty updates",
+		"Ordinary updates change agent-brief.md by default",
+		"retry only retry_documents",
 	} {
 		if !strings.Contains(got, required) {
 			t.Fatalf("builtin interactive director prompt missing %q:\n%s", required, got)
@@ -355,18 +355,18 @@ func TestBuiltinContextCompactionPromptIsConfigurableInAgentsView(t *testing.T) 
 	cfg := &config.Config{Workspace: state.Workspace()}
 
 	builtin := BuiltinAgentPrompts(cfg, state, IDEStoryTeller{})
-	if !strings.Contains(builtin.ContextCompaction.SystemPrompt, "上下文 checkpoint 编译器") {
+	if !strings.Contains(builtin.ContextCompaction.SystemPrompt, "context checkpoint compiler") {
 		t.Fatalf("builtin context compaction prompt missing role:\n%s", builtin.ContextCompaction.SystemPrompt)
 	}
 	requiredParts := strings.Split(strings.TrimSpace(agentcontext.CompactionCheckpointSchema()), "\n")
-	requiredParts = append(requiredParts, "source_agent_kind", "目标长度由用户消息给出的范围控制")
+	requiredParts = append(requiredParts, "source_agent_kind", "user message provides the target length range")
 	for _, required := range requiredParts {
 		if !strings.Contains(builtin.ContextCompaction.SystemPrompt, required) {
 			t.Fatalf("builtin context compaction prompt missing %q:\n%s", required, builtin.ContextCompaction.SystemPrompt)
 		}
 	}
-	if !strings.Contains(builtin.ContextCompaction.SystemPrompt, "checkpoint 不是新的事实真源") ||
-		!strings.Contains(builtin.ContextCompaction.SystemPrompt, "artifact 可读路径") {
+	if !strings.Contains(builtin.ContextCompaction.SystemPrompt, "checkpoint is not a new source of truth") ||
+		!strings.Contains(builtin.ContextCompaction.SystemPrompt, "readable artifact paths") {
 		t.Fatalf("builtin context compaction prompt should define the checkpoint boundary:\n%s", builtin.ContextCompaction.SystemPrompt)
 	}
 
@@ -398,7 +398,7 @@ func TestInteractiveFlowSourceKeepsRecallFlowWithCreatorPrompt(t *testing.T) {
 	if flowSource == nil {
 		t.Fatal("interactive story flow source missing")
 	}
-	for _, required := range []string{"工具化召回流程", "list_lore_items", "read_lore_items", "search_story_history", "turn_id"} {
+	for _, required := range []string{"Tool-assisted Recall Workflow", "list_lore_items", "read_lore_items", "search_story_history", "turn_id"} {
 		if !strings.Contains(flowSource.Content, required) {
 			t.Fatalf("flow source should keep %q with creator prompt:\n%s", required, flowSource.Content)
 		}

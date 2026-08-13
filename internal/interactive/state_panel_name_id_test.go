@@ -75,7 +75,7 @@ func TestDecodeTurnSubmissionRequiresActorNameForCreate(t *testing.T) {
 	if input.StateUpdates != nil || len(input.Diagnostics) != 1 {
 		t.Fatalf("create without name should be rejected before compilation: %#v", input)
 	}
-	if !strings.Contains(input.Diagnostics[0].MessageZH, "name 必须与 actor_id 完全相同") {
+	if !strings.Contains(input.Diagnostics[0].Message, "incompatible or missing fields") {
 		t.Fatalf("create diagnostic should explain name=ID: %#v", input.Diagnostics[0])
 	}
 }
@@ -173,8 +173,8 @@ func TestCompileTurnStateUpdatesUsesNamedRecordMapKeysAsStableIdentity(t *testin
 func TestActorStateRuntimeContextUsesSameActorNameAndID(t *testing.T) {
 	context := ActorStateRuntimeContext(defaultActorStateSystem(), nil, DirectorContextMaxBytes)
 	for _, phrase := range []string{
-		"新建 Actor 时 actor_id 与 name 必须完全相同",
-		"使用故事语言中的角色名称",
+		"actor_id and name must be identical",
+		"character name in the story's language",
 		`"actor_id": "{{new_actor_name}}"`,
 		`"name": "{{new_actor_name}}"`,
 	} {

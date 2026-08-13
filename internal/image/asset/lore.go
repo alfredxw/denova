@@ -184,32 +184,32 @@ func BuildLorePrompt(request LoreGenerateRequest) string {
 	instruction := trimRunes(request.Instruction, maxInstructionChars)
 	var sb strings.Builder
 	if preset != "" {
-		sb.WriteString("# 图像风格要求\n\n")
+		sb.WriteString("# Image Style Requirements\n\n")
 		sb.WriteString(preset)
 		sb.WriteString("\n\n")
 	}
-	sb.WriteString("# 本次资料项图片请求\n\n")
-	sb.WriteString("为资料库条目生成一张可作为设定卡片预览和创作参考的视觉图。画面应突出主体、身份或规则意象，适合在资料库列表中识别；不要生成任何文字、标题、作者名、水印、logo、UI 面板或二维码。\n\n")
-	writePromptLine(&sb, "资料类型", loreTypeLabel(item.Type))
-	writePromptLine(&sb, "资料名称", item.Name)
+	sb.WriteString("# Current Lore Image Request\n\n")
+	sb.WriteString("Generate one visual reference for this lore item that works as a setting-card preview and creative reference. Emphasize the subject, identity, or rule imagery so the item is recognizable in a lore list. Do not generate text, titles, author names, watermarks, logos, UI panels, or QR codes.\n\n")
+	writePromptLine(&sb, "Lore type", item.Type)
+	writePromptLine(&sb, "Lore name", item.Name)
 	if len(item.Tags) > 0 {
-		writePromptLine(&sb, "标签", strings.Join(item.Tags, "、"))
+		writePromptLine(&sb, "Tags", strings.Join(item.Tags, ", "))
 	}
 	if len(item.Keywords) > 0 {
-		writePromptLine(&sb, "关键词", strings.Join(item.Keywords, "、"))
+		writePromptLine(&sb, "Keywords", strings.Join(item.Keywords, ", "))
 	}
 	if brief != "" {
-		sb.WriteString("\n## 简介\n\n")
+		sb.WriteString("\n## Brief\n\n")
 		sb.WriteString(brief)
 		sb.WriteString("\n")
 	}
 	if content != "" {
-		sb.WriteString("\n## 资料正文节选\n\n")
+		sb.WriteString("\n## Lore Body Excerpt\n\n")
 		sb.WriteString(content)
 		sb.WriteString("\n")
 	}
 	if instruction != "" {
-		sb.WriteString("\n## 用户补充要求\n\n")
+		sb.WriteString("\n## Additional User Requirements\n\n")
 		sb.WriteString(instruction)
 		sb.WriteString("\n")
 	}
@@ -223,7 +223,7 @@ func writePromptLine(sb *strings.Builder, key, value string) {
 	}
 	sb.WriteString("- ")
 	sb.WriteString(key)
-	sb.WriteString("：")
+	sb.WriteString(": ")
 	sb.WriteString(value)
 	sb.WriteString("\n")
 }

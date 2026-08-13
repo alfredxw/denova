@@ -12,7 +12,7 @@ import (
 
 // ErrInvalidModelContextProtocol means the final provider-neutral transcript
 // still contains a tool call/result ordering or identity violation.
-var ErrInvalidModelContextProtocol = errors.New("模型上下文违反工具调用/结果协议 / model context violates the tool call/result protocol")
+var ErrInvalidModelContextProtocol = errors.New("model context violates the tool call/result protocol")
 
 type contextToolCallOccurrence struct {
 	messageIndex int

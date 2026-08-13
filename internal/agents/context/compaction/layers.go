@@ -71,7 +71,7 @@ func summarizeContextInColdLayers(
 	if cfg != nil {
 		workspace = cfg.Workspace
 	}
-	composition, err := prompts.ComposeBuiltinSystemInstruction(cfg, config.AgentKindContextCompaction, "context_compaction", workspace, "builtin_base", "上下文压缩规则", "define the bounded context compaction task", prompts.ContextCompactionSystemInstruction())
+	composition, err := prompts.ComposeBuiltinSystemInstruction(cfg, config.AgentKindContextCompaction, "context_compaction", workspace, "builtin_base", "Context compaction rules", "define the bounded context compaction task", prompts.ContextCompactionSystemInstruction())
 	if err != nil {
 		return "", inputChars, execution, err
 	}

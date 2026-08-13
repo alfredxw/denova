@@ -496,6 +496,38 @@ describe('useVirtuosoBottomLock', () => {
     expect(scroller.scrollTop).toBe(430)
   })
 
+  it('resolves the rendered tail when a reused row does not re-fire its callback ref', () => {
+    const scroller = document.createElement('div')
+    let scrollHeight = 500
+    Object.defineProperty(scroller, 'scrollHeight', { configurable: true, get: () => scrollHeight })
+    Object.defineProperty(scroller, 'clientHeight', { configurable: true, value: 100 })
+    setScrollerViewport(scroller, 100)
+    scroller.scrollTop = 400
+    const streamingRow = document.createElement('div')
+    streamingRow.setAttribute('data-nova-chat-tail-row', '')
+    scroller.appendChild(streamingRow)
+    let rowHeight = 40
+    streamingRow.getBoundingClientRect = () => ({
+      bottom: 60 + rowHeight - (scroller.scrollTop - 400),
+      height: rowHeight,
+    }) as DOMRect
+    const { result } = renderHook(() => useVirtuosoBottomLock({
+      itemCount: 1,
+      autoFollowEnabled: true,
+      resolveScroller: () => scroller,
+    }))
+
+    act(() => {
+      result.current.streamingRowRef(streamingRow)
+      result.current.streamingRowRef(null)
+    })
+    rowHeight = 70
+    scrollHeight = 530
+    act(() => result.current.syncStreamingTailLayout())
+
+    expect(scroller.scrollTop).toBe(430)
+  })
+
   it('preserves the bottom anchor when the streaming tail row is replaced', () => {
     const scroller = document.createElement('div')
     let scrollHeight = 500

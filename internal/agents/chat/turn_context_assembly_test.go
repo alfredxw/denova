@@ -145,23 +145,23 @@ func TestTurnInputProjectionProvidesCurrentRuntimeEnvironment(t *testing.T) {
 	}
 	assembled := turn.ModelContext
 
-	wantContent := "- 上下文快照时间 / Captured at: 2026-07-24T15:30:20+08:00\n" +
-		"- 时区 / Time zone: Asia/Shanghai (UTC+08:00)\n" +
-		"- 当前工作区 / Workspace: /Users/creator/novel\n" +
-		"- 说明 / Note: 这是现实运行环境的本轮快照，不是作品或互动故事中的世界时间；作品时间线仍以作品状态为准。 / This is a turn-scoped real-world runtime snapshot, not in-story time; story chronology remains governed by workspace state."
+	wantContent := "- Captured at: 2026-07-24T15:30:20+08:00\n" +
+		"- Time zone: Asia/Shanghai (UTC+08:00)\n" +
+		"- Workspace: /Users/creator/novel\n" +
+		"- Note: this is a turn-scoped real-world runtime snapshot, not in-story time. Story chronology remains governed by workspace state."
 	if len(assembled.Context.Fragments) == 0 {
 		t.Fatal("assembled context has no runtime environment fragment")
 	}
 	fragment := assembled.Context.Fragments[0]
 	if fragment.ID != "runtime_environment" || fragment.Source != "runtime.environment" ||
-		fragment.Title != "当前运行环境 / Current runtime environment" ||
+		fragment.Title != "Current Runtime Environment" ||
 		fragment.Placement != agentcontext.PlacementFinalUserPrefix || !fragment.Included ||
 		fragment.Purpose == "" || fragment.Hash == "" || fragment.Content != wantContent {
 		t.Fatalf("runtime environment fragment = %#v", fragment)
 	}
 	final := finalAssembledUserMessage(t, assembled)
-	environmentIndex := strings.Index(final, "# 当前运行环境 / Current runtime environment")
-	requestIndex := strings.Index(final, "# 本轮用户请求（最高优先级）")
+	environmentIndex := strings.Index(final, "# Current Runtime Environment")
+	requestIndex := strings.Index(final, "# Current User Request (Highest Priority)")
 	if environmentIndex < 0 || requestIndex < 0 || environmentIndex >= requestIndex || !strings.HasSuffix(strings.TrimSpace(final), "现在几点？") {
 		t.Fatalf("runtime environment must precede the authoritative user request:\n%s", final)
 	}

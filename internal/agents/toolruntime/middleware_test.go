@@ -33,7 +33,7 @@ func TestInteractiveStoryToolMiddlewareBlocksWorkspaceAndHostMutations(t *testin
 		if err != nil {
 			t.Fatal(err)
 		}
-		if called || !strings.Contains(result, "workspace 或宿主副作用") {
+		if called || !strings.Contains(result, "may mutate the workspace or host") {
 			t.Fatalf("%s should be blocked before endpoint, called=%t result=%s", name, called, result)
 		}
 	}
@@ -167,7 +167,7 @@ func TestInteractiveDirectorPlanFileMiddlewareBlocksStateTools(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if called || !strings.Contains(result, "不能写 Actor State") {
+		if called || !strings.Contains(result, "cannot write Actor State") {
 			t.Fatalf("%s should be blocked, called=%v result=%s", name, called, result)
 		}
 	}
@@ -229,7 +229,7 @@ func TestInteractiveDirectorPlanFileMiddlewareBlocksUnauthorizedTools(t *testing
 	if called {
 		t.Fatal("unauthorized director tool should be blocked before endpoint is called")
 	}
-	if !strings.Contains(result, "拒绝工具: execute_shell") {
+	if !strings.Contains(result, "Blocked tool: execute_shell") {
 		t.Fatalf("unexpected block result: %s", result)
 	}
 }
@@ -254,7 +254,7 @@ func TestToolOrchestratorBlocksInteractiveWriteTools(t *testing.T) {
 	if called {
 		t.Fatal("interactive write tool should be blocked before endpoint is called")
 	}
-	if !strings.Contains(result, "workspace 或宿主副作用") {
+	if !strings.Contains(result, "may mutate the workspace or host") {
 		t.Fatalf("unexpected block result: %s", result)
 	}
 }
@@ -279,7 +279,7 @@ func TestToolOrchestratorBlocksInteractiveSubAgentWriteTools(t *testing.T) {
 	if called {
 		t.Fatal("interactive subagent write tool should be blocked before endpoint is called")
 	}
-	if !strings.Contains(result, "workspace 或宿主副作用") {
+	if !strings.Contains(result, "may mutate the workspace or host") {
 		t.Fatalf("unexpected block result: %s", result)
 	}
 }
@@ -351,7 +351,7 @@ func TestToolOrchestratorBlocksMalformedJSONArguments(t *testing.T) {
 	if called {
 		t.Fatal("malformed JSON arguments should be blocked before endpoint is called")
 	}
-	if !strings.Contains(result, "参数不是完整 JSON 对象") ||
+	if !strings.Contains(result, "arguments are not a complete JSON object") ||
 		!strings.Contains(result, "arguments are not a complete JSON object") {
 		t.Fatalf("unexpected malformed-arguments result: %s", result)
 	}

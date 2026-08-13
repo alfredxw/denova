@@ -24,9 +24,9 @@ const (
 // the run's immutable baseline hash. Accepted documents are retained in the
 // run-local draft and must not be resubmitted on later retries.
 type DirectorPlanDocumentUpdate struct {
-	Document string                 `json:"document" jsonschema:"enum=director.md,enum=agent-brief.md,enum=lore-context.md" jsonschema_description:"要修改的导演 Markdown 文件"`
-	BaseHash string                 `json:"base_hash" jsonschema_description:"逐字复制上下文中该文件的 base_hash"`
-	Edits    []DirectorMarkdownEdit `json:"edits" jsonschema_description:"基于当前完整快照的最小编辑；固定标题文档优先 replace_section"`
+	Document string                 `json:"document" jsonschema:"enum=director.md,enum=agent-brief.md,enum=lore-context.md" jsonschema_description:"Director Markdown document to modify."`
+	BaseHash string                 `json:"base_hash" jsonschema_description:"Copy this document's base_hash from context exactly."`
+	Edits    []DirectorMarkdownEdit `json:"edits" jsonschema_description:"Minimal edits against the complete current snapshot; prefer replace_section for fixed-heading documents."`
 }
 
 // DirectorMarkdownEdit uses stable Markdown headings or exact text instead of
@@ -35,9 +35,9 @@ type DirectorPlanDocumentUpdate struct {
 // section edits.
 type DirectorMarkdownEdit struct {
 	Op      string `json:"op" jsonschema:"enum=replace_section,enum=replace_text,enum=replace_document"`
-	Heading string `json:"heading,omitempty" jsonschema_description:"replace_section 的二级标题文本，不含 ##"`
-	OldText string `json:"old_text,omitempty" jsonschema_description:"replace_text 要精确且唯一匹配的原文"`
-	Content string `json:"content" jsonschema_description:"替换后的 section 正文、精确文本或完整文档"`
+	Heading string `json:"heading,omitempty" jsonschema_description:"Level-two heading text for replace_section, without ##."`
+	OldText string `json:"old_text,omitempty" jsonschema_description:"Original text that replace_text must match exactly once."`
+	Content string `json:"content" jsonschema_description:"Replacement section body, exact text, or complete document."`
 }
 
 type directorPlanAcceptedDocument struct {
@@ -166,10 +166,10 @@ func directorDocumentUpdateFingerprint(update DirectorPlanDocumentUpdate) string
 
 func applyDirectorDocumentUpdate(base string, update DirectorPlanDocumentUpdate) (string, error) {
 	if len(update.Edits) == 0 {
-		return "", fmt.Errorf("edits 不能为空")
+		return "", fmt.Errorf("edits cannot be empty")
 	}
 	if len(update.Edits) > maxDirectorMarkdownEditsPerDoc {
-		return "", fmt.Errorf("edits 过多: %d > %d", len(update.Edits), maxDirectorMarkdownEditsPerDoc)
+		return "", fmt.Errorf("too many edits: %d > %d", len(update.Edits), maxDirectorMarkdownEditsPerDoc)
 	}
 	content := strings.TrimSpace(base)
 	for index, edit := range update.Edits {
@@ -189,26 +189,26 @@ func applyDirectorMarkdownEdit(document string, edit DirectorMarkdownEdit) (stri
 	case DirectorMarkdownEditReplaceText:
 		oldText := strings.TrimSpace(edit.OldText)
 		if oldText == "" {
-			return "", fmt.Errorf("replace_text.old_text 不能为空")
+			return "", fmt.Errorf("replace_text.old_text cannot be empty")
 		}
 		if count := strings.Count(document, oldText); count != 1 {
-			return "", fmt.Errorf("replace_text.old_text 必须精确匹配一次，实际 %d 次", count)
+			return "", fmt.Errorf("replace_text.old_text must match exactly once; found %d matches", count)
 		}
 		return strings.Replace(document, oldText, strings.TrimSpace(edit.Content), 1), nil
 	case DirectorMarkdownEditReplaceDocument:
 		if strings.TrimSpace(edit.Content) == "" {
-			return "", fmt.Errorf("replace_document.content 不能为空")
+			return "", fmt.Errorf("replace_document.content cannot be empty")
 		}
 		return strings.TrimSpace(edit.Content), nil
 	default:
-		return "", fmt.Errorf("未知编辑 op: %s", strings.TrimSpace(edit.Op))
+		return "", fmt.Errorf("unknown edit op: %s", strings.TrimSpace(edit.Op))
 	}
 }
 
 func replaceDirectorMarkdownSection(document, heading, body string) (string, error) {
 	heading = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(heading), "##"))
 	if heading == "" {
-		return "", fmt.Errorf("replace_section.heading 不能为空")
+		return "", fmt.Errorf("replace_section.heading cannot be empty")
 	}
 	lines := strings.Split(strings.ReplaceAll(document, "\r\n", "\n"), "\n")
 	start := -1
@@ -218,7 +218,7 @@ func replaceDirectorMarkdownSection(document, heading, body string) (string, err
 		trimmed := strings.TrimSpace(line)
 		if trimmed == wanted {
 			if start >= 0 {
-				return "", fmt.Errorf("二级标题重复: %s", heading)
+				return "", fmt.Errorf("duplicate level-two heading: %s", heading)
 			}
 			start = index
 			continue
@@ -229,7 +229,7 @@ func replaceDirectorMarkdownSection(document, heading, body string) (string, err
 		}
 	}
 	if start < 0 {
-		return "", fmt.Errorf("找不到二级标题: %s", heading)
+		return "", fmt.Errorf("level-two heading not found: %s", heading)
 	}
 	replacement := []string{lines[start]}
 	if body = strings.TrimSpace(body); body != "" {

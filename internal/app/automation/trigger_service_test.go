@@ -571,10 +571,10 @@ func TestGlobalAutomationMessageDoesNotRequestWorkspaceContext(t *testing.T) {
 		Prompt:   "检索公开资料并整理摘要",
 	}
 	message := service.buildAutomationUserMessage(task, automation.RunRecord{Trigger: automation.TriggerManual})
-	if strings.Contains(message, "读取完成任务所需的工作区文件") {
+	if strings.Contains(message, "read the workspace files") {
 		t.Fatalf("global task message requested workspace files:\n%s", message)
 	}
-	if !strings.Contains(message, "全局任务") || !strings.Contains(message, "用户级") {
+	if !strings.Contains(message, "user-global task") || !strings.Contains(message, "user-level") {
 		t.Fatalf("global task message did not state its execution boundary:\n%s", message)
 	}
 }

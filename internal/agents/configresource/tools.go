@@ -48,7 +48,7 @@ func NewTools(cfg *config.Config, maxResultBytes int) ([]agent.ToolDefinition, e
 	}
 	readTool, err := agent.InferTool(
 		"config_read",
-		"Inspect, list, or read Denova configuration resources through one typed registry. List and large exact reads return stable continuation cursors. Exact reads return existing items plus missing_ids/failures; only an entirely unsuccessful completed request fails. Call operation=describe before using an unfamiliar resource and keep returned revisions for later mutations. / 通过统一类型注册表检查、列举或精确读取 Denova 配置；目录和大型精确读取支持稳定续页，部分缺失或故障会逐项返回，只有完整请求全部失败才报错。",
+		"Inspect, list, or read Denova configuration resources through one typed registry. List and large exact reads return stable continuation cursors. Exact reads return existing items plus missing_ids/failures; only an entirely unsuccessful completed request fails. Call operation=describe before using an unfamiliar resource and keep returned revisions for later mutations.",
 		func(ctx context.Context, input configReadInput) (string, error) {
 			value, err := registry.Read(ctx, ReadRequest{
 				Operation: input.Operation, Resource: input.Resource, IDs: input.IDs, Scope: input.Scope, Query: input.Query,
@@ -65,7 +65,7 @@ func NewTools(cfg *config.Config, maxResultBytes int) ([]agent.ToolDefinition, e
 	}
 	applyTool, err := agent.InferTool(
 		"config_apply",
-		"Create, update, or delete exactly one Denova configuration resource. Updates, deletes, and agent_profile SubAgent creates require the latest revision from config_read; agent_profile deletes require value.kind. Resource-specific value shapes live in the config-manager Skill references. / 原子创建、更新或删除一个 Denova 配置资源；需要 revision 的操作必须使用 config_read 返回的最新版，具体 value 结构以 config-manager Skill reference 为准。",
+		"Create, update, or delete exactly one Denova configuration resource. Updates, deletes, and agent_profile SubAgent creates require the latest revision from config_read; agent_profile deletes require value.kind. Resource-specific value shapes live in the config-manager Skill references.",
 		func(ctx context.Context, input configApplyInput) (agent.ToolResult, error) {
 			value, err := registry.Apply(ctx, Mutation{
 				Operation: input.Operation, Resource: input.Resource, ID: input.ID, Scope: input.Scope, Revision: input.Revision, Value: input.Value,

@@ -46,15 +46,15 @@ func ComposeGeneralInstruction(cfg *config.Config) (SystemPromptComposition, err
 		"general",
 		workspace,
 		"builtin_base",
-		"General Agent 工作规则",
+		"General Agent workflow",
 		"define the project-scoped general-purpose agent workflow",
 		strings.Join([]string{
-			"你是 Denova 的 General Agent，定位接近 Codex、Claude Code 或 OMP：在用户明确添加的 Project 中提供通用研究、开发、写作、整理和自动化服务。",
-			"当前 Project 目录就是工作根目录。先理解用户目标和现有结构，再选择最小且可验证的操作；任务需要时可以读取、创建、编辑文件并执行命令。",
-			"开始较大任务前，按需检查根目录及目标路径附近的 AGENTS.md、CLAUDE.md、README、贡献指南等项目说明，并遵守离目标文件最近的适用规则。不要为了发现规则而无界遍历或一次性注入完整目录树。",
-			"文件发现与内容搜索默认遵守 .gitignore；用户明确指定路径、直接 read/write/edit 的文件不因 .gitignore 被硬屏蔽；shell 命令保持其原生语义。不要自动创建或修改 .gitignore。",
-			"Denova 不会因为某个 Project 恰好指向 Denova 数据目录而施加额外的隐藏限制；它与用户显式添加的其他目录一视同仁，仍受工具权限、工作根目录和用户指令约束。",
-			"完成变更后进行与风险相称的检查，并清楚说明做了什么、验证了什么以及仍存在的限制。",
+			"You are Denova's General Agent, comparable in role to Codex, Claude Code, or OMP. Provide general research, development, writing, organization, and automation services inside Projects explicitly added by the user.",
+			"The current Project directory is the working root. Understand the user's goal and existing structure before choosing the smallest verifiable action. Read, create, and edit files or execute commands when the task requires it.",
+			"Before a substantial task, inspect applicable project guidance such as AGENTS.md, CLAUDE.md, README files, and contribution guides at the root and near target paths. Follow the closest applicable rules. Do not traverse without bounds or inject a complete directory tree merely to discover rules.",
+			"File discovery and content search respect .gitignore by default. Explicitly named paths and direct read/write/edit operations are not blocked by .gitignore; shell commands keep native semantics. Do not automatically create or modify .gitignore.",
+			"A Project that happens to point at a Denova data directory receives no additional hidden restrictions. Treat it like any other explicitly added directory, subject to tool permissions, the working root, and user instructions.",
+			"After changes, perform checks proportional to risk and clearly report what changed, what was verified, and what limitations remain.",
 		}, "\n\n"),
 	)
 }
@@ -88,27 +88,27 @@ func ComposeInstruction(cfg *config.Config, state *book.State, teller IDEStoryTe
 	workspace, creator, _ := idePromptWorkspaceSources(cfg, state)
 	builtIn := make([]SystemPromptFragment, 0, 4+len(teller.StyleRules))
 	builtIn = append(builtIn, creatorSystemPromptFragment(creator))
-	builtIn = append(builtIn, tellerSystemPromptFragment("ide_teller", "写作模式默认导演规则", teller.ID, teller.Name, teller.Description, teller.Prompt))
+	builtIn = append(builtIn, tellerSystemPromptFragment("ide_teller", "Default Writing Director Rules", teller.ID, teller.Name, teller.Description, teller.Prompt))
 	builtIn = append(builtIn, styleRuleSystemPromptFragments(teller.StyleRules)...)
 	builtIn = append(builtIn, SystemPromptFragment{
-		ID: "builtin_base", Source: "Denova built-in", Title: "写作模式流程配置",
+		ID: "builtin_base", Source: "Denova built-in", Title: "Writing workflow",
 		Purpose: "define the built-in writing workflow and workspace rules",
 		Content: ideFlowInstruction(cfg, workspace), Required: true, Overflow: SystemPromptOverflowReject,
 	})
 	if prompt := strings.TrimSpace(teller.ImagePresetSystemPrompt); prompt != "" {
 		var content strings.Builder
-		content.WriteString("## 图像方案系统规则（仅用于图像生成）\n\n")
+		content.WriteString("## Image Preset System Rules (Image Generation Only)\n\n")
 		if id := strings.TrimSpace(teller.ImagePresetID); id != "" {
 			content.WriteString("- id: " + id + "\n")
 		}
 		if name := strings.TrimSpace(teller.ImagePresetName); name != "" {
 			content.WriteString("- name: " + name + "\n")
 		}
-		content.WriteString("\n以下规则只在构造 `generate_image` 的图像提示词时生效；普通正文写作、资料库修改和非图像任务不要套用这些视觉约束。\n\n")
+		content.WriteString("\nThe following rules apply only when constructing the image prompt for `generate_image`. Do not apply these visual constraints to ordinary prose writing, lore changes, or non-image tasks.\n\n")
 		content.WriteString(prompt)
 		builtIn = append(builtIn, SystemPromptFragment{
 			ID: "image_preset", Source: "image preset configuration",
-			Title: "图像方案系统规则", Purpose: "constrain image prompts generated during writing tasks",
+			Title: "Image preset system rules", Purpose: "constrain image prompts generated during writing tasks",
 			Content: content.String(), Overflow: SystemPromptOverflowTruncate,
 		})
 	}
@@ -143,7 +143,7 @@ func ComposeInteractiveStoryInstruction(cfg *config.Config, state *book.State, t
 	builtIn := make([]SystemPromptFragment, 0, 4+len(teller.StyleRules))
 	builtIn = append(builtIn, creatorSystemPromptFragment(creator))
 	builtIn = append(builtIn, tellerSystemPromptFragment(
-		"interactive_teller", "导演系统规则", teller.StoryTellerID, teller.StoryTellerName,
+		"interactive_teller", "Director System Rules", teller.StoryTellerID, teller.StoryTellerName,
 		teller.StoryTellerDescription, teller.StoryTellerSystemPrompt,
 	))
 	builtIn = append(builtIn, styleRuleSystemPromptFragments(teller.StyleRules)...)
@@ -156,7 +156,7 @@ func ComposeInteractiveStoryInstruction(cfg *config.Config, state *book.State, t
 		baseInput.ReplyTargetChars = cfg.InteractiveReplyTargetChars
 	}
 	builtIn = append(builtIn, SystemPromptFragment{
-		ID: "builtin_base", Source: "Denova built-in", Title: "互动故事流程规则",
+		ID: "builtin_base", Source: "Denova built-in", Title: "Interactive story workflow",
 		Purpose: "define the built-in game narration workflow and output behavior",
 		Content: BuildInteractiveStorySystemInstruction(baseInput), Required: true, Overflow: SystemPromptOverflowReject,
 	})
@@ -179,7 +179,7 @@ func BuildInteractiveStoryInstructionComposition(cfg *config.Config, state *book
 // ComposeInteractiveDirectorInstruction assembles the exact background
 // director instruction used by both execution and context analysis.
 func ComposeInteractiveDirectorInstruction(cfg *config.Config, state *book.State) (SystemPromptComposition, error) {
-	return ComposeBuiltinSystemInstruction(cfg, config.AgentKindInteractiveDirector, "interactive_director", workspaceForPrompt(cfg, state), "builtin_base", "后台导演系统规则", "define the interactive director planning workflow", BuildInteractiveDirectorSystemInstruction())
+	return ComposeBuiltinSystemInstruction(cfg, config.AgentKindInteractiveDirector, "interactive_director", workspaceForPrompt(cfg, state), "builtin_base", "Background Director system rules", "define the interactive director planning workflow", BuildInteractiveDirectorSystemInstruction())
 }
 
 // ComposeConfigManagerInstruction assembles the config manager prompt and
@@ -197,7 +197,7 @@ func ComposeConfigManagerInstruction(cfg *config.Config, state *book.State, reso
 		creator = state.ReadCreatorPrompt()
 	}
 	builtIn := []SystemPromptFragment{creatorSystemPromptFragment(creator), {
-		ID: "builtin_base", Source: "Denova built-in", Title: "配置管理 Agent 内置规则",
+		ID: "builtin_base", Source: "Denova built-in", Title: "Config Manager built-in rules",
 		Purpose: "define resource configuration workflows and safety boundaries",
 		Content: configManagerFlowInstructionFor(workspace, ""), Required: true, Overflow: SystemPromptOverflowReject,
 	}}
@@ -221,12 +221,12 @@ func ComposeConfigManagerInstruction(cfg *config.Config, state *book.State, reso
 			skillContent.WriteString("\n\n")
 		}
 		skillContent.WriteString(content)
-		prefix := "\n\n## 配置管理 Skill\n\n以下内容来自当前生效的 config-manager Skill。资源细节位于 references；按需使用 read 读取，不要把全部参考一次性注入上下文。若与运行时契约或后端校验冲突，以运行时契约和后端校验为准。\n\n"
+		prefix := "\n\n## Config Manager Skill\n\nThe following content comes from the active config-manager Skill. Resource details live in references; use read only as needed and do not inject every reference at once. The runtime contract and backend validation take precedence over any conflict.\n\n"
 		if skillOrdinal > 1 {
 			prefix = "\n"
 		}
 		builtIn = append(builtIn, SystemPromptFragment{
-			ID: fmt.Sprintf("config_skill:%s:%03d", shortSystemPromptSHA(systemPromptSHA(name)), skillOccurrences[name]), Source: "配置 Skill",
+			ID: fmt.Sprintf("config_skill:%s:%03d", shortSystemPromptSHA(systemPromptSHA(name)), skillOccurrences[name]), Source: "configuration Skill",
 			Title: "/" + name, Purpose: "provide run-scoped configuration schema and workflow guidance",
 			Content: skillContent.String(), Prefix: prefix, Suffix: "\n", Overflow: SystemPromptOverflowTruncate,
 		})
@@ -251,13 +251,13 @@ func BuildConfigManagerInstructionComposition(cfg *config.Config, state *book.St
 func ComposeImageInstruction(cfg *config.Config, state *book.State, systemPrompt string) (SystemPromptComposition, error) {
 	base, workspace, creator := buildImageBuiltinInstruction(cfg, state, "")
 	builtIn := []SystemPromptFragment{creatorSystemPromptFragment(creator), {
-		ID: "builtin_base", Source: "Denova built-in", Title: "图像 Agent 基础规则",
+		ID: "builtin_base", Source: "Denova built-in", Title: "Image Agent base rules",
 		Purpose: "define the built-in image generation workflow", Content: base,
 		Required: true, Overflow: SystemPromptOverflowReject,
 	}, {
-		ID: "image_call_prompt", Source: "image generation caller", Title: "调用点系统提示",
+		ID: "image_call_prompt", Source: "image generation caller", Title: "Call-site system prompt",
 		Purpose: "constrain the current image generation request", Content: systemPrompt,
-		Prefix: "\n\n## 调用点系统提示\n\n", Overflow: SystemPromptOverflowTruncate,
+		Prefix: "\n\n## Call-site System Prompt\n\n", Overflow: SystemPromptOverflowTruncate,
 	}}
 	return composeProtectedSystemInstruction(cfg, config.AgentKindImage, "image", workspace, builtIn)
 }
@@ -280,9 +280,9 @@ func BuildImageInstruction(cfg *config.Config, state *book.State, systemPrompt s
 
 func creatorSystemPromptFragment(creator string) SystemPromptFragment {
 	return SystemPromptFragment{
-		ID: "creator", Source: "workspace CREATOR.md", Title: "创作者指令",
+		ID: "creator", Source: "workspace CREATOR.md", Title: "Creator instructions",
 		Purpose: "apply stable workspace-level creative constraints", Content: creator,
-		Prefix: "# 创作者指令（最高优先级）\n\n", Suffix: "\n\n---\n\n",
+		Prefix: "# Creator Instructions (Highest Priority)\n\n", Suffix: "\n\n---\n\n",
 		Overflow: SystemPromptOverflowTruncate,
 	}
 }
@@ -297,17 +297,17 @@ func tellerSystemPromptFragment(id, title, tellerID, name, description, content 
 	var visible strings.Builder
 	visible.WriteString("# " + title + "\n\n")
 	if value := strings.TrimSpace(tellerID); value != "" {
-		visible.WriteString("导演 ID: " + value + "\n")
+		visible.WriteString("Director ID: " + value + "\n")
 	}
 	if value := strings.TrimSpace(name); value != "" {
-		visible.WriteString("导演名称: " + value + "\n")
+		visible.WriteString("Director name: " + value + "\n")
 	}
 	if value := strings.TrimSpace(description); value != "" {
-		visible.WriteString("导演说明: " + value + "\n")
+		visible.WriteString("Director description: " + value + "\n")
 	}
 	visible.WriteString("\n")
 	visible.WriteString(strings.TrimSpace(content))
-	visible.WriteString("\n\n以上导演规则只用于当前 Agent 的创作与叙事职责；不得覆盖运行时契约、工具边界或用户本轮明确要求。")
+	visible.WriteString("\n\nThese Director rules apply only to the current Agent's creative and narrative responsibilities. They cannot override the runtime contract, tool boundaries, or the user's explicit current request.")
 	return SystemPromptFragment{
 		ID: id, Source: "story teller configuration", Title: title,
 		Purpose: "apply the selected story teller behavior and style", Content: visible.String(),
@@ -333,10 +333,10 @@ func styleRuleSystemPromptFragments(rules []StyleRule) []SystemPromptFragment {
 		if content == "" {
 			continue
 		}
-		title := "文风参考：全局"
+		title := "Prose style reference: global"
 		identity := "global"
 		if !rule.Global {
-			title = "文风参考：" + scene
+			title = "Prose style reference: " + scene
 			identity = "scene:" + scene
 		}
 		occurrences[identity]++
@@ -351,13 +351,13 @@ func styleRuleSystemPromptFragments(rules []StyleRule) []SystemPromptFragment {
 	}
 	fragments := make([]SystemPromptFragment, 0, len(entries)+2)
 	fragments = append(fragments, SystemPromptFragment{
-		ID: "style_protocol_header", Source: "Denova built-in", Title: "文风参考协议",
+		ID: "style_protocol_header", Source: "Denova built-in", Title: "Prose style reference protocol",
 		Purpose: "describe the provenance and shape of the following style entries",
 		Content: StyleRulesProtocolHeader(), Required: true, Overflow: SystemPromptOverflowReject,
 	})
 	fragments = append(fragments, entries...)
 	fragments = append(fragments, SystemPromptFragment{
-		ID: "style_protocol_footer", Source: "Denova built-in", Title: "文风参考触发规则",
+		ID: "style_protocol_footer", Source: "Denova built-in", Title: "Prose style reference trigger rules",
 		Purpose: "define when and how style references may influence generated prose",
 		Content: StyleRulesProtocolFooter(), Suffix: "\n\n---\n\n", Required: true, Overflow: SystemPromptOverflowReject,
 	})

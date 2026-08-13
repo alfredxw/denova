@@ -1,6 +1,6 @@
 ---
 name: novel-lite
-description: 快速续写、灵感初稿和低延迟正文生成；由主 Agent 直接输出结果，不启动审稿或修稿子流程。
+description: Fast continuation, exploratory drafts, and low-latency prose generation performed directly by the main Agent without review or revision subprocesses.
 category: writing
 capabilities:
   - writing-workflow
@@ -9,38 +9,38 @@ agent: ide
 
 # novel-lite
 
-这个 Skill 用于 IDE 创作 Agent 的快速正文生成。
+Use this Skill for fast prose generation by the IDE Writing Agent.
 
-## 写作范围判断
+## Determine the writing scope
 
-- 从用户的实际指令判断写作范围，例如“续写一段”“写一个场景”“写一章”“写三章”“写一个 arc”或用户自定义目标。
-- 除非用户明确说“写下一章”，否则不要假设任务一定是下一章。
-- 没有 `writing_scope` 字段。用户消息是判断范围、目标、约束和输出形态的唯一来源。
-- 如果用户要求一次写多章，只做轻量内部拆分：先判断整体方向和分章边界，再按用户要求的输出规模创作。
+- Infer the scope from the user's actual request, such as continuing a passage, writing a scene, one chapter, three chapters, a story arc, or a custom target.
+- Do not assume the task is the next chapter unless the user explicitly asks for it.
+- There is no `writing_scope` field. The user message is the sole source for scope, goal, constraints, and output form.
+- When the user requests multiple chapters, do only a lightweight internal breakdown: determine the overall direction and chapter boundaries, then write at the requested scale.
 
-## 流程
+## Workflow
 
-main agent -> final output
+main Agent -> final output
 
-## 工具使用要求
+## Tool requirements
 
-- 如果本轮需要依赖作品连续性，先使用 `read` 读取相关工作区文件，例如 `CREATOR.md`、`setting/outline.md`、`setting/progress.md`、`setting/character-states.md`、当前章节组细纲和最近章节；涉及资料库条目时先用 `list_lore_items` 判断，再用 `read_lore_items` 读取相关完整资料。
-- 如果用户只要求在对话里生成片段、灵感稿或示例，直接输出正文，不要写入工作区文件。
-- 如果用户要求创建或更新工作区正文文件，使用 `write` 写入新文件或全量重写文件；如果只是局部替换已有内容，使用 `edit`，`old_string` 必须在当前文件中精确且唯一匹配，不包含 read 返回的行号前缀。
-- 每次调用 `write` 或 `edit` 后都要检查工具结果。若结果包含 `[tool error]`、参数 JSON 错误、`string not found`、匹配不唯一、路径错误或截断提示，不得宣称已完成；应重新读取目标文件、修正参数后重试，或明确告诉用户未写入成功。
-- 对用户可见的最终文件改动，完成后使用 `read` 读回目标文件的关键片段，确认内容已经落盘；无法验证时，在最终回复中说明未完成验证。
-- 本轮新写完整章节或对章节做实质性剧情改写时，完成正文自检和最后修订后，在同一轮同步更新 `setting/progress.md` 与 `setting/character-states.md`；章节是否在 UI 标记为成章不影响同步。纯错字、标点或措辞润色没有改变叙事事实时无需更新状态文件。
-- `setting/progress.md` 只作为摘要参考；判断下一章时以实际章节路径和非空正文为准，发现冲突就在本轮同步修正进度。
+- When continuity matters, first use `read` for the relevant workspace files, such as `CREATOR.md`, `setting/outline.md`, `setting/progress.md`, `setting/character-states.md`, the current chapter-group plan, and recent chapters. For lore, use `list_lore_items` to identify relevant entries and `read_lore_items` to load their complete bodies.
+- If the user asks only for a passage, exploratory draft, or example in chat, output the prose directly and do not write workspace files.
+- When the user asks to create or update workspace prose, use `write` for a new file or complete rewrite and `edit` for localized replacement. `old_string` must match the current file exactly and uniquely and must not contain line-number prefixes returned by `read`.
+- Inspect every `write` or `edit` result. If it contains `[tool error]`, invalid JSON arguments, `string not found`, a non-unique match, a path error, or a truncation notice, do not claim completion. Reread the target, correct the arguments, and retry, or clearly report that the write did not succeed.
+- After user-visible file changes, use `read` to verify key excerpts from the final file. If verification is impossible, say so in the final response.
+- After writing a complete chapter or materially changing its plot, finish the prose self-review and final revision, then update `setting/progress.md` and `setting/character-states.md` in the same turn. Chapter status in the UI does not affect synchronization. Pure typo, punctuation, or wording edits that do not change narrative facts need no state update.
+- Treat `setting/progress.md` only as a summary. Determine the next chapter from actual chapter paths and non-empty prose, and correct progress in the same turn when they conflict.
 
-## 规则
+## Rules
 
-- 只由主 Agent 直接写出最终结果。
-- 不启动 reviewer、fixer、task、General SubAgent 或任何已配置 subagent 流程。
-- 可以做轻量内部自检，检查连续性、用户要求和明显文句问题，但不要输出审稿过程。
-- 保留用户的控制感，不要过度规划、过度解释，也不要把用户要的初稿改写成另一个故事。
-- 只在与本轮写作范围相关时使用工作区上下文、选中文本、资料库引用和风格规则。
+- The main Agent produces the final result directly.
+- Do not start reviewer, fixer, task, General SubAgent, or configured subagent workflows.
+- A lightweight internal check for continuity, user requirements, and obvious prose issues is allowed, but do not expose the review process.
+- Preserve user control. Do not over-plan, over-explain, or turn the requested draft into a different story.
+- Use workspace context, selected text, lore references, and style rules only when relevant to this turn's writing scope.
 
-## 输出
+## Output
 
-- 直接输出用户要求的创作结果。
-- 只有用户要求说明，或存在无法满足的重要约束时，才补充简短说明。
+- Return the creative result the user requested directly.
+- Add a brief explanation only when the user asks for one or an important constraint cannot be satisfied.

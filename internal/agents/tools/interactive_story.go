@@ -17,22 +17,22 @@ const submitInteractiveTurnToolName = "submit_interactive_turn"
 const SubmitInteractiveTurnToolName = submitInteractiveTurnToolName
 
 type searchStoryHistoryInput struct {
-	Keywords     []string `json:"keywords,omitempty" jsonschema:"description=要检索的人物、地点、物品、线索或事件关键词；所有关键词都会参与匹配。留空时浏览最近回合。"`
-	Match        string   `json:"match,omitempty" jsonschema:"description=关键词匹配方式：any 匹配任一关键词，all 要求全部匹配。默认 any。"`
-	BeforeTurnID string   `json:"before_turn_id,omitempty" jsonschema:"description=只检索该 turn_id 之前的当前分支历史；用于避免把当前回合当作旧事实。"`
-	Limit        int      `json:"limit,omitempty" jsonschema:"minimum=1,description=期望的分页条数，默认 8；实际结果还受共享工具结果字节预算约束。"`
-	Cursor       string   `json:"cursor,omitempty" jsonschema:"description=上一页返回的 opaque next_cursor；仅可用于完全相同的检索。"`
+	Keywords     []string `json:"keywords,omitempty" jsonschema:"description=Character, location, item, clue, or event keywords to search. Every keyword participates in matching. Omit to browse recent turns."`
+	Match        string   `json:"match,omitempty" jsonschema:"description=Keyword matching: any matches at least one keyword; all requires every keyword. Default any."`
+	BeforeTurnID string   `json:"before_turn_id,omitempty" jsonschema:"description=Search only current-branch history before this turn_id, preventing the current turn from being treated as an earlier fact."`
+	Limit        int      `json:"limit,omitempty" jsonschema:"minimum=1,description=Desired page size, default 8. The shared tool-result byte budget may reduce the actual result count."`
+	Cursor       string   `json:"cursor,omitempty" jsonschema:"description=Opaque next_cursor from the previous page; valid only for an identical search."`
 }
 
 // interactiveTurnCheckToolInput deliberately omits model-authored
 // outcomes.state_changes. Deterministic State Bindings produce rule state
 // changes; all remaining state mutations are submitted after the narrative.
 type interactiveTurnCheckToolInput struct {
-	Action       string                            `json:"action" jsonschema_description:"用户行为：本回合玩家实际尝试做什么。"`
-	Intent       string                            `json:"intent" jsonschema_description:"行动意图：玩家希望通过本行动达成的目标。"`
-	Challenge    string                            `json:"challenge" jsonschema_description:"检定挑战：需要 d20 固定裁定的风险、阻碍或冲突。"`
-	Cost         string                            `json:"cost" jsonschema_description:"潜在代价：失败、暴露、资源消耗或关系损失等后果。"`
-	State        string                            `json:"state" jsonschema_description:"只写与本次检定直接相关的可见状态、资源、位置、关系或限制。"`
+	Action       string                            `json:"action" jsonschema_description:"The action the player actually attempts this turn."`
+	Intent       string                            `json:"intent" jsonschema_description:"The goal the player intends to achieve through this action."`
+	Challenge    string                            `json:"challenge" jsonschema_description:"The risk, obstacle, or conflict requiring a fixed d20 ruling."`
+	Cost         string                            `json:"cost" jsonschema_description:"Potential consequences such as failure, exposure, resource use, or relationship loss."`
+	State        string                            `json:"state" jsonschema_description:"Only visible state, resources, position, relationships, or constraints directly relevant to this check."`
 	Adjudication interactive.TurnCheckAdjudication `json:"adjudication,omitempty"`
 	Rule         interactive.TurnCheckRule         `json:"rule,omitempty"`
 	Bonuses      []interactive.TurnCheckBonus      `json:"bonuses,omitempty"`
@@ -48,7 +48,7 @@ type interactiveTurnCheckToolOutcomes struct {
 }
 
 type interactiveTurnCheckToolOutcome struct {
-	Result string `json:"result" jsonschema_description:"命中该档位时必须遵守的最终后果，用于指导正文。"`
+	Result string `json:"result" jsonschema_description:"Final consequence that prose must follow when this tier is selected."`
 }
 
 func (input interactiveTurnCheckToolInput) request() interactive.TurnCheckRequest {
@@ -73,7 +73,7 @@ func newInteractiveHistoryTools(ctx InteractiveContext) ([]agent.ToolDefinition,
 	if ctx.Store == nil || ctx.StoryID == "" {
 		return nil, nil
 	}
-	searchTool, err := agent.InferTool("search_story_history", "检索当前分支已经提交的历史回合。Turn 事件是历史事实真源；结果只返回有界的玩家行动、叙事片段、状态变化和精确 turn_id，可随时从事件日志重建。需要承接较早人物、地点、线索、承诺或因果时使用；不要把检索结果当作当前 Actor State 或未来 Director 计划。", func(callCtx context.Context, input searchStoryHistoryInput) (string, error) {
+	searchTool, err := agent.InferTool("search_story_history", "Search committed historical turns on the current branch. Turn events are the source of historical truth. Results contain only bounded player actions, narrative excerpts, state changes, and exact turn_id values and can be rebuilt from the event log. Use this to continue earlier characters, locations, clues, promises, or causality. Never treat results as current Actor State or future Director planning.", func(callCtx context.Context, input searchStoryHistoryInput) (string, error) {
 		_ = callCtx
 		result, err := ctx.Store.SearchStoryHistory(ctx.StoryID, ctx.BranchID, interactive.StoryHistorySearchRequest{
 			Keywords:     input.Keywords,
@@ -110,11 +110,11 @@ func newInteractiveTurnTools(ctx InteractiveContext) ([]agent.ToolDefinition, er
 	tools := make([]agent.ToolDefinition, 0, 2)
 	if ctx.PrepareTurn != nil {
 		desc := strings.Join([]string{
-			"执行本回合一次固定 d20 规则检定。Interactive Agent 负责填写用户行为、意图、挑战、消耗、当前状态说明、投前裁定依据、运行时加成来源和值、难度等级，以及大成功/成功/失败/大失败四档后果；本工具负责掷骰、应用优势或劣势、计算目标、判定结果，并返回命中的最终后果。",
-			"参数协议：difficulty 必须是 very_easy/easy/normal/hard/very_hard；普通难度使用 normal，不要使用 medium/moderate。adjudication 必须说明为什么需要检定、stakes、难度依据、优势/劣势依据；引用状态时使用 state_refs 的 actor_id + field_id。rule 可省略；如提供，template 只能是 dice_check，roll_mode 只能是 normal/advantage/disadvantage，modifier 是模板难度修正值且正数更难；来自 TRPG 模板时填写 template_id、label、failure_policy。",
-			"若本轮上下文提供了 TRPG 检定配置，请先用 trigger、must_check_examples、skip_check_examples 判断是否检定，再用 difficulty_guidance 判断 difficulty/bonuses。四档 outcomes 只描述叙事后果，不提交状态操作。",
-			"若配置提供 state_bindings，请选择 binding_id，并填写 actor_id 与必要的 target_actor_id；binding 中的 modifiers 和 outcome_state_changes 会由工具自动读取 Actor State 并计算，不要重复手算。narrative_state_refs 只用于帮助你投前写好四档 outcomes.*.result。",
-			`最小示例：{"action":"撬锁","intent":"潜入仓库","challenge":"巡逻逼近时开锁","cost":"失败会暴露行踪","state":"主角有简易工具。","adjudication":{"reason":"开锁有时间压力且失败会改变警戒状态。","stakes":"失败会让巡逻靠近。","difficulty_reason":"旧锁简单但附近有人巡逻，维持普通难度。","roll_mode_reason":"工具合适但环境紧张，正常投骰。","state_refs":[{"actor_id":"protagonist","field_id":"体力"}]},"rule":{"template_id":"dm-osr-player-skill","label":"OSR 型 DM：玩家技巧优先","failure_policy":"blocked","modifier":0},"bonuses":[{"kind":"equipment","reason":"有简易开锁工具","value":2}],"difficulty":"normal","outcomes":{"critical_success":{"result":"无声开锁并发现额外线索。"},"success":{"result":"开锁成功但耗时。"},"failure":{"result":"没能打开，巡逻更近。"},"critical_failure":{"result":"工具折断并惊动巡逻。"}}}`,
+			"Execute one fixed d20 rule check for this turn. The Interactive Agent provides the action, intent, challenge, cost, relevant current state, pre-roll adjudication, runtime bonus sources and values, difficulty, and critical-success/success/failure/critical-failure consequences. This tool rolls, applies advantage or disadvantage, computes the target, resolves the tier, and returns the selected final consequence.",
+			"Protocol: difficulty is very_easy/easy/normal/hard/very_hard; use normal for ordinary difficulty, never medium/moderate. adjudication explains why a check is required, the stakes, the difficulty basis, and the advantage/disadvantage basis. State references use actor_id + field_id in state_refs. rule is optional; when present, template is dice_check, roll_mode is normal/advantage/disadvantage, and positive modifier values make the template harder. For a TRPG template, provide template_id, label, and failure_policy.",
+			"When context provides a TRPG check configuration, first use trigger, must_check_examples, and skip_check_examples to decide whether to check, then use difficulty_guidance for difficulty/bonuses. The four outcomes describe narrative consequences only and do not include state operations.",
+			"When state_bindings are available, choose binding_id and provide actor_id plus target_actor_id when needed. The tool reads Actor State to calculate binding modifiers and outcome_state_changes; do not calculate them again. narrative_state_refs only help write the four outcomes.*.result values before the roll.",
+			`Minimal example: {"action":"pick the lock","intent":"enter the warehouse","challenge":"open it before the patrol arrives","cost":"failure reveals the intrusion","state":"The protagonist has simple tools.","adjudication":{"reason":"Time pressure and failure would change the alert state.","stakes":"Failure brings the patrol closer.","difficulty_reason":"The old lock is simple but a patrol is nearby, so use normal difficulty.","roll_mode_reason":"The tools fit but the environment is tense, so roll normally.","state_refs":[{"actor_id":"protagonist","field_id":"stamina"}]},"rule":{"template_id":"dm-osr-player-skill","label":"OSR player-skill priority","failure_policy":"blocked","modifier":0},"bonuses":[{"kind":"equipment","reason":"Simple lock-picking tools","value":2}],"difficulty":"normal","outcomes":{"critical_success":{"result":"Open it silently and find an extra clue."},"success":{"result":"Open it, but lose time."},"failure":{"result":"The lock stays shut and the patrol draws closer."},"critical_failure":{"result":"The tool breaks and alerts the patrol."}}}`,
 		}, "\n")
 		prepareTool, err := agent.InferTool("prepare_interactive_turn", desc, func(callCtx context.Context, input interactiveTurnCheckToolInput) (string, error) {
 			resolution, err := ctx.PrepareTurn(callCtx, input.request())
@@ -138,15 +138,15 @@ func newInteractiveTurnTools(ctx InteractiveContext) ([]agent.ToolDefinition, er
 	}
 	if ctx.SubmitTurnResult != nil {
 		desc := strings.Join([]string{
-			"在完整玩家可见正文已经输出后，通过一个入口提交本回合 state_changes 与 choices。首次调用同时提供两者；工具返回 ready=false 时，只重交 retry_modules 指定的字段，已 accepted 的模块会保留。ready=true 后立即结束，不要重复或改写正文。",
-			"如果当前回合提供 initialize_story_state_schema，必须在输出正文前先让结构草案 finalized=true；首次 state_changes 必须一次填写其回执 initialization_guide.required_state_changes 列出的全部字段，连同正文已经确定的其它主要状态，不能用空字符串、未设置、未知或待定占位。本工具不会代替结构初始化。",
-			fmt.Sprintf("state_changes 必须直接提交原生 JSON array，禁止把数组 JSON.stringify 后作为 string。常规回合建议不超过 %d 项；这不是校验上限，复杂开局或确有更多状态事实变化时可以超过，不得为压缩数量删掉正文已经成立的重要状态。每一项严格五选一：replace={op,actor_id,field_id,value,可选 subpath}，delta={op,actor_id,field_id,value,可选 subpath}，create={op,actor_id,template_id,name,可选 role/description/initial_state}，archive/restore={op,actor_id,reason}。create 的 schema 中不存在 field_id、subpath 或 value；新 Actor 的初始字段全部合并进同一个 create.initial_state，不要先对尚未创建的 Actor 连续 replace。archive 仅用于已经死亡或永久退场、但仍应保留历史状态的 Actor；restore 仅用于让已归档 Actor 恢复参与。二者都必须说明已发生事实依据，不得根据生命值或叙述措辞自动推断。只填写正文中确实发生变化的字段，使用 Actor 状态手册中的精确 ID；不要重复 RuleResolution 已消费的字段。", recommendedTurnStateChangesPerSubmission),
-			"新建 Actor 时 name 必填，actor_id 与 name 必须完全相同，直接使用故事语言中的角色名称，不得另造英文、拼音或 slug ID；引用已有 Actor 时逐字复用状态手册中的现有 actor_id。",
-			"story_context 每回合至少 replace actor_id=story、field_id=当前事件；当前详细地点尚未初始化或正文确定地点变化时，同时 replace 当前详细地点。没有变化的其他字段不要写空值。",
-			"choices 必须与已输出正文结尾一致，并提供当前故事配置要求的恰好数量个不同建议；只有 prepare_interactive_turn 返回 terminal_candidate 的终局回合才提交空数组。",
-			"模块被 rejected 时修复同一批原定状态事实，不要通过删除已在正文成立的重要角色、能力、物品、地点或局势来绕过校验；可以合并同一新 Actor 的 initial_state 或压缩冗余描述。",
-			"director_update 是可选的低频导演更新提示。普通承接、同一场景内的小变化、常规资源消耗或既定冲突推进必须省略。只有当前目标或阶段改变、关键关系/势力发生重大变化、重要秘密揭示、不可逆结果，或现有简报已经无法指导下一回合时才设置 needed=true，并只说明已发生事实；不要替 Director 决定 patch/replan 或具体文件。",
-			"完整参数模板、当前可用 ID、字段类型，以及与本故事 choice_count 一致的 choices 占位数量，均以本轮 Actor 状态手册为准。",
+			"After outputting all player-visible prose, submit this turn's state_changes and choices through one entry point. Include both in the first call. When ready=false, resubmit only fields named by retry_modules; accepted modules are retained. End immediately when ready=true without repeating or rewriting prose.",
+			"When initialize_story_state_schema is available, finalize the schema draft before prose. The first state_changes must fill every field in initialization_guide.required_state_changes together with other major state established by prose. Do not use empty, unset, unknown, or pending placeholders. This tool does not replace schema initialization.",
+			fmt.Sprintf("Submit state_changes as a native JSON array, never as a JSON.stringify string. A normal turn should usually stay within %d items; this is not a validation limit, and a complex opening or genuinely larger fact set may exceed it. Never drop important state established by prose merely to reduce the count. Each item uses exactly one operation: replace={op,actor_id,field_id,value,optional subpath}, delta={op,actor_id,field_id,value,optional subpath}, create={op,actor_id,template_id,name,optional role/description/initial_state}, or archive/restore={op,actor_id,reason}. create has no field_id, subpath, or value. Put every initial field for a new Actor in one create.initial_state instead of replacing fields before creation. archive is only for an Actor confirmed dead or permanently gone whose history must remain; restore is only for returning an archived Actor. Both require established factual reasons and must not be inferred automatically from health or narrative wording. Include only fields changed in prose, use exact IDs from the Actor State Handbook, and do not repeat fields consumed by RuleResolution.", recommendedTurnStateChangesPerSubmission),
+			"Creating an Actor requires name, and actor_id must exactly equal name in the story language. Do not invent an English, romanized, or slug ID. For an existing Actor, copy actor_id exactly from the state handbook.",
+			"Every turn must replace story_context actor_id=story, field_id=当前事件. Also replace 当前详细地点 when it is uninitialized or prose establishes a location change. Do not write empty values to unchanged fields.",
+			"choices must match the prose ending and contain exactly the number of distinct suggestions configured for the current story. Submit an empty array only for a terminal turn whose prepare_interactive_turn result has terminal_candidate.",
+			"When a module is rejected, repair the same intended state facts. Do not bypass validation by deleting an important character, ability, item, location, or situation already established in prose. You may merge a new Actor's initial_state or compress redundant descriptions.",
+			"director_update is an optional low-frequency planning hint. Omit it for ordinary continuation, small changes within one scene, routine resource use, and progression of an established conflict. Set needed=true only when the current objective or phase changes, a key relationship or faction changes materially, a major secret is revealed, an irreversible result occurs, or the current brief can no longer guide the next turn. Report only established facts and do not choose patch/replan or files for the Director.",
+			"Use the current turn's Actor State Handbook as the authority for the complete parameter template, available IDs, field types, and the number of choices placeholders matching this story's choice_count.",
 		}, "\n")
 		submitTool, err := newSubmitInteractiveTurnTool(desc, ctx.SubmitTurnResult, ctx.RequestTurnCompletion)
 		if err != nil {
@@ -168,9 +168,9 @@ func NewInteractiveTurn(ctx InteractiveContext) ([]agent.ToolDefinition, error) 
 }
 
 type submitInteractiveTurnToolSchema struct {
-	StateChanges   []interactive.TurnStateChangeInput `json:"state_changes,omitempty" jsonschema_description:"本轮正文已经发生的增量 Actor 状态变化。必须直接提交 JSON array，不能提交序列化后的 string；没有变化时提交空数组。"`
-	Choices        []string                           `json:"choices,omitempty" jsonschema_description:"当前故事配置数量的不同下一步行动建议；仅 RuleResolution 已声明 terminal_candidate 时为空数组。"`
-	DirectorUpdate *interactive.DirectorUpdateHint    `json:"director_update,omitempty" jsonschema_description:"仅在本轮已发生事实让后续规划发生实质变化时提交；普通回合必须省略。"`
+	StateChanges   []interactive.TurnStateChangeInput `json:"state_changes,omitempty" jsonschema_description:"Incremental Actor state changes established by this turn's prose. Submit a native JSON array, never a serialized string. Submit an empty array when nothing changed."`
+	Choices        []string                           `json:"choices,omitempty" jsonschema_description:"The configured number of distinct next-action suggestions. Use an empty array only when RuleResolution declared terminal_candidate."`
+	DirectorUpdate *interactive.DirectorUpdateHint    `json:"director_update,omitempty" jsonschema_description:"Submit only when established facts from this turn materially change future planning; omit on ordinary turns."`
 }
 
 const recommendedTurnStateChangesPerSubmission = 24
@@ -179,41 +179,41 @@ const recommendedTurnStateChangesPerSubmission = 24
 // oneOf. Runtime decoding remains centralized in interactive.TurnStateChangeInput,
 // while the model cannot infer that create accepts replace-only fields.
 type submitInteractiveTurnReplaceChangeSchema struct {
-	Op      string   `json:"op" jsonschema:"required,enum=replace" jsonschema_description:"固定为 replace。"`
-	ActorID string   `json:"actor_id" jsonschema:"required" jsonschema_description:"Actor 状态手册中的稳定 Actor ID。"`
-	FieldID string   `json:"field_id" jsonschema:"required" jsonschema_description:"目标 Actor 模板中的精确 Field ID。"`
-	Subpath []string `json:"subpath,omitempty" jsonschema:"maxItems=16" jsonschema_description:"仅 object 字段的嵌套更新使用；按层级填写字符串段。"`
-	Value   any      `json:"value" jsonschema:"required" jsonschema_description:"本轮结束后的完整非空字段值，类型必须匹配 schema。"`
+	Op      string   `json:"op" jsonschema:"required,enum=replace" jsonschema_description:"Always replace."`
+	ActorID string   `json:"actor_id" jsonschema:"required" jsonschema_description:"Stable Actor ID from the Actor State Handbook."`
+	FieldID string   `json:"field_id" jsonschema:"required" jsonschema_description:"Exact Field ID in the target Actor template."`
+	Subpath []string `json:"subpath,omitempty" jsonschema:"maxItems=16" jsonschema_description:"Use only for nested updates to an object field; provide one string segment per level."`
+	Value   any      `json:"value" jsonschema:"required" jsonschema_description:"Complete non-empty field value at the end of this turn; its type must match the schema."`
 }
 
 type submitInteractiveTurnDeltaChangeSchema struct {
-	Op      string   `json:"op" jsonschema:"required,enum=delta" jsonschema_description:"固定为 delta。"`
-	ActorID string   `json:"actor_id" jsonschema:"required" jsonschema_description:"Actor 状态手册中的稳定 Actor ID。"`
-	FieldID string   `json:"field_id" jsonschema:"required" jsonschema_description:"目标 Actor 模板中的精确 number Field ID。"`
-	Subpath []string `json:"subpath,omitempty" jsonschema:"maxItems=16" jsonschema_description:"仅 object 内已有数值的嵌套更新使用；按层级填写字符串段。"`
-	Value   float64  `json:"value" jsonschema:"required" jsonschema_description:"对已有数值增加或减少的有限数值。"`
+	Op      string   `json:"op" jsonschema:"required,enum=delta" jsonschema_description:"Always delta."`
+	ActorID string   `json:"actor_id" jsonschema:"required" jsonschema_description:"Stable Actor ID from the Actor State Handbook."`
+	FieldID string   `json:"field_id" jsonschema:"required" jsonschema_description:"Exact numeric Field ID in the target Actor template."`
+	Subpath []string `json:"subpath,omitempty" jsonschema:"maxItems=16" jsonschema_description:"Use only for an existing nested number inside an object; provide one string segment per level."`
+	Value   float64  `json:"value" jsonschema:"required" jsonschema_description:"Finite amount to add to or subtract from an existing number."`
 }
 
 type submitInteractiveTurnCreateChangeSchema struct {
-	Op           string         `json:"op" jsonschema:"required,enum=create" jsonschema_description:"固定为 create。"`
-	ActorID      string         `json:"actor_id" jsonschema:"required" jsonschema_description:"直接使用故事语言中的角色名称，并与 name 完全相同。"`
-	TemplateID   string         `json:"template_id" jsonschema:"required" jsonschema_description:"新 Actor 可用模板中的精确 Template ID。"`
-	Name         string         `json:"name" jsonschema:"required" jsonschema_description:"故事语言中的角色名称，必须与 actor_id 完全相同。"`
-	Role         string         `json:"role,omitempty" jsonschema_description:"新 Actor 在当前故事中的定位。"`
-	Description  string         `json:"description,omitempty" jsonschema_description:"新 Actor 的简短说明。"`
-	InitialState map[string]any `json:"initial_state,omitempty" jsonschema:"maxProperties=64" jsonschema_description:"所有可靠初始字段值；key 必须是所选模板中的精确 Field ID。"`
+	Op           string         `json:"op" jsonschema:"required,enum=create" jsonschema_description:"Always create."`
+	ActorID      string         `json:"actor_id" jsonschema:"required" jsonschema_description:"Use the character name directly in the story language; it must exactly equal name."`
+	TemplateID   string         `json:"template_id" jsonschema:"required" jsonschema_description:"Exact Template ID available for the new Actor."`
+	Name         string         `json:"name" jsonschema:"required" jsonschema_description:"Character name in the story language; it must exactly equal actor_id."`
+	Role         string         `json:"role,omitempty" jsonschema_description:"The new Actor's role in the current story."`
+	Description  string         `json:"description,omitempty" jsonschema_description:"Brief description of the new Actor."`
+	InitialState map[string]any `json:"initial_state,omitempty" jsonschema:"maxProperties=64" jsonschema_description:"Every reliable initial field value; each key must be an exact Field ID from the selected template."`
 }
 
 type submitInteractiveTurnArchiveChangeSchema struct {
-	Op      string `json:"op" jsonschema:"required,enum=archive" jsonschema_description:"固定为 archive。"`
-	ActorID string `json:"actor_id" jsonschema:"required" jsonschema_description:"要退出运行时状态、但保留完整历史状态的现有 Actor ID。"`
-	Reason  string `json:"reason" jsonschema:"required" jsonschema_description:"正文已经确认的死亡或永久退场依据；不能为空。"`
+	Op      string `json:"op" jsonschema:"required,enum=archive" jsonschema_description:"Always archive."`
+	ActorID string `json:"actor_id" jsonschema:"required" jsonschema_description:"Existing Actor ID to remove from runtime state while preserving complete historical state."`
+	Reason  string `json:"reason" jsonschema:"required" jsonschema_description:"Non-empty reason established by prose that confirms death or permanent departure."`
 }
 
 type submitInteractiveTurnRestoreChangeSchema struct {
-	Op      string `json:"op" jsonschema:"required,enum=restore" jsonschema_description:"固定为 restore。"`
-	ActorID string `json:"actor_id" jsonschema:"required" jsonschema_description:"要恢复参与运行时状态的已归档 Actor ID。"`
-	Reason  string `json:"reason" jsonschema:"required" jsonschema_description:"正文已经确认的恢复参与依据；不能为空。"`
+	Op      string `json:"op" jsonschema:"required,enum=restore" jsonschema_description:"Always restore."`
+	ActorID string `json:"actor_id" jsonschema:"required" jsonschema_description:"Archived Actor ID to return to active runtime state."`
+	Reason  string `json:"reason" jsonschema:"required" jsonschema_description:"Non-empty reason established by prose that confirms the Actor's return."`
 }
 
 type submitInteractiveTurnTool struct {
@@ -243,7 +243,7 @@ func newSubmitInteractiveTurnTool(
 		return nil, fmt.Errorf("submit_interactive_turn schema missing state_changes")
 	}
 	stateChanges.Description = fmt.Sprintf(
-		"%s 常规回合建议不超过 %d 项；这不是校验上限，复杂开局或确有更多状态事实变化时可以超过。",
+		"%s A normal turn should usually stay within %d items; this is not a validation limit, and a complex opening or genuinely larger fact set may exceed it.",
 		strings.TrimSpace(stateChanges.Description),
 		recommendedTurnStateChangesPerSubmission,
 	)
@@ -269,7 +269,7 @@ func newSubmitInteractiveTurnTool(
 	}
 	stateChanges.Items = &jsonschema.Schema{
 		OneOf:       []*jsonschema.Schema{replaceVariant, deltaVariant, createVariant, archiveVariant, restoreVariant},
-		Description: "严格选择 replace、delta、create、archive、restore 之一；不得混用不同操作的字段。",
+		Description: "Choose exactly one of replace, delta, create, archive, or restore. Never mix fields from different operations.",
 	}
 	info.ParamsOneOf = agent.NewParamsOneOfByJSONSchema(parameters)
 	return &submitInteractiveTurnTool{info: info, submit: submit, requestCompletion: requestCompletion}, nil

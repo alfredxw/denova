@@ -1,35 +1,35 @@
 ---
 name: chapter-illustration
-description: 为当前或指定章节生成一张非剧透插画，并保存到 workspace assets/illustrations。
+description: Generate one spoiler-free illustration for the current or specified chapter and save it under workspace assets/illustrations.
 category: image
 agent: ide
 ---
 
-# 章节插画
+# Chapter Illustration
 
-当作者要求为章节生成插画，或编辑器发送 `/chapter-illustration` 请求时，使用这个 Skill。
+Use this Skill when the author requests an illustration for a chapter or the editor sends `/chapter-illustration`.
 
-## 工作流程
+## Workflow
 
-1. 确定目标章节路径：
-   - 如果用户明确给出章节路径，使用该路径。
-   - 否则使用 IDE 上下文里当前打开的章节。
-   - 如果没有当前章节，从 workspace 摘要或 chapters 目录中识别最近章节。
-2. 生成图片提示词前，先读取目标章节内容。如果选中的路径不是章节，请让用户重新选择。
-3. 从章节中选择一个有画面感、非剧透的瞬间。不要暴露未来剧情反转、隐藏身份或未公开设定。
-4. 用中文写清晰的图片提示词，包含主体、场景、构图、光线、风格、情绪，并明确负向约束：不要文字、不要水印、不要 logo。
-5. 调用通用图片工具 `generate_image`，参数要求：
-   - `purpose` 填 `chapter_illustration`。
-   - `target_path` 填目标章节相对路径。
-   - `prompt` 填完整中文图片提示词。
-   - `alt_text` 填适合 Markdown 图片的中文描述。
-   - `size` 可按画面需要从工具支持的 2K/3K/4K 尺寸中选择；不确定时留空，由生成工具按默认策略处理。
-   - `output_format` 只能填 `png` 或 `jpeg`；不确定时留空。
-6. 工具返回后，简要说明生成了什么，并告诉用户可以手动插入章节。不要自动编辑章节正文。
+1. Determine the target chapter path:
+   - Use the chapter path explicitly provided by the user.
+   - Otherwise, use the chapter currently focused in the IDE context.
+   - If no chapter is focused, identify the most recent chapter from the workspace summary or `chapters/` directory.
+2. Read the target chapter before composing the image prompt. If the selected path is not a chapter, ask the user to select one.
+3. Choose a visually compelling, spoiler-free moment from the chapter. Do not reveal future reversals, hidden identities, or undisclosed canon.
+4. Write a clear Chinese image prompt containing the subject, scene, composition, lighting, style, and mood, with explicit negative constraints against text, watermarks, and logos.
+5. Call the general `generate_image` tool with:
+   - `purpose`: `chapter_illustration`.
+   - `target_path`: the target chapter's relative path.
+   - `prompt`: the complete Chinese image prompt.
+   - `alt_text`: a Chinese description suitable for a Markdown image.
+   - `size`: optionally choose a supported 2K, 3K, or 4K size based on the composition; otherwise omit it and use the default policy.
+   - `output_format`: `png` or `jpeg`; omit it when uncertain.
+6. After the tool returns, briefly report what was generated and tell the user it can be inserted manually. Do not edit the chapter prose automatically.
 
-## 约束
+## Constraints
 
-- 每次请求只生成一张章节插画。
-- 不要批量生成多张插画。
-- 不要调用文件写入工具把 Markdown 图片语法插入章节。
-- 如果用户要求插入结果，优先让 UI 的插入按钮处理。
+- Generate exactly one chapter illustration per request.
+- Do not generate batches of candidates.
+- Do not use file-write tools to insert Markdown image syntax into the chapter.
+- If the user asks to insert the result, prefer the UI insertion action.

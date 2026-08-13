@@ -227,7 +227,7 @@ func directorEventFromCard(card EventCard) DirectorEvent {
 		Template:          card.DescriptionMarkdown,
 		NormalizedTrigger: firstNonEmpty(card.Category, card.TypeName, card.ID),
 		Intensity:         card.Intensity, CompatibleGenres: card.Tags, UserConfigured: true,
-		DirectorInstructionNote: fmt.Sprintf("来源事件卡：%s。template 字段包含触发场景、背景融合、起承转合、回收/后果、奖励/代价和避免生硬约束。", card.TypeName),
+		DirectorInstructionNote: fmt.Sprintf("Source event card: %s. The template contains trigger context, setting integration, progression, resolution and consequences, rewards and costs, and anti-forcing constraints.", card.TypeName),
 	}
 }
 

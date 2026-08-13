@@ -58,7 +58,7 @@ func (l *contextBuildLog) addFragment(fragment agentcontext.Fragment) {
 
 func contextBuildLogFromAssembly(policy agentcontext.AuditPolicy, originalMessage string, result agentcontext.Result) *contextBuildLog {
 	log := newContextBuildLog(policy)
-	log.add("用户输入", "本轮原始请求", originalMessage, "display history; not charged to injection budget")
+	log.add("User input", "Original request for this turn", originalMessage, "display history; not charged to injection budget")
 	for _, fragment := range result.Fragments {
 		log.addFragment(fragment)
 	}
@@ -168,9 +168,9 @@ func messageSummary(index, total int, msg *agent.Message) string {
 	if msg == nil {
 		return fmt.Sprintf("%d:<nil>", index)
 	}
-	source := "会话历史"
+	source := "conversation history"
 	if index == total-1 {
-		source = "本轮增强后用户输入"
+		source = "augmented user input for this turn"
 	}
 	return fmt.Sprintf("%d:source=%s role=%s(%s)", index, source, msg.Role, prompts.PartSummary(msg.Content))
 }

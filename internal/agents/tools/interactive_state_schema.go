@@ -14,40 +14,40 @@ import (
 const initializeStoryStateSchemaToolName = "initialize_story_state_schema"
 
 type openingStateSchemaBatchToolInput struct {
-	Summary  string                                 `json:"summary,omitempty" jsonschema_description:"本次开局状态结构审查的简短摘要。"`
-	Items    []openingStateSchemaBatchItemToolInput `json:"items" jsonschema_description:"本次新增或重试的独立提案项。后端会逐项返回 accepted/rejected/blocked；只重传失败项。"`
-	Finalize bool                                   `json:"finalize" jsonschema_description:"本批成功后是否完成草稿。存在 rejected/blocked 项时后端不会 finalize。"`
+	Summary  string                                 `json:"summary,omitempty" jsonschema_description:"Brief summary of this opening state-schema review."`
+	Items    []openingStateSchemaBatchItemToolInput `json:"items" jsonschema_description:"Independent proposal items newly submitted or retried in this call. The backend returns accepted/rejected/blocked per item; resend only failed items."`
+	Finalize bool                                   `json:"finalize" jsonschema_description:"Whether to complete the draft after this batch succeeds. The backend cannot finalize while any item is rejected or blocked."`
 }
 
 type openingStateSchemaBatchItemToolInput struct {
-	ItemID       string                                         `json:"item_id" jsonschema_description:"稳定且唯一的幂等 ID，仅使用字母、数字、点、下划线、冒号或短横线。"`
-	DependsOn    []string                                       `json:"depends_on,omitempty" jsonschema:"maxItems=16" jsonschema_description:"本项依赖的其他 item_id。"`
-	Summary      string                                         `json:"summary,omitempty" jsonschema_description:"本项审查或结构调整的简短摘要。"`
-	Requirements []openingStateSchemaRequirementReviewToolInput `json:"requirements" jsonschema:"minItems=1,maxItems=64" jsonschema_description:"本项自包含的来源化字段审查。covered/add/replace 必须填写 template_id、field_id 和 expected_type；remove 必须填写要删除的 template_id、field_id 与 reason。"`
-	Adaptation   openingStateSchemaAdaptationToolInput          `json:"adaptation" jsonschema_description:"只允许 template_ops；Actor 创建和值必须稍后通过 submit_interactive_turn.state_changes 提交。"`
+	ItemID       string                                         `json:"item_id" jsonschema_description:"Stable unique idempotency ID using only letters, digits, dots, underscores, colons, or hyphens."`
+	DependsOn    []string                                       `json:"depends_on,omitempty" jsonschema:"maxItems=16" jsonschema_description:"Other item_id values this item depends on."`
+	Summary      string                                         `json:"summary,omitempty" jsonschema_description:"Brief summary of this item's review or structural change."`
+	Requirements []openingStateSchemaRequirementReviewToolInput `json:"requirements" jsonschema:"minItems=1,maxItems=64" jsonschema_description:"Self-contained sourced field reviews. covered/add/replace require template_id, field_id, and expected_type. remove requires the existing template_id, field_id, and reason."`
+	Adaptation   openingStateSchemaAdaptationToolInput          `json:"adaptation" jsonschema_description:"Only template_ops are allowed. Create Actors and set values later through submit_interactive_turn.state_changes."`
 }
 
 type openingStateSchemaRequirementSourceToolInput struct {
-	Kind string `json:"kind" jsonschema:"enum=opening,enum=lore,enum=trpg" jsonschema_description:"来源类型。开局草案固定使用 opening；仅已读取资料可使用 lore；规则模板使用 trpg。"`
-	ID   string `json:"id" jsonschema_description:"来源稳定 ID。kind=opening 时必须逐字填写 opening-draft。"`
+	Kind string `json:"kind" jsonschema:"enum=opening,enum=lore,enum=trpg" jsonschema_description:"Source kind. Use opening for the opening draft, lore only for material already read, and trpg for rule templates."`
+	ID   string `json:"id" jsonschema_description:"Stable source ID. When kind=opening, use opening-draft exactly."`
 }
 
 type openingStateSchemaRequirementReviewToolInput struct {
 	Source       openingStateSchemaRequirementSourceToolInput `json:"source"`
-	Requirement  string                                       `json:"requirement,omitempty" jsonschema_description:"为什么本故事需要保留、新增或替换这个长期状态字段，或者为什么继承字段不适用于本故事。remove/ignored 误省略时会复用非空 reason，其它决策仍必填。"`
-	ValuePolicy  string                                       `json:"value_policy" jsonschema:"enum=schema_only" jsonschema_description:"开局结构工具固定为 schema_only；不得在此写 Actor 值。"`
-	ExpectedType string                                       `json:"expected_type,omitempty" jsonschema:"enum=number,enum=string,enum=bool,enum=enum,enum=object,enum=list" jsonschema_description:"covered/add/replace 必填，且必须与目标字段类型一致。remove/ignored 时可省略。"`
-	Min          *float64                                     `json:"min,omitempty" jsonschema_description:"仅当来源明确要求数值下界时填写，并与目标字段一致。"`
-	Max          *float64                                     `json:"max,omitempty" jsonschema_description:"仅当来源明确要求数值上界时填写，并与目标字段一致。"`
-	Decision     string                                       `json:"decision" jsonschema:"enum=covered,enum=add,enum=replace,enum=remove,enum=ignored" jsonschema_description:"covered=保留现有字段；add/replace/remove=需要同名 template_ops 字段操作；ignored=来源需求不进入长期状态。"`
-	TemplateID   string                                       `json:"template_id,omitempty" jsonschema_description:"covered/add/replace/remove 必填，逐字使用 Actor 状态手册中的 Template ID。"`
-	FieldID      string                                       `json:"field_id,omitempty" jsonschema_description:"covered/add/replace/remove 必填，逐字使用目标字段 ID；add 时填写要新增的字段 ID。"`
-	Reason       string                                       `json:"reason,omitempty" jsonschema_description:"remove/ignored 必填；其它决策仅在需要补充取舍时填写。"`
+	Requirement  string                                       `json:"requirement,omitempty" jsonschema_description:"Why this story needs to retain, add, or replace this long-lived state field, or why an inherited field is unsuitable. For remove/ignored, a non-empty reason is reused if this is accidentally omitted; other decisions still require it."`
+	ValuePolicy  string                                       `json:"value_policy" jsonschema:"enum=schema_only" jsonschema_description:"Always schema_only for the opening structure tool. Do not set Actor values here."`
+	ExpectedType string                                       `json:"expected_type,omitempty" jsonschema:"enum=number,enum=string,enum=bool,enum=enum,enum=object,enum=list" jsonschema_description:"Required for covered/add/replace and must match the target field type. May be omitted for remove/ignored."`
+	Min          *float64                                     `json:"min,omitempty" jsonschema_description:"Provide only when the source explicitly requires a numeric lower bound and it matches the target field."`
+	Max          *float64                                     `json:"max,omitempty" jsonschema_description:"Provide only when the source explicitly requires a numeric upper bound and it matches the target field."`
+	Decision     string                                       `json:"decision" jsonschema:"enum=covered,enum=add,enum=replace,enum=remove,enum=ignored" jsonschema_description:"covered retains an existing field; add/replace/remove require a matching template_ops field operation; ignored excludes the source requirement from long-lived state."`
+	TemplateID   string                                       `json:"template_id,omitempty" jsonschema_description:"Required for covered/add/replace/remove. Copy the Template ID exactly from the Actor State Handbook."`
+	FieldID      string                                       `json:"field_id,omitempty" jsonschema_description:"Required for covered/add/replace/remove. Copy the target Field ID exactly; for add, provide the new Field ID."`
+	Reason       string                                       `json:"reason,omitempty" jsonschema_description:"Required for remove/ignored. For other decisions, use only when a tradeoff needs explanation."`
 }
 
 type openingStateSchemaAdaptationToolInput struct {
-	Summary     string                                   `json:"summary,omitempty" jsonschema_description:"结构 diff 的简短摘要。"`
-	TemplateOps []interactive.ActorStateTemplateSchemaOp `json:"template_ops,omitempty" jsonschema:"maxItems=64" jsonschema_description:"满足本项 requirements 所需的最小模板/字段 diff；covered 时为空数组。"`
+	Summary     string                                   `json:"summary,omitempty" jsonschema_description:"Brief summary of the structural diff."`
+	TemplateOps []interactive.ActorStateTemplateSchemaOp `json:"template_ops,omitempty" jsonschema:"maxItems=64" jsonschema_description:"Smallest template and field diff needed for this item's requirements; use an empty array for covered."`
 }
 
 func (input openingStateSchemaBatchToolInput) batch() interactive.ActorStateSchemaBatch {
@@ -119,14 +119,14 @@ func newInteractiveOpeningStateSchemaTools(ctx InteractiveContext) ([]agent.Tool
 		return nil, nil
 	}
 	description := strings.Join([]string{
-		"仅在故事首回合正文之前，增量暂存本故事的状态模板与字段结构。模型可见参数是开局专用的 structure-only 契约；不要提交 Actor、initial_actor_ops 或 actor_ops。",
-		"开局草案来源必须精确写为 source={\"kind\":\"opening\",\"id\":\"opening-draft\"}。value_policy 固定为 schema_only；covered/add/replace 必须填写现有或目标 template_id、field_id 与合法 expected_type；remove 必须填写已有 template_id、field_id、reason 和对应字段删除操作。",
-		"结构 requirement 与 template_ops 必须使用状态手册中的 Template ID，不能使用 Actor ID；例如 story 是 actor_id，对应的 template_id 是 story_context。后端只会将能由初始 Actor 唯一确定的误用归一化，并始终保存规范 Template ID。",
+		"Before opening-turn prose only, incrementally stage this story's state templates and field structure. The model-visible input is an opening-only, structure-only contract. Do not submit Actors, initial_actor_ops, or actor_ops.",
+		"The opening draft source must be exactly source={\"kind\":\"opening\",\"id\":\"opening-draft\"}. value_policy is always schema_only. covered/add/replace require the existing or target template_id, field_id, and a valid expected_type. remove requires the existing template_id, field_id, reason, and matching field removal operation.",
+		"Structural requirements and template_ops use Template IDs from the state handbook, never Actor IDs. For example, story is an actor_id whose template_id is story_context. The backend normalizes only misuse that maps uniquely from an initial Actor and always stores the canonical Template ID.",
 		interactive.OpeningStateSchemaFieldSelectionRules,
-		"朋友、恋爱、亲属、师徒、竞争、敌对等关系阶段按各自故事语义表达，不从好感度自动推导。",
-		"只有确实没有独立结构需求时才使用具体字段的 covered 审查和空 template_ops。工具分别返回 accepted、rejected、blocked；只重试失败项，finalized=true 后再输出开局正文。",
-		"finalized 回执包含 initialization_guide：auto_initialized_fields 已由模板默认值或初始 Actor 值覆盖；required_state_changes 列出首次 submit_interactive_turn 必须一次填写的精确 actor_id、template_id、field_id 和 type。不得用空字符串、未设置、未知或待定占位。",
-		"草稿不会单独写入；只有结构、正文、所有初始字段和 choices 全部通过时才原子落盘。Actor 创建与所有初始值稍后通过 submit_interactive_turn.state_changes 提交。",
+		"Express friendship, romance, family, mentorship, rivalry, hostility, and other relationship stages according to their story semantics; never derive them automatically from affinity.",
+		"Use a covered review for a concrete field with empty template_ops only when no independent structural need exists. The tool returns accepted, rejected, and blocked per item. Retry only failed items and output opening prose only after finalized=true.",
+		"A finalized receipt includes initialization_guide. auto_initialized_fields are already covered by template defaults or initial Actor values. required_state_changes lists exact actor_id, template_id, field_id, and type values that the first submit_interactive_turn must fill together. Do not use empty, unset, unknown, or pending placeholders.",
+		"The draft is never written alone. Structure, prose, every initial field, and choices persist atomically only when all pass. Create Actors and set all initial values later through submit_interactive_turn.state_changes.",
 	}, "\n")
 	submitTool, err := agent.InferTool(
 		initializeStoryStateSchemaToolName,
@@ -138,7 +138,7 @@ func newInteractiveOpeningStateSchemaTools(ctx InteractiveContext) ([]agent.Tool
 			}
 			data, err := json.MarshalIndent(result, "", "  ")
 			if err != nil {
-				return "", fmt.Errorf("序列化开局状态结构 Batch 结果失败: %w", err)
+				return "", fmt.Errorf("serialize opening state-schema batch result: %w", err)
 			}
 			return string(data), nil
 		},

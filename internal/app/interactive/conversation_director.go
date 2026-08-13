@@ -34,17 +34,17 @@ func (c *Conversation) BuildDirectorModelInput(turn interactive.TurnEvent) (Dire
 	}
 	assembledRevision, err := lore.NewStore(c.workspace).Revision()
 	if err != nil {
-		return DirectorStableContext{}, "", fmt.Errorf("读取导演资料库装配后 revision 失败: %w", err)
+		return DirectorStableContext{}, "", fmt.Errorf("read lore revision after Director context assembly: %w", err)
 	}
 	if strings.TrimSpace(assembledRevision) != strings.TrimSpace(stableContext.Revision) {
-		return DirectorStableContext{}, "", fmt.Errorf("资料库在导演上下文装配期间发生变化: stable=%s dynamic=%s", strings.TrimSpace(stableContext.Revision), strings.TrimSpace(assembledRevision))
+		return DirectorStableContext{}, "", fmt.Errorf("lore changed during Director context assembly: stable=%s dynamic=%s", strings.TrimSpace(stableContext.Revision), strings.TrimSpace(assembledRevision))
 	}
 	return stableContext, instruction, nil
 }
 
 func (c *Conversation) buildDirectorInstruction(turn interactive.TurnEvent, stableContext DirectorStableContext) (string, error) {
 	if c == nil || c.store == nil {
-		return "", fmt.Errorf("互动故事不存在")
+		return "", fmt.Errorf("interactive story does not exist")
 	}
 	storyCtx, err := c.store.StoryContext(c.storyID, c.branchID)
 	if err != nil {
@@ -57,7 +57,7 @@ func (c *Conversation) buildDirectorInstruction(turn interactive.TurnEvent, stab
 		return "", err
 	}
 	visibleHistory := buildInteractiveModelVisibleHistory(modelHistory, activeCompaction)
-	historyText := formatInteractiveTurnHistoryWithCheckpoint(visibleHistory, activeCompaction, "（暂无历史回合，请基于本回合审计更新导演计划。）")
+	historyText := formatInteractiveTurnHistoryWithCheckpoint(visibleHistory, activeCompaction, "No historical turns are available. Update the Director plan from this turn's audit.")
 	directorPlan := interactive.DirectorPlan{}
 	if storyCtx.Snapshot.DirectorPlan != nil {
 		directorPlan = *storyCtx.Snapshot.DirectorPlan
@@ -95,7 +95,7 @@ func (c *Conversation) buildDirectorInstruction(turn interactive.TurnEvent, stab
 	}
 	eventOpportunity, eventRuntime, eventIndex, eventErr := c.store.DirectorEventContext(c.storyID, storyCtx.Snapshot.BranchID, turn.ID)
 	if eventErr != nil {
-		return "", fmt.Errorf("读取事件编排上下文失败: %w", eventErr)
+		return "", fmt.Errorf("read event-orchestration context: %w", eventErr)
 	}
 	eventCatalog := ""
 	if len(eventIndex) > 0 {
@@ -174,7 +174,7 @@ func boundedJSON(value any, limit int) string {
 func boundedText(value string, limit int) string {
 	trimmed, truncated := agentcontext.TrimUTF8Bytes(value, limit)
 	if truncated {
-		const marker = "\n...（已按上下文上限截断）"
+		const marker = "\n... [truncated at context limit]"
 		prefix, _ := agentcontext.TrimUTF8Bytes(value, max(0, limit-len(marker)))
 		markerPart, _ := agentcontext.TrimUTF8Bytes(marker, limit-len(prefix))
 		return prefix + markerPart
@@ -204,7 +204,7 @@ func newDirectorContextBudget(cfg *config.Config, task string, stableContext Dir
 	thresholdTokens := int(float64(window) * threshold)
 	composition, err := prompts.ComposeInteractiveDirectorInstruction(cfg, nil)
 	if err != nil {
-		return nil, fmt.Errorf("compose interactive director system prompt / 组装互动导演系统提示失败: %w", err)
+		return nil, fmt.Errorf("compose interactive Director system prompt: %w", err)
 	}
 	emptyPrompt := prompts.InteractiveDirectorInstruction(prompts.InteractiveDirectorPromptInput{})
 	if task == DirectorTaskOpeningPlan {
@@ -217,7 +217,7 @@ func newDirectorContextBudget(cfg *config.Config, task string, stableContext Dir
 	if stable := strings.TrimSpace(stableContext.Content); stable != "" {
 		title := strings.TrimSpace(stableContext.Title)
 		if title == "" {
-			title = "稳定模型上下文"
+			title = "Stable Model Context"
 		}
 		overheadMessages = append(overheadMessages, agents.UserMessage(agentcontext.StandaloneMessage(title, stable, "")))
 	}

@@ -323,7 +323,7 @@ func TestTavernWorldbookIsNormalizedWithoutLoadingEngine(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(searchIndex, "关键词: 旧港、港口、雨夜") {
+	if !strings.Contains(searchIndex, "keywords: 旧港, 港口, 雨夜") {
 		t.Fatalf("资料索引应直接展示搜索关键词:\n%s", searchIndex)
 	}
 }

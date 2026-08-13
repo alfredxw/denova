@@ -355,7 +355,10 @@ export function MessageList({ projectId, messages, isStreaming, visible = true, 
         data={listItems}
         context={virtuosoContext}
         components={MESSAGE_LIST_COMPONENTS}
-        alignToBottom
+        // The streaming tail owns vertical placement while a run is active.
+        // Virtuoso's short-list alignment uses a second flex coordinate system
+        // and can strand the viewport when activity/tool rows replace each other.
+        alignToBottom={!tailFollowActive}
         computeItemKey={(index, item) => item?.key || listItems[index - firstItemIndex]?.key || `agent-chat-item-${index}`}
         itemContent={itemContent}
         itemsRendered={handleItemsRendered}
@@ -548,6 +551,7 @@ function AgentChatListRow({ projectId, item, isLast, isStreaming, tailFollowActi
     <motion.div
       ref={isLast ? streamingRowRef : undefined}
       data-nova-chat-item={item.kind}
+      data-nova-chat-tail-row
       data-nova-chat-row-key={item.key}
       data-nova-chat-turn-anchor={turnAnchor}
       className={cn('min-w-0 px-6', contentClassName, isLast ? 'pb-0' : 'pb-4')}

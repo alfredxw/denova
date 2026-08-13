@@ -325,14 +325,14 @@ func loadImagePreset(novaDir, id string) imagepreset.Preset {
 
 func interactiveImageSystemPrompt(preset imagepreset.Preset) string {
 	var sb strings.Builder
-	sb.WriteString("当前调用点是互动图像。你必须基于已经发生的互动回合生成一张图像，不能透露未来剧情，不能改写叙事正文。")
+	sb.WriteString("This request is for an interactive-story image. Generate exactly one image from events already established in the interactive turns. Do not reveal future plot or rewrite the narrative prose.")
 	if systemPrompt := strings.TrimSpace(preset.PromptForTargets(imagepreset.TargetAgentSystem)); systemPrompt != "" {
-		sb.WriteString("\n\n## 图像方案预设\n\n")
+		sb.WriteString("\n\n## Image Preset\n\n")
 		if strings.TrimSpace(preset.ID) != "" {
-			fmt.Fprintf(&sb, "- ID：%s\n", limitInteractiveImageRunes(preset.ID, 120))
+			fmt.Fprintf(&sb, "- ID: %s\n", limitInteractiveImageRunes(preset.ID, 120))
 		}
 		if strings.TrimSpace(preset.Name) != "" {
-			fmt.Fprintf(&sb, "- 名称：%s\n", limitInteractiveImageRunes(preset.Name, 120))
+			fmt.Fprintf(&sb, "- Name: %s\n", limitInteractiveImageRunes(preset.Name, 120))
 		}
 		sb.WriteString("\n")
 		sb.WriteString(limitInteractiveImageRunes(systemPrompt, imagepreset.MaxPromptChars))
@@ -342,23 +342,23 @@ func interactiveImageSystemPrompt(preset imagepreset.Preset) string {
 
 func interactiveImageSourceContext(meta interactive.StoryMeta, turns []interactive.TurnEvent, turnIndex int) string {
 	var sb strings.Builder
-	writeContextLine(&sb, "故事标题", meta.Title)
-	writeContextLine(&sb, "故事来源", meta.Origin)
-	writeContextLine(&sb, "叙事风格", meta.StoryTellerID)
+	writeContextLine(&sb, "Story title", meta.Title)
+	writeContextLine(&sb, "Story origin", meta.Origin)
+	writeContextLine(&sb, "Narrative style", meta.StoryTellerID)
 	start := turnIndex - 2
 	if start < 0 {
 		start = 0
 	}
 	if start < turnIndex {
-		sb.WriteString("\n## 前置回合\n\n")
+		sb.WriteString("\n## Preceding Turns\n\n")
 		for i := start; i < turnIndex; i++ {
-			fmt.Fprintf(&sb, "### 回合 %d\n用户：%s\n叙事：%s\n\n", i+1, limitInteractiveImageRunes(turns[i].User, 600), limitInteractiveImageRunes(turns[i].Narrative, 1200))
+			fmt.Fprintf(&sb, "### Turn %d\nUser: %s\nNarrative: %s\n\n", i+1, limitInteractiveImageRunes(turns[i].User, 600), limitInteractiveImageRunes(turns[i].Narrative, 1200))
 		}
 	}
 	if turnIndex >= 0 && turnIndex < len(turns) {
 		turn := turns[turnIndex]
-		sb.WriteString("\n## 当前回合\n\n")
-		fmt.Fprintf(&sb, "用户：%s\n\n叙事：%s\n", limitInteractiveImageRunes(turn.User, 800), limitInteractiveImageRunes(turn.Narrative, 2400))
+		sb.WriteString("\n## Current Turn\n\n")
+		fmt.Fprintf(&sb, "User: %s\n\nNarrative: %s\n", limitInteractiveImageRunes(turn.User, 800), limitInteractiveImageRunes(turn.Narrative, 2400))
 	}
 	return strings.TrimSpace(sb.String())
 }
@@ -368,7 +368,7 @@ func writeContextLine(sb *strings.Builder, label, value string) {
 	if value == "" {
 		return
 	}
-	fmt.Fprintf(sb, "- %s：%s\n", label, limitInteractiveImageRunes(value, 600))
+	fmt.Fprintf(sb, "- %s: %s\n", label, limitInteractiveImageRunes(value, 600))
 }
 
 func interactiveImageAltText(title string, turnIndex int) string {

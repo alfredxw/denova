@@ -81,7 +81,7 @@ func TestBuildLorePromptBoundsLoreContent(t *testing.T) {
 	if len([]rune(prompt)) > maxPresetChars+maxBriefChars+maxContentChars+maxInstructionChars+600 {
 		t.Fatalf("prompt is not bounded, runes=%d", len([]rune(prompt)))
 	}
-	if !strings.Contains(prompt, "资料类型：规则") || !strings.Contains(prompt, "资料名称：长规则") {
+	if !strings.Contains(prompt, "Lore type: rule") || !strings.Contains(prompt, "Lore name: 长规则") {
 		t.Fatalf("prompt missing lore identity:\n%s", prompt)
 	}
 }

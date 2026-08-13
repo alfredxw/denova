@@ -1,4 +1,4 @@
 interface:
   display_name: "Web Research / 网络研究"
   short_description: "Plan and verify web research / 规划并核验网页研究"
-  default_prompt: "Use $web-research to investigate this question, verify the evidence, and return a cited synthesis in my language. / 使用 $web-research 调查这个问题、核验证据，并用我的语言给出带来源的结论。"
+  default_prompt: "Use $web-research to investigate this question, verify the evidence, and return a cited synthesis in my language."

@@ -113,7 +113,7 @@ func TestSessionConversationPrependsDynamicContextInsideFinalUserMessageOnly(t *
 	}
 	final := history[len(history)-1].Content
 	dynamicIndex := strings.Index(final, "# 本轮动态作品状态")
-	requestIndex := strings.Index(final, "# 本轮用户请求（最高优先级）")
+	requestIndex := strings.Index(final, "# Current User Request (Highest Priority)")
 	if dynamicIndex < 0 || requestIndex < 0 || dynamicIndex >= requestIndex {
 		t.Fatalf("final model message should place dynamic context before the current request:\n%s", final)
 	}

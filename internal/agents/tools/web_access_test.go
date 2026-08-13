@@ -196,7 +196,7 @@ func TestWebAccessToolsExposeEvidenceCitationContract(t *testing.T) {
 			"same paragraph or list item",
 			"[source title](final_url)",
 			"Never invent",
-			"输出协议允许 Markdown",
+			"output protocol permits Markdown",
 		} {
 			if !strings.Contains(info.Desc, contract) {
 				t.Fatalf("%s description is missing citation contract %q: %s", info.Name, contract, info.Desc)
@@ -222,7 +222,7 @@ func TestWebFetchToolReturnsStructuredRecoveryResult(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, contract := range []string{"status", "attempts", "retry_strategy", "suggested_action", "不要"} {
+	for _, contract := range []string{"status", "attempts", "retry_strategy", "suggested_action", "do not immediately retry"} {
 		if !strings.Contains(info.Desc, contract) {
 			t.Fatalf("web_fetch description does not explain %q recovery field: %s", contract, info.Desc)
 		}

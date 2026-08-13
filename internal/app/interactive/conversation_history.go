@@ -155,7 +155,7 @@ func ModelHistoryRange(snapshot interactive.Snapshot) (startTurn, endTurn int, c
 
 func (c *Conversation) modelHistoryForCycle(storyCtx interactive.StoryContext) (interactive.StoryModelHistory, *interactive.ContextCompactionProjection, error) {
 	if c == nil || c.store == nil {
-		return interactive.StoryModelHistory{}, nil, fmt.Errorf("互动故事不存在")
+		return interactive.StoryModelHistory{}, nil, fmt.Errorf("interactive story does not exist")
 	}
 	branchID := storyCtx.Snapshot.BranchID
 	turnCount := SnapshotTurnCount(storyCtx.Snapshot)
@@ -208,8 +208,8 @@ func formatInteractiveTurnHistory(turns []interactive.StoryModelTurn, emptyMessa
 	var sb strings.Builder
 	for i, turn := range turns {
 		idx := i + 1
-		fmt.Fprintf(&sb, "第 %d 回合用户行动：%s\n", idx, strings.TrimSpace(turn.User))
-		fmt.Fprintf(&sb, "第 %d 回合剧情：%s\n\n", idx, strings.TrimSpace(turn.Narrative))
+		fmt.Fprintf(&sb, "Turn %d user action: %s\n", idx, strings.TrimSpace(turn.User))
+		fmt.Fprintf(&sb, "Turn %d narrative: %s\n\n", idx, strings.TrimSpace(turn.Narrative))
 	}
 	return strings.TrimSpace(sb.String())
 }
@@ -217,7 +217,7 @@ func formatInteractiveTurnHistory(turns []interactive.StoryModelTurn, emptyMessa
 func formatInteractiveTurnHistoryWithCheckpoint(turnHistory interactiveTurnHistory, compaction *interactive.ContextCompactionProjection, emptyMessage string) string {
 	var sb strings.Builder
 	if compaction != nil && strings.TrimSpace(compaction.Summary) != "" {
-		sb.WriteString("[历史上下文检查点]\n")
+		sb.WriteString("[Historical Context Checkpoint]\n")
 		sb.WriteString(agentcontext.NewCompactionSummaryMessage(compaction.Epoch, compaction.Summary).Content)
 		sb.WriteString("\n\n")
 	}
@@ -261,12 +261,12 @@ func interactiveMessageSummary(index, total int, msg *agents.Message) string {
 	if msg == nil {
 		return fmt.Sprintf("%d:<nil>", index)
 	}
-	source := "互动上下文"
+	source := "interactive context"
 	if index > 0 && index < total-1 {
-		source = "历史回合"
+		source = "historical turn"
 	}
 	if index == total-1 {
-		source = "本轮行动指令"
+		source = "current turn instruction"
 	}
 	return fmt.Sprintf("%d:source=%s role=%s(%s)", index, source, msg.Role, PartSummary(msg.Content))
 }

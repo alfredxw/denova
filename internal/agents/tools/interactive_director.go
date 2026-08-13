@@ -16,9 +16,9 @@ const submitDirectorPlanUpdateToolName = "submit_director_plan_update"
 const SubmitDirectorPlanUpdateToolName = submitDirectorPlanUpdateToolName
 
 type submitDirectorPlanUpdateInput struct {
-	Decision director.Decision                        `json:"decision" jsonschema:"description=本轮 keep、patch 或 replan 决策及证据；重试时保持 mode 不变，不填写 base_revision"`
-	Updates  []interactive.DirectorPlanDocumentUpdate `json:"updates,omitempty" jsonschema:"description=本次要独立校验的文档 Patch；已 accepted 的文件不要重传，未变化文件必须省略"`
-	Finalize bool                                     `json:"finalize" jsonschema:"description=是否在接收本次合法 Patch 后完成草稿；存在 rejected 文件时不会 finalize"`
+	Decision director.Decision                        `json:"decision" jsonschema:"description=This turn's keep, patch, or replan decision and evidence. Preserve mode on retry and omit base_revision."`
+	Updates  []interactive.DirectorPlanDocumentUpdate `json:"updates,omitempty" jsonschema:"description=Document patches to validate independently. Do not resend accepted files and omit unchanged files."`
+	Finalize bool                                     `json:"finalize" jsonschema:"description=Whether to complete the draft after accepting valid patches in this call. The draft cannot finalize while any file is rejected."`
 }
 
 type SubmitDirectorPlanUpdateInput = submitDirectorPlanUpdateInput
@@ -27,10 +27,10 @@ func newInteractiveDirectorPlanTools(ctx InteractiveContext) ([]agent.ToolDefini
 	if ctx.SubmitDirectorPlanUpdate == nil {
 		return nil, nil
 	}
-	submit, err := agent.InferTool(submitDirectorPlanUpdateToolName, "增量提交当前分支导演 Markdown Patch。普通更新默认只 patch agent-brief.md；director.md 仅在阶段规划前提失效或重大偏差时更新，lore-context.md 仅在当前/候场/暂离场资料集合变化时更新。每个 update 使用上下文中的 base_hash，优先 replace_section；文件独立 accepted/rejected，重试只发送 retry_documents。finalize 成功前不写工作区，完成后由后端原子发布。keep 使用空 updates 且 finalize=true；replan 至少更新 director.md 与 agent-brief.md，Lore 仍按需。", func(callCtx context.Context, input submitDirectorPlanUpdateInput) (agent.ToolResult, error) {
+	submit, err := agent.InferTool(submitDirectorPlanUpdateToolName, "Submit incremental director Markdown patches for the current branch. Ordinary updates normally patch only agent-brief.md. Update director.md only when phase-planning premises fail or a major deviation occurs; update lore-context.md only when its 当前/候场/暂离场 sets change. Each update uses the base_hash from context and should prefer replace_section. Files are accepted or rejected independently; retry only retry_documents. Nothing is written before finalize succeeds, after which the backend publishes atomically. keep uses empty updates with finalize=true. replan updates at least director.md and agent-brief.md; lore remains optional.", func(callCtx context.Context, input submitDirectorPlanUpdateInput) (agent.ToolResult, error) {
 		receipt, err := ctx.SubmitDirectorPlanUpdate(callCtx, interactive.DirectorPlanUpdateSubmission{Decision: input.Decision, Updates: input.Updates, Finalize: input.Finalize})
 		if err != nil {
-			return agent.ToolResult{}, fmt.Errorf("提交导演规划失败: %w", err)
+			return agent.ToolResult{}, fmt.Errorf("submit director plan: %w", err)
 		}
 		data, err := json.Marshal(receipt)
 		if err != nil {

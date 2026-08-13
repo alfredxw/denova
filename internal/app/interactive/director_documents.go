@@ -18,16 +18,16 @@ func formatDirectorDocumentsContext(docs interactive.DirectorPlanDocs, infos map
 		purpose string
 		body    string
 	}{
-		{name: interactive.DirectorDocumentPlan, kind: interactive.DirectorPlanDocPlan, purpose: "Director 私密规划，不注入正文 Agent", body: docs.Plan},
-		{name: interactive.DirectorDocumentAgentBrief, kind: interactive.DirectorPlanDocAgentBrief, purpose: "正文 Agent 可见简报；普通更新默认只 Patch 本文件", body: docs.AgentBrief},
-		{name: interactive.DirectorDocumentLoreContext, kind: interactive.DirectorPlanDocLoreContext, purpose: "分支资料工作集，仅在资料生命周期变化时 Patch", body: docs.LoreContext},
+		{name: interactive.DirectorDocumentPlan, kind: interactive.DirectorPlanDocPlan, purpose: "private Director planning; never injected into the prose Agent", body: docs.Plan},
+		{name: interactive.DirectorDocumentAgentBrief, kind: interactive.DirectorPlanDocAgentBrief, purpose: "prose-Agent-visible brief; routine updates patch this file only by default", body: docs.AgentBrief},
+		{name: interactive.DirectorDocumentLoreContext, kind: interactive.DirectorPlanDocLoreContext, purpose: "branch lore working set; patch only when lore lifecycle changes", body: docs.LoreContext},
 	} {
 		body := strings.TrimSpace(doc.body)
 		if body == "" {
 			continue
 		}
 		hash := strings.TrimSpace(infos[doc.kind].Hash)
-		parts = append(parts, fmt.Sprintf("## 文件：%s\n\n> source: %s；base_hash: `%s`；用途：%s\n\n%s", doc.name, doc.name, hash, doc.purpose, body))
+		parts = append(parts, fmt.Sprintf("## File: %s\n\n> source: %s; base_hash: `%s`; purpose: %s\n\n%s", doc.name, doc.name, hash, doc.purpose, body))
 	}
 	return strings.Join(parts, "\n\n---\n\n")
 }

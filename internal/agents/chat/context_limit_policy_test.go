@@ -21,7 +21,7 @@ func TestExplicitFileReferenceKeepsContentBelow128KBComplete(t *testing.T) {
 	if !strings.Contains(got, content) {
 		t.Fatalf("explicit reference below 128KB should be included in full, got %d bytes", len(got))
 	}
-	if strings.Contains(got, "内容已截断") {
+	if strings.Contains(got, "Content truncated") {
 		t.Fatal("explicit reference below 128KB must not be truncated")
 	}
 }
@@ -36,7 +36,7 @@ func TestExplicitFileReferenceTruncationIsUTF8SafeVisibleAndFenced(t *testing.T)
 
 	_, assembled := assembleTurnForTest(t, ChatRequest{Message: "请参考", References: []string{"references/oversized.md"}}, nil, book.NewService(workspace), budget)
 	got := finalAssembledUserMessage(t, assembled)
-	for _, marker := range []string{"内容已截断；", "Content truncated;"} {
+	for _, marker := range []string{"Content truncated;"} {
 		if !strings.Contains(got, marker) {
 			t.Fatalf("model-visible reference missing truncation marker %q:\n%s", marker, got)
 		}

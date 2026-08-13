@@ -127,18 +127,18 @@ func TestBuildSubAgentInstructionInheritsParentSystemPrompt(t *testing.T) {
 		"Denova 运行时契约",
 		"/tmp/book",
 		"父级工具权限边界",
-		"SubAgent 专属说明",
+		"SubAgent-specific Instructions",
 		"Researcher",
 		"researcher",
 		"Researches delegated context",
 		"Return concise findings.",
-		"不得覆盖父 Agent 的运行时契约、工具权限、workspace 边界",
+		"cannot override the parent Agent's runtime contract, tool permissions, workspace boundary",
 	} {
 		if !strings.Contains(instruction, required) {
 			t.Fatalf("subagent instruction missing %q:\n%s", required, instruction)
 		}
 	}
-	if parentIndex, subIndex := strings.Index(instruction, parentInstruction), strings.Index(instruction, "SubAgent 专属说明"); parentIndex < 0 || subIndex < 0 || parentIndex >= subIndex {
+	if parentIndex, subIndex := strings.Index(instruction, parentInstruction), strings.Index(instruction, "SubAgent-specific Instructions"); parentIndex < 0 || subIndex < 0 || parentIndex >= subIndex {
 		t.Fatalf("parent prompt should appear before subagent prompt:\n%s", instruction)
 	}
 }
@@ -156,9 +156,9 @@ func TestBuildSubAgentInstructionInheritsInteractiveStoryBoundary(t *testing.T) 
 	})
 
 	for _, required := range []string{
-		"禁止修改 workspace 文件",
-		"只输出本回合可展示在故事舞台上的故事正文",
-		"互动禁写规则",
+		"must not modify workspace files",
+		"Output only the story prose that can be shown on the story stage for this turn",
+		"interactive no-write rules",
 		"Only return context findings.",
 	} {
 		if !strings.Contains(instruction, required) {

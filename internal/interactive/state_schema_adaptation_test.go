@@ -111,16 +111,16 @@ func TestApplyActorStateSchemaAdaptationRejectsBrokenTRPGBinding(t *testing.T) {
 
 func TestApplyActorStateSchemaAdaptationProtectsRuntimeFoundation(t *testing.T) {
 	_, _, err := ApplyActorStateSchemaAdaptation(defaultActorStateSystem(), StoryDirectorTRPGSystem{}, ActorStateSchemaAdaptation{TemplateOps: []ActorStateTemplateSchemaOp{{Op: "remove", TemplateID: DefaultActorID}}})
-	if err == nil || !strings.Contains(err.Error(), "不可删除") {
+	if err == nil || !strings.Contains(err.Error(), "cannot be removed") {
 		t.Fatalf("expected protected template error, got %v", err)
 	}
 	_, _, err = ApplyActorStateSchemaAdaptation(defaultActorStateSystem(), StoryDirectorTRPGSystem{}, ActorStateSchemaAdaptation{InitialActorOps: []ActorStateInitialActorSchemaOp{{Op: "remove", ActorID: DefaultStoryContextActorID}}})
-	if err == nil || !strings.Contains(err.Error(), "不可删除") {
+	if err == nil || !strings.Contains(err.Error(), "cannot be removed") {
 		t.Fatalf("expected protected actor error, got %v", err)
 	}
 	for _, actorID := range []string{DefaultActorID, DefaultStoryContextActorID} {
 		_, _, err = ApplyActorStateSchemaAdaptation(defaultActorStateSystem(), StoryDirectorTRPGSystem{}, ActorStateSchemaAdaptation{ActorOps: []ActorStateRuntimeSchemaOp{{Op: "remove", ActorID: actorID}}})
-		if err == nil || !strings.Contains(err.Error(), "基础运行时 Actor 不可删除") {
+		if err == nil || !strings.Contains(err.Error(), "foundational runtime Actor cannot be removed") {
 			t.Fatalf("expected protected runtime actor error for %s, got %v", actorID, err)
 		}
 	}

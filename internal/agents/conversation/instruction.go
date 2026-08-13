@@ -63,21 +63,21 @@ func (c *InstructionConversation) AssembleModelContext(ctx context.Context, _ st
 	fragments := append([]agentcontext.Fragment(nil), input.Fragments...)
 	if stable != "" {
 		if c.stableContextMaxBytes <= 0 {
-			return agentcontext.ModelContextResult{}, fmt.Errorf("稳定模型上下文缺少大小上限")
+			return agentcontext.ModelContextResult{}, fmt.Errorf("stable model context is missing a size limit")
 		}
 		if len([]byte(stable)) > c.stableContextMaxBytes {
-			return agentcontext.ModelContextResult{}, fmt.Errorf("稳定模型上下文超过上限: %d > %d bytes", len([]byte(stable)), c.stableContextMaxBytes)
+			return agentcontext.ModelContextResult{}, fmt.Errorf("stable model context exceeds its limit: %d > %d bytes", len([]byte(stable)), c.stableContextMaxBytes)
 		}
 		title := strings.TrimSpace(c.stableContextTitle)
 		if title == "" {
-			title = "稳定模型上下文"
+			title = "Stable Model Context"
 		}
 		if len([]byte(title)) > maxInstructionStableContextTitleBytes {
-			return agentcontext.ModelContextResult{}, fmt.Errorf("稳定模型上下文标题超过上限: %d > %d bytes", len([]byte(title)), maxInstructionStableContextTitleBytes)
+			return agentcontext.ModelContextResult{}, fmt.Errorf("stable model context title exceeds its limit: %d > %d bytes", len([]byte(title)), maxInstructionStableContextTitleBytes)
 		}
 		stableMessage := agentcontext.StandaloneMessage(title, stable, "")
 		if len([]byte(stableMessage)) > c.stableContextMaxBytes {
-			return agentcontext.ModelContextResult{}, fmt.Errorf("稳定模型上下文最终消息超过上限: %d > %d bytes", len([]byte(stableMessage)), c.stableContextMaxBytes)
+			return agentcontext.ModelContextResult{}, fmt.Errorf("rendered stable model context exceeds its limit: %d > %d bytes", len([]byte(stableMessage)), c.stableContextMaxBytes)
 		}
 		fragments = append(fragments, agentcontext.Fragment{
 			ID: "interactive_director_resident_lore", Source: "interactive.director.resident_lore", Title: title,
@@ -94,7 +94,7 @@ func (c *InstructionConversation) AssembleModelContext(ctx context.Context, _ st
 	}
 	for _, fragment := range assembled.Fragments {
 		if fragment.Source == "interactive.director.resident_lore" && (!fragment.Included || fragment.Truncated) {
-			return agentcontext.ModelContextResult{}, fmt.Errorf("稳定模型上下文超过 Agent 上下文注入预算；请提高单片段和单轮总注入上限")
+			return agentcontext.ModelContextResult{}, fmt.Errorf("stable model context exceeds the Agent injection budget; raise the per-fragment and per-turn total limits")
 		}
 	}
 	return agentcontext.ModelContextResult{
@@ -168,7 +168,7 @@ func (c *InstructionConversation) ContextLedgerPartsForMessages(messages []*agen
 	ledger := agentcontext.NewAuditLedger(agentrun.DefaultLoopPolicy().ContextLedger)
 	title := strings.TrimSpace(c.stableContextTitle)
 	if title == "" {
-		title = "稳定模型上下文"
+		title = "Stable Model Context"
 	}
 	bodyBytes := len([]byte(strings.TrimSpace(c.stableContext)))
 	messageBytes := len([]byte(stableMessage))
@@ -187,7 +187,7 @@ func (c *InstructionConversation) stableContextModelMessage() string {
 	}
 	title := strings.TrimSpace(c.stableContextTitle)
 	if title == "" {
-		title = "稳定模型上下文"
+		title = "Stable Model Context"
 	}
 	return agentcontext.StandaloneMessage(title, stable, "")
 }

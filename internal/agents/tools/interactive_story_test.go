@@ -57,7 +57,7 @@ func TestInteractiveTurnToolsExposeOneStructuredSubmissionTool(t *testing.T) {
 	if stateChangesSchema.MaxItems != nil {
 		t.Fatalf("state_changes must not expose a hard operation-count limit: %#v", stateChangesSchema.MaxItems)
 	}
-	if !strings.Contains(stateChangesSchema.Description, "常规回合建议不超过 24 项") || !strings.Contains(stateChangesSchema.Description, "不是校验上限") {
+	if !strings.Contains(stateChangesSchema.Description, "normal turn should usually stay within 24 items") || !strings.Contains(stateChangesSchema.Description, "not a validation limit") {
 		t.Fatalf("state_changes schema should retain explicit soft guidance: %s", stateChangesSchema.Description)
 	}
 	variants := map[string]bool{}
@@ -117,7 +117,7 @@ func TestInteractiveTurnToolsExposeOneStructuredSubmissionTool(t *testing.T) {
 	if !variants["replace"] || !variants["delta"] || !variants["create"] || !variants["archive"] || !variants["restore"] {
 		t.Fatalf("state change variants incomplete: %#v", variants)
 	}
-	if !strings.Contains(info.Desc, "JSON.stringify") || !strings.Contains(info.Desc, "常规回合建议不超过 24 项") || !strings.Contains(info.Desc, "这不是校验上限") || !strings.Contains(info.Desc, "同一个 create.initial_state") || !strings.Contains(info.Desc, "不要通过删除") || !strings.Contains(info.Desc, "actor_id 与 name 必须完全相同") || !strings.Contains(info.Desc, "archive") || !strings.Contains(info.Desc, "restore") {
+	if !strings.Contains(info.Desc, "JSON.stringify") || !strings.Contains(info.Desc, "normal turn should usually stay within 24 items") || !strings.Contains(info.Desc, "not a validation limit") || !strings.Contains(info.Desc, "one create.initial_state") || !strings.Contains(info.Desc, "Do not bypass validation by deleting") || !strings.Contains(info.Desc, "actor_id must exactly equal name") || !strings.Contains(info.Desc, "archive") || !strings.Contains(info.Desc, "restore") {
 		t.Fatalf("submission tool must explain native arrays and fact-preserving retries: %s", info.Desc)
 	}
 	if strings.Contains(parameterText, "ASCII ID") {

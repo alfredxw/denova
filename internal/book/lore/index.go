@@ -167,14 +167,14 @@ func matchLoreIndexTerm(item Item, keyword string) (int, []string) {
 	}
 
 	matchContains("ID", 120, item.ID)
-	matchContains("名称", 115, item.Name)
-	matchContains("关键词", 105, item.Keywords...)
-	matchContains("标签", 95, item.Tags...)
-	matchFuzzy("模糊名称", 85, item.Name)
-	matchFuzzy("模糊关键词", 75, item.Keywords...)
-	matchFuzzy("模糊标签", 65, item.Tags...)
-	matchContains("简介", 60, item.BriefDescription)
-	matchContains("正文", 40, item.Content)
+	matchContains("name", 115, item.Name)
+	matchContains("keywords", 105, item.Keywords...)
+	matchContains("tags", 95, item.Tags...)
+	matchFuzzy("fuzzy name", 85, item.Name)
+	matchFuzzy("fuzzy keywords", 75, item.Keywords...)
+	matchFuzzy("fuzzy tags", 65, item.Tags...)
+	matchContains("brief", 60, item.BriefDescription)
+	matchContains("content", 40, item.Content)
 	return bestScore, sources
 }
 
@@ -270,8 +270,8 @@ func renderLoreIndexMarkdown(entries []loreIndexEntry, matchedTotal, libraryTota
 		hint       string
 	}{
 		{briefRunes: 180},
-		{briefRunes: 72, hint: "（索引已压缩：简介已截断；可用 keywords/types 缩小范围，再调用 read_lore_items 读取正文。）"},
-		{nameOnly: true, hint: "（索引过大，已降级为仅 ID 和名称；可用 keywords/types 细查，再调用 read_lore_items 读取正文。）"},
+		{briefRunes: 72, hint: "[Index compressed: briefs were truncated. Narrow with keywords/types, then call read_lore_items for complete bodies.]"},
+		{nameOnly: true, hint: "[Index too large: showing IDs and names only. Narrow with keywords/types, then call read_lore_items for complete bodies.]"},
 	}
 	for _, candidate := range candidates {
 		out := renderLoreIndexCandidate(entries, matchedTotal, libraryTotal, options, candidate.briefRunes, candidate.nameOnly, candidate.hint)
@@ -297,15 +297,15 @@ func renderLoreIndexCandidate(entries []loreIndexEntry, matchedTotal, libraryTot
 
 func writeLoreIndexHeader(sb *strings.Builder, matchedTotal, libraryTotal, returned int, options IndexOptions) {
 	if !options.OmitTitle {
-		sb.WriteString("# 资料库索引\n\n")
+		sb.WriteString("# Lore Index\n\n")
 	}
 	filtered := len(normalizeLoreIndexKeywords(options.Keywords)) > 0 || len(normalizeLoreIndexTypes(options.Types)) > 0 || len(normalizeLoreIndexLoadModes(options.LoadModes)) > 0
 	if libraryTotal == 0 {
-		sb.WriteString("资料库暂无启用条目。\n")
+		sb.WriteString("The lore library has no enabled items.\n")
 		return
 	}
 	if filtered && matchedTotal == 0 {
-		fmt.Fprintf(sb, "资料库共有 %d 条启用资料；本次检索匹配 0 条。未命中不代表资料库为空，可调整 keywords/types 或使用空参数浏览目录。\n", libraryTotal)
+		fmt.Fprintf(sb, "The lore library has %d enabled items; this search matched none. No match does not mean the library is empty. Adjust keywords/types or use empty arguments to browse the catalog.\n", libraryTotal)
 		return
 	}
 	if options.Paginate || filtered {
@@ -314,42 +314,42 @@ func writeLoreIndexHeader(sb *strings.Builder, matchedTotal, libraryTotal, retur
 			offset = 0
 		}
 		if filtered {
-			fmt.Fprintf(sb, "资料库共有 %d 条启用资料；本次匹配 %d 条，本页返回 %d 条（offset=%d）。", libraryTotal, matchedTotal, returned, offset)
+			fmt.Fprintf(sb, "The lore library has %d enabled items; this search matched %d and returned %d on this page (offset=%d).", libraryTotal, matchedTotal, returned, offset)
 		} else {
-			fmt.Fprintf(sb, "资料库共有 %d 条启用资料；本页返回 %d 条（offset=%d）。", libraryTotal, returned, offset)
+			fmt.Fprintf(sb, "The lore library has %d enabled items and returned %d on this page (offset=%d).", libraryTotal, returned, offset)
 		}
 		if matchedTotal > offset+returned {
-			fmt.Fprintf(sb, " 下一页使用 offset=%d。", offset+returned)
+			fmt.Fprintf(sb, " Use offset=%d for the next page.", offset+returned)
 		}
 		sb.WriteString("\n\n")
 		return
 	}
-	scope := "启用资料"
+	scope := "enabled lore items"
 	if options.ExcludeResident {
-		scope = "非驻留资料"
+		scope = "non-resident lore items"
 	}
-	fmt.Fprintf(sb, "共 %d 条%s。默认索引只含 ID、名称和简介；需要正文时调用 read_lore_items。\n\n", matchedTotal, scope)
+	fmt.Fprintf(sb, "Total: %d %s. The default index contains only ID, name, and brief; call read_lore_items for complete bodies.\n\n", matchedTotal, scope)
 }
 
 func formatCompactLoreIndexEntry(entry loreIndexEntry, briefRunes int, nameOnly bool) string {
 	item := entry.Item
 	if nameOnly {
-		return fmt.Sprintf("- id: %s | 名称: %s\n", item.ID, item.Name)
+		return fmt.Sprintf("- id: %s | name: %s\n", item.ID, item.Name)
 	}
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "- id: %s\n  名称: %s\n", item.ID, item.Name)
+	fmt.Fprintf(&sb, "- id: %s\n  name: %s\n", item.ID, item.Name)
 	brief := compactLoreBrief(item.BriefDescription, briefRunes)
 	if brief != "" {
-		fmt.Fprintf(&sb, "  简介: %s\n", brief)
+		fmt.Fprintf(&sb, "  brief: %s\n", brief)
 	}
 	if len(item.Keywords) > 0 {
-		fmt.Fprintf(&sb, "  关键词: %s\n", compactLoreBrief(strings.Join(item.Keywords, "、"), 120))
+		fmt.Fprintf(&sb, "  keywords: %s\n", compactLoreBrief(strings.Join(item.Keywords, ", "), 120))
 	}
 	if len(entry.MatchedTerms) > 0 {
-		fmt.Fprintf(&sb, "  匹配词: %s\n", strings.Join(entry.MatchedTerms, "、"))
+		fmt.Fprintf(&sb, "  matched_terms: %s\n", strings.Join(entry.MatchedTerms, ", "))
 	}
 	if len(entry.MatchSources) > 0 {
-		fmt.Fprintf(&sb, "  匹配来源: %s\n", strings.Join(entry.MatchSources, "、"))
+		fmt.Fprintf(&sb, "  match_sources: %s\n", strings.Join(entry.MatchSources, ", "))
 	}
 	return sb.String()
 }
@@ -371,7 +371,7 @@ func compactLoreBrief(brief string, limit int) string {
 func renderBoundedLoreNameIndex(entries []loreIndexEntry, matchedTotal, libraryTotal int, options IndexOptions, maxBytes int) string {
 	var sb strings.Builder
 	writeLoreIndexHeader(&sb, matchedTotal, libraryTotal, len(entries), options)
-	hint := "（索引预算不足，以下仅展示能放入预算的 ID 和名称；未显示条目请用 keywords/types 细查。）\n\n"
+	hint := "[Index budget is limited. Only IDs and names that fit are shown; narrow with keywords/types to find omitted items.]\n\n"
 	appendLoreContextPart(&sb, hint, maxBytes)
 	omitted := 0
 	for idx, entry := range entries {
@@ -383,7 +383,7 @@ func renderBoundedLoreNameIndex(entries []loreIndexEntry, matchedTotal, libraryT
 		sb.WriteString(line)
 	}
 	if omitted > 0 {
-		notice := fmt.Sprintf("\n（还有 %d 条资料因索引预算未显示；请使用 keywords/types 细查。）\n", omitted)
+		notice := fmt.Sprintf("\n[%d more lore items were omitted by the index budget. Narrow with keywords/types.]\n", omitted)
 		if sb.Len()+len([]byte(notice)) <= maxBytes {
 			sb.WriteString(notice)
 		}
@@ -397,15 +397,15 @@ func renderBoundedLoreNameIndex(entries []loreIndexEntry, matchedTotal, libraryT
 
 func formatLoreItemIndexMarkdown(item Item) string {
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "- id: %s\n  名称: %s\n  类型: %s\n  重要度: %s\n  加载策略: %s\n", item.ID, item.Name, TypeLabel(item.Type), loreImportanceLabel(item.Importance), loreLoadModeLabel(item.LoadMode))
+	fmt.Fprintf(&sb, "- id: %s\n  name: %s\n  type: %s\n  importance: %s\n  load_mode: %s\n", item.ID, item.Name, item.Type, item.Importance, item.LoadMode)
 	if len(item.Tags) > 0 {
-		fmt.Fprintf(&sb, "  标签: %s\n", strings.Join(item.Tags, "、"))
+		fmt.Fprintf(&sb, "  tags: %s\n", strings.Join(item.Tags, ", "))
 	}
 	if item.BriefDescription != "" {
-		fmt.Fprintf(&sb, "  简介: %s\n", item.BriefDescription)
+		fmt.Fprintf(&sb, "  brief: %s\n", item.BriefDescription)
 	}
 	if len(item.Keywords) > 0 {
-		fmt.Fprintf(&sb, "  关键词: %s\n", strings.Join(item.Keywords, "、"))
+		fmt.Fprintf(&sb, "  keywords: %s\n", strings.Join(item.Keywords, ", "))
 	}
 	sb.WriteString("\n")
 	return sb.String()
@@ -472,12 +472,12 @@ func loreItemMatchSources(item Item, query string) []string {
 		}
 	}
 	addSource("ID", item.ID)
-	addSource("名称", item.Name)
-	addSource("类型", item.Type, TypeLabel(item.Type))
-	addSource("标签", item.Tags...)
-	addSource("关键词", item.Keywords...)
-	addSource("简介", item.BriefDescription)
-	addSource("正文", item.Content)
+	addSource("name", item.Name)
+	addSource("type", item.Type, TypeLabel(item.Type))
+	addSource("tags", item.Tags...)
+	addSource("keywords", item.Keywords...)
+	addSource("brief", item.BriefDescription)
+	addSource("content", item.Content)
 	return sources
 }
 

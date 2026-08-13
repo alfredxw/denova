@@ -166,12 +166,12 @@ func TestInteractiveContextAnalysisSplitsCurrentTurnByRuntimeSource(t *testing.T
 		title   string
 		content string
 	}{
-		{source: "本轮行动", title: "当前用户行动", content: "我推开藏书阁的门"},
-		{source: "StoryTeller.turn_context", title: "导演本轮上下文规则", content: "守门人会先观察来者身份"},
+		{source: "Current turn action", title: "Current user action", content: "我推开藏书阁的门"},
+		{source: "StoryTeller.turn_context", title: "Storyteller context rule for this turn", content: "守门人会先观察来者身份"},
 		{source: "agent-brief.md", title: "正文 Agent 简报", content: "进入藏书阁"},
-		{source: "StoryDirector", title: "故事导演规则清单", content: "冲突升级"},
-		{source: "Snapshot.State.actors + effective Actor schema", title: "Actor 状态手册", content: "体力=8"},
-		{source: "StoryDirector.strategy.prompt_markdown", title: "故事导演 Markdown 策略提示", content: "伏笔回收"},
+		{source: "StoryDirector", title: "Story Director Rule Catalog", content: "冲突升级"},
+		{source: "Snapshot.State.actors + effective Actor schema", title: "Actor State Handbook", content: "体力=8"},
+		{source: "StoryDirector.strategy.prompt_markdown", title: "Story Director Markdown Strategy Prompt", content: "伏笔回收"},
 	}
 	for _, want := range wants {
 		matches := 0
@@ -235,7 +235,7 @@ func TestInteractiveContextAnalysisShowsDirectNarrativeOutputProtocol(t *testing
 	if outputProtocol == nil {
 		t.Fatalf("output protocol part missing: %#v", analysis.SystemPromptParts)
 	}
-	if !strings.Contains(outputProtocol.Content, "只输出本回合可展示在故事舞台上的故事正文") {
+	if !strings.Contains(outputProtocol.Content, "Output only the story prose that can be shown on the story stage for this turn") {
 		t.Fatalf("output protocol should describe direct narrative text: %#v", outputProtocol)
 	}
 }
@@ -285,9 +285,9 @@ func TestInteractiveDirectorContextAnalysisSplitsInstructionSources(t *testing.T
 	}
 	for _, part := range analysis.ContextMessages {
 		switch {
-		case part.Title == "资料库导演上下文" && strings.Contains(part.Source, "lore-context.md") && strings.Contains(part.Content, "沈凝"):
+		case part.Title == "Director Lore Context" && strings.Contains(part.Source, "lore-context.md") && strings.Contains(part.Content, "沈凝"):
 			sawLore = true
-		case part.Title == "本回合 TurnResult / RuleResolution / StateDelta 审计 JSON" && strings.Contains(part.Source, "committed turn") && strings.Contains(part.Content, "turn-1"):
+		case part.Title == "TurnResult / RuleResolution / StateDelta Audit JSON" && strings.Contains(part.Source, "committed turn") && strings.Contains(part.Content, "turn-1"):
 			sawTurnAudit = true
 		case part.Title == "文件：agent-brief.md" && strings.Contains(part.Content, "正文 Agent 简报"):
 			sawPlanDocs = true
@@ -380,7 +380,7 @@ func TestIDEContextAnalysisShowsStyleRulesAsSystemPromptParts(t *testing.T) {
 	)
 	var foundSystemPart bool
 	for _, part := range analysis.SystemPromptParts {
-		if part.Title == "文风参考：激烈打斗" && strings.Contains(part.Content, "短句留白") {
+		if part.Title == "Prose style reference: 激烈打斗" && strings.Contains(part.Content, "短句留白") {
 			foundSystemPart = true
 		}
 	}
@@ -419,7 +419,7 @@ func TestInteractiveContextAnalysisShowsStyleRulesAsSystemPromptParts(t *testing
 	}
 	var foundSystemPart bool
 	for _, part := range analysis.SystemPromptParts {
-		if part.Title == "文风参考：日常对话" && strings.Contains(part.Content, "克制对白") {
+		if part.Title == "Prose style reference: 日常对话" && strings.Contains(part.Content, "克制对白") {
 			foundSystemPart = true
 		}
 	}
@@ -532,7 +532,7 @@ func TestIDEContextAnalysisSplitsStableAndDynamicWorkspaceState(t *testing.T) {
 	if first.Source != "Stable context / 稳定上下文" || first.Title != "Stable model-prefix message / 稳定模型前缀消息" {
 		t.Fatalf("first message should carry stable workspace state: %#v", first)
 	}
-	for _, want := range []string{"# 稳定作品上下文", "主角进入废城", "## 角色小标题", "林川长期设定"} {
+	for _, want := range []string{"# Stable Work Context", "主角进入废城", "## 角色小标题", "林川长期设定"} {
 		if !strings.Contains(first.Content, want) {
 			t.Fatalf("stable message missing %q:\n%s", want, first.Content)
 		}
@@ -546,7 +546,7 @@ func TestIDEContextAnalysisSplitsStableAndDynamicWorkspaceState(t *testing.T) {
 	if final.Source != "Current turn / 本轮上下文" || final.Title != "Current user message / 本轮用户消息" {
 		t.Fatalf("final message should carry dynamic workspace state label: %#v", final)
 	}
-	for _, want := range []string{"# 本轮动态作品状态", "章节组：探索废城", "chapters/ch0001-开局.md", "当前进度：抵达废城入口", "林川：警惕", "## IDE 当前状态", "当前聚焦文件：chapters/ch0001-开局.md", "当前打开文件：chapters/ch0001-开局.md、setting/progress.md", "# 本轮用户请求（最高优先级）"} {
+	for _, want := range []string{"# Dynamic Work State for This Turn", "章节组：探索废城", "chapters/ch0001-开局.md", "当前进度：抵达废城入口", "林川：警惕", "## Current IDE State", "Focused file: chapters/ch0001-开局.md", "Open files: chapters/ch0001-开局.md, setting/progress.md", "# Current User Request (Highest Priority)"} {
 		if !strings.Contains(final.Content, want) {
 			t.Fatalf("final message missing %q:\n%s", want, final.Content)
 		}

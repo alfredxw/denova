@@ -18,7 +18,7 @@ func explicitSkillFragments(invocations []novaskills.Invocation) []agentcontext.
 		fragment := turnFragment(
 			fmt.Sprintf("turn_explicit_skill_%d_%s", index+1, name),
 			"turn.skill.explicit",
-			"显式 Skill / Explicit Skill: "+name,
+			"Explicit Skill: "+name,
 			"apply a Skill explicitly selected by the user before the first model call",
 			invocation.ModelContent(),
 			0,
@@ -42,7 +42,7 @@ func validateExplicitSkillProjection(result agentcontext.Result, invocations []n
 		fragment, ok := byID[id]
 		expected := strings.TrimSpace(invocation.ModelContent())
 		if !ok || !fragment.Included || fragment.Truncated || strings.TrimSpace(fragment.Content) != expected {
-			return fmt.Errorf("显式 Skill %q 未能完整进入模型上下文，请提高 Agent 上下文上限或减少本轮 Skill 数量 / explicit Skill %q did not fit the model context; raise the Agent context limits or request fewer Skills", invocation.Name, invocation.Name)
+			return fmt.Errorf("explicit Skill %q did not fit the model context; raise the Agent context limits or request fewer Skills", invocation.Name)
 		}
 	}
 	return nil

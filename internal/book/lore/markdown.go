@@ -7,17 +7,17 @@ import (
 
 func formatLoreItemMarkdown(item Item, includeContent bool) string {
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "## %s（%s / %s / %s）\n\n", item.Name, TypeLabel(item.Type), loreImportanceLabel(item.Importance), loreLoadModeLabel(item.LoadMode))
+	fmt.Fprintf(&sb, "## %s (%s / %s / %s)\n\n", item.Name, item.Type, item.Importance, item.LoadMode)
 	if item.ID != "" {
-		fmt.Fprintf(&sb, "ID：%s\n", item.ID)
+		fmt.Fprintf(&sb, "ID: %s\n", item.ID)
 	}
 	if len(item.Tags) > 0 {
-		sb.WriteString("标签：")
-		sb.WriteString(strings.Join(item.Tags, "、"))
+		sb.WriteString("Tags: ")
+		sb.WriteString(strings.Join(item.Tags, ", "))
 		sb.WriteString("\n")
 	}
 	if item.BriefDescription != "" {
-		sb.WriteString("简介：")
+		sb.WriteString("Brief: ")
 		sb.WriteString(item.BriefDescription)
 		sb.WriteString("\n")
 	}
@@ -38,23 +38,23 @@ func ReferenceMarkdown(item Item) string {
 	var sb strings.Builder
 	sb.WriteString("## ")
 	sb.WriteString(item.Name)
-	sb.WriteString("（")
+	sb.WriteString(" (")
 	sb.WriteString(item.Type)
 	sb.WriteString(" / ")
 	sb.WriteString(item.Importance)
 	sb.WriteString(" / ")
 	sb.WriteString(item.LoadMode)
-	sb.WriteString("）\n")
-	sb.WriteString("ID：")
+	sb.WriteString(")\n")
+	sb.WriteString("ID: ")
 	sb.WriteString(item.ID)
 	sb.WriteString("\n")
 	if len(item.Tags) > 0 {
-		sb.WriteString("标签：")
-		sb.WriteString(strings.Join(item.Tags, "、"))
+		sb.WriteString("Tags: ")
+		sb.WriteString(strings.Join(item.Tags, ", "))
 		sb.WriteString("\n")
 	}
 	if item.BriefDescription != "" {
-		sb.WriteString("简介：")
+		sb.WriteString("Brief: ")
 		sb.WriteString(item.BriefDescription)
 		sb.WriteString("\n")
 	}

@@ -17,17 +17,17 @@ const turnSubmissionStateChangesField = "state_changes"
 // are separate fields so the model never has to construct or escape a JSON
 // Pointer; the backend compiles this shape to the persisted interactivestate.Update.
 type TurnStateChangeInput struct {
-	Op           string         `json:"op" jsonschema:"enum=replace,enum=delta,enum=create,enum=archive,enum=restore" jsonschema_description:"replace 写入字段完整新值，delta 增减已有数值，create 创建 Actor，archive 让 Actor 退出运行时状态，restore 恢复参与。"`
-	ActorID      string         `json:"actor_id" jsonschema_description:"引用已有 Actor 时逐字使用状态手册中的 ID；create 时直接使用故事语言中的角色名称，并与 name 完全相同。"`
-	FieldID      string         `json:"field_id,omitempty" jsonschema_description:"replace/delta 必填，逐字使用 Actor 状态手册中的字段 ID。"`
-	Subpath      []string       `json:"subpath,omitempty" jsonschema_description:"仅 object 字段的嵌套更新使用；按层级填写字符串段，不要自行拼接路径字符串。"`
-	Value        any            `json:"value,omitempty" jsonschema_description:"replace 的完整新值或 delta 的数值变化量；类型必须匹配字段说明，number、bool、object、list 必须使用原生 JSON 值，不能写成带引号的字符串。"`
-	TemplateID   string         `json:"template_id,omitempty" jsonschema_description:"仅 create 必填，逐字使用新 Actor 可用模板中的 Template ID。"`
-	Name         string         `json:"name,omitempty" jsonschema_description:"create 必填；直接使用故事语言中的角色名称，并与 actor_id 完全相同。"`
-	Role         string         `json:"role,omitempty" jsonschema_description:"仅 create 使用的角色定位。"`
-	Description  string         `json:"description,omitempty" jsonschema_description:"仅 create 使用的简短角色说明。"`
-	InitialState map[string]any `json:"initial_state,omitempty" jsonschema_description:"仅 create 使用；key 必须是所选模板的精确字段 ID，number、bool、object、list 必须使用原生 JSON 值，不能写成带引号的字符串。"`
-	Reason       string         `json:"reason,omitempty" jsonschema_description:"archive/restore 必填；简短说明归档或恢复依据。"`
+	Op           string         `json:"op" jsonschema:"enum=replace,enum=delta,enum=create,enum=archive,enum=restore" jsonschema_description:"replace writes a field's complete new value; delta changes an existing number; create adds an Actor; archive removes an Actor from runtime participation; restore resumes participation."`
+	ActorID      string         `json:"actor_id" jsonschema_description:"For an existing Actor, copy the ID from the state handbook exactly. For create, use the character name in the story's language and make it identical to name."`
+	FieldID      string         `json:"field_id,omitempty" jsonschema_description:"Required for replace/delta. Copy the Field ID from the Actor State Handbook exactly."`
+	Subpath      []string       `json:"subpath,omitempty" jsonschema_description:"Use only for nested updates inside object fields. Supply one string segment per level; do not construct a path string."`
+	Value        any            `json:"value,omitempty" jsonschema_description:"The complete replacement value or numeric delta. It must match the field type; number, bool, object, and list fields require native JSON values, not quoted strings."`
+	TemplateID   string         `json:"template_id,omitempty" jsonschema_description:"Required only for create. Copy a Template ID from Templates Available to New Actors exactly."`
+	Name         string         `json:"name,omitempty" jsonschema_description:"Required for create. Use the character name in the story's language and make it identical to actor_id."`
+	Role         string         `json:"role,omitempty" jsonschema_description:"Optional role used only for create."`
+	Description  string         `json:"description,omitempty" jsonschema_description:"Brief Actor description used only for create."`
+	InitialState map[string]any `json:"initial_state,omitempty" jsonschema_description:"Used only for create. Keys must be exact Field IDs from the selected template; number, bool, object, and list fields require native JSON values, not quoted strings."`
+	Reason       string         `json:"reason,omitempty" jsonschema_description:"Required for archive/restore. Briefly state the factual basis for archiving or restoring the Actor."`
 }
 
 // DecodeInteractiveTurnSubmissionInput independently decodes state_changes
@@ -35,14 +35,14 @@ type TurnStateChangeInput struct {
 // discard a valid sibling module, and later calls may provide only retry_modules.
 func DecodeInteractiveTurnSubmissionInput(arguments string) TurnSubmissionInput {
 	if len([]byte(arguments)) > maxTurnSubmissionArgumentsBytes {
-		return invalidUnifiedTurnSubmissionInput("submission_too_large", "", fmt.Sprintf("%d bytes", len([]byte(arguments))), fmt.Sprintf("工具参数超过 %d bytes", maxTurnSubmissionArgumentsBytes), fmt.Sprintf("Tool arguments exceed %d bytes.", maxTurnSubmissionArgumentsBytes))
+		return invalidUnifiedTurnSubmissionInput("submission_too_large", "", fmt.Sprintf("%d bytes", len([]byte(arguments))), fmt.Sprintf("Tool arguments exceed %d bytes.", maxTurnSubmissionArgumentsBytes))
 	}
 	var root map[string]json.RawMessage
 	if err := decodeStrictJSON([]byte(arguments), &root, false); err != nil {
-		return invalidUnifiedTurnSubmissionInput(TurnSubmissionDiagnosticInvalidJSON, "", "invalid JSON", fmt.Sprintf("回合提交参数不是有效 JSON：%v", err), fmt.Sprintf("Turn submission arguments are not valid JSON: %v", err))
+		return invalidUnifiedTurnSubmissionInput(TurnSubmissionDiagnosticInvalidJSON, "", "invalid JSON", fmt.Sprintf("Turn submission arguments are not valid JSON: %v", err))
 	}
 	if root == nil {
-		return invalidUnifiedTurnSubmissionInput(TurnSubmissionDiagnosticInvalidTopLevel, "", "null", "回合提交参数必须是 object", "Turn submission arguments must be an object.")
+		return invalidUnifiedTurnSubmissionInput(TurnSubmissionDiagnosticInvalidTopLevel, "", "null", "Turn submission arguments must be an object.")
 	}
 	allowed := map[string]bool{
 		turnSubmissionStateChangesField:   true,
@@ -61,7 +61,6 @@ func DecodeInteractiveTurnSubmissionInput(arguments string) TurnSubmissionInput 
 			TurnSubmissionDiagnosticInvalidTopLevel,
 			"",
 			strings.Join(unknown, ","),
-			"回合提交参数只能包含 state_changes、choices 和可选 director_update",
 			"Turn submission arguments may only contain state_changes, choices, and optional director_update.",
 		)
 	}
@@ -95,7 +94,6 @@ func DecodeInteractiveTurnSubmissionInput(arguments string) TurnSubmissionInput 
 			"/director_update",
 			"director_update together with choices",
 			"choices missing",
-			"director_update 只能与 choices 在同一次模块提交中提供",
 			"director_update may only be submitted together with choices.",
 		))
 	}
@@ -112,7 +110,6 @@ func decodeStructuredStateChangesModule(raw json.RawMessage) ([]interactivestate
 			"/state_changes",
 			"array",
 			jsonValueKind(raw),
-			fmt.Sprintf("state_changes 必须是原生数组；仅兼容一层包含合法数组 JSON 的字符串：%v", err),
 			fmt.Sprintf("state_changes must be a native array; only one string layer containing valid array JSON is tolerated: %v", err),
 		)}
 	}
@@ -128,7 +125,6 @@ func decodeStructuredStateChangesModule(raw json.RawMessage) ([]interactivestate
 				fmt.Sprintf("/state_changes/%d", index),
 				"structured state change",
 				jsonValueKind(item),
-				fmt.Sprintf("状态变化结构无效：%v", err),
 				fmt.Sprintf("The state change shape is invalid: %v", err),
 			))
 			continue
@@ -142,7 +138,6 @@ func decodeStructuredStateChangesModule(raw json.RawMessage) ([]interactivestate
 				fmt.Sprintf("/state_changes/%d", index),
 				"valid replace, delta, create, archive, or restore fields",
 				"invalid state change",
-				err.Error(),
 				"The structured state change has incompatible or missing fields.",
 			))
 			continue
@@ -261,7 +256,7 @@ func stateUpdateFromStructuredInput(change TurnStateChangeInput) (interactivesta
 	}
 }
 
-func invalidUnifiedTurnSubmissionInput(code, path, actual, messageZH, messageEN string) TurnSubmissionInput {
+func invalidUnifiedTurnSubmissionInput(code, path, actual, message string) TurnSubmissionInput {
 	diagnostics := make([]TurnSubmissionDiagnostic, 0, 2)
 	for _, module := range []string{TurnSubmissionModuleStateChanges, TurnSubmissionModuleChoices} {
 		diagnostics = append(diagnostics, *newTurnSubmissionDiagnostic(
@@ -271,8 +266,7 @@ func invalidUnifiedTurnSubmissionInput(code, path, actual, messageZH, messageEN 
 			path,
 			"object containing state_changes and/or choices",
 			actual,
-			messageZH,
-			messageEN,
+			message,
 		))
 	}
 	return TurnSubmissionInput{Diagnostics: diagnostics}

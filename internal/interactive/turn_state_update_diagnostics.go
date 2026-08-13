@@ -100,7 +100,7 @@ func diagnosticsForStateUpdateError(err error) []TurnSubmissionDiagnostic {
 	}
 	var validationError *StateUpdateValidationError
 	if !errors.As(err, &validationError) {
-		return []TurnSubmissionDiagnostic{*newTurnSubmissionDiagnostic(TurnSubmissionModuleStateChanges, nil, "state_changes_invalid", "/state_changes", "valid atomic state_changes list", "invalid", trimBytes(err.Error(), maxTurnSubmissionDiagnosticMessage), "The state_changes module is invalid.")}
+		return []TurnSubmissionDiagnostic{*newTurnSubmissionDiagnostic(TurnSubmissionModuleStateChanges, nil, "state_changes_invalid", "/state_changes", "valid atomic state_changes list", "invalid", "The state_changes module is invalid.")}
 	}
 	return []TurnSubmissionDiagnostic{diagnosticForStateUpdateValidationError(validationError)}
 }
@@ -120,7 +120,6 @@ func diagnosticForStateUpdateValidationError(validationError *StateUpdateValidat
 		path,
 		validationError.Expected,
 		validationError.Actual,
-		trimBytes(validationError.Error(), maxTurnSubmissionDiagnosticMessage),
 		stateUpdateDiagnosticEnglishForError(validationError),
 	)
 }

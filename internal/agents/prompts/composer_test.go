@@ -76,10 +76,10 @@ func TestComposeInstructionBudgetsDynamicTellerMetadataAndStyleProtocolOnce(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	if count := strings.Count(composition.Instruction(), "当前叙事风格配置了以下文风参考索引"); count != 1 {
+	if count := strings.Count(composition.Instruction(), "The current narrative style provides the following prose-style reference index"); count != 1 {
 		t.Fatalf("style protocol header count=%d, want 1", count)
 	}
-	if count := strings.Count(composition.Instruction(), "触发规则：仅当本轮"); count != 1 {
+	if count := strings.Count(composition.Instruction(), "Trigger rule: use prose-style references only"); count != 1 {
 		t.Fatalf("style protocol footer count=%d, want 1", count)
 	}
 	var tellerEntry *SystemPromptManifestEntry
@@ -93,7 +93,7 @@ func TestComposeInstructionBudgetsDynamicTellerMetadataAndStyleProtocolOnce(t *t
 	if tellerEntry == nil || !tellerEntry.Truncated || !tellerEntry.Included {
 		t.Fatalf("dynamic teller metadata must be visibly budgeted: %#v", tellerEntry)
 	}
-	original := normalizeSystemPromptFragment(tellerSystemPromptFragment("ide_teller", "写作模式默认导演规则", "director", "Director", description, "导演正文规则")).Content
+	original := normalizeSystemPromptFragment(tellerSystemPromptFragment("ide_teller", "Default Writing Director Rules", "director", "Director", description, "导演正文规则")).Content
 	if tellerEntry.OriginalBytes != len(original) || tellerEntry.OriginalSHA != systemPromptSHA(original) {
 		t.Fatalf("teller manifest must hash metadata and prompt together: %#v", tellerEntry)
 	}

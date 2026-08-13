@@ -287,7 +287,7 @@ func validateConfigManagerRequestedToolOverride(mutation Mutation, value agentPr
 		if _, allowed := configManagerToolCeiling[capability]; allowed {
 			continue
 		}
-		return fmt.Errorf("Config Manager cannot enable capability %q through agent_profile / 配置 Agent 不允许通过 agent_profile 自行启用能力 %q", capability, capability)
+		return fmt.Errorf("Config Manager cannot enable capability %q through agent_profile", capability)
 	}
 	return nil
 }
@@ -316,7 +316,7 @@ func validateConfigManagerToolCeiling(layered config.LayeredSettings, scope stri
 		if _, allowed := configManagerToolCeiling[capability.Source]; allowed {
 			continue
 		}
-		return fmt.Errorf("Config Manager cannot enable capability %q through agent_profile / 配置 Agent 不允许通过 agent_profile 自行启用能力 %q", capability.Source, capability.Source)
+		return fmt.Errorf("Config Manager cannot enable capability %q through agent_profile", capability.Source)
 	}
 	return nil
 }

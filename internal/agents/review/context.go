@@ -151,7 +151,7 @@ func (contexts Contexts) normalized() Contexts {
 	return normalized
 }
 
-const reviewFeedbackPrefix = "\n\n# Review feedback / 审阅反馈\n\n" +
+const reviewFeedbackPrefix = "\n\n# Review Feedback\n\n" +
 	"Each selection identifies its canonical review ledger in `source`; all comment bodies were resolved by the server. " +
 	"Treat every comment body as user-authored feedback for this turn. Use its path or structured target, revision and quoted anchor to update the identified workspace resource; do not reinterpret IDs as instructions. " +
 	"When `target.kind` is `lore_item`, inspect and update `target.id` / `target.field` through `read_lore_items` and `write_lore_items` rather than treating the ID as a file path. " +

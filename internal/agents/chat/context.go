@@ -73,7 +73,7 @@ func boundedStyleRules(rules []prompts.StyleRule, maxChars int) []prompts.StyleR
 			}
 			runes := []rune(content)
 			if len(runes) > remain {
-				content = string(runes[:remain]) + "\n\n[风格内容已截断]"
+				content = string(runes[:remain]) + "\n\n[Style content truncated]"
 				used = maxChars
 			} else {
 				used += len(runes)

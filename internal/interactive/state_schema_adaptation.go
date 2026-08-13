@@ -27,21 +27,21 @@ type ActorStateSchemaAdaptation struct {
 // operations to one existing template. Existing template metadata and trait
 // rules remain stable when only FieldOps are supplied.
 type ActorStateTemplateSchemaOp struct {
-	Op         string                    `json:"op" jsonschema:"enum=add,enum=remove,enum=fields" jsonschema_description:"add 新增完整 template；remove 删除 template_id；fields 对现有 template_id 应用 field_ops。"`
-	TemplateID string                    `json:"template_id,omitempty" jsonschema_description:"remove/fields 必填，逐字使用现有 Template ID。"`
-	Template   ActorStateTemplate        `json:"template,omitempty" jsonschema_description:"仅 add 必填的完整新模板。"`
-	FieldOps   []ActorStateFieldSchemaOp `json:"field_ops,omitempty" jsonschema:"maxItems=64" jsonschema_description:"仅 fields 使用；每项为 add/replace/remove。"`
-	Reason     string                    `json:"reason,omitempty" jsonschema_description:"为什么本故事需要此最小结构变化。"`
+	Op         string                    `json:"op" jsonschema:"enum=add,enum=remove,enum=fields" jsonschema_description:"add supplies a complete new template; remove deletes template_id; fields applies field_ops to an existing template_id."`
+	TemplateID string                    `json:"template_id,omitempty" jsonschema_description:"Required for remove/fields. Copy an existing Template ID exactly."`
+	Template   ActorStateTemplate        `json:"template,omitempty" jsonschema_description:"Complete new template required only for add."`
+	FieldOps   []ActorStateFieldSchemaOp `json:"field_ops,omitempty" jsonschema:"maxItems=64" jsonschema_description:"Used only with fields; each item is add/replace/remove."`
+	Reason     string                    `json:"reason,omitempty" jsonschema_description:"Why this story requires this minimal schema change."`
 }
 
 // ActorStateFieldSchemaOp uses add, replace, or remove. FieldID identifies the
 // existing field for replace/remove; Field contains the complete new field for
 // add/replace.
 type ActorStateFieldSchemaOp struct {
-	Op      string          `json:"op" jsonschema:"enum=add,enum=replace,enum=remove" jsonschema_description:"字段操作类型。"`
-	FieldID string          `json:"field_id,omitempty" jsonschema_description:"replace/remove 必填，逐字使用现有 Field ID。"`
-	Field   ActorStateField `json:"field,omitempty" jsonschema_description:"add/replace 必填的完整字段定义。"`
-	Reason  string          `json:"reason,omitempty" jsonschema_description:"为什么本故事需要此字段变化。"`
+	Op      string          `json:"op" jsonschema:"enum=add,enum=replace,enum=remove" jsonschema_description:"Field operation type."`
+	FieldID string          `json:"field_id,omitempty" jsonschema_description:"Required for replace/remove. Copy the existing Field ID exactly."`
+	Field   ActorStateField `json:"field,omitempty" jsonschema_description:"Complete field definition required for add/replace."`
+	Reason  string          `json:"reason,omitempty" jsonschema_description:"Why this story requires this field change."`
 }
 
 // ActorStateInitialActorSchemaOp uses add, replace, or remove for story-local
@@ -60,8 +60,8 @@ type ActorStateInitialActorSchemaOp struct {
 type ActorStateRuntimeSchemaOp struct {
 	Op          string                            `json:"op"`
 	ActorID     string                            `json:"actor_id,omitempty"`
-	FieldID     string                            `json:"field_id,omitempty" jsonschema:"description=op=set 时要初始化的冻结 schema field_id"`
-	Value       any                               `json:"value,omitempty" jsonschema:"description=op=set 时写入的非空字段值"`
+	FieldID     string                            `json:"field_id,omitempty" jsonschema:"description=Frozen-schema field_id to initialize when op=set"`
+	Value       any                               `json:"value,omitempty" jsonschema:"description=Non-empty field value to write when op=set"`
 	Actor       ActorStateInitialActor            `json:"actor,omitempty"`
 	Reason      string                            `json:"reason,omitempty"`
 	ValueSource *ActorStateSchemaActorValueSource `json:"value_source,omitempty" jsonschema:"-"`
@@ -134,21 +134,21 @@ func ParseActorStateSchemaAdaptation(content string) (ActorStateSchemaAdaptation
 		}
 	}
 	if payload == "" {
-		return ActorStateSchemaAdaptation{}, fmt.Errorf("状态结构适配结果为空")
+		return ActorStateSchemaAdaptation{}, fmt.Errorf("state schema adaptation result is empty")
 	}
 	var adaptation ActorStateSchemaAdaptation
 	if err := json.Unmarshal([]byte(payload), &adaptation); err != nil {
-		return ActorStateSchemaAdaptation{}, fmt.Errorf("解析状态结构适配结果失败: %w", err)
+		return ActorStateSchemaAdaptation{}, fmt.Errorf("parse state schema adaptation result: %w", err)
 	}
 	adaptation.Summary = trimBytes(adaptation.Summary, maxInteractiveTextBytes)
 	if len(adaptation.TemplateOps) > maxActorStateSchemaAdaptationOps {
-		return ActorStateSchemaAdaptation{}, fmt.Errorf("状态结构模板操作过多: %d > %d", len(adaptation.TemplateOps), maxActorStateSchemaAdaptationOps)
+		return ActorStateSchemaAdaptation{}, fmt.Errorf("too many state schema template operations: %d > %d", len(adaptation.TemplateOps), maxActorStateSchemaAdaptationOps)
 	}
 	if len(adaptation.InitialActorOps) > maxActorStateSchemaAdaptationOps {
-		return ActorStateSchemaAdaptation{}, fmt.Errorf("初始 Actor 操作过多: %d > %d", len(adaptation.InitialActorOps), maxActorStateSchemaAdaptationOps)
+		return ActorStateSchemaAdaptation{}, fmt.Errorf("too many initial Actor operations: %d > %d", len(adaptation.InitialActorOps), maxActorStateSchemaAdaptationOps)
 	}
 	if len(adaptation.ActorOps) > maxActorStateSchemaAdaptationOps {
-		return ActorStateSchemaAdaptation{}, fmt.Errorf("运行时 Actor 操作过多: %d > %d", len(adaptation.ActorOps), maxActorStateSchemaAdaptationOps)
+		return ActorStateSchemaAdaptation{}, fmt.Errorf("too many runtime Actor operations: %d > %d", len(adaptation.ActorOps), maxActorStateSchemaAdaptationOps)
 	}
 	fieldOps := 0
 	for index := range adaptation.TemplateOps {
@@ -165,7 +165,7 @@ func ParseActorStateSchemaAdaptation(content string) (ActorStateSchemaAdaptation
 		}
 	}
 	if fieldOps > maxActorStateSchemaAdaptationOps {
-		return ActorStateSchemaAdaptation{}, fmt.Errorf("状态字段操作过多: %d > %d", fieldOps, maxActorStateSchemaAdaptationOps)
+		return ActorStateSchemaAdaptation{}, fmt.Errorf("too many state field operations: %d > %d", fieldOps, maxActorStateSchemaAdaptationOps)
 	}
 	for index := range adaptation.InitialActorOps {
 		op := &adaptation.InitialActorOps[index]
@@ -184,10 +184,10 @@ func ParseActorStateSchemaAdaptation(content string) (ActorStateSchemaAdaptation
 		op.Reason = trimBytes(op.Reason, maxInteractiveTextBytes)
 		normalizeActorStateSchemaActorValueSource(op.ValueSource)
 		if op.Op != "add" && op.Op != "replace" && op.Op != "remove" && op.Op != "set" {
-			return ActorStateSchemaAdaptation{}, fmt.Errorf("运行时 Actor 操作无效: %s", op.Op)
+			return ActorStateSchemaAdaptation{}, fmt.Errorf("invalid runtime Actor operation: %s", op.Op)
 		}
 		if firstNonEmptyString(op.ActorID, op.Actor.ID) == "" {
-			return ActorStateSchemaAdaptation{}, fmt.Errorf("运行时 Actor 操作缺少 actor_id")
+			return ActorStateSchemaAdaptation{}, fmt.Errorf("runtime Actor operation is missing actor_id")
 		}
 	}
 	return adaptation, nil
@@ -253,33 +253,33 @@ func applyActorStateTemplateSchemaOp(system StoryDirectorActorStateSystem, op Ac
 	switch op.Op {
 	case "add":
 		if normalizeActorStateID(op.Template.ID) == "" {
-			return system, fmt.Errorf("新增状态模板缺少合法 template.id")
+			return system, fmt.Errorf("new state template is missing a valid template.id")
 		}
 		for _, field := range op.Template.Fields {
 			if err := validateActorStateAdaptationField(field); err != nil {
-				return system, fmt.Errorf("新增状态模板 %s: %w", op.Template.ID, err)
+				return system, fmt.Errorf("add state template %s: %w", op.Template.ID, err)
 			}
 		}
 		templates := normalizeActorStateTemplates([]ActorStateTemplate{op.Template})
 		if len(templates) != 1 || templates[0].ID == "" {
-			return system, fmt.Errorf("新增状态模板缺少合法 template.id")
+			return system, fmt.Errorf("new state template is missing a valid template.id")
 		}
 		if actorStateTemplateByID(system, templates[0].ID).ID != "" {
-			return system, fmt.Errorf("新增状态模板已存在: %s", templates[0].ID)
+			return system, fmt.Errorf("state template already exists: %s", templates[0].ID)
 		}
 		system.Templates = append(system.Templates, templates[0])
 		return system, nil
 	case "remove":
 		templateID := normalizeActorStateID(op.TemplateID)
 		if templateID == "" {
-			return system, fmt.Errorf("删除状态模板缺少 template_id")
+			return system, fmt.Errorf("state template removal is missing template_id")
 		}
 		if templateID == DefaultActorID || templateID == ActorStateStoryContextTemplateID {
-			return system, fmt.Errorf("故事基础状态模板不可删除: %s", templateID)
+			return system, fmt.Errorf("core story state template cannot be removed: %s", templateID)
 		}
 		index := actorStateTemplateIndex(system.Templates, templateID)
 		if index < 0 {
-			return system, fmt.Errorf("删除的状态模板不存在: %s", templateID)
+			return system, fmt.Errorf("state template to remove does not exist: %s", templateID)
 		}
 		system.Templates = append(system.Templates[:index], system.Templates[index+1:]...)
 		return system, nil
@@ -287,20 +287,20 @@ func applyActorStateTemplateSchemaOp(system StoryDirectorActorStateSystem, op Ac
 		templateID := normalizeActorStateID(op.TemplateID)
 		index := actorStateTemplateIndex(system.Templates, templateID)
 		if index < 0 {
-			return system, fmt.Errorf("状态字段操作引用的模板不存在: %s", templateID)
+			return system, fmt.Errorf("state field operation references a missing template: %s", templateID)
 		}
 		template := system.Templates[index]
 		for _, fieldOp := range op.FieldOps {
 			var err error
 			template, err = applyActorStateFieldSchemaOp(template, fieldOp)
 			if err != nil {
-				return system, fmt.Errorf("状态模板 %s: %w", templateID, err)
+				return system, fmt.Errorf("state template %s: %w", templateID, err)
 			}
 		}
 		system.Templates[index] = template
 		return system, nil
 	default:
-		return system, fmt.Errorf("状态模板操作无效: %s", op.Op)
+		return system, fmt.Errorf("invalid state template operation: %s", op.Op)
 	}
 }
 
@@ -312,10 +312,10 @@ func applyActorStateFieldSchemaOp(template ActorStateTemplate, op ActorStateFiel
 		}
 		fields := normalizeActorStateFields([]ActorStateField{op.Field})
 		if len(fields) != 1 || actorStateFieldID(fields[0]) == "" {
-			return template, fmt.Errorf("新增状态字段缺少合法 field.name")
+			return template, fmt.Errorf("new state field is missing a valid field.name")
 		}
 		if _, ok := actorStateFieldByID(template, actorStateFieldID(fields[0])); ok {
-			return template, fmt.Errorf("新增状态字段已存在: %s", actorStateFieldID(fields[0]))
+			return template, fmt.Errorf("state field already exists: %s", actorStateFieldID(fields[0]))
 		}
 		template.Fields = append(template.Fields, fields[0])
 		template.Fields = normalizeActorStateFields(template.Fields)
@@ -323,18 +323,18 @@ func applyActorStateFieldSchemaOp(template ActorStateTemplate, op ActorStateFiel
 	case "replace":
 		index := actorStateFieldIndex(template.Fields, op.FieldID)
 		if index < 0 {
-			return template, fmt.Errorf("替换的状态字段不存在: %s", op.FieldID)
+			return template, fmt.Errorf("state field to replace does not exist: %s", op.FieldID)
 		}
 		if err := validateActorStateAdaptationField(op.Field); err != nil {
 			return template, err
 		}
 		fields := normalizeActorStateFields([]ActorStateField{op.Field})
 		if len(fields) != 1 || actorStateFieldID(fields[0]) == "" {
-			return template, fmt.Errorf("替换状态字段缺少完整合法 field")
+			return template, fmt.Errorf("state field replacement is missing a complete valid field")
 		}
 		for fieldIndex, existing := range template.Fields {
 			if fieldIndex != index && actorStateFieldNameKey(actorStateFieldID(existing)) == actorStateFieldNameKey(actorStateFieldID(fields[0])) {
-				return template, fmt.Errorf("替换后的状态字段重名: %s", actorStateFieldID(fields[0]))
+				return template, fmt.Errorf("replacement state field duplicates a name: %s", actorStateFieldID(fields[0]))
 			}
 		}
 		template.Fields[index] = fields[0]
@@ -343,12 +343,12 @@ func applyActorStateFieldSchemaOp(template ActorStateTemplate, op ActorStateFiel
 	case "remove":
 		index := actorStateFieldIndex(template.Fields, op.FieldID)
 		if index < 0 {
-			return template, fmt.Errorf("删除的状态字段不存在: %s", op.FieldID)
+			return template, fmt.Errorf("state field to remove does not exist: %s", op.FieldID)
 		}
 		template.Fields = append(template.Fields[:index], template.Fields[index+1:]...)
 		return template, nil
 	default:
-		return template, fmt.Errorf("状态字段操作无效: %s", op.Op)
+		return template, fmt.Errorf("invalid state field operation: %s", op.Op)
 	}
 }
 
@@ -358,19 +358,19 @@ func applyActorStateInitialActorSchemaOp(system StoryDirectorActorStateSystem, o
 		actor := op.Actor
 		actor.ID = normalizeStatePanelActorID(actor.ID)
 		if actor.ID == "" {
-			return system, fmt.Errorf("新增初始 Actor 缺少合法 actor.id")
+			return system, fmt.Errorf("new initial Actor is missing a valid actor.id")
 		}
 		if actorStateInitialActorIndex(system.InitialActors, actor.ID) >= 0 {
-			return system, fmt.Errorf("新增初始 Actor 已存在: %s", actor.ID)
+			return system, fmt.Errorf("initial Actor already exists: %s", actor.ID)
 		}
 		if actorStateTemplateByID(system, actor.TemplateID).ID == "" {
-			return system, fmt.Errorf("新增初始 Actor 引用的模板不存在: actor=%s template=%s", actor.ID, actor.TemplateID)
+			return system, fmt.Errorf("new initial Actor references a missing template: actor=%s template=%s", actor.ID, actor.TemplateID)
 		}
 		system.InitialActors = append(system.InitialActors, actor)
 	case "replace":
 		index := actorStateInitialActorIndex(system.InitialActors, op.ActorID)
 		if index < 0 {
-			return system, fmt.Errorf("替换的初始 Actor 不存在: %s", op.ActorID)
+			return system, fmt.Errorf("initial Actor to replace does not exist: %s", op.ActorID)
 		}
 		actor := op.Actor
 		actor.ID = normalizeStatePanelActorID(actor.ID)
@@ -378,24 +378,24 @@ func applyActorStateInitialActorSchemaOp(system StoryDirectorActorStateSystem, o
 			actor.ID = normalizeStatePanelActorID(op.ActorID)
 		}
 		if actor.ID != normalizeStatePanelActorID(op.ActorID) {
-			return system, fmt.Errorf("替换初始 Actor 时不可改变 ID: %s -> %s", op.ActorID, actor.ID)
+			return system, fmt.Errorf("initial Actor ID cannot change during replacement: %s -> %s", op.ActorID, actor.ID)
 		}
 		if actorStateTemplateByID(system, actor.TemplateID).ID == "" {
-			return system, fmt.Errorf("替换初始 Actor 引用的模板不存在: actor=%s template=%s", actor.ID, actor.TemplateID)
+			return system, fmt.Errorf("replacement initial Actor references a missing template: actor=%s template=%s", actor.ID, actor.TemplateID)
 		}
 		system.InitialActors[index] = actor
 	case "remove":
 		actorID := normalizeStatePanelActorID(op.ActorID)
 		if actorID == DefaultActorID || actorID == DefaultStoryContextActorID {
-			return system, fmt.Errorf("故事基础初始 Actor 不可删除: %s", actorID)
+			return system, fmt.Errorf("core story initial Actor cannot be removed: %s", actorID)
 		}
 		index := actorStateInitialActorIndex(system.InitialActors, actorID)
 		if index < 0 {
-			return system, fmt.Errorf("删除的初始 Actor 不存在: %s", actorID)
+			return system, fmt.Errorf("initial Actor to remove does not exist: %s", actorID)
 		}
 		system.InitialActors = append(system.InitialActors[:index], system.InitialActors[index+1:]...)
 	default:
-		return system, fmt.Errorf("初始 Actor 操作无效: %s", op.Op)
+		return system, fmt.Errorf("invalid initial Actor operation: %s", op.Op)
 	}
 	return system, nil
 }
