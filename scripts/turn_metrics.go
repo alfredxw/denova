@@ -134,6 +134,11 @@ func round2(v float64) float64 {
 
 func parseRuns(paths []string) map[string]*llmSlot {
 	agg := map[string]*llmSlot{}
+	// Normal llm_call trace spans in this project carry no turn_id (only
+	// run_id at the record root plus data.attrs). Build a run_id -> turn_id
+	// map from run_created / run_context records emitted earlier, then
+	// attribute each llm_call to its turn via run_id.
+	runToTurn := map[string]string{}
 	for _, p := range paths {
 		f, err := os.Open(p)
 		if err != nil {
@@ -148,8 +153,9 @@ func parseRuns(paths []string) map[string]*llmSlot {
 				continue
 			}
 			var ev struct {
-				Type string `json:"type"`
-				Data struct {
+				Type  string `json:"type"`
+				RunID string `json:"run_id"`
+				Data  struct {
 					TurnID string `json:"turn_id"`
 					Attrs  struct {
 						ReasoningTokens int `json:"reasoning_tokens"`
@@ -159,20 +165,24 @@ func parseRuns(paths []string) map[string]*llmSlot {
 			if err := json.Unmarshal(line, &ev); err != nil {
 				continue
 			}
-			if ev.Type != "llm_call" {
-				continue
+			switch ev.Type {
+			case "run_created", "run_context":
+				if ev.Data.TurnID != "" {
+					runToTurn[ev.RunID] = ev.Data.TurnID
+				}
+			case "llm_call":
+				turnID := runToTurn[ev.RunID]
+				if turnID == "" {
+					turnID = "other"
+				}
+				slot, ok := agg[turnID]
+				if !ok {
+					slot = &llmSlot{}
+					agg[turnID] = slot
+				}
+				slot.LLMCalls++
+				slot.ReasoningTokens += ev.Data.Attrs.ReasoningTokens
 			}
-			turnID := ev.Data.TurnID
-			if turnID == "" {
-				turnID = "other"
-			}
-			slot, ok := agg[turnID]
-			if !ok {
-				slot = &llmSlot{}
-				agg[turnID] = slot
-			}
-			slot.LLMCalls++
-			slot.ReasoningTokens += ev.Data.Attrs.ReasoningTokens
 		}
 		f.Close()
 	}
