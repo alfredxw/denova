@@ -2,11 +2,12 @@ import { memo } from 'react'
 import type { CSSProperties } from 'react'
 import type { AgentAskAnswer, AgentAskResolution, ChapterIllustration } from '@/lib/api'
 import { agentViewToRenderMessage, type AgentMessageView, type AgentPartRef } from '@/lib/agent-message-view'
-import { MessageItem } from './MessageItem'
+import { MessageItem, type AssistantMessagePresentation } from './MessageItem'
 
 interface AgentMessageItemProps {
   projectId?: string
   view: AgentMessageView
+  assistantPresentation?: AssistantMessagePresentation
   highlightDialogue?: boolean
   messageStyle?: CSSProperties
   onOpenSubAgentSession?: (view: AgentMessageView) => void
@@ -31,6 +32,7 @@ interface AgentMessageItemProps {
 export const AgentMessageItem = memo(function AgentMessageItem({
   projectId,
   view,
+  assistantPresentation,
   highlightDialogue = false,
   messageStyle,
   onOpenSubAgentSession,
@@ -57,6 +59,7 @@ export const AgentMessageItem = memo(function AgentMessageItem({
     <MessageItem
       projectId={projectId}
       message={message}
+      assistantPresentation={assistantPresentation}
       highlightDialogue={highlightDialogue}
       messageStyle={messageStyle}
       onEdit={onEditMessage ? () => onEditMessage(view) : undefined}

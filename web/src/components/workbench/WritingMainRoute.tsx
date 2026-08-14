@@ -131,7 +131,9 @@ export function WritingMainRoute({
         data-writing-content-layer="true"
         aria-hidden={reviewVisible}
         inert={reviewVisible}
-        className={`absolute inset-0 flex min-h-0 flex-col ${reviewVisible ? 'pointer-events-none' : ''}`}
+        // Keep every tab-local overlay inside this base stacking context. Inert controls interaction,
+        // but it does not stop a positioned close button from painting above the review surface.
+        className={`absolute inset-0 z-0 flex min-h-0 flex-col ${reviewVisible ? 'pointer-events-none' : ''}`}
       >
         <>
           <StableTabController
@@ -198,7 +200,7 @@ export function WritingMainRoute({
         </>
       </div>
       {activeReviewThreadID ? (
-        <div data-change-review-layer="true" className="nova-change-review-layer absolute inset-0 min-h-0">
+        <div data-change-review-layer="true" className="nova-change-review-layer absolute inset-0 z-10 min-h-0">
           <StableChangeReviewWorkspace
             projectId={projectId}
             threadID={activeReviewThreadID}

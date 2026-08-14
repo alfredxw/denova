@@ -24,7 +24,7 @@ import { VIRTUOSO_BOTTOM_THRESHOLD, useVirtuosoBottomLock } from './useVirtuosoB
 import { ScrollToBottomButton } from './ScrollToBottomButton'
 import { StableAfterContentBoundary } from './StableAfterContentBoundary'
 import { AgentMessageItem } from './AgentMessageItem'
-import { AgentActivityShimmer, MessageItem } from './MessageItem'
+import { AgentActivityShimmer, MessageItem, type AssistantMessagePresentation } from './MessageItem'
 import { AgentExecutionProcess } from './AgentExecutionProcess'
 import { buildAgentRunPresentation, type AgentRunPresentationSection } from './agent-run-presentation'
 import { scheduleChatRowBottomAnchor, scheduleResolvedChatRowBottomAnchor } from './chat-row-bottom-anchor'
@@ -495,13 +495,14 @@ function AgentChatListRow({ projectId, item, isLast, isStreaming, tailFollowActi
 }) {
   const { t } = useTranslation()
   const turnAnchor = chatListItemNavigationAnchor(item)
-  const renderMessageView = (view: AgentMessageView, key?: string) => {
+  const renderMessageView = (view: AgentMessageView, key?: string, assistantPresentation: AssistantMessagePresentation = 'message') => {
     const mutationsAllowed = canMutateMessage?.(view) !== false
     return (
       <AgentMessageItem
         projectId={projectId}
         key={key}
         view={view}
+        assistantPresentation={assistantPresentation}
         highlightDialogue={highlightDialogue}
         messageStyle={messageStyle}
         onEditMessage={isStreaming || !mutationsAllowed ? undefined : onEditMessage}
@@ -595,7 +596,7 @@ function AgentChatListRow({ projectId, item, isLast, isStreaming, tailFollowActi
         <div className="space-y-2">
           {item.sections.map(section => section.kind === 'process'
             ? renderExecutionProcess(section.key, section.views, section.active)
-            : renderMessageView(section.view, section.key))}
+            : renderMessageView(section.view, section.key, section.kind === 'progress' ? 'progress' : 'message'))}
         </div>
       ) : item.kind === 'attachment' ? (
         item.content

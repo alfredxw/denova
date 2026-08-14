@@ -124,6 +124,7 @@ export function AgentExecutionProcess({
           projectId={projectId}
           key={agentViewStableKey(view) || index}
           view={view}
+          assistantPresentation={view.kind === 'assistant' ? 'progress' : undefined}
           highlightDialogue={highlightDialogue}
           messageStyle={messageStyle}
           onInsertIllustration={onInsertIllustration}

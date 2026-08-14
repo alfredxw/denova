@@ -952,15 +952,15 @@ describe('Agent MessageList', () => {
       { id: 'reason-1', role: 'assistant', metadata: { run_id: 'run-progress' }, parts: [{ type: 'reasoning', text: '思考1' }] },
       { id: 'tool-1', role: 'assistant', metadata: { run_id: 'run-progress' }, parts: [{ type: 'dynamic-tool', toolName: 'read', toolCallId: 'tool-1', state: 'output-available', input: {}, output: 'ok' }] },
       { id: 'tool-2', role: 'assistant', metadata: { run_id: 'run-progress' }, parts: [{ type: 'dynamic-tool', toolName: 'bash', toolCallId: 'tool-2', state: 'output-available', input: {}, output: 'ok' }] },
-      { id: 'progress-1', role: 'assistant', metadata: { run_id: 'run-progress', display_phase: 'candidate' }, parts: [{ type: 'text', id: 'progress-1', text: '进展一' }] },
+      { id: 'progress-1', role: 'assistant', metadata: { run_id: 'run-progress', display_phase: 'candidate', created_at: '2026-01-01T12:31:00Z' }, parts: [{ type: 'text', id: 'progress-1', text: '进展一' }] },
       { id: 'reason-2', role: 'assistant', metadata: { run_id: 'run-progress' }, parts: [{ type: 'reasoning', text: '思考2' }] },
       { id: 'tool-3', role: 'assistant', metadata: { run_id: 'run-progress' }, parts: [{ type: 'dynamic-tool', toolName: 'read', toolCallId: 'tool-3', state: 'output-available', input: {}, output: 'ok' }] },
       { id: 'tool-4', role: 'assistant', metadata: { run_id: 'run-progress' }, parts: [{ type: 'dynamic-tool', toolName: 'bash', toolCallId: 'tool-4', state: 'output-available', input: {}, output: 'ok' }] },
-      { id: 'progress-2', role: 'assistant', metadata: { run_id: 'run-progress', display_phase: 'candidate' }, parts: [{ type: 'text', id: 'progress-2', text: '进展二' }] },
+      { id: 'progress-2', role: 'assistant', metadata: { run_id: 'run-progress', display_phase: 'candidate', created_at: '2026-01-01T12:32:00Z' }, parts: [{ type: 'text', id: 'progress-2', text: '进展二' }] },
       { id: 'reason-3', role: 'assistant', metadata: { run_id: 'run-progress' }, parts: [{ type: 'reasoning', text: '思考3' }] },
       { id: 'tool-5', role: 'assistant', metadata: { run_id: 'run-progress' }, parts: [{ type: 'dynamic-tool', toolName: 'read', toolCallId: 'tool-5', state: 'output-available', input: {}, output: 'ok' }] },
       { id: 'tool-6', role: 'assistant', metadata: { run_id: 'run-progress' }, parts: [{ type: 'dynamic-tool', toolName: 'bash', toolCallId: 'tool-6', state: 'output-available', input: {}, output: 'ok' }] },
-      { id: 'progress-3', role: 'assistant', metadata: { run_id: 'run-progress', display_phase: 'candidate' }, parts: [{ type: 'text', id: 'progress-3', text: '进展三' }] },
+      { id: 'progress-3', role: 'assistant', metadata: { run_id: 'run-progress', display_phase: 'candidate', created_at: '2026-01-01T12:33:00Z' }, parts: [{ type: 'text', id: 'progress-3', text: '进展三' }] },
     ] as AgentUIMessage[]
     const renderProgress = (messages: AgentUIMessage[], isStreaming: boolean) => (
       <VirtuosoMockContext.Provider value={{ viewportHeight: 180, itemHeight: 52 }}>
@@ -988,6 +988,8 @@ describe('Agent MessageList', () => {
     expect(screen.getByText('进展一')).toBeInTheDocument()
     expect(screen.getByText('进展二')).toBeInTheDocument()
     expect(screen.getByText('进展三')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '复制消息' })).not.toBeInTheDocument()
+    expect(container.querySelector('.nova-message-time')).toBeNull()
     expect(screen.getByText('当前流式思考')).toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: /^执行过程 · 2 次工具调用$/ })).toHaveLength(3)
     expect(screen.getByRole('button', { name: /^正在执行$/ })).toHaveAttribute('aria-expanded', 'true')
@@ -1011,7 +1013,7 @@ describe('Agent MessageList', () => {
   })
 
   it('把同一次运行的中间正文、思考和工具统一折叠，只保留最终正文', () => {
-    renderMessageList(
+    const { container } = renderMessageList(
       <MessageList
         isStreaming={false}
         activityContent=""
@@ -1019,7 +1021,7 @@ describe('Agent MessageList', () => {
         messages={[
           { id: 'reason-1', role: 'assistant', metadata: { run_id: 'run-diagnose' }, parts: [{ type: 'reasoning', id: 'reason-1', text: '先检查故事索引。' }] },
           { id: 'tool-1', role: 'assistant', metadata: { run_id: 'run-diagnose' }, parts: [{ type: 'dynamic-tool', toolName: 'read', toolCallId: 'tool-1', state: 'output-available', input: { path: 'index.json' }, output: 'invalid json' }] },
-          { id: 'progress-1', role: 'assistant', metadata: { run_id: 'run-diagnose', display_phase: 'progress' }, parts: [{ type: 'text', id: 'progress-1', text: '找到问题了，继续确认错误位置。' }] },
+          { id: 'progress-1', role: 'assistant', metadata: { run_id: 'run-diagnose', display_phase: 'progress', created_at: '2026-01-01T12:34:00Z' }, parts: [{ type: 'text', id: 'progress-1', text: '找到问题了，继续确认错误位置。' }] },
           { id: 'reason-2', role: 'assistant', metadata: { run_id: 'run-diagnose' }, parts: [{ type: 'reasoning', id: 'reason-2', text: '核对修复结果。' }] },
           { id: 'tool-2', role: 'assistant', metadata: { run_id: 'run-diagnose' }, parts: [{ type: 'dynamic-tool', toolName: 'bash', toolCallId: 'tool-2', state: 'output-available', input: { command: 'jq empty index.json' }, output: 'ok' }] },
           { id: 'final-1', role: 'assistant', metadata: { run_id: 'run-diagnose', display_phase: 'final' }, parts: [{ type: 'text', id: 'final-1', text: '问题已排查并修复。' }] },
@@ -1035,6 +1037,8 @@ describe('Agent MessageList', () => {
     fireEvent.click(processButton)
 
     expect(screen.getByText('找到问题了，继续确认错误位置。')).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: '复制消息' })).toHaveLength(1)
+    expect(container.querySelector('.nova-message-time')).toBeNull()
     expect(screen.queryByText('先检查故事索引。')).not.toBeInTheDocument()
     expect(screen.queryByText('核对修复结果。')).not.toBeInTheDocument()
 

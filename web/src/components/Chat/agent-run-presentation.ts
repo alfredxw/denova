@@ -18,6 +18,7 @@ export interface AgentRunPresentation {
 export type AgentRunPresentationSection =
   | { active: boolean; key: string; kind: 'process'; views: AgentMessageView[] }
   | { key: string; kind: 'message'; view: AgentMessageView }
+  | { key: string; kind: 'progress'; view: AgentMessageView }
 
 /**
  * Builds stable ordered process/prose sections without changing persisted
@@ -99,7 +100,7 @@ function buildActiveSections(views: AgentMessageView[]): AgentRunPresentationSec
       pendingProcess = []
       sections.push({
         key: `message-${agentViewStableKey(view)}`,
-        kind: 'message',
+        kind: 'progress',
         view,
       })
       continue

@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Agent Chat 的中间进展正文不再显示时间与复制入口，运行中进展和历史“执行过程”内的进展使用相同的精简展示；最终正文与普通对话消息仍保留原有元信息操作。Writing、Game、AgentChat 与管理型 Agent 共用该行为，无需新增配置。
+- Intermediate progress prose in Agent Chat no longer shows timestamps or the copy action. Live progress and historical progress inside “Execution” now use the same streamlined presentation, while final responses and ordinary conversation messages retain their existing metadata actions. Writing, Game, AgentChat, and management Agents share the behavior with no new setting.
 - 修复资料库首次读取已有书籍预设开场白时，把结构化空文档误当成未初始化空字符串并触发伪并发冲突、随后以空列表覆盖已保存内容的问题。开场白初始化与自动保存现在共享同一规范化基线，写作和游戏模式重复打开均不会产生冲突记录；无需新增配置。
 - Fixed the Lore library treating the structured empty opening-preset document as an uninitialized empty string when first loading existing Book openings, which caused a false concurrent-edit conflict and then overwrote saved content with an empty list. Opening initialization and autosave now share the same normalized baseline, so repeated opens in Writing and Game no longer create conflict records. No new setting is required.
 - 开发者模式的轨迹消息摘要改为流式并列指标条：宽度充足时同行展示，一行容纳不下时自动换行，避免每个指标固定独占一行。写作和游戏模式共用该布局，无需新增配置。
@@ -63,6 +65,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 修复打开 Diff Review 时，底层正文 Tab 的关闭图标因自身层级较高而穿透审阅工具栏的问题。正文内容层与审阅层现在使用显式、隔离的堆叠顺序，底层控件会保持挂载但不会再覆盖审阅界面；写作模式中英文与深浅主题共用该修复，无需新增配置。
+- Fixed the retained document tab's high-z-index close icon painting through the Diff Review toolbar. The document-content and review layers now use an explicit isolated stacking order, keeping the underlying editor mounted without allowing its controls to cover the review surface. Writing mode shares the fix across both languages and themes, with no new setting required.
 - 修复轻量 Agent 流结束时把 `providerMetadata` 放入自定义 data part 顶层，导致当前 AI SDK 拒绝整条消息并弹出 `Type validation failed` 的问题；token usage 等元数据继续保留在 data payload 中。游戏快照同时改为严格以 Story Store 的已提交回合与状态为准，Agent transcript 或压缩投影不可读时只省略可选运行元数据，不再让已完成故事显示为第 0 回合。写作与游戏均无需新增配置。
 - Fixed the lightweight Agent stream placing `providerMetadata` at the top level of a custom data part, which caused the current AI SDK to reject the message with `Type validation failed`; token usage and related metadata remain available inside the data payload. Game snapshots now also treat committed Story Store turns and state as authoritative: an unreadable Agent transcript or Compaction projection only removes optional runtime metadata and can no longer make a completed story appear as turn zero. Writing and Game require no new setting.
 - 修复从 v0.3.3 升级后，包含旧 `context_compaction` / `context_compaction_removed` 事件的游戏故事无法打开的问题。旧索引首次重建时会在完整备份原始 JSONL 后，原子移除这些不承载正文或状态的退役事件，并将事件 `parent_id` 与分支 `head/from_event` 重连到最近的有效祖先；迁移可重复执行，新格式故事无需扫描且无需新增配置。

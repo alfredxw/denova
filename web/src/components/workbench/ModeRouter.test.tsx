@@ -169,6 +169,10 @@ vi.mock('@/features/changes/use-writing-change-review', () => ({
   useWritingChangeReview: () => writingChangeReviewMock,
 }))
 
+vi.mock('@/features/changes/review/ChangeReviewWorkspace', () => ({
+  ChangeReviewWorkspace: () => <div data-testid="change-review-workspace">change review</div>,
+}))
+
 vi.mock('@/features/document-review/use-document-review', () => ({
   useDocumentReview: useDocumentReviewMock,
 }))
@@ -205,6 +209,7 @@ describe('ModeRouter autosave navigation policy', () => {
     agentChatRouteLifecycle.renders = 0
     markdownEditorLifecycle.mounts = 0
     markdownEditorLifecycle.unmounts = 0
+    writingChangeReviewMock.activeReviewThreadID = ''
     useDocumentReviewMock.mockReturnValue({
       feedback: null,
       thread: { comments: [] },
@@ -228,6 +233,19 @@ describe('ModeRouter autosave navigation policy', () => {
       reload: vi.fn(async () => null),
       flushPending: vi.fn(async () => false),
     })
+  })
+
+  it('stacks Diff Review above retained document-tab overlays', () => {
+    writingChangeReviewMock.activeReviewThreadID = 'review-thread'
+
+    const { container } = render(withAppProviders(<ModeRouter {...modeRouterProps()} />))
+
+    const writingLayer = container.querySelector('[data-writing-content-layer="true"]')
+    const reviewLayer = container.querySelector('[data-change-review-layer="true"]')
+    expect(writingLayer).toHaveClass('z-0')
+    expect(writingLayer).toHaveAttribute('aria-hidden', 'true')
+    expect(reviewLayer).toHaveClass('z-10')
+    expect(screen.getByTestId('change-review-workspace')).toBeInTheDocument()
   })
 
   it('continues a workspace switch and warns when preference flush remains pending', async () => {

@@ -28,9 +28,13 @@ import { ToolExecutionBlock, ToolResultBlock } from './message-tool'
 import { TodoListBlock } from './message-todo'
 import { toolCallRenderer, toolResultRenderer } from '@/lib/tool-presentation'
 
+/** Progress prose omits conversation-level metadata such as time and actions. */
+export type AssistantMessagePresentation = 'message' | 'progress'
+
 interface MessageItemProps {
   projectId?: string
   message: ChatMessage
+  assistantPresentation?: AssistantMessagePresentation
   highlightDialogue?: boolean
   messageStyle?: CSSProperties
   onEdit?: (message: ChatMessage) => void
@@ -53,7 +57,7 @@ interface MessageItemProps {
 }
 
 /** Dispatches one role-specific message to its focused renderer. */
-export const MessageItem = memo(function MessageItem({ projectId = '', message, highlightDialogue = false, messageStyle, onEdit, onEditAssistantReply, onCreateBranch, onRegenerate, onSwitchVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, subAgentPresentation = 'card', onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onInteractiveCardLayoutChange, onResolveAsk }: MessageItemProps) {
+export const MessageItem = memo(function MessageItem({ projectId = '', message, assistantPresentation = 'message', highlightDialogue = false, messageStyle, onEdit, onEditAssistantReply, onCreateBranch, onRegenerate, onSwitchVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, subAgentPresentation = 'card', onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onInteractiveCardLayoutChange, onResolveAsk }: MessageItemProps) {
   const { role, content = '' } = message
   const canEdit = role === 'user' && Boolean(message.turn_id) && Boolean(onEdit)
   const canEditAssistantReply = role === 'assistant' && !message.subagent && Boolean(message.turn_id) && Boolean(onEditAssistantReply) && !message.streaming
@@ -118,23 +122,25 @@ export const MessageItem = memo(function MessageItem({ projectId = '', message, 
                 )}
               </AIMessageContent>
               <InteractiveImageStrip message={message} projectId={projectId} />
-              <MessageInlineMeta
-                message={message}
-                content={content}
-                align="left"
-                reserveSpace={reserveMetaSpace}
-                hideActions={message.streaming === true}
-                onEdit={canEditAssistantReply ? onEditAssistantReply : undefined}
-                editLabelKey="chat.action.editAssistantReply"
-                onCreateBranch={canCreateBranch ? onCreateBranch : undefined}
-                onGenerateInteractiveImage={canGenerateInteractiveImage ? onGenerateInteractiveImage : undefined}
-                generatingInteractiveImage={Boolean(message.turn_id && generatingInteractiveImageTurnId === message.turn_id)}
-                interactiveImageGenerationDisabled={Boolean(generatingInteractiveImageTurnId)}
-                onRegenerate={canRegenerate ? onRegenerate : undefined}
-                onSwitchVersion={canSwitchVersion ? onSwitchVersion : undefined}
-                versionIndex={versionIndex}
-                versionCount={versionCount}
-              />
+              {assistantPresentation === 'message' ? (
+                <MessageInlineMeta
+                  message={message}
+                  content={content}
+                  align="left"
+                  reserveSpace={reserveMetaSpace}
+                  hideActions={message.streaming === true}
+                  onEdit={canEditAssistantReply ? onEditAssistantReply : undefined}
+                  editLabelKey="chat.action.editAssistantReply"
+                  onCreateBranch={canCreateBranch ? onCreateBranch : undefined}
+                  onGenerateInteractiveImage={canGenerateInteractiveImage ? onGenerateInteractiveImage : undefined}
+                  generatingInteractiveImage={Boolean(message.turn_id && generatingInteractiveImageTurnId === message.turn_id)}
+                  interactiveImageGenerationDisabled={Boolean(generatingInteractiveImageTurnId)}
+                  onRegenerate={canRegenerate ? onRegenerate : undefined}
+                  onSwitchVersion={canSwitchVersion ? onSwitchVersion : undefined}
+                  versionIndex={versionIndex}
+                  versionCount={versionCount}
+                />
+              ) : null}
             </div>
           </div>
         </AIMessage>
