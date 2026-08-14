@@ -382,6 +382,7 @@ export interface AgentRunTraceSummary {
   mutations?: number
   verification_status?: string
   recoverable?: boolean
+  content_captured?: boolean
 }
 
 export interface AgentRunTraceRecord {

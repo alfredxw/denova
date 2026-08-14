@@ -47,6 +47,9 @@ export interface TrajectoryMetrics {
   toolCalls: number
   errors: number
   averageTTFTMs: number | null
+  p50TTFTMs: number | null
+  p95TTFTMs: number | null
+  averageThroughput: number | null
   promptTokens: number
   cachedTokens: number
   completionTokens: number
@@ -93,6 +96,7 @@ const SPAN_CATEGORIES: Record<string, TrajectoryCategory> = {
 /** Builds the semantic span tree, chronological event stream, and latency aggregates for one run. */
 export function analyzeTrajectory(trace: AgentRunTrace): TrajectoryAnalysis {
   const spanRecords: TrajectorySpan[] = trace.records.flatMap((record, recordIndex): TrajectorySpan[] => {
+    if (record.type === 'llm_input' || record.type === 'llm_output') return []
     const data = objectValue(record.data)
     const spanID = stringValue(data.span_id)
     if (!spanID) return []
@@ -290,6 +294,8 @@ function deriveMetrics(spans: readonly TrajectorySpan[], startMs: number, endMs:
   const ttfts = models.flatMap((span) => span.ttftMs === null ? [] : [span.ttftMs])
   const promptTokens = models.reduce((total, span) => total + span.inputTokens, 0)
   const cachedTokens = models.reduce((total, span) => total + span.cachedTokens, 0)
+  const generatedTokens = models.reduce((total, span) => total + span.outputTokens, 0)
+  const generationMs = models.reduce((total, span) => total + Math.max(0, span.generationMs ?? 0), 0)
   return {
     totalMs,
     busyMs,
@@ -300,11 +306,24 @@ function deriveMetrics(spans: readonly TrajectorySpan[], startMs: number, endMs:
     toolCalls: tools.length,
     errors: spans.filter((span) => isErrorStatus(span.status)).length,
     averageTTFTMs: ttfts.length === 0 ? null : ttfts.reduce((total, value) => total + value, 0) / ttfts.length,
+    p50TTFTMs: percentile(ttfts, 0.5),
+    p95TTFTMs: percentile(ttfts, 0.95),
+    averageThroughput: generatedTokens > 0 && generationMs > 0 ? generatedTokens / (generationMs / 1_000) : null,
     promptTokens,
     cachedTokens,
     completionTokens: models.reduce((total, span) => total + span.outputTokens, 0),
     cacheHitRate: promptTokens === 0 ? 0 : cachedTokens / promptTokens,
   }
+}
+
+function percentile(values: readonly number[], ratio: number): number | null {
+  if (values.length === 0) return null
+  const sorted = [...values].sort((left, right) => left - right)
+  const index = Math.min(sorted.length - 1, Math.max(0, (sorted.length - 1) * ratio))
+  const lower = Math.floor(index)
+  const upper = Math.ceil(index)
+  if (lower === upper) return sorted[lower]
+  return sorted[lower] + (sorted[upper] - sorted[lower]) * (index - lower)
 }
 
 function intervalUnionDuration(intervals: ReadonlyArray<readonly [number, number]>): number {

@@ -32,11 +32,14 @@ describe('trajectory analysis', () => {
       modelCalls: 2,
       toolCalls: 2,
       averageTTFTMs: 750,
+      p50TTFTMs: 750,
+      p95TTFTMs: 975,
       promptTokens: 1_500,
       cachedTokens: 850,
       completionTokens: 150,
     })
     expect(analysis.metrics.cacheHitRate).toBeCloseTo(850 / 1_500)
+    expect(analysis.metrics.averageThroughput).toBeCloseTo(150 / 5.5)
     expect(analysis.events.map((event) => event.label)).toEqual(['Agent cycle 2'])
   })
 

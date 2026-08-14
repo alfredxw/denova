@@ -5,6 +5,14 @@ import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { TrajectoryEventRecord, TrajectorySpan } from './trajectory-analysis'
 import { formatTrajectoryDuration } from './trajectory-analysis'
+import {
+  EmptyInspectorTab,
+  formatExactTrajectoryTime,
+  formatTrajectoryNumber,
+  TrajectoryDefinitionList,
+  TrajectoryJSONBlock,
+  trajectoryThroughput,
+} from './TrajectoryInspectorParts'
 
 interface TrajectoryInspectorProps {
   span: TrajectorySpan | null
@@ -59,7 +67,7 @@ export function TrajectoryInspector({ span, event, onClose }: TrajectoryInspecto
           <TabsTrigger value="raw" className="text-[10px]">{t('trajectory.inspector.raw')}</TabsTrigger>
         </TabsList>
         <TabsContent value="summary" className="min-h-0 overflow-auto border-t border-[var(--nova-border)] p-3">
-          <DefinitionList items={span ? [
+          <TrajectoryDefinitionList items={span ? [
             [t('trajectory.field.kind'), span.category],
             [t('trajectory.field.status'), span.status],
             [t('trajectory.field.spanId'), span.id],
@@ -73,16 +81,16 @@ export function TrajectoryInspector({ span, event, onClose }: TrajectoryInspecto
           ]} />
         </TabsContent>
         <TabsContent value="timing" className="min-h-0 overflow-auto border-t border-[var(--nova-border)] p-3">
-          <DefinitionList items={span ? [
-            [t('trajectory.field.started'), formatExactTime(span.startedAt)],
-            [t('trajectory.field.ended'), formatExactTime(span.endedAt)],
+          <TrajectoryDefinitionList items={span ? [
+            [t('trajectory.field.started'), formatExactTrajectoryTime(span.startedAt)],
+            [t('trajectory.field.ended'), formatExactTrajectoryTime(span.endedAt)],
             [t('trajectory.field.duration'), formatTrajectoryDuration(span.durationMs)],
             [t('trajectory.field.waitBefore'), formatTrajectoryDuration(span.gapBeforeMs)],
             ['TTFT', formatTrajectoryDuration(span.ttftMs)],
             [t('trajectory.field.generation'), formatTrajectoryDuration(span.generationMs)],
-            [t('trajectory.field.throughput'), throughput(span)],
+            [t('trajectory.field.throughput'), trajectoryThroughput(span)],
           ] : [
-            [t('trajectory.field.recorded'), formatExactTime(event?.timestamp ?? 0)],
+            [t('trajectory.field.recorded'), formatExactTrajectoryTime(event?.timestamp ?? 0)],
           ]} />
           {span?.category === 'model' && span.ttftMs !== null && (
             <div className="mt-4 overflow-hidden rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)]">
@@ -99,61 +107,23 @@ export function TrajectoryInspector({ span, event, onClose }: TrajectoryInspecto
         </TabsContent>
         <TabsContent value="usage" className="min-h-0 overflow-auto border-t border-[var(--nova-border)] p-3">
           {span ? (
-            <DefinitionList items={[
-              [t('trajectory.field.promptTokens'), formatNumber(span.inputTokens)],
-              [t('trajectory.field.cachedTokens'), formatNumber(span.cachedTokens)],
-              [t('trajectory.field.uncachedTokens'), formatNumber(Math.max(0, span.inputTokens - span.cachedTokens))],
-              [t('trajectory.field.completionTokens'), formatNumber(span.outputTokens)],
-              [t('trajectory.field.reasoningTokens'), formatNumber(span.reasoningTokens)],
+            <TrajectoryDefinitionList items={[
+              [t('trajectory.field.promptTokens'), formatTrajectoryNumber(span.inputTokens)],
+              [t('trajectory.field.cachedTokens'), formatTrajectoryNumber(span.cachedTokens)],
+              [t('trajectory.field.uncachedTokens'), formatTrajectoryNumber(Math.max(0, span.inputTokens - span.cachedTokens))],
+              [t('trajectory.field.completionTokens'), formatTrajectoryNumber(span.outputTokens)],
+              [t('trajectory.field.reasoningTokens'), formatTrajectoryNumber(span.reasoningTokens)],
               [t('trajectory.field.cacheHitRate'), span.inputTokens > 0 ? `${(span.cachedTokens / span.inputTokens * 100).toFixed(1)}%` : '—'],
             ]} />
-          ) : <EmptyTab />}
+          ) : <EmptyInspectorTab />}
         </TabsContent>
         <TabsContent value="data" className="min-h-0 overflow-auto border-t border-[var(--nova-border)] p-3">
-          <JSONBlock value={span?.attrs ?? event?.data ?? {}} />
+          <TrajectoryJSONBlock value={span?.attrs ?? event?.data ?? {}} />
         </TabsContent>
         <TabsContent value="raw" className="min-h-0 overflow-auto border-t border-[var(--nova-border)] p-3">
-          <JSONBlock value={record} />
+          <TrajectoryJSONBlock value={record} />
         </TabsContent>
       </Tabs>
     </aside>
   )
-}
-
-function DefinitionList({ items }: { items: Array<readonly [string, string]> }) {
-  return (
-    <dl className="divide-y divide-[var(--nova-border-soft)] overflow-hidden rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)]">
-      {items.map(([label, value]) => (
-        <div key={label} className="grid grid-cols-[minmax(100px,38%)_minmax(0,1fr)] gap-3 px-3 py-2">
-          <dt className="text-[10px] text-[var(--nova-text-faint)]">{label}</dt>
-          <dd className="break-words text-right font-mono text-[10px] text-[var(--nova-text)]">{value || '—'}</dd>
-        </div>
-      ))}
-    </dl>
-  )
-}
-
-function JSONBlock({ value }: { value: unknown }) {
-  return <pre className="overflow-auto whitespace-pre-wrap break-words rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-3 font-mono text-[10px] leading-5 text-[var(--nova-text-muted)]">{JSON.stringify(value, null, 2)}</pre>
-}
-
-function EmptyTab() {
-  const { t } = useTranslation()
-  return <div className="py-8 text-center text-[11px] text-[var(--nova-text-faint)]">{t('trajectory.inspector.notAvailable')}</div>
-}
-
-function formatExactTime(timestamp: number) {
-  if (!timestamp) return '—'
-  const date = new Date(timestamp)
-  const milliseconds = String(date.getMilliseconds()).padStart(3, '0')
-  return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour12: false })}.${milliseconds}`
-}
-
-function formatNumber(value: number) {
-  return new Intl.NumberFormat().format(value)
-}
-
-function throughput(span: TrajectorySpan) {
-  if (span.generationMs === null || span.generationMs <= 0 || span.outputTokens <= 0) return '—'
-  return `${(span.outputTokens / (span.generationMs / 1_000)).toFixed(1)} tok/s`
 }

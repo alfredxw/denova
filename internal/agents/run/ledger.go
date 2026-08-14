@@ -14,8 +14,9 @@ import (
 	agenttool "denova/internal/agents/tool"
 )
 
-// Ledger is a durable JSONL trace for one Agent loop run.
-// It records bounded metadata only, never full prompts, tool outputs, or thinking.
+// Ledger is a durable JSONL trace for one Agent loop run. Normal records retain
+// bounded metadata; Developer Mode can additionally persist exact model-visible
+// content in the same permission-restricted file.
 type Ledger struct {
 	mu   sync.Mutex
 	id   string
@@ -282,6 +283,26 @@ func (l *Ledger) RecordTraceSpan(span TraceSpanRecord) error {
 		span.Name = "trace_span"
 	}
 	return l.writeRecord(span.Name, l.traceSpanData(span))
+}
+
+// RecordTraceContent persists opt-in developer content without applying the
+// metadata sanitizer. This method is only called after the global Developer
+// Mode content gate has been checked at the model boundary.
+func (l *Ledger) RecordTraceContent(record TraceContentRecord) error {
+	if l == nil {
+		return nil
+	}
+	recordType := strings.TrimSpace(record.Type)
+	if recordType != "llm_input" && recordType != "llm_output" {
+		return fmt.Errorf("unsupported trace content record type %q", recordType)
+	}
+	data := map[string]any{
+		"trace_id": strings.TrimSpace(record.TraceID),
+		"span_id":  strings.TrimSpace(record.SpanID),
+		"call_id":  strings.TrimSpace(record.CallID),
+		"content":  record.Payload,
+	}
+	return l.writeRecord(recordType, data)
 }
 
 func (l *Ledger) RecordFinish(status, reason string, generatedBytes int) error {

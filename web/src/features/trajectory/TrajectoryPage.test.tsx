@@ -35,12 +35,17 @@ describe('TrajectoryPage', () => {
     expect(getAgentRunTrace).not.toHaveBeenCalled()
   })
 
-  it('renders nested calls and the latency overview from persisted trace data', async () => {
+  it('renders model-visible records, content inspectors, and the secondary call analysis', async () => {
     vi.mocked(getAgentRunTraces).mockResolvedValue([summaryFixture()])
     vi.mocked(getAgentRunTrace).mockResolvedValue(traceFixture())
 
     renderPage()
 
+    expect(await screen.findByRole('region', { name: '模型可见记录' })).toBeInTheDocument()
+    expect(screen.getAllByText('初始 System Prompt').length).toBeGreaterThan(0)
+    expect(screen.getByRole('tab', { name: 'System Prompt' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: '工具' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '调用与事件' }))
     expect(await screen.findByRole('tree', { name: '调用树' })).toBeInTheDocument()
     expect(screen.getAllByText('writing').length).toBeGreaterThan(0)
     expect(screen.getAllByText('model-a').length).toBeGreaterThan(0)
@@ -58,9 +63,9 @@ describe('TrajectoryPage', () => {
 
     renderPage()
 
-    expect(await screen.findByRole('tree', { name: '调用树' })).toBeInTheDocument()
+    expect(await screen.findByRole('region', { name: '模型可见记录' })).toBeInTheDocument()
     expect(screen.queryByRole('complementary', { name: '记录检查器' })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: /^model-asuccess/ }))
+    fireEvent.click(screen.getByRole('button', { name: '助手 · 请求 #1' }))
     expect(screen.getByRole('complementary', { name: '记录检查器' })).toBeInTheDocument()
   })
 })
@@ -85,6 +90,7 @@ function summaryFixture() {
     tool_calls: 1,
     duration_ms: 4_000,
     agent_kind: 'writing',
+    content_captured: true,
   }
 }
 
@@ -92,6 +98,31 @@ function traceFixture() {
   return {
     summary: summaryFixture(),
     records: [
+      {
+        type: 'llm_input',
+        run_id: 'run-page-test',
+        created_at: '2026-08-13T10:00:00.000Z',
+        data: {
+          span_id: 'model', call_id: 'llm-1',
+          content: {
+            source: 'agent model boundary', purpose: 'developer trajectory inspection',
+            messages: [
+              { role: 'system', content: 'You are a writing assistant.' },
+              { role: 'user', content: 'Summarize this chapter.' },
+            ],
+            tools: [{ name: 'read_file', description: 'Read a project file', parameters: { type: 'object' } }],
+          },
+        },
+      },
+      {
+        type: 'llm_output',
+        run_id: 'run-page-test',
+        created_at: '2026-08-13T10:00:03.000Z',
+        data: {
+          span_id: 'model', call_id: 'llm-1',
+          content: { status: 'success', message: { role: 'assistant', content: '## Summary\n\nDone.', reasoning_content: 'I should be concise.' } },
+        },
+      },
       {
         type: 'agent_run',
         run_id: 'run-page-test',

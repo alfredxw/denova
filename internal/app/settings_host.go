@@ -148,10 +148,12 @@ func (host settingsHost) ApplySettings(_ config.LayeredSettings, layer config.Se
 func syncRuntimeDiagnostics(cfg *config.Config) {
 	if cfg == nil {
 		agentrun.SetModelInputLoggingEnabled(false)
+		agentrun.SetTraceContentCaptureEnabled(false)
 		return
 	}
 	agentrun.SetModelInputLoggingEnabled(cfg.DevMode && cfg.LLMInputLogEnabled)
 	agentrun.SetTraceRuntimeConfig(cfg.TraceCaptureLevel, cfg.TraceExporter, cfg.TraceRetentionRuns)
+	agentrun.SetTraceContentCaptureEnabled(cfg.Labs.DeveloperMode)
 }
 
 type modelHost struct{ app *App }

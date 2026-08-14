@@ -239,7 +239,7 @@ const settings = {
   'settings.section.labs': 'Labs',
   'settings.labs.sectionTitle': 'Experimental features',
   'settings.labs.developerMode': 'Developer Mode',
-  'settings.labs.developerModeHint': 'Adds a Trajectory page to the primary menu in both Writing and Game modes for Agent call trees, model and tool latency, TTFT, token, and cache analysis.',
+  'settings.labs.developerModeHint': 'Adds Trajectory to the primary menu in Writing and Game modes. New runs record complete model-visible prompts, responses, reasoning, tool payloads, results, and schemas locally; this can include sensitive project content and follows trace retention.',
   'settings.labs.continualLearning': 'Harness Optimization Lab',
   'settings.labs.continualLearningHint': 'Enables the user-level Harness State page under Agents. Current State applies to all projects and new runs; active runs keep the State they started with.',
   'settings.labs.continualLearningSchedule': 'Scheduled optimization',

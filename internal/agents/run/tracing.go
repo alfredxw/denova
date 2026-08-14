@@ -25,9 +25,10 @@ const (
 )
 
 type traceRuntimeConfig struct {
-	CaptureLevel  string
-	Exporter      string
-	RetentionRuns int
+	CaptureLevel   string
+	Exporter       string
+	RetentionRuns  int
+	CaptureContent bool
 }
 
 var (
@@ -42,11 +43,18 @@ var (
 func SetTraceRuntimeConfig(captureLevel, exporter string, retentionRuns int) {
 	traceRuntimeMu.Lock()
 	defer traceRuntimeMu.Unlock()
-	traceRuntimeConfigValue = traceRuntimeConfig{
-		CaptureLevel:  normalizeTraceCaptureLevel(captureLevel),
-		Exporter:      normalizeTraceExporter(exporter),
-		RetentionRuns: normalizeTraceRetentionRuns(retentionRuns),
-	}
+	traceRuntimeConfigValue.CaptureLevel = normalizeTraceCaptureLevel(captureLevel)
+	traceRuntimeConfigValue.Exporter = normalizeTraceExporter(exporter)
+	traceRuntimeConfigValue.RetentionRuns = normalizeTraceRetentionRuns(retentionRuns)
+}
+
+// SetTraceContentCaptureEnabled controls developer-only capture of complete
+// model-visible inputs and outputs. The local ledger is permission-restricted,
+// but callers must still treat these records as potentially sensitive.
+func SetTraceContentCaptureEnabled(enabled bool) {
+	traceRuntimeMu.Lock()
+	defer traceRuntimeMu.Unlock()
+	traceRuntimeConfigValue.CaptureContent = enabled
 }
 
 func traceRuntimeConfigSnapshot() traceRuntimeConfig {
@@ -102,6 +110,17 @@ type TraceSpanRecord struct {
 	DurationMS   int64          `json:"duration_ms"`
 	Attrs        map[string]any `json:"attrs,omitempty"`
 	Error        string         `json:"error,omitempty"`
+}
+
+// TraceContentRecord is an opt-in developer record tied to one trace span.
+// Unlike TraceSpanRecord, Payload intentionally contains exact model-visible
+// content so a trajectory can reconstruct prompts, tools, and response blocks.
+type TraceContentRecord struct {
+	TraceID string
+	SpanID  string
+	CallID  string
+	Type    string
+	Payload map[string]any
 }
 
 type Span struct {
@@ -346,6 +365,7 @@ func BeginLLMCallTrace(ctx context.Context, agentKind, source, mode string, cfg 
 		CacheScope:     modelInputCacheScope(ctx, agentKind),
 		SystemSections: modelInputSystemSectionsFromContext(ctx),
 	})
+	recordLLMInputTraceContent(span, callID, cfg, messages, tools)
 	return span, callID, spanCtx
 }
 
@@ -375,6 +395,7 @@ func FinishLLMCallTrace(span *Span, callID, agentKind, source, mode, modelName s
 	if span != nil && span.observer != nil && (outcome.FinishReason != "" || len(outcome.RequestedTools) > 0 || outcome.ProviderRequestID != "") {
 		span.observer.RecordLLMOutcome(outcome)
 	}
+	recordLLMOutputTraceContent(span, callID, msg, err)
 	if err != nil {
 		attrs["error"] = err.Error()
 		if span != nil {

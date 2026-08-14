@@ -17,6 +17,7 @@ const (
 	defaultRunTraceLimit     = 20
 	maxRunTraceLimit         = 100
 	defaultRunTraceRecordCap = 500
+	maxRunTraceRecordBytes   = 64 * 1024 * 1024
 )
 
 // TraceLocation identifies the durable Project state that owns Agent traces.
@@ -62,6 +63,7 @@ type RunTraceSummary struct {
 	Mutations             int       `json:"mutations,omitempty"`
 	VerificationStatus    string    `json:"verification_status,omitempty"`
 	Recoverable           bool      `json:"recoverable,omitempty"`
+	ContentCaptured       bool      `json:"content_captured,omitempty"`
 }
 
 type RunTrace struct {
@@ -207,7 +209,7 @@ func readRunTraceFile(path string, recordCap int) (RunTrace, error) {
 	var tail []RunTraceRecord
 	totalRecords := 0
 	scanner := bufio.NewScanner(file)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	scanner.Buffer(make([]byte, 0, 64*1024), maxRunTraceRecordBytes)
 	for scanner.Scan() {
 		var record RunTraceRecord
 		if err := json.Unmarshal(scanner.Bytes(), &record); err != nil {
@@ -287,6 +289,8 @@ func updateRunTraceSummary(summary *RunTraceSummary, record RunTraceRecord, path
 	}
 	summary.Path = path
 	switch record.Type {
+	case "llm_input":
+		summary.ContentCaptured = true
 	case "run_created":
 		summary.TaskID = stringField(record.Data, "task_id")
 		summary.AgentKind = stringField(record.Data, "agent_kind")

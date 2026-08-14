@@ -262,6 +262,7 @@ func settingsFromConfig(cfg *Config) Settings {
 		SubAgents:                cfg.SubAgents,
 		WebAccess:                settingsFromWebAccessConfig(cfg.WebAccess),
 		Labs: LabSettings{
+			DeveloperMode:                  boolPtr(cfg.Labs.DeveloperMode),
 			ContinualLearning:              boolPtr(cfg.Labs.ContinualLearning),
 			ContinualLearningSchedule:      boolPtr(cfg.Labs.ContinualLearningSchedule),
 			ContinualLearningIntervalHours: intPtr(cfg.Labs.ContinualLearningIntervalHours),

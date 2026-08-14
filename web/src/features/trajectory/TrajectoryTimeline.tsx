@@ -39,6 +39,7 @@ export function TrajectoryTimeline({
   const gestureRef = useRef<PointerGesture | null>(null)
   const [draftRange, setDraftRange] = useState<TrajectoryRange | null>(null)
   const [viewport, setViewport] = useState<TrajectoryRange | null>(null)
+  const [hoverTime, setHoverTime] = useState<number | null>(null)
   const domain = Math.max(1, projection.end - projection.start)
   const visible = normalizeViewport(viewport, projection.start, projection.end)
   const visibleDuration = Math.max(1, visible.end - visible.start)
@@ -84,9 +85,13 @@ export function TrajectoryTimeline({
         </div>
         {range && (
           <Button type="button" size="xs" variant="ghost" onClick={() => onRangeChange(null)}>
-            {t('trajectory.timeline.clearRange')}
+            {formatAxisValue(Math.abs(range.end - range.start))} · {t('trajectory.timeline.clearRange')}
           </Button>
         )}
+        <div className="hidden items-center gap-2 text-[9px] text-[var(--nova-text-faint)] md:flex">
+          <span className="inline-flex items-center gap-1"><span className="size-1.5 rounded-full bg-[var(--nova-warning)]" />TTFT</span>
+          <span className="inline-flex items-center gap-1"><span className="size-1.5 rounded-full bg-[var(--nova-text-muted)]" />{t('trajectory.field.generation')}</span>
+        </div>
         <Tooltip>
           <TooltipTrigger asChild>
             <Button type="button" size="icon-xs" variant="ghost" onClick={() => setViewport(null)} aria-label={t('trajectory.timeline.resetZoom')}>
@@ -101,9 +106,9 @@ export function TrajectoryTimeline({
       </div>
       <div className="grid grid-cols-[54px_minmax(0,1fr)] px-3 py-2 sm:grid-cols-[70px_minmax(0,1fr)]">
         <div className="grid h-[78px] grid-rows-3 pr-2 text-right text-[9px] uppercase tracking-[0.08em] text-[var(--nova-text-faint)]">
+          <span className="self-center">{t('trajectory.lane.input')}</span>
           <span className="self-center">{t('trajectory.lane.model')}</span>
           <span className="self-center">{t('trajectory.lane.tools')}</span>
-          <span className="self-center">{t('trajectory.lane.runtime')}</span>
         </div>
         <div
           ref={trackRef}
@@ -138,6 +143,7 @@ export function TrajectoryTimeline({
             setDraftRange({ start: anchor, end: anchor })
           }}
           onPointerMove={(event) => {
+            setHoverTime(timeAtClientX(event.clientX))
             const gesture = gestureRef.current
             if (!gesture || gesture.pointerID !== event.pointerId) return
             if (gesture.kind === 'select') {
@@ -152,6 +158,9 @@ export function TrajectoryTimeline({
           }}
           onPointerUp={finishGesture}
           onPointerCancel={finishGesture}
+          onPointerLeave={() => {
+            if (!gestureRef.current) setHoverTime(null)
+          }}
         >
           <div className="pointer-events-none absolute inset-0 grid grid-rows-3">
             <div className="border-b border-[var(--nova-border-soft)]" />
@@ -164,6 +173,7 @@ export function TrajectoryTimeline({
               span={span}
               visible={visible}
               selected={span.id === selectedSpanID}
+              offset={formatAxisValue(Math.max(0, span.start - projection.start))}
               onSelect={() => onSpanSelect(span.id)}
             />
           ))}
@@ -172,6 +182,16 @@ export function TrajectoryTimeline({
               className="pointer-events-none absolute inset-y-0 z-20 border-x border-[var(--nova-text-muted)] bg-[var(--nova-selection-bg)]"
               style={rangeStyle(selection, visible)}
             />
+          )}
+          {hoverTime !== null && !gestureRef.current && (
+            <div
+              className="pointer-events-none absolute inset-y-0 z-40 w-px bg-[var(--nova-text-muted)] opacity-60"
+              style={{ left: `${(hoverTime - visible.start) / visibleDuration * 100}%` }}
+            >
+              <span className="absolute -top-1 left-1 whitespace-nowrap rounded-[3px] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1 py-0.5 font-mono text-[8px] text-[var(--nova-text-muted)] shadow-sm">
+                +{formatAxisValue(Math.max(0, hoverTime - projection.start))}
+              </span>
+            </div>
           )}
           {visibleSpans.length === 0 && (
             <div className="absolute inset-0 grid place-items-center text-[10px] text-[var(--nova-text-faint)]">{t('trajectory.timeline.empty')}</div>
@@ -192,11 +212,13 @@ function TimelineOperation({
   span,
   visible,
   selected,
+  offset,
   onSelect,
 }: {
   span: TimelineSpan
   visible: TrajectoryRange
   selected: boolean
+  offset: string
   onSelect: () => void
 }) {
   const { t } = useTranslation()
@@ -233,7 +255,7 @@ function TimelineOperation({
       <TooltipContent side="top" className="block">
         <div className="font-medium">{span.label}</div>
         <div className="mt-0.5 font-mono text-[10px] text-[var(--nova-text-muted)]">
-          {t('trajectory.timeline.duration', { duration: formatTrajectoryDuration(span.durationMs) })}
+          +{offset} · {t('trajectory.timeline.duration', { duration: formatTrajectoryDuration(span.durationMs) })}
           {span.ttftMs === null ? '' : ` · TTFT ${formatTrajectoryDuration(span.ttftMs)}`}
         </div>
       </TooltipContent>
@@ -242,9 +264,9 @@ function TimelineOperation({
 }
 
 function laneIndex(category: TimelineSpan['category']) {
-  if (category === 'model') return 0
-  if (category === 'tool') return 1
-  return 2
+  if (category === 'model') return 1
+  if (category === 'tool') return 2
+  return 0
 }
 
 function categoryTone(category: TimelineSpan['category']) {

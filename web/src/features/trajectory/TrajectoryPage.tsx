@@ -12,7 +12,10 @@ import { cn } from '@/lib/utils'
 import { TrajectoryInspector } from './TrajectoryInspector'
 import { TrajectoryLedger } from './TrajectoryLedger'
 import { TrajectoryTimeline } from './TrajectoryTimeline'
+import { TrajectoryContentInspector } from './TrajectoryContentInspector'
+import { TrajectoryContentLedger } from './TrajectoryContentLedger'
 import type { TrajectoryRange } from './TrajectoryTimeline'
+import { analyzeTrajectoryContent } from './trajectory-content'
 import {
   analyzeTrajectory,
   formatTrajectoryDuration,
@@ -25,6 +28,8 @@ interface TrajectoryPageProps {
   target: ResourceTarget
   onClose?: () => void
 }
+
+type TrajectoryWorkspaceView = 'records' | 'analysis'
 
 /** Project-scoped developer workspace for hierarchical Agent trace analysis. */
 export function TrajectoryPage({ target, onClose }: TrajectoryPageProps) {
@@ -41,6 +46,8 @@ export function TrajectoryPage({ target, onClose }: TrajectoryPageProps) {
   const [range, setRange] = useState<TrajectoryRange | null>(null)
   const [selectedSpanID, setSelectedSpanID] = useState('')
   const [selectedEventID, setSelectedEventID] = useState('')
+  const [selectedEntryID, setSelectedEntryID] = useState('')
+  const [workspaceView, setWorkspaceView] = useState<TrajectoryWorkspaceView>('records')
 
   const loadRuns = useCallback(async (preferredRunID?: string) => {
     if (!projectID) return
@@ -87,6 +94,7 @@ export function TrajectoryPage({ target, onClose }: TrajectoryPageProps) {
         setTrace(nextTrace)
         setRange(null)
         setSelectedEventID('')
+        setSelectedEntryID('')
       })
       .catch((cause) => {
         if (cancelled) return
@@ -101,21 +109,26 @@ export function TrajectoryPage({ target, onClose }: TrajectoryPageProps) {
   }, [projectID, selectedRunID])
 
   const analysis = useMemo(() => trace ? analyzeTrajectory(trace) : null, [trace])
+  const content = useMemo(() => trace && analysis ? analyzeTrajectoryContent(trace, analysis) : null, [analysis, trace])
   const projection = useMemo(() => analysis ? projectTimeline(analysis, timelineMode) : null, [analysis, timelineMode])
   const rangeSpanIDs = useMemo(() => projection && range
     ? timelineRangeSpanIDs(projection, range.start, range.end)
     : null, [projection, range])
   const selectedSpan = analysis?.spans.find((span) => span.id === selectedSpanID) ?? null
   const selectedEvent = analysis?.events.find((event) => event.id === selectedEventID) ?? null
-  const inspectorOpen = Boolean(selectedSpan || selectedEvent)
+  const selectedEntry = content?.entries.find((entry) => entry.id === selectedEntryID) ?? null
+  const selectedTimelineSpanID = selectedEntry?.span?.id ?? selectedSpanID
+  const inspectorOpen = Boolean(selectedEntry || selectedSpan || selectedEvent)
 
   useEffect(() => {
     // The inspector is an overlay below the desktop breakpoint. Start compact
     // layouts on the ledger and open details only after an explicit row tap.
-    const defaultSpan = isCompact ? null : analysis?.roots[0] ?? analysis?.spans[0]
-    setSelectedSpanID(defaultSpan?.id ?? '')
+    const defaultEntry = isCompact ? null : content?.entries[0]
+    setWorkspaceView('records')
+    setSelectedEntryID(defaultEntry?.id ?? '')
+    setSelectedSpanID('')
     setSelectedEventID('')
-  }, [analysis, isCompact])
+  }, [analysis, content, isCompact])
 
   const exportTrace = async () => {
     if (!projectID || !selectedRunID) return
@@ -162,14 +175,34 @@ export function TrajectoryPage({ target, onClose }: TrajectoryPageProps) {
       ) : runs.length === 0 ? (
         <EmptyPage icon={Route} title={t('trajectory.empty')} description={t('trajectory.emptyDescription')} />
       ) : (
-        <div className="grid min-h-0 flex-1 grid-rows-[150px_minmax(0,1fr)] bg-[var(--nova-bg)] md:grid-cols-[250px_minmax(0,1fr)] md:grid-rows-1">
+        <div className="grid min-h-0 flex-1 grid-rows-[150px_minmax(0,1fr)] bg-[var(--nova-bg)] md:grid-cols-[230px_minmax(0,1fr)] md:grid-rows-1">
           <RunList runs={runs} selectedRunID={selectedRunID} onSelect={setSelectedRunID} />
           <section className="relative flex min-h-0 min-w-0 flex-col overflow-hidden bg-[var(--nova-surface)]">
-            {analysis && projection ? (
+            {analysis && projection && content ? (
               <>
                 <TraceMetricStrip analysis={analysis} />
                 <div className="flex h-9 shrink-0 items-center gap-1 border-b border-[var(--nova-border)] px-3">
-                  <span className="mr-1 text-[10px] text-[var(--nova-text-faint)]">{t('trajectory.timeline.scale')}</span>
+                  <div className="flex rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0.5">
+                    {(['records', 'analysis'] as const).map((view) => (
+                      <Button
+                        key={view}
+                        type="button"
+                        size="xs"
+                        variant="ghost"
+                        className={cn('h-6 px-2', workspaceView === view && 'bg-[var(--nova-active)]')}
+                        aria-pressed={workspaceView === view}
+                        onClick={() => {
+                          setWorkspaceView(view)
+                          setSelectedEntryID(view === 'records' && !isCompact ? content.entries[0]?.id ?? '' : '')
+                          setSelectedSpanID(view === 'analysis' && !isCompact ? analysis.roots[0]?.id ?? '' : '')
+                          setSelectedEventID('')
+                        }}
+                      >
+                        {t(`trajectory.view.${view}`)}
+                      </Button>
+                    ))}
+                  </div>
+                  <span className="ml-2 mr-1 hidden text-[10px] text-[var(--nova-text-faint)] sm:inline">{t('trajectory.timeline.scale')}</span>
                   {(['actual', 'duration', 'sequence'] as const).map((mode) => (
                     <Button
                       key={mode}
@@ -186,16 +219,24 @@ export function TrajectoryPage({ target, onClose }: TrajectoryPageProps) {
                       {t(`trajectory.timeline.mode.${mode}`)}
                     </Button>
                   ))}
-                  <span className="ml-auto hidden truncate font-mono text-[9px] text-[var(--nova-text-faint)] sm:block">{trace?.summary.id}</span>
+                  <span className="ml-auto hidden truncate font-mono text-[9px] text-[var(--nova-text-faint)] lg:block">{trace?.summary.id}</span>
                 </div>
                 <TrajectoryTimeline
                   projection={projection}
-                  selectedSpanID={selectedSpanID}
+                  selectedSpanID={selectedTimelineSpanID}
                   range={range}
                   onRangeChange={setRange}
                   onSpanSelect={(spanID) => {
-                    setSelectedSpanID(spanID)
-                    setSelectedEventID('')
+                    const entry = content.entries.find((candidate) => candidate.span?.id === spanID && candidate.kind === 'assistant')
+                      ?? content.entries.find((candidate) => candidate.span?.id === spanID)
+                    if (workspaceView === 'records' && entry) {
+                      setSelectedEntryID(entry.id)
+                    } else {
+                      setWorkspaceView('analysis')
+                      setSelectedEntryID('')
+                      setSelectedSpanID(spanID)
+                      setSelectedEventID('')
+                    }
                   }}
                 />
                 {trace?.truncated && (
@@ -204,21 +245,42 @@ export function TrajectoryPage({ target, onClose }: TrajectoryPageProps) {
                   </div>
                 )}
                 <div className="relative flex min-h-0 flex-1">
-                  <TrajectoryLedger
-                    analysis={analysis}
-                    selectedSpanID={selectedSpanID}
-                    selectedEventID={selectedEventID}
-                    rangeSpanIDs={rangeSpanIDs}
-                    onSpanSelect={(spanID) => {
-                      setSelectedSpanID(spanID)
-                      setSelectedEventID('')
-                    }}
-                    onEventSelect={(eventID) => {
-                      setSelectedEventID(eventID)
-                      setSelectedSpanID('')
-                    }}
-                  />
-                  {inspectorOpen && (
+                  {workspaceView === 'records' ? (
+                    <TrajectoryContentLedger
+                      content={content}
+                      selectedEntryID={selectedEntryID}
+                      rangeSpanIDs={rangeSpanIDs}
+                      onSelect={(entryID) => {
+                        setSelectedEntryID(entryID)
+                        setSelectedSpanID('')
+                        setSelectedEventID('')
+                      }}
+                    />
+                  ) : (
+                    <TrajectoryLedger
+                      analysis={analysis}
+                      selectedSpanID={selectedSpanID}
+                      selectedEventID={selectedEventID}
+                      rangeSpanIDs={rangeSpanIDs}
+                      onSpanSelect={(spanID) => {
+                        setSelectedSpanID(spanID)
+                        setSelectedEntryID('')
+                        setSelectedEventID('')
+                      }}
+                      onEventSelect={(eventID) => {
+                        setSelectedEventID(eventID)
+                        setSelectedSpanID('')
+                        setSelectedEntryID('')
+                      }}
+                    />
+                  )}
+                  {workspaceView === 'records' && selectedEntry && (
+                    <TrajectoryContentInspector
+                      entry={selectedEntry}
+                      onClose={() => setSelectedEntryID('')}
+                    />
+                  )}
+                  {workspaceView === 'analysis' && inspectorOpen && (
                     <TrajectoryInspector
                       span={selectedSpan}
                       event={selectedEvent}
@@ -279,6 +341,7 @@ function RunList({
               <span>{formatRunTime(run.created_at)}</span>
               <span>{formatTrajectoryDuration(run.duration_ms)}</span>
               <span>{t('trajectory.runs.calls', { models: run.llm_calls ?? 0, tools: run.tool_calls ?? 0 })}</span>
+              <span className={run.content_captured ? 'text-[var(--nova-success)]' : ''}>{t(run.content_captured ? 'trajectory.runs.content' : 'trajectory.runs.metadata')}</span>
             </span>
           </button>
         ))}
@@ -294,16 +357,17 @@ function TraceMetricStrip({ analysis }: { analysis: ReturnType<typeof analyzeTra
     [t('trajectory.metric.total'), formatTrajectoryDuration(metrics.totalMs)],
     [t('trajectory.metric.model'), `${metrics.modelCalls} · ${formatTrajectoryDuration(metrics.modelMs)}`],
     [t('trajectory.metric.tools'), `${metrics.toolCalls} · ${formatTrajectoryDuration(metrics.toolMs)}`],
-    ['TTFT', formatTrajectoryDuration(metrics.averageTTFTMs)],
+    [t('trajectory.metric.ttft'), `P50 ${formatTrajectoryDuration(metrics.p50TTFTMs)} · P95 ${formatTrajectoryDuration(metrics.p95TTFTMs)}`],
+    [t('trajectory.metric.throughput'), metrics.averageThroughput === null ? '—' : `${metrics.averageThroughput.toFixed(1)} tok/s`],
     [t('trajectory.metric.idle'), formatTrajectoryDuration(metrics.idleMs)],
     [t('trajectory.metric.cache'), metrics.promptTokens > 0 ? `${(metrics.cacheHitRate * 100).toFixed(1)}%` : '—'],
   ]
   return (
-    <div className="grid shrink-0 grid-cols-3 divide-x divide-[var(--nova-border-soft)] border-b border-[var(--nova-border)] bg-[var(--nova-surface-2)] lg:grid-cols-6">
+    <div className="flex shrink-0 divide-x divide-[var(--nova-border-soft)] overflow-x-auto border-b border-[var(--nova-border)] bg-[var(--nova-surface-2)]">
       {items.map(([label, value]) => (
-        <div key={label} className="min-w-0 px-3 py-2">
-          <div className="truncate text-[9px] uppercase tracking-[0.08em] text-[var(--nova-text-faint)]">{label}</div>
-          <div className="mt-0.5 truncate font-mono text-[11px] text-[var(--nova-text)]">{value}</div>
+        <div key={label} className="flex h-8 min-w-max items-center gap-1.5 px-3">
+          <div className="text-[9px] uppercase tracking-[0.08em] text-[var(--nova-text-faint)]">{label}</div>
+          <div className="font-mono text-[10px] text-[var(--nova-text)]">{value}</div>
         </div>
       ))}
     </div>
