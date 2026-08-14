@@ -164,8 +164,8 @@ func (projector *PublicEventProjector) projectLocked(event agent.Event, inherite
 			return
 		}
 		projector.finishInteractiveResponseLocked(nil)
-		// Durable final output repairs a missed ephemeral stream and reconstructs
-		// cold replay without duplicating content already delivered live.
+		// Final output repairs any missed live delta without duplicating content
+		// already delivered to this in-process display stream.
 		content := missingPublicOutputSuffix(projector.content.String(), payload.Content)
 		if content != "" {
 			projector.content.WriteString(content)
@@ -389,16 +389,6 @@ func (projector *PublicEventProjector) projectLocked(event agent.Event, inherite
 		if meta.SubAgent {
 			projector.emitEvent(agentrun.Event{Type: "subagent_artifact", Data: meta.appendTo(map[string]any{
 				"call_id": payload.CallID, "artifact": payload.Artifact,
-			})})
-		}
-	case agent.RecoveryRequired:
-		projector.emitEvent(agentrun.Event{Type: "runtime_recovery_required", Data: meta.appendTo(map[string]any{
-			"event": "runtime_recovery_required", "code": "agent_runtime.recovery_required", "reason": payload.Reason,
-		})})
-	case agent.RecoveryResumed:
-		if meta.SubAgent {
-			projector.emitEvent(agentrun.Event{Type: "runtime_recovery_resumed", Data: meta.appendTo(map[string]any{
-				"event": "runtime_recovery_resumed",
 			})})
 		}
 	case agent.EventStreamGap:

@@ -59,7 +59,7 @@ func (customGoalManager) AfterRun(context.Context, GoalAfterRunRequest) (GoalCon
 }
 
 func TestCustomGoalManagerPersistsOpaqueStateAndPreparesItsOwnContext(t *testing.T) {
-	store := &persistentMemoryStore{Store: agentsession.Memory()}
+	store := agentsession.Memory()
 	definition := Definition{
 		Model:         &lifecycleModel{responses: []*Message{AssistantMessage("unused", nil)}},
 		ModelIdentity: CapabilityIdentity{Kind: "model.custom-goal-test", Version: 1},

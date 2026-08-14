@@ -32,7 +32,7 @@ type Command struct {
 	Input           agentchat.ChatRequest
 }
 
-// RecoveryRequest carries the exact durable action selected by the caller.
+// RecoveryRequest carries the exact live attachment selected by the caller.
 // Story and branch scope are used only by the interactive owner.
 type RecoveryRequest struct {
 	Action   agentexecution.RuntimeRecoveryAction
@@ -66,13 +66,13 @@ func ValidateRecoveryAction(status agentrun.RuntimeStatus, selected agentexecuti
 	)
 }
 
-// RuntimeProjection reads the durable runtime without turning an unavailable
+// RuntimeProjection reads live Run state without turning an unavailable
 // process-local projection into a user operation failure.
 func RuntimeProjection(ctx context.Context, service *agentexecution.Runtime, options agentrun.Options) (agentrun.RuntimeStatus, bool) {
 	if service == nil {
 		return agentrun.RuntimeStatus{}, false
 	}
-	snapshot, err := service.RuntimeRecoveryStatusProjection(ctx, options)
+	snapshot, err := service.RuntimeStatusProjection(ctx, options)
 	if err == nil {
 		return snapshot, true
 	}
@@ -85,9 +85,9 @@ func RuntimeProjection(ctx context.Context, service *agentexecution.Runtime, opt
 	return agentrun.RuntimeStatus{}, false
 }
 
-// FinishedRecoveryActionStillCurrent distinguishes an idempotent replay of a
-// settled action from a retry whose earlier display task failed before the
-// durable state changed.
+// FinishedRecoveryActionStillCurrent distinguishes a repeated attachment to a
+// settled display task from a retry whose earlier display task failed while
+// the Run remained active.
 func FinishedRecoveryActionStillCurrent(
 	ctx context.Context,
 	task *apptask.Task,

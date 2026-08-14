@@ -685,6 +685,16 @@ func TestSearchToolsPublishNewStrictInterfaces(t *testing.T) {
 	if _, ok := grepSchema.Properties.Get("cursor"); !ok {
 		t.Fatalf("grep cursor schema = %#v", grepSchema)
 	}
+	descriptionSchema, ok := grepSchema.Properties.Get("description")
+	if !ok || containsTestString(grepSchema.Required, "description") ||
+		!strings.Contains(descriptionSchema.Description, "user-facing description") {
+		t.Fatalf("grep description schema = %#v; required=%#v", descriptionSchema, grepSchema.Required)
+	}
+	commandSchema, _ := grepSchema.Properties.Get("command")
+	if !strings.Contains(commandSchema.Description, "Always use rg, not grep") ||
+		!strings.Contains(commandSchema.Description, "never add head, tail") {
+		t.Fatalf("grep command guidance = %q", commandSchema.Description)
+	}
 	for _, removed := range []string{"pattern", "paths", "mode", "case_sensitive", "gitignore", "context_before", "context_after", "limit"} {
 		if _, ok := grepSchema.Properties.Get(removed); ok {
 			t.Fatalf("grep schema still exposes removed field %q: %#v", removed, grepSchema)
@@ -692,6 +702,13 @@ func TestSearchToolsPublishNewStrictInterfaces(t *testing.T) {
 	}
 	if glob.Descriptor.ResultRecoveryKind != agent.ToolResultRecoveryRerun || grep.Descriptor.ResultRecoveryKind != agent.ToolResultRecoveryRerun {
 		t.Fatalf("search result recovery = glob:%q grep:%q", glob.Descriptor.ResultRecoveryKind, grep.Descriptor.ResultRecoveryKind)
+	}
+	if grep.Descriptor.Presentation != agent.UniformToolPresentation(agent.ToolPresentationSearch) {
+		t.Fatalf("grep presentation = %#v", grep.Descriptor.Presentation)
+	}
+	legacyIdentity := toolsetIdentity("tools.grep", searcher.Identity())
+	if grep.ImplementationIdentity.ConfigHash == legacyIdentity.ConfigHash {
+		t.Fatal("grep implementation identity did not rotate with the command contract")
 	}
 	if _, err := glob.Tool.Run(context.Background(), `{"paths":["chapters/**/*.md"],"hidden":false,"gitignore":false,"limit":5}`); err != nil {
 		t.Fatal(err)
@@ -713,6 +730,36 @@ func TestSearchToolsPublishNewStrictInterfaces(t *testing.T) {
 	}
 	if _, err := grep.Tool.Run(context.Background(), `{"command":"rg dragon","output_mode":"content"}`); err != nil {
 		t.Fatalf("grep rejected a harmless unknown parameter: %v", err)
+	}
+}
+
+func TestCommandToolsPublishOptionalUserFacingDescription(t *testing.T) {
+	for _, build := range []struct {
+		name string
+		tool func(CommandRunner, ...DefinitionOption) (agent.ToolDefinition, error)
+	}{
+		{name: "bash", tool: Bash},
+		{name: "pwsh", tool: Pwsh},
+	} {
+		t.Run(build.name, func(t *testing.T) {
+			definition, err := build.tool(fakeCommandRunner{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			info, err := definition.Tool.Info(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			schema, err := info.ToJSONSchema()
+			if err != nil {
+				t.Fatal(err)
+			}
+			descriptionSchema, ok := schema.Properties.Get("description")
+			if !ok || containsTestString(schema.Required, "description") ||
+				!strings.Contains(descriptionSchema.Description, "user-facing description") {
+				t.Fatalf("%s description schema = %#v; required=%#v", build.name, descriptionSchema, schema.Required)
+			}
+		})
 	}
 }
 
@@ -1042,7 +1089,10 @@ func TestBuiltInToolFactoriesRejectInvalidAdapterIdentity(t *testing.T) {
 		{"write", func() error { _, err := Write(zeroIdentityMutationAdapter{&recordingMutationAdapter{}}); return err }()},
 		{"edit", func() error { _, err := Edit(zeroIdentityMutationAdapter{&recordingMutationAdapter{}}); return err }()},
 		{"bash", func() error { _, err := Bash(zeroIdentityCommandRunner{}); return err }()},
-		{"todo", func() error { _, err := Todo(zeroIdentityTodoStore{}); return err }()},
+		{"todo", func() error {
+			_, err := Todo(zeroIdentityTodoStore{}).PrepareTools(context.Background(), agent.ToolRequest{})
+			return err
+		}()},
 	}
 	for _, test := range tests {
 		if test.err == nil {
@@ -1059,12 +1109,13 @@ func TestSingleRequiresExplicitStableIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	definition := agent.ToolDefinition{Tool: tool, Descriptor: readDescriptor()}
-	if set, err := Single(agent.CapabilityIdentity{}, definition); err == nil || set != nil {
-		t.Fatalf("Single accepted invalid identity: set=%#v error=%v", set, err)
+	set := Single(agent.CapabilityIdentity{}, definition)
+	if _, err := set.PrepareTools(context.Background(), agent.ToolRequest{}); err == nil {
+		t.Fatalf("Single accepted invalid identity: error=%v", err)
 	}
 	identity := agent.CapabilityIdentity{Kind: "test.single-identity", Version: 1, ConfigHash: "v1"}
-	set, err := Single(identity, definition)
-	if err != nil {
+	set = Single(identity, definition)
+	if _, err := set.PrepareTools(context.Background(), agent.ToolRequest{}); err != nil {
 		t.Fatal(err)
 	}
 	if set.Identity().Kind != identity.Kind || set.Identity().Version != identity.Version || set.Identity().ConfigHash == "" {

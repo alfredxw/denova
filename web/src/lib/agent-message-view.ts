@@ -433,7 +433,9 @@ export function agentViewToRenderMessage(view: AgentMessageView, options: { forc
 function buildAgentMessageView(message: AgentUIMessage, part: AgentUIMessage['parts'][number], partIndex: number): AgentMessageView | null {
   const raw = part as Record<string, any>
   const type = readString(raw.type)
-  const metadata = mergeMetadata(message.metadata, raw.providerMetadata, raw.callProviderMetadata, raw.resultProviderMetadata)
+  // AI SDK data chunks cannot carry providerMetadata. Their display metadata
+  // remains inside data, while text/reasoning/tool parts use provider fields.
+  const metadata = mergeMetadata(message.metadata, raw.data, raw.providerMetadata, raw.callProviderMetadata, raw.resultProviderMetadata)
   const partId = readString(raw.id) || readString(raw.toolCallId) || `${message.id}:${partIndex}`
   const ref = { messageId: message.id, partId, partIndex, type }
   const base = {
@@ -777,7 +779,9 @@ function mergeMetadata(...values: unknown[]): AgentMessageMetadata {
   const result: AgentMessageMetadata = {}
   for (const value of values) {
     const metadata = providerAgentMetadata(value)
-    Object.assign(result, metadata)
+    for (const [key, candidate] of Object.entries(metadata)) {
+      if (candidate !== undefined) Object.assign(result, { [key]: candidate })
+    }
   }
   return result
 }

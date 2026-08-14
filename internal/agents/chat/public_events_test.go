@@ -462,17 +462,15 @@ func TestPublicEventProjectorUsesPermissionPolicyPresentationWithoutReclassifica
 	}
 }
 
-func TestPublicEventProjectorRestoresRecoveryAndCompactionEdges(t *testing.T) {
+func TestPublicEventProjectorProjectsCompactionEdges(t *testing.T) {
 	var events []agentrun.Event
 	projector := NewPublicEventProjector(nil, ChatRequest{}, agentrun.Options{
 		AgentKind: "ide", TaskID: "task", RootAgentName: "root",
 	}, func(event agentrun.Event) { events = append(events, event) })
 	projector.Project(agent.Event{RunID: "run", Payload: agent.CompactionStarted{ID: "compact-1"}})
-	projector.Project(agent.Event{RunID: "run", Payload: agent.RecoveryRequired{Reason: "resume accepted input"}})
 	projector.Project(agent.Event{RunID: "run", Payload: agent.CompactionRemoved{ID: "compact-1", Revision: 2}})
-	if len(events) != 3 || events[0].Type != "context_compaction" || events[0].DataString("status") != "started" ||
-		events[1].Type != "runtime_recovery_required" || events[1].DataString("code") != "agent_runtime.recovery_required" ||
-		events[2].Type != "context_compaction" || events[2].DataString("status") != "removed" {
+	if len(events) != 2 || events[0].Type != "context_compaction" || events[0].DataString("status") != "started" ||
+		events[1].Type != "context_compaction" || events[1].DataString("status") != "removed" {
 		t.Fatalf("lifecycle projection = %#v", events)
 	}
 }

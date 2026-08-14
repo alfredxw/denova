@@ -422,15 +422,14 @@ func (e *StreamEncoder) settlePendingTools() error {
 }
 
 func (e *StreamEncoder) writeData(dataType, id string, data map[string]any) error {
-	chunk := map[string]any{
+	// AI SDK data chunks are strict objects: unlike text, reasoning, and tool
+	// chunks, they do not accept providerMetadata. Agent display metadata stays
+	// in data, where the client already reads run and presentation fields.
+	return e.writeChunk(map[string]any{
 		"type": dataType,
 		"id":   id,
 		"data": data,
-	}
-	if providerMetadata := providerMetadataFromData(data); len(providerMetadata) > 0 {
-		chunk["providerMetadata"] = providerMetadata
-	}
-	return e.writeChunk(chunk)
+	})
 }
 
 func (e *StreamEncoder) writeChunk(chunk map[string]any) error {

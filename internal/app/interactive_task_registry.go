@@ -9,7 +9,6 @@ import (
 	apptask "denova/internal/app/task"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -251,118 +250,6 @@ func (identity interactiveStartIdentity) taskInfo(taskID string) InteractiveTask
 		BranchID: identity.request.BranchID, Message: identity.request.Message,
 		RegenerateFromTurnID: identity.request.RegenerateFromTurnID,
 	}
-}
-
-func (s *InteractiveAppService) replayDurableInteractiveStart(
-	ctx context.Context,
-	identity interactiveStartIdentity,
-) (*apptask.Task, bool, error) {
-	a := s.app
-	a.mu.RLock()
-	executionRuntime := a.executionRuntime
-	bookService := a.bookService
-	store := a.interactive
-	a.mu.RUnlock()
-	if executionRuntime == nil || store == nil {
-		return nil, false, nil
-	}
-	status, err := executionRuntime.RuntimeStatusProjection(ctx, identity.options(""))
-	if err != nil {
-		return nil, false, err
-	}
-	if !interactiveStatusOwnsCommand(status, identity.request.CommandID) {
-		return nil, false, nil
-	}
-
-	var accepted *agentexecution.Operation
-	task, err := apptask.NewDeferredWithContext(ctx, func(task *apptask.Task) error {
-		a.mu.Lock()
-		defer a.mu.Unlock()
-		if a.workspaceTransition {
-			return ErrWorkspaceTransition
-		}
-		if a.workspace != identity.workspace || a.interactive != store || a.executionRuntime != executionRuntime {
-			return ErrAgentContextChanged
-		}
-		if a.activeInteractiveRun != nil && a.activeInteractiveRun.task != nil && !a.activeInteractiveRun.task.Finished() {
-			return ErrAgentOperationActive
-		}
-		if err := a.registerWorkspaceTaskLocked(task, identity.workspace, true); err != nil {
-			return err
-		}
-		a.activeInteractiveRun = &interactiveTaskRun{task: task, info: identity.taskInfo(task.ID())}
-		return nil
-	})
-	if err != nil {
-		return nil, true, err
-	}
-	acceptCtx, releaseAcceptance := apptask.AcceptanceContext(ctx, task)
-	accepted, err = executionRuntime.Start(acceptCtx, agentexecution.StartRequest{
-		Cycle: agentexecution.Cycle{
-			BookService: bookService,
-			Request:     identity.chatRequest,
-			Options:     identity.options(task.ID()),
-		},
-		Emit: task.Emit,
-	})
-	releaseAcceptance()
-	if err != nil {
-		rollbackInteractiveReplayTask(a, task, err)
-		if errors.Is(err, agentrun.ErrInvalidCommand) {
-			return nil, true, fmt.Errorf("%w: command_id=%q", ErrAgentCommandConflict, identity.request.CommandID)
-		}
-		return nil, true, err
-	}
-	if !accepted.Receipt().Replayed {
-		err := fmt.Errorf("durable Game replay unexpectedly accepted a new command")
-		task.Abort()
-		_ = accepted.Wait(task.Context())
-		rollbackInteractiveReplayTask(a, task, err)
-		return nil, true, err
-	}
-	if err := task.Start(func(ctx context.Context, task *apptask.Task, _ func(agentrun.Event)) {
-		defer a.unregisterWorkspaceTask(task)
-		outcome := accepted.Wait(ctx)
-		slog.InfoContext(ctx, fmt.Sprintf("[interactive-agent-task] replay end id=%s command_id=%s status=%s", task.ID(), identity.request.CommandID, outcome.Status))
-	}); err != nil {
-		task.Abort()
-		_ = accepted.Wait(task.Context())
-		rollbackInteractiveReplayTask(a, task, err)
-		return nil, true, err
-	}
-	if err := s.starts.remember(identity, task); err != nil {
-		return nil, true, err
-	}
-	return task, true, nil
-}
-
-func interactiveStatusOwnsCommand(status agentrun.RuntimeStatus, commandID string) bool {
-	commandID = strings.TrimSpace(commandID)
-	if commandID == "" {
-		return false
-	}
-	if string(status.ActiveCommandID) == commandID {
-		return true
-	}
-	if status.LastOperation != nil && string(status.LastOperation.CommandID) == commandID {
-		return true
-	}
-	for index := len(status.RecentOperations) - 1; index >= 0; index-- {
-		if string(status.RecentOperations[index].CommandID) == commandID {
-			return true
-		}
-	}
-	return false
-}
-
-func rollbackInteractiveReplayTask(a *App, task *apptask.Task, err error) {
-	task.RejectStart(err)
-	a.unregisterWorkspaceTask(task)
-	a.mu.Lock()
-	if a.activeInteractiveRun != nil && a.activeInteractiveRun.task == task {
-		a.activeInteractiveRun = nil
-	}
-	a.mu.Unlock()
 }
 
 // InteractiveTaskInfo identifies the game-mode turn owned by a background

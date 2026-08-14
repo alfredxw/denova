@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	runstate "github.com/alfredxw/denova/agent/internal/runtime"
+	runstate "github.com/alfredxw/denova/agent/internal/runstate"
 )
 
 // definitionEngineControls is the single control consumer for an Engine Run.
@@ -77,9 +77,8 @@ func (watcher *definitionEngineControls) handle(control runstate.EngineControl) 
 		cancelLoop := watcher.loop
 		watcher.mu.Unlock()
 		if cancelLoop == nil {
-			// Preparation observes this derived context. The accepted input itself
-			// is already durable in Runtime, so cancellation only abandons the
-			// uncommitted attempt and never discards the steering successor.
+			// Preparation observes this derived context. Cancellation abandons only
+			// the current attempt; the Session still owns any queued successor.
 			watcher.cancel()
 			return
 		}
@@ -99,7 +98,7 @@ func (watcher *definitionEngineControls) handle(control runstate.EngineControl) 
 }
 
 // bindLoop atomically transfers future controls to the native cancellation
-// seam and replays any interaction resolution that raced preparation. It
+// seam and delivers any interaction resolution that raced preparation. It
 // returns a control already accepted before the handoff so the caller can
 // settle without entering a modelToolLoop whose preparation context was cancelled.
 func (watcher *definitionEngineControls) bindLoop(
@@ -148,8 +147,7 @@ func (watcher *definitionEngineControls) controlledPreparationResult(err error) 
 		return runstate.EngineResult{Status: runstate.EngineAborted}, nil, true
 	default:
 		// Parent lifecycle cancellation remains an ordinary cancellation. Only a
-		// control durably accepted by Runtime is translated into a terminal
-		// Engine status.
+		// control accepted by this Run is translated into a terminal Engine status.
 		return runstate.EngineResult{}, err, false
 	}
 }

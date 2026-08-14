@@ -2,7 +2,7 @@ package agent
 
 import "errors"
 
-// ToolControlError marks lifecycle or durability failures that must terminate
+// ToolControlError marks lifecycle or coordination failures that must terminate
 // scheduling instead of being offered to the model as an ordinary tool error.
 // The attached ToolResult, when present, is still paired into the transcript.
 type ToolControlError struct{ Err error }

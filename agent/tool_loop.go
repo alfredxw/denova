@@ -12,14 +12,14 @@ import (
 
 const toolProgressTruncatedMarker = "\n[tool progress truncated]"
 
-type durableToolStartContextKey struct{}
+type toolStartReceiptContextKey struct{}
 
-func contextWithDurableToolStart(ctx context.Context) context.Context {
-	return context.WithValue(ctx, durableToolStartContextKey{}, struct{}{})
+func contextWithToolStartReceipt(ctx context.Context) context.Context {
+	return context.WithValue(ctx, toolStartReceiptContextKey{}, struct{}{})
 }
 
-func durableToolStartRequired(ctx context.Context) bool {
-	_, required := ctx.Value(durableToolStartContextKey{}).(struct{})
+func toolStartReceiptRequired(ctx context.Context) bool {
+	_, required := ctx.Value(toolStartReceiptContextKey{}).(struct{})
 	return required
 }
 
@@ -91,7 +91,7 @@ func (agent *modelToolLoop) executeToolBatch(
 			completion, err := agent.runOneToolCall(ctx, current, events, cancel)
 			results[index] = completion
 			if err != nil {
-				agent.fillPolicySkipped(prepared[index+1:], results, events, "a durability or control failure stopped later tool stages")
+				agent.fillPolicySkipped(prepared[index+1:], results, events, "a lifecycle or control failure stopped later tool stages")
 				return results, err
 			}
 			index++
@@ -109,9 +109,9 @@ func (agent *modelToolLoop) executeToolBatch(
 		}
 		if err != nil {
 			if started < end-index {
-				agent.fillPolicySkipped(prepared[index+started:end], results, events, "a durability or control failure stopped the parallel stage")
+				agent.fillPolicySkipped(prepared[index+started:end], results, events, "a lifecycle or control failure stopped the parallel stage")
 			}
-			agent.fillPolicySkipped(prepared[end:], results, events, "a durability or control failure stopped later tool stages")
+			agent.fillPolicySkipped(prepared[end:], results, events, "a lifecycle or control failure stopped later tool stages")
 			return results, err
 		}
 		if started < end-index {
@@ -349,7 +349,7 @@ func (agent *modelToolLoop) executePreparedTool(
 		// presented as an executing process.
 		started.Do(func() {
 			event := agent.toolExecutionEvent(prepared, toolExecutionStarted, "", nil)
-			if durableToolStartRequired(runCtx) {
+			if toolStartReceiptRequired(runCtx) {
 				event.Output.ToolExecution.startReceipt = make(chan error, 1)
 			}
 			events.Send(event)

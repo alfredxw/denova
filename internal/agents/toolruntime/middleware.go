@@ -204,13 +204,6 @@ func (m *OrchestratorMiddleware) WrapToolCall(
 		if err := ctx.Err(); err != nil {
 			return agent.ToolResult{}, err
 		}
-		if err := recordToolStart(ctx, decision, args); err != nil {
-			return agent.ToolErrorResult(err.Error(), err.Error()), err
-		}
-		if err := ctx.Err(); err != nil {
-			return agent.ToolResult{}, err
-		}
-
 		result, err := endpoint(ctx, args, opts...)
 		if err != nil {
 			toolErr := err
@@ -218,8 +211,6 @@ func (m *OrchestratorMiddleware) WrapToolCall(
 				result = agent.SyntheticToolResult(agent.ToolResultSkipped, agent.ToolSyntheticSteeringInterrupted,
 					fmt.Sprintf("tool %q was interrupted to apply pending user steering", decision.ToolName))
 			} else if ctx.Err() != nil {
-				// Immediate abort keeps an unmatched durable start. Recovery will
-				// materialize effect_unknown and never auto-retry the side effect.
 				return agent.ToolResult{}, err
 			} else {
 				result, record := projectToolError(decision, args, result, toolErr, m.toolResultLimitBytes())
@@ -227,9 +218,7 @@ func (m *OrchestratorMiddleware) WrapToolCall(
 				if effectErr != nil {
 					return result, effectErr
 				}
-				if recordErr := recordToolFinish(ctx, record); recordErr != nil {
-					return result, recordErr
-				}
+				recordToolExecution(ctx, record)
 				if agent.IsToolControlError(toolErr) {
 					return result, toolErr
 				}
@@ -252,9 +241,7 @@ func (m *OrchestratorMiddleware) WrapToolCall(
 		if err != nil {
 			return prepared.Result, err
 		}
-		if err := recordToolFinish(ctx, record); err != nil {
-			return prepared.Result, err
-		}
+		recordToolExecution(ctx, record)
 		return prepared.Result, nil
 	}, nil
 }
@@ -278,7 +265,7 @@ func toolEndpointErrorMessage(toolName string, err error) string {
 func projectToolError(decision agenttool.Decision, args string, returned agent.ToolResult, err error, maxBytes int) (agent.ToolResult, agenttool.ExecutionRecord) {
 	message := strings.ToValidUTF8(toolEndpointErrorMessage(decision.ToolName, err), "\uFFFD")
 	errorResult := agent.ToolErrorResult(message, boundedToolErrorDiagnostic(err))
-	// Details is a terminal durability receipt, not display content. Preserve a
+	// Details is a terminal product receipt, not display content. Preserve a
 	// valid receipt even when the tool reports a transport/domain error after the
 	// workspace effect committed.
 	if len(returned.Details) != 0 {

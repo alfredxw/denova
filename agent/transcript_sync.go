@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-
-	runstate "github.com/alfredxw/denova/agent/internal/runtime"
 )
 
 const transcriptSyncCapability = "agent.transcript_sync"
@@ -81,15 +79,16 @@ func (session *Session) SyncTranscript(ctx context.Context, request TranscriptSy
 	}
 	request.SourceHash = hash
 
-	checkpoint, err := session.harness.EngineCheckpoint(ctx)
-	if err != nil {
-		return TranscriptSyncResult{}, mapRuntimeError(err)
+	session.mu.Lock()
+	defer session.mu.Unlock()
+	if session.active != nil {
+		return TranscriptSyncResult{}, ErrSessionBusy
 	}
-	current, present, err := transcriptSyncStateFrom(checkpoint.Capabilities)
+	current, present, err := transcriptSyncStateFrom(session.capabilities)
 	if err != nil {
 		return TranscriptSyncResult{}, err
 	}
-	currentTranscript, transcriptErr := decodeEngineTranscript(checkpoint.State)
+	currentTranscript, transcriptErr := decodeEngineTranscript(session.engineState)
 	var incompatibleTranscript *unsupportedEngineTranscriptVersionError
 	if transcriptErr != nil && !errors.As(transcriptErr, &incompatibleTranscript) {
 		return TranscriptSyncResult{}, transcriptErr
@@ -113,23 +112,14 @@ func (session *Session) SyncTranscript(ctx context.Context, request TranscriptSy
 					ErrTranscriptSyncConflict, request.SourceRevision,
 				)
 			}
-			if incompatibleTranscript != nil {
-				break
+			if incompatibleTranscript == nil {
+				return TranscriptSyncResult{State: current}, nil
 			}
-			// Verify the idle fence and exact sync generation inside the actor.
-			// Do not overwrite messages appended after this imported base.
-			err = session.harness.ReplaceEngineCheckpoint(ctx, runstate.EngineCheckpointUpdate{
-				ExpectedState: checkpoint.StateDescriptor,
-				CapabilityGuards: map[string]runstate.PayloadDescriptor{
-					transcriptSyncCapability: checkpoint.CapabilityDescriptor(transcriptSyncCapability),
-				},
-			})
-			return TranscriptSyncResult{State: current}, mapRuntimeError(err)
 		}
 	}
 	sourceEquivalent := false
 	if incompatibleTranscript == nil {
-		if _, _, err := applyClearToTranscript(&currentTranscript, checkpoint.Capabilities); err != nil {
+		if _, _, err := applyClearToTranscript(&currentTranscript, session.capabilities); err != nil {
 			return TranscriptSyncResult{}, err
 		}
 		sourceEquivalent, err = transcriptSourceEquivalent(currentTranscript.Messages, request.Messages)
@@ -162,36 +152,23 @@ func (session *Session) SyncTranscript(ctx context.Context, request TranscriptSy
 		return TranscriptSyncResult{}, fmt.Errorf("encode Agent transcript sync state: %w", err)
 	}
 
-	guards := map[string]runstate.PayloadDescriptor{
-		transcriptSyncCapability: checkpoint.CapabilityDescriptor(transcriptSyncCapability),
-	}
-	changes := make([]runstate.EngineCapabilityState, 0, 6)
 	if rebuild {
 		for _, capability := range []string{clearCapability, TodoCapability, cleanupCapability, compactionCapability, compactionHealthCapability} {
-			if _, exists := checkpoint.Capabilities[capability]; !exists {
-				continue
-			}
-			changes = append(changes, runstate.EngineCapabilityState{
-				Capability: capability, Expected: checkpoint.CapabilityDescriptor(capability), Delete: true,
-			})
+			delete(session.capabilities, capability)
 		}
+		session.engineState = encodedTranscript
 	}
-	changes = append(changes, runstate.EngineCapabilityState{
-		Capability: transcriptSyncCapability,
-		Expected:   checkpoint.CapabilityDescriptor(transcriptSyncCapability),
-		State:      encodedState,
-	})
-	update := runstate.EngineCheckpointUpdate{
-		ExpectedState:    checkpoint.StateDescriptor,
-		CapabilityGuards: guards, CapabilityChanges: changes,
-	}
+	session.capabilities[transcriptSyncCapability] = encodedState
+	var persistErr error
 	if rebuild {
-		update.State = encodedTranscript
+		persistErr = session.persistStateLocked(ctx)
+	} else {
+		persistErr = session.persistCapabilitiesLocked(ctx)
 	}
-	err = session.harness.ReplaceEngineCheckpoint(ctx, update)
-	if err != nil {
-		return TranscriptSyncResult{}, mapRuntimeError(err)
+	if persistErr != nil {
+		return TranscriptSyncResult{}, persistErr
 	}
+	session.publishLocked(Event{Payload: TranscriptSynchronized{State: next}})
 	return TranscriptSyncResult{State: next, Applied: true, Rebuilt: rebuild}, nil
 }
 
@@ -200,7 +177,7 @@ func (session *Session) SyncTranscript(ctx context.Context, request TranscriptSy
 // by the Agent loop; asking a product store to duplicate them would create a
 // second execution-metadata authority. Denova's model-history middleware drops
 // settled reasoning from later provider requests, while raw Agent history keeps
-// it for recovery and audit. A product revision that settles the same visible
+// it for subsequent turns and audit. A product revision that settles the same visible
 // response can therefore advance without discarding maintenance capabilities.
 func transcriptSourceEquivalent(current, canonical []*Message) (bool, error) {
 	current = productOwnedTranscriptMessages(current)

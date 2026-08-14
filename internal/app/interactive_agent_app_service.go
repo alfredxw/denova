@@ -224,12 +224,6 @@ func (s *InteractiveAppService) startInteractiveTask(ctx context.Context, reques
 	}
 	defer operation.Release()
 	ctx = operation.Context()
-	if replay, matched, err := s.replayDurableInteractiveStart(ctx, identity); err != nil {
-		return nil, err
-	} else if matched {
-		return replay, nil
-	}
-
 	a.mu.RLock()
 	transitioning := a.workspaceTransition
 	contextChanged := a.workspace != identity.workspace

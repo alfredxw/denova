@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	runstate "github.com/alfredxw/denova/agent/internal/runtime"
+	runstate "github.com/alfredxw/denova/agent/internal/runstate"
 )
 
 const (

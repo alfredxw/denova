@@ -12,6 +12,7 @@ require (
 	github.com/kaptinlin/jsonrepair v0.4.8
 	github.com/openai/openai-go/v3 v3.48.0
 	golang.org/x/net v0.57.0
+	golang.org/x/text v0.40.0
 	mvdan.cc/sh/v3 v3.13.1
 )
 
@@ -36,7 +37,6 @@ require (
 	go.yaml.in/yaml/v4 v4.0.0-rc.2 // indirect
 	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/text v0.40.0 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )

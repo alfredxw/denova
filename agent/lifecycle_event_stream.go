@@ -31,7 +31,7 @@ func publishLatestEvent(output chan Event, event Event, drops *eventDropState) {
 	}
 	if drops.count > 0 && cap(output) >= 2 {
 		output <- Event{
-			Cursor: event.Cursor, Durability: EphemeralEvent, RunID: event.RunID,
+			Cursor: event.Cursor, RunID: event.RunID,
 			Payload: EventStreamGap{Dropped: drops.count, ResumeAfter: drops.after},
 		}
 		drops.count, drops.after = 0, 0

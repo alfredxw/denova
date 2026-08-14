@@ -17,8 +17,7 @@ import (
 const admittedToolMutationVersion = 1
 
 // admittedToolMutationPayload is the application-owned representation of a
-// Runtime host effect. Runtime keeps the original outbox until this exact
-// payload is durable; the application store then owns all slower reconciliation.
+// canonical tool mutation. The Automation store owns its later scheduling.
 type admittedToolMutationPayload struct {
 	Version          int                                 `json:"version"`
 	Binding          agentrun.RuntimeBinding             `json:"binding"`
@@ -29,9 +28,9 @@ type admittedToolMutationPayload struct {
 	Mutation         agenttool.Mutation                  `json:"mutation"`
 }
 
-// ReconcileHostEffect durably admits a committed runtime mutation before the
-// harness acknowledges its outbox entry.
-func (s *Service) ReconcileHostEffect(ctx context.Context, committed agenttoolruntime.CommittedToolMutation) error {
+// ApplyToolMutation durably admits a canonical mutation before returning
+// success to Agent.
+func (s *Service) ApplyToolMutation(ctx context.Context, committed agenttoolruntime.CommittedToolMutation) error {
 	if s == nil || s.host == nil {
 		return fmt.Errorf("admit agent host effect: app configuration is unavailable")
 	}

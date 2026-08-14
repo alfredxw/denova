@@ -42,7 +42,7 @@ type memoryRules struct {
 
 // MemoryRules is a process-local RuleStore for temporary Agents and tests. Its
 // identity describes the in-memory storage semantics; rule contents remain
-// dynamic and intentionally do not participate in Definition restore identity.
+// dynamic and intentionally do not participate in Definition behavior identity.
 // Durable Sessions should provide a durable RuleStore instead.
 func MemoryRules() RuleStore { return &memoryRules{allowed: make(map[Rule]struct{})} }
 

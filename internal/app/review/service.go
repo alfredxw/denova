@@ -155,52 +155,6 @@ func consume(ctx context.Context, runtime Runtime, req agentchat.ChatRequest, ef
 	})
 }
 
-// ReconcileConsumed is the read-only half of the accepted-input outbox. A
-// canonical user message is acknowledged only after every referenced review
-// ledger independently proves its terminal consumed state.
-func ReconcileConsumed(ctx context.Context, runtime Runtime, req agentchat.ChatRequest, effectID string) (bool, error) {
-	if req.ResolvedReviewFeedback.Empty() {
-		return true, nil
-	}
-	scope := serviceScope{}
-	sessionID := strings.TrimSpace(runtime.SessionID)
-	for _, feedback := range req.ResolvedReviewFeedback {
-		source, _ := agentreview.NormalizeSource(feedback.Source)
-		switch source {
-		case agentreview.SourceDocument:
-			scope.documents = true
-		case agentreview.SourceWorkspaceChange:
-			scope.workspaceChanges = true
-			if sessionID == "" {
-				return false, invalidReviewFeedbackError("the active session identity is unavailable", nil)
-			}
-		default:
-			return false, invalidReviewFeedbackError("review feedback source is invalid", map[string]any{"source": feedback.Source})
-		}
-	}
-	var consumed = true
-	err := withRuntimeReviewFeedbackServices(runtime, scope, func(changes *workspacechange.Service, documents *documentreview.Service, targets documentreview.SnapshotResolver) error {
-		resolvers := newReviewFeedbackResolvers(changes, documents, targets)
-		for _, feedback := range req.ResolvedReviewFeedback {
-			commentIDs := reviewFeedbackCommentIDs(req.ReviewFeedback, feedback)
-			if len(commentIDs) == 0 {
-				return invalidReviewFeedbackError("resolved review feedback lost its comment references", map[string]any{"review_thread_id": feedback.ReviewThreadID})
-			}
-			source, _ := agentreview.NormalizeSource(feedback.Source)
-			found, err := resolvers[source].Consumed(ctx, sessionID, feedback.ReviewThreadID, commentIDs, effectID)
-			if err != nil {
-				return err
-			}
-			if !found {
-				consumed = false
-				return nil
-			}
-		}
-		return nil
-	})
-	return consumed, err
-}
-
 // BindInputCommit makes the durable user-message commit the
 // single boundary for consuming one-shot review comments. The callback runs
 // before the first model request, so navigation, reloads, and long Agent runs
@@ -221,13 +175,6 @@ func BindInputCommit(
 				return err
 			}
 			return consume(ctx, runtime, req, effectID)
-		},
-		ReconcileFunc: func(ctx context.Context, effect agentrun.InputCommitEffectRequest) (bool, error) {
-			effectID, err := effect.ID()
-			if err != nil {
-				return false, err
-			}
-			return ReconcileConsumed(ctx, runtime, req, effectID)
 		},
 	}
 	return options

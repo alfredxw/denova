@@ -44,7 +44,7 @@ func TestWithProfilesRejectsNilAndProfilesWithoutCyclePreparation(t *testing.T) 
 		t.Run(test.name, func(t *testing.T) {
 			_, err := NewAgentRuntime(context.Background(), t.TempDir(),
 				WithProfiles(test.profile),
-				WithHostEffectReconciler(func(context.Context, agenttoolruntime.CommittedToolMutation) error { return nil }),
+				WithToolMutationApplier(func(context.Context, agenttoolruntime.CommittedToolMutation) error { return nil }),
 			)
 			if !errors.Is(err, ErrProfileInvalid) {
 				t.Fatalf("NewAgentRuntime error=%v, want ErrProfileInvalid", err)
@@ -109,8 +109,8 @@ func TestForegroundWorkspaceClosePreservesAgentChatPublicSession(t *testing.T) {
 	if err := runtime.CloseForegroundWorkspaceBindings(ctx, workspace); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := writingSession.Snapshot(ctx); !errors.Is(err, agent.ErrAgentClosed) {
-		t.Fatalf("writing Snapshot error=%v, want closed runtime lane", err)
+	if _, err := writingSession.Snapshot(ctx); !errors.Is(err, agent.ErrSessionClosed) {
+		t.Fatalf("writing Snapshot error=%v, want closed Session", err)
 	}
 	if _, err := agentChatSession.Snapshot(ctx); err != nil {
 		t.Fatalf("AgentChat session was closed with foreground workspace: %v", err)
@@ -120,7 +120,7 @@ func TestForegroundWorkspaceClosePreservesAgentChatPublicSession(t *testing.T) {
 func TestAgentRuntimeRejectsInvalidCommandBeforeOpeningSession(t *testing.T) {
 	ctx := context.Background()
 	dataDir := t.TempDir()
-	runtime, err := NewAgentRuntime(ctx, dataDir, WithHostEffectReconciler(
+	runtime, err := NewAgentRuntime(ctx, dataDir, WithToolMutationApplier(
 		func(context.Context, agenttoolruntime.CommittedToolMutation) error { return nil },
 	))
 	if err != nil {
@@ -149,7 +149,7 @@ func TestAgentRuntimeRejectsInvalidCommandBeforeOpeningSession(t *testing.T) {
 		t.Fatalf("invalid command created registrations=%d runs=%d", registrations, runs)
 	}
 	files := 0
-	err = filepath.WalkDir(filepath.Join(dataDir, "agent-sessions"), func(_ string, entry fs.DirEntry, walkErr error) error {
+	err = filepath.WalkDir(filepath.Join(dataDir, "agent-transcripts"), func(_ string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
@@ -220,16 +220,10 @@ func TestAgentRuntimeAbortCancelsBlockedSteerPreparationAndRetainsAcceptedInput(
 					}
 					return agent.CommitReceipt{Revision: fmt.Sprint(receipt.ContextRevision)}, nil
 				},
-				ReconcileFn: func(_ context.Context, reconcile agent.ReconcileRequest) (agent.ReconcileResult, error) {
-					receipt, found, err := conversationSession.FindAgentCanonicalCommit(session.DomainCommitIdentity{
-						CommandID: reconcile.Identity.CommandID, OperationID: reconcile.Identity.RunID, Cycle: reconcile.Identity.Cycle,
-					}, agent.User, reconcile.Hash)
-					return agent.ReconcileResult{Found: found, Revision: fmt.Sprint(receipt.ContextRevision)}, err
-				},
 			}, nil
 		},
 	}
-	runtime, err := NewAgentRuntime(ctx, t.TempDir(), WithProfiles(profile), WithHostEffectReconciler(
+	runtime, err := NewAgentRuntime(ctx, t.TempDir(), WithProfiles(profile), WithToolMutationApplier(
 		func(context.Context, agenttoolruntime.CommittedToolMutation) error { return nil },
 	))
 	if err != nil {

@@ -28,7 +28,6 @@ type CommandReceipt struct {
 	CommandID   CommandID
 	OperationID OperationID
 	Cursor      Cursor
-	Replayed    bool
 }
 
 // Receipt and StatusSnapshot keep the control vocabulary compact for callers.
@@ -71,44 +70,16 @@ const (
 )
 
 // ContextCompactionRef identifies one bounded structural context mutation.
-// RestoreDescriptor is private recovery input and is never projected to HTTP.
+// Descriptor is private recovery input and is never projected to HTTP.
 type ContextCompactionRef struct {
-	SpecRef           string
-	Source            string
-	Purpose           string
-	Resource          string
-	ExpectedRevision  string
-	CompactionID      string
-	Force             bool
-	RestoreDescriptor json.RawMessage
-}
-
-// StructuralOperationKind is the closed durable context operation vocabulary.
-type StructuralOperationKind string
-
-const (
-	StructuralCompactContext   StructuralOperationKind = "compact_context"
-	StructuralRemoveCompaction StructuralOperationKind = "remove_compaction"
-)
-
-// StructuralOperation is the safe identity of an active context mutation.
-type StructuralOperation struct {
-	Binding       RuntimeBinding
-	CommandID     CommandID
-	OperationID   OperationID
-	Cycle         int
-	Kind          StructuralOperationKind
-	Ref           ContextCompactionRef
-	ContextCursor Cursor
-}
-
-// InputRecovery identifies accepted input whose canonical materialization is
-// awaiting an explicit recovery action. The input itself remains private.
-type InputRecovery struct {
-	CommandID   CommandID
-	OperationID OperationID
-	Cycle       int
-	Delivery    DeliveryKind
+	SpecRef          string
+	Source           string
+	Purpose          string
+	Resource         string
+	ExpectedRevision string
+	CompactionID     string
+	Force            bool
+	Descriptor       json.RawMessage
 }
 
 // QueuedCommand is the bounded display projection of one accepted successor.
@@ -151,8 +122,8 @@ type OperationSummary struct {
 	ReasonTruncated    bool
 }
 
-// DomainCommitStage names the canonical input/output write protected by the
-// durable Agent coordinator.
+// DomainCommitStage names a canonical input/output write performed by the
+// Agent Run.
 type DomainCommitStage string
 
 const (
@@ -168,19 +139,9 @@ type DomainCommitIdentity struct {
 	Stage       DomainCommitStage
 }
 
-// DomainCommitState is the safe recovery evidence for a canonical write.
-type DomainCommitState struct {
-	Identity  DomainCommitIdentity
-	Hash      string
-	Revision  string
-	Abandoned bool
-	Reason    string
-}
-
-// RuntimeStatus is Denova's bounded Agent control projection. It deliberately
-// omits journal payloads, restore descriptors, tool arguments, host effects,
-// and runtime memory accounting so app callers cannot depend on coordinator
-// implementation details.
+// RuntimeStatus is Denova's bounded, process-local Agent control projection.
+// It deliberately omits tool arguments, raw results, prompts, and internal
+// engine state so app callers cannot depend on execution details.
 type RuntimeStatus struct {
 	Binding                  RuntimeBinding
 	Cursor                   Cursor
@@ -190,18 +151,11 @@ type RuntimeStatus struct {
 	ActiveReceiptCursor      Cursor
 	ActiveOperation          OperationID
 	ActiveCycle              int
-	RecoveryPaused           bool
-	RecoveryPending          bool
-	InputRecovery            *InputRecovery
-	ActiveStructural         *StructuralOperation
 	ActiveOutput             ActiveOutput
 	Queue                    []QueuedCommand
 	OpenToolCalls            []OpenToolCall
 	LastOperation            *OperationSummary
 	RecentOperations         []OperationSummary
-	LastDomainCommit         *DomainCommitState
-	DomainCommits            []DomainCommitState
-	AgentRecoveryActions     []AgentRecoveryAction
 	// Cleanup and TranscriptSync are read-only projections of the public Agent
 	// Session capabilities. Product stores may display them, but must never
 	// persist a competing maintenance or canonical-history authority.
@@ -223,32 +177,7 @@ type AgentCompactionState struct {
 	ContextData     *RestoreData
 }
 
-// AgentRecoveryAction is the opaque public Agent recovery authority projected
-// through Denova's app-facing status. Runtime command identities remain
-// unavailable to callers; ID is the only value accepted by recovery.
-type AgentRecoveryAction struct {
-	ID         string
-	Kind       string
-	RunID      string
-	CommandID  string
-	Delivery   string
-	Compaction string
-}
-
 type StatusSnapshot = RuntimeStatus
-
-// DomainCommitReconcileRequest asks the host to query one exact canonical
-// write. Reconciliation must never replay the write.
-type DomainCommitReconcileRequest struct {
-	Binding    RuntimeBinding
-	Commit     DomainCommitState
-	Structural *StructuralOperation
-}
-
-type DomainCommitReconcileResult struct {
-	Found    bool
-	Revision string
-}
 
 type InputMaterializationPlan struct {
 	Required bool

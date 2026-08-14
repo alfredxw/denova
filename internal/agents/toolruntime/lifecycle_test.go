@@ -4,10 +4,8 @@ import (
 	"context"
 	agentrun "denova/internal/agents/run"
 	agenttool "denova/internal/agents/tool"
-	"errors"
 	"reflect"
 	"strings"
-	"sync"
 	"testing"
 
 	"denova/config"
@@ -15,85 +13,6 @@ import (
 
 	agent "github.com/alfredxw/denova/agent"
 )
-
-type recordingToolLifecycleObserver struct {
-	mu        sync.Mutex
-	events    []string
-	beforeErr error
-	afterErr  error
-}
-
-func (o *recordingToolLifecycleObserver) BeforeTool(_ context.Context, decision agenttool.Decision, arguments string) error {
-	o.record("start:" + decision.ExecutionID + ":" + arguments)
-	return o.beforeErr
-}
-
-func (o *recordingToolLifecycleObserver) AfterTool(_ context.Context, result agenttool.ExecutionRecord) error {
-	o.record("finish:" + result.ExecutionID + ":" + result.Status)
-	return o.afterErr
-}
-
-func (o *recordingToolLifecycleObserver) record(event string) {
-	o.mu.Lock()
-	o.events = append(o.events, event)
-	o.mu.Unlock()
-}
-
-func (o *recordingToolLifecycleObserver) snapshot() []string {
-	o.mu.Lock()
-	defer o.mu.Unlock()
-	return append([]string(nil), o.events...)
-}
-
-func TestToolLifecycleStartIsRecordedBeforeInvokableEffect(t *testing.T) {
-	observer := &recordingToolLifecycleObserver{}
-	ctx := ContextWithToolLifecycleObserver(context.Background(), observer)
-	middleware := &OrchestratorMiddleware{agentKind: agentrun.AgentKindIDE}
-	endpoint, err := wrapTextToolCallForTest(middleware,
-		func(context.Context, string, ...agent.ToolOption) (string, error) {
-			observer.record("effect")
-			return "ok", nil
-		},
-		testToolContext("write", "call-1"),
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := endpoint(ctx, `{"path":"chapter.md"}`); err != nil {
-		t.Fatal(err)
-	}
-	want := []string{
-		`start:call-1:{"path":"chapter.md"}`,
-		"effect",
-		"finish:call-1:success",
-	}
-	if got := observer.snapshot(); !reflect.DeepEqual(got, want) {
-		t.Fatalf("lifecycle ordering = %#v, want %#v", got, want)
-	}
-}
-
-func TestToolLifecycleStartFailurePreventsEffect(t *testing.T) {
-	observer := &recordingToolLifecycleObserver{beforeErr: errors.New("journal unavailable")}
-	ctx := ContextWithToolLifecycleObserver(context.Background(), observer)
-	middleware := &OrchestratorMiddleware{agentKind: agentrun.AgentKindIDE}
-	called := false
-	endpoint, err := wrapTextToolCallForTest(middleware,
-		func(context.Context, string, ...agent.ToolOption) (string, error) {
-			called = true
-			return "ok", nil
-		},
-		testToolContext("write", "call-1"),
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := endpoint(ctx, `{"path":"chapter.md"}`); err == nil {
-		t.Fatal("expected durable start failure")
-	}
-	if called {
-		t.Fatal("tool effect ran without a durable start record")
-	}
-}
 
 func TestNestedProviderCallIDsReceiveDistinctDurableExecutionIDs(t *testing.T) {
 	middleware := &OrchestratorMiddleware{agentKind: agentrun.AgentKindIDE}

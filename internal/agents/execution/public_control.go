@@ -69,11 +69,9 @@ func (backend *publicBackend) clearSession(ctx context.Context, options agentrun
 func publicRuntimeStatus(binding agentrun.RuntimeBinding, snapshot agent.SessionSnapshot) agentrun.RuntimeStatus {
 	status := agentrun.RuntimeStatus{
 		Binding: binding, Cursor: agentrun.Cursor(snapshot.Cursor), Phase: agentrun.RunPhaseIdle,
-		ActiveCommandID:          agentrun.CommandID(snapshot.ActiveCommandID),
-		ActiveCommandFingerprint: snapshot.ActiveCommandFingerprint,
-		ActiveReceiptCursor:      agentrun.Cursor(snapshot.ActiveReceiptCursor),
-		ActiveOperation:          agentrun.OperationID(snapshot.ActiveRunID), ActiveCycle: snapshot.ActiveCycle,
-		RecoveryPaused: snapshot.RecoveryPaused, RecoveryPending: snapshot.RecoveryPending,
+		ActiveCommandID:     agentrun.CommandID(snapshot.ActiveCommandID),
+		ActiveReceiptCursor: agentrun.Cursor(snapshot.ActiveReceiptCursor),
+		ActiveOperation:     agentrun.OperationID(snapshot.ActiveRunID), ActiveCycle: snapshot.ActiveCycle,
 		ActiveOutput: agentrun.ActiveOutput{
 			OperationID: agentrun.OperationID(snapshot.ActiveRunID), Cycle: snapshot.ActiveCycle,
 			Content: snapshot.ActiveOutput.Content, Thinking: snapshot.ActiveOutput.Thinking,
@@ -81,7 +79,6 @@ func publicRuntimeStatus(binding agentrun.RuntimeBinding, snapshot agent.Session
 			ThinkingTruncated: snapshot.ActiveOutput.ThinkingTruncated,
 			RehydrateRequired: snapshot.ActiveOutput.RehydrateRequired,
 		},
-		AgentRecoveryActions: make([]agentrun.AgentRecoveryAction, 0, len(snapshot.RecoveryActions)),
 	}
 	if snapshot.ActiveRunID != "" {
 		status.Phase = agentrun.RunPhaseRunning
@@ -102,38 +99,14 @@ func publicRuntimeStatus(binding agentrun.RuntimeBinding, snapshot agent.Session
 	for _, run := range snapshot.RecentRuns {
 		summary := agentrun.OperationSummary{
 			OperationID: agentrun.OperationID(run.ID), CommandID: agentrun.CommandID(run.CommandID),
-			CommandFingerprint: run.CommandFingerprint, ReceiptCursor: agentrun.Cursor(run.ReceiptCursor),
-			Status: publicOperationStatus(run.Status), Reason: run.Reason, ReasonTruncated: run.ReasonTruncated,
+			ReceiptCursor: agentrun.Cursor(run.ReceiptCursor),
+			Status:        publicOperationStatus(run.Status), Reason: run.Reason, ReasonTruncated: run.ReasonTruncated,
 		}
 		status.RecentOperations = append(status.RecentOperations, summary)
 	}
 	if len(status.RecentOperations) > 0 {
 		last := status.RecentOperations[len(status.RecentOperations)-1]
 		status.LastOperation = &last
-	}
-	for _, recovery := range snapshot.RecoveryActions {
-		status.AgentRecoveryActions = append(status.AgentRecoveryActions, agentrun.AgentRecoveryAction{
-			ID: recovery.ID, Kind: string(recovery.Kind), RunID: recovery.RunID,
-			CommandID: recovery.CommandID, Delivery: string(recovery.Delivery),
-			Compaction: string(recovery.Compaction),
-		})
-		if recovery.Kind == agent.RecoveryResumeInput {
-			status.InputRecovery = &agentrun.InputRecovery{
-				CommandID: agentrun.CommandID(recovery.CommandID), OperationID: agentrun.OperationID(recovery.RunID),
-				Cycle: recovery.Cycle, Delivery: publicDeliveryKind(recovery.Delivery),
-			}
-		}
-		if recovery.Kind == agent.RecoveryResumeCompaction {
-			status.Phase = agentrun.RunPhaseCompacting
-			kind := agentrun.StructuralCompactContext
-			if recovery.Compaction == agent.RecoveryCompactionRemove {
-				kind = agentrun.StructuralRemoveCompaction
-			}
-			status.ActiveStructural = &agentrun.StructuralOperation{
-				Binding: binding, CommandID: agentrun.CommandID(recovery.CommandID),
-				OperationID: agentrun.OperationID(recovery.RunID), Cycle: recovery.Cycle, Kind: kind,
-			}
-		}
 	}
 	if snapshot.Compaction != nil {
 		projected := &agentrun.AgentCompactionState{
@@ -204,13 +177,13 @@ func (backend *publicBackend) resolveInteraction(
 	return request, resolution, nil
 }
 
-func publicDeliveryKind(delivery agent.RecoveryInputDelivery) agentrun.DeliveryKind {
+func publicDeliveryKind(delivery agent.InputDelivery) agentrun.DeliveryKind {
 	switch delivery {
-	case agent.RecoveryDeliverySteer:
+	case agent.DeliverySteer:
 		return agentrun.DeliverySteer
-	case agent.RecoveryDeliveryFollowUp:
+	case agent.DeliveryFollowUp:
 		return agentrun.DeliveryFollowUp
-	case agent.RecoveryDeliveryNextTurn:
+	case agent.DeliveryNextTurn:
 		return agentrun.DeliveryNextTurn
 	default:
 		return ""

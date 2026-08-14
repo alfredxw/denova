@@ -3,14 +3,12 @@ package agent
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
 
-	runstate "github.com/alfredxw/denova/agent/internal/runtime"
+	runstate "github.com/alfredxw/denova/agent/internal/runstate"
 )
 
 // LoadSessionState reads one Agent-owned durable capability slot from the
@@ -64,8 +62,7 @@ func UpdateSessionState(
 		return nil
 	}
 	if err := client.emit(runstate.EngineCapabilityState{
-		Capability: capability, Expected: describeCapabilityState(current),
-		State: append(json.RawMessage(nil), next...), Delete: remove,
+		Capability: capability, State: append(json.RawMessage(nil), next...), Delete: remove,
 	}); err != nil {
 		return err
 	}
@@ -138,17 +135,12 @@ func (client *capabilityStateClient) updateGoal(
 		return GoalState{}, err
 	}
 	if err := client.emit(runstate.EngineCapabilityState{
-		Capability: goalCapability, Expected: describeCapabilityState(currentRaw), State: encoded,
+		Capability: goalCapability, State: encoded,
 	}); err != nil {
 		return GoalState{}, err
 	}
 	client.states[goalCapability] = append(json.RawMessage(nil), encoded...)
 	return next, nil
-}
-
-func describeCapabilityState(state []byte) runstate.PayloadDescriptor {
-	digest := sha256.Sum256(state)
-	return runstate.PayloadDescriptor{Bytes: len(state), SHA256: hex.EncodeToString(digest[:])}
 }
 
 func cloneRawStateMap(states map[string]json.RawMessage) map[string]json.RawMessage {

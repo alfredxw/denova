@@ -124,7 +124,7 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 		dataDir,
 		agentexecution.WithProfiles(app.executionProfiles()...),
 		agentexecution.WithChildDefinitionResolver(agentexecution.ChildDefinitionResolverFunc(app.prepareChildDefinition)),
-		agentexecution.WithHostEffectReconciler(app.automationApp.ReconcileHostEffect),
+		agentexecution.WithToolMutationApplier(app.automationApp.ApplyToolMutation),
 		agentexecution.WithPermissionRuleStore(agentexecution.PermissionRuleStore{
 			Load: func(context.Context) ([]config.AgentApprovalRule, error) {
 				layered, err := app.SettingsService().Snapshot(settingsapp.Global())

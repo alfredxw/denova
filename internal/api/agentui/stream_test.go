@@ -4,6 +4,7 @@ import (
 	"bytes"
 	agentrun "denova/internal/agents/run"
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -99,7 +100,7 @@ func TestStreamEncoderMapsAgentEventsToUIStream(t *testing.T) {
 
 	assertChunk(t, chunks, DataTypeInteractiveImage, "id", "tool-2")
 	assertChunkAgentPresentation(t, chunks, "tool-output-available", "image", "interactive_media")
-	assertChunkAgentPresentation(t, chunks, DataTypeInteractiveImage, "image", "interactive_media")
+	assertDataChunkValue(t, chunks, DataTypeInteractiveImage, "tool_presentation", map[string]any{"call": "image", "result": "interactive_media"})
 	assertChunk(t, chunks, DataTypeWorkspaceChange, "id", "tool-change-1")
 	assertChunk(t, chunks, DataTypeRuleRoll, "id", "roll-1")
 	assertChunk(t, chunks, DataTypeAsk, "id", "ask-1")
@@ -109,6 +110,7 @@ func TestStreamEncoderMapsAgentEventsToUIStream(t *testing.T) {
 	assertStreamingToolInput(t, chunks, "tool-1", `{"path":"a.md"}`)
 	assertChunk(t, chunks, "error", "errorText", "失败 · 日志 ID / Log ID: 0198-stream-request")
 	assertStartMetadata(t, chunks[0])
+	assertDataChunksHaveStrictShape(t, chunks)
 }
 
 func assertChunkAgentPresentation(t *testing.T, chunks []map[string]any, chunkType, call, result string) {
@@ -125,6 +127,33 @@ func assertChunkAgentPresentation(t *testing.T, chunks []map[string]any, chunkTy
 		}
 	}
 	t.Fatalf("missing chunk type=%s tool presentation call=%s result=%s in %#v", chunkType, call, result, chunks)
+}
+
+func assertDataChunkValue(t *testing.T, chunks []map[string]any, chunkType, key string, want any) {
+	t.Helper()
+	for _, chunk := range chunks {
+		if chunk["type"] != chunkType {
+			continue
+		}
+		data, _ := chunk["data"].(map[string]any)
+		if reflect.DeepEqual(data[key], want) {
+			return
+		}
+	}
+	t.Fatalf("missing chunk type=%s data.%s=%v in %#v", chunkType, key, want, chunks)
+}
+
+func assertDataChunksHaveStrictShape(t *testing.T, chunks []map[string]any) {
+	t.Helper()
+	for _, chunk := range chunks {
+		chunkType, _ := chunk["type"].(string)
+		if !strings.HasPrefix(chunkType, "data-") {
+			continue
+		}
+		if _, present := chunk["providerMetadata"]; present {
+			t.Fatalf("AI SDK data chunk contains unsupported providerMetadata: %#v", chunk)
+		}
+	}
 }
 
 func TestStreamEncoderUsesPersistedDisplaySegmentIDs(t *testing.T) {

@@ -29,7 +29,7 @@ type loopConfig struct {
 	// use defaultToolParallelism; values above maxToolParallelism are clamped.
 	ToolParallelism int
 
-	// modelCallGate is owned by the durable Agent lifecycle. It runs after all
+	// modelCallGate is owned by the Agent lifecycle. It runs after all
 	// caller middleware has formed the exact provider-neutral request and may
 	// restart the first model step after publishing a checkpoint.
 	modelCallGate modelCallGate
@@ -53,7 +53,7 @@ const (
 	maxToolParallelism     = 64
 )
 
-// modelToolLoop owns one provider-neutral model/tool loop. Durable Session and Run
+// modelToolLoop owns one provider-neutral model/tool loop. Session and Run
 // lifecycle are intentionally owned by the higher-level Agent module.
 type modelToolLoop struct {
 	name            string
@@ -255,13 +255,6 @@ func (agent *modelToolLoop) run(parent context.Context, input *loopInput, option
 		stablePrefixMessages++
 	}
 	stablePrefixSeed := cloneMessages(state.Messages[:stablePrefixMessages])
-	if input.ResumeToolCalls {
-		if err := agent.resumeToolCallBoundary(ctx, state, registry, events, options.cancel); err != nil {
-			events.Send(agent.errorEvent(err))
-			return
-		}
-	}
-
 	for iteration := 0; ; iteration++ {
 		if agent.maxIterations > 0 && iteration >= agent.maxIterations {
 			events.Send(agent.errorEvent(errMaxIterations))
@@ -459,54 +452,6 @@ func (agent *modelToolLoop) run(parent context.Context, input *loopInput, option
 			return
 		}
 	}
-}
-
-func (agent *modelToolLoop) resumeToolCallBoundary(
-	ctx context.Context,
-	state *RunState,
-	registry *Registry,
-	events *asyncGenerator[*loopEvent],
-	cancel *cancelControl,
-) error {
-	if state == nil || len(state.Messages) == 0 {
-		return errors.New("resume Agent tools requires a persisted assistant tool-call boundary")
-	}
-	assistant := state.Messages[len(state.Messages)-1]
-	if assistant == nil || assistant.Role != Assistant || len(assistant.ToolCalls) == 0 ||
-		assistant.AgentMeta == nil || assistant.AgentMeta.ModelResponseOrdinal <= 0 {
-		return errors.New("resume Agent tools found no recoverable assistant tool-call boundary")
-	}
-	ordinal := assistant.AgentMeta.ModelResponseOrdinal
-	restoreModelResponseOrdinal(ctx, ordinal)
-	var (
-		results []toolExecutionResult
-		err     error
-	)
-	if finishReason, blocked := modelFinishReasonBlocksToolExecution(assistant.ResponseMeta); blocked {
-		results = agent.incompleteModelToolResults(ctx, assistant.ToolCalls, registry, ordinal, finishReason, events)
-	} else {
-		results, err = agent.executeToolBatch(ctx, registry, assistant.ToolCalls, ordinal, events, cancel)
-	}
-	for _, result := range results {
-		if result.message == nil {
-			continue
-		}
-		state.Messages = append(state.Messages, result.message.Clone())
-		toolEvent := agent.messageEvent(result.message.Clone(), nil, ToolRole, result.message.ToolName)
-		toolEvent.Output.MessageOutput.ExecutionID = result.executionID
-		toolEvent.Output.MessageOutput.ProviderCallID = result.providerCallID
-		events.Send(toolEvent)
-	}
-	if err != nil {
-		if contextErr := agent.contextError(ctx, cancel); contextErr != nil {
-			return contextErr
-		}
-		return err
-	}
-	if cancelErr := cancel.safePoint(cancelAfterTools | cancelAfterModel); cancelErr != nil {
-		return cancelErr
-	}
-	return agent.contextError(ctx, cancel)
 }
 
 func (agent *modelToolLoop) contextError(ctx context.Context, cancel *cancelControl) error {

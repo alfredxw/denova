@@ -103,9 +103,7 @@ func advanceAutomationCurrentReceipt(run *automation.RunRecord, receipt agentrun
 	return nil
 }
 
-// applyAutomationFollowUpReceipt handles both sides of a cold idempotent retry:
-// a replay of the already-current operation refreshes that same receipt, while
-// a replay accepted before the RunRecord write promotes the pending successor.
+// applyAutomationFollowUpReceipt promotes a newly accepted successor receipt.
 func applyAutomationFollowUpReceipt(run *automation.RunRecord, receipt agentrun.CommandReceipt, expectedCommandID, fingerprint string) error {
 	if run == nil {
 		return fmt.Errorf("automation run is required")
@@ -113,16 +111,6 @@ func applyAutomationFollowUpReceipt(run *automation.RunRecord, receipt agentrun.
 	fingerprint = strings.TrimSpace(fingerprint)
 	if fingerprint == "" {
 		return fmt.Errorf("automation follow-up runtime fingerprint is required")
-	}
-	if receipt.Replayed && run.RuntimeCommandID == string(receipt.CommandID) && run.RuntimeOperationID == string(receipt.OperationID) {
-		if current := strings.TrimSpace(run.RuntimeCommandFingerprint); current != "" && current != fingerprint {
-			return fmt.Errorf("%w: run_id=%s replayed successor fingerprint changed", automation.ErrRunIdentityConflict, run.ID)
-		}
-		if err := applyAutomationCurrentReceipt(run, receipt, expectedCommandID); err != nil {
-			return err
-		}
-		run.RuntimeCommandFingerprint = fingerprint
-		return nil
 	}
 	if err := advanceAutomationCurrentReceipt(run, receipt, expectedCommandID); err != nil {
 		return err

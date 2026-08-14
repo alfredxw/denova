@@ -29,13 +29,11 @@ type Input struct {
 
 func Text(value string) Input { return Input{Text: value} }
 
-// CommandReceipt is the durable admission result of one caller command.
-// Idempotency retries return the original receipt with Replayed set.
+// CommandReceipt identifies a command accepted by the current process.
 type CommandReceipt struct {
 	CommandID string
 	RunID     string
 	Cursor    Cursor
-	Replayed  bool
 }
 
 // AbortRequest describes one explicit Run termination command. Callers that
@@ -54,18 +52,10 @@ type QueueControlRequest struct {
 
 type Cursor uint64
 
-type EventDurability string
-
-const (
-	DurableEvent   EventDurability = "durable"
-	EphemeralEvent EventDurability = "ephemeral"
-)
-
 type Event struct {
-	Cursor     Cursor
-	Durability EventDurability
-	RunID      string
-	Payload    EventPayload
+	Cursor  Cursor
+	RunID   string
+	Payload EventPayload
 }
 
 type EventPayload interface{ eventPayload() }
@@ -161,7 +151,7 @@ type ToolInputDelta struct {
 
 func (ToolInputDelta) eventPayload() {}
 
-// ToolStarted is emitted only after the complete model response, when Runtime
+// ToolStarted is emitted only after the complete model response, when Agent
 // establishes the paired tool lifecycle. Concrete execution normally follows;
 // a synthetic preflight failure instead emits ToolFinished immediately.
 type ToolStarted struct {
@@ -210,14 +200,6 @@ type ArtifactProduced struct {
 
 func (ArtifactProduced) eventPayload() {}
 
-type RecoveryRequired struct{ Reason string }
-
-func (RecoveryRequired) eventPayload() {}
-
-type RecoveryResumed struct{}
-
-func (RecoveryResumed) eventPayload() {}
-
 // EventStreamGap reports that a bounded live observer discarded older display
 // events to stay detached from authoritative execution. Callers can rehydrate
 // from Session.Snapshot and reconnect with Session.Observe after ResumeAfter.
@@ -229,46 +211,13 @@ type EventStreamGap struct {
 
 func (EventStreamGap) eventPayload() {}
 
-type RecoveryActionKind string
+// InputDelivery identifies how accepted input relates to the active Run.
+type InputDelivery string
 
 const (
-	RecoveryResumeInput      RecoveryActionKind = "resume_input"
-	RecoveryResumeCompaction RecoveryActionKind = "resume_compaction"
-	RecoveryAbortRun         RecoveryActionKind = "abort_run"
-)
-
-// RecoveryAction is a current, opaque authority derived from Session state.
-// Callers persist only ID if they need a transport round trip; internal command
-// and operation identities never cross the public Agent boundary.
-type RecoveryAction struct {
-	ID    string
-	Kind  RecoveryActionKind
-	RunID string
-	// CommandID is the caller-owned idempotency identity of the accepted input
-	// or structural command selected by this opaque action. The action ID remains
-	// the only recovery authority; CommandID exists for exact display routing and
-	// must never be accepted in place of ID.
-	CommandID  string
-	Cycle      int
-	Delivery   RecoveryInputDelivery
-	Compaction RecoveryCompactionAction
-}
-
-// RecoveryInputDelivery identifies the user-visible queue semantic without
-// exposing the runtime command used to authorize a recovery choice.
-type RecoveryInputDelivery string
-
-const (
-	RecoveryDeliverySteer    RecoveryInputDelivery = "steer"
-	RecoveryDeliveryFollowUp RecoveryInputDelivery = "follow_up"
-	RecoveryDeliveryNextTurn RecoveryInputDelivery = "next_turn"
-)
-
-type RecoveryCompactionAction string
-
-const (
-	RecoveryCompactionCreate RecoveryCompactionAction = "compact"
-	RecoveryCompactionRemove RecoveryCompactionAction = "remove"
+	DeliverySteer    InputDelivery = "steer"
+	DeliveryFollowUp InputDelivery = "follow_up"
+	DeliveryNextTurn InputDelivery = "next_turn"
 )
 
 type GoalUpdated struct {
@@ -448,48 +397,44 @@ type ActiveOutputSnapshot struct {
 }
 
 type SessionSnapshot struct {
-	Key             SessionKey
-	Cursor          Cursor
-	RetentionStart  Cursor
-	ActiveRunID     string
-	ActiveCommandID string
-	// ActiveCommandFingerprint is opaque durable admission identity for hosts
-	// that reconcile a product ledger with Agent state after a crash.
-	ActiveCommandFingerprint string
-	ActiveReceiptCursor      Cursor
-	ActiveCycle              int
-	RecoveryPending          bool
-	RecoveryPaused           bool
-	RecoveryActions          []RecoveryAction
-	ActiveOutput             ActiveOutputSnapshot
-	QueuedRuns               []QueuedRunSnapshot
-	OpenTools                []OpenToolSnapshot
-	RecentRuns               []RunSummary
-	Goal                     *GoalState
-	Todo                     *TodoState
-	Cleanup                  *CleanupState
-	Compaction               *CompactionState
-	TranscriptSync           *TranscriptSyncState
-	ClearRevision            uint64
-	PendingInteractions      []InteractionRequest
-	MessagesTruncated        bool
+	Key                 SessionKey
+	Cursor              Cursor
+	RetentionStart      Cursor
+	ActiveRunID         string
+	ActiveCommandID     string
+	ActiveReceiptCursor Cursor
+	ActiveCycle         int
+	ActiveOutput        ActiveOutputSnapshot
+	QueuedRuns          []QueuedRunSnapshot
+	OpenTools           []OpenToolSnapshot
+	RecentRuns          []RunSummary
+	Goal                *GoalState
+	Todo                *TodoState
+	Cleanup             *CleanupState
+	Compaction          *CompactionState
+	TranscriptSync      *TranscriptSyncState
+	ClearRevision       uint64
+	PendingInteractions []InteractionRequest
+	MessagesTruncated   bool
 }
 
 type RunSummary struct {
-	ID                 string
-	CommandID          string
-	CommandFingerprint string
-	ReceiptCursor      Cursor
-	Status             ResultStatus
-	Reason             string
-	ReasonTruncated    bool
+	ID              string
+	CommandID       string
+	ReceiptCursor   Cursor
+	Status          ResultStatus
+	Reason          string
+	ReasonTruncated bool
+	// Output is the settled assistant text retained with the transcript. Live
+	// event history remains process-local and is intentionally not replayed.
+	Output string
 }
 
 type QueuedRunSnapshot struct {
 	ID            string
 	CommandID     string
 	ReceiptCursor Cursor
-	Delivery      RecoveryInputDelivery
+	Delivery      InputDelivery
 	Text          string
 	TextTruncated bool
 	// InterruptRequested means this accepted FollowUp has already been promoted
@@ -497,9 +442,8 @@ type QueuedRunSnapshot struct {
 	InterruptRequested bool
 }
 
-// OpenToolSnapshot is bounded reconnect evidence for one unfinished tool. It
-// deliberately excludes arguments and results; those remain in live Events
-// and durable artifacts rather than Session status.
+// OpenToolSnapshot describes an unfinished tool in the live process. It
+// deliberately excludes arguments and results; those remain in live Events.
 type OpenToolSnapshot struct {
 	CallID string
 	Name   string
@@ -522,7 +466,7 @@ var (
 	ErrRunSettled                 = errors.New("agent run is settled")
 	ErrNoActiveRun                = errors.New("agent session has no active run")
 	ErrDefinitionUnavailable      = errors.New("agent Definition is unavailable")
-	ErrDefinitionMismatch         = errors.New("agent Definition does not match durable state")
+	ErrDefinitionMismatch         = errors.New("agent Definition does not match the active transcript")
 	ErrCursorExpired              = errors.New("agent event cursor expired")
 	ErrCapabilityUnsupported      = errors.New("agent capability is unsupported")
 	ErrInteractionStale           = errors.New("agent interaction is stale")
@@ -530,8 +474,6 @@ var (
 	ErrPermissionArgumentsChanged = errors.New("agent tool arguments changed after authorization")
 	ErrContextLimit               = errors.New("agent context limit reached")
 	ErrIdleTimeout                = errors.New("agent execution idle timeout")
-	ErrRecoveryRequired           = errors.New("agent recovery action is required")
-	ErrRecoveryStale              = errors.New("agent recovery action is stale")
 	ErrCanonicalCommitRejected    = errors.New("agent canonical commit was rejected")
 )
 

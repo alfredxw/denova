@@ -40,31 +40,36 @@ func (session *Session) Inspect(ctx context.Context, input Input) (Inspection, e
 		return Inspection{}, err
 	}
 	ctx = contextWithInspection(ctx)
-	checkpoint, err := session.harness.IdleEngineCheckpoint(ctx)
-	if err != nil {
-		return Inspection{}, mapRuntimeError(err)
+	session.mu.RLock()
+	if session.active != nil {
+		session.mu.RUnlock()
+		return Inspection{}, ErrSessionBusy
 	}
-	transcript, err := decodeEngineTranscript(checkpoint.State)
+	revision := session.revision
+	checkpointState := append([]byte(nil), session.engineState...)
+	capabilities := cloneRawStateMap(session.capabilities)
+	session.mu.RUnlock()
+	transcript, err := decodeEngineTranscript(checkpointState)
 	if err != nil {
 		return Inspection{}, err
 	}
-	clearState, clearPresent, err := applyClearToTranscript(&transcript, checkpoint.Capabilities)
+	clearState, clearPresent, err := applyClearToTranscript(&transcript, capabilities)
 	if err != nil {
 		return Inspection{}, err
 	}
-	compaction, compactionPresent, _, err := compactionStateFrom(checkpoint.Capabilities)
+	compaction, compactionPresent, _, err := compactionStateFrom(capabilities)
 	if err != nil {
 		return Inspection{}, err
 	}
 	compaction, compactionPresent = clearCompaction(compaction, compactionPresent, clearState, clearPresent)
-	cleanup, cleanupPresent, _, err := cleanupStateFrom(checkpoint.Capabilities)
+	cleanup, cleanupPresent, _, err := cleanupStateFrom(capabilities)
 	if err != nil {
 		return Inspection{}, err
 	}
 	cleanup, cleanupPresent = clearCleanup(cleanup, cleanupPresent, clearState, clearPresent)
 	cleanup, cleanupPresent = cleanupAfterCompaction(cleanup, cleanupPresent, compaction, compactionPresent)
 
-	sessionView := SessionView{Key: session.key, Revision: uint64(checkpoint.Cursor)}
+	sessionView := SessionView{Key: session.key, Revision: uint64(revision)}
 	// The synthetic Run identity lets dynamic capabilities assemble the same
 	// bounded provenance they use for a real start, but it is never admitted and
 	// therefore grants no lifecycle control authority.
@@ -85,14 +90,9 @@ func (session *Session) Inspect(ctx context.Context, input Input) (Inspection, e
 	if err != nil {
 		return Inspection{}, err
 	}
-	if session.agent != nil && isPersistentStore(session.agent.store) {
-		if err := validatePersistentDefinition(prepared.definition); err != nil {
-			return Inspection{}, err
-		}
-	}
 	var goal GoalState
 	goalPresent := false
-	if raw, present := checkpoint.Capabilities[goalCapability]; present {
+	if raw, present := capabilities[goalCapability]; present {
 		goal, err = decodeGoalState(raw)
 		if err != nil {
 			return Inspection{}, err
@@ -156,17 +156,16 @@ func (session *Session) Inspect(ctx context.Context, input Input) (Inspection, e
 	if err != nil {
 		return Inspection{}, err
 	}
-	verified, err := session.harness.IdleEngineCheckpoint(ctx)
-	if err != nil {
-		return Inspection{}, mapRuntimeError(err)
-	}
-	if verified.Cursor != checkpoint.Cursor || verified.StateDescriptor != checkpoint.StateDescriptor {
+	session.mu.RLock()
+	unchanged := session.active == nil && session.revision == revision && string(session.engineState) == string(checkpointState)
+	session.mu.RUnlock()
+	if !unchanged {
 		return Inspection{}, fmt.Errorf("%w: Agent Session changed during inspection", ErrSessionBusy)
 	}
 	return Inspection{
 		Session:       sessionView,
 		Run:           runView,
-		DefinitionKey: prepared.definitionKey, RestoreKey: prepared.restoreKey,
+		DefinitionKey: prepared.definitionKey, BehaviorKey: prepared.behaviorKey,
 		MaterializedFingerprint: prepared.materializedFingerprint,
 		PrefixFingerprint:       prepared.prefixFingerprint,
 		ModelIdentity:           prepared.definition.ModelIdentity,

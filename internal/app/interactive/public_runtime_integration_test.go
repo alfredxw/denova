@@ -337,7 +337,7 @@ func TestGameCanonicalTranscriptRetainsRichToolHistoryOutsideModelVisibilityPoli
 	profile := publicGameNoopProfile(workspace, story.ID)
 	runtime, err := agentexecution.NewAgentRuntime(ctx, dataDir,
 		agentexecution.WithProfiles(profile),
-		agentexecution.WithHostEffectReconciler(func(context.Context, agenttoolruntime.CommittedToolMutation) error { return nil }),
+		agentexecution.WithToolMutationApplier(func(context.Context, agenttoolruntime.CommittedToolMutation) error { return nil }),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -406,7 +406,7 @@ func TestGamePublicCleanupCompactionRemovalAndColdReopenRestoreRichHistory(t *te
 	newRuntime := func() *agentexecution.Runtime {
 		runtime, runtimeErr := agentexecution.NewAgentRuntime(ctx, dataDir,
 			agentexecution.WithProfiles(profile),
-			agentexecution.WithHostEffectReconciler(func(context.Context, agenttoolruntime.CommittedToolMutation) error { return nil }),
+			agentexecution.WithToolMutationApplier(func(context.Context, agenttoolruntime.CommittedToolMutation) error { return nil }),
 		)
 		if runtimeErr != nil {
 			t.Fatal(runtimeErr)
@@ -506,7 +506,7 @@ func TestGameTranscriptSyncRebuildsEditedAndRegeneratedBranchWithoutPollutingFor
 	newRuntime := func() *agentexecution.Runtime {
 		runtime, runtimeErr := agentexecution.NewAgentRuntime(ctx, dataDir,
 			agentexecution.WithProfiles(profile),
-			agentexecution.WithHostEffectReconciler(func(context.Context, agenttoolruntime.CommittedToolMutation) error { return nil }),
+			agentexecution.WithToolMutationApplier(func(context.Context, agenttoolruntime.CommittedToolMutation) error { return nil }),
 		)
 		if runtimeErr != nil {
 			t.Fatal(runtimeErr)

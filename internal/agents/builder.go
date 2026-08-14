@@ -329,10 +329,7 @@ func buildAgentDefinitionWithComposition(ctx context.Context, cfg *config.Config
 	tools := append([]agent.ToolDefinition(nil), assembly.Tools...)
 	var builtinToolsets []agent.CapabilityIdentity
 	if !spec.DisableWriteTodos && toolSettings.Allows(config.AgentToolTodo) {
-		todoToolset, err := publictools.Todo()
-		if err != nil {
-			return agentDefinitionAssembly{}, fmt.Errorf("create todo tool: %w", err)
-		}
+		todoToolset := publictools.Todo()
 		prepared, err := todoToolset.PrepareTools(ctx, agent.ToolRequest{})
 		if err != nil {
 			return agentDefinitionAssembly{}, fmt.Errorf("prepare todo tool: %w", err)
@@ -341,10 +338,7 @@ func buildAgentDefinitionWithComposition(ctx context.Context, cfg *config.Config
 		builtinToolsets = append(builtinToolsets, todoToolset.Identity())
 	}
 	if spec.InteractiveHost && toolSettings.Allows(config.AgentToolAsk) && (spec.Kind == config.AgentKindGeneral || spec.Kind == config.AgentKindIDE || spec.Kind == config.AgentKindConfigManager || spec.Kind == config.AgentKindHarnessOptimizer) {
-		askToolset, err := publictools.Ask()
-		if err != nil {
-			return agentDefinitionAssembly{}, fmt.Errorf("create ask tool: %w", err)
-		}
+		askToolset := publictools.Ask()
 		prepared, err := askToolset.PrepareTools(ctx, agent.ToolRequest{})
 		if err != nil {
 			return agentDefinitionAssembly{}, fmt.Errorf("prepare ask tool: %w", err)

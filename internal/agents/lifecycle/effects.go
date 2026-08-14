@@ -13,24 +13,24 @@ import (
 	agent "github.com/alfredxw/denova/agent"
 )
 
-// ToolEffectApplier transfers committed Denova Tool mutations from Agent's
-// durable outbox into the product-level host reconciler.
+// ToolEffectApplier commits Denova Tool mutations directly to the product-owned
+// idempotent destination.
 type ToolEffectApplier func(context.Context, []agent.EffectRequest) ([]agent.EffectResult, error)
 
-// ToolEffectObserver receives only effects that the product reconciler has
-// durably admitted. It is process-local accounting and never effect authority.
+// ToolEffectObserver receives only effects accepted by the product. It is
+// process-local accounting and never effect authority.
 type ToolEffectObserver func(agent.EffectRequest, agenttool.Mutation)
 
-// NewToolEffectApplier adapts Denova's existing at-least-once mutation host to
-// the public Agent effect outbox. One invalid item does not discard successful
-// siblings; every request receives an explicit result.
+// NewToolEffectApplier adapts Denova's product mutation host to Agent's direct
+// canonical effect API. One invalid item does not discard successful siblings;
+// every request receives an explicit result.
 func NewToolEffectApplier(
-	reconciler agenttoolruntime.HostEffectReconciler,
+	applier agenttoolruntime.ToolMutationApplier,
 	options agentrun.Options,
 	observe ToolEffectObserver,
 ) (ToolEffectApplier, error) {
-	if reconciler == nil {
-		return nil, errors.New("Denova Tool effect reconciler is required")
+	if applier == nil {
+		return nil, errors.New("Denova Tool mutation applier is required")
 	}
 	options = options.Normalize(options.Workspace)
 	binding, err := agentrun.RuntimeBindingForOptions(options)
@@ -66,13 +66,13 @@ func NewToolEffectApplier(
 			if toolCallID == "" {
 				toolCallID = strings.TrimSpace(request.CallID)
 			}
-			err = reconciler(ctx, agenttoolruntime.CommittedToolMutation{
+			err = applier(ctx, agenttoolruntime.CommittedToolMutation{
 				EffectID: agentrun.HostEffectID(request.ID), Binding: binding,
 				RuntimeOperation: agentrun.OperationID(request.Identity.RunID), RuntimeCycle: request.Identity.Cycle,
 				ToolCallID: toolCallID, Origin: origin, Mutation: mutation,
 			})
 			if err != nil {
-				result.Error = fmt.Sprintf("reconcile Denova Tool mutation: %v", err)
+				result.Error = fmt.Sprintf("apply Denova Tool mutation: %v", err)
 			} else {
 				result.Revision = request.ID
 				if observe != nil {

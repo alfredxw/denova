@@ -2,12 +2,9 @@ package interactiveapp
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"sync"
 	"testing"
-
-	agent "github.com/alfredxw/denova/agent"
 
 	agentrun "denova/internal/agents/run"
 	"denova/internal/book/lore"
@@ -101,26 +98,6 @@ func TestInteractiveDirectorPlanCommitPublishesOnlyAfterOutputAuthorization(t *t
 	canonical, summary, found, err := interactiveDirectorCanonicalResult(store, story.ID, "main", string(identity.CommandID))
 	if err != nil || !found || canonical.Metadata.LastRun == nil || summary != "当前计划仍然有效" {
 		t.Fatalf("canonical Director replay result = plan=%#v summary=%q found=%v err=%v", canonical, summary, found, err)
-	}
-	cold := newInteractiveDirectorPlanCommit(
-		interactive.NewStore(workspace), story.ID, "main", turn.ID, token, nil, nil,
-	)
-	reconciled, err := cold.ReconcileDirectorCanonicalOutput(context.Background(), agent.ReconcileRequest{
-		Identity: agent.CommitIdentity{
-			CommandID: string(identity.CommandID), RunID: string(identity.OperationID), Cycle: identity.Cycle, Stage: agent.CommitOutput,
-		},
-		Hash: "agent-output-hash-1",
-	})
-	if err != nil || !reconciled.Found || reconciled.Revision == "" {
-		t.Fatalf("cold Director output reconcile = %#v err=%v", reconciled, err)
-	}
-	if _, err := cold.ReconcileDirectorCanonicalOutput(context.Background(), agent.ReconcileRequest{
-		Identity: agent.CommitIdentity{
-			CommandID: string(identity.CommandID), RunID: string(identity.OperationID), Cycle: identity.Cycle, Stage: agent.CommitOutput,
-		},
-		Hash: "different-agent-output-hash",
-	}); !errors.Is(err, interactive.ErrDirectorPlanDomainCommitConflict) {
-		t.Fatalf("cold Director output hash conflict error=%v", err)
 	}
 }
 

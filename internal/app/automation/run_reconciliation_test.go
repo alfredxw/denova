@@ -82,7 +82,7 @@ func TestAutomationCurrentReceiptIsMonotonicAndSuccessorOnly(t *testing.T) {
 	}
 }
 
-func TestAutomationFollowUpReceiptReplaysExactCurrentOperation(t *testing.T) {
+func TestAutomationFollowUpReceiptRejectsCurrentOperationReuse(t *testing.T) {
 	run := automation.RunRecord{
 		ID:                     "follow-up-replay",
 		RootRuntimeCommandID:   automationRunAgentCommandID("follow-up-replay"),
@@ -90,17 +90,11 @@ func TestAutomationFollowUpReceiptReplaysExactCurrentOperation(t *testing.T) {
 		RuntimeCommandID: "follow-up-command", RuntimeOperationID: "follow-up-operation",
 		RuntimeReceiptCursor: 9, RuntimeCommandFingerprint: "runtime-fingerprint",
 	}
-	replayed := agentrun.CommandReceipt{
-		CommandID: "follow-up-command", OperationID: "follow-up-operation", Cursor: 9, Replayed: true,
+	reused := agentrun.CommandReceipt{
+		CommandID: "follow-up-command", OperationID: "follow-up-operation", Cursor: 9,
 	}
-	if err := applyAutomationFollowUpReceipt(&run, replayed, "follow-up-command", "runtime-fingerprint"); err != nil {
-		t.Fatalf("exact current replay failed: %v", err)
-	}
-	if run.RuntimeOperationID != "follow-up-operation" || run.RuntimeReceiptCursor != 9 {
-		t.Fatalf("exact replay changed current receipt: %#v", run)
-	}
-	if err := applyAutomationFollowUpReceipt(&run, replayed, "follow-up-command", "different-fingerprint"); !errors.Is(err, automation.ErrRunIdentityConflict) {
-		t.Fatalf("different-payload replay error = %v, want ErrRunIdentityConflict", err)
+	if err := applyAutomationFollowUpReceipt(&run, reused, "follow-up-command", "runtime-fingerprint"); !errors.Is(err, automation.ErrRunIdentityConflict) {
+		t.Fatalf("reused successor error = %v, want ErrRunIdentityConflict", err)
 	}
 }
 

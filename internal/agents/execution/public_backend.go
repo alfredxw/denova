@@ -30,7 +30,7 @@ type publicBackend struct {
 	cancel              context.CancelFunc
 	agent               *agent.Agent
 	profiles            *profileRegistry
-	effects             agenttoolruntime.HostEffectReconciler
+	effects             agenttoolruntime.ToolMutationApplier
 	permissionRuleStore PermissionRuleStore
 	childDefinitions    ChildDefinitionResolver
 
@@ -90,8 +90,8 @@ func NewAgentRuntime(ctx context.Context, dataDir string, options ...Option) (*R
 	if err != nil {
 		return nil, err
 	}
-	if resolved.hostEffectReconciler == nil {
-		return nil, errors.New("Agent runtime requires a Tool effect reconciler")
+	if resolved.toolMutationApplier == nil {
+		return nil, errors.New("Agent runtime requires a Tool mutation applier")
 	}
 	if ctx == nil {
 		ctx = context.Background()
@@ -99,7 +99,7 @@ func NewAgentRuntime(ctx context.Context, dataDir string, options ...Option) (*R
 	lifecycle, cancel := context.WithCancel(ctx)
 	backend := &publicBackend{
 		lifecycle: lifecycle, cancel: cancel, profiles: profiles,
-		effects: resolved.hostEffectReconciler, permissionRuleStore: resolved.permissionRuleStore,
+		effects: resolved.toolMutationApplier, permissionRuleStore: resolved.permissionRuleStore,
 		childDefinitions: resolved.childDefinitions,
 		registrations:    make(map[string]*publicCycleRegistration),
 		cycles:           make(map[string]map[int]*publicCycleRegistration), runs: make(map[string]*publicRunHandle),
@@ -111,7 +111,7 @@ func NewAgentRuntime(ctx context.Context, dataDir string, options ...Option) (*R
 		return nil, err
 	}
 	owner, err := agentlifecycle.New(lifecycle, source, agentlifecycle.Config{
-		StoreRoot: root + "/agent-sessions", CacheKeyGenerator: denovaProviderCacheKey,
+		StoreRoot: root + "/agent-transcripts", CacheKeyGenerator: denovaProviderCacheKey,
 	})
 	if err != nil {
 		cancel()
@@ -123,7 +123,7 @@ func NewAgentRuntime(ctx context.Context, dataDir string, options ...Option) (*R
 
 // NewEphemeralRuntime constructs the same public lifecycle over an in-memory
 // Session store. It is intended for focused tests and local compositions that
-// do not require cold restart recovery.
+// do not require transcript persistence.
 func NewEphemeralRuntime() *Runtime {
 	lifecycle, cancel := context.WithCancel(context.Background())
 	backend := &publicBackend{
@@ -747,7 +747,6 @@ func projectInputCommitEffect(
 			}
 			return nil
 		},
-		ReconcileFunc: effect.Reconcile,
 	}
 }
 
@@ -830,13 +829,13 @@ func mapPublicReceipt(run *agent.Run) agentrun.CommandReceipt {
 	receipt := run.Receipt()
 	return agentrun.CommandReceipt{
 		CommandID: agentrun.CommandID(receipt.CommandID), OperationID: agentrun.OperationID(receipt.RunID),
-		Cursor: agentrun.Cursor(receipt.Cursor), Replayed: receipt.Replayed,
+		Cursor: agentrun.Cursor(receipt.Cursor),
 	}
 }
 
 func mapPublicCommandReceipt(receipt agent.CommandReceipt) agentrun.CommandReceipt {
 	return agentrun.CommandReceipt{
 		CommandID: agentrun.CommandID(receipt.CommandID), OperationID: agentrun.OperationID(receipt.RunID),
-		Cursor: agentrun.Cursor(receipt.Cursor), Replayed: receipt.Replayed,
+		Cursor: agentrun.Cursor(receipt.Cursor),
 	}
 }

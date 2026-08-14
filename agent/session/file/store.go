@@ -1,11 +1,5 @@
-// Package file provides Agent's built-in durable session.Store.
-//
-// Custom persistence adapters implement session.Store directly. The built-in
-// implementation keeps one complete, checksummed canonical record stream per
-// Session. Direct use also gets rebuildable runtime checkpoints and command
-// indexes; decorators that expose only session.Log remain correct and may fall
-// back to linear replay. Custom stores can choose their own acceleration
-// without exposing Agent's reducer schema through the public contract.
+// Package file provides Agent's built-in transcript Store. It keeps one
+// checksummed append-only record stream and one exclusive lease per Session.
 package file
 
 import (
@@ -14,14 +8,9 @@ import (
 )
 
 type Store = sessionfile.Store
-type Options = sessionfile.Options
 
 func New(root string) (*Store, error) {
 	return sessionfile.New(root)
-}
-
-func NewWithOptions(root string, options Options) (*Store, error) {
-	return sessionfile.NewWithOptions(root, options)
 }
 
 var _ session.Store = (*Store)(nil)

@@ -11,7 +11,7 @@ import (
 )
 
 // ExecuteStructuralOperation applies one manual compaction mutation to the
-// same public Agent Session that owns normal turns and cold recovery.
+// same public Agent Session that owns normal turns and live reattachment.
 func (s *Runtime) ExecuteStructuralOperation(ctx context.Context, spec agentstructural.Spec) (agentstructural.Result, error) {
 	if s == nil || s.public == nil {
 		return agentstructural.Result{}, ErrUnavailable

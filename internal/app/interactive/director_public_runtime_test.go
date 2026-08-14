@@ -22,7 +22,7 @@ import (
 	"denova/internal/interactive/director"
 )
 
-func TestInteractiveDirectorPublicRunCommitsAndColdReplaysExactCanonicalOutput(t *testing.T) {
+func TestInteractiveDirectorPublicRunCommitsCanonicalOutput(t *testing.T) {
 	var providerCalls atomic.Int32
 	var providerInput atomic.Value
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -111,7 +111,7 @@ func TestInteractiveDirectorPublicRunCommitsAndColdReplaysExactCanonicalOutput(t
 		OpenAIAPIKey: "test-key", OpenAIModel: "director-test", AgentApprovalMode: config.AgentApprovalFullAccess,
 	}
 	newRuntime := func() *agentexecution.Runtime {
-		runtime, runtimeErr := agentexecution.NewAgentRuntime(ctx, runtimeRoot, agentexecution.WithHostEffectReconciler(
+		runtime, runtimeErr := agentexecution.NewAgentRuntime(ctx, runtimeRoot, agentexecution.WithToolMutationApplier(
 			func(context.Context, agenttoolruntime.CommittedToolMutation) error { return nil },
 		))
 		if runtimeErr != nil {
@@ -142,36 +142,5 @@ func TestInteractiveDirectorPublicRunCommitsAndColdReplaysExactCanonicalOutput(t
 		if !strings.Contains(requestBody, want) {
 			t.Fatalf("real Director provider request is missing %q: %s", want, requestBody)
 		}
-	}
-	firstProviderCalls := providerCalls.Load()
-	firstRevision := committed.Metadata.Revision
-
-	// Reopen both durable authorities. An exact command retry must replay the
-	// settled public Run and its canonical receipt without invoking the model,
-	// tool callback, or Story transaction again.
-	coldStore := interactive.NewStore(workspace)
-	coldCommit := newInteractiveDirectorPlanCommit(coldStore, story.ID, "main", turn.ID, token, nil, nil)
-	coldContext := toolContext
-	coldContext.Store = coldStore
-	coldContext.CanonicalOutput = coldCommit
-	coldContext.SubmitDirectorPlanUpdate = func(context.Context, interactive.DirectorPlanUpdateSubmission) (interactive.DirectorPlanUpdateReceipt, error) {
-		submitCalls.Add(1)
-		return interactive.DirectorPlanUpdateReceipt{}, fmt.Errorf("cold replay executed the Director tool")
-	}
-	cold := newRuntime()
-	t.Cleanup(func() { _ = cold.Close(context.Background()) })
-	if _, err := agents.GenerateInteractiveDirectorWithTools(ctx, cold, cfg, book.NewState(workspace), coldContext, instruction); err != nil {
-		t.Fatal(err)
-	}
-	if providerCalls.Load() != firstProviderCalls || submitCalls.Load() != 1 {
-		t.Fatalf("cold exact replay re-executed effects: provider=%d/%d submit=%d", providerCalls.Load(), firstProviderCalls, submitCalls.Load())
-	}
-	afterReplay, err := coldStore.DirectorPlan(story.ID, "main")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if afterReplay.Metadata.Revision != firstRevision || afterReplay.Metadata.LastRun == nil ||
-		afterReplay.Metadata.LastRun.DomainCommit == nil || afterReplay.Metadata.LastRun.DomainCommit.AgentOutputHash != committed.Metadata.LastRun.DomainCommit.AgentOutputHash {
-		t.Fatalf("cold exact replay changed the canonical Director plan: before=%#v after=%#v", committed.Metadata, afterReplay.Metadata)
 	}
 }

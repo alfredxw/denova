@@ -3,14 +3,11 @@ package interactiveapp
 import (
 	"context"
 	"errors"
-	"fmt"
-	"strings"
 
 	agentchat "denova/internal/agents/chat"
 	agentlifecycle "denova/internal/agents/lifecycle"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
-	"denova/internal/interactive"
 
 	agent "github.com/alfredxw/denova/agent"
 )
@@ -85,27 +82,6 @@ func (committer *canonicalConversationCommitter) CommitOutput(
 			Content: receipt.Turn.Narrative, Thinking: receipt.Turn.Thinking,
 		},
 	}, nil
-}
-
-func (committer *canonicalConversationCommitter) Reconcile(
-	_ context.Context,
-	request agent.ReconcileRequest,
-) (agent.ReconcileResult, error) {
-	identity := interactive.DomainCommitIdentity{
-		CommandID:   strings.TrimSpace(request.Identity.CommandID),
-		OperationID: strings.TrimSpace(request.Identity.RunID),
-		Cycle:       request.Identity.Cycle,
-	}
-	switch request.Identity.Stage {
-	case agent.CommitInput:
-		receipt, found, err := committer.config.Conversation.FindRecentAgentCanonicalInput(identity, request.Hash)
-		return agent.ReconcileResult{Found: found, Revision: receipt.Revision}, err
-	case agent.CommitOutput:
-		receipt, found, err := committer.config.Conversation.FindRecentAgentCanonicalOutput(identity, request.Hash)
-		return agent.ReconcileResult{Found: found, Revision: receipt.Revision}, err
-	default:
-		return agent.ReconcileResult{}, fmt.Errorf("unsupported Game canonical stage %q", request.Identity.Stage)
-	}
 }
 
 func (committer *canonicalConversationCommitter) ApplyEffects(

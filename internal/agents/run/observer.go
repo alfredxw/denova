@@ -18,7 +18,7 @@ type LLMOutcome struct {
 	ProviderRequestID string
 }
 
-// Observer records durable state for one Agent run without changing model-visible behavior.
+// Observer records bounded diagnostics for one Agent run without changing model-visible behavior.
 type Observer struct {
 	ledger         *Ledger
 	runID          string
@@ -117,7 +117,7 @@ func (o *Observer) LastLLMOutcome() LLMOutcome {
 	return outcome
 }
 
-// RunID returns the durable run identity available to tools in this context.
+// RunID returns the stable run identity available to tools in this context.
 // It is intentionally metadata-only; tools must not depend on the run ledger
 // contents when applying workspace changes.
 func (o *Observer) RunID() string {
@@ -274,6 +274,23 @@ func (o *Observer) RecordToolExecution(result agenttool.ExecutionRecord) {
 	}
 	recordToolOutputTraceContent(span, result)
 	span.Finish(status, attrs)
+}
+
+// ToolExecutions returns a caller-owned copy of completed tool diagnostics.
+func (o *Observer) ToolExecutions() []agenttool.ExecutionRecord {
+	if o == nil {
+		return nil
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	result := make([]agenttool.ExecutionRecord, len(o.toolExecutions))
+	for index, record := range o.toolExecutions {
+		record.RetryModules = append([]string(nil), record.RetryModules...)
+		record.LoreItemIDs = append([]string(nil), record.LoreItemIDs...)
+		record.DeletedLoreItemIDs = append([]string(nil), record.DeletedLoreItemIDs...)
+		result[index] = record
+	}
+	return result
 }
 
 // ResolvedMutations projects terminal tool executions into committed workspace

@@ -38,10 +38,6 @@ func (publicReplayConversationCommitter) CommitOutput(
 	return agent.OutputCommitReceipt{Revision: "test-output"}, nil
 }
 
-func (publicReplayConversationCommitter) Reconcile(context.Context, agent.ReconcileRequest) (agent.ReconcileResult, error) {
-	return agent.ReconcileResult{}, nil
-}
-
 func (publicReplayConversationCommitter) ApplyEffects(
 	_ context.Context,
 	requests []agent.EffectRequest,
@@ -88,16 +84,6 @@ func (conversation *interactiveReplayConversation) NewAgentConversationCommitter
 	agentlifecycle.ToolEffectApplier,
 ) (agentlifecycle.ConversationCommitter, error) {
 	return interactiveReplayConversationCommitter{conversation: conversation}, nil
-}
-
-func (conversation *interactiveCrashConversation) NewAgentConversationCommitter(
-	options agentrun.Options,
-	applyEffects agentlifecycle.ToolEffectApplier,
-) (agentlifecycle.ConversationCommitter, error) {
-	if conversation != nil && conversation.delegate != nil {
-		return conversation.delegate.NewAgentConversationCommitter(options, applyEffects)
-	}
-	return publicReplayConversationCommitter{}, nil
 }
 
 func publicReplayDefinition(model agent.BaseChatModel, name string) agent.Definition {

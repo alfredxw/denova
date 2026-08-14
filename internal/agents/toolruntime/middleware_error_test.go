@@ -17,33 +17,29 @@ import (
 	agentcontext "denova/internal/agents/context"
 )
 
-type capturingToolLifecycleObserver struct {
-	records []agenttool.ExecutionRecord
-}
-
-type toolLifecycleObserverMiddleware struct {
+type runObserverMiddleware struct {
 	*agent.BaseMiddleware
-	observer ToolLifecycleObserver
+	observer *agentrun.Observer
 }
 
-func (middleware *toolLifecycleObserverMiddleware) WrapToolCall(
+func (middleware *runObserverMiddleware) WrapToolCall(
 	_ context.Context,
 	endpoint agent.ToolCallEndpoint,
 	_ *agent.ToolContext,
 ) (agent.ToolCallEndpoint, error) {
 	return func(ctx context.Context, arguments string, options ...agent.ToolOption) (agent.ToolResult, error) {
-		return endpoint(ContextWithToolLifecycleObserver(ctx, middleware.observer), arguments, options...)
+		return endpoint(agentrun.ContextWithObserver(ctx, middleware.observer), arguments, options...)
 	}, nil
 }
 
 func runPublicToolLifecycle(
 	t *testing.T,
 	definition agent.Definition,
-	observer ToolLifecycleObserver,
+	observer *agentrun.Observer,
 ) (agent.Result, error, map[string]agent.ToolResult) {
 	t.Helper()
 	definition.Middlewares = append([]agent.Middleware{
-		&toolLifecycleObserverMiddleware{BaseMiddleware: &agent.BaseMiddleware{}, observer: observer},
+		&runObserverMiddleware{BaseMiddleware: &agent.BaseMiddleware{}, observer: observer},
 	}, definition.Middlewares...)
 	definition.Permission = agentpermission.FullAccess()
 	owner, err := agent.New(context.Background(), definition)
@@ -68,20 +64,11 @@ func runPublicToolLifecycle(
 	return result, waitErr, results
 }
 
-func (*capturingToolLifecycleObserver) BeforeTool(context.Context, agenttool.Decision, string) error {
-	return nil
-}
-
-func (observer *capturingToolLifecycleObserver) AfterTool(_ context.Context, record agenttool.ExecutionRecord) error {
-	observer.records = append(observer.records, record)
-	return nil
-}
-
 func TestToolOrchestratorKeepsEndpointErrorsLosslessForFixedProcessorAndBoundsAudit(t *testing.T) {
 	const tail = "END_OF_UNBOUNDED_ERROR"
 	hugeError := errors.New(strings.Repeat("巨大错误", 5000) + tail)
-	observer := &capturingToolLifecycleObserver{}
-	ctx := ContextWithToolLifecycleObserver(context.Background(), observer)
+	observer := agentrun.NewObserver(nil, "")
+	ctx := agentrun.ContextWithObserver(context.Background(), observer)
 	middleware := &OrchestratorMiddleware{agentKind: agentrun.AgentKindIDE, toolResultMaxBytes: 64}
 	endpoint, err := middleware.WrapToolCall(context.Background(),
 		func(context.Context, string, ...agent.ToolOption) (agent.ToolResult, error) {
@@ -105,10 +92,10 @@ func TestToolOrchestratorKeepsEndpointErrorsLosslessForFixedProcessorAndBoundsAu
 	if len(result.DisplayContent) > maxToolErrorDiagnosticBytes || !utf8.ValidString(result.DisplayContent) || strings.Contains(result.DisplayContent, tail) {
 		t.Fatalf("display diagnostic was not independently bounded: bytes=%d valid=%t", len(result.DisplayContent), utf8.ValidString(result.DisplayContent))
 	}
-	if len(observer.records) != 1 {
-		t.Fatalf("lifecycle records = %d, want 1", len(observer.records))
+	if len(observer.ToolExecutions()) != 1 {
+		t.Fatalf("lifecycle records = %d, want 1", len(observer.ToolExecutions()))
 	}
-	record := observer.records[0]
+	record := observer.ToolExecutions()[0]
 	if !record.Truncated || record.ReturnedBytes != len(record.Result) || len(record.Result) > 64 || strings.Contains(record.Result, tail) {
 		t.Fatalf("audit result was not independently bounded: %#v", record)
 	}
@@ -119,8 +106,8 @@ func TestToolOrchestratorKeepsEndpointErrorsLosslessForFixedProcessorAndBoundsAu
 
 func TestToolOrchestratorNormalizesInvalidUTF8InEndpointErrors(t *testing.T) {
 	invalidError := errors.New("broken\xffdiagnostic")
-	observer := &capturingToolLifecycleObserver{}
-	ctx := ContextWithToolLifecycleObserver(context.Background(), observer)
+	observer := agentrun.NewObserver(nil, "")
+	ctx := agentrun.ContextWithObserver(context.Background(), observer)
 	middleware := &OrchestratorMiddleware{agentKind: agentrun.AgentKindIDE, toolResultMaxBytes: 256}
 	endpoint, err := middleware.WrapToolCall(context.Background(),
 		func(context.Context, string, ...agent.ToolOption) (agent.ToolResult, error) {
@@ -135,15 +122,15 @@ func TestToolOrchestratorNormalizesInvalidUTF8InEndpointErrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !utf8.ValidString(result.ModelContent) || !utf8.ValidString(result.DisplayContent) || len(observer.records) != 1 || !utf8.ValidString(observer.records[0].Error) {
-		t.Fatalf("tool error projection must be valid UTF-8: result=%#v records=%#v", result, observer.records)
+	if !utf8.ValidString(result.ModelContent) || !utf8.ValidString(result.DisplayContent) || len(observer.ToolExecutions()) != 1 || !utf8.ValidString(observer.ToolExecutions()[0].Error) {
+		t.Fatalf("tool error projection must be valid UTF-8: result=%#v records=%#v", result, observer.ToolExecutions())
 	}
 }
 
 func TestToolOrchestratorUsesDetailsForMutationReceiptWithoutTruncatingProcessorInput(t *testing.T) {
 	receipt := `{"schema":"workspace_change.tool_result.v1","status":"applied","workspace":"/workspace/book-a","change_group_id":"group-1","change_set_id":"change-1","path":"chapters/from-receipt.md","revision":"sha256:after"}`
-	observer := &capturingToolLifecycleObserver{}
-	ctx := ContextWithToolLifecycleObserver(context.Background(), observer)
+	observer := agentrun.NewObserver(nil, "")
+	ctx := agentrun.ContextWithObserver(context.Background(), observer)
 	ctx = agent.ContextWithToolArtifactStore(ctx, &processorArtifactStore{})
 	middleware := &OrchestratorMiddleware{agentKind: agentrun.AgentKindIDE, toolResultMaxBytes: len(receipt) + 8}
 	endpoint, err := middleware.WrapToolCall(context.Background(),
@@ -161,10 +148,10 @@ func TestToolOrchestratorUsesDetailsForMutationReceiptWithoutTruncatingProcessor
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Metadata.ModelTruncated || len(result.ModelContent) <= len(receipt)+8 || len(observer.records) != 1 {
-		t.Fatalf("expected lossless result and bounded lifecycle record: result=%#v records=%#v", result, observer.records)
+	if result.Metadata.ModelTruncated || len(result.ModelContent) <= len(receipt)+8 || len(observer.ToolExecutions()) != 1 {
+		t.Fatalf("expected lossless result and bounded lifecycle record: result=%#v records=%#v", result, observer.ToolExecutions())
 	}
-	record := observer.records[0]
+	record := observer.ToolExecutions()[0]
 	if !record.Truncated || len(record.Result) > len(receipt)+8 {
 		t.Fatalf("lifecycle audit projection was not bounded: %#v", record)
 	}
@@ -175,8 +162,8 @@ func TestToolOrchestratorUsesDetailsForMutationReceiptWithoutTruncatingProcessor
 
 func TestToolOrchestratorPreservesCommittedReceiptWhenEndpointAlsoErrors(t *testing.T) {
 	receipt := `{"schema":"workspace_change.tool_result.v1","status":"applied","workspace":"/workspace/book-a","change_group_id":"group-1","change_set_id":"change-1","path":"chapters/committed.md"}`
-	observer := &capturingToolLifecycleObserver{}
-	ctx := ContextWithToolLifecycleObserver(context.Background(), observer)
+	observer := agentrun.NewObserver(nil, "")
+	ctx := agentrun.ContextWithObserver(context.Background(), observer)
 	middleware := &OrchestratorMiddleware{agentKind: agentrun.AgentKindIDE, toolResultMaxBytes: 1024}
 	endpoint, err := middleware.WrapToolCall(context.Background(),
 		func(context.Context, string, ...agent.ToolOption) (agent.ToolResult, error) {
@@ -193,10 +180,10 @@ func TestToolOrchestratorPreservesCommittedReceiptWhenEndpointAlsoErrors(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Status != agent.ToolResultError || len(observer.records) != 1 {
-		t.Fatalf("result=%#v records=%#v", result, observer.records)
+	if result.Status != agent.ToolResultError || len(observer.ToolExecutions()) != 1 {
+		t.Fatalf("result=%#v records=%#v", result, observer.ToolExecutions())
 	}
-	record := observer.records[0]
+	record := observer.ToolExecutions()[0]
 	mutation, committed := agenttool.MutationFromExecutionRecord(record)
 	if !committed || record.Status != "error" || mutation.Target != "chapters/committed.md" {
 		t.Fatalf("error receipt was not committed: record=%#v mutation=%#v committed=%t", record, mutation, committed)
@@ -204,8 +191,8 @@ func TestToolOrchestratorPreservesCommittedReceiptWhenEndpointAlsoErrors(t *test
 }
 
 func TestToolOrchestratorDefersInvalidDetailsNormalizationToFixedProcessor(t *testing.T) {
-	observer := &capturingToolLifecycleObserver{}
-	ctx := ContextWithToolLifecycleObserver(context.Background(), observer)
+	observer := agentrun.NewObserver(nil, "")
+	ctx := agentrun.ContextWithObserver(context.Background(), observer)
 	middleware := &OrchestratorMiddleware{agentKind: agentrun.AgentKindIDE, toolResultMaxBytes: 256}
 	endpoint, err := middleware.WrapToolCall(context.Background(),
 		func(context.Context, string, ...agent.ToolOption) (agent.ToolResult, error) {
@@ -225,14 +212,14 @@ func TestToolOrchestratorDefersInvalidDetailsNormalizationToFixedProcessor(t *te
 	if result.Status != agent.ToolResultSuccess || string(result.Details) != `{"broken"` || result.ModelContent != "looks successful" {
 		t.Fatalf("middleware altered the fixed processor input: %#v", result)
 	}
-	if len(observer.records) != 1 || observer.records[0].Status != string(agent.ToolResultError) {
-		t.Fatalf("invalid Details lifecycle record = %#v", observer.records)
+	if len(observer.ToolExecutions()) != 1 || observer.ToolExecutions()[0].Status != string(agent.ToolResultError) {
+		t.Fatalf("invalid Details lifecycle record = %#v", observer.ToolExecutions())
 	}
 }
 
 func TestToolOrchestratorPreservesLossyShellEvidenceForFixedProcessor(t *testing.T) {
-	observer := &capturingToolLifecycleObserver{}
-	ctx := ContextWithToolLifecycleObserver(context.Background(), observer)
+	observer := agentrun.NewObserver(nil, "")
+	ctx := agentrun.ContextWithObserver(context.Background(), observer)
 	middleware := &OrchestratorMiddleware{agentKind: agentrun.AgentKindIDE, toolResultMaxBytes: 256}
 	toolCtx := testToolContext("bash", "call-lossy-shell")
 	toolCtx.Definition.Descriptor = processorShellTestDecision().Descriptor
@@ -250,8 +237,8 @@ func TestToolOrchestratorPreservesLossyShellEvidenceForFixedProcessor(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(observer.records) != 1 {
-		t.Fatalf("durable finish records = %#v", observer.records)
+	if len(observer.ToolExecutions()) != 1 {
+		t.Fatalf("tool diagnostics = %#v", observer.ToolExecutions())
 	}
 	persistence := result.Metadata.ArtifactPersistence
 	if result.Status != agent.ToolResultSuccess ||
@@ -259,14 +246,14 @@ func TestToolOrchestratorPreservesLossyShellEvidenceForFixedProcessor(t *testing
 		persistence == nil || persistence.Complete || persistence.FailureReason != agent.ToolArtifactFailureCommit {
 		t.Fatalf("projected shell failure = %#v", result)
 	}
-	record := observer.records[0]
+	record := observer.ToolExecutions()[0]
 	if record.Status != string(agent.ToolResultSuccess) || record.OriginalBytes != 64*1024 ||
 		!record.Truncated || record.Result != result.ModelContent {
 		t.Fatalf("persisted shell failure = %#v", record)
 	}
 }
 
-func TestLossyShellArtifactFailureStopsPublicAgentAfterDurableFinish(t *testing.T) {
+func TestLossyShellArtifactFailureStopsPublicAgentAfterDiagnosticProjection(t *testing.T) {
 	model := &lossyShellControlModel{}
 	var shellCalls, laterCalls atomic.Int32
 	shellTool, err := agent.InferTool("bash", "lossy shell fixture", func(context.Context, shellControlArgs) (agent.ToolResult, error) {
@@ -302,20 +289,20 @@ func TestLossyShellArtifactFailureStopsPublicAgentAfterDurableFinish(t *testing.
 		Tools:           toolset,
 		Execution:       agent.ExecutionPolicy{MaxIterations: 3},
 	}
-	observer := &capturingToolLifecycleObserver{}
+	observer := agentrun.NewObserver(nil, "")
 	result, terminalErr, results := runPublicToolLifecycle(t, definition, observer)
 
 	if terminalErr == nil || result.Status != agent.ResultFailed ||
 		!strings.Contains(result.Reason, agent.ToolArtifactFailureCommit) || model.calls.Load() != 1 ||
-		shellCalls.Load() != 1 || laterCalls.Load() != 0 || len(observer.records) != 1 {
+		shellCalls.Load() != 1 || laterCalls.Load() != 0 || len(observer.ToolExecutions()) != 1 {
 		t.Fatalf("result=%#v terminal=%v model=%d shell=%d later=%d records=%#v results=%#v",
-			result, terminalErr, model.calls.Load(), shellCalls.Load(), laterCalls.Load(), observer.records, results)
+			result, terminalErr, model.calls.Load(), shellCalls.Load(), laterCalls.Load(), observer.ToolExecutions(), results)
 	}
 	shellResult, found := results["bash"]
 	if !found || shellResult.Status != agent.ToolResultError ||
 		shellResult.ResultRetention != agent.ToolResultProtected ||
 		shellResult.Metadata.ArtifactPersistence == nil || shellResult.Metadata.ArtifactPersistence.Complete ||
-		!shellResult.Metadata.ModelTruncated || observer.records[0].OriginalBytes != 64*1024 {
+		!shellResult.Metadata.ModelTruncated || observer.ToolExecutions()[0].OriginalBytes != 64*1024 {
 		t.Fatalf("paired lossy shell result = %#v", shellResult)
 	}
 	paired := agent.ToolMessage(shellResult, "call-lossy-shell", agent.WithToolName("bash"))
@@ -340,7 +327,7 @@ func TestOrchestratorKeepsLargeResultLosslessUntilPublicProcessor(t *testing.T) 
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			content := "HEAD-SENTINEL\n" + strings.Repeat("complete output ", 100) + "\nTAIL-SENTINEL"
-			observer := &capturingToolLifecycleObserver{}
+			observer := agentrun.NewObserver(nil, "")
 			middleware := &OrchestratorMiddleware{
 				BaseMiddleware: &agent.BaseMiddleware{}, agentKind: agentrun.AgentKindIDE, toolResultMaxBytes: limit,
 			}
@@ -383,9 +370,6 @@ func TestOrchestratorKeepsLargeResultLosslessUntilPublicProcessor(t *testing.T) 
 					CommitOutputFn: func(context.Context, agent.OutputCommitRequest) (agent.OutputCommitReceipt, error) {
 						return agent.OutputCommitReceipt{Revision: "output"}, nil
 					},
-					ReconcileFn: func(context.Context, agent.ReconcileRequest) (agent.ReconcileResult, error) {
-						return agent.ReconcileResult{}, nil
-					},
 					ApplyEffectsFn: func(_ context.Context, requests []agent.EffectRequest) ([]agent.EffectResult, error) {
 						results := make([]agent.EffectResult, len(requests))
 						for index, request := range requests {
@@ -407,12 +391,12 @@ func TestOrchestratorKeepsLargeResultLosslessUntilPublicProcessor(t *testing.T) 
 				!strings.Contains(result.ModelContent, "HEAD-SENTINEL") || !strings.Contains(result.ModelContent, "TAIL-SENTINEL") {
 				t.Fatalf("processed result = %#v", result)
 			}
-			if len(observer.records) != 1 || observer.records[0].OriginalBytes != len(content) ||
-				len(observer.records[0].Result) > limit {
-				t.Fatalf("bounded audit record = %#v", observer.records)
+			if len(observer.ToolExecutions()) != 1 || observer.ToolExecutions()[0].OriginalBytes != len(content) ||
+				len(observer.ToolExecutions()[0].Result) > limit {
+				t.Fatalf("bounded audit record = %#v", observer.ToolExecutions())
 			}
-			if test.toolName == "write" && observer.records[0].ChangeSetID != "change-large" {
-				t.Fatalf("workspace receipt = %#v", observer.records[0])
+			if test.toolName == "write" && observer.ToolExecutions()[0].ChangeSetID != "change-large" {
+				t.Fatalf("workspace receipt = %#v", observer.ToolExecutions()[0])
 			}
 		})
 	}

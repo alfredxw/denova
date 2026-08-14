@@ -73,10 +73,7 @@ func TestWritingAskUsesPublicDurableInteractionThroughApplicationEndpoint(t *tes
 	if sess == nil || runtime == nil {
 		t.Fatal("Writing Agent runtime is unavailable")
 	}
-	ask, err := publictools.Ask()
-	if err != nil {
-		t.Fatal(err)
-	}
+	ask := publictools.Ask()
 	model := &writingPublicAskModel{}
 	pending := make(chan struct{}, 1)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)

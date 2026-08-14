@@ -77,9 +77,9 @@ func (service *Service) prepareAgentCycle(runtime *Runtime, request AgentGenerat
 	}, conversation, nil
 }
 
-// PrepareCycle rebuilds an Image Agent after cold recovery from the exact
-// bounded request retained in Agent HostData. Image-specific context remains
-// Denova-owned and never enters the reusable package's persistence schema.
+// PrepareCycle rebuilds Image-specific context from the bounded request kept in
+// Agent HostData. That product context remains Denova-owned and never enters
+// the reusable package's persistence schema.
 func (service *Service) PrepareCycle(
 	ctx context.Context,
 	request agentexecution.CycleRestoreRequest,

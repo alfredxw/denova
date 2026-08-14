@@ -139,13 +139,8 @@ func (service *Service) DisplayTask(ctx context.Context, request Request, taskID
 	return nil
 }
 
-// runtimeProjector keeps active inspection actor-free for the
-// overwhelmingly common idle case. A cold unfinished journal is the only
-// state that needs canonical reconciliation before it can expose recovery
-// identities.
 type runtimeProjector interface {
 	RuntimeStatusProjection(context.Context, agentrun.Options) (agentrun.RuntimeStatus, error)
-	RuntimeRecoveryStatusProjection(context.Context, agentrun.Options) (agentrun.RuntimeStatus, error)
 }
 
 func projectRuntime(
@@ -157,14 +152,6 @@ func projectRuntime(
 		return agentrun.RuntimeStatus{}, false
 	}
 	snapshot, err := projector.RuntimeStatusProjection(ctx, options)
-	if err != nil {
-		logProjectionError(options, err)
-		return agentrun.RuntimeStatus{}, false
-	}
-	if !snapshot.RecoveryPending {
-		return snapshot, true
-	}
-	snapshot, err = projector.RuntimeRecoveryStatusProjection(ctx, options)
 	if err != nil {
 		logProjectionError(options, err)
 		return agentrun.RuntimeStatus{}, false
@@ -214,12 +201,6 @@ func displayOwnsRuntime(record taskRecord, runtime agentrun.RuntimeStatus) bool 
 	if string(runtime.ActiveCommandID) == commandID {
 		return true
 	}
-	if runtime.ActiveStructural != nil && string(runtime.ActiveStructural.CommandID) == commandID {
-		return true
-	}
-	if runtime.InputRecovery != nil && string(runtime.InputRecovery.CommandID) == commandID {
-		return true
-	}
 	if runtime.Phase == agentrun.RunPhaseIdle && runtime.LastOperation != nil && string(runtime.LastOperation.CommandID) == commandID {
 		return true
 	}
@@ -229,9 +210,6 @@ func displayOwnsRuntime(record taskRecord, runtime agentrun.RuntimeStatus) bool 
 func runtimeCommandID(runtime agentrun.RuntimeStatus) string {
 	if runtime.ActiveCommandID != "" {
 		return string(runtime.ActiveCommandID)
-	}
-	if runtime.ActiveStructural != nil && runtime.ActiveStructural.CommandID != "" {
-		return string(runtime.ActiveStructural.CommandID)
 	}
 	if runtime.LastOperation != nil {
 		return string(runtime.LastOperation.CommandID)

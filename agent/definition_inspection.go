@@ -42,7 +42,7 @@ type Inspection struct {
 	// capabilities. It is never accepted by Runtime and grants no authority.
 	Run                     RunView
 	DefinitionKey           string
-	RestoreKey              string
+	BehaviorKey             string
 	MaterializedFingerprint string
 	PrefixFingerprint       string
 	ModelIdentity           CapabilityIdentity

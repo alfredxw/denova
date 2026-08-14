@@ -12,7 +12,7 @@ import (
 
 func TestStandardManagerContract(t *testing.T) {
 	compactiontest.RunManagerContract(t, func(t testing.TB) agent.CompactionManager {
-		manager, err := compaction.Standard(compaction.StandardConfig{
+		manager := compaction.Standard(compaction.StandardConfig{
 			Summarizer: compaction.SummarizerFunc{
 				Capability: agent.CapabilityIdentity{Kind: "compaction.contract-summary", Version: 1},
 				Func: func(context.Context, compaction.SummaryRequest) (compaction.Summary, error) {
@@ -21,7 +21,7 @@ func TestStandardManagerContract(t *testing.T) {
 			},
 			HardLimitBytes: 8 << 20, SummaryLimitBytes: 256 << 10,
 		})
-		if err != nil {
+		if err := manager.(agent.DefinitionInitializer).InitializeDefinition(context.Background()); err != nil {
 			t.Fatal(err)
 		}
 		return manager
@@ -29,7 +29,7 @@ func TestStandardManagerContract(t *testing.T) {
 }
 
 func TestStandardCalibratesPlanFromExactPreviousProviderUsage(t *testing.T) {
-	manager, err := compaction.Standard(compaction.StandardConfig{
+	manager := compaction.Standard(compaction.StandardConfig{
 		Summarizer: compaction.SummarizerFunc{
 			Capability: agent.CapabilityIdentity{Kind: "compaction.calibration-summary", Version: 1},
 			Func: func(context.Context, compaction.SummaryRequest) (compaction.Summary, error) {
@@ -39,9 +39,6 @@ func TestStandardCalibratesPlanFromExactPreviousProviderUsage(t *testing.T) {
 		TriggerBytes: 1024, KeepRecentBytes: 128, HardLimitBytes: 8 << 20, SummaryLimitBytes: 256 << 10,
 		ContextWindowTokens: 10_000, TriggerRatio: .85, RecoveryBand: .8,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
 	previousPrompt := []*agent.Message{agent.UserMessage(strings.Repeat("previous input ", 120))}
 	answer := agent.AssistantMessage("previous answer", nil)
 	answer.ResponseMeta = &agent.ResponseMeta{Usage: &agent.TokenUsage{PromptTokens: 900}}
@@ -61,7 +58,7 @@ func TestStandardCalibratesPlanFromExactPreviousProviderUsage(t *testing.T) {
 }
 
 func TestStandardPlansOnlyCompleteTurnAndToolBatchBoundaries(t *testing.T) {
-	manager, err := compaction.Standard(compaction.StandardConfig{
+	manager := compaction.Standard(compaction.StandardConfig{
 		Summarizer: compaction.SummarizerFunc{
 			Capability: agent.CapabilityIdentity{Kind: "compaction.atomic-boundary-summary", Version: 1},
 			Func: func(context.Context, compaction.SummaryRequest) (compaction.Summary, error) {
@@ -71,9 +68,6 @@ func TestStandardPlansOnlyCompleteTurnAndToolBatchBoundaries(t *testing.T) {
 		TriggerBytes: 1024, KeepRecentBytes: 128, KeepRecentTurns: 1,
 		HardLimitBytes: 8 << 20, SummaryLimitBytes: 256 << 10,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
 	messages := []*agent.Message{
 		agent.UserMessage(strings.Repeat("old request ", 200)),
 		agent.AssistantMessage("", []agent.ToolCall{{

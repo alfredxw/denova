@@ -15,10 +15,7 @@ import (
 )
 
 func TestToolDescriptorDeclaresExecutionAndRecoveryPolicy(t *testing.T) {
-	toolset, err := publictools.Todo()
-	if err != nil {
-		t.Fatal(err)
-	}
+	toolset := publictools.Todo()
 	definitions, err := toolset.PrepareTools(context.Background(), agent.ToolRequest{})
 	if err != nil || len(definitions) != 1 {
 		t.Fatalf("prepare public todo definition=%#v err=%v", definitions, err)

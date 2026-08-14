@@ -17,9 +17,8 @@ type agentToolMutationEffect struct {
 	Mutation agenttool.Mutation `json:"mutation"`
 }
 
-// AgentToolMutationEffect converts the existing Denova mutation receipt into
-// the reusable Agent ToolResult outbox protocol. Product identity is added by
-// the canonical adapter from its trusted Definition options.
+// AgentToolMutationEffect converts a Denova mutation receipt into Agent's
+// canonical effect format. The trusted Adapter adds product identity.
 func AgentToolMutationEffect(record agenttool.ExecutionRecord) (agent.Effect, bool, error) {
 	mutation, ok := agenttool.MutationFromExecutionRecord(record)
 	if !ok {

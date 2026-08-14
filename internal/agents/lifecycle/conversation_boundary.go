@@ -27,7 +27,6 @@ type ConversationCommitter interface {
 	// accepted input is durable. It must not append another user message.
 	ApplyPreparedContext(context.Context, agentchat.AgentContextPreparation) error
 	CommitOutput(context.Context, agentchat.AgentContextPreparation, agent.OutputCommitRequest) (agent.OutputCommitReceipt, error)
-	Reconcile(context.Context, agent.ReconcileRequest) (agent.ReconcileResult, error)
 	ApplyEffects(context.Context, []agent.EffectRequest) ([]agent.EffectResult, error)
 }
 
@@ -131,10 +130,6 @@ func (adapter conversationBoundaryCanonical) MaterializeInput(ctx context.Contex
 
 func (adapter conversationBoundaryCanonical) CommitOutput(ctx context.Context, request agent.OutputCommitRequest) (agent.OutputCommitReceipt, error) {
 	return adapter.boundary.commitOutput(ctx, request)
-}
-
-func (adapter conversationBoundaryCanonical) Reconcile(ctx context.Context, request agent.ReconcileRequest) (agent.ReconcileResult, error) {
-	return adapter.boundary.config.Committer.Reconcile(ctx, request)
 }
 
 func (adapter conversationBoundaryCanonical) ApplyEffects(ctx context.Context, requests []agent.EffectRequest) ([]agent.EffectResult, error) {

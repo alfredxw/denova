@@ -11,8 +11,8 @@ import (
 )
 
 type projectionProbe struct {
-	stored, recovered          agentrun.RuntimeStatus
-	storedCalls, recoveryCalls int
+	stored      agentrun.RuntimeStatus
+	storedCalls int
 }
 
 func (probe *projectionProbe) RuntimeStatusProjection(context.Context, agentrun.Options) (agentrun.RuntimeStatus, error) {
@@ -20,12 +20,7 @@ func (probe *projectionProbe) RuntimeStatusProjection(context.Context, agentrun.
 	return probe.stored, nil
 }
 
-func (probe *projectionProbe) RuntimeRecoveryStatusProjection(context.Context, agentrun.Options) (agentrun.RuntimeStatus, error) {
-	probe.recoveryCalls++
-	return probe.recovered, nil
-}
-
-func TestIdleProjectionNeverOpensRecoveryActor(t *testing.T) {
+func TestRuntimeProjectionUsesOneReadPath(t *testing.T) {
 	probe := &projectionProbe{stored: agentrun.RuntimeStatus{Phase: agentrun.RunPhaseIdle}}
 	for index := 0; index < 256; index++ {
 		status, ok := projectRuntime(context.Background(), probe, agentrun.Options{
@@ -36,30 +31,8 @@ func TestIdleProjectionNeverOpensRecoveryActor(t *testing.T) {
 			t.Fatalf("idle projection %d = %#v projected=%t", index, status, ok)
 		}
 	}
-	if probe.storedCalls != 256 || probe.recoveryCalls != 0 {
-		t.Fatalf("projection calls stored=%d recovery=%d", probe.storedCalls, probe.recoveryCalls)
-	}
-}
-
-func TestColdUnfinishedProjectionOpensCanonicalRecovery(t *testing.T) {
-	probe := &projectionProbe{
-		stored: agentrun.RuntimeStatus{
-			Phase: agentrun.RunPhaseIdle, RecoveryPending: true,
-			LastOperation: &agentrun.OperationSummary{Status: agentrun.OperationInterrupted},
-		},
-		recovered: agentrun.RuntimeStatus{
-			Phase: agentrun.RunPhaseRunning, RecoveryPaused: true,
-			ActiveCommandID: "accepted-start", ActiveOperation: "operation-1",
-		},
-	}
-	status, ok := projectRuntime(context.Background(), probe, agentrun.Options{
-		AgentKind: agentrun.AgentKindConfigManager, Workspace: "/book", SessionID: "config-scope",
-	})
-	if !ok || !status.RecoveryPaused || status.ActiveCommandID != "accepted-start" {
-		t.Fatalf("canonical recovery projection = %#v projected=%t", status, ok)
-	}
-	if probe.storedCalls != 1 || probe.recoveryCalls != 1 {
-		t.Fatalf("projection calls stored=%d recovery=%d", probe.storedCalls, probe.recoveryCalls)
+	if probe.storedCalls != 256 {
+		t.Fatalf("projection calls = %d", probe.storedCalls)
 	}
 }
 
@@ -80,7 +53,7 @@ func TestSettledOrMismatchedDisplayIsNotStreamAttached(t *testing.T) {
 	settled, _ := apptask.NewDeferred(nil)
 	settled.RejectStart(errors.New("settled display"))
 	runtime := agentrun.RuntimeStatus{
-		Phase: agentrun.RunPhaseRunning, RecoveryPaused: true,
+		Phase:           agentrun.RunPhaseRunning,
 		ActiveCommandID: "accepted-start", ActiveOperation: "operation-1",
 	}
 	if displayOwnsRuntime(taskRecord{CommandID: "accepted-start", Task: settled}, runtime) {

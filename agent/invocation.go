@@ -13,7 +13,7 @@ import (
 
 // InvocationScope identifies one root or delegated Agent invocation. Provider
 // tool-call IDs are only unique inside one model response; ToolNamespace gives
-// durable hosts a stable namespace for nested calls while ID separates
+// hosts a stable namespace for nested calls while ID separates
 // run-owned resources across repeated executions of the same Agent object.
 type InvocationScope struct {
 	ID            string
@@ -24,10 +24,9 @@ type InvocationScope struct {
 	Cycle         int
 }
 
-// InvocationIdentity is the caller-owned durable identity of one root model
-// cycle. Scope identifies the durable runtime binding; OperationID and Cycle
-// identify the exact recoverable cycle inside that binding. RunID is used only
-// by hosts that do not have a durable operation coordinator.
+// InvocationIdentity is the caller-owned stable identity of one root model
+// cycle. Scope, OperationID, and Cycle produce deterministic tool and canonical
+// effect IDs. RunID is used when a host has no separate operation identity.
 type InvocationIdentity struct {
 	Scope       string
 	OperationID string
@@ -155,8 +154,8 @@ func IsRootInvocation(ctx context.Context) bool {
 }
 
 // ContextWithInvocationIdentity binds the stable host identity used to derive
-// tool execution IDs. Replaying the same durable cycle must bind the same
-// identity; a different operation or cycle must bind a different identity.
+// tool execution IDs. The same cycle must bind the same identity; a different
+// operation or cycle must bind a different identity.
 func ContextWithInvocationIdentity(ctx context.Context, identity InvocationIdentity) context.Context {
 	if ctx == nil {
 		ctx = context.Background()
@@ -182,7 +181,7 @@ func InvocationIdentityFromContext(ctx context.Context) (InvocationIdentity, boo
 	return identity, identity.Scope != "" || identity.OperationID != "" || identity.RunID != ""
 }
 
-// ToolExecutionID returns the current durable execution ID when called inside
+// ToolExecutionID returns the current stable execution ID when called inside
 // a native tool. The provider call ID is accepted only to support direct tool
 // callers and older middleware; provider IDs never participate in native ID
 // generation because providers may reuse them across model responses.
@@ -216,16 +215,14 @@ func ToolExecutionIDForOrdinal(ctx context.Context, modelResponseOrdinal, toolOr
 	return executionIDForNamespace(scope.ToolNamespace, modelResponseOrdinal, toolOrdinal)
 }
 
-// CurrentToolExecutionID returns the durable ID of the active native call.
+// CurrentToolExecutionID returns the stable ID of the active native call.
 func CurrentToolExecutionID(ctx context.Context) string {
 	metadata, _ := toolCallMetadata(ctx)
 	return metadata.executionID
 }
 
-// nextModelResponseOrdinal is intentionally invocation-local. Durable hosts
-// may replay an exact cycle from ordinal one, but must never resume midway
-// without restoring the ordinal; Denova's runtime pauses crashed cycles and
-// continues user input in cycle+1.
+// nextModelResponseOrdinal is intentionally invocation-local. Each new Run
+// starts from ordinal one; unfinished Runs are never resumed after restart.
 func nextModelResponseOrdinal(ctx context.Context) int {
 	value, ok := invocationValueFromContext(ctx)
 	if !ok || value.state == nil {
@@ -235,21 +232,6 @@ func nextModelResponseOrdinal(ctx context.Context) int {
 	defer value.state.mu.Unlock()
 	value.state.responses++
 	return int(value.state.responses)
-}
-
-func restoreModelResponseOrdinal(ctx context.Context, ordinal int) {
-	if ordinal <= 0 {
-		return
-	}
-	value, ok := invocationValueFromContext(ctx)
-	if !ok || value.state == nil {
-		return
-	}
-	value.state.mu.Lock()
-	if value.state.responses < uint64(ordinal) {
-		value.state.responses = uint64(ordinal)
-	}
-	value.state.mu.Unlock()
 }
 
 // InvocationResource returns one resource per invocation and key. Creation is
@@ -343,9 +325,8 @@ func rootToolNamespace(identity InvocationIdentity, agentName string) string {
 	if runID := strings.TrimSpace(identity.RunID); runID != "" {
 		return hashedExecutionID("inv", identity.Scope, "run:"+runID, agentName)
 	}
-	// Standalone Agent consumers have no durable host operation. A monotonic
-	// process identity still prevents collisions without introducing randomness;
-	// durable hosts must bind InvocationIdentity above.
+	// Standalone Agent consumers have no host operation identity. A monotonic
+	// process identity still prevents collisions without introducing randomness.
 	return hashedExecutionID("inv", "standalone", nextInvocationID(), agentName)
 }
 

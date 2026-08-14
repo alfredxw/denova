@@ -38,8 +38,8 @@ func recoverableGroup(id, payload string, retention agent.ToolResultRetentionMod
 
 func standardForTest(t testing.TB, config StandardConfig) agent.CleanupManager {
 	t.Helper()
-	manager, err := Standard(config)
-	if err != nil {
+	manager := Standard(config)
+	if err := manager.(agent.DefinitionInitializer).InitializeDefinition(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	return manager
@@ -298,9 +298,11 @@ func TestProjectionMetricsPreserveMessageIndexZeroAsEarliestChange(t *testing.T)
 }
 
 func TestStandardRejectsUnknownCacheState(t *testing.T) {
-	if _, err := Standard(StandardConfig{
+	manager := Standard(StandardConfig{
 		ContextWindowTokens: 1_000, CacheState: CacheState("partly-warm"),
-	}); err == nil || !strings.Contains(err.Error(), "CacheState") {
+	})
+	err := manager.(agent.DefinitionInitializer).InitializeDefinition(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "CacheState") {
 		t.Fatalf("invalid CacheState error = %v", err)
 	}
 }

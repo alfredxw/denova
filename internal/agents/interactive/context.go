@@ -10,12 +10,10 @@ import (
 )
 
 // DirectorCanonicalOutput is the single product authority used by the public
-// Agent output-commit fence for background Director work. Implementations must
-// atomically publish and query the exact Agent output identity and hash.
+// Agent output-commit fence for background Director work.
 type DirectorCanonicalOutput interface {
 	BindAgentCycleIdentity(agentrun.CycleIdentity)
 	CommitDirectorCanonicalOutput(context.Context, agent.OutputCommitRequest) (agent.OutputCommitReceipt, error)
-	ReconcileDirectorCanonicalOutput(context.Context, agent.ReconcileRequest) (agent.ReconcileResult, error)
 }
 
 // InteractiveStoryToolContext is the application-facing input used to build

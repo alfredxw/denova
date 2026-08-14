@@ -6,7 +6,7 @@ import (
 )
 
 // CycleIdentity is the durable coordinator identity of one accepted model
-// cycle. Domain stores persist it with canonical commits for exact replay.
+// cycle. Domain stores persist it with canonical commits for stable identity.
 type CycleIdentity struct {
 	CommandID   CommandID
 	OperationID OperationID
@@ -37,14 +37,14 @@ type AgentKindBinder interface {
 	BindAgentKind(string)
 }
 
-// CyclePreparer reconciles domain-owned outboxes after identity binding and
-// before model or tool effects.
+// CyclePreparer finalizes any domain-owned staged work after identity binding
+// and before model or tool effects.
 type CyclePreparer interface {
 	PrepareAgentCycle(context.Context) error
 }
 
-// CycleCommitter publishes or reconciles a domain projection at the same
-// boundary where the durable runtime settles a cycle.
+// CycleCommitter publishes a domain projection at the same boundary where the
+// Agent settles a cycle.
 type CycleCommitter interface {
 	CommitAgentCycle(context.Context, Outcome) error
 }

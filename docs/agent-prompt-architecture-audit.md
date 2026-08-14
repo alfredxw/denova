@@ -287,7 +287,7 @@ used only with an exact next_byte_offset continuation."
 limit: "Maximum selected lines to return; defaults to 2000."
 ```
 
-来源：`agent/tools/read.go`、`agent/tools/read_local.go`
+来源：`agent/tools/read_tool.go`、`agent/tools/workspace_read_adapters.go`
 
 对比结论：
 
@@ -325,7 +325,7 @@ cannot be inferred safely.
 
 改造前 `questions` 有 `minItems=1,maxItems=3`，但 `InteractionQuestion`、`InteractionOption` 和 `LocalizedText` 的模型可见字段没有对应 description；choice/free-text 的互斥关系、稳定 ID、recommended 和 host-provided Other 主要留在 runtime validation。
 
-来源：`agent/tools/ask.go`、`agent/interaction.go`
+来源：`agent/tools/ask_tool.go`、`agent/interaction.go`
 
 对比结论：
 
@@ -377,7 +377,7 @@ mutations: optional
 items: optional
 ```
 
-来源：`agent/tools/todo.go`
+来源：`agent/tools/todo_tool.go`
 
 对比结论：
 
@@ -425,7 +425,7 @@ parent system prompt, follow the parent system prompt.
 
 Denova `task` Schema 同时暴露 `start/observe/steer/respond/abort` 和所有可选 sibling fields。
 
-来源：`internal/agents/prompts/subagent.go`、`agent/tools/tasks.go`
+来源：`internal/agents/prompts/subagent.go`、`agent/tools/task_tool.go`
 
 对比结论：
 
@@ -597,8 +597,8 @@ current user request                     current instruction
 - 可直接复用的 leading-message、User role、provenance/hard-limit 和 attributed renderer：`agent/definition.go:62`、`:84`、`:679`、`agent/definition_engine_context.go:190`、`:282`；
 - Denova 已有稳定 workspace context 位于 transcript 前的实现：`internal/agents/conversation/model_context.go:220`；
 - 精简回合动态 Prompt 与稳定 Game/Director 契约：`internal/agents/prompts/interactive.go`；
-- action-specific `oneOf`：`agent/tools/tasks.go`、`skills.go`、`todo.go`、`schema.go`；
-- `ask` 互斥分支、双语字段与 runtime validation：`agent/tools/ask.go`、`agent/interaction.go`；
+- action-specific `oneOf`：`agent/tools/task_tool.go`、`agent/tools/skill_tool.go`、`agent/tools/todo_tool.go`、`agent/tools/tool_schema.go`；
+- `ask` 互斥分支、双语字段与 runtime validation：`agent/tools/ask_tool.go`、`agent/interaction.go`；
 - 已有的正确 `oneOf` 示例：`internal/agents/tools/interactive_story.go:170`、`:181`。
 
 ## 六、逐类 Agent 审视

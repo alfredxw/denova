@@ -98,11 +98,6 @@ func (s *ChatAppService) startTaskWithError(ctx context.Context, expectedSession
 	}
 	defer operation.Release()
 	ctx = operation.Context()
-	if replay, matched, err := s.replayDurableWritingStart(ctx, req, workspace, sessionID, requestFingerprint); err != nil {
-		return nil, err
-	} else if matched {
-		return replay, nil
-	}
 	runtime, req, err := s.prepareIDEChatRuntime(ctx, req)
 	if err != nil {
 		return nil, err

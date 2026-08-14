@@ -53,20 +53,13 @@ const (
 
 	AgentRuntimePhaseIdle = agentrun.RunPhaseIdle
 
-	AgentRuntimeRecoveryAttach           = agentexecution.RuntimeRecoveryAttach
-	AgentRuntimeRecoveryAbort            = agentexecution.RuntimeRecoveryAbort
-	AgentRuntimeRecoverySteer            = agentexecution.RuntimeRecoverySteer
-	AgentRuntimeRecoveryFollowUp         = agentexecution.RuntimeRecoveryFollowUp
-	AgentRuntimeRecoveryNextTurn         = agentexecution.RuntimeRecoveryNextTurn
-	AgentRuntimeRecoveryCompactContext   = agentexecution.RuntimeRecoveryCompactContext
-	AgentRuntimeRecoveryRemoveCompaction = agentexecution.RuntimeRecoveryRemoveCompaction
+	AgentRuntimeRecoveryAttach = agentexecution.RuntimeRecoveryAttach
 
 	SkillScopeUser              = skills.ScopeUser
 	MaxSkillInstallArchiveBytes = skills.MaxInstallArchiveBytes
 )
 
 var (
-	ErrAgentRecoveryRequired             = agentexecution.ErrRecoveryRequired
 	ErrAgentRecoveryActionChanged        = agentexecution.ErrRecoveryActionChanged
 	ErrAgentRuntimeRecoveryActionChanged = agentexecution.ErrRecoveryActionChanged
 	ErrInvalidAgentCommand               = agentrun.ErrInvalidCommand

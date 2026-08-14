@@ -261,7 +261,7 @@ func TestAgentRuntimeVerifiesCommittedMutationsBeforeTerminalDisplay(t *testing.
 		agent.AssistantMessage("finished", nil),
 	}}
 	hostEffects := 0
-	runtime, err := NewAgentRuntime(ctx, t.TempDir(), WithHostEffectReconciler(
+	runtime, err := NewAgentRuntime(ctx, t.TempDir(), WithToolMutationApplier(
 		func(context.Context, agenttoolruntime.CommittedToolMutation) error {
 			hostEffects++
 			return nil
@@ -367,7 +367,7 @@ func TestAgentRuntimeWorkspaceMutationsRetainConversationDiffReviewScope(t *test
 		}),
 		agent.AssistantMessage("finished", nil),
 	}}
-	runtime, err := NewAgentRuntime(ctx, t.TempDir(), WithHostEffectReconciler(
+	runtime, err := NewAgentRuntime(ctx, t.TempDir(), WithToolMutationApplier(
 		func(context.Context, agenttoolruntime.CommittedToolMutation) error { return nil },
 	))
 	if err != nil {
@@ -516,7 +516,7 @@ func TestAgentRuntimeCommitsARealDenovaSessionAndFinalizesDisplay(t *testing.T) 
 	model := &publicBackendTestModel{}
 	inputCallbacks := 0
 	var events []agentrun.Event
-	runtime, err := NewAgentRuntime(ctx, t.TempDir(), WithHostEffectReconciler(
+	runtime, err := NewAgentRuntime(ctx, t.TempDir(), WithToolMutationApplier(
 		func(context.Context, agenttoolruntime.CommittedToolMutation) error { return nil },
 	))
 	if err != nil {
@@ -538,7 +538,6 @@ func TestAgentRuntimeCommitsARealDenovaSessionAndFinalizesDisplay(t *testing.T) 
 					inputCallbacks++
 					return nil
 				},
-				ReconcileFunc: func(context.Context, agentrun.InputCommitEffectRequest) (bool, error) { return inputCallbacks > 0, nil },
 			},
 		},
 	}, Emit: func(event agentrun.Event) { events = append(events, event) }})
@@ -598,7 +597,7 @@ func TestAgentRuntimeBindsProviderTraceToDurablePublicRun(t *testing.T) {
 			CompletionTokens: 4, TotalTokens: 24,
 		}},
 	}}}
-	runtime, err := NewAgentRuntime(ctx, t.TempDir(), WithHostEffectReconciler(
+	runtime, err := NewAgentRuntime(ctx, t.TempDir(), WithToolMutationApplier(
 		func(context.Context, agenttoolruntime.CommittedToolMutation) error { return nil },
 	))
 	if err != nil {
@@ -681,7 +680,7 @@ func TestAgentRuntimeLoadsExplicitSkillsBeforeFirstModelCallAndPersistsCards(t *
 		return append([]agentrun.Event(nil), events...)
 	}
 	model := &publicBackendSkillCaptureModel{events: snapshotEvents}
-	runtime, err := NewAgentRuntime(ctx, t.TempDir(), WithHostEffectReconciler(
+	runtime, err := NewAgentRuntime(ctx, t.TempDir(), WithToolMutationApplier(
 		func(context.Context, agenttoolruntime.CommittedToolMutation) error { return nil },
 	))
 	if err != nil {
@@ -743,10 +742,7 @@ func TestAgentRuntimePlanAskPersistsAndResumesSamePublicRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ask, err := publictools.Ask()
-	if err != nil {
-		t.Fatal(err)
-	}
+	ask := publictools.Ask()
 	model := &publicBackendTestModel{responses: []*agent.Message{
 		agent.AssistantMessage("", []agent.ToolCall{{
 			ID: "provider-plan-ask", Type: "function", Function: agent.FunctionCall{
@@ -763,7 +759,7 @@ func TestAgentRuntimePlanAskPersistsAndResumesSamePublicRun(t *testing.T) {
 		EnforceToolSettings: true,
 		Workspace:           workspace,
 	})
-	runtime, err := NewAgentRuntime(ctx, t.TempDir(), WithHostEffectReconciler(
+	runtime, err := NewAgentRuntime(ctx, t.TempDir(), WithToolMutationApplier(
 		func(context.Context, agenttoolruntime.CommittedToolMutation) error { return nil },
 	))
 	if err != nil {
@@ -908,7 +904,7 @@ func TestAgentRuntimeSteerPreemptsAndContinuesSamePublicRun(t *testing.T) {
 			Options:      request.Options,
 		}, nil
 	}, canonical: publicBackendTestSessionCanonical(sess)}
-	runtime, err := NewAgentRuntime(ctx, t.TempDir(), WithProfiles(profile), WithHostEffectReconciler(
+	runtime, err := NewAgentRuntime(ctx, t.TempDir(), WithProfiles(profile), WithToolMutationApplier(
 		func(context.Context, agenttoolruntime.CommittedToolMutation) error { return nil },
 	))
 	if err != nil {
@@ -1045,7 +1041,7 @@ func TestAgentRuntimeFollowUpQueuesAndContinuesSamePublicRun(t *testing.T) {
 			Request: request.Request, Options: request.Options,
 		}, nil
 	}, canonical: publicBackendTestSessionCanonical(sess)}
-	runtime, err := NewAgentRuntime(ctx, t.TempDir(), WithProfiles(profile), WithHostEffectReconciler(
+	runtime, err := NewAgentRuntime(ctx, t.TempDir(), WithProfiles(profile), WithToolMutationApplier(
 		func(context.Context, agenttoolruntime.CommittedToolMutation) error { return nil },
 	))
 	if err != nil {
@@ -1147,7 +1143,7 @@ func TestAgentRuntimeCancelQueuedRemovesAcceptedFollowUp(t *testing.T) {
 			Request: request.Request, Options: request.Options,
 		}, nil
 	}, canonical: publicBackendTestSessionCanonical(sess)}
-	runtime, err := NewAgentRuntime(ctx, t.TempDir(), WithProfiles(profile), WithHostEffectReconciler(
+	runtime, err := NewAgentRuntime(ctx, t.TempDir(), WithProfiles(profile), WithToolMutationApplier(
 		func(context.Context, agenttoolruntime.CommittedToolMutation) error { return nil },
 	))
 	if err != nil {
@@ -1227,7 +1223,7 @@ func TestAgentRuntimeNextTurnChainsASeparatePublicRunToOneDisplayTask(t *testing
 			Request:      request.Request, Options: request.Options,
 		}, nil
 	}, canonical: publicBackendTestSessionCanonical(sess)}
-	runtime, err := NewAgentRuntime(ctx, t.TempDir(), WithProfiles(profile), WithHostEffectReconciler(
+	runtime, err := NewAgentRuntime(ctx, t.TempDir(), WithProfiles(profile), WithToolMutationApplier(
 		func(context.Context, agenttoolruntime.CommittedToolMutation) error { return nil },
 	))
 	if err != nil {
@@ -1294,7 +1290,7 @@ func TestAgentRuntimeNextTurnChainsASeparatePublicRunToOneDisplayTask(t *testing
 	}
 }
 
-func TestAgentRuntimeColdReplayUsesDurableOutputWithoutCallingModel(t *testing.T) {
+func TestAgentRuntimeRestartRetainsTranscriptAndRunsNewInput(t *testing.T) {
 	ctx := context.Background()
 	workspace := t.TempDir()
 	dataDir := t.TempDir()
@@ -1320,7 +1316,7 @@ func TestAgentRuntimeColdReplayUsesDurableOutputWithoutCallingModel(t *testing.T
 		},
 	}
 	newRuntime := func() *Runtime {
-		runtime, runtimeErr := NewAgentRuntime(ctx, dataDir, WithHostEffectReconciler(
+		runtime, runtimeErr := NewAgentRuntime(ctx, dataDir, WithToolMutationApplier(
 			func(context.Context, agenttoolruntime.CommittedToolMutation) error { return nil },
 		))
 		if runtimeErr != nil {
@@ -1348,6 +1344,7 @@ func TestAgentRuntimeColdReplayUsesDurableOutputWithoutCallingModel(t *testing.T
 		t.Fatal(err)
 	}
 
+	cycle.Request = agentchatRequest("replay-command-2", "hello again")
 	var replayEvents []agentrun.Event
 	second := newRuntime()
 	t.Cleanup(func() { _ = second.Close(context.Background()) })
@@ -1364,8 +1361,8 @@ func TestAgentRuntimeColdReplayUsesDurableOutputWithoutCallingModel(t *testing.T
 	model.mu.Lock()
 	modelCalls := len(model.inputs)
 	model.mu.Unlock()
-	if modelCalls != 1 {
-		t.Fatalf("model calls = %d, want one initial call", modelCalls)
+	if modelCalls != 2 {
+		t.Fatalf("model calls = %d, want a fresh call after restart", modelCalls)
 	}
 	if len(replayEvents) == 0 || replayEvents[len(replayEvents)-1].Type != "done" {
 		t.Fatalf("replay events = %#v", replayEvents)
@@ -1375,11 +1372,11 @@ func TestAgentRuntimeColdReplayUsesDurableOutputWithoutCallingModel(t *testing.T
 		t.Fatalf("read replayed public Agent trace: %v", err)
 	}
 	if replayedTrace.Summary.LLMCalls != 1 || replayedTrace.Summary.Status != "success" {
-		t.Fatalf("cold replay changed public Agent trace = %#v", replayedTrace.Summary)
+		t.Fatalf("restart changed the completed public Agent trace = %#v", replayedTrace.Summary)
 	}
 }
 
-func TestAgentRuntimeColdRecoveryAttachesThenSteersPausedRun(t *testing.T) {
+func TestAgentRuntimeRestartMarksUnfinishedRunInterrupted(t *testing.T) {
 	ctx := context.Background()
 	workspace := t.TempDir()
 	liveDataDir := t.TempDir()
@@ -1401,7 +1398,7 @@ func TestAgentRuntimeColdRecoveryAttachesThenSteersPausedRun(t *testing.T) {
 		AgentKind: agentrun.AgentKindIDE, SessionID: sess.ID, Workspace: workspace,
 		TaskID: "cold-recovery-task", RootAgentName: "root",
 	}
-	first, err := NewAgentRuntime(ctx, liveDataDir, WithHostEffectReconciler(
+	first, err := NewAgentRuntime(ctx, liveDataDir, WithToolMutationApplier(
 		func(context.Context, agenttoolruntime.CommittedToolMutation) error { return nil },
 	))
 	if err != nil {
@@ -1419,10 +1416,10 @@ func TestAgentRuntimeColdRecoveryAttachesThenSteersPausedRun(t *testing.T) {
 	select {
 	case <-blocking.started:
 	case <-time.After(2 * time.Second):
-		t.Fatal("cold recovery model call did not start")
+		t.Fatal("unfinished model call did not start")
 	}
 	runID := operation.Receipt().OperationID
-	// Snapshot the flushed journal while the first process is still inside the
+	// Snapshot the flushed transcript while the first process is still inside the
 	// provider call. Opening the copy accurately models a process crash without
 	// asking Agent.Close to perform its intentional graceful abort.
 	if err := os.CopyFS(recoveredDataDir, os.DirFS(liveDataDir)); err != nil {
@@ -1440,7 +1437,7 @@ func TestAgentRuntimeColdRecoveryAttachesThenSteersPausedRun(t *testing.T) {
 			Request:      request.Request, Options: request.Options,
 		}, nil
 	}, canonical: publicBackendTestSessionCanonical(sess)}
-	second, err := NewAgentRuntime(ctx, recoveredDataDir, WithProfiles(profile), WithHostEffectReconciler(
+	second, err := NewAgentRuntime(ctx, recoveredDataDir, WithProfiles(profile), WithToolMutationApplier(
 		func(context.Context, agenttoolruntime.CommittedToolMutation) error { return nil },
 	))
 	if err != nil {
@@ -1454,70 +1451,14 @@ func TestAgentRuntimeColdRecoveryAttachesThenSteersPausedRun(t *testing.T) {
 	t.Cleanup(observation.Close)
 	initialStatus := observation.InitialStatus()
 	actions := RuntimeRecoveryActions(initialStatus)
-	var attach RuntimeRecoveryAction
-	for _, action := range actions {
-		if action.Kind == RuntimeRecoveryAttach {
-			attach = action
-			break
-		}
+	if initialStatus.Phase != agentrun.PhaseIdle || len(actions) != 0 {
+		t.Fatalf("restart status=%#v actions=%#v, want idle without recovery actions", initialStatus, actions)
 	}
-	if attach.OperationID != runID || attach.CommandID != "recovery-start" {
-		t.Fatalf("cold recovery status=%#v actions=%#v", initialStatus, actions)
-	}
-	var eventsMu sync.Mutex
-	var events []agentrun.Event
-	emit := func(event agentrun.Event) {
-		eventsMu.Lock()
-		events = append(events, event)
-		eventsMu.Unlock()
-	}
-	attachedReceipt, err := observation.Resume(ctx, attach, "recovered-display-task", emit)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if attachedReceipt.OperationID != runID {
-		t.Fatalf("attached receipt=%#v", attachedReceipt)
-	}
-	steerReceipt, err := second.SubmitCommand(ctx, CommandRequest{
-		Kind: CommandSteer, CommandID: "recovery-steer", OperationID: runID,
-		Request: agentchatRequest("recovery-steer", "safe replacement"), Options: options, Emit: emit,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if steerReceipt.OperationID != runID {
-		t.Fatalf("recovery steer receipt=%#v", steerReceipt)
-	}
-	outcome := observation.Wait(ctx, emit)
-	if outcome.Status != agentrun.OutcomeCompleted || outcome.Content != "recovered answer" {
-		t.Fatalf("cold recovery outcome=%#v", outcome)
-	}
-	messages := sess.GetMessages()
-	if len(messages) != 3 || messages[0].Content != "uncertain request" || messages[1].Content != "safe replacement" ||
-		messages[2].Content != "recovered answer" {
-		t.Fatalf("cold recovery canonical messages=%#v", messages)
-	}
-	eventsMu.Lock()
-	projected := append([]agentrun.Event(nil), events...)
-	eventsMu.Unlock()
-	if countPublicBackendEvent(projected, "done") != 1 || countPublicBackendEvent(projected, "agent_cycle_started") != 1 {
-		t.Fatalf("cold recovery display events=%#v", projected)
-	}
-	answerChunks := 0
-	for _, event := range projected {
-		if event.Type != "chunk" {
-			continue
-		}
-		data, _ := event.Data.(map[string]any)
-		if data["content"] == "recovered answer" {
-			answerChunks++
-			if subagent, _ := data["subagent"].(bool); subagent {
-				t.Fatalf("recovered root output was misclassified as a subagent: %#v", data)
-			}
-		}
-	}
-	if answerChunks != 1 {
-		t.Fatalf("recovered answer chunks=%d events=%#v", answerChunks, projected)
+	if initialStatus.LastOperation == nil || initialStatus.LastOperation.OperationID != runID ||
+		initialStatus.LastOperation.CommandID != "recovery-start" ||
+		initialStatus.LastOperation.Status != agentrun.OperationFailed ||
+		initialStatus.LastOperation.Reason != "Agent process stopped before the turn finished" {
+		t.Fatalf("restart did not expose the interrupted run: %#v", initialStatus.LastOperation)
 	}
 }
 
@@ -1533,7 +1474,7 @@ func TestAgentRuntimeDisplayCancellationExplicitlyAbortsDurableRun(t *testing.T)
 		t.Fatal(err)
 	}
 	model := &publicBackendBlockingModel{started: make(chan struct{})}
-	runtime, err := NewAgentRuntime(ctx, t.TempDir(), WithHostEffectReconciler(
+	runtime, err := NewAgentRuntime(ctx, t.TempDir(), WithToolMutationApplier(
 		func(context.Context, agenttoolruntime.CommittedToolMutation) error { return nil },
 	))
 	if err != nil {

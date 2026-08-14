@@ -361,7 +361,7 @@ func (service *Service) SubmitCommand(ctx context.Context, binding Binding, comm
 			Options: options,
 		})
 	case agentexecution.CommandSteer, agentexecution.CommandFollowUp, agentexecution.CommandNextTurn:
-		// Prepared below after the durable runtime admits the exact command.
+		// Prepared below after the active Run admits the exact command.
 	default:
 		return agentrun.CommandReceipt{}, fmt.Errorf("%w: unsupported AgentChat command %q", agentrun.ErrInvalidCommand, command.Kind)
 	}

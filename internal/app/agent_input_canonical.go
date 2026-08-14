@@ -57,17 +57,6 @@ func (a *App) sessionCanonicalInput(
 			}
 			return agent.CommitReceipt{Revision: strconv.FormatUint(receipt.ContextRevision, 10)}, nil
 		},
-		ReconcileFn: func(ctx context.Context, reconcile agent.ReconcileRequest) (agent.ReconcileResult, error) {
-			result, err := a.reconcileStoredSessionCanonicalInput(request.Binding, reconcile)
-			if err != nil || !result.Found || request.Options.InputCommitEffect == nil {
-				return result, err
-			}
-			result.Found, err = request.Options.InputCommitEffect.Reconcile(ctx, canonicalInputEffectRequest(reconcile.Identity, reconcile.Hash))
-			if !result.Found {
-				result.Revision = ""
-			}
-			return result, err
-		},
 	}, nil
 }
 
@@ -126,34 +115,6 @@ func (a *App) commitSessionAcceptedInput(
 	return session.CommitStoredDomainMessage(ctx, dir, binding.SessionID, intent)
 }
 
-func (a *App) reconcileStoredSessionCanonicalInput(
-	binding agentrun.RuntimeBinding,
-	request agent.ReconcileRequest,
-) (agent.ReconcileResult, error) {
-	if request.Identity.Stage != agent.CommitInput {
-		return agent.ReconcileResult{}, fmt.Errorf("provider-free Session adapter cannot reconcile canonical stage %q", request.Identity.Stage)
-	}
-	dir, err := a.sessionDirectoryForBinding(binding)
-	if err != nil {
-		return agent.ReconcileResult{}, err
-	}
-	receipt, found, err := session.FindStoredAgentCanonicalCommit(
-		dir,
-		binding.SessionID,
-		session.DomainCommitIdentity{
-			CommandID:   request.Identity.CommandID,
-			OperationID: request.Identity.RunID,
-			Cycle:       request.Identity.Cycle,
-		},
-		agent.User,
-		request.Hash,
-	)
-	if err != nil || !found {
-		return agent.ReconcileResult{Found: found}, err
-	}
-	return agent.ReconcileResult{Found: true, Revision: strconv.FormatUint(receipt.ContextRevision, 10)}, nil
-}
-
 func (a *App) gameCanonicalInput(
 	_ context.Context,
 	request agentexecution.CanonicalInputRequest,
@@ -176,22 +137,6 @@ func (a *App) gameCanonicalInput(
 				return agent.CommitReceipt{}, err
 			}
 			return agent.CommitReceipt{Revision: receipt.Revision}, nil
-		},
-		ReconcileFn: func(_ context.Context, reconcile agent.ReconcileRequest) (agent.ReconcileResult, error) {
-			if reconcile.Identity.Stage != agent.CommitInput {
-				return agent.ReconcileResult{}, fmt.Errorf("provider-free Game adapter cannot reconcile canonical stage %q", reconcile.Identity.Stage)
-			}
-			receipt, found, err := interactive.NewStore(request.Binding.Workspace).FindRecentAgentCanonicalPlayerInputCommit(
-				request.Binding.StoryID,
-				request.Binding.BranchID,
-				interactive.DomainCommitIdentity{
-					CommandID:   reconcile.Identity.CommandID,
-					OperationID: reconcile.Identity.RunID,
-					Cycle:       reconcile.Identity.Cycle,
-				},
-				reconcile.Hash,
-			)
-			return agent.ReconcileResult{Found: found, Revision: receipt.Revision}, err
 		},
 	}, nil
 }

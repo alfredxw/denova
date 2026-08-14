@@ -250,7 +250,7 @@ func (h *Handlers) HandleInteractiveImageGenerate(ctx context.Context, c *app.Re
 			writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "command_id 请求标识无效 / invalid request identifier command_id", nil)
 		case errors.Is(err, appsvc.ErrAgentCommandConflict):
 			writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.command_conflict", "command_id 已用于其他请求 / command_id was already used for a different request", nil)
-		case errors.Is(err, imageapp.ErrExecution), errors.Is(err, imageapp.ErrReplayResultUnavailable):
+		case errors.Is(err, imageapp.ErrExecution):
 			writeError(c, consts.StatusInternalServerError, err.Error())
 		default:
 			writeError(c, consts.StatusBadRequest, err.Error())

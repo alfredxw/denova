@@ -2,25 +2,15 @@ package app
 
 import (
 	"context"
-	agentcontext "denova/internal/agents/context"
-	agentexecution "denova/internal/agents/execution"
-	agentlifecycle "denova/internal/agents/lifecycle"
-	apptask "denova/internal/app/task"
 	"errors"
-	"os"
-	"os/exec"
-	"runtime"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
-	agent "github.com/alfredxw/denova/agent"
-
-	"denova/config"
-	agents "denova/internal/agents"
+	agentcontext "denova/internal/agents/context"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
+	apptask "denova/internal/app/task"
 	"denova/internal/interactive"
 )
 
@@ -84,8 +74,7 @@ func TestInteractiveStartRegistrySerializesConcurrentExactReplay(t *testing.T) {
 	}
 	start.Done()
 	for range callers {
-		err := <-errorsCh
-		if err != nil {
+		if err := <-errorsCh; err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -94,258 +83,6 @@ func TestInteractiveStartRegistrySerializesConcurrentExactReplay(t *testing.T) {
 		if task != original {
 			t.Fatalf("concurrent retry returned task %p, want %p", task, original)
 		}
-	}
-}
-
-func TestInteractiveInitialStartColdReplayBuildsBoundedTaskWithoutGameCycle(t *testing.T) {
-	root := t.TempDir()
-	workspace := t.TempDir()
-	cfg := config.Config{
-		OpenAIAPIKey: "unused", OpenAIModel: "test-model",
-		NovaDir: root, Workspace: workspace, ResumeLastWorkspace: false,
-	}
-	first, err := New(context.Background(), &cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	story, err := first.CreateInteractiveStory(interactive.CreateStoryRequest{Title: "cold replay", StoryTellerID: "classic"})
-	if err != nil {
-		first.Close()
-		t.Fatal(err)
-	}
-	request := InteractiveAgentStartRequest{
-		CommandID: "game-cold-success", StoryID: story.ID, BranchID: "main",
-		Message: "推开石门", StyleScenes: []string{"雨夜"}, Locale: "zh-CN",
-	}
-	identity, err := first.interactiveService().resolveInteractiveStart(request)
-	if err != nil {
-		first.Close()
-		t.Fatal(err)
-	}
-	chatModel := &interactiveReplayModel{message: agents.AssistantMessage("持久化回答", nil)}
-	accepted, err := startPublicExecutionCycle(first.executionRuntime,
-		context.Background(), chatModel, &interactiveReplayConversation{
-			store: first.interactive, storyID: story.ID, branchID: "main", message: identity.chatRequest.Message,
-		},
-		first.bookService, identity.chatRequest, identity.options("seed-display-task"), nil,
-	)
-	if err != nil {
-		first.Close()
-		t.Fatal(err)
-	}
-	outcome := accepted.Wait(context.Background())
-	if outcome.Status != agentrun.OutcomeCompleted || outcome.Content != "持久化回答" {
-		first.Close()
-		t.Fatalf("seed outcome = %#v", outcome)
-	}
-	newerRequest := request
-	newerRequest.CommandID = "game-newer-success"
-	newerRequest.Message = "查看火把"
-	newerIdentity, err := first.interactiveService().resolveInteractiveStart(newerRequest)
-	if err != nil {
-		first.Close()
-		t.Fatal(err)
-	}
-	newer, err := startPublicExecutionCycle(first.executionRuntime,
-		context.Background(), chatModel, &interactiveReplayConversation{
-			store: first.interactive, storyID: story.ID, branchID: "main", message: newerIdentity.chatRequest.Message,
-		},
-		first.bookService, newerIdentity.chatRequest, newerIdentity.options("newer-display-task"), nil,
-	)
-	if err != nil {
-		first.Close()
-		t.Fatal(err)
-	}
-	if newerOutcome := newer.Wait(context.Background()); newerOutcome.Status != agentrun.OutcomeCompleted {
-		first.Close()
-		t.Fatalf("newer seed outcome = %#v", newerOutcome)
-	}
-	if got := chatModel.calls.Load(); got != 2 {
-		first.Close()
-		t.Fatalf("seed model calls = %d, want 2", got)
-	}
-	first.Close()
-
-	reopenCfg := cfg
-	second, err := New(context.Background(), &reopenCfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer second.Close()
-	task, err := second.StartInteractiveTaskWithError(context.Background(), request)
-	if err != nil {
-		t.Fatal(err)
-	}
-	waitInteractiveTask(t, task)
-	if got := chatModel.calls.Load(); got != 2 {
-		t.Fatalf("cold replay invoked the seed provider: calls=%d", got)
-	}
-	events, subscription := task.Subscribe()
-	defer task.Unsubscribe(subscription)
-	if countInteractiveTaskEvents(events, "chunk") != 1 || countInteractiveTaskEvents(events, "done") != 1 {
-		t.Fatalf("cold replay events = %#v", events)
-	}
-	snapshot, err := second.InteractiveSnapshot(story.ID, "main")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(snapshot.Turns) != 0 {
-		t.Fatalf("display replay created a fake Story turn: %#v", snapshot.Turns)
-	}
-	if len(snapshot.PendingPlayerInputs) != 2 {
-		t.Fatalf("cold replay duplicated or lost accepted player input: %#v", snapshot.PendingPlayerInputs)
-	}
-
-	changed := request
-	changed.Message = "改变请求"
-	if duplicate, err := second.StartInteractiveTaskWithError(context.Background(), changed); !errors.Is(err, ErrAgentCommandConflict) || duplicate != nil {
-		t.Fatalf("cold changed payload = task=%v err=%v", duplicate, err)
-	}
-}
-
-func TestInteractiveStatusOwnsInterruptedCommand(t *testing.T) {
-	status := agentrun.RuntimeStatus{
-		LastOperation: &agentrun.OperationSummary{CommandID: "newer", Status: agentrun.OperationSucceeded},
-		RecentOperations: []agentrun.OperationSummary{{
-			CommandID: "game-cold-interrupted", Status: agentrun.OperationInterrupted,
-		}},
-	}
-	if !interactiveStatusOwnsCommand(status, "game-cold-interrupted") {
-		t.Fatal("interrupted durable start was not recognized as replayable")
-	}
-}
-
-func TestInteractiveInitialStartColdInterruptedReplayDoesNotRunGameCycle(t *testing.T) {
-	if os.Getenv("DENOVA_GAME_CRASH_SEED") == "1" {
-		runInteractiveCrashSeed(t)
-		return
-	}
-
-	root := t.TempDir()
-	workspace := t.TempDir()
-	cfg := config.Config{
-		OpenAIAPIKey: "unused", OpenAIModel: "test-model",
-		NovaDir: root, Workspace: workspace, ResumeLastWorkspace: false,
-	}
-	seed, err := New(context.Background(), &cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	story, err := seed.CreateInteractiveStory(interactive.CreateStoryRequest{Title: "cold interrupted", StoryTellerID: "classic"})
-	if err != nil {
-		seed.Close()
-		t.Fatal(err)
-	}
-	seed.Close()
-
-	command := exec.Command(os.Args[0], "-test.run=^TestInteractiveInitialStartColdInterruptedReplayDoesNotRunGameCycle$")
-	command.Env = append(os.Environ(),
-		"DENOVA_GAME_CRASH_SEED=1",
-		"DENOVA_GAME_CRASH_ROOT="+root,
-		"DENOVA_GAME_CRASH_WORKSPACE="+workspace,
-		"DENOVA_GAME_CRASH_STORY="+story.ID,
-	)
-	if output, err := command.CombinedOutput(); err != nil {
-		t.Fatalf("crash seed failed: %v\n%s", err, output)
-	}
-
-	reopenCfg := cfg
-	reopened, err := New(context.Background(), &reopenCfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer reopened.Close()
-	status, projected := reopened.InteractiveAgentRuntimeProjection(context.Background(), story.ID, "main")
-	if !projected {
-		t.Fatal("cold Game runtime projection unavailable")
-	}
-	actions := agentexecution.RuntimeRecoveryActions(status)
-	if status.Phase != agentrun.RunPhaseRunning || !status.RecoveryPaused || len(actions) != 2 ||
-		actions[0].Kind != agentexecution.RuntimeRecoveryAttach || actions[0].CommandID != "game-cold-interrupted" ||
-		actions[1].Kind != agentexecution.RuntimeRecoveryAbort {
-		t.Fatalf("cold Game recovery actions = %#v status=%#v", actions, status)
-	}
-	result, err := reopened.RecoverInteractiveAgent(context.Background(), AgentRuntimeRecoveryRequest{
-		Action: actions[1], StoryID: story.ID, BranchID: "main",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	replayed, err := reopened.RecoverInteractiveAgent(context.Background(), AgentRuntimeRecoveryRequest{
-		Action: actions[1], StoryID: story.ID, BranchID: "main",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Abort is selected by an opaque recovery ActionID; its durable Run receipt
-	// remains tied to the original accepted player input.
-	if replayed.Task != result.Task || replayed.Receipt.CommandID != "game-cold-interrupted" || replayed.Receipt.OperationID != actions[1].OperationID {
-		t.Fatalf("repeated cold Game abort = %#v first_task=%p", replayed, result.Task)
-	}
-	activeTask, info := reopened.ActiveInteractiveTaskFor(story.ID, "main")
-	if activeTask != result.Task || info.StoryID != story.ID || info.BranchID != "main" ||
-		info.Message != "记住这次行动" || info.CommandID != string(actions[1].CommandID) {
-		t.Fatalf("server-derived cold Game display identity task=%p info=%#v", activeTask, info)
-	}
-	waitInteractiveTask(t, result.Task)
-	events, subscription := result.Task.Subscribe()
-	defer result.Task.Unsubscribe(subscription)
-	if countInteractiveTaskEvents(events, "aborted") != 1 {
-		t.Fatalf("cold Game abort events = %#v", events)
-	}
-	snapshot, err := reopened.InteractiveSnapshot(story.ID, "main")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(snapshot.Turns) != 0 {
-		t.Fatalf("interrupted replay created a fake Story turn: %#v", snapshot.Turns)
-	}
-	if len(snapshot.PendingPlayerInputs) != 1 || snapshot.PendingPlayerInputs[0].Text != "记住这次行动" {
-		t.Fatalf("accepted player input was not independently durable: %#v", snapshot.PendingPlayerInputs)
-	}
-	status, projected = reopened.InteractiveAgentRuntimeProjection(context.Background(), story.ID, "main")
-	if !projected || status.Phase != agentrun.RunPhaseIdle || status.LastOperation == nil || status.LastOperation.Status != agentrun.OperationAborted || len(agentexecution.RuntimeRecoveryActions(status)) != 0 {
-		t.Fatalf("cold Game abort terminal projection = %#v projected=%t", status, projected)
-	}
-}
-
-func runInteractiveCrashSeed(t *testing.T) {
-	t.Helper()
-	application, err := New(context.Background(), &config.Config{
-		OpenAIAPIKey: "unused", OpenAIModel: "test-model",
-		NovaDir:   os.Getenv("DENOVA_GAME_CRASH_ROOT"),
-		Workspace: os.Getenv("DENOVA_GAME_CRASH_WORKSPACE"), ResumeLastWorkspace: false,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	request := InteractiveAgentStartRequest{
-		CommandID: "game-cold-interrupted", StoryID: os.Getenv("DENOVA_GAME_CRASH_STORY"),
-		BranchID: "main", Message: "记住这次行动", Locale: "zh-CN",
-	}
-	identity, err := application.interactiveService().resolveInteractiveStart(request)
-	if err != nil {
-		t.Fatal(err)
-	}
-	vanished := make(chan struct{})
-	prepared, err := application.interactiveService().prepareInteractiveAgentCycle(context.Background(), interactiveAgentCycleRequest{
-		StoryID: request.StoryID, BranchID: request.BranchID, Message: request.Message, Locale: request.Locale,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	conversation := &interactiveCrashConversation{vanished: vanished, delegate: prepared.conversation}
-	if _, err := application.executionRuntime.Start(context.Background(), agentexecution.StartRequest{Cycle: agentexecution.Cycle{
-		Definition: prepared.definition, Conversation: conversation, BookService: application.bookService,
-		Request: identity.chatRequest, Options: identity.options("crashed-display-task"),
-	}}); err != nil {
-		t.Fatal(err)
-	}
-	select {
-	case <-vanished:
-		os.Exit(0)
-	case <-time.After(500 * time.Millisecond):
-		t.Fatal("crash seed engine did not reach model-context assembly")
 	}
 }
 
@@ -358,8 +95,7 @@ func newInteractiveStartRegistryFixture(t *testing.T) (*InteractiveAppService, I
 		t.Fatal(err)
 	}
 	application := &App{workspace: workspace, interactive: store}
-	service := &InteractiveAppService{app: application}
-	return service, InteractiveAgentStartRequest{
+	return &InteractiveAppService{app: application}, InteractiveAgentStartRequest{
 		CommandID: "game-registry-command", StoryID: story.ID, BranchID: "main",
 		Message: "向前走", StyleScenes: []string{"雨夜"}, Locale: "zh-CN",
 	}
@@ -372,16 +108,6 @@ func waitInteractiveTask(t *testing.T, task *apptask.Task) {
 	case <-time.After(500 * time.Millisecond):
 		t.Fatalf("task %s did not finish", task.ID())
 	}
-}
-
-func countInteractiveTaskEvents(events []apptask.Event, eventType string) int {
-	count := 0
-	for _, event := range events {
-		if event.Event.Type == eventType {
-			count++
-		}
-	}
-	return count
 }
 
 type interactiveReplayConversation struct {
@@ -402,53 +128,3 @@ func (*interactiveReplayConversation) MarkInterrupted(string, string, string) er
 func (*interactiveReplayConversation) PendingInterruption() *session.Interruption { return nil }
 
 func (*interactiveReplayConversation) ResolveInterruption(string) error { return nil }
-
-type interactiveCrashConversation struct {
-	vanished chan struct{}
-	delegate agentlifecycle.ConversationCommitterProvider
-}
-
-func (conversation *interactiveCrashConversation) BindAgentCycleIdentity(identity agentrun.CycleIdentity) {
-	if binder, ok := conversation.delegate.(interface {
-		BindAgentCycleIdentity(agentrun.CycleIdentity)
-	}); ok {
-		binder.BindAgentCycleIdentity(identity)
-	}
-}
-
-func (conversation *interactiveCrashConversation) BindAgentKind(kind string) {
-	if binder, ok := conversation.delegate.(interface{ BindAgentKind(string) }); ok {
-		binder.BindAgentKind(kind)
-	}
-}
-
-func (c *interactiveCrashConversation) AssembleModelContext(context.Context, string, agentcontext.ModelContextInput) (agentcontext.ModelContextResult, error) {
-	close(c.vanished)
-	runtime.Goexit()
-	return agentcontext.ModelContextResult{}, nil
-}
-
-func (*interactiveCrashConversation) AppendAssistant(string) error { return nil }
-
-func (*interactiveCrashConversation) MarkInterrupted(string, string, string) error { return nil }
-
-func (*interactiveCrashConversation) PendingInterruption() *session.Interruption { return nil }
-
-func (*interactiveCrashConversation) ResolveInterruption(string) error { return nil }
-
-type interactiveReplayModel struct {
-	message *agents.Message
-	calls   atomic.Int32
-}
-
-func (m *interactiveReplayModel) Generate(context.Context, []*agents.Message, ...agent.ModelOption) (*agents.Message, error) {
-	m.calls.Add(1)
-	return m.message, nil
-}
-
-func (m *interactiveReplayModel) Stream(context.Context, []*agents.Message, ...agent.ModelOption) (*agents.StreamReader[*agents.Message], error) {
-	m.calls.Add(1)
-	return agents.StreamReaderFromArray([]*agents.Message{m.message}), nil
-}
-
-var _ agent.BaseChatModel = (*interactiveReplayModel)(nil)

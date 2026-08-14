@@ -202,7 +202,6 @@ export interface AgentRuntimeRecoveryReceipt {
   status: string
   stream_cursor: number
   cursor: number
-  replayed: boolean
   recovery_action: AgentRuntimeRecoveryAction
 }
 

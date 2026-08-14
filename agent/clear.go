@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"time"
-
-	runstate "github.com/alfredxw/denova/agent/internal/runtime"
 )
 
 const clearCapability = "agent.clear"
@@ -22,27 +20,27 @@ func (session *Session) Clear(ctx context.Context) error {
 	if err := session.usable(); err != nil {
 		return err
 	}
-	current, err := session.harness.CapabilityState(ctx, clearCapability)
-	if err != nil {
-		return mapRuntimeError(err)
-	}
+	session.mu.Lock()
+	defer session.mu.Unlock()
+	raw, present := session.capabilities[clearCapability]
 	var state ClearState
-	if current.Exists {
-		state, err = decodeClearState(current.State)
+	var err error
+	if present {
+		state, err = decodeClearState(raw)
 		if err != nil {
 			return err
 		}
 	}
-	compaction, present, err := session.compactionState(ctx)
+	compaction, compactionPresent, _, err := compactionStateFrom(session.capabilities)
 	if err != nil {
 		return err
 	}
 	state.Revision++
 	state.ClearedAt = time.Now().UTC()
-	if present {
+	if compactionPresent {
 		state.CompactionRevisionAtClear = compaction.Revision
 	}
-	cleanup, cleanupPresent, err := session.cleanupState(ctx)
+	cleanup, cleanupPresent, _, err := cleanupStateFrom(session.capabilities)
 	if err != nil {
 		return err
 	}
@@ -53,29 +51,17 @@ func (session *Session) Clear(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	changes := make([]runstate.EngineCapabilityState, 0, 3)
 	// Todo belongs to the cleared conversation. Goal intentionally survives so
-	// a user-controlled long-running objective can continue into the fresh
-	// transcript. Raw Cleanup/Compaction checkpoints remain recoverable and are
-	// hidden by the clear generation; their failure fuse must not leak across it.
+	// a user-controlled long-running objective can continue into the fresh transcript.
 	for _, capability := range []string{TodoCapability, compactionHealthCapability} {
-		snapshot, snapshotErr := session.harness.CapabilityState(ctx, capability)
-		if snapshotErr != nil {
-			return mapRuntimeError(snapshotErr)
-		}
-		if snapshot.Exists {
-			changes = append(changes, runstate.EngineCapabilityState{
-				Capability: capability, Expected: snapshot.Descriptor, Delete: true,
-			})
-		}
+		delete(session.capabilities, capability)
 	}
-	// SessionCleared is deliberately the final event in the atomic journal
-	// append. Consumers may observe individual projections in order, and this
-	// makes that event the visible barrier after every reset component.
-	changes = append(changes, runstate.EngineCapabilityState{
-		Capability: clearCapability, Expected: current.Descriptor, State: encoded,
-	})
-	return mapRuntimeError(session.harness.SetCapabilityStates(ctx, changes...))
+	session.capabilities[clearCapability] = encoded
+	if err := session.persistCapabilitiesLocked(ctx); err != nil {
+		return err
+	}
+	session.publishLocked(Event{Payload: SessionCleared{Revision: state.Revision}})
+	return nil
 }
 
 func decodeClearState(raw json.RawMessage) (ClearState, error) {

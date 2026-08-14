@@ -39,7 +39,6 @@ type agentRecoveryResponse struct {
 	Status         string                        `json:"status"`
 	StreamCursor   uint64                        `json:"stream_cursor"`
 	Cursor         uint64                        `json:"cursor"`
-	Replayed       bool                          `json:"replayed"`
 	RecoveryAction agentRuntimeRecoveryActionDTO `json:"recovery_action"`
 }
 
@@ -119,13 +118,7 @@ func bindAgentRecoveryRequest(c *app.RequestContext, binding agentRecoveryBindin
 
 func validRecoveryActionKind(kind novaApp.AgentRuntimeRecoveryActionKind) bool {
 	switch kind {
-	case novaApp.AgentRuntimeRecoveryAttach,
-		novaApp.AgentRuntimeRecoveryAbort,
-		novaApp.AgentRuntimeRecoverySteer,
-		novaApp.AgentRuntimeRecoveryFollowUp,
-		novaApp.AgentRuntimeRecoveryNextTurn,
-		novaApp.AgentRuntimeRecoveryCompactContext,
-		novaApp.AgentRuntimeRecoveryRemoveCompaction:
+	case novaApp.AgentRuntimeRecoveryAttach:
 		return true
 	default:
 		return false
@@ -136,7 +129,7 @@ func writeAgentRecoveryResponse(c *app.RequestContext, result novaApp.AgentRunti
 	snapshot := result.Task.Snapshot()
 	c.JSON(consts.StatusAccepted, agentRecoveryResponse{
 		TaskID: snapshot.ID, Status: string(snapshot.Status), StreamCursor: snapshot.Cursor,
-		Cursor: uint64(result.Receipt.Cursor), Replayed: result.Receipt.Replayed,
+		Cursor: uint64(result.Receipt.Cursor),
 		RecoveryAction: agentRuntimeRecoveryActionDTO{
 			ActionID: result.Action.ActionID, Kind: string(result.Action.Kind), CommandID: string(result.Action.CommandID), OperationID: string(result.Action.OperationID),
 		},

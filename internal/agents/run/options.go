@@ -22,9 +22,8 @@ type RestoreData struct {
 	Data    json.RawMessage
 }
 
-// InputCommitEffect is a product side effect coupled to canonical accepted
-// input. Apply must be idempotent; Reconcile is read-only and proves the exact
-// effect reached durable product state after a crash before the Agent receipt.
+// InputCommitEffect is an idempotent product side effect coupled to accepted
+// canonical input.
 type InputCommitEffectRequest struct {
 	CommandID   string
 	OperationID string
@@ -45,14 +44,11 @@ func (request InputCommitEffectRequest) ID() (string, error) {
 
 type InputCommitEffect interface {
 	Apply(context.Context, InputCommitEffectRequest) error
-	Reconcile(context.Context, InputCommitEffectRequest) (bool, error)
 }
 
-// InputCommitEffectFuncs adapts small host implementations while preserving
-// the explicit Apply/Reconcile contract.
+// InputCommitEffectFuncs adapts small host implementations.
 type InputCommitEffectFuncs struct {
-	ApplyFunc     func(context.Context, InputCommitEffectRequest) error
-	ReconcileFunc func(context.Context, InputCommitEffectRequest) (bool, error)
+	ApplyFunc func(context.Context, InputCommitEffectRequest) error
 }
 
 func (effect InputCommitEffectFuncs) Apply(ctx context.Context, request InputCommitEffectRequest) error {
@@ -60,13 +56,6 @@ func (effect InputCommitEffectFuncs) Apply(ctx context.Context, request InputCom
 		return nil
 	}
 	return effect.ApplyFunc(ctx, request)
-}
-
-func (effect InputCommitEffectFuncs) Reconcile(ctx context.Context, request InputCommitEffectRequest) (bool, error) {
-	if effect.ReconcileFunc == nil {
-		return false, nil
-	}
-	return effect.ReconcileFunc(ctx, request)
 }
 
 const (

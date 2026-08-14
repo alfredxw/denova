@@ -297,6 +297,9 @@ func TestResolvedManifestProjectsRuntimeResultLimitPerConcreteTool(t *testing.T)
 			t.Fatalf("workspace %s result limit = %d, want %d", name, got, runtimeLimit)
 		}
 	}
+	if got := entries[AgentToolWorkspaceRead].ToolDescriptors["grep"].CallPresentation; got != agent.ToolPresentationSearch {
+		t.Fatalf("workspace grep presentation = %q, want search", got)
+	}
 	if got := entries[AgentToolSkills].ToolDescriptors["read"].MaxResultBytes; got != runtimeLimit {
 		t.Fatalf("Skill reference read result limit = %d, want %d", got, runtimeLimit)
 	}

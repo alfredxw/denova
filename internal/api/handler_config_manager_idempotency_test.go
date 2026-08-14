@@ -89,7 +89,7 @@ func TestConfigManagerRecoveryDoesNotTrustOrEchoCallerPayload(t *testing.T) {
 	server := NewServer(application, "0")
 	response := performJSONRequest(t, server, http.MethodPost, configManagerAPIPath(application, "/recovery")+"?origin=settings&resource_id=resource-1", map[string]any{
 		"action": map[string]any{
-			"kind": "follow_up", "command_id": "not-durable", "operation_id": "not-durable",
+			"kind": "start_turn", "command_id": "not-durable", "operation_id": "not-durable",
 			"input": map[string]any{"message": "CONFIG_MANAGER_SECRET"},
 		},
 		"payload": "CONFIG_MANAGER_SECRET",

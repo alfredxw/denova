@@ -44,7 +44,7 @@ Denova 不需要推翻现有提示词 Composer。当前实现已经具备几个�
 - 开发模型输入日志新增有序 system section、message、Context State 与 tool schema 指纹；同一 session / agent 相邻请求会记录首个分叉组件，并用同一 `call_id` 关联 provider 返回的 prompt tokens、cache read tokens、未命中 tokens 与命中比例。provider 未提供 cache write 时明确记录为 unknown，而不是推断。
 - 没有增加用户配置，也没有引入 provider 专属 cache 协议或第二套 Prompt Framework。
 
-Beta 不兼容说明：Agent 内部 transcript 升级到 v5，旧版内部 checkpoint 不保留兼容读取路径；产品拥有的工作区文件和 canonical conversation 数据不做迁移或覆盖。
+Beta 不兼容说明：轻量 Agent Store 使用新的 v1 transcript，旧版内部 runtime checkpoint 不保留兼容读取路径；产品拥有的工作区文件和 canonical conversation 数据不做迁移或覆盖。
 
 ## 2. 审计范围与基线
 

@@ -363,6 +363,39 @@ describe('MessageItem', () => {
     }
   })
 
+  it('grep 和 shell 工具卡片优先展示并保留调用描述', () => {
+    const { rerender } = render(
+      <MessageItem
+        message={{
+          role: 'tool_call',
+          content: 'bash',
+          name: 'bash',
+          args: '{"command":"go test ./agent/tools","description":"运行工具包测试"}',
+          status: 'running',
+          tool_presentation: { call: 'terminal', result: 'terminal' },
+        }}
+      />,
+    )
+
+    expect(screen.getByText('运行工具包测试')).toBeInTheDocument()
+
+    rerender(
+      <MessageItem
+        message={{
+          role: 'tool_call',
+          content: 'bash',
+          name: 'bash',
+          args: '{"command":"go test ./agent/tools","description":"运行工具包测试"}',
+          status: 'success',
+          result: 'ok',
+          tool_presentation: { call: 'terminal', result: 'terminal' },
+        }}
+      />,
+    )
+
+    expect(screen.getByText('运行工具包测试')).toBeInTheDocument()
+  })
+
   it('工具卡详情随卡片宽度换行且仅保留纵向滚动', async () => {
     const user = userEvent.setup()
     const longToken = 'a'.repeat(240)

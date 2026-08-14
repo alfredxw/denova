@@ -7,10 +7,9 @@ import (
 	agenttool "denova/internal/agents/tool"
 )
 
-// ToolMutationOrigin is the stable host identity captured at durable turn
-// admission. It intentionally excludes process-local callbacks and model/tool
-// implementations so a cold Agent Session can route the same effect after
-// restart.
+// ToolMutationOrigin is the stable product identity attached to a canonical
+// tool effect. It intentionally excludes process-local callbacks and model or
+// tool implementations.
 type ToolMutationOrigin struct {
 	AgentKind        string `json:"agent_kind"`
 	ProjectID        string `json:"project_id,omitempty"`
@@ -26,10 +25,9 @@ type ToolMutationOrigin struct {
 	Mode             string `json:"mode,omitempty"`
 }
 
-// CommittedToolMutation is delivered at least once through the process-level
-// host reconciler after the public Agent canonical effect barrier. EffectID is
-// the idempotency key; returning nil means the host has durably admitted the
-// obligation, not merely queued process work.
+// CommittedToolMutation is delivered through Agent's canonical effect boundary.
+// EffectID is the idempotency key; returning nil means the product accepted the
+// mutation into its own authoritative state.
 type CommittedToolMutation struct {
 	EffectID         agentrun.HostEffectID
 	Binding          agentrun.RuntimeBinding
@@ -40,6 +38,6 @@ type CommittedToolMutation struct {
 	Mutation         agenttool.Mutation
 }
 
-// HostEffectReconciler durably admits one Agent-owned host effect.
+// ToolMutationApplier commits one canonical Agent tool mutation.
 // Implementations must be idempotent by EffectID and reject conflicting reuse.
-type HostEffectReconciler func(context.Context, CommittedToolMutation) error
+type ToolMutationApplier func(context.Context, CommittedToolMutation) error

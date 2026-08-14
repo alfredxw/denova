@@ -42,7 +42,7 @@ func TestAgentManagerForModelSeparatesPolicyKindFromConcreteModelWindow(t *testi
 		t.Fatal(err)
 	}
 	if small.Identity() == large.Identity() {
-		t.Fatal("concrete model context window did not change Compaction restore identity")
+		t.Fatal("concrete model context window did not change Compaction behavior identity")
 	}
 	messages := []*agent.Message{agent.UserMessage(strings.Repeat("history ", 200)), agent.AssistantMessage("answer", nil), agent.UserMessage("continue")}
 	plan, err := small.Plan(context.Background(), agent.CompactionPlanRequest{
@@ -208,6 +208,6 @@ func TestAgentManagerIdentityIncludesToolContextVisibilityPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 	if visible.Identity() == hidden.Identity() {
-		t.Fatal("tool-result visibility policy did not change Compaction restore identity")
+		t.Fatal("tool-result visibility policy did not change Compaction behavior identity")
 	}
 }

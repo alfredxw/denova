@@ -32,11 +32,6 @@ func RunAdapterContract(t *testing.T, factory Factory) {
 	if err != nil || replayed.Revision != first.Revision {
 		t.Fatalf("replayed input receipt = %#v error = %v", replayed, err)
 	}
-	reconciled, err := adapter.Reconcile(context.Background(), agent.ReconcileRequest{Identity: commit, Hash: input.Hash})
-	if err != nil || !reconciled.Found || reconciled.Revision != first.Revision {
-		t.Fatalf("input reconciliation = %#v error = %v", reconciled, err)
-	}
-
 	outputIdentity := commit
 	outputIdentity.Stage = agent.CommitOutput
 	output := agent.OutputCommitRequest{

@@ -190,7 +190,7 @@ func (backend *publicBackend) trackRun(
 	registration *publicCycleRegistration,
 	parentRunID string,
 ) *publicRunHandle {
-	trace := publicTraceForRun(registration, publicRun.ID(), !publicRun.Replayed())
+	trace := publicTraceForRun(registration, publicRun.ID())
 	handle := &publicRunHandle{
 		session: sessionHandle, run: publicRun, registration: registration, trace: trace, done: make(chan struct{}),
 	}
@@ -202,8 +202,6 @@ func (backend *publicBackend) trackRun(
 	backend.mu.Unlock()
 	go func() {
 		defer close(handle.done)
-		// An idempotent cold replay already owns a completed trace under this Run
-		// ID. Preserve it instead of projecting replayed lifecycle events again.
 		defer func() {
 			if err := trace.close(); err != nil {
 				slog.Warn("[agent-public-runtime] close run trace failed", "run_id", publicRun.ID(), "error", err)

@@ -36,15 +36,10 @@ type AgentGenerateRequest struct {
 type AgentGenerateResult struct {
 	AssistantText    string
 	InteractiveImage *imageasset.InteractiveResult
-	Replayed         bool
-}
-
-type imageAgentAdmission struct {
-	Replayed bool
 }
 
 type imageAgentRunHooks struct {
-	OnAccepted         func(imageAgentAdmission) error
+	OnAccepted         func() error
 	OnInteractiveImage func(*imageasset.InteractiveResult) error
 }
 
@@ -109,9 +104,8 @@ func (service *Service) generateWithAgentUsingHooks(runtime *Runtime, req AgentG
 		}
 		return result, err
 	}
-	result.Replayed = accepted.Receipt().Replayed
 	if hooks.OnAccepted != nil {
-		if err := hooks.OnAccepted(imageAgentAdmission{Replayed: result.Replayed}); err != nil {
+		if err := hooks.OnAccepted(); err != nil {
 			cancelRun()
 			_ = accepted.Wait(runCtx)
 			return result, err
@@ -138,9 +132,6 @@ func (service *Service) generateWithAgentUsingHooks(runtime *Runtime, req AgentG
 		return result, err
 	}
 	if strings.TrimSpace(req.Purpose) == "interactive_image" && result.InteractiveImage == nil {
-		if result.Replayed {
-			return result, ErrReplayResultUnavailable
-		}
 		return result, fmt.Errorf("image Agent did not generate an interactive image")
 	}
 	if result.InteractiveImage != nil {

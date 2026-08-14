@@ -8,23 +8,19 @@ func (session *Session) cleanupState(ctx context.Context) (CleanupState, bool, e
 	if err := session.usable(); err != nil {
 		return CleanupState{}, false, err
 	}
-	snapshot, err := session.harness.CapabilityState(ctx, cleanupCapability)
-	if err != nil {
-		return CleanupState{}, false, mapRuntimeError(err)
-	}
-	if !snapshot.Exists {
+	session.mu.RLock()
+	raw, present := session.capabilities[cleanupCapability]
+	clearRaw, clearPresent := session.capabilities[clearCapability]
+	session.mu.RUnlock()
+	if !present {
 		return CleanupState{}, false, nil
 	}
-	state, err := decodeCleanupState(snapshot.State)
+	state, err := decodeCleanupState(raw)
 	if err != nil {
 		return CleanupState{}, false, err
 	}
-	clearSnapshot, clearErr := session.harness.CapabilityState(ctx, clearCapability)
-	if clearErr != nil {
-		return CleanupState{}, false, mapRuntimeError(clearErr)
-	}
-	if clearSnapshot.Exists {
-		clearState, decodeErr := decodeClearState(clearSnapshot.State)
+	if clearPresent {
+		clearState, decodeErr := decodeClearState(clearRaw)
 		if decodeErr != nil {
 			return CleanupState{}, false, decodeErr
 		}

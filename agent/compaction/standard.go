@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
 	agent "github.com/alfredxw/denova/agent"
 	cleanup "github.com/alfredxw/denova/agent/cleanup"
@@ -66,7 +67,20 @@ type standardManager struct {
 	identity agent.CapabilityIdentity
 }
 
-func Standard(config StandardConfig) (agent.CompactionManager, error) {
+type standardDefinition struct {
+	config StandardConfig
+	once   sync.Once
+	value  *standardManager
+	err    error
+}
+
+// Standard declares the built-in Compaction policy. Agent validates and
+// resolves it together with the rest of the Definition in agent.New.
+func Standard(config StandardConfig) agent.CompactionManager {
+	return &standardDefinition{config: config}
+}
+
+func newStandard(config StandardConfig) (*standardManager, error) {
 	if config.Summarizer == nil {
 		return nil, errors.New("standard Compaction requires a Summarizer")
 	}
@@ -124,6 +138,53 @@ func Standard(config StandardConfig) (agent.CompactionManager, error) {
 		Kind: "compaction.standard", Version: 1, ConfigHash: hex.EncodeToString(digest[:]),
 	}}, nil
 }
+
+func (definition *standardDefinition) InitializeDefinition(context.Context) error {
+	if definition == nil {
+		return errors.New("standard Compaction Definition is nil")
+	}
+	definition.once.Do(func() {
+		definition.value, definition.err = newStandard(definition.config)
+	})
+	return definition.err
+}
+
+func (definition *standardDefinition) Identity() agent.CapabilityIdentity {
+	if err := definition.InitializeDefinition(context.Background()); err != nil {
+		return agent.CapabilityIdentity{}
+	}
+	return definition.value.Identity()
+}
+
+func (definition *standardDefinition) SummaryLimitBytes() int {
+	if err := definition.InitializeDefinition(context.Background()); err != nil {
+		return 0
+	}
+	return definition.value.SummaryLimitBytes()
+}
+
+func (definition *standardDefinition) Plan(
+	ctx context.Context,
+	request agent.CompactionPlanRequest,
+) (agent.CompactionPlan, error) {
+	if err := definition.InitializeDefinition(ctx); err != nil {
+		return agent.CompactionPlan{}, err
+	}
+	return definition.value.Plan(ctx, request)
+}
+
+func (definition *standardDefinition) Compact(
+	ctx context.Context,
+	request agent.CompactionCompactRequest,
+) (agent.CompactionCheckpoint, error) {
+	if err := definition.InitializeDefinition(ctx); err != nil {
+		return agent.CompactionCheckpoint{}, err
+	}
+	return definition.value.Compact(ctx, request)
+}
+
+var _ agent.CompactionManager = (*standardDefinition)(nil)
+var _ agent.DefinitionInitializer = (*standardDefinition)(nil)
 
 func (manager *standardManager) Identity() agent.CapabilityIdentity { return manager.identity }
 

@@ -71,7 +71,7 @@ func TestRuntimeInspectUsesExactPublicDefinitionWithoutRegistrationOrProductMuta
 			TaskID: "inspection-task", RootAgentName: "root", Mode: "ide",
 		},
 	}
-	runtime, err := NewAgentRuntime(ctx, t.TempDir(), WithHostEffectReconciler(
+	runtime, err := NewAgentRuntime(ctx, t.TempDir(), WithToolMutationApplier(
 		func(context.Context, agenttoolruntime.CommittedToolMutation) error { return nil },
 	))
 	if err != nil {

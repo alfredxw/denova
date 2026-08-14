@@ -124,14 +124,14 @@ const (
 	TurnReasonSteer        TurnReason = "steer"
 	TurnReasonFollowUp     TurnReason = "follow_up"
 	TurnReasonNextTurn     TurnReason = "next_turn"
-	TurnReasonRecovery     TurnReason = "recovery"
+	TurnReasonInteraction  TurnReason = "interaction"
 	TurnReasonGoalMutation TurnReason = "goal_mutation"
 	TurnReasonStructural   TurnReason = "structural"
 )
 
-// TurnDelivery is the exact durable admission semantic. Reason describes why
-// Source is being called; Delivery continues to identify the accepted input
-// even during a recovery call.
+// TurnDelivery identifies how the current input entered a Run. Reason describes
+// why Source is being called, including interaction and structural cycles that
+// do not admit a new input.
 type TurnDelivery string
 
 const (
@@ -150,9 +150,8 @@ type RunView struct {
 	ID        string
 	CommandID string
 	Cycle     int
-	// StartedAt is captured by the durable lifecycle exactly once when this
-	// cycle starts. Context sources should use it instead of reading the wall
-	// clock when their output must survive recovery unchanged.
+	// StartedAt is captured once when this cycle starts. Context sources should
+	// use it instead of reading the wall clock while assembling one request.
 	StartedAt  time.Time
 	Delivery   TurnDelivery
 	Autonomous bool
@@ -165,15 +164,15 @@ type PrepareRequest struct {
 	Reason  TurnReason
 
 	DefinitionKey string
-	RestoreKey    string
+	BehaviorKey   string
 	HostData      *HostData
 	Compaction    *CompactionState
 	Cleanup       *CleanupState
 }
 
 // Source prepares a complete immutable Definition for one cycle. CanonicalInput
-// is the deliberately narrow, provider-free admission phase: Runtime invokes
-// it after the Input is durable and before any model/context/tool preparation.
+// is the deliberately narrow, provider-free admission phase: Agent invokes it
+// after accepting the Input and before any model/context/tool preparation.
 // Implementations must resolve only the CanonicalAdapter needed to persist the
 // accepted user input; it must not assemble model context or call a provider.
 type Source interface {
@@ -197,10 +196,19 @@ func (SourceFunc) CanonicalInput(context.Context, PrepareRequest) (CanonicalAdap
 	return nil, nil
 }
 
+// DefinitionInitializer is implemented by declarative capabilities whose
+// construction can fail. Agent initializes every such capability before it
+// accepts a static Definition; dynamic Sources receive the same guarantee when
+// their Definition is prepared. Implementations must be idempotent and safe to
+// call more than once.
+type DefinitionInitializer interface {
+	InitializeDefinition(context.Context) error
+}
+
 // Definition is the complete composition root for one Agent cycle.
 type Definition struct {
 	// Key lets a dynamic Source find the same business configuration again.
-	// Exact restore and prefix identities are always derived by Agent.
+	// Behavior and prefix identities are always derived by Agent.
 	Key string
 
 	Name          string
@@ -212,10 +220,10 @@ type Definition struct {
 	Tools Toolset
 	// ResultProcessor is the single fixed post-tool projection authority. It
 	// runs outside host middleware so every tool path receives identical
-	// materialization, recovery, cleanup, and transcript semantics.
+	// materialization, result projection, cleanup, and transcript semantics.
 	ResultProcessor ToolResultProcessor
 	// Artifacts is used both by streaming tools and ResultProcessor. Its stable
-	// identity affects exact recovery, never the model prefix fingerprint.
+	// identity participates in behavior validation, never the model prefix fingerprint.
 	Artifacts   ToolArtifactStorage
 	Context     ContextSource
 	Goal        GoalManager
@@ -229,9 +237,8 @@ type Definition struct {
 	Execution   ExecutionPolicy
 }
 
-// IdentifiedMiddleware is required for durable Sessions. Identity describes
-// behavior that can affect model requests or tool execution and must therefore
-// remain stable across process recovery.
+// IdentifiedMiddleware gives behavior-changing middleware a stable identity
+// for Definition validation and traceability.
 type IdentifiedMiddleware interface {
 	Middleware
 	Identity() CapabilityIdentity
@@ -248,7 +255,7 @@ func (middleware identifiedMiddleware) unwrap() Middleware { return middleware.M
 
 // IdentifyMiddleware associates a stable behavior identity with an existing
 // Middleware. It is useful for host-owned middleware whose concrete type is
-// intentionally unaware of durable Agent Sessions.
+// intentionally unaware of Agent Sessions.
 func IdentifyMiddleware(middleware Middleware, identity CapabilityIdentity) IdentifiedMiddleware {
 	if middleware == nil {
 		return nil
@@ -284,9 +291,8 @@ func (definition Definition) CanonicalInput(context.Context, PrepareRequest) (Ca
 
 type ExecutionPolicy struct {
 	Retry *RetryConfig
-	// RetryIdentity is required for durable Sessions when Retry is non-nil.
-	// Function pointers and closure addresses are process-local and must never
-	// participate in a restore key.
+	// RetryIdentity gives retry behavior a stable, inspectable identity when
+	// Retry is non-nil. Function and closure addresses are not identities.
 	RetryIdentity   CapabilityIdentity
 	ToolParallelism int
 	MaxIterations   int
@@ -294,7 +300,7 @@ type ExecutionPolicy struct {
 	// lifecycle/progress event, or Interaction request. Zero means unlimited;
 	// it is never interpreted as a total run deadline.
 	IdleTimeout time.Duration
-	// MaxAutomaticCompactionFailures opens the durable failure fuse for one
+	// MaxAutomaticCompactionFailures opens the Session failure fuse for one
 	// unchanged final model request. Zero uses the Agent default. A changed
 	// request automatically gets a fresh attempt; explicit Compact calls are
 	// never blocked by this policy.
@@ -338,6 +344,62 @@ func validateDefinition(definition Definition) error {
 	return nil
 }
 
+func initializeDefinition(ctx context.Context, definition Definition) (Definition, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	type component struct {
+		name  string
+		value any
+	}
+	components := []component{
+		{name: "Model", value: definition.Model},
+		{name: "Tools", value: definition.Tools},
+		{name: "ToolResultProcessor", value: definition.ResultProcessor},
+		{name: "ToolArtifactStorage", value: definition.Artifacts},
+		{name: "Context", value: definition.Context},
+		{name: "Goal", value: definition.Goal},
+		{name: "Cleanup", value: definition.Cleanup},
+		{name: "Compaction", value: definition.Compaction},
+		{name: "Permission", value: definition.Permission},
+		{name: "Interaction", value: definition.Interaction},
+		{name: "Canonical", value: definition.Canonical},
+	}
+	for index, middleware := range definition.Middlewares {
+		components = append(components, component{
+			name: fmt.Sprintf("Middleware[%d]", index), value: middleware,
+		})
+	}
+	var initializationErrors []error
+	for _, candidate := range components {
+		initializer, ok := candidate.value.(DefinitionInitializer)
+		if !ok {
+			continue
+		}
+		if err := initializer.InitializeDefinition(ctx); err != nil {
+			initializationErrors = append(initializationErrors, fmt.Errorf("%s: %w", candidate.name, err))
+		}
+	}
+	if err := errors.Join(initializationErrors...); err != nil {
+		return Definition{}, fmt.Errorf("initialize agent Definition: %w", err)
+	}
+	if model, ok := definition.Model.(DefinitionModel); ok {
+		identity := model.ModelIdentity()
+		if err := identity.validate("Model"); err != nil {
+			return Definition{}, err
+		}
+		if definition.ModelIdentity == (CapabilityIdentity{}) {
+			definition.ModelIdentity = identity
+		} else if definition.ModelIdentity != identity {
+			return Definition{}, errors.New("agent Definition ModelIdentity does not match declarative Model")
+		}
+	}
+	if err := validateDefinition(definition); err != nil {
+		return Definition{}, err
+	}
+	return definition, nil
+}
+
 type preparedDefinition struct {
 	definition              Definition
 	tools                   []ToolDefinition
@@ -345,7 +407,7 @@ type preparedDefinition struct {
 	fragments               []ContextFragment
 	goalFragments           []ContextFragment
 	definitionKey           string
-	restoreKey              string
+	behaviorKey             string
 	prefixFingerprint       string
 	materializedFingerprint string
 	definitionOperationID   string
@@ -372,7 +434,7 @@ func prepareDefinition(
 	return prepared, nil
 }
 
-// prepareDefinitionBase restores the immutable composition and its identity
+// prepareDefinitionBase resolves the immutable composition and its identity
 // without materializing tool or context capabilities. Agent uses this phase to
 // fence the exact Definition and canonicalize accepted input before any
 // product ContextSource reads the resulting state.
@@ -385,31 +447,37 @@ func prepareDefinitionBase(
 	if err != nil {
 		return preparedDefinition{}, fmt.Errorf("prepare agent Definition: %w", err)
 	}
-	if err := validateDefinition(definition); err != nil {
+	definition, err = initializeDefinition(ctx, definition)
+	if err != nil {
 		return preparedDefinition{}, err
 	}
-	restoreKey, err := DefinitionBehaviorIdentity(definition)
+	behaviorKey, err := definitionBehaviorIdentity(definition)
 	if err != nil {
 		return preparedDefinition{}, err
 	}
 	definitionKey := strings.TrimSpace(definition.Key)
 	if definitionKey == "" {
-		definitionKey = restoreKey
+		definitionKey = behaviorKey
 	}
 	return preparedDefinition{
-		definition: definition, definitionKey: definitionKey, restoreKey: restoreKey,
+		definition: definition, definitionKey: definitionKey, behaviorKey: behaviorKey,
 	}, nil
 }
 
-// DefinitionBehaviorIdentity returns the exact stable restore identity used by
+// DefinitionBehaviorIdentity returns the stable behavior identity used by
 // Agent before materializing tools or Context. Composition catalogs may embed
 // it to fence a child Definition without duplicating the lifecycle's identity
 // vocabulary. It hashes behavior only; credentials and process addresses must
 // stay out of every CapabilityIdentity supplied by the caller.
 func DefinitionBehaviorIdentity(definition Definition) (string, error) {
-	if err := validateDefinition(definition); err != nil {
+	initialized, err := initializeDefinition(context.Background(), definition)
+	if err != nil {
 		return "", err
 	}
+	return definitionBehaviorIdentity(initialized)
+}
+
+func definitionBehaviorIdentity(definition Definition) (string, error) {
 	return hashCanonical(definitionIdentity{
 		DefinitionKey: definition.Key,
 		Name:          definition.Name, Model: definition.ModelIdentity,

@@ -117,7 +117,6 @@ describe('interactive agent command API', () => {
       status: 'running',
       stream_cursor: 0,
       cursor: 9,
-      replayed: true,
       recovery_action: {
         action_id: 'recover-next-action',
         kind: 'next_turn',

@@ -710,26 +710,6 @@ func (c *Conversation) MaterializeAgentCanonicalInput(
 	return c.store.CommitPlayerInput(c.storyID, intent)
 }
 
-func (c *Conversation) FindRecentAgentCanonicalInput(
-	identity interactive.DomainCommitIdentity,
-	hash string,
-) (interactive.PlayerInputReceipt, bool, error) {
-	if c == nil || c.store == nil {
-		return interactive.PlayerInputReceipt{}, false, fmt.Errorf("互动故事不存在")
-	}
-	return c.store.FindRecentAgentCanonicalPlayerInputCommit(c.storyID, c.branchID, identity, hash)
-}
-
-func (c *Conversation) FindRecentAgentCanonicalOutput(
-	identity interactive.DomainCommitIdentity,
-	hash string,
-) (interactive.DomainCommitReceipt, bool, error) {
-	if c == nil || c.store == nil {
-		return interactive.DomainCommitReceipt{}, false, fmt.Errorf("互动故事不存在")
-	}
-	return c.store.FindRecentAgentCanonicalDomainTurnCommit(c.storyID, c.branchID, identity, hash)
-}
-
 func (c *Conversation) ContextSourceSummary() string {
 	if c == nil {
 		return ""

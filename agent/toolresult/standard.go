@@ -27,7 +27,7 @@ const (
 )
 
 // Policy is semantic processor configuration and therefore participates in
-// Definition restore identity. Zero MaxBytes selects DefaultMaxBytes.
+// Definition behavior identity. Zero MaxBytes selects DefaultMaxBytes.
 type Policy struct {
 	MaxBytes            int
 	EagerMinTokens      int

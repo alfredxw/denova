@@ -30,12 +30,12 @@ func (schemaTaskExecutor) Abort(context.Context, TaskRef, agent.AbortRequest) er
 func TestActionToolsExposeDisjointOperationSchemas(t *testing.T) {
 	tests := []struct {
 		name       string
-		build      func() (agent.Toolset, error)
+		build      func() agent.Toolset
 		actions    []string
 		properties map[string][]string
 	}{
 		{
-			name: "task", build: func() (agent.Toolset, error) { return Tasks(schemaTaskExecutor{}) },
+			name: "task", build: func() agent.Toolset { return Tasks(schemaTaskExecutor{}) },
 			actions: []string{"start", "observe", "steer", "respond", "abort"},
 			properties: map[string][]string{
 				"start": {"action", "starts"}, "observe": {"action", "cursor", "refs"},
@@ -44,14 +44,14 @@ func TestActionToolsExposeDisjointOperationSchemas(t *testing.T) {
 			},
 		},
 		{
-			name: "skill", build: func() (agent.Toolset, error) { return Skills(testSkillSource{}) },
+			name: "skill", build: func() agent.Toolset { return Skills(testSkillSource{}) },
 			actions: []string{"list", "read"},
 			properties: map[string][]string{
 				"list": {"action", "limit", "query"}, "read": {"action", "refs"},
 			},
 		},
 		{
-			name: "todo", build: func() (agent.Toolset, error) { return Todo() },
+			name: "todo", build: func() agent.Toolset { return Todo() },
 			actions: []string{"read", "update", "replace", "clear"},
 			properties: map[string][]string{
 				"read": {"action"}, "update": {"action", "expected_revision", "mutations"},
@@ -122,12 +122,9 @@ func TestAskSchemaSeparatesFreeTextAndChoiceQuestions(t *testing.T) {
 	}
 }
 
-func preparedToolSchema(t *testing.T, build func() (agent.Toolset, error)) *jsonschema.Schema {
+func preparedToolSchema(t *testing.T, build func() agent.Toolset) *jsonschema.Schema {
 	t.Helper()
-	toolset, err := build()
-	if err != nil {
-		t.Fatal(err)
-	}
+	toolset := build()
 	definitions, err := toolset.PrepareTools(context.Background(), agent.ToolRequest{})
 	if err != nil || len(definitions) != 1 {
 		t.Fatalf("definitions = %d, error = %v", len(definitions), err)

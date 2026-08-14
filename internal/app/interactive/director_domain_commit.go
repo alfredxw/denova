@@ -144,30 +144,6 @@ func (c *interactiveDirectorPlanCommit) CommitDirectorCanonicalOutput(
 	return agent.OutputCommitReceipt{Revision: receipt.Revision}, nil
 }
 
-func (c *interactiveDirectorPlanCommit) ReconcileDirectorCanonicalOutput(
-	ctx context.Context,
-	request agent.ReconcileRequest,
-) (agent.ReconcileResult, error) {
-	if c == nil || request.Identity.Stage != agent.CommitOutput {
-		return agent.ReconcileResult{}, fmt.Errorf("互动导演 canonical output reconcile 请求无效")
-	}
-	if err := ctx.Err(); err != nil {
-		return agent.ReconcileResult{}, err
-	}
-	receipt, found, err := c.store.FindDirectorPlanDomainCommit(
-		c.storyID,
-		c.branchID,
-		interactive.DirectorPlanDomainCommitIdentity{
-			CommandID: request.Identity.CommandID, OperationID: request.Identity.RunID, Cycle: request.Identity.Cycle,
-		},
-		request.Hash,
-	)
-	if err != nil || !found {
-		return agent.ReconcileResult{Found: found}, err
-	}
-	return agent.ReconcileResult{Found: true, Revision: receipt.Revision}, nil
-}
-
 func (c *interactiveDirectorPlanCommit) CommitAgentCycleStage(_ context.Context, stage agentrun.DomainCommitStage, outcome agentrun.Outcome) error {
 	if c == nil || stage != agentrun.DomainCommitOutput {
 		return nil

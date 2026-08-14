@@ -9,9 +9,8 @@ import (
 	agent "github.com/alfredxw/denova/agent"
 )
 
-// ErrRuntimeProjectionUnavailable means this Service is nil or was not
-// constructed with the mandatory durable command harness.
-var ErrRuntimeProjectionUnavailable = errors.New("durable agent runtime projection is unavailable")
+// ErrRuntimeProjectionUnavailable means this Service has no live Agent owner.
+var ErrRuntimeProjectionUnavailable = errors.New("agent runtime projection is unavailable")
 
 // RuntimeStatusProjection returns a bounded point-in-time display projection.
 // It cannot carry durable messages and is never used as model context.

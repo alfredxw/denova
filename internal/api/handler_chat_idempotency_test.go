@@ -49,7 +49,7 @@ func TestWritingAgentEndpointsRejectAStaleSessionBinding(t *testing.T) {
 	recovery := performJSONRequest(t, server, http.MethodPost, "/api/chat/recovery", map[string]any{
 		"session_id": staleSessionID,
 		"action": map[string]any{
-			"kind": "follow_up", "command_id": "stale-session-recovery", "operation_id": "operation-from-session-a",
+			"kind": "start_turn", "command_id": "stale-session-recovery", "operation_id": "operation-from-session-a",
 		},
 	})
 	if recovery.Code != http.StatusConflict {

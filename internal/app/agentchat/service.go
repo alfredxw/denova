@@ -448,7 +448,7 @@ func (service *Service) CloseProject(ctx context.Context, projectID string) erro
 	return nil
 }
 
-// Close aborts all user-level conversations before the shared durable runtime
+// Close aborts all user-level conversations before the shared Agent runtime
 // closes. Foreground Book switches deliberately do not call it.
 func (service *Service) Close(ctx context.Context) {
 	if service == nil {

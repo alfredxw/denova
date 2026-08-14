@@ -388,25 +388,29 @@ func (s *InteractiveAppService) InteractiveSnapshot(storyID, branchID string) (i
 	workspace := s.app.workspace
 	executionRuntime := s.app.executionRuntime
 	s.app.mu.RUnlock()
-	// Agent Session is the only checkpoint authority. Story Store continues to
-	// own turns and state, while this API projects the current checkpoint into
-	// the established game response shape.
+	// Story Store owns every user-visible game fact. Agent Session contributes
+	// optional runtime metadata, so an unavailable or unreadable Agent transcript
+	// must never hide already committed turns and state from the user.
 	snapshot.ContextCompaction = nil
 	if executionRuntime == nil {
 		return snapshot, nil
 	}
-	status, err := executionRuntime.RuntimeStatusProjection(context.Background(), agentrun.Options{
+	status, projected := projectAgentRuntime(context.Background(), executionRuntime, agentrun.Options{
 		AgentKind: agentrun.AgentKindInteractiveStory, Workspace: workspace,
 		StoryID: storyID, BranchID: snapshot.BranchID, Mode: "interactive",
 	})
-	if err != nil {
-		return interactive.Snapshot{}, err
+	if !projected {
+		return snapshot, nil
 	}
 	snapshot.ContextCompaction, err = interactiveapp.ProjectAgentCompaction(
 		status.Compaction, storyID, snapshot.BranchID,
 	)
 	if err != nil {
-		return interactive.Snapshot{}, err
+		slog.WarnContext(context.Background(), fmt.Sprintf(
+			"[interactive-snapshot] ignore invalid optional Agent Compaction projection workspace=%s story_id=%s branch_id=%s err=%v",
+			workspace, storyID, snapshot.BranchID, err,
+		))
+		snapshot.ContextCompaction = nil
 	}
 	return snapshot, nil
 }

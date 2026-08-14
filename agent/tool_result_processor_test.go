@@ -318,10 +318,10 @@ func TestResultProcessorAndArtifactStorageIdentityAffectRestoreButNotStablePrefi
 	same := prepare("processor-one", "storage-one", "run-two")
 	processorChanged := prepare("processor-two", "storage-one", "run-three")
 	storageChanged := prepare("processor-one", "storage-two", "run-four")
-	if first.restoreKey != same.restoreKey || first.prefixFingerprint != same.prefixFingerprint {
+	if first.behaviorKey != same.behaviorKey || first.prefixFingerprint != same.prefixFingerprint {
 		t.Fatalf("run identity polluted result capability identity: first=%#v same=%#v", first, same)
 	}
-	if first.restoreKey == processorChanged.restoreKey || first.restoreKey == storageChanged.restoreKey {
+	if first.behaviorKey == processorChanged.behaviorKey || first.behaviorKey == storageChanged.behaviorKey {
 		t.Fatal("result processor or artifact storage identity did not change restore semantics")
 	}
 	if first.prefixFingerprint != processorChanged.prefixFingerprint || first.prefixFingerprint != storageChanged.prefixFingerprint {

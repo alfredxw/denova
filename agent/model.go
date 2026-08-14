@@ -118,6 +118,14 @@ type BaseChatModel interface {
 	Stream(ctx context.Context, input []*Message, opts ...ModelOption) (*StreamReader[*Message], error)
 }
 
+// DefinitionModel is a declarative model whose stable identity is available
+// after Definition initialization. Agent uses it to keep model construction
+// and ModelIdentity inside the same agent.New composition boundary.
+type DefinitionModel interface {
+	BaseChatModel
+	ModelIdentity() CapabilityIdentity
+}
+
 // ToolCallingChatModel can derive an immutable model with bound tools.
 type ToolCallingChatModel interface {
 	BaseChatModel

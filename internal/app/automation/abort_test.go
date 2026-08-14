@@ -2,6 +2,7 @@ package automationapp
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -35,7 +36,7 @@ func (model *automationAbortBlockingModel) Stream(ctx context.Context, messages 
 	return agent.StreamReaderFromArray([]*agent.Message{message}), nil
 }
 
-func TestAutomationAbortReplaysPersistedReceiptAfterRestart(t *testing.T) {
+func TestAutomationAbortDoesNotExposeAStaleRunAfterRestart(t *testing.T) {
 	root := t.TempDir()
 	workspace := filepath.Join(root, "workspace")
 	if err := os.MkdirAll(workspace, 0o755); err != nil {
@@ -61,7 +62,7 @@ func TestAutomationAbortReplaysPersistedReceiptAfterRestart(t *testing.T) {
 		application.Close()
 		t.Fatal(err)
 	}
-	publicStore, err := sessionfile.New(filepath.Join(root, "agent-sessions"))
+	publicStore, err := sessionfile.New(filepath.Join(root, "agent-transcripts"))
 	if err != nil {
 		application.Close()
 		t.Fatal(err)
@@ -102,6 +103,10 @@ func TestAutomationAbortReplaysPersistedReceiptAfterRestart(t *testing.T) {
 		application.Close()
 		t.Fatalf("public Abort settlement=%#v error=%v", result, waitErr)
 	}
+	if abortReceipt.CommandID != commandID || abortReceipt.RunID != publicRun.ID() {
+		application.Close()
+		t.Fatalf("abort receipt = %#v", abortReceipt)
+	}
 	if err := session.Close(context.Background()); err != nil {
 		application.Close()
 		t.Fatal(err)
@@ -141,12 +146,7 @@ func TestAutomationAbortReplaysPersistedReceiptAfterRestart(t *testing.T) {
 	if reopenedRef != ref {
 		t.Fatalf("reopened runtime binding = %#v, seeded %#v", reopenedRef, ref)
 	}
-	receipt, err := reopened.AbortAutomationRunCommand(context.Background(), runID, commandID, agentrun.OperationID(publicRun.ID()), "user_requested")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !receipt.Replayed || receipt.CommandID != agentrun.CommandID(commandID) ||
-		receipt.OperationID != agentrun.OperationID(publicRun.ID()) || receipt.Cursor != agentrun.Cursor(abortReceipt.Cursor) {
-		t.Fatalf("replayed abort receipt = %#v", receipt)
+	if _, err := reopened.AbortAutomationRunCommand(context.Background(), runID, commandID, agentrun.OperationID(publicRun.ID()), "user_requested"); !errors.Is(err, agent.ErrNoActiveRun) {
+		t.Fatalf("abort after restart error = %v, want no active Run", err)
 	}
 }

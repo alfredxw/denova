@@ -6,10 +6,9 @@ import (
 	"testing"
 )
 
-func TestNestedEventPreservesCompleteTypedChildLifecycleEnvelope(t *testing.T) {
+func TestNestedEventPreservesTypedChildLifecycleEnvelope(t *testing.T) {
 	childPayloads := []EventPayload{
 		InteractionRequested{Request: InteractionRequest{ID: "ask-child", Kind: InteractionAsk}},
-		RecoveryRequired{Reason: "resume child"},
 		ArtifactProduced{CallID: "child-call", Artifact: ToolArtifactRef{ID: "artifact-child", Complete: true}},
 		CleanupCommitted{State: CleanupState{ID: "cleanup-child", Revision: 1}},
 		CompactionCommitted{State: CompactionState{ID: "compact-child", Revision: 1}},
@@ -17,17 +16,13 @@ func TestNestedEventPreservesCompleteTypedChildLifecycleEnvelope(t *testing.T) {
 	}
 	tool, err := InferTool("delegate", "delegate", func(ctx context.Context, _ struct{}) (ToolResult, error) {
 		for index, payload := range childPayloads {
-			durability := EphemeralEvent
-			if index%2 == 0 {
-				durability = DurableEvent
-			}
 			if err := ForwardNestedEvent(ctx, NestedEvent{
 				Source: EventSource{
 					Name: "researcher", Path: []string{"root", "researcher"},
 					InvocationID: "task-session/child-run", InvocationType: "task",
 				},
 				SessionID: "task-session",
-				Child:     Event{Cursor: Cursor(index + 1), Durability: durability, RunID: "child-run", Payload: payload},
+				Child:     Event{Cursor: Cursor(index + 1), RunID: "child-run", Payload: payload},
 			}); err != nil {
 				return ToolResult{}, err
 			}
@@ -64,7 +59,7 @@ func TestNestedEventPreservesCompleteTypedChildLifecycleEnvelope(t *testing.T) {
 	var nested []NestedEvent
 	for event := range run.Events() {
 		if payload, ok := event.Payload.(NestedEvent); ok {
-			if event.RunID != run.ID() || event.Durability != EphemeralEvent {
+			if event.RunID != run.ID() {
 				t.Fatalf("outer parent identity changed: %#v", event)
 			}
 			nested = append(nested, payload)
@@ -78,13 +73,6 @@ func TestNestedEventPreservesCompleteTypedChildLifecycleEnvelope(t *testing.T) {
 			event.Source.InvocationType != "task" || event.Child.RunID != "child-run" ||
 			event.Child.Cursor != Cursor(index+1) || reflect.TypeOf(event.Child.Payload) != reflect.TypeOf(childPayloads[index]) {
 			t.Fatalf("nested event %d = %#v", index, event)
-		}
-		wantDurability := EphemeralEvent
-		if index%2 == 0 {
-			wantDurability = DurableEvent
-		}
-		if event.Child.Durability != wantDurability {
-			t.Fatalf("nested event %d durability=%q want=%q", index, event.Child.Durability, wantDurability)
 		}
 	}
 }

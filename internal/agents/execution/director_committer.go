@@ -3,7 +3,6 @@ package execution
 import (
 	"context"
 	"errors"
-	"fmt"
 
 	agentchat "denova/internal/agents/chat"
 	agentinteractive "denova/internal/agents/interactive"
@@ -14,10 +13,8 @@ import (
 
 // directorConversationCommitter joins the public Agent canonical fence to the
 // existing Story plan transaction. Director input has no separate product
-// projection: the source Turn is already durable, so a successful no-op is the
-// complete side effect and the Agent journal owns its exact receipt. Output is
-// always delegated to the canonical Story plan transaction and is queryable by
-// the exact Agent identity/hash after a crash.
+// projection: the source Turn is already stored, so a successful no-op is the
+// complete side effect. Output is delegated to the Story plan transaction.
 type directorConversationCommitter struct {
 	conversation *agentinteractive.DirectorConversation
 	output       agentinteractive.DirectorCanonicalOutput
@@ -48,9 +45,8 @@ func (committer *directorConversationCommitter) MaterializeInput(
 	if err := ctx.Err(); err != nil {
 		return agent.CommitReceipt{}, err
 	}
-	// There is intentionally no product write here. Returning an identity-bound
-	// revision lets the public runtime durably record that the empty effect was
-	// completed; Reconcile can prove the same fact without process state.
+	// There is intentionally no product write here. The source Turn already
+	// carries the accepted input.
 	return agent.CommitReceipt{Revision: "director-input:" + request.Hash}, nil
 }
 
@@ -70,26 +66,6 @@ func (committer *directorConversationCommitter) CommitOutput(
 		return agent.OutputCommitReceipt{}, errors.New("Denova Director canonical output is unavailable")
 	}
 	return committer.output.CommitDirectorCanonicalOutput(ctx, request)
-}
-
-func (committer *directorConversationCommitter) Reconcile(
-	ctx context.Context,
-	request agent.ReconcileRequest,
-) (agent.ReconcileResult, error) {
-	switch request.Identity.Stage {
-	case agent.CommitInput:
-		if err := ctx.Err(); err != nil {
-			return agent.ReconcileResult{}, err
-		}
-		return agent.ReconcileResult{Found: true, Revision: "director-input:" + request.Hash}, nil
-	case agent.CommitOutput:
-		if committer.output == nil {
-			return agent.ReconcileResult{}, errors.New("Denova Director canonical output is unavailable")
-		}
-		return committer.output.ReconcileDirectorCanonicalOutput(ctx, request)
-	default:
-		return agent.ReconcileResult{}, fmt.Errorf("unsupported Director canonical stage %q", request.Identity.Stage)
-	}
 }
 
 func (committer *directorConversationCommitter) ApplyEffects(

@@ -92,10 +92,6 @@ func (h *Handlers) writeChatPreparationError(c *app.RequestContext, err error) {
 		writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.busy", "已有 Agent 正在运行，请使用 Follow Up、Steer 或 Stop / An agent is already running; use Follow Up, Steer, or Stop", nil)
 		return
 	}
-	if errors.Is(err, novaApp.ErrAgentRecoveryRequired) {
-		writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.recovery_required", "存在需要恢复的 Agent 运行，请先重新挂接或提交恢复操作 / A durable agent run requires recovery before starting a new one", nil)
-		return
-	}
 	if errors.Is(err, novaApp.ErrWorkspaceTransition) || errors.Is(err, novaApp.ErrAgentContextChanged) {
 		writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.context_changed", "运行上下文已变化，请重试 / The agent context changed; retry the request", nil)
 		return

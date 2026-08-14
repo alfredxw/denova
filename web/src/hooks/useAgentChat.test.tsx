@@ -1259,7 +1259,6 @@ describe('useAgentChat', () => {
       status: 'running',
       stream_cursor: 0,
       cursor: 12,
-      replayed: true,
       recovery_action: action,
     })
     const { result } = renderHook(() => useAgentChat())
@@ -1312,7 +1311,6 @@ describe('useAgentChat', () => {
         status: 'running',
         stream_cursor: 0,
         cursor: 14,
-        replayed: false,
         recovery_action: attachAction,
       })
       .mockResolvedValueOnce({
@@ -1320,7 +1318,6 @@ describe('useAgentChat', () => {
         status: 'running',
         stream_cursor: 0,
         cursor: 15,
-        replayed: false,
         recovery_action: abortAction,
       })
     const { result } = renderHook(() => useAgentChat())
@@ -1412,7 +1409,6 @@ describe('useAgentChat', () => {
       status: 'running',
       stream_cursor: 0,
       cursor: 21,
-      replayed: false,
       recovery_action: stateAction,
     })
     const { result } = renderHook(() => useAgentChat())
@@ -1467,7 +1463,6 @@ describe('useAgentChat', () => {
         status: 'running',
         stream_cursor: 0,
         cursor: 24,
-        replayed: false,
         recovery_action: firstAction,
       })
       .mockResolvedValueOnce({
@@ -1475,7 +1470,6 @@ describe('useAgentChat', () => {
         status: 'running',
         stream_cursor: 0,
         cursor: 25,
-        replayed: false,
         recovery_action: secondAction,
       })
     const { result } = renderHook(() => useAgentChat())
@@ -1591,7 +1585,6 @@ describe('useAgentChat', () => {
       status: 'running',
       stream_cursor: 0,
       cursor: 22,
-      replayed: false,
       recovery_action: abortAction,
     })
     const { result } = renderHook(() => useAgentChat())
@@ -1634,7 +1627,6 @@ describe('useAgentChat', () => {
       status: 'running',
       stream_cursor: 0,
       cursor: 23,
-      replayed: false,
       recovery_action: nextAction,
     })
     const { result, rerender } = renderHook(() => useAgentChat())
@@ -1678,7 +1670,6 @@ describe('useAgentChat', () => {
       status: 'running',
       stream_cursor: 0,
       cursor: 16,
-      replayed: false,
       recovery_action: attachAction,
     })
     vi.mocked(submitChatCommand).mockResolvedValue({
@@ -1733,7 +1724,6 @@ describe('useAgentChat', () => {
       status: 'running',
       stream_cursor: 0,
       cursor: 13,
-      replayed: false,
       recovery_action: abortAction,
     })
     const { result } = renderHook(() => useAgentChat())

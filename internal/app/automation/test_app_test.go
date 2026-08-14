@@ -169,10 +169,6 @@ func (profile testAgentChatExecutionProfile) CanonicalInput(
 			receipt, err := sess.CommitDomainMessageContext(ctx, intent)
 			return agent.CommitReceipt{Revision: strconv.FormatUint(receipt.ContextRevision, 10)}, err
 		},
-		ReconcileFn: func(_ context.Context, reconcile agent.ReconcileRequest) (agent.ReconcileResult, error) {
-			receipt, found, err := sess.FindAgentCanonicalCommit(identity, agent.User, reconcile.Hash)
-			return agent.ReconcileResult{Found: found, Revision: strconv.FormatUint(receipt.ContextRevision, 10)}, err
-		},
 	}, nil
 }
 
@@ -217,7 +213,7 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 		ctx,
 		dataDir,
 		agentexecution.WithProfiles(testAgentChatExecutionProfile{application: application}),
-		agentexecution.WithHostEffectReconciler(application.automationApp.ReconcileHostEffect),
+		agentexecution.WithToolMutationApplier(application.automationApp.ApplyToolMutation),
 	)
 	if err != nil {
 		application.Close()
@@ -730,7 +726,7 @@ func (application *App) AbortAutomationRunCommand(ctx context.Context, runID, co
 	return application.automation().AbortRunCommand(ctx, runID, commandID, operationID, reason)
 }
 func (application *App) reconcileExecutionHostEffect(ctx context.Context, committed agenttoolruntime.CommittedToolMutation) error {
-	return application.automation().ReconcileHostEffect(ctx, committed)
+	return application.automation().ApplyToolMutation(ctx, committed)
 }
 
 func (application *App) automationSnapshot() *automationWorkspaceSnapshot {

@@ -117,11 +117,6 @@ func (service *Service) StartTaskWithError(ctx context.Context, request Request)
 	if err != nil {
 		return nil, err
 	}
-	if replay, matched, err := service.replayDurableStart(ctx, runtime, chatRequest, sessionID, fingerprint); err != nil {
-		return nil, err
-	} else if matched {
-		return replay, nil
-	}
 	if !runtime.available() {
 		return nil, appagentruntime.ErrNoWorkspace
 	}

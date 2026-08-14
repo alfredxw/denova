@@ -63,10 +63,6 @@ func (probe *boundaryCommitterProbe) CommitOutput(_ context.Context, prepared ag
 	return agent.OutputCommitReceipt{Revision: "output:1"}, nil
 }
 
-func (*boundaryCommitterProbe) Reconcile(context.Context, agent.ReconcileRequest) (agent.ReconcileResult, error) {
-	return agent.ReconcileResult{}, nil
-}
-
 func (*boundaryCommitterProbe) ApplyEffects(_ context.Context, requests []agent.EffectRequest) ([]agent.EffectResult, error) {
 	return make([]agent.EffectResult, len(requests)), nil
 }

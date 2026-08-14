@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	"strings"
 	"sync"
 
 	agentchat "denova/internal/agents/chat"
@@ -131,36 +130,6 @@ func (committer *sessionConversationCommitter) CommitOutput(
 	}
 	return agent.OutputCommitReceipt{
 		Revision: strconv.FormatUint(receipt.ContextRevision, 10), Transcript: projection.Transcript,
-	}, nil
-}
-
-func (committer *sessionConversationCommitter) Reconcile(
-	ctx context.Context,
-	request agent.ReconcileRequest,
-) (agent.ReconcileResult, error) {
-	identity := session.DomainCommitIdentity{
-		CommandID:   strings.TrimSpace(request.Identity.CommandID),
-		OperationID: strings.TrimSpace(request.Identity.RunID),
-		Cycle:       request.Identity.Cycle,
-	}
-	role := agent.User
-	if request.Identity.Stage == agent.CommitOutput {
-		role = agent.Assistant
-	} else if request.Identity.Stage != agent.CommitInput {
-		return agent.ReconcileResult{}, fmt.Errorf("unsupported Session canonical stage %q", request.Identity.Stage)
-	}
-	receipt, found, err := committer.config.Session.FindAgentCanonicalCommit(identity, role, request.Hash)
-	if err != nil || !found {
-		return agent.ReconcileResult{Found: found}, err
-	}
-	if request.Identity.Stage == agent.CommitInput && committer.config.InputEffect != nil {
-		found, err = committer.config.InputEffect.Reconcile(ctx, inputEffectRequest(request.Identity, request.Hash))
-		if err != nil || !found {
-			return agent.ReconcileResult{Found: found}, err
-		}
-	}
-	return agent.ReconcileResult{
-		Found: true, Revision: strconv.FormatUint(receipt.ContextRevision, 10),
 	}, nil
 }
 

@@ -8,7 +8,7 @@ import (
 	"io"
 	"strings"
 
-	runstate "github.com/alfredxw/denova/agent/internal/runtime"
+	runstate "github.com/alfredxw/denova/agent/internal/runstate"
 	agentsession "github.com/alfredxw/denova/agent/session"
 )
 
@@ -40,7 +40,7 @@ func (engine *definitionEngine) applyGoalPreparation(
 }
 
 // applyPreparedGoal is the single model-facing Goal assembly seam shared by
-// real runs and read-only Session inspection. Durable mutation and CAS remain
+// real runs and read-only Session inspection. Mutation and CAS remain
 // in the lifecycle; this helper only materializes tools and context from an
 // already selected Goal state.
 func applyPreparedGoal(
@@ -167,23 +167,6 @@ func assembleCycleMessages(
 	return messages, CloneMessage(user), nil
 }
 
-func recoveryModelMessages(
-	transcript []*Message,
-	activeModelUser *Message,
-	activeUserIndex int,
-) ([]*Message, error) {
-	if activeModelUser == nil || activeModelUser.Role != User {
-		return nil, errors.New("Agent interaction recovery lost the active model user projection")
-	}
-	if activeUserIndex < 0 || activeUserIndex >= len(transcript) ||
-		transcript[activeUserIndex] == nil || transcript[activeUserIndex].Role != User || IsContextStateMessage(transcript[activeUserIndex]) {
-		return nil, errors.New("Agent interaction recovery has an invalid raw user boundary")
-	}
-	messages := cloneMessages(transcript)
-	messages[activeUserIndex] = CloneMessage(activeModelUser)
-	return messages, nil
-}
-
 // leadingContextMessages is the single assembly rule for lifecycle-owned
 // stable fragments. Normal turns, retries, and structural Compaction snapshots
 // must preserve the exact same role and bytes for provider cache identity.
@@ -226,7 +209,7 @@ func newPreparedDefinitionLoop(
 }
 
 // prepareDefinitionModelRequest runs the exact provider-neutral assembly
-// pipeline without invoking the provider. Durable structural operations and
+// pipeline without invoking the provider. Structural operations and
 // public read-only inspection share this seam so caller Middleware, tool
 // schemas, cache routing, and stable-prefix authentication cannot drift.
 func prepareDefinitionModelRequest(
@@ -402,7 +385,7 @@ func (engine *definitionEngine) emitToolExecution(
 	case toolExecutionFinished:
 		// Policy denial and invalid preflight can finish before concrete Tool.Run.
 		// Record a paired zero-side-effect start immediately before the result so
-		// runtime recovery remains structurally complete.
+		// the tool lifecycle remains structurally complete.
 		if !started[callID] {
 			if err := emit(runstate.EngineToolStarted{
 				CallID: callID, ProviderCallID: execution.ProviderCallID, Name: execution.ToolName, Index: execution.Index,
@@ -422,23 +405,11 @@ func (engine *definitionEngine) emitToolExecution(
 		if err != nil {
 			return fmt.Errorf("encode bounded Tool result projection: %w", err)
 		}
-		hostEffects := make([]runstate.HostEffect, len(result.Effects))
 		if len(result.Effects) != 0 && canonical == nil {
 			return errors.New("Tool produced canonical Effects but Definition has no Canonical Adapter")
 		}
-		for index, effect := range result.Effects {
-			payload, err := json.Marshal(effect)
-			if err != nil {
-				return fmt.Errorf("encode Tool effect %d: %w", index, err)
-			}
-			hostEffect, err := runstate.NewToolHostEffect(
-				request.Binding, request.Snapshot.OperationID, request.Snapshot.Cycle,
-				callID, index, runstate.HostEffectKind(effect.Kind), payload,
-			)
-			if err != nil {
-				return err
-			}
-			hostEffects[index] = hostEffect
+		if err := engine.applyCanonicalEffects(ctx, request, canonical, callID, result.Effects); err != nil {
+			return err
 		}
 		for index, artifact := range result.Artifacts {
 			encoded, err := json.Marshal(artifact)
@@ -455,13 +426,68 @@ func (engine *definitionEngine) emitToolExecution(
 		})
 		return emit(runstate.EngineToolFinished{
 			CallID: callID, ProviderCallID: execution.ProviderCallID, Name: execution.ToolName, Index: execution.Index,
-			Result:  result.DisplayContent,
-			IsError: result.IsError(), RetrySafety: retrySafety(execution.Definition.Descriptor.Recovery),
-			Metadata: metadata, Source: source, Projection: encodedProjection, HostEffects: hostEffects,
+			Result:   result.DisplayContent,
+			IsError:  result.IsError(),
+			Metadata: metadata, Source: source, Projection: encodedProjection,
 		})
 	default:
 		return fmt.Errorf("unsupported Tool execution phase %q", execution.Phase)
 	}
+}
+
+func (engine *definitionEngine) applyCanonicalEffects(
+	ctx context.Context,
+	request runstate.EngineRequest,
+	adapter CanonicalAdapter,
+	callID string,
+	effects []Effect,
+) error {
+	if len(effects) == 0 {
+		return nil
+	}
+	requests := make([]EffectRequest, len(effects))
+	for index, effect := range effects {
+		digest, err := hashCanonical(struct {
+			Version int
+			Session SessionKey
+			RunID   string
+			Cycle   int
+			CallID  string
+			Index   int
+		}{1, engine.key, string(request.Snapshot.OperationID), request.Snapshot.Cycle, callID, index})
+		if err != nil {
+			return err
+		}
+		requests[index] = EffectRequest{
+			ID: "effect-" + digest,
+			Identity: CommitIdentity{
+				Session: engine.key, CommandID: string(request.Snapshot.CommandID),
+				RunID: string(request.Snapshot.OperationID), Cycle: request.Snapshot.Cycle, Stage: CommitOutput,
+			},
+			CallID: callID, Index: index, Effect: effect,
+		}
+	}
+	results, err := adapter.ApplyEffects(ctx, requests)
+	if err != nil {
+		return err
+	}
+	byID := make(map[string]EffectResult, len(results))
+	for _, result := range results {
+		byID[result.ID] = result
+	}
+	for _, request := range requests {
+		result, ok := byID[request.ID]
+		if !ok {
+			return fmt.Errorf("Canonical Adapter omitted Tool effect %q", request.ID)
+		}
+		if result.Error != "" {
+			return fmt.Errorf("apply canonical Tool effect %q: %s", request.ID, result.Error)
+		}
+		if strings.TrimSpace(result.Revision) == "" {
+			return fmt.Errorf("Canonical Adapter Tool effect %q has no revision", request.ID)
+		}
+	}
+	return nil
 }
 
 func toolExecutionMetadata(descriptor ToolDescriptor) (json.RawMessage, error) {
@@ -472,7 +498,7 @@ func toolExecutionMetadata(descriptor ToolDescriptor) (json.RawMessage, error) {
 	if err != nil {
 		return nil, fmt.Errorf("normalize tool live presentation: %w", err)
 	}
-	// Keep descriptor fields flat so existing durable metadata readers can
+	// Keep descriptor fields flat so existing event metadata readers can
 	// continue decoding execution semantics while presentation remains a
 	// separate, model-invisible concern.
 	metadata, err := json.Marshal(struct {
@@ -534,15 +560,4 @@ func rootAgentEvent(event *loopEvent, rootName string) bool {
 		return false
 	}
 	return len(event.RunPath) <= 1
-}
-
-func retrySafety(recovery ToolRecoveryClass) runstate.RetrySafety {
-	switch recovery {
-	case ToolRecoveryReadOnly, ToolRecoveryIdempotent:
-		return runstate.RetrySafe
-	case ToolRecoveryNonIdempotent:
-		return runstate.RetryUnsafe
-	default:
-		return runstate.RetryUnknown
-	}
 }

@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"sync"
 
 	agent "github.com/alfredxw/denova/agent"
 )
@@ -55,7 +56,20 @@ type standardManager struct {
 	identity agent.CapabilityIdentity
 }
 
-func Standard(config StandardConfig) (agent.CleanupManager, error) {
+type standardDefinition struct {
+	config StandardConfig
+	once   sync.Once
+	value  *standardManager
+	err    error
+}
+
+// Standard declares the built-in Cleanup policy. Agent validates and resolves
+// it together with the rest of the Definition in agent.New.
+func Standard(config StandardConfig) agent.CleanupManager {
+	return &standardDefinition{config: config}
+}
+
+func newStandard(config StandardConfig) (*standardManager, error) {
 	if config.CacheState != "" && config.CacheState != CacheUnknown &&
 		config.CacheState != CacheWarm && config.CacheState != CacheCold {
 		return nil, fmt.Errorf("standard Cleanup CacheState %q is invalid", config.CacheState)
@@ -70,6 +84,36 @@ func Standard(config StandardConfig) (agent.CleanupManager, error) {
 		Kind: "cleanup.standard", Version: 1, ConfigHash: hex.EncodeToString(digest[:]),
 	}}, nil
 }
+
+func (definition *standardDefinition) InitializeDefinition(context.Context) error {
+	if definition == nil {
+		return errors.New("standard Cleanup Definition is nil")
+	}
+	definition.once.Do(func() {
+		definition.value, definition.err = newStandard(definition.config)
+	})
+	return definition.err
+}
+
+func (definition *standardDefinition) Identity() agent.CapabilityIdentity {
+	if err := definition.InitializeDefinition(context.Background()); err != nil {
+		return agent.CapabilityIdentity{}
+	}
+	return definition.value.Identity()
+}
+
+func (definition *standardDefinition) Plan(
+	ctx context.Context,
+	request agent.CleanupPlanRequest,
+) (agent.CleanupPlan, error) {
+	if err := definition.InitializeDefinition(ctx); err != nil {
+		return agent.CleanupPlan{}, err
+	}
+	return definition.value.Plan(ctx, request)
+}
+
+var _ agent.CleanupManager = (*standardDefinition)(nil)
+var _ agent.DefinitionInitializer = (*standardDefinition)(nil)
 
 func normalizedConfig(config StandardConfig) StandardConfig {
 	if config.Scope != PressureTotal && config.Scope != PressureBodyAfterPrefix {

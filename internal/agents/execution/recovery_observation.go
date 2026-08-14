@@ -11,9 +11,8 @@ import (
 	agent "github.com/alfredxw/denova/agent"
 )
 
-// RecoveryObservation owns the restart-scoped observation of one exact public
-// Agent Session. Resume may be invoked repeatedly as ordered recovery actions
-// become current; Wait follows the recovered run to terminal settlement.
+// RecoveryObservation attaches a new display stream to an active in-process
+// Agent Run. It does not resume work after a process restart.
 type RecoveryObservation struct {
 	publicBackend     *publicBackend
 	publicSession     *agent.Session
@@ -80,30 +79,12 @@ func (r *RecoveryObservation) CurrentStatus(ctx context.Context) (agentrun.Runti
 	return publicRuntimeStatus(r.publicBinding, snapshot), nil
 }
 
-// DisplayMetadata resolves the bounded product display identity from the exact
-// durable Agent input. Structural recovery carries no user message.
+// DisplayMetadata resolves the product display identity from the active Run.
 func (r *RecoveryObservation) DisplayMetadata(ctx context.Context, action RuntimeRecoveryAction) (RuntimeRecoveryDisplayMetadata, error) {
 	if r == nil || r.publicSession == nil {
 		return RuntimeRecoveryDisplayMetadata{}, ErrRuntimeProjectionUnavailable
 	}
-	if action.Kind == RuntimeRecoveryCompactContext || action.Kind == RuntimeRecoveryRemoveCompaction {
-		return RuntimeRecoveryDisplayMetadata{}, nil
-	}
-	selected, found := publicRecoveryAction(r.publicInitial.RecoveryActions, action.ActionID)
-	if !found {
-		snapshot, snapshotErr := r.publicSession.Snapshot(ctx)
-		if snapshotErr != nil {
-			return RuntimeRecoveryDisplayMetadata{}, snapshotErr
-		}
-		selected, found = publicRecoveryAction(snapshot.RecoveryActions, action.ActionID)
-	}
-	var input agent.Input
-	var err error
-	if found {
-		input, found, err = r.publicSession.RecoveryInput(ctx, selected)
-	} else {
-		input, found, err = r.publicSession.RunInput(ctx, string(action.OperationID))
-	}
+	input, found, err := r.publicSession.RunInput(ctx, string(action.OperationID))
 	if err != nil || !found {
 		return RuntimeRecoveryDisplayMetadata{}, err
 	}
@@ -114,13 +95,4 @@ func (r *RecoveryObservation) DisplayMetadata(ctx context.Context, action Runtim
 	return RuntimeRecoveryDisplayMetadata{
 		Message: strings.TrimSpace(data.Caller.Message), RegenerateFromTurnID: data.TurnID,
 	}, nil
-}
-
-func publicRecoveryAction(actions []agent.RecoveryAction, id string) (agent.RecoveryAction, bool) {
-	for _, action := range actions {
-		if action.ID == id {
-			return action, true
-		}
-	}
-	return agent.RecoveryAction{}, false
 }

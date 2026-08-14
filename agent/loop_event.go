@@ -165,9 +165,8 @@ type toolExecutionEvent struct {
 	Definition     ToolDefinitionSnapshot
 	Delta          string
 	Result         *ToolResult
-	// startReceipt is installed only by the durable Definition lifecycle. It
-	// keeps the concrete endpoint behind the actor's ToolCallStarted receipt
-	// while preserving the low-level modelToolLoop's ordinary asynchronous event API.
+	// startReceipt lets the Session publish ToolStarted before the concrete
+	// endpoint runs while the low-level loop keeps its asynchronous event API.
 	startReceipt chan error
 }
 
@@ -178,7 +177,7 @@ func (event *toolExecutionEvent) acknowledgeStart(err error) {
 	event.startReceipt <- err
 }
 
-// ToolExecutionID returns the durable display/lifecycle identity for one
+// ToolExecutionID returns the stable display/lifecycle identity for one
 // assistant tool ordinal. The provider call ID must remain transcript-only.
 func (variant *loopMessage) ToolExecutionID(toolOrdinal int) string {
 	if variant == nil || variant.ModelResponseOrdinal <= 0 || toolOrdinal < 0 || variant.ToolExecutionNamespace == "" {
@@ -219,9 +218,6 @@ type loopEvent struct {
 type loopInput struct {
 	Messages        []*Message
 	EnableStreaming bool
-	// ResumeToolCalls executes the final assistant tool-call batch before the
-	// next model request. It is reserved for durable Interaction recovery.
-	ResumeToolCalls bool
 	// stablePrefixMessages is set only by the Definition lifecycle after it has
 	// assembled accountable Context fragments and the active checkpoint. It is
 	// intentionally not part of the public low-level modelToolLoop input surface.

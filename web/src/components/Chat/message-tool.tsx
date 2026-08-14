@@ -23,7 +23,8 @@ export function ToolExecutionBlock({ message, onResolve, onLayoutChange }: { mes
   const args = formatMaybeJSON(rawArgs)
   const status = message.status || 'running'
   const result = message.result || ''
-  const isDelegationTool = toolPresentationKind(message, 'call') === 'delegation'
+  const presentationKind = toolPresentationKind(message, 'call')
+  const isDelegationTool = presentationKind === 'delegation'
   const taskSubAgent = isDelegationTool ? (message.subagent_type || parseTaskSubagentType(rawArgs)) : ''
   const isChapterBodyHidden = message.sse_display_notice === 'chapter_body_hidden'
   const isDirectorPlanHidden = isChapterBodyHidden && message.agent_kind === 'interactive_director'
@@ -40,9 +41,12 @@ export function ToolExecutionBlock({ message, onResolve, onLayoutChange }: { mes
   // Short or disabled content streams use the compact writing activity label.
   const isContentToolLoading = !isChapterBodyHidden && !isStreamingContent && status === 'running' && isContentTool(name)
   const contentToolChars = isContentToolLoading && typeof message.sse_generated_chars === 'number' ? message.sse_generated_chars : undefined
+  const commandDescription = presentationKind === 'search' || presentationKind === 'terminal'
+    ? readToolArgDescription(args)
+    : ''
   const summary = taskSubAgent
     ? t('chat.subagent.delegating', { name: taskSubAgent })
-    : buildToolArgSummary(args) || (isStreamingContent ? t('chat.tool.writing') : t('chat.tool.preparing'))
+    : commandDescription || buildToolArgSummary(args) || (isStreamingContent ? t('chat.tool.writing') : t('chat.tool.preparing'))
   const resultBody = stripToolResultMetadata(result)
   const resultEnvelope = decodeToolResultEnvelope(resultBody)
   const resultSeverity = status === 'error' ? 'error' : resultEnvelope?.severity || 'success'
@@ -56,7 +60,7 @@ export function ToolExecutionBlock({ message, onResolve, onLayoutChange }: { mes
       ? t(isDirectorPlanHidden ? (hasResult ? 'chat.tool.fileWrittenWithCount' : 'chat.tool.fileWritingWithCount') : (hasResult ? 'chat.tool.chapterWrittenWithCount' : 'chat.tool.chapterWritingWithCount'), { count: chapterGeneratedChars })
       : (isDirectorPlanHidden ? (hasResult ? t('chat.tool.fileWritten') : t('chat.tool.fileWriting')) : (hasResult ? t('chat.tool.chapterWritten') : t('chat.tool.chapterWriting')))
     : (hasResult
-      ? resultPreview || t('chat.tool.done')
+      ? (commandDescription || resultPreview || t('chat.tool.done'))
       : status === 'error'
         ? buildPreview(resultBody, 160) || t('chat.tool.failed')
       : isContentToolLoading
@@ -343,6 +347,17 @@ function buildToolArgSummary(args: string) {
     // Non-JSON arguments use the generic preview.
   }
   return buildPreview(args, 120)
+}
+
+/** Reads optional model-authored display metadata without making it execution-authoritative. */
+function readToolArgDescription(args: string) {
+  if (!args) return ''
+  try {
+    const description = (JSON.parse(args) as Record<string, unknown>).description
+    return typeof description === 'string' ? description.trim() : ''
+  } catch {
+    return ''
+  }
 }
 
 function extractToolArgPath(args: string) {

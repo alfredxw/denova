@@ -23,7 +23,7 @@ func (s *Service) automationRuntimeProjection(ctx context.Context, snap *automat
 	if snap == nil || snap.executionRuntime == nil {
 		return agentrun.RuntimeStatus{}, agentexecution.ErrRuntimeProjectionUnavailable
 	}
-	return snap.executionRuntime.RuntimeRecoveryStatusProjection(ctx, automationRuntimeOptions(snap, task, run))
+	return snap.executionRuntime.RuntimeStatusProjection(ctx, automationRuntimeOptions(snap, task, run))
 }
 
 func automationRuntimeOptions(snap *automationWorkspaceSnapshot, task automation.Task, run automation.RunRecord) agentrun.Options {
@@ -112,7 +112,7 @@ func (s *Service) reconcileAutomationRunReceipt(ctx context.Context, snap *autom
 		return automation.RunRecord{}, false, nil
 	}
 	pendingCommandID := strings.TrimSpace(candidate.PendingRuntimeCommandID)
-	pendingReplayedCurrent := false
+	pendingMatchesCurrent := false
 	if pendingCommandID == "" {
 		if candidate.RuntimeOperationID != "" && candidate.RuntimeOperationID != operationID {
 			return automation.RunRecord{}, false, fmt.Errorf("%w: run_id=%s runtime operation differs", automation.ErrRunIdentityConflict, candidate.ID)
@@ -152,7 +152,7 @@ func (s *Service) reconcileAutomationRunReceipt(ctx context.Context, snap *autom
 		}
 		if pendingCommandID != "" {
 			if candidate.RuntimeCommandID == commandID && candidate.RuntimeOperationID == operationID {
-				pendingReplayedCurrent = true
+				pendingMatchesCurrent = true
 				if err := applyAutomationCurrentReceipt(&candidate, receipt, pendingCommandID); err != nil {
 					return automation.RunRecord{}, false, err
 				}
@@ -175,11 +175,11 @@ func (s *Service) reconcileAutomationRunReceipt(ctx context.Context, snap *autom
 			}
 		}
 	}
-	if pendingReplayedCurrent && !match.active && automationTerminalStatusMatches(candidate.Status, match.status) {
+	if pendingMatchesCurrent && !match.active && automationTerminalStatusMatches(candidate.Status, match.status) {
 		candidate.RuntimeAdmissionPending = false
 		candidate.RuntimeRecoveryRequired = false
 		if _, err := storeForSnapshot(snap).AppendRun(automationTaskStoreID(task), candidate); err != nil {
-			return automation.RunRecord{}, false, fmt.Errorf("persist replayed automation follow-up %s: %w", candidate.ID, err)
+			return automation.RunRecord{}, false, fmt.Errorf("persist matched automation follow-up %s: %w", candidate.ID, err)
 		}
 		_, persisted, err := storeForSnapshot(snap).GetRunByID(candidate.ID)
 		return persisted, err == nil, err

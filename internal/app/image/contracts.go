@@ -16,9 +16,8 @@ import (
 )
 
 var (
-	ErrNoWorkspace             = errors.New("no workspace is selected")
-	ErrReplayResultUnavailable = errors.New("replayed image Agent result is not yet projected")
-	ErrExecution               = errors.New("image Agent execution failed")
+	ErrNoWorkspace = errors.New("no workspace is selected")
+	ErrExecution   = errors.New("image Agent execution failed")
 )
 
 // Operation pins one workspace generation until Release. Implementations must

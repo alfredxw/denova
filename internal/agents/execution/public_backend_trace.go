@@ -20,7 +20,6 @@ import (
 type publicAgentRunTrace struct {
 	mu             sync.Mutex
 	runID          string
-	enabled        bool
 	ledger         *agentrun.Ledger
 	rootSpan       *agentrun.Span
 	observer       *agentrun.Observer
@@ -31,9 +30,9 @@ type publicAgentRunTrace struct {
 	toolArgsBytes  map[string]int
 }
 
-func newPublicAgentRunTrace(runID string, enabled bool) *publicAgentRunTrace {
+func newPublicAgentRunTrace(runID string) *publicAgentRunTrace {
 	return &publicAgentRunTrace{
-		runID: strings.TrimSpace(runID), enabled: enabled, toolArgsBytes: make(map[string]int),
+		runID: strings.TrimSpace(runID), toolArgsBytes: make(map[string]int),
 	}
 }
 
@@ -43,7 +42,7 @@ func (registration *publicCycleRegistration) BindPublicRunTrace(ctx context.Cont
 	}
 	registration.mu.Lock()
 	if registration.trace == nil {
-		registration.trace = newPublicAgentRunTrace(runID, true)
+		registration.trace = newPublicAgentRunTrace(runID)
 	}
 	trace := registration.trace
 	options := registration.options
@@ -51,21 +50,21 @@ func (registration *publicCycleRegistration) BindPublicRunTrace(ctx context.Cont
 	return trace.bindContext(ctx, options, runID)
 }
 
-func publicTraceForRun(registration *publicCycleRegistration, runID string, enabled bool) *publicAgentRunTrace {
+func publicTraceForRun(registration *publicCycleRegistration, runID string) *publicAgentRunTrace {
 	if registration == nil {
-		return newPublicAgentRunTrace(runID, enabled)
+		return newPublicAgentRunTrace(runID)
 	}
 	registration.mu.Lock()
 	if registration.trace == nil {
-		registration.trace = newPublicAgentRunTrace(runID, enabled)
+		registration.trace = newPublicAgentRunTrace(runID)
 	}
 	trace := registration.trace
 	registration.mu.Unlock()
-	trace.configure(runID, enabled)
+	trace.configure(runID)
 	return trace
 }
 
-func (trace *publicAgentRunTrace) configure(runID string, enabled bool) {
+func (trace *publicAgentRunTrace) configure(runID string) {
 	if trace == nil {
 		return
 	}
@@ -73,9 +72,6 @@ func (trace *publicAgentRunTrace) configure(runID string, enabled bool) {
 	defer trace.mu.Unlock()
 	if trace.runID == "" {
 		trace.runID = strings.TrimSpace(runID)
-	}
-	if !enabled && trace.ledger == nil {
-		trace.enabled = false
 	}
 }
 
@@ -113,7 +109,7 @@ func (trace *publicAgentRunTrace) record(registration *publicCycleRegistration, 
 	}
 	trace.mu.Lock()
 	defer trace.mu.Unlock()
-	if !trace.enabled || trace.finished || trace.closed {
+	if trace.finished || trace.closed {
 		return nil
 	}
 	options := agentrun.Options{}
@@ -203,7 +199,7 @@ func (trace *publicAgentRunTrace) record(registration *publicCycleRegistration, 
 }
 
 func (trace *publicAgentRunTrace) openLocked(options agentrun.Options) error {
-	if trace == nil || !trace.enabled || trace.ledger != nil || trace.openAttempted || trace.runID == "" {
+	if trace == nil || trace.ledger != nil || trace.openAttempted || trace.runID == "" {
 		return nil
 	}
 	trace.openAttempted = true
@@ -274,7 +270,7 @@ func (trace *publicAgentRunTrace) close() error {
 	}
 	trace.mu.Lock()
 	defer trace.mu.Unlock()
-	if !trace.enabled || trace.ledger == nil || trace.closed {
+	if trace.ledger == nil || trace.closed {
 		return nil
 	}
 	trace.closed = true

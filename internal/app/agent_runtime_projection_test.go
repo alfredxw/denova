@@ -29,7 +29,7 @@ func TestAgentRuntimeProjectionUsesExplicitWritingAndGameIdentities(t *testing.T
 	workspace := t.TempDir()
 	service, err := agentexecution.NewAgentRuntime(
 		context.Background(), t.TempDir(),
-		agentexecution.WithHostEffectReconciler(func(context.Context, agenttoolruntime.CommittedToolMutation) error { return nil }),
+		agentexecution.WithToolMutationApplier(func(context.Context, agenttoolruntime.CommittedToolMutation) error { return nil }),
 	)
 	if err != nil {
 		t.Fatal(err)

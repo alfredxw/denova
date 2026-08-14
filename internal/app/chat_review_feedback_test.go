@@ -431,7 +431,7 @@ func TestCommittedReviewFeedbackPersistsWithUserMessageAndDisappearsAfterReload(
 		}
 		callbackSawDurableReference = history[0].UserReferences[0].ID == comment.ID
 		return consumeFeedback.Apply(ctx, effect)
-	}, ReconcileFunc: consumeFeedback.Reconcile}
+	}}
 	executionRuntime := agentexecution.NewEphemeralRuntime()
 	t.Cleanup(func() { _ = executionRuntime.Close(context.Background()) })
 	operation, err := startPublicExecutionCycle(

@@ -359,7 +359,7 @@ type modelStreamOutput struct {
 // openResponseOrdinal returns the identity of the one stream already exposed
 // to consumers. A provider failure before the first chunk is retried inside
 // that same still-open stream, so the successful retry must keep this ordinal
-// for its tool cards, lifecycle events, transcript result, and durable host
+// for its tool cards, lifecycle events, transcript result, and host
 // effects. Once a delivered response is closed, the next attempt receives a
 // fresh ordinal.
 func (output *modelStreamOutput) openResponseOrdinal() int {

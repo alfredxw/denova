@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	runstate "github.com/alfredxw/denova/agent/internal/runtime"
+	runstate "github.com/alfredxw/denova/agent/internal/runstate"
 )
 
 type projectedToolInput struct {

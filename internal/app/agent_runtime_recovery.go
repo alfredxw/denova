@@ -122,7 +122,7 @@ func (s *ChatAppService) RecoverAgentRuntime(ctx context.Context, expectedSessio
 	receipt, err = recovery.Resume(operation.Context(), request.Action, task.ID(), task.Emit)
 	if err != nil {
 		recovery.Close()
-		rollbackWritingReplayTask(a, task, err)
+		rollbackWritingAttachTask(a, task, err)
 		return AgentRuntimeRecoveryResult{}, err
 	}
 	run.recoveryActions[key] = receipt
@@ -134,7 +134,7 @@ func (s *ChatAppService) RecoverAgentRuntime(ctx context.Context, expectedSessio
 		slog.InfoContext(taskCtx, fmt.Sprintf("[agent-recovery] writing task settled task_id=%s action=%s command_id=%s operation_id=%s outcome=%s", task.ID(), request.Action.Kind, request.Action.CommandID, request.Action.OperationID, outcome.Status))
 	}); err != nil {
 		recovery.Close()
-		rollbackWritingReplayTask(a, task, err)
+		rollbackWritingAttachTask(a, task, err)
 		return AgentRuntimeRecoveryResult{}, err
 	}
 	return AgentRuntimeRecoveryResult{Task: task, Action: request.Action, Receipt: receipt}, nil
@@ -254,7 +254,7 @@ func (s *InteractiveAppService) RecoverAgentRuntime(ctx context.Context, request
 	receipt, err = recovery.Resume(operation.Context(), request.Action, task.ID(), task.Emit)
 	if err != nil {
 		recovery.Close()
-		rollbackInteractiveReplayTask(a, task, err)
+		rollbackInteractiveAttachTask(a, task, err)
 		return AgentRuntimeRecoveryResult{}, err
 	}
 	run.recoveryActions[key] = receipt
@@ -265,7 +265,7 @@ func (s *InteractiveAppService) RecoverAgentRuntime(ctx context.Context, request
 		slog.InfoContext(taskCtx, fmt.Sprintf("[agent-recovery] game task settled task_id=%s story_id=%s branch_id=%s action=%s command_id=%s operation_id=%s outcome=%s", task.ID(), request.StoryID, branchID, request.Action.Kind, request.Action.CommandID, request.Action.OperationID, outcome.Status))
 	}); err != nil {
 		recovery.Close()
-		rollbackInteractiveReplayTask(a, task, err)
+		rollbackInteractiveAttachTask(a, task, err)
 		return AgentRuntimeRecoveryResult{}, err
 	}
 	return AgentRuntimeRecoveryResult{Task: task, Action: request.Action, Receipt: receipt}, nil
@@ -287,9 +287,31 @@ func resumeExistingInteractiveRecovery(ctx context.Context, run *interactiveTask
 	return AgentRuntimeRecoveryResult{Task: run.task, Action: action, Receipt: receipt}, nil
 }
 
-// finishedRecoveryActionStillCurrent distinguishes an idempotent replay of a
-// settled action from retrying work whose previous display task failed before
-// changing durable state. The latter must receive a fresh task/observer.
+func rollbackWritingAttachTask(a *App, task *apptask.Task, err error) {
+	task.RejectStart(err)
+	a.unregisterWorkspaceTask(task)
+	a.mu.Lock()
+	if a.activeTask == task {
+		a.activeTask = nil
+	}
+	if a.activeWritingRun != nil && a.activeWritingRun.task == task {
+		a.activeWritingRun = nil
+	}
+	a.mu.Unlock()
+}
+
+func rollbackInteractiveAttachTask(a *App, task *apptask.Task, err error) {
+	task.RejectStart(err)
+	a.unregisterWorkspaceTask(task)
+	a.mu.Lock()
+	if a.activeInteractiveRun != nil && a.activeInteractiveRun.task == task {
+		a.activeInteractiveRun = nil
+	}
+	a.mu.Unlock()
+}
+
+// finishedRecoveryActionStillCurrent distinguishes a repeated display attach
+// from a new attach after the previous display task failed.
 func finishedRecoveryActionStillCurrent(
 	ctx context.Context,
 	task *apptask.Task,

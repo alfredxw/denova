@@ -728,7 +728,7 @@ func TestNativeLoopRetryAndNestedEventSink(t *testing.T) {
 		if err := ForwardNestedEvent(ctx, NestedEvent{
 			Source:    EventSource{Name: "nested", Path: []string{"retry", "nested"}, InvocationID: "nested-session/nested-run", InvocationType: "task"},
 			SessionID: "nested-session",
-			Child:     Event{Cursor: 1, Durability: EphemeralEvent, RunID: "nested-run", Payload: ToolProgress{Delta: "progress"}},
+			Child:     Event{Cursor: 1, RunID: "nested-run", Payload: ToolProgress{Delta: "progress"}},
 		}); err != nil {
 			return "", err
 		}

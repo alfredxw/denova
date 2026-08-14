@@ -53,16 +53,6 @@ type OutputCommitReceipt struct {
 	Transcript *OutputProjection
 }
 
-type ReconcileRequest struct {
-	Identity CommitIdentity
-	Hash     string
-}
-
-type ReconcileResult struct {
-	Found    bool
-	Revision string
-}
-
 type Effect struct {
 	Kind string          `json:"kind"`
 	Data json.RawMessage `json:"data"`
@@ -82,25 +72,21 @@ type EffectResult struct {
 	Error    string
 }
 
-// CanonicalAdapter coordinates exact idempotent writes to a host's product
-// store. Reconcile is query-only; ApplyEffects returns one result per item.
+// CanonicalAdapter coordinates direct idempotent writes to a host's product
+// store. ApplyEffects returns one result per item.
 type CanonicalAdapter interface {
 	Identity() CapabilityIdentity
 	MaterializeInput(context.Context, InputCommitRequest) (CommitReceipt, error)
 	CommitOutput(context.Context, OutputCommitRequest) (OutputCommitReceipt, error)
-	Reconcile(context.Context, ReconcileRequest) (ReconcileResult, error)
 	ApplyEffects(context.Context, []EffectRequest) ([]EffectResult, error)
 }
 
 // CanonicalAdapterFuncs is the compact adapter form for hosts whose product
-// store already exposes exact commit/reconcile functions. Every function is
-// required because partial canonical implementations would make recovery
-// behavior depend on the failure window.
+// store already exposes idempotent commit functions.
 type CanonicalAdapterFuncs struct {
 	CapabilityIdentity CapabilityIdentity
 	MaterializeInputFn func(context.Context, InputCommitRequest) (CommitReceipt, error)
 	CommitOutputFn     func(context.Context, OutputCommitRequest) (OutputCommitReceipt, error)
-	ReconcileFn        func(context.Context, ReconcileRequest) (ReconcileResult, error)
 	ApplyEffectsFn     func(context.Context, []EffectRequest) ([]EffectResult, error)
 }
 
@@ -120,13 +106,6 @@ func (adapter CanonicalAdapterFuncs) CommitOutput(ctx context.Context, request O
 		return OutputCommitReceipt{}, ErrCapabilityUnsupported
 	}
 	return adapter.CommitOutputFn(ctx, request)
-}
-
-func (adapter CanonicalAdapterFuncs) Reconcile(ctx context.Context, request ReconcileRequest) (ReconcileResult, error) {
-	if adapter.ReconcileFn == nil {
-		return ReconcileResult{}, ErrCapabilityUnsupported
-	}
-	return adapter.ReconcileFn(ctx, request)
 }
 
 func (adapter CanonicalAdapterFuncs) ApplyEffects(ctx context.Context, requests []EffectRequest) ([]EffectResult, error) {

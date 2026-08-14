@@ -10,8 +10,8 @@ import (
 
 // NestedEvent is a child Session event carried through its parent's live event
 // stream. The parent lifecycle owns the outer Event cursor and RunID; Child
-// retains the original child cursor, durability, RunID, and typed payload.
-// SessionID plus Source make detached/cold task identity explicit without
+// retains the original child cursor, RunID, and typed payload. SessionID plus
+// Source make detached task identity explicit without
 // exposing the child Session's host-only routing attributes.
 type NestedEvent struct {
 	Source    EventSource
@@ -33,7 +33,7 @@ func contextWithNestedEventForwarder(ctx context.Context, forward nestedEventFor
 
 // ForwardNestedEvent forwards a child lifecycle event through the currently
 // executing tool. It deliberately accepts no outer Event cursor or RunID: the
-// parent Session assigns those identities when the event crosses its actor.
+// parent Session assigns those identities when the event crosses its Run.
 func ForwardNestedEvent(ctx context.Context, event NestedEvent) error {
 	if ctx == nil {
 		return errors.New("nested Agent event has no execution context")
@@ -50,13 +50,12 @@ func ForwardNestedEvent(ctx context.Context, event NestedEvent) error {
 }
 
 type nestedEventRecord struct {
-	Source          EventSource     `json:"source"`
-	SessionID       string          `json:"session_id"`
-	ChildCursor     Cursor          `json:"child_cursor"`
-	ChildDurability EventDurability `json:"child_durability"`
-	ChildRunID      string          `json:"child_run_id"`
-	PayloadType     string          `json:"payload_type"`
-	Payload         json.RawMessage `json:"payload"`
+	Source      EventSource     `json:"source"`
+	SessionID   string          `json:"session_id"`
+	ChildCursor Cursor          `json:"child_cursor"`
+	ChildRunID  string          `json:"child_run_id"`
+	PayloadType string          `json:"payload_type"`
+	Payload     json.RawMessage `json:"payload"`
 }
 
 func encodeNestedEvent(event NestedEvent) (nestedEventRecord, error) {
@@ -66,8 +65,8 @@ func encodeNestedEvent(event NestedEvent) (nestedEventRecord, error) {
 	}
 	return nestedEventRecord{
 		Source: event.Source, SessionID: strings.TrimSpace(event.SessionID),
-		ChildCursor: event.Child.Cursor, ChildDurability: event.Child.Durability,
-		ChildRunID: strings.TrimSpace(event.Child.RunID), PayloadType: payloadType, Payload: payload,
+		ChildCursor: event.Child.Cursor, ChildRunID: strings.TrimSpace(event.Child.RunID),
+		PayloadType: payloadType, Payload: payload,
 	}, nil
 }
 
@@ -78,10 +77,7 @@ func decodeNestedEvent(record nestedEventRecord) (NestedEvent, error) {
 	}
 	event := NestedEvent{
 		Source: record.Source, SessionID: strings.TrimSpace(record.SessionID),
-		Child: Event{
-			Cursor: record.ChildCursor, Durability: record.ChildDurability,
-			RunID: strings.TrimSpace(record.ChildRunID), Payload: payload,
-		},
+		Child: Event{Cursor: record.ChildCursor, RunID: strings.TrimSpace(record.ChildRunID), Payload: payload},
 	}
 	if event.SessionID == "" || event.Child.RunID == "" {
 		return NestedEvent{}, errors.New("nested Agent event identity is incomplete")
@@ -129,10 +125,6 @@ func encodeEventPayload(payload EventPayload) (string, json.RawMessage, error) {
 		kind = "tool_finished"
 	case ArtifactProduced:
 		kind = "artifact_produced"
-	case RecoveryRequired:
-		kind = "recovery_required"
-	case RecoveryResumed:
-		kind = "recovery_resumed"
 	case EventStreamGap:
 		kind = "event_stream_gap"
 	case GoalUpdated:
@@ -216,10 +208,6 @@ func decodeEventPayload(kind string, data json.RawMessage) (EventPayload, error)
 		target = &ToolFinished{}
 	case "artifact_produced":
 		target = &ArtifactProduced{}
-	case "recovery_required":
-		target = &RecoveryRequired{}
-	case "recovery_resumed":
-		target = &RecoveryResumed{}
 	case "event_stream_gap":
 		target = &EventStreamGap{}
 	case "goal_updated":
@@ -294,10 +282,6 @@ func dereferenceEventPayload(payload EventPayload) EventPayload {
 	case *ToolFinished:
 		return *value
 	case *ArtifactProduced:
-		return *value
-	case *RecoveryRequired:
-		return *value
-	case *RecoveryResumed:
 		return *value
 	case *EventStreamGap:
 		return *value

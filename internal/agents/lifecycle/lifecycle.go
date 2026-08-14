@@ -24,7 +24,6 @@ type Event = agent.Event
 type Result = agent.Result
 type Snapshot = agent.SessionSnapshot
 type Observation = agent.Observation
-type RecoveryAction = agent.RecoveryAction
 type InteractionResponse = agent.InteractionResponse
 type SessionKey = agent.SessionKey
 type SessionSelector = agent.SessionSelector
@@ -36,16 +35,12 @@ type OutputCommitRequest = agent.OutputCommitRequest
 type CommitReceipt = agent.CommitReceipt
 type OutputCommitReceipt = agent.OutputCommitReceipt
 type OutputProjection = agent.OutputProjection
-type ReconcileRequest = agent.ReconcileRequest
-type ReconcileResult = agent.ReconcileResult
 type EffectRequest = agent.EffectRequest
 type EffectResult = agent.EffectResult
 
-// Config declares Denova-owned storage and operational limits. The durable
-// root is explicit so tests and alternative hosts do not rely on globals.
+// Config declares Denova-owned transcript storage and optional integrations.
 type Config struct {
 	StoreRoot         string
-	Limits            agent.Limits
 	Trace             agent.TraceSink
 	RunIDGenerator    agent.RunIDGenerator
 	CacheKeyGenerator agent.CacheKeyGenerator
@@ -74,7 +69,7 @@ func New(ctx context.Context, source agent.Source, config Config) (*Agent, error
 		runIDs = DefaultRunIDGenerator
 	}
 	options := []agent.Option{
-		agent.WithSessionStore(store), agent.WithLimits(config.Limits), agent.WithRunIDGenerator(runIDs),
+		agent.WithSessionStore(store), agent.WithRunIDGenerator(runIDs),
 	}
 	if config.CacheKeyGenerator != nil {
 		options = append(options, agent.WithCacheKeyGenerator(config.CacheKeyGenerator))

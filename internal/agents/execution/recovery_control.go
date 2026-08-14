@@ -48,23 +48,6 @@ func (r *RecoveryObservation) Resume(
 	registration := r.publicBackend.bindRecoveryRoute(
 		r.publicSession.Key(), string(action.CommandID), options, routedEmit,
 	)
-	if action.Kind != RuntimeRecoveryAttach {
-		if strings.TrimSpace(action.ActionID) == "" {
-			return agentrun.CommandReceipt{}, ErrRecoveryActionChanged
-		}
-		if err := r.publicSession.Recover(ctx, action.ActionID); err != nil {
-			if errors.Is(err, agent.ErrRecoveryStale) {
-				return agentrun.CommandReceipt{}, errors.Join(ErrRecoveryActionChanged, err)
-			}
-			return agentrun.CommandReceipt{}, err
-		}
-	}
-	if action.Kind == RuntimeRecoveryCompactContext || action.Kind == RuntimeRecoveryRemoveCompaction {
-		return agentrun.CommandReceipt{
-			CommandID: action.CommandID, OperationID: action.OperationID,
-			Cursor: status.Cursor, Replayed: true,
-		}, nil
-	}
 	attached, found, err := r.publicSession.AttachRun(ctx, string(action.OperationID))
 	if err != nil {
 		return agentrun.CommandReceipt{}, err
@@ -87,8 +70,8 @@ func containsRuntimeRecoveryAction(actions []RuntimeRecoveryAction, selected Run
 	return false
 }
 
-// Wait follows the durable public Agent Session rather than the browser
-// connection and supplies exactly one terminal display event.
+// Wait follows the in-process Agent Session rather than the browser connection
+// and supplies exactly one terminal display event.
 func (r *RecoveryObservation) Wait(ctx context.Context, emit func(agentrun.Event)) agentrun.Outcome {
 	if r == nil || r.publicBackend == nil || r.publicSession == nil {
 		return agentrun.NewOutcome(

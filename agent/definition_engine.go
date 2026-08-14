@@ -8,11 +8,11 @@ import (
 	"log/slog"
 	"strings"
 
-	runstate "github.com/alfredxw/denova/agent/internal/runtime"
+	runstate "github.com/alfredxw/denova/agent/internal/runstate"
 	agentsession "github.com/alfredxw/denova/agent/session"
 )
 
-const engineTranscriptVersion = 5
+const engineTranscriptVersion = 1
 
 type unsupportedEngineTranscriptVersionError struct {
 	version uint16
@@ -32,7 +32,7 @@ const (
 type engineTranscript struct {
 	Version                 uint16                 `json:"version"`
 	DefinitionKey           string                 `json:"definition_key"`
-	RestoreKey              string                 `json:"restore_key"`
+	BehaviorKey             string                 `json:"behavior_key"`
 	PrefixFingerprint       string                 `json:"prefix_fingerprint"`
 	MaterializedFingerprint string                 `json:"materialized_fingerprint,omitempty"`
 	DefinitionOperationID   string                 `json:"definition_operation_id,omitempty"`
@@ -42,7 +42,7 @@ type engineTranscript struct {
 	Messages                []*Message             `json:"messages,omitempty"`
 	ContextState            contextStateSnapshot   `json:"context_state,omitempty"`
 	// ActiveModelUser is the model-only rendering of the accepted raw user
-	// message while a tool batch may still need interaction/crash recovery.
+	// message while a tool batch or interaction is still active.
 	// Messages remains the canonical raw transcript. Once the cycle settles,
 	// this transient projection is discarded so product transcript sync and
 	// maintenance always address stable raw messages.
@@ -53,10 +53,9 @@ type engineTranscript struct {
 }
 
 type definitionEngineFactory struct {
-	source     Source
-	persistent bool
-	trace      TraceSink
-	cacheKeys  CacheKeyGenerator
+	source    Source
+	trace     TraceSink
+	cacheKeys CacheKeyGenerator
 }
 
 func (factory *definitionEngineFactory) NewEngine(_ context.Context, binding runstate.BindingRef) (runstate.Engine, error) {
@@ -68,17 +67,16 @@ func (factory *definitionEngineFactory) NewEngine(_ context.Context, binding run
 		return nil, err
 	}
 	return &definitionEngine{
-		source: factory.source, key: key, persistent: factory.persistent, trace: factory.trace,
+		source: factory.source, key: key, trace: factory.trace,
 		cacheKeys: factory.cacheKeys,
 	}, nil
 }
 
 type definitionEngine struct {
-	source     Source
-	key        SessionKey
-	persistent bool
-	trace      TraceSink
-	cacheKeys  CacheKeyGenerator
+	source    Source
+	key       SessionKey
+	trace     TraceSink
+	cacheKeys CacheKeyGenerator
 }
 
 func (engine *definitionEngine) Run(
@@ -122,10 +120,7 @@ func (engine *definitionEngine) Run(
 	if err != nil {
 		return runstate.EngineResult{}, err
 	}
-	controlTranscript := cloneMessages(state.Messages)
-	if !recoverableInteractionBoundary(state.Messages, request.Snapshot.Interactions) {
-		controlTranscript = append(controlTranscript, UserMessage(strings.TrimSpace(input.Text)))
-	}
+	controlTranscript := append(cloneMessages(state.Messages), UserMessage(strings.TrimSpace(input.Text)))
 	var controlPrepared *preparedDefinition
 	preparationCheckpoint = func() error {
 		var encoded json.RawMessage
@@ -141,7 +136,7 @@ func (engine *definitionEngine) Run(
 		if checkpointErr != nil {
 			return fmt.Errorf("encode controlled Agent preparation transcript: %w", checkpointErr)
 		}
-		return emit(runstate.EngineStateCheckpoint{State: encoded})
+		return emit(runstate.EngineTranscriptUpdated{State: encoded})
 	}
 	currentCompactionStorage, currentCompactionStoragePresent, currentCompactionRaw, err := compactionStateFrom(request.Snapshot.Capabilities)
 	if err != nil {
@@ -164,14 +159,11 @@ func (engine *definitionEngine) Run(
 	if err != nil {
 		return runstate.EngineResult{}, err
 	}
-	if request.Recovery {
-		reason = TurnReasonRecovery
-	}
 	prepareRequest := PrepareRequest{
 		Session: SessionView{Key: engine.key, Revision: uint64(request.Snapshot.ContextCursor)},
 		Run:     runViewForTurn(request.Snapshot),
 		Input:   input, Reason: reason,
-		DefinitionKey: state.DefinitionKey, RestoreKey: state.RestoreKey,
+		DefinitionKey: state.DefinitionKey, BehaviorKey: state.BehaviorKey,
 		HostData:   cloneHostData(input.HostData),
 		Compaction: compactionStatePointer(currentCompaction, currentCompactionPresent),
 		Cleanup:    cloneCleanupStateIfPresent(currentCleanup, currentCleanupPresent),
@@ -179,16 +171,11 @@ func (engine *definitionEngine) Run(
 	sameCycle := state.ownsDefinition(request.Snapshot)
 	if !sameCycle {
 		prepareRequest.DefinitionKey = ""
-		prepareRequest.RestoreKey = ""
+		prepareRequest.BehaviorKey = ""
 	}
 	prepared, err := prepareDefinitionBase(ctx, engine.source, prepareRequest)
 	if err != nil {
 		return runstate.EngineResult{}, err
-	}
-	if engine.persistent {
-		if err := validatePersistentDefinition(prepared.definition); err != nil {
-			return runstate.EngineResult{}, err
-		}
 	}
 	prepared.hostData = cloneHostData(input.HostData)
 	prepared.clearRevision = state.ClearRevision
@@ -201,17 +188,17 @@ func (engine *definitionEngine) Run(
 	if sameCycle && state.DefinitionKey != "" && state.DefinitionKey != prepared.definitionKey {
 		return runstate.EngineResult{}, fmt.Errorf("%w: definition_key have=%q want=%q", ErrDefinitionMismatch, prepared.definitionKey, state.DefinitionKey)
 	}
-	if sameCycle && state.RestoreKey != "" && state.RestoreKey != prepared.restoreKey {
-		return runstate.EngineResult{}, fmt.Errorf("%w: restore_key changed", ErrDefinitionMismatch)
+	if sameCycle && state.BehaviorKey != "" && state.BehaviorKey != prepared.behaviorKey {
+		return runstate.EngineResult{}, fmt.Errorf("%w: behavior_key changed", ErrDefinitionMismatch)
 	}
 	// Persist the exact base Definition before materializing dynamic capability
-	// state. Runtime has already closed the canonical accepted-input outbox; the
+	// state. The Run has already committed canonical accepted input; the
 	// prepared Definition must prove it resolves the same canonical boundary.
 	preparedCheckpoint, err := encodeEngineTranscript(prepared, state.Messages)
 	if err != nil {
 		return runstate.EngineResult{}, fmt.Errorf("encode pre-commit Agent transcript: %w", err)
 	}
-	if err := emit(runstate.EngineStateCheckpoint{State: preparedCheckpoint}); err != nil {
+	if err := emit(runstate.EngineTranscriptUpdated{State: preparedCheckpoint}); err != nil {
 		return runstate.EngineResult{}, err
 	}
 	if err := engine.verifyCanonicalInputCommit(request.Snapshot, input, prepared.definition.Canonical); err != nil {
@@ -237,7 +224,7 @@ func (engine *definitionEngine) Run(
 	if err != nil {
 		return runstate.EngineResult{}, fmt.Errorf("encode materialized Agent transcript: %w", err)
 	}
-	if err := emit(runstate.EngineStateCheckpoint{State: materializedCheckpoint}); err != nil {
+	if err := emit(runstate.EngineTranscriptUpdated{State: materializedCheckpoint}); err != nil {
 		return runstate.EngineResult{}, err
 	}
 	compaction, compactionPresent := currentCompaction, currentCompactionPresent
@@ -263,32 +250,14 @@ func (engine *definitionEngine) Run(
 	if err != nil {
 		return runstate.EngineResult{}, err
 	}
-	resumeTools := recoverableInteractionBoundary(state.Messages, request.Snapshot.Interactions)
-	var modelMessages []*Message
-	var activeModelUser *Message
-	activeUserIndex := state.ActiveUserIndex
-	stablePrefixMessages := 0
-	if resumeTools {
-		if len(stateMessages) != 0 {
-			return runstate.EngineResult{}, errors.New("Agent interaction recovery Context State changed after its durable checkpoint")
-		}
-		modelMessages, err = recoveryModelMessages(cleanupTranscript, state.ActiveModelUser, activeUserIndex)
-		if err != nil {
-			return runstate.EngineResult{}, err
-		}
-		activeModelUser = CloneMessage(state.ActiveModelUser)
-	} else {
-		modelMessages, activeModelUser, err = assembleCycleMessages(effectiveTranscript, input.Text, prepared.fragments)
-		if err != nil {
-			return runstate.EngineResult{}, err
-		}
-		activeUserIndex = len(cycleStateTranscript)
-		stablePrefixMessages = stableContextPrefixMessages(prepared.fragments, compaction, compactionPresent)
+	modelMessages, activeModelUser, err := assembleCycleMessages(effectiveTranscript, input.Text, prepared.fragments)
+	if err != nil {
+		return runstate.EngineResult{}, err
 	}
+	activeUserIndex := len(cycleStateTranscript)
+	stablePrefixMessages := stableContextPrefixMessages(prepared.fragments, compaction, compactionPresent)
 	baseTranscript := cloneMessages(cycleStateTranscript)
-	if !resumeTools {
-		baseTranscript = append(baseTranscript, UserMessage(strings.TrimSpace(input.Text)))
-	}
+	baseTranscript = append(baseTranscript, UserMessage(strings.TrimSpace(input.Text)))
 	controlTranscript = cloneMessages(baseTranscript)
 	initialLoopMessageCount := len(modelMessages)
 	if prepared.definition.Instructions != "" {
@@ -519,23 +488,15 @@ func (engine *definitionEngine) Run(
 				if err != nil {
 					return nil, err
 				}
-				var messages []*Message
-				if resumeTools {
-					messages = effective
-				} else {
-					messages, _, err = assembleCycleMessages(effective, input.Text, nextPrepared.fragments)
-					if err != nil {
-						return nil, err
-					}
+				messages, _, err := assembleCycleMessages(effective, input.Text, nextPrepared.fragments)
+				if err != nil {
+					return nil, err
 				}
 				loop, err := newPreparedDefinitionLoop(gateCtx, nextPrepared, middlewares, permissionStage, nil)
 				if err != nil {
 					return nil, err
 				}
-				stable := 0
-				if !resumeTools {
-					stable = stableContextPrefixMessages(nextPrepared.fragments, next, true)
-				}
+				stable := stableContextPrefixMessages(nextPrepared.fragments, next, true)
 				return newLoopRunner(loopRunnerConfig{Agent: loop, EnableStreaming: true}).prepareModelRequest(gateCtx, messages, stable)
 			}
 			next, nextPresent, changed, compactMetrics, compactErr := engine.applyAutomaticCompaction(
@@ -607,19 +568,15 @@ func (engine *definitionEngine) Run(
 			if projectionErr != nil {
 				return nil, projectionErr
 			}
-			if resumeTools {
-				restarted = projectedRaw
-			} else {
-				effective, effectiveErr := effectiveCompactionMessages(
-					projectedRaw, compaction, compactionPresent, prepared.definition.Compaction.SummaryLimitBytes(),
-				)
-				if effectiveErr != nil {
-					return nil, effectiveErr
-				}
-				restarted, _, effectiveErr = assembleCycleMessages(effective, input.Text, prepared.fragments)
-				if effectiveErr != nil {
-					return nil, effectiveErr
-				}
+			effective, effectiveErr := effectiveCompactionMessages(
+				projectedRaw, compaction, compactionPresent, prepared.definition.Compaction.SummaryLimitBytes(),
+			)
+			if effectiveErr != nil {
+				return nil, effectiveErr
+			}
+			restarted, _, effectiveErr = assembleCycleMessages(effective, input.Text, prepared.fragments)
+			if effectiveErr != nil {
+				return nil, effectiveErr
 			}
 			if prepared.definition.Instructions != "" {
 				restarted = append([]*Message{SystemMessage(prepared.definition.Instructions)}, restarted...)
@@ -639,7 +596,7 @@ func (engine *definitionEngine) Run(
 	runOption, cancelLoop := newLoopCancellation()
 	completion := &runCompletionControl{cancel: cancelLoop}
 	control := controls.state
-	interactions := newEngineInteractionClient(effectiveInteractionPolicy(prepared.definition.Interaction), request.Snapshot.Interactions, emit)
+	interactions := newEngineInteractionClient(effectiveInteractionPolicy(prepared.definition.Interaction), emit)
 	acceptedControl := controls.bindLoop(cancelLoop, interactions)
 	loopBound = true
 	if acceptedControl == runstate.EngineControlPreempt {
@@ -653,9 +610,9 @@ func (engine *definitionEngine) Run(
 	loopCtx := contextWithCapabilityState(ctx, capabilities)
 	loopCtx = contextWithInteractionClient(loopCtx, interactions)
 	// Concrete tools are not allowed to run until their queued start event has
-	// crossed the durable Runtime actor. This also orders model checkpoints and
+	// crossed the Run boundary. This also orders model checkpoints and
 	// ToolCallStarted before an Ask/Permission interaction emitted by the tool.
-	loopCtx = contextWithDurableToolStart(loopCtx)
+	loopCtx = contextWithToolStartReceipt(loopCtx)
 	loopCtx = context.WithValue(loopCtx, runCompletionControlKey{}, completion)
 	scope, _ := agentsession.CanonicalKey(engine.key)
 	loopCtx = ContextWithInvocationIdentity(loopCtx, InvocationIdentity{
@@ -666,7 +623,7 @@ func (engine *definitionEngine) Run(
 		return runstate.EngineResult{}, err
 	}
 	iterator := loop.Run(loopCtx, &loopInput{
-		Messages: modelMessages, EnableStreaming: true, ResumeToolCalls: resumeTools,
+		Messages: modelMessages, EnableStreaming: true,
 		stablePrefixMessages: stablePrefixMessages,
 	}, runOption)
 	transcript = cloneMessages(baseTranscript)
@@ -715,8 +672,8 @@ func (engine *definitionEngine) Run(
 					InvocationID: record.Source.InvocationID, InvocationType: record.Source.InvocationType,
 				},
 				SessionID: record.SessionID, ChildCursor: runstate.Cursor(record.ChildCursor),
-				ChildDurability: runstate.EventDurability(record.ChildDurability), ChildRunID: record.ChildRunID,
-				PayloadType: record.PayloadType, Payload: append(json.RawMessage(nil), record.Payload...),
+				ChildRunID: record.ChildRunID, PayloadType: record.PayloadType,
+				Payload: append(json.RawMessage(nil), record.Payload...),
 			}); emitErr != nil {
 				controls.stop()
 				return runstate.EngineResult{}, emitErr
@@ -782,7 +739,7 @@ func (engine *definitionEngine) Run(
 						controls.stop()
 						return runstate.EngineResult{}, checkpointErr
 					}
-					if err := emit(runstate.EngineStateCheckpoint{State: checkpoint}); err != nil {
+					if err := emit(runstate.EngineTranscriptUpdated{State: checkpoint}); err != nil {
 						controls.stop()
 						return runstate.EngineResult{}, err
 					}
@@ -822,7 +779,7 @@ loopControlsStopped:
 			return runstate.EngineResult{}, cleanupErr
 		}
 		finalCapabilityUpdates = append(finalCapabilityUpdates, runstate.EngineCapabilityState{
-			Capability: cleanupCapability, Expected: describeCapabilityState(pendingCleanup.raw), State: encodedCleanup,
+			Capability: cleanupCapability, State: encodedCleanup,
 		})
 		finalCleanupCompleted = &runstate.EngineCleanupCompleted{
 			ID: nextCleanup.ID, Reason: pendingCleanup.plan.Reason, Automatic: true,
@@ -837,7 +794,7 @@ loopControlsStopped:
 	emitTrace(ctx, engine.trace, TraceEvent{
 		Kind: TraceModelFinished, Session: engine.key, RunID: string(request.Snapshot.OperationID), Cycle: request.Snapshot.Cycle,
 	})
-	final, err = engine.commitCanonicalOutput(ctx, request, final, prepared.definition.Canonical, emit)
+	final, err = engine.commitCanonicalOutput(ctx, request, final, prepared.definition.Canonical)
 	if err != nil {
 		return runstate.EngineResult{}, err
 	}
@@ -912,11 +869,11 @@ func (engine *definitionEngine) goalContinuation(
 	}
 	input := decision.Input
 	input.IdempotencyKey = ""
-	encoded, runtimeInput, err := encodeInput(input)
+	encoded, runInput, err := encodeInput(input)
 	if err != nil {
 		return nil, fmt.Errorf("encode Goal continuation: %w", err)
 	}
-	runtimeInput.RestoreDescriptor = encoded
+	runInput.Envelope = encoded
 	fingerprint, err := hashCanonical(struct {
 		OperationID string
 		Cycle       int
@@ -929,7 +886,7 @@ func (engine *definitionEngine) goalContinuation(
 	}
 	return &runstate.EngineContinuation{
 		CommandID: runstate.CommandID("goal-continuation-" + fingerprint[:32]),
-		Input:     runtimeInput, Autonomous: true,
+		Input:     runInput, Autonomous: true,
 	}, nil
 }
 
@@ -943,7 +900,7 @@ func (engine *definitionEngine) controlledResult(
 	if err != nil {
 		return runstate.EngineResult{}, err
 	}
-	if err := emit(runstate.EngineStateCheckpoint{State: encoded}); err != nil {
+	if err := emit(runstate.EngineTranscriptUpdated{State: encoded}); err != nil {
 		return runstate.EngineResult{}, err
 	}
 	return runstate.EngineResult{Status: status}, nil
@@ -977,7 +934,7 @@ func encodeEngineTranscriptState(
 ) (json.RawMessage, error) {
 	encoded, err := json.Marshal(engineTranscript{
 		Version: engineTranscriptVersion, DefinitionKey: prepared.definitionKey,
-		RestoreKey: prepared.restoreKey, PrefixFingerprint: prepared.prefixFingerprint,
+		BehaviorKey: prepared.behaviorKey, PrefixFingerprint: prepared.prefixFingerprint,
 		MaterializedFingerprint: prepared.materializedFingerprint,
 		DefinitionOperationID:   prepared.definitionOperationID,
 		DefinitionCommandID:     prepared.definitionCommandID,
@@ -999,16 +956,16 @@ func (state engineTranscript) ownsDefinition(snapshot runstate.TurnSnapshot) boo
 
 // materializedDefinitionFingerprint freezes every cycle-specific Tool and
 // Context value that can affect model-visible behavior. PrefixFingerprint is
-// intentionally narrower (provider cache prefix); it is not a recovery fence.
+// intentionally narrower and only protects the provider cache prefix.
 func materializedDefinitionFingerprint(prepared preparedDefinition) (string, error) {
 	return hashCanonical(struct {
-		RestoreKey string
-		Tools      []ToolDefinitionSnapshot
-		Context    []contextFragmentIdentity
+		BehaviorKey string
+		Tools       []ToolDefinitionSnapshot
+		Context     []contextFragmentIdentity
 	}{
-		RestoreKey: prepared.restoreKey,
-		Tools:      append([]ToolDefinitionSnapshot(nil), prepared.toolSnapshots...),
-		Context:    contextFragmentIdentities(prepared.fragments),
+		BehaviorKey: prepared.behaviorKey,
+		Tools:       append([]ToolDefinitionSnapshot(nil), prepared.toolSnapshots...),
+		Context:     contextFragmentIdentities(prepared.fragments),
 	})
 }
 
@@ -1044,92 +1001,4 @@ func decodeEngineTranscript(encoded json.RawMessage) (engineTranscript, error) {
 		return engineTranscript{}, err
 	}
 	return state, nil
-}
-
-func recoverableInteractionBoundary(messages []*Message, interactions []runstate.InteractionSnapshot) bool {
-	if len(interactions) == 0 || len(messages) == 0 {
-		return false
-	}
-	resolved := false
-	for _, interaction := range interactions {
-		if interaction.Resolved {
-			resolved = true
-			break
-		}
-	}
-	last := messages[len(messages)-1]
-	return resolved && last != nil && last.Role == Assistant && len(last.ToolCalls) > 0 &&
-		last.AgentMeta != nil && last.AgentMeta.ModelResponseOrdinal > 0
-}
-
-func validatePersistentDefinition(definition Definition) error {
-	if err := definition.ModelIdentity.validate("Model"); err != nil {
-		return fmt.Errorf("durable Agent: %w", err)
-	}
-	if definition.Tools != nil {
-		if err := definition.Tools.Identity().validate("Toolset"); err != nil {
-			return fmt.Errorf("durable Agent: %w", err)
-		}
-		if validator, ok := definition.Tools.(interface{ validatePersistentToolset() error }); ok {
-			if err := validator.validatePersistentToolset(); err != nil {
-				return fmt.Errorf("durable Agent: %w", err)
-			}
-		}
-	}
-	if definition.ResultProcessor != nil {
-		if err := definition.ResultProcessor.Identity().validate("ToolResultProcessor"); err != nil {
-			return fmt.Errorf("durable Agent: %w", err)
-		}
-	}
-	if definition.Artifacts != nil {
-		if err := definition.Artifacts.Identity().validate("ToolArtifactStorage"); err != nil {
-			return fmt.Errorf("durable Agent: %w", err)
-		}
-	}
-	if definition.Context != nil {
-		if err := definition.Context.Identity().validate("Context"); err != nil {
-			return fmt.Errorf("durable Agent: %w", err)
-		}
-	}
-	if definition.Goal != nil {
-		if err := definition.Goal.Identity().validate("Goal"); err != nil {
-			return fmt.Errorf("durable Agent: %w", err)
-		}
-	}
-	if definition.Cleanup != nil {
-		if err := definition.Cleanup.Identity().validate("Cleanup"); err != nil {
-			return fmt.Errorf("durable Agent: %w", err)
-		}
-	}
-	if definition.Compaction != nil {
-		if err := definition.Compaction.Identity().validate("Compaction"); err != nil {
-			return fmt.Errorf("durable Agent: %w", err)
-		}
-	}
-	if err := effectivePermissionPolicy(definition.Permission).Identity().validate("Permission"); err != nil {
-		return fmt.Errorf("durable Agent: %w", err)
-	}
-	if err := effectiveInteractionPolicy(definition.Interaction).Identity().validate("Interaction"); err != nil {
-		return fmt.Errorf("durable Agent: %w", err)
-	}
-	if definition.Canonical != nil {
-		if err := definition.Canonical.Identity().validate("Canonical"); err != nil {
-			return fmt.Errorf("durable Agent: %w", err)
-		}
-	}
-	if definition.Execution.Retry != nil {
-		if err := definition.Execution.RetryIdentity.validate("Retry"); err != nil {
-			return fmt.Errorf("durable Agent: %w", err)
-		}
-	}
-	for index, middleware := range definition.Middlewares {
-		identified, ok := middleware.(IdentifiedMiddleware)
-		if !ok {
-			return fmt.Errorf("durable Agent: Middleware %d has no stable capability identity", index)
-		}
-		if err := identified.Identity().validate(fmt.Sprintf("Middleware %d", index)); err != nil {
-			return fmt.Errorf("durable Agent: %w", err)
-		}
-	}
-	return nil
 }

@@ -81,7 +81,6 @@ function receipt(action: AgentRuntimeRecoveryAction, taskID = 'config-recovery-t
     status: 'running',
     stream_cursor: 0,
     cursor: 12,
-    replayed: false,
     recovery_action: action,
   }
 }

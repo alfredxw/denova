@@ -577,7 +577,7 @@ type toolCallContext struct {
 }
 
 // ContextWithToolCall records provider transcript metadata for direct tool
-// callers. Native Agent execution additionally binds a durable execution ID.
+// callers. Native Agent execution additionally binds a stable execution ID.
 func ContextWithToolCall(ctx context.Context, callID, name string) context.Context {
 	if ctx == nil {
 		ctx = context.Background()
@@ -594,7 +594,7 @@ func contextWithToolExecution(ctx context.Context, executionID, providerCallID, 
 	})
 }
 
-// ToolCallID returns the provider transcript call ID. Durable lifecycle and
+// ToolCallID returns the provider transcript call ID. Lifecycle and
 // host correlation must use CurrentToolExecutionID instead.
 func ToolCallID(ctx context.Context) string {
 	metadata, _ := toolCallMetadata(ctx)

@@ -11,7 +11,7 @@ type loopRunnerConfig struct {
 	EnableStreaming bool
 }
 
-// loopRunner delegates execution without owning durable checkpoints.
+// loopRunner delegates execution while transcript persistence stays in Session.
 type loopRunner struct {
 	agent           loopRunnable
 	enableStreaming bool

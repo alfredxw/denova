@@ -9,7 +9,7 @@ import (
 	"time"
 	"unicode"
 
-	runstate "github.com/alfredxw/denova/agent/internal/runtime"
+	runstate "github.com/alfredxw/denova/agent/internal/runstate"
 )
 
 const (
@@ -19,7 +19,7 @@ const (
 type compactionCommandEnvelope struct {
 	Version                 uint16                   `json:"version"`
 	DefinitionKey           string                   `json:"definition_key"`
-	RestoreKey              string                   `json:"restore_key"`
+	BehaviorKey             string                   `json:"behavior_key"`
 	MaterializedFingerprint string                   `json:"materialized_fingerprint"`
 	ModelRequestFingerprint string                   `json:"model_request_fingerprint,omitempty"`
 	Manager                 CapabilityIdentity       `json:"manager"`
@@ -45,7 +45,7 @@ func (engine *definitionEngine) RunStructural(
 	if err != nil {
 		return runstate.EngineResult{}, err
 	}
-	storage, storagePresent, raw, err := compactionStateFrom(request.Capabilities)
+	storage, storagePresent, _, err := compactionStateFrom(request.Capabilities)
 	if err != nil {
 		return runstate.EngineResult{}, err
 	}
@@ -57,28 +57,23 @@ func (engine *definitionEngine) RunStructural(
 	}
 	cleanupState, cleanupPresent = clearCleanup(cleanupState, cleanupPresent, clearState, clearPresent)
 	var envelope compactionCommandEnvelope
-	if err := json.Unmarshal(request.Snapshot.Ref.RestoreDescriptor, &envelope); err != nil {
+	if err := json.Unmarshal(request.Snapshot.Ref.Envelope, &envelope); err != nil {
 		return runstate.EngineResult{}, fmt.Errorf("decode Compaction command: %w", err)
 	}
 	if envelope.Version != compactionCommandVersion || strings.TrimSpace(envelope.DefinitionKey) == "" ||
-		strings.TrimSpace(envelope.RestoreKey) == "" || strings.TrimSpace(envelope.MaterializedFingerprint) == "" {
+		strings.TrimSpace(envelope.BehaviorKey) == "" || strings.TrimSpace(envelope.MaterializedFingerprint) == "" {
 		return runstate.EngineResult{}, errors.New("Compaction command envelope is incomplete")
 	}
 	prepared, err := prepareDefinition(ctx, engine.source, PrepareRequest{
 		Session: SessionView{Key: engine.key, Revision: uint64(request.Snapshot.ContextCursor)},
 		Run:     structuralDefinitionRun(request.Snapshot.CommandID),
-		Reason:  TurnReasonStructural, DefinitionKey: envelope.DefinitionKey, RestoreKey: envelope.RestoreKey,
+		Reason:  TurnReasonStructural, DefinitionKey: envelope.DefinitionKey, BehaviorKey: envelope.BehaviorKey,
 		HostData:   cloneHostData(transcript.HostData),
 		Compaction: compactionStatePointer(current, present),
 		Cleanup:    cloneCleanupStateIfPresent(cleanupState, cleanupPresent),
 	})
 	if err != nil {
 		return runstate.EngineResult{}, err
-	}
-	if engine.persistent {
-		if err := validatePersistentDefinition(prepared.definition); err != nil {
-			return runstate.EngineResult{}, err
-		}
 	}
 	if prepared.definition.Compaction == nil {
 		return runstate.EngineResult{}, ErrCapabilityUnsupported
@@ -88,7 +83,7 @@ func (engine *definitionEngine) RunStructural(
 	if materializedErr != nil {
 		return runstate.EngineResult{}, materializedErr
 	}
-	if prepared.definitionKey != envelope.DefinitionKey || prepared.restoreKey != envelope.RestoreKey ||
+	if prepared.definitionKey != envelope.DefinitionKey || prepared.behaviorKey != envelope.BehaviorKey ||
 		materialized != envelope.MaterializedFingerprint {
 		return runstate.EngineResult{}, ErrDefinitionMismatch
 	}
@@ -128,7 +123,7 @@ func (engine *definitionEngine) RunStructural(
 			nextCleanup, nextCleanupPresent := cleanupAfterCompaction(cleanupState, cleanupPresent, next, true)
 			prepare := PrepareRequest{
 				Session: session, Run: structuralDefinitionRun(request.Snapshot.CommandID), Reason: TurnReasonStructural,
-				DefinitionKey: envelope.DefinitionKey, RestoreKey: envelope.RestoreKey,
+				DefinitionKey: envelope.DefinitionKey, BehaviorKey: envelope.BehaviorKey,
 				HostData: cloneHostData(transcript.HostData), Compaction: compactionStatePointer(next, true),
 				Cleanup: cloneCleanupStateIfPresent(nextCleanup, nextCleanupPresent),
 			}
@@ -154,7 +149,7 @@ func (engine *definitionEngine) RunStructural(
 				return runstate.EngineResult{}, encodeErr
 			}
 			if err := emit(runstate.EngineCapabilityState{
-				Capability: compactionCapability, Expected: describeCapabilityState(raw), State: encoded,
+				Capability: compactionCapability, State: encoded,
 			}); err != nil {
 				return runstate.EngineResult{}, err
 			}
@@ -177,7 +172,7 @@ func (engine *definitionEngine) RunStructural(
 			return runstate.EngineResult{}, encodeErr
 		}
 		if err := emit(runstate.EngineCapabilityState{
-			Capability: compactionCapability, Expected: describeCapabilityState(raw), State: encoded,
+			Capability: compactionCapability, State: encoded,
 		}); err != nil {
 			return runstate.EngineResult{}, err
 		}
@@ -614,7 +609,7 @@ func (engine *definitionEngine) applyAutomaticCompaction(
 		return CompactionState{}, false, false, metrics, err
 	}
 	if err := emit(runstate.EngineCapabilityState{
-		Capability: compactionCapability, Expected: describeCapabilityState(raw), State: encoded,
+		Capability: compactionCapability, State: encoded,
 	}); err != nil {
 		return CompactionState{}, false, false, metrics, err
 	}
@@ -691,7 +686,7 @@ func emitCompactionHealth(
 		return err
 	}
 	return emit(runstate.EngineCapabilityState{
-		Capability: compactionHealthCapability, Expected: describeCapabilityState(raw), State: encoded,
+		Capability: compactionHealthCapability, State: encoded,
 	})
 }
 
@@ -700,7 +695,7 @@ func clearCompactionHealth(emit runstate.EngineEventSink, raw json.RawMessage, p
 		return nil
 	}
 	return emit(runstate.EngineCapabilityState{
-		Capability: compactionHealthCapability, Expected: describeCapabilityState(raw), Delete: true,
+		Capability: compactionHealthCapability, Delete: true,
 	})
 }
 

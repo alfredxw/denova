@@ -1,5 +1,5 @@
 // Package configmanager owns resource-configuration conversations, their
-// scoped session identity, reconnectable display tasks, and cold recovery.
+// scoped session identity, and reconnectable in-process display tasks.
 package configmanager
 
 import (

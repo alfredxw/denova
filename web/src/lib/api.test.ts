@@ -58,7 +58,6 @@ describe('api', () => {
           status: 'running',
           stream_cursor: 0,
           cursor: 7,
-          replayed: true,
           recovery_action: {
             kind: 'follow_up',
             command_id: 'follow-command-1',

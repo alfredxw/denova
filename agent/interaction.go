@@ -9,7 +9,7 @@ import (
 	"strings"
 	"sync"
 
-	runstate "github.com/alfredxw/denova/agent/internal/runtime"
+	runstate "github.com/alfredxw/denova/agent/internal/runstate"
 )
 
 type InteractionKind string
@@ -68,7 +68,7 @@ type PermissionPresentation struct {
 	Options            []InteractionOption `json:"options"`
 }
 
-// InteractionRequest is the only durable host-input vocabulary. Exactly one
+// InteractionRequest is the only host-input vocabulary. Exactly one
 // of Questions or Permission is selected by Kind.
 type InteractionRequest struct {
 	ID         string                  `json:"id"`
@@ -90,8 +90,8 @@ type InteractionResponse struct {
 	Cancelled  bool                `json:"cancelled,omitempty"`
 }
 
-// InteractionResolution is validated, normalized, and durably persisted.
-// Tools receive this value rather than untrusted transport input.
+// InteractionResolution is validated and normalized before it reaches a Tool.
+// Interaction waiters and responses intentionally remain process-local.
 type InteractionResolution struct {
 	Answers    []InteractionAnswer `json:"answers,omitempty"`
 	Permission PermissionChoice    `json:"permission,omitempty"`
@@ -359,7 +359,7 @@ func contextWithInteractionClient(ctx context.Context, client interactionClient)
 	return context.WithValue(ctx, interactionContextKey{}, client)
 }
 
-// RequestInteraction asks through the current durable Run. It is available to
+// RequestInteraction asks through the current Run. It is available to
 // custom tools and returns an error when called outside Agent execution.
 func RequestInteraction(ctx context.Context, request InteractionRequest) (InteractionResolution, error) {
 	if ctx == nil {
@@ -377,16 +377,11 @@ type engineInteractionClient struct {
 	emit   runstate.EngineEventSink
 
 	mu      sync.Mutex
-	known   map[string]runstate.InteractionSnapshot
 	waiters map[string]chan json.RawMessage
 }
 
-func newEngineInteractionClient(policy InteractionPolicy, snapshots []runstate.InteractionSnapshot, emit runstate.EngineEventSink) *engineInteractionClient {
-	known := make(map[string]runstate.InteractionSnapshot, len(snapshots))
-	for _, snapshot := range snapshots {
-		known[snapshot.ID] = snapshot
-	}
-	return &engineInteractionClient{policy: policy, emit: emit, known: known, waiters: make(map[string]chan json.RawMessage)}
+func newEngineInteractionClient(policy InteractionPolicy, emit runstate.EngineEventSink) *engineInteractionClient {
+	return &engineInteractionClient{policy: policy, emit: emit, waiters: make(map[string]chan json.RawMessage)}
 }
 
 func (client *engineInteractionClient) Request(ctx context.Context, request InteractionRequest) (InteractionResolution, error) {
@@ -401,17 +396,6 @@ func (client *engineInteractionClient) Request(ctx context.Context, request Inte
 		return InteractionResolution{}, fmt.Errorf("encode Interaction request: %w", err)
 	}
 	client.mu.Lock()
-	if known, exists := client.known[request.ID]; exists {
-		if string(known.Request) != string(encoded) {
-			client.mu.Unlock()
-			return InteractionResolution{}, ErrInteractionStale
-		}
-		if known.Resolved {
-			response := append(json.RawMessage(nil), known.Response...)
-			client.mu.Unlock()
-			return decodeInteractionResolution(response)
-		}
-	}
 	if _, duplicate := client.waiters[request.ID]; duplicate {
 		client.mu.Unlock()
 		return InteractionResolution{}, fmt.Errorf("Interaction %q already has a waiter", request.ID)

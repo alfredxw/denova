@@ -70,8 +70,8 @@ const (
 	ToolPostCheckExternalReceipt ToolPostCheckPolicy = "external_receipt"
 )
 
-// ToolRecoveryClass describes what is safe after a durable start without a
-// matching completion.
+// ToolRecoveryClass documents a Tool's retry/idempotency semantics for
+// permission and audit policy. Agent does not automatically recover a Tool.
 type ToolRecoveryClass string
 
 const (
@@ -337,7 +337,7 @@ type ToolDefinition struct {
 	Descriptor ToolDescriptor
 	// ImplementationIdentity describes behavior not represented by the
 	// provider-visible schema/descriptor. Built-in Adapter-backed tools always
-	// set it. StaticToolsIdentified folds it into restore identity without
+	// set it. StaticToolsIdentified folds it into behavior identity without
 	// polluting the model-prefix fingerprint.
 	ImplementationIdentity CapabilityIdentity
 }

@@ -210,7 +210,7 @@ var agentToolCapabilities = []AgentToolCapability{
 		descriptorWithSource(readOnlyDescriptor(agent.ToolPresentationGeneric, agent.ToolResultRecoveryRead), agent.ToolSourceRead),
 		map[string]agent.ToolDescriptor{
 			"glob": descriptorWithSource(readOnlyDescriptor(agent.ToolPresentationGeneric, agent.ToolResultRecoveryRerun), agent.ToolSourceRead),
-			"grep": descriptorWithSource(readOnlyDescriptor(agent.ToolPresentationGeneric, agent.ToolResultRecoveryRerun), agent.ToolSourceRead),
+			"grep": descriptorWithSource(readOnlyDescriptor(agent.ToolPresentationSearch, agent.ToolResultRecoveryRerun), agent.ToolSourceRead),
 		})),
 	withRuntimeResultLimit(capabilityDefinition(AgentToolWorkspaceWrite, "agents.tool.workspaceWrite.title", "agents.tool.workspaceWrite.subtitle", []string{"write", "edit"}, descriptorWithSource(workspaceWriteDescriptor(agent.ToolRecoveryReconcilable, agent.ToolPresentationFile), agent.ToolSourceWrite))),
 	withRuntimeResultLimit(runtimePlatformCapabilityDefinition(AgentToolShell, "agents.tool.shell.title", "agents.tool.shell.subtitle", []string{"bash"}, []string{"pwsh"}, descriptorWithSource(descriptorSummary(

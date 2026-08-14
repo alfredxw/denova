@@ -17,7 +17,7 @@ import (
 )
 
 // Child is one fully composed delegated Agent. Identity describes the exact
-// selector semantics and participates in the root Definition restore key.
+// selector semantics and participates in the root Definition behavior key.
 type Child struct {
 	Name        string
 	Description string
@@ -136,16 +136,23 @@ func (catalog *Catalog) Bind(executor publictools.TaskExecutor) (agent.Toolset, 
 	if catalog == nil || executor == nil {
 		return nil, errors.New("bind Denova delegation: Catalog and TaskExecutor are required")
 	}
-	tasks, err := publictools.Tasks(executor)
-	if err != nil {
-		return nil, err
-	}
+	tasks := publictools.Tasks(executor)
 	return &boundCatalog{catalog: catalog, tasks: tasks}, nil
 }
 
 type boundCatalog struct {
 	catalog *Catalog
 	tasks   agent.Toolset
+}
+
+func (bound *boundCatalog) InitializeDefinition(ctx context.Context) error {
+	if bound == nil || bound.tasks == nil {
+		return errors.New("bound Denova delegation Catalog is incomplete")
+	}
+	if initializer, ok := bound.tasks.(agent.DefinitionInitializer); ok {
+		return initializer.InitializeDefinition(ctx)
+	}
+	return nil
 }
 
 func (bound *boundCatalog) Identity() agent.CapabilityIdentity {

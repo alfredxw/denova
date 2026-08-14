@@ -78,6 +78,11 @@ func addAgentRuntimeProjection(
 	}
 	dto := newAgentRuntimeProjectionDTO(snapshot)
 	dto.StreamAttached = options.StreamAttached
+	if dto.StreamAttached {
+		dto.RecoveryPaused = false
+		dto.RuntimeRecoverable = false
+		dto.RecoveryActions = nil
+	}
 	if len(options.RecoveryActions) > 0 {
 		// Service-owned refresh actions are emitted only after the durable
 		// structural operation has settled. If the actor projection itself is
@@ -86,13 +91,15 @@ func addAgentRuntimeProjection(
 		if dto.Phase == "" {
 			dto.Phase = string(appsvc.AgentRuntimePhaseIdle)
 		}
-		dto.RecoveryPaused = true
-		dto.RuntimeRecoverable = true
-		dto.RecoveryActions = make([]agentRuntimeRecoveryActionDTO, 0, len(options.RecoveryActions))
-		for _, action := range options.RecoveryActions {
-			dto.RecoveryActions = append(dto.RecoveryActions, agentRuntimeRecoveryActionDTO{
-				ActionID: action.ActionID, Kind: string(action.Kind), CommandID: string(action.CommandID), OperationID: string(action.OperationID),
-			})
+		if !dto.StreamAttached {
+			dto.RecoveryPaused = true
+			dto.RuntimeRecoverable = true
+			dto.RecoveryActions = make([]agentRuntimeRecoveryActionDTO, 0, len(options.RecoveryActions))
+			for _, action := range options.RecoveryActions {
+				dto.RecoveryActions = append(dto.RecoveryActions, agentRuntimeRecoveryActionDTO{
+					ActionID: action.ActionID, Kind: string(action.Kind), CommandID: string(action.CommandID), OperationID: string(action.OperationID),
+				})
+			}
 		}
 	}
 	response["cursor"] = dto.Cursor
@@ -156,7 +163,7 @@ func newAgentRuntimeProjectionDTO(snapshot appsvc.AgentRuntimeStatus) agentRunti
 	return agentRuntimeProjectionDTO{
 		Cursor:            uint64(snapshot.Cursor),
 		Phase:             string(snapshot.Phase),
-		RecoveryPaused:    snapshot.RecoveryPaused,
+		RecoveryPaused:    len(recoveryActions) > 0,
 		ActiveOperationID: string(snapshot.ActiveOperation),
 		ActiveCycle:       snapshot.ActiveCycle,
 		ActiveOutput: agentRuntimeActiveOutputDTO{

@@ -11,27 +11,22 @@ import (
 type staticToolset struct {
 	definitions []ToolDefinition
 	identity    CapabilityIdentity
-	// durable reports whether behavior beyond the provider-visible schemas is
-	// covered by either the Toolset identity or every definition's explicit
-	// ImplementationIdentity. Schema-only StaticTools remain convenient for a
-	// one-shot in-memory Agent but must not claim safe cold recovery.
-	durable bool
 }
 
 // StaticTools constructs a schema-identified Toolset from fixed definitions.
 // Use StaticToolsIdentified when implementations depend on host behavior or
 // configuration not fully represented by their immutable tool contracts.
 func StaticTools(definitions ...ToolDefinition) (Toolset, error) {
-	return newStaticTools(CapabilityIdentity{Kind: "tools.static", Version: 1}, false, definitions...)
+	return newStaticTools(CapabilityIdentity{Kind: "tools.static", Version: 1}, definitions...)
 }
 
 // StaticToolsIdentified adds an implementation/configuration identity when a
 // stable schema alone cannot describe tool semantics.
 func StaticToolsIdentified(identity CapabilityIdentity, definitions ...ToolDefinition) (Toolset, error) {
-	return newStaticTools(identity, true, definitions...)
+	return newStaticTools(identity, definitions...)
 }
 
-func newStaticTools(identity CapabilityIdentity, explicitlyIdentified bool, definitions ...ToolDefinition) (Toolset, error) {
+func newStaticTools(identity CapabilityIdentity, definitions ...ToolDefinition) (Toolset, error) {
 	cloned := append([]ToolDefinition(nil), definitions...)
 	if err := identity.validate("static Toolset"); err != nil {
 		return nil, err
@@ -51,27 +46,10 @@ func newStaticTools(identity CapabilityIdentity, explicitlyIdentified bool, defi
 	hash := sha256.Sum256(encoded)
 	return staticToolset{
 		definitions: cloned,
-		durable:     explicitlyIdentified || staticImplementationsIdentified(cloned),
 		identity: CapabilityIdentity{
 			Kind: identity.Kind, Version: identity.Version, ConfigHash: hex.EncodeToString(hash[:]),
 		},
 	}, nil
-}
-
-func staticImplementationsIdentified(definitions []ToolDefinition) bool {
-	for index := range definitions {
-		if err := definitions[index].ImplementationIdentity.validate("tool implementation"); err != nil {
-			return false
-		}
-	}
-	return true
-}
-
-func (toolset staticToolset) validatePersistentToolset() error {
-	if toolset.durable {
-		return nil
-	}
-	return fmt.Errorf("schema-only StaticTools cannot be used by a durable Agent; set every ToolDefinition.ImplementationIdentity or use StaticToolsIdentified")
 }
 
 func toolImplementationIdentities(definitions []ToolDefinition) []CapabilityIdentity {

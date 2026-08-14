@@ -85,10 +85,7 @@ func (service *Service) GenerateInteractiveImage(ctx context.Context, storyID st
 		TurnID:        turn.ID,
 		AltText:       interactiveImageAltText(storyCtx.Meta.Title, turnIndex),
 	}, imageAgentRunHooks{
-		OnAccepted: func(admission imageAgentAdmission) error {
-			if admission.Replayed {
-				return nil
-			}
+		OnAccepted: func() error {
 			return store.AppendTurnDisplayEvent(storyID, storyCtx.Snapshot.BranchID, turn.ID, interactive.DisplayEvent{
 				ID: eventID, Role: "tool_call", Content: interactiveImageToolName, Name: interactiveImageToolName,
 				Status: "running", Args: interactiveImageEventArgs(req.CommandID, source, req.Force),
@@ -101,20 +98,6 @@ func (service *Service) GenerateInteractiveImage(ctx context.Context, storyID st
 	})
 	if err != nil {
 		if errors.Is(err, apptask.ErrCommandConflict) {
-			return InteractiveGenerateResult{}, err
-		}
-		if errors.Is(err, ErrReplayResultUnavailable) {
-			latest, projectionErr := store.StoryContext(storyID, storyCtx.Snapshot.BranchID)
-			if projectionErr == nil {
-				if latestTurn, _, targetErr := interactiveImageTargetTurn(latest.Snapshot.Turns, turn.ID); targetErr == nil {
-					if image, settled, eventErr := interactiveImageCommandProjection(latestTurn.DisplayEvents, eventID); settled {
-						if eventErr != nil {
-							return InteractiveGenerateResult{}, eventErr
-						}
-						return InteractiveGenerateResult{Enabled: true, Image: image}, nil
-					}
-				}
-			}
 			return InteractiveGenerateResult{}, err
 		}
 		resultErr := err

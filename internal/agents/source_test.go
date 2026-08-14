@@ -28,13 +28,13 @@ func TestSourceResolvesProductBindingWithoutRuntimeTypes(t *testing.T) {
 		t.Fatal(err)
 	}
 	prepared, err := source.Prepare(context.Background(), agent.PrepareRequest{
-		Session: agent.SessionView{Key: key}, DefinitionKey: "definition", RestoreKey: "restore",
+		Session: agent.SessionView{Key: key}, DefinitionKey: "definition", BehaviorKey: "restore",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if prepared.Name != "general" || received.Binding.AgentKind != binding.AgentKind ||
-		received.Binding.ProjectID != binding.ProjectID || received.Agent.RestoreKey != "restore" {
+		received.Binding.ProjectID != binding.ProjectID || received.Agent.BehaviorKey != "restore" {
 		t.Fatalf("prepared=%#v request=%#v", prepared, received)
 	}
 }
@@ -57,7 +57,7 @@ func TestTurnInputRoundTripsOnlyProductSemantics(t *testing.T) {
 		data.Kind != TurnNext || data.TurnID != "turn" || data.Mode != "ide" {
 		t.Fatalf("input=%#v data=%#v request=%#v", input, data, request)
 	}
-	recovered, err := DecodeTurnHostDataFromPrepare(agent.PrepareRequest{HostData: input.HostData, Reason: agent.TurnReasonRecovery})
+	recovered, err := DecodeTurnHostDataFromPrepare(agent.PrepareRequest{HostData: input.HostData, Reason: agent.TurnReasonStart})
 	if err != nil || recovered.Caller.Message != "write" {
 		t.Fatalf("recovered HostData = %#v error = %v", recovered, err)
 	}

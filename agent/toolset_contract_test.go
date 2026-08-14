@@ -3,7 +3,6 @@ package agent
 import (
 	"context"
 	"reflect"
-	"strings"
 	"testing"
 )
 
@@ -38,7 +37,7 @@ func TestStaticToolsImplementationIdentityChangesRestoreWithoutChangingModelCont
 		t.Fatal(err)
 	}
 	if first.Identity() == second.Identity() {
-		t.Fatal("tool implementation identity did not change Toolset restore identity")
+		t.Fatal("tool implementation identity did not change Toolset behavior identity")
 	}
 	firstDefinitions, err := first.PrepareTools(context.Background(), ToolRequest{})
 	if err != nil {
@@ -103,37 +102,5 @@ func TestStaticToolsIdentifiedFailsClosedOnInvalidIdentityOrDefinition(t *testin
 		if set, err := StaticToolsIdentified(test.identity, test.definitions...); err == nil || set != nil {
 			t.Fatalf("invalid static Toolset constructed: set=%#v error=%v", set, err)
 		}
-	}
-}
-
-func TestSchemaOnlyStaticToolsCannotClaimDurableRecoveryIdentity(t *testing.T) {
-	tool, err := InferTool("schema_only", "schema-only implementation", func(context.Context, struct{}) (string, error) {
-		return "ok", nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	definition := testToolDefinition(tool)
-	set, err := StaticTools(definition)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := validatePersistentDefinition(Definition{
-		ModelIdentity: CapabilityIdentity{Kind: "model.static-tools-contract", Version: 1},
-		Tools:         set,
-	}); err == nil || !strings.Contains(err.Error(), "schema-only StaticTools") {
-		t.Fatalf("durable schema-only Toolset error = %v", err)
-	}
-
-	definition.ImplementationIdentity = CapabilityIdentity{Kind: "tool.schema-only-test", Version: 1}
-	identified, err := StaticTools(definition)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := validatePersistentDefinition(Definition{
-		ModelIdentity: CapabilityIdentity{Kind: "model.static-tools-contract", Version: 1},
-		Tools:         identified,
-	}); err != nil {
-		t.Fatalf("explicit per-tool implementation identity was rejected: %v", err)
 	}
 }

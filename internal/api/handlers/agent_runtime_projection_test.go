@@ -4,7 +4,6 @@ import (
 	agentexecution "denova/internal/agents/execution"
 	"denova/internal/agents/run"
 	"encoding/json"
-	"fmt"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -15,7 +14,6 @@ func TestAgentRuntimeProjectionDTOIsExplicitAndBounded(t *testing.T) {
 	snapshot := agentrun.RuntimeStatus{
 		Cursor:          42,
 		Phase:           agentrun.RunPhaseRunning,
-		RecoveryPaused:  true,
 		ActiveOperation: "operation-1",
 		ActiveCycle:     3,
 		ActiveOutput: agentrun.ActiveOutput{
@@ -68,10 +66,10 @@ func TestAddAgentRuntimeProjectionKeepsLegacyResponseWhenUnavailable(t *testing.
 	}
 }
 
-func TestAddAgentRuntimeProjectionExposesServiceRefreshActionAfterActorIdle(t *testing.T) {
+func TestAddAgentRuntimeProjectionDoesNotOfferAttachmentForAttachedStream(t *testing.T) {
 	response := map[string]interface{}{"active": true, "task_id": "task-refresh"}
 	action := agentexecution.RuntimeRecoveryAction{
-		Kind: agentexecution.RuntimeRecoveryCompactContext, CommandID: "compact-refresh",
+		Kind: agentexecution.RuntimeRecoveryAttach, CommandID: "attach-refresh",
 		OperationID: "operation-refresh",
 	}
 	addAgentRuntimeProjection(response, agentrun.RuntimeStatus{
@@ -83,22 +81,20 @@ func TestAddAgentRuntimeProjectionExposesServiceRefreshActionAfterActorIdle(t *t
 	}, agentRuntimeProjectionOptions{
 		Available: true, StreamAttached: true, RecoveryActions: []agentexecution.RuntimeRecoveryAction{action},
 	})
-	if response["phase"] != string(agentrun.RunPhaseIdle) || response["recovery_paused"] != true ||
-		response["runtime_recoverable"] != true || response["stream_attached"] != true {
-		t.Fatalf("service refresh projection flags = %#v", response)
+	if response["phase"] != string(agentrun.RunPhaseIdle) || response["recovery_paused"] != false ||
+		response["runtime_recoverable"] != false || response["stream_attached"] != true {
+		t.Fatalf("attached projection flags = %#v", response)
 	}
 	actions, ok := response["recovery_actions"].([]agentRuntimeRecoveryActionDTO)
-	if !ok || len(actions) != 1 || actions[0] != (agentRuntimeRecoveryActionDTO{
-		Kind: string(action.Kind), CommandID: string(action.CommandID), OperationID: string(action.OperationID),
-	}) {
-		t.Fatalf("service refresh projection actions = %#v", response["recovery_actions"])
+	if !ok || len(actions) != 0 {
+		t.Fatalf("attached projection actions = %#v", response["recovery_actions"])
 	}
 }
 
 func TestAddAgentRuntimeProjectionNormalizesServiceRefreshWithoutActorProjection(t *testing.T) {
 	response := map[string]interface{}{}
 	action := agentexecution.RuntimeRecoveryAction{
-		Kind: agentexecution.RuntimeRecoveryCompactContext, CommandID: "compact-refresh",
+		Kind: agentexecution.RuntimeRecoveryAttach, CommandID: "attach-refresh",
 		OperationID: "operation-refresh",
 	}
 	addAgentRuntimeProjection(response, agentrun.RuntimeStatus{}, agentRuntimeProjectionOptions{
@@ -110,10 +106,9 @@ func TestAddAgentRuntimeProjectionNormalizesServiceRefreshWithoutActorProjection
 	}
 }
 
-func TestRecoveryProjectionIsOrderedBoundedAndDoesNotLeakDurablePayload(t *testing.T) {
+func TestRecoveryProjectionExposesOnlyLiveAttachWithoutInputPayload(t *testing.T) {
 	snapshot := agentrun.RuntimeStatus{
 		Phase:           agentrun.RunPhaseRunning,
-		RecoveryPaused:  true,
 		ActiveCommandID: "start-command",
 		ActiveOperation: "operation-1",
 		ActiveCycle:     1,
@@ -127,20 +122,11 @@ func TestRecoveryProjectionIsOrderedBoundedAndDoesNotLeakDurablePayload(t *testi
 				Message: "another secret",
 			},
 		},
-		AgentRecoveryActions: []agentrun.AgentRecoveryAction{
-			{ID: "abort-action", Kind: "abort_run", RunID: "operation-1", CommandID: "start-command"},
-			{ID: "steer-action", Kind: "resume_input", RunID: "operation-1", CommandID: "steer-command", Delivery: "steer"},
-		},
 	}
 	dto := newAgentRuntimeProjectionDTO(snapshot)
-	if !dto.RuntimeRecoverable || dto.StreamAttached || len(dto.RecoveryActions) != 3 {
+	if !dto.RuntimeRecoverable || dto.StreamAttached || len(dto.RecoveryActions) != 1 ||
+		dto.RecoveryActions[0].Kind != "start_turn" || dto.RecoveryActions[0].OperationID != "operation-1" {
 		t.Fatalf("recovery projection = %#v", dto)
-	}
-	wantKinds := []string{"start_turn", "abort", "steer"}
-	for index, want := range wantKinds {
-		if dto.RecoveryActions[index].Kind != want {
-			t.Fatalf("action order = %#v", dto.RecoveryActions)
-		}
 	}
 	encoded, err := json.Marshal(dto.RecoveryActions)
 	if err != nil {
@@ -153,118 +139,17 @@ func TestRecoveryProjectionIsOrderedBoundedAndDoesNotLeakDurablePayload(t *testi
 	}
 }
 
-func TestRecoveryProjectionExposesOnlyFirstIdleNextTurn(t *testing.T) {
-	snapshot := agentrun.RuntimeStatus{
+func TestRecoveryProjectionDoesNotResumeIdleWork(t *testing.T) {
+	dto := newAgentRuntimeProjectionDTO(agentrun.RuntimeStatus{
 		Phase: agentrun.RunPhaseIdle,
 		LastOperation: &agentrun.OperationSummary{
 			CommandID: "start", OperationID: "parent", Status: agentrun.OperationInterrupted,
-			Reason: "runtime recovered an unfinished operation",
 		},
-	}
-	for index := 0; index < 64; index++ {
-		snapshot.Queue = append(snapshot.Queue, agentrun.QueuedCommand{
-			CommandID:   agentrun.CommandID(fmt.Sprintf("next-%d", index)),
-			OperationID: agentrun.OperationID(fmt.Sprintf("operation-%d", index)),
-			Delivery:    agentrun.DeliveryNextTurn,
-		})
-	}
-	snapshot.AgentRecoveryActions = []agentrun.AgentRecoveryAction{
-		{ID: "next-action", Kind: "resume_input", RunID: "operation-0", CommandID: "next-0", Delivery: "next_turn"},
-	}
-	dto := newAgentRuntimeProjectionDTO(snapshot)
-	if len(dto.RecoveryActions) != 1 || dto.RecoveryActions[0] != (agentRuntimeRecoveryActionDTO{
-		ActionID: "next-action", Kind: "next_turn", CommandID: "next-0", OperationID: "operation-0",
-	}) {
-		t.Fatalf("recovery actions = %#v", dto.RecoveryActions)
-	}
-}
-
-func TestRecoveryProjectionStrictStateBoundaries(t *testing.T) {
-	tests := []struct {
-		name         string
-		snapshot     agentrun.RuntimeStatus
-		wantKinds    []string
-		wantCommands []string
-	}{
-		{
-			name: "input recovery hides later queue",
-			snapshot: agentrun.RuntimeStatus{
-				Phase:           agentrun.RunPhaseRunning,
-				RecoveryPaused:  true,
-				ActiveCommandID: "start",
-				ActiveOperation: "parent",
-				Queue: []agentrun.QueuedCommand{
-					{CommandID: "later-steer", OperationID: "parent", Delivery: agentrun.DeliverySteer},
-				},
-				AgentRecoveryActions: []agentrun.AgentRecoveryAction{
-					{ID: "abort-action", Kind: "abort_run", RunID: "parent", CommandID: "start"},
-					{ID: "next-action", Kind: "resume_input", RunID: "next-operation", CommandID: "recover-next", Delivery: "next_turn"},
-				},
-			},
-			wantKinds:    []string{"start_turn", "abort", "next_turn"},
-			wantCommands: []string{"start", "", "recover-next"},
-		},
-		{
-			name: "paused compacting exposes no queue action",
-			snapshot: agentrun.RuntimeStatus{
-				Phase:           agentrun.RunPhaseCompacting,
-				RecoveryPaused:  true,
-				ActiveOperation: "compact-operation",
-				Queue: []agentrun.QueuedCommand{
-					{CommandID: "later-next", OperationID: "next-operation", Delivery: agentrun.DeliveryNextTurn},
-				},
-				AgentRecoveryActions: []agentrun.AgentRecoveryAction{
-					{ID: "compact-action", Kind: "resume_compaction", RunID: "compact-operation", CommandID: "compact", Compaction: "compact"},
-					{ID: "abort-action", Kind: "abort_run", RunID: "compact-operation", CommandID: "compact"},
-				},
-			},
-			wantKinds:    []string{"compact_context", "abort"},
-			wantCommands: []string{"compact", ""},
-		},
-		{
-			name: "idle terminal is not recoverable",
-			snapshot: agentrun.RuntimeStatus{
-				Phase: agentrun.RunPhaseIdle,
-				LastOperation: &agentrun.OperationSummary{
-					CommandID: "done", OperationID: "done-operation", Status: agentrun.OperationSucceeded,
-				},
-			},
-		},
-		{
-			name: "ordinary live running is not recoverable",
-			snapshot: agentrun.RuntimeStatus{
-				Phase:           agentrun.RunPhaseRunning,
-				ActiveCommandID: "start",
-				ActiveOperation: "live-operation",
-				Queue: []agentrun.QueuedCommand{
-					{CommandID: "queued-next", OperationID: "next-operation", Delivery: agentrun.DeliveryNextTurn},
-				},
-			},
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			dto := newAgentRuntimeProjectionDTO(test.snapshot)
-			if dto.RuntimeRecoverable != (len(test.wantKinds) > 0) || len(dto.RecoveryActions) != len(test.wantKinds) {
-				t.Fatalf("recovery projection = %#v", dto)
-			}
-			for index, wantKind := range test.wantKinds {
-				action := dto.RecoveryActions[index]
-				if action.Kind != wantKind {
-					t.Fatalf("action[%d] = %#v, want kind %q", index, action, wantKind)
-				}
-				wantCommand := test.wantCommands[index]
-				if wantCommand == "" {
-					if action.CommandID == "" {
-						t.Fatalf("action[%d] has empty server-derived command identity: %#v", index, action)
-					}
-					continue
-				}
-				if action.CommandID != wantCommand {
-					t.Fatalf("action[%d] = %#v, want command %q", index, action, wantCommand)
-				}
-			}
-		})
+		Queue: []agentrun.QueuedCommand{{
+			CommandID: "next", OperationID: "next-operation", Delivery: agentrun.DeliveryNextTurn,
+		}},
+	})
+	if dto.RuntimeRecoverable || len(dto.RecoveryActions) != 0 {
+		t.Fatalf("idle work unexpectedly recoverable: %#v", dto)
 	}
 }

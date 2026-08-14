@@ -53,7 +53,7 @@ func TestRecoveryEndpointDoesNotEchoOrTrustCallerPayload(t *testing.T) {
 	request := map[string]any{
 		"session_id": activeWritingSessionID(t, application),
 		"action": map[string]any{
-			"kind": "follow_up", "command_id": "not-durable", "operation_id": "not-durable",
+			"kind": "start_turn", "command_id": "not-durable", "operation_id": "not-durable",
 			"descriptor": map[string]any{"secret": "DO_NOT_ECHO"},
 			"input":      map[string]any{"message": "DO_NOT_ECHO"},
 		},
@@ -81,7 +81,7 @@ func TestRecoveryEndpointBoundsIdentityBeforeEchoingIt(t *testing.T) {
 	oversized := strings.Repeat("x", 4<<10+1)
 	response := performJSONRequest(t, server, http.MethodPost, "/api/chat/recovery", map[string]any{
 		"action": map[string]any{
-			"kind": "follow_up", "command_id": oversized, "operation_id": "operation-1",
+			"kind": "start_turn", "command_id": oversized, "operation_id": "operation-1",
 		},
 	})
 	if response.Code != http.StatusBadRequest {

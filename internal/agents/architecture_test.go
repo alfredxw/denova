@@ -12,22 +12,22 @@ import (
 )
 
 const (
-	adkRuntimeImport       = "github.com/alfredxw/denova/agent/internal/runtime"
-	legacyADKRuntimeImport = "github.com/alfredxw/denova/agent/runtime"
+	agentRunStateImport = "github.com/alfredxw/denova/agent/internal/runstate"
+	legacyRuntimeImport = "github.com/alfredxw/denova/agent/runtime"
 )
 
-func TestADKRuntimeIsNotAnAppOrAPIDependency(t *testing.T) {
+func TestAgentRunStateIsNotAnAppOrAPIDependency(t *testing.T) {
 	for _, dir := range []string{"../app", "../api"} {
-		assertGoFilesDoNotImport(t, dir, true, adkRuntimeImport, legacyADKRuntimeImport)
+		assertGoFilesDoNotImport(t, dir, true, agentRunStateImport, legacyRuntimeImport)
 	}
 }
 
-func TestADKRuntimeIsNotAProductDependency(t *testing.T) {
-	assertGoFilesDoNotImport(t, ".", true, adkRuntimeImport, legacyADKRuntimeImport)
+func TestAgentRunStateIsNotAProductDependency(t *testing.T) {
+	assertGoFilesDoNotImport(t, ".", true, agentRunStateImport, legacyRuntimeImport)
 }
 
 func TestConcreteToolsDoNotDependOnAgentOrchestration(t *testing.T) {
-	assertGoFilesDoNotImport(t, "tools", false, adkRuntimeImport, legacyADKRuntimeImport, "denova/internal/agents")
+	assertGoFilesDoNotImport(t, "tools", false, agentRunStateImport, legacyRuntimeImport, "denova/internal/agents")
 }
 
 func TestReusableAgentPackagesDoNotDependOnCompositionRoot(t *testing.T) {

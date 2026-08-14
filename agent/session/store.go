@@ -1,4 +1,4 @@
-// Package session defines the durable state seam used by Agent.
+// Package session defines the transcript storage seam used by Agent.
 //
 // Stores own append-only records and an exclusive execution lease per exact
 // Key. They do not interpret Agent record kinds, model messages, or product
@@ -33,7 +33,7 @@ var (
 	ErrCommitUnknown = errors.New("agent session append commit is unknown")
 )
 
-// Key is the exact durable identity of one Session. Attributes participate in
+// Key is the exact storage identity of one Session. Attributes participate in
 // identity; mutable display metadata must not be stored here.
 type Key struct {
 	Namespace  string            `json:"namespace"`
@@ -140,7 +140,7 @@ func (selector Selector) Matches(key Key) bool {
 
 type Revision uint64
 
-// Record is one immutable Agent state transition. Kind and Version select the
+// Record is one immutable Session transcript record. Kind and Version select the
 // codec; Data must be a complete JSON value. Revision is assigned by Log.
 type Record struct {
 	Revision Revision        `json:"revision"`
@@ -162,7 +162,7 @@ type ReplayStats struct {
 	BytesRead   int64
 }
 
-// Store owns the durable catalog and append-only Log for every Session Key.
+// Store owns the catalog and append-only Log for every Session Key.
 // List and Delete are part of the contract because closing an execution lease
 // is not equivalent to deleting user data. Delete is idempotent; implementations
 // must not expose a partially deleted Session and must serialize it with Open.
@@ -172,15 +172,7 @@ type Store interface {
 	Delete(context.Context, Key) error
 }
 
-// VolatileStore marks process-local implementations that never restore after
-// restart. Durable Agent construction otherwise requires stable Capability
-// identities from every selected Adapter.
-type VolatileStore interface {
-	Store
-	Volatile() bool
-}
-
-// Log is the complete durable Adapter contract. Append commits the whole batch
+// Log is the complete transcript Adapter contract. Append commits the whole batch
 // atomically at expected or changes nothing. Replay is streaming and ordered.
 type Log interface {
 	Replay(context.Context, func(Record) error) (ReplayStats, error)

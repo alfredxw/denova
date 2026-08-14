@@ -12,21 +12,20 @@ import (
 var ErrUnavailable = errors.New("Agent execution runtime is unavailable")
 
 // Runtime adapts Denova product cycles to the public Agent -> Session -> Run
-// lifecycle. The public Agent package is the sole owner of durable admission,
-// ordering, recovery, transcript, and compaction state.
+// lifecycle. Agent owns in-process ordering plus transcript and capability
+// persistence; Denova owns canonical conversations and product effects.
 type Runtime struct {
 	public *publicBackend
 }
 
-// Option configures process-level durable adapter seams.
-// Options are applied before any binding can open or recovery can begin.
+// Option configures process-level adapter seams before any Session opens.
 type Option func(*runtimeOptions) error
 
 type runtimeOptions struct {
-	profiles             []Profile
-	hostEffectReconciler agenttoolruntime.HostEffectReconciler
-	permissionRuleStore  PermissionRuleStore
-	childDefinitions     ChildDefinitionResolver
+	profiles            []Profile
+	toolMutationApplier agenttoolruntime.ToolMutationApplier
+	permissionRuleStore PermissionRuleStore
+	childDefinitions    ChildDefinitionResolver
 }
 
 // PermissionRuleStore is the process-owned durable authorization catalog.
@@ -37,8 +36,8 @@ type PermissionRuleStore struct {
 	Persist func(context.Context, config.AgentApprovalRule) error
 }
 
-// WithChildDefinitionResolver installs the process-owned cold reconstruction
-// seam for local delegated Agents.
+// WithChildDefinitionResolver installs the process-owned Definition resolver
+// for local delegated Agents.
 func WithChildDefinitionResolver(resolver ChildDefinitionResolver) Option {
 	return func(options *runtimeOptions) error {
 		if resolver == nil {
@@ -62,7 +61,7 @@ func WithPermissionRuleStore(store PermissionRuleStore) Option {
 }
 
 // WithProfiles installs the complete set of product execution profiles before
-// any durable binding can open or recover. Duplicate and unknown IDs fail
+// any Session opens. Duplicate and unknown IDs fail
 // construction so runtime behavior cannot depend on registration order.
 func WithProfiles(profiles ...Profile) Option {
 	return func(options *runtimeOptions) error {
@@ -78,15 +77,14 @@ func WithProfiles(profiles ...Profile) Option {
 	}
 }
 
-// WithHostEffectReconciler installs the process-level durable admission
-// seam for completed tool mutations. It is used both live and during cold
-// Runtime journal replay, so it must not depend on a per-turn closure.
-func WithHostEffectReconciler(reconciler agenttoolruntime.HostEffectReconciler) Option {
+// WithToolMutationApplier installs the product-owned idempotent destination for
+// completed tool mutations.
+func WithToolMutationApplier(applier agenttoolruntime.ToolMutationApplier) Option {
 	return func(options *runtimeOptions) error {
-		if reconciler == nil {
-			return fmt.Errorf("agent execution host effect reconciler is nil")
+		if applier == nil {
+			return fmt.Errorf("agent execution Tool mutation applier is nil")
 		}
-		options.hostEffectReconciler = reconciler
+		options.toolMutationApplier = applier
 		return nil
 	}
 }

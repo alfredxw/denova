@@ -89,13 +89,7 @@ func TestReviewInputEffectConvergesAfterOneLedgerCommittedBeforeCrash(t *testing
 	if _, err := changes.ConsumeReviewCommentsForAgentInput(ctx, "thread-effect", "session-effect", []string{diffComment.ID}, effectID); err != nil {
 		t.Fatal(err)
 	}
-	if found, err := ReconcileConsumed(ctx, runtime, request, effectID); err != nil || found {
-		t.Fatalf("partial effect incorrectly acknowledged found=%t err=%v", found, err)
-	}
 	if err := consume(ctx, runtime, request, effectID); err != nil {
 		t.Fatalf("partial effect did not converge: %v", err)
-	}
-	if found, err := ReconcileConsumed(ctx, runtime, request, effectID); err != nil || !found {
-		t.Fatalf("converged effect receipt found=%t err=%v", found, err)
 	}
 }

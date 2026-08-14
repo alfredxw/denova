@@ -144,7 +144,6 @@ describe('StoryStage runtime recovery', () => {
       status: 'running',
       stream_cursor: 0,
       cursor: 9,
-      replayed: true,
       recovery_action: action,
     })
     streamActiveInteractiveChatMock.mockResolvedValue(stream.readable)
@@ -229,7 +228,6 @@ describe('StoryStage runtime recovery', () => {
         status: 'running',
         stream_cursor: 0,
         cursor: 31,
-        replayed: false,
         recovery_action: firstAction,
       })
       .mockResolvedValueOnce({
@@ -237,7 +235,6 @@ describe('StoryStage runtime recovery', () => {
         status: 'running',
         stream_cursor: 0,
         cursor: 32,
-        replayed: false,
         recovery_action: secondAction,
       })
     streamActiveInteractiveChatMock.mockResolvedValue(stream.readable)
@@ -317,7 +314,6 @@ describe('StoryStage runtime recovery', () => {
         status: 'running',
         stream_cursor: 0,
         cursor: 33,
-        replayed: false,
         recovery_action: firstAction,
       })
       .mockRejectedValueOnce(
@@ -382,7 +378,6 @@ describe('StoryStage runtime recovery', () => {
       status: 'running',
       stream_cursor: 0,
       cursor: 34,
-      replayed: false,
       recovery_action: action,
     })
     streamActiveInteractiveChatMock.mockResolvedValueOnce(oldStream.readable).mockResolvedValueOnce(newStream.readable)
@@ -439,7 +434,6 @@ describe('StoryStage runtime recovery', () => {
         status: 'running',
         stream_cursor: 0,
         cursor: 11,
-        replayed: false,
         recovery_action: attachAction,
       })
       .mockResolvedValueOnce({
@@ -447,7 +441,6 @@ describe('StoryStage runtime recovery', () => {
         status: 'running',
         stream_cursor: 0,
         cursor: 12,
-        replayed: false,
         recovery_action: abortAction,
       })
     streamActiveInteractiveChatMock.mockResolvedValue(stream.readable)
@@ -564,7 +557,6 @@ describe('StoryStage runtime recovery', () => {
       status: 'running',
       stream_cursor: 0,
       cursor: 23,
-      replayed: false,
       recovery_action: stateAction,
     })
     streamActiveInteractiveChatMock.mockResolvedValue(stream.readable)
@@ -613,7 +605,6 @@ describe('StoryStage runtime recovery', () => {
         status: 'running',
         stream_cursor: 0,
         cursor: 24,
-        replayed: false,
         recovery_action: action,
       })
       streamActiveInteractiveChatMock.mockResolvedValue(stream.readable)
@@ -667,7 +658,6 @@ describe('StoryStage runtime recovery', () => {
       status: 'running',
       stream_cursor: 0,
       cursor: 13,
-      replayed: false,
       recovery_action: attachAction,
     })
     streamActiveInteractiveChatMock.mockResolvedValue(stream.readable)
@@ -726,7 +716,6 @@ describe('StoryStage runtime recovery', () => {
       status: 'running',
       stream_cursor: 0,
       cursor: 10,
-      replayed: false,
       recovery_action: abortAction,
     })
     const { unmount } = render(<StoryStageHarness />)
