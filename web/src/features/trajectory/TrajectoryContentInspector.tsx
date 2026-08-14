@@ -1,11 +1,12 @@
-import { useMemo, useState } from 'react'
-import { ChevronRight } from 'lucide-react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Check, ChevronRight, Clipboard, PanelRightClose } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { ThemedMarkdownRenderer } from '@/components/common/MarkdownRenderer'
+import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
 import { formatTrajectoryDuration } from './trajectory-analysis'
-import type { TrajectoryContentEntry, TrajectoryToolDefinition } from './trajectory-content'
+import type { TrajectoryContentEntry, TrajectoryToolDefinition, TrajectoryToolExchange } from './trajectory-content'
 import {
   EmptyInspectorTab,
   formatExactTrajectoryTime,
@@ -15,28 +16,160 @@ import {
   trajectoryThroughput,
 } from './TrajectoryInspectorParts'
 
+interface TrajectoryContentInspectorProps {
+  entry: TrajectoryContentEntry | null
+  exchange: TrajectoryToolExchange | null
+  showHeader?: boolean
+  onClose: () => void
+}
+
 interface TrajectoryContentDetailsProps {
   entry: TrajectoryContentEntry
 }
 
 const SUMMARY_PREVIEW_CHARACTERS = 4_000
 
-/** Inline type-aware details for exact model-visible content and diagnostics. */
+/** Adaptive detail content shared by the desktop resize pane and compact drawer. */
+export function TrajectoryContentInspector({ entry, exchange, showHeader = true, onClose }: TrajectoryContentInspectorProps) {
+  const { t } = useTranslation()
+  const [copied, setCopied] = useState(false)
+  const targetID = exchange?.id ?? entry?.id ?? ''
+  const copyValue = useMemo(() => exchange ? {
+    call: exchange.call.raw,
+    result_message: exchange.result?.raw ?? null,
+    tool_output: exchange.output?.raw ?? null,
+  } : entry?.raw ?? null, [entry, exchange])
+
+  useEffect(() => setCopied(false), [targetID])
+
+  if (!entry && !exchange) {
+    return <div className="grid h-full min-h-0 place-items-center px-6 text-center text-[11px] text-[var(--nova-text-faint)]">{t('trajectory.inspector.empty')}</div>
+  }
+
+  const title = exchange?.call.name || (entry ? localizedEntryLabel(entry, t) : '')
+  const kind = exchange ? t('trajectory.conversation.toolCall') : t(`trajectory.records.kind.${entry?.kind}`)
+  const meta = exchange
+    ? `${exchange.output?.status || exchange.result?.status || exchange.span?.status || 'pending'} · ${exchange.span ? formatTrajectoryDuration(exchange.span.durationMs) : t('trajectory.conversation.noTiming')}`
+    : `${t('trajectory.records.request', { index: entry?.requestIndex ?? 0 })} · ${entry?.status || '—'}`
+
+  const copyRecord = async () => {
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(copyValue, null, 2))
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1_600)
+    } catch (error) {
+      console.warn('[TrajectoryContentInspector.tsx] failed to copy trajectory content', error)
+    }
+  }
+
+  return (
+    <aside className="flex h-full min-h-0 min-w-0 flex-col bg-[var(--nova-surface-2)]" aria-label={t('trajectory.inspector.title')}>
+      {showHeader && (
+        <div className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--nova-border)] px-3">
+          <span className="shrink-0 rounded-sm bg-[var(--nova-active)] px-1.5 py-0.5 font-mono text-[8px] font-semibold uppercase tracking-[0.08em] text-[var(--nova-text-muted)]">{kind}</span>
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-[11px] font-medium text-[var(--nova-text)]">{title}</div>
+            <div className="truncate font-mono text-[8px] text-[var(--nova-text-faint)]">{meta}</div>
+          </div>
+          <Button type="button" size="icon-xs" variant="ghost" className="focus-visible:ring-0" onClick={() => void copyRecord()} aria-label={t('trajectory.inspector.copy')}>
+            {copied ? <Check className="text-[var(--nova-success)]" /> : <Clipboard />}
+          </Button>
+          <Button type="button" size="icon-xs" variant="ghost" className="focus-visible:ring-0" onClick={onClose} aria-label={t('trajectory.inspector.close')}>
+            <PanelRightClose />
+          </Button>
+        </div>
+      )}
+      <div className="min-h-0 flex-1">
+        {exchange ? <TrajectoryToolDetails key={exchange.id} exchange={exchange} /> : <TrajectoryContentDetails key={entry?.id} entry={entry!} />}
+      </div>
+    </aside>
+  )
+}
+
+/** Type-aware details for exact model-visible content and diagnostics. */
 export function TrajectoryContentDetails({ entry }: TrajectoryContentDetailsProps) {
   const { t } = useTranslation()
   const tabs = inspectorTabs(entry)
   return (
-    <Tabs key={entry.id} defaultValue={tabs[0]} className="min-h-0 gap-0">
-        <TabsList variant="line" className="h-8 w-full max-w-full shrink-0 justify-start overflow-x-auto border-b border-[var(--nova-border-soft)] px-2">
-          {tabs.map((tab) => <TabsTrigger key={tab} value={tab} className="shrink-0 text-[10px]">{t(`trajectory.inspector.tab.${tab}`)}</TabsTrigger>)}
-        </TabsList>
-        {tabs.map((tab) => (
-          <TabsContent key={tab} value={tab} className="min-h-0 overflow-auto p-3">
-            <InspectorTab entry={entry} tab={tab} />
-          </TabsContent>
-        ))}
+    <Tabs key={entry.id} defaultValue={tabs[0]} className="flex h-full min-h-0 flex-col gap-0">
+      <TabsList variant="line" className="h-8 w-full max-w-full shrink-0 justify-start overflow-x-auto border-b border-[var(--nova-border-soft)] px-2">
+        {tabs.map((tab) => <TabsTrigger key={tab} value={tab} className="shrink-0 text-[9px] focus-visible:ring-0 focus-visible:outline-none">{t(`trajectory.inspector.tab.${tab}`)}</TabsTrigger>)}
+      </TabsList>
+      {tabs.map((tab) => (
+        <TabsContent key={tab} value={tab} className="min-h-0 flex-1 overflow-auto p-3">
+          <InspectorTab entry={entry} tab={tab} />
+        </TabsContent>
+      ))}
     </Tabs>
   )
+}
+
+function TrajectoryToolDetails({ exchange }: { exchange: TrajectoryToolExchange }) {
+  const { t } = useTranslation()
+  const tabs = ['summary', 'arguments', 'response', 'schema', 'timing', 'source'] as const
+  return (
+    <Tabs defaultValue="summary" className="flex h-full min-h-0 flex-col gap-0">
+      <TabsList variant="line" className="h-8 w-full shrink-0 justify-start overflow-x-auto border-b border-[var(--nova-border-soft)] px-2">
+        {tabs.map((tab) => (
+          <TabsTrigger key={tab} value={tab} className="shrink-0 text-[9px] focus-visible:ring-0 focus-visible:outline-none">
+            {tab === 'summary' ? t('trajectory.inspector.tab.summary') : t(`trajectory.conversation.tab.${tab}`)}
+          </TabsTrigger>
+        ))}
+      </TabsList>
+      {tabs.map((tab) => (
+        <TabsContent key={tab} value={tab} className="min-h-0 flex-1 overflow-auto p-3">
+          <ToolInspectorTab exchange={exchange} tab={tab} />
+        </TabsContent>
+      ))}
+    </Tabs>
+  )
+}
+
+function ToolInspectorTab({ exchange, tab }: { exchange: TrajectoryToolExchange; tab: string }) {
+  const { t } = useTranslation()
+  const response = exchange.result?.content || exchange.output?.content || exchange.output?.error || ''
+  const status = exchange.output?.status || exchange.result?.status || exchange.span?.status || 'pending'
+  if (tab === 'summary') {
+    const items: Array<readonly [string, string]> = [
+      [t('trajectory.field.kind'), t('trajectory.conversation.toolCall')],
+      [t('trajectory.field.status'), status],
+      [t('trajectory.conversation.callId'), exchange.call.id || exchange.output?.executionID || '—'],
+      [t('trajectory.field.source'), exchange.caller ? t('trajectory.records.request', { index: exchange.caller.requestIndex }) : '—'],
+    ]
+    if (exchange.span) items.push(
+      [t('trajectory.field.started'), formatExactTrajectoryTime(exchange.span.startedAt)],
+      [t('trajectory.field.duration'), formatTrajectoryDuration(exchange.span.durationMs)],
+      [t('trajectory.field.waitBefore'), formatTrajectoryDuration(exchange.span.gapBeforeMs)],
+    )
+    return (
+      <div className="space-y-3">
+        <TrajectoryDefinitionList items={items} />
+        <InspectorSection title={t('trajectory.conversation.tab.arguments')}>
+          <TrajectoryJSONBlock value={parseJSON(exchange.call.arguments)} className="max-h-52" />
+        </InspectorSection>
+        <InspectorSection title={t('trajectory.conversation.tab.response')}>
+          {response ? <SourceText content={response} className="max-h-56" /> : <EmptyInspectorTab />}
+        </InspectorSection>
+      </div>
+    )
+  }
+  if (tab === 'arguments') return <TrajectoryJSONBlock value={parseJSON(exchange.call.arguments)} />
+  if (tab === 'response') return (
+    <div className="space-y-2">
+      {exchange.output?.truncated && <div className="rounded-[var(--nova-radius)] bg-[var(--nova-warning-bg)] px-2 py-1.5 text-[10px] text-[var(--nova-warning)]">{t('trajectory.conversation.resultTruncated', { returned: exchange.output.returnedBytes, original: exchange.output.originalBytes })}</div>}
+      {response ? <SourceText content={response} /> : <EmptyInspectorTab />}
+    </div>
+  )
+  if (tab === 'schema') return exchange.definition ? <TrajectoryJSONBlock value={exchange.definition.parametersError || exchange.definition.parameters} /> : <EmptyInspectorTab />
+  if (tab === 'timing') return exchange.span ? <TrajectoryDefinitionList items={[
+    [t('trajectory.field.status'), exchange.span.status],
+    [t('trajectory.field.started'), formatExactTrajectoryTime(exchange.span.startedAt)],
+    [t('trajectory.field.ended'), formatExactTrajectoryTime(exchange.span.endedAt)],
+    [t('trajectory.field.duration'), formatTrajectoryDuration(exchange.span.durationMs)],
+    [t('trajectory.field.waitBefore'), formatTrajectoryDuration(exchange.span.gapBeforeMs)],
+  ]} /> : <EmptyInspectorTab />
+  if (tab === 'source') return <TrajectoryJSONBlock value={{ call: exchange.call.raw, result_message: exchange.result?.raw ?? null, tool_output: exchange.output?.raw ?? null }} />
+  return <EmptyInspectorTab />
 }
 
 function InspectorTab({ entry, tab }: { entry: TrajectoryContentEntry; tab: string }) {
@@ -64,13 +197,11 @@ function InspectorTab({ entry, tab }: { entry: TrajectoryContentEntry; tab: stri
       <div className="space-y-3">
         <TrajectoryDefinitionList items={items} />
         {(entry.content || entry.reasoning) && (
-          <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-3">
+          <div className="rounded-[var(--nova-radius)] bg-[var(--nova-surface)] p-3">
             <div className="mb-2 text-[9px] font-semibold uppercase tracking-[0.1em] text-[var(--nova-text-faint)]">{t('trajectory.inspector.preview')}</div>
             <ThemedMarkdownRenderer content={summaryPreview(entry.content || entry.reasoning)} className="text-[11px] leading-5" />
             {(entry.content || entry.reasoning).length > SUMMARY_PREVIEW_CHARACTERS && (
-              <div className="mt-2 border-t border-[var(--nova-border-soft)] pt-2 text-[9px] text-[var(--nova-text-faint)]">
-                {t('trajectory.inspector.previewTruncated')}
-              </div>
+              <div className="mt-2 border-t border-[var(--nova-border-soft)] pt-2 text-[9px] text-[var(--nova-text-faint)]">{t('trajectory.inspector.previewTruncated')}</div>
             )}
           </div>
         )}
@@ -83,12 +214,7 @@ function InspectorTab({ entry, tab }: { entry: TrajectoryContentEntry; tab: stri
   if (tab === 'raw') return <RawMessageBlocks entry={entry} />
   if (tab === 'source') return <TrajectoryJSONBlock value={entry.source} />
   if (tab === 'payload') return entry.toolCall ? <TrajectoryJSONBlock value={parseJSON(entry.toolCall.arguments)} /> : <EmptyInspectorTab />
-  if (tab === 'result') return entry.content ? (
-    <div className="space-y-3">
-      <ThemedMarkdownRenderer content={entry.content} className="text-[12px] leading-6" />
-      <SourceText content={entry.content} />
-    </div>
-  ) : <EmptyInspectorTab />
+  if (tab === 'result') return entry.content ? <SourceText content={entry.content} /> : <EmptyInspectorTab />
   if (tab === 'schema') {
     const definition = entry.tools.find((tool) => tool.name === entry.toolName)
     return definition ? <TrajectoryJSONBlock value={definition.parameters} /> : <EmptyInspectorTab />
@@ -138,7 +264,7 @@ function ToolDefinitions({ tools }: { tools: TrajectoryToolDefinition[] }) {
   const sorted = useMemo(() => [...tools].sort((left, right) => left.name.localeCompare(right.name)), [tools])
   if (sorted.length === 0) return <EmptyInspectorTab />
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-1">
       {sorted.map((tool) => {
         const open = expanded.has(tool.name)
         return (
@@ -152,13 +278,13 @@ function ToolDefinitions({ tools }: { tools: TrajectoryToolDefinition[] }) {
               else next.add(tool.name)
               return next
             })}
-            className="block w-full rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-2.5 text-left hover:bg-[var(--nova-hover)]"
+            className="block w-full rounded-[var(--nova-radius)] bg-[var(--nova-surface)] p-2 text-left hover:bg-[var(--nova-hover)] focus-visible:bg-[var(--nova-hover)] focus-visible:outline-none"
           >
             <span className="flex items-start gap-2">
               <ChevronRight className={cn('mt-0.5 size-3 shrink-0 text-[var(--nova-tree-chevron)] transition-transform', open && 'rotate-90')} />
               <span className="min-w-0">
                 <span className="block font-mono text-[10px] font-semibold text-[var(--nova-text)]">{tool.name}</span>
-                <span className="mt-0.5 block text-[10px] leading-4 text-[var(--nova-text-faint)]">{tool.description || t('trajectory.inspector.noDescription')}</span>
+                <span className="mt-0.5 block text-[9px] leading-4 text-[var(--nova-text-faint)]">{tool.description || t('trajectory.inspector.noDescription')}</span>
               </span>
             </span>
             {open && (
@@ -174,8 +300,17 @@ function ToolDefinitions({ tools }: { tools: TrajectoryToolDefinition[] }) {
   )
 }
 
-function SourceText({ content }: { content: string }) {
-  return <pre className="overflow-auto whitespace-pre-wrap break-words rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-3 font-mono text-[10px] leading-5 text-[var(--nova-text-muted)]">{content}</pre>
+function InspectorSection({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section>
+      <div className="mb-1.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--nova-text-faint)]">{title}</div>
+      {children}
+    </section>
+  )
+}
+
+function SourceText({ content, className }: { content: string; className?: string }) {
+  return <pre className={cn('overflow-auto whitespace-pre-wrap break-words rounded-[var(--nova-radius)] bg-[var(--nova-surface)] p-3 font-mono text-[10px] leading-5 text-[var(--nova-text-muted)]', className)}>{content}</pre>
 }
 
 function parseJSON(value: string) {
@@ -190,4 +325,12 @@ function parseJSON(value: string) {
 function summaryPreview(value: string) {
   if (value.length <= SUMMARY_PREVIEW_CHARACTERS) return value
   return `${value.slice(0, SUMMARY_PREVIEW_CHARACTERS).trimEnd()}\n\n…`
+}
+
+function localizedEntryLabel(entry: TrajectoryContentEntry, t: (key: string, options?: Record<string, unknown>) => string) {
+  if (entry.kind === 'system') return t(entry.previousContent || entry.previousTools.length > 0 ? 'trajectory.records.label.systemUpdate' : 'trajectory.records.label.initialSystem')
+  if (entry.kind === 'assistant') return entry.label === 'Assistant History' ? t('trajectory.records.label.assistantHistory') : t('trajectory.records.request', { index: entry.requestIndex })
+  if (entry.kind === 'user') return t('trajectory.records.label.user')
+  if (entry.kind === 'tool') return entry.toolName || t('trajectory.records.label.toolResult')
+  return t(entry.label === 'Input Snapshot Changed' ? 'trajectory.records.label.snapshotChanged' : 'trajectory.records.label.context')
 }

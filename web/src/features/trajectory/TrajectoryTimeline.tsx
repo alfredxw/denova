@@ -234,9 +234,9 @@ function TimelineOperation({
         <button
           type="button"
           className={cn(
-            'absolute z-10 h-[17px] min-w-px overflow-hidden rounded-[3px] border transition-[filter,opacity] hover:brightness-110 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--nova-text)]',
+            'absolute z-10 h-[17px] min-w-px overflow-hidden rounded-[3px] border transition-[filter,opacity] hover:brightness-110 focus-visible:outline-none focus-visible:brightness-125',
             categoryTone(span.category),
-            selected && 'z-30 ring-1 ring-[var(--nova-text)]',
+            selected && 'z-30 brightness-125 saturate-125',
             hasError && '!border-[var(--nova-danger)]',
           )}
           style={{ left: `${left}%`, top: `${5 + lane * 26}px`, width: `${width}%` }}
@@ -270,9 +270,9 @@ function laneIndex(category: TimelineSpan['category']) {
 }
 
 function categoryTone(category: TimelineSpan['category']) {
-  if (category === 'model') return 'border-[var(--nova-border-strong)] bg-[var(--nova-text-muted)]'
-  if (category === 'tool') return 'border-[var(--nova-success)] bg-[var(--nova-success-muted)]'
-  return 'border-[var(--nova-warning)] bg-[var(--nova-warning-bg)]'
+  if (category === 'model') return 'border-transparent bg-[var(--nova-text-muted)]'
+  if (category === 'tool') return 'border-transparent bg-[var(--nova-success-muted)]'
+  return 'border-transparent bg-[var(--nova-warning-bg)]'
 }
 
 function normalizeViewport(viewport: TrajectoryRange | null, start: number, end: number) {

@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Activity, AlertTriangle, Download, RefreshCw, Route } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
 import { FeaturePageShell } from '@/components/layout/feature-page-shell'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -13,8 +14,10 @@ import { TrajectoryInspector } from './TrajectoryInspector'
 import { TrajectoryLedger } from './TrajectoryLedger'
 import { TrajectoryTimeline } from './TrajectoryTimeline'
 import { TrajectoryContentLedger } from './TrajectoryContentLedger'
+import { TrajectoryContentInspector } from './TrajectoryContentInspector'
 import type { TrajectoryRange } from './TrajectoryTimeline'
 import { analyzeTrajectoryContent } from './trajectory-content'
+import type { TrajectoryContentSelection } from './trajectory-content'
 import {
   analyzeTrajectory,
   formatTrajectoryDuration,
@@ -45,8 +48,9 @@ export function TrajectoryPage({ target, onClose }: TrajectoryPageProps) {
   const [range, setRange] = useState<TrajectoryRange | null>(null)
   const [selectedSpanID, setSelectedSpanID] = useState('')
   const [selectedEventID, setSelectedEventID] = useState('')
-  const [selectedEntryID, setSelectedEntryID] = useState('')
+  const [contentSelection, setContentSelection] = useState<TrajectoryContentSelection | null>(null)
   const [workspaceView, setWorkspaceView] = useState<TrajectoryWorkspaceView>('records')
+  const openInspectorRef = useRef<() => void>(() => {})
 
   const loadRuns = useCallback(async (preferredRunID?: string) => {
     if (!projectID) return
@@ -93,7 +97,7 @@ export function TrajectoryPage({ target, onClose }: TrajectoryPageProps) {
         setTrace(nextTrace)
         setRange(null)
         setSelectedEventID('')
-        setSelectedEntryID('')
+        setContentSelection(null)
       })
       .catch((cause) => {
         if (cancelled) return
@@ -115,13 +119,20 @@ export function TrajectoryPage({ target, onClose }: TrajectoryPageProps) {
     : null, [projection, range])
   const selectedSpan = analysis?.spans.find((span) => span.id === selectedSpanID) ?? null
   const selectedEvent = analysis?.events.find((event) => event.id === selectedEventID) ?? null
-  const selectedEntry = content?.entries.find((entry) => entry.id === selectedEntryID) ?? null
-  const selectedTimelineSpanID = selectedEntry?.span?.id ?? selectedSpanID
-  const inspectorOpen = Boolean(selectedSpan || selectedEvent)
+  const selectedEntry = contentSelection?.type === 'entry'
+    ? content?.entries.find((entry) => entry.id === contentSelection.id) ?? null
+    : null
+  const selectedTool = contentSelection?.type === 'tool'
+    ? content?.toolCalls.find((exchange) => exchange.id === contentSelection.id) ?? null
+    : null
+  const selectedTimelineSpanID = selectedTool?.span?.id ?? selectedEntry?.span?.id ?? selectedSpanID
+  const contentInspectorOpen = Boolean(selectedEntry || selectedTool)
+  const analysisInspectorOpen = Boolean(selectedSpan || selectedEvent)
+  const inspectorOpen = workspaceView === 'records' ? contentInspectorOpen : analysisInspectorOpen
 
   useEffect(() => {
     setWorkspaceView('records')
-    setSelectedEntryID('')
+    setContentSelection(null)
     setSelectedSpanID('')
     setSelectedEventID('')
   }, [analysis])
@@ -137,6 +148,17 @@ export function TrajectoryPage({ target, onClose }: TrajectoryPageProps) {
       toast.error(t('trajectory.export.failed'), { description: errorMessage(cause) })
     }
   }
+
+  const closeInspector = () => {
+    setContentSelection(null)
+    setSelectedSpanID('')
+    setSelectedEventID('')
+  }
+  const inspectorTitle = selectedTool?.call.name
+    || (selectedEntry ? `${t(`trajectory.records.kind.${selectedEntry.kind}`)} · ${t('trajectory.records.request', { index: selectedEntry.requestIndex })}` : '')
+    || selectedSpan?.label
+    || selectedEvent?.label
+    || t('trajectory.inspector.title')
 
   return (
     <FeaturePageShell
@@ -185,11 +207,11 @@ export function TrajectoryPage({ target, onClose }: TrajectoryPageProps) {
                         type="button"
                         size="xs"
                         variant="ghost"
-                        className={cn('h-6 px-2', workspaceView === view && 'bg-[var(--nova-active)]')}
+                        className={cn('h-6 px-2 focus-visible:ring-0', workspaceView === view && 'bg-[var(--nova-active)]')}
                         aria-pressed={workspaceView === view}
                         onClick={() => {
                           setWorkspaceView(view)
-                          setSelectedEntryID('')
+                          setContentSelection(null)
                           setSelectedSpanID(view === 'analysis' && !isCompact ? analysis.roots[0]?.id ?? '' : '')
                           setSelectedEventID('')
                         }}
@@ -205,7 +227,7 @@ export function TrajectoryPage({ target, onClose }: TrajectoryPageProps) {
                       type="button"
                       size="xs"
                       variant="ghost"
-                      className={cn('h-6 px-2', timelineMode === mode && 'bg-[var(--nova-active)]')}
+                      className={cn('h-6 px-2 focus-visible:ring-0', timelineMode === mode && 'bg-[var(--nova-active)]')}
                       aria-pressed={timelineMode === mode}
                       onClick={() => {
                         setTimelineMode(mode)
@@ -228,13 +250,18 @@ export function TrajectoryPage({ target, onClose }: TrajectoryPageProps) {
                       ?? content.entries.find((candidate) => candidate.span?.id === spanID)
                       ?? toolExchange?.caller
                       ?? toolExchange?.result
-                    if (workspaceView === 'records' && entry) {
-                      setSelectedEntryID(entry.id)
+                    if (workspaceView === 'records' && toolExchange) {
+                      setContentSelection({ type: 'tool', id: toolExchange.id })
+                      openInspectorRef.current()
+                    } else if (workspaceView === 'records' && entry) {
+                      setContentSelection({ type: 'entry', id: entry.id })
+                      openInspectorRef.current()
                     } else {
                       setWorkspaceView('analysis')
-                      setSelectedEntryID('')
+                      setContentSelection(null)
                       setSelectedSpanID(spanID)
                       setSelectedEventID('')
+                      openInspectorRef.current()
                     }
                   }}
                 />
@@ -243,46 +270,70 @@ export function TrajectoryPage({ target, onClose }: TrajectoryPageProps) {
                     <AlertTriangle className="size-3" />{t('trajectory.truncated')}
                   </div>
                 )}
-                <div className="relative flex min-h-0 flex-1">
-                  {workspaceView === 'records' ? (
-                    <TrajectoryContentLedger
-                      content={content}
-                      selectedEntryID={selectedEntryID}
-                      rangeSpanIDs={rangeSpanIDs}
-                      onSelect={(entryID) => {
-                        setSelectedEntryID(entryID)
-                        setSelectedSpanID('')
-                        setSelectedEventID('')
-                      }}
-                    />
-                  ) : (
-                    <TrajectoryLedger
-                      analysis={analysis}
-                      selectedSpanID={selectedSpanID}
-                      selectedEventID={selectedEventID}
-                      rangeSpanIDs={rangeSpanIDs}
-                      onSpanSelect={(spanID) => {
-                        setSelectedSpanID(spanID)
-                        setSelectedEntryID('')
-                        setSelectedEventID('')
-                      }}
-                      onEventSelect={(eventID) => {
-                        setSelectedEventID(eventID)
-                        setSelectedSpanID('')
-                        setSelectedEntryID('')
-                      }}
-                    />
-                  )}
-                  {workspaceView === 'analysis' && inspectorOpen && (
-                    <TrajectoryInspector
-                      span={selectedSpan}
-                      event={selectedEvent}
-                      onClose={() => {
-                        setSelectedSpanID('')
-                        setSelectedEventID('')
-                      }}
-                    />
-                  )}
+                <div className="relative min-h-0 flex-1">
+                  <AdaptiveSurface
+                    className="h-full min-h-0 min-w-0"
+                    mainClassName="min-h-0 min-w-0"
+                    mobilePaneScope="surface"
+                    rightResize={{
+                      layoutKey: 'trajectory-record-inspector-layout',
+                      label: t('trajectory.inspector.resize'),
+                      defaultSize: '440px',
+                      minSize: '320px',
+                      maxSize: '58%',
+                      mainMinSize: '360px',
+                    }}
+                    right={{
+                      id: 'trajectory-record-inspector',
+                      title: inspectorTitle,
+                      side: 'right',
+                      desktopVisible: inspectorOpen,
+                      desktopClassName: 'bg-[var(--nova-surface-2)]',
+                      mobileClassName: 'bg-[var(--nova-surface-2)]',
+                      onClose: closeInspector,
+                      content: workspaceView === 'records' ? (
+                        <TrajectoryContentInspector entry={selectedEntry} exchange={selectedTool} showHeader={!isCompact} onClose={closeInspector} />
+                      ) : (
+                        <TrajectoryInspector span={selectedSpan} event={selectedEvent} showHeader={!isCompact} onClose={closeInspector} />
+                      ),
+                    }}
+                  >
+                    {({ openRight }) => {
+                      openInspectorRef.current = openRight
+                      return workspaceView === 'records' ? (
+                        <TrajectoryContentLedger
+                          content={content}
+                          selection={contentSelection}
+                          rangeSpanIDs={rangeSpanIDs}
+                          onSelect={(selection) => {
+                            setContentSelection(selection)
+                            setSelectedSpanID('')
+                            setSelectedEventID('')
+                            openRight()
+                          }}
+                        />
+                      ) : (
+                        <TrajectoryLedger
+                          analysis={analysis}
+                          selectedSpanID={selectedSpanID}
+                          selectedEventID={selectedEventID}
+                          rangeSpanIDs={rangeSpanIDs}
+                          onSpanSelect={(spanID) => {
+                            setSelectedSpanID(spanID)
+                            setContentSelection(null)
+                            setSelectedEventID('')
+                            openRight()
+                          }}
+                          onEventSelect={(eventID) => {
+                            setSelectedEventID(eventID)
+                            setSelectedSpanID('')
+                            setContentSelection(null)
+                            openRight()
+                          }}
+                        />
+                      )
+                    }}
+                  </AdaptiveSurface>
                 </div>
               </>
             ) : (
@@ -318,10 +369,10 @@ function RunList({
             onClick={() => onSelect(run.id)}
             aria-current={selectedRunID === run.id ? 'true' : undefined}
             className={cn(
-              'w-64 shrink-0 rounded-[var(--nova-radius)] border px-2.5 py-2 text-left transition-colors md:w-full',
+              'w-64 shrink-0 rounded-[var(--nova-radius)] border border-transparent px-2.5 py-2 text-left transition-colors focus-visible:bg-[var(--nova-hover)] focus-visible:outline-none md:w-full',
               selectedRunID === run.id
-                ? 'border-[var(--nova-border-strong)] bg-[var(--nova-surface)]'
-                : 'border-transparent hover:border-[var(--nova-border)] hover:bg-[var(--nova-surface)]',
+                ? 'bg-[var(--nova-active)]'
+                : 'hover:bg-[var(--nova-surface)]',
             )}
           >
             <span className="flex min-w-0 items-center gap-2">

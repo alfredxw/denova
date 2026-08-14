@@ -113,10 +113,10 @@ export function TrajectoryLedger({
             onClick={() => setFilter(item.id)}
             aria-pressed={filter === item.id}
             className={cn(
-              'inline-flex h-6 shrink-0 items-center gap-1 rounded-[var(--nova-radius)] border px-2 text-[10px] transition-colors',
+              'inline-flex h-6 shrink-0 items-center gap-1 rounded-[var(--nova-radius)] border border-transparent px-2 text-[10px] transition-colors focus-visible:bg-[var(--nova-hover)] focus-visible:outline-none',
               filter === item.id
-                ? 'border-[var(--nova-border-strong)] bg-[var(--nova-active)] text-[var(--nova-text)]'
-                : 'border-[var(--nova-border-soft)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)]',
+                ? 'bg-[var(--nova-active)] text-[var(--nova-text)]'
+                : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)]',
             )}
           >
             {item.label}<span className="font-mono text-[var(--nova-text-faint)]">{item.count}</span>
@@ -199,10 +199,10 @@ function TrajectoryTreeNode({
         onClick={activate}
         aria-current={selected ? 'true' : undefined}
         className={cn(
-          'group mb-1 grid w-full grid-cols-[20px_22px_minmax(0,1fr)_auto] items-center gap-1 rounded-[var(--nova-radius)] border px-2 py-1.5 text-left transition-colors',
+          'group mb-0.5 grid w-full grid-cols-[20px_22px_minmax(0,1fr)_auto] items-center gap-1 rounded-[var(--nova-radius)] border border-transparent px-2 py-1.5 text-left transition-colors focus-visible:bg-[var(--nova-hover)] focus-visible:outline-none',
           selected
-            ? 'border-[var(--nova-border-strong)] bg-[var(--nova-active)]'
-            : 'border-transparent hover:border-[var(--nova-border-soft)] hover:bg-[var(--nova-hover)]',
+            ? 'bg-[var(--nova-active)]'
+            : 'hover:bg-[var(--nova-hover)]',
         )}
         style={{ paddingLeft: `${8 + depth * 16}px` }}
       >
@@ -250,8 +250,8 @@ function EventRow({ event, selected, onSelect }: { event: TrajectoryEventRecord;
       type="button"
       onClick={onSelect}
       className={cn(
-        'grid w-full grid-cols-[24px_minmax(0,1fr)_auto] items-center gap-2 rounded-[var(--nova-radius)] border px-2 py-1.5 text-left',
-        selected ? 'border-[var(--nova-border-strong)] bg-[var(--nova-active)]' : 'border-transparent hover:border-[var(--nova-border-soft)] hover:bg-[var(--nova-hover)]',
+        'grid w-full grid-cols-[24px_minmax(0,1fr)_auto] items-center gap-2 rounded-[var(--nova-radius)] border border-transparent px-2 py-1.5 text-left focus-visible:bg-[var(--nova-hover)] focus-visible:outline-none',
+        selected ? 'bg-[var(--nova-active)]' : 'hover:bg-[var(--nova-hover)]',
       )}
     >
       <span className={cn('grid size-5 place-items-center rounded-[5px] border', iconTone(event.category, event.status))}><Icon className="size-3" /></span>

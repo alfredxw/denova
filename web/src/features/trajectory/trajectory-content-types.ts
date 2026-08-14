@@ -68,6 +68,10 @@ export interface TrajectoryToolExchange {
   span: TrajectorySpan | null
 }
 
+export type TrajectoryContentSelection =
+  | { type: 'entry'; id: string }
+  | { type: 'tool'; id: string }
+
 export type TrajectoryConversationNode =
   | { type: 'message'; id: string; entry: TrajectoryContentEntry }
   | { type: 'tool-group'; id: string; calls: TrajectoryToolExchange[] }

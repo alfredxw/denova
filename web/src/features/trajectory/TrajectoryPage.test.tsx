@@ -36,7 +36,7 @@ describe('TrajectoryPage', () => {
     expect(getAgentRunTrace).not.toHaveBeenCalled()
   })
 
-  it('renders hierarchical tool exchanges, inline source details, and the secondary call analysis', async () => {
+  it('opens message and tool details in the resizable inspector without bright selection borders', async () => {
     const user = userEvent.setup()
     vi.mocked(getAgentRunTraces).mockResolvedValue([summaryFixture()])
     vi.mocked(getAgentRunTrace).mockResolvedValue(traceFixture())
@@ -48,16 +48,28 @@ describe('TrajectoryPage', () => {
     expect(screen.getByText('1 次调用 · 1 个结果')).toBeInTheDocument()
     const systemRow = screen.getByRole('button', { name: /系统.*初始 System Prompt/ })
     fireEvent.click(systemRow)
-    expect(systemRow).toHaveAttribute('aria-expanded', 'true')
+    expect(systemRow).toHaveAttribute('aria-current', 'true')
+    expect(systemRow.className).not.toContain('ring-')
+    expect(systemRow.className).not.toContain('border-strong')
+    expect(screen.getByRole('complementary', { name: '记录检查器' })).toBeInTheDocument()
+    expect(screen.getByRole('separator', { name: '调整记录检查器宽度' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'System Prompt' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: '工具' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /工具调用.*read_file/ }))
+    expect(screen.getByRole('tab', { name: '摘要' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: '参数' })).toBeInTheDocument()
     await user.click(screen.getByRole('tab', { name: '响应' }))
     expect(await screen.findByText('Chapter contents')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /助手.*请求 #1/ }))
-    fireEvent.click(systemRow)
-    expect(systemRow).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.getByRole('tab', { name: '预览' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '关闭记录检查器' }))
+    expect(screen.queryByRole('complementary', { name: '记录检查器' })).not.toBeInTheDocument()
+
+    const requestRow = screen.getByRole('button', { name: '请求 #1' })
+    fireEvent.click(requestRow)
+    expect(requestRow).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.click(requestRow)
+    expect(requestRow).toHaveAttribute('aria-expanded', 'true')
     fireEvent.click(screen.getByRole('button', { name: '调用与事件' }))
     expect(await screen.findByRole('tree', { name: '调用树' })).toBeInTheDocument()
     expect(screen.getAllByText('writing').length).toBeGreaterThan(0)
@@ -69,7 +81,7 @@ describe('TrajectoryPage', () => {
     await waitFor(() => expect(getAgentRunTrace).toHaveBeenCalledWith('project-test', 'run-page-test'))
   })
 
-  it('keeps compact conversation details inline without opening an overlay', async () => {
+  it('opens compact conversation details in a right-side drawer', async () => {
     responsiveState.compact = true
     vi.mocked(getAgentRunTraces).mockResolvedValue([summaryFixture()])
     vi.mocked(getAgentRunTrace).mockResolvedValue(traceFixture())
@@ -77,10 +89,12 @@ describe('TrajectoryPage', () => {
     renderPage()
 
     expect(await screen.findByRole('region', { name: '模型可见记录' })).toBeInTheDocument()
-    expect(screen.queryByRole('complementary', { name: '记录检查器' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /助手.*请求 #1/ }))
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(screen.getByRole('complementary', { name: '记录检查器' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: '预览' })).toBeInTheDocument()
-    expect(screen.queryByRole('complementary', { name: '记录检查器' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '关闭' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   })
 })
 

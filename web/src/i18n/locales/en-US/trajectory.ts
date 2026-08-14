@@ -116,6 +116,7 @@ const trajectory = {
   'trajectory.inspector.empty': 'Select a trajectory record to inspect timing, usage, and raw data.',
   'trajectory.inspector.copy': 'Copy record JSON',
   'trajectory.inspector.close': 'Close record inspector',
+  'trajectory.inspector.resize': 'Resize record inspector',
   'trajectory.inspector.summary': 'Summary',
   'trajectory.inspector.timing': 'Timing',
   'trajectory.inspector.usage': 'Usage',

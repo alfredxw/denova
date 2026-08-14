@@ -17,18 +17,19 @@ import {
 interface TrajectoryInspectorProps {
   span: TrajectorySpan | null
   event: TrajectoryEventRecord | null
+  showHeader?: boolean
   onClose: () => void
 }
 
 /** Local inspector for timing, usage, bounded attributes, and the persisted raw record. */
-export function TrajectoryInspector({ span, event, onClose }: TrajectoryInspectorProps) {
+export function TrajectoryInspector({ span, event, showHeader = true, onClose }: TrajectoryInspectorProps) {
   const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
   const record = span?.record ?? event?.record ?? null
   useEffect(() => setCopied(false), [record])
   if (!record) {
     return (
-      <aside className="hidden min-h-0 w-[min(34vw,440px)] shrink-0 place-items-center bg-[var(--nova-surface-2)] px-6 text-center text-[11px] text-[var(--nova-text-faint)] lg:grid">
+      <aside className="grid h-full min-h-0 place-items-center bg-[var(--nova-surface-2)] px-6 text-center text-[11px] text-[var(--nova-text-faint)]">
         {t('trajectory.inspector.empty')}
       </aside>
     )
@@ -45,28 +46,28 @@ export function TrajectoryInspector({ span, event, onClose }: TrajectoryInspecto
   }
 
   return (
-    <aside className="absolute inset-0 z-30 flex min-h-0 w-full min-w-0 shrink-0 flex-col bg-[var(--nova-surface-2)] lg:static lg:w-[min(38vw,480px)] lg:min-w-[320px]" aria-label={t('trajectory.inspector.title')}>
-      <div className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--nova-border)] px-3">
+    <aside className="flex h-full min-h-0 min-w-0 flex-col bg-[var(--nova-surface-2)]" aria-label={t('trajectory.inspector.title')}>
+      {showHeader && <div className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--nova-border)] px-3">
         <div className="min-w-0 flex-1">
           <div className="truncate text-[11px] font-medium text-[var(--nova-text)]">{span?.label ?? event?.label}</div>
           <div className="truncate font-mono text-[9px] text-[var(--nova-text-faint)]">{record.type}</div>
         </div>
-        <Button type="button" size="icon-xs" variant="ghost" onClick={() => void copyRecord()} aria-label={t('trajectory.inspector.copy')}>
+        <Button type="button" size="icon-xs" variant="ghost" className="focus-visible:ring-0" onClick={() => void copyRecord()} aria-label={t('trajectory.inspector.copy')}>
           {copied ? <Check className="text-[var(--nova-success)]" /> : <Clipboard />}
         </Button>
-        <Button type="button" size="icon-xs" variant="ghost" onClick={onClose} aria-label={t('trajectory.inspector.close')}>
+        <Button type="button" size="icon-xs" variant="ghost" className="focus-visible:ring-0" onClick={onClose} aria-label={t('trajectory.inspector.close')}>
           <PanelRightClose />
         </Button>
-      </div>
-      <Tabs defaultValue="summary" className="min-h-0 flex-1 gap-0">
+      </div>}
+      <Tabs defaultValue="summary" className="flex min-h-0 flex-1 flex-col gap-0">
         <TabsList variant="line" className="mx-3 h-9 shrink-0">
-          <TabsTrigger value="summary" className="text-[10px]">{t('trajectory.inspector.summary')}</TabsTrigger>
-          <TabsTrigger value="timing" className="text-[10px]">{t('trajectory.inspector.timing')}</TabsTrigger>
-          <TabsTrigger value="usage" className="text-[10px]">{t('trajectory.inspector.usage')}</TabsTrigger>
-          <TabsTrigger value="data" className="text-[10px]">{t('trajectory.inspector.data')}</TabsTrigger>
-          <TabsTrigger value="raw" className="text-[10px]">{t('trajectory.inspector.raw')}</TabsTrigger>
+          <TabsTrigger value="summary" className="text-[10px] focus-visible:ring-0 focus-visible:outline-none">{t('trajectory.inspector.summary')}</TabsTrigger>
+          <TabsTrigger value="timing" className="text-[10px] focus-visible:ring-0 focus-visible:outline-none">{t('trajectory.inspector.timing')}</TabsTrigger>
+          <TabsTrigger value="usage" className="text-[10px] focus-visible:ring-0 focus-visible:outline-none">{t('trajectory.inspector.usage')}</TabsTrigger>
+          <TabsTrigger value="data" className="text-[10px] focus-visible:ring-0 focus-visible:outline-none">{t('trajectory.inspector.data')}</TabsTrigger>
+          <TabsTrigger value="raw" className="text-[10px] focus-visible:ring-0 focus-visible:outline-none">{t('trajectory.inspector.raw')}</TabsTrigger>
         </TabsList>
-        <TabsContent value="summary" className="min-h-0 overflow-auto border-t border-[var(--nova-border)] p-3">
+        <TabsContent value="summary" className="min-h-0 flex-1 overflow-auto border-t border-[var(--nova-border)] p-3">
           <TrajectoryDefinitionList items={span ? [
             [t('trajectory.field.kind'), span.category],
             [t('trajectory.field.status'), span.status],
@@ -80,7 +81,7 @@ export function TrajectoryInspector({ span, event, onClose }: TrajectoryInspecto
             [t('trajectory.field.recordIndex'), `#${(event?.recordIndex ?? 0) + 1}`],
           ]} />
         </TabsContent>
-        <TabsContent value="timing" className="min-h-0 overflow-auto border-t border-[var(--nova-border)] p-3">
+        <TabsContent value="timing" className="min-h-0 flex-1 overflow-auto border-t border-[var(--nova-border)] p-3">
           <TrajectoryDefinitionList items={span ? [
             [t('trajectory.field.started'), formatExactTrajectoryTime(span.startedAt)],
             [t('trajectory.field.ended'), formatExactTrajectoryTime(span.endedAt)],
@@ -105,7 +106,7 @@ export function TrajectoryInspector({ span, event, onClose }: TrajectoryInspecto
             </div>
           )}
         </TabsContent>
-        <TabsContent value="usage" className="min-h-0 overflow-auto border-t border-[var(--nova-border)] p-3">
+        <TabsContent value="usage" className="min-h-0 flex-1 overflow-auto border-t border-[var(--nova-border)] p-3">
           {span ? (
             <TrajectoryDefinitionList items={[
               [t('trajectory.field.promptTokens'), formatTrajectoryNumber(span.inputTokens)],
@@ -117,10 +118,10 @@ export function TrajectoryInspector({ span, event, onClose }: TrajectoryInspecto
             ]} />
           ) : <EmptyInspectorTab />}
         </TabsContent>
-        <TabsContent value="data" className="min-h-0 overflow-auto border-t border-[var(--nova-border)] p-3">
+        <TabsContent value="data" className="min-h-0 flex-1 overflow-auto border-t border-[var(--nova-border)] p-3">
           <TrajectoryJSONBlock value={span?.attrs ?? event?.data ?? {}} />
         </TabsContent>
-        <TabsContent value="raw" className="min-h-0 overflow-auto border-t border-[var(--nova-border)] p-3">
+        <TabsContent value="raw" className="min-h-0 flex-1 overflow-auto border-t border-[var(--nova-border)] p-3">
           <TrajectoryJSONBlock value={record} />
         </TabsContent>
       </Tabs>

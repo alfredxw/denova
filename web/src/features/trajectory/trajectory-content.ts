@@ -18,6 +18,7 @@ export type {
   TrajectoryContentAnalysis,
   TrajectoryContentEntry,
   TrajectoryContentKind,
+  TrajectoryContentSelection,
   TrajectoryConversationNode,
   TrajectoryDirection,
   TrajectoryRequest,

@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import { formatTrajectoryDuration } from './trajectory-analysis'
-import type { TrajectoryContentAnalysis, TrajectoryConversationNode, TrajectoryDirection, TrajectoryRequest } from './trajectory-content'
+import type { TrajectoryContentAnalysis, TrajectoryContentSelection, TrajectoryConversationNode, TrajectoryDirection, TrajectoryRequest } from './trajectory-content'
 import {
   TrajectoryConversationRows,
   TrajectoryDebugRows,
@@ -17,13 +17,13 @@ type ConversationScope = 'all' | TrajectoryDirection
 
 interface TrajectoryContentLedgerProps {
   content: TrajectoryContentAnalysis
-  selectedEntryID: string
+  selection: TrajectoryContentSelection | null
   rangeSpanIDs: ReadonlySet<string> | null
-  onSelect: (entryID: string) => void
+  onSelect: (selection: TrajectoryContentSelection) => void
 }
 
 /** Hierarchical request ledger with paired tool calls and exact debug source. */
-export function TrajectoryContentLedger({ content, selectedEntryID, rangeSpanIDs, onSelect }: TrajectoryContentLedgerProps) {
+export function TrajectoryContentLedger({ content, selection, rangeSpanIDs, onSelect }: TrajectoryContentLedgerProps) {
   const { t } = useTranslation()
   const [mode, setMode] = useState<ConversationMode>('readable')
   const [scope, setScope] = useState<ConversationScope>('all')
@@ -40,11 +40,16 @@ export function TrajectoryContentLedger({ content, selectedEntryID, rangeSpanIDs
   }, [content])
 
   useEffect(() => {
-    if (!selectedEntryID) return
-    const request = content.requests.find((candidate) => candidate.entries.some((entry) => entry.id === selectedEntryID))
+    if (!selection) return
+    const request = content.requests.find((candidate) => selection.type === 'entry'
+      ? candidate.entries.some((entry) => entry.id === selection.id)
+      : [...candidate.inputNodes, ...candidate.outputNodes].some((node) => node.type === 'tool-group' && node.calls.some((call) => call.id === selection.id)))
     if (!request) return
-    setExpanded((current) => new Set([...current, requestKey(request), selectedEntryID]))
-  }, [content.requests, selectedEntryID])
+    const parentToolGroup = selection.type === 'tool'
+      ? [...request.inputNodes, ...request.outputNodes].find((node) => node.type === 'tool-group' && node.calls.some((call) => call.id === selection.id))
+      : null
+    setExpanded((current) => new Set([...current, requestKey(request), ...(parentToolGroup ? [parentToolGroup.id] : [])]))
+  }, [content.requests, selection])
 
   const visibleRequests = useMemo(() => content.requests.filter((request) => requestMatches(request, normalizedQuery, rangeSpanIDs)), [content.requests, normalizedQuery, rangeSpanIDs])
   const toggle = (id: string) => setExpanded((current) => {
@@ -68,22 +73,22 @@ export function TrajectoryContentLedger({ content, selectedEntryID, rangeSpanIDs
 
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col" aria-label={t('trajectory.records.title')}>
-      <div className="flex min-h-10 shrink-0 flex-wrap items-center gap-1.5 border-b border-[var(--nova-border)] px-2 py-1.5">
+      <div className="flex min-h-9 shrink-0 flex-wrap items-center gap-1 border-b border-[var(--nova-border)] px-2 py-1">
         <SegmentedControl values={['readable', 'debug']} active={mode} labelKey="trajectory.conversation.mode" onChange={(value) => setMode(value as ConversationMode)} />
         <div className="flex items-center gap-0.5">
-          <Button type="button" size="xs" variant="ghost" className="h-7 px-2 text-[10px]" onClick={() => setExpanded(allExpandableIDs(content))}><ChevronsUpDown />{t('trajectory.ledger.expandAll')}</Button>
-          <Button type="button" size="xs" variant="ghost" className="h-7 px-2 text-[10px]" onClick={() => setExpanded(new Set())}><ChevronsDownUp />{t('trajectory.ledger.collapseAll')}</Button>
-          <Button type="button" size="xs" variant="ghost" className={cn('h-7 px-2 text-[10px]', wrap && 'bg-[var(--nova-active)]')} aria-pressed={wrap} onClick={() => setWrap((current) => !current)}><WrapText />{t('trajectory.conversation.wrap')}</Button>
+          <Button type="button" size="xs" variant="ghost" className="h-6 px-1.5 text-[9px] focus-visible:ring-0" onClick={() => setExpanded(allExpandableIDs(content))}><ChevronsUpDown />{t('trajectory.ledger.expandAll')}</Button>
+          <Button type="button" size="xs" variant="ghost" className="h-6 px-1.5 text-[9px] focus-visible:ring-0" onClick={() => setExpanded(new Set())}><ChevronsDownUp />{t('trajectory.ledger.collapseAll')}</Button>
+          <Button type="button" size="xs" variant="ghost" className={cn('h-6 px-1.5 text-[9px] focus-visible:ring-0', wrap && 'bg-[var(--nova-active)]')} aria-pressed={wrap} onClick={() => setWrap((current) => !current)}><WrapText />{t('trajectory.conversation.wrap')}</Button>
         </div>
         <SegmentedControl values={['all', 'input', 'output']} active={scope} labelKey="trajectory.conversation.scope" onChange={(value) => setScope(value as ConversationScope)} />
         <label className="relative ml-auto min-w-40 flex-1 sm:max-w-64">
           <Search className="pointer-events-none absolute left-2 top-1/2 size-3 -translate-y-1/2 text-[var(--nova-text-faint)]" />
-          <Input type="search" value={query} onChange={(event) => setQuery(event.currentTarget.value)} placeholder={t('trajectory.records.searchPlaceholder')} aria-label={t('trajectory.records.search')} className="h-7 pl-7 text-[11px]" />
+          <Input type="search" value={query} onChange={(event) => setQuery(event.currentTarget.value)} placeholder={t('trajectory.records.searchPlaceholder')} aria-label={t('trajectory.records.search')} className="h-6 pl-7 text-[10px] focus-visible:ring-0" />
         </label>
       </div>
       {rangeSpanIDs && <div className="shrink-0 border-b border-[var(--nova-border-soft)] bg-[var(--nova-selection-bg)] px-3 py-1 text-[10px] text-[var(--nova-text-muted)]">{t('trajectory.records.rangeFocus', { count: visibleRequests.length })}</div>}
-      <div className="min-h-0 flex-1 overflow-auto bg-[var(--nova-surface-2)] p-2 sm:p-3">
-        <div className="mx-auto max-w-[1120px] space-y-2.5">
+      <div className="min-h-0 flex-1 overflow-auto bg-[var(--nova-surface-2)] p-1.5 sm:p-2">
+        <div className="space-y-1.5">
           {visibleRequests.map((request) => (
             <RequestCard
               key={request.id}
@@ -91,7 +96,7 @@ export function TrajectoryContentLedger({ content, selectedEntryID, rangeSpanIDs
               mode={mode}
               scope={scope}
               expanded={expanded}
-              selectedEntryID={selectedEntryID}
+              selection={selection}
               wrap={wrap}
               query={normalizedQuery}
               rangeSpanIDs={rangeSpanIDs}
@@ -111,7 +116,7 @@ function RequestCard({
   mode,
   scope,
   expanded,
-  selectedEntryID,
+  selection,
   wrap,
   query,
   rangeSpanIDs,
@@ -122,12 +127,12 @@ function RequestCard({
   mode: ConversationMode
   scope: ConversationScope
   expanded: ReadonlySet<string>
-  selectedEntryID: string
+  selection: TrajectoryContentSelection | null
   wrap: boolean
   query: string
   rangeSpanIDs: ReadonlySet<string> | null
   onToggle: (id: string) => void
-  onSelect: (entryID: string) => void
+  onSelect: (selection: TrajectoryContentSelection) => void
 }) {
   const { t } = useTranslation()
   const id = requestKey(request)
@@ -138,10 +143,10 @@ function RequestCard({
   const systemNodes = inputNodes.filter((node) => node.type === 'message' && node.entry.kind === 'system')
   const messageNodes = inputNodes.filter((node) => !(node.type === 'message' && node.entry.kind === 'system'))
   return (
-    <article className="overflow-hidden rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] shadow-sm">
-      <button type="button" aria-label={t('trajectory.records.request', { index: request.index })} aria-expanded={open} onClick={() => onToggle(id)} className="flex w-full cursor-pointer items-center gap-2 px-3 py-2.5 text-left hover:bg-[var(--nova-hover)]">
-        <ChevronRight className={cn('size-3.5 shrink-0 text-[var(--nova-tree-chevron)] transition-transform', open && 'rotate-90')} />
-        <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--nova-text)]">{t('trajectory.records.request', { index: request.index })}</span>
+    <article className="overflow-hidden rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)]">
+      <button type="button" aria-label={t('trajectory.records.request', { index: request.index })} aria-expanded={open} onClick={() => onToggle(id)} className="flex w-full cursor-pointer items-center gap-2 px-2.5 py-1.5 text-left hover:bg-[var(--nova-hover)] focus-visible:bg-[var(--nova-hover)] focus-visible:outline-none">
+        <ChevronRight className={cn('size-3 shrink-0 text-[var(--nova-tree-chevron)] transition-transform', open && 'rotate-90')} />
+        <span className="font-mono text-[9px] font-semibold uppercase tracking-[0.1em] text-[var(--nova-text)]">{t('trajectory.records.request', { index: request.index })}</span>
         <span className="min-w-0 flex-1 truncate font-mono text-[9px] text-[var(--nova-text-faint)]">{request.id}</span>
         {span && <span className="hidden shrink-0 items-center gap-3 font-mono text-[9px] text-[var(--nova-text-faint)] sm:flex">
           <span>{t('trajectory.conversation.tokensIn', { count: span.inputTokens })}</span>
@@ -151,26 +156,26 @@ function RequestCard({
         </span>}
       </button>
       {open && (
-        <div className="space-y-3 border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2.5">
+        <div className="space-y-2 border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-1.5">
           {(scope === 'all' || scope === 'output') && (
             <ConversationSection title={t('trajectory.conversation.output')} count={mode === 'readable' ? outputNodes.length : request.debugOutputEntries.length}>
               {mode === 'readable'
-                ? <TrajectoryConversationRows nodes={outputNodes} expanded={expanded} selectedEntryID={selectedEntryID} wrap={wrap} query={query} onToggle={onToggle} onSelect={onSelect} />
-                : <TrajectoryDebugRows entries={request.debugOutputEntries} expanded={expanded} query={query} onToggle={onToggle} />}
+                ? <TrajectoryConversationRows nodes={outputNodes} expanded={expanded} selection={selection} wrap={wrap} query={query} onToggle={onToggle} onSelect={onSelect} />
+                : <TrajectoryDebugRows entries={request.debugOutputEntries} selection={selection} query={query} onSelect={onSelect} />}
             </ConversationSection>
           )}
           {(scope === 'all' || scope === 'input') && (
             <ConversationSection title={t('trajectory.conversation.input')} count={mode === 'readable' ? inputNodes.length + 1 : request.debugInputEntries.length + 1}>
               {mode === 'readable' ? (
-                <div className="space-y-1.5">
-                  <TrajectoryConversationRows nodes={systemNodes} expanded={expanded} selectedEntryID={selectedEntryID} wrap={wrap} query={query} onToggle={onToggle} onSelect={onSelect} />
+                <div className="space-y-0.5">
+                  <TrajectoryConversationRows nodes={systemNodes} expanded={expanded} selection={selection} wrap={wrap} query={query} onToggle={onToggle} onSelect={onSelect} />
                   <TrajectoryToolDefinitionsRow id={`${id}:definitions`} tools={request.tools} expanded={expanded} query={query} onToggle={onToggle} />
-                  <TrajectoryConversationRows nodes={messageNodes} expanded={expanded} selectedEntryID={selectedEntryID} wrap={wrap} query={query} onToggle={onToggle} onSelect={onSelect} />
+                  <TrajectoryConversationRows nodes={messageNodes} expanded={expanded} selection={selection} wrap={wrap} query={query} onToggle={onToggle} onSelect={onSelect} />
                 </div>
               ) : (
-                <div className="space-y-1.5">
+                <div className="space-y-0.5">
                   <TrajectoryToolDefinitionsRow id={`${id}:debug-definitions`} tools={request.tools} expanded={expanded} query={query} onToggle={onToggle} />
-                  <TrajectoryDebugRows entries={request.debugInputEntries} expanded={expanded} query={query} onToggle={onToggle} />
+                  <TrajectoryDebugRows entries={request.debugInputEntries} selection={selection} query={query} onSelect={onSelect} />
                 </div>
               )}
             </ConversationSection>
@@ -184,7 +189,7 @@ function RequestCard({
 function ConversationSection({ title, count, children }: { title: string; count: number; children: ReactNode }) {
   return (
     <section>
-      <div className="mb-1.5 flex items-center gap-2 px-1 font-mono text-[9px] font-semibold uppercase tracking-[0.12em] text-[var(--nova-text-muted)]"><span>{title}</span><span className="text-[var(--nova-text-faint)]">{count}</span></div>
+      <div className="mb-1 flex items-center gap-2 px-1 font-mono text-[8px] font-semibold uppercase tracking-[0.12em] text-[var(--nova-text-muted)]"><span>{title}</span><span className="text-[var(--nova-text-faint)]">{count}</span></div>
       {children}
     </section>
   )
@@ -194,7 +199,7 @@ function SegmentedControl({ values, active, labelKey, onChange }: { values: stri
   const { t } = useTranslation()
   return (
     <div className="flex shrink-0 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0.5">
-      {values.map((value) => <Button key={value} type="button" size="xs" variant="ghost" className={cn('h-6 px-2 text-[10px]', active === value && 'bg-[var(--nova-active)]')} aria-pressed={active === value} onClick={() => onChange(value)}>{t(`${labelKey}.${value}`)}</Button>)}
+      {values.map((value) => <Button key={value} type="button" size="xs" variant="ghost" className={cn('h-5 px-1.5 text-[9px] focus-visible:ring-0', active === value && 'bg-[var(--nova-active)]')} aria-pressed={active === value} onClick={() => onChange(value)}>{t(`${labelKey}.${value}`)}</Button>)}
     </div>
   )
 }
@@ -220,10 +225,8 @@ function allExpandableIDs(content: TrajectoryContentAnalysis) {
       ids.add(`${requestID}:debug-definitions:${tool.name}`)
     }
     for (const node of [...request.inputNodes, ...request.outputNodes]) {
-      ids.add(node.id)
-      if (node.type === 'tool-group') for (const call of node.calls) ids.add(call.id)
+      if (node.type === 'tool-group') ids.add(node.id)
     }
-    for (const entry of [...request.debugInputEntries, ...request.debugOutputEntries]) ids.add(entry.id)
   }
   return ids
 }

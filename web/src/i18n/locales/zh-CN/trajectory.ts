@@ -116,6 +116,7 @@ const trajectory = {
   'trajectory.inspector.empty': '选择一条轨迹记录查看时间、用量和原始数据。',
   'trajectory.inspector.copy': '复制记录 JSON',
   'trajectory.inspector.close': '关闭记录检查器',
+  'trajectory.inspector.resize': '调整记录检查器宽度',
   'trajectory.inspector.summary': '摘要',
   'trajectory.inspector.timing': '时间',
   'trajectory.inspector.usage': '用量',
