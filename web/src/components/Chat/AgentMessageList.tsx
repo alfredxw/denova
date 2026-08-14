@@ -18,7 +18,7 @@ import {
   type AgentMessageView,
   type AgentPartRef,
 } from '@/lib/agent-message-view'
-import { listItem, novaEase } from '@/features/motion/motion-tokens'
+import { listItem, novaEase, timelineAttachment } from '@/features/motion/motion-tokens'
 import { buildSubAgentProgressMessage } from './subagent-session'
 import { VIRTUOSO_BOTTOM_THRESHOLD, useVirtuosoBottomLock } from './useVirtuosoBottomLock'
 import { ScrollToBottomButton } from './ScrollToBottomButton'
@@ -554,10 +554,10 @@ function AgentChatListRow({ projectId, item, isLast, isStreaming, tailFollowActi
       data-nova-chat-row-key={item.key}
       data-nova-chat-turn-anchor={turnAnchor}
       className={cn('min-w-0 px-6', contentClassName, isLast ? 'pb-0' : 'pb-4')}
-      variants={listItem}
+      variants={item.kind === 'attachment' ? timelineAttachment : listItem}
       initial={isLast && isStreaming ? false : 'initial'}
       animate="animate"
-      transition={{ duration: 0.18, ease: novaEase }}
+      transition={{ duration: item.kind === 'attachment' ? 0.14 : 0.18, ease: novaEase }}
     >
       {item.kind === 'empty' ? (
         <div className="flex min-h-[240px] items-center justify-center">

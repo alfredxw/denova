@@ -316,7 +316,31 @@ describe('AgentPanel', () => {
     expect(screen.getByText('正在读取章节上下文')).toBeInTheDocument()
   })
 
-  it('运行中在时间线预留轻量变更摘要', () => {
+  it('真实消息链路会立即展示 edit 的部分 new_string', () => {
+    renderAgentPanel({
+      isStreaming: true,
+      isExecutionActive: true,
+      messages: [{
+        id: 'assistant-streaming-edit',
+        role: 'assistant',
+        metadata: { run_id: 'run-streaming-edit' },
+        parts: [{
+          type: 'dynamic-tool',
+          toolName: 'edit',
+          toolCallId: 'tool-streaming-edit',
+          state: 'input-streaming',
+          input: {
+            path: 'chapters/ch01.md',
+            edits: [{ old_string: '旧正文', new_string: '新正文正在流式生成' }],
+          },
+        }],
+      }],
+    })
+
+    expect(document.querySelector('[data-nova-scroll-lock="tool-stream-preview"]')).toHaveTextContent('新正文正在流式生成')
+  })
+
+  it('变更审阅卡只在所属 Run 终止后挂载', () => {
     useProjectChangeGroupsMock.mockReturnValue({
       data: [{
         id: 'run-live-review',
@@ -332,19 +356,47 @@ describe('AgentPanel', () => {
       }],
     })
 
-    renderAgentPanel({
+    const activeView = renderAgentPanel({
       isStreaming: true,
       isExecutionActive: true,
+      runtimeProjection: {
+        active: true,
+        phase: 'running',
+        active_operation_id: 'run-live-review',
+      },
       messages: [{
         id: 'assistant-live-review',
         role: 'assistant',
-        metadata: { run_id: 'run-live-review' },
         parts: [{ type: 'text', text: '正在修改', state: 'streaming' }],
       }],
     })
 
+    expect(screen.queryByText('draft.md')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '审阅' })).not.toBeInTheDocument()
+
+    activeView.unmount()
+    renderAgentPanel({
+      isStreaming: false,
+      isExecutionActive: false,
+      runtimeProjection: {
+        active: false,
+        phase: 'idle',
+        last_operation: {
+          operation_id: 'operation-live-review',
+          command_id: 'command-live-review',
+          status: 'aborted',
+        },
+      },
+      messages: [{
+        id: 'assistant-live-review',
+        role: 'assistant',
+        metadata: { run_id: 'run-live-review' },
+        parts: [{ type: 'text', text: '已中止修改' }],
+      }],
+    })
+
     expect(screen.getByText('draft.md')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '审阅' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '审阅' })).toBeEnabled()
   })
 
   it('空闲恢复探测不会展开已完成的执行过程', () => {

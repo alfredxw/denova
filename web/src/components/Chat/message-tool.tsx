@@ -2,6 +2,7 @@ import { useLayoutEffect, useState } from 'react'
 import { AlertTriangle, CheckCircle2, FileText } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { ToolCallChatMessage } from '@/lib/api'
+import { CollapsibleTrigger } from '@/components/ui/collapsible'
 import { decodeToolResultEnvelope, type ToolResultEnvelope } from '@/lib/tool-result-envelope'
 import { useBottomScrollLock } from '@/hooks/useBottomScrollLock'
 import { Tool, ToolContent } from '@/components/ai-elements/tool'
@@ -11,6 +12,7 @@ import { AgentSourceBadge } from './message-source-badge'
 import { ToolStatusIcon } from './message-tool-status'
 import { toolDisplayName } from './tool-display-name'
 import { toolPresentationKind } from '@/lib/tool-presentation'
+import { workspaceFileName } from '@/lib/workspace-path'
 
 export function ToolExecutionBlock({ message, onResolve, onLayoutChange }: { message: ToolCallChatMessage; onResolve?: AskInteractionResolver; onLayoutChange?: (element: HTMLElement) => void }) {
   const { t } = useTranslation()
@@ -30,23 +32,27 @@ export function ToolExecutionBlock({ message, onResolve, onLayoutChange }: { mes
   const isDirectorPlanHidden = isChapterBodyHidden && message.agent_kind === 'interactive_director'
   const chapterBodyHiddenPath = isChapterBodyHidden ? extractToolArgPath(rawArgs) : ''
   const chapterGeneratedChars = isChapterBodyHidden && typeof message.sse_generated_chars === 'number' ? message.sse_generated_chars : undefined
+  const fileTarget = extractToolArgPath(rawArgs)
+  const fileTargetSummary = fileTarget ? workspaceFileName(fileTarget) : ''
   const displayName = isDelegationTool ? t('chat.subagent.taskLabel') : toolDisplayName(name, t)
   const detailArgs = isDelegationTool ? formatTaskDelegationArgs(rawArgs) : (isChapterBodyHidden ? '' : args)
   const hasResult = status === 'success'
   useLayoutEffect(() => {
     if (approvalPending) setExpanded(true)
   }, [approvalPending, approvalInteraction?.id])
-  const isStreamingContent = !approvalInteraction && !isChapterBodyHidden && status === 'running' && isContentTool(name) && rawArgs.length > 50
-  const streamPreview = isStreamingContent ? extractStreamingContent(rawArgs) : ''
-  // Short or disabled content streams use the compact writing activity label.
-  const isContentToolLoading = !isChapterBodyHidden && !isStreamingContent && status === 'running' && isContentTool(name)
+  const isContentToolRunning = !approvalInteraction && !isChapterBodyHidden && status === 'running' && isContentTool(name)
+  const streamPreview = isContentToolRunning ? extractStreamingContent(rawArgs) : ''
+  const isStreamingContent = Boolean(streamPreview)
+  // Before a content value starts, keep the normal card affordances visible;
+  // switch to the live preview as soon as even a short replacement arrives.
+  const isContentToolLoading = isContentToolRunning && !isStreamingContent
   const contentToolChars = isContentToolLoading && typeof message.sse_generated_chars === 'number' ? message.sse_generated_chars : undefined
   const commandDescription = presentationKind === 'search' || presentationKind === 'terminal'
     ? readToolArgDescription(args)
     : ''
   const summary = taskSubAgent
     ? t('chat.subagent.delegating', { name: taskSubAgent })
-    : commandDescription || buildToolArgSummary(args) || (isStreamingContent ? t('chat.tool.writing') : t('chat.tool.preparing'))
+    : commandDescription || fileTargetSummary || buildToolArgSummary(args) || (isStreamingContent ? t('chat.tool.writing') : t('chat.tool.preparing'))
   const resultBody = stripToolResultMetadata(result)
   const resultEnvelope = decodeToolResultEnvelope(resultBody)
   const resultSeverity = status === 'error' ? 'error' : resultEnvelope?.severity || 'success'
@@ -54,20 +60,26 @@ export function ToolExecutionBlock({ message, onResolve, onLayoutChange }: { mes
   const resultPreview = resultEnvelope
     ? buildToolResultEnvelopeSummary(t, resultEnvelope)
     : buildPreview(resultBody, 80)
+  const fileResultSummary = fileTargetSummary
+    ? (resultPreview && (showReadableOutcome || resultEnvelope?.status === 'partial')
+        ? `${fileTargetSummary} · ${resultPreview}`
+        : fileTargetSummary)
+    : ''
   const detailResult = resultEnvelope ? formatMaybeJSON(resultBody) : result
   const displaySummary = isChapterBodyHidden
     ? chapterGeneratedChars !== undefined
       ? t(isDirectorPlanHidden ? (hasResult ? 'chat.tool.fileWrittenWithCount' : 'chat.tool.fileWritingWithCount') : (hasResult ? 'chat.tool.chapterWrittenWithCount' : 'chat.tool.chapterWritingWithCount'), { count: chapterGeneratedChars })
       : (isDirectorPlanHidden ? (hasResult ? t('chat.tool.fileWritten') : t('chat.tool.fileWriting')) : (hasResult ? t('chat.tool.chapterWritten') : t('chat.tool.chapterWriting')))
     : (hasResult
-      ? (commandDescription || resultPreview || t('chat.tool.done'))
+      ? (commandDescription || fileResultSummary || resultPreview || t('chat.tool.done'))
       : status === 'error'
         ? buildPreview(resultBody, 160) || t('chat.tool.failed')
       : isContentToolLoading
-        ? (contentToolChars !== undefined ? t('chat.tool.fileWritingWithCount', { count: contentToolChars }) : t('chat.tool.fileWriting'))
+        ? (fileTargetSummary || (contentToolChars !== undefined ? t('chat.tool.fileWritingWithCount', { count: contentToolChars }) : t('chat.tool.fileWriting')))
         : summary)
   const headerSummary = approvalPending ? t('agentApproval.approval.waiting') : displaySummary
   const hasDetail = Boolean(approvalInteraction || detailArgs || result || isChapterBodyHidden)
+  const canToggleDetail = hasDetail && !isStreamingContent
   const streamPreviewScrollLock = useBottomScrollLock<HTMLDivElement>({
     enabled: isStreamingContent,
     resetKey: `${message.id || name}:tool-stream-preview`,
@@ -76,13 +88,15 @@ export function ToolExecutionBlock({ message, onResolve, onLayoutChange }: { mes
 
   return (
     <div className="flex justify-start">
-      <Tool open={expanded} onOpenChange={setExpanded} className="mb-0 w-full overflow-hidden rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface)] text-xs shadow-[var(--nova-shadow)]">
-        <div
+      <Tool open={expanded} onOpenChange={setExpanded} className="mb-0 w-full overflow-hidden rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface)] text-[11px] shadow-[var(--nova-shadow)]">
+        <CollapsibleTrigger
+          type="button"
+          disabled={!canToggleDetail}
           data-nova-tool-header
-          className={`grid min-h-10 min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2 px-3 py-2 ${showReadableOutcome ? 'gap-y-1' : ''}`}
+          className={`grid min-h-9 w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-x-1.5 px-2.5 py-1.5 text-left leading-4 transition-colors enabled:cursor-pointer enabled:hover:bg-[var(--nova-hover)] disabled:cursor-default ${showReadableOutcome ? 'gap-y-0.5' : ''}`}
         >
           <ToolStatusIcon status={resultSeverity === 'error' ? 'error' : status} warning={resultSeverity === 'warning'} />
-          <div className="flex min-w-0 items-center gap-2 overflow-hidden">
+          <div className="flex min-w-0 items-center gap-1.5 overflow-hidden">
             <span
               className="min-w-0 max-w-[42%] shrink-0 truncate font-medium text-[var(--nova-text)]"
               title={displayName === name ? undefined : name}
@@ -108,21 +122,12 @@ export function ToolExecutionBlock({ message, onResolve, onLayoutChange }: { mes
               </span>
             )}
           </div>
-          {hasDetail && !isStreamingContent && (
-            <button
-              type="button"
-              className="col-start-3 row-start-1 shrink-0 rounded border border-transparent px-1.5 py-0.5 text-[var(--nova-text-muted)] transition hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
-              onClick={() => setExpanded(!expanded)}
-            >
-              {expanded ? t('chat.tool.collapse') : t('chat.tool.details')}
-            </button>
-          )}
           {showReadableOutcome && (
-            <span className={`col-start-2 col-end-4 whitespace-normal pt-1 leading-4 ${resultSeverity === 'warning' ? 'text-[var(--nova-warning)]' : 'text-[var(--nova-danger)]'}`}>
+            <span className={`col-start-2 col-end-3 whitespace-normal pt-0.5 leading-4 ${resultSeverity === 'warning' ? 'text-[var(--nova-warning)]' : 'text-[var(--nova-danger)]'}`}>
               {displaySummary}
             </span>
           )}
-        </div>
+        </CollapsibleTrigger>
         {/* Show the live content preview while arguments stream in. */}
         {isStreamingContent && streamPreview && (
           <div
@@ -341,8 +346,10 @@ function buildToolArgSummary(args: string) {
   if (!args) return ''
   try {
     const data = JSON.parse(args) as Record<string, unknown>
-    const path = data.file_path || data.path || data.cwd || data.command
-    if (typeof path === 'string' && path) return path
+    const filePath = data.file_path || data.path
+    if (typeof filePath === 'string' && filePath) return workspaceFileName(filePath)
+    const target = data.cwd || data.command
+    if (typeof target === 'string' && target) return target
   } catch {
     // Non-JSON arguments use the generic preview.
   }

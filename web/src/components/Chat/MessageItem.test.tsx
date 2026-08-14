@@ -325,8 +325,8 @@ describe('MessageItem', () => {
     )
 
     expect(screen.queryByText('调用工具')).not.toBeInTheDocument()
-    expect(screen.getByText('写入文件')).toHaveAttribute('title', 'write')
-    expect(screen.getByText('写入完成')).toBeInTheDocument()
+    expect(screen.getByText('写入')).toHaveAttribute('title', 'write')
+    expect(screen.getByText('ch01.md')).toBeInTheDocument()
   })
 
   it('工具调用卡片支持英文名称并原样保留自定义工具名', () => {
@@ -344,7 +344,7 @@ describe('MessageItem', () => {
       )
 
       expect(screen.queryByText('Calling Tool')).not.toBeInTheDocument()
-      expect(screen.getByText('Write file')).toHaveAttribute('title', 'write')
+      expect(screen.getByText('Write')).toHaveAttribute('title', 'write')
 
       rerender(
         <MessageItem
@@ -377,6 +377,7 @@ describe('MessageItem', () => {
       />,
     )
 
+    expect(screen.getByText('命令')).toHaveAttribute('title', 'bash')
     expect(screen.getByText('运行工具包测试')).toBeInTheDocument()
 
     rerender(
@@ -412,7 +413,7 @@ describe('MessageItem', () => {
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: '详情' }))
+    await user.click(container.querySelector('[data-nova-tool-header]') as HTMLElement)
 
     const detail = container.querySelector('[data-slot="collapsible-content"]')
     expect(detail).toHaveClass('min-w-0', 'max-w-full', 'overflow-x-hidden', 'overflow-y-auto')
@@ -484,7 +485,7 @@ describe('MessageItem', () => {
       />,
     )
 
-    expect(screen.getByText('已返回当前批次 · 后续内容可从 offset=80 读取')).toHaveClass('text-[var(--nova-text-faint)]')
+    expect(screen.getByText('long.md · 已返回当前批次 · 后续内容可从 offset=80 读取')).toHaveClass('text-[var(--nova-text-faint)]')
     expect(screen.queryByText(/使用 offset 继续读取/)).not.toBeInTheDocument()
   })
 
@@ -534,7 +535,7 @@ describe('MessageItem', () => {
       final_url: 'https://example.com/article',
     })
     const result = `${resultBody}\n\n[Denova tool result metadata]\nschema: tool_result.v1\nsource: web`
-    render(
+    const { container } = render(
       <MessageItem
         message={{
           role: 'tool_call',
@@ -547,8 +548,8 @@ describe('MessageItem', () => {
       />,
     )
 
-    expect(screen.getByText('访问被阻止 · 改用其他公开来源')).toHaveClass('col-start-2', 'col-end-4', 'whitespace-normal')
-    await user.click(screen.getByRole('button', { name: '详情' }))
+    expect(screen.getByText('访问被阻止 · 改用其他公开来源')).toHaveClass('col-start-2', 'col-end-3', 'whitespace-normal')
+    await user.click(container.querySelector('[data-nova-tool-header]') as HTMLElement)
     expect(screen.getByText(/"status": "blocked"/)).toBeInTheDocument()
     expect(screen.getAllByText(/改用其他公开来源/)).toHaveLength(2)
   })
@@ -623,11 +624,96 @@ describe('MessageItem', () => {
     expect(preview).not.toHaveTextContent('trap')
   })
 
+  it('edit 在 new_string 开始前保留卡片详情，开始后立即切换为流式预览', () => {
+    const baseMessage = {
+      id: 'tool-incremental-edit',
+      role: 'tool_call' as const,
+      content: 'edit',
+      name: 'edit',
+      status: 'running' as const,
+    }
+    const { container, rerender } = render(
+      <MessageItem
+        message={{
+          ...baseMessage,
+          args: `{"path":"chapters/ch01.md","edits":[{"old_string":"${'旧正文。'.repeat(30)}`,
+        }}
+      />,
+    )
+
+    const initialHeader = container.querySelector('[data-nova-tool-header]')
+    expect(initialHeader).toHaveAttribute('aria-expanded', 'false')
+    expect(initialHeader).toHaveTextContent('编辑')
+    expect(screen.queryByText('详情')).not.toBeInTheDocument()
+    expect(container.querySelector('[data-nova-scroll-lock="tool-stream-preview"]')).not.toBeInTheDocument()
+
+    rerender(
+      <MessageItem
+        message={{
+          ...baseMessage,
+          args: '{"path":"chapters/ch01.md","edits":[{"old_string":"旧正文","new_string":"新正文正在生成',
+        }}
+      />,
+    )
+
+    expect(container.querySelector('[data-nova-scroll-lock="tool-stream-preview"]')).toHaveTextContent('新正文正在生成')
+  })
+
+  it('文件工具摘要只显示文件名，完整路径保留在展开详情中', async () => {
+    const user = userEvent.setup()
+    const path = '/Users/me/nova/chapters/ch01.md'
+    const message = {
+      id: 'tool-write-path-summary',
+      role: 'tool_call' as const,
+      content: 'write',
+      name: 'write',
+      args: JSON.stringify({ path, content: '新正文' }),
+    }
+    const { container, rerender } = render(
+      <MessageItem message={{ ...message, status: 'running' }} />,
+    )
+
+    const liveHeader = container.querySelector('[data-nova-tool-header]')
+    expect(liveHeader).toHaveTextContent('ch01.md')
+    expect(liveHeader).not.toHaveTextContent(path)
+
+    rerender(<MessageItem message={{ ...message, status: 'success', result: 'updated workspace file' }} />)
+    const completedHeader = container.querySelector('[data-nova-tool-header]')
+    expect(completedHeader).toHaveTextContent('ch01.md')
+    expect(completedHeader).not.toHaveTextContent(path)
+
+    await user.click(completedHeader as HTMLElement)
+    expect(completedHeader).toHaveAttribute('aria-expanded', 'true')
+    expect(Array.from(container.querySelectorAll('pre')).some((element) => element.textContent?.includes(path))).toBe(true)
+  })
+
+  it('read 完成后在卡片外层展示文件名', () => {
+    const path = '/Users/me/nova/chapters/ch02.md'
+    const { container } = render(
+      <MessageItem
+        message={{
+          id: 'tool-read-path-summary',
+          role: 'tool_call',
+          content: 'read',
+          name: 'read',
+          args: JSON.stringify({ path }),
+          status: 'success',
+          result: 'chapter content',
+        }}
+      />,
+    )
+
+    const header = container.querySelector('[data-nova-tool-header]')
+    expect(header).toHaveTextContent('读取')
+    expect(header).toHaveTextContent('ch02.md')
+    expect(header).not.toHaveTextContent(path)
+  })
+
   it('隐藏章节正文的工具卡片展示写入状态和说明详情', async () => {
     const user = userEvent.setup()
     const path = '/Users/me/nova/.nova/测试/chapters/ch01.md'
 
-    render(
+    const { container } = render(
       <MessageItem
         message={{
           role: 'tool_call',
@@ -646,7 +732,7 @@ describe('MessageItem', () => {
     expect(screen.getByText('正在写入章节 · 已生成 123 字')).toBeInTheDocument()
     expect(screen.queryByText('准备执行工具请求')).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: '详情' }))
+    await user.click(container.querySelector('[data-nova-tool-header]') as HTMLElement)
     expect(screen.getByText('路径：')).toBeInTheDocument()
     expect(screen.getByText(path)).toBeInTheDocument()
     expect(screen.getByText('已生成：123 字')).toBeInTheDocument()
@@ -1062,7 +1148,7 @@ describe('MessageItem', () => {
 
   it('task 工具卡片展示委派目标和结果', async () => {
     const user = userEvent.setup()
-    render(
+    const { container } = render(
       <MessageItem
         message={{
           role: 'tool_call',
@@ -1079,12 +1165,12 @@ describe('MessageItem', () => {
     expect(screen.getByText('委派任务')).toBeInTheDocument()
     expect(screen.queryByText('task')).not.toBeInTheDocument()
     expect(screen.getByText('委派给 researcher')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: '详情' }))
+    await user.click(container.querySelector('[data-nova-tool-header]') as HTMLElement)
     expect(screen.getByText('委派结果')).toBeInTheDocument()
     expect(screen.getAllByText('找到三条线索').length).toBeGreaterThan(0)
   })
 
-  it('超长工具来源会收缩并始终为详情操作保留独立列', () => {
+  it('超长工具来源会在整行折叠触发器内正常收缩', () => {
     const longToolName = 'workspace-tool-with-a-name-that-is-longer-than-the-available-ide-card-width'
     const longAgentName = 'general-purpose-subagent-with-an-unusually-long-display-name'
     const { container } = render(
@@ -1103,10 +1189,12 @@ describe('MessageItem', () => {
     )
 
     const header = container.querySelector('[data-nova-tool-header]')
-    expect(header).toHaveClass('grid', 'grid-cols-[auto_minmax(0,1fr)_auto]')
+    expect(header).toHaveClass('grid', 'min-h-9', 'grid-cols-[auto_minmax(0,1fr)]', 'px-2.5', 'text-left')
+    expect(header?.parentElement).toHaveClass('text-[11px]')
+    expect(header).toHaveAttribute('aria-expanded', 'false')
     expect(screen.getByText(longToolName)).toHaveClass('min-w-0', 'truncate')
     expect(screen.getByText(longAgentName)).toHaveClass('truncate')
-    expect(screen.getByRole('button', { name: '详情' })).toHaveClass('col-start-3', 'shrink-0')
+    expect(screen.queryByText('详情')).not.toBeInTheDocument()
   })
 
   it('SubAgent assistant 输出默认显示紧凑小窗并可行内展开收起', async () => {

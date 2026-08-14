@@ -285,12 +285,14 @@ function AgentPanelComponent({
   const conversationGoal = useConversationGoal(effectiveConversationBinding, isExecutionActive)
   const activeRunID = useMemo(() => {
     if (!isExecutionActive) return ''
+    const runtimeRunID = runtimeProjection?.active_operation_id?.trim()
+    if (runtimeRunID) return runtimeRunID
     const views = buildAgentMessageViews(messages)
     for (let index = views.length - 1; index >= 0; index -= 1) {
       if (!views[index].metadata.subagent && views[index].metadata.run_id) return views[index].metadata.run_id || ''
     }
     return ''
-  }, [isExecutionActive, messages])
+  }, [isExecutionActive, messages, runtimeProjection?.active_operation_id])
   const lastRuntimeFailure = !runtimeProjection?.active && runtimeProjection?.last_operation?.status === 'failed'
     ? runtimeProjection.last_operation.reason?.trim() || ''
     : ''
@@ -415,7 +417,10 @@ function AgentPanelComponent({
   const timelineAttachments = useMemo(
     () =>
       (changeGroupsQuery.data ?? [])
-        .filter((summary) => Boolean(summary.run_id))
+        // A change group is mutable until its owning Run reaches a terminal
+        // state. Mounting it earlier makes an incomplete review look ready and
+        // shifts the live timeline while the Agent is still producing output.
+        .filter((summary) => Boolean(summary.run_id) && summary.run_id !== activeRunID)
         .map((summary, index) => ({
           id: summary.id,
           runId: summary.run_id || '',
@@ -424,7 +429,6 @@ function AgentPanelComponent({
               projectId={projectId}
               summary={summary}
               disabled={isExecutionActive}
-              deferDetails={summary.run_id === activeRunID}
               eagerPreload={!isExecutionActive && index === 0}
               onReview={(reviewThreadID, groupID) => onOpenChangeReview?.(reviewThreadID, groupID)}
               onWorkspaceChanged={onWorkspaceChanged}

@@ -15,8 +15,6 @@ interface AgentChangeSummaryCardProps {
   projectId: string
   summary: WorkspaceChangeGroupSummary
   disabled?: boolean
-  /** Keeps the live card lightweight until its Agent run stops appending changes. */
-  deferDetails?: boolean
   eagerPreload?: boolean
   onReview: (reviewThreadID: string, groupID: string) => void
   onWorkspaceChanged?: (paths: string[]) => void | Promise<void>
@@ -29,7 +27,7 @@ interface FileChangeSummary {
 }
 
 /** Durable summary for one Agent run. */
-export function AgentChangeSummaryCard({ projectId, summary, disabled = false, deferDetails = false, eagerPreload = false, onReview, onWorkspaceChanged }: AgentChangeSummaryCardProps) {
+export function AgentChangeSummaryCard({ projectId, summary, disabled = false, eagerPreload = false, onReview, onWorkspaceChanged }: AgentChangeSummaryCardProps) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [expanded, setExpanded] = useState(false)
@@ -37,7 +35,7 @@ export function AgentChangeSummaryCard({ projectId, summary, disabled = false, d
   const groupQuery = useQuery({
     queryKey: projectChangeKeys.detail(projectId, summary.id),
     queryFn: () => getProjectChangeGroup(projectId, summary.id),
-    enabled: Boolean(projectId && summary.id && !deferDetails),
+    enabled: Boolean(projectId && summary.id),
     staleTime: 10_000,
   })
   const files = useMemo(() => summarizeGroupFiles(groupQuery.data), [groupQuery.data])
@@ -50,7 +48,7 @@ export function AgentChangeSummaryCard({ projectId, summary, disabled = false, d
   const displayedPaths = expanded ? visiblePaths : visiblePaths.slice(0, 3)
   const reviewThreadID = summary.review_thread_id || groupQuery.data?.review_thread_id || summary.id
   const preloadReview = useCallback(async () => {
-    if (disabled || deferDetails || !projectId || !reviewThreadID) return
+    if (disabled || !projectId || !reviewThreadID) return
     try {
       await Promise.all([
         prefetchProjectChangeReviewThread(queryClient, projectId, reviewThreadID),
@@ -63,7 +61,7 @@ export function AgentChangeSummaryCard({ projectId, summary, disabled = false, d
         error,
       })
     }
-  }, [deferDetails, disabled, projectId, queryClient, reviewThreadID])
+  }, [disabled, projectId, queryClient, reviewThreadID])
 
   useEffect(() => {
     if (eagerPreload) preloadReview()
@@ -110,7 +108,7 @@ export function AgentChangeSummaryCard({ projectId, summary, disabled = false, d
     >
       <header className="flex min-h-16 items-center gap-3 px-3 py-3">
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[var(--nova-bg)] text-[var(--nova-text-muted)]">
-          {groupQuery.isLoading && !deferDetails
+          {groupQuery.isLoading
             ? <Loader2 className="h-4 w-4 animate-spin" />
             : groupQuery.isError
               ? <AlertTriangle className="h-4 w-4 text-[var(--nova-warning)]" />
