@@ -2,12 +2,18 @@ package agent
 
 import (
 	"context"
+	"errors"
+	"reflect"
 	"strings"
 	"testing"
+	"unsafe"
 
+	"github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
+
+	"denova/internal/interactive"
 )
 
 func TestInteractiveCompletionGuardRetriesFinalAnswerBeforeTurnSubmission(t *testing.T) {
@@ -130,23 +136,126 @@ func TestInteractiveTurnProtocolAppliesStoryCompletionBudgetOnlyToNarrativeCandi
 	}
 }
 
+// TestInteractiveTurnProtocolRetryCapsOpenAICompletionAndDropsReasoning
+// guards against WR-04: the retry path must wire B fix's impl-specific
+// OpenAI options (max_completion_tokens + low reasoning effort) so a
+// Minimax-M3 retry stops re-running a full reasoning pass.
+func TestInteractiveTurnProtocolRetryCapsOpenAICompletionAndDropsReasoning(t *testing.T) {
+	middleware := newInteractiveTurnProtocolMiddleware(func() bool { return false }, 1234)
+	base := &interactiveProtocolOptionModel{}
+	wrapped, err := middleware.WrapModel(context.Background(), base, &adk.ModelContext{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := &interactiveTurnProtocolRunState{}
+	ctx := context.WithValue(context.Background(), interactiveTurnProtocolStateKey{}, state)
+
+	// Narrative phase (candidate not yet ready): the retry caps must NOT be
+	// applied; the test passes plain options (no caps) so captureOpenAIOptions
+	// records empty impl-specific values.
+	if _, err := wrapped.Generate(ctx, nil); err != nil {
+		t.Fatal(err)
+	}
+	if base.maxCompletionTok != nil {
+		t.Fatalf("narrative phase must not introduce a completion-token cap: got %v", *base.maxCompletionTok)
+	}
+	if base.reasoningEffort != "" {
+		t.Fatalf("narrative phase must not introduce a reasoning effort: got %q", base.reasoningEffort)
+	}
+
+	// Retry phase (candidate ready): even when the caller pre-sets a higher
+	// reasoning effort, the protocol must cap completion tokens at the retry
+	// budget and force reasoning_effort down to "low" (B fix, Minimax-M3).
+	state.retainNarrativeCandidate("正文候选")
+	if _, err := wrapped.Generate(ctx, nil, openai.WithReasoningEffort(openai.ReasoningEffortLevelHigh)); err != nil {
+		t.Fatal(err)
+	}
+	if base.maxCompletionTok == nil || *base.maxCompletionTok != interactiveRetryCompletionBudget {
+		t.Fatalf("retry must cap completion tokens at %d, got %#v", interactiveRetryCompletionBudget, base.maxCompletionTok)
+	}
+	if base.reasoningEffort != string(openai.ReasoningEffortLevelLow) {
+		t.Fatalf("retry must drop reasoning effort to low, got %q", base.reasoningEffort)
+	}
+}
+
 type interactiveProtocolOptionModel struct {
-	toolChoice *schema.ToolChoice
-	maxTokens  *int
+	toolChoice       *schema.ToolChoice
+	maxTokens        *int
+	maxCompletionTok *int
+	reasoningEffort  string
 }
 
 func (m *interactiveProtocolOptionModel) Generate(_ context.Context, _ []*schema.Message, opts ...model.Option) (*schema.Message, error) {
-	common := model.GetCommonOptions(&model.Options{}, opts...)
-	m.toolChoice = common.ToolChoice
-	m.maxTokens = common.MaxTokens
+	m.captureOptions(opts)
 	return schema.AssistantMessage("正文", nil), nil
 }
 
 func (m *interactiveProtocolOptionModel) Stream(_ context.Context, _ []*schema.Message, opts ...model.Option) (*schema.StreamReader[*schema.Message], error) {
+	m.captureOptions(opts)
+	return schema.StreamReaderFromArray([]*schema.Message{schema.AssistantMessage("正文", nil)}), nil
+}
+
+func (m *interactiveProtocolOptionModel) captureOptions(opts []model.Option) {
 	common := model.GetCommonOptions(&model.Options{}, opts...)
 	m.toolChoice = common.ToolChoice
 	m.maxTokens = common.MaxTokens
-	return schema.StreamReaderFromArray([]*schema.Message{schema.AssistantMessage("正文", nil)}), nil
+	maxTok, effort := captureOpenAIOptions(opts)
+	m.maxCompletionTok = maxTok
+	m.reasoningEffort = effort
+}
+
+// openaiCapture mirrors the unexported openaiOptions struct from
+// eino-ext/libs/acl/openai so we can read its implSpecificOptFn writes from
+// the same memory layout. Field order MUST track the upstream type; if a new
+// field is added upstream, append it here to keep the layout in sync.
+type openaiCapture struct {
+	extraFields                  map[string]any
+	reasoningEffort              openai.ReasoningEffortLevel
+	extraHeader                  map[string]string
+	requestBodyModifier          func([]byte) ([]byte, error)
+	requestPayloadModifier       func(ctx context.Context, msg []*schema.Message, rawBody []byte) ([]byte, error)
+	responseMessageModifier      func(ctx context.Context, msg *schema.Message, rawBody []byte) (*schema.Message, error)
+	responseChunkMessageModifier func(ctx context.Context, msg *schema.Message, rawBody []byte, end bool) (*schema.Message, error)
+	maxCompletionTokens          *int
+}
+
+// captureOpenAIOptions replays each option's implSpecificOptFn against a
+// stand-in openaiOptions layout and returns the resulting budget-relevant
+// fields. Reflect+unsafe is unavoidable: the openai package keeps Options
+// unexported, so callers cannot construct a typed base for
+// model.GetImplSpecificOptions.
+func captureOpenAIOptions(opts []model.Option) (*int, string) {
+	var cap openaiCapture
+	for _, opt := range opts {
+		v := reflect.ValueOf(&opt).Elem()
+		f := v.FieldByName("implSpecificOptFn")
+		if !f.IsValid() || f.IsNil() {
+			continue
+		}
+		f = reflect.NewAt(f.Type(), unsafe.Pointer(f.UnsafeAddr())).Elem()
+		fn, ok := f.Interface().(func(unsafe.Pointer))
+		if !ok {
+			// Fallback: the implSpecificOptFn is a func(*openaiOptions); we
+			// know its single argument must be a pointer type, so build a
+			// stub that simply records the writes by reflection.
+			raw, _ := f.Interface().(any)
+			if raw == nil {
+				continue
+			}
+			// Allocate a stand-in of openaiOptions. We'll re-use *openaiCapture.
+			capturePtr := unsafe.Pointer(&cap)
+			reflectFn := reflect.ValueOf(raw)
+			// reflectFn.Call needs a Value matching the parameter type of fn.
+			argType := reflectFn.Type().In(0)
+			// argType is *openaiOptions (unexported). Use unsafe cast: alloc
+			// raw bytes via reflect.NewAt with argType and copy from cap.
+			ptr := reflect.NewAt(argType.Elem(), capturePtr)
+			reflectFn.Call([]reflect.Value{ptr})
+		} else {
+			fn(unsafe.Pointer(&cap))
+		}
+	}
+	return cap.maxCompletionTokens, string(cap.reasoningEffort)
 }
 
 type interactiveRetryErrorForTest struct {
@@ -159,4 +268,56 @@ func (e interactiveRetryErrorForTest) Error() string {
 
 func (e interactiveRetryErrorForTest) RejectReason() any {
 	return e.reason
+}
+
+func TestInteractiveRetryFeedbackFromReceiptTargetsExactErrors(t *testing.T) {
+	receipt := interactive.TurnSubmissionReceipt{
+		Ready:        false,
+		RetryModules: []string{"choices"},
+		Diagnostics: []interactive.TurnSubmissionDiagnostic{{
+			Module:    interactive.TurnSubmissionModuleStateChanges,
+			Code:      "state_value_invalid",
+			Path:      "/state_changes/2",
+			Expected:  "number",
+			Actual:    "string",
+			Retryable: true,
+			MessageZH: "字段类型不匹配",
+			MessageEN: "type mismatch",
+		}},
+	}
+	feedback := interactiveRetryFeedbackFromReceipt(receipt)
+	for _, want := range []string{"choices", "state_changes", "/state_changes/2", "number", "string", "字段类型不匹配"} {
+		if !strings.Contains(feedback, want) {
+			t.Fatalf("targeted retry feedback missing %q: %s", want, feedback)
+		}
+	}
+}
+
+func TestInteractiveRetryFeedbackFromReceiptEmptyYieldsNothing(t *testing.T) {
+	if feedback := interactiveRetryFeedbackFromReceipt(interactive.TurnSubmissionReceipt{}); feedback != "" {
+		t.Fatalf("receipt without diagnostics should yield no targeted feedback: %s", feedback)
+	}
+}
+
+func TestInteractiveCompletionGuardFailsFastAfterRetryBudget(t *testing.T) {
+	guard := newInteractiveCompletionGuard(func() bool { return false })
+	state := &interactiveTurnProtocolRunState{}
+	ctx := context.WithValue(context.Background(), interactiveTurnProtocolStateKey{}, state)
+	input := []*schema.Message{schema.UserMessage("继续剧情")}
+	output := schema.AssistantMessage("又一版正文候选。", nil)
+
+	for attempt := 1; attempt <= interactiveCompletionGuardMaxRetries; attempt++ {
+		decision := guard(ctx, &adk.RetryContext{RetryAttempt: attempt, InputMessages: input, OutputMessage: output})
+		if decision == nil || !decision.Retry {
+			t.Fatalf("attempt %d within the guard budget should retry: %#v", attempt, decision)
+		}
+	}
+
+	decision := guard(ctx, &adk.RetryContext{RetryAttempt: interactiveCompletionGuardMaxRetries + 1, InputMessages: input, OutputMessage: output})
+	if decision == nil || decision.Retry {
+		t.Fatalf("exceeding the guard budget must stop retrying: %#v", decision)
+	}
+	if !errors.Is(decision.RewriteError, ErrInteractiveCompletionRetriesExceeded) {
+		t.Fatalf("exceeding the guard budget must surface the typed error: %#v", decision.RewriteError)
+	}
 }
