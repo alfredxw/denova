@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Check, ChevronRight, Clipboard, PanelRightClose } from 'lucide-react'
+import { Check, ChevronRight, Clipboard, PanelRightClose, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { ThemedMarkdownRenderer } from '@/components/common/MarkdownRenderer'
 import { Button } from '@/components/ui/button'
@@ -20,6 +20,7 @@ interface TrajectoryContentInspectorProps {
   entry: TrajectoryContentEntry | null
   exchange: TrajectoryToolExchange | null
   showHeader?: boolean
+  variant?: 'panel' | 'inline'
   onClose: () => void
 }
 
@@ -29,8 +30,8 @@ interface TrajectoryContentDetailsProps {
 
 const SUMMARY_PREVIEW_CHARACTERS = 4_000
 
-/** Adaptive detail content shared by the desktop resize pane and compact drawer. */
-export function TrajectoryContentInspector({ entry, exchange, showHeader = true, onClose }: TrajectoryContentInspectorProps) {
+/** Detail content shared by the desktop pane, compact drawer, and in-ledger expansion. */
+export function TrajectoryContentInspector({ entry, exchange, showHeader = true, variant = 'panel', onClose }: TrajectoryContentInspectorProps) {
   const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
   const targetID = exchange?.id ?? entry?.id ?? ''
@@ -62,8 +63,15 @@ export function TrajectoryContentInspector({ entry, exchange, showHeader = true,
     }
   }
 
+  const Container = variant === 'inline' ? 'section' : 'aside'
   return (
-    <aside className="flex h-full min-h-0 min-w-0 flex-col bg-[var(--nova-surface-2)]" aria-label={t('trajectory.inspector.title')}>
+    <Container
+      className={cn(
+        'flex h-full min-h-0 min-w-0 flex-col bg-[var(--nova-surface-2)]',
+        variant === 'inline' && 'h-[clamp(260px,48vh,440px)] border-t border-[var(--nova-border)]',
+      )}
+      aria-label={t('trajectory.inspector.title')}
+    >
       {showHeader && (
         <div className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--nova-border)] px-3">
           <span className="shrink-0 rounded-sm bg-[var(--nova-active)] px-1.5 py-0.5 font-mono text-[8px] font-semibold uppercase tracking-[0.08em] text-[var(--nova-text-muted)]">{kind}</span>
@@ -75,14 +83,14 @@ export function TrajectoryContentInspector({ entry, exchange, showHeader = true,
             {copied ? <Check className="text-[var(--nova-success)]" /> : <Clipboard />}
           </Button>
           <Button type="button" size="icon-xs" variant="ghost" className="focus-visible:ring-0" onClick={onClose} aria-label={t('trajectory.inspector.close')}>
-            <PanelRightClose />
+            {variant === 'inline' ? <X /> : <PanelRightClose />}
           </Button>
         </div>
       )}
       <div className="min-h-0 flex-1">
         {exchange ? <TrajectoryToolDetails key={exchange.id} exchange={exchange} /> : <TrajectoryContentDetails key={entry?.id} entry={entry!} />}
       </div>
-    </aside>
+    </Container>
   )
 }
 

@@ -19,11 +19,12 @@ interface TrajectoryContentLedgerProps {
   content: TrajectoryContentAnalysis
   selection: TrajectoryContentSelection | null
   rangeSpanIDs: ReadonlySet<string> | null
+  inlineInspector?: ReactNode
   onSelect: (selection: TrajectoryContentSelection) => void
 }
 
 /** Hierarchical request ledger with paired tool calls and exact debug source. */
-export function TrajectoryContentLedger({ content, selection, rangeSpanIDs, onSelect }: TrajectoryContentLedgerProps) {
+export function TrajectoryContentLedger({ content, selection, rangeSpanIDs, inlineInspector, onSelect }: TrajectoryContentLedgerProps) {
   const { t } = useTranslation()
   const [mode, setMode] = useState<ConversationMode>('readable')
   const [scope, setScope] = useState<ConversationScope>('all')
@@ -42,7 +43,7 @@ export function TrajectoryContentLedger({ content, selection, rangeSpanIDs, onSe
   useEffect(() => {
     if (!selection) return
     const request = content.requests.find((candidate) => selection.type === 'entry'
-      ? candidate.entries.some((entry) => entry.id === selection.id)
+      ? [...candidate.entries, ...candidate.debugInputEntries, ...candidate.debugOutputEntries].some((entry) => entry.id === selection.id)
       : [...candidate.inputNodes, ...candidate.outputNodes].some((node) => node.type === 'tool-group' && node.calls.some((call) => call.id === selection.id)))
     if (!request) return
     const parentToolGroup = selection.type === 'tool'
@@ -73,7 +74,7 @@ export function TrajectoryContentLedger({ content, selection, rangeSpanIDs, onSe
 
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col" aria-label={t('trajectory.records.title')}>
-      <div className="flex min-h-9 shrink-0 flex-wrap items-center gap-1 border-b border-[var(--nova-border)] px-2 py-1">
+      <div className="flex min-h-8 shrink-0 flex-wrap items-center gap-1 border-b border-[var(--nova-border)] px-2 py-0.5">
         <SegmentedControl values={['readable', 'debug']} active={mode} labelKey="trajectory.conversation.mode" onChange={(value) => setMode(value as ConversationMode)} />
         <div className="flex items-center gap-0.5">
           <Button type="button" size="xs" variant="ghost" className="h-6 px-1.5 text-[9px] focus-visible:ring-0" onClick={() => setExpanded(allExpandableIDs(content))}><ChevronsUpDown />{t('trajectory.ledger.expandAll')}</Button>
@@ -87,8 +88,8 @@ export function TrajectoryContentLedger({ content, selection, rangeSpanIDs, onSe
         </label>
       </div>
       {rangeSpanIDs && <div className="shrink-0 border-b border-[var(--nova-border-soft)] bg-[var(--nova-selection-bg)] px-3 py-1 text-[10px] text-[var(--nova-text-muted)]">{t('trajectory.records.rangeFocus', { count: visibleRequests.length })}</div>}
-      <div className="min-h-0 flex-1 overflow-auto bg-[var(--nova-surface-2)] p-1.5 sm:p-2">
-        <div className="space-y-1.5">
+      <div className="min-h-0 flex-1 overflow-auto bg-[var(--nova-surface-2)] p-1 sm:p-1.5">
+        <div className="space-y-1">
           {visibleRequests.map((request) => (
             <RequestCard
               key={request.id}
@@ -100,6 +101,7 @@ export function TrajectoryContentLedger({ content, selection, rangeSpanIDs, onSe
               wrap={wrap}
               query={normalizedQuery}
               rangeSpanIDs={rangeSpanIDs}
+              inlineInspector={inlineInspector}
               onToggle={toggle}
               onSelect={onSelect}
             />
@@ -120,6 +122,7 @@ function RequestCard({
   wrap,
   query,
   rangeSpanIDs,
+  inlineInspector,
   onToggle,
   onSelect,
 }: {
@@ -131,6 +134,7 @@ function RequestCard({
   wrap: boolean
   query: string
   rangeSpanIDs: ReadonlySet<string> | null
+  inlineInspector?: ReactNode
   onToggle: (id: string) => void
   onSelect: (selection: TrajectoryContentSelection) => void
 }) {
@@ -144,7 +148,7 @@ function RequestCard({
   const messageNodes = inputNodes.filter((node) => !(node.type === 'message' && node.entry.kind === 'system'))
   return (
     <article className="overflow-hidden rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)]">
-      <button type="button" aria-label={t('trajectory.records.request', { index: request.index })} aria-expanded={open} onClick={() => onToggle(id)} className="flex w-full cursor-pointer items-center gap-2 px-2.5 py-1.5 text-left hover:bg-[var(--nova-hover)] focus-visible:bg-[var(--nova-hover)] focus-visible:outline-none">
+      <button type="button" aria-label={t('trajectory.records.request', { index: request.index })} aria-expanded={open} onClick={() => onToggle(id)} className="flex min-h-7 w-full cursor-pointer items-center gap-2 px-2 py-1 text-left hover:bg-[var(--nova-hover)] focus-visible:bg-[var(--nova-hover)] focus-visible:outline-none">
         <ChevronRight className={cn('size-3 shrink-0 text-[var(--nova-tree-chevron)] transition-transform', open && 'rotate-90')} />
         <span className="font-mono text-[9px] font-semibold uppercase tracking-[0.1em] text-[var(--nova-text)]">{t('trajectory.records.request', { index: request.index })}</span>
         <span className="min-w-0 flex-1 truncate font-mono text-[9px] text-[var(--nova-text-faint)]">{request.id}</span>
@@ -156,26 +160,26 @@ function RequestCard({
         </span>}
       </button>
       {open && (
-        <div className="space-y-2 border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-1.5">
+        <div className="space-y-1 border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-1">
           {(scope === 'all' || scope === 'output') && (
             <ConversationSection title={t('trajectory.conversation.output')} count={mode === 'readable' ? outputNodes.length : request.debugOutputEntries.length}>
               {mode === 'readable'
-                ? <TrajectoryConversationRows nodes={outputNodes} expanded={expanded} selection={selection} wrap={wrap} query={query} onToggle={onToggle} onSelect={onSelect} />
-                : <TrajectoryDebugRows entries={request.debugOutputEntries} selection={selection} query={query} onSelect={onSelect} />}
+                ? <TrajectoryConversationRows nodes={outputNodes} expanded={expanded} selection={selection} inlineInspector={inlineInspector} wrap={wrap} query={query} onToggle={onToggle} onSelect={onSelect} />
+                : <TrajectoryDebugRows entries={request.debugOutputEntries} selection={selection} inlineInspector={inlineInspector} query={query} onSelect={onSelect} />}
             </ConversationSection>
           )}
           {(scope === 'all' || scope === 'input') && (
             <ConversationSection title={t('trajectory.conversation.input')} count={mode === 'readable' ? inputNodes.length + 1 : request.debugInputEntries.length + 1}>
               {mode === 'readable' ? (
                 <div className="space-y-0.5">
-                  <TrajectoryConversationRows nodes={systemNodes} expanded={expanded} selection={selection} wrap={wrap} query={query} onToggle={onToggle} onSelect={onSelect} />
+                  <TrajectoryConversationRows nodes={systemNodes} expanded={expanded} selection={selection} inlineInspector={inlineInspector} wrap={wrap} query={query} onToggle={onToggle} onSelect={onSelect} />
                   <TrajectoryToolDefinitionsRow id={`${id}:definitions`} tools={request.tools} expanded={expanded} query={query} onToggle={onToggle} />
-                  <TrajectoryConversationRows nodes={messageNodes} expanded={expanded} selection={selection} wrap={wrap} query={query} onToggle={onToggle} onSelect={onSelect} />
+                  <TrajectoryConversationRows nodes={messageNodes} expanded={expanded} selection={selection} inlineInspector={inlineInspector} wrap={wrap} query={query} onToggle={onToggle} onSelect={onSelect} />
                 </div>
               ) : (
                 <div className="space-y-0.5">
                   <TrajectoryToolDefinitionsRow id={`${id}:debug-definitions`} tools={request.tools} expanded={expanded} query={query} onToggle={onToggle} />
-                  <TrajectoryDebugRows entries={request.debugInputEntries} selection={selection} query={query} onSelect={onSelect} />
+                  <TrajectoryDebugRows entries={request.debugInputEntries} selection={selection} inlineInspector={inlineInspector} query={query} onSelect={onSelect} />
                 </div>
               )}
             </ConversationSection>
@@ -189,7 +193,7 @@ function RequestCard({
 function ConversationSection({ title, count, children }: { title: string; count: number; children: ReactNode }) {
   return (
     <section>
-      <div className="mb-1 flex items-center gap-2 px-1 font-mono text-[8px] font-semibold uppercase tracking-[0.12em] text-[var(--nova-text-muted)]"><span>{title}</span><span className="text-[var(--nova-text-faint)]">{count}</span></div>
+      <div className="flex h-5 items-center gap-2 px-1 font-mono text-[8px] font-semibold uppercase tracking-[0.12em] text-[var(--nova-text-muted)]"><span>{title}</span><span className="text-[var(--nova-text-faint)]">{count}</span></div>
       {children}
     </section>
   )
