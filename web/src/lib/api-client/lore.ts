@@ -30,6 +30,15 @@ export async function generateLoreItemImage(projectId: string, id: string, input
   })
 }
 
+export async function uploadLoreItemImage(projectId: string, id: string, file: File): Promise<LoreItem> {
+	const form = new FormData()
+	form.append('file', file, file.name)
+	return requestJSON(lorePath(projectId, `items/${encodeURIComponent(id)}/image/upload`), {
+		method: 'POST',
+		body: form,
+	})
+}
+
 export async function clearLoreItemImage(projectId: string, id: string): Promise<LoreItem> {
   return requestJSON(lorePath(projectId, `items/${encodeURIComponent(id)}/image`), { method: 'DELETE' })
 }

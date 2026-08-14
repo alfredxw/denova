@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { useState, type ComponentProps } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { toast, type Action } from 'sonner'
-import { APIError, deleteProjectLoreItem, generateLoreItemImage, getProjectLoreItems, readOptionalProjectFile, readProjectFile, saveProjectFile, streamLoreImagesGenerate, updateProjectLoreItem, type LoreItem } from '@/lib/api'
+import { APIError, deleteProjectLoreItem, generateLoreItemImage, getProjectLoreItems, readOptionalProjectFile, readProjectFile, saveProjectFile, streamLoreImagesGenerate, updateProjectLoreItem, uploadLoreItemImage, type LoreItem } from '@/lib/api'
 import { preserveAutosaveConflict } from '@/lib/api-client/autosave-conflicts'
 import { createActorState, createImagePreset, createInteractiveTeller, createStoryDirector, deleteActorState, deleteEventPackage, deleteImagePreset, deleteInteractiveTeller, deleteStoryDirector, getActorStates, getEventPackages, getImagePresets, getInteractiveTellers, getRuleSystems, getStoryDirectors, getStyleReferences, updateActorState, updateEventPackage, updateImagePreset, updateInteractiveTeller, updateRuleSystem, updateStoryDirector } from '../api'
 import { serializeBookOpeningPresets } from '../opening'
@@ -168,6 +168,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
     saveProjectFile: vi.fn(),
     streamLoreImagesGenerate: vi.fn(),
     updateProjectLoreItem: vi.fn(),
+    uploadLoreItemImage: vi.fn(),
   }
 })
 
@@ -217,6 +218,7 @@ describe('SettingPanel', () => {
     vi.mocked(deleteProjectLoreItem).mockReset()
     vi.mocked(generateLoreItemImage).mockReset()
     vi.mocked(streamLoreImagesGenerate).mockReset()
+    vi.mocked(uploadLoreItemImage).mockReset()
     vi.mocked(readProjectFile).mockReset()
     vi.mocked(readProjectFile).mockResolvedValue(projectFileDocument('', '', ''))
     vi.mocked(readOptionalProjectFile).mockReset()
@@ -1292,6 +1294,34 @@ describe('SettingPanel', () => {
 
     const previewDialog = screen.getByRole('dialog', { name: '林川' })
     expect(within(previewDialog).getByTestId('image-preview-viewport')).toBeInTheDocument()
+  })
+
+  it('uploads a current image for one lore item from the generation dialog', async () => {
+    const user = userEvent.setup()
+    const item = loreItem('lin-chuan', '林川')
+    const withImage = {
+      ...item,
+      updated_at: '2026-01-01T00:00:01Z',
+      image: loreImage('assets/lore/images/lin-chuan/upload/image.png'),
+    }
+    vi.mocked(getProjectLoreItems).mockResolvedValue([item])
+    vi.mocked(updateProjectLoreItem).mockResolvedValue(item)
+    vi.mocked(uploadLoreItemImage).mockResolvedValue(withImage)
+
+    render(<SettingPanel mode="lore" imagePresets={[imagePreset('game-cg', '游戏 CG')]} />)
+
+    await user.click(await screen.findByRole('button', { name: /林川/ }))
+    await user.click(screen.getByRole('button', { name: '打开图片生成' }))
+    const dialog = await screen.findByRole('dialog', { name: '生成图片' })
+    const file = new File(['image'], 'portrait.png', { type: 'image/png' })
+    await user.upload(within(dialog).getByLabelText('图片文件'), file)
+
+    await waitFor(() => {
+      expect(uploadLoreItemImage).toHaveBeenCalledWith(TEST_PROJECT_ID, 'lin-chuan', file)
+    })
+    expect(toast.success).toHaveBeenCalledWith('资料图片已上传')
+    await user.click(within(dialog).getByRole('button', { name: '关闭' }))
+    expect(await screen.findByRole('img', { name: '林川' })).toHaveAttribute('src', '/api/projects/project-workspace/files/asset?path=assets%2Flore%2Fimages%2Flin-chuan%2Fupload%2Fimage.png')
   })
 
   it('keeps the lore body editable in the unified scroller and feeds the directory query to the editor', async () => {

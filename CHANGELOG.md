@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- 资料库的单项图片生成弹窗新增本地图片上传，支持服务端按真实内容校验的 PNG / JPEG（最大 16 MB）；上传图片与生成图片复用同一预览、清除、历史文件和资料引用链路，写作页、游戏页与工作台资料库 Tab 均可使用。无需新增配置。
+- The single-item Lore image dialog now accepts local PNG / JPEG uploads up to 16 MB, validated by actual image content on the server. Uploaded and generated images share the same preview, clear, historical-file, and lore-reference flow across Writing, Game, and Workspace Lore tabs. No new setting is required.
 - Agent Chat 的中间进展正文不再显示时间与复制入口，运行中进展和历史“执行过程”内的进展使用相同的精简展示；最终正文与普通对话消息仍保留原有元信息操作。Writing、Game、AgentChat 与管理型 Agent 共用该行为，无需新增配置。
 - Intermediate progress prose in Agent Chat no longer shows timestamps or the copy action. Live progress and historical progress inside “Execution” now use the same streamlined presentation, while final responses and ordinary conversation messages retain their existing metadata actions. Writing, Game, AgentChat, and management Agents share the behavior with no new setting.
 - 修复资料库首次读取已有书籍预设开场白时，把结构化空文档误当成未初始化空字符串并触发伪并发冲突、随后以空列表覆盖已保存内容的问题。开场白初始化与自动保存现在共享同一规范化基线，写作和游戏模式重复打开均不会产生冲突记录；无需新增配置。

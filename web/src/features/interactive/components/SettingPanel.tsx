@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BookMarked, Bot, Database, Image as ImageIcon, Images, Search, SlidersHorizontal, Sparkles, Tags, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { abortLoreImagesGenerate, APIError, clearLoreItemImage, createProjectLoreItem, deleteProjectLoreItem, generateLoreItemImage, getProjectLoreItems, projectFileAssetURL, readOptionalProjectFile, readProjectFile, streamLoreImagesGenerate, type LoreImageProgressEvent, type LoreItem, type SSEEvent } from '@/lib/api'
+import { abortLoreImagesGenerate, APIError, clearLoreItemImage, createProjectLoreItem, deleteProjectLoreItem, generateLoreItemImage, getProjectLoreItems, projectFileAssetURL, readOptionalProjectFile, readProjectFile, streamLoreImagesGenerate, uploadLoreItemImage, type LoreImageProgressEvent, type LoreItem, type SSEEvent } from '@/lib/api'
 import { withErrorLogID } from '@/lib/api-client'
 import { rebaseJSONValue, rebaseText } from '@/lib/three-way-rebase'
 import { rebaseJSONWithRecovery, rebaseTextWithRecovery } from '@/lib/autosave/rebase-with-recovery'
@@ -52,6 +52,7 @@ const UTF8_ENCODER = new TextEncoder()
 export type SettingPanelMode = 'lore' | 'creator' | 'teller'
 
 const LORE_TYPE_FILTER_OPTIONS: LoreType[] = ['character', 'world', 'location', 'faction', 'rule', 'item', 'other']
+type LoreImageBusyAction = 'generate' | 'upload' | 'clear'
 
 interface SettingPanelProps {
   mode?: SettingPanelMode
@@ -151,7 +152,7 @@ function LoreSettingPanel({
   const [imagePresets, setImagePresets] = useState<ImagePreset[]>(externalImagePresets)
   const [activeImagePresetId, setActiveImagePresetId] = useState('')
   const [loreImageInstruction, setLoreImageInstruction] = useState('')
-  const [loreImageGeneratingId, setLoreImageGeneratingId] = useState('')
+  const [loreImageBusy, setLoreImageBusy] = useState<{ itemId: string; action: LoreImageBusyAction } | null>(null)
   const [loreImageBatchOpen, setLoreImageBatchOpen] = useState(false)
   const [loreClassificationOpen, setLoreClassificationOpen] = useState(false)
   const [loreImageBatchSelectedIds, setLoreImageBatchSelectedIds] = useState<string[]>([])
@@ -782,8 +783,8 @@ function LoreSettingPanel({
   const selectedLoreImagePresetId = () => activeImagePresetId || imagePresets.find((preset) => !preset.invalid)?.id || 'game-cg'
 
   const handleGenerateLoreImage = async () => {
-    if (!draft || loreImageGeneratingId) return
-    setLoreImageGeneratingId(draft.id)
+    if (!draft || loreImageBusy) return
+    setLoreImageBusy({ itemId: draft.id, action: 'generate' })
     try {
       const saved = await flushLoreAutosave()
       const target = saved || loreDraftRef.current || draft
@@ -797,13 +798,30 @@ function LoreSettingPanel({
     } catch (err) {
       toast.error((err as Error).message || t('settingPanel.loreImage.failed'))
     } finally {
-      setLoreImageGeneratingId('')
+      setLoreImageBusy(null)
+    }
+  }
+
+  const handleUploadLoreImage = async (file: File) => {
+    if (!draft || loreImageBusy) return
+    setLoreImageBusy({ itemId: draft.id, action: 'upload' })
+    try {
+      const saved = await flushLoreAutosave()
+      const target = saved || loreDraftRef.current || draft
+      const item = await uploadLoreItemImage(projectId, target.id, file)
+      mergeSavedLoreItem(item)
+      notifyLoreUpdated({ projectId, ids: [item.id] })
+      toast.success(t('settingPanel.loreImage.uploaded'))
+    } catch (err) {
+      toast.error((err as Error).message || t('settingPanel.loreImage.uploadFailed'))
+    } finally {
+      setLoreImageBusy(null)
     }
   }
 
   const handleClearLoreImage = async () => {
-    if (!draft || loreImageGeneratingId) return
-    setLoreImageGeneratingId(draft.id)
+    if (!draft || loreImageBusy) return
+    setLoreImageBusy({ itemId: draft.id, action: 'clear' })
     try {
       const saved = await flushLoreAutosave()
       const target = saved || loreDraftRef.current || draft
@@ -814,7 +832,7 @@ function LoreSettingPanel({
     } catch (err) {
       toast.error((err as Error).message || t('settingPanel.loreImage.failed'))
     } finally {
-      setLoreImageGeneratingId('')
+      setLoreImageBusy(null)
     }
   }
 
@@ -1102,13 +1120,14 @@ function LoreSettingPanel({
                       imagePresets={imagePresets}
                       imagePresetId={selectedLoreImagePresetId()}
                       imageInstruction={loreImageInstruction}
-                      imageGenerating={loreImageGeneratingId === draft?.id}
+                      imageBusyAction={loreImageBusy && loreImageBusy.itemId === draft?.id ? loreImageBusy.action : ''}
                       searchQuery={query}
                       setDraft={setDraft}
                       setTagDraft={setTagDraft}
                       onImagePresetChange={setActiveImagePresetId}
                       setImageInstruction={setLoreImageInstruction}
                       onGenerateImage={() => void handleGenerateLoreImage()}
+                      onUploadImage={(file) => void handleUploadLoreImage(file)}
                       onClearImage={() => void handleClearLoreImage()}
                       onSave={flushActiveAutosave}
                       documentReview={documentReview}

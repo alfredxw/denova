@@ -108,6 +108,40 @@ func (service *Service) GenerateItemImage(ctx context.Context, projectID, id str
 	return updated, nil
 }
 
+func (service *Service) UploadItemImage(ctx context.Context, projectID, id, filename string, data []byte) (booklore.Item, error) {
+	if service == nil || service.images == nil {
+		return booklore.Item{}, ErrNoWorkspace
+	}
+	runtime, err := service.images.AcquireProjectRuntime(ctx, projectID)
+	if err != nil {
+		return booklore.Item{}, err
+	}
+	defer runtime.Release()
+
+	store := booklore.NewStore(runtime.Workspace)
+	item, err := store.ReadAny(id)
+	if err != nil {
+		return booklore.Item{}, err
+	}
+	uploaded, err := imageasset.NewService().UploadLore(runtime.Context(), runtime.BookService, imageasset.LoreUploadRequest{
+		Item:     item,
+		Filename: filename,
+		Data:     data,
+	})
+	if err != nil {
+		return booklore.Item{}, err
+	}
+	if err := runtime.Context().Err(); err != nil {
+		return booklore.Item{}, err
+	}
+	updated, err := store.SetImage(item.ID, &uploaded)
+	if err != nil {
+		return booklore.Item{}, err
+	}
+	slog.InfoContext(ctx, fmt.Sprintf("[lore-image] uploaded item_id=%s filename=%q path=%s", updated.ID, filename, uploaded.ImagePath))
+	return updated, nil
+}
+
 func (service *Service) StartImagesGenerateTask(ctx context.Context, projectID string, request ImagesGenerateRequest) (*task.Task, error) {
 	projectID = strings.TrimSpace(projectID)
 	if projectID == "" {

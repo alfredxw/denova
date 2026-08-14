@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { FileCode2, Loader2, Sparkles, Trash2, Type } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { FileCode2, Loader2, Sparkles, Trash2, Type, Upload } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -29,13 +29,14 @@ export function LoreEditor({
   imagePresets,
   imagePresetId,
   imageInstruction,
-  imageGenerating,
+  imageBusyAction,
   searchQuery,
   setDraft,
   setTagDraft,
   onImagePresetChange,
   setImageInstruction,
   onGenerateImage,
+  onUploadImage,
   onClearImage,
   onSave,
   documentReview,
@@ -49,13 +50,14 @@ export function LoreEditor({
   imagePresets: ImagePreset[]
   imagePresetId: string
   imageInstruction: string
-  imageGenerating: boolean
+  imageBusyAction: 'generate' | 'upload' | 'clear' | ''
   searchQuery?: string
   setDraft: (draft: LoreItem | null) => void
   setTagDraft: (value: string) => void
   onImagePresetChange: (id: string) => void
   setImageInstruction: (value: string) => void
   onGenerateImage: () => void
+  onUploadImage: (file: File) => void
   onClearImage: () => void
   onSave: () => void
   documentReview?: DocumentReviewController
@@ -82,8 +84,8 @@ export function LoreEditor({
     hasImage && 'lg:grid-cols-[15rem_minmax(0,1fr)] 2xl:grid-cols-[18rem_minmax(0,1fr)]',
   )
   const imageAction = (
-    <Button className={iconActionClassName} variant="outline" size="icon-sm" disabled={imageGenerating} onClick={() => setImageDialogOpen(true)} aria-label={openGenerateLabel}>
-      {imageGenerating ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <Sparkles data-icon="inline-start" />}
+    <Button className={iconActionClassName} variant="outline" size="icon-sm" disabled={Boolean(imageBusyAction)} onClick={() => setImageDialogOpen(true)} aria-label={openGenerateLabel}>
+      {imageBusyAction ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <Sparkles data-icon="inline-start" />}
     </Button>
   )
 
@@ -264,11 +266,12 @@ export function LoreEditor({
         imagePresets={validImagePresets}
         imagePresetId={selectedImagePresetId}
         imageInstruction={imageInstruction}
-        imageGenerating={imageGenerating}
+        imageBusyAction={imageBusyAction}
         onOpenChange={setImageDialogOpen}
         onImagePresetChange={onImagePresetChange}
         setImageInstruction={setImageInstruction}
         onGenerateImage={onGenerateImage}
+        onUploadImage={onUploadImage}
         onClearImage={onClearImage}
       />
     </>
@@ -304,11 +307,12 @@ function LoreImageGenerateDialog({
   imagePresets,
   imagePresetId,
   imageInstruction,
-  imageGenerating,
+  imageBusyAction,
   onOpenChange,
   onImagePresetChange,
   setImageInstruction,
   onGenerateImage,
+  onUploadImage,
   onClearImage,
 }: {
   open: boolean
@@ -317,14 +321,17 @@ function LoreImageGenerateDialog({
   imagePresets: ImagePreset[]
   imagePresetId: string
   imageInstruction: string
-  imageGenerating: boolean
+  imageBusyAction: 'generate' | 'upload' | 'clear' | ''
   onOpenChange: (open: boolean) => void
   onImagePresetChange: (id: string) => void
   setImageInstruction: (value: string) => void
   onGenerateImage: () => void
+  onUploadImage: (file: File) => void
   onClearImage: () => void
 }) {
   const { t } = useTranslation()
+  const uploadInputRef = useRef<HTMLInputElement>(null)
+  const imageBusy = Boolean(imageBusyAction)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -336,7 +343,7 @@ function LoreImageGenerateDialog({
 
         <div className="grid gap-3">
           <Field label={t('settingPanel.loreImage.preset')}>
-            <Select value={imagePresetId} onValueChange={onImagePresetChange} disabled={imageGenerating}>
+            <Select value={imagePresetId} onValueChange={onImagePresetChange} disabled={imageBusy}>
               <SelectTrigger size="sm" className={selectClassName}>
                 <SelectValue />
               </SelectTrigger>
@@ -357,21 +364,38 @@ function LoreImageGenerateDialog({
               value={imageInstruction}
               onChange={(event) => setImageInstruction(event.target.value)}
               placeholder={t('settingPanel.loreImage.instructionPlaceholder')}
-              disabled={imageGenerating}
+              disabled={imageBusy}
             />
           </Field>
         </div>
+
+        <input
+          ref={uploadInputRef}
+          type="file"
+          accept="image/png,image/jpeg"
+          className="hidden"
+          aria-label={t('settingPanel.loreImage.uploadFile')}
+          onChange={(event) => {
+            const file = event.currentTarget.files?.[0]
+            event.currentTarget.value = ''
+            if (file) onUploadImage(file)
+          }}
+        />
 
         <DialogFooter className="border-[var(--nova-border)] bg-[var(--nova-surface-2)]">
           <Button className={actionButtonClassName} variant="outline" size="sm" onClick={() => onOpenChange(false)}>
             {t('common.close')}
           </Button>
-          <Button className={actionButtonClassName} variant="outline" size="sm" disabled={!imagePath || imageGenerating} onClick={onClearImage}>
-            <Trash2 data-icon="inline-start" />
+          <Button className={actionButtonClassName} variant="outline" size="sm" disabled={imageBusy} onClick={() => uploadInputRef.current?.click()}>
+            {imageBusyAction === 'upload' ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <Upload data-icon="inline-start" />}
+            {imageBusyAction === 'upload' ? t('settingPanel.loreImage.uploading') : t('settingPanel.loreImage.upload')}
+          </Button>
+          <Button className={actionButtonClassName} variant="outline" size="sm" disabled={!imagePath || imageBusy} onClick={onClearImage}>
+            {imageBusyAction === 'clear' ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <Trash2 data-icon="inline-start" />}
             {t('settingPanel.loreImage.clear')}
           </Button>
-          <Button className={actionButtonClassName} variant="outline" size="sm" disabled={imageGenerating} onClick={onGenerateImage}>
-            {imageGenerating ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <Sparkles data-icon="inline-start" />}
+          <Button className={actionButtonClassName} variant="outline" size="sm" disabled={imageBusy} onClick={onGenerateImage}>
+            {imageBusyAction === 'generate' ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <Sparkles data-icon="inline-start" />}
             {imagePath ? t('settingPanel.loreImage.regenerate') : t('settingPanel.loreImage.generate')}
           </Button>
         </DialogFooter>

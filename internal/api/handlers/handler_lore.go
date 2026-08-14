@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"errors"
+	"io"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
@@ -10,6 +11,7 @@ import (
 	"denova/internal/api/sse"
 	loreapp "denova/internal/app/lore"
 	"denova/internal/book/lore"
+	imageasset "denova/internal/image/asset"
 )
 
 func (h *Handlers) HandleLoreClassificationPreview(ctx context.Context, c *app.RequestContext) {
@@ -64,6 +66,51 @@ func (h *Handlers) HandleLoreItemImageGenerate(ctx context.Context, c *app.Reque
 	}
 	item, err := h.app.Lore().GenerateItemImage(ctx, scope.ProjectID, c.Param("id"), body)
 	if err != nil {
+		writeProjectBookError(c, err, "api.projectBook.loreFailed")
+		return
+	}
+	writeJSON(c, consts.StatusOK, item)
+}
+
+func (h *Handlers) HandleLoreItemImageUpload(ctx context.Context, c *app.RequestContext) {
+	scope, ok := requireProjectScope(c)
+	if !ok {
+		return
+	}
+	fileHeader, err := c.FormFile("file")
+	if err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.lore.imageUploadRequired")
+		return
+	}
+	if fileHeader.Size > imageasset.MaxLoreImageUploadBytes {
+		writeErrorKey(c, consts.StatusBadRequest, "api.lore.imageTooLarge")
+		return
+	}
+	file, err := fileHeader.Open()
+	if err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.lore.imageReadFailed", "detail", err.Error())
+		return
+	}
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, imageasset.MaxLoreImageUploadBytes+1))
+	if err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.lore.imageReadFailed", "detail", err.Error())
+		return
+	}
+	if len(data) > imageasset.MaxLoreImageUploadBytes {
+		writeErrorKey(c, consts.StatusBadRequest, "api.lore.imageTooLarge")
+		return
+	}
+	item, err := h.app.Lore().UploadItemImage(ctx, scope.ProjectID, c.Param("id"), fileHeader.Filename, data)
+	if err != nil {
+		switch {
+		case errors.Is(err, imageasset.ErrLoreImageUploadEmpty), errors.Is(err, imageasset.ErrLoreImageUploadInvalid):
+			writeErrorKey(c, consts.StatusBadRequest, "api.lore.imageInvalid")
+			return
+		case errors.Is(err, imageasset.ErrLoreImageUploadTooLarge):
+			writeErrorKey(c, consts.StatusBadRequest, "api.lore.imageTooLarge")
+			return
+		}
 		writeProjectBookError(c, err, "api.projectBook.loreFailed")
 		return
 	}

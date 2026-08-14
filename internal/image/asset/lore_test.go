@@ -66,6 +66,62 @@ func TestGenerateSavesLoreImageAndMetadata(t *testing.T) {
 	}
 }
 
+func TestUploadLoreSavesValidatedImageAndMetadata(t *testing.T) {
+	workspace := t.TempDir()
+	service := NewServiceWithGenerator(nil)
+	service.now = func() time.Time { return time.Date(2026, 7, 2, 13, 30, 0, 0, time.UTC) }
+	service.suffix = func() string { return "upload01" }
+	data := loreTestPNGBytes()
+
+	result, err := service.UploadLore(context.Background(), book.NewService(workspace), LoreUploadRequest{
+		Item:     lore.Item{ID: "hero", Type: "character", Name: "林川"},
+		Filename: "portrait.png",
+		Data:     data,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.ImagePath != "assets/lore/images/hero/20260702-133000-upload01/image.png" || result.MetaPath != "assets/lore/images/hero/20260702-133000-upload01/meta.json" {
+		t.Fatalf("unexpected upload paths: %#v", result)
+	}
+	if result.Provider != "user_upload" || result.ProfileID != "manual" || result.MIMEType != "image/png" || result.SizeBytes != len(data) {
+		t.Fatalf("unexpected upload metadata: %#v", result)
+	}
+	imageData, err := os.ReadFile(filepath.Join(workspace, filepath.FromSlash(result.ImagePath)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(imageData) != string(data) {
+		t.Fatal("uploaded image bytes were not preserved")
+	}
+	meta, err := os.ReadFile(filepath.Join(workspace, filepath.FromSlash(result.MetaPath)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"source": "user_upload"`, `"source_name": "portrait.png"`, `"item_id": "hero"`} {
+		if !strings.Contains(string(meta), want) {
+			t.Fatalf("metadata missing %q:\n%s", want, string(meta))
+		}
+	}
+}
+
+func TestUploadLoreRejectsInvalidImageBeforeWriting(t *testing.T) {
+	workspace := t.TempDir()
+	service := NewServiceWithGenerator(nil)
+
+	_, err := service.UploadLore(context.Background(), book.NewService(workspace), LoreUploadRequest{
+		Item:     lore.Item{ID: "hero", Name: "林川"},
+		Filename: "portrait.png",
+		Data:     []byte("not an image"),
+	})
+	if !errors.Is(err, ErrLoreImageUploadInvalid) {
+		t.Fatalf("UploadLore error = %v, want invalid image", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(workspace, "assets")); !os.IsNotExist(statErr) {
+		t.Fatalf("assets should not be written for an invalid upload, err=%v", statErr)
+	}
+}
+
 func TestBuildLorePromptBoundsLoreContent(t *testing.T) {
 	prompt := BuildLorePrompt(LoreGenerateRequest{
 		Item: lore.Item{
@@ -144,5 +200,19 @@ func assertFile(t *testing.T, workspace, relPath, want string) {
 	}
 	if string(data) != want {
 		t.Fatalf("%s = %q, want %q", relPath, string(data), want)
+	}
+}
+
+func loreTestPNGBytes() []byte {
+	return []byte{
+		0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+		0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+		0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+		0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4,
+		0x89, 0x00, 0x00, 0x00, 0x0a, 0x49, 0x44, 0x41,
+		0x54, 0x78, 0x9c, 0x63, 0x00, 0x01, 0x00, 0x00,
+		0x05, 0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44,
+		0xae, 0x42, 0x60, 0x82,
 	}
 }

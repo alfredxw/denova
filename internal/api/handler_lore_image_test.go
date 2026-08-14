@@ -1,15 +1,19 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/cloudwego/hertz/pkg/common/ut"
 
 	"denova/config"
 	runtimeapp "denova/internal/app"
@@ -43,6 +47,51 @@ func TestLoreItemImageGenerateAPIUpdatesItem(t *testing.T) {
 	}
 	if filepath.Ext(updated.Image.ImagePath) != ".png" {
 		t.Fatalf("image path should be png: %s", updated.Image.ImagePath)
+	}
+}
+
+func TestLoreItemImageUploadAPIUpdatesItem(t *testing.T) {
+	application := newTestApplication(t)
+	server := NewServer(application, "0")
+	projectID := application.ProjectID()
+	base := "/api/projects/" + url.PathEscape(projectID) + "/book/lore"
+	item, err := application.ProjectBook().CreateLoreItem(projectID, lore.ItemInput{ID: "hero", Type: "character", Name: "林川", Importance: "major", Content: "谨慎。"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreateFormFile("file", "portrait.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := part.Write(loreImageTestPNGBytes()); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	resp := ut.PerformRequest(
+		server.engine.Engine,
+		http.MethodPost,
+		base+"/items/"+item.ID+"/image/upload",
+		&ut.Body{Body: bytes.NewReader(body.Bytes()), Len: body.Len()},
+		ut.Header{Key: "Content-Type", Value: writer.FormDataContentType()},
+	)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("upload status = %d body=%s", resp.Code, resp.Body.String())
+	}
+	var updated lore.Item
+	decodeResponse(t, resp.Body.Bytes(), &updated)
+	if updated.Image == nil || updated.Image.Provider != "user_upload" || updated.Image.MIMEType != "image/png" {
+		t.Fatalf("uploaded item missing image: %#v", updated)
+	}
+	if !strings.HasPrefix(updated.Image.ImagePath, "assets/lore/images/hero/") || filepath.Ext(updated.Image.ImagePath) != ".png" {
+		t.Fatalf("unexpected image path: %s", updated.Image.ImagePath)
+	}
+	if _, err := application.BookService().ReadFile(updated.Image.MetaPath); err != nil {
+		t.Fatalf("metadata should be saved: %v", err)
 	}
 }
 
