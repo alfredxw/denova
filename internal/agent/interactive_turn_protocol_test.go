@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"reflect"
 	"strings"
@@ -297,6 +298,113 @@ func TestInteractiveRetryFeedbackFromReceiptEmptyYieldsNothing(t *testing.T) {
 	if feedback := interactiveRetryFeedbackFromReceipt(interactive.TurnSubmissionReceipt{}); feedback != "" {
 		t.Fatalf("receipt without diagnostics should yield no targeted feedback: %s", feedback)
 	}
+}
+
+// submitAssistantTurn returns an assistant message that invoked
+// submit_interactive_turn with the given tool call id.
+func submitAssistantTurn(id string) *schema.Message {
+	return schema.AssistantMessage("", []schema.ToolCall{{
+		ID:       id,
+		Function: schema.FunctionCall{Name: interactiveTurnSubmissionToolName, Arguments: `{}`},
+	}})
+}
+
+// toolResultForCall returns a schema.Tool message whose ToolCallID matches
+// the assistant's invocation. content is the JSON-encoded receipt.
+func toolResultForCall(id, content string) *schema.Message {
+	return schema.ToolMessage(content, id)
+}
+
+// TestLastInteractiveSubmitReceiptReturnsMostRecentCorrectlyPairedReceipt
+// guards against WR-03: a history with multiple submit_interactive_turn
+// invocations must return the most-recent receipt whose ToolCallID actually
+// matches the corresponding assistant tool call, ignoring successful older
+// submissions and any receipt that landed under a wrong ID.
+func TestLastInteractiveSubmitReceiptReturnsMostRecentCorrectlyPairedReceipt(t *testing.T) {
+	// Most recent assistant turn: submit with ID "call-second".
+	second := submitAssistantTurn("call-second")
+	// Earlier assistant turn: submit with ID "call-first".
+	first := submitAssistantTurn("call-first")
+	// Interfering receipt: same content as a correctly-paired one but
+	// addressed to a tool call id that does NOT exist in the assistant
+	// turn above. The parser must ignore it.
+	decoy := toolResultForCall("call-NOPE", mustMarshalReceipt(interactive.TurnSubmissionReceipt{
+		Ready:        true,
+		RetryModules: []string{"decoy"},
+	}))
+	// Earlier successful receipt (well-paired to first).
+	earlyReady := toolResultForCall("call-first", mustMarshalReceipt(interactive.TurnSubmissionReceipt{
+		Ready: true,
+	}))
+	// Most recent rejected receipt, correctly paired to second.
+	rejected := toolResultForCall("call-second", mustMarshalReceipt(interactive.TurnSubmissionReceipt{
+		Ready:        false,
+		RetryModules: []string{"choices"},
+		Diagnostics: []interactive.TurnSubmissionDiagnostic{{
+			Module:    interactive.TurnSubmissionModuleStateChanges,
+			Code:      "state_value_invalid",
+			Path:      "/state_changes/2",
+			Expected:  "number",
+			Actual:    "string",
+			MessageZH: "字段类型不匹配",
+		}},
+	}))
+
+	messages := []*schema.Message{
+		schema.UserMessage("请提供正文候选并提交两个模块"),
+		first,
+		earlyReady,
+		schema.UserMessage("已接受 state_changes，请继续 choices。"),
+		decoy, // interfering tool result with a wrong call id
+		schema.AssistantMessage("继续 choices。", nil),
+		second,
+		rejected,
+	}
+
+	receipt, ok := lastInteractiveSubmitReceipt(messages)
+	if !ok {
+		t.Fatalf("expected the most-recent correctly-paired receipt to surface")
+	}
+	if receipt.Ready {
+		t.Fatalf("most recent receipt should be the rejection, got %#v", receipt)
+	}
+	if len(receipt.RetryModules) != 1 || receipt.RetryModules[0] != "choices" {
+		t.Fatalf("most recent receipt should expose the choices module, got %#v", receipt.RetryModules)
+	}
+	if len(receipt.Diagnostics) != 1 || receipt.Diagnostics[0].Path != "/state_changes/2" {
+		t.Fatalf("most recent receipt diagnostics should describe /state_changes/2, got %#v", receipt.Diagnostics)
+	}
+}
+
+func TestLastInteractiveSubmitReceiptReturnsFalseWhenNoHistoryHasSubmission(t *testing.T) {
+	messages := []*schema.Message{
+		schema.UserMessage("你好"),
+		schema.AssistantMessage("我也好", nil),
+	}
+	if _, ok := lastInteractiveSubmitReceipt(messages); ok {
+		t.Fatal("no submit_interactive_turn in history should yield no receipt")
+	}
+}
+
+func TestLastInteractiveSubmitReceiptReturnsFalseOnInvalidReceiptJSON(t *testing.T) {
+	// Receipt with invalid JSON: parser must return false so the guard can
+	// fall back to generic feedback rather than feeding garbage back to the
+	// model.
+	messages := []*schema.Message{
+		submitAssistantTurn("call-only"),
+		toolResultForCall("call-only", "{this is not json"),
+	}
+	if _, ok := lastInteractiveSubmitReceipt(messages); ok {
+		t.Fatal("invalid receipt JSON must surface as no receipt")
+	}
+}
+
+func mustMarshalReceipt(receipt interactive.TurnSubmissionReceipt) string {
+	encoded, err := json.Marshal(receipt)
+	if err != nil {
+		panic(err)
+	}
+	return string(encoded)
 }
 
 func TestInteractiveCompletionGuardFailsFastAfterRetryBudget(t *testing.T) {
