@@ -272,6 +272,7 @@ func (o *Observer) RecordToolExecution(result agenttool.ExecutionRecord) {
 	if result.ModelFinishReason != "" {
 		attrs["model_finish_reason"] = result.ModelFinishReason
 	}
+	recordToolOutputTraceContent(span, result)
 	span.Finish(status, attrs)
 }
 

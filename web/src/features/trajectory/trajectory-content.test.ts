@@ -19,6 +19,26 @@ describe('trajectory content analysis', () => {
     expect(content.entries[2]).toMatchObject({ reasoning: 'I should read it.', content: '', toolCalls: [{ id: 'call-read', name: 'read' }] })
     expect(content.entries[3]).toMatchObject({ toolName: 'read', toolCallID: 'call-read', content: '# Chapter', toolCall: { arguments: '{"path":"chapter.md"}' } })
     expect(content.entries[4]).toMatchObject({ content: '## Summary\n\nDone.', reasoning: 'The file is clear.' })
+    expect(content.requests[0].outputNodes.map((node) => node.type)).toEqual(['message', 'tool-group'])
+    expect(content.toolCalls[0]).toMatchObject({
+      call: { id: 'call-read', name: 'read', arguments: '{"path":"chapter.md"}' },
+      result: { content: '# Chapter' },
+      definition: { name: 'read' },
+    })
+  })
+
+  it('pairs a terminal tool output when no later model input contains the result', () => {
+    const trace = fixture()
+    trace.records = trace.records.slice(0, 3)
+    trace.records.push(toolOutput('tool-1', 'call-read', 900, 'Terminal result'))
+    const content = analyzeTrajectoryContent(trace, analyzeTrajectory(trace))
+
+    expect(content.toolCalls).toHaveLength(1)
+    expect(content.toolCalls[0]).toMatchObject({
+      call: { id: 'call-read', name: 'read' },
+      result: null,
+      output: { callID: 'call-read', content: 'Terminal result', status: 'success', truncated: false },
+    })
   })
 
   it('classifies model-only user messages as context and exposes a system update', () => {
@@ -94,6 +114,20 @@ function span(type: string, spanID: string, offset: number, duration: number): A
     data: {
       span_id: spanID, status: 'success', started_at: iso(offset), ended_at: iso(offset + duration), duration_ms: duration,
       attrs: { model: 'model-a', ttft_ms: 200, prompt_tokens: 40, completion_tokens: 10, reasoning_tokens: 4 },
+    },
+  }
+}
+
+function toolOutput(spanID: string, callID: string, offset: number, result: string): AgentRunTraceRecord {
+  return {
+    type: 'tool_output', run_id: 'run-content', created_at: iso(offset),
+    data: {
+      span_id: spanID, call_id: callID,
+      content: {
+        source: 'agent tool boundary', purpose: 'developer trajectory inspection', tool_name: 'read',
+        provider_call_id: callID, execution_id: 'execution-read', status: 'success', result,
+        original_bytes: result.length, returned_bytes: result.length, truncated: false,
+      },
     },
   }
 }

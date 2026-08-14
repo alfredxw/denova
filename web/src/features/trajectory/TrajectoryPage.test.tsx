@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { getAgentRunTrace, getAgentRunTraces } from '@/lib/api'
@@ -35,7 +36,8 @@ describe('TrajectoryPage', () => {
     expect(getAgentRunTrace).not.toHaveBeenCalled()
   })
 
-  it('renders model-visible records, content inspectors, and the secondary call analysis', async () => {
+  it('renders hierarchical tool exchanges, inline source details, and the secondary call analysis', async () => {
+    const user = userEvent.setup()
     vi.mocked(getAgentRunTraces).mockResolvedValue([summaryFixture()])
     vi.mocked(getAgentRunTrace).mockResolvedValue(traceFixture())
 
@@ -43,8 +45,19 @@ describe('TrajectoryPage', () => {
 
     expect(await screen.findByRole('region', { name: '模型可见记录' })).toBeInTheDocument()
     expect(screen.getAllByText('初始 System Prompt').length).toBeGreaterThan(0)
+    expect(screen.getByText('1 次调用 · 1 个结果')).toBeInTheDocument()
+    const systemRow = screen.getByRole('button', { name: /系统.*初始 System Prompt/ })
+    fireEvent.click(systemRow)
+    expect(systemRow).toHaveAttribute('aria-expanded', 'true')
     expect(screen.getByRole('tab', { name: 'System Prompt' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: '工具' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /工具调用.*read_file/ }))
+    expect(screen.getByRole('tab', { name: '参数' })).toBeInTheDocument()
+    await user.click(screen.getByRole('tab', { name: '响应' }))
+    expect(await screen.findByText('Chapter contents')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /助手.*请求 #1/ }))
+    fireEvent.click(systemRow)
+    expect(systemRow).toHaveAttribute('aria-expanded', 'false')
     fireEvent.click(screen.getByRole('button', { name: '调用与事件' }))
     expect(await screen.findByRole('tree', { name: '调用树' })).toBeInTheDocument()
     expect(screen.getAllByText('writing').length).toBeGreaterThan(0)
@@ -56,7 +69,7 @@ describe('TrajectoryPage', () => {
     await waitFor(() => expect(getAgentRunTrace).toHaveBeenCalledWith('project-test', 'run-page-test'))
   })
 
-  it('opens the inspector on demand instead of covering the compact ledger initially', async () => {
+  it('keeps compact conversation details inline without opening an overlay', async () => {
     responsiveState.compact = true
     vi.mocked(getAgentRunTraces).mockResolvedValue([summaryFixture()])
     vi.mocked(getAgentRunTrace).mockResolvedValue(traceFixture())
@@ -65,8 +78,9 @@ describe('TrajectoryPage', () => {
 
     expect(await screen.findByRole('region', { name: '模型可见记录' })).toBeInTheDocument()
     expect(screen.queryByRole('complementary', { name: '记录检查器' })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: '助手 · 请求 #1' }))
-    expect(screen.getByRole('complementary', { name: '记录检查器' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /助手.*请求 #1/ }))
+    expect(screen.getByRole('tab', { name: '预览' })).toBeInTheDocument()
+    expect(screen.queryByRole('complementary', { name: '记录检查器' })).not.toBeInTheDocument()
   })
 })
 
@@ -120,7 +134,26 @@ function traceFixture() {
         created_at: '2026-08-13T10:00:03.000Z',
         data: {
           span_id: 'model', call_id: 'llm-1',
-          content: { status: 'success', message: { role: 'assistant', content: '## Summary\n\nDone.', reasoning_content: 'I should be concise.' } },
+          content: {
+            status: 'success',
+            message: {
+              role: 'assistant', content: '## Summary\n\nDone.', reasoning_content: 'I should be concise.',
+              tool_calls: [{ id: 'call-read', type: 'function', function: { name: 'read_file', arguments: '{"path":"chapter.md"}' } }],
+            },
+          },
+        },
+      },
+      {
+        type: 'tool_output',
+        run_id: 'run-page-test',
+        created_at: '2026-08-13T10:00:02.100Z',
+        data: {
+          span_id: 'tool', call_id: 'call-read',
+          content: {
+            source: 'agent tool boundary', purpose: 'developer trajectory inspection', tool_name: 'read_file',
+            provider_call_id: 'call-read', execution_id: 'tool-execution', status: 'success', result: 'Chapter contents',
+            original_bytes: 16, returned_bytes: 16, truncated: false,
+          },
         },
       },
       {
@@ -150,7 +183,7 @@ function traceFixture() {
         data: {
           span_id: 'tool', parent_span_id: 'model', status: 'success', duration_ms: 1_000,
           started_at: '2026-08-13T10:00:01.000Z', ended_at: '2026-08-13T10:00:02.000Z',
-          attrs: { tool_name: 'read_file' },
+          attrs: { tool_name: 'read_file', provider_call_id: 'call-read', execution_id: 'tool-execution' },
         },
       },
     ],

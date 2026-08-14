@@ -12,7 +12,6 @@ import { cn } from '@/lib/utils'
 import { TrajectoryInspector } from './TrajectoryInspector'
 import { TrajectoryLedger } from './TrajectoryLedger'
 import { TrajectoryTimeline } from './TrajectoryTimeline'
-import { TrajectoryContentInspector } from './TrajectoryContentInspector'
 import { TrajectoryContentLedger } from './TrajectoryContentLedger'
 import type { TrajectoryRange } from './TrajectoryTimeline'
 import { analyzeTrajectoryContent } from './trajectory-content'
@@ -118,17 +117,14 @@ export function TrajectoryPage({ target, onClose }: TrajectoryPageProps) {
   const selectedEvent = analysis?.events.find((event) => event.id === selectedEventID) ?? null
   const selectedEntry = content?.entries.find((entry) => entry.id === selectedEntryID) ?? null
   const selectedTimelineSpanID = selectedEntry?.span?.id ?? selectedSpanID
-  const inspectorOpen = Boolean(selectedEntry || selectedSpan || selectedEvent)
+  const inspectorOpen = Boolean(selectedSpan || selectedEvent)
 
   useEffect(() => {
-    // The inspector is an overlay below the desktop breakpoint. Start compact
-    // layouts on the ledger and open details only after an explicit row tap.
-    const defaultEntry = isCompact ? null : content?.entries[0]
     setWorkspaceView('records')
-    setSelectedEntryID(defaultEntry?.id ?? '')
+    setSelectedEntryID('')
     setSelectedSpanID('')
     setSelectedEventID('')
-  }, [analysis, content, isCompact])
+  }, [analysis])
 
   const exportTrace = async () => {
     if (!projectID || !selectedRunID) return
@@ -193,7 +189,7 @@ export function TrajectoryPage({ target, onClose }: TrajectoryPageProps) {
                         aria-pressed={workspaceView === view}
                         onClick={() => {
                           setWorkspaceView(view)
-                          setSelectedEntryID(view === 'records' && !isCompact ? content.entries[0]?.id ?? '' : '')
+                          setSelectedEntryID('')
                           setSelectedSpanID(view === 'analysis' && !isCompact ? analysis.roots[0]?.id ?? '' : '')
                           setSelectedEventID('')
                         }}
@@ -227,8 +223,11 @@ export function TrajectoryPage({ target, onClose }: TrajectoryPageProps) {
                   range={range}
                   onRangeChange={setRange}
                   onSpanSelect={(spanID) => {
+                    const toolExchange = content.toolCalls.find((candidate) => candidate.span?.id === spanID)
                     const entry = content.entries.find((candidate) => candidate.span?.id === spanID && candidate.kind === 'assistant')
                       ?? content.entries.find((candidate) => candidate.span?.id === spanID)
+                      ?? toolExchange?.caller
+                      ?? toolExchange?.result
                     if (workspaceView === 'records' && entry) {
                       setSelectedEntryID(entry.id)
                     } else {
@@ -272,12 +271,6 @@ export function TrajectoryPage({ target, onClose }: TrajectoryPageProps) {
                         setSelectedSpanID('')
                         setSelectedEntryID('')
                       }}
-                    />
-                  )}
-                  {workspaceView === 'records' && selectedEntry && (
-                    <TrajectoryContentInspector
-                      entry={selectedEntry}
-                      onClose={() => setSelectedEntryID('')}
                     />
                   )}
                   {workspaceView === 'analysis' && inspectorOpen && (

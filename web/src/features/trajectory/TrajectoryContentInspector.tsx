@@ -1,8 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Check, ChevronRight, Clipboard, PanelRightClose } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { ChevronRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { ThemedMarkdownRenderer } from '@/components/common/MarkdownRenderer'
-import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
 import { formatTrajectoryDuration } from './trajectory-analysis'
@@ -16,56 +15,27 @@ import {
   trajectoryThroughput,
 } from './TrajectoryInspectorParts'
 
-interface TrajectoryContentInspectorProps {
+interface TrajectoryContentDetailsProps {
   entry: TrajectoryContentEntry
-  onClose: () => void
 }
 
 const SUMMARY_PREVIEW_CHARACTERS = 4_000
 
-/** Type-aware inspector for exact model-visible content and request diagnostics. */
-export function TrajectoryContentInspector({ entry, onClose }: TrajectoryContentInspectorProps) {
+/** Inline type-aware details for exact model-visible content and diagnostics. */
+export function TrajectoryContentDetails({ entry }: TrajectoryContentDetailsProps) {
   const { t } = useTranslation()
-  const [copied, setCopied] = useState(false)
   const tabs = inspectorTabs(entry)
-  const label = localizedEntryLabel(entry, t)
-  useEffect(() => setCopied(false), [entry.id])
-
-  const copyEntry = async () => {
-    try {
-      await navigator.clipboard.writeText(JSON.stringify(entry.raw, null, 2))
-      setCopied(true)
-      window.setTimeout(() => setCopied(false), 1600)
-    } catch (error) {
-      console.warn('[TrajectoryContentInspector.tsx] failed to copy trace content', error)
-    }
-  }
-
   return (
-    <aside className="absolute inset-0 z-30 flex min-h-0 w-full min-w-0 shrink-0 flex-col bg-[var(--nova-surface-2)] lg:static lg:w-[min(40vw,540px)] lg:min-w-[340px]" aria-label={t('trajectory.inspector.title')}>
-      <div className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--nova-border)] px-3">
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-[11px] font-medium text-[var(--nova-text)]">{label}</div>
-          <div className="truncate font-mono text-[9px] uppercase text-[var(--nova-text-faint)]">{entry.kind} · {t('trajectory.records.request', { index: entry.requestIndex })}</div>
-        </div>
-        <Button type="button" size="icon-xs" variant="ghost" onClick={() => void copyEntry()} aria-label={t('trajectory.inspector.copy')}>
-          {copied ? <Check className="text-[var(--nova-success)]" /> : <Clipboard />}
-        </Button>
-        <Button type="button" size="icon-xs" variant="ghost" onClick={onClose} aria-label={t('trajectory.inspector.close')}>
-          <PanelRightClose />
-        </Button>
-      </div>
-      <Tabs key={entry.id} defaultValue={tabs[0]} className="min-h-0 flex-1 gap-0">
-        <TabsList variant="line" className="mx-3 h-9 max-w-[calc(100%-1.5rem)] shrink-0 justify-start overflow-x-auto">
+    <Tabs key={entry.id} defaultValue={tabs[0]} className="min-h-0 gap-0">
+        <TabsList variant="line" className="h-8 w-full max-w-full shrink-0 justify-start overflow-x-auto border-b border-[var(--nova-border-soft)] px-2">
           {tabs.map((tab) => <TabsTrigger key={tab} value={tab} className="shrink-0 text-[10px]">{t(`trajectory.inspector.tab.${tab}`)}</TabsTrigger>)}
         </TabsList>
         {tabs.map((tab) => (
-          <TabsContent key={tab} value={tab} className="min-h-0 overflow-auto border-t border-[var(--nova-border)] p-3">
+          <TabsContent key={tab} value={tab} className="min-h-0 overflow-auto p-3">
             <InspectorTab entry={entry} tab={tab} />
           </TabsContent>
         ))}
-      </Tabs>
-    </aside>
+    </Tabs>
   )
 }
 
@@ -220,12 +190,4 @@ function parseJSON(value: string) {
 function summaryPreview(value: string) {
   if (value.length <= SUMMARY_PREVIEW_CHARACTERS) return value
   return `${value.slice(0, SUMMARY_PREVIEW_CHARACTERS).trimEnd()}\n\n…`
-}
-
-function localizedEntryLabel(entry: TrajectoryContentEntry, t: (key: string, options?: Record<string, unknown>) => string) {
-  if (entry.kind === 'system') return t(entry.previousContent || entry.previousTools.length > 0 ? 'trajectory.records.label.systemUpdate' : 'trajectory.records.label.initialSystem')
-  if (entry.kind === 'assistant') return entry.label === 'Assistant History' ? t('trajectory.records.label.assistantHistory') : t('trajectory.records.request', { index: entry.requestIndex })
-  if (entry.kind === 'user') return t('trajectory.records.label.user')
-  if (entry.kind === 'tool') return entry.toolName || t('trajectory.records.label.toolResult')
-  return t(entry.label === 'Input Snapshot Changed' ? 'trajectory.records.label.snapshotChanged' : 'trajectory.records.label.context')
 }

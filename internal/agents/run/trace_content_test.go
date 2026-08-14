@@ -2,6 +2,7 @@ package agentrun
 
 import (
 	"context"
+	agenttool "denova/internal/agents/tool"
 	"encoding/json"
 	"os"
 	"strings"
@@ -109,6 +110,9 @@ func TestDeveloperTraceContentDisabledByDefault(t *testing.T) {
 	ctx := ContextWithObserver(ContextWithRunTrace(context.Background(), ledger.ID(), ledger, root.SpanID()), NewObserver(ledger, root.SpanID()))
 	span, callID, _ := BeginLLMCallTrace(ctx, AgentKindIDE, "test", "ide", providers.ModelConfig{}, []*agent.Message{agent.SystemMessage("private")}, nil, true)
 	FinishLLMCallTrace(span, callID, AgentKindIDE, "test", "ide", "", 1, agent.AssistantMessage("private output", nil), nil, nil)
+	observer := ObserverFromContext(ctx)
+	observer.RecordToolDecision(agenttool.Decision{ToolName: "read", ExecutionID: "disabled-call", Action: "allowed"})
+	observer.RecordToolExecution(agenttool.ExecutionRecord{ToolName: "read", ExecutionID: "disabled-call", Status: "success", Result: "sensitive tool output"})
 	root.Finish("success", nil)
 	if err := ledger.Close(); err != nil {
 		t.Fatal(err)
@@ -117,7 +121,7 @@ func TestDeveloperTraceContentDisabledByDefault(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(payload), "private") || strings.Contains(string(payload), "llm_input") || strings.Contains(string(payload), "llm_output") {
+	if strings.Contains(string(payload), "private") || strings.Contains(string(payload), "sensitive tool output") || strings.Contains(string(payload), "llm_input") || strings.Contains(string(payload), "llm_output") || strings.Contains(string(payload), "tool_output") {
 		t.Fatalf("content capture leaked while disabled: %s", payload)
 	}
 }
@@ -150,6 +154,44 @@ func TestRunTraceReaderAcceptsLargeDeveloperRecords(t *testing.T) {
 	}
 	if record := findTraceRecord(trace.Records, "llm_input"); record == nil {
 		t.Fatalf("large content record was not read: %#v", trace)
+	}
+}
+
+func TestObserverRecordsDeveloperToolOutputContent(t *testing.T) {
+	oldTraceConfig := traceRuntimeConfigSnapshot()
+	SetTraceRuntimeConfig(TraceCaptureSummary, TraceExporterLocal, 100)
+	SetTraceContentCaptureEnabled(true)
+	t.Cleanup(func() {
+		SetTraceRuntimeConfig(oldTraceConfig.CaptureLevel, oldTraceConfig.Exporter, oldTraceConfig.RetentionRuns)
+		SetTraceContentCaptureEnabled(oldTraceConfig.CaptureContent)
+	})
+	workspace := t.TempDir()
+	ledger, err := NewLedger(workspace, LedgerPolicy{Enabled: true, Directory: ".denova/runs"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	observer := NewObserver(ledger, "")
+	observer.RecordToolDecision(agenttool.Decision{
+		ToolName: "read", ProviderCallID: "provider-call", ExecutionID: "execution-call", Action: "allowed",
+	})
+	observer.RecordToolExecution(agenttool.ExecutionRecord{
+		ToolName: "read", ProviderCallID: "provider-call", ExecutionID: "execution-call", Status: "success",
+		Result: "complete developer-visible result", OriginalBytes: 33, ReturnedBytes: 33,
+	})
+	if err := ledger.Close(); err != nil {
+		t.Fatal(err)
+	}
+	trace, err := ReadRunTrace(TraceLocation{Workspace: workspace}, ledger.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	record := findTraceRecord(trace.Records, "tool_output")
+	if record == nil {
+		t.Fatalf("tool output content record was not read: %#v", trace)
+	}
+	content, _ := record.Data["content"].(map[string]any)
+	if content["result"] != "complete developer-visible result" || content["provider_call_id"] != "provider-call" {
+		t.Fatalf("tool output content = %#v", content)
 	}
 }
 

@@ -114,7 +114,7 @@ type TraceSpanRecord struct {
 
 // TraceContentRecord is an opt-in developer record tied to one trace span.
 // Unlike TraceSpanRecord, Payload intentionally contains exact model-visible
-// content so a trajectory can reconstruct prompts, tools, and response blocks.
+// content so a trajectory can reconstruct prompts, tool exchanges, and response blocks.
 type TraceContentRecord struct {
 	TraceID string
 	SpanID  string

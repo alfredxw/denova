@@ -2,6 +2,7 @@ package agentrun
 
 import (
 	"context"
+	agenttool "denova/internal/agents/tool"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -12,6 +13,7 @@ import (
 
 const (
 	traceContentSource  = "agent model boundary"
+	traceToolSource     = "agent tool boundary"
 	traceContentPurpose = "developer trajectory inspection"
 )
 
@@ -70,6 +72,43 @@ func recordLLMOutputTraceContent(span *Span, callID string, message *agent.Messa
 		CallID:  strings.TrimSpace(callID),
 		Type:    "llm_output",
 		Payload: payload,
+	})
+}
+
+// recordToolOutputTraceContent supplements message-boundary captures for a
+// terminal tool call whose result never becomes part of a later model input.
+// The execution projection can be bounded, so the trace retains that fact
+// alongside the developer-visible response instead of presenting it as exact.
+func recordToolOutputTraceContent(span *Span, result agenttool.ExecutionRecord) {
+	if span == nil || span.sink == nil || !traceRuntimeConfigSnapshot().CaptureContent {
+		return
+	}
+	sink, ok := span.sink.(TraceContentSink)
+	if !ok {
+		return
+	}
+	callID := strings.TrimSpace(result.ProviderCallID)
+	if callID == "" {
+		callID = strings.TrimSpace(result.ExecutionID)
+	}
+	writeTraceContent(sink, TraceContentRecord{
+		TraceID: span.span.TraceID,
+		SpanID:  span.span.SpanID,
+		CallID:  callID,
+		Type:    "tool_output",
+		Payload: map[string]any{
+			"source":           traceToolSource,
+			"purpose":          traceContentPurpose,
+			"tool_name":        result.ToolName,
+			"provider_call_id": result.ProviderCallID,
+			"execution_id":     result.ExecutionID,
+			"status":           result.Status,
+			"result":           result.Result,
+			"error":            result.Error,
+			"original_bytes":   result.OriginalBytes,
+			"returned_bytes":   result.ReturnedBytes,
+			"truncated":        result.Truncated,
+		},
 	})
 }
 

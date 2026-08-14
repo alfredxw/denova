@@ -287,13 +287,13 @@ func (l *Ledger) RecordTraceSpan(span TraceSpanRecord) error {
 
 // RecordTraceContent persists opt-in developer content without applying the
 // metadata sanitizer. This method is only called after the global Developer
-// Mode content gate has been checked at the model boundary.
+// Mode content gate has been checked at a model or tool boundary.
 func (l *Ledger) RecordTraceContent(record TraceContentRecord) error {
 	if l == nil {
 		return nil
 	}
 	recordType := strings.TrimSpace(record.Type)
-	if recordType != "llm_input" && recordType != "llm_output" {
+	if recordType != "llm_input" && recordType != "llm_output" && recordType != "tool_output" {
 		return fmt.Errorf("unsupported trace content record type %q", recordType)
 	}
 	data := map[string]any{

@@ -96,7 +96,7 @@ const SPAN_CATEGORIES: Record<string, TrajectoryCategory> = {
 /** Builds the semantic span tree, chronological event stream, and latency aggregates for one run. */
 export function analyzeTrajectory(trace: AgentRunTrace): TrajectoryAnalysis {
   const spanRecords: TrajectorySpan[] = trace.records.flatMap((record, recordIndex): TrajectorySpan[] => {
-    if (record.type === 'llm_input' || record.type === 'llm_output') return []
+    if (record.type === 'llm_input' || record.type === 'llm_output' || record.type === 'tool_output') return []
     const data = objectValue(record.data)
     const spanID = stringValue(data.span_id)
     if (!spanID) return []
