@@ -132,7 +132,7 @@ func round2(v float64) float64 {
 	return float64(int(v*100+0.5)) / 100
 }
 
-func parseRuns(paths []string) map[string]*llmSlot {
+func parseRuns(paths []string) (map[string]*llmSlot, error) {
 	agg := map[string]*llmSlot{}
 	// Normal llm_call trace spans in this project carry no turn_id (only
 	// run_id at the record root plus data.attrs). Build a run_id -> turn_id
@@ -145,48 +145,57 @@ func parseRuns(paths []string) map[string]*llmSlot {
 			fmt.Fprintf(os.Stderr, "跳过缺失 runs: %s (%v)\n", p, err)
 			continue
 		}
-		scanner := bufio.NewScanner(f)
-		scanner.Buffer(make([]byte, 1024*1024), 16*1024*1024)
-		for scanner.Scan() {
-			line := scanner.Bytes()
-			if len(line) == 0 {
-				continue
-			}
-			var ev struct {
-				Type  string `json:"type"`
-				RunID string `json:"run_id"`
-				Data  struct {
-					TurnID string `json:"turn_id"`
-					Attrs  struct {
-						ReasoningTokens int `json:"reasoning_tokens"`
-					} `json:"attrs"`
-				} `json:"data"`
-			}
-			if err := json.Unmarshal(line, &ev); err != nil {
-				continue
-			}
-			switch ev.Type {
-			case "run_created", "run_context":
-				if ev.Data.TurnID != "" {
-					runToTurn[ev.RunID] = ev.Data.TurnID
+		scannerErr := func() error {
+			defer f.Close()
+			scanner := bufio.NewScanner(f)
+			// Per-line cap is ~16 MiB, which matches the bufio default; expand
+			// the per-line cap so a single oversized trace record does not get
+			// silently truncated.
+			scanner.Buffer(make([]byte, 1024*1024), 32*1024*1024)
+			for scanner.Scan() {
+				line := scanner.Bytes()
+				if len(line) == 0 {
+					continue
 				}
-			case "llm_call":
-				turnID := runToTurn[ev.RunID]
-				if turnID == "" {
-					turnID = "other"
+				var ev struct {
+					Type  string `json:"type"`
+					RunID string `json:"run_id"`
+					Data  struct {
+						TurnID string `json:"turn_id"`
+						Attrs  struct {
+							ReasoningTokens int `json:"reasoning_tokens"`
+						} `json:"attrs"`
+					} `json:"data"`
 				}
-				slot, ok := agg[turnID]
-				if !ok {
-					slot = &llmSlot{}
-					agg[turnID] = slot
+				if err := json.Unmarshal(line, &ev); err != nil {
+					continue
 				}
-				slot.LLMCalls++
-				slot.ReasoningTokens += ev.Data.Attrs.ReasoningTokens
+				switch ev.Type {
+				case "run_created", "run_context":
+					if ev.Data.TurnID != "" {
+						runToTurn[ev.RunID] = ev.Data.TurnID
+					}
+				case "llm_call":
+					turnID := runToTurn[ev.RunID]
+					if turnID == "" {
+						turnID = "other"
+					}
+					slot, ok := agg[turnID]
+					if !ok {
+						slot = &llmSlot{}
+						agg[turnID] = slot
+					}
+					slot.LLMCalls++
+					slot.ReasoningTokens += ev.Data.Attrs.ReasoningTokens
+				}
 			}
+			return scanner.Err()
+		}()
+		if scannerErr != nil {
+			return nil, fmt.Errorf("读取 runs 失败 %s: %w", p, scannerErr)
 		}
-		f.Close()
 	}
-	return agg
+	return agg, nil
 }
 
 func formatRow(r storyRow, slot *llmSlot) string {
@@ -341,8 +350,16 @@ func main() {
 			fmt.Fprintf(os.Stderr, "after parse: %v\n", err)
 			os.Exit(1)
 		}
-		bLLM := parseRuns([]string(beforeRuns))
-		aLLM := parseRuns([]string(afterRuns))
+		bLLM, err := parseRuns([]string(beforeRuns))
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "before runs parse: %v\n", err)
+			os.Exit(1)
+		}
+		aLLM, err := parseRuns([]string(afterRuns))
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "after runs parse: %v\n", err)
+			os.Exit(1)
+		}
 		printRows("基线: "+filepath.Clean(before), bRows, bLLM)
 		printRows("修复后: "+filepath.Clean(after), aRows, aLLM)
 		compare(bRows, aRows, bLLM, aLLM)
@@ -358,7 +375,11 @@ func main() {
 		fmt.Fprintf(os.Stderr, "parse: %v\n", err)
 		os.Exit(1)
 	}
-	llm := parseRuns([]string(runs))
+	llm, err := parseRuns([]string(runs))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "runs parse: %v\n", err)
+		os.Exit(1)
+	}
 	printRows(flag.Arg(0), rows, llm)
 }
 
