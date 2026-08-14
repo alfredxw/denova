@@ -289,8 +289,13 @@ describe('AgentPanel', () => {
     expect(screen.getByText('已完成续写。')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: /执行过程.*1 次工具调用/ }))
-    expect(screen.getByText('读取章节上下文')).toBeInTheDocument()
+    const thinkingButton = screen.getByRole('button', { name: '思考过程' })
+    expect(thinkingButton).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByText('读取章节上下文')).not.toBeInTheDocument()
     expect(screen.getByText('读取')).toBeInTheDocument()
+
+    await user.click(thinkingButton)
+    expect(screen.getByText('读取章节上下文')).toBeInTheDocument()
   })
 
   it('创作 Agent 运行中自动展开执行过程', () => {

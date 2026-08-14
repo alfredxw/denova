@@ -1,13 +1,35 @@
 import { useTranslation } from 'react-i18next'
+import { cn } from '@/lib/utils'
 import type { TrajectorySpan } from './trajectory-analysis'
 
-export function TrajectoryDefinitionList({ items }: { items: Array<readonly [string, string]> }) {
+interface TrajectoryDefinitionListProps {
+  items: Array<readonly [string, string]>
+  layout?: 'list' | 'wrap'
+}
+
+export function TrajectoryDefinitionList({ items, layout = 'list' }: TrajectoryDefinitionListProps) {
   return (
-    <dl className="divide-y divide-[var(--nova-border-soft)] overflow-hidden rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)]">
+    <dl
+      data-layout={layout}
+      className={cn(
+        'overflow-hidden rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)]',
+        layout === 'list'
+          ? 'divide-y divide-[var(--nova-border-soft)]'
+          : 'flex flex-wrap gap-px bg-[var(--nova-border-soft)]',
+      )}
+    >
       {items.map(([label, value]) => (
-        <div key={label} className="grid grid-cols-[minmax(100px,38%)_minmax(0,1fr)] gap-3 px-3 py-2">
+        <div
+          key={label}
+          className={cn(
+            'gap-3 px-3 py-2',
+            layout === 'list'
+              ? 'grid grid-cols-[minmax(100px,38%)_minmax(0,1fr)]'
+              : 'flex min-w-max flex-auto items-baseline justify-between bg-[var(--nova-surface)]',
+          )}
+        >
           <dt className="text-[10px] text-[var(--nova-text-faint)]">{label}</dt>
-          <dd className="break-words text-right font-mono text-[10px] text-[var(--nova-text)]">{value || '—'}</dd>
+          <dd className={cn('text-right font-mono text-[10px] text-[var(--nova-text)]', layout === 'list' ? 'break-words' : 'whitespace-nowrap')}>{value || '—'}</dd>
         </div>
       ))}
     </dl>

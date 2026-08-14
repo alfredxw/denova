@@ -1,4 +1,4 @@
-import { Children, Fragment, cloneElement, isValidElement, memo, useLayoutEffect, useMemo, useState } from 'react'
+import { Children, Fragment, cloneElement, isValidElement, memo, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -157,25 +157,36 @@ function highlightDialogueText(text: string, enabled: boolean, keyPrefix: string
   return <Fragment>{nodes}</Fragment>
 }
 
-/** Reasoning stays expanded while streaming and collapsed for history. */
+/** Reasoning follows streaming until the user takes explicit control. */
 export function ThinkingBlock({ message, content, streaming }: { message: ThinkingChatMessage; content: string; streaming: boolean }) {
   const { t } = useTranslation()
   const [expanded, setExpanded] = useState(streaming)
+  const userToggledRef = useRef(false)
+  const wasStreamingRef = useRef(streaming)
 
   useLayoutEffect(() => {
-    setExpanded(streaming)
+    const wasStreaming = wasStreamingRef.current
+    wasStreamingRef.current = streaming
+    if (!wasStreaming && streaming) {
+      userToggledRef.current = false
+      setExpanded(true)
+    } else if (wasStreaming && !streaming && !userToggledRef.current) {
+      setExpanded(false)
+    }
   }, [streaming])
 
-  // Keep the active state visible before the first reasoning chunk arrives.
-  const showActivityShimmer = streaming && !content.trim()
+  const handleOpenChange = (open: boolean) => {
+    userToggledRef.current = true
+    setExpanded(open)
+  }
 
   return (
     <div className="flex justify-start">
       <div className="w-full">
-        <Reasoning isStreaming={streaming} open={expanded} onOpenChange={setExpanded} className="mb-0">
+        <Reasoning isStreaming={streaming} open={expanded} onOpenChange={handleOpenChange} className="mb-0">
           <ReasoningTrigger className="flex items-center gap-1 py-1 text-xs text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]">
             {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-            {showActivityShimmer ? (
+            {streaming ? (
               <Shimmer as="span" className="text-xs font-medium">{t('chat.activity.thinking')}</Shimmer>
             ) : (
               <span>{t('chat.trace.thinking')}</span>

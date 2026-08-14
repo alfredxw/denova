@@ -199,6 +199,10 @@ describe('StoryStage streaming rendering', () => {
       expect(trace).toHaveAttribute('aria-expanded', 'false')
 
       await user.click(trace)
+      expect(screen.queryByText(providerThinking)).not.toBeInTheDocument()
+      const thinking = screen.getByRole('button', { name: '思考过程' })
+      expect(thinking).toHaveAttribute('aria-expanded', 'false')
+      await user.click(thinking)
       expect(screen.getByText(providerThinking)).toBeInTheDocument()
       expect(screen.getByText('门后传来脚步声。')).toBeInTheDocument()
       const liveMessages = useInteractiveStore.getState().storyStageRuns['/tmp/book:story-1:main']?.liveMessages || []
@@ -306,8 +310,10 @@ describe('StoryStage streaming rendering', () => {
       expect(screen.queryByText('浏览资料库')).not.toBeInTheDocument()
 
       await user.click(screen.getByRole('button', { name: /执行过程.*1 次工具调用/ }))
-      expect(screen.getByText('正在检查开场资料。')).toBeInTheDocument()
+      expect(screen.queryByText('正在检查开场资料。')).not.toBeInTheDocument()
       expect(screen.getByText('浏览资料库')).toBeInTheDocument()
+      await user.click(screen.getByRole('button', { name: '思考过程' }))
+      expect(screen.getByText('正在检查开场资料。')).toBeInTheDocument()
     } finally {
       refresh.resolve(undefined)
       stream.close()
@@ -375,10 +381,12 @@ describe('StoryStage streaming rendering', () => {
     expect(screen.getByText('石门后传来锁链拖地的声音。')).toBeInTheDocument()
     const traceButton = screen.getByRole('button', { name: /执行过程.*1 次工具调用/ })
     await user.click(traceButton)
-    expect(screen.getByText('正在判断石门后的威胁。')).toBeInTheDocument()
+    expect(screen.queryByText('正在判断石门后的威胁。')).not.toBeInTheDocument()
     expect(screen.getByText('浏览资料库')).toBeInTheDocument()
     expect(screen.queryByText('正在重新安排后续分支。')).not.toBeInTheDocument()
     expect(screen.queryByText('write')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '思考过程' }))
+    expect(screen.getByText('正在判断石门后的威胁。')).toBeInTheDocument()
   })
 
   it('folds submission tool cards after the narrative into one collapsed trace group when the turn has a narrative anchor', async () => {

@@ -56,6 +56,7 @@ describe('TrajectoryPage', () => {
     expect(screen.queryByRole('complementary', { name: '记录检查器' })).not.toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'System Prompt' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: '工具' })).toBeInTheDocument()
+    expect(screen.getAllByText('字符数').every((label) => label.closest('dl')?.dataset.layout === 'wrap')).toBe(true)
     fireEvent.click(screen.getByRole('button', { name: '调试' }))
     fireEvent.click(screen.getByRole('button', { name: '#1 · system' }))
     expect(screen.getByRole('region', { name: '记录检查器' })).toBeInTheDocument()

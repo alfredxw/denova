@@ -193,7 +193,7 @@ const chat = {
   'chat.tool.name.unknown': '未知工具',
   'chat.tool.name.read': '读取',
   'chat.tool.name.glob': '查找文件',
-  'chat.tool.name.grep': '搜索内容',
+  'chat.tool.name.grep': '检索',
   'chat.tool.name.write': '写入',
   'chat.tool.name.edit': '编辑',
   'chat.tool.name.bash': '命令',

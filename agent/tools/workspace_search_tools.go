@@ -112,7 +112,7 @@ func Glob(searcher GlobSearcher, options ...DefinitionOption) (agent.ToolDefinit
 
 type grepInput struct {
 	Command     string `json:"command" jsonschema:"minLength=3,maxLength=65536" jsonschema_description:"A literal ripgrep command using native rg syntax. Always use rg, not grep. This is not a shell command: only | between rg stages is supported; never add head, tail, redirects, substitutions, or shell control syntax. Paths may be workspace-relative or absolute within the active workspace. Examples: rg -n 'TODO|FIXME' agent internal; rg -l -g '*.go' 'OpenWorkspace' .; rg -C 2 'failed' internal."`
-	Description string `json:"description,omitempty" jsonschema:"maxLength=256" jsonschema_description:"Short user-facing description of what the search is intended to find, written in the user's language. Do not repeat the command."`
+	Description string `json:"description,omitempty" jsonschema:"maxLength=256" jsonschema_description:"Brief user-facing search intent. Use the same language as the user's current input. Do not repeat the command."`
 	Cursor      string `json:"cursor,omitempty" jsonschema:"maxLength=8192" jsonschema_description:"Opaque next_cursor returned by the same normalized grep command."`
 }
 

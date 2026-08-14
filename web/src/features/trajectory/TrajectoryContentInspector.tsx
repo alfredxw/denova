@@ -203,7 +203,7 @@ function InspectorTab({ entry, tab }: { entry: TrajectoryContentEntry; tab: stri
     )
     return (
       <div className="space-y-3">
-        <TrajectoryDefinitionList items={items} />
+        <TrajectoryDefinitionList items={items} layout="wrap" />
         {(entry.content || entry.reasoning) && (
           <div className="rounded-[var(--nova-radius)] bg-[var(--nova-surface)] p-3">
             <div className="mb-2 text-[9px] font-semibold uppercase tracking-[0.1em] text-[var(--nova-text-faint)]">{t('trajectory.inspector.preview')}</div>

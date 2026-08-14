@@ -20,7 +20,7 @@ func protectedSystemInstruction(cfg *config.Config, agentKind, builtIn string) s
 }
 
 func composeProtectedSystemInstruction(cfg *config.Config, agentKind, mode, workspace string, builtIn []SystemPromptFragment) (SystemPromptComposition, error) {
-	fragments := protectedSystemPromptFragments(cfg, agentKind)
+	fragments := protectedSystemPromptFragments(agentKind)
 	firstIncluded := -1
 	for i := range builtIn {
 		if strings.TrimSpace(builtIn[i].Content) != "" || builtIn[i].Required {
@@ -42,11 +42,11 @@ func ComposeBuiltinSystemInstruction(cfg *config.Config, agentKind, mode, worksp
 	}})
 }
 
-func protectedSystemPromptFragments(cfg *config.Config, agentKind string) []SystemPromptFragment {
+func protectedSystemPromptFragments(agentKind string) []SystemPromptFragment {
 	return []SystemPromptFragment{{
 		ID: "runtime_contract", Source: "Denova runtime", Title: "Runtime contract",
 		Purpose: "define shared runtime behavior",
-		Content: runtimeContractForAgent(cfg, agentKind), Prefix: "# Denova Runtime Contract\n\n",
+		Content: runtimeContractForAgent(agentKind), Prefix: "# Denova Runtime Contract\n\n",
 		Required: true, Overflow: SystemPromptOverflowReject,
 	}, {
 		ID: "output_protocol", Source: "Denova runtime", Title: "Output protocol",
@@ -56,39 +56,31 @@ func protectedSystemPromptFragments(cfg *config.Config, agentKind string) []Syst
 	}}
 }
 
-func runtimeContractForAgent(cfg *config.Config, agentKind string) string {
+func runtimeContractForAgent(agentKind string) string {
 	common := strings.Join([]string{
 		"- Follow the current user request, applicable project instructions, and this Agent's workflow.",
 		"- Use the available tools and their schemas; backend receipts determine which operations were accepted.",
 		"- If a tool call or permission is denied, adapt to the result instead of repeating the same request unchanged.",
 		"- Explicitly named /<skill-name> instructions may already be loaded in context. Use the skill tool only to load an additional Skill selected by description.",
 	}, "\n")
-	sections := []string{common, thinkingLanguageContract(cfg)}
+	sections := []string{common}
 	if config.IsSubAgentParentKind(agentKind) {
 		sections = append(sections, subAgentDelegationContract())
 	}
 	if specific := agentRuntimeContract(agentKind); specific != "" {
 		sections = append(sections, specific)
 	}
+	// Keep the language reminder last within the shared runtime contract so
+	// Agent-specific workflows cannot make UI locale look authoritative.
+	sections = append(sections, currentInputLanguageContract())
 	return strings.Join(sections, "\n\n")
 }
 
-func thinkingLanguageContract(cfg *config.Config) string {
-	language := "zh-CN"
-	if cfg != nil && cfg.Language == "en-US" {
-		language = "en-US"
-	}
-	if language == "en-US" {
-		return strings.Join([]string{
-			"## Thinking Language",
-			"- Use English for internal reasoning, thinking summaries, and any streamed thinking content.",
-			"- This only controls thinking language; do not change required output protocols, JSON keys, file content language, quoted text, or story/dialogue language because of it.",
-		}, "\n")
-	}
+func currentInputLanguageContract() string {
 	return strings.Join([]string{
-		"## Thinking Language",
-		"- Use Simplified Chinese for internal reasoning, thinking summaries, and any streamed thinking content.",
-		"- This controls thinking language only. Do not change output protocols, JSON keys, file-content language, quoted source text, or story and dialogue language because of it.",
+		"## Language Alignment",
+		"- Use the same language as the user's current input for internal reasoning, thinking summaries, streamed thinking, and all user-facing output.",
+		"- Preserve fixed output protocols, JSON keys, code, paths, quoted source text, and any language explicitly required by the user or task.",
 	}, "\n")
 }
 

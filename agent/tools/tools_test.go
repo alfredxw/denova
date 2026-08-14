@@ -687,7 +687,7 @@ func TestSearchToolsPublishNewStrictInterfaces(t *testing.T) {
 	}
 	descriptionSchema, ok := grepSchema.Properties.Get("description")
 	if !ok || containsTestString(grepSchema.Required, "description") ||
-		!strings.Contains(descriptionSchema.Description, "user-facing description") {
+		!strings.Contains(descriptionSchema.Description, "same language as the user's current input") {
 		t.Fatalf("grep description schema = %#v; required=%#v", descriptionSchema, grepSchema.Required)
 	}
 	commandSchema, _ := grepSchema.Properties.Get("command")

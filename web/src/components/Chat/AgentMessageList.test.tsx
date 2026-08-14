@@ -864,8 +864,53 @@ describe('Agent MessageList', () => {
 
     expect(screen.queryByText('内部思考')).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /执行过程/ }))
-    expect(screen.getByText('内部思考')).toBeInTheDocument()
+    expect(screen.queryByText('内部思考')).not.toBeInTheDocument()
     expect(screen.getByText('可见正文')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '思考过程' }))
+    expect(screen.getByText('内部思考')).toBeInTheDocument()
+  })
+
+  it('跳过已完成的空 thinking，但保留流式空 thinking 的活动入口', () => {
+    const completed = renderMessageList(
+      <MessageList
+        isStreaming={false}
+        activityContent=""
+        collapseTraceGroups
+        messages={[
+          {
+            id: 'assistant-empty-reasoning',
+            role: 'assistant',
+            parts: [
+              { type: 'reasoning', text: '' },
+              { type: 'dynamic-tool', toolName: 'read', toolCallId: 'tool-empty-reasoning', state: 'output-available', input: { path: 'a.md' }, output: 'ok' },
+              { type: 'text', id: 'text-empty-reasoning', text: '读取完成' },
+            ],
+          },
+        ] as AgentUIMessage[]}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /执行过程/ }))
+    expect(screen.queryByRole('button', { name: '思考过程' })).not.toBeInTheDocument()
+    expect(screen.getByText('读取')).toBeInTheDocument()
+
+    completed.unmount()
+    renderMessageList(
+      <MessageList
+        isStreaming
+        activityContent=""
+        collapseTraceGroups
+        messages={[
+          {
+            id: 'assistant-streaming-empty-reasoning',
+            role: 'assistant',
+            parts: [{ type: 'reasoning', text: '', state: 'streaming' }],
+          },
+        ] as AgentUIMessage[]}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: '思考中...' })).toHaveAttribute('aria-expanded', 'true')
   })
 
   it('正文之后的 thinking 和工具调用统一折叠为一个分组', async () => {
@@ -895,9 +940,11 @@ describe('Agent MessageList', () => {
     const traceButtons = screen.getAllByRole('button', { name: /执行过程.*2 次工具调用/ })
     expect(traceButtons).toHaveLength(1)
     fireEvent.click(traceButtons[0])
-    expect(screen.getByText('提交前的检查')).toBeInTheDocument()
+    expect(screen.queryByText('提交前的检查')).not.toBeInTheDocument()
     expect(screen.getByText('submit_choices')).toBeInTheDocument()
     expect(screen.getByText('submit_actor_state_patches')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '思考过程' }))
+    expect(screen.getByText('提交前的检查')).toBeInTheDocument()
   })
 
   it('流式运行保留每段进展并在完成后统一折叠为执行过程', async () => {
@@ -988,6 +1035,16 @@ describe('Agent MessageList', () => {
     fireEvent.click(processButton)
 
     expect(screen.getByText('找到问题了，继续确认错误位置。')).toBeInTheDocument()
+    expect(screen.queryByText('先检查故事索引。')).not.toBeInTheDocument()
+    expect(screen.queryByText('核对修复结果。')).not.toBeInTheDocument()
+
+    const thinkingButtons = screen.getAllByRole('button', { name: '思考过程' })
+    expect(thinkingButtons).toHaveLength(2)
+    fireEvent.click(thinkingButtons[0])
+    expect(screen.getByText('先检查故事索引。')).toBeInTheDocument()
+    expect(screen.queryByText('核对修复结果。')).not.toBeInTheDocument()
+
+    fireEvent.click(thinkingButtons[1])
     expect(screen.getByText('先检查故事索引。')).toBeInTheDocument()
     expect(screen.getByText('核对修复结果。')).toBeInTheDocument()
   })
@@ -1016,10 +1073,16 @@ describe('Agent MessageList', () => {
     expect(screen.queryByText('正文后核对状态。')).not.toBeInTheDocument()
 
     fireEvent.click(processButtons[0])
-    expect(screen.getByText('正文前思考。')).toBeInTheDocument()
+    expect(screen.queryByText('正文前思考。')).not.toBeInTheDocument()
     expect(screen.queryByText('正文后核对状态。')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '思考过程' }))
+    expect(screen.getByText('正文前思考。')).toBeInTheDocument()
 
     fireEvent.click(processButtons[1])
+    expect(screen.queryByText('正文后核对状态。')).not.toBeInTheDocument()
+    const thinkingButtons = screen.getAllByRole('button', { name: '思考过程' })
+    expect(thinkingButtons).toHaveLength(2)
+    fireEvent.click(thinkingButtons[1])
     expect(screen.getByText('正文后核对状态。')).toBeInTheDocument()
   })
 
@@ -1106,6 +1169,7 @@ describe('Agent MessageList', () => {
     fireEvent.click(traceButton)
     expect(traceButton).toHaveAttribute('aria-expanded', 'true')
     expect(screen.getByText('正在检查资料')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '思考中...' })).toHaveAttribute('aria-expanded', 'true')
     expect(screen.getByText('读取')).toBeInTheDocument()
 
     rerender(
@@ -1129,8 +1193,13 @@ describe('Agent MessageList', () => {
       </VirtuosoMockContext.Provider>,
     )
 
-    expect(screen.getByText('正在检查资料')).toBeInTheDocument()
+    expect(screen.queryByText('正在检查资料')).not.toBeInTheDocument()
+    const completedThinkingButton = screen.getByRole('button', { name: '思考过程' })
+    expect(completedThinkingButton).toHaveAttribute('aria-expanded', 'false')
     expect(screen.getByText('读取')).toBeInTheDocument()
+
+    fireEvent.click(completedThinkingButton)
+    expect(screen.getByText('正在检查资料')).toBeInTheDocument()
 
     rerender(
       <VirtuosoMockContext.Provider value={{ viewportHeight: 180, itemHeight: 52 }}>
@@ -1157,6 +1226,52 @@ describe('Agent MessageList', () => {
     await waitFor(() => expect(screen.queryByText('正在检查资料')).not.toBeInTheDocument())
     expect(screen.getByRole('button', { name: /执行过程.*1 次工具调用/ })).toHaveAttribute('aria-expanded', 'false')
     expect(screen.getByText('资料检查完成。')).toBeInTheDocument()
+  })
+
+  it('用户手动展开的流式 thinking 在完成后保持状态，外层收起后重置', () => {
+    const renderRunningTrace = (reasoningState: 'streaming' | undefined) => (
+      <VirtuosoMockContext.Provider value={{ viewportHeight: 180, itemHeight: 52 }}>
+        <MessageList
+          isStreaming
+          activityContent=""
+          collapseTraceGroups
+          activeTraceDisplay="expanded"
+          messages={[
+            {
+              id: 'assistant-running-reasoning-toggle',
+              role: 'assistant',
+              parts: [
+                { type: 'reasoning', text: '核对当前章节', state: reasoningState },
+                { type: 'dynamic-tool', toolName: 'read', toolCallId: 'tool-running-toggle', state: 'input-streaming', input: { path: 'chapter.md' } },
+              ],
+            },
+          ] as AgentUIMessage[]}
+        />
+      </VirtuosoMockContext.Provider>
+    )
+    const { rerender } = render(renderRunningTrace('streaming'))
+
+    const streamingThinkingButton = screen.getByRole('button', { name: '思考中...' })
+    expect(streamingThinkingButton).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByText('核对当前章节')).toBeInTheDocument()
+
+    fireEvent.click(streamingThinkingButton)
+    fireEvent.click(streamingThinkingButton)
+    expect(streamingThinkingButton).toHaveAttribute('aria-expanded', 'true')
+
+    rerender(renderRunningTrace(undefined))
+
+    const completedThinkingButton = screen.getByRole('button', { name: '思考过程' })
+    expect(completedThinkingButton).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByText('核对当前章节')).toBeInTheDocument()
+
+    const processButton = screen.getByRole('button', { name: /正在执行.*1 次工具调用/ })
+    fireEvent.click(processButton)
+    expect(screen.queryByRole('button', { name: '思考过程' })).not.toBeInTheDocument()
+    fireEvent.click(processButton)
+
+    expect(screen.getByRole('button', { name: '思考过程' })).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByText('核对当前章节')).not.toBeInTheDocument()
   })
 
   it('未指定展示策略时保留原有的运行中 trace 展开行为', () => {

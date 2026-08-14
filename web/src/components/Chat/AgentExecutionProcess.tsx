@@ -15,7 +15,6 @@ import {
 } from '@/lib/agent-message-view'
 import { AgentMessageItem } from './AgentMessageItem'
 import { MessageItem } from './MessageItem'
-import { StreamingContentStage } from './StreamingContentStage'
 import { buildSubAgentProgressMessage } from './subagent-session'
 
 interface AgentExecutionProcessProps {
@@ -119,33 +118,20 @@ export function AgentExecutionProcess({
           continue
         }
       }
+      if (view.kind === 'reasoning' && !view.streaming && !agentViewContent(view).trim()) continue
       processItems.push(
-        view.kind === 'reasoning'
-          ? (
-            <div key={agentViewStableKey(view) || index} className="whitespace-pre-wrap text-xs leading-relaxed text-[var(--nova-text-muted)]">
-              <StreamingContentStage
-                content={agentViewContent(view)}
-                targetContent={view.streaming ? view.metadata.streaming_target_content : undefined}
-                streaming={view.streaming}
-              >
-                {(value) => value}
-              </StreamingContentStage>
-            </div>
-          )
-          : (
-            <AgentMessageItem
-              projectId={projectId}
-              key={agentViewStableKey(view) || index}
-              view={view}
-              highlightDialogue={highlightDialogue}
-              messageStyle={messageStyle}
-              onInsertIllustration={onInsertIllustration}
-              onGenerateInteractiveImage={onGenerateInteractiveImage}
-              onOpenTrace={onOpenTrace}
-              onInteractiveCardLayoutChange={onInteractiveCardLayoutChange}
-              onResolveAsk={onResolveAsk}
-            />
-          ),
+        <AgentMessageItem
+          projectId={projectId}
+          key={agentViewStableKey(view) || index}
+          view={view}
+          highlightDialogue={highlightDialogue}
+          messageStyle={messageStyle}
+          onInsertIllustration={onInsertIllustration}
+          onGenerateInteractiveImage={onGenerateInteractiveImage}
+          onOpenTrace={onOpenTrace}
+          onInteractiveCardLayoutChange={onInteractiveCardLayoutChange}
+          onResolveAsk={onResolveAsk}
+        />,
       )
     }
     return processItems

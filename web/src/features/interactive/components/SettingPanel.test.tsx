@@ -6,6 +6,7 @@ import { toast, type Action } from 'sonner'
 import { APIError, deleteProjectLoreItem, generateLoreItemImage, getProjectLoreItems, readOptionalProjectFile, readProjectFile, saveProjectFile, streamLoreImagesGenerate, updateProjectLoreItem, type LoreItem } from '@/lib/api'
 import { preserveAutosaveConflict } from '@/lib/api-client/autosave-conflicts'
 import { createActorState, createImagePreset, createInteractiveTeller, createStoryDirector, deleteActorState, deleteEventPackage, deleteImagePreset, deleteInteractiveTeller, deleteStoryDirector, getActorStates, getEventPackages, getImagePresets, getInteractiveTellers, getRuleSystems, getStoryDirectors, getStyleReferences, updateActorState, updateEventPackage, updateImagePreset, updateInteractiveTeller, updateRuleSystem, updateStoryDirector } from '../api'
+import { serializeBookOpeningPresets } from '../opening'
 import type { EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, Teller } from '../types'
 import { defaultRuleTemplates } from './preset-config/ruleTemplates'
 import { newRuleSystemDraft } from './setting-panel/presetResources'
@@ -371,6 +372,28 @@ describe('SettingPanel', () => {
 
     await user.click(screen.getByRole('button', { name: '关闭' }))
     expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  it('loads existing opening presets without treating the initial snapshot as a conflict', async () => {
+    const user = userEvent.setup()
+    const content = serializeBookOpeningPresets([{
+      id: 'saved-opening',
+      title: '已保存的开场白',
+      content: '雨停之后，城门第一次打开。',
+    }])
+    vi.mocked(readOptionalProjectFile).mockResolvedValueOnce(
+      projectFileDocument('setting/interactive-openings.json', content, 'opening-rev-1'),
+    )
+
+    render(<SettingPanel mode="lore" imagePresets={[]} />)
+
+    await user.click(await screen.findByRole('button', { name: '书籍预设开场白' }))
+    const editor = await screen.findByPlaceholderText('写下本书预设开场白，例如主角初始处境、场景钩子、关键目标和第一轮可行动空间...')
+    await waitFor(() => expect(editor).toHaveValue('雨停之后，城门第一次打开。'))
+    flushSettingPanelAutosave()
+
+    expect(preserveAutosaveConflict).not.toHaveBeenCalled()
+    expect(saveProjectFile).not.toHaveBeenCalled()
   })
 
   it('loads a legacy opening preset without writing and saves it after an edit with the missing revision', async () => {

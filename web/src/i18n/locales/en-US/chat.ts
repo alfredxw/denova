@@ -193,7 +193,7 @@ const chat = {
   'chat.tool.name.unknown': 'Unknown tool',
   'chat.tool.name.read': 'Read',
   'chat.tool.name.glob': 'Find files',
-  'chat.tool.name.grep': 'Search content',
+  'chat.tool.name.grep': 'Search',
   'chat.tool.name.write': 'Write',
   'chat.tool.name.edit': 'Edit',
   'chat.tool.name.bash': 'Command',

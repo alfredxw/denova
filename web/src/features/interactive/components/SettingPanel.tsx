@@ -504,8 +504,9 @@ function LoreSettingPanel({
   useEffect(() => {
     if (activeMode !== 'lore' || activeId !== INTERACTIVE_OPENING_PRESET_ENTRY_ID) return
     let cancelled = false
+    const emptyContent = serializeBookOpeningPresets([])
     openingPresetsRef.current = []
-    openingPresetBaselineContentRef.current = ''
+    openingPresetBaselineContentRef.current = emptyContent
     openingPresetBaselineRevisionRef.current = ''
     setOpeningPresets([])
     setOpeningPresetRevision('')
@@ -542,14 +543,13 @@ function LoreSettingPanel({
           setActiveOpeningPresetId((current) => (current && presets.some((preset) => preset.id === current) ? current : presets[0]?.id || ''))
           return
         }
-        const content = serializeBookOpeningPresets([])
         openingPresetAutosave.resetBaseline({
           id: INTERACTIVE_OPENING_PRESET_PATH,
-          content,
+          content: emptyContent,
           project_id: projectId,
           updated_at: 'missing',
         })
-        openingPresetBaselineContentRef.current = content
+        openingPresetBaselineContentRef.current = emptyContent
         openingPresetBaselineRevisionRef.current = 'missing'
         setOpeningPresets([])
         setOpeningPresetRevision('missing')

@@ -350,6 +350,19 @@ describe('MessageItem', () => {
         <MessageItem
           message={{
             role: 'tool_call',
+            content: 'grep',
+            name: 'grep',
+            status: 'success',
+          }}
+        />,
+      )
+
+      expect(screen.getByText('Search')).toHaveAttribute('title', 'grep')
+
+      rerender(
+        <MessageItem
+          message={{
+            role: 'tool_call',
             content: 'publish_manuscript',
             name: 'publish_manuscript',
             status: 'success',
@@ -379,6 +392,22 @@ describe('MessageItem', () => {
 
     expect(screen.getByText('命令')).toHaveAttribute('title', 'bash')
     expect(screen.getByText('运行工具包测试')).toBeInTheDocument()
+
+    rerender(
+      <MessageItem
+        message={{
+          role: 'tool_call',
+          content: 'grep',
+          name: 'grep',
+          args: '{"command":"rg -n TODO .","description":"检索待办项"}',
+          status: 'running',
+          tool_presentation: { call: 'search', result: 'search' },
+        }}
+      />,
+    )
+
+    expect(screen.getByText('检索')).toHaveAttribute('title', 'grep')
+    expect(screen.getByText('检索待办项')).toBeInTheDocument()
 
     rerender(
       <MessageItem

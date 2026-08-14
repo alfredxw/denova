@@ -47,18 +47,26 @@ func TestProtectedSystemInstructionOmitsEmptyCustomPrompt(t *testing.T) {
 	}
 }
 
-func TestProtectedSystemInstructionGuidesThinkingLanguageFromConfig(t *testing.T) {
+func TestProtectedSystemInstructionAlignsThinkingAndOutputWithCurrentInputLanguage(t *testing.T) {
 	zhInstruction := protectedSystemInstruction(&config.Config{Language: "zh-CN"}, config.AgentKindIDE, "BUILT IN PROMPT")
-	for _, required := range []string{"## Thinking Language", "Use Simplified Chinese for internal reasoning", "This controls thinking language only"} {
+	for _, required := range []string{
+		"## Language Alignment",
+		"same language as the user's current input",
+		"internal reasoning, thinking summaries, streamed thinking, and all user-facing output",
+		"Preserve fixed output protocols, JSON keys, code, paths, quoted source text",
+	} {
 		if !strings.Contains(zhInstruction, required) {
-			t.Fatalf("zh-CN thinking language contract missing %q:\n%s", required, zhInstruction)
+			t.Fatalf("input-language contract missing %q:\n%s", required, zhInstruction)
 		}
 	}
 
 	enInstruction := protectedSystemInstruction(&config.Config{Language: "en-US"}, config.AgentKindIDE, "BUILT IN PROMPT")
-	for _, required := range []string{"## Thinking Language", "Use English for internal reasoning", "This only controls thinking language"} {
-		if !strings.Contains(enInstruction, required) {
-			t.Fatalf("en-US thinking language contract missing %q:\n%s", required, enInstruction)
+	if enInstruction != zhInstruction {
+		t.Fatalf("UI locale must not alter the input-language contract:\nzh-CN:\n%s\n\nen-US:\n%s", zhInstruction, enInstruction)
+	}
+	for _, obsolete := range []string{"Use Simplified Chinese for internal reasoning", "Use English for internal reasoning", "## Thinking Language"} {
+		if strings.Contains(zhInstruction, obsolete) {
+			t.Fatalf("system prompt retained obsolete UI-locale rule %q:\n%s", obsolete, zhInstruction)
 		}
 	}
 }
