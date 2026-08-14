@@ -2,33 +2,52 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"sync"
 	"sync/atomic"
 
+	"github.com/cloudwego/eino-ext/libs/acl/openai"
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
+
+	"denova/internal/interactive"
 )
 
 const (
-	interactiveTurnSubmissionToolName = "submit_interactive_turn"
-	legacyActorStatePatchesToolName   = "submit_actor_state_patches"
-	legacyInteractiveChoicesToolName  = "submit_choices"
-	interactiveCompletionRetryCode    = "interactive_turn_result_missing"
-	interactiveRetryDraftMaxBytes     = 16 * 1024
-	interactiveRetryFeedbackMaxBytes  = 1024
-	interactiveRetryCandidatePrefix   = "[Retained narrative candidate; source=first accepted model prose;"
-	interactiveRetryFeedbackPrefix    = "[Interactive turn protocol feedback; source=backend completion guard]"
+	interactiveTurnSubmissionToolName    = "submit_interactive_turn"
+	legacyActorStatePatchesToolName      = "submit_actor_state_patches"
+	legacyInteractiveChoicesToolName     = "submit_choices"
+	interactiveCompletionRetryCode       = "interactive_turn_result_missing"
+	interactiveCompletionGuardMaxRetries = 2
+	// interactiveRetryCompletionBudget caps total completion tokens (visible
+	// output + reasoning) during the retry phase. Large enough to fit a
+	// complex opening's full state_changes submission, yet far below the
+	// unbounded default that let reasoning balloon to tens of thousands of
+	// tokens per retry.
+	interactiveRetryCompletionBudget = 8192
+	interactiveRetryDraftMaxBytes    = 16 * 1024
+	interactiveRetryFeedbackMaxBytes = 1024
+	interactiveRetryCandidatePrefix  = "[Retained narrative candidate; source=first accepted model prose;"
+	interactiveRetryFeedbackPrefix   = "[Interactive turn protocol feedback; source=backend completion guard]"
 )
+
+// ErrInteractiveCompletionRetriesExceeded is returned when the completion
+// guard drives more than interactiveCompletionGuardMaxRetries retries in a
+// single turn without a complete TurnResult. The retained narrative candidate
+// is preserved; the run fails fast instead of silently burning the shared
+// model-retry budget on full reasoning passes.
+var ErrInteractiveCompletionRetriesExceeded = errors.New("interactive turn completion retries exceeded")
 
 type interactiveTurnProtocolStateKey struct{}
 type interactiveTurnCancelKey struct{}
 
 type interactiveTurnProtocolRunState struct {
 	narrativeCandidateReady atomic.Bool
+	guardRetries            atomic.Int32
 	mu                      sync.Mutex
 	narrativeCandidate      string
 }
@@ -116,8 +135,9 @@ func (m *interactiveTurnProtocolMiddleware) WrapModel(_ context.Context, wrapped
 }
 
 // interactiveNarrativeBudgetModel applies the story-derived completion reserve
-// only while producing the first visible narrative. Structured retries keep the
-// provider/model limit so a large but valid state submission is not truncated.
+// only while producing the first visible narrative. The retry phase is capped
+// separately (see interactiveNarrativeBudgetOptions) so a bounded, targeted
+// submission replaces an unbounded full reasoning pass.
 type interactiveNarrativeBudgetModel struct {
 	model.BaseChatModel
 	maxTokens int
@@ -133,7 +153,19 @@ func (m *interactiveNarrativeBudgetModel) Stream(ctx context.Context, messages [
 
 func interactiveNarrativeBudgetOptions(ctx context.Context, maxTokens int, opts []model.Option) []model.Option {
 	state := interactiveTurnProtocolState(ctx)
-	if maxTokens <= 0 || (state != nil && state.narrativeCandidateReady.Load()) {
+	// Retry phase: the model only needs to emit a small structured
+	// submit_interactive_turn payload. Cap total completion tokens — on
+	// Minimax-M3 thinking counts toward this limit, so it is the one
+	// provider-side lever that actually constrains reasoning. Also drop
+	// reasoning effort (honored by OpenAI/Gemini; ignored but harmless on
+	// Minimax) so a retry stops re-generating a full reasoning pass.
+	if state != nil && state.narrativeCandidateReady.Load() {
+		bounded := append([]model.Option(nil), opts...)
+		bounded = append(bounded, openai.WithMaxCompletionTokens(interactiveRetryCompletionBudget))
+		bounded = append(bounded, openai.WithReasoningEffort(openai.ReasoningEffortLevelLow))
+		return bounded
+	}
+	if maxTokens <= 0 {
 		return opts
 	}
 	common := model.GetCommonOptions(&model.Options{}, opts...)
@@ -187,6 +219,17 @@ func newInteractiveCompletionGuard(ready func() bool) func(context.Context, *adk
 			return nil
 		}
 
+		// Circuit breaker: cap guard-driven retries per turn. Without this the
+		// guard silently consumes the shared MaxRetries budget, re-generating a
+		// full reasoning pass on every attempt. Fail fast (and surface the
+		// retained narrative candidate) instead.
+		if state != nil && state.guardRetries.Add(1) > interactiveCompletionGuardMaxRetries {
+			return &adk.RetryDecision{
+				Retry:        false,
+				RewriteError: ErrInteractiveCompletionRetriesExceeded,
+			}
+		}
+
 		messages := interactiveRetryBaseMessages(retryCtx.InputMessages)
 		candidate := ""
 		if state != nil {
@@ -201,12 +244,18 @@ func newInteractiveCompletionGuard(ready func() bool) func(context.Context, *adk
 				draft,
 			), nil))
 		}
-		feedback, _ := truncateUTF8Bytes(strings.Join([]string{
+		feedbackLines := []string{
 			interactiveRetryFeedbackPrefix,
 			"你刚才尝试直接结束本回合，但 state_changes 与 choices 尚未全部成功提交。",
 			"首个正文候选已经锁定并展示。现在只调用 submit_interactive_turn，并只提供 retry_modules 指定的字段；已 accepted 的模块不要重交，ready=true 后不要重复输出或改写正文。",
-			"Do not finish this turn before both submission modules are accepted.",
-		}, "\n"), interactiveRetryFeedbackMaxBytes)
+		}
+		if receipt, ok := lastInteractiveSubmitReceipt(retryCtx.InputMessages); ok {
+			if detail := interactiveRetryFeedbackFromReceipt(receipt); detail != "" {
+				feedbackLines = append(feedbackLines, detail)
+			}
+		}
+		feedbackLines = append(feedbackLines, "Do not finish this turn before both submission modules are accepted.")
+		feedback, _ := truncateUTF8Bytes(strings.Join(feedbackLines, "\n"), interactiveRetryFeedbackMaxBytes)
 		messages = append(messages, schema.UserMessage(feedback))
 		return &adk.RetryDecision{
 			Retry:                        true,
@@ -227,6 +276,95 @@ func interactiveOutputContainsNarrativeCandidate(message *schema.Message) bool {
 		}
 	}
 	return true
+}
+
+// lastInteractiveSubmitReceipt scans the conversation history (most-recent
+// first) for the result of the most recent submit_interactive_turn call and
+// decodes its receipt. It returns false when no prior submission exists, so
+// the completion guard can fall back to generic feedback. The guard only runs
+// when the model emitted prose without a finishing submission, but earlier
+// ReAct iterations may still have produced a rejected receipt whose
+// diagnostics tell the model exactly what to fix.
+func lastInteractiveSubmitReceipt(messages []*schema.Message) (interactive.TurnSubmissionReceipt, bool) {
+	for i := len(messages) - 1; i >= 0; i-- {
+		msg := messages[i]
+		if msg == nil || msg.Role != schema.Assistant || len(msg.ToolCalls) == 0 {
+			continue
+		}
+		var submitID string
+		for _, call := range msg.ToolCalls {
+			if IsInteractiveTurnSubmissionTool(call.Function.Name) {
+				submitID = call.ID
+				break
+			}
+		}
+		if submitID == "" {
+			continue
+		}
+		for j := i + 1; j < len(messages); j++ {
+			result := messages[j]
+			if result == nil || result.Role != schema.Tool || result.ToolCallID != submitID {
+				continue
+			}
+			var receipt interactive.TurnSubmissionReceipt
+			if err := json.Unmarshal([]byte(result.Content), &receipt); err != nil {
+				return interactive.TurnSubmissionReceipt{}, false
+			}
+			return receipt, true
+		}
+	}
+	return interactive.TurnSubmissionReceipt{}, false
+}
+
+// interactiveRetryFeedbackFromReceipt turns a prior submission receipt into a
+// concise, field-specific correction hint. Generic "both modules missing"
+// feedback forces the model to re-guess; naming the failing module, path and
+// expected/actual type lets it self-correct in one retry instead of looping.
+func interactiveRetryFeedbackFromReceipt(receipt interactive.TurnSubmissionReceipt) string {
+	var lines []string
+	pendingModules := uniqueNonEmptyStrings(append(append([]string{}, receipt.RetryModules...), receipt.MissingModules...))
+	if len(pendingModules) > 0 {
+		lines = append(lines, "仍需补交的模块："+strings.Join(pendingModules, "、"))
+	}
+	for _, d := range receipt.Diagnostics {
+		header := strings.TrimSpace(strings.Join([]string{d.Module, d.Code}, ":"))
+		message := strings.TrimSpace(d.MessageZH)
+		if message == "" {
+			message = strings.TrimSpace(d.MessageEN)
+		}
+		if d.Expected != "" || d.Actual != "" {
+			message = strings.TrimSpace(message + "（期望 " + d.Expected + " / 实际 " + d.Actual + "）")
+		}
+		if d.Path != "" {
+			message = strings.TrimSpace(d.Path + " " + message)
+		}
+		if message == "" {
+			continue
+		}
+		if header == "" {
+			lines = append(lines, message)
+		} else {
+			lines = append(lines, header+"："+message)
+		}
+	}
+	if len(lines) == 0 {
+		return ""
+	}
+	return "上一次 submit_interactive_turn 的具体回执（按此定向修正，勿整段重写）：\n" + strings.Join(lines, "\n")
+}
+
+func uniqueNonEmptyStrings(values []string) []string {
+	seen := make(map[string]bool)
+	out := make([]string, 0, len(values))
+	for _, v := range values {
+		v = strings.TrimSpace(v)
+		if v == "" || seen[v] {
+			continue
+		}
+		seen[v] = true
+		out = append(out, v)
+	}
+	return out
 }
 
 // IsInteractiveTurnSubmissionTool reports whether the tool finalizes the
