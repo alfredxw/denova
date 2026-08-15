@@ -15,6 +15,25 @@ export interface HarnessStateSnapshot {
   revision: string
   files: HarnessStateFile[]
   source: 'user' | 'builtin'
+  script_tools?: ScriptToolMetadata[]
+  diagnostics?: HarnessStateDiagnostic[]
+}
+
+export interface HarnessStateDiagnostic {
+  code: string
+  path?: string
+  line?: number
+  column?: number
+  message: string
+}
+
+export interface ScriptToolMetadata {
+  name: string
+  description: string
+  agents: string[]
+  enabled: boolean
+  resource: string
+  input_schema: Record<string, unknown>
 }
 
 export interface HarnessStateChange {
@@ -38,6 +57,7 @@ export interface HarnessStateVersionDiff {
 
 export interface HarnessStateUpdateResult {
   version?: HarnessStateVersion
+  revision: string
   changed: boolean
 }
 

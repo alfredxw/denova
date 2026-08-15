@@ -15,6 +15,7 @@ type ToolContext struct {
 	Name           string
 	ExecutionID    string
 	ProviderCallID string
+	ParentCallID   string
 	Definition     ToolDefinitionSnapshot
 }
 

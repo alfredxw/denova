@@ -28,6 +28,7 @@ type Observer struct {
 	llmSpanID      string
 	lastLLMOutcome LLMOutcome
 	pendingTools   map[string]*Span
+	toolSpans      map[string]*Span
 	toolDecisions  map[string]struct{}
 	toolResults    map[string]struct{}
 	toolExecutions []agenttool.ExecutionRecord
@@ -52,6 +53,7 @@ func NewObserverWithIdentity(ledger *Ledger, rootSpanID, runID, sessionID, revie
 		reviewThreadID: strings.TrimSpace(reviewThreadID),
 		rootSpanID:     rootSpanID,
 		pendingTools:   map[string]*Span{},
+		toolSpans:      map[string]*Span{},
 		toolDecisions:  map[string]struct{}{},
 		toolResults:    map[string]struct{}{},
 	}
@@ -156,6 +158,7 @@ func (o *Observer) RecordToolDecision(decision agenttool.Decision) {
 		"tool_name":        decision.ToolName,
 		"execution_id":     decision.ExecutionID,
 		"provider_call_id": decision.ProviderCallID,
+		"parent_call_id":   decision.ParentCallID,
 		"source":           decision.Source,
 		"capability":       decision.Capability,
 		"action":           decision.Action,
@@ -173,7 +176,18 @@ func (o *Observer) RecordToolDecision(decision agenttool.Decision) {
 	if decision.ModelFinishReason != "" {
 		attrs["model_finish_reason"] = decision.ModelFinishReason
 	}
-	o.pendingTools[o.toolKey(decision.ExecutionID, decision.ToolName)] = newSpan(o.ledger.ID(), o.ledger, o.parentSpanID(), "tool_call", attrs)
+	parentSpanID := o.parentSpanID()
+	if parent := o.toolSpans[strings.TrimSpace(decision.ParentCallID)]; parent != nil {
+		parentSpanID = parent.SpanID()
+	} else if decision.ParentCallID != "" {
+		attrs["orphaned_parent_call_id"] = decision.ParentCallID
+	}
+	key := o.toolKey(decision.ExecutionID, decision.ToolName)
+	span := newSpan(o.ledger.ID(), o.ledger, parentSpanID, "tool_call", attrs)
+	o.pendingTools[key] = span
+	if decision.ExecutionID != "" {
+		o.toolSpans[decision.ExecutionID] = span
+	}
 }
 
 // HasToolDecision and HasToolExecution distinguish rich middleware records
@@ -217,11 +231,19 @@ func (o *Observer) RecordToolExecution(result agenttool.ExecutionRecord) {
 	span := o.pendingTools[key]
 	delete(o.pendingTools, key)
 	if span == nil {
-		span = newSpan(o.ledger.ID(), o.ledger, o.parentSpanID(), "tool_call", map[string]any{
+		parentSpanID := o.parentSpanID()
+		if parent := o.toolSpans[strings.TrimSpace(result.ParentCallID)]; parent != nil {
+			parentSpanID = parent.SpanID()
+		}
+		span = newSpan(o.ledger.ID(), o.ledger, parentSpanID, "tool_call", map[string]any{
 			"tool_name":        result.ToolName,
 			"execution_id":     result.ExecutionID,
 			"provider_call_id": result.ProviderCallID,
+			"parent_call_id":   result.ParentCallID,
 		})
+		if result.ExecutionID != "" {
+			o.toolSpans[result.ExecutionID] = span
+		}
 	}
 	status := result.Status
 	if status == "" {
@@ -231,6 +253,7 @@ func (o *Observer) RecordToolExecution(result agenttool.ExecutionRecord) {
 		"tool_name":        result.ToolName,
 		"execution_id":     result.ExecutionID,
 		"provider_call_id": result.ProviderCallID,
+		"parent_call_id":   result.ParentCallID,
 		"capability":       result.Capability,
 		"original_bytes":   result.OriginalBytes,
 		"returned_bytes":   result.ReturnedBytes,

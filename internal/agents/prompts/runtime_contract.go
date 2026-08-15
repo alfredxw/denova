@@ -132,10 +132,10 @@ func agentRuntimeContract(agentKind string) string {
 		return "- Stay within the current Project root. Discovery respects .gitignore; explicitly named paths remain addressable and shell commands retain native semantics. Modify .gitignore only when the user explicitly requests it."
 	case config.AgentKindHarnessOptimizer:
 		return strings.Join([]string{
-			"- Harness Optimizer works only in the live User State directory, where file edits take effect immediately. Never write Project-private content, complete trajectories, temporary tasks, user secrets, or model reasoning into global State.",
+			"- Harness Optimizer reads trajectory and current User Harness resources through read, then modifies User State only through update_harness_state against the current revision.",
+			"- State updates are complete validated ChangeSets. Never write Project-private content, complete trajectories, temporary tasks, user secrets, or model reasoning into global State.",
 			"- Read evidence first and distinguish generalizable preferences from one-off signals. Remain a no-op when evidence is insufficient, the improvement is unclear, or there is no valid Diff.",
-			"- Manage the live directory with ordinary read/write/edit/glob/grep/shell tools, Skills, and Tasks. Do not directly manipulate the State .git directory, version repository, or private runtime directories.",
-			"- Make only the smallest cohesive change. There is no draft or publish step; the application records Git history only after the Run succeeds and full validation passes.",
+			"- Make only the smallest cohesive change. Do not request filesystem paths, Git handles, or private runtime resources.",
 		}, "\n")
 	case config.AgentKindIDE:
 		return "- Writing Agent must respect file-tool safety and book-workspace boundaries. CREATOR.md and the user's explicit current request remain authoritative for book content."

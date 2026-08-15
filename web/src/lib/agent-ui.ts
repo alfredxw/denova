@@ -19,6 +19,7 @@ export interface AgentMessageMetadata {
   subagent?: boolean
   subagent_session_id?: string
   subagent_type?: string
+  parent_call_id?: string
   sse_hidden_fields?: string[]
   sse_hidden_reason?: string
   sse_display_notice?: string
@@ -507,6 +508,7 @@ function agentMetadataFromProvider(metadata: unknown): AgentMessageMetadata {
     subagent: typeof raw.subagent === 'boolean' ? raw.subagent : undefined,
     subagent_session_id: readString(raw.subagent_session_id) || undefined,
     subagent_type: readString(raw.subagent_type) || undefined,
+    parent_call_id: readString(raw.parent_call_id) || undefined,
   }
 }
 

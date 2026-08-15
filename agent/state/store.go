@@ -91,6 +91,9 @@ func (store *Store) Current(ctx context.Context) (Snapshot, error) {
 }
 
 func (store *Store) Update(ctx context.Context, changes ChangeSet) (Result, error) {
+	if diagnostics := ValidateChanges(changes.Changes); len(diagnostics) != 0 {
+		return Result{}, &ValidationError{Diagnostics: diagnostics}
+	}
 	var result Result
 	err := store.withLock(ctx, func() error {
 		if err := store.recoverTransaction(); err != nil {

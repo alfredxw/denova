@@ -24,6 +24,7 @@ import (
 	"denova/internal/agents/modelio"
 	"denova/internal/agents/prompts"
 	agentrun "denova/internal/agents/run"
+	"denova/internal/agents/scripttools"
 	"denova/internal/agents/skillassembly"
 	"denova/internal/agents/toolresult"
 	agenttoolruntime "denova/internal/agents/toolruntime"
@@ -46,9 +47,6 @@ type AgentHostCapabilities struct {
 	// ReadAdapters extend the single read tool with application-owned URI
 	// resources without exposing extra model-visible state-management tools.
 	ReadAdapters []producttools.ReadAdapterBinding
-	// CompletionGuard lets an interactive host reject a premature final answer
-	// and return actionable feedback without adding a model-visible tool.
-	CompletionGuard func(context.Context, *agent.RetryContext) *agent.RetryDecision
 }
 
 // BuildDefinitionWithCompositionForHost returns the complete public Agent
@@ -68,6 +66,7 @@ func BuildDefinitionWithCompositionForHost(ctx context.Context, cfg *config.Conf
 		InteractiveHost:   host.Interactive,
 		ExtraTools:        host.RootTools,
 		ExtraToolsFactory: agenttoolruntime.NewCatalog(cfg).IDE(),
+		ReadAdapters:      host.ReadAdapters,
 	})
 	return assembly.Definition, assembly.Composition, err
 }
@@ -94,28 +93,34 @@ func BuildGeneralDefinitionWithCompositionForHost(ctx context.Context, cfg *conf
 }
 
 // BuildHarnessOptimizerDefinitionWithCompositionForHost assembles the
-// user-level continual-learning Agent over an isolated State draft. Its common
-// capability policy is resolved from the same preset as General Agent.
+// user-level continual-learning Agent around trajectory read and atomic State
+// update only. It deliberately has no live workspace or Script capability.
 func BuildHarnessOptimizerDefinitionWithCompositionForHost(ctx context.Context, cfg *config.Config, host AgentHostCapabilities) (agent.Definition, prompts.SystemPromptComposition, error) {
 	composition, err := prompts.ComposeHarnessOptimizerInstruction(cfg)
 	if err != nil {
 		return agent.Definition{}, prompts.SystemPromptComposition{}, err
 	}
 	assembly, err := buildAgentDefinitionWithComposition(ctx, cfg, agentBuildSpec{
-		Kind:             config.AgentKindHarnessOptimizer,
-		Name:             "DenovaHarnessOptimizer",
-		Description:      "Optimizes user-level Harness State from trajectory evidence",
-		Composition:      composition,
-		EnableSkills:     true,
-		InteractiveHost:  host.Interactive,
-		ExtraTools:       host.RootTools,
-		ReadAdapters:     host.ReadAdapters,
-		ModelOutputGuard: host.CompletionGuard,
+		Kind:            config.AgentKindHarnessOptimizer,
+		Name:            "DenovaHarnessOptimizer",
+		Description:     "Optimizes user-level Harness State from trajectory evidence",
+		Composition:     composition,
+		EnableSkills:    false,
+		InteractiveHost: host.Interactive,
+		ExtraTools:      host.RootTools,
+		ReadAdapters:    host.ReadAdapters,
 	})
 	return assembly.Definition, assembly.Composition, err
 }
 
-func BuildInteractiveStoryDefinitionWithComposition(ctx context.Context, cfg *config.Config, state *book.State, teller prompts.InteractiveStorySystemInstructionInput, toolContexts ...agentinteractive.InteractiveStoryToolContext) (agent.Definition, prompts.SystemPromptComposition, error) {
+func BuildInteractiveStoryDefinitionWithCompositionForHost(
+	ctx context.Context,
+	cfg *config.Config,
+	state *book.State,
+	teller prompts.InteractiveStorySystemInstructionInput,
+	host AgentHostCapabilities,
+	toolContexts ...agentinteractive.InteractiveStoryToolContext,
+) (agent.Definition, prompts.SystemPromptComposition, error) {
 	handlers := []agent.Middleware{agenttoolruntime.NewInteractiveStoryMiddleware()}
 	var outputGuard func(context.Context, *agent.RetryContext) *agent.RetryDecision
 	if len(toolContexts) > 0 && toolContexts[0].TurnResultReady != nil {
@@ -133,7 +138,10 @@ func BuildInteractiveStoryDefinitionWithComposition(ctx context.Context, cfg *co
 		Composition:       composition,
 		ProjectState:      state,
 		EnableSkills:      true,
+		InteractiveHost:   host.Interactive,
 		DisableWriteTodos: true,
+		ExtraTools:        host.RootTools,
+		ReadAdapters:      host.ReadAdapters,
 		ExtraMiddlewares:  handlers,
 		ExtraToolsFactory: agenttoolruntime.NewCatalog(cfg).InteractiveStory(agenttoolruntime.ProjectInteractiveContext(toolContexts...)),
 		ModelOutputGuard:  outputGuard,
@@ -287,9 +295,15 @@ func buildAgentDefinitionWithComposition(ctx context.Context, cfg *config.Config
 	if err != nil {
 		return agentDefinitionAssembly{}, err
 	}
+	savedScriptTools, err := scripttools.Saved(cfg, harness, spec.Kind)
+	if err != nil {
+		return agentDefinitionAssembly{}, err
+	}
 	var taskAgents []agentdelegation.Child
 	if toolSettings.Allows(config.AgentToolDelegation) {
-		configuredSubAgents, err := buildConfiguredSubAgents(ctx, cfg, childSpec, toolSettings, projectContext, harness.SubAgents())
+		configuredSubAgents, err := buildConfiguredSubAgents(
+			ctx, cfg, childSpec, toolSettings, projectContext, harness.SubAgents(), savedScriptTools,
+		)
 		if err != nil {
 			return agentDefinitionAssembly{}, err
 		}
@@ -327,6 +341,7 @@ func buildAgentDefinitionWithComposition(ctx context.Context, cfg *config.Config
 	}
 
 	tools := append([]agent.ToolDefinition(nil), assembly.Tools...)
+	tools = append(tools, savedScriptTools...)
 	var builtinToolsets []agent.CapabilityIdentity
 	if !spec.DisableWriteTodos && toolSettings.Allows(config.AgentToolTodo) {
 		todoToolset := publictools.Todo()
@@ -370,7 +385,8 @@ func buildAgentDefinitionWithComposition(ctx context.Context, cfg *config.Config
 		permissionRules = config.NormalizeAgentApprovalRules(cfg.AgentApprovalRules)
 	}
 	permission, err := agentlifecycle.NewPermissionPolicy(agentlifecycle.PermissionConfig{
-		Mode: permissionMode, ProjectID: configProjectID(cfg), Workspace: configWorkspace(cfg),
+		Mode: permissionMode, AgentKind: spec.Kind,
+		ProjectID: configProjectID(cfg), Workspace: configWorkspace(cfg),
 		Rules: permissionRules,
 	})
 	if err != nil {
@@ -570,13 +586,28 @@ func buildChatModelAgentAssembly(ctx context.Context, cfg *config.Config, spec c
 		return chatModelAgentAssembly{}, err
 	}
 	tools = append(tools, browserTools...)
+	if settings.Allows(config.AgentToolScript) {
+		scriptDefinition, err := scripttools.Immediate(cfg)
+		if err != nil {
+			return chatModelAgentAssembly{}, err
+		}
+		tools = append(tools, scriptDefinition)
+	}
 	if err := producttools.Validate(ctx, tools); err != nil {
 		return chatModelAgentAssembly{}, err
 	}
 	return chatModelAgentAssembly{SystemPrompt: systemPrompt, Tools: tools, Middlewares: middlewares}, nil
 }
 
-func buildConfiguredSubAgents(ctx context.Context, cfg *config.Config, parent agentBuildSpec, parentTools config.ResolvedAgentToolSettings, projectContext agent.ContextSource, subConfigs []config.SubAgentConfig) ([]agentdelegation.Child, error) {
+func buildConfiguredSubAgents(
+	ctx context.Context,
+	cfg *config.Config,
+	parent agentBuildSpec,
+	parentTools config.ResolvedAgentToolSettings,
+	projectContext agent.ContextSource,
+	subConfigs []config.SubAgentConfig,
+	savedScriptTools []agent.ToolDefinition,
+) ([]agentdelegation.Child, error) {
 	if cfg == nil || !config.IsSubAgentParentKind(parent.Kind) {
 		return nil, nil
 	}
@@ -589,7 +620,7 @@ func buildConfiguredSubAgents(ctx context.Context, cfg *config.Config, parent ag
 		if !config.SubAgentAllowedForParent(sub, parent.Kind) {
 			continue
 		}
-		subAgent, err := buildConfiguredSubAgent(ctx, cfg, parent, parentTools, projectContext, sub)
+		subAgent, err := buildConfiguredSubAgent(ctx, cfg, parent, parentTools, projectContext, sub, savedScriptTools)
 		if err != nil {
 			return nil, err
 		}
@@ -598,7 +629,15 @@ func buildConfiguredSubAgents(ctx context.Context, cfg *config.Config, parent ag
 	return subAgents, nil
 }
 
-func buildConfiguredSubAgent(ctx context.Context, cfg *config.Config, parent agentBuildSpec, parentTools config.ResolvedAgentToolSettings, projectContext agent.ContextSource, sub config.SubAgentConfig) (agentdelegation.Child, error) {
+func buildConfiguredSubAgent(
+	ctx context.Context,
+	cfg *config.Config,
+	parent agentBuildSpec,
+	parentTools config.ResolvedAgentToolSettings,
+	projectContext agent.ContextSource,
+	sub config.SubAgentConfig,
+	savedScriptTools []agent.ToolDefinition,
+) (agentdelegation.Child, error) {
 	composition, err := composeSubAgentInstruction(cfg, parent, sub)
 	if err != nil {
 		return agentdelegation.Child{}, fmt.Errorf("assemble sub Agent system prompt id=%s: %w", sub.ID, err)
@@ -627,6 +666,11 @@ func buildConfiguredSubAgent(ctx context.Context, cfg *config.Config, parent age
 	if err != nil {
 		return agentdelegation.Child{}, err
 	}
+	selectedScriptTools, err := scripttools.ForSubAgent(ctx, savedScriptTools, sub.Tools)
+	if err != nil {
+		return agentdelegation.Child{}, fmt.Errorf("select Script Tools for sub Agent %s: %w", sub.ID, err)
+	}
+	assembly.Tools = append(assembly.Tools, selectedScriptTools...)
 	modelIdentity, err := providers.ModelIdentity(modelCfg)
 	if err != nil {
 		return agentdelegation.Child{}, fmt.Errorf("resolve sub Agent model identity id=%s: %w", sub.ID, err)

@@ -43,8 +43,13 @@ func (a *App) prepareChildDefinition(
 		if runtime.workspace != strings.TrimSpace(binding.Workspace) || runtime.sess == nil || runtime.sess.ID != strings.TrimSpace(binding.SessionID) {
 			return agent.Definition{}, fmt.Errorf("%w: delegated Writing parent is not the active Session", agentexecution.ErrCyclePreparationUnavailable)
 		}
+		agentHost, err := a.HarnessAgentHostCapabilities(ctx, &runtime.cfg, config.AgentKindIDE)
+		if err != nil {
+			return agent.Definition{}, err
+		}
 		built, err := appagentruntime.BuildConversationAgent(
 			ctx, &runtime.cfg, runtime.state, runtime.ideTeller, config.AgentKindIDE,
+			agentHost,
 		)
 		if err != nil {
 			return agent.Definition{}, err

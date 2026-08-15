@@ -123,6 +123,33 @@ type ChangeSet struct {
 	Changes      []Change
 }
 
+// ValidateChanges reports every independent path or duplicate error before a
+// caller attempts an atomic update. Schema-specific file validation remains
+// owned by the Store validator after the complete candidate is assembled.
+func ValidateChanges(changes []Change) []Diagnostic {
+	diagnostics := make([]Diagnostic, 0)
+	seen := make(map[string]int, len(changes))
+	for index, change := range changes {
+		path, err := normalizePath(change.Path)
+		if err != nil {
+			diagnostics = append(diagnostics, Diagnostic{
+				Code: "invalid_change_path", Path: change.Path,
+				Message: fmt.Sprintf("State change %d has an invalid relative path", index),
+			})
+			continue
+		}
+		if previous, duplicate := seen[path]; duplicate {
+			diagnostics = append(diagnostics, Diagnostic{
+				Code: "duplicate_change_path", Path: path,
+				Message: fmt.Sprintf("State changes %d and %d target the same path", previous, index),
+			})
+			continue
+		}
+		seen[path] = index
+	}
+	return diagnostics
+}
+
 type Result struct {
 	Snapshot Snapshot `json:"snapshot"`
 	Changed  bool     `json:"changed"`

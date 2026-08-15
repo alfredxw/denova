@@ -99,7 +99,8 @@ func TestPublicEventProjectorStreamsToolInputWithoutDuplicatingExecutionStart(t 
 		Presentation: agent.UniformToolPresentation(agent.ToolPresentationSearch),
 	}
 	projector.Project(agent.Event{RunID: "run", Payload: agent.ToolInputStarted{
-		CallID: "execution-call", ProviderCallID: "provider-call", Name: "read", Index: 2, Descriptor: descriptor,
+		CallID: "execution-call", ProviderCallID: "provider-call", ParentCallID: "script-call",
+		Name: "read", Index: 2, Descriptor: descriptor,
 	}})
 	projector.Project(agent.Event{RunID: "run", Payload: agent.ToolInputDelta{
 		CallID: "execution-call", ProviderCallID: "provider-call", Name: "read", Delta: `{"path":"`,
@@ -128,7 +129,8 @@ func TestPublicEventProjectorStreamsToolInputWithoutDuplicatingExecutionStart(t 
 	call := events[0]
 	if call.DataString("id") != "execution-call" || call.DataString("provider_call_id") != "provider-call" ||
 		call.DataString("name") != "read" || call.DataString("args") != "" || call.DataString("source") != "read" ||
-		eventDataInt(call.Data, "index") != 2 || eventDataInt(call.Data, "max_result_bytes") != 4096 {
+		call.DataString("parent_call_id") != "script-call" || eventDataInt(call.Data, "index") != 2 ||
+		eventDataInt(call.Data, "max_result_bytes") != 4096 {
 		t.Fatalf("tool call = %#v", call.Data)
 	}
 	presentation := eventDataToolPresentation(call.Data)
@@ -140,6 +142,9 @@ func TestPublicEventProjectorStreamsToolInputWithoutDuplicatingExecutionStart(t 
 		eventDataInt(events[3].Data, "index") != 2 {
 		t.Fatalf("tool argument projection = %#v", events[1:4])
 	}
+	if events[4].DataString("parent_call_id") != "script-call" || events[5].DataString("parent_call_id") != "script-call" {
+		t.Fatalf("nested tool lifecycle lost parent identity: %#v", events[4:])
+	}
 }
 
 func TestPublicEventProjectorPreservesSubAgentInvocationIdentity(t *testing.T) {
@@ -147,18 +152,20 @@ func TestPublicEventProjectorPreservesSubAgentInvocationIdentity(t *testing.T) {
 	projector := NewPublicEventProjector(nil, ChatRequest{}, agentrun.Options{
 		AgentKind: "ide", TaskID: "task", RootAgentName: "root",
 	}, func(event agentrun.Event) { events = append(events, event) })
-	projector.Project(agent.Event{RunID: "run", Payload: agent.AssistantDelta{
-		Delta: "reviewed",
+	projector.Project(agent.Event{RunID: "run", Payload: agent.NestedEvent{
+		ParentCallID: "task-call", SessionID: "child-session",
 		Source: agent.EventSource{
 			Name: "reviewer", Path: []string{"root", "reviewer"},
 			InvocationID: "invocation-2", InvocationType: "reviewer",
 		},
+		Child: agent.Event{RunID: "child-run", Payload: agent.AssistantDelta{Delta: "reviewed"}},
 	}})
 	if len(events) != 1 || events[0].Type != "chunk" {
 		t.Fatalf("projected events = %#v", events)
 	}
 	if events[0].DataString("subagent_session_id") != "invocation-2" ||
-		events[0].DataString("subagent_type") != "reviewer" || !eventDataBool(events[0].Data, "subagent") {
+		events[0].DataString("subagent_type") != "reviewer" || events[0].DataString("parent_call_id") != "task-call" ||
+		!eventDataBool(events[0].Data, "subagent") {
 		t.Fatalf("subagent metadata = %#v", events[0].Data)
 	}
 }

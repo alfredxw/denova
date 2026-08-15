@@ -42,6 +42,7 @@ type PublicEventProjector struct {
 
 type publicToolInput struct {
 	providerCallID string
+	parentCallID   string
 	name           string
 	index          int
 	descriptor     *agent.ToolDescriptor
@@ -97,19 +98,19 @@ func (projector *PublicEventProjector) EmitProduct(event agentrun.Event) {
 func (projector *PublicEventProjector) Project(event agent.Event) {
 	projector.mu.Lock()
 	defer projector.mu.Unlock()
-	projector.projectLocked(event, agent.EventSource{})
+	projector.projectLocked(event, agent.EventSource{}, "")
 }
 
-func (projector *PublicEventProjector) projectLocked(event agent.Event, inherited agent.EventSource) {
+func (projector *PublicEventProjector) projectLocked(event agent.Event, inherited agent.EventSource, parentCallID string) {
 	projector.bindRunIDLocked(event.RunID)
-	meta := projector.metadata(event.RunID, inherited)
+	meta := projector.metadata(event.RunID, inherited, parentCallID)
 	switch payload := event.Payload.(type) {
 	case agent.NestedEvent:
 		child := payload.Child
 		// Denova display remains attached to the parent operation while the
 		// typed NestedEvent retains the exact child Run identity for observers.
 		child.RunID = event.RunID
-		projector.projectLocked(child, inheritedEventSource(payload.Source, inherited))
+		projector.projectLocked(child, inheritedEventSource(payload.Source, inherited), firstNonEmpty(payload.ParentCallID, parentCallID))
 	case agent.RunAccepted:
 		// Acceptance is already represented by the task transport and the
 		// Denova-specific agent_cycle_started edge.
@@ -117,7 +118,7 @@ func (projector *PublicEventProjector) projectLocked(event agent.Event, inherite
 		// The execution host owns command delivery and calls ProjectRunStarted
 		// with the durable cycle plus Denova-only command metadata.
 	case agent.AssistantDelta:
-		meta = projector.metadata(event.RunID, inheritedEventSource(payload.Source, inherited))
+		meta = projector.metadata(event.RunID, inheritedEventSource(payload.Source, inherited), parentCallID)
 		content := payload.Delta
 		if !meta.SubAgent && !payload.DisplayOnly {
 			projector.generatedBytes += len(payload.Delta)
@@ -138,7 +139,7 @@ func (projector *PublicEventProjector) projectLocked(event agent.Event, inherite
 			}
 		}
 	case agent.ThinkingDelta:
-		meta = projector.metadata(event.RunID, inheritedEventSource(payload.Source, inherited))
+		meta = projector.metadata(event.RunID, inheritedEventSource(payload.Source, inherited), parentCallID)
 		if payload.Delta != "" {
 			if !meta.SubAgent && !payload.DisplayOnly {
 				projector.thinking.WriteString(payload.Delta)
@@ -178,7 +179,7 @@ func (projector *PublicEventProjector) projectLocked(event agent.Event, inherite
 			projector.emitEvent(agentrun.Event{Type: "thinking", Data: meta.appendTo(map[string]any{"content": thinking})})
 		}
 	case agent.ModelCompleted:
-		meta = projector.metadata(event.RunID, inheritedEventSource(payload.Source, inherited))
+		meta = projector.metadata(event.RunID, inheritedEventSource(payload.Source, inherited), parentCallID)
 		projector.finishInteractiveResponseLocked(payload.RequestedTools)
 		if projector.usage == nil {
 			projector.usage = newRunTokenUsageCollector(event.RunID, projector.options.AgentKind)
@@ -198,7 +199,7 @@ func (projector *PublicEventProjector) projectLocked(event agent.Event, inherite
 			"messages_before": payload.MessagesBefore, "messages_after": payload.MessagesAfter,
 		})})
 	case agent.ToolInputStarted:
-		meta = projector.metadata(event.RunID, inheritedEventSource(payload.Source, inherited))
+		meta = projector.metadata(event.RunID, inheritedEventSource(payload.Source, inherited), parentCallID)
 		projector.observeInteractiveToolLocked(meta, payload.Name)
 		if agentplan.EmitToolRunning(payload.Name, meta.planMetadata(), planEventEmitter(projector.emitEvent)) {
 			return
@@ -211,16 +212,20 @@ func (projector *PublicEventProjector) projectLocked(event agent.Event, inherite
 			providerCallID = payload.CallID
 		}
 		projector.toolInputs[payload.CallID] = publicToolInput{
-			providerCallID: providerCallID, name: payload.Name, index: payload.Index, descriptor: payload.Descriptor,
+			providerCallID: providerCallID, parentCallID: payload.ParentCallID,
+			name: payload.Name, index: payload.Index, descriptor: payload.Descriptor,
 		}
 		data := meta.appendTo(map[string]any{
 			"id": payload.CallID, "provider_call_id": providerCallID, "name": payload.Name,
 			"index": payload.Index, "args": "",
 		})
+		if payload.ParentCallID != "" {
+			data["parent_call_id"] = payload.ParentCallID
+		}
 		appendToolDescriptorProjection(data, payload.Descriptor)
 		projector.emitEvent(agentrun.Event{Type: "tool_call", Data: data})
 	case agent.ToolInputDelta:
-		meta = projector.metadata(event.RunID, inheritedEventSource(payload.Source, inherited))
+		meta = projector.metadata(event.RunID, inheritedEventSource(payload.Source, inherited), parentCallID)
 		if agentplan.IsToolName(payload.Name) || payload.Delta == "" {
 			return
 		}
@@ -258,7 +263,7 @@ func (projector *PublicEventProjector) projectLocked(event agent.Event, inherite
 			"name": input.name, "index": input.index, "delta": payload.Delta,
 		})})
 	case agent.ToolStarted:
-		meta = projector.metadata(event.RunID, inheritedEventSource(payload.Source, inherited))
+		meta = projector.metadata(event.RunID, inheritedEventSource(payload.Source, inherited), parentCallID)
 		projector.observeInteractiveToolLocked(meta, payload.Name)
 		arguments := string(payload.Arguments)
 		if handled, successful := agentplan.EmitToolCall(payload.Name, arguments, meta.planMetadata(), planEventEmitter(projector.emitEvent)); handled {
@@ -278,6 +283,9 @@ func (projector *PublicEventProjector) projectLocked(event agent.Event, inherite
 				"id": payload.CallID, "provider_call_id": input.providerCallID, "name": payload.Name,
 				"index": payload.Index, "args": arguments,
 			})
+			if input.parentCallID != "" {
+				data["parent_call_id"] = input.parentCallID
+			}
 			if target := toolresult.TargetFromArguments(arguments); target != "" {
 				data["target"] = target
 				input.targetEmitted = true
@@ -309,24 +317,34 @@ func (projector *PublicEventProjector) projectLocked(event agent.Event, inherite
 		data := meta.appendTo(map[string]any{
 			"id": payload.CallID, "provider_call_id": input.providerCallID, "name": payload.Name, "index": payload.Index,
 		})
+		if input.parentCallID != "" {
+			data["parent_call_id"] = input.parentCallID
+		}
 		appendToolDescriptorProjection(data, input.descriptor)
 		projector.emitEvent(agentrun.Event{Type: "tool_started", Data: data})
 	case agent.ToolProgress:
-		meta = projector.metadata(event.RunID, inheritedEventSource(payload.Source, inherited))
+		meta = projector.metadata(event.RunID, inheritedEventSource(payload.Source, inherited), parentCallID)
+		input := projector.toolInputs[payload.CallID]
 		data := meta.appendTo(map[string]any{
 			"id": payload.CallID, "provider_call_id": firstNonEmpty(payload.ProviderCallID, payload.CallID),
 			"name": payload.Name, "index": payload.Index, "delta": payload.Delta,
 		})
+		if input.parentCallID != "" {
+			data["parent_call_id"] = input.parentCallID
+		}
 		appendToolDescriptorProjection(data, payload.Descriptor)
 		projector.emitEvent(agentrun.Event{Type: "tool_progress", Data: data})
 	case agent.ToolFinished:
-		meta = projector.metadata(event.RunID, inheritedEventSource(payload.Source, inherited))
+		meta = projector.metadata(event.RunID, inheritedEventSource(payload.Source, inherited), parentCallID)
 		input := projector.toolInputs[payload.CallID]
 		delete(projector.toolInputs, payload.CallID)
 		data := meta.appendTo(map[string]any{
 			"id": payload.CallID, "provider_call_id": firstNonEmpty(payload.ProviderCallID, input.providerCallID, payload.CallID),
 			"name": payload.Name, "index": payload.Index, "content": payload.Result,
 		})
+		if input.parentCallID != "" {
+			data["parent_call_id"] = input.parentCallID
+		}
 		descriptor := payload.Descriptor
 		if descriptor == nil {
 			descriptor = input.descriptor
@@ -889,10 +907,10 @@ func (projector *PublicEventProjector) emitEvent(event agentrun.Event) {
 }
 
 func (projector *PublicEventProjector) rootMetadata() agentEventMetadata {
-	return projector.metadata(firstNonEmpty(projector.runID, projector.options.TaskID), agent.EventSource{Name: projector.options.RootAgentName})
+	return projector.metadata(firstNonEmpty(projector.runID, projector.options.TaskID), agent.EventSource{Name: projector.options.RootAgentName}, "")
 }
 
-func (projector *PublicEventProjector) metadata(runID string, source agent.EventSource) agentEventMetadata {
+func (projector *PublicEventProjector) metadata(runID string, source agent.EventSource, parentCallID string) agentEventMetadata {
 	name := strings.TrimSpace(source.Name)
 	if name == "" {
 		name = projector.options.RootAgentName
@@ -906,7 +924,7 @@ func (projector *PublicEventProjector) metadata(runID string, source agent.Event
 	meta := agentEventMetadata{
 		RunID:     firstNonEmpty(strings.TrimSpace(runID), projector.options.TaskID),
 		AgentKind: projector.options.AgentKind, AgentName: name, RootAgentName: root,
-		RunPath: path, SubAgent: subAgent,
+		RunPath: path, SubAgent: subAgent, ParentCallID: strings.TrimSpace(parentCallID),
 	}
 	if subAgent {
 		meta.SubAgentSessionID = strings.TrimSpace(source.InvocationID)

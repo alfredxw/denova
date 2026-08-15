@@ -42,6 +42,13 @@ func WithMaxResultBytes(limit int) DefinitionOption {
 	return func(descriptor *agent.ToolDescriptor) { descriptor.MaxResultBytes = limit }
 }
 
+// WithPresentation selects the existing UI renderer for a composed tool.
+func WithPresentation(presentation agent.ToolPresentationKind) DefinitionOption {
+	return func(descriptor *agent.ToolDescriptor) {
+		descriptor.Presentation = agent.UniformToolPresentation(presentation)
+	}
+}
+
 // WithResultRecoveryKind declares the exact ordinary capability used to
 // reconstruct a successful result after context-pressure cleanup.
 func WithResultRecoveryKind(kind agent.ToolResultRecoveryKind) DefinitionOption {

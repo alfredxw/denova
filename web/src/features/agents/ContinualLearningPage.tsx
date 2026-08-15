@@ -3,6 +3,7 @@ import { FileCode2, FilePlus2, History, Plus, Route, RotateCcw, Save, ShieldChec
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import {
+  APIError,
   getContinualLearningSchedule,
   getHarnessState,
   getHarnessStateVersionDiff,
@@ -12,6 +13,7 @@ import {
 } from '@/lib/api'
 import type {
   ContinualLearningScheduleStatus,
+  HarnessStateDiagnostic,
   HarnessStateSnapshot,
   HarnessStateVersion,
 } from '@/lib/api'
@@ -19,13 +21,14 @@ import { formatDateTime } from '@/i18n'
 import { AGENTS } from './agent-registry'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { VersionTimeline } from '@/features/versions/components/version-timeline'
 import type { VersionItem } from '@/features/versions/components/version-timeline'
 import { HarnessOptimizationSchedule } from './HarnessOptimizationSchedule'
 import type { HarnessOptimizationScheduleSettings } from './HarnessOptimizationSchedule'
 import { HarnessTrajectoryPanel } from './HarnessTrajectoryPanel'
+import { HarnessStateEditor } from './harness-state/HarnessStateEditor'
+import { NewScriptToolDialog } from './harness-state/NewScriptToolDialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -62,7 +65,6 @@ export function ContinualLearningPage({
   const [schedule, setSchedule] = useState<ContinualLearningScheduleStatus | null>(null)
   const [selectedPath, setSelectedPath] = useState('')
   const [content, setContent] = useState('')
-  const [savedContent, setSavedContent] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -70,6 +72,11 @@ export function ContinualLearningPage({
   const [diffLoading, setDiffLoading] = useState(false)
   const [selectedVersionID, setSelectedVersionID] = useState('')
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null)
+  const [diagnostics, setDiagnostics] = useState<HarnessStateDiagnostic[]>([])
+  const [selectedDiagnostic, setSelectedDiagnostic] = useState<HarnessStateDiagnostic>()
+  const [scriptDialogOpen, setScriptDialogOpen] = useState(false)
+  const savedFile = snapshot?.files.find(file => file.path === selectedPath)
+  const dirty = selectedPath !== '' && (savedFile === undefined || content !== savedFile.content)
 
   const load = useCallback(async (preferredPath?: string) => {
     setLoading(true)
@@ -81,6 +88,8 @@ export function ContinualLearningPage({
         getContinualLearningSchedule(),
       ])
       setSnapshot(nextSnapshot)
+      setDiagnostics(nextSnapshot.diagnostics || [])
+      setSelectedDiagnostic(undefined)
       setVersions(nextVersions)
       setSchedule(nextSchedule)
       const paths = nextSnapshot.files.map((file) => file.path)
@@ -90,7 +99,6 @@ export function ContinualLearningPage({
       const nextContent = nextSnapshot.files.find((file) => file.path === nextPath)?.content || ''
       setSelectedPath(nextPath)
       setContent(nextContent)
-      setSavedContent(nextContent)
     } catch (cause) {
       setError(errorMessage(cause))
     } finally {
@@ -107,19 +115,18 @@ export function ContinualLearningPage({
 
   const selectFile = (path: string) => {
     if (!snapshot) return
-    if (content !== savedContent) {
+    if (dirty) {
       toast.error(t('continualLearning.unsavedConfirm'))
       return
     }
     const nextContent = snapshot.files.find((file) => file.path === path)?.content || ''
     setSelectedPath(path)
     setContent(nextContent)
-    setSavedContent(nextContent)
   }
 
   const createFile = (kind: 'prompt' | 'context' | 'tools' | 'subagent') => {
     if (!snapshot) return
-    if (content !== savedContent) {
+    if (dirty) {
       toast.error(t('continualLearning.unsavedConfirm'))
       return
     }
@@ -131,11 +138,25 @@ export function ContinualLearningPage({
     }
     setSelectedPath(created.path)
     setContent(created.content)
-    setSavedContent('')
+  }
+
+  const createScriptTool = (file: { path: string; content: string }) => {
+    if (!snapshot) return
+    setSelectedPath(file.path)
+    setContent(file.content)
+    setDiagnostics(current => current.filter(diagnostic => diagnostic.path !== file.path))
+  }
+
+  const openScriptToolDialog = () => {
+    if (dirty) {
+      toast.error(t('continualLearning.unsavedConfirm'))
+      return
+    }
+    setScriptDialogOpen(true)
   }
 
   const save = async () => {
-    if (!snapshot || !selectedPath || content === savedContent || saving) return
+    if (!snapshot || !selectedPath || !dirty || saving) return
     setSaving(true)
     setError(null)
     try {
@@ -147,6 +168,8 @@ export function ContinualLearningPage({
       toast.success(t('continualLearning.saved'))
       await load(selectedPath)
     } catch (cause) {
+      const nextDiagnostics = diagnosticsFromError(cause)
+      if (nextDiagnostics.length > 0) setDiagnostics(nextDiagnostics)
       setError(errorMessage(cause))
     } finally {
       setSaving(false)
@@ -194,7 +217,7 @@ export function ContinualLearningPage({
   }
 
   const restoreVersion = async (version: HarnessStateVersion) => {
-    if (content !== savedContent) {
+    if (dirty) {
       toast.error(t('continualLearning.unsavedConfirm'))
       setPendingAction(null)
       return
@@ -216,20 +239,22 @@ export function ContinualLearningPage({
 
   const discard = () => {
     if (!snapshot) return
-    const savedFile = snapshot.files.find((file) => file.path === selectedPath)
-    if (savedFile) {
-      setContent(savedFile.content)
-      setSavedContent(savedFile.content)
+    setDiagnostics(snapshot.diagnostics || [])
+    setSelectedDiagnostic(undefined)
+    const persistedFile = snapshot.files.find((file) => file.path === selectedPath)
+    if (persistedFile) {
+      setContent(persistedFile.content)
       return
     }
     const fallback = snapshot.files[0]
     setSelectedPath(fallback?.path || '')
     setContent(fallback?.content || '')
-    setSavedContent(fallback?.content || '')
   }
 
-  const dirty = content !== savedContent
   const pathGroups = useMemo(() => groupFiles(snapshot?.files.map((file) => file.path) || []), [snapshot])
+  const selectedScriptTool = snapshot?.script_tools?.find(tool => tool.resource === selectedPath)
+  const selectedInvalid = diagnostics.some(diagnostic => diagnostic.path === selectedPath)
+  const selectedStatus = selectedInvalid ? 'invalid' : dirty ? 'unsaved' : 'valid'
   const versionItems = useMemo<VersionItem[]>(() => versions.map((version) => ({
     id: version.id,
     title: version.summary,
@@ -263,7 +288,7 @@ export function ContinualLearningPage({
           {loading ? (
             <div className="grid h-full place-items-center text-xs text-[var(--nova-text-faint)]">{t('common.loading')}</div>
           ) : snapshot?.source === 'builtin' && !selectedPath ? (
-            <BuiltinStateOverview onCreate={() => createFile('prompt')} />
+            <BuiltinStateOverview onCreate={() => createFile('prompt')} onCreateScript={openScriptToolDialog} />
           ) : (
             <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] md:grid-cols-[220px_minmax(0,1fr)] md:grid-rows-1">
               <aside className="min-h-0 border-b border-[var(--nova-border)] bg-[var(--nova-surface-2)] md:border-r md:border-b-0">
@@ -277,6 +302,7 @@ export function ContinualLearningPage({
                       <DropdownMenuItem onSelect={() => createFile('prompt')}><FilePlus2 />{t('continualLearning.file.prompt')}</DropdownMenuItem>
                       <DropdownMenuItem onSelect={() => createFile('context')}><FilePlus2 />{t('continualLearning.file.context')}</DropdownMenuItem>
                       <DropdownMenuItem onSelect={() => createFile('subagent')}><FilePlus2 />{t('continualLearning.file.subagent')}</DropdownMenuItem>
+                      <DropdownMenuItem onSelect={openScriptToolDialog}><FileCode2 />{t('continualLearning.file.scriptTool')}</DropdownMenuItem>
                       <DropdownMenuItem disabled={snapshot?.files.some((file) => file.path === 'tools.toml')} onSelect={() => createFile('tools')}><FilePlus2 />{t('continualLearning.file.tools')}</DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -285,7 +311,7 @@ export function ContinualLearningPage({
                   {pathGroups.length === 0 && <div className="px-2 py-5 text-center text-[11px] text-[var(--nova-text-faint)]">{t('continualLearning.empty')}</div>}
                   {pathGroups.map((group) => (
                     <div key={group.name} className="shrink-0 md:mb-3">
-                      <div className="hidden px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-[var(--nova-text-faint)] md:block">{group.name}</div>
+                      <div className="hidden px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-[var(--nova-text-faint)] md:block">{t(`continualLearning.group.${group.name}`)}</div>
                       {group.paths.map((path) => (
                         <button
                           key={path}
@@ -293,7 +319,10 @@ export function ContinualLearningPage({
                           onClick={() => selectFile(path)}
                           className={`block w-full min-w-36 truncate rounded-[var(--nova-radius)] px-2 py-1.5 text-left font-mono text-[11px] transition-colors ${selectedPath === path ? 'bg-[var(--nova-surface-3)] text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-surface-3)]'}`}
                         >
-                          {path.split('/').at(-1)}
+                          <span className="flex min-w-0 items-center gap-1.5">
+                            <span className={`size-1.5 shrink-0 rounded-full ${diagnostics.some(diagnostic => diagnostic.path === path) ? 'bg-[var(--nova-danger)]' : path.endsWith('.js') ? 'bg-[var(--nova-accent-green)]' : 'bg-[var(--nova-text-faint)]'}`} />
+                            <span className="min-w-0 truncate">{path.split('/').at(-1)}</span>
+                          </span>
                         </button>
                       ))}
                     </div>
@@ -303,6 +332,16 @@ export function ContinualLearningPage({
               <section className="flex min-h-0 min-w-0 flex-col">
                 <div className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--nova-border)] px-3">
                   <code className="min-w-0 flex-1 truncate text-[11px] text-[var(--nova-text-muted)]">{selectedPath || t('continualLearning.noFile')}</code>
+                  {selectedPath && (
+                    <Badge
+                      variant="outline"
+                      className={`h-5 px-1.5 text-[9px] ${selectedStatus === 'invalid' ? 'text-[var(--nova-danger)]' : selectedStatus === 'unsaved' ? 'text-amber-500' : 'text-[var(--nova-accent-green)]'}`}
+                    >
+                      {t(`continualLearning.${selectedStatus}`)}
+                    </Badge>
+                  )}
+                  {selectedPath.endsWith('.js') && <Badge variant="outline" className="h-5 px-1.5 text-[9px]">{t('continualLearning.script.badge')}</Badge>}
+                  {selectedScriptTool?.agents.map(agent => <Badge key={agent} variant="outline" className="hidden h-5 px-1.5 text-[9px] lg:inline-flex">{t(`continualLearning.script.agent.${agent}`)}</Badge>)}
                   {dirty && <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-label={t('continualLearning.unsaved')} />}
                   {selectedPath && snapshot?.files.some((file) => file.path === selectedPath) && (
                     <Button type="button" size="icon-xs" variant="ghost" disabled={saving} onClick={() => setPendingAction({ kind: 'delete', path: selectedPath })} aria-label={t('continualLearning.delete')}><Trash2 /></Button>
@@ -317,13 +356,22 @@ export function ContinualLearningPage({
                   </Button>
                 </div>
                 {selectedPath ? (
-                  <Textarea
-                    autoResize={false}
+                  <HarnessStateEditor
+                    path={selectedPath}
                     value={content}
-                    onChange={(event) => setContent(event.target.value)}
-                    spellCheck={false}
-                    aria-label={t('continualLearning.editorLabel', { path: selectedPath })}
-                    className="h-full min-h-0 flex-1 resize-none rounded-none border-0 bg-[var(--nova-bg)] p-4 font-mono text-xs leading-5 focus-visible:ring-0"
+                    diagnostics={diagnostics}
+                    selectedDiagnostic={selectedDiagnostic}
+                    onChange={(nextContent) => {
+                      setContent(nextContent)
+                      setError(null)
+                      setDiagnostics(current => current.filter(diagnostic => diagnostic.path !== selectedPath))
+                      if (selectedDiagnostic?.path === selectedPath) setSelectedDiagnostic(undefined)
+                    }}
+                    onSave={() => void save()}
+                    onSelectDiagnostic={(diagnostic) => {
+                      if (diagnostic.path && diagnostic.path !== selectedPath) selectFile(diagnostic.path)
+                      setSelectedDiagnostic(diagnostic)
+                    }}
                   />
                 ) : (
                   <div className="grid h-full place-items-center px-6 text-center text-xs text-[var(--nova-text-faint)]">{t('continualLearning.emptyAction')}</div>
@@ -376,12 +424,18 @@ export function ContinualLearningPage({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <NewScriptToolDialog
+        open={scriptDialogOpen}
+        existingPaths={snapshot?.files.map(file => file.path) || []}
+        onOpenChange={setScriptDialogOpen}
+        onCreate={createScriptTool}
+      />
     </div>
   )
 }
 
 function groupFiles(paths: string[]) {
-  const order = ['prompts', 'context', 'subagents', 'root']
+  const order = ['prompts', 'context', 'subagents', 'tools', 'root']
   const groups = new Map<string, string[]>()
   for (const path of paths) {
     const group = path.includes('/') ? path.split('/')[0] : 'root'
@@ -392,7 +446,7 @@ function groupFiles(paths: string[]) {
     .map(([name, groupedPaths]) => ({ name, paths: groupedPaths.sort() }))
 }
 
-function BuiltinStateOverview({ onCreate }: { onCreate: () => void }) {
+function BuiltinStateOverview({ onCreate, onCreateScript }: { onCreate: () => void; onCreateScript: () => void }) {
   const { t } = useTranslation()
   return (
     <div className="grid h-full min-h-0 place-items-center overflow-y-auto px-5 py-8">
@@ -412,9 +466,10 @@ function BuiltinStateOverview({ onCreate }: { onCreate: () => void }) {
               <li className="border-l border-[var(--nova-border-strong)] pl-2">{t('continualLearning.builtin.tools')}</li>
               <li className="border-l border-[var(--nova-border-strong)] pl-2">{t('continualLearning.builtin.modes')}</li>
             </ul>
-            <Button type="button" size="sm" variant="outline" className="mt-4" onClick={onCreate}>
-              <FilePlus2 />{t('continualLearning.newFile')}
-            </Button>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button type="button" size="sm" variant="outline" onClick={onCreate}><FilePlus2 />{t('continualLearning.newFile')}</Button>
+              <Button type="button" size="sm" variant="outline" onClick={onCreateScript}><FileCode2 />{t('continualLearning.script.new')}</Button>
+            </div>
           </div>
         </div>
       </section>
@@ -449,4 +504,13 @@ function newFile(kind: 'prompt' | 'context' | 'tools' | 'subagent', existing: Se
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error || 'Unknown error')
+}
+
+function diagnosticsFromError(error: unknown): HarnessStateDiagnostic[] {
+  if (!(error instanceof APIError) || !Array.isArray(error.details?.diagnostics)) return []
+  return error.details.diagnostics.filter((item): item is HarnessStateDiagnostic => Boolean(
+    item && typeof item === 'object' && !Array.isArray(item) &&
+    typeof (item as HarnessStateDiagnostic).code === 'string' &&
+    typeof (item as HarnessStateDiagnostic).message === 'string',
+  ))
 }

@@ -8,8 +8,63 @@ import (
 	"testing"
 
 	"denova/config"
+	"denova/internal/agents/harnessstate"
 	"denova/internal/agents/prompts"
+	producttools "denova/internal/agents/tools"
 )
+
+func TestWritingAssemblyComposesSkillAndHarnessStateReadAdapters(t *testing.T) {
+	root := t.TempDir()
+	workspace := filepath.Join(root, "workspace")
+	skillsDir := filepath.Join(root, "skills")
+	if err := os.MkdirAll(workspace, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeAgentSkillFixture(t, skillsDir, "continuity", "Check narrative continuity before revising scenes.")
+
+	cfg := &config.Config{
+		Workspace: workspace, SkillsDir: skillsDir, DenovaDir: filepath.Join(root, ".denova"),
+	}
+	cfg.SetDataDir(filepath.Join(root, "data"))
+	manager, err := harnessstate.Open(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	harnessAdapter, err := harnessstate.NewReadAdapter(manager)
+	if err != nil {
+		t.Fatal(err)
+	}
+	harnessBinding, err := producttools.NewReadAdapterBinding(config.AgentToolHarnessState, harnessAdapter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings := config.ResolvedAgentToolSettings{
+		config.AgentToolWorkspaceRead: true,
+		config.AgentToolSkills:        true,
+		config.AgentToolHarnessState:  true,
+	}
+	assembly, err := buildChatModelAgentAssembly(context.Background(), cfg, chatModelAgentAssemblySpec{
+		Kind: config.AgentKindIDE, SystemPrompt: mustTestPromptComposition(t, config.AgentKindIDE, "Stable base instruction."),
+		ToolSettings: settings, EnableSkills: true, ReadAdapters: []producttools.ReadAdapterBinding{harnessBinding},
+	})
+	if err != nil {
+		t.Fatalf("compose Skill and Harness State read adapters: %v", err)
+	}
+
+	foundRead := false
+	foundSkill := false
+	for _, definition := range assembly.Tools {
+		info, infoErr := definition.Tool.Info(context.Background())
+		if infoErr != nil {
+			t.Fatal(infoErr)
+		}
+		foundRead = foundRead || info.Name == "read"
+		foundSkill = foundSkill || info.Name == "skill"
+	}
+	if !foundRead || !foundSkill {
+		t.Fatalf("combined assembly tools missing read or skill: read=%t skill=%t", foundRead, foundSkill)
+	}
+}
 
 func TestWritingAndGameAssembliesInjectAvailableSkillDescriptions(t *testing.T) {
 	root := t.TempDir()

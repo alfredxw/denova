@@ -427,15 +427,22 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
                placeholder={placeholderFor('agent_idle_timeout_seconds')}
                min={0}
                onChange={(v) => setField('agent_idle_timeout_seconds', v)} />
-		  <Num label={t('settings.agent.toolResultLimitKB')} value={draft.agent_tool_result_limit_kb ?? null}
-			   placeholder={placeholderFor('agent_tool_result_limit_kb')}
-			   min={1}
+          <Num label={t('settings.agent.toolResultLimitKB')} value={draft.agent_tool_result_limit_kb ?? null}
+               placeholder={placeholderFor('agent_tool_result_limit_kb')}
+               min={1}
                onChange={(v) => setField('agent_tool_result_limit_kb', v)} />
           <Num label={t('settings.agent.toolParallelism')} value={draft.agent_tool_parallelism ?? null}
                placeholder={placeholderFor('agent_tool_parallelism')}
                min={1}
                max={64}
                onChange={(v) => setField('agent_tool_parallelism', v)} />
+          <Num label={t('settings.agent.scriptTimeoutSeconds')} value={draft.agent_script_timeout_seconds ?? null}
+               placeholder={placeholderFor('agent_script_timeout_seconds')}
+               min={0}
+               onChange={(v) => setField('agent_script_timeout_seconds', v)} />
+          <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-xs leading-5 text-[var(--nova-text-faint)]">
+            {t('settings.agent.scriptIsolationHint')}
+          </div>
           <BoolTri label={t('settings.agent.planModeDefault')} value={draft.plan_mode_default ?? null}
                    inherited={inherited.plan_mode_default}
                    onChange={(v) => setField('plan_mode_default', v)} />
@@ -1774,6 +1781,7 @@ function mergeSettingsLayer(parent: Settings, child: Settings): Settings {
   override('agent_idle_timeout_seconds', isNonNull)
   override('agent_tool_result_limit_kb', isNonNull)
   override('agent_tool_parallelism', isNonNull)
+  override('agent_script_timeout_seconds', isNonNull)
   override('agent_approval_mode', isNonEmptyString)
   override('shell_environment_mode', isNonEmptyString)
   override('shell_environment_shell', isNonEmptyString)

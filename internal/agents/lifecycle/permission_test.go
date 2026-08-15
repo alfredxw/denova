@@ -185,6 +185,51 @@ func TestDenovaPermissionRejectsConflictingRememberedRuleBeforePersistence(t *te
 	}
 }
 
+func TestHarnessStateUsesDedicatedCrossProjectApproval(t *testing.T) {
+	userPolicy, err := NewPermissionPolicy(PermissionConfig{
+		Mode: config.AgentApprovalFullAccess, AgentKind: config.AgentKindGeneral,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	requests := []struct {
+		name string
+		want agent.PermissionDecisionKind
+	}{
+		{name: `manifest`, want: agent.PermissionAllow},
+		{name: `file`, want: agent.PermissionAsk},
+		{name: `update`, want: agent.PermissionAsk},
+	}
+	for _, test := range requests {
+		var request agent.PermissionRequest
+		switch test.name {
+		case "manifest":
+			request = agent.PermissionRequest{Tool: "read", Arguments: json.RawMessage(`{"path":"harness://state/current"}`)}
+		case "file":
+			request = agent.PermissionRequest{Tool: "read", Arguments: json.RawMessage(`{"path":"harness://state/tools/a.js"}`)}
+		case "update":
+			request = agent.PermissionRequest{Tool: "update_harness_state", Arguments: json.RawMessage(`{"base_revision":"r","changes":[]}`)}
+		}
+		decision, err := userPolicy.Evaluate(context.Background(), request)
+		if err != nil || decision.Kind != test.want {
+			t.Fatalf("%s decision=%#v err=%v", test.name, decision, err)
+		}
+	}
+
+	optimizer, err := NewPermissionPolicy(PermissionConfig{
+		Mode: config.AgentApprovalAsk, AgentKind: config.AgentKindHarnessOptimizer,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	decision, err := optimizer.Evaluate(context.Background(), agent.PermissionRequest{
+		Tool: "update_harness_state", Arguments: json.RawMessage(`{"base_revision":"r","changes":[]}`),
+	})
+	if err != nil || decision.Kind != agent.PermissionAllow {
+		t.Fatalf("optimizer decision=%#v err=%v", decision, err)
+	}
+}
+
 func permissionTestRequest(arguments string) agent.PermissionRequest {
 	return agent.PermissionRequest{
 		Tool: "bash", Arguments: json.RawMessage(arguments),

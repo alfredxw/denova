@@ -209,8 +209,13 @@ func (service *Service) AcceptTurn(ctx context.Context, input TurnRequest) (*Acc
 	if err := applyTurnPolicy(&runtime, input.Policy); err != nil {
 		return nil, err
 	}
+	agentHost, err := service.host.HarnessAgentHostCapabilities(ctx, &runtime.Config, runtime.AgentKind)
+	if err != nil {
+		return nil, fmt.Errorf("build AgentChat Harness State capabilities: %w", err)
+	}
 	builtAgent, err := appagentruntime.BuildConversationAgent(
 		ctx, &runtime.Config, runtime.State, runtime.IDETeller, runtime.AgentKind,
+		agentHost,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("build AgentChat Project Agent: %w", err)
@@ -381,8 +386,13 @@ func (service *Service) prepareCommandExecution(ctx context.Context, active *run
 	if err := applyTurnPolicy(&runtime, active.policy); err != nil {
 		return agentexecution.Cycle{}, err
 	}
+	agentHost, err := service.host.HarnessAgentHostCapabilities(ctx, &runtime.Config, runtime.AgentKind)
+	if err != nil {
+		return agentexecution.Cycle{}, err
+	}
 	builtAgent, err := appagentruntime.BuildConversationAgent(
 		ctx, &runtime.Config, runtime.State, runtime.IDETeller, runtime.AgentKind,
+		agentHost,
 	)
 	if err != nil {
 		return agentexecution.Cycle{}, err

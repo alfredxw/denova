@@ -45,6 +45,7 @@ var agentKindRegistry = []AgentKindDefinition{
 			AgentToolWorkspaceRead, AgentToolWorkspaceWrite, AgentToolShell,
 			AgentToolWebSearch, AgentToolWebFetch, AgentToolBrowser,
 			AgentToolAsk, AgentToolTodo, AgentToolGoal, AgentToolSkills, AgentToolDelegation,
+			AgentToolScript, AgentToolHarnessState,
 		},
 		ModelOverride:    func(settings AgentModelSettings) AgentModelOverride { return settings.General },
 		SetModelOverride: func(settings *AgentModelSettings, override AgentModelOverride) { settings.General = override },
@@ -56,20 +57,18 @@ var agentKindRegistry = []AgentKindDefinition{
 	{
 		Kind:      AgentKindHarnessOptimizer,
 		SessionID: "harness-optimizer-agent",
-		// Continual learning deliberately shares General's model, capability,
-		// Skill, and context policies. This keeps the optimizer aligned as the
-		// common Agent surface evolves instead of creating a second preset.
-		ToolCapabilities: []string{
-			AgentToolWorkspaceRead, AgentToolWorkspaceWrite, AgentToolShell,
-			AgentToolWebSearch, AgentToolWebFetch, AgentToolBrowser,
-			AgentToolAsk, AgentToolTodo, AgentToolGoal, AgentToolSkills, AgentToolDelegation,
-		},
+		// The optimizer reads trajectory and Harness resources through the one
+		// read endpoint, then submits one validated CAS update. It never receives
+		// the live State directory or unrelated project capabilities.
+		ToolCapabilities: []string{AgentToolHarnessState},
 		ModelOverride:    func(settings AgentModelSettings) AgentModelOverride { return settings.General },
 		SetModelOverride: func(settings *AgentModelSettings, override AgentModelOverride) { settings.General = override },
-		ToolOverride:     func(settings AgentToolSettings) AgentToolOverride { return settings.General },
-		PromptOverride:   func(settings AgentPromptSettings) AgentPromptOverride { return settings.General },
-		SkillOverride:    func(settings AgentSkillSettings) AgentSkillOverride { return settings.General },
-		ContextOverride:  func(settings AgentContextSettings) AgentContextOverride { return settings.General },
+		ToolOverride: func(AgentToolSettings) AgentToolOverride {
+			return AgentToolOverride{AgentToolHarnessState: true}
+		},
+		PromptOverride:  func(settings AgentPromptSettings) AgentPromptOverride { return settings.General },
+		SkillOverride:   func(settings AgentSkillSettings) AgentSkillOverride { return settings.General },
+		ContextOverride: func(settings AgentContextSettings) AgentContextOverride { return settings.General },
 	},
 	{
 		Kind: AgentKindIDE,
@@ -77,6 +76,7 @@ var agentKindRegistry = []AgentKindDefinition{
 			AgentToolWorkspaceRead, AgentToolWorkspaceWrite, AgentToolShell,
 			AgentToolWebSearch, AgentToolWebFetch, AgentToolBrowser,
 			AgentToolAsk, AgentToolTodo, AgentToolGoal, AgentToolSkills, AgentToolDelegation,
+			AgentToolScript, AgentToolHarnessState,
 			AgentToolLoreRead, AgentToolLoreWrite, AgentToolImageGeneration,
 		},
 		ModelOverride:    func(settings AgentModelSettings) AgentModelOverride { return settings.IDE },
@@ -91,6 +91,7 @@ var agentKindRegistry = []AgentKindDefinition{
 		ToolCapabilities: []string{
 			AgentToolWorkspaceRead, AgentToolWebSearch, AgentToolWebFetch, AgentToolBrowser,
 			AgentToolSkills, AgentToolDelegation, AgentToolLoreRead,
+			AgentToolScript, AgentToolHarnessState,
 		},
 		ModelOverride:    func(settings AgentModelSettings) AgentModelOverride { return settings.InteractiveStory },
 		SetModelOverride: func(settings *AgentModelSettings, override AgentModelOverride) { settings.InteractiveStory = override },
@@ -239,6 +240,21 @@ var agentToolCapabilities = []AgentToolCapability{
 		agent.ToolExecutionChild, agent.ToolMutationNone, agent.ToolPostCheckNone,
 		agent.ToolRecoveryReconcilable, agent.SteeringFinishCurrent, agent.ToolPresentationDelegation,
 	), agent.ToolResultProtected))),
+	withRuntimeResultLimit(capabilityDefinition(AgentToolScript, "agents.tool.script.title", "agents.tool.script.subtitle", []string{"script"}, descriptorWithRetention(descriptorSummary(
+		agent.ToolExecutionChild, agent.ToolMutationNone, agent.ToolPostCheckNone,
+		agent.ToolRecoveryNonIdempotent, agent.SteeringFinishCurrent, agent.ToolPresentationScript,
+	), agent.ToolResultProtected))),
+	withRuntimeResultLimit(runtimeSubAgentUnavailableCapabilityDefinitionWithToolDescriptors(
+		AgentToolHarnessState, "agents.tool.harnessState.title", "agents.tool.harnessState.subtitle",
+		[]string{"read", "update_harness_state"},
+		descriptorWithSource(descriptorSummary(
+			agent.ToolExecutionConfigExclusive, agent.ToolMutationConfig, agent.ToolPostCheckConfigRevision,
+			agent.ToolRecoveryReconcilable, agent.SteeringFinishCurrent, agent.ToolPresentationFile,
+		), agent.ToolSourceWrite),
+		map[string]agent.ToolDescriptor{
+			"read": descriptorWithSource(readOnlyDescriptor(agent.ToolPresentationFile, agent.ToolResultRecoveryRead), agent.ToolSourceRead),
+		},
+	)),
 	withRuntimeResultLimit(capabilityDefinition(AgentToolConfigRead, "agents.tool.configRead.title", "agents.tool.configRead.subtitle", []string{"config_read"}, descriptorWithSource(readOnlyDescriptor(agent.ToolPresentationGeneric, agent.ToolResultRecoveryRerun), agent.ToolSourceRead))),
 	withRuntimeResultLimit(capabilityDefinition(AgentToolConfigApply, "agents.tool.configApply.title", "agents.tool.configApply.subtitle", []string{"config_apply"}, descriptorWithSource(descriptorSummary(
 		agent.ToolExecutionConfigExclusive, agent.ToolMutationConfig, agent.ToolPostCheckConfigRevision,
@@ -509,6 +525,17 @@ func subAgentUnavailableCapabilityDefinition(source, titleKey, descriptionKey st
 
 func runtimeSubAgentUnavailableCapabilityDefinition(source, titleKey, descriptionKey string, toolNames []string, descriptor agent.ToolDescriptor) AgentToolCapability {
 	definition := runtimeCapabilityDefinition(source, titleKey, descriptionKey, toolNames, descriptor)
+	definition.subAgentUnavailable = true
+	return definition
+}
+
+func runtimeSubAgentUnavailableCapabilityDefinitionWithToolDescriptors(
+	source, titleKey, descriptionKey string,
+	toolNames []string,
+	descriptor agent.ToolDescriptor,
+	overrides map[string]agent.ToolDescriptor,
+) AgentToolCapability {
+	definition := runtimeCapabilityDefinitionWithToolDescriptors(source, titleKey, descriptionKey, toolNames, descriptor, overrides)
 	definition.subAgentUnavailable = true
 	return definition
 }

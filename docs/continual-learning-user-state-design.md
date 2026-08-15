@@ -1,11 +1,11 @@
 # Harness 优化 V1 设计
 
-> 状态：Implemented；2026-08-12 完成实现一致性与故障恢复审计
+> 状态：Superseded；当前 Harness 管理与运行语义以 [Script 工具与动态编排设计](dynamic-tool-orchestration-design.md) 为准
 > 范围：仅 User State 与 Harness Optimization，不包含 Project State 和 Weight Learner
 
 ## 1. 结论
 
-V1 把持续学习收敛为一条异步 Harness 优化链路：已有 Agent Session、Run trace 和显式 Outcome 组成 trajectory；用户手动触发或定时触发 Harness Optimizer；Optimizer 在隔离 draft 中用普通文件工具修改 State；应用完成完整校验、原子发布和版本记录；之后的新 Run 使用新的 Harness。
+本文保留早期 Harness 优化方案作为审计记录。当前实现不再使用 isolated draft 或 Run revision pin；Harness State 只有 current 内容，Agent 构建与恢复都读取最新 State。
 
 ```mermaid
 flowchart LR
@@ -311,9 +311,9 @@ feature disabled 时用户接口失败关闭。API handler 只依赖 `internal/a
 
 1. `agent/state` 和 `internal/agents/harnessstate` 没有 go-git import。
 2. 只有应用层 State history 创建和操作 `state/.git`。
-3. current、CAS update、draft publish、冲突、恢复和 Run pin 有自动测试。
+3. current、CAS update、冲突和恢复有自动测试。
 4. Prompt、Context、Tool Description、SubAgent 的 schema 与预算有自动测试。
-5. 新旧 Session 的新 Run 使用当前 State；同一 active Run 使用固定 State。
+5. Agent 构建与恢复使用当前 State；不持久化 Harness runtime revision。
 6. trajectory index/detail 不泄露 workspace 或 state root。
 7. 手动和定时触发共享同一 Optimizer 链路。
 8. Lab 默认关闭，关闭不初始化产品 State 服务且不注入 State。

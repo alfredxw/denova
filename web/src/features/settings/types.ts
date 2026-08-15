@@ -54,6 +54,7 @@ export interface Settings {
   agent_idle_timeout_seconds?: number | null
   agent_tool_result_limit_kb?: number | null
   agent_tool_parallelism?: number | null
+  agent_script_timeout_seconds?: number | null
   agent_approval_mode?: AgentApprovalMode
   agent_approval_rules?: AgentApprovalRule[]
   shell_environment_mode?: ShellEnvironmentMode
@@ -300,6 +301,8 @@ export type AgentToolCapability =
   | 'goal'
   | 'skills'
   | 'delegation'
+  | 'script'
+  | 'harness_state'
   | 'config_read'
   | 'config_apply'
   | 'event_read'

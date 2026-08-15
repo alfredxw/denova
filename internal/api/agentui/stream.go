@@ -488,6 +488,7 @@ func messageMetadataFromData(data map[string]any) map[string]any {
 		"subagent_session_id",
 		"subagent_type",
 		"provider_call_id",
+		"parent_call_id",
 		"sse_hidden_fields",
 		"sse_hidden_reason",
 		"sse_display_notice",

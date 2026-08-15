@@ -117,8 +117,13 @@ func (s *ChatAppService) startTaskWithError(ctx context.Context, expectedSession
 		return nil, ErrAgentOperationActive
 	}
 
+	agentHost, err := a.HarnessAgentHostCapabilities(ctx, &runtime.cfg, agentrun.AgentKindIDE)
+	if err != nil {
+		return nil, err
+	}
 	builtAgent, err := appagentruntime.BuildConversationAgent(
 		ctx, &runtime.cfg, runtime.state, runtime.ideTeller, agentrun.AgentKindIDE,
+		agentHost,
 	)
 	if err != nil {
 		slog.ErrorContext(ctx, fmt.Sprintf("[agent-task] failed to refresh Agent runtime workspace=%s err=%v", runtime.workspace, err))

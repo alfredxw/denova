@@ -18,6 +18,7 @@ const metadataSchema = z.object({
   subagent: z.union([z.boolean(), z.literal('true'), z.literal('false')]).optional(),
   subagent_session_id: z.string().optional(),
   subagent_type: z.string().optional(),
+	parent_call_id: z.string().optional(),
 }).passthrough()
 
 const contentSchema = metadataSchema.extend({ content: z.string().default('') })

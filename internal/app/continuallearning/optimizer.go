@@ -129,7 +129,9 @@ func (service *Service) buildCycle(
 ) (agentexecution.Cycle, error) {
 	runtimeConfig := runtime.Config
 	appsettings.ApplyLocale(&runtimeConfig, request.Locale)
-	runtimeConfig.Workspace = service.manager.Root()
+	// Harness files are resources, not a workspace. Keeping Workspace empty
+	// prevents ordinary file and shell tools from acquiring the live directory.
+	runtimeConfig.Workspace = ""
 	runtimeConfig.ProjectID = ""
 	runtimeConfig.ProjectStateDir = filepath.Join(service.dataDir, "runtime", "harness-optimizer")
 	target, _, err := agentconversation.GetOrCreateSession(service.sessions, sessionID, &runtimeConfig, config.AgentKindHarnessOptimizer)
@@ -146,14 +148,18 @@ func (service *Service) buildCycle(
 	if err != nil {
 		return agentexecution.Cycle{}, err
 	}
-	binding, err := agenttools.NewReadAdapterBinding(config.AgentToolWorkspaceRead, adapter)
+	binding, err := agenttools.NewReadAdapterBinding(config.AgentToolHarnessState, adapter)
 	if err != nil {
 		return agentexecution.Cycle{}, err
 	}
-	built, err := appagentruntime.BuildHarnessOptimizerAgent(
-		ctx, &runtimeConfig, []agenttools.ReadAdapterBinding{binding},
-		newOptimizerCompletionGuard(service.manager.Validate),
+	agentHost, err := service.AgentHostCapabilities(
+		ctx, &runtimeConfig, config.AgentKindHarnessOptimizer,
 	)
+	if err != nil {
+		return agentexecution.Cycle{}, err
+	}
+	agentHost.ReadAdapters = append(agentHost.ReadAdapters, binding)
+	built, err := appagentruntime.BuildHarnessOptimizerAgent(ctx, &runtimeConfig, agentHost)
 	if err != nil {
 		return agentexecution.Cycle{}, err
 	}
@@ -286,7 +292,7 @@ func optimizerMessage(request Request) string {
 %s
 
 [Task]
-Evaluate the available trajectory evidence, critique recurring harness failures or durable user preferences, then update the live Harness State directory only when a minimal reusable improvement is justified. Every file edit takes effect immediately. Read specific session or run resources before drawing conclusions. Never copy project content or private reasoning into State.
+Evaluate the available trajectory evidence and recurring harness failures or durable user preferences. Read harness://state/current and the relevant State files, then use one update_harness_state ChangeSet only when a minimal reusable improvement is justified. Read specific session or run resources before drawing conclusions. Never copy project content or private reasoning into State.
 
 [User Instruction]
 %s`, normalizeTrigger(request.Trigger), evidenceScope, strings.TrimSpace(request.Instruction)))

@@ -108,12 +108,13 @@ func (EngineThinkingDelta) engineEvent() {}
 // parent live stream. The parent never interprets or persists the child
 // payload; it only validates the envelope and assigns its own event identity.
 type EngineNestedEvent struct {
-	Source      EventSource
-	SessionID   string
-	ChildCursor Cursor
-	ChildRunID  string
-	PayloadType string
-	Payload     json.RawMessage
+	Source       EventSource
+	ParentCallID string
+	SessionID    string
+	ChildCursor  Cursor
+	ChildRunID   string
+	PayloadType  string
+	Payload      json.RawMessage
 }
 
 func (EngineNestedEvent) engineEvent() {}
@@ -339,6 +340,7 @@ type EngineContinuation struct {
 type EngineToolInputStarted struct {
 	CallID         string
 	ProviderCallID string
+	ParentCallID   string
 	Name           string
 	Index          int
 	// Metadata is bounded, Engine-owned JSON for live host projection. Agent

@@ -15,6 +15,19 @@ const api = vi.hoisted(() => ({
 }))
 
 vi.mock('@/lib/api', () => api)
+vi.mock('./harness-state/HarnessStateEditor', () => ({
+  HarnessStateEditor: ({ path, value, onChange }: {
+    path: string
+    value: string
+    onChange: (value: string) => void
+  }) => (
+    <textarea
+      aria-label={`编辑 ${path}`}
+      value={value}
+      onChange={event => onChange(event.target.value)}
+    />
+  ),
+}))
 
 describe('ContinualLearningPage', () => {
   beforeEach(() => {
@@ -63,6 +76,7 @@ describe('ContinualLearningPage', () => {
     await user.click(screen.getByRole('button', { name: '新建 State 文件' }))
 
     expect(screen.getByRole('textbox', { name: '编辑 prompts/general.md' })).toBeInTheDocument()
+    expect(screen.getByText('未保存')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '放弃' }))
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
     expect(screen.getByText('系统内置 Harness State')).toBeInTheDocument()

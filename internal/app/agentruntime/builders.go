@@ -11,10 +11,7 @@ import (
 	agentinteractive "denova/internal/agents/interactive"
 	"denova/internal/agents/prompts"
 	agentrun "denova/internal/agents/run"
-	agenttools "denova/internal/agents/tools"
 	"denova/internal/book"
-
-	agent "github.com/alfredxw/denova/agent"
 )
 
 type BuiltAgent struct {
@@ -28,55 +25,37 @@ func BuildConversationAgent(
 	state *book.State,
 	teller prompts.IDEStoryTeller,
 	agentKind string,
-	rootTools ...agents.ToolDefinition,
+	host agents.AgentHostCapabilities,
 ) (BuiltAgent, error) {
-	definition, composition, err := BuildConversationDefinition(ctx, cfg, state, teller, agentKind, rootTools...)
-	if err != nil {
-		return BuiltAgent{}, err
-	}
-	return BuiltAgent{Definition: definition, Composition: composition}, nil
-}
-
-// BuildConversationDefinition creates the writing/general Definition and its
-// exact prompt composition for the public Agent lifecycle.
-func BuildConversationDefinition(
-	ctx context.Context,
-	cfg *config.Config,
-	state *book.State,
-	teller prompts.IDEStoryTeller,
-	agentKind string,
-	rootTools ...agents.ToolDefinition,
-) (agents.Definition, prompts.SystemPromptComposition, error) {
-	host := agents.AgentHostCapabilities{Interactive: true, RootTools: rootTools}
+	host.Interactive = true
+	var definition agents.Definition
+	var composition prompts.SystemPromptComposition
+	var err error
 	switch agentKind {
 	case agentrun.AgentKindGeneral:
-		definition, composition, err := agents.BuildGeneralDefinitionWithCompositionForHost(ctx, cfg, state, host)
+		definition, composition, err = agents.BuildGeneralDefinitionWithCompositionForHost(ctx, cfg, state, host)
 		if err != nil {
-			return agents.Definition{}, prompts.SystemPromptComposition{}, fmt.Errorf("build General Agent Definition: %w", err)
+			return BuiltAgent{}, fmt.Errorf("build General Agent Definition: %w", err)
 		}
-		return definition, composition, nil
 	case agentrun.AgentKindIDE:
-		definition, composition, err := agents.BuildDefinitionWithCompositionForHost(ctx, cfg, state, teller, host)
+		definition, composition, err = agents.BuildDefinitionWithCompositionForHost(ctx, cfg, state, teller, host)
 		if err != nil {
-			return agents.Definition{}, prompts.SystemPromptComposition{}, fmt.Errorf("build Writing Agent Definition: %w", err)
+			return BuiltAgent{}, fmt.Errorf("build Writing Agent Definition: %w", err)
 		}
-		return definition, composition, nil
 	default:
-		return agents.Definition{}, prompts.SystemPromptComposition{}, fmt.Errorf("unsupported conversation Agent kind %q", agentKind)
+		return BuiltAgent{}, fmt.Errorf("unsupported conversation Agent kind %q", agentKind)
 	}
+	return BuiltAgent{Definition: definition, Composition: composition}, nil
 }
 
 func BuildHarnessOptimizerAgent(
 	ctx context.Context,
 	cfg *config.Config,
-	readAdapters []agenttools.ReadAdapterBinding,
-	completionGuard func(context.Context, *agent.RetryContext) *agent.RetryDecision,
-	rootTools ...agents.ToolDefinition,
+	host agents.AgentHostCapabilities,
 ) (BuiltAgent, error) {
+	host.Interactive = true
 	definition, composition, err := agents.BuildHarnessOptimizerDefinitionWithCompositionForHost(
-		ctx, cfg, agents.AgentHostCapabilities{
-			Interactive: true, RootTools: rootTools, ReadAdapters: readAdapters, CompletionGuard: completionGuard,
-		},
+		ctx, cfg, host,
 	)
 	if err != nil {
 		return BuiltAgent{}, fmt.Errorf("build Harness Optimizer Definition: %w", err)
@@ -84,26 +63,22 @@ func BuildHarnessOptimizerAgent(
 	return BuiltAgent{Definition: definition, Composition: composition}, nil
 }
 
-func BuildInteractiveAgent(ctx context.Context, cfg *config.Config, state *book.State, teller prompts.InteractiveStorySystemInstructionInput, toolContexts ...agentinteractive.InteractiveStoryToolContext) (BuiltAgent, error) {
-	definition, composition, err := BuildInteractiveDefinition(ctx, cfg, state, teller, toolContexts...)
-	if err != nil {
-		return BuiltAgent{}, err
-	}
-	return BuiltAgent{Definition: definition, Composition: composition}, nil
-}
-
-func BuildInteractiveDefinition(
+func BuildInteractiveAgent(
 	ctx context.Context,
 	cfg *config.Config,
 	state *book.State,
 	teller prompts.InteractiveStorySystemInstructionInput,
+	host agents.AgentHostCapabilities,
 	toolContexts ...agentinteractive.InteractiveStoryToolContext,
-) (agents.Definition, prompts.SystemPromptComposition, error) {
-	definition, composition, err := agents.BuildInteractiveStoryDefinitionWithComposition(ctx, cfg, state, teller, toolContexts...)
+) (BuiltAgent, error) {
+	host.Interactive = true
+	definition, composition, err := agents.BuildInteractiveStoryDefinitionWithCompositionForHost(
+		ctx, cfg, state, teller, host, toolContexts...,
+	)
 	if err != nil {
-		return agents.Definition{}, prompts.SystemPromptComposition{}, fmt.Errorf("build Interactive Story Agent Definition: %w", err)
+		return BuiltAgent{}, fmt.Errorf("build Interactive Story Agent Definition: %w", err)
 	}
-	return definition, composition, nil
+	return BuiltAgent{Definition: definition, Composition: composition}, nil
 }
 
 func BuildConfigManagerAgent(ctx context.Context, cfg *config.Config, state *book.State, resourceSkills ...prompts.ConfigManagerResourceSkill) (BuiltAgent, error) {

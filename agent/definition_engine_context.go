@@ -359,6 +359,14 @@ func (engine *definitionEngine) emitToolExecution(
 	if err != nil {
 		return err
 	}
+	if execution.ParentCallID != "" && !started[callID] {
+		if err := emit(runstate.EngineToolInputStarted{
+			CallID: callID, ParentCallID: execution.ParentCallID, Name: execution.ToolName,
+			Index: execution.Index, Metadata: metadata, Source: source,
+		}); err != nil {
+			return err
+		}
+	}
 	if execution.Phase == toolExecutionStarted {
 		if !started[callID] {
 			emitTrace(ctx, engine.trace, TraceEvent{

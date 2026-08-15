@@ -27,6 +27,7 @@ export function ToolExecutionBlock({ message, onResolve, onLayoutChange }: { mes
   const result = message.result || ''
   const presentationKind = toolPresentationKind(message, 'call')
   const isDelegationTool = presentationKind === 'delegation'
+  const isScriptTool = presentationKind === 'script'
   const taskSubAgent = isDelegationTool ? (message.subagent_type || parseTaskSubagentType(rawArgs)) : ''
   const isChapterBodyHidden = message.sse_display_notice === 'chapter_body_hidden'
   const isDirectorPlanHidden = isChapterBodyHidden && message.agent_kind === 'interactive_director'
@@ -103,6 +104,11 @@ export function ToolExecutionBlock({ message, onResolve, onLayoutChange }: { mes
             >
               {displayName}
             </span>
+            {isScriptTool && (
+              <span className="shrink-0 rounded border border-emerald-500/25 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-700 dark:text-emerald-300">
+                {t('chat.tool.scriptBadge')}
+              </span>
+            )}
             {taskSubAgent && (
               <span
                 className="min-w-0 truncate rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-muted)]"

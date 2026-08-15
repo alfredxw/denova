@@ -1,8 +1,9 @@
 package config
 
-// Agent tool capabilities are stable policy names, not concrete tool names.
-// A capability may authorize several tools (for example read/glob/grep), while
-// every model-visible tool declares exactly one capability in its descriptor.
+// Agent tool capabilities are stable policy names for config-managed tools,
+// not concrete tool names. A capability may authorize several tools (for
+// example read/glob/grep). User Script Tools are instead admitted as ordinary
+// definitions by the immutable Run registry and have no separate toggle.
 const (
 	AgentToolWorkspaceRead   = "workspace_read"
 	AgentToolWorkspaceWrite  = "workspace_write"
@@ -15,6 +16,8 @@ const (
 	AgentToolGoal            = "goal"
 	AgentToolSkills          = "skills"
 	AgentToolDelegation      = "delegation"
+	AgentToolScript          = "script"
+	AgentToolHarnessState    = "harness_state"
 	AgentToolConfigRead      = "config_read"
 	AgentToolConfigApply     = "config_apply"
 	AgentToolEventRead       = "event_read"
@@ -78,6 +81,8 @@ func DefaultAgentToolSettings() AgentToolSettings {
 		AgentToolGoal,
 		AgentToolSkills,
 		AgentToolDelegation,
+		AgentToolScript,
+		AgentToolHarnessState,
 		AgentToolLoreRead,
 		AgentToolLoreWrite,
 	)
@@ -100,6 +105,8 @@ func DefaultAgentToolSettings() AgentToolSettings {
 			AgentToolAsk,
 			AgentToolTodo,
 			AgentToolDelegation,
+			AgentToolScript,
+			AgentToolHarnessState,
 			AgentToolLoreWrite,
 			AgentToolImageGeneration,
 			AgentToolConfigRead,

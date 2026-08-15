@@ -396,6 +396,9 @@ func workspaceToolsFactory(workspace, projectStateRoot string, metadata Workspac
 				agenttools.WithCapability(readCapability),
 				agenttools.WithMaxResultBytes(maxResultBytes),
 			}
+			if readCapability == config.AgentToolHarnessState {
+				options = append(options, agenttools.WithPresentation(agent.ToolPresentationFile))
+			}
 			readDefinition, err := agenttools.Read(readAdapters, options...)
 			if err != nil {
 				return nil, fmt.Errorf("create read tool: %w", err)

@@ -293,22 +293,39 @@ func TestRunLedgerRecordsStructuredTraceSpans(t *testing.T) {
 		"total_tokens":         18,
 	})
 	ObserverFromContext(ctx).RecordToolDecision(agenttool.Decision{
-		ToolName:    "read",
+		ToolName:    "script",
 		ExecutionID: "tool-1",
-		Source:      agenttool.ToolSourceRead,
-		Capability:  "file_read",
+		Source:      agenttool.ToolSourceOther,
+		Capability:  "script",
 		Action:      "allowed",
-		Target:      "chapters/ch01.md",
+	})
+	ObserverFromContext(ctx).RecordToolDecision(agenttool.Decision{
+		ToolName:     "read",
+		ExecutionID:  "tool-2",
+		ParentCallID: "tool-1",
+		Source:       agenttool.ToolSourceRead,
+		Capability:   "file_read",
+		Action:       "allowed",
+		Target:       "chapters/ch01.md",
 	})
 	ObserverFromContext(ctx).RecordToolExecution(agenttool.ExecutionRecord{
 		ToolName:      "read",
-		ExecutionID:   "tool-1",
+		ExecutionID:   "tool-2",
+		ParentCallID:  "tool-1",
 		Status:        "success",
 		Capability:    "file_read",
 		OriginalBytes: 4096,
 		ReturnedBytes: 512,
 		Truncated:     true,
 		Target:        "chapters/ch01.md",
+	})
+	ObserverFromContext(ctx).RecordToolExecution(agenttool.ExecutionRecord{
+		ToolName:      "script",
+		ExecutionID:   "tool-1",
+		Status:        "success",
+		Capability:    "script",
+		OriginalBytes: 512,
+		ReturnedBytes: 128,
 	})
 	root.Finish("success", map[string]any{"generated_bytes": 32})
 	if err := ledger.Close(); err != nil {
@@ -322,7 +339,7 @@ func TestRunLedgerRecordsStructuredTraceSpans(t *testing.T) {
 	if trace.Summary.LLMCalls != 1 {
 		t.Fatalf("expected one llm call in summary: %#v", trace.Summary)
 	}
-	var rootData, llmData, toolData map[string]any
+	var rootData, llmData, parentToolData, childToolData map[string]any
 	for _, record := range readRunLedgerRecords(t, ledger.Path()) {
 		data, _ := record["data"].(map[string]any)
 		switch record["type"] {
@@ -331,17 +348,26 @@ func TestRunLedgerRecordsStructuredTraceSpans(t *testing.T) {
 		case "llm_call":
 			llmData = data
 		case "tool_call":
-			toolData = data
+			attrs, _ := data["attrs"].(map[string]any)
+			switch attrs["execution_id"] {
+			case "tool-1":
+				parentToolData = data
+			case "tool-2":
+				childToolData = data
+			}
 		}
 	}
-	if rootData == nil || llmData == nil || toolData == nil {
-		t.Fatalf("expected root, llm, and tool span records: root=%#v llm=%#v tool=%#v", rootData, llmData, toolData)
+	if rootData == nil || llmData == nil || parentToolData == nil || childToolData == nil {
+		t.Fatalf("expected root, llm, and nested tool span records: root=%#v llm=%#v parent=%#v child=%#v", rootData, llmData, parentToolData, childToolData)
 	}
 	if llmData["parent_span_id"] != rootData["span_id"] {
 		t.Fatalf("llm parent span mismatch: llm=%#v root=%#v", llmData, rootData)
 	}
-	if toolData["parent_span_id"] != llmData["span_id"] {
-		t.Fatalf("tool parent span should point at llm span: tool=%#v llm=%#v", toolData, llmData)
+	if parentToolData["parent_span_id"] != llmData["span_id"] {
+		t.Fatalf("outer tool parent span should point at llm span: tool=%#v llm=%#v", parentToolData, llmData)
+	}
+	if childToolData["parent_span_id"] != parentToolData["span_id"] {
+		t.Fatalf("nested tool parent span should point at its script span: child=%#v parent=%#v", childToolData, parentToolData)
 	}
 	llmAttrs := llmData["attrs"].(map[string]any)
 	if llmAttrs["provider_request_id"] != "provider-1" || llmAttrs["total_tokens"].(float64) != 18 || llmAttrs["ttft_ms"].(float64) != 420 {

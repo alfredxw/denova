@@ -158,7 +158,7 @@ func (run *Run) handleEngineEvent(event runstate.EngineEvent) error {
 		run.publish(ThinkingDelta{Source: publicEventSource(value.Source), Delta: value.Delta, DisplayOnly: value.DisplayOnly})
 	case runstate.EngineNestedEvent:
 		nested, err := decodeNestedEvent(nestedEventRecord{
-			Source: publicEventSource(value.Source), SessionID: value.SessionID,
+			Source: publicEventSource(value.Source), ParentCallID: value.ParentCallID, SessionID: value.SessionID,
 			ChildCursor: Cursor(value.ChildCursor), ChildRunID: value.ChildRunID,
 			PayloadType: value.PayloadType, Payload: value.Payload,
 		})
@@ -225,7 +225,10 @@ func (run *Run) handleEngineEvent(event runstate.EngineEvent) error {
 		run.mu.Lock()
 		run.toolSources[value.CallID] = source
 		run.mu.Unlock()
-		run.publish(ToolInputStarted{CallID: value.CallID, ProviderCallID: value.ProviderCallID, Name: value.Name, Index: value.Index, Descriptor: decodeToolDescriptorMetadata(value.Metadata), Source: source})
+		run.publish(ToolInputStarted{
+			CallID: value.CallID, ProviderCallID: value.ProviderCallID, ParentCallID: value.ParentCallID,
+			Name: value.Name, Index: value.Index, Descriptor: decodeToolDescriptorMetadata(value.Metadata), Source: source,
+		})
 	case runstate.EngineToolInputDelta:
 		run.publish(ToolInputDelta{CallID: value.CallID, ProviderCallID: value.ProviderCallID, Name: value.Name, Delta: value.Delta, Source: publicEventSource(value.Source)})
 	case runstate.EngineToolStarted:

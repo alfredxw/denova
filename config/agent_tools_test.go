@@ -113,7 +113,11 @@ func TestResolveAgentToolsEnforcesRegisteredCapabilityCeilings(t *testing.T) {
 		}
 		resolved := ResolveAgentTools(cfg, definition.Kind)
 		for _, capability := range agentToolCapabilities {
-			if got, want := resolved.Allows(capability.Source), ceiling[capability.Source]; got != want {
+			want := ceiling[capability.Source]
+			if definition.Kind == AgentKindHarnessOptimizer && capability.Source == AgentToolScript {
+				want = false
+			}
+			if got := resolved.Allows(capability.Source); got != want {
 				t.Errorf("%s capability %s = %t, want ceiling %t", definition.Kind, capability.Source, got, want)
 			}
 		}

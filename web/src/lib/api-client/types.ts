@@ -18,6 +18,7 @@ export type ToolPresentationKind =
   | 'todo'
   | 'interaction'
   | 'delegation'
+  | 'script'
 
 export interface ToolPresentation {
   call: ToolPresentationKind
@@ -42,6 +43,7 @@ interface ChatMessageBase {
   subagent?: boolean
   subagent_session_id?: string
   subagent_type?: string
+	parent_call_id?: string
   sse_hidden_fields?: string[]
   sse_hidden_reason?: string
   sse_display_notice?: string

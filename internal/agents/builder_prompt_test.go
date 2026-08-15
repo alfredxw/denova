@@ -154,7 +154,7 @@ func TestProjectAgentsInjectInstructionFilesExactlyOnceAsLeadingContext(t *testi
 			return definition, err
 		},
 		"game": func() (agent.Definition, error) {
-			definition, _, err := BuildInteractiveStoryDefinitionWithComposition(context.Background(), cfg, state, prompts.InteractiveStorySystemInstructionInput{})
+			definition, _, err := BuildInteractiveStoryDefinitionWithCompositionForHost(context.Background(), cfg, state, prompts.InteractiveStorySystemInstructionInput{}, AgentHostCapabilities{})
 			return definition, err
 		},
 		"director": func() (agent.Definition, error) {

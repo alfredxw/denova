@@ -160,6 +160,7 @@ type toolExecutionEvent struct {
 	Index          int
 	ExecutionID    string
 	ProviderCallID string
+	ParentCallID   string
 	ToolName       string
 	Arguments      json.RawMessage
 	Definition     ToolDefinitionSnapshot

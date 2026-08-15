@@ -100,6 +100,7 @@ type Decision struct {
 	ToolName          string               `json:"tool_name"`
 	ProviderCallID    string               `json:"provider_call_id,omitempty"`
 	ExecutionID       string               `json:"execution_id,omitempty"`
+	ParentCallID      string               `json:"parent_call_id,omitempty"`
 	Source            ToolSource           `json:"source"`
 	Capability        string               `json:"capability,omitempty"`
 	Action            string               `json:"action"`
@@ -119,6 +120,7 @@ type ExecutionRecord struct {
 	ToolName              string               `json:"tool_name"`
 	ProviderCallID        string               `json:"provider_call_id,omitempty"`
 	ExecutionID           string               `json:"execution_id,omitempty"`
+	ParentCallID          string               `json:"parent_call_id,omitempty"`
 	Workspace             string               `json:"workspace,omitempty"`
 	Status                string               `json:"status"`
 	SyntheticReason       string               `json:"synthetic_reason,omitempty"`

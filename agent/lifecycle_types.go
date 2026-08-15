@@ -131,6 +131,7 @@ func (AssistantFinal) eventPayload() {}
 type ToolInputStarted struct {
 	CallID         string
 	ProviderCallID string
+	ParentCallID   string
 	Name           string
 	Index          int
 	Descriptor     *ToolDescriptor

@@ -17,6 +17,7 @@ type agentEventMetadata struct {
 	SubAgent          bool
 	SubAgentSessionID string
 	SubAgentType      string
+	ParentCallID      string
 }
 
 func (m agentEventMetadata) planMetadata() agentplan.Metadata {
@@ -84,6 +85,9 @@ func (m agentEventMetadata) appendTo(data map[string]interface{}) map[string]int
 	if m.SubAgentType != "" {
 		data["subagent_type"] = m.SubAgentType
 	}
+	if m.ParentCallID != "" {
+		data["parent_call_id"] = m.ParentCallID
+	}
 	data["subagent"] = m.SubAgent
 	return data
 }
@@ -98,6 +102,7 @@ func eventMetadataFromData(data interface{}) agentEventMetadata {
 		meta.RootAgentName = typed["root_agent_name"]
 		meta.SubAgentSessionID = typed["subagent_session_id"]
 		meta.SubAgentType = typed["subagent_type"]
+		meta.ParentCallID = typed["parent_call_id"]
 		meta.SubAgent = strings.EqualFold(typed["subagent"], "true")
 	case map[string]interface{}:
 		meta.AgentKind = eventDataString(typed, "agent_kind")
@@ -106,6 +111,7 @@ func eventMetadataFromData(data interface{}) agentEventMetadata {
 		meta.RootAgentName = eventDataString(typed, "root_agent_name")
 		meta.SubAgentSessionID = eventDataString(typed, "subagent_session_id")
 		meta.SubAgentType = eventDataString(typed, "subagent_type")
+		meta.ParentCallID = eventDataString(typed, "parent_call_id")
 		meta.SubAgent = eventDataBool(typed, "subagent")
 		if raw, ok := typed["run_path"]; ok {
 			meta.RunPath = stringSliceFromAny(raw)
@@ -123,6 +129,7 @@ func (m agentEventMetadata) sameSource(other agentEventMetadata) bool {
 		m.RootAgentName == other.RootAgentName &&
 		m.SubAgent == other.SubAgent &&
 		m.SubAgentSessionID == other.SubAgentSessionID &&
+		m.ParentCallID == other.ParentCallID &&
 		strings.Join(m.RunPath, "\x00") == strings.Join(other.RunPath, "\x00")
 }
 

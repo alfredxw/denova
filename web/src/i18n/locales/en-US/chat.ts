@@ -202,6 +202,8 @@ const chat = {
   'chat.tool.name.webFetch': 'Read webpage',
   'chat.tool.name.browser': 'Browser',
   'chat.tool.name.skill': 'Load Skill',
+  'chat.tool.name.script': 'Run script',
+  'chat.tool.scriptBadge': 'Script Tool',
   'chat.tool.name.goalFinish': 'Finish goal',
   'chat.tool.name.configRead': 'Read configuration',
   'chat.tool.name.configApply': 'Update configuration',

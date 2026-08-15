@@ -27,7 +27,7 @@ func (h *Handlers) HandleContinualLearningState(ctx context.Context, c *app.Requ
 
 func (h *Handlers) HandleContinualLearningStateUpdate(ctx context.Context, c *app.RequestContext) {
 	var request continuallearningapp.StateUpdateRequest
-	if err := c.BindJSON(&request); err != nil {
+	if err := decodeStrictJSONRequest(c.Request.Body(), &request); err != nil {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidBody")
 		return
 	}
@@ -268,6 +268,7 @@ func optionalPositiveLimit(c *app.RequestContext, fallback int) (int, bool) {
 }
 
 func writeContinualLearningError(c *app.RequestContext, err error) {
+	var validation *continuallearningapp.StateValidationError
 	switch {
 	case errors.Is(err, continuallearningapp.ErrDisabled):
 		writeErrorKey(c, consts.StatusNotFound, "api.continualLearning.disabled")
@@ -275,6 +276,12 @@ func writeContinualLearningError(c *app.RequestContext, err error) {
 		writeErrorKey(c, consts.StatusNotFound, "api.continualLearning.versionNotFound")
 	case errors.Is(err, continuallearningapp.ErrStateConflict):
 		writeErrorKey(c, consts.StatusConflict, "api.resource.revisionConflict")
+	case errors.As(err, &validation):
+		writeJSON(c, consts.StatusUnprocessableEntity, map[string]any{
+			"error":   messageKey(c, "api.common.invalidRequestWithDetail", "detail", validation.Error()),
+			"code":    "harness_state_validation_failed",
+			"details": map[string]any{"diagnostics": validation.Diagnostics},
+		})
 	default:
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 	}

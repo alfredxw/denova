@@ -671,7 +671,7 @@ func (engine *definitionEngine) Run(
 					Name: record.Source.Name, Path: append([]string(nil), record.Source.Path...),
 					InvocationID: record.Source.InvocationID, InvocationType: record.Source.InvocationType,
 				},
-				SessionID: record.SessionID, ChildCursor: runstate.Cursor(record.ChildCursor),
+				ParentCallID: record.ParentCallID, SessionID: record.SessionID, ChildCursor: runstate.Cursor(record.ChildCursor),
 				ChildRunID: record.ChildRunID, PayloadType: record.PayloadType,
 				Payload: append(json.RawMessage(nil), record.Payload...),
 			}); emitErr != nil {

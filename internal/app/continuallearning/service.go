@@ -2,6 +2,7 @@ package continuallearning
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -125,12 +126,18 @@ func (service *Service) State(ctx context.Context) (StateSnapshot, error) {
 	if _, err := service.requireEnabled(); err != nil {
 		return StateSnapshot{}, err
 	}
-	snapshot, err := service.manager.Store().Current(ctx)
+	inspection, err := service.manager.Inspect(ctx)
 	if err != nil {
 		return StateSnapshot{}, err
 	}
-	result := StateSnapshot{Revision: snapshot.Revision, Files: make([]StateFile, 0, len(snapshot.Files())), Source: StateSourceUser}
-	for _, file := range snapshot.Files() {
+	result := StateSnapshot{
+		Revision:    inspection.Snapshot.Revision,
+		Files:       make([]StateFile, 0, len(inspection.Snapshot.Files())),
+		ScriptTools: scriptToolSummaries(inspection.Harness.ScriptToolMetadata()),
+		Diagnostics: append([]StateDiagnostic(nil), inspection.Diagnostics...),
+		Source:      StateSourceUser,
+	}
+	for _, file := range inspection.Snapshot.Files() {
 		result.Files = append(result.Files, StateFile{Path: file.Path, Content: string(file.Content)})
 	}
 	if len(result.Files) == 0 {
@@ -159,14 +166,31 @@ func (service *Service) UpdateState(ctx context.Context, request StateUpdateRequ
 		if updated.CleanupError != nil {
 			slog.WarnContext(ctx, "[continual-learning] updated State with deferred cleanup", "error", updated.CleanupError)
 		}
-		version, _, err := service.history.record(updated.Snapshot, request.Summary)
-		if err != nil {
-			return err
+		slog.InfoContext(ctx, "[continual-learning] committed Harness State",
+			"revision", updated.Snapshot.Revision, "changed", updated.Changed)
+		version, _, historyErr := service.history.record(updated.Snapshot, request.Summary)
+		if historyErr != nil {
+			slog.WarnContext(ctx, "[continual-learning] State committed without Git history",
+				"revision", updated.Snapshot.Revision, "error", historyErr)
 		}
-		result = StateUpdateResult{Version: version, Changed: updated.Changed}
+		result = StateUpdateResult{
+			Version: version, Revision: updated.Snapshot.Revision, Changed: updated.Changed,
+		}
 		return nil
 	})
 	return result, err
+}
+
+func scriptToolSummaries(metadata []harnessstate.ScriptToolMetadata) []ScriptToolSummary {
+	result := make([]ScriptToolSummary, len(metadata))
+	for index, tool := range metadata {
+		result[index] = ScriptToolSummary{
+			Name: tool.Name, Description: tool.Description, Agents: append([]string(nil), tool.Agents...),
+			Enabled: tool.Enabled, Resource: tool.Resource,
+			InputSchema: append(json.RawMessage(nil), tool.InputSchema...),
+		}
+	}
+	return result
 }
 
 func (service *Service) Versions(ctx context.Context, limit int) ([]StateVersion, error) {
@@ -221,11 +245,14 @@ func (service *Service) Restore(ctx context.Context, id StateVersionID) (StateUp
 		if updated.CleanupError != nil {
 			slog.WarnContext(ctx, "[continual-learning] restored State with deferred cleanup", "error", updated.CleanupError)
 		}
-		version, _, err := service.history.record(updated.Snapshot, "Restore Harness State version")
-		if err != nil {
-			return err
+		version, _, historyErr := service.history.record(updated.Snapshot, "Restore Harness State version")
+		if historyErr != nil {
+			slog.WarnContext(ctx, "[continual-learning] State restored without a new Git history entry",
+				"revision", updated.Snapshot.Revision, "error", historyErr)
 		}
-		result = StateUpdateResult{Version: version, Changed: updated.Changed}
+		result = StateUpdateResult{
+			Version: version, Revision: updated.Snapshot.Revision, Changed: updated.Changed,
+		}
 		return nil
 	})
 	return result, err

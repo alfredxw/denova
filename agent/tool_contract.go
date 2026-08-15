@@ -122,6 +122,7 @@ const (
 	ToolPresentationTodo             ToolPresentationKind = "todo"
 	ToolPresentationInteraction      ToolPresentationKind = "interaction"
 	ToolPresentationDelegation       ToolPresentationKind = "delegation"
+	ToolPresentationScript           ToolPresentationKind = "script"
 )
 
 // ToolPresentation keeps call and result rendering colocated with the tool
@@ -161,7 +162,7 @@ func validToolPresentationKind(kind ToolPresentationKind) bool {
 	switch kind {
 	case ToolPresentationGeneric, ToolPresentationFile, ToolPresentationSearch, ToolPresentationTerminal,
 		ToolPresentationWeb, ToolPresentationBrowser, ToolPresentationImage, ToolPresentationInteractiveMedia, ToolPresentationTodo,
-		ToolPresentationInteraction, ToolPresentationDelegation:
+		ToolPresentationInteraction, ToolPresentationDelegation, ToolPresentationScript:
 		return true
 	default:
 		return false

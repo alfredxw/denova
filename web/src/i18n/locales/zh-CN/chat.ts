@@ -202,6 +202,8 @@ const chat = {
   'chat.tool.name.webFetch': '网页读取',
   'chat.tool.name.browser': '浏览器',
   'chat.tool.name.skill': '加载 Skill',
+  'chat.tool.name.script': '运行脚本',
+  'chat.tool.scriptBadge': '脚本工具',
   'chat.tool.name.goalFinish': '完成目标',
   'chat.tool.name.configRead': '读取配置',
   'chat.tool.name.configApply': '修改配置',

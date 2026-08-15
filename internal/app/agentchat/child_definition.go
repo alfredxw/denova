@@ -45,8 +45,13 @@ func (service *Service) PrepareChildDefinition(
 	if runtime.ProjectID != scope.ProjectID || runtime.Session == nil || runtime.Session.ID != scope.SessionID {
 		return agent.Definition{}, fmt.Errorf("%w: delegated AgentChat parent changed", agentexecution.ErrCyclePreparationUnavailable)
 	}
+	agentHost, err := service.host.HarnessAgentHostCapabilities(ctx, &runtime.Config, runtime.AgentKind)
+	if err != nil {
+		return agent.Definition{}, err
+	}
 	built, err := appagentruntime.BuildConversationAgent(
 		ctx, &runtime.Config, runtime.State, runtime.IDETeller, runtime.AgentKind,
+		agentHost,
 	)
 	if err != nil {
 		return agent.Definition{}, err

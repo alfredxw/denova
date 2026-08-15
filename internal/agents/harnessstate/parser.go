@@ -42,7 +42,7 @@ type toolDescriptionFile struct {
 	} `toml:"tools"`
 }
 
-func parseAll(_ context.Context, snapshot agentstate.Snapshot, cfg *config.Config) (Harness, []agentstate.Diagnostic) {
+func parseAll(ctx context.Context, snapshot agentstate.Snapshot, cfg *config.Config) (Harness, []agentstate.Diagnostic) {
 	harness := Harness{
 		prompts: make(map[string]string), toolDescriptions: make(map[string]string),
 	}
@@ -52,6 +52,45 @@ func parseAll(_ context.Context, snapshot agentstate.Snapshot, cfg *config.Confi
 		knownKinds[kind] = true
 	}
 	knownTools := knownToolNames()
+	scriptTargets := make(map[string]map[string]bool)
+	engine, engineErr := scriptEngine()
+	if engineErr != nil {
+		diagnostics = appendDiagnostic(diagnostics, "script_engine_invalid", "tools", engineErr.Error())
+	}
+	for _, file := range snapshot.Files() {
+		if path.Dir(file.Path) != "tools" || path.Ext(file.Path) != ".js" {
+			continue
+		}
+		if !utf8.Valid(file.Content) {
+			continue
+		}
+		tool, fileDiagnostics := parseScriptTool(ctx, file.Path, file.Content, engine)
+		diagnostics = append(diagnostics, fileDiagnostics...)
+		if tool == nil {
+			continue
+		}
+		if knownTools[tool.name] {
+			diagnostics = appendDiagnostic(diagnostics, "script_tool_name_conflict", file.Path, fmt.Sprintf("Script Tool %q conflicts with a registered tool", tool.name))
+			continue
+		}
+		if _, exists := scriptTargets[tool.name]; exists {
+			diagnostics = appendDiagnostic(diagnostics, "script_tool_name_conflict", file.Path, fmt.Sprintf("Script Tool %q is defined more than once", tool.name))
+			continue
+		}
+		if len(fileDiagnostics) != 0 {
+			continue
+		}
+		if err := validateScriptToolDefinition(ctx, cfg, engine, *tool); err != nil {
+			diagnostics = appendDiagnostic(diagnostics, "script_schema_invalid", file.Path, err.Error())
+			continue
+		}
+		targets := make(map[string]bool, len(tool.agents))
+		for _, kind := range tool.agents {
+			targets[kind] = true
+		}
+		scriptTargets[tool.name] = targets
+		harness.scriptTools = append(harness.scriptTools, *tool)
+	}
 
 	for _, file := range snapshot.Files() {
 		if !utf8.Valid(file.Content) {
@@ -84,18 +123,21 @@ func parseAll(_ context.Context, snapshot agentstate.Snapshot, cfg *config.Confi
 				harness.contexts = append(harness.contexts, *fragment)
 			}
 		case path.Dir(file.Path) == "subagents" && path.Ext(file.Path) == ".md":
-			subAgent, fileDiagnostics := parseSubAgent(file.Path, file.Content, cfg, knownKinds)
+			subAgent, fileDiagnostics := parseSubAgent(file.Path, file.Content, cfg, knownKinds, scriptTargets)
 			diagnostics = append(diagnostics, fileDiagnostics...)
 			if len(fileDiagnostics) == 0 && subAgent != nil {
 				harness.subAgents = append(harness.subAgents, *subAgent)
 			}
+		case path.Dir(file.Path) == "tools" && path.Ext(file.Path) == ".js":
+			// Parsed in the first pass so subagent references are order independent.
 		default:
-			diagnostics = appendDiagnostic(diagnostics, "unsupported_path", file.Path, "State files must be prompts/*.md, context/*.md, subagents/*.md, or tools.toml")
+			diagnostics = appendDiagnostic(diagnostics, "unsupported_path", file.Path, "State files must be prompts/*.md, context/*.md, subagents/*.md, tools/*.js, or tools.toml")
 		}
 	}
 
 	sort.Slice(harness.contexts, func(i, j int) bool { return harness.contexts[i].Resource < harness.contexts[j].Resource })
 	sort.Slice(harness.subAgents, func(i, j int) bool { return harness.subAgents[i].ID < harness.subAgents[j].ID })
+	sort.Slice(harness.scriptTools, func(i, j int) bool { return harness.scriptTools[i].name < harness.scriptTools[j].name })
 	diagnostics = append(diagnostics, validateBudgets(harness, cfg)...)
 	return harness, diagnostics
 }
@@ -144,7 +186,13 @@ func parseContext(filePath string, content []byte, knownKinds map[string]bool) (
 	}, diagnostics
 }
 
-func parseSubAgent(filePath string, content []byte, cfg *config.Config, knownKinds map[string]bool) (*config.SubAgentConfig, []agentstate.Diagnostic) {
+func parseSubAgent(
+	filePath string,
+	content []byte,
+	cfg *config.Config,
+	knownKinds map[string]bool,
+	scriptTargets map[string]map[string]bool,
+) (*config.SubAgentConfig, []agentstate.Diagnostic) {
 	var metadata subAgentFrontmatter
 	body, err := decodeMarkdown(filePath, content, &metadata)
 	if err != nil {
@@ -183,12 +231,15 @@ func parseSubAgent(filePath string, content []byte, cfg *config.Config, knownKin
 		toolOverride[capability.Source] = false
 	}
 	for _, capability := range normalizedUnique(metadata.Tools) {
-		if !capabilityExists(capability) {
+		targets, scriptTool := scriptTargets[capability]
+		if !scriptTool && !capabilityExists(capability) {
 			diagnostics = appendDiagnostic(diagnostics, "unknown_tool_capability", filePath, fmt.Sprintf("tool capability %q does not exist", capability))
 			continue
 		}
 		for _, parent := range metadata.Parents {
-			if !agentKindAllowsCapability(parent, capability) {
+			if scriptTool && !targets[parent] {
+				diagnostics = appendDiagnostic(diagnostics, "script_tool_exceeds_parent", filePath, fmt.Sprintf("Script Tool %q does not target parent Agent %q", capability, parent))
+			} else if !scriptTool && !agentKindAllowsCapability(parent, capability) {
 				diagnostics = appendDiagnostic(diagnostics, "tool_capability_exceeds_parent", filePath, fmt.Sprintf("tool capability %q is not available to parent Agent %q", capability, parent))
 			}
 		}

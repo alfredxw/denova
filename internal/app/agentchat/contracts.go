@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"denova/config"
+	agents "denova/internal/agents"
 	chatagent "denova/internal/agents/chat"
 	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
@@ -28,6 +29,7 @@ type Host interface {
 	ProjectVersionService(string) (*book.VersionService, error)
 	CurrentWorkspace() string
 	OnVerifiedMutations(context.Context, string, *book.VersionService, config.Config, []agenttool.Mutation, agenttool.Verification)
+	HarnessAgentHostCapabilities(context.Context, *config.Config, string) (agents.AgentHostCapabilities, error)
 }
 
 // Binding is the explicit Project conversation identity carried by every

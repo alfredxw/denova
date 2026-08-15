@@ -4,6 +4,7 @@ package harnessstate
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"sort"
@@ -12,7 +13,10 @@ import (
 	"denova/config"
 
 	agent "github.com/alfredxw/denova/agent"
+	agentscript "github.com/alfredxw/denova/agent/script"
 	agentstate "github.com/alfredxw/denova/agent/state"
+	publictools "github.com/alfredxw/denova/agent/tools"
+	"github.com/invopop/jsonschema"
 )
 
 const (
@@ -28,6 +32,64 @@ type Harness struct {
 	contexts         []ContextFragment
 	toolDescriptions map[string]string
 	subAgents        []config.SubAgentConfig
+	scriptTools      []ScriptTool
+}
+
+// ScriptTool is one validated Harness file and its immutable compiled Program.
+// Fields remain private so an admitted Harness cannot be mutated by callers.
+type ScriptTool struct {
+	name        string
+	description string
+	agents      []string
+	enabled     bool
+	resource    string
+	inputSchema *jsonschema.Schema
+	program     agentscript.Program
+}
+
+// ScriptToolMetadata is the read-only management projection used by the UI.
+type ScriptToolMetadata struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
+	Agents      []string        `json:"agents"`
+	Enabled     bool            `json:"enabled"`
+	Resource    string          `json:"resource"`
+	InputSchema json.RawMessage `json:"input_schema"`
+}
+
+func (h Harness) ScriptToolMetadata() []ScriptToolMetadata {
+	result := make([]ScriptToolMetadata, len(h.scriptTools))
+	for index, tool := range h.scriptTools {
+		schema, _ := json.Marshal(tool.inputSchema)
+		result[index] = ScriptToolMetadata{
+			Name: tool.name, Description: tool.description, Agents: append([]string(nil), tool.agents...),
+			Enabled: tool.enabled, Resource: tool.resource, InputSchema: schema,
+		}
+	}
+	return result
+}
+
+// ScriptToolDefinitions materializes target-matched saved scripts as ordinary
+// ToolDefinitions in stable name order.
+func (h Harness) ScriptToolDefinitions(
+	agentKind string,
+	config publictools.ScriptConfig,
+) ([]agent.ToolDefinition, error) {
+	definitions := make([]agent.ToolDefinition, 0, len(h.scriptTools))
+	for _, tool := range h.scriptTools {
+		if !tool.enabled || !contains(tool.agents, agentKind) {
+			continue
+		}
+		definition, err := publictools.SavedScriptTool(config, publictools.SavedScriptToolSpec{
+			Name: tool.name, Description: tool.description,
+			InputSchema: tool.inputSchema, Program: tool.program,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("materialize Script Tool %q: %w", tool.name, err)
+		}
+		definitions = append(definitions, definition)
+	}
+	return definitions, nil
 }
 
 type ContextFragment struct {
@@ -78,6 +140,15 @@ func (h Harness) ToolDescriptions() map[string]string {
 type Manager struct {
 	store        *agentstate.Store
 	configSource ConfigSource
+}
+
+// Inspection exposes raw immutable files together with every schema
+// diagnostic. Management surfaces use it to repair an invalid current State
+// without weakening Current, which remains fail-closed for Agent assembly.
+type Inspection struct {
+	Snapshot    agentstate.Snapshot
+	Harness     Harness
+	Diagnostics []agentstate.Diagnostic
 }
 
 // ConfigSource resolves the current application configuration used for
@@ -137,6 +208,23 @@ func (m *Manager) Current(ctx context.Context) (Harness, error) {
 	return harness, err
 }
 
+// Inspect returns the current State with every validation diagnostic. Invalid
+// content remains visible so users and Agents can repair it atomically.
+func (m *Manager) Inspect(ctx context.Context) (Inspection, error) {
+	if m == nil || m.store == nil {
+		return Inspection{}, fmt.Errorf("Harness State manager is unavailable")
+	}
+	snapshot, err := m.store.Current(ctx)
+	if err != nil {
+		return Inspection{}, err
+	}
+	harness, diagnostics := parseAll(ctx, snapshot, m.config())
+	return Inspection{
+		Snapshot: snapshot, Harness: harness,
+		Diagnostics: append([]agentstate.Diagnostic(nil), diagnostics...),
+	}, nil
+}
+
 // ValidatedSnapshot returns the exact live files after full schema and budget
 // validation. Management callers use it when a history record must match the
 // same validated contents.
@@ -153,7 +241,7 @@ func (m *Manager) readValidated(ctx context.Context) (agentstate.Snapshot, Harne
 	if err != nil {
 		return agentstate.Snapshot{}, Harness{}, err
 	}
-	harness, err := parse(snapshot, m.config())
+	harness, err := parse(ctx, snapshot, m.config())
 	if err != nil {
 		return agentstate.Snapshot{}, Harness{}, err
 	}
@@ -174,10 +262,10 @@ func Load(ctx context.Context, cfg *config.Config) (Harness, error) {
 		return Harness{}, fmt.Errorf("load Harness State: config is nil")
 	}
 	if !cfg.Labs.ContinualLearning {
-		return Harness{prompts: map[string]string{}, toolDescriptions: map[string]string{}}, nil
+		return emptyHarness(), nil
 	}
 	if strings.TrimSpace(cfg.DenovaDir) == "" && strings.TrimSpace(cfg.NovaDir) == "" {
-		return Harness{prompts: map[string]string{}, toolDescriptions: map[string]string{}}, nil
+		return emptyHarness(), nil
 	}
 	manager, err := Open(cfg)
 	if err != nil {
@@ -198,12 +286,18 @@ func (m *Manager) config() *config.Config {
 	return m.configSource()
 }
 
-func parse(snapshot agentstate.Snapshot, cfg *config.Config) (Harness, error) {
-	harness, diagnostics := parseAll(context.Background(), snapshot, cfg)
+func parse(ctx context.Context, snapshot agentstate.Snapshot, cfg *config.Config) (Harness, error) {
+	harness, diagnostics := parseAll(ctx, snapshot, cfg)
 	if len(diagnostics) != 0 {
 		return Harness{}, &agentstate.ValidationError{Diagnostics: diagnostics}
 	}
 	return harness, nil
+}
+
+func emptyHarness() Harness {
+	return Harness{
+		prompts: map[string]string{}, toolDescriptions: map[string]string{},
+	}
 }
 
 func sortedAgentKinds() []string {

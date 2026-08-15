@@ -2,27 +2,20 @@ package agents
 
 import (
 	"context"
-	"os"
-	"path/filepath"
+	"slices"
 	"testing"
+
+	agent "github.com/alfredxw/denova/agent"
 
 	"denova/config"
 	producttools "denova/internal/agents/tools"
 	"denova/internal/agents/trajectory"
 )
 
-func TestHarnessOptimizerBuildsWithSkillsAndTrajectoryReadAdapters(t *testing.T) {
+func TestHarnessOptimizerExposesOnlyHarnessReadSurface(t *testing.T) {
 	dataDir := t.TempDir()
-	skillsDir := filepath.Join(dataDir, "builtin-skills")
-	skillDir := filepath.Join(skillsDir, "test-skill")
-	if err := os.MkdirAll(skillDir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\nname: test-skill\ndescription: Test shared read adapter composition.\n---\n\n# Test\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
 	cfg := &config.Config{
-		DenovaDir: dataDir, SkillsDir: skillsDir, Workspace: t.TempDir(),
+		DenovaDir: dataDir, SkillsDir: t.TempDir(), Workspace: t.TempDir(),
 		OpenAIBaseURL: "https://example.invalid", OpenAIModel: "test-model",
 		AgentTools: config.AgentToolSettings{Default: config.AgentToolOverride{
 			config.AgentToolWorkspaceRead:  true,
@@ -46,13 +39,29 @@ func TestHarnessOptimizerBuildsWithSkillsAndTrajectoryReadAdapters(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	binding, err := producttools.NewReadAdapterBinding(config.AgentToolWorkspaceRead, trajectoryAdapter)
+	binding, err := producttools.NewReadAdapterBinding(config.AgentToolHarnessState, trajectoryAdapter)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := BuildHarnessOptimizerDefinitionWithCompositionForHost(context.Background(), cfg, AgentHostCapabilities{
+	definition, _, err := BuildHarnessOptimizerDefinitionWithCompositionForHost(context.Background(), cfg, AgentHostCapabilities{
 		ReadAdapters: []producttools.ReadAdapterBinding{binding},
-	}); err != nil {
-		t.Fatalf("build Harness Optimizer with Skill and trajectory adapters: %v", err)
+	})
+	if err != nil {
+		t.Fatalf("build Harness Optimizer with trajectory adapter: %v", err)
+	}
+	prepared, err := definition.Tools.PrepareTools(context.Background(), agent.ToolRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := make([]string, 0, len(prepared))
+	for _, tool := range prepared {
+		info, infoErr := tool.Tool.Info(context.Background())
+		if infoErr != nil {
+			t.Fatal(infoErr)
+		}
+		names = append(names, info.Name)
+	}
+	if !slices.Equal(names, []string{"read"}) {
+		t.Fatalf("Harness Optimizer tools = %v, want only the composed read surface", names)
 	}
 }

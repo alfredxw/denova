@@ -65,6 +65,7 @@ type Config struct {
 	AgentIdleTimeoutSeconds     int                       `toml:"agent_idle_timeout_seconds"`
 	AgentToolResultLimitKB      int                       `toml:"agent_tool_result_limit_kb"`
 	AgentToolParallelism        int                       `toml:"agent_tool_parallelism"`
+	AgentScriptTimeoutSeconds   int                       `toml:"agent_script_timeout_seconds"`
 	AgentApprovalMode           AgentApprovalMode         `toml:"agent_approval_mode"`
 	AgentApprovalRules          []AgentApprovalRule       `toml:"agent_approval_rules"`
 	ShellEnvironmentMode        ShellEnvironmentMode      `toml:"shell_environment_mode"`
@@ -147,6 +148,7 @@ func configFromLayered(novaDir, workspace string, layered LayeredSettings) *Conf
 		AgentIdleTimeoutSeconds:     settingsAgentIdleTimeoutSeconds(s.AgentIdleTimeoutSeconds),
 		AgentToolResultLimitKB:      settingsAgentToolResultLimitKB(s.AgentToolResultLimitKB),
 		AgentToolParallelism:        settingsAgentToolParallelism(s.AgentToolParallelism),
+		AgentScriptTimeoutSeconds:   settingsAgentScriptTimeoutSeconds(s.AgentScriptTimeoutSeconds),
 		AgentApprovalMode:           NormalizeAgentApprovalMode(s.AgentApprovalMode),
 		AgentApprovalRules:          NormalizeAgentApprovalRules(s.AgentApprovalRules),
 		ShellEnvironmentMode:        normalizeShellEnvironmentMode(s.ShellEnvironmentMode),
@@ -225,7 +227,10 @@ func startupNovaDir() string {
 }
 
 func loadGlobalConfig() *Config {
-	cfg := &Config{AgentIdleTimeoutSeconds: -1, AgentToolResultLimitKB: -1, AgentToolParallelism: -1}
+	cfg := &Config{
+		AgentIdleTimeoutSeconds: -1, AgentToolResultLimitKB: -1, AgentToolParallelism: -1,
+		AgentScriptTimeoutSeconds: -1,
+	}
 	for _, path := range globalConfigCandidates() {
 		data, err := os.ReadFile(path)
 		if err != nil {
@@ -312,6 +317,9 @@ func settingsFromConfig(cfg *Config) Settings {
 	if cfg.AgentToolParallelism >= 0 {
 		settings.AgentToolParallelism = &cfg.AgentToolParallelism
 	}
+	if cfg.AgentScriptTimeoutSeconds >= 0 {
+		settings.AgentScriptTimeoutSeconds = &cfg.AgentScriptTimeoutSeconds
+	}
 	if cfg.TerminalMaxSessions > 0 {
 		settings.TerminalMaxSessions = &cfg.TerminalMaxSessions
 	}
@@ -393,6 +401,7 @@ func Load() *Config {
 			AgentIdleTimeoutSeconds:     settingsAgentIdleTimeoutSeconds(d.AgentIdleTimeoutSeconds),
 			AgentToolResultLimitKB:      settingsAgentToolResultLimitKB(d.AgentToolResultLimitKB),
 			AgentToolParallelism:        settingsAgentToolParallelism(d.AgentToolParallelism),
+			AgentScriptTimeoutSeconds:   settingsAgentScriptTimeoutSeconds(d.AgentScriptTimeoutSeconds),
 			AgentApprovalMode:           NormalizeAgentApprovalMode(d.AgentApprovalMode),
 			AgentApprovalRules:          NormalizeAgentApprovalRules(d.AgentApprovalRules),
 			ShellEnvironmentMode:        normalizeShellEnvironmentMode(d.ShellEnvironmentMode),
@@ -460,6 +469,13 @@ func settingsAgentToolParallelism(value *int) int {
 	}
 	if *value > MaxAgentToolParallelism {
 		return MaxAgentToolParallelism
+	}
+	return *value
+}
+
+func settingsAgentScriptTimeoutSeconds(value *int) int {
+	if value == nil || *value < 0 {
+		return DefaultAgentScriptTimeoutSecs
 	}
 	return *value
 }

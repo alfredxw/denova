@@ -5,6 +5,7 @@ package continuallearning
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -50,8 +51,9 @@ type StateVersionDiff struct {
 }
 
 type StateUpdateResult struct {
-	Version *StateVersion `json:"version,omitempty"`
-	Changed bool          `json:"changed"`
+	Version  *StateVersion `json:"version,omitempty"`
+	Revision string        `json:"revision"`
+	Changed  bool          `json:"changed"`
 }
 
 type Runtime struct {
@@ -86,10 +88,26 @@ type StateFile struct {
 	Content string `json:"content"`
 }
 
+// Re-export the reusable State validation contract at the application/API
+// seam instead of maintaining an identical second representation.
+type StateDiagnostic = agentstate.Diagnostic
+type StateValidationError = agentstate.ValidationError
+
+type ScriptToolSummary struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
+	Agents      []string        `json:"agents"`
+	Enabled     bool            `json:"enabled"`
+	Resource    string          `json:"resource"`
+	InputSchema json.RawMessage `json:"input_schema"`
+}
+
 type StateSnapshot struct {
-	Revision string      `json:"revision"`
-	Files    []StateFile `json:"files"`
-	Source   string      `json:"source"`
+	Revision    string              `json:"revision"`
+	Files       []StateFile         `json:"files"`
+	ScriptTools []ScriptToolSummary `json:"script_tools,omitempty"`
+	Diagnostics []StateDiagnostic   `json:"diagnostics,omitempty"`
+	Source      string              `json:"source"`
 }
 
 const (

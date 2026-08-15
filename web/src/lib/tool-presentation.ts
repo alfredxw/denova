@@ -12,6 +12,7 @@ const TOOL_PRESENTATION_KINDS: Record<ToolPresentationKind, true> = {
   todo: true,
   interaction: true,
   delegation: true,
+  script: true,
 }
 
 export type ToolCallRenderer = 'generic' | 'image' | 'interactive_media' | 'todo' | 'interaction'
@@ -45,6 +46,7 @@ export function toolCallRenderer(message: ChatMessage): ToolCallRenderer {
     case 'web':
     case 'browser':
     case 'delegation':
+    case 'script':
       return 'generic'
     default: {
       const exhaustive: never = kind
@@ -69,6 +71,7 @@ export function toolResultRenderer(message: ChatMessage): ToolResultRenderer {
     case 'todo':
     case 'interaction':
     case 'delegation':
+    case 'script':
       return 'generic'
     default: {
       const exhaustive: never = kind

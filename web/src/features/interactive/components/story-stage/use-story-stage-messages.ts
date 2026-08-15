@@ -278,6 +278,7 @@ function displayEventMetadata(event: TurnDisplayEvent): AgentMessageMetadata {
     subagent: event.subagent,
     subagent_session_id: event.subagent_session_id,
     subagent_type: event.subagent_type,
+		parent_call_id: event.parent_call_id,
     sse_hidden_fields: event.sse_hidden_fields,
     sse_hidden_reason: event.sse_hidden_reason,
     sse_display_notice: event.sse_display_notice,

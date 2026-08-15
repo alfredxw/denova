@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"denova/config"
+	agents "denova/internal/agents"
 	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
@@ -277,6 +278,14 @@ func (host testAgentChatHost) ProjectVersionService(projectID string) (*book.Ver
 
 func (host testAgentChatHost) CurrentWorkspace() string {
 	return host.app.CurrentWorkspace()
+}
+
+func (host testAgentChatHost) HarnessAgentHostCapabilities(
+	context.Context,
+	*config.Config,
+	string,
+) (agents.AgentHostCapabilities, error) {
+	return agents.AgentHostCapabilities{Interactive: true}, nil
 }
 
 func (host testAgentChatHost) OnVerifiedMutations(

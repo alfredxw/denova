@@ -14,9 +14,10 @@ import (
 // Source make detached task identity explicit without
 // exposing the child Session's host-only routing attributes.
 type NestedEvent struct {
-	Source    EventSource
-	SessionID string
-	Child     Event
+	Source       EventSource
+	ParentCallID string
+	SessionID    string
+	Child        Event
 }
 
 func (NestedEvent) eventPayload() {}
@@ -50,12 +51,13 @@ func ForwardNestedEvent(ctx context.Context, event NestedEvent) error {
 }
 
 type nestedEventRecord struct {
-	Source      EventSource     `json:"source"`
-	SessionID   string          `json:"session_id"`
-	ChildCursor Cursor          `json:"child_cursor"`
-	ChildRunID  string          `json:"child_run_id"`
-	PayloadType string          `json:"payload_type"`
-	Payload     json.RawMessage `json:"payload"`
+	Source       EventSource     `json:"source"`
+	ParentCallID string          `json:"parent_call_id,omitempty"`
+	SessionID    string          `json:"session_id"`
+	ChildCursor  Cursor          `json:"child_cursor"`
+	ChildRunID   string          `json:"child_run_id"`
+	PayloadType  string          `json:"payload_type"`
+	Payload      json.RawMessage `json:"payload"`
 }
 
 func encodeNestedEvent(event NestedEvent) (nestedEventRecord, error) {
@@ -64,7 +66,7 @@ func encodeNestedEvent(event NestedEvent) (nestedEventRecord, error) {
 		return nestedEventRecord{}, err
 	}
 	return nestedEventRecord{
-		Source: event.Source, SessionID: strings.TrimSpace(event.SessionID),
+		Source: event.Source, ParentCallID: strings.TrimSpace(event.ParentCallID), SessionID: strings.TrimSpace(event.SessionID),
 		ChildCursor: event.Child.Cursor, ChildRunID: strings.TrimSpace(event.Child.RunID),
 		PayloadType: payloadType, Payload: payload,
 	}, nil
@@ -76,7 +78,7 @@ func decodeNestedEvent(record nestedEventRecord) (NestedEvent, error) {
 		return NestedEvent{}, err
 	}
 	event := NestedEvent{
-		Source: record.Source, SessionID: strings.TrimSpace(record.SessionID),
+		Source: record.Source, ParentCallID: strings.TrimSpace(record.ParentCallID), SessionID: strings.TrimSpace(record.SessionID),
 		Child: Event{Cursor: record.ChildCursor, RunID: strings.TrimSpace(record.ChildRunID), Payload: payload},
 	}
 	if event.SessionID == "" || event.Child.RunID == "" {

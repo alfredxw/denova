@@ -79,13 +79,14 @@ type Settings struct {
 	UpdateCheckEnabled *bool  `toml:"update_check_enabled,omitempty" json:"update_check_enabled,omitempty"`
 
 	// Agent
-	MaxIteration            *int                `toml:"max_iteration,omitempty" json:"max_iteration,omitempty"`
-	ModelMaxRetries         *int                `toml:"model_max_retries,omitempty" json:"model_max_retries,omitempty"`
-	AgentIdleTimeoutSeconds *int                `toml:"agent_idle_timeout_seconds,omitempty" json:"agent_idle_timeout_seconds,omitempty"`
-	AgentToolResultLimitKB  *int                `toml:"agent_tool_result_limit_kb,omitempty" json:"agent_tool_result_limit_kb,omitempty"`
-	AgentToolParallelism    *int                `toml:"agent_tool_parallelism,omitempty" json:"agent_tool_parallelism,omitempty"`
-	AgentApprovalMode       AgentApprovalMode   `toml:"agent_approval_mode,omitempty" json:"agent_approval_mode,omitempty"`
-	AgentApprovalRules      []AgentApprovalRule `toml:"agent_approval_rules,omitempty" json:"agent_approval_rules,omitempty"`
+	MaxIteration              *int                `toml:"max_iteration,omitempty" json:"max_iteration,omitempty"`
+	ModelMaxRetries           *int                `toml:"model_max_retries,omitempty" json:"model_max_retries,omitempty"`
+	AgentIdleTimeoutSeconds   *int                `toml:"agent_idle_timeout_seconds,omitempty" json:"agent_idle_timeout_seconds,omitempty"`
+	AgentToolResultLimitKB    *int                `toml:"agent_tool_result_limit_kb,omitempty" json:"agent_tool_result_limit_kb,omitempty"`
+	AgentToolParallelism      *int                `toml:"agent_tool_parallelism,omitempty" json:"agent_tool_parallelism,omitempty"`
+	AgentScriptTimeoutSeconds *int                `toml:"agent_script_timeout_seconds,omitempty" json:"agent_script_timeout_seconds,omitempty"`
+	AgentApprovalMode         AgentApprovalMode   `toml:"agent_approval_mode,omitempty" json:"agent_approval_mode,omitempty"`
+	AgentApprovalRules        []AgentApprovalRule `toml:"agent_approval_rules,omitempty" json:"agent_approval_rules,omitempty"`
 
 	// Agent shell execution is user-scoped. A workspace must not choose which
 	// host profile is loaded or substitute the executable used on the machine.
@@ -134,6 +135,7 @@ const (
 	DefaultAgentToolResultLimitKB = 128
 	DefaultAgentToolParallelism   = 8
 	MaxAgentToolParallelism       = 64
+	DefaultAgentScriptTimeoutSecs = 0
 	DefaultTraceCaptureLevel      = "summary"
 	DefaultTraceExporter          = "local"
 	DefaultTraceRetentionRuns     = 100
@@ -186,6 +188,7 @@ func DefaultSettings() Settings {
 		AgentIdleTimeoutSeconds:     intPtr(DefaultAgentIdleTimeoutSeconds),
 		AgentToolResultLimitKB:      intPtr(DefaultAgentToolResultLimitKB),
 		AgentToolParallelism:        intPtr(DefaultAgentToolParallelism),
+		AgentScriptTimeoutSeconds:   intPtr(DefaultAgentScriptTimeoutSecs),
 		AgentApprovalMode:           AgentApprovalWrite,
 		ShellEnvironmentMode:        ShellEnvironmentAuto,
 		TerminalEnabled:             boolPtr(true),
@@ -359,6 +362,9 @@ func Merge(parent, child Settings) Settings {
 	}
 	if child.AgentToolParallelism != nil {
 		out.AgentToolParallelism = child.AgentToolParallelism
+	}
+	if child.AgentScriptTimeoutSeconds != nil {
+		out.AgentScriptTimeoutSeconds = child.AgentScriptTimeoutSeconds
 	}
 	if child.AgentApprovalMode != "" {
 		out.AgentApprovalMode = NormalizeAgentApprovalMode(child.AgentApprovalMode)
@@ -630,6 +636,7 @@ func LoadLayeredWithGlobalAt(novaDir, workspace, projectConfigPath string, globa
 	}
 	global.AgentToolResultLimitKB = normalizeAgentToolResultLimitKB(global.AgentToolResultLimitKB)
 	global.AgentToolParallelism = normalizeAgentToolParallelism(global.AgentToolParallelism)
+	global.AgentScriptTimeoutSeconds = normalizeAgentScriptTimeoutSeconds(global.AgentScriptTimeoutSeconds)
 	global.ProjectFileTreeEntryLimit = normalizeProjectFileTreeEntryLimit(global.ProjectFileTreeEntryLimit)
 	user, err := ReadSettingsFile(UserConfigPath(novaDir))
 	if err != nil {
@@ -754,6 +761,7 @@ func sanitizeEditableSettings(s Settings) Settings {
 	s.AgentIdleTimeoutSeconds = normalizeAgentIdleTimeoutSeconds(s.AgentIdleTimeoutSeconds)
 	s.AgentToolResultLimitKB = normalizeAgentToolResultLimitKB(s.AgentToolResultLimitKB)
 	s.AgentToolParallelism = normalizeAgentToolParallelism(s.AgentToolParallelism)
+	s.AgentScriptTimeoutSeconds = normalizeAgentScriptTimeoutSeconds(s.AgentScriptTimeoutSeconds)
 	s.ProjectFileTreeEntryLimit = normalizeProjectFileTreeEntryLimit(s.ProjectFileTreeEntryLimit)
 	if s.AgentApprovalMode != "" {
 		s.AgentApprovalMode = NormalizeAgentApprovalMode(s.AgentApprovalMode)
@@ -824,6 +832,13 @@ func normalizeAgentToolParallelism(value *int) *int {
 		return intPtr(MaxAgentToolParallelism)
 	}
 	return value
+}
+
+func normalizeAgentScriptTimeoutSeconds(value *int) *int {
+	if value == nil || *value >= 0 {
+		return value
+	}
+	return nil
 }
 
 func normalizeProjectFileTreeEntryLimit(value *int) *int {

@@ -7,6 +7,7 @@ import (
 
 	agent "github.com/alfredxw/denova/agent"
 
+	agents "denova/internal/agents"
 	agentchat "denova/internal/agents/chat"
 	agentexecution "denova/internal/agents/execution"
 	"denova/internal/agents/prompts"
@@ -38,6 +39,7 @@ func InspectPrepared(
 	}
 	built, err := appagentruntime.BuildConversationAgent(
 		ctx, &runtime.Config, runtime.State, runtime.IDETeller, runtime.AgentKind,
+		agents.AgentHostCapabilities{Interactive: true},
 	)
 	if err != nil {
 		return InspectedTurn{}, err

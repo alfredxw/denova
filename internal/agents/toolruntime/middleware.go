@@ -292,7 +292,7 @@ func projectToolError(decision agenttool.Decision, args string, returned agent.T
 func toolExecutionRecordFromFiltered(decision agenttool.Decision, filtered toolresult.Filtered, status string) agenttool.ExecutionRecord {
 	return agenttool.ExecutionRecord{
 		ToolName: filtered.Manifest.Name, ProviderCallID: decision.ProviderCallID,
-		ExecutionID: decision.ExecutionID, Status: status,
+		ExecutionID: decision.ExecutionID, ParentCallID: decision.ParentCallID, Status: status,
 		SyntheticReason: string(filtered.Result.SyntheticReason),
 		Capability:      filtered.Manifest.Capability,
 		OriginalBytes:   filtered.Result.Metadata.OriginalModelBytes,
@@ -335,7 +335,7 @@ func (m *OrchestratorMiddleware) acquireToolExecution(ctx context.Context, decis
 func blockedToolExecutionRecord(decision agenttool.Decision, message string) agenttool.ExecutionRecord {
 	return agenttool.ExecutionRecord{
 		ToolName: decision.ToolName, ProviderCallID: decision.ProviderCallID,
-		ExecutionID: decision.ExecutionID, Status: "blocked",
+		ExecutionID: decision.ExecutionID, ParentCallID: decision.ParentCallID, Status: "blocked",
 		Capability: decision.Capability, Target: decision.Target, Error: message,
 		ArgsBytes: decision.ArgsBytes, ArgsComplete: decision.ArgsComplete,
 		ModelFinishReason: decision.ModelFinishReason, Descriptor: decision.Descriptor,
@@ -358,15 +358,17 @@ func (m *OrchestratorMiddleware) buildToolDecision(ctx context.Context, toolCtx 
 	}
 	providerCallID := toolCallID(toolCtx)
 	executionID := ""
+	parentCallID := ""
 	if toolCtx != nil {
 		executionID = strings.TrimSpace(toolCtx.ExecutionID)
+		parentCallID = strings.TrimSpace(toolCtx.ParentCallID)
 	}
 	if executionID == "" {
 		executionID = agent.ToolExecutionID(ctx, providerCallID)
 	}
 	decision := agenttool.Decision{
 		ToolName: manifest.Name, ProviderCallID: providerCallID,
-		ExecutionID: executionID, Source: manifest.Source,
+		ExecutionID: executionID, ParentCallID: parentCallID, Source: manifest.Source,
 		Capability: manifest.Capability, Action: "allowed",
 		MutationScope: manifest.MutationScope,
 		PostCheck:     manifest.PostCheck,

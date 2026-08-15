@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"denova/config"
+	agents "denova/internal/agents"
 	agentexecution "denova/internal/agents/execution"
 	agenttool "denova/internal/agents/tool"
 	"denova/internal/book"
@@ -46,6 +47,17 @@ func (host agentChatHost) CurrentWorkspace() string {
 	host.app.mu.RLock()
 	defer host.app.mu.RUnlock()
 	return host.app.workspace
+}
+
+func (host agentChatHost) HarnessAgentHostCapabilities(
+	ctx context.Context,
+	cfg *config.Config,
+	agentKind string,
+) (agents.AgentHostCapabilities, error) {
+	if host.app == nil {
+		return agents.AgentHostCapabilities{}, nil
+	}
+	return host.app.HarnessAgentHostCapabilities(ctx, cfg, agentKind)
 }
 
 func (host agentChatHost) OnVerifiedMutations(

@@ -20,6 +20,7 @@ import (
 
 type PermissionConfig struct {
 	Mode      config.AgentApprovalMode
+	AgentKind string
 	ProjectID string
 	Workspace string
 	Rules     []config.AgentApprovalRule
@@ -42,10 +43,11 @@ type permissionRuleState struct {
 
 // NewPermissionPolicy adapts Denova's mature shell/network classifier to the
 // public durable PermissionPolicy. Persisted rules are dynamic policy data,
-// not Definition behavior identity: a remembered rule must become visible to
-// the current Run without invalidating same-cycle cold recovery.
+// not Definition behavior identity: a remembered rule becomes visible without
+// rebuilding tool definitions.
 func NewPermissionPolicy(configValue PermissionConfig) (agent.PermissionPolicy, error) {
 	configValue.Mode = config.NormalizeAgentApprovalMode(configValue.Mode)
+	configValue.AgentKind = strings.TrimSpace(configValue.AgentKind)
 	configValue.ProjectID = strings.TrimSpace(configValue.ProjectID)
 	configValue.Workspace = strings.TrimSpace(configValue.Workspace)
 	configValue.Rules = config.NormalizeAgentApprovalRules(configValue.Rules)
@@ -86,12 +88,13 @@ func BindPermissionRuleStore(
 func (policy *denovaPermissionPolicy) Identity() agent.CapabilityIdentity {
 	payload := struct {
 		Mode      config.AgentApprovalMode
+		AgentKind string
 		ProjectID string
 		Workspace string
 		GOOS      string
 		Matcher   int
 	}{
-		policy.config.Mode, policy.config.ProjectID, policy.config.Workspace,
+		policy.config.Mode, policy.config.AgentKind, policy.config.ProjectID, policy.config.Workspace,
 		policy.config.GOOS, config.AgentApprovalRuleMatcherVersion,
 	}
 	encoded, _ := json.Marshal(payload)
@@ -209,11 +212,63 @@ func (policy *denovaPermissionPolicy) rulesForEvaluation(ctx context.Context) ([
 }
 
 func (policy *denovaPermissionPolicy) evaluate(request agent.PermissionRequest, rules []config.AgentApprovalRule) toolapproval.Decision {
+	if decision, matched := harnessStatePermission(request, policy.config.AgentKind); matched {
+		return decision
+	}
 	return toolapproval.Evaluate(toolapproval.Request{
 		Mode: policy.config.Mode, ProjectID: policy.config.ProjectID, Workspace: policy.config.Workspace,
 		ToolName: request.Tool, Arguments: string(request.Arguments), Descriptor: request.Descriptor,
 		GOOS: policy.config.GOOS, Rules: rules,
 	})
+}
+
+// harnessStatePermission is intentionally separate from workspace approval
+// rules. User Harness State is global across Projects, so neither a workspace
+// read allowance nor a remembered shell rule may authorize its contents or a
+// mutation. The dedicated optimizer is the only pre-authorized caller.
+func harnessStatePermission(request agent.PermissionRequest, agentKind string) (toolapproval.Decision, bool) {
+	toolName := strings.TrimSpace(request.Tool)
+	operation := ""
+	switch toolName {
+	case "update_harness_state":
+		operation = "update"
+	case "read":
+		var input struct {
+			Path string `json:"path"`
+		}
+		if json.Unmarshal(request.Arguments, &input) != nil {
+			return toolapproval.Decision{}, false
+		}
+		path := strings.ToLower(strings.TrimSpace(input.Path))
+		if !strings.HasPrefix(path, "harness://state/") {
+			return toolapproval.Decision{}, false
+		}
+		if path == "harness://state/current" {
+			return toolapproval.Decision{
+				Action: toolapproval.ActionAllow, Risk: toolapproval.RiskLow,
+				RuleID: "harness_state_manifest", Reason: "Harness State manifests are safe to inspect.",
+			}, true
+		}
+		operation = "read"
+	default:
+		return toolapproval.Decision{}, false
+	}
+	if agentKind == config.AgentKindHarnessOptimizer {
+		return toolapproval.Decision{
+			Action: toolapproval.ActionAllow, Risk: toolapproval.RiskMedium,
+			RuleID: "harness_state_optimizer", Reason: "自动 Harness 优化已获用户授权。 / Automated Harness optimization is user-authorized.",
+		}, true
+	}
+	if operation == "read" {
+		return toolapproval.Decision{
+			Action: toolapproval.ActionPrompt, Risk: toolapproval.RiskMedium,
+			RuleID: "harness_state_read", Reason: "该工具将读取所有项目共享的用户状态，需要你的确认。 / This tool will read User State shared by every Project and requires approval.",
+		}, true
+	}
+	return toolapproval.Decision{
+		Action: toolapproval.ActionPrompt, Risk: toolapproval.RiskHigh,
+		RuleID: "harness_state_update", Reason: "该工具将修改所有项目共享的当前用户状态，需要你的确认。 / This tool will modify the current User State shared by every Project and requires approval.",
+	}, true
 }
 
 func (state *permissionRuleState) snapshot() []config.AgentApprovalRule {

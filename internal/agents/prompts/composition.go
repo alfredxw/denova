@@ -60,7 +60,7 @@ func ComposeHarnessOptimizerInstruction(cfg *config.Config) (SystemPromptComposi
 	return ComposeBuiltinSystemInstruction(
 		cfg, config.AgentKindHarnessOptimizer, "harness_optimizer", workspace,
 		"harness_optimizer_builtin", "Harness Optimizer",
-		"analyze trajectory evidence and make minimal validated changes in the live Harness State directory",
+		"analyze trajectory evidence and submit minimal validated User Harness State changes",
 		staticPromptAsset(harnessOptimizerWorkflowAsset),
 	)
 }

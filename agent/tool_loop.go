@@ -32,12 +32,14 @@ type toolExecutionResult struct {
 }
 
 type preparedToolCall struct {
-	index       int
-	call        ToolCall
-	executionID string
-	definition  ToolDefinition
-	snapshot    ToolDefinitionSnapshot
-	precomputed *toolExecutionResult
+	index        int
+	call         ToolCall
+	executionID  string
+	parentCallID string
+	registry     *Registry
+	definition   ToolDefinition
+	snapshot     ToolDefinitionSnapshot
+	precomputed  *toolExecutionResult
 }
 
 type indexedToolExecutionResult struct {
@@ -65,11 +67,20 @@ func (agent *modelToolLoop) executeToolBatch(
 	events *asyncGenerator[*loopEvent],
 	cancel *cancelControl,
 ) ([]toolExecutionResult, error) {
+	prepared := agent.prepareToolCalls(ctx, registry, calls, modelResponseOrdinal)
+	return agent.executePreparedToolBatch(ctx, prepared, events, cancel)
+}
+
+func (agent *modelToolLoop) executePreparedToolBatch(
+	ctx context.Context,
+	prepared []preparedToolCall,
+	events *asyncGenerator[*loopEvent],
+	cancel *cancelControl,
+) ([]toolExecutionResult, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	prepared := agent.prepareToolCalls(ctx, registry, calls, modelResponseOrdinal)
-	results := make([]toolExecutionResult, len(calls))
+	results := make([]toolExecutionResult, len(prepared))
 
 	for index := 0; index < len(prepared); {
 		if err := ctx.Err(); err != nil {
@@ -129,49 +140,60 @@ func (agent *modelToolLoop) executeToolBatch(
 func (agent *modelToolLoop) prepareToolCalls(ctx context.Context, registry *Registry, calls []ToolCall, modelResponseOrdinal int) []preparedToolCall {
 	prepared := make([]preparedToolCall, len(calls))
 	for index, call := range calls {
-		call = cloneToolCalls([]ToolCall{call})[0]
-		item := preparedToolCall{
-			index: index, call: call,
-			executionID: ToolExecutionIDForOrdinal(ctx, modelResponseOrdinal, index),
-		}
-		name := call.Function.Name
-		switch {
-		case call.Type != "" && call.Type != "function":
-			result := syntheticCallResult(call, ToolResultError, ToolSyntheticInvalidCall,
-				fmt.Sprintf("tool %q has unsupported call type %q", name, call.Type))
-			item.precomputed = &result
-		case strings.TrimSpace(name) == "":
-			result := syntheticCallResult(call, ToolResultError, ToolSyntheticInvalidCall, "tool call has no name")
-			item.precomputed = &result
-		default:
-			definition, exists := registry.Lookup(name)
-			if !exists {
-				result := syntheticCallResult(call, ToolResultError, ToolSyntheticUnknownTool,
-					fmt.Sprintf("unknown tool %q", name))
-				item.precomputed = &result
-				break
-			}
-			snapshot, _ := registry.Snapshot(name)
-			item.definition = definition
-			item.snapshot = snapshot
-			if normalized, err := NormalizeToolArguments(snapshot.Info, call.Function.Arguments); err != nil {
-				result := invalidToolArgumentsResult(call, err)
-				item.precomputed = &result
-			} else {
-				item.call.Function.Arguments = normalized
-			}
-		}
-		if item.precomputed != nil {
-			bindToolExecutionIdentity(item.precomputed, item)
-			descriptor := fallbackToolResultDescriptor
-			if item.snapshot.Info != nil {
-				descriptor = item.snapshot.Descriptor
-			}
-			normalizeToolExecutionResult(item.precomputed, descriptor)
-		}
-		prepared[index] = item
+		prepared[index] = prepareToolCall(
+			registry, call, index, ToolExecutionIDForOrdinal(ctx, modelResponseOrdinal, index), "",
+		)
 	}
 	return prepared
+}
+
+func prepareToolCall(
+	registry *Registry,
+	call ToolCall,
+	index int,
+	executionID string,
+	parentCallID string,
+) preparedToolCall {
+	call = cloneToolCalls([]ToolCall{call})[0]
+	item := preparedToolCall{
+		index: index, call: call, executionID: executionID, parentCallID: parentCallID, registry: registry,
+	}
+	name := call.Function.Name
+	switch {
+	case call.Type != "" && call.Type != "function":
+		result := syntheticCallResult(call, ToolResultError, ToolSyntheticInvalidCall,
+			fmt.Sprintf("tool %q has unsupported call type %q", name, call.Type))
+		item.precomputed = &result
+	case strings.TrimSpace(name) == "":
+		result := syntheticCallResult(call, ToolResultError, ToolSyntheticInvalidCall, "tool call has no name")
+		item.precomputed = &result
+	default:
+		definition, exists := registry.Lookup(name)
+		if !exists {
+			result := syntheticCallResult(call, ToolResultError, ToolSyntheticUnknownTool,
+				fmt.Sprintf("unknown tool %q", name))
+			item.precomputed = &result
+			break
+		}
+		snapshot, _ := registry.Snapshot(name)
+		item.definition = definition
+		item.snapshot = snapshot
+		if normalized, err := NormalizeToolArguments(snapshot.Info, call.Function.Arguments); err != nil {
+			result := invalidToolArgumentsResult(call, err)
+			item.precomputed = &result
+		} else {
+			item.call.Function.Arguments = normalized
+		}
+	}
+	if item.precomputed != nil {
+		bindToolExecutionIdentity(item.precomputed, item)
+		descriptor := fallbackToolResultDescriptor
+		if item.snapshot.Info != nil {
+			descriptor = item.snapshot.Descriptor
+		}
+		normalizeToolExecutionResult(item.precomputed, descriptor)
+	}
+	return item
 }
 
 func (agent *modelToolLoop) runOneToolCall(
@@ -264,15 +286,24 @@ func (agent *modelToolLoop) executePreparedTool(
 	cancel *cancelControl,
 ) toolExecutionResult {
 	authorizedArguments := prepared.call.Function.Arguments
-	callCtx := contextWithToolExecution(ctx, prepared.executionID, prepared.call.ID, prepared.call.Function.Name)
+	callCtx := contextWithToolExecution(
+		ctx, prepared.executionID, prepared.call.ID, prepared.call.Function.Name,
+	)
 	callCtx = contextWithNestedEventForwarder(callCtx, func(event NestedEvent) error {
 		cloned := cloneNestedEvent(event)
+		if cloned.ParentCallID == "" {
+			cloned.ParentCallID = prepared.executionID
+		}
 		events.Send(&loopEvent{
 			AgentName: agent.name, RunPath: []loopRunStep{newLoopRunStep(agent.name)},
 			Output: &loopOutput{NestedEvent: &cloned},
 		})
 		return nil
 	})
+	dispatcher := nestedToolDispatcher{
+		loop: agent, registry: prepared.registry, events: events, cancel: cancel, parentCallID: prepared.executionID,
+	}
+	callCtx = contextWithNestedToolInvoker(callCtx, dispatcher.call)
 	callCtx = contextWithToolSteering(callCtx, toolSteeringSignal{
 		done:    cancel.requestedSignal(),
 		pending: func() bool { return cancel.pending(cancelAfterTools | cancelAfterModel) },
@@ -393,7 +424,7 @@ func (agent *modelToolLoop) executePreparedTool(
 	})
 	toolContext := &ToolContext{
 		Index: prepared.index, Name: prepared.call.Function.Name,
-		ExecutionID: prepared.executionID, ProviderCallID: prepared.call.ID,
+		ExecutionID: prepared.executionID, ProviderCallID: prepared.call.ID, ParentCallID: prepared.parentCallID,
 		Definition: prepared.snapshot,
 	}
 	for index := len(agent.middlewares) - 1; index >= 0; index-- {
@@ -566,7 +597,11 @@ func (agent *modelToolLoop) fillPolicySkipped(
 	}
 }
 
-func (agent *modelToolLoop) emitToolFinished(events *asyncGenerator[*loopEvent], prepared preparedToolCall, result ToolResult) {
+func (agent *modelToolLoop) emitToolFinished(
+	events *asyncGenerator[*loopEvent],
+	prepared preparedToolCall,
+	result ToolResult,
+) {
 	events.Send(agent.toolExecutionEvent(prepared, toolExecutionFinished, "", &result))
 }
 
@@ -590,6 +625,7 @@ func (agent *modelToolLoop) toolExecutionEvent(
 		Output: &loopOutput{ToolExecution: &toolExecutionEvent{
 			Phase: phase, Index: prepared.index, ExecutionID: prepared.executionID,
 			ProviderCallID: prepared.call.ID,
+			ParentCallID:   prepared.parentCallID,
 			ToolName:       prepared.call.Function.Name, Arguments: json.RawMessage(prepared.call.Function.Arguments), Definition: prepared.snapshot,
 			Delta: delta, Result: cloned,
 		}},

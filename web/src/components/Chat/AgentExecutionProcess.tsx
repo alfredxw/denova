@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -16,6 +16,7 @@ import {
 import { AgentMessageItem } from './AgentMessageItem'
 import { MessageItem } from './MessageItem'
 import { buildSubAgentProgressMessage } from './subagent-session'
+import { buildToolCallTree, type AgentProcessNode } from './tool-call-tree'
 
 interface AgentExecutionProcessProps {
   projectId?: string
@@ -63,9 +64,7 @@ export function AgentExecutionProcess({
     toolCount > 0 ? t('chat.trace.toolCalls', { count: toolCount }) : '',
     subAgentCount > 0 ? t('chat.subagent.label') : '',
   ].filter(Boolean).join(' · ')
-  const subAgentGroupsByStart = new Map(
-    (onOpenSubAgentSession ? buildAgentSubAgentTimelineGroups(views) : []).map(group => [group.startIndex, group]),
-  )
+  const processTree = useMemo(() => buildToolCallTree(views), [views])
   useLayoutEffect(() => {
     const wasRunning = wasRunningRef.current
     wasRunningRef.current = running
@@ -77,10 +76,15 @@ export function AgentExecutionProcess({
     }
   }, [activeTraceDisplay, running])
 
-  const renderProcessItems = () => {
+  const renderProcessItems = (nodes: AgentProcessNode[], depth = 0) => {
     const processItems: ReactNode[] = []
-    for (let index = 0; index < views.length; index += 1) {
-      const view = views[index]
+    const nodeViews = nodes.map(node => node.view)
+    const subAgentGroupsByStart = new Map(
+      (onOpenSubAgentSession ? buildAgentSubAgentTimelineGroups(nodeViews) : []).map(group => [group.startIndex, group]),
+    )
+    for (let index = 0; index < nodes.length; index += 1) {
+      const node = nodes[index]
+      const view = node.view
       const subAgentGroup = subAgentGroupsByStart.get(index)
       if (onOpenSubAgentSession && subAgentGroup) {
         const pendingApprovalView = subAgentGroup.views.find(item => agentViewAskInteraction(item)?.status === 'pending')
@@ -120,19 +124,25 @@ export function AgentExecutionProcess({
       }
       if (view.kind === 'reasoning' && !view.streaming && !agentViewContent(view).trim()) continue
       processItems.push(
-        <AgentMessageItem
-          projectId={projectId}
-          key={agentViewStableKey(view) || index}
-          view={view}
-          assistantPresentation={view.kind === 'assistant' ? 'progress' : undefined}
-          highlightDialogue={highlightDialogue}
-          messageStyle={messageStyle}
-          onInsertIllustration={onInsertIllustration}
-          onGenerateInteractiveImage={onGenerateInteractiveImage}
-          onOpenTrace={onOpenTrace}
-          onInteractiveCardLayoutChange={onInteractiveCardLayoutChange}
-          onResolveAsk={onResolveAsk}
-        />,
+        <div key={agentViewStableKey(view) || index} data-tool-call-depth={depth} className="min-w-0">
+          <AgentMessageItem
+            projectId={projectId}
+            view={view}
+            assistantPresentation={view.kind === 'assistant' ? 'progress' : undefined}
+            highlightDialogue={highlightDialogue}
+            messageStyle={messageStyle}
+            onInsertIllustration={onInsertIllustration}
+            onGenerateInteractiveImage={onGenerateInteractiveImage}
+            onOpenTrace={onOpenTrace}
+            onInteractiveCardLayoutChange={onInteractiveCardLayoutChange}
+            onResolveAsk={onResolveAsk}
+          />
+          {node.children.length > 0 ? (
+            <div className={`${depth < 3 ? 'ml-3' : 'ml-0'} mt-2 space-y-2 border-l border-[var(--nova-border)] pl-3`}>
+              {renderProcessItems(node.children, depth + 1)}
+            </div>
+          ) : null}
+        </div>,
       )
     }
     return processItems
@@ -156,7 +166,7 @@ export function AgentExecutionProcess({
         </button>
         {expanded ? (
           <div className="space-y-2 border-l border-[var(--nova-border)] px-3 py-2">
-            {renderProcessItems()}
+            {renderProcessItems(processTree)}
           </div>
         ) : null}
       </div>
