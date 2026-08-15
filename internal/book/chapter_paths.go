@@ -8,9 +8,7 @@ import (
 )
 
 type chapterPathEntry struct {
-	Path   string
-	Index  int
-	Volume string
+	Path string
 }
 
 // InvalidateChapterPaths discards the rebuildable path projection after an
@@ -83,8 +81,7 @@ func scanChapterPaths(workspace string) ([]chapterPathEntry, map[string]int64) {
 			return nil
 		}
 		rel = filepath.ToSlash(rel)
-		volume, _ := chapterVolume(rel)
-		entries = append(entries, chapterPathEntry{Path: rel, Index: chapterIndex(name), Volume: volume})
+		entries = append(entries, chapterPathEntry{Path: rel})
 		return nil
 	})
 	sort.Slice(entries, func(i, j int) bool {

@@ -463,7 +463,7 @@ func TestIDEContextAnalysisUsesPreparedTurnWithoutSideEffects(t *testing.T) {
 	}
 }
 
-func TestIDEContextAnalysisSplitsStableAndDynamicWorkspaceState(t *testing.T) {
+func TestIDEContextAnalysisProjectsWorkspacePathsAndResidentLore(t *testing.T) {
 	dir := t.TempDir()
 	state := book.NewState(dir)
 	if err := state.InitWorkspace(); err != nil {
@@ -532,12 +532,12 @@ func TestIDEContextAnalysisSplitsStableAndDynamicWorkspaceState(t *testing.T) {
 	if first.Source != "Stable context / 稳定上下文" || first.Title != "Stable model-prefix message / 稳定模型前缀消息" {
 		t.Fatalf("first message should carry stable workspace state: %#v", first)
 	}
-	for _, want := range []string{"# Stable Work Context", "主角进入废城", "## 角色小标题", "林川长期设定"} {
+	for _, want := range []string{"# Stable Workspace Sources", `"setting/outline.md"`, "## 角色小标题", "林川长期设定"} {
 		if !strings.Contains(first.Content, want) {
 			t.Fatalf("stable message missing %q:\n%s", want, first.Content)
 		}
 	}
-	for _, notWant := range []string{"当前进度：抵达废城入口", "章节组：探索废城", "chapters/ch0001-开局.md", "林川：警惕"} {
+	for _, notWant := range []string{"主角进入废城", "当前进度：抵达废城入口", "章节组：探索废城", "chapters/ch0001-开局.md", "林川：警惕"} {
 		if strings.Contains(first.Content, notWant) {
 			t.Fatalf("stable message should not include dynamic state %q:\n%s", notWant, first.Content)
 		}
@@ -546,9 +546,14 @@ func TestIDEContextAnalysisSplitsStableAndDynamicWorkspaceState(t *testing.T) {
 	if final.Source != "Current turn / 本轮上下文" || final.Title != "Current user message / 本轮用户消息" {
 		t.Fatalf("final message should carry dynamic workspace state label: %#v", final)
 	}
-	for _, want := range []string{"# Dynamic Work State for This Turn", "章节组：探索废城", "chapters/ch0001-开局.md", "当前进度：抵达废城入口", "林川：警惕", "## Current IDE State", "Focused file: chapters/ch0001-开局.md", "Open files: chapters/ch0001-开局.md, setting/progress.md", "# Current User Request (Highest Priority)"} {
+	for _, want := range []string{"# Workspace Sources for This Turn", `"setting/chapter-groups/group01-废城.md"`, `"chapters/ch0001-开局.md"`, `"setting/progress.md"`, `"setting/character-states.md"`, "## Current IDE State", "Focused file: chapters/ch0001-开局.md", "Open files: chapters/ch0001-开局.md, setting/progress.md", "# Current User Request (Highest Priority)"} {
 		if !strings.Contains(final.Content, want) {
 			t.Fatalf("final message missing %q:\n%s", want, final.Content)
+		}
+	}
+	for _, notWant := range []string{"章节组：探索废城", "当前进度：抵达废城入口", "林川：警惕", "第一章正文"} {
+		if strings.Contains(final.Content, notWant) {
+			t.Fatalf("final message should index paths without injecting body %q:\n%s", notWant, final.Content)
 		}
 	}
 	if !strings.HasSuffix(strings.TrimSpace(final.Content), "继续写") {

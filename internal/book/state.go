@@ -5,12 +5,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
-	"strings"
 	"sync"
+	"time"
 
 	"denova/internal/book/lore"
-	"time"
 
 	workspacelayout "denova/internal/workspace"
 )
@@ -22,15 +20,6 @@ type State struct {
 	chapterPathDirty       bool
 	chapterPathEntries     []chapterPathEntry
 	chapterPathDirectories map[string]int64
-}
-
-// CompactContextPart describes one bounded, model-visible workspace state source.
-type CompactContextPart struct {
-	ID          string
-	Source      string
-	Title       string
-	Content     string
-	PromptTitle string
 }
 
 // NewState 创建作品状态管理器。
@@ -81,8 +70,6 @@ const IdeasFileName = "ideas.md"
 // LegacyBrainstormFileName 是旧版顶层定调文件名，仅用于初始化时迁移旧工作区。
 const LegacyBrainstormFileName = "brainstorm.md"
 
-const ideasContextMaxRunes = 2000
-
 // CharacterStatesFileName 角色状态文件名，存于 setting/，用于追踪当前连续性状态。
 const CharacterStatesFileName = "character-states.md"
 
@@ -119,138 +106,20 @@ func (s *State) IdeasPath() string {
 	return filepath.Join(s.workspace, IdeasFileName)
 }
 
-// StableContextParts returns low-churn workspace state that should stay high
-// in model-visible context for prompt-cache reuse.
-func (s *State) StableContextParts() []CompactContextPart {
-	parts := make([]CompactContextPart, 0, 3)
-	loreContext := s.LoreContext()
-
-	if ideasContext := s.IdeasContext(); ideasContext != "" {
-		parts = append(parts, CompactContextPart{
-			ID:          "ideas",
-			Source:      IdeasFileName,
-			Title:       "创作灵感",
-			PromptTitle: fmt.Sprintf("Creative Ideas (%s, at most %d characters)", IdeasFileName, ideasContextMaxRunes),
-			Content:     ideasContext,
-		})
+// HasState reports whether the workspace contains established writing state or
+// enabled Lore. ideas.md intentionally remains an ideation source, not proof
+// that an outline-backed work has been initialized.
+func (s *State) HasState() bool {
+	if s == nil {
+		return false
 	}
-
-	if content := s.readSettingFile("outline.md"); content != "" {
-		parts = append(parts, CompactContextPart{
-			ID:          "outline",
-			Source:      filepath.ToSlash(filepath.Join("setting", "outline.md")),
-			Title:       "当前大纲",
-			PromptTitle: "Current Outline",
-			Content:     strings.TrimSpace(content),
-		})
-	}
-
-	if loreContext != "" {
-		parts = append(parts, CompactContextPart{
-			ID:          "lore",
-			Source:      lore.ItemsRelativePath,
-			Title:       "资料库",
-			PromptTitle: "Lore",
-			Content:     loreContext,
-		})
-	}
-
-	return parts
-}
-
-// DynamicContextParts returns high-churn workspace state that should stay close
-// to the current user request.
-func (s *State) DynamicContextParts() []CompactContextPart {
-	parts := make([]CompactContextPart, 0, 4)
-
-	if groupContext := s.ChapterGroupContext(2); groupContext != "" {
-		parts = append(parts, CompactContextPart{
-			ID:          "chapter_groups",
-			Source:      "setting/chapter-groups/",
-			Title:       "章节组细纲",
-			PromptTitle: "Chapter-group Plans",
-			Content:     groupContext,
-		})
-	}
-
-	if chapterContext := s.ChapterPathContext(12); chapterContext != "" {
-		parts = append(parts, CompactContextPart{
-			ID:          "chapter_paths",
-			Source:      "chapters/",
-			Title:       "章节目录概览",
-			PromptTitle: "Chapter Path Overview",
-			Content:     chapterContext,
-		})
-	}
-
-	dynamicSections := []struct {
-		file  string
-		title string
-		id    string
-	}{
-		{"progress.md", "Current Progress", "progress"},
-		{CharacterStatesFileName, "Character State", "character_states"},
-	}
-
-	for _, sec := range dynamicSections {
-		content := s.readSettingFile(sec.file)
-		if content == "" {
-			continue
+	for _, name := range []string{"outline.md", "progress.md", CharacterStatesFileName} {
+		if _, err := os.Stat(filepath.Join(s.SettingDir(), name)); err == nil {
+			return true
 		}
-		parts = append(parts, CompactContextPart{
-			ID:          sec.id,
-			Source:      filepath.ToSlash(filepath.Join("setting", sec.file)),
-			Title:       sec.title,
-			PromptTitle: sec.title,
-			Content:     strings.TrimSpace(content),
-		})
 	}
-
-	return parts
-}
-
-// CompactContextParts 读取作品状态和结构化资料库，保留每个注入片段的真实来源。
-func (s *State) CompactContextParts() []CompactContextPart {
-	stable := s.StableContextParts()
-	dynamic := s.DynamicContextParts()
-	parts := make([]CompactContextPart, 0, len(stable)+len(dynamic))
-	parts = append(parts, stable...)
-	parts = append(parts, dynamic...)
-	return parts
-}
-
-// StableContext renders low-churn workspace state as model-visible Markdown.
-func (s *State) StableContext() string {
-	return FormatCompactContextParts(s.StableContextParts())
-}
-
-// DynamicContext renders high-churn workspace state as model-visible Markdown.
-func (s *State) DynamicContext() string {
-	return FormatCompactContextParts(s.DynamicContextParts())
-}
-
-// CompactContext 读取作品状态和结构化资料库，构建分级注入的上下文字符串。
-func (s *State) CompactContext() string {
-	return FormatCompactContextParts(s.CompactContextParts())
-}
-
-// FormatCompactContextParts renders compact context parts in their current order.
-func FormatCompactContextParts(parts []CompactContextPart) string {
-	var sb strings.Builder
-	for _, part := range parts {
-		content := strings.TrimSpace(part.Content)
-		if content == "" {
-			continue
-		}
-		if title := strings.TrimSpace(part.PromptTitle); title != "" {
-			sb.WriteString("## ")
-			sb.WriteString(title)
-			sb.WriteString("\n\n")
-		}
-		sb.WriteString(content)
-		sb.WriteString("\n\n")
-	}
-	return sb.String()
+	items, err := lore.NewStore(s.workspace).List()
+	return err == nil && len(items) > 0
 }
 
 func (s *State) ensureIdeasFile() error {
@@ -275,134 +144,6 @@ func (s *State) ensureIdeasFile() error {
 		return fmt.Errorf("写入 %s 失败: %w", IdeasFileName, err)
 	}
 	return nil
-}
-
-// IdeasContext 返回有界的创作灵感上下文；空模板不参与模型注入。
-func (s *State) IdeasContext() string {
-	data, err := os.ReadFile(s.IdeasPath())
-	if err != nil {
-		return ""
-	}
-	content := strings.TrimSpace(string(data))
-	if content == "" || content == strings.TrimSpace(IdeasTemplate) {
-		return ""
-	}
-	runes := []rune(content)
-	if len(runes) <= ideasContextMaxRunes {
-		return content
-	}
-	return strings.TrimSpace(string(runes[:ideasContextMaxRunes])) + fmt.Sprintf("\n\n[Truncated at %d characters. Read %s explicitly for the complete content.]", ideasContextMaxRunes, IdeasFileName)
-}
-
-// ChapterGroupContext 返回最近的章节组细纲内容，用于提示 Agent 关注当前短期写作计划。
-func (s *State) ChapterGroupContext(limit int) string {
-	if limit <= 0 {
-		limit = 2
-	}
-	root := s.ChapterGroupDir()
-	entries, err := os.ReadDir(root)
-	if err != nil {
-		return ""
-	}
-	var files []string
-	for _, entry := range entries {
-		name := entry.Name()
-		if entry.IsDir() || strings.HasPrefix(name, ".") {
-			continue
-		}
-		ext := strings.ToLower(filepath.Ext(name))
-		if ext != ".md" && ext != ".txt" {
-			continue
-		}
-		files = append(files, name)
-	}
-	if len(files) == 0 {
-		return ""
-	}
-	sort.Strings(files)
-	if len(files) > limit {
-		files = files[len(files)-limit:]
-	}
-	var sb strings.Builder
-	for _, name := range files {
-		data, err := os.ReadFile(filepath.Join(root, name))
-		if err != nil {
-			continue
-		}
-		content := strings.TrimSpace(string(data))
-		if content == "" {
-			continue
-		}
-		sb.WriteString("### ")
-		sb.WriteString(name)
-		sb.WriteString("\n\n")
-		sb.WriteString(content)
-		sb.WriteString("\n\n")
-	}
-	return strings.TrimSpace(sb.String())
-}
-
-// ChapterPathContext 返回最近章节路径和分卷概览，帮助 Agent 在续写时选择正确目录。
-func (s *State) ChapterPathContext(limit int) string {
-	if limit <= 0 {
-		limit = 12
-	}
-	entries := s.chapterPaths()
-	if len(entries) == 0 {
-		return ""
-	}
-	if len(entries) > limit {
-		entries = entries[len(entries)-limit:]
-	}
-
-	var sb strings.Builder
-	for _, entry := range entries {
-		sb.WriteString("- ")
-		sb.WriteString(entry.Path)
-		if entry.Volume != "" {
-			sb.WriteString(" (volume: ")
-			sb.WriteString(entry.Volume)
-			sb.WriteString(")")
-		}
-		sb.WriteString("\n")
-	}
-	latest := entries[len(entries)-1]
-	sb.WriteString("\nLatest finalized chapter: ")
-	sb.WriteString(latest.Path)
-	if latest.Volume != "" && latest.Volume != "未分卷" {
-		sb.WriteString(". If the outline remains in this volume, write the next chapter under chapters/")
-		sb.WriteString(latest.Volume)
-		sb.WriteString("/.")
-	}
-	return strings.TrimSpace(sb.String())
-}
-
-// LoreContext 返回结构化资料库的渐进式 Markdown 上下文。
-func (s *State) LoreContext() string {
-	context, err := lore.NewStore(s.workspace).ProgressiveContextMarkdown()
-	if err != nil {
-		return ""
-	}
-	return context
-}
-
-// HasState 检查作品是否已有大纲、进度、角色状态或资料库内容。
-func (s *State) HasState() bool {
-	files := []string{"outline.md", "progress.md", CharacterStatesFileName}
-	for _, f := range files {
-		if _, err := os.Stat(filepath.Join(s.SettingDir(), f)); err == nil {
-			return true
-		}
-	}
-	return strings.TrimSpace(s.LoreContext()) != ""
-}
-
-func (s *State) readSettingFile(name string) string {
-	data, err := os.ReadFile(filepath.Join(s.SettingDir(), name))
-	if err != nil {
-		return ""
-	}
-	return string(data)
 }
 
 // BookMeta 书籍元信息，存储在工作区根目录的 book.json 中。

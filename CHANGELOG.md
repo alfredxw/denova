@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- 写作 Agent 的自动工作区上下文改为轻量路径索引：`ideas.md`、大纲、进度、角色状态、最近章节组和章节不再注入文件正文，Agent 会按当前任务通过 `read`、`glob`、`grep`（必要时使用只读 `bash`）读取工作区中的权威内容；Resident Lore、用户显式文件/资料引用和编辑器选区继续直接提供。路径索引不随正文编辑变化，保持稳定前缀缓存；无需新增配置。
+- Writing Agent automatic workspace context now uses a lightweight path index. `ideas.md`, outline, progress, character state, recent chapter-group plans, and recent chapters no longer inject file bodies; the Agent reads authoritative workspace content for the current task through `read`, `glob`, `grep`, or read-only `bash` when needed. Resident Lore, explicit user file/Lore references, and editor selections remain inline. Body edits no longer rotate the path index, preserving a stable prompt prefix. No new setting is required.
 - 资料库的单项图片生成弹窗新增本地图片上传，支持服务端按真实内容校验的 PNG / JPEG（最大 16 MB）；上传图片与生成图片复用同一预览、清除、历史文件和资料引用链路，写作页、游戏页与工作台资料库 Tab 均可使用。无需新增配置。
 - The single-item Lore image dialog now accepts local PNG / JPEG uploads up to 16 MB, validated by actual image content on the server. Uploaded and generated images share the same preview, clear, historical-file, and lore-reference flow across Writing, Game, and Workspace Lore tabs. No new setting is required.
 - Agent Chat 的中间进展正文不再显示时间与复制入口，运行中进展和历史“执行过程”内的进展使用相同的精简展示；最终正文与普通对话消息仍保留原有元信息操作。Writing、Game、AgentChat 与管理型 Agent 共用该行为，无需新增配置。

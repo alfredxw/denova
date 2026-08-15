@@ -240,10 +240,10 @@ func (c *SessionConversation) runtimeContextFragments() []agentcontext.Fragment 
 		}
 		fragments = append(fragments, agentcontext.Fragment{
 			ID: "workspace_runtime_stable", StateID: "workspace_runtime", Source: "workspace.runtime.stable", Title: title,
-			Purpose: "provide revisioned workspace state for the current agent session",
+			Purpose: "provide cache-stable workspace sources for the current agent session",
 			Content: c.stableContext, Placement: agentcontext.PlacementLeadingMessage, Included: true,
 			Stability: agent.ContextSessionState,
-			Note:      "source=workspace snapshot; lifecycle=session state",
+			Note:      "source=workspace source projection; lifecycle=session state; file bodies=on demand",
 		})
 	}
 	if strings.TrimSpace(c.dynamicContext) != "" {
@@ -253,9 +253,9 @@ func (c *SessionConversation) runtimeContextFragments() []agentcontext.Fragment 
 		}
 		fragments = append(fragments, agentcontext.Fragment{
 			ID: "workspace_runtime_dynamic", Source: "workspace.runtime.dynamic", Title: title,
-			Purpose: "provide turn-scoped workspace state for the current request",
+			Purpose: "provide turn-scoped workspace sources for the current request",
 			Content: c.dynamicContext, Placement: agentcontext.PlacementFinalUserPrefix, Included: true,
-			Note: "source=workspace snapshot; placement=final user prefix",
+			Note: "source=workspace source projection; placement=final user prefix; file bodies=on demand",
 		})
 	}
 	return fragments

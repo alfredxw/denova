@@ -14,8 +14,8 @@ import (
 )
 
 const (
-	ideWorkspaceStableContextTitle  = "Stable Work Context"
-	ideWorkspaceDynamicContextTitle = "Dynamic Work State for This Turn"
+	ideWorkspaceStableContextTitle  = "Stable Workspace Sources"
+	ideWorkspaceDynamicContextTitle = "Workspace Sources for This Turn"
 	ideContextMaxOpenFiles          = 20
 	ideContextMaxPathRunes          = 240
 )
@@ -42,8 +42,9 @@ func IDEWorkspaceRuntimeContextsForState(state *book.State) IDEWorkspaceRuntimeC
 	if state == nil {
 		return contexts
 	}
-	contexts.Stable = strings.TrimSpace(state.StableContext())
-	contexts.Dynamic = strings.TrimSpace(state.DynamicContext())
+	workspaceContext := state.WorkspaceContext()
+	contexts.Stable = strings.TrimSpace(workspaceContext.Stable)
+	contexts.Dynamic = strings.TrimSpace(workspaceContext.Dynamic)
 	if contexts.Stable == "" && contexts.Dynamic == "" {
 		contexts.Stable = EmptyIDEStateHint()
 	}
@@ -59,13 +60,11 @@ func IDEWorkspaceRuntimeContextsForContext(state *book.State, ide IDEContextRef)
 	if strings.TrimSpace(ideContext) == "" {
 		return contexts
 	}
-	extra := book.FormatCompactContextParts([]book.CompactContextPart{{
-		ID:          "ide_current_state",
-		Source:      "frontend:ide_context",
-		Title:       "Current IDE State",
-		PromptTitle: fmt.Sprintf("Current IDE State (provided by the frontend request; paths only; at most %d open files)", ideContextMaxOpenFiles),
-		Content:     ideContext,
-	}})
+	extra := fmt.Sprintf(
+		"## Current IDE State (provided by the frontend request; paths only; at most %d open files)\n\n%s",
+		ideContextMaxOpenFiles,
+		ideContext,
+	)
 	contexts.Dynamic = strings.TrimSpace(strings.Join(nonEmptyStrings(contexts.Dynamic, extra), "\n\n"))
 	return contexts
 }
@@ -133,24 +132,6 @@ func boundedIDEContextPath(path string) string {
 		return path
 	}
 	return string(runes[:ideContextMaxPathRunes]) + "[truncated]"
-}
-
-func IDEWorkspaceRuntimeContext(state *book.State) string {
-	if state == nil {
-		return ""
-	}
-	contexts := IDEWorkspaceRuntimeContextsForState(state)
-	parts := make([]book.CompactContextPart, 0, 2)
-	if contexts.Stable != "" {
-		parts = append(parts, book.CompactContextPart{PromptTitle: contexts.StableTitle, Content: contexts.Stable})
-	}
-	if contexts.Dynamic != "" {
-		parts = append(parts, book.CompactContextPart{PromptTitle: contexts.DynamicTitle, Content: contexts.Dynamic})
-	}
-	if context := strings.TrimSpace(book.FormatCompactContextParts(parts)); context != "" {
-		return context
-	}
-	return EmptyIDEStateHint()
 }
 
 func BuildInteractiveStoryInstruction(cfg *config.Config, state *book.State, teller InteractiveStorySystemInstructionInput) string {

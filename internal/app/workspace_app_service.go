@@ -374,7 +374,7 @@ func (s *workspaceService) Status() (bool, string) {
 	if state == nil {
 		return false, ""
 	}
-	return state.HasState(), state.CompactContext()
+	return state.HasState(), state.WorkspaceContext().Markdown()
 }
 
 // SubscribeProjectFileChanges returns ephemeral invalidations for one stable

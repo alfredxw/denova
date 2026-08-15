@@ -28,7 +28,12 @@ func TestSystemInstructionRequiresIdeasAndCreatorDuringIdeation(t *testing.T) {
 		"ch{order:05}-{chapter}-{title}.md",
 		"v{order:05}-{volume}",
 		"never automatically rename old chapters",
-		"Unwritten events from injected outlines and chapter-group plans are planning material",
+		"Prefer workspace-relative paths with workspace file tools",
+		"glob: discover workspace files",
+		"grep: search workspace text",
+		"bash: use only for read-only inspection",
+		"Never use shell commands to modify visible writing-workspace files",
+		"Unwritten events found in outline and chapter-group plan files are planning material",
 		"must check for future-plot leakage",
 	} {
 		if !strings.Contains(instruction, required) {

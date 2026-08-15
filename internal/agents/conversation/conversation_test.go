@@ -124,7 +124,7 @@ func TestSessionConversationPrependsDynamicContextInsideFinalUserMessageOnly(t *
 	if got := visible[len(visible)-1].Content; got != "继续写" {
 		t.Fatalf("visible session history should keep original user message, got %q", got)
 	}
-	if sources := conversation.ContextSourceSummary(); !strings.Contains(sources, `source="workspace.runtime.dynamic"`) || !strings.Contains(sources, `placement="final_user_prefix"`) || !strings.Contains(sources, `purpose="provide turn-scoped workspace state for the current request"`) {
+	if sources := conversation.ContextSourceSummary(); !strings.Contains(sources, `source="workspace.runtime.dynamic"`) || !strings.Contains(sources, `placement="final_user_prefix"`) || !strings.Contains(sources, `purpose="provide turn-scoped workspace sources for the current request"`) {
 		t.Fatalf("runtime context source summary missing dynamic context: %s", sources)
 	}
 }

@@ -139,7 +139,7 @@ func TestBuildConfigManagerInstructionAllowsAgentConfigTools(t *testing.T) {
 	}
 }
 
-func TestBuildInstructionKeepsWorkspaceStateOutOfSystemPrompt(t *testing.T) {
+func TestBuildInstructionIndexesWorkspaceFilesWithoutInjectingTheirBodies(t *testing.T) {
 	state := book.NewState(t.TempDir())
 	if err := state.InitWorkspace(); err != nil {
 		t.Fatalf("InitWorkspace failed: %v", err)
@@ -161,14 +161,14 @@ func TestBuildInstructionKeepsWorkspaceStateOutOfSystemPrompt(t *testing.T) {
 		t.Fatalf("system prompt should not include dynamic workspace state:\n%s", instruction)
 	}
 	contexts := IDEWorkspaceRuntimeContextsForState(state)
-	if !strings.Contains(contexts.Stable, "主角进入废城") {
-		t.Fatalf("stable runtime workspace context should include outline: %#v", contexts)
+	if !strings.Contains(contexts.Stable, `"setting/outline.md"`) {
+		t.Fatalf("stable runtime workspace context should index the outline path: %#v", contexts)
 	}
-	if strings.Contains(contexts.Dynamic, "主角进入废城") {
-		t.Fatalf("dynamic runtime workspace context should not include stable outline: %#v", contexts)
+	if strings.Contains(contexts.Stable, "主角进入废城") || strings.Contains(contexts.Dynamic, "主角进入废城") {
+		t.Fatalf("runtime workspace context should not inject the outline body: %#v", contexts)
 	}
-	if context := IDEWorkspaceRuntimeContext(state); !strings.Contains(context, "主角进入废城") {
-		t.Fatalf("legacy runtime workspace context should include state: %q", context)
+	if contexts.StableTitle != "Stable Workspace Sources" || contexts.DynamicTitle != "Workspace Sources for This Turn" {
+		t.Fatalf("runtime context titles should describe path sources: %#v", contexts)
 	}
 }
 
