@@ -108,7 +108,9 @@ func (s *Service) ReplaceFile(ctx context.Context, req ReplaceFileRequest) (Chan
 	}
 	after := []byte(req.Content)
 	if beforeExists && string(before) == req.Content {
-		return ChangeSet{}, newError(ErrorCodeInvalidEdit, "replacement does not change the file", map[string]any{"path": rel})
+		return ChangeSet{}, newError(ErrorCodeNoChange, "file already matches the requested content", map[string]any{
+			"path": rel, "workspace_mutated": false,
+		})
 	}
 	metadata := normalizeMetadata(req.Metadata)
 	reviewStatus := ReviewStatusPending

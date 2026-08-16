@@ -7,6 +7,7 @@ import (
 
 const (
 	ErrorCodeInvalidEdit       = "invalid_edit"
+	ErrorCodeNoChange          = "no_change"
 	ErrorCodeRevisionConflict  = "revision_conflict"
 	ErrorCodeNotFound          = "not_found"
 	ErrorCodeConflict          = "conflict"

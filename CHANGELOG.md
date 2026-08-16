@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- 当前输入语言约束现在会在每轮模型输入的 `# Current User Request (Highest Priority)` 下再次声明，并明确覆盖思考、流式思考和中间进展；实际用户输入仍位于消息末尾。System Prompt 保留相同规则作为无 turn context 调用的兜底，Writing、Game 与子 Agent 共用，无需新增配置。
+- The current-input language contract is now repeated under `# Current User Request (Highest Priority)` for every turn-aware model input and explicitly covers reasoning, streamed thinking, and intermediate progress; the actual user input remains at the end of the message. The System Prompt retains the same rule as a fallback for calls without turn context. Writing, Game, and child Agents share the behavior with no new setting.
+- `write` 工具重复提交与文件当前内容完全一致的整文件替换时，不再返回 `replacement does not change the file` 错误；在 revision 校验后会返回成功的 `unchanged` no-op，不写盘、不创建 ChangeSet 或审阅记录，并明确要求 Agent 无需重试。Writing 与 General Agent 共用，无需新增配置。
+- The `write` tool no longer reports `replacement does not change the file` when a full-file replacement exactly matches current content. After revision validation it returns a successful `unchanged` no-op, performs no write, creates no ChangeSet or review record, and tells the Agent not to retry. Writing and General Agents share the behavior with no new setting.
+- Trajectory 的 Session 分组标题新增可读 Session 名称：全局 Run 目录以只读方式补充现有 Session 元数据，分组头将名称单独显示为一行并对长文本省略，同时保留 Session ID；标题缺失或读取失败时回退到 ID，不影响 Run 浏览。写作和游戏模式共用，无需新增配置。
+- Trajectory Session groups now show readable Session titles. The global Run catalog enriches Runs from existing Session metadata without mutating project state; group headers render the title on its own truncated line while retaining the Session ID. Missing or unreadable titles fall back to the ID without blocking Run browsing. Writing and Game share the behavior with no new configuration.
 - Trajectory 左侧运行目录新增“Run / 会话”组织方式切换并默认按会话展示：会话以项目与 `session_id` 共同分组、按最新 Run 排序，当前 Run 所在会话自动展开，组内 Run 保持时间倒序；无 Session 的旧 Run 独立显示，避免错误合并。写作和游戏模式共用该视图，无需新增配置。
 - The Trajectory run directory now supports “Run / Session” organization and defaults to Session view. Sessions are grouped by project plus `session_id`, ordered by their latest Run, and the selected Run's Session opens automatically while Runs inside remain newest-first. Legacy Runs without a Session stay independent to avoid false grouping. Writing and Game share the view with no new configuration.
 - Trajectory / Harness 顶部 Tab 固定到页面标题栏左上侧，并保持在标题和右侧操作之前，避免标题长度、加载状态或导出操作变化造成切换位置漂移；写作和游戏模式共用该布局，无需新增配置。

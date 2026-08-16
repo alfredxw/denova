@@ -390,6 +390,7 @@ export interface AgentRunTraceSummary {
 export interface GlobalAgentRunTraceSummary extends AgentRunTraceSummary {
   project_id: string
   project_name: string
+  session_title?: string
   trajectory_uri: string
 }
 

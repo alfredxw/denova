@@ -160,7 +160,8 @@ func TestInteractiveConversationSharesOneBudgetAcrossTurnRuntimeAndResidentLore(
 			t.Fatalf("interactive assembly did not include source %q: %#v", source, result.Context.Fragments)
 		}
 	}
-	if len(result.Messages) == 0 || !strings.Contains(result.Messages[len(result.Messages)-1].Content, "推门") {
+	if len(result.Messages) == 0 || !strings.Contains(result.Messages[len(result.Messages)-1].Content, "推门") ||
+		!strings.Contains(result.Messages[len(result.Messages)-1].Content, "## Language Alignment") {
 		t.Fatalf("interactive model messages lost the raw action: %#v", result.Messages)
 	}
 }

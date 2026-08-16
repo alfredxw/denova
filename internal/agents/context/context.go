@@ -26,7 +26,10 @@ const (
 	finalUserSourceNote     = "State snapshots may be stale; tool reads are authoritative."
 	truncationNotice        = "Content truncated; use a tool to read the complete source if needed."
 	contextSourceSeparator  = "\n\n---\n\n"
-	finalUserRequestWrapper = "\n\n---\n\n# Current User Request (Highest Priority)\n\n"
+	finalUserRequestWrapper = "# Current User Request (Highest Priority)\n\n" +
+		"## Language Alignment\n\n" +
+		"- Use the same language as the current user input below for internal reasoning, thinking summaries, streamed thinking, intermediate progress updates, and all user-facing output.\n" +
+		"- Preserve fixed output protocols, JSON keys, code, paths, quoted source text, and any language explicitly required by the user or task.\n\n"
 )
 
 type Budget = agentcontext.Budget
@@ -93,6 +96,7 @@ func PrependFinalUserSources(agentMessage string, sources []Source) string {
 		}
 		builder.WriteString(finalUserSourceBlock(source))
 	}
+	builder.WriteString(contextSourceSeparator)
 	builder.WriteString(finalUserRequestWrapper)
 	builder.WriteString(strings.TrimSpace(agentMessage))
 	return builder.String()

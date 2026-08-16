@@ -152,9 +152,40 @@ func (adapter *workspaceMutationAdapter) Write(ctx context.Context, request agen
 		Metadata: workspaceChangeMetadata(ctx, adapter.metadata),
 	})
 	if err != nil {
+		if result, ok := workspaceWriteNoChangeToolResult(err); ok {
+			return result, nil
+		}
 		return agent.ToolResult{}, err
 	}
 	return workspaceChangeToolResult(adapter.workspace, changeSet)
+}
+
+type workspaceWriteNoChangeReceipt struct {
+	Schema           string `json:"schema"`
+	Status           string `json:"status"`
+	Path             string `json:"path"`
+	Message          string `json:"message"`
+	WorkspaceMutated bool   `json:"workspace_mutated"`
+}
+
+func workspaceWriteNoChangeToolResult(err error) (agent.ToolResult, bool) {
+	var changeErr *workspacechange.Error
+	if !errors.As(err, &changeErr) || changeErr == nil || changeErr.Code != workspacechange.ErrorCodeNoChange {
+		return agent.ToolResult{}, false
+	}
+	path, _ := changeErr.Details["path"].(string)
+	receipt := workspaceWriteNoChangeReceipt{
+		Schema: "workspace_change.tool_noop.v1", Status: "unchanged", Path: path,
+		Message:          "The file already matches the requested content. No write is needed; continue without retrying.",
+		WorkspaceMutated: false,
+	}
+	data, marshalErr := json.Marshal(receipt)
+	if marshalErr != nil {
+		return agent.ToolResult{}, false
+	}
+	result := agent.TextToolResult(string(data))
+	result.Details = json.RawMessage(data)
+	return result, true
 }
 
 func canonicalChangeWorkspace(changes workspaceChangeService) (string, error) {

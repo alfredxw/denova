@@ -139,7 +139,10 @@ func TestTurnContextPlanModeUsesDurableAskAndProposal(t *testing.T) {
 	assertContains(t, got, "# Plan title")
 	assertContains(t, got, "## Summary")
 	assertContains(t, got, "## Key Changes")
-	assertContains(t, got, "# Current User Request (Highest Priority)\n\n重构章节")
+	assertContains(t, got, "# Current User Request (Highest Priority)\n\n## Language Alignment")
+	if !strings.HasSuffix(strings.TrimSpace(got), "重构章节") {
+		t.Fatalf("current request must remain at the end of the model input:\n%s", got)
+	}
 	if strings.Contains(got, "<plan_questions>...") || strings.Contains(got, `"questions":`) {
 		t.Fatalf("Plan Mode should not teach the retired question protocol:\n%s", got)
 	}
@@ -160,7 +163,10 @@ func TestTurnContextBoundaryEmphasizesCurrentRequest(t *testing.T) {
 	assertContains(t, got, "actually call it in this turn")
 	assertContains(t, got, "do not claim to have called, read, searched, verified, or modified anything")
 	assertContains(t, got, "Current request:")
-	assertContains(t, got, "# Current User Request (Highest Priority)\n\n帮我写第三章")
+	assertContains(t, got, "# Current User Request (Highest Priority)\n\n## Language Alignment")
+	if !strings.HasSuffix(strings.TrimSpace(got), "帮我写第三章") {
+		t.Fatalf("current request must remain at the end of the model input:\n%s", got)
+	}
 }
 
 func TestStyleRulesSystemInstructionEmitsSceneAndStyles(t *testing.T) {

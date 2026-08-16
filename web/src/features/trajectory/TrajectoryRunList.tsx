@@ -70,6 +70,7 @@ export function TrajectoryRunList({ runs, selectedRunURI, onSelect }: Trajectory
               const expanded = expandedSessions.has(group.key)
               const containsSelected = group.runs.some((run) => run.trajectory_uri === selectedRunURI)
               const sessionLabel = group.sessionID || t('trajectory.runs.noSession')
+              const sessionTitle = group.sessionTitle || sessionLabel
               return (
                 <div key={group.key} className="w-72 shrink-0 md:w-full">
                   <button
@@ -81,7 +82,7 @@ export function TrajectoryRunList({ runs, selectedRunURI, onSelect }: Trajectory
                     aria-expanded={expanded}
                     aria-label={t('trajectory.runs.sessionToggle', {
                       project: group.projectName,
-                      session: sessionLabel,
+                      session: group.sessionTitle ? `${sessionTitle} · ${sessionLabel}` : sessionLabel,
                       count: group.runs.length,
                     })}
                     onClick={() => setExpandedSessions((current) => {
@@ -98,8 +99,11 @@ export function TrajectoryRunList({ runs, selectedRunURI, onSelect }: Trajectory
                     </span>
                     <span className="mt-0.5 flex min-w-0 items-center gap-1.5 pl-[18px]">
                       <MessagesSquare className="size-3 shrink-0 text-[var(--nova-text-faint)]" />
-                      <span className="min-w-0 flex-1 truncate font-mono text-[9px] text-[var(--nova-text-muted)]" title={sessionLabel}>{sessionLabel}</span>
+                      <span className="min-w-0 flex-1 truncate text-[10px] font-medium text-[var(--nova-text-muted)]" title={sessionTitle}>{sessionTitle}</span>
                     </span>
+                    {group.sessionTitle && group.sessionID ? (
+                      <span className="mt-0.5 block truncate pl-[34px] font-mono text-[8px] text-[var(--nova-text-faint)]" title={group.sessionID}>{group.sessionID}</span>
+                    ) : null}
                   </button>
                   {expanded ? (
                     <div className="ml-3 mt-1 space-y-1 border-l border-[var(--nova-border)] pl-1.5">
@@ -166,6 +170,7 @@ interface SessionRunGroup {
   key: string
   projectName: string
   sessionID: string
+  sessionTitle: string
   runs: GlobalAgentRunTraceSummary[]
 }
 
@@ -176,6 +181,9 @@ function groupRunsBySession(runs: GlobalAgentRunTraceSummary[]): SessionRunGroup
     const key = sessionGroupKey(run)
     const existing = groups.get(key)
     if (existing) {
+      if (!existing.sessionTitle && run.session_title?.trim()) {
+        existing.sessionTitle = run.session_title.trim()
+      }
       existing.runs.push(run)
       continue
     }
@@ -183,6 +191,7 @@ function groupRunsBySession(runs: GlobalAgentRunTraceSummary[]): SessionRunGroup
       key,
       projectName: run.project_name,
       sessionID: run.session_id?.trim() ?? '',
+      sessionTitle: run.session_title?.trim() ?? '',
       runs: [run],
     })
   }

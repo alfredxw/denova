@@ -60,7 +60,7 @@ func TestAssemblerRejectsTotalBudgetThatCannotFitOneRune(t *testing.T) {
 
 func TestAssemblerTotalBudgetIncludesRenderedWrapperAndTitle(t *testing.T) {
 	const userMessage = "继续写"
-	const want = "# 动态状态\n\nState snapshots may be stale; tool reads are authoritative.\n\n界\n\n---\n\n# Current User Request (Highest Priority)\n\n继续写"
+	const want = "# 动态状态\n\nState snapshots may be stale; tool reads are authoritative.\n\n界\n\n---\n\n" + finalUserRequestWrapper + "继续写"
 	maxInjectedBytes := len(want) - len(userMessage)
 	result, err := NewAssembler(Budget{
 		MaxFragmentBytes: 64,
@@ -250,7 +250,7 @@ func TestAssemblerDoesNotPrefixNonUserFinalMessage(t *testing.T) {
 
 func TestAssemblerEnforcesFragmentBudgetsAndAccountsCompleteInjection(t *testing.T) {
 	const userMessage = "继续写"
-	const wantMessage = "# 作品大纲\n\nState snapshots may be stale; tool reads are authoritative.\n\nabcde\n\n> " + truncationNotice + "\n\n---\n\n# 作品进度\n\nState snapshots may be stale; tool reads are authoritative.\n\nwxyzw\n\n> " + truncationNotice + "\n\n---\n\n# Current User Request (Highest Priority)\n\n继续写"
+	const wantMessage = "# 作品大纲\n\nState snapshots may be stale; tool reads are authoritative.\n\nabcde\n\n> " + truncationNotice + "\n\n---\n\n# 作品进度\n\nState snapshots may be stale; tool reads are authoritative.\n\nwxyzw\n\n> " + truncationNotice + "\n\n---\n\n" + finalUserRequestWrapper + "继续写"
 	assembler := NewAssembler(Budget{
 		MaxFragmentBytes: 5,
 		MaxTotalBytes:    4096,

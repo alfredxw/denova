@@ -52,14 +52,13 @@ func TestProtectedSystemInstructionAlignsThinkingAndOutputWithCurrentInputLangua
 	for _, required := range []string{
 		"## Language Alignment",
 		"same language as the user's current input",
-		"internal reasoning, thinking summaries, streamed thinking, and all user-facing output",
+		"internal reasoning, thinking summaries, streamed thinking, intermediate progress updates, and all user-facing output",
 		"Preserve fixed output protocols, JSON keys, code, paths, quoted source text",
 	} {
 		if !strings.Contains(zhInstruction, required) {
 			t.Fatalf("input-language contract missing %q:\n%s", required, zhInstruction)
 		}
 	}
-
 	enInstruction := protectedSystemInstruction(&config.Config{Language: "en-US"}, config.AgentKindIDE, "BUILT IN PROMPT")
 	if enInstruction != zhInstruction {
 		t.Fatalf("UI locale must not alter the input-language contract:\nzh-CN:\n%s\n\nen-US:\n%s", zhInstruction, enInstruction)

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -34,6 +36,7 @@ type GlobalAgentRunTraceSummary struct {
 	agentrun.RunTraceSummary
 	ProjectID     string `json:"project_id"`
 	ProjectName   string `json:"project_name"`
+	SessionTitle  string `json:"session_title,omitempty"`
 	TrajectoryURI string `json:"trajectory_uri"`
 }
 
@@ -196,12 +199,17 @@ func (a *App) GlobalAgentRunTraces(ctx context.Context, limit int) (GlobalAgentR
 			})
 			continue
 		}
+		sessionTitles, titleErr := projectSessionTitles(source.StateRoot, runs)
+		if titleErr != nil {
+			slog.WarnContext(ctx, "[trajectory] Project Session titles are unavailable", "project_id", source.ProjectID, "error", titleErr)
+		}
 		for _, run := range runs {
 			run.Path = ""
 			result.Runs = append(result.Runs, GlobalAgentRunTraceSummary{
 				RunTraceSummary: run,
 				ProjectID:       source.ProjectID,
 				ProjectName:     source.Name,
+				SessionTitle:    sessionTitles[run.SessionID],
 				TrajectoryURI:   trajectory.RunURI(source.ProjectID, run.ID),
 			})
 		}
@@ -220,6 +228,54 @@ func (a *App) GlobalAgentRunTraces(ctx context.Context, limit int) (GlobalAgentR
 		result.Runs = result.Runs[:limit]
 	}
 	return result, nil
+}
+
+// projectSessionTitles reads only existing Session projections. Missing or
+// damaged metadata must never hide Runs; callers can fall back to Session IDs.
+func projectSessionTitles(stateRoot string, runs []agentrun.RunTraceSummary) (map[string]string, error) {
+	wanted := make(map[string]struct{})
+	for _, run := range runs {
+		if sessionID := strings.TrimSpace(run.SessionID); sessionID != "" {
+			wanted[sessionID] = struct{}{}
+		}
+	}
+	if len(wanted) == 0 {
+		return nil, nil
+	}
+	stateRoot = strings.TrimSpace(stateRoot)
+	if stateRoot == "" {
+		return nil, nil
+	}
+	directory := filepath.Join(stateRoot, "sessions")
+	info, err := os.Stat(directory)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if !info.IsDir() {
+		return nil, fmt.Errorf("Session state path is not a directory")
+	}
+	store, err := session.NewStore(directory)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = store.Close() }()
+	metas, err := store.List("")
+	if err != nil {
+		return nil, err
+	}
+	titles := make(map[string]string, len(wanted))
+	for _, meta := range metas {
+		if _, ok := wanted[meta.ID]; !ok {
+			continue
+		}
+		if title := strings.TrimSpace(meta.Title); title != "" {
+			titles[meta.ID] = title
+		}
+	}
+	return titles, nil
 }
 
 func (a *App) DeveloperModeEnabled() bool {

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"denova/config"
+	"denova/internal/agents/session"
 	projectdomain "denova/internal/project"
 )
 
@@ -19,8 +20,10 @@ func TestGlobalAgentRunTracesMergeArchivedProjectsAndIsolateFailures(t *testing.
 	first, firstLayout := addGlobalTraceProject(t, registry, filepath.Join(t.TempDir(), "first"), "First Project")
 	second, secondLayout := addGlobalTraceProject(t, registry, filepath.Join(t.TempDir(), "second"), "Archived Project")
 	broken, brokenLayout := addGlobalTraceProject(t, registry, filepath.Join(t.TempDir(), "broken"), "Broken Project")
-	writeGlobalTrace(t, firstLayout.RunsDir(), "run-older", "2026-08-15T08:00:00Z", "ide", "success")
-	writeGlobalTrace(t, secondLayout.RunsDir(), "run-newer", "2026-08-15T09:00:00Z", "interactive_story", "failed")
+	writeGlobalSessionTitle(t, firstLayout.SessionsDir(), "s-first", "First Session")
+	writeGlobalSessionTitle(t, secondLayout.SessionsDir(), "s-archived", "Archived Session")
+	writeGlobalTrace(t, firstLayout.RunsDir(), "run-older", "2026-08-15T08:00:00Z", "ide", "s-first", "success")
+	writeGlobalTrace(t, secondLayout.RunsDir(), "run-newer", "2026-08-15T09:00:00Z", "interactive_story", "s-archived", "failed")
 	if _, err := registry.Archive(second.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -44,6 +47,9 @@ func TestGlobalAgentRunTracesMergeArchivedProjectsAndIsolateFailures(t *testing.
 	}
 	if catalog.Runs[0].ProjectID != second.ID || catalog.Runs[0].ProjectName != "Archived Project" {
 		t.Fatalf("archived Project metadata = %#v", catalog.Runs[0])
+	}
+	if catalog.Runs[0].SessionTitle != "Archived Session" || catalog.Runs[1].SessionTitle != "First Session" {
+		t.Fatalf("Session titles = %#v", catalog.Runs)
 	}
 	wantURI := fmt.Sprintf("trajectory://projects/%s/runs/run-newer", second.ID)
 	if catalog.Runs[0].TrajectoryURI != wantURI || catalog.Runs[0].Path != "" {
@@ -104,7 +110,7 @@ func addGlobalTraceProject(t *testing.T, registry *projectdomain.Registry, works
 	return record, layout
 }
 
-func writeGlobalTrace(t *testing.T, runsDir, runID, createdAt, agentKind, status string) {
+func writeGlobalTrace(t *testing.T, runsDir, runID, createdAt, agentKind, sessionID, status string) {
 	t.Helper()
 	if _, err := time.Parse(time.RFC3339, createdAt); err != nil {
 		t.Fatal(err)
@@ -113,14 +119,26 @@ func writeGlobalTrace(t *testing.T, runsDir, runID, createdAt, agentKind, status
 		t.Fatal(err)
 	}
 	payload := fmt.Sprintf(
-		"{\"type\":\"run_created\",\"run_id\":%q,\"created_at\":%q,\"data\":{\"agent_kind\":%q}}\n"+
+		"{\"type\":\"run_created\",\"run_id\":%q,\"created_at\":%q,\"data\":{\"agent_kind\":%q,\"session_id\":%q}}\n"+
 			"{\"type\":\"agent_run\",\"run_id\":%q,\"created_at\":%q,\"data\":{\"status\":%q,\"duration_ms\":1200}}\n"+
 			"{\"type\":\"run_finished\",\"run_id\":%q,\"created_at\":%q,\"data\":{\"status\":%q}}\n",
-		runID, createdAt, agentKind,
+		runID, createdAt, agentKind, sessionID,
 		runID, createdAt, status,
 		runID, createdAt, status,
 	)
 	if err := os.WriteFile(filepath.Join(runsDir, runID+".jsonl"), []byte(payload), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func writeGlobalSessionTitle(t *testing.T, sessionsDir, sessionID, title string) {
+	t.Helper()
+	store, err := session.NewStore(sessionsDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = store.Close() }()
+	if err := store.Rename(sessionID, title); err != nil {
 		t.Fatal(err)
 	}
 }

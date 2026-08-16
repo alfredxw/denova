@@ -158,12 +158,14 @@ describe('TrajectoryPage', () => {
   it('groups Runs by Project and Session while retaining the flat Run view', async () => {
     const user = userEvent.setup()
     const sharedSession = 's-session-shared'
-    const firstRun = { ...summaryFixture(), session_id: sharedSession }
+    const sessionTitle = 'A deliberately long Session title that must stay on one line'
+    const firstRun = { ...summaryFixture(), session_id: sharedSession, session_title: sessionTitle }
     const olderRun = {
       ...summaryFixture(),
       id: 'run-older',
       trajectory_uri: 'trajectory://projects/project-1/runs/run-older',
       session_id: sharedSession,
+      session_title: sessionTitle,
       created_at: '2026-08-13T09:00:00.000Z',
     }
     const otherProjectRun = {
@@ -173,6 +175,7 @@ describe('TrajectoryPage', () => {
       project_name: 'Second Book',
       trajectory_uri: 'trajectory://projects/project-2/runs/run-other-project',
       session_id: sharedSession,
+      session_title: 'Other Project Session',
       created_at: '2026-08-13T08:00:00.000Z',
     }
     vi.mocked(getGlobalAgentRunTraces).mockResolvedValue({ runs: [firstRun, olderRun, otherProjectRun], issues: [] })
@@ -180,17 +183,20 @@ describe('TrajectoryPage', () => {
 
     renderPage()
 
-    const firstSession = await screen.findByRole('button', { name: 'First Book · s-session-shared · 2 个 Run' })
-    const otherProjectSession = screen.getByRole('button', { name: 'Second Book · s-session-shared · 1 个 Run' })
+    const firstSession = await screen.findByRole('button', { name: `First Book · ${sessionTitle} · s-session-shared · 2 个 Run` })
+    const otherProjectSession = screen.getByRole('button', { name: 'Second Book · Other Project Session · s-session-shared · 1 个 Run' })
     await waitFor(() => expect(firstSession).toHaveAttribute('aria-expanded', 'true'))
     expect(otherProjectSession).toHaveAttribute('aria-expanded', 'false')
+    const visibleSessionTitle = within(firstSession).getByText(sessionTitle)
+    expect(visibleSessionTitle).toHaveClass('truncate')
+    expect(visibleSessionTitle).toHaveAttribute('title', sessionTitle)
     expect(within(firstSession.parentElement!).getByRole('button', { name: /run-older/ })).toBeInTheDocument()
 
     await user.click(otherProjectSession)
     expect(within(otherProjectSession.parentElement!).getByRole('button', { name: /run-other-project/ })).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: /^Run$/ }))
-    expect(screen.queryByRole('button', { name: 'First Book · s-session-shared · 2 个 Run' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: `First Book · ${sessionTitle} · s-session-shared · 2 个 Run` })).not.toBeInTheDocument()
     expect(screen.getAllByText('First Book')).toHaveLength(2)
     expect(screen.getByRole('button', { name: '会话' })).toHaveAttribute('aria-pressed', 'false')
   })

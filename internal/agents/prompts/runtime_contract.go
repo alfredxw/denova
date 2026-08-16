@@ -70,8 +70,8 @@ func runtimeContractForAgent(agentKind string) string {
 	if specific := agentRuntimeContract(agentKind); specific != "" {
 		sections = append(sections, specific)
 	}
-	// Keep the language reminder last within the shared runtime contract so
-	// Agent-specific workflows cannot make UI locale look authoritative.
+	// Retain the universal contract for model entry points without turn context.
+	// Turn-aware conversations repeat it beside the current request for recency.
 	sections = append(sections, currentInputLanguageContract())
 	return strings.Join(sections, "\n\n")
 }
@@ -79,7 +79,7 @@ func runtimeContractForAgent(agentKind string) string {
 func currentInputLanguageContract() string {
 	return strings.Join([]string{
 		"## Language Alignment",
-		"- Use the same language as the user's current input for internal reasoning, thinking summaries, streamed thinking, and all user-facing output.",
+		"- Use the same language as the user's current input for internal reasoning, thinking summaries, streamed thinking, intermediate progress updates, and all user-facing output.",
 		"- Preserve fixed output protocols, JSON keys, code, paths, quoted source text, and any language explicitly required by the user or task.",
 	}, "\n")
 }

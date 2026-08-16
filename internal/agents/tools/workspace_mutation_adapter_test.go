@@ -266,6 +266,52 @@ func TestWorkspaceWriteReturnsCompleteUnicodeFileStats(t *testing.T) {
 	}
 }
 
+func TestWorkspaceWriteTreatsIdenticalContentAsSuccessfulNoOp(t *testing.T) {
+	workspace := t.TempDir()
+	path := filepath.Join(workspace, "chapter.md")
+	if err := os.WriteFile(path, []byte("unchanged chapter\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	service, err := workspacechange.NewService(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapter, err := newWorkspaceMutationAdapter(service)
+	if err != nil {
+		t.Fatal(err)
+	}
+	definition, err := agenttools.Write(adapter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := definition.Tool.Run(context.Background(), `{"path":"chapter.md","content":"unchanged chapter\n"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []string{
+		`"schema":"workspace_change.tool_noop.v1"`, `"status":"unchanged"`,
+		`"path":"chapter.md"`, `"workspace_mutated":false`, "continue without retrying",
+	} {
+		if !strings.Contains(result.ModelContent, expected) {
+			t.Fatalf("no-op receipt missing %q: %s", expected, result.ModelContent)
+		}
+	}
+	if _, ok := workspacechange.ParseToolReceipt("write", result.ModelContent); ok {
+		t.Fatalf("no-op write must not be projected as a workspace mutation: %s", result.ModelContent)
+	}
+	groups, err := service.ListGroups(context.Background(), workspacechange.ChangeFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(groups) != 0 {
+		t.Fatalf("no-op write created review history: %#v", groups)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil || string(content) != "unchanged chapter\n" {
+		t.Fatalf("no-op write changed the file: content=%q err=%v", content, err)
+	}
+}
+
 func TestWorkspaceEditRejectsAmbiguousAndNoOpWithoutMutation(t *testing.T) {
 	workspace := t.TempDir()
 	path := filepath.Join(workspace, "ideas.md")
