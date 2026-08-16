@@ -119,6 +119,8 @@ const chat = {
   'chat.imageAgentModels.saveFailed': 'Image generation model configuration failed: {{error}}',
   'chat.trace.thinking': 'Thinking',
   'chat.trace.thinkingContent': 'Thinking content',
+  'chat.trace.expandThinking': 'Expand thinking',
+  'chat.trace.collapseThinking': 'Collapse thinking',
   'chat.trace.toolCalls': '{{count}} tool call(s)',
   'chat.trace.execution': 'Execution',
   'chat.trace.executing': 'Running',

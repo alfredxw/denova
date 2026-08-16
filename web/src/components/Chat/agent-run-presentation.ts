@@ -20,12 +20,11 @@ export interface AgentRunPresentation {
 export type AgentRunPresentationSection =
   | { active: boolean; key: string; kind: 'process'; views: AgentMessageView[] }
   | { key: string; kind: 'message'; view: AgentMessageView }
-  | { key: string; kind: 'progress'; view: AgentMessageView }
 
 /**
  * Builds stable ordered process/prose sections without changing persisted
- * history. Active runs expose every root prose segment; completed runs expose
- * only the terminal segment and aggregate everything else into one process.
+ * history. A run keeps one process before its terminal result in both active
+ * and completed states; AgentExecutionProcess owns the inner progress segments.
  */
 export function buildAgentRunPresentation(
   views: AgentMessageView[],
@@ -91,28 +90,12 @@ function selectTerminalResultIndex(views: AgentMessageView[], active: boolean) {
   return -1
 }
 
-// While a run is active, every root prose segment remains visible. The trace
-// that led to it becomes an independently collapsible process section, and the
-// unfinished trailing trace stays active until the next prose segment arrives.
+// Active and completed runs intentionally share the same process boundary. A
+// completion event may collapse that boundary, but must not rebuild the visible
+// timeline from several sibling disclosures into a different structure.
 function buildActiveSections(views: AgentMessageView[]): AgentRunPresentationSection[] {
   const sections: AgentRunPresentationSection[] = []
-  let pendingProcess: AgentMessageView[] = []
-
-  for (const view of views) {
-    if (!view.metadata.subagent && view.kind === 'assistant' && agentViewContent(view).trim()) {
-      appendProcessSection(sections, pendingProcess, false)
-      pendingProcess = []
-      sections.push({
-        key: `message-${agentViewStableKey(view)}`,
-        kind: 'progress',
-        view,
-      })
-      continue
-    }
-    pendingProcess.push(view)
-  }
-
-  appendProcessSection(sections, pendingProcess, true)
+  appendProcessSection(sections, views, true)
   return sections
 }
 

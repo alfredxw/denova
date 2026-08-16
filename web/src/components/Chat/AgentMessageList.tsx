@@ -613,7 +613,7 @@ function AgentChatListRow({ projectId, item, executionTimings, isLast, isStreami
                 section.active,
                 section.key === timedProcessKey ? executionTimings.get(item.runId) : undefined,
               )
-            : renderMessageView(section.view, section.key, section.kind === 'progress' ? 'progress' : 'message'))}
+            : renderMessageView(section.view, section.key))}
         </div>
       ) : item.kind === 'attachment' ? (
         item.content

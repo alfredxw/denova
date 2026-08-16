@@ -159,11 +159,11 @@ describe('StoryStage streaming rendering', () => {
       act(() => runAnimationFrames(frames))
 
       expect(container.querySelector('.nova-streaming-content-stage')).toBeNull()
-      expect(await screen.findByText('正在检查门后的动静。')).toBeInTheDocument()
+      expect(await screen.findByRole('region', { name: '思考内容' })).toHaveTextContent('正在检查门后的动静。')
 
       act(() => runAnimationFrames(frames))
 
-      expect(screen.getByText('正在检查门后的动静。')).toBeInTheDocument()
+      expect(screen.getByRole('region', { name: '思考内容' })).toHaveTextContent('正在检查门后的动静。')
     } finally {
       stream.close()
       window.requestAnimationFrame = originalRequestAnimationFrame
@@ -199,11 +199,12 @@ describe('StoryStage streaming rendering', () => {
       expect(trace).toHaveAttribute('aria-expanded', 'false')
 
       await user.click(trace)
-      expect(screen.queryByText(providerThinking)).not.toBeInTheDocument()
-      const thinking = screen.getByRole('button', { name: '思考过程' })
+      expect(screen.queryByRole('region', { name: '思考内容' })).not.toBeInTheDocument()
+      expect(screen.getByText(providerThinking)).toHaveAttribute('data-thinking-preview')
+      const thinking = screen.getByRole('button', { name: '展开思考' })
       expect(thinking).toHaveAttribute('aria-expanded', 'false')
       await user.click(thinking)
-      expect(screen.getByText(providerThinking)).toBeInTheDocument()
+      expect(screen.getByRole('region', { name: '思考内容' })).toHaveTextContent(providerThinking)
       expect(screen.getByText('门后传来脚步声。')).toBeInTheDocument()
       const liveMessages = useInteractiveStore.getState().storyStageRuns['/tmp/book:story-1:main']?.liveMessages || []
       expect(buildAgentMessageViews(liveMessages).find((view) => view.kind === 'assistant')).toMatchObject({
@@ -244,7 +245,8 @@ describe('StoryStage streaming rendering', () => {
 
       const trace = await screen.findByRole('button', { name: /正在执行.*1 次工具调用/ })
       expect(trace).toBeInTheDocument()
-      expect(screen.getAllByText('我先检查资料，再开始写正文。')).toHaveLength(1)
+      expect(screen.getByRole('region', { name: '思考内容' })).toHaveTextContent('我先检查资料，再开始写正文。')
+      expect(screen.getByText('我先检查资料，再开始写正文。', { selector: '[data-thinking-preview]' })).toBeInTheDocument()
       const liveMessages = useInteractiveStore.getState().storyStageRuns['/tmp/book:story-1:main']?.liveMessages || []
       expect(buildAgentMessageViews(liveMessages).some((view) => view.kind === 'assistant' && view.content)).toBe(false)
     } finally {
@@ -285,14 +287,14 @@ describe('StoryStage streaming rendering', () => {
       })
 
       expect(await screen.findByRole('button', { name: /正在执行.*1 次工具调用/ })).toBeInTheDocument()
-      expect(screen.getByText('正在检查开场资料。')).toBeInTheDocument()
+      expect(screen.getByRole('region', { name: '思考内容' })).toHaveTextContent('正在检查开场资料。')
       expect(screen.getByText('浏览资料库')).toBeInTheDocument()
 
       act(() => {
         stream.enqueue({ event: 'tool_result', data: JSON.stringify({ id: 'call-lore', name: 'list_lore_items', content: '找到 3 条资料' }) })
       })
 
-      await waitFor(() => expect(screen.getByText('正在检查开场资料。')).toBeInTheDocument())
+      await waitFor(() => expect(screen.getByRole('region', { name: '思考内容' })).toHaveTextContent('正在检查开场资料。'))
       expect(screen.getByText('浏览资料库')).toBeInTheDocument()
 
 		act(() => {
@@ -310,10 +312,11 @@ describe('StoryStage streaming rendering', () => {
       expect(screen.queryByText('浏览资料库')).not.toBeInTheDocument()
 
       await user.click(screen.getByRole('button', { name: /执行过程.*1 次工具调用/ }))
-      expect(screen.queryByText('正在检查开场资料。')).not.toBeInTheDocument()
+      expect(screen.queryByRole('region', { name: '思考内容' })).not.toBeInTheDocument()
+      expect(screen.getByText('正在检查开场资料。')).toHaveAttribute('data-thinking-preview')
       expect(screen.getByText('浏览资料库')).toBeInTheDocument()
-      await user.click(screen.getByRole('button', { name: '思考过程' }))
-      expect(screen.getByText('正在检查开场资料。')).toBeInTheDocument()
+      await user.click(screen.getByRole('button', { name: '展开思考' }))
+      expect(screen.getByRole('region', { name: '思考内容' })).toHaveTextContent('正在检查开场资料。')
     } finally {
       refresh.resolve(undefined)
       stream.close()
@@ -381,12 +384,13 @@ describe('StoryStage streaming rendering', () => {
     expect(screen.getByText('石门后传来锁链拖地的声音。')).toBeInTheDocument()
     const traceButton = screen.getByRole('button', { name: /执行过程.*1 次工具调用/ })
     await user.click(traceButton)
-    expect(screen.queryByText('正在判断石门后的威胁。')).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: '思考内容' })).not.toBeInTheDocument()
+    expect(screen.getByText('正在判断石门后的威胁。')).toHaveAttribute('data-thinking-preview')
     expect(screen.getByText('浏览资料库')).toBeInTheDocument()
     expect(screen.queryByText('正在重新安排后续分支。')).not.toBeInTheDocument()
     expect(screen.queryByText('write')).not.toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: '思考过程' }))
-    expect(screen.getByText('正在判断石门后的威胁。')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '展开思考' }))
+    expect(screen.getByRole('region', { name: '思考内容' })).toHaveTextContent('正在判断石门后的威胁。')
   })
 
   it('folds submission tool cards after the narrative into one collapsed trace group when the turn has a narrative anchor', async () => {

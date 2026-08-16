@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Agent Chat 的 Run 在运行中与完成后现在共用同一个「执行过程」结构：标题统一汇总进展段数、工具次数和耗时，运行中自动展开，完成后仅收起外层；展开后按原始顺序直接展示每段进展正文、思考与工具，不再增加进展二级折叠，游戏正文后的工具继续留在正文之后。思考入口同步简化为“思考 / Thinking”，并在同一行展示首个非空思考行，空间不足时自适应省略，完整内容仍可独立展开。Writing、Game、AgentChat 与管理型 Agent 共用，无需新增配置。
+- Agent Chat Runs now keep the same Execution structure while active and completed: the heading summarizes progress updates, tool calls, and duration; active Runs open automatically, and completion only closes the outer disclosure. Expanding it shows each progress body, thinking block, and tool directly in original order without a second progress disclosure, while Game tools emitted after narrative stay after it. Thinking triggers are also shortened to “思考 / Thinking” and show the first non-empty reasoning line inline with responsive truncation while preserving independent access to the full content. Writing, Game, AgentChat, and management Agents share the behavior with no new configuration.
 - 写作页新建或切换会话时，会话画布现在先以 100ms 的轻微上移淡出，再在新会话绑定完成后快速淡入；输入区保持稳定，加号同步提供即时旋转反馈，避免历史内容瞬间替换的生硬感，并遵循现有的减弱动态效果偏好。无需新增配置。
 - When Writing creates or switches Sessions, the conversation canvas now lifts and fades out in 100ms before the newly bound Session quickly fades in. The composer stays fixed and the plus icon provides immediate rotational feedback, avoiding an abrupt history swap while respecting the existing reduced-motion preference. No new setting is required.
 - Agent 工具失败现在与成功态保持相同的单行结构：错误摘要紧跟工具名并在空间不足时省略，完整错误与参数仍可展开查看；共享「执行过程」折叠改为短促的高度/透明度过渡并同步旋转箭头，减少布局跳变且遵循系统减弱动态效果偏好。Writing、Game、AgentChat 与管理型 Agent 共用，无需新增配置。

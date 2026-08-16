@@ -279,26 +279,39 @@ describe('MessageItem', () => {
     expect(handleSwitch).toHaveBeenCalledWith(expect.objectContaining({ turn_id: 'turn-1' }), 1)
   })
 
-  it('思考过程流式时默认展开，结束后默认折叠但可手动展开', async () => {
+  it('思考流式时默认展开，结束后保留首行摘要并默认折叠正文', async () => {
     const user = userEvent.setup()
     const { rerender } = render(<MessageItem message={{ role: 'thinking', content: '正在分析', streaming: true }} />)
 
-    expect(screen.getByText('正在分析')).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: '思考内容' })).toHaveTextContent('正在分析')
 
     rerender(<MessageItem message={{ role: 'thinking', content: '已经分析完', streaming: false }} />)
-    expect(screen.queryByText('已经分析完')).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: '思考内容' })).not.toBeInTheDocument()
+    expect(screen.getByText('已经分析完')).toHaveAttribute('data-thinking-preview')
 
-    await user.click(screen.getByRole('button', { name: /思考过程/ }))
-    expect(screen.getByText('已经分析完')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '展开思考' }))
+    expect(screen.getByRole('region', { name: '思考内容' })).toHaveTextContent('已经分析完')
   })
 
-  it('历史思考过程的首帧直接以折叠态渲染', () => {
+  it('历史思考首帧直接显示摘要并保持正文折叠', () => {
     const markup = renderToStaticMarkup(
       <MessageItem message={{ role: 'thinking', content: '历史思考内容', streaming: false }} />,
     )
 
     expect(markup).toContain('aria-expanded="false"')
-    expect(markup).not.toContain('历史思考内容')
+    expect(markup).toContain('data-thinking-preview="true"')
+    expect(markup).toContain('历史思考内容')
+    expect(markup).not.toContain('aria-label="思考内容"')
+  })
+
+  it('思考标题仅展示首个非空行并允许窄屏省略', () => {
+    render(<MessageItem message={{ role: 'thinking', content: '\n  Now I need to update the recent events.  \nSecond line' }} />)
+
+    const trigger = screen.getByRole('button', { name: '展开思考' })
+    expect(trigger).toHaveTextContent('思考·Now I need to update the recent events.')
+    const preview = within(trigger).getByText('Now I need to update the recent events.')
+    expect(preview).toHaveClass('min-w-0', 'flex-1', 'truncate')
+    expect(within(trigger).queryByText('Second line')).not.toBeInTheDocument()
   })
 
   it('直接增长的流式 thinking 立即复用单棵文本树显示最新内容', () => {
@@ -307,7 +320,8 @@ describe('MessageItem', () => {
     rerender(<MessageItem message={{ role: 'thinking', content: '正在分析下一条线索', streaming: true }} />)
 
     expect(container.querySelector('.nova-streaming-content-stage')).toBeNull()
-    expect(screen.getByText('正在分析下一条线索')).toBeInTheDocument()
+    expect(container.querySelector('[data-thinking-preview]')).toHaveTextContent('正在分析下一条线索')
+    expect(screen.getByRole('region', { name: '思考内容' })).toHaveTextContent('正在分析下一条线索')
   })
 
   it('thinking 使用带浅边框和 scroll fade 的 160px 上限窗口', () => {

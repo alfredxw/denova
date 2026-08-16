@@ -37,7 +37,7 @@ interface AgentExecutionProcessProps {
   views: AgentMessageView[]
 }
 
-/** One disclosure for every non-terminal display segment in an Agent run. */
+/** One stable disclosure for the non-terminal timeline of an Agent run. */
 export function AgentExecutionProcess({
   projectId,
   active,

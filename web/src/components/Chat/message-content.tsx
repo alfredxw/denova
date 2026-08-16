@@ -10,6 +10,7 @@ import { useBottomScrollLock } from '@/hooks/useBottomScrollLock'
 import { isWorkspaceImagePath } from '@/lib/workspace-file-kind'
 import { Reasoning, ReasoningContent, ReasoningTrigger } from '@/components/ai-elements/reasoning'
 import { Shimmer } from '@/components/ai-elements/shimmer'
+import { agentContentPreview } from './agent-content-preview'
 import { AgentSourceBadge } from './message-source-badge'
 import { StreamingContentStage } from './StreamingContentStage'
 
@@ -161,6 +162,7 @@ function highlightDialogueText(text: string, enabled: boolean, keyPrefix: string
 /** Reasoning follows streaming until the user takes explicit control. */
 export function ThinkingBlock({ message, content, streaming }: { message: ThinkingChatMessage; content: string; streaming: boolean }) {
   const { t } = useTranslation()
+  const preview = agentContentPreview(content)
   const [expanded, setExpanded] = useState(streaming)
   const userToggledRef = useRef(false)
   const wasStreamingRef = useRef(streaming)
@@ -190,14 +192,25 @@ export function ThinkingBlock({ message, content, streaming }: { message: Thinki
     <div className="flex justify-start">
       <div className="w-full">
         <Reasoning isStreaming={streaming} open={expanded} onOpenChange={handleOpenChange} className="mb-0">
-          <ReasoningTrigger className="flex items-center gap-1 py-1 text-xs text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]">
-            {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-            {streaming ? (
-              <Shimmer as="span" className="text-xs font-medium">{t('chat.activity.thinking')}</Shimmer>
+          <ReasoningTrigger
+            aria-label={t(expanded ? 'chat.trace.collapseThinking' : 'chat.trace.expandThinking')}
+            className="flex min-w-0 items-center gap-1 py-1 text-xs text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]"
+          >
+            {streaming && !preview ? (
+              <Shimmer as="span" className="shrink-0 text-xs font-medium">{t('chat.activity.thinking')}</Shimmer>
+            ) : streaming ? (
+              <Shimmer as="span" className="shrink-0 text-xs font-medium">{t('chat.trace.thinking')}</Shimmer>
             ) : (
-              <span>{t('chat.trace.thinking')}</span>
+              <span className="shrink-0">{t('chat.trace.thinking')}</span>
             )}
+            {preview ? (
+              <>
+                <span aria-hidden="true" className="shrink-0">·</span>
+                <span data-thinking-preview className="min-w-0 flex-1 truncate text-left">{preview}</span>
+              </>
+            ) : <span className="flex-1" />}
             {message.subagent && <AgentSourceBadge message={message} compact />}
+            {expanded ? <ChevronDown aria-hidden="true" className="size-3 shrink-0" /> : <ChevronRight aria-hidden="true" className="size-3 shrink-0" />}
           </ReasoningTrigger>
           <ReasoningContent className="mt-0 text-xs">
             <div data-thinking-scroll-frame className="overflow-hidden rounded-md border border-border/60">
