@@ -224,7 +224,7 @@ export function fetchModelCatalog(signal?: AbortSignal): Promise<ModelCatalog> {
   return requestJSON('/api/models/catalog', { signal })
 }
 
-/** Loads optional OpenAI-compatible model suggestions without validating or
+/** Loads optional protocol-native model suggestions without validating or
  * restricting the profile's custom model text. */
 export function discoverModels(profile: ModelProfileSettings, signal?: AbortSignal): Promise<ModelDiscoveryResult> {
   return requestJSON('/api/models/discover', {

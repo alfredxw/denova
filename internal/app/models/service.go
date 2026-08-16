@@ -35,8 +35,9 @@ type PingResult struct {
 }
 
 type ModelInfo struct {
-	ID      string `json:"id"`
-	OwnedBy string `json:"owned_by,omitempty"`
+	ID          string `json:"id"`
+	DisplayName string `json:"display_name,omitempty"`
+	OwnedBy     string `json:"owned_by,omitempty"`
 }
 
 type ListResult struct {
@@ -76,7 +77,7 @@ func (service *Service) Catalog() (modelio.Catalog, error) {
 	return service.runtime.Catalog()
 }
 
-// List returns optional OpenAI-compatible /models results as suggestions. A
+// List returns optional protocol-native model results as suggestions. A
 // synthetic ID lets a new profile discover models before its custom model
 // name has been entered; normal Agent resolution still requires a model.
 func (service *Service) List(ctx context.Context, profile config.ModelProfileSettings) (ListResult, error) {
@@ -103,7 +104,11 @@ func (service *Service) List(ctx context.Context, profile config.ModelProfileSet
 	}
 	models := make([]ModelInfo, 0, len(discovered.Models))
 	for _, model := range discovered.Models {
-		models = append(models, ModelInfo{ID: model.ID, OwnedBy: model.OwnedBy})
+		models = append(models, ModelInfo{
+			ID:          model.ID,
+			DisplayName: model.DisplayName,
+			OwnedBy:     model.OwnedBy,
+		})
 	}
 	return ListResult{
 		Models:   models,

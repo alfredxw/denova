@@ -47,7 +47,7 @@ type ProbeResult struct {
 }
 
 // ModelListResult is a provider-advertised suggestion set for one effective
-// OpenAI-compatible route. It never constrains custom model IDs.
+// protocol route. It never constrains custom model IDs.
 type ModelListResult struct {
 	Models   []providers.ModelInfo
 	Provider string

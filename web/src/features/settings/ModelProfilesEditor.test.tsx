@@ -70,7 +70,7 @@ const catalog: ModelCatalog = {
 beforeEach(() => {
   vi.mocked(discoverModels).mockReset().mockResolvedValue({
     models: [
-      { id: 'gpt-listed', owned_by: 'openai' },
+      { id: 'gpt-listed', display_name: 'GPT Listed', owned_by: 'openai' },
       { id: 'gpt-other' },
     ],
     provider: MODEL_PROVIDER_OPENAI,
@@ -149,6 +149,13 @@ it('keeps provider and protocol independent while applying catalog endpoint defa
       base_url: 'https://api.deepseek.com/anthropic',
     }),
   ])
+
+  await user.click(screen.getByRole('button', { name: '获取可用模型' }))
+  await waitFor(() => expect(discoverModels).toHaveBeenCalledWith(expect.objectContaining({
+    provider: MODEL_PROVIDER_DEEPSEEK,
+    protocol: MODEL_PROTOCOL_ANTHROPIC_MESSAGES,
+    base_url: 'https://api.deepseek.com/anthropic',
+  }), expect.any(AbortSignal)))
 
   await user.click(screen.getByRole('combobox', { name: '服务商' }))
   await user.click(screen.getByRole('option', { name: /^OpenAI/ }))

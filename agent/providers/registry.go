@@ -40,13 +40,13 @@ type ProtocolAdapter interface {
 // ModelInfo is one provider-advertised model that can be offered as a
 // suggestion. Callers must continue accepting model IDs not present here.
 type ModelInfo struct {
-	ID      string `json:"id"`
-	OwnedBy string `json:"owned_by,omitempty"`
+	ID          string `json:"id"`
+	DisplayName string `json:"display_name,omitempty"`
+	OwnedBy     string `json:"owned_by,omitempty"`
 }
 
 // ModelListingAdapter is an optional protocol capability. An adapter should
-// implement it only when its wire protocol defines an OpenAI-compatible model
-// listing endpoint.
+// implement it only when its wire protocol defines a model listing endpoint.
 type ModelListingAdapter interface {
 	ListModels(context.Context, ModelConfig) ([]ModelInfo, error)
 }

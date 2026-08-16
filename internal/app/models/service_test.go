@@ -139,6 +139,38 @@ func TestListModelsUsesStoredSecretAndKeepsSuggestionsIndependent(t *testing.T) 
 	}
 }
 
+func TestListModelsSupportsAnthropicDiscovery(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodGet || request.URL.Path != "/v1/models" {
+			t.Errorf("request = %s %s", request.Method, request.URL.Path)
+		}
+		if request.Header.Get("X-Api-Key") != "anthropic-secret" {
+			t.Errorf("headers = %#v", request.Header)
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(writer, `{"data":[{"id":"claude-test","display_name":"Claude Test","type":"model"}],"first_id":"claude-test","last_id":"claude-test","has_more":false}`)
+	}))
+	defer server.Close()
+
+	service := NewService(testHost{config: config.Config{}})
+	result, err := service.List(context.Background(), config.ModelProfileSettings{
+		ID:       "anthropic-test",
+		Provider: string(providers.ProviderAnthropic),
+		Protocol: string(providers.ProtocolAnthropicMessages),
+		APIKey:   "anthropic-secret",
+		BaseURL:  server.URL,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Provider != string(providers.ProviderAnthropic) || result.Protocol != string(providers.ProtocolAnthropicMessages) || len(result.Models) != 1 {
+		t.Fatalf("result = %#v", result)
+	}
+	if result.Models[0].ID != "claude-test" || result.Models[0].DisplayName != "Claude Test" {
+		t.Fatalf("models = %#v", result.Models)
+	}
+}
+
 func TestListModelsDoesNotForwardStoredCredentialsToChangedOrigin(t *testing.T) {
 	headers := make(chan http.Header, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {

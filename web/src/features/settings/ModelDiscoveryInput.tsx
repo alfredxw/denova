@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Check, ListRestart, Loader2, RefreshCw } from 'lucide-react'
+import { Check, ChevronDown, Loader2, RefreshCw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
 import { discoverModels } from './api'
-import { MODEL_PROTOCOL_CHAT_COMPLETIONS, MODEL_PROTOCOL_RESPONSES } from './model-profiles'
+import { MODEL_PROTOCOL_ANTHROPIC_MESSAGES, MODEL_PROTOCOL_CHAT_COMPLETIONS, MODEL_PROTOCOL_RESPONSES } from './model-profiles'
 import type { ModelInfo, ModelProfileSettings } from './types'
 
 type DiscoveryState =
@@ -28,7 +28,9 @@ export function ModelDiscoveryInput({ profile, defaultProtocol, value, placehold
   const [state, setState] = useState<DiscoveryState>({ status: 'idle', models: [] })
   const requestRef = useRef<AbortController | null>(null)
   const protocol = profile.protocol?.trim() || defaultProtocol?.trim() || ''
-  const supported = protocol === MODEL_PROTOCOL_CHAT_COMPLETIONS || protocol === MODEL_PROTOCOL_RESPONSES
+  const supported = protocol === MODEL_PROTOCOL_CHAT_COMPLETIONS
+    || protocol === MODEL_PROTOCOL_RESPONSES
+    || protocol === MODEL_PROTOCOL_ANTHROPIC_MESSAGES
   const routeFingerprint = useMemo(() => JSON.stringify({
     id: profile.id,
     provider: profile.provider,
@@ -97,9 +99,10 @@ export function ModelDiscoveryInput({ profile, defaultProtocol, value, placehold
             size="icon-sm"
             disabled={!available}
             aria-label={actionLabel}
+            title={actionLabel}
             className="shrink-0"
           >
-            {state.status === 'loading' ? <Loader2 className="animate-spin" /> : <ListRestart />}
+            {state.status === 'loading' ? <Loader2 className="animate-spin" /> : <ChevronDown />}
           </Button>
         </PopoverTrigger>
         <PopoverContent
@@ -151,8 +154,17 @@ export function ModelDiscoveryInput({ profile, defaultProtocol, value, placehold
                     setOpen(false)
                   }}
                 >
-                  <span className="min-w-0 flex-1 truncate">{model.id}</span>
-                  {model.owned_by && <span className="shrink-0 text-[11px] text-[var(--nova-text-faint)]">{model.owned_by}</span>}
+                  <span className="min-w-0 flex-1 truncate" title={model.display_name || model.id}>
+                    {model.display_name || model.id}
+                  </span>
+                  {model.display_name && (
+                    <span className="max-w-[55%] shrink truncate font-mono text-[11px] text-[var(--nova-text-faint)]" title={model.id}>
+                      {model.id}
+                    </span>
+                  )}
+                  {!model.display_name && model.owned_by && (
+                    <span className="shrink-0 text-[11px] text-[var(--nova-text-faint)]">{model.owned_by}</span>
+                  )}
                   {model.id === value.trim() && <Check className="size-3.5 shrink-0" />}
                 </button>
               ))}

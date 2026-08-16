@@ -143,30 +143,7 @@ export function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
               </div>
               <Separator />
               <div className="grid gap-2 p-2.5 md:grid-cols-12">
-                <ModelProfileField label={t('common.baseUrl')} className="md:col-span-5">
-                  <Input
-                    value={profile.base_url ?? ''}
-                    placeholder={t('common.baseUrl')}
-                    onChange={(event) => updateProfile(index, { base_url: event.target.value })}
-                  />
-                </ModelProfileField>
-                <ModelProfileField label={t('settings.model.profileModelLabel')} className="md:col-span-4">
-                  <ModelDiscoveryInput
-                    profile={profile}
-                    defaultProtocol={catalog.providers.find((provider) => provider.id === profile.provider)?.default_protocol}
-                    value={profile.model ?? ''}
-                    placeholder={t('settings.model.profileModelPlaceholder')}
-                    onChange={(model) => updateProfileModel(index, model)}
-                  />
-                </ModelProfileField>
-                <ModelProfileField label={t('settings.model.profileAliasLabel')} className="md:col-span-3">
-                  <Input
-                    value={profile.name ?? ''}
-                    placeholder={t('settings.model.profileAliasPlaceholder')}
-                    onChange={(event) => updateProfile(index, { name: event.target.value })}
-                  />
-                </ModelProfileField>
-                <ModelProfileField label={t('settings.model.profileProviderLabel')} className="md:col-span-4">
+                <ModelProfileField label={t('settings.model.profileProviderLabel')} className="md:col-span-6">
                   <ProviderPicker
                     label={t('settings.model.profileProviderLabel')}
                     providers={catalog.providers}
@@ -175,7 +152,7 @@ export function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
                     onChange={(provider) => updateProfileProvider(index, provider)}
                   />
                 </ModelProfileField>
-                <ModelProfileField label={t('settings.model.profileProtocolLabel')} className="md:col-span-4">
+                <ModelProfileField label={t('settings.model.profileProtocolLabel')} className="md:col-span-6">
                   <Select value={profile.protocol || PROVIDER_DEFAULT_PROTOCOL} onValueChange={(value) => updateProfileProtocol(index, value)}>
                     <SelectTrigger size="sm" className="w-full">
                       <SelectValue />
@@ -188,12 +165,35 @@ export function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
                     </SelectContent>
                   </Select>
                 </ModelProfileField>
-                <ModelProfileField label={t('settings.model.profileKeyLabel')} className="md:col-span-4">
+                <ModelProfileField label={t('common.baseUrl')} className="md:col-span-6">
+                  <Input
+                    value={profile.base_url ?? ''}
+                    placeholder={t('common.baseUrl')}
+                    onChange={(event) => updateProfile(index, { base_url: event.target.value })}
+                  />
+                </ModelProfileField>
+                <ModelProfileField label={t('settings.model.profileKeyLabel')} className="md:col-span-6">
                   <ApiKeyInput
                     label={t('settings.model.profileKeyLabel')}
                     value={profile.api_key ?? ''}
                     placeholder={t('settings.model.profileKeyInheritPlaceholder')}
                     onChange={(apiKey) => updateProfile(index, { api_key: apiKey })}
+                  />
+                </ModelProfileField>
+                <ModelProfileField label={t('settings.model.profileModelLabel')} className="md:col-span-8">
+                  <ModelDiscoveryInput
+                    profile={profile}
+                    defaultProtocol={catalog.providers.find((provider) => provider.id === profile.provider)?.default_protocol}
+                    value={profile.model ?? ''}
+                    placeholder={t('settings.model.profileModelPlaceholder')}
+                    onChange={(model) => updateProfileModel(index, model)}
+                  />
+                </ModelProfileField>
+                <ModelProfileField label={t('settings.model.profileAliasLabel')} className="md:col-span-4">
+                  <Input
+                    value={profile.name ?? ''}
+                    placeholder={t('settings.model.profileAliasPlaceholder')}
+                    onChange={(event) => updateProfile(index, { name: event.target.value })}
                   />
                 </ModelProfileField>
                 {profile.provider === MODEL_PROVIDER_OPENAI_COMPATIBLE && (

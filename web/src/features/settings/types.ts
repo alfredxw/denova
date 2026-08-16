@@ -165,6 +165,7 @@ export interface ModelPingResult {
 
 export interface ModelInfo {
   id: string
+  display_name?: string
   owned_by?: string
 }
 
