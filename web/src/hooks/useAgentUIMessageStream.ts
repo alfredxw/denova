@@ -3,6 +3,7 @@ import { readUIMessageStream, type UIMessageChunk } from 'ai'
 import { buildAgentMessageViews, type AgentMessageView } from '@/lib/agent-message-view'
 import { AgentUIMessageNormalizer, normalizeAgentUIMessages, type AgentUIMessage } from '@/lib/agent-ui'
 import { attachAgentToolInputText, recordAgentToolInputChunk } from '@/lib/agent-ui-message'
+import { agentToolInputRenderChunks } from '@/lib/agent-tool-input-stream'
 import { createRafUpdateBatcher, STREAMING_RENDER_INTERVAL_MS, type RafUpdateBatcher } from '@/lib/streaming/raf-update-batcher'
 
 interface AgentUIMessageStreamOptions {
@@ -60,9 +61,11 @@ export function useAgentUIMessageStream(options: AgentUIMessageStreamOptions = {
     setActivityContent('')
     const inputTextByToolCall = new Map<string, string>()
     const observedStream = stream.pipeThrough(new TransformStream<UIMessageChunk, UIMessageChunk>({
-      transform(chunk, controller) {
-        recordAgentToolInputChunk(chunk, inputTextByToolCall)
-        controller.enqueue(chunk)
+      async transform(chunk, controller) {
+        for await (const renderChunk of agentToolInputRenderChunks(chunk)) {
+          recordAgentToolInputChunk(renderChunk, inputTextByToolCall)
+          controller.enqueue(renderChunk)
+        }
       },
     }))
     try {

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { buildContextCompactionMessage, createContextCompactionMessageId, upsertContextCompactionMessage } from '@/components/Chat/context-compaction-message'
 import type { AgentMessageMetadata, AgentUIMessage } from '@/lib/agent-ui'
 import { agentToolInputText, createAgentDataMessage, createAgentTextMessage, createAgentToolMessage, parseAgentToolInput } from '@/lib/agent-ui-message'
+import { toolInputTextRenderChunks } from '@/lib/agent-tool-input-stream'
 import { createRafUpdateBatcher, STREAMING_RENDER_INTERVAL_MS } from '@/lib/streaming/raf-update-batcher'
 import {
   appendBufferedLiveMessage,
@@ -113,21 +114,27 @@ export function useLiveMessageAccumulator({ publicRuleRollVisible, setMessages }
     ])
   }, [flush, setMessages])
 
-  const appendToolArgs = useCallback((payload: Record<string, unknown> & { id?: string; name?: string; args?: string; delta?: string }) => {
+  const appendToolArgs = useCallback(async (payload: Record<string, unknown> & { id?: string; name?: string; args?: string; delta?: string }) => {
     if (!payload.id && !payload.name && liveToolEventKeys(payload).length === 0) return
-    updateBatcher.enqueue((current) => {
-      const targetIndex = findToolMessageIndexForPayload(current, payload, toolKeyToMessageIdRef.current)
-      if (targetIndex < 0) return current
-      const matchedId = current[targetIndex].id
-      if (matchedId) {
-        toolKeyToMessageIdRef.current = bindLiveToolEventKeys(liveToolEventKeys(payload), toolKeyToMessageIdRef.current, matchedId)
-      }
-      return current.map((message, index) => {
-        if (index !== targetIndex) return message
-        const args = payload.args !== undefined ? payload.args : `${toolMessageInputText(message)}${payload.delta || ''}`
-        return updateToolMessageInputText(message, args)
+    const inputText = payload.args !== undefined ? payload.args : (payload.delta || '')
+    let firstChunk = true
+    for await (const chunk of toolInputTextRenderChunks(inputText)) {
+      const replaceInput = payload.args !== undefined && firstChunk
+      updateBatcher.enqueue((current) => {
+        const targetIndex = findToolMessageIndexForPayload(current, payload, toolKeyToMessageIdRef.current)
+        if (targetIndex < 0) return current
+        const matchedId = current[targetIndex].id
+        if (matchedId) {
+          toolKeyToMessageIdRef.current = bindLiveToolEventKeys(liveToolEventKeys(payload), toolKeyToMessageIdRef.current, matchedId)
+        }
+        return current.map((message, index) => {
+          if (index !== targetIndex) return message
+          const args = replaceInput ? chunk : `${toolMessageInputText(message)}${chunk}`
+          return updateToolMessageInputText(message, args)
+        })
       })
-    })
+      firstChunk = false
+    }
   }, [updateBatcher])
 
   const completeToolCall = useCallback((payload: Record<string, unknown> & { id?: string; name?: string }, result = '') => {

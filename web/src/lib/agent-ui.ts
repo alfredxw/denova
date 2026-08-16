@@ -3,6 +3,7 @@ import { DefaultChatTransport } from 'ai'
 import { fetchAPI, responseAPIError } from './api-client/client'
 import type { ToolPresentation, UserMessageReference } from './api-client/types'
 import { recordAgentToolInputChunk } from './agent-ui-message'
+import { agentToolInputRenderChunks } from './agent-tool-input-stream'
 
 export type AgentDisplayRole = 'user' | 'assistant' | 'thinking' | 'tool_call' | 'tool_result' | 'ask' | 'rule_roll' | 'context_compaction' | 'token_usage' | 'execution_summary' | 'proposed_plan' | 'system' | 'error'
 
@@ -184,11 +185,13 @@ export class AgentChatTransport implements ChatTransport<AgentUIMessage> {
     const stream = await streamPromise
     if (!stream) return stream
     return stream.pipeThrough(new TransformStream<UIMessageChunk, UIMessageChunk>({
-      transform: (chunk, controller) => {
-        if (recordAgentToolInputChunk(chunk, this.toolInputTextByToolCall)) {
-          this.publishToolInputText()
+      transform: async (chunk, controller) => {
+        for await (const renderChunk of agentToolInputRenderChunks(chunk)) {
+          if (recordAgentToolInputChunk(renderChunk, this.toolInputTextByToolCall)) {
+            this.publishToolInputText()
+          }
+          controller.enqueue(renderChunk)
         }
-        controller.enqueue(chunk)
       },
     })) as T
   }
