@@ -48,7 +48,12 @@ func (projector *PublicEventProjector) observeInteractiveToolLocked(meta agentEv
 	if projector == nil || meta.SubAgent || meta.AgentKind != agentrun.AgentKindInteractiveStory {
 		return
 	}
-	projector.beginInteractiveResponseLocked(meta)
+	// A tool can only reclassify provisional text from its own active model
+	// response. Tool-only responses have nothing to retract and must not create
+	// state that leaks into the next response.
+	if !projector.interactive.active {
+		return
+	}
 	if agentinteractive.IsInteractiveTurnSubmissionTool(name) || projector.interactive.reclassified {
 		return
 	}

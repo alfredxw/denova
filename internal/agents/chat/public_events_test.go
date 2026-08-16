@@ -410,6 +410,51 @@ func TestPublicEventProjectorReclassifiesInteractiveToolPreamble(t *testing.T) {
 	}
 }
 
+func TestPublicEventProjectorKeepsNextInteractiveResponseNarrativeAfterToolOnlyResponse(t *testing.T) {
+	var events []agentrun.Event
+	projector := NewPublicEventProjector(nil, ChatRequest{}, agentrun.Options{
+		AgentKind: agentrun.AgentKindInteractiveStory, TaskID: "task", RootAgentName: "game",
+	}, func(event agentrun.Event) { events = append(events, event) })
+	root := agent.EventSource{Name: "game", Path: []string{"game"}}
+
+	projector.Project(agent.Event{RunID: "run", Payload: agent.ThinkingDelta{
+		Source: root, Delta: "I need to prepare the turn.",
+	}})
+	projector.Project(agent.Event{RunID: "run", Payload: agent.ModelCompleted{
+		Source: root, RequestedTools: []string{"prepare_interactive_turn"},
+	}})
+	projector.Project(agent.Event{RunID: "run", Payload: agent.ToolInputStarted{
+		Source: root, CallID: "prepare-1", ProviderCallID: "provider-prepare", Name: "prepare_interactive_turn",
+	}})
+	projector.Project(agent.Event{RunID: "run", Payload: agent.ThinkingDelta{
+		Source: root, Delta: "The check failed; now write the narrative.",
+	}})
+	projector.Project(agent.Event{RunID: "run", Payload: agent.AssistantDelta{
+		Source: root, Delta: "The door opened.",
+	}})
+	projector.Project(agent.Event{RunID: "run", Payload: agent.ToolInputStarted{
+		Source: root, CallID: "submit-1", ProviderCallID: "provider-submit", Name: "submit_interactive_turn",
+	}})
+	projector.Project(agent.Event{RunID: "run", Payload: agent.ModelCompleted{
+		Source: root, RequestedTools: []string{"submit_interactive_turn"},
+	}})
+	projector.Project(agent.Event{RunID: "run", Payload: agent.AssistantFinal{
+		Content: "The door opened.", Thinking: "I need to prepare the turn.The check failed; now write the narrative.",
+	}})
+
+	content, thinking := projector.Output()
+	if content != "The door opened." || thinking != "I need to prepare the turn.The check failed; now write the narrative." {
+		t.Fatalf("projected interactive output content=%q thinking=%q", content, thinking)
+	}
+	if len(events) != 5 || events[0].Type != "thinking" || events[1].Type != "tool_call" ||
+		events[2].Type != "thinking" || events[3].Type != "chunk" || events[4].Type != "tool_call" {
+		t.Fatalf("interactive event order = %#v", events)
+	}
+	if events[3].DataString("content") != "The door opened." {
+		t.Fatalf("streamed narrative event = %#v", events[3].Data)
+	}
+}
+
 func TestPublicEventProjectorUsesAccumulatedInteractiveNarrativeAsCanonicalOutput(t *testing.T) {
 	projector := NewPublicEventProjector(nil, ChatRequest{}, agentrun.Options{
 		AgentKind: agentrun.AgentKindInteractiveStory, TaskID: "task", RootAgentName: "game",

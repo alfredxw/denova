@@ -93,6 +93,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 修复游戏模式中，一次仅包含思考与 `prepare_interactive_turn` 的模型响应会把“正文候选已重分类”状态错误带入下一次响应，导致后续故事正文流式显示在思考区、直到运行结束才补到正文的问题。工具事件现在只能重分类同一次模型响应中已经流出的候选正文；无正文的工具响应不会创建跨响应状态。无需新增配置。
+- Fixed Game mode carrying a “provisional narrative reclassified” state from a reasoning-only `prepare_interactive_turn` response into the next model response, which streamed story prose inside Thinking and only repaired it into the narrative after the Run finished. Tool events can now reclassify only provisional prose already emitted by the same model response; tool-only responses create no cross-response state. No new configuration is required.
 - 修复启用 Skills 与 User Harness State 时，二者的 `read` adapter 因 `limit` Schema 上限表达不一致而导致完整 Agent Definition 构建失败、写作新会话返回 500 的问题。所有 adapter 继续共享最小的模型可见 `read.limit` 契约，Harness State 的 10000 行上限仍由自身运行时严格校验；无需新增配置。
 - Fixed complete Agent Definition construction failing—and new Writing conversations returning HTTP 500—when Skills and User Harness State were both enabled because their `read` adapters expressed incompatible `limit` schema bounds. Adapters continue to share the minimal model-visible `read.limit` contract, while the Harness State adapter still enforces its 10,000-line runtime ceiling. No new configuration is required.
 - 修复打开 Diff Review 时，底层正文 Tab 的关闭图标因自身层级较高而穿透审阅工具栏的问题。正文内容层与审阅层现在使用显式、隔离的堆叠顺序，底层控件会保持挂载但不会再覆盖审阅界面；写作模式中英文与深浅主题共用该修复，无需新增配置。
