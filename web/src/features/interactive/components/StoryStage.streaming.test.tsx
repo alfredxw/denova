@@ -539,6 +539,7 @@ describe('StoryStage streaming rendering', () => {
         expect(executeMessages).toHaveLength(1)
         expect(executeMessages[0]).toMatchObject({
           input: JSON.parse(completeArgs),
+          inputText: completeArgs,
           status: 'success',
           output: 'command done',
           streaming: false,
@@ -590,7 +591,10 @@ describe('StoryStage streaming rendering', () => {
       })
       const messages = useInteractiveStore.getState().storyStageRuns['/tmp/book:story-1:main']?.liveMessages || []
       expect(storeUpdates).toBe(1)
-      expect(buildAgentMessageViews(messages).find((view) => view.partId === 'call-execute')?.input).toBe('first-last')
+      expect(buildAgentMessageViews(messages).find((view) => view.partId === 'call-execute')).toMatchObject({
+        input: 'first-last',
+        inputText: 'first-last',
+      })
     } finally {
       unsubscribe()
       vi.restoreAllMocks()

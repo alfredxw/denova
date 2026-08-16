@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildAgentMessageViews } from './agent-message-view'
+import { agentViewToRenderMessage, buildAgentMessageViews } from './agent-message-view'
 import {
   createAgentDataMessage,
   createAgentReasoningMessage,
@@ -57,5 +57,20 @@ describe('Agent UI message constructors', () => {
       expect.objectContaining({ kind: 'tool', toolName: 'read', input: { path: 'story.md' }, output: 'ok' }),
       expect.objectContaining({ kind: 'error', content: 'failed' }),
     ])
+  })
+
+  it('keeps raw tool input authoritative for rendering while parsing remains derived', () => {
+    const inputText = '{"path":"chapter.md","edits":[{"old_string":"partial'
+    const message = createAgentToolMessage({
+      id: 'tool-stream',
+      name: 'edit',
+      state: 'input-streaming',
+      input: { path: 'chapter.md', edits: [{ old_string: 'partial' }] },
+      inputText,
+    })
+
+    const view = buildAgentMessageViews([message])[0]
+    expect(view).toMatchObject({ inputText, streaming: true })
+    expect(agentViewToRenderMessage(view)).toMatchObject({ args: inputText })
   })
 })

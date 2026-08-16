@@ -6,6 +6,7 @@ import { VirtuosoMockContext } from 'react-virtuoso'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fetchSettings, refreshSettings } from '@/features/settings/api'
 import { usePersistedUserSettings } from '@/hooks/usePersistedUserSettings'
+import { createAgentToolMessage } from '@/lib/agent-ui-message'
 import { AgentPanel, WRITING_COMPOSER_SETTING_DEFAULTS, type WritingComposerSettingsController } from './AgentPanel'
 
 const useWritingSkillOptionsMock = vi.hoisted(() => vi.fn())
@@ -321,28 +322,25 @@ describe('AgentPanel', () => {
     expect(screen.getByText('正在读取章节上下文')).toBeInTheDocument()
   })
 
-  it('真实消息链路会立即展示 edit 的部分 new_string', () => {
+  it('真实消息链路优先展示工具的原始输入流', () => {
+    const inputText = '{"path":"chapters/ch01.md","edits":[{"old_string":"旧正文仍在流式生成'
     renderAgentPanel({
       isStreaming: true,
       isExecutionActive: true,
-      messages: [{
-        id: 'assistant-streaming-edit',
-        role: 'assistant',
+      messages: [createAgentToolMessage({
+        id: 'tool-streaming-edit',
+        name: 'edit',
+        state: 'input-streaming',
+        inputText,
+        input: {
+          path: 'chapters/ch01.md',
+          edits: [{ old_string: '旧正文仍在流式生成' }],
+        },
         metadata: { run_id: 'run-streaming-edit' },
-        parts: [{
-          type: 'dynamic-tool',
-          toolName: 'edit',
-          toolCallId: 'tool-streaming-edit',
-          state: 'input-streaming',
-          input: {
-            path: 'chapters/ch01.md',
-            edits: [{ old_string: '旧正文', new_string: '新正文正在流式生成' }],
-          },
-        }],
-      }],
+      })],
     })
 
-    expect(document.querySelector('[data-nova-scroll-lock="tool-stream-preview"]')).toHaveTextContent('新正文正在流式生成')
+    expect(document.querySelector('[data-nova-scroll-lock="tool-input-stream"]')?.textContent).toBe(inputText)
   })
 
   it('变更审阅卡只在所属 Run 终止后挂载', () => {

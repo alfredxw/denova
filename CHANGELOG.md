@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- 工具输入流统一为按调用 ID 维护的 append-only 原始文本：Writing 的 AI SDK 消费链与 Game 的 SSE 消费链都保留同一份 `inputText` 真源，结构化参数仅作为派生视图；所有工具在 `input-streaming` 阶段直接展示已收到的原始参数，不再由 `write` / `edit` 名称或 `content` / `new_string` 字段决定是否流式。Beta 行为变化：流式工具卡展示完整原始参数，而不是抽取后的写入正文。无需新增配置。
+- Tool input streaming now uses one append-only raw-text source per call ID. Both the Writing AI SDK consumer and Game SSE consumer preserve the same authoritative `inputText`, with structured arguments kept only as a derived view. Every tool displays its received raw arguments during `input-streaming`; `write` / `edit` names and `content` / `new_string` fields no longer determine whether streaming is visible. Beta behavior change: live tool cards show complete raw arguments instead of extracted write content. No new configuration is required.
 - 当前输入语言约束现在会在每轮模型输入的 `# Current User Request (Highest Priority)` 下再次声明，并明确覆盖思考、流式思考和中间进展；实际用户输入仍位于消息末尾。System Prompt 保留相同规则作为无 turn context 调用的兜底，Writing、Game 与子 Agent 共用，无需新增配置。
 - The current-input language contract is now repeated under `# Current User Request (Highest Priority)` for every turn-aware model input and explicitly covers reasoning, streamed thinking, and intermediate progress; the actual user input remains at the end of the message. The System Prompt retains the same rule as a fallback for calls without turn context. Writing, Game, and child Agents share the behavior with no new setting.
 - `write` 工具重复提交与文件当前内容完全一致的整文件替换时，不再返回 `replacement does not change the file` 错误；在 revision 校验后会返回成功的 `unchanged` no-op，不写盘、不创建 ChangeSet 或审阅记录，并明确要求 Agent 无需重试。Writing 与 General Agent 共用，无需新增配置。

@@ -1,5 +1,6 @@
 import type { AgentAskInteraction, ChapterIllustration, ChatMessage, ChatPlanAction, InteractiveImage, InteractiveImageError, InteractiveImageStatus, PublicRuleRoll, TokenUsageCall } from './api-client/types'
 import type { AgentMessageMetadata, AgentUIMessage } from './agent-ui'
+import { agentToolInputText } from './agent-ui-message'
 import { readToolPresentation } from './tool-presentation'
 
 export type AgentMessageViewKind =
@@ -42,6 +43,7 @@ export interface AgentMessageView {
   streaming: boolean
   toolName?: string
   input?: unknown
+  inputText?: string
   output?: unknown
   errorText?: string
   approval?: AgentAskInteraction
@@ -356,7 +358,7 @@ export function agentViewToRenderMessage(view: AgentMessageView, options: { forc
       return { id, role: 'thinking', content: view.content, streaming, ...meta }
     case 'tool': {
       const raw = view.part as Record<string, any>
-      const args = stringifyInput(view.input)
+      const args = view.inputText ?? stringifyInput(view.input)
       const result = raw.state === 'output-error' ? view.errorText : stringifyOutput(view.output)
       return {
         id,
@@ -488,6 +490,7 @@ function buildAgentMessageView(message: AgentUIMessage, part: AgentUIMessage['pa
       streaming: raw.state === 'input-streaming',
       toolName,
       input: raw.input,
+      inputText: agentToolInputText(part),
       output: raw.output,
       errorText: readString(raw.errorText),
     }

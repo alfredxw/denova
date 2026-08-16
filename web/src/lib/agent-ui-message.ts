@@ -24,6 +24,7 @@ interface AgentToolMessageInput {
   name: string
   state: AgentToolState
   input?: unknown
+  inputText?: string
   output?: unknown
   errorText?: string
   metadata?: AgentMessageMetadata
@@ -55,7 +56,7 @@ export function createAgentReasoningMessage({ id, text, state = 'done', metadata
   } as AgentUIMessage
 }
 
-export function createAgentToolMessage({ id, name, state, input, output, errorText, metadata }: AgentToolMessageInput): AgentUIMessage {
+export function createAgentToolMessage({ id, name, state, input, inputText, output, errorText, metadata }: AgentToolMessageInput): AgentUIMessage {
   const messageID = id || localAgentMessageID('tool')
   const part: Record<string, unknown> = {
     type: 'dynamic-tool',
@@ -64,6 +65,7 @@ export function createAgentToolMessage({ id, name, state, input, output, errorTe
     state,
     input,
   }
+  if (inputText !== undefined) part.inputText = inputText
   if (output !== undefined && state !== 'output-error') part.output = output
   if (errorText !== undefined || state === 'output-error') part.errorText = errorText || String(output || '')
   return { id: messageID, role: 'assistant', metadata, parts: [part] } as AgentUIMessage
@@ -101,6 +103,19 @@ export function parseAgentToolInput(value: string) {
     return JSON.parse(value)
   } catch {
     return value
+  }
+}
+
+/** Returns the exact streamed input when available, with completed history as a derived fallback. */
+export function agentToolInputText(part: AgentUIMessage['parts'][number]) {
+  const raw = part as Record<string, unknown>
+  if (typeof raw.inputText === 'string') return raw.inputText
+  if (raw.input === undefined) return ''
+  if (typeof raw.input === 'string') return raw.input
+  try {
+    return JSON.stringify(raw.input)
+  } catch {
+    return String(raw.input)
   }
 }
 

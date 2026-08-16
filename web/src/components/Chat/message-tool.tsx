@@ -41,19 +41,13 @@ export function ToolExecutionBlock({ message, onResolve, onLayoutChange }: { mes
   useLayoutEffect(() => {
     if (approvalPending) setExpanded(true)
   }, [approvalPending, approvalInteraction?.id])
-  const isContentToolRunning = !approvalInteraction && !isChapterBodyHidden && status === 'running' && isContentTool(name)
-  const streamPreview = isContentToolRunning ? extractStreamingContent(rawArgs) : ''
-  const isStreamingContent = Boolean(streamPreview)
-  // Before a content value starts, keep the normal card affordances visible;
-  // switch to the live preview as soon as even a short replacement arrives.
-  const isContentToolLoading = isContentToolRunning && !isStreamingContent
-  const contentToolChars = isContentToolLoading && typeof message.sse_generated_chars === 'number' ? message.sse_generated_chars : undefined
+  const isInputStreaming = !approvalInteraction && !isChapterBodyHidden && message.streaming === true && rawArgs.length > 0
   const commandDescription = presentationKind === 'search' || presentationKind === 'terminal'
     ? readToolArgDescription(args)
     : ''
   const summary = taskSubAgent
     ? t('chat.subagent.delegating', { name: taskSubAgent })
-    : commandDescription || fileTargetSummary || buildToolArgSummary(args) || (isStreamingContent ? t('chat.tool.writing') : t('chat.tool.preparing'))
+    : commandDescription || fileTargetSummary || buildToolArgSummary(args) || t('chat.tool.preparing')
   const resultBody = stripToolResultMetadata(result)
   const resultEnvelope = decodeToolResultEnvelope(resultBody)
   const resultSeverity = status === 'error' ? 'error' : resultEnvelope?.severity || 'success'
@@ -75,16 +69,14 @@ export function ToolExecutionBlock({ message, onResolve, onLayoutChange }: { mes
       ? (commandDescription || fileResultSummary || resultPreview || t('chat.tool.done'))
       : status === 'error'
         ? buildPreview(resultBody, 160) || t('chat.tool.failed')
-      : isContentToolLoading
-        ? (fileTargetSummary || (contentToolChars !== undefined ? t('chat.tool.fileWritingWithCount', { count: contentToolChars }) : t('chat.tool.fileWriting')))
         : summary)
   const headerSummary = approvalPending ? t('agentApproval.approval.waiting') : displaySummary
   const hasDetail = Boolean(approvalInteraction || detailArgs || result || isChapterBodyHidden)
-  const canToggleDetail = hasDetail && !isStreamingContent
-  const streamPreviewScrollLock = useBottomScrollLock<HTMLDivElement>({
-    enabled: isStreamingContent,
-    resetKey: `${message.id || name}:tool-stream-preview`,
-    contentKey: `${status}:${rawArgs.length}:${streamPreview.length}`,
+  const canToggleDetail = hasDetail && !isInputStreaming
+  const inputStreamScrollLock = useBottomScrollLock<HTMLDivElement>({
+    enabled: isInputStreaming,
+    resetKey: `${message.id || name}:tool-input-stream`,
+    contentKey: `${status}:${rawArgs.length}`,
   })
 
   return (
@@ -134,20 +126,19 @@ export function ToolExecutionBlock({ message, onResolve, onLayoutChange }: { mes
             </span>
           )}
         </CollapsibleTrigger>
-        {/* Show the live content preview while arguments stream in. */}
-        {isStreamingContent && streamPreview && (
+        {isInputStreaming && (
           <div
-            ref={streamPreviewScrollLock.ref}
-            onScroll={streamPreviewScrollLock.onScroll}
-            onWheel={streamPreviewScrollLock.onWheel}
-            onKeyDown={streamPreviewScrollLock.onKeyDown}
-            data-nova-scroll-lock="tool-stream-preview"
+            ref={inputStreamScrollLock.ref}
+            onScroll={inputStreamScrollLock.onScroll}
+            onWheel={inputStreamScrollLock.onWheel}
+            onKeyDown={inputStreamScrollLock.onKeyDown}
+            data-nova-scroll-lock="tool-input-stream"
             className="min-w-0 max-w-full max-h-32 overflow-x-hidden overflow-y-auto border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2.5 font-mono text-[11px] leading-relaxed text-[var(--nova-accent-green)] whitespace-pre-wrap [overflow-anchor:none] [overflow-wrap:anywhere]"
           >
-            {streamPreview}
+            {rawArgs}
           </div>
         )}
-        {!isStreamingContent && (
+        {!isInputStreaming && (
           <ToolContent className={`grid min-w-0 max-w-full gap-2 overflow-x-hidden overflow-y-auto border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2.5 font-mono text-[11px] leading-relaxed text-[var(--nova-text-muted)] ${approvalInteraction ? 'max-h-80' : 'max-h-48'}`}>
             {approvalInteraction && <ToolApprovalPanel message={message} onResolve={onResolve} embedded onLayoutChange={onLayoutChange} />}
             {isChapterBodyHidden && (
@@ -396,139 +387,4 @@ export function buildMarkdownPreview(content: string, maxLength: number) {
   const chars = Array.from(trimmed)
   if (chars.length <= maxLength) return trimmed
   return `${chars.slice(0, maxLength).join('').trimEnd()}\n\n...`
-}
-
-/** Identifies tools whose large content arguments benefit from a live preview. */
-function isContentTool(name: string): boolean {
-  return ['write', 'edit'].includes(name)
-}
-
-/** Extract generated text from complete or incrementally streamed tool arguments. */
-function extractStreamingContent(rawArgs: string): string {
-  try {
-    const parsed = JSON.parse(rawArgs) as Record<string, unknown>
-    if (typeof parsed.content === 'string') return parsed.content
-    if (Array.isArray(parsed.edits)) {
-      const replacements = parsed.edits.flatMap((entry) => {
-        if (!entry || typeof entry !== 'object') return []
-        const value = (entry as Record<string, unknown>).new_string
-        return typeof value === 'string' ? [value] : []
-      })
-      if (replacements.some((value) => value.length > 0)) return replacements.join('\n\n')
-    }
-    if (typeof parsed.new_string === 'string') return parsed.new_string
-  } catch {
-    // The accumulated stream can be incomplete; scan its valid string tokens.
-  }
-
-  const content = extractStreamingJSONStringValues(rawArgs, 'content')
-  if (content.length > 0) return content[0]
-  const replacements = extractStreamingJSONStringValues(rawArgs, 'new_string')
-  return replacements.some((value) => value.length > 0) ? replacements.join('\n\n') : ''
-}
-
-type StreamingJSONStringToken = {
-  value: string
-  end: number
-  complete: boolean
-}
-
-function extractStreamingJSONStringValues(rawArgs: string, targetKey: string): string[] {
-  const values: string[] = []
-  let offset = 0
-  while (offset < rawArgs.length) {
-    if (rawArgs[offset] !== '"') {
-      offset += 1
-      continue
-    }
-    const key = readStreamingJSONString(rawArgs, offset)
-    if (!key.complete) break
-    offset = key.end
-    let cursor = skipJSONWhitespace(rawArgs, offset)
-    if (key.value !== targetKey || rawArgs[cursor] !== ':') continue
-    cursor = skipJSONWhitespace(rawArgs, cursor + 1)
-    if (rawArgs[cursor] !== '"') {
-      offset = cursor
-      continue
-    }
-    const value = readStreamingJSONString(rawArgs, cursor)
-    values.push(value.value)
-    offset = value.end
-    if (!value.complete) break
-  }
-  return values
-}
-
-function readStreamingJSONString(source: string, start: number): StreamingJSONStringToken {
-  let escaped = false
-  for (let index = start + 1; index < source.length; index += 1) {
-    const char = source[index]
-    if (escaped) {
-      escaped = false
-      continue
-    }
-    if (char === '\\') {
-      escaped = true
-      continue
-    }
-    if (char === '"') {
-      return {
-        value: decodeStreamingJSONString(source.slice(start + 1, index)),
-        end: index + 1,
-        complete: true,
-      }
-    }
-  }
-  return {
-    value: decodeStreamingJSONString(source.slice(start + 1)),
-    end: source.length,
-    complete: false,
-  }
-}
-
-function decodeStreamingJSONString(rawValue: string): string {
-  try {
-    return JSON.parse(`"${rawValue}"`) as string
-  } catch {
-    let decoded = ''
-    for (let index = 0; index < rawValue.length; index += 1) {
-      const char = rawValue[index]
-      if (char !== '\\') {
-        decoded += char
-        continue
-      }
-      const escaped = rawValue[index + 1]
-      if (escaped === undefined) break
-      index += 1
-      const simpleEscape = ({
-        '"': '"',
-        '\\': '\\',
-        '/': '/',
-        b: '\b',
-        f: '\f',
-        n: '\n',
-        r: '\r',
-        t: '\t',
-      } as Record<string, string>)[escaped]
-      if (simpleEscape !== undefined) {
-        decoded += simpleEscape
-        continue
-      }
-      if (escaped === 'u') {
-        const hex = rawValue.slice(index + 1, index + 5)
-        if (!/^[0-9a-fA-F]{4}$/.test(hex)) break
-        decoded += String.fromCharCode(Number.parseInt(hex, 16))
-        index += 4
-        continue
-      }
-      decoded += escaped
-    }
-    return decoded
-  }
-}
-
-function skipJSONWhitespace(source: string, start: number): number {
-  let offset = start
-  while (offset < source.length && /\s/.test(source[offset])) offset += 1
-  return offset
 }

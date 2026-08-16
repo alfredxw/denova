@@ -1,5 +1,5 @@
 import type { AgentMessageMetadata, AgentUIMessage } from '@/lib/agent-ui'
-import { agentMessageDisplayText, createAgentReasoningMessage, createAgentTextMessage } from '@/lib/agent-ui-message'
+import { agentMessageDisplayText, agentToolInputText, createAgentReasoningMessage, createAgentTextMessage, parseAgentToolInput } from '@/lib/agent-ui-message'
 import { readToolPresentation } from '@/lib/tool-presentation'
 
 export type BufferedLiveMessage = {
@@ -143,8 +143,8 @@ function findToolMessageIndex(messages: AgentUIMessage[], id?: string, name?: st
   return -1
 }
 
-export function updateToolMessageInput(message: AgentUIMessage, input: unknown): AgentUIMessage {
-  return updateToolPart(message, (part) => ({ ...part, input }))
+export function updateToolMessageInputText(message: AgentUIMessage, inputText: string): AgentUIMessage {
+  return updateToolPart(message, (part) => ({ ...part, inputText, input: parseAgentToolInput(inputText) }))
 }
 
 export function completeToolMessage(message: AgentUIMessage, result: string): AgentUIMessage {
@@ -152,14 +152,8 @@ export function completeToolMessage(message: AgentUIMessage, result: string): Ag
 }
 
 export function toolMessageInputText(message: AgentUIMessage) {
-  const input = toolPart(message)?.input
-  if (typeof input === 'string') return input
-  if (input === undefined) return ''
-  try {
-    return JSON.stringify(input)
-  } catch {
-    return String(input)
-  }
+  const part = toolPart(message)
+  return part ? agentToolInputText(part as AgentUIMessage['parts'][number]) : ''
 }
 
 function updateToolPart(message: AgentUIMessage, update: (part: Record<string, unknown>) => Record<string, unknown>): AgentUIMessage {

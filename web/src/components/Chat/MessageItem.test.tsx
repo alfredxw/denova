@@ -603,63 +603,35 @@ describe('MessageItem', () => {
     expect(screen.getByText('# Skill: alpha ALPHA_BODY')).toBeInTheDocument()
   })
 
-  it('edit 批量精确替换时按顺序流式展示全部 new_string', () => {
-    const args = JSON.stringify({
-      path: 'chapters/ch01.md',
-      edits: [
-        { old_string: '旧开场', new_string: '新的开场正文。'.repeat(8) },
-        { old_string: '旧结尾', new_string: '新的结尾正文。'.repeat(8) },
-      ],
-    })
+  it('所有工具都按原始参数流展示，不依赖工具名或字段', () => {
+    const args = '{"nested":[{"anything":"仍在生成'
     const { container } = render(
       <MessageItem
         message={{
-          id: 'tool-batch-edit',
+          id: 'tool-generic-stream',
           role: 'tool_call',
-          content: 'edit',
-          name: 'edit',
+          content: 'custom_transform',
+          name: 'custom_transform',
           args,
           status: 'running',
+          streaming: true,
         }}
       />,
     )
 
-    const preview = container.querySelector('[data-nova-scroll-lock="tool-stream-preview"]')
+    const preview = container.querySelector('[data-nova-scroll-lock="tool-input-stream"]')
     expect(preview).toBeInTheDocument()
-    expect(preview).toHaveTextContent('新的开场正文')
-    expect(preview).toHaveTextContent('新的结尾正文')
+    expect(preview?.textContent).toBe(args)
   })
 
-  it('edit 参数尚未闭合时安全提取多项 new_string，不误读 old_string 内文本', () => {
-    const args = '{"path":"chapters/ch01.md","edits":['
-      + '{"old_string":"\\\"new_string\\\":\\\"trap\\\"","new_string":"第一段正文。"},'
-      + '{"old_string":"旧结尾","new_string":"第二段尚未结束'
-    const { container } = render(
-      <MessageItem
-        message={{
-          id: 'tool-partial-batch-edit',
-          role: 'tool_call',
-          content: 'edit',
-          name: 'edit',
-          args,
-          status: 'running',
-        }}
-      />,
-    )
-
-    const preview = container.querySelector('[data-nova-scroll-lock="tool-stream-preview"]')
-    expect(preview).toHaveTextContent('第一段正文。')
-    expect(preview).toHaveTextContent('第二段尚未结束')
-    expect(preview).not.toHaveTextContent('trap')
-  })
-
-  it('edit 在 new_string 开始前保留卡片详情，开始后立即切换为流式预览', () => {
+  it('edit 从首个参数增量开始展示，不等待 new_string', () => {
     const baseMessage = {
       id: 'tool-incremental-edit',
       role: 'tool_call' as const,
       content: 'edit',
       name: 'edit',
       status: 'running' as const,
+      streaming: true,
     }
     const { container, rerender } = render(
       <MessageItem
@@ -673,8 +645,7 @@ describe('MessageItem', () => {
     const initialHeader = container.querySelector('[data-nova-tool-header]')
     expect(initialHeader).toHaveAttribute('aria-expanded', 'false')
     expect(initialHeader).toHaveTextContent('编辑')
-    expect(screen.queryByText('详情')).not.toBeInTheDocument()
-    expect(container.querySelector('[data-nova-scroll-lock="tool-stream-preview"]')).not.toBeInTheDocument()
+    expect(container.querySelector('[data-nova-scroll-lock="tool-input-stream"]')).toHaveTextContent('旧正文')
 
     rerender(
       <MessageItem
@@ -685,7 +656,7 @@ describe('MessageItem', () => {
       />,
     )
 
-    expect(container.querySelector('[data-nova-scroll-lock="tool-stream-preview"]')).toHaveTextContent('新正文正在生成')
+    expect(container.querySelector('[data-nova-scroll-lock="tool-input-stream"]')).toHaveTextContent('新正文正在生成')
   })
 
   it('文件工具摘要只显示文件名，完整路径保留在展开详情中', async () => {
@@ -1069,12 +1040,13 @@ describe('MessageItem', () => {
           name: 'write',
           args: initialArgs,
           status: 'running',
+          streaming: true,
         }}
       />,
     )
-    const preview = container.querySelector('[data-nova-scroll-lock="tool-stream-preview"]') as HTMLDivElement
+    const preview = container.querySelector('[data-nova-scroll-lock="tool-input-stream"]') as HTMLDivElement
     expect(preview).toBeInTheDocument()
-    expect(preview.textContent).toBe(initialContent)
+    expect(preview.textContent).toBe(initialArgs)
     const scrollMetrics = mockScrollMetrics(preview)
     preview.scrollTop = scrollMetrics.maxScrollTop()
     fireEvent.scroll(preview)
@@ -1090,12 +1062,13 @@ describe('MessageItem', () => {
           name: 'write',
           args: nextArgs,
           status: 'running',
+          streaming: true,
         }}
       />,
     )
 
     await waitFor(() => expect(preview.scrollTop).toBe(scrollMetrics.maxScrollTop()))
-    expect(preview.textContent).toBe(nextContent)
+    expect(preview.textContent).toBe(nextArgs)
   })
 
   it('todo 工具卡片以成功结果为真源，并显示进度', () => {

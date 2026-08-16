@@ -14,7 +14,7 @@ import {
   promoteMessageTargets,
   streamMetadataFromPayload,
   toolMessageInputText,
-  updateToolMessageInput,
+  updateToolMessageInputText,
   type BufferedLiveMessage,
 } from './live-stream-messages'
 import { publicRuleRollFromToolOutput } from './rule-roll'
@@ -96,6 +96,7 @@ export function useLiveMessageAccumulator({ publicRuleRollVisible, setMessages }
     const mappedId = findMappedLiveToolId(toolKeys, toolKeyToMessageIdRef.current)
     const id = payload.id || mappedId || `tool-${Date.now()}-${Math.random().toString(16).slice(2)}`
     const name = payload.name || 'unknown_tool'
+    const inputText = payload.args ?? ''
     if (toolKeys.length > 0) {
       toolKeyToMessageIdRef.current = bindLiveToolEventKeys(toolKeys, toolKeyToMessageIdRef.current, id)
     }
@@ -106,7 +107,8 @@ export function useLiveMessageAccumulator({ publicRuleRollVisible, setMessages }
         id,
         name,
         state: 'input-streaming',
-        input: parseAgentToolInput(payload.args || ''),
+        input: parseAgentToolInput(inputText),
+        inputText,
         metadata: streamMetadataFromPayload(payload),
       }),
     ])
@@ -124,7 +126,7 @@ export function useLiveMessageAccumulator({ publicRuleRollVisible, setMessages }
       return current.map((message, index) => {
         if (index !== targetIndex) return message
         const args = payload.args !== undefined ? payload.args : `${toolMessageInputText(message)}${payload.delta || ''}`
-        return updateToolMessageInput(message, parseAgentToolInput(args))
+        return updateToolMessageInputText(message, args)
       })
     })
   }, [updateBatcher])

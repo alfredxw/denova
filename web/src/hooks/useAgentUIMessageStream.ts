@@ -57,13 +57,21 @@ export function useAgentUIMessageStream(options: AgentUIMessageStreamOptions = {
   const consumeAgentUIStream = useCallback(async (stream: ReadableStream<UIMessageChunk>, consumeOptions: ConsumeAgentUIStreamOptions = {}) => {
     setIsStreaming(true)
     setActivityContent('')
+    const inputTextByToolCall = new Map<string, string>()
+    const observedStream = stream.pipeThrough(new TransformStream<UIMessageChunk, UIMessageChunk>({
+      transform(chunk, controller) {
+        observeToolInputChunk(chunk, inputTextByToolCall)
+        controller.enqueue(chunk)
+      },
+    }))
     try {
       for await (const message of readUIMessageStream<AgentUIMessage>({
-        stream,
+        stream: observedStream,
         terminateOnError: true,
       })) {
         if (consumeOptions.shouldContinue && !consumeOptions.shouldContinue()) break
-        const normalized = normalizeAgentUIMessages([message])[0] || message
+        const messageWithInputText = attachToolInputText(message, inputTextByToolCall)
+        const normalized = normalizeAgentUIMessages([messageWithInputText])[0] || messageWithInputText
         messageBatcher.enqueue(current => messageNormalizerRef.current!.normalize(upsertAgentUIMessage(current, normalized)))
         if (onView) {
           for (const view of buildAgentMessageViews([normalized])) onView(view)
@@ -91,4 +99,27 @@ function upsertAgentUIMessage(messages: AgentUIMessage[], next: AgentUIMessage) 
   const index = messages.findIndex(message => message.id === next.id)
   if (index < 0) return [...messages, next]
   return messages.map((message, messageIndex) => messageIndex === index ? next : message)
+}
+
+function observeToolInputChunk(chunk: UIMessageChunk, inputTextByToolCall: Map<string, string>) {
+  if (chunk.type === 'tool-input-start') {
+    inputTextByToolCall.set(chunk.toolCallId, '')
+  } else if (chunk.type === 'tool-input-delta') {
+    const inputText = inputTextByToolCall.get(chunk.toolCallId) ?? ''
+    inputTextByToolCall.set(chunk.toolCallId, inputText + chunk.inputTextDelta)
+  }
+}
+
+function attachToolInputText(message: AgentUIMessage, inputTextByToolCall: ReadonlyMap<string, string>): AgentUIMessage {
+  let changed = false
+  const parts = message.parts.map((part) => {
+    const raw = part as Record<string, unknown>
+    const toolCallId = typeof raw.toolCallId === 'string' ? raw.toolCallId : ''
+    if (!toolCallId || !inputTextByToolCall.has(toolCallId)) return part
+    const inputText = inputTextByToolCall.get(toolCallId) ?? ''
+    if (raw.inputText === inputText) return part
+    changed = true
+    return { ...raw, inputText } as unknown as AgentUIMessage['parts'][number]
+  })
+  return changed ? { ...message, parts } : message
 }
