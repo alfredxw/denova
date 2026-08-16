@@ -5,7 +5,6 @@ import (
 	"errors"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
@@ -65,37 +64,6 @@ func (h *Handlers) HandleContinualLearningVersionDiff(ctx context.Context, c *ap
 
 func (h *Handlers) HandleContinualLearningVersionRestore(ctx context.Context, c *app.RequestContext) {
 	result, err := h.app.ContinualLearning().Restore(ctx, continuallearningapp.StateVersionID(strings.TrimSpace(c.Param("id"))))
-	if err != nil {
-		writeContinualLearningError(c, err)
-		return
-	}
-	writeJSON(c, consts.StatusOK, result)
-}
-
-func (h *Handlers) HandleContinualLearningTrajectories(ctx context.Context, c *app.RequestContext) {
-	limit, ok := optionalPositiveLimit(c, 100)
-	if !ok {
-		return
-	}
-	since := time.Now().UTC().Add(-24 * time.Hour)
-	if raw := strings.TrimSpace(c.Query("since")); raw != "" {
-		parsed, err := time.Parse(time.RFC3339, raw)
-		if err != nil {
-			writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidQuery")
-			return
-		}
-		since = parsed.UTC()
-	}
-	result, err := h.app.ContinualLearning().Trajectories(ctx, since, limit)
-	if err != nil {
-		writeContinualLearningError(c, err)
-		return
-	}
-	writeJSON(c, consts.StatusOK, result)
-}
-
-func (h *Handlers) HandleContinualLearningTrajectory(ctx context.Context, c *app.RequestContext) {
-	result, err := h.app.ContinualLearning().Trajectory(ctx, strings.TrimSpace(c.Query("uri")))
 	if err != nil {
 		writeContinualLearningError(c, err)
 		return

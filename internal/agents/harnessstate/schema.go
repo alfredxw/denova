@@ -261,7 +261,7 @@ func Load(ctx context.Context, cfg *config.Config) (Harness, error) {
 	if cfg == nil {
 		return Harness{}, fmt.Errorf("load Harness State: config is nil")
 	}
-	if !cfg.Labs.ContinualLearning {
+	if !cfg.Labs.DeveloperMode {
 		return emptyHarness(), nil
 	}
 	if strings.TrimSpace(cfg.DenovaDir) == "" && strings.TrimSpace(cfg.NovaDir) == "" {

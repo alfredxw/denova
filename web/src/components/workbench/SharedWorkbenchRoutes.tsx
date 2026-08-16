@@ -57,7 +57,7 @@ export function SharedWorkbenchRoutes({
       )}
       {isMounted('trajectory') && (
         <WorkbenchRouteLayer visible={route === 'trajectory'} loadingLabel={loadingLabel}>
-          <TrajectoryPage target={resourceTarget} onClose={onReturnToContentMode} />
+          <TrajectoryPage onClose={onReturnToContentMode} />
         </WorkbenchRouteLayer>
       )}
       {isMounted('settings') && (

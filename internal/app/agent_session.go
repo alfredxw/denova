@@ -2,8 +2,10 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strings"
 
 	agent "github.com/alfredxw/denova/agent"
@@ -11,6 +13,7 @@ import (
 	agentconversation "denova/internal/agents/conversation"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
+	"denova/internal/agents/trajectory"
 )
 
 type AgentAskAnswer = agentconversation.HostAskAnswer
@@ -19,6 +22,31 @@ type AgentAskAnswerResult = agentconversation.HostAskAnswerResult
 type AgentAskResolution = agentconversation.HostAskResolution
 
 var ErrAgentAskNotFound = agent.ErrInteractionStale
+
+const defaultGlobalAgentRunTraceLimit = 100
+
+var ErrDeveloperModeDisabled = errors.New("Developer Mode is disabled")
+
+// GlobalAgentRunTraceSummary identifies a Run without relying on the foreground
+// Project. TrajectoryURI is generated at the application boundary so clients do
+// not duplicate the model-visible resource addressing contract.
+type GlobalAgentRunTraceSummary struct {
+	agentrun.RunTraceSummary
+	ProjectID     string `json:"project_id"`
+	ProjectName   string `json:"project_name"`
+	TrajectoryURI string `json:"trajectory_uri"`
+}
+
+type GlobalAgentRunTraceIssue struct {
+	ProjectID   string `json:"project_id"`
+	ProjectName string `json:"project_name"`
+	Message     string `json:"message"`
+}
+
+type GlobalAgentRunTraceCatalog struct {
+	Runs   []GlobalAgentRunTraceSummary `json:"runs"`
+	Issues []GlobalAgentRunTraceIssue   `json:"issues"`
+}
 
 func (a *App) persistAgentCall(agentKind, instruction, response string) {
 	a.mu.RLock()
@@ -139,6 +167,105 @@ func (a *App) AgentRunTraces(limit int) ([]agentrun.RunTraceSummary, error) {
 	return agentrun.ListRunTraces(location, limit)
 }
 
+// GlobalAgentRunTraces merges recent Runs from every registered Project. A
+// broken Project is reported independently and never hides healthy Runs.
+func (a *App) GlobalAgentRunTraces(ctx context.Context, limit int) (GlobalAgentRunTraceCatalog, error) {
+	if !a.DeveloperModeEnabled() {
+		return GlobalAgentRunTraceCatalog{}, ErrDeveloperModeDisabled
+	}
+	if limit <= 0 || limit > defaultGlobalAgentRunTraceLimit {
+		limit = defaultGlobalAgentRunTraceLimit
+	}
+	sources, issues, err := a.globalTrajectorySources(ctx)
+	if err != nil {
+		return GlobalAgentRunTraceCatalog{}, err
+	}
+	result := GlobalAgentRunTraceCatalog{
+		Runs:   make([]GlobalAgentRunTraceSummary, 0),
+		Issues: append([]GlobalAgentRunTraceIssue(nil), issues...),
+	}
+	for _, source := range sources {
+		if err := ctx.Err(); err != nil {
+			return GlobalAgentRunTraceCatalog{}, err
+		}
+		runs, listErr := agentrun.ListRunTraces(agentrun.TraceLocation{Workspace: source.Workspace, StateRoot: source.StateRoot}, limit)
+		if listErr != nil {
+			slog.WarnContext(ctx, "[trajectory] Project Run catalog read failed", "project_id", source.ProjectID, "error", listErr)
+			result.Issues = append(result.Issues, GlobalAgentRunTraceIssue{
+				ProjectID: source.ProjectID, ProjectName: source.Name, Message: "Run trajectories are unavailable for this Project",
+			})
+			continue
+		}
+		for _, run := range runs {
+			run.Path = ""
+			result.Runs = append(result.Runs, GlobalAgentRunTraceSummary{
+				RunTraceSummary: run,
+				ProjectID:       source.ProjectID,
+				ProjectName:     source.Name,
+				TrajectoryURI:   trajectory.RunURI(source.ProjectID, run.ID),
+			})
+		}
+	}
+	sort.SliceStable(result.Runs, func(i, j int) bool {
+		left, right := result.Runs[i], result.Runs[j]
+		if !left.CreatedAt.Equal(right.CreatedAt) {
+			return left.CreatedAt.After(right.CreatedAt)
+		}
+		if left.ProjectID != right.ProjectID {
+			return left.ProjectID < right.ProjectID
+		}
+		return left.ID < right.ID
+	})
+	if len(result.Runs) > limit {
+		result.Runs = result.Runs[:limit]
+	}
+	return result, nil
+}
+
+func (a *App) DeveloperModeEnabled() bool {
+	if a == nil {
+		return false
+	}
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.cfg != nil && a.cfg.Labs.DeveloperMode
+}
+
+func (a *App) globalTrajectorySources(ctx context.Context) ([]trajectory.Source, []GlobalAgentRunTraceIssue, error) {
+	if a == nil || a.projectRegistry == nil {
+		return nil, nil, fmt.Errorf("Project registry is unavailable")
+	}
+	records, err := a.projectRegistry.List(true)
+	if err != nil {
+		return nil, nil, err
+	}
+	sources := make([]trajectory.Source, 0, len(records))
+	issues := make([]GlobalAgentRunTraceIssue, 0)
+	for _, record := range records {
+		if err := ctx.Err(); err != nil {
+			return nil, nil, err
+		}
+		name := strings.TrimSpace(record.Name)
+		if name == "" {
+			name = record.ID
+		}
+		// Trajectory discovery must not open, migrate, or switch a dormant
+		// Project. Its durable StateRoot is sufficient even when content is
+		// archived or temporarily unavailable.
+		layout, layoutErr := a.projectRegistry.Layout(record)
+		if layoutErr != nil {
+			issues = append(issues, GlobalAgentRunTraceIssue{
+				ProjectID: record.ID, ProjectName: name, Message: "Project trajectory state is unavailable",
+			})
+			continue
+		}
+		sources = append(sources, trajectory.Source{
+			ProjectID: record.ID, Name: name, Workspace: layout.ContentRoot, StateRoot: layout.StateRoot,
+		})
+	}
+	return sources, issues, nil
+}
+
 func (a *App) AgentRunTrace(id string) (agentrun.RunTrace, error) {
 	location, ok := a.agentRunTraceLocation()
 	if !ok {
@@ -182,7 +309,14 @@ func (a *App) ExportProjectAgentRunTrace(projectID, id string) (agentrun.RunTrac
 }
 
 func (a *App) projectAgentRunTraceLocation(projectID string) (agentrun.TraceLocation, error) {
-	_, layout, err := a.resolveProject(strings.TrimSpace(projectID), true)
+	if a == nil || a.projectRegistry == nil {
+		return agentrun.TraceLocation{}, fmt.Errorf("Project registry is unavailable")
+	}
+	record, err := a.projectRegistry.Get(strings.TrimSpace(projectID))
+	if err != nil {
+		return agentrun.TraceLocation{}, err
+	}
+	layout, err := a.projectRegistry.Layout(record)
 	if err != nil {
 		return agentrun.TraceLocation{}, err
 	}

@@ -18,7 +18,7 @@ func (service *Service) AgentHostCapabilities(
 	agentKind string,
 ) (agents.AgentHostCapabilities, error) {
 	host := agents.AgentHostCapabilities{Interactive: true}
-	if cfg == nil || !cfg.Labs.ContinualLearning || !config.ResolveAgentTools(cfg, agentKind).Allows(config.AgentToolHarnessState) {
+	if cfg == nil || !cfg.Labs.DeveloperMode || !config.ResolveAgentTools(cfg, agentKind).Allows(config.AgentToolHarnessState) {
 		return host, nil
 	}
 	if _, err := service.requireEnabled(); err != nil {

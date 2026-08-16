@@ -74,40 +74,6 @@ export interface ContinualLearningScheduleStatus {
   last_task_id?: string
 }
 
-export interface HarnessTrajectorySummary {
-  uri: string
-  kind: 'session' | 'run'
-  project_id: string
-  project_name: string
-  id: string
-  title?: string
-  agent_kind?: string
-  status?: string
-  created_at: string
-  updated_at: string
-  message_count?: number
-  event_count?: number
-  tool_calls?: number
-  duration_ms?: number
-}
-
-export interface HarnessTrajectoryIssue {
-  project_id: string
-  message: string
-}
-
-export interface HarnessTrajectoryList {
-  since: string
-  items: HarnessTrajectorySummary[]
-  issues?: HarnessTrajectoryIssue[]
-}
-
-export interface HarnessTrajectoryContent {
-  uri: string
-  kind: string
-  content: string
-}
-
 export function getHarnessState(): Promise<HarnessStateSnapshot> {
   return requestJSON(`${ROOT}/state`)
 }
@@ -139,16 +105,6 @@ export function restoreHarnessStateVersion(id: string): Promise<HarnessStateUpda
 
 export function getContinualLearningSchedule(): Promise<ContinualLearningScheduleStatus> {
   return requestJSON(`${ROOT}/schedule`)
-}
-
-export function getHarnessTrajectories(since: string, limit = 100): Promise<HarnessTrajectoryList> {
-  const params = new URLSearchParams({ since, limit: String(limit) })
-  return requestJSON(`${ROOT}/trajectories?${params.toString()}`)
-}
-
-export function getHarnessTrajectory(uri: string): Promise<HarnessTrajectoryContent> {
-  const params = new URLSearchParams({ uri })
-  return requestJSON(`${ROOT}/trajectories/content?${params.toString()}`)
 }
 
 export async function runHarnessOptimizer(commandId: string, instruction = '', evidence?: string[]): Promise<ReadableStream<UIMessageChunk>> {

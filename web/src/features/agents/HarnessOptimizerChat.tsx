@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { RotateCcw, Sparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { UIMessageChunk } from 'ai'
@@ -27,11 +27,11 @@ const CHAT_KEY = 'harness-optimizer:user'
 
 export function HarnessOptimizerChat({
   evidence,
-  evidenceReady,
+  evidenceControl,
   onSettled,
 }: {
-  evidence: string[]
-  evidenceReady: boolean
+  evidence?: string[]
+  evidenceControl?: ReactNode
   onSettled: () => void
 }) {
   const { t } = useTranslation()
@@ -192,7 +192,6 @@ export function HarnessOptimizerChat({
       }
       return
     }
-    if (!evidenceReady) return
     if (showUserMessage && !instruction) return
     if (showUserMessage) {
       setMessages((current) => [...current, createAgentTextMessage({ role: 'user', text: instruction })])
@@ -225,7 +224,7 @@ export function HarnessOptimizerChat({
         void inspect()
       }
     }
-  }, [active?.active, appendError, applyProjection, connecting, consume, evidence, evidenceReady, inspect, isStreaming, setMessages, t])
+  }, [active?.active, appendError, applyProjection, connecting, consume, evidence, inspect, isStreaming, setMessages, t])
 
   const resolveAsk = useCallback(async (view: AgentMessageView, action: { status: 'answered'; answers: AgentAskAnswer[] } | { status: 'cancelled' }) => {
     const askID = agentViewAskID(view)
@@ -239,19 +238,22 @@ export function HarnessOptimizerChat({
   const busy = isStreaming || connecting || active?.active === true
   return (
     <div className="relative flex h-full min-h-0 flex-col overflow-hidden">
-      <div className="flex min-h-12 items-center justify-between gap-3 border-b border-[var(--nova-border)] px-3 py-2">
+      <div className="flex min-h-12 flex-wrap items-center justify-between gap-2 border-b border-[var(--nova-border)] px-3 py-2">
         <div className="min-w-0">
           <div className="truncate text-xs font-medium text-[var(--nova-text)]">{t('continualLearning.optimizer.title')}</div>
           <div className="truncate text-[10px] text-[var(--nova-text-faint)]">
-            {evidenceReady
+            {evidence?.length
               ? t('continualLearning.optimizer.evidenceCount', { count: evidence.length })
-              : t('continualLearning.optimizer.evidenceLoading')}
+              : t('continualLearning.optimizer.evidenceAuto')}
           </div>
         </div>
-        <Button type="button" size="xs" variant="outline" disabled={busy || !evidenceReady} onClick={() => void start('', false)}>
-          {busy ? <RotateCcw className="animate-spin" /> : <Sparkles />}
-          {t('continualLearning.optimizeNow')}
-        </Button>
+        <div className="ml-auto flex min-w-0 items-center gap-1.5">
+          {evidenceControl}
+          <Button type="button" size="xs" variant="outline" disabled={busy} onClick={() => void start('', false)}>
+            {busy ? <RotateCcw className="animate-spin" /> : <Sparkles />}
+            {t('continualLearning.optimizeNow')}
+          </Button>
+        </div>
       </div>
       {error && <div className="border-b border-[var(--nova-border)] px-3 py-2 text-xs text-red-400">{error}</div>}
       <MessageList
@@ -272,7 +274,7 @@ export function HarnessOptimizerChat({
         onSend={(value) => start(value, true)}
         disabled={false}
         generationActive={busy}
-        sendBlocked={busy || !evidenceReady}
+        sendBlocked={busy}
         draftKey={CHAT_KEY}
         commandScope="all"
         builtinCommands={['/clear']}

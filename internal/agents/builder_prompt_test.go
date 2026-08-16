@@ -35,7 +35,7 @@ func TestHarnessPromptIsLiveContextWithoutChangingAuditedInstruction(t *testing.
 	dataDir := filepath.Join(t.TempDir(), ".denova")
 	cfg := &config.Config{
 		DenovaDir: dataDir, OpenAIBaseURL: "https://example.invalid", OpenAIModel: "test-model",
-		Labs: config.ResolvedLabs{ContinualLearning: true},
+		Labs: config.ResolvedLabs{DeveloperMode: true},
 		AgentTools: config.AgentToolSettings{Default: config.AgentToolOverride{
 			config.AgentToolWorkspaceRead: false, config.AgentToolWorkspaceWrite: false,
 			config.AgentToolShell: false, config.AgentToolSkills: false,

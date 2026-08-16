@@ -85,3 +85,13 @@ func TestAgentRunTraceExportAPI(t *testing.T) {
 		t.Fatalf("response body = %q, want %q", resp.Body.Bytes(), payload)
 	}
 }
+
+func TestGlobalAgentRunTraceAPIRequiresDeveloperMode(t *testing.T) {
+	application := newTestApplication(t)
+	server := NewServer(application, "0")
+
+	response := performJSONRequest(t, server, http.MethodGet, "/api/agent-runs?limit=100", nil)
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("global Run catalog status = %d body=%s", response.Code, response.Body.String())
+	}
+}

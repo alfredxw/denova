@@ -7,8 +7,6 @@ const api = vi.hoisted(() => ({
   getHarnessState: vi.fn(),
   getHarnessStateVersions: vi.fn(),
   getContinualLearningSchedule: vi.fn(),
-  getHarnessTrajectories: vi.fn(),
-  getHarnessTrajectory: vi.fn(),
   getHarnessStateVersionDiff: vi.fn(),
   restoreHarnessStateVersion: vi.fn(),
   updateHarnessState: vi.fn(),
@@ -34,8 +32,6 @@ describe('ContinualLearningPage', () => {
     Object.values(api).forEach((mock) => mock.mockReset())
     api.getHarnessStateVersions.mockResolvedValue([])
     api.getContinualLearningSchedule.mockResolvedValue({ enabled: false, interval_hours: 24 })
-    api.getHarnessTrajectories.mockResolvedValue({ since: '2026-08-11T00:00:00Z', items: [] })
-    api.getHarnessTrajectory.mockResolvedValue({ uri: '', kind: 'trajectory_session', content: '{}' })
     api.updateHarnessState.mockResolvedValue({ changed: true })
   })
 
@@ -47,7 +43,7 @@ describe('ContinualLearningPage', () => {
       files: [{ path: 'prompts/general.md', content: 'Lead with the result.\n' }],
     })
 
-    render(<ContinualLearningPage scheduleSettings={scheduleSettings()} onEvidenceChange={vi.fn()} />)
+    render(<ContinualLearningPage scheduleSettings={scheduleSettings()} />)
 
     await user.click(screen.getByRole('tab', { name: 'State' }))
 
@@ -69,7 +65,7 @@ describe('ContinualLearningPage', () => {
     const user = userEvent.setup()
     api.getHarnessState.mockResolvedValue({ revision: 'empty-revision', files: [], source: 'builtin' })
 
-    render(<ContinualLearningPage scheduleSettings={scheduleSettings()} onEvidenceChange={vi.fn()} />)
+    render(<ContinualLearningPage scheduleSettings={scheduleSettings()} />)
 
     await user.click(screen.getByRole('tab', { name: 'State' }))
     await screen.findByText('系统内置 Harness State')
@@ -96,7 +92,7 @@ describe('ContinualLearningPage', () => {
       created_at: '2026-08-12T00:00:00Z',
     }])
 
-    render(<ContinualLearningPage scheduleSettings={scheduleSettings()} onEvidenceChange={vi.fn()} />)
+    render(<ContinualLearningPage scheduleSettings={scheduleSettings()} />)
 
     await user.click(screen.getByRole('tab', { name: 'State' }))
     const editor = await screen.findByRole('textbox', { name: '编辑 prompts/general.md' })
@@ -119,7 +115,6 @@ describe('ContinualLearningPage', () => {
     const { rerender } = render(
       <ContinualLearningPage
         scheduleSettings={scheduleSettings({ onEnabledChange, onIntervalHoursChange })}
-        onEvidenceChange={vi.fn()}
       />,
     )
 
@@ -131,7 +126,6 @@ describe('ContinualLearningPage', () => {
     rerender(
       <ContinualLearningPage
         scheduleSettings={scheduleSettings({ enabled: true, onEnabledChange, onIntervalHoursChange })}
-        onEvidenceChange={vi.fn()}
       />,
     )
     const enabledInterval = screen.getByRole('spinbutton', { name: '优化间隔（小时）' })
@@ -139,49 +133,6 @@ describe('ContinualLearningPage', () => {
     expect(onIntervalHoursChange).toHaveBeenLastCalledWith(48)
   })
 
-  it('defaults trajectory analysis to the past day and selects every result', async () => {
-    const onEvidenceChange = vi.fn()
-    api.getHarnessState.mockResolvedValue({ revision: 'empty-revision', files: [], source: 'builtin' })
-    api.getHarnessTrajectories.mockResolvedValue({
-      since: '2026-08-11T00:00:00Z',
-      items: [{
-        uri: 'trajectory://projects/project-1/sessions/session-1',
-        kind: 'session',
-        project_id: 'project-1',
-        project_name: 'First Book',
-        id: 'session-1',
-        title: 'Opening revision',
-        created_at: '2026-08-12T00:00:00Z',
-        updated_at: '2026-08-12T00:00:00Z',
-        message_count: 4,
-      }],
-    })
-    api.getHarnessTrajectory.mockResolvedValue({
-      uri: 'trajectory://projects/project-1/sessions/session-1',
-      kind: 'trajectory_session',
-      content: '{"schema":"denova.trajectory.session.v1"}',
-    })
-
-    render(<ContinualLearningPage scheduleSettings={scheduleSettings()} onEvidenceChange={onEvidenceChange} />)
-
-    expect(await screen.findByText('Opening revision')).toBeInTheDocument()
-    expect(screen.getByRole('combobox', { name: 'Trajectory 时间范围' })).toHaveTextContent('过去 24 小时')
-    await waitFor(() => expect(onEvidenceChange).toHaveBeenLastCalledWith(
-      ['trajectory://projects/project-1/sessions/session-1'],
-      true,
-    ))
-  })
-
-  it('keeps optimization blocked when the trajectory catalog cannot load', async () => {
-    const onEvidenceChange = vi.fn()
-    api.getHarnessState.mockResolvedValue({ revision: 'empty-revision', files: [], source: 'builtin' })
-    api.getHarnessTrajectories.mockRejectedValue(new Error('catalog unavailable'))
-
-    render(<ContinualLearningPage scheduleSettings={scheduleSettings()} onEvidenceChange={onEvidenceChange} />)
-
-    expect(await screen.findByText('catalog unavailable')).toBeInTheDocument()
-    expect(onEvidenceChange).toHaveBeenLastCalledWith([], false)
-  })
 })
 
 function scheduleSettings(overrides: Partial<React.ComponentProps<typeof ContinualLearningPage>['scheduleSettings']> = {}) {

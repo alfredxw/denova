@@ -1,6 +1,6 @@
 import type { UIMessageChunk } from 'ai'
 import { fetchAPI, jsonHeaders, parseUIMessageStream, readErrorMessage, requestJSON } from './client'
-import type { AgentAskAnswer, AgentAskInteraction, AgentAskResolution, AgentRunTrace, AgentRunTraceSummary, ContextAnalysis, IDEContext, SessionSummary, TextSelection } from './types'
+import type { AgentAskAnswer, AgentAskInteraction, AgentAskResolution, AgentRunTrace, AgentRunTraceSummary, ContextAnalysis, GlobalAgentRunTraceCatalog, IDEContext, SessionSummary, TextSelection } from './types'
 import type { AgentUIMessage } from '@/lib/agent-ui'
 import { isKnownAgentCommandOutcome } from '@/lib/agent-command'
 import { projectAPIPath } from './project-scope'
@@ -345,6 +345,10 @@ export async function getSessions(): Promise<SessionSummary[]> {
 export async function getAgentRunTraces(projectId: string, limit = 20): Promise<AgentRunTraceSummary[]> {
   const data = await requestJSON<{ runs: AgentRunTraceSummary[] }>(`${projectAPIPath(projectId, 'agent-runs')}?limit=${encodeURIComponent(String(limit))}`)
   return data.runs || []
+}
+
+export function getGlobalAgentRunTraces(limit = 100): Promise<GlobalAgentRunTraceCatalog> {
+  return requestJSON(`/api/agent-runs?limit=${encodeURIComponent(String(limit))}`)
 }
 
 export async function getAgentRunTrace(projectId: string, id: string): Promise<AgentRunTrace> {

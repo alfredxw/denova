@@ -2,11 +2,30 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"strconv"
+
+	appsvc "denova/internal/app"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 )
+
+// HandleGlobalAgentRunTraces returns a user-level Run catalog across every
+// registered Project without consulting or changing the foreground Book.
+func (h *Handlers) HandleGlobalAgentRunTraces(ctx context.Context, c *app.RequestContext) {
+	limit, _ := strconv.Atoi(c.Query("limit"))
+	catalog, err := h.app.GlobalAgentRunTraces(ctx, limit)
+	if err != nil {
+		if errors.Is(err, appsvc.ErrDeveloperModeDisabled) {
+			writeErrorKey(c, consts.StatusNotFound, "api.continualLearning.disabled")
+			return
+		}
+		writeError(c, consts.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, catalog)
+}
 
 // HandleAgentRunTraces returns recent traces for the scoped Project.
 func (h *Handlers) HandleAgentRunTraces(ctx context.Context, c *app.RequestContext) {

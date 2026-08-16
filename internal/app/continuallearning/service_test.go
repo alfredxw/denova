@@ -8,11 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 	"unicode/utf8"
 
 	"denova/config"
-	"denova/internal/agents/session"
 	"denova/internal/agents/trajectory"
 )
 
@@ -56,10 +54,25 @@ func TestDisabledServiceDoesNotInitializeState(t *testing.T) {
 	}
 }
 
+func TestScheduledOptimizationStillRequiresDeveloperMode(t *testing.T) {
+	cfg := config.Config{DenovaDir: filepath.Join(t.TempDir(), ".denova")}
+	cfg.Labs.ContinualLearningSchedule = true
+	cfg.Labs.ContinualLearningIntervalHours = 24
+	service := NewService(testHost{runtime: Runtime{Config: cfg}})
+
+	status, err := service.ScheduleStatus()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Enabled {
+		t.Fatalf("scheduled optimization escaped disabled Developer Mode: %#v", status)
+	}
+}
+
 func TestStateUpdateAndApplicationVersionHistory(t *testing.T) {
 	dataDir := filepath.Join(t.TempDir(), ".denova")
 	cfg := config.Config{DenovaDir: dataDir}
-	cfg.Labs.ContinualLearning = true
+	cfg.Labs.DeveloperMode = true
 	service := NewService(testHost{runtime: Runtime{Config: cfg}})
 	current, err := service.State(context.Background())
 	if err != nil {
@@ -138,49 +151,6 @@ func TestStateUpdateAndApplicationVersionHistory(t *testing.T) {
 	}
 }
 
-func TestTrajectoryCatalogListsAndReadsRecentSessionEvidence(t *testing.T) {
-	root := t.TempDir()
-	dataDir := filepath.Join(root, ".denova")
-	projectState := filepath.Join(dataDir, "project-state", "project-1")
-	store, err := session.NewStore(filepath.Join(projectState, "sessions"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	created, err := store.Create("Opening revision")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := store.Close(); err != nil {
-		t.Fatal(err)
-	}
-	cfg := config.Config{DenovaDir: dataDir}
-	cfg.Labs.ContinualLearning = true
-	service := NewService(testHost{
-		runtime: Runtime{Config: cfg},
-		sources: []trajectory.Source{{
-			ProjectID: "project-1", Name: "First Book", Workspace: filepath.Join(root, "book"), StateRoot: projectState,
-		}},
-	})
-
-	result, err := service.Trajectories(context.Background(), time.Now().UTC().Add(-time.Hour), 10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(result.Items) != 1 || result.Items[0].Kind != trajectoryKindSession || result.Items[0].Title != "Opening revision" {
-		t.Fatalf("unexpected trajectory list %#v", result)
-	}
-	if !strings.Contains(result.Items[0].URI, created.ID) {
-		t.Fatalf("trajectory URI %q does not contain Session %q", result.Items[0].URI, created.ID)
-	}
-	detail, err := service.Trajectory(context.Background(), result.Items[0].URI)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if detail.Kind != "trajectory_session" || !strings.Contains(detail.Content, `"schema": "denova.trajectory.session.v1"`) {
-		t.Fatalf("unexpected trajectory detail %#v", detail)
-	}
-}
-
 func TestStateHistoryRejectsPrivateGitSymlink(t *testing.T) {
 	dataDir := filepath.Join(t.TempDir(), ".denova")
 	stateRoot := filepath.Join(dataDir, "state")
@@ -191,7 +161,7 @@ func TestStateHistoryRejectsPrivateGitSymlink(t *testing.T) {
 		t.Skipf("symlink unavailable: %v", err)
 	}
 	cfg := config.Config{DenovaDir: dataDir}
-	cfg.Labs.ContinualLearning = true
+	cfg.Labs.DeveloperMode = true
 	service := NewService(testHost{runtime: Runtime{Config: cfg}})
 	if _, err := service.State(context.Background()); err == nil || !strings.Contains(err.Error(), ".git must be a private directory") {
 		t.Fatalf("Harness State history followed an unsafe .git entry: %v", err)
@@ -201,7 +171,7 @@ func TestStateHistoryRejectsPrivateGitSymlink(t *testing.T) {
 func TestCommittedHistoryCanRestoreInvalidLiveState(t *testing.T) {
 	dataDir := filepath.Join(t.TempDir(), ".denova")
 	cfg := config.Config{DenovaDir: dataDir}
-	cfg.Labs.ContinualLearning = true
+	cfg.Labs.DeveloperMode = true
 	service := NewService(testHost{runtime: Runtime{Config: cfg}})
 	current, err := service.State(context.Background())
 	if err != nil {
@@ -243,7 +213,7 @@ func TestServiceRetriesInitializationAfterStorageIsRepaired(t *testing.T) {
 		t.Skipf("symlink unavailable: %v", err)
 	}
 	cfg := config.Config{DenovaDir: dataDir}
-	cfg.Labs.ContinualLearning = true
+	cfg.Labs.DeveloperMode = true
 	service := NewService(testHost{runtime: Runtime{Config: cfg}})
 	if _, err := service.State(context.Background()); err == nil {
 		t.Fatal("unsafe storage unexpectedly initialized")

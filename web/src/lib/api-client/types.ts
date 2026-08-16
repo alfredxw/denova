@@ -387,6 +387,23 @@ export interface AgentRunTraceSummary {
   content_captured?: boolean
 }
 
+export interface GlobalAgentRunTraceSummary extends AgentRunTraceSummary {
+  project_id: string
+  project_name: string
+  trajectory_uri: string
+}
+
+export interface GlobalAgentRunTraceIssue {
+  project_id: string
+  project_name: string
+  message: string
+}
+
+export interface GlobalAgentRunTraceCatalog {
+  runs: GlobalAgentRunTraceSummary[]
+  issues: GlobalAgentRunTraceIssue[]
+}
+
 export interface AgentRunTraceRecord {
   type: string
   run_id: string

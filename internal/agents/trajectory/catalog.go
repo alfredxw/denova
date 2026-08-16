@@ -26,6 +26,12 @@ const Scheme = "trajectory://"
 
 const maxResourceURIBytes = 4096
 
+// RunURI returns the stable resource identifier shared by product surfaces and
+// the Harness Optimizer. Callers never need to reproduce URI escaping rules.
+func RunURI(projectID, runID string) string {
+	return Scheme + "projects/" + url.PathEscape(projectID) + "/runs/" + url.PathEscape(runID)
+}
+
 type Source struct {
 	ProjectID string `json:"project_id"`
 	Name      string `json:"name"`

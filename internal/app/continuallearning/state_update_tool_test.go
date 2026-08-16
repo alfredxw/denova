@@ -90,6 +90,6 @@ func TestStateUpdateToolReturnsAllInputDiagnosticsWithoutWriting(t *testing.T) {
 func newStateToolTestService(t *testing.T) *Service {
 	t.Helper()
 	cfg := config.Config{DenovaDir: filepath.Join(t.TempDir(), ".denova")}
-	cfg.Labs.ContinualLearning = true
+	cfg.Labs.DeveloperMode = true
 	return NewService(testHost{runtime: Runtime{Config: cfg}})
 }

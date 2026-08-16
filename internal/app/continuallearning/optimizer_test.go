@@ -17,9 +17,9 @@ func TestOptimizerMessageUsesOnlyExplicitTrajectoryEvidence(t *testing.T) {
 		t.Fatalf("explicit empty evidence broadened analysis scope:\n%s", empty)
 	}
 
-	automatic := optimizerMessage(Request{Trigger: TriggerScheduled})
+	automatic := optimizerMessage(Request{Trigger: TriggerManual})
 	if !strings.Contains(automatic, "trajectory://index") || !strings.Contains(automatic, "Discover relevant recent evidence") {
-		t.Fatalf("scheduled discovery lost the trajectory index:\n%s", automatic)
+		t.Fatalf("automatic global discovery lost the trajectory index:\n%s", automatic)
 	}
 }
 

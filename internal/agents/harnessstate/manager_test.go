@@ -13,7 +13,7 @@ import (
 	agentstate "github.com/alfredxw/denova/agent/state"
 )
 
-func TestLoadSkipsDisabledContinualLearningState(t *testing.T) {
+func TestLoadSkipsDisabledDeveloperModeState(t *testing.T) {
 	dataDir := filepath.Join(t.TempDir(), ".denova")
 	harness, err := Load(context.Background(), &config.Config{DenovaDir: dataDir})
 	if err != nil {
@@ -24,6 +24,37 @@ func TestLoadSkipsDisabledContinualLearningState(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dataDir, "state")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("disabled Harness State initialized storage: %v", err)
+	}
+}
+
+func TestDisabledDeveloperModeRetainsButDoesNotLoadExistingState(t *testing.T) {
+	dataDir := filepath.Join(t.TempDir(), ".denova")
+	enabled := &config.Config{DenovaDir: dataDir}
+	enabled.Labs.DeveloperMode = true
+	manager, err := OpenWithConfigSource(func() *config.Config { return enabled })
+	if err != nil {
+		t.Fatal(err)
+	}
+	current, err := manager.Store().Current(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Store().Update(context.Background(), agentstate.ChangeSet{
+		BaseRevision: current.Revision,
+		Changes:      []agentstate.Change{{Path: "prompts/general.md", Content: []byte("Preserve this State.")}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	disabled, err := Load(context.Background(), &config.Config{DenovaDir: dataDir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if disabled.Prompt(config.AgentKindGeneral) != "" {
+		t.Fatalf("disabled Developer Mode loaded retained State: %#v", disabled)
+	}
+	if _, err := os.Stat(filepath.Join(manager.Root(), "prompts", "general.md")); err != nil {
+		t.Fatalf("retained State was removed: %v", err)
 	}
 }
 

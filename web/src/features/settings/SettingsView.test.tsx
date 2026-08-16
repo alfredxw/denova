@@ -238,12 +238,12 @@ describe('SettingsView user scope', () => {
     )
   })
 
-  it('keeps Harness optimization disabled by default and persists the user Lab switch', async () => {
+  it('uses Developer Mode as the sole Lab switch for the global Trajectory and Harness workspace', async () => {
     const settings = layeredSettings({ devMode: false })
     settings.effective = {
       ...settings.effective,
       labs: {
-        continual_learning: false,
+        developer_mode: false,
         continual_learning_schedule: false,
         continual_learning_interval_hours: 24,
         continual_learning_trajectory_cap: 50,
@@ -255,7 +255,7 @@ describe('SettingsView user scope', () => {
 
     render(<SettingsView />)
 
-    const labLabel = await screen.findByText('Harness 优化 Lab')
+    const labLabel = await screen.findByText('开发者模式')
     const labRow = labLabel.closest('.nova-settings-row')
     expect(labRow).not.toBeNull()
     const labSection = labRow?.closest('section')
@@ -263,17 +263,16 @@ describe('SettingsView user scope', () => {
     expect(labSection).toBe(settingsSections.at(-1))
     const toggle = within(labRow as HTMLElement).getByRole('combobox')
     expect(toggle).toHaveTextContent('继承（false）')
-    expect(screen.queryByText('定时优化')).not.toBeInTheDocument()
+    expect(screen.queryByText('每个项目读取的 trajectory 条数')).not.toBeInTheDocument()
 
     vi.useFakeTimers()
     fireEvent.click(toggle)
     fireEvent.click(screen.getByRole('option', { name: '开启' }))
-    expect(screen.queryByText('定时优化')).not.toBeInTheDocument()
     expect(screen.getByText('每个项目读取的 trajectory 条数')).toBeInTheDocument()
     await act(async () => { await vi.advanceTimersByTimeAsync(1100) })
 
     expect(updateUserSettings).toHaveBeenCalledWith(
-      expect.objectContaining({ labs: expect.objectContaining({ continual_learning: true }) }),
+      expect.objectContaining({ labs: expect.objectContaining({ developer_mode: true }) }),
       'user-rev',
     )
   })

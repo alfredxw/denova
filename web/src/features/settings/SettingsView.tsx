@@ -667,16 +667,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
             inherited={inherited.labs?.developer_mode}
             onChange={(value) => setLabField('developer_mode', value)}
           />
-          <div className="mb-3 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-[11px] leading-4 text-[var(--nova-text-muted)]">
-            {t('settings.labs.continualLearningHint')}
-          </div>
-          <BoolTri
-            label={t('settings.labs.continualLearning')}
-            value={draft.labs?.continual_learning ?? null}
-            inherited={inherited.labs?.continual_learning}
-            onChange={(value) => setLabField('continual_learning', value)}
-          />
-          {(draft.labs?.continual_learning ?? inherited.labs?.continual_learning ?? false) && (
+          {(draft.labs?.developer_mode ?? inherited.labs?.developer_mode ?? false) && (
             <Num
               label={t('settings.labs.continualLearningTrajectoryCap')}
               value={draft.labs?.continual_learning_trajectory_cap ?? null}
@@ -1814,7 +1805,6 @@ function mergeSettingsLayer(parent: Settings, child: Settings): Settings {
 function mergeLabSettings(parent: NonNullable<Settings['labs']>, child: NonNullable<Settings['labs']>): NonNullable<Settings['labs']> {
   const out = { ...parent }
   if (child.developer_mode !== null && child.developer_mode !== undefined) out.developer_mode = child.developer_mode
-  if (child.continual_learning !== null && child.continual_learning !== undefined) out.continual_learning = child.continual_learning
   if (child.continual_learning_schedule !== null && child.continual_learning_schedule !== undefined) out.continual_learning_schedule = child.continual_learning_schedule
   if (child.continual_learning_interval_hours !== null && child.continual_learning_interval_hours !== undefined) out.continual_learning_interval_hours = child.continual_learning_interval_hours
   if (child.continual_learning_trajectory_cap !== null && child.continual_learning_trajectory_cap !== undefined) out.continual_learning_trajectory_cap = child.continual_learning_trajectory_cap

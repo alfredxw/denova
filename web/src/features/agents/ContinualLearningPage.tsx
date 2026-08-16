@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { FileCode2, FilePlus2, History, Plus, Route, RotateCcw, Save, ShieldCheck, Trash2 } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { FileCode2, FilePlus2, History, Plus, RotateCcw, Save, ShieldCheck, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import {
@@ -26,7 +26,6 @@ import { VersionTimeline } from '@/features/versions/components/version-timeline
 import type { VersionItem } from '@/features/versions/components/version-timeline'
 import { HarnessOptimizationSchedule } from './HarnessOptimizationSchedule'
 import type { HarnessOptimizationScheduleSettings } from './HarnessOptimizationSchedule'
-import { HarnessTrajectoryPanel } from './HarnessTrajectoryPanel'
 import { HarnessStateEditor } from './harness-state/HarnessStateEditor'
 import { NewScriptToolDialog } from './harness-state/NewScriptToolDialog'
 import {
@@ -53,11 +52,11 @@ export type ContinualLearningScheduleSettings = HarnessOptimizationScheduleSetti
 export function ContinualLearningPage({
   refreshToken = 0,
   scheduleSettings,
-  onEvidenceChange,
+  headerActions,
 }: {
   refreshToken?: number
   scheduleSettings: ContinualLearningScheduleSettings
-  onEvidenceChange: (uris: string[], ready: boolean) => void
+  headerActions?: ReactNode
 }) {
   const { t } = useTranslation()
   const [snapshot, setSnapshot] = useState<HarnessStateSnapshot | null>(null)
@@ -264,26 +263,25 @@ export function ContinualLearningPage({
   })), [versions])
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--nova-bg)]">
-      <header className="shrink-0 border-b border-[var(--nova-border)] px-4 py-3 sm:px-5">
-        <div className="min-w-0">
+      <header className="flex shrink-0 flex-wrap items-start gap-3 border-b border-[var(--nova-border)] px-4 py-3 sm:px-5">
+        <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <h1 className="text-sm font-semibold text-[var(--nova-text)]">{t('continualLearning.title')}</h1>
             <Badge variant="outline" className="h-4 px-1.5 text-[9px] tracking-[0.12em]">LAB</Badge>
           </div>
           <p className="mt-1 max-w-2xl text-[11px] leading-4 text-[var(--nova-text-faint)]">{t('continualLearning.description')}</p>
         </div>
-        <HarnessOptimizationSchedule status={schedule} settings={scheduleSettings} />
+        <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+          <HarnessOptimizationSchedule status={schedule} settings={scheduleSettings} />
+          {headerActions}
+        </div>
       </header>
       {error && <div className="shrink-0 border-b border-[var(--nova-border)] bg-red-500/5 px-4 py-2 text-xs text-red-400">{error}</div>}
-      <Tabs defaultValue="trajectories" className="min-h-0 flex-1 gap-0">
+      <Tabs defaultValue="state" className="min-h-0 flex-1 gap-0">
         <TabsList variant="line" className="mx-4 h-10 shrink-0 sm:mx-5">
-          <TabsTrigger value="trajectories"><Route />{t('continualLearning.trajectories')}</TabsTrigger>
           <TabsTrigger value="state"><FileCode2 />{t('continualLearning.state')}</TabsTrigger>
           <TabsTrigger value="history"><History />{t('continualLearning.history')}</TabsTrigger>
         </TabsList>
-        <TabsContent value="trajectories" className="min-h-0 overflow-hidden border-t border-[var(--nova-border)]">
-          <HarnessTrajectoryPanel refreshToken={refreshToken} onEvidenceChange={onEvidenceChange} />
-        </TabsContent>
         <TabsContent value="state" className="min-h-0 overflow-hidden border-t border-[var(--nova-border)]">
           {loading ? (
             <div className="grid h-full place-items-center text-xs text-[var(--nova-text-faint)]">{t('common.loading')}</div>

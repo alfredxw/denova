@@ -1,18 +1,35 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { TooltipProvider } from '@/components/ui/tooltip'
-import { getAgentRunTrace, getAgentRunTraces } from '@/lib/api'
+import { getAgentRunTrace, getGlobalAgentRunTraces } from '@/lib/api'
 import { setConfiguredLocale } from '@/i18n'
 import { TrajectoryPage } from './TrajectoryPage'
 
 const responsiveState = vi.hoisted(() => ({ compact: false }))
+const toast = vi.hoisted(() => ({ warning: vi.fn(), success: vi.fn(), error: vi.fn() }))
+
+vi.mock('sonner', () => ({ toast }))
 
 vi.mock('@/lib/api', () => ({
   downloadAgentRunTrace: vi.fn(),
   exportAgentRunTrace: vi.fn(),
   getAgentRunTrace: vi.fn(),
-  getAgentRunTraces: vi.fn(),
+  getGlobalAgentRunTraces: vi.fn(),
+}))
+
+vi.mock('./HarnessWorkspace', () => ({
+  HarnessWorkspace: ({ runs, onToggleEvidence, onViewRun }: {
+    runs: Array<{ trajectory_uri: string }>
+    onToggleEvidence: (uri: string) => void
+    onViewRun: (uri: string) => void
+  }) => (
+    <div>
+      <span>Harness workspace</span>
+      <button type="button" disabled={!runs[0]} onClick={() => onToggleEvidence(runs[0].trajectory_uri)}>Select evidence</button>
+      <button type="button" onClick={() => onViewRun('trajectory://projects/project-1/runs/run-page-test')}>View selected trajectory</button>
+    </div>
+  ),
 }))
 
 vi.mock('@/hooks/useIsMobile', () => ({
@@ -26,19 +43,19 @@ describe('TrajectoryPage', () => {
     responsiveState.compact = false
   })
 
-  it('shows the project-scoped empty state', async () => {
-    vi.mocked(getAgentRunTraces).mockResolvedValue([])
+  it('shows the global empty state', async () => {
+    vi.mocked(getGlobalAgentRunTraces).mockResolvedValue({ runs: [], issues: [] })
 
     renderPage()
 
     expect(await screen.findByText('还没有运行轨迹')).toBeInTheDocument()
-    expect(getAgentRunTraces).toHaveBeenCalledWith('project-test', 100)
+    expect(getGlobalAgentRunTraces).toHaveBeenCalledWith(100)
     expect(getAgentRunTrace).not.toHaveBeenCalled()
   })
 
   it('uses compact inline details by default and can switch to the resizable side inspector', async () => {
     const user = userEvent.setup()
-    vi.mocked(getAgentRunTraces).mockResolvedValue([summaryFixture()])
+    vi.mocked(getGlobalAgentRunTraces).mockResolvedValue({ runs: [summaryFixture()], issues: [] })
     vi.mocked(getAgentRunTrace).mockResolvedValue(traceFixture())
 
     renderPage()
@@ -93,12 +110,12 @@ describe('TrajectoryPage', () => {
     expect(screen.getByRole('button', { name: 'model-a, 3.00 s' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '压缩空闲' })).toBeInTheDocument()
     expect(screen.getAllByText(/TTFT 500 ms/).length).toBeGreaterThan(0)
-    await waitFor(() => expect(getAgentRunTrace).toHaveBeenCalledWith('project-test', 'run-page-test'))
+    await waitFor(() => expect(getAgentRunTrace).toHaveBeenCalledWith('project-1', 'run-page-test'))
   })
 
   it('keeps inline details on compact screens and opens a drawer only in side mode', async () => {
     responsiveState.compact = true
-    vi.mocked(getAgentRunTraces).mockResolvedValue([summaryFixture()])
+    vi.mocked(getGlobalAgentRunTraces).mockResolvedValue({ runs: [summaryFixture()], issues: [] })
     vi.mocked(getAgentRunTrace).mockResolvedValue(traceFixture())
 
     renderPage()
@@ -117,12 +134,101 @@ describe('TrajectoryPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '关闭' }))
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   })
+
+  it('keeps Harness beside Trajectory and returns to the exact global Run', async () => {
+    const user = userEvent.setup()
+    vi.mocked(getGlobalAgentRunTraces).mockResolvedValue({ runs: [summaryFixture()], issues: [] })
+    vi.mocked(getAgentRunTrace).mockResolvedValue(traceFixture())
+
+    renderPage()
+
+    const trajectoryTab = await screen.findByRole('tab', { name: '轨迹' })
+    const workspaceTabs = trajectoryTab.closest('[role="tablist"]')
+    const pageTitle = screen.getByRole('heading', { name: '轨迹' })
+    expect(workspaceTabs).not.toBeNull()
+    expect(workspaceTabs!.compareDocumentPosition(pageTitle) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
+    await user.click(await screen.findByRole('tab', { name: 'Harness' }))
+    expect(screen.getByText('Harness workspace')).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'View selected trajectory' }))
+    expect(screen.getByRole('tab', { name: '轨迹' })).toHaveAttribute('data-state', 'active')
+    await waitFor(() => expect(getAgentRunTrace).toHaveBeenCalledWith('project-1', 'run-page-test'))
+  })
+
+  it('groups Runs by Project and Session while retaining the flat Run view', async () => {
+    const user = userEvent.setup()
+    const sharedSession = 's-session-shared'
+    const firstRun = { ...summaryFixture(), session_id: sharedSession }
+    const olderRun = {
+      ...summaryFixture(),
+      id: 'run-older',
+      trajectory_uri: 'trajectory://projects/project-1/runs/run-older',
+      session_id: sharedSession,
+      created_at: '2026-08-13T09:00:00.000Z',
+    }
+    const otherProjectRun = {
+      ...summaryFixture(),
+      id: 'run-other-project',
+      project_id: 'project-2',
+      project_name: 'Second Book',
+      trajectory_uri: 'trajectory://projects/project-2/runs/run-other-project',
+      session_id: sharedSession,
+      created_at: '2026-08-13T08:00:00.000Z',
+    }
+    vi.mocked(getGlobalAgentRunTraces).mockResolvedValue({ runs: [firstRun, olderRun, otherProjectRun], issues: [] })
+    vi.mocked(getAgentRunTrace).mockResolvedValue(traceFixture())
+
+    renderPage()
+
+    const firstSession = await screen.findByRole('button', { name: 'First Book · s-session-shared · 2 个 Run' })
+    const otherProjectSession = screen.getByRole('button', { name: 'Second Book · s-session-shared · 1 个 Run' })
+    await waitFor(() => expect(firstSession).toHaveAttribute('aria-expanded', 'true'))
+    expect(otherProjectSession).toHaveAttribute('aria-expanded', 'false')
+    expect(within(firstSession.parentElement!).getByRole('button', { name: /run-older/ })).toBeInTheDocument()
+
+    await user.click(otherProjectSession)
+    expect(within(otherProjectSession.parentElement!).getByRole('button', { name: /run-other-project/ })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /^Run$/ }))
+    expect(screen.queryByRole('button', { name: 'First Book · s-session-shared · 2 个 Run' })).not.toBeInTheDocument()
+    expect(screen.getAllByText('First Book')).toHaveLength(2)
+    expect(screen.getByRole('button', { name: '会话' })).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('shows partial Project failures without blocking healthy Runs', async () => {
+    vi.mocked(getGlobalAgentRunTraces).mockResolvedValue({
+      runs: [summaryFixture()],
+      issues: [{ project_id: 'broken', project_name: 'Broken Project', message: 'unavailable' }],
+    })
+    vi.mocked(getAgentRunTrace).mockResolvedValue(traceFixture())
+
+    renderPage()
+
+    expect(await screen.findByText('1 个项目的 Run 暂时无法读取，其余结果仍可使用。')).toBeInTheDocument()
+    expect(screen.getByText('First Book')).toBeInTheDocument()
+  })
+
+  it('warns when refresh removes disappeared evidence', async () => {
+    const user = userEvent.setup()
+    vi.mocked(getGlobalAgentRunTraces)
+      .mockResolvedValueOnce({ runs: [summaryFixture()], issues: [] })
+      .mockResolvedValueOnce({ runs: [], issues: [] })
+    vi.mocked(getAgentRunTrace).mockResolvedValue(traceFixture())
+
+    renderPage()
+
+    await user.click(await screen.findByRole('tab', { name: 'Harness' }))
+    await user.click(screen.getByRole('button', { name: 'Select evidence' }))
+    await user.click(screen.getByRole('button', { name: '刷新轨迹' }))
+
+    await waitFor(() => expect(toast.warning).toHaveBeenCalledWith('刷新后有 1 条已选 Run 消失，已从证据范围中移除。'))
+  })
 })
 
 function renderPage() {
   return render(
     <TooltipProvider delayDuration={0}>
-      <TrajectoryPage target={{ kind: 'project', projectId: 'project-test' }} />
+      <TrajectoryPage />
     </TooltipProvider>,
   )
 }
@@ -130,6 +236,9 @@ function renderPage() {
 function summaryFixture() {
   return {
     id: 'run-page-test',
+    project_id: 'project-1',
+    project_name: 'First Book',
+    trajectory_uri: 'trajectory://projects/project-1/runs/run-page-test',
     created_at: '2026-08-13T10:00:00.000Z',
     path: '.denova/runs/run-page-test.jsonl',
     status: 'success',
@@ -139,6 +248,7 @@ function summaryFixture() {
     tool_calls: 1,
     duration_ms: 4_000,
     agent_kind: 'writing',
+    session_id: 's-page-test',
     content_captured: true,
   }
 }

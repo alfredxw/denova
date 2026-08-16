@@ -56,43 +56,6 @@ vi.mock('@/components/Chat/ConfigManagerChat', () => ({
   },
 }))
 
-vi.mock('./ContinualLearningPage', () => ({
-  ContinualLearningPage: (props: {
-    scheduleSettings: {
-      enabled: boolean | null
-      inheritedEnabled: boolean
-      intervalHours: number | null
-      inheritedIntervalHours: number
-      onEnabledChange: (enabled: boolean | null) => void
-      onIntervalHoursChange: (hours: number | null) => void
-    }
-  }) => {
-    const enabled = props.scheduleSettings.enabled ?? props.scheduleSettings.inheritedEnabled
-    return (
-      <div data-testid="continual-learning-page">
-        <button
-          type="button"
-          role="switch"
-          aria-label="启用"
-          aria-checked={enabled}
-          onClick={() => props.scheduleSettings.onEnabledChange(!enabled)}
-        />
-        <input
-          type="number"
-          aria-label="优化间隔（小时）"
-          value={props.scheduleSettings.intervalHours ?? ''}
-          placeholder={String(props.scheduleSettings.inheritedIntervalHours)}
-          onChange={(event) => props.scheduleSettings.onIntervalHoursChange(Number(event.target.value))}
-        />
-      </div>
-    )
-  },
-}))
-
-vi.mock('./HarnessOptimizerChat', () => ({
-  HarnessOptimizerChat: () => <div data-testid="harness-optimizer-chat" />,
-}))
-
 vi.mock('@/lib/api', () => ({
   getSkills: vi.fn(),
   resourceTargetKey: (target: { kind: string; projectId?: string }) => target.kind === 'project' ? `project:${target.projectId}` : 'global',
@@ -133,63 +96,10 @@ describe('AgentsView', () => {
     expect(separator).toHaveAttribute('aria-hidden', 'false')
   })
 
-  it('shows Harness optimization only when the user enables the Lab', async () => {
-    const user = userEvent.setup()
+  it('never exposes Harness optimization in Agents', async () => {
     vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({
-      effective: { labs: { continual_learning: true } },
+      effective: { labs: { developer_mode: true } },
     }))
-
-    render(<AgentsView />)
-
-    await user.click(await screen.findByRole('button', { name: /Harness 优化/ }))
-    expect(screen.getByTestId('continual-learning-page')).toBeInTheDocument()
-    expect(screen.getByTestId('harness-optimizer-chat')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: '当前工作区' })).not.toBeInTheDocument()
-  })
-
-  it('persists scheduled optimization controls from the Harness optimization page to user settings', async () => {
-    const user = userEvent.setup()
-    vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({
-      default: {
-        labs: {
-          continual_learning: false,
-          continual_learning_schedule: false,
-          continual_learning_interval_hours: 24,
-        },
-      },
-      user: { labs: { continual_learning: true } },
-      effective: {
-        labs: {
-          continual_learning: true,
-          continual_learning_schedule: false,
-          continual_learning_interval_hours: 24,
-        },
-      },
-    }))
-
-    render(<AgentsView />)
-
-    await user.click(await screen.findByRole('button', { name: /Harness 优化/ }))
-    await user.click(screen.getByRole('switch', { name: '启用' }))
-    fireEvent.change(screen.getByRole('spinbutton', { name: '优化间隔（小时）' }), { target: { value: '48' } })
-    flushAgentsAutosave()
-
-    await waitFor(() => {
-      expect(updateUserSettings).toHaveBeenCalledWith(
-        expect.objectContaining({
-          labs: expect.objectContaining({
-            continual_learning: true,
-            continual_learning_schedule: true,
-            continual_learning_interval_hours: 48,
-          }),
-        }),
-      )
-    })
-    expect(updateWorkspaceSettings).not.toHaveBeenCalled()
-  })
-
-  it('hides Harness optimization by default', async () => {
-    vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({}))
 
     render(<AgentsView />)
 

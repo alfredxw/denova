@@ -80,7 +80,6 @@ export interface Settings {
 
 export interface LabSettings {
   developer_mode?: boolean | null
-  continual_learning?: boolean | null
   continual_learning_schedule?: boolean | null
   continual_learning_interval_hours?: number | null
   continual_learning_trajectory_cap?: number | null

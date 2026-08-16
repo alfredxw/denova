@@ -27,7 +27,7 @@ flowchart LR
 4. `agent/state` 不依赖 Git，只提供 snapshot、CAS、draft、原子发布、恢复和 Run pin。
 5. `internal/agents/harnessstate` 只定义 Denova Harness schema、校验和运行时物化。
 6. `internal/app/continuallearning` 独占 go-git、版本、Diff、Restore、Optimizer、schedule 和产品 API 编排。
-7. 不增加 `/refine`；手动触发只在 Agents → Harness 优化页面。
+7. 不增加 `/refine`；手动触发只在一级 Trajectory 菜单的 Harness Tab。
 8. 定时优化属于 V1，与手动优化汇合到同一个 `StartTask` 用例。
 9. Harness Optimizer 使用普通 `read/write/edit/glob/grep/shell/skill/task` 等能力，不增加 Git、State lifecycle 或 delete 专用工具。
 10. Lab 默认关闭；关闭时页面、Optimizer、schedule 和 State 注入均不生效，已有 State 文件和历史保留。
@@ -225,7 +225,7 @@ Optimizer contract 明确禁止把 Project 私有正文、完整 trajectory、�
 
 ### 手动
 
-- 用户打开 Agents → Harness 优化。
+- 用户打开一级 Trajectory 菜单 → Harness。
 - 页面自动打开 Harness Optimizer Chat。
 - “立即优化”或自然语言消息调用同一个 manual trigger。
 - 不存在 `/refine` 命令。
@@ -237,7 +237,7 @@ Optimizer contract 明确禁止把 Project 私有正文、完整 trajectory、�
 
 ```toml
 [labs]
-continual_learning = true
+developer_mode = true
 continual_learning_schedule = true
 continual_learning_interval_hours = 24
 continual_learning_trajectory_cap = 50
@@ -249,7 +249,7 @@ continual_learning_trajectory_cap = 50
 
 ## 9. 页面
 
-Lab 默认关闭。开启后，Agents 页面增加实验功能分组中的“Harness 优化 / Harness optimization”，点击不会切换写作或游戏模式。
+Developer Mode 默认关闭。开启后，写作和游戏模式共享的 Trajectory 一级菜单提供并列的“轨迹 / Trajectory”与“Harness”顶部 Tab；点击不会切换写作或游戏模式，页面也不依赖当前书籍。
 
 页面包含：
 
@@ -259,6 +259,7 @@ Lab 默认关闭。开启后，Agents 页面增加实验功能分组中的“Har
 - 版本历史、Diff 和 Restore。
 - schedule 状态。
 - Harness Optimizer Chat、历史消息、流恢复和 Ask。
+- 基于全局 Run 目录的紧凑搜索与多选证据控件；空选择由 Optimizer 自主发现近期证据，非空选择严格限定分析范围。
 - 中文与英文文案，以及宽屏/窄屏 adaptive layout。
 
 页面不提供 User/Project scope 切换，不展示 Git 术语，不提供 Commit 按钮。普通 Agents 配置页不再暴露旧 Prompt/SubAgent 编辑入口，避免两套写路径。
@@ -281,9 +282,10 @@ POST     /api/continual-learning/optimize/clear
 POST     /api/continual-learning/optimize/asks/:id/answer|cancel
 GET      /api/continual-learning/schedule
 GET/POST /api/continual-learning/outcomes
+GET      /api/agent-runs?limit=100
 ```
 
-feature disabled 时用户接口失败关闭。API handler 只依赖 `internal/app/continuallearning` 的稳定 DTO，不依赖 Harness schema 或 go-git 类型。
+Developer Mode 关闭时用户接口失败关闭。`/api/agent-runs` 合并全部已注册 Project 的可读 Run State，以 `issues` 隔离单项目失败；Run 详情和导出继续通过显式 `project_id + run_id` 访问。
 
 ## 11. 安全与校验
 

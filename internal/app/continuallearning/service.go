@@ -22,7 +22,7 @@ import (
 	agentstate "github.com/alfredxw/denova/agent/state"
 )
 
-var ErrDisabled = errors.New("continual learning Lab is disabled")
+var ErrDisabled = errors.New("Developer Mode is disabled")
 
 type Service struct {
 	host Host
@@ -101,7 +101,7 @@ func (service *Service) initialize() error {
 }
 
 // CheckEnabled gates user-facing endpoints before they inspect process-local
-// tasks. Disabling the Lab hides the surface and pauses new work without
+// tasks. Disabling Developer Mode hides the surface and pauses new work without
 // deleting State or history.
 func (service *Service) CheckEnabled() error {
 	_, err := service.requireEnabled()
@@ -113,7 +113,7 @@ func (service *Service) requireEnabled() (Runtime, error) {
 		return Runtime{}, errors.New("continual learning service is unavailable")
 	}
 	runtime := service.host.Runtime()
-	if !runtime.Config.Labs.ContinualLearning {
+	if !runtime.Config.Labs.DeveloperMode {
 		return Runtime{}, ErrDisabled
 	}
 	if err := service.initialize(); err != nil {

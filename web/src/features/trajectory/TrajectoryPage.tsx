@@ -1,78 +1,101 @@
-import { useCallback, useEffect, useState } from 'react'
-import { Activity, AlertTriangle, Download, RefreshCw, Route } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Activity, AlertTriangle, Download, RefreshCw, Route, Settings2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { FeaturePageShell } from '@/components/layout/feature-page-shell'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { downloadAgentRunTrace, exportAgentRunTrace, getAgentRunTrace, getAgentRunTraces } from '@/lib/api'
-import type { AgentRunTrace, AgentRunTraceSummary, ResourceTarget } from '@/lib/api'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { downloadAgentRunTrace, exportAgentRunTrace, getAgentRunTrace, getGlobalAgentRunTraces } from '@/lib/api'
+import type { AgentRunTrace, GlobalAgentRunTraceIssue, GlobalAgentRunTraceSummary } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import { formatTrajectoryDuration } from './trajectory-analysis'
+import { HarnessWorkspace } from './HarnessWorkspace'
+import { TrajectoryRunList } from './TrajectoryRunList'
 import { TrajectoryTraceWorkspace } from './TrajectoryTraceWorkspace'
 
 interface TrajectoryPageProps {
-  target: ResourceTarget
   onClose?: () => void
 }
 
-/** Project-scoped developer workspace for hierarchical Agent trace analysis. */
-export function TrajectoryPage({ target, onClose }: TrajectoryPageProps) {
+type DeveloperWorkspaceTab = 'trajectory' | 'harness'
+
+/** Global developer workspace for inspecting Runs and evolving Harness State. */
+export function TrajectoryPage({ onClose }: TrajectoryPageProps) {
   const { t } = useTranslation()
-  const projectID = target.kind === 'project' ? target.projectId : ''
-  const [runs, setRuns] = useState<AgentRunTraceSummary[]>([])
-  const [selectedRunID, setSelectedRunID] = useState('')
+  const [workspaceTab, setWorkspaceTab] = useState<DeveloperWorkspaceTab>('trajectory')
+  const [runs, setRuns] = useState<GlobalAgentRunTraceSummary[]>([])
+  const [issues, setIssues] = useState<GlobalAgentRunTraceIssue[]>([])
+  const [selectedRunURI, setSelectedRunURI] = useState('')
+  const [selectedEvidence, setSelectedEvidence] = useState<Set<string>>(new Set())
+  const selectedEvidenceRef = useRef<ReadonlySet<string>>(selectedEvidence)
   const [trace, setTrace] = useState<AgentRunTrace | null>(null)
   const [loadingRuns, setLoadingRuns] = useState(false)
   const [loadingTrace, setLoadingTrace] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const selectedRun = useMemo(
+    () => runs.find((run) => run.trajectory_uri === selectedRunURI) ?? null,
+    [runs, selectedRunURI],
+  )
 
-  const loadRuns = useCallback(async (preferredRunID?: string) => {
-    if (!projectID) return
+  useEffect(() => {
+    selectedEvidenceRef.current = selectedEvidence
+  }, [selectedEvidence])
+
+  const loadRuns = useCallback(async (preferredRunURI?: string) => {
     setLoadingRuns(true)
     setError(null)
     try {
-      const nextRuns = await getAgentRunTraces(projectID, 100)
-      setRuns(nextRuns)
-      const nextRunID = preferredRunID && nextRuns.some((run) => run.id === preferredRunID)
-        ? preferredRunID
-        : nextRuns[0]?.id ?? ''
-      setSelectedRunID(nextRunID)
-      if (!nextRunID) setTrace(null)
+      const catalog = await getGlobalAgentRunTraces(100)
+      setRuns(catalog.runs)
+      setIssues(catalog.issues ?? [])
+      const validURIs = new Set(catalog.runs.map((run) => run.trajectory_uri))
+      const retainedEvidence = new Set([...selectedEvidenceRef.current].filter((uri) => validURIs.has(uri)))
+      const removedCount = selectedEvidenceRef.current.size - retainedEvidence.size
+      selectedEvidenceRef.current = retainedEvidence
+      setSelectedEvidence(retainedEvidence)
+      if (removedCount > 0) {
+        toast.warning(t('continualLearning.evidence.removed', { count: removedCount }))
+      }
+      const nextRunURI = preferredRunURI && validURIs.has(preferredRunURI)
+        ? preferredRunURI
+        : catalog.runs[0]?.trajectory_uri ?? ''
+      setSelectedRunURI(nextRunURI)
+      if (!nextRunURI) setTrace(null)
     } catch (cause) {
-      console.error('[TrajectoryPage.tsx] failed to load project Agent traces', { projectID, cause })
+      console.error('[TrajectoryPage.tsx] failed to load the global Agent Run catalog', { cause })
       setError(errorMessage(cause))
       setRuns([])
-      setSelectedRunID('')
+      setIssues([])
+      setSelectedRunURI('')
       setTrace(null)
     } finally {
       setLoadingRuns(false)
     }
-  }, [projectID])
+  }, [t])
 
   useEffect(() => {
-    setRuns([])
-    setSelectedRunID('')
-    setTrace(null)
     void loadRuns()
   }, [loadRuns])
 
   useEffect(() => {
-    if (!projectID || !selectedRunID) {
+    if (!selectedRun) {
       setTrace(null)
       return
     }
     let cancelled = false
     setLoadingTrace(true)
     setError(null)
-    void getAgentRunTrace(projectID, selectedRunID)
+    void getAgentRunTrace(selectedRun.project_id, selectedRun.id)
       .then((nextTrace) => {
-        if (cancelled) return
-        setTrace(nextTrace)
+        if (!cancelled) setTrace(nextTrace)
       })
       .catch((cause) => {
         if (cancelled) return
-        console.error('[TrajectoryPage.tsx] failed to load Agent trace detail', { projectID, selectedRunID, cause })
+        console.error('[TrajectoryPage.tsx] failed to load global Agent Run detail', {
+          projectID: selectedRun.project_id,
+          runID: selectedRun.id,
+          cause,
+        })
         setError(errorMessage(cause))
         setTrace(null)
       })
@@ -80,114 +103,146 @@ export function TrajectoryPage({ target, onClose }: TrajectoryPageProps) {
         if (!cancelled) setLoadingTrace(false)
       })
     return () => { cancelled = true }
-  }, [projectID, selectedRunID])
+  }, [selectedRun])
 
   const exportTrace = async () => {
-    if (!projectID || !selectedRunID) return
+    if (!selectedRun) return
     try {
-      const file = await exportAgentRunTrace(projectID, selectedRunID)
+      const file = await exportAgentRunTrace(selectedRun.project_id, selectedRun.id)
       downloadAgentRunTrace(file)
       toast.success(t('trajectory.export.success', { filename: file.filename }))
     } catch (cause) {
-      console.error('[TrajectoryPage.tsx] failed to export Agent trace', { projectID, selectedRunID, cause })
+      console.error('[TrajectoryPage.tsx] failed to export Agent Run trace', {
+        projectID: selectedRun.project_id,
+        runID: selectedRun.id,
+        cause,
+      })
       toast.error(t('trajectory.export.failed'), { description: errorMessage(cause) })
     }
   }
 
+  const toggleEvidence = (trajectoryURI: string) => {
+    setSelectedEvidence((current) => {
+      const next = new Set(current)
+      if (next.has(trajectoryURI)) next.delete(trajectoryURI)
+      else next.add(trajectoryURI)
+      selectedEvidenceRef.current = next
+      return next
+    })
+  }
+
+  const viewRun = (trajectoryURI: string) => {
+    setSelectedRunURI(trajectoryURI)
+    setWorkspaceTab('trajectory')
+  }
+
   return (
-    <FeaturePageShell
-      icon={Route}
-      title={t('trajectory.title')}
-      subtitle={t('trajectory.subtitle')}
-      className="[&_button]:focus-visible:border-transparent [&_button]:focus-visible:bg-[var(--nova-hover)] [&_button]:focus-visible:outline-none [&_button]:focus-visible:ring-0"
-      onClose={onClose}
-      error={error}
-      actions={(
-        <>
-          <Badge variant="outline" className="hidden h-5 px-1.5 text-[9px] uppercase tracking-[0.12em] sm:inline-flex">{t('trajectory.developerBadge')}</Badge>
-          <Button
-            type="button"
-            size="icon-xs"
-            variant="ghost"
-            disabled={!projectID || loadingRuns || loadingTrace}
-            onClick={() => void loadRuns(selectedRunID)}
-            aria-label={t('trajectory.refresh')}
-          >
-            <RefreshCw className={cn((loadingRuns || loadingTrace) && 'animate-spin')} />
-          </Button>
-          <Button type="button" size="xs" variant="ghost" disabled={!selectedRunID} onClick={() => void exportTrace()}>
-            <Download />{t('trajectory.export.action')}
-          </Button>
-        </>
-      )}
-    >
-      {!projectID ? (
-        <EmptyPage icon={AlertTriangle} title={t('trajectory.noProject')} description={t('trajectory.noProjectDescription')} />
-      ) : loadingRuns && runs.length === 0 ? (
-        <EmptyPage icon={Activity} title={t('common.loading')} description={t('trajectory.loadingDescription')} />
-      ) : runs.length === 0 ? (
-        <EmptyPage icon={Route} title={t('trajectory.empty')} description={t('trajectory.emptyDescription')} />
-      ) : (
-        <div className="grid min-h-0 flex-1 grid-rows-[132px_minmax(0,1fr)] bg-[var(--nova-bg)] md:grid-cols-[210px_minmax(0,1fr)] md:grid-rows-1">
-          <RunList runs={runs} selectedRunID={selectedRunID} onSelect={setSelectedRunID} />
-          <section className="relative flex min-h-0 min-w-0 flex-col overflow-hidden bg-[var(--nova-surface)]">
-            {trace ? (
-              <TrajectoryTraceWorkspace key={trace.summary.id} trace={trace} />
-            ) : (
-              <EmptyPage icon={Activity} title={loadingTrace ? t('common.loading') : t('trajectory.selectRun')} description={t('trajectory.selectRunDescription')} />
-            )}
-          </section>
-        </div>
-      )}
-    </FeaturePageShell>
+    <Tabs value={workspaceTab} onValueChange={(value) => setWorkspaceTab(value as DeveloperWorkspaceTab)} className="h-full min-h-0 gap-0">
+      <FeaturePageShell
+        icon={Route}
+        title={t('trajectory.title')}
+        subtitle={t('trajectory.globalSubtitle')}
+        className="[&_button]:focus-visible:border-transparent [&_button]:focus-visible:bg-[var(--nova-hover)] [&_button]:focus-visible:outline-none [&_button]:focus-visible:ring-0"
+        onClose={onClose}
+        error={error}
+        leadingContent={(
+          <TabsList variant="line" className="h-7 gap-1">
+            <TabsTrigger value="trajectory" className="px-2 text-[11px]"><Route />{t('trajectory.tab.trajectory')}</TabsTrigger>
+            <TabsTrigger value="harness" className="px-2 text-[11px]"><Settings2 />{t('trajectory.tab.harness')}</TabsTrigger>
+          </TabsList>
+        )}
+        actions={(
+          <>
+            <Badge variant="outline" className="hidden h-5 px-1.5 text-[9px] uppercase tracking-[0.12em] sm:inline-flex">{t('trajectory.developerBadge')}</Badge>
+            <Button
+              type="button"
+              size="icon-xs"
+              variant="ghost"
+              disabled={loadingRuns || loadingTrace}
+              onClick={() => void loadRuns(selectedRunURI)}
+              aria-label={t('trajectory.refresh')}
+            >
+              <RefreshCw className={cn((loadingRuns || loadingTrace) && 'animate-spin')} />
+            </Button>
+            {workspaceTab === 'trajectory' ? (
+              <Button type="button" size="xs" variant="ghost" disabled={!selectedRun} onClick={() => void exportTrace()}>
+                <Download />{t('trajectory.export.action')}
+              </Button>
+            ) : null}
+          </>
+        )}
+      >
+        <TabsContent value="trajectory" forceMount className="min-h-0 overflow-hidden data-[state=inactive]:hidden">
+          <TrajectoryRunWorkspace
+            runs={runs}
+            issues={issues}
+            selectedRunURI={selectedRunURI}
+            trace={trace}
+            loadingRuns={loadingRuns}
+            loadingTrace={loadingTrace}
+            onSelect={setSelectedRunURI}
+          />
+        </TabsContent>
+        <TabsContent value="harness" forceMount className="min-h-0 overflow-hidden data-[state=inactive]:hidden">
+          <HarnessWorkspace
+            runs={runs}
+            runsLoading={loadingRuns}
+            selectedEvidence={selectedEvidence}
+            onToggleEvidence={toggleEvidence}
+            onClearEvidence={() => {
+              selectedEvidenceRef.current = new Set()
+              setSelectedEvidence(new Set())
+            }}
+            onViewRun={viewRun}
+          />
+        </TabsContent>
+      </FeaturePageShell>
+    </Tabs>
   )
 }
 
-function RunList({
+function TrajectoryRunWorkspace({
   runs,
-  selectedRunID,
+  issues,
+  selectedRunURI,
+  trace,
+  loadingRuns,
+  loadingTrace,
   onSelect,
 }: {
-  runs: AgentRunTraceSummary[]
-  selectedRunID: string
-  onSelect: (runID: string) => void
+  runs: GlobalAgentRunTraceSummary[]
+  issues: GlobalAgentRunTraceIssue[]
+  selectedRunURI: string
+  trace: AgentRunTrace | null
+  loadingRuns: boolean
+  loadingTrace: boolean
+  onSelect: (trajectoryURI: string) => void
 }) {
   const { t } = useTranslation()
+  if (loadingRuns && runs.length === 0) {
+    return <EmptyPage icon={Activity} title={t('common.loading')} description={t('trajectory.loadingGlobalDescription')} />
+  }
+  if (runs.length === 0) {
+    return <EmptyPage icon={Route} title={t('trajectory.empty')} description={t('trajectory.emptyGlobalDescription')} />
+  }
   return (
-    <aside className="min-h-0 overflow-auto border-b border-[var(--nova-border)] bg-[var(--nova-surface-2)] md:border-r md:border-b-0" aria-label={t('trajectory.runs.title')}>
-      <div className="sticky top-0 z-10 flex h-9 items-center border-b border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--nova-text-muted)]">
-        {t('trajectory.runs.title')}<span className="ml-auto font-mono text-[var(--nova-text-faint)]">{runs.length}</span>
+    <div className="flex h-full min-h-0 flex-col bg-[var(--nova-bg)]">
+      {issues.length > 0 ? (
+        <div className="flex shrink-0 items-center gap-2 border-b border-[var(--nova-border)] bg-[var(--nova-warning-bg)] px-3 py-1.5 text-[10px] text-[var(--nova-warning)]">
+          <AlertTriangle className="size-3.5" />{t('trajectory.partialProjects', { count: issues.length })}
+        </div>
+      ) : null}
+      <div className="grid min-h-0 flex-1 grid-rows-[148px_minmax(0,1fr)] md:grid-cols-[250px_minmax(0,1fr)] md:grid-rows-1">
+        <TrajectoryRunList runs={runs} selectedRunURI={selectedRunURI} onSelect={onSelect} />
+        <section className="relative flex min-h-0 min-w-0 flex-col overflow-hidden bg-[var(--nova-surface)]">
+          {trace ? (
+            <TrajectoryTraceWorkspace key={`${selectedRunURI}:${trace.summary.id}`} trace={trace} />
+          ) : (
+            <EmptyPage icon={Activity} title={loadingTrace ? t('common.loading') : t('trajectory.selectRun')} description={t('trajectory.selectRunDescription')} />
+          )}
+        </section>
       </div>
-      <div className="flex gap-1 overflow-x-auto p-2 md:block md:space-y-1 md:overflow-x-hidden">
-        {runs.map((run) => (
-          <button
-            key={run.id}
-            type="button"
-            onClick={() => onSelect(run.id)}
-            aria-current={selectedRunID === run.id ? 'true' : undefined}
-            className={cn(
-              'w-64 shrink-0 rounded-[var(--nova-radius)] border border-transparent px-2.5 py-2 text-left transition-colors focus-visible:bg-[var(--nova-hover)] focus-visible:outline-none md:w-full',
-              selectedRunID === run.id
-                ? 'bg-[var(--nova-active)]'
-                : 'hover:bg-[var(--nova-surface)]',
-            )}
-          >
-            <span className="flex min-w-0 items-center gap-2">
-              <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-[var(--nova-text)]">{run.agent_kind || t('trajectory.runs.agent')}</span>
-              <StatusDot status={run.status} />
-              <span className="shrink-0 font-mono text-[9px] uppercase text-[var(--nova-text-faint)]">{run.status}</span>
-            </span>
-            <span className="mt-1 block truncate font-mono text-[9px] text-[var(--nova-text-muted)]">{shortRunID(run.id)}</span>
-            <span className="mt-1 flex items-center gap-2 text-[9px] text-[var(--nova-text-faint)]">
-              <span>{formatRunTime(run.created_at)}</span>
-              <span>{formatTrajectoryDuration(run.duration_ms)}</span>
-              <span>{t('trajectory.runs.calls', { models: run.llm_calls ?? 0, tools: run.tool_calls ?? 0 })}</span>
-              <span className={run.content_captured ? 'text-[var(--nova-success)]' : ''}>{t(run.content_captured ? 'trajectory.runs.content' : 'trajectory.runs.metadata')}</span>
-            </span>
-          </button>
-        ))}
-      </div>
-    </aside>
+    </div>
   )
 }
 
@@ -201,26 +256,6 @@ function EmptyPage({ icon: Icon, title, description }: { icon: typeof Route; tit
       </div>
     </div>
   )
-}
-
-function StatusDot({ status }: { status: string }) {
-  const normalized = status.toLowerCase()
-  const tone = normalized === 'success' || normalized === 'completed'
-    ? 'bg-[var(--nova-success)]'
-    : normalized === 'running'
-      ? 'bg-[var(--nova-warning)] animate-pulse'
-      : 'bg-[var(--nova-danger)]'
-  return <span className={cn('size-1.5 shrink-0 rounded-full', tone)} />
-}
-
-function shortRunID(runID: string) {
-  return runID.length <= 34 ? runID : `${runID.slice(0, 22)}…${runID.slice(-8)}`
-}
-
-function formatRunTime(value: string) {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return '—'
-  return date.toLocaleString([], { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
 function errorMessage(cause: unknown) {

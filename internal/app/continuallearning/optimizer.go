@@ -46,7 +46,7 @@ func (service *Service) StartTask(ctx context.Context, request Request) (*apptas
 		return nil, err
 	}
 	if request.Trigger == TriggerManual && strings.TrimSpace(request.Instruction) == "" {
-		request.Instruction = "Review the selected trajectory evidence and improve Harness State only when the evidence supports a reusable change."
+		request.Instruction = "Review the relevant trajectory evidence and improve Harness State only when the evidence supports a reusable change."
 	}
 	if request.Trigger == TriggerScheduled {
 		request.Instruction = "Review recent trajectory evidence since prior optimization. Make only evidence-backed, reusable Harness State improvements; use a no-op when no change is justified."

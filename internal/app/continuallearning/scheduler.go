@@ -72,10 +72,10 @@ func (service *Service) ScheduleStatus() (ScheduleStatus, error) {
 	}
 	runtime := service.host.Runtime()
 	status := ScheduleStatus{
-		Enabled:       runtime.Config.Labs.ContinualLearning && runtime.Config.Labs.ContinualLearningSchedule,
+		Enabled:       runtime.Config.Labs.DeveloperMode && runtime.Config.Labs.ContinualLearningSchedule,
 		IntervalHours: runtime.Config.Labs.ContinualLearningIntervalHours,
 	}
-	if !runtime.Config.Labs.ContinualLearning {
+	if !runtime.Config.Labs.DeveloperMode {
 		return status, nil
 	}
 	if err := service.initialize(); err != nil {
@@ -100,7 +100,7 @@ func (service *Service) ScheduleStatus() (ScheduleStatus, error) {
 func (service *Service) runScheduleTick(ctx context.Context, now time.Time) {
 	runtime := service.host.Runtime()
 	labs := runtime.Config.Labs
-	if !labs.ContinualLearning || !labs.ContinualLearningSchedule {
+	if !labs.DeveloperMode || !labs.ContinualLearningSchedule {
 		return
 	}
 	if err := service.initialize(); err != nil {

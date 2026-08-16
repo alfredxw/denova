@@ -12,13 +12,12 @@ func TestApplyLayeredRefreshesResolvedLabSettings(t *testing.T) {
 	cfg := config.Config{}
 	ApplyLayered(&cfg, config.LayeredSettings{Effective: config.Settings{Labs: config.LabSettings{
 		DeveloperMode:                  &enabled,
-		ContinualLearning:              &enabled,
 		ContinualLearningSchedule:      &scheduled,
 		ContinualLearningIntervalHours: &interval,
 		ContinualLearningTrajectoryCap: &cap,
 	}}})
 
-	if !cfg.Labs.DeveloperMode || !cfg.Labs.ContinualLearning || !cfg.Labs.ContinualLearningSchedule ||
+	if !cfg.Labs.DeveloperMode || !cfg.Labs.ContinualLearningSchedule ||
 		cfg.Labs.ContinualLearningIntervalHours != interval || cfg.Labs.ContinualLearningTrajectoryCap != cap {
 		t.Fatalf("runtime Labs were not refreshed: %#v", cfg.Labs)
 	}
