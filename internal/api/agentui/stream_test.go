@@ -38,6 +38,7 @@ func TestStreamEncoderMapsAgentEventsToUIStream(t *testing.T) {
 		}},
 		{Type: "context_compaction", Data: map[string]any{"id": "ctx-1", "content": "压缩完成"}},
 		{Type: "token_usage", Data: map[string]any{"id": "usage-1", "total_tokens": 42}},
+		{Type: "execution_summary", Data: map[string]any{"run_id": "run-1", "run_started_at": "2026-07-08T12:00:00Z", "run_finished_at": "2026-07-08T12:01:01Z", "duration_ms": 61_000, "status": "completed"}},
 		{Type: "ask_pending", Data: map[string]any{"schema": "ask.pending.v1", "id": "ask-1", "tool_call_id": "ask-1", "status": "pending", "questions": []map[string]any{{"id": "q1", "question": "选择方向"}}}},
 		{Type: "proposed_plan", Data: map[string]any{"id": "plan-1", "content": "执行计划"}},
 		{Type: "rule_roll", Data: map[string]any{"id": "roll-1", "rule_roll": map[string]any{"label": "检定"}}},
@@ -83,6 +84,7 @@ func TestStreamEncoderMapsAgentEventsToUIStream(t *testing.T) {
 		DataTypeWorkspaceChange,
 		DataTypeContextCompaction,
 		DataTypeTokenUsage,
+		DataTypeExecutionSummary,
 		DataTypeAsk,
 		DataTypeProposedPlan,
 		DataTypeRuleRoll,
@@ -104,6 +106,7 @@ func TestStreamEncoderMapsAgentEventsToUIStream(t *testing.T) {
 	assertChunk(t, chunks, DataTypeWorkspaceChange, "id", "tool-change-1")
 	assertChunk(t, chunks, DataTypeRuleRoll, "id", "roll-1")
 	assertChunk(t, chunks, DataTypeAsk, "id", "ask-1")
+	assertDataChunkValue(t, chunks, DataTypeExecutionSummary, "duration_ms", float64(61_000))
 	assertChunk(t, chunks, "tool-input-start", "toolName", "read")
 	assertChunkAgentPresentation(t, chunks, "tool-input-start", "search", "search")
 	assertChunk(t, chunks, "tool-input-available", "toolCallId", "tool-1")

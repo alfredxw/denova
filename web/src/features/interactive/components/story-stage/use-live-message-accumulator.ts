@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { buildContextCompactionMessage, createContextCompactionMessageId, upsertContextCompactionMessage } from '@/components/Chat/context-compaction-message'
 import type { AgentMessageMetadata, AgentUIMessage } from '@/lib/agent-ui'
-import { createAgentDataMessage, createAgentTextMessage, createAgentToolMessage, parseAgentToolInput } from '@/lib/agent-ui-message'
+import { agentToolInputText, createAgentDataMessage, createAgentTextMessage, createAgentToolMessage, parseAgentToolInput } from '@/lib/agent-ui-message'
 import { createRafUpdateBatcher, STREAMING_RENDER_INTERVAL_MS } from '@/lib/streaming/raf-update-batcher'
 import {
   appendBufferedLiveMessage,
@@ -107,7 +107,6 @@ export function useLiveMessageAccumulator({ publicRuleRollVisible, setMessages }
         id,
         name,
         state: 'input-streaming',
-        input: parseAgentToolInput(inputText),
         inputText,
         metadata: streamMetadataFromPayload(payload),
       }),
@@ -267,7 +266,11 @@ function settleAgentMessage(message: AgentUIMessage, includeNarrative: boolean):
     }
     if (part.type === 'dynamic-tool' && (part.state === 'input-streaming' || part.state === 'input-available')) {
       changed = true
-      return { ...part, state: 'output-available' as const }
+      return {
+        ...part,
+        input: parseAgentToolInput(agentToolInputText(part) ?? ''),
+        state: 'output-available' as const,
+      }
     }
     if (part.type === 'data-agent-context-compaction' && part.data.status === 'running') {
       changed = true

@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+/* Includes shared utilities such as the scroll-aware fade used by Agent reasoning. */
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/inter";
 
@@ -1448,6 +1449,48 @@ html[data-nova-motion="off"] *::after {
 
   .nova-agent-composer-pill {
     max-width: 7.5rem;
+  }
+}
+
+@keyframes nova-agent-execution-expand {
+  from {
+    height: 0;
+    opacity: 0;
+  }
+
+  to {
+    height: var(--radix-collapsible-content-height);
+    opacity: 1;
+  }
+}
+
+@keyframes nova-agent-execution-collapse {
+  from {
+    height: var(--radix-collapsible-content-height);
+    opacity: 1;
+  }
+
+  to {
+    height: 0;
+    opacity: 0;
+  }
+}
+
+.nova-agent-execution-content {
+  overflow: hidden;
+}
+
+.nova-agent-execution-content[data-state="open"] {
+  animation: nova-agent-execution-expand var(--nova-motion-fast) var(--nova-panel-motion-ease);
+}
+
+.nova-agent-execution-content[data-state="closed"] {
+  animation: nova-agent-execution-collapse var(--nova-motion-fast) var(--nova-panel-motion-ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nova-agent-execution-content {
+    animation-duration: 1ms !important;
   }
 }
 

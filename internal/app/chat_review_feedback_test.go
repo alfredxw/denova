@@ -474,7 +474,7 @@ func TestCommittedReviewFeedbackPersistsWithUserMessageAndDisappearsAfterReload(
 		t.Fatal(err)
 	}
 	history := reloadedSession.History()
-	if len(history) != 2 || len(history[0].UserReferences) != 1 || history[1].Role != "assistant" {
+	if len(history) != 3 || len(history[0].UserReferences) != 1 || history[1].Role != "assistant" || history[2].Role != "execution_summary" {
 		t.Fatalf("reloaded user message lost review references: %#v", history)
 	}
 	reference := history[0].UserReferences[0]

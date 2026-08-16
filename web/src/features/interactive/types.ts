@@ -411,10 +411,6 @@ export interface TurnDisplayEvent {
   subagent_session_id?: string
   subagent_type?: string
   parent_call_id?: string
-  sse_hidden_fields?: string[]
-  sse_hidden_reason?: string
-  sse_display_notice?: string
-  sse_generated_chars?: number
 }
 
 export interface TokenUsageEvent {

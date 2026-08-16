@@ -13,6 +13,7 @@ export type AgentMessageViewKind =
   | 'rule-roll'
   | 'context-compaction'
   | 'token-usage'
+  | 'execution-summary'
   | 'proposed-plan'
   | 'system'
   | 'error'
@@ -65,6 +66,15 @@ export interface AgentTokenUsageRecord {
   model_calls?: number
   generated_bytes?: number
   usage_calls?: TokenUsageCall[]
+}
+
+/** Display-only timing facts for one root Agent run. */
+export interface AgentExecutionTiming {
+  runID: string
+  startedAtMS?: number
+  finishedAtMS?: number
+  durationMS?: number
+  status?: string
 }
 
 // Agent message updates are immutable. Caching by message identity keeps
@@ -190,6 +200,36 @@ export function selectAgentTokenUsageRecords(messages: AgentUIMessage[]): AgentT
     .map(agentTokenUsageRecordFromView)
 }
 
+/**
+ * Merges the live cycle edge and durable terminal summary for every run.
+ * The server duration is authoritative once present; old history without a
+ * summary intentionally remains untimed.
+ */
+export function selectAgentExecutionTimings(views: AgentMessageView[]): Map<string, AgentExecutionTiming> {
+  const timings = new Map<string, AgentExecutionTiming>()
+  for (const view of views) {
+    if (view.kind !== 'execution-summary') continue
+    const runID = readString(view.data.run_id) || view.metadata.run_id || readString(view.data.operation_id)
+    if (!runID) continue
+
+    const current = timings.get(runID) || { runID }
+    const startedAtMS = readTimestamp(view.data.run_started_at)
+    const finishedAtMS = readTimestamp(view.data.run_finished_at)
+    const durationMS = readNumber(view.data.duration_ms)
+    const status = readString(view.data.run_status) || readString(view.data.status)
+    timings.set(runID, {
+      ...current,
+      startedAtMS: startedAtMS !== undefined
+        ? Math.min(current.startedAtMS ?? startedAtMS, startedAtMS)
+        : current.startedAtMS,
+      finishedAtMS: finishedAtMS ?? current.finishedAtMS,
+      durationMS: durationMS !== undefined && durationMS >= 0 ? durationMS : current.durationMS,
+      status: status || current.status,
+    })
+  }
+  return timings
+}
+
 export function countCompletedAgentTurnSignals(messages: AgentUIMessage[]): number {
   return buildAgentMessageViews(messages).filter((view) =>
     (view.kind === 'assistant' || view.kind === 'tool-result' || view.kind === 'tool') &&
@@ -222,6 +262,14 @@ export function isAgentTraceView(view: AgentMessageView) {
   if (view.metadata.tool_presentation?.call === 'interactive_media' || view.metadata.tool_presentation?.result === 'interactive_media') return false
   return view.kind === 'reasoning' || view.kind === 'tool' || view.kind === 'tool-result' ||
     (view.kind === 'ask' && agentViewAskInteraction(view)?.kind === 'tool_approval')
+}
+
+export function isAgentRunMetadataView(view: AgentMessageView) {
+  return view.kind === 'token-usage' || view.kind === 'execution-summary'
+}
+
+export function isAgentTerminalExecutionSummaryView(view: AgentMessageView) {
+  return view.kind === 'execution-summary' && readTimestamp(view.data.run_finished_at) !== undefined && readNumber(view.data.duration_ms) !== undefined
 }
 
 export function agentViewAskInteraction(view: AgentMessageView) {
@@ -271,7 +319,7 @@ export function buildAgentSubAgentTimelineGroups(views: AgentMessageView[]): Age
     let nextIndex = startIndex
     while (nextIndex < views.length) {
       const candidate = views[nextIndex]
-      if (candidate.kind === 'token-usage' && candidate.metadata.run_id === first.metadata.run_id) {
+      if (isAgentRunMetadataView(candidate) && candidate.metadata.run_id === first.metadata.run_id) {
         nextIndex += 1
         continue
       }
@@ -358,7 +406,7 @@ export function agentViewToRenderMessage(view: AgentMessageView, options: { forc
       return { id, role: 'thinking', content: view.content, streaming, ...meta }
     case 'tool': {
       const raw = view.part as Record<string, any>
-      const args = view.inputText ?? stringifyInput(view.input)
+      const args = view.streaming ? (view.inputText ?? '') : (view.inputText ?? stringifyInput(view.input))
       const result = raw.state === 'output-error' ? view.errorText : stringifyOutput(view.output)
       return {
         id,
@@ -402,6 +450,8 @@ export function agentViewToRenderMessage(view: AgentMessageView, options: { forc
       return { id, role: 'context_compaction', content: view.content, status, streaming, ...contextFields(data), ...meta }
     case 'token-usage':
       return { id, role: 'token_usage', content: view.content, ...tokenUsageFields(data), ...meta }
+    case 'execution-summary':
+      return null
     case 'proposed-plan':
       return { id, role: 'proposed_plan', content: view.content, status, streaming, thinking_preview: readString(data.thinking_preview), plan_action: readPlanAction(data.plan_action), ...meta }
     case 'system':
@@ -510,6 +560,8 @@ function buildAgentMessageView(message: AgentUIMessage, part: AgentUIMessage['pa
       return { ...base, kind: 'context-compaction', data, content, status, streaming }
     case 'data-agent-token-usage':
       return { ...base, kind: 'token-usage', data, content, streaming: false }
+    case 'data-agent-execution-summary':
+      return { ...base, kind: 'execution-summary', data, content: '', streaming: false }
     case 'data-agent-proposed-plan':
       return { ...base, kind: 'proposed-plan', data, content, status, streaming }
     case 'data-agent-system':
@@ -541,6 +593,9 @@ function buildAgentMessageView(message: AgentUIMessage, part: AgentUIMessage['pa
         output: data.result ?? data.content,
       }
     case 'data-agent-activity': {
+      if (readString(data.event) === 'agent_cycle_started' && readString(data.run_id) && readString(data.run_started_at)) {
+        return { ...base, kind: 'execution-summary', data, content: '', streaming: false }
+      }
       // Lifecycle activity payloads may carry the accepted user input in
       // `message` (for example agent_cycle_started). Only explicit `content`
       // is presentation text; treating `message` as display content echoes the
@@ -553,6 +608,12 @@ function buildAgentMessageView(message: AgentUIMessage, part: AgentUIMessage['pa
       if (!content) return null
       return { ...base, kind: 'activity', data, content, streaming }
   }
+}
+
+function readTimestamp(value: unknown): number | undefined {
+  if (typeof value !== 'string' || !value.trim()) return undefined
+  const timestamp = Date.parse(value)
+  return Number.isFinite(timestamp) ? timestamp : undefined
 }
 
 function metadataToChatFields(view: AgentMessageView): Partial<ChatMessage> {
@@ -568,10 +629,6 @@ function metadataToChatFields(view: AgentMessageView): Partial<ChatMessage> {
     subagent_session_id: metadata.subagent_session_id,
     subagent_type: metadata.subagent_type,
     parent_call_id: metadata.parent_call_id,
-    sse_hidden_fields: metadata.sse_hidden_fields,
-    sse_hidden_reason: metadata.sse_hidden_reason,
-    sse_display_notice: metadata.sse_display_notice,
-    sse_generated_chars: metadata.sse_generated_chars,
     streaming_target_content: metadata.streaming_target_content,
     turn_id: metadata.turn_id,
     navigation_turn_id: metadata.navigation_turn_id,
@@ -811,10 +868,6 @@ function providerAgentMetadata(value: unknown): AgentMessageMetadata {
     subagent_session_id: readString(agent.subagent_session_id) || undefined,
     subagent_type: readString(agent.subagent_type) || undefined,
     parent_call_id: readString(agent.parent_call_id) || undefined,
-    sse_hidden_fields: readStringArray(agent.sse_hidden_fields),
-    sse_hidden_reason: readString(agent.sse_hidden_reason) || undefined,
-    sse_display_notice: readString(agent.sse_display_notice) || undefined,
-    sse_generated_chars: readNumber(agent.sse_generated_chars),
     display_hidden: agent.display_hidden === true || undefined,
     streaming_target_content: readString(agent.streaming_target_content) || undefined,
     turn_id: readString(agent.turn_id) || undefined,

@@ -24,27 +24,27 @@ func TestInteractiveConversationPersistsStreamedDisplayEventsAtStableBoundaries(
 	conversation.lastTurn = &turn
 
 	if err := conversation.AppendDisplayEvent(session.DisplayEvent{
-		ID: "progress-1", Role: "tool_call", Name: "submit_director_plan_update", Status: "running",
+		ID: "progress-1", Role: "tool_call", Name: "submit_director_plan_update", Args: "raw-part-1", Status: "running",
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := conversation.AppendDisplayEvent(session.DisplayEvent{
-		ID: "progress-1", Role: "tool_call", Name: "submit_director_plan_update", Status: "running", SSEGeneratedChars: 100,
+		ID: "progress-1", Role: "tool_call", Name: "submit_director_plan_update", Args: "raw-part-1|raw-part-2", Status: "running",
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if got := displayEventByID(t, conversation.DisplayEventsSnapshot(), "progress-1").SSEGeneratedChars; got != 100 {
-		t.Fatalf("live progress chars = %d, want 100", got)
+	if got := displayEventByID(t, conversation.DisplayEventsSnapshot(), "progress-1").Args; got != "raw-part-1|raw-part-2" {
+		t.Fatalf("live progress args = %q, want exact raw input", got)
 	}
-	if got := persistedDisplayEventByID(t, store, story.ID, "progress-1").SSEGeneratedChars; got != 0 {
-		t.Fatalf("transient progress was persisted with %d chars, want initial snapshot", got)
+	if got := persistedDisplayEventByID(t, store, story.ID, "progress-1").Args; got != "raw-part-1" {
+		t.Fatalf("transient progress was persisted as %q, want initial snapshot", got)
 	}
 	if err := conversation.AppendDisplayEvent(session.DisplayEvent{
-		ID: "progress-1", Role: "tool_call", Name: "submit_director_plan_update", Status: "success", SSEGeneratedChars: 101,
+		ID: "progress-1", Role: "tool_call", Name: "submit_director_plan_update", Args: "raw-part-1|raw-part-2", Status: "success",
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if got := persistedDisplayEventByID(t, store, story.ID, "progress-1"); got.Status != "success" || got.SSEGeneratedChars != 101 {
+	if got := persistedDisplayEventByID(t, store, story.ID, "progress-1"); got.Status != "success" || got.Args != "raw-part-1|raw-part-2" {
 		t.Fatalf("terminal progress event mismatch: %#v", got)
 	}
 

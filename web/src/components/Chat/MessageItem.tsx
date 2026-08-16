@@ -151,6 +151,11 @@ export const MessageItem = memo(function MessageItem({ projectId = '', message, 
       return <ThinkingBlock message={message} content={content} streaming={message.streaming === true} />
 
     case 'tool_call': {
+      // Live input is an opaque protocol text stream. Specialized renderers may
+      // interpret arguments only after the input stream has completed.
+      if (message.streaming === true) {
+        return <ToolExecutionBlock message={message} onResolve={onResolveAsk} onLayoutChange={onInteractiveCardLayoutChange} />
+      }
       // A completed AI SDK dynamic-tool part contains both call and result
       // phases. Result refinement must win for interactive media when no richer
       // data part is available (for example after reopening Writing history).

@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { AgentUIMessage } from '@/lib/agent-ui'
 import { createAgentReasoningMessage, createAgentTextMessage, createAgentToolMessage } from '@/lib/agent-ui-message'
 import { MessageList } from './MessageList'
+import { formatExecutionDuration } from './AgentExecutionProcess'
 
 function renderMessageList(ui: ReactElement) {
   return render(
@@ -15,6 +16,127 @@ function renderMessageList(ui: ReactElement) {
 }
 
 describe('Agent MessageList', () => {
+  it('formats execution durations at second, minute, and hour boundaries', () => {
+    expect(formatExecutionDuration(0)).toBe('0s')
+    expect(formatExecutionDuration(59_999)).toBe('59s')
+    expect(formatExecutionDuration(61_000)).toBe('1m1s')
+    expect(formatExecutionDuration(3_661_000)).toBe('1h1m1s')
+  })
+
+  it('updates only the active process duration and freezes the server summary on completion', () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] })
+    vi.setSystemTime(new Date('2026-01-01T01:01:01.000Z'))
+    const started = {
+      id: 'cycle-started',
+      role: 'assistant' as const,
+      parts: [{
+        type: 'data-agent-activity',
+        id: 'cycle-started',
+        data: {
+          event: 'agent_cycle_started',
+          run_id: 'run-duration',
+          run_started_at: '2026-01-01T00:00:00.000Z',
+        },
+      }],
+    } as AgentUIMessage
+    const renderDuration = (messages: AgentUIMessage[], isStreaming: boolean) => (
+      <VirtuosoMockContext.Provider value={{ viewportHeight: 180, itemHeight: 52 }}>
+        <MessageList
+          isStreaming={isStreaming}
+          isExecutionActive={isStreaming}
+          activityContent=""
+          collapseTraceGroups
+          activeTraceDisplay="expanded"
+          messages={messages}
+        />
+      </VirtuosoMockContext.Provider>
+    )
+
+    try {
+      const { container, rerender } = render(renderDuration([
+        started,
+        { id: 'reasoning-live', role: 'assistant', metadata: { run_id: 'run-duration' }, parts: [{ type: 'reasoning', text: 'Still working', state: 'streaming' }] },
+      ] as AgentUIMessage[], true))
+
+      const activeProcessButton = screen.getByRole('button', { name: /正在执行.*1h1m1s/ })
+      expect(activeProcessButton).toBeInTheDocument()
+      expect(activeProcessButton).toHaveClass('hover:text-[var(--nova-text)]')
+      const executionToggleIcon = activeProcessButton.lastElementChild
+      const executionContent = container.querySelector('[data-agent-execution-content]')
+      expect(executionToggleIcon).toHaveAttribute('data-agent-execution-toggle-icon')
+      expect(executionToggleIcon).toHaveClass('rotate-90', 'duration-[var(--nova-motion-fast)]')
+      expect(executionContent).toHaveClass('nova-agent-execution-content')
+      expect(executionContent).toHaveAttribute('data-state', 'open')
+      expect(executionContent).not.toHaveClass('border-l', 'px-3')
+      fireEvent.click(activeProcessButton)
+      expect(executionToggleIcon).not.toHaveClass('rotate-90')
+      expect(executionContent).toHaveAttribute('data-state', 'closed')
+      fireEvent.click(activeProcessButton)
+      act(() => vi.advanceTimersByTime(1_000))
+      expect(screen.getByRole('button', { name: /正在执行.*1h1m2s/ })).toBeInTheDocument()
+
+      rerender(renderDuration([
+        started,
+        { id: 'reasoning-done', role: 'assistant', metadata: { run_id: 'run-duration' }, parts: [{ type: 'reasoning', text: 'Checked' }] },
+        { id: 'final', role: 'assistant', metadata: { run_id: 'run-duration', display_phase: 'final' }, parts: [{ type: 'text', text: 'Done' }] },
+        { id: 'post-tool', role: 'assistant', metadata: { run_id: 'run-duration' }, parts: [{ type: 'dynamic-tool', toolName: 'submit_choices', toolCallId: 'post-tool', state: 'output-available', input: {}, output: 'ok' }] },
+        {
+          id: 'execution-summary',
+          role: 'assistant',
+          parts: [{
+            type: 'data-agent-execution-summary',
+            id: 'execution-summary',
+            data: {
+              run_id: 'run-duration',
+              run_started_at: '2026-01-01T00:00:00.000Z',
+              run_finished_at: '2026-01-01T01:01:01.000Z',
+              duration_ms: 3_661_000,
+              status: 'completed',
+            },
+          }],
+        },
+      ] as AgentUIMessage[], false))
+
+      expect(screen.getAllByRole('button', { name: /执行过程/ })).toHaveLength(2)
+      expect(screen.getAllByText('1h1m1s')).toHaveLength(1)
+      act(() => vi.advanceTimersByTime(10_000))
+      expect(screen.getAllByText('1h1m1s')).toHaveLength(1)
+      expect(screen.queryByText('1h1m11s')).not.toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('keeps a summarized predecessor frozen while only its queued successor is executing', () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] })
+    vi.setSystemTime(new Date('2026-01-01T00:00:15.000Z'))
+    try {
+      renderMessageList(
+        <MessageList
+          isStreaming
+          isExecutionActive
+          activityContent=""
+          collapseTraceGroups
+          activeTraceDisplay="expanded"
+          messages={[
+            { id: 'first-start', role: 'assistant', parts: [{ type: 'data-agent-activity', data: { event: 'agent_cycle_started', run_id: 'run-first', run_started_at: '2026-01-01T00:00:00.000Z' } }] },
+            { id: 'first-reasoning', role: 'assistant', metadata: { run_id: 'run-first' }, parts: [{ type: 'reasoning', text: 'First reasoning' }] },
+            { id: 'first-final', role: 'assistant', metadata: { run_id: 'run-first', display_phase: 'final' }, parts: [{ type: 'text', text: 'First result' }] },
+            { id: 'first-summary', role: 'assistant', parts: [{ type: 'data-agent-execution-summary', data: { run_id: 'run-first', run_started_at: '2026-01-01T00:00:00.000Z', run_finished_at: '2026-01-01T00:00:10.000Z', duration_ms: 10_000, status: 'completed' } }] },
+            { id: 'second-start', role: 'assistant', parts: [{ type: 'data-agent-activity', data: { event: 'agent_cycle_started', run_id: 'run-second', run_started_at: '2026-01-01T00:00:10.000Z' } }] },
+            { id: 'second-reasoning', role: 'assistant', metadata: { run_id: 'run-second' }, parts: [{ type: 'reasoning', text: 'Second reasoning', state: 'streaming' }] },
+          ] as AgentUIMessage[]}
+        />,
+      )
+
+      expect(screen.getAllByRole('button', { name: /正在执行/ })).toHaveLength(1)
+      expect(screen.getByRole('button', { name: /执行过程.*10s/ })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /正在执行.*5s/ })).toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('首次恢复历史时定位到底部后才显示消息', () => {
     const frameCallbacks: FrameRequestCallback[] = []
     const clientHeightSpy = vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(function clientHeight(this: HTMLElement) {

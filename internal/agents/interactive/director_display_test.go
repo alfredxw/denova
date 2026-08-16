@@ -2,7 +2,6 @@ package interactive
 
 import (
 	"context"
-	"strings"
 	"testing"
 
 	agent "github.com/alfredxw/denova/agent"
@@ -12,15 +11,16 @@ import (
 	"denova/internal/agents/session"
 )
 
-func TestInteractiveDirectorDisplayHidesDirectorPlanWriteInput(t *testing.T) {
+func TestInteractiveDirectorDisplayPreservesRawToolInputEvent(t *testing.T) {
 	display := &directorDisplayConversation{}
 	conversation := NewDirectorConversation(DirectorConversationOptions{Display: display})
+	raw := `{"path":"/tmp/work/.denova/interactive/stories/story-1/director/main/director.md","content":"一二三"}`
 
 	if err := conversation.AppendDisplayEvent(session.DisplayEvent{
 		ID:     "call-1",
 		Role:   "tool_call",
 		Name:   "write",
-		Args:   `{"path":"/tmp/work/.denova/interactive/stories/story-1/director/main/director.md","content":"一二三"}`,
+		Args:   raw,
 		Status: "running",
 	}); err != nil {
 		t.Fatal(err)
@@ -30,109 +30,43 @@ func TestInteractiveDirectorDisplayHidesDirectorPlanWriteInput(t *testing.T) {
 	if got.AgentKind != config.AgentKindInteractiveDirector {
 		t.Fatalf("agent kind = %q, want interactive director", got.AgentKind)
 	}
-	if got.Args != `{"path":"director.md"}` {
-		t.Fatalf("director write args should hide content, got %q", got.Args)
+	if got.Args != raw {
+		t.Fatalf("director tool args = %q, want exact raw input %q", got.Args, raw)
 	}
-	if got.SSEDisplayNotice != directorPlanHiddenNotice || got.SSEHiddenReason != directorPlanHiddenReason {
-		t.Fatalf("hidden metadata mismatch: %#v", got)
-	}
-	if got.SSEGeneratedChars != 3 {
-		t.Fatalf("generated chars = %d, want 3", got.SSEGeneratedChars)
+	if got.Content != "write" {
+		t.Fatalf("content = %q, want tool name", got.Content)
 	}
 }
 
-func TestInteractiveDirectorDisplayStreamsHiddenDirectorPlanCharCount(t *testing.T) {
+func TestInteractiveDirectorDisplayStreamsRawToolInputDeltas(t *testing.T) {
 	display := &directorDisplayConversation{}
 	conversation := NewDirectorConversation(DirectorConversationOptions{Display: display})
 
-	if err := conversation.AppendDisplayEvent(session.DisplayEvent{ID: "call-1", Role: "tool_call", Name: "write", Status: "running"}); err != nil {
+	if err := conversation.AppendDisplayEvent(session.DisplayEvent{ID: "call-1", Role: "tool_call", Name: "edit", Status: "running"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := conversation.AppendDisplayToolArgs("call-1", "write", `{"path":"director.md","content":"`+strings.Repeat("字", 101)); err != nil {
-		t.Fatal(err)
+	chunks := []string{
+		`not-json:{"path":"director.md","edits":[{"new_`,
+		`string":"逐字到达"}]}`,
 	}
-	running := display.latest()
-	if running.Args != `{"path":"director.md"}` || strings.Contains(running.Args, "字") {
-		t.Fatalf("streaming director args should only expose path, got %q", running.Args)
+	for _, chunk := range chunks {
+		if err := conversation.AppendDisplayToolArgs("call-1", "edit", chunk); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if running.SSEGeneratedChars != 101 {
-		t.Fatalf("running generated chars = %d, want 101", running.SSEGeneratedChars)
-	}
-	if err := conversation.AppendDisplayToolArgs("call-1", "write", `尾"}`); err != nil {
-		t.Fatal(err)
-	}
-	if err := conversation.UpdateDisplayToolResult("call-1", "write", "success", "ok", nil); err != nil {
-		t.Fatal(err)
-	}
-
-	done := display.latest()
-	if done.Status != "success" || done.Result != "ok" {
-		t.Fatalf("final director tool status mismatch: %#v", done)
-	}
-	if done.SSEGeneratedChars != 102 {
-		t.Fatalf("final generated chars = %d, want 102", done.SSEGeneratedChars)
-	}
-	if strings.Contains(done.Args, "字") || strings.Contains(done.Args, "尾") {
-		t.Fatalf("final director args should not expose content, got %q", done.Args)
-	}
-}
-
-func TestInteractiveDirectorDisplayCompactsStructuredPlanInputWithoutChapterBodyHiding(t *testing.T) {
-	display := &directorDisplayConversation{}
-	conversation := NewDirectorConversation(DirectorConversationOptions{Display: display})
-
-	if err := conversation.AppendDisplayEvent(session.DisplayEvent{
-		ID: "call-1", Role: "tool_call", Name: "submit_director_plan_update", Status: "running",
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if err := conversation.AppendDisplayToolArgs("call-1", "submit_director_plan_update", `{"decision":{"mode":"patch"},"updates":[{"document":"agent-brief.md","base_hash":"hash","edits":[{"op":"replace_section","section":"当前阶段","content":"`+strings.Repeat("字", 101)); err != nil {
-		t.Fatal(err)
-	}
-	if err := conversation.AppendDisplayToolArgs("call-1", "submit_director_plan_update", `"}]}],"finalize":true}`); err != nil {
-		t.Fatal(err)
-	}
-
-	if display.toolArgAppends != 0 {
-		t.Fatalf("structured Director plan deltas reached the raw display appender %d times, want 0", display.toolArgAppends)
+	if display.toolArgAppends != len(chunks) {
+		t.Fatalf("raw tool input appends = %d, want %d", display.toolArgAppends, len(chunks))
 	}
 	got := display.latest()
-	if got.Args != `{"documents":1,"finalize":true,"mode":"patch"}` {
-		t.Fatalf("structured Director plan args = %q, want compact summary", got.Args)
+	if got.Args != chunks[0]+chunks[1] {
+		t.Fatalf("streamed director args = %q, want exact concatenated deltas %q", got.Args, chunks[0]+chunks[1])
 	}
-	if strings.Contains(got.Args, "字") {
-		t.Fatalf("structured Director plan args leaked generated content: %q", got.Args)
+	if err := conversation.UpdateDisplayToolResult("call-1", "edit", "success", "ok", nil); err != nil {
+		t.Fatal(err)
 	}
-	if got.SSEGeneratedChars != 101 {
-		t.Fatalf("generated chars = %d, want 101", got.SSEGeneratedChars)
-	}
-}
-
-func TestDirectorToolTextCounterCountsEveryBatchEditValue(t *testing.T) {
-	counter := directorToolTextCounter{}
-	keys := directorToolGeneratedTextKeys("edit")
-	chunks := []string{
-		`{"path":"director.md","edits":[{"old_string":"\"new_string\":\"trap\"","new_`,
-		`string":"第一"},{"old_string":"x","new_string":"二\n`,
-		`三"}]}`,
-	}
-	total := 0
-	for _, chunk := range chunks {
-		total += counter.countDelta(chunk, keys)
-	}
-	if total != 5 {
-		t.Fatalf("streamed batch edit character count = %d, want 5", total)
-	}
-}
-
-func TestDirectorToolDisplayStateSynchronizesBatchEditCharacterCount(t *testing.T) {
-	state := directorToolDisplayState{
-		name:    "edit",
-		rawArgs: `{"path":"director.md","edits":[{"old_string":"one","new_string":"第一"},{"old_string":"two","new_string":"二\n三"}]}`,
-	}
-	state.syncDecodedGeneratedChars()
-	if state.generatedChars != 5 {
-		t.Fatalf("decoded batch edit character count = %d, want 5", state.generatedChars)
+	got = display.latest()
+	if got.Args != chunks[0]+chunks[1] || got.Status != "success" || got.Result != "ok" {
+		t.Fatalf("final director tool event changed raw input or result: %#v", got)
 	}
 }
 

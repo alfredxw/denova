@@ -3,6 +3,8 @@ import {
   agentViewStableKey,
   isAgentSubAgentTimelineBridgeView,
   isAgentSubAgentTimelineView,
+  isAgentRunMetadataView,
+  isAgentTerminalExecutionSummaryView,
   isAgentTraceView,
   type AgentMessageView,
 } from '@/lib/agent-message-view'
@@ -35,10 +37,12 @@ export function buildAgentRunPresentation(
   if (!runID || !isRootRunView(first)) return null
 
   const runViews: AgentMessageView[] = []
+  let settled = false
   let nextIndex = startIndex
   while (nextIndex < views.length) {
     const view = views[nextIndex]
-    if (view.kind === 'token-usage' && view.metadata.run_id === runID) {
+    if (isAgentRunMetadataView(view) && view.metadata.run_id === runID) {
+      if (isAgentTerminalExecutionSummaryView(view)) settled = true
       nextIndex += 1
       continue
     }
@@ -52,7 +56,7 @@ export function buildAgentRunPresentation(
   }
   if (runViews.length === 0) return null
 
-  const active = isActiveRunSlice(views, nextIndex, isStreaming)
+  const active = !settled && isActiveRunSlice(views, nextIndex, isStreaming)
   const resultIndex = selectTerminalResultIndex(runViews, active)
 
   return {
@@ -147,7 +151,7 @@ function isActiveRunSlice(views: AgentMessageView[], afterRunIndex: number, isSt
   if (!isStreaming) return false
   for (let index = afterRunIndex; index < views.length; index += 1) {
     const view = views[index]
-    if (view.kind === 'token-usage') continue
+    if (isAgentRunMetadataView(view)) continue
     if (view.kind === 'user' || view.kind === 'clear') return false
   }
   return true

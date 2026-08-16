@@ -14,7 +14,10 @@ import {
   agentViewStableKey,
   buildAgentSubAgentTimelineGroups,
   buildAgentMessageViews,
+  isAgentRunMetadataView,
   isAgentTraceView,
+  selectAgentExecutionTimings,
+  type AgentExecutionTiming,
   type AgentMessageView,
   type AgentPartRef,
 } from '@/lib/agent-message-view'
@@ -132,9 +135,10 @@ export function MessageList({ projectId, messages, isStreaming, visible = true, 
   const lastVisibleTurnAnchorRef = useRef('')
   const lastTurnScrollRequestIdRef = useRef<number | null>(null)
   const views = useMemo(() => buildAgentMessageViews(messages), [messages])
+  const executionTimings = useMemo(() => selectAgentExecutionTimings(views), [views])
   const hasActiveResponse = views.some((view) =>
     view.kind !== 'user' &&
-    view.kind !== 'token-usage' &&
+    !isAgentRunMetadataView(view) &&
     view.kind !== 'clear' &&
     (view.streaming || view.status === 'running'),
   )
@@ -279,6 +283,7 @@ export function MessageList({ projectId, messages, isStreaming, visible = true, 
       <AgentChatListRow
         projectId={projectId}
         item={resolvedItem}
+        executionTimings={executionTimings}
         contentClassName={contentClassName}
         isLast={index === firstItemIndex + listItems.length - 1}
         isStreaming={isStreaming}
@@ -307,7 +312,7 @@ export function MessageList({ projectId, messages, isStreaming, visible = true, 
         syncStreamingTailLayout={tailFollowActive ? scrollLock.syncStreamingTailLayout : undefined}
       />
     )
-  }, [activeSubAgentSessionKey, activeTraceDisplay, anchorLatestInteractiveCardBottom, canMutateMessage, contentClassName, firstItemIndex, generatingInteractiveImageTurnId, highlightDialogue, isStreaming, listItems, messageStyle, onApprovePlan, onContinuePlan, onCreateBranch, onEditAssistantReply, onEditMessage, onExitPlanMode, onGenerateInteractiveImage, onInsertIllustration, onOpenSubAgentSession, onOpenTrace, onRegenerateMessage, onResolveAsk, onSwitchMessageVersion, projectId, scrollLock.streamingRowRef, scrollLock.syncStreamingTailLayout, tailFollowActive])
+  }, [activeSubAgentSessionKey, activeTraceDisplay, anchorLatestInteractiveCardBottom, canMutateMessage, contentClassName, executionTimings, firstItemIndex, generatingInteractiveImageTurnId, highlightDialogue, isStreaming, listItems, messageStyle, onApprovePlan, onContinuePlan, onCreateBranch, onEditAssistantReply, onEditMessage, onExitPlanMode, onGenerateInteractiveImage, onInsertIllustration, onOpenSubAgentSession, onOpenTrace, onRegenerateMessage, onResolveAsk, onSwitchMessageVersion, projectId, scrollLock.streamingRowRef, scrollLock.syncStreamingTailLayout, tailFollowActive])
 
   useLayoutEffect(() => {
     if (!visible || !hasInitialContent || positionedKey === initialPositionKey) return
@@ -463,9 +468,10 @@ function MessageListFooter({ context }: ContextProp<MessageListVirtuosoContext>)
   )
 }
 
-function AgentChatListRow({ projectId, item, isLast, isStreaming, tailFollowActive, activeTraceDisplay, highlightDialogue, messageStyle, contentClassName, canMutateMessage, onEditMessage, onEditAssistantReply, onCreateBranch, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onResolveAsk, onInteractiveCardLayoutChange, streamingRowRef, syncStreamingTailLayout }: {
+function AgentChatListRow({ projectId, item, executionTimings, isLast, isStreaming, tailFollowActive, activeTraceDisplay, highlightDialogue, messageStyle, contentClassName, canMutateMessage, onEditMessage, onEditAssistantReply, onCreateBranch, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onResolveAsk, onInteractiveCardLayoutChange, streamingRowRef, syncStreamingTailLayout }: {
   projectId?: string
   item: AgentChatListItem
+  executionTimings: ReadonlyMap<string, AgentExecutionTiming>
   isLast: boolean
   isStreaming: boolean
   tailFollowActive: boolean
@@ -524,7 +530,7 @@ function AgentChatListRow({ projectId, item, isLast, isStreaming, tailFollowActi
       />
     )
   }
-  const renderExecutionProcess = (key: string, views: AgentMessageView[], active: boolean) => views.length > 0 ? (
+  const renderExecutionProcess = (key: string, views: AgentMessageView[], active: boolean, timing?: AgentExecutionTiming) => views.length > 0 ? (
     <AgentExecutionProcess
       projectId={projectId}
       key={key}
@@ -540,8 +546,13 @@ function AgentChatListRow({ projectId, item, isLast, isStreaming, tailFollowActi
       onOpenTrace={onOpenTrace}
       onInteractiveCardLayoutChange={onInteractiveCardLayoutChange}
       onResolveAsk={onResolveAsk}
+      timing={timing}
     />
   ) : null
+  const timedProcessKey = item.kind === 'run'
+    ? (item.sections.find(section => section.kind === 'process' && section.active)?.key ||
+      item.sections.find(section => section.kind === 'process')?.key)
+    : undefined
   useLayoutEffect(() => {
     if (isLast && tailFollowActive) syncStreamingTailLayout?.()
   }, [isLast, item, syncStreamingTailLayout, tailFollowActive])
@@ -591,11 +602,17 @@ function AgentChatListRow({ projectId, item, isLast, isStreaming, tailFollowActi
           onOpenTrace={onOpenTrace}
           onInteractiveCardLayoutChange={onInteractiveCardLayoutChange}
           onResolveAsk={onResolveAsk}
+          timing={executionTimings.get(chatListItemRunID(item))}
         />
       ) : item.kind === 'run' ? (
         <div className="space-y-2">
           {item.sections.map(section => section.kind === 'process'
-            ? renderExecutionProcess(section.key, section.views, section.active)
+            ? renderExecutionProcess(
+                section.key,
+                section.views,
+                section.active,
+                section.key === timedProcessKey ? executionTimings.get(item.runId) : undefined,
+              )
             : renderMessageView(section.view, section.key, section.kind === 'progress' ? 'progress' : 'message'))}
         </div>
       ) : item.kind === 'attachment' ? (
@@ -620,7 +637,7 @@ function AgentChatListRow({ projectId, item, isLast, isStreaming, tailFollowActi
 
 function buildAgentChatListItems({ views, isStreaming, isExecutionActive, visibleActivityContent, collapseTraceGroups, groupSubAgentTimeline, timelineAttachments }: { views: AgentMessageView[]; isStreaming: boolean; isExecutionActive: boolean; visibleActivityContent: string; collapseTraceGroups: boolean; groupSubAgentTimeline: boolean; timelineAttachments: AgentTimelineAttachment[] }): AgentChatListItem[] {
   const items: AgentChatListItem[] = []
-  if (views.length === 0 && !isStreaming) {
+  if (!isStreaming && views.every(isAgentRunMetadataView)) {
     items.push({ kind: 'empty', key: 'empty' })
     return items
   }
@@ -630,7 +647,7 @@ function buildAgentChatListItems({ views, isStreaming, isExecutionActive, visibl
 
   for (let index = 0; index < views.length; index += 1) {
     const view = views[index]
-    if (view.kind === 'token-usage') continue
+    if (isAgentRunMetadataView(view)) continue
     const subAgentGroup = subAgentGroupsByStart.get(index)
     if (subAgentGroup) {
       const pendingApprovalView = subAgentGroup.views.find(item => agentViewAskInteraction(item)?.status === 'pending')
@@ -799,7 +816,7 @@ function isActiveStreamingTrace(views: AgentMessageView[], afterTraceIndex: numb
   if (!isStreaming) return false
   for (let index = afterTraceIndex; index < views.length; index += 1) {
     const view = views[index]
-    if (view.kind === 'token-usage') continue
+    if (isAgentRunMetadataView(view)) continue
     if (view.kind === 'user') return false
     if (view.kind === 'assistant' && agentViewContent(view).trim()) {
       // A prose row is the semantic boundary after the preceding trace. The

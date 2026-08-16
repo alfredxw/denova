@@ -310,6 +310,40 @@ describe('MessageItem', () => {
     expect(screen.getByText('正在分析下一条线索')).toBeInTheDocument()
   })
 
+  it('thinking 使用带浅边框和 scroll fade 的 160px 上限窗口', () => {
+    render(<MessageItem message={{ role: 'thinking', content: '逐行分析。\n'.repeat(24), streaming: true }} />)
+
+    const content = screen.getByRole('region', { name: '思考内容' })
+    expect(content).toHaveClass('scroll-fade-y', 'scroll-fade-8', 'max-h-40', 'overflow-y-auto')
+    expect(content).not.toHaveClass('h-40', 'border-l', 'px-3')
+    expect(content.parentElement).toHaveAttribute('data-thinking-scroll-frame')
+    expect(content.parentElement).toHaveClass('border', 'border-border/60')
+  })
+
+  it('流式 thinking 默认追尾，用户上滚后暂停并在回到底部后恢复', async () => {
+    const renderThinking = (content: string) => (
+      <MessageItem message={{ id: 'thinking-scroll', role: 'thinking', content, streaming: true }} />
+    )
+    const { rerender } = render(renderThinking('第一段。'.repeat(160)))
+    const content = screen.getByRole('region', { name: '思考内容' })
+    const metrics = mockScrollMetrics(content, { scrollHeight: 520, clientHeight: 160, scrollTop: 0 })
+
+    await waitFor(() => expect(content.scrollTop).toBe(metrics.maxScrollTop()))
+
+    content.scrollTop = 240
+    fireEvent.wheel(content, { deltaY: -12 })
+    metrics.setScrollHeight(760)
+    rerender(renderThinking('第一段。'.repeat(160) + '第二段。'.repeat(80)))
+    await act(async () => { await new Promise(resolve => requestAnimationFrame(resolve)) })
+    expect(content.scrollTop).toBe(240)
+
+    content.scrollTop = metrics.maxScrollTop()
+    fireEvent.scroll(content)
+    metrics.setScrollHeight(900)
+    rerender(renderThinking('第一段。'.repeat(160) + '第二段。'.repeat(80) + '第三段。'.repeat(80)))
+    await waitFor(() => expect(content.scrollTop).toBe(metrics.maxScrollTop()))
+  })
+
   it('工具调用卡片展示工具名、摘要和成功结果', () => {
     render(
       <MessageItem
@@ -452,21 +486,30 @@ describe('MessageItem', () => {
     })
   })
 
-  it('失败的工具卡片在折叠态直接展示错误原因', () => {
-    render(
+  it('失败的工具卡片在工具名后单行省略错误原因，并可展开查看完整详情', async () => {
+    const user = userEvent.setup()
+    const { container } = render(
       <MessageItem
         message={{
           role: 'tool_call',
-          content: 'web_fetch\n{"url":"https://example.com"}',
-          name: 'web_fetch',
-          args: '{"url":"https://example.com"}',
+          content: 'edit\n{"path":"chapter.md"}',
+          name: 'edit',
+          args: '{"path":"chapter.md"}',
           status: 'error',
-          result: 'web_fetch failed: target URL is invalid',
+          result: 'invoke tool "edit": old_string was not found in chapter.md',
         }}
       />,
     )
 
-    expect(screen.getByText('web_fetch failed: target URL is invalid')).toBeInTheDocument()
+    const header = container.querySelector('[data-nova-tool-header]') as HTMLElement
+    const summary = container.querySelector('[data-nova-tool-summary]') as HTMLElement
+    expect(header).toHaveClass('grid', 'grid-cols-[auto_minmax(0,1fr)]')
+    expect(summary.parentElement).toHaveTextContent('编辑invoke tool "edit": old_string was not found in chapter.md')
+    expect(summary).toHaveClass('truncate', 'text-[var(--nova-danger)]')
+
+    await user.click(header)
+    expect(header).toHaveAttribute('aria-expanded', 'true')
+    expect(container.querySelector('[data-slot="collapsible-content"]')).toHaveTextContent('invoke tool "edit": old_string was not found in chapter.md')
   })
 
   it('shell 生命周期成功且子进程非零退出时显示为注意结果而非工具失败', () => {
@@ -604,7 +647,7 @@ describe('MessageItem', () => {
   })
 
   it('所有工具都按原始参数流展示，不依赖工具名或字段', () => {
-    const args = '{"nested":[{"anything":"仍在生成'
+    const args = '{"path":"ignored.md","description":"ignored","nested":[{"anything":"完整但保持紧凑"}]}'
     const { container } = render(
       <MessageItem
         message={{
@@ -622,6 +665,72 @@ describe('MessageItem', () => {
     const preview = container.querySelector('[data-nova-scroll-lock="tool-input-stream"]')
     expect(preview).toBeInTheDocument()
     expect(preview?.textContent).toBe(args)
+    expect(container.querySelector('[data-nova-tool-header]')).not.toHaveTextContent('ignored.md')
+    expect(container.querySelector('[data-nova-tool-header]')).not.toHaveTextContent('ignored')
+  })
+
+  it('流式阶段绕过工具专用展示', () => {
+    const args = '{"action":"update","mutations":[{"id":"first","text":"第一项","status":"pending"}]}'
+    const { container } = render(
+      <MessageItem
+        message={{
+          id: 'tool-opaque-stream',
+          role: 'tool_call',
+          content: 'todo',
+          name: 'todo',
+          args,
+          status: 'running',
+          streaming: true,
+          tool_presentation: { call: 'todo', result: 'todo' },
+        }}
+      />,
+    )
+
+    expect(container.querySelector('[data-nova-scroll-lock="tool-input-stream"]')?.textContent).toBe(args)
+    expect(screen.queryByText('待办列表')).not.toBeInTheDocument()
+    expect(screen.queryByText('章节正文已在实时输出中隐藏，文件仍会正常写入。')).not.toBeInTheDocument()
+  })
+
+  it.each([
+    ['grep', '{"description":"搜索章节标题","pattern":"第'],
+    ['bash', '{"description":"检查构建结果","command":"pnpm'],
+  ])('%s 流式卡片显示 description，同时保留原始输入', (name, args) => {
+    const { container } = render(
+      <MessageItem
+        message={{
+          id: `tool-stream-${name}`,
+          role: 'tool_call',
+          content: name,
+          name,
+          args,
+          status: 'running',
+          streaming: true,
+        }}
+      />,
+    )
+
+    expect(container.querySelector('[data-nova-tool-header]')).toHaveTextContent(name === 'grep' ? '搜索章节标题' : '检查构建结果')
+    expect(container.querySelector('[data-nova-scroll-lock="tool-input-stream"]')?.textContent).toBe(args)
+  })
+
+  it.each(['read', 'write', 'edit'])('%s 流式卡片显示文件名，同时保留原始输入', (name) => {
+    const args = `{"path":"chapters/${name}.md","payload":"still streaming`
+    const { container } = render(
+      <MessageItem
+        message={{
+          id: `tool-stream-file-${name}`,
+          role: 'tool_call',
+          content: name,
+          name,
+          args,
+          status: 'running',
+          streaming: true,
+        }}
+      />,
+    )
+
+    expect(container.querySelector('[data-nova-tool-header]')).toHaveTextContent(`${name}.md`)
+    expect(container.querySelector('[data-nova-scroll-lock="tool-input-stream"]')?.textContent).toBe(args)
   })
 
   it('edit 从首个参数增量开始展示，不等待 new_string', () => {
@@ -645,6 +754,7 @@ describe('MessageItem', () => {
     const initialHeader = container.querySelector('[data-nova-tool-header]')
     expect(initialHeader).toHaveAttribute('aria-expanded', 'false')
     expect(initialHeader).toHaveTextContent('编辑')
+    expect(initialHeader).toHaveTextContent('ch01.md')
     expect(container.querySelector('[data-nova-scroll-lock="tool-input-stream"]')).toHaveTextContent('旧正文')
 
     rerender(
@@ -707,37 +817,6 @@ describe('MessageItem', () => {
     expect(header).toHaveTextContent('读取')
     expect(header).toHaveTextContent('ch02.md')
     expect(header).not.toHaveTextContent(path)
-  })
-
-  it('隐藏章节正文的工具卡片展示写入状态和说明详情', async () => {
-    const user = userEvent.setup()
-    const path = '/Users/me/nova/.nova/测试/chapters/ch01.md'
-
-    const { container } = render(
-      <MessageItem
-        message={{
-          role: 'tool_call',
-          content: `write\n{"path":"${path}"}`,
-          name: 'write',
-          args: `{"path":"${path}"}`,
-          status: 'running',
-          sse_hidden_fields: ['content'],
-          sse_hidden_reason: 'novel_chapter_body',
-          sse_display_notice: 'chapter_body_hidden',
-          sse_generated_chars: 123,
-        }}
-      />,
-    )
-
-    expect(screen.getByText('正在写入章节 · 已生成 123 字')).toBeInTheDocument()
-    expect(screen.queryByText('准备执行工具请求')).not.toBeInTheDocument()
-
-    await user.click(container.querySelector('[data-nova-tool-header]') as HTMLElement)
-    expect(screen.getByText('路径：')).toBeInTheDocument()
-    expect(screen.getByText(path)).toBeInTheDocument()
-    expect(screen.getByText('已生成：123 字')).toBeInTheDocument()
-    expect(screen.getByText('章节正文已在实时输出中隐藏，文件仍会正常写入。')).toBeInTheDocument()
-    expect(screen.queryByText(/content/)).not.toBeInTheDocument()
   })
 
   it('章节插画工具卡片展示预览并触发插入', async () => {

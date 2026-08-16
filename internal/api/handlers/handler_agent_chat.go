@@ -257,7 +257,7 @@ func (h *Handlers) HandleAgentChat(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 	slog.InfoContext(ctx, fmt.Sprintf("[agent-chat-sse] attach new task_id=%s project_id=%s session_id=%s", task.ID(), binding.ProjectID, req.SessionID))
-	sse.StreamTaskUI(ctx, c, task, h.chatSSEStreamOptions()...)
+	sse.StreamTaskUI(ctx, c, task)
 }
 
 func (h *Handlers) HandleAgentChatStream(ctx context.Context, c *app.RequestContext) {
@@ -275,7 +275,7 @@ func (h *Handlers) HandleAgentChatStream(ctx context.Context, c *app.RequestCont
 		writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.rehydrate_required", "旧的任务流已失效，请从 active projection 重新挂接 / The old task stream is stale; rehydrate from the active projection", map[string]any{"task_id": taskID})
 		return
 	}
-	sse.StreamTaskUI(ctx, c, task, h.chatSSEStreamOptions()...)
+	sse.StreamTaskUI(ctx, c, task)
 }
 
 func (h *Handlers) HandleAgentChatActive(ctx context.Context, c *app.RequestContext) {

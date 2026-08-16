@@ -32,10 +32,6 @@ export function displayEventToAgentUIMessage(event: TurnDisplayEvent, fallbackID
     subagent_session_id: event.subagent_session_id,
     subagent_type: event.subagent_type,
 		parent_call_id: event.parent_call_id,
-    sse_hidden_fields: event.sse_hidden_fields,
-    sse_hidden_reason: event.sse_hidden_reason,
-    sse_display_notice: event.sse_display_notice,
-    sse_generated_chars: event.sse_generated_chars,
     tool_presentation: event.tool_presentation,
   }
   switch (event.role) {

@@ -185,8 +185,10 @@ func (session *Session) start(ctx context.Context, input Input, ownership runSes
 		session.mu.Unlock()
 		return nil, ErrSessionBusy
 	}
+	startedAt := time.Now().UTC()
+	run.markStarted(startedAt)
 	if err := session.appendRecordLocked(ctx, turnStartedRecord, persistedTurn{
-		RunID: runID, CommandID: commandID, At: time.Now().UTC(),
+		RunID: runID, CommandID: commandID, At: startedAt,
 	}); err != nil {
 		session.mu.Unlock()
 		return nil, err

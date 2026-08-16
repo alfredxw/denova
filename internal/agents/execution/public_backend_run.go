@@ -270,7 +270,7 @@ func (registration *publicCycleRegistration) projectOrDeferRunStarted(runID stri
 	commandID := firstPublicCycleValue(started.CommandID, registration.request.CommandID)
 	delivery := firstPublicCycleValue(started.Delivery, string(registration.commandKind))
 	registration.mu.Unlock()
-	projector.ProjectRunStarted(runID, started.Cycle, commandID, delivery)
+	projector.ProjectRunStarted(runID, started.Cycle, commandID, delivery, started.StartedAt)
 }
 
 func (backend *publicBackend) projector(
@@ -407,10 +407,12 @@ func flushPublicCycleProjectors(registrations []publicCycleRegistrationAt, statu
 		if projector == nil {
 			continue
 		}
-		if terminal && index == len(registrations)-1 {
+		if index != len(registrations)-1 {
+			projector.Flush()
+		} else if terminal {
 			projector.Finalize(status, reason)
 		} else {
-			projector.Flush()
+			projector.SummarizeRun(status)
 		}
 	}
 }

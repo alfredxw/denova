@@ -3,51 +3,28 @@ package sse
 import (
 	"bytes"
 	"context"
-	agentrun "denova/internal/agents/run"
 	"strings"
 	"testing"
 
+	agentrun "denova/internal/agents/run"
 	apptask "denova/internal/app/task"
 	"denova/internal/observability"
 )
 
-func TestSSEWriteHandlerKeepsChapterBodyByDefault(t *testing.T) {
+func TestSSEWriteHandlerPreservesRawToolInputDeltas(t *testing.T) {
 	var buf bytes.Buffer
 	writeSSE := newSSEWriteHandler(context.Background(), &buf)
-	writeChapterBodySSEEvents(t, writeSSE)
+	writeRawToolInputSSEEvents(t, writeSSE)
 
 	got := buf.String()
 	if !strings.Contains(got, "第一行") || !strings.Contains(got, "第二行") {
-		t.Fatalf("default SSE output should preserve chapter body, got %q", got)
+		t.Fatalf("SSE output should preserve every raw tool input delta, got %q", got)
 	}
 	if !strings.Contains(got, "id: 1\n") || !strings.Contains(got, "id: 4\n") {
 		t.Fatalf("SSE output should include monotonic display cursors, got %q", got)
 	}
-	if strings.Contains(got, `"sse_display_notice":"chapter_body_hidden"`) {
-		t.Fatalf("default SSE output should not include hidden body notice, got %q", got)
-	}
-}
-
-func TestSSEWriteHandlerAppliesMiddlewareChainBeforeWriteWhenEnabled(t *testing.T) {
-	var buf bytes.Buffer
-	writeSSE := newSSEWriteHandler(context.Background(), &buf, WithHideChapterBodyLiveOutput(true))
-	writeChapterBodySSEEvents(t, writeSSE)
-
-	got := buf.String()
-	if !strings.Contains(got, `"delta":"{\"path\":\"chapters/ch02.md\"}"`) {
-		t.Fatalf("filtered SSE output should include path-only delta, got %q", got)
-	}
-	if strings.Contains(got, "第一行") || strings.Contains(got, "第二行") || strings.Contains(got, `\"content\"`) || strings.Contains(got, "...") {
-		t.Fatalf("filtered SSE output should not include chapter body or placeholder, got %q", got)
-	}
-	if !strings.Contains(got, `"sse_display_notice":"chapter_body_hidden"`) || !strings.Contains(got, `"sse_hidden_fields":["content"]`) {
-		t.Fatalf("filtered SSE output should include hidden body notice, got %q", got)
-	}
-	if !strings.Contains(got, `"sse_generated_chars":3`) || !strings.Contains(got, `"sse_generated_chars":7`) {
-		t.Fatalf("filtered SSE output should include generated character progress, got %q", got)
-	}
-	if count := strings.Count(got, "event: tool_args_delta"); count != 2 {
-		t.Fatalf("tool_args_delta events = %d, want 2; output=%q", count, got)
+	if strings.Contains(got, `"sse_hidden_fields"`) {
+		t.Fatalf("raw tool input must not acquire presentation metadata, got %q", got)
 	}
 }
 
@@ -198,7 +175,7 @@ func TestCheckpointRehydratePayloadUsesIndependentPersistenceBarrier(t *testing.
 	}
 }
 
-func writeChapterBodySSEEvents(t *testing.T, writeSSE func(apptask.Event) error) {
+func writeRawToolInputSSEEvents(t *testing.T, writeSSE func(apptask.Event) error) {
 	t.Helper()
 	write := func(cursor uint64, event agentrun.Event) error {
 		return writeSSE(apptask.Event{Cursor: cursor, Event: event})

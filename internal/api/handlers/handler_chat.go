@@ -49,7 +49,7 @@ func (h *Handlers) HandleChat(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 	slog.InfoContext(ctx, fmt.Sprintf("[agent-ui-sse] attach new chat task_id=%s session_id=%s", task.ID(), sessionID))
-	sse.StreamTaskUI(ctx, c, task, h.chatSSEStreamOptions()...)
+	sse.StreamTaskUI(ctx, c, task)
 }
 
 // HandleChatContextAnalysis 模拟一次聊天请求，返回真实 SystemPrompt 和上下文组成，不启动 LLM。
@@ -174,7 +174,7 @@ func (h *Handlers) HandleChatStream(ctx context.Context, c *app.RequestContext) 
 		return
 	}
 	slog.InfoContext(ctx, fmt.Sprintf("[agent-ui-sse] attach active chat task_id=%s session_id=%s status=%s", task.ID(), sessionID, task.Status()))
-	sse.StreamTaskUI(ctx, c, task, h.chatSSEStreamOptions()...)
+	sse.StreamTaskUI(ctx, c, task)
 }
 
 // handleChatActive 查询当前是否有活跃任务。
@@ -223,10 +223,4 @@ func requiredWritingSessionID(c *app.RequestContext, value string) (string, bool
 		return "", false
 	}
 	return sessionID, true
-}
-
-func (h *Handlers) chatSSEStreamOptions() []sse.StreamOption {
-	return []sse.StreamOption{
-		sse.WithHideChapterBodyLiveOutput(h.app.HideChapterBodyLiveOutput()),
-	}
 }

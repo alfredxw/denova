@@ -65,10 +65,6 @@ func (c *Conversation) AppendDisplayEvent(event session.DisplayEvent) error {
 		SubAgent:          event.SubAgent,
 		SubAgentSessionID: event.SubAgentSessionID,
 		SubAgentType:      event.SubAgentType,
-		SSEHiddenFields:   append([]string(nil), event.SSEHiddenFields...),
-		SSEHiddenReason:   event.SSEHiddenReason,
-		SSEDisplayNotice:  event.SSEDisplayNotice,
-		SSEGeneratedChars: event.SSEGeneratedChars,
 	}
 	replacesRunningEvent := status == "running" && findInteractiveDisplayEventIndex(c.displayEvents, next.ID, next.Role) >= 0
 	c.displayEvents = appendOrReplaceDisplayEvent(c.displayEvents, next)

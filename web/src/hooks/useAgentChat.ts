@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { useChat as useAIChat } from '@ai-sdk/react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -9,6 +9,7 @@ import { fetchProjectSettings, fetchSettings } from '@/features/settings/api'
 import { formatApprovedPlanExecutionMessage } from '@/lib/plan-mode'
 import { agentCommandErrorMessage, agentCommandRetryKey, isKnownAgentCommandOutcome, mergeProjectedAgentQueue, rememberAgentCommandID } from '@/lib/agent-command'
 import { AgentChatTransport, AgentUIMessageNormalizer, buildAgentChatRequestBody, type AgentUIMessage } from '@/lib/agent-ui'
+import { attachAgentToolInputTexts } from '@/lib/agent-ui-message'
 import { agentViewContent, type AgentPartRef } from '@/lib/agent-message-view'
 import { isProjectChangeForProject, type WorkspaceChangeEvent } from '@/features/changes/types'
 import {
@@ -81,6 +82,11 @@ export function useAgentChat(options: ChatOptions = {}) {
   const { t } = useTranslation()
   const { projectId = '', client = writingAgentChatClient, onAgentFileChange, onWorkspaceChange } = options
   const transport = useMemo(() => new AgentChatTransport(client.transportOptions), [client])
+  const toolInputTextByToolCall = useSyncExternalStore(
+    transport.subscribeToolInputText,
+    transport.getToolInputTextSnapshot,
+    transport.getToolInputTextSnapshot,
+  )
   const [runtimeRecoverySignal, setRuntimeRecoverySignal] = useState(0)
   const projectStreamCycleRef = useRef<(operationID: string, cycle?: number) => void>(() => undefined)
   const refreshSessionsRef = useRef<() => Promise<SessionSummary[]>>(async () => [])
@@ -150,13 +156,13 @@ export function useAgentChat(options: ChatOptions = {}) {
     },
   })
   const messages = useMemo(() => (
-    messageNormalizerRef.current!.normalize(uiMessages).flatMap<AgentUIMessage>((message) => {
+    messageNormalizerRef.current!.normalize(attachAgentToolInputTexts(uiMessages, toolInputTextByToolCall)).flatMap<AgentUIMessage>((message) => {
       const visibleParts = message.parts.filter((part) => part.type !== 'data-agent-error')
       if (visibleParts.length === message.parts.length) return [message]
       if (visibleParts.length === 0) return []
       return [{ ...message, parts: visibleParts }]
     })
-  ), [uiMessages])
+  ), [toolInputTextByToolCall, uiMessages])
   const transportStreaming = status === 'submitted' || status === 'streaming'
   const {
     activeSessionId,

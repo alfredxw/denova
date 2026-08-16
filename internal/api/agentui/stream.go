@@ -115,6 +115,11 @@ func (e *StreamEncoder) WriteEvent(ev appsvc.AgentEvent) error {
 		return e.writeData(DataTypeRuleRoll, eventID(data, "rule-roll"), data)
 	case "token_usage":
 		return e.writeData(DataTypeTokenUsage, eventID(data, "token-usage"), data)
+	case "execution_summary":
+		if err := e.closeOpenContent(); err != nil {
+			return err
+		}
+		return e.writeData(DataTypeExecutionSummary, eventID(data, "execution-summary"), data)
 	case "error":
 		if err := e.closeOpenContent(); err != nil {
 			return err
@@ -489,10 +494,6 @@ func messageMetadataFromData(data map[string]any) map[string]any {
 		"subagent_type",
 		"provider_call_id",
 		"parent_call_id",
-		"sse_hidden_fields",
-		"sse_hidden_reason",
-		"sse_display_notice",
-		"sse_generated_chars",
 		"turn_id",
 		"navigation_turn_id",
 		"turn_versions",

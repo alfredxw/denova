@@ -3,6 +3,7 @@ package chat
 import (
 	"encoding/json"
 	"testing"
+	"time"
 
 	agentrun "denova/internal/agents/run"
 
@@ -288,7 +289,7 @@ func TestPublicEventProjectorRestoresCycleBoundaryAndUsesRunIDForPlanEvents(t *t
 	}, agentrun.Options{
 		AgentKind: "ide", TaskID: "display-task", RootAgentName: "root",
 	}, func(event agentrun.Event) { events = append(events, event) })
-	projector.ProjectRunStarted("run-2", 2, "command-2", "follow_up")
+	projector.ProjectRunStarted("run-2", 2, "command-2", "follow_up", time.Now().UTC())
 	projector.Project(agent.Event{RunID: "run-2", Payload: agent.AssistantDelta{
 		Source: agent.EventSource{Name: "root", Path: []string{"root"}},
 		Delta:  "<proposed_plan>inspect first</proposed_plan>",
@@ -313,9 +314,63 @@ func TestPublicEventProjectorMapsAgentStartDeliveryToPublicStartTurn(t *testing.
 	projector := NewPublicEventProjector(nil, ChatRequest{Message: "start"}, agentrun.Options{}, func(event agentrun.Event) {
 		events = append(events, event)
 	})
-	projector.ProjectRunStarted("run-start", 1, "command-start", "start")
+	projector.ProjectRunStarted("run-start", 1, "command-start", "start", time.Now().UTC())
 	if len(events) != 1 || events[0].Type != "agent_cycle_started" || events[0].DataString("delivery") != "start_turn" {
 		t.Fatalf("cycle event = %#v", events)
+	}
+}
+
+func TestPublicEventProjectorEmitsStableRunTimingBeforeEveryTerminalEvent(t *testing.T) {
+	tests := []struct {
+		status       agent.ResultStatus
+		terminalType string
+	}{
+		{status: agent.ResultCompleted, terminalType: "done"},
+		{status: agent.ResultFailed, terminalType: "error"},
+		{status: agent.ResultAborted, terminalType: "aborted"},
+		{status: agent.ResultIncomplete, terminalType: "error"},
+	}
+	for _, test := range tests {
+		t.Run(string(test.status), func(t *testing.T) {
+			var events []agentrun.Event
+			projector := NewPublicEventProjector(nil, ChatRequest{}, agentrun.Options{}, func(event agentrun.Event) {
+				events = append(events, event)
+			})
+			startedAt := time.Now().UTC().Add(-1500 * time.Millisecond)
+			projector.ProjectRunStarted("run-timing", 1, "command", "start", startedAt)
+			projector.ProjectRunStarted("run-timing", 2, "command", "queued", startedAt.Add(time.Second))
+			projector.Finalize(test.status, "terminal reason")
+
+			if len(events) != 4 || events[0].Type != "agent_cycle_started" || events[1].Type != "agent_cycle_started" ||
+				events[2].Type != "execution_summary" || events[3].Type != test.terminalType {
+				t.Fatalf("event order = %#v", events)
+			}
+			wantStartedAt := startedAt.Format(time.RFC3339Nano)
+			if events[0].DataString("run_id") != "run-timing" || events[0].DataString("run_started_at") != wantStartedAt ||
+				events[1].DataString("run_started_at") != wantStartedAt {
+				t.Fatalf("cycle timing = %#v / %#v", events[0].Data, events[1].Data)
+			}
+			summary := events[2]
+			if summary.DataString("run_id") != "run-timing" || summary.DataString("run_started_at") != wantStartedAt ||
+				summary.DataString("run_finished_at") == "" || summary.DataString("status") != string(test.status) ||
+				eventDataInt64(summary.Data, "duration_ms") < 1400 {
+				t.Fatalf("execution summary = %#v", summary.Data)
+			}
+		})
+	}
+}
+
+func TestPublicEventProjectorSummarizesSettledRunWithoutClosingSuccessorOperation(t *testing.T) {
+	var events []agentrun.Event
+	projector := NewPublicEventProjector(nil, ChatRequest{}, agentrun.Options{}, func(event agentrun.Event) {
+		events = append(events, event)
+	})
+	projector.ProjectRunStarted("run-first", 1, "command", "start", time.Now().UTC().Add(-time.Second))
+	projector.SummarizeRun(agent.ResultCompleted)
+	projector.SummarizeRun(agent.ResultCompleted)
+
+	if len(events) != 2 || events[0].Type != "agent_cycle_started" || events[1].Type != "execution_summary" {
+		t.Fatalf("settled Run events = %#v", events)
 	}
 }
 

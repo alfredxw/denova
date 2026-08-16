@@ -13,25 +13,10 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 
 	"denova/internal/api/agentui"
-	ssetransform "denova/internal/api/sse/transform"
 	novaApp "denova/internal/app"
 	apptask "denova/internal/app/task"
 	"denova/internal/observability"
 )
-
-type StreamOptions struct {
-	HideChapterBodyLiveOutput bool
-}
-
-type StreamOption struct {
-	F func(*StreamOptions)
-}
-
-func WithHideChapterBodyLiveOutput(enabled bool) StreamOption {
-	return StreamOption{F: func(o *StreamOptions) {
-		o.HideChapterBodyLiveOutput = enabled
-	}}
-}
 
 const (
 	taskCheckpointEventType          = "task_checkpoint"
@@ -40,7 +25,7 @@ const (
 )
 
 // StreamTask writes a Task event snapshot and live updates as Server-Sent Events.
-func StreamTask(ctx context.Context, c *app.RequestContext, task *apptask.Task, options ...StreamOption) {
+func StreamTask(ctx context.Context, c *app.RequestContext, task *apptask.Task) {
 	after, ok := requestedTaskCursor(c)
 	if !ok {
 		return
@@ -66,7 +51,7 @@ func StreamTask(ctx context.Context, c *app.RequestContext, task *apptask.Task, 
 			_ = pw.Close()
 		}()
 		slog.InfoContext(ctx, fmt.Sprintf("[agent-sse] stream start task_id=%s after=%d replay=%d checkpoint=%t", task.ID(), after, len(replay.Events), replay.Checkpoint != nil))
-		writeSSE := newSSEWriteHandler(ctx, pw, options...)
+		writeSSE := newSSEWriteHandler(ctx, pw)
 
 		if replay.Checkpoint != nil {
 			committed, err := writeTaskCheckpoint(pw, *replay.Checkpoint, writeSSE)
@@ -103,7 +88,7 @@ func StreamTask(ctx context.Context, c *app.RequestContext, task *apptask.Task, 
 // state with canonical history, then asks for the exact Task suffix after the
 // server-issued checkpoint cursor. The UI stream itself intentionally carries
 // no Last-Event-ID because one Task event may expand to several AI SDK frames.
-func StreamTaskUI(ctx context.Context, c *app.RequestContext, task *apptask.Task, options ...StreamOption) {
+func StreamTaskUI(ctx context.Context, c *app.RequestContext, task *apptask.Task) {
 	after, ok := requestedTaskCursor(c)
 	if !ok {
 		return
@@ -130,7 +115,7 @@ func StreamTaskUI(ctx context.Context, c *app.RequestContext, task *apptask.Task
 			_ = pw.Close()
 		}()
 		slog.InfoContext(ctx, fmt.Sprintf("[agent-ui-sse] stream start task_id=%s after=%d replay=%d checkpoint=%t", task.ID(), after, len(replay.Events), replay.Checkpoint != nil))
-		writeUI := newUIWriteHandler(ctx, pw, options...)
+		writeUI := newUIWriteHandler(ctx, pw)
 
 		if replay.Checkpoint != nil {
 			committed, err := writeUITaskCheckpoint(writeUI, *replay.Checkpoint)
@@ -261,41 +246,22 @@ func writeTaskCursorError(c *app.RequestContext, task *apptask.Task, err error) 
 	c.JSON(409, response)
 }
 
-func newSSEWriteHandler(ctx context.Context, w io.Writer, options ...StreamOption) func(apptask.Event) error {
-	opts := applyStreamOptions(options...)
-	var cursor uint64
-	chain := ssetransform.NewSSEEventMiddlewareChain(
-		ssetransform.WithHideChapterBodyLiveOutput(opts.HideChapterBodyLiveOutput),
-	)
-	handler := chain.Next(func(ev novaApp.AgentEvent) error {
-		if cursor == 0 {
-			return writeEventWithoutCursor(w, ev.Type, ev.Data)
-		}
-		return writeEvent(w, cursor, ev.Type, ev.Data)
-	})
+func newSSEWriteHandler(ctx context.Context, w io.Writer) func(apptask.Event) error {
 	return func(item apptask.Event) error {
-		cursor = item.Cursor
-		item.Event = correlateErrorEvent(item.Event, observability.RequestID(ctx))
-		return handler(item.Event)
+		event := correlateErrorEvent(item.Event, observability.RequestID(ctx))
+		if item.Cursor == 0 {
+			return writeEventWithoutCursor(w, event.Type, event.Data)
+		}
+		return writeEvent(w, item.Cursor, event.Type, event.Data)
 	}
 }
 
 type uiWriteHandler struct {
 	encoder *agentui.StreamEncoder
-	handler ssetransform.SSEEventHandler
 }
 
-func newUIWriteHandler(ctx context.Context, w io.Writer, options ...StreamOption) *uiWriteHandler {
-	opts := applyStreamOptions(options...)
-	encoder := agentui.NewStreamEncoder(w, observability.RequestID(ctx))
-	chain := ssetransform.NewSSEEventMiddlewareChain(
-		ssetransform.WithHideChapterBodyLiveOutput(opts.HideChapterBodyLiveOutput),
-	)
-	h := &uiWriteHandler{encoder: encoder}
-	h.handler = chain.Next(func(ev novaApp.AgentEvent) error {
-		return encoder.WriteEvent(ev)
-	})
-	return h
+func newUIWriteHandler(ctx context.Context, w io.Writer) *uiWriteHandler {
+	return &uiWriteHandler{encoder: agentui.NewStreamEncoder(w, observability.RequestID(ctx))}
 }
 
 func correlateErrorEvent(event novaApp.AgentEvent, requestID string) novaApp.AgentEvent {
@@ -319,21 +285,11 @@ func correlateErrorEvent(event novaApp.AgentEvent, requestID string) novaApp.Age
 }
 
 func (h *uiWriteHandler) Handle(item apptask.Event) error {
-	return h.handler(item.Event)
+	return h.encoder.WriteEvent(item.Event)
 }
 
 func (h *uiWriteHandler) Finish(reason string) error {
 	return h.encoder.Finish(reason)
-}
-
-func applyStreamOptions(options ...StreamOption) StreamOptions {
-	var out StreamOptions
-	for _, option := range options {
-		if option.F != nil {
-			option.F(&out)
-		}
-	}
-	return out
 }
 
 func writeEvent(w io.Writer, cursor uint64, eventType string, data interface{}) error {

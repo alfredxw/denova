@@ -813,6 +813,49 @@ func TestTokenUsageDisplayEventPersistsOutsideEffectiveContext(t *testing.T) {
 	}
 }
 
+func TestExecutionSummaryPersistsOutsideEffectiveContext(t *testing.T) {
+	dir := t.TempDir()
+	store, err := NewStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := store.GetOrCreate("execution-summary")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.Append(agent.UserMessage("run")); err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.AppendDisplayEvent(DisplayEvent{
+		ID: "run-1", Role: "execution_summary", RunID: "run-1",
+		RunStartedAt: "2026-07-08T12:00:00Z", RunFinishedAt: "2026-07-08T12:01:01Z",
+		DurationMS: 61_000, RunStatus: "aborted",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	reloadedStore, err := NewStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := reloadedStore.Get("execution-summary")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if effective := reloaded.GetEffectiveMessages(); len(effective) != 1 || effective[0].Content != "run" {
+		t.Fatalf("execution summary entered effective context: %#v", effective)
+	}
+	history := reloaded.History()
+	if len(history) != 2 {
+		t.Fatalf("history = %#v", history)
+	}
+	summary := history[1]
+	if summary.Role != "execution_summary" || summary.RunID != "run-1" || summary.RunStartedAt != "2026-07-08T12:00:00Z" ||
+		summary.RunFinishedAt != "2026-07-08T12:01:01Z" || summary.DurationMS != 61_000 || summary.RunStatus != "aborted" {
+		t.Fatalf("execution summary was not restored: %#v", summary)
+	}
+}
+
 func TestTokenUsageDisplayEventsAreCappedPerAgent(t *testing.T) {
 	dir := t.TempDir()
 	store, err := NewStore(dir)

@@ -602,21 +602,6 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
       ),
     },
     {
-      id: 'ide-output',
-      group: t('settings.group.ide'),
-      title: t('settings.section.liveOutput'),
-      children: (
-        <>
-          <BoolTri label={t('settings.ide.hideNovelChapterBodyInLiveOutput')} value={draft.hide_novel_chapter_body_in_live_output ?? null}
-                   inherited={inherited.hide_novel_chapter_body_in_live_output}
-                   onChange={(v) => setField('hide_novel_chapter_body_in_live_output', v)} />
-          <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-xs leading-5 text-[var(--nova-text-faint)]">
-            {t('settings.ide.hideNovelChapterBodyInLiveOutputHelp')}
-          </div>
-        </>
-      ),
-    },
-    {
       id: 'versions',
       group: t('settings.group.ide'),
       title: t('settings.section.versions'),
@@ -1750,7 +1735,6 @@ function mergeSettingsLayer(parent: Settings, child: Settings): Settings {
   }
   override('auto_save_enabled', isNonNull)
   override('auto_save_interval_ms', isNonNull)
-  override('hide_novel_chapter_body_in_live_output', isNonNull)
   override('chapter_filename_format', isNonEmptyString)
   override('volume_dir_format', isNonEmptyString)
   override('max_open_tabs', isNonNull)

@@ -144,16 +144,25 @@ function findToolMessageIndex(messages: AgentUIMessage[], id?: string, name?: st
 }
 
 export function updateToolMessageInputText(message: AgentUIMessage, inputText: string): AgentUIMessage {
-  return updateToolPart(message, (part) => ({ ...part, inputText, input: parseAgentToolInput(inputText) }))
+  return updateToolPart(message, (part) => ({ ...part, inputText }))
 }
 
 export function completeToolMessage(message: AgentUIMessage, result: string): AgentUIMessage {
-  return updateToolPart(message, (part) => ({ ...part, state: 'output-available', output: result }))
+  return updateToolPart(message, (part) => {
+    const inputText = typeof part.inputText === 'string' ? part.inputText : ''
+    return {
+      ...part,
+      // Parsing belongs to the completed-state view, never the delta path.
+      input: parseAgentToolInput(inputText),
+      state: 'output-available',
+      output: result,
+    }
+  })
 }
 
 export function toolMessageInputText(message: AgentUIMessage) {
   const part = toolPart(message)
-  return part ? agentToolInputText(part as AgentUIMessage['parts'][number]) : ''
+  return part ? (agentToolInputText(part as AgentUIMessage['parts'][number]) ?? '') : ''
 }
 
 function updateToolPart(message: AgentUIMessage, update: (part: Record<string, unknown>) => Record<string, unknown>): AgentUIMessage {

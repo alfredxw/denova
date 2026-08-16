@@ -79,7 +79,6 @@ type Config struct {
 	ProjectFileTreeEntryLimit   int                       `toml:"project_file_tree_entry_limit"`
 	ChapterFilenameFormat       string                    `toml:"-"`
 	VolumeDirFormat             string                    `toml:"-"`
-	HideChapterBodyLiveOutput   bool                      `toml:"-"`
 	ChapterGroupMin             int                       `toml:"-"`
 	ChapterGroupMax             int                       `toml:"-"`
 	VersionTimedEnabled         bool                      `toml:"-"`
@@ -166,7 +165,6 @@ func configFromLayered(novaDir, workspace string, layered LayeredSettings) *Conf
 		TraceRetentionRuns:          settingsInt(s.TraceRetentionRuns, DefaultTraceRetentionRuns),
 		ChapterFilenameFormat:       s.ChapterFilenameFormat,
 		VolumeDirFormat:             s.VolumeDirFormat,
-		HideChapterBodyLiveOutput:   settingsBool(s.HideChapterBodyLiveOutput, false),
 		ChapterGroupMin:             settingsInt(s.ChapterGroupMin, 3),
 		ChapterGroupMax:             settingsInt(s.ChapterGroupMax, 8),
 		VersionTimedEnabled:         settingsBool(s.VersionTimedEnabled, true),
@@ -290,9 +288,6 @@ func settingsFromConfig(cfg *Config) Settings {
 		ShellEnvironmentMode:     cfg.ShellEnvironmentMode,
 		ShellEnvironmentShell:    cfg.ShellEnvironmentShell,
 		AgentBashPath:            cfg.AgentBashPath,
-	}
-	if cfg.HideChapterBodyLiveOutput {
-		settings.HideChapterBodyLiveOutput = &cfg.HideChapterBodyLiveOutput
 	}
 	if cfg.BackendPort > 0 {
 		settings.BackendPort = &cfg.BackendPort
@@ -418,7 +413,6 @@ func Load() *Config {
 			TraceRetentionRuns:          settingsInt(d.TraceRetentionRuns, DefaultTraceRetentionRuns),
 			ChapterFilenameFormat:       d.ChapterFilenameFormat,
 			VolumeDirFormat:             d.VolumeDirFormat,
-			HideChapterBodyLiveOutput:   settingsBool(d.HideChapterBodyLiveOutput, false),
 			ChapterGroupMin:             settingsInt(d.ChapterGroupMin, 3),
 			ChapterGroupMax:             settingsInt(d.ChapterGroupMax, 8),
 			VersionTimedEnabled:         settingsBool(d.VersionTimedEnabled, true),

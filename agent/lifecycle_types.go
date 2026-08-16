@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	agentsession "github.com/alfredxw/denova/agent/session"
 )
@@ -68,6 +69,10 @@ type RunStarted struct {
 	Cycle     int
 	CommandID string
 	Delivery  string
+	// StartedAt is the immutable activation time for the whole Run. Later
+	// cycles keep the same value so product UIs can display one stable elapsed
+	// time across steering and queued continuation cycles.
+	StartedAt time.Time
 }
 
 func (RunStarted) eventPayload() {}

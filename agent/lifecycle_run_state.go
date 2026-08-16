@@ -119,9 +119,11 @@ func (run *Run) finish(result Result, err error) {
 	if finishedActive && len(run.session.pending) > 0 && !run.session.closed {
 		next = run.session.pending[0]
 		run.session.pending = run.session.pending[1:]
+		startedAt := time.Now().UTC()
+		next.markStarted(startedAt)
 		run.session.active = next
 		_ = run.session.appendRecordLocked(context.Background(), turnStartedRecord, persistedTurn{
-			RunID: next.id, CommandID: next.commandID, At: time.Now().UTC(),
+			RunID: next.id, CommandID: next.commandID, At: startedAt,
 		})
 	}
 	run.session.mu.Unlock()
@@ -207,6 +209,26 @@ func (run *Run) cycleValue() int {
 	run.mu.RLock()
 	defer run.mu.RUnlock()
 	return run.cycle
+}
+
+func (run *Run) markStarted(startedAt time.Time) {
+	if run == nil || startedAt.IsZero() {
+		return
+	}
+	run.mu.Lock()
+	if run.startedAt.IsZero() {
+		run.startedAt = startedAt.UTC()
+	}
+	run.mu.Unlock()
+}
+
+func (run *Run) startedAtValue() time.Time {
+	if run == nil {
+		return time.Time{}
+	}
+	run.mu.RLock()
+	defer run.mu.RUnlock()
+	return run.startedAt
 }
 
 func (run *Run) outputSnapshot() ActiveOutputSnapshot {

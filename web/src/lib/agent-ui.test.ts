@@ -649,6 +649,55 @@ describe('agent-ui', () => {
     expect(messages[3].parts).toEqual([expect.objectContaining({ type: 'text', text: '继续生成' })])
   })
 
+  it('重连 replay 会按 run 合并执行摘要，避免历史耗时重复或跳变', () => {
+    const messages = normalizeAgentUIMessages([
+      {
+        id: 'history-summary',
+        role: 'assistant',
+        metadata: { run_id: 'run-1' },
+        parts: [
+          {
+            type: 'data-agent-execution-summary',
+            id: 'persisted-summary',
+            data: {
+              run_id: 'run-1',
+              run_started_at: '2026-08-16T09:00:00Z',
+              run_finished_at: '2026-08-16T09:00:32Z',
+              duration_ms: 32_000,
+              status: 'completed',
+            },
+          },
+        ],
+      },
+      {
+        id: 'replay-summary',
+        role: 'assistant',
+        metadata: { run_id: 'run-1' },
+        parts: [
+          {
+            type: 'data-agent-execution-summary',
+            id: 'stream-summary',
+            data: {
+              run_id: 'run-1',
+              run_started_at: '2026-08-16T09:00:00Z',
+              run_finished_at: '2026-08-16T09:00:32Z',
+              duration_ms: 32_000,
+              status: 'completed',
+            },
+          },
+        ],
+      },
+    ] as AgentUIMessage[])
+
+    expect(messages).toHaveLength(1)
+    expect(messages[0].parts).toEqual([
+      expect.objectContaining({
+        type: 'data-agent-execution-summary',
+        data: expect.objectContaining({ run_id: 'run-1', duration_ms: 32_000 }),
+      }),
+    ])
+  })
+
   it('恢复流 replay 到完成态时用最新 tool part 更新历史卡片', () => {
     const messages = normalizeAgentUIMessages([
       {

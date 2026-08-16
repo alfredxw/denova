@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateA
 import { readUIMessageStream, type UIMessageChunk } from 'ai'
 import { buildAgentMessageViews, type AgentMessageView } from '@/lib/agent-message-view'
 import { AgentUIMessageNormalizer, normalizeAgentUIMessages, type AgentUIMessage } from '@/lib/agent-ui'
+import { attachAgentToolInputText, recordAgentToolInputChunk } from '@/lib/agent-ui-message'
 import { createRafUpdateBatcher, STREAMING_RENDER_INTERVAL_MS, type RafUpdateBatcher } from '@/lib/streaming/raf-update-batcher'
 
 interface AgentUIMessageStreamOptions {
@@ -60,7 +61,7 @@ export function useAgentUIMessageStream(options: AgentUIMessageStreamOptions = {
     const inputTextByToolCall = new Map<string, string>()
     const observedStream = stream.pipeThrough(new TransformStream<UIMessageChunk, UIMessageChunk>({
       transform(chunk, controller) {
-        observeToolInputChunk(chunk, inputTextByToolCall)
+        recordAgentToolInputChunk(chunk, inputTextByToolCall)
         controller.enqueue(chunk)
       },
     }))
@@ -70,7 +71,7 @@ export function useAgentUIMessageStream(options: AgentUIMessageStreamOptions = {
         terminateOnError: true,
       })) {
         if (consumeOptions.shouldContinue && !consumeOptions.shouldContinue()) break
-        const messageWithInputText = attachToolInputText(message, inputTextByToolCall)
+        const messageWithInputText = attachAgentToolInputText(message, inputTextByToolCall)
         const normalized = normalizeAgentUIMessages([messageWithInputText])[0] || messageWithInputText
         messageBatcher.enqueue(current => messageNormalizerRef.current!.normalize(upsertAgentUIMessage(current, normalized)))
         if (onView) {
@@ -99,27 +100,4 @@ function upsertAgentUIMessage(messages: AgentUIMessage[], next: AgentUIMessage) 
   const index = messages.findIndex(message => message.id === next.id)
   if (index < 0) return [...messages, next]
   return messages.map((message, messageIndex) => messageIndex === index ? next : message)
-}
-
-function observeToolInputChunk(chunk: UIMessageChunk, inputTextByToolCall: Map<string, string>) {
-  if (chunk.type === 'tool-input-start') {
-    inputTextByToolCall.set(chunk.toolCallId, '')
-  } else if (chunk.type === 'tool-input-delta') {
-    const inputText = inputTextByToolCall.get(chunk.toolCallId) ?? ''
-    inputTextByToolCall.set(chunk.toolCallId, inputText + chunk.inputTextDelta)
-  }
-}
-
-function attachToolInputText(message: AgentUIMessage, inputTextByToolCall: ReadonlyMap<string, string>): AgentUIMessage {
-  let changed = false
-  const parts = message.parts.map((part) => {
-    const raw = part as Record<string, unknown>
-    const toolCallId = typeof raw.toolCallId === 'string' ? raw.toolCallId : ''
-    if (!toolCallId || !inputTextByToolCall.has(toolCallId)) return part
-    const inputText = inputTextByToolCall.get(toolCallId) ?? ''
-    if (raw.inputText === inputText) return part
-    changed = true
-    return { ...raw, inputText } as unknown as AgentUIMessage['parts'][number]
-  })
-  return changed ? { ...message, parts } : message
 }

@@ -80,10 +80,10 @@ type HistoryEntry struct {
 	ModelCalls           int                          `json:"model_calls,omitempty"`
 	GeneratedBytes       int                          `json:"generated_bytes,omitempty"`
 	UsageCalls           []TokenUsageCall             `json:"usage_calls,omitempty"`
-	SSEHiddenFields      []string                     `json:"sse_hidden_fields,omitempty"`
-	SSEHiddenReason      string                       `json:"sse_hidden_reason,omitempty"`
-	SSEDisplayNotice     string                       `json:"sse_display_notice,omitempty"`
-	SSEGeneratedChars    int                          `json:"sse_generated_chars,omitempty"`
+	RunStartedAt         string                       `json:"run_started_at,omitempty"`
+	RunFinishedAt        string                       `json:"run_finished_at,omitempty"`
+	DurationMS           int64                        `json:"duration_ms,omitempty"`
+	RunStatus            string                       `json:"run_status,omitempty"`
 	UserReferences       []agentcontext.UserReference `json:"user_references,omitempty"`
 	AgentCommandID       string                       `json:"agent_command_id,omitempty"`
 	AgentOperationID     string                       `json:"agent_operation_id,omitempty"`
@@ -180,10 +180,10 @@ type DisplayEvent struct {
 	ModelCalls           int              `json:"model_calls,omitempty"`
 	GeneratedBytes       int              `json:"generated_bytes,omitempty"`
 	UsageCalls           []TokenUsageCall `json:"usage_calls,omitempty"`
-	SSEHiddenFields      []string         `json:"sse_hidden_fields,omitempty"`
-	SSEHiddenReason      string           `json:"sse_hidden_reason,omitempty"`
-	SSEDisplayNotice     string           `json:"sse_display_notice,omitempty"`
-	SSEGeneratedChars    int              `json:"sse_generated_chars,omitempty"`
+	RunStartedAt         string           `json:"run_started_at,omitempty"`
+	RunFinishedAt        string           `json:"run_finished_at,omitempty"`
+	DurationMS           int64            `json:"duration_ms,omitempty"`
+	RunStatus            string           `json:"run_status,omitempty"`
 }
 
 type ChapterIllustration struct {

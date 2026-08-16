@@ -282,6 +282,22 @@ func (r *displayEventRecorder) Record(ev agentrun.Event) {
 		}); err != nil {
 			slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-run] persist token_usage failed run_id=%s err=%v", stats.RunID, err))
 		}
+	case "execution_summary":
+		r.flushThinking()
+		r.flushAssistant()
+		meta := eventMetadataFromData(ev.Data)
+		if err := r.appender.AppendDisplayEvent(session.DisplayEvent{
+			ID:            eventDataString(ev.Data, "run_id"),
+			Role:          "execution_summary",
+			RunID:         meta.RunID,
+			AgentKind:     meta.AgentKind,
+			RunStartedAt:  eventDataString(ev.Data, "run_started_at"),
+			RunFinishedAt: eventDataString(ev.Data, "run_finished_at"),
+			DurationMS:    eventDataInt64(ev.Data, "duration_ms"),
+			RunStatus:     eventDataString(ev.Data, "status"),
+		}); err != nil {
+			slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-run] persist execution summary failed run_id=%s err=%v", meta.RunID, err))
+		}
 	case "proposed_plan":
 		r.flushThinking()
 		r.flushAssistant()
@@ -485,6 +501,29 @@ func eventDataInt(data interface{}, key string) int {
 				return int(v)
 			case float32:
 				return int(v)
+			}
+		}
+	}
+	return 0
+}
+
+func eventDataInt64(data interface{}, key string) int64 {
+	switch typed := data.(type) {
+	case map[string]int64:
+		return typed[key]
+	case map[string]int:
+		return int64(typed[key])
+	case map[string]interface{}:
+		if value, ok := typed[key]; ok {
+			switch v := value.(type) {
+			case int:
+				return int64(v)
+			case int64:
+				return v
+			case float64:
+				return int64(v)
+			case float32:
+				return int64(v)
 			}
 		}
 	}

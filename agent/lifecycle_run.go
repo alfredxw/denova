@@ -56,6 +56,7 @@ type Run struct {
 	result       Result
 	err          error
 	settled      bool
+	startedAt    time.Time
 	abortReason  string
 	cycle        int
 	snapshot     runstate.TurnSnapshot
@@ -213,10 +214,12 @@ func (run *Run) FollowUp(ctx context.Context, input Input) (*Run, error) {
 	}
 	run.session.runs[id] = next
 	if run.session.active == nil && !run.session.maintenance {
+		startedAt := time.Now().UTC()
+		next.markStarted(startedAt)
 		run.session.active = next
 		startNow = true
 		if err := run.session.appendRecordLocked(ctx, turnStartedRecord, persistedTurn{
-			RunID: next.id, CommandID: next.commandID, At: time.Now().UTC(),
+			RunID: next.id, CommandID: next.commandID, At: startedAt,
 		}); err != nil {
 			delete(run.session.runs, id)
 			run.session.active = nil

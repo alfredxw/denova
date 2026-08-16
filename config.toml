@@ -216,8 +216,6 @@ auto_save_interval_ms = 1500
 # 项目文件树会在首次请求中尽可能递归加载；仅当条目数超过此用户级安全上限时才回退到分层加载。
 # 默认 100000，最大 1000000。修改后需重启后端。
 project_file_tree_entry_limit = 100000
-# 隐藏章节正文在 Agent 流中的输出，文件仍正常写入。
-hide_novel_chapter_body_in_live_output = false
 chapter_filename_format = "ch{order:05}-{chapter}-{title}.md"
 volume_dir_format = "v{order:05}-{volume}"
 chapter_group_min = 3

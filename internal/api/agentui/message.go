@@ -15,6 +15,7 @@ const (
 	DataTypeClear             = "data-agent-clear"
 	DataTypeContextCompaction = "data-agent-context-compaction"
 	DataTypeError             = "data-agent-error"
+	DataTypeExecutionSummary  = "data-agent-execution-summary"
 	DataTypeInteractiveImage  = "data-agent-interactive-image"
 	DataTypeProposedPlan      = "data-agent-proposed-plan"
 	DataTypeRuleRoll          = "data-agent-rule-roll"
@@ -59,6 +60,9 @@ func messageFromHistoryEntry(entry appsvc.AgentSessionHistoryEntry, index int) (
 		}), true
 	}
 	if entry.Content == "" && entry.Role != "tool_call" {
+		if entry.Role == "execution_summary" {
+			return assistantDataMessage(entry, index, DataTypeExecutionSummary, entryPayload(entry)), true
+		}
 		return Message{}, false
 	}
 
@@ -106,6 +110,8 @@ func messageFromHistoryEntry(entry appsvc.AgentSessionHistoryEntry, index int) (
 		return assistantDataMessage(entry, index, DataTypeContextCompaction, entryPayload(entry)), true
 	case "token_usage":
 		return assistantDataMessage(entry, index, DataTypeTokenUsage, entryPayload(entry)), true
+	case "execution_summary":
+		return assistantDataMessage(entry, index, DataTypeExecutionSummary, entryPayload(entry)), true
 	case "proposed_plan":
 		return assistantDataMessage(entry, index, DataTypeProposedPlan, entryPayload(entry)), true
 	case "system":
@@ -166,6 +172,12 @@ func entryPayload(entry appsvc.AgentSessionHistoryEntry) map[string]any {
 		"status":     entry.Status,
 		"result":     entry.Result,
 		"created_at": formatEntryTime(entry),
+	}
+	if entry.Role == "execution_summary" {
+		payload["run_started_at"] = entry.RunStartedAt
+		payload["run_finished_at"] = entry.RunFinishedAt
+		payload["duration_ms"] = entry.DurationMS
+		payload["run_status"] = entry.RunStatus
 	}
 	if entry.Illustration != nil {
 		payload["illustration"] = entry.Illustration
@@ -235,18 +247,6 @@ func addMetadataPayload(target map[string]any, entry appsvc.AgentSessionHistoryE
 	}
 	if entry.SubAgentType != "" {
 		target["subagent_type"] = entry.SubAgentType
-	}
-	if len(entry.SSEHiddenFields) > 0 {
-		target["sse_hidden_fields"] = append([]string(nil), entry.SSEHiddenFields...)
-	}
-	if entry.SSEHiddenReason != "" {
-		target["sse_hidden_reason"] = entry.SSEHiddenReason
-	}
-	if entry.SSEDisplayNotice != "" {
-		target["sse_display_notice"] = entry.SSEDisplayNotice
-	}
-	if entry.SSEGeneratedChars > 0 {
-		target["sse_generated_chars"] = entry.SSEGeneratedChars
 	}
 	if len(entry.UserReferences) > 0 {
 		target["user_references"] = append([]appsvc.AgentSessionUserMessageReference(nil), entry.UserReferences...)

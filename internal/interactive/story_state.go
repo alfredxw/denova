@@ -57,10 +57,6 @@ func sanitizeDisplayEvents(events []DisplayEvent) []DisplayEvent {
 			RunID:             strings.TrimSpace(event.RunID),
 			SubAgentSessionID: strings.TrimSpace(event.SubAgentSessionID),
 			SubAgentType:      strings.TrimSpace(event.SubAgentType),
-			SSEHiddenFields:   trimStringSlice(event.SSEHiddenFields),
-			SSEHiddenReason:   strings.TrimSpace(event.SSEHiddenReason),
-			SSEDisplayNotice:  strings.TrimSpace(event.SSEDisplayNotice),
-			SSEGeneratedChars: nonNegativeInt(event.SSEGeneratedChars),
 		}
 		result = append(result, next)
 	}

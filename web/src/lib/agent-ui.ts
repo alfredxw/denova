@@ -1,9 +1,10 @@
-import type { ChatTransport, UIMessage } from 'ai'
+import type { ChatTransport, UIMessage, UIMessageChunk } from 'ai'
 import { DefaultChatTransport } from 'ai'
 import { fetchAPI, responseAPIError } from './api-client/client'
 import type { ToolPresentation, UserMessageReference } from './api-client/types'
+import { recordAgentToolInputChunk } from './agent-ui-message'
 
-export type AgentDisplayRole = 'user' | 'assistant' | 'thinking' | 'tool_call' | 'tool_result' | 'ask' | 'rule_roll' | 'context_compaction' | 'token_usage' | 'proposed_plan' | 'system' | 'error'
+export type AgentDisplayRole = 'user' | 'assistant' | 'thinking' | 'tool_call' | 'tool_result' | 'ask' | 'rule_roll' | 'context_compaction' | 'token_usage' | 'execution_summary' | 'proposed_plan' | 'system' | 'error'
 
 export interface AgentMessageMetadata {
 	created_at?: string
@@ -20,10 +21,6 @@ export interface AgentMessageMetadata {
   subagent_session_id?: string
   subagent_type?: string
   parent_call_id?: string
-  sse_hidden_fields?: string[]
-  sse_hidden_reason?: string
-  sse_display_notice?: string
-  sse_generated_chars?: number
   display_hidden?: boolean
   streaming_target_content?: string
   turn_id?: string
@@ -42,6 +39,7 @@ export type AgentDataParts = {
   'agent-clear': AgentDataPayload
   'agent-context-compaction': AgentDataPayload
   'agent-error': AgentDataPayload
+  'agent-execution-summary': AgentDataPayload
   'agent-interactive-image': AgentDataPayload
   'agent-proposed-plan': AgentDataPayload
   'agent-rule-roll': AgentDataPayload
@@ -91,6 +89,9 @@ export class AgentChatTransport implements ChatTransport<AgentUIMessage> {
   private activeStreamAfter = 0
   private activeStreamScope: Record<string, string> = {}
   private readonly initialSubmissionOutcomes = new Map<string, InitialSubmissionOutcome>()
+  private readonly toolInputTextByToolCall = new Map<string, string>()
+  private readonly toolInputTextListeners = new Set<() => void>()
+  private toolInputTextSnapshot: ReadonlyMap<string, string> = new Map()
 
   private readonly streamApi: string
   private readonly scope: Record<string, string>
@@ -128,15 +129,23 @@ export class AgentChatTransport implements ChatTransport<AgentUIMessage> {
   sendMessages(options: Parameters<ChatTransport<AgentUIMessage>['sendMessages']>[0]) {
     // A new POST creates a new backend task. It must be rebound from `/active`
     // before any reconnect can target a stream.
+    this.resetToolInputText()
     this.activeStreamTaskID = ''
     this.activeStreamAfter = 0
     this.activeStreamScope = {}
-    return this.transport.sendMessages(options)
+    return this.trackToolInputStream(this.transport.sendMessages(options))
   }
 
   reconnectToStream(options: Parameters<ChatTransport<AgentUIMessage>['reconnectToStream']>[0]) {
-    return this.transport.reconnectToStream(options)
+    return this.trackToolInputStream(this.transport.reconnectToStream(options))
   }
+
+  subscribeToolInputText = (listener: () => void) => {
+    this.toolInputTextListeners.add(listener)
+    return () => this.toolInputTextListeners.delete(listener)
+  }
+
+  getToolInputTextSnapshot = () => this.toolInputTextSnapshot
 
   /** Select the exact backend task and optional server-issued display cursor. */
   setActiveStreamTarget(taskID: string, after?: number, scope: Record<string, string> = {}) {
@@ -169,6 +178,31 @@ export class AgentChatTransport implements ChatTransport<AgentUIMessage> {
     const outcome = this.initialSubmissionOutcomes.get(key) || missingOutcome
     this.initialSubmissionOutcomes.delete(key)
     return outcome
+  }
+
+  private async trackToolInputStream<T extends ReadableStream<UIMessageChunk> | null>(streamPromise: PromiseLike<T>): Promise<T> {
+    const stream = await streamPromise
+    if (!stream) return stream
+    return stream.pipeThrough(new TransformStream<UIMessageChunk, UIMessageChunk>({
+      transform: (chunk, controller) => {
+        if (recordAgentToolInputChunk(chunk, this.toolInputTextByToolCall)) {
+          this.publishToolInputText()
+        }
+        controller.enqueue(chunk)
+      },
+    })) as T
+  }
+
+  private publishToolInputText() {
+    this.toolInputTextSnapshot = new Map(this.toolInputTextByToolCall)
+    for (const listener of this.toolInputTextListeners) listener()
+  }
+
+  private resetToolInputText() {
+    this.toolInputTextByToolCall.clear()
+    if (this.toolInputTextSnapshot.size === 0) return
+    this.toolInputTextSnapshot = new Map()
+    for (const listener of this.toolInputTextListeners) listener()
   }
 
   private activeStreamURL() {
@@ -455,9 +489,12 @@ function agentUIPartDedupeIdentity(
 
   if (isAgentDataPartType(type)) {
     const data = objectData(raw.data)
+    if (runID && type === 'data-agent-execution-summary') {
+      return { primaryKey: `run:${runID}:data:${type}` }
+    }
     const id = firstNonEmpty(readString(raw.id), readString(data.id))
     if (id) return { primaryKey: scopedAgentPartKey(runID, `data:${type}:${id}`) }
-    if (runID && (type === 'data-agent-token-usage' || type === 'data-agent-context-compaction')) {
+    if (runID && (type === 'data-agent-token-usage' || type === 'data-agent-execution-summary' || type === 'data-agent-context-compaction')) {
       return { primaryKey: `run:${runID}:data:${type}` }
     }
     return { primaryKey: '' }

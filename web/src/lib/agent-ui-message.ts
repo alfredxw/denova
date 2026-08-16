@@ -1,3 +1,4 @@
+import type { UIMessageChunk } from 'ai'
 import type { AgentDataParts, AgentMessageMetadata, AgentUIMessage } from './agent-ui'
 
 type AgentTextRole = 'user' | 'system' | 'assistant'
@@ -106,17 +107,56 @@ export function parseAgentToolInput(value: string) {
   }
 }
 
-/** Returns the exact streamed input when available, with completed history as a derived fallback. */
+/** Returns only the exact protocol text; structured input is a separate completed-state view. */
 export function agentToolInputText(part: AgentUIMessage['parts'][number]) {
   const raw = part as Record<string, unknown>
-  if (typeof raw.inputText === 'string') return raw.inputText
-  if (raw.input === undefined) return ''
-  if (typeof raw.input === 'string') return raw.input
-  try {
-    return JSON.stringify(raw.input)
-  } catch {
-    return String(raw.input)
+  return typeof raw.inputText === 'string' ? raw.inputText : undefined
+}
+
+/** Accumulates the protocol's append-only raw input without interpreting a tool schema. */
+export function recordAgentToolInputChunk(chunk: UIMessageChunk, inputTextByToolCall: Map<string, string>) {
+  if (chunk.type === 'tool-input-start') {
+    inputTextByToolCall.set(chunk.toolCallId, '')
+    return true
   }
+  if (chunk.type !== 'tool-input-delta') return false
+  inputTextByToolCall.set(
+    chunk.toolCallId,
+    (inputTextByToolCall.get(chunk.toolCallId) ?? '') + chunk.inputTextDelta,
+  )
+  return true
+}
+
+/** Adds the raw protocol input beside the SDK's parsed view for presentation. */
+export function attachAgentToolInputText(
+  message: AgentUIMessage,
+  inputTextByToolCall: ReadonlyMap<string, string>,
+): AgentUIMessage {
+  let changed = false
+  const parts = message.parts.map((part) => {
+    const raw = part as Record<string, unknown>
+    const toolCallId = typeof raw.toolCallId === 'string' ? raw.toolCallId : ''
+    if (!toolCallId || !inputTextByToolCall.has(toolCallId)) return part
+    const inputText = inputTextByToolCall.get(toolCallId) ?? ''
+    if (raw.inputText === inputText) return part
+    changed = true
+    return { ...raw, inputText } as unknown as AgentUIMessage['parts'][number]
+  })
+  return changed ? { ...message, parts } : message
+}
+
+export function attachAgentToolInputTexts(
+  messages: AgentUIMessage[],
+  inputTextByToolCall: ReadonlyMap<string, string>,
+) {
+  if (inputTextByToolCall.size === 0) return messages
+  let changed = false
+  const next = messages.map((message) => {
+    const attached = attachAgentToolInputText(message, inputTextByToolCall)
+    if (attached !== message) changed = true
+    return attached
+  })
+  return changed ? next : messages
 }
 
 function localAgentMessageID(prefix: string) {

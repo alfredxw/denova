@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"time"
 
 	agentplan "denova/internal/agents/plan"
 	agentrun "denova/internal/agents/run"
@@ -36,6 +37,8 @@ type PublicEventProjector struct {
 	nestedContent           map[string]*strings.Builder
 	nestedThinking          map[string]*strings.Builder
 	runID                   string
+	runStartedAt            time.Time
+	runSummarized           bool
 	interactive             publicInteractiveOutput
 	explicitSkillsProjected bool
 }
@@ -707,23 +710,31 @@ func appendToolDescriptorProjection(data map[string]any, descriptor *agent.ToolD
 // ProjectRunStarted restores Denova's product cycle edge from the public
 // lifecycle. Command delivery and accepted input remain host-owned metadata;
 // the public Agent event supplies the durable Run and cycle identity.
-func (projector *PublicEventProjector) ProjectRunStarted(runID string, cycle int, commandID, delivery string) {
+func (projector *PublicEventProjector) ProjectRunStarted(runID string, cycle int, commandID, delivery string, startedAt time.Time) {
 	if projector == nil {
 		return
 	}
 	projector.mu.Lock()
 	defer projector.mu.Unlock()
 	projector.bindRunIDLocked(runID)
+	if !startedAt.IsZero() && (projector.runStartedAt.IsZero() || startedAt.Before(projector.runStartedAt)) {
+		projector.runStartedAt = startedAt.UTC()
+	}
 	delivery = strings.TrimSpace(delivery)
 	// Agent names the reusable runtime delivery "start" while Denova's public
 	// command contract calls the same product action "start_turn".
 	if delivery == "start" {
 		delivery = "start_turn"
 	}
-	projector.emitEvent(agentrun.Event{Type: "agent_cycle_started", Data: map[string]any{
+	data := map[string]any{
 		"command_id": strings.TrimSpace(commandID), "delivery": delivery,
-		"message": projector.request.Message, "operation_id": strings.TrimSpace(runID), "cycle": cycle,
-	}})
+		"message": projector.request.Message, "operation_id": strings.TrimSpace(runID),
+		"run_id": strings.TrimSpace(runID), "cycle": cycle,
+	}
+	if !projector.runStartedAt.IsZero() {
+		data["run_started_at"] = projector.runStartedAt.Format(time.RFC3339Nano)
+	}
+	projector.emitEvent(agentrun.Event{Type: "agent_cycle_started", Data: data})
 }
 
 // ProjectPreparedContext restores the established visible Skill load cards at
@@ -800,6 +811,18 @@ func (projector *PublicEventProjector) Flush() {
 	projector.flushLocked()
 }
 
+// SummarizeRun closes one settled public Run without closing the surrounding
+// product operation, which may continue with an already queued successor Run.
+func (projector *PublicEventProjector) SummarizeRun(status agent.ResultStatus) {
+	if projector == nil {
+		return
+	}
+	projector.mu.Lock()
+	defer projector.mu.Unlock()
+	projector.flushLocked()
+	projector.emitExecutionSummaryLocked(status)
+}
+
 // Finalize publishes exactly one terminal event after all product callbacks
 // that belong before task completion have run.
 func (projector *PublicEventProjector) Finalize(status agent.ResultStatus, reason string) {
@@ -813,6 +836,7 @@ func (projector *PublicEventProjector) Finalize(status agent.ResultStatus, reaso
 		return
 	}
 	projector.terminal = true
+	projector.emitExecutionSummaryLocked(status)
 	switch status {
 	case agent.ResultCompleted:
 		projector.emitEvent(agentrun.Event{Type: "done", Data: map[string]string{}})
@@ -821,6 +845,25 @@ func (projector *PublicEventProjector) Finalize(status agent.ResultStatus, reaso
 	default:
 		projector.emitEvent(agentrun.Event{Type: "error", Data: map[string]string{"message": reason}})
 	}
+}
+
+func (projector *PublicEventProjector) emitExecutionSummaryLocked(status agent.ResultStatus) {
+	if projector.runSummarized || projector.runStartedAt.IsZero() || strings.TrimSpace(projector.runID) == "" {
+		return
+	}
+	projector.runSummarized = true
+	finishedAt := time.Now().UTC()
+	duration := finishedAt.Sub(projector.runStartedAt)
+	if duration < 0 {
+		duration = 0
+	}
+	projector.emitEvent(agentrun.Event{Type: "execution_summary", Data: map[string]any{
+		"run_id":          projector.runID,
+		"run_started_at":  projector.runStartedAt.Format(time.RFC3339Nano),
+		"run_finished_at": finishedAt.Format(time.RFC3339Nano),
+		"duration_ms":     duration.Milliseconds(),
+		"status":          string(status),
+	}})
 }
 
 func (projector *PublicEventProjector) flushLocked() {

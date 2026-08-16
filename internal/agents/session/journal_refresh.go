@@ -121,7 +121,6 @@ func cloneHistoryRecordForTailReplay(record historyRecord) historyRecord {
 			display.UsageCalls[index].RequestedTools = append([]string(nil), record.display.UsageCalls[index].RequestedTools...)
 			display.UsageCalls[index].AfterTools = append([]string(nil), record.display.UsageCalls[index].AfterTools...)
 		}
-		display.SSEHiddenFields = append([]string(nil), record.display.SSEHiddenFields...)
 		clone.display = &display
 	}
 	if record.interruption != nil {

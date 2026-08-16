@@ -274,6 +274,55 @@ func TestSessionSnapshotProjectsOnlyLiveCoordination(t *testing.T) {
 	}
 }
 
+func TestRunStartedAtBeginsOnlyWhenAQueuedRunActivates(t *testing.T) {
+	model := &gatedLifecycleModel{started: make(chan struct{}), release: make(chan struct{})}
+	owner, err := New(context.Background(), Definition{Name: "test", Model: model})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = owner.Close(context.Background()) })
+	session, err := owner.Session(context.Background(), NamedSession("run-started-at"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	active, err := session.Run(context.Background(), Text("active"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-model.started
+	if active.startedAtValue().IsZero() {
+		t.Fatal("active Run has no activation timestamp")
+	}
+	queued, err := active.FollowUp(context.Background(), Text("queued"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !queued.startedAtValue().IsZero() {
+		t.Fatalf("queued Run started during wait: %s", queued.startedAtValue())
+	}
+
+	close(model.release)
+	if _, err := active.Wait(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := queued.Wait(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	startedAt := queued.startedAtValue()
+	if startedAt.IsZero() {
+		t.Fatal("queued Run did not record its activation timestamp")
+	}
+	for event := range queued.Events() {
+		if started, ok := event.Payload.(RunStarted); ok {
+			if !started.StartedAt.Equal(startedAt) {
+				t.Fatalf("RunStarted timestamp = %s, want %s", started.StartedAt, startedAt)
+			}
+			return
+		}
+	}
+	t.Fatal("queued Run did not publish RunStarted")
+}
+
 func TestAbortingPendingRunDoesNotStartItsSuccessor(t *testing.T) {
 	model := &gatedLifecycleModel{started: make(chan struct{}), release: make(chan struct{})}
 	owner, err := New(context.Background(), Definition{Name: "test", Model: model})

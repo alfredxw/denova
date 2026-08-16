@@ -592,7 +592,7 @@ describe('StoryStage streaming rendering', () => {
       const messages = useInteractiveStore.getState().storyStageRuns['/tmp/book:story-1:main']?.liveMessages || []
       expect(storeUpdates).toBe(1)
       expect(buildAgentMessageViews(messages).find((view) => view.partId === 'call-execute')).toMatchObject({
-        input: 'first-last',
+        input: undefined,
         inputText: 'first-last',
       })
     } finally {

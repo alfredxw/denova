@@ -7,26 +7,70 @@ import {
   countCompletedAgentTurnSignals,
   hasCompletedAgentTurn,
   isAgentTraceView,
+  selectAgentExecutionTimings,
   selectAgentTokenUsageRecords,
 } from './agent-message-view'
 
 describe('agent-message-view', () => {
+  it('merges live and durable execution timing without rendering either event', () => {
+    const views = buildAgentMessageViews([{
+      id: 'run-timing-events',
+      role: 'assistant',
+      parts: [
+        {
+          type: 'data-agent-activity',
+          id: 'cycle-started',
+          data: {
+            event: 'agent_cycle_started',
+            run_id: 'run-timing',
+            run_started_at: '2026-01-01T00:00:00.000Z',
+          },
+        },
+        { type: 'reasoning', id: 'reasoning', text: 'Inspecting', state: 'done' },
+        {
+          type: 'data-agent-execution-summary',
+          id: 'execution-summary',
+          data: {
+            run_id: 'run-timing',
+            run_started_at: '2026-01-01T00:00:00.000Z',
+            run_finished_at: '2026-01-01T01:01:01.987Z',
+            duration_ms: 3_661_987,
+            status: 'completed',
+          },
+        },
+      ],
+    }] as AgentUIMessage[])
+
+    expect(views.map(view => view.kind)).toEqual(['execution-summary', 'reasoning', 'execution-summary'])
+    expect(agentViewToRenderMessage(views[0])).toBeNull()
+    expect(agentViewToRenderMessage(views[2])).toBeNull()
+    expect(selectAgentExecutionTimings(views).get('run-timing')).toEqual({
+      runID: 'run-timing',
+      startedAtMS: Date.parse('2026-01-01T00:00:00.000Z'),
+      finishedAtMS: Date.parse('2026-01-01T01:01:01.987Z'),
+      durationMS: 3_661_987,
+      status: 'completed',
+    })
+  })
+
   it('工具名和参数流到达时立即更新同一张 Writing 工具卡', () => {
-    const message = (state: 'input-streaming' | 'input-available', input: unknown) => ({
+    const message = (state: 'input-streaming' | 'input-available', input: unknown, inputText?: string) => ({
       id: 'assistant-live-tool',
       role: 'assistant' as const,
       metadata: { run_id: 'run-live-tool' },
       parts: [{
-        type: 'dynamic-tool', toolName: 'read', toolCallId: 'tool-live', state, input,
+        type: 'dynamic-tool', toolName: 'read', toolCallId: 'tool-live', state, input, inputText,
       }],
-    }) as AgentUIMessage
+    }) as unknown as AgentUIMessage
 
-    const live = buildAgentMessageViews([message('input-streaming', `{"path":"draft`)])[0]
+    const live = buildAgentMessageViews([message('input-streaming', { path: 'parsed-draft.md' }, `{"path":"draft`)])[0]
+    const parsedOnly = buildAgentMessageViews([message('input-streaming', { path: 'parsed-only.md' })])[0]
     const started = buildAgentMessageViews([message('input-available', { path: 'draft.md' })])[0]
 
     expect(agentViewToRenderMessage(live)).toMatchObject({
       id: 'tool-live', role: 'tool_call', name: 'read', args: `{"path":"draft`, streaming: true,
     })
+    expect(agentViewToRenderMessage(parsedOnly)).toMatchObject({ args: '', streaming: true })
     expect(agentViewToRenderMessage(started)).toMatchObject({
       id: 'tool-live', role: 'tool_call', name: 'read', args: '{"path":"draft.md"}', streaming: false,
     })

@@ -621,6 +621,7 @@ func (backend *publicBackend) bindDefinition(
 			pendingRunStart.started.Cycle,
 			firstPublicCycleValue(pendingRunStart.started.CommandID, cycle.Request.CommandID),
 			firstPublicCycleValue(pendingRunStart.started.Delivery, string(commandKind)),
+			pendingRunStart.started.StartedAt,
 		)
 	}
 	effectApplier, err := agentlifecycle.NewToolEffectApplier(backend.effects, options, registration.recordMutation)

@@ -21,37 +21,40 @@ export function ToolExecutionBlock({ message, onResolve, onLayoutChange }: { mes
   const [expanded, setExpanded] = useState(() => approvalPending)
   const info = parseToolCallContent(message.content || '')
   const name = message.name || info.name
+  const inputStreaming = message.streaming === true
   const rawArgs = message.args !== undefined ? message.args : info.args
-  const args = formatMaybeJSON(rawArgs)
+  const isInputStreaming = !approvalInteraction && inputStreaming && rawArgs.length > 0
+  const canInterpretInput = !inputStreaming
+  const args = canInterpretInput ? formatMaybeJSON(rawArgs) : rawArgs
   const status = message.status || 'running'
   const result = message.result || ''
   const presentationKind = toolPresentationKind(message, 'call')
   const isDelegationTool = presentationKind === 'delegation'
   const isScriptTool = presentationKind === 'script'
-  const taskSubAgent = isDelegationTool ? (message.subagent_type || parseTaskSubagentType(rawArgs)) : ''
-  const isChapterBodyHidden = message.sse_display_notice === 'chapter_body_hidden'
-  const isDirectorPlanHidden = isChapterBodyHidden && message.agent_kind === 'interactive_director'
-  const chapterBodyHiddenPath = isChapterBodyHidden ? extractToolArgPath(rawArgs) : ''
-  const chapterGeneratedChars = isChapterBodyHidden && typeof message.sse_generated_chars === 'number' ? message.sse_generated_chars : undefined
-  const fileTarget = extractToolArgPath(rawArgs)
+  const taskSubAgent = canInterpretInput && isDelegationTool ? (message.subagent_type || parseTaskSubagentType(rawArgs)) : ''
+  // The raw input remains opaque while streaming. File cards may read only the
+  // path field as a non-authoritative label; this never rewrites the input.
+  const fileTarget = isWorkspaceFileTool(name) ? extractToolArgPath(rawArgs) : ''
   const fileTargetSummary = fileTarget ? workspaceFileName(fileTarget) : ''
   const displayName = isDelegationTool ? t('chat.subagent.taskLabel') : toolDisplayName(name, t)
-  const detailArgs = isDelegationTool ? formatTaskDelegationArgs(rawArgs) : (isChapterBodyHidden ? '' : args)
+  const detailArgs = canInterpretInput
+    ? (isDelegationTool ? formatTaskDelegationArgs(rawArgs) : args)
+    : ''
   const hasResult = status === 'success'
   useLayoutEffect(() => {
     if (approvalPending) setExpanded(true)
   }, [approvalPending, approvalInteraction?.id])
-  const isInputStreaming = !approvalInteraction && !isChapterBodyHidden && message.streaming === true && rawArgs.length > 0
-  const commandDescription = presentationKind === 'search' || presentationKind === 'terminal'
-    ? readToolArgDescription(args)
-    : ''
-  const summary = taskSubAgent
-    ? t('chat.subagent.delegating', { name: taskSubAgent })
-    : commandDescription || fileTargetSummary || buildToolArgSummary(args) || t('chat.tool.preparing')
+  const commandDescription = isDescribedTool(name) ? readToolArgDescription(rawArgs) : ''
+  const summary = inputStreaming
+    ? (fileTargetSummary || commandDescription || t('chat.tool.preparing'))
+    : (taskSubAgent
+        ? t('chat.subagent.delegating', { name: taskSubAgent })
+        : commandDescription || fileTargetSummary || buildToolArgSummary(args) || t('chat.tool.preparing'))
   const resultBody = stripToolResultMetadata(result)
   const resultEnvelope = decodeToolResultEnvelope(resultBody)
   const resultSeverity = status === 'error' ? 'error' : resultEnvelope?.severity || 'success'
   const showReadableOutcome = resultSeverity !== 'success'
+  const showStackedOutcome = resultSeverity === 'warning'
   const resultPreview = resultEnvelope
     ? buildToolResultEnvelopeSummary(t, resultEnvelope)
     : buildPreview(resultBody, 80)
@@ -61,17 +64,13 @@ export function ToolExecutionBlock({ message, onResolve, onLayoutChange }: { mes
         : fileTargetSummary)
     : ''
   const detailResult = resultEnvelope ? formatMaybeJSON(resultBody) : result
-  const displaySummary = isChapterBodyHidden
-    ? chapterGeneratedChars !== undefined
-      ? t(isDirectorPlanHidden ? (hasResult ? 'chat.tool.fileWrittenWithCount' : 'chat.tool.fileWritingWithCount') : (hasResult ? 'chat.tool.chapterWrittenWithCount' : 'chat.tool.chapterWritingWithCount'), { count: chapterGeneratedChars })
-      : (isDirectorPlanHidden ? (hasResult ? t('chat.tool.fileWritten') : t('chat.tool.fileWriting')) : (hasResult ? t('chat.tool.chapterWritten') : t('chat.tool.chapterWriting')))
-    : (hasResult
-      ? (commandDescription || fileResultSummary || resultPreview || t('chat.tool.done'))
-      : status === 'error'
-        ? buildPreview(resultBody, 160) || t('chat.tool.failed')
-        : summary)
+  const displaySummary = hasResult
+    ? (commandDescription || fileResultSummary || resultPreview || t('chat.tool.done'))
+    : status === 'error'
+      ? buildPreview(resultBody, 160) || t('chat.tool.failed')
+      : summary
   const headerSummary = approvalPending ? t('agentApproval.approval.waiting') : displaySummary
-  const hasDetail = Boolean(approvalInteraction || detailArgs || result || isChapterBodyHidden)
+  const hasDetail = Boolean(approvalInteraction || detailArgs || result)
   const canToggleDetail = hasDetail && !isInputStreaming
   const inputStreamScrollLock = useBottomScrollLock<HTMLDivElement>({
     enabled: isInputStreaming,
@@ -86,10 +85,10 @@ export function ToolExecutionBlock({ message, onResolve, onLayoutChange }: { mes
           type="button"
           disabled={!canToggleDetail}
           data-nova-tool-header
-          className={`grid min-h-9 w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-x-1.5 px-2.5 py-1.5 text-left leading-4 transition-colors enabled:cursor-pointer enabled:hover:bg-[var(--nova-hover)] disabled:cursor-default ${showReadableOutcome ? 'gap-y-0.5' : ''}`}
+          className={`grid min-h-9 w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-x-1.5 px-2.5 py-1.5 text-left leading-4 transition-colors enabled:cursor-pointer enabled:hover:bg-[var(--nova-hover)] disabled:cursor-default ${showStackedOutcome ? 'gap-y-0.5' : ''}`}
         >
           <ToolStatusIcon status={resultSeverity === 'error' ? 'error' : status} warning={resultSeverity === 'warning'} />
-          <div className="flex min-w-0 items-center gap-1.5 overflow-hidden">
+          <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
             <span
               className="min-w-0 max-w-[42%] shrink-0 truncate font-medium text-[var(--nova-text)]"
               title={displayName === name ? undefined : name}
@@ -114,14 +113,17 @@ export function ToolExecutionBlock({ message, onResolve, onLayoutChange }: { mes
                 {t('agentApproval.approval.waiting')}
               </span>
             )}
-            {!showReadableOutcome && (
-              <span className="min-w-0 flex-1 truncate text-[var(--nova-text-faint)]">
+            {!showStackedOutcome && (
+              <span
+                data-nova-tool-summary
+                className={`min-w-0 flex-1 truncate ${resultSeverity === 'error' ? 'text-[var(--nova-danger)]' : 'text-[var(--nova-text-faint)]'}`}
+              >
                 {headerSummary}
               </span>
             )}
           </div>
-          {showReadableOutcome && (
-            <span className={`col-start-2 col-end-3 whitespace-normal pt-0.5 leading-4 ${resultSeverity === 'warning' ? 'text-[var(--nova-warning)]' : 'text-[var(--nova-danger)]'}`}>
+          {showStackedOutcome && (
+            <span className="col-start-2 col-end-3 whitespace-normal pt-0.5 leading-4 text-[var(--nova-warning)]">
               {displaySummary}
             </span>
           )}
@@ -141,22 +143,6 @@ export function ToolExecutionBlock({ message, onResolve, onLayoutChange }: { mes
         {!isInputStreaming && (
           <ToolContent className={`grid min-w-0 max-w-full gap-2 overflow-x-hidden overflow-y-auto border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2.5 font-mono text-[11px] leading-relaxed text-[var(--nova-text-muted)] ${approvalInteraction ? 'max-h-80' : 'max-h-48'}`}>
             {approvalInteraction && <ToolApprovalPanel message={message} onResolve={onResolve} embedded onLayoutChange={onLayoutChange} />}
-            {isChapterBodyHidden && (
-              <div className="grid gap-1 font-sans">
-                {chapterBodyHiddenPath && (
-                  <div className="min-w-0">
-                    <span className="text-[var(--nova-text-faint)]">{t(isDirectorPlanHidden ? 'chat.tool.filePath' : 'chat.tool.chapterPath')}</span>
-                    <code className="ml-1 break-all font-mono text-[var(--nova-text-muted)]">{chapterBodyHiddenPath}</code>
-                  </div>
-                )}
-                {chapterGeneratedChars !== undefined && (
-                  <div className="text-[var(--nova-text-faint)]">
-                    {t(isDirectorPlanHidden ? 'chat.tool.fileGeneratedChars' : 'chat.tool.chapterGeneratedChars', { count: chapterGeneratedChars })}
-                  </div>
-                )}
-                <div className="text-[var(--nova-text-faint)]">{t(isDirectorPlanHidden ? 'chat.tool.fileBodyHidden' : 'chat.tool.chapterBodyHidden')}</div>
-              </div>
-            )}
             {detailArgs && !approvalInteraction?.approval?.command && <pre className="m-0 min-w-0 max-w-full whitespace-pre-wrap [overflow-wrap:anywhere]">{detailArgs}</pre>}
             {taskSubAgent && result && <div className="text-[var(--nova-text-muted)]">{t('chat.subagent.result')}</div>}
             {result && <pre className={`m-0 min-w-0 max-w-full whitespace-pre-wrap [overflow-wrap:anywhere] ${resultSeverity === 'error' ? 'text-[var(--nova-danger)]' : resultSeverity === 'warning' ? 'text-[var(--nova-warning)]' : 'text-[var(--nova-accent-green)]'}`}>{detailResult}</pre>}
@@ -355,25 +341,39 @@ function buildToolArgSummary(args: string) {
 
 /** Reads optional model-authored display metadata without making it execution-authoritative. */
 function readToolArgDescription(args: string) {
-  if (!args) return ''
-  try {
-    const description = (JSON.parse(args) as Record<string, unknown>).description
-    return typeof description === 'string' ? description.trim() : ''
-  } catch {
-    return ''
-  }
+  return extractToolArgString(args, ['description']).trim()
 }
 
 function extractToolArgPath(args: string) {
+  return extractToolArgString(args, ['file_path', 'path'])
+}
+
+function extractToolArgString(args: string, fields: readonly string[]) {
   if (!args) return ''
   try {
     const data = JSON.parse(args) as Record<string, unknown>
-    const path = data.file_path || data.path
-    return typeof path === 'string' ? path : ''
+    for (const field of fields) {
+      const value = data[field]
+      if (typeof value === 'string') return value
+    }
+    return ''
   } catch {
-    const match = args.match(/"(?:file_path|path)"\s*:\s*"([^"]+)"/)
-    return match?.[1] || ''
+    const match = args.match(new RegExp(`"(?:${fields.join('|')})"\\s*:\\s*"((?:\\\\.|[^"\\\\])*)"`))
+    if (!match) return ''
+    try {
+      return JSON.parse(`"${match[1]}"`) as string
+    } catch {
+      return match[1]
+    }
   }
+}
+
+function isWorkspaceFileTool(name: string) {
+  return name === 'read' || name === 'write' || name === 'edit'
+}
+
+function isDescribedTool(name: string) {
+  return name === 'grep' || name === 'bash'
 }
 
 function buildPreview(content: string, maxLength: number) {

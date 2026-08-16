@@ -1,8 +1,6 @@
 package interactive
 
 import (
-	"sync"
-
 	agent "github.com/alfredxw/denova/agent"
 
 	"denova/internal/agents/conversation"
@@ -24,8 +22,6 @@ type DirectorConversation struct {
 	*conversation.InstructionConversation
 	display         any
 	canonicalOutput DirectorCanonicalOutput
-	mu              sync.Mutex
-	directorTools   map[string]*directorToolDisplayState
 }
 
 // NewDirectorConversation creates a Director-specific conversation adapter.
@@ -34,7 +30,6 @@ func NewDirectorConversation(options DirectorConversationOptions) *DirectorConve
 		InstructionConversation: conversation.NewInstructionConversation(options.Instruction),
 		display:                 options.Display,
 		canonicalOutput:         options.CanonicalOutput,
-		directorTools:           make(map[string]*directorToolDisplayState),
 	}
 }
 

@@ -124,7 +124,14 @@ func (run *Run) executeCycle(input Input, delivery runstate.DeliveryKind, autono
 	run.mu.Lock()
 	run.snapshot = snapshot
 	run.mu.Unlock()
-	run.publish(RunStarted{Cycle: cycle, CommandID: commandID, Delivery: string(snapshot.Delivery)})
+	startedAt := run.startedAtValue()
+	if startedAt.IsZero() {
+		// Defensive fallback for alternate Run constructors: the first cycle is
+		// already executing, so its immutable snapshot time is the correct edge.
+		startedAt = snapshot.StartedAt
+		run.markStarted(startedAt)
+	}
+	run.publish(RunStarted{Cycle: cycle, CommandID: commandID, Delivery: string(snapshot.Delivery), StartedAt: startedAt})
 	var continuation *runstate.EngineContinuation
 	result, err := run.session.engine.Run(run.ctx, runstate.EngineRequest{
 		Binding: run.session.binding.Clone(), Snapshot: snapshot, Controls: run.controls,
