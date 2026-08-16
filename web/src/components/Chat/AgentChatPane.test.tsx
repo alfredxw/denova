@@ -61,4 +61,23 @@ describe('AgentChatPane', () => {
     expect(screen.getByTestId('input-area')).toHaveAttribute('data-content-class', 'mx-auto w-full max-w-[56rem]')
     expect(screen.getByTestId('message-list').parentElement).not.toHaveClass('max-w-[56rem]')
   })
+
+  it('transitions only the Session canvas while keeping the composer mounted', () => {
+    const props = {
+      messageListProps: { messages: [], isStreaming: false, activityContent: '' },
+      inputAreaProps: { disabled: true, generationActive: false, onSend: vi.fn() },
+    }
+    const { container, rerender } = render(<AgentChatPane {...props} />)
+
+    const canvas = container.querySelector('[data-nova-session-canvas]')
+    expect(canvas).toHaveAttribute('data-state', 'active')
+    expect(canvas).toHaveAttribute('aria-busy', 'false')
+
+    rerender(<AgentChatPane {...props} sessionTransitionPending />)
+
+    expect(canvas).toHaveAttribute('data-state', 'transitioning')
+    expect(canvas).toHaveAttribute('aria-busy', 'true')
+    expect(canvas).toHaveClass('pointer-events-none')
+    expect(canvas).not.toContainElement(screen.getByTestId('input-area'))
+  })
 })

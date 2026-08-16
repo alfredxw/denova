@@ -1,11 +1,13 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Activity, Bot, ChevronLeft, FileText, PenLine, Plus, SearchCheck, Sparkles, WandSparkles, X } from 'lucide-react'
+import { motion } from 'motion/react'
 import { Group, Panel, Separator } from 'react-resizable-panels'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { createStablePortalHost, StablePortalSlot } from '@/components/layout/stable-portal-slot'
 import type { ImagePreset, Teller } from '@/features/interactive/types'
 import { DEFAULT_NARRATIVE_STYLE_ID, resolveNarrativeStyle } from '@/features/interactive/narrative-style'
+import { novaEase } from '@/features/motion/motion-tokens'
 import { answerSessionAsk, cancelSessionAsk, removeChatContextCompaction } from '@/lib/api'
 import type {
   ActiveChatTask,
@@ -668,6 +670,7 @@ function AgentPanelComponent({
     <AgentChatPane
       className="min-w-0 flex-1"
       contentClassName={dockedChrome ? undefined : 'mx-auto w-full max-w-[56rem]'}
+      sessionTransitionPending={sessionTransitionPending}
       emptyContent={emptyChatContent}
       messageListProps={messageListProps}
       inputAreaProps={inputAreaProps}
@@ -726,7 +729,13 @@ function AgentPanelComponent({
             className="nova-nav-item flex h-7 w-7 shrink-0 items-center justify-center rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] disabled:cursor-not-allowed disabled:opacity-45"
             aria-label={t('chat.newSession')}
           >
-            <Plus className="h-3.5 w-3.5" />
+            <motion.span
+              className="flex"
+              animate={sessionTransitionPending ? { rotate: 90, scale: 0.78 } : { rotate: 0, scale: 1 }}
+              transition={{ duration: sessionTransitionPending ? 0.1 : 0.16, ease: novaEase }}
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </motion.span>
           </button>
           <div className="min-w-0 flex-1" />
           <button type="button" onClick={onClose} className="nova-nav-item rounded p-1" aria-label={t('chat.closeAgent')}>
