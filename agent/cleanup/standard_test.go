@@ -219,7 +219,7 @@ func TestStandardHardOverflowTemporarilyDropsCacheAndRecentPreferences(t *testin
 		Scope: PressureTotal, ContextWindowTokens: 1_500,
 		CleanupThreshold: .80, CleanupTarget: .70, CompactionThreshold: .95,
 		KeepRecentGroups: 10, KeepRecentTokens: 100_000, WarmSuffixTokens: 0,
-		CacheState: CacheWarm, EagerMinTokens: 100_000,
+		CacheState: CacheWarm, EagerMinTokens: 100_000, CompactionEnabled: true,
 	})
 	plan, err := manager.Plan(context.Background(), agent.CleanupPlanRequest{Messages: messages, ModelRequest: messages, CompactionAvailable: true})
 	if err != nil {
@@ -235,7 +235,7 @@ func TestStandardCompactionFallbackUsesOnlyRuntimeAvailability(t *testing.T) {
 	messages := []*agent.Message{agent.UserMessage(strings.Repeat("irreducible ", 1000))}
 	manager := standardForTest(t, StandardConfig{
 		Scope: PressureTotal, ContextWindowTokens: 1_000,
-		CleanupThreshold: .60, CleanupTarget: .50, CompactionThreshold: .70,
+		CleanupThreshold: .60, CleanupTarget: .50, CompactionEnabled: true, CompactionThreshold: .70,
 	})
 	unavailable, err := manager.Plan(context.Background(), agent.CleanupPlanRequest{
 		Messages: messages, ModelRequest: messages,
@@ -252,6 +252,46 @@ func TestStandardCompactionFallbackUsesOnlyRuntimeAvailability(t *testing.T) {
 	if unavailable.FallbackToCompaction || unavailable.Action == agent.CleanupCompact ||
 		!available.FallbackToCompaction || available.Action != agent.CleanupCompact {
 		t.Fatalf("runtime Compaction availability: unavailable=%#v available=%#v", unavailable, available)
+	}
+}
+
+func TestStandardRespectsDisabledCompactionPolicy(t *testing.T) {
+	messages := []*agent.Message{agent.UserMessage(strings.Repeat("irreducible ", 1000))}
+	manager := standardForTest(t, StandardConfig{
+		Scope: PressureTotal, ContextWindowTokens: 1_000,
+		CleanupThreshold: .60, CleanupTarget: .50, CompactionThreshold: .70,
+	})
+	plan, err := manager.Plan(context.Background(), agent.CleanupPlanRequest{
+		Messages: messages, ModelRequest: messages, CompactionAvailable: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Action != agent.CleanupNone || plan.Reason != "compaction_disabled" || plan.FallbackToCompaction {
+		t.Fatalf("disabled Compaction plan=%#v", plan)
+	}
+	if plan.Metrics.BodyPressureAfter != plan.Metrics.BodyPressureBefore {
+		t.Fatalf("no-op Cleanup changed body pressure metrics: %#v", plan.Metrics)
+	}
+}
+
+func TestStandardUsesExactModelOutputReserve(t *testing.T) {
+	messages := []*agent.Message{agent.UserMessage(strings.Repeat("small request ", 40))}
+	maxTokens := 4_900
+	manager := standardForTest(t, StandardConfig{
+		Scope: PressureTotal, ContextWindowTokens: 5_000,
+		CleanupThreshold: .70, CleanupTarget: .60,
+		CompactionEnabled: true, CompactionThreshold: .90,
+	})
+	plan, err := manager.Plan(context.Background(), agent.CleanupPlanRequest{
+		Messages: messages, ModelRequest: messages, CompactionAvailable: true,
+		ModelInspection: agent.ModelRequestInspection{Options: agent.Options{MaxTokens: &maxTokens}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Action != agent.CleanupCompact || !plan.FallbackToCompaction {
+		t.Fatalf("exact model output reserve plan=%#v", plan)
 	}
 }
 

@@ -733,7 +733,7 @@ func buildChildDefinition(cfg *config.Config, spec childDefinitionSpec) (agentde
 			MaxBytes: toolresult.LimitBytes(cfg), EagerMinTokens: config.DefaultToolResultEagerMinTokens,
 			ContextWindowTokens: spec.ModelContextWindow,
 		}),
-		Cleanup: agentconversation.NewAgentCleanupManager(cfg, spec.ParentKind),
+		Cleanup: agentconversation.NewAgentCleanupManagerForModel(cfg, spec.ParentKind, spec.ModelContextWindow),
 		// Goals are a root product workflow. Delegated Agents keep isolated
 		// task transcripts and must not create or continue a parent Goal.
 		Compaction: compaction, Permission: permission,

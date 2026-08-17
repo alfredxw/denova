@@ -90,6 +90,29 @@ describe('WorkbenchShell responsive main content', () => {
     expect(screen.getByText('3')).toBeInTheDocument()
   })
 
+  it('keeps primary menu controls geometrically stable while collapsing', () => {
+    const props = workbenchProps(<div />)
+    const { container, rerender } = render(<WorkbenchShell {...props} activityBarExpanded />)
+
+    const expandedBar = container.querySelector('.nova-activity-bar')
+    const expandedToggle = screen.getByRole('button', { name: '收起' })
+    const expandedToggleIconClass = expandedToggle.querySelector('svg')?.getAttribute('class')
+    expect(expandedBar).toHaveClass('items-stretch')
+    expect(expandedBar).not.toHaveClass('items-center')
+    expect(expandedToggle).toHaveClass('w-full', 'justify-start', 'gap-3', 'px-3')
+    expect(expandedToggleIconClass).not.toContain('rotate')
+    expect(expandedToggleIconClass).not.toContain('transition-transform')
+
+    rerender(<WorkbenchShell {...props} activityBarExpanded={false} />)
+
+    const collapsedBar = container.querySelector('.nova-activity-bar')
+    const collapsedToggle = screen.getByRole('button', { name: '展开' })
+    expect(collapsedBar).toHaveClass('items-stretch')
+    expect(collapsedBar).not.toHaveClass('items-center')
+    expect(collapsedToggle).toHaveClass('w-full', 'justify-start', 'gap-3', 'px-3')
+    expect(collapsedToggle.querySelector('svg')?.getAttribute('class')).toBe(expandedToggleIconClass)
+  })
+
   it('keeps the main subtree mounted and preserves local state across the mobile breakpoint', () => {
     let unmountCount = 0
 

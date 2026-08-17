@@ -8,6 +8,12 @@ type Event struct {
 	Data any
 }
 
+// NewAbortedEvent creates the canonical terminal event consumed by every
+// product transport. Abort diagnostics always travel in the reason field.
+func NewAbortedEvent(reason string) Event {
+	return Event{Type: "aborted", Data: map[string]string{"reason": reason}}
+}
+
 // DataString reads one string-like field from the two map representations used
 // by transport-independent run events.
 func (e Event) DataString(key string) string {

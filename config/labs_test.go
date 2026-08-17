@@ -4,7 +4,7 @@ import "testing"
 
 func TestResolveLabsDefaultsAndBounds(t *testing.T) {
 	resolved := ResolveLabs(LabSettings{})
-	if resolved.DeveloperMode || resolved.ContinualLearningSchedule || resolved.ContinualLearningIntervalHours != 24 || resolved.ContinualLearningTrajectoryCap != 50 {
+	if resolved.DeveloperMode || resolved.ContinualLearningSchedule || resolved.ContinualLearningIntervalHours != 24 || resolved.ContinualLearningTrajectoryCap != 100 {
 		t.Fatalf("unexpected Lab defaults %#v", resolved)
 	}
 

@@ -15,7 +15,7 @@ import (
 	agent "github.com/alfredxw/denova/agent"
 )
 
-const RendererVersion = "agent.cleanup.placeholder.v1"
+const RendererVersion = "tool_result.placeholder.v1"
 
 type CacheState string
 
@@ -44,6 +44,7 @@ type StandardConfig struct {
 	WarmSuffixTokens        int
 	EagerMinTokens          int
 	EagerMinContextRatio    float64
+	CompactionEnabled       bool
 	CompactionThreshold     float64
 	CompactionPromptTokens  int
 	CheckpointOutputReserve int
@@ -170,6 +171,10 @@ func (manager *standardManager) Plan(_ context.Context, request agent.CleanupPla
 	observed, observedCache := latestPromptUsage(messages)
 	observed = max(config.ObservedPromptTokens, observed)
 	effective := max(local, observed+max(0, config.ReservedTokens))
+	checkpointOutputReserve := max(0, config.CheckpointOutputReserve)
+	if maxTokens := request.ModelInspection.Options.MaxTokens; maxTokens != nil {
+		checkpointOutputReserve = max(checkpointOutputReserve, *maxTokens)
+	}
 	stablePrefix := stablePrefixTokens(messages, request.ModelInspection)
 	pressure, fullPressure, budget := pressureRatios(effective, stablePrefix, config)
 	plan := agent.CleanupPlan{Action: agent.CleanupNone, Reason: "below_cleanup_threshold", Renderer: RendererVersion,
@@ -214,7 +219,7 @@ func (manager *standardManager) Plan(_ context.Context, request agent.CleanupPla
 		plan.Metrics.CacheViableCandidateTokens += group.reclaimed
 	}
 
-	capacityAtRisk := effective+max(0, config.CompactionPromptTokens)+max(0, config.CheckpointOutputReserve)+max(0, config.SafetyMarginTokens) > config.ContextWindowTokens
+	capacityAtRisk := effective+max(0, config.CompactionPromptTokens)+checkpointOutputReserve+max(0, config.SafetyMarginTokens) > config.ContextWindowTokens
 	eagerOnly := pressure < config.CleanupThreshold && fullPressure < config.CompactionThreshold && !capacityAtRisk
 	minimum := max(max(1, config.CleanupMinTokens), budget/10)
 	plan.Metrics.MinimumCleanupTokens = minimum
@@ -239,8 +244,8 @@ func (manager *standardManager) Plan(_ context.Context, request agent.CleanupPla
 	eager := eagerOnly && len(selected) != 0 && selectedOnlyEager(selected)
 	cleanupRestores := len(plan.Replacements) != 0 && plan.Metrics.ReclaimedTokens >= minimum &&
 		plan.Metrics.BodyPressureAfter <= config.CleanupTarget && plan.Metrics.PressureAfter < config.CompactionThreshold &&
-		plan.Metrics.EstimatedTokensAfter+max(0, config.CompactionPromptTokens)+max(0, config.CheckpointOutputReserve)+max(0, config.SafetyMarginTokens) <= config.ContextWindowTokens
-	plan.FallbackToCompaction = request.CompactionAvailable &&
+		plan.Metrics.EstimatedTokensAfter+max(0, config.CompactionPromptTokens)+checkpointOutputReserve+max(0, config.SafetyMarginTokens) <= config.ContextWindowTokens
+	plan.FallbackToCompaction = config.CompactionEnabled && request.CompactionAvailable &&
 		(pressure >= config.CompactionThreshold || fullPressure >= config.CompactionThreshold || capacityAtRisk)
 	if eager || cleanupRestores {
 		plan.Action = agent.CleanupProject
@@ -256,7 +261,9 @@ func (manager *standardManager) Plan(_ context.Context, request agent.CleanupPla
 		plan.Reason = "cleanup_cannot_restore_context"
 		return plan, validatePlan(messages, plan)
 	}
-	if pressure < config.CleanupThreshold && fullPressure < config.CompactionThreshold && !capacityAtRisk {
+	if !config.CompactionEnabled && (pressure >= config.CompactionThreshold || fullPressure >= config.CompactionThreshold || capacityAtRisk) {
+		plan.Reason = "compaction_disabled"
+	} else if pressure < config.CleanupThreshold && fullPressure < config.CompactionThreshold && !capacityAtRisk {
 		plan.Reason = "below_cleanup_threshold"
 	} else if plan.Metrics.CandidateTokens < minimum {
 		plan.Reason = "cleanup_savings_below_minimum"

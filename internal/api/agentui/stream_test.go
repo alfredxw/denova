@@ -53,7 +53,7 @@ func TestStreamEncoderMapsAgentEventsToUIStream(t *testing.T) {
 			},
 		}},
 		{Type: "error", Data: map[string]any{"message": "失败"}},
-		{Type: "aborted", Data: map[string]any{"message": "取消"}},
+		{Type: "aborted", Data: map[string]any{"reason": "取消"}},
 		{Type: "done", Data: map[string]any{}},
 	}
 
@@ -112,6 +112,7 @@ func TestStreamEncoderMapsAgentEventsToUIStream(t *testing.T) {
 	assertChunk(t, chunks, "tool-input-available", "toolCallId", "tool-1")
 	assertStreamingToolInput(t, chunks, "tool-1", `{"path":"a.md"}`)
 	assertChunk(t, chunks, "error", "errorText", "失败 · 日志 ID / Log ID: 0198-stream-request")
+	assertChunk(t, chunks, "abort", "reason", "取消")
 	assertStartMetadata(t, chunks[0])
 	assertDataChunksHaveStrictShape(t, chunks)
 }

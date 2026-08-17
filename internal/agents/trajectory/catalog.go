@@ -8,12 +8,14 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
@@ -24,7 +26,11 @@ import (
 
 const Scheme = "trajectory://"
 
-const maxResourceURIBytes = 4096
+const (
+	maxResourceURIBytes    = 4096
+	defaultTrajectoryLimit = 100
+	maxTrajectoryLimit     = 500
+)
 
 // RunURI returns the stable resource identifier shared by product surfaces and
 // the Harness Optimizer. Callers never need to reproduce URI escaping rules.
@@ -58,7 +64,7 @@ type Resource struct {
 
 type readInput struct {
 	Path  string `json:"path" jsonschema_description:"Trajectory resource URI: trajectory://index, trajectory://outcomes, trajectory://projects/{project_id}/sessions/{session_id}, or trajectory://projects/{project_id}/runs/{run_id}."`
-	Limit int    `json:"limit,omitempty" jsonschema:"minimum=1" jsonschema_description:"Maximum index or outcome entries. Defaults to the configured trajectory cap and cannot exceed 500."`
+	Limit int    `json:"limit,omitempty" jsonschema:"minimum=1" jsonschema_description:"Maximum index or outcome entries. Defaults to and cannot exceed the configured trajectory cap; the configurable ceiling is 500."`
 }
 
 type projectIndex struct {
@@ -67,10 +73,17 @@ type projectIndex struct {
 	Runs     []agentrun.RunTraceSummary `json:"runs"`
 }
 
+type indexIssue struct {
+	ProjectID   string `json:"project_id"`
+	ProjectName string `json:"project_name"`
+	Message     string `json:"message"`
+}
+
 type indexDocument struct {
 	Schema   string         `json:"schema"`
 	Projects []projectIndex `json:"projects"`
 	Outcomes string         `json:"outcomes"`
+	Issues   []indexIssue   `json:"issues,omitempty"`
 }
 
 // NewReadAdapter creates the trajectory:// contribution to the ordinary read
@@ -109,12 +122,12 @@ func (catalog Catalog) read(ctx context.Context, input readInput) (agenttools.Re
 	if err != nil || parsed.Scheme != "trajectory" {
 		return agenttools.ReadResult{}, fmt.Errorf("invalid trajectory resource %q", resource)
 	}
-	if input.Limit > 500 {
-		return agenttools.ReadResult{}, errors.New("trajectory limit cannot exceed 500")
+	if input.Limit > maxTrajectoryLimit {
+		return agenttools.ReadResult{}, fmt.Errorf("trajectory limit cannot exceed %d", maxTrajectoryLimit)
 	}
-	limit := input.Limit
-	if limit <= 0 {
-		limit = effectiveTrajectoryLimit(catalog.Limit)
+	limit := effectiveTrajectoryLimit(catalog.Limit)
+	if input.Limit > 0 && input.Limit < limit {
+		limit = input.Limit
 	}
 	segments := pathSegments(parsed)
 	if parsed.Host == "index" && len(segments) == 0 {
@@ -163,8 +176,8 @@ func (catalog Catalog) read(ctx context.Context, input readInput) (agenttools.Re
 }
 
 func effectiveTrajectoryLimit(limit int) int {
-	if limit <= 0 || limit > 500 {
-		return 50
+	if limit <= 0 || limit > maxTrajectoryLimit {
+		return defaultTrajectoryLimit
 	}
 	return limit
 }
@@ -177,37 +190,105 @@ func (catalog Catalog) readIndex(ctx context.Context, resource string, limit int
 	sort.Slice(sources, func(i, j int) bool { return sources[i].ProjectID < sources[j].ProjectID })
 	document := indexDocument{Schema: "denova.trajectory.index.v1", Outcomes: Scheme + "outcomes"}
 	for _, source := range sources {
-		entry := projectIndex{Source: source}
+		if err := ctx.Err(); err != nil {
+			return agenttools.ReadResult{}, err
+		}
+		entry := projectIndex{Source: source, Sessions: []session.SessionMeta{}, Runs: []agentrun.RunTraceSummary{}}
 		directory := sessionDir(source.StateRoot)
 		_, statErr := os.Stat(directory)
 		if statErr == nil {
 			store, openErr := session.NewStore(directory)
-			if openErr == nil {
-				entry.Sessions, openErr = store.List("")
-				if closeErr := store.Close(); openErr == nil {
-					openErr = closeErr
+			if openErr != nil {
+				document.addProjectIssue(ctx, source, "sessions", "Session trajectories are unavailable for this Project", openErr)
+			} else {
+				listed, listErr := store.List("")
+				closeErr := store.Close()
+				if listErr != nil {
+					document.addProjectIssue(ctx, source, "sessions", "Session trajectories are unavailable for this Project", listErr)
+				} else {
+					entry.Sessions = listed
+				}
+				if closeErr != nil {
+					slog.WarnContext(ctx, "[trajectory] Project trajectory store close failed", "project_id", source.ProjectID, "component", "sessions", "error", closeErr)
 				}
 			}
-			if openErr != nil {
-				return agenttools.ReadResult{}, fmt.Errorf("read trajectory sessions for project %s: %w", source.ProjectID, openErr)
-			}
 		} else if !errors.Is(statErr, fs.ErrNotExist) {
-			return agenttools.ReadResult{}, fmt.Errorf("inspect trajectory sessions for project %s: %w", source.ProjectID, statErr)
+			document.addProjectIssue(ctx, source, "sessions", "Session trajectories are unavailable for this Project", statErr)
 		}
 		sort.Slice(entry.Sessions, func(i, j int) bool { return entry.Sessions[i].UpdatedAt.After(entry.Sessions[j].UpdatedAt) })
-		if len(entry.Sessions) > limit {
-			entry.Sessions = entry.Sessions[:limit]
-		}
-		entry.Runs, err = agentrun.ListRunTraces(agentrun.TraceLocation{Workspace: source.Workspace, StateRoot: source.StateRoot}, limit)
-		if err != nil {
-			return agenttools.ReadResult{}, fmt.Errorf("read trajectory runs for project %s: %w", source.ProjectID, err)
+		runs, listErr := agentrun.ListRunTraces(agentrun.TraceLocation{Workspace: source.Workspace, StateRoot: source.StateRoot}, limit)
+		if listErr != nil {
+			document.addProjectIssue(ctx, source, "runs", "Run trajectories are unavailable for this Project", listErr)
+		} else {
+			entry.Runs = runs
 		}
 		for index := range entry.Runs {
 			entry.Runs[index].Path = ""
 		}
 		document.Projects = append(document.Projects, entry)
 	}
+	document.Projects = limitProjectIndexEntries(document.Projects, limit)
 	return jsonResult(resource, "trajectory_index", document)
+}
+
+func (document *indexDocument) addProjectIssue(ctx context.Context, source Source, component, message string, err error) {
+	slog.WarnContext(ctx, "[trajectory] Project trajectory index read failed", "project_id", source.ProjectID, "component", component, "error", err)
+	document.Issues = append(document.Issues, indexIssue{ProjectID: source.ProjectID, ProjectName: source.Name, Message: message})
+}
+
+type indexEntryKind uint8
+
+const (
+	indexSessionEntry indexEntryKind = iota
+	indexRunEntry
+)
+
+type indexEntryRef struct {
+	ProjectIndex int
+	EntryIndex   int
+	Kind         indexEntryKind
+	Timestamp    time.Time
+	ID           string
+}
+
+func limitProjectIndexEntries(projects []projectIndex, limit int) []projectIndex {
+	limited := make([]projectIndex, len(projects))
+	entries := make([]indexEntryRef, 0)
+	for projectPosition, project := range projects {
+		limited[projectPosition] = projectIndex{Source: project.Source, Sessions: []session.SessionMeta{}, Runs: []agentrun.RunTraceSummary{}}
+		for entryIndex, target := range project.Sessions {
+			entries = append(entries, indexEntryRef{ProjectIndex: projectPosition, EntryIndex: entryIndex, Kind: indexSessionEntry, Timestamp: target.UpdatedAt, ID: target.ID})
+		}
+		for entryIndex, target := range project.Runs {
+			entries = append(entries, indexEntryRef{ProjectIndex: projectPosition, EntryIndex: entryIndex, Kind: indexRunEntry, Timestamp: target.CreatedAt, ID: target.ID})
+		}
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		left, right := entries[i], entries[j]
+		if !left.Timestamp.Equal(right.Timestamp) {
+			return left.Timestamp.After(right.Timestamp)
+		}
+		leftProjectID, rightProjectID := projects[left.ProjectIndex].Source.ProjectID, projects[right.ProjectIndex].Source.ProjectID
+		if leftProjectID != rightProjectID {
+			return leftProjectID < rightProjectID
+		}
+		if left.Kind != right.Kind {
+			return left.Kind < right.Kind
+		}
+		return left.ID < right.ID
+	})
+	if len(entries) > limit {
+		entries = entries[:limit]
+	}
+	for _, entry := range entries {
+		switch entry.Kind {
+		case indexSessionEntry:
+			limited[entry.ProjectIndex].Sessions = append(limited[entry.ProjectIndex].Sessions, projects[entry.ProjectIndex].Sessions[entry.EntryIndex])
+		case indexRunEntry:
+			limited[entry.ProjectIndex].Runs = append(limited[entry.ProjectIndex].Runs, projects[entry.ProjectIndex].Runs[entry.EntryIndex])
+		}
+	}
+	return limited
 }
 
 func (catalog Catalog) readOutcomes(resource string, limit int) (agenttools.ReadResult, error) {

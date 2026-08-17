@@ -841,7 +841,7 @@ func (projector *PublicEventProjector) Finalize(status agent.ResultStatus, reaso
 	case agent.ResultCompleted:
 		projector.emitEvent(agentrun.Event{Type: "done", Data: map[string]string{}})
 	case agent.ResultAborted:
-		projector.emitEvent(agentrun.Event{Type: "aborted", Data: map[string]string{"reason": reason}})
+		projector.emitEvent(agentrun.NewAbortedEvent(reason))
 	default:
 		projector.emitEvent(agentrun.Event{Type: "error", Data: map[string]string{"message": reason}})
 	}

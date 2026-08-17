@@ -158,7 +158,7 @@ func emitRecoveryTerminal(emit func(agentrun.Event), outcome agentrun.Outcome) {
 	case agentrun.OutcomeCompleted:
 		emit(agentrun.Event{Type: "done", Data: map[string]string{}})
 	case agentrun.OutcomeAborted:
-		emit(agentrun.Event{Type: "aborted", Data: map[string]string{"reason": outcome.Reason}})
+		emit(agentrun.NewAbortedEvent(outcome.Reason))
 	default:
 		message := outcome.Reason
 		if message == "" && outcome.Error != nil {

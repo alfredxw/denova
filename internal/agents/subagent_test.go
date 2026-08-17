@@ -25,10 +25,14 @@ func TestConfigMaxIterationDefaultsToNativeUnlimited(t *testing.T) {
 }
 
 func TestBuildAgentExposesGeneralAndConfiguredSubAgentsThroughTask(t *testing.T) {
+	childWindow := 32_000
 	cfg := &config.Config{
 		DenovaDir:     filepath.Join(t.TempDir(), ".denova"),
 		OpenAIBaseURL: "https://example.invalid",
 		OpenAIModel:   "test-model",
+		ModelProfiles: []config.ModelProfileSettings{{
+			ID: "child-small", Model: "child-test-model", ContextWindowTokens: &childWindow,
+		}},
 		AgentTools: config.AgentToolSettings{
 			Default: config.AgentToolOverride{
 				config.AgentToolWorkspaceRead:  false,
@@ -59,6 +63,7 @@ id: researcher
 name: Researcher
 description: Researches delegated context
 parents: [ide]
+model_profile: child-small
 tools: []
 ---
 
@@ -107,6 +112,18 @@ Return concise findings.`)}},
 		}
 		if child.Definition.Cleanup == nil || child.Definition.Compaction == nil || child.Definition.ResultProcessor == nil || child.Definition.Permission == nil {
 			t.Fatalf("delegated child %q lost public lifecycle capabilities: %#v", child.Name, child.Definition)
+		}
+		if child.Name == "researcher" {
+			messages := []*agent.Message{agent.UserMessage("inspect the child Cleanup budget")}
+			plan, planErr := child.Definition.Cleanup.Plan(context.Background(), agent.CleanupPlanRequest{
+				Messages: messages, ModelRequest: messages, CompactionAvailable: true,
+			})
+			if planErr != nil {
+				t.Fatal(planErr)
+			}
+			if plan.Metrics.ContextWindowTokens != childWindow {
+				t.Fatalf("delegated child Cleanup window = %d, want model profile window %d", plan.Metrics.ContextWindowTokens, childWindow)
+			}
 		}
 	}
 }

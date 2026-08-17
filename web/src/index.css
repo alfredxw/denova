@@ -909,7 +909,8 @@ html[data-nova-motion="off"] *::after {
   border-color: var(--nova-border);
   background: var(--nova-bg-deep);
   color: var(--nova-text-muted);
-  transition-duration: var(--nova-motion-slow) !important;
+  transition-duration: var(--nova-panel-motion-duration) !important;
+  transition-timing-function: var(--nova-panel-motion-ease) !important;
 }
 
 /* Primary navigation should acknowledge the press immediately. The route itself may contain a
@@ -917,6 +918,11 @@ html[data-nova-motion="off"] *::after {
 .nova-activity-bar .nova-icon-button,
 .nova-mobile-nav-item {
   transition-duration: var(--nova-motion-fast);
+}
+
+.nova-activity-bar .nova-icon-button {
+  width: 100%;
+  justify-content: flex-start;
 }
 
 .nova-activity-bar .nova-icon-button:active,
@@ -997,11 +1003,6 @@ html[data-nova-motion="off"] *::after {
   min-width: 40px;
   border-radius: var(--nova-radius);
   color: var(--nova-text-muted);
-}
-
-.nova-activity-bar.is-expanded .nova-icon-button {
-  width: 100%;
-  justify-content: flex-start;
 }
 
 .nova-statusbar {

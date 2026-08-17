@@ -41,3 +41,24 @@ func TestAgentCleanupManagerRespectsDisabledCompactionPolicy(t *testing.T) {
 		t.Fatalf("no-op cleanup must preserve body pressure metrics: %#v", plan.Metrics)
 	}
 }
+
+func TestAgentCleanupManagerUsesConcreteDefinitionModelWindow(t *testing.T) {
+	const childWindow = 32_000
+	manager := NewAgentCleanupManagerForModel(&config.Config{}, config.AgentKindIDE, childWindow)
+	if manager == nil {
+		t.Fatal("cleanup manager should be enabled for IDE policy")
+	}
+	messages := []*agent.Message{agent.UserMessage("small child request")}
+	plan, err := manager.Plan(context.Background(), agent.CleanupPlanRequest{
+		Messages: messages, ModelRequest: messages, CompactionAvailable: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Metrics.ContextWindowTokens != childWindow {
+		t.Fatalf("Cleanup context window = %d, want concrete child window %d", plan.Metrics.ContextWindowTokens, childWindow)
+	}
+	if identity := manager.Identity(); identity.Kind != "cleanup.standard" {
+		t.Fatalf("Cleanup authority = %#v, want public Standard manager", identity)
+	}
+}

@@ -219,7 +219,7 @@ func TestPublicEventProjectorPreservesCompleteCleanupLifecycleTelemetry(t *testi
 		EagerCandidateCount: 2, EagerSelectedCount: 1, SupersededCandidateCount: 1,
 		DiscardableCandidateCount: 1, MinimumCleanupTokens: 100, PlaceholderTokens: 20,
 		ReplacementCount: 1, EagerOnly: true, PressureScope: "body_after_prefix",
-		ProviderCacheState: "warm", ExecutionMode: "agent_projection", RendererVersion: "agent.cleanup.placeholder.v1",
+		ProviderCacheState: "warm", ExecutionMode: "agent_projection", RendererVersion: "tool_result.placeholder.v1",
 	}
 	projector.Project(agent.Event{RunID: "run", Payload: agent.CleanupStarted{
 		ID: "cleanup-1", Reason: "cleanup_recovery_target_met", Automatic: true, Metrics: metrics,
@@ -236,7 +236,7 @@ func TestPublicEventProjectorPreservesCompleteCleanupLifecycleTelemetry(t *testi
 	projector.Project(agent.Event{RunID: "run", Payload: agent.CleanupCommitted{
 		Automatic: true,
 		State: agent.CleanupState{ID: "cleanup-1", Revision: 2, SourceStart: 0, SourceEnd: 6,
-			Renderer: "agent.cleanup.placeholder.v1", Replacements: []agent.CleanupReplacement{{MessageIndex: 3}}, Metrics: metrics},
+			Renderer: "tool_result.placeholder.v1", Replacements: []agent.CleanupReplacement{{MessageIndex: 3}}, Metrics: metrics},
 	}})
 	if len(events) != 5 {
 		t.Fatalf("Cleanup lifecycle event count=%d: %#v", len(events), events)
@@ -253,7 +253,7 @@ func TestPublicEventProjectorPreservesCompleteCleanupLifecycleTelemetry(t *testi
 	if events[2].DataString("error") != "projection failed" ||
 		events[3].DataString("skipped_reason") != "cleanup_not_cost_effective" ||
 		eventDataInt(events[4].Data, "epoch") != 2 || eventDataInt(events[4].Data, "replacement_count") != 1 ||
-		events[4].DataString("renderer") != "agent.cleanup.placeholder.v1" {
+		events[4].DataString("renderer") != "tool_result.placeholder.v1" {
 		t.Fatalf("Cleanup lifecycle details=%#v", events)
 	}
 	if eventDataInt(events[0].Data, "observed_prompt_tokens") != 1_000 ||
@@ -355,6 +355,9 @@ func TestPublicEventProjectorEmitsStableRunTimingBeforeEveryTerminalEvent(t *tes
 				summary.DataString("run_finished_at") == "" || summary.DataString("status") != string(test.status) ||
 				eventDataInt64(summary.Data, "duration_ms") < 1400 {
 				t.Fatalf("execution summary = %#v", summary.Data)
+			}
+			if test.status == agent.ResultAborted && events[3].DataString("reason") != "terminal reason" {
+				t.Fatalf("abort reason = %q, want terminal reason", events[3].DataString("reason"))
 			}
 		})
 	}

@@ -19,7 +19,7 @@ type ResolvedLabs struct {
 
 const (
 	DefaultContinualLearningIntervalHours = 24
-	DefaultContinualLearningTrajectoryCap = 50
+	DefaultContinualLearningTrajectoryCap = 100
 	MaxContinualLearningIntervalHours     = 24 * 30
 	MaxContinualLearningTrajectoryCap     = 500
 )

@@ -194,7 +194,7 @@ func TestCompactionForkReserveHonorsLargePrimaryCompletionBudget(t *testing.T) {
 	if output != 24_000 {
 		t.Fatalf("fork output reserve = %d, want primary completion reserve 24000", output)
 	}
-	policy := agentcontext.ContextPressurePolicy{
+	policy := ForkCapacityPolicy{
 		AgentKind: config.AgentKindInteractiveStory, ContextWindowTokens: 30_000,
 		CheckpointOutputReserve: 24_000, CompactionPromptTokens: 2_000, SafetyMarginTokens: 1_000,
 	}
@@ -222,6 +222,25 @@ func TestCompactionForkAndColdFallbackShareCheckpointSchema(t *testing.T) {
 		if strings.Contains(cold, obsolete) {
 			t.Fatalf("cold fallback still requires obsolete schema %q", obsolete)
 		}
+	}
+}
+
+func TestAutomaticCompactionForkPromptFitsDeclaredReserve(t *testing.T) {
+	locators := make([]string, 200)
+	positions := make([]int, len(locators))
+	for index := range locators {
+		positions[index] = index
+		locators[index] = "[source path=" + strings.Repeat("very-long-segment/", 200) + "]"
+	}
+	prompt := buildCacheSafeCompactionPrompt(
+		Policy{AgentKind: config.AgentKindIDE, RetainedTurns: 1},
+		"", "", 100_000, 400_000, positions, locators,
+	)
+	if tokens := agentcontext.EstimateStringTokens(prompt); tokens > ForkPromptReserve {
+		t.Fatalf("automatic Compaction fork prompt = %d tokens, exceeds declared reserve %d", tokens, ForkPromptReserve)
+	}
+	if !strings.Contains(prompt, agentcontext.CompactionCheckpointSchema()) {
+		t.Fatal("bounded fork prompt lost the checkpoint schema")
 	}
 }
 

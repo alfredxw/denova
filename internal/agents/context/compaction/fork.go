@@ -20,9 +20,10 @@ const (
 	ExecutionLayeredCold               = "layered_cold_fallback"
 	contextCompactionForkDefaultOutput = 4096
 	contextCompactionForkMaxOutput     = 8192
-	// ForkPromptReserve is the static planner allowance for the instruction
-	// appended to an otherwise cache-identical primary request.
-	ForkPromptReserve = 2048
+	// ForkPromptReserve is the hard token-estimate ceiling for the instruction
+	// appended to an otherwise cache-identical automatic primary request.
+	ForkPromptReserve   = 2048
+	maxForkLocatorRunes = 512
 
 	FallbackNoSnapshot         = "primary_request_snapshot_unavailable"
 	FallbackSourceNotVisible   = "canonical_source_not_in_primary_snapshot"
@@ -55,6 +56,19 @@ type contextCompactionSummaryExecution struct {
 	CacheUsageStatus           string
 	CacheMissReason            string
 	LayerCount                 int
+}
+
+// ForkCapacityPolicy contains only the model-window facts needed to decide
+// whether an automatic cache-safe checkpoint fork still fits. Cleanup planning
+// is owned independently by the public agent/cleanup package.
+type ForkCapacityPolicy struct {
+	AgentKind               string
+	ContextWindowTokens     int
+	ReservedTokens          int
+	ObservedPromptTokens    int
+	CompactionPromptTokens  int
+	CheckpointOutputReserve int
+	SafetyMarginTokens      int
 }
 
 // manualCompactionSourceExceedsSingleWindow is the only reason an explicit
@@ -226,7 +240,7 @@ func compactionForkFits(
 // options when available and never reacts to a provider overflow response.
 // ForkCapacityPressure reports when a cache-safe fork needs to run before its
 // fixed output and safety reserves stop fitting the model window.
-func ForkCapacityPressure(messages []*agent.Message, tools []*agent.ToolInfo, policy agentcontext.ContextPressurePolicy, options *agent.Options) bool {
+func ForkCapacityPressure(messages []*agent.Message, tools []*agent.ToolInfo, policy ForkCapacityPolicy, options *agent.Options) bool {
 	if policy.ContextWindowTokens <= 0 {
 		return false
 	}
@@ -339,6 +353,55 @@ func sameProviderVisibleMessage(left, right *agent.Message) bool {
 }
 
 func buildCacheSafeCompactionPrompt(
+	policy Policy,
+	existingCheckpoint string,
+	referenceContext string,
+	sourceTokens, inputChars int,
+	positions []int,
+	locators []string,
+	checkpointTokenBudget ...int,
+) string {
+	if strings.TrimSpace(existingCheckpoint) == "" && strings.TrimSpace(referenceContext) == "" && len(locators) > 0 {
+		locators = cacheSafeForkLocatorsWithinReserve(
+			policy, sourceTokens, inputChars, positions, locators, checkpointTokenBudget...,
+		)
+	}
+	return renderCacheSafeCompactionPrompt(
+		policy, existingCheckpoint, referenceContext, sourceTokens, inputChars,
+		positions, locators, checkpointTokenBudget...,
+	)
+}
+
+func cacheSafeForkLocatorsWithinReserve(
+	policy Policy,
+	sourceTokens, inputChars int,
+	positions []int,
+	locators []string,
+	checkpointTokenBudget ...int,
+) []string {
+	selected := make([]string, 0, len(locators))
+	for _, locator := range locators {
+		candidate := append(append([]string(nil), selected...), boundedForkLocator(locator))
+		prompt := renderCacheSafeCompactionPrompt(
+			policy, "", "", sourceTokens, inputChars, positions, candidate, checkpointTokenBudget...,
+		)
+		if agentcontext.EstimateStringTokens(prompt) > ForkPromptReserve {
+			break
+		}
+		selected = candidate
+	}
+	return selected
+}
+
+func boundedForkLocator(locator string) string {
+	values := []rune(strings.TrimSpace(strings.ToValidUTF8(locator, "\uFFFD")))
+	if len(values) <= maxForkLocatorRunes {
+		return string(values)
+	}
+	return strings.TrimSpace(string(values[:maxForkLocatorRunes])) + "…"
+}
+
+func renderCacheSafeCompactionPrompt(
 	policy Policy,
 	existingCheckpoint string,
 	referenceContext string,

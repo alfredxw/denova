@@ -178,7 +178,7 @@ func (service *Service) StartImagesGenerateTask(ctx context.Context, projectID s
 		emit(agentrun.Event{Type: "thinking", Data: map[string]string{"content": "Preparing lore item images. / 正在准备批量生成资料项图片。"}})
 		generated, skipped, failed := service.runImagesGenerateBatch(ctx, projectID, workspace, request, emit)
 		if ctx.Err() != nil {
-			emit(agentrun.Event{Type: "aborted", Data: map[string]string{"message": "Lore image generation was aborted. / 资料项图片生成已中止"}})
+			emit(agentrun.NewAbortedEvent("Lore image generation was aborted. / 资料项图片生成已中止"))
 			return
 		}
 		emit(agentrun.Event{Type: "done", Data: map[string]any{

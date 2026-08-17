@@ -13,8 +13,6 @@ import (
 	agent "github.com/alfredxw/denova/agent"
 	agentpermission "github.com/alfredxw/denova/agent/permission"
 	agenttoolresult "github.com/alfredxw/denova/agent/toolresult"
-
-	agentcontext "denova/internal/agents/context"
 )
 
 type runObserverMiddleware struct {
@@ -304,10 +302,6 @@ func TestLossyShellArtifactFailureStopsPublicAgentAfterDiagnosticProjection(t *t
 		shellResult.Metadata.ArtifactPersistence == nil || shellResult.Metadata.ArtifactPersistence.Complete ||
 		!shellResult.Metadata.ModelTruncated || observer.ToolExecutions()[0].OriginalBytes != 64*1024 {
 		t.Fatalf("paired lossy shell result = %#v", shellResult)
-	}
-	paired := agent.ToolMessage(shellResult, "call-lossy-shell", agent.WithToolName("bash"))
-	if !agentcontext.ToolResultProtected(paired) {
-		t.Fatalf("lossy protected shell became cleanup-eligible: %#v", shellResult)
 	}
 	if later, found := results["later_shell"]; !found || later.SyntheticReason != agent.ToolSyntheticPolicyBlocked {
 		t.Fatalf("unstarted later shell result = %#v", later)

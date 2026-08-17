@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 
 	agent "github.com/alfredxw/denova/agent"
@@ -62,6 +63,64 @@ func TestReadAdapterRejectsLimitAboveCatalogMaximum(t *testing.T) {
 	}
 	if _, err := adapter.Read(context.Background(), `{"path":"trajectory://index","limit":501}`); err == nil || !strings.Contains(err.Error(), "cannot exceed 500") {
 		t.Fatalf("oversized trajectory limit was accepted: %v", err)
+	}
+}
+
+func TestCatalogIndexUsesGlobalConfiguredCapAndIsolatesProjectFailures(t *testing.T) {
+	dataDir := t.TempDir()
+	firstStateRoot := filepath.Join(dataDir, "first-state")
+	secondStateRoot := filepath.Join(dataDir, "second-state")
+	brokenStateRoot := filepath.Join(dataDir, "broken-state")
+	createCatalogSession(t, firstStateRoot, "session-first")
+	createCatalogSession(t, secondStateRoot, "session-second")
+	writeCatalogRun(t, firstStateRoot, "run-newest", time.Now().UTC().Add(time.Hour))
+	writeCatalogRun(t, secondStateRoot, "run-oldest", time.Now().UTC().Add(-time.Hour))
+	if err := os.MkdirAll(brokenStateRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(brokenStateRoot, "runs"), []byte("not a directory"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	adapter, err := NewReadAdapter(Catalog{
+		Sources: func(context.Context) ([]Source, error) {
+			return []Source{
+				{ProjectID: "project-first", Name: "First", StateRoot: firstStateRoot},
+				{ProjectID: "project-second", Name: "Second", StateRoot: secondStateRoot},
+				{ProjectID: "project-broken", Name: "Broken", StateRoot: brokenStateRoot},
+			}, nil
+		},
+		Limit: 2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := adapter.Read(context.Background(), `{"path":"trajectory://index","limit":10}`)
+	if err != nil {
+		t.Fatalf("read partial trajectory index: %v", err)
+	}
+	var document indexDocument
+	if err := json.Unmarshal([]byte(result.Content), &document); err != nil {
+		t.Fatal(err)
+	}
+
+	entryCount := 0
+	seenRuns := make(map[string]bool)
+	for _, project := range document.Projects {
+		entryCount += len(project.Sessions) + len(project.Runs)
+		for _, run := range project.Runs {
+			seenRuns[run.ID] = true
+		}
+	}
+	if entryCount != 2 {
+		t.Fatalf("global trajectory entry count = %d, want 2: %#v", entryCount, document.Projects)
+	}
+	if !seenRuns["run-newest"] || seenRuns["run-oldest"] {
+		t.Fatalf("global trajectory ordering selected runs %#v", seenRuns)
+	}
+	if len(document.Issues) != 1 || document.Issues[0].ProjectID != "project-broken" ||
+		!strings.Contains(document.Issues[0].Message, "Run trajectories") {
+		t.Fatalf("trajectory index issues = %#v", document.Issues)
 	}
 }
 
@@ -224,5 +283,49 @@ func TestOutcomeStoreOwnsIdentityAndTimestampAndRejectsCorruption(t *testing.T) 
 	}
 	if _, err := store.List(10); err == nil || !strings.Contains(err.Error(), "line 2") {
 		t.Fatalf("corrupt outcome history was silently skipped: %v", err)
+	}
+}
+
+func createCatalogSession(t *testing.T, stateRoot, sessionID string) {
+	t.Helper()
+	store, err := session.NewStore(filepath.Join(stateRoot, "sessions"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := store.GetOrCreate(sessionID)
+	if err != nil {
+		_ = store.Close()
+		t.Fatal(err)
+	}
+	if err := target.Append(agent.UserMessage("Trajectory evidence")); err != nil {
+		_ = store.Close()
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func writeCatalogRun(t *testing.T, stateRoot, runID string, createdAt time.Time) {
+	t.Helper()
+	runsDir := filepath.Join(stateRoot, "runs")
+	if err := os.MkdirAll(runsDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	records := []agentrun.RunTraceRecord{
+		{Type: "run_created", RunID: runID, CreatedAt: createdAt, Data: map[string]any{"agent_kind": "ide"}},
+		{Type: "run_finished", RunID: runID, CreatedAt: createdAt.Add(time.Second), Data: map[string]any{"status": "success"}},
+	}
+	encoded := make([]byte, 0, 256)
+	for _, record := range records {
+		line, err := json.Marshal(record)
+		if err != nil {
+			t.Fatal(err)
+		}
+		encoded = append(encoded, line...)
+		encoded = append(encoded, '\n')
+	}
+	if err := os.WriteFile(filepath.Join(runsDir, runID+".jsonl"), encoded, 0o600); err != nil {
+		t.Fatal(err)
 	}
 }

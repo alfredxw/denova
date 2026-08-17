@@ -130,7 +130,7 @@ func (e *StreamEncoder) WriteEvent(ev appsvc.AgentEvent) error {
 		if err := e.closeOpenContent(); err != nil {
 			return err
 		}
-		return e.writeChunk(map[string]any{"type": "abort", "reason": firstNonEmpty(readString(data, "message"), "user cancelled")})
+		return e.writeChunk(map[string]any{"type": "abort", "reason": firstNonEmpty(readString(data, "reason"), "user cancelled")})
 	case "done":
 		return e.Finish("stop")
 	default:

@@ -553,7 +553,7 @@ export function WorkbenchShell({
     <LayoutGroup id="workbench-activity-bar">
     <DndContext key={activityOrderScope} sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleActivityDragEnd}>
     <aside
-      className={`nova-activity-bar relative flex shrink-0 flex-col gap-2 border-r p-3 transition-[width] duration-500 ease-[var(--nova-ease)] ${activityBarExpanded ? 'is-expanded items-stretch' : 'items-center'}`}
+      className="nova-activity-bar relative flex shrink-0 flex-col items-stretch gap-2 border-r p-3 transition-[width]"
       style={{ width: activityBarExpanded ? activityBarWidth : ACTIVITY_BAR_COLLAPSED_WIDTH }}
     >
       <SortableContext key={activityOrderScope} items={activityItems.map((item) => toSortableActivityId(activityOrderScope, item.id))} strategy={verticalListSortingStrategy}>
@@ -589,7 +589,7 @@ export function WorkbenchShell({
           className="nova-icon-button"
           showTooltip={false}
         >
-          <PanelLeft className={`h-4 w-4 transition-transform ${activityBarExpanded ? '' : 'rotate-180'}`} />
+          <PanelLeft className="h-4 w-4" />
         </ActivityButton>
         <ActivityButton
           expanded={activityBarExpanded}
@@ -875,7 +875,7 @@ function ActivityButton({
     <TooltipIconButton
       label={label}
       showTooltip={showTooltip ?? !expanded}
-      className={`${className || ''} relative overflow-hidden ${expanded ? 'w-full gap-3 px-3' : ''} ${active ? 'is-active' : ''}`}
+      className={`${className || ''} relative w-full justify-start gap-3 overflow-hidden px-3 ${active ? 'is-active' : ''}`}
       {...props}
       aria-current={active ? 'page' : undefined}
     >
@@ -885,10 +885,10 @@ function ActivityButton({
         {expanded && (
           <motion.span
             key="label"
-            initial={{ opacity: 0, x: -4 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -4 }}
-            transition={{ duration: 0.16 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.12 }}
             className="relative z-10 min-w-0 truncate text-left text-xs font-medium"
           >
             {label}

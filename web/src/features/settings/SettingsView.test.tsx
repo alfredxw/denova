@@ -246,10 +246,19 @@ describe('SettingsView user scope', () => {
         developer_mode: false,
         continual_learning_schedule: false,
         continual_learning_interval_hours: 24,
-        continual_learning_trajectory_cap: 50,
+        continual_learning_trajectory_cap: 100,
       },
     }
     settings.default = { ...settings.default, labs: settings.effective.labs }
+    settings.global = {
+      ...settings.global,
+      labs: {
+        developer_mode: false,
+        continual_learning_schedule: false,
+        continual_learning_interval_hours: 0,
+        continual_learning_trajectory_cap: 0,
+      },
+    }
     vi.mocked(fetchSettings).mockResolvedValue(settings)
     vi.mocked(updateUserSettings).mockResolvedValue(settings)
 
@@ -263,12 +272,16 @@ describe('SettingsView user scope', () => {
     expect(labSection).toBe(settingsSections.at(-1))
     const toggle = within(labRow as HTMLElement).getByRole('combobox')
     expect(toggle).toHaveTextContent('继承（false）')
-    expect(screen.queryByText('每个项目读取的 trajectory 条数')).not.toBeInTheDocument()
+    expect(screen.queryByText('全局 trajectory 读取条数上限')).not.toBeInTheDocument()
 
     vi.useFakeTimers()
     fireEvent.click(toggle)
     fireEvent.click(screen.getByRole('option', { name: '开启' }))
-    expect(screen.getByText('每个项目读取的 trajectory 条数')).toBeInTheDocument()
+    const trajectoryCapLabel = screen.getByText('全局 trajectory 读取条数上限')
+    expect(trajectoryCapLabel).toBeInTheDocument()
+    const trajectoryCapRow = trajectoryCapLabel.closest('.nova-settings-row')
+    expect(trajectoryCapRow).not.toBeNull()
+    expect(within(trajectoryCapRow as HTMLElement).getByRole('spinbutton')).toHaveAttribute('placeholder', '100')
     await act(async () => { await vi.advanceTimersByTimeAsync(1100) })
 
     expect(updateUserSettings).toHaveBeenCalledWith(

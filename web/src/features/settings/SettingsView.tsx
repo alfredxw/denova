@@ -656,7 +656,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
             <Num
               label={t('settings.labs.continualLearningTrajectoryCap')}
               value={draft.labs?.continual_learning_trajectory_cap ?? null}
-              placeholder={String(inherited.labs?.continual_learning_trajectory_cap ?? 50)}
+              placeholder={String(inherited.labs?.continual_learning_trajectory_cap ?? 100)}
               min={1}
               max={500}
               onChange={(value) => setLabField('continual_learning_trajectory_cap', value)}
@@ -1788,10 +1788,11 @@ function mergeSettingsLayer(parent: Settings, child: Settings): Settings {
 
 function mergeLabSettings(parent: NonNullable<Settings['labs']>, child: NonNullable<Settings['labs']>): NonNullable<Settings['labs']> {
   const out = { ...parent }
+  const isPositiveNumber = (value: number | null | undefined) => typeof value === 'number' && Number.isFinite(value) && value > 0
   if (child.developer_mode !== null && child.developer_mode !== undefined) out.developer_mode = child.developer_mode
   if (child.continual_learning_schedule !== null && child.continual_learning_schedule !== undefined) out.continual_learning_schedule = child.continual_learning_schedule
-  if (child.continual_learning_interval_hours !== null && child.continual_learning_interval_hours !== undefined) out.continual_learning_interval_hours = child.continual_learning_interval_hours
-  if (child.continual_learning_trajectory_cap !== null && child.continual_learning_trajectory_cap !== undefined) out.continual_learning_trajectory_cap = child.continual_learning_trajectory_cap
+  if (isPositiveNumber(child.continual_learning_interval_hours)) out.continual_learning_interval_hours = child.continual_learning_interval_hours
+  if (isPositiveNumber(child.continual_learning_trajectory_cap)) out.continual_learning_trajectory_cap = child.continual_learning_trajectory_cap
   return out
 }
 

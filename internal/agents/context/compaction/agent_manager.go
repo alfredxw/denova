@@ -99,9 +99,9 @@ func (manager *denovaManager) Plan(
 	}
 	options := request.ModelSnapshot.ResolvedOptions()
 	window := manager.contextWindowTokens
-	completionReserve, toolReserve := estimateProjectionReservesAtWindow(manager.cfg, manager.agentKind, 0, window)
+	completionReserve, toolReserve := EstimateProjectionReservesForModel(manager.cfg, manager.agentKind, 0, window)
 	observedPromptTokens, _ := LatestPromptUsageCalibration(request.ModelRequest, options.Tools)
-	policy := agentcontext.ContextPressurePolicy{
+	policy := ForkCapacityPolicy{
 		AgentKind: manager.agentKind, ContextWindowTokens: window,
 		ReservedTokens: completionReserve + toolReserve, ObservedPromptTokens: observedPromptTokens,
 		CompactionPromptTokens:  ForkPromptReserve,
@@ -232,7 +232,7 @@ func NewAgentManagerForModel(
 	if !settings.CompactionEnabled {
 		return publiccompaction.Disabled(hardLimit, summaryLimit), nil
 	}
-	completionReserve, toolReserve := estimateProjectionReservesAtWindow(cfg, policyKind, 0, contextWindowTokens)
+	completionReserve, toolReserve := EstimateProjectionReservesForModel(cfg, policyKind, 0, contextWindowTokens)
 	trigger := int(float64(contextWindowTokens*4) * settings.CompactionThreshold)
 	if trigger <= 0 || trigger >= hardLimit {
 		trigger = int(float64(hardLimit) * settings.CompactionThreshold)

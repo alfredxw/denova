@@ -199,7 +199,7 @@ trajectory://projects/<project-id>/runs/<run-id>
 - Session trajectory 排除模型 `thinking` 展示流，只提供可观察的用户输入、Assistant 输出、工具与 Ask 结果；嵌套内容中的 workspace/state root 同样递归脱敏。
 - Run trace 是有界元数据，不保存完整 Prompt、thinking 或原始工具结果。
 - Outcome 使用 append-only JSONL，支持 positive、negative、correction，并绑定 Session 或 Run。
-- trajectory cap 是用户配置，默认每个 Project 50 条，最大 500 条。
+- trajectory cap 是用户配置：index 对全部 Project 的 Session 与 Run 合计执行全局上限，outcomes 独立执行同一读取上限；默认 100 条，最大 500 条。单个 Project 读取失败时，index 通过 `issues` 暴露问题并保留其他 Project 的健康证据。
 
 ## 7. Harness Optimizer
 
@@ -240,7 +240,7 @@ Optimizer contract 明确禁止把 Project 私有正文、完整 trajectory、�
 developer_mode = true
 continual_learning_schedule = true
 continual_learning_interval_hours = 24
-continual_learning_trajectory_cap = 50
+continual_learning_trajectory_cap = 100
 ```
 
 应用内 scheduler 每分钟检查是否到期，但 LLM Run 本身没有硬编码超时或最大运行时长。schedule 只保存 last attempt、last success 和 task ID；启动失败也记录 attempt，避免每分钟重复轰击。手动和定时任务都进入 `StartTask`，共享 admission、Session、draft、校验、发布与版本语义。

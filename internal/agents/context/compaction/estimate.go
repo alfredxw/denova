@@ -15,10 +15,13 @@ import (
 // target when one exists; otherwise a small model-relative reserve is used.
 func EstimateProjectionReserves(cfg *config.Config, agentKind string, expectedOutputChars int) (completionTokens, toolResultTokens int) {
 	model := config.ResolveAgentModel(cfg, agentKind)
-	return estimateProjectionReservesAtWindow(cfg, agentKind, expectedOutputChars, model.ContextWindowTokens)
+	return EstimateProjectionReservesForModel(cfg, agentKind, expectedOutputChars, model.ContextWindowTokens)
 }
 
-func estimateProjectionReservesAtWindow(
+// EstimateProjectionReservesForModel applies one product policy to the
+// concrete model used by a Definition. Child Agents may inherit their parent's
+// policy while using a different context window.
+func EstimateProjectionReservesForModel(
 	cfg *config.Config,
 	agentKind string,
 	expectedOutputChars int,
