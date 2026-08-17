@@ -486,10 +486,11 @@ func TestPublicEventProjectorUsesDenovaAskSchemaForPublicInteractions(t *testing
 	request := agent.InteractionRequest{
 		ID: "ask-public", Kind: agent.InteractionAsk, AllowOther: true,
 		Questions: []agent.InteractionQuestion{{
-			ID: "direction", Prompt: agent.LocalizedText{Chinese: "选择方向", English: "Choose direction"},
-			Options: []agent.InteractionOption{{
-				Value: "continue", Label: agent.LocalizedText{Chinese: "继续", English: "Continue"}, Recommended: true,
-			}},
+			ID: "direction", Prompt: "选择方向",
+			Options: []agent.InteractionOption{
+				{Value: "continue", Label: "继续", Description: "沿当前方向推进。", Recommended: true},
+				{Value: "change", Label: "换个方向", Description: "调整当前方案。"},
+			},
 		}},
 	}
 	projector.Project(agent.Event{RunID: "run", Payload: agent.InteractionRequested{Request: request}})
@@ -503,15 +504,19 @@ func TestPublicEventProjectorUsesDenovaAskSchemaForPublicInteractions(t *testing
 	}
 	pending, _ := events[0].Data.(map[string]any)
 	questions, _ := pending["questions"].([]map[string]any)
+	options, _ := questions[0]["options"].([]map[string]any)
 	if pending["schema"] != "ask.pending.v1" || pending["tool_call_id"] != request.ID ||
 		pending["agent_kind"] != "ide" || pending["status"] != "pending" || pending["allow_other"] != true ||
-		len(questions) != 1 || questions[0]["question"] != "选择方向 / Choose direction" ||
-		questions[0]["recommended_option_id"] != "continue" {
+		len(questions) != 1 || questions[0]["question"] != "选择方向" ||
+		questions[0]["recommended_option_id"] != "continue" || len(options) != 2 ||
+		options[0]["label"] != "继续" || options[0]["description"] != "沿当前方向推进。" {
 		t.Fatalf("pending interaction = %#v", pending)
 	}
 	resolved, _ := events[1].Data.(map[string]any)
 	answers, _ := resolved["answers"].([]map[string]any)
-	if resolved["schema"] != "ask.pending.v1" || resolved["status"] != "answered" || len(answers) != 1 {
+	selected, _ := answers[0]["selected_options"].([]map[string]any)
+	if resolved["schema"] != "ask.pending.v1" || resolved["status"] != "answered" || len(answers) != 1 ||
+		answers[0]["question"] != "选择方向" || len(selected) != 1 || selected[0]["label"] != "继续" {
 		t.Fatalf("resolved interaction = %#v", resolved)
 	}
 }

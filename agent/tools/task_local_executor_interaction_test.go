@@ -16,7 +16,7 @@ func TestLocalTasksRespondsToDetachedInteractionWithoutExecutorProcessState(t *t
 		Model: &taskModel{responses: []*agent.Message{
 			agent.AssistantMessage("", []agent.ToolCall{{
 				ID: "ask-scope", Type: "function",
-				Function: agent.FunctionCall{Name: "ask", Arguments: `{"questions":[{"id":"scope","prompt":{"zh":"需要检查什么范围？","en":"What scope should be inspected?"},"allow_free_text":true}]}`},
+				Function: agent.FunctionCall{Name: "ask", Arguments: `{"questions":[{"id":"scope","prompt":"What scope should be inspected?","allow_free_text":true}]}`},
 			}}),
 			agent.AssistantMessage("interaction resumed", nil),
 		}},

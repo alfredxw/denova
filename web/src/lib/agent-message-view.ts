@@ -377,7 +377,15 @@ function legacySubAgentSourceKey(view: AgentMessageView) {
 export function agentViewStableKey(view: AgentMessageView) {
   const runID = view.metadata.run_id?.trim()
   const segmentID = view.metadata.display_segment_id?.trim()
-  if (runID && segmentID) return `${view.kind}:run:${runID}:segment:${segmentID}`
+  if (runID && segmentID) {
+    // One model response can publish several sibling tool parts under the same
+    // display segment. Preserve the segment identity across live/history shapes
+    // while keeping each tool node distinct for React reconciliation.
+    if ((view.kind === 'tool' || view.kind === 'tool-result') && view.partId) {
+      return `${view.kind}:run:${runID}:segment:${segmentID}:part:${view.partId}`
+    }
+    return `${view.kind}:run:${runID}:segment:${segmentID}`
+  }
   if (runID && (view.kind === 'tool' || view.kind === 'tool-result') && view.partId) {
     const scope = agentSubAgentSessionKey(view) || 'root'
     return `${view.kind}:run:${runID}:scope:${scope}:part:${view.partId}`

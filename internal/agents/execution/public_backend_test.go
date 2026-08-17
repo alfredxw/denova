@@ -746,7 +746,7 @@ func TestAgentRuntimePlanAskPersistsAndResumesSamePublicRun(t *testing.T) {
 	model := &publicBackendTestModel{responses: []*agent.Message{
 		agent.AssistantMessage("", []agent.ToolCall{{
 			ID: "provider-plan-ask", Type: "function", Function: agent.FunctionCall{
-				Name: "ask", Arguments: `{"questions":[{"id":"scope","prompt":{"zh":"选择范围","en":"Choose scope"},"options":[{"value":"minimal","label":{"zh":"最小","en":"Minimal"},"description":{"zh":"只处理共享流程。","en":"Only the shared flow."},"recommended":true},{"value":"full","label":{"zh":"完整","en":"Full"},"description":{"zh":"包含相邻控制。","en":"Include adjacent controls."}}]}]}`,
+				Name: "ask", Arguments: `{"questions":[{"id":"scope","prompt":"Choose scope","options":[{"value":"minimal","label":"Minimal","description":"Only the shared flow.","recommended":true},{"value":"full","label":"Full","description":"Include adjacent controls."}]}]}`,
 			},
 		}}),
 		agent.AssistantMessage("<proposed_plan># Plan\n\n1. Apply the shared flow.</proposed_plan>", nil),

@@ -228,6 +228,32 @@ func (engine *definitionEngine) ResolveInteraction(
 	if transcript.BehaviorKey != "" && transcript.BehaviorKey != prepared.behaviorKey {
 		return nil, fmt.Errorf("%w: interaction behavior identity changed", ErrDefinitionMismatch)
 	}
+	var interactionHeader struct {
+		ID   string          `json:"id"`
+		Kind InteractionKind `json:"kind"`
+	}
+	if err := json.Unmarshal(request.Interaction.Request, &interactionHeader); err != nil {
+		return nil, fmt.Errorf("decode Interaction request header: %w", err)
+	}
+	if interactionHeader.ID != request.Interaction.ID {
+		return nil, ErrInteractionStale
+	}
+	var response InteractionResponse
+	if err := json.Unmarshal(request.Response, &response); err != nil {
+		return nil, fmt.Errorf("decode Interaction response: %w", err)
+	}
+	policy := effectiveInteractionPolicy(prepared.definition.Interaction)
+	if interactionHeader.Kind == InteractionAsk && isStandardInteractionPolicy(policy) {
+		resolution, resolveErr := resolvePersistedStandardAsk(request.Interaction.Request, response)
+		if resolveErr != nil {
+			return nil, resolveErr
+		}
+		encoded, encodeErr := json.Marshal(resolution)
+		if encodeErr != nil {
+			return nil, fmt.Errorf("encode Interaction resolution: %w", encodeErr)
+		}
+		return encoded, nil
+	}
 	prepareRequest := PrepareRequest{
 		Session: SessionView{Key: engine.key, Revision: uint64(request.Snapshot.ContextCursor)},
 		Run:     runViewForTurn(request.Snapshot), Input: input, Reason: TurnReasonInteraction,
@@ -259,11 +285,6 @@ func (engine *definitionEngine) ResolveInteraction(
 	if interactionRequest.ID != request.Interaction.ID {
 		return nil, ErrInteractionStale
 	}
-	var response InteractionResponse
-	if err := json.Unmarshal(request.Response, &response); err != nil {
-		return nil, fmt.Errorf("decode Interaction response: %w", err)
-	}
-	policy := effectiveInteractionPolicy(prepared.definition.Interaction)
 	resolution, err := policy.Resolve(ctx, interactionRequest, response)
 	if err != nil {
 		return nil, err

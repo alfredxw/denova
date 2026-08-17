@@ -111,6 +111,12 @@ func TestAskSchemaSeparatesFreeTextAndChoiceQuestions(t *testing.T) {
 	if got := schemaPropertyNames(choice); !reflect.DeepEqual(got, []string{"id", "multiple", "options", "prompt"}) {
 		t.Fatalf("choice properties = %#v", got)
 	}
+	for name, variant := range map[string]*jsonschema.Schema{"free text": freeText, "choice": choice} {
+		prompt, _ := variant.Properties.Get("prompt")
+		if prompt == nil || prompt.Type != "string" || prompt.Properties.Len() != 0 {
+			t.Fatalf("%s prompt must be one language-specific string: %#v", name, prompt)
+		}
+	}
 	options, _ := choice.Properties.Get("options")
 	if options == nil || options.MinItems == nil || *options.MinItems != 2 || options.MaxItems == nil || *options.MaxItems != 3 ||
 		options.Contains == nil || options.MinContains == nil || *options.MinContains != 1 || options.MaxContains == nil || *options.MaxContains != 1 {
@@ -119,6 +125,11 @@ func TestAskSchemaSeparatesFreeTextAndChoiceQuestions(t *testing.T) {
 	recommended, _ := options.Contains.Properties.Get("recommended")
 	if recommended == nil || recommended.Const != true {
 		t.Fatalf("recommended marker schema = %#v", recommended)
+	}
+	label, _ := options.Items.Properties.Get("label")
+	description, _ := options.Items.Properties.Get("description")
+	if label == nil || label.Type != "string" || description == nil || description.Type != "string" {
+		t.Fatalf("Ask option copy must use single-language strings: label=%#v description=%#v", label, description)
 	}
 }
 

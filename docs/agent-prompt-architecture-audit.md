@@ -319,8 +319,9 @@ option; the client will add a free-form Other option automatically."
 Denova 当前入口 description：
 
 ```text
-Ask the user one to three bilingual questions when required information
-cannot be inferred safely.
+Ask one to three questions when required input cannot be inferred. Write
+questions, options, and descriptions in the same language as the user's
+current input.
 ```
 
 改造前 `questions` 有 `minItems=1,maxItems=3`，但 `InteractionQuestion`、`InteractionOption` 和 `LocalizedText` 的模型可见字段没有对应 description；choice/free-text 的互斥关系、稳定 ID、recommended 和 host-provided Other 主要留在 runtime validation。
@@ -331,22 +332,23 @@ cannot be inferred safely.
 
 - “cannot be inferred safely”把普通澄清包装成安全问题，范围过窄；偏好、产品选择和需要用户决策的情况同样应该使用 Ask；
 - 顶层 description 不应承担嵌套数据教程；
-- 中英双语是产品数据契约，应保留，但 required、长度、ID、choice/free-text 分支应由 Schema 表达。
+- 模型生成的 Ask 文案应跟随用户当前输入语言，不应要求模型同时生成中英翻译；产品自身的按钮、状态和错误仍由前端 message catalog 本地化；
+- required、长度、ID、choice/free-text 分支应由 Schema 表达。
 
 建议方向：
 
 ```text
-Ask the user one to three bilingual questions when the task needs missing
-information, a preference, or a decision.
+Ask one to three questions when the task needs missing information, a
+preference, or a decision. Use the user's current input language.
 
 questions: Questions shown together; provide 1-3.
 id: Stable question ID copied into the answer.
-prompt.zh / prompt.en: Required user-visible translations.
+prompt: Required user-visible text in the user's current input language.
 options: Mutually exclusive choices; omit for a free-text question. Other is
 added by the host.
 ```
 
-choice 与 free-text 现已使用两个互斥 `oneOf` variant；两者只显示各自合法字段。中英文文案、ID 边界、选项数、host 自动 Other 和恰好一个 recommended option 均进入模型可见 Schema，runtime validation 继续作为最终保证。
+choice 与 free-text 现已使用两个互斥 `oneOf` variant；两者只显示各自合法字段。单语言文案、ID 边界、选项数、host 自动 Other 和恰好一个 recommended option 均进入模型可见 Schema，runtime validation 继续作为最终保证。
 
 #### 示例四：任务计划与 Todo Schema
 
@@ -598,7 +600,7 @@ current user request                     current instruction
 - Denova 已有稳定 workspace context 位于 transcript 前的实现：`internal/agents/conversation/model_context.go:220`；
 - 精简回合动态 Prompt 与稳定 Game/Director 契约：`internal/agents/prompts/interactive.go`；
 - action-specific `oneOf`：`agent/tools/task_tool.go`、`agent/tools/skill_tool.go`、`agent/tools/todo_tool.go`、`agent/tools/tool_schema.go`；
-- `ask` 互斥分支、双语字段与 runtime validation：`agent/tools/ask_tool.go`、`agent/interaction.go`；
+- `ask` 互斥分支、当前输入语言字段与 runtime validation：`agent/tools/ask_tool.go`、`agent/interaction.go`；
 - 已有的正确 `oneOf` 示例：`internal/agents/tools/interactive_story.go:170`、`:181`。
 
 ## 六、逐类 Agent 审视
@@ -719,14 +721,14 @@ Schema 应直接告诉模型：
 
 - `questions` 为 1–3 个；
 - question `id` 和 option `value` 的稳定 ID 字符集与长度；
-- `prompt.zh`、`prompt.en` 都是必填的用户可见翻译；
+- `prompt`、option `label`/`description` 使用用户当前输入语言；
 - free-text question 没有 options，必须 `allow_free_text=true` 且不能 multiple；
 - choice question 必须有 2–3 个互斥选项；
 - 必须且只能有一个 recommended option；
 - `other` 是保留值，因为 host 会自动添加；
 - label/description 的长度预期。
 
-这里的 `zh`/`en` 双语结构必须保留。它是用户交互数据契约，不是无意义的模型内部双语 Prompt。
+Ask 的模型输出不承担产品本地化职责；按钮、状态与宿主生成的权限选项继续由 message catalog 或宿主双语数据提供。
 
 #### `task`
 
@@ -841,7 +843,7 @@ current user request
 | 精确 JSON 表示和条件合法性 | field schema / `oneOf` |
 | 部分失败与修复指令 | structured tool result |
 | 当前目标和当前证据 | turn-dynamic context |
-| 用户可见双语 | `zh`/`en` 结构或前端 message catalog |
+| 产品固定 UI 本地化 | 宿主双语数据或前端 message catalog；模型生成文案跟随用户当前输入语言 |
 
 只有发生误用会造成明显错误结果或不可逆副作用时，才在最接近决策的位置增加一句限制。普通内部实现、通用防御性提醒和完整错误目录不进入默认 Prompt。
 
@@ -933,7 +935,7 @@ System/context fragment 的完整 provenance、revision、budget 和截断状态
 - 游戏正文、RuleResolution、Actor State、choices、Director update 一致；
 - partial module rejection 只重试被拒模块；
 - Director opening/keep/patch/replan 与原子发布正确；
-- Ask 第一次就能产生合法的中英双语 UI 数据；
+- Ask 第一次就能产生与用户当前输入同语言的合法 UI 数据，且不重复翻译；
 - Compaction 保留用户意图、source boundary、当前请求和恢复引用。
 
 ### 10.3 指标

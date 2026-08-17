@@ -83,7 +83,7 @@ func (runtime *Runtime) ResolveAsk(
 	for _, answer := range resolution.Answers {
 		question := questions[answer.QuestionID]
 		projected := agentconversation.HostAskAnswerResult{
-			QuestionID: answer.QuestionID, Question: localizedInteractionText(question.Prompt), CustomInput: answer.Text,
+			QuestionID: answer.QuestionID, Question: strings.TrimSpace(question.Prompt), CustomInput: answer.Text,
 		}
 		byValue := make(map[string]agent.InteractionOption, len(question.Options))
 		for _, option := range question.Options {
@@ -92,23 +92,12 @@ func (runtime *Runtime) ResolveAsk(
 		for _, value := range answer.Values {
 			option := byValue[value]
 			projected.SelectedOptions = append(projected.SelectedOptions, agentconversation.HostAskSelectedOption{
-				ID: value, Label: localizedInteractionText(option.Label),
+				ID: value, Label: strings.TrimSpace(option.Label),
 			})
 		}
 		result.Answers = append(result.Answers, projected)
 	}
 	return result, nil
-}
-
-func localizedInteractionText(value agent.LocalizedText) string {
-	zh, en := strings.TrimSpace(value.Chinese), strings.TrimSpace(value.English)
-	if zh == "" || zh == en {
-		return en
-	}
-	if en == "" {
-		return zh
-	}
-	return zh + " / " + en
 }
 
 // ResolvePermission maps the existing tool-approval action IDs to the public

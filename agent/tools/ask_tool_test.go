@@ -23,7 +23,7 @@ func TestAskRejectsChildInvocationBeforeInteractionLookup(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	_, err = definitions[0].Tool.Run(child, `{"questions":[{"id":"q","prompt":{"zh":"问题","en":"Question"},"allow_free_text":true}]}`)
+	_, err = definitions[0].Tool.Run(child, `{"questions":[{"id":"q","prompt":"问题","allow_free_text":true}]}`)
 	if err == nil || !strings.Contains(err.Error(), "root Agent invocation") {
 		t.Fatalf("child Ask error=%v", err)
 	}

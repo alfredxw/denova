@@ -46,7 +46,7 @@ func (model *writingPublicAskModel) next(input []*agent.Message) *agent.Message 
 	if model.calls == 1 {
 		return agent.AssistantMessage("", []agent.ToolCall{{
 			ID: "provider-writing-ask", Type: "function", Function: agent.FunctionCall{
-				Name: "ask", Arguments: `{"questions":[{"id":"direction","prompt":{"zh":"下一步怎么写？","en":"How should the story continue?"},"options":[{"value":"quiet","label":{"zh":"安静推进","en":"Keep it quiet"},"description":{"zh":"保持克制。","en":"Keep the tone restrained."},"recommended":true},{"value":"reveal","label":{"zh":"揭示线索","en":"Reveal a clue"},"description":{"zh":"推进核心谜团。","en":"Advance the central mystery."}}]}]}`,
+				Name: "ask", Arguments: `{"questions":[{"id":"direction","prompt":"How should the story continue?","options":[{"value":"quiet","label":"Keep it quiet","description":"Keep the tone restrained.","recommended":true},{"value":"reveal","label":"Reveal a clue","description":"Advance the central mystery."}]}]}`,
 			},
 		}})
 	}

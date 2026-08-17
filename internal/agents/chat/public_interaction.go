@@ -38,13 +38,13 @@ func ProjectPendingInteraction(request agent.InteractionRequest, status agentrun
 	projected.Questions = make([]session.AskQuestion, len(request.Questions))
 	for index, question := range request.Questions {
 		item := session.AskQuestion{
-			ID: question.ID, Question: localizedDisplayValue(question.Prompt), MultiSelect: question.Multiple,
+			ID: question.ID, Question: strings.TrimSpace(question.Prompt), MultiSelect: question.Multiple,
 			Options: make([]session.AskOption, len(question.Options)),
 		}
 		for optionIndex, option := range question.Options {
 			item.Options[optionIndex] = session.AskOption{
-				ID: option.Value, Label: localizedDisplayValue(option.Label),
-				Description: localizedDisplayValue(option.Description),
+				ID: option.Value, Label: strings.TrimSpace(option.Label),
+				Description: strings.TrimSpace(option.Description),
 			}
 			if option.Recommended && item.RecommendedOptionID == "" {
 				item.RecommendedOptionID = option.Value

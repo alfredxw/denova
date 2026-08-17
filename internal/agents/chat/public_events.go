@@ -985,14 +985,14 @@ func projectInteractionRequested(request agent.InteractionRequest, meta agentEve
 		recommended := ""
 		for optionIndex, option := range question.Options {
 			options[optionIndex] = map[string]any{
-				"id": option.Value, "label": localizedDisplayValue(option.Label), "description": localizedDisplayValue(option.Description),
+				"id": option.Value, "label": strings.TrimSpace(option.Label), "description": strings.TrimSpace(option.Description),
 			}
 			if option.Recommended && recommended == "" {
 				recommended = option.Value
 			}
 		}
 		questions[index] = map[string]any{
-			"id": question.ID, "question": localizedDisplayValue(question.Prompt), "options": options,
+			"id": question.ID, "question": strings.TrimSpace(question.Prompt), "options": options,
 			"multi_select": question.Multiple, "recommended_option_id": recommended,
 		}
 	}
@@ -1017,21 +1017,6 @@ func projectInteractionRequested(request agent.InteractionRequest, meta agentEve
 		}
 	}
 	return agentrun.Event{Type: "ask_pending", Data: data}
-}
-
-func localizedDisplayValue(value agent.LocalizedText) string {
-	chinese := strings.TrimSpace(value.Chinese)
-	english := strings.TrimSpace(value.English)
-	switch {
-	case chinese == english:
-		return chinese
-	case chinese == "":
-		return english
-	case english == "":
-		return chinese
-	default:
-		return chinese + " / " + english
-	}
 }
 
 func clonePublicEventData(data map[string]any) map[string]any {
@@ -1068,14 +1053,14 @@ func projectInteractionAnswers(request agent.InteractionRequest, resolution agen
 		question := questions[answer.QuestionID]
 		labels := make(map[string]string, len(question.Options))
 		for _, option := range question.Options {
-			labels[option.Value] = localizedDisplayValue(option.Label)
+			labels[option.Value] = strings.TrimSpace(option.Label)
 		}
 		selected := make([]map[string]any, 0, len(answer.Values))
 		for _, value := range answer.Values {
 			selected = append(selected, map[string]any{"id": value, "label": firstNonEmpty(labels[value], value)})
 		}
 		answers = append(answers, map[string]any{
-			"question_id": answer.QuestionID, "question": localizedDisplayValue(question.Prompt),
+			"question_id": answer.QuestionID, "question": strings.TrimSpace(question.Prompt),
 			"selected_options": selected, "custom_input": strings.TrimSpace(answer.Text),
 		})
 	}

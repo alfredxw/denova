@@ -324,11 +324,11 @@ describe('MessageItem', () => {
     expect(screen.getByRole('region', { name: '思考内容' })).toHaveTextContent('正在分析下一条线索')
   })
 
-  it('thinking 使用带浅边框和 scroll fade 的 160px 上限窗口', () => {
+  it('thinking 使用带浅边框和 scroll fade 的 320px 上限窗口', () => {
     render(<MessageItem message={{ role: 'thinking', content: '逐行分析。\n'.repeat(24), streaming: true }} />)
 
     const content = screen.getByRole('region', { name: '思考内容' })
-    expect(content).toHaveClass('scroll-fade-y', 'scroll-fade-8', 'max-h-40', 'overflow-y-auto')
+    expect(content).toHaveClass('scroll-fade-y', 'scroll-fade-8', 'max-h-80', 'overflow-y-auto')
     expect(content).not.toHaveClass('h-40', 'border-l', 'px-3')
     expect(content.parentElement).toHaveAttribute('data-thinking-scroll-frame')
     expect(content.parentElement).toHaveClass('border', 'border-border/60')
@@ -340,7 +340,7 @@ describe('MessageItem', () => {
     )
     const { rerender } = render(renderThinking('第一段。'.repeat(160)))
     const content = screen.getByRole('region', { name: '思考内容' })
-    const metrics = mockScrollMetrics(content, { scrollHeight: 520, clientHeight: 160, scrollTop: 0 })
+    const metrics = mockScrollMetrics(content, { scrollHeight: 520, clientHeight: 320, scrollTop: 0 })
 
     await waitFor(() => expect(content.scrollTop).toBe(metrics.maxScrollTop()))
 
@@ -1481,6 +1481,54 @@ describe('MessageItem', () => {
       { status: 'answered', answers: [{ question_id: 'strategy', selected_option_ids: ['safe'] }] },
     ))
     expect(screen.getByText('已回答')).toBeInTheDocument()
+  })
+
+  it('Ask 原始工具帧按用户输入语言映射单字符串文案', () => {
+    render(
+      <MessageItem
+        message={{
+          id: 'ask-raw', role: 'tool_call', name: 'ask', status: 'running',
+          tool_presentation: { call: 'interaction', result: 'interaction' },
+          args: JSON.stringify({ questions: [{
+            id: 'direction', prompt: '选择下一步？',
+            options: [
+              { value: 'continue', label: '继续', description: '沿当前方向推进。', recommended: true },
+              { value: 'change', label: '调整', description: '切换到新的方向。' },
+            ],
+          }] }),
+        }}
+      />,
+    )
+
+    expect(screen.getByText('选择下一步？')).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: /继续/ })).toBeInTheDocument()
+    expect(screen.getByText('沿当前方向推进。')).toBeInTheDocument()
+    expect(screen.queryByText(/Choose|Continue/)).not.toBeInTheDocument()
+  })
+
+  it('Ask 接口错误不直接展示英文服务端文案，而是按用户语言本地化', async () => {
+    const user = userEvent.setup()
+    const onResolve = vi.fn().mockRejectedValue(new Error('Invalid ask answer'))
+    render(
+      <MessageItem
+        message={{
+          id: 'ask-error', role: 'ask', ask: {
+            schema: 'ask.pending.v1', id: 'ask-error', tool_call_id: 'ask-error', agent_kind: 'ide', status: 'pending',
+            questions: [{
+              id: 'strategy', question: '采用哪种方案？',
+              options: [{ id: 'safe', label: '稳妥方案' }, { id: 'fast', label: '快速方案' }],
+            }],
+          },
+        }}
+        onResolveAsk={onResolve}
+      />,
+    )
+
+    await user.click(screen.getByRole('radio', { name: '稳妥方案' }))
+    await user.click(screen.getByRole('button', { name: '提交' }))
+
+    expect(await screen.findByText('提交回答失败，请重试。')).toBeInTheDocument()
+    expect(screen.queryByText('Invalid ask answer')).not.toBeInTheDocument()
   })
 
   it('Ask 多题保留返回导航状态，支持多选与 Other 自由输入', async () => {

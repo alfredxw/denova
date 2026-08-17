@@ -86,10 +86,10 @@ func (h *Handlers) HandleConfigManagerAskCancel(ctx context.Context, c *app.Requ
 func writeAskResolutionError(c *app.RequestContext, err error) {
 	switch {
 	case errors.Is(err, appsvc.ErrAgentAskNotFound):
-		writeAgentRuntimeError(c, consts.StatusNotFound, "agent_runtime.ask_not_found", "未找到该问题 / Ask interaction not found", nil)
+		writeAgentRuntimeError(c, consts.StatusNotFound, "agent_runtime.ask_not_found", "Ask interaction not found", nil)
 	case errors.Is(err, appsvc.ErrNoWorkspace):
-		writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.no_workspace", "尚未选择工作区 / No workspace is open", nil)
+		writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.no_workspace", "No workspace is open", nil)
 	default:
-		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_ask_answer", "回答格式无效 / Invalid ask answer", map[string]any{"detail": err.Error()})
+		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_ask_answer", "Invalid ask answer", map[string]any{"detail": err.Error()})
 	}
 }

@@ -94,6 +94,36 @@ describe('agent-message-view', () => {
     expect(agentViewStableKey(persisted)).toBe(agentViewStableKey(live))
   })
 
+  it('keeps sibling tool keys unique when one display segment contains multiple calls', () => {
+    const views = buildAgentMessageViews([{
+      id: 'assistant-multi-tool',
+      role: 'assistant',
+      parts: [
+        {
+          type: 'dynamic-tool',
+          toolName: 'edit',
+          toolCallId: 'tool-edit',
+          state: 'input-available',
+          input: { path: 'ideas.md' },
+          providerMetadata: { agent: { run_id: 'run-multi-tool', display_segment_id: 'shared-segment' } },
+        },
+        {
+          type: 'dynamic-tool',
+          toolName: 'write',
+          toolCallId: 'tool-write',
+          state: 'input-available',
+          input: { path: 'outline.md' },
+          providerMetadata: { agent: { run_id: 'run-multi-tool', display_segment_id: 'shared-segment' } },
+        },
+      ],
+    } as unknown as AgentUIMessage])
+
+    expect(views.map(agentViewStableKey)).toEqual([
+      'tool:run:run-multi-tool:segment:shared-segment:part:tool-edit',
+      'tool:run:run-multi-tool:segment:shared-segment:part:tool-write',
+    ])
+  })
+
   it('复用未变化消息的 view，只重建正在变化的流式消息', () => {
     const [historyMessage, firstStreamingMessage] = [
       {

@@ -21,7 +21,7 @@ export function ToolStatusIcon({ status, warning = false }: { status?: ChatMessa
   }
   return (
     <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-faint)]">
-      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+      <Loader2 className="h-3.5 w-3.5 animate-spin will-change-transform" />
     </span>
   )
 }

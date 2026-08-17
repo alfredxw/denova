@@ -148,8 +148,8 @@ func truncatePermissionDetails(value string) string {
 	return value + marker
 }
 
-func permissionOptions(canRemember bool) []InteractionOption {
-	options := []InteractionOption{{
+func permissionOptions(canRemember bool) []PermissionOption {
+	options := []PermissionOption{{
 		Value: string(PermissionAllowOnce),
 		Label: LocalizedText{Chinese: "仅允许这一次", English: "Allow once"},
 		Description: LocalizedText{
@@ -158,7 +158,7 @@ func permissionOptions(canRemember bool) []InteractionOption {
 		},
 	}}
 	if canRemember {
-		options = append(options, InteractionOption{
+		options = append(options, PermissionOption{
 			Value: string(PermissionRemember),
 			Label: LocalizedText{Chinese: "在当前工作区始终允许", English: "Always allow here"},
 			Description: LocalizedText{
@@ -167,7 +167,7 @@ func permissionOptions(canRemember bool) []InteractionOption {
 			},
 		})
 	}
-	return append(options, InteractionOption{
+	return append(options, PermissionOption{
 		Value: string(PermissionDeny),
 		Label: LocalizedText{Chinese: "拒绝", English: "Deny"},
 		Description: LocalizedText{

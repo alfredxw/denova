@@ -244,11 +244,44 @@ function askAnswerSummary(answer: NonNullable<AgentAskInteraction['answers']>[nu
 function parseAskToolInput(message: AskInteractionMessage): AgentAskInteraction | undefined {
   if (message.role !== 'tool_call' || toolPresentationKind(message, 'call') !== 'interaction' || !message.id) return undefined
   try {
-    const input = JSON.parse(message.args || '') as { questions?: AgentAskQuestion[] }
-    if (!Array.isArray(input.questions) || input.questions.length === 0) return undefined
+    const input = JSON.parse(message.args || '') as { questions?: unknown }
+    if (!Array.isArray(input.questions)) return undefined
+    const questions = input.questions
+      .map((value): AgentAskQuestion | undefined => {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+        const raw = value as Record<string, unknown>
+        const id = typeof raw.id === 'string' ? raw.id.trim() : ''
+        const question = typeof raw.prompt === 'string' ? raw.prompt.trim() : ''
+        if (!id || !question) return undefined
+        const options = Array.isArray(raw.options)
+          ? raw.options.flatMap((option) => {
+            if (!option || typeof option !== 'object' || Array.isArray(option)) return []
+            const item = option as Record<string, unknown>
+            const optionID = typeof item.value === 'string' ? item.value.trim() : ''
+            const label = typeof item.label === 'string' ? item.label.trim() : ''
+            if (!optionID || !label) return []
+            return [{
+              id: optionID,
+              label,
+              ...(typeof item.description === 'string' && item.description.trim() ? { description: item.description.trim() } : {}),
+              recommended: item.recommended === true,
+            }]
+          })
+          : []
+        const recommended = options.find((option) => option.recommended)?.id
+        return {
+          id,
+          question,
+          ...(options.length ? { options: options.map(({ recommended: _, ...option }) => option) } : {}),
+          ...(raw.multiple === true ? { multi_select: true } : {}),
+          ...(recommended ? { recommended_option_id: recommended } : {}),
+        }
+      })
+      .filter((question): question is AgentAskQuestion => Boolean(question))
+    if (questions.length === 0) return undefined
     return {
       schema: 'ask.pending.v1', id: message.id, tool_call_id: message.id,
-      agent_kind: message.agent_kind || 'ide', status: 'pending', questions: input.questions,
+      agent_kind: message.agent_kind || 'ide', status: 'pending', questions,
     }
   } catch {
     return undefined
