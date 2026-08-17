@@ -41,6 +41,9 @@ jobs:
           cache: pnpm
           cache-dependency-path: web/pnpm-lock.yaml
 
+      - name: Install ripgrep
+        run: sudo apt-get update && sudo apt-get install --yes ripgrep
+
       - name: Install frontend dependencies
         run: pnpm --dir web install --frozen-lockfile
 

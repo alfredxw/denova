@@ -99,7 +99,7 @@ Release archives include a SHA-256-verified ripgrep binary, so no separate insta
 
 ### Run from Source
 
-Development startup requires Go 1.26.5+, Node.js 20+, pnpm, and ripgrep available on PATH. The distributable directory produced by `scripts/build.sh` downloads and bundles the pinned version automatically.
+Development startup requires Go 1.26.6+, Node.js 20+, pnpm, and ripgrep available on PATH. The distributable directory produced by `scripts/build.sh` downloads and bundles the pinned version automatically.
 
 ```bash
 git clone https://github.com/alfredxw/denova.git
