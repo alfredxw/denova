@@ -5,7 +5,9 @@ settings:
   excludeLinksFromLockfile: false
 
 patchedDependencies:
-  '@monaco-editor/react@4.7.0': 41652aad07214266bc9bbce740d2f174ecb9a950cf6b03e2306de3c0d49ad58b
+  '@monaco-editor/react@4.7.0':
+    hash: 41652aad07214266bc9bbce740d2f174ecb9a950cf6b03e2306de3c0d49ad58b
+    path: patches/@monaco-editor__react@4.7.0.patch
 
 importers:
 

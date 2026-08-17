@@ -1,7 +1,7 @@
 package documentreview
 
 import (
-	"path/filepath"
+	"path"
 	"strings"
 )
 
@@ -22,11 +22,14 @@ func NormalizeTarget(target Target) (Target, error) {
 		if target.Field != "" {
 			return Target{}, newError(ErrorCodeInvalid, "workspace file review target does not accept a field", map[string]any{"field": target.Field})
 		}
-		nativePath := filepath.Clean(filepath.FromSlash(target.ID))
-		if nativePath == "." || filepath.IsAbs(nativePath) || nativePath == ".." || strings.HasPrefix(nativePath, ".."+string(filepath.Separator)) || strings.ContainsRune(nativePath, '\x00') {
+		hasWindowsDrivePrefix := len(target.ID) >= 2 && target.ID[1] == ':' &&
+			((target.ID[0] >= 'a' && target.ID[0] <= 'z') || (target.ID[0] >= 'A' && target.ID[0] <= 'Z'))
+		cleanPath := path.Clean(target.ID)
+		if cleanPath == "." || path.IsAbs(target.ID) || hasWindowsDrivePrefix || strings.ContainsRune(target.ID, '\\') ||
+			cleanPath == ".." || strings.HasPrefix(cleanPath, "../") || strings.ContainsRune(target.ID, '\x00') {
 			return Target{}, newError(ErrorCodeInvalid, "review comment target is invalid", nil)
 		}
-		target.ID = filepath.ToSlash(nativePath)
+		target.ID = cleanPath
 	case TargetKindLoreItem:
 		if target.Field == "" {
 			target.Field = TargetFieldLoreContent

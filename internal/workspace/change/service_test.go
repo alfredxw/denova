@@ -440,13 +440,16 @@ func TestDeleteFileReviewRejectAndHistoryRestoreExactFile(t *testing.T) {
 	content := []byte("#!/bin/sh\necho cleanup\n")
 	writeTestFile(t, workspace, path, string(content))
 	abs := filepath.Join(workspace, filepath.FromSlash(path))
-	expectedMode := os.FileMode(0o644)
 	if runtime.GOOS != "windows" {
-		expectedMode = 0o751
-		if err := os.Chmod(abs, expectedMode); err != nil {
+		if err := os.Chmod(abs, 0o751); err != nil {
 			t.Fatal(err)
 		}
 	}
+	beforeInfo, err := os.Stat(abs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expectedMode := beforeInfo.Mode().Perm()
 	service, err := NewService(workspace)
 	if err != nil {
 		t.Fatal(err)
@@ -558,20 +561,22 @@ func TestDeleteFileRejectsUnsafeTargetsWithoutMutation(t *testing.T) {
 }
 
 func TestForWorkspaceReturnsSharedService(t *testing.T) {
-	workspace := t.TempDir()
+	container := t.TempDir()
+	workspace := filepath.Join(container, "workspace")
+	if err := os.Mkdir(workspace, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	first, err := ForWorkspace(workspace)
 	if err != nil {
 		t.Fatal(err)
 	}
-	cwd, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	relative, err := filepath.Rel(cwd, workspace)
-	if err != nil {
-		t.Fatal(err)
-	}
-	second, err := ForWorkspace(relative)
+	t.Cleanup(func() {
+		if err := ForgetWorkspace(workspace); err != nil {
+			t.Errorf("forget workspace: %v", err)
+		}
+	})
+	t.Chdir(container)
+	second, err := ForWorkspace(filepath.Base(workspace))
 	if err != nil {
 		t.Fatal(err)
 	}

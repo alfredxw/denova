@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- 文档审阅的工作区文件目标现在使用与操作系统无关的 slash-path 规则；Windows 也会拒绝 Unix 绝对路径、盘符路径、UNC 路径和反斜杠身份，避免工作区外路径被误当成合法相对目标。无需新增配置。
+- Document-review workspace file targets now use OS-independent slash-path rules. Windows also rejects Unix absolute paths, drive paths, UNC paths, and backslash identities, preventing out-of-workspace paths from being mistaken for valid relative targets. No new configuration is required.
+- Go 构建基线升级到 1.26.6，修复主程序与公共 Agent module 可达的标准库安全问题；无需新增配置。
+- The Go build baseline is upgraded to 1.26.6, resolving reachable standard-library security issues in the main application and public Agent module. No new configuration is required.
 - 一级菜单收起/展开按钮移除图标旋转；侧栏折叠时保持按钮、图标与文字的稳定几何位置，宽度改用无回弹的短面板过渡，避免对齐切换和横向位移导致的抖动。写作与游戏模式共用，无需新增配置。
 - The primary-menu collapse/expand control no longer rotates its icon. Buttons, icons, and labels now keep stable geometry while the bar folds, and the width uses a short non-overshooting panel transition to avoid the jitter caused by alignment changes and horizontal label movement. Writing and Game share the behavior with no new setting.
 - Agent Cleanup 现在以公共 `agent/cleanup.Standard` 作为唯一压力决策器；Denova 仅映射产品策略、具体模型窗口与容量 reserve，Writing、Game 和 delegated child Agent 共用同一套分组保护、缓存门禁、恢复占位符及指标语义。Child Cleanup 会按自身模型窗口规划，Compaction 禁用策略与本次模型请求的精确输出上限也由公共策略统一处理；自动 checkpoint fork 的附加提示词被限制在声明的静态 reserve 内，保持前缀缓存安全。Beta 不兼容：删除内部重复的 pressure/Cleanup planner、旧 Cleanup DTO、merge 与 target 路径；无需新增配置。

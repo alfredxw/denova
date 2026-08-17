@@ -183,7 +183,14 @@ func TestDocumentReviewRejectsStaleAndForgedAnchors(t *testing.T) {
 }
 
 func TestNormalizeTargetRejectsWorkspacePathsOutsideTheBook(t *testing.T) {
-	for _, id := range []string{"../other-book.md", "/tmp/outside.md"} {
+	for _, id := range []string{
+		"../other-book.md",
+		"/tmp/outside.md",
+		`C:/outside.md`,
+		`C:\outside.md`,
+		`\\server\share\outside.md`,
+		`chapters\outside.md`,
+	} {
 		t.Run(id, func(t *testing.T) {
 			_, err := NormalizeTarget(Target{Kind: TargetKindWorkspaceFile, ID: id})
 			var reviewErr *Error

@@ -64,10 +64,14 @@ func TestWorkspaceChangeFailsClosedWhenWorkspacePathIsReplaced(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeTestFile(t, workspace, "chapter.txt", "original")
-	service, err := NewService(workspace)
+	// Windows does not allow renaming a directory while the legacy embedded
+	// ledger root is open. Production Project services keep state outside the
+	// content directory, so mirror that boundary while testing identity checks.
+	service, err := newServiceAt(workspace, filepath.Join(container, "state"))
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(service.store.close)
 	if err := os.Rename(workspace, filepath.Join(container, "moved")); err != nil {
 		t.Fatal(err)
 	}
