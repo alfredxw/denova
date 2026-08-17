@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"denova/internal/workspacepath"
+	workspacelayout "denova/internal/workspace"
 )
 
 const chapterStatusFileName = "chapter_statuses.json"
@@ -36,7 +36,11 @@ func (s *Service) SetChapterConfirmed(relPath string, confirmed bool) error {
 	} else {
 		delete(store.Chapters, normalized)
 	}
-	return s.writeChapterStatusStore(store)
+	if err := s.writeChapterStatusStore(store); err != nil {
+		return err
+	}
+	s.InvalidateSummary([]string{normalized}, false)
+	return nil
 }
 
 func (s *Service) chapterConfirmedMap() map[string]bool {
@@ -115,7 +119,7 @@ func (s *Service) writeChapterStatusStore(store chapterStatusStore) error {
 }
 
 func (s *Service) chapterStatusPath() string {
-	return workspacepath.Path(s.workspace, chapterStatusFileName)
+	return workspacelayout.Path(s.workspace, chapterStatusFileName)
 }
 
 func chapterStatus(words int, confirmed bool) string {

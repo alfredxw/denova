@@ -1,7 +1,10 @@
 import { useCallback, useMemo, useRef } from 'react'
 import type { PointerEvent } from 'react'
-import { Check, MessageSquareQuote, Palette, Rows3 } from 'lucide-react'
+import { Check, MessageSquareQuote, Palette, Rows3, Type } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { AutosaveStatusIndicator, type AutosaveStatus } from '@/components/forms/autosave-status'
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { FONT_OPTIONS } from '@/features/settings/font-options'
 
 export type EditorTheme = 'ide' | 'paper' | 'sepia'
 
@@ -9,6 +12,17 @@ export interface EditorSettings {
   lineHeight: number
   theme: EditorTheme
   dialogueHighlightColor: string
+}
+
+export interface ReadingTypographySettings {
+  fontFamily: string
+  fontSize: number
+  loading: boolean
+  status: AutosaveStatus
+  error?: string | null
+  onFontFamilyChange: (value: string) => void
+  onFontSizeChange: (value: number) => void
+  onRetry: () => void | Promise<unknown>
 }
 
 export const THEME_STYLES: Record<EditorTheme, { labelKey: string; background: string; color: string; accent: string; dialogueHighlight: string }> = {
@@ -49,10 +63,12 @@ export function EditorSettingsPanel({
   settings,
   onChange,
   onClose,
+  readingTypography,
 }: {
   settings: EditorSettings
   onChange: (settings: EditorSettings) => void
   onClose: () => void
+  readingTypography?: ReadingTypographySettings
 }) {
   const { t } = useTranslation()
   const patch = (partial: Partial<EditorSettings>) => onChange({ ...settings, ...partial })
@@ -77,6 +93,64 @@ export function EditorSettingsPanel({
       </div>
 
       <div className="space-y-3 p-3">
+        {readingTypography ? (
+          <div className="nova-editor-control rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-3">
+            <div className="mb-2 flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 text-xs font-medium text-[var(--nova-text-muted)]">
+                  <Type className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
+                  {t('editor.readingTypography')}
+                </div>
+                <div className="mt-0.5 text-[11px] leading-4 text-[var(--nova-text-faint)]">{t('editor.readingTypographyDescription')}</div>
+              </div>
+              <AutosaveStatusIndicator
+                status={readingTypography.status}
+                error={readingTypography.error}
+                onRetry={readingTypography.onRetry}
+                className="shrink-0"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="block">
+                <span className="mb-1 block text-[11px] text-[var(--nova-text-faint)]">{t('settings.appearance.readingFont')}</span>
+                <Select
+                  value={readingTypography.fontFamily}
+                  disabled={readingTypography.loading}
+                  onValueChange={readingTypography.onFontFamilyChange}
+                >
+                  <SelectTrigger size="sm" className="w-full bg-[var(--nova-surface)]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="nova-panel border text-[var(--nova-text)]">
+                    <SelectGroup>
+                      {FONT_OPTIONS.map((font) => (
+                        <SelectItem key={font.value} value={font.value}>{t(font.labelKey)}</SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </label>
+              <label className="block">
+                <span className="mb-1 flex items-center justify-between gap-3 text-[11px] text-[var(--nova-text-faint)]">
+                  <span>{t('settings.appearance.readingFontSize')}</span>
+                  <span className="font-mono text-[var(--nova-text)]">{readingTypography.fontSize}px</span>
+                </span>
+                <input
+                  type="range"
+                  min="14"
+                  max="28"
+                  step="1"
+                  value={readingTypography.fontSize}
+                  disabled={readingTypography.loading}
+                  aria-label={t('settings.appearance.readingFontSize')}
+                  onChange={(event) => readingTypography.onFontSizeChange(Number(event.target.value))}
+                  className="nova-editor-range w-full"
+                />
+              </label>
+            </div>
+          </div>
+        ) : null}
+
         <label className="nova-editor-control block rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-3">
           <div className="mb-2 flex items-center justify-between gap-3 text-xs">
             <span className="flex items-center gap-2 font-medium text-[var(--nova-text-muted)]">

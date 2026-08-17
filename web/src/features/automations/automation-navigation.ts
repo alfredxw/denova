@@ -2,6 +2,7 @@ export interface AutomationNavigationTarget {
   taskId: string
   runId?: string
   inboxId?: string
+  projectId?: string
   workspace?: string
 }
 

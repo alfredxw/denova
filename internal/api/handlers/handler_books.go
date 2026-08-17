@@ -11,8 +11,10 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
-	novaApp "denova/internal/app"
+	bookapp "denova/internal/app/book"
+	appsettings "denova/internal/app/settings"
 	"denova/internal/book"
+	projectdomain "denova/internal/project"
 )
 
 const MaxBookCoverUploadBytes int64 = 16 * 1024 * 1024
@@ -20,8 +22,8 @@ const MaxBookCoverUploadBytes int64 = 16 * 1024 * 1024
 // handleBooks GET /api/books — 返回当前 Nova 数据目录下实际存在的书籍工作目录。
 func (h *Handlers) HandleBooks(ctx context.Context, c *app.RequestContext) {
 	writeJSON(c, consts.StatusOK, map[string]interface{}{
-		"books":     h.app.Books(),
-		"sort_mode": h.app.BookSortMode(),
+		"books":     h.app.BookAssets().Books(),
+		"sort_mode": h.app.BookAssets().SortMode(),
 	})
 }
 
@@ -40,7 +42,7 @@ func (h *Handlers) HandleCreateBook(ctx context.Context, c *app.RequestContext) 
 		writeErrorKey(c, consts.StatusBadRequest, "api.books.titleRequired")
 		return
 	}
-	layered, err := h.app.Settings()
+	layered, err := h.app.SettingsService().Snapshot(appsettings.Global())
 	if err != nil {
 		writeError(c, consts.StatusInternalServerError, err.Error())
 		return
@@ -49,7 +51,7 @@ func (h *Handlers) HandleCreateBook(ctx context.Context, c *app.RequestContext) 
 		writeErrorKey(c, consts.StatusInternalServerError, "api.books.novaDirMissing")
 		return
 	}
-	workspace, meta, err := h.app.CreateBook(ctx, layered.Paths.DenovaDir, req.Title, req.Author, req.Description)
+	created, err := h.app.CreateBook(ctx, layered.Paths.DenovaDir, req.Title, req.Author, req.Description)
 	if err != nil {
 		status := consts.StatusInternalServerError
 		if strings.Contains(err.Error(), "已存在") {
@@ -59,8 +61,9 @@ func (h *Handlers) HandleCreateBook(ctx context.Context, c *app.RequestContext) 
 		return
 	}
 	writeJSON(c, consts.StatusOK, map[string]interface{}{
-		"workspace": workspace,
-		"book_meta": meta,
+		"project_id": created.ProjectID,
+		"workspace":  created.Workspace,
+		"book_meta":  created.Meta,
 	})
 }
 
@@ -71,7 +74,7 @@ func (h *Handlers) HandleBookCover(ctx context.Context, c *app.RequestContext) {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.pathRequired")
 		return
 	}
-	data, contentType, err := h.app.ReadBookCover(path)
+	data, contentType, err := h.app.BookAssets().ReadCover(path)
 	if err != nil {
 		status := consts.StatusBadRequest
 		if os.IsNotExist(err) {
@@ -85,7 +88,7 @@ func (h *Handlers) HandleBookCover(ctx context.Context, c *app.RequestContext) {
 
 // HandleBookCoverGenerate POST /api/books/cover/generate — 为指定书籍生成并应用封面。
 func (h *Handlers) HandleBookCoverGenerate(ctx context.Context, c *app.RequestContext) {
-	var req novaApp.BookCoverGenerateRequest
+	var req bookapp.CoverGenerateRequest
 	if err := c.BindJSON(&req); err != nil {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequest")
 		return
@@ -94,7 +97,7 @@ func (h *Handlers) HandleBookCoverGenerate(ctx context.Context, c *app.RequestCo
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.pathRequired")
 		return
 	}
-	result, err := h.app.GenerateBookCover(ctx, req)
+	result, err := h.app.BookAssets().GenerateCover(ctx, req)
 	if err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
@@ -113,7 +116,7 @@ func (h *Handlers) HandleBookCoverUpload(ctx context.Context, c *app.RequestCont
 	if !ok {
 		return
 	}
-	result, err := h.app.UploadBookCover(path, filename, data)
+	result, err := h.app.BookAssets().UploadCover(path, filename, data)
 	if err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
@@ -134,13 +137,13 @@ func (h *Handlers) HandleBookExport(ctx context.Context, c *app.RequestContext) 
 		return
 	}
 
-	result, err := h.app.ExportBook(novaApp.BookExportRequest{
+	result, err := h.app.BookAssets().Export(bookapp.BookExportRequest{
 		Path:   path,
-		Format: novaApp.BookExportFormat(format),
+		Format: bookapp.BookExportFormat(format),
 	})
 	if err != nil {
 		switch {
-		case errors.Is(err, novaApp.ErrUnsupportedBookExportFormat):
+		case errors.Is(err, bookapp.ErrUnsupportedBookExportFormat):
 			writeErrorKey(c, consts.StatusBadRequest, "api.books.exportFormatUnsupported", "format", format)
 		case errors.Is(err, book.ErrNoExportableChapters):
 			writeErrorKey(c, consts.StatusBadRequest, "api.books.exportNoChapters")
@@ -239,7 +242,7 @@ func (h *Handlers) HandleBookReorder(ctx context.Context, c *app.RequestContext)
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequest")
 		return
 	}
-	if err := h.app.ReorderBooks(req.Paths); err != nil {
+	if err := h.app.BookAssets().Reorder(req.Paths); err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
 	}
@@ -249,13 +252,13 @@ func (h *Handlers) HandleBookReorder(ctx context.Context, c *app.RequestContext)
 // HandleBookSortMode POST /api/books/sort-mode — 切换书架与快捷入口共用的排序方式。
 func (h *Handlers) HandleBookSortMode(ctx context.Context, c *app.RequestContext) {
 	var req struct {
-		Mode novaApp.BookSortMode `json:"mode"`
+		Mode projectdomain.SortMode `json:"mode"`
 	}
 	if err := c.BindJSON(&req); err != nil {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequest")
 		return
 	}
-	if err := h.app.SetBookSortMode(req.Mode); err != nil {
+	if err := h.app.BookAssets().SetSortMode(req.Mode); err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
 	}
@@ -269,7 +272,7 @@ func (h *Handlers) HandleBookInfo(ctx context.Context, c *app.RequestContext) {
 		writeErrorKey(c, consts.StatusBadRequest, "api.books.pathQueryRequired")
 		return
 	}
-	meta, err := h.app.BookInfo(path)
+	meta, err := h.app.BookAssets().Info(path)
 	if err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
@@ -293,7 +296,7 @@ func (h *Handlers) HandleUpdateBookInfo(ctx context.Context, c *app.RequestConte
 		writeErrorKey(c, consts.StatusBadRequest, "api.books.pathRequired")
 		return
 	}
-	meta, err := h.app.UpdateBookInfo(req.Path, req.Title, req.Author, req.Description)
+	meta, err := h.app.BookAssets().UpdateInfo(req.Path, req.Title, req.Author, req.Description)
 	if err != nil {
 		writeError(c, consts.StatusInternalServerError, err.Error())
 		return

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { applyFontSettings, fontSettingsFromEffective } from './font-variables'
+import { applyFontSettings, applyReadingTypographySettings, fontSettingsFromEffective } from './font-variables'
 
 describe('font variables', () => {
   afterEach(() => {
@@ -30,5 +30,15 @@ describe('font variables', () => {
     const style = document.documentElement.style
     expect(style.getPropertyValue('--nova-ui-font-size')).toBe('16px')
     expect(style.getPropertyValue('--nova-reading-font-size')).toBe('14px')
+  })
+
+  it('previews reading typography without changing UI font variables', () => {
+    applyFontSettings({ uiFontSize: 13, readingFont: 'source-han-serif', readingFontSize: 18 })
+    applyReadingTypographySettings({ readingFont: 'lxgw-wenkai', readingFontSize: 22 })
+
+    const style = document.documentElement.style
+    expect(style.getPropertyValue('--nova-ui-font-size')).toBe('13px')
+    expect(style.getPropertyValue('--nova-reading-font-family')).toContain('LXGW WenKai')
+    expect(style.getPropertyValue('--nova-reading-font-size')).toBe('22px')
   })
 })

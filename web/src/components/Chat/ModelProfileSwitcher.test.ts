@@ -1,15 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import type { LayeredSettings } from '@/features/settings/types'
-import { buildModelProfileOptions, resolveCurrentProfileID } from './ModelProfileSwitcher'
+import { buildModelProfileOptions } from './ModelProfileSwitcher'
 
 describe('ModelProfileSwitcher profile options', () => {
   it('uses default as the stable id when the first model has no alias', () => {
     const options = buildModelProfileOptions(settingsSnapshot({
       effective: {
-        model_profiles: [{ id: 'default', openai_model: 'deepseek-v4-pro' }],
+        model_profiles: [{ id: 'default', model: 'deepseek-v4-pro' }],
       },
       workspace: {
-        model_profiles: [{ id: 'default', openai_model: 'deepseek-v4-pro' }],
+        model_profiles: [{ id: 'default', model: 'deepseek-v4-pro' }],
       },
     }), t)
 
@@ -17,17 +17,16 @@ describe('ModelProfileSwitcher profile options', () => {
     expect(options[0].label).toBe('default:deepseek-v4-pro')
   })
 
-  it('falls back to default instead of exposing a missing profile id', () => {
+  it('does not expose a removed profile in the selectable catalog', () => {
     const settings = settingsSnapshot({
       effective: {
-        model_profiles: [{ id: 'default', openai_model: 'deepseek-v4-pro' }],
+        model_profiles: [{ id: 'default', model: 'deepseek-v4-pro' }],
         agent_models: { default: { profile_id: 'DeepSeek 写作' } },
       },
     })
     const options = buildModelProfileOptions(settings, t)
 
     expect(options.some((option) => option.id === 'DeepSeek 写作')).toBe(false)
-    expect(resolveCurrentProfileID(settings.effective, 'ide', options)).toBe('default')
   })
 })
 
@@ -54,6 +53,8 @@ function settingsSnapshot(patch: Partial<LayeredSettings>): LayeredSettings {
     builtin_agent_prompts: {},
     builtin_agent_prompt_blocks: {},
     builtin_agent_prompt_sources: {},
+    resolved_agent_tool_manifests: {},
+    resolved_agent_contexts: {},
     ...patch,
   }
 }

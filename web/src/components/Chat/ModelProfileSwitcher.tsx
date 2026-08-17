@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Check, ChevronDown, Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import {
@@ -8,14 +8,17 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { fetchSettings, updateUserSettings } from '@/features/settings/api'
-import type { AgentModelOverride, LayeredSettings, ModelProfileSettings, Settings } from '@/features/settings/types'
+import { fetchSettings, refreshSettings } from '@/features/settings/api'
+import type { LayeredSettings, ModelProfileSettings } from '@/features/settings/types'
 import { modelProfileID, modelProfileLabel, modelProfilesWithDefault } from '@/features/settings/model-profiles'
+import { THINKING_LEVELS, type ThinkingLevel } from '@/features/settings/thinking-levels'
 import type { VisibleAgentKey } from '@/features/agents/agent-registry'
+import type { ConversationConfigController } from '@/features/conversation-config/types'
 
 interface ModelProfileSwitcherProps {
   agentKey?: VisibleAgentKey
   workspace?: string
+  conversationConfig?: ConversationConfigController
   disabled?: boolean
 }
 
@@ -25,36 +28,32 @@ interface ModelProfileOption {
   modelLabel: string
 }
 
-type ReasoningEffort = '' | 'low' | 'medium' | 'high'
-
 interface SavingSelection {
-  kind: 'profile' | 'effort'
+  kind: 'profile' | 'thinking'
   value: string
 }
 
-const REASONING_EFFORTS: readonly ReasoningEffort[] = ['', 'low', 'medium', 'high']
-
-export function ModelProfileSwitcher({ agentKey, workspace, disabled = false }: ModelProfileSwitcherProps) {
-  const selector = useModelProfileSelector({ agentKey, workspace, disabled })
+export function ModelProfileSwitcher({ agentKey, workspace, conversationConfig, disabled = false }: ModelProfileSwitcherProps) {
+  const selector = useModelProfileSelector({ agentKey, workspace, conversationConfig, disabled })
+  const [open, setOpen] = useState(false)
 
   if (!selector.enabled) return null
 
   return (
-    <DropdownMenu>
+    <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          disabled={disabled || !selector.settings}
-          className="group flex h-8 max-w-44 shrink-0 items-center gap-1.5 rounded-md border-0 bg-transparent px-1.5 text-xs leading-none text-[var(--nova-text)] outline-none transition-colors hover:text-[var(--nova-text)] focus-visible:bg-[var(--nova-hover)] disabled:pointer-events-none disabled:opacity-50"
+          disabled={disabled || !selector.settings || !conversationConfig?.initialized || selector.saving}
+          className="group flex h-8 min-w-0 max-w-44 flex-[0_1_auto] items-center gap-1.5 rounded-md border-0 bg-transparent px-1.5 text-xs leading-none text-[var(--nova-text)] outline-none transition-colors hover:text-[var(--nova-text)] focus-visible:bg-[var(--nova-hover)] disabled:pointer-events-none disabled:opacity-50"
           aria-label={selector.t('chat.modelProfile.switch', { model: selector.currentSelectionLabel })}
-          title={selector.t('chat.modelProfile.switch', { model: selector.currentSelectionLabel })}
           data-model-profile-trigger="true"
           data-current-model={selector.currentModelLabel}
-          data-current-reasoning-effort={selector.currentReasoningEffort}
+          data-current-thinking-level={selector.currentThinkingLevel}
         >
           <span className="min-w-0 truncate">{selector.settings ? selector.currentModelLabel : selector.t('chat.modelProfile.loading')}</span>
-          {selector.currentReasoningEffortLabel ? (
-            <span className="shrink-0 font-normal text-[var(--nova-text-faint)]">{selector.currentReasoningEffortLabel}</span>
+          {selector.currentThinkingLevelLabel ? (
+            <span className="shrink-0 font-normal text-[var(--nova-text-faint)]">{selector.currentThinkingLevelLabel}</span>
           ) : null}
           <ChevronDown className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)] transition-transform group-data-[state=open]:rotate-180" />
         </button>
@@ -65,7 +64,13 @@ export function ModelProfileSwitcher({ agentKey, workspace, disabled = false }: 
         aria-label={selector.t('chat.modelProfile.action')}
         className="w-60 border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-1.5 text-[var(--nova-text)]"
       >
-        <ModelProfileOptions selector={selector} />
+        <ModelProfileOptions
+          selector={selector}
+          onThinkingLevelSelect={(level) => {
+            setOpen(false)
+            void selector.selectThinkingLevel(level)
+          }}
+        />
       </DropdownMenuContent>
     </DropdownMenu>
   )
@@ -80,35 +85,38 @@ interface ModelProfileSelector {
   options: ModelProfileOption[]
   currentProfile: string
   currentModelLabel: string
-  currentReasoningEffort: ReasoningEffort
-  currentReasoningEffortLabel: string
+  currentThinkingLevel: ThinkingLevel | ''
+  currentThinkingLevelLabel: string
   currentSelectionLabel: string
   savingSelection: SavingSelection | null
   error: string | null
   selectProfile: (profileID: string) => Promise<void>
-  selectReasoningEffort: (effort: ReasoningEffort) => Promise<void>
+  saving: boolean
+  selectThinkingLevel: (level: ThinkingLevel) => Promise<void>
 }
 
-function useModelProfileSelector({ agentKey, workspace, disabled = false }: ModelProfileSelectorInput): ModelProfileSelector {
+function useModelProfileSelector({ agentKey, conversationConfig, disabled = false }: ModelProfileSelectorInput): ModelProfileSelector {
   const { t } = useTranslation()
   const [settings, setSettings] = useState<LayeredSettings | null>(null)
   const [savingSelection, setSavingSelection] = useState<SavingSelection | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const savingRef = useRef(false)
-  const enabled = Boolean(agentKey && workspace)
+  const [catalogError, setCatalogError] = useState<string | null>(null)
+  // Model profiles are user-scoped. Global conversations (notably user-wide
+  // automations) therefore remain configurable without a workspace path.
+  const enabled = Boolean(agentKey && conversationConfig)
 
-  const load = useCallback(() => {
+  const load = useCallback((fresh = false) => {
     if (!enabled) {
       setSettings(null)
       return
     }
-    fetchSettings()
+    const request = fresh ? refreshSettings() : fetchSettings()
+    request
       .then((next) => {
         setSettings(next)
-        setError(null)
+        setCatalogError(null)
       })
       .catch((err) => {
-        setError(err instanceof Error ? err.message : t('chat.modelProfile.loadFailed'))
+        setCatalogError(err instanceof Error ? err.message : t('chat.modelProfile.loadFailed'))
       })
   }, [enabled, t])
 
@@ -118,7 +126,7 @@ function useModelProfileSelector({ agentKey, workspace, disabled = false }: Mode
 
   useEffect(() => {
     if (!enabled) return
-    const onSettingsUpdated = () => load()
+    const onSettingsUpdated = () => load(true)
     window.addEventListener('nova:settings-updated', onSettingsUpdated)
     return () => window.removeEventListener('nova:settings-updated', onSettingsUpdated)
   }, [enabled, load])
@@ -127,59 +135,34 @@ function useModelProfileSelector({ agentKey, workspace, disabled = false }: Mode
     () => buildModelProfileOptions(settings, t),
     [settings, t],
   )
-  const currentProfile = useMemo(
-    () => agentKey ? resolveCurrentProfileID(settings?.effective ?? {}, agentKey, options) : 'default',
-    [agentKey, options, settings?.effective],
-  )
+  const currentProfile = conversationConfig?.snapshot?.profile_id || 'default'
   const currentModelLabel = options.find((option) => option.id === currentProfile)?.modelLabel || currentProfile
-  const currentReasoningEffort = useMemo(
-    () => agentKey ? resolveCurrentReasoningEffort(settings?.effective ?? {}, agentKey) : '',
-    [agentKey, settings?.effective],
-  )
-  const currentReasoningEffortLabel = currentReasoningEffort
-    ? t(`chat.modelProfile.reasoning.${currentReasoningEffort}`)
+  const currentThinkingLevel = conversationConfig?.snapshot?.thinking_level || ''
+  const currentThinkingLevelLabel = currentThinkingLevel
+    ? t(`chat.modelProfile.thinking.${currentThinkingLevel}`)
     : ''
-  const currentSelectionLabel = [currentModelLabel, currentReasoningEffortLabel].filter(Boolean).join(' ')
+  const currentSelectionLabel = [currentModelLabel, currentThinkingLevelLabel].filter(Boolean).join(' ')
 
-  const saveAgentModelSelection = async (
-    selection: SavingSelection,
-    update: (latest: Settings) => Settings,
-  ) => {
-    if (!agentKey || disabled || savingRef.current) return
-    const previousSettings = settings
-    savingRef.current = true
+  const saveConversationSelection = async (selection: SavingSelection) => {
+    if (!conversationConfig || disabled || conversationConfig.saving) return
     setSavingSelection(selection)
-    setError(null)
     try {
-      const latest = await fetchSettings()
-      const saved = await updateUserSettings(update(latest.user), latest.revisions?.user)
-      setSettings(saved)
-      window.dispatchEvent(new CustomEvent('nova:settings-updated'))
-    } catch (err) {
-      setSettings(previousSettings)
-      const message = err instanceof Error ? err.message : t('chat.modelProfile.saveFailed')
-      console.warn('[model-profile-switcher] save failed', err)
-      setError(message)
+      await conversationConfig.patch(selection.kind === 'profile'
+        ? { profile_id: selection.value }
+        : { thinking_level: selection.value as ThinkingLevel })
     } finally {
-      savingRef.current = false
       setSavingSelection(null)
     }
   }
 
   const selectProfile = async (profileID: string) => {
-    if (!agentKey || profileID === currentProfile) return
-    await saveAgentModelSelection(
-      { kind: 'profile', value: profileID },
-      (latest) => withAgentModelSelection(latest, agentKey, { profileID }),
-    )
+    if (!conversationConfig || profileID === currentProfile) return
+    await saveConversationSelection({ kind: 'profile', value: profileID })
   }
 
-  const selectReasoningEffort = async (effort: ReasoningEffort) => {
-    if (!agentKey || effort === currentReasoningEffort) return
-    await saveAgentModelSelection(
-      { kind: 'effort', value: effort },
-      (latest) => withAgentModelSelection(latest, agentKey, { reasoningEffort: effort }),
-    )
+  const selectThinkingLevel = async (level: ThinkingLevel) => {
+    if (!conversationConfig || level === currentThinkingLevel) return
+    await saveConversationSelection({ kind: 'thinking', value: level })
   }
 
   return {
@@ -189,26 +172,32 @@ function useModelProfileSelector({ agentKey, workspace, disabled = false }: Mode
     options,
     currentProfile,
     currentModelLabel,
-    currentReasoningEffort,
-    currentReasoningEffortLabel,
+    currentThinkingLevel,
+    currentThinkingLevelLabel,
     currentSelectionLabel,
     savingSelection,
-    error,
+    error: catalogError || conversationConfig?.error || null,
+    saving: conversationConfig?.saving ?? false,
     selectProfile,
-    selectReasoningEffort,
+    selectThinkingLevel,
   }
 }
 
-function ModelProfileOptions({ selector }: { selector: ModelProfileSelector }) {
+function ModelProfileOptions({
+  selector,
+  onThinkingLevelSelect,
+}: {
+  selector: ModelProfileSelector
+  onThinkingLevelSelect: (level: ThinkingLevel) => void
+}) {
   const {
     t,
     options,
     currentProfile,
-    currentReasoningEffort,
+    currentThinkingLevel,
     savingSelection,
     error,
     selectProfile,
-    selectReasoningEffort,
   } = selector
   return (
     <>
@@ -235,26 +224,36 @@ function ModelProfileOptions({ selector }: { selector: ModelProfileSelector }) {
       ) : null}
       <DropdownMenuSeparator className="bg-[var(--nova-border-soft)]" />
       <div className="px-1.5 pb-1 pt-0.5 text-[10px] font-medium text-[var(--nova-text-faint)]">
-        {t('chat.modelProfile.reasoningSection')}
+        {t('chat.modelProfile.thinkingSection')}
       </div>
-      {REASONING_EFFORTS.map((effort) => {
-        const label = effort
-          ? t(`chat.modelProfile.reasoning.${effort}`)
-          : t('chat.modelProfile.reasoning.inherit')
-        return (
-          <DropdownMenuItem
-            key={effort || 'inherit'}
-            disabled={Boolean(savingSelection)}
-            onSelect={() => void selectReasoningEffort(effort)}
-            className="cursor-pointer py-1.5 text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
-          >
-            {savingSelection?.kind === 'effort' && savingSelection.value === effort
-              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              : <Check className={`h-3.5 w-3.5 ${effort === currentReasoningEffort ? 'opacity-100' : 'opacity-0'}`} />}
-            <span className="min-w-0 flex-1 truncate">{label}</span>
-          </DropdownMenuItem>
-        )
-      })}
+      <div
+        role="group"
+        aria-label={t('chat.modelProfile.thinkingSection')}
+        className="grid grid-cols-4 gap-1 px-1 pb-1"
+      >
+        {THINKING_LEVELS.map((level) => {
+          const selected = level === currentThinkingLevel
+          const label = t(`chat.modelProfile.thinking.${level}`)
+          return (
+            <button
+              key={level}
+              type="button"
+              disabled={Boolean(savingSelection)}
+              aria-pressed={selected}
+              onClick={() => onThinkingLevelSelect(level)}
+              className={`flex h-7 min-w-0 items-center justify-center rounded-md border px-1 text-[11px] transition-colors disabled:opacity-50 ${
+                selected
+                  ? 'border-[var(--nova-border)] bg-[var(--nova-active)] text-[var(--nova-text)]'
+                  : 'border-transparent text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
+              }`}
+            >
+              {savingSelection?.kind === 'thinking' && savingSelection.value === level
+                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                : <span className="truncate">{label}</span>}
+            </button>
+          )
+        })}
+      </div>
       {error ? (
         <>
           <DropdownMenuSeparator className="bg-[var(--nova-border-soft)]" />
@@ -284,48 +283,4 @@ export function buildModelProfileOptions(settings: LayeredSettings | null, t: (k
       ? t('chat.modelProfile.defaultProfile', { label })
       : t('chat.modelProfile.profile', { id, label }),
   }))
-}
-
-export function resolveCurrentProfileID(settings: Settings, agentKey: VisibleAgentKey, options: ModelProfileOption[]): string {
-  const merged = resolveAgentModelOverride(settings, agentKey)
-  const profileID = merged.profile_id || 'default'
-  return options.some((option) => option.id === profileID) ? profileID : 'default'
-}
-
-function resolveCurrentReasoningEffort(settings: Settings, agentKey: VisibleAgentKey): ReasoningEffort {
-  const value = resolveAgentModelOverride(settings, agentKey).reasoning_effort?.trim().toLowerCase() ?? ''
-  return REASONING_EFFORTS.includes(value as ReasoningEffort) ? value as ReasoningEffort : ''
-}
-
-function resolveAgentModelOverride(settings: Settings, agentKey: VisibleAgentKey): AgentModelOverride {
-  return mergeAgentModelOverride(settings.agent_models?.default ?? {}, settings.agent_models?.[agentKey] ?? {})
-}
-
-function mergeAgentModelOverride(parent: AgentModelOverride, child: AgentModelOverride): AgentModelOverride {
-  return {
-    profile_id: child.profile_id || parent.profile_id,
-    temperature: child.temperature ?? parent.temperature,
-    enable_thinking: child.enable_thinking ?? parent.enable_thinking,
-    reasoning_effort: child.reasoning_effort || parent.reasoning_effort,
-  }
-}
-
-function withAgentModelSelection(
-  settings: Settings,
-  agentKey: VisibleAgentKey,
-  selection: { profileID?: string; reasoningEffort?: ReasoningEffort },
-): Settings {
-  const nextModel = { ...(settings.agent_models?.[agentKey] ?? {}) }
-  if (selection.profileID !== undefined) nextModel.profile_id = selection.profileID
-  if (selection.reasoningEffort !== undefined) {
-    if (selection.reasoningEffort) nextModel.reasoning_effort = selection.reasoningEffort
-    else delete nextModel.reasoning_effort
-  }
-  return {
-    ...settings,
-    agent_models: {
-      ...(settings.agent_models ?? {}),
-      [agentKey]: nextModel,
-    },
-  }
 }

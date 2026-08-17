@@ -5,13 +5,14 @@ import (
 	"os"
 	"path/filepath"
 
-	"denova/internal/keyedlock"
+	"denova/internal/concurrency"
+	"denova/internal/localfs"
 )
 
 // storePathLocks coordinates all Store instances in this process. Stores are
 // deliberately short-lived in the app layer, so a mutex on Store itself would
 // not protect shared user-scope files from concurrent read-modify-write cycles.
-var storePathLocks = keyedlock.New(canonicalStorePath)
+var storePathLocks = concurrency.NewKeyedLock(canonicalStorePath)
 
 // canonicalStorePath resolves the longest existing prefix. This makes a real
 // workspace path and a symlink alias share one lock even before the JSON file
@@ -80,12 +81,7 @@ func durableWriteJSON(path string, data []byte, perm os.FileMode) (err error) {
 	if err = os.Rename(tmpPath, path); err != nil {
 		return err
 	}
-	directory, err := os.Open(dir)
-	if err != nil {
-		return fmt.Errorf("open automation store directory for sync: %w", err)
-	}
-	defer directory.Close()
-	if err := syncDirectory(directory); err != nil {
+	if err := localfs.SyncDirectory(dir); err != nil {
 		return fmt.Errorf("sync automation store directory: %w", err)
 	}
 	return nil

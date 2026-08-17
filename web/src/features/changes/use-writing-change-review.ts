@@ -12,7 +12,8 @@ interface WritingChangeReviewOptions {
   workspace: string
   /** Session or other conversation identity that scopes transient feedback. */
   contextKey: string
-  ideActive: boolean
+  /** A surface able to host the review is on screen; otherwise a pending request is dropped. */
+  hostActive: boolean
   selectedFile: string | null
   agentVisible: boolean
   onBeforeOpen: () => boolean | Promise<boolean>
@@ -20,7 +21,7 @@ interface WritingChangeReviewOptions {
 }
 
 /** Coordinates the non-persistent Review surface with durable review comments. */
-export function useWritingChangeReview({ workspace, contextKey, ideActive, selectedFile, agentVisible, onBeforeOpen, onShowAgent }: WritingChangeReviewOptions) {
+export function useWritingChangeReview({ workspace, contextKey, hostActive, selectedFile, agentVisible, onBeforeOpen, onShowAgent }: WritingChangeReviewOptions) {
   const [activeReviewRequest, setActiveReviewRequest] = useState<ChangeReviewScopeRequest | null>(null)
   const [reviewFeedback, setReviewFeedback] = useState<ReviewFeedbackSelection | null>(null)
   const [submittedReviewCommentIDs, setSubmittedReviewCommentIDs] = useState<ReadonlySet<string>>(() => new Set())
@@ -42,8 +43,8 @@ export function useWritingChangeReview({ workspace, contextKey, ideActive, selec
   }, [contextKey, workspace])
 
   useEffect(() => {
-    if (!ideActive) setActiveReviewRequest(null)
-  }, [ideActive])
+    if (!hostActive) setActiveReviewRequest(null)
+  }, [hostActive])
 
   const openChangeReview = useCallback(async (reviewThreadID: string, groupID = '') => {
     if (!reviewThreadID || !(await onBeforeOpen())) return false

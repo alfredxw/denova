@@ -1,2 +1,6 @@
 allowBuilds:
   msw: true
+# @monaco-editor/react 4.7 retains disposed editors when React reconnects
+# Activity/Suspense effects. Remove this once an upstream release resets them.
+patchedDependencies:
+  '@monaco-editor/react@4.7.0': patches/@monaco-editor__react@4.7.0.patch

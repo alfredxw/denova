@@ -1,6 +1,7 @@
 package interactive
 
 import (
+	interactivestate "denova/internal/interactive/state"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -19,7 +20,7 @@ func TestAppendTurnWithStatePersistsStateOpSchemaVersion(t *testing.T) {
 		BranchID:  "main",
 		User:      "检查门",
 		Narrative: "门上刻着新符号。",
-		Ops:       []StateOp{{Op: "set", Path: "scene.symbol", Value: "月亮"}},
+		Ops:       []interactivestate.Op{{Op: "set", Path: "scene.symbol", Value: "月亮"}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -33,8 +34,15 @@ func TestAppendTurnWithStatePersistsStateOpSchemaVersion(t *testing.T) {
 	if len(lines) != 2 {
 		t.Fatalf("jsonl line count = %d, want 2\n%s", len(lines), string(data))
 	}
+	records, err := decodeConversationTransactionRecords([]byte(lines[1]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 2 {
+		t.Fatalf("append transaction records = %d, want event + metadata", len(records))
+	}
 	var raw map[string]any
-	if err := json.Unmarshal([]byte(lines[1]), &raw); err != nil {
+	if err := json.Unmarshal(records[0], &raw); err != nil {
 		t.Fatal(err)
 	}
 	stateDelta, ok := raw["state_delta"].(map[string]any)
@@ -60,7 +68,7 @@ func TestAppendStateDeltaRejectsInvalidStateOp(t *testing.T) {
 	_, err = store.AppendStateDelta(story.ID, AppendStateDeltaRequest{
 		ParentID: turn.ID,
 		BranchID: "main",
-		Ops:      []StateOp{{Op: "teleport", Path: "scene.place", Value: "塔顶"}},
+		Ops:      []interactivestate.Op{{Op: "teleport", Path: "scene.place", Value: "塔顶"}},
 	})
 	if err == nil {
 		t.Fatal("expected invalid state op to be rejected")
@@ -104,58 +112,5 @@ func TestSnapshotRejectsCorruptStoryEventEnvelope(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "未知故事事件类型") {
 		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestAppendContextCompactionRemovalIsAcceptedByStorySchema(t *testing.T) {
-	store := NewStore(t.TempDir())
-	story, err := store.CreateStory(CreateStoryRequest{Title: "compaction", StoryTellerID: "classic"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	turn, err := store.AppendTurn(story.ID, AppendTurnRequest{BranchID: "main", User: "继续", Narrative: "剧情继续。"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	compaction, err := store.AppendContextCompaction(story.ID, "main", ContextCompactionEvent{
-		AgentKind:       "interactive",
-		Summary:         "较早剧情摘要",
-		SourceTurnCount: 1,
-		RetainedTurns:   1,
-		TokensBefore:    1200,
-		TokensAfter:     200,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	snapshot, err := store.Snapshot(story.ID, "main")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if snapshot.ContextCompaction == nil || snapshot.ContextCompaction.ID != compaction.ID {
-		t.Fatalf("snapshot should expose active compaction: %#v", snapshot.ContextCompaction)
-	}
-
-	removal, err := store.AppendContextCompactionRemoval(story.ID, "main", ContextCompactionRemovalEvent{
-		AgentKind:       "interactive",
-		CompactionID:    compaction.ID,
-		SourceTurnCount: len(snapshot.Turns),
-		Reason:          "user_removed",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	snapshot, err = store.Snapshot(story.ID, "main")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if snapshot.ContextCompaction != nil {
-		t.Fatalf("snapshot should clear active compaction after removal: %#v", snapshot.ContextCompaction)
-	}
-	if snapshot.ContextCompactionRemoval == nil || snapshot.ContextCompactionRemoval.ID != removal.ID {
-		t.Fatalf("snapshot should expose compaction removal: %#v", snapshot.ContextCompactionRemoval)
-	}
-	if snapshot.CurrentTurn == nil || snapshot.CurrentTurn.ID != turn.ID {
-		t.Fatalf("removal should keep latest turn as current turn: %#v", snapshot.CurrentTurn)
 	}
 }

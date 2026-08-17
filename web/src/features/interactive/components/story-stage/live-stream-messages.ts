@@ -1,57 +1,79 @@
-import { subAgentSessionKey } from '@/components/Chat/subagent-session'
-import type { ChatMessage } from '@/lib/api'
+import type { AgentMessageMetadata, AgentUIMessage } from '@/lib/agent-ui'
+import { agentMessageDisplayText, agentToolInputText, createAgentReasoningMessage, createAgentTextMessage, parseAgentToolInput } from '@/lib/agent-ui-message'
+import { readToolPresentation } from '@/lib/tool-presentation'
 
 export type BufferedLiveMessage = {
-  role: 'assistant' | 'thinking'
+  id?: string
+  role: 'assistant' | 'reasoning'
   content: string
-  metadata: Partial<ChatMessage>
+  metadata: AgentMessageMetadata
 }
 
-export function appendBufferedLiveMessage(messages: ChatMessage[], { role, content, metadata }: BufferedLiveMessage) {
+export function appendBufferedLiveMessage(messages: AgentUIMessage[], { id, role, content, metadata }: BufferedLiveMessage) {
   if (!content) return messages
   const last = messages[messages.length - 1]
-  if (role === 'assistant' && last?.role === 'assistant' && last.streaming && sameLiveMessageSource(last, metadata)) {
-    return [...messages.slice(0, -1), { ...last, streaming_target_content: `${last.streaming_target_content || last.content || ''}${content}` }]
-  }
-  if (role === 'thinking' && last?.role === 'thinking' && sameLiveMessageSource(last, metadata)) {
+  if (last && isStreamingMessageKind(last, role) && sameLiveMessageSource(last.metadata, metadata)) {
     return [
       ...messages.slice(0, -1),
-      { ...last, streaming_target_content: `${last.streaming_target_content || last.content || ''}${content}`, streaming: true },
+      {
+        ...last,
+        metadata: {
+          ...last.metadata,
+          streaming_target_content: `${agentMessageDisplayText(last)}${content}`,
+        },
+      },
     ]
   }
+  const nextMetadata = { ...metadata, streaming_target_content: content }
   if (role === 'assistant') {
-    return [...messages, { role, content: '', streaming_target_content: content, streaming: true, ...metadata }]
+    return [...messages, createAgentTextMessage({ id, role: 'assistant', text: '', state: 'streaming', metadata: nextMetadata })]
   }
-  return [...messages, { role, content: '', streaming_target_content: content, streaming: true, ...metadata }]
+  return [...messages, createAgentReasoningMessage({ id, text: '', state: 'streaming', metadata: nextMetadata })]
 }
 
-export function promoteMessageTargets(messages: ChatMessage[]) {
+export function promoteMessageTargets(messages: AgentUIMessage[]) {
   let changed = false
   const nextMessages = messages.map((message) => {
-    if (message.streaming_target_content === undefined) return message
+    if (message.metadata?.streaming_target_content === undefined) return message
     changed = true
     return promoteMessageTarget(message)
   })
   return changed ? nextMessages : messages
 }
 
-export function promoteMessageTarget(message: ChatMessage): ChatMessage {
-  if (message.streaming_target_content === undefined) return message
-  const { streaming_target_content, ...rest } = message
-  return { ...rest, content: streaming_target_content }
+export function promoteMessageTarget(message: AgentUIMessage): AgentUIMessage {
+  const target = message.metadata?.streaming_target_content
+  if (target === undefined) return message
+  const { streaming_target_content: _target, ...metadata } = message.metadata || {}
+  return {
+    ...message,
+    metadata,
+    parts: message.parts.map((part) => part.type === 'text' || part.type === 'reasoning'
+      ? { ...part, text: target }
+      : part),
+  } as AgentUIMessage
 }
 
-export function streamMetadataFromPayload(payload: Record<string, unknown>): Partial<ChatMessage> {
+export function streamMetadataFromPayload(payload: Record<string, unknown>): AgentMessageMetadata {
   const runPath = Array.isArray(payload.run_path) ? payload.run_path.filter((item): item is string => typeof item === 'string') : undefined
   return {
     run_id: typeof payload.run_id === 'string' ? payload.run_id : undefined,
+    display_segment_id: typeof payload.display_segment_id === 'string' ? payload.display_segment_id : undefined,
+    display_phase: readStreamDisplayPhase(payload.display_phase),
+    agent_kind: typeof payload.agent_kind === 'string' ? payload.agent_kind : undefined,
     agent_name: typeof payload.agent_name === 'string' ? payload.agent_name : undefined,
     root_agent_name: typeof payload.root_agent_name === 'string' ? payload.root_agent_name : undefined,
     run_path: runPath,
     subagent: readStreamBool(payload.subagent),
     subagent_session_id: typeof payload.subagent_session_id === 'string' ? payload.subagent_session_id : undefined,
     subagent_type: typeof payload.subagent_type === 'string' ? payload.subagent_type : undefined,
+		parent_call_id: typeof payload.parent_call_id === 'string' ? payload.parent_call_id : undefined,
+    tool_presentation: readToolPresentation(payload.tool_presentation),
   }
+}
+
+function readStreamDisplayPhase(value: unknown): AgentMessageMetadata['display_phase'] {
+  return value === 'candidate' || value === 'progress' || value === 'final' || value === 'partial' ? value : undefined
 }
 
 export function liveToolEventKeys(payload: Record<string, unknown>) {
@@ -85,7 +107,7 @@ export function bindLiveToolEventKeys(keys: string[], keyToMessageId: Record<str
 }
 
 export function findToolMessageIndexForPayload(
-  messages: ChatMessage[],
+  messages: AgentUIMessage[],
   payload: Record<string, unknown> & { id?: string; name?: string },
   keyToMessageId: Record<string, string>,
 ) {
@@ -97,34 +119,85 @@ export function findToolMessageIndexForPayload(
   return findToolMessageIndex(messages, undefined, payload.name)
 }
 
-function findToolMessageIndex(messages: ChatMessage[], id?: string, name?: string) {
+function findToolMessageIndex(messages: AgentUIMessage[], id?: string, name?: string) {
   if (id) {
     for (let i = messages.length - 1; i >= 0; i--) {
-      const message = messages[i]
-      if (message.role === 'tool_call' && message.id === id) return i
+      const tool = toolPart(messages[i])
+      if (tool && (tool.toolCallId === id || messages[i].id === id)) return i
     }
     return -1
   }
   if (name) {
     let match = -1
     for (let i = messages.length - 1; i >= 0; i--) {
-      const message = messages[i]
-      if (message.role !== 'tool_call' || message.name !== name) continue
+      const tool = toolPart(messages[i])
+      if (!tool || tool.toolName !== name) continue
       if (match >= 0) return -1
       match = i
     }
     return match
   }
   for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i].role === 'tool_call') return i
+    if (toolPart(messages[i])) return i
   }
   return -1
 }
 
-function sameLiveMessageSource(message: ChatMessage, metadata: Partial<ChatMessage>) {
-  if (Boolean(message.subagent) !== Boolean(metadata.subagent)) return false
-  if (message.subagent || metadata.subagent) return subAgentSessionKey(message) === subAgentSessionKey(metadata)
+export function updateToolMessageInputText(message: AgentUIMessage, inputText: string): AgentUIMessage {
+  return updateToolPart(message, (part) => ({ ...part, inputText }))
+}
+
+export function completeToolMessage(message: AgentUIMessage, result: string): AgentUIMessage {
+  return updateToolPart(message, (part) => {
+    const inputText = typeof part.inputText === 'string' ? part.inputText : ''
+    return {
+      ...part,
+      // Parsing belongs to the completed-state view, never the delta path.
+      input: parseAgentToolInput(inputText),
+      state: 'output-available',
+      output: result,
+    }
+  })
+}
+
+export function toolMessageInputText(message: AgentUIMessage) {
+  const part = toolPart(message)
+  return part ? (agentToolInputText(part as AgentUIMessage['parts'][number]) ?? '') : ''
+}
+
+function updateToolPart(message: AgentUIMessage, update: (part: Record<string, unknown>) => Record<string, unknown>): AgentUIMessage {
+  return {
+    ...message,
+    parts: message.parts.map((part) => part.type === 'dynamic-tool'
+      ? update(part as unknown as Record<string, unknown>) as AgentUIMessage['parts'][number]
+      : part),
+  }
+}
+
+function toolPart(message: AgentUIMessage): Record<string, unknown> | undefined {
+  return message.parts.find((part) => part.type === 'dynamic-tool') as unknown as Record<string, unknown> | undefined
+}
+
+function isStreamingMessageKind(message: AgentUIMessage, role: BufferedLiveMessage['role']) {
+  const type = role === 'assistant' ? 'text' : 'reasoning'
+  return message.parts.some((part) => part.type === type && 'state' in part && part.state === 'streaming')
+}
+
+function sameLiveMessageSource(message: AgentMessageMetadata | undefined, metadata: AgentMessageMetadata) {
+  if (Boolean(message?.subagent) !== Boolean(metadata.subagent)) return false
+  if (message?.subagent || metadata.subagent) return subAgentSessionKey(message) === subAgentSessionKey(metadata)
   return true
+}
+
+function subAgentSessionKey(metadata?: AgentMessageMetadata) {
+  if (!metadata?.subagent) return ''
+  if (metadata.subagent_session_id) return metadata.subagent_session_id
+  return [
+    metadata.run_id || '',
+    metadata.root_agent_name || '',
+    metadata.agent_name || '',
+    ...(metadata.run_path || []),
+  ].filter(Boolean).join('/')
 }
 
 function readStreamBool(value: unknown) {

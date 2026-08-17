@@ -1,5 +1,7 @@
-import type { ChapterIllustration, ChatMessage, InteractiveImage, InteractiveImageError, PublicRuleRoll, TokenUsageCall } from './api-client/types'
+import type { AgentAskInteraction, ChapterIllustration, ChatMessage, ChatPlanAction, InteractiveImage, InteractiveImageError, InteractiveImageStatus, PublicRuleRoll, TokenUsageCall } from './api-client/types'
 import type { AgentMessageMetadata, AgentUIMessage } from './agent-ui'
+import { agentToolInputText } from './agent-ui-message'
+import { readToolPresentation } from './tool-presentation'
 
 export type AgentMessageViewKind =
   | 'user'
@@ -7,10 +9,11 @@ export type AgentMessageViewKind =
   | 'reasoning'
   | 'tool'
   | 'tool-result'
+  | 'ask'
   | 'rule-roll'
   | 'context-compaction'
   | 'token-usage'
-  | 'plan-question'
+  | 'execution-summary'
   | 'proposed-plan'
   | 'system'
   | 'error'
@@ -41,8 +44,10 @@ export interface AgentMessageView {
   streaming: boolean
   toolName?: string
   input?: unknown
+  inputText?: string
   output?: unknown
   errorText?: string
+  approval?: AgentAskInteraction
 }
 
 export interface AgentTokenUsageRecord {
@@ -61,6 +66,15 @@ export interface AgentTokenUsageRecord {
   model_calls?: number
   generated_bytes?: number
   usage_calls?: TokenUsageCall[]
+}
+
+/** Display-only timing facts for one root Agent run. */
+export interface AgentExecutionTiming {
+  runID: string
+  startedAtMS?: number
+  finishedAtMS?: number
+  durationMS?: number
+  status?: string
 }
 
 // Agent message updates are immutable. Caching by message identity keeps
@@ -86,13 +100,134 @@ export function buildAgentMessageViews(messages: AgentUIMessage[]): AgentMessage
     messageViewsCache.set(message, messageViews)
     views.push(...messageViews)
   })
+  return projectToolApprovals(projectCurrentTodoPlans(projectInteractiveMediaResults(views)))
+}
+
+// Interactive image results have both the standard AI SDK tool result and a
+// richer durable data part. Prefer the data part when both describe the same
+// call; result-only histories still keep the standard tool result renderer.
+function projectInteractiveMediaResults(views: AgentMessageView[]): AgentMessageView[] {
+  const durableResults = new Set(
+    views
+      .filter((view) => view.kind === 'interactive-image')
+      .map(interactiveMediaResultKey),
+  )
+  if (durableResults.size === 0) return views
+  return views.filter((view) => !(
+    view.kind === 'tool' &&
+    view.metadata.tool_presentation?.result === 'interactive_media' &&
+    durableResults.has(interactiveMediaResultKey(view))
+  ))
+}
+
+function interactiveMediaResultKey(view: AgentMessageView) {
+  const runID = view.metadata.run_id?.trim()
+  return `${runID ? `run:${runID}` : `message:${view.messageId}`}:part:${view.partId}`
+}
+
+// Tool approvals are lifecycle state for an existing tool call, not a new
+// timeline item. Correlate by the durable tool_call_id and keep unmatched
+// records as trace diagnostics instead of letting them split the run fold.
+function projectToolApprovals(views: AgentMessageView[]): AgentMessageView[] {
+  const toolIndexes = new Map<string, number>()
+  views.forEach((view, index) => {
+    if (view.kind === 'tool' && view.partId) toolIndexes.set(view.partId, index)
+  })
+  const approvals = new Map<number, AgentAskInteraction>()
+  const matchedAskIndexes = new Set<number>()
+  views.forEach((view, index) => {
+    if (view.kind !== 'ask') return
+    const interaction = readAskInteraction(view.data)
+    if (interaction?.kind !== 'tool_approval') return
+    const toolIndex = toolIndexes.get(interaction.tool_call_id)
+    if (toolIndex === undefined) return
+    approvals.set(toolIndex, interaction)
+    matchedAskIndexes.add(index)
+  })
+  if (approvals.size === 0) return views
   return views
+    .map((view, index) => approvals.has(index) ? { ...view, approval: approvals.get(index) } : view)
+    .filter((_, index) => !matchedAskIndexes.has(index))
+}
+
+// todo is a run-local replacement state, not an append-only activity feed.
+// Keep only the latest pending/successful plan for each root/subagent run; a
+// successful empty plan clears the card while failed calls remain visible as
+// diagnostics without erasing the last committed plan.
+function projectCurrentTodoPlans(views: AgentMessageView[]): AgentMessageView[] {
+  const selected = new Map<string, number | null>()
+  const projected = new Set<number>()
+  views.forEach((view, index) => {
+    if (view.kind !== 'tool' || view.metadata.tool_presentation?.call !== 'todo' || view.status === 'error') return
+    projected.add(index)
+    const scope = todoPlanScope(view)
+    if (view.status === 'success' && todoPlanIsEmpty(view)) {
+      selected.set(scope, null)
+      return
+    }
+    selected.set(scope, index)
+  })
+  if (projected.size === 0) return views
+  const visible = new Set(Array.from(selected.values()).filter((index): index is number => index !== null))
+  return views.filter((_, index) => !projected.has(index) || visible.has(index))
+}
+
+function todoPlanScope(view: AgentMessageView) {
+  const subagent = agentSubAgentSessionKey(view)
+  return `${view.metadata.run_id || 'unscoped'}\u001f${subagent}`
+}
+
+function todoPlanIsEmpty(view: AgentMessageView) {
+  const output = parseStructuredValue(view.output)
+  if (output && output.schema === 'agent.todo.v1' && Array.isArray(output.items)) return output.items.length === 0
+  return false
+}
+
+function parseStructuredValue(value: unknown): Record<string, unknown> | null {
+  if (value && typeof value === 'object' && !Array.isArray(value)) return value as Record<string, unknown>
+  if (typeof value !== 'string' || !value.trim()) return null
+  try {
+    const parsed = JSON.parse(value)
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null
+  } catch {
+    return null
+  }
 }
 
 export function selectAgentTokenUsageRecords(messages: AgentUIMessage[]): AgentTokenUsageRecord[] {
   return buildAgentMessageViews(messages)
     .filter((view) => view.kind === 'token-usage')
     .map(agentTokenUsageRecordFromView)
+}
+
+/**
+ * Merges the live cycle edge and durable terminal summary for every run.
+ * The server duration is authoritative once present; old history without a
+ * summary intentionally remains untimed.
+ */
+export function selectAgentExecutionTimings(views: AgentMessageView[]): Map<string, AgentExecutionTiming> {
+  const timings = new Map<string, AgentExecutionTiming>()
+  for (const view of views) {
+    if (view.kind !== 'execution-summary') continue
+    const runID = readString(view.data.run_id) || view.metadata.run_id || readString(view.data.operation_id)
+    if (!runID) continue
+
+    const current = timings.get(runID) || { runID }
+    const startedAtMS = readTimestamp(view.data.run_started_at)
+    const finishedAtMS = readTimestamp(view.data.run_finished_at)
+    const durationMS = readNumber(view.data.duration_ms)
+    const status = readString(view.data.run_status) || readString(view.data.status)
+    timings.set(runID, {
+      ...current,
+      startedAtMS: startedAtMS !== undefined
+        ? Math.min(current.startedAtMS ?? startedAtMS, startedAtMS)
+        : current.startedAtMS,
+      finishedAtMS: finishedAtMS ?? current.finishedAtMS,
+      durationMS: durationMS !== undefined && durationMS >= 0 ? durationMS : current.durationMS,
+      status: status || current.status,
+    })
+  }
+  return timings
 }
 
 export function countCompletedAgentTurnSignals(messages: AgentUIMessage[]): number {
@@ -124,8 +259,25 @@ export function agentViewNavigationAnchor(view: AgentMessageView) {
 
 export function isAgentTraceView(view: AgentMessageView) {
   if (view.kind === 'interactive-image') return false
-  if (view.toolName === 'generate_interactive_image') return false
-  return view.kind === 'reasoning' || view.kind === 'tool' || view.kind === 'tool-result'
+  if (view.metadata.tool_presentation?.call === 'interactive_media' || view.metadata.tool_presentation?.result === 'interactive_media') return false
+  return view.kind === 'reasoning' || view.kind === 'tool' || view.kind === 'tool-result' ||
+    (view.kind === 'ask' && agentViewAskInteraction(view)?.kind === 'tool_approval')
+}
+
+export function isAgentRunMetadataView(view: AgentMessageView) {
+  return view.kind === 'token-usage' || view.kind === 'execution-summary'
+}
+
+export function isAgentTerminalExecutionSummaryView(view: AgentMessageView) {
+  return view.kind === 'execution-summary' && readTimestamp(view.data.run_finished_at) !== undefined && readNumber(view.data.duration_ms) !== undefined
+}
+
+export function agentViewAskInteraction(view: AgentMessageView) {
+  return view.approval || (view.kind === 'ask' ? readAskInteraction(view.data) : undefined)
+}
+
+export function agentViewAskID(view: AgentMessageView) {
+  return agentViewAskInteraction(view)?.id?.trim() || ''
 }
 
 export function isAgentSubAgentTimelineView(view: AgentMessageView) {
@@ -142,12 +294,101 @@ export function agentSubAgentSessionKey(view: AgentMessageView) {
   return ''
 }
 
+export interface AgentSubAgentTimelineGroup {
+  key: string
+  nextIndex: number
+  sessionKeys: string[]
+  startIndex: number
+  views: AgentMessageView[]
+}
+
+/**
+ * Projects one delegated invocation into one card while preserving its first
+ * timeline position. Older sessions may have a new numeric session ID after
+ * every child tool loop; matching ancestry keeps those adjacent legacy slices
+ * together without crossing a root-Agent event or a different SubAgent path.
+ */
+export function buildAgentSubAgentTimelineGroups(views: AgentMessageView[]): AgentSubAgentTimelineGroup[] {
+  const groups: AgentSubAgentTimelineGroup[] = []
+  for (let startIndex = 0; startIndex < views.length; startIndex += 1) {
+    const first = views[startIndex]
+    if (!isAgentSubAgentTimelineView(first)) continue
+
+    const groupedViews: AgentMessageView[] = []
+    const sessionKeys = new Set<string>()
+    let nextIndex = startIndex
+    while (nextIndex < views.length) {
+      const candidate = views[nextIndex]
+      if (isAgentRunMetadataView(candidate) && candidate.metadata.run_id === first.metadata.run_id) {
+        nextIndex += 1
+        continue
+      }
+      if (isAgentSubAgentTimelineView(candidate) && sameSubAgentTimelineGroup(first, candidate)) {
+        groupedViews.push(candidate)
+        sessionKeys.add(agentSubAgentSessionKey(candidate))
+        nextIndex += 1
+        continue
+      }
+      // Historical approval records did not carry SubAgent metadata. Once
+      // resolved, a tool-call link still proves that the interaction belongs
+      // to this delegated timeline and must not split its card.
+      if (isAgentSubAgentTimelineBridgeView(candidate, groupedViews)) {
+        groupedViews.push(candidate)
+        nextIndex += 1
+        continue
+      }
+      break
+    }
+    groups.push({
+      key: agentSubAgentSessionKey(first),
+      nextIndex,
+      sessionKeys: Array.from(sessionKeys),
+      startIndex,
+      views: groupedViews,
+    })
+    startIndex = nextIndex - 1
+  }
+  return groups
+}
+
+export function isAgentSubAgentTimelineBridgeView(candidate: AgentMessageView, groupedViews: AgentMessageView[]) {
+  if (candidate.kind !== 'ask' || candidate.streaming) return false
+  const toolCallID = readString(candidate.data.tool_call_id)
+  if (!toolCallID) return false
+  return groupedViews.some(view => isAgentSubAgentTimelineView(view) && view.kind === 'tool' && view.partId === toolCallID)
+}
+
+function sameSubAgentTimelineGroup(first: AgentMessageView, candidate: AgentMessageView) {
+  const firstSession = agentSubAgentSessionKey(first)
+  if (firstSession && firstSession === agentSubAgentSessionKey(candidate)) return true
+  const firstSource = legacySubAgentSourceKey(first)
+  return Boolean(firstSource && firstSource === legacySubAgentSourceKey(candidate))
+}
+
+function legacySubAgentSourceKey(view: AgentMessageView) {
+  const metadata = view.metadata
+  const runID = metadata.run_id?.trim() || ''
+  const agentName = metadata.agent_name?.trim() || metadata.subagent_type?.trim() || ''
+  if (!runID || !agentName) return ''
+  const path = metadata.run_path?.map(step => step.trim()).filter(Boolean).join('\u0000') || ''
+  return [runID, metadata.root_agent_name?.trim() || '', agentName, path].join('\u001f')
+}
+
 export function agentViewStableKey(view: AgentMessageView) {
+  const runID = view.metadata.run_id?.trim()
+  const segmentID = view.metadata.display_segment_id?.trim()
+  if (runID && segmentID) return `${view.kind}:run:${runID}:segment:${segmentID}`
+  if (runID && (view.kind === 'tool' || view.kind === 'tool-result') && view.partId) {
+    const scope = agentSubAgentSessionKey(view) || 'root'
+    return `${view.kind}:run:${runID}:scope:${scope}:part:${view.partId}`
+  }
   return `${view.kind}:${view.messageId}:${view.partId}:${view.partIndex}`
 }
 
 export function isPlanProtocolToolName(name: string) {
-  return name === 'plan_questions' || name === 'plan_question' || name === 'proposed_plan'
+  // The provider may emit a tool call beside the persisted plan card. Rendering
+  // both would duplicate the same proposal in the timeline.
+  return name === 'proposed_plan'
 }
 
 export function agentViewToRenderMessage(view: AgentMessageView, options: { forceDone?: boolean } = {}): ChatMessage | null {
@@ -165,7 +406,7 @@ export function agentViewToRenderMessage(view: AgentMessageView, options: { forc
       return { id, role: 'thinking', content: view.content, streaming, ...meta }
     case 'tool': {
       const raw = view.part as Record<string, any>
-      const args = stringifyInput(view.input)
+      const args = view.streaming ? (view.inputText ?? '') : (view.inputText ?? stringifyInput(view.input))
       const result = raw.state === 'output-error' ? view.errorText : stringifyOutput(view.output)
       return {
         id,
@@ -175,11 +416,22 @@ export function agentViewToRenderMessage(view: AgentMessageView, options: { forc
         args,
         status,
         result,
+        ask: view.approval,
         illustration: readChapterIllustration(objectData(raw.toolMetadata).illustration),
         streaming,
         ...meta,
       }
     }
+    case 'ask':
+      return {
+        id,
+        role: 'ask',
+        content: view.content,
+        status,
+        streaming,
+        ask: readAskInteraction(data),
+        ...meta,
+      }
     case 'tool-result':
       return {
         id,
@@ -198,8 +450,8 @@ export function agentViewToRenderMessage(view: AgentMessageView, options: { forc
       return { id, role: 'context_compaction', content: view.content, status, streaming, ...contextFields(data), ...meta }
     case 'token-usage':
       return { id, role: 'token_usage', content: view.content, ...tokenUsageFields(data), ...meta }
-    case 'plan-question':
-      return { id, role: 'plan_question', content: view.content, status, streaming, thinking_preview: readString(data.thinking_preview), plan_action: readPlanAction(data.plan_action), ...meta }
+    case 'execution-summary':
+      return null
     case 'proposed-plan':
       return { id, role: 'proposed_plan', content: view.content, status, streaming, thinking_preview: readString(data.thinking_preview), plan_action: readPlanAction(data.plan_action), ...meta }
     case 'system':
@@ -233,7 +485,9 @@ export function agentViewToRenderMessage(view: AgentMessageView, options: { forc
 function buildAgentMessageView(message: AgentUIMessage, part: AgentUIMessage['parts'][number], partIndex: number): AgentMessageView | null {
   const raw = part as Record<string, any>
   const type = readString(raw.type)
-  const metadata = mergeMetadata(message.metadata, raw.providerMetadata, raw.callProviderMetadata)
+  // AI SDK data chunks cannot carry providerMetadata. Their display metadata
+  // remains inside data, while text/reasoning/tool parts use provider fields.
+  const metadata = mergeMetadata(message.metadata, raw.data, raw.providerMetadata, raw.callProviderMetadata, raw.resultProviderMetadata)
   const partId = readString(raw.id) || readString(raw.toolCallId) || `${message.id}:${partIndex}`
   const ref = { messageId: message.id, partId, partIndex, type }
   const base = {
@@ -274,6 +528,9 @@ function buildAgentMessageView(message: AgentUIMessage, part: AgentUIMessage['pa
 
   if (type === 'dynamic-tool' || type.startsWith('tool-')) {
     const toolName = type === 'dynamic-tool' ? firstNonEmpty(readString(raw.toolName), 'unknown_tool') : type.replace(/^tool-/, '')
+    // ask has a dedicated durable data part emitted only after pending state is
+    // committed. Hiding the speculative model tool frame avoids duplicate UI.
+    if (metadata.tool_presentation?.call === 'interaction') return null
     const status = toolStatus(readString(raw.state))
     return {
       ...base,
@@ -283,6 +540,7 @@ function buildAgentMessageView(message: AgentUIMessage, part: AgentUIMessage['pa
       streaming: raw.state === 'input-streaming',
       toolName,
       input: raw.input,
+      inputText: agentToolInputText(part),
       output: raw.output,
       errorText: readString(raw.errorText),
     }
@@ -296,12 +554,14 @@ function buildAgentMessageView(message: AgentUIMessage, part: AgentUIMessage['pa
   switch (type) {
     case 'data-agent-clear':
       return { ...base, kind: 'clear', data, content: '', streaming: false }
+    case 'data-agent-ask':
+      return { ...base, kind: 'ask', data, content: firstAskQuestion(data), status, streaming: readString(data.status) === 'pending' }
     case 'data-agent-context-compaction':
       return { ...base, kind: 'context-compaction', data, content, status, streaming }
     case 'data-agent-token-usage':
       return { ...base, kind: 'token-usage', data, content, streaming: false }
-    case 'data-agent-plan-question':
-      return { ...base, kind: 'plan-question', data, content, status, streaming }
+    case 'data-agent-execution-summary':
+      return { ...base, kind: 'execution-summary', data, content: '', streaming: false }
     case 'data-agent-proposed-plan':
       return { ...base, kind: 'proposed-plan', data, content, status, streaming }
     case 'data-agent-system':
@@ -332,10 +592,28 @@ function buildAgentMessageView(message: AgentUIMessage, part: AgentUIMessage['pa
         toolName: readString(data.name),
         output: data.result ?? data.content,
       }
+    case 'data-agent-activity': {
+      if (readString(data.event) === 'agent_cycle_started' && readString(data.run_id) && readString(data.run_started_at)) {
+        return { ...base, kind: 'execution-summary', data, content: '', streaming: false }
+      }
+      // Lifecycle activity payloads may carry the accepted user input in
+      // `message` (for example agent_cycle_started). Only explicit `content`
+      // is presentation text; treating `message` as display content echoes the
+      // user's bubble back as a system message.
+      const activityContent = readString(data.content)
+      if (!activityContent) return null
+      return { ...base, kind: 'activity', data, content: activityContent, status, streaming }
+    }
     default:
       if (!content) return null
       return { ...base, kind: 'activity', data, content, streaming }
   }
+}
+
+function readTimestamp(value: unknown): number | undefined {
+  if (typeof value !== 'string' || !value.trim()) return undefined
+  const timestamp = Date.parse(value)
+  return Number.isFinite(timestamp) ? timestamp : undefined
 }
 
 function metadataToChatFields(view: AgentMessageView): Partial<ChatMessage> {
@@ -350,16 +628,14 @@ function metadataToChatFields(view: AgentMessageView): Partial<ChatMessage> {
     subagent: metadata.subagent,
     subagent_session_id: metadata.subagent_session_id,
     subagent_type: metadata.subagent_type,
-    sse_hidden_fields: metadata.sse_hidden_fields,
-    sse_hidden_reason: metadata.sse_hidden_reason,
-    sse_display_notice: metadata.sse_display_notice,
-    sse_generated_chars: metadata.sse_generated_chars,
+    parent_call_id: metadata.parent_call_id,
     streaming_target_content: metadata.streaming_target_content,
     turn_id: metadata.turn_id,
     navigation_turn_id: metadata.navigation_turn_id,
     turn_versions: metadata.turn_versions,
     turn_version_index: metadata.turn_version_index,
     user_references: metadata.user_references,
+    tool_presentation: metadata.tool_presentation,
   }
 }
 
@@ -529,14 +805,14 @@ function readRuleRoll(value: unknown): PublicRuleRoll | undefined {
   }
 }
 
-function readInteractiveImageStatus(data: Record<string, unknown>): ChatMessage['interactive_image_status'] {
+function readInteractiveImageStatus(data: Record<string, unknown>): InteractiveImageStatus | undefined {
   const status = readString(data.interactive_image_status) || readString(data.status)
   return status === 'running' || status === 'success' || status === 'error' ? status : undefined
 }
 
-function readPlanAction(value: unknown): ChatMessage['plan_action'] {
+function readPlanAction(value: unknown): ChatPlanAction | undefined {
   const action = readString(value)
-  return action === 'answered' || action === 'approved' || action === 'continue' || action === 'exited' ? action : undefined
+  return action === 'approved' || action === 'continue' || action === 'exited' ? action : undefined
 }
 
 function agentTokenUsageRecordFromView(view: AgentMessageView): AgentTokenUsageRecord {
@@ -564,7 +840,9 @@ function mergeMetadata(...values: unknown[]): AgentMessageMetadata {
   const result: AgentMessageMetadata = {}
   for (const value of values) {
     const metadata = providerAgentMetadata(value)
-    Object.assign(result, metadata)
+    for (const [key, candidate] of Object.entries(metadata)) {
+      if (candidate !== undefined) Object.assign(result, { [key]: candidate })
+    }
   }
   return result
 }
@@ -575,9 +853,11 @@ function providerAgentMetadata(value: unknown): AgentMessageMetadata {
   const agent = raw.agent && typeof raw.agent === 'object' && !Array.isArray(raw.agent)
     ? raw.agent as Record<string, unknown>
     : raw
-  return {
-    created_at: readString(agent.created_at) || undefined,
-    display_role: readString(agent.display_role) as AgentMessageMetadata['display_role'] || undefined,
+	return {
+		created_at: readString(agent.created_at) || undefined,
+		display_role: readString(agent.display_role) as AgentMessageMetadata['display_role'] || undefined,
+		display_phase: readDisplayPhase(agent.display_phase),
+    display_segment_id: readString(agent.display_segment_id) || undefined,
     history_type: readString(agent.history_type) || undefined,
     run_id: readString(agent.run_id) || undefined,
     agent_kind: readString(agent.agent_kind) || undefined,
@@ -587,10 +867,7 @@ function providerAgentMetadata(value: unknown): AgentMessageMetadata {
     subagent: agent.subagent === true || undefined,
     subagent_session_id: readString(agent.subagent_session_id) || undefined,
     subagent_type: readString(agent.subagent_type) || undefined,
-    sse_hidden_fields: readStringArray(agent.sse_hidden_fields),
-    sse_hidden_reason: readString(agent.sse_hidden_reason) || undefined,
-    sse_display_notice: readString(agent.sse_display_notice) || undefined,
-    sse_generated_chars: readNumber(agent.sse_generated_chars),
+    parent_call_id: readString(agent.parent_call_id) || undefined,
     display_hidden: agent.display_hidden === true || undefined,
     streaming_target_content: readString(agent.streaming_target_content) || undefined,
     turn_id: readString(agent.turn_id) || undefined,
@@ -598,7 +875,12 @@ function providerAgentMetadata(value: unknown): AgentMessageMetadata {
     turn_versions: readTurnVersions(agent.turn_versions),
     turn_version_index: readNumber(agent.turn_version_index),
     user_references: readUserMessageReferences(agent.user_references),
+    tool_presentation: readToolPresentation(agent.tool_presentation),
   }
+}
+
+function readDisplayPhase(value: unknown): AgentMessageMetadata['display_phase'] {
+	return value === 'candidate' || value === 'progress' || value === 'final' || value === 'partial' ? value : undefined
 }
 
 function readUserMessageReferences(value: unknown): AgentMessageMetadata['user_references'] {
@@ -661,6 +943,22 @@ function readTurnVersions(value: unknown): AgentMessageMetadata['turn_versions']
     })
     .filter((item): item is NonNullable<typeof item> => Boolean(item))
   return versions.length ? versions : undefined
+}
+
+function firstAskQuestion(data: Record<string, unknown>) {
+  const questions = Array.isArray(data.questions) ? data.questions : []
+  return readString(objectData(questions[0]).question)
+}
+
+function readAskInteraction(data: Record<string, unknown>): AgentAskInteraction | undefined {
+  const id = readString(data.id)
+  const toolCallID = readString(data.tool_call_id)
+  const agentKind = readString(data.agent_kind)
+  const status = readString(data.status)
+  if (!id || !toolCallID || !agentKind || !['pending', 'answered', 'cancelled'].includes(status) || !Array.isArray(data.questions)) {
+    return undefined
+  }
+  return data as unknown as AgentAskInteraction
 }
 
 function toolStatus(state: string | undefined): AgentMessageView['status'] {

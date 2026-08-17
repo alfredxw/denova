@@ -4,25 +4,27 @@ import { useTranslation } from 'react-i18next'
 import { ConfigManagerChat } from '@/components/Chat/ConfigManagerChat'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { EmptyState } from '@/components/common/EmptyState'
+import { LoadingState } from '@/components/common/LoadingState'
 import { AutosaveStatusIndicator } from '@/components/forms/autosave-status'
 import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
 import { FeaturePageShell } from '@/components/layout/feature-page-shell'
 import { MobilePaneTrigger } from '@/components/layout/mobile-pane-trigger'
+import { SidebarVisibilityToggle } from '@/components/layout/sidebar-visibility-toggle'
 import { Button } from '@/components/ui/button'
 import { useResourceAutosave } from '@/hooks/use-resource-autosave'
-import { deleteSkillDocument, getSkillDocument, getSkillFileDocument, getSkills, saveSkillDocument, saveSkillFileDocument } from '@/lib/api'
+import { deleteSkillDocument, getSkillDocument, getSkillFileDocument, getSkills, saveSkillDocument, saveSkillFileDocument, skillCatalogTargetKey } from '@/lib/api'
 import { isRevisionConflict, saveWithRevisionRecovery } from '@/lib/revision-conflict'
 import { rebaseTextWithRecovery } from '@/lib/autosave/rebase-with-recovery'
-import type { SkillDocument, SkillFileDocument, SkillInstallResult, SkillScope, SkillSnapshot, SkillSummary } from '@/lib/api'
+import type { SkillCatalogTarget, SkillDocument, SkillFileDocument, SkillInstallResult, SkillScope, SkillSnapshot, SkillSummary } from '@/lib/api'
 import { SkillConfigPanel, type SkillConfigPanelHandle } from './SkillConfigPanel'
 import { SkillCreatePanel } from './SkillCreatePanel'
 import { SkillEditor } from './SkillEditor'
 import { SkillInstallPanel } from './SkillInstallPanel'
 import { SkillListPanel } from './SkillListPanel'
-import { keyOf, preferredBuiltinOverrideScope, scopeLabel, skillEntryFile, skillFilePath, type SkillContentViewMode, type SkillsMode } from './skill-utils'
+import { keyOf, preferredBuiltinOverrideScope, scopeLabel, skillEntryFile, skillFilePath, skillHasSupportingFiles, type SkillContentViewMode, type SkillsMode } from './skill-utils'
 
 interface SkillsViewProps {
-  workspace: string
+  target: SkillCatalogTarget
   onClose?: () => void
 }
 
@@ -68,12 +70,20 @@ function skillContentSignature(value: Partial<SkillContentAutosaveDraft>) {
 }
 
 function skillSummaryOf(value: SkillSummary): SkillSummary {
-  const { name, description, context, agent, model, scope, path, editable, active, updated_at } = value
-  return { name, description, context, agent, model, scope, path, editable, active, updated_at }
+  const { name, description, category, capabilities, context, agent, model, scope, path, editable, active, updated_at } = value
+  return { name, description, category, capabilities, context, agent, model, scope, path, editable, active, updated_at }
 }
 
-export function SkillsView({ workspace, onClose }: SkillsViewProps) {
+export function SkillsView({ target, onClose }: SkillsViewProps) {
   const { t } = useTranslation()
+  const targetKind = target.kind
+  const projectId = target.kind === 'project' ? target.projectId : ''
+  const catalogTarget = useMemo<SkillCatalogTarget>(
+    () => targetKind === 'project' ? { kind: 'project', projectId } : { kind: 'global' },
+    [projectId, targetKind],
+  )
+  const targetKey = skillCatalogTargetKey(catalogTarget)
+  const agentAvailable = targetKind === 'project'
   const [snapshot, setSnapshot] = useState<SkillSnapshot>({ scopes: [], skills: [] })
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
   const [document, setDocument] = useState<SkillDocument | null>(null)
@@ -84,20 +94,25 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
   const [contentViewMode, setContentViewMode] = useState<SkillContentViewMode>('preview')
   const [fileTreeOpen, setFileTreeOpen] = useState(false)
   const [fileLoading, setFileLoading] = useState(false)
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [mode, setMode] = useState<SkillsMode>('editor')
   const [agentOpen, setAgentOpen] = useState(false)
+  const [sidebarVisible, setSidebarVisible] = useState(true)
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null)
   const [documentReloadVersion, setDocumentReloadVersion] = useState(0)
   const [eventSource] = useState(() => `skills-view-${nextSkillsViewSourceID++}`)
   const configPanelRef = useRef<SkillConfigPanelHandle | null>(null)
+  const fileTreePreferences = useRef(new Map<string, boolean>())
   const notifySkillsUpdated = useCallback(() => {
-    window.dispatchEvent(new CustomEvent('nova:skills-updated', { detail: { source: eventSource } }))
-  }, [eventSource])
+    window.dispatchEvent(new CustomEvent('nova:skills-updated', { detail: { source: eventSource, targetKey } }))
+  }, [eventSource, targetKey])
 
   const selectedSkill = useMemo(() => snapshot.skills.find((skill) => keyOf(skill) === selectedKey) ?? null, [selectedKey, snapshot.skills])
+  const selectedDocumentPending = Boolean(selectedSkill && (
+    !document || document.scope !== selectedSkill.scope || document.name !== selectedSkill.name
+  ))
   const selectedSkillScope = selectedSkill?.scope
   const selectedSkillName = selectedSkill?.name
   const editingEntryFile = selectedFilePath === skillEntryFile
@@ -125,25 +140,25 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
   const contentAutosave = useResourceAutosave<SkillContentAutosaveDraft, SkillContentAutosaveDraft, SkillContentAutosaveSaved>({
     draft: autosaveDraft,
     active: Boolean(autosaveDraft && activeEditable && !fileLoading),
-    scopeKey: `${workspace}\u0000${autosaveDraft?.id || selectedKey || ''}`,
+    scopeKey: `${targetKey}\u0000${autosaveDraft?.id || selectedKey || ''}`,
     makePayload: (value) => value,
     baselineFromSaved: (saved) => saved,
     signature: skillContentSignature,
     save: async (_id, payload, baseRevision) => {
       if (payload.path === skillEntryFile) {
-        const saved = await saveSkillDocument(payload.scope, payload.name, payload.content, undefined, baseRevision)
+        const saved = await saveSkillDocument(catalogTarget, payload.scope, payload.name, payload.content, undefined, baseRevision)
         return { ...payload, updated_at: saved.revision, document: saved }
       }
-      const saved = await saveSkillFileDocument(payload.scope, payload.name, payload.path, payload.content, baseRevision)
+      const saved = await saveSkillFileDocument(catalogTarget, payload.scope, payload.name, payload.path, payload.content, baseRevision)
       return { ...payload, updated_at: saved.revision, fileDocument: saved }
     },
     resolveConflict: async ({ error: saveError, baseline, draft: submitted }) => {
       if (!isRevisionConflict(saveError)) return null
       if (submitted.path === skillEntryFile) {
-        const latest = await getSkillDocument(submitted.scope, submitted.name)
+        const latest = await getSkillDocument(catalogTarget, submitted.scope, submitted.name)
         const content = await rebaseTextWithRecovery({
           resource: 'skill_document',
-          scope: `${workspace}:${submitted.scope}`,
+          scope: `${targetKey}:${submitted.scope}`,
           id: submitted.id,
           baseline: { revision: baseline?.updated_at, value: baseline?.content ?? latest.content },
           local: { revision: baseline?.updated_at, value: submitted.content },
@@ -158,10 +173,10 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
           baseRevision: latest.revision,
         }
       }
-      const latest = await getSkillFileDocument(submitted.scope, submitted.name, submitted.path)
+      const latest = await getSkillFileDocument(catalogTarget, submitted.scope, submitted.name, submitted.path)
       const content = await rebaseTextWithRecovery({
         resource: 'skill_file',
-        scope: `${workspace}:${submitted.scope}`,
+        scope: `${targetKey}:${submitted.scope}`,
         id: submitted.id,
         baseline: { revision: baseline?.updated_at, value: baseline?.content ?? latest.content },
         local: { revision: baseline?.updated_at, value: submitted.content },
@@ -235,7 +250,7 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
     setLoading(true)
     setError(null)
     try {
-      const data = await getSkills()
+      const data = await getSkills(catalogTarget)
       setSnapshot(data)
       setSelectedKey((current) => {
         if (current && data.skills.some((skill) => keyOf(skill) === current)) return current
@@ -249,9 +264,9 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [catalogTarget])
 
-  useEffect(() => { void load() }, [load, workspace])
+  useEffect(() => { void load() }, [load])
 
   useEffect(() => {
     let cancelled = false
@@ -261,10 +276,11 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
       setSelectedFilePath(skillEntryFile)
       setFileDocument(null)
       setFileDraft('')
+      setFileTreeOpen(false)
       return () => { cancelled = true }
     }
     setError(null)
-    getSkillDocument(selectedSkillScope, selectedSkillName)
+    getSkillDocument(catalogTarget, selectedSkillScope, selectedSkillName)
       .then((doc) => {
         if (cancelled) return
         setDocument(doc)
@@ -273,7 +289,7 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
         setFileDocument(null)
         setFileDraft('')
         setContentViewMode('preview')
-        setFileTreeOpen(false)
+        setFileTreeOpen(fileTreePreferences.current.get(`${targetKey}\u0000${keyOf(doc)}`) ?? skillHasSupportingFiles(doc))
       })
       .catch((e) => {
         if (!cancelled) {
@@ -282,11 +298,12 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
           setSelectedFilePath(skillEntryFile)
           setFileDocument(null)
           setFileDraft('')
+          setFileTreeOpen(false)
           setError((e as Error).message)
         }
       })
     return () => { cancelled = true }
-  }, [documentReloadVersion, selectedSkillName, selectedSkillScope, workspace])
+  }, [catalogTarget, documentReloadVersion, selectedSkillName, selectedSkillScope, targetKey])
 
   const resetFileState = () => {
     setSelectedFilePath(skillEntryFile)
@@ -303,7 +320,7 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
     }
     setFileLoading(true)
     try {
-      const doc = await getSkillFileDocument(document.scope, document.name, path)
+      const doc = await getSkillFileDocument(catalogTarget, document.scope, document.name, path)
       setFileDocument(doc)
       setFileDraft(doc.content)
       setSelectedFilePath(path)
@@ -318,6 +335,14 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
     if (!document || path === selectedFilePath) return
     if (!await flushContentAutosave()) return
     await switchSkillFile(path)
+  }
+
+  const toggleFileTree = () => {
+    setFileTreeOpen((current) => {
+      const next = !current
+      if (document) fileTreePreferences.current.set(`${targetKey}\u0000${keyOf(document)}`, next)
+      return next
+    })
   }
 
   const onCreateBuiltinOverride = async () => {
@@ -342,6 +367,7 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
         draft,
         revision: document.revision,
         save: (content, revision) => saveSkillDocument(
+          catalogTarget,
           document.scope,
           document.name,
           content,
@@ -349,14 +375,14 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
           revision,
         ),
         loadLatest: async () => {
-          const latest = await getSkillDocument(document.scope, document.name)
+          const latest = await getSkillDocument(catalogTarget, document.scope, document.name)
           latestRevision = latest.revision
           return { value: latest.content, revision: latest.revision }
         },
         rebase: async (baseline, local, external) => {
           const content = await rebaseTextWithRecovery({
             resource: 'skill_document',
-            scope: `${workspace}:${document.scope}`,
+            scope: `${targetKey}:${document.scope}`,
             id: `${document.scope}:${document.name}:override`,
             baseline: { revision: recoveryBaselineRevision, value: baseline },
             local: { revision: recoveryBaselineRevision, value: local },
@@ -392,13 +418,13 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
     setConfirmRequest({ kind: 'restore', name: document.name, scope: scopeLabel(document.scope, t) })
   }
 
-  /** 删除当前文档并刷新列表；失败时抛错由 ConfirmDialog 内联展示。返回刷新后的快照 */
+  /** Deletes the selected document and returns the refreshed catalog snapshot. */
   const deleteCurrentDocument = async (): Promise<SkillSnapshot | null> => {
     if (!document?.editable) return null
     setSaving(true)
     setError(null)
     try {
-      await deleteSkillDocument(document.scope, document.name)
+      await deleteSkillDocument(catalogTarget, document.scope, document.name)
       setDocument(null)
       setDraft('')
       resetFileState()
@@ -480,13 +506,15 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
 
   useEffect(() => {
     const onSkillsUpdated = (event: Event) => {
-      const source = (event as CustomEvent<{ source?: string }>).detail?.source
+      const detail = (event as CustomEvent<{ source?: string; targetKey?: string }>).detail
+      const source = detail?.source
       if (source === eventSource) return
+      if (detail?.targetKey && detail.targetKey !== targetKey && detail.targetKey !== 'global') return
       void refreshSkills()
     }
     window.addEventListener('nova:skills-updated', onSkillsUpdated)
     return () => window.removeEventListener('nova:skills-updated', onSkillsUpdated)
-  }, [eventSource, refreshSkills])
+  }, [eventSource, refreshSkills, targetKey])
 
   const openMode = async (nextMode: SkillsMode) => {
     if (!await flushActiveAutosave()) return
@@ -520,10 +548,10 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
     }
   }, [builtinOverrideScope, defaultWritableScope, document?.name, document?.scope, mode, snapshot.scopes])
 
-  const agentPanel = agentOpen ? (
+  const agentPanel = agentAvailable && agentOpen ? (
     <div className="h-full min-h-0 bg-[var(--nova-surface)]">
       <ConfigManagerChat
-        workspace={workspace}
+        projectId={projectId}
         origin="skills"
         resourceId={agentContext.skill_name}
         context={agentContext}
@@ -539,6 +567,12 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
     <FeaturePageShell
       icon={Sparkles}
       title={t('skills.title')}
+      leadingContent={(
+        <SidebarVisibilityToggle
+          visible={sidebarVisible}
+          onToggle={() => setSidebarVisible((visible) => !visible)}
+        />
+      )}
       subtitle={t('skills.subtitle')}
       error={error}
       errorTitle={t('skills.error')}
@@ -579,6 +613,7 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
               snapshot={snapshot}
               selectedKey={selectedKey}
               loading={loading}
+              agentAvailable={agentAvailable}
               agentOpen={agentOpen}
               mode={mode}
               onToggleAgent={() => setAgentOpen((value) => !value)}
@@ -587,7 +622,8 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
               onSelect={(key) => void selectSkill(key)}
             />
           ),
-          desktopClassName: 'w-80 shrink-0 min-h-0 border-r border-[var(--nova-border)]',
+          desktopClassName: 'min-h-0 border-r border-[var(--nova-border)]',
+          desktopVisible: sidebarVisible,
           mobileClassName: 'w-[min(90vw,380px)]',
         }}
         right={
@@ -604,7 +640,13 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
         }
         className="flex-1 text-xs"
         mainClassName="min-h-0 min-w-0"
-        desktopGridClassName={agentOpen ? 'grid-cols-[20rem_minmax(0,1fr)_minmax(320px,28rem)]' : 'grid-cols-[20rem_minmax(0,1fr)]'}
+        leftResize={{
+          layoutKey: 'nova-skills-list-layout',
+          label: t('layout.resize.sidebar'),
+          defaultSize: '320px',
+          minSize: '240px',
+          maxSize: '42%',
+        }}
         rightResize={{
           layoutKey: 'nova-skills-config-agent-layout',
           label: t('layout.resize.right'),
@@ -614,32 +656,36 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
           mainMinSize: '240px',
         }}
       >
-        {({ openLeft, openRight }) => (
+        {({ isMobile, openLeft, openRight }) => (
           <main className="flex h-full min-h-0 flex-col">
-            <div className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 md:hidden">
-              <MobilePaneTrigger
-                side="left"
-                label={t('workbench.mobile.openSidePanel', { label: t('skills.title') })}
-                onClick={openLeft}
-              />
-              <span className="min-w-0 flex-1 truncate text-[11px] text-[var(--nova-text-muted)]">{document?.name || t('skills.title')}</span>
-              {agentOpen && (
+            {isMobile && (
+              <div className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-3">
                 <MobilePaneTrigger
-                  side="right"
-                  label={t('workbench.mobile.openSidePanel', { label: t('skills.agent.button') })}
-                  onClick={openRight}
+                  side="left"
+                  label={t('workbench.mobile.openSidePanel', { label: t('skills.title') })}
+                  onClick={openLeft}
                 />
-              )}
-            </div>
+                <span className="min-w-0 flex-1 truncate text-[11px] text-[var(--nova-text-muted)]">{document?.name || t('skills.title')}</span>
+                {agentAvailable && agentOpen && (
+                  <MobilePaneTrigger
+                    side="right"
+                    label={t('workbench.mobile.openSidePanel', { label: t('skills.agent.button') })}
+                    onClick={openRight}
+                  />
+                )}
+              </div>
+            )}
             {mode === 'create' ? (
               <SkillCreatePanel
+                target={catalogTarget}
                 scopes={writableScopes}
                 defaultScope={defaultWritableScope}
                 onCreated={onCreated}
-                onAskAgent={() => setAgentOpen((value) => !value)}
+                onAskAgent={agentAvailable ? () => setAgentOpen((value) => !value) : undefined}
               />
             ) : mode === 'install' ? (
               <SkillInstallPanel
+                target={catalogTarget}
                 scopes={writableScopes}
                 defaultScope={defaultWritableScope}
                 onInstalled={onInstalled}
@@ -647,6 +693,7 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
             ) : mode === 'config' && document ? (
               <SkillConfigPanel
                 ref={configPanelRef}
+                target={catalogTarget}
                 document={document}
                 content={draft}
                 scopes={writableScopes}
@@ -672,7 +719,7 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
                 onDraftChange={setDraft}
                 onFileDraftChange={setFileDraft}
                 onSelectFile={(path) => void selectSkillFile(path)}
-                onToggleFileTree={() => setFileTreeOpen((value) => !value)}
+                onToggleFileTree={toggleFileTree}
                 onViewModeChange={setContentViewMode}
                 onOpenConfig={() => {
                   if (!document.editable) return
@@ -682,10 +729,12 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
                 onRestoreBuiltin={() => void requestRestoreBuiltin()}
                 onCreateBuiltinOverride={() => void onCreateBuiltinOverride()}
               />
+            ) : loading || selectedDocumentPending ? (
+              <LoadingState label={t('skills.loading')} className="h-full min-h-0" />
             ) : (
               <EmptyState
                 icon={Sparkles}
-                title={loading ? t('skills.loading') : t('skills.empty')}
+                title={t('skills.empty')}
                 variant="page"
                 className="h-full text-xs text-[var(--nova-text-faint)]"
               />

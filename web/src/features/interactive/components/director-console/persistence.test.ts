@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { readStoredDirectorRevealed, readStoredStatePanelTab, writeStoredDirectorRevealed, writeStoredStatePanelTab } from './persistence'
+import { readStoredDirectorConsoleTab, readStoredDirectorRevealed, writeStoredDirectorConsoleTab, writeStoredDirectorRevealed } from './persistence'
 
 describe('director-console persistence', () => {
   beforeEach(() => {
@@ -15,13 +15,18 @@ describe('director-console persistence', () => {
     expect(readStoredDirectorRevealed('story-a')).toBe(false)
   })
 
-  it('round-trips the state panel tab per story and rejects unknown values', () => {
-    expect(readStoredStatePanelTab('story-a')).toBeNull()
-    writeStoredStatePanelTab('story-a', 'changes')
-    writeStoredStatePanelTab('story-b', 'world')
-    expect(readStoredStatePanelTab('story-a')).toBe('changes')
-    expect(readStoredStatePanelTab('story-b')).toBe('world')
-    window.localStorage.setItem('nova.directorConsole.stateTab.story-a', 'bogus')
-    expect(readStoredStatePanelTab('story-a')).toBeNull()
+  it('round-trips every console tab per story and rejects unknown values', () => {
+    expect(readStoredDirectorConsoleTab('story-a')).toBeNull()
+    writeStoredDirectorConsoleTab('story-a', 'changes')
+    writeStoredDirectorConsoleTab('story-b', 'branches')
+    expect(readStoredDirectorConsoleTab('story-a')).toBe('changes')
+    expect(readStoredDirectorConsoleTab('story-b')).toBe('branches')
+    window.localStorage.setItem('nova.directorConsole.tab.story-a', 'bogus')
+    expect(readStoredDirectorConsoleTab('story-a')).toBeNull()
+  })
+
+  it('reads the former state-tab preference when the new key is absent', () => {
+    window.localStorage.setItem('nova.directorConsole.stateTab.story-a', 'world')
+    expect(readStoredDirectorConsoleTab('story-a')).toBe('world')
   })
 })

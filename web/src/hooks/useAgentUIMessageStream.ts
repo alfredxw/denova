@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { readUIMessageStream, type UIMessageChunk } from 'ai'
 import { buildAgentMessageViews, type AgentMessageView } from '@/lib/agent-message-view'
-import { normalizeAgentUIMessages, type AgentDataParts, type AgentMessageMetadata, type AgentUIMessage } from '@/lib/agent-ui'
-import { createRafUpdateBatcher, type RafUpdateBatcher } from '@/lib/streaming/raf-update-batcher'
+import { AgentUIMessageNormalizer, normalizeAgentUIMessages, type AgentUIMessage } from '@/lib/agent-ui'
+import { attachAgentToolInputText, recordAgentToolInputChunk } from '@/lib/agent-ui-message'
+import { agentToolInputRenderChunks } from '@/lib/agent-tool-input-stream'
+import { createRafUpdateBatcher, STREAMING_RENDER_INTERVAL_MS, type RafUpdateBatcher } from '@/lib/streaming/raf-update-batcher'
 
 interface AgentUIMessageStreamOptions {
   onView?: (view: AgentMessageView) => void
@@ -19,8 +21,12 @@ export function useAgentUIMessageStream(options: AgentUIMessageStreamOptions = {
   const [isStreaming, setIsStreaming] = useState(false)
   const [activityContent, setActivityContent] = useState('')
   const abortControllerRef = useRef<AbortController | null>(null)
+  const messageNormalizerRef = useRef<AgentUIMessageNormalizer | null>(null)
+  messageNormalizerRef.current ??= new AgentUIMessageNormalizer()
   const messageBatcherRef = useRef<RafUpdateBatcher<AgentUIMessage[]> | null>(null)
-  const messageBatcher = messageBatcherRef.current ?? createRafUpdateBatcher(rawSetMessages)
+  const messageBatcher = messageBatcherRef.current ?? createRafUpdateBatcher(rawSetMessages, {
+    minIntervalMs: STREAMING_RENDER_INTERVAL_MS,
+  })
   messageBatcherRef.current = messageBatcher
 
   const setMessages = useCallback((updater: AgentMessageUpdater) => {
@@ -29,7 +35,7 @@ export function useAgentUIMessageStream(options: AgentUIMessageStreamOptions = {
       const next = typeof updater === 'function'
         ? (updater as (value: AgentUIMessage[]) => AgentUIMessage[])(current)
         : updater
-      return normalizeAgentUIMessages(next)
+      return messageNormalizerRef.current!.normalize(next)
     })
   }, [messageBatcher]) as Dispatch<SetStateAction<AgentUIMessage[]>>
 
@@ -53,14 +59,24 @@ export function useAgentUIMessageStream(options: AgentUIMessageStreamOptions = {
   const consumeAgentUIStream = useCallback(async (stream: ReadableStream<UIMessageChunk>, consumeOptions: ConsumeAgentUIStreamOptions = {}) => {
     setIsStreaming(true)
     setActivityContent('')
+    const inputTextByToolCall = new Map<string, string>()
+    const observedStream = stream.pipeThrough(new TransformStream<UIMessageChunk, UIMessageChunk>({
+      async transform(chunk, controller) {
+        for await (const renderChunk of agentToolInputRenderChunks(chunk)) {
+          recordAgentToolInputChunk(renderChunk, inputTextByToolCall)
+          controller.enqueue(renderChunk)
+        }
+      },
+    }))
     try {
       for await (const message of readUIMessageStream<AgentUIMessage>({
-        stream,
+        stream: observedStream,
         terminateOnError: true,
       })) {
         if (consumeOptions.shouldContinue && !consumeOptions.shouldContinue()) break
-        const normalized = normalizeAgentUIMessages([message])[0] || message
-        messageBatcher.enqueue(current => normalizeAgentUIMessages(upsertAgentUIMessage(current, normalized)))
+        const messageWithInputText = attachAgentToolInputText(message, inputTextByToolCall)
+        const normalized = normalizeAgentUIMessages([messageWithInputText])[0] || messageWithInputText
+        messageBatcher.enqueue(current => messageNormalizerRef.current!.normalize(upsertAgentUIMessage(current, normalized)))
         if (onView) {
           for (const view of buildAgentMessageViews([normalized])) onView(view)
         }
@@ -83,31 +99,8 @@ export function useAgentUIMessageStream(options: AgentUIMessageStreamOptions = {
   }
 }
 
-export function createAgentTextMessage(role: 'user' | 'system' | 'assistant', content: string, metadata?: AgentMessageMetadata): AgentUIMessage {
-  return {
-    id: localAgentMessageID(role),
-    role,
-    metadata,
-    parts: [{ type: 'text', text: content }],
-  } as AgentUIMessage
-}
-
-export function createAgentDataMessage(type: keyof AgentDataParts, data: Record<string, unknown>, metadata?: AgentMessageMetadata): AgentUIMessage {
-  const partType = `data-${type}` as const
-  return {
-    id: localAgentMessageID(type),
-    role: 'assistant',
-    metadata,
-    parts: [{ type: partType, id: localAgentMessageID(type), data }],
-  } as AgentUIMessage
-}
-
 function upsertAgentUIMessage(messages: AgentUIMessage[], next: AgentUIMessage) {
   const index = messages.findIndex(message => message.id === next.id)
   if (index < 0) return [...messages, next]
   return messages.map((message, messageIndex) => messageIndex === index ? next : message)
-}
-
-function localAgentMessageID(prefix: string) {
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }

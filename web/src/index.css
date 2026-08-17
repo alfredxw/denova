@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+/* Includes shared utilities such as the scroll-aware fade used by Agent reasoning. */
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/inter";
 
@@ -55,28 +56,28 @@
 }
 
 [data-theme="light"] .preset-workspace {
-  --preset-canvas: #ffffff;
-  --preset-surface: #ffffff;
-  --preset-raised: #f6f6f3;
-  --preset-line: #d9d9d4;
-  --preset-ink: #181816;
-  --preset-signal: #242421;
-  --preset-signal-soft: rgba(24, 24, 22, 0.055);
+  --preset-canvas: #f5f5f5;
+  --preset-surface: #fafafa;
+  --preset-raised: #ffffff;
+  --preset-line: #d4d4d4;
+  --preset-ink: #181818;
+  --preset-signal: #262626;
+  --preset-signal-soft: rgba(24, 24, 24, 0.055);
   --preset-success: #396a4b;
   --preset-warning: #8a611f;
   --preset-danger: #963f39;
-  --preset-primary-bg: #1d1d1b;
+  --preset-primary-bg: #1f1f1f;
   --preset-primary-ink: #ffffff;
-  --nova-surface-3: #ecece8;
-  --nova-hover: #f0f0ec;
-  --nova-active: #e8e8e3;
-  --nova-border-soft: #e6e6e1;
-  --nova-text-muted: #595954;
-  --nova-text-faint: #777770;
-  --nova-accent-blue: #595954;
+  --nova-surface-3: #ededed;
+  --nova-hover: #f0f0f0;
+  --nova-active: #e3e3e3;
+  --nova-border-soft: #e5e5e5;
+  --nova-text-muted: #595959;
+  --nova-text-faint: #767676;
+  --nova-accent-blue: #595959;
   --nova-accent-green: var(--preset-success);
-  --nova-switch-checked: #3f684c;
-  --nova-switch-checked-border: #3f684c;
+  --nova-switch-checked: #2f2f2f;
+  --nova-switch-checked-border: #2f2f2f;
   --nova-danger: #963f39;
   --nova-danger-bg: rgba(150, 63, 57, 0.09);
   --nova-danger-border: rgba(150, 63, 57, 0.28);
@@ -85,9 +86,9 @@
   --nova-success: #2f6944;
   --nova-success-muted: #487858;
   --nova-success-bg: rgba(57, 106, 75, 0.1);
-  --nova-style-chip-bg: rgba(24, 24, 22, 0.055);
-  --nova-style-chip-hover-bg: rgba(24, 24, 22, 0.085);
-  --nova-style-chip-text: #3c3c38;
+  --nova-style-chip-bg: rgba(24, 24, 24, 0.055);
+  --nova-style-chip-hover-bg: rgba(24, 24, 24, 0.085);
+  --nova-style-chip-text: #3c3c3c;
 }
 
 .preset-workspace .nova-nav-item {
@@ -273,6 +274,14 @@
 :is(.image-preset-editor, .teller-editor) {
   container-name: preset-rule-editor;
   container-type: inline-size;
+}
+
+/* Radix ScrollArea's display:table wrapper must not use long rule labels as intrinsic width. */
+.preset-rule-list-scroll [data-slot="scroll-area-viewport"] > div {
+  display: block !important;
+  width: 100%;
+  min-width: 0 !important;
+  max-width: 100%;
 }
 
 :is(.image-preset-layout, .teller-injection-layout),
@@ -472,9 +481,12 @@
   --nova-editor-ide-accent: #242422;
   --nova-radius: 8px;
   --nova-ease: cubic-bezier(0.25, 1.1, 0.4, 1);
+  --nova-panel-motion-ease: cubic-bezier(0.2, 0, 0, 1);
   --nova-motion-fast: 140ms;
   --nova-motion-normal: 220ms;
   --nova-motion-slow: 280ms;
+  --nova-panel-motion-duration: 180ms;
+  --nova-panel-fade-duration: 120ms;
   --nova-shadow: 0 18px 50px rgba(0, 0, 0, 0.36);
   --nova-ui-font-size: 14px;
   --nova-ui-line-height: 20px;
@@ -524,23 +536,29 @@
 }
 
 [data-theme="light"] {
+  /*
+   * Structural light-theme colors stay strictly neutral (R = G = B).
+   * White belongs to content canvases, pale gray to product chrome, and
+   * progressively darker gray to recessed, hover, and selected states.
+   * Chromatic colors are reserved for semantic success, warning, and danger.
+   */
   --nova-bg: #ffffff;
-  --nova-bg-deep: #ffffff;
-  --nova-surface: #ffffff;
-  --nova-surface-2: #f7f7f4;
-  --nova-surface-3: #efefeb;
-  --nova-hover: #f0f0ec;
-  --nova-active: #e7e7e2;
-  --nova-border: #d7d7d2;
-  --nova-border-soft: #e5e5e0;
-  --nova-text: #171715;
-  --nova-text-muted: #565651;
-  --nova-text-faint: #74746e;
-  --nova-accent: #343431;
-  --nova-accent-blue: #8a611f;
+  --nova-bg-deep: #f2f2f2;
+  --nova-surface: #fafafa;
+  --nova-surface-2: #f5f5f5;
+  --nova-surface-3: #ededed;
+  --nova-hover: #eeeeee;
+  --nova-active: #e3e3e3;
+  --nova-border: #d4d4d4;
+  --nova-border-soft: #e5e5e5;
+  --nova-text: #171717;
+  --nova-text-muted: #525252;
+  --nova-text-faint: #737373;
+  --nova-accent: #2f2f2f;
+  --nova-accent-blue: #595959;
   --nova-accent-green: #396a4b;
-  --nova-switch-checked: #3c5d48;
-  --nova-switch-checked-border: #3c5d48;
+  --nova-switch-checked: #2f2f2f;
+  --nova-switch-checked-border: #2f2f2f;
   --nova-switch-thumb: #ffffff;
   --nova-danger: #b42318;
   --nova-danger-foreground: #ffffff;
@@ -551,46 +569,46 @@
   --nova-success: #156f3f;
   --nova-success-muted: #2f6f46;
   --nova-success-bg: rgba(21, 111, 63, 0.12);
-  --nova-field-focus-border: #8f8f88;
+  --nova-field-focus-border: #8a8a8a;
   --nova-app-shell-glow: transparent;
-  --nova-topbar-shadow: rgba(24, 24, 22, 0.08);
-  --nova-control-shadow: rgba(24, 24, 22, 0.055);
-  --nova-shadow: 0 18px 44px rgba(24, 24, 22, 0.14);
-  --nova-user-message-border: #cecec8;
-  --nova-user-message-bg-from: #ecece8;
-  --nova-user-message-bg-to: #e5e5e0;
-  --nova-user-message-text: #171715;
-  --nova-assistant-message-border: #ddddda;
+  --nova-topbar-shadow: rgba(0, 0, 0, 0.07);
+  --nova-control-shadow: rgba(0, 0, 0, 0.05);
+  --nova-shadow: 0 18px 44px rgba(0, 0, 0, 0.14);
+  --nova-user-message-border: #cccccc;
+  --nova-user-message-bg-from: #eeeeee;
+  --nova-user-message-bg-to: #e5e5e5;
+  --nova-user-message-text: #171717;
+  --nova-assistant-message-border: #dddddd;
   --nova-assistant-message-bg: #ffffff;
-  --nova-chat-heading: #242421;
+  --nova-chat-heading: #242424;
   --nova-menu-bg: rgba(255, 255, 255, 0.98);
-  --nova-menu-item-hover-bg: rgba(24, 24, 22, 0.07);
-  --nova-selection-bg: rgba(24, 24, 22, 0.08);
-  --nova-drop-bg: #ecece8;
-  --nova-tree-text: #242421;
-  --nova-tree-icon: #666660;
-  --nova-tree-folder: #4a4a46;
-  --nova-tree-chevron: #777770;
-  --nova-chip-bg: rgba(24, 24, 22, 0.06);
-  --nova-chip-hover-bg: rgba(24, 24, 22, 0.09);
-  --nova-style-chip-bg: rgba(24, 24, 22, 0.055);
-  --nova-style-chip-hover-bg: rgba(24, 24, 22, 0.085);
-  --nova-style-chip-text: #3c3c38;
+  --nova-menu-item-hover-bg: rgba(0, 0, 0, 0.07);
+  --nova-selection-bg: rgba(0, 0, 0, 0.08);
+  --nova-drop-bg: #ececec;
+  --nova-tree-text: #242424;
+  --nova-tree-icon: #666666;
+  --nova-tree-folder: #4a4a4a;
+  --nova-tree-chevron: #777777;
+  --nova-chip-bg: rgba(0, 0, 0, 0.06);
+  --nova-chip-hover-bg: rgba(0, 0, 0, 0.09);
+  --nova-style-chip-bg: rgba(0, 0, 0, 0.055);
+  --nova-style-chip-hover-bg: rgba(0, 0, 0, 0.085);
+  --nova-style-chip-text: #3c3c3c;
   --nova-lore-chip-bg: rgba(57, 106, 75, 0.09);
   --nova-lore-chip-hover-bg: rgba(57, 106, 75, 0.14);
   --nova-lore-chip-text: #315f40;
-  --nova-code-bg: #efefeb;
-  --nova-code-text: #242421;
-  --nova-code-block-bg: #f4f4f1;
-  --nova-table-header-bg: #eeeeea;
-  --nova-markdown-border: #d9d9d4;
+  --nova-code-bg: #eeeeee;
+  --nova-code-text: #242424;
+  --nova-code-block-bg: #f5f5f5;
+  --nova-table-header-bg: #eeeeee;
+  --nova-markdown-border: #d8d8d8;
   --nova-dialogue-highlight: #A04A1A;
-  --nova-scrollbar-track: #f4f4f1;
-  --nova-scrollbar-thumb: #c7c7c1;
-  --nova-scrollbar-thumb-hover: #a5a59e;
+  --nova-scrollbar-track: #f5f5f5;
+  --nova-scrollbar-thumb: #c7c7c7;
+  --nova-scrollbar-thumb-hover: #a3a3a3;
   --nova-editor-ide-bg: #ffffff;
-  --nova-editor-ide-color: #171715;
-  --nova-editor-ide-accent: #e1e1dc;
+  --nova-editor-ide-color: #171717;
+  --nova-editor-ide-accent: #e0e0e0;
   color-scheme: light;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
@@ -629,7 +647,10 @@
   background: var(--nova-bg);
 }
 
-[data-theme="light"] .nova-topbar,
+[data-theme="light"] .nova-topbar {
+  background: var(--nova-bg-deep);
+}
+
 [data-theme="light"] .nova-chat-input-area,
 [data-theme="light"] .nova-editor-toolbar,
 [data-theme="light"] .nova-editor-statusbar {
@@ -642,9 +663,19 @@
 
 [data-theme="light"] .nova-chat-composer,
 [data-theme="light"] .nova-agent-composer {
+  background: var(--nova-surface);
   box-shadow:
-    inset 0 1px 0 var(--nova-control-shadow),
-    0 8px 20px rgba(35, 48, 66, 0.08);
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
+    0 1px 2px rgba(0, 0, 0, 0.06),
+    0 10px 28px rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="light"] .nova-chat-composer:focus-within,
+[data-theme="light"] .nova-agent-composer:focus-within {
+  background: var(--nova-surface);
+  box-shadow:
+    0 0 0 1px var(--nova-field-focus-border),
+    0 12px 30px rgba(0, 0, 0, 0.1);
 }
 
 [data-theme="light"] .nova-chat-input-area-floating,
@@ -655,8 +686,9 @@
 
 [data-theme="light"] .nova-command-menu,
 [data-theme="light"] .nova-editor-settings-panel {
+  background: var(--nova-menu-bg);
   box-shadow:
-    0 16px 40px rgba(35, 48, 66, 0.14),
+    0 16px 40px rgba(0, 0, 0, 0.14),
     inset 0 1px 0 rgba(255, 255, 255, 0.62);
 }
 
@@ -678,11 +710,14 @@ body,
   -moz-osx-font-smoothing: grayscale;
 }
 
-button,
-input,
-textarea,
-select {
-  font: inherit;
+/* 作为 base 层 reset：让表单控件继承页面字体，同时允许 Tailwind 字体工具类（如 font-mono、text-xs）覆盖。 */
+@layer base {
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+  }
 }
 
 button {
@@ -701,6 +736,13 @@ html[data-nova-motion="off"] {
   --nova-motion-fast: 1ms;
   --nova-motion-normal: 1ms;
   --nova-motion-slow: 1ms;
+  --nova-panel-motion-duration: 1ms;
+  --nova-panel-fade-duration: 1ms;
+}
+
+html[data-nova-motion="reduced"] {
+  --nova-panel-motion-duration: 1ms;
+  --nova-panel-fade-duration: 1ms;
 }
 
 html[data-nova-motion="off"] *,
@@ -867,7 +909,27 @@ html[data-nova-motion="off"] *::after {
   border-color: var(--nova-border);
   background: var(--nova-bg-deep);
   color: var(--nova-text-muted);
-  transition-duration: var(--nova-motion-slow) !important;
+  transition-duration: var(--nova-panel-motion-duration) !important;
+  transition-timing-function: var(--nova-panel-motion-ease) !important;
+}
+
+/* Primary navigation should acknowledge the press immediately. The route itself may contain a
+   large editor or Markdown tree, so its button feedback must not inherit the global 220ms pace. */
+.nova-activity-bar .nova-icon-button,
+.nova-mobile-nav-item {
+  transition-duration: var(--nova-motion-fast);
+}
+
+.nova-activity-bar .nova-icon-button {
+  width: 100%;
+  justify-content: flex-start;
+}
+
+.nova-activity-bar .nova-icon-button:active,
+.nova-mobile-nav-item:active {
+  background: var(--nova-hover);
+  transform: scale(0.98);
+  transition-duration: 0ms;
 }
 
 .nova-activity-bar-resize-handle {
@@ -903,6 +965,26 @@ html[data-nova-motion="off"] *::after {
   background: var(--nova-surface);
 }
 
+.nova-book-settings-header-row {
+  container: nova-book-settings-header / inline-size;
+}
+
+@container nova-book-settings-header (max-width: 200px) {
+  .nova-book-settings-manage-label {
+    display: none;
+  }
+
+  .nova-book-settings-header-actions {
+    gap: 0;
+  }
+
+  .nova-book-settings-header-actions > button {
+    width: 24px;
+    height: 24px;
+    padding-inline: 0;
+  }
+}
+
 .nova-panel {
   border-color: var(--nova-border);
   background: var(--nova-surface-2);
@@ -921,11 +1003,6 @@ html[data-nova-motion="off"] *::after {
   min-width: 40px;
   border-radius: var(--nova-radius);
   color: var(--nova-text-muted);
-}
-
-.nova-activity-bar.is-expanded .nova-icon-button {
-  width: 100%;
-  justify-content: flex-start;
 }
 
 .nova-statusbar {
@@ -1165,6 +1242,10 @@ html[data-nova-motion="off"] *::after {
   box-shadow: none;
 }
 
+.nova-chat-input-area-floating.nova-chat-input-area-content-aligned {
+  padding-inline: 0;
+}
+
 .nova-chat-input-area-floating .nova-agent-composer {
   pointer-events: auto;
 }
@@ -1304,6 +1385,28 @@ html[data-nova-motion="off"] *::after {
   justify-content: flex-end;
 }
 
+.nova-agent-composer-toolbar-end [data-model-profile-trigger="true"] {
+  min-width: 0;
+  flex-shrink: 1;
+}
+
+/* Composer panels can become narrow independently of the viewport. Keep the
+   safety posture visible as an icon without letting its label crowd the model. */
+@container (max-width: 42rem) {
+  .nova-agent-approval-trigger {
+    width: 2rem;
+    max-width: 2rem;
+    justify-content: center;
+    gap: 0;
+    padding-inline: 0;
+  }
+
+  .nova-agent-approval-label,
+  .nova-agent-approval-chevron {
+    display: none;
+  }
+}
+
 .nova-agent-composer-icon,
 .nova-agent-composer-pill,
 .nova-agent-composer-submit {
@@ -1347,6 +1450,48 @@ html[data-nova-motion="off"] *::after {
 
   .nova-agent-composer-pill {
     max-width: 7.5rem;
+  }
+}
+
+@keyframes nova-agent-execution-expand {
+  from {
+    height: 0;
+    opacity: 0;
+  }
+
+  to {
+    height: var(--radix-collapsible-content-height);
+    opacity: 1;
+  }
+}
+
+@keyframes nova-agent-execution-collapse {
+  from {
+    height: var(--radix-collapsible-content-height);
+    opacity: 1;
+  }
+
+  to {
+    height: 0;
+    opacity: 0;
+  }
+}
+
+.nova-agent-execution-content {
+  overflow: hidden;
+}
+
+.nova-agent-execution-content[data-state="open"] {
+  animation: nova-agent-execution-expand var(--nova-motion-fast) var(--nova-panel-motion-ease);
+}
+
+.nova-agent-execution-content[data-state="closed"] {
+  animation: nova-agent-execution-collapse var(--nova-motion-fast) var(--nova-panel-motion-ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nova-agent-execution-content {
+    animation-duration: 1ms !important;
   }
 }
 
@@ -1491,7 +1636,7 @@ html[data-nova-motion="off"] *::after {
 }
 
 .nova-editor-range:focus-visible {
-  outline: 1px solid rgba(168, 173, 183, 0.45);
+  outline: 1px solid rgba(174, 174, 174, 0.45);
   outline-offset: 3px;
 }
 
@@ -1514,8 +1659,236 @@ html[data-nova-motion="off"] *::after {
 }
 
 .nova-resize-handle:hover,
-.nova-resize-handle[data-resize-handle-active] {
+.nova-resize-handle[data-separator="active"] {
   background: color-mix(in srgb, var(--nova-active) 78%, transparent);
+}
+
+/* Side panes stay mounted so their state and last resized width survive a toggle. The panel's
+   real flex share contracts, which lets the neighbouring workspace reflow continuously. */
+[data-nova-panel-motion-group] > [data-panel] {
+  transition: flex-grow var(--nova-panel-motion-duration) var(--nova-panel-motion-ease);
+}
+
+[data-panel][data-nova-panel-motion="resizable"] {
+  transition:
+    flex-grow var(--nova-panel-motion-duration) var(--nova-panel-motion-ease),
+    visibility 0s linear 0s;
+}
+
+[data-panel][data-nova-panel-motion="resizable"]:not([data-nova-panel-has-collapsed-content="true"]) {
+  overflow: hidden !important;
+}
+
+[data-panel][data-nova-panel-motion="resizable"][data-nova-panel-has-collapsed-content="true"] {
+  overflow: visible !important;
+}
+
+[data-panel][data-nova-panel-motion="resizable"][data-state="closed"]:not([data-nova-panel-has-collapsed-content="true"]) {
+  flex-grow: 0 !important;
+  visibility: hidden;
+  transition:
+    flex-grow var(--nova-panel-motion-duration) var(--nova-panel-motion-ease),
+    visibility 0s linear var(--nova-panel-motion-duration);
+}
+
+[data-nova-panel-motion="inline"] {
+  width: var(--nova-inline-panel-size);
+  visibility: visible;
+  transition:
+    width var(--nova-panel-motion-duration) var(--nova-panel-motion-ease),
+    visibility 0s linear 0s;
+}
+
+[data-nova-panel-motion="inline"][data-state="closed"] {
+  width: var(--nova-inline-panel-collapsed-size, 0px);
+}
+
+[data-nova-panel-motion="inline"][data-state="closed"]:not([data-nova-panel-has-collapsed-content="true"]) {
+  visibility: hidden;
+  transition:
+    width var(--nova-panel-motion-duration) var(--nova-panel-motion-ease),
+    visibility 0s linear var(--nova-panel-motion-duration);
+}
+
+[data-nova-panel-motion="inline"] > [data-nova-panel-motion-clip] > [data-nova-panel-motion-content] {
+  width: var(--nova-inline-panel-size);
+  min-width: var(--nova-inline-panel-size);
+}
+
+[data-nova-panel-motion-collapsed-content] {
+  width: var(--nova-inline-panel-collapsed-size, 0px);
+  min-width: var(--nova-inline-panel-collapsed-size, 0px);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-4px);
+  visibility: hidden;
+  transition:
+    opacity var(--nova-panel-fade-duration) ease-out,
+    transform var(--nova-panel-motion-duration) var(--nova-panel-motion-ease),
+    visibility 0s linear var(--nova-panel-fade-duration);
+  will-change: opacity, transform;
+}
+
+[data-nova-panel-motion-collapsed-content][data-state="closed"] {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0);
+  visibility: visible;
+  transition:
+    opacity var(--nova-panel-fade-duration) ease-out,
+    transform var(--nova-panel-motion-duration) var(--nova-panel-motion-ease),
+    visibility 0s linear 0s;
+}
+
+[data-nova-panel-motion-collapsed-content][data-nova-panel-side="right"] {
+  transform: translateX(4px);
+}
+
+[data-nova-panel-motion-collapsed-content][data-state="closed"][data-nova-panel-side="right"] {
+  transform: translateX(0);
+}
+
+[data-nova-panel-motion-content] {
+  opacity: 1;
+  transform: translateX(0);
+  visibility: visible;
+  transition:
+    opacity var(--nova-panel-fade-duration) ease-out,
+    transform var(--nova-panel-motion-duration) var(--nova-panel-motion-ease),
+    visibility 0s linear 0s;
+  will-change: opacity, transform;
+}
+
+[data-nova-panel-motion-content][data-state="closed"] {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-6px);
+  visibility: hidden;
+  transition:
+    opacity var(--nova-panel-fade-duration) ease-out,
+    transform var(--nova-panel-motion-duration) var(--nova-panel-motion-ease),
+    visibility 0s linear var(--nova-panel-fade-duration);
+}
+
+[data-nova-panel-motion-content][data-state="closed"][data-nova-panel-side="right"] {
+  transform: translateX(6px);
+}
+
+[data-nova-panel-motion-separator] {
+  opacity: 1;
+  transition:
+    width var(--nova-panel-motion-duration) var(--nova-panel-motion-ease),
+    height var(--nova-panel-motion-duration) var(--nova-panel-motion-ease),
+    margin var(--nova-panel-motion-duration) var(--nova-panel-motion-ease),
+    opacity var(--nova-panel-fade-duration) ease-out,
+    visibility 0s linear 0s;
+}
+
+[data-nova-panel-motion-separator][data-state="closed"] {
+  margin: 0 !important;
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+  transition:
+    width var(--nova-panel-motion-duration) var(--nova-panel-motion-ease),
+    height var(--nova-panel-motion-duration) var(--nova-panel-motion-ease),
+    margin var(--nova-panel-motion-duration) var(--nova-panel-motion-ease),
+    opacity var(--nova-panel-fade-duration) ease-out,
+    visibility 0s linear var(--nova-panel-motion-duration);
+}
+
+[data-nova-panel-motion-separator][data-state="closed"][aria-orientation="vertical"] {
+  width: 0 !important;
+}
+
+[data-nova-panel-motion-separator][data-state="closed"][aria-orientation="horizontal"] {
+  height: 0 !important;
+}
+
+[data-nova-panel-motion-group][data-nova-panel-resizing="true"] > [data-panel] {
+  transition: none;
+}
+
+/* Review swaps a live editor for another Monaco-heavy surface. Its outer geometry settles in one
+   frame, then the review layer enters using compositor-only properties, avoiding repeated editor
+   layout while the sidebar is contracting. */
+[data-nova-panel-motion-group][data-nova-layout-emphasis="center"] {
+  --nova-panel-motion-duration: 1ms;
+}
+
+.nova-change-review-layer {
+  animation: nova-change-review-enter var(--nova-motion-normal) var(--nova-panel-motion-ease) both;
+}
+
+html[data-nova-motion="reduced"] .nova-change-review-layer,
+html[data-nova-motion="off"] .nova-change-review-layer {
+  animation-duration: 1ms;
+}
+
+@keyframes nova-change-review-enter {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html:not([data-nova-motion="full"]) .nova-change-review-layer {
+    animation-duration: 1ms;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html:not([data-nova-motion="full"]) {
+    --nova-panel-motion-duration: 1ms;
+    --nova-panel-fade-duration: 1ms;
+  }
+}
+
+/* Keep panel boundaries visible without making the draggable target look wide. The separator
+   remains easy to hit, while only its centered hairline is rendered and emphasized. */
+.nova-resize-divider {
+  background: transparent;
+  outline: none;
+}
+
+.nova-resize-divider::before {
+  position: absolute;
+  content: '';
+  pointer-events: none;
+  background: var(--nova-border);
+  transition: background-color var(--nova-motion-fast) var(--nova-ease);
+}
+
+.nova-resize-divider-vertical::before {
+  inset-block: 0;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+}
+
+.nova-resize-divider-horizontal::before {
+  inset-inline: 0;
+  top: 50%;
+  height: 1px;
+  transform: translateY(-50%);
+}
+
+.nova-resize-divider:hover,
+.nova-resize-divider:focus-visible,
+.nova-resize-divider[data-resize-handle-active] {
+  background: transparent;
+}
+
+.nova-resize-divider:hover::before,
+.nova-resize-divider:focus-visible::before,
+.nova-resize-divider[data-resize-handle-active]::before {
+  background: color-mix(in srgb, var(--nova-text-faint) 72%, var(--nova-border));
 }
 
 * {
@@ -1564,49 +1937,6 @@ html[data-nova-motion="off"] *::after {
   margin: 0;
   line-height: var(--nova-editor-line-height, 1.9);
   text-indent: 2em;
-}
-
-.editor-content .tiptap .nova-document-review-highlight {
-  cursor: pointer;
-  text-decoration-line: underline;
-  text-decoration-color: color-mix(in srgb, var(--nova-warning) 72%, transparent);
-  text-decoration-thickness: 1.5px;
-  text-underline-offset: 0.18em;
-  text-decoration-skip-ink: auto;
-}
-
-.editor-content .tiptap .nova-document-review-highlight:hover {
-  text-decoration-color: var(--nova-warning);
-  text-decoration-thickness: 2px;
-}
-
-.editor-content .tiptap .nova-document-review-highlight:focus-visible {
-  border-radius: 0.2rem;
-  outline: 2px solid var(--nova-warning);
-  outline-offset: 2px;
-}
-
-.editor-content .tiptap .nova-document-review-widget {
-  display: block;
-  width: 100%;
-  margin: 0.45rem 0 0.8rem;
-  text-indent: 0;
-}
-
-.editor-content .tiptap .nova-document-review-thread-anchor {
-  width: min(32rem, calc(100% - var(--nova-document-review-anchor-offset, 0px)));
-  margin-left: var(--nova-document-review-anchor-offset, 0px);
-}
-
-.editor-content .tiptap .nova-document-review-widget.is-outdated {
-  opacity: 0.78;
-}
-
-.editor-content .tiptap .nova-document-review-widget .nova-review-comment-thread {
-  margin-inline: 0;
-  font-family: var(--nova-font-sans, Inter, sans-serif);
-  font-size: 12px;
-  line-height: 1.5;
 }
 
 /* hardBreak 缩进：让 br 换行后的行也有 2em 缩进 */
@@ -1812,6 +2142,36 @@ html[data-nova-motion="off"] *::after {
   outline-offset: 2px;
 }
 
+/* Literal Markdown remains a TipTap document so selection, search, and review
+   decorations share the visual editor's interaction model. */
+.nova-markdown-editor[data-content-mode="source"] .tiptap {
+  tab-size: 2;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.75rem;
+  line-height: 1.5rem;
+}
+
+.nova-markdown-editor[data-content-mode="source"] .tiptap pre[data-nova-raw-markdown] {
+  min-height: inherit;
+  margin: 0;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--nova-text);
+  font: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.nova-markdown-editor[data-content-mode="source"] .tiptap pre[data-nova-raw-markdown] code {
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+}
+
 /* AI 对话区 Markdown 输出样式 */
 .chat-agent-message {
   font-size: var(--nova-ui-sm-font-size);
@@ -1902,6 +2262,25 @@ html[data-nova-motion="off"] *::after {
 .chat-agent-message pre code {
   background: transparent;
   padding: 0;
+}
+
+.chat-agent-message a {
+  color: var(--nova-accent-blue);
+  overflow-wrap: anywhere;
+  text-decoration: underline;
+  text-decoration-thickness: from-font;
+  text-underline-offset: 0.16em;
+  transition: color 140ms ease;
+}
+
+.chat-agent-message a:hover {
+  color: var(--nova-text);
+}
+
+.chat-agent-message a:focus-visible {
+  border-radius: 2px;
+  outline: 1px solid var(--nova-accent-blue);
+  outline-offset: 2px;
 }
 
 .chat-agent-message .nova-chat-image-button {
@@ -2406,8 +2785,8 @@ html[data-nova-motion="off"] *::after {
 }
 
 [data-theme="light"] .director-console {
-  --director-canvas: #ffffff;
-  --director-panel: #fafaf7;
+  --director-canvas: #f5f5f5;
+  --director-panel: #ffffff;
   --director-brass: #8a611f;
   --director-live: #3f6f4d;
   --director-ember: #963f39;
@@ -2420,6 +2799,23 @@ html[data-nova-motion="off"] *::after {
 
 .director-console__scroll {
   scrollbar-gutter: stable;
+}
+
+.director-console-tab__label,
+.director-console-tab__count {
+  display: none;
+}
+
+@container director-console (min-width: 250px) {
+  .director-console-tab__label {
+    display: inline;
+  }
+}
+
+@container director-console (min-width: 360px) {
+  .director-console-tab__count {
+    display: inline;
+  }
 }
 
 .actor-cue-strip {

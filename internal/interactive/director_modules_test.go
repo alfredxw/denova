@@ -52,7 +52,7 @@ func TestEventPackageLibraryMaterializesGenreBuiltins(t *testing.T) {
 		t.Fatalf("genre cards should default to Chinese names and structured markdown: %#v", firstCard)
 	}
 	xiuxian.Name = "我的修仙事件包"
-	overridden, err := library.Update(GenreXiuxianEventPackageID, xiuxian, xiuxian.UpdatedAt)
+	overridden, err := library.Update(GenreXiuxianEventPackageID, xiuxian, xiuxian.Revision)
 	if err != nil {
 		t.Fatalf("Update built-in genre event package should create override: %v", err)
 	}
@@ -144,26 +144,40 @@ func TestActorStateLibraryMaterializesGenreBuiltins(t *testing.T) {
 		t.Fatalf("default actor state should expose centralized story, actor-owned, and world-entity fields: %#v", defaultActorState.ActorState.Templates)
 	}
 	wantDefaultFieldCounts := map[string]int{
-		DefaultActorID:                         21,
+		DefaultActorID:                         10,
 		ActorStateStoryContextTemplateID:       7,
-		ActorStateImportantCharacterTemplateID: 24,
-		ActorStateOpponentTemplateID:           21,
+		ActorStateImportantCharacterTemplateID: 13,
+		ActorStateOpponentTemplateID:           10,
 		ActorStateWorldEntitiesTemplateID:      2,
 	}
-	protagonist := actorStateTemplateByID(defaultActorState.ActorState, DefaultActorID)
-	for _, fieldPath := range []string{
-		"panel.level", "panel.strength", "panel.dexterity", "panel.constitution", "panel.intelligence",
-		"panel.wisdom", "panel.charisma", "panel.attack_ac", "panel.defense_dc",
-	} {
-		field, ok := actorStateFieldByPath(protagonist, fieldPath)
-		if !ok || field.Type != "number" || field.Group != "面板" {
-			t.Fatalf("default TRPG panel should use grouped ordinary number fields; %s = %#v", fieldPath, field)
+	for _, templateID := range []string{DefaultActorID, ActorStateImportantCharacterTemplateID, ActorStateOpponentTemplateID} {
+		template := actorStateTemplateByID(defaultActorState.ActorState, templateID)
+		level, hasLevel := actorStateFieldByPath(template, "panel.level")
+		if !hasLevel || level.Type != "number" || level.Group != "面板" || level.Max != nil {
+			t.Fatalf("default template %s should retain one open-ended level field: %#v", templateID, level)
+		}
+		health, hasHealth := actorStateFieldByPath(template, "state.health")
+		if !hasHealth || health.Group != "状态" || health.Type != "string" {
+			t.Fatalf("default template %s should retain one general health field: %#v", templateID, health)
+		}
+		for _, fieldPath := range []string{
+			"panel.strength", "panel.dexterity", "panel.constitution", "panel.intelligence",
+			"panel.wisdom", "panel.charisma", "panel.attack_ac", "panel.defense_dc",
+			"state.mana", "state.effects", "state.cooldowns",
+		} {
+			if actorStateTemplateHasField(defaultActorState, templateID, fieldPath) {
+				t.Fatalf("default template %s should not predeclare setting-specific field %s", templateID, fieldPath)
+			}
 		}
 	}
-	for _, fieldPath := range []string{"state.health", "state.mana", "state.effects", "state.cooldowns"} {
-		field, ok := actorStateFieldByPath(protagonist, fieldPath)
-		if !ok || field.Group != "状态" || field.Type == "object" {
-			t.Fatalf("default dynamic state should use grouped ordinary fields; %s = %#v", fieldPath, field)
+	favorability, ok := actorStateFieldByPath(actorStateTemplateByID(defaultActorState.ActorState, ActorStateImportantCharacterTemplateID), "protagonist_relation.favorability")
+	defaultFavorability, hasDefaultFavorability := actorStateNumber(favorability.Default)
+	if !ok || !hasDefaultFavorability || defaultFavorability != 0 || favorability.Min == nil || *favorability.Min != -100 || favorability.Max == nil || *favorability.Max != 100 {
+		t.Fatalf("default favorability should use the signed passerby baseline: %#v", favorability)
+	}
+	for _, phrase := range []string{"路人基线", "1–100", "-1–-100", "不自动改变关系类型或关系阶段"} {
+		if !strings.Contains(favorability.Description, phrase) {
+			t.Fatalf("default favorability guidance should contain %q: %#v", phrase, favorability)
 		}
 	}
 	for _, template := range defaultActorState.ActorState.Templates {
@@ -240,7 +254,7 @@ func TestActorStateLibraryMaterializesGenreBuiltins(t *testing.T) {
 		t.Fatalf("xiuxian actor state should expose cultivation protagonist fields: %#v", xiuxian)
 	}
 	xiuxian.Name = "我的修仙状态系统"
-	overridden, err := library.Update(ActorStateXiuxianID, xiuxian, xiuxian.UpdatedAt)
+	overridden, err := library.Update(ActorStateXiuxianID, xiuxian, xiuxian.Revision)
 	if err != nil {
 		t.Fatalf("Update built-in xiuxian actor state should create override: %v", err)
 	}
@@ -294,7 +308,7 @@ func TestDirectorModuleBuiltinOverridesRestore(t *testing.T) {
 		}
 	}
 	rule.Name = "我的 TRPG 检定"
-	overriddenRule, err := ruleLibrary.Update(DefaultRuleSystemID, rule, rule.UpdatedAt)
+	overriddenRule, err := ruleLibrary.Update(DefaultRuleSystemID, rule, rule.Revision)
 	if err != nil {
 		t.Fatalf("Update built-in rule system should create override: %v", err)
 	}
@@ -316,7 +330,7 @@ func TestDirectorModuleBuiltinOverridesRestore(t *testing.T) {
 		t.Fatal(err)
 	}
 	styleRule.Name = "我的 OSR 检定"
-	overriddenStyleRule, err := ruleLibrary.Update(RuleSystemOSRPlayerSkillID, styleRule, styleRule.UpdatedAt)
+	overriddenStyleRule, err := ruleLibrary.Update(RuleSystemOSRPlayerSkillID, styleRule, styleRule.Revision)
 	if err != nil {
 		t.Fatalf("Update built-in style rule system should create override: %v", err)
 	}
@@ -340,7 +354,7 @@ func TestDirectorModuleBuiltinOverridesRestore(t *testing.T) {
 		t.Fatal(err)
 	}
 	actorState.Name = "我的状态系统"
-	overriddenActorState, err := actorLibrary.Update(DefaultActorStateModuleID, actorState, actorState.UpdatedAt)
+	overriddenActorState, err := actorLibrary.Update(DefaultActorStateModuleID, actorState, actorState.Revision)
 	if err != nil {
 		t.Fatalf("Update built-in actor state should create override: %v", err)
 	}
@@ -409,8 +423,9 @@ func requireWritableActorStatePresetFields(t *testing.T, item ActorStateModule) 
 				t.Fatalf("genre actor state %s field %s retains boilerplate update guidance: %#v", item.ID, field.Path, field)
 			}
 			if field.Type == "number" {
-				if !strings.Contains(field.Description, "–") ||
-					field.Min == nil || field.Max == nil || *field.Min >= *field.Max {
+				if !strings.Contains(field.Description, "–") || field.Min == nil ||
+					(field.Max != nil && *field.Min >= *field.Max) ||
+					(field.Max == nil && !strings.Contains(field.Description, "以上")) {
 					t.Fatalf("genre actor state %s numeric field must provide a meaningful scale: %#v", item.ID, field)
 				}
 			}
@@ -452,7 +467,7 @@ func TestDirectorEventCatalogUsesOnlyExplicitConfiguredEventCards(t *testing.T) 
 		Name:          "目录顺序",
 		ModuleRefs:    StoryDirectorModuleRefs{EventPackagesDisabled: false},
 		Strategy:      StoryDirectorStrategy{Enabled: true},
-		EventPackages: []TellerEventPackage{tellerEventPackageFromModule(module)},
+		EventPackages: []EventPackage{tellerEventPackageFromModule(module)},
 	})
 
 	catalog := DirectorEventCatalogFromStoryDirector(director)
@@ -481,7 +496,7 @@ func TestStoryDirectorResolvesLiveModulesAndFallsBackToSnapshot(t *testing.T) {
 	eventModule, err := eventLibrary.Create(EventPackageModule{
 		ID:   "storm-events",
 		Name: "风暴事件包",
-		Events: []TellerEventCard{{
+		Events: []EventCard{{
 			ID:                  "storm",
 			TypeName:            "风暴",
 			Enabled:             true,
@@ -558,7 +573,7 @@ func TestStoryDirectorResolvesLiveModulesAndFallsBackToSnapshot(t *testing.T) {
 		t.Fatalf("director should resolve actor state module on create: %#v", director.ActorState)
 	}
 	eventModule.Events[0].DescriptionMarkdown = "v2"
-	if _, err := eventLibrary.Update(eventModule.ID, eventModule, eventModule.UpdatedAt); err != nil {
+	if _, err := eventLibrary.Update(eventModule.ID, eventModule, eventModule.Revision); err != nil {
 		t.Fatalf("update event package failed: %v", err)
 	}
 	live, err := directorLibrary.Get("modular")
@@ -611,11 +626,11 @@ func TestStoryDirectorDisabledModulesStayDetached(t *testing.T) {
 		},
 		Strategy: StoryDirectorStrategy{Enabled: true},
 		ResolvedSnapshot: StoryDirectorResolvedSnapshot{
-			EventPackages: []TellerEventPackage{{
+			EventPackages: []EventPackage{{
 				ID:      "snapshot-pack",
 				Name:    "旧快照包",
 				Enabled: true,
-				Events: []TellerEventCard{{
+				Events: []EventCard{{
 					ID:       "snapshot-event",
 					TypeName: "旧快照事件",
 					Enabled:  true,

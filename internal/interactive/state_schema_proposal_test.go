@@ -10,7 +10,7 @@ func TestValidateActorStateSchemaProposalRejectsEmptyUnreviewedDiff(t *testing.T
 		ID: "protagonist", Fields: []ActorStateField{{Name: "生命", Type: "number", Default: 100}},
 	}}}
 	_, _, err := ValidateActorStateSchemaProposal(base, StoryDirectorTRPGSystem{}, ActorStateSchemaProposal{Summary: "无需调整"})
-	if err == nil || !strings.Contains(err.Error(), "覆盖审查") {
+	if err == nil || !strings.Contains(err.Error(), "sourced coverage review") {
 		t.Fatalf("empty diff without a sourced coverage review must fail: %v", err)
 	}
 }
@@ -62,7 +62,7 @@ func TestValidateActorStateSchemaProposalRejectsUnreviewedLoreAtStoreBoundary(t 
 		Source: ActorStateSchemaRequirementSource{Kind: "lore", ID: "model-invented"}, Requirement: "长期状态",
 		ValuePolicy: ActorStateSchemaValuePolicySchemaOnly, ExpectedType: "string", Decision: "covered", TemplateID: "protagonist", FieldID: "状态",
 	}}}
-	if _, _, err := ValidateActorStateSchemaProposal(base, StoryDirectorTRPGSystem{}, proposal); err == nil || !strings.Contains(err.Error(), "未经后端确认审阅") {
+	if _, _, err := ValidateActorStateSchemaProposal(base, StoryDirectorTRPGSystem{}, proposal); err == nil || !strings.Contains(err.Error(), "not confirmed as reviewed by the backend") {
 		t.Fatalf("store validation must not promote a model-supplied Lore ID to reviewed: %v", err)
 	}
 }
@@ -96,8 +96,8 @@ func TestValidateActorStateSchemaProposalValidatesRuntimeActorOps(t *testing.T) 
 		op   ActorStateRuntimeSchemaOp
 		want string
 	}{
-		{name: "remove protagonist", op: ActorStateRuntimeSchemaOp{Op: "remove", ActorID: DefaultActorID}, want: "基础运行时 Actor 不可删除"},
-		{name: "remove story", op: ActorStateRuntimeSchemaOp{Op: "remove", ActorID: DefaultStoryContextActorID}, want: "基础运行时 Actor 不可删除"},
+		{name: "remove protagonist", op: ActorStateRuntimeSchemaOp{Op: "remove", ActorID: DefaultActorID}, want: "foundational runtime Actor cannot be removed"},
+		{name: "remove story", op: ActorStateRuntimeSchemaOp{Op: "remove", ActorID: DefaultStoryContextActorID}, want: "foundational runtime Actor cannot be removed"},
 		{name: "missing actor payload id", op: ActorStateRuntimeSchemaOp{Op: "add", ActorID: "guide", Actor: ActorStateInitialActor{TemplateID: "npc"}}, want: "actor.id 不能为空"},
 		{name: "mismatched actor id", op: ActorStateRuntimeSchemaOp{Op: "replace", ActorID: "guide", Actor: ActorStateInitialActor{ID: "other", TemplateID: "npc"}}, want: "不可改变 ID"},
 		{name: "missing template", op: ActorStateRuntimeSchemaOp{Op: "add", ActorID: "guide", Actor: ActorStateInitialActor{ID: "guide", TemplateID: "missing"}}, want: "模板不存在"},

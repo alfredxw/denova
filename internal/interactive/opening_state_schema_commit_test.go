@@ -1,6 +1,9 @@
 package interactive
 
 import (
+	"bytes"
+	interactivestate "denova/internal/interactive/state"
+	"os"
 	"reflect"
 	"testing"
 )
@@ -129,10 +132,10 @@ func TestOpeningGameStateSchemaCommitsSchemaInitialStateAndTurnAtomically(t *tes
 		Narrative:           "雨夜里，主角在旧车站醒来。",
 		StateSchemaProposal: &proposal,
 		TurnResult: &TurnResult{
-			StateUpdates: []StateUpdate{
-				{Op: TurnStateUpdateReplace, Path: "/protagonist/身份", Value: "失忆旅人"},
-				{Op: TurnStateUpdateReplace, Path: "/story/当前详细地点", Value: "旧车站月台"},
-				{Op: TurnStateUpdateReplace, Path: "/story/当前事件", Value: "主角在雨夜的旧车站醒来"},
+			StateUpdates: []interactivestate.Update{
+				{Op: interactivestate.Replace, Path: "/protagonist/身份", Value: "失忆旅人"},
+				{Op: interactivestate.Replace, Path: "/story/当前详细地点", Value: "旧车站月台"},
+				{Op: interactivestate.Replace, Path: "/story/当前事件", Value: "主角在雨夜的旧车站醒来"},
 			},
 			Choices: []string{"检查口袋", "走向站台出口"},
 		},
@@ -187,7 +190,7 @@ func TestOpeningGameStateSchemaFailureLeavesNoPartialSchemaOrState(t *testing.T)
 		Narrative:           "这段正文不能单独落盘。",
 		StateSchemaProposal: &proposal,
 		TurnResult: &TurnResult{
-			StateUpdates: []StateUpdate{{Op: TurnStateUpdateReplace, Path: "/protagonist/不存在", Value: "invalid"}},
+			StateUpdates: []interactivestate.Update{{Op: interactivestate.Replace, Path: "/protagonist/不存在", Value: "invalid"}},
 			Choices:      []string{"继续", "返回"},
 		},
 	})
@@ -262,6 +265,10 @@ func TestUpdateStoryRebuildsSchemaPolicyOnlyBeforeFirstTurn(t *testing.T) {
 	if story.Events != 1 {
 		t.Fatalf("fixed template should materialize its initial Actors: events=%d", story.Events)
 	}
+	beforeUpdate, err := os.ReadFile(store.storyPath(story.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
 	generated := StoryStateSchemaPolicy{Mode: StoryStateSchemaModeGenerate}
 	updated, err := store.UpdateStory(story.ID, UpdateStoryRequest{
 		Title:             story.Title,
@@ -275,8 +282,15 @@ func TestUpdateStoryRebuildsSchemaPolicyOnlyBeforeFirstTurn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if updated.Events != 0 || updated.StateSchemaPolicy == nil || updated.StateSchemaPolicy.Mode != StoryStateSchemaModeGenerate {
-		t.Fatalf("pre-opening rebuild did not reset story index: %#v", updated)
+	if updated.Events <= story.Events || updated.StateSchemaPolicy == nil || updated.StateSchemaPolicy.Mode != StoryStateSchemaModeGenerate {
+		t.Fatalf("pre-opening append-only reconfiguration did not advance the story projection: %#v", updated)
+	}
+	afterUpdate, err := os.ReadFile(store.storyPath(story.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.HasPrefix(afterUpdate, beforeUpdate) {
+		t.Fatal("pre-opening reconfiguration rewrote canonical story history")
 	}
 	snapshot, err := store.Snapshot(story.ID, "main")
 	if err != nil {
@@ -289,7 +303,7 @@ func TestUpdateStoryRebuildsSchemaPolicyOnlyBeforeFirstTurn(t *testing.T) {
 	proposal := openingSchemaProposalAddingIdentity()
 	if _, _, err := store.AppendTurnWithState(story.ID, AppendTurnWithStateRequest{
 		BranchID: "main", Narrative: "开局完成", StateSchemaProposal: &proposal,
-		TurnResult: &TurnResult{StateUpdates: []StateUpdate{{Op: TurnStateUpdateReplace, Path: "/story/当前详细地点", Value: "门厅"}, {Op: TurnStateUpdateReplace, Path: "/story/当前事件", Value: "主角进入门厅"}}, Choices: []string{"前进", "观察", "交谈", "等待", "返回"}},
+		TurnResult: &TurnResult{StateUpdates: []interactivestate.Update{{Op: interactivestate.Replace, Path: "/story/当前详细地点", Value: "门厅"}, {Op: interactivestate.Replace, Path: "/story/当前事件", Value: "主角进入门厅"}}, Choices: []string{"前进", "观察", "交谈", "等待", "返回"}},
 	}); err != nil {
 		t.Fatal(err)
 	}

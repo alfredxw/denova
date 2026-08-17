@@ -3,157 +3,144 @@ package app
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 
-	"github.com/cloudwego/eino/adk"
-
 	"denova/config"
-	"denova/internal/agent"
+	agentchat "denova/internal/agents/chat"
+	agentconversation "denova/internal/agents/conversation"
+	"denova/internal/agents/session"
+	appconversation "denova/internal/app/conversation"
+	appsettings "denova/internal/app/settings"
 	"denova/internal/book"
 	"denova/internal/interactive"
-	"denova/internal/prompts"
-	"denova/internal/session"
+	projectdomain "denova/internal/project"
+	workspacechange "denova/internal/workspace/change"
 )
 
+type ProjectType = projectdomain.Type
+type ProjectLayout = projectdomain.Layout
+
+const ProjectTypeBook = projectdomain.TypeBook
+
 type runtimeState struct {
-	workspace              string
-	bookState              *book.State
-	bookService            *book.Service
-	interactive            *interactive.Store
-	sessionStore           *session.Store
-	session                *session.Session
-	agentRunner            *adk.Runner
-	interactiveStoryRunner *adk.Runner
-	versionService         *book.VersionService
+	projectID        string
+	projectStateRoot string
+	workspace        string
+	bookState        *book.State
+	bookService      *book.Service
+	interactive      *interactive.Store
+	sessionStore     *session.Store
+	session          *session.Session
+	versionService   *book.VersionService
 }
 
-func buildRuntime(ctx context.Context, cfg *config.Config, workspace string) (*runtimeState, error) {
+// buildRuntimeExclusively initializes a runtime while holding the same
+// per-workspace mutation boundary used by editors and agents. This matters for
+// inactive automation targets too: selecting that workspace cannot rebuild
+// session/story projections concurrently with a background write.
+func buildRuntimeExclusively(ctx context.Context, cfg *config.Config, layout ProjectLayout) (*runtimeState, error) {
+	workspace := layout.ContentRoot
+	changes, err := workspacechange.ForWorkspaceAt(workspace, layout.StateRoot)
+	if err != nil {
+		return nil, err
+	}
+	var runtime *runtimeState
+	err = changes.WithExclusiveWorkspace(ctx, func() error {
+		var buildErr error
+		runtime, buildErr = buildRuntime(ctx, cfg, layout)
+		return buildErr
+	})
+	return runtime, err
+}
+
+func buildRuntime(ctx context.Context, cfg *config.Config, layout ProjectLayout) (*runtimeState, error) {
+	workspace := layout.ContentRoot
 	absWorkspace, err := filepath.Abs(workspace)
 	if err != nil {
-		return nil, fmt.Errorf("解析工作目录失败: %w", err)
+		return nil, fmt.Errorf("resolve workspace path: %w", err)
 	}
 	canonicalWorkspace, err := filepath.EvalSymlinks(absWorkspace)
 	if err != nil {
-		return nil, fmt.Errorf("解析工作目录真实路径失败: %w", err)
+		return nil, fmt.Errorf("resolve canonical workspace path: %w", err)
 	}
 	info, err := os.Stat(canonicalWorkspace)
 	if err != nil || !info.IsDir() {
-		return nil, fmt.Errorf("工作目录不存在: %s", canonicalWorkspace)
+		return nil, fmt.Errorf("workspace directory does not exist: %s", canonicalWorkspace)
 	}
 	absWorkspace = filepath.Clean(canonicalWorkspace)
 
 	state := book.NewState(absWorkspace)
 	if err := state.InitWorkspace(); err != nil {
-		return nil, fmt.Errorf("初始化工作目录失败: %w", err)
+		return nil, fmt.Errorf("initialize workspace: %w", err)
 	}
-	store, err := session.NewStore(state.SessionDir())
+	store, err := session.NewStore(layout.SessionsDir())
 	if err != nil {
-		return nil, fmt.Errorf("创建会话存储失败: %w", err)
+		return nil, fmt.Errorf("create session store: %w", err)
 	}
-	sess, err := activeUserSessionOrCreate(store)
-	if err != nil {
-		return nil, fmt.Errorf("创建会话失败: %w", err)
-	}
-
+	keepStore := false
+	defer func() {
+		if !keepStore {
+			_ = store.Close()
+		}
+	}()
 	runtimeCfg := *cfg
 	runtimeCfg.Workspace = absWorkspace
-	agentRunner, err := buildAgentRunner(ctx, &runtimeCfg, state)
-	if err != nil {
-		return nil, err
+	runtimeCfg.ProjectID = layout.ProjectID
+	runtimeCfg.ProjectStateDir = layout.StateRoot
+	if layered, loadErr := config.LoadLayeredWithStartupConfigAt(runtimeCfg.DataDir(), absWorkspace, layout.ConfigPath()); loadErr == nil {
+		appsettings.ApplyLayered(&runtimeCfg, layered)
+	} else {
+		return nil, fmt.Errorf("load project settings: %w", loadErr)
 	}
-	interactiveStoryRunner, err := buildInteractiveStoryRunner(ctx, &runtimeCfg, state, prompts.InteractiveStorySystemInstructionInput{})
+	sess, err := activeUserSessionOrCreate(store, &runtimeCfg)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create conversation session: %w", err)
 	}
 	interactiveStore := interactive.NewStoreWithNovaDir(absWorkspace, runtimeCfg.DataDir())
-
-	return &runtimeState{
-		workspace:              absWorkspace,
-		bookState:              state,
-		bookService:            book.NewService(absWorkspace),
-		interactive:            interactiveStore,
-		sessionStore:           store,
-		session:                sess,
-		agentRunner:            agentRunner,
-		interactiveStoryRunner: interactiveStoryRunner,
-		versionService:         book.NewVersionService(absWorkspace),
-	}, nil
+	interruptedDirectorRuns, directorRecoveryErr := interactiveStore.RecoverInterruptedDirectorRuns()
+	if directorRecoveryErr != nil {
+		// Recovery is branch-scoped and reports partial failures. A corrupt
+		// optional projection must not make the user's whole project unavailable.
+		slog.ErrorContext(ctx, fmt.Sprintf("[interactive-director] interrupted run recovery incomplete workspace=%s recovered=%d error=%v", absWorkspace, interruptedDirectorRuns, directorRecoveryErr))
+	} else if interruptedDirectorRuns > 0 {
+		slog.InfoContext(ctx, fmt.Sprintf("[interactive-director] recovered interrupted runs workspace=%s runs=%d", absWorkspace, interruptedDirectorRuns))
+	}
+	runtime := &runtimeState{
+		projectID:        layout.ProjectID,
+		projectStateRoot: layout.StateRoot,
+		workspace:        absWorkspace,
+		bookState:        state,
+		bookService:      book.NewService(absWorkspace),
+		interactive:      interactiveStore,
+		sessionStore:     store,
+		session:          sess,
+		versionService:   book.NewVersionService(absWorkspace, layout.VersionRepositoryDir()),
+	}
+	keepStore = true
+	return runtime, nil
 }
 
-func buildAgentRunner(ctx context.Context, cfg *config.Config, state *book.State, tellers ...agent.IDEStoryTeller) (*adk.Runner, error) {
-	teller := ideStoryTellerForConfig(cfg)
-	if len(tellers) > 0 {
-		teller = tellers[0]
-	}
-	builtAgent, err := agent.Build(ctx, cfg, state, teller)
-	if err != nil {
-		return nil, fmt.Errorf("构建 Agent 失败: %w", err)
-	}
-	return agent.NewRunnerWithOptions(ctx, builtAgent, agent.RunOptions{AgentKind: agent.AgentKindIDE, Workspace: cfg.Workspace}), nil
+func projectSessionConversation(runtime ideChatRuntime, request agentchat.ChatRequest) *agentconversation.SessionConversation {
+	return appconversation.ProjectConversation(sharedConversationRuntime(runtime), request)
 }
 
-func ideStoryTellerForConfig(cfg *config.Config) agent.IDEStoryTeller {
-	if cfg == nil || cfg.DataDir() == "" {
-		return agent.IDEStoryTeller{}
+func (a *App) resolveProject(id string, requireAvailable bool) (projectdomain.Record, projectdomain.Layout, error) {
+	if a == nil || a.projectRegistry == nil {
+		return projectdomain.Record{}, projectdomain.Layout{}, fmt.Errorf("project registry is unavailable")
 	}
-	tellerID := cfg.IDEStoryTellerID
-	if tellerID == "" {
-		tellerID = "classic"
-	}
-	teller := loadInteractiveTeller(cfg.DataDir(), tellerID)
-	if teller.ID == "" {
-		return agent.IDEStoryTeller{}
-	}
-	return agent.IDEStoryTeller{
-		ID:          teller.ID,
-		Name:        teller.Name,
-		Description: teller.Description,
-		Prompt:      teller.PromptForTargets("system", "turn_context"),
-	}
+	return a.projectRegistry.Resolve(id, requireAvailable)
 }
 
-func ideStoryTellerFromInteractive(teller interactive.Teller, styleRules []agent.StyleRule) agent.IDEStoryTeller {
-	if teller.ID == "" {
-		return agent.IDEStoryTeller{}
+func (a *App) resolveProjectByWorkspace(workspace string) (projectdomain.Record, projectdomain.Layout, error) {
+	if a == nil || a.projectRegistry == nil {
+		return projectdomain.Record{}, projectdomain.Layout{}, fmt.Errorf("project registry is unavailable")
 	}
-	return agent.IDEStoryTeller{
-		ID:          teller.ID,
-		Name:        teller.Name,
-		Description: teller.Description,
-		Prompt:      teller.PromptForTargets("system", "turn_context"),
-		StyleRules:  styleRules,
-	}
+	return a.projectRegistry.ResolveByPath(workspace, true)
 }
 
-func buildInteractiveStoryRunner(ctx context.Context, cfg *config.Config, state *book.State, teller prompts.InteractiveStorySystemInstructionInput, toolContexts ...agent.InteractiveStoryToolContext) (*adk.Runner, error) {
-	builtAgent, err := agent.BuildInteractiveStory(ctx, cfg, state, teller, toolContexts...)
-	if err != nil {
-		return nil, fmt.Errorf("构建互动故事 Agent 失败: %w", err)
-	}
-	return agent.NewRunnerWithOptions(ctx, builtAgent, agent.RunOptions{AgentKind: agent.AgentKindInteractiveStory, Workspace: cfg.Workspace}), nil
-}
-
-func buildConfigManagerRunner(ctx context.Context, cfg *config.Config, state *book.State, resourceSkills ...agent.ConfigManagerResourceSkill) (*adk.Runner, error) {
-	builtAgent, err := agent.BuildConfigManagerAgent(ctx, cfg, state, resourceSkills...)
-	if err != nil {
-		return nil, fmt.Errorf("构建配置管理 Agent 失败: %w", err)
-	}
-	return agent.NewRunnerWithOptions(ctx, builtAgent, agent.RunOptions{AgentKind: agent.AgentKindConfigManager, Workspace: cfg.Workspace}), nil
-}
-
-func buildAutomationAgentRunner(ctx context.Context, cfg *config.Config, state *book.State, task agent.AutomationTaskInstruction) (*adk.Runner, error) {
-	builtAgent, err := agent.BuildAutomationAgent(ctx, cfg, state, task)
-	if err != nil {
-		return nil, fmt.Errorf("构建自动化 Agent 失败: %w", err)
-	}
-	return agent.NewRunnerWithOptions(ctx, builtAgent, agent.RunOptions{AgentKind: agent.AgentKindAutomation, Workspace: cfg.Workspace}), nil
-}
-
-func buildImageAgentRunner(ctx context.Context, cfg *config.Config, state *book.State, systemPrompt string) (*adk.Runner, error) {
-	builtAgent, err := agent.BuildImageAgent(ctx, cfg, state, systemPrompt)
-	if err != nil {
-		return nil, fmt.Errorf("构建图像 Agent 失败: %w", err)
-	}
-	return agent.NewRunnerWithOptions(ctx, builtAgent, agent.RunOptions{AgentKind: agent.AgentKindImage, Workspace: cfg.Workspace}), nil
+func (a *App) projectLayoutForWorkspace(workspace string) (projectdomain.Layout, error) {
+	_, layout, err := a.resolveProjectByWorkspace(workspace)
+	return layout, err
 }

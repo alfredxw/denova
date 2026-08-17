@@ -33,6 +33,10 @@ describe('StateSchemaOverview', () => {
           source: { kind: 'lore', id: 'numeric-rule' },
           requirement: '生命值必须保持在 0 到 100', expected_type: 'number', min: 0, max: 100,
           decision: 'add', template_id: 'protagonist', field_id: '生命', reason: '常驻规则要求可计算生命值',
+        }, {
+          source: { kind: 'opening', id: 'opening-draft' },
+          requirement: '本故事不采用 D20 力量数值',
+          decision: 'remove', template_id: 'protagonist', field_id: '力量', reason: '改用境界体系',
         }],
         changes: [{ kind: 'field', op: 'add', template_id: 'protagonist', target_id: '危机压力', reason: '首轮出现追捕' }],
         warnings: ['旧压力值无法转换，已使用默认值'],
@@ -52,6 +56,9 @@ describe('StateSchemaOverview', () => {
     expect(screen.getByText(/protagonist\.生命/)).toBeInTheDocument()
     expect(screen.getAllByText(/numeric-rule/).length).toBeGreaterThan(0)
     expect(screen.getByText('常驻规则要求可计算生命值')).toBeInTheDocument()
+    expect(screen.getByText('移除')).toBeInTheDocument()
+    expect(screen.getByText(/protagonist\.力量/)).toBeInTheDocument()
+    expect(screen.getByText('改用境界体系')).toBeInTheDocument()
   })
 
   it('renders a frozen legacy schema without Director review actions', () => {

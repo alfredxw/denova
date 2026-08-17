@@ -1,8 +1,11 @@
 package interactive
 
 import (
+	"denova/internal/interactive/director"
+	interactivestate "denova/internal/interactive/state"
 	"encoding/json"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -22,7 +25,7 @@ func TestStoryDirectorLibraryCRUDAndRevisionConflict(t *testing.T) {
 	if directors[0].ModuleRefs.NarrativeStyleDisabled || directors[0].ModuleRefs.EventPackagesDisabled || directors[0].ModuleRefs.RuleSystemDisabled || directors[0].ModuleRefs.ActorStateDisabled || directors[0].ModuleRefs.ImagePresetDisabled {
 		t.Fatalf("default story director modules should start enabled: %#v", directors[0].ModuleRefs)
 	}
-	if directors[0].Strategy.DirectorAgentMode != DirectorAgentModeTriggered || directors[0].Strategy.BranchPlanningTurns != defaultBranchPlanningTurns {
+	if directors[0].Strategy.DirectorAgentMode != director.AgentModeTriggered || directors[0].Strategy.BranchPlanningTurns != defaultBranchPlanningTurns {
 		t.Fatalf("default story director should use triggered background director schedule: %#v", directors[0].Strategy)
 	}
 
@@ -77,13 +80,13 @@ func TestStoryDirectorLibraryCRUDAndRevisionConflict(t *testing.T) {
 			Enabled:             true,
 			EventFrequency:      EventFrequencyFrequent,
 			DirectorAgentMode:   "unknown",
-			BranchPlanningTurns: 99,
+			BranchPlanningTurns: 12,
 		},
 	})
 	if err != nil {
 		t.Fatalf("Create failed: %v", err)
 	}
-	if !created.Custom || created.Strategy.EventFrequency != EventFrequencyFrequent || created.Strategy.DirectorAgentMode != DirectorAgentModeTriggered || created.Strategy.BranchPlanningTurns != 12 {
+	if !created.Custom || created.Strategy.EventFrequency != EventFrequencyFrequent || created.Strategy.DirectorAgentMode != director.AgentModeTriggered || created.Strategy.BranchPlanningTurns != 12 {
 		t.Fatalf("custom director should be marked and strategy should be normalized: %#v", created)
 	}
 	if created.ModuleRefs.EventPackagesDisabled || created.ModuleRefs.RuleSystemDisabled {
@@ -117,11 +120,11 @@ func TestStoryDirectorLibraryCRUDAndRevisionConflict(t *testing.T) {
 		Name:       "Agent 更新",
 		ModuleRefs: created.ModuleRefs,
 		Strategy:   StoryDirectorStrategy{Enabled: true},
-	}, created.UpdatedAt)
+	}, created.Revision)
 	if err != nil {
 		t.Fatalf("Update failed: %v", err)
 	}
-	if _, err := library.Update(created.ID, StoryDirector{Name: "旧前端保存"}, created.UpdatedAt); !errors.Is(err, ErrStoryDirectorRevisionConflict) {
+	if _, err := library.Update(created.ID, StoryDirector{Name: "旧前端保存"}, created.Revision); !errors.Is(err, ErrStoryDirectorRevisionConflict) {
 		t.Fatalf("expected story director revision conflict, got %v", err)
 	}
 	got, err := library.Get(created.ID)
@@ -133,6 +136,35 @@ func TestStoryDirectorLibraryCRUDAndRevisionConflict(t *testing.T) {
 	}
 }
 
+func TestStoryDirectorGetDoesNotAdvanceRevision(t *testing.T) {
+	library := NewStoryDirectorLibrary(t.TempDir())
+	created, err := library.Create(StoryDirector{ID: "stable-read", Name: "Stable read"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := library.Get(created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Revision != created.Revision {
+		t.Fatalf("read advanced revision: created=%s got=%s", created.Revision, got.Revision)
+	}
+}
+
+func TestStoryDirectorCreateRejectsInvalidBranchHorizonBeforePersisting(t *testing.T) {
+	library := NewStoryDirectorLibrary(t.TempDir())
+	_, err := library.Create(StoryDirector{
+		ID: "invalid-horizon", Name: "无效规划范围",
+		Strategy: StoryDirectorStrategy{BranchPlanningTurns: 13},
+	})
+	if err == nil || !strings.Contains(err.Error(), "strategy.branch_planning_turns") {
+		t.Fatalf("invalid branch horizon error = %v", err)
+	}
+	if _, getErr := library.Get("invalid-horizon"); !os.IsNotExist(getErr) {
+		t.Fatalf("invalid director must not be persisted: %v", getErr)
+	}
+}
+
 func TestStoryDirectorBuiltinOverrideAndRestore(t *testing.T) {
 	library := NewStoryDirectorLibrary(t.TempDir())
 	builtin, err := library.Get(DefaultStoryDirectorID)
@@ -140,7 +172,7 @@ func TestStoryDirectorBuiltinOverrideAndRestore(t *testing.T) {
 		t.Fatal(err)
 	}
 	builtin.Name = "我的默认导演"
-	overridden, err := library.Update(DefaultStoryDirectorID, builtin, builtin.UpdatedAt)
+	overridden, err := library.Update(DefaultStoryDirectorID, builtin, builtin.Revision)
 	if err != nil {
 		t.Fatalf("Update built-in story director should create override: %v", err)
 	}
@@ -260,7 +292,21 @@ func TestStoryDirectorStrategyPromptMarkdownNormalizeAndSummaries(t *testing.T) 
 	}
 }
 
-func containsStateOpPath(ops []StateOp, path string) bool {
+func TestStoryDirectorCreateRejectsOversizedPromptBeforePersisting(t *testing.T) {
+	library := NewStoryDirectorLibrary(t.TempDir())
+	_, err := library.Create(StoryDirector{
+		ID: "oversized-prompt", Name: "超长提示导演",
+		Strategy: StoryDirectorStrategy{PromptMarkdown: strings.Repeat("a", MaxStoryDirectorStrategyPromptBytes+1)},
+	})
+	if err == nil || !strings.Contains(err.Error(), "strategy.prompt_markdown") {
+		t.Fatalf("oversized prompt error = %v", err)
+	}
+	if _, getErr := library.Get("oversized-prompt"); !os.IsNotExist(getErr) {
+		t.Fatalf("oversized director must not be persisted: %v", getErr)
+	}
+}
+
+func containsStateOpPath(ops []interactivestate.Op, path string) bool {
 	for _, op := range ops {
 		if op.Path == path {
 			return true

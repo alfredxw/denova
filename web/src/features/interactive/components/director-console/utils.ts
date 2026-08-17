@@ -1,5 +1,6 @@
 import type { TFunction } from 'i18next'
-import type { ChatMessage } from '@/lib/api'
+import type { AgentMessageMetadata, AgentUIMessage } from '@/lib/agent-ui'
+import { createAgentDataMessage, createAgentReasoningMessage, createAgentTextMessage, createAgentToolMessage, parseAgentToolInput } from '@/lib/agent-ui-message'
 import type { DirectorPlanMetadata, Snapshot, TurnDisplayEvent } from '../../types'
 import type { DirectorStatusLike } from './types'
 
@@ -13,22 +14,16 @@ export function extractDirectorDisplayEvents(snapshot: Snapshot | null, status?:
 export function isDirectorDisplayEvent(event: TurnDisplayEvent) {
   if (event.agent_kind === 'interactive_director') return true
   const name = event.name || event.content || ''
-  if (!['read_file', 'write_file', 'edit_file'].includes(name)) return false
+  if (!['read', 'write', 'edit'].includes(name)) return false
   return `${event.args || ''}\n${event.result || ''}`.includes('director.md')
 }
 
-export function displayEventToChatMessage(event: TurnDisplayEvent, fallbackID: string): ChatMessage {
-  return {
-    id: event.id || fallbackID,
-    // narrative 锚点只属于游戏主时间线，导演后台时间线（isDirectorDisplayEvent 过滤）不会出现；此处仅做类型收窄兜底。
-    role: event.role === 'narrative' ? undefined : event.role,
-    content: event.content || event.name || '',
-    name: event.name || event.content,
-    args: event.args || '',
-    status: event.status || 'success',
-    result: event.result || '',
+export function displayEventToAgentUIMessage(event: TurnDisplayEvent, fallbackID: string): AgentUIMessage {
+  const id = event.id || fallbackID
+  const metadata: AgentMessageMetadata = {
     created_at: event.created_at,
     run_id: event.run_id,
+    display_segment_id: event.id,
     agent_kind: event.agent_kind,
     agent_name: event.agent_name,
     root_agent_name: event.root_agent_name,
@@ -36,10 +31,40 @@ export function displayEventToChatMessage(event: TurnDisplayEvent, fallbackID: s
     subagent: event.subagent,
     subagent_session_id: event.subagent_session_id,
     subagent_type: event.subagent_type,
-    sse_hidden_fields: event.sse_hidden_fields,
-    sse_hidden_reason: event.sse_hidden_reason,
-    sse_display_notice: event.sse_display_notice,
-    sse_generated_chars: event.sse_generated_chars,
+		parent_call_id: event.parent_call_id,
+    tool_presentation: event.tool_presentation,
+  }
+  switch (event.role) {
+    case 'thinking':
+      return createAgentReasoningMessage({ id, text: event.content || '', metadata: { ...metadata, display_role: 'thinking' } })
+    case 'tool_call': {
+      const status = event.status || 'success'
+      return createAgentToolMessage({
+        id,
+        name: event.name || event.content || 'unknown_tool',
+        state: status === 'error' ? 'output-error' : status === 'success' ? 'output-available' : 'input-available',
+        input: parseAgentToolInput(event.args || ''),
+        output: status === 'error' ? undefined : event.result || undefined,
+        errorText: status === 'error' ? event.result || '' : undefined,
+        metadata: { ...metadata, display_role: 'tool_call' },
+      })
+    }
+    case 'assistant':
+      return createAgentTextMessage({ id, role: 'assistant', text: event.content || '', metadata: { ...metadata, display_role: 'assistant' } })
+    case 'narrative':
+      return createAgentDataMessage({
+        id,
+        type: 'agent-activity',
+        metadata,
+        data: { id, role: 'narrative', content: event.content || '' },
+      })
+    default:
+      return createAgentDataMessage({
+        id,
+        type: 'agent-activity',
+        metadata,
+        data: { id, role: event.role, content: event.content || event.name || '' },
+      })
   }
 }
 

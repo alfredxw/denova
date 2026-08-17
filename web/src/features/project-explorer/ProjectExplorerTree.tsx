@@ -1,0 +1,389 @@
+import type { NodeApi, TreeApi } from 'react-arborist'
+import { ClipboardPaste, FileText, FolderPlus } from 'lucide-react'
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type MouseEvent,
+  type RefObject,
+} from 'react'
+import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
+import { DeleteConfirmDialog } from '@/components/Sidebar/DeleteConfirmDialog'
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from '@/components/ui/context-menu'
+import type { ProjectFileExplorerNode } from './model'
+import { ProjectExplorerDragPreview } from './ProjectExplorerDragPreview'
+import {
+  ExplorerNode,
+  ProjectExplorerRenderContext,
+  type ProjectExplorerTreeActions,
+} from './ProjectExplorerNode'
+import { ProjectFileTreeRow } from './ProjectFileTreeChrome'
+import {
+  absoluteProjectPath,
+  buildProjectFilePastePlan,
+  insertProjectFileDraft,
+  joinProjectPath,
+  projectBaseName,
+  projectParentPath,
+  PROJECT_FILE_DRAFT_PREFIX,
+  removeNestedProjectPaths,
+  type ProjectFileClipboard,
+  type ProjectFileDraft,
+} from './operations'
+import type { ProjectExplorerExtensions } from './types'
+import { ProjectFileTreeView } from './ProjectFileTreeView'
+import {
+  actionableFocusedNode,
+  actionableSelection,
+  applyExplorerSelection,
+  disableProjectFileDrag,
+  disableProjectFileDrop,
+  disableProjectFileEdit,
+  insertionDirectory,
+  selectionAfterDeletion,
+} from './tree-behavior'
+
+interface ProjectExplorerTreeProps {
+  nodes: readonly ProjectFileExplorerNode[]
+  workspace: string
+  selectedPath: string | null
+  expandedPaths: readonly string[]
+  onSelectFile: (path: string) => void
+  onDirectoryExpand: (path: string) => void | Promise<void>
+  onDirectoryExpandedChange: (path: string, expanded: boolean) => void
+  onLoadMore: (path: string) => void | Promise<void>
+  onCreateItem: (path: string, type: 'file' | 'dir') => Promise<void>
+  onDeleteItem: (path: string) => Promise<void>
+  onRenameItem: (path: string, newName: string) => Promise<void>
+  onCopyItem: (from: string, to: string) => Promise<void>
+  onMoveItem: (from: string, to: string) => Promise<void>
+  treeRef: RefObject<TreeApi<ProjectFileExplorerNode> | null>
+  extensions?: ProjectExplorerExtensions
+}
+
+export interface ProjectExplorerTreeHandle {
+  beginCreate: (type: 'file' | 'dir') => void
+}
+
+/** Virtualized Explorer behavior shared by Writing and Game project files. */
+export const ProjectExplorerTree = forwardRef<ProjectExplorerTreeHandle, ProjectExplorerTreeProps>(function ProjectExplorerTree({
+  nodes,
+  workspace,
+  selectedPath,
+  expandedPaths,
+  onSelectFile,
+  onDirectoryExpand,
+  onDirectoryExpandedChange,
+  onLoadMore,
+  onCreateItem,
+  onDeleteItem,
+  onRenameItem,
+  onCopyItem,
+  onMoveItem,
+  treeRef,
+  extensions = {},
+}, ref) {
+  const { t } = useTranslation()
+  const draftSequenceRef = useRef(0)
+  const pendingSelectionRef = useRef<readonly string[] | null>(null)
+  const [draft, setDraft] = useState<ProjectFileDraft | null>(null)
+  const [clipboard, setClipboard] = useState<ProjectFileClipboard | null>(null)
+  const [deletePaths, setDeletePaths] = useState<string[]>([])
+  const renderedNodes = useMemo(() => insertProjectFileDraft(nodes, draft), [draft, nodes])
+  const nodesById = useMemo(() => {
+    const index = new Map<string, ProjectFileExplorerNode>()
+    const visit = (items: readonly ProjectFileExplorerNode[]) => {
+      for (const item of items) {
+        index.set(item.id, item)
+        if (item.children) visit(item.children)
+      }
+    }
+    visit(renderedNodes)
+    return index
+  }, [renderedNodes])
+  const requestSelection = useCallback((paths: readonly string[]) => {
+    pendingSelectionRef.current = paths
+    if (applyExplorerSelection(treeRef.current, paths)) pendingSelectionRef.current = null
+  }, [treeRef])
+
+  const beginCreate = useCallback((type: 'file' | 'dir', explicitParent?: string) => {
+    const tree = treeRef.current
+    const parentPath = explicitParent ?? insertionDirectory(tree)
+    if (parentPath) tree?.open(parentPath)
+    if (tree?.editingId) tree.reset()
+    draftSequenceRef.current += 1
+    setDraft({
+      id: `${PROJECT_FILE_DRAFT_PREFIX}${draftSequenceRef.current}`,
+      parentPath,
+      type,
+      index: 0,
+    })
+  }, [treeRef])
+
+  useImperativeHandle(ref, () => ({
+    beginCreate: (type) => beginCreate(type),
+  }), [beginCreate])
+
+  useEffect(() => {
+    if (!draft) return
+    const tree = treeRef.current
+    const node = tree?.get(draft.id)
+    if (!tree || !node || tree.editingId === draft.id) return
+    tree.openParents(draft.id)
+    tree.focus(node)
+    void node.edit()
+  }, [draft, renderedNodes, treeRef])
+
+  useEffect(() => {
+    const paths = pendingSelectionRef.current
+    if (!paths) return
+    if (applyExplorerSelection(treeRef.current, paths)) pendingSelectionRef.current = null
+  }, [renderedNodes, treeRef])
+
+  const handleToggle = useCallback((id: string) => {
+    const node = treeRef.current?.get(id)
+    if (!node || node.data.type !== 'dir') return
+    const expanded = treeRef.current?.isOpen(id) === true
+    onDirectoryExpandedChange(node.data.path, expanded)
+    if (expanded && !node.data.loaded) {
+      void Promise.resolve(onDirectoryExpand(node.data.path)).catch((cause) => {
+        console.error('[features/project-explorer/ProjectExplorerTree.tsx] expanding directory failed', {
+          path: node.data.path,
+          cause,
+        })
+      })
+    }
+  }, [onDirectoryExpand, onDirectoryExpandedChange, treeRef])
+
+  const handleActivate = useCallback((node: NodeApi<ProjectFileExplorerNode>) => {
+    if (node.data.draft) return
+    if (node.data.type === 'file') onSelectFile(node.data.path)
+    if (node.data.type === 'dir') node.toggle()
+    if (node.data.type === 'more') {
+      void Promise.resolve(onLoadMore(node.data.path)).catch((cause) => {
+        console.error('[features/project-explorer/ProjectExplorerTree.tsx] loading directory page failed', {
+          path: node.data.path,
+          cause,
+        })
+      })
+    }
+  }, [onLoadMore, onSelectFile])
+
+  const handleMove = useCallback(async ({
+    dragNodes,
+    parentId,
+  }: {
+    dragNodes: NodeApi<ProjectFileExplorerNode>[]
+    parentId: string | null
+  }) => {
+    const parent = parentId ?? ''
+    const sources = removeNestedProjectPaths(dragNodes
+      .map((node) => node.data)
+      .filter((node) => node.type !== 'more' && !node.draft)
+      .map((node) => node.path))
+    const destinations: string[] = []
+    for (const source of sources) {
+      const destination = joinProjectPath(parent, projectBaseName(source))
+      if (source === destination) continue
+      await onMoveItem(source, destination)
+      destinations.push(destination)
+    }
+    if (destinations.length > 0) requestSelection(destinations)
+  }, [onMoveItem, requestSelection])
+
+  const handleRename = useCallback(async ({ node, name }: {
+    node: NodeApi<ProjectFileExplorerNode>
+    name: string
+  }) => {
+    if (node.data.draft && draft) {
+      const createdPath = joinProjectPath(draft.parentPath, name)
+      await onCreateItem(createdPath, draft.type)
+      setDraft(null)
+      requestSelection([createdPath])
+      return
+    }
+    await onRenameItem(node.data.path, name)
+    requestSelection([joinProjectPath(projectParentPath(node.data.path), name)])
+  }, [draft, onCreateItem, onRenameItem, requestSelection])
+
+  const stageClipboard = useCallback((mode: ProjectFileClipboard['mode'], paths: string[]) => {
+    const actionable = removeNestedProjectPaths(paths)
+    if (actionable.length > 0) setClipboard({ mode, paths: actionable })
+  }, [])
+
+  const pasteInto = useCallback(async (targetDirectory: string) => {
+    if (!clipboard) return
+    const transfers = buildProjectFilePastePlan(nodes, clipboard, targetDirectory)
+    for (const transfer of transfers) {
+      if (clipboard.mode === 'copy') await onCopyItem(transfer.source, transfer.destination)
+      else await onMoveItem(transfer.source, transfer.destination)
+    }
+    if (clipboard.mode === 'cut' && transfers.length > 0) setClipboard(null)
+    if (transfers.length > 0) requestSelection(transfers.map((transfer) => transfer.destination))
+  }, [clipboard, nodes, onCopyItem, onMoveItem, requestSelection])
+
+  const copyPath = useCallback((path: string, relative: boolean) => {
+    const value = relative ? path : absoluteProjectPath(workspace, path)
+    void writeClipboardText(value).catch((cause) => {
+      console.error('[features/project-explorer/ProjectExplorerTree.tsx] copying project file path failed', {
+        path,
+        relative,
+        cause,
+      })
+      toast.error(t('files.tree.copyPathFailed'))
+    })
+  }, [t, workspace])
+
+  const actions = useMemo<ProjectExplorerTreeActions>(() => ({
+    beginCreate: (parentPath, type) => beginCreate(type, parentPath),
+    rename: (node) => void node.edit(),
+    stageClipboard,
+    paste: (parentPath) => {
+      void pasteInto(parentPath).catch((cause) => {
+        console.error('[features/project-explorer/ProjectExplorerTree.tsx] pasting project files failed', {
+          parentPath,
+          cause,
+        })
+      })
+    },
+    copyPath,
+    delete: setDeletePaths,
+    cancelDraft: () => setDraft(null),
+    clipboard,
+  }), [beginCreate, clipboard, copyPath, pasteInto, stageClipboard])
+  const renderContext = useMemo(
+    () => ({ actions, extensions, nodesById, onLoadMore }),
+    [actions, extensions, nodesById, onLoadMore],
+  )
+
+  const handleKeyDownCapture = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return
+    const tree = treeRef.current
+    if (!tree) return
+    const focused = actionableFocusedNode(tree)
+    const paths = actionableSelection(tree)
+    const command = event.metaKey || event.ctrlKey
+
+    if (event.key === 'F2' && focused) {
+      consumeKeyboardEvent(event)
+      void focused.edit()
+      return
+    }
+    if (event.key === 'Enter' && focused) {
+      consumeKeyboardEvent(event)
+      focused.select()
+      if (focused.data.type === 'file') onSelectFile(focused.data.path)
+      else focused.toggle()
+      return
+    }
+    if ((event.key === 'Delete' || (event.key === 'Backspace' && command)) && paths.length > 0) {
+      consumeKeyboardEvent(event)
+      setDeletePaths(paths)
+      return
+    }
+    if (command && event.key.toLowerCase() === 'c' && paths.length > 0) {
+      consumeKeyboardEvent(event)
+      stageClipboard('copy', paths)
+      return
+    }
+    if (command && event.key.toLowerCase() === 'x' && paths.length > 0) {
+      consumeKeyboardEvent(event)
+      stageClipboard('cut', paths)
+      return
+    }
+    if (command && event.key.toLowerCase() === 'v' && clipboard) {
+      consumeKeyboardEvent(event)
+      void pasteInto(insertionDirectory(tree)).catch((cause) => {
+        console.error('[features/project-explorer/ProjectExplorerTree.tsx] keyboard paste failed', { cause })
+      })
+    }
+  }, [clipboard, onSelectFile, pasteInto, stageClipboard, treeRef])
+
+  const handleBlankAreaInteraction = useCallback((event: MouseEvent<HTMLDivElement>) => {
+    const target = event.target as { closest?: (selector: string) => Element | null; parentElement?: Element | null }
+    const element = typeof target.closest === 'function' ? target : target.parentElement
+    if (element?.closest?.('[role="treeitem"]')) return
+    treeRef.current?.deselectAll()
+  }, [treeRef])
+
+  return (
+    <>
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
+          <ProjectFileTreeView
+            nodes={renderedNodes}
+            treeRef={treeRef}
+            selectedPath={selectedPath}
+            expandedPaths={expandedPaths}
+            ariaLabel={t('files.tree.title')}
+            onKeyDownCapture={handleKeyDownCapture}
+            onClick={handleBlankAreaInteraction}
+            onContextMenu={handleBlankAreaInteraction}
+            disableEdit={disableProjectFileEdit}
+            disableDrag={disableProjectFileDrag}
+            disableDrop={disableProjectFileDrop}
+            onActivate={handleActivate}
+            onToggle={handleToggle}
+            onRename={handleRename}
+            onMove={handleMove}
+            renderNode={ExplorerNode}
+            renderRow={ProjectFileTreeRow}
+            renderDragPreview={ProjectExplorerDragPreview}
+            renderTree={(tree) => (
+              <ProjectExplorerRenderContext.Provider value={renderContext}>
+                {tree}
+              </ProjectExplorerRenderContext.Provider>
+            )}
+            overlay={renderedNodes.length === 0 ? (
+              <div className="pointer-events-none absolute inset-x-3 top-8 text-center text-xs text-[var(--nova-text-faint)]">
+                {t('files.tree.empty')}
+              </div>
+            ) : null}
+          />
+        </ContextMenuTrigger>
+        <ContextMenuContent>
+          <ContextMenuItem onSelect={() => beginCreate('file', '')}><FileText />{t('sidebar.createFile')}</ContextMenuItem>
+          <ContextMenuItem onSelect={() => beginCreate('dir', '')}><FolderPlus />{t('sidebar.createDir')}</ContextMenuItem>
+          <ContextMenuSeparator />
+          <ContextMenuItem disabled={!clipboard} onSelect={() => actions.paste('')}><ClipboardPaste />{t('sidebar.paste')}</ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
+      <DeleteConfirmDialog
+        open={deletePaths.length > 0}
+        path={deletePaths}
+        recovery={extensions.deleteRecovery ?? 'none'}
+        onOpenChange={(open) => {
+          if (!open) setDeletePaths([])
+        }}
+        onConfirm={async () => {
+          const nextSelection = selectionAfterDeletion(treeRef.current, deletePaths)
+          for (const path of removeNestedProjectPaths(deletePaths)) await onDeleteItem(path)
+          setDeletePaths([])
+          requestSelection(nextSelection)
+        }}
+      />
+    </>
+  )
+})
+
+function consumeKeyboardEvent(event: KeyboardEvent) {
+  event.preventDefault()
+  event.stopPropagation()
+}
+
+async function writeClipboardText(value: string) {
+  if (!navigator.clipboard?.writeText) throw new Error('Clipboard API is unavailable')
+  await navigator.clipboard.writeText(value)
+}

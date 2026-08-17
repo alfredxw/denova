@@ -38,6 +38,7 @@ describe('usePresetDraftSync', () => {
         ...imagePreset('newer local edit', 'r3'),
         ...payload,
         updated_at: 'r3',
+        revision: 'r3',
       }))
 
     render(<PresetDraftSyncHarness save={save} />)
@@ -142,6 +143,7 @@ function imagePreset(name: string, revision: string): ImagePreset {
     description: '',
     custom: true,
     updated_at: revision,
+    revision,
   }
 }
 

@@ -5,57 +5,54 @@
 # 必须遵守
 
 - 当前beta版本不需要过多考虑功能兼容性问题，以优化功能为主要目标，如果有不兼容问题，需要在变更说明里写清楚
-- 每次支持新的功能/功能较大变更时，考虑是否需要增加配置项供用户配置
-- 模块依赖需要划分清晰，尽量避免单个文件/package负责太多不同的东西，原则上如果单文件功能太复杂那么就需要拆分成多个文件放到一个子package里
-- 每次commit变更前都将变更的具体内容写在 CHANGELOG.md 中，遵循通用的 CHANGELOG 规范
+- 每次支持新的功能/功能较大变更时，需要考虑是否需要增加配置项供用户配置
+- 模块依赖需要划分清晰，尽量避免单个文件/package负责太多不同的东西，原则上如果单文件功能太复杂那么就需要拆分成多个文件放到一个子package里。但文件和package也不能拆太碎，比如特别小的单文件package，可以合理范围内合并或者多层package划分
+- 每次commit变更前都将变更的具体内容写在 CHANGELOG.md 中，遵循通用的 CHANGELOG 规范。
 - 共通的能力支持/调整需要同时考虑到写作和游戏两个模式
-- 发布版本时需要同步更新前端版本号、CHANGELOG.md 和 README.md，并创建对应 Git tag
-- 能用依赖解决方案就不要自己实现，避免重复造轮子，譬如 TipTap 编辑器，目录树，对话区域，各类常见组件等功能，多用组件库里的组件
-- 发布 github release 时，Release notes 中需要检验说明该版本更新内容，特别是用户有明显感知的功能变更与修复。
+- 发布版本时需要同步更新前端版本号、CHANGELOG.md，同步更新 README.md + README.en.md 内容，与项目功能保持一致，并创建对应 Git tag。发布 github release 时，Release notes 中需要简要说明该版本更新内容，特别是用户有明显感知的功能变更与修复，不需要把完整changelog复制过去，只需要brief。
+- 能用依赖解决方案就不要自己实现，避免重复造轮子，多用组件库里的组件，比如 shadcn, tiptap, 在设计方案的时候，也优先考虑是否有成熟的开源组件可以使用。
 - 系统与产品功能设计上多考虑功能是否真的有必要，新的功能是否可以被更高级的通用抽象支持，比如一般的提示词需求可以通过Skills实现，工具调用需求可以通过 Tools / Bash Execute 实现。
 - 高度优先，追求极致。所有设计为长期服务，重点考虑设计是否优雅、边界是否清晰、是否长期可维护性高。
-- 充分合理注释，涉及用户参与的设计决策的代码，需要明确清楚
-- 最终汇报时，用简单直白的语言说明：1 你做了什么。2 结果怎么样。3 你验证了什么。如果还有风险或限制，直接说清楚。
+- 充分合理注释，涉及用户参与的设计决策的代码，需要明确清楚。
+- 最终汇报时，用简单直白的语言说明：1 你做了什么。2 结果怎么样。3 你验证了什么。如果还有风险或限制，直接说清楚
+- 除非用户指定，生产出的 docs (md/html) 默认放在 docs/ 目录下。
+- 设计 agent tool 输入参数或者任何受限于 agent 输出的 schema 时，需要充分考虑到 agent 可能犯错的情况，尽可能去包容可修正的错误，以及对于list的情况下的部分成功与部分失败，避免大块输入整体失败导致昂贵的重试。
+- 所有面向用户的交互，都要支持双语（展示中文和英文）
+- 所有注入模型的提示词、上下文片段、工具描述、schema 描述和模型可见工具反馈统一使用英文，不得中英双语重复；仅面向用户的本地化交互保留中英双语。
+- Denova 内置的模型可见内容保持产品中立，不得提及或类比其他 Agent 产品、CLI 或品牌；对照研究只保留在明确的审计文档中。
+- 影响模型上下文相关设计的改动必须将缓存命中率（即前缀匹配）放在高优先级考虑事项。
+- 所有注入模型的片段都要有明确来源、用途、需要注意硬上限需要配置高一些（&gt;50KB），避免随意截断。
+- Do not preserve backward compatibility. Remove obsolete paths instead of adding compatibility layers, fallbacks, or migrations.
+- Choose the simplest implementation that fully meets the current requirements. Avoid speculative abstractions, configuration, and indirection.
+- Grow the system in layers. Start from the smallest version that works end to end, and add each new capability on top of a product that already works. Never trade a working product for unfinished complexity.
+- Keep components modular and concerns clearly separated.
+- Prefer established, well-maintained libraries when they reduce overall complexity or improve reliability. Do not reimplement common functionality without a clear reason.
+- Lean on the dependencies already in the project before writing your own implementation or adding packages. Do not assume a library lacks a capability without checking its documentation and types.
+- Make architectural decisions for the long term. Do not accept a stopgap that only works for now and is meant to be replaced later.
 
 # 项目约定
 
-- 前后端分离架构，web 应用
 - 不允许在任何情况下点击一级菜单的时候自动切换模式（特别是共享菜单），用户必须手动切换模式。且任何时候一级菜单只有一个亮着的，且所有菜单行为一致。
-- 所有面向用户的交互，都要支持双语（展示中文和英文）
-- 注入给模型的上下文必须有明确来源和大小上限，避免把无限增长的历史、日志或文件内容直接塞进提示词。
 - 优先复用项目已有抽象、组件和工具函数；只有能明显降低复杂度或匹配既有边界时才新增抽象。
-- 发布release时需要同步更新 README.md + README.en.md 内容，与项目功能保持一致、
-- 不允许存在单项运行超过1s的低效单元测试
+- 不允许存在单项运行超过3s的低效单元测试
 - Pull Request Title 以及 Commit Message 需要是英文，不能是中文
-- 不允许把你自己创建的md文档放在项目根目录下，只能放在 docs 目录下，除非用户自己指定其他目录
 
 # 代码注意事项
 
 - goroutine 都需要 recover，避免 panic 导致整个服务崩溃
-- 写代码时注意前后端都打印多点log，帮助调试问题，避免隐藏错误，日志信息要充分说明具体在干什么，具体文件位置和行号，方便定位问题
+- 写代码时注意前后端都打印多点log，帮助调试问题，避免隐藏错误，日志信息要充分说明具体在干什么，具体文件位置和行号，方便定位问题。
 - go package 解耦一点，遵循高内聚低耦合原则，不要一大堆不同功能的文件塞一起
+- 注释、日志、错误处理、terminal 固定输出等统一用英文。前端通过 message / error 枚举来分语言报错。
 - 避免大文件和大 package；高频变更文件接近 500 行时优先考虑按职责拆分，超过 800 行时除非是机械变更，否则不要继续堆功能。
 - 不要新增只被调用一次的小 helper；只有当它能命名清楚概念、隔离复杂逻辑、复用已有边界或改善测试时才抽函数。
 - 新模块应围绕职责和变化原因命名，避免按“工具集合”“杂项”“common”堆放无关能力。
 - 优先保持模块私有，只暴露必要 API；跨 package 暴露类型前先确认调用方是否真的需要稳定依赖它。
 - 避免布尔值或含义不清的 `nil` 空对象参数让调用点难读；优先使用具名配置、枚举、选项结构或语义明确的方法。
-- 分支逻辑能收敛就收敛，避免重复嵌套；Go/TS 中优先使用早返回降低缩进
 - 能穷尽的状态机、事件类型、消息类型和菜单模式要穷尽处理；不要用默认分支吞掉未来新增状态。
-- 新增接口、状态类型、Agent 能力或跨模块抽象时，要补充简短注释说明职责和调用约束；普通显而易见代码不要写空泛注释。
-- 不为了减少行数牺牲概念边界；更少的概念、更稳定的依赖方向优先于更短的文件。
-- 不要假设自己处在沙箱(sandbox)环境中，这会让你认为自己无法访问网络，干扰正常测试。
+- 新增接口、状态类型、Agent 能力或跨模块抽象时，要补充简短说明职责和调用约束。
 - 不允许写死超时时间或最大运行时间，LLM运行总是耗时的，不能因为超时而中断，默认总是不限迭代次数和运行时间，涉及安全和无限循环问题可以在配置项里提供可配置超时时长
-- 不允许随意截断工具流式输入或前台thinking内容
 
-# Agent 上下文管理
 
-- 模型可见上下文必须增量构建，不要重写历史；`/clear` 这类能力应通过清理标记或有效上下文过滤实现，而不是物理删除历史。
-- 展示用历史和模型上下文要分离；thinking、工具卡片、日志预览等可以用于 UI 恢复，但不得默认进入下一轮模型输入。
-- 所有注入模型的片段都要有明确来源、用途、需要注意硬上限需要配置高一些（&gt;128KB），避免随意截断。
-- Agent 的 system、turn context、state memory、工具结果和用户消息要有稳定边界，避免把长期规则、单轮状态和展示文本混在一起。
-- 修改 prompt 组装、会话裁剪、工具结果回填或上下文压缩时，要用真实消息装配结果验证，而不是只看截断日志预览。
-- 工作区文件被 Agent 引用时，应优先注入摘要、选区或有界片段；需要全文时必须说明触发条件和大小限制。
-- 工具调用结果进入上下文前应做结构化筛选，只保留对下一步推理必要的信息，避免把调试噪音和大对象透传给模型。
 
 # 前端与交互规范
 
@@ -66,6 +63,7 @@
 - 前端可见变更必须打开页面验证；布局相关改动要检查窄屏、宽屏、长文本和空数据状态。
 - 优先使用已有组件库和成熟依赖解决通用 UI/编辑器/目录树/对话区问题，不重复造轮子。优先使用shadcn/ui组件库，而不是自定义组件。且需要考虑到 light、dark 两个模式的展示效果。
 - 尽量使用Adaptive布局，适应用户不同的屏幕尺寸，避免使用固定宽度。
+- 所有列表展开逻辑，都是点击整个父项toggle，而不是点左侧的小箭头按钮。
 
 # API、配置与数据兼容面
 
@@ -76,17 +74,17 @@
 
 # 测试与验证
 
-- 测试时不需要kill用户的前端进程，也不需要自己启动前端，因为前端是热加载的，只需要打开浏览器访问对应页面就能看到效果变化。如果测试需要。
-- 测试或验证如果依赖后端变更，不允许使用 launchd、nohup、后台守护、自动重拉等不可见方式启动或替换 Denova 前后端进程，也不允许在用户已有项目前后端时私自启动另一套前后端。可以使用 scripts/restart-backend.sh 来进行后端的更新。
+- 测试时不需要kill用户的前端进程，如果已经有前端存在则也不需要自己启动前端，因为前端是热加载的，只需要打开浏览器访问对应页面就能看到效果变化。如果测试需要。
+- 测试或验证如果依赖后端变更，不允许使用 launchd、nohup、后台守护、自动重拉等不可见方式启动或替换 Denova 前后端进程，也不允许在用户已有项目前后端时私自启动另一套前后端。可以使用 scripts/restart-backend.sh 来进行后端的更新，如果本地后端未运行，也可以使用 scripts/restart-backend.sh 来运行以进行测试验证。如果前端未启动，可以使用  ./scripts/bootstrap.sh fe 启动前端。
 - Agent 主流程、工具调用、上下文裁剪、版本恢复、会话有效上下文和工作区状态变更，优先补集成测试。
 - 单元测试适合纯函数、解析器、边界条件和小型状态转换；不要为了静态常量或已删除逻辑补无意义测试。
 - 测试断言优先比较完整结构或关键行为结果，避免只断言一堆字段造成维护成本高。
 - 新测试尽量放在独立测试文件或既有测试结构中，不要为了测试暴露生产代码专用入口。
 - 修复 bug 时先写能复现问题的测试或最小验证步骤，再实现修复；如果无法自动化，要在最终说明里写清楚手动验证范围。
+- 大的改造比如核心组件的重构、或前端大的改动需要基于 `control-in-app-browser` 工具做核心链路的回归验证（写作&amp;游戏）。允许使用用户默认的模型配置进行测试验证。
 
 # 构建逻辑
 
 1. 使用 go mod tidy 确保依赖拉下来了
 2. 使用 ./scripts/build.sh 构建项目
-3. 使用 ./scripts/bootstrap.sh fe/be 启动项目
 

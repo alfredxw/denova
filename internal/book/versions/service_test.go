@@ -21,33 +21,36 @@ func TestDefaultAutoSettingsEnablesAutomaticVersionsEveryTenMinutes(t *testing.T
 
 func TestScheduleAutoVersionDebouncesWorkspaceChanges(t *testing.T) {
 	dir := t.TempDir()
-	service := NewService(dir)
-	service.autoVersionIdleDelay = 30 * time.Millisecond
+	service := newVersionTestService(t, dir)
+	service.autoVersionIdleDelay = time.Hour
 	t.Cleanup(service.Close)
 	settings := DefaultAutoSettings()
 
 	writeFile(t, dir, "chapters/ch0001.md", "第一段")
 	service.ScheduleAutoVersion(settings)
-	time.Sleep(20 * time.Millisecond)
+	service.autoMu.Lock()
+	staleGeneration := service.autoGeneration
+	service.autoMu.Unlock()
 	writeFile(t, dir, "chapters/ch0001.md", "第一段，继续写作")
 	service.ScheduleAutoVersion(settings)
-	time.Sleep(20 * time.Millisecond)
+	service.autoMu.Lock()
+	currentGeneration := service.autoGeneration
+	service.stopAutoTimerLocked()
+	service.autoMu.Unlock()
+	service.runScheduledAutoVersion(staleGeneration)
 
 	history, err := service.History(10)
 	if err != nil {
 		t.Fatalf("History before idle failed: %v", err)
 	}
 	if len(history) != 0 {
-		t.Fatalf("automatic version should wait for the latest idle period: %#v", history)
+		t.Fatalf("stale automatic-version timer should not create history: %#v", history)
 	}
 
-	deadline := time.Now().Add(300 * time.Millisecond)
-	for len(history) == 0 && time.Now().Before(deadline) {
-		time.Sleep(10 * time.Millisecond)
-		history, err = service.History(10)
-		if err != nil {
-			t.Fatalf("History after idle failed: %v", err)
-		}
+	service.runScheduledAutoVersion(currentGeneration)
+	history, err = service.History(10)
+	if err != nil {
+		t.Fatalf("History after current generation failed: %v", err)
 	}
 	if len(history) != 1 || history[0].Source != VersionSourceTimer {
 		t.Fatalf("expected one automatic version after idle, got %#v", history)
@@ -56,7 +59,7 @@ func TestScheduleAutoVersionDebouncesWorkspaceChanges(t *testing.T) {
 
 func TestScheduleAutoVersionCanBeDisabled(t *testing.T) {
 	dir := t.TempDir()
-	service := NewService(dir)
+	service := newVersionTestService(t, dir)
 	service.autoVersionIdleDelay = 30 * time.Millisecond
 	t.Cleanup(service.Close)
 	settings := DefaultAutoSettings()
@@ -78,7 +81,7 @@ func TestScheduleAutoVersionCanBeDisabled(t *testing.T) {
 
 func TestMaybeCreateTimedHonorsConfiguredMinimumInterval(t *testing.T) {
 	dir := t.TempDir()
-	service := NewService(dir)
+	service := newVersionTestService(t, dir)
 	settings := DefaultAutoSettings()
 	settings.TimedIntervalMinutes = 20
 
@@ -99,7 +102,7 @@ func TestMaybeCreateTimedHonorsConfiguredMinimumInterval(t *testing.T) {
 
 func TestGoGitVersionCreateDiffAndRestore(t *testing.T) {
 	dir := t.TempDir()
-	service := NewService(dir)
+	service := newVersionTestService(t, dir)
 	settings := DefaultAutoSettings()
 	writeFile(t, dir, "chapters/ch0001.md", "第一版")
 	writeFile(t, dir, "setting/progress.md", "进度一")
@@ -111,8 +114,11 @@ func TestGoGitVersionCreateDiffAndRestore(t *testing.T) {
 	if first.Version == nil || len(first.Version.ID) != 40 {
 		t.Fatalf("expected git commit hash version id, got %#v", first.Version)
 	}
-	if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
-		t.Fatalf("expected workspace .git repository: %v", err)
+	if _, err := os.Stat(filepath.Join(dir, ".git")); !os.IsNotExist(err) {
+		t.Fatalf("versioning must not occupy the content directory .git path, err=%v", err)
+	}
+	if _, err := os.Stat(service.repository); err != nil {
+		t.Fatalf("expected Project-owned version repository: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, ".nova", "versions")); !os.IsNotExist(err) {
 		t.Fatalf("should not create .nova/versions metadata directory, err=%v", err)
@@ -171,7 +177,7 @@ func TestGoGitVersionCreateDiffAndRestore(t *testing.T) {
 		t.Fatalf("Status after restore failed: %v", err)
 	}
 	if !cleanStatus.Clean || cleanStatus.Latest == nil || cleanStatus.Latest.ID != first.Version.ID {
-		t.Fatalf("workspace should be clean at restored version: %#v", cleanStatus)
+		t.Fatalf("workspace should be clean at restored version: status=%#v latest=%#v first=%s", cleanStatus, cleanStatus.Latest, first.Version.ID)
 	}
 	history, err := service.History(10)
 	if err != nil {
@@ -182,11 +188,26 @@ func TestGoGitVersionCreateDiffAndRestore(t *testing.T) {
 		!historyContainsSource(history, VersionSourceRollbackBackup) {
 		t.Fatalf("history should come from git commits, history=%#v latest=%#v", history, cleanStatus.Latest)
 	}
+
+	writeFile(t, dir, "chapters/ch0001.md", "恢复后继续创作")
+	continued, err := service.Create("恢复后版本", VersionSourceManual, settings)
+	if err != nil {
+		t.Fatalf("Create after restore failed: %v", err)
+	}
+	history, err = service.History(10)
+	if err != nil {
+		t.Fatalf("History after continued creation failed: %v", err)
+	}
+	if len(history) != 3 || history[0].ID != continued.Version.ID ||
+		!historyContains(history, first.Version.ID) ||
+		!historyContainsSource(history, VersionSourceRollbackBackup) {
+		t.Fatalf("continued history should preserve the restore backup chain: %#v", history)
+	}
 }
 
 func TestGoGitVersionTracksNovaDeletesWhenGitIgnored(t *testing.T) {
 	dir := t.TempDir()
-	service := NewService(dir)
+	service := newVersionTestService(t, dir)
 	settings := DefaultAutoSettings()
 	writeFile(t, dir, ".gitignore", ".nova\n")
 	writeFile(t, dir, ".nova/lore/items.json", "[]")
@@ -230,7 +251,7 @@ func TestGoGitVersionTracksNovaDeletesWhenGitIgnored(t *testing.T) {
 
 func TestGoGitVersionExcludesRunLedgers(t *testing.T) {
 	dir := t.TempDir()
-	service := NewService(dir)
+	service := newVersionTestService(t, dir)
 	settings := DefaultAutoSettings()
 	writeFile(t, dir, "chapters/ch0001.md", "第一版")
 	writeFile(t, dir, ".nova/runs/run-1.jsonl", `{"type":"run_created"}`)
@@ -265,7 +286,7 @@ func TestGoGitVersionExcludesRunLedgers(t *testing.T) {
 
 func TestGoGitVersionExcludesAndPreservesReviewJournals(t *testing.T) {
 	dir := t.TempDir()
-	service := NewService(dir)
+	service := newVersionTestService(t, dir)
 	settings := DefaultAutoSettings()
 	writeFile(t, dir, "chapters/ch0001.md", "第一版")
 	writeFile(t, dir, ".denova/changes/ledger.jsonl", `{"type":"change_applied"}`)
@@ -312,7 +333,7 @@ func TestGoGitVersionExcludesAndPreservesReviewJournals(t *testing.T) {
 
 func TestGoGitVersionExcludesInteractiveData(t *testing.T) {
 	dir := t.TempDir()
-	service := NewService(dir)
+	service := newVersionTestService(t, dir)
 	settings := DefaultAutoSettings()
 	writeFile(t, dir, "chapters/ch0001.md", "第一版")
 	writeFile(t, dir, ".nova/interactive/stories/story-1.json", `{"title":"测试故事"}`)
@@ -360,7 +381,7 @@ func TestGoGitVersionExcludesInteractiveData(t *testing.T) {
 
 func TestGoGitVersionRestorePathsKeepsCurrentHead(t *testing.T) {
 	dir := t.TempDir()
-	service := NewService(dir)
+	service := newVersionTestService(t, dir)
 	settings := DefaultAutoSettings()
 	writeFile(t, dir, "chapters/ch0001.md", "第一版")
 	writeFile(t, dir, "setting/progress.md", "进度一")
@@ -426,7 +447,7 @@ func TestGoGitVersionRestorePathsKeepsCurrentHead(t *testing.T) {
 
 func TestGoGitVersionRestoreRejectsExcludedPath(t *testing.T) {
 	dir := t.TempDir()
-	service := NewService(dir)
+	service := newVersionTestService(t, dir)
 	settings := DefaultAutoSettings()
 	writeFile(t, dir, "chapters/ch0001.md", "第一版")
 	first, err := service.Create("初始版本", VersionSourceManual, settings)
@@ -440,7 +461,7 @@ func TestGoGitVersionRestoreRejectsExcludedPath(t *testing.T) {
 
 func TestGoGitVersionRestoreIgnoredLorePath(t *testing.T) {
 	dir := t.TempDir()
-	service := NewService(dir)
+	service := newVersionTestService(t, dir)
 	settings := DefaultAutoSettings()
 	writeFile(t, dir, ".gitignore", ".nova\n")
 	writeFile(t, dir, ".nova/lore/items.json", `["old"]`)
@@ -470,9 +491,43 @@ func TestGoGitVersionRestoreIgnoredLorePath(t *testing.T) {
 	assertChange(t, status.Changes, ".nova/lore/items.json", "modified")
 }
 
+func TestGoGitVersionRestorePublicLorePath(t *testing.T) {
+	dir := t.TempDir()
+	service := newVersionTestService(t, dir)
+	settings := DefaultAutoSettings()
+	const lorePath = "setting/lore/items.json"
+	oldCollection := `{"version":2,"items":[{"id":"hero","name":"林川","enabled":true}]}`
+	newCollection := `{"version":2,"items":[{"id":"hero","name":"林川·改","enabled":true}]}`
+	writeFile(t, dir, lorePath, oldCollection)
+	first, err := service.Create("初始公开资料库", VersionSourceManual, settings)
+	if err != nil {
+		t.Fatalf("Create first failed: %v", err)
+	}
+	writeFile(t, dir, lorePath, newCollection)
+	second, err := service.Create("更新公开资料库", VersionSourceManual, settings)
+	if err != nil {
+		t.Fatalf("Create second failed: %v", err)
+	}
+
+	if _, err := service.RestoreWithPaths(first.Version.ID, []string{lorePath}, settings); err != nil {
+		t.Fatalf("RestoreWithPaths public Lore failed: %v", err)
+	}
+	if got := readFile(t, dir, lorePath); got != oldCollection {
+		t.Fatalf("restored public Lore = %q", got)
+	}
+	status, err := service.Status(settings)
+	if err != nil {
+		t.Fatalf("Status failed: %v", err)
+	}
+	if status.Latest == nil || status.Latest.ID != second.Version.ID {
+		t.Fatalf("public Lore path restore should not move current version: %#v", status.Latest)
+	}
+	assertChange(t, status.Changes, lorePath, "modified")
+}
+
 func TestGoGitVersionRestorePathsRejectsSymlinkEscape(t *testing.T) {
 	dir := t.TempDir()
-	service := NewService(dir)
+	service := newVersionTestService(t, dir)
 	settings := DefaultAutoSettings()
 	writeFile(t, dir, "linked/secret.md", "versioned")
 	version, err := service.Create("初始版本", VersionSourceManual, settings)
@@ -505,7 +560,7 @@ func TestGoGitVersionRestorePathsRejectsSymlinkEscape(t *testing.T) {
 
 func TestGoGitVersionRestorePathsRollsBackOnApplyFailure(t *testing.T) {
 	dir := t.TempDir()
-	service := NewService(dir)
+	service := newVersionTestService(t, dir)
 	settings := DefaultAutoSettings()
 	writeFile(t, dir, "a.md", "versioned-a")
 	writeFile(t, dir, "zdir/b.md", "versioned-b")
@@ -528,6 +583,51 @@ func TestGoGitVersionRestorePathsRollsBackOnApplyFailure(t *testing.T) {
 	if got := readFile(t, dir, "zdir"); got != "not-a-directory" {
 		t.Fatalf("failed restore changed the blocking path: %q", got)
 	}
+}
+
+func TestProjectRepositoryMigratesReleasedHistoryAndSurvivesRelink(t *testing.T) {
+	workspaceA := t.TempDir()
+	writeFile(t, workspaceA, "chapters/ch0001.md", "released content")
+	legacyRepository := filepath.Join(workspaceA, ".git")
+	legacy := NewService(workspaceA, legacyRepository)
+	first, err := legacy.Create("released version", VersionSourceManual, DefaultAutoSettings())
+	if err != nil {
+		t.Fatalf("create released workspace-local version: %v", err)
+	}
+	legacy.Close()
+
+	stateRepository := filepath.Join(t.TempDir(), "project-state", "versions", "repository")
+	migrated, err := MigrateLegacyRepository(workspaceA, stateRepository)
+	if err != nil || !migrated {
+		t.Fatalf("migrate released version repository: migrated=%v err=%v", migrated, err)
+	}
+	if _, err := os.Stat(legacyRepository); err != nil {
+		t.Fatalf("released repository must remain as rollback source: %v", err)
+	}
+
+	workspaceB := t.TempDir()
+	writeFile(t, workspaceB, "chapters/ch0001.md", "relinked content")
+	relinked := NewService(workspaceB, stateRepository)
+	history, err := relinked.History(10)
+	if err != nil || len(history) != 1 || history[0].ID != first.Version.ID {
+		t.Fatalf("relinked Project history=%#v err=%v", history, err)
+	}
+	second, err := relinked.Create("version after relink", VersionSourceManual, DefaultAutoSettings())
+	if err != nil || second.Version == nil {
+		t.Fatalf("create version after relink: result=%#v err=%v", second, err)
+	}
+	history, err = relinked.History(10)
+	if err != nil || len(history) != 2 {
+		t.Fatalf("Project history after relink=%#v err=%v", history, err)
+	}
+	if _, err := os.Stat(filepath.Join(workspaceB, ".git")); !os.IsNotExist(err) {
+		t.Fatalf("relinked content directory must not receive a .git repository, err=%v", err)
+	}
+}
+
+func newVersionTestService(t *testing.T, workspace string) *Service {
+	t.Helper()
+	return NewService(workspace, filepath.Join(t.TempDir(), "repository"))
 }
 
 func writeFile(t *testing.T, root, rel, content string) {

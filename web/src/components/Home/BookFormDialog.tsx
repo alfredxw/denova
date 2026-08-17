@@ -35,8 +35,10 @@ interface BookFormDialogProps {
   defaultImagePresetId: string
   coverVersion: (book: Pick<BookRecord, 'path' | 'cover_updated_at'>) => string
   onOpenChange: (open: boolean) => void
-  onSwitch: (path: string) => void
-  onBooksChange: () => void
+  /** Book Management switches to the created book; embedded creation flows can stay in place. */
+  onSwitch?: (path: string) => void
+  onCreated?: (result: Awaited<ReturnType<typeof createBook>>) => void | Promise<void>
+  onBooksChange: () => void | Promise<void>
   onCoverUpdated: (path: string, version: string) => void
 }
 
@@ -54,6 +56,7 @@ export function BookFormDialog({
   coverVersion,
   onOpenChange,
   onSwitch,
+  onCreated,
   onBooksChange,
   onCoverUpdated,
 }: BookFormDialogProps) {
@@ -214,7 +217,8 @@ export function BookFormDialog({
     if (!novaDir.trim()) throw new Error(t('home.waitNovaDir'))
     const data = await createBook(title.trim(), author.trim() || undefined, description.trim() || undefined)
     setCreatedPath(data.workspace)
-    onSwitch(data.workspace)
+    await Promise.resolve(onCreated?.(data))
+    onSwitch?.(data.workspace)
     await Promise.resolve(onBooksChange())
     return data.workspace
   }

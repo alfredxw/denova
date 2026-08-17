@@ -18,32 +18,33 @@ type SubAgentConfig struct {
 
 // AgentGeneralSubAgentSettings stores the built-in General SubAgent switch per
 // parent agent. Nil means inherit from default; built-in defaults only enable
-// the General SubAgent for writing and automation agents.
+// the General SubAgent for Project Agents.
 type AgentGeneralSubAgentSettings struct {
 	Default          *bool `toml:"default,omitempty" json:"default,omitempty"`
+	General          *bool `toml:"general,omitempty" json:"general,omitempty"`
 	IDE              *bool `toml:"ide,omitempty" json:"ide,omitempty"`
 	InteractiveStory *bool `toml:"interactive_story,omitempty" json:"interactive_story,omitempty"`
 	ConfigManager    *bool `toml:"config_manager,omitempty" json:"config_manager,omitempty"`
-	Automation       *bool `toml:"automation,omitempty" json:"automation,omitempty"`
 }
 
-var deepAgentParentKinds = []string{
+var subAgentParentKinds = []string{
+	AgentKindGeneral,
+	AgentKindHarnessOptimizer,
 	AgentKindIDE,
 	AgentKindInteractiveStory,
 	AgentKindConfigManager,
-	AgentKindAutomation,
 }
 
-// DeepAgentParentKinds returns the parent agents that expose Eino task delegation.
-func DeepAgentParentKinds() []string {
-	out := make([]string, len(deepAgentParentKinds))
-	copy(out, deepAgentParentKinds)
+// SubAgentParentKinds returns the Agent kinds that support task delegation.
+func SubAgentParentKinds() []string {
+	out := make([]string, len(subAgentParentKinds))
+	copy(out, subAgentParentKinds)
 	return out
 }
 
-func IsDeepAgentParentKind(kind string) bool {
+func IsSubAgentParentKind(kind string) bool {
 	kind = strings.TrimSpace(kind)
-	for _, parent := range deepAgentParentKinds {
+	for _, parent := range subAgentParentKinds {
 		if kind == parent {
 			return true
 		}
@@ -53,19 +54,19 @@ func IsDeepAgentParentKind(kind string) bool {
 
 func DefaultAgentGeneralSubAgentSettings() AgentGeneralSubAgentSettings {
 	return AgentGeneralSubAgentSettings{
-		Default:    boolPtr(false),
-		IDE:        boolPtr(true),
-		Automation: boolPtr(true),
+		Default: boolPtr(false),
+		General: boolPtr(true),
+		IDE:     boolPtr(true),
 	}
 }
 
 func MergeAgentGeneralSubAgentSettings(parent, child AgentGeneralSubAgentSettings) AgentGeneralSubAgentSettings {
 	return AgentGeneralSubAgentSettings{
 		Default:          mergeBoolOverride(parent.Default, child.Default),
+		General:          mergeBoolOverride(parent.General, child.General),
 		IDE:              mergeBoolOverride(parent.IDE, child.IDE),
 		InteractiveStory: mergeBoolOverride(parent.InteractiveStory, child.InteractiveStory),
 		ConfigManager:    mergeBoolOverride(parent.ConfigManager, child.ConfigManager),
-		Automation:       mergeBoolOverride(parent.Automation, child.Automation),
 	}
 }
 
@@ -83,14 +84,14 @@ func GeneralSubAgentEnabled(cfg *Config, parentKind string) bool {
 
 func generalSubAgentOverrideFor(settings AgentGeneralSubAgentSettings, parentKind string) *bool {
 	switch parentKind {
+	case AgentKindGeneral:
+		return settings.General
 	case AgentKindIDE:
 		return settings.IDE
 	case AgentKindInteractiveStory:
 		return settings.InteractiveStory
 	case AgentKindConfigManager:
 		return settings.ConfigManager
-	case AgentKindAutomation:
-		return settings.Automation
 	default:
 		return nil
 	}
@@ -143,7 +144,9 @@ func SanitizeSubAgents(subAgents []SubAgentConfig) []SubAgentConfig {
 		}
 		sub.Parents = sanitizeSubAgentParents(sub.Parents)
 		sub.Model.ProfileID = normalizeModelProfileID(sub.Model.ProfileID)
-		sub.Model.ReasoningEffort = normalizeReasoningEffort(sub.Model.ReasoningEffort)
+		if sub.Model.ThinkingLevel != "" {
+			sub.Model.ThinkingLevel = normalizeThinkingLevel(sub.Model.ThinkingLevel)
+		}
 		if sub.Name == "" {
 			sub.Name = sub.ID
 		}
@@ -182,7 +185,7 @@ func SubAgentEnabled(sub SubAgentConfig) bool {
 }
 
 func SubAgentAllowedForParent(sub SubAgentConfig, parentKind string) bool {
-	if !SubAgentEnabled(sub) || !IsDeepAgentParentKind(parentKind) {
+	if !SubAgentEnabled(sub) || !IsSubAgentParentKind(parentKind) {
 		return false
 	}
 	if len(sub.Parents) == 0 {
@@ -200,10 +203,9 @@ func ResolveSubAgentModel(cfg *Config, parentKind string, sub SubAgentConfig) Re
 	resolved := ResolveAgentModel(cfg, parentKind)
 	override := sub.Model
 	profileOverride := AgentModelSettings{Default: AgentModelOverride{
-		ProfileID:       resolved.ProfileID,
-		Temperature:     resolved.Temperature,
-		EnableThinking:  resolved.EnableThinking,
-		ReasoningEffort: resolved.ReasoningEffort,
+		ProfileID:     resolved.ProfileID,
+		Temperature:   resolved.Temperature,
+		ThinkingLevel: resolved.ThinkingLevel,
 	}}
 	if cfg != nil {
 		tmp := *cfg
@@ -214,19 +216,15 @@ func ResolveSubAgentModel(cfg *Config, parentKind string, sub SubAgentConfig) Re
 }
 
 func ResolveSubAgentTools(parent ResolvedAgentToolSettings, override AgentToolOverride) ResolvedAgentToolSettings {
-	return ResolvedAgentToolSettings{
-		FileRead:         parent.FileRead && boolValue(override.FileRead, parent.FileRead),
-		FileWrite:        parent.FileWrite && boolValue(override.FileWrite, parent.FileWrite),
-		ShellExecute:     parent.ShellExecute && boolValue(override.ShellExecute, parent.ShellExecute),
-		Skills:           parent.Skills && boolValue(override.Skills, parent.Skills),
-		LoreRead:         parent.LoreRead && boolValue(override.LoreRead, parent.LoreRead),
-		LoreWrite:        parent.LoreWrite && boolValue(override.LoreWrite, parent.LoreWrite),
-		Todo:             parent.Todo && boolValue(override.Todo, parent.Todo),
-		WebSearch:        parent.WebSearch && boolValue(override.WebSearch, parent.WebSearch),
-		ImageGeneration:  parent.ImageGeneration && boolValue(override.ImageGeneration, parent.ImageGeneration),
-		AgentConfigRead:  parent.AgentConfigRead && boolValue(override.AgentConfigRead, parent.AgentConfigRead),
-		AgentConfigWrite: parent.AgentConfigWrite && boolValue(override.AgentConfigWrite, parent.AgentConfigWrite),
+	resolved := make(ResolvedAgentToolSettings, len(agentToolCapabilities))
+	for _, capability := range agentToolCapabilities {
+		allowed := parent.Allows(capability.Source)
+		if explicit, ok := override[capability.Source]; ok {
+			allowed = allowed && explicit
+		}
+		resolved[capability.Source] = allowed
 	}
+	return resolved
 }
 
 func mergeSubAgent(parent, child SubAgentConfig) SubAgentConfig {
@@ -262,7 +260,7 @@ func sanitizeSubAgentParents(parents []string) []string {
 	seen := map[string]bool{}
 	for _, parent := range parents {
 		parent = strings.TrimSpace(parent)
-		if !IsDeepAgentParentKind(parent) || seen[parent] {
+		if !IsSubAgentParentKind(parent) || seen[parent] {
 			continue
 		}
 		seen[parent] = true

@@ -19,6 +19,7 @@ export interface StorySummary {
   updated_at: string
   branches: number
   events: number
+  turn_count: number
 }
 
 export type StoryStateSchemaMode = 'adapt_template' | 'fixed_template' | 'generate'
@@ -61,6 +62,7 @@ export interface Teller {
   id: string
   name: string
   description: string
+  modes?: Array<'writing' | 'game'> | null
   style_refs?: string[] | null
   style_rules?: StyleRule[] | null
   context_policy: TellerContextPolicy
@@ -71,6 +73,7 @@ export interface Teller {
   error?: string
   created_at?: string
   updated_at?: string
+  revision?: string
 }
 
 export interface ImagePreset {
@@ -87,6 +90,7 @@ export interface ImagePreset {
   error?: string
   created_at?: string
   updated_at?: string
+  revision?: string
 }
 
 export interface StoryDirector {
@@ -107,6 +111,7 @@ export interface StoryDirector {
   error?: string
   created_at?: string
   updated_at?: string
+  revision?: string
 }
 
 export interface StoryDirectorModuleRefs {
@@ -154,6 +159,7 @@ export interface EventPackageModule {
   error?: string
   created_at?: string
   updated_at?: string
+  revision?: string
 }
 
 export interface RuleSystemModule {
@@ -170,6 +176,7 @@ export interface RuleSystemModule {
   error?: string
   created_at?: string
   updated_at?: string
+  revision?: string
 }
 
 export interface ActorStateModule {
@@ -185,6 +192,7 @@ export interface ActorStateModule {
   error?: string
   created_at?: string
   updated_at?: string
+  revision?: string
 }
 
 interface StoryDirectorStrategy {
@@ -376,7 +384,6 @@ export interface TurnEvent {
 
 export interface UpdateTurnNarrativeResult {
   turn: TurnEvent
-  context_compaction_invalidated: boolean
 }
 
 export interface TurnResult {
@@ -393,6 +400,7 @@ export interface TurnDisplayEvent {
   args?: string
   status?: 'running' | 'success' | 'error'
   result?: string
+  tool_presentation?: import('@/lib/api').ToolPresentation
   created_at?: string
   run_id?: string
   agent_kind?: string
@@ -402,10 +410,7 @@ export interface TurnDisplayEvent {
   subagent?: boolean
   subagent_session_id?: string
   subagent_type?: string
-  sse_hidden_fields?: string[]
-  sse_hidden_reason?: string
-  sse_display_notice?: string
-  sse_generated_chars?: number
+  parent_call_id?: string
 }
 
 export interface TokenUsageEvent {
@@ -845,17 +850,124 @@ export interface RuleResolutionRerollInput {
 export interface Snapshot {
   story_id: string
   branch_id: string
+  context_revision?: number
   turns: TurnEvent[]
+  pending_player_inputs?: PlayerInputAcceptedEvent[]
+  pending_model_context_batches?: ModelContextBatchEvent[]
   current_turn?: TurnEvent
   token_usage_events?: TokenUsageEvent[]
-  context_compaction?: ContextCompactionEvent | null
-  context_compaction_removal?: ContextCompactionRemovalEvent | null
+  context_compaction?: ContextCompactionProjection | null
+  // Client-only enrichment used by the Director workspace. The snapshot API
+  // never returns this field; it is loaded from the dedicated Director API.
   director_plan?: DirectorPlan
   director_plan_status?: DirectorPlanStatus
   state: Record<string, unknown>
   actor_state_schema?: ActorStateSchemaSnapshot
 	state_schema_initialization?: StateSchemaInitializationStatus
   graph?: StoryGraph
+  turn_count?: number
+  turn_start?: number
+  history_before_cursor?: string
+  has_earlier_turns?: boolean
+}
+
+// InteractiveSnapshotResponse mirrors internal/interactive.Snapshot exactly.
+// Keep this wire DTO separate from Snapshot because the UI also merges SSE
+// deltas and a client-only Director plan into its local projection.
+export interface InteractiveSnapshotResponse {
+  story_id: string
+  branch_id: string
+  context_revision?: number
+  turns: TurnEvent[]
+  pending_player_inputs?: PlayerInputAcceptedEvent[]
+  pending_model_context_batches?: ModelContextBatchEvent[]
+  current_turn?: TurnEvent
+  token_usage_events?: TokenUsageEvent[]
+  context_compaction?: ContextCompactionProjection
+  director_plan_status?: DirectorPlanStatus
+  state: Record<string, unknown>
+  actor_state_schema?: ActorStateSchemaSnapshot
+  state_schema_initialization?: StateSchemaInitializationStatus
+  graph: StoryGraph
+  turn_count: number
+  turn_start: number
+  history_before_cursor?: string
+  has_earlier_turns: boolean
+}
+
+export interface PlayerInputAcceptedEvent {
+  v: number
+  type: string
+  id: string
+  parent_id?: string
+  branch_id: string
+  ts: string
+  text: string
+  accepted_turn_count: number
+  agent_command_id: string
+  agent_operation_id: string
+  agent_cycle: number
+  agent_commit_hash: string
+  agent_canonical_hash?: string
+}
+
+export interface ModelContextBatchEvent {
+  v: number
+  type: string
+  id: string
+  parent_id?: string
+  branch_id: string
+  ts: string
+  player_input_id: string
+  agent_command_id: string
+  agent_operation_id: string
+  agent_cycle: number
+  batch_ordinal: number
+  batch_hash: string
+  messages: ModelContextMessage[]
+}
+
+export interface ModelContextMessage {
+  role: string
+  content?: string
+  name?: string
+  tool_calls?: ModelContextToolCall[]
+  tool_call_id?: string
+  tool_name?: string
+  tool_result?: ToolResultSummary
+}
+
+export interface ModelContextToolCall {
+  index?: number
+  id: string
+  type: string
+  function: ModelContextFunctionCall
+  extra?: Record<string, unknown>
+}
+
+export interface ModelContextFunctionCall {
+  name?: string
+  arguments?: string
+}
+
+export interface ToolResultSummary {
+  status: string
+  synthetic_reason?: string
+  model_truncated?: boolean
+  display_truncated?: boolean
+  result_retention: string
+  context_hints?: unknown
+  artifact_persistence?: unknown
+  protected_receipt?: unknown
+  artifacts?: unknown[]
+}
+
+export interface StoryHistoryPage {
+  story_id: string
+  branch_id: string
+  turns: TurnEvent[]
+  before_cursor?: string
+  has_more: boolean
 }
 
 export interface ActorStateSchemaSnapshot {
@@ -896,7 +1008,7 @@ export interface ActorStateSchemaRequirementReview {
 	expected_type?: string
 	min?: number
 	max?: number
-	decision: 'covered' | 'add' | 'replace' | 'ignored' | string
+	decision: 'covered' | 'add' | 'replace' | 'remove' | 'ignored' | string
 	template_id?: string
 	field_id?: string
 	reason?: string
@@ -935,33 +1047,30 @@ export interface StateSchemaInitializationStatus {
   updated_at?: string
 }
 
-interface ContextCompactionEvent {
-  id?: string
+// Read-only projection of the public Agent checkpoint bound to this branch.
+// Story persistence never owns or mutates this state.
+export interface ContextCompactionProjection {
+  id: string
+  branch_id: string
   agent_kind?: string
   epoch: number
   summary: string
-  source_turn_count?: number
-  retained_turns?: number
-  tokens_before?: number
-  tokens_after?: number
-	projected_tokens_before?: number
-	projected_tokens_after?: number
-	reserved_completion_tokens?: number
-	reserved_tool_result_tokens?: number
+  retained_turns: number
+  estimated_tokens_before?: number
+  observed_prompt_tokens?: number
+  observed_estimate_tokens?: number
+  tokens_before: number
+  tokens_after: number
   target_ratio?: number
-  context_window_tokens?: number
+  context_window_tokens: number
   strategy?: string
-  threshold?: number
+  threshold: number
   reason?: string
   phase?: string
-}
-
-interface ContextCompactionRemovalEvent {
-  id?: string
-  agent_kind?: string
-  compaction_id?: string
-  source_turn_count?: number
-  reason?: string
+  recovery_band?: number
+  candidate_fingerprint?: string
+  candidate_generation?: number
+  source_turn_count: number
 }
 
 export interface BranchSummary {
@@ -987,7 +1096,7 @@ export interface PlotNode {
   terminal_type?: string
 }
 
-interface StoryGraph {
+export interface StoryGraph {
   nodes: PlotNode[]
   branches: BranchSummary[]
 }
@@ -995,14 +1104,13 @@ interface StoryGraph {
 export interface InteractiveTurnPersistedEvent {
   story_id: string
   branch_id: string
+  turn_count: number
   turn: TurnEvent
-  director_plan?: DirectorPlan
   director_plan_status?: DirectorPlanStatus
-  state?: Record<string, unknown>
-  graph?: StoryGraph
-  branches?: BranchSummary[]
-  context_compaction?: ContextCompactionEvent | null
-  context_compaction_removal?: ContextCompactionRemovalEvent | null
+  state: Record<string, unknown>
+  graph: StoryGraph
+  branches: BranchSummary[]
+  context_compaction: ContextCompactionProjection | null
 }
 
 export type InteractiveSSEEvent = SSEEvent

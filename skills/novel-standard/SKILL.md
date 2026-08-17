@@ -1,47 +1,50 @@
 ---
 name: novel-standard
-description: 默认写作流程，由主 Agent 写作和修订，审稿子 Agent 严格审稿，在质量和速度之间取得平衡。
+description: Standard writing workflow in which the main Agent drafts and revises while the built-in general-purpose SubAgent reviews, balancing quality and speed.
+category: writing
+capabilities:
+  - writing-workflow
 agent: ide
 ---
 
 # novel-standard
 
-这是 IDE 创作 Agent 的默认写作流程，在质量和速度之间取得平衡。
+Use this standard IDE Writing Agent workflow to balance quality and speed.
 
-## 写作范围判断
+## Determine the writing scope
 
-- 从用户的实际指令判断写作范围，例如“续写一段”“写一个场景”“写一章”“写三章”“写一个小剧情段落 / arc”或用户自定义目标。
-- 除非用户明确说“写下一章”，否则不要假设任务一定是下一章。
-- 没有 `writing_scope` 字段。用户消息是判断范围、目标、约束和输出形态的唯一来源。
-- 当用户要求一次写 N 章或其他多段写作时，先制定整体计划和分章计划。计划要简洁，并用于指导初稿。
+- Infer the scope from the user's actual request, such as continuing a passage, writing a scene, one chapter, three chapters, a short story arc, or a custom target.
+- Do not assume the task is the next chapter unless the user explicitly asks for it.
+- There is no `writing_scope` field. The user message is the sole source for scope, goal, constraints, and output form.
+- When the user requests N chapters or another multi-part deliverable, first make a concise overall and per-chapter plan to guide the draft.
 
-## 流程
+## Workflow
 
-主 Agent 写初稿 -> 审稿子 Agent 审稿 -> 主 Agent 修订和更新状态 -> 最终输出
+main Agent drafts -> general-purpose SubAgent reviews -> main Agent revises and updates state -> final output
 
-标准流程只使用两个 Agent：主 Agent 和审稿子 Agent（`reviewer`）。不要启动 `writer`、`fixer` 或其他额外写作子流程。
+Use only the main Agent and the built-in `general-purpose` SubAgent. Do not assume other named SubAgents exist or start additional writing subprocesses. If the `task` tool is unavailable or `general-purpose` cannot be used, the main Agent performs the same review itself and must not fabricate delegation or review results.
 
-## 工具使用要求
+## Tool requirements
 
-- 写作前使用 `read_file` 读取必要上下文：`CREATOR.md`、`setting/outline.md`、`setting/progress.md`、`setting/character-states.md`、相关章节组细纲和最近章节；涉及资料库条目时先用 `list_lore_items` 判断，再用 `read_lore_items` 读取相关完整资料。
-- 主 Agent 生成初稿后，使用 `write_file` 写入 `chapters/` 下符合命名规则的章节文件；如果是在已有章节上做局部修订，使用 `edit_file`，并确保 `old_string` 来自最近一次 `read_file` 的实际内容且不包含行号前缀。
-- 审稿必须通过 `task` 工具委派给 `reviewer`。`task` 的 description 里要写清用户目标、章节路径、必要上下文来源、审稿重点、输出格式，以及 `reviewer` 只审稿不改文件。
-- 修订后如果需要覆盖整章，使用 `write_file`；如果只修少量段落，使用 `edit_file`。更新 `setting/progress.md` 和 `setting/character-states.md` 时同样按“局部修改用 `edit_file`、全量重写用 `write_file`”选择。
-- 每次调用 `write_file` 或 `edit_file` 后都要检查工具结果。若结果包含 `[tool error]`、参数 JSON 错误、`string not found`、路径错误或截断提示，不得宣称已完成；应重新读取目标文件、修正参数后重试，或明确告诉用户未写入成功。
-- 最终输出前，使用 `read_file` 读回新增或修订后的章节关键片段；如更新了状态文件，也读回对应关键片段，确认内容已经落盘。
+- Before writing, use `read` for the necessary context: `CREATOR.md`, `setting/outline.md`, `setting/progress.md`, `setting/character-states.md`, the relevant chapter-group plan, and recent chapters. For lore, use `list_lore_items` to identify relevant entries and `read_lore_items` to load their complete bodies.
+- After drafting, use `write` to create the correctly named chapter file under `chapters/`. For a localized revision to an existing chapter, use `edit`; `old_string` must match the current file exactly and uniquely and must not contain line-number prefixes returned by `read`.
+- When available, delegate review to `general-purpose` through `task`. Its description must state the user's goal, chapter path, necessary context sources, review focus, output format, and that the SubAgent reviews only and must not modify files.
+- After review, use `write` for a complete chapter replacement or `edit` for a few localized changes. Apply the same localized-edit versus complete-rewrite rule to `setting/progress.md` and `setting/character-states.md`.
+- Inspect every `write` or `edit` result. If it contains `[tool error]`, invalid JSON arguments, `string not found`, a non-unique match, a path error, or a truncation notice, do not claim completion. Reread the target, correct the arguments, and retry, or clearly report that the write did not succeed.
+- Before the final response, use `read` to verify key excerpts from every new or revised chapter and from any updated state files.
 
-1. 主 Agent 按用户要求的范围和约束生成初稿，通过 `write_file` 工具写入 `chapters/` 下的章节文件，暂不更新进度和角色状态相关文件。
-2. 主 Agent 使用 `task` 工具启动审稿子 Agent（`reviewer`）审稿，并把新增章节路径、用户要求、必要上下文和需要重点检查的规则交给 `reviewer`。
-3. `reviewer` 只审稿并返回结构化问题，不直接改正文；需要严格检查连续性、资料库匹配、节奏、文风、人物动机、剧情逻辑，以及每条创作规则是否遵守；不要输出赞扬。
-4. 主 Agent 接收审稿结论后直接修订章节，只修真正需要修的问题，保留原故事内容、强段落、有效情节节点、人物声线和连续性。
-5. 主 Agent 完成本轮最终修订稿后，立即在同一轮更新 `setting/progress.md` 和 `setting/character-states.md`，不等待作者另行确认成章；章节状态只用于 UI 编辑标记。只有长期稳定设定发生明确变化时，才提出资料库更新建议或按用户要求更新资料库。
+1. Draft at the scope and under the constraints requested by the user, then write the draft to the correctly named chapter file under `chapters/`. Do not update progress or character state yet.
+2. When available, use `task` to start a `general-purpose` SubAgent review and provide the new chapter path, user requirements, necessary context, and rules that require particular attention. Otherwise, perform the review in the main Agent.
+3. The review returns structured issues only and does not edit prose. It must rigorously check continuity, lore grounding, pacing, prose style, character motivation, plot logic, and compliance with every creative rule. Do not include praise.
+4. Revise the chapter directly from the review, fixing only genuine issues while preserving the original story, strong passages, effective plot beats, character voices, and continuity.
+5. After the final revision, update `setting/progress.md` and `setting/character-states.md` in the same turn without waiting for separate chapter confirmation. Chapter status is only a UI editing marker. Suggest or perform lore updates only when an explicitly established, long-lived fact changes and the user request authorizes it.
 
-## 审稿要求
+## Review requirements
 
-`reviewer` 审稿时可读取必要前文、CREATOR.md、大纲、进度、角色状态和资料库作为对照依据。重点检查新增章节是否符合任务要求、用户提示词、CREATOR.md、长期大纲、角色设定与当前状态、世界观和已有连续性；评估剧情推进、人物行为动机、设定一致性、节奏、语言质量和可读性。按严重程度输出问题、证据位置、影响和可执行改进建议；如果执行模式不允许写入，只输出审稿结论和修订方案。
+The `general-purpose` review or main-Agent self-review may read the necessary preceding prose, `CREATOR.md`, outline, progress, character state, and lore for comparison. Check the new chapter against the task, user prompt, `CREATOR.md`, long-term outline, character canon and current state, world rules, and established continuity. Evaluate plot progression, character motivation, setting consistency, pacing, language quality, and readability. Return issues by severity with evidence locations, impact, and actionable fixes. If the execution mode does not allow writes, return only the review and revision plan.
 
-## 最终输出
+## Final output
 
-- 返回最终正文或用户要求的写作产物。
-- 除非用户要求，不输出 `reviewer` 报告或内部修订说明。
-- 如果关键约束无法满足，先简短说明阻断问题或请求用户确认。
+- Return the final prose or other writing artifact requested by the user.
+- Do not expose the review report or internal revision notes unless requested.
+- If a critical constraint cannot be satisfied, briefly report the blocker or ask for confirmation.

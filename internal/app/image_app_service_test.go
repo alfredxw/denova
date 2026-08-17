@@ -13,7 +13,7 @@ import (
 
 	"denova/config"
 	"denova/internal/book"
-	"denova/internal/imagegen"
+	imagegen "denova/internal/image/generation"
 )
 
 func TestGenerateImageSavesOpenAIResultToAssets(t *testing.T) {
@@ -53,7 +53,7 @@ func TestGenerateImageSavesOpenAIResultToAssets(t *testing.T) {
 		workspace:   workspace,
 		bookService: book.NewService(workspace),
 	}
-	result, err := application.GenerateImage(context.Background(), imagegen.GenerateRequest{
+	result, err := application.Images().Generate(context.Background(), imagegen.GenerateRequest{
 		Prompt:  "a quiet writing desk",
 		Quality: "high",
 	})
@@ -82,6 +82,48 @@ func TestGenerateImageSavesOpenAIResultToAssets(t *testing.T) {
 	}
 	if string(data) != string(testPNGBytes()) {
 		t.Fatalf("saved image bytes mismatch")
+	}
+}
+
+func TestGenerateImageWorkspaceTransitionCancelsBeforeAssetWrite(t *testing.T) {
+	workspace := t.TempDir()
+	requestStarted := make(chan struct{})
+	releaseResponse := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		close(requestStarted)
+		<-releaseResponse
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{{"b64_json": base64.StdEncoding.EncodeToString(testPNGBytes())}},
+		})
+	}))
+	defer server.Close()
+	application := &App{
+		cfg: &config.Config{
+			Workspace: workspace, ImageAPIKey: "test-key", ImageAPIBaseURL: server.URL, ImageAPIModel: "gpt-image-1",
+		},
+		workspace: workspace, bookService: book.NewService(workspace),
+	}
+	generateDone := make(chan error, 1)
+	runAppErrorTestGoroutine(generateDone, "workspace image generation", func() error {
+		_, err := application.Images().Generate(context.Background(), imagegen.GenerateRequest{Prompt: "cancelled image"})
+		return err
+	})
+	<-requestStarted
+
+	_, scopes, _, err := application.beginWorkspaceTransitionTo(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := waitLifecycleScopes(context.Background(), scopes); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-generateDone; err == nil {
+		t.Fatal("workspace transition should cancel the in-flight image operation")
+	}
+	close(releaseResponse)
+	if matches, err := filepath.Glob(filepath.Join(workspace, "assets", "image", "generated", "*")); err != nil || len(matches) != 0 {
+		t.Fatalf("cancelled image wrote assets: matches=%v err=%v", matches, err)
 	}
 }
 

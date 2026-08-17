@@ -4,13 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/cavaliergopher/grab/v3"
+
+	"denova/internal/hostruntime"
 )
 
 func (s *Service) Install(ctx context.Context) (InstallResult, error) {
@@ -77,7 +79,7 @@ func (s *Service) downloadAsset(ctx context.Context, url, target string, expecte
 	if strings.TrimSpace(url) == "" {
 		return fmt.Errorf("下载更新包失败: Release 资源缺少下载地址")
 	}
-	log.Printf("[update] 开始下载更新包 url=%s target=%s", url, target)
+	slog.InfoContext(ctx, fmt.Sprintf("[update] 开始下载更新包 url=%s target=%s", url, target))
 	downloadCtx, cancel := context.WithTimeout(ctx, updateDownloadTimeout)
 	defer cancel()
 
@@ -134,7 +136,7 @@ func (s *Service) downloadAsset(ctx context.Context, url, target string, expecte
 				Percent:         100,
 				Message:         "更新包下载完成",
 			})
-			log.Printf("[update] 更新包下载完成 target=%s size=%d", target, resp.BytesComplete())
+			slog.InfoContext(ctx, fmt.Sprintf("[update] 更新包下载完成 target=%s size=%d", target, resp.BytesComplete()))
 			return nil
 		}
 	}
@@ -177,7 +179,7 @@ func (s *Service) stageUpdate(packageRoot string, check CheckResult) (InstallRes
 	if err := writePendingManifestRef(updateDir, manifestPath); err != nil {
 		return InstallResult{}, err
 	}
-	log.Printf("[update] 更新已暂存 old=%s new=%s staged=%s manifest=%s", check.CurrentVersion, check.LatestVersion, stagedDir, manifestPath)
+	slog.InfoContext(context.Background(), fmt.Sprintf("[update] 更新已暂存 old=%s new=%s staged=%s manifest=%s", check.CurrentVersion, check.LatestVersion, stagedDir, manifestPath))
 	return InstallResult{
 		PreviousVersion:  check.CurrentVersion,
 		InstalledVersion: check.LatestVersion,
@@ -255,6 +257,17 @@ func validateReleasePackage(packageRoot, exeName, updaterName string) error {
 			return fmt.Errorf("更新包缺少目录 %s: %w", name, err)
 		} else if !fi.IsDir() {
 			return fmt.Errorf("更新包中的 %s 不是目录", name)
+		}
+	}
+	if runtimeExecutables := hostruntime.DiscoverForExecutable(filepath.Join(packageRoot, exeName)); runtimeExecutables.Ripgrep == "" {
+		return fmt.Errorf("更新包缺少可执行的内置 ripgrep / update package is missing executable bundled ripgrep")
+	}
+	for _, name := range []string{"LICENSE-MIT", "UNLICENSE"} {
+		licensePath := filepath.Join(packageRoot, "licenses", "ripgrep", name)
+		if info, err := os.Stat(licensePath); err != nil {
+			return fmt.Errorf("更新包缺少 ripgrep 许可文件 / update package is missing ripgrep license %s: %w", name, err)
+		} else if !info.Mode().IsRegular() {
+			return fmt.Errorf("更新包中的 ripgrep 许可文件无效 / invalid ripgrep license in update package: %s", name)
 		}
 	}
 	return nil

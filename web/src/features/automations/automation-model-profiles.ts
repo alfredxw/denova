@@ -15,9 +15,11 @@ export function buildAutomationModelProfileOptions(settings: Settings | null, se
   }))
 }
 
-export function inheritedAutomationModelProfileLabel(settings: Settings | null, t: Translate) {
+export function inheritedAutomationModelProfileLabel(settings: Settings | null, projectType: 'book' | 'general', t: Translate) {
   const labels = modelProfileLabels(settings, t)
-  const inheritedID = settings?.agent_models?.automation?.profile_id || settings?.agent_models?.default?.profile_id || 'default'
+  const inheritedID = (projectType === 'general' ? settings?.agent_models?.general?.profile_id : settings?.agent_models?.ide?.profile_id)
+    || settings?.agent_models?.default?.profile_id
+    || 'default'
   return labels.get(inheritedID) || t('automations.model.unknownProfile', { id: inheritedID })
 }
 

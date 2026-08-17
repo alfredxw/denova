@@ -87,7 +87,6 @@ export function StateDetailArea({
                 className="h-7 w-7 rounded-full text-[var(--nova-text-faint)] hover:text-[var(--nova-text)]"
                 onClick={() => onDuplicateNode(selectedNode)}
                 aria-label={t('settingPanel.presetConfig.copy')}
-                title={t('settingPanel.presetConfig.copy')}
               >
                 <Copy className="h-3.5 w-3.5" />
               </Button>
@@ -100,7 +99,6 @@ export function StateDetailArea({
                 className="h-7 w-7 rounded-full text-[var(--nova-text-faint)] hover:bg-[var(--nova-danger-bg)] hover:text-[var(--nova-danger)]"
                 onClick={() => onDeleteNode(selectedNode)}
                 aria-label={t('common.delete')}
-                title={t('common.delete')}
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </Button>

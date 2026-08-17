@@ -26,7 +26,6 @@ export function BookCoverThumbnail({ book, version, previewURL, title, decorativ
   return (
     <div
       className={`relative flex min-w-0 items-center justify-center overflow-hidden rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] ${className || ''}`}
-      title={imageTitle}
       aria-hidden={decorative || undefined}
     >
       {showImage ? (

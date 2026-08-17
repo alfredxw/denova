@@ -8,15 +8,20 @@ import { DENOVA_GITHUB_URL } from '@/lib/product-links'
 import { getMessages, markAllMessagesRead, markMessageRead } from './api'
 import type { AutomationMessageNavigation, ProductMessage } from './types'
 
-const MESSAGE_CENTER_REFRESH_INTERVAL_MS = 30000
-
 type MessageFilter = 'all' | 'action' | 'automation' | 'product'
 
-export function MessageCenterButton({ className = '', onOpenAutomation }: { className?: string; onOpenAutomation?: (target: AutomationMessageNavigation) => void }) {
+interface MessageCenterButtonProps {
+  className?: string
+  unreadCount?: number
+  onUnreadCountChange?: (count: number) => void
+  onOpenAutomation?: (target: AutomationMessageNavigation) => void
+}
+
+export function MessageCenterButton({ className = '', unreadCount: reportedUnreadCount = 0, onUnreadCountChange, onOpenAutomation }: MessageCenterButtonProps) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [items, setItems] = useState<ProductMessage[]>([])
-  const [unreadCount, setUnreadCount] = useState(0)
+  const [unreadCount, setUnreadCount] = useState(reportedUnreadCount)
   const [activeId, setActiveId] = useState<string | null>(null)
   const [filter, setFilter] = useState<MessageFilter>('all')
   const [loading, setLoading] = useState(false)
@@ -26,6 +31,15 @@ export function MessageCenterButton({ className = '', onOpenAutomation }: { clas
 
   const activeItem = useMemo(() => items.find((item) => item.id === activeId) || null, [activeId, items])
   const visibleItems = useMemo(() => items.filter((item) => messageMatchesFilter(item, filter)), [filter, items])
+  const updateUnreadCount = useCallback((count: number) => {
+    const normalized = Math.max(0, count)
+    setUnreadCount(normalized)
+    onUnreadCountChange?.(normalized)
+  }, [onUnreadCountChange])
+
+  useEffect(() => {
+    setUnreadCount(reportedUnreadCount)
+  }, [reportedUnreadCount])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -34,56 +48,19 @@ export function MessageCenterButton({ className = '', onOpenAutomation }: { clas
       const result = await getMessages()
       const nextItems = result.items || []
       setItems(nextItems)
-      setUnreadCount(result.unread_count ?? countUnread(nextItems))
+      updateUnreadCount(result.unread_count ?? countUnread(nextItems))
       setActiveId((current) => current && nextItems.some((item) => item.id === current) ? current : null)
     } catch (e) {
       setError(e instanceof Error ? e.message : t('messages.loadFailed'))
       setItems([])
-      setUnreadCount(0)
     } finally {
       setLoading(false)
     }
-  }, [t])
+  }, [t, updateUnreadCount])
 
   useEffect(() => {
-    let cancelled = false
-    let running = false
-    let timer: number | null = null
-    const clearTimer = () => {
-      if (timer === null) return
-      window.clearTimeout(timer)
-      timer = null
-    }
-    const scheduleNext = () => {
-      clearTimer()
-      if (cancelled || document.visibilityState !== 'visible') return
-      timer = window.setTimeout(() => {
-        timer = null
-        void run()
-      }, MESSAGE_CENTER_REFRESH_INTERVAL_MS)
-    }
-    const run = async () => {
-      if (cancelled || running || document.visibilityState !== 'visible') return
-      running = true
-      try {
-        await load()
-      } finally {
-        running = false
-        scheduleNext()
-      }
-    }
-    const handleVisibilityChange = () => {
-      clearTimer()
-      if (document.visibilityState === 'visible') void run()
-    }
-    void run()
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-    return () => {
-      cancelled = true
-      clearTimer()
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
-    }
-  }, [load])
+    if (open) void load()
+  }, [load, open])
 
   const selectMessage = useCallback((id: string) => {
     setActiveId(id)
@@ -95,18 +72,18 @@ export function MessageCenterButton({ className = '', onOpenAutomation }: { clas
     const optimisticReadAt = new Date().toISOString()
     const wasUnread = items.some((item) => item.id === id && !item.read_at)
     setItems((current) => current.map((item) => item.id === id && !item.read_at ? { ...item, read_at: optimisticReadAt } : item))
-    if (wasUnread) setUnreadCount((current) => Math.max(0, current - 1))
+    if (wasUnread) updateUnreadCount(unreadCount - 1)
     try {
       const updated = await markMessageRead(id)
       setItems((current) => current.map((item) => item.id === id ? { ...item, ...updated } : item))
     } catch (e) {
-      console.warn('[messages] 标记消息已读失败', e)
+      console.warn('[features/messages/MessageCenter.tsx] marking message as read failed', { id, error: e })
       setError(e instanceof Error ? e.message : t('messages.readFailed'))
       void load()
     } finally {
       pendingReadRef.current.delete(id)
     }
-  }, [items, load, t])
+  }, [items, load, t, unreadCount, updateUnreadCount])
 
   const markAllRead = useCallback(async () => {
     if (unreadCount <= 0 || markingAllRead) return
@@ -114,21 +91,21 @@ export function MessageCenterButton({ className = '', onOpenAutomation }: { clas
     setError('')
     const optimisticReadAt = new Date().toISOString()
     setItems((current) => current.map((item) => item.read_at ? item : { ...item, read_at: optimisticReadAt }))
-    setUnreadCount(0)
+    updateUnreadCount(0)
     try {
       const result = await markAllMessagesRead()
       const nextItems = result.items || []
       setItems(nextItems)
-      setUnreadCount(result.unread_count ?? countUnread(nextItems))
+      updateUnreadCount(result.unread_count ?? countUnread(nextItems))
       setActiveId((current) => current && nextItems.some((item) => item.id === current) ? current : null)
     } catch (e) {
-      console.warn('[messages] 标记全部消息已读失败', e)
+      console.warn('[features/messages/MessageCenter.tsx] marking all messages as read failed', { error: e })
       setError(e instanceof Error ? e.message : t('messages.readFailed'))
       void load()
     } finally {
       setMarkingAllRead(false)
     }
-  }, [load, markingAllRead, t, unreadCount])
+  }, [load, markingAllRead, t, unreadCount, updateUnreadCount])
 
   useEffect(() => {
     if (!open || visibleItems.length === 0) return
@@ -148,7 +125,6 @@ export function MessageCenterButton({ className = '', onOpenAutomation }: { clas
         type="button"
         className={`nova-icon-button relative flex items-center justify-center rounded-[var(--nova-radius)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] ${className}`}
         aria-label={t('messages.open')}
-        title={t('messages.open')}
         onClick={() => setOpen(true)}
       >
         <Bell className="h-4 w-4" />
@@ -176,7 +152,6 @@ export function MessageCenterButton({ className = '', onOpenAutomation }: { clas
                 type="button"
                 className="nova-ui-compact inline-flex shrink-0 items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-1 text-xs text-[var(--nova-text-muted)] transition-colors hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] disabled:cursor-not-allowed disabled:opacity-50"
                 aria-label={t('messages.markAllRead')}
-                title={t('messages.markAllRead')}
                 disabled={unreadCount <= 0 || markingAllRead}
                 onClick={markAllRead}
               >
@@ -247,6 +222,7 @@ export function MessageCenterButton({ className = '', onOpenAutomation }: { clas
                           taskId: activeItem.task_id || '',
                           runId: activeItem.run_id,
                           inboxId: activeItem.inbox_id,
+                          projectId: activeItem.project_id,
                           workspace: activeItem.workspace,
                         })
                         setOpen(false)

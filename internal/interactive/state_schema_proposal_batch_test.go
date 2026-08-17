@@ -1,9 +1,28 @@
 package interactive
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
+
+func TestActorStateSchemaBatchProcessesMoreThanSixteenItemsIndependently(t *testing.T) {
+	items := make([]ActorStateSchemaBatchItem, 20)
+	for index := range items {
+		items[index] = ActorStateSchemaBatchItem{ItemID: fmt.Sprintf("item-%02d", index)}
+	}
+	result := NewActorStateSchemaBatchDraft(batchTestActorStateSystem(), StoryDirectorTRPGSystem{}).Submit(
+		ActorStateSchemaBatch{Items: items}, batchTestAudit(),
+	)
+	if len(result.Rejected) != len(items) {
+		t.Fatalf("batch should report every item independently: rejected=%d want=%d result=%#v", len(result.Rejected), len(items), result)
+	}
+	for _, issue := range result.Rejected {
+		if issue.Code == "batch_too_large" {
+			t.Fatalf("batch was rejected before item processing: %#v", result)
+		}
+	}
+}
 
 func TestActorStateSchemaBatchDraftAcceptsValidItemsAndRetriesOnlyFailures(t *testing.T) {
 	draft := NewActorStateSchemaBatchDraft(batchTestActorStateSystem(), StoryDirectorTRPGSystem{})
@@ -80,6 +99,42 @@ func TestOpeningActorStateSchemaBatchReturnsExactInitializationGuide(t *testing.
 	}
 	if first, second, third := guide.RequiredStateChanges[0], guide.RequiredStateChanges[1], guide.RequiredStateChanges[2]; first.ActorID != DefaultActorID || first.FieldID != "身份" || second.ActorID != DefaultActorID || second.FieldID != "幕后风险" || third.ActorID != DefaultStoryContextActorID || third.FieldID != storyContextCurrentEventField {
 		t.Fatalf("the guide must use exact stable actor and field IDs: %#v", guide.RequiredStateChanges)
+	}
+}
+
+func TestOpeningActorStateSchemaBatchRemovesInheritedFieldExplicitly(t *testing.T) {
+	base := GeneratedStoryActorStateCore()
+	protagonist := actorStateTemplateByID(base, DefaultActorID)
+	protagonist.Fields = append(protagonist.Fields, ActorStateField{Name: "力量", Type: "number", Default: float64(10), Min: floatPointer(1)})
+	base.Templates[actorStateTemplateIndex(base.Templates, DefaultActorID)] = protagonist
+
+	draft := NewOpeningActorStateSchemaBatchDraft(base, StoryDirectorTRPGSystem{})
+	result := draft.SubmitStructureOnly(ActorStateSchemaBatch{
+		Items: []ActorStateSchemaBatchItem{{
+			ItemID: "remove-strength",
+			Requirements: []ActorStateSchemaRequirementReview{{
+				Source: ActorStateSchemaRequirementSource{Kind: "opening", ID: "opening-draft"}, Requirement: "本故事使用境界体系，不采用力量数值",
+				ValuePolicy: ActorStateSchemaValuePolicySchemaOnly, Decision: "remove", TemplateID: DefaultActorID, FieldID: "力量", Reason: "避免把 D20 六维带入修仙境界",
+			}},
+			Adaptation: ActorStateSchemaAdaptation{TemplateOps: []ActorStateTemplateSchemaOp{{
+				Op: "fields", TemplateID: DefaultActorID, FieldOps: []ActorStateFieldSchemaOp{{Op: "remove", FieldID: "力量"}},
+			}}},
+		}},
+		Finalize: true,
+	}, ActorStateSchemaBatchAudit{OpeningSourceIDs: []string{"opening-draft"}})
+	if !result.Finalized || len(result.Rejected) != 0 || len(result.Accepted) != 1 {
+		t.Fatalf("an explicit inherited-field removal should finalize: %#v", result)
+	}
+	proposal, ok := draft.FinalProposal()
+	if !ok {
+		t.Fatal("finalized removal should expose a proposal")
+	}
+	target, _, err := ApplyActorStateSchemaAdaptation(base, StoryDirectorTRPGSystem{}, proposal.Adaptation)
+	if err != nil {
+		t.Fatalf("apply explicit removal: %v", err)
+	}
+	if _, exists := actorStateFieldByID(actorStateTemplateByID(target, DefaultActorID), "力量"); exists {
+		t.Fatalf("explicitly removed field remains in target schema: %#v", target)
 	}
 }
 
@@ -668,7 +723,7 @@ func batchTestSourcedAdaptationItem(itemID string, adaptation ActorStateSchemaAd
 				ValuePolicy: ActorStateSchemaValuePolicySchemaOnly, Decision: decision, TemplateID: templateID, FieldID: fieldID,
 			}
 			if fieldOp.Op == "remove" {
-				review.Decision = "ignored"
+				review.Decision = "remove"
 				review.Reason = "开局确认不需要该字段"
 			} else {
 				review.ExpectedType = fieldOp.Field.Type

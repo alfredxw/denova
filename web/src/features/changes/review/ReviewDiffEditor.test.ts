@@ -24,11 +24,6 @@ vi.mock('@monaco-editor/react', async () => {
 })
 
 vi.mock('./monaco/review-model-lifecycle', () => ({ scheduleDetachedReviewModelDisposal: vi.fn() }))
-vi.mock('./monaco/review-monaco-theme', () => ({
-  installReviewMonacoThemes: vi.fn(),
-  REVIEW_MONACO_THEME_DARK: 'dark',
-  REVIEW_MONACO_THEME_LIGHT: 'light',
-}))
 vi.mock('./monaco/review-editor-adapter', () => ({
   ReviewEditorAdapter: class {
     update() {}

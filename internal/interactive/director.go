@@ -6,11 +6,6 @@ import (
 
 const DirectorPatchSourceInteractiveDirector = "interactive_director"
 
-type DirectorAgentScheduleDecision struct {
-	ShouldRun bool   `json:"should_run"`
-	Reason    string `json:"reason,omitempty"`
-}
-
 func DefaultDirectorEventTemplates() []DirectorEvent {
 	return []DirectorEvent{
 		directorEventTemplate("face_slap", "打脸反转", "打脸", "让轻视主角的一方在公开场合被事实反证。"),
@@ -96,6 +91,9 @@ func appendDirectorEventIfMissing(events []DirectorEvent, next DirectorEvent) []
 }
 
 func latestTurnForBranchHead(lines []StoryEventRecord, head string) *TurnEvent {
+	if projected, err := projectStoryEventOverlays(lines); err == nil {
+		lines = projected
+	}
 	path, _ := eventPath(head, eventsByID(lines))
 	for i := len(path) - 1; i >= 0; i-- {
 		if path[i].Envelope.Type != StoryEventTypeTurn {

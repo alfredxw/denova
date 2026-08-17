@@ -1,6 +1,8 @@
 package interactive
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,7 +13,11 @@ import (
 	"strings"
 	"time"
 
-	"denova/internal/imagepreset"
+	imagepreset "denova/internal/image/preset"
+	"denova/internal/interactive/teller"
+	"denova/internal/revisionfile"
+	"denova/internal/revisionjson"
+	"denova/internal/style"
 )
 
 const (
@@ -64,24 +70,25 @@ type StoryDirectorResolvedSnapshot struct {
 	ModuleRefs       StoryDirectorModuleRefs       `json:"module_refs"`
 	NarrativeStyleID string                        `json:"narrative_style_id,omitempty"`
 	ImagePresetID    string                        `json:"image_preset_id,omitempty"`
-	EventPackages    []TellerEventPackage          `json:"event_packages,omitempty"`
+	EventPackages    []EventPackage                `json:"event_packages,omitempty"`
 	TRPGSystem       StoryDirectorTRPGSystem       `json:"trpg_system,omitempty"`
 	ActorState       StoryDirectorActorStateSystem `json:"actor_state,omitempty"`
 }
 
 type EventPackageModule struct {
-	Version           int               `json:"version"`
-	ID                string            `json:"id"`
-	Name              string            `json:"name"`
-	Description       string            `json:"description"`
-	Events            []TellerEventCard `json:"events,omitempty"`
-	Path              string            `json:"path,omitempty"`
-	Custom            bool              `json:"custom"`
-	BuiltinOverridden bool              `json:"builtin_overridden,omitempty"`
-	Invalid           bool              `json:"invalid,omitempty"`
-	Error             string            `json:"error,omitempty"`
-	CreatedAt         string            `json:"created_at,omitempty"`
-	UpdatedAt         string            `json:"updated_at,omitempty"`
+	Version           int         `json:"version"`
+	ID                string      `json:"id"`
+	Name              string      `json:"name"`
+	Description       string      `json:"description"`
+	Events            []EventCard `json:"events,omitempty"`
+	Path              string      `json:"path,omitempty"`
+	Custom            bool        `json:"custom"`
+	BuiltinOverridden bool        `json:"builtin_overridden,omitempty"`
+	Invalid           bool        `json:"invalid,omitempty"`
+	Error             string      `json:"error,omitempty"`
+	CreatedAt         string      `json:"created_at,omitempty"`
+	UpdatedAt         string      `json:"updated_at,omitempty"`
+	Revision          string      `json:"revision,omitempty"`
 }
 
 type RuleSystemModule struct {
@@ -98,6 +105,7 @@ type RuleSystemModule struct {
 	Error             string                  `json:"error,omitempty"`
 	CreatedAt         string                  `json:"created_at,omitempty"`
 	UpdatedAt         string                  `json:"updated_at,omitempty"`
+	Revision          string                  `json:"revision,omitempty"`
 }
 
 type ActorStateModule struct {
@@ -113,6 +121,7 @@ type ActorStateModule struct {
 	Error             string                        `json:"error,omitempty"`
 	CreatedAt         string                        `json:"created_at,omitempty"`
 	UpdatedAt         string                        `json:"updated_at,omitempty"`
+	Revision          string                        `json:"revision,omitempty"`
 }
 
 type EventPackageLibrary struct {
@@ -185,6 +194,9 @@ func (l *EventPackageLibrary) Create(item EventPackageModule) (EventPackageModul
 	if err := l.ensureBuiltins(); err != nil {
 		return EventPackageModule{}, err
 	}
+	if err := validateDirectorModuleWriteBounds(item.Name, item.Description); err != nil {
+		return EventPackageModule{}, err
+	}
 	item = normalizeEventPackageModule(item)
 	if item.ID == "" {
 		item.ID = newDirectorModuleID("event-package")
@@ -194,18 +206,18 @@ func (l *EventPackageLibrary) Create(item EventPackageModule) (EventPackageModul
 		return EventPackageModule{}, err
 	}
 	path := filepath.Join(l.dir(), item.ID+".json")
-	if _, err := os.Stat(path); err == nil {
-		return EventPackageModule{}, fmt.Errorf("事件包已存在: %s", item.ID)
-	} else if !os.IsNotExist(err) {
-		return EventPackageModule{}, err
-	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	item.CreatedAt = now
 	item.UpdatedAt = now
-	if err := writeEventPackageFile(path, item); err != nil {
+	document, err := eventPackageFileStore(path).Create(context.Background(), item)
+	if errors.Is(err, revisionjson.ErrAlreadyExists) {
+		return EventPackageModule{}, fmt.Errorf("事件包已存在: %s", item.ID)
+	}
+	if err != nil {
 		return EventPackageModule{}, err
 	}
-	item.Path = path
+	item = document.Value
+	item.Path, item.Revision = path, document.Revision
 	return applyEventPackageOwnership(item), nil
 }
 
@@ -217,27 +229,29 @@ func (l *EventPackageLibrary) Update(id string, item EventPackageModule, baseRev
 	if err := validateDirectorModuleID(id, "事件包"); err != nil {
 		return EventPackageModule{}, err
 	}
-	isBuiltin := IsBuiltinEventPackageID(id)
-	current, err := l.Get(id)
-	if err != nil {
+	if err := validateDirectorModuleWriteBounds(item.Name, item.Description); err != nil {
 		return EventPackageModule{}, err
-	}
-	if strings.TrimSpace(baseRevision) != "" && strings.TrimSpace(current.UpdatedAt) != strings.TrimSpace(baseRevision) {
-		return EventPackageModule{}, ErrEventPackageRevisionConflict
 	}
 	item = normalizeEventPackageModule(item)
 	item.ID = id
-	item.CreatedAt = firstNonEmptyString(current.CreatedAt, item.CreatedAt)
-	item.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
-	item.BuiltinOverridden = isBuiltin
 	if err := validateEventPackageModule(item); err != nil {
 		return EventPackageModule{}, err
 	}
 	path := filepath.Join(l.dir(), id+".json")
-	if err := writeEventPackageFile(path, item); err != nil {
+	document, err := eventPackageFileStore(path).Update(context.Background(), baseRevision, func(current EventPackageModule) (EventPackageModule, error) {
+		item.CreatedAt = firstNonEmptyString(current.CreatedAt, item.CreatedAt)
+		item.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
+		item.BuiltinOverridden = IsBuiltinEventPackageID(id)
+		return item, validateEventPackageModule(item)
+	})
+	if err != nil {
+		if errors.Is(err, revisionfile.ErrRevisionConflict) || errors.Is(err, revisionjson.ErrRevisionRequired) {
+			return EventPackageModule{}, fmt.Errorf("%w: %v", ErrEventPackageRevisionConflict, err)
+		}
 		return EventPackageModule{}, err
 	}
-	item.Path = path
+	item = document.Value
+	item.Path, item.Revision = path, document.Revision
 	return applyEventPackageOwnership(item), nil
 }
 
@@ -323,6 +337,9 @@ func (l *RuleSystemLibrary) Create(item RuleSystemModule) (RuleSystemModule, err
 	if err := l.ensureBuiltins(); err != nil {
 		return RuleSystemModule{}, err
 	}
+	if err := validateDirectorModuleWriteBounds(item.Name, item.Description); err != nil {
+		return RuleSystemModule{}, err
+	}
 	item = normalizeRuleSystemModule(item)
 	if item.ID == "" {
 		item.ID = newDirectorModuleID("rule-system")
@@ -332,18 +349,18 @@ func (l *RuleSystemLibrary) Create(item RuleSystemModule) (RuleSystemModule, err
 		return RuleSystemModule{}, err
 	}
 	path := filepath.Join(l.dir(), item.ID+".json")
-	if _, err := os.Stat(path); err == nil {
-		return RuleSystemModule{}, fmt.Errorf("TRPG 检定已存在: %s", item.ID)
-	} else if !os.IsNotExist(err) {
-		return RuleSystemModule{}, err
-	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	item.CreatedAt = now
 	item.UpdatedAt = now
-	if err := writeRuleSystemFile(path, item); err != nil {
+	document, err := ruleSystemFileStore(path).Create(context.Background(), item)
+	if errors.Is(err, revisionjson.ErrAlreadyExists) {
+		return RuleSystemModule{}, fmt.Errorf("TRPG 检定已存在: %s", item.ID)
+	}
+	if err != nil {
 		return RuleSystemModule{}, err
 	}
-	item.Path = path
+	item = document.Value
+	item.Path, item.Revision = path, document.Revision
 	return applyRuleSystemOwnership(item), nil
 }
 
@@ -355,27 +372,29 @@ func (l *RuleSystemLibrary) Update(id string, item RuleSystemModule, baseRevisio
 	if err := validateDirectorModuleID(id, "TRPG 检定"); err != nil {
 		return RuleSystemModule{}, err
 	}
-	isBuiltin := IsBuiltinRuleSystemID(id)
-	current, err := l.Get(id)
-	if err != nil {
+	if err := validateDirectorModuleWriteBounds(item.Name, item.Description); err != nil {
 		return RuleSystemModule{}, err
-	}
-	if strings.TrimSpace(baseRevision) != "" && strings.TrimSpace(current.UpdatedAt) != strings.TrimSpace(baseRevision) {
-		return RuleSystemModule{}, ErrRuleSystemRevisionConflict
 	}
 	item = normalizeRuleSystemModule(item)
 	item.ID = id
-	item.CreatedAt = firstNonEmptyString(current.CreatedAt, item.CreatedAt)
-	item.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
-	item.BuiltinOverridden = isBuiltin
 	if err := validateRuleSystemModule(item); err != nil {
 		return RuleSystemModule{}, err
 	}
 	path := filepath.Join(l.dir(), id+".json")
-	if err := writeRuleSystemFile(path, item); err != nil {
+	document, err := ruleSystemFileStore(path).Update(context.Background(), baseRevision, func(current RuleSystemModule) (RuleSystemModule, error) {
+		item.CreatedAt = firstNonEmptyString(current.CreatedAt, item.CreatedAt)
+		item.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
+		item.BuiltinOverridden = IsBuiltinRuleSystemID(id)
+		return item, validateRuleSystemModule(item)
+	})
+	if err != nil {
+		if errors.Is(err, revisionfile.ErrRevisionConflict) || errors.Is(err, revisionjson.ErrRevisionRequired) {
+			return RuleSystemModule{}, fmt.Errorf("%w: %v", ErrRuleSystemRevisionConflict, err)
+		}
 		return RuleSystemModule{}, err
 	}
-	item.Path = path
+	item = document.Value
+	item.Path, item.Revision = path, document.Revision
 	return applyRuleSystemOwnership(item), nil
 }
 
@@ -414,7 +433,7 @@ func (l *RuleSystemLibrary) ensureBuiltins() error {
 
 func DefaultStoryDirectorModuleRefs() StoryDirectorModuleRefs {
 	return StoryDirectorModuleRefs{
-		NarrativeStyleID: "classic",
+		NarrativeStyleID: style.DefaultID,
 		EventPackageIDs:  []string{DefaultEventPackageID},
 		RuleSystemID:     DefaultRuleSystemID,
 		ActorStateID:     DefaultActorStateModuleID,
@@ -481,7 +500,7 @@ func ResolveStoryDirectorModules(novaDir string, director StoryDirector) StoryDi
 	effective.ModuleRefs = refs
 
 	if refs.EventPackagesDisabled {
-		effective.EventPackages = []TellerEventPackage{}
+		effective.EventPackages = []EventPackage{}
 	} else if len(refs.EventPackageIDs) > 0 {
 		packages, packageWarnings := resolveEventPackages(novaDir, refs.EventPackageIDs)
 		if len(packageWarnings) > 0 {
@@ -525,7 +544,7 @@ func ResolveStoryDirectorModules(novaDir string, director StoryDirector) StoryDi
 		}
 	}
 	if !refs.NarrativeStyleDisabled && refs.NarrativeStyleID != "" {
-		if _, err := NewTellerLibrary(novaDir).Get(refs.NarrativeStyleID); err != nil {
+		if _, err := teller.NewLibrary(novaDir).Get(refs.NarrativeStyleID); err != nil {
 			warnings = append(warnings, moduleWarning("narrative_style", refs.NarrativeStyleID, err))
 		}
 	}
@@ -543,7 +562,8 @@ func snapshotFromEffectiveDirector(director StoryDirector, refs StoryDirectorMod
 	if len(warnings) > 0 {
 		status = "warning"
 	}
-	return normalizeStoryDirectorResolvedSnapshot(StoryDirectorResolvedSnapshot{
+	previous := normalizeStoryDirectorResolvedSnapshot(director.ResolvedSnapshot)
+	next := normalizeStoryDirectorResolvedSnapshot(StoryDirectorResolvedSnapshot{
 		Version:          storyDirectorModuleVersion,
 		ResolvedAt:       time.Now().UTC().Format(time.RFC3339Nano),
 		Status:           status,
@@ -555,6 +575,17 @@ func snapshotFromEffectiveDirector(director StoryDirector, refs StoryDirectorMod
 		TRPGSystem:       director.TRPGSystem,
 		ActorState:       director.ActorState,
 	})
+	if previous.ResolvedAt != "" && storyDirectorResolvedSnapshotsEqual(previous, next) {
+		next.ResolvedAt = previous.ResolvedAt
+	}
+	return next
+}
+
+func storyDirectorResolvedSnapshotsEqual(left, right StoryDirectorResolvedSnapshot) bool {
+	left.ResolvedAt, right.ResolvedAt = "", ""
+	leftJSON, leftErr := json.Marshal(left)
+	rightJSON, rightErr := json.Marshal(right)
+	return leftErr == nil && rightErr == nil && bytes.Equal(leftJSON, rightJSON)
 }
 
 func moduleWarning(module, id string, err error) StoryDirectorModuleWarning {
@@ -571,7 +602,7 @@ func DefaultEventPackageModule() EventPackageModule {
 		ID:          DefaultEventPackageID,
 		Name:        "默认事件包",
 		Description: "通用爽文与互动叙事事件卡，覆盖打脸、奇遇、冲突、恋爱、伏笔回收等基础事件。",
-		Events:      defaultTellerEventCards(),
+		Events:      defaultEventCards(),
 	})
 }
 
@@ -778,6 +809,7 @@ func eventPackageComparable(item EventPackageModule) EventPackageModule {
 	item.Error = ""
 	item.CreatedAt = ""
 	item.UpdatedAt = ""
+	item.Revision = ""
 	return item
 }
 
@@ -809,6 +841,7 @@ func ruleSystemComparable(item RuleSystemModule) RuleSystemModule {
 	item.Error = ""
 	item.CreatedAt = ""
 	item.UpdatedAt = ""
+	item.Revision = ""
 	return item
 }
 
@@ -840,6 +873,7 @@ func actorStateComparable(item ActorStateModule) ActorStateModule {
 	item.Error = ""
 	item.CreatedAt = ""
 	item.UpdatedAt = ""
+	item.Revision = ""
 	return item
 }
 
@@ -848,7 +882,7 @@ func normalizeEventPackageModule(item EventPackageModule) EventPackageModule {
 	item.ID = normalizeDirectorModuleID(item.ID)
 	item.Name = trimBytes(firstNonEmptyString(item.Name, item.ID, "事件包"), 256)
 	item.Description = trimBytes(item.Description, 1024)
-	item.Events = normalizeTellerEventCards(item.Events, item.ID)
+	item.Events = normalizeEventCards(item.Events, item.ID)
 	return item
 }
 
@@ -883,7 +917,7 @@ func normalizeStoryDirectorResolvedSnapshot(snapshot StoryDirectorResolvedSnapsh
 	snapshot.ModuleRefs = NormalizeStoryDirectorModuleRefs(snapshot.ModuleRefs)
 	snapshot.NarrativeStyleID = strings.TrimSpace(firstNonEmptyString(snapshot.NarrativeStyleID, snapshot.ModuleRefs.NarrativeStyleID))
 	snapshot.ImagePresetID = imagepreset.NormalizeID(firstNonEmptyString(snapshot.ImagePresetID, snapshot.ModuleRefs.ImagePresetID))
-	snapshot.EventPackages = normalizeTellerEventPackagesNoDefault(snapshot.EventPackages)
+	snapshot.EventPackages = normalizeEventPackagesNoDefault(snapshot.EventPackages)
 	snapshot.TRPGSystem.RuleTemplates = normalizeRuleChecks(snapshot.TRPGSystem.RuleTemplates)
 	if snapshot.ModuleRefs.ActorStateDisabled {
 		snapshot.ActorState = normalizeActorStateSystem(StoryDirectorActorStateSystem{})
@@ -912,6 +946,21 @@ func validateEventPackageModule(item EventPackageModule) error {
 	}
 	if strings.TrimSpace(item.Name) == "" {
 		return errors.New("事件包名称不能为空")
+	}
+	for index, event := range item.Events {
+		if len([]rune(event.DescriptionMarkdown)) > MaxEventCardDescriptionChars {
+			return fmt.Errorf("events[%d].description_markdown 超过 %d 字符 / exceeds %d characters", index, MaxEventCardDescriptionChars, MaxEventCardDescriptionChars)
+		}
+	}
+	return nil
+}
+
+func validateDirectorModuleWriteBounds(name, description string) error {
+	if len([]byte(strings.TrimSpace(name))) > 256 {
+		return errors.New("name 超过 256 字节 / exceeds 256 bytes")
+	}
+	if len([]byte(strings.TrimSpace(description))) > 1024 {
+		return errors.New("description 超过 1024 字节 / exceeds 1024 bytes")
 	}
 	return nil
 }
@@ -954,91 +1003,121 @@ func validateActorStateModule(item ActorStateModule) error {
 }
 
 func parseEventPackageFile(path string) (EventPackageModule, error) {
-	data, err := os.ReadFile(path)
+	document, err := eventPackageFileStore(path).Read(context.Background())
 	if err != nil {
 		return EventPackageModule{}, err
 	}
-	var item EventPackageModule
-	if err := json.Unmarshal(data, &item); err != nil {
-		return EventPackageModule{}, fmt.Errorf("解析事件包 JSON 失败: %w", err)
-	}
-	item = normalizeEventPackageModule(item)
-	if err := validateEventPackageModule(item); err != nil {
-		return EventPackageModule{}, err
-	}
+	item := document.Value
 	item.Path = path
+	item.Revision = document.Revision
 	return item, nil
 }
 
 func parseRuleSystemFile(path string) (RuleSystemModule, error) {
-	data, err := os.ReadFile(path)
+	document, err := ruleSystemFileStore(path).Read(context.Background())
 	if err != nil {
 		return RuleSystemModule{}, err
 	}
-	var item RuleSystemModule
-	if err := json.Unmarshal(data, &item); err != nil {
-		return RuleSystemModule{}, fmt.Errorf("解析 TRPG 检定 JSON 失败: %w", err)
-	}
-	item = normalizeRuleSystemModule(item)
-	if err := validateRuleSystemModule(item); err != nil {
-		return RuleSystemModule{}, err
-	}
+	item := document.Value
 	item.Path = path
+	item.Revision = document.Revision
 	return item, nil
 }
 
 func parseActorStateFile(path string) (ActorStateModule, error) {
-	data, err := os.ReadFile(path)
+	document, err := actorStateFileStore(path).Read(context.Background())
 	if err != nil {
 		return ActorStateModule{}, err
 	}
-	var item ActorStateModule
-	if err := json.Unmarshal(data, &item); err != nil {
-		return ActorStateModule{}, fmt.Errorf("解析状态系统 JSON 失败: %w", err)
-	}
-	item = normalizeActorStateModule(item)
-	item.ActorState = attachBuiltinActorStateLegacyPaths(item.ID, item.ActorState)
-	if err := validateActorStateModule(item); err != nil {
-		return ActorStateModule{}, err
-	}
+	item := document.Value
 	item.Path = path
+	item.Revision = document.Revision
 	return item, nil
 }
 
 func writeEventPackageFile(path string, item EventPackageModule) error {
-	item = normalizeEventPackageModule(item)
-	data, err := json.MarshalIndent(item, "", "  ")
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	return os.WriteFile(path, append(data, '\n'), 0o644)
+	_, err := eventPackageFileStore(path).Replace(context.Background(), item)
+	return err
 }
 
 func writeRuleSystemFile(path string, item RuleSystemModule) error {
-	item = normalizeRuleSystemModule(item)
-	data, err := json.MarshalIndent(item, "", "  ")
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	return os.WriteFile(path, append(data, '\n'), 0o644)
+	_, err := ruleSystemFileStore(path).Replace(context.Background(), item)
+	return err
+}
+
+func eventPackageFileStore(path string) revisionjson.Store[EventPackageModule] {
+	return revisionjson.NewStore(path, revisionjson.Codec[EventPackageModule]{
+		Decode: func(data []byte) (EventPackageModule, error) {
+			var item EventPackageModule
+			if err := json.Unmarshal(data, &item); err != nil {
+				return EventPackageModule{}, fmt.Errorf("解析事件包 JSON 失败: %w", err)
+			}
+			item = normalizeEventPackageModule(item)
+			return item, validateEventPackageModule(item)
+		},
+		Encode: func(item EventPackageModule) ([]byte, error) {
+			item = normalizeEventPackageModule(item)
+			if err := validateEventPackageModule(item); err != nil {
+				return nil, err
+			}
+			item.Path, item.Revision, item.Error = "", "", ""
+			item.Invalid, item.Custom = false, false
+			data, err := json.MarshalIndent(item, "", "  ")
+			return append(data, '\n'), err
+		},
+	})
+}
+
+func ruleSystemFileStore(path string) revisionjson.Store[RuleSystemModule] {
+	return revisionjson.NewStore(path, revisionjson.Codec[RuleSystemModule]{
+		Decode: func(data []byte) (RuleSystemModule, error) {
+			var item RuleSystemModule
+			if err := json.Unmarshal(data, &item); err != nil {
+				return RuleSystemModule{}, fmt.Errorf("解析 TRPG 检定 JSON 失败: %w", err)
+			}
+			item = normalizeRuleSystemModule(item)
+			return item, validateRuleSystemModule(item)
+		},
+		Encode: func(item RuleSystemModule) ([]byte, error) {
+			item = normalizeRuleSystemModule(item)
+			if err := validateRuleSystemModule(item); err != nil {
+				return nil, err
+			}
+			item.Path, item.Revision, item.Error = "", "", ""
+			item.Invalid, item.Custom = false, false
+			data, err := json.MarshalIndent(item, "", "  ")
+			return append(data, '\n'), err
+		},
+	})
 }
 
 func writeActorStateFile(path string, item ActorStateModule) error {
-	item = normalizeActorStateModule(item)
-	data, err := json.MarshalIndent(item, "", "  ")
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	return os.WriteFile(path, append(data, '\n'), 0o644)
+	_, err := actorStateFileStore(path).Replace(context.Background(), item)
+	return err
+}
+
+func actorStateFileStore(path string) revisionjson.Store[ActorStateModule] {
+	return revisionjson.NewStore(path, revisionjson.Codec[ActorStateModule]{
+		Decode: func(data []byte) (ActorStateModule, error) {
+			var item ActorStateModule
+			if err := json.Unmarshal(data, &item); err != nil {
+				return ActorStateModule{}, fmt.Errorf("解析状态系统 JSON 失败: %w", err)
+			}
+			item = normalizeActorStateModule(item)
+			item.ActorState = attachBuiltinActorStateLegacyPaths(item.ID, item.ActorState)
+			return item, validateActorStateModule(item)
+		},
+		Encode: func(item ActorStateModule) ([]byte, error) {
+			item = normalizeActorStateModule(item)
+			if err := validateActorStateModule(item); err != nil {
+				return nil, err
+			}
+			item.Path, item.Revision, item.Error = "", "", ""
+			item.Invalid, item.Custom = false, false
+			data, err := json.MarshalIndent(item, "", "  ")
+			return append(data, '\n'), err
+		},
+	})
 }
 
 func normalizeDirectorModuleID(id string) string {
@@ -1130,16 +1209,13 @@ func normalizeEventPackageIDs(ids []string) []string {
 		}
 		seen[id] = true
 		out = append(out, id)
-		if len(out) >= maxInteractiveListItems {
-			break
-		}
 	}
 	return out
 }
 
-func resolveEventPackages(novaDir string, ids []string) ([]TellerEventPackage, []StoryDirectorModuleWarning) {
+func resolveEventPackages(novaDir string, ids []string) ([]EventPackage, []StoryDirectorModuleWarning) {
 	library := NewEventPackageLibrary(novaDir)
-	packages := make([]TellerEventPackage, 0, len(ids))
+	packages := make([]EventPackage, 0, len(ids))
 	warnings := []StoryDirectorModuleWarning{}
 	for _, id := range normalizeEventPackageIDs(ids) {
 		module, err := library.Get(id)
@@ -1149,12 +1225,12 @@ func resolveEventPackages(novaDir string, ids []string) ([]TellerEventPackage, [
 		}
 		packages = append(packages, tellerEventPackageFromModule(module))
 	}
-	return normalizeTellerEventPackagesNoDefault(packages), warnings
+	return normalizeEventPackagesNoDefault(packages), warnings
 }
 
-func tellerEventPackageFromModule(module EventPackageModule) TellerEventPackage {
+func tellerEventPackageFromModule(module EventPackageModule) EventPackage {
 	module = normalizeEventPackageModule(module)
-	return TellerEventPackage{
+	return EventPackage{
 		ID:      module.ID,
 		Name:    module.Name,
 		Enabled: true,

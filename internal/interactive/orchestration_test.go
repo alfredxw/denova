@@ -1,6 +1,7 @@
 package interactive
 
 import (
+	interactivestate "denova/internal/interactive/state"
 	"os"
 	"strings"
 	"testing"
@@ -359,7 +360,7 @@ func TestValidateTurnCheckRequestListsAllowedEnums(t *testing.T) {
 	}
 }
 
-func TestNormalizeRuleCheckKeepsTriggerExamples(t *testing.T) {
+func TestNormalizeRuleCheckKeepsAllRulesAndTriggerExamples(t *testing.T) {
 	checks := normalizeRuleChecks([]RuleCheck{
 		{
 			ID:                "example-rule",
@@ -376,11 +377,11 @@ func TestNormalizeRuleCheckKeepsTriggerExamples(t *testing.T) {
 			FailurePolicy: "hard_failure",
 		},
 	})
-	if len(checks) != 1 {
+	if len(checks) != 2 {
 		t.Fatalf("check count = %d", len(checks))
 	}
-	if checks[0].ID != "example-rule" {
-		t.Fatalf("normalize should keep only the first TRPG check config, got: %#v", checks)
+	if checks[0].ID != "example-rule" || checks[1].ID != "extra-rule" {
+		t.Fatalf("normalize should preserve every valid TRPG check config, got: %#v", checks)
 	}
 	if got := checks[0].MustCheckExamples; len(got) != 2 || got[0] != "强行撬锁" || got[1] != "攻击守卫" {
 		t.Fatalf("must examples not normalized: %#v", got)
@@ -453,7 +454,7 @@ func TestCreateStoryAppliesOpeningInitialStateOps(t *testing.T) {
 	story, err := store.CreateStory(CreateStoryRequest{
 		Title:           "开局词条",
 		StoryTellerID:   "classic",
-		InitialStateOps: []StateOp{{Op: "set", Path: "resources.hp", Value: float64(18)}, {Op: "push", Path: "rules.opening_traits", Value: "隐脉"}},
+		InitialStateOps: []interactivestate.Op{{Op: "set", Path: "resources.hp", Value: float64(18)}, {Op: "push", Path: "rules.opening_traits", Value: "隐脉"}},
 	})
 	if err != nil {
 		t.Fatal(err)

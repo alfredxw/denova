@@ -3,11 +3,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { APIError } from '@/lib/api-client'
 import { preserveAutosaveConflict } from '@/lib/api-client/autosave-conflicts'
 import type { LayeredSettings, Settings, SettingsLayer } from './types'
-import { useLayeredSettingsDraft } from './use-layered-settings-draft'
+import { projectSettingsTarget } from './api'
+import { useLayeredSettingsDraft as useProjectLayeredSettingsDraft } from './use-layered-settings-draft'
 
 vi.mock('@/lib/api-client/autosave-conflicts', () => ({
   preserveAutosaveConflict: vi.fn(async () => ({ id: 'conflict-1', path: '/conflicts/conflict-1.json', storage: 'server' as const })),
 }))
+
+function useLayeredSettingsDraft(
+  options: Omit<Parameters<typeof useProjectLayeredSettingsDraft>[0], 'target'>,
+) {
+  return useProjectLayeredSettingsDraft({ ...options, target: projectSettingsTarget('project-settings') })
+}
 
 describe('useLayeredSettingsDraft', () => {
   beforeEach(() => {
@@ -59,7 +66,7 @@ describe('useLayeredSettingsDraft', () => {
 
     await waitFor(() => expect(result.current.draft).toEqual({ theme: 'dark' }))
 
-    act(() => result.current.notifyUpdated())
+    act(() => result.current.notifyUpdated('user'))
     expect(loadSettings).toHaveBeenCalledTimes(1)
 
     act(() => window.dispatchEvent(new CustomEvent('nova:settings-updated', { detail: { source: 'another-view' } })))
@@ -180,7 +187,7 @@ describe('useLayeredSettingsDraft', () => {
 
   it('treats its own save response as an acknowledgement while a newer draft waits', async () => {
     const initial = snapshot({
-      user: { model_profiles: [{ id: 'default', openai_model: 'model-a' }] },
+      user: { model_profiles: [{ id: 'default', model: 'model-a' }] },
       revisions: { user: 'r1' },
     })
     const firstSave = deferred<LayeredSettings>()
@@ -199,13 +206,13 @@ describe('useLayeredSettingsDraft', () => {
     await waitFor(() => expect(result.current.draft).toEqual(initial.user))
     vi.useFakeTimers()
 
-    act(() => result.current.setDraft({ model_profiles: [{ id: 'default', openai_model: 'model-b' }] }))
+    act(() => result.current.setDraft({ model_profiles: [{ id: 'default', model: 'model-b' }] }))
     act(() => { vi.advanceTimersByTime(1100) })
     expect(saveUserSettings).toHaveBeenCalledOnce()
 
-    act(() => result.current.setDraft({ model_profiles: [{ id: 'default', openai_model: 'model-c' }] }))
+    act(() => result.current.setDraft({ model_profiles: [{ id: 'default', model: 'model-c' }] }))
     const firstSaved = snapshot({
-      user: { model_profiles: [{ id: 'default', openai_model: 'model-b' }] },
+      user: { model_profiles: [{ id: 'default', model: 'model-b' }] },
       revisions: { user: 'r2' },
     })
     await act(async () => {
@@ -222,9 +229,9 @@ describe('useLayeredSettingsDraft', () => {
 
     expect(conflictCallCount).toBe(0)
     expect(queuedSave).toEqual([{
-      model_profiles: [{ id: 'default', openai_model: 'model-c' }],
+      model_profiles: [{ id: 'default', model: 'model-c' }],
     }, 'r2'])
-    expect(currentDraft).toEqual({ model_profiles: [{ id: 'default', openai_model: 'model-c' }] })
+    expect(currentDraft).toEqual({ model_profiles: [{ id: 'default', model: 'model-c' }] })
   })
 
   it('applies external snapshots without writing them back when there is no local edit', async () => {
@@ -420,6 +427,8 @@ function snapshot(patch: Partial<LayeredSettings>): LayeredSettings {
     user: {},
     workspace: {},
     effective: {},
+    resolved_agent_tool_manifests: {},
+    resolved_agent_contexts: {},
     paths: {
       denova_dir: '',
       nova_dir: '',

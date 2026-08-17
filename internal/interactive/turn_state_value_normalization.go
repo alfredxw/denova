@@ -1,7 +1,9 @@
 package interactive
 
 import (
-	"log"
+	"context"
+	"fmt"
+	"log/slog"
 	"math"
 	"strconv"
 	"strings"
@@ -24,7 +26,7 @@ func normalizeTurnSubmissionActorStateValues(actorID string, template ActorState
 		}
 		converted, changed := normalizeTurnSubmissionFieldValue(field, value)
 		if changed {
-			log.Printf("[interactive-turn-submission] normalized lossless field value actor_id=%q field_id=%q from=string to=%s location=internal/interactive/turn_state_value_normalization.go", actorID, actorStateFieldID(field), field.Type)
+			slog.InfoContext(context.Background(), fmt.Sprintf("[interactive-turn-submission] normalized lossless field value actor_id=%q field_id=%q from=string to=%s location=internal/interactive/turn_state_value_normalization.go", actorID, actorStateFieldID(field), field.Type))
 			value = converted
 		}
 		normalized[fieldReference] = value

@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
-	"denova/internal/workspacepath"
+	"denova/internal/book/lore"
+	"time"
 )
 
 func TestInitWorkspaceDoesNotCreateCharacterStates(t *testing.T) {
@@ -21,6 +21,20 @@ func TestInitWorkspaceDoesNotCreateCharacterStates(t *testing.T) {
 
 	if _, err := os.Stat(filepath.Join(state.SettingDir(), CharacterStatesFileName)); !os.IsNotExist(err) {
 		t.Fatalf("InitWorkspace 不应自动创建 %s: %v", CharacterStatesFileName, err)
+	}
+}
+
+func TestInitWorkspaceDoesNotCreateWorkspacePrivateRuntimeState(t *testing.T) {
+	dir := t.TempDir()
+	state := NewState(dir)
+
+	if err := state.InitWorkspace(); err != nil {
+		t.Fatalf("InitWorkspace failed: %v", err)
+	}
+	for _, path := range []string{state.SessionDir(), state.BackupDir()} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("workspace-private runtime path should not be created: path=%s err=%v", path, err)
+		}
 	}
 }
 
@@ -37,7 +51,7 @@ func TestInitWorkspaceCreatesIdeasMarkdown(t *testing.T) {
 	}
 }
 
-func TestStateInternalDirsUseLegacyTargetsWhenCurrentIsGeneratedEmpty(t *testing.T) {
+func TestInitWorkspaceMigratesLegacyLoreIntoPublicSettingDirectory(t *testing.T) {
 	dir := t.TempDir()
 	currentLore := filepath.Join(dir, ".denova", "lore", "items.json")
 	legacyLore := filepath.Join(dir, ".nova", "lore", "items.json")
@@ -50,13 +64,26 @@ func TestStateInternalDirsUseLegacyTargetsWhenCurrentIsGeneratedEmpty(t *testing
 	if err := os.MkdirAll(filepath.Dir(legacyLore), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(legacyLore, []byte(`{"version":1,"items":[{"id":"hero"}]}`), 0o644); err != nil {
+	if err := os.WriteFile(legacyLore, []byte(`{"version":1,"items":[{"id":"hero","name":"林川"}]}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	state := NewState(dir)
-	if got, want := state.LoreDir(), filepath.Join(dir, ".nova", "lore"); got != want {
-		t.Fatalf("LoreDir should keep using legacy lore target: want=%s got=%s", want, got)
+	if got, want := state.LoreDir(), filepath.Join(dir, "setting", "lore"); got != want {
+		t.Fatalf("LoreDir should use the public setting directory: want=%s got=%s", want, got)
+	}
+	if err := state.InitWorkspace(); err != nil {
+		t.Fatalf("InitWorkspace 失败: %v", err)
+	}
+	data, err := os.ReadFile(lore.ItemsPath(dir))
+	if err != nil {
+		t.Fatalf("读取迁移后的 Lore 失败: %v", err)
+	}
+	if !strings.Contains(string(data), `"id": "hero"`) || !strings.Contains(string(data), `"version": 2`) {
+		t.Fatalf("迁移后的 Lore 未保留旧条目或升级格式: %s", data)
+	}
+	if _, err := os.Stat(legacyLore); err != nil {
+		t.Fatalf("旧 Lore 应作为可恢复副本保留: %v", err)
 	}
 }
 
@@ -84,199 +111,13 @@ func TestInitWorkspaceMigratesLegacyBrainstormMarkdown(t *testing.T) {
 	}
 }
 
-func TestCompactContextIncludesCharacterStates(t *testing.T) {
-	dir := t.TempDir()
-	state := NewState(dir)
-	if err := state.InitWorkspace(); err != nil {
-		t.Fatalf("InitWorkspace 失败: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(state.SettingDir(), "outline.md"), []byte("大纲内容"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(state.SettingDir(), "progress.md"), []byte("进度内容"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(state.SettingDir(), CharacterStatesFileName), []byte("林川在废城东区地下仓库"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "chapters", "ch0001-开局.md"), []byte("第一章正文"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(state.ChapterGroupDir(), "group01-废城.md"), []byte("章节组内容"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := NewLoreStore(dir).Create(LoreItemInput{
-		ID:         "hero",
-		Type:       "character",
-		Name:       "林川",
-		Importance: "major",
-		LoadMode:   LoreLoadModeResident,
-		Content:    "林川的长期人设",
-	}); err != nil {
-		t.Fatalf("创建资料失败: %v", err)
-	}
-
-	context := state.CompactContext()
-	for _, required := range []string{
-		"## 当前大纲",
-		"大纲内容",
-		"## 常驻资料库",
-		"林川的长期人设",
-		"## 章节组细纲",
-		"章节组内容",
-		"## 当前进度",
-		"进度内容",
-		"## 角色状态",
-		"林川在废城东区地下仓库",
-		"## 章节目录概览",
-		"chapters/ch0001-开局.md",
-	} {
-		if !strings.Contains(context, required) {
-			t.Fatalf("CompactContext 缺少 %q:\n%s", required, context)
-		}
-	}
-
-	lastIndex := -1
-	for _, marker := range []string{
-		"## 当前大纲",
-		"## 常驻资料库",
-		"## 章节组细纲",
-		"## 章节目录概览",
-		"## 当前进度",
-		"## 角色状态",
-	} {
-		index := strings.Index(context, marker)
-		if index < 0 {
-			t.Fatalf("CompactContext 缺少顺序标记 %q:\n%s", marker, context)
-		}
-		if index <= lastIndex {
-			t.Fatalf("CompactContext 顺序错误，%q 应按低频到高频状态排列:\n%s", marker, context)
-		}
-		lastIndex = index
-	}
-}
-
-func TestStableAndDynamicContextPartsSeparateByChurn(t *testing.T) {
-	dir := t.TempDir()
-	state := NewState(dir)
-	if err := state.InitWorkspace(); err != nil {
-		t.Fatalf("InitWorkspace 失败: %v", err)
-	}
-	if err := os.WriteFile(state.IdeasPath(), []byte("# 灵感\n\n废土公路复仇。"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(state.SettingDir(), "outline.md"), []byte("大纲内容"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(state.SettingDir(), "progress.md"), []byte("进度内容"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(state.SettingDir(), CharacterStatesFileName), []byte("角色状态内容"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(state.ChapterGroupDir(), "group01-废城.md"), []byte("章节组内容"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "chapters", "ch0001-开局.md"), []byte("第一章正文"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := NewLoreStore(dir).Create(LoreItemInput{
-		ID:         "hero",
-		Type:       "character",
-		Name:       "林川",
-		Importance: "major",
-		LoadMode:   LoreLoadModeResident,
-		Content:    "林川长期设定",
-	}); err != nil {
-		t.Fatalf("创建资料失败: %v", err)
-	}
-
-	stableIDs := make([]string, 0)
-	for _, part := range state.StableContextParts() {
-		stableIDs = append(stableIDs, part.ID)
-	}
-	if got, want := strings.Join(stableIDs, ","), "ideas,outline,lore"; got != want {
-		t.Fatalf("stable context ids = %s, want %s", got, want)
-	}
-
-	dynamicIDs := make([]string, 0)
-	for _, part := range state.DynamicContextParts() {
-		dynamicIDs = append(dynamicIDs, part.ID)
-	}
-	if got, want := strings.Join(dynamicIDs, ","), "chapter_groups,chapter_paths,progress,character_states"; got != want {
-		t.Fatalf("dynamic context ids = %s, want %s", got, want)
-	}
-}
-
-func TestCompactContextIncludesBoundedIdeasWhenEdited(t *testing.T) {
-	dir := t.TempDir()
-	state := NewState(dir)
-	if err := state.InitWorkspace(); err != nil {
-		t.Fatalf("InitWorkspace 失败: %v", err)
-	}
-	if context := state.CompactContext(); strings.Contains(context, "## 创作灵感") {
-		t.Fatalf("未编辑的 ideas 模板不应进入上下文:\n%s", context)
-	}
-	if err := os.WriteFile(state.IdeasPath(), []byte("# 灵感\n\n## 当前方向\n废土公路复仇。"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	context := state.CompactContext()
-	for _, required := range []string{
-		"## 创作灵感（ideas.md，最多 2000 字）",
-		"废土公路复仇",
-	} {
-		if !strings.Contains(context, required) {
-			t.Fatalf("CompactContext 缺少 %q:\n%s", required, context)
-		}
-	}
-}
-
-func TestCompactContextPartsKeepLoreMarkdownAsSingleSource(t *testing.T) {
-	dir := t.TempDir()
-	state := NewState(dir)
-	if err := state.InitWorkspace(); err != nil {
-		t.Fatalf("InitWorkspace 失败: %v", err)
-	}
-	if _, err := NewLoreStore(dir).Create(LoreItemInput{
-		ID:         "hero",
-		Type:       "character",
-		Name:       "林川",
-		Importance: "major",
-		LoadMode:   LoreLoadModeResident,
-		Content:    "## 角色小标题\n\n这里是资料库正文。",
-	}); err != nil {
-		t.Fatalf("创建资料失败: %v", err)
-	}
-
-	parts := state.CompactContextParts()
-	loreParts := 0
-	for _, part := range parts {
-		if part.Source == workspacepath.Rel(dir, "lore", "items.json") {
-			loreParts++
-			if part.Title != "资料库" {
-				t.Fatalf("资料库来源标题 = %q, want 资料库", part.Title)
-			}
-			if !strings.Contains(part.Content, "## 角色小标题") {
-				t.Fatalf("资料库来源应保留内部 Markdown 小标题: %#v", part)
-			}
-		}
-		if part.Title == "角色小标题" {
-			t.Fatalf("不应把资料库正文的小标题拆成来源: %#v", part)
-		}
-	}
-	if loreParts != 1 {
-		t.Fatalf("资料库来源数量 = %d, want 1; parts=%#v", loreParts, parts)
-	}
-}
-
 func TestHasStateRecognizesCharacterStates(t *testing.T) {
 	dir := t.TempDir()
 	state := NewState(dir)
 	if err := os.MkdirAll(state.SettingDir(), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := NewLoreStore(dir).Ensure(); err != nil {
+	if err := lore.NewStore(dir).Ensure(); err != nil {
 		t.Fatal(err)
 	}
 	if state.HasState() {

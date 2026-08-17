@@ -8,10 +8,12 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/alfredxw/denova/agent/providers"
 	toml "github.com/pelletier/go-toml/v2"
 
 	"denova/internal/revisionfile"
-	"denova/internal/workspacepath"
+	"denova/internal/style"
+	workspacelayout "denova/internal/workspace"
 )
 
 // Settings 是用户设置的持久化模型。工作区文件只会从中取出 Agent 定制字段。
@@ -36,6 +38,8 @@ type Settings struct {
 	AgentContexts             AgentContextSettings         `toml:"agent_context,omitempty" json:"agent_context,omitempty"`
 	GeneralSubAgents          AgentGeneralSubAgentSettings `toml:"general_sub_agents,omitempty" json:"general_sub_agents,omitempty"`
 	SubAgents                 []SubAgentConfig             `toml:"sub_agents,omitempty" json:"sub_agents,omitempty"`
+	WebAccess                 WebAccessSettings            `toml:"web_access,omitempty" json:"web_access,omitempty"`
+	Labs                      LabSettings                  `toml:"labs,omitempty" json:"labs,omitempty"`
 
 	// 路径
 	SkillsDir    string `toml:"skills_dir,omitempty" json:"skills_dir,omitempty"`
@@ -54,10 +58,10 @@ type Settings struct {
 	// 编辑器
 	AutoSaveEnabled             *bool  `toml:"auto_save_enabled,omitempty" json:"auto_save_enabled,omitempty"`
 	AutoSaveIntervalMs          *int   `toml:"auto_save_interval_ms,omitempty" json:"auto_save_interval_ms,omitempty"`
-	HideChapterBodyLiveOutput   *bool  `toml:"hide_novel_chapter_body_in_live_output,omitempty" json:"hide_novel_chapter_body_in_live_output,omitempty"`
 	ChapterFilenameFormat       string `toml:"chapter_filename_format,omitempty" json:"chapter_filename_format,omitempty"`
 	VolumeDirFormat             string `toml:"volume_dir_format,omitempty" json:"volume_dir_format,omitempty"`
 	MaxOpenTabs                 *int   `toml:"max_open_tabs,omitempty" json:"max_open_tabs,omitempty"`
+	ProjectFileTreeEntryLimit   *int   `toml:"project_file_tree_entry_limit,omitempty" json:"project_file_tree_entry_limit,omitempty"`
 	ChapterGroupMin             *int   `toml:"chapter_group_min,omitempty" json:"chapter_group_min,omitempty"`
 	ChapterGroupMax             *int   `toml:"chapter_group_max,omitempty" json:"chapter_group_max,omitempty"`
 	VersionTimedEnabled         *bool  `toml:"version_timed_enabled,omitempty" json:"version_timed_enabled,omitempty"`
@@ -74,20 +78,44 @@ type Settings struct {
 	UpdateCheckEnabled *bool  `toml:"update_check_enabled,omitempty" json:"update_check_enabled,omitempty"`
 
 	// Agent
-	MaxIteration            *int   `toml:"max_iteration,omitempty" json:"max_iteration,omitempty"`
-	ModelMaxRetries         *int   `toml:"model_max_retries,omitempty" json:"model_max_retries,omitempty"`
-	AgentIdleTimeoutSeconds *int   `toml:"agent_idle_timeout_seconds,omitempty" json:"agent_idle_timeout_seconds,omitempty"`
-	AgentToolResultLimitKB  *int   `toml:"agent_tool_result_limit_kb,omitempty" json:"agent_tool_result_limit_kb,omitempty"`
-	LLMInputLogEnabled      *bool  `toml:"llm_input_log_enabled,omitempty" json:"llm_input_log_enabled,omitempty"`
-	TraceCaptureLevel       string `toml:"trace_capture_level,omitempty" json:"trace_capture_level,omitempty"`
-	TraceExporter           string `toml:"trace_exporter,omitempty" json:"trace_exporter,omitempty"`
-	TraceRetentionRuns      *int   `toml:"trace_retention_runs,omitempty" json:"trace_retention_runs,omitempty"`
-	PlanModeDefault         *bool  `toml:"plan_mode_default,omitempty" json:"plan_mode_default,omitempty"`
-	IDEStoryTellerID        string `toml:"ide_story_teller_id,omitempty" json:"ide_story_teller_id,omitempty"`
-	IDEImagePresetID        string `toml:"ide_image_preset_id,omitempty" json:"ide_image_preset_id,omitempty"`
-	WritingSkillDefault     string `toml:"writing_skill_default,omitempty" json:"writing_skill_default,omitempty"`
+	MaxIteration              *int                `toml:"max_iteration,omitempty" json:"max_iteration,omitempty"`
+	ModelMaxRetries           *int                `toml:"model_max_retries,omitempty" json:"model_max_retries,omitempty"`
+	AgentIdleTimeoutSeconds   *int                `toml:"agent_idle_timeout_seconds,omitempty" json:"agent_idle_timeout_seconds,omitempty"`
+	AgentToolResultLimitKB    *int                `toml:"agent_tool_result_limit_kb,omitempty" json:"agent_tool_result_limit_kb,omitempty"`
+	AgentToolParallelism      *int                `toml:"agent_tool_parallelism,omitempty" json:"agent_tool_parallelism,omitempty"`
+	AgentScriptTimeoutSeconds *int                `toml:"agent_script_timeout_seconds,omitempty" json:"agent_script_timeout_seconds,omitempty"`
+	AgentApprovalMode         AgentApprovalMode   `toml:"agent_approval_mode,omitempty" json:"agent_approval_mode,omitempty"`
+	AgentApprovalRules        []AgentApprovalRule `toml:"agent_approval_rules,omitempty" json:"agent_approval_rules,omitempty"`
+
+	// Agent shell execution is user-scoped. A workspace must not choose which
+	// host profile is loaded or substitute the executable used on the machine.
+	ShellEnvironmentMode  ShellEnvironmentMode `toml:"shell_environment_mode,omitempty" json:"shell_environment_mode,omitempty"`
+	ShellEnvironmentShell string               `toml:"shell_environment_shell,omitempty" json:"shell_environment_shell,omitempty"`
+	AgentBashPath         string               `toml:"agent_bash_path,omitempty" json:"agent_bash_path,omitempty"`
+
+	LLMInputLogEnabled  *bool  `toml:"llm_input_log_enabled,omitempty" json:"llm_input_log_enabled,omitempty"`
+	TraceCaptureLevel   string `toml:"trace_capture_level,omitempty" json:"trace_capture_level,omitempty"`
+	TraceExporter       string `toml:"trace_exporter,omitempty" json:"trace_exporter,omitempty"`
+	TraceRetentionRuns  *int   `toml:"trace_retention_runs,omitempty" json:"trace_retention_runs,omitempty"`
+	PlanModeDefault     *bool  `toml:"plan_mode_default,omitempty" json:"plan_mode_default,omitempty"`
+	IDEStoryTellerID    string `toml:"ide_story_teller_id,omitempty" json:"ide_story_teller_id,omitempty"`
+	IDEImagePresetID    string `toml:"ide_image_preset_id,omitempty" json:"ide_image_preset_id,omitempty"`
+	WritingSkillDefault string `toml:"writing_skill_default,omitempty" json:"writing_skill_default,omitempty"`
+
+	// Terminal (the AgentChat terminal tabs). A terminal runs arbitrary commands on this
+	// machine, so this entire section is user-scoped and cannot be overridden by a workspacelayout.
+	TerminalEnabled  *bool                     `toml:"terminal_enabled,omitempty" json:"terminal_enabled,omitempty"`
+	TerminalShell    string                    `toml:"terminal_shell,omitempty" json:"terminal_shell,omitempty"`
+	TerminalCommands []TerminalCommandSettings `toml:"terminal_commands,omitempty" json:"terminal_commands,omitempty"`
+	// TerminalCommandsConfigured distinguishes an intentionally empty registry
+	// from an omitted registry that should inherit defaults. It is an internal
+	// TOML presence marker; API clients continue to own only the array itself.
+	TerminalCommandsConfigured bool `toml:"terminal_commands_configured,omitempty" json:"-"`
+	TerminalMaxSessions        *int `toml:"terminal_max_sessions,omitempty" json:"terminal_max_sessions,omitempty"`
+	TerminalScrollbackKB       *int `toml:"terminal_scrollback_kb,omitempty" json:"terminal_scrollback_kb,omitempty"`
 
 	// 游戏模式
+	InteractiveStoryTellerID   string   `toml:"interactive_story_teller_id,omitempty" json:"interactive_story_teller_id,omitempty"`
 	InteractiveStageFontSize   *int     `toml:"interactive_stage_font_size,omitempty" json:"interactive_stage_font_size,omitempty"`
 	InteractiveStageLineHeight *float64 `toml:"interactive_stage_line_height,omitempty" json:"interactive_stage_line_height,omitempty"`
 }
@@ -100,10 +128,25 @@ func stringPtr(v string) *string  { return &v }
 const (
 	DefaultWritingSkillName        = "novel-lite"
 	DefaultAgentIdleTimeoutSeconds = 0
-	DefaultAgentToolResultLimitKB  = 1024
-	DefaultTraceCaptureLevel       = "summary"
-	DefaultTraceExporter           = "local"
-	DefaultTraceRetentionRuns      = 100
+	// Keep one model-visible tool result above the shared 50 KiB fragment floor
+	// while preventing a single successful call from consuming most of the
+	// default 400K-token context window.
+	DefaultAgentToolResultLimitKB = 128
+	DefaultAgentToolParallelism   = 8
+	MaxAgentToolParallelism       = 64
+	DefaultAgentScriptTimeoutSecs = 0
+	DefaultTraceCaptureLevel      = "summary"
+	DefaultTraceExporter          = "local"
+	DefaultTraceRetentionRuns     = 100
+	// An ordinary creator project should fit comfortably in one response. The
+	// hard ceiling keeps an accidental generated tree from growing without
+	// bound even when the user raises the normal limit.
+	DefaultProjectFileTreeEntryLimit = 100_000
+	MaxProjectFileTreeEntryLimit     = 1_000_000
+	DefaultTerminalMaxSessions       = 8
+	MaxTerminalSessions              = 64
+	DefaultTerminalScrollbackKB      = 256
+	MaxTerminalScrollbackKB          = 4096
 )
 
 // DefaultSettings 返回内置默认配置（最低优先级）。
@@ -116,17 +159,17 @@ func DefaultSettings() Settings {
 		ImageAPIModel:               DefaultImageAPIModel,
 		DefaultImageAPIProfileID:    DefaultImageAPIProfileID,
 		SkillsDir:                   "./skills",
-		DenovaDir:                   "./" + workspacepath.DataDirName,
-		NovaDir:                     "./" + workspacepath.DataDirName,
+		DenovaDir:                   "./" + workspacelayout.DataDirName,
+		NovaDir:                     "./" + workspacelayout.DataDirName,
 		BackendPort:                 intPtr(8080),
 		FrontendPort:                intPtr(5173),
 		AllowLANAccess:              boolPtr(false),
 		AutoSaveEnabled:             boolPtr(true),
 		AutoSaveIntervalMs:          intPtr(1500),
-		HideChapterBodyLiveOutput:   boolPtr(false),
 		ChapterFilenameFormat:       "ch{order:05}-{chapter}-{title}.md",
 		VolumeDirFormat:             "v{order:05}-{volume}",
 		MaxOpenTabs:                 intPtr(5),
+		ProjectFileTreeEntryLimit:   intPtr(DefaultProjectFileTreeEntryLimit),
 		ChapterGroupMin:             intPtr(3),
 		ChapterGroupMax:             intPtr(8),
 		VersionTimedEnabled:         boolPtr(true),
@@ -142,26 +185,37 @@ func DefaultSettings() Settings {
 		ModelMaxRetries:             intPtr(5),
 		AgentIdleTimeoutSeconds:     intPtr(DefaultAgentIdleTimeoutSeconds),
 		AgentToolResultLimitKB:      intPtr(DefaultAgentToolResultLimitKB),
+		AgentToolParallelism:        intPtr(DefaultAgentToolParallelism),
+		AgentScriptTimeoutSeconds:   intPtr(DefaultAgentScriptTimeoutSecs),
+		AgentApprovalMode:           AgentApprovalWrite,
+		ShellEnvironmentMode:        ShellEnvironmentAuto,
+		TerminalEnabled:             boolPtr(true),
+		TerminalCommands:            DefaultTerminalCommands(),
+		TerminalMaxSessions:         intPtr(DefaultTerminalMaxSessions),
+		TerminalScrollbackKB:        intPtr(DefaultTerminalScrollbackKB),
 		LLMInputLogEnabled:          boolPtr(false),
 		TraceCaptureLevel:           DefaultTraceCaptureLevel,
 		TraceExporter:               DefaultTraceExporter,
 		TraceRetentionRuns:          intPtr(DefaultTraceRetentionRuns),
 		AgentModels: AgentModelSettings{
-			IDE:              AgentModelOverride{EnableThinking: boolPtr(true)},
-			InteractiveStory: AgentModelOverride{EnableThinking: boolPtr(false)},
-			ConfigManager:    AgentModelOverride{EnableThinking: boolPtr(true)},
-			VersionSummary:   AgentModelOverride{EnableThinking: boolPtr(false)},
-			ToolAgent:        AgentModelOverride{EnableThinking: boolPtr(false)},
+			IDE:              AgentModelOverride{ThinkingLevel: string(providers.ThinkingLevelMedium)},
+			InteractiveStory: AgentModelOverride{ThinkingLevel: string(providers.ThinkingLevelOff)},
+			ConfigManager:    AgentModelOverride{ThinkingLevel: string(providers.ThinkingLevelMedium)},
+			VersionSummary:   AgentModelOverride{ThinkingLevel: string(providers.ThinkingLevelOff)},
+			ToolAgent:        AgentModelOverride{ThinkingLevel: string(providers.ThinkingLevelOff)},
 		},
 		AgentTools:                 DefaultAgentToolSettings(),
+		WebAccess:                  DefaultWebAccessSettings(),
+		Labs:                       DefaultLabSettings(),
 		AgentSkills:                AgentSkillSettings{},
 		AgentContexts:              DefaultAgentContextSettings(),
 		GeneralSubAgents:           DefaultAgentGeneralSubAgentSettings(),
 		SubAgents:                  nil,
 		PlanModeDefault:            boolPtr(false),
-		IDEStoryTellerID:           "classic",
+		IDEStoryTellerID:           style.DefaultID,
 		IDEImagePresetID:           "game-cg",
 		WritingSkillDefault:        DefaultWritingSkillName,
+		InteractiveStoryTellerID:   style.DefaultID,
 		InteractiveStageFontSize:   intPtr(16),
 		InteractiveStageLineHeight: floatPtr(1.78),
 	}
@@ -170,6 +224,8 @@ func DefaultSettings() Settings {
 // Merge 用 child 的非零字段覆盖 parent 后返回新值。
 // 字符串：空串视为未设置；指针：nil 视为未设置。
 func Merge(parent, child Settings) Settings {
+	parent = preserveTerminalCommandRegistryPresence(parent)
+	child = preserveTerminalCommandRegistryPresence(child)
 	out := parent
 	if child.OpenAIAPIKey != "" {
 		out.OpenAIAPIKey = child.OpenAIAPIKey
@@ -204,6 +260,8 @@ func Merge(parent, child Settings) Settings {
 	out.AgentContexts = MergeAgentContextSettings(out.AgentContexts, child.AgentContexts)
 	out.GeneralSubAgents = MergeAgentGeneralSubAgentSettings(out.GeneralSubAgents, child.GeneralSubAgents)
 	out.SubAgents = MergeSubAgents(out.SubAgents, child.SubAgents)
+	out.WebAccess = MergeWebAccessSettings(out.WebAccess, child.WebAccess)
+	out.Labs = MergeLabSettings(out.Labs, child.Labs)
 	if child.SkillsDir != "" {
 		out.SkillsDir = child.SkillsDir
 	}
@@ -237,9 +295,6 @@ func Merge(parent, child Settings) Settings {
 	if child.AutoSaveIntervalMs != nil {
 		out.AutoSaveIntervalMs = child.AutoSaveIntervalMs
 	}
-	if child.HideChapterBodyLiveOutput != nil {
-		out.HideChapterBodyLiveOutput = child.HideChapterBodyLiveOutput
-	}
 	if child.ChapterFilenameFormat != "" {
 		out.ChapterFilenameFormat = child.ChapterFilenameFormat
 	}
@@ -248,6 +303,9 @@ func Merge(parent, child Settings) Settings {
 	}
 	if child.MaxOpenTabs != nil {
 		out.MaxOpenTabs = child.MaxOpenTabs
+	}
+	if child.ProjectFileTreeEntryLimit != nil {
+		out.ProjectFileTreeEntryLimit = child.ProjectFileTreeEntryLimit
 	}
 	if child.ChapterGroupMin != nil {
 		out.ChapterGroupMin = child.ChapterGroupMin
@@ -297,6 +355,43 @@ func Merge(parent, child Settings) Settings {
 	if child.AgentToolResultLimitKB != nil {
 		out.AgentToolResultLimitKB = child.AgentToolResultLimitKB
 	}
+	if child.AgentToolParallelism != nil {
+		out.AgentToolParallelism = child.AgentToolParallelism
+	}
+	if child.AgentScriptTimeoutSeconds != nil {
+		out.AgentScriptTimeoutSeconds = child.AgentScriptTimeoutSeconds
+	}
+	if child.AgentApprovalMode != "" {
+		out.AgentApprovalMode = NormalizeAgentApprovalMode(child.AgentApprovalMode)
+	}
+	if child.AgentApprovalRules != nil {
+		out.AgentApprovalRules = NormalizeAgentApprovalRules(child.AgentApprovalRules)
+	}
+	if child.ShellEnvironmentMode != "" {
+		out.ShellEnvironmentMode = normalizeShellEnvironmentMode(child.ShellEnvironmentMode)
+	}
+	if child.ShellEnvironmentShell != "" {
+		out.ShellEnvironmentShell = child.ShellEnvironmentShell
+	}
+	if child.AgentBashPath != "" {
+		out.AgentBashPath = child.AgentBashPath
+	}
+	if child.TerminalEnabled != nil {
+		out.TerminalEnabled = child.TerminalEnabled
+	}
+	if child.TerminalShell != "" {
+		out.TerminalShell = child.TerminalShell
+	}
+	if child.TerminalCommands != nil {
+		out.TerminalCommands = cloneTerminalCommands(child.TerminalCommands)
+		out.TerminalCommandsConfigured = child.TerminalCommandsConfigured
+	}
+	if child.TerminalMaxSessions != nil {
+		out.TerminalMaxSessions = child.TerminalMaxSessions
+	}
+	if child.TerminalScrollbackKB != nil {
+		out.TerminalScrollbackKB = child.TerminalScrollbackKB
+	}
 	if child.LLMInputLogEnabled != nil {
 		out.LLMInputLogEnabled = child.LLMInputLogEnabled
 	}
@@ -314,6 +409,9 @@ func Merge(parent, child Settings) Settings {
 	}
 	if child.IDEStoryTellerID != "" {
 		out.IDEStoryTellerID = child.IDEStoryTellerID
+	}
+	if child.InteractiveStoryTellerID != "" {
+		out.InteractiveStoryTellerID = child.InteractiveStoryTellerID
 	}
 	if child.IDEImagePresetID != "" {
 		out.IDEImagePresetID = child.IDEImagePresetID
@@ -334,27 +432,30 @@ const (
 	// UserConfigFilename 是用户级配置文件名（位于 DenovaDir 下）。
 	UserConfigFilename = "config.toml"
 	// WorkspaceConfigDir 是工作区级 Agent 定制目录（相对于 workspace）。
-	WorkspaceConfigDir = workspacepath.DataDirName
+	WorkspaceConfigDir = workspacelayout.DataDirName
 	// LegacyWorkspaceConfigDir 是改名前的工作区级配置目录，仅用于兼容已有工作区。
-	LegacyWorkspaceConfigDir = workspacepath.LegacyDataDirName
+	LegacyWorkspaceConfigDir = workspacelayout.LegacyDataDirName
 	// WorkspaceConfigFilename 是工作区级配置文件名。
 	WorkspaceConfigFilename = "config.toml"
 )
 
 // LayeredSettings 暴露默认、全局、用户与工作区 Agent 定制快照及合并后的 effective 值。
 type LayeredSettings struct {
-	Default                   Settings                  `json:"default"`
-	Global                    Settings                  `json:"global"`
-	User                      Settings                  `json:"user"`
-	Workspace                 Settings                  `json:"workspace"`
-	Effective                 Settings                  `json:"effective"`
-	Paths                     SettingsPaths             `json:"paths"`
-	Revisions                 SettingsRevisions         `json:"revisions"`
-	Access                    SettingsAccess            `json:"access"`
-	Runtime                   SettingsRuntime           `json:"runtime"`
-	BuiltinAgentPrompts       AgentPromptSettings       `json:"builtin_agent_prompts,omitempty"`
-	BuiltinAgentPromptBlocks  AgentPromptBlockSettings  `json:"builtin_agent_prompt_blocks,omitempty"`
-	BuiltinAgentPromptSources AgentPromptSourceSettings `json:"builtin_agent_prompt_sources,omitempty"`
+	Default                    Settings                                 `json:"default"`
+	Global                     Settings                                 `json:"global"`
+	User                       Settings                                 `json:"user"`
+	Workspace                  Settings                                 `json:"workspace"`
+	Effective                  Settings                                 `json:"effective"`
+	Paths                      SettingsPaths                            `json:"paths"`
+	Revisions                  SettingsRevisions                        `json:"revisions"`
+	Access                     SettingsAccess                           `json:"access"`
+	Runtime                    SettingsRuntime                          `json:"runtime"`
+	BuiltinAgentPrompts        AgentPromptSettings                      `json:"builtin_agent_prompts,omitempty"`
+	BuiltinAgentPromptBlocks   AgentPromptBlockSettings                 `json:"builtin_agent_prompt_blocks,omitempty"`
+	BuiltinAgentPromptSources  AgentPromptSourceSettings                `json:"builtin_agent_prompt_sources,omitempty"`
+	AgentToolCapabilities      []AgentToolCapabilityCatalogEntry        `json:"agent_tool_capabilities"`
+	ResolvedAgentToolManifests map[string][]ResolvedAgentToolCapability `json:"resolved_agent_tool_manifests"`
+	ResolvedAgentContexts      map[string]ResolvedAgentContextSettings  `json:"resolved_agent_contexts"`
 }
 
 var ErrSettingsRevisionConflict = errors.New("配置已被其他操作更新，请重新加载后再保存")
@@ -495,7 +596,17 @@ func UserConfigPath(novaDir string) string {
 
 // WorkspaceConfigPath 计算工作区级 Agent 定制路径。
 func WorkspaceConfigPath(workspace string) string {
-	return workspacepath.Path(workspace, WorkspaceConfigFilename)
+	return workspacelayout.Path(workspace, WorkspaceConfigFilename)
+}
+
+// ProjectConfigPath returns the user-owned Agent override file for a Project
+// state root. It intentionally has no dependency on the content directory.
+func ProjectConfigPath(projectStateRoot string) string {
+	projectStateRoot = strings.TrimSpace(projectStateRoot)
+	if projectStateRoot == "" {
+		return ""
+	}
+	return filepath.Join(projectStateRoot, WorkspaceConfigFilename)
 }
 
 // LoadLayered 读取用户设置 + 工作区 Agent 定制并与默认值合并。
@@ -506,19 +617,33 @@ func LoadLayered(novaDir, workspace string) (LayeredSettings, error) {
 
 // LoadLayeredWithGlobal 读取用户设置 + 工作区 Agent 定制，并加入全局启动配置层。
 func LoadLayeredWithGlobal(novaDir, workspace string, global Settings) (LayeredSettings, error) {
+	return LoadLayeredWithGlobalAt(novaDir, workspace, "", global)
+}
+
+// LoadLayeredWithGlobalAt is the Project-aware settings boundary. The content
+// workspace remains available to runtime consumers while its user-owned Agent
+// configuration is read from projectConfigPath.
+func LoadLayeredWithGlobalAt(novaDir, workspace, projectConfigPath string, global Settings) (LayeredSettings, error) {
 	if strings.TrimSpace(novaDir) == "" {
 		novaDir = normalizePath(defaultNovaDir())
 	} else {
 		novaDir = normalizePath(novaDir)
 	}
 	global.AgentToolResultLimitKB = normalizeAgentToolResultLimitKB(global.AgentToolResultLimitKB)
+	global.AgentToolParallelism = normalizeAgentToolParallelism(global.AgentToolParallelism)
+	global.AgentScriptTimeoutSeconds = normalizeAgentScriptTimeoutSeconds(global.AgentScriptTimeoutSeconds)
+	global.ProjectFileTreeEntryLimit = normalizeProjectFileTreeEntryLimit(global.ProjectFileTreeEntryLimit)
 	user, err := ReadSettingsFile(UserConfigPath(novaDir))
 	if err != nil {
 		return LayeredSettings{}, err
 	}
 	var ws Settings
+	workspaceConfigPath := strings.TrimSpace(projectConfigPath)
+	if workspaceConfigPath == "" {
+		workspaceConfigPath = WorkspaceConfigPath(workspace)
+	}
 	if workspace != "" {
-		ws, err = ReadSettingsFile(WorkspaceConfigPath(workspace))
+		ws, err = ReadSettingsFile(workspaceConfigPath)
 		if err != nil {
 			return LayeredSettings{}, err
 		}
@@ -537,10 +662,11 @@ func LoadLayeredWithGlobal(novaDir, workspace string, global Settings) (LayeredS
 		global.NovaDir = globalDir
 	}
 	eff := Merge(Merge(Merge(def, global), user), ws)
+	toolConfig := &Config{AgentTools: eff.AgentTools}
+	contextConfig := &Config{AgentContexts: eff.AgentContexts}
 	backendPort := settingsInt(eff.BackendPort, 8080)
 	revisions := SettingsRevisions{}
 	userConfigPath := UserConfigPath(novaDir)
-	workspaceConfigPath := WorkspaceConfigPath(workspace)
 	if rev, err := SettingsFileRevision(userConfigPath); err == nil {
 		revisions.User = rev
 	} else {
@@ -570,7 +696,10 @@ func LoadLayeredWithGlobal(novaDir, workspace string, global Settings) (LayeredS
 			LocalURL: LocalHTTPURL(backendPort),
 			LANURL:   LANHTTPURL(backendPort),
 		},
-		Runtime: SettingsRuntime{GOOS: runtime.GOOS},
+		Runtime:                    SettingsRuntime{GOOS: runtime.GOOS},
+		AgentToolCapabilities:      AgentToolCapabilityCatalogForGOOS(runtime.GOOS),
+		ResolvedAgentToolManifests: ResolveAgentToolManifestsForGOOS(toolConfig, runtime.GOOS),
+		ResolvedAgentContexts:      ResolveAgentContexts(contextConfig),
 	}, nil
 }
 
@@ -585,6 +714,7 @@ func PrepareWorkspaceAgentSettingsForWrite(existing, incoming Settings) Settings
 	existing.AgentContexts = scoped.AgentContexts
 	existing.GeneralSubAgents = scoped.GeneralSubAgents
 	existing.SubAgents = scoped.SubAgents
+	existing.AgentToolParallelism = scoped.AgentToolParallelism
 	return existing
 }
 
@@ -592,16 +722,18 @@ func PrepareWorkspaceAgentSettingsForWrite(existing, incoming Settings) Settings
 // Model selection and every setting shown on the Settings page are user-scoped.
 func workspaceAgentSettings(settings Settings) Settings {
 	return Settings{
-		AgentTools:       settings.AgentTools,
-		AgentPrompts:     settings.AgentPrompts,
-		AgentSkills:      settings.AgentSkills,
-		AgentContexts:    settings.AgentContexts,
-		GeneralSubAgents: settings.GeneralSubAgents,
-		SubAgents:        settings.SubAgents,
+		AgentTools:           settings.AgentTools,
+		AgentPrompts:         settings.AgentPrompts,
+		AgentSkills:          settings.AgentSkills,
+		AgentContexts:        settings.AgentContexts,
+		GeneralSubAgents:     settings.GeneralSubAgents,
+		SubAgents:            settings.SubAgents,
+		AgentToolParallelism: settings.AgentToolParallelism,
 	}
 }
 
 func sanitizeEditableSettings(s Settings) Settings {
+	s = preserveTerminalCommandRegistryPresence(s)
 	// denova_dir/nova_dir 是启动级定位参数，不能由用户级/工作区级配置反向修改自身位置。
 	s.DenovaDir = ""
 	s.NovaDir = ""
@@ -613,6 +745,8 @@ func sanitizeEditableSettings(s Settings) Settings {
 	s.Language = normalizeLanguage(s.Language)
 	s.Theme = normalizeTheme(s.Theme)
 	s.MotionIntensity = normalizeMotionIntensity(s.MotionIntensity)
+	s.IDEStoryTellerID = strings.TrimSpace(s.IDEStoryTellerID)
+	s.InteractiveStoryTellerID = strings.TrimSpace(s.InteractiveStoryTellerID)
 	s.IDEImagePresetID = strings.TrimSpace(s.IDEImagePresetID)
 	s.WritingSkillDefault = strings.TrimSpace(s.WritingSkillDefault)
 	s.OpenAIContextWindowTokens = normalizeContextWindowTokens(s.OpenAIContextWindowTokens)
@@ -621,16 +755,32 @@ func sanitizeEditableSettings(s Settings) Settings {
 	s.DefaultImageAPIProfileID = strings.TrimSpace(s.DefaultImageAPIProfileID)
 	s.AgentIdleTimeoutSeconds = normalizeAgentIdleTimeoutSeconds(s.AgentIdleTimeoutSeconds)
 	s.AgentToolResultLimitKB = normalizeAgentToolResultLimitKB(s.AgentToolResultLimitKB)
+	s.AgentToolParallelism = normalizeAgentToolParallelism(s.AgentToolParallelism)
+	s.AgentScriptTimeoutSeconds = normalizeAgentScriptTimeoutSeconds(s.AgentScriptTimeoutSeconds)
+	s.ProjectFileTreeEntryLimit = normalizeProjectFileTreeEntryLimit(s.ProjectFileTreeEntryLimit)
+	if s.AgentApprovalMode != "" {
+		s.AgentApprovalMode = NormalizeAgentApprovalMode(s.AgentApprovalMode)
+	}
+	if s.ShellEnvironmentMode != "" {
+		s.ShellEnvironmentMode = normalizeShellEnvironmentMode(s.ShellEnvironmentMode)
+	}
+	s.ShellEnvironmentShell = strings.TrimSpace(s.ShellEnvironmentShell)
+	s.AgentBashPath = strings.TrimSpace(s.AgentBashPath)
+	s.TerminalShell = strings.TrimSpace(s.TerminalShell)
+	s.TerminalCommands = normalizeTerminalCommands(s.TerminalCommands)
+	s.TerminalMaxSessions = normalizeTerminalMaxSessions(s.TerminalMaxSessions)
+	s.TerminalScrollbackKB = normalizeTerminalScrollbackKB(s.TerminalScrollbackKB)
+	s.WebAccess = sanitizeWebAccessSettings(s.WebAccess)
 	s.ModelProfiles = sanitizeModelProfiles(s.ModelProfiles)
 	s.ImageAPIProfiles = sanitizeImageAPIProfiles(s.ImageAPIProfiles)
 	if defaultProfile, ok := defaultModelProfile(s.ModelProfiles); ok {
-		if defaultProfile.OpenAIAPIKey != "" {
+		if defaultProfile.APIKey != "" {
 			s.OpenAIAPIKey = ""
 		}
-		if defaultProfile.OpenAIBaseURL != "" {
+		if defaultProfile.BaseURL != "" {
 			s.OpenAIBaseURL = ""
 		}
-		if defaultProfile.OpenAIModel != "" {
+		if defaultProfile.Model != "" {
 			s.OpenAIModel = ""
 		}
 		if defaultProfile.ContextWindowTokens != nil {
@@ -664,6 +814,67 @@ func normalizeAgentToolResultLimitKB(limit *int) *int {
 		return intPtr(DefaultAgentToolResultLimitKB)
 	}
 	return limit
+}
+
+func normalizeAgentToolParallelism(value *int) *int {
+	if value == nil {
+		return nil
+	}
+	if *value <= 0 {
+		return intPtr(DefaultAgentToolParallelism)
+	}
+	if *value > MaxAgentToolParallelism {
+		return intPtr(MaxAgentToolParallelism)
+	}
+	return value
+}
+
+func normalizeAgentScriptTimeoutSeconds(value *int) *int {
+	if value == nil || *value >= 0 {
+		return value
+	}
+	return nil
+}
+
+func normalizeProjectFileTreeEntryLimit(value *int) *int {
+	if value == nil {
+		return nil
+	}
+	if *value <= 0 {
+		return intPtr(DefaultProjectFileTreeEntryLimit)
+	}
+	if *value > MaxProjectFileTreeEntryLimit {
+		return intPtr(MaxProjectFileTreeEntryLimit)
+	}
+	return value
+}
+
+// normalizeTerminalMaxSessions clamps the concurrent session count into [1, MaxTerminalSessions].
+func normalizeTerminalMaxSessions(value *int) *int {
+	if value == nil {
+		return nil
+	}
+	if *value <= 0 {
+		return intPtr(DefaultTerminalMaxSessions)
+	}
+	if *value > MaxTerminalSessions {
+		return intPtr(MaxTerminalSessions)
+	}
+	return value
+}
+
+// normalizeTerminalScrollbackKB clamps the scrollback buffer into [1, MaxTerminalScrollbackKB] KB.
+func normalizeTerminalScrollbackKB(value *int) *int {
+	if value == nil {
+		return nil
+	}
+	if *value <= 0 {
+		return intPtr(DefaultTerminalScrollbackKB)
+	}
+	if *value > MaxTerminalScrollbackKB {
+		return intPtr(MaxTerminalScrollbackKB)
+	}
+	return value
 }
 
 func normalizeContextWindowTokens(tokens *int) *int {

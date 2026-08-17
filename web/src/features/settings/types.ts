@@ -1,3 +1,8 @@
+import type { AgentApprovalMode } from '@/features/agent-approval/modes'
+import type { ToolPresentationKind } from '@/lib/api-client/types'
+
+export type { AgentApprovalMode } from '@/features/agent-approval/modes'
+
 export interface Settings {
   openai_api_key?: string
   openai_base_url?: string
@@ -16,6 +21,8 @@ export interface Settings {
   agent_context?: AgentContextSettings
   general_sub_agents?: AgentGeneralSubAgentSettings
   sub_agents?: SubAgentConfig[]
+  web_access?: WebAccessSettings
+  labs?: LabSettings
   skills_dir?: string
   backend_port?: number | null
   frontend_port?: number | null
@@ -25,10 +32,10 @@ export interface Settings {
   remote_access_password_set?: boolean
   auto_save_enabled?: boolean | null
   auto_save_interval_ms?: number | null
-  hide_novel_chapter_body_in_live_output?: boolean | null
   chapter_filename_format?: string
   volume_dir_format?: string
   max_open_tabs?: number | null
+  project_file_tree_entry_limit?: number | null
   chapter_group_min?: number | null
   chapter_group_max?: number | null
   version_timed_enabled?: boolean | null
@@ -45,26 +52,128 @@ export interface Settings {
   model_max_retries?: number | null
   agent_idle_timeout_seconds?: number | null
   agent_tool_result_limit_kb?: number | null
+  agent_tool_parallelism?: number | null
+  agent_script_timeout_seconds?: number | null
+  agent_approval_mode?: AgentApprovalMode
+  agent_approval_rules?: AgentApprovalRule[]
+  shell_environment_mode?: ShellEnvironmentMode
+  shell_environment_shell?: string
+  agent_bash_path?: string
+  terminal_enabled?: boolean | null
+  terminal_shell?: string
+  terminal_commands?: TerminalCommandSettings[]
+  terminal_max_sessions?: number | null
+  terminal_scrollback_kb?: number | null
   llm_input_log_enabled?: boolean | null
   trace_capture_level?: string
   trace_exporter?: string
   trace_retention_runs?: number | null
   plan_mode_default?: boolean | null
   ide_story_teller_id?: string
+  interactive_story_teller_id?: string
   ide_image_preset_id?: string
   writing_skill_default?: string
   interactive_stage_font_size?: number | null
   interactive_stage_line_height?: number | null
 }
 
+export interface LabSettings {
+  developer_mode?: boolean | null
+  continual_learning_schedule?: boolean | null
+  continual_learning_interval_hours?: number | null
+  continual_learning_trajectory_cap?: number | null
+}
+
+export type ShellEnvironmentMode = 'auto' | 'process'
+
+export interface AgentApprovalRule {
+  id: string
+  scope: 'workspace'
+  project_id?: string
+  workspace?: string
+  tool_name: string
+  matcher_version: number
+  command_key: string
+  command_pattern: string
+  approved_args_hash: string
+  approved_command: string
+  approved_cwd?: string
+  source_rule_id?: string
+  created_at: string
+}
+
+/** User-owned terminal shortcut resolved by stable ID on the backend. */
+export interface TerminalCommandSettings {
+  id: string
+  name: string
+  command: string
+  enabled: boolean
+}
+
+export interface WebAccessSettings {
+  searxng_base_url?: string
+  search_max_results?: number | null
+  search_provider_timeout_seconds?: number | null
+  fetch_max_response_kb?: number | null
+  fetch_max_content_chars?: number | null
+}
+
 export interface ModelProfileSettings {
   id?: string
   name?: string
-  openai_api_key?: string
-  openai_base_url?: string
-  openai_model?: string
+  provider?: string
+  protocol?: string
+  api_key?: string
+  base_url?: string
+  model?: string
+  headers?: Record<string, string>
+  protocol_options?: Record<string, unknown>
+  session_key_mapping?: ModelSessionKeyMapping
   temperature?: number | null
   context_window_tokens?: number | null
+}
+
+export interface ModelSessionKeyMapping {
+  location: 'none' | 'header' | 'body'
+  name?: string
+}
+
+export interface ModelEndpointPreset {
+  base_url?: string
+}
+
+export interface ModelProviderPreset {
+  id: string
+  name: string
+  default_protocol: string
+  endpoints: Record<string, ModelEndpointPreset>
+}
+
+export interface ModelCatalog {
+  providers: ModelProviderPreset[]
+  protocols: string[]
+}
+
+export interface ModelPingResult {
+  ok: boolean
+  latency_ms: number
+  provider: string
+  protocol: string
+  base_url: string
+  model: string
+}
+
+export interface ModelInfo {
+  id: string
+  display_name?: string
+  owned_by?: string
+}
+
+export interface ModelDiscoveryResult {
+  models: ModelInfo[]
+  provider: string
+  protocol: string
+  base_url: string
 }
 
 export interface ImageAPIProfileSettings {
@@ -79,8 +188,18 @@ export interface ImageAPIProfileSettings {
   default_output_format?: string
 }
 
+export interface ImagePingResult {
+  ok: boolean
+  latency_ms: number
+  profile_id: string
+  provider: string
+  base_url: string
+  model: string
+}
+
 export interface AgentModelSettings {
   default?: AgentModelOverride
+  general?: AgentModelOverride
   ide?: AgentModelOverride
   interactive_story?: AgentModelOverride
   image?: AgentModelOverride
@@ -89,18 +208,17 @@ export interface AgentModelSettings {
   version_summary?: AgentModelOverride
   tool_agent?: AgentModelOverride
   automation?: AgentModelOverride
-  context_compaction?: AgentModelOverride
 }
 
 export interface AgentModelOverride {
   profile_id?: string
   temperature?: number | null
-  enable_thinking?: boolean | null
-  reasoning_effort?: string
+  thinking_level?: string
 }
 
 export interface AgentToolSettings {
   default?: AgentToolOverride
+  general?: AgentToolOverride
   ide?: AgentToolOverride
   interactive_story?: AgentToolOverride
   image?: AgentToolOverride
@@ -109,11 +227,11 @@ export interface AgentToolSettings {
   version_summary?: AgentToolOverride
   tool_agent?: AgentToolOverride
   automation?: AgentToolOverride
-  context_compaction?: AgentToolOverride
 }
 
 export interface AgentSkillSettings {
   default?: AgentSkillOverride
+  general?: AgentSkillOverride
   ide?: AgentSkillOverride
   interactive_story?: AgentSkillOverride
   image?: AgentSkillOverride
@@ -122,13 +240,13 @@ export interface AgentSkillSettings {
   version_summary?: AgentSkillOverride
   tool_agent?: AgentSkillOverride
   automation?: AgentSkillOverride
-  context_compaction?: AgentSkillOverride
 }
 
 export type AgentSkillOverride = Record<string, boolean>
 
 interface AgentContextSettings {
   default?: AgentContextOverride
+  general?: AgentContextOverride
   ide?: AgentContextOverride
   interactive_story?: AgentContextOverride
   image?: AgentContextOverride
@@ -137,39 +255,93 @@ interface AgentContextSettings {
   version_summary?: AgentContextOverride
   tool_agent?: AgentContextOverride
   automation?: AgentContextOverride
-  context_compaction?: AgentContextOverride
 }
 
 export interface AgentContextOverride {
   compaction_enabled?: boolean | null
-  compaction_strategy?: string | null
   compaction_threshold?: number | null
-  compaction_recent_turns?: number | null
-  compaction_target_min_ratio?: number | null
-  compaction_target_max_ratio?: number | null
-  tool_result_retention_enabled?: boolean | null
+  tool_result_context_enabled?: boolean | null
+  max_fragment_bytes?: number | null
+  max_total_injected_bytes?: number | null
+  max_fragments?: number | null
+  max_metadata_field_bytes?: number | null
+  max_provider_input_bytes?: number | null
+}
+
+export interface ResolvedAgentContextSettings {
+  compaction_enabled: boolean
+  compaction_threshold: number
+  tool_result_context_enabled: boolean
+  max_fragment_bytes: number
+  max_total_injected_bytes: number
+  max_fragments: number
+  max_metadata_field_bytes: number
+  max_provider_input_bytes: number
 }
 
 interface AgentGeneralSubAgentSettings {
   default?: boolean | null
+  general?: boolean | null
   ide?: boolean | null
   interactive_story?: boolean | null
   config_manager?: boolean | null
   automation?: boolean | null
 }
 
-export interface AgentToolOverride {
-  file_read?: boolean | null
-  file_write?: boolean | null
-  shell_execute?: boolean | null
-  skills?: boolean | null
-  lore_read?: boolean | null
-  lore_write?: boolean | null
-  todo?: boolean | null
-  web_search?: boolean | null
-  image_generation?: boolean | null
-  agent_config_read?: boolean | null
-  agent_config_write?: boolean | null
+export type AgentToolCapability =
+  | 'workspace_read'
+  | 'workspace_write'
+  | 'shell'
+  | 'web_search'
+  | 'web_fetch'
+  | 'browser'
+  | 'ask'
+  | 'todo'
+  | 'goal'
+  | 'skills'
+  | 'delegation'
+  | 'script'
+  | 'harness_state'
+  | 'config_read'
+  | 'config_apply'
+  | 'event_read'
+  | 'lore_read'
+  | 'lore_write'
+  | 'image_generation'
+
+export type AgentToolOverride = Partial<Record<AgentToolCapability, boolean>>
+
+export interface AgentToolDescriptorSummary {
+  source: string
+  execution: string
+  mutation_scope: string
+  post_check: string
+  recovery: string
+  result_recovery_kind?: string
+  result_projection: string
+  result_retention: string
+  steering: string
+  max_result_bytes: number
+  call_presentation: ToolPresentationKind
+  result_presentation: ToolPresentationKind
+}
+
+export interface AgentToolCapabilityCatalogEntry {
+  capability: AgentToolCapability
+  title_key: string
+  description_key: string
+  tool_names: string[]
+  descriptor: AgentToolDescriptorSummary
+  tool_descriptors: Record<string, AgentToolDescriptorSummary>
+  available_to_subagents: boolean
+}
+
+export type AgentToolAvailability = 'available' | 'runtime_check' | 'unavailable'
+
+export interface ResolvedAgentToolCapability extends AgentToolCapabilityCatalogEntry {
+  allowed: boolean
+  availability: AgentToolAvailability
+  unavailable_reason_key?: string
 }
 
 export interface SubAgentConfig {
@@ -185,6 +357,7 @@ export interface SubAgentConfig {
 
 interface AgentPromptSettings {
   default?: AgentPromptOverride
+  general?: AgentPromptOverride
   ide?: AgentPromptOverride
   interactive_story?: AgentPromptOverride
   image?: AgentPromptOverride
@@ -193,7 +366,6 @@ interface AgentPromptSettings {
   version_summary?: AgentPromptOverride
   tool_agent?: AgentPromptOverride
   automation?: AgentPromptOverride
-  context_compaction?: AgentPromptOverride
 }
 
 export interface AgentPromptOverride {
@@ -216,6 +388,7 @@ interface AgentPromptSourceList {
 
 interface AgentPromptSourceSettings {
   default?: AgentPromptSourceList
+  general?: AgentPromptSourceList
   ide?: AgentPromptSourceList
   interactive_story?: AgentPromptSourceList
   image?: AgentPromptSourceList
@@ -224,7 +397,6 @@ interface AgentPromptSourceSettings {
   version_summary?: AgentPromptSourceList
   tool_agent?: AgentPromptSourceList
   automation?: AgentPromptSourceList
-  context_compaction?: AgentPromptSourceList
 }
 
 export interface AgentPromptBlocks {
@@ -235,6 +407,7 @@ export interface AgentPromptBlocks {
 
 interface AgentPromptBlockSettings {
   default?: AgentPromptBlocks
+  general?: AgentPromptBlocks
   ide?: AgentPromptBlocks
   interactive_story?: AgentPromptBlocks
   image?: AgentPromptBlocks
@@ -243,7 +416,6 @@ interface AgentPromptBlockSettings {
   version_summary?: AgentPromptBlocks
   tool_agent?: AgentPromptBlocks
   automation?: AgentPromptBlocks
-  context_compaction?: AgentPromptBlocks
 }
 
 interface SettingsPaths {
@@ -281,6 +453,9 @@ export interface LayeredSettings {
   builtin_agent_prompts?: AgentPromptSettings
   builtin_agent_prompt_blocks?: AgentPromptBlockSettings
   builtin_agent_prompt_sources?: AgentPromptSourceSettings
+  agent_tool_capabilities?: AgentToolCapabilityCatalogEntry[]
+  resolved_agent_tool_manifests: Partial<Record<Exclude<keyof AgentModelSettings, 'default'>, ResolvedAgentToolCapability[]>>
+  resolved_agent_contexts: Partial<Record<Exclude<keyof AgentContextSettings, 'default'>, ResolvedAgentContextSettings>>
 }
 
 export type SettingsLayer = 'user' | 'workspace'

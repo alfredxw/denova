@@ -1,61 +1,50 @@
 import { fetchAPI, jsonHeaders, parseSSEStream, readErrorMessage, requestJSON } from './client'
-import type { LoreClassificationApplyRequest, LoreClassificationPreview, LoreClassificationPreviewRequest, LoreImagesGenerateRequest, LoreItem, LoreItemImageGenerateRequest, LoreItemInput, LoreTypeApplyResult, SSEEvent } from './types'
+import type { LoreClassificationApplyRequest, LoreClassificationPreview, LoreClassificationPreviewRequest, LoreImagesGenerateRequest, LoreItem, LoreItemImageGenerateRequest, LoreTypeApplyResult, SSEEvent } from './types'
+import { projectAPIPath } from './project-scope'
 
-export async function getLoreItems(): Promise<LoreItem[]> {
-  const data = await requestJSON<{ items: LoreItem[] }>('/api/lore/items')
-  return data.items || []
+function lorePath(projectId: string, suffix: string): string {
+  return projectAPIPath(projectId, `book/lore/${suffix.replace(/^\/+/, '')}`)
 }
 
-export async function createLoreItem(item: Partial<LoreItemInput>): Promise<LoreItem> {
-  return requestJSON('/api/lore/items', {
-    method: 'POST',
-    headers: jsonHeaders,
-    body: JSON.stringify(item),
-  })
-}
-
-export async function updateLoreItem(id: string, item: Partial<LoreItemInput>, baseRevision?: string): Promise<LoreItem> {
-  return requestJSON(`/api/lore/items/${encodeURIComponent(id)}`, {
-    method: 'PATCH',
-    headers: jsonHeaders,
-    body: JSON.stringify(baseRevision ? { ...item, base_revision: baseRevision } : item),
-  })
-}
-
-export async function deleteLoreItem(id: string): Promise<void> {
-  await requestJSON(`/api/lore/items/${encodeURIComponent(id)}`, { method: 'DELETE' })
-}
-
-export async function previewLoreClassification(input: LoreClassificationPreviewRequest = {}): Promise<LoreClassificationPreview> {
-  return requestJSON('/api/lore/classification/preview', {
+export async function previewLoreClassification(projectId: string, input: LoreClassificationPreviewRequest = {}): Promise<LoreClassificationPreview> {
+  return requestJSON(lorePath(projectId, 'classification/preview'), {
     method: 'POST',
     headers: jsonHeaders,
     body: JSON.stringify(input),
   })
 }
 
-export async function applyLoreClassification(input: LoreClassificationApplyRequest): Promise<LoreTypeApplyResult> {
-  return requestJSON('/api/lore/classification/apply', {
+export async function applyLoreClassification(projectId: string, input: LoreClassificationApplyRequest): Promise<LoreTypeApplyResult> {
+  return requestJSON(lorePath(projectId, 'classification/apply'), {
     method: 'POST',
     headers: jsonHeaders,
     body: JSON.stringify(input),
   })
 }
 
-export async function generateLoreItemImage(id: string, input: LoreItemImageGenerateRequest = {}): Promise<LoreItem> {
-  return requestJSON(`/api/lore/items/${encodeURIComponent(id)}/image/generate`, {
+export async function generateLoreItemImage(projectId: string, id: string, input: LoreItemImageGenerateRequest = {}): Promise<LoreItem> {
+  return requestJSON(lorePath(projectId, `items/${encodeURIComponent(id)}/image/generate`), {
     method: 'POST',
     headers: jsonHeaders,
     body: JSON.stringify(input),
   })
 }
 
-export async function clearLoreItemImage(id: string): Promise<LoreItem> {
-  return requestJSON(`/api/lore/items/${encodeURIComponent(id)}/image`, { method: 'DELETE' })
+export async function uploadLoreItemImage(projectId: string, id: string, file: File): Promise<LoreItem> {
+	const form = new FormData()
+	form.append('file', file, file.name)
+	return requestJSON(lorePath(projectId, `items/${encodeURIComponent(id)}/image/upload`), {
+		method: 'POST',
+		body: form,
+	})
 }
 
-export async function streamLoreImagesGenerate(input: LoreImagesGenerateRequest, signal?: AbortSignal): Promise<ReadableStream<SSEEvent>> {
-  const res = await fetchAPI('/api/lore/images/generate/stream', {
+export async function clearLoreItemImage(projectId: string, id: string): Promise<LoreItem> {
+  return requestJSON(lorePath(projectId, `items/${encodeURIComponent(id)}/image`), { method: 'DELETE' })
+}
+
+export async function streamLoreImagesGenerate(projectId: string, input: LoreImagesGenerateRequest, signal?: AbortSignal): Promise<ReadableStream<SSEEvent>> {
+  const res = await fetchAPI(lorePath(projectId, 'images/generate/stream'), {
     method: 'POST',
     headers: jsonHeaders,
     body: JSON.stringify(input),
@@ -70,6 +59,6 @@ export async function streamLoreImagesGenerate(input: LoreImagesGenerateRequest,
   return parseSSEStream(res.body)
 }
 
-export async function abortLoreImagesGenerate(): Promise<void> {
-  await requestJSON('/api/lore/images/generate/abort', { method: 'POST' })
+export async function abortLoreImagesGenerate(projectId: string): Promise<void> {
+  await requestJSON(lorePath(projectId, 'images/generate/abort'), { method: 'POST' })
 }

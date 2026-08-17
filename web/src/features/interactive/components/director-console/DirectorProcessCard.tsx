@@ -2,15 +2,16 @@ import { useMemo } from 'react'
 import { Activity } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { MessageList } from '@/components/Chat/MessageList'
-import type { ChatMessage } from '@/lib/api'
-import { chatMessagesToAgentUIMessages } from '@/lib/agent-legacy-message'
+import type { AgentUIMessage } from '@/lib/agent-ui'
+import { createAgentDataMessage, createAgentReasoningMessage, createAgentTextMessage, createAgentToolMessage } from '@/lib/agent-ui-message'
 import type { DirectorPlanMetadata, TurnDisplayEvent } from '../../types'
 import type { DirectorStatusLike } from './types'
-import { directorPlanTotals, directorStatusFallback, displayEventToChatMessage, formatBytes, formatShortDate } from './utils'
+import { directorPlanTotals, directorStatusFallback, displayEventToAgentUIMessage, formatBytes, formatShortDate } from './utils'
 
 // 导演执行过程：以消息流形式展示后台导演的规划、工具调用记录。消息列表为虚拟滚动，
 // 必须有确定高度，因此保留有界容器（区别于文档预览的自然高度）。
-export function DirectorProcessCard({ status, metadata, loading, displayEvents }: {
+export function DirectorProcessCard({ projectId, status, metadata, loading, displayEvents }: {
+  projectId: string
   status?: DirectorStatusLike
   metadata?: DirectorPlanMetadata
   loading: boolean
@@ -30,6 +31,7 @@ export function DirectorProcessCard({ status, metadata, loading, displayEvents }
         {process.messages.length > 0 || process.streaming ? (
           <div className="flex h-[380px] min-h-[240px] flex-col overflow-hidden rounded-[10px] border border-[var(--nova-border)] bg-[var(--nova-surface)]">
             <MessageList
+              projectId={projectId}
               messages={process.messages}
               isStreaming={process.streaming}
               activityContent={process.activityContent}
@@ -76,45 +78,50 @@ function useDirectorProcessMessages({
     const meta = updatedAt ? t('directorPanel.directorChat.updatedAt', { time: formatShortDate(updatedAt) }) : currentStatus || t('snapshot.noRecord')
     const toolStatus = currentStatus === 'failed' ? 'error' : running ? 'running' : 'success'
     const showFileTool = ['running', 'ready', 'failed', 'conflict'].includes(currentStatus)
-    const persistedMessages = displayEvents.map((event, index) => displayEventToChatMessage(event, `director-event-${index}`))
-    const fileToolMessages: ChatMessage[] = persistedMessages.length > 0
+    const persistedMessages = displayEvents.map((event, index) => displayEventToAgentUIMessage(event, `director-event-${index}`))
+    const fileToolMessages: AgentUIMessage[] = persistedMessages.length > 0
       ? persistedMessages
       : showFileTool
-        ? [{
+        ? [createAgentToolMessage({
             id: 'director-run-tool',
-            role: 'tool_call',
-            name: 'edit_file',
-            status: toolStatus,
-            args: JSON.stringify({ file_path: 'director.md' }),
-            result: toolStatus === 'success' ? progress : '',
-            created_at: updatedAt,
-          }]
+            name: 'edit',
+            state: toolStatus === 'error' ? 'output-error' : toolStatus === 'success' ? 'output-available' : 'input-available',
+            input: { path: 'director.md' },
+            output: toolStatus === 'success' ? progress : undefined,
+            metadata: { created_at: updatedAt || undefined, display_role: 'tool_call' },
+          })]
         : []
-    const directorMessages: ChatMessage[] = hasDirectorSignal ? [
-      {
+    const directorMessages: AgentUIMessage[] = hasDirectorSignal ? [
+      createAgentTextMessage({
         id: 'director-run-request',
         role: 'user',
-        content: t('directorPanel.directorChat.request'),
-      },
-      {
+        text: t('directorPanel.directorChat.request'),
+        metadata: { display_role: 'user' },
+      }),
+      createAgentReasoningMessage({
         id: 'director-run-thinking',
-        role: 'thinking',
-        content: summary,
-        streaming: running,
-        created_at: updatedAt,
-      },
+        text: summary,
+        state: running ? 'streaming' : 'done',
+        metadata: { created_at: updatedAt || undefined, display_role: 'thinking' },
+      }),
       ...fileToolMessages,
-      {
-        id: 'director-run-result',
-        role: currentStatus === 'failed' ? 'error' : 'assistant',
-        content: `${summary}\n\n${t('snapshot.director.plan')}: ${progress}\n${meta}`,
-        streaming: running,
-        created_at: updatedAt,
-      },
+      currentStatus === 'failed'
+        ? createAgentDataMessage({
+            id: 'director-run-result',
+            type: 'agent-error',
+            metadata: { created_at: updatedAt || undefined, display_role: 'error' },
+            data: { id: 'director-run-result', role: 'error', content: `${summary}\n\n${t('snapshot.director.plan')}: ${progress}\n${meta}` },
+          })
+        : createAgentTextMessage({
+            id: 'director-run-result',
+            role: 'assistant',
+            text: `${summary}\n\n${t('snapshot.director.plan')}: ${progress}\n${meta}`,
+            state: running ? 'streaming' : 'done',
+            metadata: { created_at: updatedAt || undefined, display_role: 'assistant' },
+          }),
     ] : []
-    const messages = chatMessagesToAgentUIMessages(directorMessages)
     return {
-      messages,
+      messages: directorMessages,
       streaming: running,
       activityContent: running ? summary : '',
       scrollKey: `director-process:${metadata?.revision || ''}:${currentStatus}:${updatedAt}`,

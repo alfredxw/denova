@@ -1,26 +1,58 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { useState } from 'react'
+import { useState, type ComponentProps } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { toast, type Action } from 'sonner'
-import { APIError, deleteLoreItem, generateLoreItemImage, getLoreItems, readFile, saveFile, streamLoreImagesGenerate, updateLoreItem, type LoreItem } from '@/lib/api'
+import { APIError, deleteProjectLoreItem, generateLoreItemImage, getProjectLoreItems, readOptionalProjectFile, readProjectFile, saveProjectFile, streamLoreImagesGenerate, updateProjectLoreItem, uploadLoreItemImage, type LoreItem } from '@/lib/api'
 import { preserveAutosaveConflict } from '@/lib/api-client/autosave-conflicts'
 import { createActorState, createImagePreset, createInteractiveTeller, createStoryDirector, deleteActorState, deleteEventPackage, deleteImagePreset, deleteInteractiveTeller, deleteStoryDirector, getActorStates, getEventPackages, getImagePresets, getInteractiveTellers, getRuleSystems, getStoryDirectors, getStyleReferences, updateActorState, updateEventPackage, updateImagePreset, updateInteractiveTeller, updateRuleSystem, updateStoryDirector } from '../api'
+import { serializeBookOpeningPresets } from '../opening'
 import type { EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, Teller } from '../types'
 import { defaultRuleTemplates } from './preset-config/ruleTemplates'
 import { newRuleSystemDraft } from './setting-panel/presetResources'
-import { SettingPanel } from './SettingPanel'
+import { SettingPanel as ProjectSettingPanel } from './SettingPanel'
+import type { MarkdownRichEditorReview } from '@/components/Editor/MarkdownRichEditor'
+import type { DocumentReviewController } from '@/features/document-review/controller'
+import type { CreateDocumentCommentRequest, DocumentReviewComment } from '@/features/document-review/types'
 
-const { configManagerChatProps, monacoEditorActions } = vi.hoisted(() => ({
+const TEST_PROJECT_ID = 'project-workspace'
+
+function projectFileDocument(path: string, content: string, revision: string) {
+  return {
+    project_id: 'project-workspace',
+    path,
+    content,
+    revision,
+    kind: 'text' as const,
+    mime_type: 'text/markdown',
+    size: content.length,
+    editable: true,
+  }
+}
+
+function projectFileSave(path: string, revision: string) {
+  return { project_id: 'project-workspace', path, revision, changed: true, message: 'ok' }
+}
+
+function SettingPanel(props: Omit<ComponentProps<typeof ProjectSettingPanel>, 'projectId'> & { projectId?: string }) {
+  return <ProjectSettingPanel {...props} projectId={props.projectId || TEST_PROJECT_ID} />
+}
+
+const { configManagerChatProps, markdownRichEditorProps, monacoEditorActions } = vi.hoisted(() => ({
   configManagerChatProps: [] as Array<{
     origin?: string
     resourceId?: string
     onMutated?: () => void
   }>,
+  markdownRichEditorProps: [] as Array<{
+    projectId: string
+    review?: MarkdownRichEditorReview
+  }>,
   monacoEditorActions: [] as string[],
 }))
 
 vi.mock('@monaco-editor/react', () => ({
+  DiffEditor: () => null,
   Editor: ({ value, onChange, onMount, language, theme, options }: {
     value?: string
     onChange?: (value?: string) => void
@@ -98,22 +130,27 @@ vi.mock('@/components/Chat/ConfigManagerChat', () => ({
 
 vi.mock('@/components/Editor/MarkdownRichEditor', () => ({
   MarkdownRichEditor: (props: {
+    projectId: string
     value: string
     onChange: (value: string) => void
     highlightQuery?: string
+    review?: MarkdownRichEditorReview
     className?: string
     'aria-label'?: string
-  }) => (
-    <div data-testid="lore-rich-editor-root" className={props.className}>
-      <textarea
-        data-testid="lore-rich-editor"
-        aria-label={props['aria-label']}
-        data-highlight-query={props.highlightQuery ?? ''}
-        value={props.value}
-        onChange={(event) => props.onChange(event.target.value)}
-      />
-    </div>
-  ),
+  }) => {
+    markdownRichEditorProps.push(props)
+    return (
+      <div data-testid="lore-rich-editor-root" className={props.className}>
+        <textarea
+          data-testid="lore-rich-editor"
+          aria-label={props['aria-label']}
+          data-highlight-query={props.highlightQuery ?? ''}
+          value={props.value}
+          onChange={(event) => props.onChange(event.target.value)}
+        />
+      </div>
+    )
+  },
 }))
 
 vi.mock('@/lib/api', async (importOriginal) => {
@@ -122,15 +159,16 @@ vi.mock('@/lib/api', async (importOriginal) => {
     ...actual,
     abortLoreImagesGenerate: vi.fn(),
     clearLoreItemImage: vi.fn(),
-    createLoreItem: vi.fn(),
-    deleteLoreItem: vi.fn(),
+    createProjectLoreItem: vi.fn(),
+    deleteProjectLoreItem: vi.fn(),
     generateLoreItemImage: vi.fn(),
-    getLoreItems: vi.fn().mockResolvedValue([]),
-    readFile: vi.fn().mockResolvedValue({ workspace: '/workspace', path: '', content: '' }),
-    saveFile: vi.fn(),
+    getProjectLoreItems: vi.fn().mockResolvedValue([]),
+    readOptionalProjectFile: vi.fn().mockResolvedValue(null),
+    readProjectFile: vi.fn().mockResolvedValue(projectFileDocument('', '', '')),
+    saveProjectFile: vi.fn(),
     streamLoreImagesGenerate: vi.fn(),
-    updateLoreItem: vi.fn(),
-    workspaceAssetURL: (path: string) => `/api/workspace/asset?path=${encodeURIComponent(path)}`,
+    updateProjectLoreItem: vi.fn(),
+    uploadLoreItemImage: vi.fn(),
   }
 })
 
@@ -167,21 +205,25 @@ describe('SettingPanel', () => {
   beforeEach(() => {
     window.localStorage.clear()
     configManagerChatProps.length = 0
+    markdownRichEditorProps.length = 0
     monacoEditorActions.length = 0
-    vi.mocked(getLoreItems).mockReset()
+    vi.mocked(getProjectLoreItems).mockReset()
     vi.mocked(preserveAutosaveConflict).mockReset()
     vi.mocked(preserveAutosaveConflict).mockResolvedValue({
       id: 'conflict-record',
       path: 'conflicts/conflict-record.json',
       storage: 'server',
     })
-    vi.mocked(updateLoreItem).mockReset()
-    vi.mocked(deleteLoreItem).mockReset()
+    vi.mocked(updateProjectLoreItem).mockReset()
+    vi.mocked(deleteProjectLoreItem).mockReset()
     vi.mocked(generateLoreItemImage).mockReset()
     vi.mocked(streamLoreImagesGenerate).mockReset()
-    vi.mocked(readFile).mockReset()
-    vi.mocked(readFile).mockResolvedValue({ workspace: '/workspace', path: '', content: '' })
-    vi.mocked(saveFile).mockReset()
+    vi.mocked(uploadLoreItemImage).mockReset()
+    vi.mocked(readProjectFile).mockReset()
+    vi.mocked(readProjectFile).mockResolvedValue(projectFileDocument('', '', ''))
+    vi.mocked(readOptionalProjectFile).mockReset()
+    vi.mocked(readOptionalProjectFile).mockResolvedValue(null)
+    vi.mocked(saveProjectFile).mockReset()
     vi.mocked(getInteractiveTellers).mockReset()
     vi.mocked(createInteractiveTeller).mockReset()
     vi.mocked(updateInteractiveTeller).mockReset()
@@ -207,28 +249,28 @@ describe('SettingPanel', () => {
     vi.mocked(toast.dismiss).mockReset()
     vi.mocked(toast.error).mockReset()
     vi.mocked(toast.success).mockReset()
-    vi.mocked(getLoreItems).mockResolvedValue([])
+    vi.mocked(getProjectLoreItems).mockResolvedValue([])
     vi.mocked(getInteractiveTellers).mockResolvedValue([teller('classic', '经典叙事'), teller('slow-burn', '慢热叙事')])
-    vi.mocked(updateInteractiveTeller).mockImplementation(async (id, input) => ({ ...teller(id, input.name || id), ...input, id, custom: id !== 'classic', builtin_overridden: id === 'classic', updated_at: '2026-01-01T00:00:01Z' }) as Teller)
+    vi.mocked(updateInteractiveTeller).mockImplementation(async (id, input) => ({ ...teller(id, input.name || id), ...input, id, custom: id !== 'classic', builtin_overridden: id === 'classic', revision: 'sha256:saved', updated_at: '2026-01-01T00:00:01Z' }) as Teller)
     vi.mocked(deleteInteractiveTeller).mockResolvedValue(undefined)
     vi.mocked(getStoryDirectors).mockResolvedValue([storyDirector('default', '默认导演')])
     vi.mocked(createStoryDirector).mockResolvedValue(storyDirector('default-custom', '默认导演'))
-    vi.mocked(updateStoryDirector).mockImplementation(async (id, input) => ({ ...storyDirector(id, input.name || id), ...input, id, custom: id !== 'default', builtin_overridden: id === 'default', updated_at: '2026-01-01T00:00:01Z' }) as StoryDirector)
+    vi.mocked(updateStoryDirector).mockImplementation(async (id, input) => ({ ...storyDirector(id, input.name || id), ...input, id, custom: id !== 'default', builtin_overridden: id === 'default', revision: 'sha256:saved', updated_at: '2026-01-01T00:00:01Z' }) as StoryDirector)
     vi.mocked(deleteStoryDirector).mockResolvedValue(undefined)
     vi.mocked(getActorStates).mockResolvedValue([])
     vi.mocked(deleteActorState).mockResolvedValue(undefined)
     vi.mocked(getImagePresets).mockResolvedValue([imagePreset('game-cg', '游戏 CG')])
-    vi.mocked(updateImagePreset).mockImplementation(async (id, input) => ({ ...imagePreset(id, input.name || id), ...input, id, custom: id !== 'game-cg', builtin_overridden: id === 'game-cg', updated_at: '2026-01-01T00:00:01Z' }) as ImagePreset)
+    vi.mocked(updateImagePreset).mockImplementation(async (id, input) => ({ ...imagePreset(id, input.name || id), ...input, id, custom: id !== 'game-cg', builtin_overridden: id === 'game-cg', revision: 'sha256:saved', updated_at: '2026-01-01T00:00:01Z' }) as ImagePreset)
     vi.mocked(deleteImagePreset).mockResolvedValue(undefined)
     vi.mocked(getEventPackages).mockResolvedValue([eventPackage('default', '默认事件包')])
     vi.mocked(deleteEventPackage).mockResolvedValue(undefined)
-    vi.mocked(updateEventPackage).mockImplementation(async (id, input) => ({ ...eventPackage(id, input.name || id), ...input, id, custom: id !== 'default', builtin_overridden: id === 'default', updated_at: '2026-01-01T00:00:01Z' }) as EventPackageModule)
+    vi.mocked(updateEventPackage).mockImplementation(async (id, input) => ({ ...eventPackage(id, input.name || id), ...input, id, custom: id !== 'default', builtin_overridden: id === 'default', revision: 'sha256:saved', updated_at: '2026-01-01T00:00:01Z' }) as EventPackageModule)
     vi.mocked(getRuleSystems).mockResolvedValue([
       ruleSystem('default', '均衡 DM 检定'),
       ruleSystem('dm-fail-forward', '推进型 DM：失败也前进'),
       ruleSystem('dm-osr-player-skill', 'OSR 型 DM：玩家技巧优先'),
     ])
-    vi.mocked(updateRuleSystem).mockImplementation(async (id, input) => ({ ...ruleSystem(id, input.name || id), ...input, id, custom: !isBuiltinRuleSystemID(id), builtin_overridden: isBuiltinRuleSystemID(id), updated_at: '2026-01-01T00:00:01Z' }) as RuleSystemModule)
+    vi.mocked(updateRuleSystem).mockImplementation(async (id, input) => ({ ...ruleSystem(id, input.name || id), ...input, id, custom: !isBuiltinRuleSystemID(id), builtin_overridden: isBuiltinRuleSystemID(id), revision: 'sha256:saved', updated_at: '2026-01-01T00:00:01Z' }) as RuleSystemModule)
     vi.mocked(getStyleReferences).mockResolvedValue([])
   })
 
@@ -261,71 +303,61 @@ describe('SettingPanel', () => {
   })
 
   it('does not create a missing CREATOR.md until the user edits it', async () => {
-    vi.mocked(readFile).mockRejectedValueOnce(new APIError('not found', { status: 404 }))
-    vi.mocked(saveFile).mockResolvedValue({ path: 'CREATOR.md', message: 'ok', revision: 'creator-rev-1' })
+    vi.mocked(readProjectFile).mockRejectedValueOnce(new APIError('not found', { status: 404 }))
+    vi.mocked(saveProjectFile).mockResolvedValue(projectFileSave('CREATOR.md', 'creator-rev-1'))
 
-    render(<SettingPanel mode="creator" workspace="/workspace" />)
+    render(<SettingPanel mode="creator" />)
 
-    await waitFor(() => expect(readFile).toHaveBeenCalledWith('CREATOR.md'))
+    await waitFor(() => expect(readProjectFile).toHaveBeenCalledWith(TEST_PROJECT_ID, 'CREATOR.md'))
     flushSettingPanelAutosave()
 
-    expect(saveFile).not.toHaveBeenCalled()
+    expect(saveProjectFile).not.toHaveBeenCalled()
     fireEvent.change(screen.getByPlaceholderText('写下本书最高优先级的创作规则...'), { target: { value: '只在编辑后保存' } })
     flushSettingPanelAutosave()
 
-    await waitFor(() => expect(saveFile).toHaveBeenCalledWith('CREATOR.md', '只在编辑后保存', 'missing', '/workspace'))
+    await waitFor(() => expect(saveProjectFile).toHaveBeenCalledWith(TEST_PROJECT_ID, 'CREATOR.md', '只在编辑后保存', 'missing'))
   })
 
   it('loads an external CREATOR.md update without writing when the editor is clean', async () => {
-    vi.mocked(readFile)
-      .mockResolvedValueOnce({ workspace: '/workspace', path: 'CREATOR.md', content: 'Initial', revision: 'r1' })
-      .mockResolvedValueOnce({ workspace: '/workspace', path: 'CREATOR.md', content: 'Updated externally', revision: 'r2' })
+    vi.mocked(readProjectFile)
+      .mockResolvedValueOnce(projectFileDocument('CREATOR.md', 'Initial', 'r1'))
+      .mockResolvedValueOnce(projectFileDocument('CREATOR.md', 'Updated externally', 'r2'))
 
-    render(<SettingPanel mode="creator" workspace="/workspace" />)
+    render(<SettingPanel mode="creator" />)
 
     const editor = await screen.findByDisplayValue('Initial')
     act(() => {
       window.dispatchEvent(new CustomEvent('nova:workspace-change', {
-        detail: { workspace: '/workspace', paths: ['CREATOR.md'] },
+        detail: { project_id: TEST_PROJECT_ID, workspace: '/workspace', paths: ['CREATOR.md'] },
       }))
     })
 
     await waitFor(() => expect(editor).toHaveValue('Updated externally'))
-    expect(saveFile).not.toHaveBeenCalled()
+    expect(saveProjectFile).not.toHaveBeenCalled()
   })
 
   it('shows the rebased CREATOR.md after transparently retrying a conflict', async () => {
-    vi.mocked(readFile)
-      .mockResolvedValueOnce({
-        workspace: '/workspace',
-        path: 'CREATOR.md',
-        content: 'Title\n\nDetail\n',
-        revision: 'r1',
-      })
-      .mockResolvedValueOnce({
-        workspace: '/workspace',
-        path: 'CREATOR.md',
-        content: 'Title\n\nExternal detail\n',
-        revision: 'r2',
-      })
-    vi.mocked(saveFile)
+    vi.mocked(readProjectFile)
+      .mockResolvedValueOnce(projectFileDocument('CREATOR.md', 'Title\n\nDetail\n', 'r1'))
+      .mockResolvedValueOnce(projectFileDocument('CREATOR.md', 'Title\n\nExternal detail\n', 'r2'))
+    vi.mocked(saveProjectFile)
       .mockRejectedValueOnce(new APIError('revision conflict', { status: 409 }))
-      .mockResolvedValueOnce({ path: 'CREATOR.md', message: 'ok', revision: 'r3' })
+      .mockResolvedValueOnce(projectFileSave('CREATOR.md', 'r3'))
 
-    render(<SettingPanel mode="creator" workspace="/workspace" />)
+    render(<SettingPanel mode="creator" />)
 
     const editor = await screen.findByPlaceholderText('写下本书最高优先级的创作规则...')
     await waitFor(() => expect(editor).toHaveValue('Title\n\nDetail\n'))
     fireEvent.change(editor, { target: { value: 'Local title\n\nDetail\n' } })
     flushSettingPanelAutosave()
 
-    await waitFor(() => expect(saveFile).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(saveProjectFile).toHaveBeenCalledTimes(2))
     await waitFor(() => expect(editor).toHaveValue('Local title\n\nExternal detail\n'))
     expect(screen.getByRole('status')).toHaveAccessibleName('所有更改均已保存')
   })
 
   it('keeps the config Agent above search without repeating the lore directory heading', async () => {
-    render(<SettingPanel mode="lore" workspace="/workspace" imagePresets={[]} />)
+    render(<SettingPanel mode="lore" imagePresets={[]} />)
 
     const configAgent = await screen.findByRole('button', { name: '配置管理 Agent' })
     const search = screen.getByRole('textbox', { name: '搜索资料' })
@@ -338,41 +370,58 @@ describe('SettingPanel', () => {
     const user = userEvent.setup()
     const onClose = vi.fn()
 
-    render(<SettingPanel mode="teller" workspace="/workspace" onClose={onClose} />)
+    render(<SettingPanel mode="teller" onClose={onClose} />)
 
     await user.click(screen.getByRole('button', { name: '关闭' }))
     expect(onClose).toHaveBeenCalledOnce()
   })
 
-  it('loads a legacy opening preset without writing and saves it after an edit with the missing revision', async () => {
+  it('loads existing opening presets without treating the initial snapshot as a conflict', async () => {
     const user = userEvent.setup()
-    vi.mocked(readFile)
-      .mockRejectedValueOnce(new APIError('not found', { status: 404 }))
-      .mockResolvedValueOnce({
-        workspace: '/workspace',
-        path: 'setting/interactive-opening.md',
-        content: '旧版开场白',
-        revision: 'legacy-revision',
-      })
-    vi.mocked(saveFile).mockResolvedValue({ path: 'setting/interactive-openings.json', message: 'ok', revision: 'opening-rev-1' })
+    const content = serializeBookOpeningPresets([{
+      id: 'saved-opening',
+      title: '已保存的开场白',
+      content: '雨停之后，城门第一次打开。',
+    }])
+    vi.mocked(readOptionalProjectFile).mockResolvedValueOnce(
+      projectFileDocument('setting/interactive-openings.json', content, 'opening-rev-1'),
+    )
 
-    render(<SettingPanel mode="lore" workspace="/workspace" imagePresets={[]} />)
+    render(<SettingPanel mode="lore" imagePresets={[]} />)
 
     await user.click(await screen.findByRole('button', { name: '书籍预设开场白' }))
-    await waitFor(() => expect(readFile).toHaveBeenCalledTimes(2))
+    const editor = await screen.findByPlaceholderText('写下本书预设开场白，例如主角初始处境、场景钩子、关键目标和第一轮可行动空间...')
+    await waitFor(() => expect(editor).toHaveValue('雨停之后，城门第一次打开。'))
     flushSettingPanelAutosave()
-    expect(saveFile).not.toHaveBeenCalled()
+
+    expect(preserveAutosaveConflict).not.toHaveBeenCalled()
+    expect(saveProjectFile).not.toHaveBeenCalled()
+  })
+
+  it('loads a legacy opening preset without writing and saves it after an edit with the missing revision', async () => {
+    const user = userEvent.setup()
+    vi.mocked(readOptionalProjectFile)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(projectFileDocument('setting/interactive-opening.md', '旧版开场白', 'legacy-revision'))
+    vi.mocked(saveProjectFile).mockResolvedValue(projectFileSave('setting/interactive-openings.json', 'opening-rev-1'))
+
+    render(<SettingPanel mode="lore" imagePresets={[]} />)
+
+    await user.click(await screen.findByRole('button', { name: '书籍预设开场白' }))
+    await waitFor(() => expect(readOptionalProjectFile).toHaveBeenCalledTimes(2))
+    flushSettingPanelAutosave()
+    expect(saveProjectFile).not.toHaveBeenCalled()
 
     const editor = await screen.findByPlaceholderText('写下本书预设开场白，例如主角初始处境、场景钩子、关键目标和第一轮可行动空间...')
     expect(editor).toHaveValue('旧版开场白')
     fireEvent.change(editor, { target: { value: '编辑后的旧版开场白' } })
     flushSettingPanelAutosave()
 
-    await waitFor(() => expect(saveFile).toHaveBeenCalledWith(
+    await waitFor(() => expect(saveProjectFile).toHaveBeenCalledWith(
+      TEST_PROJECT_ID,
       'setting/interactive-openings.json',
       expect.any(String),
       'missing',
-      '/workspace',
     ))
   })
 
@@ -380,7 +429,7 @@ describe('SettingPanel', () => {
     const user = userEvent.setup()
     render(<PresetPanelHarness />)
 
-    await user.click(screen.getByRole('button', { name: /经典叙事/ }))
+    await user.click(screen.getByRole('button', { name: /稳健叙事/ }))
     fireEvent.change(screen.getByDisplayValue('经典叙事'), { target: { value: '覆盖后的经典叙事' } })
     flushSettingPanelAutosave()
 
@@ -392,8 +441,7 @@ describe('SettingPanel', () => {
         name: '覆盖后的经典叙事',
         custom: false,
       }),
-      undefined,
-      '/workspace',
+      'sha256:fixture',
     )
     expect(createInteractiveTeller).not.toHaveBeenCalled()
   })
@@ -402,7 +450,7 @@ describe('SettingPanel', () => {
     const user = userEvent.setup()
     render(<PresetPanelHarness />)
 
-    await user.click(screen.getByRole('button', { name: /经典叙事/ }))
+    await user.click(screen.getByRole('button', { name: /稳健叙事/ }))
     fireEvent.change(screen.getByDisplayValue('经典叙事'), { target: { value: '切换前自动保存' } })
     expandSection('图像方案')
     await user.click(screen.getByRole('button', { name: /游戏 CG/ }))
@@ -414,8 +462,7 @@ describe('SettingPanel', () => {
         id: 'classic',
         name: '切换前自动保存',
       }),
-      undefined,
-      '/workspace',
+      'sha256:fixture',
     )
     expect(screen.getByRole('heading', { name: '游戏 CG' })).toBeInTheDocument()
   })
@@ -428,14 +475,15 @@ describe('SettingPanel', () => {
         ...teller(id, input.name || id),
         ...input,
         id,
+        revision: 'sha256:retry',
         updated_at: '2026-01-01T00:00:02Z',
       }) as Teller)
     render(<PresetPanelHarness />)
 
-    await user.click(screen.getByRole('button', { name: /经典叙事/ }))
+    await user.click(screen.getByRole('button', { name: /稳健叙事/ }))
     fireEvent.change(screen.getByDisplayValue('经典叙事'), { target: { value: '失败后重试' } })
     flushSettingPanelAutosave()
-    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('自动保存失败'))
+    await waitFor(() => expect(screen.getByRole('status', { name: /自动保存失败/ })).toHaveTextContent('自动保存失败'))
 
     expandSection('图像方案')
     await user.click(screen.getByRole('button', { name: /游戏 CG/ }))
@@ -446,8 +494,8 @@ describe('SettingPanel', () => {
 
   it('round-trips a custom preset through autosave with its latest content and revision', async () => {
     vi.useFakeTimers()
-    const customA = { ...teller('custom-a', '自定义 A'), updated_at: 'a-r1' }
-    const customB = { ...teller('custom-b', '自定义 B'), updated_at: 'b-r1' }
+    const customA = { ...teller('custom-a', '自定义 A'), revision: 'a-r1', updated_at: 'same-time' }
+    const customB = { ...teller('custom-b', '自定义 B'), revision: 'b-r1', updated_at: 'same-time' }
     let resolveFirstSave!: (saved: Teller) => void
     const firstSave = new Promise<Teller>((resolve) => { resolveFirstSave = resolve })
     vi.mocked(updateInteractiveTeller)
@@ -457,7 +505,8 @@ describe('SettingPanel', () => {
       ...input,
       id,
       custom: true,
-      updated_at: id === 'custom-a' ? 'a-r3' : 'b-r2',
+      revision: id === 'custom-a' ? 'a-r3' : 'b-r2',
+      updated_at: 'same-time',
     }) as Teller)
 
     try {
@@ -473,7 +522,7 @@ describe('SettingPanel', () => {
 
       fireEvent.change(screen.getByDisplayValue('A 首次保存'), { target: { value: 'A 最新内容' } })
       await act(async () => {
-        resolveFirstSave({ ...customA, name: 'A 首次保存', updated_at: 'a-r2' })
+        resolveFirstSave({ ...customA, name: 'A 首次保存', revision: 'a-r2' })
         await firstSave
       })
       expect(screen.getByDisplayValue('A 最新内容')).toBeInTheDocument()
@@ -499,13 +548,12 @@ describe('SettingPanel', () => {
   })
 
   it('loads an external preset update without writing when the draft is clean', async () => {
-    const initial = { ...teller('custom-a', '自定义 A'), updated_at: 'a-r1' }
-    const external = { ...initial, name: '外部更新 A', updated_at: 'a-r2' }
+    const initial = { ...teller('custom-a', '自定义 A'), revision: 'a-r1' }
+    const external = { ...initial, name: '外部更新 A', revision: 'a-r2' }
     const onTellersChange = vi.fn()
     const view = render(
       <SettingPanel
         mode="teller"
-        workspace="/workspace"
         tellers={[initial]}
         storyDirectors={[storyDirector('default', '默认导演')]}
         imagePresets={[imagePreset('game-cg', '游戏 CG')]}
@@ -518,7 +566,6 @@ describe('SettingPanel', () => {
     view.rerender(
       <SettingPanel
         mode="teller"
-        workspace="/workspace"
         tellers={[external]}
         storyDirectors={[storyDirector('default', '默认导演')]}
         imagePresets={[imagePreset('game-cg', '游戏 CG')]}
@@ -531,13 +578,12 @@ describe('SettingPanel', () => {
   })
 
   it('rebases a dirty preset draft over an external list update', async () => {
-    const initial = { ...teller('custom-a', '自定义 A'), updated_at: 'a-r1' }
-    const external = { ...initial, description: '外部更新的描述', updated_at: 'a-r2' }
+    const initial = { ...teller('custom-a', '自定义 A'), revision: 'a-r1' }
+    const external = { ...initial, description: '外部更新的描述', revision: 'a-r2' }
     const onTellersChange = vi.fn()
     const view = render(
       <SettingPanel
         mode="teller"
-        workspace="/workspace"
         tellers={[initial]}
         storyDirectors={[storyDirector('default', '默认导演')]}
         imagePresets={[imagePreset('game-cg', '游戏 CG')]}
@@ -551,7 +597,6 @@ describe('SettingPanel', () => {
     view.rerender(
       <SettingPanel
         mode="teller"
-        workspace="/workspace"
         tellers={[external]}
         storyDirectors={[storyDirector('default', '默认导演')]}
         imagePresets={[imagePreset('game-cg', '游戏 CG')]}
@@ -567,13 +612,12 @@ describe('SettingPanel', () => {
       'custom-a',
       expect.objectContaining({ name: '本地改名 A', description: '外部更新的描述' }),
       'a-r2',
-      '/workspace',
     ))
   })
 
   it('keeps a newer preset edit made while an overlapping reload is being archived', async () => {
-    const initial = { ...teller('custom-a', '自定义 A'), updated_at: 'a-r1' }
-    const external = { ...initial, name: '外部改名 A', updated_at: 'a-r2' }
+    const initial = { ...teller('custom-a', '自定义 A'), revision: 'a-r1' }
+    const external = { ...initial, name: '外部改名 A', revision: 'a-r2' }
     let finishArchive!: (value: Awaited<ReturnType<typeof preserveAutosaveConflict>>) => void
     const archivePending = new Promise<Awaited<ReturnType<typeof preserveAutosaveConflict>>>((resolve) => {
       finishArchive = resolve
@@ -581,7 +625,6 @@ describe('SettingPanel', () => {
     vi.mocked(preserveAutosaveConflict).mockReturnValueOnce(archivePending)
     const props = {
       mode: 'teller' as const,
-      workspace: '/workspace',
       storyDirectors: [storyDirector('default', '默认导演')],
       imagePresets: [imagePreset('game-cg', '游戏 CG')],
       onTellersChange: vi.fn(),
@@ -605,8 +648,8 @@ describe('SettingPanel', () => {
   })
 
   it('transparently rebases and retries a preset revision conflict', async () => {
-    const initial = { ...teller('custom-a', '自定义 A'), updated_at: 'a-r1' }
-    const external = { ...initial, description: '服务端新描述', updated_at: 'a-r2' }
+    const initial = { ...teller('custom-a', '自定义 A'), revision: 'a-r1' }
+    const external = { ...initial, description: '服务端新描述', revision: 'a-r2' }
     vi.mocked(getInteractiveTellers).mockResolvedValue([external])
     vi.mocked(updateInteractiveTeller)
       .mockRejectedValueOnce(new APIError('revision conflict', { status: 409 }))
@@ -614,12 +657,11 @@ describe('SettingPanel', () => {
         ...external,
         ...input,
         id,
-        updated_at: 'a-r3',
+        revision: 'a-r3',
       }) as Teller)
     render(
       <SettingPanel
         mode="teller"
-        workspace="/workspace"
         tellers={[initial]}
         storyDirectors={[storyDirector('default', '默认导演')]}
         imagePresets={[imagePreset('game-cg', '游戏 CG')]}
@@ -638,9 +680,8 @@ describe('SettingPanel', () => {
       'custom-a',
       expect.objectContaining({ name: '本地改名 A', description: '服务端新描述' }),
       'a-r2',
-      '/workspace',
     )
-    expect(screen.getByRole('status')).toHaveAccessibleName('所有更改均已保存')
+    expect(screen.getByRole('status', { name: '所有更改均已保存' })).toHaveAccessibleName('所有更改均已保存')
   })
 
   it('restores an overridden built-in narrative style from the top-right action', async () => {
@@ -650,7 +691,6 @@ describe('SettingPanel', () => {
     render(
       <SettingPanel
         mode="teller"
-        workspace="/workspace"
         tellers={[overridden]}
         storyDirectors={[storyDirector('default', '默认导演')]}
         imagePresets={[imagePreset('game-cg', '游戏 CG')]}
@@ -685,8 +725,7 @@ describe('SettingPanel', () => {
         name: '覆盖后的图像方案',
         custom: false,
       }),
-      undefined,
-      '/workspace',
+      'sha256:fixture',
     )
     expect(createImagePreset).not.toHaveBeenCalled()
     await waitFor(() => expect(screen.getAllByText('内置覆盖').length).toBeGreaterThan(0))
@@ -733,7 +772,7 @@ describe('SettingPanel', () => {
     expect(sectionToggle('图像方案')).toBeInTheDocument()
     expect(sectionToggle('故事导演')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /默认导演/ })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /经典叙事/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /稳健叙事/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '新建故事导演' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '新建叙事风格' })).toBeInTheDocument()
     expect(await screen.findByRole('button', { name: /默认事件包/ })).toBeInTheDocument()
@@ -748,7 +787,7 @@ describe('SettingPanel', () => {
 
     await user.click(screen.getByRole('button', { name: '收起全部' }))
     expect(screen.queryByRole('button', { name: /默认导演/ })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /经典叙事/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /稳健叙事/ })).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '展开全部' }))
     expect(screen.getByRole('button', { name: /默认导演/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /默认事件包/ })).toBeInTheDocument()
@@ -758,7 +797,7 @@ describe('SettingPanel', () => {
     expect(screen.getByRole('button', { name: '收起全部' })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '收起全部' }))
     expect(screen.queryByRole('button', { name: /默认导演/ })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /经典叙事/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /稳健叙事/ })).not.toBeInTheDocument()
     expandSection('故事导演')
 
     await selectDefaultDirector(user)
@@ -847,7 +886,7 @@ describe('SettingPanel', () => {
     flushSettingPanelAutosave()
 
     await waitFor(() => expect(updateEventPackage).toHaveBeenCalled())
-    expect(updateEventPackage).toHaveBeenCalledWith('default', expect.objectContaining({ id: 'default', custom: false }), undefined, '/workspace')
+    expect(updateEventPackage).toHaveBeenCalledWith('default', expect.objectContaining({ id: 'default', custom: false }), 'sha256:fixture')
     expect(createStoryDirector).not.toHaveBeenCalled()
     const payload = vi.mocked(updateEventPackage).mock.calls.at(-1)?.[1] as Partial<EventPackageModule>
     expect(payload.events?.[0]?.type_name).toBe('伏笔回收')
@@ -898,7 +937,7 @@ describe('SettingPanel', () => {
     expect(screen.getByText('平衡牵引')).toBeInTheDocument()
     expect(screen.getByText('在自由行动和长期主线之间保持平衡，适合作为通用默认。')).toBeInTheDocument()
     expect(screen.getByText('可逆失败')).toBeInTheDocument()
-		expect(screen.getByText('均衡')).toBeInTheDocument()
+    expect(screen.getByText('均衡')).toBeInTheDocument()
     expect(screen.queryByText('balanced')).not.toBeInTheDocument()
 
     const mainlineField = screen.getByText('主线强度').closest('label') as HTMLElement
@@ -913,9 +952,9 @@ describe('SettingPanel', () => {
     await user.click(within(pacingField).getByRole('combobox'))
     await user.click(screen.getByRole('option', { name: /波峰波谷/ }))
 
-		const eventFrequencyField = screen.getByText('事件机会频率').closest('label') as HTMLElement
-		await user.click(within(eventFrequencyField).getByRole('combobox'))
-		await user.click(screen.getByRole('option', { name: /频繁/ }))
+    const eventFrequencyField = screen.getByText('事件机会频率').closest('label') as HTMLElement
+    await user.click(within(eventFrequencyField).getByRole('combobox'))
+    await user.click(screen.getByRole('option', { name: /频繁/ }))
     flushSettingPanelAutosave()
 
     await waitFor(() => expect(updateStoryDirector).toHaveBeenCalled())
@@ -924,7 +963,7 @@ describe('SettingPanel', () => {
       mainline_strength: 'strong_arc',
       failure_policy: 'fail_forward',
       pacing_curve: 'wave',
-			event_frequency: 'frequent',
+      event_frequency: 'frequent',
     })
   })
 
@@ -1054,7 +1093,7 @@ describe('SettingPanel', () => {
     await user.click(screen.getByRole('button', { name: /高级 Markdown 策略提示/ }))
     fireEvent.change(screen.getByPlaceholderText(/优先制造可逆但有代价的选择/), { target: { value: 'a'.repeat((64 * 1024) + 1) } })
 
-    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('修复配置后将自动保存'))
+    await waitFor(() => expect(screen.getByRole('status', { name: /修复配置后将自动保存/ })).toHaveTextContent('修复配置后将自动保存'))
     expect(screen.getByText('策略提示已超过 65536 bytes（当前 65537 bytes）；缩短后将自动保存。')).toBeInTheDocument()
     expect(updateStoryDirector).not.toHaveBeenCalled()
   })
@@ -1068,7 +1107,7 @@ describe('SettingPanel', () => {
     await user.click(screen.getByRole('button', { name: 'JSON' }))
     fireEvent.change(screen.getByTestId('monaco-json-editor'), { target: { value: '{' } })
 
-    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('修复配置后将自动保存'))
+    await waitFor(() => expect(screen.getByRole('status', { name: /修复配置后将自动保存/ })).toHaveTextContent('修复配置后将自动保存'))
     expect(screen.getByText('请先修复 JSON，再切回可视化视图。')).toBeInTheDocument()
 
     expandSection('TRPG 检定')
@@ -1124,7 +1163,7 @@ describe('SettingPanel', () => {
     await waitFor(() => expect(deleteEventPackage).toHaveBeenCalledWith('default'))
   })
 
-  it('edits TRPG checks through the focused DM-style visual workflow', async () => {
+  it('presents TRPG checks through the focused DM-style visual workflow', async () => {
     const user = userEvent.setup()
     render(<PresetModeHarness />)
 
@@ -1143,8 +1182,16 @@ describe('SettingPanel', () => {
     expect(screen.getByRole('textbox', { name: '不要检定例子' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '新增规则' })).not.toBeInTheDocument()
 
-    const ruleLabelInput = screen.getByRole('textbox', { name: '规则名称' })
-    fireEvent.change(ruleLabelInput, { target: { value: '自定义 DM 检定' } })
+  })
+
+  it('saves TRPG check guidance from the focused DM-style visual workflow', async () => {
+    const user = userEvent.setup()
+    render(<PresetModeHarness />)
+
+    expandSection('TRPG 检定')
+    await user.click(await screen.findByRole('button', { name: /均衡 DM 检定/ }))
+
+    fireEvent.change(screen.getByRole('textbox', { name: '规则名称' }), { target: { value: '自定义 DM 检定' } })
 
     const mustCheckExamples = '守卫逼近时强行撬锁\n攻击警戒守卫'
     const skipCheckExamples = '观察空房间\n和友善同伴闲聊'
@@ -1205,11 +1252,11 @@ describe('SettingPanel', () => {
       updated_at: '2026-01-01T00:00:01Z',
       image: loreImage('assets/lore/images/lin-chuan/20260101000000/image.png'),
     }
-    vi.mocked(getLoreItems).mockResolvedValue([item])
-    vi.mocked(updateLoreItem).mockResolvedValue(item)
+    vi.mocked(getProjectLoreItems).mockResolvedValue([item])
+    vi.mocked(updateProjectLoreItem).mockResolvedValue(item)
     vi.mocked(generateLoreItemImage).mockResolvedValue(withImage)
 
-    render(<SettingPanel mode="lore" workspace="/workspace" imagePresets={[imagePreset('game-cg', '游戏 CG')]} />)
+    render(<SettingPanel mode="lore" imagePresets={[imagePreset('game-cg', '游戏 CG')]} />)
 
     await user.click(await screen.findByRole('button', { name: /林川/ }))
     const emptyImage = screen.getByText('暂无图片')
@@ -1230,14 +1277,14 @@ describe('SettingPanel', () => {
     await user.click(within(generateDialog).getByRole('button', { name: '生成图片' }))
 
     await waitFor(() => {
-      expect(generateLoreItemImage).toHaveBeenCalledWith('lin-chuan', expect.objectContaining({ image_preset_id: 'game-cg' }))
+      expect(generateLoreItemImage).toHaveBeenCalledWith(TEST_PROJECT_ID, 'lin-chuan', expect.objectContaining({ image_preset_id: 'game-cg' }))
     })
     await user.click(within(generateDialog).getByRole('button', { name: '关闭' }))
     await waitFor(() => {
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     })
 
-    expect(await screen.findByRole('img', { name: '林川' })).toHaveAttribute('src', '/api/workspace/asset?path=assets%2Flore%2Fimages%2Flin-chuan%2F20260101000000%2Fimage.png')
+    expect(await screen.findByRole('img', { name: '林川' })).toHaveAttribute('src', '/api/projects/project-workspace/files/asset?path=assets%2Flore%2Fimages%2Flin-chuan%2F20260101000000%2Fimage.png')
     const primaryFieldsWithImage = within(metadataGroup).getByRole('textbox', { name: '名称' }).closest('[data-slot="lore-primary-fields"]')
     expect(primaryFieldsWithImage).toHaveClass('2xl:grid-cols-[minmax(12rem,2fr)_repeat(4,minmax(7rem,1fr))]')
     expect(primaryFieldsWithImage).not.toHaveClass('xl:grid-cols-[minmax(12rem,2fr)_repeat(4,minmax(7rem,1fr))]')
@@ -1249,28 +1296,58 @@ describe('SettingPanel', () => {
     expect(within(previewDialog).getByTestId('image-preview-viewport')).toBeInTheDocument()
   })
 
+  it('uploads a current image for one lore item from the generation dialog', async () => {
+    const user = userEvent.setup()
+    const item = loreItem('lin-chuan', '林川')
+    const withImage = {
+      ...item,
+      updated_at: '2026-01-01T00:00:01Z',
+      image: loreImage('assets/lore/images/lin-chuan/upload/image.png'),
+    }
+    vi.mocked(getProjectLoreItems).mockResolvedValue([item])
+    vi.mocked(updateProjectLoreItem).mockResolvedValue(item)
+    vi.mocked(uploadLoreItemImage).mockResolvedValue(withImage)
+
+    render(<SettingPanel mode="lore" imagePresets={[imagePreset('game-cg', '游戏 CG')]} />)
+
+    await user.click(await screen.findByRole('button', { name: /林川/ }))
+    await user.click(screen.getByRole('button', { name: '打开图片生成' }))
+    const dialog = await screen.findByRole('dialog', { name: '生成图片' })
+    const file = new File(['image'], 'portrait.png', { type: 'image/png' })
+    await user.upload(within(dialog).getByLabelText('图片文件'), file)
+
+    await waitFor(() => {
+      expect(uploadLoreItemImage).toHaveBeenCalledWith(TEST_PROJECT_ID, 'lin-chuan', file)
+    })
+    expect(toast.success).toHaveBeenCalledWith('资料图片已上传')
+    await user.click(within(dialog).getByRole('button', { name: '关闭' }))
+    expect(await screen.findByRole('img', { name: '林川' })).toHaveAttribute('src', '/api/projects/project-workspace/files/asset?path=assets%2Flore%2Fimages%2Flin-chuan%2Fupload%2Fimage.png')
+  })
+
   it('keeps the lore body editable in the unified scroller and feeds the directory query to the editor', async () => {
     const item = {
       ...loreItem('long-lore', '长正文资料'),
       content: '正文段落\n'.repeat(80),
     }
-    vi.mocked(getLoreItems).mockResolvedValue([item])
+    vi.mocked(getProjectLoreItems).mockResolvedValue([item])
 
-    render(<SettingPanel mode="lore" workspace="/workspace" imagePresets={[imagePreset('game-cg', '游戏 CG')]} />)
+    render(<SettingPanel mode="lore" imagePresets={[imagePreset('game-cg', '游戏 CG')]} />)
 
     fireEvent.click(await screen.findByRole('button', { name: /长正文资料/ }))
     const editor = screen.getByRole('region', { name: '资料编辑区' })
     const content = within(editor).getByRole('textbox', { name: '正文' }) as HTMLTextAreaElement
 
-    // 渲染视图本身即可编辑：不再有 预览/Raw 切换，也不引入嵌套滚动容器
+    // 默认富文本编辑：渲染视图本身即可编辑，也不引入嵌套滚动容器
     expect(content).toHaveAttribute('data-testid', 'lore-rich-editor')
     expect(within(editor).queryByText('正文')).not.toBeInTheDocument()
-    expect(within(editor).queryByRole('button', { name: '预览' })).not.toBeInTheDocument()
-    expect(within(editor).queryByRole('button', { name: 'Raw' })).not.toBeInTheDocument()
+    // 工具条提供紧凑的 富文本/Raw 切换，默认富文本
+    expect(within(editor).getByRole('button', { name: '富文本' })).toHaveAttribute('aria-pressed', 'true')
+    expect(within(editor).getByRole('button', { name: 'Raw' })).toHaveAttribute('aria-pressed', 'false')
     expect(editor.querySelector('.overflow-y-auto')).toBeNull()
     const editorRoot = within(editor).getByTestId('lore-rich-editor-root')
-    expect(editorRoot).toHaveClass('flex', 'min-h-[420px]', 'flex-1')
-    expect(editorRoot.parentElement).toHaveClass('flex', 'min-h-full', 'min-w-0', 'flex-col')
+    // 切换按钮与正文区同处一个 bg 容器，切换条不做整宽分隔
+    expect(editorRoot.parentElement).toHaveClass('flex', 'min-h-[420px]', 'flex-1')
+    expect(editorRoot.parentElement?.parentElement).toHaveClass('flex', 'min-h-full', 'min-w-0', 'flex-col')
     expect(within(editor).getByRole('textbox', { name: '名称' }).closest('[data-slot="lore-primary-fields"]')).toHaveClass(
       'grid-cols-2',
       'md:grid-cols-3',
@@ -1286,6 +1363,77 @@ describe('SettingPanel', () => {
     expect(content).not.toBeDisabled()
   })
 
+  it('switches the lore body between rich text and raw markdown editing', async () => {
+    const item = {
+      ...loreItem('raw-lore', '源码资料'),
+      content: '## 标题\n\n正文内容',
+    }
+    vi.mocked(getProjectLoreItems).mockResolvedValue([item])
+
+    render(<SettingPanel mode="lore" imagePresets={[]} />)
+
+    fireEvent.click(await screen.findByRole('button', { name: /源码资料/ }))
+    const editor = screen.getByRole('region', { name: '资料编辑区' })
+
+    // 默认富文本编辑
+    expect(within(editor).getByTestId('lore-rich-editor')).toBeInTheDocument()
+
+    // 切换为 Raw 源码编辑：同一草稿内容（草稿加载时已归一化补结尾换行），等宽 textarea
+    fireEvent.click(within(editor).getByRole('button', { name: 'Raw' }))
+    expect(within(editor).queryByTestId('lore-rich-editor')).not.toBeInTheDocument()
+    const raw = within(editor).getByRole('textbox', { name: '正文' }) as HTMLTextAreaElement
+    expect(raw.value).toBe('## 标题\n\n正文内容\n')
+    expect(raw).toHaveClass('font-mono')
+    expect(within(editor).getByRole('button', { name: 'Raw' })).toHaveAttribute('aria-pressed', 'true')
+
+    fireEvent.change(screen.getByRole('textbox', { name: '搜索资料' }), { target: { value: '正文内容' } })
+    expect(raw.parentElement?.querySelector('mark')).toHaveTextContent('正文内容')
+    expect(raw).not.toBeDisabled()
+
+    fireEvent.change(raw, { target: { value: '## 标题\n\n正文内容\n\n新增一行' } })
+
+    // 切回富文本，修改后的内容回灌
+    fireEvent.click(within(editor).getByRole('button', { name: '富文本' }))
+    const rich = within(editor).getByTestId('lore-rich-editor') as HTMLTextAreaElement
+    expect(rich.value).toBe('## 标题\n\n正文内容\n\n新增一行')
+  })
+
+  it('navigates document review comments to the matching lore item and snapshots that Project resource', async () => {
+    const first = loreItem('first-lore', '第一条资料')
+    const target = {
+      ...loreItem('reviewed-lore', '被评论的资料'),
+      content: '## 服务端正文',
+      updated_at: 'reviewed-r2',
+    }
+    const comment = documentReviewComment(target.id)
+    const controller = reviewController([comment])
+    vi.mocked(getProjectLoreItems).mockResolvedValue([first, target])
+
+    render(
+      <SettingPanel
+        mode="lore"
+        imagePresets={[]}
+        documentReview={controller}
+        documentReviewNavigationIntent={{ commentID: comment.id, nonce: 7 }}
+      />,
+    )
+
+    await waitFor(() => {
+      const review = markdownRichEditorProps.at(-1)?.review
+      expect(review?.target).toEqual({ kind: 'lore_item', id: target.id, field: 'content' })
+      expect(review?.resourceLabel).toBe(target.name)
+      expect(review?.navigationIntent).toEqual({ commentID: comment.id, nonce: 7 })
+    })
+
+    const review = markdownRichEditorProps.at(-1)?.review
+    expect(markdownRichEditorProps.at(-1)?.projectId).toBe(TEST_PROJECT_ID)
+    await expect(review?.prepareSnapshot()).resolves.toEqual({
+      content: target.content,
+      revision: target.updated_at,
+    })
+    expect(getProjectLoreItems).toHaveBeenLastCalledWith(TEST_PROJECT_ID)
+  })
+
   it('loads an external Lore update without writing when the editor is clean', async () => {
     const initial = loreItem('lin-chuan', '林川')
     const external = {
@@ -1294,19 +1442,19 @@ describe('SettingPanel', () => {
       content: '## 外部正文',
       updated_at: '2026-01-01T00:00:01Z',
     }
-    vi.mocked(getLoreItems)
+    vi.mocked(getProjectLoreItems)
       .mockResolvedValueOnce([initial])
       .mockResolvedValueOnce([external])
 
-    render(<SettingPanel mode="lore" workspace="/workspace" imagePresets={[]} />)
+    render(<SettingPanel mode="lore" imagePresets={[]} />)
 
     const name = await screen.findByRole('textbox', { name: '名称' })
     expect(name).toHaveValue('林川')
-    act(() => window.dispatchEvent(new CustomEvent('nova:lore-updated', { detail: { item_ids: ['lin-chuan'] } })))
+    act(() => window.dispatchEvent(new CustomEvent('nova:lore-updated', { detail: { projectId: TEST_PROJECT_ID, ids: ['lin-chuan'] } })))
 
     await waitFor(() => expect(name).toHaveValue('外部更新后的林川'))
     expect(screen.getByRole('textbox', { name: '正文' })).toHaveValue('## 外部正文\n')
-    expect(updateLoreItem).not.toHaveBeenCalled()
+    expect(updateProjectLoreItem).not.toHaveBeenCalled()
   })
 
   it('rebases a dirty Lore draft over an external update before saving', async () => {
@@ -1316,27 +1464,28 @@ describe('SettingPanel', () => {
       content: '## 外部正文',
       updated_at: '2026-01-01T00:00:01Z',
     }
-    vi.mocked(getLoreItems)
+    vi.mocked(getProjectLoreItems)
       .mockResolvedValueOnce([initial])
       .mockResolvedValueOnce([external])
-    vi.mocked(updateLoreItem).mockImplementation(async (id, input) => ({
+    vi.mocked(updateProjectLoreItem).mockImplementation(async (_projectId, id, input) => ({
       ...external,
       ...input,
       id,
       updated_at: '2026-01-01T00:00:02Z',
     }) as LoreItem)
 
-    render(<SettingPanel mode="lore" workspace="/workspace" imagePresets={[]} />)
+    render(<SettingPanel mode="lore" imagePresets={[]} />)
 
     const name = await screen.findByRole('textbox', { name: '名称' })
     fireEvent.change(name, { target: { value: '本地改名' } })
-    act(() => window.dispatchEvent(new CustomEvent('nova:lore-updated', { detail: { item_ids: ['lin-chuan'] } })))
+    act(() => window.dispatchEvent(new CustomEvent('nova:lore-updated', { detail: { projectId: TEST_PROJECT_ID, ids: ['lin-chuan'] } })))
 
     await waitFor(() => expect(screen.getByRole('textbox', { name: '正文' })).toHaveValue('## 外部正文\n'))
     expect(name).toHaveValue('本地改名')
     flushSettingPanelAutosave()
 
-    await waitFor(() => expect(updateLoreItem).toHaveBeenCalledWith(
+    await waitFor(() => expect(updateProjectLoreItem).toHaveBeenCalledWith(
+      TEST_PROJECT_ID,
       'lin-chuan',
       expect.objectContaining({ name: '本地改名', content: '## 外部正文' }),
       '2026-01-01T00:00:01Z',
@@ -1355,15 +1504,15 @@ describe('SettingPanel', () => {
       finishArchive = resolve
     })
     vi.mocked(preserveAutosaveConflict).mockReturnValueOnce(archivePending)
-    vi.mocked(getLoreItems)
+    vi.mocked(getProjectLoreItems)
       .mockResolvedValueOnce([initial])
       .mockResolvedValueOnce([external])
 
-    render(<SettingPanel mode="lore" workspace="/workspace" imagePresets={[]} />)
+    render(<SettingPanel mode="lore" imagePresets={[]} />)
 
     const name = await screen.findByRole('textbox', { name: '名称' })
     fireEvent.change(name, { target: { value: '归档前的本地改名' } })
-    act(() => window.dispatchEvent(new CustomEvent('nova:lore-updated', { detail: { item_ids: ['lin-chuan'] } })))
+    act(() => window.dispatchEvent(new CustomEvent('nova:lore-updated', { detail: { projectId: TEST_PROJECT_ID, ids: ['lin-chuan'] } })))
     await waitFor(() => expect(preserveAutosaveConflict).toHaveBeenCalledOnce())
 
     fireEvent.change(name, { target: { value: '归档等待期间的最新改名' } })
@@ -1376,18 +1525,39 @@ describe('SettingPanel', () => {
     expect(name).toHaveValue('归档等待期间的最新改名')
   })
 
+  it('archives a dirty Lore draft before accepting an external deletion', async () => {
+    const initial = loreItem('lin-chuan', '林川')
+    vi.mocked(getProjectLoreItems)
+      .mockResolvedValueOnce([initial])
+      .mockResolvedValueOnce([])
+
+    render(<SettingPanel mode="lore" imagePresets={[]} />)
+
+    const name = await screen.findByRole('textbox', { name: '名称' })
+    fireEvent.change(name, { target: { value: '尚未保存的本地改名' } })
+    act(() => window.dispatchEvent(new CustomEvent('nova:lore-updated', { detail: { projectId: TEST_PROJECT_ID, ids: ['lin-chuan'] } })))
+
+    await waitFor(() => expect(preserveAutosaveConflict).toHaveBeenCalledWith(expect.objectContaining({
+      resource: 'lore_item',
+      scope: TEST_PROJECT_ID,
+      id: 'lin-chuan',
+      external: { revision: 'deleted', value: null },
+    })))
+    expect(updateProjectLoreItem).not.toHaveBeenCalled()
+  })
+
   it('saves lore item enabled status from a switch', async () => {
     const user = userEvent.setup()
     const item = loreItem('lin-chuan', '林川')
-    vi.mocked(getLoreItems).mockResolvedValue([item])
-    vi.mocked(updateLoreItem).mockImplementation(async (id, input) => ({
+    vi.mocked(getProjectLoreItems).mockResolvedValue([item])
+    vi.mocked(updateProjectLoreItem).mockImplementation(async (_projectId, id, input) => ({
       ...item,
       ...input,
       id,
       updated_at: '2026-01-01T00:00:01Z',
     }) as LoreItem)
 
-    render(<SettingPanel mode="lore" workspace="/workspace" imagePresets={[imagePreset('game-cg', '游戏 CG')]} />)
+    render(<SettingPanel mode="lore" imagePresets={[imagePreset('game-cg', '游戏 CG')]} />)
 
     await user.click(await screen.findByRole('button', { name: /林川/ }))
     const statusSwitch = screen.getByRole('switch', { name: '停用状态' })
@@ -1397,8 +1567,9 @@ describe('SettingPanel', () => {
 
     flushSettingPanelAutosave()
 
-    await waitFor(() => expect(updateLoreItem).toHaveBeenCalled())
-    expect(updateLoreItem).toHaveBeenCalledWith(
+    await waitFor(() => expect(updateProjectLoreItem).toHaveBeenCalled())
+    expect(updateProjectLoreItem).toHaveBeenCalledWith(
+      TEST_PROJECT_ID,
       'lin-chuan',
       expect.objectContaining({ enabled: false }),
       '2026-01-01T00:00:00Z',
@@ -1408,9 +1579,9 @@ describe('SettingPanel', () => {
   it('warns without blocking when resident lore exceeds 32 KB', async () => {
     const user = userEvent.setup()
     const item = { ...loreItem('resident-rules', '常驻规则', 'rule'), load_mode: 'resident' as const, content: 'x'.repeat(33 * 1024) }
-    vi.mocked(getLoreItems).mockResolvedValue([item])
+    vi.mocked(getProjectLoreItems).mockResolvedValue([item])
 
-    render(<SettingPanel mode="lore" workspace="/workspace" imagePresets={[imagePreset('game-cg', '游戏 CG')]} />)
+    render(<SettingPanel mode="lore" imagePresets={[imagePreset('game-cg', '游戏 CG')]} />)
 
     await user.click(await screen.findByRole('button', { name: /常驻规则/ }))
     expect(screen.getByText('当前常驻资料约 33 KB，超过 32 KB 建议值；不会阻止保存或使用。')).toBeInTheDocument()
@@ -1423,14 +1594,14 @@ describe('SettingPanel', () => {
     const resident = { ...loreItem('resident', '常驻人物'), load_mode: 'resident' as const }
     const automatic = loreItem('automatic', '自动人物')
     const manual = { ...loreItem('manual', '手动人物'), load_mode: 'manual' as const }
-    vi.mocked(getLoreItems).mockResolvedValue([resident, automatic, manual])
+    vi.mocked(getProjectLoreItems).mockResolvedValue([resident, automatic, manual])
 
-    render(<SettingPanel mode="lore" workspace="/workspace" imagePresets={[imagePreset('game-cg', '游戏 CG')]} />)
+    render(<SettingPanel mode="lore" imagePresets={[imagePreset('game-cg', '游戏 CG')]} />)
 
     const residentButton = await screen.findByRole('button', { name: /常驻人物/ })
     expect(within(residentButton).getByText('常驻')).toBeInTheDocument()
-    expect(within(screen.getByRole('button', { name: /自动人物/ })).getByText('按需')).toHaveAttribute('title', '简介自动匹配')
-    expect(within(screen.getByRole('button', { name: /手动人物/ })).getByText('按需')).toHaveAttribute('title', '手动引用')
+    expect(within(screen.getByRole('button', { name: /自动人物/ })).getByText('按需')).not.toHaveAttribute('title')
+    expect(within(screen.getByRole('button', { name: /手动人物/ })).getByText('按需')).not.toHaveAttribute('title')
 
     const loadModeFilter = screen.getByRole('combobox', { name: /按加载策略筛选/ })
     const searchGroup = loadModeFilter.closest('[data-slot="input-group"]')
@@ -1456,10 +1627,10 @@ describe('SettingPanel', () => {
     const user = userEvent.setup()
     const item = loreItem('lin-chuan', '林川')
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
-    vi.mocked(getLoreItems).mockResolvedValueOnce([item]).mockResolvedValue([])
-    vi.mocked(deleteLoreItem).mockResolvedValue(undefined)
+    vi.mocked(getProjectLoreItems).mockResolvedValueOnce([item]).mockResolvedValue([])
+    vi.mocked(deleteProjectLoreItem).mockResolvedValue(undefined)
 
-    render(<SettingPanel mode="lore" workspace="/workspace" imagePresets={[imagePreset('game-cg', '游戏 CG')]} />)
+    render(<SettingPanel mode="lore" imagePresets={[imagePreset('game-cg', '游戏 CG')]} />)
 
     await user.click(await screen.findByRole('button', { name: /林川/ }))
     await user.click(screen.getByRole('button', { name: '删除资料' }))
@@ -1471,7 +1642,7 @@ describe('SettingPanel', () => {
     await user.click(within(dialog).getByRole('button', { name: '删除' }))
 
     await waitFor(() => {
-      expect(deleteLoreItem).toHaveBeenCalledWith('lin-chuan')
+      expect(deleteProjectLoreItem).toHaveBeenCalledWith(TEST_PROJECT_ID, 'lin-chuan')
     })
     confirmSpy.mockRestore()
   })
@@ -1486,7 +1657,6 @@ describe('SettingPanel', () => {
     render(
       <SettingPanel
         mode="teller"
-        workspace="/workspace"
         tellers={[customTeller]}
         storyDirectors={[storyDirector('default', '默认导演')]}
         imagePresets={[imagePreset('game-cg', '游戏 CG')]}
@@ -1513,7 +1683,7 @@ describe('SettingPanel', () => {
     const user = userEvent.setup()
     const lin = loreItem('lin-chuan', '林川')
     const harbor = loreItem('moon-harbor', '月港', 'location')
-    vi.mocked(getLoreItems).mockResolvedValue([lin, harbor])
+    vi.mocked(getProjectLoreItems).mockResolvedValue([lin, harbor])
     vi.mocked(streamLoreImagesGenerate).mockResolvedValue(new ReadableStream({
       start(controller) {
         controller.enqueue({ event: 'done', data: JSON.stringify({ generated: 1, skipped: 0, failed: 0 }) })
@@ -1521,7 +1691,7 @@ describe('SettingPanel', () => {
       },
     }))
 
-    render(<SettingPanel mode="lore" workspace="/workspace" imagePresets={[imagePreset('game-cg', '游戏 CG'), imagePreset('ink-wash', '水墨风格')]} />)
+    render(<SettingPanel mode="lore" imagePresets={[imagePreset('game-cg', '游戏 CG'), imagePreset('ink-wash', '水墨风格')]} />)
 
     await user.click(await screen.findByRole('button', { name: '批量生成资料图片' }))
     const batchDialog = await screen.findByRole('dialog', { name: '批量生成资料图片' })
@@ -1533,7 +1703,7 @@ describe('SettingPanel', () => {
     await user.click(screen.getByRole('button', { name: '开始生成' }))
 
     await waitFor(() => {
-      expect(streamLoreImagesGenerate).toHaveBeenCalledWith(expect.objectContaining({
+      expect(streamLoreImagesGenerate).toHaveBeenCalledWith(TEST_PROJECT_ID, expect.objectContaining({
         item_ids: ['lin-chuan'],
         overwrite_existing: false,
         image_preset_id: 'ink-wash',
@@ -1598,7 +1768,6 @@ function PresetPanelHarness({ presetUsageMode = 'game' }: { presetUsageMode?: 'w
   return (
     <SettingPanel
       mode="teller"
-      workspace="/workspace"
       tellers={tellers}
       storyDirectors={storyDirectors}
       imagePresets={imagePresets}
@@ -1615,7 +1784,6 @@ function CustomTellerRoundTripHarness({ initialTellers }: { initialTellers: Tell
   return (
     <SettingPanel
       mode="teller"
-      workspace="/workspace"
       tellers={tellers}
       storyDirectors={[storyDirector('default', '默认导演')]}
       imagePresets={[imagePreset('game-cg', '游戏 CG')]}
@@ -1635,6 +1803,8 @@ function teller(id: string, name: string): Teller {
     context_policy: { creator: 'always', lore: 'relevant', runtime_state: 'always' },
     slots: [{ id: 'identity', name: '系统提示', target: 'system', enabled: true, content: 'rules' }],
     custom: id !== 'classic',
+    revision: 'sha256:fixture',
+    updated_at: '2026-01-01T00:00:00Z',
   }
 }
 
@@ -1647,6 +1817,8 @@ function imagePreset(id: string, name: string): ImagePreset {
     prompt: '## 图像请求 Prompt（tool_request）\n\nvisual prompt',
     slots: [{ id: 'tool_request', name: '图像请求 Prompt', target: 'tool_request', enabled: true, content: 'visual prompt' }],
     custom: id !== 'game-cg',
+    revision: 'sha256:fixture',
+    updated_at: '2026-01-01T00:00:00Z',
   }
 }
 
@@ -1672,6 +1844,8 @@ function storyDirector(id: string, name: string): StoryDirector {
     }],
     trpg_system: { rule_templates: [] },
     custom: id !== 'default',
+    revision: 'sha256:fixture',
+    updated_at: '2026-01-01T00:00:00Z',
   }
 }
 
@@ -1683,6 +1857,8 @@ function eventPackage(id: string, name: string): EventPackageModule {
     description: `${name} description`,
     events: [],
     custom: id !== 'default',
+    revision: 'sha256:fixture',
+    updated_at: '2026-01-01T00:00:00Z',
   }
 }
 
@@ -1694,6 +1870,8 @@ function ruleSystem(id: string, name: string): RuleSystemModule {
     description: `${name} description`,
     trpg_system: { rule_templates: defaultRuleTemplates() },
     custom: !isBuiltinRuleSystemID(id),
+    revision: 'sha256:fixture',
+    updated_at: '2026-01-01T00:00:00Z',
   }
 }
 
@@ -1718,6 +1896,40 @@ function loreItem(id: string, name: string, type: LoreItem['type'] = 'character'
     content: `## ${name}`,
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
+  }
+}
+
+function documentReviewComment(loreItemID: string): DocumentReviewComment {
+  return {
+    id: 'comment-lore-review',
+    thread_id: 'thread-lore-review',
+    target: { kind: 'lore_item', id: loreItemID, field: 'content' },
+    body: 'Review this paragraph',
+    anchor: {
+      kind: 'text-range',
+      encoding: 'utf8-bytes-v1',
+      revision: 'reviewed-r2',
+      start: 3,
+      end: 9,
+      quote: '服务端',
+      display_quote: '服务端',
+    },
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
+  }
+}
+
+function reviewController(comments: DocumentReviewComment[]): DocumentReviewController {
+  return {
+    comments,
+    onCreate: vi.fn(async (request: CreateDocumentCommentRequest) => ({
+      ...documentReviewComment(request.target.id),
+      target: request.target,
+      anchor: request.anchor,
+      body: request.body,
+    })),
+    onUpdate: vi.fn(async (comment, body) => ({ ...comment, body })),
+    onDelete: vi.fn(async (comment) => ({ ...comment, deleted: true })),
   }
 }
 

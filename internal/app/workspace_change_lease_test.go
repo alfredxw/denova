@@ -2,15 +2,17 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
 	"denova/config"
 	"denova/internal/book"
-	"denova/internal/workspacechange"
+	workspacechange "denova/internal/workspace/change"
 )
 
 func TestWorkspaceFileMutationDefersAutomaticGitVersion(t *testing.T) {
@@ -37,7 +39,7 @@ func TestWorkspaceFileMutationDefersAutomaticGitVersion(t *testing.T) {
 			VersionTimedIntervalMinutes: 10,
 		},
 		workspace:      workspace,
-		versionService: book.NewVersionService(workspace),
+		versionService: book.NewVersionService(workspace, filepath.Join(t.TempDir(), "repository")),
 	}
 	t.Cleanup(application.Close)
 
@@ -68,7 +70,7 @@ func TestWorkspaceFileMutationDefersAutomaticGitVersion(t *testing.T) {
 	}
 }
 
-func TestWorkspaceFileSaveLeaseBlocksWorkspaceSwitchThroughHooks(t *testing.T) {
+func TestWorkspaceFileSaveLeaseBlocksTransitionAndCancelsPostMutationHooks(t *testing.T) {
 	workspace := t.TempDir()
 	nextWorkspace := t.TempDir()
 	path := "chapters/ch01.md"
@@ -93,6 +95,9 @@ func TestWorkspaceFileSaveLeaseBlocksWorkspaceSwitchThroughHooks(t *testing.T) {
 	t.Cleanup(application.Close)
 	mutationEntered := make(chan struct{})
 	releaseMutation := make(chan struct{})
+	var releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(releaseMutation) }) }
+	defer release()
 	mutationDone := make(chan struct {
 		workspace string
 		err       error
@@ -134,46 +139,51 @@ func TestWorkspaceFileSaveLeaseBlocksWorkspaceSwitchThroughHooks(t *testing.T) {
 	}()
 	<-mutationEntered
 
-	switchAttempted := make(chan struct{})
-	switchDone := make(chan struct{})
-	switchPanic := make(chan any, 1)
+	transitionStarted := make(chan struct{})
+	transitionDone := make(chan error, 1)
 	go func() {
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				switchPanic <- recovered
+				transitionDone <- fmt.Errorf("workspace transition goroutine panic: %v", recovered)
 			}
-			close(switchDone)
 		}()
-		close(switchAttempted)
+		_, scopes, _, transitionErr := application.beginWorkspaceTransitionTo(nextWorkspace)
+		close(transitionStarted)
+		if transitionErr != nil {
+			transitionDone <- transitionErr
+			return
+		}
+		if transitionErr = waitLifecycleScopes(context.Background(), scopes); transitionErr != nil {
+			transitionDone <- transitionErr
+			return
+		}
 		application.mu.Lock()
 		application.workspace = nextWorkspace
+		transitionErr = application.replaceWorkspaceScopeLocked(nextWorkspace)
 		application.mu.Unlock()
+		application.endWorkspaceTransition()
+		transitionDone <- transitionErr
 	}()
-	<-switchAttempted
+	<-transitionStarted
 
 	select {
-	case <-switchDone:
-		t.Fatal("workspace switch completed before the mutation and its hooks released the read lease")
+	case err := <-transitionDone:
+		t.Fatalf("workspace transition completed before the admitted mutation exited: %v", err)
 	case <-time.After(25 * time.Millisecond):
 	}
 
-	close(releaseMutation)
+	release()
 	result := <-mutationDone
-	if result.err != nil {
-		t.Fatalf("mutation failed: %v", result.err)
-	}
-	if result.workspace != workspace {
-		t.Fatalf("canonical workspace=%q want=%q", result.workspace, workspace)
+	if !errors.Is(result.err, context.Canceled) {
+		t.Fatalf("fenced mutation error=%v, want context cancellation", result.err)
 	}
 	select {
-	case <-switchDone:
+	case err := <-transitionDone:
+		if err != nil {
+			t.Fatalf("workspace transition failed: %v", err)
+		}
 	case <-time.After(250 * time.Millisecond):
-		t.Fatal("workspace switch did not resume after the mutation lease was released")
-	}
-	select {
-	case recovered := <-switchPanic:
-		t.Fatalf("workspace switch goroutine panic: %v", recovered)
-	default:
+		t.Fatal("workspace transition did not resume after the mutation lease was released")
 	}
 	if application.Workspace() != nextWorkspace {
 		t.Fatalf("current workspace=%q want=%q", application.Workspace(), nextWorkspace)

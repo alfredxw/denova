@@ -1,130 +1,18 @@
 package app
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"denova/internal/book"
+	projectdomain "denova/internal/project"
 )
 
-func TestBookRegistryTouchListAndCurrent(t *testing.T) {
-	root := t.TempDir()
-	bookA := filepath.Join(root, "book-a")
-	bookB := filepath.Join(root, "book-b")
-	if err := os.MkdirAll(bookA, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(bookB, 0o755); err != nil {
-		t.Fatal(err)
-	}
-
-	registry := &BookRegistry{path: filepath.Join(root, "books.json")}
-	if err := registry.Touch(bookA); err != nil {
-		t.Fatalf("记录 bookA 失败: %v", err)
-	}
-	if err := registry.Touch(bookB); err != nil {
-		t.Fatalf("记录 bookB 失败: %v", err)
-	}
-
-	if got := registry.Current(); got != bookB {
-		t.Fatalf("当前书籍不符合预期: want=%s got=%s", bookB, got)
-	}
-	books := registry.List()
-	if len(books) != 2 {
-		t.Fatalf("书籍记录数量不符合预期: %d", len(books))
-	}
-	if books[0].Path != bookB || books[1].Path != bookA {
-		t.Fatalf("书籍记录排序不符合预期: %#v", books)
-	}
-}
-
-func TestBookRegistryListScansNovaDirBooks(t *testing.T) {
-	root := t.TempDir()
-	bookA := filepath.Join(root, "zeta")
-	bookB := filepath.Join(root, "alpha")
-	missingBook := filepath.Join(root, "missing")
-	for _, dir := range []string{
-		filepath.Join(bookA, ".nova"),
-		filepath.Join(bookB, "chapters"),
-		filepath.Join(root, "book_meta"),
-		filepath.Join(root, "styles"),
-		filepath.Join(root, "notes"),
-	} {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	registry := &BookRegistry{path: filepath.Join(root, "books.json"), novaDir: root}
-	if err := registry.save(bookRegistryData{
-		Books: []BookRecord{
-			{Path: missingBook, LastOpenedAt: "2026-01-03T00:00:00Z"},
-			{Path: bookA, LastOpenedAt: "2026-01-02T00:00:00Z"},
-		},
-	}); err != nil {
-		t.Fatalf("写入注册表失败: %v", err)
-	}
-
-	books := registry.List()
-	if len(books) != 2 {
-		t.Fatalf("书籍数量不符合预期: %#v", books)
-	}
-	if books[0].Path != bookA || books[1].Path != bookB {
-		t.Fatalf("书籍应来自 Nova 目录并默认按最近打开排序: %#v", books)
-	}
-	if books[0].LastOpenedAt != "2026-01-02T00:00:00Z" {
-		t.Fatalf("应保留已有打开时间用于排序与展示: %#v", books[0])
-	}
-}
-
-func TestBookRegistryListScansProjectsAndLegacyRootBooks(t *testing.T) {
-	root := t.TempDir()
-	legacyBook := filepath.Join(root, "alpha")
-	projectBook := filepath.Join(root, bookProjectsDirName, "beta")
-	for _, dir := range []string{
-		filepath.Join(legacyBook, ".nova"),
-		filepath.Join(projectBook, ".denova"),
-		filepath.Join(root, bookProjectsDirName, "notes"),
-	} {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	registry := &BookRegistry{path: filepath.Join(root, "books.json"), novaDir: root}
-	books := registry.List()
-	if len(books) != 2 {
-		t.Fatalf("书籍数量不符合预期: %#v", books)
-	}
-	if books[0].Path != legacyBook || books[1].Path != projectBook {
-		t.Fatalf("书籍应同时包含根目录旧书和 projects 新书: %#v", books)
-	}
-}
-
-func TestBookCreationParentDirUsesProjectsForNovaDir(t *testing.T) {
-	root := t.TempDir()
-	parent, err := bookCreationParentDir(root, root)
-	if err != nil {
-		t.Fatalf("解析创建父目录失败: %v", err)
-	}
-	if want := filepath.Join(root, bookProjectsDirName); parent != want {
-		t.Fatalf("默认书籍父目录不符合预期: want=%s got=%s", want, parent)
-	}
-
-	customParent := filepath.Join(root, "custom")
-	parent, err = bookCreationParentDir(customParent, root)
-	if err != nil {
-		t.Fatalf("解析自定义父目录失败: %v", err)
-	}
-	if parent != customParent {
-		t.Fatalf("自定义父目录不应被改写: want=%s got=%s", customParent, parent)
-	}
-}
-
 func TestBooksIncludesCoverUpdatedAt(t *testing.T) {
-	root := t.TempDir()
-	bookDir := filepath.Join(root, "alpha")
-	if err := os.MkdirAll(filepath.Join(bookDir, ".nova"), 0o755); err != nil {
+	dataDir := t.TempDir()
+	bookDir := filepath.Join(dataDir, "alpha")
+	if err := os.MkdirAll(filepath.Join(bookDir, ".denova"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.MkdirAll(filepath.Join(bookDir, "assets", "image"), 0o755); err != nil {
@@ -134,222 +22,36 @@ func TestBooksIncludesCoverUpdatedAt(t *testing.T) {
 		t.Fatal(err)
 	}
 	application := &App{
-		bookRegistry:  &BookRegistry{path: filepath.Join(root, "books.json"), novaDir: root},
-		bookMetaStore: NewBookMetaStore(root),
+		projectRegistry: projectdomain.NewRegistry(dataDir),
+		bookMetaStore:   book.NewMetaStore(dataDir),
 	}
 
-	books := application.Books()
+	books := application.BookAssets().Books()
 	if len(books) != 1 {
-		t.Fatalf("书籍数量不符合预期: %#v", books)
+		t.Fatalf("Books = %#v, want one Book", books)
 	}
 	if books[0].CoverUpdatedAt == "" {
-		t.Fatalf("应返回封面更新时间: %#v", books[0])
+		t.Fatalf("Book cover timestamp is empty: %#v", books[0])
 	}
 }
 
-func TestBookRegistryRemove(t *testing.T) {
-	root := t.TempDir()
-	bookA := filepath.Join(root, "book-a")
-	bookB := filepath.Join(root, "book-b")
-	if err := os.MkdirAll(bookA, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(bookB, 0o755); err != nil {
-		t.Fatal(err)
-	}
-
-	registry := &BookRegistry{path: filepath.Join(root, "books.json")}
-	if err := registry.Touch(bookA); err != nil {
-		t.Fatal(err)
-	}
-	if err := registry.Touch(bookB); err != nil {
-		t.Fatal(err)
-	}
-	if err := registry.Remove(bookB); err != nil {
-		t.Fatalf("移除记录失败: %v", err)
-	}
-
-	if got := registry.Current(); got != bookA {
-		t.Fatalf("移除当前书籍后应回退到上一条记录: want=%s got=%s", bookA, got)
-	}
-	books := registry.List()
-	if len(books) != 1 || books[0].Path != bookA {
-		t.Fatalf("移除后的书籍列表不符合预期: %#v", books)
-	}
-}
-
-func TestBookRegistryRemoveHidesScannedNovaBook(t *testing.T) {
-	root := t.TempDir()
-	bookA := filepath.Join(root, "book-a")
-	bookB := filepath.Join(root, "book-b")
-	for _, dir := range []string{
-		filepath.Join(bookA, ".nova"),
-		filepath.Join(bookB, ".nova"),
-	} {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	registry := &BookRegistry{path: filepath.Join(root, "books.json"), novaDir: root}
-	if err := registry.Remove(bookB); err != nil {
-		t.Fatalf("软删除书籍失败: %v", err)
-	}
-
-	books := registry.List()
-	if len(books) != 1 || books[0].Path != bookA {
-		t.Fatalf("软删除后扫描列表应隐藏目标书籍: %#v", books)
-	}
-	if _, err := os.Stat(bookB); err != nil {
-		t.Fatalf("软删除不应删除磁盘目录: %v", err)
-	}
-}
-
-func TestBookRegistryReorderScannedNovaBooks(t *testing.T) {
-	root := t.TempDir()
-	bookA := filepath.Join(root, "alpha")
-	bookB := filepath.Join(root, "zeta")
-	for _, dir := range []string{
-		filepath.Join(bookA, ".nova"),
-		filepath.Join(bookB, ".nova"),
-	} {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	registry := &BookRegistry{path: filepath.Join(root, "books.json"), novaDir: root}
-	if err := registry.Reorder([]string{bookB, bookA}); err != nil {
-		t.Fatalf("保存排序失败: %v", err)
-	}
-
-	books := registry.List()
-	if len(books) != 2 || books[0].Path != bookB || books[1].Path != bookA {
-		t.Fatalf("书籍列表应遵循自定义排序: %#v", books)
-	}
-
-	if err := registry.Touch(bookA); err != nil {
-		t.Fatalf("打开书籍失败: %v", err)
-	}
-	books = registry.List()
-	if len(books) != 2 || books[0].Path != bookB || books[1].Path != bookA {
-		t.Fatalf("打开书籍不应打乱自定义排序: %#v", books)
-	}
-	if registry.SortMode() != BookSortModeManual {
-		t.Fatalf("拖拽排序后应自动切换为手动排序: %s", registry.SortMode())
-	}
-}
-
-func TestBookRegistrySortModeSwitchPreservesManualOrder(t *testing.T) {
-	root := t.TempDir()
-	bookA := filepath.Join(root, "alpha")
-	bookB := filepath.Join(root, "zeta")
-	for _, dir := range []string{bookA, bookB} {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	registry := &BookRegistry{path: filepath.Join(root, "books.json")}
-	if err := registry.Touch(bookA); err != nil {
-		t.Fatal(err)
-	}
-	if err := registry.Touch(bookB); err != nil {
-		t.Fatal(err)
-	}
-	if got := registry.List(); got[0].Path != bookB {
-		t.Fatalf("最近打开排序不符合预期: %#v", got)
-	}
-
-	if err := registry.Reorder([]string{bookA, bookB}); err != nil {
-		t.Fatal(err)
-	}
-	if err := registry.SetSortMode(BookSortModeRecent); err != nil {
-		t.Fatal(err)
-	}
-	if got := registry.List(); got[0].Path != bookB {
-		t.Fatalf("切回最近打开排序不符合预期: %#v", got)
-	}
-
-	if err := registry.SetSortMode(BookSortModeManual); err != nil {
-		t.Fatal(err)
-	}
-	if got := registry.List(); got[0].Path != bookA || got[1].Path != bookB {
-		t.Fatalf("恢复手动排序时应保留原顺序: %#v", got)
-	}
-}
-
-func TestBookRegistryLegacyOrderInfersManualSortMode(t *testing.T) {
-	root := t.TempDir()
-	bookA := filepath.Join(root, "alpha")
-	bookB := filepath.Join(root, "zeta")
-	for _, dir := range []string{bookA, bookB} {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	registry := &BookRegistry{path: filepath.Join(root, "books.json")}
-	if err := registry.save(bookRegistryData{
-		Books: []BookRecord{
-			{Path: bookA, LastOpenedAt: "2026-01-02T00:00:00Z"},
-			{Path: bookB, LastOpenedAt: "2026-01-01T00:00:00Z"},
-		},
-		Order: []string{bookB, bookA},
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	if registry.SortMode() != BookSortModeManual {
-		t.Fatalf("旧版自定义顺序应按手动模式读取: %s", registry.SortMode())
-	}
-	if got := registry.List(); got[0].Path != bookB || got[1].Path != bookA {
-		t.Fatalf("旧版自定义顺序应保留: %#v", got)
-	}
-}
-
-func TestNewBookRegistryUsesNovaDir(t *testing.T) {
-	novaDir := t.TempDir()
-	registry := NewBookRegistry(novaDir)
-	want := filepath.Join(novaDir, "books.json")
-	if registry.path != want {
-		t.Fatalf("注册表路径不符合预期: want=%s got=%s", want, registry.path)
-	}
-}
-
-func TestBookRegistryLoadsLegacyPathAndMigratesOnSave(t *testing.T) {
+func TestUpdateBookInfoCanClearAuthor(t *testing.T) {
 	root := t.TempDir()
 	bookDir := filepath.Join(root, "book")
 	if err := os.MkdirAll(bookDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-
-	legacyPath := filepath.Join(root, "legacy-books.json")
-	newPath := filepath.Join(root, "nova", "books.json")
-	legacyData := bookRegistryData{
-		Current: bookDir,
-		Books: []BookRecord{{
-			Name:         "旧书",
-			Path:         bookDir,
-			LastOpenedAt: "2026-01-01T00:00:00Z",
-		}},
+	store := book.NewMetaStore(filepath.Join(root, "denova"))
+	if _, err := store.Write(bookDir, book.BookMeta{Title: "Book", Author: "Author"}); err != nil {
+		t.Fatal(err)
 	}
-	raw, err := json.Marshal(legacyData)
+	application := &App{bookMetaStore: store}
+
+	updated, err := application.BookAssets().UpdateInfo(bookDir, "Book", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(legacyPath, raw, 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	registry := &BookRegistry{path: newPath, legacyPath: legacyPath}
-	if got := registry.Current(); got != bookDir {
-		t.Fatalf("未能读取旧注册表当前书籍: want=%s got=%s", bookDir, got)
-	}
-	if err := registry.Touch(bookDir); err != nil {
-		t.Fatalf("保存迁移后的注册表失败: %v", err)
-	}
-	if _, err := os.Stat(newPath); err != nil {
-		t.Fatalf("新注册表未写入: %v", err)
+	if updated.Author != "" {
+		t.Fatalf("Author was not cleared: %#v", updated)
 	}
 }

@@ -37,8 +37,8 @@ type VersionAutoSettings = versions.VersionAutoSettings
 type VersionAutoResult = versions.VersionAutoResult
 type VersionService = versions.Service
 
-func NewVersionService(workspace string) *VersionService {
-	return versions.NewService(workspace)
+func NewVersionService(workspace, repository string) *VersionService {
+	return versions.NewService(workspace, repository)
 }
 
 func DefaultVersionAutoSettings() VersionAutoSettings {

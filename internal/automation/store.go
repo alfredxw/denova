@@ -1,6 +1,7 @@
 package automation
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -13,13 +14,25 @@ import (
 	"strings"
 	"time"
 
-	"denova/internal/workspacepath"
+	workspacelayout "denova/internal/workspace"
 )
 
 type Store struct {
-	userDir         string
-	workspace       string
-	knownWorkspaces []string
+	userDir            string
+	projectID          string
+	workspace          string
+	workspaceStateRoot string
+	knownWorkspaces    []string
+	projectLocations   map[string]ProjectLocation
+}
+
+// ProjectLocation separates an automation's execution target from its
+// user-owned persistence root. Workspace files remain the target of work;
+// definitions, inbox items, and run obligations live under Denova's data dir.
+type ProjectLocation struct {
+	ProjectID string
+	Workspace string
+	StateRoot string
 }
 
 // ErrRevisionConflict identifies a stale automation definition update.
@@ -45,7 +58,7 @@ func (e *RevisionConflictError) Unwrap() error {
 }
 
 // WithWorkspaces returns the same user-level automation store configured to
-// discover tasks from every registered workspace. Paths are canonicalized and
+// discover tasks from every registered workspacelayout. Paths are canonicalized and
 // deduplicated so aliases never create duplicate catalog entries.
 func (s *Store) WithWorkspaces(workspaces ...string) *Store {
 	if s == nil {
@@ -64,6 +77,30 @@ func (s *Store) WithWorkspaces(workspaces ...string) *Store {
 	return s
 }
 
+// WithProjects configures every registered Project visible to a user-level
+// catalog. A stable Project ID keeps automation identity intact after relink.
+func (s *Store) WithProjects(projects ...ProjectLocation) *Store {
+	if s == nil {
+		return s
+	}
+	s.knownWorkspaces = s.knownWorkspaces[:0]
+	s.projectLocations = make(map[string]ProjectLocation, len(projects))
+	for _, project := range projects {
+		workspace := canonicalStoreRoot(project.Workspace)
+		if workspace == "" {
+			continue
+		}
+		project.Workspace = workspace
+		project.ProjectID = strings.TrimSpace(project.ProjectID)
+		project.StateRoot = strings.TrimSpace(project.StateRoot)
+		if _, exists := s.projectLocations[workspace]; !exists {
+			s.knownWorkspaces = append(s.knownWorkspaces, workspace)
+		}
+		s.projectLocations[workspace] = project
+	}
+	return s
+}
+
 type storeFile struct {
 	SeedVersion int    `json:"seed_version,omitempty"`
 	Tasks       []Task `json:"tasks"`
@@ -74,6 +111,29 @@ func NewStore(userNovaDir, workspace string) *Store {
 		userDir:   strings.TrimSpace(userNovaDir),
 		workspace: strings.TrimSpace(workspace),
 	}
+}
+
+// NewProjectStore binds one content directory to its central Project state.
+// NewStore remains the legacy path-based constructor for imports and callers
+// that do not yet have a registered Project identity.
+func NewProjectStore(userNovaDir, projectID, workspace, stateRoot string) *Store {
+	return &Store{
+		userDir:            strings.TrimSpace(userNovaDir),
+		projectID:          strings.TrimSpace(projectID),
+		workspace:          canonicalStoreRoot(workspace),
+		workspaceStateRoot: strings.TrimSpace(stateRoot),
+	}
+}
+
+func (s *Store) storeForWorkspace(workspace string) *Store {
+	canonical := canonicalStoreRoot(workspace)
+	if location, ok := s.projectLocations[canonical]; ok {
+		return NewProjectStore(s.userDir, location.ProjectID, location.Workspace, location.StateRoot)
+	}
+	if canonical == canonicalStoreRoot(s.workspace) && strings.TrimSpace(s.workspaceStateRoot) != "" {
+		return NewProjectStore(s.userDir, s.projectID, s.workspace, s.workspaceStateRoot)
+	}
+	return NewStore(s.userDir, canonical)
 }
 
 func (s *Store) List() ([]Task, error) {
@@ -87,13 +147,20 @@ func (s *Store) List() ([]Task, error) {
 		workspaces = []string{s.workspace}
 	}
 	for _, workspace := range workspaces {
-		tasks, readErr := NewStore(s.userDir, workspace).readScopeLocked(ScopeWorkspace)
+		tasks, readErr := s.storeForWorkspace(workspace).readScopeLocked(ScopeWorkspace)
 		if readErr != nil {
 			return nil, readErr
 		}
 		workspaceTasks = append(workspaceTasks, tasks...)
 	}
 	tasks := append(userTasks, workspaceTasks...)
+	visible := tasks[:0]
+	for _, task := range tasks {
+		if task.ArchivedAt == nil {
+			visible = append(visible, task)
+		}
+	}
+	tasks = visible
 	sort.SliceStable(tasks, func(i, j int) bool {
 		if tasks[i].Scope != tasks[j].Scope {
 			return tasks[i].Scope < tasks[j].Scope
@@ -103,9 +170,8 @@ func (s *Store) List() ([]Task, error) {
 	return tasks, nil
 }
 
-// ListForTarget returns the tasks that execute in one explicit context. It is
-// the scheduler-facing view of the user catalog and never falls back to the
-// currently open workspace.
+// ListForTarget returns the tasks that execute in one explicit context. It
+// never falls back to the currently open workspace.
 //
 // ListForTarget keeps each execution target's list exclusive: a workspace
 // target returns only workspace-scoped tasks for that workspace, and the user
@@ -121,14 +187,22 @@ func (s *Store) ListForTarget(target ExecutionTarget) ([]Task, error) {
 	if kind == "" {
 		kind = TargetKindUser
 	}
+	projectID := strings.TrimSpace(target.ProjectID)
 	workspace := canonicalStoreRoot(target.Workspace)
 	filtered := make([]Task, 0, len(tasks))
 	for _, task := range tasks {
 		if task.Target.Kind != kind {
 			continue
 		}
-		if kind == TargetKindWorkspace && canonicalStoreRoot(task.Target.Workspace) != workspace {
-			continue
+		if kind == TargetKindWorkspace {
+			taskProjectID := strings.TrimSpace(task.Target.ProjectID)
+			if projectID != "" && taskProjectID != "" {
+				if taskProjectID != projectID {
+					continue
+				}
+			} else if canonicalStoreRoot(task.Target.Workspace) != workspace {
+				continue
+			}
 		}
 		filtered = append(filtered, task)
 	}
@@ -161,7 +235,7 @@ func (s *Store) ListForTriggerEvaluation(target ExecutionTarget) ([]Task, error)
 			continue
 		}
 		// When evaluating a workspace target, also include user-scoped tasks so
-		// their content triggers fire against that workspace.
+		// their content triggers fire against that workspacelayout.
 		if kind == TargetKindWorkspace && task.Target.Kind == TargetKindUser {
 			filtered = append(filtered, task)
 		}
@@ -169,34 +243,46 @@ func (s *Store) ListForTriggerEvaluation(target ExecutionTarget) ([]Task, error)
 	return filtered, nil
 }
 
-func (s *Store) Create(task Task) (Task, error) {
+func (s *Store) Create(definition TaskDefinition) (Task, error) {
 	now := time.Now().UTC()
-	task.ID = newID("auto")
-	task.CreatedAt = now
-	task.UpdatedAt = now
+	task := Task{
+		ID: newID("auto"), Scope: definition.Scope, Target: definition.Target,
+		Enabled: definition.Enabled, Name: definition.Name, Template: definition.Template,
+		Prompt: definition.Prompt, ModelProfileID: definition.ModelProfileID,
+		Schedule: definition.Schedule, Triggers: append([]TriggerDefinition(nil), definition.Triggers...),
+		DefaultActionPolicy: definition.DefaultActionPolicy, SessionStrategy: definition.SessionStrategy,
+		TriggerState: map[string]TriggerState{}, RecentRuns: []RunRecord{},
+		CreatedAt: now, UpdatedAt: now,
+	}
 	normalized, err := s.normalizeTaskTarget(task)
 	if err != nil {
 		return Task{}, err
 	}
 	destination := s
 	if normalized.Target.Kind == TargetKindWorkspace {
-		destination = NewStore(s.userDir, normalized.Target.Workspace)
+		destination = s.storeForWorkspace(normalized.Target.Workspace)
+	}
+	// The catalog store resolves the target first; the destination owns the
+	// stable Project identity used by every durable task locator.
+	normalized, err = destination.normalizeTaskTarget(normalized)
+	if err != nil {
+		return Task{}, err
 	}
 	path, err := destination.pathForScope(normalized.Scope)
 	if err != nil {
 		return Task{}, err
 	}
-	unlock := storePathLocks.Lock(path)
-	defer unlock()
-	tasks, err := destination.readScope(normalized.Scope)
-	if err != nil {
-		return Task{}, err
-	}
-	tasks = append(tasks, normalized)
-	if err := destination.writeScope(normalized.Scope, tasks); err != nil {
-		return Task{}, err
-	}
-	return normalized, nil
+	return withTaskStoreWriteLease(context.Background(), path, func() (Task, error) {
+		tasks, readErr := destination.readScope(normalized.Scope)
+		if readErr != nil {
+			return Task{}, readErr
+		}
+		tasks = append(tasks, normalized)
+		if writeErr := destination.writeScope(normalized.Scope, tasks); writeErr != nil {
+			return Task{}, writeErr
+		}
+		return normalized, nil
+	})
 }
 
 func (s *Store) Update(id string, patch Task) (Task, error) {
@@ -228,39 +314,43 @@ func (s *Store) update(id string, patch Task, expectedRevision string) (Task, er
 		if err != nil {
 			return Task{}, err
 		}
-		unlock := storePathLocks.Lock(path)
-		tasks, err := location.store.readScope(location.scope)
+		updated, err := withTaskStoreWriteLease(context.Background(), path, func() (Task, error) {
+			tasks, readErr := location.store.readScope(location.scope)
+			if readErr != nil {
+				return Task{}, readErr
+			}
+			for i := range tasks {
+				if !taskMatchesID(tasks[i], id) {
+					continue
+				}
+				if tasks[i].ArchivedAt != nil {
+					return Task{}, fmt.Errorf("%w: task_id=%s", ErrTaskArchived, id)
+				}
+				if expectedRevision != "" && tasks[i].Revision != expectedRevision {
+					return Task{}, &RevisionConflictError{TaskID: id, Expected: expectedRevision, Actual: tasks[i].Revision}
+				}
+				next := mergeTaskPatch(tasks[i], patch)
+				next.Scope = tasks[i].Scope
+				next.Target = tasks[i].Target
+				next.UpdatedAt = time.Now().UTC()
+				normalized, normalizeErr := location.store.normalizeTaskTarget(next)
+				if normalizeErr != nil {
+					return Task{}, normalizeErr
+				}
+				tasks[i] = normalized
+				if writeErr := location.store.writeScope(location.scope, tasks); writeErr != nil {
+					return Task{}, writeErr
+				}
+				return normalized, nil
+			}
+			return Task{}, nil
+		})
 		if err != nil {
-			unlock()
 			return Task{}, err
 		}
-		for i := range tasks {
-			if !taskMatchesID(tasks[i], id) {
-				continue
-			}
-			if expectedRevision != "" && tasks[i].Revision != expectedRevision {
-				actual := tasks[i].Revision
-				unlock()
-				return Task{}, &RevisionConflictError{TaskID: id, Expected: expectedRevision, Actual: actual}
-			}
-			next := mergeTaskPatch(tasks[i], patch)
-			next.Scope = tasks[i].Scope
-			next.Target = tasks[i].Target
-			next.UpdatedAt = time.Now().UTC()
-			normalized, err := location.store.normalizeTaskTarget(next)
-			if err != nil {
-				unlock()
-				return Task{}, err
-			}
-			tasks[i] = normalized
-			if err := location.store.writeScope(location.scope, tasks); err != nil {
-				unlock()
-				return Task{}, err
-			}
-			unlock()
-			return normalized, nil
+		if updated.ID != "" {
+			return updated, nil
 		}
-		unlock()
 	}
 	return Task{}, fmt.Errorf("automation task %s not found", id)
 }
@@ -274,27 +364,51 @@ func (s *Store) Delete(id string) error {
 		if err != nil {
 			return err
 		}
-		unlock := storePathLocks.Lock(path)
-		tasks, err := location.store.readScope(location.scope)
-		if err != nil {
-			unlock()
-			return err
-		}
-		next := tasks[:0]
-		found := false
-		for _, task := range tasks {
-			if taskMatchesID(task, id) {
-				found = true
-				continue
+		found, err := withTaskStoreWriteLease(context.Background(), path, func() (bool, error) {
+			tasks, readErr := location.store.readScope(location.scope)
+			if readErr != nil {
+				return false, readErr
 			}
-			next = append(next, task)
+			for index := range tasks {
+				if !taskMatchesID(tasks[index], id) {
+					continue
+				}
+				if tasks[index].ArchivedAt != nil {
+					return true, nil
+				}
+				entries, listErr := location.store.readDurableRunObligations(location.scope)
+				if listErr != nil {
+					return false, listErr
+				}
+				for _, entry := range entries {
+					if durableRunMatchesTask(entry, tasks[index]) && RunHasRuntimeObligation(entry.Run) {
+						return false, fmt.Errorf("%w: task_id=%s run_id=%s", ErrTaskHasActiveRun, tasks[index].CatalogID, entry.Run.ID)
+					}
+				}
+				for _, run := range tasks[index].RecentRuns {
+					if RunHasRuntimeObligation(run) {
+						return false, fmt.Errorf("%w: task_id=%s run_id=%s", ErrTaskHasActiveRun, tasks[index].CatalogID, run.ID)
+					}
+				}
+				now := time.Now().UTC()
+				tasks[index].Enabled = false
+				tasks[index].ArchivedAt = &now
+				tasks[index].UpdatedAt = now
+				normalized, normalizeErr := location.store.normalizeTaskTarget(tasks[index])
+				if normalizeErr != nil {
+					return false, normalizeErr
+				}
+				tasks[index] = normalized
+				return true, location.store.writeScope(location.scope, tasks)
+			}
+			return false, nil
+		})
+		if err != nil {
+			return err
 		}
 		if found {
-			err := location.store.writeScope(location.scope, next)
-			unlock()
-			return err
+			return nil
 		}
-		unlock()
 	}
 	return fmt.Errorf("automation task %s not found", id)
 }
@@ -322,39 +436,6 @@ func (s *Store) Get(id string) (Task, error) {
 	return Task{}, fmt.Errorf("automation task %s not found", id)
 }
 
-// GetRunByID resolves a single run across the user and workspace scopes this
-// store can see. The app layer must not load every task and scan RecentRuns
-// itself; that lookup belongs next to the persisted run data so callers get a
-// single, lock-aware entry point.
-func (s *Store) GetRunByID(runID string) (Task, RunRecord, error) {
-	runID = strings.TrimSpace(runID)
-	if runID == "" {
-		return Task{}, RunRecord{}, fmt.Errorf("run_id is required")
-	}
-	for _, location := range s.taskLocations() {
-		path, err := location.store.pathForScope(location.scope)
-		if err != nil {
-			return Task{}, RunRecord{}, err
-		}
-		unlock := storePathLocks.Lock(path)
-		tasks, err := location.store.readScope(location.scope)
-		if err != nil {
-			unlock()
-			return Task{}, RunRecord{}, err
-		}
-		for _, task := range tasks {
-			for _, run := range task.RecentRuns {
-				if strings.TrimSpace(run.ID) == runID {
-					unlock()
-					return task, run, nil
-				}
-			}
-		}
-		unlock()
-	}
-	return Task{}, RunRecord{}, fmt.Errorf("automation run %s not found", runID)
-}
-
 type taskStoreLocation struct {
 	store *Store
 	scope string
@@ -369,7 +450,7 @@ func (s *Store) taskLocations() []taskStoreLocation {
 			return
 		}
 		seen[canonical] = true
-		locations = append(locations, taskStoreLocation{store: NewStore(s.userDir, canonical), scope: ScopeWorkspace})
+		locations = append(locations, taskStoreLocation{store: s.storeForWorkspace(canonical), scope: ScopeWorkspace})
 	}
 	appendWorkspace(s.workspace)
 	for _, workspace := range s.knownWorkspaces {
@@ -387,7 +468,33 @@ func taskMatchesID(task Task, id string) bool {
 // resolve a task regardless of which form they hold.
 func TaskMatchesID(task Task, id string) bool {
 	id = strings.TrimSpace(id)
-	return id != "" && (task.ID == id || task.CatalogID == id)
+	if id == "" {
+		return false
+	}
+	if task.ID == id || task.CatalogID == id {
+		return true
+	}
+	// Project migration replaces the workspace-hash catalog prefix with a
+	// stable Project ID. Keep the old public locator as a read alias so retries
+	// cannot allocate duplicate tasks or runs after the one-way migration.
+	return task.Scope == ScopeWorkspace && CatalogTaskID(task.Scope, task.Target.Workspace, task.ID) == id
+}
+
+// CatalogTaskID returns the unambiguous persistence locator for a local task
+// identity in its durable scope. API records intentionally keep the compact
+// local ID; callers crossing back into Store must reconstruct this locator so
+// equal imported IDs in user/workspace catalogs cannot alias.
+func CatalogTaskID(scope, workspace, taskID string) string {
+	taskID = strings.TrimSpace(taskID)
+	if taskID == "" || strings.TrimSpace(scope) != ScopeWorkspace {
+		return taskID
+	}
+	return catalogTaskID(Task{
+		ID: taskID,
+		Target: ExecutionTarget{
+			Kind: TargetKindWorkspace, Workspace: canonicalStoreRoot(workspace),
+		},
+	})
 }
 
 func (s *Store) availableScopes() []string {
@@ -395,57 +502,6 @@ func (s *Store) availableScopes() []string {
 		return []string{ScopeUser}
 	}
 	return []string{ScopeUser, ScopeWorkspace}
-}
-
-func (s *Store) AppendRun(id string, run RunRecord) (Task, error) {
-	if strings.TrimSpace(id) == "" {
-		return Task{}, fmt.Errorf("task id is required")
-	}
-	for _, location := range s.taskLocations() {
-		path, err := location.store.pathForScope(location.scope)
-		if err != nil {
-			return Task{}, err
-		}
-		unlock := storePathLocks.Lock(path)
-		tasks, err := location.store.readScope(location.scope)
-		if err != nil {
-			unlock()
-			return Task{}, err
-		}
-		for i := range tasks {
-			if !taskMatchesID(tasks[i], id) {
-				continue
-			}
-			task := tasks[i]
-			task.LastRun = &run
-			nextRuns := []RunRecord{run}
-			for _, existing := range task.RecentRuns {
-				if existing.ID == run.ID {
-					continue
-				}
-				nextRuns = append(nextRuns, existing)
-			}
-			task.RecentRuns = nextRuns
-			if len(task.RecentRuns) > MaxRecentRuns {
-				task.RecentRuns = task.RecentRuns[:MaxRecentRuns]
-			}
-			task.UpdatedAt = time.Now().UTC()
-			normalized, normalizeErr := location.store.normalizeTaskTarget(task)
-			if normalizeErr != nil {
-				unlock()
-				return Task{}, normalizeErr
-			}
-			tasks[i] = normalized
-			if writeErr := location.store.writeScope(location.scope, tasks); writeErr != nil {
-				unlock()
-				return Task{}, writeErr
-			}
-			unlock()
-			return normalized, nil
-		}
-		unlock()
-	}
-	return Task{}, fmt.Errorf("automation task %s not found", id)
 }
 
 func (s *Store) readScopeLocked(scope string) ([]Task, error) {
@@ -475,14 +531,11 @@ func (s *Store) readScope(scope string) ([]Task, error) {
 		return nil, fmt.Errorf("read automations %s failed: %w", path, err)
 	}
 	if scope == ScopeWorkspace && file.SeedVersion > 0 {
-		migrated, changed := removePristineLegacyWorkspaceSeeds(file.Tasks)
+		migrated, _ := removePristineLegacyWorkspaceSeeds(file.Tasks)
 		file.Tasks = migrated
-		if changed {
-			file.SeedVersion = 0
-			if writeErr := s.writeScopeFile(scope, file); writeErr != nil {
-				return nil, writeErr
-			}
-		}
+		// Reads remain side-effect free. The next task-file mutation runs under
+		// the shared cross-process lease and persists this one-way migration
+		// together with that mutation, avoiding an unlocked read/modify/write.
 	}
 	return s.normalizeTaskList(path, scope, file.Tasks)
 }
@@ -508,22 +561,26 @@ func (s *Store) normalizeTaskTarget(task Task) (Task, error) {
 		return Task{}, err
 	}
 	if normalized.Target.Kind == TargetKindWorkspace {
-		if strings.TrimSpace(normalized.Target.Workspace) == "" {
+		if strings.TrimSpace(s.workspaceStateRoot) != "" {
+			// The state root owns exactly one registered Project. Its current path
+			// is authoritative even when a persisted task predates a relink.
+			normalized.Target.Workspace = s.workspace
+		} else if strings.TrimSpace(normalized.Target.Workspace) == "" {
 			normalized.Target.Workspace = s.workspace
 		}
 		normalized.Target.Workspace = canonicalStoreRoot(normalized.Target.Workspace)
 		if normalized.Target.Workspace == "" {
 			return Task{}, fmt.Errorf("workspace target is required")
 		}
-		normalized.Target.WorkspaceID = workspaceTargetID(normalized.Target.Workspace)
+		if strings.TrimSpace(s.projectID) != "" {
+			normalized.Target.ProjectID = s.projectID
+		} else {
+			normalized.Target.ProjectID = workspaceTargetID(normalized.Target.Workspace)
+		}
 		normalized.Scope = ScopeWorkspace
 	} else {
 		normalized.Target = ExecutionTarget{Kind: TargetKindUser}
 		normalized.Scope = ScopeUser
-		normalized.WriteMode = WriteModeReadOnly
-		normalized.WriteScope = WriteScopeNone
-		normalized.OutputPolicy = OutputPolicyRunRecordOnly
-		normalized.OutputPath = ""
 	}
 	normalized.CatalogID = catalogTaskID(normalized)
 	revision, err := taskDefinitionRevision(normalized)
@@ -544,10 +601,7 @@ func taskDefinitionRevision(task Task) (string, error) {
 		Schedule            Schedule            `json:"schedule"`
 		Triggers            []TriggerDefinition `json:"triggers"`
 		DefaultActionPolicy string              `json:"default_action_policy"`
-		WriteMode           string              `json:"write_mode"`
-		WriteScope          string              `json:"write_scope"`
-		OutputPolicy        string              `json:"output_policy"`
-		OutputPath          string              `json:"output_path"`
+		SessionStrategy     string              `json:"session_strategy"`
 	}{
 		Enabled:             task.Enabled,
 		Name:                task.Name,
@@ -557,10 +611,7 @@ func taskDefinitionRevision(task Task) (string, error) {
 		Schedule:            task.Schedule,
 		Triggers:            task.Triggers,
 		DefaultActionPolicy: task.DefaultActionPolicy,
-		WriteMode:           task.WriteMode,
-		WriteScope:          task.WriteScope,
-		OutputPolicy:        task.OutputPolicy,
-		OutputPath:          task.OutputPath,
+		SessionStrategy:     task.SessionStrategy,
 	}
 	data, err := json.Marshal(definition)
 	if err != nil {
@@ -572,12 +623,12 @@ func taskDefinitionRevision(task Task) (string, error) {
 
 func catalogTaskID(task Task) string {
 	if task.Target.Kind == TargetKindWorkspace {
-		workspaceID := strings.TrimSpace(task.Target.WorkspaceID)
-		if workspaceID == "" {
-			workspaceID = workspaceTargetID(task.Target.Workspace)
+		projectID := strings.TrimSpace(task.Target.ProjectID)
+		if projectID == "" {
+			projectID = workspaceTargetID(task.Target.Workspace)
 		}
-		if workspaceID != "" {
-			return workspaceID + ":" + strings.TrimSpace(task.ID)
+		if projectID != "" {
+			return projectID + ":" + strings.TrimSpace(task.ID)
 		}
 	}
 	return strings.TrimSpace(task.ID)
@@ -625,7 +676,10 @@ func (s *Store) pathForScope(scope string) (string, error) {
 		if strings.TrimSpace(s.workspace) == "" {
 			return "", fmt.Errorf("workspace is required")
 		}
-		return workspacepath.Path(s.workspace, "automations", "tasks.json"), nil
+		if strings.TrimSpace(s.workspaceStateRoot) != "" {
+			return filepath.Join(s.workspaceStateRoot, "automations", "tasks.json"), nil
+		}
+		return workspacelayout.Path(s.workspace, "automations", "tasks.json"), nil
 	default:
 		return "", fmt.Errorf("unknown automation scope %q", scope)
 	}
@@ -653,11 +707,11 @@ func NormalizeTask(task Task) (Task, error) {
 	if task.Target.Kind == TargetKindUser {
 		task.Scope = ScopeUser
 		task.Target.Workspace = ""
-		task.Target.WorkspaceID = ""
+		task.Target.ProjectID = ""
 	} else {
 		task.Scope = ScopeWorkspace
 		task.Target.Workspace = strings.TrimSpace(task.Target.Workspace)
-		task.Target.WorkspaceID = strings.TrimSpace(task.Target.WorkspaceID)
+		task.Target.ProjectID = strings.TrimSpace(task.Target.ProjectID)
 	}
 	task.Name = strings.TrimSpace(task.Name)
 	if task.Name == "" {
@@ -671,6 +725,7 @@ func NormalizeTask(task Task) (Task, error) {
 		return Task{}, fmt.Errorf("invalid template %q", task.Template)
 	}
 	task.ModelProfileID = strings.TrimSpace(task.ModelProfileID)
+	task.SessionStrategy = normalizeSessionStrategy(task.SessionStrategy)
 	schedule, err := NormalizeSchedule(task.Schedule)
 	if err != nil {
 		return Task{}, err
@@ -686,10 +741,7 @@ func NormalizeTask(task Task) (Task, error) {
 	if task.TriggerState == nil {
 		task.TriggerState = map[string]TriggerState{}
 	}
-	task.WriteMode, task.WriteScope = normalizeWriteModeScope(task.WriteMode, task.WriteScope)
-	task.DefaultActionPolicy = actionPolicyForWriteMode(task.WriteMode)
-	task.OutputPolicy = normalizeOutputPolicy(task.OutputPolicy)
-	task.OutputPath = filepath.ToSlash(strings.TrimSpace(task.OutputPath))
+	task.DefaultActionPolicy = ActionPolicyAutoRun
 	task.Prompt = strings.TrimSpace(task.Prompt)
 	if task.CreatedAt.IsZero() {
 		task.CreatedAt = time.Now().UTC()
@@ -701,6 +753,15 @@ func NormalizeTask(task Task) (Task, error) {
 		task.RecentRuns = []RunRecord{}
 	}
 	return task, nil
+}
+
+func normalizeSessionStrategy(strategy string) string {
+	switch strings.TrimSpace(strategy) {
+	case SessionStrategyPerTask:
+		return SessionStrategyPerTask
+	default:
+		return SessionStrategyPerRun
+	}
 }
 
 func mergeTaskPatch(current, patch Task) Task {
@@ -732,16 +793,9 @@ func mergeTaskPatch(current, patch Task) Task {
 	if patch.TriggerState != nil {
 		next.TriggerState = patch.TriggerState
 	}
-	if patch.WriteMode != "" {
-		next.WriteMode = patch.WriteMode
+	if patch.SessionStrategy != "" {
+		next.SessionStrategy = patch.SessionStrategy
 	}
-	if patch.WriteScope != "" {
-		next.WriteScope = patch.WriteScope
-	}
-	if patch.OutputPolicy != "" {
-		next.OutputPolicy = patch.OutputPolicy
-	}
-	next.OutputPath = patch.OutputPath
 	if patch.LastRun != nil {
 		next.LastRun = patch.LastRun
 	}
@@ -749,54 +803,6 @@ func mergeTaskPatch(current, patch Task) Task {
 		next.RecentRuns = patch.RecentRuns
 	}
 	return next
-}
-
-func normalizeWritePolicy(policy string) string {
-	switch policy {
-	case WritePolicyAllowLoreWrite, WritePolicyAllowFileWrite, WritePolicyAllowLoreAndFileWrite:
-		return policy
-	default:
-		return WritePolicyReadOnly
-	}
-}
-
-func normalizeWriteModeScope(mode, scope string) (string, string) {
-	mode = strings.TrimSpace(mode)
-	scope = strings.TrimSpace(scope)
-	switch mode {
-	case WriteModeConfirmWrite, WriteModeAutoWrite:
-	default:
-		mode = WriteModeReadOnly
-	}
-	if mode == WriteModeReadOnly {
-		return WriteModeReadOnly, WriteScopeNone
-	}
-	switch scope {
-	case WriteScopeLore, WriteScopeFile, WriteScopeLoreAndFile:
-		return mode, scope
-	default:
-		return mode, WriteScopeFile
-	}
-}
-
-func writeModeScopeFromLegacyPolicy(policy string) (string, string) {
-	switch normalizeWritePolicy(policy) {
-	case WritePolicyAllowLoreWrite:
-		return WriteModeAutoWrite, WriteScopeLore
-	case WritePolicyAllowFileWrite:
-		return WriteModeAutoWrite, WriteScopeFile
-	case WritePolicyAllowLoreAndFileWrite:
-		return WriteModeAutoWrite, WriteScopeLoreAndFile
-	default:
-		return WriteModeReadOnly, WriteScopeNone
-	}
-}
-
-func normalizeOutputPolicy(policy string) string {
-	if policy == OutputPolicyOptionalFile {
-		return policy
-	}
-	return OutputPolicyRunRecordOnly
 }
 
 func validTemplate(template string) bool {

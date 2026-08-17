@@ -77,7 +77,6 @@ export function FeaturePageShell({
                 size="icon-xs"
                 onClick={onClose}
                 aria-label={resolvedCloseLabel}
-                title={resolvedCloseLabel}
               >
                 <X data-icon="inline-start" />
               </Button>

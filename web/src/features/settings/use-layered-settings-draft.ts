@@ -3,7 +3,7 @@ import type { Dispatch, SetStateAction } from 'react'
 import { saveWithRevisionRecovery } from '@/lib/revision-conflict'
 import { rebaseJSONValue } from '@/lib/three-way-rebase'
 import { rebaseJSONWithRecovery } from '@/lib/autosave/rebase-with-recovery'
-import { fetchSettings, updateUserSettings, updateWorkspaceSettings } from './api'
+import { createSettingsMergePatch, fetchSettingsTarget, patchSettingsTarget, refreshSettingsTarget, type SettingsTarget } from './api'
 import type { LayeredSettings, Settings, SettingsLayer } from './types'
 import { settingsForLayer, settingsRevisionForLayer, useAutoSaveSettings } from './use-auto-save-settings'
 
@@ -15,6 +15,7 @@ type SettingsSnapshotSource =
   | { kind: 'own-save'; layer: SettingsLayer; submitted: Settings }
 
 interface UseLayeredSettingsDraftOptions {
+  target: SettingsTarget
   layer: SettingsLayer
   sourcePrefix: string
   loadSettings?: () => Promise<LayeredSettings>
@@ -27,12 +28,15 @@ const emptyDrafts = (): LayerValues<Settings> => ({ user: {}, workspace: {} })
 
 /** Owns independent user/workspace drafts, rebases external updates, and serializes saves per layer. */
 export function useLayeredSettingsDraft({
+  target,
   layer,
   sourcePrefix,
   loadSettings,
   saveUserSettings,
   saveWorkspaceSettings,
 }: UseLayeredSettingsDraftOptions) {
+  const targetKind = target.kind
+  const projectId = target.kind === 'project' ? target.projectId : ''
   const [layered, setLayered] = useState<LayeredSettings | null>(null)
   const [drafts, setDrafts] = useState<LayerValues<Settings>>(emptyDrafts)
   const [ready, setReady] = useState(false)
@@ -55,10 +59,15 @@ export function useLayeredSettingsDraft({
   layeredRef.current = layered
   draftsRef.current = drafts
 
-  const notifyUpdated = useCallback(() => {
+  const notifyUpdated = useCallback((changedLayer: SettingsLayer) => {
     if (typeof window === 'undefined') return
-    window.dispatchEvent(new CustomEvent('nova:settings-updated', { detail: { source: eventSource } }))
-  }, [eventSource])
+    window.dispatchEvent(new CustomEvent('nova:settings-updated', {
+      detail: {
+        source: eventSource,
+        projectId: changedLayer === 'workspace' ? projectId : undefined,
+      },
+    }))
+  }, [eventSource, projectId])
 
   const applySnapshot = useCallback(async (next: LayeredSettings, source: SettingsSnapshotSource) => {
     const applySequence = applySequenceRef.current + 1
@@ -118,15 +127,20 @@ export function useLayeredSettingsDraft({
     setReady(true)
     setSyncVersions((current) => ({ user: current.user + 1, workspace: current.workspace + 1 }))
     setError(null)
-    if (source.kind === 'own-save') notifyUpdated()
+    if (source.kind === 'own-save') notifyUpdated(source.layer)
     return true
   }, [notifyUpdated, sourcePrefix])
 
-  const reload = useCallback(async () => {
+  const reload = useCallback(async (fresh = false) => {
     const sequence = loadSequenceRef.current + 1
     loadSequenceRef.current = sequence
     try {
-      const next = await (loadSettings ?? fetchSettings)()
+      const settingsTarget: SettingsTarget = targetKind === 'project'
+        ? { kind: 'project', projectId }
+        : { kind: 'global' }
+      const next = await (loadSettings ?? (fresh
+        ? () => refreshSettingsTarget(settingsTarget)
+        : () => fetchSettingsTarget(settingsTarget)))()
       if (!mountedRef.current || sequence !== loadSequenceRef.current) return null
       const applied = await applySnapshot(next, { kind: 'load' })
       return applied ? next : null
@@ -137,7 +151,7 @@ export function useLayeredSettingsDraft({
       setError(message)
       return null
     }
-  }, [applySnapshot, loadSettings, sourcePrefix])
+  }, [applySnapshot, loadSettings, projectId, sourcePrefix, targetKind])
 
   useEffect(() => {
     mountedRef.current = true
@@ -151,13 +165,14 @@ export function useLayeredSettingsDraft({
 
   useEffect(() => {
     const onSettingsUpdated = (event: Event) => {
-      const source = (event as CustomEvent<{ source?: string }>).detail?.source
-      if (source === eventSource) return
-      void reload()
+      const detail = (event as CustomEvent<{ source?: string; projectId?: string }>).detail
+      if (detail?.source === eventSource) return
+      if (targetKind === 'global' ? Boolean(detail?.projectId) : Boolean(detail?.projectId && detail.projectId !== projectId)) return
+      void reload(true)
     }
     window.addEventListener('nova:settings-updated', onSettingsUpdated)
     return () => window.removeEventListener('nova:settings-updated', onSettingsUpdated)
-  }, [eventSource, reload])
+  }, [eventSource, projectId, reload, targetKind])
 
   const setDraft: Dispatch<SetStateAction<Settings>> = useCallback((action) => {
     setDrafts((current) => {
@@ -169,22 +184,30 @@ export function useLayeredSettingsDraft({
   }, [layer])
 
   const saveLayer = useCallback(async (targetLayer: SettingsLayer, settings: Settings, baseRevision?: string) => {
-    const updater = targetLayer === 'user'
-      ? (saveUserSettings ?? updateUserSettings)
-      : (saveWorkspaceSettings ?? updateWorkspaceSettings)
     // This baseline belongs to the revision used by the first write. A reload may
     // advance baselinesRef while that request is in flight, but it must not change
     // how the original draft is interpreted during a conflict retry.
     const saveBaseline = baselinesRef.current[targetLayer]
+    const customUpdater = targetLayer === 'user' ? saveUserSettings : saveWorkspaceSettings
+    let patchBaseline = saveBaseline
     let recoveryBaselineRevision = baseRevision
     let latestRevision: string | undefined
     return saveWithRevisionRecovery({
       baseline: saveBaseline,
       draft: settings,
       revision: baseRevision,
-      save: (nextDraft, revision) => revision ? updater(nextDraft, revision) : updater(nextDraft),
+      save: (nextDraft, revision) => {
+        if (customUpdater) return customUpdater(nextDraft, revision)
+        const settingsTarget: SettingsTarget = targetKind === 'project'
+          ? { kind: 'project', projectId }
+          : { kind: 'global' }
+        return patchSettingsTarget(settingsTarget, targetLayer, createSettingsMergePatch(patchBaseline, nextDraft), revision)
+      },
       loadLatest: async () => {
-        const latest = await (loadSettings ?? fetchSettings)()
+        const settingsTarget: SettingsTarget = targetKind === 'project'
+          ? { kind: 'project', projectId }
+          : { kind: 'global' }
+        const latest = await (loadSettings ?? (() => refreshSettingsTarget(settingsTarget)))()
         latestRevision = settingsRevisionForLayer(latest, targetLayer)
         return {
           value: settingsForLayer(latest, targetLayer),
@@ -201,10 +224,11 @@ export function useLayeredSettingsDraft({
           external: { revision: latestRevision, value: latest },
         })
         recoveryBaselineRevision = latestRevision
+        patchBaseline = latest
         return rebased
       },
     })
-  }, [loadSettings, saveUserSettings, saveWorkspaceSettings, sourcePrefix])
+  }, [loadSettings, projectId, saveUserSettings, saveWorkspaceSettings, sourcePrefix, targetKind])
 
   const saveUser = useCallback((settings: Settings, revision?: string) => saveLayer('user', settings, revision), [saveLayer])
   const saveWorkspace = useCallback((settings: Settings, revision?: string) => saveLayer('workspace', settings, revision), [saveLayer])

@@ -2,16 +2,17 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Check, ChevronDown, Edit3, FileText, Loader2, Plus, Sparkles, Trash2, Upload } from 'lucide-react'
 import { readUIMessageStream } from 'ai'
 import { useTranslation } from 'react-i18next'
-import { runConfigManagerStream } from '@/lib/api'
+import { createAgentCommandID, runConfigManagerStream } from '@/lib/api'
+import { agentCommandRetryKey, isKnownAgentCommandOutcome, rememberAgentCommandID } from '@/lib/agent-command'
+import { rebaseTextWithRecovery } from '@/lib/autosave/rebase-with-recovery'
 import { isSaveShortcut } from '@/lib/keyboard'
 import { readTextFile } from '@/lib/text-file'
 import { rebaseText } from '@/lib/three-way-rebase'
-import { rebaseTextWithRecovery } from '@/lib/autosave/rebase-with-recovery'
 import { MessageList } from '@/components/Chat/MessageList'
 import { AutosaveStatusIndicator } from '@/components/forms/autosave-status'
 import { agentViewContent, buildAgentMessageViews } from '@/lib/agent-message-view'
-import { normalizeAgentUIMessages, type AgentUIMessage } from '@/lib/agent-ui'
-import { createAgentDataMessage, createAgentTextMessage } from '@/hooks/useAgentUIMessageStream'
+import { AgentUIMessageNormalizer, normalizeAgentUIMessages, type AgentUIMessage } from '@/lib/agent-ui'
+import { createAgentDataMessage, createAgentTextMessage } from '@/lib/agent-ui-message'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -21,6 +22,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '@/components/ui/dialog'
 import { getStyleReferences, readStyleReferenceFile, saveStyleReference } from '../api'
 import type { StyleReference, StyleReferenceFileDocument, StyleRule, Teller, TellerPromptSlot } from '../types'
+import { narrativeStyleModes, type NarrativeStyleMode } from '../narrative-style'
 import { presetActionButtonClassName as actionButtonClassName, presetIconActionClassName as iconActionClassName, presetInputClassName as inputClassName, presetSelectClassName as selectClassName } from './preset-config/editor-styles'
 import { PresetEmptyState } from './preset-config/PresetEmptyState'
 import { PresetMetadataPanel } from './preset-config/PresetEditorChrome'
@@ -33,18 +35,28 @@ type TellerTarget = TellerPromptSlot['target']
 const STYLE_SOURCE_LIMIT = 40000
 const STYLE_FILE_ACCEPT = '.txt,.md,.markdown,text/plain,text/markdown,text/x-markdown'
 const STYLE_MARKDOWN_TAG = 'style_reference_markdown'
+export const STYLE_REFERENCES_UPDATED_EVENT = 'nova:style-references-updated'
 
-export function TellerEditor({ workspace, draft, setDraft, activeSlotId, setActiveSlotId, onSave }: { workspace: string; draft: Teller | null; setDraft: (draft: Teller | null) => void; activeSlotId: string; setActiveSlotId: (id: string) => void; onSave: () => void }) {
+interface StyleReferencesUpdatedDetail {
+  source?: string
+  paths?: string[]
+}
+
+let nextStyleReferenceSourceID = 1
+
+function notifyStyleReferencesUpdated(source: string, path: string) {
+  window.dispatchEvent(new CustomEvent<StyleReferencesUpdatedDetail>(STYLE_REFERENCES_UPDATED_EVENT, {
+    detail: { source, paths: path ? [path] : undefined },
+  }))
+}
+
+export function TellerEditor({ projectId, draft, setDraft, activeSlotId, setActiveSlotId, onSave }: { projectId: string; draft: Teller | null; setDraft: (draft: Teller | null) => void; activeSlotId: string; setActiveSlotId: (id: string) => void; onSave: () => void }) {
   const { t } = useTranslation()
   const activeSlot = draft?.slots?.find((slot) => slot.id === activeSlotId) || draft?.slots?.[0] || null
   const [targetPickerOpen, setTargetPickerOpen] = useState(false)
 	const [styleReferences, setStyleReferences] = useState<StyleReference[]>([])
 
   const refreshStyleReferences = async () => {
-    if (!workspace) {
-      setStyleReferences([])
-      return []
-    }
     try {
       const refs = await getStyleReferences()
       setStyleReferences(refs)
@@ -58,7 +70,7 @@ export function TellerEditor({ workspace, draft, setDraft, activeSlotId, setActi
 
   useEffect(() => {
     void refreshStyleReferences()
-  }, [workspace])
+  }, [])
 
   useEffect(() => {
     setTargetPickerOpen(false)
@@ -104,6 +116,12 @@ export function TellerEditor({ workspace, draft, setDraft, activeSlotId, setActi
 
   const selectedTarget = targetOption(activeSlot?.target || 'turn_context')
   const editHint = draft.custom ? t('settingPanel.storyDirector.customEditable') : t('settingPanel.storyDirector.builtInCopyHint')
+  const modes = narrativeStyleModes(draft)
+  const updateMode = (mode: NarrativeStyleMode, enabled: boolean) => {
+    const next = enabled ? Array.from(new Set([...modes, mode])) : modes.filter((item) => item !== mode)
+    if (next.length === 0) return
+    setDraft({ ...draft, modes: next })
+  }
 
   return (
     <div data-testid="teller-editor" className="teller-editor flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
@@ -118,11 +136,33 @@ export function TellerEditor({ workspace, draft, setDraft, activeSlotId, setActi
         />
 
         <section className="shrink-0 border-b border-[var(--preset-line)] bg-[var(--preset-surface)] p-3 sm:p-4">
+          <div className="text-xs font-medium text-[var(--nova-text)]">{t('settingPanel.tellerModes.title')}</div>
+          <div className="mt-1 text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('settingPanel.tellerModes.description')}</div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {(['writing', 'game'] as const).map((mode) => {
+              const checked = modes.includes(mode)
+              const onlyMode = checked && modes.length === 1
+              return (
+                <label key={mode} className="flex items-start justify-between gap-3 rounded-[10px] border border-[var(--preset-line)] bg-[var(--preset-raised)] px-3 py-2.5">
+                  <span className="min-w-0">
+                    <span className="block text-xs font-medium text-[var(--nova-text)]">{t(`settingPanel.tellerModes.${mode}`)}</span>
+                    <span className="mt-0.5 block text-[11px] leading-4 text-[var(--nova-text-faint)]">{t(`settingPanel.tellerModes.${mode}Description`)}</span>
+                  </span>
+                  <Switch checked={checked} disabled={onlyMode} onCheckedChange={(enabled) => updateMode(mode, enabled)} aria-label={t(`settingPanel.tellerModes.${mode}`)} />
+                </label>
+              )
+            })}
+          </div>
+          <div className="mt-2 text-[10px] text-[var(--nova-text-faint)]">{t('settingPanel.tellerModes.required')}</div>
+        </section>
+
+        <section className="shrink-0 border-b border-[var(--preset-line)] bg-[var(--preset-surface)] p-3 sm:p-4">
           <div className="mb-3">
             <div className="text-xs font-medium text-[var(--nova-text)]">{t('settingPanel.styleRules.title')}</div>
             <div className="mt-1 text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('settingPanel.styleRules.desc')}</div>
           </div>
           <InteractiveStyleReferencesEditor
+            projectId={projectId}
             references={styleReferences}
             refreshReferences={refreshStyleReferences}
             globalRefs={draft.style_refs ?? []}
@@ -140,16 +180,16 @@ export function TellerEditor({ workspace, draft, setDraft, activeSlotId, setActi
               <Plus data-icon="inline-start" />
             </Button>
           </div>
-          <ScrollArea className="min-h-0 flex-1">
+          <ScrollArea className="preset-rule-list-scroll min-h-0 flex-1">
             <div className="p-2">
               {(draft.slots || []).map((slot) => (
-                <div key={slot.id} className={`mb-0.5 flex min-h-10 w-full items-center gap-2 rounded-[9px] border px-2.5 py-1.5 text-xs transition ${activeSlot?.id === slot.id ? 'border-[var(--preset-line)] bg-[var(--nova-active)] text-[var(--nova-text)]' : 'border-transparent text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'}`}>
-                  <button type="button" onClick={() => setActiveSlotId(slot.id)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
+                <div key={slot.id} className={`mb-0.5 flex min-h-10 w-full min-w-0 items-center gap-2 overflow-hidden rounded-[9px] border px-2.5 py-1.5 text-xs transition ${activeSlot?.id === slot.id ? 'border-[var(--preset-line)] bg-[var(--nova-active)] text-[var(--nova-text)]' : 'border-transparent text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'}`}>
+                  <button type="button" onClick={() => setActiveSlotId(slot.id)} className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden text-left">
                     <FileText className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate font-medium">{slot.name}</span>
                       <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] text-[var(--nova-text-faint)]">
-                        <span className="truncate">{targetLabel(slot.target, t)}</span>
+                        <span className="min-w-0 flex-1 truncate">{targetLabel(slot.target, t)}</span>
                         <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${slot.enabled ? 'bg-[var(--nova-accent-green)]' : 'bg-[var(--nova-text-faint)]/35'}`} />
                         <span className="shrink-0">{slot.enabled ? t('settingPanel.enabled') : t('settingPanel.disabled')}</span>
                       </span>
@@ -175,7 +215,7 @@ export function TellerEditor({ workspace, draft, setDraft, activeSlotId, setActi
                     <PopoverTrigger asChild>
                       <button type="button" aria-label={t('settingPanel.field.injectTarget')} className={`${selectClassName} flex w-full items-center justify-between gap-2 px-3 text-left text-[var(--nova-text)]`}>
                         <span className="min-w-0 flex-1 truncate">
-                          {targetLabel(selectedTarget.value as TellerTarget, t)} · {targetSummary(selectedTarget.value as TellerTarget, t)}
+                          {targetLabel(selectedTarget.value as TellerTarget, t)}
                         </span>
                         <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)] transition ${targetPickerOpen ? 'rotate-180' : ''}`} />
                       </button>
@@ -247,7 +287,7 @@ export function TellerEditor({ workspace, draft, setDraft, activeSlotId, setActi
   )
 }
 
-function InteractiveStyleReferencesEditor({ references, refreshReferences, globalRefs, onGlobalRefsChange, rules, onRulesChange }: { references: StyleReference[]; refreshReferences: () => Promise<StyleReference[]>; globalRefs: string[]; onGlobalRefsChange: (refs: string[]) => void; rules: StyleRule[]; onRulesChange: (rules: StyleRule[]) => void }) {
+function InteractiveStyleReferencesEditor({ projectId, references, refreshReferences, globalRefs, onGlobalRefsChange, rules, onRulesChange }: { projectId: string; references: StyleReference[]; refreshReferences: () => Promise<StyleReference[]>; globalRefs: string[]; onGlobalRefsChange: (refs: string[]) => void; rules: StyleRule[]; onRulesChange: (rules: StyleRule[]) => void }) {
   const { t } = useTranslation()
   const addRule = () => onRulesChange([...rules, { scene: '', style_refs: [] }])
   const removeRule = (index: number) => onRulesChange(rules.filter((_, i) => i !== index))
@@ -257,11 +297,11 @@ function InteractiveStyleReferencesEditor({ references, refreshReferences, globa
 
   return (
     <div className="flex flex-col gap-2">
-      <InteractiveGlobalStyleRuleRow references={references} refreshReferences={refreshReferences} refs={globalRefs} onChange={onGlobalRefsChange} />
+      <InteractiveGlobalStyleRuleRow projectId={projectId} references={references} refreshReferences={refreshReferences} refs={globalRefs} onChange={onGlobalRefsChange} />
       {rules.length > 0 && (
         <div className="flex flex-col gap-2">
           {rules.map((rule, index) => (
-            <InteractiveStyleRuleRow key={index} references={references} refreshReferences={refreshReferences} rule={rule} onChange={(patch) => updateRule(index, patch)} onRemove={() => removeRule(index)} />
+            <InteractiveStyleRuleRow key={index} projectId={projectId} references={references} refreshReferences={refreshReferences} rule={rule} onChange={(patch) => updateRule(index, patch)} onRemove={() => removeRule(index)} />
           ))}
         </div>
       )}
@@ -277,11 +317,12 @@ function InteractiveStyleReferencesEditor({ references, refreshReferences, globa
   )
 }
 
-function InteractiveGlobalStyleRuleRow({ references, refreshReferences, refs, onChange }: { references: StyleReference[]; refreshReferences: () => Promise<StyleReference[]>; refs: string[]; onChange: (refs: string[]) => void }) {
+function InteractiveGlobalStyleRuleRow({ projectId, references, refreshReferences, refs, onChange }: { projectId: string; references: StyleReference[]; refreshReferences: () => Promise<StyleReference[]>; refs: string[]; onChange: (refs: string[]) => void }) {
   const { t } = useTranslation()
   return (
     <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2">
       <StyleReferenceControls
+        projectId={projectId}
         references={references}
         refreshReferences={refreshReferences}
         refs={refs}
@@ -292,11 +333,12 @@ function InteractiveGlobalStyleRuleRow({ references, refreshReferences, refs, on
   )
 }
 
-function InteractiveStyleRuleRow({ references, refreshReferences, rule, onChange, onRemove }: { references: StyleReference[]; refreshReferences: () => Promise<StyleReference[]>; rule: StyleRule; onChange: (patch: Partial<StyleRule>) => void; onRemove: () => void }) {
+function InteractiveStyleRuleRow({ projectId, references, refreshReferences, rule, onChange, onRemove }: { projectId: string; references: StyleReference[]; refreshReferences: () => Promise<StyleReference[]>; rule: StyleRule; onChange: (patch: Partial<StyleRule>) => void; onRemove: () => void }) {
   const { t } = useTranslation()
   return (
     <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2">
       <StyleReferenceControls
+        projectId={projectId}
         references={references}
         refreshReferences={refreshReferences}
         refs={rule.style_refs || []}
@@ -315,7 +357,7 @@ function InteractiveStyleRuleRow({ references, refreshReferences, rule, onChange
   )
 }
 
-function StyleReferenceControls({ references, refreshReferences, refs, contents = [], onRefsChange, onContentsChange, prefix, extraActions }: { references: StyleReference[]; refreshReferences: () => Promise<StyleReference[]>; refs: string[]; contents?: string[]; onRefsChange: (refs: string[]) => void; onContentsChange?: (contents: string[]) => void; prefix?: ReactNode; extraActions?: ReactNode }) {
+function StyleReferenceControls({ projectId, references, refreshReferences, refs, contents = [], onRefsChange, onContentsChange, prefix, extraActions }: { projectId: string; references: StyleReference[]; refreshReferences: () => Promise<StyleReference[]>; refs: string[]; contents?: string[]; onRefsChange: (refs: string[]) => void; onContentsChange?: (contents: string[]) => void; prefix?: ReactNode; extraActions?: ReactNode }) {
   const { t } = useTranslation()
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -332,10 +374,14 @@ function StyleReferenceControls({ references, refreshReferences, refs, contents 
   const [editDocument, setEditDocument] = useState<StyleReferenceFileDocument | null>(null)
   const [editContent, setEditContent] = useState('')
   const [editPath, setEditPath] = useState('')
+  const [eventSource] = useState(() => `style-reference-controls-${nextStyleReferenceSourceID++}`)
   const editBaselineContentRef = useRef('')
   const editBaselineRevisionRef = useRef('')
   const editContentRef = useRef('')
   const editPathRef = useRef('')
+  const extractionCommandIDsRef = useRef(new Map<string, string>())
+  const extractionMessageNormalizerRef = useRef<AgentUIMessageNormalizer | null>(null)
+  extractionMessageNormalizerRef.current ??= new AgentUIMessageNormalizer()
   editContentRef.current = editContent
   editPathRef.current = editPath
   const summary = refs.length === 0 && contents.length === 0 ? t('settingPanel.style.noSelected') : t('settingPanel.style.button', { count: refs.length + contents.length })
@@ -349,6 +395,7 @@ function StyleReferenceControls({ references, refreshReferences, refs, contents 
       setUploadDraft((current) => current?.content === submittedContent
         ? { ...current, content: saved.content }
         : current)
+      notifyStyleReferencesUpdated(eventSource, saved.reference.display_path)
       void refreshReferences()
     },
     onError: setUploadError,
@@ -362,6 +409,7 @@ function StyleReferenceControls({ references, refreshReferences, refs, contents 
       editBaselineRevisionRef.current = saved.revision
       setEditDocument(saved)
       setEditContent((current) => current === submittedContent ? saved.content : current)
+      notifyStyleReferencesUpdated(eventSource, saved.reference.display_path)
       void refreshReferences()
     },
     onError: setEditError,
@@ -432,9 +480,9 @@ function StyleReferenceControls({ references, refreshReferences, refs, contents 
 
   useEffect(() => {
     if (!editOpen || !editPath) return
-    const onWorkspaceChange = (event: Event) => {
-      const paths = (event as CustomEvent<{ paths?: string[] }>).detail?.paths
-      if (paths && !paths.includes(editPath)) return
+    const onStyleReferencesUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<StyleReferencesUpdatedDetail>).detail
+      if (detail?.source === eventSource || (detail?.paths && !detail.paths.includes(editPath))) return
       const requestedPath = editPath
       void readStyleReferenceFile(requestedPath)
         .then(async (latest) => {
@@ -442,7 +490,7 @@ function StyleReferenceControls({ references, refreshReferences, refs, contents 
           const capturedDraft = editContentRef.current
           let rebased = await rebaseTextWithRecovery({
             resource: 'style_reference',
-            scope: 'workspace',
+            scope: 'user',
             id: requestedPath,
             baseline: { revision: editBaselineRevisionRef.current, value: editBaselineContentRef.current },
             local: { revision: editBaselineRevisionRef.current, value: capturedDraft },
@@ -456,12 +504,13 @@ function StyleReferenceControls({ references, refreshReferences, refs, contents 
           editBaselineContentRef.current = latest.content
           editBaselineRevisionRef.current = latest.revision
           setEditDocument(latest)
+          void refreshReferences()
         })
-        .catch((error) => console.warn('[teller-editor] 重新加载外部文风参考更新失败', error))
+        .catch((error) => console.warn('[teller-editor] failed to reload an external style reference update', error))
     }
-    window.addEventListener('nova:workspace-change', onWorkspaceChange)
-    return () => window.removeEventListener('nova:workspace-change', onWorkspaceChange)
-  }, [editOpen, editPath])
+    window.addEventListener(STYLE_REFERENCES_UPDATED_EVENT, onStyleReferencesUpdated)
+    return () => window.removeEventListener(STYLE_REFERENCES_UPDATED_EVENT, onStyleReferencesUpdated)
+  }, [editOpen, editPath, eventSource, refreshReferences])
 
   const closeUploadDialog = async () => {
     if (uploading || !await uploadAutosave.flush()) return
@@ -499,6 +548,7 @@ function StyleReferenceControls({ references, refreshReferences, refs, contents 
     try {
       const request = normalizeStyleUploadDraft(uploadDraft)
       const ref = await saveStyleReference(request)
+      notifyStyleReferencesUpdated(eventSource, ref.display_path)
       await refreshReferences()
       addRef(ref.display_path)
       setUploadOpen(false)
@@ -513,6 +563,7 @@ function StyleReferenceControls({ references, refreshReferences, refs, contents 
 
   const extractWithAgent = async () => {
     if (!uploadDraft || uploading) return
+    let retryKey = ''
     setUploading('extract')
     setUploadError('')
     setUploadNotice('')
@@ -520,11 +571,19 @@ function StyleReferenceControls({ references, refreshReferences, refs, contents 
     try {
       const request = normalizeStyleUploadDraft(uploadDraft)
       const targetPath = styleReferenceTargetPath(request)
+      retryKey = agentCommandRetryKey('config-manager:style-extraction', 'start', {
+        targetPath,
+        name: request.name,
+        description: request.description,
+        content: request.content,
+      })
+      const commandID = rememberAgentCommandID(extractionCommandIDsRef.current, retryKey, createAgentCommandID)
       setExtractMessages([
-        createAgentTextMessage('user', `${t('settingPanel.style.extractSave')}: ${request.name}`),
-        createAgentTextMessage('system', t('settingPanel.style.extractProgress.connecting')),
+        createAgentTextMessage({ role: 'user', text: `${t('settingPanel.style.extractSave')}: ${request.name}` }),
+        createAgentTextMessage({ role: 'system', text: t('settingPanel.style.extractProgress.connecting') }),
       ])
-      const stream = await runConfigManagerStream({
+      const stream = await runConfigManagerStream(projectId, {
+        command_id: commandID,
         origin: 'teller',
         resource_id: '__style_reference_extract__',
         instruction: buildStyleExtractionInstruction(request),
@@ -534,11 +593,13 @@ function StyleReferenceControls({ references, refreshReferences, refs, contents 
           style_reference_mode: 'extract_and_write_markdown',
         },
       })
+      // A 2xx response proves that the backend durably admitted this start.
+      extractionCommandIDsRef.current.delete(retryKey)
       const toolArgsByKey: Record<string, { name: string; args: string }> = {}
       let generated = ''
       for await (const message of readUIMessageStream<AgentUIMessage>({ stream, terminateOnError: true })) {
         const normalized = normalizeAgentUIMessages([message])[0] || message
-        setExtractMessages(current => normalizeAgentUIMessages(upsertAgentUIMessage(current, normalized)))
+        setExtractMessages(current => extractionMessageNormalizerRef.current!.normalize(upsertAgentUIMessage(current, normalized)))
         for (const view of buildAgentMessageViews([normalized])) {
           if (view.kind === 'assistant') {
             generated = agentViewContent(view)
@@ -552,6 +613,7 @@ function StyleReferenceControls({ references, refreshReferences, refs, contents 
       const markdownFromTool = extractStyleReferenceMarkdownFromToolArgs(toolArgsByKey)
       const fallbackMarkdown = normalizeExtractedStyleMarkdown(markdownFromTool || generated, request)
       const doc = await readExtractedStyleReferenceDocument(targetPath, request, fallbackMarkdown, t('settingPanel.style.extractMissing'))
+      notifyStyleReferencesUpdated(eventSource, doc.reference.display_path)
       const updated = await refreshReferences()
       const created = updated.find((item) => item.display_path === doc.reference.display_path) || doc.reference
       addRef(created.display_path)
@@ -564,13 +626,18 @@ function StyleReferenceControls({ references, refreshReferences, refs, contents 
         content: limitStyleSource(doc.content),
       })
       setUploadNotice(t('settingPanel.style.extractSaved', { path: created.display_path }))
-      setExtractMessages((current) => [...current, createAgentDataMessage('agent-system', {
-        content: `${t('settingPanel.style.extractProgress.saved')}: ${created.display_path}`,
+      setExtractMessages((current) => [...current, createAgentDataMessage({
+        type: 'agent-system',
+        data: { content: `${t('settingPanel.style.extractProgress.saved')}: ${created.display_path}` },
       })])
     } catch (err) {
+      // Definite client rejections are safe to submit as a fresh logical command;
+      // network and server failures may have been accepted and retain their ID.
+      if (retryKey && isKnownAgentCommandOutcome(err)) extractionCommandIDsRef.current.delete(retryKey)
       setUploadError(err instanceof Error ? err.message : t('settingPanel.style.extractFailed'))
-      setExtractMessages((current) => [...current, createAgentDataMessage('agent-error', {
-        content: err instanceof Error ? err.message : t('settingPanel.style.extractFailed'),
+      setExtractMessages((current) => [...current, createAgentDataMessage({
+        type: 'agent-error',
+        data: { content: err instanceof Error ? err.message : t('settingPanel.style.extractFailed') },
       })])
     } finally {
       setUploading(null)
@@ -603,7 +670,7 @@ function StyleReferenceControls({ references, refreshReferences, refs, contents 
                       <span className="mt-0.5 block truncate text-[11px] text-[var(--nova-text-faint)]">{ref.description || ref.display_path}</span>
                     </span>
                   </button>
-                  <Button className={`${iconActionClassName} m-1 shrink-0`} variant="outline" size="icon" onClick={() => void openStyleEditor(ref.display_path)} aria-label={t('settingPanel.style.editReference', { name: ref.name || ref.display_path })} title={t('settingPanel.style.editReference', { name: ref.name || ref.display_path })}>
+                  <Button className={`${iconActionClassName} m-1 shrink-0`} variant="outline" size="icon" onClick={() => void openStyleEditor(ref.display_path)} aria-label={t('settingPanel.style.editReference', { name: ref.name || ref.display_path })}>
                     <Edit3 data-icon="inline-start" />
                   </Button>
                 </div>
@@ -627,7 +694,7 @@ function StyleReferenceControls({ references, refreshReferences, refs, contents 
               <div key={path} className="flex min-w-0 items-center gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-1.5 text-xs">
                 <button type="button" className="flex min-w-0 flex-1 items-center gap-2 text-left" onClick={() => void openStyleEditor(path)} aria-label={t('settingPanel.style.editReference', { name: ref?.name || path })}>
                   <FileText className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
-                  <span className="min-w-0 flex-1 truncate text-[var(--nova-text-muted)]" title={path}>{ref?.name || path}</span>
+                  <span className="min-w-0 flex-1 truncate text-[var(--nova-text-muted)]">{ref?.name || path}</span>
                   <span className="hidden max-w-56 truncate text-[11px] text-[var(--nova-text-faint)] md:block">{path}</span>
                 </button>
                 <Button className={`${iconActionClassName} hover:bg-[var(--nova-danger-bg)] hover:text-[var(--nova-danger)]`} variant="outline" size="icon" onClick={() => removeRef(path)} aria-label={t('common.delete')}>
@@ -639,7 +706,7 @@ function StyleReferenceControls({ references, refreshReferences, refs, contents 
           {contents.map((content, index) => (
             <div key={`legacy-${index}`} className="flex min-w-0 items-center gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-1.5 text-xs">
               <span className="rounded border border-[var(--nova-border)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-faint)]">{t('settingPanel.style.legacyInline')}</span>
-              <span className="min-w-0 flex-1 truncate text-[var(--nova-text-muted)]" title={content}>{contentPreview(content)}</span>
+              <span className="min-w-0 flex-1 truncate text-[var(--nova-text-muted)]">{contentPreview(content)}</span>
               {onContentsChange && (
                 <Button className={`${iconActionClassName} hover:bg-[var(--nova-danger-bg)] hover:text-[var(--nova-danger)]`} variant="outline" size="icon" onClick={() => removeLegacyContent(index)} aria-label={t('common.delete')}>
                   <Trash2 data-icon="inline-start" />
@@ -705,7 +772,7 @@ function StyleReferenceControls({ references, refreshReferences, refs, contents 
                 <span className={`min-w-0 truncate text-left ${uploadError ? 'text-[var(--nova-danger)]' : uploadNotice ? 'text-[var(--nova-accent-green)]' : ''}`}>{uploadError || uploadNotice}</span>
               </div>
             </div>
-            <StyleExtractionChatPanel messages={extractMessages} active={uploading === 'extract'} />
+            <StyleExtractionChatPanel projectId={projectId} messages={extractMessages} active={uploading === 'extract'} />
           </div>
           <DialogFooter className="!mx-0 !mb-0 rounded-none border-t border-[var(--nova-border)] bg-[var(--nova-surface)]/95 !px-4 !py-3">
             <Button className={actionButtonClassName} variant="outline" size="sm" onClick={() => void closeUploadDialog()} disabled={uploading !== null}>{uploadDocument ? t('common.close') : t('common.cancel')}</Button>
@@ -784,7 +851,7 @@ interface StyleUploadDraft {
   content: string
 }
 
-function StyleExtractionChatPanel({ messages, active }: { messages: AgentUIMessage[]; active: boolean }) {
+function StyleExtractionChatPanel({ projectId, messages, active }: { projectId: string; messages: AgentUIMessage[]; active: boolean }) {
   const { t } = useTranslation()
   return (
     <aside className="flex min-h-[220px] min-w-0 flex-col overflow-hidden rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)]/75">
@@ -799,6 +866,7 @@ function StyleExtractionChatPanel({ messages, active }: { messages: AgentUIMessa
           <div className="m-2 rounded-md border border-dashed border-[var(--nova-border)] px-3 py-4 text-xs leading-5 text-[var(--nova-text-faint)]">{t('settingPanel.style.extractProgress.empty')}</div>
         ) : (
           <MessageList
+            projectId={projectId}
             messages={messages}
             isStreaming={active}
             activityContent=""
@@ -898,9 +966,9 @@ function buildStyleExtractionInstruction(draft: StyleUploadDraft) {
 3. 不出现现实作者名、作品名或来源说明。
 4. 不要直接保存原文，不要堆砌华丽辞藻，不要写成口号。
 5. 参考结构可以包含「总体原则」「场景/心理/对白/感情/战斗/日常/出场/转折/结尾」等小节，但只保留源文件能支持的内容。
-6. 必须调用 write_style_references，写入 filename="${draft.filename}"，name="${draft.name}"，description="${draft.description}"，content 为最终提炼后的 Markdown。
-7. 不要调用 write_tellers 或其他叙事风格写入工具；本次只处理共享文风参考文件。
-8. 如果 write_style_references 工具不可用，才输出以下 XML 标签包裹的 Markdown 作为回退，不要在标签外写解释：
+6. 必须调用 config_apply，参数为 operation="create"、resource="style_reference"，value 中写入 filename="${draft.filename}"、name="${draft.name}"、description="${draft.description}"，content 为最终提炼后的 Markdown。
+7. 不要修改 narrative_style 或其他配置资源；本次只处理 style_reference。
+8. 如果 config_apply 工具不可用，才输出以下 XML 标签包裹的 Markdown 作为回退，不要在标签外写解释：
 
 <${STYLE_MARKDOWN_TAG}>
 # ${draft.name}
@@ -921,7 +989,7 @@ function readString(value: unknown) {
 
 function extractStyleReferenceMarkdownFromToolArgs(toolArgsByKey: Record<string, { name: string; args: string }>) {
   for (const call of Object.values(toolArgsByKey)) {
-    if (call.name !== 'write_style_references') continue
+    if (call.name !== 'config_apply') continue
     const content = extractFirstStyleReferenceContent(call.args)
     if (content) return content
   }
@@ -933,15 +1001,10 @@ function extractFirstStyleReferenceContent(rawArgs: string) {
   try {
     const data = JSON.parse(rawArgs) as unknown
     if (!data || typeof data !== 'object' || Array.isArray(data)) return ''
-    const operations = (data as { operations?: unknown }).operations
-    if (!Array.isArray(operations)) return ''
-    for (const operation of operations) {
-      if (!operation || typeof operation !== 'object' || Array.isArray(operation)) continue
-      const reference = (operation as { reference?: unknown }).reference
-      if (!reference || typeof reference !== 'object' || Array.isArray(reference)) continue
-      const content = readString((reference as { content?: unknown }).content)
-      if (content.trim()) return content
-    }
+		const input = data as { operation?: unknown; resource?: unknown; value?: unknown }
+		if (input.operation !== 'create' || input.resource !== 'style_reference') return ''
+		if (!input.value || typeof input.value !== 'object' || Array.isArray(input.value)) return ''
+		return readString((input.value as { content?: unknown }).content)
   } catch {
     return ''
   }
@@ -974,7 +1037,7 @@ function ToggleSwitch({ checked, onChange }: { checked: boolean; onChange: (chec
   const { t } = useTranslation()
   const label = checked ? t('settingPanel.switch.disableRule') : t('settingPanel.switch.enableRule')
   return (
-    <Switch checked={checked} onCheckedChange={onChange} aria-label={label} title={label} />
+      <Switch checked={checked} onCheckedChange={onChange} aria-label={label} />
   )
 }
 

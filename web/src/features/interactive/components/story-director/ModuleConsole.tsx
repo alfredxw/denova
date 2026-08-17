@@ -5,6 +5,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import type { ActorStateModule, EventPackageModule, ImagePreset, RuleSystemModule, StoryDirectorModuleRefs, Teller } from '../../types'
+import { DEFAULT_NARRATIVE_STYLE_ID, narrativeStyleName } from '../../narrative-style'
 import { presetSelectClassName as selectClassName } from '../preset-config/editor-styles'
 import { PresetSectionHeader as SectionTitle } from '../preset-config/PresetSectionHeader'
 import { consoleSectionClassName } from './constants'
@@ -54,9 +55,9 @@ export function DirectorModuleConsole({
           >
             <ModuleSelect
               value={refs.narrative_style_id || ''}
-              fallbackValue="classic"
+              fallbackValue={DEFAULT_NARRATIVE_STYLE_ID}
               enabled={!refs.narrative_style_disabled}
-              items={tellers}
+              items={tellers.map((teller) => ({ ...teller, name: narrativeStyleName(teller, t) }))}
               onChange={(value) => onModuleRefChange('narrative_style_id', value)}
             />
           </ModuleRefRow>
@@ -163,9 +164,9 @@ function ModuleRefRow({
       <span className="w-24 shrink-0 text-[11px] text-[var(--nova-text-muted)]">{label}</span>
       <span className="min-w-0 flex-1">
         {children}
-        {summary ? <span className="mt-0.5 block truncate text-[10px] text-[var(--nova-text-faint)]" title={summary}>{summary}</span> : null}
+        {summary ? <span className="mt-0.5 block truncate text-[10px] text-[var(--nova-text-faint)]">{summary}</span> : null}
       </span>
-      <Switch checked={enabled} onCheckedChange={onEnabledChange} aria-label={switchLabel} title={switchLabel} />
+      <Switch checked={enabled} onCheckedChange={onEnabledChange} aria-label={switchLabel} />
     </div>
   )
 }

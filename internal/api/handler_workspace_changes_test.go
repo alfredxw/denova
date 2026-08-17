@@ -1,8 +1,8 @@
 package api
 
 import (
-	"bytes"
 	"context"
+	agentchat "denova/internal/agents/chat"
 	"encoding/json"
 	"net/http"
 	"net/url"
@@ -13,8 +13,8 @@ import (
 
 	"github.com/cloudwego/hertz/pkg/common/ut"
 
-	"denova/internal/agent"
-	"denova/internal/workspacechange"
+	agentreview "denova/internal/agents/review"
+	workspacechange "denova/internal/workspace/change"
 )
 
 func TestWorkspaceChangeReviewCommentUndoRedoAPI(t *testing.T) {
@@ -47,7 +47,7 @@ func TestWorkspaceChangeReviewCommentUndoRedoAPI(t *testing.T) {
 	}
 	workspace := application.Workspace()
 
-	listResp := performWorkspaceChangeRequest(t, server, http.MethodGet, "/api/workspace/change-groups?status=pending", workspace, nil)
+	listResp := performProjectChangeRequest(t, server, http.MethodGet, application.ProjectID(), "/groups?status=pending", nil)
 	if listResp.Code != http.StatusOK {
 		t.Fatalf("list status=%d body=%s", listResp.Code, listResp.Body.String())
 	}
@@ -60,7 +60,7 @@ func TestWorkspaceChangeReviewCommentUndoRedoAPI(t *testing.T) {
 		t.Fatalf("unexpected groups: %#v", list.Groups)
 	}
 
-	detailResp := performWorkspaceChangeRequest(t, server, http.MethodGet, "/api/workspace/change-groups/run-1", workspace, nil)
+	detailResp := performProjectChangeRequest(t, server, http.MethodGet, application.ProjectID(), "/groups/run-1", nil)
 	if detailResp.Code != http.StatusOK {
 		t.Fatalf("detail status=%d body=%s", detailResp.Code, detailResp.Body.String())
 	}
@@ -73,7 +73,7 @@ func TestWorkspaceChangeReviewCommentUndoRedoAPI(t *testing.T) {
 		t.Fatalf("detail should hydrate diff content: %#v", detail.Group)
 	}
 
-	commentResp := performWorkspaceChangeRequest(t, server, http.MethodPost, "/api/workspace/change-comments", workspace, map[string]any{
+	commentResp := performProjectChangeRequest(t, server, http.MethodPost, application.ProjectID(), "/comments", map[string]any{
 		"group_id":      "run-1",
 		"change_set_id": change.ID,
 		"edit_id":       "edit-1",
@@ -91,7 +91,7 @@ func TestWorkspaceChangeReviewCommentUndoRedoAPI(t *testing.T) {
 		t.Fatalf("comment workspace=%q want=%q", commentBody.Workspace, workspace)
 	}
 
-	threadResp := performWorkspaceChangeRequest(t, server, http.MethodGet, "/api/workspace/change-review-threads/run-1", workspace, nil)
+	threadResp := performProjectChangeRequest(t, server, http.MethodGet, application.ProjectID(), "/review-threads/run-1", nil)
 	if threadResp.Code != http.StatusOK {
 		t.Fatalf("review thread status=%d body=%s", threadResp.Code, threadResp.Body.String())
 	}
@@ -115,11 +115,11 @@ func TestWorkspaceChangeReviewCommentUndoRedoAPI(t *testing.T) {
 	if feedbackResp.Code != http.StatusOK {
 		t.Fatalf("review feedback analysis status=%d body=%s", feedbackResp.Code, feedbackResp.Body.String())
 	}
-	var analysis agent.ContextAnalysis
+	var analysis agentchat.ContextAnalysis
 	decodeResponse(t, feedbackResp.Body.Bytes(), &analysis)
-	var trustedFeedback agent.ReviewFeedbackContexts
+	var trustedFeedback agentreview.Contexts
 	for _, part := range analysis.ContextParts {
-		if part.Source != "Review Feedback" {
+		if part.Source != "workspace.review.feedback" {
 			continue
 		}
 		const fence = "```json\n"
@@ -133,7 +133,7 @@ func TestWorkspaceChangeReviewCommentUndoRedoAPI(t *testing.T) {
 		}
 		break
 	}
-	if len(trustedFeedback) != 1 || trustedFeedback[0].Source != agent.ReviewFeedbackSourceWorkspaceChange || len(trustedFeedback[0].Comments) != 1 || trustedFeedback[0].Comments[0].Body != "这里的人称需要确认" {
+	if len(trustedFeedback) != 1 || trustedFeedback[0].Source != agentreview.SourceWorkspaceChange || len(trustedFeedback[0].Comments) != 1 || trustedFeedback[0].Comments[0].Body != "这里的人称需要确认" {
 		t.Fatalf("review feedback was not resolved exclusively from the ledger: %#v", trustedFeedback)
 	}
 	if strings.Contains(feedbackResp.Body.String(), "FORGED CLIENT COMMENT") {
@@ -151,18 +151,18 @@ func TestWorkspaceChangeReviewCommentUndoRedoAPI(t *testing.T) {
 		t.Fatalf("forged review feedback status=%d body=%s", forgedFeedbackResp.Code, forgedFeedbackResp.Body.String())
 	}
 
-	updateCommentResp := performWorkspaceChangeRequest(t, server, http.MethodPatch, "/api/workspace/change-comments/"+commentBody.Comment.ID, workspace, map[string]any{
+	updateCommentResp := performProjectChangeRequest(t, server, http.MethodPatch, application.ProjectID(), "/comments/"+commentBody.Comment.ID, map[string]any{
 		"body": "这里的人称已经确认",
 	})
 	if updateCommentResp.Code != http.StatusOK {
 		t.Fatalf("update comment status=%d body=%s", updateCommentResp.Code, updateCommentResp.Body.String())
 	}
-	deleteCommentResp := performWorkspaceChangeRequest(t, server, http.MethodDelete, "/api/workspace/change-comments/"+commentBody.Comment.ID, workspace, nil)
+	deleteCommentResp := performProjectChangeRequest(t, server, http.MethodDelete, application.ProjectID(), "/comments/"+commentBody.Comment.ID, nil)
 	if deleteCommentResp.Code != http.StatusOK {
 		t.Fatalf("delete comment status=%d body=%s", deleteCommentResp.Code, deleteCommentResp.Body.String())
 	}
 
-	reviewResp := performWorkspaceChangeRequest(t, server, http.MethodPost, "/api/workspace/change-groups/run-1/review", workspace, map[string]any{
+	reviewResp := performProjectChangeRequest(t, server, http.MethodPost, application.ProjectID(), "/groups/run-1/review", map[string]any{
 		"decision":      "accept",
 		"change_set_id": change.ID,
 		"edit_ids":      []string{"edit-1"},
@@ -171,7 +171,7 @@ func TestWorkspaceChangeReviewCommentUndoRedoAPI(t *testing.T) {
 		t.Fatalf("review status=%d body=%s", reviewResp.Code, reviewResp.Body.String())
 	}
 
-	undoResp := performWorkspaceChangeRequest(t, server, http.MethodPost, "/api/workspace/change-groups/run-1/undo", workspace, nil)
+	undoResp := performProjectChangeRequest(t, server, http.MethodPost, application.ProjectID(), "/groups/run-1/undo", nil)
 	if undoResp.Code != http.StatusOK {
 		t.Fatalf("undo status=%d body=%s", undoResp.Code, undoResp.Body.String())
 	}
@@ -180,7 +180,7 @@ func TestWorkspaceChangeReviewCommentUndoRedoAPI(t *testing.T) {
 		t.Fatalf("undo content=%q err=%v", content, err)
 	}
 
-	redoResp := performWorkspaceChangeRequest(t, server, http.MethodPost, "/api/workspace/change-groups/run-1/redo", workspace, nil)
+	redoResp := performProjectChangeRequest(t, server, http.MethodPost, application.ProjectID(), "/groups/run-1/redo", nil)
 	if redoResp.Code != http.StatusOK {
 		t.Fatalf("redo status=%d body=%s", redoResp.Code, redoResp.Body.String())
 	}
@@ -193,12 +193,12 @@ func TestWorkspaceChangeReviewCommentUndoRedoAPI(t *testing.T) {
 func TestWorkspaceChangeResolveCommentRouteIsRemoved(t *testing.T) {
 	application := newTestApplication(t)
 	server := NewServer(application, "0")
-	response := performWorkspaceChangeRequest(
+	response := performProjectChangeRequest(
 		t,
 		server,
 		http.MethodPost,
-		"/api/workspace/change-comments/comment-1/resolve",
-		application.Workspace(),
+		application.ProjectID(),
+		"/comments/comment-1/resolve",
 		map[string]any{"resolved": true},
 	)
 	if response.Code != http.StatusNotFound {
@@ -234,7 +234,7 @@ func TestWorkspaceChangeReviewResponseUsesOperationScopedPaths(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	response := performWorkspaceChangeRequest(t, server, http.MethodPost, "/api/workspace/change-groups/selective-api-review/review", application.Workspace(), map[string]any{
+	response := performProjectChangeRequest(t, server, http.MethodPost, application.ProjectID(), "/groups/selective-api-review/review", map[string]any{
 		"decision": "reject", "change_set_id": chapter.ID,
 	})
 	if response.Code != http.StatusOK {
@@ -249,35 +249,6 @@ func TestWorkspaceChangeReviewResponseUsesOperationScopedPaths(t *testing.T) {
 	}
 	if content, err := application.BookService().ReadFile("setting/world.md"); err != nil || content != "world agent" {
 		t.Fatalf("unselected file content=%q err=%v", content, err)
-	}
-}
-
-func TestWorkspaceChangeAPIRequiresCanonicalWorkspaceLease(t *testing.T) {
-	application := newTestApplication(t)
-	server := NewServer(application, "0")
-	workspace := application.Workspace()
-
-	missing := performJSONRequest(t, server, http.MethodGet, "/api/workspace/change-groups", nil)
-	assertWorkspaceChangedResponse(t, missing, "", workspace)
-	missingMutation := performJSONRequest(t, server, http.MethodPost, "/api/workspace/change-groups/unknown/review", map[string]any{
-		"decision": "accept",
-	})
-	assertWorkspaceChangedResponse(t, missingMutation, "", workspace)
-
-	staleWorkspace := filepath.Join(workspace, "stale")
-	stale := performWorkspaceChangeRequest(t, server, http.MethodGet, "/api/workspace/change-groups", staleWorkspace, nil)
-	assertWorkspaceChangedResponse(t, stale, staleWorkspace, workspace)
-
-	valid := performWorkspaceChangeRequest(t, server, http.MethodGet, "/api/workspace/change-groups", workspace, nil)
-	if valid.Code != http.StatusOK {
-		t.Fatalf("valid lease status=%d body=%s", valid.Code, valid.Body.String())
-	}
-	var body struct {
-		Workspace string `json:"workspace"`
-	}
-	decodeResponse(t, valid.Body.Bytes(), &body)
-	if body.Workspace != workspace {
-		t.Fatalf("response workspace=%q want=%q", body.Workspace, workspace)
 	}
 }
 
@@ -304,23 +275,49 @@ func TestWorkspaceSwitchCanonicalizesSymlinkIdentity(t *testing.T) {
 	}
 }
 
-func TestWorkspaceChangeAPIRejectsLeaseAfterWorkspaceSwitch(t *testing.T) {
+func TestProjectChangeAPIKeepsBackgroundProjectScoped(t *testing.T) {
 	application := newTestApplication(t)
 	server := NewServer(application, "0")
-	previousWorkspace := application.Workspace()
-	nextWorkspace := t.TempDir()
-	if _, err := application.SwitchWorkspace(context.Background(), nextWorkspace); err != nil {
-		t.Fatalf("switch workspace: %v", err)
+	projectID := application.ProjectID()
+	workspace := application.Workspace()
+	if err := application.BookService().Create("chapters/ch01.md", "file", "base"); err != nil {
+		t.Fatal(err)
 	}
-	currentWorkspace := application.Workspace()
+	service, err := application.WorkspaceChangeService()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.ReplaceFile(context.Background(), workspacechange.ReplaceFileRequest{
+		Path: "chapters/ch01.md", Content: "background", BaseRevision: workspacechange.Revision([]byte("base")),
+		Metadata: workspacechange.ChangeMetadata{Origin: workspacechange.OriginAgent, ChangeGroupID: "background-change"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	created := performJSONRequest(t, server, http.MethodPost, "/api/books/create", map[string]string{"title": "Foreground Change Book"})
+	if created.Code != http.StatusOK || application.ProjectID() == projectID {
+		t.Fatalf("create foreground Book status=%d project_id=%q body=%s", created.Code, application.ProjectID(), created.Body.String())
+	}
 
-	response := performWorkspaceChangeRequest(t, server, http.MethodGet, "/api/workspace/change-groups", previousWorkspace, nil)
-	assertWorkspaceChangedResponse(t, response, previousWorkspace, currentWorkspace)
-
-	mutationResponse := performWorkspaceChangeRequest(t, server, http.MethodPost, "/api/workspace/change-groups/old-group/review", previousWorkspace, map[string]any{
-		"decision": "accept",
-	})
-	assertWorkspaceChangedResponse(t, mutationResponse, previousWorkspace, currentWorkspace)
+	response := performProjectChangeRequest(t, server, http.MethodGet, projectID, "/groups", nil)
+	if response.Code != http.StatusOK {
+		t.Fatalf("background Project list status=%d body=%s", response.Code, response.Body.String())
+	}
+	var body struct {
+		ProjectID string                               `json:"project_id"`
+		Workspace string                               `json:"workspace"`
+		Groups    []workspacechange.ChangeGroupSummary `json:"groups"`
+	}
+	decodeResponse(t, response.Body.Bytes(), &body)
+	if body.ProjectID != projectID || body.Workspace != workspace || len(body.Groups) != 1 || body.Groups[0].ID != "background-change" {
+		t.Fatalf("unexpected background Project change response: %#v", body)
+	}
+	if _, err := application.BookService().ReadFile("chapters/ch01.md"); !os.IsNotExist(err) {
+		t.Fatalf("foreground Book must remain isolated, err=%v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(workspace, "chapters", "ch01.md"))
+	if err != nil || string(data) != "background" {
+		t.Fatalf("background Project content=%q err=%v", data, err)
+	}
 }
 
 func TestWorkspaceChangeAPIKeepsStructuredConflict(t *testing.T) {
@@ -329,11 +326,10 @@ func TestWorkspaceChangeAPIKeepsStructuredConflict(t *testing.T) {
 	if err := application.BookService().Create("chapters/ch01.md", "file", "base"); err != nil {
 		t.Fatalf("create chapter: %v", err)
 	}
-	writeResp := performJSONRequest(t, server, http.MethodPost, "/api/workspace/file", map[string]any{
+	writeResp := performJSONRequest(t, server, http.MethodPut, "/api/projects/"+url.PathEscape(application.ProjectID())+"/files/file", map[string]any{
 		"path":          "chapters/ch01.md",
 		"content":       "stale write",
 		"base_revision": "sha256:stale",
-		"workspace":     application.Workspace(),
 	})
 	if writeResp.Code != http.StatusConflict {
 		t.Fatalf("write status=%d body=%s", writeResp.Code, writeResp.Body.String())
@@ -348,37 +344,7 @@ func TestWorkspaceChangeAPIKeepsStructuredConflict(t *testing.T) {
 	}
 }
 
-func performWorkspaceChangeRequest(t *testing.T, server *Server, method, path, workspace string, body any) *ut.ResponseRecorder {
+func performProjectChangeRequest(t *testing.T, server *Server, method, projectID, suffix string, body any) *ut.ResponseRecorder {
 	t.Helper()
-	var requestBody *ut.Body
-	if body != nil {
-		data, err := json.Marshal(body)
-		if err != nil {
-			t.Fatal(err)
-		}
-		requestBody = &ut.Body{Body: bytes.NewReader(data), Len: len(data)}
-	}
-	return ut.PerformRequest(
-		server.engine.Engine,
-		method,
-		path,
-		requestBody,
-		ut.Header{Key: "Content-Type", Value: "application/json"},
-		ut.Header{Key: "X-Denova-Workspace", Value: url.PathEscape(workspace)},
-	)
-}
-
-func assertWorkspaceChangedResponse(t *testing.T, response *ut.ResponseRecorder, expectedWorkspace, actualWorkspace string) {
-	t.Helper()
-	if response.Code != http.StatusConflict {
-		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
-	}
-	var body struct {
-		Code    string            `json:"code"`
-		Details map[string]string `json:"details"`
-	}
-	decodeResponse(t, response.Body.Bytes(), &body)
-	if body.Code != "workspace_changed" || body.Details["expected_workspace"] != expectedWorkspace || body.Details["actual_workspace"] != actualWorkspace {
-		t.Fatalf("unexpected workspace conflict: %#v", body)
-	}
+	return performJSONRequest(t, server, method, "/api/projects/"+url.PathEscape(projectID)+"/changes"+suffix, body)
 }

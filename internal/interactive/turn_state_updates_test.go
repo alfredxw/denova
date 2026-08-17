@@ -1,6 +1,7 @@
 package interactive
 
 import (
+	interactivestate "denova/internal/interactive/state"
 	"encoding/json"
 	"errors"
 	"testing"
@@ -19,9 +20,9 @@ func TestCompileTurnStateUpdatesSupportsNestedReplaceAndDelta(t *testing.T) {
 		"state": map[string]any{"行踪": map[string]any{"当前区域": "月映湖"}, "好感度": float64(3)},
 	}}}
 
-	compiled, err := CompileTurnStateUpdates(system, state, []StateUpdate{
-		{Op: TurnStateUpdateReplace, Path: "/protagonist/行踪/当前区域", Value: "东苍腹地"},
-		{Op: TurnStateUpdateDelta, Path: "/protagonist/好感度", Value: 2},
+	compiled, err := CompileTurnStateUpdates(system, state, []interactivestate.Update{
+		{Op: interactivestate.Replace, Path: "/protagonist/行踪/当前区域", Value: "东苍腹地"},
+		{Op: interactivestate.Delta, Path: "/protagonist/好感度", Value: 2},
 	}, TurnStateUpdateCompileOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -46,15 +47,15 @@ func TestCompileTurnStateUpdatesRejectsMissingDeltaTargetAndOverlappingPaths(t *
 	state := map[string]any{"actors": map[string]any{"protagonist": map[string]any{
 		"id": "protagonist", "template_id": "protagonist", "state": map[string]any{"行踪": map[string]any{}},
 	}}}
-	_, err := CompileTurnStateUpdates(system, state, []StateUpdate{{Op: TurnStateUpdateDelta, Path: "/protagonist/行踪/危险度", Value: 1}}, TurnStateUpdateCompileOptions{})
+	_, err := CompileTurnStateUpdates(system, state, []interactivestate.Update{{Op: interactivestate.Delta, Path: "/protagonist/行踪/危险度", Value: 1}}, TurnStateUpdateCompileOptions{})
 	var validationError *StateUpdateValidationError
 	if !errors.As(err, &validationError) || validationError.Code != "delta_target_not_number" {
 		t.Fatalf("missing delta target should be explicit, got %v", err)
 	}
 
-	_, err = CompileTurnStateUpdates(system, state, []StateUpdate{
-		{Op: TurnStateUpdateReplace, Path: "/protagonist/行踪", Value: map[string]any{"当前区域": "东苍"}},
-		{Op: TurnStateUpdateReplace, Path: "/protagonist/行踪/危险度", Value: 30},
+	_, err = CompileTurnStateUpdates(system, state, []interactivestate.Update{
+		{Op: interactivestate.Replace, Path: "/protagonist/行踪", Value: map[string]any{"当前区域": "东苍"}},
+		{Op: interactivestate.Replace, Path: "/protagonist/行踪/危险度", Value: 30},
 	}, TurnStateUpdateCompileOptions{})
 	if !errors.As(err, &validationError) || validationError.Code != "overlapping_state_path" {
 		t.Fatalf("overlapping paths should be rejected, got %v", err)
@@ -65,8 +66,8 @@ func TestCompileTurnStateUpdatesUsesEscapedTildeInFieldIDs(t *testing.T) {
 	fieldID := "精神~状态"
 	system := StoryDirectorActorStateSystem{Templates: []ActorStateTemplate{{ID: "protagonist", Fields: []ActorStateField{{Name: fieldID, Type: "string"}}}}}
 	state := map[string]any{"actors": map[string]any{"protagonist": map[string]any{"id": "protagonist", "template_id": "protagonist", "state": map[string]any{fieldID: "动摇"}}}}
-	path := formatStateUpdatePath([]string{"protagonist", fieldID})
-	compiled, err := CompileTurnStateUpdates(system, state, []StateUpdate{{Op: TurnStateUpdateReplace, Path: path, Value: "镇定"}}, TurnStateUpdateCompileOptions{})
+	path := interactivestate.FormatPath([]string{"protagonist", fieldID})
+	compiled, err := CompileTurnStateUpdates(system, state, []interactivestate.Update{{Op: interactivestate.Replace, Path: path, Value: "镇定"}}, TurnStateUpdateCompileOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,8 +85,8 @@ func TestCompileTurnStateUpdatesWritesHistoricalHiddenField(t *testing.T) {
 		"id": "protagonist", "template_id": "protagonist", "state": map[string]any{"秘密身份": "未知"},
 	}}}
 
-	compiled, err := CompileTurnStateUpdates(system, state, []StateUpdate{{
-		Op: TurnStateUpdateReplace, Path: "/protagonist/秘密身份", Value: "宗门少主",
+	compiled, err := CompileTurnStateUpdates(system, state, []interactivestate.Update{{
+		Op: interactivestate.Replace, Path: "/protagonist/秘密身份", Value: "宗门少主",
 	}}, TurnStateUpdateCompileOptions{})
 	if err != nil {
 		t.Fatalf("historical hidden fields should remain writable: %v", err)
@@ -99,8 +100,8 @@ func TestCompileTurnStateUpdatesCreatesNamedActorWithoutInventingOtherOptionalSt
 	system := StoryDirectorActorStateSystem{Templates: []ActorStateTemplate{{
 		ID: "opponent", Fields: []ActorStateField{{Name: "生命值", Type: "number"}},
 	}}}
-	compiled, err := CompileTurnStateUpdates(system, map[string]any{}, []StateUpdate{{
-		Op: TurnStateUpdateCreate, Path: "/狼王",
+	compiled, err := CompileTurnStateUpdates(system, map[string]any{}, []interactivestate.Update{{
+		Op: interactivestate.Create, Path: "/狼王",
 		Value: map[string]any{"template_id": "opponent", "name": "狼王", "state": map[string]any{"生命值": 12}},
 	}}, TurnStateUpdateCompileOptions{})
 	if err != nil {
@@ -122,8 +123,8 @@ func TestCompileTurnStateUpdatesCreatesNamedActorWithoutInventingOtherOptionalSt
 		}
 	}
 
-	_, err = CompileTurnStateUpdates(system, map[string]any{}, []StateUpdate{{
-		Op: TurnStateUpdateCreate, Path: "/狼群首领",
+	_, err = CompileTurnStateUpdates(system, map[string]any{}, []interactivestate.Update{{
+		Op: interactivestate.Create, Path: "/狼群首领",
 		Value: map[string]any{"template_id": "opponent", "name": 2},
 	}}, TurnStateUpdateCompileOptions{})
 	var validationError *StateUpdateValidationError
@@ -135,8 +136,8 @@ func TestCompileTurnStateUpdatesCreatesNamedActorWithoutInventingOtherOptionalSt
 func TestCompileTurnStateUpdatesRejectsRuleResolutionDuplicate(t *testing.T) {
 	system, state := turnSubmissionTestState()
 	resolution := RuleResolution{Result: RuleResult{StateChanges: []TurnStateChange{{ActorID: "protagonist", FieldID: "生命值", Change: -1}}}}
-	_, err := CompileTurnStateUpdates(system, state, []StateUpdate{{
-		Op: TurnStateUpdateDelta, Path: "/protagonist/生命值", Value: -1,
+	_, err := CompileTurnStateUpdates(system, state, []interactivestate.Update{{
+		Op: interactivestate.Delta, Path: "/protagonist/生命值", Value: -1,
 	}}, TurnStateUpdateCompileOptions{RuleResolution: &resolution, RuleStateConsumptionMode: RuleStateConsumptionModeHybridAuto})
 	var validationError *StateUpdateValidationError
 	if !errors.As(err, &validationError) || validationError.Code != "duplicate_rule_state_update" {
@@ -155,9 +156,9 @@ func TestCompileTurnStateUpdatesArchivesActorWithoutDeletingState(t *testing.T) 
 			"狼王":    map[string]any{"id": "狼王", "name": "狼王", "template_id": "opponent", "state": map[string]any{"生命值": float64(4)}},
 		},
 	}
-	compiled, err := CompileTurnStateUpdates(system, state, []StateUpdate{
-		{Op: TurnStateUpdateArchive, Path: "/狼王", Value: map[string]any{"reason": "本回合已确认死亡"}},
-		{Op: TurnStateUpdateDelta, Path: "/狼王/生命值", Value: -4},
+	compiled, err := CompileTurnStateUpdates(system, state, []interactivestate.Update{
+		{Op: interactivestate.Archive, Path: "/狼王", Value: map[string]any{"reason": "本回合已确认死亡"}},
+		{Op: interactivestate.Delta, Path: "/狼王/生命值", Value: -4},
 	}, TurnStateUpdateCompileOptions{SourceTurnID: "turn-death"})
 	if err != nil {
 		t.Fatal(err)
@@ -197,9 +198,9 @@ func TestCompileTurnStateUpdatesRestoresActorAndMakesBatchOrderIndependent(t *te
 			"狼王": map[string]any{"reason": "此前确认死亡", "source_turn_id": "turn-death"},
 		},
 	}
-	compiled, err := CompileTurnStateUpdates(system, state, []StateUpdate{
-		{Op: TurnStateUpdateReplace, Path: "/狼王/存续", Value: "重伤幸存"},
-		{Op: TurnStateUpdateRestore, Path: "/狼王", Value: map[string]any{"reason": "发现此前死亡判断有误"}},
+	compiled, err := CompileTurnStateUpdates(system, state, []interactivestate.Update{
+		{Op: interactivestate.Replace, Path: "/狼王/存续", Value: "重伤幸存"},
+		{Op: interactivestate.Restore, Path: "/狼王", Value: map[string]any{"reason": "发现此前死亡判断有误"}},
 	}, TurnStateUpdateCompileOptions{SourceTurnID: "turn-return"})
 	if err != nil {
 		t.Fatal(err)
@@ -225,13 +226,13 @@ func TestCompileTurnStateUpdatesRejectsWritesToArchivedAndProtectedActors(t *tes
 		actorStateRoot:   map[string]any{"狼王": map[string]any{"id": "狼王", "template_id": "opponent", "state": map[string]any{"生命值": float64(0)}}},
 		actorArchiveRoot: map[string]any{"狼王": map[string]any{"reason": "死亡", "source_turn_id": "turn-death"}},
 	}
-	_, err := CompileTurnStateUpdates(system, state, []StateUpdate{{Op: TurnStateUpdateReplace, Path: "/狼王/生命值", Value: 1}}, TurnStateUpdateCompileOptions{})
+	_, err := CompileTurnStateUpdates(system, state, []interactivestate.Update{{Op: interactivestate.Replace, Path: "/狼王/生命值", Value: 1}}, TurnStateUpdateCompileOptions{})
 	var validationError *StateUpdateValidationError
 	if !errors.As(err, &validationError) || validationError.Code != "actor_archived" {
 		t.Fatalf("archived Actors must be read-only until explicitly restored, got %v", err)
 	}
 
-	_, err = CompileTurnStateUpdates(system, state, []StateUpdate{{Op: TurnStateUpdateArchive, Path: "/protagonist", Value: map[string]any{"reason": "永久退场"}}}, TurnStateUpdateCompileOptions{})
+	_, err = CompileTurnStateUpdates(system, state, []interactivestate.Update{{Op: interactivestate.Archive, Path: "/protagonist", Value: map[string]any{"reason": "永久退场"}}}, TurnStateUpdateCompileOptions{})
 	if !errors.As(err, &validationError) || validationError.Code != "protected_actor_archive" {
 		t.Fatalf("system Actors must not be archived, got %v", err)
 	}

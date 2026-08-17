@@ -1,9 +1,14 @@
 package interactive
 
 import (
+	"context"
+	interactivestate "denova/internal/interactive/state"
+	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
+
+	agent "github.com/alfredxw/denova/agent"
 )
 
 func sanitizeDisplayEvents(events []DisplayEvent) []DisplayEvent {
@@ -16,7 +21,7 @@ func sanitizeDisplayEvents(events []DisplayEvent) []DisplayEvent {
 		if role == "" {
 			continue
 		}
-		if role != "tool_call" && role != "tool_result" && role != "thinking" && role != DisplayEventRoleNarrative {
+		if role != "tool_call" && role != "tool_result" && role != "thinking" && role != DisplayEventRoleNarrative && !(role == "assistant" && event.SubAgent) {
 			continue
 		}
 		name := strings.TrimSpace(event.Name)
@@ -42,6 +47,7 @@ func sanitizeDisplayEvents(events []DisplayEvent) []DisplayEvent {
 			Args:              event.Args,
 			Status:            status,
 			Result:            event.Result,
+			ToolPresentation:  normalizedToolPresentation(event.ToolPresentation),
 			CreatedAt:         strings.TrimSpace(event.CreatedAt),
 			AgentKind:         strings.TrimSpace(event.AgentKind),
 			AgentName:         strings.TrimSpace(event.AgentName),
@@ -51,10 +57,6 @@ func sanitizeDisplayEvents(events []DisplayEvent) []DisplayEvent {
 			RunID:             strings.TrimSpace(event.RunID),
 			SubAgentSessionID: strings.TrimSpace(event.SubAgentSessionID),
 			SubAgentType:      strings.TrimSpace(event.SubAgentType),
-			SSEHiddenFields:   trimStringSlice(event.SSEHiddenFields),
-			SSEHiddenReason:   strings.TrimSpace(event.SSEHiddenReason),
-			SSEDisplayNotice:  strings.TrimSpace(event.SSEDisplayNotice),
-			SSEGeneratedChars: nonNegativeInt(event.SSEGeneratedChars),
 		}
 		result = append(result, next)
 	}
@@ -62,6 +64,17 @@ func sanitizeDisplayEvents(events []DisplayEvent) []DisplayEvent {
 		return nil
 	}
 	return result
+}
+
+func normalizedToolPresentation(presentation *agent.ToolPresentation) *agent.ToolPresentation {
+	if presentation == nil {
+		return nil
+	}
+	normalized, err := presentation.Normalize()
+	if err != nil {
+		return nil
+	}
+	return &normalized
 }
 
 func trimStringSlice(values []string) []string {
@@ -94,7 +107,7 @@ func sanitizeModelContextMessages(messages []ModelContextMessage) []ModelContext
 			if len(calls) == 0 {
 				continue
 			}
-			result = append(result, ModelContextMessage{Role: role, ToolCalls: calls})
+			result = append(result, ModelContextMessage{Role: role, Content: msg.Content, ToolCalls: calls})
 		case "tool":
 			toolCallID := strings.TrimSpace(msg.ToolCallID)
 			toolName := strings.TrimSpace(msg.ToolName)
@@ -107,6 +120,7 @@ func sanitizeModelContextMessages(messages []ModelContextMessage) []ModelContext
 				Name:       strings.TrimSpace(msg.Name),
 				ToolCallID: toolCallID,
 				ToolName:   toolName,
+				ToolResult: cloneModelContextToolResult(msg.ToolResult),
 			})
 		}
 	}
@@ -114,6 +128,19 @@ func sanitizeModelContextMessages(messages []ModelContextMessage) []ModelContext
 		return nil
 	}
 	return result
+}
+
+// CloneModelContextMessages returns the same bounded model-only projection used
+// by story persistence, including an independently mutable tool-result summary.
+func CloneModelContextMessages(messages []ModelContextMessage) []ModelContextMessage {
+	return sanitizeModelContextMessages(messages)
+}
+
+func cloneModelContextToolResult(summary *agent.ToolResultSummary) *agent.ToolResultSummary {
+	if summary == nil {
+		return nil
+	}
+	return agent.CloneMessage(&agent.Message{ToolResult: summary}).ToolResult
 }
 
 func sanitizeModelContextToolCalls(calls []ModelContextToolCall) []ModelContextToolCall {
@@ -127,6 +154,22 @@ func sanitizeModelContextToolCalls(calls []ModelContextToolCall) []ModelContextT
 			continue
 		}
 		call.ID = strings.TrimSpace(call.ID)
+		if call.Index != nil {
+			index := *call.Index
+			call.Index = &index
+		}
+		if call.Extra != nil {
+			data, err := json.Marshal(call.Extra)
+			var extra map[string]any
+			if err == nil {
+				err = json.Unmarshal(data, &extra)
+			}
+			if err != nil {
+				call.Extra = nil
+			} else {
+				call.Extra = extra
+			}
+		}
 		if call.Type == "" {
 			call.Type = "function"
 		}
@@ -243,12 +286,12 @@ func displayEventKey(event DisplayEvent) string {
 	return ""
 }
 
-func applyStateOp(state map[string]any, op StateOp) {
+func applyStateOp(state map[string]any, op interactivestate.Op) {
 	op.Path = canonicalStatePath(op.Path)
 	switch op.Op {
 	case "set":
 		if op.Value == nil {
-			log.Printf("[interactive-state] skip legacy set operation without value path=%q location=internal/interactive/story_state.go", op.Path)
+			slog.WarnContext(context.Background(), fmt.Sprintf("[interactive-state] skip legacy set operation without value path=%q location=internal/interactive/story_state.go", op.Path))
 			return
 		}
 		setPath(state, op.Path, op.Value)
@@ -295,7 +338,7 @@ func applyActorStateOp(state map[string]any, op ActorStateOp) {
 	}
 	opName := strings.TrimSpace(op.Op)
 	if opName == "set" && op.Value == nil {
-		log.Printf("[interactive-state] skip legacy Actor set operation without value actor_id=%q field_id=%q location=internal/interactive/story_state.go", actorID, fieldID)
+		slog.WarnContext(context.Background(), fmt.Sprintf("[interactive-state] skip legacy Actor set operation without value actor_id=%q field_id=%q location=internal/interactive/story_state.go", actorID, fieldID))
 		return
 	}
 	actors, _ := state[actorStateRoot].(map[string]any)

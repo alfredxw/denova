@@ -20,6 +20,13 @@ interface ReviewFileDiffSectionProps {
   comments: WorkspaceChangeComment[]
   layout: ReviewDiffLayout
   active: boolean
+  /**
+   * Hints that this file sits next to the active file, so its editor should be
+   * mounted and measured ahead of time. This avoids a scroll-position jump when
+   * the user scrolls across a file boundary: the editor is already sized to its
+   * real (wrapped) height by the time the file becomes active.
+   */
+  preRender?: boolean
   collapsed: boolean
   hasDraft: boolean
   mutationBusy: boolean
@@ -40,6 +47,7 @@ export function ReviewFileDiffSection({
   comments,
   layout,
   active,
+  preRender = false,
   collapsed,
   hasDraft,
   mutationBusy,
@@ -60,7 +68,8 @@ export function ReviewFileDiffSection({
   const [measuredHeight, setMeasuredHeight] = useState(estimatedHeight)
   const measuredHeightRef = useRef(estimatedHeight)
   const conflicted = file.continuity !== 'continuous' || file.apply_state === 'conflicted'
-  const renderEditor = hasDraft || (!collapsed && (comments.length > 0 || nearViewport || active))
+  const deleted = file.after_exists === false
+  const renderEditor = hasDraft || (!collapsed && (comments.length > 0 || nearViewport || active || preRender))
 
   useEffect(() => {
     measuredHeightRef.current = estimatedHeight
@@ -68,8 +77,8 @@ export function ReviewFileDiffSection({
   }, [estimatedHeight, file.base_revision, file.path, file.revision, layout])
 
   useEffect(() => {
-    if (active) setNearViewport(true)
-  }, [active])
+    if (active || preRender) setNearViewport(true)
+  }, [active, preRender])
 
   useEffect(() => {
     if (collapsed) {
@@ -104,13 +113,14 @@ export function ReviewFileDiffSection({
           className="flex min-w-0 flex-1 items-center gap-2 self-stretch px-2 text-left hover:bg-[var(--nova-hover)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[var(--nova-accent-blue)]"
         >
           {collapsed ? <ChevronRight className="h-3.5 w-3.5 shrink-0" /> : <ChevronDown className="h-3.5 w-3.5 shrink-0" />}
-          <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-[var(--nova-text)]" title={file.path}>{file.path}</span>
+          <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-[var(--nova-text)]">{file.path}</span>
         </button>
         {hasDraft && <span className="mr-2 hidden text-[10px] text-[var(--nova-accent-blue)] sm:inline">{t('changes.commentDraft')}</span>}
         {conflicted && <AlertTriangle className="mr-2 h-3.5 w-3.5 shrink-0 text-[var(--nova-warning)]" aria-label={t('changes.applyState.conflicted')} />}
+        {deleted && <span className="mr-2 text-[10px] text-[var(--nova-danger)]">{t('changes.fileDeleted')}</span>}
         <span className="mr-1.5 font-mono text-[10px] text-[var(--nova-success)]">+{stats.additions}</span>
         <span className="mr-1.5 font-mono text-[10px] text-[var(--nova-danger)]">−{stats.deletions}</span>
-        {onOpenFile && (
+        {onOpenFile && !deleted && (
           <Button type="button" size="xs" variant="ghost" disabled={navigationLocked} onClick={() => void onOpenFile(file.path)}>
             <ExternalLink />{t('changes.openFile')}
           </Button>

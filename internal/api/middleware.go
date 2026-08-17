@@ -13,6 +13,7 @@ import (
 	"denova/config"
 	novaApp "denova/internal/app"
 	"denova/internal/i18n"
+	"denova/internal/observability"
 )
 
 // corsMiddleware 处理 CORS 跨域请求。
@@ -37,6 +38,7 @@ func corsMiddleware(ctx context.Context, c *app.RequestContext) {
 	}
 	c.Response.Header.Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, PUT, OPTIONS")
 	c.Response.Header.Set("Access-Control-Allow-Headers", "Content-Type, X-Denova-Locale, X-Nova-Locale, Authorization")
+	c.Response.Header.Set("Access-Control-Expose-Headers", observability.RequestIDHeader)
 
 	if string(c.Request.Method()) == "OPTIONS" {
 		c.AbortWithStatus(consts.StatusNoContent)
@@ -46,10 +48,29 @@ func corsMiddleware(ctx context.Context, c *app.RequestContext) {
 	c.Next(ctx)
 }
 
+// Marks the terminal WebSocket attach route. Browsers cannot send an Authorization header on a
+// WebSocket handshake, so this route skips Basic Auth and the handler validates the token handed
+// out when the session was created; the create endpoint itself stays authenticated.
+const terminalAttachPathSuffix = "/attach"
+const terminalAttachPathPrefix = "/api/terminal/sessions/"
+
+func isTerminalAttachRequest(c *app.RequestContext) bool {
+	path := string(c.Request.Path())
+	return strings.HasPrefix(path, terminalAttachPathPrefix) && strings.HasSuffix(path, terminalAttachPathSuffix)
+}
+
 func remoteAccessMiddleware(application *novaApp.App) app.HandlerFunc {
 	return func(ctx context.Context, c *app.RequestContext) {
 		clientIP := requestClientIP(c)
 		if isLocalClientIP(clientIP) {
+			c.Next(ctx)
+			return
+		}
+		if isTerminalAttachRequest(c) {
+			if !application.RemoteAccessConfig().AllowLANAccess {
+				abortWithLocalizedError(c, consts.StatusForbidden, "api.access.lanDisabled")
+				return
+			}
 			c.Next(ctx)
 			return
 		}
@@ -67,6 +88,17 @@ func remoteAccessMiddleware(application *novaApp.App) app.HandlerFunc {
 		c.Response.Header.Set("WWW-Authenticate", `Basic realm="Denova"`)
 		abortWithLocalizedError(c, consts.StatusUnauthorized, "api.access.authRequired")
 	}
+}
+
+// localHostEffectMiddleware prevents authenticated LAN clients from opening
+// windows on the machine that runs Denova. Remote browsers cannot usefully
+// select a server-local absolute path in any case.
+func localHostEffectMiddleware(ctx context.Context, c *app.RequestContext) {
+	if !isLocalClientIP(requestClientIP(c)) {
+		abortWithLocalizedError(c, consts.StatusForbidden, "api.access.localHostEffect")
+		return
+	}
+	c.Next(ctx)
 }
 
 func abortWithLocalizedError(c *app.RequestContext, status int, key string) {

@@ -7,10 +7,11 @@ import (
 
 const defaultAutoVersionIdleDelay = 30 * time.Second
 
-// Service 管理当前书籍 workspace 的 go-git 本地版本库。
+// Service manages one Book Project's local go-git version history.
 type Service struct {
-	workspace string
-	mu        sync.Mutex
+	workspace  string
+	repository string
+	mu         sync.Mutex
 
 	autoMu               sync.Mutex
 	autoTimer            *time.Timer
@@ -21,9 +22,14 @@ type Service struct {
 	autoVersionIdleDelay time.Duration
 }
 
-func NewService(workspace string) *Service {
+// NewService binds visible Book content to a Project-owned repository. The
+// repository must live outside the content directory so version history follows
+// stable Project identity across directory relinks and never occupies the
+// user's own .git directory.
+func NewService(workspace, repository string) *Service {
 	return &Service{
 		workspace:            workspace,
+		repository:           repository,
 		autoVersionIdleDelay: defaultAutoVersionIdleDelay,
 	}
 }

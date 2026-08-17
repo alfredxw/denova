@@ -9,11 +9,12 @@ import { FieldLegend, FieldSet } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { installSkillRemote, installSkillZip, previewSkillRemoteInstall, previewSkillZipInstall } from '@/lib/api'
-import type { SkillInstallCandidate, SkillInstallResult, SkillScope, SkillScopeInfo } from '@/lib/api'
+import type { SkillCatalogTarget, SkillInstallCandidate, SkillInstallResult, SkillScope, SkillScopeInfo } from '@/lib/api'
 import type { SkillInstallSource } from './skill-utils'
 import { isInstallableCandidate, requireInstallFile, scopeLabel } from './skill-utils'
 
 interface SkillInstallPanelProps {
+  target: SkillCatalogTarget
   /** 可写 scope 列表；为空时展示不可写提示 */
   scopes: SkillScopeInfo[]
   defaultScope: SkillScope
@@ -21,7 +22,7 @@ interface SkillInstallPanelProps {
 }
 
 /** 导入 Skill 整页表单：自持来源/候选状态，扫描后只安装勾选的条目。 */
-export function SkillInstallPanel({ scopes, defaultScope, onInstalled }: SkillInstallPanelProps) {
+export function SkillInstallPanel({ target, scopes, defaultScope, onInstalled }: SkillInstallPanelProps) {
   const { t } = useTranslation()
   const [source, setSource] = useState<SkillInstallSource>('remote')
   const [scope, setScope] = useState<SkillScope>(defaultScope)
@@ -69,8 +70,8 @@ export function SkillInstallPanel({ scopes, defaultScope, onInstalled }: SkillIn
     setMessage(null)
     try {
       const preview = source === 'zip'
-        ? await previewSkillZipInstall(requireInstallFile(file, t), scope)
-        : await previewSkillRemoteInstall({
+        ? await previewSkillZipInstall(target, requireInstallFile(file, t), scope)
+        : await previewSkillRemoteInstall(target, {
             url: remoteURL.trim(),
             ref: remoteRef.trim(),
             subdir: remoteSubdir.trim(),
@@ -95,8 +96,8 @@ export function SkillInstallPanel({ scopes, defaultScope, onInstalled }: SkillIn
     setMessage(null)
     try {
       const result = source === 'zip'
-        ? await installSkillZip(requireInstallFile(file, t), scope, candidateIds)
-        : await installSkillRemote({
+        ? await installSkillZip(target, requireInstallFile(file, t), scope, candidateIds)
+        : await installSkillRemote(target, {
             url: remoteURL.trim(),
             ref: remoteRef.trim(),
             subdir: remoteSubdir.trim(),

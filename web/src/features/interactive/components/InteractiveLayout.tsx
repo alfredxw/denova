@@ -1,12 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type KeyboardEventHandler, type PointerEventHandler } from 'react'
 import { Gauge, GripHorizontal, GripVertical } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { motion } from 'motion/react'
-import { Group, Panel, Separator } from 'react-resizable-panels'
-import type { Layout } from 'react-resizable-panels'
+import { Panel } from 'react-resizable-panels'
+import { toast } from 'sonner'
 import { useShallow } from 'zustand/react/shallow'
-import { readFile } from '@/lib/api'
-import { createInteractiveBranch, createInteractiveStory, deleteInteractiveBranch, deleteInteractiveStory, getInteractiveBranches, getInteractiveSnapshot, getInteractiveStories, getInteractiveTellers, getStoryDirectors, selectInteractiveStory, switchInteractiveBranch, updateInteractiveStory } from '../api'
+import { readOptionalProjectFile } from '@/lib/api'
+import { createInteractiveBranch, createInteractiveStory, deleteInteractiveBranch, deleteInteractiveStory, getInteractiveBranches, getInteractiveDirectorStatus, getInteractiveSnapshot, getInteractiveStories, getInteractiveTellers, getStoryDirectors, selectInteractiveStory, switchInteractiveBranch, updateInteractiveStory } from '../api'
 import { useInteractiveStore } from '../stores/interactive-store'
 import { BranchTimeline } from './BranchTimeline'
 import { DirectorBackstage } from './director-backstage/DirectorBackstage'
@@ -14,20 +14,30 @@ import { DirectorPanel } from './DirectorPanel'
 import { SettingPanel, type SettingPanelMode } from './SettingPanel'
 import { StoryPicker } from './StoryPicker'
 import { StoryStage } from './StoryStage'
+import { CreateBranchDialog } from './branching/CreateBranchDialog'
+import type { BranchCreationSource } from './branching/model'
 import {
   readStoryStateDisplayPreference,
   writeStoryStateDisplayPreference,
   type StoryStateDisplayPreference,
 } from './story-state/display-preference'
-import { novaEase, panelPresence, subtlePresence } from '@/features/motion/motion-tokens'
+import { novaEase, panelPresence } from '@/features/motion/motion-tokens'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { MobilePaneHost } from '@/components/layout/mobile-pane-host'
-import type { ImagePreset, InteractiveTurnPersistedEvent, Snapshot, StoryDirector, StoryImageSettings, StorySummary } from '../types'
+import { CollapsiblePanelSeparator, CollapsibleResizablePanel, PanelMotionGroup } from '@/components/layout/panel-motion'
+import { usePersistedPanelLayout } from '@/components/layout/use-persisted-panel-layout'
+import type { ImagePreset, InteractiveTurnPersistedEvent, Snapshot, StoryDirector, StoryImageSettings, StorySummary, Teller } from '../types'
 import { INTERACTIVE_OPENING_PRESET_PATH, INTERACTIVE_OPENING_PRESET_UPDATED_EVENT, LEGACY_INTERACTIVE_OPENING_PRESET_PATH, parseBookOpeningPresets, type BookOpeningPreset, type StoryCreateInput } from '../opening'
+import { DEFAULT_NARRATIVE_STYLE_ID, narrativeStylesForMode, resolveNarrativeStyle } from '../narrative-style'
+import { LoadingState } from '@/components/common/LoadingState'
 
 interface InteractiveLayoutProps {
+  projectId?: string
   workspace?: string
   active?: boolean
+  recentNarrativeStyleID?: string
+  narrativeStyleLoading?: boolean
+  onNarrativeStyleChange?: (id: string) => void | Promise<unknown>
   imagePresets?: ImagePreset[]
   onImagePresetsChange?: (presets: ImagePreset[]) => void
   loreEmpty?: boolean
@@ -38,7 +48,7 @@ interface InteractiveLayoutProps {
 
 const SNAPSHOT_POLL_INTERVAL_MS = 1000
 
-export function InteractiveLayout({ workspace, active = true, imagePresets = [], onImagePresetsChange, loreEmpty = false, onRequestLoreInit, rightPanelVisible = true, onToggleRightPanel }: InteractiveLayoutProps) {
+export function InteractiveLayout({ projectId = '', workspace, active = true, recentNarrativeStyleID = DEFAULT_NARRATIVE_STYLE_ID, narrativeStyleLoading = false, onNarrativeStyleChange, imagePresets = [], onImagePresetsChange, loreEmpty = false, onRequestLoreInit, rightPanelVisible = true, onToggleRightPanel }: InteractiveLayoutProps) {
   const { t } = useTranslation()
   const isMobile = useIsMobile()
   const {
@@ -55,6 +65,7 @@ export function InteractiveLayout({ workspace, active = true, imagePresets = [],
     setStoryDirectors,
     setBranches,
     setSnapshot,
+    setDirectorPlanStatus,
     applyTurnPersisted,
     setCurrentStoryId,
     setCurrentBranchId,
@@ -74,6 +85,7 @@ export function InteractiveLayout({ workspace, active = true, imagePresets = [],
     setStoryDirectors: state.setStoryDirectors,
     setBranches: state.setBranches,
     setSnapshot: state.setSnapshot,
+    setDirectorPlanStatus: state.setDirectorPlanStatus,
     applyTurnPersisted: state.applyTurnPersisted,
     setCurrentStoryId: state.setCurrentStoryId,
     setCurrentBranchId: state.setCurrentBranchId,
@@ -81,7 +93,7 @@ export function InteractiveLayout({ workspace, active = true, imagePresets = [],
     resetWorkspaceState: state.resetWorkspaceState,
   })))
   const currentStory = stories.find((story) => story.id === currentStoryId)
-  const currentTeller = tellers.find((teller) => teller.id === currentStory?.story_teller_id)
+  const currentTeller = resolveNarrativeStyle(tellers, currentStory?.story_teller_id, 'game')
   const styleSceneSuggestions = Array.from(new Set((currentTeller?.style_rules || []).map((rule) => rule.scene.trim()).filter((scene) => scene && !isGlobalStyleSceneName(scene))))
   const currentBranchSnapshot = snapshot?.story_id === currentStoryId && snapshot.branch_id === currentBranchId ? snapshot : null
   const storyIndexRequestSeqRef = useRef(0)
@@ -91,9 +103,15 @@ export function InteractiveLayout({ workspace, active = true, imagePresets = [],
   const lastStableSnapshotRef = useRef<Snapshot | null>(null)
   const [snapshotLoading, setSnapshotLoading] = useState(false)
   const [snapshotLoadFailed, setSnapshotLoadFailed] = useState(false)
+  const [storyIndexLoading, setStoryIndexLoading] = useState(true)
   const [mobileSnapshotOpen, setMobileSnapshotOpen] = useState(false)
   const [storyStateDisplayPreference, setStoryStateDisplayPreference] = useState(readStoryStateDisplayPreference)
   const [bookOpeningPresets, setBookOpeningPresets] = useState<BookOpeningPreset[]>([])
+  const [branchCreationSource, setBranchCreationSource] = useState<BranchCreationSource | null>(null)
+  const storyPanelLayout = usePersistedPanelLayout({
+    storageKey: 'nova-interactive-horizontal',
+    panelIds: ['story-stage', 'snapshot'],
+  })
 
   if (currentBranchSnapshot) {
     lastStableSnapshotRef.current = currentBranchSnapshot
@@ -106,6 +124,10 @@ export function InteractiveLayout({ workspace, active = true, imagePresets = [],
     snapshotStoryIdRef.current = snapshot?.story_id || ''
   }, [snapshot?.story_id])
 
+  useEffect(() => {
+    setBranchCreationSource(null)
+  }, [currentStoryId])
+
   const reloadStories = useCallback(async (preferredStory?: StorySummary) => {
     const requestSeq = storyIndexRequestSeqRef.current + 1
     storyIndexRequestSeqRef.current = requestSeq
@@ -115,26 +137,27 @@ export function InteractiveLayout({ workspace, active = true, imagePresets = [],
   }, [setStories])
 
   const reloadBookOpeningPreset = useCallback(async () => {
-    if (!workspace) {
+    if (!projectId) {
       setBookOpeningPresets([])
       return
     }
     try {
-      const data = await readFile(INTERACTIVE_OPENING_PRESET_PATH)
-      setBookOpeningPresets(parseBookOpeningPresets(data.content || ''))
-    } catch {
-      try {
-        const legacy = await readFile(LEGACY_INTERACTIVE_OPENING_PRESET_PATH)
-        setBookOpeningPresets(parseBookOpeningPresets(legacy.content || ''))
-      } catch {
-        setBookOpeningPresets([])
+      const data = await readOptionalProjectFile(projectId, INTERACTIVE_OPENING_PRESET_PATH)
+      if (data) {
+        setBookOpeningPresets(parseBookOpeningPresets(data.content || ''))
+        return
       }
+      const legacy = await readOptionalProjectFile(projectId, LEGACY_INTERACTIVE_OPENING_PRESET_PATH)
+      setBookOpeningPresets(legacy ? parseBookOpeningPresets(legacy.content || '') : [])
+    } catch {
+      setBookOpeningPresets([])
     }
-  }, [workspace])
+  }, [projectId])
 
   const reloadSnapshot = useCallback(
-    async (branchOverride?: string, storyOverride?: string, options?: { silent?: boolean }) => {
+    async (branchOverride?: string, storyOverride?: string, options?: { silent?: boolean; includeBranches?: boolean }) => {
       const silent = options?.silent === true
+      const includeBranches = options?.includeBranches !== false
       const requestSeq = snapshotRequestSeqRef.current + 1
       snapshotRequestSeqRef.current = requestSeq
       const storyId = storyOverride || currentStoryId
@@ -151,10 +174,13 @@ export function InteractiveLayout({ workspace, active = true, imagePresets = [],
       }
       const branchId = branchOverride ?? (snapshotStoryIdRef.current === storyId || currentBranchId !== 'main' ? currentBranchId : '')
       try {
-        const [nextSnapshot, nextBranches] = await Promise.all([getInteractiveSnapshot(storyId, branchId), getInteractiveBranches(storyId)])
+        const [nextSnapshot, nextBranches] = await Promise.all([
+          getInteractiveSnapshot(storyId, branchId),
+          includeBranches ? getInteractiveBranches(storyId) : Promise.resolve(null),
+        ])
         if (requestSeq !== snapshotRequestSeqRef.current) return
         setSnapshot(nextSnapshot)
-        setBranches(nextBranches)
+        if (nextBranches) setBranches(nextBranches)
         return nextSnapshot
       } catch (error) {
         if (requestSeq === snapshotRequestSeqRef.current) {
@@ -171,14 +197,26 @@ export function InteractiveLayout({ workspace, active = true, imagePresets = [],
   )
 
   useEffect(() => {
+    let cancelled = false
     storyIndexRequestSeqRef.current += 1
     snapshotRequestSeqRef.current += 1
     snapshotStoryIdRef.current = ''
     if (workspace !== undefined) {
       resetWorkspaceState()
-      if (!workspace) return
+      if (!workspace) {
+        setStoryIndexLoading(false)
+        return () => { cancelled = true }
+      }
     }
+    setStoryIndexLoading(true)
     void Promise.all([reloadStories(), getInteractiveTellers().then(setTellers), getStoryDirectors().then(setStoryDirectors)])
+      .catch((error) => {
+        if (!cancelled) console.error('[InteractiveLayout.tsx] failed to load the interactive workspace index', { workspace, error })
+      })
+      .finally(() => {
+        if (!cancelled) setStoryIndexLoading(false)
+      })
+    return () => { cancelled = true }
   }, [reloadStories, resetWorkspaceState, setStoryDirectors, setTellers, workspace])
 
   useEffect(() => {
@@ -195,9 +233,11 @@ export function InteractiveLayout({ workspace, active = true, imagePresets = [],
 
   useEffect(() => {
     const branchID = snapshot?.branch_id
+    const storyID = snapshot?.story_id
+    const statePending = snapshot?.current_turn?.state_status === 'pending'
     const directorStatus = snapshot?.director_plan_status?.status || ''
     const directorPending = directorStatus === 'running' || (directorStatus === 'waiting_opening' && (snapshot?.turns?.length || 0) > 0)
-    if (!active || !branchID || (snapshot?.current_turn?.state_status !== 'pending' && !directorPending)) return
+    if (!active || !storyID || !branchID || (!statePending && !directorPending)) return
     let cancelled = false
     let timer: number | null = null
     const clearTimer = () => {
@@ -210,7 +250,12 @@ export function InteractiveLayout({ workspace, active = true, imagePresets = [],
       if (cancelled || document.visibilityState !== 'visible') return
       timer = window.setTimeout(() => {
         timer = null
-        void reloadSnapshot(branchID, undefined, { silent: true }).finally(schedule)
+        const refresh = statePending
+          ? reloadSnapshot(branchID, storyID, { silent: true, includeBranches: false })
+          : getInteractiveDirectorStatus(storyID, branchID)
+              .then((status) => setDirectorPlanStatus(storyID, branchID, status))
+              .catch((error) => console.error('[interactive-layout] Failed to refresh Director status', { storyID, branchID, error }))
+        void refresh.finally(schedule)
       }, SNAPSHOT_POLL_INTERVAL_MS)
     }
     const handleVisibilityChange = () => {
@@ -224,7 +269,7 @@ export function InteractiveLayout({ workspace, active = true, imagePresets = [],
       clearTimer()
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
-  }, [active, reloadSnapshot, snapshot?.branch_id, snapshot?.current_turn?.id, snapshot?.current_turn?.state_status, snapshot?.director_plan_status?.status, snapshot?.turns?.length])
+  }, [active, reloadSnapshot, setDirectorPlanStatus, snapshot?.branch_id, snapshot?.current_turn?.id, snapshot?.current_turn?.state_status, snapshot?.director_plan_status?.status, snapshot?.story_id, snapshot?.turns?.length])
 
   useEffect(() => {
     if (!isMobile || submode !== 'story') setMobileSnapshotOpen(false)
@@ -286,9 +331,10 @@ export function InteractiveLayout({ workspace, active = true, imagePresets = [],
   const handleDirectorChange = async (directorId: string) => {
     if (!currentStoryId) return
     const director = storyDirectors.find((item) => item.id === directorId)
+    const narrativeStyleID = storyDirectorNarrativeStyleId(director, tellers, currentStory?.story_teller_id)
     await updateInteractiveStory(currentStoryId, {
       story_director_id: directorId,
-      story_teller_id: storyDirectorNarrativeStyleId(director, tellers, currentStory?.story_teller_id),
+      story_teller_id: narrativeStyleID,
     })
     await reloadStories()
     await reloadSnapshot(undefined, currentStoryId, { silent: true })
@@ -323,6 +369,11 @@ export function InteractiveLayout({ workspace, active = true, imagePresets = [],
     if (!rightPanelVisible) onToggleRightPanel?.()
   }, [isMobile, onToggleRightPanel, rightPanelVisible])
 
+  const openBranchTimeline = useCallback(() => {
+    setMobileSnapshotOpen(false)
+    setSubmode('timeline')
+  }, [setSubmode])
+
   const handleTurnPersisted = useCallback((event: InteractiveTurnPersistedEvent) => {
     return applyTurnPersisted(event) || undefined
   }, [applyTurnPersisted])
@@ -340,13 +391,15 @@ export function InteractiveLayout({ workspace, active = true, imagePresets = [],
   }
 
   const handleCreateBranch = async (turnId: string, title: string) => {
-    if (!currentStoryId) return
-    const branch = await createInteractiveBranch(currentStoryId, {
+    const storyId = currentStoryId || useInteractiveStore.getState().currentStoryId
+    if (!storyId) throw new Error(t('branchTimeline.createUnavailable'))
+    const branch = await createInteractiveBranch(storyId, {
       parent_event_id: turnId,
       title,
     })
     setCurrentBranchId(branch.id)
-    await reloadSnapshot(branch.id)
+    await reloadSnapshot(branch.id, storyId)
+    toast.success(t('branchTimeline.createdAndSwitched', { name: branch.title || title }))
   }
 
   const handleDeleteBranch = async (branchId: string) => {
@@ -359,12 +412,22 @@ export function InteractiveLayout({ workspace, active = true, imagePresets = [],
     await reloadStories()
   }
 
+  if (storyIndexLoading) {
+    return (
+      <LoadingState
+        label={t('interactiveLayout.loading')}
+        className="h-full min-h-0 bg-[var(--nova-bg)]"
+      />
+    )
+  }
+
   const settingMode: SettingPanelMode = submode === 'story' || submode === 'timeline' || submode === 'director' ? 'lore' : submode
   const settingsWorkspaceVisible = submode !== 'story' && submode !== 'timeline' && submode !== 'director'
   const contentKey = settingsWorkspaceVisible ? `settings:${settingMode}` : submode
   const directorPanelVisible = isMobile ? mobileSnapshotOpen : rightPanelVisible
   const storyStage = (
     <StoryStage
+      projectId={projectId}
       workspace={workspace}
       styleSceneSuggestions={styleSceneSuggestions}
       stories={stories}
@@ -372,6 +435,8 @@ export function InteractiveLayout({ workspace, active = true, imagePresets = [],
       tellers={tellers}
       storyDirectors={storyDirectors}
       imagePresets={imagePresets}
+      recentNarrativeStyleID={recentNarrativeStyleID}
+      narrativeStyleLoading={narrativeStyleLoading}
       storyId={currentStoryId}
       branchId={currentBranchId}
       snapshot={displaySnapshot}
@@ -383,6 +448,7 @@ export function InteractiveLayout({ workspace, active = true, imagePresets = [],
       onStorySelect={handleStorySelect}
       onStoryCreate={handleCreateStory}
       onStorySetupUpdate={handleStorySetupUpdate}
+      onNarrativeStyleChange={onNarrativeStyleChange}
       onStoryDelete={handleDeleteStories}
       onDirectorChange={handleDirectorChange}
       onReplyTargetCharsChange={handleReplyTargetCharsChange}
@@ -394,6 +460,7 @@ export function InteractiveLayout({ workspace, active = true, imagePresets = [],
       }}
       onToggleDirectorPanel={isMobile ? () => setMobileSnapshotOpen((open) => !open) : onToggleRightPanel}
       onOpenDirectorState={openDirectorState}
+      onRequestCreateBranch={setBranchCreationSource}
       onStateDisplayPreferenceChange={handleStoryStateDisplayPreferenceChange}
       onTurnPersisted={handleTurnPersisted}
       onDone={handleStoryStageDone}
@@ -406,9 +473,9 @@ export function InteractiveLayout({ workspace, active = true, imagePresets = [],
           <div className="flex min-w-0 flex-1 flex-col bg-[var(--nova-surface-2)]">
             <motion.div key={contentKey} variants={panelPresence} initial="initial" animate="animate" transition={{ duration: 0.2, ease: novaEase }} className="flex min-h-0 flex-1 flex-col">
               {settingsWorkspaceVisible ? (
-                <SettingPanel mode={settingMode} workspace={workspace} presetUsageMode="game" tellers={tellers} storyDirectors={storyDirectors} imagePresets={imagePresets} onTellersChange={setTellers} onStoryDirectorsChange={setStoryDirectors} onImagePresetsChange={onImagePresetsChange} />
+                <SettingPanel mode={settingMode} projectId={projectId} presetUsageMode="game" tellers={tellers} storyDirectors={storyDirectors} imagePresets={imagePresets} onTellersChange={setTellers} onStoryDirectorsChange={setStoryDirectors} onImagePresetsChange={onImagePresetsChange} />
               ) : submode === 'director' ? (
-                <DirectorBackstage storyId={currentStoryId} branchId={currentBranchId} snapshot={displaySnapshot} loading={snapshotPending} onSnapshotRefresh={() => reloadSnapshot(currentBranchId, currentStoryId, { silent: true })} />
+                <DirectorBackstage projectId={projectId} storyId={currentStoryId} branchId={currentBranchId} snapshot={displaySnapshot} loading={snapshotPending} onSnapshotRefresh={() => reloadSnapshot(currentBranchId, currentStoryId, { silent: true })} />
               ) : submode === 'timeline' ? (
                 <BranchTimeline snapshot={displaySnapshot} branches={branches} currentBranchId={currentBranchId} onSwitchBranch={handleSwitchBranch} onCreateBranch={handleCreateBranch} onDeleteBranch={handleDeleteBranch} fill variant="workspace" onBackToStory={() => setSubmode('story')} headerControls={<StoryPicker stories={stories} currentStoryId={currentStoryId} onSelect={handleStorySelect} onCreate={() => undefined} onDeleteStories={handleDeleteStories} hideCreate />} />
               ) : isMobile ? (
@@ -418,7 +485,22 @@ export function InteractiveLayout({ workspace, active = true, imagePresets = [],
                     title: t('directorPanel.title'),
                     side: 'right',
                     icon: <Gauge className="h-4 w-4" />,
-                    content: <DirectorPanel storyId={currentStoryId} story={currentStory} storyDirectors={storyDirectors} onDirectorChange={handleDirectorChange} onReplyTargetCharsChange={handleReplyTargetCharsChange} branchId={currentBranchId} snapshot={displaySnapshot} stateDisplayPreference={storyStateDisplayPreference} onStateDisplayPreferenceChange={handleStoryStateDisplayPreferenceChange} />,
+                    content: (
+                      <DirectorPanel
+                        storyId={currentStoryId}
+                        story={currentStory}
+                        storyDirectors={storyDirectors}
+                        onDirectorChange={handleDirectorChange}
+                        onReplyTargetCharsChange={handleReplyTargetCharsChange}
+                        branchId={currentBranchId}
+                        branches={branches}
+                        snapshot={displaySnapshot}
+                        stateDisplayPreference={storyStateDisplayPreference}
+                        onStateDisplayPreferenceChange={handleStoryStateDisplayPreferenceChange}
+                        onSwitchBranch={handleSwitchBranch}
+                        onOpenBranchTimeline={openBranchTimeline}
+                      />
+                    ),
                   }]}
                   closeLabel={t('common.close')}
                   openPaneId={mobileSnapshotOpen ? 'director-panel' : null}
@@ -428,26 +510,59 @@ export function InteractiveLayout({ workspace, active = true, imagePresets = [],
                   {storyStage}
                 </MobilePaneHost>
               ) : (
-                <Group id="nova-interactive-horizontal" defaultLayout={readStoredLayout('nova-interactive-horizontal')} onLayoutChanged={(layout) => storeLayout('nova-interactive-horizontal', layout)} orientation="horizontal" className="min-h-0 flex-1">
+                <PanelMotionGroup
+                  id="nova-interactive-horizontal"
+                  defaultLayout={storyPanelLayout.defaultLayout}
+                  onLayoutChanged={(layout) => {
+                    if (rightPanelVisible) storyPanelLayout.persistUserLayout(layout)
+                  }}
+                  orientation="horizontal"
+                  className="min-h-0 flex-1"
+                >
                   <Panel id="story-stage" minSize="240px" className="min-w-0">
                     {storyStage}
                   </Panel>
-                  {rightPanelVisible && (
-                    <>
-                      <InteractiveResizeHandle direction="vertical" label={t('interactiveLayout.resizeDirectorPanel')} />
-                      <Panel id="snapshot" defaultSize="320px" minSize="180px" maxSize="45%" className="min-w-0">
-                        <motion.div className="h-full min-h-0" variants={subtlePresence} initial="initial" animate="animate" transition={{ duration: 0.16, ease: novaEase }}>
-                          <DirectorPanel storyId={currentStoryId} story={currentStory} storyDirectors={storyDirectors} onDirectorChange={handleDirectorChange} onReplyTargetCharsChange={handleReplyTargetCharsChange} branchId={currentBranchId} snapshot={displaySnapshot} stateDisplayPreference={storyStateDisplayPreference} onStateDisplayPreferenceChange={handleStoryStateDisplayPreferenceChange} />
-                        </motion.div>
-                      </Panel>
-                    </>
-                  )}
-                </Group>
+                  <InteractiveResizeHandle
+                    visible={rightPanelVisible}
+                    direction="vertical"
+                    label={t('interactiveLayout.resizeDirectorPanel')}
+                    {...storyPanelLayout.resizeHandleIntentProps}
+                  />
+                  <CollapsibleResizablePanel
+                    id="snapshot"
+                    visible={rightPanelVisible}
+                    side="right"
+                    defaultSize="320px"
+                    minSize="180px"
+                    maxSize="45%"
+                    className="min-w-[180px]"
+                  >
+                    <DirectorPanel
+                      storyId={currentStoryId}
+                      story={currentStory}
+                      storyDirectors={storyDirectors}
+                      onDirectorChange={handleDirectorChange}
+                      onReplyTargetCharsChange={handleReplyTargetCharsChange}
+                      branchId={currentBranchId}
+                      branches={branches}
+                      snapshot={displaySnapshot}
+                      stateDisplayPreference={storyStateDisplayPreference}
+                      onStateDisplayPreferenceChange={handleStoryStateDisplayPreferenceChange}
+                      onSwitchBranch={handleSwitchBranch}
+                      onOpenBranchTimeline={openBranchTimeline}
+                    />
+                  </CollapsibleResizablePanel>
+                </PanelMotionGroup>
               )}
             </motion.div>
           </div>
         </div>
       </div>
+      <CreateBranchDialog
+        source={branchCreationSource}
+        onClose={() => setBranchCreationSource(null)}
+        onCreate={(source, title) => handleCreateBranch(source.turnId, title)}
+      />
     </div>
   )
 }
@@ -457,11 +572,13 @@ function isGlobalStyleSceneName(scene: string) {
   return normalized === '全局' || normalized === 'global'
 }
 
-function storyDirectorNarrativeStyleId(director: StoryDirector | undefined, tellers: { id: string }[], fallbackTellerId = '') {
-  if (director?.module_refs?.narrative_style_disabled !== true && director?.module_refs?.narrative_style_id) {
-    return director.module_refs.narrative_style_id
-  }
-  return tellers[0]?.id || fallbackTellerId || 'classic'
+function storyDirectorNarrativeStyleId(director: StoryDirector | undefined, tellers: Teller[], fallbackTellerId = '') {
+  const available = narrativeStylesForMode(tellers, 'game')
+  const directorTellerID = director?.module_refs?.narrative_style_disabled !== true ? director?.module_refs?.narrative_style_id : ''
+  return available.find((teller) => teller.id === directorTellerID)?.id
+    || available.find((teller) => teller.id === fallbackTellerId)?.id
+    || resolveNarrativeStyle(available, DEFAULT_NARRATIVE_STYLE_ID, 'game')?.id
+    || DEFAULT_NARRATIVE_STYLE_ID
 }
 
 function mergePreferredStory(stories: StorySummary[], preferredStory?: StorySummary) {
@@ -475,31 +592,35 @@ function mergePreferredStory(stories: StorySummary[], preferredStory?: StorySumm
   return found ? nextStories : [preferredStory, ...nextStories]
 }
 
-function InteractiveResizeHandle({ direction, label, prominent = false }: { direction: 'horizontal' | 'vertical'; label: string; prominent?: boolean }) {
+function InteractiveResizeHandle({
+  direction,
+  label,
+  prominent = false,
+  visible = true,
+  onPointerDownCapture,
+  onKeyDownCapture,
+}: {
+  direction: 'horizontal' | 'vertical'
+  label: string
+  prominent?: boolean
+  visible?: boolean
+  onPointerDownCapture?: PointerEventHandler<HTMLElement>
+  onKeyDownCapture?: KeyboardEventHandler<HTMLElement>
+}) {
   const Icon = direction === 'vertical' ? GripVertical : GripHorizontal
   const className = direction === 'vertical' ? 'nova-resize-handle group -mx-1 flex w-3 cursor-col-resize items-center justify-center bg-transparent transition-colors' : `nova-resize-handle group ${prominent ? '-my-0.5 h-4' : '-my-1 h-3'} flex cursor-row-resize items-center justify-center bg-transparent transition-colors`
 
   return (
-    <Separator aria-label={label} className={className}>
+    <CollapsiblePanelSeparator
+      visible={visible}
+      aria-label={label}
+      className={className}
+      onPointerDownCapture={onPointerDownCapture}
+      onKeyDownCapture={onKeyDownCapture}
+    >
       <span className={`flex items-center justify-center rounded-full border border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-faint)] shadow-[0_4px_14px_rgba(0,0,0,0.22)] transition-colors group-hover:border-[var(--nova-active)] group-data-[resize-handle-active]:border-[var(--nova-active)] group-data-[resize-handle-active]:text-[var(--nova-text)] ${direction === 'vertical' ? 'h-9 w-2.5' : 'h-2.5 w-16'}`}>
         <Icon className={direction === 'vertical' ? 'h-3.5 w-3.5' : 'h-3 w-3'} aria-hidden="true" />
       </span>
-    </Separator>
+    </CollapsiblePanelSeparator>
   )
-}
-
-function readStoredLayout(key: string): Layout | undefined {
-  if (typeof window === 'undefined') return undefined
-  const value = window.localStorage.getItem(key)
-  if (!value) return undefined
-  try {
-    return JSON.parse(value) as Layout
-  } catch {
-    return undefined
-  }
-}
-
-function storeLayout(key: string, layout: Layout) {
-  if (typeof window === 'undefined') return
-  window.localStorage.setItem(key, JSON.stringify(layout))
 }

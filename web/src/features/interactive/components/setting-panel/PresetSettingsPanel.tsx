@@ -12,17 +12,19 @@ import { MobilePaneTrigger } from '@/components/layout/mobile-pane-trigger'
 import { ResourceDirectory } from '@/components/resource-directory/ResourceDirectory'
 import { Button } from '@/components/ui/button'
 import { createActorState, createEventPackage, createImagePreset, createInteractiveTeller, createRuleSystem, createStoryDirector, deleteActorState, deleteEventPackage, deleteImagePreset, deleteInteractiveTeller, deleteRuleSystem, deleteStoryDirector, getActorStates, getEventPackages, getImagePresets, getInteractiveTellers, getRuleSystems, getStoryDirectors, updateActorState, updateEventPackage, updateImagePreset, updateInteractiveTeller, updateRuleSystem, updateStoryDirector } from '../../api'
-import type { PresetResourceKind, PresetUsageMode } from '../../preset-ownership'
+import { narrativeStylesForMode } from '../../narrative-style'
+import { PRESET_RESOURCE_SCOPE, type PresetResourceKind, type PresetUsageMode } from '../../preset-ownership'
 import type { ActorStateModule, EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, Teller } from '../../types'
 import { PresetResourcePane } from './PresetResourcePane'
 import { buildPresetDirectorySections, presetDirectoryEntryId } from './preset-directory-sections'
+import { applyPresetDirectoryOrder, usePresetDirectoryOrder } from './use-preset-directory-order'
 import { usePresetDraftSync, usePresetResources } from './use-preset-resources'
 import { usePresetSelection } from './use-preset-selection'
 import { createPresetConflictResolver, usePresetResourceAutosave } from './usePresetResourceAutosave'
 import { currentPresetBuiltinOverridden, EMPTY_IMAGE_PRESETS, EMPTY_STORY_DIRECTORS, EMPTY_TELLERS, isPresetConfigResourceKind, makeActorStatePayload, makeEventPackagePayload, makeImagePresetPayload, makeRuleSystemPayload, makeStoryDirectorPayload, makeTellerPayload, newActorStateDraft, newEventPackageDraft, newImagePresetDraft, newRuleSystemDraft, newStoryDirectorDraft, newTellerDraft, presetEditorSubtitle, presetEditorTitle, presetResourceDraftSignature, PRESET_DELETE_COPY, TELLER_CONFIG_AGENT_ENTRY_ID, type PresetDeleteTarget } from './presetResources'
 
 interface PresetSettingsPanelProps {
-  workspace: string
+  projectId: string
   tellers?: Teller[]
   storyDirectors?: StoryDirector[]
   imagePresets?: ImagePreset[]
@@ -47,7 +49,7 @@ const iconActionClassName = 'border-[var(--preset-line)] bg-transparent text-[va
 const PRESET_CONFIG_INVALID_TOAST_ID = 'preset-config-invalid'
 
 export function PresetSettingsPanel({
-  workspace,
+  projectId,
   tellers: externalTellers = EMPTY_TELLERS,
   storyDirectors: externalStoryDirectors = EMPTY_STORY_DIRECTORS,
   imagePresets: externalImagePresets = EMPTY_IMAGE_PRESETS,
@@ -69,7 +71,6 @@ export function PresetSettingsPanel({
   const [presetResourceKind, setPresetResourceKind] = useState<PresetResourceKind>('teller')
 
   const resources = usePresetResources({
-    workspace,
     externalTellers,
     externalStoryDirectors,
     externalImagePresets,
@@ -124,6 +125,7 @@ export function PresetSettingsPanel({
     refreshRuleSystems,
     refreshActorStates,
   } = resources
+  const presetDirectoryOrder = usePresetDirectoryOrder()
 
   useEffect(() => {
     presetConfigValidRef.current = presetConfigValid
@@ -135,16 +137,16 @@ export function PresetSettingsPanel({
 
   const tellerAutosave = usePresetResourceAutosave<Teller, Partial<Teller>, Teller>({
     draft: tellerDraft,
-    scopeKey: workspace,
+    scopeKey: PRESET_RESOURCE_SCOPE,
     active: presetResourceKind === 'teller' && activeTellerId !== TELLER_CONFIG_AGENT_ENTRY_ID,
     makePayload: makeTellerPayload,
     baselineFromSaved: (saved) => saved,
     signature: presetResourceDraftSignature,
-    save: (id, payload, baseRevision) => updateInteractiveTeller(id, payload, baseRevision, workspace),
+    save: (id, payload, baseRevision) => updateInteractiveTeller(id, payload, baseRevision),
     resolveConflict: createPresetConflictResolver(
       getInteractiveTellers,
       makeTellerPayload,
-      { resource: 'interactive_teller', scope: workspace },
+      { resource: 'interactive_teller', scope: PRESET_RESOURCE_SCOPE },
     ),
     onSaved: mergeSavedTeller,
     onAutoSaveError: (err) => {
@@ -156,17 +158,17 @@ export function PresetSettingsPanel({
 
   const storyDirectorAutosave = usePresetResourceAutosave<StoryDirector, Partial<StoryDirector>, StoryDirector>({
     draft: storyDirectorDraft,
-    scopeKey: workspace,
+    scopeKey: PRESET_RESOURCE_SCOPE,
     active: presetResourceKind === 'director',
     valid: presetConfigValid,
     makePayload: makeStoryDirectorPayload,
     baselineFromSaved: (saved) => saved,
     signature: presetResourceDraftSignature,
-    save: (id, payload, baseRevision) => updateStoryDirector(id, payload, baseRevision, workspace),
+    save: (id, payload, baseRevision) => updateStoryDirector(id, payload, baseRevision),
     resolveConflict: createPresetConflictResolver(
       getStoryDirectors,
       makeStoryDirectorPayload,
-      { resource: 'story_director', scope: workspace },
+      { resource: 'story_director', scope: PRESET_RESOURCE_SCOPE },
     ),
     onSaved: mergeSavedStoryDirector,
     onAutoSaveError: (err) => {
@@ -178,16 +180,16 @@ export function PresetSettingsPanel({
 
   const imagePresetAutosave = usePresetResourceAutosave<ImagePreset, Partial<ImagePreset>, ImagePreset>({
     draft: imagePresetDraft,
-    scopeKey: workspace,
+    scopeKey: PRESET_RESOURCE_SCOPE,
     active: presetResourceKind === 'image',
     makePayload: makeImagePresetPayload,
     baselineFromSaved: (saved) => saved,
     signature: presetResourceDraftSignature,
-    save: (id, payload, baseRevision) => updateImagePreset(id, payload, baseRevision, workspace),
+    save: (id, payload, baseRevision) => updateImagePreset(id, payload, baseRevision),
     resolveConflict: createPresetConflictResolver(
       getImagePresets,
       makeImagePresetPayload,
-      { resource: 'image_preset', scope: workspace },
+      { resource: 'image_preset', scope: PRESET_RESOURCE_SCOPE },
     ),
     onSaved: mergeSavedImagePreset,
     onAutoSaveError: (err) => {
@@ -199,17 +201,17 @@ export function PresetSettingsPanel({
 
   const eventPackageAutosave = usePresetResourceAutosave<EventPackageModule, Partial<EventPackageModule>, EventPackageModule>({
     draft: eventPackageDraft,
-    scopeKey: workspace,
+    scopeKey: PRESET_RESOURCE_SCOPE,
     active: presetResourceKind === 'event',
     valid: presetConfigValid,
     makePayload: makeEventPackagePayload,
     baselineFromSaved: (saved) => saved,
     signature: presetResourceDraftSignature,
-    save: (id, payload, baseRevision) => updateEventPackage(id, payload, baseRevision, workspace),
+    save: (id, payload, baseRevision) => updateEventPackage(id, payload, baseRevision),
     resolveConflict: createPresetConflictResolver(
       getEventPackages,
       makeEventPackagePayload,
-      { resource: 'event_package', scope: workspace },
+      { resource: 'event_package', scope: PRESET_RESOURCE_SCOPE },
     ),
     onSaved: mergeSavedEventPackage,
     onAutoSaveError: (err) => {
@@ -221,17 +223,17 @@ export function PresetSettingsPanel({
 
   const ruleSystemAutosave = usePresetResourceAutosave<RuleSystemModule, Partial<RuleSystemModule>, RuleSystemModule>({
     draft: ruleSystemDraft,
-    scopeKey: workspace,
+    scopeKey: PRESET_RESOURCE_SCOPE,
     active: presetResourceKind === 'rule',
     valid: presetConfigValid,
     makePayload: makeRuleSystemPayload,
     baselineFromSaved: (saved) => saved,
     signature: presetResourceDraftSignature,
-    save: (id, payload, baseRevision) => updateRuleSystem(id, payload, baseRevision, workspace),
+    save: (id, payload, baseRevision) => updateRuleSystem(id, payload, baseRevision),
     resolveConflict: createPresetConflictResolver(
       getRuleSystems,
       makeRuleSystemPayload,
-      { resource: 'rule_system', scope: workspace },
+      { resource: 'rule_system', scope: PRESET_RESOURCE_SCOPE },
     ),
     onSaved: mergeSavedRuleSystem,
     onAutoSaveError: (err) => {
@@ -243,17 +245,17 @@ export function PresetSettingsPanel({
 
   const actorStateAutosave = usePresetResourceAutosave<ActorStateModule, Partial<ActorStateModule>, ActorStateModule>({
     draft: actorStateDraft,
-    scopeKey: workspace,
+    scopeKey: PRESET_RESOURCE_SCOPE,
     active: presetResourceKind === 'actor-state',
     valid: presetConfigValid,
     makePayload: makeActorStatePayload,
     baselineFromSaved: (saved) => saved,
     signature: presetResourceDraftSignature,
-    save: (id, payload, baseRevision) => updateActorState(id, payload, baseRevision, workspace),
+    save: (id, payload, baseRevision) => updateActorState(id, payload, baseRevision),
     resolveConflict: createPresetConflictResolver(
       getActorStates,
       makeActorStatePayload,
-      { resource: 'actor_state', scope: workspace },
+      { resource: 'actor_state', scope: PRESET_RESOURCE_SCOPE },
     ),
     onSaved: mergeSavedActorState,
     onAutoSaveError: (err) => {
@@ -351,11 +353,10 @@ export function PresetSettingsPanel({
     if (kind === 'event') return eventPackages
     if (kind === 'rule') return ruleSystems
     if (kind === 'actor-state') return actorStates
-    return tellers
+    return narrativeStylesForMode(tellers, presetUsageMode)
   }
 
   const { selectPresetResource, handleSelectDirectoryEntry } = usePresetSelection({
-    workspace,
     presetUsageMode,
     presetResourceKind,
     setPresetResourceKind,
@@ -572,12 +573,21 @@ export function PresetSettingsPanel({
   const title = isTellerConfigAgentActive ? t('settingPanel.tellerAgent.title') : presetEditorTitle(presetResourceKind, presetDrafts, t)
   const subtitle = isTellerConfigAgentActive ? t('settingPanel.tellerAgent.subtitle') : presetEditorSubtitle(presetResourceKind, presetDrafts, t)
 
-  const presetDirectorySections = buildPresetDirectorySections({
+  const presetDirectorySections = applyPresetDirectoryOrder(buildPresetDirectorySections({
     lists: { tellers, storyDirectors, imagePresets, eventPackages, ruleSystems, actorStates },
     presetUsageMode,
     onCreateKind: (kind) => void createPresetResource(kind),
     t,
-  })
+  }), presetDirectoryOrder.order)
+
+  const directoryItemIdsForKind = (kind: PresetResourceKind) => {
+    if (kind === 'director') return storyDirectors.map((item) => presetDirectoryEntryId(kind, item.id))
+    if (kind === 'image') return imagePresets.map((item) => presetDirectoryEntryId(kind, item.id))
+    if (kind === 'event') return eventPackages.map((item) => presetDirectoryEntryId(kind, item.id))
+    if (kind === 'rule') return ruleSystems.map((item) => presetDirectoryEntryId(kind, item.id))
+    if (kind === 'actor-state') return actorStates.map((item) => presetDirectoryEntryId(kind, item.id))
+    return tellers.map((item) => presetDirectoryEntryId(kind, item.id))
+  }
 
   const activeDirectoryId = isTellerConfigAgentActive
     ? TELLER_CONFIG_AGENT_ENTRY_ID
@@ -594,6 +604,10 @@ export function PresetSettingsPanel({
         searchPlaceholder={t('settingPanel.directory.search')}
         showExpandCollapseAll
         expandedSectionId={presetResourceKind}
+        onReorderItems={(sectionId, orderedItemIds) => {
+          const kind = sectionId as PresetResourceKind
+          presetDirectoryOrder.reorderItems(kind, orderedItemIds, directoryItemIdsForKind(kind))
+        }}
       />
     </div>
   )
@@ -607,12 +621,18 @@ export function PresetSettingsPanel({
           side: 'left',
           icon: <SlidersHorizontal className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />,
           content: directoryPanel,
-          desktopClassName: `min-h-0 border-r border-[var(--preset-line)] ${embedded ? 'w-56' : 'w-[280px]'}`,
+          desktopClassName: 'min-h-0 border-r border-[var(--preset-line)]',
           mobileClassName: embedded ? 'w-[min(86vw,320px)]' : 'w-[min(90vw,360px)]',
         }}
         className="h-full"
         mainClassName="min-h-0 min-w-0"
-        desktopGridClassName={embedded ? 'grid-cols-[14rem_minmax(0,1fr)]' : 'grid-cols-[280px_minmax(0,1fr)]'}
+        leftResize={{
+          layoutKey: embedded ? 'nova-embedded-preset-directory-layout' : 'nova-preset-directory-layout',
+          label: t('layout.resize.sidebar'),
+          defaultSize: embedded ? '224px' : '280px',
+          minSize: embedded ? '180px' : '220px',
+          maxSize: '42%',
+        }}
         collapseAt={embedded ? 760 : 820}
       >
         {({ isMobile, openLeft, closePane }) => {
@@ -642,7 +662,7 @@ export function PresetSettingsPanel({
                     />
                   ) : null}
                   {canRestoreBuiltinPreset && (
-                    <Button className={actionButtonClassName} variant="outline" size="sm" disabled={busy} onClick={() => void handleRestoreBuiltinPreset()} aria-label={t('settingPanel.restoreBuiltin')} title={t('settingPanel.restoreBuiltin')}>
+                    <Button className={actionButtonClassName} variant="outline" size="sm" disabled={busy} onClick={() => void handleRestoreBuiltinPreset()} aria-label={t('settingPanel.restoreBuiltin')}>
                       <RotateCcw data-icon="inline-start" />
                       <span className="preset-action-label">{t('settingPanel.restoreBuiltin')}</span>
                     </Button>
@@ -659,7 +679,7 @@ export function PresetSettingsPanel({
             >
               {isTellerConfigAgentActive ? (
                 <ConfigManagerChat
-                  workspace={workspace}
+                  projectId={projectId}
                   origin="teller"
                   resourceId={TELLER_CONFIG_AGENT_ENTRY_ID}
                   context={{
@@ -682,7 +702,7 @@ export function PresetSettingsPanel({
               ) : (
                 <PresetResourcePane
                   kind={presetResourceKind}
-                  workspace={workspace}
+                  projectId={projectId}
                   tellers={tellers}
                   storyDirectors={storyDirectors}
                   imagePresets={imagePresets}

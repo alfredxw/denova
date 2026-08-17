@@ -16,8 +16,8 @@ import (
 
 	"github.com/cloudwego/hertz/pkg/common/ut"
 
-	"denova/internal/book"
-	"denova/internal/bookcover"
+	"denova/internal/book/lore"
+	imageasset "denova/internal/image/asset"
 )
 
 func TestCharacterCardImportAsNewBookAboveRecommendation(t *testing.T) {
@@ -35,11 +35,11 @@ func TestCharacterCardImportAsNewBookAboveRecommendation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	body, contentType := characterCardImportBody(t, card, map[string]string{"target_mode": "new_book", "book_title": "五十 KB 新书"})
+	body, contentType := characterCardImportBody(t, card, map[string]string{"book_title": "五十 KB 新书"})
 	resp := ut.PerformRequest(
 		server.engine.Engine,
 		http.MethodPost,
-		"/api/workspace/import-character-card",
+		"/api/books/import-character-card",
 		&ut.Body{Body: bytes.NewReader(body), Len: len(body)},
 		ut.Header{Key: "Content-Type", Value: contentType},
 	)
@@ -48,18 +48,68 @@ func TestCharacterCardImportAsNewBookAboveRecommendation(t *testing.T) {
 	}
 	var result struct {
 		Workspace string `json:"workspace"`
+		ProjectID string `json:"project_id"`
 		ItemCount int    `json:"item_count"`
 	}
 	decodeResponse(t, resp.Body.Bytes(), &result)
-	if result.Workspace == "" || result.ItemCount == 0 {
+	if result.Workspace == "" || result.ProjectID == "" || result.ProjectID != application.ProjectID() || result.ItemCount == 0 {
 		t.Fatalf("new-book import result mismatch: %#v", result)
 	}
-	residentBytes, err := book.NewLoreStore(result.Workspace).ResidentContentBytes()
+	residentBytes, err := lore.NewStore(result.Workspace).ResidentContentBytes()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if residentBytes <= book.ResidentLoreWarningBytes {
+	if residentBytes <= lore.ResidentLoreWarningBytes {
 		t.Fatalf("fixture should exceed warning recommendation: %d", residentBytes)
+	}
+}
+
+func TestCharacterCardImportUsesProjectRouteWhenAnotherBookIsForeground(t *testing.T) {
+	application := newTestApplication(t)
+	server := NewServer(application, "0")
+	backgroundProjectID := application.ProjectID()
+	backgroundWorkspace := application.Workspace()
+	created := performJSONRequest(t, server, http.MethodPost, "/api/books/create", map[string]string{"title": "Foreground Character Card Book"})
+	if created.Code != http.StatusOK || application.ProjectID() == backgroundProjectID {
+		t.Fatalf("create foreground Book status=%d project_id=%q body=%s", created.Code, application.ProjectID(), created.Body.String())
+	}
+	foregroundWorkspace := application.Workspace()
+	card := []byte(`{
+		"spec": "chara_card_v2",
+		"data": {
+			"name": "Background Character",
+			"description": "Belongs only to the selected Project"
+		}
+	}`)
+	body, contentType := characterCardImportBody(t, card, map[string]string{"lore_classification": "heuristic"})
+	resp := ut.PerformRequest(
+		server.engine.Engine,
+		http.MethodPost,
+		"/api/projects/"+url.PathEscape(backgroundProjectID)+"/book/import-character-card",
+		&ut.Body{Body: bytes.NewReader(body), Len: len(body)},
+		ut.Header{Key: "Content-Type", Value: contentType},
+	)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("background import status=%d body=%s", resp.Code, resp.Body.String())
+	}
+	var result struct {
+		ProjectID string `json:"project_id"`
+		Workspace string `json:"workspace"`
+	}
+	decodeResponse(t, resp.Body.Bytes(), &result)
+	if result.ProjectID != backgroundProjectID || result.Workspace != backgroundWorkspace {
+		t.Fatalf("character card import used the wrong Project: %#v", result)
+	}
+	backgroundItems, err := lore.NewStore(backgroundWorkspace).ListAll()
+	if err != nil || len(backgroundItems) != 1 || backgroundItems[0].Name != "Background Character" {
+		t.Fatalf("background Project lore=%#v err=%v", backgroundItems, err)
+	}
+	foregroundItems, err := lore.NewStore(foregroundWorkspace).ListAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(foregroundItems) != 0 {
+		t.Fatalf("character card import leaked into the foreground Book: %#v", foregroundItems)
 	}
 }
 
@@ -79,12 +129,12 @@ func TestBookCoverUploadAPI(t *testing.T) {
 		t.Fatalf("upload status = %d body=%s", resp.Code, resp.Body.String())
 	}
 
-	var result bookcover.Result
+	var result imageasset.CoverResult
 	decodeResponse(t, resp.Body.Bytes(), &result)
-	if result.CoverPath != bookcover.CoverPath || result.CoverUpdatedAt == "" {
+	if result.CoverPath != imageasset.CoverPath || result.CoverUpdatedAt == "" {
 		t.Fatalf("上传封面响应不符合预期: %#v", result)
 	}
-	file, err := os.Open(filepath.Join(application.Workspace(), filepath.FromSlash(bookcover.CoverPath)))
+	file, err := os.Open(filepath.Join(application.Workspace(), filepath.FromSlash(imageasset.CoverPath)))
 	if err != nil {
 		t.Fatalf("读取展示封面失败: %v", err)
 	}
@@ -96,7 +146,7 @@ func TestBookCoverUploadAPI(t *testing.T) {
 
 func TestBookExportTextAPI(t *testing.T) {
 	application := newTestApplication(t)
-	if _, err := application.UpdateBookInfo(application.Workspace(), "星河边境", "Denova", ""); err != nil {
+	if _, err := application.BookAssets().UpdateInfo(application.Workspace(), "星河边境", "Denova", ""); err != nil {
 		t.Fatalf("写入书籍元信息失败: %v", err)
 	}
 	if err := application.BookService().Create("chapters/ch00002-第二章-追光.md", "file", "第二章 追光\n\n林川踏入雨夜。"); err != nil {

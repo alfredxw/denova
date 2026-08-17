@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -10,6 +10,7 @@ const defaultResizeObserver = globalThis.ResizeObserver
 describe('AdaptiveSurface', () => {
   beforeEach(() => {
     setMobileViewport(false)
+    window.localStorage.clear()
   })
 
   afterEach(() => {
@@ -24,6 +25,63 @@ describe('AdaptiveSurface', () => {
     expect(screen.getByTestId('main-pane')).toBeVisible()
     expect(screen.getByTestId('right-pane')).toBeVisible()
     expect(container.querySelector('[data-nova-adaptive-container="true"]')).not.toBeInTheDocument()
+  })
+
+  it('anchors desktop-only controls outside resizing pane content', () => {
+    const { container } = render(
+      <AdaptiveSurface desktopOverlay={<button type="button">Fixed control</button>}>
+        <div>Main content</div>
+      </AdaptiveSurface>,
+    )
+
+    expect(container.querySelector('[data-nova-adaptive-overlay-host="true"]'))
+      .toContainElement(screen.getByRole('button', { name: 'Fixed control' }))
+  })
+
+  it('omits desktop-only controls from compact layouts', () => {
+    setMobileViewport(true)
+
+    render(
+      <AdaptiveSurface desktopOverlay={<button type="button">Fixed control</button>}>
+        <div>Main content</div>
+      </AdaptiveSurface>,
+    )
+
+    expect(screen.queryByRole('button', { name: 'Fixed control' })).not.toBeInTheDocument()
+  })
+
+  it('transitions a desktop pane into an accessible compact state', async () => {
+    const user = userEvent.setup()
+    const { container } = render(<CompactLeftPane><div>Main content</div></CompactLeftPane>)
+
+    await user.click(screen.getByRole('button', { name: 'Collapse pane' }))
+
+    const pane = container.querySelector('[data-nova-panel-motion="resizable"]')
+    const fullContent = container.querySelector('[data-nova-panel-motion-content="true"]')
+    const compactContent = container.querySelector('[data-nova-panel-motion-collapsed-content="true"]')
+    expect(pane).toHaveAttribute('data-state', 'closed')
+    expect(pane).toHaveAttribute('data-nova-drag-collapse', 'disabled')
+    expect(fullContent).toHaveAttribute('aria-hidden', 'true')
+    expect(compactContent).toHaveAttribute('aria-hidden', 'false')
+    expect(compactContent).toHaveStyle({ width: '40px', minWidth: '40px' })
+    expect(screen.getByRole('button', { name: 'Expand pane' })).toBeInTheDocument()
+  })
+
+  it('does not rebuild stable main content for a local sidebar toggle', async () => {
+    const user = userEvent.setup()
+    const renderMain = vi.fn()
+
+    render(
+      <CompactLeftPane>
+        <RenderCounter onRender={renderMain} />
+      </CompactLeftPane>,
+    )
+    expect(renderMain).toHaveBeenCalledTimes(1)
+
+    await user.click(screen.getByRole('button', { name: 'Collapse pane' }))
+    await user.click(screen.getByRole('button', { name: 'Expand pane' }))
+
+    expect(renderMain).toHaveBeenCalledTimes(1)
   })
 
   it('lets desktop users resize an enabled right pane', () => {
@@ -43,6 +101,38 @@ describe('AdaptiveSurface', () => {
     )
 
     expect(screen.getByRole('separator', { name: 'Resize Config Agent' })).toBeVisible()
+    expect(document.querySelector('#right')).toHaveAttribute('data-nova-drag-collapse', 'disabled')
+  })
+
+  it('retains a toggled resizable pane while marking the closed layout inert', async () => {
+    const user = userEvent.setup()
+    const { container } = render(<ToggleResizablePane />)
+    const rightPanel = container.querySelector('#right')
+
+    expect(rightPanel).toHaveAttribute('data-state', 'closed')
+    expect(screen.queryByText('Agent chat')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Open Agent' }))
+    expect(rightPanel).toHaveAttribute('data-state', 'open')
+    expect(screen.getByRole('separator', { name: 'Resize Agent' })).toBeVisible()
+    expect(screen.getByText('Agent chat')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Close Agent' }))
+    expect(rightPanel).toHaveAttribute('data-state', 'closed')
+    expect(rightPanel).toHaveAttribute('aria-hidden', 'true')
+    expect(rightPanel).toHaveAttribute('inert')
+    expect(screen.queryByRole('separator', { name: 'Resize Agent' })).not.toBeInTheDocument()
+    expect(screen.getByText('Agent chat')).toBeInTheDocument()
+  })
+
+  it('restores a persisted right-panel size after mounting the pane hidden', async () => {
+    window.localStorage.setItem('test-restored-right-layout', JSON.stringify({ main: 63, right: 37 }))
+    const user = userEvent.setup()
+    const { container } = render(<PersistedToggleResizablePane />)
+
+    await user.click(screen.getByRole('button', { name: 'Open restored pane' }))
+
+    expect(container.querySelector('#right')).toHaveStyle({ flexGrow: '37' })
   })
 
   it('keeps the main slot height-constrained on desktop', () => {
@@ -65,6 +155,30 @@ describe('AdaptiveSurface', () => {
     await user.click(screen.getByRole('button', { name: /关闭|Close/ }))
     await user.click(screen.getByRole('button', { name: 'Open right' }))
     expect(screen.getByTestId('right-pane').closest('[data-state="open"]')).toBeTruthy()
+  })
+
+  it('can contain a collapsed pane inside the adaptive surface', async () => {
+    setMobileViewport(true)
+    const user = userEvent.setup()
+    const { container } = render(
+      <AdaptiveSurface
+        mobilePaneScope="surface"
+        left={{ id: 'left', title: 'Lore directory', side: 'left', content: <div data-testid="contained-pane">Lore items</div> }}
+      >
+        {({ openLeft }) => <button type="button" onClick={openLeft}>Open contained pane</button>}
+      </AdaptiveSurface>,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Open contained pane' }))
+
+    const host = container.querySelector('[data-nova-mobile-pane-host="true"]')
+    const drawer = screen.getByTestId('contained-pane').closest('[data-nova-mobile-pane-content="true"]')
+    const overlay = container.querySelector('[data-nova-mobile-pane-overlay="true"]')
+    expect(host as HTMLElement).toContainElement(drawer as HTMLElement)
+    expect(drawer).toHaveClass('absolute')
+    expect(drawer).not.toHaveClass('fixed')
+    expect(overlay).toHaveClass('absolute')
+    expect(overlay).not.toHaveClass('fixed')
   })
 
   it('collapses panes at its own width on desktop and expands them again', async () => {
@@ -184,8 +298,8 @@ describe('AdaptiveSurface', () => {
 
     const drawer = screen.getByTestId('left-pane').closest('[data-nova-mobile-pane-content="true"]') as HTMLElement
     expect(drawer).toBeTruthy()
-    expect(drawer.style.transform).toContain('translate3d(-')
-    expect(drawer.style.transform).not.toBe('translate3d(0%, 0, 0)')
+    expect(Number(drawer.dataset.progress)).toBeGreaterThan(0)
+    expect(Number(drawer.dataset.progress)).toBeLessThan(1)
 
     fireEvent.mouseUp(window, { clientX: 90, clientY: 124 })
     expect(screen.getByTestId('left-pane').closest('[data-state="open"]')).toBeTruthy()
@@ -260,6 +374,70 @@ function StatefulMainPane({ onUnmount }: { onUnmount: () => void }) {
   const [count, setCount] = useState(0)
   useEffect(() => onUnmount, [onUnmount])
   return <button type="button" onClick={() => setCount((current) => current + 1)}>Count {count}</button>
+}
+
+function ToggleResizablePane() {
+  const [open, setOpen] = useState(false)
+  return (
+    <AdaptiveSurface
+      right={open ? { id: 'agent', title: 'Agent', side: 'right', content: <div>Agent chat</div> } : undefined}
+      rightResize={{ layoutKey: 'test-toggle-layout', label: 'Resize Agent' }}
+    >
+      <button type="button" onClick={() => setOpen((current) => !current)}>{open ? 'Close Agent' : 'Open Agent'}</button>
+    </AdaptiveSurface>
+  )
+}
+
+function PersistedToggleResizablePane() {
+  const [open, setOpen] = useState(false)
+  return (
+    <AdaptiveSurface
+      rightResize={{
+        layoutKey: 'test-restored-right-layout',
+        label: 'Resize restored pane',
+        defaultSize: '66%',
+      }}
+      right={{
+        id: 'restored-pane',
+        title: 'Restored pane',
+        side: 'right',
+        content: <div>Restored pane content</div>,
+        desktopVisible: open,
+      }}
+    >
+      <button type="button" onClick={() => setOpen(true)}>Open restored pane</button>
+    </AdaptiveSurface>
+  )
+}
+
+function CompactLeftPane({ children }: { children: ReactNode }) {
+  const [open, setOpen] = useState(true)
+  return (
+    <AdaptiveSurface
+      leftResize={{
+        layoutKey: 'test-compact-left-layout',
+        label: 'Resize compact pane',
+        defaultSize: '240px',
+        minSize: '200px',
+      }}
+      left={{
+        id: 'left',
+        title: 'Left',
+        side: 'left',
+        content: <button type="button" onClick={() => setOpen(false)}>Collapse pane</button>,
+        desktopVisible: open,
+        desktopCollapsedSize: '40px',
+        desktopCollapsedContent: <button type="button" onClick={() => setOpen(true)}>Expand pane</button>,
+      }}
+    >
+      {children}
+    </AdaptiveSurface>
+  )
+}
+
+function RenderCounter({ onRender }: { onRender: () => void }) {
+  onRender()
+  return <div>Stable main content</div>
 }
 
 function setMobileViewport(matches: boolean) {

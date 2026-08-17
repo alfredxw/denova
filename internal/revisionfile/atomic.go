@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"denova/internal/localfs"
 )
 
 func atomicReplace(path string, content []byte, fileMode, directoryMode os.FileMode) (err error) {
@@ -35,12 +37,7 @@ func atomicReplace(path string, content []byte, fileMode, directoryMode os.FileM
 	if err = os.Rename(tempPath, path); err != nil {
 		return err
 	}
-	directory, err := os.Open(dir)
-	if err != nil {
-		return fmt.Errorf("open revision file directory for sync: %w", err)
-	}
-	defer directory.Close()
-	if err := syncDirectory(directory); err != nil {
+	if err := localfs.SyncDirectory(dir); err != nil {
 		return fmt.Errorf("sync revision file directory: %w", err)
 	}
 	return nil

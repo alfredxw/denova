@@ -1,6 +1,8 @@
 package interactive
 
 import (
+	"denova/internal/interactive/director"
+	interactivestate "denova/internal/interactive/state"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -34,26 +36,26 @@ func TestDirectorEventDecisionLifecycleValidation(t *testing.T) {
 	turns := []TurnEvent{{ID: "turn-1"}, {ID: "turn-2"}, {ID: "turn-3"}, {ID: "turn-4"}}
 	catalog := []DirectorEvent{{ID: "pack/card", Name: "事件卡", Enabled: true}}
 	newOpportunity := EventOpportunity{Due: true, Kind: "new"}
-	runtime, err := applyDirectorEventDecision(DirectorEventRuntime{}, &EventDecision{Mode: EventDecisionNone}, newOpportunity, "turn-4", turns, catalog)
+	runtime, err := applyDirectorEventDecision(DirectorEventRuntime{}, &director.EventDecision{Mode: director.EventDecisionNone}, newOpportunity, "turn-4", turns, catalog)
 	if err != nil || runtime.Active != nil || runtime.LastOpportunityTurnID != "turn-4" {
 		t.Fatalf("none should consume the opportunity without activating an event: runtime=%#v err=%v", runtime, err)
 	}
-	runtime, err = applyDirectorEventDecision(DirectorEventRuntime{}, &EventDecision{Mode: EventDecisionSeed, EventRef: "pack/card", Summary: "开始铺垫"}, newOpportunity, "turn-4", turns, catalog)
-	if err != nil || runtime.Active == nil || runtime.Active.Stage != EventDecisionSeed {
+	runtime, err = applyDirectorEventDecision(DirectorEventRuntime{}, &director.EventDecision{Mode: director.EventDecisionSeed, EventRef: "pack/card", Summary: "开始铺垫"}, newOpportunity, "turn-4", turns, catalog)
+	if err != nil || runtime.Active == nil || runtime.Active.Stage != director.EventDecisionSeed {
 		t.Fatalf("seed should activate an explicitly selected card: runtime=%#v err=%v", runtime, err)
 	}
 	activeOpportunity := EventOpportunity{Due: true, Kind: "active", ActiveEventRef: "pack/card"}
-	if _, err := applyDirectorEventDecision(runtime, &EventDecision{Mode: EventDecisionSeed, EventRef: "pack/card"}, activeOpportunity, "turn-4", turns, catalog); err == nil {
+	if _, err := applyDirectorEventDecision(runtime, &director.EventDecision{Mode: director.EventDecisionSeed, EventRef: "pack/card"}, activeOpportunity, "turn-4", turns, catalog); err == nil {
 		t.Fatal("an active event must prevent seeding a second event")
 	}
-	if _, err := applyDirectorEventDecision(runtime, &EventDecision{Mode: EventDecisionAdvance, EventRef: "pack/card"}, activeOpportunity, "turn-4", turns, catalog); err == nil {
+	if _, err := applyDirectorEventDecision(runtime, &director.EventDecision{Mode: director.EventDecisionAdvance, EventRef: "pack/card"}, activeOpportunity, "turn-4", turns, catalog); err == nil {
 		t.Fatal("advance must require evidence from the active turn path")
 	}
-	advanced, err := applyDirectorEventDecision(runtime, &EventDecision{Mode: EventDecisionAdvance, EventRef: "pack/card", Summary: "冲突升级", EvidenceTurnIDs: []string{"turn-4"}}, activeOpportunity, "turn-4b", append(turns, TurnEvent{ID: "turn-4b"}), catalog)
-	if err != nil || advanced.Active == nil || advanced.Active.Stage != EventDecisionAdvance {
+	advanced, err := applyDirectorEventDecision(runtime, &director.EventDecision{Mode: director.EventDecisionAdvance, EventRef: "pack/card", Summary: "冲突升级", EvidenceTurnIDs: []string{"turn-4"}}, activeOpportunity, "turn-4b", append(turns, TurnEvent{ID: "turn-4b"}), catalog)
+	if err != nil || advanced.Active == nil || advanced.Active.Stage != director.EventDecisionAdvance {
 		t.Fatalf("advance with valid evidence should update the active event: runtime=%#v err=%v", advanced, err)
 	}
-	resolved, err := applyDirectorEventDecision(advanced, &EventDecision{Mode: EventDecisionResolve, EventRef: "pack/card", EvidenceTurnIDs: []string{"turn-4b"}}, activeOpportunity, "turn-5", append(turns, TurnEvent{ID: "turn-4b"}, TurnEvent{ID: "turn-5"}), catalog)
+	resolved, err := applyDirectorEventDecision(advanced, &director.EventDecision{Mode: director.EventDecisionResolve, EventRef: "pack/card", EvidenceTurnIDs: []string{"turn-4b"}}, activeOpportunity, "turn-5", append(turns, TurnEvent{ID: "turn-4b"}, TurnEvent{ID: "turn-5"}), catalog)
 	if err != nil || resolved.Active != nil {
 		t.Fatalf("resolve should close the active event: runtime=%#v err=%v", resolved, err)
 	}
@@ -91,7 +93,7 @@ func TestDirectorEventRuntimeIsIdempotentBranchScopedAndRewindSafe(t *testing.T)
 	if len(catalog) == 0 {
 		t.Fatal("default director should explicitly select at least one event card")
 	}
-	decision := PlanDecision{Mode: PlanDecisionKeep, EventDecision: &EventDecision{Mode: EventDecisionSeed, EventRef: catalog[0].ID, Summary: "事件已埋设"}}
+	decision := director.Decision{Mode: director.DecisionKeep, EventDecision: &director.EventDecision{Mode: director.EventDecisionSeed, EventRef: catalog[0].ID, Summary: "事件已埋设"}}
 	output, _ := json.Marshal(decision)
 	completed, err := store.CompleteDirectorPlanRun(story.ID, "main", token, turns[3].ID, string(output))
 	if err != nil {
@@ -180,12 +182,12 @@ func TestDirectorPlanIgnoresOutOfOrderCompletion(t *testing.T) {
 	if err := store.MarkDirectorPlanRunStarted(story.ID, "main", token, second.ID); err != nil {
 		t.Fatal(err)
 	}
-	output, _ := json.Marshal(PlanDecision{Mode: PlanDecisionKeep})
+	output, _ := json.Marshal(director.Decision{Mode: director.DecisionKeep})
 	completed, err := store.CompleteDirectorPlanRun(story.ID, "main", token, first.ID, string(output))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if completed.Metadata.LastRun == nil || completed.Metadata.LastRun.Status != DirectorPlanStatusRunning || completed.Metadata.LastRun.SourceTurnID != second.ID {
+	if completed.Metadata.LastRun == nil || completed.Metadata.LastRun.Status != director.PlanStatusRunning || completed.Metadata.LastRun.SourceTurnID != second.ID {
 		t.Fatalf("older completion must not replace the newer run: %#v", completed.Metadata.LastRun)
 	}
 }
@@ -430,7 +432,7 @@ func TestRerollRuleResolutionUpdatesTurnAudit(t *testing.T) {
 	story, err := store.CreateStory(CreateStoryRequest{
 		Title:           "规则重抽",
 		StoryTellerID:   "classic",
-		InitialStateOps: []StateOp{{Op: "set", Path: "resources.stamina", Value: float64(5)}},
+		InitialStateOps: []interactivestate.Op{{Op: "set", Path: "resources.stamina", Value: float64(5)}},
 	})
 	if err != nil {
 		t.Fatal(err)

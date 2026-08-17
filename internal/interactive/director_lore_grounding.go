@@ -1,10 +1,9 @@
 package interactive
 
 import (
+	"denova/internal/book/lore"
 	"fmt"
 	"strings"
-
-	"denova/internal/book"
 )
 
 // validateDirectorLoreGrounding prevents a Director run from casting new
@@ -22,11 +21,11 @@ func (s *Store) validateDirectorLoreGrounding(previousContent, nextContent strin
 			reviewed[id] = true
 		}
 	}
-	items, err := book.NewLoreStore(s.root).List()
+	items, err := lore.NewStore(s.root).List()
 	if err != nil {
 		return fmt.Errorf("读取资料库以校验选角来源失败: %w", err)
 	}
-	byName := make(map[string]book.LoreItem, len(items))
+	byName := make(map[string]lore.Item, len(items))
 	for _, item := range items {
 		byName[strings.ToLower(strings.TrimSpace(item.Name))] = item
 	}
@@ -49,7 +48,7 @@ func (s *Store) validateDirectorLoreGrounding(previousContent, nextContent strin
 		if !ok {
 			continue
 		}
-		if item.LoadMode != book.LoreLoadModeResident && !reviewed[item.ID] {
+		if item.LoadMode != lore.LoadModeResident && !reviewed[item.ID] {
 			return fmt.Errorf("新增当前/候场资料 %s 尚未读取完整正文；请先用 read_lore_items 或 detail=full 审阅后再引用", name)
 		}
 	}

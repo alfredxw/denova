@@ -1,21 +1,47 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { act, fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { formatDateTime, setConfiguredLocale } from '@/i18n'
 import { WorkbenchShell } from './WorkbenchShell'
 
 const responsiveState = vi.hoisted(() => ({ mobile: false }))
-const automationActivityApi = vi.hoisted(() => ({
-  getAutomationInbox: vi.fn(),
-  getActiveAutomationRuns: vi.fn(),
-}))
+const useActivitySummaryMock = vi.hoisted(() => vi.fn())
+const messageCenterButtonMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@/hooks/useIsMobile', () => ({
   useIsMobile: () => responsiveState.mobile,
 }))
 
 vi.mock('@/components/layout/workspace-layout', () => ({
-  WorkspaceLayout: ({ topBar, activityBar, main, statusBar }: { topBar: ReactNode; activityBar: ReactNode; main: ReactNode; statusBar: ReactNode }) => <section data-testid="desktop-shell">{topBar}{activityBar}{main}{statusBar}</section>,
+  WorkspaceLayout: ({
+    topBar,
+    activityBar,
+    main,
+    statusBar,
+    sidebarVisible,
+    rightPanelVisible,
+    rightPanelWide,
+    centerFocus,
+  }: {
+    topBar: ReactNode
+    activityBar: ReactNode
+    main: ReactNode
+    statusBar: ReactNode
+    sidebarVisible: boolean
+    rightPanelVisible: boolean
+    rightPanelWide: boolean
+    centerFocus: boolean
+  }) => (
+    <section
+      data-testid="desktop-shell"
+      data-sidebar-visible={sidebarVisible}
+      data-right-panel-visible={rightPanelVisible}
+      data-right-panel-wide={rightPanelWide}
+      data-center-focus={centerFocus}
+    >
+      {topBar}{activityBar}{main}{statusBar}
+    </section>
+  ),
 }))
 
 vi.mock('@/components/layout/workspace-mobile-layout', () => ({
@@ -29,62 +55,62 @@ vi.mock('@/components/layout/workspace-mobile-layout', () => ({
 }))
 
 vi.mock('@/features/messages/MessageCenter', () => ({
-  MessageCenterButton: () => null,
+  MessageCenterButton: (props: { unreadCount: number }) => {
+    messageCenterButtonMock(props)
+    return <span data-testid="message-center-count">{props.unreadCount}</span>
+  },
 }))
 
-vi.mock('@/lib/api', () => ({
-  getAutomationInbox: automationActivityApi.getAutomationInbox,
-  getActiveAutomationRuns: automationActivityApi.getActiveAutomationRuns,
+vi.mock('@/features/activity/use-activity-summary', () => ({
+  useActivitySummary: useActivitySummaryMock,
+  setActivityMessageUnreadCount: vi.fn(),
 }))
 
 describe('WorkbenchShell responsive main content', () => {
   beforeEach(() => {
     responsiveState.mobile = false
+    window.localStorage.clear()
     setConfiguredLocale('zh-CN')
-    automationActivityApi.getAutomationInbox.mockReset().mockResolvedValue([])
-    automationActivityApi.getActiveAutomationRuns.mockReset().mockResolvedValue([])
-    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
+    useActivitySummaryMock.mockReset().mockReturnValue({
+      data: {
+        message_unread_count: 4,
+        automation_inbox_unread_count: 3,
+        automation_running_count: 1,
+      },
+    })
+    messageCenterButtonMock.mockReset()
   })
 
-  afterEach(() => {
-    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
-  })
-
-  it('keeps automation badge polling single-flight and pauses it while hidden', async () => {
-    vi.useFakeTimers()
+  it('uses one compact activity summary for the message and automation badges', () => {
     render(<WorkbenchShell {...workbenchProps(<div />)} />)
-    await act(async () => {
-      await Promise.resolve()
-      await Promise.resolve()
-    })
-    expect(automationActivityApi.getAutomationInbox).toHaveBeenCalledTimes(1)
 
-    const inbox = deferred<unknown[]>()
-    const runs = deferred<unknown[]>()
-    automationActivityApi.getAutomationInbox.mockReturnValue(inbox.promise)
-    automationActivityApi.getActiveAutomationRuns.mockReturnValue(runs.promise)
+    expect(useActivitySummaryMock).toHaveBeenCalled()
+    expect(screen.getByTestId('message-center-count')).toHaveTextContent('4')
+    expect(messageCenterButtonMock).toHaveBeenCalledWith(expect.objectContaining({ unreadCount: 4 }))
+    expect(screen.getByText('3')).toBeInTheDocument()
+  })
 
-    act(() => {
-      vi.advanceTimersByTime(30000)
-    })
-    await act(async () => { await Promise.resolve() })
-    expect(automationActivityApi.getAutomationInbox).toHaveBeenCalledTimes(2)
+  it('keeps primary menu controls geometrically stable while collapsing', () => {
+    const props = workbenchProps(<div />)
+    const { container, rerender } = render(<WorkbenchShell {...props} activityBarExpanded />)
 
-    act(() => {
-      vi.advanceTimersByTime(90000)
-    })
-    await act(async () => { await Promise.resolve() })
-    expect(automationActivityApi.getAutomationInbox).toHaveBeenCalledTimes(2)
+    const expandedBar = container.querySelector('.nova-activity-bar')
+    const expandedToggle = screen.getByRole('button', { name: '收起' })
+    const expandedToggleIconClass = expandedToggle.querySelector('svg')?.getAttribute('class')
+    expect(expandedBar).toHaveClass('items-stretch')
+    expect(expandedBar).not.toHaveClass('items-center')
+    expect(expandedToggle).toHaveClass('w-full', 'justify-start', 'gap-3', 'px-3')
+    expect(expandedToggleIconClass).not.toContain('rotate')
+    expect(expandedToggleIconClass).not.toContain('transition-transform')
 
-    await act(async () => {
-      Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' })
-      document.dispatchEvent(new Event('visibilitychange'))
-      inbox.resolve([])
-      runs.resolve([])
-      await Promise.all([inbox.promise, runs.promise])
-      vi.advanceTimersByTime(30000)
-    })
-    expect(automationActivityApi.getAutomationInbox).toHaveBeenCalledTimes(2)
+    rerender(<WorkbenchShell {...props} activityBarExpanded={false} />)
+
+    const collapsedBar = container.querySelector('.nova-activity-bar')
+    const collapsedToggle = screen.getByRole('button', { name: '展开' })
+    expect(collapsedBar).toHaveClass('items-stretch')
+    expect(collapsedBar).not.toHaveClass('items-center')
+    expect(collapsedToggle).toHaveClass('w-full', 'justify-start', 'gap-3', 'px-3')
+    expect(collapsedToggle.querySelector('svg')?.getAttribute('class')).toBe(expandedToggleIconClass)
   })
 
   it('keeps the main subtree mounted and preserves local state across the mobile breakpoint', () => {
@@ -131,10 +157,222 @@ describe('WorkbenchShell responsive main content', () => {
     expect(screen.getByRole('button', { name: /游戏模式|Game Mode/ })).toHaveAttribute('aria-pressed', 'true')
   })
 
+  it('replaces the global book switcher with the AgentChat Project switcher across desktop and mobile layouts', () => {
+    const selectProject = vi.fn()
+    const props = {
+      ...workbenchProps(<div />),
+      mode: 'agentchat' as const,
+      presentedLayout: 'full' as const,
+      booksReturnMode: 'ide' as const,
+      agentChatProjectNavigation: {
+        projects: [{
+          id: 'agent-project',
+          type: 'book' as const,
+          path: '/projects/agent',
+          name: 'Agent Project',
+          status: 'available' as const,
+          current: false,
+          total: 4,
+          sessions: [],
+        }],
+        activeProjectId: 'agent-project',
+        loading: false,
+        selectProject,
+      },
+    }
+    const { rerender } = render(<WorkbenchShell {...props} />)
+
+    expect(screen.queryByRole('button', { name: /切换书籍|Switch book/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '切换项目，当前：Agent Project' })).toBeInTheDocument()
+
+    responsiveState.mobile = true
+    rerender(<WorkbenchShell {...props} />)
+    expect(screen.queryByRole('button', { name: /切换书籍|Switch book/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '切换项目，当前：Agent Project' })).toBeInTheDocument()
+  })
+
+  it('uses the whole active menu button as the sortable drag target', () => {
+    render(<WorkbenchShell {...workbenchProps(<div />)} />)
+
+    const storyButton = screen.getByRole('button', { name: /^(游戏|Game)$/ })
+    expect(storyButton).toHaveAttribute('aria-current', 'page')
+    expect(storyButton).toHaveAttribute('aria-roledescription', 'sortable')
+    expect(storyButton.querySelector('[aria-roledescription="sortable"]')).toBeNull()
+  })
+
+  it('paints one optimistic menu selection before running the heavy route action', () => {
+    const frames: FrameRequestCallback[] = []
+    const requestFrame = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      frames.push(callback)
+      return frames.length
+    })
+    const cancelFrame = vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {})
+    const onSetMode = vi.fn()
+
+    render(<WorkbenchShell {...workbenchProps(<div />)} onSetMode={onSetMode} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Skills' }))
+
+    expect(onSetMode).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'Skills' })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('button', { name: /^(游戏|Game)$/ })).not.toHaveAttribute('aria-current')
+    expect(document.querySelectorAll('.nova-activity-bar [aria-current="page"]')).toHaveLength(1)
+
+    act(() => { frames.shift()?.(0) })
+    expect(onSetMode).not.toHaveBeenCalled()
+    act(() => { frames.shift()?.(16) })
+    expect(onSetMode).toHaveBeenCalledWith('skills')
+
+    requestFrame.mockRestore()
+    cancelFrame.mockRestore()
+  })
+
+  it('opens Lore from Workspace even while the previous Lore panel state is still settling', () => {
+    const frames: FrameRequestCallback[] = []
+    const requestFrame = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      frames.push(callback)
+      return frames.length
+    })
+    const cancelFrame = vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {})
+    const onSetMode = vi.fn()
+    const onSetRightPanel = vi.fn()
+
+    render(
+      <WorkbenchShell
+        {...workbenchProps(<div />)}
+        mode="agentchat"
+        presentedLayout="full"
+        booksReturnMode="ide"
+        rightPanel="lore"
+        onSetMode={onSetMode}
+        onSetRightPanel={onSetRightPanel}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '资料库' }))
+    act(() => { frames.shift()?.(0) })
+    act(() => { frames.shift()?.(16) })
+
+    expect(onSetMode).toHaveBeenCalledWith('ide')
+    expect(onSetRightPanel).toHaveBeenCalledWith('lore')
+
+    requestFrame.mockRestore()
+    cancelFrame.mockRestore()
+  })
+
+  it('keeps panel geometry aligned with the route content being painted', () => {
+    const main = <div />
+    const { rerender } = render(
+      <WorkbenchShell
+        {...workbenchProps(main)}
+        mode="agentchat"
+        presentedLayout="writing"
+        projectVisible
+        rightPanel="lore"
+        rightPanelContent={<div />}
+        rightPanelWide
+        centerFocus
+      />,
+    )
+
+    const desktopShell = screen.getByTestId('desktop-shell')
+    expect(desktopShell).toHaveAttribute('data-sidebar-visible', 'true')
+    expect(desktopShell).toHaveAttribute('data-right-panel-visible', 'true')
+    expect(desktopShell).toHaveAttribute('data-right-panel-wide', 'true')
+    expect(desktopShell).toHaveAttribute('data-center-focus', 'true')
+
+    rerender(
+      <WorkbenchShell
+        {...workbenchProps(main)}
+        mode="ide"
+        presentedLayout="full"
+        projectVisible
+        rightPanel="ai"
+        rightPanelContent={<div />}
+        rightPanelWide
+        centerFocus
+      />,
+    )
+
+    expect(desktopShell).toHaveAttribute('data-sidebar-visible', 'false')
+    expect(desktopShell).toHaveAttribute('data-right-panel-visible', 'false')
+    expect(desktopShell).toHaveAttribute('data-right-panel-wide', 'false')
+    expect(desktopShell).toHaveAttribute('data-center-focus', 'false')
+  })
+
+  it('keeps the Workspace menu label in sync with the current language', async () => {
+    render(<WorkbenchShell {...workbenchProps(<div />)} />)
+    expect(screen.getByRole('button', { name: '工作台' })).toBeInTheDocument()
+
+    await act(async () => {
+      setConfiguredLocale('en-US')
+      await Promise.resolve()
+    })
+
+    expect(screen.getByRole('button', { name: 'Workspace' })).toBeInTheDocument()
+  })
+
+  it.each([
+    ['writing', 'nova.activity.order.ide.v2', 'ide', 'writing', ['writing', 'lore', 'teller', 'versions', 'books', 'skills', 'agents', 'automations']],
+    ['game', 'nova.activity.order.interactive.v2', 'interactive', 'story', ['story', 'lore', 'teller', 'versions', 'books', 'skills', 'agents', 'automations']],
+  ] as const)('places a newly introduced Workspace item after the %s entry', (_label, storageKey, mode, primaryID, storedOrder) => {
+    window.localStorage.setItem(storageKey, JSON.stringify(storedOrder))
+    const { container } = render(<WorkbenchShell {...workbenchProps(<div />)} mode={mode} booksReturnMode={mode} />)
+
+    const activityIDs = Array.from(container.querySelectorAll('[data-activity-id]'))
+      .map((element) => element.getAttribute('data-activity-id'))
+    expect(activityIDs.slice(0, 2)).toEqual([primaryID, 'agentchat'])
+  })
+
+  it('keeps Trajectory hidden until developer mode is enabled', () => {
+    const { rerender } = render(<WorkbenchShell {...workbenchProps(<div />)} />)
+    expect(screen.queryByRole('button', { name: '轨迹' })).not.toBeInTheDocument()
+
+    rerender(<WorkbenchShell {...workbenchProps(<div />)} developerMode />)
+    expect(screen.getByRole('button', { name: '轨迹' })).toBeInTheDocument()
+  })
+
+  it.each([
+    ['writing', 'ide', 'writing'],
+    ['game', 'interactive', 'interactive'],
+  ] as const)('opens Trajectory from %s without changing the explicit content mode', (_label, mode, presentedLayout) => {
+    const frames: FrameRequestCallback[] = []
+    const requestFrame = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      frames.push(callback)
+      return frames.length
+    })
+    const cancelFrame = vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {})
+    const onSetMode = vi.fn()
+    const onSetInteractiveSubmode = vi.fn()
+
+    render(
+      <WorkbenchShell
+        {...workbenchProps(<div />)}
+        mode={mode}
+        presentedLayout={presentedLayout}
+        booksReturnMode={mode}
+        developerMode
+        onSetMode={onSetMode}
+        onSetInteractiveSubmode={onSetInteractiveSubmode}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '轨迹' }))
+    act(() => { frames.shift()?.(0) })
+    act(() => { frames.shift()?.(16) })
+
+    expect(onSetMode).toHaveBeenCalledTimes(1)
+    expect(onSetMode).toHaveBeenCalledWith('trajectory')
+    expect(onSetInteractiveSubmode).not.toHaveBeenCalled()
+
+    requestFrame.mockRestore()
+    cancelFrame.mockRestore()
+  })
+
   it('shows editor updated time and line in the global bottom status bar', () => {
     const updatedAt = '2026-07-11 22:00'
     render(<WorkbenchShell {...workbenchProps(<div />)}
       mode="ide"
+      presentedLayout="writing"
       currentChapter={{
         path: 'chapters/ch01.md', file_name: 'ch01.md', display_title: '第一章', index: 1,
         words: 100, status: 'draft', confirmed: false, updated_at: updatedAt,
@@ -150,10 +388,11 @@ describe('WorkbenchShell responsive main content', () => {
 function workbenchProps(main: ReactNode) {
   return {
     mode: 'interactive' as const,
+    presentedLayout: 'interactive' as const,
     booksReturnMode: 'interactive' as const,
     currentBookName: 'Test book',
     workspace: '/tmp/test-book',
-    books: [{ name: 'Test book', path: '/tmp/test-book', author: '', last_opened_at: '' }],
+    books: [{ project_id: 'book-test', name: 'Test book', path: '/tmp/test-book', author: '', last_opened_at: '' }],
     appVersion: 'test',
     summary: null,
     isStreaming: false,
@@ -173,12 +412,4 @@ function workbenchProps(main: ReactNode) {
     onCloseSettings: vi.fn(),
     onQuickSwitchBook: vi.fn().mockResolvedValue(true),
   }
-}
-
-function deferred<T>() {
-  let resolve!: (value: T) => void
-  const promise = new Promise<T>((innerResolve) => {
-    resolve = innerResolve
-  })
-  return { promise, resolve }
 }

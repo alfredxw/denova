@@ -1,7 +1,9 @@
 package versions
 
 import (
-	"log"
+	"context"
+	"fmt"
+	"log/slog"
 	"time"
 )
 
@@ -84,7 +86,7 @@ func (s *Service) runScheduledAutoVersion(generation uint64) {
 	started := false
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			log.Printf("[versions] 自动版本后台任务 panic workspace=%q panic=%v", s.workspace, recovered)
+			slog.ErrorContext(context.Background(), fmt.Sprintf("[versions] 自动版本后台任务 panic workspace=%q panic=%v", s.workspace, recovered))
 			if started {
 				s.finishScheduledAutoVersion(generation, 0)
 			}
@@ -104,11 +106,11 @@ func (s *Service) runScheduledAutoVersion(generation uint64) {
 
 	result, err := s.MaybeCreateTimed(settings)
 	if err != nil {
-		log.Printf("[versions] 自动版本创建失败 workspace=%q err=%v", s.workspace, err)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[versions] 自动版本创建失败 workspace=%q err=%v", s.workspace, err))
 	} else if result.Skipped {
-		log.Printf("[versions] 自动版本暂不创建 workspace=%q reason=%q", s.workspace, result.Reason)
+		slog.WarnContext(context.Background(), fmt.Sprintf("[versions] 自动版本暂不创建 workspace=%q reason=%q", s.workspace, result.Reason))
 	} else if result.Version != nil {
-		log.Printf("[versions] 自动版本创建完成 workspace=%q id=%s", s.workspace, result.Version.ID)
+		slog.InfoContext(context.Background(), fmt.Sprintf("[versions] 自动版本创建完成 workspace=%q id=%s", s.workspace, result.Version.ID))
 	}
 	s.finishScheduledAutoVersion(generation, result.RetryAfter)
 }

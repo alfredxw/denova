@@ -98,7 +98,7 @@ func TestPrepareTurnSubmissionPreservesOverlapErrorForDuplicateCreate(t *testing
 	if len(receipt.Diagnostics) != 2 || receipt.Diagnostics[1].Code != "overlapping_state_path" {
 		t.Fatalf("duplicate create should retain the compiler's overlap diagnostic: %#v", receipt.Diagnostics)
 	}
-	if strings.Contains(receipt.Diagnostics[1].MessageEN, "Expected JSON valid") {
+	if strings.Contains(receipt.Diagnostics[1].Message, "Expected JSON valid") {
 		t.Fatalf("non-type diagnostics must not describe a semantic contract as a JSON type: %#v", receipt.Diagnostics[1])
 	}
 }
@@ -117,7 +117,7 @@ func TestPrepareTurnSubmissionDoesNotDescribeSemanticCreateFailureAsJSONType(t *
 	if len(receipt.Diagnostics) != 1 || receipt.Diagnostics[0].Code != "actor_create_invalid" {
 		t.Fatalf("unexpected semantic create diagnostic: %#v", receipt.Diagnostics)
 	}
-	if strings.Contains(receipt.Diagnostics[0].MessageEN, "Expected JSON valid") {
+	if strings.Contains(receipt.Diagnostics[0].Message, "Expected JSON valid") {
 		t.Fatalf("semantic create failure must not be presented as a JSON type mismatch: %#v", receipt.Diagnostics[0])
 	}
 }

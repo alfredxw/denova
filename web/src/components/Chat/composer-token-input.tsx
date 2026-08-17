@@ -6,6 +6,7 @@ import { TextSelection } from '@tiptap/pm/state'
 import type { Editor } from '@tiptap/react'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { measureLongestLineWidth, parseCssPixels, resolveCompactTextWidth } from '@/lib/text-input-measurement'
+import { workspaceFileName } from '@/lib/workspace-path'
 
 type ComposerTokenKind = 'skill' | 'file' | 'lore' | 'style'
 type ComposerTriggerKind = 'slash' | 'reference' | 'style'
@@ -61,6 +62,10 @@ interface ComposerTokenInputProps {
 type TokenEntry = ComposerTokenSpec & { key: string }
 type ActiveTriggerRange = ComposerTrigger & { from: number; to: number }
 
+// Chinese keyboards commonly place `/` and `、` on the same key. Treat both
+// as composer shortcuts while keeping the serialized Skill syntax canonical.
+const slashTriggerPattern = /(^|\s)[/、]([^\s/、]*)$/
+
 const tokenExtension = Node.create({
   name: 'composerToken',
   group: 'inline',
@@ -89,6 +94,7 @@ const tokenExtension = Node.create({
       mergeAttributes(HTMLAttributes, {
         'data-nova-composer-token': kind,
         'data-token-value': value,
+        'aria-label': kind === 'file' ? `@${value}` : undefined,
         class: `nova-composer-token nova-composer-token-${kind}`,
       }),
       tokenDisplayText({ kind, value, label }),
@@ -536,7 +542,7 @@ function tokenizeLine(line: string, options: ComposerParseOptions) {
     const file = matchKnownToken(line, index, '@', sortedFiles)
     if (file) {
       flush()
-      content.push(tokenNode({ kind: 'file', value: file, label: file }))
+      content.push(tokenNode({ kind: 'file', value: file, label: workspaceFileName(file) }))
       index += file.length + 1
       continue
     }
@@ -632,6 +638,7 @@ function tokenPlainText(token: ComposerTokenSpec) {
 }
 
 function tokenDisplayText(token: ComposerTokenSpec) {
+  if (token.kind === 'file') return `@${workspaceFileName(token.label || token.value)}`
   return tokenPlainText(token)
 }
 
@@ -674,7 +681,7 @@ function findActiveTrigger(editor: Editor): ActiveTriggerRange | null {
   const cursor = docPositionToTextOffset(editor.state.doc, selection.from)
   const before = serialized.slice(0, cursor)
   const matches: Array<{ kind: ComposerTriggerKind; match: RegExpExecArray | null }> = [
-    { kind: 'slash', match: /(^|\s)\/([^\s/]*)$/.exec(before) },
+    { kind: 'slash', match: slashTriggerPattern.exec(before) },
     { kind: 'reference', match: /(^|\s)@([^\s@]*)$/.exec(before) },
     { kind: 'style', match: /(^|\s)#([^\s#]*)$/.exec(before) },
   ]
@@ -695,7 +702,7 @@ function findActiveTrigger(editor: Editor): ActiveTriggerRange | null {
 
 function findTrailingTrigger(text: string): ActiveTriggerRange | null {
   const matches: Array<{ kind: ComposerTriggerKind; match: RegExpExecArray | null }> = [
-    { kind: 'slash', match: /(^|\s)\/([^\s/]*)$/.exec(text) },
+    { kind: 'slash', match: slashTriggerPattern.exec(text) },
     { kind: 'reference', match: /(^|\s)@([^\s@]*)$/.exec(text) },
     { kind: 'style', match: /(^|\s)#([^\s#]*)$/.exec(text) },
   ]

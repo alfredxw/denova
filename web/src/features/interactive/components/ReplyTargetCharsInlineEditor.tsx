@@ -58,7 +58,6 @@ export function ReplyTargetCharsInlineEditor({ story, onChange }: { story?: Stor
         disabled={!story || !onChange}
         onClick={start}
         aria-label={t('storyStage.replyTarget.open')}
-        title={t('storyStage.replyTarget.open')}
         className="group flex h-7 min-w-0 items-center gap-1.5 rounded-[8px] border border-transparent px-1.5 text-[11px] text-[var(--nova-text-muted)] transition-colors hover:border-[var(--nova-border)] hover:bg-[var(--nova-surface)] hover:text-[var(--nova-text)] disabled:opacity-45"
       >
         <span className="truncate">{t('storyStage.replyTarget.compact', { count: currentValue })}</span>
@@ -68,7 +67,7 @@ export function ReplyTargetCharsInlineEditor({ story, onChange }: { story?: Stor
   }
 
   return (
-    <span className="flex h-7 min-w-0 items-center gap-1.5" title={error || undefined}>
+    <span className="flex h-7 min-w-0 items-center gap-1.5">
       <Input
         autoFocus
         type="number"

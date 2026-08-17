@@ -1,9 +1,18 @@
-import { useLayoutEffect, useRef, type ReactNode } from 'react'
-import { Group, Panel, Separator, useGroupRef, usePanelRef } from 'react-resizable-panels'
+import { useLayoutEffect, useRef, type KeyboardEventHandler, type PointerEventHandler, type ReactNode } from 'react'
+import { Group, Panel, useGroupRef, usePanelRef } from 'react-resizable-panels'
 import type { Layout } from 'react-resizable-panels'
 import { useTranslation } from 'react-i18next'
-import { motion } from 'motion/react'
-import { novaEase, subtlePresence } from '@/features/motion/motion-tokens'
+import { CollapsiblePanelSeparator, CollapsibleResizablePanel, PanelMotionGroup } from './panel-motion'
+import { readPersistedPanelLayout, usePersistedPanelLayout } from './use-persisted-panel-layout'
+
+// 240px keeps three shortcut columns stable after padding and a non-overlay scrollbar;
+// narrow screens still let the panel constraints shrink the layout adaptively.
+const DEFAULT_SIDEBAR_WIDTH = '240px'
+const DEFAULT_SIDEBAR_WIDTH_PX = 240
+const COMFORTABLE_SIDEBAR_WIDTH_PX = 224
+const MIN_SIDEBAR_WIDTH_PX = 180
+const MAX_STORED_SIDEBAR_WIDTH_PX = 8192
+const SIDEBAR_WIDTH_STORAGE_KEY = 'nova.layout.workspaceSidebarWidth:v1'
 
 interface WorkspaceLayoutProps {
   activityBar: ReactNode
@@ -38,8 +47,17 @@ export function WorkspaceLayout({
   const { t } = useTranslation()
   const horizontalGroupRef = useGroupRef()
   const sidebarPanelRef = usePanelRef()
+  const storedSidebarWidthRef = useRef<number | null | undefined>(undefined)
+  if (storedSidebarWidthRef.current === undefined) {
+    storedSidebarWidthRef.current = readStoredWorkspaceSidebarWidth()
+  }
+  const sidebarWidthInitializedRef = useRef(false)
   const rightPanelRef = usePanelRef()
   const rightPanelElementRef = useRef<HTMLDivElement | null>(null)
+  const retainedRightPanelRef = useRef<ReactNode>(null)
+  const hasRightPanel = rightPanel !== null && rightPanel !== undefined
+  if (hasRightPanel) retainedRightPanelRef.current = rightPanel
+  const rightPanelOpen = hasRightPanel && rightPanelVisible
   const layoutBeforeEmphasisRef = useRef<Layout | null>(null)
   const lastNormalLayoutRef = useRef<Layout | null>(readStoredLayoutForWorkspace('nova-workspace-horizontal', ['sidebar', 'center', 'right']) ?? null)
   const lastRightPanelPixelsRef = useRef<number | null>(null)
@@ -48,22 +66,38 @@ export function WorkspaceLayout({
   const layoutEmphasis = rightPanelWide ? 'right' : centerFocus ? 'center' : 'normal'
   const layoutEmphasisRef = useRef(layoutEmphasis)
   layoutEmphasisRef.current = layoutEmphasis
+  const horizontalPanelLayout = usePersistedPanelLayout({
+    storageKey: 'nova-workspace-horizontal',
+    panelIds: sidebar ? ['sidebar', 'center', 'right'] : ['center', 'right'],
+  })
+  const verticalPanelLayout = usePersistedPanelLayout({
+    storageKey: 'nova-workspace-main-vertical',
+    panelIds: bottomPanelVisible && bottomPanel ? ['main', 'bottom'] : ['main'],
+  })
 
   useLayoutEffect(() => {
+    if (!sidebar || !sidebarVisible || sidebarWidthInitializedRef.current) return
     const panel = sidebarPanelRef.current
     if (!panel) return
-    if (sidebarVisible) panel.expand()
-    else panel.collapse()
-  }, [sidebarVisible])
+
+    const currentWidth = panel.getSize().inPixels
+    const targetWidth = resolveInitialWorkspaceSidebarWidth(storedSidebarWidthRef.current ?? null, currentWidth)
+    if (Math.abs(currentWidth - targetWidth) > 1) panel.resize(`${targetWidth}px`)
+    if (storedSidebarWidthRef.current === null) {
+      persistWorkspaceSidebarWidth(targetWidth)
+      storedSidebarWidthRef.current = targetWidth
+    }
+    sidebarWidthInitializedRef.current = true
+  }, [sidebar, sidebarPanelRef, sidebarVisible])
 
   useLayoutEffect(() => {
-    if (!rightPanelVisible || layoutEmphasis !== 'normal' || previousEmphasisRef.current !== 'normal') return
+    if (!rightPanelOpen || layoutEmphasis !== 'normal' || previousEmphasisRef.current !== 'normal') return
     const width = rightPanelElementRef.current?.getBoundingClientRect().width ?? 0
     if (width > 0) lastRightPanelPixelsRef.current = width
-  }, [layoutEmphasis, rightPanelVisible])
+  }, [layoutEmphasis, rightPanelOpen])
 
   useLayoutEffect(() => {
-    if (!rightPanelVisible) {
+    if (!rightPanelOpen) {
       layoutBeforeEmphasisRef.current = null
       centerWidthReadyRef.current = false
       previousEmphasisRef.current = 'normal'
@@ -122,7 +156,7 @@ export function WorkspaceLayout({
     updateRightPanelWidth()
     const frame = window.requestAnimationFrame(updateRightPanelWidth)
     return () => window.cancelAnimationFrame(frame)
-  }, [horizontalGroupRef, layoutEmphasis, rightPanelVisible, sidebarVisible])
+  }, [horizontalGroupRef, layoutEmphasis, rightPanelOpen, sidebarVisible])
 
   return (
     <div data-nova-app-shell="true" className="h-dvh w-screen overflow-hidden">
@@ -130,16 +164,26 @@ export function WorkspaceLayout({
         {topBar}
         <div className="flex min-h-0 flex-1">
           {activityBar}
-          <Group
+          <PanelMotionGroup
             id="nova-workspace-horizontal"
             data-nova-layout-emphasis={layoutEmphasis}
             groupRef={horizontalGroupRef}
-            defaultLayout={readStoredLayoutForWorkspace('nova-workspace-horizontal', ['sidebar', 'center', 'right'])}
+            defaultLayout={horizontalPanelLayout.defaultLayout}
             onLayoutChanged={(layout) => {
-              if (layoutEmphasis === 'normal' && (!sidebar || sidebarVisible)) {
-                lastNormalLayoutRef.current = layout
-                storeLayout('nova-workspace-horizontal', layout)
+              if (layoutEmphasis !== 'normal' || (sidebar && !sidebarVisible)) return
+              let normalLayout = layout
+              if (!rightPanelOpen) {
+                const retainedRightSize = lastNormalLayoutRef.current?.right
+                  ?? (typeof layout.right === 'number' && layout.right > 0 ? layout.right : undefined)
+                if (typeof retainedRightSize !== 'number') return
+                const sidebarSize = typeof layout.sidebar === 'number' ? layout.sidebar : 0
+                normalLayout = {
+                  ...layout,
+                  center: Math.max(100 - sidebarSize - retainedRightSize, 0),
+                  right: retainedRightSize,
+                }
               }
+              if (horizontalPanelLayout.persistUserLayout(normalLayout)) lastNormalLayoutRef.current = normalLayout
             }}
             orientation="horizontal"
             resizeTargetMinimumSize={{ coarse: 16, fine: 1 }}
@@ -147,38 +191,42 @@ export function WorkspaceLayout({
           >
             {sidebar && (
               <>
-                <Panel
+                <CollapsibleResizablePanel
                   id="sidebar"
                   panelRef={sidebarPanelRef}
-                  defaultSize="20%"
+                  visible={sidebarVisible}
+                  side="left"
+                  initialExpandSize={`${storedSidebarWidthRef.current ?? DEFAULT_SIDEBAR_WIDTH_PX}px`}
+                  defaultSize={DEFAULT_SIDEBAR_WIDTH}
                   minSize="180px"
                   maxSize="36%"
-                  collapsedSize="0px"
-                  collapsible
+                  groupResizeBehavior="preserve-pixel-size"
                   className="min-w-[180px]"
-                  disabled={!sidebarVisible}
-                  hidden={!sidebarVisible}
-                  aria-hidden={!sidebarVisible}
                   data-nova-collapsible-panel="sidebar"
+                  onResize={(size) => {
+                    if (!horizontalPanelLayout.isUserResizeActive() || !Number.isFinite(size.inPixels) || size.inPixels <= 0) return
+                    persistWorkspaceSidebarWidth(size.inPixels)
+                    storedSidebarWidthRef.current = size.inPixels
+                  }}
                 >
-                  <motion.div
-                    className="h-full min-h-0"
-                    variants={subtlePresence}
-                    initial="initial"
-                    animate="animate"
-                    transition={{ duration: 0.16, ease: novaEase }}
-                  >
-                    {sidebar}
-                  </motion.div>
-                </Panel>
-                {sidebarVisible ? <WorkspaceResizeHandle direction="vertical" label={t('layout.resize.sidebar')} /> : null}
+                  {sidebar}
+                </CollapsibleResizablePanel>
+                <WorkspaceResizeHandle
+                  visible={sidebarVisible}
+                  direction="vertical"
+                  label={t('layout.resize.sidebar')}
+                  {...horizontalPanelLayout.resizeHandleIntentProps}
+                />
               </>
             )}
             <Panel id="center" minSize={rightPanelWide ? '260px' : '30%'} className="min-w-0">
               <Group
                 id="nova-workspace-main-vertical"
-                defaultLayout={readStoredLayoutForWorkspace('nova-workspace-main-vertical', ['main', 'bottom'])}
-                onLayoutChanged={(layout) => storeLayout('nova-workspace-main-vertical', layout)}
+                disableCursor
+                defaultLayout={verticalPanelLayout.defaultLayout}
+                onLayoutChanged={(layout) => {
+                  verticalPanelLayout.persistUserLayout(layout)
+                }}
                 orientation="vertical"
                 resizeTargetMinimumSize={{ coarse: 16, fine: 1 }}
               >
@@ -187,7 +235,11 @@ export function WorkspaceLayout({
                 </Panel>
                 {bottomPanelVisible && bottomPanel && (
                   <>
-                    <WorkspaceResizeHandle direction="horizontal" label={t('layout.resize.bottom')} />
+                    <WorkspaceResizeHandle
+                      direction="horizontal"
+                      label={t('layout.resize.bottom')}
+                      {...verticalPanelLayout.resizeHandleIntentProps}
+                    />
                     <Panel id="bottom" defaultSize="18%" minSize="96px" maxSize="40%" className="min-h-[96px]">
                       {bottomPanel}
                     </Panel>
@@ -195,43 +247,35 @@ export function WorkspaceLayout({
                 )}
               </Group>
             </Panel>
-            {rightPanel && (
-              <>
-                {rightPanelVisible ? <WorkspaceResizeHandle direction="vertical" label={t('layout.resize.right')} /> : null}
-                <Panel
-                  id="right"
-                  panelRef={rightPanelRef}
-                  elementRef={rightPanelElementRef}
-                  defaultSize={rightPanelWide ? '58%' : '34%'}
-                  minSize={rightPanelWide ? '520px' : '360px'}
-                  maxSize={rightPanelWide ? '68%' : '55%'}
-                  groupResizeBehavior="preserve-pixel-size"
-                  className={rightPanelWide ? 'min-w-[520px]' : 'min-w-[360px]'}
-                  disabled={!rightPanelVisible}
-                  hidden={!rightPanelVisible}
-                  aria-hidden={!rightPanelVisible}
-                  data-nova-right-panel={rightPanelWide ? 'wide' : 'default'}
-                  data-nova-resize-behavior="preserve-pixel-size"
-                  onResize={(size) => {
-                    const emphasis = layoutEmphasisRef.current
-                    const stableNormal = emphasis === 'normal' && previousEmphasisRef.current === 'normal'
-                    const adjustableReview = emphasis === 'center' && centerWidthReadyRef.current
-                    if ((stableNormal || adjustableReview) && size.inPixels > 0) lastRightPanelPixelsRef.current = size.inPixels
-                  }}
-                >
-                  <motion.div
-                    className="h-full min-h-0"
-                    variants={subtlePresence}
-                    initial="initial"
-                    animate="animate"
-                    transition={{ duration: 0.16, ease: novaEase }}
-                  >
-                    {rightPanel}
-                  </motion.div>
-                </Panel>
-              </>
-            )}
-          </Group>
+            <WorkspaceResizeHandle
+              visible={rightPanelOpen}
+              direction="vertical"
+              label={t('layout.resize.right')}
+              {...horizontalPanelLayout.resizeHandleIntentProps}
+            />
+            <CollapsibleResizablePanel
+              id="right"
+              panelRef={rightPanelRef}
+              elementRef={rightPanelElementRef}
+              visible={rightPanelOpen}
+              side="right"
+              defaultSize={rightPanelWide ? '58%' : '34%'}
+              minSize={rightPanelWide ? '520px' : '360px'}
+              maxSize={rightPanelWide ? '68%' : '55%'}
+              groupResizeBehavior="preserve-pixel-size"
+              className={rightPanelWide ? 'min-w-[520px]' : 'min-w-[360px]'}
+              data-nova-right-panel={rightPanelWide ? 'wide' : 'default'}
+              data-nova-resize-behavior="preserve-pixel-size"
+              onResize={(size) => {
+                const emphasis = layoutEmphasisRef.current
+                const stableNormal = emphasis === 'normal' && previousEmphasisRef.current === 'normal'
+                const adjustableReview = emphasis === 'center' && centerWidthReadyRef.current
+                if ((stableNormal || adjustableReview) && size.inPixels > 0) lastRightPanelPixelsRef.current = size.inPixels
+              }}
+            >
+              {retainedRightPanelRef.current}
+            </CollapsibleResizablePanel>
+          </PanelMotionGroup>
         </div>
         {statusBar}
       </div>
@@ -249,31 +293,64 @@ function resizeRightPanel(current: Layout, rightSize: number, sidebarVisible: bo
   }
 }
 
-function WorkspaceResizeHandle({ direction, label }: { direction: 'horizontal' | 'vertical'; label: string }) {
+function WorkspaceResizeHandle({
+  direction,
+  label,
+  visible = true,
+  onPointerDownCapture,
+  onKeyDownCapture,
+}: {
+  direction: 'horizontal' | 'vertical'
+  label: string
+  visible?: boolean
+  onPointerDownCapture?: PointerEventHandler<HTMLElement>
+  onKeyDownCapture?: KeyboardEventHandler<HTMLElement>
+}) {
   const className = direction === 'vertical'
-    ? 'nova-resize-handle relative z-30 -mx-1 w-2 shrink-0 touch-none cursor-col-resize select-none bg-transparent transition-colors'
-    : 'nova-resize-handle relative z-30 -my-1 h-2 shrink-0 touch-none cursor-row-resize select-none bg-transparent transition-colors'
+    ? 'nova-resize-handle nova-resize-divider nova-resize-divider-vertical relative z-30 -mx-1 w-2 shrink-0 touch-none cursor-col-resize select-none'
+    : 'nova-resize-handle nova-resize-divider nova-resize-divider-horizontal relative z-30 -my-1 h-2 shrink-0 touch-none cursor-row-resize select-none'
 
-  return <Separator aria-label={label} className={className} />
+  return (
+    <CollapsiblePanelSeparator
+      visible={visible}
+      aria-label={label}
+      className={className}
+      onPointerDownCapture={onPointerDownCapture}
+      onKeyDownCapture={onKeyDownCapture}
+    />
+  )
 }
 
 export function readStoredLayoutForWorkspace(key: string, panelOrder?: string[]): Layout | undefined {
-  if (typeof window === 'undefined') return undefined
-  const value = window.localStorage.getItem(key)
-  if (!value) return undefined
+  return readPersistedPanelLayout(key, panelOrder)
+}
+
+/** Resolves the one-time migration from a legacy narrow percentage to pixel persistence. */
+export function resolveInitialWorkspaceSidebarWidth(storedWidth: number | null, currentWidth: number): number {
+  if (storedWidth !== null) return storedWidth
+  return currentWidth >= COMFORTABLE_SIDEBAR_WIDTH_PX ? currentWidth : DEFAULT_SIDEBAR_WIDTH_PX
+}
+
+function readStoredWorkspaceSidebarWidth(): number | null {
+  if (typeof window === 'undefined') return null
   try {
-    const layout = JSON.parse(value) as Layout
-    if (!panelOrder) return layout
-    return panelOrder.reduce<Layout>((ordered, panelId) => {
-      if (typeof layout[panelId] === 'number') ordered[panelId] = layout[panelId]
-      return ordered
-    }, {})
-  } catch {
-    return undefined
+    const raw = window.localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY)
+    if (raw === null) return null
+    const width = Number(raw)
+    return Number.isFinite(width) && width >= MIN_SIDEBAR_WIDTH_PX && width <= MAX_STORED_SIDEBAR_WIDTH_PX
+      ? width
+      : null
+  } catch (error) {
+    console.warn('[workspace-layout] Unable to restore the Writing sidebar width', { error })
+    return null
   }
 }
 
-function storeLayout(key: string, layout: Layout) {
-  if (typeof window === 'undefined') return
-  window.localStorage.setItem(key, JSON.stringify(layout))
+function persistWorkspaceSidebarWidth(width: number) {
+  if (typeof window === 'undefined' || !Number.isFinite(width) || width <= 0) return
+  try {
+    window.localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(Math.round(width)))
+  } catch (error) {
+    console.warn('[workspace-layout] Unable to persist the Writing sidebar width', { error })
+  }
 }

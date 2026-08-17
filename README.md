@@ -54,7 +54,7 @@ Denova 面向长期创作项目和互动娱乐，把写作 IDE、互动故事、
 ## 核心能力
 
 - **写作模式**：面向小说创作，支持 Markdown 编辑、多 Tab、正则查找与替换、带自动备份的工作区全局替换、章节统计、大纲、章节组细纲、进度追踪、正文评论、Change Review 和现有小说导入。
-- **创作 Agent**：可读取选区、文件、资料库和可信审阅意见，调用工具生成或修改章节，并通过 Skills / SubAgents 适配不同写作任务、文风和工作流；修改可在累计 Diff 中审阅、评论与撤销。
+- **创作 Agent**：可读取选区、文件、资料库和可信审阅意见，调用工具生成或修改章节，并通过 Skills / SubAgents 适配不同写作任务、文风和工作流；通用工具采用 `read / write / edit / glob / grep / bash|pwsh / web_search / web_fetch / browser / todo / ask / skill / task` 的小接口。写入仍进入累计 Diff，可审阅、评论与撤销。
 - **游戏模式**：运行互动文字冒险，支持玩家输入、剧情分支、故事线切换、后台导演运行策略、行动建议、已保存 AI 回复修正、可检索回合历史、可归档恢复的 Actor State 与自定义状态布局，以及由全屏导演台管理的目标、压力、代价、事件卡包和规则检定。
 - **资料库与预设**：沉淀角色、世界观、地点、势力、规则、物品等稳定设定；叙事风格负责文风、提示词槽位和场景风格，故事导演可插拔组合叙事风格、事件包、TRPG 检定、状态系统和图像方案，且每个模块都可独立关闭；状态系统同时提供可复用词条库，模板决定各类 Actor 创建时的抽取规则。
 - **图像创作**：支持章节插画、互动图像和书籍封面生成，复用 OpenAI 兼容图像模型配置，并在界面中预览和管理结果。
@@ -85,23 +85,21 @@ Denova 仍在快速迭代中，欢迎反馈问题、分享用法或一起讨论�
 
 ## 快速开始
 
-### 下载 Release
-
-从 [GitHub Releases](https://github.com/alfredxw/denova/releases) 下载对应平台压缩包，解压后运行：
+macOS / Linux 一键安装：
 
 ```bash
-./denova
+curl -fsSL https://raw.githubusercontent.com/alfredxw/denova/master/scripts/install.sh | sh
 ```
 
-Windows 用户运行 `denova.exe`。macOS 如果提示安全限制，可以执行：
+安装完成后运行 `denova`。
 
-```bash
-xattr -dr com.apple.quarantine denova
-```
+也可以从 [GitHub Releases](https://github.com/alfredxw/denova/releases) 手动下载对应平台的安装包。脚本仅支持 macOS 和 Linux，Windows 需要手动下载并运行 `denova.exe`。
+
+Release 包已内置经过 SHA-256 校验的 ripgrep，无需单独安装；Denova 的 `grep` 工具会优先使用包内版本。
 
 ### 从源码运行
 
-需要 Go 1.26.5+、Node.js 20+、pnpm 和 ripgrep。
+开发启动需要 Go 1.26.6+、Node.js 20+、pnpm 和 PATH 中可用的 ripgrep；`scripts/build.sh` 生成的可分发目录会自动下载并内置固定版本。
 
 ```bash
 git clone https://github.com/alfredxw/denova.git
@@ -117,7 +115,7 @@ corepack enable
 
 ## 模型与配置
 
-Denova 使用 OpenAI 兼容接口。推荐先在设置页配置语言模型、图像模型、Agent 参数、默认写作 Skill、编辑器、游戏模式、版本管理、语言、主题和字体。
+Denova 的语言模型将 provider 与 API 协议分开配置：provider 从内置服务商目录选择，协议统一为 OpenAI Chat Completions、OpenAI Responses 或 Anthropic Messages。自定义端点选择「兼容 / 自定义端点」服务商，再设置协议与 Base URL；Gemini 使用 Google 官方的 OpenAI 兼容入口。OpenAI 默认使用 Responses API，DeepSeek 同时提供 Chat Completions、Responses 与 Anthropic 路由，MiniMax 默认使用能完整续传 thinking block 的 Anthropic 路由。设置页会按当前协议通过 OpenAI-compatible 或 Anthropic `/models` 获取模型候选，但模型名始终可自定义；也可直接用当前未保存配置发送一次最小生成请求来测试连接。旧 `model_profiles` 的 `openai_*` 字段和下面的 `OPENAI_*` 环境变量会继续按 Chat Completions 兼容读取。推荐先在设置页配置语言模型、图像模型、Agent 参数、默认写作 Skill、编辑器、游戏模式、版本管理、语言、主题和字体。
 
 需要脚本化启动或部署时，也可以用环境变量覆盖模型配置：
 
@@ -148,6 +146,10 @@ export DENOVA_FRONTEND_PORT="5173"
 ```
 
 设置页中的通用、写作与游戏偏好统一保存为用户配置。工作区 `.denova/config.toml` 只承载 Agent 页明确提供的工作区定制；旧文件中的其他字段会保留，但不再覆盖用户设置。旧环境变量仍会兼容读取；新配置建议使用 `.denova` / `DENOVA_*`。
+
+Agent 的只读工具并发数可在设置页或 Agents 页配置，默认 8、范围 1–64；工作区值会覆盖用户值。该并发只作用于连续的只读工具，工作区写入和 child 工具仍按严格顺序执行。
+
+Agents 页按后端解析后的能力清单展示每类 Agent 的真实工具权限，不在前端维护另一份默认值。最终权限是 Agent kind 硬能力上限与配置覆盖的交集；`runtime_check` 表示条件能力，不保证本次运行一定注册具体工具。`shell` 会按平台暴露为 `bash` 或 `pwsh`；网页搜索与网页抓取可分别授权。配置管理统一使用 `config_read` / `config_apply`，资源工作流由内置 `config-manager` Skill 的按需 references 说明。
 
 ## 远程访问与手机使用
 

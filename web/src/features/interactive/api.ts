@@ -1,12 +1,12 @@
-import { fetchAPI, jsonHeaders, parseSSEStream, requestJSON } from '@/lib/api-client'
-import type { ContextAnalysis, InteractiveImage } from '@/lib/api-client'
-import type { ActorStateModule, ActorTraitRollRequest, ActorTraitRollResult, BranchSummary, DirectorPlan, DirectorPlanStatus, EventPackageModule, ImagePreset, InitialActorTraitRoll, InteractiveSSEEvent, RuleResolution, RuleResolutionRerollInput, RuleSystemModule, Snapshot, StoryDirector, StoryDirectorModuleRefs, StoryDirectorRunPolicy, StoryStateSchemaPolicy, StyleReference, StyleReferenceFileDocument, StoryImageSettings, StoryIndex, StoryOpeningConfig, StorySummary, Teller, UpdateDirectorPlanInput, UpdateTurnNarrativeResult } from './types'
+import { createAgentCommandID, fetchAPI, jsonHeaders, parseSSEStream, requestJSON, responseAPIError } from '@/lib/api-client'
+import type { AgentCommandReceipt, AgentRuntimeActiveOutput, AgentRuntimeOpenTool, AgentRuntimeOperation, AgentRuntimeQueuedCommand, AgentRuntimeRecoveryAction, AgentRuntimeRecoveryReceipt, ContextAnalysis, InteractiveImage } from '@/lib/api-client'
+import { isKnownAgentCommandOutcome } from '@/lib/agent-command'
+import type { ActorStateModule, ActorTraitRollRequest, ActorTraitRollResult, BranchSummary, DirectorPlan, DirectorPlanStatus, EventPackageModule, ImagePreset, InitialActorTraitRoll, InteractiveSnapshotResponse, InteractiveSSEEvent, RuleResolution, RuleResolutionRerollInput, RuleSystemModule, StoryDirector, StoryDirectorModuleRefs, StoryDirectorRunPolicy, StoryHistoryPage, StoryStateSchemaPolicy, StyleReference, StyleReferenceFileDocument, StoryImageSettings, StoryIndex, StoryOpeningConfig, StorySummary, Teller, UpdateDirectorPlanInput, UpdateTurnNarrativeResult } from './types'
 
-function presetMutationBody<T extends object>(input: T, baseRevision?: string, workspace?: string) {
+function presetMutationBody<T extends object>(input: T, baseRevision?: string) {
   return {
     ...input,
     ...(baseRevision ? { base_revision: baseRevision } : {}),
-    ...(workspace ? { workspace } : {}),
   }
 }
 
@@ -65,9 +65,14 @@ export function deleteInteractiveStory(id: string): Promise<void> {
   })
 }
 
-export function getInteractiveSnapshot(storyId: string, branchId?: string): Promise<Snapshot> {
+export function getInteractiveSnapshot(storyId: string, branchId?: string): Promise<InteractiveSnapshotResponse> {
   const query = branchId ? `?branch=${encodeURIComponent(branchId)}` : ''
-  return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/snapshot${query}`)
+  return requestJSON<InteractiveSnapshotResponse>(`/api/interactive/stories/${encodeURIComponent(storyId)}/snapshot${query}`)
+}
+
+export function getInteractiveHistoryPage(storyId: string, branchId: string, before: string, limit = 100): Promise<StoryHistoryPage> {
+  const query = new URLSearchParams({ branch: branchId, before, limit: String(limit) })
+  return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/history?${query.toString()}`)
 }
 
 export function rerollInteractiveRuleResolution(storyId: string, resolutionId: string, input: RuleResolutionRerollInput = {}): Promise<RuleResolution> {
@@ -81,6 +86,11 @@ export function rerollInteractiveRuleResolution(storyId: string, resolutionId: s
 export function getInteractiveDirector(storyId: string, branchId?: string): Promise<DirectorPlan> {
   const query = branchId ? `?branch=${encodeURIComponent(branchId)}` : ''
   return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/director${query}`)
+}
+
+export function getInteractiveDirectorStatus(storyId: string, branchId?: string): Promise<DirectorPlanStatus> {
+  const query = branchId ? `?branch=${encodeURIComponent(branchId)}` : ''
+  return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/director/status${query}`)
 }
 
 export function updateInteractiveDirector(storyId: string, input: UpdateDirectorPlanInput): Promise<DirectorPlan> {
@@ -128,11 +138,11 @@ export function createInteractiveTeller(input: Partial<Teller>): Promise<Teller>
   })
 }
 
-export function updateInteractiveTeller(id: string, input: Partial<Teller>, baseRevision?: string, workspace?: string): Promise<Teller> {
+export function updateInteractiveTeller(id: string, input: Partial<Teller>, baseRevision?: string): Promise<Teller> {
   return requestJSON(`/api/interactive/tellers/${encodeURIComponent(id)}`, {
     method: 'PATCH',
     headers: jsonHeaders,
-    body: JSON.stringify(presetMutationBody(input, baseRevision, workspace)),
+    body: JSON.stringify(presetMutationBody(input, baseRevision)),
   })
 }
 
@@ -180,11 +190,11 @@ export function createStoryDirector(input: Partial<StoryDirector>): Promise<Stor
   })
 }
 
-export function updateStoryDirector(id: string, input: Partial<StoryDirector>, baseRevision?: string, workspace?: string): Promise<StoryDirector> {
+export function updateStoryDirector(id: string, input: Partial<StoryDirector>, baseRevision?: string): Promise<StoryDirector> {
   return requestJSON(`/api/story-directors/${encodeURIComponent(id)}`, {
     method: 'PATCH',
     headers: jsonHeaders,
-    body: JSON.stringify(presetMutationBody(input, baseRevision, workspace)),
+    body: JSON.stringify(presetMutationBody(input, baseRevision)),
   })
 }
 
@@ -207,11 +217,11 @@ export function createEventPackage(input: Partial<EventPackageModule>): Promise<
   })
 }
 
-export function updateEventPackage(id: string, input: Partial<EventPackageModule>, baseRevision?: string, workspace?: string): Promise<EventPackageModule> {
+export function updateEventPackage(id: string, input: Partial<EventPackageModule>, baseRevision?: string): Promise<EventPackageModule> {
   return requestJSON(`/api/event-packages/${encodeURIComponent(id)}`, {
     method: 'PATCH',
     headers: jsonHeaders,
-    body: JSON.stringify(presetMutationBody(input, baseRevision, workspace)),
+    body: JSON.stringify(presetMutationBody(input, baseRevision)),
   })
 }
 
@@ -234,11 +244,11 @@ export function createRuleSystem(input: Partial<RuleSystemModule>): Promise<Rule
   })
 }
 
-export function updateRuleSystem(id: string, input: Partial<RuleSystemModule>, baseRevision?: string, workspace?: string): Promise<RuleSystemModule> {
+export function updateRuleSystem(id: string, input: Partial<RuleSystemModule>, baseRevision?: string): Promise<RuleSystemModule> {
   return requestJSON(`/api/rule-systems/${encodeURIComponent(id)}`, {
     method: 'PATCH',
     headers: jsonHeaders,
-    body: JSON.stringify(presetMutationBody(input, baseRevision, workspace)),
+    body: JSON.stringify(presetMutationBody(input, baseRevision)),
   })
 }
 
@@ -261,11 +271,11 @@ export function createActorState(input: Partial<ActorStateModule>): Promise<Acto
   })
 }
 
-export function updateActorState(id: string, input: Partial<ActorStateModule>, baseRevision?: string, workspace?: string): Promise<ActorStateModule> {
+export function updateActorState(id: string, input: Partial<ActorStateModule>, baseRevision?: string): Promise<ActorStateModule> {
   return requestJSON(`/api/actor-states/${encodeURIComponent(id)}`, {
     method: 'PATCH',
     headers: jsonHeaders,
-    body: JSON.stringify(presetMutationBody(input, baseRevision, workspace)),
+    body: JSON.stringify(presetMutationBody(input, baseRevision)),
   })
 }
 
@@ -288,11 +298,11 @@ export function createImagePreset(input: Partial<ImagePreset>): Promise<ImagePre
   })
 }
 
-export function updateImagePreset(id: string, input: Partial<ImagePreset>, baseRevision?: string, workspace?: string): Promise<ImagePreset> {
+export function updateImagePreset(id: string, input: Partial<ImagePreset>, baseRevision?: string): Promise<ImagePreset> {
   return requestJSON(`/api/image-presets/${encodeURIComponent(id)}`, {
     method: 'PATCH',
     headers: jsonHeaders,
-    body: JSON.stringify(presetMutationBody(input, baseRevision, workspace)),
+    body: JSON.stringify(presetMutationBody(input, baseRevision)),
   })
 }
 
@@ -343,7 +353,7 @@ export function updateInteractiveTurnNarrative(storyId: string, turnId: string, 
   })
 }
 
-export function generateInteractiveImage(storyId: string, input: { branch_id?: string; turn_id: string; source: 'manual' | 'auto'; force?: boolean }): Promise<{ enabled?: boolean; skipped?: boolean; skipped_reason?: string; image?: InteractiveImage }> {
+export function generateInteractiveImage(storyId: string, input: { command_id: string; branch_id?: string; turn_id: string; source: 'manual' | 'auto'; force?: boolean }): Promise<{ enabled?: boolean; skipped?: boolean; skipped_reason?: string; image?: InteractiveImage }> {
   return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/images/generate`, {
     method: 'POST',
     headers: jsonHeaders,
@@ -351,14 +361,26 @@ export function generateInteractiveImage(storyId: string, input: { branch_id?: s
   })
 }
 
-export async function sendInteractiveMessage(input: { mode: 'story' | 'setting'; story_id: string; branch?: string; message: string; style_scenes?: string[]; regenerate_from_turn_id?: string; signal?: AbortSignal }): Promise<ReadableStream<InteractiveSSEEvent>> {
+export interface InteractiveStartInput {
+  command_id: string
+  mode: 'story' | 'setting'
+  story_id: string
+  branch?: string
+  message: string
+  style_scenes?: string[]
+  regenerate_from_turn_id?: string
+  signal?: AbortSignal
+}
+
+export async function sendInteractiveMessage(input: InteractiveStartInput): Promise<ReadableStream<InteractiveSSEEvent>> {
+  const { signal, ...body } = input
   const res = await fetchAPI('/api/interactive/chat', {
     method: 'POST',
     headers: jsonHeaders,
-    body: JSON.stringify(input),
-    signal: input.signal,
+    body: JSON.stringify(body),
+    signal,
   })
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  if (!res.ok) throw await responseAPIError(res)
   if (!res.body) throw new Error('No response body')
   return parseSSEStream(res.body)
 }
@@ -367,27 +389,114 @@ export interface ActiveInteractiveChat {
   active: boolean
   status?: 'running' | 'done' | 'aborted' | 'error'
   task_id?: string
+  command_id?: string
   story_id?: string
   branch_id?: string
   message?: string
   regenerate_from_turn_id?: string
+  /** Diagnostic-only latest raw SSE cursor; runtime `cursor` is durable state. */
+  stream_cursor?: number
+  cursor?: number
+  phase?: 'idle' | 'running' | string
+  recovery_paused?: boolean
+  runtime_recoverable?: boolean
+  stream_attached?: boolean
+  recovery_actions?: AgentRuntimeRecoveryAction[]
+  active_operation_id?: string
+  active_cycle?: number
+  active_output?: AgentRuntimeActiveOutput
+  queue?: AgentRuntimeQueuedCommand[]
+  open_tools?: AgentRuntimeOpenTool[]
+  last_operation?: AgentRuntimeOperation
+}
+
+interface InteractiveAgentCommandBase {
+  commandId: string
+  targetOperationId: string
+  storyId: string
+  branchId?: string
+}
+
+export type InteractiveAgentCommand = InteractiveAgentCommandBase & (
+  | {
+    type: 'follow_up'
+    input: {
+      message: string
+      styleScenes?: string[]
+    }
+  }
+  | {
+    type: 'steer_queued' | 'cancel_queued'
+    targetCommandId: string
+    reason?: string
+  }
+  | {
+    type: 'abort'
+    reason?: string
+  }
+)
+
+/** Submit a targeted command to the exact durable game operation in view. */
+export function submitInteractiveAgentCommand(command: InteractiveAgentCommand): Promise<AgentCommandReceipt> {
+  const input = 'input' in command
+    ? {
+        message: command.input.message,
+        ...(command.input.styleScenes?.length ? { style_scenes: command.input.styleScenes } : {}),
+      }
+    : undefined
+  const targetCommandId = 'targetCommandId' in command ? command.targetCommandId : ''
+  const reason = 'reason' in command ? command.reason : undefined
+  return requestJSON('/api/interactive/chat/commands', {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify({
+      type: command.type,
+      command_id: command.commandId,
+      target_operation_id: command.targetOperationId,
+      story_id: command.storyId,
+      ...(command.branchId ? { branch_id: command.branchId } : {}),
+      ...(targetCommandId ? { target_command_id: targetCommandId } : {}),
+      ...(input ? { input } : {}),
+      ...(reason ? { reason } : {}),
+    }),
+  })
 }
 
 export function getActiveInteractiveChat(storyId: string, branchId?: string): Promise<ActiveInteractiveChat> {
   return requestJSON(`/api/interactive/chat/active?${interactiveChatQuery(storyId, branchId)}`)
 }
 
-export async function streamActiveInteractiveChat(input: { storyId: string; branchId?: string; taskId?: string; signal?: AbortSignal }): Promise<ReadableStream<InteractiveSSEEvent>> {
-  const res = await fetchAPI(`/api/interactive/chat/stream?${interactiveChatQuery(input.storyId, input.branchId, input.taskId)}`, { signal: input.signal })
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+/** Recover accepted game work by server-projected identity, never by browser-cached input. */
+export function recoverInteractiveAgentRuntime(input: {
+  storyId: string
+  branchId?: string
+  action: AgentRuntimeRecoveryAction
+}): Promise<AgentRuntimeRecoveryReceipt> {
+  return requestJSON('/api/interactive/chat/recovery', {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify({
+      action: input.action,
+      story_id: input.storyId,
+      ...(input.branchId ? { branch: input.branchId } : {}),
+    }),
+  })
+}
+
+export async function streamActiveInteractiveChat(input: { storyId: string; branchId?: string; taskId?: string; after?: string; signal?: AbortSignal }): Promise<ReadableStream<InteractiveSSEEvent>> {
+  const taskId = input.taskId?.trim()
+  if (!taskId) throw new Error('Cannot reconnect without an exact Agent stream task')
+  const res = await fetchAPI(`/api/interactive/chat/stream?${interactiveChatQuery(input.storyId, input.branchId, taskId, input.after)}`, { signal: input.signal })
+  if (!res.ok) throw await responseAPIError(res)
   if (!res.body) throw new Error('No response body')
   return parseSSEStream(res.body)
 }
 
-function interactiveChatQuery(storyId: string, branchId?: string, taskId?: string) {
+function interactiveChatQuery(storyId: string, branchId?: string, taskId?: string, after?: string) {
   const params = new URLSearchParams({ story_id: storyId })
   if (branchId) params.set('branch', branchId)
   if (taskId) params.set('task_id', taskId)
+  if (after) params.set('after', after)
   return params.toString()
 }
 
@@ -399,22 +508,39 @@ export function analyzeInteractiveContext(input: { mode: 'story'; story_id: stri
   })
 }
 
-export function compactInteractiveContext(storyId: string, branchId?: string): Promise<void> {
-  return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/context-compaction`, {
-    method: 'POST',
-    headers: jsonHeaders,
-    body: JSON.stringify({ branch_id: branchId }),
-  })
+const interactiveStructuralCommandIDs = new Map<string, string>()
+
+export async function compactInteractiveContext(storyId: string, branchId?: string): Promise<void> {
+  const key = `compact:${storyId}:${branchId ?? ''}`
+  const commandId = interactiveStructuralCommandIDs.get(key) ?? createAgentCommandID()
+  interactiveStructuralCommandIDs.set(key, commandId)
+  try {
+    await requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/context-compaction`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ command_id: commandId, branch_id: branchId }),
+    })
+    interactiveStructuralCommandIDs.delete(key)
+  } catch (error) {
+    if (isKnownAgentCommandOutcome(error)) interactiveStructuralCommandIDs.delete(key)
+    throw error
+  }
 }
 
 export async function removeInteractiveContextCompaction(storyId: string, branchId?: string): Promise<boolean> {
-  const query = branchId ? `?branch=${encodeURIComponent(branchId)}` : ''
-  const data = await requestJSON<{ removed?: boolean }>(`/api/interactive/stories/${encodeURIComponent(storyId)}/context-compaction/active${query}`, {
-    method: 'DELETE',
-  })
-  return Boolean(data.removed)
-}
-
-export async function abortInteractiveChat(): Promise<void> {
-  await requestJSON('/api/interactive/chat/abort', { method: 'POST' })
+  const key = `remove:${storyId}:${branchId ?? ''}`
+  const commandId = interactiveStructuralCommandIDs.get(key) ?? createAgentCommandID()
+  interactiveStructuralCommandIDs.set(key, commandId)
+  const query = new URLSearchParams({ command_id: commandId })
+  if (branchId) query.set('branch', branchId)
+  try {
+    const data = await requestJSON<{ removed?: boolean }>(`/api/interactive/stories/${encodeURIComponent(storyId)}/context-compaction/active?${query}`, {
+      method: 'DELETE',
+    })
+    interactiveStructuralCommandIDs.delete(key)
+    return Boolean(data.removed)
+  } catch (error) {
+    if (isKnownAgentCommandOutcome(error)) interactiveStructuralCommandIDs.delete(key)
+    throw error
+  }
 }

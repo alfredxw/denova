@@ -25,7 +25,7 @@ export function applyFontSettings(settings: FontSettingsInput) {
   const microSize = clampFontSize(baseSize - 2, 10, 14, 10)
 
   document.documentElement.style.setProperty('--nova-ui-font-family', fontStackFor(settings.uiFont, 'apple-system'))
-  document.documentElement.style.setProperty('--nova-reading-font-family', fontStackFor(settings.readingFont, 'source-han-serif'))
+  applyReadingTypographySettings(settings)
   document.documentElement.style.setProperty('--nova-ui-font-size', `${baseSize}px`)
   document.documentElement.style.setProperty('--nova-ui-line-height', `${baseSize + 6}px`)
   document.documentElement.style.setProperty('--nova-ui-sm-font-size', `${smSize}px`)
@@ -35,6 +35,11 @@ export function applyFontSettings(settings: FontSettingsInput) {
   document.documentElement.style.setProperty('--nova-ui-compact-line-height', `${compactSize + 5}px`)
   document.documentElement.style.setProperty('--nova-ui-micro-font-size', `${microSize}px`)
   document.documentElement.style.setProperty('--nova-ui-micro-line-height', `${microSize + 4}px`)
+}
+
+export function applyReadingTypographySettings(settings: Pick<FontSettingsInput, 'readingFont' | 'readingFontSize'>) {
+  if (typeof document === 'undefined') return
+  document.documentElement.style.setProperty('--nova-reading-font-family', fontStackFor(settings.readingFont, 'source-han-serif'))
   document.documentElement.style.setProperty('--nova-reading-font-size', `${clampFontSize(settings.readingFontSize, 14, 28, 18)}px`)
 }
 

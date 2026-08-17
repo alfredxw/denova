@@ -5,6 +5,7 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view'
 
 export interface DocumentReviewDecoration {
   key: string
+  coordinateSpace: string
   from?: number
   to?: number
   widgetPos: number
@@ -139,6 +140,7 @@ function createHighlightDecorations(doc: ProseMirrorNode, state: DocumentReviewD
       ...(undisclosedItems.length ? documentReviewDisclosureAttributes(interactiveItems, state) : {}),
     }, {
       documentReviewKeys: segment.items.map((item) => item.key),
+      documentReviewCoordinateSpace: segment.items[0].coordinateSpace,
       kind: 'highlight',
     }))
   }

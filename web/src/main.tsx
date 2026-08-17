@@ -12,6 +12,7 @@ import { queryClient } from '@/lib/query-client'
 import { installGlobalRuntimeLoggers, recordRuntimeLog, scheduleWhiteScreenCheck } from '@/lib/runtimeLog'
 import { fetchSettings } from '@/features/settings/api'
 import { applyFontSettings, fontSettingsFromEffective } from '@/features/settings/font-variables'
+import { AgentApprovalProvider } from '@/features/agent-approval/AgentApprovalProvider'
 
 installGlobalRuntimeLoggers()
 
@@ -31,7 +32,9 @@ createRoot(root).render(
       <ThemeProvider attribute="data-theme" defaultTheme="dark" enableSystem themes={['light', 'dark']}>
         <TooltipProvider>
           <RuntimeErrorBoundary>
-            <App />
+            <AgentApprovalProvider>
+              <App />
+            </AgentApprovalProvider>
             <Toaster richColors closeButton />
           </RuntimeErrorBoundary>
         </TooltipProvider>

@@ -1,5 +1,35 @@
 import { http, HttpResponse } from 'msw'
 
+function conversationConfigSnapshot(mode: string, changes: Record<string, unknown> = {}, revision = 1) {
+  return HttpResponse.json({
+    agent_kind: mode === 'interactive'
+      ? 'interactive_story'
+      : mode === 'config_manager'
+        ? 'config_manager'
+        : mode === 'agent_chat'
+          ? 'general'
+          : 'ide',
+    profile_id: 'default',
+    thinking_level: mode === 'interactive' ? 'off' : 'medium',
+    approval_mode: 'write',
+    ...changes,
+    revision,
+  })
+}
+
+async function patchConversationConfigResponse(request: Request) {
+  const body = await request.json() as {
+    binding?: { mode?: string }
+    base_revision?: number
+    changes?: Record<string, unknown>
+  }
+  return conversationConfigSnapshot(
+    body.binding?.mode || 'writing',
+    body.changes,
+    (body.base_revision || 0) + 1,
+  )
+}
+
 export const handlers = [
   http.get('/api/messages', () =>
     HttpResponse.json({
@@ -60,6 +90,7 @@ export const handlers = [
   ),
   http.get('/api/chat/active', () => HttpResponse.json({ active: false })),
   http.get('/api/skills', () => HttpResponse.json({ skills: [] })),
+  http.get('/api/projects/:projectId/skills', () => HttpResponse.json({ scopes: [], skills: [] })),
   http.get('/api/interactive/stories', () =>
     HttpResponse.json({
       current_story_id: 'st_1',
@@ -154,19 +185,17 @@ export const handlers = [
       revision: 'r2',
     })
   }),
-  http.get('/api/workspace/file', () =>
+  http.get('/api/projects/:projectId/book/summary', ({ params }) =>
     HttpResponse.json({
-      path: 'setting/characters.md',
-      content: '# Characters',
-    }),
-  ),
-  http.get('/api/workspace/summary', () =>
-    HttpResponse.json({
-      title: '末日开端',
-      author: '',
-      chapter_count: 0,
-      total_words: 0,
-      chapters: [],
+      project_id: String(params.projectId),
+      workspace: `/tmp/${String(params.projectId)}`,
+      summary: {
+        title: '末日开端',
+        author: '',
+        chapter_count: 0,
+        total_words: 0,
+        chapters: [],
+      },
     }),
   ),
   http.get('/api/settings', () =>
@@ -217,7 +246,42 @@ export const handlers = [
       paths: { nova_dir: '', user_config: '', workspace_config: '' },
     }),
   ),
-  http.get('/api/lore/items', () => HttpResponse.json({ items: [] })),
+  http.get('/api/projects/:projectId/settings', () =>
+    HttpResponse.json({
+      default: {},
+      global: {},
+      user: {},
+      workspace: {},
+      effective: {
+        max_open_tabs: 5,
+        ui_font_family: 'apple-system',
+        ui_font_size: 14,
+        reading_font_family: 'source-han-serif',
+        reading_font_size: 18,
+        interactive_stage_line_height: 1.78,
+      },
+      builtin_agent_prompts: {},
+      builtin_agent_prompt_blocks: {},
+      builtin_agent_prompt_sources: {},
+      resolved_agent_tool_manifests: {},
+      resolved_agent_contexts: {},
+      paths: { nova_dir: '', user_config: '', workspace_config: '' },
+    }),
+  ),
+  http.get('/api/conversation-config', ({ request }) => {
+    const mode = new URL(request.url).searchParams.get('mode') || 'writing'
+    return conversationConfigSnapshot(mode)
+  }),
+  http.patch('/api/conversation-config', ({ request }) => patchConversationConfigResponse(request)),
+  http.get('/api/projects/:projectId/conversation-config', ({ request }) => {
+    const mode = new URL(request.url).searchParams.get('mode') || 'writing'
+    return conversationConfigSnapshot(mode)
+  }),
+  http.patch('/api/projects/:projectId/conversation-config', ({ request }) => patchConversationConfigResponse(request)),
+  http.get('/api/projects/:projectId/book/lore/items', ({ params }) => HttpResponse.json({
+    project_id: String(params.projectId),
+    items: [],
+  })),
   http.get('/api/config-manager/messages', () => HttpResponse.json([])),
   http.post('/api/command', async ({ request }) => {
     const body = (await request.json()) as { command?: string }

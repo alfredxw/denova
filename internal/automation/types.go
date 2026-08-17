@@ -2,8 +2,24 @@ package automation
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"strings"
 	"time"
+)
+
+// ErrRunIdentityConflict means a deterministic run ID already names a run
+// with different execution semantics. Durable callers must surface the
+// conflict instead of allocating a replacement identity and duplicating work.
+var ErrRunIdentityConflict = errors.New("automation run identity conflict")
+
+var (
+	// ErrTaskArchived rejects new definition/runtime admissions after a user
+	// deleted a task while preserving its recovery ledger.
+	ErrTaskArchived = errors.New("automation task is archived")
+	// ErrTaskHasActiveRun prevents a delete request from hiding live runtime
+	// control while an accepted operation still needs reconciliation.
+	ErrTaskHasActiveRun = errors.New("automation task has an active run")
 )
 
 const (
@@ -18,22 +34,11 @@ const (
 	TemplateContinueWriting     = "continue_writing"
 	TemplateCustomPrompt        = "custom_prompt"
 
-	WritePolicyReadOnly              = "read_only"
-	WritePolicyAllowLoreWrite        = "allow_lore_write"
-	WritePolicyAllowFileWrite        = "allow_file_write"
-	WritePolicyAllowLoreAndFileWrite = "allow_lore_and_file_write"
-
-	WriteModeReadOnly     = "read_only"
-	WriteModeConfirmWrite = "confirm_write"
-	WriteModeAutoWrite    = "auto_write"
-
-	WriteScopeNone        = "none"
-	WriteScopeLore        = "lore"
-	WriteScopeFile        = "file"
-	WriteScopeLoreAndFile = "lore_and_file"
-
-	OutputPolicyRunRecordOnly = "run_record_only"
-	OutputPolicyOptionalFile  = "optional_file"
+	// SessionStrategyPerRun isolates every trigger occurrence in its own
+	// project conversation. SessionStrategyPerTask keeps one task-owned
+	// conversation so later runs can intentionally reuse prior context.
+	SessionStrategyPerRun  = "per_run"
+	SessionStrategyPerTask = "per_task"
 
 	RunStatusRunning = "running"
 	RunStatusSuccess = "success"
@@ -67,13 +72,44 @@ const (
 	InboxPurposeWriteConfirmation = "write_confirmation"
 )
 
-// ExecutionTarget identifies the context in which an automation executes.
-// Every task is user-managed; workspace is an explicit target rather than an
-// implicit dependency on whichever book happens to be open.
+// ExecutionTarget identifies the Project in which an automation executes.
+// TargetKindUser remains readable only for Beta definitions created before
+// Automations became strictly Project-owned.
 type ExecutionTarget struct {
-	Kind        string `json:"kind"`
-	WorkspaceID string `json:"workspace_id,omitempty"`
-	Workspace   string `json:"workspace,omitempty"`
+	Kind      string `json:"kind"`
+	ProjectID string `json:"project_id,omitempty"`
+	Workspace string `json:"workspace,omitempty"`
+}
+
+// UnmarshalJSON keeps released automation definitions readable while making
+// project_id the only canonical field written by current versions.
+func (target *ExecutionTarget) UnmarshalJSON(data []byte) error {
+	if target == nil {
+		return errors.New("automation execution target is nil")
+	}
+	var decoded struct {
+		Kind              string `json:"kind"`
+		ProjectID         string `json:"project_id,omitempty"`
+		LegacyWorkspaceID string `json:"workspace_id,omitempty"`
+		Workspace         string `json:"workspace,omitempty"`
+	}
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	projectID := strings.TrimSpace(decoded.ProjectID)
+	legacyID := strings.TrimSpace(decoded.LegacyWorkspaceID)
+	if projectID != "" && legacyID != "" && projectID != legacyID {
+		return fmt.Errorf("automation target has conflicting project_id and legacy workspace_id")
+	}
+	if projectID == "" {
+		projectID = legacyID
+	}
+	*target = ExecutionTarget{
+		Kind:      decoded.Kind,
+		ProjectID: projectID,
+		Workspace: decoded.Workspace,
+	}
+	return nil
 }
 
 const (
@@ -81,7 +117,9 @@ const (
 	MaxInboxItems = 100
 )
 
-// Task describes one bounded, permission-aware automation definition.
+// Task describes one Project-owned automation definition. Its Prompt runs with
+// the owning Project Agent's configured capabilities; task configuration never
+// adds a second permission or output policy layer.
 type Task struct {
 	ID                  string                  `json:"id"`
 	CatalogID           string                  `json:"catalog_id,omitempty"`
@@ -97,14 +135,49 @@ type Task struct {
 	Triggers            []TriggerDefinition     `json:"triggers"`
 	DefaultActionPolicy string                  `json:"default_action_policy"`
 	TriggerState        map[string]TriggerState `json:"trigger_state,omitempty"`
-	WriteMode           string                  `json:"write_mode"`
-	WriteScope          string                  `json:"write_scope"`
-	OutputPolicy        string                  `json:"output_policy"`
-	OutputPath          string                  `json:"output_path"`
+	SessionStrategy     string                  `json:"session_strategy"`
 	LastRun             *RunRecord              `json:"last_run,omitempty"`
 	RecentRuns          []RunRecord             `json:"recent_runs"`
 	CreatedAt           time.Time               `json:"created_at"`
 	UpdatedAt           time.Time               `json:"updated_at"`
+	// ArchivedAt is a tombstone. Archived definitions disappear from normal
+	// catalogs but remain addressable by recovery and completion outbox code.
+	ArchivedAt *time.Time `json:"archived_at,omitempty"`
+}
+
+// TaskDefinition is the complete caller-owned input for creating an
+// Automation. Runtime identity, scheduler state, run history, revisions,
+// timestamps, and archive tombstones are deliberately absent.
+type TaskDefinition struct {
+	Scope               string              `json:"scope"`
+	Target              ExecutionTarget     `json:"target"`
+	Enabled             bool                `json:"enabled"`
+	Name                string              `json:"name"`
+	Template            string              `json:"template"`
+	Prompt              string              `json:"prompt"`
+	ModelProfileID      string              `json:"model_profile_id,omitempty"`
+	Schedule            Schedule            `json:"schedule"`
+	Triggers            []TriggerDefinition `json:"triggers"`
+	DefaultActionPolicy string              `json:"default_action_policy"`
+	SessionStrategy     string              `json:"session_strategy"`
+}
+
+// Definition returns only user-editable creation fields. It is intentionally
+// lossy so callers cannot clone scheduler-owned state into a new task.
+func (task Task) Definition() TaskDefinition {
+	return TaskDefinition{
+		Scope:               task.Scope,
+		Target:              task.Target,
+		Enabled:             task.Enabled,
+		Name:                task.Name,
+		Template:            task.Template,
+		Prompt:              task.Prompt,
+		ModelProfileID:      task.ModelProfileID,
+		Schedule:            task.Schedule,
+		Triggers:            append([]TriggerDefinition(nil), task.Triggers...),
+		DefaultActionPolicy: task.DefaultActionPolicy,
+		SessionStrategy:     task.SessionStrategy,
+	}
 }
 
 // TaskTemplate is an immutable creation recipe. Selecting a template copies
@@ -129,35 +202,7 @@ type TaskTemplateDefaults struct {
 	Schedule            Schedule            `json:"schedule"`
 	Triggers            []TriggerDefinition `json:"triggers"`
 	DefaultActionPolicy string              `json:"default_action_policy"`
-	WriteMode           string              `json:"write_mode"`
-	WriteScope          string              `json:"write_scope"`
-	OutputPolicy        string              `json:"output_policy"`
-	OutputPath          string              `json:"output_path"`
-}
-
-// taskWithoutUnmarshal mirrors Task so UnmarshalJSON can decode without
-// recursing into itself. It exists purely to break the method-set loop that
-// defining UnmarshalJSON on Task otherwise creates.
-type taskWithoutUnmarshal Task
-
-// UnmarshalJSON decodes Task JSON and migrates the legacy write_policy field
-// into write_mode/write_scope. write_policy stopped being written, but persisted
-// tasks created before this change still carry it; decoding them here keeps the
-// single representation (write_mode + write_scope) authoritative without losing
-// older permissions.
-func (t *Task) UnmarshalJSON(data []byte) error {
-	aux := struct {
-		taskWithoutUnmarshal
-		LegacyWritePolicy string `json:"write_policy,omitempty"`
-	}{}
-	if err := json.Unmarshal(data, &aux); err != nil {
-		return err
-	}
-	*t = Task(aux.taskWithoutUnmarshal)
-	if strings.TrimSpace(t.WriteMode) == "" && strings.TrimSpace(t.WriteScope) == "" && strings.TrimSpace(aux.LegacyWritePolicy) != "" {
-		t.WriteMode, t.WriteScope = writeModeScopeFromLegacyPolicy(aux.LegacyWritePolicy)
-	}
-	return nil
+	SessionStrategy     string              `json:"session_strategy"`
 }
 
 // TriggerDefinition describes one condition that can cause an automation task to notify or run.
@@ -179,6 +224,11 @@ type TriggerState struct {
 	LastMatchedAt              time.Time `json:"last_matched_at,omitempty"`
 	LastEvidenceFingerprint    string    `json:"last_evidence_fingerprint,omitempty"`
 	LastObservationFingerprint string    `json:"last_observation_fingerprint,omitempty"`
+	// Evaluation is the durable trigger coordinator record. Semantic triggers
+	// retain their bounded model input; schedule and chapter triggers retain the
+	// canonical match they derived. Every trigger type therefore resumes the
+	// same claimed -> decided -> completed protocol after a restart.
+	Evaluation *TriggerEvaluationRecord `json:"evaluation,omitempty"`
 }
 
 // Schedule stores a user-editable cron-style cadence without requiring raw cron input.
@@ -194,21 +244,68 @@ type Schedule struct {
 
 // RunRecord is a persisted, bounded execution summary.
 type RunRecord struct {
-	ID              string             `json:"id"`
-	TaskID          string             `json:"task_id"`
-	SessionID       string             `json:"session_id,omitempty"`
-	Scope           string             `json:"scope"`
-	Workspace       string             `json:"workspace,omitempty"`
-	Trigger         string             `json:"trigger"`
-	SourceRunID     string             `json:"source_run_id,omitempty"`
-	TriggerEvidence []TriggerEvidence  `json:"trigger_evidence,omitempty"`
-	Status          string             `json:"status"`
-	StartedAt       time.Time          `json:"started_at"`
-	FinishedAt      time.Time          `json:"finished_at,omitempty"`
-	Summary         string             `json:"summary"`
-	Error           string             `json:"error,omitempty"`
-	OutputPath      string             `json:"output_path,omitempty"`
-	ToolManifest    []ToolManifestItem `json:"tool_manifest"`
+	ID              string `json:"id"`
+	TaskID          string `json:"task_id"`
+	TaskRevision    string `json:"task_revision,omitempty"`
+	SessionID       string `json:"session_id,omitempty"`
+	SessionStrategy string `json:"session_strategy,omitempty"`
+	// TurnID is the immutable root AgentChat command anchor. SessionID locates
+	// the conversation; TurnID locates this exact run inside a reused session.
+	TurnID          string            `json:"turn_id,omitempty"`
+	ProjectID       string            `json:"project_id,omitempty"`
+	Scope           string            `json:"scope"`
+	Workspace       string            `json:"workspace,omitempty"`
+	Trigger         string            `json:"trigger"`
+	SourceRunID     string            `json:"source_run_id,omitempty"`
+	TriggerEvidence []TriggerEvidence `json:"trigger_evidence,omitempty"`
+	// RootRuntime* is the immutable StartTurn receipt. Runtime* is the current
+	// operation receipt exposed to clients and advances when a follow-up is
+	// accepted, so Stop always targets the live operation without erasing the
+	// root admission proof used by trigger/inbox coordinators.
+	RootRuntimeCommandID      string `json:"root_runtime_command_id,omitempty"`
+	RootRuntimeOperationID    string `json:"root_runtime_operation_id,omitempty"`
+	RootRuntimeReceiptCursor  uint64 `json:"root_runtime_receipt_cursor,omitempty"`
+	RuntimeCommandID          string `json:"runtime_command_id,omitempty"`
+	RuntimeOperationID        string `json:"runtime_operation_id,omitempty"`
+	RuntimeReceiptCursor      uint64 `json:"runtime_receipt_cursor,omitempty"`
+	RuntimeCommandFingerprint string `json:"runtime_command_fingerprint,omitempty"`
+	RuntimeIntentHash         string `json:"runtime_intent_hash,omitempty"`
+	// PendingRuntime* is the write-ahead successor intent. It closes the crash
+	// window between persisting a follow-up command identity and receiving its
+	// durable runtime receipt; startup reconciliation promotes the matching
+	// operation into Runtime* without ever changing RootRuntime*.
+	PendingRuntimeCommandID          string `json:"pending_runtime_command_id,omitempty"`
+	PendingRuntimeIntentHash         string `json:"pending_runtime_intent_hash,omitempty"`
+	PendingRuntimeCommandFingerprint string `json:"pending_runtime_command_fingerprint,omitempty"`
+	// RuntimeSuccessorConflict records why a pending successor was discarded
+	// without promotion. It lets the run ledger distinguish a verified runtime
+	// rejection from an unsafe caller clearing accepted work.
+	RuntimeSuccessorConflict string `json:"runtime_successor_conflict,omitempty"`
+	// RuntimeAdmissionPending is the write-ahead side of the initial StartTurn
+	// boundary. It is persisted before Runtime acceptance and cleared only by an
+	// exact receipt or by recovery proving that no command was accepted.
+	RuntimeAdmissionPending bool `json:"runtime_admission_pending,omitempty"`
+	// RuntimeRecoveryRequired is a durable obligation, not a display hint. A
+	// cold accepted StartTurn remains pending until an owned recovery observer
+	// sees an explicit control action or terminal runtime reconciliation.
+	RuntimeRecoveryRequired bool `json:"runtime_recovery_required,omitempty"`
+	// CompletionEffectsPending makes terminal post-effects restartable. Those
+	// effects use deterministic downstream identities before this flag clears.
+	CompletionEffectsPending     bool     `json:"completion_effects_pending,omitempty"`
+	CompletionEffectsCompleted   bool     `json:"completion_effects_completed,omitempty"`
+	CompletionEffectsOperationID string   `json:"completion_effects_operation_id,omitempty"`
+	CompletionMutationPaths      []string `json:"completion_mutation_paths,omitempty"`
+	// CompletionMutationEffectIDs preserve the Runtime outbox identities that
+	// transferred ownership of mutation-trigger work into this run ledger.
+	// They are never inferred from display history or tool result previews.
+	CompletionMutationEffectIDs []string           `json:"completion_mutation_effect_ids,omitempty"`
+	Status                      string             `json:"status"`
+	StartedAt                   time.Time          `json:"started_at"`
+	FinishedAt                  time.Time          `json:"finished_at,omitempty"`
+	Summary                     string             `json:"summary"`
+	Error                       string             `json:"error,omitempty"`
+	OutputPath                  string             `json:"output_path,omitempty"`
+	ToolManifest                []ToolManifestItem `json:"tool_manifest"`
 }
 
 type TriggerEvidence struct {
@@ -224,12 +321,14 @@ type TriggerInboxItem struct {
 	TriggerID    string            `json:"trigger_id"`
 	Purpose      string            `json:"purpose,omitempty"`
 	Scope        string            `json:"scope"`
+	ProjectID    string            `json:"project_id,omitempty"`
 	Workspace    string            `json:"workspace,omitempty"`
 	Status       string            `json:"status"`
 	ActionPolicy string            `json:"action_policy"`
 	NotifyPolicy string            `json:"notify_policy"`
 	Title        string            `json:"title"`
 	Summary      string            `json:"summary"`
+	ActionError  string            `json:"action_error,omitempty"`
 	Evidence     []TriggerEvidence `json:"evidence"`
 	Fingerprint  string            `json:"fingerprint"`
 	RunID        string            `json:"run_id,omitempty"`

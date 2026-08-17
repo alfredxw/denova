@@ -1,6 +1,7 @@
 const command = {
   'command.toggleRightPanel': 'Toggle Right Sidebar',
   'command.continueWriting': 'Continue Writing',
+  'command.continueWritingPrompt': 'Continue writing the current work.',
   'command.empty': 'No matching command',
   'command.group.workbench': 'Workbench',
   'command.openAgent': 'Open Writing Agent',

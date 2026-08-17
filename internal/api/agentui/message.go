@@ -6,16 +6,17 @@ import (
 	"strings"
 	"time"
 
-	"denova/internal/session"
+	appsvc "denova/internal/app"
 )
 
 const (
 	DataTypeActivity          = "data-agent-activity"
+	DataTypeAsk               = "data-agent-ask"
 	DataTypeClear             = "data-agent-clear"
 	DataTypeContextCompaction = "data-agent-context-compaction"
 	DataTypeError             = "data-agent-error"
+	DataTypeExecutionSummary  = "data-agent-execution-summary"
 	DataTypeInteractiveImage  = "data-agent-interactive-image"
-	DataTypePlanQuestion      = "data-agent-plan-question"
 	DataTypeProposedPlan      = "data-agent-proposed-plan"
 	DataTypeRuleRoll          = "data-agent-rule-roll"
 	DataTypeSystem            = "data-agent-system"
@@ -35,13 +36,13 @@ type Message struct {
 
 // MessagesFromHistory converts the existing session history into AI SDK UI
 // messages at read time. It does not mutate stored session data.
-func MessagesFromHistory(entries []session.HistoryEntry) []Message {
+func MessagesFromHistory(entries []appsvc.AgentSessionHistoryEntry) []Message {
 	return MessagesFromHistoryAtOffset(entries, 0)
 }
 
 // MessagesFromHistoryAtOffset preserves IDs derived from a message's position
 // when converting a window from the full session history.
-func MessagesFromHistoryAtOffset(entries []session.HistoryEntry, offset int) []Message {
+func MessagesFromHistoryAtOffset(entries []appsvc.AgentSessionHistoryEntry, offset int) []Message {
 	result := make([]Message, 0, len(entries))
 	for index, entry := range entries {
 		msg, ok := messageFromHistoryEntry(entry, offset+index)
@@ -52,13 +53,16 @@ func MessagesFromHistoryAtOffset(entries []session.HistoryEntry, offset int) []M
 	return result
 }
 
-func messageFromHistoryEntry(entry session.HistoryEntry, index int) (Message, bool) {
+func messageFromHistoryEntry(entry appsvc.AgentSessionHistoryEntry, index int) (Message, bool) {
 	if entry.Type == "clear" {
 		return assistantDataMessage(entry, index, DataTypeClear, map[string]any{
 			"created_at": formatEntryTime(entry),
 		}), true
 	}
 	if entry.Content == "" && entry.Role != "tool_call" {
+		if entry.Role == "execution_summary" {
+			return assistantDataMessage(entry, index, DataTypeExecutionSummary, entryPayload(entry)), true
+		}
 		return Message{}, false
 	}
 
@@ -78,15 +82,16 @@ func messageFromHistoryEntry(entry session.HistoryEntry, index int) (Message, bo
 			Parts:    []map[string]any{textPart(entry.Content, "done", nil)},
 		}, true
 	case "thinking":
+		part := map[string]any{
+			"type":  "reasoning",
+			"text":  entry.Content,
+			"state": "done",
+		}
 		return Message{
 			ID:       historyMessageID(entry, index),
 			Role:     "assistant",
 			Metadata: metadataFromHistoryEntry(entry),
-			Parts: []map[string]any{{
-				"type":  "reasoning",
-				"text":  entry.Content,
-				"state": "done",
-			}},
+			Parts:    []map[string]any{part},
 		}, true
 	case "tool_call":
 		return Message{
@@ -105,8 +110,8 @@ func messageFromHistoryEntry(entry session.HistoryEntry, index int) (Message, bo
 		return assistantDataMessage(entry, index, DataTypeContextCompaction, entryPayload(entry)), true
 	case "token_usage":
 		return assistantDataMessage(entry, index, DataTypeTokenUsage, entryPayload(entry)), true
-	case "plan_question":
-		return assistantDataMessage(entry, index, DataTypePlanQuestion, entryPayload(entry)), true
+	case "execution_summary":
+		return assistantDataMessage(entry, index, DataTypeExecutionSummary, entryPayload(entry)), true
 	case "proposed_plan":
 		return assistantDataMessage(entry, index, DataTypeProposedPlan, entryPayload(entry)), true
 	case "system":
@@ -118,7 +123,7 @@ func messageFromHistoryEntry(entry session.HistoryEntry, index int) (Message, bo
 	}
 }
 
-func assistantDataMessage(entry session.HistoryEntry, index int, dataType string, data map[string]any) Message {
+func assistantDataMessage(entry appsvc.AgentSessionHistoryEntry, index int, dataType string, data map[string]any) Message {
 	return Message{
 		ID:       historyMessageID(entry, index),
 		Role:     "assistant",
@@ -131,7 +136,7 @@ func assistantDataMessage(entry session.HistoryEntry, index int, dataType string
 	}
 }
 
-func toolPartFromHistory(entry session.HistoryEntry) map[string]any {
+func toolPartFromHistory(entry appsvc.AgentSessionHistoryEntry) map[string]any {
 	input := parseJSONValue(entry.Args)
 	state := "input-available"
 	part := map[string]any{
@@ -156,7 +161,7 @@ func toolPartFromHistory(entry session.HistoryEntry) map[string]any {
 	return part
 }
 
-func entryPayload(entry session.HistoryEntry) map[string]any {
+func entryPayload(entry appsvc.AgentSessionHistoryEntry) map[string]any {
 	payload := map[string]any{
 		"type":       entry.Type,
 		"id":         entry.ID,
@@ -168,15 +173,27 @@ func entryPayload(entry session.HistoryEntry) map[string]any {
 		"result":     entry.Result,
 		"created_at": formatEntryTime(entry),
 	}
+	if entry.Role == "execution_summary" {
+		payload["run_started_at"] = entry.RunStartedAt
+		payload["run_finished_at"] = entry.RunFinishedAt
+		payload["duration_ms"] = entry.DurationMS
+		payload["run_status"] = entry.RunStatus
+	}
 	if entry.Illustration != nil {
 		payload["illustration"] = entry.Illustration
+	}
+	if entry.ToolPresentation != nil {
+		presentation, err := entry.ToolPresentation.Normalize()
+		if err == nil {
+			payload["tool_presentation"] = presentation
+		}
 	}
 	addUsagePayload(payload, entry)
 	addMetadataPayload(payload, entry)
 	return payload
 }
 
-func metadataFromHistoryEntry(entry session.HistoryEntry) map[string]any {
+func metadataFromHistoryEntry(entry appsvc.AgentSessionHistoryEntry) map[string]any {
 	metadata := map[string]any{}
 	addMetadataPayload(metadata, entry)
 	if createdAt := formatEntryTime(entry); createdAt != "" {
@@ -188,13 +205,25 @@ func metadataFromHistoryEntry(entry session.HistoryEntry) map[string]any {
 	if entry.Role != "" {
 		metadata["display_role"] = entry.Role
 	}
+	if entry.DisplaySegmentID != "" && (entry.Role == "assistant" || entry.Role == "thinking") {
+		metadata["display_segment_id"] = entry.DisplaySegmentID
+	}
 	if len(metadata) == 0 {
 		return nil
 	}
 	return metadata
 }
 
-func addMetadataPayload(target map[string]any, entry session.HistoryEntry) {
+func addMetadataPayload(target map[string]any, entry appsvc.AgentSessionHistoryEntry) {
+	if entry.ToolPresentation != nil {
+		presentation, err := entry.ToolPresentation.Normalize()
+		if err == nil {
+			target["tool_presentation"] = presentation
+		}
+	}
+	if entry.DisplayPhase != "" {
+		target["display_phase"] = entry.DisplayPhase
+	}
 	if entry.RunID != "" {
 		target["run_id"] = entry.RunID
 	}
@@ -219,24 +248,12 @@ func addMetadataPayload(target map[string]any, entry session.HistoryEntry) {
 	if entry.SubAgentType != "" {
 		target["subagent_type"] = entry.SubAgentType
 	}
-	if len(entry.SSEHiddenFields) > 0 {
-		target["sse_hidden_fields"] = append([]string(nil), entry.SSEHiddenFields...)
-	}
-	if entry.SSEHiddenReason != "" {
-		target["sse_hidden_reason"] = entry.SSEHiddenReason
-	}
-	if entry.SSEDisplayNotice != "" {
-		target["sse_display_notice"] = entry.SSEDisplayNotice
-	}
-	if entry.SSEGeneratedChars > 0 {
-		target["sse_generated_chars"] = entry.SSEGeneratedChars
-	}
 	if len(entry.UserReferences) > 0 {
-		target["user_references"] = append([]session.UserMessageReference(nil), entry.UserReferences...)
+		target["user_references"] = append([]appsvc.AgentSessionUserMessageReference(nil), entry.UserReferences...)
 	}
 }
 
-func addUsagePayload(target map[string]any, entry session.HistoryEntry) {
+func addUsagePayload(target map[string]any, entry appsvc.AgentSessionHistoryEntry) {
 	if entry.PromptTokens > 0 {
 		target["prompt_tokens"] = entry.PromptTokens
 	}
@@ -269,7 +286,7 @@ func addUsagePayload(target map[string]any, entry session.HistoryEntry) {
 	}
 }
 
-func historyMessageID(entry session.HistoryEntry, index int) string {
+func historyMessageID(entry appsvc.AgentSessionHistoryEntry, index int) string {
 	if entry.ID != "" {
 		return entry.ID
 	}
@@ -279,7 +296,7 @@ func historyMessageID(entry session.HistoryEntry, index int) string {
 	return fmt.Sprintf("history-%d", index)
 }
 
-func historyToolCallID(entry session.HistoryEntry) string {
+func historyToolCallID(entry appsvc.AgentSessionHistoryEntry) string {
 	if entry.ID != "" {
 		return entry.ID
 	}
@@ -321,7 +338,7 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
-func formatEntryTime(entry session.HistoryEntry) string {
+func formatEntryTime(entry appsvc.AgentSessionHistoryEntry) string {
 	if entry.CreatedAt.IsZero() {
 		return ""
 	}

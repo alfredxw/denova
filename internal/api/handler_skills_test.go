@@ -6,13 +6,14 @@ import (
 	"os"
 	"testing"
 
-	novaskills "denova/internal/skills"
+	novaskills "denova/internal/agents/skills"
+	resourcecatalogapp "denova/internal/app/resourcecatalog"
 )
 
 func TestSkillDocumentUpdateRejectsStaleRevisionAPI(t *testing.T) {
 	application := newTestApplication(t)
 	server := NewServer(application, "0")
-	doc, err := application.CreateSkillDocument(context.Background(), novaskills.ScopeUser, "revision-test", "original", nil)
+	doc, err := application.ResourceCatalog().CreateSkill(context.Background(), resourcecatalogapp.GlobalSkills(), novaskills.ScopeUser, "revision-test", novaskills.CreateMetadata{Description: "original"})
 	if err != nil {
 		t.Fatal(err)
 	}

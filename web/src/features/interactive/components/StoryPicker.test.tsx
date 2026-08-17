@@ -20,6 +20,15 @@ describe('StoryPicker', () => {
     expect(onSelect).toHaveBeenCalledWith('st_12')
   })
 
+  it('shows current branch turns instead of journal event count', () => {
+    render(<StoryPicker stories={[story('st_1', '故事线', 10, 31)]} currentStoryId="st_1" onSelect={vi.fn()} onCreate={vi.fn()} onDeleteStories={vi.fn()} />)
+
+    fireEvent.click(screen.getByRole('button', { name: '选择故事线' }))
+
+    expect(screen.getByText('10 回合')).toBeInTheDocument()
+    expect(screen.queryByText('31 回合')).not.toBeInTheDocument()
+  })
+
   it('starts inline creation without opening a popover form', () => {
     const onCreate = vi.fn()
     render(<StoryPicker stories={[story('st_1', '主线')]} currentStoryId="st_1" onSelect={vi.fn()} onCreate={onCreate} onDeleteStories={vi.fn()} />)
@@ -80,6 +89,6 @@ describe('StoryPicker', () => {
   })
 })
 
-function story(id: string, title: string) {
-  return { id, title, origin: '', story_teller_id: 'classic', story_director_id: 'default', choice_count: 5, reply_target_chars: 2000, opening: { mode: 'ai' as const }, created_at: '', updated_at: '', branches: 1, events: 0 }
+function story(id: string, title: string, turnCount = 0, events = 0) {
+  return { id, title, origin: '', story_teller_id: 'classic', story_director_id: 'default', choice_count: 5, reply_target_chars: 2000, opening: { mode: 'ai' as const }, created_at: '', updated_at: '', branches: 1, events, turn_count: turnCount }
 }

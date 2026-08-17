@@ -17,7 +17,11 @@ func (s *Service) Diff(id, path string) (VersionDiff, error) {
 	if err != nil {
 		return VersionDiff{}, err
 	}
-	changes, err := s.diffChanges(version)
+	snapshot, err := s.collectWorkspaceSnapshot(nil)
+	if err != nil {
+		return VersionDiff{}, err
+	}
+	changes, err := s.diffChangesFromSnapshot(snapshot, version.ID)
 	if err != nil {
 		return VersionDiff{}, err
 	}
@@ -53,33 +57,37 @@ func (s *Service) Diff(id, path string) (VersionDiff, error) {
 	return diff, nil
 }
 
-func (s *Service) diffChanges(version VersionEntry) ([]VersionChange, error) {
-	currentFiles, err := s.collectVisibleFiles()
-	if err != nil {
+// ReadFileAtVersion reads one file directly from a commit without computing a
+// workspace-wide diff. Callers that already have Status changes can use this
+// path for previews without repeating a full workspace scan per file.
+func (s *Service) ReadFileAtVersion(id, path string) ([]byte, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, err := safeVisiblePath(s.workspace, path); err != nil {
 		return nil, err
 	}
-	current := make(map[string]string, len(currentFiles))
-	for _, file := range currentFiles {
-		current[file.Path] = file.Hash
-	}
-	snapshot, err := s.commitFiles(version.ID)
+	return s.readCommitFile(id, filepath.ToSlash(filepath.Clean(filepath.FromSlash(path))))
+}
+
+func (s *Service) diffChangesFromSnapshot(current workspaceSnapshot, versionID string) ([]VersionChange, error) {
+	committed, err := s.commitFileIndex(versionID)
 	if err != nil {
 		return nil, err
 	}
 	changes := make([]VersionChange, 0)
 	seen := map[string]bool{}
-	for path, hash := range current {
+	for path, file := range current.byPath {
 		seen[path] = true
-		oldFile, ok := snapshot[path]
+		oldFile, ok := committed[path]
 		if !ok {
 			changes = append(changes, VersionChange{Path: path, Status: "added"})
 			continue
 		}
-		if oldFile.Hash != hash {
+		if oldFile.Hash != file.Hash || oldFile.Mode != file.Mode {
 			changes = append(changes, VersionChange{Path: path, Status: "modified"})
 		}
 	}
-	for path := range snapshot {
+	for path := range committed {
 		if !seen[path] {
 			changes = append(changes, VersionChange{Path: path, Status: "deleted"})
 		}

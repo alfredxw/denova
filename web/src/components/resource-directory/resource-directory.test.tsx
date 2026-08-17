@@ -94,19 +94,38 @@ describe('ResourceDirectory', () => {
 
     await user.click(screen.getByLabelText('新建角色'))
     expect(onCreate).toHaveBeenCalledTimes(1)
+    expect(screen.getByText('艾拉')).toBeInTheDocument()
 
     rerender(<ResourceDirectory sections={sections} activeId={null} onSelect={() => {}} saving />)
     expect(screen.getByLabelText('新建角色')).toBeDisabled()
   })
 
-  it('toggles section collapse via the chevron button', async () => {
+  it('toggles a section from the full header row', async () => {
     const user = userEvent.setup()
-    render(<ResourceDirectory sections={buildSections()} activeId={null} onSelect={() => {}} />)
+    const sections = buildSections()
+    render(<ResourceDirectory sections={sections} activeId={null} onSelect={() => {}} />)
 
-    await user.click(screen.getByLabelText('折叠角色'))
+    await user.click(screen.getByText('角色'))
     expect(screen.queryByText('艾拉')).not.toBeInTheDocument()
-    await user.click(screen.getByLabelText('展开角色'))
+    await user.click(screen.getByText('角色'))
     expect(screen.getByText('艾拉')).toBeInTheDocument()
+  })
+
+  it('makes reorderable rows draggable without dedicated handles or a grab cursor', async () => {
+    const user = userEvent.setup()
+    const onSelect = vi.fn()
+    const sections = buildSections()
+    sections[0].reorderable = true
+    render(<ResourceDirectory sections={sections} activeId={null} onSelect={onSelect} onReorderItems={() => {}} />)
+
+    const row = screen.getByText('艾拉').closest('button')
+    expect(row).toHaveClass('cursor-default')
+    expect(screen.queryByLabelText('拖拽排序')).not.toBeInTheDocument()
+    await user.click(row!)
+    expect(onSelect).toHaveBeenCalledWith('c1')
+
+    await user.type(screen.getByLabelText('搜索'), '艾拉')
+    expect(screen.getByText('艾拉').closest('button')).not.toHaveClass('cursor-default')
   })
 
   it('renders pinned entries above the groups and selects them', async () => {

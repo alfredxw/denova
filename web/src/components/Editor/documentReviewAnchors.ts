@@ -3,6 +3,7 @@ import { EditorState } from '@tiptap/pm/state'
 import type { Editor } from '@tiptap/react'
 import { diffChars } from 'diff'
 import type { DocumentReviewAnchor, DocumentReviewAnchorKind } from '@/features/document-review/types'
+import { normalizeEditorText } from './editorDocument'
 
 export interface EditorReviewRange {
   from: number
@@ -23,8 +24,92 @@ export interface DocumentReviewSelectionSnapshot {
   range: EditorReviewRange
 }
 
+export interface RawDocumentReviewSelectionSnapshot {
+  content: string
+  start: number
+  end: number
+}
+
+export interface ResolvedRawDocumentReviewAnchor {
+  start: number
+  end: number
+}
+
 export function captureDocumentReviewSelection(editor: Editor, range: EditorReviewRange): DocumentReviewSelectionSnapshot {
   return { document: editor.state.doc, range }
+}
+
+/** Creates the same durable UTF-8 anchor directly from a Markdown source selection. */
+export function createRawDocumentReviewAnchor(
+  snapshot: DocumentReviewSnapshot,
+  selection: RawDocumentReviewSelectionSnapshot,
+): DocumentReviewAnchor {
+  const revision = snapshot.revision.trim()
+  const { content, start, end } = selection
+  if (!revision) throw new Error('Document revision is unavailable')
+  if (start < 0 || end <= start || end > content.length) throw new Error('The selected source range is invalid')
+  // Lore persistence removes editor-only trailing whitespace before returning the
+  // revision-bound snapshot. Accept only that known normalization, then map the
+  // frozen selection back onto the exact canonical bytes validated by the server.
+  if (normalizeEditorText(snapshot.content) !== normalizeEditorText(content)) {
+    throw new Error('The editor and workspace snapshots differ')
+  }
+  const mapped = content === snapshot.content
+    ? { start, end }
+    : mapAlignedRange(content, snapshot.content, start, end)
+  if (!mapped) throw new Error('The selected source range cannot be mapped to the saved snapshot')
+
+  const selectedQuote = content.slice(start, end)
+  const quote = snapshot.content.slice(mapped.start, mapped.end)
+  if (quote !== selectedQuote) throw new Error('The selected source text changed while the snapshot was saved')
+  const displayQuote = selectedQuote.trim()
+  if (!displayQuote) throw new Error('The selected source range is empty')
+  const byteStart = utf8Bytes(snapshot.content.slice(0, mapped.start))
+  return {
+    kind: 'text-range',
+    encoding: 'utf8-bytes-v1',
+    revision,
+    start: byteStart,
+    end: byteStart + utf8Bytes(quote),
+    quote,
+    prefix: boundedSuffix(snapshot.content.slice(0, mapped.start)),
+    suffix: boundedPrefix(snapshot.content.slice(mapped.end)),
+    display_quote: displayQuote,
+    editor_from: start,
+    editor_to: end,
+  }
+}
+
+/** Resolves a stored UTF-8 anchor against the current source without mutating it. */
+export function resolveRawDocumentReviewAnchor(
+  content: string,
+  anchor: DocumentReviewAnchor,
+): ResolvedRawDocumentReviewAnchor | null {
+  const exactStart = utf16OffsetAtByteOffset(content, anchor.start)
+  const exactEnd = utf16OffsetAtByteOffset(content, anchor.end)
+  if (exactStart !== null && exactEnd !== null
+    && content.slice(exactStart, exactEnd) === anchor.quote
+    && rawAnchorContextMatches(content, exactStart, exactEnd, anchor)) {
+    return { start: exactStart, end: exactEnd }
+  }
+  if (!anchor.quote) return null
+
+  let match: ResolvedRawDocumentReviewAnchor | null = null
+  for (let offset = 0; offset <= content.length;) {
+    const start = content.indexOf(anchor.quote, offset)
+    if (start < 0) break
+    const end = start + anchor.quote.length
+    if (rawAnchorContextMatches(content, start, end, anchor)) {
+      if (match) return null
+      match = { start, end }
+    }
+    offset = start + 1
+  }
+  return match
+}
+
+export function documentReviewAnchorKey(anchor: DocumentReviewAnchor): string {
+  return `comment:${anchor.revision}:${anchor.start}:${anchor.end}`
 }
 
 /** Maps a frozen TipTap selection to exact bytes in the revision-bound Markdown source. */
@@ -199,7 +284,15 @@ function canonicalRangeMatchesEditor(
   const markedDocument = editor.schema.nodeFromJSON(markdown.parse(markedCanonical))
   const startPosition = textPosition(markedDocument, startMarker)
   const endPosition = textPosition(markedDocument, endMarker)
-  return startPosition === range.from && endPosition === range.to + startMarker.length
+  if (startPosition === range.from && endPosition === range.to + startMarker.length) return true
+  // 选区落在文档边界（例如全选正文）时，标记会被 Markdown 序列化成独立段落，
+  // 导致重解析后的位置整体偏移。此时退化为校验标记之间的正文是否与选区一致：
+  // 剥离 Markdown 块级标记并归一空白后，两侧正文吻合即可认为锚点映射安全。
+  if (startPosition < 0 || endPosition < 0) return false
+  const contentStart = startPosition + startMarker.length
+  if (endPosition <= contentStart) return false
+  const markerSpan = markedDocument.textBetween(contentStart, endPosition, '\n')
+  return normalizeReviewText(markerSpan) === normalizeReviewText(range.displayQuote)
 }
 
 function textPosition(document: ProseMirrorNode, text: string): number {
@@ -210,6 +303,16 @@ function textPosition(document: ProseMirrorNode, text: string): number {
     if (offset >= 0) result = position + offset
   })
   return result
+}
+
+/** Strips Markdown block markers and normalizes whitespace for text-content comparison. */
+function normalizeReviewText(value: string): string {
+  return value
+    .split('\n')
+    .map((line) => line.replace(/^\s{0,3}(#{1,6}\s+|[*+\-]\s+|\d+[.)]\s+|>\s?)/, ''))
+    .join('\n')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 /** Places a comment after its text block while keeping block widgets out of inline DOM. */
@@ -266,6 +369,37 @@ function uniqueMarker(content: string, base: string): string {
 
 function utf8Bytes(value: string): number {
   return new TextEncoder().encode(value).length
+}
+
+function utf16OffsetAtByteOffset(content: string, byteOffset: number): number | null {
+  if (!Number.isInteger(byteOffset) || byteOffset < 0) return null
+  let bytes = 0
+  for (let offset = 0; offset < content.length;) {
+    if (bytes === byteOffset) return offset
+    const codePoint = content.codePointAt(offset)
+    if (codePoint === undefined) break
+    bytes += utf8Width(codePoint)
+    if (bytes > byteOffset) return null
+    offset += codePoint > 0xffff ? 2 : 1
+  }
+  return bytes === byteOffset ? content.length : null
+}
+
+function utf8Width(codePoint: number): number {
+  if (codePoint <= 0x7f) return 1
+  if (codePoint <= 0x7ff) return 2
+  if (codePoint <= 0xffff) return 3
+  return 4
+}
+
+function rawAnchorContextMatches(
+  content: string,
+  start: number,
+  end: number,
+  anchor: DocumentReviewAnchor,
+): boolean {
+  return (!anchor.prefix || content.slice(Math.max(0, start - anchor.prefix.length), start) === anchor.prefix)
+    && (!anchor.suffix || content.slice(end, end + anchor.suffix.length) === anchor.suffix)
 }
 
 function boundedPrefix(value: string): string {

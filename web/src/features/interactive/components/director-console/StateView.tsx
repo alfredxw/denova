@@ -16,6 +16,7 @@ import {
 } from '../story-state/model'
 import { StateValue } from './shared'
 import { ActorArchiveList } from '../story-state/ActorArchiveList'
+import { resolveNumberMeter, type NumberMeterGeometry } from '../story-state/number-meter'
 import type { StatePanelTab } from './types'
 
 const CHANGES_PREVIEW_COUNT = 3
@@ -147,7 +148,7 @@ function ActorRow({ actorId, actor, schema, expanded, onToggle }: { actorId: str
   const template = actorTemplate(actor, schema)
   const fields = actorFieldEntries(actor, template?.fields)
   const traits = actorTraits(actor)
-  const meters = fields.filter(({ field, value }) => meterPercent(field, value) !== null).slice(0, 2)
+  const meters = fields.filter(({ field, value }) => resolveNumberMeter(field, value) !== null).slice(0, 2)
 
   return (
     <article aria-label={name} className="min-w-0 overflow-hidden rounded-[10px] border border-[var(--nova-border)] bg-[var(--director-panel)]">
@@ -169,7 +170,6 @@ function ActorRow({ actorId, actor, schema, expanded, onToggle }: { actorId: str
                 {traits.map((trait) => (
                   <span
                     key={`${trait.pool_id}:${trait.trait_id}`}
-                    title={trait.summary || trait.name}
                     className="max-w-full truncate rounded-full border border-[color-mix(in_srgb,var(--director-brass)_35%,var(--nova-border))] bg-[color-mix(in_srgb,var(--director-brass)_9%,transparent)] px-2.5 py-1 text-[10px] text-[var(--nova-text-muted)]"
                   >
                     {trait.name}
@@ -199,50 +199,56 @@ function ActorRow({ actorId, actor, schema, expanded, onToggle }: { actorId: str
   )
 }
 
-function meterPercent(field: ActorStateField, value: unknown): number | null {
-  if (typeof value !== 'number' || typeof field.min !== 'number' || typeof field.max !== 'number' || field.max <= field.min) return null
-  return Math.min(100, Math.max(0, ((value - field.min) / (field.max - field.min)) * 100))
-}
-
 function MiniMeter({ field, value }: { field: ActorStateField; value: unknown }) {
-  const percent = meterPercent(field, value)
-  if (percent === null || typeof value !== 'number') return null
+  const meter = resolveNumberMeter(field, value)
+  if (!meter || typeof value !== 'number') return null
   return (
-    <span className="flex items-center gap-1.5" title={`${field.name} ${value}/${field.max}`}>
+    <span className="flex items-center gap-1.5">
       <span className="max-w-[52px] truncate text-[9px] text-[var(--nova-text-faint)]">{field.name}</span>
-      <span className="h-1 w-9 overflow-hidden rounded-full bg-[var(--nova-surface-3)]" aria-hidden="true">
-        <span className="block h-full rounded-full bg-[var(--director-live)]" style={{ width: `${percent}%` }} />
-      </span>
+      <NumberMeterTrack meter={meter} className="h-1 w-9" />
       <span className="font-mono text-[10px] tabular-nums text-[var(--nova-text-muted)]">{value}</span>
     </span>
   )
 }
 
 function ActorField({ field, value }: { field: ActorStateField; value: unknown }) {
-  const percent = meterPercent(field, value)
+  const meter = resolveNumberMeter(field, value)
   return (
     <section className="min-w-0 bg-[var(--director-panel)] px-3 py-2.5">
       <div className="mb-1.5 flex min-w-0 items-start justify-between gap-2">
         <div className="min-w-0">
-          <h5 className="truncate text-[11px] font-medium text-[var(--nova-text-muted)]" title={field.name}>{field.name}</h5>
+          <h5 className="truncate text-[11px] font-medium text-[var(--nova-text-muted)]">{field.name}</h5>
           {field.description ? <p className="mt-0.5 line-clamp-1 text-[9px] leading-3.5 text-[var(--nova-text-faint)]">{field.description}</p> : null}
         </div>
         <span className="shrink-0 font-mono text-[8px] uppercase tracking-[0.08em] text-[var(--nova-text-faint)]">{field.type}</span>
       </div>
       <StateValue value={value ?? field.default ?? null} />
-      {percent !== null ? (
-        <div className="mt-2 h-1 overflow-hidden rounded-full bg-[var(--nova-surface-3)]" aria-hidden="true">
-          <div className="h-full rounded-full bg-[var(--director-live)] transition-[width] duration-300 motion-reduce:transition-none" style={{ width: `${percent}%` }} />
-        </div>
-      ) : null}
+      {meter ? <NumberMeterTrack meter={meter} className="mt-2 h-1" /> : null}
     </section>
+  )
+}
+
+function NumberMeterTrack({ meter, className }: { meter: NumberMeterGeometry; className: string }) {
+  const tone = meter.tone === 'negative'
+    ? 'bg-[var(--nova-danger)]'
+    : meter.tone === 'positive'
+      ? 'bg-[var(--nova-success)]'
+      : 'bg-[var(--director-live)]'
+  return (
+    <span className={`relative block overflow-hidden rounded-full bg-[var(--nova-surface-3)] ${className}`} aria-hidden="true">
+      {meter.zeroPercent !== undefined ? <span className="absolute inset-y-0 w-px bg-[var(--nova-text-faint)]" style={{ left: `${meter.zeroPercent}%` }} /> : null}
+      <span
+        className={`absolute inset-y-0 rounded-full transition-[left,width] duration-300 motion-reduce:transition-none ${tone}`}
+        style={{ left: `${meter.startPercent}%`, width: `${meter.widthPercent}%` }}
+      />
+    </span>
   )
 }
 
 function StateFact({ label, value }: { label: string; value: unknown }) {
   return (
     <article className="min-w-0 bg-[var(--director-panel)] px-3 py-2.5">
-      <h4 className="mb-1.5 truncate text-[10px] font-medium text-[var(--nova-text-faint)]" title={label}>{label}</h4>
+      <h4 className="mb-1.5 truncate text-[10px] font-medium text-[var(--nova-text-faint)]">{label}</h4>
       <StateValue value={value} />
     </article>
   )

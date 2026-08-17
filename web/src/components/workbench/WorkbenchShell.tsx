@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
@@ -6,28 +6,33 @@ import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, us
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { Group, Panel, Separator } from 'react-resizable-panels'
-import { BookOpen, Bot, Clock3, Database, History, MessageSquareText, PanelLeft, PenLine, Search, Settings, SlidersHorizontal, Sparkles } from 'lucide-react'
+import { BookOpen, Bot, Clock3, Database, History, MessageSquareText, PanelLeft, PenLine, Route, Search, Settings, SlidersHorizontal, Sparkles, Terminal } from 'lucide-react'
 import { AnimatePresence, LayoutGroup, motion } from 'motion/react'
 import { WorkspaceLayout } from '@/components/layout/workspace-layout'
 import { WorkspaceMobileLayout, type MobileNavItem } from '@/components/layout/workspace-mobile-layout'
 import { createStablePortalHost, StablePortalSlot } from '@/components/layout/stable-portal-slot'
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
-import { novaSpring } from '@/features/motion/motion-tokens'
+import { novaEase, novaSpring } from '@/features/motion/motion-tokens'
 import { MessageCenterButton } from '@/features/messages/MessageCenter'
 import type { AutomationMessageNavigation } from '@/features/messages/types'
 import { requestAutomationNavigation } from '@/features/automations/automation-navigation'
+import { setActivityMessageUnreadCount, useActivitySummary } from '@/features/activity/use-activity-summary'
 import { useIsMobile } from '@/hooks/useIsMobile'
-import { getActiveAutomationRuns, getAutomationInbox, type BookRecord, type ChapterSummary, type WorkspaceSummary } from '@/lib/api'
-import { useWorkspaceStore, type RightPanel, type WorkspaceMode } from '@/stores/workspace-store'
+import type { BookRecord, ChapterSummary, WorkspaceSummary } from '@/lib/api'
+import { isSharedWorkspaceMode, useWorkspaceStore, type RightPanel, type WorkspaceMode } from '@/stores/workspace-store'
 import type { InteractiveSubmode } from '@/features/interactive/types'
 import { formatNumber } from './workbench-utils'
 import { formatDateTime } from '@/i18n'
 import { BookSwitcher } from './BookSwitcher'
 import { WorkbenchNoticePill } from './WorkbenchNoticePill'
 import type { WorkbenchNotice } from '@/features/notices/use-workbench-notice'
+import { AgentChatProjectSwitcher, type AgentChatProjectNavigationState } from '@/features/agent-chat/AgentChatProjectSwitcher'
+
+export type WorkbenchPresentedLayout = 'writing' | 'interactive' | 'full'
 
 interface WorkbenchShellProps {
   mode: WorkspaceMode
+  presentedLayout: WorkbenchPresentedLayout
   booksReturnMode: 'ide' | 'interactive'
   currentBookName: string
   workspace: string
@@ -41,10 +46,12 @@ interface WorkbenchShellProps {
   activityBarExpanded: boolean
   rightPanel: RightPanel
   settingsOpen: boolean
+  developerMode?: boolean
   interactiveSubmode: InteractiveSubmode
   sidebar: ReactNode
   main: ReactNode
   rightPanelContent: ReactNode
+  agentChatProjectNavigation?: AgentChatProjectNavigationState | null
   rightPanelWide?: boolean
   centerFocus?: boolean
   notice?: WorkbenchNotice | null
@@ -58,7 +65,8 @@ interface WorkbenchShellProps {
   onDismissNotice?: () => void
 }
 
-type ActivityItemId = 'writing' | 'story' | 'timeline' | 'lore' | 'teller' | 'versions' | 'books' | 'skills' | 'agents' | 'automations'
+type ActivityItemId = 'writing' | 'story' | 'lore' | 'teller' | 'versions' | 'books' | 'agentchat' | 'skills' | 'agents' | 'automations' | 'trajectory'
+type PrimaryNavigationId = ActivityItemId | 'settings'
 type ActivityOrderScope = 'ide' | 'interactive'
 type SortableActivityItemId = `${ActivityOrderScope}:${ActivityItemId}`
 
@@ -79,8 +87,9 @@ const ACTIVITY_ORDER_STORAGE_KEYS: Record<ActivityOrderScope, string> = {
   ide: 'nova.activity.order.ide.v2',
   interactive: 'nova.activity.order.interactive.v2',
 }
-const DEFAULT_IDE_ACTIVITY_ORDER: ActivityItemId[] = ['writing', 'lore', 'teller', 'versions', 'books', 'skills', 'agents', 'automations']
-const DEFAULT_INTERACTIVE_ACTIVITY_ORDER: ActivityItemId[] = ['story', 'timeline', 'lore', 'teller', 'versions', 'books', 'skills', 'agents', 'automations']
+const DEFAULT_IDE_ACTIVITY_ORDER: ActivityItemId[] = ['writing', 'agentchat', 'trajectory', 'lore', 'teller', 'versions', 'books', 'skills', 'agents', 'automations']
+const DEFAULT_INTERACTIVE_ACTIVITY_ORDER: ActivityItemId[] = ['story', 'agentchat', 'trajectory', 'lore', 'teller', 'versions', 'books', 'skills', 'agents', 'automations']
+// User-level width preference; it should survive reloads and development hot updates.
 const ACTIVITY_BAR_WIDTH_STORAGE_KEY = 'nova.layout.activityBarWidth'
 const ACTIVITY_BAR_COLLAPSED_WIDTH = 64
 const ACTIVITY_BAR_MIN_WIDTH = 112
@@ -88,7 +97,7 @@ const ACTIVITY_BAR_LEGACY_DEFAULT_WIDTH = 152
 const ACTIVITY_BAR_DEFAULT_WIDTH = 180
 const ACTIVITY_BAR_MAX_WIDTH = 280
 const ACTIVITY_BAR_WIDTH_KEYBOARD_STEP = 8
-const AUTOMATION_ACTIVITY_REFRESH_INTERVAL_MS = 30000
+const PRIMARY_NAVIGATION_TRANSITION = { type: 'tween', duration: 0.12, ease: novaEase } as const
 
 function NovaBrandIcon() {
   return (
@@ -103,6 +112,7 @@ function NovaBrandIcon() {
 
 export function WorkbenchShell({
   mode,
+  presentedLayout,
   booksReturnMode,
   currentBookName,
   workspace,
@@ -116,10 +126,12 @@ export function WorkbenchShell({
   activityBarExpanded,
   rightPanel,
   settingsOpen,
+  developerMode = false,
   interactiveSubmode,
   sidebar,
   main,
   rightPanelContent,
+  agentChatProjectNavigation = null,
   rightPanelWide = false,
   centerFocus = false,
   notice,
@@ -137,82 +149,69 @@ export function WorkbenchShell({
   const setCommandOpen = useWorkspaceStore((state) => state.setCommandOpen)
   const [activityOrders, setActivityOrders] = useState<Record<ActivityOrderScope, ActivityItemId[]>>(readStoredActivityOrders)
   const [activityBarWidth, setActivityBarWidth] = useState(readStoredActivityBarWidth)
-  const [automationInboxUnread, setAutomationInboxUnread] = useState(0)
-  const [automationRunning, setAutomationRunning] = useState(0)
+  const activitySummary = useActivitySummary().data
+  const messageUnread = activitySummary?.message_unread_count ?? 0
+  const automationInboxUnread = activitySummary?.automation_inbox_unread_count ?? 0
+  const automationRunning = activitySummary?.automation_running_count ?? 0
+  const [optimisticNavigationId, setOptimisticNavigationId] = useState<PrimaryNavigationId | null>(null)
+  const navigationFrameRef = useRef<number | null>(null)
   const [mainContentHost] = useState(() => {
     const host = createStablePortalHost('h-full min-h-0 w-full min-w-0 overflow-hidden')
     if (host) host.dataset.novaWorkbenchMainHost = 'true'
     return host
   })
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    // The complete button remains the drag target. A slightly larger threshold keeps a small
+    // pointer wobble from stealing an ordinary menu click without introducing a separate handle.
+    useSensor(PointerSensor, { activationConstraint: { distance: 10 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
+
+  const selectPrimaryNavigation = useCallback((id: PrimaryNavigationId, action: () => void) => {
+    setOptimisticNavigationId(id)
+    if (navigationFrameRef.current !== null) window.cancelAnimationFrame(navigationFrameRef.current)
+
+    // Let the optimistic selected state reach one paint before the workspace performs the
+    // potentially expensive route update. Two frames guarantee a paint boundary in browsers.
+    navigationFrameRef.current = window.requestAnimationFrame(() => {
+      navigationFrameRef.current = window.requestAnimationFrame(() => {
+        navigationFrameRef.current = null
+        try {
+          action()
+        } finally {
+          setOptimisticNavigationId(null)
+        }
+      })
+    })
+  }, [])
+
+  useEffect(() => () => {
+    if (navigationFrameRef.current !== null) window.cancelAnimationFrame(navigationFrameRef.current)
+  }, [])
 
   useEffect(() => {
     cleanupLegacyActivityOrderStorage()
     setActivityOrders(readStoredActivityOrders())
   }, [])
 
-  useEffect(() => {
-    storeActivityBarWidth(activityBarWidth)
-  }, [activityBarWidth])
-
-  useEffect(() => {
-    let cancelled = false
-    let timer: number | null = null
-    let running = false
-    const clearTimer = () => {
-      if (timer === null) return
-      window.clearTimeout(timer)
-      timer = null
-    }
-    const scheduleNext = () => {
-      clearTimer()
-      if (cancelled || document.visibilityState !== 'visible') return
-      timer = window.setTimeout(() => {
-        timer = null
-        void loadAutomationActivity()
-      }, AUTOMATION_ACTIVITY_REFRESH_INTERVAL_MS)
-    }
-    async function loadAutomationActivity() {
-      if (cancelled || running || document.visibilityState !== 'visible') return
-      running = true
-      try {
-        const [inboxResult, runsResult] = await Promise.allSettled([getAutomationInbox(), getActiveAutomationRuns()])
-        if (cancelled) return
-        setAutomationInboxUnread(inboxResult.status === 'fulfilled' ? inboxResult.value.filter((item) => item.status === 'pending' && !item.read_at).length : 0)
-        setAutomationRunning(runsResult.status === 'fulfilled' ? runsResult.value.length : 0)
-      } finally {
-        running = false
-        scheduleNext()
-      }
-    }
-    const handleVisibilityChange = () => {
-      clearTimer()
-      if (document.visibilityState === 'visible') void loadAutomationActivity()
-    }
-    void loadAutomationActivity()
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-    return () => {
-      cancelled = true
-      clearTimer()
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
-    }
-  }, [])
-
   const loreVisible = rightPanel === 'lore'
   const tellerVisible = rightPanel === 'teller'
   const versionsVisible = rightPanel === 'versions'
-  const sharedMenuActive = settingsOpen || versionsVisible || mode === 'books' || mode === 'skills' || mode === 'agents' || mode === 'automations'
+  const sharedMenuActive = settingsOpen || versionsVisible || isSharedWorkspaceMode(mode)
   const ideModeActive = mode === 'ide' && !sharedMenuActive
   const interactiveModeActive = mode === 'interactive' && !sharedMenuActive
   const skillsActive = mode === 'skills' && !settingsOpen
   const agentsActive = mode === 'agents' && !settingsOpen
   const automationsActive = mode === 'automations' && !settingsOpen
-  const fullWorkspacePanelVisible = settingsOpen || versionsVisible || mode === 'skills' || mode === 'agents' || mode === 'automations' || (mode === 'ide' && (loreVisible || tellerVisible))
-  const modeLabel = settingsOpen ? t('workbench.mode.settings') : versionsVisible ? t('workbench.activity.versions') : mode === 'interactive' ? t('workbench.mode.interactive') : mode === 'books' ? t('workbench.mode.books') : mode === 'skills' ? t('workbench.mode.skills') : mode === 'agents' ? t('workbench.mode.agents') : mode === 'automations' ? t('workbench.mode.automations') : t('workbench.mode.ide')
-  const navigationMode = mode === 'books' || mode === 'skills' || mode === 'agents' || mode === 'automations' ? booksReturnMode : mode
+  const agentChatActive = mode === 'agentchat' && !settingsOpen
+  const trajectoryActive = mode === 'trajectory' && !settingsOpen
+  // Navigation state updates optimistically, while heavyweight route content is deferred.
+  // Layout must follow the content that is actually painted; mixing it with the newer
+  // navigation state briefly squeezes or stretches the outgoing page.
+  const writingContentVisible = presentedLayout === 'writing'
+  const interactiveContentVisible = presentedLayout === 'interactive'
+  const modeLabel = settingsOpen ? t('workbench.mode.settings') : versionsVisible ? t('workbench.activity.versions') : mode === 'interactive' ? t('workbench.mode.interactive') : mode === 'books' ? t('workbench.mode.books') : mode === 'skills' ? t('workbench.mode.skills') : mode === 'agents' ? t('workbench.mode.agents') : mode === 'automations' ? t('workbench.mode.automations') : mode === 'agentchat' ? t('workbench.mode.agentchat') : mode === 'trajectory' ? t('workbench.mode.trajectory') : t('workbench.mode.ide')
+  const navigationMode = isSharedWorkspaceMode(mode) ? booksReturnMode : mode
   const activityOrderScope: ActivityOrderScope = navigationMode === 'interactive' ? 'interactive' : 'ide'
   const activityOrder = activityOrders[activityOrderScope]
 
@@ -233,14 +232,17 @@ export function WorkbenchShell({
   }
 
   const toggleIdePanel = (panel: NonNullable<RightPanel>) => {
+    // A workspace panel can briefly retain its previous value while a shared route is being
+    // presented. Only treat this as a toggle-off when that panel is actually the active IDE menu.
+    const panelAlreadyActive = mode === 'ide' && !settingsOpen && rightPanel === panel
     closeSettingsIfOpen()
     onSetMode('ide')
-    onSetRightPanel(rightPanel === panel ? null : panel)
+    onSetRightPanel(panelAlreadyActive ? null : panel)
   }
 
   const openVersions = () => {
     closeSettingsIfOpen()
-    if (mode === 'books' || mode === 'skills' || mode === 'agents' || mode === 'automations') {
+    if (isSharedWorkspaceMode(mode)) {
       onSetMode(booksReturnMode)
     }
     onSetRightPanel(versionsVisible ? null : 'versions')
@@ -288,6 +290,16 @@ export function WorkbenchShell({
     onSetMode('agents')
   }
 
+  const openAgentChat = () => {
+    if (mode === 'agentchat' && !settingsOpen) {
+      returnFromBooks()
+      return
+    }
+    closeSettingsIfOpen()
+    if (versionsVisible) onSetRightPanel(null)
+    onSetMode('agentchat')
+  }
+
   const openSkills = () => {
     if (mode === 'skills' && !settingsOpen) {
       returnFromBooks()
@@ -306,6 +318,16 @@ export function WorkbenchShell({
     closeSettingsIfOpen()
     if (versionsVisible) onSetRightPanel(null)
     onSetMode('automations')
+  }
+
+  const openTrajectory = () => {
+    if (mode === 'trajectory' && !settingsOpen) {
+      returnFromBooks()
+      return
+    }
+    closeSettingsIfOpen()
+    if (versionsVisible) onSetRightPanel(null)
+    onSetMode('trajectory')
   }
 
   const openAutomationNotification = (target: AutomationMessageNavigation) => {
@@ -342,17 +364,10 @@ export function WorkbenchShell({
   const interactiveActivityItems: ActivityItem[] = [
     {
       id: 'story',
-      label: t('workbench.activity.story'),
+      label: t('workbench.activity.game'),
       onClick: () => openInteractiveSubmode('story'),
-      active: interactiveModeActive && (interactiveSubmode === 'story' || interactiveSubmode === 'director'),
+      active: interactiveModeActive && (interactiveSubmode === 'story' || interactiveSubmode === 'director' || interactiveSubmode === 'timeline'),
       icon: <MessageSquareText className="h-4 w-4" />,
-    },
-    {
-      id: 'timeline',
-      label: t('workbench.activity.timeline'),
-      onClick: () => openInteractiveSubmode('timeline'),
-      active: interactiveModeActive && interactiveSubmode === 'timeline',
-      icon: <History className="h-4 w-4" />,
     },
     {
       id: 'lore',
@@ -372,12 +387,26 @@ export function WorkbenchShell({
 
   const sharedActivityItems: ActivityItem[] = [
     {
+      id: 'agentchat',
+      label: t('workbench.activity.agentchat'),
+      onClick: openAgentChat,
+      active: agentChatActive,
+      icon: <Terminal className="h-4 w-4" />,
+    },
+    {
       id: 'books',
       label: t('workbench.activity.books'),
       onClick: openBooks,
       active: mode === 'books' && !settingsOpen,
       icon: <BookOpen className="h-4 w-4" />,
     },
+    ...(developerMode ? [{
+      id: 'trajectory' as const,
+      label: t('workbench.activity.trajectory'),
+      onClick: openTrajectory,
+      active: trajectoryActive,
+      icon: <Route className="h-4 w-4" />,
+    }] : []),
     {
       id: 'versions',
       label: t('workbench.activity.versions'),
@@ -413,7 +442,7 @@ export function WorkbenchShell({
       ...(navigationMode === 'interactive' ? interactiveActivityItems : ideActivityItems),
       ...sharedActivityItems,
     ], activityOrder, defaultActivityOrderForScope(activityOrderScope)),
-    [activityOrder, activityOrderScope, agentsActive, automationInboxUnread, automationRunning, automationsActive, booksReturnMode, ideModeActive, interactiveModeActive, interactiveSubmode, loreVisible, mode, navigationMode, settingsOpen, skillsActive, tellerVisible, versionsVisible],
+    [activityOrder, activityOrderScope, agentChatActive, agentsActive, automationInboxUnread, automationRunning, automationsActive, booksReturnMode, developerMode, ideModeActive, interactiveModeActive, interactiveSubmode, loreVisible, mode, navigationMode, settingsOpen, skillsActive, t, tellerVisible, trajectoryActive, versionsVisible],
   )
 
   const handleActivityDragEnd = (event: DragEndEvent) => {
@@ -434,7 +463,9 @@ export function WorkbenchShell({
   }
 
   const resizeActivityBar = (nextWidth: number) => {
-    setActivityBarWidth(clampActivityBarWidth(nextWidth))
+    const clampedWidth = clampActivityBarWidth(nextWidth)
+    setActivityBarWidth(clampedWidth)
+    storeActivityBarWidth(clampedWidth)
   }
 
   const handleActivityBarResizePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -498,17 +529,21 @@ export function WorkbenchShell({
           </button>
         </div>
         </LayoutGroup>
-        <BookSwitcher
-          books={books}
-          currentBookName={currentBookName}
-          currentChapterCount={summary?.chapter_count}
-          workspace={workspace}
-          onSwitchBook={onQuickSwitchBook}
-          onManageBooks={manageBooks}
-        />
+        {agentChatActive ? (
+          <AgentChatProjectSwitcher navigation={agentChatProjectNavigation} />
+        ) : (
+          <BookSwitcher
+            books={books}
+            currentBookName={currentBookName}
+            currentChapterCount={summary?.chapter_count}
+            workspace={workspace}
+            onSwitchBook={onQuickSwitchBook}
+            onManageBooks={manageBooks}
+          />
+        )}
       </div>
       <div className="nova-ui-compact flex items-center justify-end gap-2 text-[var(--nova-text-faint)]">
-        <MessageCenterButton className="h-7 w-7" onOpenAutomation={openAutomationNotification} />
+        <MessageCenterButton className="!size-7 !min-w-7" unreadCount={messageUnread} onUnreadCountChange={setActivityMessageUnreadCount} onOpenAutomation={openAutomationNotification} />
         <span>{modeLabel}</span>
       </div>
     </header>
@@ -518,7 +553,7 @@ export function WorkbenchShell({
     <LayoutGroup id="workbench-activity-bar">
     <DndContext key={activityOrderScope} sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleActivityDragEnd}>
     <aside
-      className={`nova-activity-bar relative flex shrink-0 flex-col gap-2 border-r p-3 transition-[width] duration-500 ease-[var(--nova-ease)] ${activityBarExpanded ? 'is-expanded items-stretch' : 'items-center'}`}
+      className="nova-activity-bar relative flex shrink-0 flex-col items-stretch gap-2 border-r p-3 transition-[width]"
       style={{ width: activityBarExpanded ? activityBarWidth : ACTIVITY_BAR_COLLAPSED_WIDTH }}
     >
       <SortableContext key={activityOrderScope} items={activityItems.map((item) => toSortableActivityId(activityOrderScope, item.id))} strategy={verticalListSortingStrategy}>
@@ -530,8 +565,8 @@ export function WorkbenchShell({
             dragDisabled={settingsOpen}
             expanded={activityBarExpanded}
             label={item.label}
-            onClick={item.onClick}
-            active={item.active}
+            onClick={() => selectPrimaryNavigation(item.id, item.onClick)}
+            active={optimisticNavigationId ? optimisticNavigationId === item.id : item.active}
             className="nova-icon-button mb-2"
           >
             {item.icon}
@@ -552,14 +587,15 @@ export function WorkbenchShell({
           label={activityBarExpanded ? t('workbench.activity.toggleCollapse') : t('workbench.activity.toggleExpand')}
           onClick={onToggleActivityBarExpanded}
           className="nova-icon-button"
+          showTooltip={false}
         >
-          <PanelLeft className={`h-4 w-4 transition-transform ${activityBarExpanded ? '' : 'rotate-180'}`} />
+          <PanelLeft className="h-4 w-4" />
         </ActivityButton>
         <ActivityButton
           expanded={activityBarExpanded}
           label={t('workbench.activity.settings')}
-          onClick={onToggleSettings}
-          active={settingsOpen}
+          onClick={() => selectPrimaryNavigation('settings', onToggleSettings)}
+          active={optimisticNavigationId ? optimisticNavigationId === 'settings' : settingsOpen}
           data-onboarding-anchor="activity-settings"
           className="nova-icon-button"
         >
@@ -588,13 +624,13 @@ export function WorkbenchShell({
   const statusBar = (
     <div className="nova-statusbar nova-topbar flex h-6 shrink-0 items-center border-t px-3">
       <span>Denova v{appVersion}</span>
-      {mode === 'ide' && summary && (
+      {writingContentVisible && summary && (
         <span className="ml-4">{t('workbench.status.summary', { title: summary.title || t('workbench.untitled'), chapters: formatNumber(summary.chapter_count), words: formatNumber(summary.total_words) })}</span>
       )}
-      {mode === 'ide' && currentChapter && (
+      {writingContentVisible && currentChapter && (
         <span className="ml-4">{t('workbench.status.currentChapter', { title: currentChapter.display_title, words: formatNumber(currentChapter.words), status: currentChapter.status })}</span>
       )}
-      {mode === 'ide' && currentChapter && (
+      {writingContentVisible && currentChapter && (
         <span className="ml-4">
           {t('editor.updatedAt', { time: currentChapter.updated_at ? formatDateTime(currentChapter.updated_at) : t('editor.unknownTime') })}
           {editorLine !== undefined && ` · ${t('editor.currentLine', { line: formatNumber(editorLine) })}`}
@@ -619,30 +655,33 @@ export function WorkbenchShell({
   )
 
   if (isMobile) {
-    const compactMobileNavigation = mode === 'interactive' && interactiveSubmode === 'story' && !sharedMenuActive
+    const compactMobileNavigation = interactiveContentVisible && interactiveSubmode === 'story'
     const mobileTopBar = (
       <header className="nova-mobile-topbar nova-topbar shrink-0 border-b border-[var(--nova-border)] py-2 pl-3 pr-3">
         <div className="flex min-w-0 items-center justify-between gap-2">
           <div className="flex min-w-0 flex-1 items-center gap-2">
             <NovaBrandIcon />
-            <BookSwitcher
-              books={books}
-              currentBookName={currentBookName}
-              currentChapterCount={summary?.chapter_count}
-              workspace={workspace}
-              compact
-              onSwitchBook={onQuickSwitchBook}
-              onManageBooks={manageBooks}
-            />
+            {agentChatActive ? (
+              <AgentChatProjectSwitcher navigation={agentChatProjectNavigation} compact />
+            ) : (
+              <BookSwitcher
+                books={books}
+                currentBookName={currentBookName}
+                currentChapterCount={summary?.chapter_count}
+                workspace={workspace}
+                compact
+                onSwitchBook={onQuickSwitchBook}
+                onManageBooks={manageBooks}
+              />
+            )}
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
-            <MessageCenterButton className="h-8 w-8" onOpenAutomation={openAutomationNotification} />
+            <MessageCenterButton className="!size-8 !min-w-8" unreadCount={messageUnread} onUnreadCountChange={setActivityMessageUnreadCount} onOpenAutomation={openAutomationNotification} />
             <button
               type="button"
               onClick={() => setCommandOpen(true)}
               className="nova-icon-button flex h-8 w-8 items-center justify-center rounded-[var(--nova-radius)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
               aria-label={t('command.openButton')}
-              title={t('command.openButton')}
             >
               <Search className="h-4 w-4" />
             </button>
@@ -694,8 +733,8 @@ export function WorkbenchShell({
         id: item.id,
         label: item.label,
         icon: item.icon,
-        active: item.active,
-        onClick: item.onClick,
+        active: optimisticNavigationId ? optimisticNavigationId === item.id : item.active,
+        onClick: () => selectPrimaryNavigation(item.id, item.onClick),
       }))
     const mobileProjectDrawer = sidebar ? {
       id: 'project' as const,
@@ -707,12 +746,13 @@ export function WorkbenchShell({
     // Direction B: editor + Agent in a vertical split (Agent docked at bottom,
     // always visible) instead of Agent hidden in a right drawer. Only when the
     // Agent panel is active and no full-workspace panel covers the screen.
-    const mobileAgentDocked = mode === 'ide' && !fullWorkspacePanelVisible && Boolean(rightPanelContent)
+    const mobileAgentDocked = writingContentVisible && Boolean(rightPanelContent)
     const mobileMain = (
       <div className="relative flex h-full min-h-0 flex-col">
         {mobileAgentDocked ? (
           <Group
             orientation="vertical"
+            disableCursor
             resizeTargetMinimumSize={{ coarse: 16, fine: 1 }}
             className="flex min-h-0 flex-1 flex-col"
           >
@@ -726,7 +766,7 @@ export function WorkbenchShell({
           </Group>
         ) : mainContentSlot}
         {/* Floating button to reopen the Agent dock when it's hidden */}
-        {mode === 'ide' && !fullWorkspacePanelVisible && !mobileAgentDocked && (
+        {writingContentVisible && !mobileAgentDocked && (
           <button
             type="button"
             className="absolute bottom-3 right-3 z-30 flex h-12 w-12 items-center justify-center rounded-full border border-[var(--nova-border)] bg-[var(--nova-active)] text-[var(--nova-text)] shadow-lg hover:bg-[var(--nova-hover)]"
@@ -750,8 +790,8 @@ export function WorkbenchShell({
             id: 'settings',
             label: t('workbench.activity.settings'),
             icon: <Settings className="h-4 w-4" />,
-            active: settingsOpen,
-            onClick: onToggleSettings,
+            active: optimisticNavigationId ? optimisticNavigationId === 'settings' : settingsOpen,
+            onClick: () => selectPrimaryNavigation('settings', onToggleSettings),
           }}
           closeLabel={t('common.close')}
           navigationLabel={t('workbench.mobile.navigation')}
@@ -769,12 +809,12 @@ export function WorkbenchShell({
         topBar={topBar}
         activityBar={activityBar}
         sidebar={sidebar}
-        sidebarVisible={mode === 'ide' && projectVisible && !fullWorkspacePanelVisible}
+        sidebarVisible={writingContentVisible && projectVisible}
         main={mainContentSlot}
         rightPanel={rightPanelContent}
-        rightPanelVisible={mode === 'ide' && !fullWorkspacePanelVisible && Boolean(rightPanelContent)}
-        rightPanelWide={rightPanelWide && mode === 'ide' && rightPanel === 'ai' && !fullWorkspacePanelVisible}
-        centerFocus={centerFocus && mode === 'ide' && !fullWorkspacePanelVisible}
+        rightPanelVisible={writingContentVisible && Boolean(rightPanelContent)}
+        rightPanelWide={rightPanelWide && writingContentVisible && Boolean(rightPanelContent)}
+        centerFocus={centerFocus && writingContentVisible}
         statusBar={statusBar}
       />
       {mainContentPortal}
@@ -822,30 +862,33 @@ function ActivityButton({
   children,
   className,
   active = false,
+  showTooltip,
   ...props
 }: React.ComponentProps<'button'> & {
   expanded: boolean
   label: string
   children: ReactNode
   active?: boolean
+  showTooltip?: boolean
 }) {
   return (
     <TooltipIconButton
       label={label}
-      showTooltip={!expanded}
-      className={`${className || ''} relative overflow-hidden ${expanded ? 'w-full gap-3 px-3' : ''} ${active ? 'is-active' : ''}`}
+      showTooltip={showTooltip ?? !expanded}
+      className={`${className || ''} relative w-full justify-start gap-3 overflow-hidden px-3 ${active ? 'is-active' : ''}`}
       {...props}
+      aria-current={active ? 'page' : undefined}
     >
-      {active && <motion.span layoutId="workbench-activity-active" className="absolute inset-0 rounded-[var(--nova-radius)] bg-[var(--nova-active)]" transition={novaSpring} />}
+      {active && <motion.span layoutId="workbench-activity-active" className="absolute inset-0 rounded-[var(--nova-radius)] bg-[var(--nova-active)]" transition={PRIMARY_NAVIGATION_TRANSITION} />}
       <span className="relative z-10 flex shrink-0 items-center justify-center">{children}</span>
       <AnimatePresence initial={false}>
         {expanded && (
           <motion.span
             key="label"
-            initial={{ opacity: 0, x: -4 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -4 }}
-            transition={{ duration: 0.16 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.12 }}
             className="relative z-10 min-w-0 truncate text-left text-xs font-medium"
           >
             {label}
@@ -911,11 +954,28 @@ function readStoredActivityOrder(scope: ActivityOrderScope): ActivityItemId[] {
     if (!Array.isArray(parsed)) return defaultOrder
     const validIds = new Set(defaultOrder)
     const stored = parsed.filter((id): id is ActivityItemId => validIds.has(id))
-    const storedSet = new Set(stored)
-    return [...stored, ...defaultOrder.filter((id) => !storedSet.has(id))]
+    return insertMissingActivityItems(stored, defaultOrder)
   } catch {
     return defaultOrder
   }
+}
+
+/** Preserve the user's relative order while placing newly introduced items by their defaults. */
+function insertMissingActivityItems(stored: ActivityItemId[], defaultOrder: ActivityItemId[]) {
+  const result = [...stored]
+  for (const id of defaultOrder) {
+    if (result.includes(id)) continue
+    const defaultIndex = defaultOrder.indexOf(id)
+    const precedingID = defaultOrder.slice(0, defaultIndex).reverse().find((candidate) => result.includes(candidate))
+    if (precedingID) {
+      result.splice(result.indexOf(precedingID) + 1, 0, id)
+      continue
+    }
+    const followingID = defaultOrder.slice(defaultIndex + 1).find((candidate) => result.includes(candidate))
+    if (followingID) result.splice(result.indexOf(followingID), 0, id)
+    else result.push(id)
+  }
+  return result
 }
 
 function storeActivityOrder(scope: ActivityOrderScope, order: ActivityItemId[]) {

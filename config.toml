@@ -11,38 +11,63 @@
 # nova_dir / NOVA_DIR 为旧字段兼容，新配置请使用 denova_dir / DENOVA_DIR。
 
 # 语言模型。默认模型也放在 model_profiles 列表里，id 固定为 default，name 可作为显示别名。
+# provider 必须使用内置服务商预设；自定义端点使用 openai-compatible。
+# protocol 可选：openai-chat-completions / openai-responses / anthropic-messages。
+# 已知 provider 可省略 base_url 并使用预设；自定义端点需显式填写 protocol 和 base_url。
 # 不配置 temperature 时使用平台/模型默认值。
-# 游戏正文、快捷选项和版本说明 Agent 内置默认 enable_thinking=false；写作与配置 Agent 默认启用。各 Agent 均可单独覆盖。
+# thinking_level 可选：default / off / minimal / low / medium / high / xhigh / max。
+# 游戏正文、快捷选项和版本说明 Agent 内置默认 off；写作与配置 Agent 默认 medium。各 Agent 均可单独覆盖。
 [[model_profiles]]
 id = "default"
 name = "DeepSeek 写作"
-openai_base_url = "https://api.deepseek.com"
-openai_api_key = ""
-openai_model = "deepseek-v4-pro"
+provider = "deepseek"
+protocol = "openai-chat-completions"
+base_url = "https://api.deepseek.com"
+api_key = ""
+model = "deepseek-v4-pro"
 
-# 可选：配置更多 OpenAI 协议兼容平台，并按 Agent 分配。模型名同时作为配置名，name 可作为显示别名。
+# 可选：配置更多平台并按 Agent 分配。模型名同时可作为配置名，name 可作为显示别名。
 # [[model_profiles]]
-# openai_base_url = "https://api.openai.com/v1"
-# openai_api_key = ""
-# openai_model = "gpt-4.1"
+# provider = "openai"
+# protocol = "openai-responses"
+# api_key = ""
+# model = "gpt-5"
 #
 # [agent_models.ide]
-# profile_id = "deepseek-v4-pro"
+# profile_id = "gpt-5"
 # temperature = 0.7
-# enable_thinking = true       # 可选：不填则不传；适用于支持 enable_thinking 的 OpenAI 兼容平台
-# reasoning_effort = "medium"  # 可选：low / medium / high；不填则不传
+# thinking_level = "medium"   # 可选：统一思考级别；default 表示不发送协议思考参数
 #
-# Gemini OpenAI 兼容端点不支持 enable_thinking；需要控制思考强度时配置 reasoning_effort。
+# Gemini 使用官方 OpenAI-compatible Chat Completions 路由。
 # [[model_profiles]]
 # id = "gemini"
 # name = "Gemini"
-# openai_base_url = "https://generativelanguage.googleapis.com/v1beta/openai/"
-# openai_api_key = ""
-# openai_model = "gemini-3.5-flash"
+# provider = "google"
+# protocol = "openai-chat-completions"
+# api_key = ""
+# model = "gemini-3.5-flash"
+#
+# 自定义端点使用兼容服务商，并按需增加 headers / protocol_options。
+# [[model_profiles]]
+# id = "private-model"
+# provider = "openai-compatible"
+# protocol = "openai-chat-completions"
+# base_url = "https://models.example.com/v1"
+# api_key = ""
+# model = "private-model"
+# [model_profiles.headers]
+# X-Tenant = "example"
+# [model_profiles.protocol_options]
+# supports_stream_usage = false
+# 可选：将稳定的 SessionKey 映射到兼容端点的 Header 或 JSON Body 字段。
+# Optional: map the stable SessionKey to a compatible endpoint header or JSON body field.
+# [model_profiles.session_key_mapping]
+# location = "header" # "header" | "body" | "none"
+# name = "X-Session-Id"
 #
 # [agent_models.ide]
 # profile_id = "gemini"
-# reasoning_effort = "low"
+# thinking_level = "low"
 #
 # [agent_models.config_manager]
 # profile_id = "gpt-4.1"
@@ -73,13 +98,23 @@ default_output_format = "png"
 # system_prompt = "更主动地制造 NPC 反应和场景压力，但不要替玩家做重大选择。"
 #
 # 可选：按 Agent 调整工具权限。字段不填表示继承内置默认值；
-# `web_search` 使用 Eino Ext DuckDuckGo V2 预制工具注册为网页搜索。
+# `web_search` 同时控制 `web_search` 与 `web_fetch` 两个只读网页工具。
 #
 # [agent_tools.ide]
 # web_search = true
 #
 # [agent_tools.interactive_story]
 # web_search = false
+
+# 网页访问。默认并发查询 DuckDuckGo 与 Bing 并合并结果；配置 SearXNG 后优先使用该实例，
+# 实例无结果或请求失败时仍会回退到 DuckDuckGo/Bing。provider 超时为 0 时表示不限制。
+# 正文抓取仅支持公开 HTTP(S) 页面。
+[web_access]
+searxng_base_url = ""
+search_max_results = 10
+search_provider_timeout_seconds = 10
+fetch_max_response_kb = 8192
+fetch_max_content_chars = 262144
 
 # 预置写作 SubAgent。它们只是普通配置项，不是 Go 代码内置默认值；
 # 可以在 Agents 页像自定义 SubAgent 一样改名、改提示词、限制工具或关闭。
@@ -178,8 +213,9 @@ denova_dir = "./.denova"
 # 编辑器
 auto_save_enabled = true
 auto_save_interval_ms = 1500
-# 隐藏章节正文在 Agent 流中的输出，文件仍正常写入。
-hide_novel_chapter_body_in_live_output = false
+# 项目文件树会在首次请求中尽可能递归加载；仅当条目数超过此用户级安全上限时才回退到分层加载。
+# 默认 100000，最大 1000000。修改后需重启后端。
+project_file_tree_entry_limit = 100000
 chapter_filename_format = "ch{order:05}-{chapter}-{title}.md"
 volume_dir_format = "v{order:05}-{volume}"
 chapter_group_min = 3
@@ -197,6 +233,8 @@ reading_font_size = 18
 
 # Agent
 model_max_retries = 5
+# 连续 parallel_read 工具的最大并发数；用户级和工作区级均可覆盖，范围 1–64。
+agent_tool_parallelism = 8
 plan_mode_default = false
 # 写作 Agent 默认叙事编排 ID（当前工作区级配置，字段名沿用 ide_story_teller_id）
 ide_story_teller_id = "classic"

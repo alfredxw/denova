@@ -6,10 +6,10 @@ import { AgentChangeSummaryCard, canUndoAgentChange, summarizeGroupFiles } from 
 import type { WorkspaceChangeGroup, WorkspaceChangeGroupSummary } from '../types'
 
 const apiMocks = vi.hoisted(() => ({
-  getWorkspaceChangeGroup: vi.fn(),
-  getWorkspaceChangeReviewThread: vi.fn(),
-  listWorkspaceChangeGroups: vi.fn(),
-  undoWorkspaceChangeGroup: vi.fn(),
+  getProjectChangeGroup: vi.fn(),
+  getProjectChangeReviewThread: vi.fn(),
+  listProjectChangeGroups: vi.fn(),
+  undoProjectChangeGroup: vi.fn(),
 }))
 const preloadReviewDiffEditorMock = vi.hoisted(() => vi.fn())
 
@@ -20,14 +20,14 @@ vi.mock('../review/review-editor-loader', () => ({
 
 beforeEach(() => {
   vi.clearAllMocks()
-  apiMocks.getWorkspaceChangeGroup.mockResolvedValue({
+  apiMocks.getProjectChangeGroup.mockResolvedValue({
     id: 'group-1',
     created_at: '2026-07-16T00:00:00Z',
     review_status: 'pending',
     apply_state: 'applied',
     change_sets: [],
   })
-  apiMocks.getWorkspaceChangeReviewThread.mockResolvedValue({
+  apiMocks.getProjectChangeReviewThread.mockResolvedValue({
     id: 'thread-1',
     latest_group_id: 'group-1',
     groups: [],
@@ -81,24 +81,40 @@ describe('AgentChangeSummaryCard review preload', () => {
   it('warms the newest review thread and editor as soon as its card mounts', async () => {
     renderSummaryCard(true)
 
-    await waitFor(() => expect(apiMocks.getWorkspaceChangeReviewThread).toHaveBeenCalledWith('/book', 'thread-1'))
+    await waitFor(() => expect(apiMocks.getProjectChangeReviewThread).toHaveBeenCalledWith('project-book', 'thread-1'))
     expect(preloadReviewDiffEditorMock).toHaveBeenCalledTimes(1)
   })
 
   it('waits for user intent before warming an older review card', async () => {
     const { container } = renderSummaryCard(false)
-    await waitFor(() => expect(apiMocks.getWorkspaceChangeGroup).toHaveBeenCalled())
-    expect(apiMocks.getWorkspaceChangeReviewThread).not.toHaveBeenCalled()
+    await waitFor(() => expect(apiMocks.getProjectChangeGroup).toHaveBeenCalled())
+    expect(apiMocks.getProjectChangeReviewThread).not.toHaveBeenCalled()
     expect(preloadReviewDiffEditorMock).not.toHaveBeenCalled()
 
     fireEvent.pointerEnter(container.querySelector('[data-change-summary-card="group-1"]')!)
 
-    await waitFor(() => expect(apiMocks.getWorkspaceChangeReviewThread).toHaveBeenCalledWith('/book', 'thread-1'))
+    await waitFor(() => expect(apiMocks.getProjectChangeReviewThread).toHaveBeenCalledWith('project-book', 'thread-1'))
     expect(preloadReviewDiffEditorMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('opens only after the review editor preload settles', async () => {
+    let finishPreload: (() => void) | undefined
+    preloadReviewDiffEditorMock.mockReturnValue(new Promise<void>((resolve) => {
+      finishPreload = resolve
+    }))
+    const onReview = vi.fn()
+    const view = renderSummaryCard(false, { onReview })
+
+    fireEvent.click(view.getByRole('button', { name: '审阅' }))
+    expect(view.getByRole('button', { name: '审阅' })).toBeDisabled()
+    expect(onReview).not.toHaveBeenCalled()
+
+    finishPreload?.()
+    await waitFor(() => expect(onReview).toHaveBeenCalledWith('thread-1', 'group-1'))
   })
 })
 
-function renderSummaryCard(eagerPreload: boolean) {
+function renderSummaryCard(eagerPreload: boolean, options: { disabled?: boolean; onReview?: (reviewThreadID: string, groupID: string) => void } = {}) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
   const summary = {
     id: 'group-1',
@@ -114,10 +130,11 @@ function renderSummaryCard(eagerPreload: boolean) {
     QueryClientProvider,
     { client: queryClient },
     createElement(AgentChangeSummaryCard, {
-      workspace: '/book',
+      projectId: 'project-book',
       summary,
       eagerPreload,
-      onReview: vi.fn(),
+      disabled: options.disabled,
+      onReview: options.onReview ?? vi.fn(),
     }),
   ))
 }

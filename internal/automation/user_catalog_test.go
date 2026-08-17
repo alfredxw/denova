@@ -11,7 +11,7 @@ func TestUserCatalogListsTasksFromEveryWorkspaceWithExplicitTargets(t *testing.T
 	workspaceA := filepath.Join(root, "book-a")
 	workspaceB := filepath.Join(root, "book-b")
 
-	taskA, err := NewStore(userDir, workspaceA).Create(Task{
+	taskA, err := NewStore(userDir, workspaceA).Create(TaskDefinition{
 		Scope:    ScopeWorkspace,
 		Name:     "Review A",
 		Template: TemplateReview,
@@ -19,7 +19,7 @@ func TestUserCatalogListsTasksFromEveryWorkspaceWithExplicitTargets(t *testing.T
 	if err != nil {
 		t.Fatalf("create workspace A task: %v", err)
 	}
-	taskB, err := NewStore(userDir, workspaceB).Create(Task{
+	taskB, err := NewStore(userDir, workspaceB).Create(TaskDefinition{
 		Scope:    ScopeWorkspace,
 		Name:     "Review B",
 		Template: TemplateReview,
@@ -67,19 +67,81 @@ func TestUserCatalogListsTasksFromEveryWorkspaceWithExplicitTargets(t *testing.T
 	}
 }
 
+func TestCatalogLocatorsDisambiguateImportedTaskIDsAcrossWorkspaces(t *testing.T) {
+	root := t.TempDir()
+	userDir := filepath.Join(root, "user")
+	workspaceA := filepath.Join(root, "book-a")
+	workspaceB := filepath.Join(root, "book-b")
+	storeA := NewStore(userDir, workspaceA)
+	storeB := NewStore(userDir, workspaceB)
+	taskA, err := storeA.Create(TaskDefinition{Scope: ScopeWorkspace, Name: "A", Template: TemplateReview})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := storeB.Create(TaskDefinition{Scope: ScopeWorkspace, Name: "B", Template: TemplateReview}); err != nil {
+		t.Fatal(err)
+	}
+	// Imported workspace data can legitimately preserve a task's compact ID.
+	// Reproduce that collision without relying on random ID generation.
+	tasksB, err := storeB.readScope(ScopeWorkspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tasksB[0].ID = taskA.ID
+	if err := storeB.writeScope(ScopeWorkspace, tasksB); err != nil {
+		t.Fatal(err)
+	}
+
+	locatorA := CatalogTaskID(ScopeWorkspace, workspaceA, taskA.ID)
+	locatorB := CatalogTaskID(ScopeWorkspace, workspaceB, taskA.ID)
+	if locatorA == locatorB {
+		t.Fatalf("workspace catalog locators collided: %q", locatorA)
+	}
+	catalog := NewStore(userDir, "").WithWorkspaces(workspaceA, workspaceB)
+	resolvedA, err := catalog.Get(locatorA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolvedB, err := catalog.Get(locatorB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolvedA.Name != "A" || resolvedB.Name != "B" || resolvedA.ID != resolvedB.ID {
+		t.Fatalf("catalog collision resolution A=%#v B=%#v", resolvedA, resolvedB)
+	}
+	if _, err := catalog.AppendRun(locatorA, RunRecord{ID: "run-a", TaskID: taskA.ID, Scope: ScopeWorkspace, Workspace: workspaceA, Trigger: TriggerManual, Status: RunStatusSuccess}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := catalog.AppendRun(locatorB, RunRecord{ID: "run-b", TaskID: taskA.ID, Scope: ScopeWorkspace, Workspace: workspaceB, Trigger: TriggerManual, Status: RunStatusSuccess}); err != nil {
+		t.Fatal(err)
+	}
+	latestA, err := storeA.Get(locatorA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	latestB, err := storeB.Get(locatorB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(latestA.RecentRuns) != 1 || latestA.RecentRuns[0].ID != "run-a" ||
+		len(latestB.RecentRuns) != 1 || latestB.RecentRuns[0].ID != "run-b" {
+		t.Fatalf("catalog run writes crossed workspaces: A=%#v B=%#v", latestA.RecentRuns, latestB.RecentRuns)
+	}
+}
+
 func TestUserCatalogSelectsOnlyTasksForOneExecutionTarget(t *testing.T) {
 	root := t.TempDir()
 	userDir := filepath.Join(root, "user")
 	workspaceA := filepath.Join(root, "book-a")
 	workspaceB := filepath.Join(root, "book-b")
 	storeA := NewStore(userDir, workspaceA)
-	if _, err := storeA.Create(Task{Scope: ScopeWorkspace, Name: "A", Template: TemplateReview}); err != nil {
+	if _, err := storeA.Create(TaskDefinition{Scope: ScopeWorkspace, Name: "A", Template: TemplateReview}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := NewStore(userDir, workspaceB).Create(Task{Scope: ScopeWorkspace, Name: "B", Template: TemplateReview}); err != nil {
+	if _, err := NewStore(userDir, workspaceB).Create(TaskDefinition{Scope: ScopeWorkspace, Name: "B", Template: TemplateReview}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := storeA.Create(Task{Scope: ScopeUser, Target: ExecutionTarget{Kind: TargetKindUser}, Name: "Global", Template: TemplateCustomPrompt}); err != nil {
+	if _, err := storeA.Create(TaskDefinition{Scope: ScopeUser, Target: ExecutionTarget{Kind: TargetKindUser}, Name: "Global", Template: TemplateCustomPrompt}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -145,14 +207,14 @@ func TestUserCatalogListsInboxItemsAcrossWorkspaces(t *testing.T) {
 	}
 }
 
-func TestGlobalAutomationAllowsContentTriggersAsReadOnly(t *testing.T) {
+func TestLegacyGlobalAutomationAllowsContentTriggers(t *testing.T) {
 	store := NewStore(filepath.Join(t.TempDir(), "user"), "")
-	task, err := store.Create(Task{
+	task, err := store.Create(TaskDefinition{
 		Target:   ExecutionTarget{Kind: TargetKindUser},
 		Name:     "Global research",
 		Template: TemplateCustomPrompt,
-		// Content triggers (semantic / chapter_batch) are allowed for user-scope
-		// automations: they are evaluated per workspace and never mutate content.
+		// Legacy user definitions remain readable so their trigger state can be
+		// retired without corrupting the catalog.
 		Triggers: []TriggerDefinition{{Type: TriggerTypeSemantic, Enabled: true}},
 	})
 	if err != nil {
@@ -160,9 +222,6 @@ func TestGlobalAutomationAllowsContentTriggersAsReadOnly(t *testing.T) {
 	}
 	if task.Scope != ScopeUser {
 		t.Fatalf("scope = %q, want user", task.Scope)
-	}
-	if task.WriteMode != WriteModeReadOnly || task.WriteScope != WriteScopeNone {
-		t.Fatalf("user-scope automation must stay read-only, got write_mode=%q write_scope=%q", task.WriteMode, task.WriteScope)
 	}
 	// The user-scope task is not part of any single workspace's exclusive list.
 	workspace := filepath.Join(t.TempDir(), "book")

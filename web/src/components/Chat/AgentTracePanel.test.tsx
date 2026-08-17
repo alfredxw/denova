@@ -20,6 +20,7 @@ vi.mock('sonner', () => ({
 }))
 
 const runID = 'run-support-export'
+const projectID = 'project-trace'
 
 describe('AgentTracePanel', () => {
   beforeEach(() => {
@@ -38,9 +39,9 @@ describe('AgentTracePanel', () => {
 
   it('copies the selected run ID', async () => {
     const user = userEvent.setup()
-    render(<AgentTracePanel />)
+    render(<AgentTracePanel projectId={projectID} />)
 
-    expect(await screen.findByTitle(runID)).toHaveTextContent(runID)
+    expect(await screen.findByText(runID, { selector: 'code' })).toBeInTheDocument()
     await user.click(await screen.findByRole('button', { name: '复制运行 ID' }))
 
     expect(await screen.findByRole('button', { name: '已复制运行 ID' })).toBeInTheDocument()
@@ -48,12 +49,12 @@ describe('AgentTracePanel', () => {
 
   it('exports the complete selected trace file', async () => {
     const user = userEvent.setup()
-    render(<AgentTracePanel />)
+    render(<AgentTracePanel projectId={projectID} />)
 
     await user.click(await screen.findByRole('button', { name: '导出 Trace 文件' }))
 
     await waitFor(() => {
-      expect(exportAgentRunTrace).toHaveBeenCalledWith(runID)
+      expect(exportAgentRunTrace).toHaveBeenCalledWith(projectID, runID)
       expect(downloadAgentRunTrace).toHaveBeenCalledWith({
         filename: `${runID}.jsonl`,
         blob: expect.any(Blob),

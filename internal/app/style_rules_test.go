@@ -3,29 +3,30 @@ package app
 import (
 	"testing"
 
-	"denova/internal/interactive"
-	"denova/internal/styleref"
+	appagentruntime "denova/internal/app/agentruntime"
+	"denova/internal/interactive/teller"
+	"denova/internal/style"
 )
 
 func TestConvertTellerStyleRulesFiltersSelectedScenes(t *testing.T) {
-	rules := []interactive.StyleRule{
+	rules := []teller.StyleRule{
 		{Scene: "激烈打斗", StyleContents: []string{"短句留白"}},
 		{Scene: "日常对话", StyleContents: []string{"温吞对白"}},
 	}
 
-	got := convertTellerStyleRules("", nil, rules, []string{"日常对话"})
+	got := appagentruntime.StyleRules("", nil, rules, []string{"日常对话"})
 	if len(got) != 1 || got[0].Scene != "日常对话" || got[0].StyleContents[0] != "温吞对白" {
 		t.Fatalf("filtered style rules mismatch: %#v", got)
 	}
 }
 
 func TestConvertTellerStyleRulesUsesAllScenesWhenUnspecified(t *testing.T) {
-	rules := []interactive.StyleRule{
+	rules := []teller.StyleRule{
 		{Scene: "激烈打斗", StyleContents: []string{"短句留白"}},
 		{Scene: "日常对话", StyleContents: []string{"温吞对白"}},
 	}
 
-	got := convertTellerStyleRules("", nil, rules, nil)
+	got := appagentruntime.StyleRules("", nil, rules, nil)
 	if len(got) != 2 {
 		t.Fatalf("style rules = %#v, want all scenes", got)
 	}
@@ -33,7 +34,7 @@ func TestConvertTellerStyleRulesUsesAllScenesWhenUnspecified(t *testing.T) {
 
 func TestConvertTellerStyleRulesResolvesSharedStyleRefs(t *testing.T) {
 	novaDir := t.TempDir()
-	ref, err := styleref.NewLibrary(novaDir).Write(styleref.WriteRequest{
+	ref, err := style.NewLibrary(novaDir).Write(style.WriteRequest{
 		Name:        "克制细腻",
 		Description: "动作和停顿承载情绪",
 		Filename:    "restraint.md",
@@ -42,7 +43,7 @@ func TestConvertTellerStyleRulesResolvesSharedStyleRefs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := convertTellerStyleRules(novaDir, nil, []interactive.StyleRule{{
+	got := appagentruntime.StyleRules(novaDir, nil, []teller.StyleRule{{
 		Scene:     "日常对话",
 		StyleRefs: []string{ref.DisplayPath},
 	}}, nil)
@@ -56,7 +57,7 @@ func TestConvertTellerStyleRulesResolvesSharedStyleRefs(t *testing.T) {
 
 func TestConvertTellerStyleRulesKeepsGlobalRefsWhenSceneFiltered(t *testing.T) {
 	novaDir := t.TempDir()
-	ref, err := styleref.NewLibrary(novaDir).Write(styleref.WriteRequest{
+	ref, err := style.NewLibrary(novaDir).Write(style.WriteRequest{
 		Name:        "全局克制",
 		Description: "所有正文默认参考",
 		Filename:    "global-restraint.md",
@@ -66,7 +67,7 @@ func TestConvertTellerStyleRulesKeepsGlobalRefsWhenSceneFiltered(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got := convertTellerStyleRules(novaDir, []string{ref.DisplayPath}, []interactive.StyleRule{
+	got := appagentruntime.StyleRules(novaDir, []string{ref.DisplayPath}, []teller.StyleRule{
 		{Scene: "激烈打斗", StyleContents: []string{"短句留白"}},
 		{Scene: "日常对话", StyleContents: []string{"温吞对白"}},
 	}, []string{"日常对话"})
@@ -83,7 +84,7 @@ func TestConvertTellerStyleRulesKeepsGlobalRefsWhenSceneFiltered(t *testing.T) {
 }
 
 func TestConvertTellerStyleRulesTreatsGlobalSceneAsDefault(t *testing.T) {
-	got := convertTellerStyleRules("", nil, []interactive.StyleRule{
+	got := appagentruntime.StyleRules("", nil, []teller.StyleRule{
 		{Scene: "全局", StyleContents: []string{"默认文风"}},
 		{Scene: "日常对话", StyleContents: []string{"温吞对白"}},
 		{Scene: "激烈打斗", StyleContents: []string{"短句留白"}},

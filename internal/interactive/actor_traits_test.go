@@ -1,6 +1,7 @@
 package interactive
 
 import (
+	interactivestate "denova/internal/interactive/state"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -216,19 +217,19 @@ func TestActorStateRuntimeContextIncludesAssignedTraitsButNotReusableLibrary(t *
 		t.Fatalf("the reusable trait library must stay out of runtime context: %s", context)
 	}
 	for _, expected := range []string{
-		"# Actor 状态手册",
-		"来源：`effective_actor_state_schema` + `Snapshot.State.actors`",
-		"Actor ID：`protagonist`",
-		"字段 ID：`状态`",
-		"当前值：`ready`",
-		"字段说明：主角当前能够被剧情直接观察到的状态。",
-		"更新指引：仅在正文已经明确改变该状态时更新。",
-		"## 提交参数模板",
+		"# Actor State Handbook",
+		"Source: `effective_actor_state_schema` + `Snapshot.State.actors`",
+		"Actor ID: `protagonist`",
+		"Field ID: `状态`",
+		"Current value: `ready`",
+		"Field description: 主角当前能够被剧情直接观察到的状态。",
+		"Update instruction: 仅在正文已经明确改变该状态时更新。",
+		"## Submission Parameter Templates",
 		`"state_changes"`,
 		`"actor_id": "protagonist"`,
 		`"field_id": "状态"`,
-		"## 新 Actor 可用模板",
-		"Template ID：`important_character`",
+		"## Templates Available to New Actors",
+		"Template ID: `important_character`",
 	} {
 		if !strings.Contains(context, expected) {
 			t.Fatalf("runtime context should render a readable schema-derived Markdown guide; missing %q in:\n%s", expected, context)
@@ -244,7 +245,7 @@ func TestActorStateRuntimeContextIncludesAssignedTraitsButNotReusableLibrary(t *
 		t.Fatalf("field semantics should appear once in template definitions instead of being duplicated for every current Actor: %s", context)
 	}
 	bounded := ActorStateRuntimeContext(system, state, 512)
-	if bounded == "" || len(bounded) > 512 || json.Valid([]byte(bounded)) || !strings.Contains(bounded, "内容已按上下文上限截断") {
+	if bounded == "" || len(bounded) > 512 || json.Valid([]byte(bounded)) || !strings.Contains(bounded, "Content was truncated at the context limit") {
 		t.Fatalf("small runtime context must remain bounded Markdown with an explicit truncation marker: bytes=%d context=%s", len(bounded), bounded)
 	}
 }
@@ -257,7 +258,7 @@ func TestActorStateRuntimeContextShowsNativeJSONValueTypes(t *testing.T) {
 		`"{{object_field_id}}": {}`,
 		`"{{list_field_id}}": []`,
 		`"{{string_field_id}}": "{{text_value}}"`,
-		"有默认值且没有可靠新事实的字段直接省略",
+		"Omit a field that has a default when no reliable new fact overrides it.",
 	} {
 		if !strings.Contains(context, expected) {
 			t.Fatalf("runtime state guide should show native JSON values; missing %q in:\n%s", expected, context)
@@ -275,15 +276,15 @@ func TestBuiltinActorStateRuntimeContextsKeepCentralizedSchemaWithinLimit(t *tes
 			t.Fatalf("built-in actor state %s should fit its complete centralized schema in the runtime context: bytes=%d", module.ID, len(context))
 		}
 		for _, expected := range []string{
-			"Actor ID：`protagonist`",
-			"Actor ID：`story`",
-			"Actor ID：`world`",
-			"Template ID：`important_character`",
-			"Template ID：`opponent`",
-			"Template ID：`world_entities`",
-			"字段 ID：`技能与能力`",
-			"字段 ID：`当前任务`",
-			"字段 ID：`地点记录`",
+			"Actor ID: `protagonist`",
+			"Actor ID: `story`",
+			"Actor ID: `world`",
+			"Template ID: `important_character`",
+			"Template ID: `opponent`",
+			"Template ID: `world_entities`",
+			"Field ID: `技能与能力`",
+			"Field ID: `当前任务`",
+			"Field ID: `地点记录`",
 		} {
 			if !strings.Contains(context, expected) {
 				t.Fatalf("built-in actor state %s runtime context missing %q: bytes=%d", module.ID, expected, len(context))
@@ -362,7 +363,7 @@ func actorTraitTestSystem() StoryDirectorActorStateSystem {
 	}
 }
 
-func applyActorTraitTestOps(state map[string]any, ops []StateOp, actorOpGroups ...[]ActorStateOp) map[string]any {
+func applyActorTraitTestOps(state map[string]any, ops []interactivestate.Op, actorOpGroups ...[]ActorStateOp) map[string]any {
 	if state == nil {
 		state = map[string]any{}
 	}

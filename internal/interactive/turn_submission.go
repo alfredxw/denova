@@ -2,6 +2,7 @@ package interactive
 
 import (
 	"bytes"
+	interactivestate "denova/internal/interactive/state"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -32,11 +33,11 @@ const (
 	maxTurnSubmissionDiagnostics       = 8
 	maxTurnSubmissionDiagnosticMessage = 1024
 	maxTurnSubmissionAllowedFields     = 16
-	maxTurnSubmissionArgumentsBytes    = 64 * 1024
+	maxTurnSubmissionArgumentsBytes    = 256 * 1024
 	maxTurnSubmissionChoiceBytes       = 512
 )
 
-// TurnSubmissionDiagnostic is bounded, bilingual, and points to the exact
+// TurnSubmissionDiagnostic is bounded, English-only, and points to the exact
 // independently retryable module and operation.
 type TurnSubmissionDiagnostic struct {
 	Module    string `json:"module"`
@@ -47,8 +48,7 @@ type TurnSubmissionDiagnostic struct {
 	Expected  string `json:"expected,omitempty"`
 	Actual    string `json:"actual,omitempty"`
 	Retryable bool   `json:"retryable"`
-	MessageZH string `json:"message_zh"`
-	MessageEN string `json:"message_en"`
+	Message   string `json:"message"`
 }
 
 type TurnSubmissionModuleStatus struct {
@@ -70,7 +70,7 @@ type TurnSubmissionReceipt struct {
 // TurnSubmissionInput holds independently retryable fields decoded from one
 // submit_interactive_turn call. Either field may be absent on a targeted retry.
 type TurnSubmissionInput struct {
-	StateUpdates   *[]StateUpdate
+	StateUpdates   *[]interactivestate.Update
 	Choices        *[]string
 	DirectorUpdate *DirectorUpdateHint
 	Diagnostics    []TurnSubmissionDiagnostic
@@ -100,7 +100,7 @@ func (s *PreparedTurnSubmission) TurnResult() TurnResult {
 		return TurnResult{}
 	}
 	return TurnResult{
-		StateUpdates:   append([]StateUpdate(nil), s.result.StateUpdates...),
+		StateUpdates:   append([]interactivestate.Update(nil), s.result.StateUpdates...),
 		Choices:        append([]string(nil), s.result.Choices...),
 		DirectorUpdate: normalizeDirectorUpdateHint(s.result.DirectorUpdate),
 	}
@@ -115,7 +115,7 @@ func decodeDirectorUpdateHint(raw json.RawMessage) (*DirectorUpdateHint, []TurnS
 	if err := decodeStrictJSON(raw, &hint, false); err != nil {
 		return nil, []TurnSubmissionDiagnostic{*newTurnSubmissionDiagnostic(
 			TurnSubmissionModuleChoices, nil, TurnSubmissionDiagnosticInvalidModule, "/director_update", "{needed:true,reason:string}", "invalid director_update",
-			fmt.Sprintf("director_update 无效：%v", err), fmt.Sprintf("director_update is invalid: %v", err),
+			fmt.Sprintf("director_update is invalid: %v", err),
 		)}
 	}
 	normalized := normalizeDirectorUpdateHint(&hint)
@@ -125,7 +125,7 @@ func decodeDirectorUpdateHint(raw json.RawMessage) (*DirectorUpdateHint, []TurnS
 	if err := validateDirectorUpdateHint(normalized); err != nil {
 		return nil, []TurnSubmissionDiagnostic{*newTurnSubmissionDiagnostic(
 			TurnSubmissionModuleChoices, nil, TurnSubmissionDiagnosticInvalidModule, "/director_update", "needed=true with a bounded reason", "invalid director_update",
-			err.Error(), "director_update must set needed=true with a bounded non-empty reason.",
+			"director_update must set needed=true with a bounded non-empty reason.",
 		)}
 	}
 	return normalized, nil
@@ -148,7 +148,7 @@ func PrepareTurnSubmission(validation TurnSubmissionContext, current *PreparedTu
 		}
 	}
 	if input.StateUpdates != nil && !prepared.stateUpdatesAccepted && !rejected[TurnSubmissionModuleStateChanges] {
-		updates := normalizeTurnStateUpdates(*input.StateUpdates)
+		updates := normalizeTurnSubmissionStateUpdateTargets(validation.ActorState, validation.CurrentState, *input.StateUpdates)
 		compileOptions := TurnStateUpdateCompileOptions{
 			RuleResolution:           validation.RuleResolution,
 			RuleStateConsumptionMode: validation.RuleStateConsumptionMode,
@@ -201,11 +201,11 @@ func PrepareTurnSubmission(validation TurnSubmissionContext, current *PreparedTu
 
 func clonePreparedTurnSubmission(current *PreparedTurnSubmission) *PreparedTurnSubmission {
 	if current == nil {
-		return &PreparedTurnSubmission{result: TurnResult{StateUpdates: []StateUpdate{}, Choices: []string{}}}
+		return &PreparedTurnSubmission{result: TurnResult{StateUpdates: []interactivestate.Update{}, Choices: []string{}}}
 	}
 	return &PreparedTurnSubmission{
 		result: TurnResult{
-			StateUpdates:   append([]StateUpdate(nil), current.result.StateUpdates...),
+			StateUpdates:   append([]interactivestate.Update(nil), current.result.StateUpdates...),
 			Choices:        append([]string(nil), current.result.Choices...),
 			DirectorUpdate: normalizeDirectorUpdateHint(current.result.DirectorUpdate),
 		},
@@ -251,36 +251,36 @@ func turnSubmissionModuleStatus(accepted, rejected bool) string {
 func validateSubmittedChoices(values []string, configured int, terminal bool) ([]string, *TurnSubmissionDiagnostic) {
 	configured = normalizeStoryChoiceCount(configured)
 	if err := validateStoryChoiceCount(configured); err != nil {
-		return nil, newTurnSubmissionDiagnostic(TurnSubmissionModuleChoices, nil, "invalid_choice_count_config", "", fmt.Sprintf("%d-%d", MinStoryChoiceCount, MaxStoryChoiceCount), fmt.Sprint(configured), err.Error(), "The story choice count configuration is invalid.")
+		return nil, newTurnSubmissionDiagnostic(TurnSubmissionModuleChoices, nil, "invalid_choice_count_config", "", fmt.Sprintf("%d-%d", MinStoryChoiceCount, MaxStoryChoiceCount), fmt.Sprint(configured), "The story choice count configuration is invalid.")
 	}
 	if len(values) == 0 {
 		if terminal {
 			return []string{}, nil
 		}
-		return nil, newTurnSubmissionDiagnostic(TurnSubmissionModuleChoices, nil, TurnSubmissionDiagnosticChoiceCountMismatch, "/choices", fmt.Sprintf("exactly %d choices", configured), "0 choices", fmt.Sprintf("非终局回合必须提交恰好 %d 个不同的行动建议", configured), fmt.Sprintf("Non-terminal turns must submit exactly %d distinct choices.", configured))
+		return nil, newTurnSubmissionDiagnostic(TurnSubmissionModuleChoices, nil, TurnSubmissionDiagnosticChoiceCountMismatch, "/choices", fmt.Sprintf("exactly %d choices", configured), "0 choices", fmt.Sprintf("Non-terminal turns must submit exactly %d distinct choices.", configured))
 	}
 	seen := map[string]bool{}
 	normalized := make([]string, 0, len(values))
 	for index, value := range values {
 		choice := strings.TrimSpace(value)
 		if choice == "" {
-			return nil, newTurnSubmissionDiagnostic(TurnSubmissionModuleChoices, intPointer(index), TurnSubmissionDiagnosticEmptyChoice, fmt.Sprintf("/choices/%d", index), "non-empty string", "empty string", "行动建议不能为空", "Choices must not be empty.")
+			return nil, newTurnSubmissionDiagnostic(TurnSubmissionModuleChoices, intPointer(index), TurnSubmissionDiagnosticEmptyChoice, fmt.Sprintf("/choices/%d", index), "non-empty string", "empty string", "Choices must not be empty.")
 		}
 		if len([]byte(choice)) > maxTurnSubmissionChoiceBytes {
-			return nil, newTurnSubmissionDiagnostic(TurnSubmissionModuleChoices, intPointer(index), "choice_too_large", fmt.Sprintf("/choices/%d", index), fmt.Sprintf("at most %d bytes", maxTurnSubmissionChoiceBytes), fmt.Sprintf("%d bytes", len([]byte(choice))), "行动建议文本过长", "The choice text is too long.")
+			return nil, newTurnSubmissionDiagnostic(TurnSubmissionModuleChoices, intPointer(index), "choice_too_large", fmt.Sprintf("/choices/%d", index), fmt.Sprintf("at most %d bytes", maxTurnSubmissionChoiceBytes), fmt.Sprintf("%d bytes", len([]byte(choice))), "The choice text is too long.")
 		}
 		key := normalizedChoiceKey(choice)
 		if seen[key] {
-			return nil, newTurnSubmissionDiagnostic(TurnSubmissionModuleChoices, intPointer(index), TurnSubmissionDiagnosticDuplicateChoice, fmt.Sprintf("/choices/%d", index), "distinct normalized choice", choice, "行动建议在文本标准化后重复", "Choices must remain distinct after text normalization.")
+			return nil, newTurnSubmissionDiagnostic(TurnSubmissionModuleChoices, intPointer(index), TurnSubmissionDiagnosticDuplicateChoice, fmt.Sprintf("/choices/%d", index), "distinct normalized choice", choice, "Choices must remain distinct after text normalization.")
 		}
 		seen[key] = true
 		normalized = append(normalized, choice)
 	}
 	if terminal {
-		return nil, newTurnSubmissionDiagnostic(TurnSubmissionModuleChoices, nil, TurnSubmissionDiagnosticChoiceCountMismatch, "/choices", "empty array for the declared terminal turn", fmt.Sprintf("%d choices", len(normalized)), "已由 RuleResolution 声明终局，choices 必须为空数组", "RuleResolution declared a terminal turn, so choices must be an empty array.")
+		return nil, newTurnSubmissionDiagnostic(TurnSubmissionModuleChoices, nil, TurnSubmissionDiagnosticChoiceCountMismatch, "/choices", "empty array for the declared terminal turn", fmt.Sprintf("%d choices", len(normalized)), "RuleResolution declared a terminal turn, so choices must be an empty array.")
 	}
 	if len(normalized) != configured {
-		return nil, newTurnSubmissionDiagnostic(TurnSubmissionModuleChoices, nil, TurnSubmissionDiagnosticChoiceCountMismatch, "/choices", fmt.Sprintf("exactly %d choices", configured), fmt.Sprintf("%d choices", len(normalized)), fmt.Sprintf("非终局回合必须提交恰好 %d 个不同的行动建议", configured), fmt.Sprintf("Non-terminal turns must submit exactly %d distinct choices.", configured))
+		return nil, newTurnSubmissionDiagnostic(TurnSubmissionModuleChoices, nil, TurnSubmissionDiagnosticChoiceCountMismatch, "/choices", fmt.Sprintf("exactly %d choices", configured), fmt.Sprintf("%d choices", len(normalized)), fmt.Sprintf("Non-terminal turns must submit exactly %d distinct choices.", configured))
 	}
 	return normalized, nil
 }
@@ -291,17 +291,17 @@ func decodeChoicesModule(raw json.RawMessage) ([]string, []TurnSubmissionDiagnos
 		if err == nil {
 			err = errors.New("choices cannot be null")
 		}
-		return nil, []TurnSubmissionDiagnostic{*newTurnSubmissionDiagnostic(TurnSubmissionModuleChoices, nil, TurnSubmissionDiagnosticInvalidModule, "/choices", "array of strings", jsonValueKind(raw), fmt.Sprintf("choices 必须是字符串数组：%v", err), fmt.Sprintf("choices must be an array of strings: %v", err))}
+		return nil, []TurnSubmissionDiagnostic{*newTurnSubmissionDiagnostic(TurnSubmissionModuleChoices, nil, TurnSubmissionDiagnosticInvalidModule, "/choices", "array of strings", jsonValueKind(raw), fmt.Sprintf("choices must be an array of strings: %v", err))}
 	}
 	if len(items) > MaxStoryChoiceCount {
-		return nil, []TurnSubmissionDiagnostic{*newTurnSubmissionDiagnostic(TurnSubmissionModuleChoices, nil, "too_many_choices", "/choices", fmt.Sprintf("at most %d choices", MaxStoryChoiceCount), fmt.Sprintf("%d choices", len(items)), fmt.Sprintf("choices 不能超过 %d 项", MaxStoryChoiceCount), fmt.Sprintf("choices cannot exceed %d items.", MaxStoryChoiceCount))}
+		return nil, []TurnSubmissionDiagnostic{*newTurnSubmissionDiagnostic(TurnSubmissionModuleChoices, nil, "too_many_choices", "/choices", fmt.Sprintf("at most %d choices", MaxStoryChoiceCount), fmt.Sprintf("%d choices", len(items)), fmt.Sprintf("choices cannot exceed %d items.", MaxStoryChoiceCount))}
 	}
 	choices := make([]string, 0, len(items))
 	diagnostics := make([]TurnSubmissionDiagnostic, 0)
 	for index, item := range items {
 		var choice string
 		if err := decodeStrictJSON(item, &choice, false); err != nil {
-			diagnostics = append(diagnostics, *newTurnSubmissionDiagnostic(TurnSubmissionModuleChoices, intPointer(index), TurnSubmissionDiagnosticInvalidModule, fmt.Sprintf("/choices/%d", index), "string", jsonValueKind(item), "行动建议必须是字符串", "Each choice must be a string."))
+			diagnostics = append(diagnostics, *newTurnSubmissionDiagnostic(TurnSubmissionModuleChoices, intPointer(index), TurnSubmissionDiagnosticInvalidModule, fmt.Sprintf("/choices/%d", index), "string", jsonValueKind(item), "Each choice must be a string."))
 			continue
 		}
 		choices = append(choices, choice)
@@ -330,7 +330,7 @@ func decodeStrictJSON(data []byte, target any, useNumber bool) error {
 	return nil
 }
 
-func newTurnSubmissionDiagnostic(module string, index *int, code, path, expected, actual, messageZH, messageEN string) *TurnSubmissionDiagnostic {
+func newTurnSubmissionDiagnostic(module string, index *int, code, path, expected, actual, message string) *TurnSubmissionDiagnostic {
 	return &TurnSubmissionDiagnostic{
 		Module:    module,
 		Index:     index,
@@ -340,8 +340,7 @@ func newTurnSubmissionDiagnostic(module string, index *int, code, path, expected
 		Expected:  trimBytes(expected, maxTurnSubmissionDiagnosticMessage),
 		Actual:    trimBytes(actual, maxTurnSubmissionDiagnosticMessage),
 		Retryable: true,
-		MessageZH: trimBytes(messageZH, maxTurnSubmissionDiagnosticMessage),
-		MessageEN: trimBytes(messageEN, maxTurnSubmissionDiagnosticMessage),
+		Message:   trimBytes(message, maxTurnSubmissionDiagnosticMessage),
 	}
 }
 

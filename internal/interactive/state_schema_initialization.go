@@ -1,6 +1,7 @@
 package interactive
 
 import (
+	interactivestate "denova/internal/interactive/state"
 	"encoding/json"
 	"fmt"
 	"reflect"
@@ -15,30 +16,30 @@ const stateSchemaMigrationSourceKind = "state_schema_initialization"
 // state in memory. The caller persists the returned operations together with
 // the opening Turn, so any later validation or write error leaves both schema
 // and state untouched on disk.
-func prepareOpeningGameStateSchemaCommit(meta *StoryMeta, events []StoryEventRecord, state map[string]any, actorState StoryDirectorActorStateSystem, branchID, sourceTurnID, now string, proposal *ActorStateSchemaProposal) (StoryDirectorActorStateSystem, []StateOp, []ActorStateOp, error) {
+func prepareOpeningGameStateSchemaCommit(meta *StoryMeta, events []StoryEventRecord, state map[string]any, actorState StoryDirectorActorStateSystem, branchID, sourceTurnID, now string, proposal *ActorStateSchemaProposal) (StoryDirectorActorStateSystem, []interactivestate.Op, []ActorStateOp, error) {
 	if meta == nil {
-		return StoryDirectorActorStateSystem{}, nil, nil, fmt.Errorf("故事元信息不存在")
+		return StoryDirectorActorStateSystem{}, nil, nil, fmt.Errorf("story metadata is missing")
 	}
 	policy := meta.StateSchemaPolicy
 	if !storyStateSchemaPolicyRequiresOpeningDraft(policy) {
 		if proposal != nil {
-			return StoryDirectorActorStateSystem{}, nil, nil, fmt.Errorf("固定状态模板故事不能提交开局结构提案")
+			return StoryDirectorActorStateSystem{}, nil, nil, fmt.Errorf("a fixed-template story cannot submit an opening schema proposal")
 		}
 		return actorState, nil, nil, nil
 	}
 	if meta.ActorStateSchema == nil {
-		return StoryDirectorActorStateSystem{}, nil, nil, fmt.Errorf("故事缺少冻结状态结构")
+		return StoryDirectorActorStateSystem{}, nil, nil, fmt.Errorf("story is missing its frozen state schema")
 	}
 	actorState = meta.ActorStateSchema.System
 	if meta.StateSchemaInitialization == nil {
-		return StoryDirectorActorStateSystem{}, nil, nil, fmt.Errorf("故事缺少状态结构初始化状态")
+		return StoryDirectorActorStateSystem{}, nil, nil, fmt.Errorf("story is missing state schema initialization status")
 	}
 	status := *meta.StateSchemaInitialization
 	rawActors, _ := state[actorStateRoot].(map[string]any)
 	hasActors := len(rawActors) > 0
 	if status.Status == StateSchemaInitializationReady {
 		if proposal != nil {
-			return StoryDirectorActorStateSystem{}, nil, nil, fmt.Errorf("故事状态结构已经冻结，不能再次提交开局结构提案")
+			return StoryDirectorActorStateSystem{}, nil, nil, fmt.Errorf("the story state schema is already frozen; another opening schema proposal is not allowed")
 		}
 		if hasActors {
 			return actorState, nil, nil, nil
@@ -57,19 +58,19 @@ func prepareOpeningGameStateSchemaCommit(meta *StoryMeta, events []StoryEventRec
 		return actorState, normalizeStateOps(ops), normalizeActorStateOps(actorOps), nil
 	}
 	if status.Status != StateSchemaInitializationWaitingOpening {
-		return StoryDirectorActorStateSystem{}, nil, nil, fmt.Errorf("状态结构初始化状态不允许提交开局: %s", status.Status)
+		return StoryDirectorActorStateSystem{}, nil, nil, fmt.Errorf("state schema initialization status does not allow an opening submission: %s", status.Status)
 	}
 	if proposal == nil {
-		return StoryDirectorActorStateSystem{}, nil, nil, fmt.Errorf("开局 Game Agent 尚未完成状态结构草案")
+		return StoryDirectorActorStateSystem{}, nil, nil, fmt.Errorf("the opening Game Agent has not finalized the state schema draft")
 	}
 	if hasActors {
-		return StoryDirectorActorStateSystem{}, nil, nil, fmt.Errorf("动态状态结构故事在开局提交前不应存在已物化 Actor")
+		return StoryDirectorActorStateSystem{}, nil, nil, fmt.Errorf("a dynamic-schema story must not contain materialized Actors before the opening submission")
 	}
 	if len(meta.Branches) != 1 || branchID != meta.CurrentBranch {
-		return StoryDirectorActorStateSystem{}, nil, nil, fmt.Errorf("状态结构只能在唯一的初始分支上完成")
+		return StoryDirectorActorStateSystem{}, nil, nil, fmt.Errorf("state schema initialization must complete on the unique initial branch")
 	}
 	if storyContainsTurn(events) {
-		return StoryDirectorActorStateSystem{}, nil, nil, fmt.Errorf("状态结构只能随首个故事回合原子提交")
+		return StoryDirectorActorStateSystem{}, nil, nil, fmt.Errorf("state schema initialization must be committed atomically with the first story turn")
 	}
 	normalized, _, err := ValidateOpeningGameStateSchemaProposal(meta.ActorStateSchema.System, meta.ActorStateSchema.TRPGSystem, *proposal)
 	if err != nil {
@@ -135,7 +136,7 @@ func prepareOpeningGameStateSchemaCommit(meta *StoryMeta, events []StoryEventRec
 	return targetSystem, normalizeStateOps(ops), normalizeActorStateOps(actorOps), nil
 }
 
-func markOpeningStateBootstrapSources(ops []StateOp, actorOps []ActorStateOp, sourceTurnID string) {
+func markOpeningStateBootstrapSources(ops []interactivestate.Op, actorOps []ActorStateOp, sourceTurnID string) {
 	for index := range ops {
 		ops[index].SourceKind = stateSchemaMigrationSourceKind
 		ops[index].SourceID = "opening_state_schema"
@@ -155,7 +156,7 @@ func actorStateSchemaRevision(snapshot *ActorStateSchemaSnapshot) int {
 	return snapshot.Revision
 }
 
-func buildStateSchemaMigration(base, target StoryDirectorActorStateSystem, state map[string]any, adaptation ActorStateSchemaAdaptation, sourceTurnID string) ([]StateOp, []ActorStateOp, map[string]map[string]string, []string, error) {
+func buildStateSchemaMigration(base, target StoryDirectorActorStateSystem, state map[string]any, adaptation ActorStateSchemaAdaptation, sourceTurnID string) ([]interactivestate.Op, []ActorStateOp, map[string]map[string]string, []string, error) {
 	rawActors, _ := state[actorStateRoot].(map[string]any)
 	actorChanges, actorFieldChanges, err := splitStateSchemaActorChanges(adaptation)
 	if err != nil {
@@ -187,7 +188,7 @@ func buildStateSchemaMigration(base, target StoryDirectorActorStateSystem, state
 			}
 		}
 	}
-	var ops []StateOp
+	var ops []interactivestate.Op
 	var actorOps []ActorStateOp
 	var warnings []string
 	schemaChanged := !reflect.DeepEqual(normalizeActorStateSystem(base), normalizeActorStateSystem(target))
@@ -196,7 +197,7 @@ func buildStateSchemaMigration(base, target StoryDirectorActorStateSystem, state
 		valueSourceID := stateSchemaActorValueSourceID(actorChange.ValueSource)
 		if actorChange.Op == "remove" {
 			if _, exists := rawActors[actorID]; exists {
-				ops = append(ops, StateOp{Op: "unset", Path: actorStateRoot + "." + actorID, Reason: actorChange.Reason, SourceID: valueSourceID})
+				ops = append(ops, interactivestate.Op{Op: "unset", Path: actorStateRoot + "." + actorID, Reason: actorChange.Reason, SourceID: valueSourceID})
 			}
 			handledActors[actorID] = true
 			continue
@@ -207,7 +208,7 @@ func buildStateSchemaMigration(base, target StoryDirectorActorStateSystem, state
 		actor := actorChange.Actor
 		template := actorStateTemplateByID(target, actor.TemplateID)
 		if template.ID == "" {
-			return nil, nil, nil, nil, fmt.Errorf("Actor %s 的目标模板不存在: %s", actorID, actor.TemplateID)
+			return nil, nil, nil, nil, fmt.Errorf("target template for Actor %s does not exist: %s", actorID, actor.TemplateID)
 		}
 		current, _ := rawActors[actorID].(map[string]any)
 		actorState := actor.State
@@ -230,13 +231,13 @@ func buildStateSchemaMigration(base, target StoryDirectorActorStateSystem, state
 			actor.Role = firstNonEmptyString(actor.Role, currentRole)
 			actor.Description = firstNonEmptyString(actor.Description, currentDescription)
 		}
-		baseOps, baseActorOps, _, err := buildNewActorStateOps(template, actorID, actor.Name, actor.Role, actor.Description, actorState, "状态结构适配", sourceTurnID)
+		baseOps, baseActorOps, _, err := buildNewActorStateOps(template, actorID, actor.Name, actor.Role, actor.Description, actorState, "state schema adaptation", sourceTurnID)
 		if err != nil {
 			return nil, nil, nil, nil, err
 		}
 		if current, ok := rawActors[actorID].(map[string]any); ok {
 			if traits := current["traits"]; traits != nil {
-				baseOps = append(baseOps, StateOp{Op: "set", Path: actorStateActorPath(actorID, "traits"), Value: traits, SourceID: valueSourceID})
+				baseOps = append(baseOps, interactivestate.Op{Op: "set", Path: actorStateActorPath(actorID, "traits"), Value: traits, SourceID: valueSourceID})
 			}
 		}
 		for index := range baseOps {
@@ -265,7 +266,7 @@ func buildStateSchemaMigration(base, target StoryDirectorActorStateSystem, state
 		baseTemplate := actorStateTemplateByID(base, templateID)
 		targetTemplate := actorStateTemplateByID(target, templateID)
 		if targetTemplate.ID == "" {
-			return nil, nil, nil, nil, fmt.Errorf("模板 %s 已删除，但 Actor %s 没有迁移或删除操作", templateID, actorID)
+			return nil, nil, nil, nil, fmt.Errorf("template %s was removed, but Actor %s has no migration or removal operation", templateID, actorID)
 		}
 		fieldChanges := actorFieldChanges[actorID]
 		if !schemaChanged && len(fieldChanges) == 0 {
@@ -293,7 +294,7 @@ func buildStateSchemaMigration(base, target StoryDirectorActorStateSystem, state
 		if err != nil {
 			return nil, nil, nil, nil, err
 		}
-		valueOps, _, err := buildActorStateValueOps(targetTemplate, actorID, migratedValues, "状态结构适配", sourceTurnID)
+		valueOps, _, err := buildActorStateValueOps(targetTemplate, actorID, migratedValues, "state schema adaptation", sourceTurnID)
 		if err != nil {
 			return nil, nil, nil, nil, err
 		}
@@ -305,7 +306,7 @@ func buildStateSchemaMigration(base, target StoryDirectorActorStateSystem, state
 	}
 	for actorID := range actorFieldChanges {
 		if !handledActors[actorID] {
-			return nil, nil, nil, nil, fmt.Errorf("Actor 字段初始化目标不存在: %s", actorID)
+			return nil, nil, nil, nil, fmt.Errorf("Actor field-initialization target does not exist: %s", actorID)
 		}
 	}
 	if len(warnings) > maxActorStateSchemaAdaptationOps {
@@ -336,7 +337,7 @@ func resolveStateSchemaActorValues(actorID string, baseTemplate, targetTemplate 
 		key := strings.TrimSpace(rawKey)
 		field, ok := fieldByReference[actorStateFieldNameKey(key)]
 		if !ok {
-			return nil, nil, nil, fmt.Errorf("Actor 状态字段不在目标模板中: actor=%s template=%s field=%s", actorID, targetTemplate.ID, key)
+			return nil, nil, nil, fmt.Errorf("Actor state field is not in the target template: actor=%s template=%s field=%s", actorID, targetTemplate.ID, key)
 		}
 		normalized, err := normalizeActorStateValue(field, value)
 		if err != nil {
@@ -374,12 +375,12 @@ func resolveStateSchemaActorValues(actorID string, baseTemplate, targetTemplate 
 		}
 		converted, ok := coerceActorStateFieldValue(value, field)
 		if !ok || converted == nil {
-			return nil, nil, nil, fmt.Errorf("Actor %s 的现有字段 %s 无法转换为 %s；请提供显式非空迁移值", actorID, targetID, field.Type)
+			return nil, nil, nil, fmt.Errorf("Actor %s existing field %s cannot be converted to %s; provide an explicit non-empty migration value", actorID, targetID, field.Type)
 		}
 		values[targetID] = converted
 		if sourceID != targetID {
 			if _, sourceExists := current[sourceID]; sourceExists {
-				cleanupOps = append(cleanupOps, ActorStateOp{Op: "unset", ActorID: actorID, FieldID: sourceID, Reason: "字段已迁移到 " + targetID})
+				cleanupOps = append(cleanupOps, ActorStateOp{Op: "unset", ActorID: actorID, FieldID: sourceID, Reason: "field migrated to " + targetID})
 			}
 		}
 	}
@@ -389,7 +390,7 @@ func resolveStateSchemaActorValues(actorID string, baseTemplate, targetTemplate 
 			continue
 		}
 		if _, exists := current[fieldID]; exists {
-			cleanupOps = append(cleanupOps, ActorStateOp{Op: "unset", ActorID: actorID, FieldID: fieldID, Reason: "字段已从故事状态结构移除"})
+			cleanupOps = append(cleanupOps, ActorStateOp{Op: "unset", ActorID: actorID, FieldID: fieldID, Reason: "field removed from the story state schema"})
 		}
 	}
 	return values, cleanupOps, nil, nil

@@ -15,6 +15,7 @@ import novelImport from './en-US/novelImport'
 import router from './en-US/router'
 import planning from './en-US/planning'
 import lore from './en-US/lore'
+import loreWorkspace from './en-US/loreWorkspace'
 import locale from './en-US/locale'
 import layout from './en-US/layout'
 import agents from './en-US/agents'
@@ -37,6 +38,12 @@ import automations from './en-US/automations'
 import messages from './en-US/messages'
 import onboarding from './en-US/onboarding'
 import changes from './en-US/changes'
+import narrativeStyle from './en-US/narrativeStyle'
+import agentChat from './en-US/agentChat'
+import agentApproval from './en-US/agentApproval'
+import files from './en-US/files'
+import continualLearning from './en-US/continualLearning'
+import trajectory from './en-US/trajectory'
 
 const enUS = {
   ...common,
@@ -56,6 +63,7 @@ const enUS = {
   ...router,
   ...planning,
   ...lore,
+  ...loreWorkspace,
   ...locale,
   ...layout,
   ...agents,
@@ -78,6 +86,13 @@ const enUS = {
   ...messages,
   ...onboarding,
   ...changes,
+  ...narrativeStyle,
+  ...agentChat,
+  ...agentApproval,
+  ...files,
+  ...continualLearning,
+  ...trajectory,
+  'agents.tool.availability.runtimeCheck': 'Runtime check',
 } as const
 
 export default enUS

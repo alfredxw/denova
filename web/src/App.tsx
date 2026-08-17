@@ -1,16 +1,17 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useTheme } from 'next-themes'
-import { checkForUpdate, fetchSettings } from '@/features/settings/api'
+import { checkForUpdate, fetchProjectSettings, fetchSettings, refreshProjectSettings, refreshSettings } from '@/features/settings/api'
 import { applyFontSettings, fontSettingsFromEffective } from '@/features/settings/font-variables'
 import { markAutoUpdateChecked, shouldRunAutoUpdateCheck, UPDATE_CHECK_RESULT_EVENT } from '@/features/settings/update-check-cache'
 import type { UpdateCheckResult } from '@/features/settings/types'
-import { getLoreItems, importCharacterCard, previewCharacterCard, setChapterConfirmed, switchWorkspace, type CharacterCardPreview, type LoreItem, type WorkspaceSearchResult } from '@/lib/api'
+import { getProjectLoreItems, importCharacterCard, previewCharacterCard, setProjectChapterConfirmed, switchWorkspace, type CharacterCardPreview, type LoreItem, type WorkspaceSearchResult } from '@/lib/api'
+import { withErrorLogID } from '@/lib/api-client'
 import { CommandPalette } from '@/components/common/command-palette'
 import { useWorkspace } from '@/hooks/useWorkspace'
 import { useAgentChat } from '@/hooks/useAgentChat'
 import { useWorkspaceHotkeys } from '@/hooks/use-workspace-hotkeys'
-import { useWorkspaceStore, type RightPanel, type WorkspaceMode } from '@/stores/workspace-store'
+import { isSharedWorkspaceMode, useWorkspaceStore, type RightPanel, type WorkspaceMode } from '@/stores/workspace-store'
 import { useInteractiveStore } from '@/features/interactive/stores/interactive-store'
 import type { ChapterSummary } from '@/lib/api'
 import { toast } from 'sonner'
@@ -23,6 +24,8 @@ import {
   persistTabsFor,
   readActiveTabKeyFor,
   readTabsFor,
+  reorderTabs,
+  setTabPinned,
   tabKey,
   type Tab,
 } from '@/components/workbench/TabController'
@@ -36,12 +39,20 @@ import { APP_VERSION } from '@/app-version'
 import { RemoteAccessLogin } from '@/components/RemoteAccessLogin'
 import { OnboardingGuide, type OnboardingNavigationTarget } from '@/features/onboarding/OnboardingGuide'
 import { SETTINGS_SECTION_EVENT, WRITING_AGENT_INIT_EVENT } from '@/features/onboarding/events'
-import { isWorkspaceChangeForWorkspace, type WorkspaceChangeEvent } from '@/features/changes/types'
+import {
+  isProjectChangeForProject,
+  workspaceChangeImpact,
+  workspaceChangePaths,
+  type WorkspaceChangeEvent,
+  type WorkspaceChangeImpact,
+  type WorkspaceChangeMetadata,
+} from '@/features/changes/types'
 import {
   AUTOSAVE_CONFLICT_PRESERVED_EVENT,
   type AutosaveConflictPreservedDetail,
 } from '@/lib/autosave/rebase-with-recovery'
 import { useWorkbenchNotice } from '@/features/notices/use-workbench-notice'
+import { LORE_UPDATED_EVENT, notifyLoreUpdated, type LoreUpdatedDetail } from '@/features/lore/events'
 
 const PROJECT_VISIBLE_KEY = 'nova.layout.projectVisible'
 const ACTIVITY_BAR_EXPANDED_KEY = 'nova.layout.activityBarExpanded'
@@ -62,6 +73,7 @@ function App() {
   const [activityBarExpanded, setActivityBarExpanded] = useState(() => readLayoutBoolean(ACTIVITY_BAR_EXPANDED_KEY, true))
   const [interactiveRightVisible, setInteractiveRightVisible] = useState(() => readLayoutBoolean(INTERACTIVE_RIGHT_VISIBLE_KEY, true))
   const [saveSignal, setSaveSignal] = useState(0)
+  const [projectExplorerRefreshSignal, setProjectExplorerRefreshSignal] = useState(0)
   const [versionRefreshSignal, setVersionRefreshSignal] = useState(0)
   const [settingsOpen, setSettingsOpen] = useState(() => readLayoutBoolean(SETTINGS_OPEN_KEY, false))
   const [openTabs, setOpenTabs] = useState<Tab[]>([])
@@ -70,6 +82,7 @@ function App() {
   const [editorAutoSaveEnabled, setEditorAutoSaveEnabled] = useState(AUTO_SAVE_ENABLED_FALLBACK)
   const [editorAutoSaveDelayMs, setEditorAutoSaveDelayMs] = useState(AUTO_SAVE_DELAY_FALLBACK_MS)
   const [updateCheckEnabled, setUpdateCheckEnabled] = useState<boolean | null>(null)
+  const [developerMode, setDeveloperMode] = useState<boolean | null>(null)
   const [motionIntensity, setMotionIntensity] = useState('system')
   const [novaDir, setNovaDir] = useState('')
   const [sidebarView, setSidebarView] = useState<SidebarView>('outline')
@@ -102,23 +115,31 @@ function App() {
   const setCommandOpen = useWorkspaceStore((state) => state.setCommandOpen)
   const setMode = useWorkspaceStore((state) => state.setMode)
   const setSelectedChapterId = useWorkspaceStore((state) => state.setSelectedChapterId)
-  const workspaceAutoRefreshEnabled = mode === 'ide' && !settingsOpen && (rightPanel === 'ai' || rightPanel === null)
-
+  const toggleActivityBarExpanded = useCallback(() => setActivityBarExpanded((value) => !value), [])
+  const toggleProjectVisible = useCallback(() => setProjectVisible((value) => !value), [])
+  const toggleSettings = useCallback(() => setSettingsOpen((open) => !open), [])
+  const closeSettings = useCallback(() => setSettingsOpen(false), [])
+  const toggleInteractiveRightPanel = useCallback(() => setInteractiveRightVisible((value) => !value), [])
   useEffect(() => {
-    if (mode === 'books' || mode === 'skills' || mode === 'agents' || mode === 'automations') return
+    if (isSharedWorkspaceMode(mode)) return
     const contentMode = mode === 'interactive' ? 'interactive' : 'ide'
     booksReturnModeRef.current = contentMode
     setBooksReturnMode(contentMode)
   }, [mode])
 
   const {
-    tree, loading, selectedFile, fileContent, fileRevision, workspace, workspaceLoaded, summary, books, bookSortMode,
+    tree, loading, selectedFile, fileContent, fileRevision, workspace, projectId, workspaceLoaded, summary, books, bookSortMode,
     selectFile, clearSelectedFile, saveFileDraft, createItem, deleteItem, renameItem, copyItem, moveItem,
     refresh, refreshSummary, refreshAfterAgentFileChange, refreshAll, refreshBooks, setWorkspace,
-  } = useWorkspace({ autoRefreshEnabled: workspaceAutoRefreshEnabled })
+  } = useWorkspace()
+  const settingsWorkspaceRef = useRef<string | null>(null)
 
   const notifyVersionChange = useCallback(() => {
     setVersionRefreshSignal(value => value + 1)
+  }, [])
+
+  const notifyProjectStructureChange = useCallback(() => {
+    setProjectExplorerRefreshSignal(value => value + 1)
   }, [])
 
   const handleEditorFlushHandlerChange = useCallback((handler: EditorFlushHandler | null) => {
@@ -131,34 +152,53 @@ function App() {
     try {
       return await handler()
     } catch (error) {
-      console.error('导航前保存编辑器草稿失败', error)
-      toast.error(t('editor.saveFailed'))
+      console.error('[App.tsx] failed to flush the editor draft before navigation', error)
+      toast.error(withErrorLogID(t('editor.saveFailed'), error))
       return false
     }
   }, [t])
 
-  const handleAgentFileChange = useCallback(async (path?: string) => {
-    await refreshAfterAgentFileChange(path)
-    notifyVersionChange()
-  }, [notifyVersionChange, refreshAfterAgentFileChange])
+  const handleAgentFileChange = useCallback(async (
+    path?: string,
+    impact: WorkspaceChangeImpact = 'structure',
+  ) => {
+    try {
+      await refreshAfterAgentFileChange(path, impact)
+    } finally {
+      // Lore tools persist outside the workspace file tree, so Agent completion
+      // invalidates Lore projections explicitly as well as file summaries.
+      notifyLoreUpdated({ projectId, source: 'writing-agent' })
+      notifyVersionChange()
+      if (impact === 'structure') notifyProjectStructureChange()
+    }
+  }, [notifyProjectStructureChange, notifyVersionChange, projectId, refreshAfterAgentFileChange])
 
-  const handleReviewedWorkspaceChange = useCallback(async (paths: string[]) => {
+  const handleReviewedWorkspaceChange = useCallback(async (
+    paths: string[],
+    metadata: WorkspaceChangeMetadata,
+  ) => {
     const currentPath = selectedFile && paths.includes(selectedFile) ? selectedFile : undefined
-    await handleAgentFileChange(currentPath)
+    await handleAgentFileChange(currentPath, metadata.impact)
   }, [handleAgentFileChange, selectedFile])
 
   const handleWorkspaceChangeEvent = useCallback(async (event: WorkspaceChangeEvent) => {
-    if (!isWorkspaceChangeForWorkspace(event, workspace)) return
-    const paths = Array.from(new Set([...(event.affected_paths ?? []), ...(event.paths ?? []), ...(event.path ? [event.path] : [])]))
+    if (!isProjectChangeForProject(event, projectId)) return
+    const paths = workspaceChangePaths(event)
     const path = selectedFile && paths.includes(selectedFile) ? selectedFile : paths[0]
-    await handleAgentFileChange(path)
-  }, [handleAgentFileChange, selectedFile, workspace])
+    await handleAgentFileChange(path, workspaceChangeImpact(event))
+  }, [handleAgentFileChange, projectId, selectedFile])
 
   const {
     messages,
     sessions,
     activeSessionId,
+    sessionTransitionPending,
     isStreaming,
+    isExecutionActive,
+    runtimeProjection,
+    abortPending,
+    commandSubmitting,
+    queueActionPendingCommandID,
     activityContent,
     references,
     styleScenes,
@@ -168,7 +208,6 @@ function App() {
     togglePlanMode,
     send,
     analyzeContext,
-    submitPlanQuestion,
     approveProposedPlan,
     exitPlanMode,
     stop,
@@ -182,6 +221,9 @@ function App() {
     switchChatSession,
     renameChatSession,
     deleteChatSession,
+    steerQueuedCommand,
+    deleteQueuedCommand,
+    editQueuedCommand,
     addReference,
     removeReference,
     loreReferences,
@@ -191,7 +233,7 @@ function App() {
     removeStyleScene,
     addTextSelection,
     removeTextSelection,
-  } = useAgentChat({ workspace, onAgentFileChange: handleAgentFileChange, onWorkspaceChange: handleWorkspaceChangeEvent })
+  } = useAgentChat({ projectId, onAgentFileChange: handleAgentFileChange, onWorkspaceChange: handleWorkspaceChangeEvent })
 
   const { notice, applyUpdateCheckResult, dismissNotice } = useWorkbenchNotice({ messages, isStreaming })
 
@@ -204,31 +246,39 @@ function App() {
   }, [togglePlanMode])
 
   const refreshLoreItems = useCallback(async () => {
-    if (!workspace) {
+    if (!projectId) {
       setLoreItems([])
       return
     }
     try {
-      setLoreItems(await getLoreItems())
+      setLoreItems(await getProjectLoreItems(projectId))
     } catch (e) {
-      console.warn('加载资料库条目失败', e)
+      console.warn('[App.tsx] failed to load lore items', e)
       setLoreItems([])
     }
-  }, [workspace])
+  }, [projectId])
 
   useEffect(() => {
     void refreshLoreItems()
-    const onLoreUpdated = () => void refreshLoreItems()
-    window.addEventListener('nova:lore-updated', onLoreUpdated)
-    return () => window.removeEventListener('nova:lore-updated', onLoreUpdated)
+    const onLoreUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<LoreUpdatedDetail>).detail
+      if (detail?.projectId === projectId) void refreshLoreItems()
+    }
+    window.addEventListener(LORE_UPDATED_EVENT, onLoreUpdated)
+    return () => window.removeEventListener(LORE_UPDATED_EVENT, onLoreUpdated)
   }, [refreshLoreItems])
 
-  const chapterStats: Record<string, ChapterSummary> = Object.fromEntries((summary?.chapters || []).map((chapter) => [chapter.path, chapter]))
+  const chapterStats = useMemo<Record<string, ChapterSummary>>(
+    () => Object.fromEntries((summary?.chapters || []).map((chapter) => [chapter.path, chapter])),
+    [summary?.chapters],
+  )
   const currentChapter = selectedFile ? chapterStats[selectedFile] : undefined
-  const currentBookName = summary?.title?.trim() ||
-    books.find((book) => book.path === workspace)?.name?.trim() ||
-    workspace.replace(/\/+$/, '').split('/').pop() ||
-    t('workbench.noBook')
+  const currentBookName = workspaceLoaded
+    ? summary?.title?.trim() ||
+      books.find((book) => book.path === workspace)?.name?.trim() ||
+      workspace.replace(/\/+$/, '').split('/').pop() ||
+      t('workbench.noBook')
+    : t('common.loading')
 
   const touchTab = useCallback((key: string) => {
     tabActivationCounterRef.current += 1
@@ -242,13 +292,19 @@ function App() {
   useEffect(() => {
     if (!workspaceLoaded || !workspace || chatWorkspaceRef.current === workspace) return
     chatWorkspaceRef.current = workspace
-    void Promise.all([loadSessions(), loadHistory()]).then(() => resumeActiveChat())
+    void Promise.all([loadSessions(), loadHistory()]).then(([loadedSessions]) => {
+      const sessionID = loadedSessions.find((session) => session.active)?.id || loadedSessions[0]?.id || ''
+      if (sessionID) return resumeActiveChat(sessionID)
+    })
   }, [loadHistory, loadSessions, resumeActiveChat, workspace, workspaceLoaded])
 
   useEffect(() => {
     let cancelled = false
-    const reload = () => {
-      fetchSettings()
+    const reload = (fresh = false) => {
+      const request = projectId
+        ? (fresh ? refreshProjectSettings(projectId) : fetchProjectSettings(projectId))
+        : (fresh ? refreshSettings() : fetchSettings())
+      request
         .then((data) => {
           if (cancelled) return
           const effective = data?.effective
@@ -257,22 +313,31 @@ function App() {
           setEditorAutoSaveEnabled(effective?.auto_save_enabled ?? AUTO_SAVE_ENABLED_FALLBACK)
           setEditorAutoSaveDelayMs(normalizeAutoSaveDelayMs(effective?.auto_save_interval_ms))
           setUpdateCheckEnabled(effective?.update_check_enabled !== false)
+          setDeveloperMode(effective?.labs?.developer_mode === true)
           setNovaDir(data?.paths?.denova_dir || data?.paths?.nova_dir || '')
           setConfiguredLocale(effective?.language)
           setTheme(normalizeAppTheme(effective?.theme))
           setMotionIntensity(normalizeMotionIntensity(effective?.motion_intensity))
           applyFontSettings(fontSettingsFromEffective(effective))
         })
-        .catch((e) => console.warn('加载界面配置失败', e))
+        .catch((e) => console.warn('[App.tsx] failed to load interface settings', e))
     }
-    reload()
-    const onUpdated = () => reload()
+    const workspaceChanged = workspaceLoaded
+      && settingsWorkspaceRef.current !== null
+      && settingsWorkspaceRef.current !== projectId
+    if (workspaceLoaded) settingsWorkspaceRef.current = projectId
+    reload(workspaceChanged)
+    const onUpdated = (event: Event) => {
+      const changedProjectId = (event as CustomEvent<{ projectId?: string }>).detail?.projectId
+      if (changedProjectId && changedProjectId !== projectId) return
+      reload(true)
+    }
     window.addEventListener('nova:settings-updated', onUpdated)
     return () => {
       cancelled = true
       window.removeEventListener('nova:settings-updated', onUpdated)
     }
-  }, [setTheme, workspace])
+  }, [projectId, setTheme, workspaceLoaded])
 
   useEffect(() => {
     const onUpdateCheckResult = (event: Event) => {
@@ -302,7 +367,7 @@ function App() {
       .then((result) => {
         applyUpdateCheckResult(result)
       })
-      .catch((e) => console.warn('[updates] 自动检查更新失败', e))
+      .catch((e) => console.warn('[App.tsx] automatic update check failed', e))
       .finally(() => {
         markAutoUpdateChecked()
         updateCheckInFlightRef.current = false
@@ -328,40 +393,55 @@ function App() {
     setOpenTabs([])
     setActiveTabKey(null)
     clearSelectedFile()
-    if (mode !== 'books') setMode('books')
+    // User-owned surfaces, especially General Project AgentChat, remain usable
+    // without a foreground Book. Only content modes need the Book picker fallback.
+    if (!isSharedWorkspaceMode(mode)) setMode('books')
   }, [clearSelectedFile, mode, setMode, workspace, workspaceLoaded])
 
   useEffect(() => {
+    if (!workspaceLoaded) return
     if (!workspace) return
-    const tabs = readTabsFor(workspace)
-    const storedKey = readActiveTabKeyFor(workspace)
-    const activeKey = storedKey && tabs.some((tab) => tabKey(tab) === storedKey) ? storedKey : (tabs.length > 0 ? tabKey(tabs[0]) : null)
-    tabActivationsRef.current = new Map()
-    tabActivationCounterRef.current = 0
-    for (const tab of tabs) touchTab(tabKey(tab))
-    if (activeKey) touchTab(activeKey)
-    const limited = limitTabs(tabs, activeKey)
-    setOpenTabs(limited)
-    setActiveTabKey(activeKey)
-    if (activeKey) {
-      const target = tabs.find((tab) => tabKey(tab) === activeKey)
-      if (target) {
-        void selectFile(target.path)
-      } else {
-        clearSelectedFile()
+
+    let cancelled = false
+    const restoreWorkspaceView = async () => {
+      const tabs = readTabsFor(workspace)
+      const storedKey = readActiveTabKeyFor(workspace)
+      let activeKey = storedKey && tabs.some((tab) => tabKey(tab) === storedKey) ? storedKey : (tabs.length > 0 ? tabKey(tabs[0]) : null)
+      tabActivationsRef.current = new Map()
+      tabActivationCounterRef.current = 0
+      for (const tab of tabs) touchTab(tabKey(tab))
+      if (activeKey) touchTab(activeKey)
+      let restoredTabs = limitTabs(tabs, activeKey)
+
+      // A file can disappear while the app is closed. Resolve the restored target
+      // before publishing the tab state so a deleted file cannot become a ghost tab.
+      while (activeKey) {
+        const target = restoredTabs.find((tab) => tabKey(tab) === activeKey)
+        if (!target || target.kind === 'lore') break
+        const result = await selectFile(target.path)
+        if (cancelled) return
+        if (result !== 'missing') break
+        restoredTabs = restoredTabs.filter((tab) => tabKey(tab) !== activeKey)
+        activeKey = restoredTabs.length > 0 ? tabKey(restoredTabs[0]) : null
       }
-    } else {
-      clearSelectedFile()
+
+      if (cancelled) return
+      setOpenTabs(restoredTabs)
+      setActiveTabKey(activeKey)
+      const target = activeKey ? restoredTabs.find((tab) => tabKey(tab) === activeKey) : null
+      if (!target || target.kind === 'lore') clearSelectedFile()
     }
-  // 仅在 workspace 变更时触发；selectFile/clearSelectedFile 引用稳定
+    void restoreWorkspaceView()
+    return () => { cancelled = true }
+  // This boundary intentionally follows workspace identity; callbacks remain stable.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspace])
+  }, [workspace, workspaceLoaded])
 
   useEffect(() => {
     try {
       persistTabsFor(workspace, openTabs)
     } catch (e) {
-      console.warn('保存 tab 列表失败', e)
+      console.warn('[App.tsx] failed to persist the tab list', e)
     }
   }, [openTabs, workspace])
 
@@ -384,7 +464,17 @@ function App() {
     setMode(booksReturnModeRef.current)
     refreshAll()
     notifyVersionChange()
+    notifyProjectStructureChange()
   }
+
+  const handleAgentChatBookCreated = useCallback((newPath: string) => {
+    setWorkspace(newPath)
+    void refreshAll().catch((error) => {
+      console.error('[App.tsx] failed to refresh the Book created from Agent Chat', { workspace: newPath, error })
+    })
+    notifyVersionChange()
+    notifyProjectStructureChange()
+  }, [notifyProjectStructureChange, notifyVersionChange, refreshAll, setWorkspace])
 
   const handleQuickWorkspaceSwitch = useCallback(async (newPath: string): Promise<boolean> => {
     if (!newPath || newPath === workspace) return true
@@ -392,19 +482,20 @@ function App() {
     try {
       const result = await switchWorkspace(newPath)
       const nextWorkspace = result.workspace || newPath
-      console.info('[App.tsx] 标题栏切换书籍完成', { from: workspace, to: nextWorkspace })
+      console.info('[App.tsx] title-bar Book switch completed', { from: workspace, to: nextWorkspace })
       setWorkspace(nextWorkspace)
       await refreshAll()
       notifyVersionChange()
+      notifyProjectStructureChange()
       return true
     } catch (error) {
-      console.error('[App.tsx] 标题栏切换书籍失败', { from: workspace, to: newPath, error })
+      console.error('[App.tsx] title-bar Book switch failed', { from: workspace, to: newPath, error })
       toast.error(t('workbench.bookSwitcher.switchError'), {
         description: error instanceof Error ? error.message : String(error),
       })
       return false
     }
-  }, [flushEditorDraft, notifyVersionChange, refreshAll, setWorkspace, t, workspace])
+  }, [flushEditorDraft, notifyProjectStructureChange, notifyVersionChange, refreshAll, setWorkspace, t, workspace])
 
   const handleSaveCurrentFile = useCallback(async (path: string, content: string, baseRevision: string) => {
     const saved = await saveFileDraft(path, content, baseRevision)
@@ -415,14 +506,16 @@ function App() {
   const handleCreateItem = useCallback(async (path: string, type: 'file' | 'dir') => {
     await createItem(path, type)
     notifyVersionChange()
-  }, [createItem, notifyVersionChange])
+    notifyProjectStructureChange()
+  }, [createItem, notifyProjectStructureChange, notifyVersionChange])
 
   const handleDeleteItem = useCallback(async (path: string) => {
     if ((selectedFile === path || selectedFile?.startsWith(`${path}/`)) && !(await flushEditorDraft())) return
     await deleteItem(path)
-    setOpenTabs((prev) => prev.filter((tab) => tab.path !== path && !tab.path.startsWith(`${path}/`)))
+    setOpenTabs((prev) => prev.filter((tab) => tab.kind !== 'file' || (tab.path !== path && !tab.path.startsWith(`${path}/`))))
     notifyVersionChange()
-  }, [deleteItem, flushEditorDraft, notifyVersionChange, selectedFile])
+    notifyProjectStructureChange()
+  }, [deleteItem, flushEditorDraft, notifyProjectStructureChange, notifyVersionChange, selectedFile])
 
   const handleRenameItem = useCallback(async (path: string, newName: string) => {
     if ((selectedFile === path || selectedFile?.startsWith(`${path}/`)) && !(await flushEditorDraft())) return
@@ -430,41 +523,68 @@ function App() {
     const parent = path.replace(/\/[^/]*$/, '')
     const newPath = parent ? `${parent}/${newName}` : newName
     setOpenTabs((prev) => dedupeTabs(prev.map((tab) => {
-      if (tab.path === path) return { kind: 'file', path: newPath }
-      if (tab.path.startsWith(`${path}/`)) return { kind: 'file', path: `${newPath}${tab.path.slice(path.length)}` }
+      if (tab.kind !== 'file') return tab
+      if (tab.path === path) return { ...tab, path: newPath }
+      if (tab.path.startsWith(`${path}/`)) return { ...tab, path: `${newPath}${tab.path.slice(path.length)}` }
       return tab
     })))
     notifyVersionChange()
-  }, [flushEditorDraft, notifyVersionChange, renameItem, selectedFile])
+    notifyProjectStructureChange()
+  }, [flushEditorDraft, notifyProjectStructureChange, notifyVersionChange, renameItem, selectedFile])
 
   const handleCopyItem = useCallback(async (from: string, to: string) => {
     await copyItem(from, to)
     notifyVersionChange()
-  }, [copyItem, notifyVersionChange])
+    notifyProjectStructureChange()
+  }, [copyItem, notifyProjectStructureChange, notifyVersionChange])
 
   const handleMoveItem = useCallback(async (from: string, to: string) => {
     if ((selectedFile === from || selectedFile?.startsWith(`${from}/`)) && !(await flushEditorDraft())) return
     await moveItem(from, to)
     setOpenTabs((prev) => dedupeTabs(prev.map((tab) => {
-      if (tab.path === from) return { kind: 'file', path: to }
-      if (tab.path.startsWith(`${from}/`)) return { kind: 'file', path: `${to}${tab.path.slice(from.length)}` }
+      if (tab.kind !== 'file') return tab
+      if (tab.path === from) return { ...tab, path: to }
+      if (tab.path.startsWith(`${from}/`)) return { ...tab, path: `${to}${tab.path.slice(from.length)}` }
       return tab
     })))
     notifyVersionChange()
-  }, [flushEditorDraft, moveItem, notifyVersionChange, selectedFile])
+    notifyProjectStructureChange()
+  }, [flushEditorDraft, moveItem, notifyProjectStructureChange, notifyVersionChange, selectedFile])
 
   const handleSelectFile = useCallback(async (path: string) => {
-    if (selectedFile !== path && !(await flushEditorDraft())) return false
-    setSelectedChapterId(path)
     const key = `file:${path}`
+    if (selectedFile === path && activeTabKey === key) return true
+    if (selectedFile !== path && !(await flushEditorDraft())) return false
+    if (selectedFile !== path) {
+      const result = await selectFile(path)
+      if (result === 'missing') {
+        setOpenTabs((prev) => prev.filter((tab) => tabKey(tab) !== key))
+      }
+      if (result !== 'selected') return false
+    }
+    setSelectedChapterId(path)
     setOpenTabs((prev) => {
       const next: Tab[] = prev.some((tab) => tabKey(tab) === key) ? prev : [...prev, { kind: 'file', path }]
       return limitTabs(next, key)
     })
     setActiveTabKey(key)
-    await selectFile(path)
     return true
-  }, [flushEditorDraft, limitTabs, selectFile, selectedFile, setSelectedChapterId])
+  }, [activeTabKey, flushEditorDraft, limitTabs, selectFile, selectedFile, setSelectedChapterId])
+
+  const handleOpenLoreTab = useCallback(async () => {
+    const key = tabKey({ kind: 'lore' })
+    if (activeTabKey === key) return true
+    if (!(await flushEditorDraft())) return false
+    setOpenTabs((current) => {
+      const next: Tab[] = current.some((tab) => tab.kind === 'lore')
+        ? current
+        : [...current, { kind: 'lore' }]
+      return limitTabs(next, key)
+    })
+    clearSelectedFile()
+    setActiveTabKey(key)
+    return true
+  }, [activeTabKey, clearSelectedFile, flushEditorDraft, limitTabs])
 
   const handleSelectSearchResult = useCallback(async (result: WorkspaceSearchResult, query: string) => {
     setSettingsOpen(false)
@@ -534,7 +654,7 @@ function App() {
       setCharacterCardError(t('importCard.chooseFileFirst'))
       return
     }
-    if (characterCardTargetMode === 'current' && !workspace) {
+    if (characterCardTargetMode === 'current' && !projectId) {
       setCharacterCardError(t('importCard.noCurrentBookImportNew'))
       return
     }
@@ -543,6 +663,7 @@ function App() {
     try {
       const result = await importCharacterCard(characterCardFile, {
         targetMode: characterCardTargetMode,
+        projectId: characterCardTargetMode === 'current' ? projectId : undefined,
         bookTitle: characterCardTargetMode === 'new_book' ? characterCardBookTitle.trim() : undefined,
         userCharacterName: characterCardPreview?.user_placeholder_found ? characterCardUserName.trim() : undefined,
         loreClassification: characterCardSemanticClassification ? 'semantic' : 'heuristic',
@@ -556,9 +677,14 @@ function App() {
       setMode('interactive')
       useInteractiveStore.getState().setSubmode('lore')
       window.setTimeout(() => {
-        window.dispatchEvent(new CustomEvent('nova:lore-updated', { detail: result }))
+        notifyLoreUpdated({
+          projectId: result.project_id || projectId,
+          ids: result.item_ids,
+          source: 'character-card-import',
+        })
       }, 0)
       notifyVersionChange()
+      notifyProjectStructureChange()
       setCharacterCardDialogOpen(false)
       resetCharacterCardImport()
     } catch (e) {
@@ -568,16 +694,20 @@ function App() {
     } finally {
       setCharacterCardImporting(false)
     }
-  }, [characterCardBookTitle, characterCardFile, characterCardPreview, characterCardSemanticClassification, characterCardTargetMode, characterCardUserName, notifyVersionChange, refresh, refreshAll, resetCharacterCardImport, setMode, t, workspace])
+  }, [characterCardBookTitle, characterCardFile, characterCardPreview, characterCardSemanticClassification, characterCardTargetMode, characterCardUserName, notifyProjectStructureChange, notifyVersionChange, projectId, refresh, refreshAll, resetCharacterCardImport, setMode, t])
 
   const handleActivateTab = useCallback(async (tab: Tab) => {
     const key = tabKey(tab)
+    if (tab.kind === 'lore') {
+      await handleOpenLoreTab()
+      return
+    }
     if (selectedFile === tab.path) {
       setActiveTabKey(key)
       return
     }
     await handleSelectFile(tab.path)
-  }, [handleSelectFile, selectedFile])
+  }, [handleOpenLoreTab, handleSelectFile, selectedFile])
 
   const handleCloseTab = useCallback(async (tab: Tab) => {
     const key = tabKey(tab)
@@ -596,13 +726,21 @@ function App() {
     await handleActivateTab(fallback)
   }, [activeTabKey, clearSelectedFile, flushEditorDraft, handleActivateTab, openTabs])
 
+  const handleToggleTabPin = useCallback((tab: Tab) => {
+    setOpenTabs((current) => setTabPinned(current, tabKey(tab), !tab.pinned))
+  }, [])
+
+  const handleMoveTab = useCallback((sourceKey: string, targetKey: string) => {
+    setOpenTabs((current) => reorderTabs(current, sourceKey, targetKey))
+  }, [])
+
   const triggerSave = useCallback(() => setSaveSignal((value) => value + 1), [])
   const continueWriting = useCallback(() => {
-    if (!isStreaming) send('/continue')
-  }, [isStreaming, send])
+    if (!isStreaming) send(t('command.continueWritingPrompt'))
+  }, [isStreaming, send, t])
 
   const handleSetMode = useCallback((nextMode: WorkspaceMode) => {
-    if (nextMode === 'books' || nextMode === 'skills' || nextMode === 'agents' || nextMode === 'automations') {
+    if (isSharedWorkspaceMode(nextMode)) {
       const returnMode = mode === 'ide' || mode === 'interactive' ? mode : booksReturnModeRef.current
       booksReturnModeRef.current = returnMode
       setBooksReturnMode(returnMode)
@@ -613,6 +751,9 @@ function App() {
     setSettingsOpen(false)
     setMode(nextMode)
   }, [mode, setMode])
+  useEffect(() => {
+    if (developerMode === false && mode === 'trajectory') handleSetMode(booksReturnModeRef.current)
+  }, [developerMode, handleSetMode, mode])
   const handleSetRightPanel = useCallback((panel: RightPanel) => {
     setSettingsOpen(false)
     if (isIdeWorkspacePanel(panel)) {
@@ -636,9 +777,10 @@ function App() {
   }, [handleSetRightPanel, mode, setMode])
 
   const handleSetChapterConfirmed = useCallback(async (path: string, confirmed: boolean) => {
-    await setChapterConfirmed(path, confirmed)
+    if (!projectId) return
+    await setProjectChapterConfirmed(projectId, path, confirmed)
     await refreshSummary({ showLoading: false, clearOnError: false })
-  }, [refreshSummary])
+  }, [projectId, refreshSummary])
 
   const handleOpenGlobalSearch = useCallback(() => {
     setSettingsOpen(false)
@@ -740,15 +882,23 @@ function App() {
         booksReturnMode={booksReturnMode}
         currentBookName={currentBookName}
         workspace={workspace}
+        projectId={projectId}
         appVersion={APP_VERSION}
         summary={summary}
         currentChapter={currentChapter}
         chapterStats={chapterStats}
         isStreaming={isStreaming}
+        sessionTransitionPending={sessionTransitionPending}
+        isExecutionActive={isExecutionActive}
+        runtimeProjection={runtimeProjection}
+        abortPending={abortPending}
+        commandSubmitting={commandSubmitting}
+        queueActionPendingCommandID={queueActionPendingCommandID}
         projectVisible={projectVisible}
         activityBarExpanded={activityBarExpanded}
         rightPanel={rightPanel}
         settingsOpen={settingsOpen}
+        developerMode={developerMode === true}
         interactiveRightVisible={interactiveRightVisible}
         novaDir={novaDir}
         books={books}
@@ -765,6 +915,7 @@ function App() {
         saveSignal={saveSignal}
         editorAutoSaveEnabled={editorAutoSaveEnabled}
         editorAutoSaveDelayMs={editorAutoSaveDelayMs}
+        projectExplorerRefreshSignal={projectExplorerRefreshSignal}
         versionRefreshSignal={versionRefreshSignal}
         messages={messages}
         sessions={sessions}
@@ -779,18 +930,19 @@ function App() {
         hasEarlierMessages={hasEarlierMessages}
         isLoadingEarlierHistory={isLoadingEarlierHistory}
         onSetMode={handleSetMode}
-        onToggleActivityBarExpanded={() => setActivityBarExpanded((value) => !value)}
-        onToggleProjectVisible={() => setProjectVisible((value) => !value)}
+        onToggleActivityBarExpanded={toggleActivityBarExpanded}
+        onToggleProjectVisible={toggleProjectVisible}
         onSetRightPanel={handleSetRightPanel}
-        onToggleSettings={() => setSettingsOpen((open) => !open)}
-        onCloseSettings={() => setSettingsOpen(false)}
+        onToggleSettings={toggleSettings}
+        onCloseSettings={closeSettings}
         notice={notice}
         onDismissNotice={dismissNotice}
-        onToggleInteractiveRightPanel={() => setInteractiveRightVisible((value) => !value)}
+        onToggleInteractiveRightPanel={toggleInteractiveRightPanel}
         onSwitchBook={handleWorkspaceSwitch}
         onQuickSwitchBook={handleQuickWorkspaceSwitch}
         onBeforeWorkspaceSwitch={flushEditorDraft}
         onBooksChange={refreshBooks}
+        onAgentChatBookCreated={handleAgentChatBookCreated}
         onOpenCharacterCardImport={handleOpenCharacterCardImportFromBooks}
         onSetSidebarView={setSidebarView}
         onSelectSearchResult={handleSelectSearchResult}
@@ -802,8 +954,12 @@ function App() {
         onRenameItem={handleRenameItem}
         onCopyItem={handleCopyItem}
         onMoveItem={handleMoveItem}
+        onRefreshWorkspace={refresh}
         onActivateTab={handleActivateTab}
         onCloseTab={handleCloseTab}
+        onToggleTabPin={handleToggleTabPin}
+        onMoveTab={handleMoveTab}
+        onOpenLoreTab={handleOpenLoreTab}
         onSaveCurrentFile={handleSaveCurrentFile}
         onEditorFlushHandlerChange={handleEditorFlushHandlerChange}
         onWorkspaceChanged={handleReviewedWorkspaceChange}
@@ -813,9 +969,13 @@ function App() {
         onRenameChatSession={renameChatSession}
         onDeleteChatSession={deleteChatSession}
         onLoadEarlierHistory={loadEarlierHistory}
+        onRefreshChatHistory={loadHistory}
         onSend={send}
         onAnalyzeContext={analyzeContext}
         onStop={stop}
+        onSteerQueuedCommand={steerQueuedCommand}
+        onDeleteQueuedCommand={deleteQueuedCommand}
+        onEditQueuedCommand={editQueuedCommand}
         onReferenceRemove={removeReference}
         onLoreReferenceAdd={addLoreReference}
         onLoreReferenceRemove={removeLoreReference}
@@ -824,7 +984,6 @@ function App() {
         onTextSelectionRemove={removeTextSelection}
         onChatPlanModeChange={handleChatPlanModeChange}
         onChatPlanModeToggle={handleChatPlanModeToggle}
-        onSubmitPlanQuestion={submitPlanQuestion}
         onApproveProposedPlan={approveProposedPlan}
         onExitChatPlanMode={exitPlanMode}
       />
@@ -871,7 +1030,6 @@ function App() {
         onSemanticClassificationChange={setCharacterCardSemanticClassification}
         onImport={handleCharacterCardImport}
       />
-      <RemoteAccessLogin />
       <OnboardingGuide
         mode={mode}
         rightPanel={rightPanel}
@@ -883,6 +1041,7 @@ function App() {
         isStreaming={isStreaming}
         onNavigate={handleOnboardingNavigate}
       />
+      <RemoteAccessLogin />
     </NovaMotionProvider>
   )
 }

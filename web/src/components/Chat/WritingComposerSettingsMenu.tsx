@@ -2,6 +2,7 @@ import { SlidersHorizontal, Sparkles } from 'lucide-react'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { ImagePreset, Teller } from '@/features/interactive/types'
+import { narrativeStyleName, narrativeStylesForMode, resolveNarrativeStyle } from '@/features/interactive/narrative-style'
 import { BUILTIN_WRITING_SKILLS, DEFAULT_WRITING_SKILL, type WritingSkillOption } from '@/hooks/useWritingSkillOptions'
 import { PersistedSettingsMenuSub } from './PersistedSettingsMenuSub'
 
@@ -9,42 +10,69 @@ interface WritingComposerSettingsMenuProps {
   enabled: boolean
   tellers: Teller[]
   tellerID: string
-  imagePresets: ImagePreset[]
-  imagePresetID: string
   writingSkills: WritingSkillOption[]
   writingSkill: string
   savingTeller?: boolean
-  savingImagePreset?: boolean
   savingWritingSkill?: boolean
   onTellerChange: (value: string) => void | Promise<unknown>
-  onImagePresetChange: (value: string) => void | Promise<unknown>
   onWritingSkillChange: (value: string) => void | Promise<unknown>
 }
 
-/** Writing-specific menu composed from the generic persisted-setting submenu. */
-export function WritingComposerSettingsMenu({
+interface WritingImagePresetMenuProps {
+  enabled: boolean
+  imagePresets: ImagePreset[]
+  imagePresetID: string
+  saving?: boolean
+  onChange: (value: string) => void | Promise<unknown>
+}
+
+/** Writing-mode image preset control, nested with the shared image generation options. */
+export function WritingImagePresetMenu({
   enabled,
-  tellers,
-  tellerID,
   imagePresets,
   imagePresetID,
-  writingSkills,
-  writingSkill,
-  savingTeller,
-  savingImagePreset,
-  savingWritingSkill,
-  onTellerChange,
-  onImagePresetChange,
-  onWritingSkillChange,
-}: WritingComposerSettingsMenuProps) {
+  saving,
+  onChange,
+}: WritingImagePresetMenuProps) {
   const { t } = useTranslation()
-  const selectedTeller = tellers.find((item) => item.id === tellerID) ?? tellers.find((item) => item.id === 'classic') ?? tellers[0]
   const normalizedPresets = useMemo(() => (
     imagePresets.some((preset) => preset.id === imagePresetID)
       ? imagePresets
       : [{ id: imagePresetID || 'game-cg', name: imagePresetID || 'game-cg', description: '', prompt: '', custom: true, version: 1 }, ...imagePresets]
   ), [imagePresetID, imagePresets])
-  const selectedPreset = normalizedPresets.find((item) => item.id === imagePresetID) ?? normalizedPresets.find((item) => item.id === 'game-cg') ?? normalizedPresets[0]
+  const selectedPreset = normalizedPresets.find((item) => item.id === imagePresetID)
+    ?? normalizedPresets.find((item) => item.id === 'game-cg')
+    ?? normalizedPresets[0]
+
+  return (
+    <PersistedSettingsMenuSub
+      icon={Sparkles}
+      label={t('chat.imagePreset')}
+      currentLabel={selectedPreset?.name || imagePresetID}
+      value={selectedPreset?.id || imagePresetID}
+      options={normalizedPresets.map((item) => ({ id: item.id, label: item.name || item.id }))}
+      saving={saving}
+      disabled={!enabled}
+      onValueChange={onChange}
+    />
+  )
+}
+
+/** Non-image Writing options composed from the generic persisted-setting submenu. */
+export function WritingComposerSettingsMenu({
+  enabled,
+  tellers,
+  tellerID,
+  writingSkills,
+  writingSkill,
+  savingTeller,
+  savingWritingSkill,
+  onTellerChange,
+  onWritingSkillChange,
+}: WritingComposerSettingsMenuProps) {
+  const { t } = useTranslation()
+  const writingTellers = useMemo(() => narrativeStylesForMode(tellers, 'writing'), [tellers])
+  const selectedTeller = resolveNarrativeStyle(writingTellers, tellerID, 'writing')
   const normalizedSkills = useMemo(() => (
     writingSkills.some((option) => option.name === writingSkill)
       ? writingSkills
@@ -57,14 +85,13 @@ export function WritingComposerSettingsMenu({
 
   return (
     <>
-      {tellers.length > 0 ? (
+      {writingTellers.length > 0 ? (
         <PersistedSettingsMenuSub
           icon={SlidersHorizontal}
           label={t('chat.teller')}
-          title={t('chat.tellerTitle')}
-          currentLabel={selectedTeller?.name || tellerID}
+          currentLabel={selectedTeller ? narrativeStyleName(selectedTeller, t) : tellerID}
           value={selectedTeller?.id || tellerID}
-          options={tellers.map((item) => ({ id: item.id, label: item.name }))}
+          options={writingTellers.map((item) => ({ id: item.id, label: narrativeStyleName(item, t) }))}
           saving={savingTeller}
           disabled={!enabled}
           onValueChange={onTellerChange}
@@ -72,19 +99,7 @@ export function WritingComposerSettingsMenu({
       ) : null}
       <PersistedSettingsMenuSub
         icon={Sparkles}
-        label={t('chat.imagePreset')}
-        title={t('chat.imagePresetTitle')}
-        currentLabel={selectedPreset?.name || imagePresetID}
-        value={selectedPreset?.id || imagePresetID}
-        options={normalizedPresets.map((item) => ({ id: item.id, label: item.name || item.id }))}
-        saving={savingImagePreset}
-        disabled={!enabled}
-        onValueChange={onImagePresetChange}
-      />
-      <PersistedSettingsMenuSub
-        icon={Sparkles}
         label={t('chat.writingSkill')}
-        title={selectedSkill?.path || t('chat.writingSkillTitle')}
         currentLabel={skillLabel}
         value={selectedSkill?.name || writingSkill}
         options={normalizedSkills.map((option) => ({
@@ -112,8 +127,6 @@ function writingSkillLabel(name: string, t: ReturnType<typeof useTranslation>['t
       return t('chat.writingSkill.preset.lite')
     case 'novel-standard':
       return t('chat.writingSkill.preset.standard')
-    case 'novel-heavy':
-      return t('chat.writingSkill.preset.heavy')
     default:
       return name
   }

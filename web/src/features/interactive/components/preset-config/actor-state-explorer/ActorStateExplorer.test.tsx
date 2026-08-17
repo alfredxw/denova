@@ -52,7 +52,7 @@ describe('ActorStateExplorer', () => {
 
 		await waitFor(() => expect(onValidityChange).toHaveBeenLastCalledWith(false))
 		const fieldItem = screen.getByRole('treeitem', { name: '当前精神/意志状态' })
-		await user.click(within(fieldItem).getByTitle(/^当前精神\/意志状态/))
+		await user.click(within(fieldItem).getByRole('button', { name: /^当前精神\/意志状态/ }))
 		const input = await screen.findByDisplayValue('当前精神/意志状态')
 		expect(input).toHaveAttribute('aria-invalid', 'true')
 		expect(screen.getByRole('alert')).toHaveTextContent(/路径分隔符.*\/|path separator.*\//i)
@@ -131,11 +131,11 @@ describe('ActorStateExplorer', () => {
     )
 
     const healthItem = screen.getByRole('treeitem', { name: 'Health' })
-    await user.click(within(healthItem).getByTitle(/^Health/))
+    await user.click(within(healthItem).getByRole('button', { name: /^Health/ }))
     expect(await screen.findByDisplayValue('Health')).toBeInTheDocument()
 
     const manaItem = screen.getByRole('treeitem', { name: 'Mana' })
-    fireEvent.click(within(manaItem).getByTitle(/^Mana/))
+    fireEvent.click(within(manaItem).getByRole('button', { name: /^Mana/ }))
     expect(screen.getByDisplayValue('Mana')).toBeInTheDocument()
     expect(screen.queryByDisplayValue('Health')).not.toBeInTheDocument()
   })
@@ -192,7 +192,7 @@ describe('ActorStateExplorer', () => {
     )
 
     const secondaryItem = screen.getByRole('treeitem', { name: 'Secondary' })
-    await user.click(within(secondaryItem).getByTitle(/^Secondary/))
+    await user.click(within(secondaryItem).getByRole('button', { name: /^Secondary/ }))
     const idInput = await screen.findByDisplayValue('secondary')
     await user.click(idInput)
     fireEvent.change(idInput, { target: { value: 'renamed' } })
@@ -223,7 +223,7 @@ describe('ActorStateExplorer', () => {
     const actorGroup = screen.getByRole('treeitem', { name: /初始状态对象|Initial State Objects/ })
     expect(actorGroup).toHaveAttribute('aria-expanded', 'true')
     const actorItem = screen.getByRole('treeitem', { name: 'Actor B' })
-    await user.click(within(actorItem).getByTitle(/^Actor B/))
+    await user.click(within(actorItem).getByRole('button', { name: /^Actor B/ }))
     fireEvent.change(await screen.findByDisplayValue('actor-b'), { target: { value: 'actor-renamed' } })
     expect(screen.getByDisplayValue('actor-renamed')).toBeInTheDocument()
     expect(screen.getByRole('treeitem', { name: 'Actor B' })).toHaveAttribute('aria-selected', 'true')
@@ -248,7 +248,7 @@ describe('ActorStateExplorer', () => {
     )
 
     const fieldItem = screen.getByRole('treeitem', { name: '当前处境' })
-    await user.click(within(fieldItem).getByTitle(/^当前处境/))
+    await user.click(within(fieldItem).getByRole('button', { name: /^当前处境/ }))
 
     const groupInput = await screen.findByPlaceholderText(/留空自动分组|auto grouping/i)
     await user.type(groupInput, '战斗')
@@ -292,13 +292,13 @@ describe('ActorStateExplorer', () => {
 
     const fieldItem = screen.getByRole('treeitem', { name: '当前处境' })
     expect(within(fieldItem).queryByText(/^隐藏$|^Hidden$/)).not.toBeInTheDocument()
-    await user.click(within(fieldItem).getByTitle(/^当前处境/))
+    await user.click(within(fieldItem).getByRole('button', { name: /^当前处境/ }))
     expect(screen.queryByText(/^可见性$|^Visibility$/)).not.toBeInTheDocument()
     expect(screen.queryByText(/^隐藏$|^Hidden$/)).not.toBeInTheDocument()
 
     const traitItem = screen.getByRole('treeitem', { name: '游侠' })
     expect(within(traitItem).queryByText(/^剧透$|^Spoiler$/)).not.toBeInTheDocument()
-    await user.click(within(traitItem).getByTitle(/^游侠/))
+    await user.click(within(traitItem).getByRole('button', { name: /^游侠/ }))
     expect(screen.queryByText(/^可见性$|^Visibility$/)).not.toBeInTheDocument()
     expect(screen.queryByText(/^剧透$|^Spoiler$/)).not.toBeInTheDocument()
   })
@@ -348,7 +348,7 @@ describe('ActorStateExplorer', () => {
     )
 
     const panelItem = screen.getByRole('treeitem', { name: '面板' })
-    await user.click(within(panelItem).getByTitle(/^面板/))
+    await user.click(within(panelItem).getByRole('button', { name: /^面板/ }))
 
     const expectedJSON = JSON.stringify(panelDefault, null, 2)
     const jsonEditor = screen.getAllByRole('textbox').find((element) => (
@@ -378,7 +378,7 @@ describe('ActorStateExplorer', () => {
     )
 
     let poolItem = screen.getByRole('treeitem', { name: 'Pool B' })
-    await user.click(within(poolItem).getByTitle(/^Pool B/))
+    await user.click(within(poolItem).getByRole('button', { name: /^Pool B/ }))
     fireEvent.change(await screen.findByDisplayValue('pool-b'), { target: { value: 'pool-renamed' } })
     expect(screen.getByDisplayValue('pool-renamed')).toBeInTheDocument()
     poolItem = screen.getByRole('treeitem', { name: 'Pool B' })
@@ -389,7 +389,7 @@ describe('ActorStateExplorer', () => {
 
     const traitItem = screen.getByRole('treeitem', { name: 'Trait B' })
     expect(within(traitItem).queryByText(/可见|Visible/)).not.toBeInTheDocument()
-    await user.click(within(traitItem).getByTitle(/^Trait B/))
+    await user.click(within(traitItem).getByRole('button', { name: /^Trait B/ }))
     fireEvent.change(await screen.findByDisplayValue('trait-b'), { target: { value: 'trait-renamed' } })
     expect(screen.getByDisplayValue('trait-renamed')).toBeInTheDocument()
     expect(screen.getByRole('treeitem', { name: 'Trait B' })).toHaveAttribute('aria-selected', 'true')

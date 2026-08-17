@@ -1,16 +1,19 @@
 package versions
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"unicode/utf8"
 
-	"denova/internal/workspacepath"
+	workspacelayout "denova/internal/workspace"
+
+	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/filemode"
+	gitstorer "github.com/go-git/go-git/v5/plumbing/storer"
 )
 
 // WorkspaceFileSet defines which workspace files are visible to versioning.
@@ -19,18 +22,29 @@ type WorkspaceFileSet struct {
 }
 
 func (s *Service) collectVisibleFiles() ([]versionFileData, error) {
-	return WorkspaceFileSet{root: s.workspace}.Collect()
+	snapshot, err := s.collectWorkspaceSnapshot(nil)
+	return snapshot.files, err
 }
 
 func (w WorkspaceFileSet) Collect() ([]versionFileData, error) {
-	return collectVersionFiles(w.root, w.root)
+	snapshot, err := collectVersionFiles(w.root, w.root, nil)
+	return snapshot.files, err
 }
 
-func collectVersionFiles(root, base string) ([]versionFileData, error) {
+// collectWorkspaceSnapshot optionally persists each observed file as a Git
+// blob while its bytes are already in memory. Create uses this path so the
+// committed tree is exactly the collected snapshot without a second read.
+func (s *Service) collectWorkspaceSnapshot(store gitstorer.EncodedObjectStorer) (workspaceSnapshot, error) {
+	return collectVersionFiles(s.workspace, s.workspace, store)
+}
+
+func collectVersionFiles(root, base string, store gitstorer.EncodedObjectStorer) (workspaceSnapshot, error) {
 	files := []versionFileData{}
+	byPath := map[string]versionFileData{}
+	var totalBytes int64
 	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
-			return nil
+			return fmt.Errorf("walk version path %q: %w", path, walkErr)
 		}
 		if path == root {
 			return nil
@@ -50,29 +64,68 @@ func collectVersionFiles(root, base string) ([]versionFileData, error) {
 			return nil
 		}
 		info, err := entry.Info()
-		if err != nil || info.Mode()&os.ModeSymlink != 0 {
+		if err != nil {
+			return fmt.Errorf("inspect version file %q: %w", path, err)
+		}
+		if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
 			return nil
 		}
 		data, err := os.ReadFile(path)
 		if err != nil {
-			return nil
+			return fmt.Errorf("read version file %q: %w", path, err)
 		}
-		state := versionFileStateFromBytes(data)
-		files = append(files, versionFileData{
-			Path:  filepath.ToSlash(rel),
-			Abs:   path,
-			Hash:  state.Hash,
-			Size:  info.Size(),
-			Chars: state.Chars,
-			Text:  state.Text,
-		})
+		var hash plumbing.Hash
+		if store != nil {
+			hash, err = storeGitBlob(store, data)
+			if err != nil {
+				return err
+			}
+		} else {
+			hash = plumbing.ComputeHash(plumbing.BlobObject, data)
+		}
+		state := versionFileStateFromBytes(data, hash)
+		mode, err := filemode.NewFromOSFileMode(info.Mode())
+		if err != nil {
+			return fmt.Errorf("map version file mode %q: %w", path, err)
+		}
+		file := versionFileData{
+			Path:       filepath.ToSlash(rel),
+			Abs:        path,
+			Hash:       state.Hash,
+			Size:       info.Size(),
+			Chars:      state.Chars,
+			Text:       state.Text,
+			Mode:       mode,
+			ModifiedAt: info.ModTime(),
+		}
+		files = append(files, file)
+		byPath[file.Path] = file
+		totalBytes += file.Size
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return workspaceSnapshot{}, err
 	}
 	sort.SliceStable(files, func(i, j int) bool { return files[i].Path < files[j].Path })
-	return files, nil
+	return workspaceSnapshot{files: files, byPath: byPath, totalBytes: totalBytes}, nil
+}
+
+func storeGitBlob(store gitstorer.EncodedObjectStorer, data []byte) (plumbing.Hash, error) {
+	object := store.NewEncodedObject()
+	object.SetType(plumbing.BlobObject)
+	object.SetSize(int64(len(data)))
+	writer, err := object.Writer()
+	if err != nil {
+		return plumbing.ZeroHash, err
+	}
+	if _, err := writer.Write(data); err != nil {
+		_ = writer.Close()
+		return plumbing.ZeroHash, err
+	}
+	if err := writer.Close(); err != nil {
+		return plumbing.ZeroHash, err
+	}
+	return store.SetEncodedObject(object)
 }
 
 type versionFileState struct {
@@ -82,15 +135,14 @@ type versionFileState struct {
 	Text  bool
 }
 
-func versionFileStateFromBytes(data []byte) versionFileState {
-	hashBytes := sha256.Sum256(data)
+func versionFileStateFromBytes(data []byte, hash plumbing.Hash) versionFileState {
 	text := isTextBytes(data)
 	chars := 0
 	if text {
 		chars = utf8.RuneCount(data)
 	}
 	return versionFileState{
-		Hash:  hex.EncodeToString(hashBytes[:]),
+		Hash:  hash.String(),
 		Size:  int64(len(data)),
 		Chars: chars,
 		Text:  text,
@@ -115,26 +167,26 @@ func isTextBytes(data []byte) bool {
 func isVersionExcludedRelPath(relPath string) bool {
 	cleanRel := filepath.ToSlash(filepath.Clean(filepath.FromSlash(relPath)))
 	return cleanRel == ".git" || strings.HasPrefix(cleanRel, ".git/") ||
-		cleanRel == workspacepath.CurrentRel("runs") || strings.HasPrefix(cleanRel, workspacepath.CurrentRel("runs")+"/") ||
-		cleanRel == workspacepath.LegacyRel("runs") || strings.HasPrefix(cleanRel, workspacepath.LegacyRel("runs")+"/") ||
-		cleanRel == workspacepath.CurrentRel("changes") || strings.HasPrefix(cleanRel, workspacepath.CurrentRel("changes")+"/") ||
-		cleanRel == workspacepath.LegacyRel("changes") || strings.HasPrefix(cleanRel, workspacepath.LegacyRel("changes")+"/") ||
-		cleanRel == workspacepath.CurrentRel("reviews") || strings.HasPrefix(cleanRel, workspacepath.CurrentRel("reviews")+"/") ||
-		cleanRel == workspacepath.LegacyRel("reviews") || strings.HasPrefix(cleanRel, workspacepath.LegacyRel("reviews")+"/") ||
-		cleanRel == workspacepath.CurrentRel("interactive") || strings.HasPrefix(cleanRel, workspacepath.CurrentRel("interactive")+"/") ||
-		cleanRel == workspacepath.LegacyRel("interactive") || strings.HasPrefix(cleanRel, workspacepath.LegacyRel("interactive")+"/")
+		cleanRel == workspacelayout.CurrentRel("runs") || strings.HasPrefix(cleanRel, workspacelayout.CurrentRel("runs")+"/") ||
+		cleanRel == workspacelayout.LegacyRel("runs") || strings.HasPrefix(cleanRel, workspacelayout.LegacyRel("runs")+"/") ||
+		cleanRel == workspacelayout.CurrentRel("changes") || strings.HasPrefix(cleanRel, workspacelayout.CurrentRel("changes")+"/") ||
+		cleanRel == workspacelayout.LegacyRel("changes") || strings.HasPrefix(cleanRel, workspacelayout.LegacyRel("changes")+"/") ||
+		cleanRel == workspacelayout.CurrentRel("reviews") || strings.HasPrefix(cleanRel, workspacelayout.CurrentRel("reviews")+"/") ||
+		cleanRel == workspacelayout.LegacyRel("reviews") || strings.HasPrefix(cleanRel, workspacelayout.LegacyRel("reviews")+"/") ||
+		cleanRel == workspacelayout.CurrentRel("interactive") || strings.HasPrefix(cleanRel, workspacelayout.CurrentRel("interactive")+"/") ||
+		cleanRel == workspacelayout.LegacyRel("interactive") || strings.HasPrefix(cleanRel, workspacelayout.LegacyRel("interactive")+"/")
 }
 
 func versionProtectedExcludedDirs() []string {
 	return []string{
-		workspacepath.CurrentRel("runs"),
-		workspacepath.LegacyRel("runs"),
-		workspacepath.CurrentRel("changes"),
-		workspacepath.LegacyRel("changes"),
-		workspacepath.CurrentRel("reviews"),
-		workspacepath.LegacyRel("reviews"),
-		workspacepath.CurrentRel("interactive"),
-		workspacepath.LegacyRel("interactive"),
+		workspacelayout.CurrentRel("runs"),
+		workspacelayout.LegacyRel("runs"),
+		workspacelayout.CurrentRel("changes"),
+		workspacelayout.LegacyRel("changes"),
+		workspacelayout.CurrentRel("reviews"),
+		workspacelayout.LegacyRel("reviews"),
+		workspacelayout.CurrentRel("interactive"),
+		workspacelayout.LegacyRel("interactive"),
 	}
 }
 

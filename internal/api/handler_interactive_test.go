@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	agentinteractive "denova/internal/agents/interactive"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -11,9 +12,9 @@ import (
 	"time"
 
 	"denova/config"
-	"denova/internal/agent"
 	"denova/internal/book"
 	"denova/internal/interactive"
+	"denova/internal/interactive/director"
 )
 
 func TestInteractiveStoriesAndTellersAPI(t *testing.T) {
@@ -65,7 +66,7 @@ func TestInteractiveStoriesAndTellersAPI(t *testing.T) {
 	if snapshot.StoryID != created.ID || snapshot.BranchID != "main" || len(snapshot.Turns) != 0 {
 		t.Fatalf("snapshot mismatch: %#v", snapshot)
 	}
-	if snapshot.DirectorPlanStatus == nil || snapshot.DirectorPlanStatus.Status != interactive.DirectorPlanStatusWaitingOpening || snapshot.DirectorPlanStatus.Blocking {
+	if snapshot.DirectorPlanStatus == nil || snapshot.DirectorPlanStatus.Status != director.PlanStatusWaitingOpening || snapshot.DirectorPlanStatus.Blocking {
 		t.Fatalf("new story snapshot should expose waiting director status without blocking: %#v", snapshot.DirectorPlanStatus)
 	}
 	var rawSnapshot map[string]json.RawMessage
@@ -116,12 +117,13 @@ func TestInteractiveStoriesAndTellersAPI(t *testing.T) {
 		t.Fatalf("list tellers status = %d body=%s", tellersResp.Code, tellersResp.Body.String())
 	}
 	var tellersBody struct {
-		Tellers []struct {
+		DefaultID string `json:"default_id"`
+		Tellers   []struct {
 			ID string `json:"id"`
 		} `json:"tellers"`
 	}
 	decodeResponse(t, tellersResp.Body.Bytes(), &tellersBody)
-	if len(tellersBody.Tellers) < 3 {
+	if tellersBody.DefaultID != "rhythm" || len(tellersBody.Tellers) != 5 {
 		t.Fatalf("expected built-in tellers: %#v", tellersBody.Tellers)
 	}
 
@@ -180,12 +182,78 @@ func TestInteractiveStorySelectionAPIUpdatesWorkspaceCurrentStory(t *testing.T) 
 
 func TestInteractiveDirectorAPI(t *testing.T) {
 	application := newTestApplication(t)
+	directorFixture, err := application.ResourceCatalog().CreateStoryDirector(interactive.StoryDirector{
+		ID:   "director-api-fixture",
+		Name: "导演 API 测试",
+		ModuleRefs: interactive.StoryDirectorModuleRefs{
+			NarrativeStyleDisabled: true,
+			EventPackagesDisabled:  true,
+			RuleSystemDisabled:     true,
+			ActorStateDisabled:     true,
+			ImagePresetDisabled:    true,
+		},
+		Strategy: interactive.StoryDirectorStrategy{
+			Enabled:             true,
+			BranchPlanningTurns: 1,
+			PlanningTemplates: interactive.StoryDirectorPlanningTemplates{
+				Plan: `# 导演私密规划
+
+## 阶段目标与隐藏钩子
+测试。
+## 资料库锚点
+测试。
+## 选角覆盖
+测试。
+## 核心角色与关系张力
+测试。
+## 重要势力与阶段阻力
+测试。
+## 当前场景幕后信息
+测试。
+## 信息揭示与线索密度
+测试。
+## 遭遇、检定与代价
+测试。
+## 爽点、危机与反转
+测试。
+## 状态连续性
+测试。
+## 最近分支安排
+测试。
+## 伏笔与回收
+测试。`,
+				AgentBrief: `# 正文 Agent 简报
+
+## 当前目标与可见钩子
+测试。
+## 当前场景与行动空间
+测试。
+## 当前角色与可见关系
+测试。
+## 已公开信息与可发现线索
+测试。
+## 遭遇、检定与可见代价
+测试。
+## 状态连续性
+测试。
+## 最近分支承接
+测试。`,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create Director API fixture: %v", err)
+	}
 	server := NewServer(application, "0")
 
-	createResp := performJSONRequest(t, server, http.MethodPost, "/api/interactive/stories", map[string]string{
-		"title":           "导演接口",
-		"origin":          "主角准备参加学院大比",
-		"story_teller_id": "classic",
+	createResp := performJSONRequest(t, server, http.MethodPost, "/api/interactive/stories", map[string]any{
+		"title":             "导演接口",
+		"origin":            "主角准备参加学院大比",
+		"story_teller_id":   "classic",
+		"story_director_id": directorFixture.ID,
+		"state_schema_policy": map[string]string{
+			"mode": interactive.StoryStateSchemaModeFixedTemplate,
+		},
 	})
 	if createResp.Code != http.StatusOK {
 		t.Fatalf("create story status = %d body=%s", createResp.Code, createResp.Body.String())
@@ -201,7 +269,7 @@ func TestInteractiveDirectorAPI(t *testing.T) {
 	}
 	var status interactive.DirectorPlanStatus
 	decodeResponse(t, statusResp.Body.Bytes(), &status)
-	if status.Status != interactive.DirectorPlanStatusWaitingOpening || status.Blocking || status.StartReady || status.CompletedDocs != 0 || status.PlannedDocs != 3 {
+	if status.Status != director.PlanStatusWaitingOpening || status.Blocking || status.StartReady || status.CompletedDocs != 0 || status.PlannedDocs != 3 {
 		t.Fatalf("initial director status mismatch: %#v", status)
 	}
 
@@ -222,48 +290,45 @@ func TestInteractiveDirectorAPI(t *testing.T) {
 			} `json:"last_run"`
 		} `json:"metadata"`
 	}
-	var director directorResponse
-	decodeResponse(t, getResp.Body.Bytes(), &director)
-	if director.Metadata.LastRun.Status != interactive.DirectorPlanStatusWaitingOpening || !strings.Contains(director.Docs.Plan, "阶段目标与隐藏钩子") || !strings.Contains(director.Docs.AgentBrief, "当前目标与可见钩子") {
-		t.Fatalf("default director plan mismatch: %#v", director)
+	var response directorResponse
+	decodeResponse(t, getResp.Body.Bytes(), &response)
+	if response.Metadata.LastRun.Status != director.PlanStatusWaitingOpening || !strings.Contains(response.Docs.Plan, "阶段目标与隐藏钩子") || !strings.Contains(response.Docs.AgentBrief, "当前目标与可见钩子") {
+		t.Fatalf("default director plan mismatch: %#v", response)
 	}
 
-	nextDocs := director.Docs
+	nextDocs := response.Docs
 	nextDocs.Plan += "\n\n手动设置主线：学院逆袭主线。"
 	patchResp := performJSONRequest(t, server, http.MethodPatch, "/api/interactive/stories/"+created.ID+"/director", map[string]any{
 		"docs":          nextDocs,
-		"base_revision": director.Metadata.Revision,
+		"base_revision": response.Metadata.Revision,
 		"summary":       "手动设置主线",
 	})
 	if patchResp.Code != http.StatusOK {
 		t.Fatalf("patch director status = %d body=%s", patchResp.Code, patchResp.Body.String())
 	}
-	decodeResponse(t, patchResp.Body.Bytes(), &director)
-	if !strings.Contains(director.Docs.Plan, "学院逆袭主线") || director.Metadata.LastRun.Status != "ready" {
-		t.Fatalf("director plan patch mismatch: %#v", director)
+	decodeResponse(t, patchResp.Body.Bytes(), &response)
+	if !strings.Contains(response.Docs.Plan, "学院逆袭主线") || response.Metadata.LastRun.Status != "ready" {
+		t.Fatalf("director plan patch mismatch: %#v", response)
 	}
 
 	rebuildResp := performJSONRequest(t, server, http.MethodPost, "/api/interactive/stories/"+created.ID+"/director/rebuild", nil)
 	if rebuildResp.Code != http.StatusOK {
 		t.Fatalf("rebuild director status = %d body=%s", rebuildResp.Code, rebuildResp.Body.String())
 	}
-	director = directorResponse{}
-	decodeResponse(t, rebuildResp.Body.Bytes(), &director)
-	if !strings.Contains(director.Docs.Plan, "阶段目标与隐藏钩子") || !strings.Contains(director.Docs.AgentBrief, "当前目标与可见钩子") || director.Metadata.LastRun.Status != "ready" {
-		t.Fatalf("rebuilt director plan mismatch: %#v", director)
+	response = directorResponse{}
+	decodeResponse(t, rebuildResp.Body.Bytes(), &response)
+	if !strings.Contains(response.Docs.Plan, "阶段目标与隐藏钩子") || !strings.Contains(response.Docs.AgentBrief, "当前目标与可见钩子") || response.Metadata.LastRun.Status != "ready" {
+		t.Fatalf("rebuilt director plan mismatch: %#v", response)
 	}
 
 	if _, err := application.AppendInteractiveTurn(created.ID, "", "我报名学院大比", "报名弟子把他的名字写进木牌。"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := application.InteractiveDirectorPlanStatus(created.ID, "main"); err != nil {
 		t.Fatal(err)
 	}
 	runResp := performJSONRequest(t, server, http.MethodPost, "/api/interactive/stories/"+created.ID+"/director/run", map[string]string{"branch_id": "main"})
 	if runResp.Code != http.StatusOK {
 		t.Fatalf("run director status = %d body=%s", runResp.Code, runResp.Body.String())
 	}
-	status = waitForDirectorStatusAPI(t, server, created.ID, interactive.DirectorPlanStatusReady)
+	status = waitForDirectorStatusAPI(t, server, created.ID, director.PlanStatusReady)
 	if !status.StartReady || status.Blocking || status.CompletedDocs != status.PlannedDocs {
 		t.Fatalf("manual director run should become ready: %#v", status)
 	}
@@ -272,7 +337,7 @@ func TestInteractiveDirectorAPI(t *testing.T) {
 func TestInteractiveStoryStateSchemaRunRouteIsRemoved(t *testing.T) {
 	application := newTestApplication(t)
 	calls := 0
-	restoreDirector := application.SetInteractiveDirectorGeneratorForTest(func(context.Context, *config.Config, *book.State, agent.InteractiveStoryToolContext, string) (string, error) {
+	restoreDirector := application.SetInteractiveDirectorGeneratorForTest(func(context.Context, *config.Config, *book.State, agentinteractive.InteractiveStoryToolContext, string) (string, error) {
 		calls++
 		return "", errors.New("director unavailable")
 	})
@@ -311,7 +376,7 @@ func TestInteractiveStoryStateSchemaRunRouteIsRemoved(t *testing.T) {
 func TestInteractiveStoryStateSchemaReviewRoutesAreRemoved(t *testing.T) {
 	application := newTestApplication(t)
 	directorCalls := 0
-	restoreDirector := application.SetInteractiveDirectorGeneratorForTest(func(context.Context, *config.Config, *book.State, agent.InteractiveStoryToolContext, string) (string, error) {
+	restoreDirector := application.SetInteractiveDirectorGeneratorForTest(func(context.Context, *config.Config, *book.State, agentinteractive.InteractiveStoryToolContext, string) (string, error) {
 		directorCalls++
 		return "测试后台导演完成。", nil
 	})
@@ -355,7 +420,7 @@ func TestInteractiveStoryStateSchemaReviewRoutesAreRemoved(t *testing.T) {
 
 func TestInteractiveStoryCreateCanUseFixedStateSchemaPolicy(t *testing.T) {
 	application := newTestApplication(t)
-	director, err := application.CreateStoryDirector(interactive.StoryDirector{
+	director, err := application.ResourceCatalog().CreateStoryDirector(interactive.StoryDirector{
 		ID:         "preset-only-director",
 		Name:       "直接使用预设",
 		ModuleRefs: interactive.DefaultStoryDirectorModuleRefs(),
@@ -367,7 +432,7 @@ func TestInteractiveStoryCreateCanUseFixedStateSchemaPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 	calls := 0
-	restoreDirector := application.SetInteractiveDirectorGeneratorForTest(func(context.Context, *config.Config, *book.State, agent.InteractiveStoryToolContext, string) (string, error) {
+	restoreDirector := application.SetInteractiveDirectorGeneratorForTest(func(context.Context, *config.Config, *book.State, agentinteractive.InteractiveStoryToolContext, string) (string, error) {
 		calls++
 		return "", errors.New("state schema initializer must stay disabled")
 	})
@@ -393,7 +458,7 @@ func TestInteractiveStoryCreateCanUseFixedStateSchemaPolicy(t *testing.T) {
 
 func TestInteractiveActorTraitRollAndInitialStateAPI(t *testing.T) {
 	application := newTestApplication(t)
-	actorState, err := application.CreateActorState(interactive.ActorStateModule{
+	actorState, err := application.ResourceCatalog().CreateActorState(interactive.ActorStateModule{
 		ID:   "trait-api-state",
 		Name: "词条 API 状态",
 		ActorState: interactive.StoryDirectorActorStateSystem{
@@ -412,7 +477,7 @@ func TestInteractiveActorTraitRollAndInitialStateAPI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	director, err := application.CreateStoryDirector(interactive.StoryDirector{
+	director, err := application.ResourceCatalog().CreateStoryDirector(interactive.StoryDirector{
 		ID:   "trait-api-director",
 		Name: "词条 API 导演",
 		ModuleRefs: interactive.StoryDirectorModuleRefs{
@@ -555,7 +620,7 @@ func TestInteractiveActorTraitRollAndInitialStateAPI(t *testing.T) {
 
 func TestInteractiveDisabledStoryDirectorModulesAPI(t *testing.T) {
 	application := newTestApplication(t)
-	if _, err := application.CreateStoryDirector(interactive.StoryDirector{
+	if _, err := application.ResourceCatalog().CreateStoryDirector(interactive.StoryDirector{
 		ID:   "detached",
 		Name: "关闭模块导演",
 		ModuleRefs: interactive.StoryDirectorModuleRefs{
@@ -598,7 +663,7 @@ func TestInteractiveDisabledStoryDirectorModulesAPI(t *testing.T) {
 	if created.ID == "" || created.StoryDirectorID != "detached" {
 		t.Fatalf("created detached story mismatch: %#v", created)
 	}
-	if created.StoryTellerID != "classic" {
+	if created.StoryTellerID != "rhythm" {
 		t.Fatalf("disabled narrative style should not be inherited, got %#v", created)
 	}
 	if created.ImageSettings.PresetID != "game-cg" {
@@ -621,14 +686,30 @@ func TestInteractiveDisabledStoryDirectorModulesAPI(t *testing.T) {
 	}
 }
 
-func TestPresetUpdateRejectsStaleWorkspaceIdentity(t *testing.T) {
+func TestGlobalPresetUpdateDoesNotUseWorkspaceIdentity(t *testing.T) {
 	application := newTestApplication(t)
 	server := NewServer(application, "0")
-	resp := performJSONRequest(t, server, http.MethodPatch, "/api/actor-states/default", map[string]any{
-		"workspace": filepath.Join(t.TempDir(), "different-workspace"),
+	current, err := application.ResourceCatalog().ActorState("default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	foreignWorkspace := filepath.Join(t.TempDir(), "different-workspace")
+	resp := performJSONRequest(t, server, http.MethodPatch, "/api/actor-states/default", struct {
+		interactive.ActorStateModule
+		BaseRevision string `json:"base_revision"`
+		Workspace    string `json:"workspace"`
+	}{
+		ActorStateModule: current,
+		BaseRevision:     current.Revision,
+		Workspace:        foreignWorkspace,
 	})
-	if resp.Code != http.StatusConflict {
-		t.Fatalf("stale workspace update status=%d body=%s", resp.Code, resp.Body.String())
+	if resp.Code != http.StatusOK {
+		t.Fatalf("global preset update status=%d body=%s", resp.Code, resp.Body.String())
+	}
+	var updated interactive.ActorStateModule
+	decodeResponse(t, resp.Body.Bytes(), &updated)
+	if strings.Contains(updated.Path, foreignWorkspace) {
+		t.Fatalf("global preset path must not be derived from workspace metadata: %#v", updated)
 	}
 }
 
@@ -645,6 +726,23 @@ func TestInteractiveChatRequiresStoryID(t *testing.T) {
 	}
 	if !strings.Contains(resp.Body.String(), "故事 ID 不能为空") {
 		t.Fatalf("unexpected response body: %s", resp.Body.String())
+	}
+}
+
+func TestInteractiveChatRequiresCommandID(t *testing.T) {
+	application := newTestApplication(t)
+	server := NewServer(application, "0")
+
+	resp := performJSONRequest(t, server, http.MethodPost, "/api/interactive/chat", map[string]string{
+		"mode":     "story",
+		"story_id": "story-1",
+		"message":  "我推开酒馆的门",
+	})
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("chat status = %d body=%s", resp.Code, resp.Body.String())
+	}
+	if body := resp.Body.String(); !strings.Contains(body, "缺少 command_id") || !strings.Contains(body, "command_id is required") {
+		t.Fatalf("missing command id error must be bilingual: %s", body)
 	}
 }
 
@@ -665,7 +763,7 @@ func TestInteractiveChatRecoveryRoutesRejectMissingActiveRun(t *testing.T) {
 	}
 
 	streamResp := performJSONRequest(t, server, http.MethodGet, "/api/interactive/chat/stream?story_id=story-1&branch=main", nil)
-	if streamResp.Code != http.StatusNotFound {
+	if streamResp.Code != http.StatusBadRequest {
 		t.Fatalf("missing stream status = %d body=%s", streamResp.Code, streamResp.Body.String())
 	}
 }

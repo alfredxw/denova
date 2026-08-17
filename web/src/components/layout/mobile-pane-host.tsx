@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { CSSProperties, ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { X } from 'lucide-react'
+import { AnimatePresence, motion, useIsPresent, useReducedMotionConfig } from 'motion/react'
+import { novaEase } from '@/features/motion/motion-tokens'
 
 export interface MobilePane {
   id: string
@@ -27,6 +29,7 @@ interface MobilePaneHostProps {
   className?: string
   openPaneId?: string | null
   onOpenPaneChange?: (id: string | null) => void
+  paneScope?: 'viewport' | 'surface'
 }
 
 const EDGE_SWIPE_WIDTH = 22
@@ -34,7 +37,7 @@ const EDGE_SWIPE_THRESHOLD = 48
 const HORIZONTAL_INTENT_RATIO = 1.35
 const HORIZONTAL_COMMIT_RATIO = 1.15
 const DRAG_START_DISTANCE = 8
-const DRAWER_SETTLE_MS = 220
+const DRAWER_SETTLE_MS = 180
 const DRAWER_OPEN_RATIO = 0.18
 
 export function MobilePaneHost({
@@ -44,6 +47,7 @@ export function MobilePaneHost({
   className = 'relative h-full min-h-0',
   openPaneId: controlledOpenPaneId,
   onOpenPaneChange,
+  paneScope = 'viewport',
 }: MobilePaneHostProps) {
   const [internalOpenPaneId, setInternalOpenPaneId] = useState<string | null>(null)
   const [dragState, setDragState] = useState<{
@@ -98,6 +102,7 @@ export function MobilePaneHost({
   }, [])
 
   const hostRef = useEdgeSwipe({
+    paneScope,
     leftEnabled: panes.some((pane) => pane.side === 'left'),
     rightEnabled: panes.some((pane) => pane.side === 'right'),
     onDragStart: (side) => {
@@ -137,16 +142,20 @@ export function MobilePaneHost({
   return (
     <div ref={hostRef} className={className} data-nova-mobile-pane-host="true">
       {typeof children === 'function' ? children(controls) : children}
-      {visiblePane && paneSide ? (
-        <MobileDrawer
-          pane={visiblePane}
-          closeLabel={closeLabel}
-          progress={paneProgress}
-          dragging={dragState?.dragging ?? false}
-          side={paneSide}
-          onClose={() => setOpenPaneId(null)}
-        />
-      ) : null}
+      <AnimatePresence initial={false}>
+        {visiblePane && paneSide ? (
+          <MobileDrawer
+            key={visiblePane.id}
+            pane={visiblePane}
+            closeLabel={closeLabel}
+            progress={paneProgress}
+            dragging={dragState?.dragging ?? false}
+            side={paneSide}
+            paneScope={paneScope}
+            onClose={() => setOpenPaneId(null)}
+          />
+        ) : null}
+      </AnimatePresence>
     </div>
   )
 }
@@ -157,6 +166,7 @@ function MobileDrawer({
   progress,
   dragging,
   side,
+  paneScope,
   onClose,
 }: {
   pane: MobilePane
@@ -164,41 +174,51 @@ function MobileDrawer({
   progress: number
   dragging: boolean
   side: 'left' | 'right'
+  paneScope: 'viewport' | 'surface'
   onClose: () => void
 }) {
   const titleId = `nova-mobile-pane-title-${pane.id}`
   const clampedProgress = clamp(progress, 0, 1)
   const offset = side === 'left' ? (clampedProgress - 1) * 100 : (1 - clampedProgress) * 100
-  const drawerStyle: CSSProperties = {
-    transform: `translate3d(${offset}%, 0, 0)`,
-    transition: dragging ? 'none' : `transform ${DRAWER_SETTLE_MS}ms var(--nova-ease)`,
-  }
-  const overlayStyle: CSSProperties = {
-    opacity: clampedProgress * 0.5,
-    transition: dragging ? 'none' : `opacity ${DRAWER_SETTLE_MS}ms var(--nova-ease)`,
-  }
+  const reducedMotion = useReducedMotionConfig()
+  const isPresent = useIsPresent()
+  const interactive = isPresent && clampedProgress > 0
+  const closedOffset = side === 'left' ? '-100%' : '100%'
+  const transition = dragging || reducedMotion
+    ? { duration: 0 }
+    : { duration: DRAWER_SETTLE_MS / 1000, ease: novaEase }
   const sideClassName = side === 'left'
     ? 'left-0 border-r'
     : 'right-0 border-l'
 
   return (
     <>
-      <div
+      <motion.div
         aria-hidden="true"
         data-nova-mobile-pane-overlay="true"
-        className="fixed inset-0 z-50 bg-black"
-        style={overlayStyle}
+        className={`${paneScope === 'surface' ? 'absolute' : 'fixed'} inset-0 z-50 bg-black`}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: clampedProgress * 0.5 }}
+        exit={{ opacity: 0 }}
+        transition={transition}
+        style={{ pointerEvents: interactive ? 'auto' : 'none' }}
         onClick={onClose}
       />
-      <section
+      <motion.section
         role="dialog"
-        aria-modal="true"
+        aria-modal={interactive}
         aria-labelledby={titleId}
-        data-state="open"
+        aria-hidden={!interactive}
+        data-state={interactive ? 'open' : 'closed'}
+        data-progress={clampedProgress}
         data-nova-mobile-pane-content="true"
         data-side={side}
-        className={`fixed inset-y-0 z-50 flex w-[min(92vw,420px)] max-w-none flex-col gap-0 border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0 text-[var(--nova-text)] shadow-[var(--nova-shadow)] sm:max-w-none ${sideClassName} ${pane.className || ''}`}
-        style={drawerStyle}
+        className={`${paneScope === 'surface' ? 'absolute' : 'fixed'} inset-y-0 z-50 flex w-[min(92vw,420px)] max-w-none flex-col gap-0 border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0 text-[var(--nova-text)] shadow-[var(--nova-shadow)] sm:max-w-none ${sideClassName} ${pane.className || ''}`}
+        initial={{ x: closedOffset }}
+        animate={{ x: `${offset}%` }}
+        exit={{ x: closedOffset }}
+        transition={transition}
+        style={{ pointerEvents: interactive ? 'auto' : 'none' }}
       >
         <div className="nova-topbar flex h-11 shrink-0 items-center justify-between border-b border-[var(--nova-border)] px-3">
           <h2 id={titleId} className="flex min-w-0 items-center gap-2 text-xs font-semibold text-[var(--nova-text)]">
@@ -210,18 +230,20 @@ function MobileDrawer({
           </button>
         </div>
         <div className="min-h-0 flex-1 overflow-hidden">{pane.content}</div>
-      </section>
+      </motion.section>
     </>
   )
 }
 
 function useEdgeSwipe({
+  paneScope,
   leftEnabled,
   rightEnabled,
   onDragStart,
   onDragProgress,
   onDragEnd,
 }: {
+  paneScope: 'viewport' | 'surface'
   leftEnabled: boolean
   rightEnabled: boolean
   onDragStart: (side: 'left' | 'right') => void
@@ -244,8 +266,13 @@ function useEdgeSwipe({
 
     const beginGesture = (clientX: number, clientY: number, target: EventTarget | null, source: 'pointer' | 'mouse' | 'touch', pointerId?: number) => {
       if (shouldIgnoreNestedPaneHost(target, host) || shouldIgnoreSwipeTarget(target)) return
-      const width = window.innerWidth
-      const side = clientX <= EDGE_SWIPE_WIDTH ? 'left' : width - clientX <= EDGE_SWIPE_WIDTH ? 'right' : null
+      const bounds = paneGestureBounds(host, paneScope)
+      const localX = clientX - bounds.left
+      const side = localX >= 0 && localX <= EDGE_SWIPE_WIDTH
+        ? 'left'
+        : localX <= bounds.width && bounds.width - localX <= EDGE_SWIPE_WIDTH
+          ? 'right'
+          : null
       if (!side || (side === 'left' && !leftEnabled) || (side === 'right' && !rightEnabled)) return
       gestureRef.current = { startX: clientX, startY: clientY, side, source, committed: false, pointerId }
     }
@@ -267,7 +294,7 @@ function useEdgeSwipe({
         onDragStart(gesture.side)
       }
       event?.preventDefault()
-      onDragProgress(gesture.side, dragProgressForDistance(distance))
+      onDragProgress(gesture.side, dragProgressForDistance(distance, host, paneScope))
     }
 
     const finishGesture = (clientX: number, clientY: number, source: 'pointer' | 'mouse' | 'touch', pointerId?: number) => {
@@ -277,8 +304,8 @@ function useEdgeSwipe({
       const deltaX = clientX - gesture.startX
       const deltaY = clientY - gesture.startY
       const distance = gesture.side === 'left' ? deltaX : -deltaX
-      const progress = dragProgressForDistance(Math.max(0, distance))
-      const openDistance = Math.max(EDGE_SWIPE_THRESHOLD, drawerGestureWidth() * DRAWER_OPEN_RATIO)
+      const progress = dragProgressForDistance(Math.max(0, distance), host, paneScope)
+      const openDistance = Math.max(EDGE_SWIPE_THRESHOLD, drawerGestureWidth(host, paneScope) * DRAWER_OPEN_RATIO)
       const shouldOpen = distance >= openDistance && distance >= Math.abs(deltaY) * HORIZONTAL_INTENT_RATIO
       if (!gesture.committed && shouldOpen) {
         onDragStart(gesture.side)
@@ -366,17 +393,24 @@ function useEdgeSwipe({
       window.removeEventListener('touchmove', onTouchMove)
       window.removeEventListener('touchcancel', onMouseOrTouchCancel)
     }
-  }, [leftEnabled, onDragEnd, onDragProgress, onDragStart, rightEnabled])
+  }, [leftEnabled, onDragEnd, onDragProgress, onDragStart, paneScope, rightEnabled])
 
   return hostRef
 }
 
-function dragProgressForDistance(distance: number) {
-  return clamp(distance / drawerGestureWidth(), 0, 1)
+function dragProgressForDistance(distance: number, host: HTMLElement, paneScope: 'viewport' | 'surface') {
+  return clamp(distance / drawerGestureWidth(host, paneScope), 0, 1)
 }
 
-function drawerGestureWidth() {
-  return Math.min(window.innerWidth * 0.92, 420)
+function drawerGestureWidth(host: HTMLElement, paneScope: 'viewport' | 'surface') {
+  const width = paneScope === 'surface' ? host.getBoundingClientRect().width : window.innerWidth
+  return Math.min(width * 0.92, 420)
+}
+
+function paneGestureBounds(host: HTMLElement, paneScope: 'viewport' | 'surface') {
+  if (paneScope === 'viewport') return { left: 0, width: window.innerWidth }
+  const bounds = host.getBoundingClientRect()
+  return { left: bounds.left, width: bounds.width }
 }
 
 function clamp(value: number, min: number, max: number) {

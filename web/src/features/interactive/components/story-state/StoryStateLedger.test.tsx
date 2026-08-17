@@ -67,7 +67,7 @@ describe('StoryStateLedger', () => {
     expectVitalityVisible()
     expect(screen.getByText(LONG_DETAIL_TEXT)).toBeInTheDocument()
     expect(screen.getByText('敛息诀')).toBeInTheDocument()
-    expect(screen.getByTitle('下品灵石')).toBeInTheDocument()
+    expect(screen.getByText('下品灵石:')).not.toHaveAttribute('title')
     expect(screen.getByText('被赵师兄盯上')).toBeInTheDocument()
   })
 
@@ -125,16 +125,20 @@ describe('StoryStateLedger', () => {
       />,
     )
 
+    const statePanel = screen.getByRole('region', { name: '当前状态' })
+    expect(statePanel).toHaveAttribute('data-nova-chat-after-content-height-scope', 'preview')
     expect(sectionLabels(container)).toEqual(['概览', '持有与资源'])
     expectVitalityVisible()
     expect(screen.queryByText(LONG_DETAIL_TEXT)).not.toBeInTheDocument()
     expect(screen.getByText('被赵师兄盯上')).toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: '展开全部（还有 1 个分区）' }))
+    expect(statePanel).toHaveAttribute('data-nova-chat-after-content-height-scope', 'expanded')
     expect(sectionLabels(container)).toEqual(['概览', '持有与资源', '详情'])
     expect(screen.getByText(LONG_DETAIL_TEXT)).toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: '收起为预览' }))
+    expect(statePanel).toHaveAttribute('data-nova-chat-after-content-height-scope', 'preview')
     expect(sectionLabels(container)).toEqual(['概览', '持有与资源'])
 
     // Manual expansion survives same-turn updates but resets on a new turn.
@@ -230,9 +234,9 @@ describe('StoryStateLedger', () => {
       />,
     )
 
-    const vitality = screen.getByTitle('生命').closest('li')
-    const poison = screen.getByTitle('Poison 001').closest('li')
-    const fireball = screen.getByTitle('Ability fireball').closest('li')
+    const vitality = screen.getByText('生命:').closest('li')
+    const poison = screen.getByText('Poison 001:').closest('li')
+    const fireball = screen.getByText('Ability fireball:').closest('li')
     expect(vitality).not.toBeNull()
     expect(poison).not.toBeNull()
     expect(fireball).not.toBeNull()
@@ -365,7 +369,7 @@ describe('StoryStateLedger', () => {
     expect(vitalityField).toBeDefined()
     expect(within(vitalityField as HTMLElement).getByText('-3')).toBeInTheDocument()
     expect(vitalityField).toHaveAttribute('data-change-tone', 'negative')
-    expect(vitalityField).toHaveAttribute('title', '受了轻伤')
+    expect(vitalityField).not.toHaveAttribute('title')
   })
 
   it('uses the collapsed preference as a single-line default and preserves manual expansion during the same turn', async () => {

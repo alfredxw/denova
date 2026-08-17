@@ -7,10 +7,12 @@ import { MessageCenterButton } from './MessageCenter'
 
 describe('MessageCenterButton', () => {
   it('marks the visible message as read when the center opens', async () => {
+    const listMessages = vi.fn()
     const markRead = vi.fn()
     server.use(
-      http.get('/api/messages', () =>
-        HttpResponse.json({
+      http.get('/api/messages', () => {
+        listMessages()
+        return HttpResponse.json({
           unread_count: 1,
           items: [{
             id: 'changelog:unreleased',
@@ -19,8 +21,8 @@ describe('MessageCenterButton', () => {
             summary: '消息中心。',
             body: '### Added\n\n- 消息中心。',
           }],
-        }),
-      ),
+        })
+      }),
       http.post('/api/messages/:id/read', ({ params }) => {
         markRead(params.id)
         return HttpResponse.json({
@@ -34,9 +36,10 @@ describe('MessageCenterButton', () => {
       }),
     )
 
-    render(<MessageCenterButton className="h-8 w-8" />)
+    render(<MessageCenterButton className="h-8 w-8" unreadCount={1} />)
 
-    expect(await screen.findByText('1')).toBeInTheDocument()
+    expect(screen.getByText('1')).toBeInTheDocument()
+    expect(listMessages).not.toHaveBeenCalled()
     await userEvent.click(screen.getByRole('button', { name: '打开消息中心' }))
 
     expect(await screen.findAllByText('Denova 未发布更新')).toHaveLength(2)
@@ -50,6 +53,7 @@ describe('MessageCenterButton', () => {
     expect(starLink).toHaveAttribute('href', 'https://github.com/alfredxw/denova')
     expect(starLink).toHaveAttribute('target', '_blank')
     await waitFor(() => expect(markRead).toHaveBeenCalledWith('changelog:unreleased'))
+    expect(listMessages).toHaveBeenCalledTimes(1)
     await waitFor(() => expect(screen.queryByText('1')).not.toBeInTheDocument())
   })
 
@@ -70,7 +74,7 @@ describe('MessageCenterButton', () => {
       ),
     )
 
-    render(<MessageCenterButton className="h-8 w-8" />)
+    render(<MessageCenterButton className="h-8 w-8" unreadCount={0} />)
 
     await userEvent.click(screen.getByRole('button', { name: '打开消息中心' }))
 
@@ -121,7 +125,7 @@ describe('MessageCenterButton', () => {
       }),
     )
 
-    render(<MessageCenterButton className="h-8 w-8" />)
+    render(<MessageCenterButton className="h-8 w-8" unreadCount={2} />)
 
     expect(await screen.findByText('2')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: '打开消息中心' }))
@@ -161,7 +165,7 @@ describe('MessageCenterButton', () => {
       })),
     )
 
-    render(<MessageCenterButton className="h-8 w-8" onOpenAutomation={onOpenAutomation} />)
+    render(<MessageCenterButton className="h-8 w-8" unreadCount={1} onOpenAutomation={onOpenAutomation} />)
     await userEvent.click(screen.getByRole('button', { name: '打开消息中心' }))
 
     expect(await screen.findAllByText('整理人物设定')).toHaveLength(2)

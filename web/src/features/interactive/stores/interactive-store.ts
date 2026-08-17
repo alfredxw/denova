@@ -1,6 +1,7 @@
 import { create } from 'zustand'
-import type { ChatMessage } from '@/lib/api'
-import type { BranchSummary, InteractiveSubmode, InteractiveTurnPersistedEvent, Snapshot, StoryDirector, StorySummary, Teller, TurnEvent } from '../types'
+import type { AgentRuntimeActiveOutput, AgentRuntimeOpenTool, AgentRuntimeQueuedCommand } from '@/lib/api'
+import type { AgentUIMessage } from '@/lib/agent-ui'
+import type { BranchSummary, DirectorPlanStatus, InteractiveSubmode, InteractiveTurnPersistedEvent, Snapshot, StoryDirector, StorySummary, Teller, TurnEvent } from '../types'
 
 const CURRENT_STORY_STORAGE_KEY = 'nova.interactive.current_story.v1'
 const CURRENT_BRANCH_STORAGE_KEY = 'nova.interactive.current_branch.v1'
@@ -9,9 +10,26 @@ const SUBMODE_STORAGE_KEY = 'nova.interactive.submode.v1'
 export interface StoryStageRunState {
   streaming: boolean
   activityContent: string
-  liveMessages: ChatMessage[]
+  liveMessages: AgentUIMessage[]
   rewindTurnId?: string
   retryMessage?: string
+  runtime: StoryStageRuntimeState
+}
+
+export interface StoryStageRuntimeState {
+  /** Display SSE replay cursor; intentionally distinct from the durable runtime journal cursor. */
+  streamEventCursor: string
+  cursor: number
+  phase: string
+  recoveryPaused: boolean
+  recoveryAbortAvailable: boolean
+  operationId: string
+  cycle: number
+  activeOutput?: AgentRuntimeActiveOutput
+  queue: AgentRuntimeQueuedCommand[]
+  openTools: AgentRuntimeOpenTool[]
+  connection: 'disconnected' | 'connecting' | 'connected'
+  abortPending: boolean
 }
 
 interface InteractiveStore {
@@ -29,6 +47,7 @@ interface InteractiveStore {
   setStoryDirectors: (directors: StoryDirector[]) => void
   setBranches: (branches: BranchSummary[]) => void
   setSnapshot: (snapshot: Snapshot | null) => void
+  setDirectorPlanStatus: (storyId: string, branchId: string, status: DirectorPlanStatus) => void
   applyTurnPersisted: (event: InteractiveTurnPersistedEvent) => Snapshot | null
   setStoryStageRun: (stageKey: string, updater: Partial<StoryStageRunState> | ((current: StoryStageRunState) => StoryStageRunState)) => void
   clearStoryStageRun: (stageKey: string) => void
@@ -39,7 +58,24 @@ interface InteractiveStore {
 }
 
 export function emptyStoryStageRun(): StoryStageRunState {
-  return { streaming: false, activityContent: '', liveMessages: [] }
+  return {
+    streaming: false,
+    activityContent: '',
+    liveMessages: [],
+    runtime: {
+      streamEventCursor: '',
+      cursor: 0,
+      phase: 'idle',
+      recoveryPaused: false,
+      recoveryAbortAvailable: false,
+      operationId: '',
+      cycle: 0,
+      queue: [],
+      openTools: [],
+      connection: 'disconnected',
+      abortPending: false,
+    },
+  }
 }
 
 function readRememberedBranches(): Record<string, string> {
@@ -138,8 +174,17 @@ export const useInteractiveStore = create<InteractiveStore>((set) => ({
     if (snapshot) rememberCurrentBranch(snapshot.story_id, snapshot.branch_id)
     return {
       snapshot,
+      stories: snapshot ? storiesWithTurnCount(state.stories, snapshot.story_id, snapshot.turn_count) : state.stories,
       currentBranchId: snapshot?.branch_id || state.currentBranchId,
     }
+  }),
+  setDirectorPlanStatus: (storyId, branchId, status) => set((state) => {
+    const snapshot = state.snapshot
+    if (!snapshot || snapshot.story_id !== storyId || snapshot.branch_id !== branchId) return state
+    const currentUpdatedAt = Date.parse(snapshot.director_plan_status?.updated_at || '')
+    const nextUpdatedAt = Date.parse(status.updated_at || '')
+    if (Number.isFinite(currentUpdatedAt) && Number.isFinite(nextUpdatedAt) && nextUpdatedAt < currentUpdatedAt) return state
+    return { snapshot: { ...snapshot, director_plan_status: status } }
   }),
   applyTurnPersisted: (event) => {
     let appliedSnapshot: Snapshot | null = null
@@ -153,6 +198,7 @@ export const useInteractiveStore = create<InteractiveStore>((set) => ({
       rememberCurrentBranch(event.story_id, event.branch_id)
       return {
         snapshot,
+        stories: storiesWithTurnCount(state.stories, event.story_id, event.turn_count),
         branches: event.branches?.length ? event.branches : state.branches,
         currentStoryId: event.story_id,
         currentBranchId: event.branch_id,
@@ -205,15 +251,21 @@ export function mergeInteractiveTurnPersistedSnapshot(current: Snapshot | null, 
     ...base,
     story_id: event.story_id,
     branch_id: event.branch_id,
+    turn_count: event.turn_count,
     turns,
     current_turn: turn,
-    director_plan: event.director_plan || base.director_plan,
     director_plan_status: event.director_plan_status || base.director_plan_status,
     state: event.state || base.state || {},
     graph: event.graph || base.graph,
     context_compaction: event.context_compaction === undefined ? base.context_compaction : event.context_compaction,
-    context_compaction_removal: event.context_compaction_removal === undefined ? base.context_compaction_removal : event.context_compaction_removal,
   }
+}
+
+function storiesWithTurnCount(stories: StorySummary[], storyId: string, turnCount?: number): StorySummary[] {
+  if (typeof turnCount !== 'number' || !Number.isInteger(turnCount) || turnCount < 0) return stories
+  return stories.map(story => story.id === storyId && story.turn_count !== turnCount
+    ? { ...story, turn_count: turnCount }
+    : story)
 }
 
 function mergePersistedTurn(currentTurns: TurnEvent[], turn: TurnEvent): TurnEvent[] {

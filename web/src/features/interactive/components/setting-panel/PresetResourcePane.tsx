@@ -10,7 +10,7 @@ import { RuleSystemEditor } from './RuleSystemEditor'
 
 interface PresetResourcePaneProps {
   kind: PresetResourceKind
-  workspace: string
+  projectId: string
   tellers: Teller[]
   storyDirectors: StoryDirector[]
   imagePresets: ImagePreset[]
@@ -57,10 +57,10 @@ export function PresetResourcePane(props: PresetResourcePaneProps) {
       />
     )
   }
-  return <TellerPane workspace={props.workspace} draft={props.tellerDraft} setDraft={props.setTellerDraft} activeSlotId={props.activeSlotId} setActiveSlotId={props.setActiveSlotId} onSave={props.onSave} />
+  return <TellerPane projectId={props.projectId} draft={props.tellerDraft} setDraft={props.setTellerDraft} activeSlotId={props.activeSlotId} setActiveSlotId={props.setActiveSlotId} onSave={props.onSave} />
 }
 
-function TellerPane(props: { workspace: string; draft: Teller | null; setDraft: (draft: Teller | null) => void; activeSlotId: string; setActiveSlotId: (value: string) => void; onSave: () => void }) {
+function TellerPane(props: { projectId: string; draft: Teller | null; setDraft: (draft: Teller | null) => void; activeSlotId: string; setActiveSlotId: (value: string) => void; onSave: () => void }) {
   return <TellerEditor {...props} />
 }
 

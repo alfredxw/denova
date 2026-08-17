@@ -38,7 +38,7 @@ type ActorStateSchemaRequirementSource struct {
 }
 
 // ActorStateSchemaRequirementReview explains whether one sourced requirement
-// is already covered, requires a schema operation, or is intentionally ignored.
+// is covered, changes the schema, removes inherited structure, or is ignored.
 type ActorStateSchemaRequirementReview struct {
 	// ItemID is injected by the Batch backend and links this audit record to
 	// Actor value provenance. Model-supplied values are overwritten.
@@ -47,8 +47,8 @@ type ActorStateSchemaRequirementReview struct {
 	Requirement string                            `json:"requirement"`
 	// ValuePolicy makes Actor value handling explicit instead of treating a
 	// sourced schema requirement as if it had also initialized runtime state.
-	ValuePolicy  string   `json:"value_policy" jsonschema:"description=该需求的 Actor 值策略：schema_only 仅审查结构；preserve 校验并保留已有值；initialize 必须在同一 item 用字段级 actor_ops set 落值；defer 明确延后且必须说明理由"`
-	ActorID      string   `json:"actor_id,omitempty" jsonschema:"description=value_policy 为 preserve、initialize 或 defer 时对应的稳定 actor_id；schema_only 时省略"`
+	ValuePolicy  string   `json:"value_policy" jsonschema:"description=Actor value policy for this requirement: schema_only reviews structure only; preserve validates and keeps an existing value; initialize must set the field through actor_ops in the same item; defer postpones explicitly and requires a reason"`
+	ActorID      string   `json:"actor_id,omitempty" jsonschema:"description=Stable actor_id for preserve, initialize, or defer; omit for schema_only"`
 	ExpectedType string   `json:"expected_type,omitempty"`
 	Min          *float64 `json:"min,omitempty"`
 	Max          *float64 `json:"max,omitempty"`
@@ -73,14 +73,14 @@ type ActorStateSchemaProposalPreview struct {
 func ValidateActorStateSchemaProposal(base StoryDirectorActorStateSystem, trpg StoryDirectorTRPGSystem, proposal ActorStateSchemaProposal) (ActorStateSchemaProposal, ActorStateSchemaProposalPreview, error) {
 	proposal.Summary = trimBytes(proposal.Summary, maxInteractiveTextBytes)
 	if len(proposal.Requirements) == 0 {
-		return ActorStateSchemaProposal{}, ActorStateSchemaProposalPreview{}, fmt.Errorf("状态结构提案缺少来源化覆盖审查")
+		return ActorStateSchemaProposal{}, ActorStateSchemaProposalPreview{}, fmt.Errorf("state schema proposal has no sourced coverage review")
 	}
 	if len(proposal.Requirements) > maxActorStateSchemaRequirementReviews {
-		return ActorStateSchemaProposal{}, ActorStateSchemaProposalPreview{}, fmt.Errorf("状态结构需求审查过多: %d > %d", len(proposal.Requirements), maxActorStateSchemaRequirementReviews)
+		return ActorStateSchemaProposal{}, ActorStateSchemaProposalPreview{}, fmt.Errorf("too many state schema requirement reviews: %d > %d", len(proposal.Requirements), maxActorStateSchemaRequirementReviews)
 	}
 	data, err := json.Marshal(proposal.Adaptation)
 	if err != nil {
-		return ActorStateSchemaProposal{}, ActorStateSchemaProposalPreview{}, fmt.Errorf("序列化状态结构提案失败: %w", err)
+		return ActorStateSchemaProposal{}, ActorStateSchemaProposalPreview{}, fmt.Errorf("serialize state schema proposal: %w", err)
 	}
 	adaptation, err := ParseActorStateSchemaAdaptation(string(data))
 	if err != nil {
@@ -94,7 +94,7 @@ func ValidateActorStateSchemaProposal(base StoryDirectorActorStateSystem, trpg S
 	if err != nil {
 		return ActorStateSchemaProposal{}, ActorStateSchemaProposalPreview{}, err
 	}
-	if err := validateActorStateSchemaRequirementReviews(&proposal, targetSystem); err != nil {
+	if err := validateActorStateSchemaRequirementReviews(&proposal, base, targetSystem); err != nil {
 		return ActorStateSchemaProposal{}, ActorStateSchemaProposalPreview{}, err
 	}
 	fieldOps := 0
@@ -115,22 +115,22 @@ func ValidateActorStateSchemaProposal(base StoryDirectorActorStateSystem, trpg S
 // belong to submit_interactive_turn.state_changes in the same atomic commit.
 func ValidateOpeningGameStateSchemaProposal(base StoryDirectorActorStateSystem, trpg StoryDirectorTRPGSystem, proposal ActorStateSchemaProposal) (ActorStateSchemaProposal, ActorStateSchemaProposalPreview, error) {
 	if len(proposal.Adaptation.InitialActorOps) > 0 {
-		return ActorStateSchemaProposal{}, ActorStateSchemaProposalPreview{}, fmt.Errorf("开局 Game Agent 状态结构提案不能修改 initial_actors；请用 state_changes create 创建 Actor")
+		return ActorStateSchemaProposal{}, ActorStateSchemaProposalPreview{}, fmt.Errorf("the opening Game Agent schema proposal cannot modify initial_actors; create Actors through state_changes")
 	}
 	if len(proposal.Adaptation.ActorOps) > 0 {
-		return ActorStateSchemaProposal{}, ActorStateSchemaProposalPreview{}, fmt.Errorf("开局 Game Agent 状态结构提案不能写 Actor 值；请用 submit_interactive_turn.state_changes 初始化")
+		return ActorStateSchemaProposal{}, ActorStateSchemaProposalPreview{}, fmt.Errorf("the opening Game Agent schema proposal cannot write Actor values; initialize them through submit_interactive_turn.state_changes")
 	}
 	for _, requirement := range proposal.Requirements {
 		if strings.TrimSpace(requirement.ValuePolicy) != ActorStateSchemaValuePolicySchemaOnly {
-			return ActorStateSchemaProposal{}, ActorStateSchemaProposalPreview{}, fmt.Errorf("开局 Game Agent 状态结构需求只能使用 value_policy=schema_only")
+			return ActorStateSchemaProposal{}, ActorStateSchemaProposalPreview{}, fmt.Errorf("opening Game Agent schema requirements must use value_policy=schema_only")
 		}
 	}
 	return ValidateActorStateSchemaProposal(base, trpg, proposal)
 }
 
-func validateActorStateSchemaRequirementReviews(proposal *ActorStateSchemaProposal, target StoryDirectorActorStateSystem) error {
+func validateActorStateSchemaRequirementReviews(proposal *ActorStateSchemaProposal, base, target StoryDirectorActorStateSystem) error {
 	if proposal == nil {
-		return fmt.Errorf("状态结构提案不存在")
+		return fmt.Errorf("state schema proposal is missing")
 	}
 	reviewedLore := map[string]bool{}
 	for _, id := range proposal.ReviewedLoreIDs {
@@ -154,70 +154,93 @@ func validateActorStateSchemaRequirementReviews(proposal *ActorStateSchemaPropos
 		switch review.Source.Kind {
 		case "lore", "opening", "turn_result", "trpg":
 		default:
-			return fmt.Errorf("状态需求来源类型无效: %s", review.Source.Kind)
+			return fmt.Errorf("invalid state requirement source kind: %s", review.Source.Kind)
 		}
 		if review.Source.ID == "" || review.Requirement == "" {
-			return fmt.Errorf("状态需求覆盖审查缺少来源或需求说明")
+			return fmt.Errorf("state requirement coverage review is missing its source or requirement")
 		}
 		if review.Source.Kind == "lore" && !reviewedLore[review.Source.ID] {
-			return fmt.Errorf("状态需求引用了未经后端确认审阅的资料: %s", review.Source.ID)
+			return fmt.Errorf("state requirement references lore not confirmed as reviewed by the backend: %s", review.Source.ID)
 		}
 		switch review.ValuePolicy {
 		case ActorStateSchemaValuePolicySchemaOnly:
 			if review.ActorID != "" {
-				return fmt.Errorf("schema_only 状态需求不能指定 actor_id: source=%s actor=%s", review.Source.ID, review.ActorID)
+				return fmt.Errorf("schema_only state requirements cannot specify actor_id: source=%s actor=%s", review.Source.ID, review.ActorID)
 			}
 		case ActorStateSchemaValuePolicyPreserve, ActorStateSchemaValuePolicyInitialize, ActorStateSchemaValuePolicyDefer:
 			if review.ActorID == "" {
-				return fmt.Errorf("状态需求 value_policy=%s 时必须指定 actor_id: source=%s", review.ValuePolicy, review.Source.ID)
+				return fmt.Errorf("state requirement with value_policy=%s must specify actor_id: source=%s", review.ValuePolicy, review.Source.ID)
 			}
 			if review.ValuePolicy == ActorStateSchemaValuePolicyDefer && review.Reason == "" {
-				return fmt.Errorf("延后 Actor 状态初始化必须说明理由: source=%s actor=%s", review.Source.ID, review.ActorID)
+				return fmt.Errorf("deferred Actor state initialization requires a reason: source=%s actor=%s", review.Source.ID, review.ActorID)
 			}
 		default:
-			return fmt.Errorf("状态需求 value_policy 无效: %s", review.ValuePolicy)
+			return fmt.Errorf("invalid state requirement value_policy: %s", review.ValuePolicy)
 		}
 		if review.Decision == "ignored" {
 			if review.ValuePolicy != ActorStateSchemaValuePolicySchemaOnly {
-				return fmt.Errorf("ignored 状态需求只能使用 value_policy=schema_only: source=%s", review.Source.ID)
+				return fmt.Errorf("ignored state requirements must use value_policy=schema_only: source=%s", review.Source.ID)
 			}
 			if review.Reason == "" {
-				return fmt.Errorf("忽略状态需求必须说明理由: source=%s", review.Source.ID)
+				return fmt.Errorf("ignored state requirement requires a reason: source=%s", review.Source.ID)
+			}
+			continue
+		}
+		if review.Decision == "remove" {
+			if review.ValuePolicy != ActorStateSchemaValuePolicySchemaOnly {
+				return fmt.Errorf("removed state requirements must use value_policy=schema_only: source=%s", review.Source.ID)
+			}
+			if review.TemplateID == "" || review.FieldID == "" {
+				return fmt.Errorf("state field removal target is incomplete: source=%s", review.Source.ID)
+			}
+			if review.Reason == "" {
+				return fmt.Errorf("state field removal requires a reason: source=%s", review.Source.ID)
+			}
+			template := actorStateTemplateByID(base, review.TemplateID)
+			field, ok := actorStateFieldByID(template, review.FieldID)
+			if !ok {
+				return fmt.Errorf("removal review references a missing original state field: template=%s field=%s", review.TemplateID, review.FieldID)
+			}
+			if review.ExpectedType != "" && field.Type != review.ExpectedType {
+				return fmt.Errorf("removal review field type mismatch: template=%s field=%s expected=%s actual=%s", review.TemplateID, review.FieldID, review.ExpectedType, field.Type)
+			}
+			if !actorStateSchemaAdaptationHasFieldDecision(proposal.Adaptation, review.Decision, review.TemplateID, review.FieldID) {
+				return fmt.Errorf("removed state requirement has no matching schema operation: template=%s field=%s", review.TemplateID, review.FieldID)
 			}
 			continue
 		}
 		switch review.Decision {
 		case "covered", "add", "replace":
 		default:
-			return fmt.Errorf("状态需求覆盖决策无效: %s", review.Decision)
+			return fmt.Errorf("invalid state requirement coverage decision: %s", review.Decision)
 		}
 		if review.ExpectedType == "" {
-			return fmt.Errorf("结构化状态需求必须声明 expected_type: source=%s", review.Source.ID)
+			return fmt.Errorf("structured state requirement must declare expected_type: source=%s", review.Source.ID)
 		}
 		switch review.ExpectedType {
 		case "number", "string", "bool", "enum", "object", "list":
 		default:
-			return fmt.Errorf("状态需求 expected_type 无效: %s", review.ExpectedType)
+			return fmt.Errorf("invalid state requirement expected_type: %s", review.ExpectedType)
 		}
 		if review.TemplateID == "" || review.FieldID == "" {
-			return fmt.Errorf("状态需求覆盖目标不完整: source=%s", review.Source.ID)
+			return fmt.Errorf("state requirement coverage target is incomplete: source=%s", review.Source.ID)
 		}
 		template := actorStateTemplateByID(target, review.TemplateID)
 		field, ok := actorStateFieldByID(template, review.FieldID)
 		if !ok {
-			return fmt.Errorf("状态需求覆盖字段不存在: template=%s field=%s", review.TemplateID, review.FieldID)
+			return fmt.Errorf("state requirement coverage field does not exist: template=%s field=%s", review.TemplateID, review.FieldID)
 		}
 		if review.ExpectedType != "" && field.Type != review.ExpectedType {
-			return fmt.Errorf("状态需求字段类型不匹配: template=%s field=%s expected=%s actual=%s", review.TemplateID, review.FieldID, review.ExpectedType, field.Type)
+			return fmt.Errorf("state requirement field type mismatch: template=%s field=%s expected=%s actual=%s", review.TemplateID, review.FieldID, review.ExpectedType, field.Type)
 		}
 		if review.Min != nil && (field.Min == nil || *field.Min != *review.Min) {
-			return fmt.Errorf("状态需求字段 min 不匹配: template=%s field=%s", review.TemplateID, review.FieldID)
+			return fmt.Errorf("state requirement field min mismatch: template=%s field=%s", review.TemplateID, review.FieldID)
 		}
 		if review.Max != nil && (field.Max == nil || *field.Max != *review.Max) {
-			return fmt.Errorf("状态需求字段 max 不匹配: template=%s field=%s", review.TemplateID, review.FieldID)
+			return fmt.Errorf("state requirement field max mismatch: template=%s field=%s", review.TemplateID, review.FieldID)
 		}
 		if review.Decision != "covered" && !actorStateSchemaAdaptationHasFieldDecision(proposal.Adaptation, review.Decision, review.TemplateID, review.FieldID) {
-			return fmt.Errorf("状态需求决策缺少对应 schema 操作: decision=%s template=%s field=%s", review.Decision, review.TemplateID, review.FieldID)
+			return fmt.Errorf("state requirement decision has no matching schema operation: decision=%s template=%s field=%s", review.Decision, review.TemplateID, review.FieldID)
 		}
 	}
 	proposal.ReviewedLoreIDs = proposal.ReviewedLoreIDs[:0]
@@ -241,7 +264,11 @@ func actorStateSchemaAdaptationHasFieldDecision(adaptation ActorStateSchemaAdapt
 			continue
 		}
 		for _, fieldOp := range templateOp.FieldOps {
-			if fieldOp.Op == decision && normalizeActorStateFieldName(fieldOp.Field.Name) == fieldID {
+			targetFieldID := actorStateFieldID(fieldOp.Field)
+			if fieldOp.Op == "remove" {
+				targetFieldID = fieldOp.FieldID
+			}
+			if fieldOp.Op == decision && normalizeActorStateFieldName(targetFieldID) == fieldID {
 				return true
 			}
 		}

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -18,7 +19,7 @@ func TestHandleRestartSchedulesProcessReplacement(t *testing.T) {
 	defer func() { scheduleRestart = oldScheduleRestart }()
 
 	called := make(chan time.Duration, 1)
-	scheduleRestart = func(delay time.Duration) error {
+	scheduleRestart = func(_ context.Context, delay time.Duration) error {
 		called <- delay
 		return nil
 	}
@@ -51,7 +52,7 @@ func TestHandleRestartReportsScheduleFailure(t *testing.T) {
 	oldScheduleRestart := scheduleRestart
 	defer func() { scheduleRestart = oldScheduleRestart }()
 
-	scheduleRestart = func(time.Duration) error {
+	scheduleRestart = func(context.Context, time.Duration) error {
 		return errors.New("restart unavailable")
 	}
 

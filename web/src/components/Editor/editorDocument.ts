@@ -1,11 +1,49 @@
-import { Node, mergeAttributes } from '@tiptap/core'
+import { Node, mergeAttributes, type Content, type JSONContent } from '@tiptap/core'
 import Image from '@tiptap/extension-image'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { EditorState, Selection } from '@tiptap/pm/state'
 import type { EditorView } from '@tiptap/pm/view'
 import type { Editor } from '@tiptap/react'
 
-import { workspaceAssetURL } from '@/lib/api'
+interface ParsedMarkdownDocumentEntry {
+  source: string
+  document: JSONContent
+}
+
+/**
+ * Small per-editor LRU for Markdown parser output. Source equality is intentional: revisions may
+ * change after a save without changing the document, while watcher/Agent updates with new content
+ * must never reuse a stale parsed tree.
+ */
+export class ParsedMarkdownDocumentCache {
+  private readonly entries = new Map<string, ParsedMarkdownDocumentEntry>()
+  private readonly maxEntries: number
+
+  constructor(maxEntries = 12) {
+    if (!Number.isInteger(maxEntries) || maxEntries < 1) {
+      throw new RangeError('Parsed Markdown cache size must be a positive integer')
+    }
+    this.maxEntries = maxEntries
+  }
+
+  get(key: string, source: string): JSONContent | undefined {
+    const entry = this.entries.get(key)
+    if (!entry || entry.source !== source) return undefined
+    this.entries.delete(key)
+    this.entries.set(key, entry)
+    return entry.document
+  }
+
+  set(key: string, source: string, document: JSONContent) {
+    this.entries.delete(key)
+    this.entries.set(key, { source, document })
+    while (this.entries.size > this.maxEntries) {
+      const oldestKey = this.entries.keys().next().value
+      if (oldestKey === undefined) break
+      this.entries.delete(oldestKey)
+    }
+  }
+}
 
 /** 检测文本是否已自带缩进（首个非空行以全角/半角空格开头）。 */
 export function hasNativeIndent(text: string): boolean {
@@ -26,10 +64,10 @@ export function isMarkdownFile(name: string | null): boolean {
   return !!name && /\.(md|markdown)$/i.test(name)
 }
 
-export function createWorkspaceImageExtension() {
+export function createWorkspaceImageExtension(resolveAsset: (path: string) => string) {
   return Image.extend({
     renderHTML({ HTMLAttributes }) {
-      const src = resolveWorkspaceImageSrc(HTMLAttributes.src)
+      const src = resolveWorkspaceImageSrc(HTMLAttributes.src, resolveAsset)
       return ['img', mergeAttributes(this.options.HTMLAttributes, HTMLAttributes, { src })]
     },
   }).configure({
@@ -73,11 +111,11 @@ export function createIndentedHardBreakExtension() {
   })
 }
 
-function resolveWorkspaceImageSrc(src: unknown) {
+function resolveWorkspaceImageSrc(src: unknown, resolveAsset: (path: string) => string) {
   if (typeof src !== 'string' || src.trim() === '') return src
   const value = src.trim()
   if (/^(https?:|data:|blob:|\/)/i.test(value)) return value
-  if (value.startsWith('assets/')) return workspaceAssetURL(value)
+  if (value.startsWith('assets/')) return resolveAsset(value)
   return value
 }
 
@@ -98,8 +136,24 @@ export function resetEditorStateHistory(editor: Editor) {
   }))
 }
 
+/**
+ * Replaces a whole file and clears every plugin's per-document state in one view update. This is
+ * equivalent to setContent followed by resetEditorStateHistory, but avoids rendering the same
+ * replacement document twice during chapter navigation.
+ */
+export function replaceEditorDocumentWithFreshState(editor: Editor, document: ProseMirrorNode) {
+  const state = editor.state
+  const replacement = state.tr.replaceWith(0, state.doc.content.size, document)
+  editor.view.updateState(EditorState.create({
+    schema: state.schema,
+    doc: replacement.doc,
+    selection: replacement.selection,
+    plugins: state.plugins,
+  }))
+}
+
 interface ReplaceEditorDocumentOptions {
-  contentType: 'html' | 'markdown'
+  contentType: 'html' | 'markdown' | 'json'
   preserveSelection: boolean
 }
 
@@ -109,7 +163,7 @@ interface ReplaceEditorDocumentOptions {
  */
 export function replaceEditorDocument(
   editor: Editor,
-  content: string,
+  content: Content,
   { contentType, preserveSelection }: ReplaceEditorDocumentOptions,
 ) {
   const previousSelection = preserveSelection

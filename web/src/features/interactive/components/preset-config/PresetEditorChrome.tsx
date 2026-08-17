@@ -62,7 +62,7 @@ export function PresetMetadataPanel({
         {extra}
         <div className="preset-metadata-status grid min-w-0 gap-1.5">
           <span className="preset-field-label">{t('settingPanel.presetConfig.status')}</span>
-          <span className="preset-status-badge" title={status}>
+          <span className="preset-status-badge">
             <span className="preset-status-dot" aria-hidden="true" />
             <span className="truncate">{status}</span>
           </span>

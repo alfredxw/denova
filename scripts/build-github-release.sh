@@ -22,6 +22,11 @@ TARGETS=(
   "windows-x64:windows:amd64:denova.exe:denova-updater.exe:zip"
 )
 
+GO_MODULES=(
+  "."
+  "agent"
+)
+
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
     echo "错误: 未找到命令 $1" >&2
@@ -83,6 +88,19 @@ validate_release_metadata() {
   fi
 }
 
+verify_go_modules() {
+  local module
+  for module in "${GO_MODULES[@]}"; do
+    echo "==> 校验 Go module: ${module}"
+    (
+      cd "${ROOT_DIR}/${module}"
+      go mod tidy -diff
+      go test ./...
+      go vet ./...
+    )
+  done
+}
+
 write_release_notes() {
   local release_tag
   release_tag="v$(release_version_without_prefix)"
@@ -100,7 +118,7 @@ write_release_notes() {
 
 ## Verification / 验证
 
-- Backend: `go test ./...`, `go vet ./...`, and `go mod tidy -diff`.
+- Backend: all Go modules passed `go mod tidy -diff`, `go test ./...`, and `go vet ./...`.
 - Frontend: complete Vitest suite, i18n key check, TypeScript check, and production Vite build.
 - Packaging: five platform archives are generated from the same source revision and listed in `checksums.txt`.
 
@@ -108,9 +126,15 @@ write_release_notes() {
 
 ## Install / 安装
 
-Download the archive for your platform, verify it against `checksums.txt`, extract it, and run Denova from the extracted `denova` directory.
+macOS / Linux one-command install / 一键安装：
 
-下载对应平台压缩包，使用 `checksums.txt` 校验后解压，并在解压后的 `denova` 目录运行：
+```bash
+curl -fsSL https://raw.githubusercontent.com/alfredxw/denova/master/scripts/install.sh | sh
+```
+
+Or download the archive for your platform, verify it against `checksums.txt`, extract it, and run Denova from the extracted `denova` directory.
+
+也可以下载对应平台压缩包，使用 `checksums.txt` 校验后解压，并在解压后的 `denova` 目录运行：
 
 ```bash
 ./denova
@@ -143,9 +167,7 @@ mkdir -p "${DIST_DIR}" "${BUILD_DIR}"
 
 echo "==> 安装前端依赖并执行发布校验"
 run_pnpm -C "${ROOT_DIR}/web" install --frozen-lockfile
-go mod tidy -diff
-go test ./...
-go vet ./...
+verify_go_modules
 run_pnpm -C "${ROOT_DIR}/web" test
 run_pnpm -C "${ROOT_DIR}/web" check:i18n
 
@@ -165,6 +187,10 @@ for target in "${TARGETS[@]}"; do
     go build -trimpath -ldflags "-s -w -X denova/internal/buildinfo.Version=${binary_version}" -o "${package_dir}/${exe}" ./cmd/denova
   CGO_ENABLED=0 GOOS="${goos}" GOARCH="${goarch}" \
     go build -trimpath -ldflags "-s -w -X denova/internal/buildinfo.Version=${binary_version}" -o "${package_dir}/${updater_exe}" ./cmd/denova-updater
+
+  go run ./scripts/ripgrep-assets \
+    -target "${key}" \
+    -destination "${package_dir}"
 
   if [[ "${goos}" != "windows" ]]; then
     chmod 0755 "${package_dir}/${exe}"

@@ -3,7 +3,7 @@ import { useMemo } from 'react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import type { ChatMessage } from '@/lib/api'
+import type { TokenUsageChatMessage } from '@/lib/api'
 import type { AgentTokenUsageRecord } from '@/lib/agent-message-view'
 import { focusDialogContentOnOpen } from './dialog-focus'
 
@@ -49,7 +49,7 @@ type TokenUsageGroup = {
   rows: TokenUsageRow[]
 }
 
-export type TokenUsageRecord = AgentTokenUsageRecord | ChatMessage
+export type TokenUsageRecord = AgentTokenUsageRecord | TokenUsageChatMessage
 
 export function TokenUsageDialog({ open, messages, onOpenChange, onOpenTrace }: {
   open: boolean
@@ -196,7 +196,7 @@ function TokenUsageRequestGroup({ group, requestIndex, onOpenTrace }: { group: T
           <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-1 text-[var(--nova-text-faint)]">
             <span>{message.agent_kind || '-'}</span>
             <span>{formatTimestamp(message.created_at)}</span>
-            <span>{t('chat.tokenUsage.columns.run')}: <span className="font-mono" title={runID}>{runID || '-'}</span></span>
+            <span>{t('chat.tokenUsage.columns.run')}: <span className="font-mono">{runID || '-'}</span></span>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[var(--nova-text-muted)]">

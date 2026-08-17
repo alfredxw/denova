@@ -12,6 +12,10 @@ export default defineConfig({
     setupFiles: './src/test/setup.ts',
     globals: true,
     css: true,
+    // The CSS-enabled jsdom suites are CPU and memory intensive. Unbounded
+    // file parallelism turns scheduler contention into >1s individual tests;
+    // a proportional cap stays adaptive across developer and CI machines.
+    maxWorkers: '25%',
   },
   resolve: {
     alias: {
@@ -41,6 +45,9 @@ export default defineConfig({
         target: `http://localhost:${backendPort}`,
         changeOrigin: true,
         xfwd: true,
+        // AgentChat terminals attach over /api/terminal/sessions/:id/attach, so the dev proxy
+        // has to forward WebSocket upgrade requests as well.
+        ws: true,
       },
     },
   },

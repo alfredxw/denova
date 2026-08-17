@@ -113,6 +113,7 @@ export function StoryStateLedger({ snapshot, displayPreference, onDisplayPrefere
       <section
         aria-label={t('storyStage.state.current')}
         data-state-panel-mode={panelMode}
+        data-nova-chat-after-content-height-scope={panelMode}
         className="story-state-ledger mt-3 overflow-hidden rounded-xl border border-[var(--nova-border)] bg-[var(--story-state-canvas)]"
       >
         <header className="flex h-10 min-w-0 items-center gap-2 px-2.5">
@@ -133,7 +134,6 @@ export function StoryStateLedger({ snapshot, displayPreference, onDisplayPrefere
               variant="ghost"
               size="sm"
               onClick={onOpenDirectorState}
-              title={t('storyStage.state.openDirector')}
               aria-label={t('storyStage.state.openDirector')}
             >
               <PanelRight data-icon="inline-start" />
@@ -146,7 +146,6 @@ export function StoryStateLedger({ snapshot, displayPreference, onDisplayPrefere
               variant="ghost"
               size="icon-sm"
               aria-label={collapsed ? t('storyStage.state.expand') : t('storyStage.state.collapse')}
-              title={collapsed ? t('storyStage.state.expand') : t('storyStage.state.collapse')}
             >
               {collapsed ? <ChevronDown data-icon="inline-start" /> : <ChevronUp data-icon="inline-start" />}
             </Button>
@@ -226,7 +225,6 @@ function StatusIndicator({ status }: { status?: 'pending' | 'ready' | 'failed' }
     return (
       <span
         aria-label={t('storyStage.state.syncingShort')}
-        title={t('storyStage.state.syncingShort')}
         className="flex size-6 shrink-0 items-center justify-center rounded-lg bg-[var(--story-state-pending-soft)] text-[var(--story-state-pending)]"
       >
         <Loader2 aria-hidden="true" className="size-3.5 animate-spin motion-reduce:animate-none" />
@@ -237,7 +235,6 @@ function StatusIndicator({ status }: { status?: 'pending' | 'ready' | 'failed' }
     return (
       <span
         aria-label={t('storyStage.state.failedShort')}
-        title={t('storyStage.state.failedShort')}
         className="flex size-6 shrink-0 items-center justify-center rounded-lg bg-[var(--story-state-negative-soft)] text-[var(--story-state-negative)]"
       >
         <AlertCircle aria-hidden="true" className="size-3.5" />
@@ -247,7 +244,6 @@ function StatusIndicator({ status }: { status?: 'pending' | 'ready' | 'failed' }
   return (
     <span
       aria-label={t('storyStage.state.readyShort')}
-      title={t('storyStage.state.readyShort')}
       className="flex size-6 shrink-0 items-center justify-center rounded-lg bg-[var(--story-state-positive-soft)] text-[var(--story-state-positive)]"
     >
       <CircleCheck aria-hidden="true" className="size-3.5" />
@@ -268,7 +264,6 @@ function StateEntityTabs({ actors, showWorld }: { actors: Array<{ id: string; na
           <TabsTrigger
             key={actor.id}
             value={actor.id}
-            title={actor.name}
             className="min-w-20 max-w-40 flex-none"
           >
             <span className="truncate">{actor.name}</span>
@@ -440,7 +435,6 @@ function ActorTraits({ traits }: { traits: ReturnType<typeof actorTraits> }) {
         <Badge
           key={`${trait.pool_id}:${trait.trait_id}`}
           variant="secondary"
-          title={trait.summary || trait.name}
           className="max-w-32 truncate"
         >
           {trait.name}

@@ -1,17 +1,18 @@
 package interactive
 
 import (
+	interactivestate "denova/internal/interactive/state"
 	"fmt"
 	"testing"
 )
 
 func TestCompileTurnStateUpdatesDoesNotApplyAnOperationCountLimit(t *testing.T) {
 	system := StoryDirectorActorStateSystem{Templates: []ActorStateTemplate{{ID: "npc"}}}
-	updates := make([]StateUpdate, 201)
+	updates := make([]interactivestate.Update, 201)
 	for index := range updates {
 		actorID := fmt.Sprintf("actor-%d", index)
-		updates[index] = StateUpdate{
-			Op:    TurnStateUpdateCreate,
+		updates[index] = interactivestate.Update{
+			Op:    interactivestate.Create,
 			Path:  "/" + actorID,
 			Value: map[string]any{"template_id": "npc", "name": actorID},
 		}
@@ -34,10 +35,10 @@ func TestCompileTurnStateUpdatesDoesNotApplyAnOperationCountLimit(t *testing.T) 
 }
 
 func TestValidateTurnResultDoesNotApplyAnOperationCountLimit(t *testing.T) {
-	updates := make([]StateUpdate, 201)
+	updates := make([]interactivestate.Update, 201)
 	for index := range updates {
-		updates[index] = StateUpdate{
-			Op:    TurnStateUpdateReplace,
+		updates[index] = interactivestate.Update{
+			Op:    interactivestate.Replace,
 			Path:  fmt.Sprintf("/actor-%d/status", index),
 			Value: index,
 		}

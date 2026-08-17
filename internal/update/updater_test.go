@@ -3,10 +3,12 @@ package update
 import (
 	"context"
 	"io"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"denova/internal/hostruntime"
 )
 
 func TestRunUpdaterAppliesStagedPackageAndRelaunches(t *testing.T) {
@@ -16,8 +18,12 @@ func TestRunUpdaterAppliesStagedPackageAndRelaunches(t *testing.T) {
 	targetExe := filepath.Join(installDir, "nova")
 	updaterName := updaterExecutableName()
 	stagedUpdater := filepath.Join(sourceDir, updaterName)
-	writeUpdateTestPackage(t, installDir, "old executable", "old updater", "old web", "old skill")
-	writeUpdateTestPackage(t, sourceDir, "new executable", "new updater", "new web", "new skill")
+	writeUpdateTestPackage(t, installDir, updateTestPackageContents{
+		Executable: "old executable", Updater: "old updater", Web: "old web", Skill: "old skill", Ripgrep: "old ripgrep", License: "old license",
+	})
+	writeUpdateTestPackage(t, sourceDir, updateTestPackageContents{
+		Executable: "new executable", Updater: "new updater", Web: "new web", Skill: "new skill", Ripgrep: "new ripgrep", License: "new license",
+	})
 	manifest := ApplyManifest{
 		SourceDir:         sourceDir,
 		InstallDir:        installDir,
@@ -51,8 +57,11 @@ func TestRunUpdaterAppliesStagedPackageAndRelaunches(t *testing.T) {
 	assertFileContent(t, filepath.Join(installDir, updaterName), "new updater")
 	assertFileContent(t, filepath.Join(installDir, "web", "index.html"), "new web")
 	assertFileContent(t, filepath.Join(installDir, "skills", "demo", "SKILL.md"), "new skill")
+	assertFileContent(t, filepath.Join(installDir, "tools", hostruntime.RipgrepExecutableName()), "new ripgrep")
+	assertFileContent(t, filepath.Join(installDir, "licenses", "ripgrep", "LICENSE-MIT"), "new license MIT")
 	assertFileContent(t, filepath.Join(backupDir, "nova"), "old executable")
 	assertFileContent(t, filepath.Join(backupDir, updaterName), "old updater")
+	assertFileContent(t, filepath.Join(backupDir, "tools", hostruntime.RipgrepExecutableName()), "old ripgrep")
 	if launched != targetExe {
 		t.Fatalf("launched executable = %q, want %q", launched, targetExe)
 	}
@@ -67,9 +76,15 @@ func TestRollbackUpdateRestoresBackups(t *testing.T) {
 	backupDir := filepath.Join(installDir, ".denova-updates", "backup-test")
 	targetExe := filepath.Join(installDir, "nova")
 	updaterName := updaterExecutableName()
-	writeUpdateTestPackage(t, installDir, "new executable", "new updater", "new web", "new skill")
-	writeUpdateTestPackage(t, sourceDir, "staged executable", "staged updater", "staged web", "staged skill")
-	writeUpdateTestPackage(t, backupDir, "old executable", "old updater", "old web", "old skill")
+	writeUpdateTestPackage(t, installDir, updateTestPackageContents{
+		Executable: "new executable", Updater: "new updater", Web: "new web", Skill: "new skill", Ripgrep: "new ripgrep", License: "new license",
+	})
+	writeUpdateTestPackage(t, sourceDir, updateTestPackageContents{
+		Executable: "staged executable", Updater: "staged updater", Web: "staged web", Skill: "staged skill", Ripgrep: "staged ripgrep", License: "staged license",
+	})
+	writeUpdateTestPackage(t, backupDir, updateTestPackageContents{
+		Executable: "old executable", Updater: "old updater", Web: "old web", Skill: "old skill", Ripgrep: "old ripgrep", License: "old license",
+	})
 	manifest := ApplyManifest{
 		SourceDir:         sourceDir,
 		InstallDir:        installDir,
@@ -77,16 +92,28 @@ func TestRollbackUpdateRestoresBackups(t *testing.T) {
 		TargetExecutable:  targetExe,
 		UpdaterExecutable: filepath.Join(sourceDir, updaterName),
 	}
-	if err := rollbackUpdate(manifest, log.New(io.Discard, "", 0)); err != nil {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	if err := rollbackUpdate(context.Background(), manifest, logger); err != nil {
 		t.Fatalf("rollbackUpdate failed: %v", err)
 	}
 	assertFileContent(t, targetExe, "old executable")
 	assertFileContent(t, filepath.Join(installDir, updaterName), "old updater")
 	assertFileContent(t, filepath.Join(installDir, "web", "index.html"), "old web")
 	assertFileContent(t, filepath.Join(installDir, "skills", "demo", "SKILL.md"), "old skill")
+	assertFileContent(t, filepath.Join(installDir, "tools", hostruntime.RipgrepExecutableName()), "old ripgrep")
+	assertFileContent(t, filepath.Join(installDir, "licenses", "ripgrep", "UNLICENSE"), "old license Unlicense")
 }
 
-func writeUpdateTestPackage(t *testing.T, root, exeContent, updaterContent, webContent, skillContent string) {
+type updateTestPackageContents struct {
+	Executable string
+	Updater    string
+	Web        string
+	Skill      string
+	Ripgrep    string
+	License    string
+}
+
+func writeUpdateTestPackage(t *testing.T, root string, content updateTestPackageContents) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Join(root, "web"), 0o755); err != nil {
 		t.Fatal(err)
@@ -94,16 +121,31 @@ func writeUpdateTestPackage(t *testing.T, root, exeContent, updaterContent, webC
 	if err := os.MkdirAll(filepath.Join(root, "skills", "demo"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, "nova"), []byte(exeContent), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(root, "tools"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, updaterExecutableName()), []byte(updaterContent), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(root, "licenses", "ripgrep"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, "web", "index.html"), []byte(webContent), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "nova"), []byte(content.Executable), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, "skills", "demo", "SKILL.md"), []byte(skillContent), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, updaterExecutableName()), []byte(content.Updater), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "web", "index.html"), []byte(content.Web), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "skills", "demo", "SKILL.md"), []byte(content.Skill), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "tools", hostruntime.RipgrepExecutableName()), []byte(content.Ripgrep), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "licenses", "ripgrep", "LICENSE-MIT"), []byte(content.License+" MIT"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "licenses", "ripgrep", "UNLICENSE"), []byte(content.License+" Unlicense"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }

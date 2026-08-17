@@ -5,18 +5,18 @@ import type { ReviewThread, WorkspaceChangeGroup } from '../types'
 import { ChangeReviewWorkspace, deriveFeedbackComments } from './ChangeReviewWorkspace'
 
 const apiMocks = vi.hoisted(() => ({
-  createWorkspaceChangeComment: vi.fn(),
-  deleteWorkspaceChangeComment: vi.fn(),
-  redoWorkspaceChangeGroup: vi.fn(),
-  reviewWorkspaceChangeGroup: vi.fn(),
-  undoWorkspaceChangeGroup: vi.fn(),
-  updateWorkspaceChangeComment: vi.fn(),
+  createProjectChangeComment: vi.fn(),
+  deleteProjectChangeComment: vi.fn(),
+  redoProjectChangeGroup: vi.fn(),
+  reviewProjectChangeGroup: vi.fn(),
+  undoProjectChangeGroup: vi.fn(),
+  updateProjectChangeComment: vi.fn(),
 }))
 
 const queryMocks = vi.hoisted(() => ({
-  invalidateWorkspaceChangeQueries: vi.fn(),
-  useWorkspaceChangeGroup: vi.fn(),
-  useWorkspaceChangeReviewThread: vi.fn(),
+  invalidateProjectChangeQueries: vi.fn(),
+  useProjectChangeGroup: vi.fn(),
+  useProjectChangeReviewThread: vi.fn(),
 }))
 
 vi.mock('../api', () => apiMocks)
@@ -37,9 +37,9 @@ describe('ChangeReviewWorkspace', () => {
     vi.clearAllMocks()
     window.localStorage.clear()
     Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: vi.fn() })
-    queryMocks.invalidateWorkspaceChangeQueries.mockResolvedValue(undefined)
-    queryMocks.useWorkspaceChangeGroup.mockReturnValue(emptyGroupQuery())
-    queryMocks.useWorkspaceChangeReviewThread.mockReturnValue({
+    queryMocks.invalidateProjectChangeQueries.mockResolvedValue(undefined)
+    queryMocks.useProjectChangeGroup.mockReturnValue(emptyGroupQuery())
+    queryMocks.useProjectChangeReviewThread.mockReturnValue({
       data: reviewThread(),
       isLoading: false,
       isError: false,
@@ -66,21 +66,21 @@ describe('ChangeReviewWorkspace', () => {
   })
 
   it('reviews exactly the selected group and refreshes receipt paths only for byte-changing decisions', async () => {
-    apiMocks.reviewWorkspaceChangeGroup.mockResolvedValue({ workspace: '/books/demo', affected_paths: ['chapters/ch01.md'] })
+    apiMocks.reviewProjectChangeGroup.mockResolvedValue({ project_id: 'project-demo', workspace: '/books/demo', affected_paths: ['chapters/ch01.md'] })
     const onWorkspaceChanged = vi.fn()
     renderWorkspace({ onWorkspaceChanged })
     await screen.findByTestId('review-diff-editor')
 
     fireEvent.click(screen.getByRole('button', { name: /驳回本轮|Reject run/i }))
-    await waitFor(() => expect(apiMocks.reviewWorkspaceChangeGroup).toHaveBeenCalledWith('/books/demo', 'group-2', { decision: 'reject' }))
+    await waitFor(() => expect(apiMocks.reviewProjectChangeGroup).toHaveBeenCalledWith('project-demo', 'group-2', { decision: 'reject' }))
     await waitFor(() => expect(onWorkspaceChanged).toHaveBeenCalledWith(['chapters/ch01.md']))
-    expect(queryMocks.invalidateWorkspaceChangeQueries).toHaveBeenCalledWith(expect.anything(), '/books/demo')
+    expect(queryMocks.invalidateProjectChangeQueries).toHaveBeenCalledWith(expect.anything(), 'project-demo')
   })
 
   it('exposes unresolved comments with derived path/line metadata and renders continuity conflicts explicitly', async () => {
     const thread = reviewThread()
     thread.files[0].continuity = 'conflicted'
-    queryMocks.useWorkspaceChangeReviewThread.mockReturnValue({
+    queryMocks.useProjectChangeReviewThread.mockReturnValue({
       data: thread,
       isLoading: false,
       isError: false,
@@ -98,9 +98,8 @@ describe('ChangeReviewWorkspace', () => {
     expect(onFeedbackCommentsChange).not.toHaveBeenCalledWith('thread-1', [])
   })
 
-  it('keeps the temporary Review tab closable when loading fails', () => {
-    const onClose = vi.fn()
-    queryMocks.useWorkspaceChangeReviewThread.mockReturnValue({
+  it('does not duplicate the workbench Review tab when loading fails', () => {
+    queryMocks.useProjectChangeReviewThread.mockReturnValue({
       data: undefined,
       isLoading: false,
       isError: true,
@@ -108,8 +107,18 @@ describe('ChangeReviewWorkspace', () => {
       error: new Error('offline'),
       refetch: vi.fn(),
     })
-    renderWorkspace({ onClose })
+    renderWorkspace()
 
+    expect(screen.queryByText(/^(审阅|Review)$/i)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /关闭|Close/i })).not.toBeInTheDocument()
+  })
+
+  it('keeps standalone review closing in the existing toolbar', async () => {
+    const onClose = vi.fn()
+    renderWorkspace({ onClose })
+    await screen.findByTestId('review-diff-editor')
+
+    expect(screen.queryByText(/^(审阅|Review)$/i)).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /关闭|Close/i }))
     expect(onClose).toHaveBeenCalledTimes(1)
   })
@@ -121,7 +130,6 @@ describe('ChangeReviewWorkspace', () => {
     expect(screen.getByRole('button', { name: /接受本轮|Accept run/i })).toBeDisabled()
     expect(screen.getByRole('button', { name: /驳回本轮|Reject run/i })).toBeDisabled()
     expect(screen.getByRole('button', { name: /撤销整组|Undo group/i })).toBeDisabled()
-    expect(screen.getByRole('button', { name: /关闭|Close/i })).toBeEnabled()
   })
 
   it('renders every file in one review scroll while file navigation leaves the selected history scope unchanged', async () => {
@@ -132,7 +140,7 @@ describe('ChangeReviewWorkspace', () => {
       { ...thread.files[0], path: 'chapters/a.md', latest_group_id: 'group-1', latest_change_set_id: 'set-1', group_ids: ['group-1'], change_set_ids: ['set-1'] },
       { ...thread.files[0], path: 'chapters/b.md', base_group_id: 'group-2', base_change_set_id: 'set-2', latest_group_id: 'group-2', latest_change_set_id: 'set-2', group_ids: ['group-2'], change_set_ids: ['set-2'] },
     ]
-    queryMocks.useWorkspaceChangeReviewThread.mockReturnValue({
+    queryMocks.useProjectChangeReviewThread.mockReturnValue({
       data: thread,
       isLoading: false,
       isError: false,
@@ -151,7 +159,7 @@ describe('ChangeReviewWorkspace', () => {
     await flushAnimationFrames()
     expect(HTMLElement.prototype.scrollIntoView).not.toHaveBeenCalled()
 
-    fireEvent.click(screen.getByRole('option', { name: /chapters\/b\.md/ }))
+    fireEvent.click(screen.getByRole('treeitem', { name: /chapters\/b\.md/ }))
     expect(scopeSelector).toHaveTextContent(/全部审阅变更|All review changes/i)
     await waitFor(() => expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(1))
 
@@ -179,7 +187,7 @@ describe('ChangeReviewWorkspace', () => {
       change_set_ids: ['set-3'],
       pending_edit_ids: ['edit-3'],
     })
-    queryMocks.useWorkspaceChangeReviewThread.mockReturnValue({
+    queryMocks.useProjectChangeReviewThread.mockReturnValue({
       data: thread,
       isLoading: false,
       isError: false,
@@ -203,10 +211,12 @@ describe('ChangeReviewWorkspace', () => {
 
     const navigator = document.querySelector<HTMLElement>('[data-review-file-navigator]')
     expect(navigator).not.toBeNull()
+    const navigatorMotion = navigator?.closest('[data-nova-panel-motion="inline"]')
     fireEvent.click(within(navigator as HTMLElement).getByRole('button', { name: /收起文件导航|Hide file navigator/i }))
-    expect(document.querySelector('[data-review-file-navigator]')).toBeNull()
+    expect(navigatorMotion).toHaveAttribute('data-state', 'closed')
+    expect(navigatorMotion).toHaveAttribute('aria-hidden', 'true')
     fireEvent.click(screen.getByRole('button', { name: /展开文件导航|Show file navigator/i }))
-    expect(document.querySelector('[data-review-file-navigator]')).not.toBeNull()
+    expect(navigatorMotion).toHaveAttribute('data-state', 'open')
   })
 
   it('keeps an Agent toggle in the Review toolbar after the Agent panel is closed', async () => {
@@ -221,18 +231,16 @@ describe('ChangeReviewWorkspace', () => {
   })
 
   it('locks snapshot-changing actions while an inline comment draft is open', async () => {
-    const onClose = vi.fn()
     const onOpenFile = vi.fn()
-    renderWorkspace({ onClose, onOpenFile })
+    renderWorkspace({ onOpenFile })
     await screen.findByTestId('review-diff-editor')
 
     fireEvent.click(screen.getByRole('button', { name: '开始评论草稿' }))
 
     expect(scopeButton()).toBeDisabled()
     expect(screen.getByRole('button', { name: /\u5237\u65b0|Refresh/i })).toBeDisabled()
-    expect(screen.getByRole('button', { name: /\u5173\u95ed|Close/i })).toBeEnabled()
     expect(screen.getByRole('button', { name: /\u6253\u5f00\u6587\u4ef6|Open file/i })).toBeDisabled()
-    expect(screen.getByRole('option', { name: /chapters\/ch01\.md/ })).toBeEnabled()
+    expect(screen.getByRole('treeitem', { name: /chapters\/ch01\.md/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /折叠全部 Diff|Collapse all diffs/i })).toBeEnabled()
     expect(screen.getByRole('button', { name: /\u64a4\u9500\u6574\u7ec4|Undo group/i })).toBeDisabled()
     expect(screen.getByRole('button', { name: /\u63a5\u53d7\u672c\u8f6e|Accept run/i })).toBeDisabled()
@@ -244,12 +252,34 @@ describe('ChangeReviewWorkspace', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '取消评论草稿' }))
     expect(scopeButton()).toBeEnabled()
-    expect(screen.getByRole('button', { name: /\u5173\u95ed|Close/i })).toBeEnabled()
+  })
+
+  it('marks deleted files and does not offer an open action for an absent target', async () => {
+    const thread = reviewThread()
+    thread.files[0] = {
+      ...thread.files[0],
+      after_content: '',
+      revision: 'missing',
+      before_exists: true,
+      after_exists: false,
+    }
+    queryMocks.useProjectChangeReviewThread.mockReturnValue({
+      data: thread,
+      isLoading: false,
+      isError: false,
+      isFetching: false,
+      refetch: vi.fn(),
+    })
+    renderWorkspace({ onOpenFile: vi.fn() })
+
+    expect(await screen.findByText(/已删除|Deleted/i)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /打开文件|Open file/i })).not.toBeInTheDocument()
+    expect(await screen.findByTestId('review-diff-editor')).toHaveTextContent('chapters/ch01.md')
   })
 
   it('switches the review surface to a historical Agent run from the scope menu', async () => {
     const historical = reviewGroup()
-    queryMocks.useWorkspaceChangeGroup.mockImplementation((_workspace: string, groupID: string) => (
+    queryMocks.useProjectChangeGroup.mockImplementation((_projectId: string, groupID: string) => (
       groupID === historical.id
         ? { ...emptyGroupQuery(), data: historical }
         : emptyGroupQuery()
@@ -260,7 +290,7 @@ describe('ChangeReviewWorkspace', () => {
     fireEvent.pointerDown(scopeButton(), { button: 0, ctrlKey: false })
     fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: /第 1 轮修改|Agent edit 1/i }))
 
-    await waitFor(() => expect(queryMocks.useWorkspaceChangeGroup).toHaveBeenCalledWith('/books/demo', 'group-1'))
+    await waitFor(() => expect(queryMocks.useProjectChangeGroup).toHaveBeenCalledWith('project-demo', 'group-1'))
     expect(await screen.findByTestId('review-diff-editor')).toHaveTextContent('history/round-one.md')
     expect(scopeButton()).toHaveTextContent(/第 1 轮修改|Agent edit 1/i)
   })
@@ -278,7 +308,7 @@ describe('ChangeReviewWorkspace', () => {
         path: 'history/round-two.md',
       })),
     }
-    queryMocks.useWorkspaceChangeGroup.mockImplementation((_workspace: string, groupID: string) => (
+    queryMocks.useProjectChangeGroup.mockImplementation((_projectId: string, groupID: string) => (
       groupID === historical.id
         ? { ...emptyGroupQuery(), data: historical }
         : groupID === secondHistorical.id
@@ -289,36 +319,34 @@ describe('ChangeReviewWorkspace', () => {
     const view = render(
       <QueryClientProvider client={queryClient}>
         <ChangeReviewWorkspace
-          workspace="/books/demo"
+          projectId="project-demo"
           threadID="thread-1"
           scopeRequest={{ id: 1, threadID: 'thread-1', groupID: 'group-1' }}
-          onClose={vi.fn()}
         />
       </QueryClientProvider>,
     )
 
-    await waitFor(() => expect(queryMocks.useWorkspaceChangeGroup).toHaveBeenCalledWith('/books/demo', 'group-1'))
+    await waitFor(() => expect(queryMocks.useProjectChangeGroup).toHaveBeenCalledWith('project-demo', 'group-1'))
     expect(await screen.findByTestId('review-diff-editor')).toHaveTextContent('history/round-one.md')
     expect(scopeButton()).toHaveTextContent(/第 1 轮修改|Agent edit 1/i)
 
     view.rerender(
       <QueryClientProvider client={queryClient}>
         <ChangeReviewWorkspace
-          workspace="/books/demo"
+          projectId="project-demo"
           threadID="thread-1"
           scopeRequest={{ id: 2, threadID: 'thread-1', groupID: 'group-2' }}
-          onClose={vi.fn()}
         />
       </QueryClientProvider>,
     )
-    await waitFor(() => expect(queryMocks.useWorkspaceChangeGroup).toHaveBeenCalledWith('/books/demo', 'group-2'))
+    await waitFor(() => expect(queryMocks.useProjectChangeGroup).toHaveBeenCalledWith('project-demo', 'group-2'))
     expect(await screen.findByTestId('review-diff-editor')).toHaveTextContent('history/round-two.md')
     expect(scopeButton()).toHaveTextContent(/第 2 轮修改|Agent edit 2/i)
   })
 
   it('freezes the displayed snapshot while a comment draft is open and adopts refreshes after cancel', async () => {
     let currentThread = reviewThread()
-    queryMocks.useWorkspaceChangeReviewThread.mockImplementation(() => ({
+    queryMocks.useProjectChangeReviewThread.mockImplementation(() => ({
       data: currentThread,
       isLoading: false,
       isError: false,
@@ -391,9 +419,8 @@ function renderWorkspace(overrides: Partial<React.ComponentProps<typeof ChangeRe
   return render(
     <QueryClientProvider client={queryClient}>
       <ChangeReviewWorkspace
-        workspace="/books/demo"
+        projectId="project-demo"
         threadID="thread-1"
-        onClose={vi.fn()}
         {...overrides}
       />
     </QueryClientProvider>,

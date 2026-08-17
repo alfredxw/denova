@@ -1,59 +1,45 @@
 import { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback, type ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
-import { Archive, BadgeHelp, BarChart3, ClipboardList, Command as CommandIcon, Eraser, Layers3, List, ListTree, PenLine, ScrollText, Send, Sparkles, Square, WandSparkles } from 'lucide-react'
+import { Archive, BadgeHelp, BarChart3, ClipboardList, Eraser, List, ScrollText, Sparkles, Target } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { FileReferencePicker, type ReferencePickerItem } from './FileReferencePicker'
+import { FileReferencePicker, type FileReferencePickerHandle, type ReferencePickerItem } from './FileReferencePicker'
 import { TokenUsageDialog, type TokenUsageRecord } from './TokenUsagePanel'
-import type { TextSelection } from '@/lib/api'
+import type { AgentRuntimeQueuedCommand, TextSelection } from '@/lib/api'
 import type { VisibleAgentKey } from '@/features/agents/agent-registry'
 import { Button } from '@/components/ui/button'
 import { AgentComposerShell } from './AgentComposerShell'
 import { ModelProfileSwitcher } from './ModelProfileSwitcher'
 import { ComposerTokenInput, type ComposerTokenInputHandle, type ComposerTokenSpec, type ComposerTrigger } from './composer-token-input'
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandItem,
-  CommandList,
-} from '@/components/ui/command'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+import { workspaceFileName } from '@/lib/workspace-path'
+import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useKeyboardInset } from '@/hooks/useKeyboardInset'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { ReviewFeedbackTray, reviewFeedbackCommentCount, type ReviewFeedbackBatch, type ReviewFeedbackComment, type ReviewFeedbackSelection } from '@/features/changes/agent/ReviewFeedbackTray'
+import { AgentComposerControls } from './AgentComposerControls'
+import { AgentQueuedCommandList } from './AgentQueuedCommandList'
+import { AgentGoalCard } from './AgentGoalCard'
+import { useAgentApprovalMode } from '@/features/agent-approval/AgentApprovalProvider'
+import { AgentApprovalModeMenu } from '@/features/agent-approval/AgentApprovalModeMenu'
+import { InputCommandMenu, type InputCommandOption } from './InputCommandMenu'
+import { useConversationConfig } from '@/features/conversation-config/use-conversation-config'
+import type { ConversationConfigBinding } from '@/features/conversation-config/types'
+import { cn } from '@/lib/utils'
+import type { ConversationGoal } from '@/features/agent-goal/types'
+import { ComposerModeChip } from './ComposerModeChip'
 
 /** 可用命令列表 */
 const COMMANDS: Array<{ cmd: string; descKey: string; hintKey: string; icon: LucideIcon }> = [
+  { cmd: '/goal', descKey: 'chat.command.goal.desc', hintKey: 'chat.command.goal.hint', icon: Target },
   { cmd: '/plan', descKey: 'chat.command.plan.desc', hintKey: 'chat.command.plan.hint', icon: ClipboardList },
   { cmd: '/clear', descKey: 'chat.command.clear.desc', hintKey: 'chat.command.clear.hint', icon: Eraser },
   { cmd: '/compact', descKey: 'chat.command.compact.desc', hintKey: 'chat.command.compact.hint', icon: Archive },
   { cmd: '/status', descKey: 'chat.command.status.desc', hintKey: 'chat.command.status.hint', icon: Sparkles },
   { cmd: '/help', descKey: 'chat.command.help.desc', hintKey: 'chat.command.help.hint', icon: BadgeHelp },
-  { cmd: '/outline', descKey: 'chat.command.outline.desc', hintKey: 'chat.command.outline.hint', icon: ListTree },
-  { cmd: '/group-plan', descKey: 'chat.command.groupPlan.desc', hintKey: 'chat.command.groupPlan.hint', icon: Layers3 },
-  { cmd: '/continue', descKey: 'chat.command.continue.desc', hintKey: 'chat.command.continue.hint', icon: PenLine },
-  { cmd: '/rewrite', descKey: 'chat.command.rewrite.desc', hintKey: 'chat.command.rewrite.hint', icon: WandSparkles },
 ]
 
 interface SkillCommand {
   name: string
   description: string
-}
-
-type CommandOption = {
-  cmd: string
-  description: string
-  hint: string
-  icon: LucideIcon
-  source: 'builtin' | 'skill'
 }
 
 type CommandScope = 'all' | 'skills' | 'none'
@@ -65,8 +51,25 @@ interface InputAreaProps {
   onSend: (message: string) => boolean | void | Promise<boolean | void>
   onStop?: () => void
   disabled: boolean
+  /** Agent execution and editor availability are independent: active runs can still accept instructions. */
+  generationActive: boolean
+  queuedCommands?: AgentRuntimeQueuedCommand[]
+  queueActionPendingCommandID?: string
+  onQueuedCommandSteer?: (item: AgentRuntimeQueuedCommand) => boolean | void | Promise<boolean | void>
+  onQueuedCommandDelete?: (item: AgentRuntimeQueuedCommand) => boolean | void | Promise<boolean | void>
+  onQueuedCommandEdit?: (item: AgentRuntimeQueuedCommand) => boolean | void | Promise<boolean | void>
+  abortPending?: boolean
+  commandSubmitting?: boolean
+  activeControlsDisabled?: boolean
+  activeStopDisabled?: boolean
+  sendBlocked?: boolean
   planMode?: boolean
   onTogglePlanMode?: () => void
+  goal?: ConversationGoal | null
+  goalPending?: boolean
+  onGoalSubmit?: (objective: string) => boolean | void | Promise<boolean | void>
+  onGoalPause?: () => void | Promise<void>
+  onGoalClear?: () => void | Promise<void>
   draftKey?: string
   inputPrefill?: { prompt: string; nonce: number } | null
   onInputPrefillConsumed?: () => void
@@ -98,10 +101,13 @@ interface InputAreaProps {
   onOpenTrace?: (runID: string) => void
   agentKey?: VisibleAgentKey
   workspace?: string
-  writingSkillControl?: ReactNode
+  conversationBinding?: ConversationConfigBinding
+  composerSettingsControl?: ReactNode
   onboardingAnchor?: string
   floating?: boolean
   onHeightChange?: (height: number) => void
+  /** Keeps the composer and its attached UI aligned with the conversation timeline. */
+  contentClassName?: string
 }
 
 /** 输入区域组件，支持 Enter 发送和命令菜单 */
@@ -109,8 +115,24 @@ export function InputArea({
   onSend,
   onStop,
   disabled,
+  generationActive,
+  queuedCommands = [],
+  queueActionPendingCommandID = '',
+  onQueuedCommandSteer,
+  onQueuedCommandDelete,
+  onQueuedCommandEdit,
+  abortPending = false,
+  commandSubmitting = false,
+  activeControlsDisabled = false,
+  activeStopDisabled,
+  sendBlocked = false,
   planMode = false,
   onTogglePlanMode,
+  goal,
+  goalPending = false,
+  onGoalSubmit,
+  onGoalPause,
+  onGoalClear,
   draftKey,
   inputPrefill,
   onInputPrefillConsumed,
@@ -142,12 +164,19 @@ export function InputArea({
   onOpenTrace,
   agentKey,
   workspace,
-  writingSkillControl,
+  conversationBinding,
+  composerSettingsControl,
   onboardingAnchor,
   floating = false,
   onHeightChange,
+  contentClassName,
 }: InputAreaProps) {
   const { t } = useTranslation()
+  const defaultApproval = useAgentApprovalMode()
+  const conversationConfig = useConversationConfig(conversationBinding)
+  const approvalReady = conversationBinding
+    ? conversationConfig.initialized && !conversationConfig.saving
+    : defaultApproval.initialized && !defaultApproval.saving
   const keyboardInset = useKeyboardInset()
   const isMobile = useIsMobile()
   const [value, setValue] = useState(() => draftKey ? inputDrafts.get(draftKey) || '' : '')
@@ -158,18 +187,21 @@ export function InputArea({
   const [referenceQuery, setReferenceQuery] = useState<string | null>(null)
   const [styleSceneQuery, setStyleSceneQuery] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [goalMode, setGoalMode] = useState(false)
   const inputRef = useRef<ComposerTokenInputHandle>(null)
+  const referencePickerRef = useRef<FileReferencePickerHandle>(null)
+  const stylePickerRef = useRef<FileReferencePickerHandle>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   const submittingRef = useRef(false)
-  const commandItemRefs = useRef<Array<HTMLDivElement | null>>([])
   const effectiveCommandScope: CommandScope = commandsEnabled ? commandScope : 'none'
   const defaultPlaceholder = skills.length > 0 && effectiveCommandScope !== 'none'
     ? t('chat.input.placeholderWithSkills')
     : t('chat.input.placeholder')
-  const allCommands = useMemo<CommandOption[]>(() => {
+  const allCommands = useMemo<InputCommandOption[]>(() => {
     const allowedBuiltinCommands = builtinCommands ? new Set<string>(builtinCommands) : null
     const staticCommands = effectiveCommandScope === 'all'
       ? COMMANDS
+        .filter(({ cmd }) => cmd !== '/goal' || Boolean(onGoalSubmit))
         .filter(({ cmd }) => !allowedBuiltinCommands || allowedBuiltinCommands.has(cmd))
         .map(({ cmd, descKey, hintKey, icon }) => ({
           cmd,
@@ -196,7 +228,7 @@ export function InputArea({
     if (effectiveCommandScope === 'skills') return skillCommands
     if (effectiveCommandScope === 'none') return []
     return [...staticCommands, ...skillCommands]
-  }, [builtinCommands, effectiveCommandScope, skills, t])
+  }, [builtinCommands, effectiveCommandScope, onGoalSubmit, skills, t])
   const filteredCommands = useMemo(() => {
     if (commandQuery === null) return []
     const query = `/${commandQuery}`.toLowerCase()
@@ -217,8 +249,15 @@ export function InputArea({
     for (const id of loreReferences) byID.set(id, loreReferenceLabels[id] || byID.get(id) || id)
     return Array.from(byID.entries()).map(([id, label]) => ({ id, label }))
   }, [loreReferenceLabels, loreReferences, loreSuggestions])
+  const referencePickerItems = useMemo<ReferencePickerItem[]>(() => [
+    ...loreSuggestions.map((item) => ({ ...item, kind: 'lore' as const })),
+    ...fileSuggestions.map((path) => {
+      const label = workspaceFileName(path)
+      return { value: path, label, description: label === path ? undefined : path, kind: 'file' as const }
+    }),
+  ], [fileSuggestions, loreSuggestions])
   const externalTokens = useMemo<ComposerTokenSpec[]>(() => [
-    ...referencedFiles.map((path) => ({ kind: 'file' as const, value: path, label: path })),
+    ...referencedFiles.map((path) => ({ kind: 'file' as const, value: path, label: workspaceFileName(path) })),
     ...loreReferences.map((id) => ({ kind: 'lore' as const, value: id, label: loreReferenceLabels[id] || knownLoreTokens.find((item) => item.id === id)?.label || id })),
     ...styleScenes.map((scene) => ({ kind: 'style' as const, value: scene, label: scene })),
   ], [knownLoreTokens, loreReferenceLabels, loreReferences, referencedFiles, styleScenes])
@@ -226,7 +265,6 @@ export function InputArea({
     () => Math.min(MAX_TOKEN_USAGE_MENU_COUNT, tokenUsageMessages.filter((message) => (!message.role || message.role === 'token_usage') && Number(message.model_calls || 0) > 0).length),
     [tokenUsageMessages],
   )
-
   useEffect(() => {
     if (!draftKey) return
     setValue(inputDrafts.get(draftKey) || '')
@@ -235,7 +273,12 @@ export function InputArea({
     setActiveCommandIndex(0)
     setReferenceQuery(null)
     setStyleSceneQuery(null)
+    setGoalMode(false)
   }, [draftKey])
+
+  useEffect(() => {
+    if (planMode) setGoalMode(false)
+  }, [planMode])
 
   useEffect(() => {
     if (!draftKey) return
@@ -243,14 +286,18 @@ export function InputArea({
     else inputDrafts.delete(draftKey)
   }, [draftKey, value])
 
+  // The initial AI SDK promise spans the response stream. Once generation is
+  // visibly active, release the request-level composer lock so operation-scoped
+  // Follow Up/Steer commands can be submitted independently.
+  useEffect(() => {
+    if (!generationActive || !submittingRef.current) return
+    submittingRef.current = false
+    setSubmitting(false)
+  }, [generationActive])
+
   useEffect(() => {
     if (activeCommandIndex >= filteredCommands.length) setActiveCommandIndex(0)
   }, [activeCommandIndex, filteredCommands.length])
-
-  useEffect(() => {
-    if (!showCommands || filteredCommands.length === 0) return
-    commandItemRefs.current[activeCommandIndex]?.scrollIntoView({ block: 'nearest' })
-  }, [activeCommandIndex, filteredCommands.length, showCommands])
 
   useEffect(() => {
     if (!inputPrefill) return
@@ -311,6 +358,16 @@ export function InputArea({
     setStyleSceneQuery(trigger?.kind === 'style' ? trigger.query : null)
   }
 
+  const setGoalModeExclusive = (next: boolean) => {
+    setGoalMode(next)
+    if (next && planMode) onTogglePlanMode?.()
+  }
+
+  const togglePlanModeExclusive = () => {
+    if (!planMode) setGoalMode(false)
+    onTogglePlanMode?.()
+  }
+
   /** 处理键盘事件 */
   const handleKeyDown = (e: KeyboardEvent) => {
     const isMod = e.metaKey || e.ctrlKey
@@ -318,7 +375,7 @@ export function InputArea({
 
     if (e.key === 'Tab' && e.shiftKey && onTogglePlanMode && !disabled) {
       e.preventDefault()
-      onTogglePlanMode()
+      togglePlanModeExclusive()
       return true
     }
 
@@ -331,6 +388,14 @@ export function InputArea({
       return true
     }
 
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      const picker = referenceQuery !== null ? referencePickerRef.current : styleSceneQuery !== null ? stylePickerRef.current : null
+      if (picker?.moveActive(e.key === 'ArrowDown' ? 1 : -1)) {
+        e.preventDefault()
+        return true
+      }
+    }
+
     // Enter 发送
     if (e.key === 'Enter' && !e.shiftKey) {
       if (isNativeComposingKeyboardEvent(e)) return false
@@ -339,14 +404,23 @@ export function InputArea({
         selectCommand(filteredCommands[activeCommandIndex]?.cmd || filteredCommands[0].cmd)
         return true
       }
+      if (referenceQuery !== null && referencePickerRef.current?.selectActive()) return true
+      if (styleSceneQuery !== null && stylePickerRef.current?.selectActive()) return true
       handleSend()
       return true
     }
 
-    if (canPickCommand && e.key === 'Tab') {
-      e.preventDefault()
-      selectCommand(filteredCommands[activeCommandIndex]?.cmd || filteredCommands[0].cmd)
-      return true
+    if (e.key === 'Tab' && !e.shiftKey) {
+      if (canPickCommand) {
+        e.preventDefault()
+        selectCommand(filteredCommands[activeCommandIndex]?.cmd || filteredCommands[0].cmd)
+        return true
+      }
+      const picker = referenceQuery !== null ? referencePickerRef.current : styleSceneQuery !== null ? stylePickerRef.current : null
+      if (picker?.selectActive()) {
+        e.preventDefault()
+        return true
+      }
     }
 
     // Escape 关闭菜单
@@ -392,13 +466,13 @@ export function InputArea({
   /** 发送消息 */
   const handleSend = () => {
     const trimmed = value.trim()
-    if ((!trimmed && !hasReviewFeedback) || disabled || submittingRef.current) return
+    if ((!trimmed && !hasReviewFeedback) || disabled || !approvalReady || submittingRef.current) return
     const submittedValue = value
     submittingRef.current = true
     setSubmitting(true)
     let result: ReturnType<typeof onSend>
     try {
-      result = onSend(trimmed)
+      result = goalMode && onGoalSubmit ? onGoalSubmit(trimmed) : onSend(trimmed)
     } catch {
       submittingRef.current = false
       setSubmitting(false)
@@ -413,6 +487,7 @@ export function InputArea({
     if (result && typeof (result as PromiseLike<boolean | void>).then === 'function') {
       void Promise.resolve(result).then((accepted) => {
         if (accepted === false) setValue((current) => current || submittedValue)
+        else if (goalMode) setGoalMode(false)
       }).catch(() => {
         setValue((current) => current || submittedValue)
       }).finally(() => {
@@ -424,6 +499,7 @@ export function InputArea({
       submittingRef.current = false
       setSubmitting(false)
     } else {
+      if (goalMode) setGoalMode(false)
       submittingRef.current = false
       setSubmitting(false)
     }
@@ -436,7 +512,10 @@ export function InputArea({
   /** 选择命令 */
   const selectCommand = (cmd: string) => {
     const command = allCommands.find((item) => item.cmd === cmd)
-    if (command?.source === 'skill') {
+    if (cmd === '/goal' && onGoalSubmit) {
+      inputRef.current?.replaceActiveTriggerText('')
+      setGoalModeExclusive(true)
+    } else if (command?.source === 'skill') {
       const name = cmd.replace(/^\//, '')
       inputRef.current?.replaceActiveTriggerWithToken({ kind: 'skill', value: name, label: name })
     } else {
@@ -448,21 +527,27 @@ export function InputArea({
     inputRef.current?.focus()
   }
 
-  /** 选择引用文件并插入 @path 标签 */
-  const selectReference = (path: string) => {
-    const loreItem = loreSuggestions.find((item) => item.value === path)
-    if (loreItem) {
-      inputRef.current?.replaceActiveTriggerWithToken({ kind: 'lore', value: loreItem.value, label: loreItem.label })
-      onLoreReferenceAdd?.(path)
+  const editGoal = () => {
+    if (!goal) return
+    setValue(goal.objective)
+    setGoalModeExclusive(true)
+    window.requestAnimationFrame(() => inputRef.current?.focus())
+  }
+
+  /** 选择引用文件：输入框只显示文件名，发送值仍保留完整 workspace 路径。 */
+  const selectReference = (item: ReferencePickerItem) => {
+    if (item.kind === 'lore') {
+      inputRef.current?.replaceActiveTriggerWithToken({ kind: 'lore', value: item.value, label: item.label })
+      onLoreReferenceAdd?.(item.value)
     } else {
-      inputRef.current?.replaceActiveTriggerWithToken({ kind: 'file', value: path, label: path })
+      inputRef.current?.replaceActiveTriggerWithToken({ kind: 'file', value: item.value, label: item.label })
     }
     setReferenceQuery(null)
     inputRef.current?.focus()
   }
 
   /** 选择场景风格并插入 #scene 标签 */
-  const selectStyleScene = (scene: string) => {
+  const selectStyleScene = ({ value: scene }: ReferencePickerItem) => {
     inputRef.current?.replaceActiveTriggerWithToken({ kind: 'style', value: scene, label: scene })
     onStyleSceneAdd?.(scene)
     setStyleSceneQuery(null)
@@ -480,246 +565,229 @@ export function InputArea({
       ref={rootRef}
       data-onboarding-anchor={onboardingAnchor}
       style={floating ? { bottom: keyboardInset } : undefined}
-      className={floating ? 'nova-chat-input-area nova-chat-input-area-floating' : 'nova-chat-input-area relative border-t border-[var(--nova-border)] p-3'}
+      className={cn(
+        floating ? 'nova-chat-input-area nova-chat-input-area-floating' : 'nova-chat-input-area relative border-t border-[var(--nova-border)] p-3',
+        floating && contentClassName && 'nova-chat-input-area-content-aligned',
+      )}
     >
-      <Popover open={showCommands && filteredCommands.length > 0}>
-        <PopoverTrigger asChild>
-          <span className="absolute bottom-full left-3 h-0 w-0" />
-        </PopoverTrigger>
-        <PopoverContent
-          align="start"
-          side="top"
-          className="nova-command-menu mb-2 w-[384px] overflow-hidden rounded-lg border border-[var(--nova-border)] p-0 text-[var(--nova-text)]"
-          onOpenAutoFocus={(event) => event.preventDefault()}
-        >
-          <Command shouldFilter={false} className="bg-transparent">
-            <div className="border-b border-[var(--nova-border-soft)] px-3 py-2">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex min-w-0 items-center gap-2">
-                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]">
-                    <CommandIcon className="h-3.5 w-3.5" />
-                  </span>
-                  <div className="min-w-0">
-                    <div className="text-xs font-medium text-[var(--nova-text)]">{t('chat.commands.title')}</div>
-                    <div className="text-[11px] text-[var(--nova-text-faint)]">
-                      {effectiveCommandScope === 'skills' ? t('chat.commands.skillsDescription') : t('chat.commands.description')}
-                    </div>
-                  </div>
-                </div>
-                <kbd className="shrink-0 rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--nova-text-faint)]">/</kbd>
-              </div>
-            </div>
-            <CommandList className="max-h-[312px] p-1.5">
-              <CommandEmpty className="py-5 text-center text-xs text-[var(--nova-text-faint)]">{t('chat.commands.empty')}</CommandEmpty>
-              {filteredBuiltinCommands.length > 0 ? (
-                <CommandGroup heading={t('chat.commands.group')} className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:pt-1 [&_[cmdk-group-heading]]:text-[11px] [&_[cmdk-group-heading]]:text-[var(--nova-text-faint)]">
-                  {filteredBuiltinCommands.map(({ command, index }) => renderCommandItem(command, index))}
-                </CommandGroup>
-              ) : null}
-              {filteredSkillCommands.length > 0 ? (
-                <CommandGroup heading={t('chat.commands.skillsGroup')} className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:pt-2 [&_[cmdk-group-heading]]:text-[11px] [&_[cmdk-group-heading]]:text-[var(--nova-text-faint)]">
-                  {filteredSkillCommands.map(({ command, index }) => renderCommandItem(command, index))}
-                </CommandGroup>
-              ) : null}
-            </CommandList>
-          </Command>
-        </PopoverContent>
-      </Popover>
+      <div className={cn('relative', contentClassName, contentClassName && 'px-6')}>
+        <InputCommandMenu
+          open={showCommands && filteredCommands.length > 0}
+          skillsOnly={effectiveCommandScope === 'skills'}
+          builtinCommands={filteredBuiltinCommands}
+          skillCommands={filteredSkillCommands}
+          activeIndex={activeCommandIndex}
+          onActiveIndexChange={setActiveCommandIndex}
+          onSelect={(command) => selectCommand(command.cmd)}
+        />
 
-      <FileReferencePicker
-        open={referenceQuery !== null && (fileSuggestions.length > 0 || loreSuggestions.length > 0)}
-        query={referenceQuery || ''}
-        files={[
-          ...loreSuggestions,
-          ...fileSuggestions,
-        ]}
-        onSelect={selectReference}
-      />
+        <FileReferencePicker
+          ref={referencePickerRef}
+          open={referenceQuery !== null && referencePickerItems.length > 0}
+          query={referenceQuery || ''}
+          items={referencePickerItems}
+          onSelect={selectReference}
+        />
 
-      <FileReferencePicker
-        open={styleSceneQuery !== null && styleSceneSuggestions.length > 0}
-        query={styleSceneQuery || ''}
-        files={styleSceneSuggestions}
-        onSelect={selectStyleScene}
-        trigger="#"
-        placeholder={t('chat.styleReference.placeholder')}
-        emptyText={t('chat.styleReference.empty')}
-        heading={t('chat.styleReference.heading')}
-      />
+        <FileReferencePicker
+          ref={stylePickerRef}
+          open={styleSceneQuery !== null && styleSceneSuggestions.length > 0}
+          query={styleSceneQuery || ''}
+          items={styleSceneSuggestions}
+          onSelect={selectStyleScene}
+          trigger="#"
+          placeholder={t('chat.styleReference.placeholder')}
+          emptyText={t('chat.styleReference.empty')}
+          heading={t('chat.styleReference.heading')}
+        />
 
-      <AgentComposerShell
-        references={hasReferences ? (
-          <>
-            {reviewFeedback && onReviewFeedbackRemove ? (
-              <ReviewFeedbackTray feedback={reviewFeedback} onOpen={onReviewFeedbackOpen} onRemove={onReviewFeedbackRemove} />
-            ) : null}
-            {textSelections.length > 0 && (
-              <div className="mb-2 flex flex-wrap gap-1.5">
-                {textSelections.map((sel, idx) => (
-                  <span
-                    key={idx}
-                    className="inline-flex max-w-full items-center gap-1 rounded-md bg-[var(--nova-success-bg)] px-2 py-0.5 text-xs text-[var(--nova-success)]"
-                  >
-                    <span className="truncate">
-                      {sel.fileName}:L{sel.startLine}
-                      {sel.endLine !== sel.startLine && `-L${sel.endLine}`}
-                      {' '}
-                      <span className="text-[var(--nova-success-muted)]">
-                        {sel.content.length > 30 ? sel.content.slice(0, 30) + '…' : sel.content}
-                      </span>
-                    </span>
-                    {onTextSelectionRemove && (
-                      <button
-                        type="button"
-                        className="rounded text-[var(--nova-success-muted)] hover:text-[var(--nova-text)]"
-                        onClick={() => onTextSelectionRemove(idx)}
-                      >
-                        ×
-                      </button>
-                    )}
-                  </span>
-                ))}
-              </div>
-            )}
-          </>
-        ) : undefined}
-        input={
-          <ComposerTokenInput
-            ref={inputRef}
-            value={value}
-            onChange={handleChange}
-            onTriggerChange={handleTriggerChange}
-            onTokenRemove={handleTokenRemove}
-            onEditorKeyDown={handleKeyDown}
-            knownSkills={skills.map((skill) => skill.name)}
-            knownFiles={knownFileTokens}
-            knownLore={knownLoreTokens}
-            knownStyleScenes={styleSceneSuggestions}
-            externalTokens={externalTokens}
-            placeholder={disabled ? (disabledPlaceholder ?? t('chat.input.disabledPlaceholder')) : (placeholder ?? defaultPlaceholder)}
-            disabled={disabled}
-            rows={1}
-            minRows={1}
-            maxRows={isMobile ? 5 : 10}
-            multilineMode="always"
-            enterKeyHint="send"
-            className="nova-agent-composer-textarea nova-agent-token-input min-h-[42px] resize-none border-0 bg-transparent px-1 py-[9px] text-sm leading-6 text-[var(--nova-text)] shadow-none placeholder:text-[var(--nova-text-faint)] focus-visible:border-transparent focus-visible:ring-0 disabled:opacity-50"
+        <AgentQueuedCommandList
+          items={queuedCommands}
+          pendingCommandID={queueActionPendingCommandID}
+          disabled={activeControlsDisabled || abortPending || commandSubmitting}
+          onSteer={onQueuedCommandSteer}
+          onDelete={onQueuedCommandDelete}
+          onEdit={onQueuedCommandEdit}
+        />
+
+        {goal && onGoalPause && onGoalClear ? (
+          <AgentGoalCard
+            goal={goal}
+            pending={goalPending}
+            disabled={disabled || activeControlsDisabled}
+            onEdit={editGoal}
+            onPause={onGoalPause}
+            onClear={onGoalClear}
           />
-        }
-        toolbarStart={
-          <>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  type="button"
-                  size="icon-sm"
-                  className="nova-agent-composer-icon h-8 w-8 shrink-0 rounded-[10px] border border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] disabled:opacity-45"
-                  disabled={!onTogglePlanMode && !writingSkillControl && !onContextAnalyze && tokenUsageMessages.length === 0}
-                  aria-label={t('chat.input.actions')}
-                  title={t('chat.input.actions')}
-                >
-                  <List className="h-3.5 w-3.5" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" side="top" className="w-80 border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 text-[var(--nova-text)]">
-                {onTogglePlanMode ? (
-                  <>
-                    <DropdownMenuCheckboxItem
-                      checked={planMode}
-                      disabled={disabled}
-                      onCheckedChange={() => onTogglePlanMode()}
-                      className="cursor-pointer pr-16 text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
-                      title={t('chat.plan.shiftTabHint')}
+        ) : null}
+
+        <AgentComposerShell
+          references={hasReferences ? (
+            <>
+              {reviewFeedback && onReviewFeedbackRemove ? (
+                <ReviewFeedbackTray feedback={reviewFeedback} onOpen={onReviewFeedbackOpen} onRemove={onReviewFeedbackRemove} />
+              ) : null}
+              {textSelections.length > 0 && (
+                <div className="mb-2 flex flex-wrap gap-1.5">
+                  {textSelections.map((sel, idx) => (
+                    <span
+                      key={idx}
+                      className="inline-flex max-w-full items-center gap-1 rounded-md bg-[var(--nova-success-bg)] px-2 py-0.5 text-xs text-[var(--nova-success)]"
                     >
-                      <ClipboardList className="h-3.5 w-3.5" />
-                      <span className="min-w-0 flex-1">{t('chat.plan.short')}</span>
-                      <span className="text-[10px] text-[var(--nova-text-faint)]">Shift+Tab</span>
-                    </DropdownMenuCheckboxItem>
-                    <DropdownMenuSeparator className="bg-[var(--nova-border-soft)]" />
-                  </>
-                ) : null}
-                {writingSkillControl}
-                <DropdownMenuItem
-                  onSelect={() => setTokenUsageOpen(true)}
-                  className="cursor-pointer text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
-                >
-                  <BarChart3 className="h-3.5 w-3.5" />
-                  <span className="min-w-0 flex-1">{t('chat.tokenUsage.action')}</span>
-                  <span className="text-[10px] text-[var(--nova-text-faint)]">{t('chat.tokenUsage.subtitle', { count: tokenUsageCount })}</span>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator className="bg-[var(--nova-border-soft)]" />
-                <DropdownMenuItem
+                      <span className="truncate">
+                        {sel.fileName}:L{sel.startLine}
+                        {sel.endLine !== sel.startLine && `-L${sel.endLine}`}
+                        {' '}
+                        <span className="text-[var(--nova-success-muted)]">
+                          {sel.content.length > 30 ? sel.content.slice(0, 30) + '…' : sel.content}
+                        </span>
+                      </span>
+                      {onTextSelectionRemove && (
+                        <button
+                          type="button"
+                          className="rounded text-[var(--nova-success-muted)] hover:text-[var(--nova-text)]"
+                          onClick={() => onTextSelectionRemove(idx)}
+                        >
+                          ×
+                        </button>
+                      )}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : undefined}
+          input={
+            <ComposerTokenInput
+              ref={inputRef}
+              value={value}
+              onChange={handleChange}
+              onTriggerChange={handleTriggerChange}
+              onTokenRemove={handleTokenRemove}
+              onEditorKeyDown={handleKeyDown}
+              knownSkills={skills.map((skill) => skill.name)}
+              knownFiles={knownFileTokens}
+              knownLore={knownLoreTokens}
+              knownStyleScenes={styleSceneSuggestions}
+              externalTokens={externalTokens}
+              placeholder={disabled
+                ? (disabledPlaceholder ?? t('chat.input.disabledPlaceholder'))
+                : goalMode ? t('chat.goal.placeholder') : (placeholder ?? defaultPlaceholder)}
+              disabled={disabled}
+              rows={1}
+              minRows={1}
+              maxRows={isMobile ? 5 : 10}
+              multilineMode="always"
+              enterKeyHint="send"
+              className="nova-agent-composer-textarea nova-agent-token-input min-h-[42px] resize-none border-0 bg-transparent px-1 py-[9px] text-sm leading-6 text-[var(--nova-text)] shadow-none placeholder:text-[var(--nova-text-faint)] focus-visible:border-transparent focus-visible:ring-0 disabled:opacity-50"
+            />
+          }
+          toolbarStart={
+            <>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    size="icon-sm"
+                    className="nova-agent-composer-icon h-8 w-8 shrink-0 rounded-[10px] border border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] disabled:opacity-45"
+                    disabled={!onGoalSubmit && !onTogglePlanMode && !composerSettingsControl && !onContextAnalyze && tokenUsageMessages.length === 0}
+                    aria-label={t('chat.input.actions')}
+                  >
+                    <List className="h-3.5 w-3.5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" side="top" className="w-80 border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 text-[var(--nova-text)]">
+                  {onGoalSubmit || onTogglePlanMode ? (
+                    <>
+                      {onGoalSubmit ? (
+                        <DropdownMenuCheckboxItem
+                          checked={goalMode}
+                          disabled={disabled}
+                          onCheckedChange={(checked) => setGoalModeExclusive(checked === true)}
+                          className="cursor-pointer pr-1.5 text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)] [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:static [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:order-2 [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:size-4"
+                        >
+                          <Target className="h-3.5 w-3.5" />
+                          <span className="min-w-0 flex-1">{t('chat.goal.short')}</span>
+                        </DropdownMenuCheckboxItem>
+                      ) : null}
+                      {onTogglePlanMode ? (
+                        <DropdownMenuCheckboxItem
+                          checked={planMode}
+                          disabled={disabled || generationActive}
+                          onCheckedChange={togglePlanModeExclusive}
+                          className="cursor-pointer pr-1.5 text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)] [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:static [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:order-2 [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:size-4"
+                        >
+                          <ClipboardList className="h-3.5 w-3.5" />
+                          <span className="min-w-0 flex-1">{t('chat.plan.short')}</span>
+                          <span className="order-3 ml-auto shrink-0 text-[10px] text-[var(--nova-text-faint)]">Shift+Tab</span>
+                        </DropdownMenuCheckboxItem>
+                      ) : null}
+                    </>
+                  ) : null}
+                  {composerSettingsControl}
+                  <DropdownMenuItem
+                    onSelect={() => setTokenUsageOpen(true)}
+                    className="cursor-pointer text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
+                  >
+                    <BarChart3 className="h-3.5 w-3.5" />
+                    <span className="min-w-0 flex-1">{t('chat.tokenUsage.action')}</span>
+                    <span className="text-[10px] text-[var(--nova-text-faint)]">{t('chat.tokenUsage.subtitle', { count: tokenUsageCount })}</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    disabled={disabled || generationActive}
+                    onSelect={handleContextAnalyze}
+                    className="cursor-pointer text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
+                  >
+                    <ScrollText className="h-3.5 w-3.5" />
+                    {t('chat.contextAnalysis.action')}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <AgentApprovalModeMenu runActive={generationActive} conversationConfig={conversationBinding ? conversationConfig : undefined} />
+              {planMode && onTogglePlanMode ? (
+                <ComposerModeChip
+                  label={t('chat.plan.short')}
+                  ariaLabel={t('chat.plan.exit')}
+                  disabled={disabled || generationActive}
+                  onClose={() => {
+                    togglePlanModeExclusive()
+                    window.requestAnimationFrame(() => inputRef.current?.focus())
+                  }}
+                />
+              ) : goalMode && onGoalSubmit ? (
+                <ComposerModeChip
+                  label={t('chat.goal.short')}
+                  ariaLabel={t('chat.goal.exitMode')}
                   disabled={disabled}
-                  onSelect={handleContextAnalyze}
-                  className="cursor-pointer text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
-                >
-                  <ScrollText className="h-3.5 w-3.5" />
-                  {t('chat.contextAnalysis.action')}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            {planMode ? (
-              <span
-                className="inline-flex h-8 shrink-0 items-center gap-1.5 border-l border-[var(--nova-border-soft)] pl-2 text-sm text-[var(--nova-text-muted)]"
-                aria-label={t('chat.plan.modeOn')}
-                title={t('chat.plan.shiftTabHint')}
-              >
-                <ClipboardList className="h-3.5 w-3.5" />
-                {t('chat.plan.short')}
-              </span>
-            ) : null}
-            <TokenUsageDialog open={tokenUsageOpen} messages={tokenUsageMessages} onOpenChange={setTokenUsageOpen} onOpenTrace={onOpenTrace} />
-          </>
-        }
-        toolbarEnd={<ModelProfileSwitcher agentKey={agentKey} workspace={workspace} disabled={disabled} />}
-        submitControl={
-          <Button
-            type="button"
-            onClick={disabled ? onStop : handleSend}
-            disabled={disabled ? !onStop : submitting || (!value.trim() && !hasReviewFeedback)}
-            size="icon-sm"
-            className={`nova-agent-composer-submit h-9 w-9 shrink-0 rounded-[10px] text-[var(--nova-text)] shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] ${
-              disabled ? 'bg-[var(--nova-danger-bg)] hover:bg-[var(--nova-danger-bg)]' : 'bg-[var(--nova-active)] hover:bg-[var(--nova-hover)] disabled:bg-[var(--nova-active)]'
-            }`}
-            aria-label={disabled ? t('chat.input.stop') : t('chat.input.send')}
-          >
-            {disabled ? <Square className="h-3.5 w-3.5 fill-current" /> : <Send className="h-4 w-4" />}
-          </Button>
-        }
-      />
+                  onClose={() => {
+                    setGoalMode(false)
+                    window.requestAnimationFrame(() => inputRef.current?.focus())
+                  }}
+                />
+              ) : null}
+              <TokenUsageDialog open={tokenUsageOpen} messages={tokenUsageMessages} onOpenChange={setTokenUsageOpen} onOpenTrace={onOpenTrace} />
+            </>
+          }
+          toolbarEnd={<ModelProfileSwitcher agentKey={agentKey} workspace={workspace} conversationConfig={conversationBinding ? conversationConfig : undefined} disabled={disabled || generationActive} />}
+          submitControl={(
+            <AgentComposerControls
+              generationActive={generationActive}
+              hasSendableContent={Boolean(value.trim() || hasReviewFeedback)}
+              onStop={onStop}
+              onSend={handleSend}
+              sendDisabled={sendBlocked || !approvalReady || submitting || (!value.trim() && !hasReviewFeedback)}
+              disabled={disabled}
+              abortPending={abortPending}
+              actionPending={commandSubmitting}
+              activeControlsDisabled={activeControlsDisabled}
+              stopDisabled={activeStopDisabled}
+            />
+          )}
+        />
+      </div>
     </div>
   )
 
-  function renderCommandItem({ cmd, description, hint, icon: Icon }: CommandOption, index: number) {
-    const active = index === activeCommandIndex
-    return (
-      <CommandItem
-        key={cmd}
-        ref={(element) => { commandItemRefs.current[index] = element }}
-        value={cmd}
-        onMouseEnter={() => setActiveCommandIndex(index)}
-        onSelect={() => selectCommand(cmd)}
-        className={`group min-h-12 cursor-pointer rounded-md border px-2.5 py-2 text-[var(--nova-text-muted)] ${
-          active
-            ? 'border-[var(--nova-border)] bg-[var(--nova-active)] text-[var(--nova-text)]'
-            : 'border-transparent hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)]'
-        }`}
-      >
-        <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md border bg-[var(--nova-surface-2)] ${
-          active ? 'border-[var(--nova-border)] text-[var(--nova-text)]' : 'border-[var(--nova-border)] text-[var(--nova-text-faint)]'
-        }`}>
-          <Icon className="h-3.5 w-3.5" />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="flex items-center gap-2">
-            <span className="font-mono text-xs text-[var(--nova-text)]">{cmd}</span>
-            <span className="truncate text-xs text-[var(--nova-text-muted)]">{description}</span>
-          </span>
-          <span className="mt-0.5 block text-[11px] text-[var(--nova-text-faint)]">{hint}</span>
-        </span>
-      </CommandItem>
-    )
-  }
 }
 
 function isNativeComposingKeyboardEvent(event: KeyboardEvent) {

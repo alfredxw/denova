@@ -43,6 +43,89 @@ func TestServiceSummaryCountsChapters(t *testing.T) {
 	}
 }
 
+func TestServiceSummaryReusesUnchangedChapterContent(t *testing.T) {
+	root := t.TempDir()
+	chapterDir := filepath.Join(root, "chapters")
+	if err := os.MkdirAll(chapterDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	chapterPath := filepath.Join(chapterDir, "ch01.md")
+	if err := os.WriteFile(chapterPath, []byte("first draft"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	service := NewService(root)
+	first, err := service.Summary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(chapterPath, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(chapterPath, 0o600) })
+	second, err := service.Summary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.TotalWords != first.TotalWords || second.Chapters[0] != first.Chapters[0] {
+		t.Fatalf("cached summary changed: first=%#v second=%#v", first, second)
+	}
+}
+
+func TestServiceSummaryRefreshesChangedChapterOnly(t *testing.T) {
+	root := t.TempDir()
+	chapterDir := filepath.Join(root, "chapters")
+	if err := os.MkdirAll(chapterDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	chapterPath := filepath.Join(chapterDir, "ch01.md")
+	if err := os.WriteFile(chapterPath, []byte("one"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	service := NewService(root)
+	first, err := service.Summary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(chapterPath, []byte("one two three four"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	second, err := service.Summary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.TotalWords <= first.TotalWords {
+		t.Fatalf("changed chapter was not recounted: first=%d second=%d", first.TotalWords, second.TotalWords)
+	}
+}
+
+func TestServiceSummaryInvalidatesNestedChaptersByDirectory(t *testing.T) {
+	root := t.TempDir()
+	volumeDir := filepath.Join(root, "chapters", "volume-one")
+	if err := os.MkdirAll(volumeDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	chapterPath := filepath.Join(volumeDir, "ch01.md")
+	if err := os.WriteFile(chapterPath, []byte("one"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	service := NewService(root)
+	first, err := service.Summary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(chapterPath, []byte("one two three four"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	service.InvalidateSummary([]string{"chapters/volume-one"}, false)
+	second, err := service.Summary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.TotalWords <= first.TotalWords {
+		t.Fatalf("directory invalidation did not recount nested chapter: first=%d second=%d", first.TotalWords, second.TotalWords)
+	}
+}
+
 func TestServiceSummaryUsesManualChapterConfirmation(t *testing.T) {
 	root := t.TempDir()
 	chapterDir := filepath.Join(root, "chapters")

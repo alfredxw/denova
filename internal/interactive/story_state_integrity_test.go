@@ -1,6 +1,9 @@
 package interactive
 
-import "testing"
+import (
+	interactivestate "denova/internal/interactive/state"
+	"testing"
+)
 
 func TestNewStateDeltaRejectsSetOperationsWithoutValues(t *testing.T) {
 	tests := []struct {
@@ -11,7 +14,7 @@ func TestNewStateDeltaRejectsSetOperationsWithoutValues(t *testing.T) {
 			name: "story state",
 			delta: StateDeltaEvent{
 				V: schemaVersion, Type: StoryEventTypeStateDelta, ID: "delta-story", BranchID: "main", Ts: "2026-07-14T00:00:00Z",
-				Ops: []StateOp{{Op: "set", Path: "scene.location"}},
+				Ops: []interactivestate.Op{{Op: "set", Path: "scene.location"}},
 			},
 		},
 		{

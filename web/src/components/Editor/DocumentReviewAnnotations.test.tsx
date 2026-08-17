@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState } from 'react'
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Editor } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
@@ -7,7 +7,11 @@ import { Markdown } from '@tiptap/markdown'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { CreateDocumentCommentRequest, DocumentReviewComment } from '@/features/document-review/types'
 import { DocumentReviewAnnotations, type DocumentReviewAnnotationsHandle } from './DocumentReviewAnnotations'
+import { sourceMarkdownReviewAdapter } from './documentReviewAdapter'
+import { textBlockRangeAtPosition } from './documentReviewAnchors'
 import { createDocumentReviewExtension, documentReviewKeysFromElement, type DocumentReviewDecorationState, type DocumentReviewPortalTarget } from './documentReviewDecorations'
+import * as documentReviewHover from './documentReviewHover'
+import { createMarkdownSourceDocument, RawMarkdown } from './markdownSourceDocument'
 
 describe('DocumentReviewAnnotations', () => {
   let editor: Editor | null = null
@@ -15,6 +19,100 @@ describe('DocumentReviewAnnotations', () => {
   afterEach(() => {
     editor?.destroy()
     editor = null
+    vi.restoreAllMocks()
+  })
+
+  it('uses the borderless plus quick action to create a line comment', async () => {
+    const user = userEvent.setup()
+    const markdown = 'Alpha text\n'
+    const revision = 'sha256:line-review'
+    const decorationStateRef = { current: { enabled: false, decorations: [] } as DocumentReviewDecorationState }
+    let updatePortalTargets: (targets: DocumentReviewPortalTarget[]) => void = () => undefined
+    editor = new Editor({
+      extensions: [StarterKit, Markdown, createDocumentReviewExtension(decorationStateRef, (targets) => updatePortalTargets(targets))],
+      content: markdown,
+      contentType: 'markdown',
+    })
+    const lineRange = textBlockRangeAtPosition(editor.state.doc, textRange(editor, 'Alpha text').from)
+    if (!lineRange) throw new Error('missing line review range')
+    const rangeAtCoordinates = vi.spyOn(documentReviewHover, 'documentReviewRangeAtCoordinates').mockReturnValue(lineRange)
+    vi.spyOn(editor.view, 'coordsAtPos').mockReturnValue({ top: 20, bottom: 44, left: 0, right: 0 })
+    const onCreate = vi.fn(async (request: CreateDocumentCommentRequest): Promise<DocumentReviewComment> => ({
+      id: 'comment-line',
+      thread_id: 'document-thread',
+      target: request.target,
+      body: request.body,
+      anchor: request.anchor,
+      created_at: '2026-08-07T00:00:00Z',
+      updated_at: '2026-08-07T00:00:00Z',
+    }))
+
+    function Harness() {
+      const [portalTargets, setPortalTargets] = useState<DocumentReviewPortalTarget[]>([])
+      const containerRef = useRef<HTMLDivElement | null>(null)
+      useLayoutEffect(() => {
+        updatePortalTargets = (targets) => act(() => setPortalTargets(targets))
+        return () => { updatePortalTargets = () => undefined }
+      }, [])
+      return (
+        <div ref={containerRef}>
+          <div ref={(node) => {
+            if (node && editor && editor.view.dom.parentNode !== node) node.append(editor.view.dom)
+          }} />
+          <DocumentReviewAnnotations
+            editor={editor!}
+            target={{ kind: 'workspace_file', id: 'chapters/ch01.md' }}
+            resourceLabel="chapters/ch01.md"
+            containerRef={containerRef}
+            comments={[]}
+            decorationStateRef={decorationStateRef}
+            portalTargets={portalTargets}
+            onPrepareSnapshot={async () => ({ content: markdown, revision })}
+            onCreate={onCreate}
+            onUpdate={vi.fn()}
+            onDelete={vi.fn()}
+          />
+        </div>
+      )
+    }
+
+    const { container } = render(<Harness />)
+    const reviewContainer = container.firstElementChild as HTMLDivElement
+    Object.defineProperties(reviewContainer, {
+      clientWidth: { configurable: true, value: 800 },
+      scrollLeft: { configurable: true, value: 0 },
+    })
+    vi.spyOn(reviewContainer, 'getBoundingClientRect').mockReturnValue({
+      x: 0, y: 0, top: 0, right: 800, bottom: 500, left: 0, width: 800, height: 500, toJSON: () => ({}),
+    })
+    vi.spyOn(editor.view.dom, 'getBoundingClientRect').mockReturnValue({
+      x: 100, y: 0, top: 0, right: 700, bottom: 500, left: 100, width: 600, height: 500, toJSON: () => ({}),
+    })
+
+    fireEvent.pointerMove(editor.view.dom, { clientX: 300, clientY: 32 })
+    expect(screen.queryByRole('button', { name: '评论当前行' })).not.toBeInTheDocument()
+    expect(rangeAtCoordinates).not.toHaveBeenCalled()
+
+    fireEvent.pointerMove(reviewContainer, { clientX: 720, clientY: 32 })
+
+    const quickAction = await screen.findByRole('button', { name: '评论当前行' })
+    expect(quickAction.querySelector('.lucide-plus')).toBeInTheDocument()
+    expect(quickAction).toHaveClass('h-6', 'w-7', 'rounded-md', 'border-0', 'bg-transparent', 'shadow-none')
+    expect(quickAction).not.toHaveClass('rounded-full')
+    expect(quickAction.className).not.toContain('hover:border')
+    expect(quickAction.className).not.toContain('hover:shadow')
+
+    await user.click(quickAction)
+    const draft = await screen.findByPlaceholderText('补充审阅背景，或说明希望如何调整…')
+    await user.type(draft, 'Clarify this line')
+    await user.click(screen.getByRole('button', { name: '添加评论' }))
+
+    await waitFor(() => expect(onCreate).toHaveBeenCalledTimes(1))
+    expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({
+      target: { kind: 'workspace_file', id: 'chapters/ch01.md' },
+      body: 'Clarify this line',
+      anchor: expect.objectContaining({ kind: 'text-block', quote: 'Alpha text' }),
+    }))
   })
 
   it('keeps an expanded comment open after a different comment is submitted', async () => {
@@ -34,7 +132,7 @@ describe('DocumentReviewAnnotations', () => {
     const initialComment: DocumentReviewComment = {
       id: 'comment-alpha',
       thread_id: 'document-thread',
-      path: 'chapters/ch01.md',
+      target: { kind: 'workspace_file', id: 'chapters/ch01.md' },
       body: 'Alpha comment',
       created_at: '2026-07-18T00:00:00Z',
       updated_at: '2026-07-18T00:00:00Z',
@@ -63,7 +161,7 @@ describe('DocumentReviewAnnotations', () => {
         const created: DocumentReviewComment = {
           id: 'comment-beta',
           thread_id: 'document-thread',
-          path: request.path,
+          target: request.target,
           body: request.body,
           anchor: request.anchor,
           created_at: '2026-07-18T00:01:00Z',
@@ -80,7 +178,8 @@ describe('DocumentReviewAnnotations', () => {
           <DocumentReviewAnnotations
             ref={(handle) => { annotationRef.current = handle }}
             editor={editor!}
-            fileName="chapters/ch01.md"
+            target={{ kind: 'workspace_file', id: 'chapters/ch01.md' }}
+            resourceLabel="chapters/ch01.md"
             containerRef={containerRef}
             comments={comments}
             decorationStateRef={decorationStateRef}
@@ -151,7 +250,8 @@ describe('DocumentReviewAnnotations', () => {
           <DocumentReviewAnnotations
             ref={(handle) => { annotationRef.current = handle }}
             editor={editor!}
-            fileName="chapters/ch01.md"
+            target={{ kind: 'workspace_file', id: 'chapters/ch01.md' }}
+            resourceLabel="chapters/ch01.md"
             containerRef={containerRef}
             comments={[comment]}
             decorationStateRef={decorationStateRef}
@@ -219,7 +319,8 @@ describe('DocumentReviewAnnotations', () => {
           <DocumentReviewAnnotations
             ref={(handle) => { annotationRef.current = handle }}
             editor={editor!}
-            fileName="chapters/ch01.md"
+            target={{ kind: 'workspace_file', id: 'chapters/ch01.md' }}
+            resourceLabel="chapters/ch01.md"
             containerRef={containerRef}
             comments={comments}
             decorationStateRef={decorationStateRef}
@@ -254,6 +355,88 @@ describe('DocumentReviewAnnotations', () => {
     expect(editor.state.doc.textBetween(selection.from, selection.to, '\n')).toContain('Middle text')
     await waitFor(() => expect(decorationStateRef.current.decorations).toHaveLength(3))
   })
+
+  it('creates a comment from TipTap source mode against the canonical Lore snapshot', async () => {
+    const user = userEvent.setup()
+    const source = '# 世界观\n\n角色😀设定\n'
+    const canonical = source.trimEnd()
+    const revision = 'sha256:lore-source'
+    const decorationStateRef = { current: { enabled: false, decorations: [] } as DocumentReviewDecorationState }
+    let updatePortalTargets: (targets: DocumentReviewPortalTarget[]) => void = () => undefined
+    editor = new Editor({
+      extensions: [
+        StarterKit,
+        RawMarkdown,
+        Markdown,
+        createDocumentReviewExtension(decorationStateRef, (targets) => updatePortalTargets(targets)),
+      ],
+      content: createMarkdownSourceDocument(source),
+    })
+    const selected = textRange(editor, '角色😀')
+    const annotationRef = { current: null as DocumentReviewAnnotationsHandle | null }
+    const onCreate = vi.fn(async (request: CreateDocumentCommentRequest): Promise<DocumentReviewComment> => ({
+      id: 'comment-source',
+      thread_id: 'document-thread',
+      target: request.target,
+      body: request.body,
+      anchor: request.anchor,
+      created_at: '2026-07-29T00:00:00Z',
+      updated_at: '2026-07-29T00:00:00Z',
+    }))
+
+    function Harness() {
+      const [portalTargets, setPortalTargets] = useState<DocumentReviewPortalTarget[]>([])
+      const containerRef = useRef<HTMLDivElement | null>(null)
+      useLayoutEffect(() => {
+        updatePortalTargets = (targets) => act(() => setPortalTargets(targets))
+        return () => { updatePortalTargets = () => undefined }
+      }, [])
+      return (
+        <div ref={containerRef}>
+          <div ref={(node) => {
+            if (node && editor && editor.view.dom.parentNode !== node) node.append(editor.view.dom)
+          }} />
+          <DocumentReviewAnnotations
+            ref={(handle) => { annotationRef.current = handle }}
+            editor={editor!}
+            target={{ kind: 'lore_item', id: 'lore-1', field: 'content' }}
+            resourceLabel="世界观"
+            containerRef={containerRef}
+            comments={[]}
+            decorationStateRef={decorationStateRef}
+            portalTargets={portalTargets}
+            anchorAdapter={sourceMarkdownReviewAdapter}
+            enableBlockComments={false}
+            onPrepareSnapshot={async () => ({ content: canonical, revision })}
+            onCreate={onCreate}
+            onUpdate={vi.fn()}
+            onDelete={vi.fn()}
+          />
+        </div>
+      )
+    }
+
+    render(<Harness />)
+    act(() => {
+      editor!.commands.setTextSelection(selected)
+      annotationRef.current?.startSelectionComment()
+    })
+    const draft = await screen.findByPlaceholderText('补充审阅背景，或说明希望如何调整…')
+    await user.type(draft, '补充角色真实身份')
+    await user.click(screen.getByRole('button', { name: '添加评论' }))
+
+    await waitFor(() => expect(onCreate).toHaveBeenCalledTimes(1))
+    expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({
+      target: { kind: 'lore_item', id: 'lore-1', field: 'content' },
+      body: '补充角色真实身份',
+      anchor: expect.objectContaining({
+        revision,
+        quote: '角色😀',
+        start: new TextEncoder().encode(canonical.slice(0, canonical.indexOf('角色'))).length,
+        end: new TextEncoder().encode(canonical.slice(0, canonical.indexOf('角色') + '角色😀'.length)).length,
+      }),
+    }))
+  })
 })
 
 function reviewComment(
@@ -268,7 +451,7 @@ function reviewComment(
   return {
     id,
     thread_id: 'document-thread',
-    path: 'chapters/ch01.md',
+    target: { kind: 'workspace_file', id: 'chapters/ch01.md' },
     body,
     created_at: '2026-07-18T00:00:00Z',
     updated_at: '2026-07-18T00:00:00Z',

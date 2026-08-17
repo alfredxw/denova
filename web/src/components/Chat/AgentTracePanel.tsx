@@ -10,6 +10,7 @@ type TraceFilter = 'all' | 'llm' | 'tools' | 'context' | 'errors'
 type TraceCategory = 'run' | 'llm' | 'tools' | 'context' | 'verification' | 'errors' | 'event'
 
 interface AgentTracePanelProps {
+  projectId: string
   disabled?: boolean
   selectedRunId?: string
 }
@@ -23,7 +24,7 @@ const SPAN_RECORD_TYPES = new Set([
   'post_run_verification',
 ])
 
-export function AgentTracePanel({ disabled, selectedRunId }: AgentTracePanelProps) {
+export function AgentTracePanel({ projectId, disabled, selectedRunId }: AgentTracePanelProps) {
   const { t } = useTranslation()
   const [runs, setRuns] = useState<AgentRunTraceSummary[]>([])
   const [selectedID, setSelectedID] = useState(selectedRunId || '')
@@ -36,11 +37,11 @@ export function AgentTracePanel({ disabled, selectedRunId }: AgentTracePanelProp
     setLoading(true)
     setError('')
     try {
-      const list = await getAgentRunTraces(30)
+      const list = await getAgentRunTraces(projectId, 30)
       setRuns(list)
       const nextID = preferredID || selectedRunId || selectedID || list[0]?.id || ''
       setSelectedID(nextID)
-      setTrace(nextID ? await getAgentRunTrace(nextID) : null)
+      setTrace(nextID ? await getAgentRunTrace(projectId, nextID) : null)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -49,8 +50,11 @@ export function AgentTracePanel({ disabled, selectedRunId }: AgentTracePanelProp
   }
 
   useEffect(() => {
+    setRuns([])
+    setSelectedID(selectedRunId || '')
+    setTrace(null)
     void loadRuns(selectedRunId)
-  }, [])
+  }, [projectId])
 
   useEffect(() => {
     if (selectedRunId && selectedRunId !== selectedID) {
@@ -66,7 +70,7 @@ export function AgentTracePanel({ disabled, selectedRunId }: AgentTracePanelProp
     let cancelled = false
     setLoading(true)
     setError('')
-    getAgentRunTrace(selectedID)
+    getAgentRunTrace(projectId, selectedID)
       .then((next) => {
         if (!cancelled) setTrace(next)
       })
@@ -77,7 +81,7 @@ export function AgentTracePanel({ disabled, selectedRunId }: AgentTracePanelProp
         if (!cancelled) setLoading(false)
       })
     return () => { cancelled = true }
-  }, [selectedID])
+  }, [projectId, selectedID])
 
   const stats = useMemo(() => trace ? summarizeTrace(trace.records) : emptyTraceStats(), [trace])
   const timelineRecords = useMemo(() => {
@@ -106,7 +110,6 @@ export function AgentTracePanel({ disabled, selectedRunId }: AgentTracePanelProp
           onClick={() => void loadRuns(selectedID)}
           className="nova-nav-item rounded p-1 disabled:cursor-not-allowed disabled:opacity-45"
           aria-label={t('chat.tracePanel.refresh')}
-          title={t('chat.tracePanel.refresh')}
         >
           <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
         </button>
@@ -143,7 +146,7 @@ export function AgentTracePanel({ disabled, selectedRunId }: AgentTracePanelProp
           {error && <div className="mb-2 rounded border border-[var(--nova-danger)] px-2 py-1.5 text-xs text-[var(--nova-danger)]">{error}</div>}
           {trace ? (
             <div className="space-y-3">
-              <TraceRunActions runID={trace.summary.id} />
+              <TraceRunActions projectId={projectId} runID={trace.summary.id} />
               <TraceSummaryGrid trace={trace} stats={stats} />
               <div className="flex flex-wrap gap-1">
                 {filterItems.map((item) => (
@@ -180,14 +183,14 @@ export function AgentTracePanel({ disabled, selectedRunId }: AgentTracePanelProp
   )
 }
 
-function TraceRunActions({ runID }: { runID: string }) {
+function TraceRunActions({ projectId, runID }: { projectId: string; runID: string }) {
   const { t } = useTranslation()
   const [exporting, setExporting] = useState(false)
 
   const handleExport = async () => {
     setExporting(true)
     try {
-      const file = await exportAgentRunTrace(runID)
+      const file = await exportAgentRunTrace(projectId, runID)
       downloadAgentRunTrace(file)
       toast.success(t('chat.tracePanel.exportSuccess', { filename: file.filename }))
     } catch (error) {
@@ -203,7 +206,7 @@ function TraceRunActions({ runID }: { runID: string }) {
     <div className="flex flex-wrap items-center justify-between gap-2 rounded-[6px] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2">
       <div className="flex min-w-0 items-center gap-2 text-[11px]">
         <span className="shrink-0 text-[var(--nova-text-faint)]">{t('chat.tracePanel.runId')}</span>
-        <code className="min-w-0 truncate font-mono text-[var(--nova-text)]" title={runID}>{runID}</code>
+        <code className="min-w-0 truncate font-mono text-[var(--nova-text)]">{runID}</code>
       </div>
       <div className="flex shrink-0 items-center gap-1">
         <ContextCopyButton
@@ -219,7 +222,6 @@ function TraceRunActions({ runID }: { runID: string }) {
           onClick={() => void handleExport()}
           className="inline-flex h-7 items-center gap-1.5 rounded-[6px] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 text-[11px] text-[var(--nova-text-muted)] transition-colors hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] disabled:cursor-not-allowed disabled:opacity-45"
           aria-label={exporting ? t('chat.tracePanel.exporting') : t('chat.tracePanel.export')}
-          title={exporting ? t('chat.tracePanel.exporting') : t('chat.tracePanel.export')}
         >
           <Download className="h-3.5 w-3.5" />
           <span>{exporting ? t('chat.tracePanel.exporting') : t('chat.tracePanel.export')}</span>
@@ -432,7 +434,7 @@ function recordChips(record: AgentRunTraceRecord, t: ReturnType<typeof useTransl
   const providerRequestID = readString(attrs.provider_request_id) || readString(data.provider_request_id)
   const callID = readString(attrs.call_id) || readString(data.call_id)
   const finishReason = readString(attrs.finish_reason) || readString(data.finish_reason)
-  const toolCallID = readString(attrs.tool_call_id) || readString(data.tool_call_id)
+  const toolCallID = readString(attrs.execution_id) || readString(data.execution_id) || readString(attrs.provider_call_id) || readString(data.provider_call_id) || readString(attrs.tool_call_id) || readString(data.tool_call_id)
   const target = readString(attrs.mutation_target) || readString(attrs.target) || readString(data.target)
   const totalTokens = numberOrZero(attrs.total_tokens || data.total_tokens)
   const promptTokens = numberOrZero(attrs.prompt_tokens || data.prompt_tokens)

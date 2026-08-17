@@ -3,7 +3,7 @@ package update
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -27,10 +27,10 @@ type ApplyScheduler struct {
 	Start        func(ApplyInvocation) error
 	Exit         func(int)
 	Sleep        func(time.Duration)
-	Logf         func(string, ...any)
+	Logger       *slog.Logger
 }
 
-func (s ApplyScheduler) Schedule() error {
+func (s ApplyScheduler) Schedule(ctx context.Context) error {
 	manifest := s.Manifest
 	if manifest.UpdaterExecutable == "" {
 		return fmt.Errorf("更新清单缺少 updater_executable")
@@ -60,9 +60,12 @@ func (s ApplyScheduler) Schedule() error {
 	if sleep == nil {
 		sleep = time.Sleep
 	}
-	logf := s.Logf
-	if logf == nil {
-		logf = log.Printf
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	logger := s.Logger
+	if logger == nil {
+		logger = slog.Default()
 	}
 	invocation := ApplyInvocation{
 		Executable: manifest.UpdaterExecutable,
@@ -72,13 +75,13 @@ func (s ApplyScheduler) Schedule() error {
 	go func() {
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				logf("[update] updater schedule panic recovered err=%v", recovered)
+				logger.ErrorContext(ctx, "updater_schedule_panic_recovered", "error", recovered)
 			}
 		}()
-		logf("[update] updater scheduled executable=%s manifest=%s delay=%s", invocation.Executable, s.ManifestPath, delay)
+		logger.InfoContext(ctx, "updater_scheduled", "executable", invocation.Executable, "manifest", s.ManifestPath, "delay", delay)
 		sleep(delay)
 		if err := start(invocation); err != nil {
-			logf("[update] updater start failed executable=%s err=%v", invocation.Executable, err)
+			logger.ErrorContext(ctx, "updater_start_failed", "executable", invocation.Executable, "error", err)
 			return
 		}
 		exit(0)
@@ -106,7 +109,7 @@ func (s *Service) Apply(ctx context.Context) (ApplyResult, error) {
 	if err != nil {
 		return ApplyResult{}, err
 	}
-	if err := (ApplyScheduler{ManifestPath: manifestPath, Manifest: manifest}).Schedule(); err != nil {
+	if err := (ApplyScheduler{ManifestPath: manifestPath, Manifest: manifest}).Schedule(ctx); err != nil {
 		return ApplyResult{}, err
 	}
 	return ApplyResult{Status: "restarting", Version: manifest.Version, LogPath: manifest.LogPath}, nil

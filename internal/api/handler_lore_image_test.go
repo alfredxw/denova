@@ -1,36 +1,43 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/cloudwego/hertz/pkg/common/ut"
+
 	"denova/config"
 	runtimeapp "denova/internal/app"
-	"denova/internal/book"
+	"denova/internal/book/lore"
 )
 
 func TestLoreItemImageGenerateAPIUpdatesItem(t *testing.T) {
 	application, imageServer := newLoreImageTestApplication(t)
 	defer imageServer.Close()
 	server := NewServer(application, "0")
-	item, err := application.CreateLoreItem(book.LoreItemInput{ID: "hero", Type: "character", Name: "林川", Importance: "major", Content: "谨慎。"})
+	projectID := application.ProjectID()
+	base := "/api/projects/" + url.PathEscape(projectID) + "/book/lore"
+	item, err := application.ProjectBook().CreateLoreItem(projectID, lore.ItemInput{ID: "hero", Type: "character", Name: "林川", Importance: "major", Content: "谨慎。"})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	resp := performJSONRequest(t, server, http.MethodPost, "/api/lore/items/"+item.ID+"/image/generate", map[string]string{
+	resp := performJSONRequest(t, server, http.MethodPost, base+"/items/"+item.ID+"/image/generate", map[string]string{
 		"instruction": "夜色氛围",
 	})
 	if resp.Code != http.StatusOK {
 		t.Fatalf("generate status = %d body=%s", resp.Code, resp.Body.String())
 	}
-	var updated book.LoreItem
+	var updated lore.Item
 	decodeResponse(t, resp.Body.Bytes(), &updated)
 	if updated.Image == nil || !strings.HasPrefix(updated.Image.ImagePath, "assets/lore/images/hero/") {
 		t.Fatalf("generated item missing image: %#v", updated)
@@ -43,19 +50,66 @@ func TestLoreItemImageGenerateAPIUpdatesItem(t *testing.T) {
 	}
 }
 
+func TestLoreItemImageUploadAPIUpdatesItem(t *testing.T) {
+	application := newTestApplication(t)
+	server := NewServer(application, "0")
+	projectID := application.ProjectID()
+	base := "/api/projects/" + url.PathEscape(projectID) + "/book/lore"
+	item, err := application.ProjectBook().CreateLoreItem(projectID, lore.ItemInput{ID: "hero", Type: "character", Name: "林川", Importance: "major", Content: "谨慎。"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreateFormFile("file", "portrait.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := part.Write(loreImageTestPNGBytes()); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	resp := ut.PerformRequest(
+		server.engine.Engine,
+		http.MethodPost,
+		base+"/items/"+item.ID+"/image/upload",
+		&ut.Body{Body: bytes.NewReader(body.Bytes()), Len: body.Len()},
+		ut.Header{Key: "Content-Type", Value: writer.FormDataContentType()},
+	)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("upload status = %d body=%s", resp.Code, resp.Body.String())
+	}
+	var updated lore.Item
+	decodeResponse(t, resp.Body.Bytes(), &updated)
+	if updated.Image == nil || updated.Image.Provider != "user_upload" || updated.Image.MIMEType != "image/png" {
+		t.Fatalf("uploaded item missing image: %#v", updated)
+	}
+	if !strings.HasPrefix(updated.Image.ImagePath, "assets/lore/images/hero/") || filepath.Ext(updated.Image.ImagePath) != ".png" {
+		t.Fatalf("unexpected image path: %s", updated.Image.ImagePath)
+	}
+	if _, err := application.BookService().ReadFile(updated.Image.MetaPath); err != nil {
+		t.Fatalf("metadata should be saved: %v", err)
+	}
+}
+
 func TestLoreImagesGenerateStreamSkipsExistingByDefault(t *testing.T) {
 	application, imageServer := newLoreImageTestApplication(t)
 	defer imageServer.Close()
 	server := NewServer(application, "0")
-	withImage, err := application.CreateLoreItem(book.LoreItemInput{ID: "with-image", Type: "character", Name: "已有图", Importance: "major", Content: "已有。"})
+	projectID := application.ProjectID()
+	base := "/api/projects/" + url.PathEscape(projectID) + "/book/lore"
+	withImage, err := application.ProjectBook().CreateLoreItem(projectID, lore.ItemInput{ID: "with-image", Type: "character", Name: "已有图", Importance: "major", Content: "已有。"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	withoutImage, err := application.CreateLoreItem(book.LoreItemInput{ID: "without-image", Type: "location", Name: "无图地点", Importance: "important", Content: "地点。"})
+	withoutImage, err := application.ProjectBook().CreateLoreItem(projectID, lore.ItemInput{ID: "without-image", Type: "location", Name: "无图地点", Importance: "important", Content: "地点。"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := book.NewLoreStore(application.BookService().Workspace()).SetImage(withImage.ID, &book.LoreItemImage{
+	if _, err := lore.NewStore(application.BookService().Workspace()).SetImage(withImage.ID, &lore.Image{
 		Schema:    "lore_item_image.v1",
 		ImagePath: "assets/lore/images/with-image/old/image.png",
 		MetaPath:  "assets/lore/images/with-image/old/meta.json",
@@ -66,7 +120,7 @@ func TestLoreImagesGenerateStreamSkipsExistingByDefault(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	resp := performJSONRequest(t, server, http.MethodPost, "/api/lore/images/generate/stream", map[string]any{
+	resp := performJSONRequest(t, server, http.MethodPost, base+"/images/generate/stream", map[string]any{
 		"item_ids": []string{withImage.ID, withoutImage.ID},
 	})
 	if resp.Code != http.StatusOK {
@@ -79,11 +133,11 @@ func TestLoreImagesGenerateStreamSkipsExistingByDefault(t *testing.T) {
 	if !strings.Contains(body, `"status":"success"`) || !strings.Contains(body, `"item_id":"without-image"`) {
 		t.Fatalf("stream should report generated item:\n%s", body)
 	}
-	items, err := application.LoreItems()
+	items, err := application.ProjectBook().LoreItems(projectID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	byID := map[string]book.LoreItem{}
+	byID := map[string]lore.Item{}
 	for _, item := range items {
 		byID[item.ID] = item
 	}

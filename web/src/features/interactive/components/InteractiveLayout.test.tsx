@@ -3,15 +3,15 @@ import { Profiler } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { InteractiveLayout } from './InteractiveLayout'
 import { useInteractiveStore } from '../stores/interactive-store'
-import { createInteractiveStory, deleteInteractiveStory, getInteractiveBranches, getInteractiveSnapshot, getInteractiveStories, getInteractiveTellers, getStoryDirectors, selectInteractiveStory, updateInteractiveStory } from '../api'
-import type { Snapshot, StoryDirector, StorySummary, Teller } from '../types'
+import { createInteractiveBranch, createInteractiveStory, deleteInteractiveStory, getInteractiveBranches, getInteractiveDirectorStatus, getInteractiveSnapshot, getInteractiveStories, getInteractiveTellers, getStoryDirectors, selectInteractiveStory, updateInteractiveStory } from '../api'
+import type { InteractiveSnapshotResponse, StoryDirector, StorySummary, Teller } from '../types'
 
 vi.mock('@/hooks/useIsMobile', () => ({
   useIsMobile: () => false,
 }))
 
 vi.mock('@/lib/api', () => ({
-  readFile: vi.fn().mockRejectedValue(new Error('not found')),
+  readOptionalProjectFile: vi.fn().mockResolvedValue(null),
 }))
 
 vi.mock('../api', () => ({
@@ -20,6 +20,7 @@ vi.mock('../api', () => ({
   deleteInteractiveBranch: vi.fn(),
   deleteInteractiveStory: vi.fn(),
   getInteractiveBranches: vi.fn(),
+  getInteractiveDirectorStatus: vi.fn(),
   getInteractiveSnapshot: vi.fn(),
   getInteractiveStories: vi.fn(),
   getInteractiveTellers: vi.fn(),
@@ -53,6 +54,7 @@ vi.mock('./StoryStage', () => ({
     onStoryDelete: (storyIds: string[]) => Promise<void>
     onStorySelect: (storyId: string) => void
     onDirectorChange: (directorId: string) => Promise<void>
+    onRequestCreateBranch: (source: { turnId: string; title: string; summary?: string }) => void
   }) => (
     <div data-testid="story-stage-probe" data-story-id={props.storyId}>
       <button
@@ -83,6 +85,9 @@ vi.mock('./StoryStage', () => ({
       <button type="button" onClick={() => props.onStorySelect('st_2')}>
         mock select story
       </button>
+      <button type="button" onClick={() => props.onRequestCreateBranch({ turnId: 'turn-source', title: '调查钟楼', summary: '钟楼里传来齿轮声。' })}>
+        mock create branch
+      </button>
       <div data-testid="story-list">{props.stories.map((item) => item.title).join('|')}</div>
     </div>
   ),
@@ -102,6 +107,7 @@ beforeEach(() => {
     submode: 'story',
   })
   vi.mocked(createInteractiveStory).mockReset()
+  vi.mocked(createInteractiveBranch).mockReset()
   vi.mocked(deleteInteractiveStory).mockReset()
   vi.mocked(getInteractiveStories).mockReset()
   vi.mocked(getInteractiveTellers).mockReset()
@@ -109,13 +115,15 @@ beforeEach(() => {
   vi.mocked(selectInteractiveStory).mockReset()
   vi.mocked(getInteractiveSnapshot).mockReset()
   vi.mocked(getInteractiveBranches).mockReset()
+  vi.mocked(getInteractiveDirectorStatus).mockReset()
   vi.mocked(updateInteractiveStory).mockReset()
   vi.mocked(deleteInteractiveStory).mockResolvedValue(undefined)
   vi.mocked(getInteractiveTellers).mockResolvedValue([])
   vi.mocked(getStoryDirectors).mockResolvedValue([])
   vi.mocked(selectInteractiveStory).mockResolvedValue(undefined)
-  vi.mocked(getInteractiveSnapshot).mockResolvedValue({ story_id: 'st_new', branch_id: 'main', turns: [], state: {} })
+  vi.mocked(getInteractiveSnapshot).mockResolvedValue(snapshotResponse())
   vi.mocked(getInteractiveBranches).mockResolvedValue([{ id: 'main', head: '', title: '主线', created_at: '2026-07-04T00:00:00Z', current: true }])
+  vi.mocked(getInteractiveDirectorStatus).mockResolvedValue(directorStatus('ready'))
 })
 
 afterEach(() => {
@@ -185,20 +193,79 @@ describe('InteractiveLayout polling lifecycle', () => {
     })
     expect(vi.mocked(getInteractiveSnapshot)).toHaveBeenCalledTimes(2)
   })
+
+  it('polls Director progress through the lightweight status projection', async () => {
+    vi.useFakeTimers()
+    const runningSnapshot: InteractiveSnapshotResponse = snapshotResponse({
+      story_id: 'st_new',
+      branch_id: 'main',
+      turns: [{ id: 'turn-1', parent_id: null, branch_id: 'main', ts: '2026-07-04T00:00:00Z', user: '继续', narrative: '结果' }],
+      state: {},
+      director_plan_status: directorStatus('running'),
+    })
+    useInteractiveStore.setState({
+      stories: [story('st_new', '故事')],
+      currentStoryId: 'st_new',
+      currentBranchId: 'main',
+      snapshot: runningSnapshot,
+    })
+    vi.mocked(getInteractiveStories).mockResolvedValue({ current_story_id: 'st_new', stories: useInteractiveStore.getState().stories })
+    vi.mocked(getInteractiveSnapshot).mockResolvedValue(runningSnapshot)
+    vi.mocked(getInteractiveDirectorStatus).mockResolvedValue(directorStatus('ready'))
+
+    render(<InteractiveLayout workspace="/workspace" active />)
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    vi.mocked(getInteractiveSnapshot).mockClear()
+    vi.mocked(getInteractiveBranches).mockClear()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000)
+    })
+
+    expect(vi.mocked(getInteractiveDirectorStatus)).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(getInteractiveDirectorStatus)).toHaveBeenCalledWith('st_new', 'main')
+    expect(vi.mocked(getInteractiveSnapshot)).not.toHaveBeenCalled()
+    expect(vi.mocked(getInteractiveBranches)).not.toHaveBeenCalled()
+    expect(useInteractiveStore.getState().snapshot?.director_plan_status?.status).toBe('ready')
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000)
+    })
+    expect(vi.mocked(getInteractiveDirectorStatus)).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('InteractiveLayout story creation', () => {
-  it('selects and lists a newly created story even when stale story indexes resolve later', async () => {
+  it('keeps the empty story surface hidden until the initial story index settles', async () => {
     const initialIndex = deferred<{ current_story_id: string; stories: StorySummary[] }>()
+    vi.mocked(getInteractiveStories).mockReturnValue(initialIndex.promise)
+
+    render(<InteractiveLayout workspace="/workspace" />)
+
+    expect(screen.getByRole('status')).toHaveTextContent('正在载入游戏世界…')
+    expect(screen.queryByTestId('story-stage-probe')).not.toBeInTheDocument()
+
+    await act(async () => {
+      initialIndex.resolve({ current_story_id: 'st_1', stories: [story('st_1', '故事线')] })
+      await initialIndex.promise
+    })
+    expect(await screen.findByTestId('story-stage-probe')).toHaveAttribute('data-story-id', 'st_1')
+  })
+
+  it('selects and lists a newly created story while its refreshed index is pending', async () => {
     const afterCreateIndex = deferred<{ current_story_id: string; stories: StorySummary[] }>()
     vi.mocked(getInteractiveStories)
-      .mockReturnValueOnce(initialIndex.promise)
+      .mockResolvedValueOnce({ current_story_id: '', stories: [] })
       .mockReturnValueOnce(afterCreateIndex.promise)
     vi.mocked(createInteractiveStory).mockResolvedValue(story('st_new', '新故事线'))
 
     render(<InteractiveLayout workspace="/workspace" />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'mock create story' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'mock create story' }))
 
     await waitFor(() => {
       expect(screen.getByTestId('story-stage-probe')).toHaveAttribute('data-story-id', 'st_new')
@@ -214,14 +281,6 @@ describe('InteractiveLayout story creation', () => {
       expect(screen.getByTestId('story-stage-probe')).toHaveAttribute('data-story-id', 'st_new')
       expect(screen.getByTestId('story-list')).toHaveTextContent('新故事线|旧故事线')
     })
-
-    await act(async () => {
-      initialIndex.resolve({ current_story_id: 'st_old', stories: [story('st_old', '旧故事线')] })
-      await initialIndex.promise
-    })
-
-    expect(screen.getByTestId('story-stage-probe')).toHaveAttribute('data-story-id', 'st_new')
-    expect(screen.getByTestId('story-list')).toHaveTextContent('新故事线|旧故事线')
   })
 
   it('updates the story director and follows the director narrative style', async () => {
@@ -292,6 +351,44 @@ describe('InteractiveLayout story selection', () => {
   })
 })
 
+describe('InteractiveLayout branch creation', () => {
+  it('uses the shared dialog to create and switch from a story reply', async () => {
+    vi.mocked(getInteractiveStories).mockResolvedValue({
+      current_story_id: 'st_1',
+      stories: [story('st_1', '故事线')],
+    })
+    vi.mocked(getInteractiveSnapshot).mockImplementation(async (storyId, branchId) => snapshotResponse({
+      story_id: storyId,
+      branch_id: branchId || 'main',
+    }))
+    vi.mocked(createInteractiveBranch).mockResolvedValue({
+      id: 'br-1',
+      head: 'turn-source',
+      from: 'main',
+      from_event: 'turn-source',
+      title: '基于「调查钟楼」的新剧情线',
+      created_at: '2026-07-04T00:01:00Z',
+      current: true,
+    })
+
+    render(<InteractiveLayout workspace="/workspace" />)
+    await waitFor(() => expect(screen.getByTestId('story-stage-probe')).toHaveAttribute('data-story-id', 'st_1'))
+
+    fireEvent.click(screen.getByRole('button', { name: 'mock create branch' }))
+    expect(screen.getByRole('dialog')).toHaveTextContent('钟楼里传来齿轮声。')
+    fireEvent.click(screen.getByRole('button', { name: '创建并切换' }))
+
+    await waitFor(() => {
+      expect(createInteractiveBranch).toHaveBeenCalledWith('st_1', {
+        parent_event_id: 'turn-source',
+        title: '基于「调查钟楼」的新剧情线',
+      })
+      expect(useInteractiveStore.getState().currentBranchId).toBe('br-1')
+      expect(getInteractiveSnapshot).toHaveBeenCalledWith('st_1', 'br-1')
+    })
+  })
+})
+
 describe('InteractiveLayout store subscriptions', () => {
   it('does not rerender for live messages owned by StoryStage', async () => {
     vi.mocked(getInteractiveStories).mockResolvedValue({ current_story_id: '', stories: [] })
@@ -327,7 +424,7 @@ function deferred<T>() {
   return { promise, resolve, reject }
 }
 
-function pendingInteractiveSnapshot(): Snapshot {
+function pendingInteractiveSnapshot(): InteractiveSnapshotResponse {
   const turn = {
     id: 'turn-1',
     parent_id: null,
@@ -337,12 +434,42 @@ function pendingInteractiveSnapshot(): Snapshot {
     narrative: '待处理',
     state_status: 'pending' as const,
   }
-  return {
+  return snapshotResponse({
     story_id: 'st_new',
     branch_id: 'main',
     turns: [turn],
     state: {},
     current_turn: turn,
+  })
+}
+
+function snapshotResponse(overrides: Partial<InteractiveSnapshotResponse> = {}): InteractiveSnapshotResponse {
+  return {
+    story_id: 'st_new',
+    branch_id: 'main',
+    turns: [],
+    state: {},
+    graph: { nodes: [], branches: [] },
+    turn_count: 0,
+    turn_start: 0,
+    has_earlier_turns: false,
+    ...overrides,
+  }
+}
+
+function directorStatus(status: 'running' | 'ready') {
+  return {
+    story_id: 'st_new',
+    branch_id: 'main',
+    status,
+    summary: status === 'running' ? '规划中' : '规划完成',
+    updated_at: status === 'running' ? '2026-07-04T00:00:00Z' : '2026-07-04T00:00:01Z',
+    planned_docs: 3,
+    completed_docs: status === 'ready' ? 3 : 0,
+    doc_bytes: 1024,
+    visible_bytes: 256,
+    start_ready: status === 'ready',
+    blocking: false,
   }
 }
 
@@ -360,6 +487,7 @@ function story(id: string, title: string): StorySummary {
     updated_at: '2026-07-04T00:00:00Z',
     branches: 1,
     events: 0,
+    turn_count: 0,
   }
 }
 

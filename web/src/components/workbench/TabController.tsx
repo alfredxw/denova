@@ -1,17 +1,40 @@
-import { X } from 'lucide-react'
+import { BookMarked, Pin, PinOff, X } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { SortableContext, horizontalListSortingStrategy } from '@dnd-kit/sortable'
 import { useTranslation } from 'react-i18next'
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from '@/components/ui/context-menu'
 import type { WorkspaceSummary } from '@/lib/api'
+import {
+  SortableWorkbenchTabItem,
+  WorkbenchTabDragContext,
+} from './WorkbenchTabDrag'
+import {
+  WorkbenchTab,
+  WorkbenchTabStrip,
+} from './WorkbenchTabStrip'
 
 const TABS_STORAGE_PREFIX = 'nova.layout.tabs:'
 const ACTIVE_TAB_STORAGE_PREFIX = 'nova.layout.activeTab:'
 
-/** 编辑区 Tab：承载已打开文件。 */
-export type Tab = { kind: 'file'; path: string }
+/** 编辑区 Tab：文件与工作区级工具共享同一套生命周期和持久化规则。 */
+export type Tab =
+  | { kind: 'file'; path: string; pinned?: boolean }
+  | { kind: 'lore'; pinned?: boolean }
 
 /** Tab 唯一标识，用于 React key 与持久化匹配 */
 export function tabKey(tab: Tab): string {
-  return `file:${tab.path}`
+  switch (tab.kind) {
+    case 'file':
+      return `file:${tab.path}`
+    case 'lore':
+      return 'lore'
+  }
 }
 
 /** 在 tabs 中挑选最久未激活、且不等于 protectedKey 的 tab key（LRU 淘汰目标）。 */
@@ -20,7 +43,7 @@ function pickLRUVictim(tabs: Tab[], protectedKey: string | null, activations: Ma
   let lowest = Infinity
   for (const t of tabs) {
     const k = tabKey(t)
-    if (k === protectedKey) continue
+    if (k === protectedKey || t.pinned) continue
     const score = activations.get(k) ?? 0
     if (score < lowest) {
       lowest = score
@@ -43,9 +66,35 @@ export function dedupeTabs(tabs: Tab[]): Tab[] {
   return result
 }
 
+/** Pinned documents always lead the strip; relative order inside both groups stays stable. */
+export function orderTabs(tabs: Tab[]): Tab[] {
+  return tabs
+    .map((tab, index) => ({ tab, index }))
+    .sort((left, right) => Number(Boolean(right.tab.pinned)) - Number(Boolean(left.tab.pinned)) || left.index - right.index)
+    .map(({ tab }) => tab)
+}
+
+/** Toggle pinning through the one canonical ordering path used by rendering and persistence. */
+export function setTabPinned(tabs: Tab[], key: string, pinned: boolean): Tab[] {
+  return orderTabs(tabs.map((tab) => (
+    tabKey(tab) === key ? { ...tab, pinned: pinned || undefined } : tab
+  )))
+}
+
+/** Move one tab onto another tab's rendered position, preserving the pinned/unpinned boundary. */
+export function reorderTabs(tabs: Tab[], sourceKey: string, targetKey: string): Tab[] {
+  const sourceIndex = tabs.findIndex((tab) => tabKey(tab) === sourceKey)
+  const targetIndex = tabs.findIndex((tab) => tabKey(tab) === targetKey)
+  if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) return tabs
+  const reordered = [...tabs]
+  const [source] = reordered.splice(sourceIndex, 1)
+  reordered.splice(targetIndex, 0, source)
+  return orderTabs(reordered)
+}
+
 /** 按 max 限制裁剪 tab 列表，循环淘汰最久未激活的 tab；副作用：从 activations 删除被淘汰项。 */
 export function enforceTabLimit(tabs: Tab[], protectedKey: string | null, max: number, activations: Map<string, number>): Tab[] {
-  const deduped = dedupeTabs(tabs)
+  const deduped = orderTabs(dedupeTabs(tabs))
   if (max < 1) return deduped
   let current = deduped
   while (current.length > max) {
@@ -59,10 +108,11 @@ export function enforceTabLimit(tabs: Tab[], protectedKey: string | null, max: n
 
 /** Tab 显示标题 */
 function tabLabel(tab: Tab): string {
-  return tab.path.split('/').pop() || tab.path
+  return tab.kind === 'file' ? tab.path.split('/').pop() || tab.path : ''
 }
 
-function formatChapterTabLabel(tab: Tab, summary: WorkspaceSummary | null): string {
+function formatChapterTabLabel(tab: Tab, summary: WorkspaceSummary | null, loreLabel: string): string {
+  if (tab.kind === 'lore') return loreLabel
   return (summary?.chapters || []).find((chapter) => chapter.path === tab.path)?.display_title || tabLabel(tab)
 }
 
@@ -76,13 +126,15 @@ export function readTabsFor(workspace: string): Tab[] {
     if (!Array.isArray(parsed)) return []
     const tabs = parsed.flatMap((item): Tab[] => {
       if (item && typeof item === 'object') {
-        if (item.kind === 'file' && typeof item.path === 'string') return [{ kind: 'file', path: item.path }]
+        const pinned = item.pinned === true ? true : undefined
+        if (item.kind === 'file' && typeof item.path === 'string') return [{ kind: 'file', path: item.path, pinned }]
+        if (item.kind === 'lore') return [{ kind: 'lore', pinned }]
       }
       // 兼容旧版本（仅文件路径字符串）
       if (typeof item === 'string') return [{ kind: 'file', path: item }]
       return []
     })
-    return dedupeTabs(tabs)
+    return orderTabs(dedupeTabs(tabs))
   } catch {
     return []
   }
@@ -115,6 +167,8 @@ interface TabControllerProps {
   actions?: ReactNode
   onActivateTab: (tab: Tab) => void
   onCloseTab: (tab: Tab) => void
+  onTogglePin: (tab: Tab) => void
+  onMoveTab: (sourceKey: string, targetKey: string) => void
 }
 
 export function TabController({
@@ -124,64 +178,85 @@ export function TabController({
   actions,
   onActivateTab,
   onCloseTab,
+  onTogglePin,
+  onMoveTab,
 }: TabControllerProps) {
   const { t } = useTranslation()
+  const activateTabKey = (key: string) => {
+    const tab = tabs.find((candidate) => tabKey(candidate) === key)
+    if (tab && key !== activeTabKey) onActivateTab(tab)
+  }
+
   return (
-    <div className="nova-sidebar flex h-9 shrink-0 items-stretch border-b text-xs">
-      <div className="flex min-w-0 flex-1 items-stretch overflow-x-auto">
-        {tabs.length === 0 ? (
-          <div className="flex h-full items-center px-3 text-[var(--nova-text-faint)]">{t('tab.empty')}</div>
-        ) : (
-          tabs.map((tab) => {
+    <WorkbenchTabDragContext
+      onDragEnd={({ active, over }) => {
+        if (over && active.id !== over.id) onMoveTab(String(active.id), String(over.id))
+      }}
+    >
+      <SortableContext items={tabs.map(tabKey)} strategy={horizontalListSortingStrategy}>
+        <WorkbenchTabStrip
+          value={activeTabKey ?? ''}
+          onValueChange={activateTabKey}
+          endActions={actions}
+        >
+          {tabs.length === 0 ? (
+            <div className="flex h-full items-center px-3 text-[var(--nova-text-faint)]">{t('tab.empty')}</div>
+          ) : tabs.map((tab) => {
             const key = tabKey(tab)
-            const isActive = key === activeTabKey
-            const label = formatChapterTabLabel(tab, summary)
-            const activate = () => {
-              if (!isActive) onActivateTab(tab)
-            }
+            const label = formatChapterTabLabel(tab, summary, t('tab.lore'))
+            const icon = tab.kind === 'lore' ? <BookMarked className="size-3.5 text-emerald-500" /> : undefined
             return (
-              <div
-                key={key}
-                role="tab"
-                tabIndex={0}
-                aria-selected={isActive}
-                onClick={activate}
-                onKeyDown={(event) => {
-                  if (event.target !== event.currentTarget) return
-                  if (event.key !== 'Enter' && event.key !== ' ') return
-                  event.preventDefault()
-                  activate()
-                }}
-                className={`group relative flex h-full shrink-0 items-center gap-2 overflow-hidden border-r border-[var(--nova-border)] px-3 ${
-                  isActive
-                    ? 'bg-[var(--nova-active)] text-[var(--nova-text)]'
-                    : 'cursor-pointer text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)]'
-                }`}
-                title={tab.path}
-              >
-                {isActive && <span className="absolute inset-x-0 top-0 h-0.5 bg-[var(--nova-text-faint)]" />}
-                <span className="relative z-10 max-w-[220px] truncate text-left">
-                  {label}
-                </span>
-                <button
-                  type="button"
-                  onClick={(event) => { event.stopPropagation(); onCloseTab(tab) }}
-                  className="nova-nav-item relative z-10 rounded p-0.5 opacity-0 group-hover:opacity-100 max-md:opacity-100"
-                  aria-label={t('tab.close', { label })}
-                  title={t('common.close')}
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </div>
+              <SortableWorkbenchTabItem key={key} id={key} label={label} previewIcon={icon}>
+                {(dragHandleProps) => (
+                  <ContextMenu>
+                    <ContextMenuTrigger asChild>
+                      <div
+                        data-selected={key === activeTabKey ? 'true' : undefined}
+                        className="group/tab relative h-full w-full"
+                      >
+                        <WorkbenchTab
+                          {...dragHandleProps}
+                          value={key}
+                          label={label}
+                          icon={icon}
+                          className="h-full w-full min-w-0 max-w-none flex-none"
+                          trailing={tab.pinned ? (
+                            <Pin className="size-3 shrink-0 text-[var(--nova-text-faint)]" aria-hidden="true" />
+                          ) : (
+                            <span className="size-4 shrink-0" aria-hidden="true" />
+                          )}
+                        />
+                        {!tab.pinned ? (
+                          <button
+                            type="button"
+                            onPointerDown={(event) => event.stopPropagation()}
+                            onKeyDown={(event) => event.stopPropagation()}
+                            onClick={(event) => { event.stopPropagation(); onCloseTab(tab) }}
+                            className="nova-nav-item absolute right-2.5 top-1/2 z-10 -translate-y-1/2 rounded p-0.5 opacity-0 group-hover/tab:opacity-100 group-data-[selected=true]/tab:opacity-100 max-md:opacity-100"
+                            aria-label={t('tab.close', { label })}
+                          >
+                            <X className="size-3" />
+                          </button>
+                        ) : null}
+                      </div>
+                    </ContextMenuTrigger>
+                    <ContextMenuContent className="min-w-40">
+                      <ContextMenuItem onSelect={() => onTogglePin(tab)}>
+                        {tab.pinned ? <PinOff /> : <Pin />}
+                        {t(tab.pinned ? 'tab.unpin' : 'tab.pin')}
+                      </ContextMenuItem>
+                      <ContextMenuSeparator />
+                      <ContextMenuItem onSelect={() => onCloseTab(tab)}>
+                        {t('tab.closeCurrent')}
+                      </ContextMenuItem>
+                    </ContextMenuContent>
+                  </ContextMenu>
+                )}
+              </SortableWorkbenchTabItem>
             )
-          })
-        )}
-      </div>
-      {actions && (
-        <div className="flex shrink-0 items-center gap-1 border-l border-[var(--nova-border)] px-2">
-          {actions}
-        </div>
-      )}
-    </div>
+          })}
+        </WorkbenchTabStrip>
+      </SortableContext>
+    </WorkbenchTabDragContext>
   )
 }

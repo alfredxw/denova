@@ -6,6 +6,8 @@ import {
   captureDocumentReviewSelection,
   commentWidgetPosition,
   createDocumentReviewAnchor,
+  createRawDocumentReviewAnchor,
+  resolveRawDocumentReviewAnchor,
   textBlockRangeAtPosition,
   type EditorReviewRange,
 } from './documentReviewAnchors'
@@ -16,6 +18,62 @@ describe('document review anchors', () => {
   afterEach(() => {
     editor?.destroy()
     editor = null
+  })
+
+  it('creates and resolves raw Markdown selections with UTF-8 byte offsets', () => {
+    const content = '# 标题\n\n角色😀设定\n'
+    const start = content.indexOf('角色')
+    const end = start + '角色😀'.length
+    const anchor = createRawDocumentReviewAnchor(
+      { content, revision: 'sha256:raw' },
+      { content, start, end },
+    )
+
+    expect(anchor).toMatchObject({
+      encoding: 'utf8-bytes-v1',
+      revision: 'sha256:raw',
+      start: new TextEncoder().encode(content.slice(0, start)).length,
+      end: new TextEncoder().encode(content.slice(0, end)).length,
+      quote: '角色😀',
+      display_quote: '角色😀',
+      editor_from: start,
+      editor_to: end,
+    })
+    expect(resolveRawDocumentReviewAnchor(content, anchor)).toEqual({ start, end })
+
+    const relocated = `新增前言\n${content}`
+    const relocatedStart = relocated.indexOf('角色')
+    expect(resolveRawDocumentReviewAnchor(relocated, anchor)).toEqual({
+      start: relocatedStart,
+      end: relocatedStart + '角色😀'.length,
+    })
+  })
+
+  it('rejects raw review anchors when the saved snapshot changed', () => {
+    expect(() => createRawDocumentReviewAnchor(
+      { content: '外部版本', revision: 'sha256:external' },
+      { content: '本地版本', start: 0, end: 2 },
+    )).toThrow('The editor and workspace snapshots differ')
+  })
+
+  it('maps a raw selection onto Lore canonical content without its editor-only final newline', () => {
+    const editorContent = '# 世界观\n\n角色😀设定\n'
+    const canonical = editorContent.trimEnd()
+    const start = editorContent.indexOf('角色')
+    const end = start + '角色😀'.length
+
+    const anchor = createRawDocumentReviewAnchor(
+      { content: canonical, revision: 'sha256:canonical-lore' },
+      { content: editorContent, start, end },
+    )
+
+    expect(anchor).toMatchObject({
+      revision: 'sha256:canonical-lore',
+      start: new TextEncoder().encode(canonical.slice(0, start)).length,
+      end: new TextEncoder().encode(canonical.slice(0, end)).length,
+      quote: '角色😀',
+      display_quote: '角色😀',
+    })
   })
 
   it('maps the exact repeated TipTap selection to canonical Markdown UTF-8 bytes', () => {

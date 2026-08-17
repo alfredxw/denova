@@ -1,8 +1,13 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import type { ComponentProps } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { WorkspaceFileRevisionConflictError } from '@/lib/autosave/workspace-file-revision-conflict'
-import { MarkdownEditor } from './MarkdownEditor'
+import { MarkdownEditor as ProjectMarkdownEditor } from './MarkdownEditor'
+
+function MarkdownEditor({ workspace, ...props }: Omit<ComponentProps<typeof ProjectMarkdownEditor>, 'projectId'> & { projectId?: string; workspace?: string }) {
+  return <ProjectMarkdownEditor {...props} projectId={props.projectId || workspace || 'project-editor-test'} />
+}
 
 const toastMock = vi.hoisted(() => ({
   error: vi.fn(),
@@ -28,6 +33,35 @@ const tiptapMock = vi.hoisted(() => {
     insertContentAt: vi.fn(() => chainApi),
     run: vi.fn(() => true),
   }
+  const schema = {
+    nodeFromJSON: vi.fn((json: unknown) => ({
+      json,
+      content: { size: 100 },
+      textContent: '',
+      forEach: vi.fn(),
+    })),
+  }
+  const state = {
+    schema,
+    plugins: [],
+    doc: {
+      content: { size: 100 },
+      textContent: '',
+      forEach: vi.fn(),
+    },
+    selection: { from: 0, to: 0, head: 0, empty: true },
+    tr: {} as {
+      setMeta: ReturnType<typeof vi.fn>
+      replaceWith: ReturnType<typeof vi.fn>
+    },
+  }
+  state.tr = {
+    setMeta: vi.fn(),
+    replaceWith: vi.fn((_from: number, _to: number, doc: unknown) => ({
+      doc,
+      selection: state.selection,
+    })),
+  }
   const editor = {
     commands: {
       setContent: vi.fn(),
@@ -40,15 +74,17 @@ const tiptapMock = vi.hoisted(() => {
         characters: () => 0,
       },
     },
-    state: {
-      doc: {
-        content: { size: 100 },
-        textContent: '',
-        forEach: vi.fn(),
-      },
-      selection: { from: 0, to: 0, head: 0, empty: true },
-      tr: { setMeta: vi.fn() },
+    schema,
+    markdown: {
+      parse: vi.fn((source: string) => ({
+        type: 'doc',
+        content: [{
+          type: 'paragraph',
+          content: source ? [{ type: 'text', text: source }] : undefined,
+        }],
+      })),
     },
+    state,
     view: {
       dispatch: vi.fn(),
       updateState: vi.fn(),
@@ -59,6 +95,7 @@ const tiptapMock = vi.hoisted(() => {
     setEditable: vi.fn(),
     getText: () => tiptapMock.text,
     getMarkdown: () => tiptapMock.markdown,
+    getJSON: () => tiptapMock.json,
     getHTML: () => '',
     on: vi.fn((event: string, handler: (...args: unknown[]) => void) => {
       const set = handlers.get(event) ?? new Set()
@@ -74,6 +111,8 @@ const tiptapMock = vi.hoisted(() => {
     chainApi,
     handlers,
     useEditorOptions: null as unknown,
+    created: false,
+    json: { type: 'doc', content: [{ type: 'paragraph' }] },
     markdown: '',
     text: '',
     emit(event: string) {
@@ -82,6 +121,8 @@ const tiptapMock = vi.hoisted(() => {
     reset() {
       handlers.clear()
       this.useEditorOptions = null
+      this.created = false
+      this.json = { type: 'doc', content: [{ type: 'paragraph' }] }
       this.markdown = ''
       this.text = ''
       editor.state.selection = { from: 0, to: 0, head: 0, empty: true }
@@ -94,8 +135,12 @@ const tiptapMock = vi.hoisted(() => {
 
 vi.mock('@tiptap/react', () => ({
   EditorContent: () => <div data-testid="editor-content" />,
-  useEditor: (options: unknown) => {
+  useEditor: (options: { onCreate?: (payload: { editor: typeof tiptapMock.editor }) => void }) => {
     tiptapMock.useEditorOptions = options
+    if (!tiptapMock.created) {
+      tiptapMock.created = true
+      options.onCreate?.({ editor: tiptapMock.editor })
+    }
     return tiptapMock.editor
   },
 }))
@@ -112,7 +157,19 @@ vi.mock('@tiptap/extension-image', () => ({ default: { extend: () => ({ configur
 vi.mock('@tiptap/extension-table', () => ({ TableKit: { configure: vi.fn((options) => ({ name: 'tableKit', options })) } }))
 vi.mock('@tiptap/markdown', () => ({ Markdown: { configure: () => ({}) } }))
 vi.mock('sonner', () => ({ toast: toastMock }))
-vi.mock('@/lib/api-client/workspace', () => ({ readFile: workspaceApiMock.readFile }))
+vi.mock('@/lib/api-client/workspace', () => ({
+  MISSING_WORKSPACE_REVISION: 'missing',
+}))
+vi.mock('@/lib/api-client/project-files', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/api-client/project-files')>()
+  return {
+    ...actual,
+    readProjectFile: async (projectId: string, path: string) => ({
+      ...await workspaceApiMock.readFile(path),
+      project_id: projectId,
+    }),
+  }
+})
 vi.mock('@/lib/api-client/autosave-conflicts', () => ({ preserveAutosaveConflict: conflictArchiveMock.preserve }))
 vi.mock('./DocumentReviewAnnotations', async () => {
   const { forwardRef, useImperativeHandle } = await import('react')
@@ -146,12 +203,23 @@ describe('MarkdownEditor', () => {
 
   it('打开编辑器设置 Popover 后展示行间距、对白高亮和背景主题', async () => {
     const user = userEvent.setup()
+    const onFontFamilyChange = vi.fn()
+    const onFontSizeChange = vi.fn()
 
     render(
       <MarkdownEditor
         fileName="chapters/ch01.md"
         content="第一章"
         onSave={vi.fn()}
+        readingTypography={{
+          fontFamily: 'source-han-serif',
+          fontSize: 18,
+          loading: false,
+          status: 'saved',
+          onFontFamilyChange,
+          onFontSizeChange,
+          onRetry: vi.fn(),
+        }}
       />,
     )
 
@@ -165,6 +233,12 @@ describe('MarkdownEditor', () => {
     expect(screen.getByRole('textbox', { name: '十六进制颜色' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '恢复默认' })).toBeInTheDocument()
     expect(screen.getByText('背景主题')).toBeInTheDocument()
+    expect(screen.getByText('字体与字号')).toBeInTheDocument()
+    expect(screen.getByText('思源宋体阅读')).toBeInTheDocument()
+    const readingFontSize = screen.getByRole('slider', { name: '阅读字号 (px)' })
+    expect(readingFontSize).toHaveValue('18')
+    fireEvent.change(readingFontSize, { target: { value: '22' } })
+    expect(onFontSizeChange).toHaveBeenCalledWith(22)
   })
 
   it('在更新时间右侧实时显示光标所在行号', () => {
@@ -344,6 +418,46 @@ describe('MarkdownEditor', () => {
 
     expect(onSave).toHaveBeenCalledTimes(1)
     expect(screen.getByLabelText('内容有未保存改动')).toBeInTheDocument()
+  })
+
+  it('文件从磁盘删除后保留内容并暂停自动保存，手动保存使用 missing revision 重建', async () => {
+    vi.useFakeTimers()
+    const onSave = vi.fn().mockResolvedValue({ revision: 'r2' })
+    const { rerender } = render(
+      <MarkdownEditor
+        workspace="/books/demo"
+        fileName="chapters/ch01.md"
+        content="保留内容"
+        revision="r1"
+        onSave={onSave}
+        autoSaveDelayMs={100}
+      />,
+    )
+
+    rerender(
+      <MarkdownEditor
+        workspace="/books/demo"
+        fileName="chapters/ch01.md"
+        content="保留内容"
+        revision="missing"
+        onSave={onSave}
+        autoSaveDelayMs={100}
+      />,
+    )
+    expect(screen.getByRole('alert')).toHaveTextContent('文件已从磁盘删除')
+
+    act(() => {
+      tiptapMock.markdown = '删除后继续编辑'
+      tiptapMock.emit('update')
+      vi.advanceTimersByTime(100)
+    })
+    expect(onSave).not.toHaveBeenCalled()
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '保存' }))
+      await Promise.resolve()
+    })
+    expect(onSave).toHaveBeenCalledWith('chapters/ch01.md', '删除后继续编辑\n', 'missing')
   })
 
   it('前一次保存返回新 revision 后，排队的编辑在真正发送时沿用该 revision', async () => {
@@ -1027,6 +1141,55 @@ describe('MarkdownEditor', () => {
     expect(tiptapMock.editor.commands.setTextSelection).not.toHaveBeenCalled()
   })
 
+  it('切回已解析章节时复用文档，原始内容变化后重新解析', () => {
+    const { rerender } = render(
+      <MarkdownEditor workspace="/books/demo" fileName="chapters/ch01.md" content="第一章" onSave={vi.fn()} />,
+    )
+    tiptapMock.editor.markdown.parse.mockClear()
+
+    rerender(
+      <MarkdownEditor workspace="/books/demo" fileName="chapters/ch02.md" content="第二章" onSave={vi.fn()} />,
+    )
+    rerender(
+      <MarkdownEditor workspace="/books/demo" fileName="chapters/ch01.md" content="第一章" onSave={vi.fn()} />,
+    )
+
+    expect(tiptapMock.editor.markdown.parse).toHaveBeenCalledTimes(1)
+    expect(tiptapMock.editor.markdown.parse).toHaveBeenLastCalledWith('第二章')
+
+    rerender(
+      <MarkdownEditor workspace="/books/demo" fileName="chapters/ch02.md" content="第二章（外部更新）" onSave={vi.fn()} />,
+    )
+
+    expect(tiptapMock.editor.markdown.parse).toHaveBeenCalledTimes(2)
+    expect(tiptapMock.editor.markdown.parse).toHaveBeenLastCalledWith('第二章（外部更新）')
+  })
+
+  it('切换文件后恢复各自的滚动位置', () => {
+    const animationFrame = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      callback(0)
+      return 1
+    })
+    const { rerender } = render(
+      <MarkdownEditor fileName="chapters/ch01.md" content="第一章" onSave={vi.fn()} />,
+    )
+    const scrollContainer = screen.getByTestId('editor-content').parentElement as HTMLDivElement
+    scrollContainer.scrollTop = 360
+
+    rerender(
+      <MarkdownEditor fileName="chapters/ch02.md" content="第二章" onSave={vi.fn()} />,
+    )
+    expect(scrollContainer.scrollTop).toBe(0)
+    scrollContainer.scrollTop = 180
+
+    rerender(
+      <MarkdownEditor fileName="chapters/ch01.md" content="第一章" onSave={vi.fn()} />,
+    )
+    expect(scrollContainer.scrollTop).toBe(360)
+
+    animationFrame.mockRestore()
+  })
+
   it('dirty 草稿收到 Agent 非重叠更新时自然合并，并沿用原用户编辑的 afterDelay', async () => {
     vi.useFakeTimers()
     const onSave = vi.fn().mockResolvedValue({ revision: 'rev-3' })
@@ -1380,7 +1543,7 @@ describe('MarkdownEditor', () => {
     const comment = {
       id: 'comment-1',
       thread_id: 'review-1',
-      path: 'chapters/ch01.md',
+      target: { kind: 'workspace_file' as const, id: 'chapters/ch01.md' },
       body: '调整这里',
       created_at: '',
       updated_at: '',

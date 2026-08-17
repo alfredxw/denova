@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Editor, type OnMount } from '@monaco-editor/react'
+import { type OnMount } from '@monaco-editor/react'
 import { Braces, ChevronDown, ChevronRight, Eye } from 'lucide-react'
-import { useTheme } from 'next-themes'
 import { useTranslation } from 'react-i18next'
+import { DenovaMonacoEditor } from '@/components/monaco/DenovaMonaco'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -46,7 +46,6 @@ export function PresetConfigSectionEditor<T extends object>({
   }) => ReactNode
 }) {
   const { t } = useTranslation()
-  const { resolvedTheme } = useTheme()
   const [viewMode, setViewMode] = useState<PresetConfigViewMode>(() => loadPresetConfigViewMode(sectionId))
   const [jsonDraft, setJsonDraft] = useState(() => formatPresetJSON(value))
   const [jsonError, setJsonError] = useState('')
@@ -56,7 +55,6 @@ export function PresetConfigSectionEditor<T extends object>({
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null)
   const onSaveRef = useRef(onSave)
   const validRef = useRef(true)
-  const monacoTheme = resolvedTheme === 'light' ? 'light' : 'vs-dark'
   const jsonValueIsArray = Array.isArray(value)
   const valid = !jsonError && visualValid
   const flush = layout === 'flush'
@@ -224,10 +222,9 @@ export function PresetConfigSectionEditor<T extends object>({
             )}
             data-testid="story-director-json-editor"
           >
-            <Editor
+            <DenovaMonacoEditor
               height="100%"
               language="json"
-              theme={monacoTheme}
               value={jsonDraft}
               onChange={(nextValue) => updateJSON(nextValue ?? '')}
               onMount={handleMount}

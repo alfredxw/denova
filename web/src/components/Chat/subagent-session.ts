@@ -19,17 +19,28 @@ export function isSubAgentTimelineMessage(message: ChatMessage) {
 export function buildSubAgentProgressMessage(messages: ChatMessage[]): ChatMessage | null {
   const first = messages.find((message) => message.subagent)
   if (!first) return null
-  const assistant = messages.find((message) => message.role === 'assistant' && (message.content || '').trim())
-  if (assistant) return assistant
-  const latest = [...messages].reverse().find((message) => (message.content || message.name || '').trim()) || first
+  const reversed = [...messages].reverse()
+  const latest = reversed.find((message) => message.role === 'assistant' && (message.content || '').trim())
+    || reversed.find((message) => (message.content || (message.role === 'tool_call' || message.role === 'tool_result' ? message.name : '') || '').trim())
+    || first
   const content = latest.role === 'tool_call'
     ? latest.name || latest.content || ''
     : latest.content || ''
+  const sessionKey = subAgentSessionKey(first)
   return {
-    ...first,
-    id: first.id ? `${first.id}:progress` : `subagent-progress:${subAgentSessionKey(first)}`,
+    id: sessionKey ? `subagent-progress:${sessionKey}` : first.id ? `${first.id}:progress` : 'subagent-progress',
     role: 'assistant',
     content,
-    streaming: messages.some((message) => message.streaming !== false),
+    streaming: messages.some((message) => message.streaming === true || ('status' in message && message.status === 'running')),
+    created_at: first.created_at,
+    run_id: first.run_id,
+    display_segment_id: first.display_segment_id,
+    agent_kind: first.agent_kind,
+    agent_name: first.agent_name,
+    root_agent_name: first.root_agent_name,
+    run_path: first.run_path,
+    subagent: true,
+    subagent_session_id: first.subagent_session_id,
+    subagent_type: first.subagent_type,
   }
 }

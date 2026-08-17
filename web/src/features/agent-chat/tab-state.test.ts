@@ -1,0 +1,378 @@
+import { beforeEach, describe, expect, it } from 'vitest'
+import {
+  appendTab,
+  createTabId,
+  dedupeTabs,
+  MAX_AGENT_CHAT_TABS,
+  moveTab,
+  nextActiveTabId,
+  otherTabIds,
+  persistWorkbenchState,
+  readStoredWorkbenchState,
+  reconcileWorkbenchProjects,
+  setTabPinned,
+  setTabTitle,
+  setTerminalTabTitle,
+  tabIdsAfter,
+  tabsInGroup,
+} from './tab-state'
+import type { AgentChatAgentTab, AgentChatTab } from './types'
+
+function agentTab(id: string, sessionId: string, workspace = '/books/one'): AgentChatAgentTab {
+  return {
+    kind: 'agent',
+    id,
+    projectId: `project-${workspace.split('/').pop()}`,
+    workspace,
+    group: 'primary',
+    sessionId,
+  }
+}
+
+function terminalTab(id: string, workspace = '/books/one'): AgentChatTab {
+  return {
+    kind: 'terminal',
+    id,
+    projectId: `project-${workspace.split('/').pop()}`,
+    workspace,
+    group: 'primary',
+    profileId: 'shell',
+    title: '',
+  }
+}
+
+function filesTab(id: string, workspace = '/books/one', selectedPath?: string): AgentChatTab {
+  return {
+    kind: 'files',
+    id,
+    projectId: `project-${workspace.split('/').pop()}`,
+    workspace,
+    group: 'primary',
+    selectedPath,
+  }
+}
+
+describe('agent-chat tab state', () => {
+  beforeEach(() => {
+    window.localStorage.clear()
+  })
+
+  it('keeps one tab per page, Files workspace, and session but allows many terminals', () => {
+    const deduped = dedupeTabs([
+      {
+        kind: 'page',
+        id: 'p1',
+        projectId: 'project-one',
+        workspace: '/books/one',
+        group: 'primary',
+        pageId: 'reader',
+      },
+      {
+        kind: 'page',
+        id: 'p2',
+        projectId: 'project-one',
+        workspace: '/books/one',
+        group: 'primary',
+        pageId: 'reader',
+      },
+      agentTab('a1', 's1'),
+      agentTab('a2', 's1'),
+      terminalTab('t1'),
+      terminalTab('t2'),
+      filesTab('f1'),
+      filesTab('f2'),
+    ])
+
+    expect(deduped.map((tab) => tab.id)).toEqual(['p1', 'a1', 't1', 't2', 'f1'])
+  })
+
+  it('reuses an existing tab instead of opening a duplicate', () => {
+    const tabs = [agentTab('a1', 's1'), terminalTab('t1')]
+
+    expect(appendTab(tabs, agentTab('a2', 's1'))).toEqual({
+      tabs,
+      activeId: 'a1',
+    })
+    expect(
+      appendTab(tabs, {
+        kind: 'page',
+        id: 'p1',
+        projectId: 'project-one',
+        workspace: '/books/one',
+        group: 'primary',
+        pageId: 'skills',
+      }),
+    ).toEqual({
+      tabs: [
+        ...tabs,
+        {
+          kind: 'page',
+          id: 'p1',
+          projectId: 'project-one',
+          workspace: '/books/one',
+          group: 'primary',
+          pageId: 'skills',
+        },
+      ],
+      activeId: 'p1',
+    })
+  })
+
+  it('reuses Files while updating the selected source path', () => {
+    const tabs = [agentTab('a1', 's1'), filesTab('files', '/books/one', 'README.md')]
+
+    expect(appendTab(tabs, filesTab('new-files', '/books/one', 'src/main.ts'))).toEqual({
+      tabs: [agentTab('a1', 's1'), filesTab('files', '/books/one', 'src/main.ts')],
+      activeId: 'files',
+    })
+  })
+
+  it('drops the oldest tab when the limit is exceeded so the new tab stays visible', () => {
+    const tabs = Array.from({ length: MAX_AGENT_CHAT_TABS }, (_, index) => terminalTab(`t${index}`))
+
+    const { tabs: next, activeId } = appendTab(tabs, terminalTab('new'))
+
+    expect(next).toHaveLength(MAX_AGENT_CHAT_TABS)
+    expect(next[0].id).toBe('t1')
+    expect(next.at(-1)?.id).toBe('new')
+    expect(activeId).toBe('new')
+  })
+
+  it('activates the right neighbour after closing, falling back to the left one', () => {
+    const tabs = [terminalTab('t1'), terminalTab('t2'), terminalTab('t3')]
+
+    expect(nextActiveTabId(tabs, 't2', 't2')).toBe('t3')
+    expect(nextActiveTabId(tabs, 't3', 't3')).toBe('t2')
+    expect(nextActiveTabId(tabs, 't1', 't3')).toBe('t3')
+    expect(nextActiveTabId([terminalTab('t1')], 't1', 't1')).toBeNull()
+  })
+
+  it('persists a distinct tab group for each project and drops cross-project records', () => {
+    persistWorkbenchState({
+      activeProjectId: 'project-two',
+      projects: {
+        'project-one': {
+          tabs: [agentTab('a1', 's1'), terminalTab('t1')],
+          activeTabIds: { primary: 'a1', secondary: null },
+          focusedGroup: 'primary',
+          secondaryVisible: false,
+        },
+        'project-two': {
+          tabs: [agentTab('a2', 's2', '/books/two'), terminalTab('t2', '/books/two')],
+          activeTabIds: { primary: 'a2', secondary: null },
+          focusedGroup: 'secondary',
+          secondaryVisible: false,
+        },
+      },
+    })
+
+    const stored = readStoredWorkbenchState()
+    expect(stored.activeProjectId).toBe('project-two')
+    expect(stored.projects['project-one'].tabs.map((tab) => tab.id)).toEqual(['a1', 't1'])
+    expect(stored.projects['project-two'].tabs.map((tab) => tab.id)).toEqual(['a2', 't2'])
+    expect(stored.projects['project-two'].focusedGroup).toBe('secondary')
+
+  })
+
+  it('restores configured terminal command IDs and display names without a hardcoded allowlist', () => {
+    persistWorkbenchState({
+      activeProjectId: 'project-one',
+      projects: {
+        'project-one': {
+          tabs: [
+            {
+              kind: 'terminal',
+              id: 'aider-tab',
+              projectId: 'project-one',
+              workspace: '/books/one',
+              group: 'primary',
+              profileId: 'aider-sonnet',
+              profileName: 'Aider Sonnet',
+              title: '',
+            },
+          ],
+          activeTabIds: { primary: 'aider-tab', secondary: null },
+          focusedGroup: 'primary',
+          secondaryVisible: false,
+        },
+      },
+    })
+
+    expect(readStoredWorkbenchState().projects['project-one'].tabs[0]).toMatchObject({
+      profileId: 'aider-sonnet',
+      profileName: 'Aider Sonnet',
+    })
+  })
+
+  it('persists secondary visibility independently from the tabs it owns', () => {
+    persistWorkbenchState({
+      activeProjectId: 'project-one',
+      projects: {
+        'project-one': {
+          tabs: [agentTab('primary', 's-primary'), { ...terminalTab('secondary'), group: 'secondary' }],
+          activeTabIds: { primary: 'primary', secondary: 'secondary' },
+          focusedGroup: 'primary',
+          secondaryVisible: false,
+        },
+      },
+    })
+
+    const hidden = readStoredWorkbenchState().projects['project-one']
+    expect(hidden.secondaryVisible).toBe(false)
+    expect(tabsInGroup(hidden.tabs, 'secondary').map((tab) => tab.id)).toEqual(['secondary'])
+
+  })
+
+  it('does not persist blank draft conversations', () => {
+    persistWorkbenchState({
+      activeProjectId: 'project-one',
+      projects: {
+        'project-one': {
+          tabs: [{ ...agentTab('draft', 's-draft'), draft: true }, agentTab('saved', 's-saved')],
+          activeTabIds: { primary: 'draft', secondary: null },
+          focusedGroup: 'primary',
+          secondaryVisible: false,
+        },
+      },
+    })
+
+    expect(readStoredWorkbenchState().projects['project-one']).toMatchObject({
+      tabs: [expect.objectContaining({ id: 'saved' })],
+      activeTabIds: { primary: null, secondary: null },
+    })
+  })
+
+  it('drops restored conversations that no longer exist while preserving local drafts and non-agent tabs', () => {
+    const reconciled = reconcileWorkbenchProjects({
+      activeProjectId: 'project-one',
+      projects: {
+        'project-one': {
+          tabs: [
+            agentTab('valid', 'session-valid'),
+            agentTab('stale', 'session-stale'),
+            { ...agentTab('draft', 'session-draft'), draft: true },
+            terminalTab('terminal'),
+            filesTab('files'),
+          ],
+          activeTabIds: { primary: 'stale', secondary: null },
+          focusedGroup: 'primary',
+          secondaryVisible: false,
+        },
+      },
+    }, [{
+      id: 'project-one',
+      type: 'book',
+      path: '/books/one',
+      name: 'One',
+      status: 'available',
+      current: true,
+      total: 1,
+      sessions: [{
+        id: 'session-valid',
+        title: 'Valid',
+        created_at: '2026-08-01T00:00:00Z',
+        updated_at: '2026-08-01T00:00:00Z',
+        message_count: 1,
+        running: false,
+        active: true,
+      }],
+    }])
+
+    expect(reconciled.projects['project-one'].tabs.map((tab) => tab.id)).toEqual(['valid', 'draft', 'terminal', 'files'])
+    expect(reconciled.projects['project-one'].activeTabIds).toEqual({ primary: null, secondary: null })
+  })
+
+  it('keeps reusable pages but removes Book-only pages when a project is General', () => {
+    const reconciled = reconcileWorkbenchProjects({
+      activeProjectId: 'project-one',
+      projects: {
+        'project-one': {
+          tabs: [
+            filesTab('files'),
+            { kind: 'page', id: 'reader', projectId: 'project-one', workspace: '/books/one', group: 'primary', pageId: 'reader' },
+            { kind: 'page', id: 'skills', projectId: 'project-one', workspace: '/books/one', group: 'primary', pageId: 'skills' },
+          ],
+          activeTabIds: { primary: 'files', secondary: null },
+          focusedGroup: 'primary',
+          secondaryVisible: false,
+        },
+      },
+    }, [{
+      id: 'project-one',
+      type: 'general',
+      path: '/books/one',
+      name: 'One',
+      status: 'available',
+      current: false,
+      total: 0,
+      sessions: [],
+    }])
+
+    expect(reconciled.projects['project-one'].tabs.map((tab) => tab.id)).toEqual(['files', 'skills'])
+  })
+
+  it('generates unique tab ids carrying the tab kind', () => {
+    const ids = [createTabId('agent'), createTabId('agent'), createTabId('terminal'), createTabId('files')]
+
+    expect(new Set(ids).size).toBe(4)
+    expect(ids[0].startsWith('agent-')).toBe(true)
+    expect(ids[2].startsWith('terminal-')).toBe(true)
+    expect(ids[3].startsWith('files-')).toBe(true)
+  })
+})
+
+describe('agent-chat tab groups', () => {
+  const split: AgentChatTab[] = [terminalTab('t1'), terminalTab('t2'), { ...terminalTab('t3'), group: 'secondary' }]
+
+  it('filters tabs by their explicit group', () => {
+    expect(tabsInGroup(split, 'primary').map((tab) => tab.id)).toEqual(['t1', 't2'])
+    expect(tabsInGroup(split, 'secondary').map((tab) => tab.id)).toEqual(['t3'])
+  })
+
+  it('reorders inside a strip and appends when dropped past the last tab', () => {
+    expect(moveTab(split, 't2', 'primary', 't1').map((tab) => tab.id)).toEqual(['t2', 't1', 't3'])
+    expect(moveTab(split, 't1', 'primary', null).map((tab) => tab.id)).toEqual(['t2', 't1', 't3'])
+  })
+
+  it('moves a tab across the split', () => {
+    const moved = moveTab(split, 't1', 'secondary', 't3')
+
+    expect(tabsInGroup(moved, 'primary').map((tab) => tab.id)).toEqual(['t2'])
+    expect(tabsInGroup(moved, 'secondary').map((tab) => tab.id)).toEqual(['t1', 't3'])
+  })
+
+  it('holds pinned tabs at the front of their own strip', () => {
+    const pinned = setTabPinned(split, 't2', true)
+
+    expect(tabsInGroup(pinned, 'primary').map((tab) => tab.id)).toEqual(['t2', 't1'])
+    // A drop cannot push an unpinned tab in front of a pinned one.
+    expect(tabsInGroup(moveTab(pinned, 't1', 'primary', 't2'), 'primary').map((tab) => tab.id)).toEqual(['t2', 't1'])
+    expect(setTabPinned(pinned, 't2', false).find((tab) => tab.id === 't2')?.pinned).toBeUndefined()
+  })
+
+  it('renames a tab and clears the override when the title is blank', () => {
+    expect(setTabTitle(split, 't1', ' Draft ').find((tab) => tab.id === 't1')?.customTitle).toBe('Draft')
+    expect(setTabTitle(setTabTitle(split, 't1', 'Draft'), 't1', '  ').find((tab) => tab.id === 't1')?.customTitle).toBeUndefined()
+  })
+
+  it('updates only a terminal runtime title and preserves a manual rename', () => {
+    const renamed = setTabTitle(split, 't1', 'My terminal')
+    const updated = setTerminalTabTitle(renamed, 't1', 'vim')
+
+    expect(updated.find((tab) => tab.id === 't1')).toMatchObject({
+      title: 'vim',
+      customTitle: 'My terminal',
+    })
+    expect(setTerminalTabTitle(updated, 'missing', 'claude')).toEqual(updated)
+  })
+
+  it('bulk closes stay inside one strip and spare pinned tabs', () => {
+    const tabs = setTabPinned([...split, terminalTab('t4')], 't1', true)
+
+    expect(otherTabIds(tabs, 't2')).toEqual(['t4'])
+    expect(tabIdsAfter(tabs, 't2')).toEqual(['t4'])
+    expect(tabIdsAfter(tabs, 't4')).toEqual([])
+    // 't3' lives on the other side, so neither list may reach it.
+    expect(otherTabIds(tabs, 't3')).toEqual([])
+  })
+})

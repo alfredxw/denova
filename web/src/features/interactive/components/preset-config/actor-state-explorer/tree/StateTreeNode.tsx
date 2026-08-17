@@ -182,7 +182,6 @@ function TreeItem({
           type="button"
           className="flex min-w-0 flex-1 flex-col items-start py-1 text-left"
           onClick={() => onSelect(node.id)}
-          title={node.subtitle ? `${node.label}\n${node.subtitle}` : node.label}
         >
           <span className="block w-full truncate text-[12px] font-medium leading-tight">
             {node.label}
@@ -214,7 +213,6 @@ function TreeItem({
               addHandler()
             }}
             aria-label={t('settingPanel.actorState.explorer.addChild')}
-            title={t('settingPanel.actorState.explorer.addChild')}
           >
             <PlusIcon />
           </button>

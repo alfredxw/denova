@@ -1,33 +1,36 @@
 import { useState } from 'react'
-import { Bot, FileCode2, Loader2, Plus, Sparkles } from 'lucide-react'
+import { Bot, FileCode2, Loader2, Plus, Sparkles, Tags } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { EmptyState } from '@/components/common/EmptyState'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 import { FormSectionHeader } from '@/components/forms/form-section-header'
 import { Button } from '@/components/ui/button'
 import { createSkill } from '@/lib/api'
-import type { SkillDocument, SkillScope, SkillScopeInfo } from '@/lib/api'
+import type { SkillCatalogTarget, SkillDocument, SkillScope, SkillScopeInfo } from '@/lib/api'
 import { AGENTS } from '@/features/agents/agent-registry'
 import type { VisibleAgentKey } from '@/features/agents/agent-registry'
-import { PreviewRow, SkillAgentSelector } from './skill-form-fields'
+import { PreviewRow, SkillAgentSelector, SkillClassificationFields } from './skill-form-fields'
 import { SkillIdentityFields } from './SkillIdentityFields'
-import { scopeLabel, skillFilePath, skillNamePattern } from './skill-utils'
+import { scopeLabel, skillCategoryLabel, skillFilePath, skillNamePattern, writingWorkflowCapability } from './skill-utils'
 
 interface SkillCreatePanelProps {
+  target: SkillCatalogTarget
   /** 可写 scope 列表；为空时展示不可写提示 */
   scopes: SkillScopeInfo[]
   defaultScope: SkillScope
   onCreated: (document: SkillDocument) => void | Promise<void>
-  onAskAgent: () => void
+  onAskAgent?: () => void
 }
 
 /** 新建 Skill 整页表单：自持表单状态与提交，成功后回调宿主刷新列表。 */
-export function SkillCreatePanel({ scopes, defaultScope, onCreated, onAskAgent }: SkillCreatePanelProps) {
+export function SkillCreatePanel({ target, scopes, defaultScope, onCreated, onAskAgent }: SkillCreatePanelProps) {
   const { t } = useTranslation()
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [scope, setScope] = useState<SkillScope>(defaultScope)
   const [agents, setAgents] = useState<VisibleAgentKey[]>(['ide'])
+  const [category, setCategory] = useState('general')
+  const [capabilities, setCapabilities] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const trimmedName = name.trim()
@@ -43,7 +46,7 @@ export function SkillCreatePanel({ scopes, defaultScope, onCreated, onAskAgent }
     setSaving(true)
     setError(null)
     try {
-      const document = await createSkill(scope, trimmedName, description.trim(), agents)
+      const document = await createSkill(target, scope, trimmedName, description.trim(), agents, { category, capabilities })
       await onCreated(document)
     } catch (e) {
       setError((e as Error).message)
@@ -95,6 +98,16 @@ export function SkillCreatePanel({ scopes, defaultScope, onCreated, onAskAgent }
             </section>
 
             <section className="flex flex-col gap-3 border-b border-[var(--nova-border)] pb-5">
+              <FormSectionHeader icon={Tags} title={t('skills.create.section.classification')} />
+              <SkillClassificationFields
+                category={category}
+                capabilities={capabilities}
+                onCategoryChange={setCategory}
+                onCapabilitiesChange={setCapabilities}
+              />
+            </section>
+
+            <section className="flex flex-col gap-3 border-b border-[var(--nova-border)] pb-5">
               <FormSectionHeader icon={Bot} title={t('skills.create.section.agents')} />
               <SkillAgentSelector agents={agents} onAgentsChange={setAgents} />
               <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-[11px] leading-5 text-[var(--nova-text-faint)]">
@@ -107,6 +120,11 @@ export function SkillCreatePanel({ scopes, defaultScope, onCreated, onAskAgent }
               <div className="grid gap-2 md:grid-cols-2">
                 <PreviewRow label={t('skills.create.preview.command')} value={`/${targetName}`} />
                 <PreviewRow label={t('skills.create.preview.scope')} value={scopeLabel(scope, t)} />
+                <PreviewRow label={t('skills.create.preview.category')} value={skillCategoryLabel(category, t)} />
+                <PreviewRow
+                  label={t('skills.create.preview.writingWorkflow')}
+                  value={capabilities.includes(writingWorkflowCapability) ? t('common.yes') : t('common.no')}
+                />
                 <PreviewRow label={t('skills.create.preview.path')} value={targetPath || t('skills.agent.pathFallback')} wide />
                 <PreviewRow
                   label={t('skills.create.preview.agents')}
@@ -126,16 +144,18 @@ export function SkillCreatePanel({ scopes, defaultScope, onCreated, onAskAgent }
                   {saving ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <Plus data-icon="inline-start" />}
                   {t('skills.create.submit')}
                 </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={onAskAgent}
-                  className="nova-nav-item h-8 rounded-[var(--nova-radius)] border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3"
-                >
-                  <Bot data-icon="inline-start" />
-                  {t('skills.create.askAgent')}
-                </Button>
+                {onAskAgent && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={onAskAgent}
+                    className="nova-nav-item h-8 rounded-[var(--nova-radius)] border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3"
+                  >
+                    <Bot data-icon="inline-start" />
+                    {t('skills.create.askAgent')}
+                  </Button>
+                )}
               </div>
             </section>
           </>

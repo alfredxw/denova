@@ -1,15 +1,23 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { fetchSettings, updateUserSettings } from '@/features/settings/api'
+import { fetchSettings, refreshSettings } from '@/features/settings/api'
 import type { LayeredSettings } from '@/features/settings/types'
 import { APIError } from '@/lib/api-client'
 import { preserveAutosaveConflict } from '@/lib/api-client/autosave-conflicts'
 import { usePersistedUserSettings } from './usePersistedUserSettings'
 
-vi.mock('@/features/settings/api', () => ({
-  fetchSettings: vi.fn(),
-  updateUserSettings: vi.fn(),
-}))
+const { updateUserSettings } = vi.hoisted(() => ({ updateUserSettings: vi.fn() }))
+
+vi.mock('@/features/settings/api', () => {
+  return {
+    fetchSettings: vi.fn(),
+    refreshSettings: vi.fn(),
+    createSettingsMergePatch: (_baseline: unknown, draft: unknown) => draft,
+    patchSettings: (_layer: string, changes: unknown, revision?: string) => revision === undefined
+      ? updateUserSettings(changes)
+      : updateUserSettings(changes, revision),
+  }
+})
 
 vi.mock('@/lib/api-client/autosave-conflicts', () => ({
   preserveAutosaveConflict: vi.fn(async () => ({ id: 'settings-conflict', path: '/conflicts/settings-conflict.json', storage: 'server' as const })),
@@ -23,6 +31,7 @@ const defaults = {
 describe('usePersistedUserSettings', () => {
   beforeEach(() => {
     vi.mocked(fetchSettings).mockReset()
+    vi.mocked(refreshSettings).mockReset().mockImplementation(() => fetchSettings())
     vi.mocked(updateUserSettings).mockReset()
     vi.mocked(preserveAutosaveConflict).mockClear()
   })
@@ -44,6 +53,22 @@ describe('usePersistedUserSettings', () => {
       ide_image_preset_id: 'cinematic',
     })
     expect(fetchSettings).toHaveBeenCalledOnce()
+  })
+
+  it('uses the shared startup snapshot when the initial workspace finishes hydrating', async () => {
+    vi.mocked(fetchSettings).mockResolvedValue(snapshot({
+      effective: { ide_story_teller_id: 'slow-burn', ide_image_preset_id: 'cinematic' },
+    }))
+    const { result, rerender } = renderHook(
+      ({ workspace }) => usePersistedUserSettings({ workspace, defaults }),
+      { initialProps: { workspace: '' } },
+    )
+
+    rerender({ workspace: '/book' })
+
+    await waitFor(() => expect(result.current.values.ide_story_teller_id).toBe('slow-burn'))
+    expect(fetchSettings).toHaveBeenCalledOnce()
+    expect(refreshSettings).not.toHaveBeenCalled()
   })
 
   it('updates optimistically but persists only after the edit delay', async () => {
@@ -501,6 +526,8 @@ function snapshot(patch: Partial<LayeredSettings>): LayeredSettings {
     user: {},
     workspace: {},
     effective: {},
+    resolved_agent_tool_manifests: {},
+    resolved_agent_contexts: {},
     paths: {
       denova_dir: '',
       nova_dir: '',

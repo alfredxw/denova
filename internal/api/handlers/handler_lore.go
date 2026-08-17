@@ -3,168 +3,162 @@ package handlers
 import (
 	"context"
 	"errors"
+	"io"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
 	"denova/internal/api/sse"
-	novaApp "denova/internal/app"
-	"denova/internal/book"
+	loreapp "denova/internal/app/lore"
+	"denova/internal/book/lore"
+	imageasset "denova/internal/image/asset"
 )
 
-func (h *Handlers) HandleLoreItems(ctx context.Context, c *app.RequestContext) {
-	if !h.requireWorkspace(c) {
-		return
-	}
-	items, err := h.app.LoreItems()
-	if err != nil {
-		writeError(c, consts.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(c, consts.StatusOK, map[string]any{"items": items})
-}
-
-func (h *Handlers) HandleLoreItemCreate(ctx context.Context, c *app.RequestContext) {
-	if !h.requireWorkspace(c) {
-		return
-	}
-	var body book.LoreItemInput
-	if err := c.BindJSON(&body); err != nil {
-		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
-		return
-	}
-	item, err := h.app.CreateLoreItem(body)
-	if err != nil {
-		writeError(c, consts.StatusBadRequest, err.Error())
-		return
-	}
-	writeJSON(c, consts.StatusOK, item)
-}
-
-func (h *Handlers) HandleLoreItemUpdate(ctx context.Context, c *app.RequestContext) {
-	if !h.requireWorkspace(c) {
-		return
-	}
-	var body book.LoreItemInput
-	if err := c.BindJSON(&body); err != nil {
-		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
-		return
-	}
-	item, err := h.app.UpdateLoreItem(c.Param("id"), body)
-	if err != nil {
-		if errors.Is(err, book.ErrLoreRevisionConflict) {
-			writeErrorKey(c, consts.StatusConflict, "api.resource.revisionConflict")
-			return
-		}
-		writeError(c, consts.StatusBadRequest, err.Error())
-		return
-	}
-	writeJSON(c, consts.StatusOK, item)
-}
-
-func (h *Handlers) HandleLoreItemDelete(ctx context.Context, c *app.RequestContext) {
-	if !h.requireWorkspace(c) {
-		return
-	}
-	if err := h.app.DeleteLoreItem(c.Param("id")); err != nil {
-		writeError(c, consts.StatusBadRequest, err.Error())
-		return
-	}
-	writeJSON(c, consts.StatusOK, map[string]string{"status": "ok"})
-}
-
 func (h *Handlers) HandleLoreClassificationPreview(ctx context.Context, c *app.RequestContext) {
-	if !h.requireWorkspace(c) {
+	scope, ok := requireProjectScope(c)
+	if !ok {
 		return
 	}
-	var body novaApp.LoreClassificationPreviewRequest
+	var body loreapp.ClassificationPreviewRequest
 	if err := c.BindJSON(&body); err != nil && len(c.Request.Body()) > 0 {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
-	preview, err := h.app.PreviewLoreClassification(ctx, body)
+	preview, err := h.app.Lore().PreviewClassification(ctx, scope.ProjectID, body)
 	if err != nil {
-		writeError(c, consts.StatusBadRequest, err.Error())
+		writeProjectBookError(c, err, "api.projectBook.loreFailed")
 		return
 	}
 	writeJSON(c, consts.StatusOK, preview)
 }
 
 func (h *Handlers) HandleLoreClassificationApply(ctx context.Context, c *app.RequestContext) {
-	if !h.requireWorkspace(c) {
+	scope, ok := requireProjectScope(c)
+	if !ok {
 		return
 	}
-	var body novaApp.LoreClassificationApplyRequest
+	var body loreapp.ClassificationApplyRequest
 	if err := c.BindJSON(&body); err != nil {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
-	result, err := h.app.ApplyLoreClassification(body)
+	result, err := h.app.Lore().ApplyClassification(ctx, scope.ProjectID, body)
 	if err != nil {
-		if errors.Is(err, book.ErrLoreRevisionConflict) {
+		if errors.Is(err, lore.ErrRevisionConflict) {
 			writeErrorKey(c, consts.StatusConflict, "api.resource.revisionConflict")
 			return
 		}
-		writeError(c, consts.StatusBadRequest, err.Error())
+		writeProjectBookError(c, err, "api.projectBook.loreFailed")
 		return
 	}
 	writeJSON(c, consts.StatusOK, result)
 }
 
 func (h *Handlers) HandleLoreItemImageGenerate(ctx context.Context, c *app.RequestContext) {
-	if !h.requireWorkspace(c) {
+	scope, ok := requireProjectScope(c)
+	if !ok {
 		return
 	}
-	var body novaApp.LoreItemImageGenerateRequest
+	var body loreapp.ItemImageGenerateRequest
 	if err := c.BindJSON(&body); err != nil && len(c.Request.Body()) > 0 {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
-	item, err := h.app.GenerateLoreItemImage(ctx, c.Param("id"), body)
+	item, err := h.app.Lore().GenerateItemImage(ctx, scope.ProjectID, c.Param("id"), body)
 	if err != nil {
-		if err == novaApp.ErrNoWorkspace {
-			writeErrorKey(c, consts.StatusBadRequest, "api.settings.workspaceMissing")
+		writeProjectBookError(c, err, "api.projectBook.loreFailed")
+		return
+	}
+	writeJSON(c, consts.StatusOK, item)
+}
+
+func (h *Handlers) HandleLoreItemImageUpload(ctx context.Context, c *app.RequestContext) {
+	scope, ok := requireProjectScope(c)
+	if !ok {
+		return
+	}
+	fileHeader, err := c.FormFile("file")
+	if err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.lore.imageUploadRequired")
+		return
+	}
+	if fileHeader.Size > imageasset.MaxLoreImageUploadBytes {
+		writeErrorKey(c, consts.StatusBadRequest, "api.lore.imageTooLarge")
+		return
+	}
+	file, err := fileHeader.Open()
+	if err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.lore.imageReadFailed", "detail", err.Error())
+		return
+	}
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, imageasset.MaxLoreImageUploadBytes+1))
+	if err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.lore.imageReadFailed", "detail", err.Error())
+		return
+	}
+	if len(data) > imageasset.MaxLoreImageUploadBytes {
+		writeErrorKey(c, consts.StatusBadRequest, "api.lore.imageTooLarge")
+		return
+	}
+	item, err := h.app.Lore().UploadItemImage(ctx, scope.ProjectID, c.Param("id"), fileHeader.Filename, data)
+	if err != nil {
+		switch {
+		case errors.Is(err, imageasset.ErrLoreImageUploadEmpty), errors.Is(err, imageasset.ErrLoreImageUploadInvalid):
+			writeErrorKey(c, consts.StatusBadRequest, "api.lore.imageInvalid")
+			return
+		case errors.Is(err, imageasset.ErrLoreImageUploadTooLarge):
+			writeErrorKey(c, consts.StatusBadRequest, "api.lore.imageTooLarge")
 			return
 		}
-		writeError(c, consts.StatusBadRequest, err.Error())
+		writeProjectBookError(c, err, "api.projectBook.loreFailed")
 		return
 	}
 	writeJSON(c, consts.StatusOK, item)
 }
 
 func (h *Handlers) HandleLoreImagesGenerateStream(ctx context.Context, c *app.RequestContext) {
-	if !h.requireWorkspace(c) {
+	scope, ok := requireProjectScope(c)
+	if !ok {
 		return
 	}
-	var body novaApp.LoreImagesGenerateRequest
+	var body loreapp.ImagesGenerateRequest
 	if err := c.BindJSON(&body); err != nil {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
-	task, err := h.app.StartLoreImagesGenerateTask(body)
+	task, err := h.app.Lore().StartImagesGenerateTask(ctx, scope.ProjectID, body)
 	if err != nil {
-		if errors.Is(err, novaApp.ErrLoreImageTaskRunning) {
+		if errors.Is(err, loreapp.ErrImageTaskRunning) {
 			writeError(c, consts.StatusConflict, err.Error())
 			return
 		}
-		writeError(c, consts.StatusBadRequest, err.Error())
+		writeProjectBookError(c, err, "api.projectBook.loreFailed")
 		return
 	}
-	sse.StreamTask(c, task)
+	sse.StreamTask(ctx, c, task)
 }
 
 func (h *Handlers) HandleLoreImagesGenerateAbort(ctx context.Context, c *app.RequestContext) {
-	h.app.AbortLoreImagesGenerateTask()
+	scope, ok := requireProjectScope(c)
+	if !ok {
+		return
+	}
+	if err := h.app.Lore().AbortImagesGenerateTask(scope.ProjectID); err != nil {
+		writeProjectBookError(c, err, "api.projectBook.loreFailed")
+		return
+	}
 	writeJSON(c, consts.StatusOK, map[string]string{"status": "ok"})
 }
 
 func (h *Handlers) HandleLoreItemImageDelete(ctx context.Context, c *app.RequestContext) {
-	if !h.requireWorkspace(c) {
+	scope, ok := requireProjectScope(c)
+	if !ok {
 		return
 	}
-	item, err := h.app.ClearLoreItemImage(c.Param("id"))
+	item, err := h.app.Lore().ClearItemImage(ctx, scope.ProjectID, c.Param("id"))
 	if err != nil {
-		writeError(c, consts.StatusBadRequest, err.Error())
+		writeProjectBookError(c, err, "api.projectBook.loreFailed")
 		return
 	}
 	writeJSON(c, consts.StatusOK, item)

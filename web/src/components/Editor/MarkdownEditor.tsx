@@ -14,10 +14,11 @@ import type { ChapterSummary } from '@/lib/api'
 import { isEditableTarget } from '@/lib/keyboard'
 import { Button } from '@/components/ui/button'
 import { THEME_STYLES, loadEditorSettings } from './EditorSettingsPanel'
-import type { EditorSettings } from './EditorSettingsPanel'
+import type { EditorSettings, ReadingTypographySettings } from './EditorSettingsPanel'
 import { EditorSurface } from './EditorSurface'
 import { EditorToolbar } from './EditorToolbar'
 import {
+  ParsedMarkdownDocumentCache,
   countTextCharacters,
   createIndentedHardBreakExtension,
   createWorkspaceImageExtension,
@@ -27,6 +28,7 @@ import {
   isTxtFile,
   placeEditorCaretAtClick,
   replaceEditorDocument,
+  replaceEditorDocumentWithFreshState,
   resetEditorStateHistory,
   updateCharacterStats,
 } from './editorDocument'
@@ -42,29 +44,20 @@ import {
 } from './editorDecorations'
 import type { SearchMatch, SearchState } from './editorDecorations'
 import { useEditorDraftPersistence, type EditorFlushHandler } from './useEditorDraftPersistence'
-import { readFile } from '@/lib/api-client/workspace'
-import type { CreateDocumentCommentRequest, DocumentReviewComment } from '@/features/document-review/types'
+import { MISSING_WORKSPACE_REVISION } from '@/lib/api-client/workspace'
+import { projectFileAssetURL, readProjectFile } from '@/lib/api-client/project-files'
+import { sameDocumentReviewTarget } from '@/features/document-review/types'
+import type { DocumentReviewController, DocumentReviewNavigationIntent } from '@/features/document-review/controller'
 import { DocumentReviewAnnotations, type DocumentReviewAnnotationsHandle } from './DocumentReviewAnnotations'
 import type { DocumentReviewSnapshot } from './documentReviewAnchors'
 import { createDocumentReviewExtension, type DocumentReviewDecorationState, type DocumentReviewPortalTarget } from './documentReviewDecorations'
 
 export type { EditorFlushHandler } from './useEditorDraftPersistence'
-
-export interface DocumentReviewController {
-  comments: DocumentReviewComment[]
-  onCreate: (request: CreateDocumentCommentRequest) => Promise<DocumentReviewComment>
-  onUpdate: (comment: DocumentReviewComment, body: string) => Promise<DocumentReviewComment>
-  onDelete: (comment: DocumentReviewComment) => Promise<DocumentReviewComment>
-}
-
-export interface DocumentReviewNavigationIntent {
-  commentID: string
-  nonce: number
-}
+export type { DocumentReviewController, DocumentReviewNavigationIntent } from '@/features/document-review/controller'
 
 interface MarkdownEditorProps {
-  /** Canonical workspace identity. Save tasks never cross this boundary. */
-  workspace?: string
+  /** Stable resource identity used for reads, assets, review snapshots, and caches. */
+  projectId: string
   fileName: string | null
   content: string
   revision?: string
@@ -76,6 +69,7 @@ interface MarkdownEditorProps {
   chapterSummary?: ChapterSummary
   searchIntent?: EditorSearchIntent | null
   onGenerateIllustration?: (chapterPath: string) => void
+  onRevealChapter?: (chapterPath: string) => void
   generateIllustrationDisabled?: boolean
   illustrationInsertSignal?: { illustration: ChapterIllustration; nonce: number } | null
   onLineChange?: (line: number) => void
@@ -84,6 +78,9 @@ interface MarkdownEditorProps {
   onFlushHandlerChange?: (handler: EditorFlushHandler | null) => void
   documentReview?: DocumentReviewController
   documentReviewNavigationIntent?: DocumentReviewNavigationIntent | null
+  readingTypography?: ReadingTypographySettings
+  /** Opens a collapsed writing outline without coupling the editor to a layout implementation. */
+  onOpenOutline?: () => void
 }
 
 interface EditorSearchIntent {
@@ -94,7 +91,7 @@ interface EditorSearchIntent {
 
 /** TipTap 编辑器组件，支持 Markdown 和纯文本格式 */
 export function MarkdownEditor({
-  workspace = '',
+  projectId,
   fileName,
   content,
   revision = '',
@@ -106,6 +103,7 @@ export function MarkdownEditor({
   chapterSummary,
   searchIntent,
   onGenerateIllustration,
+  onRevealChapter,
   generateIllustrationDisabled = false,
   illustrationInsertSignal,
   onLineChange,
@@ -113,6 +111,8 @@ export function MarkdownEditor({
   onFlushHandlerChange,
   documentReview,
   documentReviewNavigationIntent,
+  readingTypography,
+  onOpenOutline,
 }: MarkdownEditorProps) {
   const { t } = useTranslation()
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -134,10 +134,20 @@ export function MarkdownEditor({
   const searchStateRef = useRef<SearchState>({ query: '', index: 0, useRegex: false })
   const searchExtension = useMemo(() => createSearchHighlightExtension(searchStateRef), [])
   const dialogueHighlightExtension = useMemo(() => createDialogueHighlightExtension(), [])
-  const workspaceImageExtension = useMemo(() => createWorkspaceImageExtension(), [])
+  const resourceScope = projectId
+  const workspaceImageExtension = useMemo(
+    () => createWorkspaceImageExtension((path) => projectFileAssetURL(projectId, path)),
+    [projectId],
+  )
   const editorContainerRef = useRef<HTMLDivElement>(null)
   const reviewAnnotationsRef = useRef<DocumentReviewAnnotationsHandle>(null)
   const reviewDecorationStateRef = useRef<DocumentReviewDecorationState>({ enabled: false, decorations: [] })
+  const parsedMarkdownDocumentsRef = useRef<ParsedMarkdownDocumentCache | null>(null)
+  if (!parsedMarkdownDocumentsRef.current) {
+    parsedMarkdownDocumentsRef.current = new ParsedMarkdownDocumentCache()
+  }
+  const initialDocumentRef = useRef({ resourceScope, fileName, content })
+  const documentReviewTarget = useMemo(() => fileName ? { kind: 'workspace_file' as const, id: fileName } : null, [fileName])
   const updateReviewPortalTargets = useCallback((targets: DocumentReviewPortalTarget[]) => {
     setReviewPortalTargets((current) => sameReviewPortalTargets(current, targets) ? current : targets)
   }, [])
@@ -179,6 +189,15 @@ export function MarkdownEditor({
         return false
       },
     },
+    onCreate: ({ editor: createdEditor }) => {
+      const initial = initialDocumentRef.current
+      if (!initial.fileName || !isMarkdownFile(initial.fileName)) return
+      parsedMarkdownDocumentsRef.current?.set(
+        `${initial.resourceScope}\u0000${initial.fileName}`,
+        initial.content,
+        createdEditor.getJSON(),
+      )
+    },
   })
 
   useEffect(() => {
@@ -210,7 +229,19 @@ export function MarkdownEditor({
     options: { resetHistory: boolean; preserveSelection: boolean },
   ) => {
     if (!editor || editor.isDestroyed) return
-    if (isTxtFile(nextFile)) {
+    const markdownManager = editor.markdown
+    const replaceWithFreshState = Boolean(
+      options.resetHistory && !options.preserveSelection && isMarkdownFile(nextFile) && markdownManager,
+    )
+    if (replaceWithFreshState && markdownManager) {
+      const cacheKey = `${resourceScope}\u0000${nextFile}`
+      let parsedDocument = parsedMarkdownDocumentsRef.current?.get(cacheKey, nextContent)
+      if (!parsedDocument) {
+        parsedDocument = markdownManager.parse(nextContent)
+        parsedMarkdownDocumentsRef.current?.set(cacheKey, nextContent, parsedDocument)
+      }
+      replaceEditorDocumentWithFreshState(editor, editor.schema.nodeFromJSON(parsedDocument))
+    } else if (isTxtFile(nextFile)) {
       const html = nextContent.split('\n').map((line) => `<p>${line || '<br>'}</p>`).join('')
       replaceEditorDocument(editor, html, {
         contentType: 'html',
@@ -222,12 +253,12 @@ export function MarkdownEditor({
         preserveSelection: options.preserveSelection,
       })
     }
-    if (options.resetHistory) resetEditorStateHistory(editor)
+    if (options.resetHistory && !replaceWithFreshState) resetEditorStateHistory(editor)
     setNativeIndent(hasNativeIndent(nextContent))
     updateCharacterStats(editor, setSelectedCharacters)
     onLineChange?.(getLineNumber(editor.state.doc, editor.state.selection.head))
     updateSearch(searchStateRef.current.query, 0)
-  }, [editor, onLineChange, updateSearch])
+  }, [editor, onLineChange, resourceScope, updateSearch])
 
   const {
     saveStatus,
@@ -238,7 +269,7 @@ export function MarkdownEditor({
     loadExternalVersion,
     keepLocalVersion,
   } = useEditorDraftPersistence({
-    workspace,
+    workspace: resourceScope,
     fileName,
     content,
     revision,
@@ -258,14 +289,14 @@ export function MarkdownEditor({
       throw new Error('Document comments are unavailable')
     }
     if (!(await flushCurrentDraft())) throw new Error('The current draft could not be saved')
-    const document = await readFile(fileName)
-    if (!document.revision || (workspace && document.workspace !== workspace)) {
+    const document = await readProjectFile(projectId, fileName)
+    if (!document.revision || document.project_id !== projectId) {
       throw new Error('The canonical document snapshot is unavailable')
     }
     // TipTap can insert equivalent blank lines or normalize Markdown markers.
     // The anchor builder validates the selected range against this canonical snapshot.
-    return { content: document.content, revision: document.revision }
-  }, [documentReview, editor, fileName, flushCurrentDraft, workspace])
+    return { content: document.content || '', revision: document.revision }
+  }, [documentReview, editor, fileName, flushCurrentDraft, projectId])
 
   // 监听 TipTap 内容和选区变化，实时更新选区字数与光标行号。
   useEffect(() => {
@@ -492,10 +523,22 @@ export function MarkdownEditor({
         onSettingsOpenChange={setSettingsOpen}
         settings={settings}
         onSettingsChange={setSettings}
+        readingTypography={readingTypography}
+        onOpenOutline={onOpenOutline}
         onGenerateIllustration={onGenerateIllustration}
+        onRevealChapter={onRevealChapter}
         generateIllustrationDisabled={generateIllustrationDisabled}
       />
-      {externalConflict?.workspace === workspace && externalConflict.fileName === fileName && (
+      {revision === MISSING_WORKSPACE_REVISION && (
+        <div role="alert" className="flex shrink-0 items-start gap-2 border-b border-[var(--nova-warning)]/30 bg-[var(--nova-warning-bg)] px-3 py-2 text-[11px] text-[var(--nova-text-muted)]">
+          <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-[var(--nova-warning)]" />
+          <div className="min-w-0">
+            <div className="font-medium text-[var(--nova-text)]">{t('editor.orphaned.title')}</div>
+            <div className="mt-0.5 text-[var(--nova-text-faint)]">{t('editor.orphaned.description')}</div>
+          </div>
+        </div>
+      )}
+      {externalConflict?.workspace === resourceScope && externalConflict.fileName === fileName && (
         <div role="alert" className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--nova-warning)]/30 bg-[var(--nova-warning-bg)] px-3 py-2 text-[11px] text-[var(--nova-text-muted)]">
           <TriangleAlert className="h-4 w-4 shrink-0 text-[var(--nova-warning)]" />
           <div className="min-w-[180px] flex-1">
@@ -538,13 +581,14 @@ export function MarkdownEditor({
         showSelectionToolbar={selectedCharacters > 0 && (documentCommentsAvailable || Boolean(onQuoteSelection))}
         selectionToolbarMode={documentCommentsAvailable ? 'comment' : 'quote'}
         onSelectionAction={documentCommentsAvailable ? commentCurrentSelection : quoteCurrentSelection}
-        reviewAnnotations={editor && fileName && documentReview && documentCommentsAvailable ? (
+        reviewAnnotations={editor && fileName && documentReview && documentReviewTarget && documentCommentsAvailable ? (
           <DocumentReviewAnnotations
             ref={reviewAnnotationsRef}
             editor={editor}
-            fileName={fileName}
+            target={documentReviewTarget}
+            resourceLabel={fileName}
             containerRef={editorContainerRef}
-            comments={documentReview.comments.filter((comment) => comment.path === fileName)}
+            comments={documentReview.comments.filter((comment) => sameDocumentReviewTarget(comment.target, documentReviewTarget))}
             decorationStateRef={reviewDecorationStateRef}
             portalTargets={reviewPortalTargets}
             onPrepareSnapshot={prepareDocumentReviewSnapshot}

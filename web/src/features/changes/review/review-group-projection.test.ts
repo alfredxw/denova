@@ -51,6 +51,38 @@ describe('projectReviewGroupFiles', () => {
       omitted_iteration_count: 1,
     })
   })
+
+  it('preserves deleted-file existence and the complete before snapshot for review', () => {
+    const files = projectReviewGroupFiles({
+      id: 'group-1',
+      created_at: '2026-07-16T00:00:00Z',
+      review_status: 'pending',
+      apply_state: 'applied',
+      change_sets: [changeSet({
+        id: 'set-delete',
+        before_content: 'chapter to remove\n',
+        after_content: '',
+        base_revision: 'content-revision',
+        revision: 'missing',
+        before_exists: true,
+        after_exists: false,
+      })],
+    } satisfies WorkspaceChangeGroup)
+
+    expect(files).toEqual([
+      expect.objectContaining({
+        path: 'chapters/ch01.md',
+        before_content: 'chapter to remove\n',
+        after_content: '',
+        base_revision: 'content-revision',
+        revision: 'missing',
+        before_exists: true,
+        after_exists: false,
+        additions: 0,
+        deletions: 1,
+      }),
+    ])
+  })
 })
 
 function changeSet(overrides: Partial<WorkspaceChangeSet>): WorkspaceChangeSet {

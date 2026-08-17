@@ -13,6 +13,11 @@ const maxEditableTurnNarrativeBytes = 512 * 1024
 func (s *Store) UpdateTurnNarrative(storyID string, req UpdateTurnNarrativeRequest) (UpdateTurnNarrativeResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	releaseStory, err := s.acquireStoryMutationLeaseLocked(storyID)
+	if err != nil {
+		return UpdateTurnNarrativeResult{}, err
+	}
+	defer releaseStory()
 
 	turnID := strings.TrimSpace(req.TurnID)
 	if turnID == "" {
@@ -26,7 +31,7 @@ func (s *Store) UpdateTurnNarrative(storyID string, req UpdateTurnNarrativeReque
 		return UpdateTurnNarrativeResult{}, fmt.Errorf("AI 回复超过 %d bytes / AI reply exceeds %d bytes", maxEditableTurnNarrativeBytes, maxEditableTurnNarrativeBytes)
 	}
 
-	meta, lines, err := s.readStoryLocked(storyID)
+	meta, lines, err := s.readStoryRecentLocked(storyID, req.BranchID)
 	if err != nil {
 		return UpdateTurnNarrativeResult{}, err
 	}
@@ -34,41 +39,33 @@ func (s *Store) UpdateTurnNarrative(storyID string, req UpdateTurnNarrativeReque
 	if branchID == "" {
 		branchID = meta.CurrentBranch
 	}
-	branch, ok := meta.Branches[branchID]
+	_, ok := meta.Branches[branchID]
 	if !ok {
 		return UpdateTurnNarrativeResult{}, fmt.Errorf("分支不存在 / Branch does not exist: %s", branchID)
+	}
+	if err := requireLatestLogicalTurn(meta, lines, branchID, turnID); err != nil {
+		return UpdateTurnNarrativeResult{}, err
 	}
 
 	snapshot, err := snapshotFromLines(storyID, branchID, meta, lines)
 	if err != nil {
 		return UpdateTurnNarrativeResult{}, err
 	}
-	turnIndex := -1
+	turnOnPath := false
 	for index := range snapshot.Turns {
 		if snapshot.Turns[index].ID == turnID {
-			turnIndex = index
+			turnOnPath = true
 			break
 		}
 	}
-	if turnIndex < 0 {
+	if !turnOnPath {
 		return UpdateTurnNarrativeResult{}, fmt.Errorf("只能编辑当前剧情路径上的 AI 回复 / Only AI replies on the current story path can be edited: %s", turnID)
 	}
 
-	var turn TurnEvent
-	var turnRaw map[string]any
-	for index := range lines {
-		if lines[index].Envelope.Type != StoryEventTypeTurn || lines[index].Envelope.ID != turnID {
-			continue
-		}
-		if err := mapToStruct(lines[index].Raw, &turn); err != nil {
-			return UpdateTurnNarrativeResult{}, err
-		}
-		turnRaw = lines[index].Raw
-		break
-	}
-	if turnRaw == nil {
+	if snapshot.CurrentTurn == nil || snapshot.CurrentTurn.ID != turnID {
 		return UpdateTurnNarrativeResult{}, fmt.Errorf("回合不存在 / Turn does not exist: %s", turnID)
 	}
+	turn := *snapshot.CurrentTurn
 	if req.ExpectedNarrative != nil && turn.Narrative != *req.ExpectedNarrative {
 		return UpdateTurnNarrativeResult{}, fmt.Errorf("AI 回复已变化，请重新加载后再编辑 / AI reply changed; reload before editing")
 	}
@@ -77,41 +74,24 @@ func (s *Store) UpdateTurnNarrative(storyID string, req UpdateTurnNarrativeReque
 	}
 
 	turn.Narrative = narrative
-	turnRaw["narrative"] = narrative
 	if turn.TerminalOutcome != nil && turn.TerminalOutcome.Terminal && turn.TerminalOutcome.CausedByTurnID == turn.ID {
 		outcome := *turn.TerminalOutcome
 		outcome.FinalNarrativeSummary = trimBytes(narrative, maxInteractiveTextBytes)
 		turn.TerminalOutcome = &outcome
-		turnRaw["terminal_outcome"] = outcome
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	result := UpdateTurnNarrativeResult{Turn: turn}
-	newEvents := []any(nil)
-	if compaction := snapshot.ContextCompaction; compaction != nil && turnIndex < compaction.SourceTurnCount {
-		removal := ContextCompactionRemovalEvent{
-			V:               schemaVersion,
-			Type:            StoryEventTypeCompactionRemoved,
-			ID:              newID("ccr"),
-			ParentID:        branch.Head,
-			BranchID:        branchID,
-			Ts:              now,
-			AgentKind:       compaction.AgentKind,
-			CompactionID:    compaction.ID,
-			SourceTurnCount: compaction.SourceTurnCount,
-			Reason:          "turn_narrative_edited",
-		}
-		branch.Head = removal.ID
-		meta.Branches[branchID] = branch
-		newEvents = append(newEvents, removal)
-		result.ContextCompactionInvalidated = true
-	}
+	newEvents := []any{TurnNarrativeRevisedEvent{
+		V: schemaVersion, Type: StoryEventTypeTurnNarrativeRevised, ID: newID("tnr"),
+		ParentID: turnID, BranchID: branchID, Ts: now, TurnID: turnID, Narrative: narrative,
+	}}
 
 	meta.UpdatedAt = now
-	if err := s.rewriteStoryLocked(storyID, meta, lines, newEvents...); err != nil {
+	if err := s.appendStoryTransactionLocked(storyID, meta, newEvents...); err != nil {
 		return UpdateTurnNarrativeResult{}, err
 	}
-	if err := s.touchIndexLocked(storyID, now, len(newEvents)); err != nil {
+	if err := s.syncStorySummaryLocked(storyID); err != nil {
 		return UpdateTurnNarrativeResult{}, err
 	}
 	return result, nil

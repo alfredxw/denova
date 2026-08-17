@@ -10,12 +10,12 @@ interface MarkdownViewToggleProps {
   onPreviewChange: (preview: boolean) => void
   /** 非 Markdown 内容禁用预览 */
   previewDisabled?: boolean
-  previewDisabledReason?: string
+  sourceLabel?: string
   className?: string
 }
 
 /** 编辑 / 预览分段切换按钮，配合 MarkdownEditPreview 使用。 */
-export function MarkdownViewToggle({ preview, onPreviewChange, previewDisabled = false, previewDisabledReason, className }: MarkdownViewToggleProps) {
+export function MarkdownViewToggle({ preview, onPreviewChange, previewDisabled = false, sourceLabel, className }: MarkdownViewToggleProps) {
   const { t } = useTranslation()
   return (
     <div className={cn('inline-flex shrink-0 overflow-hidden rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0.5', className)}>
@@ -24,7 +24,6 @@ export function MarkdownViewToggle({ preview, onPreviewChange, previewDisabled =
         onClick={() => onPreviewChange(true)}
         disabled={previewDisabled}
         aria-pressed={preview}
-        title={previewDisabled ? previewDisabledReason : t('common.preview')}
         className={cn(
           'nova-nav-item inline-flex h-6 items-center gap-1 rounded px-2 text-[11px] disabled:cursor-not-allowed disabled:opacity-45',
           preview ? 'is-active' : 'text-[var(--nova-text-muted)]',
@@ -43,7 +42,7 @@ export function MarkdownViewToggle({ preview, onPreviewChange, previewDisabled =
         )}
       >
         <PencilLine className="h-3.5 w-3.5" />
-        {t('common.raw')}
+        {sourceLabel ?? t('common.raw')}
       </button>
     </div>
   )

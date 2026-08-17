@@ -41,17 +41,17 @@ export function DirectorDocsCard({ storyId, directorPlan, draftDocs, onDraftDocs
           </div>
         </div>
         <div className="flex shrink-0 flex-wrap justify-end gap-1">
-          <Button type="button" variant="outline" size="xs" aria-label={editing ? t('directorPanel.plan.preview') : t('directorPanel.plan.edit')} title={editing ? t('directorPanel.plan.preview') : t('directorPanel.plan.edit')} className="h-7 gap-1.5 rounded-[8px] border-[var(--nova-border)] bg-[var(--director-panel)] px-2 text-[var(--nova-text-muted)] hover:border-[var(--director-brass)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" disabled={!draftDocs} onClick={() => setEditing((value) => !value)}>
+          <Button type="button" variant="outline" size="xs" aria-label={editing ? t('directorPanel.plan.preview') : t('directorPanel.plan.edit')} className="h-7 gap-1.5 rounded-[8px] border-[var(--nova-border)] bg-[var(--director-panel)] px-2 text-[var(--nova-text-muted)] hover:border-[var(--director-brass)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" disabled={!draftDocs} onClick={() => setEditing((value) => !value)}>
             {editing ? <Eye className="h-3 w-3" /> : <Edit3 className="h-3 w-3" />}
             <span className="director-plan-action-label">{editing ? t('directorPanel.plan.preview') : t('directorPanel.plan.edit')}</span>
           </Button>
           {editing ? (
-            <Button type="button" variant="outline" size="xs" aria-label={saving ? t('common.saving') : t('common.save')} title={saving ? t('common.saving') : t('common.save')} className="h-7 gap-1.5 rounded-[8px] border-[var(--nova-border)] bg-[var(--director-panel)] px-2 text-[var(--nova-text-muted)] hover:border-[var(--director-brass)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" disabled={!storyId || !draftDocs || !directorPlan || saving} onClick={onSave}>
+            <Button type="button" variant="outline" size="xs" aria-label={saving ? t('common.saving') : t('common.save')} className="h-7 gap-1.5 rounded-[8px] border-[var(--nova-border)] bg-[var(--director-panel)] px-2 text-[var(--nova-text-muted)] hover:border-[var(--director-brass)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" disabled={!storyId || !draftDocs || !directorPlan || saving} onClick={onSave}>
               {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
               <span className="director-plan-action-label">{saving ? t('common.saving') : t('common.save')}</span>
             </Button>
           ) : null}
-          <Button type="button" variant="outline" size="xs" aria-label={rebuilding ? t('snapshot.director.rebuilding') : t('snapshot.director.rebuild')} title={rebuilding ? t('snapshot.director.rebuilding') : t('snapshot.director.rebuild')} className="h-7 gap-1.5 rounded-[8px] border-[var(--nova-border)] bg-[var(--director-panel)] px-2 text-[var(--nova-text-muted)] hover:border-[var(--director-brass)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" disabled={!storyId || rebuilding} onClick={onRebuild}>
+          <Button type="button" variant="outline" size="xs" aria-label={rebuilding ? t('snapshot.director.rebuilding') : t('snapshot.director.rebuild')} className="h-7 gap-1.5 rounded-[8px] border-[var(--nova-border)] bg-[var(--director-panel)] px-2 text-[var(--nova-text-muted)] hover:border-[var(--director-brass)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" disabled={!storyId || rebuilding} onClick={onRebuild}>
             {rebuilding ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
             <span className="director-plan-action-label">{rebuilding ? t('snapshot.director.rebuilding') : t('snapshot.director.rebuild')}</span>
           </Button>

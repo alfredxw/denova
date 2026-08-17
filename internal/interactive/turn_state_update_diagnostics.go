@@ -1,6 +1,7 @@
 package interactive
 
 import (
+	interactivestate "denova/internal/interactive/state"
 	"errors"
 	"fmt"
 	"sort"
@@ -14,9 +15,9 @@ import (
 // operations can still reference valid Actors created earlier in the same call.
 // Paths depending on a failed operation are skipped to avoid cascading errors,
 // while overlap checks are retained across successfully compiled operations.
-func collectTurnStateUpdateValidationErrors(system StoryDirectorActorStateSystem, currentState map[string]any, updates []StateUpdate, options TurnStateUpdateCompileOptions) []*StateUpdateValidationError {
+func collectTurnStateUpdateValidationErrors(system StoryDirectorActorStateSystem, currentState map[string]any, updates []interactivestate.Update, options TurnStateUpdateCompileOptions) []*StateUpdateValidationError {
 	workingState := cloneActorStateRoot(currentState)
-	if intents, err := planActorLifecycleUpdates(normalizeActorStateSystem(system), currentState, normalizeTurnStateUpdates(updates)); err == nil {
+	if intents, err := planActorLifecycleUpdates(normalizeActorStateSystem(system), currentState, interactivestate.NormalizeUpdates(updates)); err == nil {
 		options.actorLifecycleIntents = intents
 	}
 	validationErrors := make([]*StateUpdateValidationError, 0)
@@ -24,11 +25,11 @@ func collectTurnStateUpdateValidationErrors(system StoryDirectorActorStateSystem
 	failedPaths := make([][]string, 0)
 	for index, update := range updates {
 		inputPath, inputPathValid := stateUpdateDiagnosticSegmentsForUpdate(update)
-		if inputPathValid && overlappingStateUpdatePath(failedPaths, inputPath) != "" {
+		if inputPathValid && interactivestate.OverlappingPath(failedPaths, inputPath) != "" {
 			continue
 		}
 		if inputPathValid {
-			if overlap := overlappingStateUpdatePath(canonicalPaths, inputPath); overlap != "" {
+			if overlap := interactivestate.OverlappingPath(canonicalPaths, inputPath); overlap != "" {
 				validationErrors = append(validationErrors, stateUpdateOverlapValidationError(index, update.Path, overlap))
 				failedPaths = append(failedPaths, inputPath)
 				if len(validationErrors) > maxTurnSubmissionDiagnostics {
@@ -37,7 +38,7 @@ func collectTurnStateUpdateValidationErrors(system StoryDirectorActorStateSystem
 				continue
 			}
 		}
-		compiled, err := CompileTurnStateUpdates(system, workingState, []StateUpdate{update}, options)
+		compiled, err := CompileTurnStateUpdates(system, workingState, []interactivestate.Update{update}, options)
 		if err != nil {
 			for _, item := range flattenStateUpdateValidationErrors(err) {
 				cloned := *item
@@ -59,7 +60,7 @@ func collectTurnStateUpdateValidationErrors(system StoryDirectorActorStateSystem
 			if !ok {
 				continue
 			}
-			if conflict := overlappingStateUpdatePath(canonicalPaths, compiledPath); conflict != "" {
+			if conflict := interactivestate.OverlappingPath(canonicalPaths, compiledPath); conflict != "" {
 				overlap = conflict
 				break
 			}
@@ -99,7 +100,7 @@ func diagnosticsForStateUpdateError(err error) []TurnSubmissionDiagnostic {
 	}
 	var validationError *StateUpdateValidationError
 	if !errors.As(err, &validationError) {
-		return []TurnSubmissionDiagnostic{*newTurnSubmissionDiagnostic(TurnSubmissionModuleStateChanges, nil, "state_changes_invalid", "/state_changes", "valid atomic state_changes list", "invalid", trimBytes(err.Error(), maxTurnSubmissionDiagnosticMessage), "The state_changes module is invalid.")}
+		return []TurnSubmissionDiagnostic{*newTurnSubmissionDiagnostic(TurnSubmissionModuleStateChanges, nil, "state_changes_invalid", "/state_changes", "valid atomic state_changes list", "invalid", "The state_changes module is invalid.")}
 	}
 	return []TurnSubmissionDiagnostic{diagnosticForStateUpdateValidationError(validationError)}
 }
@@ -119,7 +120,6 @@ func diagnosticForStateUpdateValidationError(validationError *StateUpdateValidat
 		path,
 		validationError.Expected,
 		validationError.Actual,
-		trimBytes(validationError.Error(), maxTurnSubmissionDiagnosticMessage),
 		stateUpdateDiagnosticEnglishForError(validationError),
 	)
 }
@@ -178,13 +178,13 @@ func stateUpdateDiagnosticEnglish(code string) string {
 }
 
 func stateUpdateDiagnosticSegments(path string) ([]string, bool) {
-	segments, err := parseStateUpdatePath(strings.TrimSpace(path))
+	segments, err := interactivestate.ParsePath(strings.TrimSpace(path))
 	return segments, err == nil
 }
 
-func stateUpdateDiagnosticSegmentsForUpdate(update StateUpdate) ([]string, bool) {
+func stateUpdateDiagnosticSegmentsForUpdate(update interactivestate.Update) ([]string, bool) {
 	segments, ok := stateUpdateDiagnosticSegments(update.Path)
-	if !ok || (update.Op != TurnStateUpdateArchive && update.Op != TurnStateUpdateRestore) || len(segments) != 1 {
+	if !ok || (update.Op != interactivestate.Archive && update.Op != interactivestate.Restore) || len(segments) != 1 {
 		return segments, ok
 	}
 	return []string{actorArchiveRoot, segments[0]}, true
@@ -257,7 +257,7 @@ func validateTurnSubmissionActorInitialState(index int, updatePath string, templ
 		if value == nil {
 			continue
 		}
-		diagnosticPath := formatStateUpdatePath([]string{"initial_state", rawKey})
+		diagnosticPath := interactivestate.FormatPath([]string{"initial_state", rawKey})
 		field, found := fieldsByReference[actorStateFieldNameKey(rawKey)]
 		if !found {
 			err := stateUpdateError(

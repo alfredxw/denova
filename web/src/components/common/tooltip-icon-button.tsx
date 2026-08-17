@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react'
 import { Button, type buttonVariants } from '@/components/ui/button'
 import {
+  DEFAULT_TOOLTIP_DELAY_MS,
+  DEFAULT_TOOLTIP_SKIP_DELAY_MS,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -20,7 +22,7 @@ type TooltipIconButtonProps = React.ComponentProps<'button'> &
     useTooltipProvider?: boolean
   }
 
-/** 带 Tooltip 的图标按钮，统一图标操作的可访问名称和提示行为。 */
+/** Icon button with shared accessible naming and tooltip timing. */
 export function TooltipIconButton({
   label,
   children,
@@ -28,8 +30,8 @@ export function TooltipIconButton({
   size = 'icon-xs',
   className,
   showTooltip = true,
-  tooltipDelayMs = 0,
-  tooltipSkipDelayMs,
+  tooltipDelayMs = DEFAULT_TOOLTIP_DELAY_MS,
+  tooltipSkipDelayMs = DEFAULT_TOOLTIP_SKIP_DELAY_MS,
   tooltipSide = 'right',
   tooltipSideOffset = 6,
   useTooltipProvider = true,

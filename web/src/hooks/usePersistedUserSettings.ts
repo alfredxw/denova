@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { fetchSettings, updateUserSettings } from '@/features/settings/api'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createSettingsMergePatch, fetchSettings, patchSettings, refreshSettings } from '@/features/settings/api'
 import type { LayeredSettings, Settings } from '@/features/settings/types'
 import { useSaveLane } from '@/hooks/use-save-lane'
 import { saveWithRevisionRecovery } from '@/lib/revision-conflict'
@@ -8,7 +8,9 @@ import { rebaseJSONWithRecovery } from '@/lib/autosave/rebase-with-recovery'
 const PERSISTED_USER_SETTINGS_DELAY_MS = 1000
 
 type PersistedStringSettingKey = {
-  [K in keyof Settings]-?: NonNullable<Settings[K]> extends string ? K : never
+  [K in keyof Settings]-?: NonNullable<Settings[K]> extends string
+    ? string extends NonNullable<Settings[K]> ? K : never
+    : never
 }[keyof Settings]
 
 export type PersistedStringSettingDefaults = Partial<Record<PersistedStringSettingKey, string>>
@@ -73,6 +75,7 @@ export function usePersistedUserSettings<TDefaults extends PersistedStringSettin
   })
   const mountedRef = useRef(true)
   const workspaceRef = useRef(workspace)
+  const loadedWorkspaceRef = useRef(workspace)
   const valuesRef = useRef(values)
   const snapshotRef = useRef<LayeredSettings | null>(null)
   const pendingChangesRef = useRef(new Map<PersistedStringSettingKey, PendingSettingChange>())
@@ -112,7 +115,7 @@ export function usePersistedUserSettings<TDefaults extends PersistedStringSettin
     scopeKey: `persisted-user-settings:${eventSource}`,
     delayMs: PERSISTED_USER_SETTINGS_DELAY_MS,
     save: async ({ value: request }) => {
-      const latestSnapshot = await fetchSettings()
+      const latestSnapshot = await refreshSettings()
       const updated = await updateSettingsOnLatestSnapshot(
         latestSnapshot,
         request,
@@ -157,7 +160,7 @@ export function usePersistedUserSettings<TDefaults extends PersistedStringSettin
   })
   reloadLaneRef.current = lane.reload
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (fresh = false) => {
     const generation = loadGenerationRef.current + 1
     loadGenerationRef.current = generation
     if (!workspace) {
@@ -169,7 +172,7 @@ export function usePersistedUserSettings<TDefaults extends PersistedStringSettin
 
     setLoading(true)
     try {
-      const snapshot = await fetchSettings()
+      const snapshot = await (fresh ? refreshSettings() : fetchSettings())
       if (!mountedRef.current || generation !== loadGenerationRef.current || workspaceRef.current !== workspace) return null
       snapshotRef.current = snapshot
       applySnapshot(snapshot)
@@ -186,7 +189,13 @@ export function usePersistedUserSettings<TDefaults extends PersistedStringSettin
 
   useEffect(() => {
     mountedRef.current = true
-    void load()
+    const workspaceChanged = Boolean(
+      loadedWorkspaceRef.current
+      && workspace
+      && loadedWorkspaceRef.current !== workspace,
+    )
+    if (workspace) loadedWorkspaceRef.current = workspace
+    void load(workspaceChanged)
     return () => {
       mountedRef.current = false
       loadGenerationRef.current += 1
@@ -201,7 +210,7 @@ export function usePersistedUserSettings<TDefaults extends PersistedStringSettin
   useEffect(() => {
     const handleSettingsUpdated = (event: Event) => {
       const source = (event as CustomEvent<{ source?: string }>).detail?.source
-      if (source !== eventSource) void load()
+      if (source !== eventSource) void load(true)
     }
     window.addEventListener('nova:settings-updated', handleSettingsUpdated)
     return () => window.removeEventListener('nova:settings-updated', handleSettingsUpdated)
@@ -251,7 +260,14 @@ export function usePersistedUserSettings<TDefaults extends PersistedStringSettin
     return lane.getSnapshot().status !== 'error'
   }, [lane])
 
-  return { values, loading, isSaving, persist, reload: load, flushPending }
+  return useMemo(() => ({
+    values,
+    loading,
+    isSaving,
+    persist,
+    reload: load,
+    flushPending,
+  }), [flushPending, isSaving, load, loading, persist, values])
 }
 
 function settingKeys<TDefaults extends PersistedStringSettingDefaults>(defaults: TDefaults) {
@@ -308,13 +324,14 @@ async function updateSettingsOnLatestSnapshot(
   })
   let recoveryBaselineRevision = snapshot.revisions?.user
   let latestRevision: string | undefined
+  let patchBaseline = snapshot.user
   return saveWithRevisionRecovery({
     baseline: snapshot.user,
     draft: rebased,
     revision: snapshot.revisions?.user,
-    save: (draft, revision) => revision ? updateUserSettings(draft, revision) : updateUserSettings(draft),
+    save: (draft, revision) => patchSettings('user', createSettingsMergePatch(patchBaseline, draft), revision),
     loadLatest: async () => {
-      const latest = await fetchSettings()
+      const latest = await refreshSettings()
       latestRevision = latest.revisions?.user
       return { value: latest.user, revision: latestRevision }
     },
@@ -328,6 +345,7 @@ async function updateSettingsOnLatestSnapshot(
         external: { revision: latestRevision, value: external },
       })
       recoveryBaselineRevision = latestRevision
+      patchBaseline = external
       return merged
     },
   })

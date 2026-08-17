@@ -16,7 +16,7 @@ func TestSubAgentsReadWriteMergeSanitize(t *testing.T) {
 		SystemPrompt: "Stay focused.",
 		Enabled:      &on,
 		Parents:      []string{AgentKindIDE, "invalid"},
-		Tools:        AgentToolOverride{FileRead: &on, FileWrite: &on},
+		Tools:        AgentToolOverride{AgentToolWorkspaceRead: true, AgentToolWorkspaceWrite: true},
 	}}}
 	child := Settings{SubAgents: []SubAgentConfig{{
 		ID:           "researcher",
@@ -24,7 +24,7 @@ func TestSubAgentsReadWriteMergeSanitize(t *testing.T) {
 		SystemPrompt: "Updated prompt.",
 		Enabled:      &off,
 		Parents:      []string{AgentKindInteractiveStory},
-		Tools:        AgentToolOverride{FileWrite: &off},
+		Tools:        AgentToolOverride{AgentToolWorkspaceWrite: false},
 	}}}
 
 	merged := Merge(parent, child)
@@ -41,7 +41,7 @@ func TestSubAgentsReadWriteMergeSanitize(t *testing.T) {
 	if len(sub.Parents) != 1 || sub.Parents[0] != AgentKindInteractiveStory {
 		t.Fatalf("parents should be sanitized and overridden: %#v", sub.Parents)
 	}
-	if sub.Tools.FileRead == nil || !*sub.Tools.FileRead || sub.Tools.FileWrite == nil || *sub.Tools.FileWrite {
+	if !sub.Tools[AgentToolWorkspaceRead] || sub.Tools[AgentToolWorkspaceWrite] {
 		t.Fatalf("tool overrides should merge by field: %#v", sub.Tools)
 	}
 
@@ -162,26 +162,45 @@ func containsASCIIOnly(value string) bool {
 }
 
 func TestResolveSubAgentToolsCapsParentPermissions(t *testing.T) {
-	on := true
 	parent := ResolvedAgentToolSettings{
-		FileRead:        true,
-		FileWrite:       false,
-		WebSearch:       false,
-		Skills:          true,
-		ImageGeneration: false,
+		AgentToolWorkspaceRead:   true,
+		AgentToolWorkspaceWrite:  false,
+		AgentToolWebSearch:       false,
+		AgentToolSkills:          true,
+		AgentToolImageGeneration: false,
 	}
 	resolved := ResolveSubAgentTools(parent, AgentToolOverride{
-		FileRead:        &on,
-		FileWrite:       &on,
-		WebSearch:       &on,
-		Skills:          &on,
-		ImageGeneration: &on,
+		AgentToolWorkspaceRead:   true,
+		AgentToolWorkspaceWrite:  true,
+		AgentToolWebSearch:       true,
+		AgentToolSkills:          true,
+		AgentToolImageGeneration: true,
 	})
-	if !resolved.FileRead || !resolved.Skills {
+	if !resolved.Allows(AgentToolWorkspaceRead) || !resolved.Allows(AgentToolSkills) {
 		t.Fatalf("parent-allowed tools should remain enabled: %+v", resolved)
 	}
-	if resolved.FileWrite || resolved.WebSearch || resolved.ImageGeneration {
+	if resolved.Allows(AgentToolWorkspaceWrite) || resolved.Allows(AgentToolWebSearch) || resolved.Allows(AgentToolImageGeneration) {
 		t.Fatalf("subagent must not gain tools disabled on parent: %+v", resolved)
+	}
+}
+
+func TestResolveSubAgentToolsPreservesParentKindCapabilityCeiling(t *testing.T) {
+	cfg := &Config{AgentTools: AgentToolSettings{InteractiveStory: AgentToolOverride{
+		AgentToolWorkspaceWrite: true,
+		AgentToolShell:          true,
+		AgentToolWebSearch:      true,
+	}}}
+	parent := ResolveAgentTools(cfg, AgentKindInteractiveStory)
+	resolved := ResolveSubAgentTools(parent, AgentToolOverride{
+		AgentToolWorkspaceWrite: true,
+		AgentToolShell:          true,
+		AgentToolWebSearch:      true,
+	})
+	if resolved.Allows(AgentToolWorkspaceWrite) || resolved.Allows(AgentToolShell) {
+		t.Fatalf("subagent escaped the Interactive Story capability ceiling: %+v", resolved)
+	}
+	if !resolved.Allows(AgentToolWebSearch) {
+		t.Fatalf("subagent should retain an explicitly enabled capability inside the parent ceiling: %+v", resolved)
 	}
 }
 
@@ -195,9 +214,6 @@ func TestGeneralSubAgentSettingsMergeAndResolve(t *testing.T) {
 	cfg := &Config{GeneralSubAgents: settings.GeneralSubAgents}
 	if GeneralSubAgentEnabled(cfg, AgentKindIDE) {
 		t.Fatalf("explicit IDE setting should disable the general subagent")
-	}
-	if !GeneralSubAgentEnabled(cfg, AgentKindAutomation) {
-		t.Fatalf("automation should use the enabled built-in default")
 	}
 	if GeneralSubAgentEnabled(cfg, AgentKindInteractiveStory) {
 		t.Fatalf("interactive story should inherit the disabled built-in default")

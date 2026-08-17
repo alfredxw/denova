@@ -85,7 +85,7 @@ func validateActorStateRuntimeSchemaOps(target StoryDirectorActorStateSystem, op
 		}
 		if op.Op == "remove" {
 			if actorID == DefaultActorID || actorID == DefaultStoryContextActorID {
-				return fmt.Errorf("故事基础运行时 Actor 不可删除: %s", actorID)
+				return fmt.Errorf("foundational runtime Actor cannot be removed: %s", actorID)
 			}
 			continue
 		}

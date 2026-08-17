@@ -1,22 +1,35 @@
 package config
 
+// Agent tool capabilities are stable policy names for config-managed tools,
+// not concrete tool names. A capability may authorize several tools (for
+// example read/glob/grep). User Script Tools are instead admitted as ordinary
+// definitions by the immutable Run registry and have no separate toggle.
 const (
-	AgentToolFileRead         = "file_read"
-	AgentToolFileWrite        = "file_write"
-	AgentToolShellExecute     = "shell_execute"
-	AgentToolSkills           = "skills"
-	AgentToolLoreRead         = "lore_read"
-	AgentToolLoreWrite        = "lore_write"
-	AgentToolTodo             = "todo"
-	AgentToolWebSearch        = "web_search"
-	AgentToolImageGeneration  = "image_generation"
-	AgentToolAgentConfigRead  = "agent_config_read"
-	AgentToolAgentConfigWrite = "agent_config_write"
+	AgentToolWorkspaceRead   = "workspace_read"
+	AgentToolWorkspaceWrite  = "workspace_write"
+	AgentToolShell           = "shell"
+	AgentToolWebSearch       = "web_search"
+	AgentToolWebFetch        = "web_fetch"
+	AgentToolBrowser         = "browser"
+	AgentToolAsk             = "ask"
+	AgentToolTodo            = "todo"
+	AgentToolGoal            = "goal"
+	AgentToolSkills          = "skills"
+	AgentToolDelegation      = "delegation"
+	AgentToolScript          = "script"
+	AgentToolHarnessState    = "harness_state"
+	AgentToolConfigRead      = "config_read"
+	AgentToolConfigApply     = "config_apply"
+	AgentToolEventRead       = "event_read"
+	AgentToolLoreRead        = "lore_read"
+	AgentToolLoreWrite       = "lore_write"
+	AgentToolImageGeneration = "image_generation"
 )
 
-// AgentToolSettings 保存各类 Agent 的工具能力开关。
+// AgentToolSettings stores capability overrides for every Agent kind.
 type AgentToolSettings struct {
 	Default             AgentToolOverride `toml:"default,omitempty" json:"default,omitempty"`
+	General             AgentToolOverride `toml:"general,omitempty" json:"general,omitempty"`
 	IDE                 AgentToolOverride `toml:"ide,omitempty" json:"ide,omitempty"`
 	InteractiveStory    AgentToolOverride `toml:"interactive_story,omitempty" json:"interactive_story,omitempty"`
 	ConfigManager       AgentToolOverride `toml:"config_manager,omitempty" json:"config_manager,omitempty"`
@@ -25,136 +38,123 @@ type AgentToolSettings struct {
 	ToolAgent           AgentToolOverride `toml:"tool_agent,omitempty" json:"tool_agent,omitempty"`
 	Image               AgentToolOverride `toml:"image,omitempty" json:"image,omitempty"`
 	Automation          AgentToolOverride `toml:"automation,omitempty" json:"automation,omitempty"`
-	ContextCompaction   AgentToolOverride `toml:"context_compaction,omitempty" json:"context_compaction,omitempty"`
 }
 
-// AgentToolOverride 的指针字段用于区分继承与显式关闭。
-type AgentToolOverride struct {
-	FileRead         *bool `toml:"file_read,omitempty" json:"file_read,omitempty"`
-	FileWrite        *bool `toml:"file_write,omitempty" json:"file_write,omitempty"`
-	ShellExecute     *bool `toml:"shell_execute,omitempty" json:"shell_execute,omitempty"`
-	Skills           *bool `toml:"skills,omitempty" json:"skills,omitempty"`
-	LoreRead         *bool `toml:"lore_read,omitempty" json:"lore_read,omitempty"`
-	LoreWrite        *bool `toml:"lore_write,omitempty" json:"lore_write,omitempty"`
-	Todo             *bool `toml:"todo,omitempty" json:"todo,omitempty"`
-	WebSearch        *bool `toml:"web_search,omitempty" json:"web_search,omitempty"`
-	ImageGeneration  *bool `toml:"image_generation,omitempty" json:"image_generation,omitempty"`
-	AgentConfigRead  *bool `toml:"agent_config_read,omitempty" json:"agent_config_read,omitempty"`
-	AgentConfigWrite *bool `toml:"agent_config_write,omitempty" json:"agent_config_write,omitempty"`
-}
+// AgentToolOverride is a sparse capability set. A missing key inherits from
+// the parent layer; an explicit false value disables it. Adding a capability
+// therefore changes only the registry and defaults, not every settings type.
+type AgentToolOverride map[string]bool
 
-type ResolvedAgentToolSettings struct {
-	FileRead         bool `json:"file_read"`
-	FileWrite        bool `json:"file_write"`
-	ShellExecute     bool `json:"shell_execute"`
-	Skills           bool `json:"skills"`
-	LoreRead         bool `json:"lore_read"`
-	LoreWrite        bool `json:"lore_write"`
-	Todo             bool `json:"todo"`
-	WebSearch        bool `json:"web_search"`
-	ImageGeneration  bool `json:"image_generation"`
-	AgentConfigRead  bool `json:"agent_config_read"`
-	AgentConfigWrite bool `json:"agent_config_write"`
+// ResolvedAgentToolSettings is a complete, fail-closed capability set.
+type ResolvedAgentToolSettings map[string]bool
+
+// Allows reports whether one registered capability is enabled.
+func (settings ResolvedAgentToolSettings) Allows(capability string) bool {
+	return AgentToolAllowed(settings, capability)
 }
 
 func DefaultAgentToolSettings() AgentToolSettings {
-	on := boolPtr(true)
-	off := boolPtr(false)
+	on := func(capabilities ...string) AgentToolOverride {
+		values := make(AgentToolOverride, len(capabilities))
+		for _, capability := range capabilities {
+			values[capability] = true
+		}
+		return values
+	}
+	off := func(capabilities ...string) AgentToolOverride {
+		values := make(AgentToolOverride, len(capabilities))
+		for _, capability := range capabilities {
+			values[capability] = false
+		}
+		return values
+	}
+
+	defaults := on(
+		AgentToolWorkspaceRead,
+		AgentToolWorkspaceWrite,
+		AgentToolShell,
+		AgentToolWebSearch,
+		AgentToolWebFetch,
+		AgentToolBrowser,
+		AgentToolAsk,
+		AgentToolTodo,
+		AgentToolGoal,
+		AgentToolSkills,
+		AgentToolDelegation,
+		AgentToolScript,
+		AgentToolHarnessState,
+		AgentToolLoreRead,
+		AgentToolLoreWrite,
+	)
+	defaults[AgentToolConfigRead] = false
+	defaults[AgentToolConfigApply] = false
+	defaults[AgentToolEventRead] = false
+	defaults[AgentToolImageGeneration] = false
+
 	return AgentToolSettings{
-		Default: AgentToolOverride{
-			FileRead:         on,
-			FileWrite:        on,
-			ShellExecute:     on,
-			Skills:           on,
-			LoreRead:         on,
-			LoreWrite:        on,
-			Todo:             on,
-			WebSearch:        on,
-			ImageGeneration:  off,
-			AgentConfigRead:  off,
-			AgentConfigWrite: off,
-		},
-		IDE: AgentToolOverride{
-			ImageGeneration: on,
-		},
-		InteractiveStory: AgentToolOverride{
-			FileWrite:       off,
-			LoreWrite:       off,
-			Todo:            off,
-			WebSearch:       off,
-			ImageGeneration: off,
-		},
-		ConfigManager: AgentToolOverride{
-			ShellExecute:     off,
-			ImageGeneration:  off,
-			AgentConfigRead:  on,
-			AgentConfigWrite: on,
-		},
-		InteractiveDirector: AgentToolOverride{
-			FileRead:         off,
-			FileWrite:        off,
-			ShellExecute:     off,
-			Skills:           off,
-			LoreRead:         on,
-			LoreWrite:        off,
-			Todo:             off,
-			WebSearch:        off,
-			ImageGeneration:  off,
-			AgentConfigRead:  off,
-			AgentConfigWrite: off,
-		},
-		VersionSummary:    noToolAgentOverride(),
-		ToolAgent:         noToolAgentOverride(),
-		ContextCompaction: noToolAgentOverride(),
-		Image: AgentToolOverride{
-			FileRead:         off,
-			FileWrite:        off,
-			ShellExecute:     off,
-			Skills:           on,
-			LoreRead:         off,
-			LoreWrite:        off,
-			Todo:             off,
-			WebSearch:        off,
-			ImageGeneration:  on,
-			AgentConfigRead:  off,
-			AgentConfigWrite: off,
-		},
-		Automation: AgentToolOverride{
-			FileRead:         on,
-			FileWrite:        on,
-			ShellExecute:     off,
-			Skills:           on,
-			LoreRead:         on,
-			LoreWrite:        on,
-			Todo:             on,
-			WebSearch:        on,
-			ImageGeneration:  off,
-			AgentConfigRead:  off,
-			AgentConfigWrite: off,
-		},
+		Default: defaults,
+		IDE: on(
+			AgentToolImageGeneration,
+		),
+		InteractiveStory: off(
+			AgentToolWorkspaceWrite,
+			AgentToolShell,
+			AgentToolWebSearch,
+			AgentToolWebFetch,
+			AgentToolBrowser,
+			AgentToolAsk,
+			AgentToolTodo,
+			AgentToolDelegation,
+			AgentToolScript,
+			AgentToolHarnessState,
+			AgentToolLoreWrite,
+			AgentToolImageGeneration,
+			AgentToolConfigRead,
+			AgentToolConfigApply,
+		),
+		ConfigManager: mergeAgentToolOverride(noToolAgentOverride(), on(
+			AgentToolWorkspaceRead,
+			AgentToolAsk,
+			AgentToolSkills,
+			AgentToolConfigRead,
+			AgentToolConfigApply,
+		)),
+		InteractiveDirector: mergeAgentToolOverride(noToolAgentOverride(), on(
+			AgentToolEventRead,
+			AgentToolLoreRead,
+		)),
+		VersionSummary: noToolAgentOverride(),
+		ToolAgent:      noToolAgentOverride(),
+		Image: mergeAgentToolOverride(noToolAgentOverride(), on(
+			AgentToolSkills,
+			AgentToolImageGeneration,
+		)),
+		Automation: mergeAgentToolOverride(noToolAgentOverride(), on(
+			AgentToolWorkspaceRead,
+			AgentToolWorkspaceWrite,
+			AgentToolWebSearch,
+			AgentToolWebFetch,
+			AgentToolTodo,
+			AgentToolSkills,
+			AgentToolDelegation,
+			AgentToolLoreRead,
+			AgentToolLoreWrite,
+		)),
 	}
 }
 
 func noToolAgentOverride() AgentToolOverride {
-	off := boolPtr(false)
-	return AgentToolOverride{
-		FileRead:         off,
-		FileWrite:        off,
-		ShellExecute:     off,
-		Skills:           off,
-		LoreRead:         off,
-		LoreWrite:        off,
-		Todo:             off,
-		WebSearch:        off,
-		ImageGeneration:  off,
-		AgentConfigRead:  off,
-		AgentConfigWrite: off,
+	values := make(AgentToolOverride, len(agentToolCapabilities))
+	for _, capability := range agentToolCapabilities {
+		values[capability.Source] = false
 	}
+	return values
 }
 
 func MergeAgentToolSettings(parent, child AgentToolSettings) AgentToolSettings {
 	return AgentToolSettings{
 		Default:             mergeAgentToolOverride(parent.Default, child.Default),
+		General:             mergeAgentToolOverride(parent.General, child.General),
 		IDE:                 mergeAgentToolOverride(parent.IDE, child.IDE),
 		InteractiveStory:    mergeAgentToolOverride(parent.InteractiveStory, child.InteractiveStory),
 		ConfigManager:       mergeAgentToolOverride(parent.ConfigManager, child.ConfigManager),
@@ -163,7 +163,6 @@ func MergeAgentToolSettings(parent, child AgentToolSettings) AgentToolSettings {
 		ToolAgent:           mergeAgentToolOverride(parent.ToolAgent, child.ToolAgent),
 		Image:               mergeAgentToolOverride(parent.Image, child.Image),
 		Automation:          mergeAgentToolOverride(parent.Automation, child.Automation),
-		ContextCompaction:   mergeAgentToolOverride(parent.ContextCompaction, child.ContextCompaction),
 	}
 }
 
@@ -181,56 +180,31 @@ func resolveAgentTools(cfg *Config, agentKind string) ResolvedAgentToolSettings 
 		settings = MergeAgentToolSettings(settings, cfg.AgentTools)
 	}
 	override := mergeAgentToolOverride(settings.Default, agentToolOverrideFor(settings, agentKind))
-	resolved := ResolvedAgentToolSettings{
-		FileRead:         boolValue(override.FileRead, true),
-		FileWrite:        boolValue(override.FileWrite, true),
-		ShellExecute:     boolValue(override.ShellExecute, true),
-		Skills:           boolValue(override.Skills, true),
-		LoreRead:         boolValue(override.LoreRead, true),
-		LoreWrite:        boolValue(override.LoreWrite, true),
-		Todo:             boolValue(override.Todo, true),
-		WebSearch:        boolValue(override.WebSearch, true),
-		ImageGeneration:  boolValue(override.ImageGeneration, false),
-		AgentConfigRead:  boolValue(override.AgentConfigRead, false),
-		AgentConfigWrite: boolValue(override.AgentConfigWrite, false),
+	definition, registered := LookupAgentKind(agentKind)
+	ceiling := make(map[string]struct{}, len(definition.ToolCapabilities))
+	if registered {
+		for _, capability := range definition.ToolCapabilities {
+			ceiling[capability] = struct{}{}
+		}
+	}
+	resolved := make(ResolvedAgentToolSettings, len(agentToolCapabilities))
+	for _, capability := range agentToolCapabilities {
+		_, supported := ceiling[capability.Source]
+		resolved[capability.Source] = supported && override[capability.Source]
 	}
 	return resolved
 }
 
 func mergeAgentToolOverride(parent, child AgentToolOverride) AgentToolOverride {
-	out := parent
-	if child.FileRead != nil {
-		out.FileRead = child.FileRead
+	if len(parent) == 0 && len(child) == 0 {
+		return nil
 	}
-	if child.FileWrite != nil {
-		out.FileWrite = child.FileWrite
+	out := make(AgentToolOverride, len(parent)+len(child))
+	for capability, allowed := range parent {
+		out[capability] = allowed
 	}
-	if child.ShellExecute != nil {
-		out.ShellExecute = child.ShellExecute
-	}
-	if child.Skills != nil {
-		out.Skills = child.Skills
-	}
-	if child.LoreRead != nil {
-		out.LoreRead = child.LoreRead
-	}
-	if child.LoreWrite != nil {
-		out.LoreWrite = child.LoreWrite
-	}
-	if child.Todo != nil {
-		out.Todo = child.Todo
-	}
-	if child.WebSearch != nil {
-		out.WebSearch = child.WebSearch
-	}
-	if child.ImageGeneration != nil {
-		out.ImageGeneration = child.ImageGeneration
-	}
-	if child.AgentConfigRead != nil {
-		out.AgentConfigRead = child.AgentConfigRead
-	}
-	if child.AgentConfigWrite != nil {
-		out.AgentConfigWrite = child.AgentConfigWrite
+	for capability, allowed := range child {
+		out[capability] = allowed
 	}
 	return out
 }
@@ -239,12 +213,12 @@ func agentToolOverrideFor(settings AgentToolSettings, agentKind string) AgentToo
 	if definition, ok := LookupAgentKind(agentKind); ok && definition.ToolOverride != nil {
 		return definition.ToolOverride(settings)
 	}
-	return AgentToolOverride{}
+	return nil
 }
 
-func boolValue(v *bool, fallback bool) bool {
-	if v == nil {
+func boolValue(value *bool, fallback bool) bool {
+	if value == nil {
 		return fallback
 	}
-	return *v
+	return *value
 }

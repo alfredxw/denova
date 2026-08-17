@@ -26,3 +26,24 @@ export const listItem: Variants = {
   animate: { opacity: 1, y: 0 },
   exit: { opacity: 0, y: -4 },
 }
+
+/** Clears the current conversation quickly before revealing the newly bound Session. */
+export const sessionCanvas: Variants = {
+  active: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.16, ease: novaEase },
+  },
+  transitioning: {
+    opacity: 0,
+    y: -8,
+    transition: { duration: 0.1, ease: novaEase },
+  },
+}
+
+/** Fast, direct reveal for terminal artifacts appended to an existing Run. */
+export const timelineAttachment: Variants = {
+  initial: { opacity: 0, y: 3, scale: 0.995 },
+  animate: { opacity: 1, y: 0, scale: 1 },
+  exit: { opacity: 0 },
+}

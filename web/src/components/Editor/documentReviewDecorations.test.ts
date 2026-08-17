@@ -2,6 +2,7 @@ import { Editor, Extension } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
 import { Plugin } from '@tiptap/pm/state'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import './document-review.css'
 import { createDocumentReviewExtension, documentReviewKeysFromElement, documentReviewPluginKey, type DocumentReviewDecorationState } from './documentReviewDecorations'
 
 describe('document review decorations', () => {
@@ -31,7 +32,7 @@ describe('document review decorations', () => {
     const onHighlightClick = vi.fn()
     const reviewState = { current: {
       enabled: true,
-      decorations: [{ key: 'comment:1', from: 1, to: 3, widgetPos: 5, showWidget: false }],
+      decorations: [{ key: 'comment:1', coordinateSpace: 'test', from: 1, to: 3, widgetPos: 5, showWidget: false }],
       onHighlightClick,
       expandLabel: 'Expand comment',
       collapseLabel: 'Collapse comment',
@@ -73,7 +74,7 @@ describe('document review decorations', () => {
 
     reviewState.current = {
       ...reviewState.current,
-      decorations: [{ key: 'comment:1', from: 1, to: 3, widgetPos: 5, showWidget: true }],
+      decorations: [{ key: 'comment:1', coordinateSpace: 'test', from: 1, to: 3, widgetPos: 5, showWidget: true }],
     }
     editor.view.dispatch(editor.state.tr.setMeta(documentReviewPluginKey, true))
     const expandedHighlight = reviewHighlights(editor, 'comment:1')[0] ?? null
@@ -84,6 +85,26 @@ describe('document review decorations', () => {
     expect(expandedHighlight?.getAttribute('aria-controls')).toBe(target?.id)
   })
 
+  it('underlines review anchors in the lightweight Lore editor surface', () => {
+    const reviewState = { current: {
+      enabled: true,
+      decorations: [{ key: 'comment:lore', coordinateSpace: 'test', from: 1, to: 3, widgetPos: 5, showWidget: false }],
+    } as DocumentReviewDecorationState }
+    editor = new Editor({
+      extensions: [StarterKit, createDocumentReviewExtension(reviewState, () => undefined)],
+      content: '<p>资料正文</p>',
+    })
+    const loreSurface = document.createElement('div')
+    loreSurface.className = 'nova-rich-markdown'
+    loreSurface.append(editor.view.dom)
+    document.body.append(loreSurface)
+
+    const highlight = reviewHighlights(editor, 'comment:lore')[0] ?? null
+    expect(highlight).not.toBeNull()
+    expect(getComputedStyle(highlight!).textDecorationLine).toBe('underline')
+    loreSurface.remove()
+  })
+
   it('keeps textarea deletion events inside the comment widget', () => {
     const handleKeyDown = vi.fn(() => false)
     const keyDownProbe = Extension.create({
@@ -92,7 +113,7 @@ describe('document review decorations', () => {
     })
     const reviewState = { current: {
       enabled: true,
-      decorations: [{ key: 'comment:1', from: 1, to: 3, widgetPos: 5, showWidget: true }],
+      decorations: [{ key: 'comment:1', coordinateSpace: 'test', from: 1, to: 3, widgetPos: 5, showWidget: true }],
     } as DocumentReviewDecorationState }
     editor = new Editor({
       extensions: [StarterKit, createDocumentReviewExtension(reviewState, () => undefined), keyDownProbe],
@@ -124,6 +145,7 @@ describe('document review decorations', () => {
     })
     reviewState.current.decorations = [{
       key: 'comment:multi-block',
+      coordinateSpace: 'test',
       from: 1,
       to: editor.state.doc.content.size - 1,
       widgetPos: editor.state.doc.content.size,
@@ -162,9 +184,9 @@ describe('document review decorations', () => {
     const gamma = findRange('Gamma text')
     const whole = { from: findRange('Intro').from, to: findRange('outro').to }
     reviewState.current.decorations = [
-      { key: 'comment:alpha', ...alpha, widgetPos: alpha.to },
-      { key: 'comment:gamma', ...gamma, widgetPos: gamma.to },
-      { key: 'comment:whole', ...whole, widgetPos: whole.to },
+      { key: 'comment:alpha', coordinateSpace: 'test', ...alpha, widgetPos: alpha.to },
+      { key: 'comment:gamma', coordinateSpace: 'test', ...gamma, widgetPos: gamma.to },
+      { key: 'comment:whole', coordinateSpace: 'test', ...whole, widgetPos: whole.to },
     ]
     editor.view.dispatch(editor.state.tr.setMeta(documentReviewPluginKey, true))
 

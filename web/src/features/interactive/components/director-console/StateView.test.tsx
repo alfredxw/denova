@@ -61,7 +61,7 @@ describe('StateView', () => {
     const card = within(actorCard)
     expect(card.queryByText('主角')).not.toBeInTheDocument()
     expect(card.queryByText(/修行者/)).not.toBeInTheDocument()
-    expect(card.getByText('来自失落纪元且尚未完全觉醒的古老血脉')).toHaveAttribute('title', '一条足够长、用于验证窄状态卡截断展示的词条说明。')
+    expect(card.getByText('来自失落纪元且尚未完全觉醒的古老血脉')).not.toHaveAttribute('title')
     expect(card.getByText('旧隐藏词条')).toBeInTheDocument()
     expect(card.getByText('旧剧透词条')).toBeInTheDocument()
     expect(card.getByText(/青石镇客栈/)).toBeInTheDocument()
@@ -179,6 +179,36 @@ describe('StateView', () => {
     expect(supportingRow).toHaveTextContent('灵力')
     expect(supportingRow).toHaveTextContent('10')
     expect(within(supportingRow).queryByText('状态字段')).not.toBeInTheDocument()
+  })
+
+  it('renders signed favorability away from a neutral center', () => {
+    render(
+      <StateView
+        section="actors"
+        snapshot={{
+          story_id: 'story', branch_id: 'main', turns: [], state: {},
+          actor_state_schema: {
+            version: 3,
+            revision: 1,
+            system: { templates: [{ id: 'character', name: '角色', fields: [
+              { name: '好感度', type: 'number', min: -100, max: 100, order: 10 },
+            ] }] },
+          },
+        }}
+        stateFacts={[[
+          'actors',
+          {
+            protagonist: { name: '林风', role: 'protagonist', template_id: 'character', state: { 好感度: -40 } },
+            supporting: { name: '沈凝', role: 'supporting', template_id: 'character', state: { 好感度: 60 } },
+          },
+        ]]}
+      />,
+    )
+
+    const negativeFill = screen.getByRole('article', { name: '林风' }).querySelector('span[style*="width: 20%"]')
+    expect(negativeFill).toHaveClass('bg-[var(--nova-danger)]')
+    const positiveFill = screen.getByRole('article', { name: '沈凝' }).querySelector('span[style*="width: 30%"]')
+    expect(positiveFill).toHaveClass('bg-[var(--nova-success)]')
   })
 
   it('renders fields from historical schemas regardless of legacy visibility metadata', () => {

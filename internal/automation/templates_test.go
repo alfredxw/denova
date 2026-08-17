@@ -16,7 +16,7 @@ func TestBuiltinTaskTemplatesProvideLocalizedWorkspaceDrafts(t *testing.T) {
 	if continueWriting == nil {
 		t.Fatal("continue-writing template missing")
 	}
-	if continueWriting.Defaults.Enabled || continueWriting.Defaults.WriteMode != WriteModeConfirmWrite || continueWriting.Defaults.WriteScope != WriteScopeFile {
+	if continueWriting.Defaults.Enabled || continueWriting.Defaults.SessionStrategy != SessionStrategyPerRun {
 		t.Fatalf("unexpected continue-writing defaults: %#v", continueWriting.Defaults)
 	}
 	if len(continueWriting.TargetKinds) != 1 || continueWriting.TargetKinds[0] != TargetKindWorkspace {

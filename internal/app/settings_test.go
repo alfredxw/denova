@@ -1,14 +1,20 @@
 package app
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	jsonpatch "github.com/evanphx/json-patch/v5"
+
 	"denova/config"
+	appagentruntime "denova/internal/app/agentruntime"
+	appsettings "denova/internal/app/settings"
 )
 
 func TestAppSettingsReturnsLayered(t *testing.T) {
@@ -19,7 +25,8 @@ func TestAppSettingsReturnsLayered(t *testing.T) {
 		cfg:       &config.Config{Workspace: ws, NovaDir: novaDir, OpenAIModel: "x", RuntimeWebPort: 19091},
 		workspace: ws,
 	}
-	layered, err := a.Settings()
+	registerBookProjectForTest(t, a, ws)
+	layered, err := a.SettingsService().Snapshot(appsettings.Project(a.cfg.ProjectID))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +44,7 @@ func TestAppSettingsReturnsLayered(t *testing.T) {
 	}
 }
 
-func TestAppUpdateUserSettingsPersists(t *testing.T) {
+func TestAppPatchUserSettingsPersists(t *testing.T) {
 	ws := t.TempDir()
 	novaDir := t.TempDir()
 
@@ -46,7 +53,7 @@ func TestAppUpdateUserSettingsPersists(t *testing.T) {
 		workspace: ws,
 	}
 	in := config.Settings{OpenAIModel: "user-model"}
-	if _, err := a.UpdateUserSettings(in); err != nil {
+	if _, err := a.SettingsService().Patch(appsettings.Project(a.cfg.ProjectID), config.SettingsLayerUser, settingsPatch(in), ""); err != nil {
 		t.Fatal(err)
 	}
 	out, err := config.ReadSettingsFile(filepath.Join(novaDir, "config.toml"))
@@ -58,7 +65,88 @@ func TestAppUpdateUserSettingsPersists(t *testing.T) {
 	}
 }
 
-func TestAppUpdateUserSettingsPreservesRemoteAccessPasswordHash(t *testing.T) {
+func TestAppPatchSettingsMutatesOnlyApprovalField(t *testing.T) {
+	ws := t.TempDir()
+	novaDir := t.TempDir()
+	path := filepath.Join(novaDir, "config.toml")
+	if err := config.WriteSettingsFile(path, config.Settings{
+		OpenAIModel: "keep-model", AgentApprovalMode: config.AgentApprovalAsk,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	a := &App{cfg: &config.Config{Workspace: ws, NovaDir: novaDir}, workspace: ws}
+	layered, err := a.SettingsService().Patch(appsettings.Project(a.cfg.ProjectID), config.SettingsLayerUser, json.RawMessage(`{"agent_approval_mode":"write"}`), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	persisted, err := config.ReadSettingsFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if persisted.AgentApprovalMode != config.AgentApprovalWrite || persisted.OpenAIModel != "keep-model" {
+		t.Fatalf("persisted settings = %#v", persisted)
+	}
+	if layered.User.AgentApprovalMode != config.AgentApprovalWrite || a.cfg.AgentApprovalMode != config.AgentApprovalWrite {
+		t.Fatalf("runtime safety mode was not refreshed: layered=%q runtime=%q", layered.User.AgentApprovalMode, a.cfg.AgentApprovalMode)
+	}
+}
+
+func TestRemoveAgentApprovalRulePreservesOtherRules(t *testing.T) {
+	workspace := t.TempDir()
+	novaDir := t.TempDir()
+	a := &App{cfg: &config.Config{Workspace: workspace, NovaDir: novaDir}, workspace: workspace}
+	first := settingsApprovalRule("approval-one", workspace, `["go","test"]`, "go test ...")
+	second := settingsApprovalRule("approval-two", workspace, `["git","push","origin"]`, "git push origin ...")
+	if _, err := a.SettingsService().EnsureAgentApprovalRule(first); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.SettingsService().EnsureAgentApprovalRule(second); err != nil {
+		t.Fatal(err)
+	}
+
+	removed, layered, err := a.SettingsService().RemoveAgentApprovalRule(first.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !removed {
+		t.Fatal("expected the selected approval rule to be removed")
+	}
+	if len(layered.User.AgentApprovalRules) != 1 || layered.User.AgentApprovalRules[0].ID != second.ID {
+		t.Fatalf("remaining approval rules = %#v", layered.User.AgentApprovalRules)
+	}
+}
+
+func TestAppPatchUserSettingsReturnsCanonicalAgentContext(t *testing.T) {
+	ws := t.TempDir()
+	novaDir := t.TempDir()
+	a := &App{
+		cfg:       &config.Config{Workspace: ws, NovaDir: novaDir},
+		workspace: ws,
+	}
+	lowThreshold := 0.20
+	disableToolContext := false
+	layered, err := a.SettingsService().Patch(appsettings.Project(a.cfg.ProjectID), config.SettingsLayerUser, settingsPatch(config.Settings{
+		AgentContexts: config.AgentContextSettings{
+			IDE: config.AgentContextOverride{
+				CompactionThreshold:      &lowThreshold,
+				ToolResultContextEnabled: &disableToolContext,
+			},
+		},
+	}), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved := layered.ResolvedAgentContexts[config.AgentKindIDE]
+	if resolved.CompactionThreshold != 0.50 || resolved.ToolResultContextEnabled {
+		t.Fatalf("canonical IDE context = %#v", resolved)
+	}
+	if layered.User.AgentContexts.IDE.CompactionThreshold == nil ||
+		*layered.User.AgentContexts.IDE.CompactionThreshold != 0.50 {
+		t.Fatalf("canonical user override = %#v", layered.User.AgentContexts.IDE)
+	}
+}
+
+func TestAppPatchUserSettingsPreservesRemoteAccessPasswordHash(t *testing.T) {
 	ws := t.TempDir()
 	novaDir := t.TempDir()
 	hash, err := config.HashRemoteAccessPassword("secret")
@@ -74,10 +162,10 @@ func TestAppUpdateUserSettingsPreservesRemoteAccessPasswordHash(t *testing.T) {
 		workspace: ws,
 	}
 	enabled := true
-	if _, err := a.UpdateUserSettings(config.Settings{
+	if _, err := a.SettingsService().Patch(appsettings.Project(a.cfg.ProjectID), config.SettingsLayerUser, settingsPatch(config.Settings{
 		AllowLANAccess:       &enabled,
 		RemoteAccessUsername: "reader",
-	}); err != nil {
+	}), ""); err != nil {
 		t.Fatal(err)
 	}
 	out, err := config.ReadSettingsFile(filepath.Join(novaDir, "config.toml"))
@@ -92,7 +180,7 @@ func TestAppUpdateUserSettingsPreservesRemoteAccessPasswordHash(t *testing.T) {
 	}
 }
 
-func TestAppUpdateWorkspaceSettingsOnlyPersistsAgentOverrides(t *testing.T) {
+func TestAppPatchWorkspaceSettingsOnlyPersistsAgentOverrides(t *testing.T) {
 	ws := t.TempDir()
 	novaDir := t.TempDir()
 	if err := config.WriteSettingsFile(config.WorkspaceConfigPath(ws), config.Settings{OpenAIModel: "legacy-workspace-model"}); err != nil {
@@ -103,25 +191,26 @@ func TestAppUpdateWorkspaceSettingsOnlyPersistsAgentOverrides(t *testing.T) {
 		cfg:       &config.Config{Workspace: ws, NovaDir: novaDir},
 		workspace: ws,
 	}
+	layout := registerBookProjectForTest(t, a, ws)
 	enabled := false
 	in := config.Settings{
 		OpenAIModel: "ignored-new-model",
 		AgentTools: config.AgentToolSettings{
-			IDE: config.AgentToolOverride{ShellExecute: &enabled},
+			IDE: config.AgentToolOverride{config.AgentToolShell: enabled},
 		},
 	}
-	layered, err := a.UpdateWorkspaceSettings(in)
+	layered, err := a.SettingsService().Patch(appsettings.Project(a.cfg.ProjectID), config.SettingsLayerWorkspace, settingsPatch(config.PrepareWorkspaceAgentSettingsForWrite(config.Settings{}, in)), "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	out, err := config.ReadSettingsFile(config.WorkspaceConfigPath(ws))
+	out, err := config.ReadSettingsFile(layout.ConfigPath())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if out.OpenAIModel != "legacy-workspace-model" {
 		t.Fatalf("legacy workspace general setting should be preserved: %s", out.OpenAIModel)
 	}
-	if out.AgentTools.IDE.ShellExecute == nil || *out.AgentTools.IDE.ShellExecute {
+	if enabled, present := out.AgentTools.IDE[config.AgentToolShell]; !present || enabled {
 		t.Fatalf("workspace Agent override not persisted: %#v", out.AgentTools.IDE)
 	}
 	if layered.Workspace.OpenAIModel != "" || layered.Effective.OpenAIModel == "ignored-new-model" {
@@ -129,7 +218,7 @@ func TestAppUpdateWorkspaceSettingsOnlyPersistsAgentOverrides(t *testing.T) {
 	}
 }
 
-func TestAppUpdateWorkspaceSettingsFiltersLLMInputLogSetting(t *testing.T) {
+func TestAppPatchWorkspaceSettingsFiltersLLMInputLogSetting(t *testing.T) {
 	ws := t.TempDir()
 	novaDir := t.TempDir()
 
@@ -137,17 +226,18 @@ func TestAppUpdateWorkspaceSettingsFiltersLLMInputLogSetting(t *testing.T) {
 		cfg:       &config.Config{Workspace: ws, NovaDir: novaDir},
 		workspace: ws,
 	}
+	layout := registerBookProjectForTest(t, a, ws)
 	enabled := true
 	retention := 1
-	if _, err := a.UpdateWorkspaceSettings(config.Settings{
+	if _, err := a.SettingsService().Patch(appsettings.Project(a.cfg.ProjectID), config.SettingsLayerWorkspace, settingsPatch(config.PrepareWorkspaceAgentSettingsForWrite(config.Settings{}, config.Settings{
 		LLMInputLogEnabled: &enabled,
 		TraceCaptureLevel:  "debug",
 		TraceExporter:      "otlp",
 		TraceRetentionRuns: &retention,
-	}); err != nil {
+	})), ""); err != nil {
 		t.Fatal(err)
 	}
-	out, err := config.ReadSettingsFile(config.WorkspaceConfigPath(ws))
+	out, err := config.ReadSettingsFile(layout.ConfigPath())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,14 +249,15 @@ func TestAppUpdateWorkspaceSettingsFiltersLLMInputLogSetting(t *testing.T) {
 	}
 }
 
-func TestAppUpdateWorkspaceSettingsRejectsStaleRevision(t *testing.T) {
+func TestAppPatchWorkspaceSettingsRejectsStaleRevision(t *testing.T) {
 	ws := t.TempDir()
 	novaDir := t.TempDir()
 	a := &App{
 		cfg:       &config.Config{Workspace: ws, NovaDir: novaDir},
 		workspace: ws,
 	}
-	layered, err := a.UpdateWorkspaceSettings(config.Settings{OpenAIModel: "front-base"})
+	layout := registerBookProjectForTest(t, a, ws)
+	layered, err := a.SettingsService().Patch(appsettings.Project(a.cfg.ProjectID), config.SettingsLayerWorkspace, json.RawMessage(`{}`), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -175,12 +266,12 @@ func TestAppUpdateWorkspaceSettingsRejectsStaleRevision(t *testing.T) {
 	}
 
 	time.Sleep(2 * time.Millisecond)
-	path := config.WorkspaceConfigPath(ws)
+	path := layout.ConfigPath()
 	if err := config.WriteSettingsFile(path, config.Settings{OpenAIModel: "agent-model"}); err != nil {
 		t.Fatal(err)
 	}
 
-	if _, err := a.UpdateWorkspaceSettings(config.Settings{OpenAIModel: "front-stale"}, layered.Revisions.Workspace); !errors.Is(err, config.ErrSettingsRevisionConflict) {
+	if _, err := a.SettingsService().Patch(appsettings.Project(a.cfg.ProjectID), config.SettingsLayerWorkspace, json.RawMessage(`{}`), layered.Revisions.Workspace); !errors.Is(err, config.ErrSettingsRevisionConflict) {
 		t.Fatalf("expected revision conflict, got %v", err)
 	}
 	out, err := config.ReadSettingsFile(path)
@@ -207,7 +298,7 @@ func TestAppSettingsConcurrentSameRevisionAllowsOneWriter(t *testing.T) {
 		a := &App{cfg: &config.Config{Workspace: ws, NovaDir: novaDir}, workspace: ws}
 		models := []string{"first", "second"}
 		errs := concurrentSettingsUpdates(t, len(models), func(index int) error {
-			_, updateErr := a.UpdateUserSettings(config.Settings{OpenAIModel: models[index]}, baseRevision)
+			_, updateErr := a.SettingsService().Patch(appsettings.Project(a.cfg.ProjectID), config.SettingsLayerUser, settingsPatch(config.Settings{OpenAIModel: models[index]}), baseRevision)
 			return updateErr
 		})
 		assertOneSettingsWriter(t, errs)
@@ -223,22 +314,24 @@ func TestAppSettingsConcurrentSameRevisionAllowsOneWriter(t *testing.T) {
 	t.Run("workspace", func(t *testing.T) {
 		ws := t.TempDir()
 		novaDir := t.TempDir()
-		path := config.WorkspaceConfigPath(ws)
-		if err := config.WriteSettingsFile(path, config.Settings{AgentPrompts: config.AgentPromptSettings{
+		legacyPath := config.WorkspaceConfigPath(ws)
+		if err := config.WriteSettingsFile(legacyPath, config.Settings{AgentPrompts: config.AgentPromptSettings{
 			IDE: config.AgentPromptOverride{SystemPrompt: "base"},
 		}}); err != nil {
 			t.Fatal(err)
 		}
+		a := &App{cfg: &config.Config{Workspace: ws, NovaDir: novaDir}, workspace: ws}
+		layout := registerBookProjectForTest(t, a, ws)
+		path := layout.ConfigPath()
 		baseRevision, err := config.SettingsFileRevision(path)
 		if err != nil {
 			t.Fatal(err)
 		}
-		a := &App{cfg: &config.Config{Workspace: ws, NovaDir: novaDir}, workspace: ws}
 		prompts := []string{"first", "second"}
 		errs := concurrentSettingsUpdates(t, len(prompts), func(index int) error {
-			_, updateErr := a.UpdateWorkspaceSettings(config.Settings{AgentPrompts: config.AgentPromptSettings{
+			_, updateErr := a.SettingsService().Patch(appsettings.Project(a.cfg.ProjectID), config.SettingsLayerWorkspace, settingsPatch(config.Settings{AgentPrompts: config.AgentPromptSettings{
 				IDE: config.AgentPromptOverride{SystemPrompt: prompts[index]},
-			}}, baseRevision)
+			}}), baseRevision)
 			return updateErr
 		})
 		assertOneSettingsWriter(t, errs)
@@ -298,7 +391,7 @@ func assertOneSettingsWriter(t *testing.T, errs []error) {
 func TestApplyLayeredSettingsToConfigAppliesContextWindow(t *testing.T) {
 	contextWindow := 650000
 	cfg := &config.Config{}
-	applyLayeredSettingsToConfig(cfg, config.LayeredSettings{
+	appsettings.ApplyLayered(cfg, config.LayeredSettings{
 		Effective: config.Settings{
 			OpenAIContextWindowTokens: &contextWindow,
 		},
@@ -311,7 +404,7 @@ func TestApplyLayeredSettingsToConfigAppliesContextWindow(t *testing.T) {
 func TestApplyLayeredSettingsToConfigAppliesAgentIdleTimeout(t *testing.T) {
 	idleTimeout := 240
 	cfg := &config.Config{}
-	applyLayeredSettingsToConfig(cfg, config.LayeredSettings{
+	appsettings.ApplyLayered(cfg, config.LayeredSettings{
 		Effective: config.Settings{
 			AgentIdleTimeoutSeconds: &idleTimeout,
 		},
@@ -324,7 +417,7 @@ func TestApplyLayeredSettingsToConfigAppliesAgentIdleTimeout(t *testing.T) {
 func TestApplyLayeredSettingsToConfigAllowsUnlimitedAgentIdleTimeout(t *testing.T) {
 	idleTimeout := 0
 	cfg := &config.Config{AgentIdleTimeoutSeconds: 1800}
-	applyLayeredSettingsToConfig(cfg, config.LayeredSettings{
+	appsettings.ApplyLayered(cfg, config.LayeredSettings{
 		Effective: config.Settings{
 			AgentIdleTimeoutSeconds: &idleTimeout,
 		},
@@ -337,7 +430,7 @@ func TestApplyLayeredSettingsToConfigAllowsUnlimitedAgentIdleTimeout(t *testing.
 func TestApplyLayeredSettingsToConfigAppliesAgentToolResultLimit(t *testing.T) {
 	limitKB := 128
 	cfg := &config.Config{}
-	applyLayeredSettingsToConfig(cfg, config.LayeredSettings{
+	appsettings.ApplyLayered(cfg, config.LayeredSettings{
 		Effective: config.Settings{
 			AgentToolResultLimitKB: &limitKB,
 		},
@@ -347,10 +440,10 @@ func TestApplyLayeredSettingsToConfigAppliesAgentToolResultLimit(t *testing.T) {
 	}
 }
 
-func TestApplyLayeredSettingsToConfigMapsZeroToolResultLimitToHighDefault(t *testing.T) {
+func TestApplyLayeredSettingsToConfigMapsZeroToolResultLimitToDefault(t *testing.T) {
 	limitKB := 0
 	cfg := &config.Config{AgentToolResultLimitKB: 128}
-	applyLayeredSettingsToConfig(cfg, config.LayeredSettings{
+	appsettings.ApplyLayered(cfg, config.LayeredSettings{
 		Effective: config.Settings{
 			AgentToolResultLimitKB: &limitKB,
 		},
@@ -360,50 +453,89 @@ func TestApplyLayeredSettingsToConfigMapsZeroToolResultLimitToHighDefault(t *tes
 	}
 }
 
+func TestApplyLayeredSettingsToConfigAppliesWebAccess(t *testing.T) {
+	searchLimit := 12
+	providerTimeout := 20
+	responseLimit := 4096
+	contentLimit := 200000
+	cfg := &config.Config{}
+	appsettings.ApplyLayered(cfg, config.LayeredSettings{
+		Effective: config.Settings{WebAccess: config.WebAccessSettings{
+			SearXNGBaseURL:               "https://search.example.com/",
+			SearchMaxResults:             &searchLimit,
+			SearchProviderTimeoutSeconds: &providerTimeout,
+			FetchMaxResponseKB:           &responseLimit,
+			FetchMaxContentChars:         &contentLimit,
+		}},
+	})
+	if cfg.WebAccess.SearXNGBaseURL != "https://search.example.com" || cfg.WebAccess.SearchMaxResults != searchLimit || cfg.WebAccess.SearchProviderTimeoutSeconds != providerTimeout || cfg.WebAccess.FetchMaxResponseKB != responseLimit || cfg.WebAccess.FetchMaxContentChars != contentLimit {
+		t.Fatalf("unexpected runtime web access config: %+v", cfg.WebAccess)
+	}
+}
+
 func TestAgentIdleTimeoutAllowsUnlimited(t *testing.T) {
-	if got := agentIdleTimeout(config.Config{AgentIdleTimeoutSeconds: 0}); got != 0 {
+	if got := appagentruntime.IdleTimeout(config.Config{AgentIdleTimeoutSeconds: 0}); got != 0 {
 		t.Fatalf("agent idle timeout = %s, want no limit", got)
 	}
-	if got := agentIdleTimeout(config.Config{AgentIdleTimeoutSeconds: 1800}); got != 30*time.Minute {
+	if got := appagentruntime.IdleTimeout(config.Config{AgentIdleTimeoutSeconds: 1800}); got != 30*time.Minute {
 		t.Fatalf("agent idle timeout = %s, want 30m", got)
 	}
 }
 
 func TestApplyLayeredSettingsToConfigAppliesWritingSkillDefaultAndImagePreset(t *testing.T) {
 	cfg := &config.Config{}
-	applyLayeredSettingsToConfig(cfg, config.LayeredSettings{
+	appsettings.ApplyLayered(cfg, config.LayeredSettings{
 		Effective: config.Settings{
-			WritingSkillDefault: "novel-heavy",
+			WritingSkillDefault: "scene-first",
 			IDEImagePresetID:    "realistic",
 		},
 	})
-	if cfg.WritingSkillDefault != "novel-heavy" {
-		t.Fatalf("writing skill default = %s, want novel-heavy", cfg.WritingSkillDefault)
+	if cfg.WritingSkillDefault != "scene-first" {
+		t.Fatalf("writing skill default = %s, want scene-first", cfg.WritingSkillDefault)
 	}
 	if cfg.IDEImagePresetID != "realistic" {
 		t.Fatalf("image preset default = %s, want realistic", cfg.IDEImagePresetID)
 	}
 }
 
-func TestApplyLayeredSettingsToConfigAppliesLiveOutputChapterBodySetting(t *testing.T) {
-	enabled := true
-	cfg := &config.Config{}
-	applyLayeredSettingsToConfig(cfg, config.LayeredSettings{
-		Effective: config.Settings{
-			HideChapterBodyLiveOutput: &enabled,
-		},
-	})
-	if !cfg.HideChapterBodyLiveOutput {
-		t.Fatalf("HideChapterBodyLiveOutput should be applied")
-	}
-}
-
 func TestApplyLayeredSettingsToConfigClearsMaxIterationWhenUnset(t *testing.T) {
 	cfg := &config.Config{MaxIteration: 50}
-	applyLayeredSettingsToConfig(cfg, config.LayeredSettings{
+	appsettings.ApplyLayered(cfg, config.LayeredSettings{
 		Effective: config.Settings{},
 	})
 	if cfg.MaxIteration != 0 {
 		t.Fatalf("max iteration = %d, want unlimited default 0", cfg.MaxIteration)
 	}
+}
+
+func settingsApprovalRule(id, workspace, commandKey, commandPattern string) config.AgentApprovalRule {
+	return config.AgentApprovalRule{
+		ID:               id,
+		Scope:            config.AgentApprovalRuleWorkspace,
+		ProjectID:        "project-one",
+		Workspace:        workspace,
+		ToolName:         "bash",
+		MatcherVersion:   config.AgentApprovalRuleMatcherVersion,
+		CommandKey:       commandKey,
+		CommandPattern:   commandPattern,
+		ApprovedArgsHash: strings.Repeat("a", 64),
+		ApprovedCommand:  commandPattern,
+		CreatedAt:        time.Now().UTC(),
+	}
+}
+
+func settingsPatch(settings config.Settings) json.RawMessage {
+	data, err := json.Marshal(settings)
+	if err != nil {
+		panic(err)
+	}
+	zero, err := json.Marshal(config.Settings{})
+	if err != nil {
+		panic(err)
+	}
+	patch, err := jsonpatch.CreateMergePatch(zero, data)
+	if err != nil {
+		panic(err)
+	}
+	return patch
 }

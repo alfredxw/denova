@@ -5,6 +5,7 @@ import type { TFunction } from 'i18next'
 import type { ResourceDirectoryItem, ResourceDirectorySection } from '@/components/resource-directory/types'
 import { presetResourceVisibleInMode, type PresetResourceKind, type PresetUsageMode } from '../../preset-ownership'
 import type { ActorStateModule, EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, Teller } from '../../types'
+import { narrativeStyleDescription, narrativeStyleName, narrativeStylesForMode } from '../../narrative-style'
 import { presetStatusLabel } from '../preset-config/preset-status'
 import { enabledImagePresetSlotCount, normalizedImagePresetSlots } from './ImagePresetEditor'
 import { eventPackageSummaryCount, presetKindCreateLabel, presetKindDirectoryLabel, storyDirectorSummaryCount } from './editor-shared'
@@ -58,14 +59,15 @@ export function buildPresetDirectorySections({
       id: kind,
       label: presetKindDirectoryLabel(kind, t),
       icon: PRESET_DIRECTORY_ICONS[kind],
-      items: presetDirectoryItemsForKind(kind, lists, t),
+      items: presetDirectoryItemsForKind(kind, lists, presetUsageMode, t),
       onCreate: () => onCreateKind(kind),
       createLabel: presetKindCreateLabel(kind, t),
       defaultCollapsed: false,
+      reorderable: true,
     }))
 }
 
-function presetDirectoryItemsForKind(kind: PresetResourceKind, lists: PresetDirectoryLists, t: TFunction): ResourceDirectoryItem[] {
+function presetDirectoryItemsForKind(kind: PresetResourceKind, lists: PresetDirectoryLists, presetUsageMode: PresetUsageMode, t: TFunction): ResourceDirectoryItem[] {
   const { tellers, storyDirectors, imagePresets, eventPackages, ruleSystems, actorStates } = lists
   if (kind === 'director') {
     return storyDirectors.map((director) => ({
@@ -79,11 +81,11 @@ function presetDirectoryItemsForKind(kind: PresetResourceKind, lists: PresetDire
     }))
   }
   if (kind === 'teller') {
-    return tellers.map((teller) => ({
+    return narrativeStylesForMode(tellers, presetUsageMode).map((teller) => ({
       id: presetDirectoryEntryId('teller', teller.id),
-      title: teller.name,
+      title: narrativeStyleName(teller, t),
       summary: `${presetStatusLabel(teller, t)} · ${t('settingPanel.enabledRules', { count: (teller.slots || []).filter((slot) => slot.enabled).length })}`,
-      searchText: teller.description || '',
+      searchText: narrativeStyleDescription(teller, t),
     }))
   }
   if (kind === 'image') {

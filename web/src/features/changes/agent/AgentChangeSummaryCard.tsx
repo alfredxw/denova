@@ -4,15 +4,15 @@ import { AlertTriangle, ChevronDown, ChevronUp, FileDiff, Loader2, RefreshCw, Ro
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
-import { getWorkspaceChangeGroup, undoWorkspaceChangeGroup } from '../api'
-import { invalidateWorkspaceChangeQueries, prefetchWorkspaceChangeReviewThread, workspaceChangeKeys } from '../use-change-review'
+import { getProjectChangeGroup, undoProjectChangeGroup } from '../api'
+import { invalidateProjectChangeQueries, prefetchProjectChangeReviewThread, projectChangeKeys } from '../use-change-review'
 import type { WorkspaceChangeGroup, WorkspaceChangeGroupSummary, WorkspaceChangeSet } from '../types'
 import { logWorkspaceChangeError, workspaceChangeErrorMessage } from '../errors'
 import { lineDiffStats } from '../diff-stats'
 import { preloadReviewDiffEditor } from '../review/review-editor-loader'
 
 interface AgentChangeSummaryCardProps {
-  workspace: string
+  projectId: string
   summary: WorkspaceChangeGroupSummary
   disabled?: boolean
   eagerPreload?: boolean
@@ -26,37 +26,42 @@ interface FileChangeSummary {
   deletions: number
 }
 
-/** Codex-style, durable summary for one Agent run. */
-export function AgentChangeSummaryCard({ workspace, summary, disabled = false, eagerPreload = false, onReview, onWorkspaceChanged }: AgentChangeSummaryCardProps) {
+/** Durable summary for one Agent run. */
+export function AgentChangeSummaryCard({ projectId, summary, disabled = false, eagerPreload = false, onReview, onWorkspaceChanged }: AgentChangeSummaryCardProps) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [expanded, setExpanded] = useState(false)
+  const [openingReview, setOpeningReview] = useState(false)
   const groupQuery = useQuery({
-    queryKey: workspaceChangeKeys.detail(workspace, summary.id),
-    queryFn: () => getWorkspaceChangeGroup(workspace, summary.id),
-    enabled: Boolean(workspace && summary.id),
+    queryKey: projectChangeKeys.detail(projectId, summary.id),
+    queryFn: () => getProjectChangeGroup(projectId, summary.id),
+    enabled: Boolean(projectId && summary.id),
     staleTime: 10_000,
   })
   const files = useMemo(() => summarizeGroupFiles(groupQuery.data), [groupQuery.data])
+  const filesByPath = useMemo(() => new Map(files.map((file) => [file.path, file])), [files])
+  const visiblePaths = files.length ? files.map((file) => file.path) : (summary.paths ?? [])
   const totals = useMemo(() => files.reduce(
     (result, file) => ({ additions: result.additions + file.additions, deletions: result.deletions + file.deletions }),
     { additions: 0, deletions: 0 },
   ), [files])
-  const visibleFiles = expanded ? files : files.slice(0, 3)
+  const displayedPaths = expanded ? visiblePaths : visiblePaths.slice(0, 3)
   const reviewThreadID = summary.review_thread_id || groupQuery.data?.review_thread_id || summary.id
-  const preloadReview = useCallback(() => {
-    if (!workspace || !reviewThreadID) return
-    void Promise.all([
-      prefetchWorkspaceChangeReviewThread(queryClient, workspace, reviewThreadID),
-      preloadReviewDiffEditor(),
-    ]).catch((error) => {
+  const preloadReview = useCallback(async () => {
+    if (disabled || !projectId || !reviewThreadID) return
+    try {
+      await Promise.all([
+        prefetchProjectChangeReviewThread(queryClient, projectId, reviewThreadID),
+        preloadReviewDiffEditor(),
+      ])
+    } catch (error) {
       console.warn('[AgentChangeSummaryCard.tsx] failed to preload Diff review; the click path will retry', {
-        workspace,
+        projectId,
         reviewThreadID,
         error,
       })
-    })
-  }, [queryClient, reviewThreadID, workspace])
+    }
+  }, [disabled, projectId, queryClient, reviewThreadID])
 
   useEffect(() => {
     if (eagerPreload) preloadReview()
@@ -66,10 +71,10 @@ export function AgentChangeSummaryCard({ workspace, summary, disabled = false, e
     if (groupQuery.isError) logWorkspaceChangeError('Agent 变更摘要加载失败', groupQuery.error)
   }, [groupQuery.error, groupQuery.isError])
   const undoMutation = useMutation({
-    mutationFn: () => undoWorkspaceChangeGroup(workspace, summary.id),
+    mutationFn: () => undoProjectChangeGroup(projectId, summary.id),
     onSuccess: async (result) => {
-      await invalidateWorkspaceChangeQueries(queryClient, workspace)
-      if (result.workspace !== workspace) return
+      await invalidateProjectChangeQueries(queryClient, projectId)
+      if (result.project_id !== projectId) return
       const paths = Array.from(new Set([
         ...(result.affected_paths ?? []),
         ...(result.paths ?? []),
@@ -85,9 +90,12 @@ export function AgentChangeSummaryCard({ workspace, summary, disabled = false, e
   })
 
   const fileCount = files.length || summary.paths?.length || summary.change_set_count || 0
-  const openReview = () => {
-    preloadReview()
+  const openReview = async () => {
+    if (disabled || openingReview) return
+    setOpeningReview(true)
+    await preloadReview()
     onReview(reviewThreadID, summary.id)
+    setOpeningReview(false)
   }
 
   return (
@@ -110,12 +118,12 @@ export function AgentChangeSummaryCard({ workspace, summary, disabled = false, e
           <div className="truncate text-sm font-semibold">{t('changes.summary.title', { count: fileCount })}</div>
           {groupQuery.isError ? (
             <div className="mt-0.5 text-[11px] text-[var(--nova-warning)]">{t('changes.loadFailed')}</div>
-          ) : (
+          ) : files.length > 0 ? (
             <div className="mt-0.5 flex gap-2 font-mono text-xs">
               <span className="text-[var(--nova-success)]">+{totals.additions}</span>
               <span className="text-[var(--nova-danger)]">−{totals.deletions}</span>
             </div>
-          )}
+          ) : null}
         </div>
         {groupQuery.isError && (
           <Button type="button" size="icon-xs" variant="ghost" onClick={() => void groupQuery.refetch()} aria-label={t('changes.retry')}>
@@ -133,32 +141,41 @@ export function AgentChangeSummaryCard({ workspace, summary, disabled = false, e
           {undoMutation.isPending ? <Loader2 className="animate-spin" /> : <RotateCcw />}
           {t('changes.undo')}
         </Button>
-        <Button type="button" size="sm" variant="outline" onClick={openReview} className="shrink-0">
+        <Button type="button" size="sm" variant="outline" disabled={disabled || openingReview} onClick={() => void openReview()} className="shrink-0">
+          {openingReview ? <Loader2 className="animate-spin" /> : null}
           {t('changes.review')}
         </Button>
       </header>
 
-      {visibleFiles.length > 0 && (
+      {displayedPaths.length > 0 && (
         <div className="border-t border-[var(--nova-border)]">
-          {visibleFiles.map((file) => (
-            <button
-              key={file.path}
-              type="button"
-              onClick={openReview}
-              className="flex w-full items-center gap-3 border-b border-[var(--nova-border-soft)] px-3 py-2 text-left last:border-b-0 hover:bg-[var(--nova-hover)]"
-            >
-              <span className="min-w-0 flex-1 truncate">{file.path}</span>
-              <span className="shrink-0 font-mono text-[var(--nova-success)]">+{file.additions}</span>
-              <span className="shrink-0 font-mono text-[var(--nova-danger)]">−{file.deletions}</span>
-            </button>
-          ))}
-          {files.length > 3 && (
+          {displayedPaths.map((path) => {
+            const file = filesByPath.get(path)
+            return (
+              <button
+                key={path}
+                type="button"
+                disabled={disabled || openingReview}
+                onClick={() => void openReview()}
+                className="flex w-full items-center gap-3 border-b border-[var(--nova-border-soft)] px-3 py-2 text-left last:border-b-0 enabled:hover:bg-[var(--nova-hover)]"
+              >
+                <span className="min-w-0 flex-1 truncate">{path}</span>
+                {file ? (
+                  <>
+                    <span className="shrink-0 font-mono text-[var(--nova-success)]">+{file.additions}</span>
+                    <span className="shrink-0 font-mono text-[var(--nova-danger)]">−{file.deletions}</span>
+                  </>
+                ) : null}
+              </button>
+            )
+          })}
+          {visiblePaths.length > 3 && (
             <button
               type="button"
               onClick={() => setExpanded((value) => !value)}
               className="flex w-full items-center gap-2 border-t border-[var(--nova-border)] px-3 py-2 text-left text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
             >
-              {expanded ? t('changes.summary.showLess') : t('changes.summary.showMore', { count: files.length - 3 })}
+              {expanded ? t('changes.summary.showLess') : t('changes.summary.showMore', { count: visiblePaths.length - 3 })}
               {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
             </button>
           )}

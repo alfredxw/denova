@@ -1,6 +1,9 @@
 package update
 
 import (
+	"context"
+	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -43,9 +46,9 @@ func TestApplySchedulerStartsUpdaterThenExits(t *testing.T) {
 		Exit: func(code int) {
 			exited <- code
 		},
-		Logf: func(string, ...any) {},
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
-	if err := scheduler.Schedule(); err != nil {
+	if err := scheduler.Schedule(context.Background()); err != nil {
 		t.Fatalf("Schedule failed: %v", err)
 	}
 	select {

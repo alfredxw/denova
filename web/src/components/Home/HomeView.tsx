@@ -456,7 +456,7 @@ export function HomeView({ workspace, novaDir, books, bookSortMode, onSwitch, on
         description={t('home.deleteBookDescription', { name: deleteTarget?.name || t('home.unnamedBook') })}
         confirmLabel={t('home.softDeleteBook')}
         detailContent={deleteTarget ? (
-          <div className="truncate rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2.5 py-2 text-xs text-[var(--nova-text-faint)]" title={deleteTarget.path}>
+          <div className="truncate rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2.5 py-2 text-xs text-[var(--nova-text-faint)]">
             {deleteTarget.path}
           </div>
         ) : null}

@@ -13,6 +13,7 @@ interface DraftResource {
   id: string
   name: string
   prompt?: string
+  revision?: string
   updated_at?: string
 }
 
@@ -58,6 +59,36 @@ describe('createPresetConflictResolver', () => {
       payload: expect.objectContaining({ name: 'local edit', updated_at: 'r2' }),
       baseRevision: 'r2',
     })
+  })
+
+  it('uses content revisions even when timestamps do not change', async () => {
+    vi.mocked(preserveAutosaveConflict).mockResolvedValue({
+      id: 'conflict-2',
+      path: 'conflicts/conflict-2.json',
+      storage: 'server',
+    })
+    const baseline = { ...resource('preset', 'original', 'same-time'), revision: 'sha256:one' }
+    const local = { ...baseline, name: 'local edit' }
+    const external = { ...baseline, name: 'external edit', revision: 'sha256:two' }
+    const resolve = createPresetConflictResolver(
+      async () => [external],
+      (draft) => draft,
+      { resource: 'story_director', scope: '/books/demo' },
+    )
+
+    const result = await resolve({
+      error: new APIError('revision conflict', { status: 409 }),
+      baseline,
+      draft: local,
+      payload: local,
+      baseRevision: 'sha256:one',
+    })
+
+    expect(result?.baseRevision).toBe('sha256:two')
+    expect(preserveAutosaveConflict).toHaveBeenCalledWith(expect.objectContaining({
+      base: expect.objectContaining({ revision: 'sha256:one' }),
+      external: expect.objectContaining({ revision: 'sha256:two' }),
+    }))
   })
 })
 
@@ -126,7 +157,7 @@ describe('usePresetResourceAutosave', () => {
 
   it('debounces edits and saves the latest draft once', async () => {
     vi.useFakeTimers()
-    const save = vi.fn(async (_id: string, payload: DraftResource, _baseRevision?: string) => ({ ...payload, updated_at: 'r2' }))
+    const save = vi.fn(async (_id: string, payload: DraftResource, _baseRevision?: string) => ({ ...payload, revision: 'r2', updated_at: 'r2' }))
     const view = render(<HookHarness draft={resource('preset', 'original')} baseline={resource('preset', 'original')} save={save} />)
 
     view.rerender(<HookHarness draft={resource('preset', 'first')} baseline={resource('preset', 'original')} save={save} />)
@@ -140,7 +171,7 @@ describe('usePresetResourceAutosave', () => {
 
   it('keeps the original user-edit deadline when an external baseline rebases the draft', async () => {
     vi.useFakeTimers()
-    const save = vi.fn(async (_id: string, payload: DraftResource) => ({ ...payload, updated_at: 'r3' }))
+    const save = vi.fn(async (_id: string, payload: DraftResource) => ({ ...payload, revision: 'r3', updated_at: 'r3' }))
     const initial = resource('preset', 'original', 'r1')
     const view = render(<HookHarness draft={initial} baseline={initial} save={save} />)
 
@@ -158,7 +189,7 @@ describe('usePresetResourceAutosave', () => {
 
   it('never pairs a pre-reload draft with the newer external revision', async () => {
     vi.useFakeTimers()
-    const save = vi.fn(async (_id: string, payload: DraftResource) => ({ ...payload, updated_at: 'r3' }))
+    const save = vi.fn(async (_id: string, payload: DraftResource) => ({ ...payload, revision: 'r3', updated_at: 'r3' }))
     const initial = resource('preset', 'original', 'r1')
     const localBeforeReload = resource('preset', 'local before reload', 'r1')
     const view = render(<HookHarness draft={initial} baseline={initial} save={save} />)
@@ -186,7 +217,7 @@ describe('usePresetResourceAutosave', () => {
 
   it('keeps the old revision request while the external rebase is still awaiting recovery', async () => {
     vi.useFakeTimers()
-    const save = vi.fn(async (_id: string, payload: DraftResource) => ({ ...payload, updated_at: 'r3' }))
+    const save = vi.fn(async (_id: string, payload: DraftResource) => ({ ...payload, revision: 'r3', updated_at: 'r3' }))
     const initial = resource('preset', 'original', 'r1')
     const localBeforeReload = resource('preset', 'local before reload', 'r1')
     const view = render(<HookHarness draft={initial} baseline={initial} save={save} />)
@@ -220,7 +251,7 @@ describe('usePresetResourceAutosave', () => {
 
   it('upgrades the pending request when the matching rebased draft arrives with unchanged content', async () => {
     vi.useFakeTimers()
-    const save = vi.fn(async (_id: string, payload: DraftResource) => ({ ...payload, updated_at: 'r3' }))
+    const save = vi.fn(async (_id: string, payload: DraftResource) => ({ ...payload, revision: 'r3', updated_at: 'r3' }))
     const initial = resource('preset', 'original', 'r1')
     const localBeforeReload = resource('preset', 'local', 'r1')
     const view = render(<HookHarness draft={initial} baseline={initial} save={save} />)
@@ -248,7 +279,7 @@ describe('usePresetResourceAutosave', () => {
 
   it('does not save an unchanged signature', async () => {
     vi.useFakeTimers()
-    const save = vi.fn(async (_id: string, payload: DraftResource, _baseRevision?: string) => ({ ...payload, updated_at: 'r2' }))
+    const save = vi.fn(async (_id: string, payload: DraftResource, _baseRevision?: string) => ({ ...payload, revision: 'r2', updated_at: 'r2' }))
     render(<HookHarness draft={resource('preset', 'original')} baseline={resource('preset', 'original')} save={save} />)
 
     await advanceAutosave()
@@ -256,7 +287,7 @@ describe('usePresetResourceAutosave', () => {
   })
 
   it('does not write an unchanged resource when manually flushed', async () => {
-    const save = vi.fn(async (_id: string, payload: DraftResource, _baseRevision?: string) => ({ ...payload, updated_at: 'r2' }))
+    const save = vi.fn(async (_id: string, payload: DraftResource, _baseRevision?: string) => ({ ...payload, revision: 'r2', updated_at: 'r2' }))
     const baseline = resource('preset', 'original')
     render(<HookHarness draft={baseline} baseline={baseline} save={save} />)
 
@@ -269,7 +300,7 @@ describe('usePresetResourceAutosave', () => {
 
   it('manual save cancels the pending autosave', async () => {
     vi.useFakeTimers()
-    const save = vi.fn(async (_id: string, payload: DraftResource, _baseRevision?: string) => ({ ...payload, updated_at: 'r2' }))
+    const save = vi.fn(async (_id: string, payload: DraftResource, _baseRevision?: string) => ({ ...payload, revision: 'r2', updated_at: 'r2' }))
     render(<HookHarness draft={resource('preset', 'changed')} baseline={resource('preset', 'original')} save={save} />)
 
     await act(async () => {
@@ -283,7 +314,7 @@ describe('usePresetResourceAutosave', () => {
 
   it('flushPending clears the timer and saves before switching resources', async () => {
     vi.useFakeTimers()
-    const save = vi.fn(async (_id: string, payload: DraftResource, _baseRevision?: string) => ({ ...payload, updated_at: 'r2' }))
+    const save = vi.fn(async (_id: string, payload: DraftResource, _baseRevision?: string) => ({ ...payload, revision: 'r2', updated_at: 'r2' }))
     render(<HookHarness draft={resource('preset', 'changed')} baseline={resource('preset', 'original')} save={save} />)
 
     await act(async () => {
@@ -300,7 +331,7 @@ describe('usePresetResourceAutosave', () => {
     const firstSave = deferred<DraftResource>()
     const save = vi.fn(async (id: string, payload: DraftResource, _baseRevision?: string) => {
       if (id === 'first') return firstSave.promise
-      return { ...payload, updated_at: 'second-r2' }
+      return { ...payload, revision: 'second-r2', updated_at: 'second-r2' }
     })
     const firstBaseline = resource('first', 'original', 'first-r1')
     const view = render(
@@ -349,7 +380,7 @@ describe('usePresetResourceAutosave', () => {
     const onSaved = vi.fn()
     const save = vi.fn(async (_id: string, payload: DraftResource) => {
       if (save.mock.calls.length === 1) return firstSave.promise
-      return { ...payload, updated_at: 'workspace-b-r2' }
+      return { ...payload, revision: 'workspace-b-r2', updated_at: 'workspace-b-r2' }
     })
     const workspaceABaseline = resource('shared-id', 'workspace-a', 'workspace-a-r1')
     const view = render(
@@ -423,7 +454,7 @@ describe('usePresetResourceAutosave', () => {
 
   it('cancels autosave while invalid without losing the dirty draft', async () => {
     vi.useFakeTimers()
-    const save = vi.fn(async (_id: string, payload: DraftResource, _baseRevision?: string) => ({ ...payload, updated_at: 'r2' }))
+    const save = vi.fn(async (_id: string, payload: DraftResource, _baseRevision?: string) => ({ ...payload, revision: 'r2', updated_at: 'r2' }))
     const view = render(<HookHarness draft={resource('preset', 'changed')} baseline={resource('preset', 'original')} save={save} />)
 
     view.rerender(<HookHarness draft={resource('preset', 'changed')} baseline={resource('preset', 'original')} save={save} valid={false} />)
@@ -438,7 +469,10 @@ describe('usePresetResourceAutosave', () => {
 
   it('uses the saved resource revision as the next base revision', async () => {
     vi.useFakeTimers()
-    const save = vi.fn(async (_id: string, payload: DraftResource, _baseRevision?: string) => ({ ...payload, updated_at: save.mock.calls.length === 1 ? 'r2' : 'r3' }))
+    const save = vi.fn(async (_id: string, payload: DraftResource, _baseRevision?: string) => {
+      const revision = save.mock.calls.length === 1 ? 'r2' : 'r3'
+      return { ...payload, revision, updated_at: revision }
+    })
     const view = render(<HookHarness draft={resource('preset', 'first')} baseline={resource('preset', 'original')} save={save} />)
 
     await act(async () => {
@@ -454,13 +488,30 @@ describe('usePresetResourceAutosave', () => {
     expect(save.mock.calls[1][2]).toBe('r2')
   })
 
+  it('advances the content revision when the display timestamp is unchanged', async () => {
+    const baseline = { ...resource('preset', 'original', 'same-time'), revision: 'sha256:one' }
+    const save = vi.fn(async (_id: string, payload: DraftResource, _baseRevision?: string) => ({
+      ...payload,
+      revision: save.mock.calls.length === 1 ? 'sha256:two' : 'sha256:three',
+      updated_at: 'same-time',
+    }))
+    const view = render(<HookHarness draft={{ ...baseline, name: 'first' }} baseline={baseline} save={save} />)
+
+    await act(async () => { await controls?.saveNow('manual') })
+    view.rerender(<HookHarness draft={{ ...baseline, name: 'second' }} baseline={baseline} save={save} />)
+    await act(async () => { await controls?.saveNow('manual') })
+
+    expect(save.mock.calls[0][2]).toBe('sha256:one')
+    expect(save.mock.calls[1][2]).toBe('sha256:two')
+  })
+
   it('reloads, rebases, and retries a revision conflict without entering an error state', async () => {
     const conflict = new Error('revision conflict')
     const baseline = resource('preset', 'original', 'r1')
     const changed = resource('preset', 'local edit', 'r1')
     const save = vi.fn()
       .mockRejectedValueOnce(conflict)
-      .mockImplementationOnce(async (_id: string, payload: DraftResource) => ({ ...payload, updated_at: 'r3' }))
+      .mockImplementationOnce(async (_id: string, payload: DraftResource) => ({ ...payload, revision: 'r3', updated_at: 'r3' }))
     const resolveConflict = vi.fn(async () => ({
       payload: resource('preset', 'local edit', 'r2'),
       baseRevision: 'r2',
@@ -501,7 +552,7 @@ describe('usePresetResourceAutosave', () => {
     const save = vi.fn()
       .mockRejectedValueOnce(firstConflict)
       .mockRejectedValueOnce(secondConflict)
-      .mockImplementationOnce(async (_id: string, payload: DraftResource) => ({ ...payload, updated_at: 'r4' }))
+      .mockImplementationOnce(async (_id: string, payload: DraftResource) => ({ ...payload, revision: 'r4', updated_at: 'r4' }))
     const resolveConflict = vi.fn()
       .mockResolvedValueOnce({ payload: resource('preset', 'local edit', 'r2'), baseRevision: 'r2' })
       .mockResolvedValueOnce({ payload: resource('preset', 'local edit', 'r3'), baseRevision: 'r3' })
@@ -526,6 +577,7 @@ describe('usePresetResourceAutosave', () => {
     const save = vi.fn(async (_id: string, payload: DraftResource, _baseRevision?: string) => ({
       ...payload,
       name: `${payload.name} normalized`,
+      revision: 'r2',
       updated_at: 'r2',
     }))
     const baseline = resource('preset', 'original')
@@ -546,7 +598,7 @@ describe('usePresetResourceAutosave', () => {
     const firstSave = deferred<DraftResource>()
     const save = vi.fn(async (_id: string, payload: DraftResource, _baseRevision?: string) => {
       if (save.mock.calls.length === 1) return firstSave.promise
-      return { ...payload, updated_at: 'r3' }
+      return { ...payload, revision: 'r3', updated_at: 'r3' }
     })
     const view = render(<HookHarness draft={resource('preset', 'first')} baseline={resource('preset', 'original')} save={save} />)
 
@@ -608,9 +660,9 @@ describe('usePresetResourceAutosave', () => {
     const mergedSecond = { ...resource('preset', 'N2', 'r3'), prompt: 'P1' }
     const save = vi.fn()
       .mockRejectedValueOnce(firstConflict)
-      .mockResolvedValueOnce({ ...mergedFirst, updated_at: 'r3' })
+      .mockResolvedValueOnce({ ...mergedFirst, revision: 'r3', updated_at: 'r3' })
       .mockRejectedValueOnce(queuedConflict)
-      .mockResolvedValueOnce({ ...mergedSecond, updated_at: 'r4' })
+      .mockResolvedValueOnce({ ...mergedSecond, revision: 'r4', updated_at: 'r4' })
     const resolveConflict = vi.fn()
       .mockImplementationOnce(() => recovery.promise)
       .mockResolvedValueOnce({ payload: mergedSecond, baseRevision: 'r3' })
@@ -659,7 +711,7 @@ describe('usePresetResourceAutosave', () => {
     const staleSave = deferred<DraftResource>()
     const save = vi.fn(async (_id: string, payload: DraftResource, _baseRevision?: string) => {
       if (save.mock.calls.length === 1) return staleSave.promise
-      return { ...payload, updated_at: 'external-r3' }
+      return { ...payload, revision: 'external-r3', updated_at: 'external-r3' }
     })
     const onSaved = vi.fn()
     const initial = resource('preset', 'original', 'r1')
@@ -783,7 +835,7 @@ function HookHarness({
 }
 
 function resource(id: string, name: string, updatedAt = 'r1'): DraftResource {
-  return { id, name, updated_at: updatedAt }
+  return { id, name, revision: updatedAt, updated_at: updatedAt }
 }
 
 function deferred<T>() {

@@ -1,8 +1,9 @@
-import type { StatePanelTab } from './types'
+import type { DirectorConsoleTab } from './types'
 
 // 导演控制台的 UI 偏好按故事持久化：防剧透揭示状态、右栏状态面板的上次激活分区。
 const REVEAL_KEY_PREFIX = 'nova.directorConsole.revealed.'
-const STATE_TAB_KEY_PREFIX = 'nova.directorConsole.stateTab.'
+const CONSOLE_TAB_KEY_PREFIX = 'nova.directorConsole.tab.'
+const LEGACY_STATE_TAB_KEY_PREFIX = 'nova.directorConsole.stateTab.'
 
 function storageKey(prefix: string, storyId?: string) {
   return `${prefix}${storyId || 'default'}`
@@ -32,11 +33,15 @@ export function writeStoredDirectorRevealed(storyId: string | undefined, reveale
   write(storageKey(REVEAL_KEY_PREFIX, storyId), revealed ? '1' : '0')
 }
 
-export function readStoredStatePanelTab(storyId?: string): StatePanelTab | null {
-  const value = read(storageKey(STATE_TAB_KEY_PREFIX, storyId))
-  return value === 'changes' || value === 'actors' || value === 'world' ? value : null
+export function readStoredDirectorConsoleTab(storyId?: string): DirectorConsoleTab | null {
+  const value = read(storageKey(CONSOLE_TAB_KEY_PREFIX, storyId)) || read(storageKey(LEGACY_STATE_TAB_KEY_PREFIX, storyId))
+  return isDirectorConsoleTab(value) ? value : null
 }
 
-export function writeStoredStatePanelTab(storyId: string | undefined, tab: StatePanelTab) {
-  write(storageKey(STATE_TAB_KEY_PREFIX, storyId), tab)
+export function writeStoredDirectorConsoleTab(storyId: string | undefined, tab: DirectorConsoleTab) {
+  write(storageKey(CONSOLE_TAB_KEY_PREFIX, storyId), tab)
+}
+
+function isDirectorConsoleTab(value: string | null): value is DirectorConsoleTab {
+  return value === 'changes' || value === 'actors' || value === 'world' || value === 'branches'
 }

@@ -1,7 +1,9 @@
 package interactive
 
 import (
+	interactivestate "denova/internal/interactive/state"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -55,6 +57,9 @@ func TestSelectStoryPersistsCurrentStoryInWorkspaceIndex(t *testing.T) {
 	first, err := store.CreateStory(CreateStoryRequest{Title: "第一条故事线"})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if first.StoryTellerID != "rhythm" {
+		t.Fatalf("new story without a selection should use rhythm, got %q", first.StoryTellerID)
 	}
 	second, err := store.CreateStory(CreateStoryRequest{Title: "第二条故事线"})
 	if err != nil {
@@ -293,7 +298,7 @@ func TestSnapshotAppliesTurnAndStateDelta(t *testing.T) {
 	_, err = store.AppendStateDelta(story.ID, AppendStateDeltaRequest{
 		ParentID: turn.ID,
 		BranchID: "main",
-		Ops: []StateOp{
+		Ops: []interactivestate.Op{
 			{Op: "set", Path: "on_stage", Value: []any{"林川", "酒保老李"}},
 			{Op: "merge", Path: "characters.林川", Value: map[string]any{"hp": 80, "location": "黄泉酒馆"}},
 			{Op: "push", Path: "events", Value: map[string]any{"flag": "遇到神秘老人"}},
@@ -587,7 +592,7 @@ func TestAppendTurnWithStatePersistsTurnAndDeltaAtomically(t *testing.T) {
 		User:      "我点燃火把",
 		Narrative: "火光照亮了墙上的新线索。",
 		Thinking:  "先判断现场风险。",
-		Ops: []StateOp{
+		Ops: []interactivestate.Op{
 			{Op: "set", Path: "on_stage", Value: []any{"林川"}},
 			{Op: "merge", Path: "characters.林川", Value: map[string]any{"location": "黄泉酒馆"}},
 		},
@@ -633,9 +638,16 @@ func TestAppendTurnWithStatePersistsTurnAndDeltaAtomically(t *testing.T) {
 	if len(lines) != 2 {
 		t.Fatalf("jsonl line count = %d, want 2\n%s", len(lines), string(data))
 	}
-	var turnLine map[string]any
-	if err := json.Unmarshal([]byte(lines[1]), &turnLine); err != nil {
+	records, err := decodeConversationTransactionRecords([]byte(lines[1]))
+	if err != nil {
 		t.Fatalf("parse turn line failed: %v", err)
+	}
+	if len(records) != 2 {
+		t.Fatalf("append transaction records = %d, want event + metadata", len(records))
+	}
+	var turnLine map[string]any
+	if err := json.Unmarshal(records[0], &turnLine); err != nil {
+		t.Fatalf("parse turn record failed: %v", err)
 	}
 	if turnLine["type"] != "turn" {
 		t.Fatalf("unexpected event type: %#v", turnLine["type"])
@@ -926,7 +938,7 @@ func TestAppendTurnWithStateCanFinalizePendingState(t *testing.T) {
 	_, err = store.AppendStateDelta(story.ID, AppendStateDeltaRequest{
 		ParentID: turn.ID,
 		BranchID: "main",
-		Ops: []StateOp{
+		Ops: []interactivestate.Op{
 			{Op: "set", Path: "on_stage", Value: []any{"主角"}},
 		},
 	})
@@ -962,7 +974,7 @@ func TestStoryGraphLinksTurnsDirectlyWhenStateDeltaIsEmbedded(t *testing.T) {
 		BranchID:  "main",
 		User:      "检查石门",
 		Narrative: "石门上的符文被逐一点亮。",
-		Ops:       []StateOp{{Op: "set", Path: "scene.mood", Value: "紧张"}},
+		Ops:       []interactivestate.Op{{Op: "set", Path: "scene.mood", Value: "紧张"}},
 	})
 	if err != nil {
 		t.Fatalf("AppendTurnWithState failed: %v", err)
@@ -1146,7 +1158,7 @@ func TestBranchSnapshotFollowsParentChain(t *testing.T) {
 	}
 }
 
-func TestAppendTurnDisplayEventAllowsAncestorTurnOnCurrentBranchPath(t *testing.T) {
+func TestAppendTurnDisplayEventRequiresLatestTurn(t *testing.T) {
 	store := NewStore(t.TempDir())
 	story, err := store.CreateStory(CreateStoryRequest{Title: "祖先回合展示事件", StoryTellerID: "classic"})
 	if err != nil {
@@ -1175,16 +1187,25 @@ func TestAppendTurnDisplayEventAllowsAncestorTurnOnCurrentBranchPath(t *testing.
 		Name:   "generate_interactive_image",
 		Status: "success",
 		Result: `{"schema":"interactive_image.v1","image_path":"assets/interactive/images/ancestor.png"}`,
-	}); err != nil {
-		t.Fatalf("display event should append to current branch ancestor turn: %v", err)
+	}); !errors.Is(err, ErrHistoricalTurnRequiresBranch) {
+		t.Fatalf("display event should reject an ancestor turn, got %v", err)
 	}
 	if err := store.AppendTurnDisplayEvent(story.ID, branch.ID, second.ID, DisplayEvent{
 		ID:     "interactive-image-sibling",
 		Role:   "tool_call",
 		Name:   "generate_interactive_image",
 		Status: "success",
-	}); err == nil || !strings.Contains(err.Error(), "不属于当前分支路径") {
+	}); !errors.Is(err, ErrHistoricalTurnRequiresBranch) {
 		t.Fatalf("display event should reject sibling branch turn, got err=%v", err)
+	}
+	if err := store.AppendTurnDisplayEvent(story.ID, branch.ID, branchTurn.ID, DisplayEvent{
+		ID:     "interactive-image-latest",
+		Role:   "tool_call",
+		Name:   "generate_interactive_image",
+		Status: "success",
+		Result: `{"schema":"interactive_image.v1","image_path":"assets/interactive/images/latest.png"}`,
+	}); err != nil {
+		t.Fatalf("display event should append to the latest turn: %v", err)
 	}
 
 	snapshot, err := store.Snapshot(story.ID, branch.ID)
@@ -1197,9 +1218,9 @@ func TestAppendTurnDisplayEventAllowsAncestorTurnOnCurrentBranchPath(t *testing.
 	if snapshot.CurrentTurn == nil || snapshot.CurrentTurn.ID != branchTurn.ID {
 		t.Fatalf("display event append should not move branch head: %#v", snapshot.CurrentTurn)
 	}
-	events := snapshot.Turns[0].DisplayEvents
-	if len(events) != 1 || events[0].ID != "interactive-image-ancestor" || events[0].Status != "success" {
-		t.Fatalf("ancestor display event was not persisted: %#v", events)
+	events := snapshot.Turns[1].DisplayEvents
+	if len(events) != 1 || events[0].ID != "interactive-image-latest" || events[0].Status != "success" {
+		t.Fatalf("latest display event was not persisted: %#v", events)
 	}
 }
 
@@ -1247,18 +1268,32 @@ func TestSwitchTurnVersionKeepsLaterCanonicalPath(t *testing.T) {
 		BranchID:      "main",
 		TurnID:        firstAlt.ID,
 		VersionTurnID: first.ID,
-	}); err != nil {
-		t.Fatalf("SwitchTurnVersion failed: %v", err)
+	}); !errors.Is(err, ErrHistoricalTurnRequiresBranch) {
+		t.Fatalf("historical version switch should require a branch: %v", err)
 	}
 	snapshot, err = store.Snapshot(story.ID, "main")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(snapshot.Turns) != 2 || snapshot.Turns[0].ID != first.ID || snapshot.Turns[1].ID != secondAlt.ID {
-		t.Fatalf("switching an earlier version should keep the chosen later canon path: %#v", snapshot.Turns)
+	if len(snapshot.Turns) != 2 || snapshot.Turns[0].ID != firstAlt.ID || snapshot.Turns[1].ID != secondAlt.ID {
+		t.Fatalf("rejected historical switch changed the canonical path: %#v", snapshot.Turns)
 	}
-	if snapshot.CurrentTurn == nil || snapshot.CurrentTurn.ID != secondAlt.ID {
-		t.Fatalf("current turn should stay on later canon: %#v", snapshot.CurrentTurn)
+	if err := store.SwitchTurnVersion(story.ID, SwitchTurnVersionRequest{
+		BranchID:      "main",
+		TurnID:        secondAlt.ID,
+		VersionTurnID: second.ID,
+	}); err != nil {
+		t.Fatalf("latest version switch failed: %v", err)
+	}
+	snapshot, err = store.Snapshot(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Turns) != 2 || snapshot.Turns[0].ID != firstAlt.ID || snapshot.Turns[1].ID != second.ID {
+		t.Fatalf("latest version switch selected the wrong path: %#v", snapshot.Turns)
+	}
+	if snapshot.CurrentTurn == nil || snapshot.CurrentTurn.ID != second.ID {
+		t.Fatalf("current turn should be the selected latest version: %#v", snapshot.CurrentTurn)
 	}
 
 	third, err := store.AppendTurn(story.ID, AppendTurnRequest{BranchID: "main", User: "再继续", Narrative: "你沿着脚步声走向走廊深处。"})
@@ -1269,11 +1304,11 @@ func TestSwitchTurnVersionKeepsLaterCanonicalPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(snapshot.Turns) != 3 || snapshot.Turns[0].ID != first.ID || snapshot.Turns[1].ID != secondAlt.ID || snapshot.Turns[2].ID != third.ID {
+	if len(snapshot.Turns) != 3 || snapshot.Turns[0].ID != firstAlt.ID || snapshot.Turns[1].ID != second.ID || snapshot.Turns[2].ID != third.ID {
 		t.Fatalf("new turn should continue from the selected canon path: %#v", snapshot.Turns)
 	}
-	if parentIDString(third.ParentID) != secondAlt.ID {
-		t.Fatalf("new turn parent = %q, want %q", parentIDString(third.ParentID), secondAlt.ID)
+	if parentIDString(third.ParentID) != second.ID {
+		t.Fatalf("new turn parent = %q, want %q", parentIDString(third.ParentID), second.ID)
 	}
 }
 
@@ -1295,8 +1330,8 @@ func TestBackgroundTurnUpdatesDoNotRewindBranchHead(t *testing.T) {
 		if _, err := store.AppendStateDelta(story.ID, AppendStateDeltaRequest{
 			ParentID: first.ID,
 			BranchID: "main",
-			Ops:      []StateOp{{Op: "set", Path: "scene.phase", Value: "late-state"}},
-		}); err == nil || !strings.Contains(err.Error(), "不是当前分支头") {
+			Ops:      []interactivestate.Op{{Op: "set", Path: "scene.phase", Value: "late-state"}},
+		}); !errors.Is(err, ErrHistoricalTurnRequiresBranch) {
 			t.Fatalf("late state update should be rejected, got %v", err)
 		}
 

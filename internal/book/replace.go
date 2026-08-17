@@ -3,6 +3,7 @@ package book
 import (
 	"errors"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 )
@@ -143,11 +144,16 @@ func replaceLiteralFold(content, query, replacement string) (string, int) {
 	return b.String(), count
 }
 
-// ListReplaceCandidateFiles 列出 workspace 内可参与全局替换的文本文件相对路径，
-// 过滤规则与搜索一致：跳过隐藏项、符号链接、超出大小上限或非文本扩展名的文件。
-func ListReplaceCandidateFiles(workspace string) ([]string, error) {
+// ListReplaceCandidateFiles returns searchable user-content files while
+// excluding explicit internal state roots. Exclusions outside workspace are
+// harmless and ignored.
+func ListReplaceCandidateFiles(workspace string, excludedRoots ...string) ([]string, error) {
+	exclusions := replacementExclusions(workspace, excludedRoots)
 	paths := make([]string, 0)
 	err := walkVisibleWorkspaceFiles(workspace, func(absPath, rel string) error {
+		if pathWithinAnyRoot(absPath, exclusions) {
+			return nil
+		}
 		if !isSearchableTextFile(rel) {
 			return nil
 		}
@@ -163,4 +169,42 @@ func ListReplaceCandidateFiles(workspace string) ([]string, error) {
 	}
 	sort.Strings(paths)
 	return paths, nil
+}
+
+func replacementExclusions(workspace string, roots []string) []string {
+	workspace, err := filepath.Abs(workspace)
+	if err != nil {
+		return nil
+	}
+	workspace = filepath.Clean(workspace)
+	exclusions := make([]string, 0, len(roots))
+	for _, root := range roots {
+		root = strings.TrimSpace(root)
+		if root == "" {
+			continue
+		}
+		absolute, err := filepath.Abs(root)
+		if err != nil {
+			continue
+		}
+		absolute = filepath.Clean(absolute)
+		if pathWithinRoot(absolute, workspace) {
+			exclusions = append(exclusions, absolute)
+		}
+	}
+	return exclusions
+}
+
+func pathWithinAnyRoot(path string, roots []string) bool {
+	for _, root := range roots {
+		if pathWithinRoot(path, root) {
+			return true
+		}
+	}
+	return false
+}
+
+func pathWithinRoot(path, root string) bool {
+	relative, err := filepath.Rel(root, path)
+	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
 }

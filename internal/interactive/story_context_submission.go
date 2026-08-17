@@ -1,6 +1,7 @@
 package interactive
 
 import (
+	interactivestate "denova/internal/interactive/state"
 	"fmt"
 	"strings"
 )
@@ -12,7 +13,7 @@ const (
 
 // storyContextSubmissionDiagnostic keeps the built-in story_context useful
 // after the model-facing contract was reduced to state_changes and choices.
-func storyContextSubmissionDiagnostic(system StoryDirectorActorStateSystem, currentState map[string]any, updates []StateUpdate) *TurnSubmissionDiagnostic {
+func storyContextSubmissionDiagnostic(system StoryDirectorActorStateSystem, currentState map[string]any, updates []interactivestate.Update) *TurnSubmissionDiagnostic {
 	template := actorStateTemplateByID(system, ActorStateStoryContextTemplateID)
 	if template.ID == "" || !hasStoryContextActor(system, currentState) || len(template.Fields) == 0 {
 		return nil
@@ -21,7 +22,7 @@ func storyContextSubmissionDiagnostic(system StoryDirectorActorStateSystem, curr
 	if _, exists := actorStateFieldByID(template, storyContextCurrentEventField); exists {
 		value, found := submittedStoryContextValue(updates, storyContextCurrentEventField)
 		if !found || !meaningfulStoryContextValue(value) {
-			return newStoryContextRequiredDiagnostic(storyContextCurrentEventField, "本回合 state_changes 缺少非空的 story/当前事件")
+			return newStoryContextRequiredDiagnostic(storyContextCurrentEventField, "This turn's state_changes is missing a non-empty story/当前事件 value.")
 		}
 	}
 
@@ -34,17 +35,17 @@ func storyContextSubmissionDiagnostic(system StoryDirectorActorStateSystem, curr
 	}
 	value, found := submittedStoryContextValue(updates, storyContextCurrentLocationField)
 	if !found || !meaningfulStoryContextValue(value) {
-		return newStoryContextRequiredDiagnostic(storyContextCurrentLocationField, "story 状态尚未初始化，state_changes 必须填写非空的 story/当前详细地点")
+		return newStoryContextRequiredDiagnostic(storyContextCurrentLocationField, "Story state has not been initialized, so state_changes must provide a non-empty story/当前详细地点 value.")
 	}
 	return nil
 }
 
-func submittedStoryContextValue(updates []StateUpdate, fieldID string) (any, bool) {
+func submittedStoryContextValue(updates []interactivestate.Update, fieldID string) (any, bool) {
 	for _, update := range updates {
-		if update.Op != TurnStateUpdateReplace {
+		if update.Op != interactivestate.Replace {
 			continue
 		}
-		segments, err := parseStateUpdatePath(update.Path)
+		segments, err := interactivestate.ParsePath(update.Path)
 		if err != nil || len(segments) != 2 {
 			continue
 		}
@@ -73,7 +74,7 @@ func meaningfulStoryContextValue(value any) bool {
 }
 
 func newStoryContextRequiredDiagnostic(field, reason string) *TurnSubmissionDiagnostic {
-	path := formatStateUpdatePath([]string{DefaultStoryContextActorID, field})
+	path := interactivestate.FormatPath([]string{DefaultStoryContextActorID, field})
 	return newTurnSubmissionDiagnostic(
 		TurnSubmissionModuleStateChanges,
 		nil,
@@ -81,7 +82,6 @@ func newStoryContextRequiredDiagnostic(field, reason string) *TurnSubmissionDiag
 		path,
 		fmt.Sprintf(`{"op":"replace","actor_id":%q,"field_id":%q,"value":"..."}`, DefaultStoryContextActorID, field),
 		"missing",
-		reason+"；每回合至少维护“当前事件”，首次初始化时还要维护“当前详细地点”，其他未变化字段不要提交空值。",
-		"Every turn must replace story/Current Event, and initialization must also replace story/Current Detailed Location. Do not clear unchanged fields.",
+		reason+" Every turn must replace story/当前事件, and initialization must also replace story/当前详细地点. Do not clear unchanged fields.",
 	)
 }

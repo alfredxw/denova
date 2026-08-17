@@ -9,19 +9,20 @@ interface MobilePaneTriggerProps {
   onClick: () => void
   children?: ReactNode
   className?: string
+  appearance?: 'default' | 'compact'
 }
 
 /** Consistent mobile entry point for panes collapsed by AdaptiveSurface. */
-export function MobilePaneTrigger({ side, label, onClick, children, className }: MobilePaneTriggerProps) {
+export function MobilePaneTrigger({ side, label, onClick, children, className, appearance = 'default' }: MobilePaneTriggerProps) {
   const Icon = side === 'left' ? PanelLeft : PanelRight
+  const compact = appearance === 'compact' && !children
   return (
     <Button
       type="button"
-      variant="outline"
-      size={children ? 'sm' : 'icon'}
-      className={cn('nova-icon-button text-muted-foreground', className)}
+      variant={compact ? 'ghost' : 'outline'}
+      size={children ? 'sm' : compact ? 'icon-xs' : 'icon'}
+      className={cn(!compact && 'nova-icon-button', 'text-muted-foreground', className)}
       aria-label={label}
-      title={children ? undefined : label}
       onClick={onClick}
     >
       <Icon data-icon="inline-start" />

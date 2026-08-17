@@ -1,18 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, Check, FileDiff, Loader2 } from 'lucide-react'
+import { AlertTriangle, Check, FileDiff, Loader2, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import { InlineCollapsiblePane } from '@/components/layout/panel-motion'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { lineDiffStats } from '../diff-stats'
 import { logWorkspaceChangeError, workspaceChangeErrorMessage } from '../errors'
 import {
-  createWorkspaceChangeComment,
-  deleteWorkspaceChangeComment,
-  redoWorkspaceChangeGroup,
-  reviewWorkspaceChangeGroup,
-  undoWorkspaceChangeGroup,
-  updateWorkspaceChangeComment,
+  createProjectChangeComment,
+  deleteProjectChangeComment,
+  redoProjectChangeGroup,
+  reviewProjectChangeGroup,
+  undoProjectChangeGroup,
+  updateProjectChangeComment,
 } from '../api'
 import type {
   CreateWorkspaceChangeCommentRequest,
@@ -22,11 +24,10 @@ import type {
   WorkspaceChangeGroupSummary,
   WorkspaceChangeMutationResult,
 } from '../types'
-import { invalidateWorkspaceChangeQueries, useWorkspaceChangeGroup, useWorkspaceChangeReviewThread } from '../use-change-review'
+import { invalidateProjectChangeQueries, useProjectChangeGroup, useProjectChangeReviewThread } from '../use-change-review'
 import { ReviewFileDiffSection } from './ReviewFileDiffSection'
 import { ReviewFileNavigator } from './ReviewFileNavigator'
 import { ReviewToolbar } from './ReviewToolbar'
-import { ReviewUtilityTab } from './ReviewUtilityTab'
 import type { ReviewDiffLayout } from './monaco/review-editor-adapter'
 import { Utf8OffsetIndex } from './monaco/utf8-offset-index'
 import { projectReviewGroupFiles } from './review-group-projection'
@@ -37,7 +38,7 @@ const REVIEW_LAYOUT_STORAGE_KEY = 'nova:change-review-layout'
 const REVIEW_SCOPE_THREAD = 'thread'
 
 interface ChangeReviewWorkspaceProps {
-  workspace: string
+  projectId: string
   threadID: string
   scopeRequest?: ChangeReviewScopeRequest | null
   /** Prevents mutating a review thread while its Agent run is still appending changes. */
@@ -45,7 +46,8 @@ interface ChangeReviewWorkspaceProps {
   selectedPath?: string | null
   agentVisible?: boolean
   onToggleAgent?: () => void
-  onClose: () => void
+  /** Standalone Writing review closes from its toolbar; workbench review closes from its real tab. */
+  onClose?: () => void
   onOpenFile?: (path: string) => void | Promise<void>
   onWorkspaceChanged?: (paths: string[]) => void | Promise<void>
   onFeedbackCommentsChange?: (threadID: string, comments: WorkspaceChangeComment[]) => void
@@ -53,27 +55,27 @@ interface ChangeReviewWorkspaceProps {
 }
 
 type ReviewVariables = {
-  workspace: string
+  projectId: string
   group: WorkspaceChangeGroupSummary
   decision: 'accept' | 'reject'
 }
 
 type HistoryVariables = {
-  workspace: string
+  projectId: string
   group: WorkspaceChangeGroupSummary
   action: 'undo' | 'redo'
 }
 
 type CommentVariables =
-  | { action: 'create'; workspace: string; request: CreateWorkspaceChangeCommentRequest }
-  | { action: 'update'; workspace: string; comment: WorkspaceChangeComment; body: string }
-  | { action: 'delete'; workspace: string; comment: WorkspaceChangeComment }
+  | { action: 'create'; projectId: string; request: CreateWorkspaceChangeCommentRequest }
+  | { action: 'update'; projectId: string; comment: WorkspaceChangeComment; body: string }
+  | { action: 'delete'; projectId: string; comment: WorkspaceChangeComment }
 
 /** Full-width, server-projected review surface rendered in the central editor region. */
-export function ChangeReviewWorkspace({ workspace, threadID, scopeRequest, disabled = false, selectedPath, agentVisible = false, onToggleAgent, onClose, onOpenFile, onWorkspaceChanged, onFeedbackCommentsChange, hiddenCommentIDs }: ChangeReviewWorkspaceProps) {
+export function ChangeReviewWorkspace({ projectId, threadID, scopeRequest, disabled = false, selectedPath, agentVisible = false, onToggleAgent, onClose, onOpenFile, onWorkspaceChanged, onFeedbackCommentsChange, hiddenCommentIDs }: ChangeReviewWorkspaceProps) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
-  const threadQuery = useWorkspaceChangeReviewThread(workspace, threadID)
+  const threadQuery = useProjectChangeReviewThread(projectId, threadID)
   const [layout, setLayout] = useState<ReviewDiffLayout>(readReviewLayout)
   const [activePath, setActivePath] = useState('')
   const [selectedScopeID, setSelectedScopeID] = useState(REVIEW_SCOPE_THREAD)
@@ -83,15 +85,36 @@ export function ChangeReviewWorkspace({ workspace, threadID, scopeRequest, disab
   const [navigatorVisible, setNavigatorVisible] = useState(true)
   const freezeProjection = commentDraftPaths.size > 0
   const historicalGroupID = selectedScopeID === REVIEW_SCOPE_THREAD ? '' : selectedScopeID
-  const historicalGroupQuery = useWorkspaceChangeGroup(workspace, historicalGroupID)
-  const thread = useFrozenReviewValue(`${workspace}:${threadID}`, threadQuery.data, freezeProjection)
-  const historicalGroup = useFrozenReviewValue(`${workspace}:${historicalGroupID}`, historicalGroupQuery.data, freezeProjection)
+  const historicalGroupQuery = useProjectChangeGroup(projectId, historicalGroupID)
+  const thread = useFrozenReviewValue(`${projectId}:${threadID}`, threadQuery.data, freezeProjection)
+  const historicalGroup = useFrozenReviewValue(`${projectId}:${historicalGroupID}`, historicalGroupQuery.data, freezeProjection)
   const reviewFiles = useMemo(() => selectedScopeID === REVIEW_SCOPE_THREAD
     ? (thread?.files ?? [])
     : projectReviewGroupFiles(historicalGroup), [historicalGroup, selectedScopeID, thread?.files])
+  const reviewTotals = useMemo(() => reviewFiles.reduce((totals, file) => {
+    const stats = file.additions === undefined || file.deletions === undefined
+      ? lineDiffStats(file.before_content, file.after_content)
+      : { additions: file.additions, deletions: file.deletions }
+    totals.additions += stats.additions
+    totals.deletions += stats.deletions
+    return totals
+  }, { additions: 0, deletions: 0 }), [reviewFiles])
+  // Pre-render the editors of the active file's immediate neighbors so they are
+  // already mounted and measured before the user scrolls across the boundary.
+  // Without this, scrolling up into the previous file mounts its editor inside
+  // the viewport and the late height measurement causes a visible jump.
+  const preRenderPaths = useMemo(() => {
+    const paths = new Set<string>()
+    const index = reviewFiles.findIndex((file) => file.path === activePath)
+    if (index < 0) return paths
+    if (index > 0) paths.add(reviewFiles[index - 1].path)
+    paths.add(reviewFiles[index].path)
+    if (index < reviewFiles.length - 1) paths.add(reviewFiles[index + 1].path)
+    return paths
+  }, [activePath, reviewFiles])
   const reviewComments = (selectedScopeID === REVIEW_SCOPE_THREAD ? (thread?.comments ?? []) : (historicalGroup?.comments ?? []))
     .filter((comment) => !hiddenCommentIDs?.has(comment.id))
-  const activeWorkspaceRef = useRef(workspace)
+  const activeProjectRef = useRef(projectId)
   const feedbackCallbackRef = useRef(onFeedbackCommentsChange)
   const reviewScrollRef = useRef<HTMLDivElement | null>(null)
   const fileSectionRefs = useRef(new Map<string, HTMLElement>())
@@ -99,7 +122,7 @@ export function ChangeReviewWorkspace({ workspace, threadID, scopeRequest, disab
   const jumpFrameRef = useRef<number | null>(null)
   const pendingJumpPathRef = useRef('')
   const appliedScopeRequestRef = useRef(0)
-  activeWorkspaceRef.current = workspace
+  activeProjectRef.current = projectId
   feedbackCallbackRef.current = onFeedbackCommentsChange
 
   useEffect(() => {
@@ -119,7 +142,7 @@ export function ChangeReviewWorkspace({ workspace, threadID, scopeRequest, disab
     setNavigatorVisible(true)
     appliedScopeRequestRef.current = 0
     fileSectionRefs.current.clear()
-  }, [threadID, workspace])
+  }, [projectId, threadID])
 
   useEffect(() => {
     if (!scopeRequest || scopeRequest.threadID !== threadID || appliedScopeRequestRef.current === scopeRequest.id) return
@@ -185,10 +208,10 @@ export function ChangeReviewWorkspace({ workspace, threadID, scopeRequest, disab
     variables: ReviewVariables | HistoryVariables,
     workspaceMutated: boolean,
   ) => {
-    await invalidateWorkspaceChangeQueries(queryClient, variables.workspace)
-    if (activeWorkspaceRef.current !== variables.workspace) return
+    await invalidateProjectChangeQueries(queryClient, variables.projectId)
+    if (activeProjectRef.current !== variables.projectId) return
     setError('')
-    if (!workspaceMutated || result.workspace !== variables.workspace) return
+    if (!workspaceMutated || result.project_id !== variables.projectId) return
     const hasReceiptPaths = Object.prototype.hasOwnProperty.call(result, 'affected_paths')
       || Object.prototype.hasOwnProperty.call(result, 'paths')
       || Object.prototype.hasOwnProperty.call(result, 'path')
@@ -200,54 +223,54 @@ export function ChangeReviewWorkspace({ workspace, threadID, scopeRequest, disab
     if (paths.length) await onWorkspaceChanged?.(paths)
   }, [onWorkspaceChanged, queryClient])
 
-  const showError = useCallback((reason: unknown, expectedWorkspace: string) => {
+  const showError = useCallback((reason: unknown, expectedProjectId: string) => {
     const message = workspaceChangeErrorMessage(t, reason)
     logWorkspaceChangeError('中央变更审阅请求失败', reason)
-    if (activeWorkspaceRef.current !== expectedWorkspace) return
+    if (activeProjectRef.current !== expectedProjectId) return
     setError(message)
     toast.error(t('changes.operationFailed'), { description: message })
   }, [t])
 
   const reviewMutation = useMutation({
-    mutationFn: (variables: ReviewVariables) => reviewWorkspaceChangeGroup(variables.workspace, variables.group.id, { decision: variables.decision }),
+    mutationFn: (variables: ReviewVariables) => reviewProjectChangeGroup(variables.projectId, variables.group.id, { decision: variables.decision }),
     onSuccess: async (result, variables) => {
-      if (activeWorkspaceRef.current === variables.workspace) {
+      if (activeProjectRef.current === variables.projectId) {
         toast.success(t(variables.decision === 'accept' ? 'changes.accepted' : 'changes.rejected'))
       }
       await finishWorkspaceMutation(result, variables, variables.decision === 'reject')
     },
-    onError: (reason, variables) => showError(reason, variables.workspace),
+    onError: (reason, variables) => showError(reason, variables.projectId),
   })
 
   const historyMutation = useMutation({
     mutationFn: (variables: HistoryVariables) => variables.action === 'undo'
-      ? undoWorkspaceChangeGroup(variables.workspace, variables.group.id)
-      : redoWorkspaceChangeGroup(variables.workspace, variables.group.id),
+      ? undoProjectChangeGroup(variables.projectId, variables.group.id)
+      : redoProjectChangeGroup(variables.projectId, variables.group.id),
     onSuccess: async (result, variables) => {
-      if (activeWorkspaceRef.current === variables.workspace) {
+      if (activeProjectRef.current === variables.projectId) {
         toast.success(t(variables.action === 'undo' ? 'changes.undoSuccess' : 'changes.redoSuccess'))
       }
       await finishWorkspaceMutation(result, variables, true)
     },
-    onError: (reason, variables) => showError(reason, variables.workspace),
+    onError: (reason, variables) => showError(reason, variables.projectId),
   })
 
   const commentMutation = useMutation({
     mutationFn: (variables: CommentVariables) => {
       switch (variables.action) {
         case 'create':
-          return createWorkspaceChangeComment(variables.workspace, variables.request)
+          return createProjectChangeComment(variables.projectId, variables.request)
         case 'update':
-          return updateWorkspaceChangeComment(variables.workspace, variables.comment.id, variables.body)
+          return updateProjectChangeComment(variables.projectId, variables.comment.id, variables.body)
         case 'delete':
-          return deleteWorkspaceChangeComment(variables.workspace, variables.comment.id)
+          return deleteProjectChangeComment(variables.projectId, variables.comment.id)
       }
     },
     onSuccess: async (_result, variables) => {
-      await invalidateWorkspaceChangeQueries(queryClient, variables.workspace)
-      if (activeWorkspaceRef.current === variables.workspace) setError('')
+      await invalidateProjectChangeQueries(queryClient, variables.projectId)
+      if (activeProjectRef.current === variables.projectId) setError('')
     },
-    onError: (reason, variables) => showError(reason, variables.workspace),
+    onError: (reason, variables) => showError(reason, variables.projectId),
   })
 
   const busy = disabled || reviewMutation.isPending || historyMutation.isPending || commentMutation.isPending
@@ -369,6 +392,8 @@ export function ChangeReviewWorkspace({ workspace, threadID, scopeRequest, disab
         selectedGroup={selectedGroup}
         selectedScopeID={selectedScopeID}
         fileCount={reviewFiles.length}
+        additions={reviewTotals.additions}
+        deletions={reviewTotals.deletions}
         layout={layout}
         busy={reviewLocked}
         refreshing={threadQuery.isFetching || historicalGroupQuery.isFetching}
@@ -377,8 +402,8 @@ export function ChangeReviewWorkspace({ workspace, threadID, scopeRequest, disab
         agentVisible={agentVisible}
         onLayoutChange={setLayout}
         onScopeChange={setSelectedScopeID}
-        onReview={(decision) => selectedGroup && reviewMutation.mutate({ workspace, group: selectedGroup, decision })}
-        onHistory={(action) => selectedGroup && historyMutation.mutate({ workspace, group: selectedGroup, action })}
+        onReview={(decision) => selectedGroup && reviewMutation.mutate({ projectId, group: selectedGroup, decision })}
+        onHistory={(action) => selectedGroup && historyMutation.mutate({ projectId, group: selectedGroup, action })}
         onRefresh={() => {
           void threadQuery.refetch()
           if (selectedScopeID !== REVIEW_SCOPE_THREAD) void historicalGroupQuery.refetch()
@@ -427,6 +452,7 @@ export function ChangeReviewWorkspace({ workspace, threadID, scopeRequest, disab
                 comments={commentsForFile(file, reviewComments)}
                 layout={layout}
                 active={file.path === activePath}
+                preRender={preRenderPaths.has(file.path)}
                 collapsed={collapsedPaths.has(file.path)}
                 hasDraft={commentDraftPaths.has(file.path)}
                 mutationBusy={busy}
@@ -435,23 +461,28 @@ export function ChangeReviewWorkspace({ workspace, threadID, scopeRequest, disab
                 onToggle={() => toggleFile(file.path)}
                 onOpenFile={onOpenFile}
                 onDraftChange={(hasDraft) => handleDraftChange(file.path, hasDraft)}
-                onCreateComment={(request) => commentMutation.mutateAsync({ action: 'create', workspace, request }).then(() => undefined)}
-                onUpdateComment={(comment, body) => commentMutation.mutateAsync({ action: 'update', workspace, comment, body }).then(() => undefined)}
-                onDeleteComment={(comment) => commentMutation.mutateAsync({ action: 'delete', workspace, comment }).then(() => undefined)}
+                onCreateComment={(request) => commentMutation.mutateAsync({ action: 'create', projectId, request }).then(() => undefined)}
+                onUpdateComment={(comment, body) => commentMutation.mutateAsync({ action: 'update', projectId, comment, body }).then(() => undefined)}
+                onDeleteComment={(comment) => commentMutation.mutateAsync({ action: 'delete', projectId, comment }).then(() => undefined)}
               />
             ))
           ) : (
             <ReviewState icon={<Check className="h-5 w-5 text-[var(--nova-success)]" />} label={t('changes.noPendingTitle')} />
           )}
           </ScrollArea>
-          {navigatorVisible && (
+          <InlineCollapsiblePane
+            visible={navigatorVisible}
+            side="right"
+            size="clamp(14rem, 19vw, 17rem)"
+            className="nova-review-file-navigator-motion"
+          >
             <ReviewFileNavigator
               files={reviewFiles}
               selectedPath={activePath}
               onSelect={jumpToFile}
               onCollapse={() => setNavigatorVisible(false)}
             />
-          )}
+          </InlineCollapsiblePane>
         </div>
       </div>
     </section>
@@ -536,10 +567,13 @@ function ReviewState({ icon, label, action }: { icon: React.ReactNode; label: st
   )
 }
 
-function ReviewSurfaceState({ onClose, ...state }: { onClose: () => void; icon: React.ReactNode; label: string; action?: React.ReactNode }) {
+function ReviewSurfaceState({ onClose, ...state }: { onClose?: () => void; icon: React.ReactNode; label: string; action?: React.ReactNode }) {
+  const { t } = useTranslation()
   return (
-    <section className="flex h-full min-h-0 flex-col bg-[var(--nova-bg)] text-xs text-[var(--nova-text-muted)]">
-      <ReviewUtilityTab onClose={onClose} />
+    <section className="relative flex h-full min-h-0 flex-col bg-[var(--nova-bg)] text-xs text-[var(--nova-text-muted)]">
+      {onClose ? (
+        <Button type="button" size="icon-xs" variant="ghost" onClick={onClose} className="absolute right-2 top-2 z-10" aria-label={t('common.close')}><X /></Button>
+      ) : null}
       <ReviewState {...state} />
     </section>
   )

@@ -1,7 +1,9 @@
 package config
 
 import (
-	"log"
+	"context"
+	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -9,73 +11,102 @@ import (
 
 	toml "github.com/pelletier/go-toml/v2"
 
-	"denova/internal/workspacepath"
+	workspacelayout "denova/internal/workspace"
 )
 
 // Config 保存 Denova 的全局配置。
 type Config struct {
-	OpenAIAPIKey                string                       `toml:"openai_api_key"`
-	OpenAIBaseURL               string                       `toml:"openai_base_url"`
-	OpenAIModel                 string                       `toml:"openai_model"`
-	OpenAIContextWindowTokens   int                          `toml:"openai_context_window_tokens"`
-	ModelProfiles               []ModelProfileSettings       `toml:"model_profiles"`
-	ImageAPIKey                 string                       `toml:"image_api_key"`
-	ImageAPIBaseURL             string                       `toml:"image_api_base_url"`
-	ImageAPIModel               string                       `toml:"image_api_model"`
-	DefaultImageAPIProfileID    string                       `toml:"default_image_api_profile_id"`
-	ImageAPIProfiles            []ImageAPIProfileSettings    `toml:"image_api_profiles"`
-	AgentModels                 AgentModelSettings           `toml:"agent_models"`
-	AgentTools                  AgentToolSettings            `toml:"agent_tools"`
-	AgentPrompts                AgentPromptSettings          `toml:"agent_prompts"`
-	AgentSkills                 AgentSkillSettings           `toml:"agent_skills"`
-	AgentContexts               AgentContextSettings         `toml:"agent_context"`
-	GeneralSubAgents            AgentGeneralSubAgentSettings `toml:"general_sub_agents"`
-	SubAgents                   []SubAgentConfig             `toml:"sub_agents"`
-	SkillsDir                   string                       `toml:"skills_dir"`
-	BackendPort                 int                          `toml:"backend_port"`
-	FrontendPort                int                          `toml:"frontend_port"`
-	AllowLANAccess              bool                         `toml:"allow_lan_access"`
-	RemoteAccessUsername        string                       `toml:"remote_access_username"`
-	RemoteAccessPasswordHash    string                       `toml:"remote_access_password_hash"`
-	Language                    string                       `toml:"language"`
-	DenovaDir                   string                       `toml:"denova_dir"`
-	NovaDir                     string                       `toml:"nova_dir"`
-	Workspace                   string                       `toml:"workspace"`
-	AutomationWorkspaces        []string                     `toml:"-"`
-	RuntimeWebPort              int                          `toml:"-"`
-	DevMode                     bool                         `toml:"-"`
-	LLMInputLogEnabled          bool                         `toml:"llm_input_log_enabled"`
-	TraceCaptureLevel           string                       `toml:"trace_capture_level"`
-	TraceExporter               string                       `toml:"trace_exporter"`
-	TraceRetentionRuns          int                          `toml:"trace_retention_runs"`
-	IDEStoryTellerID            string                       `toml:"-"`
-	IDEImagePresetID            string                       `toml:"-"`
-	ImagePresetToolPrompt       string                       `toml:"-"`
-	WritingSkillDefault         string                       `toml:"writing_skill_default"`
-	MaxIteration                int                          `toml:"max_iteration"`
-	ModelMaxRetries             int                          `toml:"model_max_retries"`
-	AgentIdleTimeoutSeconds     int                          `toml:"agent_idle_timeout_seconds"`
-	AgentToolResultLimitKB      int                          `toml:"agent_tool_result_limit_kb"`
-	ChapterFilenameFormat       string                       `toml:"-"`
-	VolumeDirFormat             string                       `toml:"-"`
-	HideChapterBodyLiveOutput   bool                         `toml:"-"`
-	ChapterGroupMin             int                          `toml:"-"`
-	ChapterGroupMax             int                          `toml:"-"`
-	VersionTimedEnabled         bool                         `toml:"-"`
-	VersionTimedIntervalMinutes int                          `toml:"-"`
-	InteractiveReplyTargetChars int                          `toml:"-"`
-	ResumeLastWorkspace         bool                         `toml:"-"`
-	UpdateCheckEnabled          bool                         `toml:"-"`
+	OpenAIAPIKey              string                       `toml:"openai_api_key"`
+	OpenAIBaseURL             string                       `toml:"openai_base_url"`
+	OpenAIModel               string                       `toml:"openai_model"`
+	OpenAIContextWindowTokens int                          `toml:"openai_context_window_tokens"`
+	ModelProfiles             []ModelProfileSettings       `toml:"model_profiles"`
+	ImageAPIKey               string                       `toml:"image_api_key"`
+	ImageAPIBaseURL           string                       `toml:"image_api_base_url"`
+	ImageAPIModel             string                       `toml:"image_api_model"`
+	DefaultImageAPIProfileID  string                       `toml:"default_image_api_profile_id"`
+	ImageAPIProfiles          []ImageAPIProfileSettings    `toml:"image_api_profiles"`
+	AgentModels               AgentModelSettings           `toml:"agent_models"`
+	AgentTools                AgentToolSettings            `toml:"agent_tools"`
+	AgentPrompts              AgentPromptSettings          `toml:"agent_prompts"`
+	AgentSkills               AgentSkillSettings           `toml:"agent_skills"`
+	AgentContexts             AgentContextSettings         `toml:"agent_context"`
+	GeneralSubAgents          AgentGeneralSubAgentSettings `toml:"general_sub_agents"`
+	SubAgents                 []SubAgentConfig             `toml:"sub_agents"`
+	WebAccess                 WebAccessConfig              `toml:"web_access"`
+	Labs                      ResolvedLabs                 `toml:"labs"`
+	SkillsDir                 string                       `toml:"skills_dir"`
+	BackendPort               int                          `toml:"backend_port"`
+	FrontendPort              int                          `toml:"frontend_port"`
+	AllowLANAccess            bool                         `toml:"allow_lan_access"`
+	RemoteAccessUsername      string                       `toml:"remote_access_username"`
+	RemoteAccessPasswordHash  string                       `toml:"remote_access_password_hash"`
+	Language                  string                       `toml:"language"`
+	DenovaDir                 string                       `toml:"denova_dir"`
+	NovaDir                   string                       `toml:"nova_dir"`
+	Workspace                 string                       `toml:"workspace"`
+	// ProjectID and ProjectStateDir are runtime-owned bindings. They never
+	// persist into user configuration or enter the content workspacelayout.
+	ProjectID                   string                    `toml:"-"`
+	ProjectStateDir             string                    `toml:"-"`
+	RuntimeWebPort              int                       `toml:"-"`
+	DevMode                     bool                      `toml:"-"`
+	LLMInputLogEnabled          bool                      `toml:"llm_input_log_enabled"`
+	TraceCaptureLevel           string                    `toml:"trace_capture_level"`
+	TraceExporter               string                    `toml:"trace_exporter"`
+	TraceRetentionRuns          int                       `toml:"trace_retention_runs"`
+	IDEStoryTellerID            string                    `toml:"-"`
+	InteractiveStoryTellerID    string                    `toml:"-"`
+	IDEImagePresetID            string                    `toml:"-"`
+	ImagePresetToolPrompt       string                    `toml:"-"`
+	WritingSkillDefault         string                    `toml:"writing_skill_default"`
+	MaxIteration                int                       `toml:"max_iteration"`
+	ModelMaxRetries             int                       `toml:"model_max_retries"`
+	AgentIdleTimeoutSeconds     int                       `toml:"agent_idle_timeout_seconds"`
+	AgentToolResultLimitKB      int                       `toml:"agent_tool_result_limit_kb"`
+	AgentToolParallelism        int                       `toml:"agent_tool_parallelism"`
+	AgentScriptTimeoutSeconds   int                       `toml:"agent_script_timeout_seconds"`
+	AgentApprovalMode           AgentApprovalMode         `toml:"agent_approval_mode"`
+	AgentApprovalRules          []AgentApprovalRule       `toml:"agent_approval_rules"`
+	ShellEnvironmentMode        ShellEnvironmentMode      `toml:"shell_environment_mode"`
+	ShellEnvironmentShell       string                    `toml:"shell_environment_shell"`
+	AgentBashPath               string                    `toml:"agent_bash_path"`
+	TerminalEnabled             bool                      `toml:"terminal_enabled"`
+	TerminalShell               string                    `toml:"terminal_shell"`
+	TerminalCommands            []TerminalCommandSettings `toml:"terminal_commands"`
+	TerminalMaxSessions         int                       `toml:"terminal_max_sessions"`
+	TerminalScrollbackKB        int                       `toml:"terminal_scrollback_kb"`
+	ProjectFileTreeEntryLimit   int                       `toml:"project_file_tree_entry_limit"`
+	ChapterFilenameFormat       string                    `toml:"-"`
+	VolumeDirFormat             string                    `toml:"-"`
+	ChapterGroupMin             int                       `toml:"-"`
+	ChapterGroupMax             int                       `toml:"-"`
+	VersionTimedEnabled         bool                      `toml:"-"`
+	VersionTimedIntervalMinutes int                       `toml:"-"`
+	InteractiveReplyTargetChars int                       `toml:"-"`
+	ResumeLastWorkspace         bool                      `toml:"-"`
+	UpdateCheckEnabled          bool                      `toml:"-"`
 }
 
 // LoadWithWorkspace 在已知 workspace 时读取分层配置（默认 < 用户级 < 工作区级 < 环境变量）。
 func LoadWithWorkspace(workspace string) (*Config, LayeredSettings, error) {
-	novaDir := startupNovaDir()
-	layered, err := LoadLayeredWithStartupConfig(novaDir, workspace)
+	return LoadWithProject(startupNovaDir(), workspace, "")
+}
+
+// LoadWithProject constructs a clean runtime configuration for an explicit
+// Project state path. It is the Project-ID-era equivalent of
+// LoadWithWorkspace and prevents a background Project from inheriting fields
+// already merged into the foreground runtime.
+func LoadWithProject(novaDir, workspace, projectConfigPath string) (*Config, LayeredSettings, error) {
+	layered, err := LoadLayeredWithStartupConfigAt(novaDir, workspace, projectConfigPath)
 	if err != nil {
 		return nil, LayeredSettings{}, err
 	}
+	novaDir = layered.Paths.DenovaDir
+	return configFromLayered(novaDir, workspace, layered), layered, nil
+}
 
+func configFromLayered(novaDir, workspace string, layered LayeredSettings) *Config {
 	s := layered.Effective
 	cfg := &Config{
 		OpenAIAPIKey:                s.OpenAIAPIKey,
@@ -95,6 +126,8 @@ func LoadWithWorkspace(workspace string) (*Config, LayeredSettings, error) {
 		AgentContexts:               s.AgentContexts,
 		GeneralSubAgents:            s.GeneralSubAgents,
 		SubAgents:                   s.SubAgents,
+		WebAccess:                   ResolveWebAccessSettings(s.WebAccess),
+		Labs:                        ResolveLabs(s.Labs),
 		SkillsDir:                   s.SkillsDir,
 		BackendPort:                 settingsInt(s.BackendPort, 8080),
 		FrontendPort:                settingsInt(s.FrontendPort, 5173),
@@ -106,19 +139,32 @@ func LoadWithWorkspace(workspace string) (*Config, LayeredSettings, error) {
 		NovaDir:                     novaDir,
 		Workspace:                   workspace,
 		IDEStoryTellerID:            s.IDEStoryTellerID,
+		InteractiveStoryTellerID:    s.InteractiveStoryTellerID,
 		IDEImagePresetID:            s.IDEImagePresetID,
 		WritingSkillDefault:         s.WritingSkillDefault,
 		MaxIteration:                settingsInt(s.MaxIteration, 0),
 		ModelMaxRetries:             settingsInt(s.ModelMaxRetries, 5),
 		AgentIdleTimeoutSeconds:     settingsAgentIdleTimeoutSeconds(s.AgentIdleTimeoutSeconds),
 		AgentToolResultLimitKB:      settingsAgentToolResultLimitKB(s.AgentToolResultLimitKB),
+		AgentToolParallelism:        settingsAgentToolParallelism(s.AgentToolParallelism),
+		AgentScriptTimeoutSeconds:   settingsAgentScriptTimeoutSeconds(s.AgentScriptTimeoutSeconds),
+		AgentApprovalMode:           NormalizeAgentApprovalMode(s.AgentApprovalMode),
+		AgentApprovalRules:          NormalizeAgentApprovalRules(s.AgentApprovalRules),
+		ShellEnvironmentMode:        normalizeShellEnvironmentMode(s.ShellEnvironmentMode),
+		ShellEnvironmentShell:       s.ShellEnvironmentShell,
+		AgentBashPath:               s.AgentBashPath,
+		TerminalEnabled:             settingsBool(s.TerminalEnabled, true),
+		TerminalShell:               s.TerminalShell,
+		TerminalCommands:            cloneTerminalCommands(s.TerminalCommands),
+		TerminalMaxSessions:         settingsTerminalMaxSessions(s.TerminalMaxSessions),
+		TerminalScrollbackKB:        settingsTerminalScrollbackKB(s.TerminalScrollbackKB),
+		ProjectFileTreeEntryLimit:   settingsProjectFileTreeEntryLimit(s.ProjectFileTreeEntryLimit),
 		LLMInputLogEnabled:          settingsBool(s.LLMInputLogEnabled, false),
 		TraceCaptureLevel:           settingsString(s.TraceCaptureLevel, DefaultTraceCaptureLevel),
 		TraceExporter:               settingsString(s.TraceExporter, DefaultTraceExporter),
 		TraceRetentionRuns:          settingsInt(s.TraceRetentionRuns, DefaultTraceRetentionRuns),
 		ChapterFilenameFormat:       s.ChapterFilenameFormat,
 		VolumeDirFormat:             s.VolumeDirFormat,
-		HideChapterBodyLiveOutput:   settingsBool(s.HideChapterBodyLiveOutput, false),
 		ChapterGroupMin:             settingsInt(s.ChapterGroupMin, 3),
 		ChapterGroupMax:             settingsInt(s.ChapterGroupMax, 8),
 		VersionTimedEnabled:         settingsBool(s.VersionTimedEnabled, true),
@@ -140,12 +186,18 @@ func LoadWithWorkspace(workspace string) (*Config, LayeredSettings, error) {
 		cfg.SkillsDir = normalizePath(cfg.SkillsDir)
 	}
 	normalizeConfigDataDir(cfg)
-	return cfg, layered, nil
+	return cfg
 }
 
 // LoadLayeredWithStartupConfig reads layered settings with the same global
 // startup config layer used by LoadWithWorkspace.
 func LoadLayeredWithStartupConfig(novaDir, workspace string) (LayeredSettings, error) {
+	return LoadLayeredWithStartupConfigAt(novaDir, workspace, "")
+}
+
+// LoadLayeredWithStartupConfigAt reads the Project layer from an explicit
+// user-state path. An empty path preserves the legacy workspace-local layout.
+func LoadLayeredWithStartupConfigAt(novaDir, workspace, projectConfigPath string) (LayeredSettings, error) {
 	if strings.TrimSpace(novaDir) == "" {
 		novaDir = startupNovaDir()
 	} else {
@@ -154,7 +206,7 @@ func LoadLayeredWithStartupConfig(novaDir, workspace string) (LayeredSettings, e
 	globalSettings := settingsFromConfig(loadGlobalConfig())
 	globalSettings.DenovaDir = novaDir
 	globalSettings.NovaDir = novaDir
-	return LoadLayeredWithGlobal(novaDir, workspace, globalSettings)
+	return LoadLayeredWithGlobalAt(novaDir, workspace, projectConfigPath, globalSettings)
 }
 
 func startupNovaDir() string {
@@ -173,7 +225,10 @@ func startupNovaDir() string {
 }
 
 func loadGlobalConfig() *Config {
-	cfg := &Config{AgentIdleTimeoutSeconds: -1, AgentToolResultLimitKB: -1}
+	cfg := &Config{
+		AgentIdleTimeoutSeconds: -1, AgentToolResultLimitKB: -1, AgentToolParallelism: -1,
+		AgentScriptTimeoutSeconds: -1,
+	}
 	for _, path := range globalConfigCandidates() {
 		data, err := os.ReadFile(path)
 		if err != nil {
@@ -195,7 +250,7 @@ func settingsFromConfig(cfg *Config) Settings {
 		OpenAIAPIKey:             cfg.OpenAIAPIKey,
 		OpenAIBaseURL:            cfg.OpenAIBaseURL,
 		OpenAIModel:              cfg.OpenAIModel,
-		ModelProfiles:            cfg.ModelProfiles,
+		ModelProfiles:            sanitizeModelProfiles(cfg.ModelProfiles),
 		ImageAPIKey:              cfg.ImageAPIKey,
 		ImageAPIBaseURL:          cfg.ImageAPIBaseURL,
 		ImageAPIModel:            cfg.ImageAPIModel,
@@ -208,6 +263,13 @@ func settingsFromConfig(cfg *Config) Settings {
 		AgentContexts:            cfg.AgentContexts,
 		GeneralSubAgents:         cfg.GeneralSubAgents,
 		SubAgents:                cfg.SubAgents,
+		WebAccess:                settingsFromWebAccessConfig(cfg.WebAccess),
+		Labs: LabSettings{
+			DeveloperMode:                  boolPtr(cfg.Labs.DeveloperMode),
+			ContinualLearningSchedule:      boolPtr(cfg.Labs.ContinualLearningSchedule),
+			ContinualLearningIntervalHours: intPtr(cfg.Labs.ContinualLearningIntervalHours),
+			ContinualLearningTrajectoryCap: intPtr(cfg.Labs.ContinualLearningTrajectoryCap),
+		},
 		SkillsDir:                cfg.SkillsDir,
 		DenovaDir:                firstNonEmpty(cfg.DenovaDir, cfg.NovaDir),
 		NovaDir:                  firstNonEmpty(cfg.DenovaDir, cfg.NovaDir),
@@ -216,11 +278,16 @@ func settingsFromConfig(cfg *Config) Settings {
 		Language:                 cfg.Language,
 		ChapterFilenameFormat:    cfg.ChapterFilenameFormat,
 		VolumeDirFormat:          cfg.VolumeDirFormat,
+		IDEStoryTellerID:         cfg.IDEStoryTellerID,
+		InteractiveStoryTellerID: cfg.InteractiveStoryTellerID,
 		IDEImagePresetID:         cfg.IDEImagePresetID,
 		WritingSkillDefault:      cfg.WritingSkillDefault,
-	}
-	if cfg.HideChapterBodyLiveOutput {
-		settings.HideChapterBodyLiveOutput = &cfg.HideChapterBodyLiveOutput
+		TerminalCommands:         cloneTerminalCommands(cfg.TerminalCommands),
+		AgentApprovalMode:        cfg.AgentApprovalMode,
+		AgentApprovalRules:       NormalizeAgentApprovalRules(cfg.AgentApprovalRules),
+		ShellEnvironmentMode:     cfg.ShellEnvironmentMode,
+		ShellEnvironmentShell:    cfg.ShellEnvironmentShell,
+		AgentBashPath:            cfg.AgentBashPath,
 	}
 	if cfg.BackendPort > 0 {
 		settings.BackendPort = &cfg.BackendPort
@@ -241,6 +308,24 @@ func settingsFromConfig(cfg *Config) Settings {
 	if cfg.AgentToolResultLimitKB >= 0 {
 		settings.AgentToolResultLimitKB = &cfg.AgentToolResultLimitKB
 	}
+	if cfg.AgentToolParallelism >= 0 {
+		settings.AgentToolParallelism = &cfg.AgentToolParallelism
+	}
+	if cfg.AgentScriptTimeoutSeconds >= 0 {
+		settings.AgentScriptTimeoutSeconds = &cfg.AgentScriptTimeoutSeconds
+	}
+	if cfg.TerminalMaxSessions > 0 {
+		settings.TerminalMaxSessions = &cfg.TerminalMaxSessions
+	}
+	if cfg.TerminalScrollbackKB > 0 {
+		settings.TerminalScrollbackKB = &cfg.TerminalScrollbackKB
+	}
+	if cfg.ProjectFileTreeEntryLimit > 0 {
+		settings.ProjectFileTreeEntryLimit = &cfg.ProjectFileTreeEntryLimit
+	}
+	if cfg.TerminalShell != "" {
+		settings.TerminalShell = cfg.TerminalShell
+	}
 	if cfg.LLMInputLogEnabled {
 		settings.LLMInputLogEnabled = &cfg.LLMInputLogEnabled
 	}
@@ -256,7 +341,7 @@ func settingsFromConfig(cfg *Config) Settings {
 	if cfg.OpenAIContextWindowTokens > 0 {
 		settings.OpenAIContextWindowTokens = &cfg.OpenAIContextWindowTokens
 	}
-	return settings
+	return preserveTerminalCommandRegistryPresence(settings)
 }
 
 func globalConfigCandidates() []string {
@@ -271,7 +356,7 @@ func globalConfigCandidates() []string {
 func Load() *Config {
 	cfg, _, err := LoadWithWorkspace("")
 	if err != nil || cfg == nil {
-		log.Printf("[config] LoadWithWorkspace failed, falling back to defaults: %v", err)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[config] LoadWithWorkspace failed, falling back to defaults: %v", err))
 		// fallback：返回纯默认值 + env，保持启动不挂
 		d := DefaultSettings()
 		cfg = &Config{
@@ -291,6 +376,7 @@ func Load() *Config {
 			AgentContexts:               d.AgentContexts,
 			GeneralSubAgents:            d.GeneralSubAgents,
 			SubAgents:                   d.SubAgents,
+			WebAccess:                   ResolveWebAccessSettings(d.WebAccess),
 			SkillsDir:                   d.SkillsDir,
 			BackendPort:                 settingsInt(d.BackendPort, 8080),
 			FrontendPort:                settingsInt(d.FrontendPort, 5173),
@@ -301,19 +387,32 @@ func Load() *Config {
 			DenovaDir:                   normalizePath(d.DenovaDir),
 			NovaDir:                     normalizePath(d.NovaDir),
 			IDEStoryTellerID:            d.IDEStoryTellerID,
+			InteractiveStoryTellerID:    d.InteractiveStoryTellerID,
 			IDEImagePresetID:            d.IDEImagePresetID,
 			WritingSkillDefault:         d.WritingSkillDefault,
 			MaxIteration:                settingsInt(d.MaxIteration, 0),
 			ModelMaxRetries:             settingsInt(d.ModelMaxRetries, 5),
 			AgentIdleTimeoutSeconds:     settingsAgentIdleTimeoutSeconds(d.AgentIdleTimeoutSeconds),
 			AgentToolResultLimitKB:      settingsAgentToolResultLimitKB(d.AgentToolResultLimitKB),
+			AgentToolParallelism:        settingsAgentToolParallelism(d.AgentToolParallelism),
+			AgentScriptTimeoutSeconds:   settingsAgentScriptTimeoutSeconds(d.AgentScriptTimeoutSeconds),
+			AgentApprovalMode:           NormalizeAgentApprovalMode(d.AgentApprovalMode),
+			AgentApprovalRules:          NormalizeAgentApprovalRules(d.AgentApprovalRules),
+			ShellEnvironmentMode:        normalizeShellEnvironmentMode(d.ShellEnvironmentMode),
+			ShellEnvironmentShell:       d.ShellEnvironmentShell,
+			AgentBashPath:               d.AgentBashPath,
+			TerminalEnabled:             settingsBool(d.TerminalEnabled, true),
+			TerminalShell:               d.TerminalShell,
+			TerminalCommands:            cloneTerminalCommands(d.TerminalCommands),
+			TerminalMaxSessions:         settingsTerminalMaxSessions(d.TerminalMaxSessions),
+			TerminalScrollbackKB:        settingsTerminalScrollbackKB(d.TerminalScrollbackKB),
+			ProjectFileTreeEntryLimit:   settingsProjectFileTreeEntryLimit(d.ProjectFileTreeEntryLimit),
 			LLMInputLogEnabled:          settingsBool(d.LLMInputLogEnabled, false),
 			TraceCaptureLevel:           settingsString(d.TraceCaptureLevel, DefaultTraceCaptureLevel),
 			TraceExporter:               settingsString(d.TraceExporter, DefaultTraceExporter),
 			TraceRetentionRuns:          settingsInt(d.TraceRetentionRuns, DefaultTraceRetentionRuns),
 			ChapterFilenameFormat:       d.ChapterFilenameFormat,
 			VolumeDirFormat:             d.VolumeDirFormat,
-			HideChapterBodyLiveOutput:   settingsBool(d.HideChapterBodyLiveOutput, false),
 			ChapterGroupMin:             settingsInt(d.ChapterGroupMin, 3),
 			ChapterGroupMax:             settingsInt(d.ChapterGroupMax, 8),
 			VersionTimedEnabled:         settingsBool(d.VersionTimedEnabled, true),
@@ -355,6 +454,56 @@ func settingsAgentToolResultLimitKB(v *int) int {
 		return DefaultAgentToolResultLimitKB
 	}
 	return *v
+}
+
+func settingsAgentToolParallelism(value *int) int {
+	if value == nil || *value <= 0 {
+		return DefaultAgentToolParallelism
+	}
+	if *value > MaxAgentToolParallelism {
+		return MaxAgentToolParallelism
+	}
+	return *value
+}
+
+func settingsAgentScriptTimeoutSeconds(value *int) int {
+	if value == nil || *value < 0 {
+		return DefaultAgentScriptTimeoutSecs
+	}
+	return *value
+}
+
+// settingsTerminalMaxSessions clamps the concurrent session count: non-positive values fall back
+// to the default and anything above the hard ceiling is truncated.
+func settingsTerminalMaxSessions(value *int) int {
+	if value == nil || *value <= 0 {
+		return DefaultTerminalMaxSessions
+	}
+	if *value > MaxTerminalSessions {
+		return MaxTerminalSessions
+	}
+	return *value
+}
+
+// settingsTerminalScrollbackKB clamps the scrollback size so memory usage stays bounded.
+func settingsTerminalScrollbackKB(value *int) int {
+	if value == nil || *value <= 0 {
+		return DefaultTerminalScrollbackKB
+	}
+	if *value > MaxTerminalScrollbackKB {
+		return MaxTerminalScrollbackKB
+	}
+	return *value
+}
+
+func settingsProjectFileTreeEntryLimit(value *int) int {
+	if value == nil || *value <= 0 {
+		return DefaultProjectFileTreeEntryLimit
+	}
+	if *value > MaxProjectFileTreeEntryLimit {
+		return MaxProjectFileTreeEntryLimit
+	}
+	return *value
 }
 
 func settingsBool(v *bool, fallback bool) bool {
@@ -411,10 +560,18 @@ func overrideFromEnv(cfg *Config) {
 			cfg.FrontendPort = port
 		}
 	}
+	if v := strings.TrimSpace(os.Getenv("DENOVA_PROJECT_FILE_TREE_ENTRY_LIMIT")); v != "" {
+		if limit, err := strconv.Atoi(v); err == nil {
+			cfg.ProjectFileTreeEntryLimit = settingsProjectFileTreeEntryLimit(&limit)
+		}
+	}
 	if v := envCompat("DENOVA_AGENT_IDLE_TIMEOUT_SECONDS", "NOVA_AGENT_IDLE_TIMEOUT_SECONDS"); v != "" {
 		if seconds, err := strconv.Atoi(v); err == nil && seconds >= 0 {
 			cfg.AgentIdleTimeoutSeconds = seconds
 		}
+	}
+	if v := strings.TrimSpace(os.Getenv("DENOVA_SEARXNG_BASE_URL")); v != "" {
+		cfg.WebAccess.SearXNGBaseURL = strings.TrimRight(v, "/")
 	}
 }
 
@@ -456,10 +613,10 @@ func (cfg *Config) SetDataDir(dir string) {
 }
 
 func defaultNovaDir() string {
-	if dirExists(workspacepath.LegacyDataDirName) && !dirExists(workspacepath.DataDirName) {
-		return "./" + workspacepath.LegacyDataDirName
+	if dirExists(workspacelayout.LegacyDataDirName) && !dirExists(workspacelayout.DataDirName) {
+		return "./" + workspacelayout.LegacyDataDirName
 	}
-	return "./" + workspacepath.DataDirName
+	return "./" + workspacelayout.DataDirName
 }
 
 func normalizeConfigDataDir(cfg *Config) {

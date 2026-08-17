@@ -1,0 +1,450 @@
+package tools
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
+
+	agent "github.com/alfredxw/denova/agent"
+)
+
+// GlobRequest describes one bounded, workspace-relative path discovery call.
+type GlobRequest struct {
+	Paths     []string
+	Hidden    bool
+	Gitignore bool
+	Limit     int
+	Cursor    string
+}
+
+// GrepRequest describes one bounded, command-shaped ripgrep search. Command
+// uses Denova's literal rg grammar; it is never passed through a shell.
+type GrepRequest struct {
+	Command string
+	Cursor  string
+}
+
+// SearchResult is shared by glob and grep without leaking local process
+// details into the model-visible Interface.
+type SearchResult struct {
+	Entries    []string
+	Truncated  bool
+	NextCursor string
+	Warnings   []string
+}
+
+// GlobSearcher is the reusable workspace path-discovery seam. Identity covers
+// workspace scope, search policy, and implementation semantics.
+type GlobSearcher interface {
+	Identity() agent.CapabilityIdentity
+	Glob(context.Context, GlobRequest) (SearchResult, error)
+}
+
+// GrepSearcher is the reusable workspace text-search seam. Identity covers
+// workspace scope, search policy, and implementation semantics. The interface
+// is deliberately separate from GlobSearcher because command compilation and
+// logical result pagination are grep-specific responsibilities.
+type GrepSearcher interface {
+	Identity() agent.CapabilityIdentity
+	Grep(context.Context, GrepRequest) (SearchResult, error)
+}
+
+// grepExecutionFingerprinter lets the built-in workspace preserve canonical
+// cursor identity when the generic tool projection, rather than the searcher,
+// is the layer that truncates a complete result. It stays private so custom
+// GrepSearcher implementations keep the small public interface above.
+type grepExecutionFingerprinter interface {
+	grepExecutionFingerprint(GrepRequest) (string, error)
+}
+
+// Searcher composes both search capabilities for hosts that expose one
+// workspace adapter. Tool factories depend on the narrower interface above.
+type Searcher interface {
+	GlobSearcher
+	GrepSearcher
+}
+
+type globInput struct {
+	Paths     []string `json:"paths,omitempty" jsonschema:"minItems=1" jsonschema_description:"Workspace-relative files, directories, or glob patterns. Omit to discover from the workspace root."`
+	Hidden    *bool    `json:"hidden,omitempty" jsonschema_description:"Include dot-prefixed paths; defaults to true."`
+	Gitignore *bool    `json:"gitignore,omitempty" jsonschema_description:"Respect .gitignore rules; defaults to true."`
+	Limit     int      `json:"limit,omitempty" jsonschema:"minimum=1" jsonschema_description:"Maximum returned paths; defaults to the workspace search policy."`
+	Cursor    string   `json:"cursor,omitempty" jsonschema_description:"Opaque continuation cursor returned by an earlier identical glob call."`
+}
+
+// Glob defines multi-path workspace discovery. Directory reading remains the
+// responsibility of read; glob only answers path-pattern questions.
+func Glob(searcher GlobSearcher, options ...DefinitionOption) (agent.ToolDefinition, error) {
+	if searcher == nil {
+		return agent.ToolDefinition{}, errors.New("glob GlobSearcher is nil")
+	}
+	if err := validateAdapterIdentity("glob Searcher", searcher.Identity()); err != nil {
+		return agent.ToolDefinition{}, err
+	}
+	descriptor := readDescriptor(options...)
+	descriptor.ResultRecoveryKind = agent.ToolResultRecoveryRerun
+	tool, err := agent.InferTool("glob", `Find workspace files or directories by path. A call may include several files, directories, or glob patterns; results are de-duplicated and bounded. Use read on a directory when you need its structure.`, func(ctx context.Context, input globInput) (agent.ToolResult, error) {
+		request := normalizeGlobRequest(GlobRequest{
+			Paths: input.Paths, Hidden: boolDefault(input.Hidden, true),
+			Gitignore: boolDefault(input.Gitignore, true), Limit: input.Limit, Cursor: input.Cursor,
+		})
+		result, err := searcher.Glob(ctx, request)
+		if err != nil {
+			return agent.ToolResult{}, err
+		}
+		return searchToolResult("glob", result, descriptor.MaxResultBytes, func(returned int) (string, error) {
+			if returned <= 0 || returned > len(result.Entries) {
+				return "", nil
+			}
+			return encodeGlobCursor(result.Entries[returned-1], request)
+		})
+	})
+	return agent.ToolDefinition{
+		Tool: tool, Descriptor: descriptor,
+		ImplementationIdentity: toolsetIdentity("tools.glob", searcher.Identity()),
+	}, err
+}
+
+type grepInput struct {
+	Command     string `json:"command" jsonschema:"minLength=3,maxLength=65536" jsonschema_description:"A literal ripgrep command using native rg syntax. Always use rg, not grep. This is not a shell command: only | between rg stages is supported; never add head, tail, redirects, substitutions, or shell control syntax. Paths may be workspace-relative or absolute within the active workspace. Examples: rg -n 'TODO|FIXME' agent internal; rg -l -g '*.go' 'OpenWorkspace' .; rg -C 2 'failed' internal."`
+	Description string `json:"description,omitempty" jsonschema:"maxLength=256" jsonschema_description:"Brief user-facing search intent. Use the same language as the user's current input. Do not repeat the command."`
+	Cursor      string `json:"cursor,omitempty" jsonschema:"maxLength=8192" jsonschema_description:"Opaque next_cursor returned by the same normalized grep command."`
+}
+
+const grepToolContractVersion = 2
+
+// Grep defines bounded workspace text search using a controlled rg command.
+func Grep(searcher GrepSearcher, options ...DefinitionOption) (agent.ToolDefinition, error) {
+	if searcher == nil {
+		return agent.ToolDefinition{}, errors.New("grep GrepSearcher is nil")
+	}
+	if err := validateAdapterIdentity("grep Searcher", searcher.Identity()); err != nil {
+		return agent.ToolDefinition{}, err
+	}
+	descriptor := readDescriptor(options...)
+	descriptor.ResultRecoveryKind = agent.ToolResultRecoveryRerun
+	descriptor.Presentation = agent.UniformToolPresentation(agent.ToolPresentationSearch)
+	tool, err := agent.InferTool("grep", `Search workspace text with native rg syntax. Always write rg, not grep. Commands run directly without a shell; only rg-to-rg pipelines are accepted. Use rg flags such as -l, -c, -g, and -C instead of head, tail, redirects, or shell control syntax. Workspace-relative paths and absolute paths inside the active workspace are accepted. Results are deterministic and bounded; continue a partial result with next_cursor.`, func(ctx context.Context, input grepInput) (agent.ToolResult, error) {
+		request := normalizeGrepRequest(GrepRequest{Command: input.Command, Cursor: input.Cursor})
+		result, err := searcher.Grep(ctx, request)
+		if err != nil {
+			return agent.ToolResult{}, err
+		}
+		state, fingerprint, err := grepProjectionCursor(request, result)
+		if err != nil {
+			return agent.ToolResult{}, err
+		}
+		return searchToolResult("grep", result, descriptor.MaxResultBytes, func(returned int) (string, error) {
+			if fingerprint == "" {
+				if provider, ok := searcher.(grepExecutionFingerprinter); ok {
+					fingerprint, err = provider.grepExecutionFingerprint(request)
+					if err != nil {
+						return "", err
+					}
+				} else {
+					fingerprint = grepRequestFingerprint(request)
+				}
+			}
+			next := grepCursorState{
+				Offset: state.Offset + returned,
+				Prefix: advanceGrepPrefix(state.Prefix, result.Entries[:returned]),
+			}
+			return encodeGrepCursorFingerprint(next, fingerprint)
+		})
+	})
+	return agent.ToolDefinition{
+		Tool: tool, Descriptor: descriptor,
+		ImplementationIdentity: toolsetIdentity("tools.grep", struct {
+			Contract int
+			Searcher agent.CapabilityIdentity
+		}{Contract: grepToolContractVersion, Searcher: searcher.Identity()}),
+	}, err
+}
+
+type searchEnvelope struct {
+	Schema   string          `json:"schema"`
+	Status   string          `json:"status"`
+	Source   searchSource    `json:"source"`
+	Limits   searchLimits    `json:"limits"`
+	Warnings []string        `json:"warnings,omitempty"`
+	Recovery *searchRecovery `json:"recovery,omitempty"`
+}
+
+type searchSource struct {
+	Kind string `json:"kind"`
+}
+
+type searchLimits struct {
+	Returned   int    `json:"returned"`
+	Unit       string `json:"unit"`
+	Truncated  bool   `json:"truncated"`
+	NextCursor string `json:"next_cursor,omitempty"`
+}
+
+type searchRecovery struct {
+	Retryable  bool   `json:"retryable"`
+	Suggestion string `json:"suggestion"`
+}
+
+func searchToolResult(
+	kind string,
+	result SearchResult,
+	maxResultBytes int,
+	continuation func(int) (string, error),
+) (agent.ToolResult, error) {
+	build := func(visible int) (agent.ToolResult, error) {
+		truncated := result.Truncated || visible < len(result.Entries)
+		nextCursor := result.NextCursor
+		if truncated && continuation != nil {
+			var err error
+			nextCursor, err = continuation(visible)
+			if err != nil {
+				return agent.ToolResult{}, fmt.Errorf("encode %s continuation: %w", kind, err)
+			}
+		} else if visible < len(result.Entries) {
+			nextCursor = ""
+		}
+		status := "success"
+		unit := "output_entries"
+		if kind == "glob" {
+			unit = "paths"
+		}
+		limits := searchLimits{Returned: visible, Unit: unit, Truncated: truncated, NextCursor: nextCursor}
+		var recovery *searchRecovery
+		if truncated {
+			status = "partial"
+			recovery = &searchRecovery{
+				Retryable:  true,
+				Suggestion: "Use next_cursor when present, otherwise narrow the search scope.",
+			}
+		}
+		metadata := searchEnvelope{
+			Schema: "workspace.search.v1", Status: status,
+			Source: searchSource{Kind: kind}, Limits: limits,
+			Warnings: result.Warnings, Recovery: recovery,
+		}
+		encoded, err := json.Marshal(metadata)
+		if err != nil {
+			return agent.ToolResult{}, fmt.Errorf("serialize %s result: %w", kind, err)
+		}
+		content := string(encoded)
+		if visible > 0 {
+			content += "\n" + strings.Join(result.Entries[:visible], "\n")
+		}
+		return agent.ToolResult{
+			ModelContent: content, DisplayContent: content, Details: encoded,
+			Status: agent.ToolResultSuccess,
+		}, nil
+	}
+	full, err := build(len(result.Entries))
+	if err != nil {
+		return agent.ToolResult{}, err
+	}
+	if len(full.ModelContent) <= maxResultBytes && len(full.Details) <= maxResultBytes {
+		return full, nil
+	}
+	low, high := 0, len(result.Entries)-1
+	bestVisible := -1
+	var best agent.ToolResult
+	for low <= high {
+		middle := low + (high-low)/2
+		candidate, err := build(middle)
+		if err != nil {
+			return agent.ToolResult{}, err
+		}
+		if len(candidate.ModelContent) <= maxResultBytes && len(candidate.Details) <= maxResultBytes {
+			best, bestVisible = candidate, middle
+			low = middle + 1
+		} else {
+			high = middle - 1
+		}
+	}
+	if bestVisible < 0 {
+		return agent.ToolResult{}, fmt.Errorf("%s result metadata exceeds the %d-byte result limit", kind, maxResultBytes)
+	}
+	if len(result.Entries) > 0 && bestVisible == 0 {
+		return agent.ToolResult{}, fmt.Errorf("%s result leaves no room for one complete entry within the %d-byte result limit", kind, maxResultBytes)
+	}
+	return best, nil
+}
+
+func boolDefault(value *bool, fallback bool) bool {
+	if value == nil {
+		return fallback
+	}
+	return *value
+}
+
+type grepCursor struct {
+	Version     int    `json:"v"`
+	Offset      int    `json:"o"`
+	Fingerprint string `json:"f"`
+	Prefix      string `json:"p,omitempty"`
+}
+
+type grepCursorState struct {
+	Offset int
+	Prefix string
+}
+
+type globCursor struct {
+	Version     int    `json:"v"`
+	After       string `json:"after"`
+	Fingerprint string `json:"f"`
+}
+
+func encodeGlobCursor(after string, request GlobRequest) (string, error) {
+	cursor := globCursor{Version: 1, After: after, Fingerprint: globRequestFingerprint(request)}
+	encoded, err := json.Marshal(cursor)
+	if err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(encoded), nil
+}
+
+func decodeGlobCursor(value string, request GlobRequest) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", nil
+	}
+	decoded, err := base64.RawURLEncoding.DecodeString(value)
+	if err != nil {
+		return "", errors.New("glob cursor is invalid")
+	}
+	var cursor globCursor
+	if err := json.Unmarshal(decoded, &cursor); err != nil || cursor.Version != 1 || strings.TrimSpace(cursor.After) == "" {
+		return "", errors.New("glob cursor is invalid")
+	}
+	if cursor.Fingerprint != globRequestFingerprint(request) {
+		return "", errors.New("glob cursor does not belong to this query")
+	}
+	return cursor.After, nil
+}
+
+func globRequestFingerprint(request GlobRequest) string {
+	request.Cursor = ""
+	request.Limit = 0
+	encoded, _ := json.Marshal(request)
+	digest := sha256.Sum256(encoded)
+	return hex.EncodeToString(digest[:16])
+}
+
+func encodeGrepCursor(state grepCursorState, request GrepRequest) (string, error) {
+	return encodeGrepCursorFingerprint(state, grepRequestFingerprint(request))
+}
+
+func encodeGrepCursorFingerprint(state grepCursorState, fingerprint string) (string, error) {
+	cursor := grepCursor{
+		Version: 3, Offset: state.Offset, Prefix: state.Prefix,
+		Fingerprint: fingerprint,
+	}
+	encoded, err := json.Marshal(cursor)
+	if err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(encoded), nil
+}
+
+func decodeGrepCursor(value string, request GrepRequest) (grepCursorState, error) {
+	return decodeGrepCursorFingerprint(value, grepRequestFingerprint(request))
+}
+
+func decodeGrepCursorFingerprint(value, fingerprint string) (grepCursorState, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return grepCursorState{}, nil
+	}
+	cursor, err := parseGrepCursor(value)
+	if err != nil {
+		return grepCursorState{}, err
+	}
+	if cursor.Fingerprint != fingerprint {
+		return grepCursorState{}, errors.New("grep cursor does not belong to this query")
+	}
+	return grepCursorState{Offset: cursor.Offset, Prefix: cursor.Prefix}, nil
+}
+
+func parseGrepCursor(value string) (grepCursor, error) {
+	decoded, err := base64.RawURLEncoding.DecodeString(value)
+	if err != nil {
+		return grepCursor{}, errors.New("grep cursor is invalid")
+	}
+	var cursor grepCursor
+	if err := json.Unmarshal(decoded, &cursor); err != nil || cursor.Version != 3 || cursor.Offset < 0 || strings.TrimSpace(cursor.Fingerprint) == "" ||
+		(cursor.Offset == 0 && cursor.Prefix != "") || (cursor.Offset > 0 && cursor.Prefix == "") {
+		return grepCursor{}, errors.New("grep cursor is invalid")
+	}
+	return cursor, nil
+}
+
+func grepProjectionCursor(request GrepRequest, result SearchResult) (grepCursorState, string, error) {
+	state := grepCursorState{}
+	fingerprint := ""
+	if strings.TrimSpace(request.Cursor) != "" {
+		cursor, err := parseGrepCursor(strings.TrimSpace(request.Cursor))
+		if err != nil {
+			return grepCursorState{}, "", err
+		}
+		state = grepCursorState{Offset: cursor.Offset, Prefix: cursor.Prefix}
+		fingerprint = cursor.Fingerprint
+	}
+	if strings.TrimSpace(result.NextCursor) != "" {
+		cursor, err := parseGrepCursor(strings.TrimSpace(result.NextCursor))
+		if err != nil {
+			return grepCursorState{}, "", fmt.Errorf("grep searcher returned an invalid next cursor: %w", err)
+		}
+		if fingerprint != "" && fingerprint != cursor.Fingerprint {
+			return grepCursorState{}, "", errors.New("grep searcher changed cursor identity within one query")
+		}
+		fingerprint = cursor.Fingerprint
+	}
+	return state, fingerprint, nil
+}
+
+func grepRequestFingerprint(request GrepRequest) string {
+	request.Cursor = ""
+	encoded, _ := json.Marshal(struct {
+		Policy  int         `json:"policy"`
+		Request GrepRequest `json:"request"`
+	}{Policy: grepCommandPolicyVersion, Request: request})
+	digest := sha256.Sum256(encoded)
+	return hex.EncodeToString(digest[:16])
+}
+
+func grepCommandFingerprint(command compiledGrepCommand) string {
+	type stageFingerprint struct {
+		Args          []string       `json:"args"`
+		Paths         []string       `json:"paths"`
+		Mode          grepOutputMode `json:"mode"`
+		ContextBefore int            `json:"context_before"`
+		ContextAfter  int            `json:"context_after"`
+	}
+	stages := make([]stageFingerprint, len(command.stages))
+	for index, stage := range command.stages {
+		stages[index] = stageFingerprint{
+			Args: append([]string(nil), stage.args...), Paths: append([]string(nil), stage.paths...),
+			Mode: stage.mode, ContextBefore: stage.contextBefore, ContextAfter: stage.contextAfter,
+		}
+	}
+	encoded, _ := json.Marshal(struct {
+		Policy int                `json:"policy"`
+		Stages []stageFingerprint `json:"stages"`
+	}{Policy: grepCommandPolicyVersion, Stages: stages})
+	digest := sha256.Sum256(encoded)
+	return hex.EncodeToString(digest[:16])
+}
+
+func advanceGrepPrefix(prefix string, entries []string) string {
+	for _, entry := range entries {
+		hash := sha256.New()
+		_, _ = fmt.Fprintf(hash, "denova-grep-prefix-v1\x00%s\x00%d:", prefix, len(entry))
+		_, _ = hash.Write([]byte(entry))
+		prefix = hex.EncodeToString(hash.Sum(nil)[:16])
+	}
+	return prefix
+}

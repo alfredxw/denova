@@ -1,26 +1,54 @@
-import { act, fireEvent, render, screen } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fetchSettings, updateUserSettings } from './api'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { fetchSettings } from './api'
 import { modelProfilesForEditor, SettingsView, UpdatePanel } from './SettingsView'
+import { MODEL_PROTOCOL_CHAT_COMPLETIONS, MODEL_PROVIDER_OPENAI, modelProfilesWithDefault } from './model-profiles'
+import { terminalCommandsForEditor } from './TerminalCommandsEditor'
 import type { LayeredSettings, UpdateCheckResult, UpdateInstallResult } from './types'
 
-vi.mock('./api', () => ({
-  applyUpdate: vi.fn(),
-  checkForUpdate: vi.fn(),
-  fetchSettings: vi.fn(),
-  installUpdateStream: vi.fn(),
+const { fetchSettingsMock, pingImageProfile, updateUserSettings } = vi.hoisted(() => ({
+  fetchSettingsMock: vi.fn(),
+  pingImageProfile: vi.fn(),
   updateUserSettings: vi.fn(),
 }))
+
+vi.mock('./api', () => {
+  return {
+    GLOBAL_SETTINGS_TARGET: { kind: 'global' },
+    applyUpdate: vi.fn(),
+    checkForUpdate: vi.fn(),
+    fetchModelCatalog: vi.fn().mockResolvedValue({ providers: [], protocols: [] }),
+    fetchSettings: fetchSettingsMock,
+    fetchSettingsTarget: fetchSettingsMock,
+    refreshSettings: fetchSettingsMock,
+    refreshSettingsTarget: fetchSettingsMock,
+    installUpdateStream: vi.fn(),
+    pingImageProfile,
+    pingModelProfile: vi.fn(),
+    revokeAgentApprovalRule: vi.fn(),
+    patchSettings: (_layer: string, changes: unknown, revision?: string) => revision === undefined
+      ? updateUserSettings(changes)
+      : updateUserSettings(changes, revision),
+    patchSettingsTarget: (_target: unknown, _layer: string, changes: unknown, revision?: string) => revision === undefined
+      ? updateUserSettings(changes)
+      : updateUserSettings(changes, revision),
+    createSettingsMergePatch: (_baseline: unknown, draft: unknown) => draft,
+  }
+})
 
 vi.mock('@/features/interactive/api', () => ({
   getInteractiveTellers: vi.fn().mockResolvedValue([]),
 }))
 
+afterEach(() => {
+  vi.useRealTimers()
+})
+
 describe('modelProfilesForEditor', () => {
   it('keeps a newly added blank language model profile visible before the model name is filled', () => {
     const profiles = modelProfilesForEditor({
       model_profiles: [
-        { id: 'default', openai_base_url: 'https://api.example.com/v1', openai_model: 'gpt-4.1', context_window_tokens: 400000 },
+        { id: 'default', base_url: 'https://api.example.com/v1', model: 'gpt-4.1', context_window_tokens: 400000 },
         { context_window_tokens: 400000 },
       ],
     }, {
@@ -36,13 +64,58 @@ describe('modelProfilesForEditor', () => {
   it('keeps an alias-only language model draft visible until it gets a model id', () => {
     const profiles = modelProfilesForEditor({
       model_profiles: [
-        { id: 'default', openai_model: 'gpt-4.1' },
+        { id: 'default', model: 'gpt-4.1' },
         { name: 'Draft model', context_window_tokens: 400000 },
       ],
     }, {})
 
     expect(profiles).toHaveLength(2)
     expect(profiles[1]).toEqual({ name: 'Draft model', context_window_tokens: 400000 })
+  })
+
+  it('keeps legacy endpoints on Chat Completions but delegates explicit provider defaults to the registry', () => {
+    const legacy = modelProfilesWithDefault({
+      openai_base_url: 'https://api.openai.com/v1',
+      openai_model: 'gpt-4.1',
+    })
+    expect(legacy[0]).toMatchObject({
+      provider: MODEL_PROVIDER_OPENAI,
+      protocol: MODEL_PROTOCOL_CHAT_COMPLETIONS,
+    })
+
+    const explicit = modelProfilesWithDefault({
+      openai_base_url: 'https://api.deepseek.com',
+      openai_model: 'deepseek-chat',
+      model_profiles: [{ id: 'default', provider: MODEL_PROVIDER_OPENAI, model: 'gpt-5' }],
+    })
+    expect(explicit[0]).toMatchObject({
+      provider: MODEL_PROVIDER_OPENAI,
+      protocol: '',
+      base_url: '',
+    })
+  })
+})
+
+describe('terminalCommandsForEditor', () => {
+  it('uses the effective presets until the user owns a registry, then preserves the user order', () => {
+    const effective = {
+      terminal_commands: [
+        { id: 'codex', name: 'Codex CLI', command: 'codex', enabled: true },
+        { id: 'claude', name: 'Claude Code', command: 'claude', enabled: true },
+      ],
+    }
+    expect(terminalCommandsForEditor({}, effective).map((command) => command.id)).toEqual(['codex', 'claude'])
+
+    const draft = {
+      terminal_commands: [
+        { id: 'aider', name: 'Aider', command: 'aider', enabled: true },
+        { id: 'codex', name: 'Codex CLI', command: 'codex', enabled: false },
+      ],
+    }
+    const commands = terminalCommandsForEditor(draft, effective)
+    expect(commands.map((command) => command.id)).toEqual(['aider', 'codex'])
+    commands[0].name = 'Changed locally'
+    expect(draft.terminal_commands[0].name).toBe('Aider')
   })
 })
 
@@ -124,6 +197,7 @@ describe('SettingsView debug section', () => {
 describe('SettingsView user scope', () => {
   beforeEach(() => {
     vi.mocked(fetchSettings).mockReset()
+    vi.mocked(pingImageProfile).mockReset()
     vi.mocked(updateUserSettings).mockReset()
   })
 
@@ -144,6 +218,11 @@ describe('SettingsView user scope', () => {
     expect(screen.getByText('自动创建 Git 版本')).toBeInTheDocument()
     expect(screen.queryByText('Agent 大量输出自动保存')).not.toBeInTheDocument()
     expect(screen.getByText('故事舞台行间距')).toBeInTheDocument()
+    expect(screen.getAllByText('网页访问').length).toBeGreaterThan(0)
+    expect(screen.getByLabelText('SearXNG 实例地址')).toBeInTheDocument()
+    expect(screen.getByLabelText('单次搜索结果上限')).toHaveAttribute('max', '20')
+    expect(screen.getByLabelText('搜索服务超时（秒，0 为不限制）')).toHaveAttribute('min', '0')
+    expect(screen.getByLabelText('单次正文字符上限')).toHaveAttribute('max', '262144')
     expect(screen.queryByRole('button', { name: '保存' })).not.toBeInTheDocument()
 
     vi.useFakeTimers()
@@ -155,6 +234,142 @@ describe('SettingsView user scope', () => {
 
     expect(updateUserSettings).toHaveBeenCalledWith(
       expect.objectContaining({ version_timed_interval_minutes: 20 }),
+      'user-rev',
+    )
+  })
+
+  it('uses Developer Mode as the sole Lab switch for the global Trajectory and Harness workspace', async () => {
+    const settings = layeredSettings({ devMode: false })
+    settings.effective = {
+      ...settings.effective,
+      labs: {
+        developer_mode: false,
+        continual_learning_schedule: false,
+        continual_learning_interval_hours: 24,
+        continual_learning_trajectory_cap: 100,
+      },
+    }
+    settings.default = { ...settings.default, labs: settings.effective.labs }
+    settings.global = {
+      ...settings.global,
+      labs: {
+        developer_mode: false,
+        continual_learning_schedule: false,
+        continual_learning_interval_hours: 0,
+        continual_learning_trajectory_cap: 0,
+      },
+    }
+    vi.mocked(fetchSettings).mockResolvedValue(settings)
+    vi.mocked(updateUserSettings).mockResolvedValue(settings)
+
+    render(<SettingsView />)
+
+    const labLabel = await screen.findByText('开发者模式')
+    const labRow = labLabel.closest('.nova-settings-row')
+    expect(labRow).not.toBeNull()
+    const labSection = labRow?.closest('section')
+    const settingsSections = [...document.querySelectorAll('[data-nova-settings-content="true"] section')]
+    expect(labSection).toBe(settingsSections.at(-1))
+    const toggle = within(labRow as HTMLElement).getByRole('combobox')
+    expect(toggle).toHaveTextContent('继承（false）')
+    expect(screen.queryByText('全局 trajectory 读取条数上限')).not.toBeInTheDocument()
+
+    vi.useFakeTimers()
+    fireEvent.click(toggle)
+    fireEvent.click(screen.getByRole('option', { name: '开启' }))
+    const trajectoryCapLabel = screen.getByText('全局 trajectory 读取条数上限')
+    expect(trajectoryCapLabel).toBeInTheDocument()
+    const trajectoryCapRow = trajectoryCapLabel.closest('.nova-settings-row')
+    expect(trajectoryCapRow).not.toBeNull()
+    expect(within(trajectoryCapRow as HTMLElement).getByRole('spinbutton')).toHaveAttribute('placeholder', '100')
+    await act(async () => { await vi.advanceTimersByTimeAsync(1100) })
+
+    expect(updateUserSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ labs: expect.objectContaining({ developer_mode: true }) }),
+      'user-rev',
+    )
+  })
+
+  it('edits preset CLI shortcuts and persists new commands through the shared registry', async () => {
+    const settings = layeredSettings({ devMode: false })
+    vi.mocked(fetchSettings).mockResolvedValue(settings)
+    vi.mocked(updateUserSettings).mockResolvedValue(settings)
+
+    render(<SettingsView />)
+
+    expect(await screen.findByText('CLI 快捷命令')).toBeInTheDocument()
+    expect(await screen.findByText('Codex CLI')).toBeInTheDocument()
+    expect(screen.getByText('Claude Code')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '删除“Codex CLI”' })).toBeInTheDocument()
+
+    vi.useFakeTimers()
+    fireEvent.click(screen.getByRole('button', { name: '添加 CLI 快捷命令' }))
+    const nameInputs = screen.getAllByLabelText('显示名称')
+    const commandInputs = screen.getAllByLabelText('启动命令')
+    fireEvent.change(nameInputs.at(-1)!, { target: { value: 'Aider' } })
+    fireEvent.change(commandInputs.at(-1)!, { target: { value: 'aider --model sonnet' } })
+    fireEvent.click(screen.getByRole('switch', { name: '启用或停用“Aider”' }))
+
+    expect(screen.getByRole('button', { name: '删除“Aider”' })).toBeInTheDocument()
+    await act(async () => { await vi.advanceTimersByTimeAsync(1100) })
+
+    expect(updateUserSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        terminal_commands: expect.arrayContaining([
+          expect.objectContaining({ name: 'Aider', command: 'aider --model sonnet', enabled: true }),
+        ]),
+      }),
+      'user-rev',
+    )
+    vi.useRealTimers()
+  })
+
+  it('tests an image model connection with the current unsaved profile', async () => {
+    const settings = layeredSettings({ devMode: false })
+    settings.user = {
+      image_api_profiles: [{
+        id: 'flux', name: 'Flux Pro', provider: 'openai', openai_base_url: 'https://images.example.com/v1',
+        openai_model: 'flux-pro', default_quality: 'high',
+      }],
+    }
+    settings.effective = { ...settings.effective, ...settings.user }
+    vi.mocked(fetchSettings).mockResolvedValue(settings)
+    vi.mocked(pingImageProfile).mockResolvedValue({
+      ok: true, latency_ms: 42, profile_id: 'flux', provider: 'openai',
+      base_url: 'https://images.example.com/v1', model: 'flux-pro',
+    })
+
+    render(<SettingsView />)
+
+    const fluxTitle = await screen.findByText('Flux Pro')
+    const fluxCard = fluxTitle.parentElement?.parentElement?.parentElement
+    expect(fluxCard).toBeTruthy()
+    await act(async () => { fireEvent.click(within(fluxCard as HTMLElement).getByRole('button', { name: '测试连接' })) })
+
+    await waitFor(() => expect(pingImageProfile).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'flux', openai_model: 'flux-pro', default_quality: 'high',
+    }), expect.any(AbortSignal)))
+    expect(await screen.findByText('连接成功 · openai · 42 ms')).toBeInTheDocument()
+  })
+
+  it('persists an explicitly empty terminal command registry after removing every preset', async () => {
+    const settings = layeredSettings({ devMode: false })
+    vi.mocked(fetchSettings).mockResolvedValue(settings)
+    vi.mocked(updateUserSettings).mockResolvedValue(settings)
+
+    render(<SettingsView />)
+
+    expect(await screen.findByText('CLI 快捷命令')).toBeInTheDocument()
+    const deleteCodex = await screen.findByRole('button', { name: '删除“Codex CLI”' })
+    vi.useFakeTimers()
+    fireEvent.click(deleteCodex)
+    fireEvent.click(screen.getByRole('button', { name: '删除“Claude Code”' }))
+
+    expect(screen.getByText('还没有 CLI 快捷命令。添加后即可从新建菜单快速启动。')).toBeInTheDocument()
+    await act(async () => { await vi.advanceTimersByTimeAsync(1100) })
+
+    expect(updateUserSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ terminal_commands: [] }),
       'user-rev',
     )
   })
@@ -191,6 +406,11 @@ function layeredSettings({ devMode }: { devMode: boolean }): LayeredSettings {
     theme: 'dark',
     update_check_enabled: false,
     llm_input_log_enabled: false,
+    terminal_enabled: true,
+    terminal_commands: [
+      { id: 'codex', name: 'Codex CLI', command: 'codex', enabled: true },
+      { id: 'claude', name: 'Claude Code', command: 'claude', enabled: true },
+    ],
   }
   return {
     default: settings,
@@ -198,6 +418,8 @@ function layeredSettings({ devMode }: { devMode: boolean }): LayeredSettings {
     user: {},
     workspace: {},
     effective: settings,
+    resolved_agent_tool_manifests: {},
+    resolved_agent_contexts: {},
     paths: {
       denova_dir: '/tmp/denova',
       nova_dir: '/tmp/nova',

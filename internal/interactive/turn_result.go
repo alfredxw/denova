@@ -1,6 +1,7 @@
 package interactive
 
 import (
+	interactivestate "denova/internal/interactive/state"
 	"fmt"
 	"strings"
 
@@ -8,45 +9,27 @@ import (
 	"golang.org/x/text/unicode/norm"
 )
 
-const StateOpSourceTurnResult = "turn_result"
-
-const (
-	TurnStateUpdateReplace = "replace"
-	TurnStateUpdateDelta   = "delta"
-	TurnStateUpdateCreate  = "create"
-	TurnStateUpdateArchive = "archive"
-	TurnStateUpdateRestore = "restore"
-
-	maxDirectorUpdateReasonBytes = 1024
-)
-
-// StateUpdate is the small, model-facing state mutation contract. Path is a
-// schema-bound JSON Pointer whose first segment is a stable Actor ID.
-type StateUpdate struct {
-	Op    string `json:"op" jsonschema:"enum=replace,enum=delta,enum=create,enum=archive,enum=restore" jsonschema_description:"状态操作：replace/delta 更新字段，create 新建 Actor，archive/restore 改变 Actor 是否参与运行时状态。"`
-	Path  string `json:"path" jsonschema_description:"以稳定 actor_id 开头的 schema-bound JSON Pointer，例如 /protagonist/生命值。"`
-	Value any    `json:"value" jsonschema_description:"replace/create 的目标值，或 delta 的数值变化量。"`
-}
+const maxDirectorUpdateReasonBytes = 1024
 
 // DirectorUpdateHint is a lightweight post-narrative signal from the Game
 // Agent. It only reports that committed facts materially affect future
 // planning; the Director remains responsible for deciding patch versus replan
 // and which Markdown documents actually need edits.
 type DirectorUpdateHint struct {
-	Needed bool   `json:"needed" jsonschema_description:"仅当本回合让当前目标、阶段、关键关系、重大线索或规划前提发生实质变化时为 true；普通承接必须为 false。"`
-	Reason string `json:"reason,omitempty" jsonschema_description:"needed=true 时简短说明哪些已发生事实影响后续规划；不要提出具体 director.md 改写方案。"`
+	Needed bool   `json:"needed" jsonschema_description:"Set true only when this turn materially changes the current objective, phase, key relationship, major clue, or planning premise. Routine continuation must use false."`
+	Reason string `json:"reason,omitempty" jsonschema_description:"When needed=true, briefly identify which committed facts affect future planning. Do not propose a specific director.md rewrite."`
 }
 
 // TurnResult is the complete hidden result produced by the Game Agent. The
 // backend compiles StateUpdates into replayable StateDelta operations.
 type TurnResult struct {
-	StateUpdates   []StateUpdate       `json:"state_updates"`
-	Choices        []string            `json:"choices"`
-	DirectorUpdate *DirectorUpdateHint `json:"director_update,omitempty"`
+	StateUpdates   []interactivestate.Update `json:"state_updates"`
+	Choices        []string                  `json:"choices"`
+	DirectorUpdate *DirectorUpdateHint       `json:"director_update,omitempty"`
 }
 
 func NormalizeTurnResult(result TurnResult) TurnResult {
-	result.StateUpdates = normalizeTurnStateUpdates(result.StateUpdates)
+	result.StateUpdates = interactivestate.NormalizeUpdates(result.StateUpdates)
 	result.Choices = normalizeChoiceListLimit(result.Choices, MaxStoryChoiceCount+1)
 	result.DirectorUpdate = normalizeDirectorUpdateHint(result.DirectorUpdate)
 	return result
@@ -70,21 +53,21 @@ func validateTurnResult(result TurnResult, configuredChoiceCount int, terminal b
 		return err
 	}
 	for index, update := range result.StateUpdates {
-		if err := validateStateUpdateShape(update); err != nil {
-			return fmt.Errorf("TurnResult state_updates[%d] 无效: %w", index, err)
+		if err := interactivestate.ValidateUpdate(update); err != nil {
+			return fmt.Errorf("TurnResult state_updates[%d] is invalid: %w", index, err)
 		}
 	}
 	if err := validateDirectorUpdateHint(result.DirectorUpdate); err != nil {
-		return fmt.Errorf("TurnResult director_update 无效: %w", err)
+		return fmt.Errorf("TurnResult director_update is invalid: %w", err)
 	}
 	if terminal {
 		if len(result.Choices) != 0 {
-			return fmt.Errorf("明确终局的 TurnResult choices 必须为空")
+			return fmt.Errorf("TurnResult choices must be empty for an explicitly terminal turn")
 		}
 		return nil
 	}
 	if len(result.Choices) != choiceCount {
-		return fmt.Errorf("TurnResult choices 必须提供恰好 %d 个不同的行动建议", choiceCount)
+		return fmt.Errorf("TurnResult choices must contain exactly %d distinct action suggestions", choiceCount)
 	}
 	return nil
 }
@@ -108,13 +91,13 @@ func validateDirectorUpdateHint(hint *DirectorUpdateHint) error {
 		return nil
 	}
 	if !hint.Needed {
-		return fmt.Errorf("needed=false 时应省略 director_update")
+		return fmt.Errorf("omit director_update when needed=false")
 	}
 	if strings.TrimSpace(hint.Reason) == "" {
-		return fmt.Errorf("needed=true 时 reason 不能为空")
+		return fmt.Errorf("reason must be non-empty when needed=true")
 	}
 	if len([]byte(hint.Reason)) > maxDirectorUpdateReasonBytes {
-		return fmt.Errorf("reason 超过 %d bytes", maxDirectorUpdateReasonBytes)
+		return fmt.Errorf("reason exceeds %d bytes", maxDirectorUpdateReasonBytes)
 	}
 	return nil
 }
@@ -134,39 +117,6 @@ func normalizeTurnResultPointer(result *TurnResult, configuredChoiceCount int, t
 		return nil
 	}
 	return &normalized
-}
-
-func normalizeTurnStateUpdates(updates []StateUpdate) []StateUpdate {
-	if updates == nil {
-		return []StateUpdate{}
-	}
-	result := make([]StateUpdate, len(updates))
-	for index, update := range updates {
-		update.Op = strings.ToLower(strings.TrimSpace(update.Op))
-		update.Path = strings.TrimSpace(update.Path)
-		result[index] = update
-	}
-	return result
-}
-
-func validateStateUpdateShape(update StateUpdate) error {
-	switch update.Op {
-	case TurnStateUpdateReplace, TurnStateUpdateDelta, TurnStateUpdateCreate, TurnStateUpdateArchive, TurnStateUpdateRestore:
-	default:
-		return fmt.Errorf("op 必须是 replace、delta、create、archive 或 restore")
-	}
-	if !strings.HasPrefix(update.Path, "/") || update.Path == "/" {
-		return fmt.Errorf("path 必须是以 / 开头的非空 JSON Pointer")
-	}
-	if update.Value == nil {
-		return fmt.Errorf("value 不能为空")
-	}
-	if update.Op == TurnStateUpdateDelta {
-		if _, ok := actorStateNumber(update.Value); !ok {
-			return fmt.Errorf("delta 的 value 必须是 number")
-		}
-	}
-	return nil
 }
 
 func normalizedChoiceKey(value string) string {

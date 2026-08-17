@@ -1,20 +1,22 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
-import { Loader2, MessageSquarePlus } from 'lucide-react'
+import { Loader2, Plus } from 'lucide-react'
 import type { Editor } from '@tiptap/react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { InlineCommentThread } from '@/components/review/InlineCommentThread'
-import type { CreateDocumentCommentRequest, DocumentReviewAnchor, DocumentReviewComment } from '@/features/document-review/types'
+import type { CreateDocumentCommentRequest, DocumentReviewAnchor, DocumentReviewComment, DocumentReviewTarget } from '@/features/document-review/types'
+import { withErrorLogID } from '@/lib/api-client'
 import {
-  captureDocumentReviewSelection,
   commentWidgetPosition,
-  createDocumentReviewAnchor,
+  documentReviewAnchorKey,
   type DocumentReviewSnapshot,
   type EditorReviewRange,
 } from './documentReviewAnchors'
+import { richMarkdownReviewAdapter, type DocumentReviewAnchorAdapter } from './documentReviewAdapter'
 import { documentReviewKeysFromElement, documentReviewPluginKey, type DocumentReviewDecoration, type DocumentReviewDecorationState, type DocumentReviewPortalTarget } from './documentReviewDecorations'
 import { documentReviewRangeAtCoordinates } from './documentReviewHover'
+import './document-review.css'
 
 export interface DocumentReviewAnnotationsHandle {
   startSelectionComment: () => void
@@ -23,11 +25,14 @@ export interface DocumentReviewAnnotationsHandle {
 
 interface DocumentReviewAnnotationsProps {
   editor: Editor
-  fileName: string
+  target: DocumentReviewTarget
+  resourceLabel: string
   containerRef: RefObject<HTMLDivElement | null>
   comments: DocumentReviewComment[]
   decorationStateRef: { current: DocumentReviewDecorationState }
   portalTargets: DocumentReviewPortalTarget[]
+  anchorAdapter?: DocumentReviewAnchorAdapter
+  enableBlockComments?: boolean
   onPrepareSnapshot: () => Promise<DocumentReviewSnapshot>
   onCreate: (request: CreateDocumentCommentRequest) => Promise<DocumentReviewComment>
   onUpdate: (comment: DocumentReviewComment, body: string) => Promise<DocumentReviewComment>
@@ -51,14 +56,21 @@ interface AnnotationGroup {
   draft?: DraftComment
 }
 
+const QUICK_ACTION_WIDTH_PX = 28
+const QUICK_ACTION_EDGE_GAP_PX = 8
+const QUICK_ACTION_REVEAL_MARGIN_PX = 8
+
 /** Renders durable comments into ProseMirror widget hosts without changing Markdown. */
 export const DocumentReviewAnnotations = forwardRef<DocumentReviewAnnotationsHandle, DocumentReviewAnnotationsProps>(function DocumentReviewAnnotations({
   editor,
-  fileName,
+  target,
+  resourceLabel,
   containerRef,
   comments,
   decorationStateRef,
   portalTargets,
+  anchorAdapter = richMarkdownReviewAdapter,
+  enableBlockComments = true,
   onPrepareSnapshot,
   onCreate,
   onUpdate,
@@ -78,7 +90,7 @@ export const DocumentReviewAnnotations = forwardRef<DocumentReviewAnnotationsHan
     if (preparing) return
     const request = ++preparationRequestRef.current
     console.debug('[DocumentReviewAnnotations.startDraft] preparing document comment anchor', {
-      fileName,
+      target,
       kind: range.kind,
       editorFrom: range.from,
       editorTo: range.to,
@@ -86,26 +98,26 @@ export const DocumentReviewAnnotations = forwardRef<DocumentReviewAnnotationsHan
     setPreparing(true)
     setQuickAction(null)
     try {
-      const selection = captureDocumentReviewSelection(editor, range)
+      const selection = anchorAdapter.captureSelection(editor, range)
       const snapshot = await onPrepareSnapshot()
       if (request !== preparationRequestRef.current) return
-      const anchor = createDocumentReviewAnchor(editor, snapshot, selection)
+      const anchor = anchorAdapter.createAnchor(editor, snapshot, selection)
       console.debug('[DocumentReviewAnnotations.startDraft] document comment anchor prepared', {
-        fileName,
+        target,
         revision: anchor.revision,
         byteStart: anchor.start,
         byteEnd: anchor.end,
       })
       // 草稿与创建后的评论共用同一分组 key：提交时 widget 宿主与 Portal 原地复用，避免闪一下
-      setDraft({ ...range, anchor, key: documentCommentAnchorKey(anchor), body: '', submitting: false })
+      setDraft({ ...range, anchor, key: documentReviewAnchorKey(anchor), body: '', submitting: false })
     } catch (error) {
       if (request !== preparationRequestRef.current) return
-      console.error('准备正文审阅评论失败:', error instanceof Error ? error.message : String(error), { fileName, error })
-      toast.error(t('editor.review.prepareFailed'))
+      console.error('准备文本资源审阅评论失败:', error instanceof Error ? error.message : String(error), { target, error })
+      toast.error(withErrorLogID(t('editor.review.prepareFailed'), error))
     } finally {
       if (request === preparationRequestRef.current) setPreparing(false)
     }
-  }, [editor, fileName, onPrepareSnapshot, preparing, t])
+  }, [anchorAdapter, editor, onPrepareSnapshot, preparing, t, target])
 
   const startSelectionComment = useCallback(() => {
     const { from, to } = editor.state.selection
@@ -138,7 +150,7 @@ export const DocumentReviewAnnotations = forwardRef<DocumentReviewAnnotationsHan
     return () => {
       preparationRequestRef.current += 1
     }
-  }, [fileName])
+  }, [anchorAdapter.coordinateSpace, target.kind, target.id, target.kind === 'lore_item' ? target.field : ''])
 
   const toggleExpandedComments = useCallback((keys: readonly string[]) => {
     setExpandedKeys((current) => {
@@ -153,8 +165,12 @@ export const DocumentReviewAnnotations = forwardRef<DocumentReviewAnnotationsHan
       return next
     })
   }, [])
-  const groups = useMemo(() => buildGroups(editor, comments, draft, expandedKeys), [comments, draft, editor, expandedKeys])
+  const groups = useMemo(
+    () => buildGroups(editor, comments, draft, expandedKeys, anchorAdapter),
+    [anchorAdapter, comments, draft, editor, expandedKeys],
+  )
   const decorationLayoutKey = JSON.stringify(groups.map((group) => [
+    anchorAdapter.coordinateSpace,
     group.key,
     group.outdated ? null : group.range.from,
     group.outdated ? null : group.range.to,
@@ -167,6 +183,7 @@ export const DocumentReviewAnnotations = forwardRef<DocumentReviewAnnotationsHan
       key: decorationLayoutKey,
       decorations: groups.map((group) => ({
         key: group.key,
+        coordinateSpace: anchorAdapter.coordinateSpace,
         from: group.outdated ? undefined : group.range.from,
         to: group.outdated ? undefined : group.range.to,
         widgetPos: group.range.widgetPos,
@@ -225,7 +242,10 @@ export const DocumentReviewAnnotations = forwardRef<DocumentReviewAnnotationsHan
   }, [editor, expandedKeys, portalTargets, revealSignal])
 
   useEffect(() => {
-    if (draft || preparing) return
+    if (!enableBlockComments || draft || preparing) {
+      setQuickAction(null)
+      return
+    }
     const container = containerRef.current
     if (!container) return
     const onPointerMove = (event: PointerEvent) => {
@@ -239,16 +259,28 @@ export const DocumentReviewAnnotations = forwardRef<DocumentReviewAnnotationsHan
         setQuickAction(null)
         return
       }
+      const containerRect = container.getBoundingClientRect()
+      const editorRect = editor.view.dom.getBoundingClientRect()
+      const left = Math.max(
+        4,
+        Math.min(
+          container.clientWidth - QUICK_ACTION_WIDTH_PX - 4,
+          editorRect.right - containerRect.left + QUICK_ACTION_EDGE_GAP_PX,
+        ),
+      )
+      const viewportLeft = containerRect.left + left - container.scrollLeft
+      if (event.clientX < viewportLeft - QUICK_ACTION_REVEAL_MARGIN_PX
+        || event.clientX > viewportLeft + QUICK_ACTION_WIDTH_PX + QUICK_ACTION_REVEAL_MARGIN_PX) {
+        setQuickAction(null)
+        return
+      }
       const range = documentReviewRangeAtCoordinates(editor, event.clientX, event.clientY)
       if (!range) {
         setQuickAction(null)
         return
       }
-      const containerRect = container.getBoundingClientRect()
-      const editorRect = editor.view.dom.getBoundingClientRect()
       const line = editor.view.coordsAtPos(range.from)
       const top = (line.top + line.bottom) / 2 - containerRect.top + container.scrollTop - 12
-      const left = Math.max(4, Math.min(container.clientWidth - 32, editorRect.right - containerRect.left + 8))
       setQuickAction((current) => {
         if (current?.range.from === range.from
           && current.range.to === range.to
@@ -275,18 +307,18 @@ export const DocumentReviewAnnotations = forwardRef<DocumentReviewAnnotationsHan
       document.removeEventListener('pointermove', clearOutsideContainer, true)
       resizeObserver?.disconnect()
     }
-  }, [containerRef, draft, editor, preparing])
+  }, [containerRef, draft, editor, enableBlockComments, preparing])
 
   const submitDraft = async () => {
     if (!draft || !draft.body.trim()) return
     setDraft((current) => current ? { ...current, submitting: true } : current)
     try {
-      const created = await onCreate({ path: fileName, body: draft.body.trim(), anchor: draft.anchor })
+      const created = await onCreate({ target, body: draft.body.trim(), anchor: draft.anchor })
       setExpandedKeys((current) => new Set(current).add(documentCommentGroupKey(created)))
       setDraft(null)
     } catch (error) {
-      console.error('创建正文审阅评论失败', { fileName, error })
-      toast.error(t('editor.review.createFailed'))
+      console.error('创建文本资源审阅评论失败', { target, error })
+      toast.error(withErrorLogID(t('editor.review.createFailed'), error))
       setDraft((current) => current ? { ...current, submitting: false } : current)
     }
   }
@@ -299,15 +331,14 @@ export const DocumentReviewAnnotations = forwardRef<DocumentReviewAnnotationsHan
         <button
           type="button"
           data-document-review-quick-action
-          className="absolute z-20 flex h-6 w-7 items-center justify-center rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-muted)] shadow-md transition-colors hover:border-[var(--nova-border-strong)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] disabled:cursor-wait disabled:opacity-70"
+          className="absolute z-20 flex h-6 w-7 items-center justify-center rounded-md border-0 bg-transparent p-0 text-[var(--nova-text-faint)] shadow-none outline-none transition-[color,background-color,transform] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] focus-visible:bg-[var(--nova-hover)] focus-visible:text-[var(--nova-text)] active:scale-95 disabled:cursor-wait disabled:opacity-70"
           style={{ top: quickAction.top, left: quickAction.left }}
           aria-label={t('editor.review.commentCurrentLine')}
-          title={t('editor.review.commentCurrentLine')}
           disabled={preparing}
           onPointerDown={(event) => event.preventDefault()}
           onClick={() => { void startDraft(quickAction.range) }}
         >
-          {preparing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MessageSquarePlus className="h-3.5 w-3.5" />}
+          {preparing ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-4" />}
         </button>
       )}
       {groups.map((group) => {
@@ -329,15 +360,15 @@ export const DocumentReviewAnnotations = forwardRef<DocumentReviewAnnotationsHan
               } : undefined}
               onUpdate={async (comment, body) => {
                 try { await onUpdate(comment, body) } catch (error) {
-                  console.error('更新正文审阅评论失败', { fileName, commentID: comment.id, error })
-                  toast.error(t('editor.review.updateFailed'))
+                  console.error('更新文本资源审阅评论失败', { target, resourceLabel, commentID: comment.id, error })
+                  toast.error(withErrorLogID(t('editor.review.updateFailed'), error))
                   throw error
                 }
               }}
               onDelete={async (comment) => {
                 try { await onDelete(comment) } catch (error) {
-                  console.error('删除正文审阅评论失败', { fileName, commentID: comment.id, error })
-                  toast.error(t('editor.review.deleteFailed'))
+                  console.error('删除文本资源审阅评论失败', { target, resourceLabel, commentID: comment.id, error })
+                  toast.error(withErrorLogID(t('editor.review.deleteFailed'), error))
                   throw error
                 }
               }}
@@ -359,13 +390,20 @@ export const DocumentReviewAnnotations = forwardRef<DocumentReviewAnnotationsHan
   )
 })
 
-function buildGroups(editor: Editor, comments: DocumentReviewComment[], draft: DraftComment | null, expandedKeys: ReadonlySet<string>): AnnotationGroup[] {
+function buildGroups(
+  editor: Editor,
+  comments: DocumentReviewComment[],
+  draft: DraftComment | null,
+  expandedKeys: ReadonlySet<string>,
+  anchorAdapter: DocumentReviewAnchorAdapter,
+): AnnotationGroup[] {
   const groups = new Map<string, AnnotationGroup>()
   for (const comment of comments) {
     const key = documentCommentGroupKey(comment)
-    const mappedRange = mappedCommentRange(editor, key)
-    const from = mappedRange?.from ?? comment.anchor.editor_from ?? 0
-    const to = mappedRange?.to ?? comment.anchor.editor_to ?? 0
+    const mappedRange = mappedCommentRange(editor, key, anchorAdapter.coordinateSpace)
+    const resolvedRange = mappedRange ?? anchorAdapter.resolveRange(editor, comment.anchor)
+    const from = resolvedRange?.from ?? 0
+    const to = resolvedRange?.to ?? 0
     const displayQuote = comment.anchor.display_quote || comment.anchor.quote
     const visibleQuote = from > 0 && to > from && to <= editor.state.doc.content.size
       ? editor.state.doc.textBetween(from, to, '\n').trim()
@@ -398,18 +436,17 @@ function buildGroups(editor: Editor, comments: DocumentReviewComment[], draft: D
 }
 
 function documentCommentGroupKey(comment: DocumentReviewComment): string {
-  return documentCommentAnchorKey(comment.anchor)
+  return documentReviewAnchorKey(comment.anchor)
 }
 
-function documentCommentAnchorKey(anchor: DocumentReviewAnchor): string {
-  return `comment:${anchor.revision}:${anchor.start}:${anchor.end}`
-}
-
-function mappedCommentRange(editor: Editor, key: string): { from: number; to: number } | null {
+function mappedCommentRange(editor: Editor, key: string, coordinateSpace: string): { from: number; to: number } | null {
   const decorations = documentReviewPluginKey.getState(editor.state)?.find(
     0,
     editor.state.doc.content.size,
-    (spec) => Array.isArray(spec.documentReviewKeys) && spec.documentReviewKeys.includes(key) && spec.kind === 'highlight',
+    (spec) => Array.isArray(spec.documentReviewKeys)
+      && spec.documentReviewKeys.includes(key)
+      && spec.documentReviewCoordinateSpace === coordinateSpace
+      && spec.kind === 'highlight',
   )
   const highlights = decorations?.filter((decoration) => decoration.to > decoration.from) ?? []
   if (!highlights.length) return null

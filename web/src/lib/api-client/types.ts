@@ -1,32 +1,116 @@
 // MessageItem render model. Agent API/history/stream payloads use AgentUIMessage;
-// this shape remains for the render adapter and local legacy interactive state.
-export interface ChatMessage {
+// this shape remains private to the presentation adapter. Role-specific payloads
+// are kept on a discriminated union so invalid message combinations fail during
+// development instead of silently reaching a renderer.
+export type ChatMessageStatus = 'running' | 'success' | 'error'
+export type ChatPlanAction = 'approved' | 'continue' | 'exited'
+export type InteractiveImageStatus = ChatMessageStatus
+
+export type ToolPresentationKind =
+  | 'generic'
+  | 'file'
+  | 'search'
+  | 'terminal'
+  | 'web'
+  | 'browser'
+  | 'image'
+  | 'interactive_media'
+  | 'todo'
+  | 'interaction'
+  | 'delegation'
+  | 'script'
+
+export interface ToolPresentation {
+  call: ToolPresentationKind
+  result: ToolPresentationKind
+}
+
+interface ChatMessageBase {
   type?: 'message' | 'clear'
-  role?: 'user' | 'assistant' | 'thinking' | 'tool_call' | 'tool_result' | 'rule_roll' | 'context_compaction' | 'token_usage' | 'plan_question' | 'proposed_plan' | 'system' | 'error'
   content?: string
   id?: string
   render_key?: string
   streaming_target_content?: string
   turn_id?: string
   navigation_turn_id?: string
+  run_id?: string
+  display_segment_id?: string
+  display_phase?: 'candidate' | 'progress' | 'final' | 'partial'
+  agent_kind?: string
+  agent_name?: string
+  root_agent_name?: string
+  run_path?: string[]
+  subagent?: boolean
+  subagent_session_id?: string
+  subagent_type?: string
+	parent_call_id?: string
+  streaming?: boolean
+  created_at?: string
+  tool_presentation?: ToolPresentation
+  turn_versions?: { turn_id: string; ts: string; current?: boolean }[]
+  turn_version_index?: number
+}
+
+export interface UserChatMessage extends ChatMessageBase {
+  role: 'user'
+  user_references?: UserMessageReference[]
+}
+
+export interface AssistantChatMessage extends ChatMessageBase {
+  role: 'assistant'
+  interactive_image?: InteractiveImage
+  interactive_images?: InteractiveImage[]
+  interactive_image_error?: InteractiveImageError
+  interactive_image_status?: InteractiveImageStatus
+}
+
+export interface ThinkingChatMessage extends ChatMessageBase {
+  role: 'thinking'
+}
+
+interface ToolChatMessageBase extends ChatMessageBase {
   name?: string
-  args?: string
-  status?: 'running' | 'success' | 'error'
   result?: string
+  status?: ChatMessageStatus
   illustration?: ChapterIllustration
   interactive_image?: InteractiveImage
   interactive_images?: InteractiveImage[]
   interactive_image_error?: InteractiveImageError
-  interactive_image_status?: 'running' | 'success' | 'error'
+  interactive_image_status?: InteractiveImageStatus
+}
+
+export interface ToolCallChatMessage extends ToolChatMessageBase {
+  role: 'tool_call'
+  args?: string
+  ask?: AgentAskInteraction
+}
+
+export interface ToolResultChatMessage extends ToolChatMessageBase {
+  role: 'tool_result'
+}
+
+export interface AskChatMessage extends ChatMessageBase {
+  role: 'ask'
+  ask?: AgentAskInteraction
+  status?: ChatMessageStatus
+}
+
+export interface RuleRollChatMessage extends ChatMessageBase {
+  role: 'rule_roll'
   rule_roll?: PublicRuleRoll
+}
+
+export interface ContextCompactionChatMessage extends ChatMessageBase {
+  role: 'context_compaction'
+  status?: ChatMessageStatus
   phase?: string
   attempt?: number
   tokens_before?: number
   tokens_after?: number
-	projected_tokens_before?: number
-	projected_tokens_after?: number
-	reserved_completion_tokens?: number
-	reserved_tool_result_tokens?: number
+  projected_tokens_before?: number
+  projected_tokens_after?: number
+  reserved_completion_tokens?: number
+  reserved_tool_result_tokens?: number
   context_window_tokens?: number
   threshold?: number
   target_ratio?: number
@@ -35,18 +119,10 @@ export interface ChatMessage {
   message_count_before?: number
   message_count_after?: number
   skipped_reason?: string
-  run_id?: string
-  agent_kind?: string
-  agent_name?: string
-  root_agent_name?: string
-  run_path?: string[]
-  subagent?: boolean
-  subagent_session_id?: string
-  subagent_type?: string
-  sse_hidden_fields?: string[]
-  sse_hidden_reason?: string
-  sse_display_notice?: string
-  sse_generated_chars?: number
+}
+
+export interface TokenUsageChatMessage extends ChatMessageBase {
+  role: 'token_usage'
   prompt_tokens?: number
   cached_prompt_tokens?: number
   uncached_prompt_tokens?: number
@@ -57,13 +133,108 @@ export interface ChatMessage {
   model_calls?: number
   generated_bytes?: number
   usage_calls?: TokenUsageCall[]
-  streaming?: boolean
+}
+
+export interface ProposedPlanChatMessage extends ChatMessageBase {
+  role: 'proposed_plan'
+  status?: ChatMessageStatus
   thinking_preview?: string
-  plan_action?: 'answered' | 'approved' | 'continue' | 'exited'
+  plan_action?: ChatPlanAction
+}
+
+export interface SystemChatMessage extends ChatMessageBase {
+  role: 'system'
+}
+
+export interface ErrorChatMessage extends ChatMessageBase {
+  role: 'error'
+}
+
+export type ChatMessage =
+  | UserChatMessage
+  | AssistantChatMessage
+  | ThinkingChatMessage
+  | ToolCallChatMessage
+  | ToolResultChatMessage
+  | AskChatMessage
+  | RuleRollChatMessage
+  | ContextCompactionChatMessage
+  | TokenUsageChatMessage
+  | ProposedPlanChatMessage
+  | SystemChatMessage
+  | ErrorChatMessage
+
+export interface AgentAskOption {
+  id: string
+  label: string
+  description?: string
+}
+
+export interface AgentAskQuestion {
+  id: string
+  question: string
+  options?: AgentAskOption[]
+  multi_select?: boolean
+  recommended_option_id?: string
+}
+
+export interface AgentAskAnswer {
+  question_id: string
+  selected_option_ids?: string[]
+  custom_input?: string
+}
+
+export interface AgentAskSelectedOption {
+  id: string
+  label: string
+}
+
+export interface AgentAskAnswerResult {
+  question_id: string
+  question: string
+  selected_options?: AgentAskSelectedOption[]
+  custom_input?: string
+}
+
+export interface AgentToolApprovalPresentation {
+  mode: 'ask' | 'write' | 'full_access' | string
+  tool_name: string
+  command?: string
+  details?: string
+  cwd?: string
+  risk: 'low' | 'medium' | 'high' | 'critical' | string
+  rule_id: string
+  args_hash: string
+  can_remember?: boolean
+  rule_matcher_version?: number
+  rule_command_key?: string
+  rule_command_pattern?: string
+}
+
+export interface AgentAskInteraction {
+  schema: 'ask.pending.v1' | string
+  id: string
+  kind?: 'question' | 'tool_approval' | string
+  tool_call_id: string
+  provider_call_id?: string
+  task_id?: string
+  agent_kind: string
+  status: 'pending' | 'answered' | 'cancelled'
+  questions: AgentAskQuestion[]
+  allow_other?: boolean
+  approval?: AgentToolApprovalPresentation
+  answers?: AgentAskAnswerResult[]
+  cancel_reason?: string
   created_at?: string
-  turn_versions?: { turn_id: string; ts: string; current?: boolean }[]
-  turn_version_index?: number
-  user_references?: UserMessageReference[]
+  resolved_at?: string
+}
+
+export interface AgentAskResolution {
+  schema: 'ask.result.v1'
+  id: string
+  status: 'answered' | 'cancelled'
+  answers?: AgentAskAnswerResult[]
+  cancel_reason?: string
 }
 
 export interface UserMessageReference {
@@ -209,6 +380,25 @@ export interface AgentRunTraceSummary {
   mutations?: number
   verification_status?: string
   recoverable?: boolean
+  content_captured?: boolean
+}
+
+export interface GlobalAgentRunTraceSummary extends AgentRunTraceSummary {
+  project_id: string
+  project_name: string
+  session_title?: string
+  trajectory_uri: string
+}
+
+export interface GlobalAgentRunTraceIssue {
+  project_id: string
+  project_name: string
+  message: string
+}
+
+export interface GlobalAgentRunTraceCatalog {
+  runs: GlobalAgentRunTraceSummary[]
+  issues: GlobalAgentRunTraceIssue[]
 }
 
 export interface AgentRunTraceRecord {
@@ -273,32 +463,14 @@ export interface ContextAnalysis {
 }
 
 export interface SSEEvent {
+  /** Durable streams use the SSE id as their replay cursor. */
+  id?: string
   event: string
   data: string
 }
 
-export interface FileOperationResult {
-  path: string
-  message: string
-}
-
-export interface CreateFileRequest {
-  path: string
-  type: 'file' | 'dir'
-  content?: string
-}
-
-export interface CopyMoveRequest {
-  from: string
-  to: string
-}
-
-export interface RenameRequest {
-  path: string
-  new_name: string
-}
-
 export interface BookRecord {
+  project_id: string
   name: string
   path: string
   author: string
@@ -386,6 +558,7 @@ export interface WorkspaceReplaceResult {
 }
 
 export interface CharacterCardImportResult {
+  project_id?: string
   name: string
   target_path: string
   entry_count: number
@@ -674,6 +847,8 @@ export interface SkillScopeInfo {
 export interface SkillSummary {
   name: string
   description: string
+  category?: string
+  capabilities?: string[]
   context?: string
   agent?: string
   model?: string
@@ -682,6 +857,11 @@ export interface SkillSummary {
   editable: boolean
   active: boolean
   updated_at?: string
+}
+
+export interface SkillCreateMetadata {
+  category?: string
+  capabilities?: string[]
 }
 
 export interface SkillFile {
@@ -731,10 +911,7 @@ export type LoreItemInput = Omit<LoreItem, 'created_at' | 'updated_at' | 'proven
 
 type AutomationScope = 'user' | 'workspace'
 type AutomationTemplate = 'memory_consolidation' | 'review' | 'continue_writing' | 'custom_prompt'
-type AutomationWritePolicy = 'read_only' | 'allow_lore_write' | 'allow_file_write' | 'allow_lore_and_file_write'
-type AutomationWriteMode = 'read_only' | 'confirm_write' | 'auto_write'
-type AutomationWriteScope = 'none' | 'lore' | 'file' | 'lore_and_file'
-type AutomationOutputPolicy = 'run_record_only' | 'optional_file'
+export type AutomationSessionStrategy = 'per_run' | 'per_task'
 type AutomationScheduleKind = 'manual' | 'daily' | 'weekly' | 'monthly' | 'every_hours'
 export type AutomationTriggerType = 'manual' | 'schedule' | 'semantic' | 'chapter_batch'
 type AutomationActionPolicy = 'confirm' | 'auto_run' | 'notify_only'
@@ -744,7 +921,7 @@ type AutomationInboxPurpose = 'trigger' | 'write_confirmation'
 
 export interface AutomationExecutionTarget {
   kind: 'user' | 'workspace'
-  workspace_id?: string
+  project_id?: string
   workspace?: string
 }
 
@@ -780,12 +957,19 @@ interface AutomationTriggerState {
 export interface AutomationRunRecord {
   id: string
   task_id: string
+  task_revision?: string
   session_id?: string
+  session_strategy?: AutomationSessionStrategy
+  turn_id?: string
+  project_id?: string
   scope: AutomationScope
   workspace?: string
   trigger: 'manual' | 'schedule' | 'condition' | 'inbox_confirmation' | 'write_confirmation'
   source_run_id?: string
   trigger_evidence?: AutomationTriggerEvidence[]
+  runtime_command_id?: string
+  runtime_operation_id?: string
+  runtime_receipt_cursor?: number
   status: 'running' | 'success' | 'failed' | 'aborted'
   started_at: string
   finished_at?: string
@@ -810,11 +994,7 @@ export interface AutomationTask {
   triggers: AutomationTriggerDefinition[]
   default_action_policy: AutomationActionPolicy
   trigger_state?: Record<string, AutomationTriggerState>
-  write_policy?: AutomationWritePolicy
-  write_mode: AutomationWriteMode
-  write_scope: AutomationWriteScope
-  output_policy: AutomationOutputPolicy
-  output_path: string
+  session_strategy: AutomationSessionStrategy
   last_run?: AutomationRunRecord
   recent_runs: AutomationRunRecord[]
   created_at?: string
@@ -831,11 +1011,11 @@ export type AutomationTaskUpdate = Pick<AutomationTask,
   | 'schedule'
   | 'triggers'
   | 'default_action_policy'
-  | 'write_mode'
-  | 'write_scope'
-  | 'output_policy'
-  | 'output_path'
+  | 'session_strategy'
 >
+
+/** Complete caller-owned creation input; scheduler/runtime fields cannot cross this seam. */
+export type AutomationTaskDefinition = AutomationTaskUpdate & Pick<AutomationTask, 'scope' | 'target'>
 
 export type AutomationTaskTemplateDefaults = Pick<AutomationTask,
   | 'enabled'
@@ -846,10 +1026,7 @@ export type AutomationTaskTemplateDefaults = Pick<AutomationTask,
   | 'schedule'
   | 'triggers'
   | 'default_action_policy'
-  | 'write_mode'
-  | 'write_scope'
-  | 'output_policy'
-  | 'output_path'
+  | 'session_strategy'
 >
 
 export interface AutomationTaskTemplate {
@@ -878,12 +1055,14 @@ export interface AutomationInboxItem {
   trigger_id: string
   purpose?: AutomationInboxPurpose
   scope: AutomationScope
+  project_id?: string
   workspace?: string
   status: AutomationInboxStatus
   action_policy: AutomationActionPolicy
   notify_policy: AutomationNotifyPolicy
   title: string
   summary: string
+  action_error?: string
   evidence: AutomationTriggerEvidence[]
   fingerprint: string
   run_id?: string

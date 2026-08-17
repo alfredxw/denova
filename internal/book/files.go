@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 )
 
 // ErrFileRevisionConflict 表示保存时文件已被其他来源更新，调用方应重新读取后再写入。
@@ -22,12 +23,19 @@ type FileNode struct {
 
 // Service 提供作品工作区文件管理能力。
 type Service struct {
-	workspace string
+	workspace           string
+	summaryMu           sync.Mutex
+	chapters            map[string]cachedChapterSummary
+	invalidatedChapters map[string]struct{}
 }
 
 // NewService 创建作品文件服务。
 func NewService(workspace string) *Service {
-	return &Service{workspace: workspace}
+	return &Service{
+		workspace:           workspace,
+		chapters:            make(map[string]cachedChapterSummary),
+		invalidatedChapters: make(map[string]struct{}),
+	}
 }
 
 // Workspace 返回当前作品工作目录。
@@ -91,7 +99,11 @@ func (s *Service) WriteBinaryFile(relPath string, data []byte) error {
 	if err := os.MkdirAll(filepath.Dir(absPath), 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(absPath, data, 0o644)
+	if err := os.WriteFile(absPath, data, 0o644); err != nil {
+		return err
+	}
+	s.InvalidateSummary([]string{relPath}, false)
+	return nil
 }
 
 // WriteFileIfRevision 写入文件；expectedRevision 非空时，只有文件仍处于该版本才允许写入。
@@ -115,6 +127,7 @@ func (s *Service) WriteFileIfRevision(relPath, content, expectedRevision string)
 	if err := os.WriteFile(absPath, []byte(content), 0o644); err != nil {
 		return "", err
 	}
+	s.InvalidateSummary([]string{relPath}, false)
 	return contentRevision([]byte(content)), nil
 }
 
@@ -140,12 +153,20 @@ func (s *Service) Create(relPath, itemType, content string) error {
 	}
 
 	if itemType == "dir" {
-		return os.MkdirAll(absPath, 0o755)
+		if err := os.MkdirAll(absPath, 0o755); err != nil {
+			return err
+		}
+		s.InvalidateSummary([]string{relPath}, false)
+		return nil
 	}
 	if err := os.MkdirAll(filepath.Dir(absPath), 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(absPath, []byte(content), 0o644)
+	if err := os.WriteFile(absPath, []byte(content), 0o644); err != nil {
+		return err
+	}
+	s.InvalidateSummary([]string{relPath}, false)
+	return nil
 }
 
 // Delete 直接删除 workspace 内文件或目录；恢复依赖 Nova 版本历史。
@@ -158,14 +179,24 @@ func (s *Service) Delete(relPath string) error {
 	if err != nil {
 		return err
 	}
-	info, err := os.Stat(absPath)
+	// Lstat keeps a symbolic-link leaf as the deletion target instead of
+	// following it. RemoveAll likewise removes the link, not its destination.
+	info, err := os.Lstat(absPath)
 	if err != nil {
 		return err
 	}
 	if info.IsDir() {
-		return os.RemoveAll(absPath)
+		if err := os.RemoveAll(absPath); err != nil {
+			return err
+		}
+		s.InvalidateSummary([]string{relPath}, false)
+		return nil
 	}
-	return os.Remove(absPath)
+	if err := os.Remove(absPath); err != nil {
+		return err
+	}
+	s.InvalidateSummary([]string{relPath}, false)
+	return nil
 }
 
 // Rename 重命名同目录下的文件或目录，并返回新相对路径。
@@ -187,8 +218,9 @@ func (s *Service) Rename(relPath, newName string) (string, error) {
 	if err := os.Rename(from, to); err != nil {
 		return "", err
 	}
-
-	return filepath.ToSlash(filepath.Join(filepath.Dir(relPath), newName)), nil
+	toRel := filepath.ToSlash(filepath.Join(filepath.Dir(relPath), newName))
+	s.InvalidateSummary([]string{relPath, toRel}, false)
+	return toRel, nil
 }
 
 // Copy 复制 workspace 内文件或目录。
@@ -206,7 +238,11 @@ func (s *Service) Copy(fromRel, toRel string) error {
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	return CopyPath(from, to)
+	if err := CopyPath(from, to); err != nil {
+		return err
+	}
+	s.InvalidateSummary([]string{toRel}, false)
+	return nil
 }
 
 // Move 移动 workspace 内文件或目录。
@@ -227,7 +263,33 @@ func (s *Service) Move(fromRel, toRel string) error {
 	if err := os.MkdirAll(filepath.Dir(to), 0o755); err != nil {
 		return err
 	}
-	return os.Rename(from, to)
+	if err := os.Rename(from, to); err != nil {
+		return err
+	}
+	s.InvalidateSummary([]string{fromRel, toRel}, false)
+	return nil
+}
+
+// InvalidateSummary marks chapter projections changed by external editors,
+// tools, or another Service instance. The next Summary call re-reads only the
+// affected chapter content; resync discards the complete rebuildable cache.
+func (s *Service) InvalidateSummary(paths []string, resync bool) {
+	if s == nil {
+		return
+	}
+	s.summaryMu.Lock()
+	defer s.summaryMu.Unlock()
+	if resync {
+		s.chapters = make(map[string]cachedChapterSummary)
+		s.invalidatedChapters = make(map[string]struct{})
+		return
+	}
+	for _, path := range paths {
+		path = filepath.ToSlash(filepath.Clean(filepath.FromSlash(strings.TrimSpace(path))))
+		if path == "chapters" || strings.HasPrefix(path, "chapters/") {
+			s.invalidatedChapters[path] = struct{}{}
+		}
+	}
 }
 
 // SafePath 将相对路径解析为 workspace 内的绝对路径，并禁止访问隐藏目录。
@@ -290,13 +352,18 @@ func BuildFileTree(dir string) ([]*FileNode, error) {
 		if nodes[i].Type != nodes[j].Type {
 			return nodes[i].Type == "dir"
 		}
-		return compareFileNodeNames(nodes[i].Name, nodes[j].Name) < 0
+		return CompareFileNodeNames(nodes[i].Name, nodes[j].Name) < 0
 	})
 	return nodes, nil
 }
 
-func compareFileNodeNames(left, right string) int {
+// CompareFileNodeNames defines the canonical project tree order, including
+// natural chapter and volume ordinals used by Writing projects.
+func CompareFileNodeNames(left, right string) int {
 	if cmp := compareChapterLikeNames(left, right); cmp != 0 {
+		return cmp
+	}
+	if cmp := strings.Compare(strings.ToLower(left), strings.ToLower(right)); cmp != 0 {
 		return cmp
 	}
 	return strings.Compare(left, right)

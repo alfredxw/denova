@@ -89,6 +89,8 @@ const storyPicker = {
   'storyPicker.confirmDeleteDescription': 'All prose, branches, turns, state, and related sessions in the selected stories will be deleted. This cannot be undone.',
   'storyPicker.firstTitle': 'New Beginning',
   'storyPicker.numberedTitle': 'Story {{number}}',
+  'storyPicker.turnCount': '{{count}} turns',
+  'storyPicker.lastTurn': 'Last turn {{time}}',
 } as const
 
 export default storyPicker

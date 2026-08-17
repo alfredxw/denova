@@ -13,6 +13,8 @@ jobs:
   test-build:
     name: Test and build
     runs-on: ubuntu-latest
+    env:
+      GO_MODULES: ". agent"
 
     steps:
       - name: Checkout
@@ -23,6 +25,9 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+          cache-dependency-path: |
+            go.sum
+            agent/go.sum
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -36,17 +41,52 @@ jobs:
           cache: pnpm
           cache-dependency-path: web/pnpm-lock.yaml
 
+      - name: Install ripgrep
+        run: sudo apt-get update && sudo apt-get install --yes ripgrep
+
       - name: Install frontend dependencies
         run: pnpm --dir web install --frozen-lockfile
 
       - name: Check whitespace
         run: git diff --check
 
+      - name: Check Go module manifests
+        shell: bash
+        run: |
+          set -euo pipefail
+          for module in ${GO_MODULES}; do
+            echo "==> go mod tidy -diff (${module})"
+            (cd "${module}" && go mod tidy -diff)
+          done
+
       - name: Run Go tests
-        run: go test ./...
+        shell: bash
+        run: |
+          set -euo pipefail
+          for module in ${GO_MODULES}; do
+            echo "==> go test (${module})"
+            (cd "${module}" && go test ./...)
+          done
+
+      - name: Run Go vet
+        shell: bash
+        run: |
+          set -euo pipefail
+          for module in ${GO_MODULES}; do
+            echo "==> go vet (${module})"
+            (cd "${module}" && go vet ./...)
+          done
 
       - name: Check reachable Go vulnerabilities
-        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+        shell: bash
+        run: |
+          set -euo pipefail
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck="$(go env GOPATH)/bin/govulncheck"
+          for module in ${GO_MODULES}; do
+            echo "==> govulncheck (${module})"
+            (cd "${module}" && "${govulncheck}" ./...)
+          done
 
       - name: Run frontend tests
         run: pnpm --dir web test
@@ -57,8 +97,8 @@ jobs:
       - name: Build distribution
         run: ./scripts/build.sh
 
-  windows-workspace-change:
-    name: Windows workspace change regression
+  windows-filesystem-durability:
+    name: Windows filesystem durability regressions
     runs-on: windows-latest
 
     steps:
@@ -71,5 +111,5 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Initialize a workspace change store
-        run: go test ./internal/workspacechange -run '^TestNewServiceInitializesWorkspaceChangeStoreOnWindows$' -count=1
+      - name: Verify shared directory durability consumers
+        run: go test ./internal/localfs ./internal/workspace/documentreview ./internal/workspace/change -count=1

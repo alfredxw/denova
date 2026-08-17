@@ -3,10 +3,11 @@ package main
 import (
 	"bufio"
 	"context"
+	agentrun "denova/internal/agents/run"
 	"flag"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net"
 	"os"
 	"os/exec"
@@ -16,7 +17,6 @@ import (
 	"strings"
 
 	"denova/config"
-	"denova/internal/agent"
 	"denova/internal/api"
 	"denova/internal/app"
 	"denova/internal/buildinfo"
@@ -46,13 +46,14 @@ func main() {
 	flag.Parse()
 
 	cfg.DevMode = dev || devMode
-	agent.SetModelInputLoggingEnabled(cfg.DevMode && cfg.LLMInputLogEnabled)
-	agent.SetTraceRuntimeConfig(cfg.TraceCaptureLevel, cfg.TraceExporter, cfg.TraceRetentionRuns)
+	agentrun.SetModelInputLoggingEnabled(cfg.DevMode && cfg.LLMInputLogEnabled)
+	agentrun.SetTraceRuntimeConfig(cfg.TraceCaptureLevel, cfg.TraceExporter, cfg.TraceRetentionRuns)
+	agentrun.SetTraceContentCaptureEnabled(cfg.Labs.DeveloperMode)
 
-	logPath, closeLog := setupLogging("./log")
+	logPath, logOutput, closeLog := setupLogging("./log")
 	defer closeLog()
-	observability.ConfigureStructuredLogging()
-	log.Printf("[startup] 日志输出已启用 dir=./log current_file=%s", logPath)
+	observability.ConfigureStructuredLogging(logOutput)
+	slog.InfoContext(context.Background(), fmt.Sprintf("[startup] 日志输出已启用 dir=./log current_file=%s", logPath))
 	requestedPort := port
 	listenHost := config.HTTPListenHost(cfg.AllowLANAccess)
 	listener, port, err := reserveBackendListener(listenHost, requestedPort, !portWasExplicitlySet(os.Args[1:]))
@@ -119,17 +120,38 @@ func main() {
 
 	// 开发模式：同时启动 Vite dev server
 	if dev {
-		go startViteDev(frontendPort, listenHost, port)
+		runBackground("vite-dev-server", func() {
+			startViteDev(frontendPort, listenHost, port)
+		})
 	}
 	if !noOpen {
 		if dev {
-			go openBrowser(frontendURL)
+			runBackground("open-frontend", func() {
+				openBrowser(frontendURL)
+			})
 		} else {
-			go openBrowser(url)
+			runBackground("open-backend", func() {
+				openBrowser(url)
+			})
 		}
 	}
 
 	srv.Run()
+}
+
+// runBackground is the process-entry goroutine boundary. A development helper
+// or browser launcher must never bring down the long-lived backend on panic.
+func runBackground(scope string, run func()) {
+	go func() {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				slog.ErrorContext(context.Background(), fmt.Sprintf("[startup] background task panic recovered scope=%s err=%v", scope, recovered))
+			}
+		}()
+		if run != nil {
+			run()
+		}
+	}()
 }
 
 func hasVersionArg(args []string) bool {
@@ -257,7 +279,7 @@ func portWasExplicitlySet(args []string) bool {
 func reportBackendPortFallback(output io.Writer, requestedPort, selectedPort string) {
 	fmt.Fprintf(output, "提示：端口 %s 已被占用，已自动改用 %s。\n", requestedPort, selectedPort)
 	fmt.Fprintf(output, "Notice: port %s is in use; switched to %s.\n", requestedPort, selectedPort)
-	log.Printf("[startup] HTTP port %s is unavailable; switched to %s", requestedPort, selectedPort)
+	slog.WarnContext(context.Background(), fmt.Sprintf("[startup] HTTP port %s is unavailable; switched to %s", requestedPort, selectedPort))
 }
 
 func reportBackendPortConflict(output io.Writer, port string, err error) {
@@ -265,7 +287,7 @@ func reportBackendPortConflict(output io.Writer, port string, err error) {
 	fmt.Fprintf(output, "Error: explicitly specified port %s is unavailable: %v\n", port, err)
 	fmt.Fprintln(output, "请释放该端口或指定其他 --port 值。按任意键（或 Enter）退出。")
 	fmt.Fprintln(output, "Release the port or choose another --port value. Press any key (or Enter) to exit.")
-	log.Printf("[startup] explicitly specified HTTP port is unavailable port=%s err=%v", port, err)
+	slog.WarnContext(context.Background(), fmt.Sprintf("[startup] explicitly specified HTTP port is unavailable port=%s err=%v", port, err))
 }
 
 func waitForAnyKey(input io.Reader) {
@@ -282,12 +304,12 @@ func selectFrontendPort(preferred string, reservedPorts ...string) string {
 	next, err := findAvailablePort(preferred, 20, reservedPorts...)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "警告: 前端端口 %s 不可用且自动选择失败: %v\n", preferred, err)
-		log.Printf("[startup] 前端端口 %s 不可用且自动选择失败 err=%v", preferred, err)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[startup] 前端端口 %s 不可用且自动选择失败 err=%v", preferred, err))
 		return preferred
 	}
 
 	fmt.Fprintf(os.Stderr, "提示: 前端端口 %s 已被占用，已自动改用 %s\n", preferred, next)
-	log.Printf("[startup] 前端端口 %s 已被占用，自动改用 %s", preferred, next)
+	slog.InfoContext(context.Background(), fmt.Sprintf("[startup] 前端端口 %s 已被占用，自动改用 %s", preferred, next))
 	return next
 }
 

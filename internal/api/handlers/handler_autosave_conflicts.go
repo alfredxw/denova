@@ -7,21 +7,21 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
-	"denova/internal/autosaveconflict"
+	"denova/internal/workspace/autosave"
 )
 
 // HandleAutosaveConflictCreate stores an immutable recovery record. Request
 // size is governed by the server-wide Hertz body limit so manuscript conflicts
 // are not truncated by an unrelated small endpoint cap.
 func (h *Handlers) HandleAutosaveConflictCreate(ctx context.Context, c *app.RequestContext) {
-	var input autosaveconflict.Input
+	var input autosave.Input
 	if err := c.BindJSON(&input); err != nil {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
 	result, err := h.app.RecordAutosaveConflict(ctx, input)
 	if err != nil {
-		if errors.Is(err, autosaveconflict.ErrInvalidInput) {
+		if errors.Is(err, autosave.ErrInvalidInput) {
 			writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 			return
 		}

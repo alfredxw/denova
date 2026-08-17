@@ -1,4 +1,4 @@
-import { Bot, Check, ChevronDown, ChevronsDownUp, ChevronsUpDown, Columns2, PanelRightClose, PanelRightOpen, RefreshCw, RotateCcw, RotateCw, Rows3, Undo2 } from 'lucide-react'
+import { Bot, Check, ChevronDown, ChevronsDownUp, ChevronsUpDown, Columns2, PanelRightClose, PanelRightOpen, RefreshCw, RotateCcw, RotateCw, Rows3, Undo2, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import {
@@ -11,13 +11,14 @@ import {
 } from '@/components/ui/dropdown-menu'
 import type { ReviewThread, WorkspaceChangeGroupSummary } from '../types'
 import type { ReviewDiffLayout } from './monaco/review-editor-adapter'
-import { ReviewUtilityTab } from './ReviewUtilityTab'
 
 interface ReviewToolbarProps {
   thread: ReviewThread
   selectedGroup: WorkspaceChangeGroupSummary | null
   selectedScopeID: string
   fileCount: number
+  additions: number
+  deletions: number
   layout: ReviewDiffLayout
   busy: boolean
   refreshing: boolean
@@ -32,10 +33,10 @@ interface ReviewToolbarProps {
   onToggleAllDiffs: () => void
   onToggleNavigator: () => void
   onToggleAgent?: () => void
-  onClose: () => void
+  onClose?: () => void
 }
 
-export function ReviewToolbar({ thread, selectedGroup, selectedScopeID, fileCount, layout, busy, refreshing, allDiffsCollapsed, navigatorVisible, agentVisible, onLayoutChange, onScopeChange, onReview, onHistory, onRefresh, onToggleAllDiffs, onToggleNavigator, onToggleAgent, onClose }: ReviewToolbarProps) {
+export function ReviewToolbar({ thread, selectedGroup, selectedScopeID, fileCount, additions, deletions, layout, busy, refreshing, allDiffsCollapsed, navigatorVisible, agentVisible, onLayoutChange, onScopeChange, onReview, onHistory, onRefresh, onToggleAllDiffs, onToggleNavigator, onToggleAgent, onClose }: ReviewToolbarProps) {
   const { t } = useTranslation()
   const canReview = selectedGroup?.apply_state === 'applied' && (selectedGroup.pending_edit_count ?? 0) > 0
   const CollapseIcon = allDiffsCollapsed ? ChevronsUpDown : ChevronsDownUp
@@ -49,12 +50,13 @@ export function ReviewToolbar({ thread, selectedGroup, selectedScopeID, fileCoun
   const historicalGroups = thread.groups.map((group, index) => ({ group, index })).reverse()
   return (
     <header className="shrink-0 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] text-xs text-[var(--nova-text-muted)]">
-      <ReviewUtilityTab onClose={onClose} />
-      <div className="flex min-h-10 flex-wrap items-center gap-2 px-3 py-1.5">
-        <div className="flex min-w-0 flex-1 items-center gap-2">
-          <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px]">
+      <div className="flex min-h-9 flex-wrap items-center gap-1.5 px-2.5 py-1">
+        <div className="flex min-w-0 flex-1 items-center gap-1.5">
+          <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--nova-text-muted)]">
             {t('changes.filesChanged', { count: fileCount })}
           </span>
+          <span className="font-mono text-[10px] tabular-nums text-[var(--nova-success)]">+{additions}</span>
+          <span className="font-mono text-[10px] tabular-nums text-[var(--nova-danger)]">−{deletions}</span>
           {thread.groups.length > 0 && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -110,7 +112,6 @@ export function ReviewToolbar({ thread, selectedGroup, selectedScopeID, fileCoun
           disabled={fileCount === 0}
           onClick={onToggleAllDiffs}
           aria-label={t(allDiffsCollapsed ? 'changes.expandAllDiffs' : 'changes.collapseAllDiffs')}
-          title={t(allDiffsCollapsed ? 'changes.expandAllDiffs' : 'changes.collapseAllDiffs')}
         >
           <CollapseIcon />
         </Button>
@@ -121,7 +122,6 @@ export function ReviewToolbar({ thread, selectedGroup, selectedScopeID, fileCoun
           onClick={onToggleNavigator}
           aria-pressed={navigatorVisible}
           aria-label={t(navigatorVisible ? 'changes.hideFileNavigator' : 'changes.showFileNavigator')}
-          title={t(navigatorVisible ? 'changes.hideFileNavigator' : 'changes.showFileNavigator')}
         >
           <NavigatorIcon />
         </Button>
@@ -136,16 +136,20 @@ export function ReviewToolbar({ thread, selectedGroup, selectedScopeID, fileCoun
             onClick={onToggleAgent}
             aria-pressed={agentVisible}
             aria-label={t(agentVisible ? 'router.hideAgent' : 'router.showAgent')}
-            title={t(agentVisible ? 'router.hideAgent' : 'router.showAgent')}
             className={agentVisible ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : undefined}
           >
             <Bot />
           </Button>
         )}
+        {onClose ? (
+          <Button type="button" size="icon-xs" variant="ghost" onClick={onClose} aria-label={t('common.close')}>
+            <X />
+          </Button>
+        ) : null}
       </div>
 
       {selectedGroup && (
-        <div className="flex min-h-9 flex-wrap items-center justify-end gap-1.5 border-t border-[var(--nova-border-soft)] px-3 py-1">
+        <div className="flex min-h-8 flex-wrap items-center justify-end gap-1 border-t border-[var(--nova-border-soft)] px-2.5 py-0.5">
           <span className="mr-auto text-[10px] text-[var(--nova-text-faint)]">
             {t('changes.scope.group', { count: selectedGroup.paths?.length ?? 0 })} · {t(`changes.applyState.${selectedGroup.apply_state}`, { defaultValue: selectedGroup.apply_state })}
           </span>

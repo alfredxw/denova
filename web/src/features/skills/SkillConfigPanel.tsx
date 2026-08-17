@@ -1,5 +1,5 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useState } from 'react'
-import { Bot, FileCode2, Loader2, Settings2, Trash2 } from 'lucide-react'
+import { Bot, FileCode2, Loader2, Settings2, Tags, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 import { AutosaveStatusIndicator } from '@/components/forms/autosave-status'
@@ -8,14 +8,15 @@ import { Button } from '@/components/ui/button'
 import type { VisibleAgentKey } from '@/features/agents/agent-registry'
 import { useResourceAutosave } from '@/hooks/use-resource-autosave'
 import { getSkillDocument, saveSkillDocument } from '@/lib/api'
-import type { SkillDocument, SkillScope, SkillScopeInfo } from '@/lib/api'
+import { skillCatalogTargetKey, type SkillCatalogTarget, type SkillDocument, type SkillScope, type SkillScopeInfo } from '@/lib/api'
 import { isRevisionConflict, saveWithRevisionRecovery } from '@/lib/revision-conflict'
 import { rebaseTextWithRecovery } from '@/lib/autosave/rebase-with-recovery'
-import { SkillAgentSelector } from './skill-form-fields'
+import { SkillAgentSelector, SkillClassificationFields } from './skill-form-fields'
 import { SkillIdentityFields } from './SkillIdentityFields'
 import { parseAgentKeys, skillFilePath, skillNamePattern, updateSkillConfigContent } from './skill-utils'
 
 interface SkillConfigPanelProps {
+  target: SkillCatalogTarget
   document: SkillDocument
   /** Current editor content. Configuration autosave rewrites only its frontmatter. */
   content: string
@@ -48,6 +49,7 @@ function configSignature(value: Partial<SkillConfigAutosaveDraft>) {
 
 /** Autosaves metadata while keeping directory rename/move as an explicit command. */
 export const SkillConfigPanel = forwardRef<SkillConfigPanelHandle, SkillConfigPanelProps>(function SkillConfigPanel({
+  target,
   document,
   content,
   scopes,
@@ -61,6 +63,8 @@ export const SkillConfigPanel = forwardRef<SkillConfigPanelHandle, SkillConfigPa
   const [scope, setScope] = useState<SkillScope>(document.scope)
   const [description, setDescription] = useState(document.description)
   const [agents, setAgents] = useState<VisibleAgentKey[]>(() => parseAgentKeys(document.agent))
+  const [category, setCategory] = useState(document.category || 'general')
+  const [capabilities, setCapabilities] = useState<string[]>(() => [...(document.capabilities || [])])
   const [savingIdentity, setSavingIdentity] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const trimmedName = name.trim()
@@ -71,8 +75,8 @@ export const SkillConfigPanel = forwardRef<SkillConfigPanelHandle, SkillConfigPa
   const targetWritable = scopes.some((item) => item.scope === scope)
   const identityChanged = trimmedName !== document.name || scope !== document.scope
   const configContent = useMemo(
-    () => updateSkillConfigContent(content, document.name, trimmedDescription, agents),
-    [agents, content, document.name, trimmedDescription],
+    () => updateSkillConfigContent(content, document.name, trimmedDescription, agents, category, capabilities),
+    [agents, capabilities, category, content, document.name, trimmedDescription],
   )
   const configDraft = useMemo<SkillConfigAutosaveDraft>(() => ({
     id: `${document.scope}:${document.name}:config`,
@@ -83,7 +87,7 @@ export const SkillConfigPanel = forwardRef<SkillConfigPanelHandle, SkillConfigPa
   const configAutosave = useResourceAutosave<SkillConfigAutosaveDraft, SkillConfigAutosaveDraft, SkillConfigAutosaveSaved>({
     draft: configDraft,
     active: document.editable && !identityChanged,
-    scopeKey: configDraft.id,
+    scopeKey: `${skillCatalogTargetKey(target)}\u0000${configDraft.id}`,
     valid: Boolean(trimmedDescription),
     makePayload: (value) => value,
     baselineFromSaved: (saved, submitted) => ({
@@ -93,12 +97,12 @@ export const SkillConfigPanel = forwardRef<SkillConfigPanelHandle, SkillConfigPa
     }),
     signature: configSignature,
     save: async (_id, payload, baseRevision) => {
-      const saved = await saveSkillDocument(document.scope, document.name, payload.content, undefined, baseRevision)
+      const saved = await saveSkillDocument(target, document.scope, document.name, payload.content, undefined, baseRevision)
       return { content: saved.content, document: saved, updated_at: saved.revision }
     },
     resolveConflict: async ({ error: saveError, baseline, draft: submitted }) => {
       if (!isRevisionConflict(saveError)) return null
-      const latest = await getSkillDocument(document.scope, document.name)
+      const latest = await getSkillDocument(target, document.scope, document.name)
       const rebasedContent = await rebaseTextWithRecovery({
         resource: 'skill_config',
         scope: document.scope,
@@ -164,8 +168,8 @@ export const SkillConfigPanel = forwardRef<SkillConfigPanelHandle, SkillConfigPa
     setSavingIdentity(true)
     setError(null)
     try {
-      const nextContent = updateSkillConfigContent(content, trimmedName, trimmedDescription, agents)
-      const target = { scope, name: trimmedName }
+      const nextContent = updateSkillConfigContent(content, trimmedName, trimmedDescription, agents, category, capabilities)
+      const saveTarget = { scope, name: trimmedName }
       let recoveryBaselineRevision = document.revision
       let latestRevision: string | undefined
       const saved = await saveWithRevisionRecovery({
@@ -173,14 +177,15 @@ export const SkillConfigPanel = forwardRef<SkillConfigPanelHandle, SkillConfigPa
         draft: nextContent,
         revision: document.revision,
         save: (nextDraft, revision) => saveSkillDocument(
+          target,
           document.scope,
           document.name,
           nextDraft,
-          target,
+          saveTarget,
           revision,
         ),
         loadLatest: async () => {
-          const latest = await getSkillDocument(document.scope, document.name)
+          const latest = await getSkillDocument(target, document.scope, document.name)
           latestRevision = latest.revision
           return { value: latest.content, revision: latest.revision }
         },
@@ -249,6 +254,16 @@ export const SkillConfigPanel = forwardRef<SkillConfigPanelHandle, SkillConfigPa
             targetName={targetName}
             targetPath={targetPath}
             showPreview
+          />
+        </section>
+
+        <section className="flex flex-col gap-3 border-b border-[var(--nova-border)] pb-5">
+          <FormSectionHeader icon={Tags} title={t('skills.create.section.classification')} />
+          <SkillClassificationFields
+            category={category}
+            capabilities={capabilities}
+            onCategoryChange={setCategory}
+            onCapabilitiesChange={setCapabilities}
           />
         </section>
 

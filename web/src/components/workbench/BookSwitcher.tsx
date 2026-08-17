@@ -1,5 +1,5 @@
 import { useId, useMemo, useState } from 'react'
-import { BookOpen, Check, ChevronDown, LibraryBig, Loader2 } from 'lucide-react'
+import { BookOpen, Check, LibraryBig, Loader2 } from 'lucide-react'
 import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
 import { BookCoverThumbnail } from '@/components/Home/BookCoverThumbnail'
@@ -13,6 +13,12 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { formatDateTime } from '@/i18n'
 import type { BookRecord } from '@/lib/api'
+import {
+  WorkbenchContextSwitcherTrigger,
+  WORKBENCH_CONTEXT_MENU_CLASS,
+  WORKBENCH_CONTEXT_MENU_GROUP_CLASS,
+  WORKBENCH_CONTEXT_MENU_ITEM_CLASS,
+} from './WorkbenchContextSwitcher'
 
 interface BookSwitcherProps {
   books: BookRecord[]
@@ -63,28 +69,24 @@ export function BookSwitcher({
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
-        <button
-          type="button"
+        <WorkbenchContextSwitcherTrigger
           aria-label={triggerLabel}
-          title={triggerLabel}
-          className={`flex min-w-0 items-center justify-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] outline-none transition-colors hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] focus-visible:ring-2 focus-visible:ring-[var(--nova-field-focus-border)] data-[state=open]:border-[var(--nova-field-focus-border)] data-[state=open]:bg-[var(--nova-active)] data-[state=open]:text-[var(--nova-text)] ${compact ? 'h-8 max-w-[34vw] px-2 text-[11px]' : 'h-7 max-w-[min(16rem,28vw)] px-2.5 text-[11px]'}`}
-        >
-          <BookOpen className={`h-3.5 w-3.5 shrink-0 ${compact ? 'hidden' : ''}`} />
-          <span className="min-w-0 truncate font-medium">{currentBookName}</span>
-          <ChevronDown className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
-        </button>
+          icon={BookOpen}
+          label={currentBookName}
+          compact={compact}
+        />
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="start"
         sideOffset={6}
         collisionPadding={8}
         aria-labelledby={menuLabelID}
-        className="max-h-[min(32rem,calc(100vh-3.5rem))] w-[22rem] max-w-[calc(100vw-1rem)] gap-0 overflow-hidden border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0 text-[var(--nova-text)] shadow-[var(--nova-shadow)] ring-0"
+        className={WORKBENCH_CONTEXT_MENU_CLASS}
       >
         <div id={menuLabelID} className="shrink-0 px-3 pb-2 pt-3 text-[11px] font-medium text-[var(--nova-text-faint)]">
           {t('workbench.bookSwitcher.title')}
         </div>
-        <DropdownMenuGroup className="max-h-[min(21rem,calc(100vh-10rem))] overflow-y-auto px-1.5 pb-1.5">
+        <DropdownMenuGroup className={WORKBENCH_CONTEXT_MENU_GROUP_CLASS}>
           {orderedBooks.length > 0 ? orderedBooks.map((book) => {
             const current = book.path === workspace
             const loading = book.path === switchingPath
@@ -93,7 +95,7 @@ export function BookSwitcher({
                 key={book.path}
                 aria-current={current ? 'page' : undefined}
                 disabled={Boolean(switchingPath)}
-                className={`min-h-14 gap-2.5 border-b border-[var(--nova-border)] px-2 py-1.5 last:border-b-0 focus:bg-[var(--nova-hover)] focus:text-[var(--nova-text)] ${current ? 'bg-[var(--nova-active)]' : ''}`}
+                className={`${WORKBENCH_CONTEXT_MENU_ITEM_CLASS} ${current ? 'bg-[var(--nova-active)]' : ''}`}
                 onSelect={(event) => {
                   event.preventDefault()
                   void selectBook(book)
@@ -145,7 +147,7 @@ function booksForSwitcher(books: BookRecord[], workspace: string, currentBookNam
   if (!workspace) return books
   const currentIndex = books.findIndex((book) => book.path === workspace)
   if (currentIndex === -1) {
-    return [{ name: currentBookName, path: workspace, author: '', last_opened_at: '' }, ...books]
+    return [{ project_id: '', name: currentBookName, path: workspace, author: '', last_opened_at: '' }, ...books]
   }
   return books.map((book, index) => (
     index === currentIndex ? { ...book, name: currentBookName || book.name } : book

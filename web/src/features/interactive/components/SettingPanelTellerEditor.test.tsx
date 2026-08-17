@@ -1,14 +1,15 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { useState } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { runConfigManagerStream } from '@/lib/api'
 import { APIError } from '@/lib/api-client'
 import { ImagePresetEditor } from './setting-panel/ImagePresetEditor'
-import { TellerEditor } from './SettingPanelTellerEditor'
+import { STYLE_REFERENCES_UPDATED_EVENT, TellerEditor } from './SettingPanelTellerEditor'
 import { getStyleReferences, readStyleReferenceFile, saveStyleReference, updateStyleReferenceFile } from '../api'
 import type { ImagePreset, Teller } from '../types'
 
-vi.mock('@/lib/api', () => ({
+vi.mock('@/lib/api', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/lib/api')>(),
   runConfigManagerStream: vi.fn(),
 }))
 
@@ -77,6 +78,17 @@ describe('TellerEditor style contents', () => {
 
     expect(screen.getAllByText('图像请求 Prompt').length).toBeGreaterThan(0)
     expect(screen.getByDisplayValue('旧图像风格')).toBeInTheDocument()
+  })
+
+  it('keeps long image rule metadata inside the rule rail', () => {
+    render(<ImagePresetHarness initial={imagePreset()} onChange={() => {}} onSave={() => {}} />)
+
+    const ruleList = screen.getByTestId('image-preset-editor').querySelector('.preset-rule-list-scroll')
+    expect(ruleList).toBeInTheDocument()
+    const ruleButton = within(ruleList as HTMLElement).getAllByText('图像请求 Prompt')[0].closest('button')
+    expect(ruleButton).toHaveClass('min-w-0', 'overflow-hidden')
+    expect(ruleButton?.parentElement).toHaveClass('min-w-0', 'overflow-hidden')
+    expect(within(ruleList as HTMLElement).getByLabelText('停用规则')).toBeInTheDocument()
   })
 
   it('adds toggles and deletes image preset rules', () => {
@@ -331,9 +343,11 @@ describe('TellerEditor style contents', () => {
     const dialog = await screen.findByRole('dialog')
     const editor = await within(dialog).findByPlaceholderText('编辑 Markdown 文风参考内容。')
     expect(editor).toHaveValue('# Initial\n')
-    window.dispatchEvent(new CustomEvent('nova:workspace-change', {
-      detail: { paths: [existing.display_path] },
-    }))
+    act(() => {
+      window.dispatchEvent(new CustomEvent(STYLE_REFERENCES_UPDATED_EVENT, {
+        detail: { source: 'another-editor', paths: [existing.display_path] },
+      }))
+    })
 
     await waitFor(() => expect(editor).toHaveValue('# External\n'))
     expect(updateStyleReferenceFile).not.toHaveBeenCalled()
@@ -396,6 +410,14 @@ describe('TellerEditor style contents', () => {
     expect(ruleEditor).not.toHaveClass('overflow-hidden')
   })
 
+  it('shows only the selected injection target in the compact trigger', () => {
+    render(<Harness initial={teller()} onChange={() => {}} onSave={() => {}} />)
+
+    const trigger = screen.getByRole('button', { name: '注入位置' })
+    expect(trigger).toHaveTextContent('系统提示')
+    expect(trigger).not.toHaveTextContent('Agent 初始化时注入')
+  })
+
   it('fills unused preset height without shrinking the injection editor', () => {
     const { container } = render(<Harness initial={teller()} onChange={() => {}} onSave={() => {}} />)
 
@@ -431,7 +453,7 @@ function Harness({ initial, onChange, onSave }: { initial: Teller; onChange: (dr
   }
   return (
     <TellerEditor
-      workspace="/tmp/book"
+      projectId="project-book"
       draft={draft}
       setDraft={setDraft}
       activeSlotId="identity"

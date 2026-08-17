@@ -2,7 +2,8 @@ package handlers
 
 import (
 	"context"
-	"log"
+	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -11,8 +12,8 @@ import (
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
 	"denova/internal/api/agentui"
+	appsvc "denova/internal/app"
 	"denova/internal/restart"
-	"denova/internal/session"
 )
 
 // sessionDTO 会话摘要 DTO。
@@ -63,12 +64,12 @@ func (h *Handlers) HandleSessionMessages(ctx context.Context, c *app.RequestCont
 		return
 	}
 	id := strings.TrimSpace(c.Query("session_id"))
-	entries, err := h.app.SessionMessages(id)
-	if err != nil {
-		writeError(c, consts.StatusNotFound, err.Error())
-		return
-	}
 	if limitRaw == "" {
+		entries, err := h.app.SessionMessages(id)
+		if err != nil {
+			writeError(c, consts.StatusNotFound, err.Error())
+			return
+		}
 		writeJSON(c, consts.StatusOK, agentui.MessagesFromHistory(entries))
 		return
 	}
@@ -80,22 +81,26 @@ func (h *Handlers) HandleSessionMessages(ctx context.Context, c *app.RequestCont
 	if limit > maxSessionMessagePageSize {
 		limit = maxSessionMessagePageSize
 	}
-	end := len(entries)
+	before := -1
 	if beforeRaw := strings.TrimSpace(c.Query("before")); beforeRaw != "" {
-		before, beforeErr := strconv.Atoi(beforeRaw)
-		if beforeErr != nil || before < 0 {
+		parsedBefore, beforeErr := strconv.Atoi(beforeRaw)
+		if beforeErr != nil || parsedBefore < 0 {
 			writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidQuery")
 			return
 		}
-		end = min(before, len(entries))
+		before = parsedBefore
 	}
-	start := max(0, end-limit)
+	page, err := h.app.SessionMessagesPage(ctx, id, before, limit)
+	if err != nil {
+		writeError(c, consts.StatusNotFound, err.Error())
+		return
+	}
 	writeJSON(c, consts.StatusOK, sessionMessagesPageDTO{
-		Messages: agentui.MessagesFromHistoryAtOffset(entries[start:end], start),
+		Messages: agentui.MessagesFromHistoryAtOffset(page.Entries, page.NextBefore),
 		Page: sessionMessagePageMeta{
-			NextBefore: strconv.Itoa(start),
-			HasMore:    start > 0,
-			Total:      len(entries),
+			NextBefore: strconv.Itoa(page.NextBefore),
+			HasMore:    page.HasMore,
+			Total:      page.Total,
 		},
 	})
 }
@@ -195,8 +200,8 @@ var scheduleRestart = restart.ScheduleCurrentProcess
 
 // handleRestart POST /api/restart — 重启 Nova 服务并重新加载配置。
 func (h *Handlers) HandleRestart(ctx context.Context, c *app.RequestContext) {
-	if err := scheduleRestart(restart.DefaultDelay); err != nil {
-		log.Printf("[restart] schedule failed err=%v", err)
+	if err := scheduleRestart(ctx, restart.DefaultDelay); err != nil {
+		slog.ErrorContext(ctx, fmt.Sprintf("[restart] schedule failed err=%v", err))
 		writeError(c, consts.StatusInternalServerError, err.Error())
 		return
 	}
@@ -212,7 +217,7 @@ func (h *Handlers) HandleStatus(ctx context.Context, c *app.RequestContext) {
 	})
 }
 
-func toSessionDTOs(metas []session.SessionMeta) []sessionDTO {
+func toSessionDTOs(metas []appsvc.AgentSessionMeta) []sessionDTO {
 	result := make([]sessionDTO, 0, len(metas))
 	for _, meta := range metas {
 		result = append(result, sessionDTO{
@@ -227,7 +232,7 @@ func toSessionDTOs(metas []session.SessionMeta) []sessionDTO {
 	return result
 }
 
-func sessionDTOFromSession(sess *session.Session, active bool) sessionDTO {
+func sessionDTOFromSession(sess *appsvc.AgentSession, active bool) sessionDTO {
 	return sessionDTO{
 		ID:           sess.ID,
 		Title:        sess.Title(),

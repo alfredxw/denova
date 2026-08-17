@@ -98,7 +98,7 @@ func openingInitialStateSubmissionDiagnostic(system StoryDirectorActorStateSyste
 	}
 	remaining := ""
 	if len(missing) > len(labels) {
-		remaining = fmt.Sprintf("，另有 %d 项", len(missing)-len(labels))
+		remaining = fmt.Sprintf(", plus %d more", len(missing)-len(labels))
 	}
 	actual := strings.Join(labels, ", ") + remaining
 	return newTurnSubmissionDiagnostic(
@@ -108,7 +108,6 @@ func openingInitialStateSubmissionDiagnostic(system StoryDirectorActorStateSyste
 		"/state_changes",
 		"every writable field of each initial Actor has a concrete opening value",
 		actual,
-		"开局状态尚未完整初始化，缺少 "+actual+"；请按 initialize_story_state_schema 回执的 initialization_guide.required_state_changes 一次补齐，不能使用空字符串、未设置、未知或待定占位。",
-		"The opening state is incomplete. Initialize every field listed by initialization_guide.required_state_changes with a concrete value in one state_changes submission.",
+		"The opening state is incomplete: "+actual+". Initialize every field listed by initialization_guide.required_state_changes with a concrete value in one state_changes submission; do not use empty, unset, unknown, or pending placeholders.",
 	)
 }

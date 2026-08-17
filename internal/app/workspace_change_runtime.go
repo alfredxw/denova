@@ -7,7 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"denova/internal/workspacechange"
+	projectdomain "denova/internal/project"
+	workspacechange "denova/internal/workspace/change"
 )
 
 // ErrWorkspaceChanged means a mutation was submitted for a workspace that is
@@ -33,9 +34,24 @@ func (a *App) ReadWorkspaceFileWithRevision(path string) (content, revision, wor
 // active workspace. Agent tools, review endpoints, and editor saves use the
 // same instance so their read-modify-write transactions cannot race.
 func (a *App) WorkspaceChangeService() (*workspacechange.Service, error) {
-	workspace := a.Workspace()
+	a.mu.RLock()
+	workspace := a.workspace
+	stateRoot := ""
+	if a.cfg != nil {
+		stateRoot = a.cfg.ProjectStateDir
+	}
+	a.mu.RUnlock()
 	if workspace == "" {
 		return nil, ErrNoWorkspace
+	}
+	return workspaceChangeService(workspace, stateRoot)
+}
+
+// workspaceChangeService keeps the visible content root and user-owned ledger
+// root explicit at every mutation boundary.
+func workspaceChangeService(workspace, stateRoot string) (*workspacechange.Service, error) {
+	if strings.TrimSpace(stateRoot) != "" {
+		return workspacechange.ForWorkspaceAt(workspace, stateRoot)
 	}
 	return workspacechange.ForWorkspace(workspace)
 }
@@ -58,7 +74,11 @@ func (a *App) WithWorkspaceChangeService(
 	if expectedWorkspace == "" || filepath.Clean(expectedWorkspace) != filepath.Clean(actualWorkspace) {
 		return fmt.Errorf("%w: expected=%q actual=%q", ErrWorkspaceChanged, expectedWorkspace, actualWorkspace)
 	}
-	service, err := workspacechange.ForWorkspace(actualWorkspace)
+	stateRoot := ""
+	if a.cfg != nil {
+		stateRoot = a.cfg.ProjectStateDir
+	}
+	service, err := workspaceChangeService(actualWorkspace, stateRoot)
 	if err != nil {
 		return err
 	}
@@ -83,18 +103,37 @@ func (a *App) WithWorkspaceChangeMutation(
 	action func(*workspacechange.Service) (WorkspaceChangeMutationHooks, error),
 ) (string, error) {
 	a.ensureServices()
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-
-	actualWorkspace := strings.TrimSpace(a.workspace)
 	expectedWorkspace = strings.TrimSpace(expectedWorkspace)
+	a.mu.RLock()
+	actualWorkspace := strings.TrimSpace(a.workspace)
+	a.mu.RUnlock()
 	if actualWorkspace == "" {
 		return "", ErrNoWorkspace
 	}
-	if expectedWorkspace == "" || filepath.Clean(expectedWorkspace) != filepath.Clean(actualWorkspace) {
+	if expectedWorkspace == "" || lifecycleWorkspaceKey(expectedWorkspace) != lifecycleWorkspaceKey(actualWorkspace) {
 		return "", fmt.Errorf("%w: expected=%q actual=%q", ErrWorkspaceChanged, expectedWorkspace, actualWorkspace)
 	}
-	service, err := workspacechange.ForWorkspace(actualWorkspace)
+	operation, err := a.acquireWorkspaceOperation(ctx, actualWorkspace, true)
+	if err != nil {
+		return "", err
+	}
+	defer operation.Release()
+
+	a.mu.RLock()
+	if lifecycleWorkspaceKey(a.workspace) != lifecycleWorkspaceKey(actualWorkspace) {
+		current := a.workspace
+		a.mu.RUnlock()
+		return "", fmt.Errorf("%w: expected=%q actual=%q", ErrWorkspaceChanged, actualWorkspace, current)
+	}
+	versionService := a.versionService
+	settings := versionAutoSettingsForConfig(a.cfg)
+	stateRoot := ""
+	if a.cfg != nil {
+		stateRoot = a.cfg.ProjectStateDir
+	}
+	a.mu.RUnlock()
+
+	service, err := workspaceChangeService(actualWorkspace, stateRoot)
 	if err != nil {
 		return "", err
 	}
@@ -102,13 +141,78 @@ func (a *App) WithWorkspaceChangeMutation(
 	if err != nil {
 		return "", err
 	}
+	if err := operation.Context().Err(); err != nil {
+		return "", err
+	}
 	if hooks.ScheduleAutoVersion {
-		scheduleAutoVersion(a.versionService, versionAutoSettingsForConfig(a.cfg))
+		scheduleAutoVersion(versionService, settings)
 	}
 	if strings.TrimSpace(hooks.AutomationSource) != "" && len(hooks.Paths) > 0 {
-		if automation := a.automationSnapshotLocked(); automation != nil {
-			a.automation().checkTriggersAfterWorkspaceMutation(ctx, automation, hooks.AutomationSource, hooks.Paths)
-		}
+		a.Automation().CheckTriggersAfterWorkspaceMutation(operation.Context(), hooks.AutomationSource, hooks.Paths)
 	}
 	return actualWorkspace, nil
+}
+
+// WithProjectChangeService runs one read/review operation against an explicit
+// stable Project identity. It never consults or changes the foreground Book.
+func (a *App) WithProjectChangeService(
+	ctx context.Context,
+	projectID string,
+	action func(*workspacechange.Service) error,
+) (projectdomain.Layout, error) {
+	operation, err := a.AcquireProjectOperation(ctx, projectID)
+	if err != nil {
+		return projectdomain.Layout{}, err
+	}
+	defer operation.Release()
+	layout := operation.Layout()
+	service, err := workspaceChangeService(layout.ContentRoot, layout.StateRoot)
+	if err != nil {
+		return projectdomain.Layout{}, err
+	}
+	if err := action(service); err != nil {
+		return projectdomain.Layout{}, err
+	}
+	if err := operation.Context().Err(); err != nil {
+		return projectdomain.Layout{}, err
+	}
+	return layout, nil
+}
+
+// WithProjectChangeMutation keeps the durable change, version scheduling, and
+// automation trigger admission bound to one Project generation.
+func (a *App) WithProjectChangeMutation(
+	ctx context.Context,
+	projectID string,
+	action func(*workspacechange.Service) (WorkspaceChangeMutationHooks, error),
+) (projectdomain.Layout, error) {
+	a.ensureServices()
+	operation, err := a.AcquireProjectOperation(ctx, projectID)
+	if err != nil {
+		return projectdomain.Layout{}, err
+	}
+	defer operation.Release()
+	layout := operation.Layout()
+	service, err := workspaceChangeService(layout.ContentRoot, layout.StateRoot)
+	if err != nil {
+		return projectdomain.Layout{}, err
+	}
+	hooks, err := action(service)
+	if err != nil {
+		return projectdomain.Layout{}, err
+	}
+	if err := operation.Context().Err(); err != nil {
+		return projectdomain.Layout{}, err
+	}
+	if hooks.ScheduleAutoVersion {
+		if err := a.ProjectFiles().ScheduleBookAutoVersion(layout.ProjectID); err != nil {
+			return projectdomain.Layout{}, err
+		}
+	}
+	if strings.TrimSpace(hooks.AutomationSource) != "" && len(hooks.Paths) > 0 {
+		a.Automation().CheckTriggersAfterProjectMutation(
+			operation.Context(), layout.ProjectID, hooks.AutomationSource, hooks.Paths,
+		)
+	}
+	return layout, nil
 }

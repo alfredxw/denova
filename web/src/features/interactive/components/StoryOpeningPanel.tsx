@@ -206,7 +206,7 @@ export function StoryOpeningPanel({
 
 function OpeningTab({ value, icon, label, count }: { value: string; icon: ReactNode; label: string; count?: number }) {
   return (
-    <TabsTrigger value={value} className="h-11 min-w-0 rounded-none border-0 border-b-2 border-b-transparent px-2 text-xs shadow-none after:hidden data-active:border-b-[var(--nova-accent)] data-active:bg-[var(--nova-active)] data-active:shadow-none sm:px-4">
+    <TabsTrigger value={value} className="h-11 min-w-0 rounded-none border-0 border-b-2 border-b-transparent px-2 text-xs shadow-none after:hidden data-[state=active]:border-b-[var(--nova-accent)] data-[state=active]:bg-[var(--nova-active)] data-[state=active]:shadow-none sm:px-4">
       <span className="flex min-w-0 items-center justify-center gap-1.5">
         <span className="flex h-4 w-4 items-center justify-center [&_svg]:h-4 [&_svg]:w-4">{icon}</span>
         <span className="truncate text-center">{label}</span>

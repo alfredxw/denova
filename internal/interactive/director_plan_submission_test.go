@@ -1,12 +1,12 @@
 package interactive
 
 import (
+	"denova/internal/book/lore"
+	"denova/internal/interactive/director"
 	"os"
 	"strings"
 	"testing"
 	"time"
-
-	"denova/internal/book"
 )
 
 type directorPatchTestRun struct {
@@ -41,7 +41,7 @@ func startDirectorPatchTestRun(t *testing.T, workspace, title string) directorPa
 	if err != nil {
 		t.Fatal(err)
 	}
-	loreRevision, err := book.NewLoreStore(workspace).Revision()
+	loreRevision, err := lore.NewStore(workspace).Revision()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +77,7 @@ func TestStageDirectorPlanRunUpdatePublishesBriefPatchOnlyAfterFinalize(t *testi
 		"公开比试已经开始；本轮应承接围观者质疑，并给玩家留下回应或观察的空间。",
 	)
 	receipt, err := run.store.StageDirectorPlanRunUpdate(run.story.ID, "main", run.token, run.turn.ID, run.draft, DirectorPlanUpdateSubmission{
-		Decision:           PlanDecision{Mode: PlanDecisionPatch, Reason: "公开局势发生实质变化"},
+		Decision:           director.Decision{Mode: director.DecisionPatch, Reason: "公开局势发生实质变化"},
 		Updates:            []DirectorPlanDocumentUpdate{update},
 		Finalize:           true,
 		SourceLoreRevision: run.loreRevision,
@@ -92,7 +92,7 @@ func TestStageDirectorPlanRunUpdatePublishesBriefPatchOnlyAfterFinalize(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if staged.Docs != run.plan.Docs || staged.Metadata.LastRun == nil || staged.Metadata.LastRun.Status != DirectorPlanStatusRunning {
+	if staged.Docs != run.plan.Docs || staged.Metadata.LastRun == nil || staged.Metadata.LastRun.Status != director.PlanStatusRunning {
 		t.Fatalf("finalized draft must stay in memory before publication: %#v", staged)
 	}
 	finalDocs, ok := run.draft.FinalDocs()
@@ -150,7 +150,7 @@ func TestStageDirectorPlanRunUpdateAcceptsFilesIndependentlyAndRetriesRejectedOn
 		}},
 	}
 	first, err := run.store.StageDirectorPlanRunUpdate(run.story.ID, "main", run.token, run.turn.ID, run.draft, DirectorPlanUpdateSubmission{
-		Decision:           PlanDecision{Mode: PlanDecisionPatch, Reason: "场景状态与候场集合变化"},
+		Decision:           director.Decision{Mode: director.DecisionPatch, Reason: "场景状态与候场集合变化"},
 		Updates:            []DirectorPlanDocumentUpdate{briefUpdate, invalidLoreUpdate},
 		Finalize:           true,
 		SourceLoreRevision: run.loreRevision,
@@ -178,7 +178,7 @@ func TestStageDirectorPlanRunUpdateAcceptsFilesIndependentlyAndRetriesRejectedOn
 		"### 角色与势力\n\n暂无候场资料；只有出现明确触发条件后才加入。",
 	)
 	second, err := run.store.StageDirectorPlanRunUpdate(run.story.ID, "main", run.token, run.turn.ID, run.draft, DirectorPlanUpdateSubmission{
-		Decision:           PlanDecision{Mode: PlanDecisionPatch, Reason: "场景状态与候场集合变化"},
+		Decision:           director.Decision{Mode: director.DecisionPatch, Reason: "场景状态与候场集合变化"},
 		Updates:            []DirectorPlanDocumentUpdate{validLoreUpdate},
 		Finalize:           true,
 		SourceLoreRevision: run.loreRevision,
@@ -214,7 +214,7 @@ func TestStageDirectorPlanRunUpdateReplanRequiresPlanAndBriefButNotLore(t *testi
 		"旧目标已经失效；玩家现在需要决定是否追踪突然出现的证据。",
 	)
 	first, err := run.store.StageDirectorPlanRunUpdate(run.story.ID, "main", run.token, run.turn.ID, run.draft, DirectorPlanUpdateSubmission{
-		Decision:           PlanDecision{Mode: PlanDecisionReplan, Reason: "玩家选择使阶段前提失效"},
+		Decision:           director.Decision{Mode: director.DecisionReplan, Reason: "玩家选择使阶段前提失效"},
 		Updates:            []DirectorPlanDocumentUpdate{briefUpdate},
 		Finalize:           true,
 		SourceLoreRevision: run.loreRevision,
@@ -232,7 +232,7 @@ func TestStageDirectorPlanRunUpdateReplanRequiresPlanAndBriefButNotLore(t *testi
 		"阶段目标改为追踪突然出现的证据；旧高潮失效，新的反转条件取决于玩家是否公开证据。",
 	)
 	second, err := run.store.StageDirectorPlanRunUpdate(run.story.ID, "main", run.token, run.turn.ID, run.draft, DirectorPlanUpdateSubmission{
-		Decision:           PlanDecision{Mode: PlanDecisionReplan, Reason: "玩家选择使阶段前提失效"},
+		Decision:           director.Decision{Mode: director.DecisionReplan, Reason: "玩家选择使阶段前提失效"},
 		Updates:            []DirectorPlanDocumentUpdate{planUpdate},
 		Finalize:           true,
 		SourceLoreRevision: run.loreRevision,
@@ -248,7 +248,7 @@ func TestStageDirectorPlanRunUpdateReplanRequiresPlanAndBriefButNotLore(t *testi
 func TestStageDirectorPlanRunUpdateKeepFinalizesWithoutDocuments(t *testing.T) {
 	run := startDirectorPatchTestRun(t, t.TempDir(), "保持现有规划")
 	receipt, err := run.store.StageDirectorPlanRunUpdate(run.story.ID, "main", run.token, run.turn.ID, run.draft, DirectorPlanUpdateSubmission{
-		Decision:           PlanDecision{Mode: PlanDecisionKeep, Reason: "计划仍有效"},
+		Decision:           director.Decision{Mode: director.DecisionKeep, Reason: "计划仍有效"},
 		Finalize:           true,
 		SourceLoreRevision: run.loreRevision,
 	})
@@ -266,7 +266,7 @@ func TestStageDirectorPlanRunUpdateKeepFinalizesWithoutDocuments(t *testing.T) {
 
 func TestStageDirectorPlanRunUpdateRequiresBodyReviewForNewCast(t *testing.T) {
 	workspace := t.TempDir()
-	loreItem, err := book.NewLoreStore(workspace).Create(book.LoreItemInput{ID: "shen", Type: "character", Name: "沈凝", Content: "沈凝完整人物设定。"})
+	loreItem, err := lore.NewStore(workspace).Create(lore.ItemInput{ID: "shen", Type: "character", Name: "沈凝", Content: "沈凝完整人物设定。"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -278,7 +278,7 @@ func TestStageDirectorPlanRunUpdateRequiresBodyReviewForNewCast(t *testing.T) {
 		"### 角色与势力\n\n- [[沈凝]]：可能在门后危机升级时入场。",
 	)
 	submission := DirectorPlanUpdateSubmission{
-		Decision:           PlanDecision{Mode: PlanDecisionPatch},
+		Decision:           director.Decision{Mode: director.DecisionPatch},
 		Updates:            []DirectorPlanDocumentUpdate{update},
 		Finalize:           true,
 		SourceLoreRevision: run.loreRevision,
@@ -303,7 +303,7 @@ func TestStageDirectorPlanRunUpdateRequiresBodyReviewForNewCast(t *testing.T) {
 func TestDirectorLoreGroundingRequiresReviewWhenOffstageLoreJoinsCast(t *testing.T) {
 	workspace := t.TempDir()
 	store := NewStore(workspace)
-	item, err := book.NewLoreStore(workspace).Create(book.LoreItemInput{ID: "shen", Type: "character", Name: "沈凝", Content: "沈凝完整人物设定。"})
+	item, err := lore.NewStore(workspace).Create(lore.ItemInput{ID: "shen", Type: "character", Name: "沈凝", Content: "沈凝完整人物设定。"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -320,15 +320,15 @@ func TestDirectorLoreGroundingRequiresReviewWhenOffstageLoreJoinsCast(t *testing
 func TestStageDirectorPlanRunUpdateRejectsChangedLoreRevision(t *testing.T) {
 	workspace := t.TempDir()
 	run := startDirectorPatchTestRun(t, workspace, "资料并发变化")
-	if _, err := book.NewLoreStore(workspace).Create(book.LoreItemInput{ID: "new", Type: "character", Name: "新角色", Content: "新正文"}); err != nil {
+	if _, err := lore.NewStore(workspace).Create(lore.ItemInput{ID: "new", Type: "character", Name: "新角色", Content: "新正文"}); err != nil {
 		t.Fatal(err)
 	}
 	_, err := run.store.StageDirectorPlanRunUpdate(run.story.ID, "main", run.token, run.turn.ID, run.draft, DirectorPlanUpdateSubmission{
-		Decision:           PlanDecision{Mode: PlanDecisionKeep},
+		Decision:           director.Decision{Mode: director.DecisionKeep},
 		Finalize:           true,
 		SourceLoreRevision: run.loreRevision,
 	})
-	if err == nil || !strings.Contains(err.Error(), "资料库在导演审阅期间已变化") {
+	if err == nil || !strings.Contains(err.Error(), "lore changed during Director review") {
 		t.Fatalf("stale lore revision should be rejected: %v", err)
 	}
 }

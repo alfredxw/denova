@@ -1,7 +1,10 @@
 package restart
 
 import (
+	"context"
 	"errors"
+	"io"
+	"log/slog"
 	"reflect"
 	"testing"
 	"time"
@@ -31,10 +34,10 @@ func TestSchedulerInvokesReplacementAfterDelay(t *testing.T) {
 			done <- got
 			return nil
 		},
-		Logf: func(string, ...any) {},
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 
-	if err := scheduler.Schedule(); err != nil {
+	if err := scheduler.Schedule(context.Background()); err != nil {
 		t.Fatalf("Schedule returned error: %v", err)
 	}
 
@@ -63,10 +66,10 @@ func TestSchedulerReturnsInvocationErrorBeforeScheduling(t *testing.T) {
 			t.Fatal("replace should not run when invocation validation fails")
 			return nil
 		},
-		Logf: func(string, ...any) {},
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 
-	if err := scheduler.Schedule(); !errors.Is(err, wantErr) {
+	if err := scheduler.Schedule(context.Background()); !errors.Is(err, wantErr) {
 		t.Fatalf("Schedule error = %v, want %v", err, wantErr)
 	}
 }

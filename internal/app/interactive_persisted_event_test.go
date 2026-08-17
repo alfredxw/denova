@@ -1,11 +1,18 @@
 package app
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
-	"denova/internal/agent"
+	agentrun "denova/internal/agents/run"
+	interactivestate "denova/internal/interactive/state"
+
+	interactiveapp "denova/internal/app/interactive"
 	"denova/internal/interactive"
+	"denova/internal/interactive/director"
+
+	agent "github.com/alfredxw/denova/agent"
 )
 
 func TestEmitInteractiveTurnPersistedUsesCurrentSnapshot(t *testing.T) {
@@ -18,9 +25,9 @@ func TestEmitInteractiveTurnPersistedUsesCurrentSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", "继续前进", 800, nil)
-	submitTestTurnResult(t, conversation, "走出门外", "确认雾中环境")
-	if err := conversation.AppendAssistantWithThinking("雾气在门外散开。", "先确认场景。"); err != nil {
+	conversation := interactiveapp.NewConversation(store, t.TempDir(), workspace, story.ID, "main", "继续前进", 800, nil)
+	submitTestTurnResult(t, store, story.ID, "main", conversation, "走出门外", "确认雾中环境")
+	if err := commitInteractiveAssistantForTest(t, store, story.ID, "main", "继续前进", conversation, "雾气在门外散开。", "先确认场景。"); err != nil {
 		t.Fatal(err)
 	}
 	turn, _, ok := conversation.LastTurnForState()
@@ -30,15 +37,24 @@ func TestEmitInteractiveTurnPersistedUsesCurrentSnapshot(t *testing.T) {
 	if _, err := store.AppendStateDelta(story.ID, interactive.AppendStateDeltaRequest{
 		ParentID: turn.ID,
 		BranchID: turn.BranchID,
-		Ops: []interactive.StateOp{
+		Ops: []interactivestate.Op{
 			{Op: "merge", Path: "scene", Value: map[string]any{"location": "旧门外"}},
 		},
 	}); err != nil {
 		t.Fatal(err)
 	}
+	projection, err := conversation.PrepareAgentCompaction(context.Background(), agent.CompactionCompactRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := conversation.BindAgentCompaction(&agent.CompactionState{
+		ID: "agent-checkpoint", Revision: 2, Summary: "bounded current story", ContextData: projection.ContextData,
+	}); err != nil {
+		t.Fatal(err)
+	}
 
-	var events []agent.Event
-	emitInteractiveTurnPersisted(store, story.ID, conversation, func(event agent.Event) {
+	var events []agentrun.Event
+	emitInteractiveTurnPersisted(store, story.ID, conversation, func(event agentrun.Event) {
 		events = append(events, event)
 	})
 
@@ -55,14 +71,21 @@ func TestEmitInteractiveTurnPersistedUsesCurrentSnapshot(t *testing.T) {
 	if payload.StoryID != story.ID || payload.BranchID != "main" {
 		t.Fatalf("payload story/branch mismatch: %#v", payload)
 	}
+	if payload.TurnCount != 1 {
+		t.Fatalf("payload turn count = %d, want 1", payload.TurnCount)
+	}
 	if payload.Turn.User != "继续前进" || payload.Turn.Narrative != "雾气在门外散开。" || payload.Turn.Thinking != "先确认场景。" {
 		t.Fatalf("payload turn mismatch: %#v", payload.Turn)
 	}
 	if payload.DirectorPlanStatus == nil || payload.DirectorPlanStatus.Status == "" {
 		t.Fatalf("payload director status should come from current snapshot: %#v", payload.DirectorPlanStatus)
 	}
-	if payload.DirectorPlanStatus.Status != interactive.DirectorPlanStatusWaitingOpening {
+	if payload.DirectorPlanStatus.Status != director.PlanStatusWaitingOpening {
 		t.Fatalf("payload director status mismatch: %#v", payload.DirectorPlanStatus)
+	}
+	if payload.ContextCompaction == nil || payload.ContextCompaction.ID != "agent-checkpoint" ||
+		payload.ContextCompaction.Summary != "bounded current story" {
+		t.Fatalf("payload Compaction must come from Agent Session projection: %#v", payload.ContextCompaction)
 	}
 	encoded, err := json.Marshal(payload)
 	if err != nil {
@@ -97,10 +120,10 @@ func TestEmitInteractiveTurnPersistedSkipsWhenNoTurnWasPersisted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", "继续前进", 800, nil)
+	conversation := interactiveapp.NewConversation(store, t.TempDir(), workspace, story.ID, "main", "继续前进", 800, nil)
 
-	var events []agent.Event
-	emitInteractiveTurnPersisted(store, story.ID, conversation, func(event agent.Event) {
+	var events []agentrun.Event
+	emitInteractiveTurnPersisted(store, story.ID, conversation, func(event agentrun.Event) {
 		events = append(events, event)
 	})
 

@@ -1,13 +1,41 @@
 package app
 
 import (
+	"context"
+	"errors"
 	"testing"
 
-	"github.com/cloudwego/eino/schema"
-
 	"denova/config"
-	"denova/internal/session"
+	agents "denova/internal/agents"
+	agentchat "denova/internal/agents/chat"
+	agentexecution "denova/internal/agents/execution"
+	"denova/internal/agents/session"
+	configmanagerapp "denova/internal/app/configmanager"
 )
+
+func TestWritingStartRejectsAStaleExplicitSessionBinding(t *testing.T) {
+	store, err := session.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := store.GetOrCreate("session-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := store.Create("session-b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	application := &App{sessionStore: store, session: second}
+
+	task, startErr := application.StartTaskForSessionWithError(context.Background(), first.ID, agentchat.ChatRequest{
+		CommandID: "stale-session-start",
+		Message:   "continue session A",
+	})
+	if task != nil || !errors.Is(startErr, ErrAgentContextChanged) {
+		t.Fatalf("stale explicit Session start = task=%v err=%v, want ErrAgentContextChanged", task, startErr)
+	}
+}
 
 func TestAppSwitchSessionUsesCurrentSessionHistoryOnly(t *testing.T) {
 	store, err := session.NewStore(t.TempDir())
@@ -20,7 +48,7 @@ func TestAppSwitchSessionUsesCurrentSessionHistoryOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := first.Append(schema.UserMessage("会话 A 消息")); err != nil {
+	if err := first.Append(agents.UserMessage("会话 A 消息")); err != nil {
 		t.Fatal(err)
 	}
 	app.session = first
@@ -32,7 +60,7 @@ func TestAppSwitchSessionUsesCurrentSessionHistoryOnly(t *testing.T) {
 	if second.ID == first.ID {
 		t.Fatal("新会话 ID 不应复用 default")
 	}
-	if err := second.Append(schema.UserMessage("会话 B 消息")); err != nil {
+	if err := second.Append(agents.UserMessage("会话 B 消息")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -57,6 +85,7 @@ func TestAppSwitchSessionUsesCurrentSessionHistoryOnly(t *testing.T) {
 }
 
 func TestAppDeleteActiveSessionSwitchesToRemainingSession(t *testing.T) {
+	workspace := t.TempDir()
 	store, err := session.NewStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -65,7 +94,12 @@ func TestAppDeleteActiveSessionSwitchesToRemainingSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	app := &App{sessionStore: store, session: first}
+	executionRuntime := agentexecution.NewEphemeralRuntime()
+	t.Cleanup(func() { _ = executionRuntime.Close(context.Background()) })
+	app := &App{
+		sessionStore: store, session: first, workspace: workspace,
+		executionRuntime: executionRuntime, cfg: &config.Config{Workspace: workspace, ProjectStateDir: t.TempDir()},
+	}
 	second, err := app.CreateSession("会话 B")
 	if err != nil {
 		t.Fatal(err)
@@ -96,14 +130,14 @@ func TestAppUserSessionsIgnoreFixedAgentSessions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := first.Append(schema.UserMessage("创作会话")); err != nil {
+	if err := first.Append(agents.UserMessage("创作会话")); err != nil {
 		t.Fatal(err)
 	}
 	app := &App{sessionStore: store, session: first}
 	if err := persistAgentCallInStore(store, config.AgentKindConfigManager, "配置输入", "配置输出"); err != nil {
 		t.Fatal(err)
 	}
-	scopedID, err := configManagerSessionID(ConfigManagerRequest{Origin: "automation", ResourceID: "daily-review"})
+	scopedID, err := configmanagerapp.SessionID(configmanagerapp.Request{Origin: "automation", ResourceID: "daily-review"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +145,7 @@ func TestAppUserSessionsIgnoreFixedAgentSessions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := scoped.Append(schema.UserMessage("自动化配置会话")); err != nil {
+	if err := scoped.Append(agents.UserMessage("自动化配置会话")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -166,7 +200,7 @@ func TestActiveUserSessionOrCreateIgnoresFixedAgentActiveSession(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	active, err := activeUserSessionOrCreate(store)
+	active, err := activeUserSessionOrCreate(store, &config.Config{})
 	if err != nil {
 		t.Fatal(err)
 	}

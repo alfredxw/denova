@@ -124,7 +124,7 @@ func validateActorStateSchemaBatchTemplateOpSources(item ActorStateSchemaBatchIt
 						return issue
 					}
 				case "remove":
-					if issue := validateField(fieldOp, templateID, "ignored", fieldOp.FieldID, fieldPath); issue != nil {
+					if issue := validateField(fieldOp, templateID, "remove", fieldOp.FieldID, fieldPath); issue != nil {
 						return issue
 					}
 				}

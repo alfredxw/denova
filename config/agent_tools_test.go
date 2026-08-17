@@ -3,127 +3,141 @@ package config
 import "testing"
 
 func TestResolveAgentToolsDefaults(t *testing.T) {
-	ide := ResolveAgentTools(&Config{}, AgentKindIDE)
-	if !ide.FileRead || !ide.FileWrite || !ide.ShellExecute || !ide.Skills || !ide.LoreRead || !ide.LoreWrite || !ide.Todo || !ide.WebSearch {
-		t.Fatalf("IDE Agent 默认工具应全部开启: %+v", ide)
+	tests := []struct {
+		kind    string
+		allowed []string
+		denied  []string
+	}{
+		{
+			kind: AgentKindIDE,
+			allowed: []string{
+				AgentToolWorkspaceRead, AgentToolWorkspaceWrite, AgentToolShell,
+				AgentToolWebSearch, AgentToolWebFetch, AgentToolBrowser, AgentToolAsk,
+				AgentToolTodo, AgentToolGoal, AgentToolSkills, AgentToolDelegation, AgentToolLoreRead,
+				AgentToolLoreWrite, AgentToolImageGeneration,
+			},
+			denied: []string{AgentToolConfigRead, AgentToolConfigApply},
+		},
+		{
+			kind:    AgentKindInteractiveStory,
+			allowed: []string{AgentToolWorkspaceRead, AgentToolSkills, AgentToolLoreRead},
+			denied:  []string{AgentToolWorkspaceWrite, AgentToolShell, AgentToolWebSearch, AgentToolWebFetch, AgentToolBrowser, AgentToolAsk, AgentToolTodo, AgentToolGoal, AgentToolDelegation, AgentToolLoreWrite, AgentToolImageGeneration, AgentToolConfigRead, AgentToolConfigApply},
+		},
+		{
+			kind:    AgentKindConfigManager,
+			allowed: []string{AgentToolWorkspaceRead, AgentToolAsk, AgentToolSkills, AgentToolConfigRead, AgentToolConfigApply},
+			denied:  []string{AgentToolWorkspaceWrite, AgentToolShell, AgentToolWebSearch, AgentToolWebFetch, AgentToolBrowser, AgentToolTodo, AgentToolGoal, AgentToolDelegation, AgentToolLoreWrite, AgentToolImageGeneration},
+		},
+		{
+			kind:    AgentKindInteractiveDirector,
+			allowed: []string{AgentToolEventRead, AgentToolLoreRead},
+			denied:  []string{AgentToolWorkspaceRead, AgentToolWorkspaceWrite, AgentToolShell, AgentToolWebSearch, AgentToolWebFetch, AgentToolBrowser, AgentToolAsk, AgentToolTodo, AgentToolGoal, AgentToolSkills, AgentToolDelegation, AgentToolLoreWrite, AgentToolImageGeneration, AgentToolConfigRead, AgentToolConfigApply},
+		},
+		{
+			kind:    AgentKindImage,
+			allowed: []string{AgentToolSkills, AgentToolImageGeneration},
+			denied:  []string{AgentToolWorkspaceRead, AgentToolWorkspaceWrite, AgentToolShell, AgentToolWebSearch, AgentToolWebFetch, AgentToolBrowser, AgentToolAsk, AgentToolTodo, AgentToolGoal, AgentToolDelegation, AgentToolLoreRead, AgentToolLoreWrite, AgentToolConfigRead, AgentToolConfigApply},
+		},
 	}
-	if ide.AgentConfigRead || ide.AgentConfigWrite {
-		t.Fatalf("IDE Agent 默认不应启用 Agent 配置工具: %+v", ide)
+	for _, test := range tests {
+		t.Run(test.kind, func(t *testing.T) {
+			resolved := ResolveAgentTools(&Config{}, test.kind)
+			for _, capability := range test.allowed {
+				if !resolved.Allows(capability) {
+					t.Errorf("%s should allow %s: %#v", test.kind, capability, resolved)
+				}
+			}
+			for _, capability := range test.denied {
+				if resolved.Allows(capability) {
+					t.Errorf("%s should deny %s: %#v", test.kind, capability, resolved)
+				}
+			}
+		})
 	}
-	if !ide.ImageGeneration {
-		t.Fatalf("IDE Agent 默认应启用图像生成工具: %+v", ide)
+	for _, kind := range []string{AgentKindVersionSummary, AgentKindToolAgent} {
+		resolved := ResolveAgentTools(&Config{}, kind)
+		for _, capability := range AgentToolCapabilities() {
+			if resolved.Allows(capability.Source) {
+				t.Errorf("%s should not allow %s", kind, capability.Source)
+			}
+		}
 	}
-
-	story := ResolveAgentTools(&Config{}, AgentKindInteractiveStory)
-	if !story.FileRead || !story.ShellExecute || !story.LoreRead {
-		t.Fatalf("互动叙事 Agent 应保留当前文件/命令/资料读取能力: %+v", story)
-	}
-	if !story.Skills {
-		t.Fatalf("互动叙事 Agent 默认应启用 skills: %+v", story)
-	}
-	if story.FileWrite || story.LoreWrite || story.Todo || story.WebSearch || story.ImageGeneration {
-		t.Fatalf("互动叙事 Agent 默认不应启用文件写入/资料写入/todo/web search/image generation: %+v", story)
-	}
-
-	image := ResolveAgentTools(&Config{}, AgentKindImage)
-	if !image.Skills || !image.ImageGeneration {
-		t.Fatalf("图像 Agent 默认应启用 skills 和图像生成: %+v", image)
-	}
-	if image.FileRead || image.FileWrite || image.ShellExecute || image.LoreRead || image.LoreWrite || image.Todo || image.WebSearch || image.AgentConfigRead || image.AgentConfigWrite {
-		t.Fatalf("图像 Agent 默认不应启用文件、命令、资料库、todo、web search 或 Agent 配置工具: %+v", image)
-	}
-
-	manager := ResolveAgentTools(&Config{}, AgentKindConfigManager)
-	if !manager.FileRead || !manager.FileWrite || !manager.Skills || !manager.LoreRead || !manager.LoreWrite || !manager.Todo || !manager.WebSearch {
-		t.Fatalf("配置管理 Agent 默认应启用常用资源管理工具: %+v", manager)
-	}
-	if manager.ShellExecute || manager.ImageGeneration {
-		t.Fatalf("配置管理 Agent 默认不应启用命令执行或图像生成: %+v", manager)
-	}
-	if !manager.AgentConfigRead || !manager.AgentConfigWrite {
-		t.Fatalf("配置管理 Agent 默认应启用 Agent 配置工具: %+v", manager)
-	}
-
-	summary := ResolveAgentTools(&Config{}, AgentKindVersionSummary)
-	if summary.FileRead || summary.FileWrite || summary.ShellExecute || summary.Skills || summary.LoreRead || summary.LoreWrite || summary.Todo || summary.WebSearch || summary.ImageGeneration || summary.AgentConfigRead || summary.AgentConfigWrite {
-		t.Fatalf("版本说明 Agent 默认不应注册工具: %+v", summary)
-	}
-	director := ResolveAgentTools(&Config{}, AgentKindInteractiveDirector)
-	if director.FileRead || director.FileWrite || director.ShellExecute || director.Skills || !director.LoreRead || director.LoreWrite || director.Todo || director.WebSearch || director.ImageGeneration || director.AgentConfigRead || director.AgentConfigWrite {
-		t.Fatalf("互动导演 Agent 默认只应启用资料库只读能力: %+v", director)
-	}
-	toolAgent := ResolveAgentTools(&Config{}, AgentKindToolAgent)
-	if toolAgent.FileRead || toolAgent.FileWrite || toolAgent.ShellExecute || toolAgent.Skills || toolAgent.LoreRead || toolAgent.LoreWrite || toolAgent.Todo || toolAgent.WebSearch || toolAgent.ImageGeneration || toolAgent.AgentConfigRead || toolAgent.AgentConfigWrite {
-		t.Fatalf("工具 Agent 默认不应注册工具: %+v", toolAgent)
-	}
-	compaction := ResolveAgentTools(&Config{}, AgentKindContextCompaction)
-	if compaction.FileRead || compaction.FileWrite || compaction.ShellExecute || compaction.Skills || compaction.LoreRead || compaction.LoreWrite || compaction.Todo || compaction.WebSearch || compaction.ImageGeneration || compaction.AgentConfigRead || compaction.AgentConfigWrite {
-		t.Fatalf("上下文压缩 Agent 默认不应注册工具: %+v", compaction)
-	}
-
-	automation := ResolveAgentTools(&Config{}, AgentKindAutomation)
-	if !automation.FileRead || !automation.FileWrite || !automation.Skills || !automation.LoreRead || !automation.LoreWrite || !automation.Todo || !automation.WebSearch {
-		t.Fatalf("Automation Agent 默认应允许常用自动化工具: %+v", automation)
-	}
-	if automation.ShellExecute || automation.ImageGeneration {
-		t.Fatalf("Automation Agent 默认不应启用命令执行或图像生成: %+v", automation)
-	}
-	if automation.AgentConfigRead || automation.AgentConfigWrite {
-		t.Fatalf("Automation Agent 默认不应启用 Agent 配置工具: %+v", automation)
+	for _, definition := range AgentKindDefinitions() {
+		if definition.Kind == AgentKindInteractiveDirector {
+			continue
+		}
+		if ResolveAgentTools(&Config{}, definition.Kind).Allows(AgentToolEventRead) {
+			t.Errorf("%s should not allow Director-only %s", definition.Kind, AgentToolEventRead)
+		}
 	}
 }
 
-func TestResolveAgentToolsPerAgentOverride(t *testing.T) {
-	off := false
-	on := true
-	cfg := &Config{
-		AgentTools: AgentToolSettings{
-			Default: AgentToolOverride{ShellExecute: &off, WebSearch: &off},
-			IDE:     AgentToolOverride{ShellExecute: &on, LoreWrite: &off, WebSearch: &on},
+func TestResolveAgentToolsSparseOverrides(t *testing.T) {
+	cfg := &Config{AgentTools: AgentToolSettings{
+		Default: AgentToolOverride{AgentToolShell: false, AgentToolWebSearch: false},
+		IDE: AgentToolOverride{
+			AgentToolShell: true, AgentToolLoreWrite: false, AgentToolWebSearch: true,
 		},
-	}
-
+	}}
 	ide := ResolveAgentTools(cfg, AgentKindIDE)
-	if !ide.ShellExecute {
-		t.Fatalf("IDE Agent 应覆盖 default 重新开启命令执行: %+v", ide)
+	if !ide.Allows(AgentToolShell) || !ide.Allows(AgentToolWebSearch) || ide.Allows(AgentToolLoreWrite) {
+		t.Fatalf("IDE sparse overrides were not applied: %#v", ide)
 	}
-	if ide.LoreWrite {
-		t.Fatalf("IDE Agent 应允许单独关闭资料库写入: %+v", ide)
-	}
-	if !ide.WebSearch {
-		t.Fatalf("IDE Agent 应允许单独开启网页搜索: %+v", ide)
-	}
-
 	story := ResolveAgentTools(cfg, AgentKindInteractiveStory)
-	if story.ShellExecute {
-		t.Fatalf("互动叙事 Agent 应继承 default 关闭命令执行: %+v", story)
-	}
-	if story.WebSearch {
-		t.Fatalf("互动叙事 Agent 应继承 default 关闭网页搜索: %+v", story)
+	if story.Allows(AgentToolShell) || story.Allows(AgentToolWebSearch) {
+		t.Fatalf("story should retain explicit disabled capabilities: %#v", story)
 	}
 }
 
-func TestResolveAgentToolsKeepsShellExecuteConfigurableOnWindows(t *testing.T) {
-	on := true
-	off := false
-	cfg := &Config{
-		AgentTools: AgentToolSettings{
-			Default: AgentToolOverride{ShellExecute: &on},
-			IDE:     AgentToolOverride{ShellExecute: &on},
-		},
+func TestResolveAgentToolsEnforcesRegisteredCapabilityCeilings(t *testing.T) {
+	allEnabled := make(AgentToolOverride, len(agentToolCapabilities))
+	for _, capability := range agentToolCapabilities {
+		allEnabled[capability.Source] = true
+	}
+	cfg := &Config{AgentTools: AgentToolSettings{
+		Default:             allEnabled,
+		IDE:                 allEnabled,
+		InteractiveStory:    allEnabled,
+		ConfigManager:       allEnabled,
+		InteractiveDirector: allEnabled,
+		VersionSummary:      allEnabled,
+		ToolAgent:           allEnabled,
+		Image:               allEnabled,
+		Automation:          allEnabled,
+	}}
+
+	for _, definition := range AgentKindDefinitions() {
+		ceiling := make(map[string]bool, len(definition.ToolCapabilities))
+		for _, capability := range definition.ToolCapabilities {
+			ceiling[capability] = true
+		}
+		resolved := ResolveAgentTools(cfg, definition.Kind)
+		for _, capability := range agentToolCapabilities {
+			want := ceiling[capability.Source]
+			if definition.Kind == AgentKindHarnessOptimizer && capability.Source == AgentToolScript {
+				want = false
+			}
+			if got := resolved.Allows(capability.Source); got != want {
+				t.Errorf("%s capability %s = %t, want ceiling %t", definition.Kind, capability.Source, got, want)
+			}
+		}
 	}
 
-	ide := resolveAgentToolsForGOOS(cfg, AgentKindIDE, "windows")
-	if !ide.ShellExecute {
-		t.Fatalf("Windows 支持 PowerShell execute 后应保留命令执行配置: %+v", ide)
+	unknown := ResolveAgentTools(cfg, "unregistered-agent")
+	for _, capability := range agentToolCapabilities {
+		if unknown.Allows(capability.Source) {
+			t.Errorf("unregistered Agent escaped capability ceiling through %s", capability.Source)
+		}
 	}
-	if !ide.FileRead || !ide.FileWrite {
-		t.Fatalf("Windows 平台不应影响其它工具: %+v", ide)
-	}
+}
 
-	cfg.AgentTools.IDE.ShellExecute = &off
-	ide = resolveAgentToolsForGOOS(cfg, AgentKindIDE, "windows")
-	if ide.ShellExecute {
-		t.Fatalf("Windows 下显式关闭命令执行仍应生效: %+v", ide)
+func TestResolveAgentToolsKeepsShellCapabilityPlatformNeutral(t *testing.T) {
+	cfg := &Config{AgentTools: AgentToolSettings{IDE: AgentToolOverride{AgentToolShell: true}}}
+	if resolved := resolveAgentToolsForGOOS(cfg, AgentKindIDE, "windows"); !resolved.Allows(AgentToolShell) {
+		t.Fatalf("shell capability should resolve independently of platform tool name: %#v", resolved)
+	}
+	cfg.AgentTools.IDE[AgentToolShell] = false
+	if resolved := resolveAgentToolsForGOOS(cfg, AgentKindIDE, "windows"); resolved.Allows(AgentToolShell) {
+		t.Fatalf("explicit shell disable should remain effective: %#v", resolved)
 	}
 }

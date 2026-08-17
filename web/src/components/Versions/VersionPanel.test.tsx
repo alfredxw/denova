@@ -83,7 +83,7 @@ function renderVersionPanel() {
   })
   return render(
     <QueryClientProvider client={queryClient}>
-      <VersionPanel workspace="/workspace" refreshSignal={0} visible onClose={vi.fn()} />
+      <VersionPanel projectId="project-version" workspace="/workspace" refreshSignal={0} visible onClose={vi.fn()} />
     </QueryClientProvider>,
   )
 }

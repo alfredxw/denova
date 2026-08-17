@@ -91,7 +91,7 @@ function StatusMetric({ icon, label, value }: { icon: React.ReactNode; label: st
         {icon}
         <span className="truncate">{label}</span>
       </div>
-      <div className="mt-1 truncate text-xs font-medium text-[var(--nova-text)]" title={value}>{value}</div>
+      <div className="mt-1 truncate text-xs font-medium text-[var(--nova-text)]">{value}</div>
     </div>
   )
 }

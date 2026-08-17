@@ -37,7 +37,7 @@ function renderBackstage({ storyId = 'story', snapshot = null, revealed = false 
   if (revealed) window.localStorage.setItem(`nova.directorConsole.revealed.${storyId}`, '1')
   return render(
     <VirtuosoMockContext.Provider value={{ viewportHeight: 320, itemHeight: 48 }}>
-      <DirectorBackstage storyId={storyId} branchId="main" snapshot={snapshot} />
+      <DirectorBackstage projectId="project-story" storyId={storyId} branchId="main" snapshot={snapshot} />
     </VirtuosoMockContext.Provider>,
   )
 }

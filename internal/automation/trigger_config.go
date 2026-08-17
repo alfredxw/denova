@@ -6,6 +6,8 @@ import (
 	"time"
 )
 
+const MaxInboxActionErrorChars = 4 * 1024
+
 func NormalizeInboxItem(item TriggerInboxItem) (TriggerInboxItem, error) {
 	item.ID = strings.TrimSpace(item.ID)
 	if item.ID == "" {
@@ -26,6 +28,7 @@ func NormalizeInboxItem(item TriggerInboxItem) (TriggerInboxItem, error) {
 	if item.Scope != ScopeUser && item.Scope != ScopeWorkspace {
 		return TriggerInboxItem{}, fmt.Errorf("invalid scope %q", item.Scope)
 	}
+	item.ProjectID = strings.TrimSpace(item.ProjectID)
 	item.Workspace = strings.TrimSpace(item.Workspace)
 	item.Purpose = normalizeInboxPurpose(item.Purpose)
 	item.SourceRunID = strings.TrimSpace(item.SourceRunID)
@@ -38,6 +41,7 @@ func NormalizeInboxItem(item TriggerInboxItem) (TriggerInboxItem, error) {
 		item.Title = "Automation trigger"
 	}
 	item.Summary = strings.TrimSpace(item.Summary)
+	item.ActionError = trimRunes(strings.TrimSpace(item.ActionError), MaxInboxActionErrorChars)
 	item.Fingerprint = strings.TrimSpace(item.Fingerprint)
 	if item.Fingerprint == "" {
 		item.Fingerprint = item.TaskID + ":" + item.TriggerID + ":" + item.Title
@@ -120,9 +124,8 @@ func firstScheduleTrigger(triggers []TriggerDefinition) (TriggerDefinition, bool
 	return TriggerDefinition{}, false
 }
 
-func EffectiveActionPolicy(task Task, _ TriggerDefinition) string {
-	mode, _ := normalizeWriteModeScope(task.WriteMode, task.WriteScope)
-	return actionPolicyForWriteMode(mode)
+func EffectiveActionPolicy(_ Task, _ TriggerDefinition) string {
+	return ActionPolicyAutoRun
 }
 
 func EffectiveNotifyPolicy(task Task, trigger TriggerDefinition) string {
@@ -142,15 +145,6 @@ func normalizeActionPolicy(policy, fallback string) string {
 			return ActionPolicyConfirm
 		}
 		return fallback
-	}
-}
-
-func actionPolicyForWriteMode(mode string) string {
-	switch strings.TrimSpace(mode) {
-	case WriteModeReadOnly, WriteModeConfirmWrite, WriteModeAutoWrite:
-		return ActionPolicyAutoRun
-	default:
-		return ActionPolicyAutoRun
 	}
 }
 

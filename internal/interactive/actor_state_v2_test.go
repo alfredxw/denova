@@ -1,6 +1,7 @@
 package interactive
 
 import (
+	interactivestate "denova/internal/interactive/state"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -48,7 +49,7 @@ func TestLegacyStoryFreezesSchemaAfterBackupOnFirstLoad(t *testing.T) {
 	legacyStore := NewStore(root)
 	story, err := legacyStore.CreateStory(CreateStoryRequest{
 		Title: "旧故事",
-		InitialStateOps: []StateOp{
+		InitialStateOps: []interactivestate.Op{
 			{Op: "set", Path: "actors.protagonist.id", Value: "protagonist"},
 			{Op: "set", Path: "actors.protagonist.template_id", Value: "protagonist"},
 			{Op: "set", Path: "actors.protagonist.state.旧系统.自定义值", Value: "仍然存在"},
@@ -181,8 +182,8 @@ func TestStoryFreezesChineseActorStateFieldIDs(t *testing.T) {
 		Narrative: "主角确认了道渊的存在。",
 		TurnResult: &TurnResult{
 			Choices: testTurnChoices(),
-			StateUpdates: []StateUpdate{{
-				Op: TurnStateUpdateReplace, Path: "/protagonist/当前可用能力", Value: []any{"道渊"},
+			StateUpdates: []interactivestate.Update{{
+				Op: interactivestate.Replace, Path: "/protagonist/当前可用能力", Value: []any{"道渊"},
 			}},
 		},
 	})
@@ -250,7 +251,7 @@ func TestActorStateFieldIDSupportsNonPathPunctuation(t *testing.T) {
 		Narrative: "主角稳住了心神。",
 		TurnResult: &TurnResult{
 			Choices:      testTurnChoices(),
-			StateUpdates: []StateUpdate{{Op: TurnStateUpdateReplace, Path: formatStateUpdatePath([]string{"protagonist", fieldID}), Value: "镇定"}},
+			StateUpdates: []interactivestate.Update{{Op: interactivestate.Replace, Path: interactivestate.FormatPath([]string{"protagonist", fieldID}), Value: "镇定"}},
 		},
 	})
 	if err != nil {
@@ -347,7 +348,7 @@ func TestLegacyActorStatePathReplaysIntoFrozenFieldID(t *testing.T) {
 	story, err := store.CreateStory(CreateStoryRequest{
 		Title:      "旧状态回放",
 		ActorState: &system,
-		InitialStateOps: []StateOp{
+		InitialStateOps: []interactivestate.Op{
 			{Op: "set", Path: "actors.protagonist.id", Value: "protagonist"},
 			{Op: "set", Path: "actors.protagonist.template_id", Value: "protagonist"},
 			{Op: "set", Path: "actors.protagonist.state.abilities.available", Value: []any{"旧能力"}},
@@ -369,7 +370,7 @@ func TestLegacyActorStatePathReplaysIntoFrozenFieldID(t *testing.T) {
 		Narrative: "主角在旧能力之上掌握了新能力。",
 		TurnResult: &TurnResult{
 			Choices:      testTurnChoices(),
-			StateUpdates: []StateUpdate{{Op: TurnStateUpdateReplace, Path: "/protagonist/当前可用能力", Value: []any{"旧能力", "新能力"}}},
+			StateUpdates: []interactivestate.Update{{Op: interactivestate.Replace, Path: "/protagonist/当前可用能力", Value: []any{"旧能力", "新能力"}}},
 		},
 	})
 	if err != nil {

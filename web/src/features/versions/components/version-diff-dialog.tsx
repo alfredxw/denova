@@ -46,7 +46,7 @@ export function VersionDiffDialog({
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex min-w-0 items-center gap-2">
-                <DialogTitle className="truncate text-sm font-semibold leading-5 text-[var(--nova-text)]" title={displayTitle}>
+                <DialogTitle className="truncate text-sm font-semibold leading-5 text-[var(--nova-text)]">
                   {displayTitle}
                 </DialogTitle>
                 <span className="shrink-0 rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] font-medium uppercase text-[var(--nova-text-faint)]">

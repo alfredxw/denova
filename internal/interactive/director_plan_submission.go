@@ -1,10 +1,10 @@
 package interactive
 
 import (
+	"denova/internal/book/lore"
+	"denova/internal/interactive/director"
 	"fmt"
 	"strings"
-
-	"denova/internal/book"
 )
 
 // DirectorPlanUpdateSubmission incrementally stages independently retryable
@@ -12,7 +12,7 @@ import (
 // mode for the run; later retries keep that mode and only resend rejected
 // documents. No workspace file changes before Finalize succeeds.
 type DirectorPlanUpdateSubmission struct {
-	Decision           PlanDecision                 `json:"decision"`
+	Decision           director.Decision            `json:"decision"`
 	Updates            []DirectorPlanDocumentUpdate `json:"updates,omitempty"`
 	Finalize           bool                         `json:"finalize"`
 	ReviewedLoreIDs    []string                     `json:"-"`
@@ -42,7 +42,7 @@ type DirectorPlanUpdateReceipt struct {
 	AcceptedDocuments []string                         `json:"accepted_documents,omitempty"`
 	ChangedDocuments  []string                         `json:"changed_documents,omitempty"`
 	Finalized         bool                             `json:"finalized"`
-	Decision          PlanDecision                     `json:"decision"`
+	Decision          director.Decision                `json:"decision"`
 }
 
 // StageDirectorPlanRunUpdate validates each document independently and keeps
@@ -54,10 +54,10 @@ func (s *Store) StageDirectorPlanRunUpdate(storyID, branchID string, token Direc
 		Rejected: []DirectorPlanDocumentIssue{},
 	}
 	if s == nil {
-		return receipt, fmt.Errorf("互动故事存储不可用")
+		return receipt, fmt.Errorf("interactive story store is unavailable")
 	}
 	if draft == nil {
-		return receipt, fmt.Errorf("导演规划 Patch 草稿不可用")
+		return receipt, fmt.Errorf("Director plan patch draft is unavailable")
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -67,13 +67,13 @@ func (s *Store) StageDirectorPlanRunUpdate(storyID, branchID string, token Direc
 		return receipt, err
 	}
 	if token.Revision != "" && token.Revision != metadata.Revision {
-		return receipt, fmt.Errorf("导演规划已被其他操作更新，请重新加载后再提交")
+		return receipt, fmt.Errorf("Director plan was updated by another operation; reload before submitting")
 	}
-	if metadata.LastRun == nil || metadata.LastRun.Status != DirectorPlanStatusRunning || strings.TrimSpace(metadata.LastRun.SourceTurnID) != strings.TrimSpace(sourceTurnID) {
-		return receipt, fmt.Errorf("当前导演规划运行已失效，不能提交结果")
+	if metadata.LastRun == nil || metadata.LastRun.Status != director.PlanStatusRunning || strings.TrimSpace(metadata.LastRun.SourceTurnID) != strings.TrimSpace(sourceTurnID) {
+		return receipt, fmt.Errorf("the current Director plan run is stale and cannot accept results")
 	}
 	if draft.finalized {
-		receipt.Rejected = append(receipt.Rejected, directorPlanDocumentIssue("", "draft_finalized", "", "导演规划 Patch 草稿已经 finalize", false))
+		receipt.Rejected = append(receipt.Rejected, directorPlanDocumentIssue("", "draft_finalized", "", "The Director plan patch draft is already finalized.", false))
 		receipt.Finalized = true
 		receipt.Decision, _ = draft.Decision()
 		receipt.AcceptedDocuments = draft.acceptedDocuments()
@@ -89,7 +89,7 @@ func (s *Store) StageDirectorPlanRunUpdate(storyID, branchID string, token Direc
 	}
 	receipt.Decision, _ = draft.Decision()
 	if len(submission.Updates) > maxDirectorDocumentUpdatesPerCall {
-		receipt.Rejected = append(receipt.Rejected, directorPlanDocumentIssue("", "too_many_documents", "updates", fmt.Sprintf("单次 updates 过多: %d > %d", len(submission.Updates), maxDirectorDocumentUpdatesPerCall), true))
+		receipt.Rejected = append(receipt.Rejected, directorPlanDocumentIssue("", "too_many_documents", "updates", fmt.Sprintf("too many updates in one call: %d > %d", len(submission.Updates), maxDirectorDocumentUpdatesPerCall), true))
 		receipt.RetryDocuments = directorSubmissionDocuments(submission.Updates)
 		return receipt, nil
 	}
@@ -102,11 +102,11 @@ func (s *Store) StageDirectorPlanRunUpdate(storyID, branchID string, token Direc
 		document := normalizeDirectorDocument(update.Document)
 		path := fmt.Sprintf("updates[%d]", index)
 		if document == "" {
-			receipt.Rejected = append(receipt.Rejected, directorPlanDocumentIssue(strings.TrimSpace(update.Document), "invalid_document", path+".document", "document 必须是 director.md、agent-brief.md 或 lore-context.md", true))
+			receipt.Rejected = append(receipt.Rejected, directorPlanDocumentIssue(strings.TrimSpace(update.Document), "invalid_document", path+".document", "document must be director.md, agent-brief.md, or lore-context.md.", true))
 			continue
 		}
 		if documentCounts[document] > 1 {
-			receipt.Rejected = append(receipt.Rejected, directorPlanDocumentIssue(document, "duplicate_document", path+".document", "同一次提交不能重复更新同一文件", true))
+			receipt.Rejected = append(receipt.Rejected, directorPlanDocumentIssue(document, "duplicate_document", path+".document", "The same document cannot be updated more than once in one submission.", true))
 			continue
 		}
 		fingerprint := directorDocumentUpdateFingerprint(update)
@@ -115,11 +115,11 @@ func (s *Store) StageDirectorPlanRunUpdate(storyID, branchID string, token Direc
 				receipt.Accepted = append(receipt.Accepted, DirectorPlanDocumentAcceptance{Document: document, Hash: accepted.hash, AlreadyAccepted: true})
 				continue
 			}
-			receipt.Rejected = append(receipt.Rejected, directorPlanDocumentIssue(document, "document_already_accepted", path, "该文件已经 accepted；重试时不要重新提交已接受文件", false))
+			receipt.Rejected = append(receipt.Rejected, directorPlanDocumentIssue(document, "document_already_accepted", path, "This document is already accepted; do not resend accepted files on retry.", false))
 			continue
 		}
 		if strings.TrimSpace(update.BaseHash) == "" || strings.TrimSpace(update.BaseHash) != draft.baseHash[document] {
-			receipt.Rejected = append(receipt.Rejected, directorPlanDocumentIssue(document, "base_hash_mismatch", path+".base_hash", "base_hash 与本轮注入的完整文档快照不一致", true))
+			receipt.Rejected = append(receipt.Rejected, directorPlanDocumentIssue(document, "base_hash_mismatch", path+".base_hash", "base_hash does not match the complete document snapshot injected for this run.", true))
 			continue
 		}
 		base := directorDocumentContent(draft.baseline, document)
@@ -129,7 +129,7 @@ func (s *Store) StageDirectorPlanRunUpdate(storyID, branchID string, token Direc
 			continue
 		}
 		if strings.TrimSpace(content) == strings.TrimSpace(base) {
-			receipt.Rejected = append(receipt.Rejected, directorPlanDocumentIssue(document, "no_change", path+".edits", "Patch 没有改变文件内容；无需提交该文件", true))
+			receipt.Rejected = append(receipt.Rejected, directorPlanDocumentIssue(document, "no_change", path+".edits", "The patch does not change the document; omit this file.", true))
 			continue
 		}
 		if validationErr := s.validateDirectorPatchedDocument(document, draft.baseline, content, submission.ReviewedLoreIDs); validationErr != nil {
@@ -167,20 +167,20 @@ func (s *Store) StageDirectorPlanRunUpdate(storyID, branchID string, token Direc
 	return receipt, nil
 }
 
-func (d *DirectorPlanUpdateDraft) acceptDecision(value PlanDecision) error {
+func (d *DirectorPlanUpdateDraft) acceptDecision(value director.Decision) error {
 	rawMode := strings.TrimSpace(value.Mode)
 	switch rawMode {
-	case PlanDecisionKeep, PlanDecisionPatch, PlanDecisionReplan:
+	case director.DecisionKeep, director.DecisionPatch, director.DecisionReplan:
 	default:
-		return fmt.Errorf("无效的导演规划 mode: %s", rawMode)
+		return fmt.Errorf("invalid Director plan mode: %s", rawMode)
 	}
-	decision := normalizePlanDecision(value)
+	decision := director.NormalizeDecision(value)
 	if d.decision == nil {
 		d.decision = &decision
 		return nil
 	}
 	if d.decision.Mode != decision.Mode {
-		return fmt.Errorf("同一次导演运行不能从 %s 改为 %s；请沿用首次 decision.mode", d.decision.Mode, decision.Mode)
+		return fmt.Errorf("one Director run cannot change mode from %s to %s; keep the first decision.mode", d.decision.Mode, decision.Mode)
 	}
 	if strings.TrimSpace(decision.Reason) != "" {
 		d.decision.Reason = decision.Reason
@@ -203,28 +203,28 @@ func (d *DirectorPlanUpdateDraft) acceptDecision(value PlanDecision) error {
 func (d *DirectorPlanUpdateDraft) finalizeIssue() *DirectorPlanDocumentIssue {
 	decision, ok := d.Decision()
 	if !ok {
-		issue := directorPlanDocumentIssue("", "decision_missing", "decision", "finalize 前必须提交 decision", true)
+		issue := directorPlanDocumentIssue("", "decision_missing", "decision", "A decision must be submitted before finalization.", true)
 		return &issue
 	}
 	changed := d.acceptedDocuments()
 	switch decision.Mode {
-	case PlanDecisionKeep:
+	case director.DecisionKeep:
 		if len(changed) > 0 {
-			issue := directorPlanDocumentIssue("", "keep_with_updates", "updates", "keep 决策不得修改文档", false)
+			issue := directorPlanDocumentIssue("", "keep_with_updates", "updates", "A keep decision must not modify documents.", false)
 			return &issue
 		}
-	case PlanDecisionPatch:
+	case director.DecisionPatch:
 		if len(changed) == 0 {
-			issue := directorPlanDocumentIssue(DirectorDocumentAgentBrief, "patch_without_updates", "updates", "patch 决策至少需要一个文档 Patch；普通更新优先只修改 agent-brief.md", true)
+			issue := directorPlanDocumentIssue(DirectorDocumentAgentBrief, "patch_without_updates", "updates", "A patch decision requires at least one document patch; routine updates should prefer changing only agent-brief.md.", true)
 			return &issue
 		}
-	case PlanDecisionReplan:
+	case director.DecisionReplan:
 		if _, ok := d.accepted[DirectorDocumentPlan]; !ok {
-			issue := directorPlanDocumentIssue(DirectorDocumentPlan, "replan_requires_plan", "updates", "replan 必须更新 director.md", true)
+			issue := directorPlanDocumentIssue(DirectorDocumentPlan, "replan_requires_plan", "updates", "A replan must update director.md.", true)
 			return &issue
 		}
 		if _, ok := d.accepted[DirectorDocumentAgentBrief]; !ok {
-			issue := directorPlanDocumentIssue(DirectorDocumentAgentBrief, "replan_requires_brief", "updates", "replan 必须同步更新 agent-brief.md；lore-context.md 仍按需更新", true)
+			issue := directorPlanDocumentIssue(DirectorDocumentAgentBrief, "replan_requires_brief", "updates", "A replan must also update agent-brief.md; lore-context.md remains optional.", true)
 			return &issue
 		}
 	}
@@ -234,7 +234,7 @@ func (d *DirectorPlanUpdateDraft) finalizeIssue() *DirectorPlanDocumentIssue {
 func (s *Store) validateDirectorPatchedDocument(document string, baseline DirectorPlanDocs, content string, reviewedLoreIDs []string) error {
 	kind := directorDocumentKind(document)
 	if kind == "" {
-		return fmt.Errorf("未知导演文档: %s", document)
+		return fmt.Errorf("unknown Director document: %s", document)
 	}
 	if kind != DirectorPlanDocLoreContext {
 		return validateDirectorPlanDoc(kind, content)
@@ -251,14 +251,14 @@ func (s *Store) validateDirectorPatchedDocument(document string, baseline Direct
 func validateDirectorPlanSubmissionLoreRevision(workspace, sourceRevision string) error {
 	sourceRevision = strings.TrimSpace(sourceRevision)
 	if sourceRevision == "" {
-		return fmt.Errorf("导演规划提交缺少资料库来源 revision")
+		return fmt.Errorf("Director plan submission is missing the source lore revision")
 	}
-	currentRevision, err := book.NewLoreStore(workspace).Revision()
+	currentRevision, err := lore.NewStore(workspace).Revision()
 	if err != nil {
-		return fmt.Errorf("读取资料库 revision 失败: %w", err)
+		return fmt.Errorf("read lore revision: %w", err)
 	}
 	if sourceRevision != currentRevision {
-		return fmt.Errorf("资料库在导演审阅期间已变化，请基于最新名称目录重新规划")
+		return fmt.Errorf("lore changed during Director review; replan from the latest name roster")
 	}
 	return nil
 }

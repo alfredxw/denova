@@ -103,9 +103,9 @@ func TestLoadWithWorkspaceUsesUserSettingsAndWorkspaceAgentOverrides(t *testing.
 		Settings{
 			OpenAIModel:         "ws-model",
 			Language:            "en-US",
-			WritingSkillDefault: "novel-heavy",
+			WritingSkillDefault: "scene-first",
 			IDEImagePresetID:    "2d-illustration",
-			AgentTools:          AgentToolSettings{IDE: AgentToolOverride{ShellExecute: boolPtr(false)}},
+			AgentTools:          AgentToolSettings{IDE: AgentToolOverride{AgentToolShell: false}},
 		}); err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +132,7 @@ func TestLoadWithWorkspaceUsesUserSettingsAndWorkspaceAgentOverrides(t *testing.
 	if layered.Workspace.OpenAIModel != "" || layered.Workspace.Language != "" || layered.Workspace.WritingSkillDefault != "" {
 		t.Fatalf("workspace general settings should be filtered: %#v", layered.Workspace)
 	}
-	if cfg.AgentTools.IDE.ShellExecute == nil || *cfg.AgentTools.IDE.ShellExecute {
+	if enabled, present := cfg.AgentTools.IDE[AgentToolShell]; !present || enabled {
 		t.Fatalf("workspace Agent override should remain effective: %#v", cfg.AgentTools.IDE)
 	}
 }
@@ -162,7 +162,42 @@ func TestLoadWithWorkspaceAllowsUnlimitedAgentIdleTimeout(t *testing.T) {
 	}
 }
 
-func TestLoadWithWorkspaceMapsZeroToolResultLimitToHighDefault(t *testing.T) {
+func TestLoadWithWorkspaceNormalizesUserProjectFileTreeEntryLimit(t *testing.T) {
+	novaDir := t.TempDir()
+	workspace := t.TempDir()
+	t.Setenv("DENOVA_DIR", novaDir)
+	t.Setenv("NOVA_DIR", "")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("OPENAI_MODEL", "")
+
+	configured := MaxProjectFileTreeEntryLimit + 1
+	if err := WriteSettingsFile(filepath.Join(novaDir, "config.toml"), Settings{
+		ProjectFileTreeEntryLimit: intPtr(configured),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteSettingsFile(filepath.Join(workspace, ".denova", "config.toml"), Settings{
+		ProjectFileTreeEntryLimit: intPtr(10),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, layered, err := LoadWithWorkspace(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ProjectFileTreeEntryLimit != MaxProjectFileTreeEntryLimit {
+		t.Fatalf("project file tree limit = %d, want %d", cfg.ProjectFileTreeEntryLimit, MaxProjectFileTreeEntryLimit)
+	}
+	if layered.User.ProjectFileTreeEntryLimit == nil || *layered.User.ProjectFileTreeEntryLimit != MaxProjectFileTreeEntryLimit {
+		t.Fatalf("user project file tree limit was not normalized: %#v", layered.User.ProjectFileTreeEntryLimit)
+	}
+	if layered.Workspace.ProjectFileTreeEntryLimit != nil {
+		t.Fatalf("workspace must not override the user-scoped project file tree limit")
+	}
+}
+
+func TestLoadWithWorkspaceMapsZeroToolResultLimitToDefault(t *testing.T) {
 	novaDir := t.TempDir()
 	ws := t.TempDir()
 	t.Setenv("NOVA_DIR", novaDir)
@@ -179,10 +214,52 @@ func TestLoadWithWorkspaceMapsZeroToolResultLimitToHighDefault(t *testing.T) {
 		t.Fatal(err)
 	}
 	if cfg.AgentToolResultLimitKB != DefaultAgentToolResultLimitKB {
-		t.Fatalf("agent tool result limit should map 0 to the high default, got %d", cfg.AgentToolResultLimitKB)
+		t.Fatalf("agent tool result limit should map 0 to the default, got %d", cfg.AgentToolResultLimitKB)
 	}
 	if layered.Effective.AgentToolResultLimitKB == nil || *layered.Effective.AgentToolResultLimitKB != DefaultAgentToolResultLimitKB {
-		t.Fatalf("effective agent tool result limit should expose the high default")
+		t.Fatalf("effective agent tool result limit should expose the default")
+	}
+}
+
+func TestLoadWithWorkspaceLayersAndNormalizesAgentToolParallelism(t *testing.T) {
+	tests := []struct {
+		name          string
+		user          int
+		workspace     int
+		wantUser      int
+		wantWorkspace int
+		wantEffective int
+	}{
+		{name: "workspace override", user: 4, workspace: 12, wantUser: 4, wantWorkspace: 12, wantEffective: 12},
+		{name: "zero uses default", user: 3, workspace: 0, wantUser: 3, wantWorkspace: DefaultAgentToolParallelism, wantEffective: DefaultAgentToolParallelism},
+		{name: "upper bound", user: 4, workspace: 100, wantUser: 4, wantWorkspace: MaxAgentToolParallelism, wantEffective: MaxAgentToolParallelism},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			novaDir := t.TempDir()
+			workspace := t.TempDir()
+			t.Setenv("NOVA_DIR", novaDir)
+			t.Setenv("DENOVA_DIR", "")
+			t.Setenv("OPENAI_API_KEY", "")
+			t.Setenv("OPENAI_MODEL", "")
+			if err := WriteSettingsFile(filepath.Join(novaDir, "config.toml"), Settings{AgentToolParallelism: intPtr(test.user)}); err != nil {
+				t.Fatal(err)
+			}
+			if err := WriteSettingsFile(filepath.Join(workspace, ".nova", "config.toml"), Settings{AgentToolParallelism: intPtr(test.workspace)}); err != nil {
+				t.Fatal(err)
+			}
+			cfg, layered, err := LoadWithWorkspace(workspace)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if layered.User.AgentToolParallelism == nil || *layered.User.AgentToolParallelism != test.wantUser ||
+				layered.Workspace.AgentToolParallelism == nil || *layered.Workspace.AgentToolParallelism != test.wantWorkspace ||
+				layered.Effective.AgentToolParallelism == nil || *layered.Effective.AgentToolParallelism != test.wantEffective ||
+				cfg.AgentToolParallelism != test.wantEffective {
+				t.Fatalf("parallelism cfg=%d user=%v workspace=%v effective=%v", cfg.AgentToolParallelism,
+					layered.User.AgentToolParallelism, layered.Workspace.AgentToolParallelism, layered.Effective.AgentToolParallelism)
+			}
+		})
 	}
 }
 
@@ -303,7 +380,7 @@ func TestLoadWithWorkspaceAllowsGlobalUnlimitedAgentIdleTimeout(t *testing.T) {
 	}
 }
 
-func TestLoadWithWorkspaceMapsGlobalZeroToolResultLimitToHighDefault(t *testing.T) {
+func TestLoadWithWorkspaceMapsGlobalZeroToolResultLimitToDefault(t *testing.T) {
 	root := t.TempDir()
 	t.Chdir(root)
 	ws := t.TempDir()
@@ -320,10 +397,10 @@ func TestLoadWithWorkspaceMapsGlobalZeroToolResultLimitToHighDefault(t *testing.
 		t.Fatal(err)
 	}
 	if cfg.AgentToolResultLimitKB != DefaultAgentToolResultLimitKB {
-		t.Fatalf("global agent tool result limit should map 0 to the high default, got %d", cfg.AgentToolResultLimitKB)
+		t.Fatalf("global agent tool result limit should map 0 to the default, got %d", cfg.AgentToolResultLimitKB)
 	}
 	if layered.Global.AgentToolResultLimitKB == nil || *layered.Global.AgentToolResultLimitKB != DefaultAgentToolResultLimitKB {
-		t.Fatalf("global layer should expose the high default")
+		t.Fatalf("global layer should expose the default")
 	}
 }
 

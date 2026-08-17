@@ -1,14 +1,60 @@
 package app
 
 import (
+	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/cloudwego/eino/schema"
-
 	"denova/config"
-	"denova/internal/session"
+	agents "denova/internal/agents"
+	"denova/internal/agents/session"
+	configmanagerapp "denova/internal/app/configmanager"
 )
+
+func TestAgentRunTracesUseProjectStateRoot(t *testing.T) {
+	workspace := t.TempDir()
+	stateRoot := t.TempDir()
+	application := &App{
+		workspace: workspace,
+		cfg:       &config.Config{ProjectStateDir: stateRoot},
+	}
+	runID := "run-project-state"
+	payload := strings.Join([]string{
+		`{"type":"run_created","run_id":"run-project-state","created_at":"2026-08-02T12:25:04Z","data":{"agent_kind":"ide"}}`,
+		`{"type":"run_finished","run_id":"run-project-state","created_at":"2026-08-02T12:35:38Z","data":{"status":"success"}}`,
+	}, "\n") + "\n"
+	runsDir := filepath.Join(stateRoot, "runs")
+	if err := os.MkdirAll(runsDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(runsDir, runID+".jsonl"), []byte(payload), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	summaries, err := application.AgentRunTraces(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(summaries) != 1 || summaries[0].ID != runID || summaries[0].Status != "success" {
+		t.Fatalf("project-state trace summaries = %#v", summaries)
+	}
+	trace, err := application.AgentRunTrace(runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if trace.Summary.ID != runID || len(trace.Records) != 2 {
+		t.Fatalf("project-state trace detail = %#v", trace)
+	}
+	export, err := application.ExportAgentRunTrace(runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(export.Data) != payload {
+		t.Fatalf("project-state trace export = %q, want %q", string(export.Data), payload)
+	}
+}
 
 func TestAgentSessionIDCoversBuiltInModelAgents(t *testing.T) {
 	for _, agentKind := range persistentAgentKinds() {
@@ -88,58 +134,66 @@ func TestClearAgentSessionInStoreMarksEffectiveContextForEveryBuiltInAgent(t *te
 }
 
 func TestConfigManagerScopedSessionsAreIsolated(t *testing.T) {
-	store, err := session.NewStore(t.TempDir())
+	root := t.TempDir()
+	application, err := New(context.Background(), &config.Config{
+		OpenAIModel: "test-model", NovaDir: root, Workspace: root, ResumeLastWorkspace: false,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	app := &App{sessionStore: store}
-	automationReq := ConfigManagerRequest{Origin: "automation", ResourceID: "daily-review"}
-	loreReq := ConfigManagerRequest{Origin: "lore", ResourceID: "__config_manager_lore__"}
+	t.Cleanup(application.Close)
+	projectID := application.ProjectID()
+	automationReq := configmanagerapp.Request{ProjectID: projectID, Origin: "automation", ResourceID: "daily-review"}
+	loreReq := configmanagerapp.Request{ProjectID: projectID, Origin: "lore", ResourceID: "__config_manager_lore__"}
 
-	automationID, err := configManagerSessionID(automationReq)
+	automationID, err := configmanagerapp.SessionID(automationReq)
 	if err != nil {
 		t.Fatal(err)
 	}
-	loreID, err := configManagerSessionID(loreReq)
+	loreID, err := configmanagerapp.SessionID(loreReq)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if automationID == loreID {
 		t.Fatalf("scoped config manager sessions should differ: %s", automationID)
 	}
-	automationSession, err := store.GetOrCreate(automationID)
+	runtime, err := application.AgentChat().ProjectRuntime(context.Background(), projectID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := automationSession.Append(schema.UserMessage("自动化配置")); err != nil {
-		t.Fatal(err)
-	}
-	loreSession, err := store.GetOrCreate(loreID)
+	automationSession, err := runtime.SessionStore.GetOrCreate(automationID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := loreSession.Append(schema.UserMessage("资料库配置")); err != nil {
+	if err := automationSession.Append(agents.UserMessage("自动化配置")); err != nil {
+		t.Fatal(err)
+	}
+	loreSession, err := runtime.SessionStore.GetOrCreate(loreID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := loreSession.Append(agents.UserMessage("资料库配置")); err != nil {
 		t.Fatal(err)
 	}
 
-	automationHistory, err := app.ConfigManagerMessages(automationReq)
+	automationHistory, err := application.ConfigManager().Messages(automationReq)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(automationHistory) != 1 || automationHistory[0].Content != "自动化配置" {
 		t.Fatalf("automation history should stay scoped: %#v", automationHistory)
 	}
-	loreHistory, err := app.ConfigManagerMessages(loreReq)
+	loreHistory, err := application.ConfigManager().Messages(loreReq)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(loreHistory) != 1 || loreHistory[0].Content != "资料库配置" {
 		t.Fatalf("lore history should stay scoped: %#v", loreHistory)
 	}
-	if err := app.ClearConfigManagerSession(automationReq); err != nil {
+	if err := application.ConfigManager().Clear(automationReq); err != nil {
 		t.Fatal(err)
 	}
-	loreHistory, err = app.ConfigManagerMessages(loreReq)
+	loreHistory, err = application.ConfigManager().Messages(loreReq)
 	if err != nil {
 		t.Fatal(err)
 	}

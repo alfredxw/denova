@@ -89,6 +89,8 @@ const storyPicker = {
   'storyPicker.confirmDeleteDescription': '所选故事线的正文、分支、回合、状态和相关会话都会被删除，且无法撤销。',
   'storyPicker.firstTitle': '新的开始',
   'storyPicker.numberedTitle': '故事线 {{number}}',
+  'storyPicker.turnCount': '{{count}} 回合',
+  'storyPicker.lastTurn': '最近回合 {{time}}',
 } as const
 
 export default storyPicker

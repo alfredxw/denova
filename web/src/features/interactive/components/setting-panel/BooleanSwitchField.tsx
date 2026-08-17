@@ -21,7 +21,7 @@ export function BooleanSwitchField({
       <span className="text-[11px] text-[var(--nova-text-faint)]">{label}</span>
       <span className="flex h-8 w-full items-center justify-between gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 text-xs text-[var(--nova-text-muted)]">
         <span className="truncate">{checked ? t('settingPanel.enabled') : t('settingPanel.disabled')}</span>
-        <Switch checked={checked} onCheckedChange={onCheckedChange} disabled={disabled} aria-label={actionLabel} title={actionLabel} />
+        <Switch checked={checked} onCheckedChange={onCheckedChange} disabled={disabled} aria-label={actionLabel} />
       </span>
     </label>
   )

@@ -54,7 +54,7 @@ You can start from an original idea, import an existing novel for fan fiction, a
 ## Core Features
 
 - **Writing Mode**: fiction-focused Markdown editing, multiple tabs, regex find and replace, recoverable workspace-wide replacement, chapter statistics, outlines, chapter-group plans, progress tracking, document comments, Change Review, and existing novel import.
-- **Creative Agents**: read selections, files, lore, and trusted review feedback; call tools to generate or edit chapters; and use Skills / SubAgents for different writing tasks, prose styles, and workflows. Changes can be reviewed, commented on, and undone from a cumulative diff.
+- **Creative Agents**: read selections, files, lore, and trusted review feedback; call tools to generate or edit chapters; and use Skills / SubAgents for different writing tasks, prose styles, and workflows. General tools use the compact `read / write / edit / glob / grep / bash|pwsh / web_search / web_fetch / browser / todo / ask / skill / task` interfaces. Writes still enter the cumulative diff for review, comments, and undo.
 - **Game Mode**: run interactive text adventures with player input, story branches, storyline switching, Background Director schedules, action suggestions, saved AI reply corrections, searchable Turn history, replayable Actor archive/restore, customizable state layouts, and a full-screen Director Desk for goals, pressure, costs, event card packs, and rule checks.
 - **Lore and presets**: maintain durable settings such as characters, worlds, locations, factions, rules, and items; narrative styles handle prose, prompt slots, and scene style rules, while Story Directors can plug together narrative styles, event packages, TRPG Checks, State Systems, and image presets, with each module independently switchable. State Systems also provide reusable trait libraries whose templates define draw rules for each kind of Actor.
 - **Image creation**: generate chapter illustrations, interactive images, and book covers through OpenAI-compatible image model profiles, with previews and result management in the UI.
@@ -85,23 +85,21 @@ Join the [Discord community](https://discord.gg/QuHu2aPya) to connect with other
 
 ## Quick Start
 
-### Download a Release
-
-Download the archive for your platform from [GitHub Releases](https://github.com/alfredxw/denova/releases), extract it, and run:
+One-command install for macOS / Linux:
 
 ```bash
-./denova
+curl -fsSL https://raw.githubusercontent.com/alfredxw/denova/master/scripts/install.sh | sh
 ```
 
-Windows users should run `denova.exe`. On macOS, if the system blocks the app for security reasons, run:
+Run `denova` after installation.
 
-```bash
-xattr -dr com.apple.quarantine denova
-```
+You can also download the package for your platform manually from [GitHub Releases](https://github.com/alfredxw/denova/releases). The script supports macOS and Linux only; Windows users must download the Release manually and run `denova.exe`.
+
+Release archives include a SHA-256-verified ripgrep binary, so no separate installation is needed. Denova's `grep` tool prefers this bundled version.
 
 ### Run from Source
 
-Requires Go 1.26.5+, Node.js 20+, pnpm and ripgrep.
+Development startup requires Go 1.26.6+, Node.js 20+, pnpm, and ripgrep available on PATH. The distributable directory produced by `scripts/build.sh` downloads and bundles the pinned version automatically.
 
 ```bash
 git clone https://github.com/alfredxw/denova.git
@@ -117,7 +115,7 @@ Default addresses:
 
 ## Models and Configuration
 
-Denova uses an OpenAI-compatible API. The recommended path is to configure language models, image models, Agent parameters, the default Writing Skill, editor options, Game Mode behavior, version management, language, theme, and fonts from Settings.
+Denova configures language-model providers independently from API protocols. Providers are selected from the built-in catalog, while protocols are limited to OpenAI Chat Completions, OpenAI Responses, and Anthropic Messages. For a custom endpoint, choose Compatible / Custom Endpoint, then set its protocol and Base URL; Gemini uses Google's official OpenAI-compatible endpoint. OpenAI defaults to Responses, DeepSeek offers Chat Completions, Responses, and Anthropic routes, and MiniMax defaults to the Anthropic route so thinking blocks can be continued intact. Settings can load model suggestions through the current protocol's OpenAI-compatible or Anthropic `/models` endpoint while keeping the model name fully editable, and can test the current unsaved profile with one minimal real generation request. Legacy `openai_*` fields in `model_profiles` and the `OPENAI_*` environment variables below remain compatible Chat Completions settings. The recommended path is to configure language models, image models, Agent parameters, the default Writing Skill, editor options, Game Mode behavior, version management, language, theme, and fonts from Settings.
 
 For scripted startup or deployment, you can also override model configuration with environment variables:
 
@@ -148,6 +146,10 @@ Built-in defaults < global config.toml < user-level config < environment variabl
 ```
 
 Common, Writing Mode, and Game Mode preferences from Settings are now stored uniformly at the user level. A workspace `.denova/config.toml` only carries workspace customizations explicitly exposed by the Agents page; other legacy fields remain on disk but no longer override user settings. Legacy environment variables are still read for compatibility; new configuration should use `.denova` / `DENOVA_*`.
+
+Parallel read-tool execution is configurable from Settings or Agents, defaults to 8, and accepts 1–64; a workspace value overrides the user value. It applies only to consecutive read-only tools—workspace writes and child tools remain strictly ordered.
+
+The Agents page renders each Agent's actual permissions from the backend-resolved capability manifest instead of maintaining a second frontend default matrix. Effective permissions are the intersection of the Agent kind's hard capability ceiling and configured overrides; `runtime_check` marks a conditional capability and does not guarantee that a concrete tool is registered for the current run. `shell` resolves to `bash` or `pwsh` for the current platform, and Web Search and Web Fetch can be authorized independently. Configuration management is consolidated into `config_read` / `config_apply`, with resource workflows loaded on demand from the built-in `config-manager` Skill references.
 
 ## Remote Access and Phone Usage
 

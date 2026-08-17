@@ -163,8 +163,15 @@ export interface ReviewThread {
 }
 
 export interface WorkspaceChangeEvent {
+  /** Stable Project identity for routing background and AgentChat events. */
+  project_id?: string
   /** Canonical workspace identity emitted by the backend. */
   workspace?: string
+  /** Ephemeral filesystem invalidations use watcher; durable Agent events omit it. */
+  source?: string
+  /** Re-read canonical workspace state because an event suffix was unavailable. */
+  resync?: boolean
+  changes?: WorkspaceFileChange[]
   change_group_id?: string
   group_id?: string
   change_set_id?: string
@@ -174,10 +181,49 @@ export interface WorkspaceChangeEvent {
   action?: string
 }
 
+/** Describes the minimum UI invalidation required after a workspace mutation. */
+export type WorkspaceChangeImpact = 'content' | 'structure'
+
+/** Identifies the mounted surface that already owns the canonical mutation result. */
+export type WorkspaceChangeOrigin = 'external' | 'files-tab' | 'project-page'
+
+export interface WorkspaceChangeMetadata {
+  impact: WorkspaceChangeImpact
+  origin: WorkspaceChangeOrigin
+}
+
+export type WorkspaceFileChangeType = 'added' | 'updated' | 'deleted'
+
+export interface WorkspaceFileChange {
+  path: string
+  type: WorkspaceFileChangeType
+}
+
+export function workspaceChangeImpact(event: WorkspaceChangeEvent): WorkspaceChangeImpact {
+  if (event.resync) return 'structure'
+  const changes = event.changes ?? []
+  return changes.length > 0 && changes.every((change) => change.type === 'updated')
+    ? 'content'
+    : 'structure'
+}
+
+export function workspaceChangePaths(event: WorkspaceChangeEvent): string[] {
+  return Array.from(new Set([
+    ...(event.affected_paths ?? []),
+    ...(event.paths ?? []),
+    ...((event.changes ?? []).map((change) => change.path)),
+    ...(event.path ? [event.path] : []),
+  ].filter(Boolean)))
+}
+
 export function isWorkspaceChangeForWorkspace(event: Pick<WorkspaceChangeEvent, 'workspace'> | null | undefined, workspace: string): boolean {
   // Once a workspace is active, identity-less events are unsafe: they may be a
   // late receipt from the previously active workspace.
   return workspace ? event?.workspace === workspace : !event?.workspace
+}
+
+export function isProjectChangeForProject(event: Pick<WorkspaceChangeEvent, 'project_id'> | null | undefined, projectId: string): boolean {
+  return projectId ? event?.project_id === projectId : !event?.project_id
 }
 
 export interface ReviewWorkspaceChangeRequest {
@@ -197,6 +243,8 @@ export interface CreateWorkspaceChangeCommentRequest {
 }
 
 export interface WorkspaceChangeMutationResult {
+  /** Stable Project identity that held the server-side mutation lease. */
+  project_id?: string
   /** Canonical workspace that held the server-side mutation lease. */
   workspace?: string
   group?: WorkspaceChangeGroup

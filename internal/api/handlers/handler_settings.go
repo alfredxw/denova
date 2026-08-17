@@ -4,17 +4,19 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
 	"denova/config"
 	appsvc "denova/internal/app"
+	appsettings "denova/internal/app/settings"
 )
 
-// handleSettingsGet GET /api/settings — 返回用户设置、工作区 Agent 定制及生效快照。
+// HandleSettingsGet returns persisted layers and their resolved runtime view.
 func (h *Handlers) HandleSettingsGet(ctx context.Context, c *app.RequestContext) {
-	layered, err := h.app.Settings()
+	layered, err := h.app.SettingsService().Snapshot(settingsTarget(c))
 	if err != nil {
 		writeError(c, consts.StatusInternalServerError, err.Error())
 		return
@@ -22,27 +24,67 @@ func (h *Handlers) HandleSettingsGet(ctx context.Context, c *app.RequestContext)
 	writeJSON(c, consts.StatusOK, layered)
 }
 
-// handleSettingsUserUpdate PUT /api/settings/user — 持久化用户级配置。
-func (h *Handlers) HandleSettingsUserUpdate(ctx context.Context, c *app.RequestContext) {
-	body, baseRevision, err := bindSettingsUpdate(c)
-	if err != nil {
-		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
+// HandleAgentApprovalRuleDelete atomically revokes one server-generated user
+// rule without replacing the surrounding collection from a stale UI snapshot.
+func (h *Handlers) HandleAgentApprovalRuleDelete(ctx context.Context, c *app.RequestContext) {
+	id := strings.TrimSpace(c.Param("id"))
+	if id == "" {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", "agent approval rule id is required")
 		return
 	}
-	layered, err := h.app.UpdateUserSettings(body, baseRevision)
+	_, layered, err := h.app.SettingsService().RemoveAgentApprovalRule(id)
 	if err != nil {
-		if errors.Is(err, config.ErrSettingsRevisionConflict) {
-			writeErrorKey(c, consts.StatusConflict, "api.settings.revisionConflict")
-			return
-		}
-		if key := settingsErrorKey(err); key != "" {
-			writeErrorKey(c, consts.StatusBadRequest, key)
-			return
-		}
 		writeError(c, consts.StatusInternalServerError, err.Error())
 		return
 	}
 	writeJSON(c, consts.StatusOK, layered)
+}
+
+// HandleSettingsPatch applies only fields present in changes. Omitted fields
+// remain untouched and JSON null clears an inherited value.
+func (h *Handlers) HandleSettingsPatch(ctx context.Context, c *app.RequestContext) {
+	var body struct {
+		Layer        string          `json:"layer"`
+		BaseRevision string          `json:"base_revision,omitempty"`
+		Changes      json.RawMessage `json:"changes"`
+	}
+	if err := decodeStrictJSONRequest(c.Request.Body(), &body); err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
+		return
+	}
+	layer, err := config.ParseSettingsLayer(body.Layer)
+	if err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
+		return
+	}
+	layered, err := h.app.SettingsService().Patch(settingsTarget(c), layer, body.Changes, body.BaseRevision)
+	if err != nil {
+		switch {
+		case errors.Is(err, config.ErrSettingsRevisionConflict):
+			writeErrorKey(c, consts.StatusConflict, "api.settings.revisionConflict")
+		case errors.Is(err, appsvc.ErrNoWorkspaceOpen):
+			writeErrorKey(c, consts.StatusBadRequest, "api.settings.workspaceMissing")
+		case errors.Is(err, config.ErrInvalidTerminalCommand),
+			errors.Is(err, config.ErrInvalidSettingsPatch),
+			errors.Is(err, config.ErrUnsupportedSettingsLayer):
+			writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
+		default:
+			if key := settingsErrorKey(err); key != "" {
+				writeErrorKey(c, consts.StatusBadRequest, key)
+				return
+			}
+			writeError(c, consts.StatusInternalServerError, err.Error())
+		}
+		return
+	}
+	writeJSON(c, consts.StatusOK, layered)
+}
+
+func settingsTarget(c *app.RequestContext) appsettings.Target {
+	if layout := projectScope(c); layout.ProjectID != "" {
+		return appsettings.Project(layout.ProjectID)
+	}
+	return appsettings.Global()
 }
 
 func settingsErrorKey(err error) string {
@@ -54,43 +96,4 @@ func settingsErrorKey(err error) string {
 	default:
 		return ""
 	}
-}
-
-// handleSettingsWorkspaceUpdate PUT /api/settings/workspace — 持久化工作区级 Agent 定制。
-func (h *Handlers) HandleSettingsWorkspaceUpdate(ctx context.Context, c *app.RequestContext) {
-	body, baseRevision, err := bindSettingsUpdate(c)
-	if err != nil {
-		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
-		return
-	}
-	layered, err := h.app.UpdateWorkspaceSettings(body, baseRevision)
-	if err != nil {
-		if errors.Is(err, config.ErrSettingsRevisionConflict) {
-			writeErrorKey(c, consts.StatusConflict, "api.settings.revisionConflict")
-			return
-		}
-		if errors.Is(err, appsvc.ErrNoWorkspaceOpen) {
-			writeErrorKey(c, consts.StatusBadRequest, "api.settings.workspaceMissing")
-			return
-		}
-		writeError(c, consts.StatusBadRequest, err.Error())
-		return
-	}
-	writeJSON(c, consts.StatusOK, layered)
-}
-
-func bindSettingsUpdate(c *app.RequestContext) (config.Settings, string, error) {
-	raw := c.Request.Body()
-	var envelope struct {
-		Settings     *config.Settings `json:"settings"`
-		BaseRevision string           `json:"base_revision"`
-	}
-	if err := json.Unmarshal(raw, &envelope); err == nil && envelope.Settings != nil {
-		return *envelope.Settings, envelope.BaseRevision, nil
-	}
-	var body config.Settings
-	if err := json.Unmarshal(raw, &body); err != nil {
-		return config.Settings{}, "", err
-	}
-	return body, "", nil
 }

@@ -17,10 +17,7 @@ describe('automation task target draft', () => {
         schedule: { kind: 'manual', hour: 9, minute: 0 },
         triggers: [{ id: 'chapter_batch_review', type: 'chapter_batch', enabled: true, chapter_batch_size: 5 }],
         default_action_policy: 'auto_run',
-        write_mode: 'read_only',
-        write_scope: 'none',
-        output_policy: 'run_record_only',
-        output_path: '',
+        session_strategy: 'per_run',
       },
     }
 
@@ -51,10 +48,7 @@ describe('automation task target draft', () => {
         schedule: { kind: 'manual', hour: 9, minute: 0 },
         triggers: [],
         default_action_policy: 'auto_run',
-        write_mode: 'read_only',
-        write_scope: 'none',
-        output_policy: 'run_record_only',
-        output_path: '',
+        session_strategy: 'per_run',
       },
     }, { kind: 'workspace', workspace: '/books/a' })
     draft.trigger_state = { schedule: { last_checked_at: 'today' } }
@@ -69,5 +63,7 @@ describe('automation task target draft', () => {
     expect(update).not.toHaveProperty('last_run')
     expect(update).not.toHaveProperty('created_at')
     expect(update).not.toHaveProperty('updated_at')
+    expect(update).not.toHaveProperty('write_mode')
+    expect(update).not.toHaveProperty('output_path')
   })
 })
