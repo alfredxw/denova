@@ -80,7 +80,7 @@ Denova is iterating quickly. Feedback, bug reports, usage notes, and workflow di
 Join the [Discord community](https://discord.gg/QuHu2aPya) to connect with other creators.
 
 <p align="center">
-  <img src="./img/wechat.png" alt="WeChat group" width="240">
+  <img src="./img/wechat.jpg" alt="WeChat group" width="240">
 </p>
 
 ## Quick Start
@@ -206,15 +206,6 @@ Allow LAN devices to access the frontend dev server:
   <img src="./img/donate.png" alt="Donate" width="240">
 </p>
 
-## Star History
-
-<a href="https://www.star-history.com/#alfredxw/denova&type=date&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=alfredxw/denova&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=alfredxw/denova&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=alfredxw/denova&type=date&legend=top-left" />
- </picture>
-</a>
 
 ## License
 

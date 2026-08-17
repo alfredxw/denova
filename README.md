@@ -80,7 +80,7 @@ Denova 仍在快速迭代中，欢迎反馈问题、分享用法或一起讨论�
 加入 [Discord 社区](https://discord.gg/QuHu2aPya) 一起交流。
 
 <p align="center">
-  <img src="./img/wechat.png" alt="微信交流" width="240">
+  <img src="./img/wechat.jpg" alt="微信交流" width="240">
 </p>
 
 ## 快速开始
@@ -205,16 +205,6 @@ denova.example.com {
 <p align="center">
   <img src="./img/donate.png" alt="捐赠" width="240">
 </p>
-
-## Star History
-
-<a href="https://www.star-history.com/#alfredxw/denova&type=date&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=alfredxw/denova&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=alfredxw/denova&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=alfredxw/denova&type=date&legend=top-left" />
- </picture>
-</a>
 
 ## License
 
