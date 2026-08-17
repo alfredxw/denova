@@ -28,6 +28,14 @@ func TestMessagesFromHistoryConvertsLegacyEntries(t *testing.T) {
 		{ID: "plan-1", Role: "proposed_plan", Content: "计划"},
 		{ID: "roll-1", Role: "rule_roll", Content: "检定"},
 		{ID: "image-1", Role: "interactive_image", Content: "图像"},
+		{ID: "ask-1", Role: "ask", Ask: &session.AskInteraction{
+			Schema: "ask.pending.v1", ID: "ask-1", ToolCallID: "ask-1", AgentKind: "ide", Status: session.AskAnswered,
+			Questions: []session.AskQuestion{{ID: "direction", Question: "选择方向？"}},
+			Answers: []session.AskAnswerResult{{
+				QuestionID: "direction", Question: "选择方向？",
+				SelectedOptions: []session.AskSelectedOption{{ID: "continue", Label: "继续"}},
+			}},
+		}},
 		{ID: "system-1", Role: "system", Content: "系统"},
 		{ID: "error-1", Role: "error", Content: "错误"},
 		{ID: "clear-1", Type: "clear", CreatedAt: createdAt},
@@ -49,9 +57,10 @@ func TestMessagesFromHistoryConvertsLegacyEntries(t *testing.T) {
 	assertMessagePartType(t, messages[8], "assistant", DataTypeProposedPlan)
 	assertMessagePartType(t, messages[9], "assistant", DataTypeRuleRoll)
 	assertMessagePartType(t, messages[10], "assistant", DataTypeInteractiveImage)
-	assertMessagePartType(t, messages[11], "assistant", DataTypeSystem)
-	assertMessagePartType(t, messages[12], "assistant", DataTypeError)
-	assertMessagePartType(t, messages[13], "assistant", DataTypeClear)
+	assertMessagePartType(t, messages[11], "assistant", DataTypeAsk)
+	assertMessagePartType(t, messages[12], "assistant", DataTypeSystem)
+	assertMessagePartType(t, messages[13], "assistant", DataTypeError)
+	assertMessagePartType(t, messages[14], "assistant", DataTypeClear)
 
 	if messages[1].Metadata["run_id"] != "run-1" {
 		t.Fatalf("expected run metadata to be preserved, got %#v", messages[1].Metadata)
@@ -62,6 +71,10 @@ func TestMessagesFromHistoryConvertsLegacyEntries(t *testing.T) {
 	}
 	if messages[6].Parts[0]["data"].(map[string]any)["total_tokens"] != 12 {
 		t.Fatalf("expected token usage payload, got %#v", messages[6].Parts[0]["data"])
+	}
+	ask, ok := messages[11].Parts[0]["data"].(*session.AskInteraction)
+	if !ok || ask.Status != session.AskAnswered || len(ask.Answers) != 1 || ask.Answers[0].SelectedOptions[0].Label != "继续" {
+		t.Fatalf("Ask history payload = %#v", messages[11].Parts[0]["data"])
 	}
 	executionSummary := messages[7].Parts[0]["data"].(map[string]any)
 	if executionSummary["run_started_at"] != "2026-07-08T12:00:00Z" || executionSummary["duration_ms"] != int64(61_000) || executionSummary["run_status"] != "completed" {

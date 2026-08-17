@@ -18,27 +18,96 @@ func (s *Session) AppendDisplayEvent(event DisplayEvent) error {
 		if event.CreatedAt.IsZero() {
 			event.CreatedAt = time.Now().UTC()
 		}
-		recordID := newDisplayRecordID()
-		if err := s.appendJournalRecordLocked(displayRecord{
-			Type:         historyTypeDisplay,
-			RecordID:     recordID,
-			DisplayEvent: event,
-		}); err != nil {
-			return err
+		return s.appendDisplayEventLocked(event)
+	})
+}
+
+func (s *Session) appendDisplayEventLocked(event DisplayEvent) error {
+	event.Ask = cloneAskInteraction(event.Ask)
+	recordID := newDisplayRecordID()
+	if err := s.appendJournalRecordLocked(displayRecord{
+		Type:         historyTypeDisplay,
+		RecordID:     recordID,
+		DisplayEvent: event,
+	}); err != nil {
+		return err
+	}
+	s.records = append(s.records, historyRecord{
+		journalID:                    recordID,
+		kind:                         historyTypeDisplay,
+		display:                      &event,
+		createdAt:                    event.CreatedAt,
+		displayArgsPersistedBytes:    len(event.Args),
+		displayContentPersistedBytes: len(event.Content),
+	})
+	if event.Role == "token_usage" {
+		s.trimTokenUsageDisplayEventsLocked(event.AgentKind)
+	}
+	advanceUpdatedAt(s, event.CreatedAt)
+	return nil
+}
+
+// RecordDisplayAsk inserts or replaces the display-only projection for one
+// interaction. Pending and resolved lifecycle events share the interaction ID,
+// so history retains one compact card instead of two timeline entries.
+func (s *Session) RecordDisplayAsk(event DisplayEvent) error {
+	if event.Ask == nil {
+		return fmt.Errorf("display Ask interaction is required")
+	}
+	interactionID := strings.TrimSpace(event.Ask.ID)
+	if interactionID == "" {
+		return fmt.Errorf("display Ask interaction ID is required")
+	}
+	status := strings.TrimSpace(event.Ask.Status)
+	if status != AskPending && status != AskAnswered && status != AskCancelled {
+		return fmt.Errorf("invalid display Ask status: %s", status)
+	}
+	return s.withCanonicalMutation(context.Background(), "record display Ask", func() error {
+		now := time.Now().UTC()
+		interaction := cloneAskInteraction(event.Ask)
+		for index := len(s.records) - 1; index >= 0; index-- {
+			record := &s.records[index]
+			if record.kind != historyTypeDisplay || record.display == nil || record.display.Role != "ask" || record.display.ID != interactionID {
+				continue
+			}
+			if interaction.CreatedAt.IsZero() {
+				interaction.CreatedAt = record.display.CreatedAt
+			}
+			if interaction.CreatedAt.IsZero() {
+				interaction.CreatedAt = now
+			}
+			if status != AskPending && interaction.ResolvedAt == nil {
+				resolvedAt := now
+				interaction.ResolvedAt = &resolvedAt
+			}
+			statusCopy := status
+			if err := s.appendJournalRecordLocked(displayPatchRecord{
+				Type: historyTypeDisplayPatch, TargetRecordID: record.journalID,
+				CreatedAt: now, Status: &statusCopy, Ask: cloneAskInteraction(interaction),
+			}); err != nil {
+				return err
+			}
+			record.display.Status = status
+			record.display.Ask = interaction
+			advanceUpdatedAt(s, now)
+			return nil
 		}
-		s.records = append(s.records, historyRecord{
-			journalID:                    recordID,
-			kind:                         historyTypeDisplay,
-			display:                      &event,
-			createdAt:                    event.CreatedAt,
-			displayArgsPersistedBytes:    len(event.Args),
-			displayContentPersistedBytes: len(event.Content),
-		})
-		if event.Role == "token_usage" {
-			s.trimTokenUsageDisplayEventsLocked(event.AgentKind)
+
+		if interaction.CreatedAt.IsZero() {
+			interaction.CreatedAt = now
 		}
-		advanceUpdatedAt(s, event.CreatedAt)
-		return nil
+		if status != AskPending && interaction.ResolvedAt == nil {
+			resolvedAt := now
+			interaction.ResolvedAt = &resolvedAt
+		}
+		event.ID = interactionID
+		event.Role = "ask"
+		event.Status = status
+		event.Ask = interaction
+		if event.CreatedAt.IsZero() {
+			event.CreatedAt = interaction.CreatedAt
+		}
+		return s.appendDisplayEventLocked(event)
 	})
 }
 

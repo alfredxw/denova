@@ -1506,6 +1506,36 @@ describe('MessageItem', () => {
     expect(screen.queryByText(/Choose|Continue/)).not.toBeInTheDocument()
   })
 
+  it('历史中的已回答 Ask 默认折叠，并可点击整行查看原问题和答案', async () => {
+    const user = userEvent.setup()
+    render(
+      <MessageItem
+        message={{
+          id: 'ask-history', role: 'ask', ask: {
+            schema: 'ask.pending.v1', id: 'ask-history', tool_call_id: 'ask-history', agent_kind: 'ide', status: 'answered',
+            questions: [{
+              id: 'direction', question: '选择方向？',
+              options: [{ id: 'continue', label: '继续' }, { id: 'change', label: '调整' }],
+            }],
+            answers: [{
+              question_id: 'direction', question: '选择方向？',
+              selected_options: [{ id: 'continue', label: '继续' }],
+            }],
+          },
+        }}
+      />,
+    )
+
+    const header = screen.getByRole('button', { name: /需要你的回答.*已回答/ })
+    expect(header).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByText('选择方向？')).not.toBeInTheDocument()
+
+    await user.click(header)
+    expect(header).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByText('选择方向？')).toBeInTheDocument()
+    expect(screen.getByText('继续')).toBeInTheDocument()
+  })
+
   it('Ask 接口错误不直接展示英文服务端文案，而是按用户语言本地化', async () => {
     const user = userEvent.setup()
     const onResolve = vi.fn().mockRejectedValue(new Error('Invalid ask answer'))

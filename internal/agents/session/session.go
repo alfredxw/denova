@@ -305,6 +305,7 @@ func (s *Session) History() []HistoryEntry {
 				Result:               record.display.Result,
 				ToolPresentation:     cloneSessionToolPresentation(record.display.ToolPresentation),
 				Illustration:         cloneChapterIllustration(record.display.Illustration),
+				Ask:                  cloneAskInteraction(record.display.Ask),
 				CreatedAt:            record.display.CreatedAt,
 				RunID:                record.display.RunID,
 				AgentKind:            record.display.AgentKind,
@@ -339,6 +340,30 @@ func cloneSessionToolPresentation(presentation *agent.ToolPresentation) *agent.T
 		return nil
 	}
 	cloned := *presentation
+	return &cloned
+}
+
+func cloneAskInteraction(interaction *AskInteraction) *AskInteraction {
+	if interaction == nil {
+		return nil
+	}
+	cloned := *interaction
+	cloned.Questions = append([]AskQuestion(nil), interaction.Questions...)
+	for index := range cloned.Questions {
+		cloned.Questions[index].Options = append([]AskOption(nil), interaction.Questions[index].Options...)
+	}
+	if interaction.Approval != nil {
+		approval := *interaction.Approval
+		cloned.Approval = &approval
+	}
+	cloned.Answers = append([]AskAnswerResult(nil), interaction.Answers...)
+	for index := range cloned.Answers {
+		cloned.Answers[index].SelectedOptions = append([]AskSelectedOption(nil), interaction.Answers[index].SelectedOptions...)
+	}
+	if interaction.ResolvedAt != nil {
+		resolvedAt := *interaction.ResolvedAt
+		cloned.ResolvedAt = &resolvedAt
+	}
 	return &cloned
 }
 

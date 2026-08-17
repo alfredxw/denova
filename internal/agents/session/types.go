@@ -59,6 +59,7 @@ type HistoryEntry struct {
 	Result           string                  `json:"result,omitempty"`
 	ToolPresentation *agent.ToolPresentation `json:"tool_presentation,omitempty"`
 	Illustration     *ChapterIllustration    `json:"illustration,omitempty"`
+	Ask              *AskInteraction         `json:"ask,omitempty"`
 	Message          *agent.Message          `json:"-"`
 	CreatedAt        time.Time               `json:"created_at,omitempty"`
 
@@ -160,6 +161,7 @@ type DisplayEvent struct {
 	Result           string                  `json:"result,omitempty"`
 	ToolPresentation *agent.ToolPresentation `json:"tool_presentation,omitempty"`
 	Illustration     *ChapterIllustration    `json:"illustration,omitempty"`
+	Ask              *AskInteraction         `json:"ask,omitempty"`
 	CreatedAt        time.Time               `json:"created_at,omitempty"`
 
 	RunID                string           `json:"run_id,omitempty"`
@@ -286,8 +288,9 @@ type ToolApprovalPresentation struct {
 	RuleCommandPattern string `json:"rule_command_pattern,omitempty"`
 }
 
-// AskInteraction is the read-only transport projection of one public Agent
-// Interaction. It is never persisted or resolved by the product Session.
+// AskInteraction is the read-only transport and display projection of one
+// public Agent Interaction. Product Sessions may persist it only in the
+// display journal; it never enters canonical messages or model context.
 type AskInteraction struct {
 	Schema string `json:"schema"`
 	ID     string `json:"id"`

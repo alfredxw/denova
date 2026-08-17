@@ -95,6 +95,7 @@ type displayPatchRecord struct {
 	ArgsAppend       string                  `json:"args_append,omitempty"`
 	ContentAppend    string                  `json:"content_append,omitempty"`
 	Illustration     *ChapterIllustration    `json:"illustration,omitempty"`
+	Ask              *AskInteraction         `json:"ask,omitempty"`
 }
 
 type interruptionPatchRecord struct {

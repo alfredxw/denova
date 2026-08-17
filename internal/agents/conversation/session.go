@@ -399,6 +399,13 @@ func (c *SessionConversation) AppendDisplayEvent(event session.DisplayEvent) err
 	return c.session.AppendDisplayEvent(event)
 }
 
+func (c *SessionConversation) RecordDisplayAsk(event session.DisplayEvent) error {
+	if c == nil || c.session == nil {
+		return fmt.Errorf("session does not exist")
+	}
+	return c.session.RecordDisplayAsk(event)
+}
+
 func (c *SessionConversation) UpdateDisplayToolStatus(id, name, status string) error {
 	if c == nil || c.session == nil {
 		return fmt.Errorf("会话不存在")

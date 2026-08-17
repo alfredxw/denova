@@ -58,6 +58,10 @@ type displayToolIllustrationUpdater interface {
 	UpdateDisplayToolIllustration(id, name string, illustration *session.ChapterIllustration) error
 }
 
+type displayAskRecorder interface {
+	RecordDisplayAsk(event session.DisplayEvent) error
+}
+
 type displayEventContentAppender interface {
 	AppendDisplayEventContent(id, role, delta string) error
 }
@@ -243,6 +247,36 @@ func (r *displayEventRecorder) Record(ev agentrun.Event) {
 		}
 		if id != "" {
 			delete(r.pendingToolIDs, id)
+		}
+	case "ask_pending", "ask_resolved":
+		r.flushThinking()
+		r.flushAssistant()
+		ask := eventDataAskInteraction(ev.Data)
+		if ask == nil {
+			slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-run] ignore invalid display Ask event type=%s", ev.Type))
+			return
+		}
+		recorder, ok := r.appender.(displayAskRecorder)
+		if !ok {
+			return
+		}
+		meta := eventMetadataFromData(ev.Data)
+		if err := recorder.RecordDisplayAsk(session.DisplayEvent{
+			ID:                ask.ID,
+			Role:              "ask",
+			Status:            ask.Status,
+			Ask:               ask,
+			CreatedAt:         ask.CreatedAt,
+			RunID:             meta.RunID,
+			AgentKind:         meta.AgentKind,
+			AgentName:         meta.AgentName,
+			RootAgentName:     meta.RootAgentName,
+			RunPath:           append([]string(nil), meta.RunPath...),
+			SubAgent:          meta.SubAgent,
+			SubAgentSessionID: meta.SubAgentSessionID,
+			SubAgentType:      meta.SubAgentType,
+		}); err != nil {
+			slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-run] persist display Ask failed id=%s status=%s err=%v", ask.ID, ask.Status, err))
 		}
 	case "token_usage":
 		r.flushThinking()
@@ -631,6 +665,28 @@ func eventDataChapterIllustration(data interface{}, key string) *session.Chapter
 		return nil
 	}
 	return &result
+}
+
+func eventDataAskInteraction(data interface{}) *session.AskInteraction {
+	raw, err := json.Marshal(data)
+	if err != nil {
+		return nil
+	}
+	var interaction session.AskInteraction
+	if err := json.Unmarshal(raw, &interaction); err != nil {
+		return nil
+	}
+	interaction.ID = strings.TrimSpace(interaction.ID)
+	interaction.ToolCallID = strings.TrimSpace(interaction.ToolCallID)
+	interaction.AgentKind = strings.TrimSpace(interaction.AgentKind)
+	interaction.Status = strings.TrimSpace(interaction.Status)
+	if interaction.ID == "" || interaction.ToolCallID == "" || interaction.AgentKind == "" {
+		return nil
+	}
+	if interaction.Status != session.AskPending && interaction.Status != session.AskAnswered && interaction.Status != session.AskCancelled {
+		return nil
+	}
+	return &interaction
 }
 
 func eventDataToolPresentation(data interface{}) *agent.ToolPresentation {

@@ -144,6 +144,9 @@ func applyDisplayPatchLine(sess *Session, line []byte) error {
 	if patch.Illustration != nil {
 		event.Illustration = cloneChapterIllustration(patch.Illustration)
 	}
+	if patch.Ask != nil {
+		event.Ask = cloneAskInteraction(patch.Ask)
+	}
 	advanceUpdatedAt(sess, patch.CreatedAt)
 	return nil
 }

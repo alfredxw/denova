@@ -151,6 +151,62 @@ func TestDisplayUpdateAppendsPatchAndReloadsMaterializedState(t *testing.T) {
 	}
 }
 
+func TestDisplayAskResolutionAppendsPatchAndReloadsQuestionsAndAnswers(t *testing.T) {
+	dir := t.TempDir()
+	store, err := NewStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := store.GetOrCreate("ask-history")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pending := &AskInteraction{
+		Schema: "ask.pending.v1", ID: "ask-1", ToolCallID: "ask-1",
+		AgentKind: "ide", Status: AskPending, AllowOther: true,
+		Questions: []AskQuestion{{
+			ID: "direction", Question: "选择方向？",
+			Options: []AskOption{{ID: "continue", Label: "继续"}, {ID: "change", Label: "调整"}},
+		}},
+	}
+	if err := sess.RecordDisplayAsk(DisplayEvent{ID: pending.ID, Role: "ask", Ask: pending}); err != nil {
+		t.Fatal(err)
+	}
+	resolved := cloneAskInteraction(pending)
+	resolved.Status = AskAnswered
+	resolved.Answers = []AskAnswerResult{{
+		QuestionID: "direction", Question: "选择方向？",
+		SelectedOptions: []AskSelectedOption{{ID: "continue", Label: "继续"}},
+	}}
+	if err := sess.RecordDisplayAsk(DisplayEvent{ID: resolved.ID, Role: "ask", Ask: resolved}); err != nil {
+		t.Fatal(err)
+	}
+
+	path := filepath.Join(dir, "ask-history.jsonl")
+	journal, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(journal, []byte(`"type":"display_patch"`)) || !bytes.Contains(journal, []byte(`"ask"`)) {
+		t.Fatalf("Ask resolution must append a display patch: %s", journal)
+	}
+
+	reloadedStore, err := NewStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := reloadedStore.Get("ask-history")
+	if err != nil {
+		t.Fatal(err)
+	}
+	history := reloaded.History()
+	if len(history) != 1 || history[0].Role != "ask" || history[0].Ask == nil ||
+		history[0].Ask.Status != AskAnswered || len(history[0].Ask.Questions) != 1 ||
+		len(history[0].Ask.Answers) != 1 || history[0].Ask.Answers[0].SelectedOptions[0].Label != "继续" {
+		t.Fatalf("reloaded Ask display history = %#v", history)
+	}
+}
+
 func TestStreamedDisplayContentPersistsInLargeBatchesAndFlushesAtBoundary(t *testing.T) {
 	dir := t.TempDir()
 	store, err := NewStore(dir)

@@ -115,6 +115,7 @@ func cloneHistoryRecordForTailReplay(record historyRecord) historyRecord {
 	if record.display != nil {
 		display := *record.display
 		display.Illustration = cloneChapterIllustration(record.display.Illustration)
+		display.Ask = cloneAskInteraction(record.display.Ask)
 		display.RunPath = append([]string(nil), record.display.RunPath...)
 		display.UsageCalls = append([]TokenUsageCall(nil), record.display.UsageCalls...)
 		for index := range display.UsageCalls {

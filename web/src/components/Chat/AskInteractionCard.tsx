@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, Loader2, MessageCircleQuestion } from 'lucid
 import { useTranslation } from 'react-i18next'
 import type { AgentAskAnswer, AgentAskInteraction, AgentAskQuestion, AgentAskResolution, AskChatMessage, ToolCallChatMessage } from '@/lib/api'
 import { Button } from '@/components/ui/button'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Textarea } from '@/components/ui/textarea'
 import type { AgentAskResolveAction } from '@/lib/agent-ask'
 import { toolPresentationKind } from '@/lib/tool-presentation'
@@ -32,6 +33,7 @@ export function AskInteractionCard({ message, onResolve }: AskInteractionCardPro
   const [localResolution, setLocalResolution] = useState<AgentAskResolution | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [expanded, setExpanded] = useState(interaction?.status === 'pending')
 
   useEffect(() => {
     setQuestionIndex(0)
@@ -39,7 +41,8 @@ export function AskInteractionCard({ message, onResolve }: AskInteractionCardPro
     setLocalResolution(null)
     setSubmitting(false)
     setError('')
-  }, [interaction?.id])
+    setExpanded(interaction?.status === 'pending')
+  }, [interaction?.id, interaction?.status])
 
   if (!interaction?.questions.length) return null
 
@@ -84,10 +87,12 @@ export function AskInteractionCard({ message, onResolve }: AskInteractionCardPro
     setSubmitting(true)
     setError('')
     try {
-      setLocalResolution(await onResolve(message, {
+      const resolution = await onResolve(message, {
         status: 'answered',
         answers: questions.map((item) => askAnswer(item, drafts[item.id])),
-      }))
+      })
+      setLocalResolution(resolution)
+      setExpanded(false)
     } catch {
       setError(t('chat.ask.submitFailed'))
     } finally {
@@ -100,7 +105,9 @@ export function AskInteractionCard({ message, onResolve }: AskInteractionCardPro
     setSubmitting(true)
     setError('')
     try {
-      setLocalResolution(await onResolve(message, { status: 'cancelled' }))
+      const resolution = await onResolve(message, { status: 'cancelled' })
+      setLocalResolution(resolution)
+      setExpanded(false)
     } catch {
       setError(t('chat.ask.cancelFailed'))
     } finally {
@@ -110,104 +117,113 @@ export function AskInteractionCard({ message, onResolve }: AskInteractionCardPro
 
   return (
     <div className="flex justify-start">
-      <section className="w-full overflow-hidden rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface)] text-xs shadow-[var(--nova-shadow)]" aria-label={t('chat.ask.title')}>
-        <header className="flex min-h-11 items-center gap-2 px-3 py-2.5">
-          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]">
-            <MessageCircleQuestion className="h-4 w-4" />
-          </span>
-          <span className="min-w-0 flex-1 font-medium text-[var(--nova-text)]">{t('chat.ask.title')}</span>
-          <span className="shrink-0 rounded-full border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-0.5 text-[11px] text-[var(--nova-text-faint)]">
-            {pending ? t('chat.ask.waiting') : status === 'answered' ? t('chat.ask.answered') : t('chat.ask.cancelled')}
-          </span>
-        </header>
+      <Collapsible className="w-full" open={pending || expanded} onOpenChange={setExpanded}>
+        <section className="w-full overflow-hidden rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface)] text-xs shadow-[var(--nova-shadow)]" aria-label={t('chat.ask.title')}>
+          <header>
+            <CollapsibleTrigger asChild disabled={pending}>
+              <button type="button" className={`flex min-h-11 w-full items-center gap-2 px-3 py-2.5 text-left ${pending ? 'cursor-default' : 'hover:bg-[var(--nova-hover)]'}`}>
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]">
+                  <MessageCircleQuestion className="h-4 w-4" />
+                </span>
+                <span className="min-w-0 flex-1 font-medium text-[var(--nova-text)]">{t('chat.ask.title')}</span>
+                <span className="shrink-0 rounded-full border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-0.5 text-[11px] text-[var(--nova-text-faint)]">
+                  {pending ? t('chat.ask.waiting') : status === 'answered' ? t('chat.ask.answered') : t('chat.ask.cancelled')}
+                </span>
+                {!pending && <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)] transition-transform ${expanded ? 'rotate-90' : ''}`} />}
+              </button>
+            </CollapsibleTrigger>
+          </header>
 
-        {pending ? (
-          <div className="border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-3">
-            {questions.length > 1 && (
-              <div className="mb-2 text-[11px] text-[var(--nova-text-faint)]">
-                {t('chat.ask.progress', { current: currentIndex + 1, total: questions.length })}
-              </div>
-            )}
-            <fieldset disabled={submitting} className="m-0 min-w-0 border-0 p-0">
-              <legend className="mb-2 block text-sm font-medium leading-5 text-[var(--nova-text)]">{question.question}</legend>
-              {question.options?.length ? (
-                <div className="grid gap-2">
-                  {[
-                    ...question.options,
-                    ...(interaction.allow_other === false ? [] : [{ id: 'other', label: t('chat.ask.other') }]),
-                  ].map((option) => {
-                    const checked = draft.selectedOptionIDs.includes(option.id)
-                    const recommended = option.id === question.recommended_option_id
-                    return (
-                      <label key={option.id} className={`flex cursor-pointer items-start gap-2 rounded-md border px-2.5 py-2 transition-colors ${checked ? 'border-[var(--nova-text-muted)] bg-[var(--nova-hover)]' : 'border-[var(--nova-border)] bg-[var(--nova-surface)] hover:bg-[var(--nova-hover)]'}`}>
-                        <input
-                          type={question.multi_select ? 'checkbox' : 'radio'}
-                          name={`ask-${interaction.id}-${question.id}`}
-                          checked={checked}
-                          onChange={(event) => chooseOption(option.id, event.target.checked)}
-                          className="mt-0.5 accent-[var(--nova-accent)]"
-                        />
-                        <span className="min-w-0 flex-1">
-                          <span className="flex flex-wrap items-center gap-1.5 text-[var(--nova-text)]">
-                            {option.label}
-                            {recommended && <span className="rounded-full bg-[var(--nova-hover)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-muted)]">{t('chat.ask.recommended')}</span>}
-                          </span>
-                          {'description' in option && option.description && <span className="mt-0.5 block leading-4 text-[var(--nova-text-faint)]">{option.description}</span>}
-                        </span>
-                      </label>
-                    )
-                  })}
+          <CollapsibleContent>
+            {pending ? (
+              <div className="border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-3">
+                {questions.length > 1 && (
+                  <div className="mb-2 text-[11px] text-[var(--nova-text-faint)]">
+                    {t('chat.ask.progress', { current: currentIndex + 1, total: questions.length })}
+                  </div>
+                )}
+                <fieldset disabled={submitting} className="m-0 min-w-0 border-0 p-0">
+                  <legend className="mb-2 block text-sm font-medium leading-5 text-[var(--nova-text)]">{question.question}</legend>
+                  {question.options?.length ? (
+                    <div className="grid gap-2">
+                      {[
+                        ...question.options,
+                        ...(interaction.allow_other === false ? [] : [{ id: 'other', label: t('chat.ask.other') }]),
+                      ].map((option) => {
+                        const checked = draft.selectedOptionIDs.includes(option.id)
+                        const recommended = option.id === question.recommended_option_id
+                        return (
+                          <label key={option.id} className={`flex cursor-pointer items-start gap-2 rounded-md border px-2.5 py-2 transition-colors ${checked ? 'border-[var(--nova-text-muted)] bg-[var(--nova-hover)]' : 'border-[var(--nova-border)] bg-[var(--nova-surface)] hover:bg-[var(--nova-hover)]'}`}>
+                            <input
+                              type={question.multi_select ? 'checkbox' : 'radio'}
+                              name={`ask-${interaction.id}-${question.id}`}
+                              checked={checked}
+                              onChange={(event) => chooseOption(option.id, event.target.checked)}
+                              className="mt-0.5 accent-[var(--nova-accent)]"
+                            />
+                            <span className="min-w-0 flex-1">
+                              <span className="flex flex-wrap items-center gap-1.5 text-[var(--nova-text)]">
+                                {option.label}
+                                {recommended && <span className="rounded-full bg-[var(--nova-hover)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-muted)]">{t('chat.ask.recommended')}</span>}
+                              </span>
+                              {'description' in option && option.description && <span className="mt-0.5 block leading-4 text-[var(--nova-text-faint)]">{option.description}</span>}
+                            </span>
+                          </label>
+                        )
+                      })}
+                    </div>
+                  ) : null}
+                  {(!question.options?.length || draft.selectedOptionIDs.includes('other')) && (
+                    <Textarea
+                      value={draft.customInput}
+                      onChange={(event) => updateDraft({ ...draft, customInput: event.target.value })}
+                      placeholder={question.options?.length ? t('chat.ask.otherPlaceholder') : t('chat.ask.freePlaceholder')}
+                      aria-label={question.options?.length ? t('chat.ask.other') : question.question}
+                      className="mt-2 min-h-20 resize-y bg-[var(--nova-surface)] text-sm"
+                    />
+                  )}
+                </fieldset>
+                {error && <p role="alert" className="m-0 mt-2 text-[11px] text-red-400">{error}</p>}
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                  <Button type="button" size="sm" variant="ghost" disabled={!onResolve || submitting} onClick={() => void cancel()}>
+                    {t('chat.ask.cancel')}
+                  </Button>
+                  <div className="flex items-center gap-2">
+                    {currentIndex > 0 && (
+                      <Button type="button" size="sm" variant="outline" disabled={submitting} onClick={() => { setQuestionIndex(currentIndex - 1); setError('') }}>
+                        <ChevronLeft className="h-3.5 w-3.5" />
+                        {t('chat.ask.back')}
+                      </Button>
+                    )}
+                    {currentIndex < questions.length - 1 ? (
+                      <Button type="button" size="sm" disabled={submitting} onClick={() => { if (validateCurrent()) setQuestionIndex(currentIndex + 1) }}>
+                        {t('chat.ask.next')}
+                        <ChevronRight className="h-3.5 w-3.5" />
+                      </Button>
+                    ) : (
+                      <Button type="button" size="sm" disabled={!onResolve || submitting} onClick={() => void submit()}>
+                        {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                        {submitting ? t('chat.ask.submitting') : t('chat.ask.submit')}
+                      </Button>
+                    )}
+                  </div>
                 </div>
-              ) : null}
-              {(!question.options?.length || draft.selectedOptionIDs.includes('other')) && (
-                <Textarea
-                  value={draft.customInput}
-                  onChange={(event) => updateDraft({ ...draft, customInput: event.target.value })}
-                  placeholder={question.options?.length ? t('chat.ask.otherPlaceholder') : t('chat.ask.freePlaceholder')}
-                  aria-label={question.options?.length ? t('chat.ask.other') : question.question}
-                  className="mt-2 min-h-20 resize-y bg-[var(--nova-surface)] text-sm"
-                />
-              )}
-            </fieldset>
-            {error && <p role="alert" className="m-0 mt-2 text-[11px] text-red-400">{error}</p>}
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-              <Button type="button" size="sm" variant="ghost" disabled={!onResolve || submitting} onClick={() => void cancel()}>
-                {t('chat.ask.cancel')}
-              </Button>
-              <div className="flex items-center gap-2">
-                {currentIndex > 0 && (
-                  <Button type="button" size="sm" variant="outline" disabled={submitting} onClick={() => { setQuestionIndex(currentIndex - 1); setError('') }}>
-                    <ChevronLeft className="h-3.5 w-3.5" />
-                    {t('chat.ask.back')}
-                  </Button>
-                )}
-                {currentIndex < questions.length - 1 ? (
-                  <Button type="button" size="sm" disabled={submitting} onClick={() => { if (validateCurrent()) setQuestionIndex(currentIndex + 1) }}>
-                    {t('chat.ask.next')}
-                    <ChevronRight className="h-3.5 w-3.5" />
-                  </Button>
-                ) : (
-                  <Button type="button" size="sm" disabled={!onResolve || submitting} onClick={() => void submit()}>
-                    {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                    {submitting ? t('chat.ask.submitting') : t('chat.ask.submit')}
-                  </Button>
+              </div>
+            ) : (
+              <div className="grid gap-2 border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-3">
+                {status === 'answered' ? resolvedAnswers.map((answer) => (
+                  <div key={answer.question_id} className="rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2.5 py-2">
+                    <div className="text-[var(--nova-text-faint)]">{answer.question}</div>
+                    <div className="mt-1 text-[var(--nova-text)]">{askAnswerSummary(answer, t('chat.ask.other'))}</div>
+                  </div>
+                )) : (
+                  <div className="text-[var(--nova-text-muted)]">{t('chat.ask.cancelledDescription')}</div>
                 )}
               </div>
-            </div>
-          </div>
-        ) : (
-          <div className="grid gap-2 border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-3">
-            {status === 'answered' ? resolvedAnswers.map((answer) => (
-              <div key={answer.question_id} className="rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2.5 py-2">
-                <div className="text-[var(--nova-text-faint)]">{answer.question}</div>
-                <div className="mt-1 text-[var(--nova-text)]">{askAnswerSummary(answer, t('chat.ask.other'))}</div>
-              </div>
-            )) : (
-              <div className="text-[var(--nova-text-muted)]">{t('chat.ask.cancelledDescription')}</div>
             )}
-          </div>
-        )}
-      </section>
+          </CollapsibleContent>
+        </section>
+      </Collapsible>
     </div>
   )
 }

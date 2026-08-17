@@ -59,7 +59,7 @@ func messageFromHistoryEntry(entry appsvc.AgentSessionHistoryEntry, index int) (
 			"created_at": formatEntryTime(entry),
 		}), true
 	}
-	if entry.Content == "" && entry.Role != "tool_call" {
+	if entry.Content == "" && entry.Role != "tool_call" && entry.Role != "ask" {
 		if entry.Role == "execution_summary" {
 			return assistantDataMessage(entry, index, DataTypeExecutionSummary, entryPayload(entry)), true
 		}
@@ -102,6 +102,11 @@ func messageFromHistoryEntry(entry appsvc.AgentSessionHistoryEntry, index int) (
 		}, true
 	case "tool_result":
 		return assistantDataMessage(entry, index, DataTypeToolResult, entryPayload(entry)), true
+	case "ask":
+		if entry.Ask == nil {
+			return Message{}, false
+		}
+		return assistantDataMessage(entry, index, DataTypeAsk, entry.Ask), true
 	case "rule_roll":
 		return assistantDataMessage(entry, index, DataTypeRuleRoll, entryPayload(entry)), true
 	case "interactive_image":
@@ -123,7 +128,7 @@ func messageFromHistoryEntry(entry appsvc.AgentSessionHistoryEntry, index int) (
 	}
 }
 
-func assistantDataMessage(entry appsvc.AgentSessionHistoryEntry, index int, dataType string, data map[string]any) Message {
+func assistantDataMessage(entry appsvc.AgentSessionHistoryEntry, index int, dataType string, data any) Message {
 	return Message{
 		ID:       historyMessageID(entry, index),
 		Role:     "assistant",

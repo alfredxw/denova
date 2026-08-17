@@ -373,11 +373,54 @@ func TestDisplayRecorderMarksPendingToolsSuccessOnDone(t *testing.T) {
 	}
 }
 
+func TestDisplayRecorderPersistsResolvedAskOverPendingProjection(t *testing.T) {
+	appender := &displayRecorderTestAppender{}
+	recorder := &displayEventRecorder{appender: appender, pendingToolIDs: map[string]string{}}
+	pending := map[string]any{
+		"schema": "ask.pending.v1", "id": "ask-history", "tool_call_id": "ask-history",
+		"agent_kind": "ide", "status": "pending", "allow_other": true,
+		"questions": []map[string]any{{
+			"id": "direction", "question": "选择方向？",
+			"options": []map[string]any{{"id": "continue", "label": "继续"}, {"id": "change", "label": "调整"}},
+		}},
+	}
+	resolved := clonePublicEventData(pending)
+	resolved["status"] = "answered"
+	resolved["answers"] = []map[string]any{{
+		"question_id": "direction", "question": "选择方向？",
+		"selected_options": []map[string]any{{"id": "continue", "label": "继续"}},
+	}}
+
+	recorder.Record(agentrun.Event{Type: "ask_pending", Data: pending})
+	recorder.Record(agentrun.Event{Type: "ask_resolved", Data: resolved})
+
+	if len(appender.events) != 1 {
+		t.Fatalf("display events = %#v, want one updated Ask event", appender.events)
+	}
+	event := appender.events[0]
+	if event.Role != "ask" || event.Ask == nil || event.Ask.Status != session.AskAnswered ||
+		len(event.Ask.Questions) != 1 || len(event.Ask.Answers) != 1 ||
+		event.Ask.Answers[0].SelectedOptions[0].Label != "继续" {
+		t.Fatalf("persisted Ask event = %#v", event)
+	}
+}
+
 type displayRecorderTestAppender struct {
 	events []session.DisplayEvent
 }
 
 func (a *displayRecorderTestAppender) AppendDisplayEvent(event session.DisplayEvent) error {
+	a.events = append(a.events, event)
+	return nil
+}
+
+func (a *displayRecorderTestAppender) RecordDisplayAsk(event session.DisplayEvent) error {
+	for index := range a.events {
+		if a.events[index].Role == "ask" && a.events[index].ID == event.ID {
+			a.events[index] = event
+			return nil
+		}
+	}
 	a.events = append(a.events, event)
 	return nil
 }
