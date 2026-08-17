@@ -163,6 +163,8 @@ func sanitizeTokenUsageEvent(event TokenUsageEvent) TokenUsageEvent {
 		CreatedAt:            strings.TrimSpace(event.CreatedAt),
 		RunID:                strings.TrimSpace(event.RunID),
 		AgentKind:            strings.TrimSpace(event.AgentKind),
+		ContextWindowTokens:  nonNegativeInt(event.ContextWindowTokens),
+		ContextPromptTokens:  nonNegativeInt(event.ContextPromptTokens),
 		PromptTokens:         nonNegativeInt(event.PromptTokens),
 		CachedPromptTokens:   nonNegativeInt(event.CachedPromptTokens),
 		UncachedPromptTokens: nonNegativeInt(event.UncachedPromptTokens),

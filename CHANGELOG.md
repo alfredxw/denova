@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- 写作与游戏 Agent 输入区现在会显示该 Agent 上次模型调用的上下文使用率，并可直接打开当前上下文分析；使用率按该调用的真实输入 Token 与同次运行的模型上下文上限计算，不会混用整轮累计量或 SubAgent 用量。
+- Writing and Game Agent composers now show that Agent's previous model call context usage and open the current context analysis directly. The ratio pairs the root call's real input tokens with the same run's model context window instead of mixing in aggregate or SubAgent usage.
+
+### Fixed
+
+- 写作与游戏 Agent 的上下文用量现在固定显示在输入框左下操作区；旧会话或首次模型调用前会显示 `—%` 占位并保留上下文分析入口，不再因缺少新版用量快照而整项消失。
+- Writing and Game Agent context usage now stays in the composer's lower-left action area. Older sessions and composers before their first model call show a `—%` placeholder with the context-analysis entry instead of hiding the indicator when no new usage snapshot exists.
+- 配置型 reviewer 等 SubAgent 在父 Agent 已写入会话状态后，会继续把继承的 JSON 与文件名格式按字面量传给模型，不再因 FString 误解析花括号而导致委派失败。
+- Configured SubAgents such as reviewer now pass inherited JSON and filename formats to the model literally after the parent writes session state, preventing delegation failures caused by accidental FString parsing of braces.
+- 修改以模型名作为 ID 的语言或图像模型配置后，默认图像模型与各 Agent、SubAgent 的模型引用会同步迁移到新 ID，运行时也会立即刷新默认图像模型，不再继续使用缓存中的旧名称或报“模型配置不存在”。
+- Renaming a language or image model profile whose ID follows the model name now migrates default-image, Agent, and SubAgent references to the new ID, and the runtime refreshes the default image profile immediately instead of retaining the cached old name or reporting a missing profile.
+- 资料库生图的用户补充要求现在只在图像方案约束下经过语言模型提炼后进入最终 Prompt，不再以原文重复追加并覆盖所选风格；超长名称、标签或关键词会按总输入预算安全压缩，不再直接中断单张或批量生成。
+- Lore-image user instructions now enter the final prompt only after language-model refinement under the selected image preset, instead of being appended verbatim and potentially overriding its style. Oversized names, tags, or keywords are safely compacted to the total input budget rather than aborting single or batch generation.
+- 已被旧版本保存为零宽度的作品目录会在加载布局时自动恢复为有效默认宽度并重新平衡工作区，不再继续保持“按钮显示展开、目录实际隐藏”的损坏状态。
+- Project outlines previously persisted at zero width are now repaired to a valid default width while loading and the workspace is rebalanced, instead of retaining a broken “toggle expanded, outline hidden” state.
+- 修复从书籍管理、方案预设等共享界面首次点击资料库时只返回写作界面、需要再次点击才能打开资料库的问题；隐藏的写作面板现在会直接恢复并打开所选面板。
+- Fixed the first Lore click from shared views such as Book Management or Presets only returning to Writing and requiring a second click. Hidden Writing panels now restore and open the requested panel directly.
+- 修复从资料库或方案预设返回写作界面并同时恢复创作 Agent 时，作品目录实际折叠但控制按钮仍显示为展开的问题；目录现在会恢复最后一个有效宽度，且瞬时零宽度不会覆盖已保存布局。
+- Fixed the project outline collapsing to zero width while its toggle still appeared active when returning from Lore or Presets and restoring the Writing Agent at the same time. The outline now restores its last valid width without persisting transient zero-width layouts.
+
+### Changed
+
+- 所有资料库图片在调用图像模型前，都会通过图像 Agent 所配置的语言模型将原始资料提炼为视觉绘制指导；提炼过程遵守当前图像方案的描述与提示，并补全适用的构图、镜头、姿势、光照、肌肤、材质、色彩和景深细节。最终图片 Prompt 不再包含原始资料正文或“角色资料卡”字样。
+- All Lore images now pass raw entries through the Image Agent's configured language model to produce visual drawing guidance before image generation. Refinement follows the selected image preset description and prompts while adding applicable composition, camera, pose, lighting, skin, material, color, and depth-of-field details. The final image prompt no longer includes raw lore content or the “角色资料卡” label.
+
 ## [v0.3.3] - 2026-07-25
 
 ### Fixed

@@ -12,6 +12,8 @@ import (
 type runTokenUsage struct {
 	RunID                string              `json:"run_id,omitempty"`
 	AgentKind            string              `json:"agent_kind,omitempty"`
+	ContextWindowTokens  int                 `json:"context_window_tokens,omitempty"`
+	ContextPromptTokens  int                 `json:"context_prompt_tokens,omitempty"`
 	PromptTokens         int                 `json:"prompt_tokens,omitempty"`
 	CachedPromptTokens   int                 `json:"cached_prompt_tokens,omitempty"`
 	UncachedPromptTokens int                 `json:"uncached_prompt_tokens,omitempty"`
@@ -54,14 +56,33 @@ func newRunTokenUsageCollector(runID, agentKind string) *runTokenUsageCollector 
 	}
 }
 
+func (c *runTokenUsageCollector) SetContextWindowTokens(tokens int) {
+	if c == nil || tokens <= 0 {
+		return
+	}
+	c.stats.ContextWindowTokens = tokens
+}
+
 func (c *runTokenUsageCollector) AddMessage(msg *schema.Message) {
+	c.AddAgentMessage(msg, false)
+}
+
+func (c *runTokenUsageCollector) AddAgentMessage(msg *schema.Message, subAgent bool) {
 	if c == nil || msg == nil {
 		return
+	}
+	if !subAgent {
+		// A later root response without usable provider usage must not leave a
+		// stale context numerator from an earlier root call in the same run.
+		c.stats.ContextPromptTokens = 0
 	}
 	if msg.ResponseMeta == nil || msg.ResponseMeta.Usage == nil {
 		return
 	}
 	usage := msg.ResponseMeta.Usage
+	if !subAgent && usage.PromptTokens > 0 {
+		c.stats.ContextPromptTokens = usage.PromptTokens
+	}
 	if usage.PromptTokens <= 0 && usage.CompletionTokens <= 0 && usage.TotalTokens <= 0 {
 		return
 	}
@@ -120,7 +141,7 @@ func (c *runTokenUsageCollector) EmitIfAny(emit func(Event), generatedBytes int)
 	if stats.PromptTokens > 0 {
 		stats.CacheHitRate = roundRatio(float64(stats.CachedPromptTokens) / float64(stats.PromptTokens))
 	}
-	emit(Event{Type: "token_usage", Data: map[string]any{
+	data := map[string]any{
 		"created_at":             time.Now().UTC().Format(time.RFC3339Nano),
 		"run_id":                 stats.RunID,
 		"agent_kind":             stats.AgentKind,
@@ -134,7 +155,14 @@ func (c *runTokenUsageCollector) EmitIfAny(emit func(Event), generatedBytes int)
 		"model_calls":            stats.ModelCalls,
 		"generated_bytes":        stats.GeneratedBytes,
 		"usage_calls":            stats.Calls,
-	}})
+	}
+	if stats.ContextWindowTokens > 0 {
+		data["context_window_tokens"] = stats.ContextWindowTokens
+	}
+	if stats.ContextPromptTokens > 0 {
+		data["context_prompt_tokens"] = stats.ContextPromptTokens
+	}
+	emit(Event{Type: "token_usage", Data: data})
 }
 
 func toolNamesFromCalls(calls []schema.ToolCall) []string {

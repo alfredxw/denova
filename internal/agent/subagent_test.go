@@ -7,6 +7,7 @@ import (
 
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/adk/prebuilt/deep"
+	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
 
 	"denova/config"
@@ -110,6 +111,67 @@ func TestBuildSubAgentInstructionInheritsParentSystemPrompt(t *testing.T) {
 	}
 	if parentIndex, subIndex := strings.Index(instruction, parentInstruction), strings.Index(instruction, "SubAgent 专属说明"); parentIndex < 0 || subIndex < 0 || parentIndex >= subIndex {
 		t.Fatalf("parent prompt should appear before subagent prompt:\n%s", instruction)
+	}
+}
+
+func TestConfiguredSubAgentTreatsInheritedInstructionAsLiteral(t *testing.T) {
+	var captured *adk.ChatModelAgentConfig
+	previous := newConfiguredChatModelAgent
+	newConfiguredChatModelAgent = func(_ context.Context, cfg *adk.ChatModelAgentConfig) (adk.Agent, error) {
+		copied := *cfg
+		captured = &copied
+		return fakeAgent{name: cfg.Name, description: cfg.Description}, nil
+	}
+	t.Cleanup(func() { newConfiguredChatModelAgent = previous })
+
+	parentInstruction := `章节路径：ch{order:05}-{chapter}-{title}.md`
+	_, err := buildConfiguredSubAgent(context.Background(), &config.Config{
+		OpenAIBaseURL: "https://example.invalid",
+		OpenAIModel:   "test-model",
+	}, deepAgentSpec{
+		Kind:        config.AgentKindIDE,
+		Instruction: parentInstruction,
+	}, config.ResolvedAgentToolSettings{}, config.SubAgentConfig{
+		ID:           "reviewer",
+		Description:  "Reviews writing output.",
+		SystemPrompt: `Return JSON: {"severity":"major","keep":true}`,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if captured == nil || captured.GenModelInput == nil {
+		t.Fatalf("configured SubAgent must install a literal model-input builder: %#v", captured)
+	}
+
+	chatModel := &literalInstructionCaptureModel{}
+	runConfig := *captured
+	runConfig.Model = chatModel
+	agent, err := adk.NewChatModelAgent(context.Background(), &runConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := adk.NewRunner(context.Background(), adk.RunnerConfig{Agent: agent})
+	iterator := runner.Run(context.Background(), []*schema.Message{schema.UserMessage("review this")}, adk.WithSessionValues(map[string]any{
+		deep.SessionKeyTodos: "non-empty",
+	}))
+	for {
+		event, ok := iterator.Next()
+		if !ok {
+			break
+		}
+		if event.Err != nil {
+			t.Fatalf("configured SubAgent failed with SessionValues: %v", event.Err)
+		}
+	}
+	if len(chatModel.messages) != 2 {
+		t.Fatalf("model received %d messages, want system and user messages", len(chatModel.messages))
+	}
+	if got := chatModel.messages[0].Content; got != captured.Instruction {
+		t.Fatalf("system instruction was not preserved literally:\ngot:  %s\nwant: %s", got, captured.Instruction)
+	}
+	if !strings.Contains(chatModel.messages[0].Content, parentInstruction) ||
+		!strings.Contains(chatModel.messages[0].Content, `{"severity":"major","keep":true}`) {
+		t.Fatalf("literal brace content is missing from system instruction: %s", chatModel.messages[0].Content)
 	}
 }
 
@@ -364,6 +426,20 @@ func (a *fakeDisplayAppender) AppendDisplayEventContent(id, role, delta string) 
 type fakeAgent struct {
 	name        string
 	description string
+}
+
+type literalInstructionCaptureModel struct {
+	messages []*schema.Message
+}
+
+func (m *literalInstructionCaptureModel) Generate(_ context.Context, messages []*schema.Message, _ ...model.Option) (*schema.Message, error) {
+	m.messages = append([]*schema.Message(nil), messages...)
+	return schema.AssistantMessage("ok", nil), nil
+}
+
+func (m *literalInstructionCaptureModel) Stream(_ context.Context, messages []*schema.Message, _ ...model.Option) (*schema.StreamReader[*schema.Message], error) {
+	m.messages = append([]*schema.Message(nil), messages...)
+	return schema.StreamReaderFromArray([]*schema.Message{schema.AssistantMessage("ok", nil)}), nil
 }
 
 func (f fakeAgent) Name(context.Context) string        { return f.name }

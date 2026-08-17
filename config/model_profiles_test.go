@@ -210,6 +210,19 @@ func TestSanitizeModelProfilesKeepsIncompleteDraft(t *testing.T) {
 	}
 }
 
+func TestSanitizeModelProfilesKeepsRenameDraftAcrossAutosave(t *testing.T) {
+	settings := sanitizeEditableSettings(Settings{ModelProfiles: []ModelProfileSettings{{
+		RenameFromID: " old-model ",
+	}}})
+	if len(settings.ModelProfiles) != 1 {
+		t.Fatalf("rename draft disappeared during sanitization: %#v", settings.ModelProfiles)
+	}
+	draft := settings.ModelProfiles[0]
+	if draft.ID != "" || draft.OpenAIModel != "" || draft.RenameFromID != "old-model" {
+		t.Fatalf("rename draft was not preserved: %#v", draft)
+	}
+}
+
 func TestWriteSettingsFileKeepsIncompleteModelDraft(t *testing.T) {
 	contextWindow := DefaultContextWindowTokens
 	path := filepath.Join(t.TempDir(), "config.toml")

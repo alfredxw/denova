@@ -8,6 +8,7 @@ import type { TextSelection } from '@/lib/api'
 import type { VisibleAgentKey } from '@/features/agents/agent-registry'
 import { Button } from '@/components/ui/button'
 import { AgentComposerShell } from './AgentComposerShell'
+import { ContextUsageIndicator } from './ContextUsageIndicator'
 import { ModelProfileSwitcher } from './ModelProfileSwitcher'
 import { ComposerTokenInput, type ComposerTokenInputHandle, type ComposerTokenSpec, type ComposerTrigger } from './composer-token-input'
 import {
@@ -658,6 +659,12 @@ export function InputArea({
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            <ContextUsageIndicator
+              messages={tokenUsageMessages}
+              agentKind={agentKey}
+              onOpenDetails={onContextAnalyze ? handleContextAnalyze : undefined}
+              disabled={disabled}
+            />
             {planMode ? (
               <span
                 className="inline-flex h-8 shrink-0 items-center gap-1.5 border-l border-[var(--nova-border-soft)] pl-2 text-sm text-[var(--nova-text-muted)]"

@@ -65,3 +65,56 @@ func TestRunTokenUsageCollectorRecordsToolContext(t *testing.T) {
 		t.Fatalf("uncached prompt tokens should be clamped: calls=%#v stats=%#v", collector.stats.Calls, collector.stats)
 	}
 }
+
+func TestRunTokenUsageCollectorEmitsContextWindowTokens(t *testing.T) {
+	collector := newRunTokenUsageCollector("run-context-window", "ide")
+	collector.SetContextWindowTokens(400_000)
+	collector.AddAgentMessage(&schema.Message{ResponseMeta: &schema.ResponseMeta{Usage: &schema.TokenUsage{
+		PromptTokens:     1200,
+		CompletionTokens: 80,
+		TotalTokens:      1280,
+	}}}, false)
+	collector.AddAgentMessage(&schema.Message{ResponseMeta: &schema.ResponseMeta{Usage: &schema.TokenUsage{
+		PromptTokens:     90_000,
+		CompletionTokens: 80,
+		TotalTokens:      90_080,
+	}}}, true)
+
+	var emitted Event
+	collector.EmitIfAny(func(event Event) { emitted = event }, 64)
+	data, ok := emitted.Data.(map[string]any)
+	if emitted.Type != "token_usage" || !ok {
+		t.Fatalf("token usage event missing: %#v", emitted)
+	}
+	if got := data["context_window_tokens"]; got != 400_000 {
+		t.Fatalf("context_window_tokens = %#v, want 400000", got)
+	}
+	if got := data["context_prompt_tokens"]; got != 1200 {
+		t.Fatalf("context_prompt_tokens = %#v, want the last root prompt 1200", got)
+	}
+
+	legacy := newRunTokenUsageCollector("run-without-window", "ide")
+	legacy.AddMessage(&schema.Message{ResponseMeta: &schema.ResponseMeta{Usage: &schema.TokenUsage{TotalTokens: 1}}})
+	legacy.EmitIfAny(func(event Event) { emitted = event }, 0)
+	data = emitted.Data.(map[string]any)
+	if _, exists := data["context_window_tokens"]; exists {
+		t.Fatalf("unknown context window should stay omitted: %#v", data)
+	}
+}
+
+func TestRunTokenUsageCollectorClearsStaleRootContextPrompt(t *testing.T) {
+	collector := newRunTokenUsageCollector("run-stale-root", "ide")
+	collector.SetContextWindowTokens(400_000)
+	collector.AddAgentMessage(&schema.Message{ResponseMeta: &schema.ResponseMeta{Usage: &schema.TokenUsage{
+		PromptTokens: 1200,
+		TotalTokens:  1200,
+	}}}, false)
+	collector.AddAgentMessage(schema.AssistantMessage("provider usage missing", nil), false)
+
+	var emitted Event
+	collector.EmitIfAny(func(event Event) { emitted = event }, 0)
+	data := emitted.Data.(map[string]any)
+	if _, exists := data["context_prompt_tokens"]; exists {
+		t.Fatalf("latest root call without usage should hide the context numerator: %#v", data)
+	}
+}

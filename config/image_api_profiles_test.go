@@ -100,3 +100,16 @@ func TestSanitizeImageAPIProfiles(t *testing.T) {
 		t.Fatalf("profile defaults not normalized: %#v", profile)
 	}
 }
+
+func TestSanitizeImageAPIProfilesKeepsRenameDraftAcrossAutosave(t *testing.T) {
+	settings := sanitizeEditableSettings(Settings{ImageAPIProfiles: []ImageAPIProfileSettings{{
+		RenameFromID: " old-image-model ",
+	}}})
+	if len(settings.ImageAPIProfiles) != 1 {
+		t.Fatalf("image rename draft disappeared during sanitization: %#v", settings.ImageAPIProfiles)
+	}
+	draft := settings.ImageAPIProfiles[0]
+	if draft.ID != "" || draft.OpenAIModel != "" || draft.RenameFromID != "old-image-model" {
+		t.Fatalf("image rename draft was not preserved: %#v", draft)
+	}
+}

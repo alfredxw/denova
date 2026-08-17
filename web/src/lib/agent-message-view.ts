@@ -60,6 +60,8 @@ export interface AgentTokenUsageRecord {
   total_tokens?: number
   model_calls?: number
   generated_bytes?: number
+  context_window_tokens?: number
+  context_prompt_tokens?: number
   usage_calls?: TokenUsageCall[]
 }
 
@@ -397,6 +399,8 @@ function tokenUsageFields(data: Record<string, unknown>): Partial<ChatMessage> {
     total_tokens: readNumber(data.total_tokens),
     model_calls: readNumber(data.model_calls),
     generated_bytes: readNumber(data.generated_bytes),
+    context_window_tokens: readNumber(data.context_window_tokens),
+    context_prompt_tokens: readNumber(data.context_prompt_tokens),
     usage_calls: readUsageCalls(data.usage_calls),
   }
 }
@@ -556,6 +560,8 @@ function agentTokenUsageRecordFromView(view: AgentMessageView): AgentTokenUsageR
     total_tokens: readNumber(data.total_tokens),
     model_calls: readNumber(data.model_calls),
     generated_bytes: readNumber(data.generated_bytes),
+    context_window_tokens: readNumber(data.context_window_tokens),
+    context_prompt_tokens: readNumber(data.context_prompt_tokens),
     usage_calls: readUsageCalls(data.usage_calls),
   }
 }

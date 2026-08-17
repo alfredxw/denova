@@ -85,6 +85,28 @@ func TestDisplayRecorderPersistsReclassifiedInteractiveContentAsThinking(t *test
 	}
 }
 
+func TestDisplayRecorderPersistsTokenUsageContextWindow(t *testing.T) {
+	appender := &displayRecorderTestAppender{}
+	recorder := &displayEventRecorder{
+		appender:       appender,
+		pendingToolIDs: map[string]string{},
+	}
+
+	recorder.Record(Event{Type: "token_usage", Data: map[string]any{
+		"run_id":                "run-usage",
+		"agent_kind":            AgentKindIDE,
+		"context_window_tokens": 400_000,
+		"context_prompt_tokens": 1200,
+		"prompt_tokens":         1200,
+		"total_tokens":          1280,
+		"model_calls":           1,
+	}})
+
+	if len(appender.events) != 1 || appender.events[0].ContextWindowTokens != 400_000 || appender.events[0].ContextPromptTokens != 1200 {
+		t.Fatalf("context window was not copied into display history: %#v", appender.events)
+	}
+}
+
 func TestDisplayRecorderAppendsStreamingWriteFileContent(t *testing.T) {
 	appender := &displayRecorderTestAppender{}
 	recorder := &displayEventRecorder{

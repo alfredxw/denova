@@ -241,6 +241,17 @@ describe('StoryStage current state ledger', () => {
 })
 
 describe('StoryStage composer', () => {
+  it('keeps context usage visible beside the input actions before the first model call', () => {
+    const { container } = render(<StoryStageHarness />)
+
+    const indicator = screen.getByRole('button', { name: /暂无上下文用量/ })
+    const actions = screen.getByRole('button', { name: '输入动作' })
+    expect(indicator).toHaveTextContent('—%')
+    expect(container.querySelector('[data-slot="agent-composer-start"]')).toContainElement(indicator)
+    expect(container.querySelector('[data-slot="agent-composer-end"]')).not.toContainElement(indicator)
+    expect(actions.compareDocumentPosition(indicator) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
   it('keeps the game input single-line and does not expose Plan Mode controls', async () => {
     render(<StoryStageHarness />)
 

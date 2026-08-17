@@ -195,6 +195,8 @@ func (r *displayEventRecorder) Record(ev Event) {
 		stats := runTokenUsage{
 			RunID:                eventDataString(ev.Data, "run_id"),
 			AgentKind:            eventDataString(ev.Data, "agent_kind"),
+			ContextWindowTokens:  eventDataInt(ev.Data, "context_window_tokens"),
+			ContextPromptTokens:  eventDataInt(ev.Data, "context_prompt_tokens"),
 			PromptTokens:         eventDataInt(ev.Data, "prompt_tokens"),
 			CachedPromptTokens:   eventDataInt(ev.Data, "cached_prompt_tokens"),
 			UncachedPromptTokens: eventDataInt(ev.Data, "uncached_prompt_tokens"),
@@ -214,6 +216,8 @@ func (r *displayEventRecorder) Record(ev Event) {
 			CreatedAt:            eventDataTime(ev.Data, "created_at"),
 			RunID:                stats.RunID,
 			AgentKind:            stats.AgentKind,
+			ContextWindowTokens:  stats.ContextWindowTokens,
+			ContextPromptTokens:  stats.ContextPromptTokens,
 			PromptTokens:         stats.PromptTokens,
 			CachedPromptTokens:   stats.CachedPromptTokens,
 			UncachedPromptTokens: stats.UncachedPromptTokens,

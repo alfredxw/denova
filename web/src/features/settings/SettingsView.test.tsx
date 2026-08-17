@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fetchSettings, updateUserSettings } from './api'
-import { modelProfilesForEditor, SettingsView, UpdatePanel } from './SettingsView'
+import { ImageAPIProfilesEditor, ModelProfilesEditor, imageAPIProfilesForEditor, modelProfilesForEditor, SettingsView, UpdatePanel, withRenamedImageAPIProfile, withRenamedLanguageModelProfile } from './SettingsView'
 import type { LayeredSettings, UpdateCheckResult, UpdateInstallResult } from './types'
 
 vi.mock('./api', () => ({
@@ -43,6 +43,151 @@ describe('modelProfilesForEditor', () => {
 
     expect(profiles).toHaveLength(2)
     expect(profiles[1]).toEqual({ name: 'Draft model', context_window_tokens: 400000 })
+  })
+
+  it('keeps an autosaved rename draft while hiding its inherited source profile', () => {
+    const profiles = modelProfilesForEditor({
+      model_profiles: [{ rename_from_id: 'old-model' }],
+    }, {
+      model_profiles: [{ id: 'old-model', openai_model: 'old-model' }],
+    })
+
+    expect(profiles.some((profile) => profile.id === 'old-model')).toBe(false)
+    expect(profiles.some((profile) => profile.rename_from_id === 'old-model')).toBe(true)
+  })
+})
+
+describe('imageAPIProfilesForEditor', () => {
+  it('keeps an autosaved rename draft while hiding its inherited source profile', () => {
+    const profiles = imageAPIProfilesForEditor({
+      image_api_profiles: [{ rename_from_id: 'old-image-model' }],
+    }, {
+      image_api_profiles: [{ id: 'old-image-model', openai_model: 'old-image-model' }],
+    })
+
+    expect(profiles.some((profile) => profile.id === 'old-image-model')).toBe(false)
+    expect(profiles.some((profile) => profile.rename_from_id === 'old-image-model')).toBe(true)
+  })
+})
+
+describe('ImageAPIProfilesEditor', () => {
+  it('keeps the selected default profile in sync when a model-derived id changes', () => {
+    const onChange = vi.fn()
+    const onDefaultProfileChange = vi.fn()
+    const onProfileRename = vi.fn()
+    render(
+      <ImageAPIProfilesEditor
+        profiles={[{ id: 'old-image-model', openai_model: 'old-image-model' }]}
+        effectiveProfiles={[]}
+        defaultProfileID="old-image-model"
+        effectiveDefaultProfileID="old-image-model"
+        onChange={onChange}
+        onDefaultProfileChange={onDefaultProfileChange}
+        onProfileRename={onProfileRename}
+      />,
+    )
+
+    fireEvent.change(screen.getByPlaceholderText('gpt-image-1'), { target: { value: 'new-image-model' } })
+
+    expect(onChange).toHaveBeenCalledWith([{ id: 'new-image-model', openai_model: 'new-image-model' }])
+    expect(onDefaultProfileChange).toHaveBeenCalledWith('new-image-model')
+    expect(onProfileRename).toHaveBeenCalledWith('old-image-model', 'new-image-model')
+  })
+
+  it('remembers the derived id when the model is cleared before replacement', () => {
+    const onChange = vi.fn()
+    const onProfileRename = vi.fn()
+    const view = render(
+      <ImageAPIProfilesEditor
+        profiles={[{ id: 'old-image-model', openai_model: 'old-image-model' }]}
+        effectiveProfiles={[]}
+        defaultProfileID="old-image-model"
+        effectiveDefaultProfileID="old-image-model"
+        onChange={onChange}
+        onDefaultProfileChange={() => undefined}
+        onProfileRename={onProfileRename}
+      />,
+    )
+    const modelInput = screen.getByDisplayValue('old-image-model')
+    fireEvent.change(modelInput, { target: { value: '' } })
+    expect(onChange).toHaveBeenCalledWith([{
+      id: '',
+      rename_from_id: 'old-image-model',
+      openai_model: '',
+    }])
+    view.unmount()
+    render(
+      <ImageAPIProfilesEditor
+        profiles={[{ rename_from_id: 'old-image-model' }]}
+        effectiveProfiles={[]}
+        defaultProfileID="old-image-model"
+        effectiveDefaultProfileID="old-image-model"
+        onChange={() => undefined}
+        onDefaultProfileChange={() => undefined}
+        onProfileRename={onProfileRename}
+      />,
+    )
+    fireEvent.change(screen.getByPlaceholderText('gpt-image-1'), { target: { value: 'new-image-model' } })
+
+    expect(onProfileRename).toHaveBeenCalledWith('old-image-model', 'new-image-model')
+  })
+})
+
+describe('ModelProfilesEditor', () => {
+  it('remembers the derived id when the model is cleared before replacement', () => {
+    const onChange = vi.fn()
+    const onProfileRename = vi.fn()
+    const view = render(
+      <ModelProfilesEditor
+        profiles={[{ id: 'old-model', openai_model: 'old-model' }]}
+        effectiveProfiles={[]}
+        onChange={onChange}
+        onProfileRename={onProfileRename}
+      />,
+    )
+    const modelInput = screen.getByDisplayValue('old-model')
+    fireEvent.change(modelInput, { target: { value: '' } })
+    expect(onChange).toHaveBeenCalledWith([{
+      id: '',
+      rename_from_id: 'old-model',
+      openai_model: '',
+    }])
+    view.unmount()
+    render(
+      <ModelProfilesEditor
+        profiles={[{ rename_from_id: 'old-model' }]}
+        effectiveProfiles={[]}
+        onChange={() => undefined}
+        onProfileRename={onProfileRename}
+      />,
+    )
+    fireEvent.change(screen.getByPlaceholderText('模型名，如 gpt-4.1'), { target: { value: 'new-model' } })
+
+    expect(onProfileRename).toHaveBeenCalledWith('old-model', 'new-model')
+  })
+})
+
+describe('model profile rename references', () => {
+  it('records a language profile alias and migrates Agent and SubAgent references', () => {
+    const settings = withRenamedLanguageModelProfile({
+      agent_models: { ide: { profile_id: 'old-model' } },
+      sub_agents: [{ id: 'reviewer', model: { profile_id: 'old-model' } }],
+    }, 'old-model', 'new-model')
+
+    expect(settings.model_profile_aliases).toEqual({ 'old-model': 'new-model' })
+    expect(settings.agent_models?.ide?.profile_id).toBe('new-model')
+    expect(settings.sub_agents?.[0].model?.profile_id).toBe('new-model')
+  })
+
+  it('chains image aliases and keeps the default reference on the latest id', () => {
+    const first = withRenamedImageAPIProfile({ default_image_api_profile_id: 'old-image' }, 'old-image', 'next-image')
+    const second = withRenamedImageAPIProfile(first, 'next-image', 'final-image')
+
+    expect(second.image_api_profile_aliases).toEqual({
+      'old-image': 'final-image',
+      'next-image': 'final-image',
+    })
+    expect(second.default_image_api_profile_id).toBe('final-image')
   })
 })
 

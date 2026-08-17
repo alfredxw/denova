@@ -2,7 +2,7 @@ import { cloneElement, isValidElement, useEffect, useId, useMemo, useRef, useSta
 import type { ReactNode } from 'react'
 import { ChevronDown, ChevronUp, Download, ExternalLink, Loader2, Plus, RefreshCw, Settings as SettingsIcon, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import type { ImageAPIProfileSettings, ModelProfileSettings, Settings, UpdateApplyResult, UpdateCheckResult, UpdateInstallProgress, UpdateInstallResult } from './types'
+import type { AgentModelSettings, ImageAPIProfileSettings, ModelProfileSettings, Settings, UpdateApplyResult, UpdateCheckResult, UpdateInstallProgress, UpdateInstallResult } from './types'
 import { applyUpdate, checkForUpdate, installUpdateStream } from './api'
 import { FONT_OPTIONS, fontLabelKeyFor } from './font-options'
 import { useLayeredSettingsDraft } from './use-layered-settings-draft'
@@ -49,6 +49,18 @@ const IMAGE_API_INHERIT_VALUE = '__inherit__'
 const IMAGE_API_PROVIDER_DEFAULT_VALUE = '__provider_default__'
 const IMAGE_API_QUALITY_OPTIONS = ['auto', 'high', 'medium', 'low', 'standard', 'hd']
 const IMAGE_API_FORMAT_OPTIONS = ['png', 'jpeg']
+const AGENT_MODEL_KEYS: (keyof AgentModelSettings)[] = [
+  'default',
+  'ide',
+  'interactive_story',
+  'config_manager',
+  'interactive_director',
+  'version_summary',
+  'tool_agent',
+  'image',
+  'automation',
+  'context_compaction',
+]
 const TRACE_CAPTURE_OPTIONS = [
   { value: 'summary', labelKey: 'settings.debug.traceCaptureSummary' },
   { value: 'debug', labelKey: 'settings.debug.traceCaptureDebug' },
@@ -180,6 +192,10 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
     }))
   }
 
+  const renameModelProfile = (previousID: string, nextID: string) => {
+    setDraft((d) => withRenamedLanguageModelProfile(d, previousID, nextID))
+  }
+
   const setImageAPIProfiles = (profiles: ImageAPIProfileSettings[]) => {
     setDraft((d) => ({
       ...d,
@@ -188,6 +204,10 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
       image_api_model: '',
       image_api_profiles: profiles,
     }))
+  }
+
+  const renameImageAPIProfile = (previousID: string, nextID: string) => {
+    setDraft((d) => withRenamedImageAPIProfile(d, previousID, nextID))
   }
 
   const placeholderFor = (k: keyof Settings): string => {
@@ -281,6 +301,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
             profiles={modelProfilesForEditor(draft, effective)}
             effectiveProfiles={modelProfilesWithDefault(effective)}
             onChange={setModelProfiles}
+            onProfileRename={renameModelProfile}
           />
         </>
       ),
@@ -298,6 +319,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
             effectiveDefaultProfileID={effective.default_image_api_profile_id || DEFAULT_IMAGE_API_PROFILE_ID}
             onDefaultProfileChange={(v) => setField('default_image_api_profile_id', v)}
             onChange={setImageAPIProfiles}
+            onProfileRename={renameImageAPIProfile}
           />
         </>
       ),
@@ -615,11 +637,66 @@ export function modelProfilesForEditor(draft: Settings, effective: Settings): Mo
     return preserveDraftOnlyModelProfiles(modelProfilesWithDefault(draft), localProfiles)
   }
   const inherited = modelProfilesWithDefault(effective)
-  const localIDs = new Set(localProfiles.map(modelProfileID).filter(Boolean))
+  const localIDs = new Set([
+    ...localProfiles.map(modelProfileID).filter(Boolean),
+    ...localProfiles.map((profile) => profile.rename_from_id?.trim() ?? '').filter(Boolean),
+  ])
   return [
     ...inherited.filter((profile) => !localIDs.has(modelProfileID(profile))).map(stripInheritedModelSecret),
     ...localProfiles,
   ]
+}
+
+export function withRenamedLanguageModelProfile(settings: Settings, previousID: string, nextID: string): Settings {
+  previousID = previousID.trim()
+  nextID = nextID.trim()
+  if (!previousID || !nextID || previousID === nextID) return settings
+
+  const agentModels = settings.agent_models ? { ...settings.agent_models } : undefined
+  if (agentModels) {
+    for (const key of AGENT_MODEL_KEYS) {
+      const override = agentModels[key]
+      if (override?.profile_id?.trim() === previousID) {
+        agentModels[key] = { ...override, profile_id: nextID }
+      }
+    }
+  }
+  return {
+    ...settings,
+    model_profile_aliases: appendModelProfileAlias(settings.model_profile_aliases, previousID, nextID),
+    agent_models: agentModels,
+    sub_agents: settings.sub_agents?.map((subAgent) => (
+      subAgent.model?.profile_id?.trim() === previousID
+        ? { ...subAgent, model: { ...subAgent.model, profile_id: nextID } }
+        : subAgent
+    )),
+  }
+}
+
+export function withRenamedImageAPIProfile(settings: Settings, previousID: string, nextID: string): Settings {
+  previousID = previousID.trim()
+  nextID = nextID.trim()
+  if (!previousID || !nextID || previousID === nextID) return settings
+  return {
+    ...settings,
+    image_api_profile_aliases: appendModelProfileAlias(settings.image_api_profile_aliases, previousID, nextID),
+    default_image_api_profile_id: settings.default_image_api_profile_id?.trim() === previousID
+      ? nextID
+      : settings.default_image_api_profile_id,
+  }
+}
+
+function appendModelProfileAlias(aliases: Record<string, string> | undefined, previousID: string, nextID: string): Record<string, string> {
+  const nextAliases = { ...aliases }
+  for (const [sourceID, targetID] of Object.entries(nextAliases)) {
+    if (targetID.trim() === previousID) nextAliases[sourceID] = nextID
+    if (sourceID === nextAliases[sourceID]) delete nextAliases[sourceID]
+  }
+  nextAliases[previousID] = nextID
+  for (const [sourceID, targetID] of Object.entries(nextAliases)) {
+    if (sourceID === targetID) delete nextAliases[sourceID]
+  }
+  return nextAliases
 }
 
 function isSettingsSectionId(value: unknown): value is SettingsSectionId {
@@ -636,19 +713,28 @@ function stripInheritedModelSecret(profile: ModelProfileSettings): ModelProfileS
   return { ...profile, openai_api_key: '' }
 }
 
-function imageAPIProfilesForEditor(draft: Settings, effective: Settings): ImageAPIProfileSettings[] {
+export function imageAPIProfilesForEditor(draft: Settings, effective: Settings): ImageAPIProfileSettings[] {
   const localProfiles = draft.image_api_profiles ?? []
   const hasLocalDefault = localProfiles.some((profile) => imageAPIProfileID(profile) === DEFAULT_IMAGE_API_PROFILE_ID)
   const hasLegacyDefault = Boolean(draft.image_api_key || draft.image_api_base_url || draft.image_api_model)
   if (hasLocalDefault || hasLegacyDefault) {
-    return imageAPIProfilesWithDefault(draft)
+    return preserveDraftOnlyImageAPIProfiles(imageAPIProfilesWithDefault(draft), localProfiles)
   }
   const inherited = imageAPIProfilesWithDefault(effective)
-  const localIDs = new Set(localProfiles.map(imageAPIProfileID).filter(Boolean))
+  const localIDs = new Set([
+    ...localProfiles.map(imageAPIProfileID).filter(Boolean),
+    ...localProfiles.map((profile) => profile.rename_from_id?.trim() ?? '').filter(Boolean),
+  ])
   return [
     ...inherited.filter((profile) => !localIDs.has(imageAPIProfileID(profile))).map(stripInheritedImageAPISecret),
     ...localProfiles,
   ]
+}
+
+function preserveDraftOnlyImageAPIProfiles(profiles: ImageAPIProfileSettings[], draftProfiles: ImageAPIProfileSettings[]): ImageAPIProfileSettings[] {
+  const draftOnlyProfiles = draftProfiles.filter((profile) => !imageAPIProfileID(profile))
+  if (draftOnlyProfiles.length === 0) return profiles
+  return [...profiles, ...draftOnlyProfiles]
 }
 
 function stripInheritedImageAPISecret(profile: ImageAPIProfileSettings): ImageAPIProfileSettings {
@@ -1192,13 +1278,15 @@ function TellerSelect({ label, value, effective, tellers, onChange }: {
   )
 }
 
-function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
+export function ModelProfilesEditor({ profiles, effectiveProfiles, onChange, onProfileRename }: {
   profiles: ModelProfileSettings[]
   effectiveProfiles: ModelProfileSettings[]
   onChange: (profiles: ModelProfileSettings[]) => void
+  onProfileRename: (previousID: string, nextID: string) => void
 }) {
   const { t } = useTranslation()
   const profileKeysRef = useRef<string[]>([])
+  const renameOriginsRef = useRef<Record<string, string>>({})
   const profileKeys = useMemo(() => {
     if (profileKeysRef.current.length > profiles.length) {
       profileKeysRef.current = profileKeysRef.current.slice(0, profiles.length)
@@ -1218,13 +1306,30 @@ function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
     const profile = profiles[index]
     const previousID = modelProfileID(profile)
     const previousModel = profile?.openai_model?.trim() ?? ''
-    const shouldSyncID = !previousID || previousID === previousModel
+    const profileKey = profileKeys[index]
+    const renameOrigin = profile?.rename_from_id?.trim() || renameOriginsRef.current[profileKey] || previousID
+    const shouldSyncID = Boolean(profile?.rename_from_id?.trim() || renameOriginsRef.current[profileKey]) || !previousID || previousID === previousModel
+    const nextID = openaiModel.trim()
     updateProfile(index, {
       id: shouldSyncID ? openaiModel : profile?.id,
+      rename_from_id: shouldSyncID && !nextID && renameOrigin ? renameOrigin : undefined,
       openai_model: openaiModel,
     })
+    if (!shouldSyncID) {
+      delete renameOriginsRef.current[profileKey]
+      return
+    }
+    if (!nextID) {
+      if (renameOrigin) renameOriginsRef.current[profileKey] = renameOrigin
+      return
+    }
+    delete renameOriginsRef.current[profileKey]
+    if (renameOrigin && renameOrigin !== nextID) {
+      onProfileRename(renameOrigin, nextID)
+    }
   }
   const removeProfile = (index: number) => {
+    delete renameOriginsRef.current[profileKeys[index]]
     onChange(profiles.filter((_, i) => i !== index))
   }
 
@@ -1331,16 +1436,18 @@ function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
   )
 }
 
-function ImageAPIProfilesEditor({ profiles, effectiveProfiles, defaultProfileID, effectiveDefaultProfileID, onDefaultProfileChange, onChange }: {
+export function ImageAPIProfilesEditor({ profiles, effectiveProfiles, defaultProfileID, effectiveDefaultProfileID, onDefaultProfileChange, onChange, onProfileRename }: {
   profiles: ImageAPIProfileSettings[]
   effectiveProfiles: ImageAPIProfileSettings[]
   defaultProfileID: string
   effectiveDefaultProfileID: string
   onDefaultProfileChange: (profileID: string) => void
   onChange: (profiles: ImageAPIProfileSettings[]) => void
+  onProfileRename: (previousID: string, nextID: string) => void
 }) {
   const { t } = useTranslation()
   const profileKeysRef = useRef<string[]>([])
+  const renameOriginsRef = useRef<Record<string, string>>({})
   const profileKeys = useMemo(() => {
     if (profileKeysRef.current.length > profiles.length) {
       profileKeysRef.current = profileKeysRef.current.slice(0, profiles.length)
@@ -1366,13 +1473,31 @@ function ImageAPIProfilesEditor({ profiles, effectiveProfiles, defaultProfileID,
     const profile = profiles[index]
     const previousID = imageAPIProfileID(profile)
     const previousModel = profile?.openai_model?.trim() ?? ''
-    const shouldSyncID = !previousID || previousID === previousModel
+    const profileKey = profileKeys[index]
+    const renameOrigin = profile?.rename_from_id?.trim() || renameOriginsRef.current[profileKey] || previousID
+    const shouldSyncID = Boolean(profile?.rename_from_id?.trim() || renameOriginsRef.current[profileKey]) || !previousID || previousID === previousModel
+    const nextID = shouldSyncID ? openaiModel.trim() : previousID
     updateProfile(index, {
       id: shouldSyncID ? openaiModel : profile?.id,
+      rename_from_id: shouldSyncID && !nextID && renameOrigin ? renameOrigin : undefined,
       openai_model: openaiModel,
     })
+    if (!shouldSyncID) {
+      delete renameOriginsRef.current[profileKey]
+      return
+    }
+    if (!nextID) {
+      if (renameOrigin) renameOriginsRef.current[profileKey] = renameOrigin
+      return
+    }
+    delete renameOriginsRef.current[profileKey]
+    if (renameOrigin && renameOrigin !== nextID) {
+      if (defaultProfileID === renameOrigin) onDefaultProfileChange(nextID)
+      onProfileRename(renameOrigin, nextID)
+    }
   }
   const removeProfile = (index: number) => {
+    delete renameOriginsRef.current[profileKeys[index]]
     const removedID = imageAPIProfileID(profiles[index])
     onChange(profiles.filter((_, i) => i !== index))
     if (removedID && defaultProfileID === removedID) onDefaultProfileChange('')

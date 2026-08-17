@@ -23,6 +23,7 @@ var (
 
 type ImageAPIProfileSettings struct {
 	ID                  string `toml:"id,omitempty" json:"id,omitempty"`
+	RenameFromID        string `toml:"rename_from_id,omitempty" json:"rename_from_id,omitempty"`
 	Name                string `toml:"name,omitempty" json:"name,omitempty"`
 	Provider            string `toml:"provider,omitempty" json:"provider,omitempty"`
 	OpenAIAPIKey        string `toml:"openai_api_key,omitempty" json:"openai_api_key,omitempty"`
@@ -153,14 +154,26 @@ func sanitizeImageAPIProfiles(profiles []ImageAPIProfileSettings) []ImageAPIProf
 	}
 	out := make([]ImageAPIProfileSettings, 0, len(profiles))
 	for _, profile := range profiles {
+		profile.RenameFromID = normalizeImageAPIProfileID(profile.RenameFromID)
 		profile.OpenAIModel = strings.TrimSpace(profile.OpenAIModel)
 		profile.ID = imageAPIProfileID(profile)
 		if profile.ID == "" {
+			if !hasImageAPIProfileDraftFields(profile) {
+				continue
+			}
+			profile.Name = strings.TrimSpace(profile.Name)
+			profile.Provider = normalizeImageAPIProvider(profile.Provider)
+			profile.OpenAIBaseURL = strings.TrimSpace(profile.OpenAIBaseURL)
+			profile.DefaultSize = normalizeImageAPISize(profile.DefaultSize)
+			profile.DefaultQuality = normalizeImageAPIQuality(profile.DefaultQuality)
+			profile.DefaultOutputFormat = normalizeImageAPIOutputFormat(profile.DefaultOutputFormat)
+			out = append(out, profile)
 			continue
 		}
 		if profile.OpenAIModel == "" && profile.ID != DefaultImageAPIProfileID {
 			profile.OpenAIModel = profile.ID
 		}
+		profile.RenameFromID = ""
 		profile.Name = strings.TrimSpace(profile.Name)
 		profile.Provider = normalizeImageAPIProvider(profile.Provider)
 		profile.OpenAIBaseURL = strings.TrimSpace(profile.OpenAIBaseURL)
@@ -170,6 +183,17 @@ func sanitizeImageAPIProfiles(profiles []ImageAPIProfileSettings) []ImageAPIProf
 		out = append(out, profile)
 	}
 	return out
+}
+
+func hasImageAPIProfileDraftFields(profile ImageAPIProfileSettings) bool {
+	return normalizeImageAPIProfileID(profile.RenameFromID) != "" ||
+		strings.TrimSpace(profile.Name) != "" ||
+		strings.TrimSpace(profile.Provider) != "" ||
+		profile.OpenAIAPIKey != "" ||
+		strings.TrimSpace(profile.OpenAIBaseURL) != "" ||
+		strings.TrimSpace(profile.DefaultSize) != "" ||
+		strings.TrimSpace(profile.DefaultQuality) != "" ||
+		strings.TrimSpace(profile.DefaultOutputFormat) != ""
 }
 
 func mergeImageAPIProfile(parent, child ImageAPIProfileSettings) ImageAPIProfileSettings {

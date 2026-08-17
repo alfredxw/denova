@@ -11,6 +11,7 @@ import { FileReferencePicker } from '@/components/Chat/FileReferencePicker'
 import { CONTEXT_ANALYSIS_SIMULATED_MESSAGE, ContextAnalysisDialog } from '@/components/Chat/ContextAnalysisDialog'
 import { MessageList, type TurnScrollRequest } from '@/components/Chat/MessageList'
 import { AgentComposerShell } from '@/components/Chat/AgentComposerShell'
+import { ContextUsageIndicator } from '@/components/Chat/ContextUsageIndicator'
 import { ModelProfileSwitcher } from '@/components/Chat/ModelProfileSwitcher'
 import { TokenUsageDialog } from '@/components/Chat/TokenUsagePanel'
 import { AgentTracePanel } from '@/components/Chat/AgentTracePanel'
@@ -1558,6 +1559,12 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
+                  <ContextUsageIndicator
+                    messages={tokenUsageMessages}
+                    agentKind="interactive_story"
+                    onOpenDetails={openContextAnalysis}
+                    disabled={!storyId || streaming || branchTerminal || directorBlocking}
+                  />
                 </>
               }
               toolbarEnd={
@@ -2173,6 +2180,8 @@ function buildTokenUsageMessage(data: Record<string, unknown> | TokenUsageEvent,
     total_tokens: readNumber(data.total_tokens),
     model_calls: readNumber(data.model_calls),
     generated_bytes: readNumber(data.generated_bytes),
+    context_window_tokens: readNumber(data.context_window_tokens),
+    context_prompt_tokens: readNumber(data.context_prompt_tokens),
     usage_calls: readUsageCalls(data.usage_calls),
     created_at: readString(data.created_at) || new Date().toISOString(),
   }

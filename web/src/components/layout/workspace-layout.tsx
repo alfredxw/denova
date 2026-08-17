@@ -1,9 +1,11 @@
-import { useLayoutEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react'
 import { Group, Panel, Separator, useGroupRef, usePanelRef } from 'react-resizable-panels'
 import type { Layout } from 'react-resizable-panels'
 import { useTranslation } from 'react-i18next'
 import { motion } from 'motion/react'
 import { novaEase, subtlePresence } from '@/features/motion/motion-tokens'
+
+const DEFAULT_SIDEBAR_PERCENTAGE = 20
 
 interface WorkspaceLayoutProps {
   activityBar: ReactNode
@@ -42,6 +44,7 @@ export function WorkspaceLayout({
   const rightPanelElementRef = useRef<HTMLDivElement | null>(null)
   const layoutBeforeEmphasisRef = useRef<Layout | null>(null)
   const lastNormalLayoutRef = useRef<Layout | null>(readStoredLayoutForWorkspace('nova-workspace-horizontal', ['sidebar', 'center', 'right']) ?? null)
+  const lastSidebarPercentageRef = useRef(lastNormalLayoutRef.current?.sidebar ?? DEFAULT_SIDEBAR_PERCENTAGE)
   const lastRightPanelPixelsRef = useRef<number | null>(null)
   const centerWidthReadyRef = useRef(false)
   const previousEmphasisRef = useRef<'normal' | 'right' | 'center'>('normal')
@@ -52,9 +55,24 @@ export function WorkspaceLayout({
   useLayoutEffect(() => {
     const panel = sidebarPanelRef.current
     if (!panel) return
-    if (sidebarVisible) panel.expand()
-    else panel.collapse()
+    if (!sidebarVisible) {
+      panel.collapse()
+      return
+    }
+
+    panel.expand()
   }, [sidebarVisible])
+
+  useEffect(() => {
+    if (!sidebarVisible) return
+    // A simultaneously restored Agent panel finishes its group constraint update
+    // after the current effect pass. Reapply the last real width in the next task;
+    // expand() is insufficient because the panel API can report "expanded" at 0px.
+    const reconcileTimer = window.setTimeout(() => {
+      sidebarPanelRef.current?.resize(`${lastSidebarPercentageRef.current}%`)
+    }, 0)
+    return () => window.clearTimeout(reconcileTimer)
+  }, [rightPanelVisible, sidebarVisible])
 
   useLayoutEffect(() => {
     if (!rightPanelVisible || layoutEmphasis !== 'normal' || previousEmphasisRef.current !== 'normal') return
@@ -136,7 +154,8 @@ export function WorkspaceLayout({
             groupRef={horizontalGroupRef}
             defaultLayout={readStoredLayoutForWorkspace('nova-workspace-horizontal', ['sidebar', 'center', 'right'])}
             onLayoutChanged={(layout) => {
-              if (layoutEmphasis === 'normal' && (!sidebar || sidebarVisible)) {
+              const sidebarReady = !sidebar || (sidebarVisible && (layout.sidebar ?? 0) > 0)
+              if (layoutEmphasis === 'normal' && sidebarReady) {
                 lastNormalLayoutRef.current = layout
                 storeLayout('nova-workspace-horizontal', layout)
               }
@@ -160,6 +179,9 @@ export function WorkspaceLayout({
                   hidden={!sidebarVisible}
                   aria-hidden={!sidebarVisible}
                   data-nova-collapsible-panel="sidebar"
+                  onResize={(size) => {
+                    if (size.inPixels > 0) lastSidebarPercentageRef.current = size.asPercentage
+                  }}
                 >
                   <motion.div
                     className="h-full min-h-0"
@@ -264,10 +286,18 @@ export function readStoredLayoutForWorkspace(key: string, panelOrder?: string[])
   try {
     const layout = JSON.parse(value) as Layout
     if (!panelOrder) return layout
-    return panelOrder.reduce<Layout>((ordered, panelId) => {
-      if (typeof layout[panelId] === 'number') ordered[panelId] = layout[panelId]
-      return ordered
+    const ordered = panelOrder.reduce<Layout>((result, panelId) => {
+      if (typeof layout[panelId] === 'number') result[panelId] = layout[panelId]
+      return result
     }, {})
+    if (key === 'nova-workspace-horizontal' && typeof ordered.sidebar === 'number' && ordered.sidebar <= 0) {
+      const right = typeof ordered.right === 'number' ? ordered.right : 0
+      ordered.sidebar = DEFAULT_SIDEBAR_PERCENTAGE
+      if (typeof ordered.center === 'number') {
+        ordered.center = Math.max(100 - DEFAULT_SIDEBAR_PERCENTAGE - right, 0)
+      }
+    }
+    return ordered
   } catch {
     return undefined
   }

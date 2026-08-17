@@ -336,6 +336,7 @@ func (r *Runtime) Run(
 			emit(Event{Type: "error", Data: map[string]string{"message": compactErr.Error()}})
 			return
 		}
+		usageCollector.SetContextWindowTokens(compactionResult.ContextWindowTokens)
 		history = compactedHistory
 		if compactionResult.Triggered {
 			runLogger.Info("context_compacted", slog.String("phase", compactionResult.Phase), slog.Int("epoch", compactionResult.Epoch), slog.Int("tokens_before", compactionResult.TokensBefore), slog.Int("projected_tokens_before", compactionResult.ProjectedTokensBefore), slog.Int("tokens_after", compactionResult.TokensAfter), slog.Int("projected_tokens_after", compactionResult.ProjectedTokensAfter), slog.Int("context_window_tokens", compactionResult.ContextWindowTokens))
@@ -591,7 +592,7 @@ func (r *Runtime) Run(
 			if streamErr != nil {
 				// A completion-guard retry arrives after all response frames. Preserve
 				// the rejected call's provider usage even though its prose is discarded.
-				usageCollector.AddMessage(msg)
+				usageCollector.AddAgentMessage(msg, eventMeta.SubAgent)
 				if reason, retrying := interactiveCompletionRetryFromError(streamErr); retrying {
 					runLogger.Info("interactive_completion_retry", slog.String("code", reason.Code), slog.Int("generated_bytes", fullContent.Len()))
 					continue
@@ -614,7 +615,7 @@ func (r *Runtime) Run(
 				return
 			}
 			toolContextRecorder.RecordAssistantToolCalls(msg, eventMeta)
-			usageCollector.AddMessage(msg)
+			usageCollector.AddAgentMessage(msg, eventMeta.SubAgent)
 			if req.PlanMode && planParser != nil && planParser.HasSuccessfulBlock() {
 				cancelRun()
 				break
@@ -624,7 +625,7 @@ func (r *Runtime) Run(
 		if mv.Message != nil {
 			processNonStreamingEvent(mv, &fullContent, &fullThinking, options.ToolResultMaxBytes, eventMeta, planParser, emit)
 			toolContextRecorder.RecordAssistantToolCalls(mv.Message, eventMeta)
-			usageCollector.AddMessage(mv.Message)
+			usageCollector.AddAgentMessage(mv.Message, eventMeta.SubAgent)
 			if req.PlanMode && planParser != nil && planParser.HasSuccessfulBlock() {
 				cancelRun()
 				break
