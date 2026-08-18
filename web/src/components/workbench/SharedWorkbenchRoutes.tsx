@@ -3,6 +3,7 @@ import type { ComponentProps } from 'react'
 import type { ResourceTarget } from '@/lib/api'
 import { WorkbenchRouteLayer } from './WorkbenchRouteHost'
 import type { WorkbenchRouteId, WorkbenchRoutePresentation } from './WorkbenchRouteHost'
+import type { ToolNavigationIntent } from '@/components/Chat/tool-navigation'
 
 const HomeView = memo(lazy(() => import('@/components/Home/HomeView').then((module) => ({ default: module.HomeView }))))
 const AgentsView = memo(lazy(() => import('@/features/agents/AgentsView').then((module) => ({ default: module.AgentsView }))))
@@ -20,6 +21,7 @@ interface SharedWorkbenchRoutesProps {
   resourceTarget: ResourceTarget
   onReturnToContentMode: () => void
   onCloseSettings: () => void
+  toolNavigationIntent: ToolNavigationIntent | null
 }
 
 /** Renders the full-workbench routes shared by Writing and Game modes. */
@@ -32,6 +34,7 @@ export function SharedWorkbenchRoutes({
   resourceTarget,
   onReturnToContentMode,
   onCloseSettings,
+  toolNavigationIntent,
 }: SharedWorkbenchRoutesProps) {
   return (
     <>
@@ -42,12 +45,12 @@ export function SharedWorkbenchRoutes({
       )}
       {isMounted('skills') && (
         <WorkbenchRouteLayer visible={route === 'skills'} loadingLabel={loadingLabel}>
-          <SkillsView target={resourceTarget} onClose={onReturnToContentMode} />
+          <SkillsView target={resourceTarget} onClose={onReturnToContentMode} toolNavigationIntent={toolNavigationIntent} />
         </WorkbenchRouteLayer>
       )}
       {isMounted('agents') && (
         <WorkbenchRouteLayer visible={route === 'agents'} loadingLabel={loadingLabel}>
-          <AgentsView target={resourceTarget} onClose={onReturnToContentMode} />
+          <AgentsView target={resourceTarget} onClose={onReturnToContentMode} toolNavigationIntent={toolNavigationIntent} />
         </WorkbenchRouteLayer>
       )}
       {isMounted('automations') && (

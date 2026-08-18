@@ -92,6 +92,7 @@ function AgentChatRouteComponent({
             projectId={projectId}
             documentReview={context.documentReview}
             navigationIntent={context.navigationIntent?.target.kind === 'lore_item' ? context.navigationIntent : null}
+            toolNavigationIntent={context.toolNavigationIntent}
             refreshSignal={context.refreshSignal}
             onEditorFlushHandlerChange={context.onFlushHandlerChange}
           />
@@ -106,12 +107,13 @@ function AgentChatRouteComponent({
             imagePresets={imagePresets}
             onTellersChange={onTellersChange}
             onImagePresetsChange={onImagePresetsChange}
+            toolNavigationIntent={context.toolNavigationIntent}
           />
         )
       case 'skills':
-        return <SkillsView target={projectResourceTarget(projectId)} />
+        return <SkillsView target={projectResourceTarget(projectId)} toolNavigationIntent={context.toolNavigationIntent} />
       case 'agents':
-        return <AgentsView target={projectResourceTarget(projectId)} />
+        return <AgentsView target={projectResourceTarget(projectId)} toolNavigationIntent={context.toolNavigationIntent} />
       case 'automations':
         return <AutomationsView projectId={projectId} projectType={context.projectType} workspace={tabWorkspace} />
       case 'versions':

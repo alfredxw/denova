@@ -10,6 +10,7 @@ import type { ReviewFeedbackNavigationTarget } from './use-review-feedback-navig
 import type { Tab } from './TabController'
 import { TabController } from './TabController'
 import { WorkbenchRouteLayer } from './WorkbenchRouteHost'
+import type { ToolNavigationIntent } from '@/components/Chat/tool-navigation'
 
 const LoreWorkspaceTab = memo(lazy(() => import('@/features/lore/LoreWorkspaceTab').then((module) => ({ default: module.LoreWorkspaceTab }))))
 const StableFilePreview = memo(FilePreview)
@@ -47,6 +48,7 @@ interface WritingMainRouteProps {
   illustrationInsertSignal: EditorProps['illustrationInsertSignal']
   documentReview: NonNullable<EditorProps['documentReview']>
   documentReviewNavigationTarget: ReviewFeedbackNavigationTarget | null
+  toolNavigationIntent: ToolNavigationIntent | null
   readingTypography: EditorProps['readingTypography']
   loreEmpty: boolean
   onToggleAgent: () => void
@@ -99,6 +101,7 @@ export function WritingMainRoute({
   illustrationInsertSignal,
   documentReview,
   documentReviewNavigationTarget,
+  toolNavigationIntent,
   readingTypography,
   loreEmpty,
   onToggleAgent,
@@ -153,6 +156,7 @@ export function WritingMainRoute({
                   projectId={projectId}
                   documentReview={documentReview}
                   navigationIntent={documentReviewNavigationTarget?.target.kind === 'lore_item' ? documentReviewNavigationTarget : null}
+                  toolNavigationIntent={toolNavigationIntent}
                   onEditorFlushHandlerChange={onEditorFlushHandlerChange}
                   onOpenLibrary={onOpenLoreLibrary}
                   onReferenceItem={onReferenceLoreItem}

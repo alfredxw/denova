@@ -24,6 +24,7 @@ import { closeTerminalSession, getTerminalRuntimeStatus } from './terminal/api'
 import { AgentChatView } from './AgentChatView'
 import { consumeAgentChatSessionNavigation, requestAgentChatSessionNavigation } from './session-navigation'
 import type { AgentChatProjectNavigationState } from './AgentChatProjectSwitcher'
+import { useToolNavigation } from '@/components/Chat/tool-navigation'
 
 function FlushableProjectPage({
   flush,
@@ -37,6 +38,15 @@ function FlushableProjectPage({
     return () => onFlushHandlerChange(null)
   }, [flush, onFlushHandlerChange])
   return <div data-testid="flushable-project-page">project page</div>
+}
+
+function ToolNavigationFileProbe() {
+  const navigation = useToolNavigation()
+  return (
+    <button type="button" onClick={() => navigation?.open({ kind: 'workspace_file', path: 'src/from-tool.ts' })}>
+      open tool file
+    </button>
+  )
 }
 
 describe('AgentChatView project workbenches', () => {
@@ -576,6 +586,47 @@ describe('AgentChatView project workbenches', () => {
     expect(screen.getByTestId('conversation:/books/a:session-a')).toHaveTextContent('active')
     expect(readStoredWorkbenchState().projects['project-a'].tabs).toEqual(expect.arrayContaining([
       expect.objectContaining({ kind: 'files', group: 'secondary' }),
+    ]))
+  })
+
+  it('opens a tool path in the Files tab owned by that Agent Chat project', async () => {
+    const user = userEvent.setup()
+    persistWorkbenchState({
+      activeProjectId: 'project-b',
+      projects: {
+        'project-b': {
+          tabs: [{
+            kind: 'page',
+            id: 'skills-b',
+            projectId: 'project-b',
+            workspace: '/books/b',
+            group: 'primary',
+            pageId: 'skills',
+          }],
+          activeTabIds: { primary: 'skills-b', secondary: null },
+          focusedGroup: 'primary',
+          secondaryVisible: false,
+        },
+      },
+    })
+
+    renderView(
+      <AgentChatView
+        composerSettings={{} as never}
+        tellers={[]}
+        imagePresets={[]}
+        renderPage={() => <ToolNavigationFileProbe />}
+        renderReview={() => null}
+      />,
+    )
+    await user.click(await screen.findByRole('button', { name: 'open tool file' }))
+
+    expect(await screen.findByTestId('project-files-tab')).toHaveTextContent('src/from-tool.ts')
+    expect(readStoredWorkbenchState().projects['project-b'].tabs).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'files', projectId: 'project-b', workspace: '/books/b', selectedPath: 'src/from-tool.ts' }),
+    ]))
+    expect(readStoredWorkbenchState().projects['project-a']?.tabs || []).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'files', selectedPath: 'src/from-tool.ts' }),
     ]))
   })
 

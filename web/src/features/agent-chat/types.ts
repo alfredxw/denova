@@ -4,6 +4,7 @@ import type { EditorFlushHandler } from '@/components/Editor/useEditorDraftPersi
 import type { DocumentReviewController } from '@/features/document-review/controller'
 import type { WorkspaceChangeMetadata } from '@/features/changes/types'
 import type { AgentChatProjectType } from './api'
+import type { ToolNavigationIntent } from '@/components/Chat/tool-navigation'
 
 /**
  * Tab model for the AgentChat workspace.
@@ -36,6 +37,7 @@ export interface AgentChatDocumentReviewNavigation extends DocumentReviewNavigat
 export interface AgentChatPageRenderContext {
   projectType: AgentChatProjectType
   navigationIntent: AgentChatDocumentReviewNavigation | null
+  toolNavigationIntent: ToolNavigationIntent | null
   documentReview: DocumentReviewController
   refreshSignal: number
   onFlushHandlerChange: (handler: EditorFlushHandler | null) => void

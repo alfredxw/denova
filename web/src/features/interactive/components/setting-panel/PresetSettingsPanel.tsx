@@ -22,6 +22,7 @@ import { usePresetDraftSync, usePresetResources } from './use-preset-resources'
 import { usePresetSelection } from './use-preset-selection'
 import { createPresetConflictResolver, usePresetResourceAutosave } from './usePresetResourceAutosave'
 import { currentPresetBuiltinOverridden, EMPTY_IMAGE_PRESETS, EMPTY_STORY_DIRECTORS, EMPTY_TELLERS, isPresetConfigResourceKind, makeActorStatePayload, makeEventPackagePayload, makeImagePresetPayload, makeRuleSystemPayload, makeStoryDirectorPayload, makeTellerPayload, newActorStateDraft, newEventPackageDraft, newImagePresetDraft, newRuleSystemDraft, newStoryDirectorDraft, newTellerDraft, presetEditorSubtitle, presetEditorTitle, presetResourceDraftSignature, PRESET_DELETE_COPY, TELLER_CONFIG_AGENT_ENTRY_ID, type PresetDeleteTarget } from './presetResources'
+import type { ToolNavigationIntent } from '@/components/Chat/tool-navigation'
 
 interface PresetSettingsPanelProps {
   projectId: string
@@ -34,6 +35,7 @@ interface PresetSettingsPanelProps {
   onImagePresetsChange?: (presets: ImagePreset[]) => void
   embedded?: boolean
   onClose?: () => void
+  toolNavigationIntent?: ToolNavigationIntent | null
 }
 
 interface AutosaveController {
@@ -59,6 +61,7 @@ export function PresetSettingsPanel({
   onImagePresetsChange,
   embedded = false,
   onClose,
+  toolNavigationIntent,
 }: PresetSettingsPanelProps) {
   const { t } = useTranslation()
   const [saving, setSaving] = useState(false)
@@ -356,7 +359,7 @@ export function PresetSettingsPanel({
     return narrativeStylesForMode(tellers, presetUsageMode)
   }
 
-  const { selectPresetResource, handleSelectDirectoryEntry } = usePresetSelection({
+  const { handleSelectTeller, selectPresetResource, handleSelectDirectoryEntry } = usePresetSelection({
     presetUsageMode,
     presetResourceKind,
     setPresetResourceKind,
@@ -368,6 +371,25 @@ export function PresetSettingsPanel({
     flushPresetResourceAutoSave,
     closeDirectory: () => closeDirectoryRef.current(),
   })
+  const toolNavigationNonceRef = useRef(0)
+  useEffect(() => {
+    const intent = toolNavigationIntent
+    if (!intent || intent.nonce === toolNavigationNonceRef.current || intent.target.kind !== 'config_resource') return
+    const kind = presetKindForConfigResource(intent.target.resource)
+    if (!kind) return
+    const items = presetItemsForKind(kind)
+    const requestedID = intent.target.resource === 'style_reference' ? '' : intent.target.id || ''
+    const id = requestedID || items[0]?.id || ''
+    if (!id) {
+      setPresetResourceKind(kind)
+      toolNavigationNonceRef.current = intent.nonce
+      return
+    }
+    if (!items.some((item) => item.id === id)) return
+    toolNavigationNonceRef.current = intent.nonce
+    if (kind === 'teller') void handleSelectTeller(id)
+    else void selectPresetResource(kind, id)
+  }, [actorStates, eventPackages, imagePresets, presetUsageMode, ruleSystems, storyDirectors, tellers, toolNavigationIntent?.nonce])
 
   const handleCreateTeller = async () => {
     if (!(await flushPresetResourceAutoSave())) return
@@ -747,6 +769,26 @@ export function PresetSettingsPanel({
       />
     </section>
   )
+}
+
+function presetKindForConfigResource(resource: string): PresetResourceKind | null {
+  switch (resource) {
+    case 'style_reference':
+    case 'narrative_style':
+      return 'teller'
+    case 'story_director':
+      return 'director'
+    case 'event_package':
+      return 'event'
+    case 'rule_system':
+      return 'rule'
+    case 'state_system':
+      return 'actor-state'
+    case 'image_preset':
+      return 'image'
+    default:
+      return null
+  }
 }
 
 function presetResourceIcon(kind: PresetResourceKind) {

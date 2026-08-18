@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { setConfiguredLocale } from '@/i18n'
 import { MessageItem as ProjectMessageItem } from './MessageItem'
+import { ToolNavigationProvider, type ToolNavigationTarget } from './tool-navigation'
 
 function MessageItem(props: ComponentProps<typeof ProjectMessageItem>) {
   return <ProjectMessageItem {...props} projectId={props.projectId || 'tool-detail-project'} />
@@ -22,7 +23,7 @@ describe('tool-specific details', () => {
       status: 'success',
       source: { kind: 'local_text', path: 'chapters/ch01.md' },
       limits: { offset: 20, returned: 2, truncated: false },
-    })}\n20\t第一行\n21\t  第二行\n22\t\n`
+    })}\n    20\t第一行\n    21\t  第二行\n    22\t\n`
     const { container } = render(
       <MessageItem message={{
         role: 'tool_call', name: 'read', content: 'read',
@@ -154,4 +155,67 @@ describe('tool-specific details', () => {
     expect(input).toHaveTextContent('替换全部匹配')
     expect(detail.querySelector('[data-nova-tool-detail-output]')).toHaveTextContent('已应用 · 24 行 · 360 字符')
   })
+
+  it.each([
+    {
+      name: 'read',
+      args: { path: 'src/read.ts' },
+      result: `${JSON.stringify({ schema: 'resource.read.v1' })}\n1\tcontent`,
+    },
+    {
+      name: 'write',
+      args: { path: 'src/write.ts', content: 'content' },
+      result: JSON.stringify({ schema: 'workspace_change.tool_result.v1', file_stats: {} }),
+    },
+    {
+      name: 'edit',
+      args: { path: 'src/edit.ts', edits: [{ old_string: 'a', new_string: 'b' }] },
+      result: JSON.stringify({ schema: 'workspace_change.tool_result.v1', file_stats: {} }),
+    },
+    {
+      name: 'glob',
+      args: { paths: ['src/**/*.ts'] },
+      result: `${JSON.stringify({ schema: 'workspace.search.v1' })}\nsrc/glob.ts`,
+    },
+    {
+      name: 'grep',
+      args: { command: 'rg TODO src' },
+      result: `${JSON.stringify({ schema: 'workspace.search.v1' })}\nsrc/grep.ts:12:TODO`,
+    },
+    {
+      name: 'bash',
+      args: { command: 'cat src/bash.ts' },
+      result: `${JSON.stringify({ schema: 'process.result.v1' })}\ndone`,
+    },
+    {
+      name: 'pwsh',
+      args: { command: 'Get-Content .\\src\\pwsh.ts' },
+      result: `${JSON.stringify({ schema: 'process.result.v1' })}\ndone`,
+    },
+  ])('$name opens inline workspace paths without collapsing the card', async ({ name, args, result }) => {
+    const opened: ToolNavigationTarget[] = []
+    const { container } = render(
+      <ToolNavigationProvider value={{ workspace: '/workspace/book', open: (target) => opened.push(target) }}>
+        <MessageItem message={{ role: 'tool_call', name, content: name, args: JSON.stringify(args), status: 'success', result }} />
+      </ToolNavigationProvider>,
+    )
+    await expandToolCard(container)
+    const link = container.querySelector('[data-nova-workspace-path]') as HTMLButtonElement
+    expect(link).toBeInTheDocument()
+    await userEvent.setup().click(link)
+    expect(opened).toEqual([{ kind: 'workspace_file', path: expect.stringMatching(new RegExp(`${name}\\.ts$`)) }])
+    expect(container.querySelector('[data-nova-tool-header]')).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it.each(['update_harness_state', 'initialize_story_state_schema', 'submit_director_plan_update'])(
+    '%s keeps the default raw detail',
+    async (name) => {
+      const { container } = render(
+        <MessageItem message={{ role: 'tool_call', name, content: name, args: '{"value":{"x":1}}', status: 'success', result: '{"status":"ok"}' }} />,
+      )
+      await expandToolCard(container)
+      expect(container.querySelector(`[data-nova-tool-detail="${name}"]`)).not.toBeInTheDocument()
+      expect(container.querySelector('[data-slot="collapsible-content"]')).toHaveTextContent('"value"')
+    },
+  )
 })

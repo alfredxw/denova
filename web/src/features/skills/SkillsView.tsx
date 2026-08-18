@@ -22,10 +22,12 @@ import { SkillEditor } from './SkillEditor'
 import { SkillInstallPanel } from './SkillInstallPanel'
 import { SkillListPanel } from './SkillListPanel'
 import { keyOf, preferredBuiltinOverrideScope, scopeLabel, skillEntryFile, skillFilePath, skillHasSupportingFiles, type SkillContentViewMode, type SkillsMode } from './skill-utils'
+import type { ToolNavigationIntent } from '@/components/Chat/tool-navigation'
 
 interface SkillsViewProps {
   target: SkillCatalogTarget
   onClose?: () => void
+  toolNavigationIntent?: ToolNavigationIntent | null
 }
 
 interface SkillContentAutosaveDraft {
@@ -74,7 +76,7 @@ function skillSummaryOf(value: SkillSummary): SkillSummary {
   return { name, description, category, capabilities, context, agent, model, scope, path, editable, active, updated_at }
 }
 
-export function SkillsView({ target, onClose }: SkillsViewProps) {
+export function SkillsView({ target, onClose, toolNavigationIntent }: SkillsViewProps) {
   const { t } = useTranslation()
   const targetKind = target.kind
   const projectId = target.kind === 'project' ? target.projectId : ''
@@ -105,6 +107,7 @@ export function SkillsView({ target, onClose }: SkillsViewProps) {
   const [eventSource] = useState(() => `skills-view-${nextSkillsViewSourceID++}`)
   const configPanelRef = useRef<SkillConfigPanelHandle | null>(null)
   const fileTreePreferences = useRef(new Map<string, boolean>())
+  const toolNavigationNonceRef = useRef(0)
   const notifySkillsUpdated = useCallback(() => {
     window.dispatchEvent(new CustomEvent('nova:skills-updated', { detail: { source: eventSource, targetKey } }))
   }, [eventSource, targetKey])
@@ -529,6 +532,24 @@ export function SkillsView({ target, onClose }: SkillsViewProps) {
     setError(null)
   }
 
+  useEffect(() => {
+    const intent = toolNavigationIntent
+    if (!intent || intent.nonce === toolNavigationNonceRef.current || intent.target.kind !== 'config_resource' || intent.target.resource !== 'skill') return
+    const id = intent.target.id || ''
+    if (!id) {
+      toolNavigationNonceRef.current = intent.nonce
+      return
+    }
+    const scope = isSkillScope(intent.target.scope) ? intent.target.scope : null
+    const skill = snapshot.skills.find((item) => (
+      (!scope || item.scope === scope)
+      && (item.name === id || item.path === id || keyOf(item) === id)
+    ))
+    if (!skill) return
+    toolNavigationNonceRef.current = intent.nonce
+    void selectSkill(keyOf(skill))
+  }, [snapshot.skills, toolNavigationIntent?.nonce])
+
   const closeSkills = async () => {
     if (!onClose || !await flushActiveAutosave()) return
     onClose()
@@ -756,4 +777,8 @@ export function SkillsView({ target, onClose }: SkillsViewProps) {
       )}
     </FeaturePageShell>
   )
+}
+
+function isSkillScope(value: string | undefined): value is SkillScope {
+  return value === 'builtin' || value === 'user' || value === 'workspace'
 }

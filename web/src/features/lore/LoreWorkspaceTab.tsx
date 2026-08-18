@@ -21,11 +21,13 @@ import { loreLoadModeLabel } from './options'
 import { LoreWorkspaceEditor } from './LoreWorkspaceEditor'
 import { useLoreWorkspace } from './use-lore-workspace'
 import { LoadingState } from '@/components/common/LoadingState'
+import type { ToolNavigationIntent } from '@/components/Chat/tool-navigation'
 
 interface LoreWorkspaceTabProps {
   projectId: string
   documentReview: DocumentReviewController
   navigationIntent?: DocumentReviewNavigationIntent | null
+  toolNavigationIntent?: ToolNavigationIntent | null
   refreshSignal?: number
   onEditorFlushHandlerChange: (handler: EditorFlushHandler | null) => void
   onOpenLibrary?: () => void
@@ -37,6 +39,7 @@ export function LoreWorkspaceTab({
   projectId,
   documentReview,
   navigationIntent,
+  toolNavigationIntent,
   refreshSignal = 0,
   onEditorFlushHandlerChange,
   onOpenLibrary,
@@ -58,6 +61,13 @@ export function LoreWorkspaceTab({
     if (!navigationTargetID || navigationTargetID === lore.activeId) return
     void lore.selectItem(navigationTargetID)
   }, [lore.activeId, lore.selectItem, navigationTargetID])
+  useEffect(() => {
+    const target = toolNavigationIntent?.target
+    if (!target || target.kind !== 'lore_item') return
+    const targetID = target.id || lore.items.find((item) => item.name === target.name)?.id || ''
+    if (!targetID || targetID === lore.activeId) return
+    void lore.selectItem(targetID)
+  }, [lore.activeId, lore.items, lore.selectItem, toolNavigationIntent?.nonce])
   const sections = useMemo<ResourceDirectorySection[]>(
     () =>
       KNOWLEDGE_SECTIONS.map((section) => ({

@@ -30,6 +30,7 @@ import type { ImagePreset, InteractiveTurnPersistedEvent, Snapshot, StoryDirecto
 import { INTERACTIVE_OPENING_PRESET_PATH, INTERACTIVE_OPENING_PRESET_UPDATED_EVENT, LEGACY_INTERACTIVE_OPENING_PRESET_PATH, parseBookOpeningPresets, type BookOpeningPreset, type StoryCreateInput } from '../opening'
 import { DEFAULT_NARRATIVE_STYLE_ID, narrativeStylesForMode, resolveNarrativeStyle } from '../narrative-style'
 import { LoadingState } from '@/components/common/LoadingState'
+import type { ToolNavigationIntent } from '@/components/Chat/tool-navigation'
 
 interface InteractiveLayoutProps {
   projectId?: string
@@ -44,11 +45,12 @@ interface InteractiveLayoutProps {
   onRequestLoreInit?: () => void
   rightPanelVisible?: boolean
   onToggleRightPanel?: () => void
+  toolNavigationIntent?: ToolNavigationIntent | null
 }
 
 const SNAPSHOT_POLL_INTERVAL_MS = 1000
 
-export function InteractiveLayout({ projectId = '', workspace, active = true, recentNarrativeStyleID = DEFAULT_NARRATIVE_STYLE_ID, narrativeStyleLoading = false, onNarrativeStyleChange, imagePresets = [], onImagePresetsChange, loreEmpty = false, onRequestLoreInit, rightPanelVisible = true, onToggleRightPanel }: InteractiveLayoutProps) {
+export function InteractiveLayout({ projectId = '', workspace, active = true, recentNarrativeStyleID = DEFAULT_NARRATIVE_STYLE_ID, narrativeStyleLoading = false, onNarrativeStyleChange, imagePresets = [], onImagePresetsChange, loreEmpty = false, onRequestLoreInit, rightPanelVisible = true, onToggleRightPanel, toolNavigationIntent }: InteractiveLayoutProps) {
   const { t } = useTranslation()
   const isMobile = useIsMobile()
   const {
@@ -473,7 +475,7 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
           <div className="flex min-w-0 flex-1 flex-col bg-[var(--nova-surface-2)]">
             <motion.div key={contentKey} variants={panelPresence} initial="initial" animate="animate" transition={{ duration: 0.2, ease: novaEase }} className="flex min-h-0 flex-1 flex-col">
               {settingsWorkspaceVisible ? (
-                <SettingPanel mode={settingMode} projectId={projectId} presetUsageMode="game" tellers={tellers} storyDirectors={storyDirectors} imagePresets={imagePresets} onTellersChange={setTellers} onStoryDirectorsChange={setStoryDirectors} onImagePresetsChange={onImagePresetsChange} />
+                <SettingPanel mode={settingMode} projectId={projectId} presetUsageMode="game" tellers={tellers} storyDirectors={storyDirectors} imagePresets={imagePresets} onTellersChange={setTellers} onStoryDirectorsChange={setStoryDirectors} onImagePresetsChange={onImagePresetsChange} toolNavigationIntent={toolNavigationIntent} />
               ) : submode === 'director' ? (
                 <DirectorBackstage projectId={projectId} storyId={currentStoryId} branchId={currentBranchId} snapshot={displaySnapshot} loading={snapshotPending} onSnapshotRefresh={() => reloadSnapshot(currentBranchId, currentStoryId, { silent: true })} />
               ) : submode === 'timeline' ? (

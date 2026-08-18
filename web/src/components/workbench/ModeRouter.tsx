@@ -32,6 +32,8 @@ import { useWritingAgentPanel } from './use-writing-agent-panel'
 import type { ModeRouterProps } from './ModeRouter.types'
 import { SharedWorkbenchRoutes } from './SharedWorkbenchRoutes'
 import { AgentChatWorkbenchRoute } from './AgentChatWorkbenchRoute'
+import { ToolNavigationProvider, type ToolNavigationIntent, type ToolNavigationTarget } from '@/components/Chat/tool-navigation'
+import { requestAutomationNavigation } from '@/features/automations/automation-navigation'
 
 const WRITING_AGENT_INIT_EVENT = 'nova:writing-agent-init'
 const InteractiveLayout = memo(lazy(() => import('@/features/interactive/components/InteractiveLayout').then((module) => ({ default: module.InteractiveLayout }))))
@@ -210,6 +212,8 @@ export function ModeRouter(props: ModeRouterProps) {
   const [agentChatProjectNavigation, setAgentChatProjectNavigation] = useState<AgentChatProjectNavigationState | null>(null)
   const [illustrationInsertSignal, setIllustrationInsertSignal] = useState<{ illustration: ChapterIllustration; nonce: number } | null>(null)
   const [outlineRevealRequest, setOutlineRevealRequest] = useState<OutlineRevealRequest | null>(null)
+  const [toolNavigationIntent, setToolNavigationIntent] = useState<ToolNavigationIntent | null>(null)
+  const toolNavigationNonceRef = useRef(0)
   const loreLibraryFlushHandlerRef = useRef<EditorFlushHandler | null>(null)
   const agentChatFlushHandlerRef = useRef<EditorFlushHandler | null>(null)
   const [editorLine, setEditorLine] = useState(1)
@@ -319,6 +323,55 @@ export function ModeRouter(props: ModeRouterProps) {
     }
     return onSelectSearchResult(result, query)
   }, [onOpenLoreTab, onSelectSearchResult])
+
+  const openToolNavigationTarget = useCallback((target: ToolNavigationTarget) => {
+    if (target.kind === 'workspace_file') {
+      onSetMode('ide')
+      if (rightPanel === 'lore' || rightPanel === 'teller' || rightPanel === 'versions') onSetRightPanel(null)
+      void selectWorkspacePath(target.path)
+      return
+    }
+
+    toolNavigationNonceRef.current += 1
+    setToolNavigationIntent({ target, nonce: toolNavigationNonceRef.current })
+    if (target.kind === 'lore_item') {
+      if (mode === 'interactive') {
+        setInteractiveSubmode('lore')
+      } else {
+        onSetMode('ide')
+        void onOpenLoreTab()
+      }
+      return
+    }
+
+    switch (target.resource) {
+      case 'skill':
+        onSetMode('skills')
+        return
+      case 'agent_profile':
+        onSetMode('agents')
+        return
+      case 'automation':
+        if (target.id) requestAutomationNavigation({ taskId: target.id, projectId, workspace })
+        onSetMode('automations')
+        return
+      case 'style_reference':
+      case 'narrative_style':
+      case 'story_director':
+      case 'event_package':
+      case 'rule_system':
+      case 'state_system':
+      case 'image_preset':
+        if (mode === 'interactive') {
+          setInteractiveSubmode('teller')
+        } else {
+          onSetMode('ide')
+          onSetRightPanel('teller')
+        }
+        return
+    }
+  }, [mode, onOpenLoreTab, onSetMode, onSetRightPanel, projectId, rightPanel, selectWorkspacePath, setInteractiveSubmode, workspace])
+  const toolNavigation = useMemo(() => ({ workspace, open: openToolNavigationTarget }), [openToolNavigationTarget, workspace])
 
   const requestLoreInit = useCallback(() => {
     onSetMode('interactive')
@@ -650,6 +703,7 @@ export function ModeRouter(props: ModeRouterProps) {
         illustrationInsertSignal={illustrationInsertSignal}
         documentReview={documentReviewController}
         documentReviewNavigationTarget={documentReviewNavigationTarget}
+        toolNavigationIntent={toolNavigationIntent}
         readingTypography={readingTypography}
         loreEmpty={loreEmpty}
         onToggleAgent={toggleAgent}
@@ -691,6 +745,7 @@ export function ModeRouter(props: ModeRouterProps) {
             onRequestLoreInit={requestLoreInit}
             rightPanelVisible={interactiveRightVisible}
             onToggleRightPanel={onToggleInteractiveRightPanel}
+            toolNavigationIntent={toolNavigationIntent}
           />
         </WorkbenchRouteLayer>
       )}
@@ -715,12 +770,13 @@ export function ModeRouter(props: ModeRouterProps) {
             documentReviewNavigationIntent={documentReviewNavigationTarget?.target.kind === 'lore_item' ? documentReviewNavigationTarget : null}
             onClose={closeIdeWorkspacePanel}
             onFlushHandlerChange={handleLoreLibraryFlushHandlerChange}
+            toolNavigationIntent={toolNavigationIntent}
           />
         </WorkbenchRouteLayer>
       )}
       {routeHost.isMounted('ide-teller') && (
         <WorkbenchRouteLayer visible={presentedMainRoute === 'ide-teller'} loadingLabel={t('router.loading')}>
-          <SettingPanel projectId={projectId} mode="teller" presetUsageMode="writing" tellers={tellers} imagePresets={imagePresets} onTellersChange={setTellers} onImagePresetsChange={setImagePresets} onClose={closeIdeWorkspacePanel} />
+          <SettingPanel projectId={projectId} mode="teller" presetUsageMode="writing" tellers={tellers} imagePresets={imagePresets} onTellersChange={setTellers} onImagePresetsChange={setImagePresets} onClose={closeIdeWorkspacePanel} toolNavigationIntent={toolNavigationIntent} />
         </WorkbenchRouteLayer>
       )}
 
@@ -734,6 +790,7 @@ export function ModeRouter(props: ModeRouterProps) {
         resourceTarget={resourceTarget}
         onReturnToContentMode={returnToContentMode}
         onCloseSettings={onCloseSettings}
+        toolNavigationIntent={toolNavigationIntent}
       />
       <AgentChatWorkbenchRoute
         mounted={routeHost.isMounted('agentchat')}
@@ -761,6 +818,7 @@ export function ModeRouter(props: ModeRouterProps) {
 
 
   return (
+    <ToolNavigationProvider value={toolNavigation}>
     <>
     <WorkbenchShell
       mode={mode}
@@ -798,5 +856,6 @@ export function ModeRouter(props: ModeRouterProps) {
     />
     {writingAgent.portal}
     </>
+    </ToolNavigationProvider>
   )
 }

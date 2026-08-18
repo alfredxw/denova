@@ -638,7 +638,8 @@ describe('MessageItem', () => {
 
     expect(screen.getByText('访问被阻止 · 改用其他公开来源')).toHaveClass('col-start-2', 'col-end-3', 'whitespace-normal')
     await user.click(container.querySelector('[data-nova-tool-header]') as HTMLElement)
-    expect(screen.getByText(/"status": "blocked"/)).toBeInTheDocument()
+    expect(screen.getByText('blocked')).toBeInTheDocument()
+    expect(screen.getByText(/direct_http/)).toBeInTheDocument()
     expect(screen.getAllByText(/改用其他公开来源/)).toHaveLength(2)
   })
 

@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- 内置工具卡片在保持原有折叠态、流式原始参数与单层展开结构的基础上，按 Web、Browser、Skill、Task、Script、Goal、配置、Lore 和互动游戏工具展示各自的关键信息；`read`、`write`、`edit`、`glob`、`grep`、`bash` 与 `pwsh` 中明确的工作区文件路径可直接打开所属项目文件，Writing、Game 与 Agent Chat 共用，且无需新增配置。
+- Built-in tool cards now present focused details for Web, Browser, Skill, Task, Script, Goal, configuration, Lore, and interactive-game tools while retaining the existing collapsed state, verbatim streaming arguments, and single disclosure. Clear workspace-file paths in `read`, `write`, `edit`, `glob`, `grep`, `bash`, and `pwsh` can open files in the owning project across Writing, Game, and Agent Chat, with no new setting.
 - 新增纯 Windows PowerShell 快速重启脚本 `scripts/restart-dev.ps1`：仅停止当前仓库的 Windows dev 进程，复用用户级 Go 与 pnpm 环境，并以前台方式重新启动后端和 Vite；无需新增产品配置。
 - Added the native Windows PowerShell quick-restart script `scripts/restart-dev.ps1`. It stops only this repository's Windows dev processes, reuses the user-level Go and pnpm environment, and restarts the backend and Vite in the foreground. No product configuration is required.
 - Agent 执行过程现在为同一模型片段内的每个工具调用保留唯一且稳定的渲染身份，避免 `edit`、`write` 等相邻工具在流式刷新和耗时更新时反复协调并刷出重复 key 错误；工具运行图标增加不改变视觉表现的合成性能提示，原有思考扫光和转圈效果保持不变。Writing、Game、AgentChat 与管理型 Agent 共用，无需新增配置。

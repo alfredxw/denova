@@ -43,6 +43,7 @@ import { firstVisibleLoreItemId, KNOWLEDGE_SECTIONS, sectionItems, type Knowledg
 import { isProjectChangeForProject, type WorkspaceChangeEvent } from '@/features/changes/types'
 import type { DocumentReviewController, DocumentReviewNavigationIntent } from '@/features/document-review/controller'
 import type { DocumentReviewSnapshot } from '@/components/Editor/documentReviewAnchors'
+import type { ToolNavigationIntent } from '@/components/Chat/tool-navigation'
 
 const CREATOR_PATH = 'CREATOR.md'
 const CREATOR_ENTRY_ID = '__creator__'
@@ -70,6 +71,7 @@ interface SettingPanelProps {
   embedded?: boolean
   onClose?: () => void
   onFlushHandlerChange?: (handler: (() => Promise<boolean>) | null) => void
+  toolNavigationIntent?: ToolNavigationIntent | null
 }
 
 export function SettingPanel({
@@ -88,6 +90,7 @@ export function SettingPanel({
   embedded = false,
   onClose,
   onFlushHandlerChange,
+  toolNavigationIntent,
 }: SettingPanelProps) {
   const activeMode = mode || 'lore'
   if (activeMode === 'teller') {
@@ -103,10 +106,11 @@ export function SettingPanel({
         onImagePresetsChange={onImagePresetsChange}
         embedded={embedded}
         onClose={onClose}
+        toolNavigationIntent={toolNavigationIntent}
       />
     )
   }
-  return <LoreSettingPanel mode={activeMode} projectId={projectId} imagePresets={imagePresets} onImagePresetsChange={onImagePresetsChange} documentReview={documentReview} documentReviewNavigationIntent={documentReviewNavigationIntent} refreshSignal={refreshSignal} embedded={embedded} onClose={onClose} onFlushHandlerChange={onFlushHandlerChange} />
+  return <LoreSettingPanel mode={activeMode} projectId={projectId} imagePresets={imagePresets} onImagePresetsChange={onImagePresetsChange} documentReview={documentReview} documentReviewNavigationIntent={documentReviewNavigationIntent} refreshSignal={refreshSignal} embedded={embedded} onClose={onClose} onFlushHandlerChange={onFlushHandlerChange} toolNavigationIntent={toolNavigationIntent} />
 }
 
 function LoreSettingPanel({
@@ -120,6 +124,7 @@ function LoreSettingPanel({
   embedded,
   onClose,
   onFlushHandlerChange,
+  toolNavigationIntent,
 }: {
   mode: Exclude<SettingPanelMode, 'teller'>
   projectId: string
@@ -131,6 +136,7 @@ function LoreSettingPanel({
   embedded: boolean
   onClose?: () => void
   onFlushHandlerChange?: (handler: (() => Promise<boolean>) | null) => void
+  toolNavigationIntent?: ToolNavigationIntent | null
 }) {
   const { t } = useTranslation()
   const activeMode = mode
@@ -779,6 +785,14 @@ function LoreSettingPanel({
     if (!documentReviewLoreID || documentReviewLoreID === activeId || !items.some((item) => item.id === documentReviewLoreID)) return
     void handleSelectLore(documentReviewLoreID)
   }, [activeId, documentReviewLoreID, handleSelectLore, items])
+
+  useEffect(() => {
+    const target = toolNavigationIntent?.target
+    if (!target || target.kind !== 'lore_item') return
+    const targetID = target.id || items.find((item) => item.name === target.name)?.id || ''
+    if (!targetID || targetID === activeId || !items.some((item) => item.id === targetID)) return
+    void handleSelectLore(targetID)
+  }, [activeId, handleSelectLore, items, toolNavigationIntent?.nonce])
 
   const selectedLoreImagePresetId = () => activeImagePresetId || imagePresets.find((preset) => !preset.invalid)?.id || 'game-cg'
 

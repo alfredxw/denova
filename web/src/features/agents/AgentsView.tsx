@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Bot } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { ConfigManagerChat } from '@/components/Chat/ConfigManagerChat'
@@ -23,10 +23,11 @@ import { AgentRuntimeContextSection } from './AgentRuntimeContextSection'
 import { AgentBuiltInCapabilitySection, AgentContextSection, AgentImageModelSection, AgentModelOnlySection, AgentModelSection, AgentSkillSection, AgentToolSection, mergeAgentModelOverride } from './agent-configuration-sections'
 import { AGENTS, toolDefinitionsFromManifest } from './agent-registry'
 import type { AgentViewDefinition, ToolKey, VisibleAgentKey } from './agent-registry'
+import type { ToolNavigationIntent } from '@/components/Chat/tool-navigation'
 
 const tabCls = 'nova-nav-item rounded-[var(--nova-radius)] px-2.5 py-1 text-xs'
 
-export function AgentsView({ target, onClose }: { target: ResourceTarget; onClose?: () => void }) {
+export function AgentsView({ target, onClose, toolNavigationIntent }: { target: ResourceTarget; onClose?: () => void; toolNavigationIntent?: ToolNavigationIntent | null }) {
   const { t } = useTranslation()
   const targetKind = target.kind
   const projectId = target.kind === 'project' ? target.projectId : ''
@@ -47,6 +48,17 @@ export function AgentsView({ target, onClose }: { target: ResourceTarget; onClos
   const [skills, setSkills] = useState<SkillSummary[]>([])
   const [agentChatOpen, setAgentChatOpen] = useState(false)
   const [sidebarVisible, setSidebarVisible] = useState(true)
+  const toolNavigationNonceRef = useRef(0)
+
+  useEffect(() => {
+    const intent = toolNavigationIntent
+    if (!intent || intent.nonce === toolNavigationNonceRef.current || intent.target.kind !== 'config_resource' || intent.target.resource !== 'agent_profile') return
+    toolNavigationNonceRef.current = intent.nonce
+    const fixedAgent = AGENTS.find((agent) => agent.key === intent.target.id)
+    if (fixedAgent) setActiveAgent(fixedAgent.key)
+    if (intent.target.scope === 'workspace' && targetKind === 'project') setActiveLayer('workspace')
+    else if (intent.target.scope === 'user') setActiveLayer('user')
+  }, [targetKind, toolNavigationIntent?.nonce])
 
   useEffect(() => {
     let cancelled = false

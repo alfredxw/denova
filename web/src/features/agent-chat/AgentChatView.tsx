@@ -66,6 +66,8 @@ import {
   type AgentChatReviewTab,
   type AgentChatTab,
 } from './types'
+import type { ToolNavigationIntent, ToolNavigationTarget } from '@/components/Chat/tool-navigation'
+import { requestAutomationNavigation } from '@/features/automations/automation-navigation'
 
 interface AgentChatViewProps {
   composerSettings: WritingComposerSettingsController
@@ -118,6 +120,8 @@ export function AgentChatView({
   const [projectsLoading, setProjectsLoading] = useState(true)
   const [projectsError, setProjectsError] = useState('')
   const [workbench, setWorkbench] = useState(() => readStoredWorkbenchState())
+  const [toolNavigationByProject, setToolNavigationByProject] = useState<Record<string, ToolNavigationIntent>>({})
+  const toolNavigationNonceRef = useRef(0)
   const workbenchRef = useRef(workbench)
   workbenchRef.current = workbench
   const [historyOpen, setHistoryOpen] = useState(false)
@@ -448,6 +452,27 @@ export function AgentChatView({
     openProjectFiles(project, existing ? tabGroup(existing) : preferredGroup, path)
   }, [openProjectFiles, projects])
 
+  const openToolNavigationTarget = useCallback((projectID: string, group: AgentChatGroupId, target: ToolNavigationTarget) => {
+    const project = projects.find((candidate) => candidate.id === projectID)
+    if (!project) return
+    if (target.kind === 'workspace_file') {
+      openProjectFile(projectID, target.path, group)
+      return
+    }
+
+    const pageID = toolNavigationPage(target)
+    if (!pageID) return
+    toolNavigationNonceRef.current += 1
+    setToolNavigationByProject((current) => ({
+      ...current,
+      [projectID]: { target, nonce: toolNavigationNonceRef.current },
+    }))
+    if (target.kind === 'config_resource' && target.resource === 'automation' && target.id) {
+      requestAutomationNavigation({ taskId: target.id, projectId: project.id, workspace: project.path })
+    }
+    openProjectPage(project, group, pageID)
+  }, [openProjectFile, openProjectPage, projects])
+
   const handleWorkspaceChanged = useCallback(async (
     changedProjectId: string,
     changedWorkspace: string,
@@ -762,6 +787,7 @@ export function AgentChatView({
               renderPage={renderPage}
               renderReview={renderReview}
               navigationIntent={documentReviewNavigation?.projectId === tab.projectId ? documentReviewNavigation : null}
+              toolNavigationIntent={toolNavigationByProject[tab.projectId] || null}
               onDocumentReviewFeedbackOpen={openDocumentReviewFeedback}
               onOpenPage={(projectID, groupID, pageID) => {
                 const target = projects.find((candidate) => candidate.id === projectID)
@@ -770,6 +796,7 @@ export function AgentChatView({
               onFlushHandlerChange={registerTabFlushHandler}
               onFilesSelectedPathChange={setFilesSelectedPath}
               onOpenProjectFile={openProjectFile}
+              onOpenToolTarget={openToolNavigationTarget}
               onOpenChangeReview={openChangeReview}
               onWorkspaceChanged={handleWorkspaceChanged}
               onRunningChange={handleRunningChange}
@@ -954,4 +981,26 @@ export function AgentChatView({
       />
     </>
   )
+}
+
+function toolNavigationPage(target: Exclude<ToolNavigationTarget, { kind: 'workspace_file' }>): AgentChatPageId | null {
+  if (target.kind === 'lore_item') return 'lore'
+  switch (target.resource) {
+    case 'skill':
+      return 'skills'
+    case 'agent_profile':
+      return 'agents'
+    case 'automation':
+      return 'automations'
+    case 'style_reference':
+    case 'narrative_style':
+    case 'story_director':
+    case 'event_package':
+    case 'rule_system':
+    case 'state_system':
+    case 'image_preset':
+      return 'presets'
+    default:
+      return null
+  }
 }

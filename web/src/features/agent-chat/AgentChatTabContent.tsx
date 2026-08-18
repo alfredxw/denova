@@ -19,6 +19,7 @@ import type {
   AgentChatReviewRenderContext,
   AgentChatTab,
 } from './types'
+import { ToolNavigationProvider, type ToolNavigationIntent, type ToolNavigationTarget } from '@/components/Chat/tool-navigation'
 
 const FilesTab = lazy(() => import('@/features/files/FilesTab').then((module) => ({ default: module.FilesTab })))
 
@@ -39,11 +40,13 @@ interface AgentChatTabContentProps {
   renderPage: (projectId: string, workspace: string, pageId: AgentChatPageId, context: AgentChatPageRenderContext) => ReactNode
   renderReview: (tab: AgentChatReviewTab, disabled: boolean, context: AgentChatReviewRenderContext) => ReactNode
   navigationIntent: AgentChatDocumentReviewNavigation | null
+  toolNavigationIntent: ToolNavigationIntent | null
   onDocumentReviewFeedbackOpen: (projectId: string, selection: ReviewFeedbackSelection, comment: ReviewFeedbackComment) => void
   onOpenPage: (projectID: string, group: AgentChatGroupId, pageId: AgentChatPageId) => void
   onFlushHandlerChange: (projectID: string, tabId: string, handler: EditorFlushHandler | null) => void
   onFilesSelectedPathChange: (projectID: string, tabId: string, path: string | null) => void
   onOpenProjectFile: (projectID: string, path: string, group: AgentChatGroupId) => void
+  onOpenToolTarget: (projectID: string, group: AgentChatGroupId, target: ToolNavigationTarget) => void
   onOpenChangeReview: (projectID: string, workspace: string, reviewThreadID: string, groupID: string) => void
   onWorkspaceChanged?: (
     projectId: string,
@@ -76,11 +79,13 @@ export function AgentChatTabContent({
   renderPage,
   renderReview,
   navigationIntent,
+  toolNavigationIntent,
   onDocumentReviewFeedbackOpen,
   onOpenPage,
   onFlushHandlerChange,
   onFilesSelectedPathChange,
   onOpenProjectFile,
+  onOpenToolTarget,
   onOpenChangeReview,
   onWorkspaceChanged,
   onRunningChange,
@@ -135,9 +140,14 @@ export function AgentChatTabContent({
     paths: string[],
     metadata: WorkspaceChangeMetadata,
   ) => onWorkspaceChanged?.(tab.projectId, changedWorkspace, paths, metadata), [onWorkspaceChanged, tab.projectId])
+  const toolNavigation = useMemo(() => ({
+    workspace: tab.workspace,
+    open: (target: ToolNavigationTarget) => onOpenToolTarget(tab.projectId, tabGroup(tab), target),
+  }), [onOpenToolTarget, tab.group, tab.projectId, tab.workspace])
   switch (tab.kind) {
     case 'agent':
       return (
+        <ToolNavigationProvider value={toolNavigation}>
         <AgentChatConversationTab
           projectId={tab.projectId}
           projectType={projectType}
@@ -159,6 +169,7 @@ export function AgentChatTabContent({
           onRunningChange={onRunningChange}
           onDraftCommitted={onDraftCommitted}
         />
+        </ToolNavigationProvider>
       )
     case 'terminal':
       return (
@@ -189,10 +200,11 @@ export function AgentChatTabContent({
       )
     case 'page':
       return (
-        <>
+        <ToolNavigationProvider value={toolNavigation}>
           {renderPage(tab.projectId, tab.workspace, tab.pageId, {
             projectType,
             navigationIntent,
+            toolNavigationIntent,
             documentReview: documentReviewController,
             refreshSignal: projectPageRefreshSignal,
             onFlushHandlerChange: handlePageFlushHandlerChange,
@@ -201,7 +213,7 @@ export function AgentChatTabContent({
               onWorkspaceChanged?.(tab.projectId, tab.workspace, paths, metadata)
             ),
           })}
-        </>
+        </ToolNavigationProvider>
       )
     case 'review':
       return <>{renderReview(tab, running, {
