@@ -20,7 +20,7 @@ plan.md
 docs/*
 !docs/tests/
 docs/tests/*
-!docs/tests/release-core-regression-checklist.md
+!docs/tests/large-change-regression-checklist.md
 !docs/continual-learning-user-state-design.md
 !docs/dynamic-tool-orchestration-design.md
 !docs/agent-package-api-design.md
