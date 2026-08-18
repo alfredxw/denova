@@ -159,10 +159,23 @@ func TestWritingAskUsesPublicDurableInteractionThroughApplicationEndpoint(t *tes
 	if len(inputs) != 2 || !strings.Contains(joinAgentMessageContent(inputs[1]), "Bring the storm forward") {
 		t.Fatalf("resolved Ask did not resume the same model run: %#v", inputs)
 	}
+	displayAsks := 0
 	for _, entry := range sess.History() {
-		if entry.Type == "ask" || entry.Role == "ask" {
-			t.Fatalf("product Session persisted a second Ask authority: %#v", entry)
+		if entry.Type == "ask" {
+			t.Fatalf("product Session persisted a canonical Ask authority: %#v", entry)
 		}
+		if entry.Role != "ask" {
+			continue
+		}
+		displayAsks++
+		if entry.Message != nil || entry.Ask == nil || entry.Status != session.AskAnswered ||
+			entry.Ask.ID != view.PendingAsk.ID || len(entry.Ask.Questions) != 1 || len(entry.Ask.Answers) != 1 ||
+			entry.Ask.Answers[0].CustomInput != "让风暴提前到来 / Bring the storm forward" {
+			t.Fatalf("resolved display-only Ask history = %#v", entry)
+		}
+	}
+	if displayAsks != 1 {
+		t.Fatalf("resolved display-only Ask history count = %d, want 1", displayAsks)
 	}
 }
 

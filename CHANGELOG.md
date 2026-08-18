@@ -123,6 +123,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Ask 公共应用集成回归现在明确区分 canonical 模型会话与已回答 Ask 的仅展示历史，CI 不再把预期的单条可追溯展示卡误判为第二份交互 authority；生产行为与模型上下文边界不变。
+- The public Ask application regression now distinguishes the canonical model session from display-only history for a resolved Ask, so CI no longer mistakes the expected single inspectable card for a second interaction authority. Production behavior and model-context boundaries are unchanged.
 - 修复游戏模式中，一次仅包含思考与 `prepare_interactive_turn` 的模型响应会把“正文候选已重分类”状态错误带入下一次响应，导致后续故事正文流式显示在思考区、直到运行结束才补到正文的问题。工具事件现在只能重分类同一次模型响应中已经流出的候选正文；无正文的工具响应不会创建跨响应状态。无需新增配置。
 - Fixed Game mode carrying a “provisional narrative reclassified” state from a reasoning-only `prepare_interactive_turn` response into the next model response, which streamed story prose inside Thinking and only repaired it into the narrative after the Run finished. Tool events can now reclassify only provisional prose already emitted by the same model response; tool-only responses create no cross-response state. No new configuration is required.
 - 修复启用 Skills 与 User Harness State 时，二者的 `read` adapter 因 `limit` Schema 上限表达不一致而导致完整 Agent Definition 构建失败、写作新会话返回 500 的问题。所有 adapter 继续共享最小的模型可见 `read.limit` 契约，Harness State 的 10000 行上限仍由自身运行时严格校验；无需新增配置。
