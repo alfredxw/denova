@@ -139,6 +139,7 @@ const (
 	maxInteractionOptionTextBytes   = 4 << 10
 	maxInteractionAnswerTextBytes   = 64 << 10
 	maxInteractionChoiceOptions     = 4
+	interactionChoiceOptionRange    = "two to four"
 	reservedInteractionOtherValue   = "other"
 )
 
@@ -236,7 +237,7 @@ func validateInteractionQuestion(question InteractionQuestion) error {
 		return nil
 	}
 	if len(question.Options) < 2 || len(question.Options) > maxInteractionChoiceOptions {
-		return fmt.Errorf("choice question requires two to %d options", maxInteractionChoiceOptions)
+		return errors.New("choice question requires " + interactionChoiceOptionRange + " options")
 	}
 	seen := make(map[string]struct{}, len(question.Options))
 	recommended := 0
@@ -395,7 +396,7 @@ func validateAskResolutionContract(contract askResolutionContract) error {
 			continue
 		}
 		if len(question.OptionValues) < 2 || len(question.OptionValues) > maxInteractionChoiceOptions {
-			return fmt.Errorf("persisted choice question %q requires two to %d options", question.ID, maxInteractionChoiceOptions)
+			return fmt.Errorf("persisted choice question %q requires %s options", question.ID, interactionChoiceOptionRange)
 		}
 		seenOptions := make(map[string]struct{}, len(question.OptionValues))
 		for _, value := range question.OptionValues {
