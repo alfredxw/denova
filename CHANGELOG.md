@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- 新增纯 Windows PowerShell 快速重启脚本 `scripts/restart-dev.ps1`：仅停止当前仓库的 Windows dev 进程，复用用户级 Go 与 pnpm 环境，并以前台方式重新启动后端和 Vite；无需新增产品配置。
+- Added the native Windows PowerShell quick-restart script `scripts/restart-dev.ps1`. It stops only this repository's Windows dev processes, reuses the user-level Go and pnpm environment, and restarts the backend and Vite in the foreground. No product configuration is required.
 - Agent 执行过程现在为同一模型片段内的每个工具调用保留唯一且稳定的渲染身份，避免 `edit`、`write` 等相邻工具在流式刷新和耗时更新时反复协调并刷出重复 key 错误；工具运行图标增加不改变视觉表现的合成性能提示，原有思考扫光和转圈效果保持不变。Writing、Game、AgentChat 与管理型 Agent 共用，无需新增配置。
 - Agent execution now preserves a unique, stable render identity for every tool call within the same model segment, preventing adjacent calls such as `edit` and `write` from repeatedly reconciling and emitting duplicate-key errors during streaming and duration updates. The running-tool icon adds a compositing hint without changing its visuals; the existing thinking shimmer and spinner effects remain unchanged. Writing, Game, AgentChat, and management Agents share the fix with no new configuration.
 - Ask 工具的问题、选项与说明不再强制模型同时生成中英双语副本，改为使用用户当前输入语言；公共交互校验、事件投影与回答回传统一采用单字符串契约，Writing、Game、AgentChat 与管理型 Agent 共用。Beta 不兼容：旧的 `prompt/label/description.zh|en` 调用结构已删除；无需新增配置。
