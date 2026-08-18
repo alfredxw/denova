@@ -42,6 +42,46 @@ function Get-DescendantProcessIds {
     return @($selected)
 }
 
+function Find-RepoViteProcessIds {
+    param(
+        [Parameter(Mandatory)]
+        [object[]]$Snapshot
+    )
+
+    return @($Snapshot | Where-Object {
+        $_.Name -eq 'node.exe' -and
+        $_.CommandLine -and
+        $_.CommandLine.Replace('/', '\').IndexOf($webNodeModules, [System.StringComparison]::OrdinalIgnoreCase) -ge 0 -and
+        $_.CommandLine -match '[\\/]vite[\\/]bin[\\/]vite\.js'
+    } | ForEach-Object { [int]$_.ProcessId })
+}
+
+function Get-FrontendBranchProcessIds {
+    param(
+        [Parameter(Mandatory)]
+        [int[]]$ViteProcessIds,
+        [Parameter(Mandatory)]
+        [object[]]$Snapshot
+    )
+
+    $selected = [System.Collections.Generic.HashSet[int]]::new()
+    foreach ($viteProcessId in $ViteProcessIds) {
+        # Preserve Vite's launchers as well as its worker processes so the
+        # existing frontend keeps its original lifecycle intact.
+        foreach ($processId in Get-DescendantProcessIds -RootProcessIds @($viteProcessId) -Snapshot $Snapshot) {
+            [void]$selected.Add([int]$processId)
+        }
+
+        $current = $Snapshot | Where-Object { $_.ProcessId -eq $viteProcessId } | Select-Object -First 1
+        while ($current -and $current.Name -notin @('denova.exe', 'go.exe')) {
+            [void]$selected.Add([int]$current.ProcessId)
+            $current = $Snapshot | Where-Object { $_.ProcessId -eq $current.ParentProcessId } | Select-Object -First 1
+        }
+    }
+
+    return @($selected)
+}
+
 function Find-RepoDevProcessIds {
     param(
         [Parameter(Mandatory)]
@@ -65,13 +105,9 @@ function Find-RepoDevProcessIds {
         }
     }
 
-    $viteProcesses = $Snapshot | Where-Object {
-        $_.Name -eq 'node.exe' -and
-        $_.CommandLine -and
-        $_.CommandLine.Replace('/', '\').Contains($webNodeModules, [System.StringComparison]::OrdinalIgnoreCase) -and
-        $_.CommandLine -match '[\\/]vite[\\/]bin[\\/]vite\.js'
-    }
-    foreach ($vite in $viteProcesses) {
+    $viteProcessIds = @(Find-RepoViteProcessIds -Snapshot $Snapshot)
+    foreach ($viteProcessId in $viteProcessIds) {
+        $vite = $Snapshot | Where-Object { $_.ProcessId -eq $viteProcessId } | Select-Object -First 1
         $current = $vite
         while ($current) {
             if ($current.Name -in @('denova.exe', 'go.exe')) {
@@ -86,13 +122,22 @@ function Find-RepoDevProcessIds {
 
 function Stop-RepoDevProcesses {
     $snapshot = Get-ProcessSnapshot
+    $viteProcessIds = @(Find-RepoViteProcessIds -Snapshot $snapshot)
+    $frontendProcessIds = if ($viteProcessIds.Count -gt 0) {
+        @(Get-FrontendBranchProcessIds -ViteProcessIds $viteProcessIds -Snapshot $snapshot)
+    }
+    else {
+        @()
+    }
     $rootProcessIds = @(Find-RepoDevProcessIds -Snapshot $snapshot)
     if ($rootProcessIds.Count -eq 0) {
         Write-Host 'No running Windows dev instance found. / 未发现正在运行的 Windows dev 实例。'
         return
     }
 
-    $allProcessIds = @(Get-DescendantProcessIds -RootProcessIds $rootProcessIds -Snapshot $snapshot)
+    $allProcessIds = @(Get-DescendantProcessIds -RootProcessIds $rootProcessIds -Snapshot $snapshot | Where-Object {
+        $_ -notin $frontendProcessIds
+    })
     Write-Host "Stopping the current Windows dev instance (PID: $($rootProcessIds -join ', ')). / 正在停止当前 Windows dev 实例。"
     if (Test-Path -LiteralPath $statePath) {
         try {
@@ -129,12 +174,23 @@ function Resolve-RequiredCommand {
 }
 
 $goExecutable = Resolve-RequiredCommand -Name 'go.exe' -FallbackPath $localGo
-$pnpmExecutable = Resolve-RequiredCommand -Name 'pnpm.cmd' -FallbackPath $corepackPnpm
 $goBin = Split-Path -Parent $goExecutable
-$pnpmBin = Split-Path -Parent $pnpmExecutable
-$env:Path = "$goBin;$pnpmBin;$env:Path"
+$env:Path = "$goBin;$env:Path"
 
 Stop-RepoDevProcesses
+$frontendAlreadyRunning = @(Find-RepoViteProcessIds -Snapshot (Get-ProcessSnapshot)).Count -gt 0
+
+$denovaArguments = @('run', './cmd/denova')
+if ($frontendAlreadyRunning) {
+    Write-Host 'Keeping the existing Vite frontend and restarting only the backend.'
+}
+else {
+    $pnpmExecutable = Resolve-RequiredCommand -Name 'pnpm.cmd' -FallbackPath $corepackPnpm
+    $pnpmBin = Split-Path -Parent $pnpmExecutable
+    $env:Path = "$pnpmBin;$env:Path"
+    $denovaArguments += '--dev'
+}
+$denovaArguments += @('--dev-mode', '--no-open')
 
 New-Item -ItemType Directory -Path $stateDirectory -Force | Out-Null
 Write-Host 'Starting Denova in the native Windows dev environment. / 正在原生 Windows dev 环境启动 Denova。'
@@ -142,7 +198,7 @@ Write-Host "Repository / 仓库: $repoRoot"
 
 $goProcess = Start-Process `
     -FilePath $goExecutable `
-    -ArgumentList @('run', './cmd/denova', '--dev', '--dev-mode', '--no-open') `
+    -ArgumentList $denovaArguments `
     -WorkingDirectory $repoRoot `
     -NoNewWindow `
     -PassThru
