@@ -118,7 +118,7 @@ func TestAskSchemaSeparatesFreeTextAndChoiceQuestions(t *testing.T) {
 		}
 	}
 	options, _ := choice.Properties.Get("options")
-	if options == nil || options.MinItems == nil || *options.MinItems != 2 || options.MaxItems == nil || *options.MaxItems != 3 ||
+	if options == nil || options.MinItems == nil || *options.MinItems != 2 || options.MaxItems == nil || *options.MaxItems != 4 ||
 		options.Contains == nil || options.MinContains == nil || *options.MinContains != 1 || options.MaxContains == nil || *options.MaxContains != 1 {
 		t.Fatalf("choice options schema = %#v", options)
 	}

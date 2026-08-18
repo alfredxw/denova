@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Ask 参数校验失败现在会在实时对话与历史恢复中保留标准失败工具卡，不再被交互帧去重误删或解析成待回答表单；联合 Schema 会按输入字段与判别值选择最接近的分支并返回具体约束路径，帮助模型准确修正调用。每个选择题的硬上限从 3 项放宽到 4 项，同时模型说明仍优先推荐 2–3 个简洁选项；Writing、Game、AgentChat 与管理型 Agent 共用，无需新增配置。
+- Failed Ask validation now retains a standard failed-tool card in both live conversations and restored history instead of being removed by interaction deduplication or parsed as a pending form. Union schemas select the closest branch from supplied fields and discriminator values, returning the concrete constraint path so the model can repair its call accurately. The hard limit for each choice question increases from three to four options while model guidance continues to prefer two or three concise choices. Writing, Game, AgentChat, and management Agents share the behavior with no new setting.
 - 内置工具卡片在保持原有折叠态、流式原始参数与单层展开结构的基础上，按 Web、Browser、Skill、Task、Script、Goal、配置、Lore 和互动游戏工具展示各自的关键信息；`read`、`write`、`edit`、`glob`、`grep`、`bash` 与 `pwsh` 中明确的工作区文件路径可直接打开所属项目文件，Writing、Game 与 Agent Chat 共用，且无需新增配置。
 - Built-in tool cards now present focused details for Web, Browser, Skill, Task, Script, Goal, configuration, Lore, and interactive-game tools while retaining the existing collapsed state, verbatim streaming arguments, and single disclosure. Clear workspace-file paths in `read`, `write`, `edit`, `glob`, `grep`, `bash`, and `pwsh` can open files in the owning project across Writing, Game, and Agent Chat, with no new setting.
 - 新增纯 Windows PowerShell 快速重启脚本 `scripts/restart-dev.ps1`：仅停止当前仓库的 Windows dev 进程，复用用户级 Go 与 pnpm 环境，并以前台方式重新启动后端和 Vite；无需新增产品配置。

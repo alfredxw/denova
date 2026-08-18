@@ -151,7 +151,8 @@ func toolPartFromHistory(entry appsvc.AgentSessionHistoryEntry) map[string]any {
 		"state":      state,
 		"input":      input,
 	}
-	if entry.Status == "error" {
+	switch entry.Status {
+	case "error", "blocked", "skipped":
 		part["state"] = "output-error"
 		part["errorText"] = firstNonEmpty(entry.Result, entry.Content, "tool failed")
 		return part

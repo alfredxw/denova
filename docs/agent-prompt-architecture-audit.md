@@ -319,9 +319,10 @@ option; the client will add a free-form Other option automatically."
 Denova 当前入口 description：
 
 ```text
-Ask one to three questions when required input cannot be inferred. Write
-questions, options, and descriptions in the same language as the user's
-current input.
+Ask one to three questions when required input cannot be inferred. For choice
+questions, prefer two or three concise options; use four only when every option
+is materially different. Write questions, options, and descriptions in the
+same language as the user's current input.
 ```
 
 改造前 `questions` 有 `minItems=1,maxItems=3`，但 `InteractionQuestion`、`InteractionOption` 和 `LocalizedText` 的模型可见字段没有对应 description；choice/free-text 的互斥关系、稳定 ID、recommended 和 host-provided Other 主要留在 runtime validation。
@@ -348,7 +349,7 @@ options: Mutually exclusive choices; omit for a free-text question. Other is
 added by the host.
 ```
 
-choice 与 free-text 现已使用两个互斥 `oneOf` variant；两者只显示各自合法字段。单语言文案、ID 边界、选项数、host 自动 Other 和恰好一个 recommended option 均进入模型可见 Schema，runtime validation 继续作为最终保证。
+choice 与 free-text 现已使用两个互斥 `oneOf` variant；两者只显示各自合法字段。单语言文案、ID 边界、选项数、host 自动 Other 和恰好一个 recommended option 均进入模型可见 Schema。choice 硬限制为 2–4 项，同时提示优先提供 2–3 项；runtime validation 继续作为最终保证。
 
 #### 示例四：任务计划与 Todo Schema
 

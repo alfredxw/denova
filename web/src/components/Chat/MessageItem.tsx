@@ -173,6 +173,11 @@ export const MessageItem = memo(function MessageItem({ projectId = '', message, 
         case 'todo':
           return <TodoListBlock message={message} />
         case 'interaction':
+          // A failed interaction never produced durable Ask state. Keep it as a
+          // diagnostic tool card instead of parsing its rejected input as pending.
+          if (message.status === 'error') {
+            return <ToolExecutionBlock message={message} onResolve={onResolveAsk} onLayoutChange={onInteractiveCardLayoutChange} />
+          }
           if (message.ask?.kind === 'tool_approval') return <ToolApprovalCard message={message} onResolve={onResolveAsk} />
           return <AskInteractionCard message={message} onResolve={onResolveAsk} />
         case 'generic':

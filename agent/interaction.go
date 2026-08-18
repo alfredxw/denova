@@ -38,7 +38,7 @@ type InteractionOption struct {
 type InteractionQuestion struct {
 	ID            string              `json:"id" jsonschema:"minLength=1,maxLength=256,pattern=^[A-Za-z0-9][A-Za-z0-9._:-]*$" jsonschema_description:"Stable question ID used to correlate the answer."`
 	Prompt        string              `json:"prompt" jsonschema:"minLength=1,maxLength=8192" jsonschema_description:"User-facing question in the same language as the user's current input."`
-	Options       []InteractionOption `json:"options,omitempty" jsonschema_description:"Two or three choices; the host adds Other automatically."`
+	Options       []InteractionOption `json:"options,omitempty" jsonschema_description:"Prefer two or three choices; use four only when every option is materially different. The host adds Other automatically."`
 	Multiple      bool                `json:"multiple,omitempty" jsonschema_description:"Allow more than one listed option."`
 	AllowFreeText bool                `json:"allow_free_text,omitempty" jsonschema_description:"True only for a free-text question without options."`
 }
@@ -138,13 +138,14 @@ const (
 	maxInteractionQuestionTextBytes = 8 << 10
 	maxInteractionOptionTextBytes   = 4 << 10
 	maxInteractionAnswerTextBytes   = 64 << 10
+	maxInteractionChoiceOptions     = 4
 	reservedInteractionOtherValue   = "other"
 )
 
 var interactionStableIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]*$`)
 
 func (standardInteractionPolicy) Identity() CapabilityIdentity {
-	return CapabilityIdentity{Kind: "interaction.standard", Version: 2}
+	return CapabilityIdentity{Kind: "interaction.standard", Version: 3}
 }
 
 func (standardInteractionPolicy) ValidateRequest(_ context.Context, request InteractionRequest) error {
@@ -234,8 +235,8 @@ func validateInteractionQuestion(question InteractionQuestion) error {
 		}
 		return nil
 	}
-	if len(question.Options) < 2 || len(question.Options) > 3 {
-		return errors.New("choice question requires two to three options")
+	if len(question.Options) < 2 || len(question.Options) > maxInteractionChoiceOptions {
+		return fmt.Errorf("choice question requires two to %d options", maxInteractionChoiceOptions)
 	}
 	seen := make(map[string]struct{}, len(question.Options))
 	recommended := 0
@@ -393,8 +394,8 @@ func validateAskResolutionContract(contract askResolutionContract) error {
 			}
 			continue
 		}
-		if len(question.OptionValues) < 2 || len(question.OptionValues) > 3 {
-			return fmt.Errorf("persisted choice question %q requires two to three options", question.ID)
+		if len(question.OptionValues) < 2 || len(question.OptionValues) > maxInteractionChoiceOptions {
+			return fmt.Errorf("persisted choice question %q requires two to %d options", question.ID, maxInteractionChoiceOptions)
 		}
 		seenOptions := make(map[string]struct{}, len(question.OptionValues))
 		for _, value := range question.OptionValues {

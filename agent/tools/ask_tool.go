@@ -22,7 +22,7 @@ type askFreeTextQuestionSchema struct {
 type askChoiceQuestionSchema struct {
 	ID       string                    `json:"id" jsonschema:"required,minLength=1,maxLength=256,pattern=^[A-Za-z0-9][A-Za-z0-9._:-]*$" jsonschema_description:"Stable question ID used to correlate the answer."`
 	Prompt   string                    `json:"prompt" jsonschema:"required,minLength=1,maxLength=8192" jsonschema_description:"User-facing question in the same language as the user's current input."`
-	Options  []agent.InteractionOption `json:"options" jsonschema:"required,minItems=2,maxItems=3" jsonschema_description:"Mutually exclusive choices. Mark exactly one recommended; the host adds Other automatically."`
+	Options  []agent.InteractionOption `json:"options" jsonschema:"required,minItems=2,maxItems=4" jsonschema_description:"Distinct choices. Prefer two or three; use four only when every option is materially different. Mark exactly one recommended; the host adds Other automatically."`
 	Multiple bool                      `json:"multiple,omitempty" jsonschema_description:"Allow selection of more than one listed option."`
 }
 
@@ -45,7 +45,7 @@ func buildAsk() (agent.Toolset, error) {
 		return nil, err
 	}
 	tool, err := newSchemaTool(
-		"ask", "Ask one to three questions when required input cannot be inferred. Write questions, options, and descriptions in the same language as the user's current input.", rootSchema,
+		"ask", "Ask one to three questions when required input cannot be inferred. For choice questions, prefer two or three concise options; use four only when every option is materially different. Write questions, options, and descriptions in the same language as the user's current input.", rootSchema,
 		func(ctx context.Context, input askInput) (agent.ToolResult, error) {
 			if !agent.IsRootInvocation(ctx) {
 				return agent.ToolResult{}, errors.New("ask is available only in a root Agent invocation")
@@ -85,7 +85,7 @@ func buildAsk() (agent.Toolset, error) {
 		MaxResultBytes: 256 << 10,
 		Presentation:   agent.UniformToolPresentation(agent.ToolPresentationInteraction),
 	}}
-	return agent.StaticToolsIdentified(agent.CapabilityIdentity{Kind: "tools.ask", Version: 3}, definition)
+	return agent.StaticToolsIdentified(agent.CapabilityIdentity{Kind: "tools.ask", Version: 4}, definition)
 }
 
 func askToolSchema() (*jsonschema.Schema, error) {

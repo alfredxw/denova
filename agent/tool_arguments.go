@@ -71,7 +71,7 @@ func normalizeToolArgumentsWithSchema(arguments string, schema *jsonschema.Schem
 		return "", err
 	}
 	if err := validateJSONValue("$", normalized, schema); err != nil {
-		return "", toolArgumentError("constraint_violation", "$", "%v", err)
+		return "", toolArgumentConstraintError(err, "$")
 	}
 	encoded, err := json.Marshal(normalized)
 	if err != nil {
@@ -185,14 +185,41 @@ func normalizeSchemaBranch(path string, value any, candidates []*jsonschema.Sche
 		value any
 	}
 	matches := make([]branchMatch, 0, len(candidates))
+	var closestFailure error
+	closestFailureScore := 0
+	hasClosestFailure := false
+	closestFailureReachedValidation := false
 	for _, candidate := range candidates {
+		candidateScore := schemaBranchAffinity(value, candidate)
 		normalized, err := normalizeJSONValue(path, cloneJSONValue(value), candidate)
-		if err != nil || validateJSONValue(path, normalized, candidate) != nil {
+		if err != nil {
+			if !hasClosestFailure || candidateScore > closestFailureScore {
+				closestFailure = err
+				closestFailureScore = candidateScore
+				hasClosestFailure = true
+				closestFailureReachedValidation = false
+			}
+			continue
+		}
+		if err := validateJSONValue(path, normalized, candidate); err != nil {
+			// For equally compatible branches, reaching validation is stronger than
+			// structural rejection. Return the closest concrete constraint so the
+			// model can repair the call instead of guessing from a generic failure.
+			if !hasClosestFailure || candidateScore > closestFailureScore ||
+				(candidateScore == closestFailureScore && !closestFailureReachedValidation) {
+				closestFailure = toolArgumentConstraintError(err, path)
+				closestFailureScore = candidateScore
+				hasClosestFailure = true
+				closestFailureReachedValidation = true
+			}
 			continue
 		}
 		matches = append(matches, branchMatch{value: normalized})
 	}
 	if len(matches) == 0 {
+		if closestFailure != nil {
+			return nil, closestFailure
+		}
 		return nil, toolArgumentError("branch_no_match", path, "does not match any allowed schema branch")
 	}
 	if exactlyOne && len(matches) != 1 {
@@ -215,6 +242,76 @@ func normalizeSchemaBranch(path string, value any, candidates []*jsonschema.Sche
 		}
 	}
 	return first, nil
+}
+
+// schemaBranchAffinity identifies the union branch described by the supplied
+// object without guessing or mutating values. Explicit properties and matching
+// discriminator enums dominate incidental schema ordering.
+func schemaBranchAffinity(value any, schema *jsonschema.Schema) int {
+	if schema == nil {
+		return 0
+	}
+	score := 0
+	if schema.Type != "" {
+		if matchesJSONType(value, schema.Type) {
+			score += 4
+		} else {
+			score -= 16
+		}
+	}
+	object, ok := value.(map[string]any)
+	if !ok || schema.Properties == nil {
+		return score
+	}
+	for key, child := range object {
+		property, exists := schema.Properties.Get(key)
+		if !exists || property == nil {
+			continue
+		}
+		score += 4
+		if property.Type != "" {
+			if matchesJSONType(child, property.Type) {
+				score++
+			} else {
+				score -= 4
+			}
+		}
+		if property.Const != nil {
+			if jsonValuesEqual(child, property.Const) {
+				score += 16
+			} else {
+				score -= 16
+			}
+		}
+		if len(property.Enum) != 0 {
+			if jsonValueIn(child, property.Enum) {
+				score += 8
+			} else {
+				score -= 8
+			}
+		}
+	}
+	for _, required := range schema.Required {
+		if _, exists := object[required]; exists {
+			score += 2
+		} else {
+			score--
+		}
+	}
+	return score
+}
+
+func toolArgumentConstraintError(err error, fallbackPath string) error {
+	message := strings.TrimSpace(err.Error())
+	path := fallbackPath
+	if separator := strings.IndexByte(message, ' '); separator > 0 {
+		candidatePath := message[:separator]
+		if strings.HasPrefix(candidatePath, "$") {
+			path = candidatePath
+			message = strings.TrimSpace(message[separator+1:])
+		}
+	}
+	return toolArgumentError("constraint_violation", path, "%s", message)
 }
 
 func coerceJSONPrimitive(path string, value any, schema *jsonschema.Schema) (any, error) {

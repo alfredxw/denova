@@ -536,10 +536,11 @@ function buildAgentMessageView(message: AgentUIMessage, part: AgentUIMessage['pa
 
   if (type === 'dynamic-tool' || type.startsWith('tool-')) {
     const toolName = type === 'dynamic-tool' ? firstNonEmpty(readString(raw.toolName), 'unknown_tool') : type.replace(/^tool-/, '')
-    // ask has a dedicated durable data part emitted only after pending state is
-    // committed. Hiding the speculative model tool frame avoids duplicate UI.
-    if (metadata.tool_presentation?.call === 'interaction') return null
     const status = toolStatus(readString(raw.state))
+    // ask has a dedicated durable data part emitted only after pending state is
+    // committed. Hide speculative and successful model frames to avoid duplicate
+    // UI, but retain terminal failures because no durable interaction exists.
+    if (metadata.tool_presentation?.call === 'interaction' && status !== 'error') return null
     return {
       ...base,
       kind: 'tool',
