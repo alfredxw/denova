@@ -71,13 +71,13 @@ func TestSettingsAPIRevokesOneApprovalRuleWithoutReplacingConcurrentRules(t *tes
 	rules := []config.AgentApprovalRule{
 		{
 			ID: "approval-one", Scope: config.AgentApprovalRuleWorkspace, ProjectID: "project-one", Workspace: workspace,
-			ToolName: "bash", MatcherVersion: config.AgentApprovalRuleMatcherVersion, CommandKey: `["go","test"]`,
-			CommandPattern: "go test ...", ApprovedArgsHash: strings.Repeat("a", 64), ApprovedCommand: "go test ./...", CreatedAt: time.Now().UTC(),
+			ToolName: "bash", Matcher: config.AgentApprovalMatcherShell, MatcherVersion: config.AgentApprovalRuleMatcherVersion, MatchKey: `["go","test"]`,
+			DisplayPattern: "go test ...", ApprovedArgsHash: strings.Repeat("a", 64), ApprovedInput: "go test ./...", CreatedAt: time.Now().UTC(),
 		},
 		{
 			ID: "approval-two", Scope: config.AgentApprovalRuleWorkspace, ProjectID: "project-one", Workspace: workspace,
-			ToolName: "bash", MatcherVersion: config.AgentApprovalRuleMatcherVersion, CommandKey: `["git","push","origin"]`,
-			CommandPattern: "git push origin ...", ApprovedArgsHash: strings.Repeat("b", 64), ApprovedCommand: "git push origin main", CreatedAt: time.Now().UTC(),
+			ToolName: "bash", Matcher: config.AgentApprovalMatcherShell, MatcherVersion: config.AgentApprovalRuleMatcherVersion, MatchKey: `["git","push","origin"]`,
+			DisplayPattern: "git push origin ...", ApprovedArgsHash: strings.Repeat("b", 64), ApprovedInput: "git push origin main", CreatedAt: time.Now().UTC(),
 		},
 	}
 	for _, rule := range rules {

@@ -92,12 +92,13 @@ export interface AgentApprovalRule {
   project_id?: string
   workspace?: string
   tool_name: string
+  matcher: 'shell_command' | 'filesystem_read_root' | string
   matcher_version: number
-  command_key: string
-  command_pattern: string
+  match_key: string
+  display_pattern: string
   approved_args_hash: string
-  approved_command: string
-  approved_cwd?: string
+  approved_input: string
+  approved_context?: string
   source_rule_id?: string
   created_at: string
 }
@@ -289,7 +290,7 @@ interface AgentGeneralSubAgentSettings {
 }
 
 export type AgentToolCapability =
-  | 'workspace_read'
+  | 'filesystem_read'
   | 'workspace_write'
   | 'shell'
   | 'web_search'

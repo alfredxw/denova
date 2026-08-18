@@ -17,7 +17,7 @@ import (
 
 func TestToolExecutionGateAllowsReadOnlyCallsInParallel(t *testing.T) {
 	middleware := &OrchestratorMiddleware{
-		toolSettings:        config.ResolvedAgentToolSettings{config.AgentToolWorkspaceRead: true},
+		toolSettings:        config.ResolvedAgentToolSettings{config.AgentToolFilesystemRead: true},
 		enforceToolSettings: true,
 		executionGate:       &toolExecutionGate{},
 	}

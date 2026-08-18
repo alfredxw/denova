@@ -255,11 +255,11 @@ func applyAgentProfileMutation(settings *config.Settings, layered config.Layered
 }
 
 var configManagerToolCeiling = map[string]struct{}{
-	config.AgentToolWorkspaceRead: {},
-	config.AgentToolAsk:           {},
-	config.AgentToolSkills:        {},
-	config.AgentToolConfigRead:    {},
-	config.AgentToolConfigApply:   {},
+	config.AgentToolFilesystemRead: {},
+	config.AgentToolAsk:            {},
+	config.AgentToolSkills:         {},
+	config.AgentToolConfigRead:     {},
+	config.AgentToolConfigApply:    {},
 }
 
 func agentProfileMutationAffectsConfigManagerTools(kind string, mutation Mutation, value agentProfileConfigValue) bool {

@@ -128,7 +128,8 @@ func TestGeneralAgentInstructionUsesProjectNeutralFilesystemRules(t *testing.T) 
 		"Prefer dedicated file and search tools",
 		"independent tool calls may run in parallel",
 		"Discovery respects .gitignore",
-		"explicitly named paths remain addressable",
+		"explicitly requested external local sources",
+		"subject to permission",
 		"Write code in the surrounding style",
 		"Report the actual outcome",
 	} {

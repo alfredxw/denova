@@ -280,14 +280,15 @@ Denova 当前写法：
 Read one bounded resource using the parameters supported by its registered
 adapter. HTTP(S) URLs are not supported; use web_fetch. Available adapters: ...
 
-path: "Absolute or workspace-relative path of the UTF-8 text file to read."
+path: "Project-relative or absolute local path of the UTF-8 text file to read.
+External paths remain subject to permission."
 offset: "One-based first line to return; defaults to 1."
 byte_offset: "Zero-based UTF-8 byte offset within the selected first line,
 used only with an exact next_byte_offset continuation."
 limit: "Maximum selected lines to return; defaults to 2000."
 ```
 
-来源：`agent/tools/read_tool.go`、`agent/tools/workspace_read_adapters.go`
+来源：`agent/tools/read_tool.go`、`agent/tools/filesystem_read_adapters.go`
 
 对比结论：
 
@@ -769,7 +770,7 @@ Use when <仅凭名称无法判断的选择条件>。
 
 具体规则：
 
-- 字段名已经清楚表达的内容不复述，例如 `path` 不需要写“the path”；应补充 absolute/workspace-relative、来源或适用范围；
+- 字段名已经清楚表达的内容不复述，例如 `path` 不需要写“the path”；应补充 Project-relative/absolute local、来源或适用范围；
 - required、enum、min/max、array bounds、pattern 和禁止额外字段由 Schema 表达，不再用 `must` 重复；
 - operation 分支使用 `oneOf`，每个 variant 只展示该分支合法字段；
 - default 与 omit 必须区分，尤其避免让模型用空字符串、空对象或 `null` 代替省略；

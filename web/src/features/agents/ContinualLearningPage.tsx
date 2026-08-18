@@ -496,7 +496,7 @@ function newFile(kind: 'prompt' | 'context' | 'tools' | 'subagent', existing: Se
   }
   return {
     path: `subagents/${id}.md`,
-    content: `---\nid: ${id}\nname: Specialist\ndescription: Handle one bounded specialist task.\nenabled: true\nparents: [general]\nmodel_profile: default\ntools: [workspace_read]\n---\n\nHandle only the delegated task and return concise, evidence-backed results.\n`,
+    content: `---\nid: ${id}\nname: Specialist\ndescription: Handle one bounded specialist task.\nenabled: true\nparents: [general]\nmodel_profile: default\ntools: [filesystem_read]\n---\n\nHandle only the delegated task and return concise, evidence-backed results.\n`,
   }
 }
 

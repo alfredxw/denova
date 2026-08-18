@@ -18,7 +18,7 @@ func TestHarnessOptimizerExposesOnlyHarnessReadSurface(t *testing.T) {
 		DenovaDir: dataDir, SkillsDir: t.TempDir(), Workspace: t.TempDir(),
 		OpenAIBaseURL: "https://example.invalid", OpenAIModel: "test-model",
 		AgentTools: config.AgentToolSettings{Default: config.AgentToolOverride{
-			config.AgentToolWorkspaceRead:  true,
+			config.AgentToolFilesystemRead: true,
 			config.AgentToolSkills:         true,
 			config.AgentToolWorkspaceWrite: false,
 			config.AgentToolShell:          false,

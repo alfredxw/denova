@@ -9,8 +9,10 @@ import (
 	"strings"
 )
 
-// LocalWorkspace is the symlink-safe local filesystem dependency shared by
-// the built-in read and search Adapters. All model paths cross os.Root.
+// LocalWorkspace owns the canonical Project root shared by file, search, and
+// process Adapters. Project-bound operations cross os.Root; read/search paths
+// may resolve to explicit external roots whose authorization belongs to the
+// host Permission Policy.
 type LocalWorkspace struct {
 	root              string
 	rootIdentity      os.FileInfo

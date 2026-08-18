@@ -45,8 +45,8 @@ type PermissionDetails struct {
 	RuleID             string `json:"rule_id,omitempty"`
 	CanRemember        bool   `json:"can_remember,omitempty"`
 	RuleMatcherVersion int    `json:"rule_matcher_version,omitempty"`
-	RuleCommandKey     string `json:"rule_command_key,omitempty"`
-	RuleCommandPattern string `json:"rule_command_pattern,omitempty"`
+	RuleMatchKey       string `json:"rule_match_key,omitempty"`
+	RuleDisplayPattern string `json:"rule_display_pattern,omitempty"`
 }
 
 type PermissionResolveRequest struct {
@@ -130,7 +130,7 @@ func permissionPresentation(request PermissionRequest, decision PermissionDecisi
 		Mode: details.Mode, Command: details.Command, Details: details.Details, Cwd: details.Cwd,
 		Risk: details.Risk, RuleID: details.RuleID, ArgsHash: fmt.Sprintf("%x", digest[:]),
 		CanRemember: details.CanRemember, RuleMatcherVersion: details.RuleMatcherVersion,
-		RuleCommandKey: details.RuleCommandKey, RuleCommandPattern: details.RuleCommandPattern,
+		RuleMatchKey: details.RuleMatchKey, RuleDisplayPattern: details.RuleDisplayPattern,
 		Options: permissionOptions(details.CanRemember),
 	}
 }

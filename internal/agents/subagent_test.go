@@ -35,7 +35,7 @@ func TestBuildAgentExposesGeneralAndConfiguredSubAgentsThroughTask(t *testing.T)
 		}},
 		AgentTools: config.AgentToolSettings{
 			Default: config.AgentToolOverride{
-				config.AgentToolWorkspaceRead:  false,
+				config.AgentToolFilesystemRead: false,
 				config.AgentToolWorkspaceWrite: false,
 				config.AgentToolShell:          false,
 				config.AgentToolSkills:         false,
@@ -194,7 +194,7 @@ func TestBuildAgentCanDisableGeneralSubAgent(t *testing.T) {
 		},
 		AgentTools: config.AgentToolSettings{
 			Default: config.AgentToolOverride{
-				config.AgentToolWorkspaceRead:  false,
+				config.AgentToolFilesystemRead: false,
 				config.AgentToolWorkspaceWrite: false,
 				config.AgentToolShell:          false,
 				config.AgentToolSkills:         false,

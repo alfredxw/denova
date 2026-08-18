@@ -15,32 +15,35 @@ import (
 	gitignore "github.com/go-git/go-git/v5/plumbing/format/gitignore"
 )
 
-var workspaceIgnoreFiles = [...]string{".gitignore", ".ignore", ".rgignore"}
+var filesystemIgnoreFiles = [...]string{".gitignore", ".ignore", ".rgignore"}
 
-type workspaceIgnoreBudget struct {
+type filesystemIgnoreBudget struct {
 	bytes int
 	rules int
 }
 
 // addGlobDirectories complements ripgrep's file discovery with directories,
 // including empty ones. Traversal stays behind os.Root, never follows
-// directory symlinks, and uses the same workspace-local ignore-file boundary
+// directory symlinks, and uses the same root-local ignore-file boundary
 // configured for ripgrep in Glob.
 func (workspace *LocalWorkspace) addGlobDirectories(
 	ctx context.Context,
 	request GlobRequest,
-	targets []globTarget,
+	domain globDomain,
 	add func(string) bool,
 ) (bool, error) {
-	root, err := workspace.openRoot()
-	if err != nil {
+	if err := verifyFilesystemRoot(domain.root, domain.identity); err != nil {
 		return false, err
+	}
+	root, err := os.OpenRoot(domain.root)
+	if err != nil {
+		return false, fmt.Errorf("open glob root %s: %w", filepath.ToSlash(domain.root), err)
 	}
 	defer root.Close()
 
 	patterns := make([]gitignore.Pattern, 0)
-	scanBudget := &workspaceScanBudget{}
-	ignoreBudget := &workspaceIgnoreBudget{}
+	scanBudget := &filesystemScanBudget{}
+	ignoreBudget := &filesystemIgnoreBudget{}
 	var walk func(string, []string) (bool, error)
 	walk = func(directory string, components []string) (bool, error) {
 		patternBase := len(patterns)
@@ -49,13 +52,13 @@ func (workspace *LocalWorkspace) addGlobDirectories(
 			return false, err
 		}
 		if request.Gitignore {
-			loaded, err := readWorkspaceIgnorePatterns(ctx, root, directory, components, ignoreBudget)
+			loaded, err := readFilesystemIgnorePatterns(ctx, root, directory, components, ignoreBudget)
 			if err != nil {
 				return false, err
 			}
 			patterns = append(patterns, loaded...)
 		}
-		children, err := readWorkspaceDirectory(ctx, root, directory, scanBudget)
+		children, err := readFilesystemDirectory(ctx, root, directory, scanBudget)
 		if err != nil {
 			return false, fmt.Errorf("enumerate glob directory %s: %w", directory, err)
 		}
@@ -86,7 +89,7 @@ func (workspace *LocalWorkspace) addGlobDirectories(
 				childPath = path.Join(directory, name)
 			}
 			candidate := childPath + "/"
-			if matchesGlobTargets(candidate, targets) && !add(candidate) {
+			if matchesGlobTargets(candidate, domain.targets) && !add(domain.display(candidate)) {
 				return true, nil
 			}
 			stopped, err := walk(childPath, childComponents)
@@ -99,15 +102,15 @@ func (workspace *LocalWorkspace) addGlobDirectories(
 	return walk(".", nil)
 }
 
-func readWorkspaceIgnorePatterns(
+func readFilesystemIgnorePatterns(
 	ctx context.Context,
 	root *os.Root,
 	directory string,
 	domain []string,
-	budget *workspaceIgnoreBudget,
+	budget *filesystemIgnoreBudget,
 ) ([]gitignore.Pattern, error) {
 	patterns := make([]gitignore.Pattern, 0)
-	for _, name := range workspaceIgnoreFiles {
+	for _, name := range filesystemIgnoreFiles {
 		if err := contextError(ctx); err != nil {
 			return nil, err
 		}
@@ -130,7 +133,7 @@ func readWorkspaceIgnorePatterns(
 			return nil, fmt.Errorf("open workspace ignore file %s: %w", ignorePath, err)
 		}
 		scanner := bufio.NewScanner(file)
-		scanner.Buffer(make([]byte, 64*1024), maxWorkspaceIgnoreBytes+1)
+		scanner.Buffer(make([]byte, 64*1024), maxFilesystemIgnoreBytes+1)
 		var policyErr error
 		for scanner.Scan() {
 			if err := contextError(ctx); err != nil {
@@ -138,8 +141,8 @@ func readWorkspaceIgnorePatterns(
 				break
 			}
 			budget.bytes += len(scanner.Bytes()) + 1
-			if budget.bytes > maxWorkspaceIgnoreBytes {
-				policyErr = fmt.Errorf("workspace ignore files exceed %d bytes", maxWorkspaceIgnoreBytes)
+			if budget.bytes > maxFilesystemIgnoreBytes {
+				policyErr = fmt.Errorf("filesystem ignore files exceed %d bytes", maxFilesystemIgnoreBytes)
 				break
 			}
 			line := strings.TrimSuffix(scanner.Text(), "\r")
@@ -147,8 +150,8 @@ func readWorkspaceIgnorePatterns(
 				continue
 			}
 			budget.rules++
-			if budget.rules > maxWorkspaceIgnoreRules {
-				policyErr = fmt.Errorf("workspace ignore files exceed %d rules", maxWorkspaceIgnoreRules)
+			if budget.rules > maxFilesystemIgnoreRules {
+				policyErr = fmt.Errorf("filesystem ignore files exceed %d rules", maxFilesystemIgnoreRules)
 				break
 			}
 			patterns = append(patterns, gitignore.ParsePattern(line, domain))

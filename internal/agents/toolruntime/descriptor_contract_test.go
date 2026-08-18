@@ -92,11 +92,11 @@ func TestRegistryRejectsUnclassifiedAndDuplicateTools(t *testing.T) {
 		t.Fatalf("expected unclassified definition error, got %v", err)
 	}
 
-	first, err := producttools.Define(descriptorTestTool{name: "read"}, producttools.BoundedReadDescriptor(agent.ToolSourceRead, config.AgentToolWorkspaceRead))
+	first, err := producttools.Define(descriptorTestTool{name: "read"}, producttools.BoundedReadDescriptor(agent.ToolSourceRead, config.AgentToolFilesystemRead))
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := producttools.Define(descriptorTestTool{name: "read"}, producttools.BoundedReadDescriptor(agent.ToolSourceRead, config.AgentToolWorkspaceRead))
+	second, err := producttools.Define(descriptorTestTool{name: "read"}, producttools.BoundedReadDescriptor(agent.ToolSourceRead, config.AgentToolFilesystemRead))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +106,7 @@ func TestRegistryRejectsUnclassifiedAndDuplicateTools(t *testing.T) {
 }
 
 func TestRegistrySnapshotCarriesDescriptorWithoutToolInfoExtra(t *testing.T) {
-	definition, err := producttools.Define(descriptorTestTool{name: "read"}, producttools.BoundedReadDescriptor(agent.ToolSourceRead, config.AgentToolWorkspaceRead))
+	definition, err := producttools.Define(descriptorTestTool{name: "read"}, producttools.BoundedReadDescriptor(agent.ToolSourceRead, config.AgentToolFilesystemRead))
 	if err != nil {
 		t.Fatal(err)
 	}

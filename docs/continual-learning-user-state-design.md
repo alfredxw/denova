@@ -155,7 +155,7 @@ description: Review one bounded artifact.
 enabled: true
 parents: [general]
 model_profile: default
-tools: [workspace_read]
+tools: [filesystem_read]
 ---
 
 Return concise findings with evidence.

@@ -42,7 +42,7 @@ var agentKindRegistry = []AgentKindDefinition{
 	{
 		Kind: AgentKindGeneral,
 		ToolCapabilities: []string{
-			AgentToolWorkspaceRead, AgentToolWorkspaceWrite, AgentToolShell,
+			AgentToolFilesystemRead, AgentToolWorkspaceWrite, AgentToolShell,
 			AgentToolWebSearch, AgentToolWebFetch, AgentToolBrowser,
 			AgentToolAsk, AgentToolTodo, AgentToolGoal, AgentToolSkills, AgentToolDelegation,
 			AgentToolScript, AgentToolHarnessState,
@@ -73,7 +73,7 @@ var agentKindRegistry = []AgentKindDefinition{
 	{
 		Kind: AgentKindIDE,
 		ToolCapabilities: []string{
-			AgentToolWorkspaceRead, AgentToolWorkspaceWrite, AgentToolShell,
+			AgentToolFilesystemRead, AgentToolWorkspaceWrite, AgentToolShell,
 			AgentToolWebSearch, AgentToolWebFetch, AgentToolBrowser,
 			AgentToolAsk, AgentToolTodo, AgentToolGoal, AgentToolSkills, AgentToolDelegation,
 			AgentToolScript, AgentToolHarnessState,
@@ -89,7 +89,7 @@ var agentKindRegistry = []AgentKindDefinition{
 	{
 		Kind: AgentKindInteractiveStory,
 		ToolCapabilities: []string{
-			AgentToolWorkspaceRead, AgentToolWebSearch, AgentToolWebFetch, AgentToolBrowser,
+			AgentToolFilesystemRead, AgentToolWebSearch, AgentToolWebFetch, AgentToolBrowser,
 			AgentToolSkills, AgentToolDelegation, AgentToolLoreRead,
 			AgentToolScript, AgentToolHarnessState,
 		},
@@ -104,7 +104,7 @@ var agentKindRegistry = []AgentKindDefinition{
 		Kind:      AgentKindConfigManager,
 		SessionID: "config-manager-agent",
 		ToolCapabilities: []string{
-			AgentToolWorkspaceRead, AgentToolWorkspaceWrite, AgentToolShell,
+			AgentToolFilesystemRead, AgentToolWorkspaceWrite, AgentToolShell,
 			AgentToolWebSearch, AgentToolWebFetch, AgentToolBrowser,
 			AgentToolAsk, AgentToolTodo, AgentToolSkills, AgentToolDelegation,
 			AgentToolConfigRead, AgentToolConfigApply,
@@ -155,7 +155,7 @@ var agentKindRegistry = []AgentKindDefinition{
 		Kind:      AgentKindImage,
 		SessionID: "image-agent",
 		ToolCapabilities: []string{
-			AgentToolWorkspaceRead, AgentToolWorkspaceWrite, AgentToolShell,
+			AgentToolFilesystemRead, AgentToolWorkspaceWrite, AgentToolShell,
 			AgentToolWebSearch, AgentToolWebFetch, AgentToolBrowser,
 			AgentToolSkills, AgentToolImageGeneration,
 		},
@@ -207,7 +207,7 @@ type AgentToolCapability struct {
 }
 
 var agentToolCapabilities = []AgentToolCapability{
-	withRuntimeResultLimit(capabilityDefinitionWithToolDescriptors(AgentToolWorkspaceRead, "agents.tool.workspaceRead.title", "agents.tool.workspaceRead.subtitle", []string{"read", "glob", "grep"},
+	withRuntimeResultLimit(capabilityDefinitionWithToolDescriptors(AgentToolFilesystemRead, "agents.tool.filesystemRead.title", "agents.tool.filesystemRead.subtitle", []string{"read", "glob", "grep"},
 		descriptorWithSource(readOnlyDescriptor(agent.ToolPresentationGeneric, agent.ToolResultRecoveryRead), agent.ToolSourceRead),
 		map[string]agent.ToolDescriptor{
 			"glob": descriptorWithSource(readOnlyDescriptor(agent.ToolPresentationGeneric, agent.ToolResultRecoveryRerun), agent.ToolSourceRead),

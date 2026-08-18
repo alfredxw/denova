@@ -41,19 +41,19 @@ func TestInteractiveDirectorAssemblyRegistersOneEventReadAndIgnoresWorkspaceOver
 	}
 
 	tests := []struct {
-		name          string
-		workspaceRead bool
+		name           string
+		filesystemRead bool
 	}{
 		{name: "default event only"},
-		{name: "forced workspace override", workspaceRead: true},
+		{name: "forced workspace override", filesystemRead: true},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			cfg := &config.Config{
 				OpenAIBaseURL: "https://example.invalid", OpenAIModel: "test-model", Workspace: workspace,
 			}
-			if test.workspaceRead {
-				cfg.AgentTools.InteractiveDirector = config.AgentToolOverride{config.AgentToolWorkspaceRead: true}
+			if test.filesystemRead {
+				cfg.AgentTools.InteractiveDirector = config.AgentToolOverride{config.AgentToolFilesystemRead: true}
 			}
 			definition, _, buildErr := BuildInteractiveDirectorDefinitionWithComposition(context.Background(), cfg, nil, agentinteractive.InteractiveStoryToolContext{
 				Store: store, StoryID: story.ID, BranchID: "main", TurnID: sourceTurn,

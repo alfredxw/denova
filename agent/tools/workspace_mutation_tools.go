@@ -51,7 +51,7 @@ type MutationAdapter interface {
 }
 
 type writeInput struct {
-	Path    string `json:"path" jsonschema:"maxLength=4096" jsonschema_description:"Absolute or workspace-relative path of the file to create or completely replace."`
+	Path    string `json:"path" jsonschema:"maxLength=4096" jsonschema_description:"Project-relative path, or absolute path inside the current Project, of the file to create or completely replace."`
 	Content string `json:"content" jsonschema:"maxLength=16777216" jsonschema_description:"Complete new file content, up to the mutation safety limit."`
 }
 
@@ -84,7 +84,7 @@ func Write(adapter MutationAdapter, options ...DefinitionOption) (agent.ToolDefi
 }
 
 type editInput struct {
-	Path      string           `json:"path" jsonschema:"maxLength=4096" jsonschema_description:"Absolute or workspace-relative path of the single file to edit or delete."`
+	Path      string           `json:"path" jsonschema:"maxLength=4096" jsonschema_description:"Project-relative path, or absolute path inside the current Project, of the single file to edit or delete."`
 	Operation EditOperation    `json:"operation,omitempty" jsonschema:"enum=replace,enum=delete" jsonschema_description:"Optional operation. Omit for replace. Delete must be explicit and must not include edits."`
 	Edits     []editEntryInput `json:"edits,omitempty" jsonschema:"minItems=1,maxItems=256" jsonschema_description:"Required for replace: non-overlapping exact replacements evaluated against the same original file snapshot and committed together. Omit for delete."`
 }

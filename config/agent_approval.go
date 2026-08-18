@@ -25,26 +25,30 @@ const (
 	// globally through a checked-in configuration file.
 	AgentApprovalRuleWorkspace      = "workspace"
 	AgentApprovalRuleMatcherVersion = 1
+	AgentApprovalMatcherShell       = "shell_command"
+	AgentApprovalMatcherFilesystem  = "filesystem_read_root"
+	AgentApprovalFilesystemReadTool = "filesystem_read"
 	MaxAgentApprovalCommandBytes    = 16 * 1024
 	MaxAgentApprovalRuleKeyBytes    = 2 * 1024
 )
 
-// AgentApprovalRule is a user-owned, workspace-scoped shell authorization.
-// CommandKey is emitted and revalidated by the versioned policy matcher; it is
-// never a user-authored glob or prefix. ApprovedArgsHash preserves the exact
-// approved request for audit without making volatile arguments the match key.
+// AgentApprovalRule is a user-owned, workspace-scoped authorization. MatchKey
+// is emitted and revalidated by its named matcher; it is never a user-authored
+// glob or prefix. ApprovedArgsHash preserves the exact approved request for
+// audit without making volatile arguments the match key.
 type AgentApprovalRule struct {
 	ID               string    `toml:"id" json:"id"`
 	Scope            string    `toml:"scope" json:"scope"`
 	ProjectID        string    `toml:"project_id,omitempty" json:"project_id,omitempty"`
 	Workspace        string    `toml:"workspace,omitempty" json:"workspace,omitempty"`
 	ToolName         string    `toml:"tool_name" json:"tool_name"`
+	Matcher          string    `toml:"matcher" json:"matcher"`
 	MatcherVersion   int       `toml:"matcher_version" json:"matcher_version"`
-	CommandKey       string    `toml:"command_key" json:"command_key"`
-	CommandPattern   string    `toml:"command_pattern" json:"command_pattern"`
+	MatchKey         string    `toml:"match_key" json:"match_key"`
+	DisplayPattern   string    `toml:"display_pattern" json:"display_pattern"`
 	ApprovedArgsHash string    `toml:"approved_args_hash" json:"approved_args_hash"`
-	ApprovedCommand  string    `toml:"approved_command" json:"approved_command"`
-	ApprovedCwd      string    `toml:"approved_cwd,omitempty" json:"approved_cwd,omitempty"`
+	ApprovedInput    string    `toml:"approved_input" json:"approved_input"`
+	ApprovedContext  string    `toml:"approved_context,omitempty" json:"approved_context,omitempty"`
 	SourceRuleID     string    `toml:"source_rule_id,omitempty" json:"source_rule_id,omitempty"`
 	CreatedAt        time.Time `toml:"created_at" json:"created_at"`
 }
@@ -62,11 +66,12 @@ func NormalizeAgentApprovalRules(rules []AgentApprovalRule) []AgentApprovalRule 
 		rule.ProjectID = strings.TrimSpace(rule.ProjectID)
 		rule.Workspace = strings.TrimSpace(rule.Workspace)
 		rule.ToolName = strings.ToLower(strings.TrimSpace(rule.ToolName))
-		rule.CommandKey = strings.TrimSpace(rule.CommandKey)
-		rule.CommandPattern = strings.TrimSpace(rule.CommandPattern)
+		rule.Matcher = strings.ToLower(strings.TrimSpace(rule.Matcher))
+		rule.MatchKey = strings.TrimSpace(rule.MatchKey)
+		rule.DisplayPattern = strings.TrimSpace(rule.DisplayPattern)
 		rule.ApprovedArgsHash = strings.ToLower(strings.TrimSpace(rule.ApprovedArgsHash))
-		rule.ApprovedCommand = strings.TrimSpace(rule.ApprovedCommand)
-		rule.ApprovedCwd = strings.TrimSpace(rule.ApprovedCwd)
+		rule.ApprovedInput = strings.TrimSpace(rule.ApprovedInput)
+		rule.ApprovedContext = strings.TrimSpace(rule.ApprovedContext)
 		rule.SourceRuleID = strings.TrimSpace(rule.SourceRuleID)
 		result[index] = rule
 	}
@@ -92,24 +97,33 @@ func ValidateAgentApprovalRules(rules []AgentApprovalRule) error {
 		if rule.Workspace == "" {
 			return fmt.Errorf("%s.workspace is required", path)
 		}
-		if rule.ToolName != "bash" && rule.ToolName != "pwsh" {
-			return fmt.Errorf("%s.tool_name must be bash or pwsh", path)
+		switch rule.Matcher {
+		case AgentApprovalMatcherShell:
+			if rule.ToolName != "bash" && rule.ToolName != "pwsh" {
+				return fmt.Errorf("%s.tool_name must be bash or pwsh for matcher %q", path, rule.Matcher)
+			}
+		case AgentApprovalMatcherFilesystem:
+			if rule.ToolName != AgentApprovalFilesystemReadTool {
+				return fmt.Errorf("%s.tool_name must be %q for matcher %q", path, AgentApprovalFilesystemReadTool, rule.Matcher)
+			}
+		default:
+			return fmt.Errorf("%s.matcher must be %q or %q", path, AgentApprovalMatcherShell, AgentApprovalMatcherFilesystem)
 		}
 		if rule.MatcherVersion != AgentApprovalRuleMatcherVersion {
 			return fmt.Errorf("%s.matcher_version must be %d", path, AgentApprovalRuleMatcherVersion)
 		}
-		if rule.CommandKey == "" || len(rule.CommandKey) > MaxAgentApprovalRuleKeyBytes {
-			return fmt.Errorf("%s.command_key must contain 1-%d bytes", path, MaxAgentApprovalRuleKeyBytes)
+		if rule.MatchKey == "" || len(rule.MatchKey) > MaxAgentApprovalRuleKeyBytes {
+			return fmt.Errorf("%s.match_key must contain 1-%d bytes", path, MaxAgentApprovalRuleKeyBytes)
 		}
-		if rule.CommandPattern == "" || len(rule.CommandPattern) > MaxAgentApprovalCommandBytes {
-			return fmt.Errorf("%s.command_pattern must contain 1-%d bytes", path, MaxAgentApprovalCommandBytes)
+		if rule.DisplayPattern == "" || len(rule.DisplayPattern) > MaxAgentApprovalCommandBytes {
+			return fmt.Errorf("%s.display_pattern must contain 1-%d bytes", path, MaxAgentApprovalCommandBytes)
 		}
 		decoded, err := hex.DecodeString(rule.ApprovedArgsHash)
 		if err != nil || len(decoded) != 32 {
 			return fmt.Errorf("%s.approved_args_hash must be a SHA-256 digest", path)
 		}
-		if rule.ApprovedCommand == "" || len(rule.ApprovedCommand) > MaxAgentApprovalCommandBytes {
-			return fmt.Errorf("%s.approved_command must contain 1-%d bytes", path, MaxAgentApprovalCommandBytes)
+		if rule.ApprovedInput == "" || len(rule.ApprovedInput) > MaxAgentApprovalCommandBytes {
+			return fmt.Errorf("%s.approved_input must contain 1-%d bytes", path, MaxAgentApprovalCommandBytes)
 		}
 		if rule.CreatedAt.IsZero() {
 			return fmt.Errorf("%s.created_at is required", path)

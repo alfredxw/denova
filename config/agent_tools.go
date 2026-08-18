@@ -5,7 +5,7 @@ package config
 // example read/glob/grep). User Script Tools are instead admitted as ordinary
 // definitions by the immutable Run registry and have no separate toggle.
 const (
-	AgentToolWorkspaceRead   = "workspace_read"
+	AgentToolFilesystemRead  = "filesystem_read"
 	AgentToolWorkspaceWrite  = "workspace_write"
 	AgentToolShell           = "shell"
 	AgentToolWebSearch       = "web_search"
@@ -70,7 +70,7 @@ func DefaultAgentToolSettings() AgentToolSettings {
 	}
 
 	defaults := on(
-		AgentToolWorkspaceRead,
+		AgentToolFilesystemRead,
 		AgentToolWorkspaceWrite,
 		AgentToolShell,
 		AgentToolWebSearch,
@@ -113,7 +113,7 @@ func DefaultAgentToolSettings() AgentToolSettings {
 			AgentToolConfigApply,
 		),
 		ConfigManager: mergeAgentToolOverride(noToolAgentOverride(), on(
-			AgentToolWorkspaceRead,
+			AgentToolFilesystemRead,
 			AgentToolAsk,
 			AgentToolSkills,
 			AgentToolConfigRead,
@@ -130,7 +130,7 @@ func DefaultAgentToolSettings() AgentToolSettings {
 			AgentToolImageGeneration,
 		)),
 		Automation: mergeAgentToolOverride(noToolAgentOverride(), on(
-			AgentToolWorkspaceRead,
+			AgentToolFilesystemRead,
 			AgentToolWorkspaceWrite,
 			AgentToolWebSearch,
 			AgentToolWebFetch,

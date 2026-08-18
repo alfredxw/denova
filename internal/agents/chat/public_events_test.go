@@ -558,7 +558,7 @@ func TestPublicEventProjectorUsesPermissionPolicyPresentationWithoutReclassifica
 			Reason: agent.LocalizedText{Chinese: "需要授权", English: "Approval required"},
 			Mode:   "write", Command: "go test ./...", Cwd: "/workspace", Risk: "medium",
 			RuleID: "bash_unlisted_command", ArgsHash: "policy-owned-hash", CanRemember: true,
-			RuleMatcherVersion: 3, RuleCommandKey: `["go","test"]`, RuleCommandPattern: "go test ...",
+			RuleMatcherVersion: 3, RuleMatchKey: `["go","test"]`, RuleDisplayPattern: "go test ...",
 		},
 	}
 	projector.Project(agent.Event{RunID: "run", Payload: agent.InteractionRequested{Request: request}})
@@ -572,7 +572,7 @@ func TestPublicEventProjectorUsesPermissionPolicyPresentationWithoutReclassifica
 		approval["cwd"] != "/workspace" || approval["risk"] != "medium" ||
 		approval["rule_id"] != "bash_unlisted_command" || approval["args_hash"] != "policy-owned-hash" ||
 		approval["can_remember"] != true || approval["rule_matcher_version"] != 3 ||
-		approval["rule_command_key"] != `["go","test"]` || approval["rule_command_pattern"] != "go test ..." {
+		approval["rule_match_key"] != `["go","test"]` || approval["rule_display_pattern"] != "go test ..." {
 		t.Fatalf("permission presentation = %#v", pending)
 	}
 }

@@ -334,7 +334,7 @@ func workspaceToolsFactory(workspace, projectStateRoot string, metadata Workspac
 		maxResultBytes = defaultToolResultMaxBytes
 	}
 	return func(settings config.ResolvedAgentToolSettings) ([]agent.ToolDefinition, error) {
-		readEnabled := settings.Allows(config.AgentToolWorkspaceRead)
+		readEnabled := settings.Allows(config.AgentToolFilesystemRead)
 		writeEnabled := settings.Allows(config.AgentToolWorkspaceWrite)
 		shellEnabled := settings.Allows(config.AgentToolShell)
 		enabledReadAdapters, err := enabledReadAdapterBindings(settings, extraReadAdapters)
@@ -357,7 +357,7 @@ func workspaceToolsFactory(workspace, projectStateRoot string, metadata Workspac
 		definitions := make([]agent.ToolDefinition, 0, 7)
 		readAdapters := make([]agenttools.ReadAdapter, 0, len(enabledReadAdapters)+2)
 		// ToolDescriptor has one capability field. Bindings have already removed
-		// unauthorized adapters, so keep workspace_read as the combined endpoint's
+		// unauthorized adapters, so keep filesystem_read as the combined endpoint's
 		// primary receipt and otherwise use the first enabled URI capability.
 		readCapability := ""
 		if readEnabled {
@@ -370,9 +370,9 @@ func workspaceToolsFactory(workspace, projectStateRoot string, metadata Workspac
 				return nil, fmt.Errorf("create directory read adapter: %w", err)
 			}
 			readAdapters = append(readAdapters, textAdapter, directoryAdapter)
-			readCapability = config.AgentToolWorkspaceRead
+			readCapability = config.AgentToolFilesystemRead
 			options := []agenttools.DefinitionOption{
-				agenttools.WithCapability(config.AgentToolWorkspaceRead),
+				agenttools.WithCapability(config.AgentToolFilesystemRead),
 				agenttools.WithMaxResultBytes(maxResultBytes),
 			}
 			globDefinition, err := agenttools.Glob(backend, options...)

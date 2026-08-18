@@ -4,13 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"path"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 
-	"github.com/bmatcuk/doublestar/v4"
 	"mvdan.cc/sh/v3/syntax"
 )
 
@@ -52,8 +50,10 @@ func (workspace *LocalWorkspace) compileGrepCommand(input string) (compiledGrepC
 		}
 		command.stages = append(command.stages, stage)
 		command.warnings = append(command.warnings, warnings...)
+		command.access.External = append(command.access.External, stage.access.External...)
 		normalized = normalized || stageNormalized
 	}
+	command.access = normalizeFilesystemReadPlan(command.access)
 	if normalized {
 		warning := fmt.Sprintf("Normalized grep command to: %s.", canonicalGrepCommand(command))
 		command.warnings = append([]string{warning}, command.warnings...)
@@ -63,7 +63,7 @@ func (workspace *LocalWorkspace) compileGrepCommand(input string) (compiledGrepC
 
 // compileGrepStage preserves ripgrep's PATTERN [PATH ...] contract for the
 // first stage. Later stages receive only the preceding stdout and therefore
-// reject workspace paths instead of silently ignoring the pipeline input.
+// reject filesystem paths instead of silently ignoring the pipeline input.
 func (workspace *LocalWorkspace) compileGrepStage(words []string, stageIndex int) (compiledGrepStage, []string, bool, error) {
 	words, normalized, err := normalizeGrepWords(words)
 	if err != nil {
@@ -110,7 +110,7 @@ func (workspace *LocalWorkspace) compileGrepStage(words []string, stageIndex int
 		stage.paths = []string{"-"}
 		return stage, nil, normalized, nil
 	}
-	validated, globs, warnings, pathsNormalized, err := workspace.validateGrepPaths(paths)
+	validated, globs, warnings, access, pathsNormalized, err := workspace.validateGrepPaths(paths)
 	if err != nil {
 		return compiledGrepStage{}, nil, false, err
 	}
@@ -118,6 +118,7 @@ func (workspace *LocalWorkspace) compileGrepStage(words []string, stageIndex int
 		stage.args = append(stage.args, "-g", glob)
 	}
 	stage.paths = validated
+	stage.access = access
 	return stage, warnings, normalized || pathsNormalized, nil
 }
 
@@ -241,44 +242,48 @@ func (command *compiledGrepStage) selectMode(mode grepOutputMode, flag string) e
 	return nil
 }
 
-func (workspace *LocalWorkspace) validateGrepPaths(inputs []string) ([]string, []string, []string, bool, error) {
+func (workspace *LocalWorkspace) validateGrepPaths(inputs []string) ([]string, []string, []string, FilesystemReadPlan, bool, error) {
 	if len(inputs) == 0 {
-		return []string{"."}, nil, nil, false, nil
+		return []string{"."}, nil, nil, FilesystemReadPlan{}, false, nil
 	}
 	paths := make([]string, 0, len(inputs))
 	globs := make([]string, 0)
 	warnings := make([]string, 0)
+	access := FilesystemReadPlan{}
 	seenPaths := make(map[string]struct{}, len(inputs))
 	seenGlobs := make(map[string]struct{})
 	normalized := false
 	missing := 0
 	for _, input := range inputs {
 		plain := filepath.ToSlash(strings.TrimSpace(input))
-		if plain == "" || hasResourceScheme(plain) || (isAbsoluteGrepPath(plain) && !filepath.IsAbs(filepath.FromSlash(plain))) {
-			return nil, nil, nil, false, grepCommandError("unsafe_path", fmt.Sprintf("grep path is not inside the active workspace: %q", input))
+		if plain == "" || hasResourceScheme(plain) || (isAbsoluteFilesystemPath(plain) && !filepath.IsAbs(filepath.FromSlash(plain))) {
+			return nil, nil, nil, FilesystemReadPlan{}, false, grepCommandError("unsafe_path", fmt.Sprintf("grep path is not a valid local filesystem path: %q", input))
 		}
-		if filepath.IsAbs(filepath.FromSlash(plain)) {
-			if canonical, evalErr := filepath.EvalSymlinks(filepath.FromSlash(plain)); evalErr == nil {
-				plain = filepath.ToSlash(canonical)
-				normalized = true
-			}
-		}
-		relative, info, err := workspace.stat(plain, true)
+		resolved, err := workspace.resolveReadPath(plain, true)
 		if err != nil {
 			if hasGlobMeta(plain) {
-				glob, globErr := workspace.normalizeGrepGlob(plain)
+				glob, searchRoot, grant, globErr := workspace.normalizeGrepGlob(plain)
 				if globErr != nil {
-					return nil, nil, nil, false, globErr
+					return nil, nil, nil, FilesystemReadPlan{}, false, globErr
 				}
 				if _, duplicate := seenGlobs[glob]; !duplicate {
 					seenGlobs[glob] = struct{}{}
 					globs = append(globs, glob)
 				}
+				if searchRoot != "" {
+					if _, duplicate := seenPaths[searchRoot]; !duplicate {
+						seenPaths[searchRoot] = struct{}{}
+						paths = append(paths, searchRoot)
+					}
+				}
+				if grant != nil {
+					access.External = append(access.External, *grant)
+				}
 				normalized = true
 				continue
 			}
 			if !errors.Is(err, fs.ErrNotExist) {
-				return nil, nil, nil, false, grepCommandError(
+				return nil, nil, nil, FilesystemReadPlan{}, false, grepCommandError(
 					"unsafe_path",
 					fmt.Sprintf("grep path %q cannot be safely inspected: %v", input, err),
 				)
@@ -287,58 +292,47 @@ func (workspace *LocalWorkspace) validateGrepPaths(inputs []string) ([]string, [
 			warnings = append(warnings, fmt.Sprintf("Skipped missing path %q.", input))
 			continue
 		}
-		if !info.IsDir() && !info.Mode().IsRegular() {
-			return nil, nil, nil, false, grepCommandError(
+		if !resolved.info.IsDir() && !resolved.info.Mode().IsRegular() {
+			return nil, nil, nil, FilesystemReadPlan{}, false, grepCommandError(
 				"unsupported_path",
 				fmt.Sprintf("grep path %q must be a regular file or directory", input),
 			)
 		}
-		if _, duplicate := seenPaths[relative]; duplicate {
+		if _, duplicate := seenPaths[resolved.display]; duplicate {
 			continue
 		}
-		seenPaths[relative] = struct{}{}
-		paths = append(paths, relative)
-		normalized = normalized || plain != relative
+		seenPaths[resolved.display] = struct{}{}
+		paths = append(paths, resolved.display)
+		if resolved.scope == FilesystemScopeExternal {
+			access.External = append(access.External, readGrant(resolved))
+		}
+		normalized = normalized || plain != resolved.display
 	}
 	if len(paths) == 0 && len(globs) > 0 {
 		paths = append(paths, ".")
 	}
 	if len(paths) == 0 {
 		if len(inputs) == 1 && missing == 1 {
-			return nil, nil, nil, false, grepCommandError("path_not_found", fmt.Sprintf("grep path %q does not exist", inputs[0]))
+			return nil, nil, nil, FilesystemReadPlan{}, false, grepCommandError("path_not_found", fmt.Sprintf("grep path %q does not exist", inputs[0]))
 		}
-		return nil, nil, nil, false, grepCommandError("no_searchable_path", "none of the requested grep paths exists")
+		return nil, nil, nil, FilesystemReadPlan{}, false, grepCommandError("no_searchable_path", "none of the requested grep paths exists")
 	}
 	sort.Strings(paths)
-	return paths, globs, warnings, normalized, nil
+	return paths, globs, warnings, normalizeFilesystemReadPlan(access), normalized, nil
 }
 
-func (workspace *LocalWorkspace) normalizeGrepGlob(input string) (string, error) {
-	value := filepath.ToSlash(strings.TrimSpace(input))
-	if hasResourceScheme(value) || (isAbsoluteGrepPath(value) && !filepath.IsAbs(filepath.FromSlash(value))) {
-		return "", grepCommandError("unsafe_path", fmt.Sprintf("grep glob is not inside the active workspace: %q", input))
+func (workspace *LocalWorkspace) normalizeGrepGlob(input string) (string, string, *FilesystemReadGrant, error) {
+	domain, target, err := workspace.globPatternDomain(input)
+	if err != nil {
+		return "", "", nil, grepCommandError("unsafe_path", err.Error())
 	}
-	if filepath.IsAbs(filepath.FromSlash(value)) {
-		root := filepath.ToSlash(workspace.root)
-		prefix := strings.TrimSuffix(root, "/") + "/"
-		if !strings.HasPrefix(value, prefix) {
-			return "", grepCommandError("unsafe_path", fmt.Sprintf("grep glob is outside the active workspace: %q", input))
-		}
-		value = strings.TrimPrefix(value, prefix)
+	searchRoot := "."
+	if domain.project {
+		searchRoot = ""
+	} else {
+		searchRoot = filepath.ToSlash(domain.root)
 	}
-	value = path.Clean(value)
-	if value == ".." || strings.HasPrefix(value, "../") || !doublestar.ValidatePathPattern(value) {
-		return "", grepCommandError("unsafe_path", fmt.Sprintf("grep glob must resolve inside the active workspace: %q", input))
-	}
-	return value, nil
-}
-
-func isAbsoluteGrepPath(value string) bool {
-	if filepath.IsAbs(value) || strings.HasPrefix(value, "/") || strings.HasPrefix(value, `\\`) {
-		return true
-	}
-	return len(value) >= 3 && ((value[0] >= 'a' && value[0] <= 'z') || (value[0] >= 'A' && value[0] <= 'Z')) &&
-		value[1] == ':' && (value[2] == '/' || value[2] == '\\')
+	return target.value, searchRoot, target.grant, nil
 }
 
 func parseLiteralGrepPipeline(input string) ([][]string, error) {

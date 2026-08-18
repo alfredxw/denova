@@ -592,7 +592,7 @@ func TestConfigApplyAgentProfileEnforcesConfigManagerToolCeiling(t *testing.T) {
 	if _, err := runToolForTest(context.Background(), applyTool, mustJSON(t, map[string]any{
 		"operation": "update", "resource": "agent_profile", "scope": "user", "id": config.AgentKindConfigManager,
 		"revision": userRevision, "value": map[string]any{"kind": "agent", "tools": map[string]any{
-			config.AgentToolWorkspaceRead: true, config.AgentToolAsk: false, config.AgentToolSkills: true,
+			config.AgentToolFilesystemRead: true, config.AgentToolAsk: false, config.AgentToolSkills: true,
 			config.AgentToolConfigRead: true, config.AgentToolConfigApply: true,
 		}},
 	})); err != nil {

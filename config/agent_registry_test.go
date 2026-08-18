@@ -125,8 +125,8 @@ func TestAgentKindRegistryDefinesUniqueKindsAndConfigAccessors(t *testing.T) {
 		ToolAgent:           AgentPromptOverride{SystemPrompt: AgentKindToolAgent},
 	}
 	tools := AgentToolSettings{
-		General:             AgentToolOverride{AgentToolWorkspaceRead: true},
-		IDE:                 AgentToolOverride{AgentToolWorkspaceRead: true},
+		General:             AgentToolOverride{AgentToolFilesystemRead: true},
+		IDE:                 AgentToolOverride{AgentToolFilesystemRead: true},
 		InteractiveStory:    AgentToolOverride{AgentToolWorkspaceWrite: true},
 		Image:               AgentToolOverride{AgentToolImageGeneration: true},
 		ConfigManager:       AgentToolOverride{AgentToolShell: true},
@@ -178,7 +178,7 @@ func TestRestrictedAgentKindCapabilityCeilings(t *testing.T) {
 		{
 			kind: AgentKindGeneral,
 			want: []string{
-				AgentToolWorkspaceRead, AgentToolWorkspaceWrite, AgentToolShell,
+				AgentToolFilesystemRead, AgentToolWorkspaceWrite, AgentToolShell,
 				AgentToolWebSearch, AgentToolWebFetch, AgentToolBrowser,
 				AgentToolAsk, AgentToolTodo, AgentToolGoal, AgentToolSkills, AgentToolDelegation,
 				AgentToolScript, AgentToolHarnessState,
@@ -187,7 +187,7 @@ func TestRestrictedAgentKindCapabilityCeilings(t *testing.T) {
 		{
 			kind: AgentKindInteractiveStory,
 			want: []string{
-				AgentToolWorkspaceRead, AgentToolWebSearch, AgentToolWebFetch, AgentToolBrowser,
+				AgentToolFilesystemRead, AgentToolWebSearch, AgentToolWebFetch, AgentToolBrowser,
 				AgentToolSkills, AgentToolDelegation, AgentToolLoreRead,
 				AgentToolScript, AgentToolHarnessState,
 			},
@@ -210,10 +210,10 @@ func TestRestrictedAgentKindCapabilityCeilings(t *testing.T) {
 
 func TestResolveAgentToolManifestUsesCapabilityRegistryOrder(t *testing.T) {
 	settings := ResolvedAgentToolSettings{
-		AgentToolWorkspaceRead: true,
-		AgentToolLoreRead:      true,
-		AgentToolWebSearch:     true,
-		AgentToolConfigRead:    true,
+		AgentToolFilesystemRead: true,
+		AgentToolLoreRead:       true,
+		AgentToolWebSearch:      true,
+		AgentToolConfigRead:     true,
 	}
 	manifest := ResolveAgentToolManifest(settings)
 	capabilities := AgentToolCapabilities()
@@ -229,7 +229,7 @@ func TestResolveAgentToolManifestUsesCapabilityRegistryOrder(t *testing.T) {
 	for _, item := range manifest {
 		allowed[item.Capability] = item.Allowed
 	}
-	for _, source := range []string{AgentToolWorkspaceRead, AgentToolLoreRead, AgentToolWebSearch, AgentToolConfigRead} {
+	for _, source := range []string{AgentToolFilesystemRead, AgentToolLoreRead, AgentToolWebSearch, AgentToolConfigRead} {
 		if !allowed[source] {
 			t.Fatalf("expected %s to be allowed: %#v", source, manifest)
 		}
@@ -286,20 +286,20 @@ func TestAgentToolCapabilityCatalogResolvesPlatformNamesAndDescriptors(t *testin
 func TestResolvedManifestProjectsRuntimeResultLimitPerConcreteTool(t *testing.T) {
 	const runtimeLimit = 64 << 10
 	manifest := ResolveAgentToolManifestForGOOS(ResolvedAgentToolSettings{
-		AgentToolWorkspaceRead: true,
-		AgentToolSkills:        true,
-		AgentToolWebSearch:     true,
+		AgentToolFilesystemRead: true,
+		AgentToolSkills:         true,
+		AgentToolWebSearch:      true,
 	}, AgentKindIDE, "linux", runtimeLimit)
 	entries := make(map[string]ResolvedAgentToolCapability, len(manifest))
 	for _, entry := range manifest {
 		entries[entry.Capability] = entry
 	}
 	for _, name := range []string{"read", "glob", "grep"} {
-		if got := entries[AgentToolWorkspaceRead].ToolDescriptors[name].MaxResultBytes; got != runtimeLimit {
+		if got := entries[AgentToolFilesystemRead].ToolDescriptors[name].MaxResultBytes; got != runtimeLimit {
 			t.Fatalf("workspace %s result limit = %d, want %d", name, got, runtimeLimit)
 		}
 	}
-	if got := entries[AgentToolWorkspaceRead].ToolDescriptors["grep"].CallPresentation; got != agent.ToolPresentationSearch {
+	if got := entries[AgentToolFilesystemRead].ToolDescriptors["grep"].CallPresentation; got != agent.ToolPresentationSearch {
 		t.Fatalf("workspace grep presentation = %q, want search", got)
 	}
 	if got := entries[AgentToolSkills].ToolDescriptors["read"].MaxResultBytes; got != runtimeLimit {
@@ -315,11 +315,11 @@ func TestResolvedManifestProjectsRuntimeResultLimitPerConcreteTool(t *testing.T)
 
 func TestResolveAgentToolManifestIsAgentSpecificAndHonestAboutAvailability(t *testing.T) {
 	settings := ResolvedAgentToolSettings{
-		AgentToolWorkspaceRead: true,
-		AgentToolShell:         true,
-		AgentToolBrowser:       true,
-		AgentToolSkills:        true,
-		AgentToolWebSearch:     false,
+		AgentToolFilesystemRead: true,
+		AgentToolShell:          true,
+		AgentToolBrowser:        true,
+		AgentToolSkills:         true,
+		AgentToolWebSearch:      false,
 	}
 	manifest := ResolveAgentToolManifestForGOOS(settings, AgentKindIDE, "windows")
 	definition, ok := LookupAgentKind(AgentKindIDE)
@@ -375,8 +375,8 @@ func TestResolveAgentToolManifestsDeclareEmptyModelOnlyAgents(t *testing.T) {
 		directorEventRead.AvailableToSubAgents || len(directorEventRead.ToolNames) != 1 || directorEventRead.ToolNames[0] != "read" {
 		t.Fatalf("interactive Director event_read manifest = %#v, found=%v", directorEventRead, found)
 	}
-	if workspaceRead, found := resolvedManifestCapability(manifests[AgentKindInteractiveDirector], AgentToolWorkspaceRead); found {
-		t.Fatalf("interactive Director ceiling exposed workspace_read: %#v", workspaceRead)
+	if filesystemRead, found := resolvedManifestCapability(manifests[AgentKindInteractiveDirector], AgentToolFilesystemRead); found {
+		t.Fatalf("interactive Director ceiling exposed filesystem_read: %#v", filesystemRead)
 	}
 	for kind, manifest := range manifests {
 		if kind == AgentKindInteractiveDirector {

@@ -13,7 +13,7 @@ import (
 
 func TestPlanReadOnlyAccessFiltersModelToolSurface(t *testing.T) {
 	definitions := []agent.ToolDefinition{
-		accessPolicyDefinition(t, "read", producttools.BoundedReadDescriptor(agent.ToolSourceRead, config.AgentToolWorkspaceRead)),
+		accessPolicyDefinition(t, "read", producttools.BoundedReadDescriptor(agent.ToolSourceRead, config.AgentToolFilesystemRead)),
 		accessPolicyDefinition(t, "task", accessPolicyDescriptor(agent.ToolExecutionChild, agent.ToolMutationNone, config.AgentToolDelegation)),
 		accessPolicyDefinition(t, "ask", accessPolicyDescriptor(agent.ToolExecutionInteractiveWait, agent.ToolMutationSession, config.AgentToolAsk)),
 		accessPolicyDefinition(t, "todo", accessPolicyDescriptor(agent.ToolExecutionSessionExclusive, agent.ToolMutationSession, config.AgentToolTodo)),
@@ -52,7 +52,7 @@ func TestPlanReadOnlyAccessBlocksForgedMutationAtExecution(t *testing.T) {
 		descriptor agent.ToolDescriptor
 		allowed    bool
 	}{
-		{name: "read", descriptor: producttools.BoundedReadDescriptor(agent.ToolSourceRead, config.AgentToolWorkspaceRead), allowed: true},
+		{name: "read", descriptor: producttools.BoundedReadDescriptor(agent.ToolSourceRead, config.AgentToolFilesystemRead), allowed: true},
 		{name: "ask", descriptor: accessPolicyDescriptor(agent.ToolExecutionInteractiveWait, agent.ToolMutationSession, config.AgentToolAsk), allowed: true},
 		{name: "submit_domain_state", descriptor: accessPolicyDescriptor(agent.ToolExecutionSessionExclusive, agent.ToolMutationSession, "domain_commit")},
 		{name: "write", descriptor: producttools.WorkspaceWriteDescriptor(agent.ToolSourceWrite, config.AgentToolWorkspaceWrite, agent.ToolRecoveryReconcilable)},

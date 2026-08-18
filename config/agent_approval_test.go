@@ -26,9 +26,10 @@ func TestAgentApprovalRuleValidationAndWorkspaceBoundary(t *testing.T) {
 	rule := AgentApprovalRule{
 		ID: "approval-test", Scope: AgentApprovalRuleWorkspace,
 		ProjectID: "project-test", Workspace: "/workspace", ToolName: "bash",
+		Matcher:        AgentApprovalMatcherShell,
 		MatcherVersion: AgentApprovalRuleMatcherVersion,
-		CommandKey:     `["go","test"]`, CommandPattern: "go test ...",
-		ApprovedArgsHash: strings.Repeat("a", 64), ApprovedCommand: "go test ./...",
+		MatchKey:       `["go","test"]`, DisplayPattern: "go test ...",
+		ApprovedArgsHash: strings.Repeat("a", 64), ApprovedInput: "go test ./...",
 		CreatedAt: time.Now(),
 	}
 	if err := ValidateAgentApprovalRules([]AgentApprovalRule{rule}); err != nil {

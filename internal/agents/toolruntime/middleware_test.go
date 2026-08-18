@@ -544,7 +544,7 @@ func TestToolOrchestratorBlocksDisabledCapability(t *testing.T) {
 	middleware := &OrchestratorMiddleware{
 		agentKind:           agentrun.AgentKindIDE,
 		enforceToolSettings: true,
-		toolSettings:        config.ResolvedAgentToolSettings{config.AgentToolWorkspaceRead: true},
+		toolSettings:        config.ResolvedAgentToolSettings{config.AgentToolFilesystemRead: true},
 	}
 	called := false
 	endpoint, err := wrapTextToolCallForTest(middleware,
@@ -572,7 +572,7 @@ func TestToolOrchestratorBlocksDisabledCapability(t *testing.T) {
 func TestToolOrchestratorBlocksUndeclaredDynamicTool(t *testing.T) {
 	middleware := &OrchestratorMiddleware{
 		agentKind: agentrun.AgentKindIDE, enforceToolSettings: true,
-		toolSettings: config.ResolvedAgentToolSettings{config.AgentToolWorkspaceRead: true, config.AgentToolWorkspaceWrite: true},
+		toolSettings: config.ResolvedAgentToolSettings{config.AgentToolFilesystemRead: true, config.AgentToolWorkspaceWrite: true},
 	}
 	decision := middleware.buildToolDecision(context.Background(), testToolContext("dynamic_unknown", "call-unknown"), `{}`)
 	if decision.Action != "blocked" || !strings.Contains(decision.Reason, "ToolDescriptor") {
@@ -587,7 +587,7 @@ func TestToolOrchestratorBlocksUndeclaredDynamicTool(t *testing.T) {
 func TestWorkspaceToolsOmitDisabledDefinitions(t *testing.T) {
 	workspace := t.TempDir()
 	tools, err := NewCatalog(&config.Config{Workspace: workspace}).Workspace(config.ResolvedAgentToolSettings{
-		config.AgentToolWorkspaceRead:  true,
+		config.AgentToolFilesystemRead: true,
 		config.AgentToolWorkspaceWrite: false,
 		config.AgentToolShell:          false,
 	})

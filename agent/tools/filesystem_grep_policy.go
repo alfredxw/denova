@@ -41,11 +41,13 @@ type grepFlagSpec struct {
 type compiledGrepCommand struct {
 	stages   []compiledGrepStage
 	warnings []string
+	access   FilesystemReadPlan
 }
 
 type compiledGrepStage struct {
 	args      []string
 	paths     []string
+	access    FilesystemReadPlan
 	mode      grepOutputMode
 	modeFlag  string
 	hasRegexp bool
@@ -220,7 +222,7 @@ var grepUnsafeLongFlags = map[string]string{
 	"ignore-parent":           "ignore files outside the workspace are disabled",
 	"json":                    "machine output is owned by Denova",
 	"mmap":                    "process resource policy is owned by Denova",
-	"no-filename":             "stable results require workspace paths",
+	"no-filename":             "stable results require filesystem paths",
 	"no-line-number":          "stable content results require source line numbers",
 	"null":                    "NUL-delimited output is incompatible with result paging",
 	"null-data":               "NUL-delimited output is incompatible with result paging",
@@ -247,7 +249,7 @@ var grepUnsafeLongFlags = map[string]string{
 
 var grepUnsafeShortFlags = map[byte]string{
 	'0': "NUL-delimited output is incompatible with result paging",
-	'I': "stable results require workspace paths",
+	'I': "stable results require filesystem paths",
 	'L': "following symlinks may leave the workspace",
 	'N': "stable content results require source line numbers",
 	'V': "non-search version output is unsupported",

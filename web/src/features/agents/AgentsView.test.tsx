@@ -449,24 +449,24 @@ function defaultAgentContexts(): NonNullable<LayeredSettings['resolved_agent_con
 function defaultToolManifests(): NonNullable<LayeredSettings['resolved_agent_tool_manifests']> {
   return {
     ide: [
-      resolvedTool('workspace_read', 'agents.tool.workspaceRead.title', ['read', 'glob', 'grep']),
+      resolvedTool('filesystem_read', 'agents.tool.filesystemRead.title', ['read', 'glob', 'grep']),
       resolvedTool('shell', 'agents.tool.shell.title', ['bash']),
       resolvedTool('todo', 'agents.tool.todo.title', ['todo'], true, false),
       resolvedTool('skills', 'agents.tool.skills.title', ['skill', 'read']),
     ],
     interactive_story: [
-      resolvedTool('workspace_read', 'agents.tool.workspaceRead.title', ['read', 'glob', 'grep']),
+      resolvedTool('filesystem_read', 'agents.tool.filesystemRead.title', ['read', 'glob', 'grep']),
       resolvedTool('skills', 'agents.tool.skills.title', ['skill', 'read']),
     ],
     interactive_director: [
       resolvedTool('event_read', 'agents.tool.eventRead.title', ['read'], true, false, 'runtime_check'),
     ],
     config_manager: [
-      resolvedTool('workspace_read', 'agents.tool.workspaceRead.title', ['read', 'glob', 'grep']),
+      resolvedTool('filesystem_read', 'agents.tool.filesystemRead.title', ['read', 'glob', 'grep']),
       resolvedTool('skills', 'agents.tool.skills.title', ['skill', 'read']),
     ],
     automation: [
-      resolvedTool('workspace_read', 'agents.tool.workspaceRead.title', ['read', 'glob', 'grep']),
+      resolvedTool('filesystem_read', 'agents.tool.filesystemRead.title', ['read', 'glob', 'grep']),
       resolvedTool('skills', 'agents.tool.skills.title', ['skill', 'read']),
     ],
   }

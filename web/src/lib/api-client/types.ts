@@ -207,8 +207,8 @@ export interface AgentToolApprovalPresentation {
   args_hash: string
   can_remember?: boolean
   rule_matcher_version?: number
-  rule_command_key?: string
-  rule_command_pattern?: string
+  rule_match_key?: string
+  rule_display_pattern?: string
 }
 
 export interface AgentAskInteraction {

@@ -39,9 +39,9 @@ func TestWritingAssemblyComposesSkillAndHarnessStateReadAdapters(t *testing.T) {
 		t.Fatal(err)
 	}
 	settings := config.ResolvedAgentToolSettings{
-		config.AgentToolWorkspaceRead: true,
-		config.AgentToolSkills:        true,
-		config.AgentToolHarnessState:  true,
+		config.AgentToolFilesystemRead: true,
+		config.AgentToolSkills:         true,
+		config.AgentToolHarnessState:   true,
 	}
 	assembly, err := buildChatModelAgentAssembly(context.Background(), cfg, chatModelAgentAssemblySpec{
 		Kind: config.AgentKindIDE, SystemPrompt: mustTestPromptComposition(t, config.AgentKindIDE, "Stable base instruction."),
@@ -81,8 +81,8 @@ func TestWritingAndGameAssembliesInjectAvailableSkillDescriptions(t *testing.T) 
 	cfg := &config.Config{Workspace: workspace, SkillsDir: skillsDir}
 	cfg.SetDataDir(filepath.Join(root, "data"))
 	settings := config.ResolvedAgentToolSettings{
-		config.AgentToolSkills:        true,
-		config.AgentToolWorkspaceRead: true,
+		config.AgentToolSkills:         true,
+		config.AgentToolFilesystemRead: true,
 	}
 	for _, kind := range []string{config.AgentKindIDE, config.AgentKindInteractiveStory} {
 		t.Run(kind, func(t *testing.T) {
@@ -151,7 +151,7 @@ func TestPublicDefinitionReturnsTheInjectedSkillsComposition(t *testing.T) {
 	writeAgentSkillFixture(t, skillsDir, "structure", "Restructure a draft while preserving its intent.")
 
 	tools := config.AgentToolOverride{
-		config.AgentToolWorkspaceRead: true, config.AgentToolSkills: true,
+		config.AgentToolFilesystemRead: true, config.AgentToolSkills: true,
 		config.AgentToolWorkspaceWrite: false, config.AgentToolShell: false,
 		config.AgentToolWebSearch: false, config.AgentToolWebFetch: false,
 		config.AgentToolBrowser: false, config.AgentToolAsk: false,

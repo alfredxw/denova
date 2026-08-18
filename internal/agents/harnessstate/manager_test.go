@@ -85,7 +85,7 @@ name: Reviewer
 description: Review a bounded artifact.
 parents: [general]
 model_profile: default
-tools: [workspace_read]
+tools: [filesystem_read]
 ---
 
 Return concrete findings with evidence.`)},
@@ -184,7 +184,7 @@ func TestManagerRejectsStateThatWouldBeTruncatedAtRuntime(t *testing.T) {
 id: large
 description: Review a bounded artifact.
 parents: [general]
-tools: [workspace_read]
+tools: [filesystem_read]
 ---
 
 ` + strings.Repeat("x", fragmentLimit+1))},
@@ -243,7 +243,7 @@ id: future
 description: Use a model profile added after the Lab was opened.
 parents: [general]
 model_profile: future
-tools: [workspace_read]
+tools: [filesystem_read]
 ---
 
 Review the supplied artifact.`)}

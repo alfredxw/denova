@@ -121,7 +121,7 @@ func TestReadReportsMissingResourcesAsSuccessfulObservations(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, _, expectedErr := workspace.stat("missing.md", false)
+	_, expectedErr := workspace.resolveReadPath("missing.md", false)
 	if expectedErr == nil {
 		t.Fatal("missing workspace path unexpectedly exists")
 	}
@@ -309,9 +309,14 @@ func TestReadProjectionBudgetsEnvelopeAndAdvancesOnlyVisibleLines(t *testing.T) 
 	}
 }
 
-func TestReadRejectsTraversalEscapingSymlinkOversizeAndBinary(t *testing.T) {
+func TestReadSupportsExternalPathsAndRejectsBinaryContent(t *testing.T) {
 	root := t.TempDir()
 	outside := t.TempDir()
+	mustWriteTestFile(t, outside, "escape.txt", "external through symlink\n")
+	siblingPath := filepath.Join(filepath.Dir(root), "external.txt")
+	if err := os.WriteFile(siblingPath, []byte("external through parent\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	mustWriteTestFile(t, root, "long.txt", strings.Repeat("x", defaultResultBytes+1))
 	if err := os.WriteFile(filepath.Join(root, "binary.txt"), []byte{0xff, 0xfe}, 0o644); err != nil {
 		t.Fatal(err)
@@ -330,10 +335,13 @@ func TestReadRejectsTraversalEscapingSymlinkOversizeAndBinary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, arguments := range []string{`{"path":"../escape.txt"}`, `{"path":"binary.txt"}`} {
-		if _, err := definition.Tool.Run(context.Background(), arguments); err == nil {
-			t.Fatalf("unsafe read succeeded: %s", arguments)
-		}
+	if _, err := definition.Tool.Run(context.Background(), `{"path":"binary.txt"}`); err == nil {
+		t.Fatal("binary read succeeded")
+	}
+	parentRead, err := definition.Tool.Run(context.Background(), `{"path":"../external.txt"}`)
+	if err != nil || !strings.Contains(parentRead.ModelContent, "external through parent") ||
+		!strings.Contains(parentRead.ModelContent, filepath.ToSlash(siblingPath)) {
+		t.Fatalf("parent external read = %#v, %v", parentRead, err)
 	}
 	first, err := definition.Tool.Run(context.Background(), `{"path":"long.txt"}`)
 	if err != nil {
@@ -360,8 +368,10 @@ func TestReadRejectsTraversalEscapingSymlinkOversizeAndBinary(t *testing.T) {
 		t.Fatalf("continued byte offset = %#v", continuedEnvelope.Limits)
 	}
 	if runtime.GOOS != "windows" {
-		if _, err := definition.Tool.Run(context.Background(), `{"path":"outside/escape.txt"}`); err == nil {
-			t.Fatal("escaping symlink read succeeded")
+		symlinkRead, err := definition.Tool.Run(context.Background(), `{"path":"outside/escape.txt"}`)
+		if err != nil || !strings.Contains(symlinkRead.ModelContent, "external through symlink") ||
+			!strings.Contains(symlinkRead.ModelContent, filepath.ToSlash(filepath.Join(outside, "escape.txt"))) {
+			t.Fatalf("symlink external read = %#v, %v", symlinkRead, err)
 		}
 	}
 }
@@ -478,6 +488,11 @@ func TestLocalWorkspaceGlobAndGrep(t *testing.T) {
 	mustWriteTestFile(t, root, "chapters/two.md", "second dragon\n")
 	mustWriteTestFile(t, root, "chapters/ignored.md", "ignored dragon\n")
 	mustWriteTestFile(t, root, ".hidden.md", "hidden dragon\n")
+	external := t.TempDir()
+	mustWriteTestFile(t, external, "references/style.md", "external dragon style\n")
+	if err := os.MkdirAll(filepath.Join(external, "empty-reference"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.MkdirAll(filepath.Join(root, "empty-visible"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -528,6 +543,16 @@ func TestLocalWorkspaceGlobAndGrep(t *testing.T) {
 	if result, err := workspace.Glob(context.Background(), GlobRequest{Paths: manyPaths, Hidden: true, Gitignore: true}); err != nil || len(result.Entries) != 1 {
 		t.Fatalf("glob should accept more than 256 requested paths: result=%#v err=%v", result, err)
 	}
+	externalPattern := filepath.ToSlash(filepath.Join(external, "**", "*.md"))
+	externalMatches, err := workspace.Glob(context.Background(), GlobRequest{
+		Paths: []string{externalPattern, filepath.Join(external, "empty-reference")}, Hidden: true, Gitignore: true, Limit: 20,
+	})
+	wantExternalFile := filepath.ToSlash(filepath.Join(external, "references", "style.md"))
+	wantExternalDirectory := filepath.ToSlash(filepath.Join(external, "empty-reference")) + "/"
+	if err != nil || !containsTestString(externalMatches.Entries, wantExternalFile) ||
+		!containsTestString(externalMatches.Entries, wantExternalDirectory) {
+		t.Fatalf("external glob = %#v, %v", externalMatches, err)
+	}
 	grepCommand := "rg -C 1 dragon"
 	content, err := workspace.Grep(context.Background(), GrepRequest{Command: grepCommand})
 	if err != nil || len(content.Entries) != 1 || !content.Truncated || content.NextCursor == "" {
@@ -568,6 +593,13 @@ func TestLocalWorkspaceGlobAndGrep(t *testing.T) {
 	counts, err := unpaged.Grep(context.Background(), GrepRequest{Command: "rg --count-matches dragon"})
 	if err != nil || strings.Join(counts.Entries, ",") != "chapters/one.md:1,chapters/two.md:1" {
 		t.Fatalf("grep count mode = %#v, %v", counts, err)
+	}
+	externalGrep, err := unpaged.Grep(context.Background(), GrepRequest{
+		Command: "rg -n dragon -- " + shellQuoteTestWord(filepath.Join(external, "references")),
+	})
+	if err != nil || len(externalGrep.Entries) != 1 || !strings.Contains(externalGrep.Entries[0], wantExternalFile) ||
+		!strings.Contains(externalGrep.Entries[0], "external dragon style") {
+		t.Fatalf("external grep = %#v, %v", externalGrep, err)
 	}
 }
 
@@ -1282,10 +1314,10 @@ func TestWorkspaceDirectoryAndIgnoreScansEnforceAggregateBudgets(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer root.Close()
-	if _, err := readWorkspaceDirectory(context.Background(), root, ".", &workspaceScanBudget{entries: maxWorkspaceScanEntries}); err == nil {
+	if _, err := readFilesystemDirectory(context.Background(), root, ".", &filesystemScanBudget{entries: maxFilesystemScanEntries}); err == nil {
 		t.Fatal("directory scan exceeded its aggregate entry budget")
 	}
-	if _, err := readWorkspaceIgnorePatterns(context.Background(), root, ".", nil, &workspaceIgnoreBudget{bytes: maxWorkspaceIgnoreBytes}); err == nil {
+	if _, err := readFilesystemIgnorePatterns(context.Background(), root, ".", nil, &filesystemIgnoreBudget{bytes: maxFilesystemIgnoreBytes}); err == nil {
 		t.Fatal("ignore scan exceeded its aggregate byte budget")
 	}
 }

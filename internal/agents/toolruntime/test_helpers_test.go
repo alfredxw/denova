@@ -37,7 +37,7 @@ func testToolContext(name, callID string) *agent.ToolContext {
 	var descriptor agent.ToolDescriptor
 	switch name {
 	case "read", "grep", "search_story_history":
-		descriptor = producttools.BoundedReadDescriptor(agent.ToolSourceRead, config.AgentToolWorkspaceRead)
+		descriptor = producttools.BoundedReadDescriptor(agent.ToolSourceRead, config.AgentToolFilesystemRead)
 		if name == "search_story_history" {
 			descriptor = producttools.BoundedReadDescriptor(agenttool.ToolSourceHistory, "")
 		}

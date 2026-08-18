@@ -48,7 +48,7 @@ func TestAskRegistrationRequiresInteractiveTopLevelHost(t *testing.T) {
 func askOnlyAgentConfig(t *testing.T, kind string) *config.Config {
 	t.Helper()
 	allOff := config.AgentToolOverride{
-		config.AgentToolWorkspaceRead: false, config.AgentToolWorkspaceWrite: false,
+		config.AgentToolFilesystemRead: false, config.AgentToolWorkspaceWrite: false,
 		config.AgentToolShell: false, config.AgentToolWebSearch: false,
 		config.AgentToolWebFetch: false, config.AgentToolBrowser: false,
 		config.AgentToolAsk: false, config.AgentToolTodo: false,

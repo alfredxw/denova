@@ -56,14 +56,14 @@ func TestCatalogReadCapabilityFollowsTheBroadestRegisteredAdapter(t *testing.T) 
 	catalog := NewCatalog(&config.Config{Workspace: t.TempDir()}, nil, RuntimeExecutables{})
 
 	combined, err := catalog.Workspace(config.ResolvedAgentToolSettings{
-		config.AgentToolWorkspaceRead: true,
-		config.AgentToolSkills:        true,
+		config.AgentToolFilesystemRead: true,
+		config.AgentToolSkills:         true,
 	}, referenceBinding)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if capability := descriptorCapabilityForTool(t, combined, "read"); capability != config.AgentToolWorkspaceRead {
-		t.Fatalf("combined read capability = %q, want %q", capability, config.AgentToolWorkspaceRead)
+	if capability := descriptorCapabilityForTool(t, combined, "read"); capability != config.AgentToolFilesystemRead {
+		t.Fatalf("combined read capability = %q, want %q", capability, config.AgentToolFilesystemRead)
 	}
 
 	referenceOnly, err := catalog.Workspace(config.ResolvedAgentToolSettings{config.AgentToolSkills: true}, referenceBinding)
@@ -94,7 +94,7 @@ func TestCatalogResolvesLoginEnvironmentOnlyForEnabledShell(t *testing.T) {
 		}},
 	)
 	if _, err := catalog.Workspace(config.ResolvedAgentToolSettings{
-		config.AgentToolWorkspaceRead: true,
+		config.AgentToolFilesystemRead: true,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +123,7 @@ func TestCatalogWorkspaceBindsProductResultLimitToDefinitionsAndAdapters(t *test
 		RuntimeExecutables{},
 	)
 	definitions, err := catalog.Workspace(config.ResolvedAgentToolSettings{
-		config.AgentToolWorkspaceRead:  true,
+		config.AgentToolFilesystemRead: true,
 		config.AgentToolWorkspaceWrite: true,
 	})
 	if err != nil {
@@ -184,7 +184,7 @@ func TestCatalogWorkspaceUsesHostRipgrepExecutable(t *testing.T) {
 		nil,
 		RuntimeExecutables{Ripgrep: os.Args[0]},
 	)
-	filesystemTools, err := catalog.Workspace(config.ResolvedAgentToolSettings{config.AgentToolWorkspaceRead: true})
+	filesystemTools, err := catalog.Workspace(config.ResolvedAgentToolSettings{config.AgentToolFilesystemRead: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -221,7 +221,7 @@ func TestCatalogDefaultGrepBudgetPaginatesContextBlowingOutput(t *testing.T) {
 		nil,
 		RuntimeExecutables{Ripgrep: os.Args[0]},
 	)
-	definitions, err := catalog.Workspace(config.ResolvedAgentToolSettings{config.AgentToolWorkspaceRead: true})
+	definitions, err := catalog.Workspace(config.ResolvedAgentToolSettings{config.AgentToolFilesystemRead: true})
 	if err != nil {
 		t.Fatal(err)
 	}

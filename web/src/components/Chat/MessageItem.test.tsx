@@ -1649,7 +1649,7 @@ describe('MessageItem', () => {
               mode: 'ask', tool_name: 'bash', command: 'npm test', cwd: '.',
               risk: 'high', rule_id: 'bash_unlisted_command', args_hash: 'abc',
         can_remember: true, rule_matcher_version: 1,
-        rule_command_key: '["npm","test"]', rule_command_pattern: 'npm test ...',
+        rule_match_key: '["npm","test"]', rule_display_pattern: 'npm test ...',
             },
           },
         }}

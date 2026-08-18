@@ -42,7 +42,7 @@ export function ToolApprovalPanel({ message, onResolve, embedded = false, onLayo
   const status = localResolution?.status || interaction.status
   const selectedOption = (localResolution?.answers || interaction.answers || [])[0]?.selected_options?.[0]?.id
   const pending = status === 'pending'
-  const canAlwaysAllow = approval.can_remember === true && Boolean(approval.rule_command_pattern)
+  const canAlwaysAllow = approval.can_remember === true && Boolean(approval.rule_display_pattern)
   const statusKey = pending
     ? 'waiting'
     : status === 'cancelled'
@@ -120,7 +120,7 @@ export function ToolApprovalPanel({ message, onResolve, embedded = false, onLayo
         <span><span className="font-medium text-[var(--nova-text-faint)]">{t('agentApproval.approval.reason')}: </span>{reason}</span>
         {canAlwaysAllow && (
           <span className="break-words rounded border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-1.5">
-            {t('agentApproval.approval.workspaceRuleScope', { pattern: approval.rule_command_pattern })}
+            {t('agentApproval.approval.workspaceRuleScope', { pattern: approval.rule_display_pattern })}
           </span>
         )}
       </div>
@@ -179,6 +179,7 @@ function approvalReasonKey(ruleID: string) {
     'bash_unlisted_command', 'bash_unclassified', 'pwsh_dynamic_syntax', 'pwsh_parse_failed',
     'pwsh_unlisted_command', 'browser_arguments_unknown', 'browser_remote_mutation',
     'browser_command_unknown', 'browser_action_unknown', 'browser_network_access',
+    'external_filesystem_read',
   ])
   return known.has(ruleID) ? `agentApproval.reason.${ruleID}` : 'agentApproval.reason.generic'
 }

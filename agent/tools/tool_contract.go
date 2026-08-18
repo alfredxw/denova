@@ -19,12 +19,12 @@ const (
 	defaultResultEntries     = 10_000
 	maxConfiguredResultBytes = 64 * 1024 * 1024
 	maxConfiguredEntries     = 100_000
-	maxWorkspaceScanEntries  = 100_000
-	maxWorkspaceIgnoreBytes  = 1024 * 1024
-	maxWorkspaceIgnoreRules  = 10_000
+	maxFilesystemScanEntries = 100_000
+	maxFilesystemIgnoreBytes = 1024 * 1024
+	maxFilesystemIgnoreRules = 10_000
 	maxMutationFileBytes     = 16 * 1024 * 1024
 	maxMutationEdits         = 256
-	resultTruncatedMarker    = "[workspace result truncated at the configured safety limit; use pagination or narrow the path or pattern]"
+	resultTruncatedMarker    = "[filesystem result truncated at the configured safety limit; use pagination or narrow the path or pattern]"
 	processTruncatedMarker   = "[process output truncated; inspect a narrower command]"
 )
 

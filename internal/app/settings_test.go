@@ -508,18 +508,19 @@ func TestApplyLayeredSettingsToConfigClearsMaxIterationWhenUnset(t *testing.T) {
 	}
 }
 
-func settingsApprovalRule(id, workspace, commandKey, commandPattern string) config.AgentApprovalRule {
+func settingsApprovalRule(id, workspace, matchKey, displayPattern string) config.AgentApprovalRule {
 	return config.AgentApprovalRule{
 		ID:               id,
 		Scope:            config.AgentApprovalRuleWorkspace,
 		ProjectID:        "project-one",
 		Workspace:        workspace,
 		ToolName:         "bash",
+		Matcher:          config.AgentApprovalMatcherShell,
 		MatcherVersion:   config.AgentApprovalRuleMatcherVersion,
-		CommandKey:       commandKey,
-		CommandPattern:   commandPattern,
+		MatchKey:         matchKey,
+		DisplayPattern:   displayPattern,
 		ApprovedArgsHash: strings.Repeat("a", 64),
-		ApprovedCommand:  commandPattern,
+		ApprovedInput:    displayPattern,
 		CreatedAt:        time.Now().UTC(),
 	}
 }

@@ -39,25 +39,25 @@ func ArgumentsHash(arguments string) string {
 // The deterministic ID makes retries idempotent across settings writes and
 // session recovery.
 func NewWorkspaceRule(
-	projectID, workspace, toolName string,
+	projectID, workspace string,
 	proposal RuleProposal,
-	approvedArgsHash, approvedCommand, approvedCwd, sourceRuleID string,
+	approvedArgsHash, approvedInput, approvedContext, sourceRuleID string,
 	createdAt time.Time,
 ) (config.AgentApprovalRule, error) {
 	projectID = strings.TrimSpace(projectID)
 	workspace = canonicalWorkspace(workspace)
-	toolName = strings.ToLower(strings.TrimSpace(toolName))
+	toolName := strings.ToLower(strings.TrimSpace(proposal.ToolName))
 	approvedArgsHash = strings.ToLower(strings.TrimSpace(approvedArgsHash))
 	digest := sha256.Sum256([]byte(fmt.Sprintf(
-		"%s\x00%s\x00%s\x00%d\x00%s",
-		projectID, workspace, toolName, proposal.MatcherVersion, proposal.CommandKey,
+		"%s\x00%s\x00%s\x00%s\x00%d\x00%s",
+		projectID, workspace, toolName, proposal.Matcher, proposal.MatcherVersion, proposal.MatchKey,
 	)))
 	rule := config.AgentApprovalRule{
 		ID: "approval-" + hex.EncodeToString(digest[:16]), Scope: config.AgentApprovalRuleWorkspace,
 		ProjectID: projectID, Workspace: workspace, ToolName: toolName,
-		MatcherVersion: proposal.MatcherVersion, CommandKey: proposal.CommandKey,
-		CommandPattern: proposal.CommandPattern, ApprovedArgsHash: approvedArgsHash,
-		ApprovedCommand: strings.TrimSpace(approvedCommand), ApprovedCwd: strings.TrimSpace(approvedCwd),
+		Matcher: proposal.Matcher, MatcherVersion: proposal.MatcherVersion, MatchKey: proposal.MatchKey,
+		DisplayPattern: proposal.DisplayPattern, ApprovedArgsHash: approvedArgsHash,
+		ApprovedInput: strings.TrimSpace(approvedInput), ApprovedContext: strings.TrimSpace(approvedContext),
 		SourceRuleID: strings.TrimSpace(sourceRuleID), CreatedAt: createdAt.UTC(),
 	}
 	if err := config.ValidateAgentApprovalRules([]config.AgentApprovalRule{rule}); err != nil {
@@ -70,13 +70,13 @@ func matchingWorkspaceRule(request Request, proposal RuleProposal) *config.Agent
 	if len(request.Rules) == 0 {
 		return nil
 	}
-	toolName := strings.ToLower(strings.TrimSpace(request.ToolName))
+	toolName := strings.ToLower(strings.TrimSpace(proposal.ToolName))
 	workspace := canonicalWorkspace(request.Workspace)
 	projectID := strings.TrimSpace(request.ProjectID)
 	for index := range request.Rules {
 		rule := request.Rules[index]
 		if rule.Scope != config.AgentApprovalRuleWorkspace || rule.ToolName != toolName ||
-			rule.MatcherVersion != proposal.MatcherVersion || rule.CommandKey != proposal.CommandKey {
+			rule.Matcher != proposal.Matcher || rule.MatcherVersion != proposal.MatcherVersion || rule.MatchKey != proposal.MatchKey {
 			continue
 		}
 		if rule.ProjectID != "" && rule.ProjectID != projectID {

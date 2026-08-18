@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"path"
 	"path/filepath"
 	"strings"
@@ -13,7 +14,7 @@ import (
 )
 
 type localTextReadInput struct {
-	Path       string `json:"path" jsonschema_description:"Absolute or workspace-relative path of the UTF-8 text file to read."`
+	Path       string `json:"path" jsonschema_description:"Project-relative or absolute local path of the UTF-8 text file to read. External paths remain subject to permission."`
 	Offset     int    `json:"offset,omitempty" jsonschema:"minimum=1" jsonschema_description:"One-based first line to return; defaults to 1."`
 	ByteOffset int    `json:"byte_offset,omitempty" jsonschema:"minimum=0" jsonschema_description:"Zero-based UTF-8 byte offset within the selected first line, used only with an exact next_byte_offset continuation."`
 	Limit      int    `json:"limit,omitempty" jsonschema:"minimum=1" jsonschema_description:"Maximum selected lines to return; defaults to 2000."`
@@ -31,34 +32,29 @@ func LocalTextAdapter(workspace *LocalWorkspace) (ReadAdapter, error) {
 		if hasResourceScheme(input) {
 			return false, nil
 		}
-		_, info, err := workspace.stat(input, false)
+		target, err := workspace.resolveReadPath(input, false)
 		if err != nil {
 			return false, err
 		}
-		return info.Mode().IsRegular(), nil
+		return target.info.Mode().IsRegular(), nil
 	}, func(ctx context.Context, input localTextReadInput) (ReadResult, error) {
 		return workspace.readText(ctx, input)
 	})
 }
 
 func (workspace *LocalWorkspace) readText(ctx context.Context, input localTextReadInput) (ReadResult, error) {
-	relative, info, err := workspace.stat(input.Path, false)
+	target, err := workspace.resolveReadPath(input.Path, false)
 	if err != nil {
 		return ReadResult{}, err
 	}
-	if !info.Mode().IsRegular() {
-		return ReadResult{}, fmt.Errorf("read local_text only supports regular files: %s", relative)
+	if !target.info.Mode().IsRegular() {
+		return ReadResult{}, fmt.Errorf("read local_text only supports regular files: %s", target.display)
 	}
 	limits := workspace.Limits()
 	offset, limit := normalizeReadWindow(input.Offset, input.Limit, limits.DefaultReadLines)
-	root, err := workspace.openRoot()
+	file, err := os.Open(target.absolute)
 	if err != nil {
-		return ReadResult{}, err
-	}
-	defer root.Close()
-	file, err := root.Open(filepath.FromSlash(relative))
-	if err != nil {
-		return ReadResult{}, fmt.Errorf("open workspace file %s: %w", relative, err)
+		return ReadResult{}, fmt.Errorf("open filesystem file %s: %w", target.display, err)
 	}
 	defer file.Close()
 	selection, err := selectReadWindow(ctx, file, offset, input.ByteOffset, limit, limits.MaxResultBytes)
@@ -66,20 +62,20 @@ func (workspace *LocalWorkspace) readText(ctx context.Context, input localTextRe
 		return ReadResult{}, err
 	}
 	if !utf8.ValidString(selection.content) {
-		return ReadResult{}, fmt.Errorf("read local_text only supports UTF-8 text files: %s", relative)
+		return ReadResult{}, fmt.Errorf("read local_text only supports UTF-8 text files: %s", target.display)
 	}
 	return ReadResult{
-		Path: relative, Kind: "local_text", Content: selection.content,
+		Path: target.display, Kind: "local_text", Content: selection.content,
 		Offset: offset, ByteOffset: input.ByteOffset, Limit: selection.returned,
 		Truncated: selection.truncated, NextOffset: selection.nextOffset, NextByteOffset: selection.nextByteOffset,
 	}, nil
 }
 
 type directoryReadInput struct {
-	Path   string `json:"path" jsonschema_description:"Absolute or workspace-relative directory path to read."`
-	Depth  int    `json:"depth,omitempty" jsonschema:"minimum=1" jsonschema_description:"Maximum directory depth; defaults to the workspace read policy."`
+	Path   string `json:"path" jsonschema_description:"Project-relative or absolute local directory path to read. External paths remain subject to permission."`
+	Depth  int    `json:"depth,omitempty" jsonschema:"minimum=1" jsonschema_description:"Maximum directory depth; defaults to the filesystem read policy."`
 	Hidden bool   `json:"hidden,omitempty" jsonschema_description:"Include dot-prefixed entries; defaults to false."`
-	Limit  int    `json:"limit,omitempty" jsonschema:"minimum=1" jsonschema_description:"Maximum returned entries; defaults to the workspace read policy."`
+	Limit  int    `json:"limit,omitempty" jsonschema:"minimum=1" jsonschema_description:"Maximum returned entries; defaults to the filesystem read policy."`
 }
 
 // DirectoryAdapter reads a stable bounded directory tree.
@@ -94,11 +90,11 @@ func DirectoryAdapter(workspace *LocalWorkspace) (ReadAdapter, error) {
 		if hasResourceScheme(input) {
 			return false, nil
 		}
-		_, info, err := workspace.stat(input, true)
+		target, err := workspace.resolveReadPath(input, true)
 		if err != nil {
 			return false, err
 		}
-		return info.IsDir(), nil
+		return target.info.IsDir(), nil
 	}, func(ctx context.Context, input directoryReadInput) (ReadResult, error) {
 		return workspace.readDirectory(ctx, input)
 	})
@@ -108,12 +104,12 @@ func (workspace *LocalWorkspace) readDirectory(ctx context.Context, input direct
 	if strings.TrimSpace(input.Path) == "" {
 		input.Path = "."
 	}
-	relative, info, err := workspace.stat(input.Path, true)
+	target, err := workspace.resolveReadPath(input.Path, true)
 	if err != nil {
 		return ReadResult{}, err
 	}
-	if !info.IsDir() {
-		return ReadResult{}, fmt.Errorf("read directory adapter requires a directory: %s", relative)
+	if !target.info.IsDir() {
+		return ReadResult{}, fmt.Errorf("read directory adapter requires a directory: %s", target.display)
 	}
 	limits := workspace.Limits()
 	depth := input.Depth
@@ -130,20 +126,26 @@ func (workspace *LocalWorkspace) readDirectory(ctx context.Context, input direct
 	if limit > limits.MaxResultEntries {
 		return ReadResult{}, fmt.Errorf("directory limit cannot exceed %d", limits.MaxResultEntries)
 	}
-	root, err := workspace.openRoot()
+	rootPath := workspace.root
+	startDirectory := target.relative
+	if target.scope == FilesystemScopeExternal {
+		rootPath = target.absolute
+		startDirectory = "."
+	}
+	root, err := os.OpenRoot(rootPath)
 	if err != nil {
-		return ReadResult{}, err
+		return ReadResult{}, fmt.Errorf("open filesystem directory %s: %w", target.display, err)
 	}
 	defer root.Close()
 	entries := make([]string, 0, min(limit, defaultDirectoryItems))
 	outputBytes := 0
 	truncated := false
-	scanBudget := &workspaceScanBudget{}
+	scanBudget := &filesystemScanBudget{}
 	var walk func(string, int) error
 	walk = func(directory string, level int) error {
-		children, err := readWorkspaceDirectory(ctx, root, directory, scanBudget)
+		children, err := readFilesystemDirectory(ctx, root, directory, scanBudget)
 		if err != nil {
-			return fmt.Errorf("read workspace directory %s: %w", directory, err)
+			return fmt.Errorf("read filesystem directory %s: %w", directory, err)
 		}
 		for _, child := range children {
 			if err := contextError(ctx); err != nil {
@@ -164,6 +166,9 @@ func (workspace *LocalWorkspace) readDirectory(ctx context.Context, input direct
 				childPath = path.Join(directory, child.Name())
 			}
 			entry := childPath
+			if target.scope == FilesystemScopeExternal {
+				entry = filepath.ToSlash(filepath.Join(target.absolute, filepath.FromSlash(childPath)))
+			}
 			if child.IsDir() {
 				entry += "/"
 			}
@@ -193,11 +198,11 @@ func (workspace *LocalWorkspace) readDirectory(ctx context.Context, input direct
 		}
 		return nil
 	}
-	if err := walk(relative, 1); err != nil {
+	if err := walk(startDirectory, 1); err != nil {
 		return ReadResult{}, err
 	}
 	result := ReadResult{
-		Path: relative, Kind: "directory", Content: strings.Join(entries, "\n"),
+		Path: target.display, Kind: "directory", Content: strings.Join(entries, "\n"),
 		Limit: len(entries), Truncated: truncated,
 	}
 	if !truncated {
@@ -302,7 +307,7 @@ func selectReadWindow(ctx context.Context, source io.Reader, offset, byteOffset,
 				continue
 			}
 			if !errors.Is(err, io.EOF) {
-				return readWindowSelection{}, fmt.Errorf("read workspace file: %w", err)
+				return readWindowSelection{}, fmt.Errorf("read filesystem file: %w", err)
 			}
 			if len(fragment) == 0 {
 				return readWindowSelection{content: selected.String(), returned: selectedLines}, nil

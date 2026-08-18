@@ -15,7 +15,7 @@ import (
 
 func TestWorkspaceToolsFactoryBuildsOnlyEnabledReadSurface(t *testing.T) {
 	workspace := t.TempDir()
-	tools, err := agenttoolruntime.NewCatalog(&config.Config{Workspace: workspace}).Workspace(config.ResolvedAgentToolSettings{config.AgentToolWorkspaceRead: true})
+	tools, err := agenttoolruntime.NewCatalog(&config.Config{Workspace: workspace}).Workspace(config.ResolvedAgentToolSettings{config.AgentToolFilesystemRead: true})
 	if err != nil {
 		t.Fatal(err)
 	}

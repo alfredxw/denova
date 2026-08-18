@@ -98,7 +98,7 @@ func outputProtocolForAgent(agentKind string) string {
 		if agentKind == config.AgentKindHarnessOptimizer {
 			return "- Harness Optimizer has no fixed JSON output protocol. Report the evidence, State Diff, validation result, and whether the changes were recorded. Never claim a change that was not actually completed."
 		}
-		return "- General Agent has no fixed JSON output protocol. Perform all file changes through enabled tools and stay within the current Project root."
+		return "- General Agent has no fixed JSON output protocol. Perform all file changes through enabled tools. Mutations must stay within the current Project root; explicitly requested external local sources may be read through read, glob, or grep subject to permission."
 	case config.AgentKindInteractiveStory:
 		return strings.Join([]string{
 			"- Output only the story prose that can be shown on the story stage for this turn.",
@@ -120,7 +120,7 @@ func outputProtocolForAgent(agentKind string) string {
 	case config.AgentKindAutomation:
 		return "- The final output must report what was actually completed, written paths, and items awaiting user confirmation. Writes remain subject to the task write policy and tool permissions."
 	case config.AgentKindIDE:
-		return "- Writing Agent has no fixed JSON output protocol. Perform all file changes through enabled tools and respect workspace boundaries."
+		return "- Writing Agent has no fixed JSON output protocol. Perform all file changes through enabled tools. Book mutations must stay within the current Project; explicitly identified external references may be read subject to permission."
 	default:
 		return "- Follow the output protocol and backend validation for the current Agent call site."
 	}
@@ -129,7 +129,7 @@ func outputProtocolForAgent(agentKind string) string {
 func agentRuntimeContract(agentKind string) string {
 	switch agentKind {
 	case config.AgentKindGeneral:
-		return "- Stay within the current Project root. Discovery respects .gitignore; explicitly named paths remain addressable and shell commands retain native semantics. Modify .gitignore only when the user explicitly requests it."
+		return "- Keep all mutations within the current Project root. Discovery respects .gitignore; read, glob, and grep may inspect explicitly requested external local sources subject to permission. Shell commands retain native semantics. Modify .gitignore only when the user explicitly requests it."
 	case config.AgentKindHarnessOptimizer:
 		return strings.Join([]string{
 			"- Harness Optimizer reads trajectory and current User Harness resources through read, then modifies User State only through update_harness_state against the current revision.",

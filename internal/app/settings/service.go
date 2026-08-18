@@ -168,9 +168,9 @@ func (service *Service) EnsureAgentApprovalRule(rule config.AgentApprovalRule) (
 			}
 			if current.Scope != rule.Scope || current.ProjectID != rule.ProjectID ||
 				current.Workspace != rule.Workspace || current.ToolName != rule.ToolName ||
-				current.MatcherVersion != rule.MatcherVersion || current.CommandKey != rule.CommandKey ||
-				current.CommandPattern != rule.CommandPattern {
-				return config.Settings{}, fmt.Errorf("agent approval rule id %q is already bound to another command", rule.ID)
+				current.Matcher != rule.Matcher || current.MatcherVersion != rule.MatcherVersion || current.MatchKey != rule.MatchKey ||
+				current.DisplayPattern != rule.DisplayPattern {
+				return config.Settings{}, fmt.Errorf("agent approval rule id %q is already bound to another authorization boundary", rule.ID)
 			}
 			return config.PrepareUserSettingsForWrite(existing, existing)
 		}
@@ -181,8 +181,8 @@ func (service *Service) EnsureAgentApprovalRule(rule config.AgentApprovalRule) (
 		return created, err
 	}
 	slog.InfoContext(context.Background(), fmt.Sprintf(
-		"[app/settings] persisted workspace command approval rule id=%s project_id=%s pattern=%q path=%s",
-		rule.ID, rule.ProjectID, rule.CommandPattern, path,
+		"[app/settings] persisted workspace approval rule id=%s project_id=%s matcher=%s pattern=%q path=%s",
+		rule.ID, rule.ProjectID, rule.Matcher, rule.DisplayPattern, path,
 	))
 	_, err = service.refresh(Global(), config.SettingsLayerUser)
 	return created, err

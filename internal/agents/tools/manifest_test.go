@@ -15,9 +15,9 @@ func TestValidateAgainstManifestAcceptsGeneratedContractAndRejectsDrift(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	descriptor := boundedReadDescriptor(agent.ToolSourceRead, config.AgentToolWorkspaceRead, agent.ToolResultRecoveryRead)
+	descriptor := boundedReadDescriptor(agent.ToolSourceRead, config.AgentToolFilesystemRead, agent.ToolResultRecoveryRead)
 	definition := agent.ToolDefinition{Tool: tool, Descriptor: descriptor}
-	manifest := config.ResolveAgentToolManifestForGOOS(config.ResolvedAgentToolSettings{config.AgentToolWorkspaceRead: true}, config.AgentKindIDE, "linux")
+	manifest := config.ResolveAgentToolManifestForGOOS(config.ResolvedAgentToolSettings{config.AgentToolFilesystemRead: true}, config.AgentKindIDE, "linux")
 	if err := ValidateAgainstManifest(context.Background(), []agent.ToolDefinition{definition}, manifest); err != nil {
 		t.Fatalf("generated manifest rejected matching descriptor: %v", err)
 	}
@@ -54,11 +54,11 @@ func TestValidateAgainstManifestUsesPerToolRecoveryAndRuntimeLimit(t *testing.T)
 		t.Fatal(err)
 	}
 	const runtimeLimit = 64 << 10
-	descriptor := boundedReadDescriptor(agent.ToolSourceRead, config.AgentToolWorkspaceRead, agent.ToolResultRecoveryRerun)
+	descriptor := boundedReadDescriptor(agent.ToolSourceRead, config.AgentToolFilesystemRead, agent.ToolResultRecoveryRerun)
 	descriptor.MaxResultBytes = runtimeLimit
 	definition := agent.ToolDefinition{Tool: tool, Descriptor: descriptor}
 	manifest := config.ResolveAgentToolManifestForGOOS(
-		config.ResolvedAgentToolSettings{config.AgentToolWorkspaceRead: true},
+		config.ResolvedAgentToolSettings{config.AgentToolFilesystemRead: true},
 		config.AgentKindIDE, "linux", runtimeLimit,
 	)
 	if err := ValidateAgainstManifest(context.Background(), []agent.ToolDefinition{definition}, manifest); err != nil {
@@ -71,7 +71,7 @@ func TestValidateAgainstManifestUsesPerToolRecoveryAndRuntimeLimit(t *testing.T)
 }
 
 func TestManifestValidatorIdentityExcludesPresentation(t *testing.T) {
-	manifest := config.ResolveAgentToolManifestForGOOS(config.ResolvedAgentToolSettings{config.AgentToolWorkspaceRead: true}, config.AgentKindIDE, "linux")
+	manifest := config.ResolveAgentToolManifestForGOOS(config.ResolvedAgentToolSettings{config.AgentToolFilesystemRead: true}, config.AgentKindIDE, "linux")
 	identity, _, err := ManifestValidator(manifest)
 	if err != nil {
 		t.Fatal(err)
@@ -98,7 +98,7 @@ func TestManifestValidatorIdentityExcludesPresentation(t *testing.T) {
 }
 
 func TestManifestValidatorOwnsNestedManifestState(t *testing.T) {
-	manifest := config.ResolveAgentToolManifestForGOOS(config.ResolvedAgentToolSettings{config.AgentToolWorkspaceRead: true}, config.AgentKindIDE, "linux")
+	manifest := config.ResolveAgentToolManifestForGOOS(config.ResolvedAgentToolSettings{config.AgentToolFilesystemRead: true}, config.AgentKindIDE, "linux")
 	_, validate, err := ManifestValidator(manifest)
 	if err != nil {
 		t.Fatal(err)
@@ -107,7 +107,7 @@ func TestManifestValidatorOwnsNestedManifestState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	definition := agent.ToolDefinition{Tool: tool, Descriptor: boundedReadDescriptor(agent.ToolSourceRead, config.AgentToolWorkspaceRead, agent.ToolResultRecoveryRead)}
+	definition := agent.ToolDefinition{Tool: tool, Descriptor: boundedReadDescriptor(agent.ToolSourceRead, config.AgentToolFilesystemRead, agent.ToolResultRecoveryRead)}
 
 	manifest[0].ToolNames[0] = "changed"
 	delete(manifest[0].ToolDescriptors, "read")

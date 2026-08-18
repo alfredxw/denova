@@ -73,8 +73,8 @@ type PermissionPresentation struct {
 	ArgsHash           string             `json:"args_hash"`
 	CanRemember        bool               `json:"can_remember,omitempty"`
 	RuleMatcherVersion int                `json:"rule_matcher_version,omitempty"`
-	RuleCommandKey     string             `json:"rule_command_key,omitempty"`
-	RuleCommandPattern string             `json:"rule_command_pattern,omitempty"`
+	RuleMatchKey       string             `json:"rule_match_key,omitempty"`
+	RuleDisplayPattern string             `json:"rule_display_pattern,omitempty"`
 	Options            []PermissionOption `json:"options"`
 }
 

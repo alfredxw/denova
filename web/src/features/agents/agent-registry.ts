@@ -123,7 +123,7 @@ export const AGENTS: AgentViewDefinition[] = [
 export const SUB_AGENT_PARENT_KEYS: SubAgentParentKey[] = ['general', 'ide', 'interactive_story', 'config_manager']
 
 const TOOL_ICONS: Partial<Record<AgentToolCapability, LucideIcon>> = {
-  workspace_read: Search,
+  filesystem_read: Search,
   workspace_write: FileText,
   shell: Terminal,
   web_search: Globe2,

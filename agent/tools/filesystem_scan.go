@@ -11,21 +11,21 @@ import (
 	"sort"
 )
 
-const workspaceDirectoryReadBatch = 256
+const filesystemDirectoryReadBatch = 256
 
-type workspaceScanBudget struct {
+type filesystemScanBudget struct {
 	entries int
 }
 
-// readWorkspaceDirectory reads in batches so an attacker-controlled directory
+// readFilesystemDirectory reads in batches so an attacker-controlled directory
 // cannot force fs.ReadDir to allocate for an unbounded number of names before
 // policy is consulted. Sorting remains deterministic inside the explicit scan
 // budget; larger trees fail closed and ask the caller to narrow the path.
-func readWorkspaceDirectory(
+func readFilesystemDirectory(
 	ctx context.Context,
 	root *os.Root,
 	directory string,
-	budget *workspaceScanBudget,
+	budget *filesystemScanBudget,
 ) ([]fs.DirEntry, error) {
 	if err := contextError(ctx); err != nil {
 		return nil, err
@@ -35,16 +35,16 @@ func readWorkspaceDirectory(
 		return nil, err
 	}
 	defer file.Close()
-	entries := make([]fs.DirEntry, 0, workspaceDirectoryReadBatch)
+	entries := make([]fs.DirEntry, 0, filesystemDirectoryReadBatch)
 	for {
 		if err := contextError(ctx); err != nil {
 			return nil, err
 		}
-		batch, readErr := file.ReadDir(workspaceDirectoryReadBatch)
+		batch, readErr := file.ReadDir(filesystemDirectoryReadBatch)
 		if len(batch) > 0 {
 			budget.entries += len(batch)
-			if budget.entries > maxWorkspaceScanEntries {
-				return nil, fmt.Errorf("workspace directory scan exceeds %d entries; narrow the path", maxWorkspaceScanEntries)
+			if budget.entries > maxFilesystemScanEntries {
+				return nil, fmt.Errorf("filesystem directory scan exceeds %d entries; narrow the path", maxFilesystemScanEntries)
 			}
 			entries = append(entries, batch...)
 		}

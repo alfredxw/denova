@@ -25,7 +25,7 @@ export function ApprovalRulesEditor({ rules = [], revokingRuleID = '', onRevoke 
               <div key={rule.id} className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2.5">
                 <div className="grid min-w-0 gap-1">
                   <code className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-xs text-[var(--nova-text)]">
-                    {rule.command_pattern || rule.approved_command}
+                    {rule.display_pattern || rule.approved_input}
                   </code>
                   <div className="flex min-w-0 flex-wrap gap-x-3 gap-y-0.5 text-[10px] leading-4 text-[var(--nova-text-faint)]">
                     <span className="min-w-0 truncate">{t('agentApproval.rules.workspace')}: {rule.workspace || rule.project_id}</span>

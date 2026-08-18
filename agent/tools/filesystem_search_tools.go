@@ -13,7 +13,7 @@ import (
 	agent "github.com/alfredxw/denova/agent"
 )
 
-// GlobRequest describes one bounded, workspace-relative path discovery call.
+// GlobRequest describes one bounded local filesystem path discovery call.
 type GlobRequest struct {
 	Paths     []string
 	Hidden    bool
@@ -38,15 +38,15 @@ type SearchResult struct {
 	Warnings   []string
 }
 
-// GlobSearcher is the reusable workspace path-discovery seam. Identity covers
-// workspace scope, search policy, and implementation semantics.
+// GlobSearcher is the reusable local path-discovery seam. Identity covers the
+// default Project, search policy, and implementation semantics.
 type GlobSearcher interface {
 	Identity() agent.CapabilityIdentity
 	Glob(context.Context, GlobRequest) (SearchResult, error)
 }
 
-// GrepSearcher is the reusable workspace text-search seam. Identity covers
-// workspace scope, search policy, and implementation semantics. The interface
+// GrepSearcher is the reusable local text-search seam. Identity covers the
+// default Project, search policy, and implementation semantics. The interface
 // is deliberately separate from GlobSearcher because command compilation and
 // logical result pagination are grep-specific responsibilities.
 type GrepSearcher interface {
@@ -70,14 +70,14 @@ type Searcher interface {
 }
 
 type globInput struct {
-	Paths     []string `json:"paths,omitempty" jsonschema:"minItems=1" jsonschema_description:"Workspace-relative files, directories, or glob patterns. Omit to discover from the workspace root."`
+	Paths     []string `json:"paths,omitempty" jsonschema:"minItems=1" jsonschema_description:"Project-relative or absolute local files, directories, or glob patterns. Omit to discover from the current Project root."`
 	Hidden    *bool    `json:"hidden,omitempty" jsonschema_description:"Include dot-prefixed paths; defaults to true."`
 	Gitignore *bool    `json:"gitignore,omitempty" jsonschema_description:"Respect .gitignore rules; defaults to true."`
-	Limit     int      `json:"limit,omitempty" jsonschema:"minimum=1" jsonschema_description:"Maximum returned paths; defaults to the workspace search policy."`
+	Limit     int      `json:"limit,omitempty" jsonschema:"minimum=1" jsonschema_description:"Maximum returned paths; defaults to the filesystem search policy."`
 	Cursor    string   `json:"cursor,omitempty" jsonschema_description:"Opaque continuation cursor returned by an earlier identical glob call."`
 }
 
-// Glob defines multi-path workspace discovery. Directory reading remains the
+// Glob defines multi-path local filesystem discovery. Directory reading remains the
 // responsibility of read; glob only answers path-pattern questions.
 func Glob(searcher GlobSearcher, options ...DefinitionOption) (agent.ToolDefinition, error) {
 	if searcher == nil {
@@ -88,7 +88,7 @@ func Glob(searcher GlobSearcher, options ...DefinitionOption) (agent.ToolDefinit
 	}
 	descriptor := readDescriptor(options...)
 	descriptor.ResultRecoveryKind = agent.ToolResultRecoveryRerun
-	tool, err := agent.InferTool("glob", `Find workspace files or directories by path. A call may include several files, directories, or glob patterns; results are de-duplicated and bounded. Use read on a directory when you need its structure.`, func(ctx context.Context, input globInput) (agent.ToolResult, error) {
+	tool, err := agent.InferTool("glob", `Find local files or directories by path. Relative paths use the current Project; absolute paths may identify other local locations and remain subject to permission. A call may include several files, directories, or glob patterns; results are de-duplicated and bounded. Use read on a directory when you need its structure.`, func(ctx context.Context, input globInput) (agent.ToolResult, error) {
 		request := normalizeGlobRequest(GlobRequest{
 			Paths: input.Paths, Hidden: boolDefault(input.Hidden, true),
 			Gitignore: boolDefault(input.Gitignore, true), Limit: input.Limit, Cursor: input.Cursor,
@@ -111,14 +111,14 @@ func Glob(searcher GlobSearcher, options ...DefinitionOption) (agent.ToolDefinit
 }
 
 type grepInput struct {
-	Command     string `json:"command" jsonschema:"minLength=3,maxLength=65536" jsonschema_description:"A literal ripgrep command using native rg syntax. Always use rg, not grep. This is not a shell command: only | between rg stages is supported; never add head, tail, redirects, substitutions, or shell control syntax. Paths may be workspace-relative or absolute within the active workspace. Examples: rg -n 'TODO|FIXME' agent internal; rg -l -g '*.go' 'OpenWorkspace' .; rg -C 2 'failed' internal."`
+	Command     string `json:"command" jsonschema:"minLength=3,maxLength=65536" jsonschema_description:"A literal ripgrep command using native rg syntax. Always use rg, not grep. This is not a shell command: only | between rg stages is supported; never add head, tail, redirects, substitutions, or shell control syntax. Paths may be Project-relative or absolute local paths and remain subject to permission. Examples: rg -n 'TODO|FIXME' agent internal; rg -l -g '*.go' 'OpenWorkspace' .; rg -C 2 'failed' internal."`
 	Description string `json:"description,omitempty" jsonschema:"maxLength=256" jsonschema_description:"Brief user-facing search intent. Use the same language as the user's current input. Do not repeat the command."`
 	Cursor      string `json:"cursor,omitempty" jsonschema:"maxLength=8192" jsonschema_description:"Opaque next_cursor returned by the same normalized grep command."`
 }
 
-const grepToolContractVersion = 2
+const grepToolContractVersion = 3
 
-// Grep defines bounded workspace text search using a controlled rg command.
+// Grep defines bounded local text search using a controlled rg command.
 func Grep(searcher GrepSearcher, options ...DefinitionOption) (agent.ToolDefinition, error) {
 	if searcher == nil {
 		return agent.ToolDefinition{}, errors.New("grep GrepSearcher is nil")
@@ -129,7 +129,7 @@ func Grep(searcher GrepSearcher, options ...DefinitionOption) (agent.ToolDefinit
 	descriptor := readDescriptor(options...)
 	descriptor.ResultRecoveryKind = agent.ToolResultRecoveryRerun
 	descriptor.Presentation = agent.UniformToolPresentation(agent.ToolPresentationSearch)
-	tool, err := agent.InferTool("grep", `Search workspace text with native rg syntax. Always write rg, not grep. Commands run directly without a shell; only rg-to-rg pipelines are accepted. Use rg flags such as -l, -c, -g, and -C instead of head, tail, redirects, or shell control syntax. Workspace-relative paths and absolute paths inside the active workspace are accepted. Results are deterministic and bounded; continue a partial result with next_cursor.`, func(ctx context.Context, input grepInput) (agent.ToolResult, error) {
+	tool, err := agent.InferTool("grep", `Search local text with native rg syntax. Always write rg, not grep. Commands run directly without a shell; only rg-to-rg pipelines are accepted. Use rg flags such as -l, -c, -g, and -C instead of head, tail, redirects, or shell control syntax. Relative paths use the current Project; absolute local paths remain subject to permission. Results are deterministic and bounded; continue a partial result with next_cursor.`, func(ctx context.Context, input grepInput) (agent.ToolResult, error) {
 		request := normalizeGrepRequest(GrepRequest{Command: input.Command, Cursor: input.Cursor})
 		result, err := searcher.Grep(ctx, request)
 		if err != nil {

@@ -39,7 +39,7 @@ Set `value.kind` to one of:
 
 ### `tools`
 
-A map from exact `snapshot.tool_capabilities[].source` to boolean. Current capability vocabulary includes `workspace_read`, `workspace_write`, `shell`, `web_search`, `web_fetch`, `browser`, `ask`, `todo`, `skills`, `delegation`, `config_read`, `config_apply`, `event_read`, `lore_read`, `lore_write`, and `image_generation`. Use the runtime snapshot as authority because the catalog may evolve.
+A map from exact `snapshot.tool_capabilities[].source` to boolean. Current capability vocabulary includes `filesystem_read`, `workspace_write`, `shell`, `web_search`, `web_fetch`, `browser`, `ask`, `todo`, `skills`, `delegation`, `config_read`, `config_apply`, `event_read`, `lore_read`, `lore_write`, and `image_generation`. Use the runtime snapshot as authority because the catalog may evolve.
 
 ### `prompt`
 
@@ -154,7 +154,7 @@ config_apply({
       "enabled": true,
       "parents": ["ide"],
       "tools": {
-        "workspace_read": true,
+        "filesystem_read": true,
         "workspace_write": false,
         "shell": false,
         "web_search": false,

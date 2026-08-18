@@ -59,9 +59,11 @@ func workspaceRuleProposal(toolName, command, workspace, cwd string) *RulePropos
 		return nil
 	}
 	return &RuleProposal{
+		ToolName:       strings.ToLower(strings.TrimSpace(toolName)),
+		Matcher:        config.AgentApprovalMatcherShell,
 		MatcherVersion: config.AgentApprovalRuleMatcherVersion,
-		CommandKey:     string(encoded),
-		CommandPattern: pattern,
+		MatchKey:       string(encoded),
+		DisplayPattern: pattern,
 	}
 }
 

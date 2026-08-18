@@ -92,10 +92,13 @@ func (policy *denovaPermissionPolicy) Identity() agent.CapabilityIdentity {
 		ProjectID string
 		Workspace string
 		GOOS      string
-		Matcher   int
+		Matchers  []string
 	}{
 		policy.config.Mode, policy.config.AgentKind, policy.config.ProjectID, policy.config.Workspace,
-		policy.config.GOOS, config.AgentApprovalRuleMatcherVersion,
+		policy.config.GOOS, []string{
+			fmt.Sprintf("%s.v%d", config.AgentApprovalMatcherShell, config.AgentApprovalRuleMatcherVersion),
+			fmt.Sprintf("%s.v%d", config.AgentApprovalMatcherFilesystem, config.AgentApprovalRuleMatcherVersion),
+		},
 	}
 	encoded, _ := json.Marshal(payload)
 	digest := sha256.Sum256(encoded)
@@ -128,14 +131,16 @@ func (policy *denovaPermissionPolicy) Evaluate(ctx context.Context, request agen
 		Mode: string(policy.config.Mode), Command: decision.Command, Cwd: decision.Cwd,
 		Risk: string(decision.Risk), RuleID: decision.RuleID,
 	}
-	if decision.Command == "" {
+	if decision.Details != "" {
+		details.Details = strings.TrimSpace(strings.ToValidUTF8(decision.Details, "\uFFFD"))
+	} else if decision.Command == "" {
 		details.Details = strings.TrimSpace(strings.ToValidUTF8(string(request.Arguments), "\uFFFD"))
 	}
 	if decision.Remember != nil {
 		details.CanRemember = true
 		details.RuleMatcherVersion = decision.Remember.MatcherVersion
-		details.RuleCommandKey = decision.Remember.CommandKey
-		details.RuleCommandPattern = decision.Remember.CommandPattern
+		details.RuleMatchKey = decision.Remember.MatchKey
+		details.RuleDisplayPattern = decision.Remember.DisplayPattern
 	}
 	return agent.PermissionDecision{
 		Kind: kind, Reason: localizedApprovalReason(decision.Reason), Details: details,
@@ -166,13 +171,19 @@ func (policy *denovaPermissionPolicy) Resolve(ctx context.Context, request agent
 		if policy.config.PersistRule == nil {
 			return agent.PermissionResolvedDecision{}, errors.New("Denova Permission remember requires a rule store")
 		}
+		approvedInput := strings.TrimSpace(decision.Command)
+		if approvedInput == "" {
+			approvedInput = strings.TrimSpace(decision.Details)
+		}
+		if approvedInput == "" {
+			approvedInput = strings.TrimSpace(string(request.Request.Arguments))
+		}
 		rule, err := toolapproval.NewWorkspaceRule(
 			policy.config.ProjectID,
 			policy.config.Workspace,
-			request.Request.Tool,
 			*decision.Remember,
 			toolapproval.ArgumentsHash(string(request.Request.Arguments)),
-			decision.Command,
+			approvedInput,
 			decision.Cwd,
 			decision.RuleID,
 			policy.config.clock(),
@@ -307,7 +318,7 @@ func (state *permissionRuleState) canRemember(rule config.AgentApprovalRule) err
 func checkPermissionRuleConflict(rules []config.AgentApprovalRule, rule config.AgentApprovalRule) error {
 	for _, current := range rules {
 		if current.ID == rule.ID && !samePermissionRuleBoundary(current, rule) {
-			return fmt.Errorf("Agent approval rule id %q is already bound to another command", rule.ID)
+			return fmt.Errorf("Agent approval rule id %q is already bound to another authorization boundary", rule.ID)
 		}
 	}
 	return nil
@@ -316,8 +327,8 @@ func checkPermissionRuleConflict(rules []config.AgentApprovalRule, rule config.A
 func samePermissionRuleBoundary(left, right config.AgentApprovalRule) bool {
 	return left.Scope == right.Scope && left.ProjectID == right.ProjectID &&
 		left.Workspace == right.Workspace && left.ToolName == right.ToolName &&
-		left.MatcherVersion == right.MatcherVersion && left.CommandKey == right.CommandKey &&
-		left.CommandPattern == right.CommandPattern
+		left.Matcher == right.Matcher && left.MatcherVersion == right.MatcherVersion && left.MatchKey == right.MatchKey &&
+		left.DisplayPattern == right.DisplayPattern
 }
 
 func clonePermissionRules(rules []config.AgentApprovalRule) []config.AgentApprovalRule {

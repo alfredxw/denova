@@ -32,7 +32,7 @@ func ProjectPendingInteraction(request agent.InteractionRequest, status agentrun
 			Command: permission.Command, Details: permission.Details, Cwd: permission.Cwd,
 			Risk: permission.Risk, RuleID: permission.RuleID, ArgsHash: permission.ArgsHash,
 			CanRemember: permission.CanRemember, RuleMatcherVersion: permission.RuleMatcherVersion,
-			RuleCommandKey: permission.RuleCommandKey, RuleCommandPattern: permission.RuleCommandPattern,
+			RuleMatchKey: permission.RuleMatchKey, RuleDisplayPattern: permission.RuleDisplayPattern,
 		}
 	}
 	projected.Questions = make([]session.AskQuestion, len(request.Questions))

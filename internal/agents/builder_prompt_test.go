@@ -37,7 +37,7 @@ func TestHarnessPromptIsLiveContextWithoutChangingAuditedInstruction(t *testing.
 		DenovaDir: dataDir, OpenAIBaseURL: "https://example.invalid", OpenAIModel: "test-model",
 		Labs: config.ResolvedLabs{DeveloperMode: true},
 		AgentTools: config.AgentToolSettings{Default: config.AgentToolOverride{
-			config.AgentToolWorkspaceRead: false, config.AgentToolWorkspaceWrite: false,
+			config.AgentToolFilesystemRead: false, config.AgentToolWorkspaceWrite: false,
 			config.AgentToolShell: false, config.AgentToolSkills: false,
 			config.AgentToolLoreRead: false, config.AgentToolLoreWrite: false,
 			config.AgentToolTodo: false, config.AgentToolWebSearch: false,
@@ -105,7 +105,7 @@ func TestBuildDefinitionReturnsExactAuditedInstructionArtifact(t *testing.T) {
 	cfg := &config.Config{
 		OpenAIBaseURL: "https://example.invalid", OpenAIModel: "test-model",
 		AgentTools: config.AgentToolSettings{Default: config.AgentToolOverride{
-			config.AgentToolWorkspaceRead: false, config.AgentToolWorkspaceWrite: false,
+			config.AgentToolFilesystemRead: false, config.AgentToolWorkspaceWrite: false,
 			config.AgentToolShell: false, config.AgentToolSkills: false,
 			config.AgentToolLoreRead: false, config.AgentToolLoreWrite: false,
 			config.AgentToolTodo: false, config.AgentToolWebSearch: false,
@@ -137,7 +137,7 @@ func TestProjectAgentsInjectInstructionFilesExactlyOnceAsLeadingContext(t *testi
 		Workspace: workspace, DenovaDir: filepath.Join(t.TempDir(), ".denova"),
 		OpenAIBaseURL: "https://example.invalid", OpenAIModel: "test-model",
 		AgentTools: config.AgentToolSettings{Default: config.AgentToolOverride{
-			config.AgentToolWorkspaceRead: false, config.AgentToolWorkspaceWrite: false,
+			config.AgentToolFilesystemRead: false, config.AgentToolWorkspaceWrite: false,
 			config.AgentToolShell: false, config.AgentToolSkills: false,
 			config.AgentToolLoreRead: false, config.AgentToolLoreWrite: false,
 			config.AgentToolTodo: false, config.AgentToolWebSearch: false,

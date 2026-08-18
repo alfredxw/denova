@@ -184,7 +184,7 @@ func TestProductToolFactoriesDeclareEveryConcreteTool(t *testing.T) {
 
 func TestRestrictedAgentOverridesDoNotReachGenericToolCatalog(t *testing.T) {
 	forcedDirectorTools := config.AgentToolOverride{
-		config.AgentToolWorkspaceRead:  true,
+		config.AgentToolFilesystemRead: true,
 		config.AgentToolWorkspaceWrite: true,
 		config.AgentToolShell:          true,
 		config.AgentToolWebSearch:      true,
@@ -205,18 +205,18 @@ func TestRestrictedAgentOverridesDoNotReachGenericToolCatalog(t *testing.T) {
 
 	tests := []struct {
 		kind             string
-		workspaceReadOK  bool
+		filesystemReadOK bool
 		forcedCapability []string
 	}{
 		{
 			kind:             config.AgentKindInteractiveStory,
-			workspaceReadOK:  true,
+			filesystemReadOK: true,
 			forcedCapability: []string{config.AgentToolWorkspaceWrite, config.AgentToolShell},
 		},
 		{
 			kind: config.AgentKindInteractiveDirector,
 			forcedCapability: []string{
-				config.AgentToolWorkspaceRead, config.AgentToolWorkspaceWrite, config.AgentToolShell,
+				config.AgentToolFilesystemRead, config.AgentToolWorkspaceWrite, config.AgentToolShell,
 				config.AgentToolWebSearch, config.AgentToolWebFetch, config.AgentToolBrowser,
 			},
 		},
@@ -245,8 +245,8 @@ func TestRestrictedAgentOverridesDoNotReachGenericToolCatalog(t *testing.T) {
 			}
 			definitions = append(definitions, browser...)
 			names := toolNameSet(t, definitions)
-			if got := names["read"]; got != test.workspaceReadOK {
-				t.Fatalf("%s workspace read registration = %t, want %t; names=%v", test.kind, got, test.workspaceReadOK, names)
+			if got := names["read"]; got != test.filesystemReadOK {
+				t.Fatalf("%s workspace read registration = %t, want %t; names=%v", test.kind, got, test.filesystemReadOK, names)
 			}
 			for _, name := range []string{"write", "edit", "bash", "pwsh", "web_search", "web_fetch", "browser"} {
 				if names[name] {

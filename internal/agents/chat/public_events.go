@@ -1013,7 +1013,7 @@ func projectInteractionRequested(request agent.InteractionRequest, meta agentEve
 			"command": permission.Command, "details": permission.Details, "cwd": permission.Cwd,
 			"risk": permission.Risk, "rule_id": permission.RuleID, "args_hash": permission.ArgsHash,
 			"can_remember": permission.CanRemember, "rule_matcher_version": permission.RuleMatcherVersion,
-			"rule_command_key": permission.RuleCommandKey, "rule_command_pattern": permission.RuleCommandPattern,
+			"rule_match_key": permission.RuleMatchKey, "rule_display_pattern": permission.RuleDisplayPattern,
 		}
 	}
 	return agentrun.Event{Type: "ask_pending", Data: data}

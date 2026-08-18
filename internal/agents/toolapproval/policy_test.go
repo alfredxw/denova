@@ -334,11 +334,11 @@ func TestWorkspaceCommandRuleMatchesValidatedCommandFamily(t *testing.T) {
 		ToolName: "bash", Arguments: firstArgs,
 		Descriptor: agent.ToolDescriptor{Source: agent.ToolSourceShell, MutationScope: agent.ToolMutationExternal},
 	})
-	if first.Action != ActionPrompt || first.Remember == nil || first.Remember.CommandPattern != "go test ..." {
+	if first.Action != ActionPrompt || first.Remember == nil || first.Remember.DisplayPattern != "go test ..." {
 		t.Fatalf("first approval = %#v", first)
 	}
 	rule, err := NewWorkspaceRule(
-		projectID, workspace, "bash", *first.Remember, ArgumentsHash(firstArgs),
+		projectID, workspace, *first.Remember, ArgumentsHash(firstArgs),
 		first.Command, first.Cwd, first.RuleID, time.Now(),
 	)
 	if err != nil {
@@ -421,11 +421,11 @@ func TestWorkspaceCommandRuleRevalidatesRiskyVariants(t *testing.T) {
 		})
 	}
 	first := request("git push origin main", nil)
-	if first.Action != ActionPrompt || first.Remember == nil || first.Remember.CommandPattern != "git push origin ..." {
+	if first.Action != ActionPrompt || first.Remember == nil || first.Remember.DisplayPattern != "git push origin ..." {
 		t.Fatalf("push approval = %#v", first)
 	}
 	rule, err := NewWorkspaceRule(
-		projectID, workspace, "bash", *first.Remember,
+		projectID, workspace, *first.Remember,
 		ArgumentsHash(`{"command":"git push origin main"}`), first.Command, first.Cwd, first.RuleID, time.Now(),
 	)
 	if err != nil {

@@ -230,11 +230,12 @@ func TestCompileGrepCommandNormalizesWorkspacePathsAndPositionalGlob(t *testing.
 
 func TestCompileGrepCommandRejectsShellAuthorityAndUnsafeRipgrepFlags(t *testing.T) {
 	workspace := mustOpenTestWorkspace(t, t.TempDir())
-	tests := []struct {
+	type testCase struct {
 		name    string
 		command string
 		code    string
-	}{
+	}
+	tests := []testCase{
 		{name: "wrong executable", command: `ack TODO`, code: "invalid_command"},
 		{name: "external pipeline", command: `rg TODO | head -20`, code: "invalid_command"},
 		{name: "tail pipeline", command: `rg TODO | tail -20`, code: "invalid_command"},
@@ -258,17 +259,21 @@ func TestCompileGrepCommandRejectsShellAuthorityAndUnsafeRipgrepFlags(t *testing
 		{name: "passthru", command: `rg --passthru TODO`, code: "unsafe_flag"},
 		{name: "unknown flag", command: `rg --future-flag TODO`, code: "unsupported_flag"},
 		{name: "missing native path", command: `rg TODO agent`, code: "path_not_found"},
-		{name: "parent path", command: `rg TODO -- ../outside`, code: "unsafe_path"},
-		{name: "outside absolute path", command: `rg TODO -- /tmp`, code: "unsafe_path"},
 		{name: "resource uri", command: `rg TODO -- file:///tmp`, code: "unsafe_path"},
-		{name: "unc path", command: `rg TODO -- '\\server\share'`, code: "unsafe_path"},
-		{name: "windows path", command: `rg TODO -- 'C:\\outside'`, code: "unsafe_path"},
 		{name: "missing pattern", command: `rg -i`, code: "invalid_pattern"},
 		{name: "conflicting modes", command: `rg -l -c TODO`, code: "conflicting_flags"},
 		{name: "negative context", command: `rg -C -1 TODO`, code: "invalid_flag_value"},
 		{name: "color output", command: `rg --color=always TODO`, code: "invalid_flag_value"},
 		{name: "result sort", command: `rg --sort=modified TODO`, code: "invalid_flag_value"},
 		{name: "too many pipeline stages", command: strings.Repeat(`rg TODO | `, maxGrepPipelineStages) + `rg TODO`, code: "invalid_command"},
+	}
+	if runtime.GOOS == "windows" {
+		tests = append(tests, testCase{name: "foreign unix absolute path", command: `rg TODO -- /tmp`, code: "unsafe_path"})
+	} else {
+		tests = append(tests,
+			testCase{name: "foreign unc path", command: `rg TODO -- '\\server\share'`, code: "unsafe_path"},
+			testCase{name: "foreign windows path", command: `rg TODO -- 'C:\\outside'`, code: "unsafe_path"},
+		)
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -392,20 +397,57 @@ func TestCompileGrepCommandReturnsPartialMissingPathWarnings(t *testing.T) {
 	}
 }
 
-func TestCompileGrepCommandRejectsEscapingSymlinkPath(t *testing.T) {
+func TestCompileGrepCommandSupportsExternalAndEscapingSymlinkPaths(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("symlink creation is not generally available to unprivileged Windows tests")
 	}
 	root := t.TempDir()
-	if err := os.Symlink(t.TempDir(), filepath.Join(root, "outside")); err != nil {
+	external := t.TempDir()
+	if err := os.Symlink(external, filepath.Join(root, "outside")); err != nil {
 		t.Fatal(err)
 	}
 	workspace := mustOpenTestWorkspace(t, root)
-	if _, err := workspace.compileGrepCommand(`rg TODO -- outside`); err == nil {
-		t.Fatal("grep accepted a path whose symlink target escapes the workspace")
+	plan, err := workspace.compileGrepCommand(`rg TODO -- outside`)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if _, err := workspace.compileGrepCommand(`rg TODO -- . outside`); err == nil {
-		t.Fatal("grep treated an escaping symlink as a partially missing path")
+	want := filepath.ToSlash(external)
+	if len(plan.stages) != 1 || strings.Join(plan.stages[0].paths, ",") != want ||
+		len(plan.access.External) != 1 || plan.access.External[0].Path != want || !plan.access.External[0].Recursive {
+		t.Fatalf("external symlink grep plan = %#v", plan)
+	}
+}
+
+func TestCompileGrepCommandSupportsParentAbsoluteAndGlobExternalPaths(t *testing.T) {
+	parent := t.TempDir()
+	project := filepath.Join(parent, "project")
+	external := filepath.Join(parent, "shared")
+	for _, directory := range []string{project, external} {
+		if err := os.MkdirAll(directory, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	workspace := mustOpenTestWorkspace(t, project)
+	for _, command := range []string{
+		`rg TODO -- ../shared`,
+		`rg TODO -- ` + shellQuoteTestWord(external),
+	} {
+		plan, err := workspace.compileGrepCommand(command)
+		if err != nil {
+			t.Fatalf("compile %q: %v", command, err)
+		}
+		want := filepath.ToSlash(external)
+		if strings.Join(plan.stages[0].paths, ",") != want || len(plan.access.External) != 1 ||
+			plan.access.External[0].Path != want || !plan.access.External[0].Recursive {
+			t.Fatalf("external grep plan for %q = %#v", command, plan)
+		}
+	}
+	pattern := filepath.ToSlash(filepath.Join(external, "**", "*.md"))
+	plan, err := workspace.compileGrepCommand(`rg TODO -- ` + shellQuoteTestWord(pattern))
+	if err != nil || strings.Join(plan.stages[0].paths, ",") != filepath.ToSlash(external) ||
+		!containsTestString(plan.stages[0].args, "**/*.md") || len(plan.access.External) != 1 ||
+		plan.access.External[0].Path != filepath.ToSlash(external) || !plan.access.External[0].Recursive {
+		t.Fatalf("external glob grep plan = %#v, %v", plan, err)
 	}
 }
 
@@ -444,6 +486,9 @@ func TestLocalWorkspaceGrepSupportsLiteralRipgrepPipeline(t *testing.T) {
 }
 
 func TestGrepCursorRejectsChangedPrecedingResults(t *testing.T) {
+	if _, err := exec.LookPath("rg"); err != nil {
+		t.Skip("ripgrep is unavailable")
+	}
 	root := t.TempDir()
 	mustWriteTestFile(t, root, "one.md", "dragon one\n")
 	mustWriteTestFile(t, root, "two.md", "dragon two\n")

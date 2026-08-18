@@ -135,10 +135,11 @@ func (workspace *LocalWorkspace) Identity() agent.CapabilityIdentity {
 		return agent.CapabilityIdentity{}
 	}
 	return toolsetIdentity("tools.workspace.local", struct {
+		Contract          int
 		Root              string
 		RipgrepExecutable string
 		Limits            WorkspaceLimits
-	}{workspace.Root(), workspace.ripgrepExecutable, workspace.Limits()})
+	}{2, workspace.Root(), workspace.ripgrepExecutable, workspace.Limits()})
 }
 
 type ShellConfig struct {

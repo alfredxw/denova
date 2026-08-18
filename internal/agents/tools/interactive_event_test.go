@@ -122,12 +122,12 @@ func TestInteractiveDirectorEventReadUsesIndependentCapabilityWithoutOpeningWork
 		Store: store, StoryID: story.ID, BranchID: "main", TurnID: sourceTurn, MaintenanceTask: "director_plan_update",
 	}
 	factory := interactiveDirectorReadAdapterFactory(toolContext)
-	disabled, err := factory(config.ResolvedAgentToolSettings{config.AgentToolWorkspaceRead: true})
+	disabled, err := factory(config.ResolvedAgentToolSettings{config.AgentToolFilesystemRead: true})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(disabled) != 0 {
-		t.Fatalf("workspace_read must not authorize the event adapter: %#v", disabled)
+		t.Fatalf("filesystem_read must not authorize the event adapter: %#v", disabled)
 	}
 
 	settings := config.ResolvedAgentToolSettings{config.AgentToolEventRead: true}

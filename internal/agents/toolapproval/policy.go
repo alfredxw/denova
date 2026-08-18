@@ -45,12 +45,14 @@ type Request struct {
 }
 
 // RuleProposal is a policy-generated, human-readable authorization boundary.
-// CommandKey is opaque outside this package and is only trusted after the
-// current invocation independently produces the same versioned proposal.
+// MatchKey is opaque outside this package and is only trusted after the current
+// invocation independently produces the same named, versioned proposal.
 type RuleProposal struct {
+	ToolName       string `json:"tool_name"`
+	Matcher        string `json:"matcher"`
 	MatcherVersion int    `json:"matcher_version"`
-	CommandKey     string `json:"command_key"`
-	CommandPattern string `json:"command_pattern"`
+	MatchKey       string `json:"match_key"`
+	DisplayPattern string `json:"display_pattern"`
 }
 
 // Decision is suitable for durable audit records and user approval cards.
@@ -62,6 +64,7 @@ type Decision struct {
 	RuleID   string        `json:"rule_id"`
 	Reason   string        `json:"reason"`
 	Command  string        `json:"command,omitempty"`
+	Details  string        `json:"details,omitempty"`
 	Cwd      string        `json:"cwd,omitempty"`
 	Remember *RuleProposal `json:"remember,omitempty"`
 }
@@ -82,6 +85,9 @@ func Evaluate(request Request) Decision {
 
 	if request.Descriptor.Source == agent.ToolSourceShell || request.ToolName == "bash" || request.ToolName == "pwsh" {
 		return evaluateShell(request)
+	}
+	if decision, handled := evaluateFilesystemRead(request); handled {
+		return decision
 	}
 	if request.ToolName == "browser" {
 		return evaluateBrowser(request)
