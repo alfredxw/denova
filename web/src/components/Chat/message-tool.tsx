@@ -11,6 +11,7 @@ import type { AskInteractionResolver } from './AskInteractionCard'
 import { AgentSourceBadge } from './message-source-badge'
 import { ToolStatusIcon } from './message-tool-status'
 import { toolDisplayName } from './tool-display-name'
+import { formatMaybeJSON, hasSpecializedToolDetail, ToolCallDetail } from './message-tool-detail'
 import { toolPresentationKind } from '@/lib/tool-presentation'
 import { workspaceFileName } from '@/lib/workspace-path'
 
@@ -140,7 +141,15 @@ export function ToolExecutionBlock({ message, onResolve, onLayoutChange }: { mes
             {rawArgs}
           </div>
         )}
-        {!isInputStreaming && (
+        {!isInputStreaming && !approvalInteraction && hasSpecializedToolDetail(name) && (
+          <ToolCallDetail
+            name={name}
+            rawArgs={rawArgs}
+            result={resultBody}
+            resultSeverity={resultSeverity}
+          />
+        )}
+        {!isInputStreaming && (approvalInteraction || !hasSpecializedToolDetail(name)) && (
           <ToolContent className={`grid min-w-0 max-w-full gap-2 overflow-x-hidden overflow-y-auto border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2.5 font-mono text-[11px] leading-relaxed text-[var(--nova-text-muted)] ${approvalInteraction ? 'max-h-80' : 'max-h-48'}`}>
             {approvalInteraction && <ToolApprovalPanel message={message} onResolve={onResolve} embedded onLayoutChange={onLayoutChange} />}
             {detailArgs && !approvalInteraction?.approval?.command && <pre className="m-0 min-w-0 max-w-full whitespace-pre-wrap [overflow-wrap:anywhere]">{detailArgs}</pre>}
@@ -314,15 +323,6 @@ function buildToolResultEnvelopeSummary(t: ReturnType<typeof useTranslation>['t'
     ? result.recovery
     : ''
   return [headline, webRetryKey ? t(webRetryKey) : '', continuation, recovery].filter(Boolean).join(' · ')
-}
-
-function formatMaybeJSON(value: string) {
-  if (!value) return ''
-  try {
-    return JSON.stringify(JSON.parse(value), null, 2)
-  } catch {
-    return value
-  }
 }
 
 function buildToolArgSummary(args: string) {

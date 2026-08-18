@@ -139,7 +139,7 @@ func lineNumbers(content string, start int) string {
 	}
 	var result strings.Builder
 	for index, line := range lines {
-		fmt.Fprintf(&result, "%6d\t%s", start+index, line)
+		fmt.Fprintf(&result, "%d\t%s", start+index, line)
 		if index < len(lines)-1 || strings.HasSuffix(content, "\n") {
 			result.WriteByte('\n')
 		}

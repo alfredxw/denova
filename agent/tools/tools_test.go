@@ -31,6 +31,13 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
+func TestLineNumbersUsesCompactPrefixAndPreservesIndentation(t *testing.T) {
+	got := lineNumbers("  first\n\tsecond\n", 9)
+	if want := "9\t  first\n10\t\tsecond\n"; got != want {
+		t.Fatalf("lineNumbers() = %q, want %q", got, want)
+	}
+}
+
 func TestReadRoutesLocalTextAndDirectoryWithAdapterSpecificArguments(t *testing.T) {
 	root := t.TempDir()
 	mustWriteTestFile(t, root, "chapters/one.md", "first\nsecond\nthird\n")
@@ -69,7 +76,7 @@ func TestReadRoutesLocalTextAndDirectoryWithAdapterSpecificArguments(t *testing.
 		t.Fatal(err)
 	}
 	if !strings.Contains(fileResult.ModelContent, `"kind":"local_text"`) ||
-		!strings.Contains(fileResult.ModelContent, "     2\tsecond") ||
+		!strings.Contains(fileResult.ModelContent, "2\tsecond") ||
 		strings.Contains(fileResult.ModelContent, "first") {
 		t.Fatalf("file result = %q", fileResult.ModelContent)
 	}
@@ -271,7 +278,7 @@ func TestReadUsesWorkspacePolicyAndReturnsContinuation(t *testing.T) {
 	}
 	if !strings.Contains(result.ModelContent, `"status":"partial"`) ||
 		!strings.Contains(result.ModelContent, `"next_offset":3`) ||
-		!strings.Contains(result.ModelContent, "     2\tfive") ||
+		!strings.Contains(result.ModelContent, "2\tfive") ||
 		strings.Contains(result.ModelContent, "nine") {
 		t.Fatalf("bounded read result = %q", result.ModelContent)
 	}

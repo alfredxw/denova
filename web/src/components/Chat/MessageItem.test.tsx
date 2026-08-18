@@ -493,8 +493,10 @@ describe('MessageItem', () => {
     await user.click(container.querySelector('[data-nova-tool-header]') as HTMLElement)
 
     const detail = container.querySelector('[data-slot="collapsible-content"]')
-    expect(detail).toHaveClass('min-w-0', 'max-w-full', 'overflow-x-hidden', 'overflow-y-auto')
+    expect(detail).toHaveClass('min-w-0', 'max-w-full', 'overflow-x-hidden', 'overflow-y-hidden')
     expect(detail).not.toHaveClass('overflow-auto')
+    expect(detail?.querySelector('[data-nova-tool-detail-input]')).toHaveClass('overflow-y-auto')
+    expect(detail?.querySelector('[data-nova-tool-detail-output]')).toHaveClass('overflow-y-auto')
     detail?.querySelectorAll('pre').forEach((element) => {
       expect(element).toHaveClass('min-w-0', 'max-w-full', 'whitespace-pre-wrap', '[overflow-wrap:anywhere]')
     })

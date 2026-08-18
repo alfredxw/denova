@@ -14,6 +14,8 @@ import (
 	"github.com/invopop/jsonschema"
 )
 
+const readToolContractVersion = 2
+
 // ReadResult is the provider-neutral result returned by every ReadAdapter.
 // Offset is one-based when Content should be rendered with source line numbers;
 // leave it zero for already-structured content such as directories or JSON.
@@ -140,7 +142,10 @@ func Read(adapters []ReadAdapter, options ...DefinitionOption) (agent.ToolDefini
 	}
 	return agent.ToolDefinition{
 		Tool: tool, Descriptor: descriptor,
-		ImplementationIdentity: toolsetIdentity("tools.read", identities),
+		ImplementationIdentity: toolsetIdentity("tools.read", struct {
+			Contract int
+			Adapters []agent.CapabilityIdentity
+		}{Contract: readToolContractVersion, Adapters: identities}),
 	}, nil
 }
 
