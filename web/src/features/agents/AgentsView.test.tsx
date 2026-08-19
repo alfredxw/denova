@@ -308,13 +308,13 @@ describe('AgentsView', () => {
     vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({
       user: {
         image_api_profiles: [
-          { id: 'flux', name: 'Flux Pro', openai_model: 'flux-pro' },
+          { id: 'flux', name: 'Flux Pro', model: 'flux-pro' },
         ],
       },
       effective: {
         default_image_api_profile_id: 'default',
         image_api_profiles: [
-          { id: 'flux', name: 'Flux Pro', openai_model: 'flux-pro' },
+          { id: 'flux', name: 'Flux Pro', model: 'flux-pro' },
         ],
       },
     }))

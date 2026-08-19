@@ -13,14 +13,15 @@ import (
 )
 
 type GenerateResult struct {
-	ProfileID    string       `json:"profile_id"`
-	Provider     string       `json:"provider"`
-	Model        string       `json:"model"`
-	Created      int64        `json:"created,omitempty"`
-	Size         string       `json:"size,omitempty"`
-	Quality      string       `json:"quality,omitempty"`
-	OutputFormat string       `json:"output_format,omitempty"`
-	Images       []SavedImage `json:"images"`
+	ProfileID    string             `json:"profile_id"`
+	Provider     string             `json:"provider"`
+	Model        string             `json:"model"`
+	Created      int64              `json:"created,omitempty"`
+	Size         string             `json:"size,omitempty"`
+	Quality      string             `json:"quality,omitempty"`
+	OutputFormat string             `json:"output_format,omitempty"`
+	Images       []SavedImage       `json:"images"`
+	Failures     []imagegen.Failure `json:"failures,omitempty"`
 }
 
 type SavedImage struct {
@@ -52,6 +53,7 @@ func (service *Service) Generate(ctx context.Context, request imagegen.GenerateR
 		Quality:      result.Quality,
 		OutputFormat: result.OutputFormat,
 		Images:       make([]SavedImage, 0, len(result.Images)),
+		Failures:     append([]imagegen.Failure(nil), result.Failures...),
 	}
 	for index, image := range result.Images {
 		relPath, err := generatedImagePath(index, image.Extension)

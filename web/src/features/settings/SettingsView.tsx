@@ -1,6 +1,6 @@
 import { cloneElement, isValidElement, useEffect, useId, useMemo, useRef, useState, useCallback } from 'react'
 import type { ReactNode } from 'react'
-import { ChevronDown, ChevronUp, Download, ExternalLink, Loader2, Plus, RefreshCw, Settings as SettingsIcon, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronUp, Download, ExternalLink, Loader2, RefreshCw, Settings as SettingsIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { withErrorLogID } from '@/lib/api-client'
@@ -19,10 +19,7 @@ import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
 import { FeaturePageShell } from '@/components/layout/feature-page-shell'
 import { MobilePaneTrigger } from '@/components/layout/mobile-pane-trigger'
 import { SectionedNavigation } from '@/components/navigation/sectioned-navigation'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Separator } from '@/components/ui/separator'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { LOCALE_OPTIONS } from '@/i18n'
 import { APP_VERSION } from '@/app-version'
@@ -34,14 +31,13 @@ import {
   modelProfilesWithDefault,
 } from './model-profiles'
 import { ModelProfilesEditor } from './ModelProfilesEditor'
-import { DEFAULT_IMAGE_API_BASE_URL, DEFAULT_IMAGE_API_MODEL, DEFAULT_IMAGE_API_PROFILE_ID, DEFAULT_IMAGE_API_PROVIDER, imageAPIProfileID, imageAPIProfileLabel, imageAPIProfilesWithDefault } from './image-profiles'
+import { DEFAULT_IMAGE_API_PROFILE_ID, imageAPIProfileID, imageAPIProfilesWithDefault } from './image-profiles'
+import { ImageAPIProfilesEditor } from './ImageAPIProfilesEditor'
 import { ONBOARDING_OPEN_EVENT, SETTINGS_SECTION_EVENT, type SettingsSectionRequest } from '@/features/onboarding/events'
 import { TerminalCommandsEditor, terminalCommandsForEditor } from './TerminalCommandsEditor'
 import { useAgentApprovalMode } from '@/features/agent-approval/AgentApprovalProvider'
 import { AGENT_APPROVAL_MODES } from '@/features/agent-approval/modes'
 import { ApprovalRulesEditor } from './ApprovalRulesEditor'
-import { ApiKeyInput } from './ApiKeyInput'
-import { ImageProfilePingButton } from './ImageProfilePingButton'
 
 type SettingsSectionId = 'model' | 'image' | 'paths' | 'access' | 'appearance' | 'updates' | 'labs' | 'agent' | 'terminal' | 'web-access' | 'debug' | 'ide-editor' | 'ide-output' | 'versions' | 'interactive'
 
@@ -55,11 +51,7 @@ type SettingsSection = {
 }
 
 const fieldCls = 'nova-field min-h-7 flex-1 rounded-[var(--nova-radius)] border px-2.5 py-1.5 outline-none placeholder:text-[var(--nova-text-faint)] focus:border-[var(--nova-field-focus-border)] focus:bg-[var(--nova-surface-3)]'
-const IMAGE_API_INHERIT_VALUE = '__inherit__'
 const FIELD_INHERIT_VALUE = '__inherit__'
-const IMAGE_API_PROVIDER_DEFAULT_VALUE = '__provider_default__'
-const IMAGE_API_QUALITY_OPTIONS = ['auto', 'high', 'medium', 'low', 'standard', 'hd']
-const IMAGE_API_FORMAT_OPTIONS = ['png', 'jpeg']
 const TRACE_CAPTURE_OPTIONS = [
   { value: 'summary', labelKey: 'settings.debug.traceCaptureSummary' },
   { value: 'debug', labelKey: 'settings.debug.traceCaptureDebug' },
@@ -235,9 +227,6 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
   const setImageAPIProfiles = (profiles: ImageAPIProfileSettings[]) => {
     setDraft((d) => ({
       ...d,
-      image_api_key: '',
-      image_api_base_url: '',
-      image_api_model: '',
       image_api_profiles: profiles,
     }))
   }
@@ -837,8 +826,7 @@ function stripInheritedModelSecret(profile: ModelProfileSettings): ModelProfileS
 function imageAPIProfilesForEditor(draft: Settings, effective: Settings): ImageAPIProfileSettings[] {
   const localProfiles = draft.image_api_profiles ?? []
   const hasLocalDefault = localProfiles.some((profile) => imageAPIProfileID(profile) === DEFAULT_IMAGE_API_PROFILE_ID)
-  const hasLegacyDefault = Boolean(draft.image_api_key || draft.image_api_base_url || draft.image_api_model)
-  if (hasLocalDefault || hasLegacyDefault) {
+  if (hasLocalDefault) {
     return imageAPIProfilesWithDefault(draft)
   }
   const inherited = imageAPIProfilesWithDefault(effective)
@@ -850,7 +838,7 @@ function imageAPIProfilesForEditor(draft: Settings, effective: Settings): ImageA
 }
 
 function stripInheritedImageAPISecret(profile: ImageAPIProfileSettings): ImageAPIProfileSettings {
-  return { ...profile, openai_api_key: '' }
+  return { ...profile, api_key: '' }
 }
 
 function Section({
@@ -1464,236 +1452,6 @@ function TellerSelect({ label, value, inherited, tellers, onChange }: {
   )
 }
 
-function ImageAPIProfilesEditor({ profiles, effectiveProfiles, defaultProfileID, effectiveDefaultProfileID, onDefaultProfileChange, onChange }: {
-  profiles: ImageAPIProfileSettings[]
-  effectiveProfiles: ImageAPIProfileSettings[]
-  defaultProfileID: string
-  effectiveDefaultProfileID: string
-  onDefaultProfileChange: (profileID: string) => void
-  onChange: (profiles: ImageAPIProfileSettings[]) => void
-}) {
-  const { t } = useTranslation()
-  const profileKeysRef = useRef<string[]>([])
-  const profileKeys = useMemo(() => {
-    if (profileKeysRef.current.length > profiles.length) {
-      profileKeysRef.current = profileKeysRef.current.slice(0, profiles.length)
-    }
-    while (profileKeysRef.current.length < profiles.length) {
-      profileKeysRef.current.push(`image-profile-${Date.now()}-${profileKeysRef.current.length}`)
-    }
-    return profileKeysRef.current
-  }, [profiles.length])
-  const profileOptions = imageProfileOptions(profiles, effectiveProfiles)
-  const effectiveDefaultLabel = profileOptions.find((profile) => profile.id === effectiveDefaultProfileID)?.label || effectiveDefaultProfileID || DEFAULT_IMAGE_API_PROFILE_ID
-  const addProfile = () => {
-    onChange([...profiles, {
-      provider: DEFAULT_IMAGE_API_PROVIDER,
-      openai_base_url: DEFAULT_IMAGE_API_BASE_URL,
-      openai_model: DEFAULT_IMAGE_API_MODEL,
-    }])
-  }
-  const updateProfile = (index: number, patch: Partial<ImageAPIProfileSettings>) => {
-    onChange(profiles.map((profile, i) => (i === index ? { ...profile, ...patch } : profile)))
-  }
-  const updateProfileModel = (index: number, openaiModel: string) => {
-    const profile = profiles[index]
-    const previousID = imageAPIProfileID(profile)
-    const previousModel = profile?.openai_model?.trim() ?? ''
-    const shouldSyncID = !previousID || previousID === previousModel
-    updateProfile(index, {
-      id: shouldSyncID ? openaiModel : profile?.id,
-      openai_model: openaiModel,
-    })
-  }
-  const removeProfile = (index: number) => {
-    const removedID = imageAPIProfileID(profiles[index])
-    onChange(profiles.filter((_, i) => i !== index))
-    if (removedID && defaultProfileID === removedID) onDefaultProfileChange('')
-  }
-
-  return (
-    <div className="nova-settings-row rounded-md px-2 py-1.5">
-      <div className="mb-1.5 text-[var(--nova-text-muted)]">{t('settings.imageApi.profiles')}</div>
-      <div className="flex flex-col gap-2">
-        <ModelProfileInput label={t('settings.imageApi.defaultProfile')}>
-          <Select
-            value={defaultProfileID || IMAGE_API_INHERIT_VALUE}
-            onValueChange={(value) => onDefaultProfileChange(value === IMAGE_API_INHERIT_VALUE ? '' : value)}
-          >
-            <SelectTrigger size="sm" className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="nova-panel border text-[var(--nova-text)]">
-              <SelectGroup>
-                <SelectItem value={IMAGE_API_INHERIT_VALUE}>{t('common.inherit', { value: effectiveDefaultLabel })}</SelectItem>
-                {profileOptions.map((profile) => (
-                  <SelectItem key={profile.id} value={profile.id}>{profile.label}</SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-        </ModelProfileInput>
-        {profiles.length === 0 && (
-          <div className="rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2.5 py-2 text-[var(--nova-text-faint)]">
-            {t('settings.imageApi.profileEmpty', { count: effectiveProfiles.length || 1 })}
-          </div>
-        )}
-        {profiles.map((profile, index) => (
-          <div key={profileKeys[index]} className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)]">
-            <div className="flex items-center gap-2 px-2.5 py-2">
-              <Badge variant="outline" className="shrink-0">
-                {t('settings.imageApi.profileName', { index: index + 1 })}
-              </Badge>
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-xs font-medium text-[var(--nova-text)]">
-                  {imageAPIProfileLabel(profile) || t('settings.imageApi.profileUntitled')}
-                </div>
-                <div className="truncate text-[11px] text-[var(--nova-text-faint)]">
-                  {profile.openai_model?.trim() || t('settings.imageApi.profileModelMissing')}
-                </div>
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="icon-sm"
-                onClick={() => removeProfile(index)}
-                aria-label={t('settings.imageApi.deleteProfile')}
-              >
-                <Trash2 data-icon="inline-start" />
-              </Button>
-            </div>
-            <Separator />
-            <div className="grid gap-2 p-2.5 md:grid-cols-12">
-              <ModelProfileInput label={t('settings.imageApi.provider')} className="md:col-span-3">
-                <Select
-                  value={profile.provider || DEFAULT_IMAGE_API_PROVIDER}
-                  onValueChange={(value) => updateProfile(index, { provider: value })}
-                >
-                  <SelectTrigger size="sm" className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="nova-panel border text-[var(--nova-text)]">
-                    <SelectGroup>
-                      <SelectItem value={DEFAULT_IMAGE_API_PROVIDER}>OpenAI</SelectItem>
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-              </ModelProfileInput>
-              <ModelProfileInput label={t('common.baseUrl')} className="md:col-span-5">
-                <Input
-                  value={profile.openai_base_url ?? ''}
-                  placeholder={DEFAULT_IMAGE_API_BASE_URL}
-                  onChange={(e) => updateProfile(index, { openai_base_url: e.target.value })}
-                />
-              </ModelProfileInput>
-              <ModelProfileInput label={t('settings.imageApi.profileModelLabel')} className="md:col-span-4">
-                <Input
-                  value={profile.openai_model ?? ''}
-                  placeholder={DEFAULT_IMAGE_API_MODEL}
-                  onChange={(e) => updateProfileModel(index, e.target.value)}
-                />
-              </ModelProfileInput>
-              <ModelProfileInput label={t('settings.imageApi.profileAliasLabel')} className="md:col-span-3">
-                <Input
-                  value={profile.name ?? ''}
-                  placeholder={t('settings.imageApi.profileAliasPlaceholder')}
-                  onChange={(e) => updateProfile(index, { name: e.target.value })}
-                />
-              </ModelProfileInput>
-              <ModelProfileInput label={t('settings.imageApi.profileKeyLabel')} className="md:col-span-5">
-                <ApiKeyInput
-                  label={t('settings.imageApi.profileKeyLabel')}
-                  value={profile.openai_api_key ?? ''}
-                  placeholder={t('settings.imageApi.profileKeyInheritPlaceholder')}
-                  onChange={(apiKey) => updateProfile(index, { openai_api_key: apiKey })}
-                />
-              </ModelProfileInput>
-              <ImageOptionSelect
-                label={t('settings.imageApi.defaultQuality')}
-                value={profile.default_quality ?? ''}
-                options={IMAGE_API_QUALITY_OPTIONS}
-                placeholder={t('settings.imageApi.providerDefault')}
-                className="md:col-span-3"
-                onChange={(value) => updateProfile(index, { default_quality: value })}
-              />
-              <ImageOptionSelect
-                label={t('settings.imageApi.defaultOutputFormat')}
-                value={profile.default_output_format ?? ''}
-                options={IMAGE_API_FORMAT_OPTIONS}
-                placeholder={t('settings.imageApi.providerDefault')}
-                className="md:col-span-3"
-                onChange={(value) => updateProfile(index, { default_output_format: value })}
-              />
-            </div>
-            <div className="border-t border-[var(--nova-border)] px-2.5 py-2">
-              <ImageProfilePingButton profile={profile} />
-            </div>
-          </div>
-        ))}
-        <Button
-          type="button"
-          onClick={addProfile}
-          variant="outline"
-          size="sm"
-        >
-          <Plus data-icon="inline-start" />
-          {t('settings.imageApi.addProfile')}
-        </Button>
-      </div>
-    </div>
-  )
-}
-
-function ImageOptionSelect({ label, value, options, placeholder, className, onChange }: {
-  label: string
-  value: string
-  options: string[]
-  placeholder: string
-  className?: string
-  onChange: (value: string) => void
-}) {
-  return (
-    <ModelProfileInput label={label} className={className}>
-      <Select value={value || IMAGE_API_PROVIDER_DEFAULT_VALUE} onValueChange={(next) => onChange(next === IMAGE_API_PROVIDER_DEFAULT_VALUE ? '' : next)}>
-        <SelectTrigger size="sm" className="w-full">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent className="nova-panel border text-[var(--nova-text)]">
-          <SelectGroup>
-            <SelectItem value={IMAGE_API_PROVIDER_DEFAULT_VALUE}>{placeholder}</SelectItem>
-            {options.map((option) => (
-              <SelectItem key={option} value={option}>{option}</SelectItem>
-            ))}
-          </SelectGroup>
-        </SelectContent>
-      </Select>
-    </ModelProfileInput>
-  )
-}
-
-function imageProfileOptions(localProfiles: ImageAPIProfileSettings[], effectiveProfiles: ImageAPIProfileSettings[]) {
-  const options: Array<{ id: string; label: string }> = []
-  const seen = new Set<string>()
-  const add = (profile?: ImageAPIProfileSettings) => {
-    const id = imageAPIProfileID(profile)
-    if (!id || seen.has(id)) return
-    seen.add(id)
-    options.push({ id, label: imageAPIProfileLabel(profile) || id })
-  }
-  effectiveProfiles.forEach(add)
-  localProfiles.forEach(add)
-  return options
-}
-
-function ModelProfileInput({ label, className, children }: { label: string; className?: string; children: ReactNode }) {
-  return (
-    <label className={`flex min-w-0 flex-col gap-1 ${className ?? ''}`}>
-      <span className="text-[11px] leading-none text-[var(--nova-text-faint)]">{label}</span>
-      {children}
-    </label>
-  )
-}
-
 /**
  * Merges only the layers below `currentLayer` so the "inherit" display reflects
  * the value that would apply if the current layer contributed nothing. This
@@ -1719,9 +1477,6 @@ function mergeSettingsLayer(parent: Settings, child: Settings): Settings {
   override('openai_model', isNonEmptyString)
   override('openai_context_window_tokens', isNonNull)
   if (child.model_profiles?.length) out.model_profiles = child.model_profiles
-  override('image_api_key', isNonEmptyString)
-  override('image_api_base_url', isNonEmptyString)
-  override('image_api_model', isNonEmptyString)
   override('default_image_api_profile_id', isNonEmptyString)
   if (child.image_api_profiles?.length) out.image_api_profiles = child.image_api_profiles
   override('skills_dir', isNonEmptyString)

@@ -170,14 +170,19 @@ func newLoreImageTestApplication(t *testing.T) (*runtimeapp.App, *httptest.Serve
 		})
 	}))
 	root := t.TempDir()
+	if err := config.WriteSettingsFile(config.UserConfigPath(root), config.Settings{
+		ImageAPIProfiles: []config.ImageAPIProfileSettings{{
+			ID: config.DefaultImageAPIProfileID, APIKey: "test-key", BaseURL: imageServer.URL, Model: "gpt-image-1",
+		}},
+	}); err != nil {
+		imageServer.Close()
+		t.Fatal(err)
+	}
 	application, err := runtimeapp.New(context.Background(), &config.Config{
 		OpenAIModel:         "test-model",
 		NovaDir:             root,
 		Workspace:           root,
 		ResumeLastWorkspace: false,
-		ImageAPIKey:         "test-key",
-		ImageAPIBaseURL:     imageServer.URL,
-		ImageAPIModel:       "gpt-image-1",
 	})
 	if err != nil {
 		imageServer.Close()

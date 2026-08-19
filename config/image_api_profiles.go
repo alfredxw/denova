@@ -3,47 +3,174 @@ package config
 import (
 	"errors"
 	"fmt"
-	"net/url"
+	"os"
 	"strings"
 )
 
 const (
 	DefaultImageAPIProfileID = "default"
-	DefaultImageAPIProvider  = "openai"
-	DefaultImageAPIBaseURL   = "https://api.openai.com/v1"
-	DefaultImageAPIModel     = "gpt-image-1"
-	DefaultImageAPIQuality   = "auto"
-	DefaultImageAPIFormat    = "png"
+
+	ImageProviderOpenAI     = "openai"
+	ImageProviderXAI        = "xai"
+	ImageProviderComfyUI    = "comfyui"
+	ImageProviderVolcengine = "volcengine"
+	ImageProviderGoogle     = "google"
+	ImageProviderCustom     = "custom"
+
+	ImageProtocolOpenAI  = "openai-images"
+	ImageProtocolXAI     = "xai-images"
+	ImageProtocolComfyUI = "comfyui-workflow"
+	ImageProtocolArk     = "ark-images"
+	ImageProtocolGemini  = "gemini-images"
+
+	DefaultImageAPIProvider = ImageProviderOpenAI
+	DefaultImageAPIProtocol = ImageProtocolOpenAI
+	DefaultImageAPIBaseURL  = "https://api.openai.com/v1"
+	DefaultImageAPIModel    = "gpt-image-2"
+
+	ComfyUIWorkflowBuiltin = "builtin"
+	ComfyUIWorkflowAPI     = "api"
 )
 
 var (
-	ErrImageAPIProfileNotFound = errors.New("图像模型配置不存在")
-	ErrImageAPIKeyMissing      = errors.New("图像模型 API Key 未配置")
-	ErrImageAPIModelMissing    = errors.New("图像模型未配置")
+	ErrImageAPIProfileNotFound = errors.New("image model profile not found")
+	ErrImageAPIKeyMissing      = errors.New("image model API key is missing")
+	ErrImageAPIModelMissing    = errors.New("image model is missing")
+	ErrComfyUIWorkflowMissing  = errors.New("ComfyUI API-format workflow is missing")
+	ErrImageProviderInvalid    = errors.New("image provider is invalid")
+	ErrImageProtocolInvalid    = errors.New("image protocol is invalid")
 )
 
+// ComfyUIProfileSettings owns the workflow source used by the ComfyUI
+// protocol. Builtin mode uses Denova's core-node text-to-image graph; API mode
+// executes an uploaded ComfyUI API-format graph.
+type ComfyUIProfileSettings struct {
+	WorkflowMode string `toml:"workflow_mode,omitempty" json:"workflow_mode,omitempty"`
+	Workflow     string `toml:"workflow,omitempty" json:"workflow,omitempty"`
+	WorkflowName string `toml:"workflow_name,omitempty" json:"workflow_name,omitempty"`
+}
+
+// ImageAPIProfileSettings is provider-neutral persistent configuration. A
+// provider supplies ergonomic defaults while Protocol selects the wire format.
+// Custom profiles can combine their own endpoint with any installed protocol.
 type ImageAPIProfileSettings struct {
-	ID                  string `toml:"id,omitempty" json:"id,omitempty"`
-	Name                string `toml:"name,omitempty" json:"name,omitempty"`
-	Provider            string `toml:"provider,omitempty" json:"provider,omitempty"`
-	OpenAIAPIKey        string `toml:"openai_api_key,omitempty" json:"openai_api_key,omitempty"`
-	OpenAIBaseURL       string `toml:"openai_base_url,omitempty" json:"openai_base_url,omitempty"`
-	OpenAIModel         string `toml:"openai_model,omitempty" json:"openai_model,omitempty"`
-	DefaultSize         string `toml:"default_size,omitempty" json:"default_size,omitempty"`
-	DefaultQuality      string `toml:"default_quality,omitempty" json:"default_quality,omitempty"`
-	DefaultOutputFormat string `toml:"default_output_format,omitempty" json:"default_output_format,omitempty"`
+	ID       string `toml:"id,omitempty" json:"id,omitempty"`
+	Name     string `toml:"name,omitempty" json:"name,omitempty"`
+	Provider string `toml:"provider,omitempty" json:"provider,omitempty"`
+	Protocol string `toml:"protocol,omitempty" json:"protocol,omitempty"`
+	APIKey   string `toml:"api_key,omitempty" json:"api_key,omitempty"`
+	BaseURL  string `toml:"base_url,omitempty" json:"base_url,omitempty"`
+	Model    string `toml:"model,omitempty" json:"model,omitempty"`
+	// LegacyOpenAI* are presence-aware decode aliases for image profiles saved
+	// before provider/protocol adapters. Migration clears them before writes.
+	LegacyOpenAIAPIKey  *string                 `toml:"openai_api_key,omitempty" json:"openai_api_key,omitempty"`
+	LegacyOpenAIBaseURL *string                 `toml:"openai_base_url,omitempty" json:"openai_base_url,omitempty"`
+	LegacyOpenAIModel   *string                 `toml:"openai_model,omitempty" json:"openai_model,omitempty"`
+	Headers             map[string]string       `toml:"headers,omitempty" json:"headers,omitempty"`
+	DefaultSize         string                  `toml:"default_size,omitempty" json:"default_size,omitempty"`
+	DefaultAspectRatio  string                  `toml:"default_aspect_ratio,omitempty" json:"default_aspect_ratio,omitempty"`
+	DefaultResolution   string                  `toml:"default_resolution,omitempty" json:"default_resolution,omitempty"`
+	DefaultQuality      string                  `toml:"default_quality,omitempty" json:"default_quality,omitempty"`
+	DefaultOutputFormat string                  `toml:"default_output_format,omitempty" json:"default_output_format,omitempty"`
+	ComfyUI             *ComfyUIProfileSettings `toml:"comfyui,omitempty" json:"comfyui,omitempty"`
 }
 
 type ResolvedImageAPIProfile struct {
-	ProfileID     string
-	Name          string
-	Provider      string
-	OpenAIAPIKey  string
-	OpenAIBaseURL string
-	OpenAIModel   string
-	Size          string
-	Quality       string
-	OutputFormat  string
+	ProfileID    string
+	Name         string
+	Provider     string
+	Protocol     string
+	APIKey       string
+	BaseURL      string
+	Model        string
+	Headers      map[string]string
+	Size         string
+	AspectRatio  string
+	Resolution   string
+	Quality      string
+	OutputFormat string
+	ComfyUI      ComfyUIProfileSettings
+}
+
+type imageProviderDefaults struct {
+	Protocol     string
+	BaseURL      string
+	Model        string
+	Size         string
+	Resolution   string
+	Quality      string
+	OutputFormat string
+}
+
+func DefaultImageAPIProfile() ImageAPIProfileSettings {
+	return ImageAPIProfileSettings{
+		ID:                  DefaultImageAPIProfileID,
+		Name:                "Default image model",
+		Provider:            DefaultImageAPIProvider,
+		Protocol:            DefaultImageAPIProtocol,
+		BaseURL:             DefaultImageAPIBaseURL,
+		Model:               DefaultImageAPIModel,
+		DefaultQuality:      "auto",
+		DefaultOutputFormat: "png",
+	}
+}
+
+// ApplyImageAPIEnvironment applies process-local overrides to the default
+// image profile without leaking environment secrets into persisted settings.
+func ApplyImageAPIEnvironment(cfg *Config) {
+	if cfg == nil {
+		return
+	}
+	provider := strings.TrimSpace(os.Getenv("DENOVA_IMAGE_PROVIDER"))
+	protocol := strings.TrimSpace(os.Getenv("DENOVA_IMAGE_PROTOCOL"))
+	allowLegacyOpenAI := (provider == "" || normalizeImageAPIProvider(provider) == ImageProviderOpenAI) &&
+		(protocol == "" || normalizeImageAPIProtocol(protocol) == ImageProtocolOpenAI)
+	apiKey, legacyKey := imageEnvironmentValue("DENOVA_IMAGE_API_KEY", "OPENAI_IMAGE_API_KEY", allowLegacyOpenAI)
+	baseURL, legacyBaseURL := imageEnvironmentValue("DENOVA_IMAGE_BASE_URL", "OPENAI_IMAGE_BASE_URL", allowLegacyOpenAI)
+	model, legacyModel := imageEnvironmentValue("DENOVA_IMAGE_MODEL", "OPENAI_IMAGE_MODEL", allowLegacyOpenAI)
+	if legacyKey || legacyBaseURL || legacyModel {
+		if provider == "" {
+			provider = ImageProviderOpenAI
+		}
+		if protocol == "" {
+			protocol = ImageProtocolOpenAI
+		}
+	}
+	override := ImageAPIProfileSettings{
+		ID:       DefaultImageAPIProfileID,
+		Provider: provider,
+		Protocol: protocol,
+		APIKey:   apiKey,
+		BaseURL:  strings.TrimSpace(baseURL),
+		Model:    strings.TrimSpace(model),
+	}
+	if !hasImageAPIProfileDraftFields(override) {
+		return
+	}
+	found := false
+	for index, profile := range cfg.ImageAPIProfiles {
+		if imageAPIProfileID(profile) != DefaultImageAPIProfileID {
+			continue
+		}
+		cfg.ImageAPIProfiles[index] = mergeImageAPIProfile(profile, override)
+		found = true
+		break
+	}
+	if !found {
+		cfg.ImageAPIProfiles = append(cfg.ImageAPIProfiles, mergeImageAPIProfile(DefaultImageAPIProfile(), override))
+	}
+}
+
+func imageEnvironmentValue(current, legacy string, allowLegacy bool) (string, bool) {
+	if value, exists := os.LookupEnv(current); exists {
+		return value, false
+	}
+	if allowLegacy {
+		if value, exists := os.LookupEnv(legacy); exists {
+			return value, true
+		}
+	}
+	return "", false
 }
 
 func ResolveImageAPIProfile(cfg *Config, requestedID string) (ResolvedImageAPIProfile, error) {
@@ -51,7 +178,7 @@ func ResolveImageAPIProfile(cfg *Config, requestedID string) (ResolvedImageAPIPr
 		return ResolvedImageAPIProfile{}, ErrImageAPIProfileNotFound
 	}
 	profiles := map[string]ImageAPIProfileSettings{
-		DefaultImageAPIProfileID: legacyImageAPIProfile(cfg),
+		DefaultImageAPIProfileID: DefaultImageAPIProfile(),
 	}
 	for _, profile := range cfg.ImageAPIProfiles {
 		id := imageAPIProfileID(profile)
@@ -74,46 +201,60 @@ func ResolveImageAPIProfile(cfg *Config, requestedID string) (ResolvedImageAPIPr
 	if !ok {
 		return ResolvedImageAPIProfile{}, fmt.Errorf("%w: %s", ErrImageAPIProfileNotFound, profileID)
 	}
-	if profile.Provider == "" {
-		profile.Provider = DefaultImageAPIProvider
+	return resolveImageAPIProfile(profileID, profile)
+}
+
+func resolveImageAPIProfile(profileID string, profile ImageAPIProfileSettings) (ResolvedImageAPIProfile, error) {
+	provider := normalizeImageAPIProvider(profile.Provider)
+	if provider == "" {
+		return ResolvedImageAPIProfile{}, fmt.Errorf("%w: %s", ErrImageProviderInvalid, profile.Provider)
 	}
-	if profile.OpenAIAPIKey == "" {
-		profile.OpenAIAPIKey = cfg.ImageAPIKey
+	defaults, ok := imageDefaultsForProvider(provider)
+	if !ok {
+		return ResolvedImageAPIProfile{}, fmt.Errorf("%w: %s", ErrImageProviderInvalid, provider)
 	}
-	if profile.OpenAIBaseURL == "" {
-		profile.OpenAIBaseURL = cfg.ImageAPIBaseURL
+	protocol := normalizeImageAPIProtocol(profile.Protocol)
+	if protocol == "" {
+		protocol = defaults.Protocol
 	}
-	if profile.OpenAIBaseURL == "" {
-		profile.OpenAIBaseURL = DefaultImageAPIBaseURL
+	if !isSupportedImageAPIProtocol(protocol) {
+		return ResolvedImageAPIProfile{}, fmt.Errorf("%w: %s", ErrImageProtocolInvalid, protocol)
 	}
-	if profile.OpenAIModel == "" {
-		profile.OpenAIModel = cfg.ImageAPIModel
-	}
-	if profile.OpenAIModel == "" {
-		profile.OpenAIModel = DefaultImageAPIModel
-	}
-	if profile.DefaultQuality == "" {
-		profile.DefaultQuality = DefaultImageAPIQuality
-	}
-	if profile.DefaultOutputFormat == "" {
-		profile.DefaultOutputFormat = DefaultImageAPIFormat
-	}
-	if strings.EqualFold(profile.Provider, DefaultImageAPIProvider) && strings.TrimSpace(profile.OpenAIAPIKey) == "" {
-		return ResolvedImageAPIProfile{}, ErrImageAPIKeyMissing
-	}
-	if strings.EqualFold(profile.Provider, DefaultImageAPIProvider) && strings.TrimSpace(profile.OpenAIModel) == "" {
+
+	baseURL := firstNonEmpty(strings.TrimSpace(profile.BaseURL), defaults.BaseURL)
+	model := firstNonEmpty(strings.TrimSpace(profile.Model), defaults.Model)
+	comfy := normalizeComfyUIProfile(profile.ComfyUI)
+	if protocol == ImageProtocolComfyUI && comfy.WorkflowMode == ComfyUIWorkflowBuiltin && model == "" {
 		return ResolvedImageAPIProfile{}, ErrImageAPIModelMissing
 	}
+	if protocol == ImageProtocolComfyUI && comfy.WorkflowMode == ComfyUIWorkflowAPI && comfy.Workflow == "" {
+		return ResolvedImageAPIProfile{}, ErrComfyUIWorkflowMissing
+	}
+	if protocol != ImageProtocolComfyUI && model == "" {
+		return ResolvedImageAPIProfile{}, ErrImageAPIModelMissing
+	}
+	if imageProviderRequiresAPIKey(provider) && strings.TrimSpace(profile.APIKey) == "" {
+		return ResolvedImageAPIProfile{}, ErrImageAPIKeyMissing
+	}
+	if baseURL == "" {
+		return ResolvedImageAPIProfile{}, fmt.Errorf("image model base URL is missing")
+	}
+
 	return ResolvedImageAPIProfile{
-		ProfileID:     profileID,
-		Name:          strings.TrimSpace(profile.Name),
-		Provider:      normalizeImageAPIProvider(profile.Provider),
-		OpenAIAPIKey:  strings.TrimSpace(profile.OpenAIAPIKey),
-		OpenAIBaseURL: strings.TrimSpace(profile.OpenAIBaseURL),
-		OpenAIModel:   strings.TrimSpace(profile.OpenAIModel),
-		Size:          "",
-		Quality:       normalizeImageAPIQuality(profile.DefaultQuality),
-		OutputFormat:  normalizeImageAPIOutputFormat(profile.DefaultOutputFormat),
+		ProfileID:    profileID,
+		Name:         strings.TrimSpace(profile.Name),
+		Provider:     provider,
+		Protocol:     protocol,
+		APIKey:       strings.TrimSpace(profile.APIKey),
+		BaseURL:      baseURL,
+		Model:        model,
+		Headers:      cloneImageHeaders(profile.Headers),
+		Size:         firstNonEmpty(normalizeImageAPISize(profile.DefaultSize), defaults.Size),
+		AspectRatio:  normalizeImageAPIAspectRatio(profile.DefaultAspectRatio),
+		Resolution:   firstNonEmpty(normalizeImageAPIResolution(profile.DefaultResolution), defaults.Resolution),
+		Quality:      firstNonEmpty(normalizeImageAPIQuality(profile.DefaultQuality), defaults.Quality),
+		OutputFormat: firstNonEmpty(normalizeImageAPIOutputFormat(profile.DefaultOutputFormat), defaults.OutputFormat),
+		ComfyUI:      comfy,
 	}, nil
 }
 
@@ -126,12 +267,11 @@ func ResolveImageAPIProfileDraft(cfg *Config, draft ImageAPIProfileSettings) (Re
 	}
 	originalID := imageAPIProfileID(draft)
 	if originalID == "" {
-		return ResolvedImageAPIProfile{}, fmt.Errorf("image API profile requires an id or model")
+		return ResolvedImageAPIProfile{}, fmt.Errorf("image model profile requires an id or model")
 	}
-	legacy := legacyImageAPIProfile(cfg)
 	base := ImageAPIProfileSettings{}
 	if originalID == DefaultImageAPIProfileID {
-		base = legacy
+		base = DefaultImageAPIProfile()
 	}
 	for _, profile := range cfg.ImageAPIProfiles {
 		if imageAPIProfileID(profile) == originalID {
@@ -140,194 +280,11 @@ func ResolveImageAPIProfileDraft(cfg *Config, draft ImageAPIProfileSettings) (Re
 		}
 	}
 	merged := mergeImageAPIProfile(base, draft)
-	if draft.OpenAIAPIKey == "" {
-		merged.OpenAIAPIKey = ""
-		for _, source := range []ImageAPIProfileSettings{base, legacy} {
-			if strings.TrimSpace(source.OpenAIAPIKey) != "" && imageAPICredentialScope(source) == imageAPICredentialScope(merged) {
-				merged.OpenAIAPIKey = source.OpenAIAPIKey
-				break
-			}
+	if draft.APIKey == "" {
+		merged.APIKey = ""
+		if strings.TrimSpace(base.APIKey) != "" && imageAPICredentialScope(base) == imageAPICredentialScope(merged) {
+			merged.APIKey = base.APIKey
 		}
 	}
-	const validationProfileID = "__image_validation__"
-	merged.ID = validationProfileID
-	temporary := Config{
-		DefaultImageAPIProfileID: validationProfileID,
-		ImageAPIBaseURL:          cfg.ImageAPIBaseURL,
-		ImageAPIModel:            cfg.ImageAPIModel,
-		ImageAPIProfiles:         []ImageAPIProfileSettings{merged},
-	}
-	resolved, err := ResolveImageAPIProfile(&temporary, validationProfileID)
-	if err != nil {
-		return ResolvedImageAPIProfile{}, err
-	}
-	resolved.ProfileID = originalID
-	return resolved, nil
-}
-
-func mergeImageAPIProfiles(parent, child []ImageAPIProfileSettings) []ImageAPIProfileSettings {
-	if len(child) == 0 {
-		return parent
-	}
-	out := make([]ImageAPIProfileSettings, 0, len(parent)+len(child))
-	index := make(map[string]int, len(parent)+len(child))
-	for _, profile := range parent {
-		id := imageAPIProfileID(profile)
-		if id == "" {
-			continue
-		}
-		profile.ID = id
-		index[id] = len(out)
-		out = append(out, profile)
-	}
-	for _, profile := range child {
-		id := imageAPIProfileID(profile)
-		if id == "" {
-			continue
-		}
-		profile.ID = id
-		if i, ok := index[id]; ok {
-			out[i] = mergeImageAPIProfile(out[i], profile)
-		} else {
-			index[id] = len(out)
-			out = append(out, profile)
-		}
-	}
-	return out
-}
-
-func sanitizeImageAPIProfiles(profiles []ImageAPIProfileSettings) []ImageAPIProfileSettings {
-	if len(profiles) == 0 {
-		return profiles
-	}
-	out := make([]ImageAPIProfileSettings, 0, len(profiles))
-	for _, profile := range profiles {
-		profile.OpenAIModel = strings.TrimSpace(profile.OpenAIModel)
-		profile.ID = imageAPIProfileID(profile)
-		if profile.ID == "" {
-			continue
-		}
-		if profile.OpenAIModel == "" && profile.ID != DefaultImageAPIProfileID {
-			profile.OpenAIModel = profile.ID
-		}
-		profile.Name = strings.TrimSpace(profile.Name)
-		profile.Provider = normalizeImageAPIProvider(profile.Provider)
-		profile.OpenAIBaseURL = strings.TrimSpace(profile.OpenAIBaseURL)
-		profile.DefaultSize = normalizeImageAPISize(profile.DefaultSize)
-		profile.DefaultQuality = normalizeImageAPIQuality(profile.DefaultQuality)
-		profile.DefaultOutputFormat = normalizeImageAPIOutputFormat(profile.DefaultOutputFormat)
-		out = append(out, profile)
-	}
-	return out
-}
-
-func mergeImageAPIProfile(parent, child ImageAPIProfileSettings) ImageAPIProfileSettings {
-	out := parent
-	if id := imageAPIProfileID(child); id != "" {
-		out.ID = id
-	}
-	if child.Name != "" {
-		out.Name = strings.TrimSpace(child.Name)
-	}
-	if child.Provider != "" {
-		out.Provider = normalizeImageAPIProvider(child.Provider)
-	}
-	if child.OpenAIAPIKey != "" {
-		out.OpenAIAPIKey = child.OpenAIAPIKey
-	}
-	if child.OpenAIBaseURL != "" {
-		out.OpenAIBaseURL = strings.TrimSpace(child.OpenAIBaseURL)
-	}
-	if child.OpenAIModel != "" {
-		out.OpenAIModel = strings.TrimSpace(child.OpenAIModel)
-	}
-	if child.DefaultSize != "" {
-		out.DefaultSize = normalizeImageAPISize(child.DefaultSize)
-	}
-	if child.DefaultQuality != "" {
-		out.DefaultQuality = normalizeImageAPIQuality(child.DefaultQuality)
-	}
-	if child.DefaultOutputFormat != "" {
-		out.DefaultOutputFormat = normalizeImageAPIOutputFormat(child.DefaultOutputFormat)
-	}
-	return out
-}
-
-func imageAPICredentialScope(profile ImageAPIProfileSettings) string {
-	baseURL := strings.TrimSpace(profile.OpenAIBaseURL)
-	if baseURL == "" {
-		baseURL = DefaultImageAPIBaseURL
-	}
-	if parsed, err := url.Parse(baseURL); err == nil && parsed.Scheme != "" && parsed.Host != "" {
-		return "origin:" + strings.ToLower(parsed.Scheme) + "://" + strings.ToLower(parsed.Host)
-	}
-	return "endpoint:" + strings.ToLower(strings.TrimRight(baseURL, "/"))
-}
-
-func legacyImageAPIProfile(cfg *Config) ImageAPIProfileSettings {
-	return ImageAPIProfileSettings{
-		ID:                  DefaultImageAPIProfileID,
-		Name:                "默认图像模型",
-		Provider:            DefaultImageAPIProvider,
-		OpenAIAPIKey:        cfg.ImageAPIKey,
-		OpenAIBaseURL:       firstNonEmpty(cfg.ImageAPIBaseURL, DefaultImageAPIBaseURL),
-		OpenAIModel:         firstNonEmpty(cfg.ImageAPIModel, DefaultImageAPIModel),
-		DefaultQuality:      DefaultImageAPIQuality,
-		DefaultOutputFormat: DefaultImageAPIFormat,
-	}
-}
-
-func normalizeImageAPIProfileID(id string) string {
-	return strings.TrimSpace(id)
-}
-
-func imageAPIProfileID(profile ImageAPIProfileSettings) string {
-	if id := normalizeImageAPIProfileID(profile.ID); id != "" {
-		return id
-	}
-	return strings.TrimSpace(profile.OpenAIModel)
-}
-
-func normalizeImageAPIProvider(provider string) string {
-	switch strings.ToLower(strings.TrimSpace(provider)) {
-	case "", DefaultImageAPIProvider:
-		return DefaultImageAPIProvider
-	default:
-		return ""
-	}
-}
-
-func normalizeImageAPISize(size string) string {
-	switch strings.TrimSpace(size) {
-	case "", "auto":
-		return ""
-	case "2048x2048", "2304x1728", "1728x2304", "2848x1600", "1600x2848", "2496x1664", "1664x2496", "3136x1344",
-		"3072x3072", "3456x2592", "2592x3456", "4096x2304", "2304x4096", "2496x3744", "3744x2496", "4704x2016",
-		"4096x4096", "3520x4704", "4704x3520", "5504x3040", "3040x5504", "3328x4992", "4992x3328", "6240x2656":
-		return strings.TrimSpace(size)
-	default:
-		return ""
-	}
-}
-
-func normalizeImageAPIQuality(quality string) string {
-	switch strings.TrimSpace(quality) {
-	case "", "auto":
-		return ""
-	case "standard", "hd", "low", "medium", "high":
-		return strings.TrimSpace(quality)
-	default:
-		return ""
-	}
-}
-
-func normalizeImageAPIOutputFormat(format string) string {
-	switch strings.TrimSpace(format) {
-	case "", "png":
-		return ""
-	case "jpeg":
-		return strings.TrimSpace(format)
-	default:
-		return ""
-	}
+	return resolveImageAPIProfile(originalID, merged)
 }

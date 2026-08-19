@@ -45,10 +45,10 @@ func TestGenerateImageSavesOpenAIResultToAssets(t *testing.T) {
 
 	application := &App{
 		cfg: &config.Config{
-			Workspace:       workspace,
-			ImageAPIKey:     "test-key",
-			ImageAPIBaseURL: server.URL,
-			ImageAPIModel:   "gpt-image-1",
+			Workspace: workspace,
+			ImageAPIProfiles: []config.ImageAPIProfileSettings{{
+				ID: config.DefaultImageAPIProfileID, APIKey: "test-key", BaseURL: server.URL, Model: "gpt-image-1",
+			}},
 		},
 		workspace:   workspace,
 		bookService: book.NewService(workspace),
@@ -100,7 +100,10 @@ func TestGenerateImageWorkspaceTransitionCancelsBeforeAssetWrite(t *testing.T) {
 	defer server.Close()
 	application := &App{
 		cfg: &config.Config{
-			Workspace: workspace, ImageAPIKey: "test-key", ImageAPIBaseURL: server.URL, ImageAPIModel: "gpt-image-1",
+			Workspace: workspace,
+			ImageAPIProfiles: []config.ImageAPIProfileSettings{{
+				ID: config.DefaultImageAPIProfileID, APIKey: "test-key", BaseURL: server.URL, Model: "gpt-image-1",
+			}},
 		},
 		workspace: workspace, bookService: book.NewService(workspace),
 	}

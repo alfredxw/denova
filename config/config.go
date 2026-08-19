@@ -16,35 +16,37 @@ import (
 
 // Config 保存 Denova 的全局配置。
 type Config struct {
-	OpenAIAPIKey              string                       `toml:"openai_api_key"`
-	OpenAIBaseURL             string                       `toml:"openai_base_url"`
-	OpenAIModel               string                       `toml:"openai_model"`
-	OpenAIContextWindowTokens int                          `toml:"openai_context_window_tokens"`
-	ModelProfiles             []ModelProfileSettings       `toml:"model_profiles"`
-	ImageAPIKey               string                       `toml:"image_api_key"`
-	ImageAPIBaseURL           string                       `toml:"image_api_base_url"`
-	ImageAPIModel             string                       `toml:"image_api_model"`
-	DefaultImageAPIProfileID  string                       `toml:"default_image_api_profile_id"`
-	ImageAPIProfiles          []ImageAPIProfileSettings    `toml:"image_api_profiles"`
-	AgentModels               AgentModelSettings           `toml:"agent_models"`
-	AgentTools                AgentToolSettings            `toml:"agent_tools"`
-	AgentPrompts              AgentPromptSettings          `toml:"agent_prompts"`
-	AgentSkills               AgentSkillSettings           `toml:"agent_skills"`
-	AgentContexts             AgentContextSettings         `toml:"agent_context"`
-	GeneralSubAgents          AgentGeneralSubAgentSettings `toml:"general_sub_agents"`
-	SubAgents                 []SubAgentConfig             `toml:"sub_agents"`
-	WebAccess                 WebAccessConfig              `toml:"web_access"`
-	Labs                      ResolvedLabs                 `toml:"labs"`
-	SkillsDir                 string                       `toml:"skills_dir"`
-	BackendPort               int                          `toml:"backend_port"`
-	FrontendPort              int                          `toml:"frontend_port"`
-	AllowLANAccess            bool                         `toml:"allow_lan_access"`
-	RemoteAccessUsername      string                       `toml:"remote_access_username"`
-	RemoteAccessPasswordHash  string                       `toml:"remote_access_password_hash"`
-	Language                  string                       `toml:"language"`
-	DenovaDir                 string                       `toml:"denova_dir"`
-	NovaDir                   string                       `toml:"nova_dir"`
-	Workspace                 string                       `toml:"workspace"`
+	OpenAIAPIKey              string                 `toml:"openai_api_key"`
+	OpenAIBaseURL             string                 `toml:"openai_base_url"`
+	OpenAIModel               string                 `toml:"openai_model"`
+	OpenAIContextWindowTokens int                    `toml:"openai_context_window_tokens"`
+	ModelProfiles             []ModelProfileSettings `toml:"model_profiles"`
+	// LegacyImageAPI* keep startup config files readable while their values are
+	// projected into the canonical image profile schema.
+	LegacyImageAPIKey        *string                      `toml:"image_api_key"`
+	LegacyImageAPIBaseURL    *string                      `toml:"image_api_base_url"`
+	LegacyImageAPIModel      *string                      `toml:"image_api_model"`
+	DefaultImageAPIProfileID string                       `toml:"default_image_api_profile_id"`
+	ImageAPIProfiles         []ImageAPIProfileSettings    `toml:"image_api_profiles"`
+	AgentModels              AgentModelSettings           `toml:"agent_models"`
+	AgentTools               AgentToolSettings            `toml:"agent_tools"`
+	AgentPrompts             AgentPromptSettings          `toml:"agent_prompts"`
+	AgentSkills              AgentSkillSettings           `toml:"agent_skills"`
+	AgentContexts            AgentContextSettings         `toml:"agent_context"`
+	GeneralSubAgents         AgentGeneralSubAgentSettings `toml:"general_sub_agents"`
+	SubAgents                []SubAgentConfig             `toml:"sub_agents"`
+	WebAccess                WebAccessConfig              `toml:"web_access"`
+	Labs                     ResolvedLabs                 `toml:"labs"`
+	SkillsDir                string                       `toml:"skills_dir"`
+	BackendPort              int                          `toml:"backend_port"`
+	FrontendPort             int                          `toml:"frontend_port"`
+	AllowLANAccess           bool                         `toml:"allow_lan_access"`
+	RemoteAccessUsername     string                       `toml:"remote_access_username"`
+	RemoteAccessPasswordHash string                       `toml:"remote_access_password_hash"`
+	Language                 string                       `toml:"language"`
+	DenovaDir                string                       `toml:"denova_dir"`
+	NovaDir                  string                       `toml:"nova_dir"`
+	Workspace                string                       `toml:"workspace"`
 	// ProjectID and ProjectStateDir are runtime-owned bindings. They never
 	// persist into user configuration or enter the content workspacelayout.
 	ProjectID                   string                    `toml:"-"`
@@ -114,9 +116,6 @@ func configFromLayered(novaDir, workspace string, layered LayeredSettings) *Conf
 		OpenAIModel:                 s.OpenAIModel,
 		OpenAIContextWindowTokens:   settingsInt(s.OpenAIContextWindowTokens, DefaultContextWindowTokens),
 		ModelProfiles:               s.ModelProfiles,
-		ImageAPIKey:                 s.ImageAPIKey,
-		ImageAPIBaseURL:             s.ImageAPIBaseURL,
-		ImageAPIModel:               s.ImageAPIModel,
 		DefaultImageAPIProfileID:    s.DefaultImageAPIProfileID,
 		ImageAPIProfiles:            s.ImageAPIProfiles,
 		AgentModels:                 s.AgentModels,
@@ -251,9 +250,9 @@ func settingsFromConfig(cfg *Config) Settings {
 		OpenAIBaseURL:            cfg.OpenAIBaseURL,
 		OpenAIModel:              cfg.OpenAIModel,
 		ModelProfiles:            sanitizeModelProfiles(cfg.ModelProfiles),
-		ImageAPIKey:              cfg.ImageAPIKey,
-		ImageAPIBaseURL:          cfg.ImageAPIBaseURL,
-		ImageAPIModel:            cfg.ImageAPIModel,
+		LegacyImageAPIKey:        cfg.LegacyImageAPIKey,
+		LegacyImageAPIBaseURL:    cfg.LegacyImageAPIBaseURL,
+		LegacyImageAPIModel:      cfg.LegacyImageAPIModel,
 		DefaultImageAPIProfileID: cfg.DefaultImageAPIProfileID,
 		ImageAPIProfiles:         cfg.ImageAPIProfiles,
 		AgentModels:              cfg.AgentModels,
@@ -341,6 +340,8 @@ func settingsFromConfig(cfg *Config) Settings {
 	if cfg.OpenAIContextWindowTokens > 0 {
 		settings.OpenAIContextWindowTokens = &cfg.OpenAIContextWindowTokens
 	}
+	settings, _ = migrateLegacyImageSettings(settings)
+	settings.ImageAPIProfiles = sanitizeImageAPIProfiles(settings.ImageAPIProfiles)
 	return preserveTerminalCommandRegistryPresence(settings)
 }
 
@@ -364,9 +365,6 @@ func Load() *Config {
 			OpenAIModel:                 d.OpenAIModel,
 			OpenAIContextWindowTokens:   settingsInt(d.OpenAIContextWindowTokens, DefaultContextWindowTokens),
 			ModelProfiles:               d.ModelProfiles,
-			ImageAPIKey:                 d.ImageAPIKey,
-			ImageAPIBaseURL:             d.ImageAPIBaseURL,
-			ImageAPIModel:               d.ImageAPIModel,
 			DefaultImageAPIProfileID:    d.DefaultImageAPIProfileID,
 			ImageAPIProfiles:            d.ImageAPIProfiles,
 			AgentModels:                 d.AgentModels,
@@ -531,15 +529,7 @@ func overrideFromEnv(cfg *Config) {
 	if v := os.Getenv("OPENAI_MODEL"); v != "" {
 		cfg.OpenAIModel = v
 	}
-	if v := os.Getenv("OPENAI_IMAGE_API_KEY"); v != "" {
-		cfg.ImageAPIKey = v
-	}
-	if v := os.Getenv("OPENAI_IMAGE_BASE_URL"); v != "" {
-		cfg.ImageAPIBaseURL = v
-	}
-	if v := os.Getenv("OPENAI_IMAGE_MODEL"); v != "" {
-		cfg.ImageAPIModel = v
-	}
+	ApplyImageAPIEnvironment(cfg)
 	if v := envCompat("DENOVA_SKILLS_DIR", "NOVA_SKILLS_DIR"); v != "" {
 		cfg.SkillsDir = v
 	}

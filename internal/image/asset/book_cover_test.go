@@ -5,6 +5,7 @@ import (
 	"context"
 	"image"
 	"image/color"
+	"image/jpeg"
 	"image/png"
 	"os"
 	"path/filepath"
@@ -118,6 +119,31 @@ func TestGenerateWithoutExistingCoverSkipsBackup(t *testing.T) {
 	assertFileBytes(t, workspace, CoverPath, "cover")
 }
 
+func TestGenerateConvertsJPEGToCanonicalPNGCover(t *testing.T) {
+	workspace := t.TempDir()
+	jpegData := testJPEG(t)
+	generator := &coverFakeGenerator{result: imagegen.Result{
+		ProfileID:    "grok",
+		Provider:     "xai",
+		Model:        "grok-imagine-image-2.0",
+		OutputFormat: "jpeg",
+		Images:       []imagegen.Image{{Data: jpegData, MIMEType: "image/jpeg", Extension: "jpeg"}},
+	}}
+	service := NewServiceWithGenerator(generator)
+	service.now = func() time.Time { return time.Date(2026, 6, 28, 12, 0, 0, 0, time.UTC) }
+	service.suffix = func() string { return "jpeg0001" }
+
+	result, err := service.GenerateCover(context.Background(), &config.Config{}, book.NewService(workspace), CoverGenerateRequest{Title: "JPEG cover"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.SourcePath != "assets/image/covers/20260628-120000-jpeg0001/cover.jpeg" {
+		t.Fatalf("source path = %q", result.SourcePath)
+	}
+	assertFileBytesEqual(t, workspace, result.SourcePath, jpegData)
+	assertPNGFile(t, workspace, CoverPath)
+}
+
 func TestUploadWritesCoverSourceMetaAndBackup(t *testing.T) {
 	workspace := t.TempDir()
 	bookService := book.NewService(workspace)
@@ -173,6 +199,17 @@ func assertFileBytes(t *testing.T, workspace, relPath, want string) {
 	}
 }
 
+func assertFileBytesEqual(t *testing.T, workspace, relPath string, want []byte) {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(workspace, filepath.FromSlash(relPath)))
+	if err != nil {
+		t.Fatalf("读取 %s 失败: %v", relPath, err)
+	}
+	if !bytes.Equal(data, want) {
+		t.Fatalf("%s 内容不符合预期", relPath)
+	}
+}
+
 func assertPNGFile(t *testing.T, workspace, relPath string) {
 	t.Helper()
 	file, err := os.Open(filepath.Join(workspace, filepath.FromSlash(relPath)))
@@ -192,6 +229,17 @@ func testPNG(t *testing.T) []byte {
 	var buf bytes.Buffer
 	if err := png.Encode(&buf, img); err != nil {
 		t.Fatalf("生成测试 PNG 失败: %v", err)
+	}
+	return buf.Bytes()
+}
+
+func testJPEG(t *testing.T) []byte {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, 2, 2))
+	img.Set(0, 0, color.RGBA{G: 255, A: 255})
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, img, nil); err != nil {
+		t.Fatalf("生成测试 JPEG 失败: %v", err)
 	}
 	return buf.Bytes()
 }

@@ -92,9 +92,6 @@ func (service *Service) coverConfig(workspace string) (config.Config, error) {
 	}
 	effective := layered.Effective
 	cfg := config.Config{
-		ImageAPIKey:              effective.ImageAPIKey,
-		ImageAPIBaseURL:          effective.ImageAPIBaseURL,
-		ImageAPIModel:            effective.ImageAPIModel,
 		DefaultImageAPIProfileID: effective.DefaultImageAPIProfileID,
 		ImageAPIProfiles:         effective.ImageAPIProfiles,
 		DenovaDir:                layered.Paths.DenovaDir,
@@ -102,15 +99,7 @@ func (service *Service) coverConfig(workspace string) (config.Config, error) {
 		Workspace:                workspace,
 		IDEImagePresetID:         effective.IDEImagePresetID,
 	}
-	if v := os.Getenv("OPENAI_IMAGE_API_KEY"); v != "" {
-		cfg.ImageAPIKey = v
-	}
-	if v := os.Getenv("OPENAI_IMAGE_BASE_URL"); v != "" {
-		cfg.ImageAPIBaseURL = v
-	}
-	if v := os.Getenv("OPENAI_IMAGE_MODEL"); v != "" {
-		cfg.ImageAPIModel = v
-	}
+	config.ApplyImageAPIEnvironment(&cfg)
 	return cfg, nil
 }
 

@@ -25,10 +25,10 @@ require (
 	github.com/invopop/jsonschema v0.14.0
 	github.com/lithammer/fuzzysearch v1.1.8
 	github.com/ncruces/zenity v0.10.14
-	github.com/openai/openai-go/v3 v3.48.0
 	github.com/pelletier/go-toml/v2 v2.4.0
 	github.com/sergi/go-diff v1.4.0
 	golang.org/x/crypto v0.54.0
+	golang.org/x/image v0.20.0
 	golang.org/x/net v0.57.0
 	golang.org/x/sync v0.22.0
 	golang.org/x/sys v0.47.0
@@ -81,6 +81,7 @@ require (
 	github.com/kevinburke/ssh_config v1.6.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/onsi/gomega v1.41.0 // indirect
+	github.com/openai/openai-go/v3 v3.48.0 // indirect
 	github.com/pb33f/ordered-map/v2 v2.3.1 // indirect
 	github.com/pjbgf/sha1cd v0.6.0 // indirect
 	github.com/randall77/makefat v0.0.0-20210315173500-7ddd0e42c844 // indirect
@@ -99,7 +100,6 @@ require (
 	github.com/ysmood/leakless v0.9.0 // indirect
 	go.yaml.in/yaml/v4 v4.0.0-rc.2 // indirect
 	golang.org/x/arch v0.28.0 // indirect
-	golang.org/x/image v0.20.0 // indirect
 	google.golang.org/protobuf v1.36.10 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 )

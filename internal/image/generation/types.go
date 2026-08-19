@@ -11,6 +11,8 @@ type GenerateRequest struct {
 	Prompt       string `json:"prompt"`
 	N            int    `json:"n,omitempty"`
 	Size         string `json:"size,omitempty"`
+	AspectRatio  string `json:"aspect_ratio,omitempty"`
+	Resolution   string `json:"resolution,omitempty"`
 	Quality      string `json:"quality,omitempty"`
 	OutputFormat string `json:"output_format,omitempty"`
 }
@@ -24,6 +26,15 @@ type Result struct {
 	Quality      string
 	OutputFormat string
 	Images       []Image
+	Failures     []Failure
+}
+
+// Failure reports an item-level provider failure while preserving successful
+// images from the same logical request.
+type Failure struct {
+	Index   int    `json:"index"`
+	Code    string `json:"code"`
+	Message string `json:"message"`
 }
 
 type Image struct {

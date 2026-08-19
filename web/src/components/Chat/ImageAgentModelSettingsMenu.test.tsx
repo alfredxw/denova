@@ -47,8 +47,8 @@ describe('ImageAgentModelSettingsMenu', () => {
           { id: 'ds-flash', name: 'DS Flash', model: 'ds-flash' },
         ],
         image_api_profiles: [
-          { id: 'illustrator', name: 'Illustrator', openai_model: 'image-v1' },
-          { id: 'flux', name: 'Flux', openai_model: 'flux-pro' },
+          { id: 'illustrator', name: 'Illustrator', model: 'image-v1' },
+          { id: 'flux', name: 'Flux', model: 'flux-pro' },
         ],
         agent_models: { image: { profile_id: 'reasoning' } },
         default_image_api_profile_id: 'illustrator',
