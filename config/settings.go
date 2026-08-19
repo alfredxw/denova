@@ -90,6 +90,9 @@ type Settings struct {
 	// 游戏模式
 	InteractiveStageFontSize   *int     `toml:"interactive_stage_font_size,omitempty" json:"interactive_stage_font_size,omitempty"`
 	InteractiveStageLineHeight *float64 `toml:"interactive_stage_line_height,omitempty" json:"interactive_stage_line_height,omitempty"`
+
+	// 叙事记忆(NWM)
+	NarrativeMemoryPublishMode string `toml:"narrative_memory_publish_mode,omitempty" json:"narrative_memory_publish_mode,omitempty"`
 }
 
 func boolPtr(v bool) *bool        { return &v }
@@ -104,6 +107,15 @@ const (
 	DefaultTraceCaptureLevel       = "summary"
 	DefaultTraceExporter           = "local"
 	DefaultTraceRetentionRuns      = 100
+
+	// NarrativeMemoryPublishMode 的三档抽取时机。
+	// manual: 不自动抽取(默认;记忆由测试/API/未来 UI 手动注入)
+	// every_turn: 每回合定稿后异步抽取
+	// on_compaction: 随上下文压缩时机抽取(暂未实现,按 manual 处理)
+	NarrativeMemoryPublishModeManual     = "manual"
+	NarrativeMemoryPublishModeEveryTurn  = "every_turn"
+	NarrativeMemoryPublishModeOnCompact  = "on_compaction"
+	DefaultNarrativeMemoryPublishMode    = NarrativeMemoryPublishModeManual
 )
 
 // DefaultSettings 返回内置默认配置（最低优先级）。
@@ -162,6 +174,7 @@ func DefaultSettings() Settings {
 		IDEStoryTellerID:           "classic",
 		IDEImagePresetID:           "game-cg",
 		WritingSkillDefault:        DefaultWritingSkillName,
+		NarrativeMemoryPublishMode: DefaultNarrativeMemoryPublishMode,
 		InteractiveStageFontSize:   intPtr(16),
 		InteractiveStageLineHeight: floatPtr(1.78),
 	}
@@ -321,6 +334,9 @@ func Merge(parent, child Settings) Settings {
 	if child.WritingSkillDefault != "" {
 		out.WritingSkillDefault = child.WritingSkillDefault
 	}
+	if child.NarrativeMemoryPublishMode != "" {
+		out.NarrativeMemoryPublishMode = child.NarrativeMemoryPublishMode
+	}
 	if child.InteractiveStageFontSize != nil {
 		out.InteractiveStageFontSize = child.InteractiveStageFontSize
 	}
@@ -328,6 +344,16 @@ func Merge(parent, child Settings) Settings {
 		out.InteractiveStageLineHeight = child.InteractiveStageLineHeight
 	}
 	return out
+}
+
+// NormalizeNarrativeMemoryPublishMode 把非法值回落到 manual(不自动抽取)。
+func NormalizeNarrativeMemoryPublishMode(value string) string {
+	switch strings.TrimSpace(value) {
+	case NarrativeMemoryPublishModeEveryTurn, NarrativeMemoryPublishModeOnCompact:
+		return strings.TrimSpace(value)
+	default:
+		return NarrativeMemoryPublishModeManual
+	}
 }
 
 const (
@@ -615,6 +641,7 @@ func sanitizeEditableSettings(s Settings) Settings {
 	s.MotionIntensity = normalizeMotionIntensity(s.MotionIntensity)
 	s.IDEImagePresetID = strings.TrimSpace(s.IDEImagePresetID)
 	s.WritingSkillDefault = strings.TrimSpace(s.WritingSkillDefault)
+	s.NarrativeMemoryPublishMode = NormalizeNarrativeMemoryPublishMode(s.NarrativeMemoryPublishMode)
 	s.OpenAIContextWindowTokens = normalizeContextWindowTokens(s.OpenAIContextWindowTokens)
 	s.ImageAPIBaseURL = strings.TrimSpace(s.ImageAPIBaseURL)
 	s.ImageAPIModel = strings.TrimSpace(s.ImageAPIModel)

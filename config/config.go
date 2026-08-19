@@ -52,6 +52,7 @@ type Config struct {
 	IDEImagePresetID            string                       `toml:"-"`
 	ImagePresetToolPrompt       string                       `toml:"-"`
 	WritingSkillDefault         string                       `toml:"writing_skill_default"`
+	NarrativeMemoryPublishMode  string                       `toml:"narrative_memory_publish_mode"`
 	MaxIteration                int                          `toml:"max_iteration"`
 	ModelMaxRetries             int                          `toml:"model_max_retries"`
 	AgentIdleTimeoutSeconds     int                          `toml:"agent_idle_timeout_seconds"`

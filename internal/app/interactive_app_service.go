@@ -899,6 +899,7 @@ func (s *InteractiveAppService) startInteractiveTask(ctx context.Context, storyI
 			})
 			log.Printf("[interactive-director-agent] maintenance decision story_id=%s branch_id=%s turn_id=%s policy_mode=%s interval_turns=%d committed_turns=%d plan_status=%s run_plan=%t reason=%s", storyID, turn.BranchID, turn.ID, policy.Mode, policy.IntervalTurns, committedTurns, planStatus, decision.ShouldRun, decision.Reason)
 			startInteractiveDirectorMaintenanceTask(&runtimeCfg, state, conversation, turn, sessionStore, decision.ShouldRun)
+			startInteractiveNarrativeMemoryTask(&runtimeCfg, conversation, turn)
 			maintenanceScheduled = true
 		}
 		interactiveEmit := func(event agent.Event) {

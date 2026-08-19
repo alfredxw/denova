@@ -490,6 +490,9 @@ func applyLayeredSettingsToConfig(cfg *config.Config, layered config.LayeredSett
 		cfg.IDEImagePresetID = effective.IDEImagePresetID
 	}
 	cfg.WritingSkillDefault = effective.WritingSkillDefault
+	if effective.NarrativeMemoryPublishMode != "" {
+		cfg.NarrativeMemoryPublishMode = config.NormalizeNarrativeMemoryPublishMode(effective.NarrativeMemoryPublishMode)
+	}
 	cfg.MaxIteration = appSettingsInt(effective.MaxIteration, 0)
 	if effective.ModelMaxRetries != nil {
 		cfg.ModelMaxRetries = appSettingsInt(effective.ModelMaxRetries, 5)

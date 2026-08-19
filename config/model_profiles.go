@@ -28,6 +28,7 @@ type AgentModelSettings struct {
 	Image               AgentModelOverride `toml:"image,omitempty" json:"image,omitempty"`
 	Automation          AgentModelOverride `toml:"automation,omitempty" json:"automation,omitempty"`
 	ContextCompaction   AgentModelOverride `toml:"context_compaction,omitempty" json:"context_compaction,omitempty"`
+	NarrativeMemory     AgentModelOverride `toml:"narrative_memory,omitempty" json:"narrative_memory,omitempty"`
 }
 
 type AgentModelOverride struct {
@@ -60,6 +61,7 @@ func MergeAgentModelSettings(parent, child AgentModelSettings) AgentModelSetting
 		Image:               mergeAgentModelOverride(parent.Image, child.Image),
 		Automation:          mergeAgentModelOverride(parent.Automation, child.Automation),
 		ContextCompaction:   mergeAgentModelOverride(parent.ContextCompaction, child.ContextCompaction),
+		NarrativeMemory:     mergeAgentModelOverride(parent.NarrativeMemory, child.NarrativeMemory),
 	}
 }
 

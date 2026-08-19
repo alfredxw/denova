@@ -10,6 +10,7 @@ const (
 	AgentKindImage               = "image"
 	AgentKindAutomation          = "automation"
 	AgentKindContextCompaction   = "context_compaction"
+	AgentKindNarrativeMemory     = "narrative_memory"
 )
 
 // AgentKindDefinition is the registry entry for one runtime Agent kind.
@@ -103,6 +104,15 @@ var agentKindRegistry = []AgentKindDefinition{
 		PromptOverride:  func(settings AgentPromptSettings) AgentPromptOverride { return settings.ContextCompaction },
 		SkillOverride:   func(settings AgentSkillSettings) AgentSkillOverride { return settings.ContextCompaction },
 		ContextOverride: func(settings AgentContextSettings) AgentContextOverride { return settings.ContextCompaction },
+	},
+	{
+		Kind:            AgentKindNarrativeMemory,
+		SessionID:       "narrative-memory-agent",
+		ModelOverride:   func(settings AgentModelSettings) AgentModelOverride { return settings.NarrativeMemory },
+		ToolOverride:    func(settings AgentToolSettings) AgentToolOverride { return settings.NarrativeMemory },
+		PromptOverride:  func(settings AgentPromptSettings) AgentPromptOverride { return settings.NarrativeMemory },
+		SkillOverride:   func(settings AgentSkillSettings) AgentSkillOverride { return settings.NarrativeMemory },
+		ContextOverride: func(settings AgentContextSettings) AgentContextOverride { return settings.NarrativeMemory },
 	},
 }
 

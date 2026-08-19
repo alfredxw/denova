@@ -26,6 +26,7 @@ type AgentToolSettings struct {
 	Image               AgentToolOverride `toml:"image,omitempty" json:"image,omitempty"`
 	Automation          AgentToolOverride `toml:"automation,omitempty" json:"automation,omitempty"`
 	ContextCompaction   AgentToolOverride `toml:"context_compaction,omitempty" json:"context_compaction,omitempty"`
+	NarrativeMemory     AgentToolOverride `toml:"narrative_memory,omitempty" json:"narrative_memory,omitempty"`
 }
 
 // AgentToolOverride 的指针字段用于区分继承与显式关闭。
@@ -164,6 +165,7 @@ func MergeAgentToolSettings(parent, child AgentToolSettings) AgentToolSettings {
 		Image:               mergeAgentToolOverride(parent.Image, child.Image),
 		Automation:          mergeAgentToolOverride(parent.Automation, child.Automation),
 		ContextCompaction:   mergeAgentToolOverride(parent.ContextCompaction, child.ContextCompaction),
+		NarrativeMemory:     mergeAgentToolOverride(parent.NarrativeMemory, child.NarrativeMemory),
 	}
 }
 

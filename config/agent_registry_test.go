@@ -31,6 +31,7 @@ func TestAgentKindRegistryDefinesUniqueKindsAndConfigAccessors(t *testing.T) {
 		ToolAgent:           AgentModelOverride{ProfileID: AgentKindToolAgent},
 		Automation:          AgentModelOverride{ProfileID: AgentKindAutomation},
 		ContextCompaction:   AgentModelOverride{ProfileID: AgentKindContextCompaction},
+		NarrativeMemory:     AgentModelOverride{ProfileID: AgentKindNarrativeMemory},
 	}
 	prompts := AgentPromptSettings{
 		IDE:                 AgentPromptOverride{SystemPrompt: AgentKindIDE},
@@ -42,6 +43,7 @@ func TestAgentKindRegistryDefinesUniqueKindsAndConfigAccessors(t *testing.T) {
 		ToolAgent:           AgentPromptOverride{SystemPrompt: AgentKindToolAgent},
 		Automation:          AgentPromptOverride{SystemPrompt: AgentKindAutomation},
 		ContextCompaction:   AgentPromptOverride{SystemPrompt: AgentKindContextCompaction},
+		NarrativeMemory:     AgentPromptOverride{SystemPrompt: AgentKindNarrativeMemory},
 	}
 	on := true
 	tools := AgentToolSettings{
@@ -54,6 +56,7 @@ func TestAgentKindRegistryDefinesUniqueKindsAndConfigAccessors(t *testing.T) {
 		ToolAgent:           AgentToolOverride{WebSearch: &on},
 		Automation:          AgentToolOverride{FileRead: &on, WebSearch: &on},
 		ContextCompaction:   AgentToolOverride{Skills: &on},
+		NarrativeMemory:     AgentToolOverride{LoreRead: &on},
 	}
 	thresholds := map[string]*float64{}
 	for _, definition := range definitions {
@@ -70,6 +73,7 @@ func TestAgentKindRegistryDefinesUniqueKindsAndConfigAccessors(t *testing.T) {
 		ToolAgent:           AgentContextOverride{CompactionThreshold: thresholds[AgentKindToolAgent]},
 		Automation:          AgentContextOverride{CompactionThreshold: thresholds[AgentKindAutomation]},
 		ContextCompaction:   AgentContextOverride{CompactionThreshold: thresholds[AgentKindContextCompaction]},
+		NarrativeMemory:     AgentContextOverride{CompactionThreshold: thresholds[AgentKindNarrativeMemory]},
 	}
 
 	for _, definition := range definitions {
