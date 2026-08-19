@@ -47,6 +47,14 @@ type searchStoryHistoryInput struct {
 	Limit        int      `json:"limit,omitempty" jsonschema:"description=最多返回多少个历史回合，默认 8，最大 12。"`
 }
 
+type searchStoryMemoryInput struct {
+	Keywords     []string `json:"keywords,omitempty" jsonschema:"description=要查询的人物、地点、物品、线索或伏笔关键词；最多 8 个。留空时浏览当前有效记忆。"`
+	Kind         string   `json:"kind,omitempty" jsonschema:"description=只返回该类型记忆：knowledge 谁知道什么、reveal 揭示顺序、promise 伏笔、object_state 物品状态、relationship 关系、beat 戏剧节拍。"`
+	Subject      string   `json:"subject,omitempty" jsonschema:"description=只返回该主实体的记忆；填写时优先使用 Actor 状态手册中的名称。"`
+	BeforeTurnID string   `json:"before_turn_id,omitempty" jsonschema:"description=只查询该 turn_id 之前已成立的记忆；用于还原某个较早时点谁知道什么。"`
+	Limit        int      `json:"limit,omitempty" jsonschema:"description=最多返回多少条记忆，默认 8，最大 12。"`
+}
+
 // interactiveTurnCheckToolInput deliberately omits model-authored
 // outcomes.state_changes. Deterministic State Bindings produce rule state
 // changes; all remaining state mutations are submitted after the narrative.
@@ -110,7 +118,27 @@ func newInteractiveHistoryTools(ctx InteractiveStoryToolContext) ([]tool.BaseToo
 	if err != nil {
 		return nil, err
 	}
-	return []tool.BaseTool{searchTool}, nil
+	memoryTool, err := utils.InferTool("search_story_memory", "检索当前分支的叙事记忆：谁知道什么、伏笔是否已兑现、物品归属、关系演变、揭示顺序。记录从已提交回合抽取，每条带原文证据、有效期和 turn_id 溯源；valid_to 非空表示该事实之后被推翻。适合跨回合的状态一致性问题（角色是否知道某秘密、伏笔是否悬置、物品现在在谁手里）；查逐回合原文细节用 search_story_history。", func(callCtx context.Context, input searchStoryMemoryInput) (string, error) {
+		_ = callCtx
+		result, err := ctx.Store.SearchStoryMemory(ctx.StoryID, ctx.BranchID, interactive.MemorySearchRequest{
+			Keywords:     input.Keywords,
+			Kind:         input.Kind,
+			Subject:      input.Subject,
+			BeforeTurnID: input.BeforeTurnID,
+			Limit:        input.Limit,
+		})
+		if err != nil {
+			return "", err
+		}
+		// 工具路径只序列化有界命中;Explain 是调试 API 专属,不进入模型上下文。
+		result.Explain = nil
+		data, err := json.MarshalIndent(result, "", "  ")
+		return string(data), err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return []tool.BaseTool{searchTool, memoryTool}, nil
 }
 
 func newInteractiveTurnTools(ctx InteractiveStoryToolContext) ([]tool.BaseTool, error) {
