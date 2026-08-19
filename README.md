@@ -115,7 +115,9 @@ corepack enable
 
 ## 模型与配置
 
-Denova 的语言模型将 provider 与 API 协议分开配置：provider 从内置服务商目录选择，协议统一为 OpenAI Chat Completions、OpenAI Responses 或 Anthropic Messages。自定义端点选择「兼容 / 自定义端点」服务商，再设置协议与 Base URL；Gemini 使用 Google 官方的 OpenAI 兼容入口。OpenAI 默认使用 Responses API，DeepSeek 同时提供 Chat Completions、Responses 与 Anthropic 路由，MiniMax 默认使用能完整续传 thinking block 的 Anthropic 路由。设置页会按当前协议通过 OpenAI-compatible 或 Anthropic `/models` 获取模型候选，但模型名始终可自定义；也可直接用当前未保存配置发送一次最小生成请求来测试连接。旧 `model_profiles` 的 `openai_*` 字段和下面的 `OPENAI_*` 环境变量会继续按 Chat Completions 兼容读取。推荐先在设置页配置语言模型、图像模型、Agent 参数、默认写作 Skill、编辑器、游戏模式、版本管理、语言、主题和字体。
+Denova 的语言模型将 provider 与 API 协议分开配置：provider 从内置服务商目录选择，协议统一为 OpenAI Chat Completions、OpenAI Responses 或 Anthropic Messages。自定义端点选择「兼容 / 自定义端点」服务商，再设置协议与 Base URL；Gemini 使用 Google 官方的 OpenAI 兼容入口。OpenAI 默认使用 Responses API，DeepSeek 同时提供 Chat Completions、Responses 与 Anthropic 路由，MiniMax 默认使用能完整续传 thinking block 的 Anthropic 路由。设置页会按当前协议通过 OpenAI-compatible 或 Anthropic `/models` 获取模型候选，但模型名始终可自定义；也可直接用当前未保存配置发送一次最小生成请求来测试连接。旧 `model_profiles` 的 `openai_*` 字段和下面的 `OPENAI_*` 环境变量会继续按 Chat Completions 兼容读取。
+
+图像模型支持 OpenAI、xAI/Grok、ComfyUI、火山引擎 Seedream、Google Gemini Image，以及可选择上述任一协议的自定义端点。ComfyUI 可直接使用内置基础文生图工作流，只需填写地址与 checkpoint；复杂工作流可在设置页上传 ComfyUI 的 API Format JSON，Denova 会在执行前注入当前提示词与常用尺寸参数。旧版 `image_api_*` 和图像 Profile 的 `openai_api_*` 配置会在首次读取时自动迁移，原文件会先保存为带内容摘要的 `.bak` 备份。推荐先在设置页配置语言模型、图像模型、Agent 参数、默认写作 Skill、编辑器、游戏模式、版本管理、语言、主题和字体。
 
 需要脚本化启动或部署时，也可以用环境变量覆盖模型配置：
 
@@ -123,10 +125,14 @@ Denova 的语言模型将 provider 与 API 协议分开配置：provider 从内�
 export OPENAI_API_KEY="your-api-key"
 export OPENAI_BASE_URL="https://api.deepseek.com"
 export OPENAI_MODEL="deepseek-v4-pro"
-export OPENAI_IMAGE_API_KEY="your-openai-image-key"
-export OPENAI_IMAGE_BASE_URL="https://api.openai.com/v1"
-export OPENAI_IMAGE_MODEL="gpt-image-1"
+export DENOVA_IMAGE_PROVIDER="openai"
+export DENOVA_IMAGE_PROTOCOL="openai-images"
+export DENOVA_IMAGE_API_KEY="your-image-api-key"
+export DENOVA_IMAGE_BASE_URL="https://api.openai.com/v1"
+export DENOVA_IMAGE_MODEL="gpt-image-2"
 ```
+
+旧 `OPENAI_IMAGE_API_KEY`、`OPENAI_IMAGE_BASE_URL`、`OPENAI_IMAGE_MODEL` 仍可作为 OpenAI 图像路由的兼容别名；同名新配置存在时始终以 `DENOVA_IMAGE_*` 为准。
 
 可选 Denova 启动环境变量：
 

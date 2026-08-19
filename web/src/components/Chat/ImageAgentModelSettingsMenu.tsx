@@ -281,7 +281,7 @@ function buildImageModelOptions(
       label: id === DEFAULT_IMAGE_API_PROFILE_ID
         ? t('chat.modelProfile.defaultProfile', { label })
         : t('chat.modelProfile.profile', { id, label }),
-      meta: profile.openai_model?.trim(),
+      meta: profile.model?.trim() || profile.comfyui?.workflow_name?.trim(),
     }
   }).filter((option) => Boolean(option.id))
   return includeCurrentOption(options, resolveImageAgentOutputModelID(settings))

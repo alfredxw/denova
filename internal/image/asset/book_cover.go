@@ -7,7 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"image"
+	imagepkg "image"
 	_ "image/jpeg"
 	"image/png"
 	"os"
@@ -18,6 +18,8 @@ import (
 	"denova/config"
 	"denova/internal/book"
 	imagegen "denova/internal/image/generation"
+
+	_ "golang.org/x/image/webp"
 )
 
 const (
@@ -152,15 +154,27 @@ func (s *Service) GenerateCover(ctx context.Context, cfg *config.Config, bookSer
 	createdAt := s.now().UTC()
 	sourcePath, metaPath := newCoverRunPaths(createdAt, s.suffix(), "cover", ext)
 
+	displayData := image.Data
+	if ext != defaultCoverFormat {
+		decoded, _, err := imagepkg.Decode(bytes.NewReader(image.Data))
+		if err != nil {
+			return CoverResult{}, fmt.Errorf("decode generated cover for PNG conversion: %w", err)
+		}
+		var converted bytes.Buffer
+		if err := png.Encode(&converted, decoded); err != nil {
+			return CoverResult{}, fmt.Errorf("convert generated cover to PNG: %w", err)
+		}
+		displayData = converted.Bytes()
+	}
 	if err := bookService.WriteBinaryFile(sourcePath, image.Data); err != nil {
 		return CoverResult{}, fmt.Errorf("保存封面原图失败: %w", err)
 	}
 
-	backupPath, err := backupExistingCover(bookService, createdAt, ext)
+	backupPath, err := backupExistingCover(bookService, createdAt, defaultCoverFormat)
 	if err != nil {
 		return CoverResult{}, err
 	}
-	if err := bookService.WriteBinaryFile(CoverPath, image.Data); err != nil {
+	if err := bookService.WriteBinaryFile(CoverPath, displayData); err != nil {
 		return CoverResult{}, fmt.Errorf("写入展示封面失败: %w", err)
 	}
 	coverUpdatedAt := createdAt.Format(time.RFC3339Nano)
@@ -232,7 +246,7 @@ func (s *Service) UploadCover(bookService *book.Service, request CoverUploadRequ
 		return CoverResult{}, fmt.Errorf("上传封面为空")
 	}
 
-	decoded, format, err := image.Decode(bytes.NewReader(request.Data))
+	decoded, format, err := imagepkg.Decode(bytes.NewReader(request.Data))
 	if err != nil {
 		return CoverResult{}, fmt.Errorf("无法解析封面图片: %w", err)
 	}
@@ -383,7 +397,7 @@ func normalizeImageExtension(values ...string) string {
 		switch value {
 		case "jpg":
 			return "jpeg"
-		case "jpeg", "png":
+		case "jpeg", "png", "webp":
 			return value
 		}
 	}

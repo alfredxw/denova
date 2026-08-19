@@ -25,6 +25,8 @@ type IllustrationGenerateRequest struct {
 	AltText      string
 	ProfileID    string
 	Size         string
+	AspectRatio  string
+	Resolution   string
 	Quality      string
 	OutputFormat string
 }
@@ -100,6 +102,8 @@ func (s *Service) GenerateIllustration(ctx context.Context, cfg *config.Config, 
 		Prompt:       prompt,
 		N:            1,
 		Size:         strings.TrimSpace(request.Size),
+		AspectRatio:  strings.TrimSpace(request.AspectRatio),
+		Resolution:   strings.TrimSpace(request.Resolution),
 		Quality:      strings.TrimSpace(request.Quality),
 		OutputFormat: strings.TrimSpace(request.OutputFormat),
 	})

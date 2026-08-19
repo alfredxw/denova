@@ -9,9 +9,6 @@ export interface Settings {
   openai_model?: string
   openai_context_window_tokens?: number | null
   model_profiles?: ModelProfileSettings[]
-  image_api_key?: string
-  image_api_base_url?: string
-  image_api_model?: string
   default_image_api_profile_id?: string
   image_api_profiles?: ImageAPIProfileSettings[]
   agent_models?: AgentModelSettings
@@ -181,12 +178,23 @@ export interface ImageAPIProfileSettings {
   id?: string
   name?: string
   provider?: string
-  openai_api_key?: string
-  openai_base_url?: string
-  openai_model?: string
+  protocol?: string
+  api_key?: string
+  base_url?: string
+  model?: string
+  headers?: Record<string, string>
   default_size?: string
+  default_aspect_ratio?: string
+  default_resolution?: string
   default_quality?: string
   default_output_format?: string
+  comfyui?: ComfyUIProfileSettings
+}
+
+export interface ComfyUIProfileSettings {
+  workflow_mode?: 'builtin' | 'api'
+  workflow?: string
+  workflow_name?: string
 }
 
 export interface ImagePingResult {

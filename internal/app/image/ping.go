@@ -62,9 +62,11 @@ func (service *Service) Ping(ctx context.Context, profile config.ImageAPIProfile
 		DefaultImageAPIProfileID: validationProfileID,
 		ImageAPIProfiles: []config.ImageAPIProfileSettings{{
 			ID: validationProfileID, Name: resolved.Name, Provider: resolved.Provider,
-			OpenAIAPIKey: resolved.OpenAIAPIKey, OpenAIBaseURL: resolved.OpenAIBaseURL,
-			OpenAIModel: resolved.OpenAIModel, DefaultSize: resolved.Size,
+			Protocol: resolved.Protocol, APIKey: resolved.APIKey, BaseURL: resolved.BaseURL,
+			Model: resolved.Model, Headers: resolved.Headers, DefaultSize: resolved.Size,
+			DefaultAspectRatio: resolved.AspectRatio, DefaultResolution: resolved.Resolution,
 			DefaultQuality: resolved.Quality, DefaultOutputFormat: resolved.OutputFormat,
+			ComfyUI: &resolved.ComfyUI,
 		}},
 	}
 	started := time.Now()
@@ -78,6 +80,6 @@ func (service *Service) Ping(ctx context.Context, profile config.ImageAPIProfile
 	}
 	return PingResult{
 		OK: true, LatencyMS: time.Since(started).Milliseconds(), ProfileID: resolved.ProfileID,
-		Provider: resolved.Provider, BaseURL: resolved.OpenAIBaseURL, Model: resolved.OpenAIModel,
+		Provider: resolved.Provider, BaseURL: resolved.BaseURL, Model: resolved.Model,
 	}, nil
 }

@@ -328,8 +328,8 @@ describe('SettingsView user scope', () => {
     const settings = layeredSettings({ devMode: false })
     settings.user = {
       image_api_profiles: [{
-        id: 'flux', name: 'Flux Pro', provider: 'openai', openai_base_url: 'https://images.example.com/v1',
-        openai_model: 'flux-pro', default_quality: 'high',
+        id: 'flux', name: 'Flux Pro', provider: 'openai', base_url: 'https://images.example.com/v1',
+        model: 'flux-pro', default_quality: 'high',
       }],
     }
     settings.effective = { ...settings.effective, ...settings.user }
@@ -347,7 +347,7 @@ describe('SettingsView user scope', () => {
     await act(async () => { fireEvent.click(within(fluxCard as HTMLElement).getByRole('button', { name: '测试连接' })) })
 
     await waitFor(() => expect(pingImageProfile).toHaveBeenCalledWith(expect.objectContaining({
-      id: 'flux', openai_model: 'flux-pro', default_quality: 'high',
+      id: 'flux', model: 'flux-pro', default_quality: 'high',
     }), expect.any(AbortSignal)))
     expect(await screen.findByText('连接成功 · openai · 42 ms')).toBeInTheDocument()
   })

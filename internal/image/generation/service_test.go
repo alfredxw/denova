@@ -18,12 +18,19 @@ func TestNormalizeRequestOptionsAcceptsConfiguredResolutionList(t *testing.T) {
 	}
 }
 
-func TestNormalizeRequestOptionsRejectsUnsupportedResolutionAndFormat(t *testing.T) {
-	if _, err := normalizeRequestOptions(GenerateRequest{Size: "1024x1024"}); err == nil {
-		t.Fatalf("1024x1024 should no longer be accepted")
+func TestNormalizeRequestOptionsKeepsProviderSpecificGeometry(t *testing.T) {
+	request, err := normalizeRequestOptions(GenerateRequest{Size: "1024x1024", AspectRatio: "16:9", Resolution: "2K", OutputFormat: "webp"})
+	if err != nil {
+		t.Fatalf("normalizeRequestOptions() error = %v", err)
 	}
-	if _, err := normalizeRequestOptions(GenerateRequest{OutputFormat: "webp"}); err == nil {
-		t.Fatalf("webp should no longer be accepted")
+	if request.Size != "1024x1024" || request.AspectRatio != "16:9" || request.Resolution != "2K" || request.OutputFormat != "webp" {
+		t.Fatalf("provider-specific options changed: %#v", request)
+	}
+	if _, err := normalizeRequestOptions(GenerateRequest{Quality: "ultra"}); err == nil {
+		t.Fatalf("unsupported quality should fail")
+	}
+	if _, err := normalizeRequestOptions(GenerateRequest{OutputFormat: "gif"}); err == nil {
+		t.Fatalf("unsupported format should fail")
 	}
 }
 
