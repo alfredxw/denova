@@ -519,6 +519,32 @@ func (a *App) InteractiveBranches(storyID string) ([]interactive.BranchSummary, 
 	return a.interactiveService().InteractiveBranches(storyID)
 }
 
+// BrowseInteractiveMemory 返回故事叙事记忆库浏览视图(含统计)。
+func (a *App) BrowseInteractiveMemory(storyID, branchID, kind, beforeTurnID string) (interactive.MemoryLibraryView, error) {
+	return a.interactiveService().BrowseInteractiveMemory(storyID, branchID, kind, beforeTurnID)
+}
+
+func (s *InteractiveAppService) BrowseInteractiveMemory(storyID, branchID, kind, beforeTurnID string) (interactive.MemoryLibraryView, error) {
+	store := s.store()
+	if store == nil {
+		return interactive.MemoryLibraryView{}, ErrNoWorkspace
+	}
+	return store.BrowseStoryMemory(storyID, branchID, kind, beforeTurnID)
+}
+
+// SearchInteractiveMemory 跑完整记忆检索管线,返回带 Explain 的调试结果。
+func (a *App) SearchInteractiveMemory(storyID, branchID string, req interactive.MemorySearchRequest) (interactive.MemorySearchResult, error) {
+	return a.interactiveService().SearchInteractiveMemory(storyID, branchID, req)
+}
+
+func (s *InteractiveAppService) SearchInteractiveMemory(storyID, branchID string, req interactive.MemorySearchRequest) (interactive.MemorySearchResult, error) {
+	store := s.store()
+	if store == nil {
+		return interactive.MemorySearchResult{}, ErrNoWorkspace
+	}
+	return store.SearchStoryMemory(storyID, branchID, req)
+}
+
 func (s *InteractiveAppService) InteractiveBranches(storyID string) ([]interactive.BranchSummary, error) {
 	store := s.store()
 	if store == nil {

@@ -37,6 +37,7 @@ import automations from './en-US/automations'
 import messages from './en-US/messages'
 import onboarding from './en-US/onboarding'
 import changes from './en-US/changes'
+import memoryInspector from './en-US/memoryInspector'
 
 const enUS = {
   ...common,
@@ -78,6 +79,7 @@ const enUS = {
   ...messages,
   ...onboarding,
   ...changes,
+  ...memoryInspector,
 } as const
 
 export default enUS

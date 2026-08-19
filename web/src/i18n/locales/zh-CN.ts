@@ -37,6 +37,7 @@ import automations from './zh-CN/automations'
 import messages from './zh-CN/messages'
 import onboarding from './zh-CN/onboarding'
 import changes from './zh-CN/changes'
+import memoryInspector from './zh-CN/memoryInspector'
 
 const zhCN = {
   ...common,
@@ -78,6 +79,7 @@ const zhCN = {
   ...messages,
   ...onboarding,
   ...changes,
+  ...memoryInspector,
 } as const
 
 export default zhCN
