@@ -238,7 +238,7 @@ fi
 
 tar -xzf "${ARCHIVE_PATH}" -C "${EXTRACT_DIR}"
 PACKAGE_DIR="${EXTRACT_DIR}/denova"
-for required_path in denova denova-updater web skills tools licenses; do
+for required_path in denova denova-updater web skills; do
   [ -e "${PACKAGE_DIR}/${required_path}" ] || fail "release archive is missing denova/${required_path}"
 done
 chmod 0755 "${PACKAGE_DIR}/denova" "${PACKAGE_DIR}/denova-updater"

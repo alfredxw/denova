@@ -129,7 +129,7 @@ write_release_notes() {
 macOS / Linux one-command install / 一键安装：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/alfredxw/denova/master/scripts/install.sh | sh
+curl -fsSL https://github.com/alfredxw/denova/releases/latest/download/install.sh | sh
 ```
 
 Or download the archive for your platform, verify it against `checksums.txt`, extract it, and run Denova from the extracted `denova` directory.
@@ -164,6 +164,8 @@ cd "${ROOT_DIR}"
 validate_release_metadata
 rm -rf "${DIST_DIR}"
 mkdir -p "${DIST_DIR}" "${BUILD_DIR}"
+cp "${ROOT_DIR}/scripts/install.sh" "${DIST_DIR}/install.sh"
+chmod 0755 "${DIST_DIR}/install.sh"
 
 echo "==> 安装前端依赖并执行发布校验"
 run_pnpm -C "${ROOT_DIR}/web" install --frozen-lockfile
