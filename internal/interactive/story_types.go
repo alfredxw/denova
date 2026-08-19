@@ -403,6 +403,68 @@ type ContextCompactionRemovalEvent struct {
 	Reason          string `json:"reason,omitempty"`
 }
 
+// NarrativeMemoryEvent 把一个回合的定稿叙事抽取为类型化叙事记忆记录。
+// 事件日志是唯一真源;记录是可从事件流重建的检索投影,绝不作为独立存储被直接信任。
+// Epoch 语义与 ContextCompactionEvent 对齐:重新抽取会使旧 epoch 的记录整体作废。
+type NarrativeMemoryEvent struct {
+	V            int                     `json:"v"`
+	Type         string                  `json:"type"`
+	ID           string                  `json:"id"`
+	ParentID     string                  `json:"parent_id,omitempty"`
+	BranchID     string                  `json:"branch_id"`
+	Ts           string                  `json:"ts"`
+	Epoch        int                     `json:"epoch"`
+	SourceTurnID string                  `json:"source_turn_id"`
+	Records      []NarrativeMemoryRecord `json:"records"`
+	Trace        *NarrativeMemoryTrace   `json:"trace,omitempty"`
+}
+
+// NarrativeMemoryRecord 是一条自包含的叙事状态事实,每条带原文证据与回合溯源。
+type NarrativeMemoryRecord struct {
+	ID         string  `json:"id"`
+	Kind       string  `json:"kind"`
+	Subject    string  `json:"subject"`
+	Object     string  `json:"object,omitempty"`
+	Text       string  `json:"text"`
+	Evidence   string  `json:"evidence"`
+	ValidFrom  string  `json:"valid_from"`
+	ValidTo    string  `json:"valid_to,omitempty"`
+	Status     string  `json:"status,omitempty"`
+	Confidence float64 `json:"confidence,omitempty"`
+}
+
+// NarrativeMemoryTrace 记录一次抽取的观测数据:成本、耗时与被丢弃的
+// 不合规记录。与 ContextCompactionEvent 持有 token 计数的先例对齐。
+type NarrativeMemoryTrace struct {
+	Model            string                       `json:"model,omitempty"`
+	DurationMs       int64                        `json:"duration_ms,omitempty"`
+	PromptTokens     int                          `json:"prompt_tokens,omitempty"`
+	CompletionTokens int                          `json:"completion_tokens,omitempty"`
+	DroppedRecords   []NarrativeMemoryDropRecord  `json:"dropped_records,omitempty"`
+	SkippedReason    string                       `json:"skipped_reason,omitempty"`
+}
+
+type NarrativeMemoryDropRecord struct {
+	Raw    string `json:"raw"`
+	Reason string `json:"reason"`
+}
+
+// 叙事记忆记录类型。六类对齐 Narrative World Model 的叙事学字段,
+// 只保留论文消融实验证明对检索精度有贡献的细粒度分解本身。
+const (
+	MemoryKindKnowledge    = "knowledge"    // 认知边界:谁知道什么、何时知道
+	MemoryKindReveal       = "reveal"       // 揭示顺序 vs 事件顺序
+	MemoryKindPromise      = "promise"      // 伏笔开/闭(status: open/paid)
+	MemoryKindObjectState  = "object_state" // 物品位置/持有
+	MemoryKindRelationship = "relationship" // 关系极性变化
+	MemoryKindBeat         = "beat"         // 戏剧功能节拍
+)
+
+const (
+	MemoryStatusOpen = "open"
+	MemoryStatusPaid = "paid"
+)
+
 type BranchEvent struct {
 	V        int    `json:"v"`
 	Type     string `json:"type"`

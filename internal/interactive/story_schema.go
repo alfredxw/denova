@@ -14,6 +14,7 @@ const (
 	StoryEventTypeHotChoices        = "hot_choices"
 	StoryEventTypeCompaction        = "context_compaction"
 	StoryEventTypeCompactionRemoved = "context_compaction_removed"
+	StoryEventTypeNarrativeMemory   = "narrative_memory"
 
 	stateOpSchemaVersion = 2
 )
@@ -169,7 +170,7 @@ func validateStoryEventEnvelope(envelope StoryEventEnvelope) error {
 		return fmt.Errorf("故事事件 schema 版本不支持: %d", envelope.V)
 	}
 	switch envelope.Type {
-	case StoryEventTypeTurn, StoryEventTypeStateDelta, StoryEventTypeBranch, StoryEventTypeHotChoices, StoryEventTypeCompaction, StoryEventTypeCompactionRemoved:
+	case StoryEventTypeTurn, StoryEventTypeStateDelta, StoryEventTypeBranch, StoryEventTypeHotChoices, StoryEventTypeCompaction, StoryEventTypeCompactionRemoved, StoryEventTypeNarrativeMemory:
 	default:
 		return fmt.Errorf("未知故事事件类型: %q", envelope.Type)
 	}
