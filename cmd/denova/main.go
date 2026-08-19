@@ -37,12 +37,12 @@ func main() {
 	cfg := config.Load()
 	port := defaultPort(cfg)
 	frontendPort := defaultFrontendPort(cfg)
-	flag.StringVar(&workspace, "workspace", "", "作品工作目录 (默认恢复上次打开的书籍)")
-	flag.StringVar(&port, "port", port, "HTTP 服务端口")
-	flag.StringVar(&frontendPort, "frontend-port", frontendPort, "前端开发服务端口")
-	flag.BoolVar(&dev, "dev", false, "开发模式：同时启动 Vite 前端 dev server")
-	flag.BoolVar(&devMode, "dev-mode", false, "开发启动模式：由 scripts/bootstrap.sh 传入，开启开发诊断能力")
-	flag.BoolVar(&noOpen, "no-open", false, "启动服务后不自动打开浏览器")
+	flag.StringVar(&workspace, "workspace", "", "workspace directory (defaults to the last opened workspace)")
+	flag.StringVar(&port, "port", port, "HTTP server port")
+	flag.StringVar(&frontendPort, "frontend-port", frontendPort, "frontend development server port")
+	flag.BoolVar(&dev, "dev", false, "start the Vite frontend development server")
+	flag.BoolVar(&devMode, "dev-mode", false, "enable development diagnostics for scripts/bootstrap.sh")
+	flag.BoolVar(&noOpen, "no-open", false, "do not open a browser after startup")
 	flag.Parse()
 
 	cfg.DevMode = dev || devMode
@@ -53,7 +53,7 @@ func main() {
 	logPath, logOutput, closeLog := setupLogging("./log")
 	defer closeLog()
 	observability.ConfigureStructuredLogging(logOutput)
-	slog.InfoContext(context.Background(), fmt.Sprintf("[startup] 日志输出已启用 dir=./log current_file=%s", logPath))
+	slog.InfoContext(context.Background(), fmt.Sprintf("[startup] logging enabled dir=./log current_file=%s", logPath))
 	requestedPort := port
 	listenHost := config.HTTPListenHost(cfg.AllowLANAccess)
 	listener, port, err := reserveBackendListener(listenHost, requestedPort, !portWasExplicitlySet(os.Args[1:]))
@@ -91,7 +91,7 @@ func main() {
 	// 初始化应用运行时
 	application, err := app.New(ctx, cfg)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "初始化应用失败: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Failed to initialize application: %v\n", err)
 		os.Exit(1)
 	}
 	defer application.Close()
@@ -102,21 +102,21 @@ func main() {
 	// 打印启动信息
 	url := fmt.Sprintf("http://localhost:%s", port)
 	frontendURL := fmt.Sprintf("http://localhost:%s", frontendPort)
-	fmt.Printf("\n  Denova AI 小说创作工具\n")
+	fmt.Printf("\n  Denova AI Creation Tool\n")
 	fmt.Printf("  ─────────────────────\n")
-	fmt.Printf("  后端服务: %s\n", url)
+	fmt.Printf("  Backend: %s\n", url)
 	if dev {
-		fmt.Printf("  前端入口: %s\n", frontendURL)
+		fmt.Printf("  Frontend: %s\n", frontendURL)
 	}
 	if cfg.AllowLANAccess {
 		if dev {
-			fmt.Printf("  局域网入口: http://%s:%s\n", config.LANAddress(), frontendPort)
+			fmt.Printf("  LAN frontend: http://%s:%s\n", config.LANAddress(), frontendPort)
 		} else {
-			fmt.Printf("  局域网后端: http://%s:%s\n", config.LANAddress(), port)
+			fmt.Printf("  LAN backend: http://%s:%s\n", config.LANAddress(), port)
 		}
 	}
-	fmt.Printf("  作品目录: %s\n", application.Workspace())
-	fmt.Printf("  按 Ctrl+C 停止服务\n\n")
+	fmt.Printf("  Workspace: %s\n", application.Workspace())
+	fmt.Printf("  Press Ctrl+C to stop\n\n")
 
 	// 开发模式：同时启动 Vite dev server
 	if dev {
@@ -187,7 +187,7 @@ func startViteDev(port, host, backendPort string) {
 		// 尝试可执行文件同级
 		webDir = bundledDir("web")
 		if _, err := os.Stat(webDir); os.IsNotExist(err) {
-			fmt.Fprintf(os.Stderr, "警告: 未找到 web/ 目录，跳过前端 dev server\n")
+			fmt.Fprintf(os.Stderr, "Warning: web/ directory not found; skipping the frontend development server\n")
 			return
 		}
 	}
@@ -198,7 +198,7 @@ func startViteDev(port, host, backendPort string) {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "Vite dev server 退出: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Vite development server exited: %v\n", err)
 	}
 }
 
@@ -277,15 +277,12 @@ func portWasExplicitlySet(args []string) bool {
 }
 
 func reportBackendPortFallback(output io.Writer, requestedPort, selectedPort string) {
-	fmt.Fprintf(output, "提示：端口 %s 已被占用，已自动改用 %s。\n", requestedPort, selectedPort)
 	fmt.Fprintf(output, "Notice: port %s is in use; switched to %s.\n", requestedPort, selectedPort)
 	slog.WarnContext(context.Background(), fmt.Sprintf("[startup] HTTP port %s is unavailable; switched to %s", requestedPort, selectedPort))
 }
 
 func reportBackendPortConflict(output io.Writer, port string, err error) {
-	fmt.Fprintf(output, "错误：显式指定的端口 %s 不可用：%v\n", port, err)
 	fmt.Fprintf(output, "Error: explicitly specified port %s is unavailable: %v\n", port, err)
-	fmt.Fprintln(output, "请释放该端口或指定其他 --port 值。按任意键（或 Enter）退出。")
 	fmt.Fprintln(output, "Release the port or choose another --port value. Press any key (or Enter) to exit.")
 	slog.WarnContext(context.Background(), fmt.Sprintf("[startup] explicitly specified HTTP port is unavailable port=%s err=%v", port, err))
 }
@@ -303,20 +300,20 @@ func selectFrontendPort(preferred string, reservedPorts ...string) string {
 
 	next, err := findAvailablePort(preferred, 20, reservedPorts...)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "警告: 前端端口 %s 不可用且自动选择失败: %v\n", preferred, err)
-		slog.ErrorContext(context.Background(), fmt.Sprintf("[startup] 前端端口 %s 不可用且自动选择失败 err=%v", preferred, err))
+		fmt.Fprintf(os.Stderr, "Warning: frontend port %s is unavailable and automatic selection failed: %v\n", preferred, err)
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[startup] frontend port %s is unavailable and automatic selection failed err=%v", preferred, err))
 		return preferred
 	}
 
-	fmt.Fprintf(os.Stderr, "提示: 前端端口 %s 已被占用，已自动改用 %s\n", preferred, next)
-	slog.InfoContext(context.Background(), fmt.Sprintf("[startup] 前端端口 %s 已被占用，自动改用 %s", preferred, next))
+	fmt.Fprintf(os.Stderr, "Notice: frontend port %s is in use; switched to %s\n", preferred, next)
+	slog.InfoContext(context.Background(), fmt.Sprintf("[startup] frontend port %s is unavailable; switched to %s", preferred, next))
 	return next
 }
 
 func findAvailablePort(preferred string, attempts int, reservedPorts ...string) (string, error) {
 	start, err := strconv.Atoi(preferred)
 	if err != nil || start <= 0 || start > 65535 {
-		return "", fmt.Errorf("端口号无效: %s", preferred)
+		return "", fmt.Errorf("invalid port: %s", preferred)
 	}
 	for port := start + 1; port <= 65535 && port <= start+attempts; port++ {
 		candidate := strconv.Itoa(port)
@@ -324,7 +321,7 @@ func findAvailablePort(preferred string, attempts int, reservedPorts ...string) 
 			return candidate, nil
 		}
 	}
-	return "", fmt.Errorf("未找到可用端口: %d-%d", start+1, start+attempts)
+	return "", fmt.Errorf("no available port found in %d-%d", start+1, start+attempts)
 }
 
 func portReserved(port string, reservedPorts ...string) bool {

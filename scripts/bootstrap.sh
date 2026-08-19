@@ -115,16 +115,15 @@ if [ $# -gt 0 ] && [[ "$1" != --* ]]; then
 fi
 
 usage() {
-    echo "用法: ./scripts/bootstrap.sh [all|fe|be] [options]"
-    echo "  all  - 启动前后端 (默认)"
-    echo "  fe   - 仅启动前端 (Vite dev server)"
-    echo "  be   - 仅启动后端 (Go server)"
+    echo "Usage: ./scripts/bootstrap.sh [all|fe|be] [options]"
+    echo "  all  - Start the frontend and backend (default)"
+    echo "  fe   - Start only the frontend (Vite development server)"
+    echo "  be   - Start only the backend (Go server)"
     echo ""
-    echo "前端选项:"
-    echo "  --backend-port <port>  指定前端代理使用的后端端口（独立启动前端时使用）"
-    echo "                         Set Vite's backend proxy port when starting the frontend separately"
-    echo "  --lan          允许同一局域网设备访问前端，等同于 --host 0.0.0.0"
-    echo "  --host <host>  指定 Vite dev server 监听地址"
+    echo "Frontend options:"
+    echo "  --backend-port <port>  Set Vite's backend proxy port when starting the frontend separately"
+    echo "  --lan                  Allow LAN access to the frontend (equivalent to --host 0.0.0.0)"
+    echo "  --host <host>          Set the Vite development server bind address"
 }
 
 detect_lan_address() {
@@ -161,12 +160,10 @@ while [ $# -gt 0 ]; do
     case "$1" in
       --backend-port)
         if [ "${MODE}" != "fe" ] && [ "${MODE}" != "frontend" ]; then
-            echo "错误: --backend-port 仅支持 fe 模式"
             echo "Error: --backend-port is only supported in fe mode"
             exit 1
         fi
         if [ $# -lt 2 ] || ! is_valid_port "$2"; then
-            echo "错误: --backend-port 需要指定 1-65535 的端口号"
             echo "Error: --backend-port requires a port from 1 to 65535"
             exit 1
         fi
@@ -179,7 +176,7 @@ while [ $# -gt 0 ]; do
         ;;
       --host)
         if [ $# -lt 2 ]; then
-            echo "错误: --host 需要指定监听地址"
+            echo "Error: --host requires a bind address"
             exit 1
         fi
         FRONTEND_BIND_HOST="$2"
@@ -190,7 +187,7 @@ while [ $# -gt 0 ]; do
         exit 0
         ;;
       *)
-        echo "错误: 未知参数 $1"
+        echo "Error: unknown argument $1"
         usage
         exit 1
         ;;
@@ -201,32 +198,32 @@ BACKEND_URL="http://localhost:${BACKEND_PORT}"
 
 case "$MODE" in
   fe|frontend)
-    echo "==> Denova 前端开发服务启动"
-    echo "  前端地址: ${FRONTEND_URL}"
-    echo "  后端代理 / Backend proxy: ${BACKEND_URL}"
+    echo "==> Starting the Denova frontend development server"
+    echo "  Frontend URL: ${FRONTEND_URL}"
+    echo "  Backend proxy: ${BACKEND_URL}"
     if [ "${FRONTEND_BIND_HOST}" = "0.0.0.0" ]; then
         LAN_ADDRESS="$(detect_lan_address)"
         if [ -n "${LAN_ADDRESS}" ]; then
-            echo "  局域网地址: http://${LAN_ADDRESS}:${FRONTEND_PORT}"
+            echo "  LAN URL: http://${LAN_ADDRESS}:${FRONTEND_PORT}"
         else
-            echo "  局域网地址: http://<本机局域网IP>:${FRONTEND_PORT}"
+            echo "  LAN URL: http://<local-LAN-IP>:${FRONTEND_PORT}"
         fi
     elif [ -n "${FRONTEND_BIND_HOST}" ]; then
-        echo "  监听地址: ${FRONTEND_BIND_HOST}"
+        echo "  Bind address: ${FRONTEND_BIND_HOST}"
     fi
     echo ""
 
     if ! command -v pnpm >/dev/null 2>&1; then
-        echo "错误: 未找到 pnpm，请先安装 pnpm"
+        echo "Error: pnpm was not found. Install pnpm first."
         exit 1
     fi
 
     if [ ! -d "web/node_modules" ]; then
-        echo "==> 安装前端依赖"
+        echo "==> Installing frontend dependencies"
         (cd web && pnpm install)
     fi
 
-    echo "  按 Ctrl+C 停止服务"
+    echo "  Press Ctrl+C to stop"
     export DENOVA_BACKEND_PORT="${BACKEND_PORT}"
     export DENOVA_FRONTEND_PORT="${FRONTEND_PORT}"
     if [ -n "${FRONTEND_BIND_HOST}" ]; then
@@ -236,37 +233,37 @@ case "$MODE" in
     ;;
 
   be|backend)
-    echo "==> Denova 后端开发服务启动"
-    echo "  服务成功启动后将显示最终地址"
+    echo "==> Starting the Denova backend development server"
+    echo "  The final URL will be shown after the server starts"
     echo ""
 
-    echo "==> 拉取 Go 依赖"
+    echo "==> Resolving Go dependencies"
     go mod tidy
 
-    echo "  按 Ctrl+C 停止服务"
+    echo "  Press Ctrl+C to stop"
     exec go run ./cmd/denova --dev-mode --no-open
     ;;
 
   all)
-    echo "==> Denova 开发服务启动"
-    echo "  服务成功启动后将显示最终地址"
+    echo "==> Starting Denova development services"
+    echo "  The final URLs will be shown after the services start"
     echo ""
 
     if ! command -v pnpm >/dev/null 2>&1; then
-        echo "错误: 未找到 pnpm，请先安装 pnpm"
+        echo "Error: pnpm was not found. Install pnpm first."
         exit 1
     fi
 
     if [ ! -d "web/node_modules" ]; then
-        echo "==> 安装前端依赖"
+        echo "==> Installing frontend dependencies"
         (cd web && pnpm install)
     fi
 
-    echo "==> 拉取 Go 依赖"
+    echo "==> Resolving Go dependencies"
     go mod tidy
 
-    echo "==> 启动前后端"
-    echo "  按 Ctrl+C 停止服务"
+    echo "==> Starting the frontend and backend"
+    echo "  Press Ctrl+C to stop"
     echo ""
 
     exec go run ./cmd/denova --dev --dev-mode --no-open

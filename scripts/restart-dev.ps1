@@ -6,7 +6,7 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..')).TrimEnd('\')
 $webNodeModules = Join-Path $repoRoot 'web\node_modules'
 $stateDirectory = Join-Path $repoRoot 'log'
-$statePath = Join-Path $stateDirectory 'dev-windows.json'
+$stateFilePattern = 'dev-windows-*.json'
 $localGo = Join-Path $env:USERPROFILE '.local\go\bin\go.exe'
 $corepackPnpm = Join-Path $env:ProgramFiles 'nodejs\node_modules\corepack\shims\pnpm.cmd'
 
@@ -56,52 +56,45 @@ function Find-RepoViteProcessIds {
     } | ForEach-Object { [int]$_.ProcessId })
 }
 
-function Get-FrontendBranchProcessIds {
-    param(
-        [Parameter(Mandatory)]
-        [int[]]$ViteProcessIds,
-        [Parameter(Mandatory)]
-        [object[]]$Snapshot
-    )
+function Get-RepoDevStateRecords {
+    if (-not (Test-Path -LiteralPath $stateDirectory)) {
+        return @()
+    }
 
-    $selected = [System.Collections.Generic.HashSet[int]]::new()
-    foreach ($viteProcessId in $ViteProcessIds) {
-        # Preserve Vite's launchers as well as its worker processes so the
-        # existing frontend keeps its original lifecycle intact.
-        foreach ($processId in Get-DescendantProcessIds -RootProcessIds @($viteProcessId) -Snapshot $Snapshot) {
-            [void]$selected.Add([int]$processId)
+    $records = @()
+    foreach ($file in Get-ChildItem -LiteralPath $stateDirectory -Filter $stateFilePattern -File) {
+        try {
+            $state = Get-Content -LiteralPath $file.FullName -Raw | ConvertFrom-Json
+            if ([string]::Equals([string]$state.repo_root, $repoRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+                $records += [pscustomobject]@{
+                    Path = $file.FullName
+                    State = $state
+                }
+            }
         }
-
-        $current = $Snapshot | Where-Object { $_.ProcessId -eq $viteProcessId } | Select-Object -First 1
-        while ($current -and $current.Name -notin @('denova.exe', 'go.exe')) {
-            [void]$selected.Add([int]$current.ProcessId)
-            $current = $Snapshot | Where-Object { $_.ProcessId -eq $current.ParentProcessId } | Select-Object -First 1
+        catch {
+            Write-Warning "Ignoring invalid Windows development state file: $($file.FullName)"
         }
     }
 
-    return @($selected)
+    return @($records)
 }
 
 function Find-RepoDevProcessIds {
     param(
         [Parameter(Mandatory)]
-        [object[]]$Snapshot
+        [object[]]$Snapshot,
+        [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
+        [object[]]$StateRecords
     )
 
     $roots = [System.Collections.Generic.HashSet[int]]::new()
 
-    if (Test-Path -LiteralPath $statePath) {
-        try {
-            $state = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json
-            if ([string]::Equals([string]$state.repo_root, $repoRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
-                $recorded = $Snapshot | Where-Object { $_.ProcessId -eq [int]$state.process_id } | Select-Object -First 1
-                if ($recorded -and $recorded.Name -eq 'go.exe' -and $recorded.CommandLine -match 'run\s+\.?[\\/]cmd[\\/]denova') {
-                    [void]$roots.Add([int]$recorded.ProcessId)
-                }
-            }
-        }
-        catch {
-            Write-Warning 'Ignoring an invalid Windows dev state file. / Windows dev 状态文件无效，已忽略。'
+    foreach ($record in $StateRecords) {
+        $recorded = $Snapshot | Where-Object { $_.ProcessId -eq [int]$record.State.process_id } | Select-Object -First 1
+        if ($recorded -and $recorded.Name -eq 'go.exe' -and $recorded.CommandLine -match 'run\s+\.?[\\/]cmd[\\/]denova') {
+            [void]$roots.Add([int]$recorded.ProcessId)
         }
     }
 
@@ -122,33 +115,24 @@ function Find-RepoDevProcessIds {
 
 function Stop-RepoDevProcesses {
     $snapshot = Get-ProcessSnapshot
+    $stateRecords = @(Get-RepoDevStateRecords)
+    $backendProcessIds = @(Find-RepoDevProcessIds -Snapshot $snapshot -StateRecords $stateRecords)
     $viteProcessIds = @(Find-RepoViteProcessIds -Snapshot $snapshot)
-    $frontendProcessIds = if ($viteProcessIds.Count -gt 0) {
-        @(Get-FrontendBranchProcessIds -ViteProcessIds $viteProcessIds -Snapshot $snapshot)
-    }
-    else {
-        @()
-    }
-    $rootProcessIds = @(Find-RepoDevProcessIds -Snapshot $snapshot)
+    $rootProcessIds = @($backendProcessIds + $viteProcessIds | Select-Object -Unique)
     if ($rootProcessIds.Count -eq 0) {
-        Write-Host 'No running Windows dev instance found. / 未发现正在运行的 Windows dev 实例。'
+        Write-Host 'No running Windows development instance found.'
         return
     }
 
-    $allProcessIds = @(Get-DescendantProcessIds -RootProcessIds $rootProcessIds -Snapshot $snapshot | Where-Object {
-        $_ -notin $frontendProcessIds
-    })
-    Write-Host "Stopping the current Windows dev instance (PID: $($rootProcessIds -join ', ')). / 正在停止当前 Windows dev 实例。"
-    if (Test-Path -LiteralPath $statePath) {
+    $allProcessIds = @(Get-DescendantProcessIds -RootProcessIds $rootProcessIds -Snapshot $snapshot)
+    Write-Host "Stopping the current Windows development instance (PID: $($rootProcessIds -join ', '))."
+    foreach ($record in $stateRecords) {
         try {
-            $state = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json
-            if ([string]::Equals([string]$state.repo_root, $repoRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
-                $state | Add-Member -NotePropertyName stop_requested -NotePropertyValue $true -Force
-                $state | ConvertTo-Json | Set-Content -LiteralPath $statePath -Encoding utf8
-            }
+            $record.State | Add-Member -NotePropertyName stop_requested -NotePropertyValue $true -Force
+            $record.State | ConvertTo-Json | Set-Content -LiteralPath $record.Path -Encoding utf8
         }
         catch {
-            Write-Warning 'Could not mark the previous dev instance as intentionally stopped. / 无法标记旧 dev 实例为主动停止。'
+            Write-Warning "Could not mark the previous development instance as intentionally stopped: $($record.Path)"
         }
     }
     foreach ($processId in $allProcessIds | Sort-Object -Descending) {
@@ -170,31 +154,22 @@ function Resolve-RequiredCommand {
     if ($FallbackPath -and (Test-Path -LiteralPath $FallbackPath)) {
         return $FallbackPath
     }
-    throw "Missing required command: $Name. Install the Windows dependency first. / 缺少必要命令：$Name，请先安装 Windows 依赖。"
+    throw "Missing required command: $Name. Install the Windows dependency first."
 }
 
 $goExecutable = Resolve-RequiredCommand -Name 'go.exe' -FallbackPath $localGo
 $goBin = Split-Path -Parent $goExecutable
 $env:Path = "$goBin;$env:Path"
+$pnpmExecutable = Resolve-RequiredCommand -Name 'pnpm.cmd' -FallbackPath $corepackPnpm
+$pnpmBin = Split-Path -Parent $pnpmExecutable
+$env:Path = "$pnpmBin;$env:Path"
 
 Stop-RepoDevProcesses
-$frontendAlreadyRunning = @(Find-RepoViteProcessIds -Snapshot (Get-ProcessSnapshot)).Count -gt 0
-
-$denovaArguments = @('run', './cmd/denova')
-if ($frontendAlreadyRunning) {
-    Write-Host 'Keeping the existing Vite frontend and restarting only the backend.'
-}
-else {
-    $pnpmExecutable = Resolve-RequiredCommand -Name 'pnpm.cmd' -FallbackPath $corepackPnpm
-    $pnpmBin = Split-Path -Parent $pnpmExecutable
-    $env:Path = "$pnpmBin;$env:Path"
-    $denovaArguments += '--dev'
-}
-$denovaArguments += @('--dev-mode', '--no-open')
+$denovaArguments = @('run', './cmd/denova', '--dev', '--dev-mode', '--no-open')
 
 New-Item -ItemType Directory -Path $stateDirectory -Force | Out-Null
-Write-Host 'Starting Denova in the native Windows dev environment. / 正在原生 Windows dev 环境启动 Denova。'
-Write-Host "Repository / 仓库: $repoRoot"
+Write-Host 'Starting Denova in the native Windows development environment.'
+Write-Host "Repository: $repoRoot"
 
 $goProcess = Start-Process `
     -FilePath $goExecutable `
@@ -203,6 +178,7 @@ $goProcess = Start-Process `
     -NoNewWindow `
     -PassThru
 
+$statePath = Join-Path $stateDirectory "dev-windows-$($goProcess.Id).json"
 @{
     process_id = $goProcess.Id
     repo_root = $repoRoot
@@ -216,14 +192,19 @@ try {
 }
 finally {
     if (Test-Path -LiteralPath $statePath) {
-        $currentState = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json
-        if ([int]$currentState.process_id -eq $goProcess.Id) {
+        try {
+            $currentState = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json
             $stopRequested = [bool]$currentState.stop_requested
+        }
+        catch {
+            Write-Warning "Could not read the Windows development state file: $statePath"
+        }
+        finally {
             Remove-Item -LiteralPath $statePath -Force
         }
     }
 }
 
 if ($exitCode -ne 0 -and -not $stopRequested) {
-    throw "Windows dev process exited with code $exitCode. / Windows dev 进程异常退出，退出码：$exitCode。"
+    throw "Windows development process exited with code $exitCode."
 }

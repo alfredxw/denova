@@ -49,11 +49,11 @@ is_repository_backend() {
 }
 
 if ! command -v pgrep >/dev/null 2>&1; then
-    echo "错误 / Error: 未找到 pgrep，无法安全识别 Denova 后端进程。 / pgrep is required to identify the Denova backend safely." >&2
+    echo "Error: pgrep is required to identify the Denova backend safely." >&2
     exit 1
 fi
 if [ ! -e "/proc/$$/cwd" ] && ! command -v lsof >/dev/null 2>&1; then
-    echo "错误 / Error: 无法读取进程工作目录；请先安装 lsof。 / Cannot inspect process working directories; install lsof first." >&2
+    echo "Error: cannot inspect process working directories; install lsof first." >&2
     exit 1
 fi
 
@@ -71,13 +71,13 @@ done < <(
 )
 
 if [ "${#backend_pids[@]}" -eq 0 ]; then
-    echo "==> 未发现当前仓库中运行的 Denova 后端 / No running Denova backend found for this repository"
+    echo "==> No running Denova backend found for this repository"
 else
-    echo "==> 正在停止 Denova 后端（PID: ${backend_pids[*]}） / Stopping Denova backend (PID: ${backend_pids[*]})"
+    echo "==> Stopping the Denova backend (PID: ${backend_pids[*]})"
     for pid in "${backend_pids[@]}"; do
         if kill -0 "${pid}" 2>/dev/null; then
             if ! kill -TERM "${pid}" 2>/dev/null && kill -0 "${pid}" 2>/dev/null; then
-                echo "错误 / Error: 无法停止 Denova 后端进程 ${pid}。 / Failed to stop Denova backend process ${pid}." >&2
+                echo "Error: failed to stop Denova backend process ${pid}." >&2
                 exit 1
             fi
         fi
@@ -98,5 +98,5 @@ else
     done
 fi
 
-echo "==> 正在重启 Denova 后端 / Restarting Denova backend"
+echo "==> Restarting the Denova backend"
 exec "${SCRIPT_DIR}/bootstrap.sh" be
