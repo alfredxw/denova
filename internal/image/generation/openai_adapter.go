@@ -2,23 +2,11 @@ package generation
 
 import (
 	"context"
-	"encoding/base64"
-	"errors"
-	"fmt"
-	"io"
-	"mime"
 	"net/http"
-	"net/url"
-	"path"
 	"strings"
-
-	openai "github.com/openai/openai-go/v3"
-	"github.com/openai/openai-go/v3/option"
 
 	"denova/config"
 )
-
-var ErrImageDataMissing = errors.New("图像模型未返回图像数据")
 
 type OpenAIAdapter struct {
 	httpClient *http.Client
@@ -31,196 +19,62 @@ func NewOpenAIAdapter(httpClient *http.Client) *OpenAIAdapter {
 	return &OpenAIAdapter{httpClient: httpClient}
 }
 
-func (a *OpenAIAdapter) Generate(ctx context.Context, profile config.ResolvedImageAPIProfile, request GenerateRequest) (Result, error) {
-	opts := []option.RequestOption{
-		option.WithAPIKey(profile.OpenAIAPIKey),
-		option.WithBaseURL(profile.OpenAIBaseURL),
-		option.WithHTTPClient(a.httpClient),
-	}
-	client := openai.NewClient(opts...)
-	params := openai.ImageGenerateParams{
-		Prompt: request.Prompt,
-		Model:  openai.ImageModel(profile.OpenAIModel),
-		N:      openai.Int(int64(request.N)),
-	}
-	if request.Size != "" {
-		params.Size = openai.ImageGenerateParamsSize(request.Size)
-	}
-	if request.Quality != "" {
-		params.Quality = openai.ImageGenerateParamsQuality(request.Quality)
-	}
-	if request.OutputFormat != "" && !isDallEModel(profile.OpenAIModel) {
-		params.OutputFormat = openai.ImageGenerateParamsOutputFormat(request.OutputFormat)
-	}
-	if isDallEModel(profile.OpenAIModel) {
-		params.ResponseFormat = openai.ImageGenerateParamsResponseFormatB64JSON
-	}
+type openAIImageRequest struct {
+	Model          string `json:"model"`
+	Prompt         string `json:"prompt"`
+	N              int    `json:"n,omitempty"`
+	Size           string `json:"size,omitempty"`
+	Quality        string `json:"quality,omitempty"`
+	OutputFormat   string `json:"output_format,omitempty"`
+	ResponseFormat string `json:"response_format,omitempty"`
+}
 
-	response, err := client.Images.Generate(ctx, params)
+func (adapter *OpenAIAdapter) Generate(ctx context.Context, profile config.ResolvedImageAPIProfile, request GenerateRequest) (Result, error) {
+	endpoint, err := endpointURL(profile.BaseURL, "images/generations")
 	if err != nil {
 		return Result{}, err
 	}
-	result := Result{
-		ProfileID:    profile.ProfileID,
-		Provider:     profile.Provider,
-		Model:        profile.OpenAIModel,
-		Created:      response.Created,
-		Size:         string(response.Size),
-		Quality:      string(response.Quality),
-		OutputFormat: string(response.OutputFormat),
+	size := request.Size
+	if profile.Provider == config.ImageProviderOpenAI {
+		size = openAIImageSize(size, request.AspectRatio)
 	}
-	for index, item := range response.Data {
-		image, err := a.openAIImageToBytes(ctx, item, response, request, index)
-		if err != nil {
-			return Result{}, err
-		}
-		result.Images = append(result.Images, image)
+	payload := openAIImageRequest{
+		Model:        profile.Model,
+		Prompt:       request.Prompt,
+		N:            request.N,
+		Size:         size,
+		Quality:      request.Quality,
+		OutputFormat: request.OutputFormat,
 	}
-	if len(result.Images) == 0 {
-		return Result{}, ErrImageDataMissing
+	if strings.HasPrefix(strings.ToLower(profile.Model), "dall-e-") {
+		payload.OutputFormat = ""
+		payload.ResponseFormat = "b64_json"
+		request.OutputFormat = ""
 	}
-	return result, nil
+	var response imagesAPIResponse
+	if err := doJSON(ctx, adapter.httpClient, http.MethodPost, endpoint, bearerHeaders(profile.APIKey, profile.Headers), payload, &response); err != nil {
+		return Result{}, err
+	}
+	request.Size = size
+	return imagesResultFromResponse(ctx, adapter.httpClient, profile.ProfileID, profile.Provider, profile.Model, request, response)
 }
 
-func (a *OpenAIAdapter) openAIImageToBytes(ctx context.Context, item openai.Image, response *openai.ImagesResponse, request GenerateRequest, index int) (Image, error) {
-	if item.B64JSON != "" {
-		data, err := base64.StdEncoding.DecodeString(item.B64JSON)
-		if err != nil {
-			return Image{}, fmt.Errorf("解析第 %d 张图像 base64 失败: %w", index+1, err)
-		}
-		format, mimeType, err := inferImageFormat(data, "", string(response.OutputFormat), request.OutputFormat)
-		if err != nil {
-			return Image{}, err
-		}
-		return Image{
-			Data:          data,
-			MIMEType:      mimeType,
-			Extension:     extensionForFormat(format),
-			RevisedPrompt: item.RevisedPrompt,
-		}, nil
+func openAIImageSize(size, aspectRatio string) string {
+	size = strings.TrimSpace(size)
+	switch size {
+	case "", "1024x1024", "1536x1024", "1024x1536":
+		return size
 	}
-	if item.URL != "" {
-		data, contentType, err := a.downloadImageURL(ctx, item.URL)
-		if err != nil {
-			return Image{}, err
-		}
-		format, mimeType, err := inferImageFormat(data, contentType, string(response.OutputFormat), request.OutputFormat, imageFormatFromURL(item.URL))
-		if err != nil {
-			return Image{}, err
-		}
-		return Image{
-			Data:          data,
-			MIMEType:      mimeType,
-			Extension:     extensionForFormat(format),
-			RevisedPrompt: item.RevisedPrompt,
-			SourceURL:     item.URL,
-		}, nil
+	ratio := aspectRatioValue(aspectRatio)
+	if width, height, ok := parseImageDimensions(size); ok {
+		ratio = float64(width) / float64(height)
 	}
-	return Image{}, ErrImageDataMissing
-}
-
-func (a *OpenAIAdapter) downloadImageURL(ctx context.Context, target string) ([]byte, string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
-	if err != nil {
-		return nil, "", err
-	}
-	resp, err := a.httpClient.Do(req)
-	if err != nil {
-		return nil, "", err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, "", fmt.Errorf("下载图像失败: HTTP %d", resp.StatusCode)
-	}
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, "", err
-	}
-	return data, resp.Header.Get("Content-Type"), nil
-}
-
-func inferImageFormat(data []byte, contentType string, candidates ...string) (string, string, error) {
-	for _, candidate := range candidates {
-		if format := normalizeImageFormat(candidate); format != "" {
-			return format, mimeTypeForFormat(format), nil
-		}
-	}
-	if format := imageFormatFromContentType(contentType); format != "" {
-		return format, mimeTypeForFormat(format), nil
-	}
-	if format := imageFormatFromBytes(data); format != "" {
-		return format, mimeTypeForFormat(format), nil
-	}
-	return "", "", errors.New("无法识别图像格式")
-}
-
-func imageFormatFromContentType(contentType string) string {
-	if contentType == "" {
-		return ""
-	}
-	mediaType, _, err := mime.ParseMediaType(contentType)
-	if err != nil {
-		mediaType = strings.TrimSpace(strings.ToLower(contentType))
-	}
-	switch mediaType {
-	case "image/png":
-		return "png"
-	case "image/jpeg", "image/jpg":
-		return "jpeg"
+	switch {
+	case ratio > 1.15:
+		return "1536x1024"
+	case ratio > 0 && ratio < 0.87:
+		return "1024x1536"
 	default:
-		return ""
+		return "1024x1024"
 	}
-}
-
-func imageFormatFromBytes(data []byte) string {
-	contentType := http.DetectContentType(data)
-	if format := imageFormatFromContentType(contentType); format != "" {
-		return format
-	}
-	return ""
-}
-
-func imageFormatFromURL(target string) string {
-	parsed, err := url.Parse(target)
-	if err != nil {
-		return ""
-	}
-	return normalizeImageFormat(strings.TrimPrefix(strings.ToLower(path.Ext(parsed.Path)), "."))
-}
-
-func normalizeImageFormat(format string) string {
-	switch strings.ToLower(strings.TrimSpace(format)) {
-	case "png":
-		return "png"
-	case "jpg", "jpeg":
-		return "jpeg"
-	default:
-		return ""
-	}
-}
-
-func mimeTypeForFormat(format string) string {
-	switch normalizeImageFormat(format) {
-	case "png":
-		return "image/png"
-	case "jpeg":
-		return "image/jpeg"
-	default:
-		return ""
-	}
-}
-
-func extensionForFormat(format string) string {
-	switch normalizeImageFormat(format) {
-	case "png":
-		return "png"
-	case "jpeg":
-		return "jpeg"
-	default:
-		return ""
-	}
-}
-
-func isDallEModel(model string) bool {
-	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(model)), "dall-e-")
 }

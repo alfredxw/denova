@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -21,25 +22,27 @@ import (
 type Settings struct {
 
 	// 模型
-	OpenAIAPIKey              string                       `toml:"openai_api_key,omitempty" json:"openai_api_key,omitempty"`
-	OpenAIBaseURL             string                       `toml:"openai_base_url,omitempty" json:"openai_base_url,omitempty"`
-	OpenAIModel               string                       `toml:"openai_model,omitempty" json:"openai_model,omitempty"`
-	OpenAIContextWindowTokens *int                         `toml:"openai_context_window_tokens,omitempty" json:"openai_context_window_tokens,omitempty"`
-	ModelProfiles             []ModelProfileSettings       `toml:"model_profiles,omitempty" json:"model_profiles,omitempty"`
-	ImageAPIKey               string                       `toml:"image_api_key,omitempty" json:"image_api_key,omitempty"`
-	ImageAPIBaseURL           string                       `toml:"image_api_base_url,omitempty" json:"image_api_base_url,omitempty"`
-	ImageAPIModel             string                       `toml:"image_api_model,omitempty" json:"image_api_model,omitempty"`
-	DefaultImageAPIProfileID  string                       `toml:"default_image_api_profile_id,omitempty" json:"default_image_api_profile_id,omitempty"`
-	ImageAPIProfiles          []ImageAPIProfileSettings    `toml:"image_api_profiles,omitempty" json:"image_api_profiles,omitempty"`
-	AgentModels               AgentModelSettings           `toml:"agent_models,omitempty" json:"agent_models,omitempty"`
-	AgentTools                AgentToolSettings            `toml:"agent_tools,omitempty" json:"agent_tools,omitempty"`
-	AgentPrompts              AgentPromptSettings          `toml:"agent_prompts,omitempty" json:"agent_prompts,omitempty"`
-	AgentSkills               AgentSkillSettings           `toml:"agent_skills,omitempty" json:"agent_skills,omitempty"`
-	AgentContexts             AgentContextSettings         `toml:"agent_context,omitempty" json:"agent_context,omitempty"`
-	GeneralSubAgents          AgentGeneralSubAgentSettings `toml:"general_sub_agents,omitempty" json:"general_sub_agents,omitempty"`
-	SubAgents                 []SubAgentConfig             `toml:"sub_agents,omitempty" json:"sub_agents,omitempty"`
-	WebAccess                 WebAccessSettings            `toml:"web_access,omitempty" json:"web_access,omitempty"`
-	Labs                      LabSettings                  `toml:"labs,omitempty" json:"labs,omitempty"`
+	OpenAIAPIKey              string                 `toml:"openai_api_key,omitempty" json:"openai_api_key,omitempty"`
+	OpenAIBaseURL             string                 `toml:"openai_base_url,omitempty" json:"openai_base_url,omitempty"`
+	OpenAIModel               string                 `toml:"openai_model,omitempty" json:"openai_model,omitempty"`
+	OpenAIContextWindowTokens *int                   `toml:"openai_context_window_tokens,omitempty" json:"openai_context_window_tokens,omitempty"`
+	ModelProfiles             []ModelProfileSettings `toml:"model_profiles,omitempty" json:"model_profiles,omitempty"`
+	// LegacyImageAPI* are presence-aware decode aliases for the former
+	// top-level image settings. They are migrated into ImageAPIProfiles.
+	LegacyImageAPIKey        *string                      `toml:"image_api_key,omitempty" json:"image_api_key,omitempty"`
+	LegacyImageAPIBaseURL    *string                      `toml:"image_api_base_url,omitempty" json:"image_api_base_url,omitempty"`
+	LegacyImageAPIModel      *string                      `toml:"image_api_model,omitempty" json:"image_api_model,omitempty"`
+	DefaultImageAPIProfileID string                       `toml:"default_image_api_profile_id,omitempty" json:"default_image_api_profile_id,omitempty"`
+	ImageAPIProfiles         []ImageAPIProfileSettings    `toml:"image_api_profiles,omitempty" json:"image_api_profiles,omitempty"`
+	AgentModels              AgentModelSettings           `toml:"agent_models,omitempty" json:"agent_models,omitempty"`
+	AgentTools               AgentToolSettings            `toml:"agent_tools,omitempty" json:"agent_tools,omitempty"`
+	AgentPrompts             AgentPromptSettings          `toml:"agent_prompts,omitempty" json:"agent_prompts,omitempty"`
+	AgentSkills              AgentSkillSettings           `toml:"agent_skills,omitempty" json:"agent_skills,omitempty"`
+	AgentContexts            AgentContextSettings         `toml:"agent_context,omitempty" json:"agent_context,omitempty"`
+	GeneralSubAgents         AgentGeneralSubAgentSettings `toml:"general_sub_agents,omitempty" json:"general_sub_agents,omitempty"`
+	SubAgents                []SubAgentConfig             `toml:"sub_agents,omitempty" json:"sub_agents,omitempty"`
+	WebAccess                WebAccessSettings            `toml:"web_access,omitempty" json:"web_access,omitempty"`
+	Labs                     LabSettings                  `toml:"labs,omitempty" json:"labs,omitempty"`
 
 	// 路径
 	SkillsDir    string `toml:"skills_dir,omitempty" json:"skills_dir,omitempty"`
@@ -155,9 +158,8 @@ func DefaultSettings() Settings {
 		OpenAIBaseURL:               "https://api.deepseek.com",
 		OpenAIModel:                 "deepseek-v4-pro",
 		OpenAIContextWindowTokens:   intPtr(DefaultContextWindowTokens),
-		ImageAPIBaseURL:             DefaultImageAPIBaseURL,
-		ImageAPIModel:               DefaultImageAPIModel,
 		DefaultImageAPIProfileID:    DefaultImageAPIProfileID,
+		ImageAPIProfiles:            []ImageAPIProfileSettings{DefaultImageAPIProfile()},
 		SkillsDir:                   "./skills",
 		DenovaDir:                   "./" + workspacelayout.DataDirName,
 		NovaDir:                     "./" + workspacelayout.DataDirName,
@@ -240,15 +242,6 @@ func Merge(parent, child Settings) Settings {
 		out.OpenAIContextWindowTokens = child.OpenAIContextWindowTokens
 	}
 	out.ModelProfiles = mergeModelProfiles(out.ModelProfiles, child.ModelProfiles)
-	if child.ImageAPIKey != "" {
-		out.ImageAPIKey = child.ImageAPIKey
-	}
-	if child.ImageAPIBaseURL != "" {
-		out.ImageAPIBaseURL = child.ImageAPIBaseURL
-	}
-	if child.ImageAPIModel != "" {
-		out.ImageAPIModel = child.ImageAPIModel
-	}
 	if child.DefaultImageAPIProfileID != "" {
 		out.DefaultImageAPIProfileID = child.DefaultImageAPIProfileID
 	}
@@ -458,7 +451,10 @@ type LayeredSettings struct {
 	ResolvedAgentContexts      map[string]ResolvedAgentContextSettings  `json:"resolved_agent_contexts"`
 }
 
-var ErrSettingsRevisionConflict = errors.New("配置已被其他操作更新，请重新加载后再保存")
+var (
+	ErrSettingsRevisionConflict = errors.New("配置已被其他操作更新，请重新加载后再保存")
+	errSettingsFileMissing      = errors.New("settings file is missing")
+)
 
 // SettingsPaths 是设置页只读展示的真实配置路径。
 type SettingsPaths struct {
@@ -489,22 +485,65 @@ type SettingsRuntime struct {
 
 // ReadSettingsFile 读取 TOML，文件不存在时返回零值且无错误。
 func ReadSettingsFile(path string) (Settings, error) {
-	snapshot, err := revisionfile.Read(context.Background(), path)
-	if err != nil {
-		return Settings{}, fmt.Errorf("读取 %s 失败: %w", path, err)
-	}
-	if !snapshot.Exists {
+	var settings Settings
+	var backupPath string
+	var migrationDetected bool
+	_, err := revisionfile.Mutate(
+		context.Background(),
+		path,
+		revisionfile.Options{FileMode: 0o644, DirectoryMode: 0o755},
+		func(snapshot revisionfile.Snapshot) ([]byte, error) {
+			if !snapshot.Exists {
+				return nil, errSettingsFileMissing
+			}
+			decoded, migrated, decodeErr := decodeSettingsFileWithMigration(path, snapshot.Content)
+			if decodeErr != nil {
+				return nil, decodeErr
+			}
+			settings = decoded
+			if !migrated {
+				return snapshot.Content, nil
+			}
+			migrationDetected = true
+			backupPath, decodeErr = preserveImageSettingsMigrationBackup(path, snapshot)
+			if decodeErr != nil {
+				return nil, decodeErr
+			}
+			data, marshalErr := toml.Marshal(settings)
+			if marshalErr != nil {
+				return nil, fmt.Errorf("序列化失败: %w", marshalErr)
+			}
+			return data, nil
+		},
+	)
+	if errors.Is(err, errSettingsFileMissing) {
 		return Settings{}, nil
 	}
-	return decodeSettingsFile(path, snapshot.Content)
+	if err != nil {
+		if migrationDetected {
+			slog.WarnContext(context.Background(), "[config] could not persist migrated image settings; using the migrated in-memory view", "path", path, "error", err)
+			return settings, nil
+		}
+		return Settings{}, fmt.Errorf("读取 %s 失败: %w", path, err)
+	}
+	if backupPath != "" {
+		slog.InfoContext(context.Background(), "[config] migrated legacy image settings", "path", path, "backup_path", backupPath)
+	}
+	return settings, nil
 }
 
 func decodeSettingsFile(path string, data []byte) (Settings, error) {
+	settings, _, err := decodeSettingsFileWithMigration(path, data)
+	return settings, err
+}
+
+func decodeSettingsFileWithMigration(path string, data []byte) (Settings, bool, error) {
 	var s Settings
 	if err := toml.Unmarshal(data, &s); err != nil {
-		return Settings{}, fmt.Errorf("解析 %s 失败: %w", path, err)
+		return Settings{}, false, fmt.Errorf("解析 %s 失败: %w", path, err)
 	}
-	return sanitizeEditableSettings(s), nil
+	migrated := hasLegacyImageSettings(s)
+	return sanitizeEditableSettings(s), migrated, nil
 }
 
 // WriteSettingsFile 写入 TOML，自动创建父目录。
@@ -544,6 +583,7 @@ func MutateSettingsFile(
 	if mutate == nil {
 		return "", errors.New("settings mutator is nil")
 	}
+	var backupPath string
 	result, err := revisionfile.Mutate(
 		context.Background(),
 		path,
@@ -555,9 +595,16 @@ func MutateSettingsFile(
 			current := Settings{}
 			if snapshot.Exists {
 				var decodeErr error
-				current, decodeErr = decodeSettingsFile(path, snapshot.Content)
+				var migrated bool
+				current, migrated, decodeErr = decodeSettingsFileWithMigration(path, snapshot.Content)
 				if decodeErr != nil {
 					return nil, decodeErr
+				}
+				if migrated {
+					backupPath, decodeErr = preserveImageSettingsMigrationBackup(path, snapshot)
+					if decodeErr != nil {
+						return nil, decodeErr
+					}
 				}
 			}
 			next, mutateErr := mutate(current)
@@ -573,6 +620,9 @@ func MutateSettingsFile(
 	)
 	if err != nil {
 		return "", err
+	}
+	if backupPath != "" {
+		slog.InfoContext(context.Background(), "[config] migrated legacy image settings during mutation", "path", path, "backup_path", backupPath)
 	}
 	return result.Revision, nil
 }
@@ -734,6 +784,7 @@ func workspaceAgentSettings(settings Settings) Settings {
 
 func sanitizeEditableSettings(s Settings) Settings {
 	s = preserveTerminalCommandRegistryPresence(s)
+	s, _ = migrateLegacyImageSettings(s)
 	// denova_dir/nova_dir 是启动级定位参数，不能由用户级/工作区级配置反向修改自身位置。
 	s.DenovaDir = ""
 	s.NovaDir = ""
@@ -750,8 +801,6 @@ func sanitizeEditableSettings(s Settings) Settings {
 	s.IDEImagePresetID = strings.TrimSpace(s.IDEImagePresetID)
 	s.WritingSkillDefault = strings.TrimSpace(s.WritingSkillDefault)
 	s.OpenAIContextWindowTokens = normalizeContextWindowTokens(s.OpenAIContextWindowTokens)
-	s.ImageAPIBaseURL = strings.TrimSpace(s.ImageAPIBaseURL)
-	s.ImageAPIModel = strings.TrimSpace(s.ImageAPIModel)
 	s.DefaultImageAPIProfileID = strings.TrimSpace(s.DefaultImageAPIProfileID)
 	s.AgentIdleTimeoutSeconds = normalizeAgentIdleTimeoutSeconds(s.AgentIdleTimeoutSeconds)
 	s.AgentToolResultLimitKB = normalizeAgentToolResultLimitKB(s.AgentToolResultLimitKB)

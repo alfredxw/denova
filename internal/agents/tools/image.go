@@ -26,7 +26,6 @@ const (
 	generatedImageReceiptSchema             = "generated_image.receipt.v1"
 	generateImagePurposeChapterIllustration = "chapter_illustration"
 	generateImagePurposeInteractiveImage    = "interactive_image"
-	generateImageSupportedSizeDescription   = " Optional image size; leave empty for the Agent to choose from intent. Supported sizes only: 2K: 2048x2048, 2304x1728, 1728x2304, 2848x1600, 1600x2848, 2496x1664, 1664x2496, 3136x1344; 3K: 3072x3072, 3456x2592, 2592x3456, 4096x2304, 2304x4096, 2496x3744, 3744x2496, 4704x2016; 4K: 4096x4096, 3520x4704, 4704x3520, 5504x3040, 3040x5504, 3328x4992, 4992x3328, 6240x2656."
 	generateImageDefaultAltText             = "Generated image"
 )
 
@@ -42,9 +41,11 @@ type generateImageInput struct {
 	AltText      string `json:"alt_text,omitempty" jsonschema:"description=Markdown image alt text; generated from the chapter name when omitted."`
 	ProfileID    string `json:"profile_id,omitempty" jsonschema:"description=Optional image model profile ID; omit to use the current default image profile."`
 	N            int    `json:"n,omitempty" jsonschema:"description=Number of images. Ordinary images accept 1 to 10; chapter illustrations and interactive images always generate one."`
-	Size         string `json:"size,omitempty" jsonschema:"description=Optional image size. Leave empty for the Agent to infer it. Only supported 2K/3K/4K preset sizes are accepted; see the tool description."`
+	Size         string `json:"size,omitempty" jsonschema:"description=Optional image dimensions such as 1024x1024. Support depends on the selected provider."`
+	AspectRatio  string `json:"aspect_ratio,omitempty" jsonschema:"description=Optional aspect ratio such as 1:1, 16:9, or 9:16. The provider chooses the nearest supported ratio when needed."`
+	Resolution   string `json:"resolution,omitempty" jsonschema:"description=Optional provider resolution tier such as 1K or 2K."`
 	Quality      string `json:"quality,omitempty" jsonschema:"description=Optional image quality, such as auto, standard, hd, low, medium, or high."`
-	OutputFormat string `json:"output_format,omitempty" jsonschema:"description=Optional output format: png or jpeg."`
+	OutputFormat string `json:"output_format,omitempty" jsonschema:"description=Optional output format: png, jpeg, or webp."`
 }
 
 type generatedImageToolResult struct {
@@ -118,7 +119,7 @@ func newIllustrationTools(cfg *config.Config) ([]agent.ToolDefinition, error) {
 		return nil, nil
 	}
 	workspace := strings.TrimSpace(cfg.Workspace)
-	description := "Generate images and save them to the workspace. Ordinary images go to assets/image/generated/. With purpose=chapter_illustration, generate one spoiler-free illustration from the chapter at target_path, save it under assets/illustrations/, and return a Markdown image reference for manual insertion. With purpose=interactive_image, story_id, branch_id, and turn_id are required and the image goes to assets/interactive/images/. The tool writes only image files and metadata; it never edits prose automatically." + generateImageSupportedSizeDescription
+	description := "Generate images with the selected image-provider profile and save them to the workspace. Ordinary images go to assets/image/generated/. With purpose=chapter_illustration, generate one spoiler-free illustration from the chapter at target_path, save it under assets/illustrations/, and return a Markdown image reference for manual insertion. With purpose=interactive_image, story_id, branch_id, and turn_id are required and the image goes to assets/interactive/images/. Provider-specific size, aspect ratio, resolution, quality, and format support is validated by the configured adapter. The tool writes only image files and metadata; it never edits prose automatically."
 	generateTool, err := agent.InferTool(generateImageToolName, description, func(ctx context.Context, input generateImageInput) (agent.ToolResult, error) {
 		if workspace == "" {
 			return agent.ToolResult{}, fmt.Errorf("cannot generate an image because the current workspace is unavailable")
@@ -234,6 +235,8 @@ func generateImageForTool(ctx context.Context, cfg *config.Config, bookService *
 			AltText:      input.AltText,
 			ProfileID:    input.ProfileID,
 			Size:         input.Size,
+			AspectRatio:  input.AspectRatio,
+			Resolution:   input.Resolution,
 			Quality:      input.Quality,
 			OutputFormat: input.OutputFormat,
 		})
@@ -247,6 +250,8 @@ func generateImageForTool(ctx context.Context, cfg *config.Config, bookService *
 			AltText:      input.AltText,
 			ProfileID:    input.ProfileID,
 			Size:         input.Size,
+			AspectRatio:  input.AspectRatio,
+			Resolution:   input.Resolution,
 			Quality:      input.Quality,
 			OutputFormat: input.OutputFormat,
 		})
@@ -279,6 +284,8 @@ func generateGeneralImageForTool(ctx context.Context, cfg *config.Config, bookSe
 		Prompt:       prompt,
 		N:            n,
 		Size:         strings.TrimSpace(input.Size),
+		AspectRatio:  strings.TrimSpace(input.AspectRatio),
+		Resolution:   strings.TrimSpace(input.Resolution),
 		Quality:      strings.TrimSpace(input.Quality),
 		OutputFormat: strings.TrimSpace(input.OutputFormat),
 	})
@@ -303,6 +310,11 @@ func persistGeneratedImages(bookService *book.Service, input generateImageInput,
 		OutputFormat: generated.OutputFormat,
 		CreatedAt:    createdAt.Format(time.RFC3339),
 		Images:       make([]generatedImageToolImage, 0, len(generated.Images)),
+	}
+	for _, failure := range generated.Failures {
+		result.Failures = append(result.Failures, generatedImageToolFailure{
+			Index: failure.Index, Code: failure.Code, Message: failure.Message,
+		})
 	}
 	for index, image := range generated.Images {
 		if len(image.Data) == 0 {
@@ -460,7 +472,7 @@ func normalizeGeneratedImageExtension(values ...string) string {
 		switch value {
 		case "jpg":
 			return "jpeg"
-		case "jpeg", "png":
+		case "jpeg", "png", "webp":
 			return value
 		}
 	}

@@ -43,8 +43,8 @@ func TestImagePingUsesStoredSecretAndRealGenerationAdapter(t *testing.T) {
 	defer server.Close()
 
 	service := NewService(pingTestHost{config: config.Config{ImageAPIProfiles: []config.ImageAPIProfileSettings{{
-		ID: "private", Provider: config.DefaultImageAPIProvider, OpenAIAPIKey: "stored-secret",
-		OpenAIBaseURL: server.URL, OpenAIModel: "image-model",
+		ID: "private", Provider: config.DefaultImageAPIProvider, APIKey: "stored-secret",
+		BaseURL: server.URL, Model: "image-model",
 	}}}})
 	result, err := service.Ping(context.Background(), config.ImageAPIProfileSettings{ID: "private"})
 	if err != nil {
@@ -65,10 +65,10 @@ func TestImagePingDoesNotForwardStoredSecretToChangedOrigin(t *testing.T) {
 	defer server.Close()
 
 	service := NewService(pingTestHost{config: config.Config{ImageAPIProfiles: []config.ImageAPIProfileSettings{{
-		ID: "private", Provider: config.DefaultImageAPIProvider, OpenAIAPIKey: "stored-secret",
-		OpenAIBaseURL: "https://original.example.test/v1", OpenAIModel: "image-model",
+		ID: "private", Provider: config.DefaultImageAPIProvider, APIKey: "stored-secret",
+		BaseURL: "https://original.example.test/v1", Model: "image-model",
 	}}}})
-	_, err := service.Ping(context.Background(), config.ImageAPIProfileSettings{ID: "private", OpenAIBaseURL: server.URL})
+	_, err := service.Ping(context.Background(), config.ImageAPIProfileSettings{ID: "private", BaseURL: server.URL})
 	if !errors.Is(err, config.ErrImageAPIKeyMissing) {
 		t.Fatalf("error = %T %v, want missing API key", err, err)
 	}
@@ -89,8 +89,8 @@ func TestImagePingClassifiesProviderErrors(t *testing.T) {
 
 	service := NewService(pingTestHost{})
 	_, err := service.Ping(context.Background(), config.ImageAPIProfileSettings{
-		ID: "invalid", Provider: config.DefaultImageAPIProvider, OpenAIAPIKey: "bad",
-		OpenAIBaseURL: server.URL, OpenAIModel: "image-model",
+		ID: "invalid", Provider: config.DefaultImageAPIProvider, APIKey: "bad",
+		BaseURL: server.URL, Model: "image-model",
 	})
 	if !IsProviderRequestError(err) {
 		t.Fatalf("error classification = %T %v", err, err)

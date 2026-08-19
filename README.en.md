@@ -115,7 +115,9 @@ Default addresses:
 
 ## Models and Configuration
 
-Denova configures language-model providers independently from API protocols. Providers are selected from the built-in catalog, while protocols are limited to OpenAI Chat Completions, OpenAI Responses, and Anthropic Messages. For a custom endpoint, choose Compatible / Custom Endpoint, then set its protocol and Base URL; Gemini uses Google's official OpenAI-compatible endpoint. OpenAI defaults to Responses, DeepSeek offers Chat Completions, Responses, and Anthropic routes, and MiniMax defaults to the Anthropic route so thinking blocks can be continued intact. Settings can load model suggestions through the current protocol's OpenAI-compatible or Anthropic `/models` endpoint while keeping the model name fully editable, and can test the current unsaved profile with one minimal real generation request. Legacy `openai_*` fields in `model_profiles` and the `OPENAI_*` environment variables below remain compatible Chat Completions settings. The recommended path is to configure language models, image models, Agent parameters, the default Writing Skill, editor options, Game Mode behavior, version management, language, theme, and fonts from Settings.
+Denova configures language-model providers independently from API protocols. Providers are selected from the built-in catalog, while protocols are limited to OpenAI Chat Completions, OpenAI Responses, and Anthropic Messages. For a custom endpoint, choose Compatible / Custom Endpoint, then set its protocol and Base URL; Gemini uses Google's official OpenAI-compatible endpoint. OpenAI defaults to Responses, DeepSeek offers Chat Completions, Responses, and Anthropic routes, and MiniMax defaults to the Anthropic route so thinking blocks can be continued intact. Settings can load model suggestions through the current protocol's OpenAI-compatible or Anthropic `/models` endpoint while keeping the model name fully editable, and can test the current unsaved profile with one minimal real generation request. Legacy `openai_*` fields in `model_profiles` and the `OPENAI_*` environment variables below remain compatible Chat Completions settings.
+
+Image models support OpenAI, xAI/Grok, ComfyUI, Volcengine Seedream, Google Gemini Image, and custom endpoints using any installed image protocol. ComfyUI can run the built-in basic text-to-image workflow with only its address and checkpoint; advanced workflows can be uploaded as ComfyUI API Format JSON in Settings, where Denova injects the current prompt and common size options before execution. Legacy `image_api_*` and image-profile `openai_api_*` settings are automatically migrated on first read after the original file is preserved in a content-addressed `.bak` backup. The recommended path is to configure language models, image models, Agent parameters, the default Writing Skill, editor options, Game Mode behavior, version management, language, theme, and fonts from Settings.
 
 For scripted startup or deployment, you can also override model configuration with environment variables:
 
@@ -123,10 +125,14 @@ For scripted startup or deployment, you can also override model configuration wi
 export OPENAI_API_KEY="your-api-key"
 export OPENAI_BASE_URL="https://api.deepseek.com"
 export OPENAI_MODEL="deepseek-v4-pro"
-export OPENAI_IMAGE_API_KEY="your-openai-image-key"
-export OPENAI_IMAGE_BASE_URL="https://api.openai.com/v1"
-export OPENAI_IMAGE_MODEL="gpt-image-1"
+export DENOVA_IMAGE_PROVIDER="openai"
+export DENOVA_IMAGE_PROTOCOL="openai-images"
+export DENOVA_IMAGE_API_KEY="your-image-api-key"
+export DENOVA_IMAGE_BASE_URL="https://api.openai.com/v1"
+export DENOVA_IMAGE_MODEL="gpt-image-2"
 ```
+
+Legacy `OPENAI_IMAGE_API_KEY`, `OPENAI_IMAGE_BASE_URL`, and `OPENAI_IMAGE_MODEL` remain accepted as aliases for the OpenAI image route. A corresponding `DENOVA_IMAGE_*` variable always takes precedence when present.
 
 Optional Denova startup environment variables:
 

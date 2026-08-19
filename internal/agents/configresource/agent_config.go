@@ -59,14 +59,23 @@ type safeModelProfileSettings struct {
 }
 
 type safeImageAPIProfileSettings struct {
-	ID                  string `json:"id,omitempty"`
-	Name                string `json:"name,omitempty"`
-	Provider            string `json:"provider,omitempty"`
-	OpenAIBaseURL       string `json:"openai_base_url,omitempty"`
-	OpenAIModel         string `json:"openai_model,omitempty"`
-	DefaultSize         string `json:"default_size,omitempty"`
-	DefaultQuality      string `json:"default_quality,omitempty"`
-	DefaultOutputFormat string `json:"default_output_format,omitempty"`
+	ID                  string                      `json:"id,omitempty"`
+	Name                string                      `json:"name,omitempty"`
+	Provider            string                      `json:"provider,omitempty"`
+	Protocol            string                      `json:"protocol,omitempty"`
+	BaseURL             string                      `json:"base_url,omitempty"`
+	Model               string                      `json:"model,omitempty"`
+	DefaultSize         string                      `json:"default_size,omitempty"`
+	DefaultAspectRatio  string                      `json:"default_aspect_ratio,omitempty"`
+	DefaultResolution   string                      `json:"default_resolution,omitempty"`
+	DefaultQuality      string                      `json:"default_quality,omitempty"`
+	DefaultOutputFormat string                      `json:"default_output_format,omitempty"`
+	ComfyUI             *safeComfyUIProfileSettings `json:"comfyui,omitempty"`
+}
+
+type safeComfyUIProfileSettings struct {
+	WorkflowMode string `json:"workflow_mode,omitempty"`
+	WorkflowName string `json:"workflow_name,omitempty"`
 }
 
 type agentConfigSubAgentIndexRow struct {
@@ -161,15 +170,26 @@ func safeImageAPIProfiles(profiles []config.ImageAPIProfileSettings) []safeImage
 	}
 	out := make([]safeImageAPIProfileSettings, 0, len(profiles))
 	for _, profile := range profiles {
+		var comfy *safeComfyUIProfileSettings
+		if profile.ComfyUI != nil {
+			comfy = &safeComfyUIProfileSettings{
+				WorkflowMode: profile.ComfyUI.WorkflowMode,
+				WorkflowName: profile.ComfyUI.WorkflowName,
+			}
+		}
 		out = append(out, safeImageAPIProfileSettings{
 			ID:                  profile.ID,
 			Name:                profile.Name,
 			Provider:            profile.Provider,
-			OpenAIBaseURL:       profile.OpenAIBaseURL,
-			OpenAIModel:         profile.OpenAIModel,
+			Protocol:            profile.Protocol,
+			BaseURL:             profile.BaseURL,
+			Model:               profile.Model,
 			DefaultSize:         profile.DefaultSize,
+			DefaultAspectRatio:  profile.DefaultAspectRatio,
+			DefaultResolution:   profile.DefaultResolution,
 			DefaultQuality:      profile.DefaultQuality,
 			DefaultOutputFormat: profile.DefaultOutputFormat,
+			ComfyUI:             comfy,
 		})
 	}
 	return out

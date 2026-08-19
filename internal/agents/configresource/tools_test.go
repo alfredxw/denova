@@ -380,6 +380,10 @@ func TestAgentProfileReadNeverReturnsSecrets(t *testing.T) {
 	if err := config.WriteSettingsFile(config.UserConfigPath(novaDir), config.Settings{
 		OpenAIAPIKey:  "top-secret",
 		ModelProfiles: []config.ModelProfileSettings{{ID: "model", APIKey: "profile-secret", Model: "model-v1"}},
+		ImageAPIProfiles: []config.ImageAPIProfileSettings{{
+			ID: "comfy", Provider: config.ImageProviderComfyUI, BaseURL: "http://127.0.0.1:8188",
+			ComfyUI: &config.ComfyUIProfileSettings{WorkflowMode: config.ComfyUIWorkflowAPI, WorkflowName: "portrait.json", Workflow: "workflow-secret"},
+		}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -388,12 +392,12 @@ func TestAgentProfileReadNeverReturnsSecrets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, secret := range []string{"top-secret", "profile-secret", "openai_api_key"} {
+	for _, secret := range []string{"top-secret", "profile-secret", "workflow-secret", "openai_api_key"} {
 		if strings.Contains(output, secret) {
 			t.Fatalf("agent_profile leaked %q:\n%s", secret, output)
 		}
 	}
-	if !strings.Contains(output, "model-v1") || !strings.Contains(output, `"revisions"`) {
+	if !strings.Contains(output, "model-v1") || !strings.Contains(output, "portrait.json") || !strings.Contains(output, `"revisions"`) {
 		t.Fatalf("agent_profile response missing safe data or revisions:\n%s", output)
 	}
 }
