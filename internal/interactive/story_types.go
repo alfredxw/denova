@@ -225,13 +225,16 @@ type StoryMeta struct {
 }
 
 type TurnEvent struct {
-	V                  int    `json:"v"`
-	Type               string `json:"type"`
-	ID                 string `json:"id"`
-	ParentID           any    `json:"parent_id"`
-	BranchID           string `json:"branch_id"`
-	Ts                 string `json:"ts"`
-	User               string `json:"user"`
+	V        int    `json:"v"`
+	Type     string `json:"type"`
+	ID       string `json:"id"`
+	ParentID any    `json:"parent_id"`
+	BranchID string `json:"branch_id"`
+	Ts       string `json:"ts"`
+	User     string `json:"user"`
+	// UserContextOnly keeps host-owned autonomous instructions available to
+	// future model turns while hiding them from the player-authored timeline.
+	UserContextOnly    bool   `json:"user_context_only,omitempty"`
 	Narrative          string `json:"narrative"`
 	Thinking           string `json:"thinking,omitempty"`
 	RunID              string `json:"run_id,omitempty"`

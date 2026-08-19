@@ -2,7 +2,6 @@ package goal
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"reflect"
 	"strings"
@@ -13,89 +12,263 @@ import (
 	agent "github.com/alfredxw/denova/agent"
 )
 
+type recordedGoalModelCall struct {
+	messages  []*agent.Message
+	options   *agent.Options
+	streaming bool
+}
+
 type goalModel struct {
 	mu        sync.Mutex
 	responses []*agent.Message
-	inputs    [][]*agent.Message
+	calls     []recordedGoalModelCall
+	onCall    func(int) error
 }
 
-func (model *goalModel) Generate(_ context.Context, input []*agent.Message, _ ...agent.ModelOption) (*agent.Message, error) {
-	return model.next(input)
+func (model *goalModel) Generate(_ context.Context, input []*agent.Message, options ...agent.ModelOption) (*agent.Message, error) {
+	return model.next(input, options, false)
 }
 
-func (model *goalModel) Stream(_ context.Context, input []*agent.Message, _ ...agent.ModelOption) (*agent.StreamReader[*agent.Message], error) {
-	message, err := model.next(input)
+func (model *goalModel) Stream(_ context.Context, input []*agent.Message, options ...agent.ModelOption) (*agent.StreamReader[*agent.Message], error) {
+	message, err := model.next(input, options, true)
 	if err != nil {
 		return nil, err
 	}
 	return agent.StreamReaderFromArray([]*agent.Message{message}), nil
 }
 
-func (model *goalModel) next(input []*agent.Message) (*agent.Message, error) {
+func (model *goalModel) next(input []*agent.Message, options []agent.ModelOption, streaming bool) (*agent.Message, error) {
 	model.mu.Lock()
-	defer model.mu.Unlock()
-	model.inputs = append(model.inputs, input)
+	index := len(model.calls)
+	model.calls = append(model.calls, recordedGoalModelCall{
+		messages: cloneGoalTestMessages(input), options: agent.GetCommonOptions(&agent.Options{}, options...), streaming: streaming,
+	})
 	if len(model.responses) == 0 {
+		model.mu.Unlock()
 		return nil, errors.New("Goal model exhausted")
 	}
-	message := model.responses[0]
+	response := model.responses[0].Clone()
 	model.responses = model.responses[1:]
-	return message, nil
+	onCall := model.onCall
+	model.mu.Unlock()
+	if onCall != nil {
+		if err := onCall(index); err != nil {
+			return nil, err
+		}
+	}
+	return response, nil
 }
 
-func TestStandardGoalSessionContextAndModelToolShareDurableState(t *testing.T) {
+func (model *goalModel) recordedCalls() []recordedGoalModelCall {
+	model.mu.Lock()
+	defer model.mu.Unlock()
+	result := make([]recordedGoalModelCall, len(model.calls))
+	copy(result, model.calls)
+	return result
+}
+
+func cloneGoalTestMessages(messages []*agent.Message) []*agent.Message {
+	cloned := make([]*agent.Message, len(messages))
+	for index, message := range messages {
+		cloned[index] = message.Clone()
+	}
+	return cloned
+}
+
+type fixedGoalModelOptionMiddleware struct{ agent.BaseMiddleware }
+
+func (*fixedGoalModelOptionMiddleware) BeforeModelCall(
+	ctx context.Context,
+	call *agent.ModelCall,
+	_ *agent.ModelContext,
+) (context.Context, *agent.ModelCall, error) {
+	call.Options = append(call.Options, agent.WithMaxTokens(777))
+	return ctx, call, nil
+}
+
+func TestStandardGoalEvaluatorForksExactFinalRequestAndCompletes(t *testing.T) {
 	now := time.Date(2026, time.August, 10, 10, 0, 0, 0, time.UTC)
-	model := &goalModel{}
-	owner, err := agent.New(context.Background(), agent.Definition{
-		Model: model, Goal: Standard(WithClock(func() time.Time { return now })),
-	})
+	model := &goalModel{responses: []*agent.Message{
+		agent.AssistantMessage("实现和验证都已完成。", nil),
+		agent.AssistantMessage(`{"verdict":"complete","reason":"目标已经完整实现并通过验证。","next_instruction":""}`, nil),
+	}}
+	owner, session := newGoalTestSession(t, "goal-complete", model, Standard(WithClock(func() time.Time { return now })),
+		agent.IdentifyMiddleware(&fixedGoalModelOptionMiddleware{}, agent.CapabilityIdentity{Kind: "test.goal.options", Version: 1}),
+	)
+	defer func() { _ = owner.Close(context.Background()) }()
+	created := setGoalForTest(t, session, "完整实现目标并验证结果")
+
+	run, err := session.Run(context.Background(), agent.Text("开始执行"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = owner.Close(context.Background()) })
-	session, err := owner.Session(context.Background(), agent.NamedSession("goal"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	created, err := session.UpdateGoal(context.Background(), agent.GoalMutation{
-		Kind: agent.GoalSet, Objective: "finish the durable goal",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	arguments, err := json.Marshal(map[string]any{
-		"action": "complete", "expected_id": created.ID,
-		"expected_revision": created.Revision, "report": "verified",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	model.responses = []*agent.Message{
-		agent.AssistantMessage("", []agent.ToolCall{{
-			ID: "goal-call", Type: "function",
-			Function: agent.FunctionCall{Name: "goal", Arguments: string(arguments)},
-		}}),
-		agent.AssistantMessage("done", nil),
-	}
-	run, err := session.Run(context.Background(), agent.Text("continue"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result, err := run.Wait(context.Background()); err != nil || result.Status != agent.ResultCompleted {
-		t.Fatalf("result=%#v err=%v", result, err)
+	if result, waitErr := run.Wait(context.Background()); waitErr != nil || result.Status != agent.ResultCompleted {
+		t.Fatalf("result=%#v error=%v", result, waitErr)
 	}
 	current, present, err := session.Goal(context.Background())
+	if err != nil || !present {
+		t.Fatalf("Goal=%#v present=%t error=%v", current, present, err)
+	}
+	if current.Status != agent.GoalCompleted || current.Revision != created.Revision+1 || current.Report != "目标已经完整实现并通过验证。" {
+		t.Fatalf("completed Goal=%#v", current)
+	}
+
+	calls := model.recordedCalls()
+	if len(calls) != 2 {
+		t.Fatalf("model calls=%d, want primary plus evaluator", len(calls))
+	}
+	primary, evaluator := calls[0], calls[1]
+	if !primary.streaming || evaluator.streaming != primary.streaming {
+		t.Fatalf("streaming modes primary=%t evaluator=%t", primary.streaming, evaluator.streaming)
+	}
+	if !reflect.DeepEqual(primary.options, evaluator.options) {
+		t.Fatalf("evaluator options changed\nprimary=%#v\nevaluator=%#v", primary.options, evaluator.options)
+	}
+	if primary.options.MaxTokens == nil || *primary.options.MaxTokens != 777 {
+		t.Fatalf("middleware options were not captured: %#v", primary.options)
+	}
+	if len(evaluator.messages) != len(primary.messages)+2 ||
+		!reflect.DeepEqual(evaluator.messages[:len(primary.messages)], primary.messages) {
+		t.Fatalf("evaluator did not preserve the exact primary request prefix")
+	}
+	final := evaluator.messages[len(evaluator.messages)-2]
+	prompt := evaluator.messages[len(evaluator.messages)-1]
+	if final.Role != agent.Assistant || final.Content != "实现和验证都已完成。" {
+		t.Fatalf("evaluator final evidence=%#v", final)
+	}
+	if prompt.Role != agent.User || prompt.Content != goalEvaluationPrompt {
+		t.Fatalf("evaluator suffix prompt=%#v", prompt)
+	}
+	if !strings.Contains(goalEvaluationPrompt, "same language as the active objective") {
+		t.Fatal("evaluator prompt does not preserve the active objective language")
+	}
+	if strings.Contains(goalEvaluationPrompt, "English") {
+		t.Fatal("evaluator prompt must not force English rationale or continuation text")
+	}
+}
+
+func TestStandardGoalEvaluatorContinuesUntilComplete(t *testing.T) {
+	model := &goalModel{responses: []*agent.Message{
+		agent.AssistantMessage("第一步已经完成。", nil),
+		agent.AssistantMessage(`{"verdict":"continue","reason":"仍有实现和验证工作。","next_instruction":"完成剩余实现并运行验证。"}`, nil),
+		agent.AssistantMessage("剩余实现和验证已经完成。", nil),
+		agent.AssistantMessage(`{"verdict":"complete","reason":"全部要求均已验证。","next_instruction":""}`, nil),
+	}}
+	owner, session := newGoalTestSession(t, "goal-continue", model, Standard())
+	defer func() { _ = owner.Close(context.Background()) }()
+	created := setGoalForTest(t, session, "完成全部实现和验证")
+
+	run, err := session.Run(context.Background(), agent.Text("先完成第一步"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !present || current.Status != agent.GoalCompleted || current.Report != "verified" || current.Revision != created.Revision+1 {
-		t.Fatalf("Goal=%#v present=%v", current, present)
+	if result, waitErr := run.Wait(context.Background()); waitErr != nil || result.Status != agent.ResultCompleted {
+		t.Fatalf("result=%#v error=%v", result, waitErr)
 	}
-	model.mu.Lock()
-	firstInput := model.inputs[0]
-	model.mu.Unlock()
-	if len(firstInput) == 0 || !strings.Contains(firstInput[len(firstInput)-1].Content, "finish the durable goal") {
-		t.Fatalf("active Goal missing from model input: %#v", firstInput)
+	current, present, err := session.Goal(context.Background())
+	if err != nil || !present || current.Status != agent.GoalCompleted || current.Revision != created.Revision+1 {
+		t.Fatalf("Goal=%#v present=%t error=%v", current, present, err)
+	}
+	calls := model.recordedCalls()
+	if len(calls) != 4 {
+		t.Fatalf("model calls=%d, want two primary/evaluator pairs", len(calls))
+	}
+	if !goalTestMessagesContain(calls[2].messages, "完成剩余实现并运行验证。") {
+		t.Fatalf("autonomous continuation was not projected into the next main call: %#v", calls[2].messages)
+	}
+	if goalTestMessagesContain(calls[2].messages, goalEvaluationPrompt) {
+		t.Fatal("evaluator output leaked into the main transcript")
+	}
+}
+
+func TestStandardGoalEvaluatorBlocksAndPersistsLocalizedReason(t *testing.T) {
+	model := &goalModel{responses: []*agent.Message{
+		agent.AssistantMessage("需要用户提供缺失的密钥。", nil),
+		agent.AssistantMessage(`{"verdict":"blocked","reason":"缺少完成目标所必需的外部密钥。","next_instruction":""}`, nil),
+	}}
+	owner, session := newGoalTestSession(t, "goal-blocked", model, Standard())
+	defer func() { _ = owner.Close(context.Background()) }()
+	created := setGoalForTest(t, session, "使用外部密钥完成部署")
+
+	run, err := session.Run(context.Background(), agent.Text("继续部署"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result, waitErr := run.Wait(context.Background()); waitErr != nil || result.Status != agent.ResultCompleted {
+		t.Fatalf("result=%#v error=%v", result, waitErr)
+	}
+	current, present, err := session.Goal(context.Background())
+	if err != nil || !present || current.Status != agent.GoalBlocked || current.Revision != created.Revision+1 ||
+		current.Report != "缺少完成目标所必需的外部密钥。" {
+		t.Fatalf("Goal=%#v present=%t error=%v", current, present, err)
+	}
+}
+
+func TestStandardGoalEvaluatorFailureStopsWithoutFalseCompletion(t *testing.T) {
+	tests := []struct {
+		name       string
+		evaluation *agent.Message
+	}{
+		{name: "malformed", evaluation: agent.AssistantMessage("not-json", nil)},
+		{name: "tool_call", evaluation: agent.AssistantMessage(`{"verdict":"complete","reason":"invalid","next_instruction":""}`, []agent.ToolCall{{
+			ID: "denied", Type: "function", Function: agent.FunctionCall{Name: "unexpected", Arguments: `{}`},
+		}})},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			model := &goalModel{responses: []*agent.Message{
+				agent.AssistantMessage("主回合仍应正常完成。", nil), test.evaluation,
+			}}
+			owner, session := newGoalTestSession(t, "goal-evaluation-failure-"+test.name, model, Standard())
+			defer func() { _ = owner.Close(context.Background()) }()
+			created := setGoalForTest(t, session, "不能被误判完成")
+
+			run, err := session.Run(context.Background(), agent.Text("执行一次"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result, waitErr := run.Wait(context.Background()); waitErr != nil || result.Status != agent.ResultCompleted {
+				t.Fatalf("result=%#v error=%v", result, waitErr)
+			}
+			current, present, err := session.Goal(context.Background())
+			if err != nil || !present || current.Status != agent.GoalActive || current.Revision != created.Revision {
+				t.Fatalf("Goal=%#v present=%t error=%v", current, present, err)
+			}
+			if calls := model.recordedCalls(); len(calls) != 2 {
+				t.Fatalf("model calls=%d, evaluator failure must stop autonomous continuation", len(calls))
+			}
+		})
+	}
+}
+
+func TestStandardGoalDiscardsStaleEvaluation(t *testing.T) {
+	model := &goalModel{responses: []*agent.Message{
+		agent.AssistantMessage("旧目标似乎已经完成。", nil),
+		agent.AssistantMessage(`{"verdict":"complete","reason":"旧快照认为已完成。","next_instruction":""}`, nil),
+	}}
+	owner, session := newGoalTestSession(t, "goal-stale", model, Standard())
+	defer func() { _ = owner.Close(context.Background()) }()
+	created := setGoalForTest(t, session, "在评估期间可能被暂停")
+	model.onCall = func(index int) error {
+		if index != 1 {
+			return nil
+		}
+		_, err := session.UpdateGoal(context.Background(), agent.GoalMutation{
+			Kind: agent.GoalPause, ExpectedID: created.ID, ExpectedRevision: created.Revision,
+		})
+		return err
+	}
+
+	run, err := session.Run(context.Background(), agent.Text("执行旧快照"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result, waitErr := run.Wait(context.Background()); waitErr != nil || result.Status != agent.ResultCompleted {
+		t.Fatalf("result=%#v error=%v", result, waitErr)
+	}
+	current, present, err := session.Goal(context.Background())
+	if err != nil || !present || current.Status != agent.GoalPaused || current.Revision != created.Revision+1 {
+		t.Fatalf("stale evaluator overwrote Goal=%#v present=%t error=%v", current, present, err)
 	}
 }
 
@@ -124,76 +297,14 @@ func TestStandardGoalUsesRevisionAndMutationIdempotencyFences(t *testing.T) {
 	}
 }
 
-func TestStandardGoalModelToolIsTerminalOnly(t *testing.T) {
-	now := time.Date(2026, time.August, 12, 10, 0, 0, 0, time.UTC)
-	model := &goalModel{}
-	owner, err := agent.New(context.Background(), agent.Definition{
-		Model: model, Goal: Standard(WithClock(func() time.Time { return now })),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = owner.Close(context.Background()) })
-	session, err := owner.Session(context.Background(), agent.NamedSession("goal-terminal-only"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	created, err := session.UpdateGoal(context.Background(), agent.GoalMutation{
-		Kind: agent.GoalSet, Objective: "host-owned objective",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	call := func(id string, action agent.GoalMutationKind) *agent.Message {
-		arguments, marshalErr := json.Marshal(map[string]any{
-			"action": action, "expected_id": created.ID, "expected_revision": created.Revision,
-		})
-		if marshalErr != nil {
-			t.Fatal(marshalErr)
-		}
-		return agent.AssistantMessage("", []agent.ToolCall{{
-			ID: id, Type: "function", Function: agent.FunctionCall{Name: "goal", Arguments: string(arguments)},
-		}})
-	}
-	model.responses = []*agent.Message{
-		call("set-call", agent.GoalSet), call("clear-call", agent.GoalClear),
-		call("complete-call", agent.GoalComplete), agent.AssistantMessage("done", nil),
-	}
-	run, err := session.Run(context.Background(), agent.Text("try terminal transitions"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result, waitErr := run.Wait(context.Background()); waitErr != nil || result.Status != agent.ResultCompleted {
-		t.Fatalf("result=%#v error=%v", result, waitErr)
-	}
-	current, present, err := session.Goal(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !present || current.Status != agent.GoalCompleted || current.Objective != created.Objective ||
-		current.Revision != created.Revision+1 {
-		t.Fatalf("model rewrote host-owned Goal: %#v present=%t", current, present)
-	}
-}
-
 func TestStandardGoalHostMayUseCompleteStateMachine(t *testing.T) {
-	now := time.Date(2026, time.August, 12, 11, 0, 0, 0, time.UTC)
-	owner, err := agent.New(context.Background(), agent.Definition{
-		Model: &goalModel{}, Goal: Standard(WithClock(func() time.Time { return now })),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = owner.Close(context.Background()) })
-	session, err := owner.Session(context.Background(), agent.NamedSession("goal-host-state-machine"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	owner, session := newGoalTestSession(t, "goal-host-state-machine", &goalModel{}, Standard())
+	defer func() { _ = owner.Close(context.Background()) }()
 	apply := func(mutation agent.GoalMutation) agent.GoalState {
 		t.Helper()
-		state, applyErr := session.UpdateGoal(context.Background(), mutation)
-		if applyErr != nil {
-			t.Fatal(applyErr)
+		state, err := session.UpdateGoal(context.Background(), mutation)
+		if err != nil {
+			t.Fatal(err)
 		}
 		return state
 	}
@@ -205,13 +316,13 @@ func TestStandardGoalHostMayUseCompleteStateMachine(t *testing.T) {
 	state = apply(agent.GoalMutation{Kind: agent.GoalSet, Objective: "second objective"})
 	state = apply(agent.GoalMutation{Kind: agent.GoalBlock, ExpectedID: state.ID, ExpectedRevision: state.Revision})
 	if state.Status != agent.GoalBlocked || state.Objective != "second objective" {
-		t.Fatalf("final Goal state = %#v", state)
+		t.Fatalf("final Goal state=%#v", state)
 	}
 }
 
-func TestStandardGoalPreparationIsActiveOnlyEscapedAndTerminalSafe(t *testing.T) {
+func TestStandardGoalPreparationIsActiveOnlyEscapedAndToolFree(t *testing.T) {
 	manager := Standard()
-	states := []struct {
+	for _, test := range []struct {
 		name    string
 		present bool
 		status  agent.GoalStatus
@@ -219,8 +330,7 @@ func TestStandardGoalPreparationIsActiveOnlyEscapedAndTerminalSafe(t *testing.T)
 		{name: "absent"},
 		{name: "paused", present: true, status: agent.GoalPaused},
 		{name: "completed", present: true, status: agent.GoalCompleted},
-	}
-	for _, test := range states {
+	} {
 		t.Run(test.name, func(t *testing.T) {
 			prepared, err := manager.Prepare(context.Background(), agent.GoalPrepareRequest{
 				Present: test.present, State: agent.GoalState{Status: test.status},
@@ -228,7 +338,7 @@ func TestStandardGoalPreparationIsActiveOnlyEscapedAndTerminalSafe(t *testing.T)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if prepared.StandardTool || len(prepared.Tools) != 0 || len(prepared.Context) != 0 {
+			if len(prepared.Tools) != 0 || len(prepared.Context) != 0 {
 				t.Fatalf("inactive Goal preparation=%#v", prepared)
 			}
 		})
@@ -243,13 +353,14 @@ func TestStandardGoalPreparationIsActiveOnlyEscapedAndTerminalSafe(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !prepared.StandardTool || len(prepared.Context) != 1 {
+	if len(prepared.Tools) != 0 || len(prepared.Context) != 1 {
 		t.Fatalf("active Goal preparation=%#v", prepared)
 	}
 	content := prepared.Context[0].Content
 	for _, required := range []string{
 		`goal-&lt;unsafe&gt;`, `Ship &lt;complete&gt; &amp; &#34;verified&#34;`,
 		"entire objective", "intermediate milestone", "user input or an external state change",
+		"evaluated by the runtime",
 	} {
 		if !strings.Contains(content, required) {
 			t.Fatalf("active Goal protocol missing %q: %s", required, content)
@@ -258,4 +369,46 @@ func TestStandardGoalPreparationIsActiveOnlyEscapedAndTerminalSafe(t *testing.T)
 	if strings.Contains(content, `Ship <complete>`) {
 		t.Fatalf("active Goal objective was not escaped: %s", content)
 	}
+}
+
+func newGoalTestSession(
+	t *testing.T,
+	name string,
+	model *goalModel,
+	manager agent.GoalManager,
+	middlewares ...agent.Middleware,
+) (*agent.Agent, *agent.Session) {
+	t.Helper()
+	owner, err := agent.New(context.Background(), agent.Definition{
+		Model: model, Goal: manager, Middlewares: middlewares,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := owner.Session(context.Background(), agent.NamedSession(name))
+	if err != nil {
+		_ = owner.Close(context.Background())
+		t.Fatal(err)
+	}
+	return owner, session
+}
+
+func setGoalForTest(t *testing.T, session *agent.Session, objective string) agent.GoalState {
+	t.Helper()
+	created, err := session.UpdateGoal(context.Background(), agent.GoalMutation{
+		Kind: agent.GoalSet, Objective: objective,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return created
+}
+
+func goalTestMessagesContain(messages []*agent.Message, value string) bool {
+	for _, message := range messages {
+		if message != nil && strings.Contains(message.Content, value) {
+			return true
+		}
+	}
+	return false
 }

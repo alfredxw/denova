@@ -34,8 +34,10 @@ const testMocks = vi.hoisted(() => ({
   sendInteractiveMessageMock: vi.fn(),
   streamActiveInteractiveChatMock: vi.fn(),
   submitInteractiveAgentCommandMock: vi.fn(),
+  setConversationGoalMock: vi.fn(),
   updateInteractiveTurnNarrativeMock: vi.fn(),
   useConversationConfigMock: vi.fn(),
+  useConversationGoalMock: vi.fn(),
   useSkillCommandsMock: vi.fn(),
 }))
 
@@ -45,8 +47,10 @@ const {
   getInteractiveHistoryPageMock,
   patchConversationConfigMock,
   sendInteractiveMessageMock,
+  setConversationGoalMock,
   updateInteractiveTurnNarrativeMock,
   useConversationConfigMock,
+  useConversationGoalMock,
   useSkillCommandsMock,
 } = testMocks
 
@@ -61,6 +65,10 @@ vi.mock('@/features/agent-approval/AgentApprovalProvider', () => ({
 
 vi.mock('@/features/conversation-config/use-conversation-config', () => ({
   useConversationConfig: () => testMocks.useConversationConfigMock(),
+}))
+
+vi.mock('@/features/agent-goal/use-conversation-goal', () => ({
+  useConversationGoal: (...args: unknown[]) => testMocks.useConversationGoalMock(...args),
 }))
 
 vi.mock('@/hooks/useSkillCommands', () => ({
@@ -94,6 +102,14 @@ beforeEach(() => {
     error: null,
     patch: patchConversationConfigMock,
     reload: vi.fn(),
+  })
+  setConversationGoalMock.mockReset().mockResolvedValue({
+    id: 'goal-story', objective: '完成本章目标', status: 'active', revision: 1,
+    created_at: '2026-08-20T00:00:00Z', updated_at: '2026-08-20T00:00:00Z',
+  })
+  useConversationGoalMock.mockReset().mockReturnValue({
+    goal: null, loading: false, saving: false, reload: vi.fn(), set: setConversationGoalMock,
+    pause: vi.fn(), resume: vi.fn(), clear: vi.fn(),
   })
 })
 
@@ -633,6 +649,30 @@ describe('StoryStage composer', () => {
         message: '/story-beat',
       }))
     })
+  })
+
+  it('sets an interactive Goal before starting the visible objective turn', async () => {
+    const user = userEvent.setup()
+    sendInteractiveMessageMock.mockResolvedValue(interactiveStream([
+      { event: 'chunk', data: JSON.stringify({ content: '开始推进目标。' }) },
+      { event: 'done', data: '{}' },
+    ]))
+
+    render(<StoryStageHarness />)
+
+    await user.type(getStageInput(), '/go')
+    await user.click(screen.getByText('/goal'))
+    expect(screen.getByText('目标')).toBeInTheDocument()
+    await user.type(getStageInput(), '完成本章目标')
+    await user.click(screen.getByRole('button', { name: '发送' }))
+
+    await waitFor(() => {
+      expect(setConversationGoalMock).toHaveBeenCalledWith('完成本章目标')
+      expect(sendInteractiveMessageMock).toHaveBeenCalledWith(expect.objectContaining({ message: '完成本章目标' }))
+    })
+    expect(useConversationGoalMock).toHaveBeenCalledWith(expect.objectContaining({
+      mode: 'interactive', project_id: 'project-story', story_id: 'story-1', branch_id: 'main',
+    }), expect.any(Boolean))
   })
 
   it('inserts style scenes as inline tokens and sends style_scenes', async () => {

@@ -128,6 +128,12 @@ func (a *App) gameCanonicalInput(
 			if err != nil {
 				return agent.CommitReceipt{}, err
 			}
+			if request.Request.InputVisibility == agentrun.InputModelOnly {
+				intent, err = intent.WithContextOnly()
+				if err != nil {
+					return agent.CommitReceipt{}, err
+				}
+			}
 			intent, err = intent.WithAgentCanonicalHash(input.Hash)
 			if err != nil {
 				return agent.CommitReceipt{}, err

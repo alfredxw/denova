@@ -82,6 +82,11 @@ type capabilityStateClient struct {
 
 const TodoCapability = "agent.todo"
 
+// ErrCapabilityStateConflict reports that a cycle-local capability decision
+// was derived from a Session value that changed before the decision committed.
+// Callers must discard the stale decision instead of overwriting newer state.
+var ErrCapabilityStateConflict = errors.New("Agent Session capability state changed")
+
 type capabilityStateContextKey struct{}
 
 func newCapabilityStateClient(states map[string]json.RawMessage, emit runstate.EngineEventSink) *capabilityStateClient {
@@ -136,11 +141,26 @@ func (client *capabilityStateClient) updateGoal(
 	}
 	if err := client.emit(runstate.EngineCapabilityState{
 		Capability: goalCapability, State: encoded,
+		CompareCurrent: true, ExpectedPresent: present,
+		ExpectedState: append(json.RawMessage(nil), currentRaw...),
 	}); err != nil {
 		return GoalState{}, err
 	}
 	client.states[goalCapability] = append(json.RawMessage(nil), encoded...)
 	return next, nil
+}
+
+func (client *capabilityStateClient) assertGoalCurrent() error {
+	if client == nil || client.emit == nil {
+		return ErrCapabilityUnsupported
+	}
+	client.mu.Lock()
+	defer client.mu.Unlock()
+	current, present := client.states[goalCapability]
+	return client.emit(runstate.EngineCapabilityState{
+		Capability: goalCapability, CompareCurrent: true, ExpectedPresent: present,
+		ExpectedState: append(json.RawMessage(nil), current...), CheckOnly: true,
+	})
 }
 
 func cloneRawStateMap(states map[string]json.RawMessage) map[string]json.RawMessage {

@@ -80,6 +80,7 @@ type interactiveAgentCycleRequest struct {
 	Message              string
 	StyleScenes          []string
 	Locale               string
+	InputVisibility      agentrun.InputVisibility
 	RegenerateFromTurnID string
 }
 
@@ -146,12 +147,12 @@ func (s *InteractiveAppService) prepareInteractiveAgentCycle(ctx context.Context
 	cycle.tellerInput.ChoiceCount = storyContext.Meta.ChoiceCount
 	cycle.request = agentchat.ChatRequest{
 		Message: strings.TrimSpace(request.Message), StyleScenes: append([]string(nil), request.StyleScenes...),
-		StyleRules: styleRules, Locale: strings.TrimSpace(request.Locale),
+		StyleRules: styleRules, Locale: strings.TrimSpace(request.Locale), InputVisibility: request.InputVisibility,
 	}
 	cycle.conversation = interactiveapp.NewConversation(
 		cycle.store, cycle.novaDir, cycle.workspace, cycle.storyID, cycle.branchID,
 		cycle.request.Message, cycle.runtimeCfg.InteractiveReplyTargetChars, &cycle.runtimeCfg,
-	).BindDirectorRuntime(a.directorTasksForWorkspace(cycle.workspace), a.interactiveDirectorGenerator(), cycle.executionRuntime).WithBaseParentID(expectedHead).WithRegenerateTarget(regenerateTurnID).WithExecutionParentPinning().WithOpeningStateSchema(storyContext)
+	).WithInputVisibility(cycle.request.InputVisibility).BindDirectorRuntime(a.directorTasksForWorkspace(cycle.workspace), a.interactiveDirectorGenerator(), cycle.executionRuntime).WithBaseParentID(expectedHead).WithRegenerateTarget(regenerateTurnID).WithExecutionParentPinning().WithOpeningStateSchema(storyContext)
 	cycle.bindDerivedProjectionBarrier()
 
 	var submitOpeningStateSchema func(context.Context, interactive.ActorStateSchemaBatch) (interactive.ActorStateSchemaBatchResult, error)

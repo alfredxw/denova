@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -283,22 +284,45 @@ func (run *Run) applyCapabilityUpdates(updates []runstate.EngineCapabilityState)
 	}
 	run.session.mu.Lock()
 	for _, update := range updates {
+		if !update.CompareCurrent {
+			continue
+		}
+		current, present := run.session.capabilities[update.Capability]
+		if present != update.ExpectedPresent || present && !bytes.Equal(current, update.ExpectedState) {
+			run.session.mu.Unlock()
+			return ErrCapabilityStateConflict
+		}
+	}
+	changed := false
+	for _, update := range updates {
+		if update.CheckOnly {
+			continue
+		}
+		changed = true
 		if update.Delete {
 			delete(run.session.capabilities, update.Capability)
 		} else {
 			run.session.capabilities[update.Capability] = append(json.RawMessage(nil), update.State...)
 		}
 	}
-	if err := run.session.persistCapabilitiesLocked(context.Background()); err != nil {
-		run.session.mu.Unlock()
-		return err
+	if changed {
+		if err := run.session.persistCapabilitiesLocked(context.Background()); err != nil {
+			run.session.mu.Unlock()
+			return err
+		}
 	}
 	run.session.mu.Unlock()
+	if !changed {
+		return nil
+	}
 	run.mu.Lock()
 	if run.snapshot.Capabilities == nil {
 		run.snapshot.Capabilities = make(map[string]json.RawMessage)
 	}
 	for _, update := range updates {
+		if update.CheckOnly {
+			continue
+		}
 		if update.Delete {
 			delete(run.snapshot.Capabilities, update.Capability)
 		} else {
@@ -307,6 +331,9 @@ func (run *Run) applyCapabilityUpdates(updates []runstate.EngineCapabilityState)
 	}
 	run.mu.Unlock()
 	for _, update := range updates {
+		if update.CheckOnly {
+			continue
+		}
 		run.publishCapabilityUpdate(update)
 	}
 	return nil

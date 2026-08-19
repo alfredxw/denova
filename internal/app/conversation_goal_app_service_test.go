@@ -5,11 +5,12 @@ import (
 	"testing"
 
 	"denova/config"
+	"denova/internal/interactive"
 
 	agent "github.com/alfredxw/denova/agent"
 )
 
-func TestConversationGoalIsScopedToWritingAndAgentChat(t *testing.T) {
+func TestConversationGoalSupportsWritingAgentChatAndInteractive(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()
 	application, err := New(ctx, &config.Config{
@@ -57,10 +58,19 @@ func TestConversationGoalIsScopedToWritingAndAgentChat(t *testing.T) {
 		t.Fatalf("created Agent Chat goal = %#v", chatGoal)
 	}
 
-	game := ConversationConfigBinding{
-		Mode: ConversationModeInteractive, ProjectID: application.ProjectID(), StoryID: "story-1", BranchID: "main",
+	story, err := application.CreateInteractiveStory(interactive.CreateStoryRequest{Title: "Goal story", StoryTellerID: "classic"})
+	if err != nil {
+		t.Fatal(err)
 	}
-	if _, err := application.MutateConversationGoal(ctx, game, ConversationGoalMutation{Action: "set", Objective: "Must not run"}); err == nil {
-		t.Fatal("interactive game accepted a conversation goal")
+	game := ConversationConfigBinding{
+		Mode: ConversationModeInteractive, ProjectID: application.ProjectID(), StoryID: story.ID, BranchID: "main",
+	}
+	gameGoal, err := application.MutateConversationGoal(ctx, game, ConversationGoalMutation{Action: "set", Objective: "Complete the interactive story goal"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	loadedGameGoal, found, err := application.ConversationGoal(ctx, game)
+	if err != nil || !found || loadedGameGoal.ID != gameGoal.ID || loadedGameGoal.Status != agent.GoalActive {
+		t.Fatalf("loaded interactive Goal=%#v found=%t error=%v", loadedGameGoal, found, err)
 	}
 }

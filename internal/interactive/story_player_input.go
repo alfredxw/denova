@@ -18,6 +18,7 @@ type PlayerInputIntent struct {
 	Identity           DomainCommitIdentity `json:"identity"`
 	BranchID           string               `json:"branch_id"`
 	Text               string               `json:"text"`
+	ContextOnly        bool                 `json:"context_only,omitempty"`
 	Hash               string               `json:"hash"`
 	AgentCanonicalHash string               `json:"agent_canonical_hash,omitempty"`
 }
@@ -30,6 +31,9 @@ type PlayerInputAcceptedEvent struct {
 	BranchID string `json:"branch_id"`
 	Ts       string `json:"ts"`
 	Text     string `json:"text"`
+	// ContextOnly keeps host-owned autonomous instructions in model history
+	// without projecting them as player-authored UI messages.
+	ContextOnly bool `json:"context_only,omitempty"`
 	// AcceptedTurnCount is the completed-turn boundary visible when the input
 	// was accepted. Side events do not advance branch.Head, so ParentID alone
 	// cannot place an interrupted input around later turns when its parent is a
@@ -62,7 +66,22 @@ func (i PlayerInputIntent) WithAgentCanonicalHash(hash string) (PlayerInputInten
 	return i, nil
 }
 
+// WithContextOnly marks a host-owned input as model-visible but not
+// player-visible and rebinds the domain payload hash to that projection.
+func (i PlayerInputIntent) WithContextOnly() (PlayerInputIntent, error) {
+	canonical, err := newPlayerInputIntent(i.Identity, i.BranchID, i.Text, true)
+	if err != nil {
+		return PlayerInputIntent{}, err
+	}
+	canonical.AgentCanonicalHash = strings.TrimSpace(i.AgentCanonicalHash)
+	return canonical, nil
+}
+
 func NewPlayerInputIntent(identity DomainCommitIdentity, branchID, text string) (PlayerInputIntent, error) {
+	return newPlayerInputIntent(identity, branchID, text, false)
+}
+
+func newPlayerInputIntent(identity DomainCommitIdentity, branchID, text string, contextOnly bool) (PlayerInputIntent, error) {
 	identity.CommandID = strings.TrimSpace(identity.CommandID)
 	identity.OperationID = strings.TrimSpace(identity.OperationID)
 	branchID = strings.TrimSpace(branchID)
@@ -73,21 +92,22 @@ func NewPlayerInputIntent(identity DomainCommitIdentity, branchID, text string) 
 		return PlayerInputIntent{}, fmt.Errorf("%w: player input is empty", ErrPlayerInputIdentityConflict)
 	}
 	payload, err := json.Marshal(struct {
-		BranchID string `json:"branch_id"`
-		Text     string `json:"text"`
-	}{BranchID: branchID, Text: text})
+		BranchID    string `json:"branch_id"`
+		Text        string `json:"text"`
+		ContextOnly bool   `json:"context_only,omitempty"`
+	}{BranchID: branchID, Text: text, ContextOnly: contextOnly})
 	if err != nil {
 		return PlayerInputIntent{}, err
 	}
 	sum := sha256.Sum256(payload)
 	return PlayerInputIntent{
-		Identity: identity, BranchID: branchID, Text: text,
+		Identity: identity, BranchID: branchID, Text: text, ContextOnly: contextOnly,
 		Hash: "sha256:" + hex.EncodeToString(sum[:]),
 	}, nil
 }
 
 func (s *Store) CommitPlayerInput(storyID string, intent PlayerInputIntent) (PlayerInputReceipt, error) {
-	canonical, err := NewPlayerInputIntent(intent.Identity, intent.BranchID, intent.Text)
+	canonical, err := newPlayerInputIntent(intent.Identity, intent.BranchID, intent.Text, intent.ContextOnly)
 	if err != nil {
 		return PlayerInputReceipt{}, err
 	}
@@ -121,7 +141,7 @@ func (s *Store) CommitPlayerInput(storyID string, intent PlayerInputIntent) (Pla
 	event := PlayerInputAcceptedEvent{
 		V: schemaVersion, Type: StoryEventTypePlayerInput,
 		ID: deterministicPlayerInputID(canonical.Identity), ParentID: branch.Head,
-		BranchID: canonical.BranchID, Ts: now, Text: canonical.Text, AcceptedTurnCount: projection.Depth,
+		BranchID: canonical.BranchID, Ts: now, Text: canonical.Text, ContextOnly: canonical.ContextOnly, AcceptedTurnCount: projection.Depth,
 		AgentCommandID: canonical.Identity.CommandID, AgentOperationID: canonical.Identity.OperationID,
 		AgentCycle: canonical.Identity.Cycle, AgentCommitHash: canonical.Hash,
 		AgentCanonicalHash: canonical.AgentCanonicalHash,
@@ -229,7 +249,7 @@ func findPlayerInputCommitInLines(
 			agentCanonicalHash != "" && strings.TrimSpace(event.AgentCanonicalHash) != agentCanonicalHash {
 			return PlayerInputReceipt{}, false, fmt.Errorf("%w: command_id=%q operation_id=%q cycle=%d", ErrPlayerInputIdentityConflict, identity.CommandID, identity.OperationID, identity.Cycle)
 		}
-		canonical, err := NewPlayerInputIntent(identity, branchID, event.Text)
+		canonical, err := newPlayerInputIntent(identity, branchID, event.Text, event.ContextOnly)
 		if err != nil || hash != "" && canonical.Hash != hash || event.ID != deterministicPlayerInputID(identity) {
 			return PlayerInputReceipt{}, false, fmt.Errorf("%w: canonical player input payload changed", ErrPlayerInputIdentityConflict)
 		}
@@ -275,7 +295,7 @@ func playerInputForTurnRequest(
 		if event.AgentOperationID != identity.OperationID || event.AgentCycle != identity.Cycle || event.BranchID != branchID || event.Text != req.User {
 			return PlayerInputAcceptedEvent{}, false, fmt.Errorf("%w: completed turn does not match accepted player input", ErrPlayerInputIdentityConflict)
 		}
-		canonical, err := NewPlayerInputIntent(identity, branchID, req.User)
+		canonical, err := newPlayerInputIntent(identity, branchID, req.User, event.ContextOnly)
 		if err != nil || canonical.Hash != event.AgentCommitHash {
 			return PlayerInputAcceptedEvent{}, false, fmt.Errorf("%w: completed turn player input hash changed", ErrPlayerInputIdentityConflict)
 		}

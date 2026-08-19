@@ -91,7 +91,7 @@ func TestDefaultSettingsValues(t *testing.T) {
 	if s.UIFontSize == nil || *s.UIFontSize != 14 {
 		t.Fatalf("UIFontSize default")
 	}
-	if s.ReadingFontFamily != "source-han-serif" {
+	if s.ReadingFontFamily != "apple-system" {
 		t.Fatalf("ReadingFontFamily default: %s", s.ReadingFontFamily)
 	}
 	if s.ReadingFontSize == nil || *s.ReadingFontSize != 18 {
@@ -149,7 +149,7 @@ func TestMergeOverridesNonZero(t *testing.T) {
 		AgentToolParallelism:       intPtr(4),
 		UIFontFamily:               "apple-system",
 		UIFontSize:                 intPtr(14),
-		ReadingFontFamily:          "source-han-serif",
+		ReadingFontFamily:          "apple-system",
 		ReadingFontSize:            intPtr(18),
 		Language:                   "auto",
 		Theme:                      "dark",

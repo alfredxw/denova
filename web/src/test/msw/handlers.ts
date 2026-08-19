@@ -208,7 +208,7 @@ export const handlers = [
         max_open_tabs: 5,
         ui_font_family: 'apple-system',
         ui_font_size: 14,
-        reading_font_family: 'source-han-serif',
+        reading_font_family: 'apple-system',
         reading_font_size: 18,
         interactive_stage_line_height: 1.78,
       },
@@ -256,7 +256,7 @@ export const handlers = [
         max_open_tabs: 5,
         ui_font_family: 'apple-system',
         ui_font_size: 14,
-        reading_font_family: 'source-han-serif',
+        reading_font_family: 'apple-system',
         reading_font_size: 18,
         interactive_stage_line_height: 1.78,
       },
@@ -278,6 +278,18 @@ export const handlers = [
     return conversationConfigSnapshot(mode)
   }),
   http.patch('/api/projects/:projectId/conversation-config', ({ request }) => patchConversationConfigResponse(request)),
+  http.get('/api/projects/:projectId/conversation-goal', () => HttpResponse.json({ goal: null })),
+  http.post('/api/projects/:projectId/conversation-goal', async ({ request }) => {
+    const body = await request.json() as { action?: string; objective?: string; expected_revision?: number }
+    const now = '2026-08-20T00:00:00Z'
+    const status = body.action === 'pause' ? 'paused' : body.action === 'clear' ? 'cleared' : 'active'
+    return HttpResponse.json({
+      goal: {
+        id: 'goal-msw', objective: body.objective || 'Test goal', status,
+        revision: (body.expected_revision || 0) + 1, created_at: now, updated_at: now,
+      },
+    })
+  }),
   http.get('/api/projects/:projectId/book/lore/items', ({ params }) => HttpResponse.json({
     project_id: String(params.projectId),
     items: [],

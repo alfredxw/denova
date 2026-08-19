@@ -202,6 +202,7 @@ func (s *Store) AppendTurnWithState(storyID string, req AppendTurnWithStateReque
 		BranchID:                    branchID,
 		Ts:                          now,
 		User:                        req.User,
+		UserContextOnly:             playerInput.ContextOnly,
 		Narrative:                   req.Narrative,
 		Thinking:                    strings.TrimSpace(req.Thinking),
 		RunID:                       strings.TrimSpace(req.RunID),

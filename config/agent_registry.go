@@ -44,7 +44,7 @@ var agentKindRegistry = []AgentKindDefinition{
 		ToolCapabilities: []string{
 			AgentToolFilesystemRead, AgentToolWorkspaceWrite, AgentToolShell,
 			AgentToolWebSearch, AgentToolWebFetch, AgentToolBrowser,
-			AgentToolAsk, AgentToolTodo, AgentToolGoal, AgentToolSkills, AgentToolDelegation,
+			AgentToolAsk, AgentToolTodo, AgentToolSkills, AgentToolDelegation,
 			AgentToolScript, AgentToolHarnessState,
 		},
 		ModelOverride:    func(settings AgentModelSettings) AgentModelOverride { return settings.General },
@@ -75,7 +75,7 @@ var agentKindRegistry = []AgentKindDefinition{
 		ToolCapabilities: []string{
 			AgentToolFilesystemRead, AgentToolWorkspaceWrite, AgentToolShell,
 			AgentToolWebSearch, AgentToolWebFetch, AgentToolBrowser,
-			AgentToolAsk, AgentToolTodo, AgentToolGoal, AgentToolSkills, AgentToolDelegation,
+			AgentToolAsk, AgentToolTodo, AgentToolSkills, AgentToolDelegation,
 			AgentToolScript, AgentToolHarnessState,
 			AgentToolLoreRead, AgentToolLoreWrite, AgentToolImageGeneration,
 		},
@@ -232,7 +232,6 @@ var agentToolCapabilities = []AgentToolCapability{
 		agent.ToolExecutionSessionExclusive, agent.ToolMutationSession, agent.ToolPostCheckSessionState,
 		agent.ToolRecoveryIdempotent, agent.SteeringFinishCurrent, agent.ToolPresentationTodo,
 	), agent.ToolSourceWrite)),
-	subAgentUnavailableCapabilityDefinition(AgentToolGoal, "agents.tool.goal.title", "agents.tool.goal.subtitle", []string{agent.StandardGoalToolName}, agent.StandardGoalToolDescriptor()),
 	withRuntimeResultLimit(runtimeCapabilityDefinitionWithToolDescriptors(AgentToolSkills, "agents.tool.skills.title", "agents.tool.skills.subtitle", []string{"skill", "read"}, readOnlyDescriptor(agent.ToolPresentationGeneric, agent.ToolResultRecoveryRerun), map[string]agent.ToolDescriptor{
 		"read": descriptorWithSource(readOnlyDescriptor(agent.ToolPresentationGeneric, agent.ToolResultRecoveryRead), agent.ToolSourceRead),
 	}), "read"),

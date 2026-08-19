@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { PanelRight } from 'lucide-react'
+import { toast } from 'sonner'
 import { useTranslation } from 'react-i18next'
 import { LoadingState } from '@/components/common/LoadingState'
 import { Button } from '@/components/ui/button'
@@ -15,6 +16,8 @@ import { agentMessageDisplayText, createAgentDataMessage } from '@/lib/agent-ui-
 import { agentSubAgentSessionKey, agentViewContent, type AgentMessageView } from '@/lib/agent-message-view'
 import { useSkillCommands } from '@/hooks/useSkillCommands'
 import { useConversationConfig } from '@/features/conversation-config/use-conversation-config'
+import type { ConversationConfigBinding } from '@/features/conversation-config/types'
+import { useConversationGoal } from '@/features/agent-goal/use-conversation-goal'
 import { analyzeInteractiveContext, getInteractiveHistoryPage, removeInteractiveContextCompaction, runInteractiveDirector, switchInteractiveTurnVersion, updateInteractiveTurnNarrative } from '../api'
 import { sanitizeStoredNarrative } from '../stream-parser'
 import { emptyStoryStageRun, useInteractiveStore } from '../stores/interactive-store'
@@ -52,17 +55,17 @@ const EMPTY_STAGE_RUN = emptyStoryStageRun()
 
 export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], stories = [], story, tellers = [], storyDirectors = [], imagePresets = [], recentNarrativeStyleID = DEFAULT_NARRATIVE_STYLE_ID, narrativeStyleLoading = false, storyId, branchId, snapshot, snapshotLoading = false, loreEmpty = false, bookOpeningPresets = [], directorPanelVisible = true, stateDisplayPreference = DEFAULT_STORY_STATE_DISPLAY, onStorySelect = noop, onStoryCreate = noop, onStorySetupUpdate = noop, onNarrativeStyleChange, onStoryDelete = noop, onDirectorChange = noop, onReplyTargetCharsChange, onImageSettingsChange, onRequestLoreInit, onOpenDirectorConfig, onToggleDirectorPanel, onOpenDirectorState, onRequestCreateBranch, onStateDisplayPreferenceChange = noopStateDisplayPreferenceChange, onTurnPersisted = noopTurnPersisted, onDone }: StoryStageProps) {
   const { t } = useTranslation()
-  const conversationConfig = useConversationConfig(storyId ? {
-    mode: 'interactive',
-    project_id: projectId,
-    story_id: storyId,
+  const conversationBinding = useMemo<ConversationConfigBinding | undefined>(() => storyId ? {
+    mode: 'interactive', project_id: projectId, story_id: storyId,
     branch_id: branchId || snapshot?.branch_id || 'main',
-  } : undefined)
+  } : undefined, [branchId, projectId, snapshot?.branch_id, storyId])
+  const conversationConfig = useConversationConfig(conversationBinding)
   const approvalReady = conversationConfig.initialized && !conversationConfig.saving
   const isMobile = useIsMobile()
   const keyboardInset = useKeyboardInset()
   const storyStateModel = useMemo(() => buildStoryStateModel(snapshot), [snapshot])
   const [input, setInput] = useState('')
+  const [goalMode, setGoalMode] = useState(false)
   const [stageControlsOpen, setStageControlsOpen] = useState(false)
   const [styleScenes, setStyleScenes] = useState<string[]>([])
   const [styleSceneQuery, setStyleSceneQuery] = useState<string | null>(null)
@@ -84,6 +87,7 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
   const setStoryStageRun = useInteractiveStore((state) => state.setStoryStageRun)
   const clearStoryStageRun = useInteractiveStore((state) => state.clearStoryStageRun)
   const streaming = stageRun.streaming
+  const conversationGoal = useConversationGoal(conversationBinding, streaming)
   const activityContent = stageRun.activityContent
   const liveMessages = stageRun.liveMessages
   const rewindTurnId = stageRun.rewindTurnId
@@ -123,6 +127,7 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
 
   useEffect(() => {
     setReplyEditTarget(null)
+    setGoalMode(false)
   }, [stageKey])
   useEffect(() => {
     if (streaming && !historyWindow.followLatest) resetHistoryToLatest()
@@ -239,6 +244,8 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
   } = useMemo(() => buildStoryStageCommandMenu(skillCommandQuery, skillCommands, {
     compactDescription: t('chat.command.compact.desc'),
     compactHint: t('chat.command.compact.hint'),
+    goalDescription: t('chat.command.goal.desc'),
+    goalHint: t('chat.command.goal.hint'),
     skillHint: t('chat.command.skill.hint'),
   }), [skillCommandQuery, skillCommands, t])
 
@@ -323,7 +330,7 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
 
   useLayoutEffect(() => {
     syncInputFloatHeight()
-  }, [directorRetryError, directorRetrying, directorStatusVisible, editingTurn, hotChoices.length, input, showHotChoices, stageRun.runtime.queue.length, syncInputFloatHeight])
+  }, [conversationGoal.goal?.revision, directorRetryError, directorRetrying, directorStatusVisible, editingTurn, goalMode, hotChoices.length, input, showHotChoices, stageRun.runtime.queue.length, syncInputFloatHeight])
 
   useEffect(() => {
     setSelectedBookOpeningPresetId((current) => {
@@ -355,6 +362,7 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
 
   function clearSubmittedComposer() {
     setInput('')
+    setGoalMode(false)
     setEditingTurn(null)
     setStyleScenes([])
     setStyleSceneQuery(null)
@@ -389,6 +397,51 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
     onTurnPersisted,
     onDone,
   })
+
+  const enterGoalMode = () => {
+    setEditingTurn(null)
+    setGoalMode(true)
+    setShowSkillCommands(false)
+    setSkillCommandQuery(null)
+    setActiveSkillCommandIndex(0)
+    window.requestAnimationFrame(() => inputRef.current?.focus())
+  }
+
+  const submitComposer = async () => {
+    if (!goalMode) return send()
+    const objective = input.trim()
+    if (!objective || conversationGoal.saving) return false
+    const next = await conversationGoal.set(objective)
+    if (!next) {
+      toast.error(t('chat.goal.updateFailed'))
+      return false
+    }
+    return send()
+  }
+
+  const editGoal = () => {
+    if (!conversationGoal.goal) return
+    setInput(conversationGoal.goal.objective)
+    enterGoalMode()
+  }
+
+  const pauseGoal = async () => {
+    const next = await conversationGoal.pause()
+    if (!next) {
+      toast.error(t('chat.goal.updateFailed'))
+      return
+    }
+    if (streaming) await stop()
+  }
+
+  const clearGoal = async () => {
+    const next = await conversationGoal.clear()
+    if (!next) {
+      toast.error(t('chat.goal.updateFailed'))
+      return
+    }
+    if (streaming) await stop()
+  }
 
   const analyzeCurrentContext = async (rawMessage: string) => {
     const message = rawMessage.trim()
@@ -584,7 +637,10 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
 
   const selectSkillCommand = (name: string) => {
     const command = filteredSkillCommands.find((item) => item.name === name)
-    if (command?.builtIn) {
+    if (command?.builtIn && name === 'goal') {
+      inputRef.current?.replaceActiveTriggerText('')
+      enterGoalMode()
+    } else if (command?.builtIn) {
       inputRef.current?.replaceActiveTriggerText(`/${name} `)
     } else {
       inputRef.current?.replaceActiveTriggerWithToken({ kind: 'skill', value: name, label: name })
@@ -764,8 +820,9 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
         editor={{ input, editingTurn, styleScenes, styleSceneQuery, styleSceneSuggestions, showSkillCommands, activeSkillCommandIndex, skillCommands, filteredSkillCommands, filteredBuiltInCommandItems, filteredSkillCommandItems, setStyleSceneQuery, setShowSkillCommands, setSkillCommandQuery, setActiveSkillCommandIndex }}
         story={{ storyId, story, imagePresets, onImageSettingsChange, branchTerminal, directorBlocking, directorPlanStatus, directorStatusVisible, directorRetrying, directorRetryError, hotChoices, hotChoicesExpanded, showHotChoices, canUseHotChoices, setHotChoicesExpanded }}
         runtime={{ streaming, approvalReady, conversationConfig, abortPending: stageRun.runtime.abortPending, recoveryPaused: stageRun.runtime.recoveryPaused, recoveryAbortAvailable: stageRun.runtime.recoveryAbortAvailable, operationId: stageRun.runtime.operationId, connection: stageRun.runtime.connection, commandSubmitting, queue: stageRun.runtime.queue, queueActionPendingCommandID }}
+        goal={{ value: conversationGoal.goal, mode: goalMode, pending: conversationGoal.saving, enter: enterGoalMode, exit: () => setGoalMode(false), edit: editGoal, pause: pauseGoal, clear: clearGoal }}
         dialogs={{ contextAnalysisOpen, contextAnalysisLoading, contextAnalysisError, contextAnalysis, tokenUsageOpen, tokenUsageMessages, traceOpen, selectedTraceRunId, replyEditTarget, setContextAnalysisOpen, setTokenUsageOpen, setTraceOpen, closeReplyEditor: () => setReplyEditTarget(null), saveReply: saveEditedReply }}
-        actions={{ cancelEditing, retryDirectorPlanning, selectHotChoice, selectStyleScene, selectSkillCommand, handleInputChange, handleInputTriggerChange, handleTokenRemove, toggleHotChoices, openMobileNavigation, openContextAnalysis, removeContextCompaction, openTraceRun, send, steerQueuedCommand, deleteQueuedCommand, stop }}
+        actions={{ cancelEditing, retryDirectorPlanning, selectHotChoice, selectStyleScene, selectSkillCommand, handleInputChange, handleInputTriggerChange, handleTokenRemove, toggleHotChoices, openMobileNavigation, openContextAnalysis, removeContextCompaction, openTraceRun, send: submitComposer, steerQueuedCommand, deleteQueuedCommand, stop }}
       />
     </main>
   )

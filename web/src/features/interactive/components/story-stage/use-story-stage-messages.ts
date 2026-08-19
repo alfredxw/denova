@@ -97,6 +97,7 @@ export function useStoryStageMessages({
       anchorId: turn.id,
       user: turn.user,
       narrative: sanitizeStoredNarrative(turn.narrative),
+      contextOnly: turn.user_context_only,
     }))
     if (!hasPersistedLiveTurn && latestLiveTurn) {
       items.push({
@@ -130,7 +131,7 @@ function projectPersistedTurn(turn: TurnEvent, options: {
   publicRuleRollVisible: boolean
   renderKeyFor: (turnId: string, role: 'user' | 'assistant') => string | undefined
 }) {
-  const messages: AgentUIMessage[] = [createAgentTextMessage({
+  const messages: AgentUIMessage[] = turn.user_context_only ? [] : [createAgentTextMessage({
     id: options.renderKeyFor(turn.id, 'user') || `${turn.id}-user`,
     role: 'user',
     text: turn.user,

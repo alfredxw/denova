@@ -69,6 +69,7 @@ const storyStage = {
   'storyStage.turnNavigator.label': 'Story turn navigator',
   'storyStage.turnNavigator.goto': 'Go to turn {{index}}',
   'storyStage.turnNavigator.emptyUser': 'Empty user input',
+  'storyStage.turnNavigator.autonomousContinuation': 'Autonomous continuation',
   'storyStage.turnNavigator.emptyAgent': 'No story prose yet',
   'storyStage.turnNavigator.generating': 'Generating...',
   'storyStage.history.backToLatest': 'Back to latest story',

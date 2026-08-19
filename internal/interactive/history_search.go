@@ -233,13 +233,17 @@ func retainStoryHistorySearchHit(
 		return top, matchedCount
 	}
 	matchedCount++
+	userAction := turn.User
+	if turn.UserContextOnly {
+		userAction = ""
+	}
 	top = append(top, scoredStoryHistoryHit{
 		index: position,
 		hit: StoryHistoryHit{
 			TurnID:       turn.ID,
 			BranchID:     turn.BranchID,
 			Timestamp:    turn.Ts,
-			UserAction:   boundedStoryHistoryText(turn.User, storyHistoryUserExcerptRunes),
+			UserAction:   boundedStoryHistoryText(userAction, storyHistoryUserExcerptRunes),
 			Narrative:    boundedStoryHistoryText(turn.Narrative, storyHistoryNarrativeRunes),
 			StateChanges: storyHistoryStateChanges(turn.StateDelta),
 			Score:        score,
@@ -343,7 +347,10 @@ func storyHistoryMatchScore(turn TurnEvent, keywords []string, match string) (in
 	if len(keywords) == 0 {
 		return 1, true
 	}
-	user := normalizeStoryHistoryText(turn.User)
+	user := ""
+	if !turn.UserContextOnly {
+		user = normalizeStoryHistoryText(turn.User)
+	}
 	narrative := normalizeStoryHistoryText(turn.Narrative)
 	state := normalizeStoryHistoryText(strings.Join(storyHistoryStateChanges(turn.StateDelta), " "))
 	matched := 0

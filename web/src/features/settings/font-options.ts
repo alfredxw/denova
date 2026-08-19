@@ -4,6 +4,11 @@ export interface FontOption {
   stack: string
 }
 
+export const CUSTOM_FONT_PREFIX = 'custom:'
+export const MAX_CUSTOM_FONT_FAMILY_LENGTH = 200
+
+const INVALID_CUSTOM_FONT_CHARACTERS = /[\u0000-\u001f\u007f-\u009f]/
+
 export const FONT_OPTIONS: FontOption[] = [
   {
     value: 'system-sans',
@@ -48,10 +53,37 @@ export const FONT_OPTIONS: FontOption[] = [
 ]
 
 export function fontStackFor(value?: string | null, fallback = 'system-sans') {
-  const option = FONT_OPTIONS.find((item) => item.value === value) || FONT_OPTIONS.find((item) => item.value === fallback) || FONT_OPTIONS[0]
-  return option.stack
+  const fallbackOption = FONT_OPTIONS.find((item) => item.value === fallback) || FONT_OPTIONS[0]
+  const customFamily = customFontFamilyFromValue(value)
+  if (customFamily) return `${quoteCSSString(customFamily)}, ${fallbackOption.stack}`
+  return FONT_OPTIONS.find((item) => item.value === value)?.stack || fallbackOption.stack
 }
 
 export function fontLabelKeyFor(value?: string | null) {
   return FONT_OPTIONS.find((item) => item.value === value)?.labelKey
+}
+
+/** Creates the persisted identifier for one local family, never an arbitrary CSS stack. */
+export function customFontValue(family: string): string | null {
+  const normalized = normalizeCustomFontFamily(family)
+  return normalized ? `${CUSTOM_FONT_PREFIX}${normalized}` : null
+}
+
+export function customFontFamilyFromValue(value?: string | null): string | null {
+  if (!value?.startsWith(CUSTOM_FONT_PREFIX)) return null
+  return normalizeCustomFontFamily(value.slice(CUSTOM_FONT_PREFIX.length))
+}
+
+function normalizeCustomFontFamily(value: string): string | null {
+  const normalized = value.trim()
+  if (
+    normalized.length === 0
+    || normalized.length > MAX_CUSTOM_FONT_FAMILY_LENGTH
+    || INVALID_CUSTOM_FONT_CHARACTERS.test(normalized)
+  ) return null
+  return normalized
+}
+
+function quoteCSSString(value: string) {
+  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
 }

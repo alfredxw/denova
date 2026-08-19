@@ -11,9 +11,15 @@ type chapterPathEntry struct {
 	Path string
 }
 
+type chapterDirectoryEntry struct {
+	Name      string
+	Directory bool
+}
+
 // InvalidateChapterPaths discards the rebuildable path projection after an
 // authoritative filesystem resync. Ordinary create/delete/rename operations
-// are detected through directory mtimes without rescanning chapter files.
+// are detected through exact directory-entry snapshots without reading chapter
+// bodies or depending on filesystem timestamp resolution.
 func (s *State) InvalidateChapterPaths(_ []string, resync bool) {
 	if s == nil || !resync {
 		return
@@ -39,51 +45,24 @@ func (s *State) chapterPaths() []chapterPathEntry {
 	return append([]chapterPathEntry(nil), entries...)
 }
 
-func chapterDirectoriesUnchanged(directories map[string]int64) bool {
+func chapterDirectoriesUnchanged(directories map[string][]chapterDirectoryEntry) bool {
 	if len(directories) == 0 {
 		return false
 	}
-	for path, modifiedNS := range directories {
-		info, err := os.Stat(path)
-		if err != nil || !info.IsDir() || info.ModTime().UnixNano() != modifiedNS {
+	for path, expected := range directories {
+		current, err := readChapterDirectory(path)
+		if err != nil || !equalChapterDirectoryEntries(current, expected) {
 			return false
 		}
 	}
 	return true
 }
 
-func scanChapterPaths(workspace string) ([]chapterPathEntry, map[string]int64) {
+func scanChapterPaths(workspace string) ([]chapterPathEntry, map[string][]chapterDirectoryEntry) {
 	root := filepath.Join(workspace, "chapters")
 	entries := make([]chapterPathEntry, 0)
-	directories := make(map[string]int64)
-	_ = filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return nil
-		}
-		name := entry.Name()
-		if path != root && strings.HasPrefix(name, ".") {
-			if entry.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if entry.IsDir() {
-			if info, err := entry.Info(); err == nil {
-				directories[path] = info.ModTime().UnixNano()
-			}
-			return nil
-		}
-		if !isChapterTextFile(name) {
-			return nil
-		}
-		rel, err := filepath.Rel(workspace, path)
-		if err != nil {
-			return nil
-		}
-		rel = filepath.ToSlash(rel)
-		entries = append(entries, chapterPathEntry{Path: rel})
-		return nil
-	})
+	directories := make(map[string][]chapterDirectoryEntry)
+	scanChapterDirectory(workspace, root, &entries, directories)
 	sort.Slice(entries, func(i, j int) bool {
 		left, right := entries[i], entries[j]
 		if cmp := compareChapterLikeNames(filepath.Base(left.Path), filepath.Base(right.Path)); cmp != 0 {
@@ -92,4 +71,51 @@ func scanChapterPaths(workspace string) ([]chapterPathEntry, map[string]int64) {
 		return left.Path < right.Path
 	})
 	return entries, directories
+}
+
+func scanChapterDirectory(workspace, path string, paths *[]chapterPathEntry, directories map[string][]chapterDirectoryEntry) {
+	entries, err := readChapterDirectory(path)
+	if err != nil {
+		return
+	}
+	directories[path] = entries
+	for _, entry := range entries {
+		child := filepath.Join(path, entry.Name)
+		if entry.Directory {
+			scanChapterDirectory(workspace, child, paths, directories)
+			continue
+		}
+		rel, err := filepath.Rel(workspace, child)
+		if err == nil {
+			*paths = append(*paths, chapterPathEntry{Path: filepath.ToSlash(rel)})
+		}
+	}
+}
+
+func readChapterDirectory(path string) ([]chapterDirectoryEntry, error) {
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]chapterDirectoryEntry, 0, len(entries))
+	for _, entry := range entries {
+		name := entry.Name()
+		if strings.HasPrefix(name, ".") || !entry.IsDir() && !isChapterTextFile(name) {
+			continue
+		}
+		result = append(result, chapterDirectoryEntry{Name: name, Directory: entry.IsDir()})
+	}
+	return result, nil
+}
+
+func equalChapterDirectoryEntries(left, right []chapterDirectoryEntry) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
 }

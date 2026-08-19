@@ -182,7 +182,7 @@ export function ModeRouter(props: ModeRouterProps) {
   })
   const readingFontFamily = readingTypographyDraft.draft.reading_font_family?.trim()
     || readingTypographyDraft.layered?.effective.reading_font_family?.trim()
-    || 'source-han-serif'
+    || 'apple-system'
   const readingFontSize = normalizeReadingFontSize(
     readingTypographyDraft.draft.reading_font_size
       ?? readingTypographyDraft.layered?.effective.reading_font_size,
@@ -804,8 +804,6 @@ export function ModeRouter(props: ModeRouterProps) {
         imagePresets={imagePresets}
         autoSaveEnabled={editorAutoSaveEnabled}
         autoSaveDelayMs={editorAutoSaveDelayMs}
-        onTellersChange={setTellers}
-        onImagePresetsChange={setImagePresets}
         onBeforeCreateBook={flushBeforeWorkspaceSwitch}
         onBookCreated={onAgentChatBookCreated}
         onBooksChange={onBooksChange}

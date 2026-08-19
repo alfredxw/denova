@@ -67,7 +67,6 @@ import {
   type AgentChatTab,
 } from './types'
 import type { ToolNavigationIntent, ToolNavigationTarget } from '@/components/Chat/tool-navigation'
-import { requestAutomationNavigation } from '@/features/automations/automation-navigation'
 
 interface AgentChatViewProps {
   composerSettings: WritingComposerSettingsController
@@ -467,9 +466,6 @@ export function AgentChatView({
       ...current,
       [projectID]: { target, nonce: toolNavigationNonceRef.current },
     }))
-    if (target.kind === 'config_resource' && target.resource === 'automation' && target.id) {
-      requestAutomationNavigation({ taskId: target.id, projectId: project.id, workspace: project.path })
-    }
     openProjectPage(project, group, pageID)
   }, [openProjectFile, openProjectPage, projects])
 
@@ -985,22 +981,5 @@ export function AgentChatView({
 
 function toolNavigationPage(target: Exclude<ToolNavigationTarget, { kind: 'workspace_file' }>): AgentChatPageId | null {
   if (target.kind === 'lore_item') return 'lore'
-  switch (target.resource) {
-    case 'skill':
-      return 'skills'
-    case 'agent_profile':
-      return 'agents'
-    case 'automation':
-      return 'automations'
-    case 'style_reference':
-    case 'narrative_style':
-    case 'story_director':
-    case 'event_package':
-    case 'rule_system':
-    case 'state_system':
-    case 'image_preset':
-      return 'presets'
-    default:
-      return null
-  }
+  return null
 }

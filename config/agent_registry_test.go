@@ -43,35 +43,6 @@ func TestAgentToolDescriptorSummaryMatchesFrontendContract(t *testing.T) {
 	}
 }
 
-func TestGoalCapabilityUsesStandardInjectedToolContract(t *testing.T) {
-	manifest := ResolveAgentToolManifestForGOOS(
-		ResolvedAgentToolSettings{AgentToolGoal: true}, AgentKindIDE, "linux",
-	)
-	var goal *ResolvedAgentToolCapability
-	for index := range manifest {
-		if manifest[index].Capability == AgentToolGoal {
-			goal = &manifest[index]
-			break
-		}
-	}
-	if goal == nil {
-		t.Fatal("IDE manifest has no Goal capability")
-	}
-	want, err := SummarizeAgentToolDescriptor(agent.StandardGoalToolDescriptor())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !slices.Equal(goal.ToolNames, []string{agent.StandardGoalToolName}) {
-		t.Fatalf("Goal tool names = %v", goal.ToolNames)
-	}
-	if descriptor := agent.StandardGoalToolDescriptor(); descriptor.Capability != AgentToolGoal {
-		t.Fatalf("Goal descriptor capability = %q, want %q", descriptor.Capability, AgentToolGoal)
-	}
-	if got := goal.ToolDescriptors[agent.StandardGoalToolName]; got != want {
-		t.Fatalf("Goal descriptor = %+v, want %+v", got, want)
-	}
-}
-
 func TestAgentKindRegistryDefinesUniqueKindsAndConfigAccessors(t *testing.T) {
 	definitions := AgentKindDefinitions()
 	if len(definitions) == 0 {
@@ -180,7 +151,7 @@ func TestRestrictedAgentKindCapabilityCeilings(t *testing.T) {
 			want: []string{
 				AgentToolFilesystemRead, AgentToolWorkspaceWrite, AgentToolShell,
 				AgentToolWebSearch, AgentToolWebFetch, AgentToolBrowser,
-				AgentToolAsk, AgentToolTodo, AgentToolGoal, AgentToolSkills, AgentToolDelegation,
+				AgentToolAsk, AgentToolTodo, AgentToolSkills, AgentToolDelegation,
 				AgentToolScript, AgentToolHarnessState,
 			},
 		},

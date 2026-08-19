@@ -4,6 +4,25 @@ import type { Snapshot, TurnEvent } from '../../types'
 import { useStoryStageMessages } from './use-story-stage-messages'
 
 describe('useStoryStageMessages', () => {
+  it('keeps autonomous model-only turn input out of the player timeline', () => {
+    const turn = {
+      id: 'turn-goal-next', parent_id: null, branch_id: 'main', ts: '2026-08-20T00:00:00Z',
+      user: '完成剩余目标并验证', user_context_only: true, narrative: '剧情继续推进。',
+    } as TurnEvent
+    const snapshot = {
+      story_id: 'story-1', branch_id: 'main', turns: [turn], current_turn: turn, state: {},
+    } as Snapshot
+
+    const { result } = renderHook(() => useStoryStageMessages({
+      snapshot, liveMessages: [], streaming: false, stageKey: '/books/demo:story-1:main',
+      liveTurnNavigationAnchorId: 'live-turn', publicRuleRollVisible: false,
+      optimisticInteractiveImages: {}, belongsToStage: () => true, renderKeyFor: () => undefined,
+    }))
+
+    expect(result.current.agentMessages.some((message) => message.role === 'user')).toBe(false)
+    expect(result.current.agentMessages.find((message) => message.id === 'turn-goal-next-assistant')).toBeTruthy()
+  })
+
   it('projects persisted display event IDs as stable segment identities', () => {
     const turn = {
       id: 'turn-1',
