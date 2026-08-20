@@ -36,6 +36,8 @@ export interface NarrativeMemoryTrace {
   prompt_tokens?: number
   completion_tokens?: number
   dropped_records?: { raw: string; reason: string }[]
+  /** 确定性对齐层改写过的实体写法。 */
+  aligned_entities?: { record_id: string; field: string; from: string; to: string }[]
   skipped_reason?: string
 }
 

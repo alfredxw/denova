@@ -51,6 +51,11 @@ func publishNarrativeMemoryForTurn(ctx context.Context, cfg *config.Config, stor
 	if err != nil {
 		return err
 	}
+	// 名册取本回合之前的实体:抽取器要对齐到已有写法,不该看见自己正在产出的记录。
+	roster, err := store.StoryEntityRoster(storyID, turn.BranchID, turn.ID, interactive.DefaultMemoryRosterLimit)
+	if err != nil {
+		return err
+	}
 	runCtx, cancel := context.WithTimeout(context.Background(), narrativeMemoryExtractionTimeout)
 	defer cancel()
 	started := time.Now()
@@ -59,6 +64,7 @@ func publishNarrativeMemoryForTurn(ctx context.Context, cfg *config.Config, stor
 		BranchID:     turn.BranchID,
 		Turn:         turn,
 		OpenPromises: openPromises,
+		Roster:       roster,
 	})
 	trace := &interactive.NarrativeMemoryTrace{
 		DurationMs: time.Since(started).Milliseconds(),
@@ -77,6 +83,7 @@ func publishNarrativeMemoryForTurn(ctx context.Context, cfg *config.Config, stor
 		return err
 	}
 	trace.DroppedRecords = result.Dropped
+	trace.AlignedEntities = result.Aligned
 	if len(result.Records) == 0 && len(result.Dropped) == 0 {
 		trace.SkippedReason = "no_records"
 	}

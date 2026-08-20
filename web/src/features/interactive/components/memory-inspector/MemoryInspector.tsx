@@ -305,6 +305,18 @@ function MemoryHealth({ view }: { view: MemoryLibraryView }) {
           {(stats.last_publish.dropped_records || []).length > 0 && (
             <p className="mt-1 text-amber-400">{t('memoryInspector.dropped', '丢弃')}: {stats.last_publish.dropped_records?.length}</p>
           )}
+          {(stats.last_publish.aligned_entities || []).length > 0 && (
+            <div className="mt-1 text-sky-400">
+              <p>{t('memoryInspector.aligned', '实体对齐')}: {stats.last_publish.aligned_entities?.length}</p>
+              <ul className="mt-0.5 space-y-0.5 text-[var(--nova-text-muted,#999)]">
+                {stats.last_publish.aligned_entities?.map((item, index) => (
+                  <li key={`${item.record_id}-${item.field}-${index}`}>
+                    {item.field} · {item.from} → {item.to}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
     </div>

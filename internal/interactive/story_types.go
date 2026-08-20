@@ -441,7 +441,18 @@ type NarrativeMemoryTrace struct {
 	PromptTokens     int                          `json:"prompt_tokens,omitempty"`
 	CompletionTokens int                          `json:"completion_tokens,omitempty"`
 	DroppedRecords   []NarrativeMemoryDropRecord  `json:"dropped_records,omitempty"`
+	// AlignedEntities 记录确定性对齐层改写过的实体写法。改写模型输出必须留痕,
+	// 否则名册对齐会变成一个看不见的黑箱。
+	AlignedEntities  []NarrativeMemoryEntityAlignment `json:"aligned_entities,omitempty"`
 	SkippedReason    string                       `json:"skipped_reason,omitempty"`
+}
+
+// NarrativeMemoryEntityAlignment 是一次实体写法回写。
+type NarrativeMemoryEntityAlignment struct {
+	RecordID string `json:"record_id"`
+	Field    string `json:"field"` // subject / object
+	From     string `json:"from"`
+	To       string `json:"to"`
 }
 
 type NarrativeMemoryDropRecord struct {

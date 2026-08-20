@@ -44,6 +44,7 @@ const memoryInspector = {
   'memoryInspector.lastPublish': 'Last publish',
   'memoryInspector.tokens': 'tokens',
   'memoryInspector.dropped': 'Dropped',
+  'memoryInspector.aligned': 'Entity alignment',
   'memoryInspector.kinds.knowledge': 'Knowledge',
   'memoryInspector.kinds.reveal': 'Reveal',
   'memoryInspector.kinds.promise': 'Promise',

@@ -44,6 +44,7 @@ const memoryInspector = {
   'memoryInspector.lastPublish': '最近抽取',
   'memoryInspector.tokens': 'token',
   'memoryInspector.dropped': '丢弃',
+  'memoryInspector.aligned': '实体对齐',
   'memoryInspector.kinds.knowledge': '认知',
   'memoryInspector.kinds.reveal': '揭示',
   'memoryInspector.kinds.promise': '伏笔',
