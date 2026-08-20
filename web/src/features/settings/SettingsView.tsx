@@ -474,6 +474,11 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
                placeholder={placeholderFor('interactive_stage_line_height')}
                step={0.05}
                onChange={(v) => setField('interactive_stage_line_height', v)} />
+          <NarrativeMemoryPublishModeSelect
+            label={t('settings.interactive.narrativeMemoryPublishMode')}
+            value={draft.narrative_memory_publish_mode}
+            effective={effective.narrative_memory_publish_mode}
+            onChange={(v) => setField('narrative_memory_publish_mode', v)} />
         </>
       ),
     },
@@ -1117,6 +1122,12 @@ const MOTION_INTENSITY_OPTIONS = [
   { value: 'off', labelKey: 'settings.motion.off' },
 ] as const
 
+const NARRATIVE_MEMORY_PUBLISH_MODE_OPTIONS = [
+  { value: 'manual', labelKey: 'settings.narrativeMemory.publishMode.manual' },
+  { value: 'every_turn', labelKey: 'settings.narrativeMemory.publishMode.everyTurn' },
+  { value: 'on_compaction', labelKey: 'settings.narrativeMemory.publishMode.onCompaction' },
+] as const
+
 function ThemeSelect({ label, value, effective, onChange }: {
   label: string
   value?: string
@@ -1160,6 +1171,34 @@ function MotionIntensitySelect({ label, value, effective, onChange }: {
       >
         <option value="">{t('common.inherit', { value: effectiveLabel })}</option>
         {MOTION_INTENSITY_OPTIONS.map((option) => (
+          <option key={option.value} value={option.value}>{t(option.labelKey)}</option>
+        ))}
+      </select>
+    </FieldRow>
+  )
+}
+
+function NarrativeMemoryPublishModeSelect({ label, value, effective, onChange }: {
+  label: string
+  value?: string
+  effective?: string
+  onChange: (v: string) => void
+}) {
+  const { t } = useTranslation()
+  const effectiveValue = effective || 'manual'
+  const effectiveLabel = t(
+    NARRATIVE_MEMORY_PUBLISH_MODE_OPTIONS.find((option) => option.value === effectiveValue)?.labelKey
+      || 'settings.narrativeMemory.publishMode.manual',
+  )
+  return (
+    <FieldRow label={label}>
+      <select
+        value={value ?? ''}
+        onChange={(e) => onChange(e.target.value)}
+        className={fieldCls}
+      >
+        <option value="">{t('common.inherit', { value: effectiveLabel })}</option>
+        {NARRATIVE_MEMORY_PUBLISH_MODE_OPTIONS.map((option) => (
           <option key={option.value} value={option.value}>{t(option.labelKey)}</option>
         ))}
       </select>

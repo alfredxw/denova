@@ -55,6 +55,7 @@ export interface Settings {
   writing_skill_default?: string
   interactive_stage_font_size?: number | null
   interactive_stage_line_height?: number | null
+  narrative_memory_publish_mode?: string
 }
 
 export interface ModelProfileSettings {
