@@ -15,6 +15,10 @@ import (
 // call. The task is best-effort: timeouts only skip that turn's extraction.
 const narrativeMemoryExtractionTimeout = 45 * time.Second
 
+// narrativeMemoryEmbeddingTimeout bounds one vector indexing call. It is
+// shorter than extraction: embedding has no generation phase.
+const narrativeMemoryEmbeddingTimeout = 30 * time.Second
+
 // startInteractiveNarrativeMemoryTask schedules the narrative-memory
 // extraction for one committed turn on the branch's "memory" lane. It never
 // blocks the interactive run: failures are logged and surface later in the
@@ -85,7 +89,52 @@ func publishNarrativeMemoryForTurn(ctx context.Context, cfg *config.Config, stor
 		return err
 	}
 	log.Printf("[narrative-memory] published story_id=%s branch_id=%s turn_id=%s event_id=%s records=%d dropped=%d", storyID, turn.BranchID, turn.ID, event.ID, len(result.Records), len(result.Dropped))
+	indexNarrativeMemoryVectors(cfg, store, storyID, event.Records)
 	return nil
+}
+
+// indexNarrativeMemoryVectors 为刚落盘的记录补算向量并写入侧车,供后续检索的
+// 向量召回使用。整段是可选增强:未配置 embedding 模型、调用失败或超时都只记
+// 日志——记忆事实已经写入事件日志,缺向量只会让检索退回纯关键词路径。
+func indexNarrativeMemoryVectors(cfg *config.Config, store *interactive.Store, storyID string, records []interactive.NarrativeMemoryRecord) {
+	if len(records) == 0 {
+		return
+	}
+	embedder := agent.NewNarrativeMemoryEmbedder(cfg)
+	if embedder == nil {
+		return
+	}
+	texts := make([]string, 0, len(records))
+	recordIDs := make([]string, 0, len(records))
+	for _, record := range records {
+		text := interactive.MemoryVectorText(record)
+		if strings.TrimSpace(text) == "" || strings.TrimSpace(record.ID) == "" {
+			continue
+		}
+		texts = append(texts, text)
+		recordIDs = append(recordIDs, record.ID)
+	}
+	if len(texts) == 0 {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), narrativeMemoryEmbeddingTimeout)
+	defer cancel()
+	vectors, err := embedder.EmbedMemoryTexts(ctx, texts)
+	if err != nil {
+		log.Printf("[narrative-memory] embedding failed story_id=%s records=%d err=%v", storyID, len(texts), err)
+		return
+	}
+	indexed := make(map[string][]float32, len(recordIDs))
+	for i, recordID := range recordIDs {
+		if i < len(vectors) {
+			indexed[recordID] = vectors[i]
+		}
+	}
+	if err := store.AppendMemoryVectors(storyID, embedder.EmbeddingModelID(), indexed); err != nil {
+		log.Printf("[narrative-memory] persist vectors failed story_id=%s err=%v", storyID, err)
+		return
+	}
+	log.Printf("[narrative-memory] indexed vectors story_id=%s model=%s records=%d", storyID, embedder.EmbeddingModelID(), len(indexed))
 }
 
 // openMemoryPromises lists currently-open promise records as one-line

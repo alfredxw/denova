@@ -13,6 +13,10 @@ type ModelProfileSettings struct {
 	OpenAIAPIKey        string   `toml:"openai_api_key,omitempty" json:"openai_api_key,omitempty"`
 	OpenAIBaseURL       string   `toml:"openai_base_url,omitempty" json:"openai_base_url,omitempty"`
 	OpenAIModel         string   `toml:"openai_model,omitempty" json:"openai_model,omitempty"`
+	// EmbeddingModel 为空 = 该 profile 不提供向量能力,依赖它的检索退回纯关键词路径。
+	// 复用同 profile 的 BaseURL/APIKey:embedding 与 chat 通常同厂商同端点;
+	// 要走独立端点就单开一个 profile 并把 agent override 指过去。
+	EmbeddingModel      string   `toml:"embedding_model,omitempty" json:"embedding_model,omitempty"`
 	Temperature         *float64 `toml:"temperature,omitempty" json:"temperature,omitempty"`
 	ContextWindowTokens *int     `toml:"context_window_tokens,omitempty" json:"context_window_tokens,omitempty"`
 }
@@ -43,6 +47,7 @@ type ResolvedModelSettings struct {
 	OpenAIAPIKey        string
 	OpenAIBaseURL       string
 	OpenAIModel         string
+	EmbeddingModel      string
 	Temperature         *float64
 	ContextWindowTokens int
 	EnableThinking      *bool
@@ -120,6 +125,9 @@ func ResolveAgentModel(cfg *Config, agentKind string) ResolvedModelSettings {
 	if profile.OpenAIModel == "" {
 		profile.OpenAIModel = defaultProfile.OpenAIModel
 	}
+	if profile.EmbeddingModel == "" {
+		profile.EmbeddingModel = defaultProfile.EmbeddingModel
+	}
 	if profile.ContextWindowTokens == nil {
 		profile.ContextWindowTokens = defaultProfile.ContextWindowTokens
 	}
@@ -132,6 +140,7 @@ func ResolveAgentModel(cfg *Config, agentKind string) ResolvedModelSettings {
 		OpenAIAPIKey:        profile.OpenAIAPIKey,
 		OpenAIBaseURL:       profile.OpenAIBaseURL,
 		OpenAIModel:         profile.OpenAIModel,
+		EmbeddingModel:      strings.TrimSpace(profile.EmbeddingModel),
 		Temperature:         temperature,
 		ContextWindowTokens: *profile.ContextWindowTokens,
 		EnableThinking:      agentOverride.EnableThinking,
@@ -177,6 +186,7 @@ func sanitizeModelProfiles(profiles []ModelProfileSettings) []ModelProfileSettin
 	out := make([]ModelProfileSettings, 0, len(profiles))
 	for _, profile := range profiles {
 		profile.OpenAIModel = strings.TrimSpace(profile.OpenAIModel)
+		profile.EmbeddingModel = strings.TrimSpace(profile.EmbeddingModel)
 		profile.ID = modelProfileID(profile)
 		if profile.ID == "" {
 			// Settings autosave persists a newly added profile before the user has
@@ -207,6 +217,7 @@ func hasModelProfileDraftFields(profile ModelProfileSettings) bool {
 	return strings.TrimSpace(profile.Name) != "" ||
 		profile.OpenAIAPIKey != "" ||
 		strings.TrimSpace(profile.OpenAIBaseURL) != "" ||
+		strings.TrimSpace(profile.EmbeddingModel) != "" ||
 		profile.Temperature != nil ||
 		profile.ContextWindowTokens != nil
 }
@@ -247,6 +258,9 @@ func mergeModelProfile(parent, child ModelProfileSettings) ModelProfileSettings 
 	}
 	if child.OpenAIModel != "" {
 		out.OpenAIModel = strings.TrimSpace(child.OpenAIModel)
+	}
+	if child.EmbeddingModel != "" {
+		out.EmbeddingModel = strings.TrimSpace(child.EmbeddingModel)
 	}
 	if child.Temperature != nil {
 		out.Temperature = child.Temperature
