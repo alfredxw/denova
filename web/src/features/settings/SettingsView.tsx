@@ -1,6 +1,8 @@
 import { cloneElement, isValidElement, useEffect, useId, useMemo, useRef, useState, useCallback } from 'react'
 import type { ReactNode } from 'react'
 import { ChevronDown, ChevronUp, Download, ExternalLink, Loader2, RefreshCw, Settings as SettingsIcon } from 'lucide-react'
+import { useReducedMotionConfig } from 'motion/react'
+import type { AnimationPlaybackControls } from 'motion/react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { withErrorLogID } from '@/lib/api-client'
@@ -38,6 +40,7 @@ import { TerminalCommandsEditor, terminalCommandsForEditor } from './TerminalCom
 import { useAgentApprovalMode } from '@/features/agent-approval/AgentApprovalProvider'
 import { AGENT_APPROVAL_MODES } from '@/features/agent-approval/modes'
 import { ApprovalRulesEditor } from './ApprovalRulesEditor'
+import { scrollSettingsSectionIntoView } from './settings-section-scroll'
 
 type SettingsSectionId = 'model' | 'image' | 'paths' | 'access' | 'appearance' | 'updates' | 'labs' | 'agent' | 'terminal' | 'web-access' | 'debug' | 'ide-editor' | 'ide-output' | 'versions' | 'interactive'
 
@@ -62,6 +65,7 @@ const TRACE_EXPORTER_OPTIONS = [
 ] as const
 export function SettingsView({ onClose }: { onClose?: () => void }) {
   const { t } = useTranslation()
+  const reducedMotion = useReducedMotionConfig()
   const approval = useAgentApprovalMode()
   const { layered, draft, setDraft, error, autosaveStatus, autosaveError, saveNow, reload, notifyUpdated } = useLayeredSettingsDraft({
     target: GLOBAL_SETTINGS_TARGET,
@@ -98,6 +102,9 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
   })
   const contentRef = useRef<HTMLDivElement | null>(null)
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({})
+  const sectionScrollFrameRef = useRef<number | null>(null)
+  const sectionScrollAnimationRef = useRef<AnimationPlaybackControls | null>(null)
+  const sectionScrollTargetRef = useRef<SettingsSectionId | null>(null)
 
   useEffect(() => {
     getInteractiveTellers()
@@ -662,13 +669,40 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
     },
   ]
 
+  const cancelSectionScroll = useCallback(() => {
+    sectionScrollTargetRef.current = null
+    if (sectionScrollFrameRef.current !== null) {
+      window.cancelAnimationFrame(sectionScrollFrameRef.current)
+      sectionScrollFrameRef.current = null
+    }
+    sectionScrollAnimationRef.current?.stop()
+    sectionScrollAnimationRef.current = null
+  }, [])
+
+  useEffect(() => cancelSectionScroll, [cancelSectionScroll])
+
   const jumpToSection = useCallback((id: SettingsSectionId) => {
+    cancelSectionScroll()
     setActiveSection(id)
     setExpandedSections((prev) => ({ ...prev, [id]: true }))
-    requestAnimationFrame(() => {
-      sectionRefs.current[id]?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+    sectionScrollTargetRef.current = id
+    sectionScrollFrameRef.current = window.requestAnimationFrame(() => {
+      sectionScrollFrameRef.current = null
+      const container = contentRef.current
+      const section = sectionRefs.current[id]
+      if (!container || !section) {
+        sectionScrollTargetRef.current = null
+        return
+      }
+      sectionScrollAnimationRef.current = scrollSettingsSectionIntoView(container, section, {
+        reducedMotion: Boolean(reducedMotion),
+        onComplete: () => {
+          sectionScrollAnimationRef.current = null
+          if (sectionScrollTargetRef.current === id) sectionScrollTargetRef.current = null
+        },
+      })
     })
-  }, [])
+  }, [cancelSectionScroll, reducedMotion])
 
   const toggleSection = (id: SettingsSectionId) => {
     setExpandedSections((prev) => ({ ...prev, [id]: !prev[id] }))
@@ -688,6 +722,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
   }, [jumpToSection])
 
   const onContentScroll = () => {
+    if (sectionScrollTargetRef.current) return
     const container = contentRef.current
     if (!container) return
     const top = container.getBoundingClientRect().top
@@ -766,7 +801,16 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
         }}
       >
         {({ openLeft }) => (
-          <div ref={contentRef} data-nova-settings-content="true" onScroll={onContentScroll} className="h-full min-h-0 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6">
+          <div
+            ref={contentRef}
+            data-nova-settings-content="true"
+            onScroll={onContentScroll}
+            onWheelCapture={cancelSectionScroll}
+            onPointerDownCapture={cancelSectionScroll}
+            onKeyDownCapture={cancelSectionScroll}
+            onTouchStartCapture={cancelSectionScroll}
+            className="h-full min-h-0 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6"
+          >
             <MobilePaneTrigger
               side="left"
               label={t('workbench.mobile.openSidePanel', { label: t('settings.title') })}
