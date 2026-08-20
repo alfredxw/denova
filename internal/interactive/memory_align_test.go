@@ -120,3 +120,47 @@ func TestAppendNarrativeMemoryDoesNotSelfAnchor(t *testing.T) {
 		t.Fatalf("records within one event must not align against each other: %#v", event.Records)
 	}
 }
+
+// TestNarrativeMemoryCoveredTurns 钉住补抽的去重口径。
+func TestNarrativeMemoryCoveredTurns(t *testing.T) {
+	store, story, first, second, third := memoryTestStory(t)
+
+	covered, err := store.NarrativeMemoryCoveredTurns(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, turnID := range []string{first.ID, second.ID, third.ID} {
+		if !covered[turnID] {
+			t.Fatalf("turn %s should be covered", turnID)
+		}
+	}
+
+	// 一次失败的抽取只落一条带 Trace 的空事件,它同样算已覆盖 ——
+	// 否则每次压缩都会把历史上失败过的回合重试一遍。
+	fresh, _, err := store.AppendTurnWithState(story.ID, AppendTurnWithStateRequest{
+		BranchID:  "main",
+		User:      "继续",
+		Narrative: "夜色更深了。",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if covered, err := store.NarrativeMemoryCoveredTurns(story.ID, "main"); err != nil {
+		t.Fatal(err)
+	} else if covered[fresh.ID] {
+		t.Fatal("a turn with no memory event must not count as covered")
+	}
+	if _, err := store.AppendNarrativeMemory(story.ID, "main", NarrativeMemoryEvent{
+		SourceTurnID: fresh.ID,
+		Trace:        &NarrativeMemoryTrace{SkippedReason: "error: boom"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	covered, err = store.NarrativeMemoryCoveredTurns(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !covered[fresh.ID] {
+		t.Fatal("a failed extraction must still mark the turn covered")
+	}
+}

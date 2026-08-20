@@ -99,6 +99,34 @@ func (s *Store) BrowseStoryMemory(storyID, branchID, kind, beforeTurnID string) 
 	return view, nil
 }
 
+// NarrativeMemoryCoveredTurns 返回当前分支上已经抽取过记忆的回合 ID 集合。
+//
+// 注意"覆盖"的口径:一次失败的抽取也会落一条只有 Trace 的空事件,它同样
+// 算作已覆盖。这是刻意的 —— 否则每次补抽都会把历史上失败过的回合重试一遍,
+// 而失败往往是可复现的(内容触发拒答之类),重试成本不封顶。
+func (s *Store) NarrativeMemoryCoveredTurns(storyID, branchID string) (map[string]bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	meta, lines, err := s.readStoryLocked(storyID)
+	if err != nil {
+		return nil, err
+	}
+	_, branch, err := resolveBranch(meta, strings.TrimSpace(branchID))
+	if err != nil {
+		return nil, err
+	}
+	path, _ := eventPath(branch.Head, eventsByID(lines))
+	memoryEvents, _ := collectNarrativeMemory(path)
+	covered := make(map[string]bool, len(memoryEvents))
+	for _, event := range memoryEvents {
+		if turnID := strings.TrimSpace(event.SourceTurnID); turnID != "" {
+			covered[turnID] = true
+		}
+	}
+	return covered, nil
+}
+
 // memoryLibraryStats 从事件流推导覆盖率与分布指标。
 func memoryLibraryStats(memoryEvents []NarrativeMemoryEvent, turnOrder []string, projection MemoryProjection) MemoryLibraryStats {
 	stats := MemoryLibraryStats{KindCounts: map[string]int{}}

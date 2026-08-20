@@ -92,7 +92,7 @@ const settings = {
   'settings.interactive.narrativeMemoryPublishMode': '叙事记忆抽取时机',
   'settings.narrativeMemory.publishMode.manual': '手动（不自动抽取）',
   'settings.narrativeMemory.publishMode.everyTurn': '每回合定稿后',
-  'settings.narrativeMemory.publishMode.onCompaction': '随上下文压缩（暂等同手动）',
+  'settings.narrativeMemory.publishMode.onCompaction': '上下文压缩时批量补抽',
   'settings.model.modelProfiles': '语言模型',
   'settings.model.profileBaseUrlPlaceholder': 'Base URL',
   'settings.model.profileEmpty': '继承 {{count}} 个语言模型；新增时只需填写 Base URL、API Key 和模型名。',

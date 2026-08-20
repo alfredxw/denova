@@ -39,6 +39,48 @@ func startInteractiveNarrativeMemoryTask(cfg *config.Config, conversation *inter
 	})
 }
 
+// startInteractiveCompactionMemoryTask backfills narrative memory for the
+// turns a compaction just pushed out of the model context.
+//
+// The turns are not lost — compaction only rewrites what the model sees, the
+// event log keeps every turn forever. So this is not a rescue: it is a cost
+// decision. on_compaction trades per-turn extraction for one batch at the
+// moment the context actually overflows and memory starts earning its keep.
+//
+// Runs on the same "memory" lane as per-turn extraction, so the two can never
+// race on the branch head.
+func startInteractiveCompactionMemoryTask(cfg *config.Config, conversation *interactiveConversation, branchID string, turns []interactive.TurnEvent) {
+	if conversation == nil || conversation.store == nil || cfg == nil || len(turns) == 0 {
+		return
+	}
+	if config.NormalizeNarrativeMemoryPublishMode(cfg.NarrativeMemoryPublishMode) != config.NarrativeMemoryPublishModeOnCompact {
+		return
+	}
+	store := conversation.store
+	storyID := conversation.storyID
+	tasks := directorTasksForConversation(conversation)
+	tasks.GoKeyed(interactiveBranchMaintenanceKey(conversation, branchID, "memory"), func(ctx context.Context) {
+		_ = ctx // request cancellation must not own background memory work
+		covered, err := store.NarrativeMemoryCoveredTurns(storyID, branchID)
+		if err != nil {
+			log.Printf("[narrative-memory] compaction backfill aborted story_id=%s branch_id=%s err=%v", storyID, branchID, err)
+			return
+		}
+		published := 0
+		for _, turn := range turns {
+			if covered[turn.ID] {
+				continue
+			}
+			if err := publishNarrativeMemoryForTurn(context.Background(), cfg, store, storyID, turn); err != nil {
+				log.Printf("[narrative-memory] compaction backfill failed story_id=%s turn_id=%s err=%v", storyID, turn.ID, err)
+				continue
+			}
+			published++
+		}
+		log.Printf("[narrative-memory] compaction backfill done story_id=%s branch_id=%s turns=%d published=%d", storyID, branchID, len(turns), published)
+	})
+}
+
 // publishNarrativeMemoryForTurn extracts typed memory records for one turn
 // and appends them as a narrative_memory event. Re-extraction for the same
 // turn is naturally idempotent at projection time (larger epoch wins).

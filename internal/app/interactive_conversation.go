@@ -500,6 +500,10 @@ func (c *interactiveConversation) CompactContextIfNeeded(ctx context.Context, in
 	if err != nil {
 		return input.Messages, result, err
 	}
+	// on_compaction 模式在此补抽本次压缩覆盖到的回合。异步派发:压缩是同步
+	// 阻塞模型调用的,不能让若干次抽取调用挂在用户这一回合上。
+	startInteractiveCompactionMemoryTask(c.cfg, c, storyCtx.Snapshot.BranchID,
+		interactiveCompactionCoveredTurns(storyCtx.Snapshot.Turns, storyCtx.Snapshot.ContextCompaction))
 	if event.Epoch != result.Epoch {
 		result.Epoch = event.Epoch
 		newMessages = agent.BuildCompactedModelMessages(input.Messages, result.Summary, event.Epoch, result.RetainedTurns)
@@ -631,6 +635,17 @@ func interactiveCompactionSource(turns []interactive.TurnEvent, compaction *inte
 		}
 	}
 	return interactiveCompactionTurnMessages(turns[sourceStart:]), existingCheckpoint
+}
+
+// interactiveCompactionCoveredTurns 返回本次压缩纳入摘要的回合区间,
+// 口径与 interactiveCompactionSource 完全一致 —— 上一次压缩的截止位置到
+// 当前分支头。压缩事件本身只存 SourceTurnCount,不存回合 ID 列表。
+func interactiveCompactionCoveredTurns(turns []interactive.TurnEvent, compaction *interactive.ContextCompactionEvent) []interactive.TurnEvent {
+	sourceStart := 0
+	if compaction != nil && strings.TrimSpace(compaction.Summary) != "" {
+		sourceStart = min(max(compaction.SourceTurnCount, 0), len(turns))
+	}
+	return turns[sourceStart:]
 }
 
 func interactiveCompactionTurnMessages(turns []interactive.TurnEvent) []*schema.Message {

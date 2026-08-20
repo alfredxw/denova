@@ -111,7 +111,9 @@ const (
 	// NarrativeMemoryPublishMode 的三档抽取时机。
 	// manual: 不自动抽取(默认;记忆由测试/API/未来 UI 手动注入)
 	// every_turn: 每回合定稿后异步抽取
-	// on_compaction: 随上下文压缩时机抽取(暂未实现,按 manual 处理)
+	// on_compaction: 上下文压缩时,为本次压缩覆盖的回合批量补抽。
+	//   回合不会因压缩丢失(事件日志永远完整),所以这不是抢救而是成本取舍:
+	//   用一次批量抽取换掉每回合一次调用,代价是记忆在压缩前不可检索。
 	NarrativeMemoryPublishModeManual     = "manual"
 	NarrativeMemoryPublishModeEveryTurn  = "every_turn"
 	NarrativeMemoryPublishModeOnCompact  = "on_compaction"

@@ -92,7 +92,7 @@ const settings = {
   'settings.interactive.narrativeMemoryPublishMode': 'Narrative Memory Extraction',
   'settings.narrativeMemory.publishMode.manual': 'Manual (no auto extraction)',
   'settings.narrativeMemory.publishMode.everyTurn': 'After every turn',
-  'settings.narrativeMemory.publishMode.onCompaction': 'On compaction (falls back to manual)',
+  'settings.narrativeMemory.publishMode.onCompaction': 'On compaction (batch backfill)',
   'settings.model.modelProfiles': 'Language Models',
   'settings.model.profileBaseUrlPlaceholder': 'Base URL',
   'settings.model.profileEmpty': 'Inheriting {{count}} language model(s). Add one with only Base URL, API Key, and model name.',
