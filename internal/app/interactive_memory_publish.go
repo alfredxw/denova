@@ -83,7 +83,6 @@ func publishNarrativeMemoryForTurn(ctx context.Context, cfg *config.Config, stor
 		return err
 	}
 	trace.DroppedRecords = result.Dropped
-	trace.AlignedEntities = result.Aligned
 	if len(result.Records) == 0 && len(result.Dropped) == 0 {
 		trace.SkippedReason = "no_records"
 	}

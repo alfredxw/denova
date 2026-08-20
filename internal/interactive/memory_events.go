@@ -46,6 +46,16 @@ func (s *Store) AppendNarrativeMemory(storyID, branchID string, event NarrativeM
 		event.Epoch = nextNarrativeMemoryEpoch(lines, branch.Head)
 	}
 	event.Records = normalizeNarrativeMemoryRecords(event.Records, event)
+	// 实体对齐是写入路径的不变量,不是抽取器旁边的一个可选步骤:任何注入
+	// 途径(模型抽取、手动注入、测试夹具)写进来的记录都要对齐到已有写法,
+	// 否则检索侧的字面实体匹配会被写法漂移切断。
+	// 名册取本事件之前的记录 —— 本事件自己的记录不能当自己的权威来源。
+	if aligned := alignRecordsToRoster(event.Records, entityRosterFromLines(lines, branch.Head, "", DefaultMemoryRosterLimit)); len(aligned) > 0 {
+		if event.Trace == nil {
+			event.Trace = &NarrativeMemoryTrace{}
+		}
+		event.Trace.AlignedEntities = append(event.Trace.AlignedEntities, aligned...)
+	}
 	if err := validateNarrativeMemoryRecords(event.Records); err != nil {
 		return NarrativeMemoryEvent{}, err
 	}

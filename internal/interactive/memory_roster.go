@@ -49,10 +49,50 @@ func (s *Store) StoryEntityRoster(storyID, branchID, beforeTurnID string, limit 
 	if err != nil {
 		return nil, err
 	}
-	path, _ := eventPath(branch.Head, eventsByID(lines))
+	return entityRosterFromLines(lines, branch.Head, strings.TrimSpace(beforeTurnID), limit), nil
+}
+
+// entityRosterFromLines 从分支路径上的记忆事件投影出名册。
+func entityRosterFromLines(lines []StoryEventRecord, head, beforeTurnID string, limit int) []MemoryEntity {
+	path, _ := eventPath(head, eventsByID(lines))
 	memoryEvents, turnOrder := collectNarrativeMemory(path)
-	projection := ProjectNarrativeMemory(memoryEvents, turnOrder, strings.TrimSpace(beforeTurnID))
-	return buildMemoryEntityRoster(projection.Records, limit), nil
+	projection := ProjectNarrativeMemory(memoryEvents, turnOrder, beforeTurnID)
+	return buildMemoryEntityRoster(projection.Records, limit)
+}
+
+// alignRecordsToRoster 把记录里的实体写法就地回写为名册中的权威写法,
+// 返回改写留痕。
+//
+// 这一层只做确定性归一:归一化键相同(大小写、全半角、空格与标点差异)才回写,
+// 绝不做语义猜测 —— "那把剑"到"蚀骨剑"的判断需要读懂正文,那是抽取器的职责,
+// 由喂给它的名册提示完成。两层分工:提示层管语义别名,这一层管写法漂移。
+func alignRecordsToRoster(records []NarrativeMemoryRecord, roster []MemoryEntity) []NarrativeMemoryEntityAlignment {
+	index := MemoryEntityRosterIndex(roster)
+	if len(index) == 0 || len(records) == 0 {
+		return nil
+	}
+	var aligned []NarrativeMemoryEntityAlignment
+	align := func(recordID, field, value string) string {
+		if strings.TrimSpace(value) == "" {
+			return value
+		}
+		canonical, ok := index[NormalizeEntityName(value)]
+		if !ok || canonical == value {
+			return value
+		}
+		aligned = append(aligned, NarrativeMemoryEntityAlignment{
+			RecordID: recordID,
+			Field:    field,
+			From:     value,
+			To:       canonical,
+		})
+		return canonical
+	}
+	for i := range records {
+		records[i].Subject = align(records[i].ID, "subject", records[i].Subject)
+		records[i].Object = align(records[i].ID, "object", records[i].Object)
+	}
+	return aligned
 }
 
 // entityTally 聚合同一归一化键下的所有写法。

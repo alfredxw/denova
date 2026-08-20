@@ -35,11 +35,11 @@ type MemoryExtractionInput struct {
 	Roster []interactive.MemoryEntity
 }
 
-// MemoryExtractionResult 是抽取产出:合规记录 + 被丢弃记录的原因 + 对齐留痕。
+// MemoryExtractionResult 是抽取产出:合规记录 + 被丢弃记录的原因。
+// 实体对齐不在这里做 —— 它是 Store 写入路径的不变量,覆盖所有注入途径。
 type MemoryExtractionResult struct {
 	Records []interactive.NarrativeMemoryRecord
 	Dropped []interactive.NarrativeMemoryDropRecord
-	Aligned []interactive.NarrativeMemoryEntityAlignment
 }
 
 type memoryExtractionPayload struct {
@@ -65,7 +65,7 @@ func GenerateNarrativeMemory(ctx context.Context, cfg *config.Config, input Memo
 
 	jsonCfg := chatModelConfigForAgent(cfg, config.AgentKindNarrativeMemory)
 	jsonCfg.ResponseFormat = &openai.ChatCompletionResponseFormat{Type: openai.ChatCompletionResponseFormatTypeJSONObject}
-	result, err := generateMemoryRecords(traceCtx, cfg, jsonCfg, instruction, input.Turn.ID, input.Roster, "json_mode")
+	result, err := generateMemoryRecords(traceCtx, cfg, jsonCfg, instruction, input.Turn.ID, "json_mode")
 	if err == nil {
 		return result, nil
 	}
@@ -75,11 +75,11 @@ func GenerateNarrativeMemory(ctx context.Context, cfg *config.Config, input Memo
 	}
 	log.Printf("[narrative-memory] extraction json_mode failed, retry without response_format err=%v", err)
 	plainCfg := chatModelConfigForAgent(cfg, config.AgentKindNarrativeMemory)
-	result, runErr = generateMemoryRecords(traceCtx, cfg, plainCfg, instruction, input.Turn.ID, input.Roster, "plain_text_retry")
+	result, runErr = generateMemoryRecords(traceCtx, cfg, plainCfg, instruction, input.Turn.ID, "plain_text_retry")
 	return result, runErr
 }
 
-func generateMemoryRecords(ctx context.Context, cfg *config.Config, modelCfg openai.ChatModelConfig, instruction string, sourceTurnID string, roster []interactive.MemoryEntity, attempt string) (MemoryExtractionResult, error) {
+func generateMemoryRecords(ctx context.Context, cfg *config.Config, modelCfg openai.ChatModelConfig, instruction string, sourceTurnID string, attempt string) (MemoryExtractionResult, error) {
 	cm, err := openai.NewChatModel(ctx, &modelCfg)
 	if err != nil {
 		return MemoryExtractionResult{}, fmt.Errorf("创建叙事记忆抽取模型失败: %w", err)
@@ -109,43 +109,8 @@ func generateMemoryRecords(ctx context.Context, cfg *config.Config, modelCfg ope
 	if err != nil {
 		return MemoryExtractionResult{}, fmt.Errorf("解析叙事记忆抽取输出失败: %w", err)
 	}
-	result.Records, result.Aligned = alignMemoryRecordEntities(result.Records, roster)
-	log.Printf("[narrative-memory] extraction done attempt=%s records=%d dropped=%d aligned=%d", attempt, len(result.Records), len(result.Dropped), len(result.Aligned))
+	log.Printf("[narrative-memory] extraction done attempt=%s records=%d dropped=%d", attempt, len(result.Records), len(result.Dropped))
 	return result, nil
-}
-
-// alignMemoryRecordEntities 把记录里的实体写法回写为名册中的权威写法。
-//
-// 这一层只做确定性归一:归一化键相同(大小写、全半角、空格与标点差异)才回写,
-// 绝不做语义猜测 —— "那把剑"到"蚀骨剑"的判断属于抽取器的职责,由名册提示
-// 完成。两层分工:提示层管语义别名,这一层管写法漂移。
-func alignMemoryRecordEntities(records []interactive.NarrativeMemoryRecord, roster []interactive.MemoryEntity) ([]interactive.NarrativeMemoryRecord, []interactive.NarrativeMemoryEntityAlignment) {
-	index := interactive.MemoryEntityRosterIndex(roster)
-	if len(index) == 0 || len(records) == 0 {
-		return records, nil
-	}
-	var aligned []interactive.NarrativeMemoryEntityAlignment
-	align := func(recordID, field, value string) string {
-		if strings.TrimSpace(value) == "" {
-			return value
-		}
-		canonical, ok := index[interactive.NormalizeEntityName(value)]
-		if !ok || canonical == value {
-			return value
-		}
-		aligned = append(aligned, interactive.NarrativeMemoryEntityAlignment{
-			RecordID: recordID,
-			Field:    field,
-			From:     value,
-			To:       canonical,
-		})
-		return canonical
-	}
-	for i := range records {
-		records[i].Subject = align(records[i].ID, "subject", records[i].Subject)
-		records[i].Object = align(records[i].ID, "object", records[i].Object)
-	}
-	return records, aligned
 }
 
 func parseMemoryExtractionContent(content string, sourceTurnID string) (MemoryExtractionResult, error) {
