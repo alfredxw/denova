@@ -533,16 +533,17 @@ func (s *InteractiveAppService) BrowseInteractiveMemory(storyID, branchID, kind,
 }
 
 // SearchInteractiveMemory 跑完整记忆检索管线,返回带 Explain 的调试结果。
-func (a *App) SearchInteractiveMemory(storyID, branchID string, req interactive.MemorySearchRequest) (interactive.MemorySearchResult, error) {
-	return a.interactiveService().SearchInteractiveMemory(storyID, branchID, req)
+// 与 Agent 工具走同一条混合召回路径,让面板里看到的名次就是模型看到的名次。
+func (a *App) SearchInteractiveMemory(ctx context.Context, storyID, branchID string, req interactive.MemorySearchRequest) (interactive.MemorySearchResult, error) {
+	return a.interactiveService().SearchInteractiveMemory(ctx, storyID, branchID, req)
 }
 
-func (s *InteractiveAppService) SearchInteractiveMemory(storyID, branchID string, req interactive.MemorySearchRequest) (interactive.MemorySearchResult, error) {
-	store := s.store()
-	if store == nil {
-		return interactive.MemorySearchResult{}, ErrNoWorkspace
+func (s *InteractiveAppService) SearchInteractiveMemory(ctx context.Context, storyID, branchID string, req interactive.MemorySearchRequest) (interactive.MemorySearchResult, error) {
+	store, runtimeCfg, _, err := s.interactiveRuntimeConfig()
+	if err != nil {
+		return interactive.MemorySearchResult{}, err
 	}
-	return store.SearchStoryMemory(storyID, branchID, req)
+	return store.SearchStoryMemoryHybrid(ctx, agent.NarrativeMemoryEmbedderFor(&runtimeCfg), storyID, branchID, req)
 }
 
 func (s *InteractiveAppService) InteractiveBranches(storyID string) ([]interactive.BranchSummary, error) {
@@ -833,6 +834,7 @@ func (s *InteractiveAppService) startInteractiveTask(ctx context.Context, storyI
 		PrepareTurn:            conversation.PrepareInteractiveTurn,
 		SubmitTurnResult:       conversation.SubmitTurnResult,
 		TurnResultReady:        conversation.InteractiveNarrativeReady,
+		MemoryEmbedder:         agent.NarrativeMemoryEmbedderFor(&runtimeCfg),
 	})
 	if err != nil {
 		log.Printf("[interactive-agent-task] 刷新互动故事 Agent Runner 失败 workspace=%s err=%v", workspace, err)

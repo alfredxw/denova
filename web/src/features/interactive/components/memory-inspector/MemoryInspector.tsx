@@ -188,6 +188,12 @@ function MemoryDebugResult({ result }: { result: MemorySearchResult }) {
           <MemoryPipelineRow label={t('memoryInspector.pipelineDeduped', 'epoch 去重')} value={p.deduped_records} max={p.projected_events} note={p.stale_records > 0 ? `-${p.stale_records}` : undefined} />
           <MemoryPipelineRow label={t('memoryInspector.pipelineValid', '有效期过滤')} value={p.valid_records} max={p.projected_events} note={p.expired_records > 0 ? `-${p.expired_records}` : undefined} />
           <MemoryPipelineRow label={t('memoryInspector.pipelineKeyword', '关键词命中')} value={p.keyword_matched} max={p.projected_events} />
+          {result.vector_enabled && (
+            <>
+              <MemoryPipelineRow label={t('memoryInspector.pipelineVector', '向量召回')} value={p.vector_candidates} max={p.projected_events} />
+              <MemoryPipelineRow label={t('memoryInspector.pipelineFused', 'RRF 融合')} value={p.fused_ranked} max={p.projected_events} />
+            </>
+          )}
           <MemoryPipelineRow label={t('memoryInspector.pipelineExpansion', '一跳展开')} value={p.expanded_records} max={p.projected_events} note={p.anchors > 0 ? `+${p.anchors} ${t('memoryInspector.anchors', '锚点')}` : undefined} />
           <MemoryPipelineRow label={t('memoryInspector.pipelineBudget', '预算截断')} value={p.final_after_budget} max={p.projected_events} note={result.truncated ? t('memoryInspector.truncated', '已截断') : undefined} />
         </div>
@@ -205,6 +211,11 @@ function MemoryDebugResult({ result }: { result: MemorySearchResult }) {
                   {hit.object && <span className="text-[var(--nova-text-muted,#999)]">→ {hit.object}</span>}
                   <span className="text-[var(--nova-text-muted,#999)]">score {hit.score}</span>
                   {hit.expanded_from && <span className="rounded bg-violet-950/60 px-1.5 py-0.5 text-[10px] text-violet-300">{t('memoryInspector.expandedFrom', '展开自')} {hit.expanded_from}</span>}
+                  {detail?.vector_rank ? (
+                    <span className="rounded bg-sky-950/60 px-1.5 py-0.5 text-[10px] text-sky-300" title={t('memoryInspector.vectorScore', '余弦相似度')}>
+                      {t('memoryInspector.vectorRank', '向量')} #{detail.vector_rank} · {detail.vector_score?.toFixed(3)}
+                    </span>
+                  ) : null}
                 </div>
                 <p className="mt-1">{hit.text}</p>
                 <p className="mt-1 text-[11px] text-[var(--nova-text-muted,#999)]">{t('memoryInspector.evidence', '证据')}: {hit.evidence} · {hit.valid_from.slice(0, 12)}{hit.valid_to ? ` → ${hit.valid_to.slice(0, 12)}` : ''}</p>
@@ -214,6 +225,13 @@ function MemoryDebugResult({ result }: { result: MemorySearchResult }) {
                     {detail.promise_boost ? ` · ${t('memoryInspector.promiseBoost', '伏笔')}+${detail.promise_boost}` : ''}
                   </p>
                 )}
+                {result.vector_enabled && detail?.fused_score ? (
+                  <p className="mt-1 text-[11px] text-[var(--nova-text-muted,#999)]">
+                    {t('memoryInspector.fusedScore', '融合分')} {detail.fused_score.toFixed(4)}
+                    {detail.keyword_rank ? ` · ${t('memoryInspector.keywordRank', '关键词')} #${detail.keyword_rank}` : ''}
+                    {detail.vector_rank ? ` · ${t('memoryInspector.vectorRank', '向量')} #${detail.vector_rank}` : ''}
+                  </p>
+                ) : null}
               </li>
             )
           })}

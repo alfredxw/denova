@@ -38,6 +38,8 @@ type InteractiveStoryToolContext struct {
 	PrepareTurn         func(context.Context, interactive.TurnCheckRequest) (interactive.RuleResolution, error)
 	SubmitTurnResult    func(context.Context, interactive.TurnSubmissionInput) (interactive.TurnSubmissionReceipt, error)
 	TurnResultReady     func() bool
+	// MemoryEmbedder 启用叙事记忆的向量召回。nil = 只走关键词路径。
+	MemoryEmbedder interactive.MemoryEmbedder
 }
 
 type searchStoryHistoryInput struct {
@@ -119,8 +121,7 @@ func newInteractiveHistoryTools(ctx InteractiveStoryToolContext) ([]tool.BaseToo
 		return nil, err
 	}
 	memoryTool, err := utils.InferTool("search_story_memory", "检索当前分支的叙事记忆：谁知道什么、伏笔是否已兑现、物品归属、关系演变、揭示顺序。记录从已提交回合抽取，每条带原文证据、有效期和 turn_id 溯源；valid_to 非空表示该事实之后被推翻。适合跨回合的状态一致性问题（角色是否知道某秘密、伏笔是否悬置、物品现在在谁手里）；查逐回合原文细节用 search_story_history。", func(callCtx context.Context, input searchStoryMemoryInput) (string, error) {
-		_ = callCtx
-		result, err := ctx.Store.SearchStoryMemory(ctx.StoryID, ctx.BranchID, interactive.MemorySearchRequest{
+		result, err := ctx.Store.SearchStoryMemoryHybrid(callCtx, ctx.MemoryEmbedder, ctx.StoryID, ctx.BranchID, interactive.MemorySearchRequest{
 			Keywords:     input.Keywords,
 			Kind:         input.Kind,
 			Subject:      input.Subject,

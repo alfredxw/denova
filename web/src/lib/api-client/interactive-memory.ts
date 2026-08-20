@@ -86,6 +86,13 @@ export interface MemoryHitDetail {
   keyword_parts?: MemoryKeywordPart[]
   promise_boost?: number
   expanded_from?: string
+  /** 与查询向量的余弦相似度；向量未启用时缺省。 */
+  vector_score?: number
+  /** 两路召回中的名次（1 起；缺省 = 未进该路）。 */
+  keyword_rank?: number
+  vector_rank?: number
+  /** RRF 融合分，向量启用时决定最终排序。 */
+  fused_score?: number
 }
 
 export interface MemoryFilteredItem {
@@ -127,6 +134,8 @@ export interface MemorySearchResult {
   before_turn_id?: string
   limit: number
   truncated: boolean
+  /** 本次检索是否用上了向量召回；false = 结果完全来自关键词路径。 */
+  vector_enabled?: boolean
   hits: MemorySearchHit[]
   explain?: MemorySearchExplain
 }

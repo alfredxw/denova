@@ -234,6 +234,7 @@ func runInteractiveDirectorMaintenance(ctx context.Context, cfg *config.Config, 
 		StableContext:         stableContext.Content,
 		StableContextMaxBytes: stableContext.MaxBytes,
 		DisplayConversation:   conversation,
+		MemoryEmbedder:        agent.NarrativeMemoryEmbedderFor(cfg),
 		OnLoreItemsRead: func(ids []string) {
 			planSubmissionMu.Lock()
 			defer planSubmissionMu.Unlock()

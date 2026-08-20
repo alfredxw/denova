@@ -39,7 +39,7 @@ func (h *Handlers) HandleInteractiveMemorySearch(ctx context.Context, c *app.Req
 	if limit, err := strconv.Atoi(strings.TrimSpace(string(c.Query("limit")))); err == nil && limit > 0 {
 		req.Limit = limit
 	}
-	result, err := h.app.SearchInteractiveMemory(c.Param("id"), strings.TrimSpace(string(c.Query("branch"))), req)
+	result, err := h.app.SearchInteractiveMemory(ctx, c.Param("id"), strings.TrimSpace(string(c.Query("branch"))), req)
 	if err != nil {
 		writeError(c, consts.StatusNotFound, err.Error())
 		return

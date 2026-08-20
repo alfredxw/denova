@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"denova/config"
+	"denova/internal/interactive"
 	"denova/internal/providercompat"
 )
 
@@ -44,6 +45,16 @@ func NewNarrativeMemoryEmbedder(cfg *config.Config) *EmbeddingClient {
 		model:      model,
 		httpClient: providercompat.WrapHTTPClient(nil),
 	}
+}
+
+// NarrativeMemoryEmbedderFor 返回检索层可直接使用的接口值。
+// 它存在的理由是 nil 接口陷阱:把 nil 的 *EmbeddingClient 直接赋给接口字段
+// 会得到一个非 nil 的接口,让"未配置"看起来像"已配置"。
+func NarrativeMemoryEmbedderFor(cfg *config.Config) interactive.MemoryEmbedder {
+	if client := NewNarrativeMemoryEmbedder(cfg); client != nil {
+		return client
+	}
+	return nil
 }
 
 // EmbeddingModelID 标识向量的产出模型。换模型后旧向量的维度与语义空间都不再
