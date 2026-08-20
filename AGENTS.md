@@ -4,10 +4,10 @@
 
 # 必须遵守
 
-- 当前beta版本不需要过多考虑功能兼容性问题，以优化功能为主要目标，如果有不兼容问题，需要在变更说明里写清楚
+- 当前 Beta 的兼容基线仅为最近一个已发布版本的用户数据（当前为 v0.3.3）；在简单可控范围内保护或迁移这些数据。内部接口、代码契约及最近一次 Release 后从未发布的中间格式不保留兼容，也不作为不兼容变更记录。
 - 每次支持新的功能/功能较大变更时，需要考虑是否需要增加配置项供用户配置
 - 模块依赖需要划分清晰，尽量避免单个文件/package负责太多不同的东西，原则上如果单文件功能太复杂那么就需要拆分成多个文件放到一个子package里。但文件和package也不能拆太碎，比如特别小的单文件package，可以合理范围内合并或者多层package划分
-- 每次commit变更前都将变更的具体内容写在 CHANGELOG.md 中，遵循通用的 CHANGELOG 规范。
+- `CHANGELOG.md` 的 `Unreleased` 以最近一个 Release 为比较基线，只记录升级用户最终可感知的重大功能、已发布用户数据的不兼容变化，以及已发布核心流程的重要修复；不记录内部接口、实现重构、测试调整、文案修改、细节级 UI 优化或未发布中间格式的变化与修复。条目保持中英文简短摘要，发布前再次压缩，并遵循 Keep a Changelog 规范。
 - 共通的能力支持/调整需要同时考虑到写作和游戏两个模式
 - 发布版本时需要同步更新前端版本号、CHANGELOG.md，同步更新 README.md + README.en.md 内容，与项目功能保持一致，并创建对应 Git tag。发布 github release 时，Release notes 中需要简要说明该版本更新内容，特别是用户有明显感知的功能变更与修复，不需要把完整changelog复制过去，只需要brief。
 - 能用依赖解决方案就不要自己实现，避免重复造轮子，多用组件库里的组件，比如 shadcn, tiptap, 在设计方案的时候，也优先考虑是否有成熟的开源组件可以使用。
@@ -17,12 +17,12 @@
 - 最终汇报时，用简单直白的语言说明：1 你做了什么。2 结果怎么样。3 你验证了什么。如果还有风险或限制，直接说清楚
 - 除非用户指定，生产出的 docs (md/html) 默认放在 docs/ 目录下。
 - 设计 agent tool 输入参数或者任何受限于 agent 输出的 schema 时，需要充分考虑到 agent 可能犯错的情况，尽可能去包容可修正的错误，以及对于list的情况下的部分成功与部分失败，避免大块输入整体失败导致昂贵的重试。
-- 所有面向用户的交互，都要支持展示中文或英文，不得同时展示中英双语，follow用户语言配置
-- 所有注入模型的提示词、上下文片段、工具描述、schema 描述和模型可见工具反馈统一使用英文，不得中英双语重复；仅面向用户的本地化交互保留对中英双语的支持
+- 所有面向用户的交互，都要支持双语（展示中文和英文）
+- 所有注入模型的提示词、上下文片段、工具描述、schema 描述和模型可见工具反馈统一使用英文，不得中英双语重复；仅面向用户的本地化交互保留中英双语。
 - Denova 内置的模型可见内容保持产品中立，不得提及或类比其他 Agent 产品、CLI 或品牌；对照研究只保留在明确的审计文档中。
 - 影响模型上下文相关设计的改动必须将缓存命中率（即前缀匹配）放在高优先级考虑事项。
 - 所有注入模型的片段都要有明确来源、用途、需要注意硬上限需要配置高一些（&gt;50KB），避免随意截断。
-- Do not preserve backward compatibility. Remove obsolete paths instead of adding compatibility layers, fallbacks, or migrations.
+- Do not preserve backward compatibility for internal APIs or unreleased formats. Protect user data from the latest release, using a small explicit migration only when necessary.
 - Choose the simplest implementation that fully meets the current requirements. Avoid speculative abstractions, configuration, and indirection.
 - Grow the system in layers. Start from the smallest version that works end to end, and add each new capability on top of a product that already works. Never trade a working product for unfinished complexity.
 - Keep components modular and concerns clearly separated.
@@ -87,4 +87,3 @@
 
 1. 使用 go mod tidy 确保依赖拉下来了
 2. 使用 ./scripts/build.sh 构建项目
-

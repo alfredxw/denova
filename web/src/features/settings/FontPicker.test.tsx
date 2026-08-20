@@ -8,17 +8,22 @@ afterEach(() => {
 })
 
 describe('FontPicker', () => {
-  it('applies a manually entered family with a live preview', async () => {
+  it('uses the search field as a custom font option without a separate preview or apply action', async () => {
     const user = userEvent.setup()
     const onValueChange = vi.fn()
     render(<FontPicker value="apple-system" onValueChange={onValueChange} />)
 
     await user.click(screen.getByRole('combobox', { name: '选择字体，当前：Apple / 苹方' }))
-    await user.type(screen.getByLabelText('字体家族名称'), 'Microsoft YaHei')
+    await user.type(screen.getByPlaceholderText('搜索或输入字体名称'), 'Fira Sans')
 
-    expect(screen.getByText('创作，从此刻开始。').getAttribute('style')).toContain('Microsoft YaHei')
-    await user.click(screen.getByRole('button', { name: '使用' }))
-    expect(onValueChange).toHaveBeenCalledWith('custom:Microsoft YaHei')
+    const customOption = within(screen.getByRole('group', { name: '自定义字体' }))
+      .getByRole('option', { name: 'Fira Sans' })
+    expect(customOption.firstElementChild?.getAttribute('style')).toContain('Fira Sans')
+    expect(screen.queryByText('字体预览')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '使用' })).not.toBeInTheDocument()
+
+    await user.click(customOption)
+    expect(onValueChange).toHaveBeenCalledWith('custom:Fira Sans')
   })
 
   it('selects a built-in font preset', async () => {
@@ -26,7 +31,10 @@ describe('FontPicker', () => {
     const onValueChange = vi.fn()
     render(<FontPicker value="apple-system" onValueChange={onValueChange} />)
 
-    await user.click(screen.getByRole('combobox', { name: '选择字体，当前：Apple / 苹方' }))
+    const trigger = screen.getByRole('combobox', { name: '选择字体，当前：Apple / 苹方' })
+    expect(within(trigger).getByText('Apple / 苹方').getAttribute('style')).toContain('SF Pro Text')
+
+    await user.click(trigger)
     await user.click(screen.getByRole('option', { name: '系统无衬线（推荐）' }))
 
     expect(onValueChange).toHaveBeenCalledWith('system-sans')
@@ -44,8 +52,8 @@ describe('FontPicker', () => {
 
     await user.click(screen.getByRole('combobox', { name: '选择字体，当前：Apple / 苹方' }))
     await user.click(screen.getByRole('button', { name: '读取本机字体' }))
-    expect(await screen.findByText('已读取 1 个本机字体家族')).toBeInTheDocument()
-    await user.click(within(screen.getByRole('group', { name: '本机字体' })).getByText('霞鹜文楷'))
+    const localFonts = await screen.findByRole('group', { name: '本机字体' })
+    await user.click(within(localFonts).getByText('霞鹜文楷'))
 
     expect(queryLocalFonts).toHaveBeenCalledTimes(1)
     expect(onValueChange).toHaveBeenCalledWith('custom:霞鹜文楷')
