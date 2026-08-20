@@ -155,7 +155,7 @@ func TestPublicDefinitionReturnsTheInjectedSkillsComposition(t *testing.T) {
 		config.AgentToolWorkspaceWrite: false, config.AgentToolShell: false,
 		config.AgentToolWebSearch: false, config.AgentToolWebFetch: false,
 		config.AgentToolBrowser: false, config.AgentToolAsk: false,
-		config.AgentToolTodo: false, config.AgentToolGoal: false,
+		config.AgentToolTodo:       false,
 		config.AgentToolDelegation: false, config.AgentToolConfigRead: false,
 		config.AgentToolConfigApply: false, config.AgentToolEventRead: false,
 		config.AgentToolLoreRead: false, config.AgentToolLoreWrite: false,

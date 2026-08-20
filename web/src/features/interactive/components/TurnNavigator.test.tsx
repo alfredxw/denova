@@ -46,6 +46,24 @@ describe('TurnNavigator', () => {
     expect(screen.getByRole('button', { name: '跳转到第 1 轮' })).toHaveFocus()
   })
 
+  it('does not present model-only continuation text as a player action', () => {
+    render(
+      <TurnNavigator
+        items={[{
+          anchorId: 'turn-goal',
+          user: '继续完成目标并验证结果',
+          narrative: '剧情在目标约束下继续推进。',
+          contextOnly: true,
+        }]}
+        onSelect={vi.fn()}
+      />,
+    )
+
+    fireEvent.mouseEnter(screen.getByRole('button', { name: '跳转到第 1 轮' }))
+    expect(screen.getByText('自动续跑')).toBeInTheDocument()
+    expect(screen.queryByText('继续完成目标并验证结果')).not.toBeInTheDocument()
+  })
+
   it('aggregates large histories while preserving the active and latest turns', () => {
     const items = Array.from({ length: 10_000 }, (_, index) => ({
       anchorId: `turn-${index + 1}`,

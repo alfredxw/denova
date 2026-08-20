@@ -14,7 +14,6 @@ const TOOL_NAME_KEYS = {
   browser: 'chat.tool.name.browser',
   skill: 'chat.tool.name.skill',
   script: 'chat.tool.name.script',
-  goal: 'chat.tool.name.goalFinish',
   config_read: 'chat.tool.name.configRead',
   config_apply: 'chat.tool.name.configApply',
   list_lore_items: 'chat.tool.name.listLoreItems',

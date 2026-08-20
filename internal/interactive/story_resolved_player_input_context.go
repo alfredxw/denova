@@ -108,7 +108,7 @@ func normalizePlayerInputAcceptedEvent(event PlayerInputAcceptedEvent) (PlayerIn
 	identity := normalizeDomainCommitIdentity(DomainCommitIdentity{
 		CommandID: event.AgentCommandID, OperationID: event.AgentOperationID, Cycle: event.AgentCycle,
 	})
-	canonical, err := NewPlayerInputIntent(identity, event.BranchID, event.Text)
+	canonical, err := newPlayerInputIntent(identity, event.BranchID, event.Text, event.ContextOnly)
 	if err != nil {
 		return PlayerInputAcceptedEvent{}, err
 	}
@@ -122,7 +122,7 @@ func normalizePlayerInputAcceptedEvent(event PlayerInputAcceptedEvent) (PlayerIn
 	return PlayerInputAcceptedEvent{
 		V: event.V, Type: StoryEventTypePlayerInput,
 		ID: deterministicPlayerInputID(identity), ParentID: strings.TrimSpace(event.ParentID),
-		BranchID: canonical.BranchID, Ts: strings.TrimSpace(event.Ts), Text: canonical.Text,
+		BranchID: canonical.BranchID, Ts: strings.TrimSpace(event.Ts), Text: canonical.Text, ContextOnly: canonical.ContextOnly,
 		AcceptedTurnCount: event.AcceptedTurnCount,
 		AgentCommandID:    identity.CommandID, AgentOperationID: identity.OperationID,
 		AgentCycle: identity.Cycle, AgentCommitHash: canonical.Hash,

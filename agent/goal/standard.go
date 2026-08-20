@@ -34,7 +34,8 @@ func WithClock(clock Clock) Option {
 	}
 }
 
-// Standard returns the built-in objective state machine and model tool.
+// Standard returns the built-in objective state machine and completion
+// evaluator.
 func Standard(options ...Option) agent.GoalManager {
 	manager := &standardManager{clock: func() time.Time { return time.Now().UTC() }}
 	for _, option := range options {
@@ -48,7 +49,7 @@ func Standard(options ...Option) agent.GoalManager {
 type standardManager struct{ clock Clock }
 
 func (*standardManager) Identity() agent.CapabilityIdentity {
-	return agent.CapabilityIdentity{Kind: "goal.standard", Version: 1}
+	return agent.CapabilityIdentity{Kind: "goal.standard", Version: 2}
 }
 
 func (manager *standardManager) Apply(_ context.Context, request agent.GoalApplyRequest) (agent.GoalState, error) {
@@ -99,27 +100,18 @@ func (*standardManager) Prepare(_ context.Context, request agent.GoalPrepareRequ
 	}
 	content := fmt.Sprintf(
 		"<active_goal id=\"%s\" revision=\"%d\">\n<objective>%s</objective>\n</active_goal>\n\n"+
-			"Goal terminal protocol:\n"+
-			"- Complete this exact revision only when the entire objective is achieved. An intermediate milestone is never completion.\n"+
-			"- Block it only when meaningful progress genuinely requires user input or an external state change.\n"+
-			"- Otherwise keep working and do not call the goal tool.",
+			"Goal execution protocol:\n"+
+			"- Keep working toward the entire objective; an intermediate milestone is never completion.\n"+
+			"- Verify the result when the objective defines or implies verification.\n"+
+			"- If meaningful progress genuinely requires user input or an external state change, explain the exact blocker in the final response.\n"+
+			"- Goal status is evaluated by the runtime after each completed turn.",
 		html.EscapeString(request.State.ID), request.State.Revision, html.EscapeString(request.State.Objective),
 	)
-	return agent.GoalPreparation{StandardTool: true, Context: []agent.ContextFragment{{
+	return agent.GoalPreparation{Context: []agent.ContextFragment{{
 		Source: "goal.standard", Purpose: "active objective", Resource: "session-goal",
 		Revision: fmt.Sprintf("%d", request.State.Revision), Stability: agent.ContextTurn, Placement: agent.ContextFinalUserPrefix,
 		Content: content, HardLimit: 128 << 10,
 	}}}, nil
-}
-
-func (*standardManager) AfterRun(_ context.Context, request agent.GoalAfterRunRequest) (agent.GoalContinuation, error) {
-	if !request.Present || !request.State.Active() || request.Result.Status != agent.ResultCompleted {
-		return agent.GoalContinuation{}, nil
-	}
-	return agent.GoalContinuation{
-		Continue: true,
-		Input:    agent.Input{Text: "Continue working autonomously on the active goal. Reassess the complete objective and current workspace state, make the next meaningful progress, and use the goal tool only when the objective is fully completed or genuinely blocked."},
-	}, nil
 }
 
 func set(current agent.GoalState, present bool, mutation agent.GoalMutation, now time.Time) (agent.GoalState, error) {

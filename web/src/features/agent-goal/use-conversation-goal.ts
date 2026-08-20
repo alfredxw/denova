@@ -5,10 +5,18 @@ import type { ConversationGoal, ConversationGoalAction } from './types'
 
 export function useConversationGoal(binding: ConversationConfigBinding | undefined, executionActive: boolean) {
   const normalized = useMemo(() => {
-    if (!binding || (binding.mode !== 'writing' && binding.mode !== 'agent_chat')) return undefined
-    return { ...binding, project_id: binding.project_id?.trim(), session_id: binding.session_id?.trim() }
-  }, [binding?.mode, binding?.project_id, binding?.session_id])
-  const key = normalized ? `${normalized.mode}:${normalized.project_id || ''}:${normalized.session_id || ''}` : ''
+    if (!binding || (binding.mode !== 'writing' && binding.mode !== 'agent_chat' && binding.mode !== 'interactive')) return undefined
+    return {
+      ...binding,
+      project_id: binding.project_id?.trim(),
+      session_id: binding.session_id?.trim(),
+      story_id: binding.story_id?.trim(),
+      branch_id: binding.branch_id?.trim(),
+    }
+  }, [binding?.mode, binding?.project_id, binding?.session_id, binding?.story_id, binding?.branch_id])
+  const key = normalized
+    ? `${normalized.mode}:${normalized.project_id || ''}:${normalized.session_id || ''}:${normalized.story_id || ''}:${normalized.branch_id || ''}`
+    : ''
   const [goal, setGoal] = useState<ConversationGoal | null>(null)
   const [loading, setLoading] = useState(Boolean(normalized))
   const [saving, setSaving] = useState(false)

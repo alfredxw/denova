@@ -597,13 +597,13 @@ describe('AgentChatView project workbenches', () => {
         'project-b': {
           tabs: [{
             kind: 'page',
-            id: 'skills-b',
+            id: 'lore-b',
             projectId: 'project-b',
             workspace: '/books/b',
             group: 'primary',
-            pageId: 'skills',
+            pageId: 'lore',
           }],
-          activeTabIds: { primary: 'skills-b', secondary: null },
+          activeTabIds: { primary: 'lore-b', secondary: null },
           focusedGroup: 'primary',
           secondaryVisible: false,
         },

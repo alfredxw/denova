@@ -59,6 +59,7 @@ func (a *App) prepareChildDefinition(
 		cycle, err := a.interactiveService().prepareInteractiveAgentCycle(ctx, interactiveAgentCycleRequest{
 			CommandID: parentRequest.CommandID, StoryID: binding.StoryID, BranchID: binding.BranchID,
 			Message: parentRequest.Message, StyleScenes: parentRequest.StyleScenes, Locale: parentRequest.Locale,
+			InputVisibility: parentRequest.InputVisibility,
 		})
 		if err != nil {
 			return agent.Definition{}, err

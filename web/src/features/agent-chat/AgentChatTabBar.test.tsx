@@ -20,11 +20,11 @@ const tabs: AgentChatTab[] = [
   },
   {
     kind: 'page',
-    id: 'skills-tab',
+    id: 'lore-tab',
     projectId: 'project-one',
     workspace: '/books/one',
     group: 'primary',
-    pageId: 'skills',
+    pageId: 'lore',
   },
 ]
 
@@ -43,10 +43,10 @@ describe('AgentChatTabBar', () => {
         projectId={projectId}
         group="primary"
         tabs={tabs}
-        activeTabId="skills-tab"
+        activeTabId="lore-tab"
         terminalCommands={[]}
         pageIds={AGENT_CHAT_PAGE_IDS}
-        tabTitle={(tab) => (tab.id === 'skills-tab' ? 'Skills tab' : 'Writing tab')}
+        tabTitle={(tab) => (tab.id === 'lore-tab' ? 'Lore tab' : 'Writing tab')}
         onActivate={vi.fn()}
         onClose={vi.fn()}
         onCloseOthers={vi.fn()}
@@ -61,7 +61,7 @@ describe('AgentChatTabBar', () => {
       />,
     )
 
-    const activeTab = screen.getByRole('tab', { name: /Skills tab/ })
+    const activeTab = screen.getByRole('tab', { name: /Lore tab/ })
     expect(screen.getByRole('tablist')).toHaveClass('!h-full')
     expect(activeTab).toHaveAttribute('aria-selected', 'true')
     expect(activeTab.className).toContain('aria-selected:bg-[var(--nova-active)]')
@@ -69,7 +69,7 @@ describe('AgentChatTabBar', () => {
     expect(activeTab).toHaveClass('rounded-[var(--nova-radius)]')
     expect(activeTab.parentElement).toHaveClass('h-7', 'min-w-24', 'max-w-40', 'flex-[1_1_10rem]', 'self-center', 'after:h-3')
     expect(screen.getByRole('tab', { name: /Writing tab/ }).parentElement).toHaveClass('h-7', 'min-w-24', 'max-w-40', 'flex-[1_1_10rem]', 'self-center')
-    expect(screen.getByRole('button', { name: '关闭 Skills tab' })).toHaveClass('group-aria-[selected=true]/tab:opacity-100')
+    expect(screen.getByRole('button', { name: '关闭 Lore tab' })).toHaveClass('group-aria-[selected=true]/tab:opacity-100')
     expect(activeTab).toHaveAttribute('aria-roledescription', '可排序标签页')
     expect(screen.getByRole('tablist')).toHaveClass('overflow-x-auto', '[&::-webkit-scrollbar]:hidden')
     expect(screen.getByRole('tablist')).toHaveStyle({ scrollbarWidth: 'none' })
@@ -118,7 +118,7 @@ describe('AgentChatTabBar', () => {
         activeTabId="reader-tab"
         terminalCommands={[]}
         pageIds={AGENT_CHAT_PAGE_IDS}
-        tabTitle={(tab) => (tab.id === 'reader-tab' ? 'Writing tab' : 'Skills tab')}
+        tabTitle={(tab) => (tab.id === 'reader-tab' ? 'Writing tab' : 'Lore tab')}
         onActivate={vi.fn()}
         onClose={vi.fn()}
         onCloseOthers={vi.fn()}
@@ -195,7 +195,7 @@ describe('AgentChatTabBar', () => {
           activeTabId="reader-tab"
           terminalCommands={[]}
           pageIds={AGENT_CHAT_PAGE_IDS}
-          tabTitle={(tab) => (tab.id === 'reader-tab' ? longTitle : 'Skills')}
+          tabTitle={(tab) => (tab.id === 'reader-tab' ? longTitle : 'Lore')}
           onActivate={vi.fn()}
           onClose={vi.fn()}
           onCloseOthers={vi.fn()}
@@ -234,7 +234,7 @@ describe('AgentChatTabBar', () => {
           activeTabId="reader-tab"
           terminalCommands={[]}
           pageIds={AGENT_CHAT_PAGE_IDS}
-          tabTitle={(tab) => (tab.id === 'reader-tab' ? 'Writing' : 'Skills')}
+          tabTitle={(tab) => (tab.id === 'reader-tab' ? 'Writing' : 'Lore')}
           onActivate={vi.fn()}
           onClose={vi.fn()}
           onCloseOthers={vi.fn()}
@@ -267,7 +267,7 @@ describe('AgentChatTabBar', () => {
         projectId={projectId}
         group="primary"
         tabs={tabs}
-        activeTabId="skills-tab"
+        activeTabId="lore-tab"
         terminalCommands={[
           { id: 'codex', name: 'Codex CLI' },
           { id: 'claude', name: 'Claude Code' },
@@ -303,13 +303,8 @@ describe('AgentChatTabBar', () => {
       'Claude Code',
       'Aider',
       '写作',
-      '资料库',
-      '预设',
-      'Skills',
-      'Agents',
-      '自动化',
-      '版本管理',
       '文件',
+      '资料库',
     ])
 
     await user.click(screen.getByRole('menuitem', { name: '终端' }))

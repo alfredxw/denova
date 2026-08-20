@@ -69,12 +69,6 @@ describe('extended tool detail adapters', () => {
       input: '源代码 return input.value + 1 脚本输入', output: '日志 computed value',
     },
     {
-      name: 'goal',
-      args: { action: 'complete', expected_id: 'goal-1', expected_revision: 3, report: 'All checks passed' },
-      result: { status: 'completed', revision: 4, state_hash: 'hidden' },
-      input: 'All checks passed complete id=goal-1 revision=3', output: 'completed revision=4',
-    },
-    {
       name: 'config_read',
       args: { operation: 'list', resource: 'image_preset', scope: 'workspace' },
       result: { schema: 'config.catalog.v1', status: 'success', resource: 'image_preset', scope: 'workspace', items: [{ id: 'cinematic', name: 'Cinematic' }], returned: 1, total: 1, truncated: false },

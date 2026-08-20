@@ -279,9 +279,9 @@ func (engine *definitionEngine) Run(
 	maintenanceSelected := false
 	var pendingCleanup *stagedCleanup
 	var transcript []*Message
-	modelCallGate := modelCallGate(nil)
+	maintenanceGate := modelCallGate(nil)
 	if len(prepared.definition.Middlewares) != 0 || prepared.definition.Cleanup != nil || prepared.definition.Compaction != nil {
-		modelCallGate = func(
+		maintenanceGate = func(
 			gateCtx context.Context,
 			call *ModelCall,
 			modelContext *ModelContext,
@@ -588,6 +588,29 @@ func (engine *definitionEngine) Run(
 			return &modelCallRestart{Messages: restarted, stablePrefixMessages: restartStablePrefix}, nil
 		}
 	}
+	var finalModelRequest *ModelRequestSnapshot
+	modelCallGate := maintenanceGate
+	if rawGoal, goalPresent := request.Snapshot.Capabilities[goalCapability]; prepared.definition.Goal != nil && goalPresent {
+		activeGoal, goalErr := decodeGoalState(rawGoal)
+		if goalErr != nil {
+			return runstate.EngineResult{}, goalErr
+		}
+		if activeGoal.Active() {
+			modelCallGate = func(gateCtx context.Context, call *ModelCall, modelContext *ModelContext) (*modelCallRestart, error) {
+				if maintenanceGate != nil {
+					restart, gateErr := maintenanceGate(gateCtx, call, modelContext)
+					if gateErr != nil || restart != nil {
+						return restart, gateErr
+					}
+				}
+				if call == nil || call.Model == nil {
+					return nil, errors.New("Goal evaluation received no final model request")
+				}
+				finalModelRequest = call.Snapshot()
+				return nil, nil
+			}
+		}
+	}
 	loop, err := newPreparedDefinitionLoop(ctx, prepared, middlewares, permissionStage, modelCallGate)
 	if err != nil {
 		return runstate.EngineResult{}, err
@@ -787,14 +810,16 @@ loopControlsStopped:
 		}
 		cleanupState, cleanupPresent = nextCleanup, true
 	}
-	continuation, err := engine.goalContinuation(ctx, request, input, prepared, capabilities)
-	if err != nil {
-		return runstate.EngineResult{}, err
-	}
 	emitTrace(ctx, engine.trace, TraceEvent{
 		Kind: TraceModelFinished, Session: engine.key, RunID: string(request.Snapshot.OperationID), Cycle: request.Snapshot.Cycle,
 	})
 	final, err = engine.commitCanonicalOutput(ctx, request, final, prepared.definition.Canonical)
+	if err != nil {
+		return runstate.EngineResult{}, err
+	}
+	continuation, err := engine.evaluateGoal(
+		ctx, request, input, prepared, capabilities, finalModelRequest, final, emit,
+	)
 	if err != nil {
 		return runstate.EngineResult{}, err
 	}
@@ -837,12 +862,15 @@ func completionFinalAssistant(transcript []*Message, final *Message) *Message {
 	return completed
 }
 
-func (engine *definitionEngine) goalContinuation(
+func (engine *definitionEngine) evaluateGoal(
 	ctx context.Context,
 	request runstate.EngineRequest,
 	acceptedInput Input,
 	prepared preparedDefinition,
 	capabilities *capabilityStateClient,
+	modelRequest *ModelRequestSnapshot,
+	final *Message,
+	emit runstate.EngineEventSink,
 ) (*runstate.EngineContinuation, error) {
 	manager := prepared.definition.Goal
 	if manager == nil {
@@ -857,15 +885,74 @@ func (engine *definitionEngine) goalContinuation(
 		Run:     runViewForTurn(request.Snapshot),
 		Input:   acceptedInput,
 		State:   state, Present: present, Result: Result{Status: ResultCompleted},
+		ModelRequest: modelRequest, Final: CloneMessage(final),
 	})
-	if err != nil {
-		return nil, fmt.Errorf("evaluate Goal continuation: %w", err)
+	if decision.Usage != nil {
+		usage := decision.Usage
+		if emitErr := emit(runstate.EngineModelCompleted{
+			Usage: runstate.ModelUsage{
+				PromptTokens: usage.PromptTokens, CachedPromptTokens: usage.PromptTokenDetails.CachedTokens,
+				CompletionTokens: usage.CompletionTokens, ReasoningTokens: usage.CompletionTokensDetails.ReasoningTokens,
+				TotalTokens: usage.TotalTokens,
+			},
+			FinishReason: decision.FinishReason,
+		}); emitErr != nil {
+			return nil, emitErr
+		}
 	}
-	if !decision.Continue {
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		slog.WarnContext(ctx, "Agent Goal evaluation failed; stopping autonomous continuation without changing Goal state",
+			"session", engine.key, "run_id", request.Snapshot.OperationID, "cycle", request.Snapshot.Cycle,
+			"goal_id", state.ID, "goal_revision", state.Revision, "error", err)
 		return nil, nil
 	}
-	if strings.TrimSpace(decision.Input.Text) == "" {
-		return nil, errors.New("Goal continuation requires a non-empty prompt")
+	slog.InfoContext(ctx, "Agent Goal evaluation completed",
+		"session", engine.key, "run_id", request.Snapshot.OperationID, "cycle", request.Snapshot.Cycle,
+		"goal_id", state.ID, "goal_revision", state.Revision, "verdict", decision.Verdict,
+		"reason", decision.Reason)
+	switch decision.Verdict {
+	case GoalVerdictComplete, GoalVerdictBlocked:
+		kind := GoalComplete
+		if decision.Verdict == GoalVerdictBlocked {
+			kind = GoalBlock
+		}
+		_, updateErr := capabilities.updateGoal(ctx, manager,
+			SessionView{Key: engine.key, Revision: uint64(request.Snapshot.ContextCursor)},
+			runViewForTurn(request.Snapshot), GoalMutation{
+				Kind: kind, ExpectedID: state.ID, ExpectedRevision: state.Revision,
+				Report:     decision.Reason,
+				MutationID: fmt.Sprintf("goal-evaluation-%s-%d-%s", request.Snapshot.OperationID, request.Snapshot.Cycle, decision.Verdict),
+			})
+		if errors.Is(updateErr, ErrCapabilityStateConflict) {
+			slog.InfoContext(ctx, "discarded stale Agent Goal terminal evaluation",
+				"session", engine.key, "run_id", request.Snapshot.OperationID, "cycle", request.Snapshot.Cycle,
+				"goal_id", state.ID, "goal_revision", state.Revision, "verdict", decision.Verdict)
+			return nil, nil
+		}
+		if updateErr != nil {
+			return nil, fmt.Errorf("commit Goal evaluation: %w", updateErr)
+		}
+		return nil, nil
+	case GoalVerdictContinue:
+		if strings.TrimSpace(decision.Input.Text) == "" {
+			return nil, errors.New("Goal continuation requires a non-empty prompt")
+		}
+		if fenceErr := capabilities.assertGoalCurrent(); errors.Is(fenceErr, ErrCapabilityStateConflict) {
+			slog.InfoContext(ctx, "discarded stale Agent Goal continuation",
+				"session", engine.key, "run_id", request.Snapshot.OperationID, "cycle", request.Snapshot.Cycle,
+				"goal_id", state.ID, "goal_revision", state.Revision)
+			return nil, nil
+		} else if fenceErr != nil {
+			return nil, fmt.Errorf("fence Goal continuation: %w", fenceErr)
+		}
+	default:
+		slog.WarnContext(ctx, "Agent Goal evaluator returned no actionable verdict; stopping autonomous continuation",
+			"session", engine.key, "run_id", request.Snapshot.OperationID, "cycle", request.Snapshot.Cycle,
+			"goal_id", state.ID, "goal_revision", state.Revision, "verdict", decision.Verdict)
+		return nil, nil
 	}
 	input := decision.Input
 	input.IdempotencyKey = ""

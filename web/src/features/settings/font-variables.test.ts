@@ -30,6 +30,7 @@ describe('font variables', () => {
     const style = document.documentElement.style
     expect(style.getPropertyValue('--nova-ui-font-size')).toBe('16px')
     expect(style.getPropertyValue('--nova-reading-font-size')).toBe('14px')
+    expect(style.getPropertyValue('--nova-reading-font-family')).toContain('SF Pro Text')
   })
 
   it('previews reading typography without changing UI font variables', () => {
@@ -40,5 +41,14 @@ describe('font variables', () => {
     expect(style.getPropertyValue('--nova-ui-font-size')).toBe('13px')
     expect(style.getPropertyValue('--nova-reading-font-family')).toContain('LXGW WenKai')
     expect(style.getPropertyValue('--nova-reading-font-size')).toBe('22px')
+  })
+
+  it('applies a safely quoted custom family with the default fallback', () => {
+    applyFontSettings({ uiFont: 'custom:My Writing Font', readingFont: 'custom:My Reading Font' })
+
+    const style = document.documentElement.style
+    expect(style.getPropertyValue('--nova-ui-font-family')).toContain('"My Writing Font"')
+    expect(style.getPropertyValue('--nova-reading-font-family')).toContain('"My Reading Font"')
+    expect(style.getPropertyValue('--nova-reading-font-family')).toContain('SF Pro Text')
   })
 })

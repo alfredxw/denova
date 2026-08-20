@@ -51,8 +51,6 @@ const agents = {
   'agents.tool.loreWrite.subtitle': 'write_lore_items',
   'agents.tool.todo.title': 'Task List',
   'agents.tool.todo.subtitle': 'todo',
-  'agents.tool.goal.title': 'Goal Completion',
-  'agents.tool.goal.subtitle': 'goal',
   'agents.tool.delegation.title': 'Task Delegation',
   'agents.tool.delegation.subtitle': 'task',
   'agents.tool.script.title': 'Script Orchestration',

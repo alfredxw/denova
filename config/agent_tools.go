@@ -13,7 +13,6 @@ const (
 	AgentToolBrowser         = "browser"
 	AgentToolAsk             = "ask"
 	AgentToolTodo            = "todo"
-	AgentToolGoal            = "goal"
 	AgentToolSkills          = "skills"
 	AgentToolDelegation      = "delegation"
 	AgentToolScript          = "script"
@@ -78,7 +77,6 @@ func DefaultAgentToolSettings() AgentToolSettings {
 		AgentToolBrowser,
 		AgentToolAsk,
 		AgentToolTodo,
-		AgentToolGoal,
 		AgentToolSkills,
 		AgentToolDelegation,
 		AgentToolScript,

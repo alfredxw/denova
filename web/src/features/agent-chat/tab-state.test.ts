@@ -100,7 +100,7 @@ describe('agent-chat tab state', () => {
         projectId: 'project-one',
         workspace: '/books/one',
         group: 'primary',
-        pageId: 'skills',
+        pageId: 'lore',
       }),
     ).toEqual({
       tabs: [
@@ -111,7 +111,7 @@ describe('agent-chat tab state', () => {
           projectId: 'project-one',
           workspace: '/books/one',
           group: 'primary',
-          pageId: 'skills',
+          pageId: 'lore',
         },
       ],
       activeId: 'p1',
@@ -282,7 +282,7 @@ describe('agent-chat tab state', () => {
     expect(reconciled.projects['project-one'].activeTabIds).toEqual({ primary: null, secondary: null })
   })
 
-  it('keeps reusable pages but removes Book-only pages when a project is General', () => {
+  it('removes Book-only pages when a project is General', () => {
     const reconciled = reconcileWorkbenchProjects({
       activeProjectId: 'project-one',
       projects: {
@@ -290,7 +290,7 @@ describe('agent-chat tab state', () => {
           tabs: [
             filesTab('files'),
             { kind: 'page', id: 'reader', projectId: 'project-one', workspace: '/books/one', group: 'primary', pageId: 'reader' },
-            { kind: 'page', id: 'skills', projectId: 'project-one', workspace: '/books/one', group: 'primary', pageId: 'skills' },
+            { kind: 'page', id: 'lore', projectId: 'project-one', workspace: '/books/one', group: 'primary', pageId: 'lore' },
           ],
           activeTabIds: { primary: 'files', secondary: null },
           focusedGroup: 'primary',
@@ -308,7 +308,7 @@ describe('agent-chat tab state', () => {
       sessions: [],
     }])
 
-    expect(reconciled.projects['project-one'].tabs.map((tab) => tab.id)).toEqual(['files', 'skills'])
+    expect(reconciled.projects['project-one'].tabs.map((tab) => tab.id)).toEqual(['files'])
   })
 
   it('generates unique tab ids carrying the tab kind', () => {

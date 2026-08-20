@@ -8,9 +8,31 @@ import (
 
 	"denova/config"
 	agents "denova/internal/agents"
+	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 	"denova/internal/interactive"
 )
+
+func TestConversationMaterializesModelOnlyGameInput(t *testing.T) {
+	workspace := t.TempDir()
+	store := interactive.NewStore(workspace)
+	story, err := store.CreateStory(interactive.CreateStoryRequest{Title: "goal continuation", StoryTellerID: "classic"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	conversation := NewConversation(store, t.TempDir(), workspace, story.ID, "main", "完成剩余目标", 800, nil).
+		WithInputVisibility(agentrun.InputModelOnly)
+	conversation.BindAgentCycleIdentity(agentrun.CycleIdentity{
+		CommandID: "goal-next", OperationID: "goal-operation", Cycle: 2,
+	})
+	receipt, err := conversation.MaterializeAgentCanonicalInput(context.Background(), "sha256:agent-canonical")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !receipt.Event.ContextOnly || receipt.Event.Text != "完成剩余目标" {
+		t.Fatalf("model-only input receipt=%#v", receipt)
+	}
+}
 
 func TestSubmitTurnResultValidatesFrozenStatePathsAndRetainsChoicesAcrossRetry(t *testing.T) {
 	workspace := t.TempDir()

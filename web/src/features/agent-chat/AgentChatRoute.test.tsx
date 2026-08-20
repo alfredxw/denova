@@ -35,19 +35,6 @@ vi.mock('@/features/lore/LoreWorkspaceTab', () => ({
   }) => <div data-testid="shared-lore-workspace">{projectId}|{documentReview.comments.length}|{refreshSignal}</div>,
 }))
 
-vi.mock('@/features/interactive/components/SettingPanel', () => ({
-  SettingPanel: ({ projectId, mode, documentReview, refreshSignal }: {
-    projectId: string
-    mode: string
-    documentReview?: { comments: unknown[] }
-    refreshSignal?: number
-  }) => <div data-testid={`setting-panel:${mode}`}>{projectId}|{documentReview?.comments.length || 0}|{refreshSignal}</div>,
-}))
-
-vi.mock('@/features/skills/SkillsView', () => ({ SkillsView: () => null }))
-vi.mock('@/features/agents/AgentsView', () => ({ AgentsView: () => null }))
-vi.mock('@/features/automations/AutomationsView', () => ({ AutomationsView: () => null }))
-vi.mock('@/components/Versions/VersionPanel', () => ({ VersionPanel: () => null }))
 vi.mock('@/features/changes/review/ChangeReviewWorkspace', () => ({ ChangeReviewWorkspace: () => null }))
 
 function routeProps(): React.ComponentProps<typeof AgentChatRoute> {
@@ -57,8 +44,6 @@ function routeProps(): React.ComponentProps<typeof AgentChatRoute> {
     composerSettings: {} as never,
     tellers: [],
     imagePresets: [],
-    onTellersChange: vi.fn(),
-    onImagePresetsChange: vi.fn(),
     onBeforeCreateBook: vi.fn(async () => true),
     onBookCreated: vi.fn(),
     onBooksChange: vi.fn(),
@@ -76,7 +61,6 @@ describe('AgentChatRoute resource pages', () => {
     render(<AgentChatRoute {...routeProps()} />)
 
     expect(await screen.findByTestId('shared-lore-workspace')).toHaveTextContent('book-b|1|7')
-    expect(screen.queryByTestId('setting-panel:lore')).not.toBeInTheDocument()
   })
 
   it('uses the shared Project Writing surface without activating the background Book', async () => {

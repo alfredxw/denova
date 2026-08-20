@@ -19,7 +19,7 @@ type State struct {
 	chapterPathMu          sync.Mutex
 	chapterPathDirty       bool
 	chapterPathEntries     []chapterPathEntry
-	chapterPathDirectories map[string]int64
+	chapterPathDirectories map[string][]chapterDirectoryEntry
 }
 
 // NewState 创建作品状态管理器。

@@ -499,7 +499,7 @@
   --nova-ui-micro-line-height: 16px;
   --nova-reading-font-size: 18px;
   --nova-ui-font-family: "SF Pro Text", "SF Pro Display", "PingFang SC", "Hiragino Sans GB", -apple-system, BlinkMacSystemFont, sans-serif;
-  --nova-reading-font-family: "Source Han Serif SC", "Noto Serif CJK SC", "Songti SC", "STSong", "SimSun", serif;
+  --nova-reading-font-family: var(--nova-ui-font-family);
   color-scheme: dark;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);

@@ -5,18 +5,12 @@ import type { EditorFlushHandler } from '@/components/Editor/useEditorDraftPersi
 import type { WorkspaceChangeMetadata } from '@/features/changes/types'
 import type { ImagePreset, Teller } from '@/features/interactive/types'
 import { ProjectWritingSurface } from '@/features/writing/ProjectWritingSurface'
-import { projectResourceTarget } from '@/lib/api'
 import { AgentChatView } from './AgentChatView'
 import type { AgentChatProjectNavigationState } from './AgentChatProjectSwitcher'
 import type { AgentChatPageId, AgentChatPageRenderContext, AgentChatReviewRenderContext, AgentChatReviewTab } from './types'
 import { LoadingState } from '@/components/common/LoadingState'
 
 const LoreWorkspaceTab = lazy(() => import('@/features/lore/LoreWorkspaceTab').then((module) => ({ default: module.LoreWorkspaceTab })))
-const SettingPanel = lazy(() => import('@/features/interactive/components/SettingPanel').then((module) => ({ default: module.SettingPanel })))
-const SkillsView = lazy(() => import('@/features/skills/SkillsView').then((module) => ({ default: module.SkillsView })))
-const AgentsView = lazy(() => import('@/features/agents/AgentsView').then((module) => ({ default: module.AgentsView })))
-const AutomationsView = lazy(() => import('@/features/automations/AutomationsView').then((module) => ({ default: module.AutomationsView })))
-const VersionPanel = lazy(() => import('@/components/Versions/VersionPanel').then((module) => ({ default: module.VersionPanel })))
 const ChangeReviewWorkspace = lazy(() => import('@/features/changes/review/ChangeReviewWorkspace').then((module) => ({ default: module.ChangeReviewWorkspace })))
 
 interface AgentChatRouteProps {
@@ -28,8 +22,6 @@ interface AgentChatRouteProps {
   imagePresets: ImagePreset[]
   autoSaveEnabled?: boolean
   autoSaveDelayMs?: number
-  onTellersChange: (tellers: Teller[]) => void
-  onImagePresetsChange: (presets: ImagePreset[]) => void
   onBeforeCreateBook: () => Promise<boolean>
   onBookCreated: (workspace: string) => void | Promise<void>
   onBooksChange: () => void | Promise<void>
@@ -51,8 +43,6 @@ function AgentChatRouteComponent({
   imagePresets,
   autoSaveEnabled = true,
   autoSaveDelayMs = 1200,
-  onTellersChange,
-  onImagePresetsChange,
   onBeforeCreateBook,
   onBookCreated,
   onBooksChange,
@@ -64,7 +54,7 @@ function AgentChatRouteComponent({
 
   const pageContent = useCallback((
     projectId: string,
-    tabWorkspace: string,
+    _tabWorkspace: string,
     pageId: AgentChatPageId,
     context: AgentChatPageRenderContext,
   ): ReactNode => {
@@ -97,35 +87,8 @@ function AgentChatRouteComponent({
             onEditorFlushHandlerChange={context.onFlushHandlerChange}
           />
         )
-      case 'presets':
-        return (
-          <SettingPanel
-            projectId={projectId}
-            mode="teller"
-            presetUsageMode="writing"
-            tellers={tellers}
-            imagePresets={imagePresets}
-            onTellersChange={onTellersChange}
-            onImagePresetsChange={onImagePresetsChange}
-            toolNavigationIntent={context.toolNavigationIntent}
-          />
-        )
-      case 'skills':
-        return <SkillsView target={projectResourceTarget(projectId)} toolNavigationIntent={context.toolNavigationIntent} />
-      case 'agents':
-        return <AgentsView target={projectResourceTarget(projectId)} toolNavigationIntent={context.toolNavigationIntent} />
-      case 'automations':
-        return <AutomationsView projectId={projectId} projectType={context.projectType} workspace={tabWorkspace} />
-      case 'versions':
-        return (
-          <VersionPanel
-            projectId={projectId}
-            workspace={tabWorkspace}
-            onWorkspaceChanged={(paths) => context.onWorkspaceChanged(paths, { impact: 'structure', origin: 'project-page' })}
-          />
-        )
     }
-  }, [autoSaveDelayMs, autoSaveEnabled, imagePresets, onImagePresetsChange, onTellersChange, tellers])
+  }, [autoSaveDelayMs, autoSaveEnabled])
 
   /** Keep each lazy page inside its own boundary so opening it never replaces live conversations. */
   const renderPage = useCallback((

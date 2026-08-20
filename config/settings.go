@@ -178,7 +178,7 @@ func DefaultSettings() Settings {
 		VersionTimedIntervalMinutes: intPtr(10),
 		UIFontFamily:                "apple-system",
 		UIFontSize:                  intPtr(14),
-		ReadingFontFamily:           "source-han-serif",
+		ReadingFontFamily:           "apple-system",
 		ReadingFontSize:             intPtr(18),
 		Language:                    "auto",
 		Theme:                       "dark",
