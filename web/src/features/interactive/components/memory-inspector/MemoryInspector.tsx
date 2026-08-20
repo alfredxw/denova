@@ -210,7 +210,12 @@ function MemoryDebugResult({ result }: { result: MemorySearchResult }) {
                   <span className="font-medium">{hit.subject}</span>
                   {hit.object && <span className="text-[var(--nova-text-muted,#999)]">→ {hit.object}</span>}
                   <span className="text-[var(--nova-text-muted,#999)]">score {hit.score}</span>
-                  {hit.expanded_from && <span className="rounded bg-violet-950/60 px-1.5 py-0.5 text-[10px] text-violet-300">{t('memoryInspector.expandedFrom', '展开自')} {hit.expanded_from}</span>}
+                  {hit.expanded_from && (
+                    <span className="rounded bg-violet-950/60 px-1.5 py-0.5 text-[10px] text-violet-300" title={hit.expanded_path?.join(' → ')}>
+                      {t('memoryInspector.expandedFrom', '展开自')} {hit.expanded_path?.length ? hit.expanded_path.join(' → ') : hit.expanded_from}
+                      {hit.expanded_hop && hit.expanded_hop > 1 ? ` · ${hit.expanded_hop} ${t('memoryInspector.hops', '跳')}` : ''}
+                    </span>
+                  )}
                   {detail?.vector_rank ? (
                     <span className="rounded bg-sky-950/60 px-1.5 py-0.5 text-[10px] text-sky-300" title={t('memoryInspector.vectorScore', '余弦相似度')}>
                       {t('memoryInspector.vectorRank', '向量')} #{detail.vector_rank} · {detail.vector_score?.toFixed(3)}

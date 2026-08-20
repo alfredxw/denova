@@ -15,6 +15,11 @@ const (
 	DefaultMemorySearchLimit = 8
 	MaxMemorySearchLimit     = 12
 	memoryEvidenceRunes      = 120
+
+	// DefaultMemoryExpandHops 保持一跳:多跳要显式索取。两跳之外几乎任何记录
+	// 都可达,默认放开会稀释直接命中。
+	DefaultMemoryExpandHops = 1
+	MaxMemoryExpandHops     = 3
 )
 
 // MemorySearchRequest 是对叙事记忆投影的一次有界查询。
@@ -24,6 +29,9 @@ type MemorySearchRequest struct {
 	Subject      string   `json:"subject,omitempty"`
 	BeforeTurnID string   `json:"before_turn_id,omitempty"`
 	Limit        int      `json:"limit,omitempty"`
+	// ExpandHops 是沿实体关系边展开的跳数。默认 1(只带出与命中记录直接共享
+	// 实体的记录);调大用于追溯关系链,代价是稀释直接命中。
+	ExpandHops int `json:"expand_hops,omitempty"`
 }
 
 // MemorySearchHit 是一条命中记录,带得分与溯源。字段与 StoryHistoryHit
@@ -39,8 +47,13 @@ type MemorySearchHit struct {
 	ValidTo     string `json:"valid_to,omitempty"`
 	Status      string `json:"status,omitempty"`
 	Score       int    `json:"score,omitempty"`
-	// ExpandedFrom 非空 = 一跳展开拉入,值为锚点记录 ID;空 = 直接命中。
+	// ExpandedFrom 非空 = 沿实体关系展开拉入,值为把它带出的锚点实体;空 = 直接命中。
 	ExpandedFrom string `json:"expanded_from,omitempty"`
+	// ExpandedHop 是该记录被拉入时的跳数(1 起);直接命中为 0。
+	ExpandedHop int `json:"expanded_hop,omitempty"`
+	// ExpandedPath 是从直接命中出发抵达该记录的实体路径,让"为什么这条会在"
+	// 在多跳下仍然可读。
+	ExpandedPath []string `json:"expanded_path,omitempty"`
 }
 
 // MemoryHitDetail 解释一条命中的得分构成。
@@ -89,8 +102,9 @@ type MemorySearchPipelineCounters struct {
 	KeywordMatched   int `json:"keyword_matched"`   // 关键词打分 > 0 的记录数
 	VectorCandidates int `json:"vector_candidates"` // 进入向量召回名次的记录数
 	FusedRanked      int `json:"fused_ranked"`      // 融合后参与排序的记录数
-	Anchors          int `json:"anchors"`           // 一跳展开锚点数
-	ExpandedRecords  int `json:"expanded_records"`  // 一跳展开拉入的记录数
+	Anchors          int `json:"anchors"`          // 展开起点实体数
+	ExpandedRecords  int `json:"expanded_records"` // 沿实体关系展开拉入的记录数
+	ExpandedHops     int `json:"expanded_hops"`    // 本次允许的展开跳数
 	FinalAfterBudget int `json:"final_after_budget"`
 }
 
@@ -174,6 +188,7 @@ func (s *Store) searchStoryMemory(storyID, branchID string, req MemorySearchRequ
 	subject := normalizeMemorySearchText(req.Subject)
 	beforeTurnID := strings.TrimSpace(req.BeforeTurnID)
 	limit := normalizeMemorySearchLimit(req.Limit)
+	hops := normalizeMemoryExpandHops(req.ExpandHops)
 	match := "any"
 	if len(keywords) == 0 {
 		match = "all"
@@ -247,39 +262,22 @@ func (s *Store) searchStoryMemory(storyID, branchID string, req MemorySearchRequ
 	if len(keywords) > 0 {
 		anchors := memoryExpansionAnchors(merged)
 		explain.Pipeline.Anchors = len(anchors)
-		for _, record := range candidates {
-			if byID[record.ID] {
-				continue
-			}
-			anchor := memoryExpansionAnchorFor(record, anchors)
-			if anchor == "" {
-				continue
-			}
+		for _, item := range expandMemoryGraph(candidates, anchors, byID, hops, limit) {
 			expanded++
-			hit := scoredMemoryHit{
-				hit: MemorySearchHit{
-					RecordID:    record.ID,
-					Kind:        record.Kind,
-					Subject:     record.Subject,
-					Object:      record.Object,
-					Text:        record.Text,
-					Evidence:    boundedMemoryText(record.Evidence, memoryEvidenceRunes),
-					ValidFrom:   record.ValidFrom,
-					ValidTo:     record.ValidTo,
-					Status:      record.Status,
-					Score:       memoryExpansionScore,
-					ExpandedFrom: anchor,
-				},
-			}
-			merged = append(merged, hit)
-			byID[record.ID] = true
+			hit := memorySearchHitFrom(item.record, memoryExpansionScoreAtHop(item.hop))
+			hit.ExpandedFrom = item.anchor
+			hit.ExpandedHop = item.hop
+			hit.ExpandedPath = item.path
+			merged = append(merged, scoredMemoryHit{hit: hit})
+			byID[item.record.ID] = true
 			explain.HitDetails = append(explain.HitDetails, MemoryHitDetail{
-				RecordID:     record.ID,
-				ExpandedFrom: anchor,
+				RecordID:     item.record.ID,
+				ExpandedFrom: item.anchor,
 			})
 		}
 	}
 	explain.Pipeline.ExpandedRecords = expanded
+	explain.Pipeline.ExpandedHops = hops
 	explain.Filtered = append(explain.Filtered, filteredByScore...)
 
 	fusedRanked := fuseMemoryRanks(merged, vectorScores, explain.HitDetails, detailIndex)
@@ -624,7 +622,7 @@ func memoryKeywordScore(record NarrativeMemoryRecord, keywords []string) (int, [
 	return score, parts, boost
 }
 
-// memoryExpansionAnchors 收集直接命中记录的实体作为一跳展开锚点。
+// memoryExpansionAnchors 收集直接命中记录的实体作为展开起点。
 func memoryExpansionAnchors(hits []scoredMemoryHit) map[string]bool {
 	anchors := map[string]bool{}
 	for _, hit := range hits {
@@ -638,7 +636,7 @@ func memoryExpansionAnchors(hits []scoredMemoryHit) map[string]bool {
 	return anchors
 }
 
-// memoryExpansionAnchorFor 返回记录可通过哪个锚点实体被一跳展开拉入;空 = 不可达。
+// memoryExpansionAnchorFor 返回记录可通过哪个锚点实体被展开拉入;空 = 不可达。
 func memoryExpansionAnchorFor(record NarrativeMemoryRecord, anchors map[string]bool) string {
 	if len(anchors) == 0 {
 		return ""
@@ -655,6 +653,131 @@ func memoryExpansionAnchorFor(record NarrativeMemoryRecord, anchors map[string]b
 		return record.Object
 	}
 	return ""
+}
+
+// memoryExpansion 是一条被图展开拉入的记录及其来路。
+type memoryExpansion struct {
+	record NarrativeMemoryRecord
+	anchor string   // 把它带出的锚点实体(原始写法,非归一化)
+	hop    int      // 1 起
+	path   []string // 从直接命中出发的实体路径
+}
+
+// memoryEdgeKinds 限定哪些记忆类型可以把锚点扩散到新实体。
+// relationship(双方)、object_state(物↔持有者/地点)、knowledge(知情者↔事实)
+// 三类的 subject/object 有稳定的双端语义;reveal/promise/beat 的 object 常缺失
+// 或不是实体,让它们导边会把无关记录连成一片。
+//
+// 注意这条规则只约束"走边",不约束"拉入":任何类型的记录只要触及当前锚点
+// 都会被带出,这与一跳时代的行为完全一致。
+var memoryEdgeKinds = map[string]bool{
+	MemoryKindRelationship: true,
+	MemoryKindObjectState:  true,
+	MemoryKindKnowledge:    true,
+}
+
+// expandMemoryGraph 沿实体邻接做有界 BFS,返回被拉入的记录。
+//
+// 每一跳:先把触及当前实体前沿的记录全部带出(不限 kind),再只从其中的关系类
+// 记录取另一端实体组成下一跳前沿。hops<=1 时只跑一轮,行为与一跳展开等价。
+//
+// perHopBudget 限制每跳新增条数:主角这类高连通实体在两跳外几乎可达任何记录,
+// 没有预算就会把直接命中淹掉。
+func expandMemoryGraph(candidates []NarrativeMemoryRecord, anchors map[string]bool, taken map[string]bool, hops, perHopBudget int) []memoryExpansion {
+	if len(anchors) == 0 || len(candidates) == 0 || hops <= 0 {
+		return nil
+	}
+	visitedEntity := make(map[string]bool, len(anchors))
+	frontier := make([]string, 0, len(anchors))
+	// 路径起点是锚点自身,后续每跳把新实体接在其来源实体之后。
+	pathTo := make(map[string][]string, len(anchors))
+	for entity := range anchors {
+		visitedEntity[entity] = true
+		frontier = append(frontier, entity)
+		pathTo[entity] = nil
+	}
+	sort.Strings(frontier) // 前沿顺序决定同分记录的先后,必须稳定
+
+	pulled := make([]memoryExpansion, 0, perHopBudget)
+	for hop := 1; hop <= hops && len(frontier) > 0; hop++ {
+		inFrontier := make(map[string]bool, len(frontier))
+		for _, entity := range frontier {
+			inFrontier[entity] = true
+		}
+		budget := perHopBudget
+		nextFrontier := make([]string, 0)
+		for _, record := range candidates {
+			if budget <= 0 {
+				break
+			}
+			if taken[record.ID] {
+				continue
+			}
+			anchor, viaEntity := memoryExpansionAnchorVia(record, inFrontier)
+			if anchor == "" {
+				continue
+			}
+			budget--
+			taken[record.ID] = true
+			path := append(append([]string{}, pathTo[viaEntity]...), anchor)
+			pulled = append(pulled, memoryExpansion{record: record, anchor: anchor, hop: hop, path: path})
+
+			// 只有关系类记录能把前沿推进到另一端实体。
+			if hop >= hops || !memoryEdgeKinds[record.Kind] {
+				continue
+			}
+			for _, entity := range memoryRecordEntities(record) {
+				normalized := normalizeMemorySearchText(entity)
+				if normalized == "" || visitedEntity[normalized] {
+					continue
+				}
+				visitedEntity[normalized] = true
+				pathTo[normalized] = path
+				nextFrontier = append(nextFrontier, normalized)
+			}
+		}
+		sort.Strings(nextFrontier)
+		frontier = nextFrontier
+	}
+	return pulled
+}
+
+// memoryExpansionAnchorVia 同 memoryExpansionAnchorFor,额外返回命中的归一化
+// 实体,供路径回溯使用。
+func memoryExpansionAnchorVia(record NarrativeMemoryRecord, anchors map[string]bool) (anchor, entity string) {
+	if len(anchors) == 0 || record.ValidTo != "" {
+		return "", ""
+	}
+	if subject := normalizeMemorySearchText(record.Subject); anchors[subject] {
+		return record.Subject, subject
+	}
+	if object := normalizeMemorySearchText(record.Object); anchors[object] {
+		return record.Object, object
+	}
+	return "", ""
+}
+
+func memoryRecordEntities(record NarrativeMemoryRecord) []string {
+	return []string{record.Subject, record.Object}
+}
+
+// memoryExpansionScoreAtHop 按跳数衰减保底分:越远的关联越可能是噪声,
+// 让它在预算截断时先于近处的关联被舍弃。
+func memoryExpansionScoreAtHop(hop int) int {
+	if hop <= 1 {
+		return memoryExpansionScore
+	}
+	return memoryExpansionScore / hop
+}
+
+func normalizeMemoryExpandHops(value int) int {
+	if value <= 0 {
+		return DefaultMemoryExpandHops
+	}
+	if value > MaxMemoryExpandHops {
+		return MaxMemoryExpandHops
+	}
+	return value
 }
 
 func normalizeMemorySearchKeywords(values []string) []string {

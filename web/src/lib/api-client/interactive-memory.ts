@@ -73,6 +73,10 @@ export interface MemorySearchHit {
   status?: string
   score?: number
   expanded_from?: string
+  /** 被展开拉入时的跳数（1 起）；直接命中缺省。 */
+  expanded_hop?: number
+  /** 从直接命中出发抵达该记录的实体路径。 */
+  expanded_path?: string[]
 }
 
 export interface MemoryKeywordPart {
@@ -115,6 +119,7 @@ export interface MemorySearchPipelineCounters {
   fused_ranked: number
   anchors: number
   expanded_records: number
+  expanded_hops: number
   final_after_budget: number
 }
 

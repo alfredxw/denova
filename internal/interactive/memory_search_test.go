@@ -199,11 +199,9 @@ func TestSearchStoryMemoryKeywordAndExpansion(t *testing.T) {
 	if _, ok := byID["mem_rel_master"]; ok {
 		t.Fatalf("expired record must not be pulled in by expansion: %#v", byID["mem_rel_master"])
 	}
-	// 已过期记录虽直接命中并保留,但一跳展开不得再拉入已过期记录——
-	// mem_rel_master 是 Subject=林舟 直接命中"林舟"?不是:关键词是 蚀骨剑,
-	// master 是展开拉入(ExpandedFrom=林舟)。过期记录通过展开拉入是被禁止的,
-	// 但 mem_rel_master 的 Object=林舟 命中了锚点……本测试断言它确实出现(直接命中不存在),
-	// 展开策略允许已过期记录以标注形式出现,供"何时破裂"查询。
+	// mem_rel_master 的 Subject=林舟、Object=岚 都触及锚点,但它已被 third 回合
+	// 推翻(ValidTo 非空)。展开不得带回被推翻的事实——"当时如何"要由直接关键词
+	// 命中的路径覆盖,那条路径仍会保留过期记录并标注 valid_to。
 	if result.Explain == nil {
 		t.Fatal("explain missing")
 	}

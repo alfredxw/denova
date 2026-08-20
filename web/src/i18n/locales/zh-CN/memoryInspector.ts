@@ -20,6 +20,7 @@ const memoryInspector = {
   'memoryInspector.pipelineValid': '有效期过滤',
   'memoryInspector.pipelineKeyword': '关键词命中',
   'memoryInspector.pipelineVector': '向量召回',
+  'memoryInspector.hops': '跳',
   'memoryInspector.pipelineFused': 'RRF 融合',
   'memoryInspector.vectorRank': '向量',
   'memoryInspector.vectorScore': '余弦相似度',

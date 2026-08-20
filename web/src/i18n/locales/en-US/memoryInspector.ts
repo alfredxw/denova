@@ -20,6 +20,7 @@ const memoryInspector = {
   'memoryInspector.pipelineValid': 'Validity filter',
   'memoryInspector.pipelineKeyword': 'Keyword matched',
   'memoryInspector.pipelineVector': 'Vector recall',
+  'memoryInspector.hops': 'hops',
   'memoryInspector.pipelineFused': 'RRF fusion',
   'memoryInspector.vectorRank': 'Vector',
   'memoryInspector.vectorScore': 'Cosine similarity',

@@ -55,6 +55,7 @@ type searchStoryMemoryInput struct {
 	Subject      string   `json:"subject,omitempty" jsonschema:"description=只返回该主实体的记忆；填写时优先使用 Actor 状态手册中的名称。"`
 	BeforeTurnID string   `json:"before_turn_id,omitempty" jsonschema:"description=只查询该 turn_id 之前已成立的记忆；用于还原某个较早时点谁知道什么。"`
 	Limit        int      `json:"limit,omitempty" jsonschema:"description=最多返回多少条记忆，默认 8，最大 12。"`
+	ExpandHops   int      `json:"expand_hops,omitempty" jsonschema:"description=沿人物关系、物品归属、知情关系向外展开几跳，默认 1，最大 3。追溯关系链（谁经由谁牵连到谁）时调大；代价是稀释直接命中。"`
 }
 
 // interactiveTurnCheckToolInput deliberately omits model-authored
@@ -127,6 +128,7 @@ func newInteractiveHistoryTools(ctx InteractiveStoryToolContext) ([]tool.BaseToo
 			Subject:      input.Subject,
 			BeforeTurnID: input.BeforeTurnID,
 			Limit:        input.Limit,
+			ExpandHops:   input.ExpandHops,
 		})
 		if err != nil {
 			return "", err
