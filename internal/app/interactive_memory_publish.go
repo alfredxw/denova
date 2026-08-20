@@ -19,24 +19,38 @@ const narrativeMemoryExtractionTimeout = 45 * time.Second
 // shorter than extraction: embedding has no generation phase.
 const narrativeMemoryEmbeddingTimeout = 30 * time.Second
 
+// narrativeMemoryGenerator 是叙事记忆抽取的可替换实现,让后台任务的调度、
+// 去重与落库能在没有模型调用的情况下被完整覆盖。
+type narrativeMemoryGenerator func(context.Context, *config.Config, agent.MemoryExtractionInput) (agent.MemoryExtractionResult, error)
+
+// memoryGeneratorForConversation 返回会话使用的抽取实现,未注入时用真实模型。
+func memoryGeneratorForConversation(conversation *interactiveConversation) narrativeMemoryGenerator {
+	if conversation != nil && conversation.memoryGenerator != nil {
+		return conversation.memoryGenerator
+	}
+	return agent.GenerateNarrativeMemory
+}
+
 // startInteractiveNarrativeMemoryTask schedules the narrative-memory
 // extraction for one committed turn on the branch's "memory" lane. It never
 // blocks the interactive run: failures are logged and surface later in the
 // memory inspector coverage stats.
-func startInteractiveNarrativeMemoryTask(cfg *config.Config, conversation *interactiveConversation, turn interactive.TurnEvent) {
+func startInteractiveNarrativeMemoryTask(cfg *config.Config, conversation *interactiveConversation, turn interactive.TurnEvent) <-chan struct{} {
 	if conversation == nil || conversation.store == nil || cfg == nil {
-		return
+		return nil
 	}
 	if config.NormalizeNarrativeMemoryPublishMode(cfg.NarrativeMemoryPublishMode) != config.NarrativeMemoryPublishModeEveryTurn {
-		return
+		return nil
 	}
+	generate := memoryGeneratorForConversation(conversation)
 	tasks := directorTasksForConversation(conversation)
-	tasks.GoKeyed(interactiveBranchMaintenanceKey(conversation, turn.BranchID, "memory"), func(ctx context.Context) {
+	done, _ := tasks.GoKeyed(interactiveBranchMaintenanceKey(conversation, turn.BranchID, "memory"), func(ctx context.Context) {
 		storyID := conversation.storyID
-		if err := publishNarrativeMemoryForTurn(ctx, cfg, conversation.store, storyID, turn); err != nil {
+		if err := publishNarrativeMemoryForTurn(ctx, cfg, conversation.store, storyID, turn, generate); err != nil {
 			log.Printf("[narrative-memory] publish failed story_id=%s branch_id=%s turn_id=%s err=%v", storyID, turn.BranchID, turn.ID, err)
 		}
 	})
+	return done
 }
 
 // startInteractiveCompactionMemoryTask backfills narrative memory for the
@@ -49,17 +63,18 @@ func startInteractiveNarrativeMemoryTask(cfg *config.Config, conversation *inter
 //
 // Runs on the same "memory" lane as per-turn extraction, so the two can never
 // race on the branch head.
-func startInteractiveCompactionMemoryTask(cfg *config.Config, conversation *interactiveConversation, branchID string, turns []interactive.TurnEvent) {
+func startInteractiveCompactionMemoryTask(cfg *config.Config, conversation *interactiveConversation, branchID string, turns []interactive.TurnEvent) <-chan struct{} {
 	if conversation == nil || conversation.store == nil || cfg == nil || len(turns) == 0 {
-		return
+		return nil
 	}
 	if config.NormalizeNarrativeMemoryPublishMode(cfg.NarrativeMemoryPublishMode) != config.NarrativeMemoryPublishModeOnCompact {
-		return
+		return nil
 	}
 	store := conversation.store
 	storyID := conversation.storyID
+	generate := memoryGeneratorForConversation(conversation)
 	tasks := directorTasksForConversation(conversation)
-	tasks.GoKeyed(interactiveBranchMaintenanceKey(conversation, branchID, "memory"), func(ctx context.Context) {
+	done, _ := tasks.GoKeyed(interactiveBranchMaintenanceKey(conversation, branchID, "memory"), func(ctx context.Context) {
 		_ = ctx // request cancellation must not own background memory work
 		covered, err := store.NarrativeMemoryCoveredTurns(storyID, branchID)
 		if err != nil {
@@ -71,7 +86,7 @@ func startInteractiveCompactionMemoryTask(cfg *config.Config, conversation *inte
 			if covered[turn.ID] {
 				continue
 			}
-			if err := publishNarrativeMemoryForTurn(context.Background(), cfg, store, storyID, turn); err != nil {
+			if err := publishNarrativeMemoryForTurn(context.Background(), cfg, store, storyID, turn, generate); err != nil {
 				log.Printf("[narrative-memory] compaction backfill failed story_id=%s turn_id=%s err=%v", storyID, turn.ID, err)
 				continue
 			}
@@ -79,15 +94,19 @@ func startInteractiveCompactionMemoryTask(cfg *config.Config, conversation *inte
 		}
 		log.Printf("[narrative-memory] compaction backfill done story_id=%s branch_id=%s turns=%d published=%d", storyID, branchID, len(turns), published)
 	})
+	return done
 }
 
 // publishNarrativeMemoryForTurn extracts typed memory records for one turn
 // and appends them as a narrative_memory event. Re-extraction for the same
 // turn is naturally idempotent at projection time (larger epoch wins).
-func publishNarrativeMemoryForTurn(ctx context.Context, cfg *config.Config, store *interactive.Store, storyID string, turn interactive.TurnEvent) error {
+func publishNarrativeMemoryForTurn(ctx context.Context, cfg *config.Config, store *interactive.Store, storyID string, turn interactive.TurnEvent, generate narrativeMemoryGenerator) error {
 	_ = ctx // request cancellation must not own background memory work
 	if store == nil || cfg == nil || strings.TrimSpace(turn.ID) == "" {
 		return nil
+	}
+	if generate == nil {
+		generate = agent.GenerateNarrativeMemory
 	}
 	openPromises, err := openMemoryPromises(store, storyID, turn.BranchID, turn.ID)
 	if err != nil {
@@ -101,7 +120,7 @@ func publishNarrativeMemoryForTurn(ctx context.Context, cfg *config.Config, stor
 	runCtx, cancel := context.WithTimeout(context.Background(), narrativeMemoryExtractionTimeout)
 	defer cancel()
 	started := time.Now()
-	result, err := agent.GenerateNarrativeMemory(runCtx, cfg, agent.MemoryExtractionInput{
+	result, err := generate(runCtx, cfg, agent.MemoryExtractionInput{
 		StoryID:      storyID,
 		BranchID:     turn.BranchID,
 		Turn:         turn,

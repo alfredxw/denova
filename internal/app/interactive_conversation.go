@@ -50,6 +50,8 @@ type interactiveConversation struct {
 	directorTasks           *workspaceDirectorTaskGroup
 	directorGenerator       interactiveDirectorGenerator
 	customDirectorGenerator bool
+	// memoryGenerator 让测试替换叙事记忆抽取,惯例与 directorGenerator 一致。
+	memoryGenerator narrativeMemoryGenerator
 	openingStateSchemaDraft *interactive.ActorStateSchemaBatchDraft
 	openingStateSchemaAudit interactive.ActorStateSchemaBatchAudit
 }
