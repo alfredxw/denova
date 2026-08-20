@@ -61,7 +61,7 @@ describe('AgentChatSecondaryPaneControl', () => {
     expect(document.querySelector('[data-slot="secondary-pane-presence-indicator"]')).not.toBeInTheDocument()
   })
 
-  it('keeps reusable pages available for General Projects and hides Book-only pages', async () => {
+  it('offers only Files for General Projects', async () => {
     const user = userEvent.setup()
     render(
       <AgentChatSecondaryPaneControl
@@ -72,9 +72,10 @@ describe('AgentChatSecondaryPaneControl', () => {
 
     await user.click(screen.getByRole('button', { name: '显示右侧工作区' }))
 
-    expect(await screen.findByRole('menuitem', { name: 'Skills' })).toBeInTheDocument()
-    expect(screen.getByRole('menuitem', { name: '预设' })).toBeInTheDocument()
+    expect(await screen.findByRole('menuitem', { name: '文件' })).toBeInTheDocument()
     expect(screen.queryByRole('menuitem', { name: '写作' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: '资料库' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: 'Skills' })).not.toBeInTheDocument()
     expect(screen.queryByRole('menuitem', { name: '版本管理' })).not.toBeInTheDocument()
   })
 

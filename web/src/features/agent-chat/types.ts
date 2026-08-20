@@ -15,12 +15,12 @@ import type { ToolNavigationIntent } from '@/components/Chat/tool-navigation'
  * single screen.
  */
 
-/** Project pages that can be hosted inside an AgentChat tab. */
-export type AgentChatPageId = 'reader' | 'lore' | 'presets' | 'skills' | 'agents' | 'automations' | 'versions'
+/** Project pages adapted for hosting inside an AgentChat workbench tab. */
+export type AgentChatPageId = 'reader' | 'lore'
 
-export const AGENT_CHAT_PAGE_IDS: readonly AgentChatPageId[] = ['reader', 'lore', 'presets', 'skills', 'agents', 'automations', 'versions']
+export const AGENT_CHAT_PAGE_IDS: readonly AgentChatPageId[] = ['reader', 'lore']
 
-const GENERAL_PROJECT_PAGE_IDS: readonly AgentChatPageId[] = ['presets', 'skills', 'agents', 'automations']
+const GENERAL_PROJECT_PAGE_IDS: readonly AgentChatPageId[] = []
 
 /** Declares page availability independently from tab-menu presentation. */
 export function agentChatPageIdsForProjectType(projectType: AgentChatProjectType): readonly AgentChatPageId[] {

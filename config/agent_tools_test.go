@@ -13,7 +13,7 @@ func TestResolveAgentToolsDefaults(t *testing.T) {
 			allowed: []string{
 				AgentToolFilesystemRead, AgentToolWorkspaceWrite, AgentToolShell,
 				AgentToolWebSearch, AgentToolWebFetch, AgentToolBrowser, AgentToolAsk,
-				AgentToolTodo, AgentToolGoal, AgentToolSkills, AgentToolDelegation, AgentToolLoreRead,
+				AgentToolTodo, AgentToolSkills, AgentToolDelegation, AgentToolLoreRead,
 				AgentToolLoreWrite, AgentToolImageGeneration,
 			},
 			denied: []string{AgentToolConfigRead, AgentToolConfigApply},
@@ -21,22 +21,22 @@ func TestResolveAgentToolsDefaults(t *testing.T) {
 		{
 			kind:    AgentKindInteractiveStory,
 			allowed: []string{AgentToolFilesystemRead, AgentToolSkills, AgentToolLoreRead},
-			denied:  []string{AgentToolWorkspaceWrite, AgentToolShell, AgentToolWebSearch, AgentToolWebFetch, AgentToolBrowser, AgentToolAsk, AgentToolTodo, AgentToolGoal, AgentToolDelegation, AgentToolLoreWrite, AgentToolImageGeneration, AgentToolConfigRead, AgentToolConfigApply},
+			denied:  []string{AgentToolWorkspaceWrite, AgentToolShell, AgentToolWebSearch, AgentToolWebFetch, AgentToolBrowser, AgentToolAsk, AgentToolTodo, AgentToolDelegation, AgentToolLoreWrite, AgentToolImageGeneration, AgentToolConfigRead, AgentToolConfigApply},
 		},
 		{
 			kind:    AgentKindConfigManager,
 			allowed: []string{AgentToolFilesystemRead, AgentToolAsk, AgentToolSkills, AgentToolConfigRead, AgentToolConfigApply},
-			denied:  []string{AgentToolWorkspaceWrite, AgentToolShell, AgentToolWebSearch, AgentToolWebFetch, AgentToolBrowser, AgentToolTodo, AgentToolGoal, AgentToolDelegation, AgentToolLoreWrite, AgentToolImageGeneration},
+			denied:  []string{AgentToolWorkspaceWrite, AgentToolShell, AgentToolWebSearch, AgentToolWebFetch, AgentToolBrowser, AgentToolTodo, AgentToolDelegation, AgentToolLoreWrite, AgentToolImageGeneration},
 		},
 		{
 			kind:    AgentKindInteractiveDirector,
 			allowed: []string{AgentToolEventRead, AgentToolLoreRead},
-			denied:  []string{AgentToolFilesystemRead, AgentToolWorkspaceWrite, AgentToolShell, AgentToolWebSearch, AgentToolWebFetch, AgentToolBrowser, AgentToolAsk, AgentToolTodo, AgentToolGoal, AgentToolSkills, AgentToolDelegation, AgentToolLoreWrite, AgentToolImageGeneration, AgentToolConfigRead, AgentToolConfigApply},
+			denied:  []string{AgentToolFilesystemRead, AgentToolWorkspaceWrite, AgentToolShell, AgentToolWebSearch, AgentToolWebFetch, AgentToolBrowser, AgentToolAsk, AgentToolTodo, AgentToolSkills, AgentToolDelegation, AgentToolLoreWrite, AgentToolImageGeneration, AgentToolConfigRead, AgentToolConfigApply},
 		},
 		{
 			kind:    AgentKindImage,
 			allowed: []string{AgentToolSkills, AgentToolImageGeneration},
-			denied:  []string{AgentToolFilesystemRead, AgentToolWorkspaceWrite, AgentToolShell, AgentToolWebSearch, AgentToolWebFetch, AgentToolBrowser, AgentToolAsk, AgentToolTodo, AgentToolGoal, AgentToolDelegation, AgentToolLoreRead, AgentToolLoreWrite, AgentToolConfigRead, AgentToolConfigApply},
+			denied:  []string{AgentToolFilesystemRead, AgentToolWorkspaceWrite, AgentToolShell, AgentToolWebSearch, AgentToolWebFetch, AgentToolBrowser, AgentToolAsk, AgentToolTodo, AgentToolDelegation, AgentToolLoreRead, AgentToolLoreWrite, AgentToolConfigRead, AgentToolConfigApply},
 		},
 	}
 	for _, test := range tests {

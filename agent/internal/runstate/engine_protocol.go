@@ -146,10 +146,16 @@ type EngineTranscriptUpdated struct{ State json.RawMessage }
 func (EngineTranscriptUpdated) engineEvent() {}
 
 // EngineCapabilityState replaces or deletes one Session capability value.
+// CompareCurrent makes the event a revision fence against the durable Session
+// value. CheckOnly validates that fence without publishing a mutation.
 type EngineCapabilityState struct {
-	Capability string
-	State      json.RawMessage
-	Delete     bool
+	Capability      string
+	State           json.RawMessage
+	Delete          bool
+	CompareCurrent  bool
+	ExpectedPresent bool
+	ExpectedState   json.RawMessage
+	CheckOnly       bool
 }
 
 func (EngineCapabilityState) engineEvent() {}

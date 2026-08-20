@@ -27,7 +27,6 @@ func TestHarnessOptimizerExposesOnlyHarnessReadSurface(t *testing.T) {
 			config.AgentToolBrowser:        false,
 			config.AgentToolAsk:            false,
 			config.AgentToolTodo:           false,
-			config.AgentToolGoal:           false,
 			config.AgentToolDelegation:     false,
 			config.AgentToolLoreRead:       false,
 			config.AgentToolLoreWrite:      false,

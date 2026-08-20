@@ -54,8 +54,8 @@ func (customGoalManager) Prepare(_ context.Context, request GoalPrepareRequest) 
 	}}}, nil
 }
 
-func (customGoalManager) AfterRun(context.Context, GoalAfterRunRequest) (GoalContinuation, error) {
-	return GoalContinuation{}, nil
+func (customGoalManager) AfterRun(context.Context, GoalAfterRunRequest) (GoalAfterRunDecision, error) {
+	return GoalAfterRunDecision{}, nil
 }
 
 func TestCustomGoalManagerPersistsOpaqueStateAndPreparesItsOwnContext(t *testing.T) {

@@ -398,11 +398,15 @@ func buildStoryGraph(meta StoryMeta, lines []StoryEventRecord, events map[string
 		if turn.TerminalOutcome != nil {
 			terminalType = turn.TerminalOutcome.Type
 		}
+		title := turn.User
+		if turn.UserContextOnly {
+			title = turn.Narrative
+		}
 		nodes = append(nodes, PlotNode{
 			ID:           turn.ID,
 			ParentID:     parentID,
 			BranchID:     turn.BranchID,
-			Title:        compactText(turn.User, 24),
+			Title:        compactText(title, 24),
 			Summary:      compactText(turn.Narrative, 72),
 			Ts:           turn.Ts,
 			Current:      currentPath[turn.ID],

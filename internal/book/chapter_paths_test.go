@@ -20,7 +20,16 @@ func TestWorkspaceContextRefreshesChapterPathsWhenNestedDirectoryChanges(t *test
 	if context := state.WorkspaceContext().Dynamic; !strings.Contains(context, "ch01.md") {
 		t.Fatalf("initial context = %q", context)
 	}
+	volumeInfo, err := os.Stat(volume)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(volume, "ch02.md"), []byte("two"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// Directory mtimes can be coarse or cached on mounted filesystems. Preserve
+	// the original value so this regression cannot pass by timestamp alone.
+	if err := os.Chtimes(volume, volumeInfo.ModTime(), volumeInfo.ModTime()); err != nil {
 		t.Fatal(err)
 	}
 	if context := state.WorkspaceContext().Dynamic; !strings.Contains(context, "ch02.md") {

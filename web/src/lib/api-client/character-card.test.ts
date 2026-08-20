@@ -1,26 +1,29 @@
-import { http, HttpResponse } from 'msw'
-import { describe, expect, it } from 'vitest'
-import { server } from '@/test/msw/server'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { importCharacterCard, previewCharacterCard } from './workspace'
 
 describe('character card API', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
   it('keeps preview global and binds existing-Book imports to a stable Project', async () => {
     const projectId = 'project-背景书籍'
     const visited: string[] = []
-    server.use(
-      http.post('/api/imports/character-card/preview', () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const path = requestPath(input)
+      if (path === '/api/imports/character-card/preview') {
         visited.push('preview')
-        return HttpResponse.json({ name: 'Character', entry_count: 0 })
-      }),
-      http.post('/api/projects/:projectId/book/import-character-card', async ({ params, request }) => {
-        expect(params.projectId).toBe(projectId)
-        const form = await request.formData()
+        return jsonResponse({ name: 'Character', entry_count: 0 })
+      }
+      if (path === `/api/projects/${encodeURIComponent(projectId)}/book/import-character-card`) {
+        const form = init?.body as FormData
         expect(form.get('lore_classification')).toBe('heuristic')
         expect(form.has('target_mode')).toBe(false)
         visited.push('project-import')
-        return HttpResponse.json({ project_id: projectId, name: 'Character', item_ids: [] })
-      }),
-    )
+        return jsonResponse({ project_id: projectId, name: 'Character', item_ids: [] })
+      }
+      throw new Error(`Unexpected character-card request: ${path}`)
+    })
     const file = new File(['{}'], 'character.json', { type: 'application/json' })
 
     await previewCharacterCard(file)
@@ -34,13 +37,13 @@ describe('character card API', () => {
   })
 
   it('uses the global Book-creation endpoint only for new-Book imports', async () => {
-    server.use(
-      http.post('/api/books/import-character-card', async ({ request }) => {
-        const form = await request.formData()
-        expect(form.get('book_title')).toBe('New Book')
-        return HttpResponse.json({ project_id: 'created-project', name: 'Character', item_ids: [] })
-      }),
-    )
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const path = requestPath(input)
+      expect(path).toBe('/api/books/import-character-card')
+      const form = init?.body as FormData
+      expect(form.get('book_title')).toBe('New Book')
+      return jsonResponse({ project_id: 'created-project', name: 'Character', item_ids: [] })
+    })
 
     await importCharacterCard(new File(['{}'], 'character.json'), {
       targetMode: 'new_book',
@@ -54,3 +57,11 @@ describe('character card API', () => {
     })).rejects.toThrow('Project ID is required')
   })
 })
+
+function requestPath(input: RequestInfo | URL): string {
+  return typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+}
+
+function jsonResponse(body: unknown): Response {
+  return new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } })
+}

@@ -83,6 +83,18 @@ func (a *App) ConversationGoal(ctx context.Context, binding ConversationConfigBi
 		return runtime.Goal(ctx, options)
 	case ConversationModeAgentChat:
 		return a.AgentChat().ConversationGoal(ctx, agentchatapp.Binding{ProjectID: binding.ProjectID, SessionID: binding.SessionID})
+	case ConversationModeInteractive:
+		if err := a.requireForegroundConversationProject(binding.ProjectID); err != nil {
+			return agent.GoalState{}, false, err
+		}
+		service := a.interactiveService()
+		service.admission.Lock()
+		defer service.admission.Unlock()
+		runtime, options, err := a.interactiveGoalRuntime(binding)
+		if err != nil {
+			return agent.GoalState{}, false, err
+		}
+		return runtime.Goal(ctx, options)
 	default:
 		return agent.GoalState{}, false, fmt.Errorf("goal is unsupported for conversation mode %q", binding.Mode)
 	}
@@ -98,12 +110,9 @@ func (a *App) MutateConversationGoal(ctx context.Context, binding ConversationCo
 		service := a.chat()
 		service.admission.Lock()
 		defer service.admission.Unlock()
-		runtime, options, runtimeCfg, err := a.writingGoalRuntime(binding.SessionID)
+		runtime, options, _, err := a.writingGoalRuntime(binding.SessionID)
 		if err != nil {
 			return agent.GoalState{}, err
-		}
-		if (action == "set" || action == "resume") && !config.ResolveAgentTools(&runtimeCfg, config.AgentKindIDE).Allows(config.AgentToolGoal) {
-			return agent.GoalState{}, errors.New("conversation goal is disabled for the Writing Agent")
 		}
 		goalMutation := agent.GoalMutation{ExpectedRevision: mutation.ExpectedRevision}
 		switch action {
@@ -121,9 +130,56 @@ func (a *App) MutateConversationGoal(ctx context.Context, binding ConversationCo
 		return runtime.UpdateGoal(ctx, options, goalMutation)
 	case ConversationModeAgentChat:
 		return a.AgentChat().MutateConversationGoal(ctx, agentchatapp.Binding{ProjectID: binding.ProjectID, SessionID: binding.SessionID}, action, mutation.Objective, mutation.ExpectedRevision)
+	case ConversationModeInteractive:
+		if err := a.requireForegroundConversationProject(binding.ProjectID); err != nil {
+			return agent.GoalState{}, err
+		}
+		service := a.interactiveService()
+		service.admission.Lock()
+		defer service.admission.Unlock()
+		runtime, options, err := a.interactiveGoalRuntime(binding)
+		if err != nil {
+			return agent.GoalState{}, err
+		}
+		goalMutation := agent.GoalMutation{ExpectedRevision: mutation.ExpectedRevision}
+		switch action {
+		case "set":
+			goalMutation.Kind, goalMutation.Objective = agent.GoalSet, mutation.Objective
+		case "pause":
+			goalMutation.Kind = agent.GoalPause
+		case "resume":
+			goalMutation.Kind = agent.GoalResume
+		case "clear":
+			goalMutation.Kind = agent.GoalClear
+		default:
+			return agent.GoalState{}, fmt.Errorf("unsupported goal action %q", action)
+		}
+		return runtime.UpdateGoal(ctx, options, goalMutation)
 	default:
 		return agent.GoalState{}, fmt.Errorf("goal is unsupported for conversation mode %q", binding.Mode)
 	}
+}
+
+func (a *App) interactiveGoalRuntime(binding ConversationConfigBinding) (*agentexecution.Runtime, agentrun.Options, error) {
+	store, runtimeCfg, err := a.interactiveConversationRuntime(binding)
+	if err != nil {
+		return nil, agentrun.Options{}, err
+	}
+	branchID, err := resolveInteractiveProjectionBranch(store, binding.StoryID, binding.BranchID)
+	if err != nil {
+		return nil, agentrun.Options{}, err
+	}
+	a.mu.RLock()
+	executionRuntime := a.executionRuntime
+	workspace := strings.TrimSpace(a.workspace)
+	a.mu.RUnlock()
+	if executionRuntime == nil || workspace == "" {
+		return nil, agentrun.Options{}, ErrNoWorkspace
+	}
+	return executionRuntime, agentrun.Options{
+		AgentKind: agentrun.AgentKindInteractiveStory, StateRoot: runtimeCfg.ProjectStateDir,
+		Workspace: workspace, StoryID: binding.StoryID, BranchID: branchID, Mode: "interactive",
+	}, nil
 }
 
 func (a *App) writingGoalRuntime(requestedSessionID string) (*agentexecution.Runtime, agentrun.Options, config.Config, error) {

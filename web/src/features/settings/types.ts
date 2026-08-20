@@ -306,7 +306,6 @@ export type AgentToolCapability =
   | 'browser'
   | 'ask'
   | 'todo'
-  | 'goal'
   | 'skills'
   | 'delegation'
   | 'script'

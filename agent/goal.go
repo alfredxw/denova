@@ -82,9 +82,8 @@ type GoalPrepareRequest struct {
 }
 
 type GoalPreparation struct {
-	Context      []ContextFragment
-	Tools        []ToolDefinition
-	StandardTool bool
+	Context []ContextFragment
+	Tools   []ToolDefinition
 }
 
 type GoalAfterRunRequest struct {
@@ -97,14 +96,38 @@ type GoalAfterRunRequest struct {
 	State   GoalState
 	Present bool
 	Result  Result
+	// ModelRequest is the exact final provider request that produced Final. A
+	// Goal Manager may append a bounded evaluation suffix to this immutable
+	// snapshot without rebuilding model, provider, tool, option, or cache state.
+	ModelRequest *ModelRequestSnapshot
+	// Final is the canonical assistant result committed for this cycle. It is
+	// not part of ModelRequest because that snapshot was captured immediately
+	// before the provider generated it.
+	Final *Message
 }
 
-type GoalContinuation struct {
-	Continue bool
+type GoalVerdict string
+
+const (
+	GoalVerdictContinue GoalVerdict = "continue"
+	GoalVerdictComplete GoalVerdict = "complete"
+	GoalVerdictBlocked  GoalVerdict = "blocked"
+)
+
+// GoalAfterRunDecision is a manager's bounded judgment about one completed
+// cycle. Agent owns durable state transitions and revision fences; Managers
+// only evaluate evidence and, for Continue, prepare the next model input.
+type GoalAfterRunDecision struct {
+	Verdict GoalVerdict
+	// Reason is the evaluator's concise rationale. Agent does not inject it into
+	// the conversation; terminal verdicts may persist it as the Goal report.
+	Reason string
 	// Input is a new autonomous turn, not a mutation of the completed caller
 	// command. Agent owns its durable command identity and ignores any supplied
 	// IdempotencyKey.
-	Input Input
+	Input        Input
+	Usage        *TokenUsage
+	FinishReason string
 }
 
 // GoalManager owns goal transitions, its opaque Data schema, and model-facing
@@ -115,7 +138,7 @@ type GoalManager interface {
 	Identity() CapabilityIdentity
 	Apply(context.Context, GoalApplyRequest) (GoalState, error)
 	Prepare(context.Context, GoalPrepareRequest) (GoalPreparation, error)
-	AfterRun(context.Context, GoalAfterRunRequest) (GoalContinuation, error)
+	AfterRun(context.Context, GoalAfterRunRequest) (GoalAfterRunDecision, error)
 }
 
 func applyGoalMutation(ctx context.Context, manager GoalManager, request GoalApplyRequest) (GoalState, error) {

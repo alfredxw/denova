@@ -6,8 +6,8 @@ import { toast } from 'sonner'
 import { withErrorLogID } from '@/lib/api-client'
 import type { AgentApprovalMode, ImageAPIProfileSettings, LabSettings, LayeredSettings, ModelProfileSettings, Settings, SettingsLayer, ShellEnvironmentMode, UpdateApplyResult, UpdateCheckResult, UpdateInstallProgress, UpdateInstallResult, WebAccessSettings } from './types'
 import { applyUpdate, checkForUpdate, GLOBAL_SETTINGS_TARGET, installUpdateStream, revokeAgentApprovalRule } from './api'
-import { FONT_OPTIONS, fontLabelKeyFor } from './font-options'
 import { useLayeredSettingsDraft } from './use-layered-settings-draft'
+import { FontPicker } from './FontPicker'
 import { getInteractiveTellers } from '@/features/interactive/api'
 import type { Teller } from '@/features/interactive/types'
 import { DEFAULT_NARRATIVE_STYLE_ID, narrativeStyleName, narrativeStylesForMode } from '@/features/interactive/narrative-style'
@@ -259,17 +259,23 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
           <MotionIntensitySelect label={t('settings.appearance.motionIntensity')} value={draft.motion_intensity}
                                  inherited={inherited.motion_intensity}
                                  onChange={(v) => setField('motion_intensity', v)} />
-          <FontSelect label={t('settings.appearance.uiFont')} value={draft.ui_font_family}
-                      inherited={inherited.ui_font_family}
-                      onChange={(v) => setField('ui_font_family', v)} />
+          <FieldRow label={t('settings.appearance.uiFont')}>
+            <FontPicker value={draft.ui_font_family}
+                        inherited={inherited.ui_font_family}
+                        allowInherit
+                        onValueChange={(v) => setField('ui_font_family', v)} />
+          </FieldRow>
           <Num label={t('settings.appearance.uiFontSize')} value={draft.ui_font_size ?? null}
                placeholder={placeholderFor('ui_font_size')}
                min={11}
                max={16}
                onChange={(v) => setField('ui_font_size', v)} />
-          <FontSelect label={t('settings.appearance.readingFont')} value={draft.reading_font_family}
-                      inherited={inherited.reading_font_family}
-                      onChange={(v) => setField('reading_font_family', v)} />
+          <FieldRow label={t('settings.appearance.readingFont')}>
+            <FontPicker value={draft.reading_font_family}
+                        inherited={inherited.reading_font_family}
+                        allowInherit
+                        onValueChange={(v) => setField('reading_font_family', v)} />
+          </FieldRow>
           <Num label={t('settings.appearance.readingFontSize')} value={draft.reading_font_size ?? null}
                placeholder={placeholderFor('reading_font_size')}
                min={14}
@@ -1291,34 +1297,6 @@ function TraceExporterSelect({ label, value, inherited, onChange }: {
             <SelectItem value={FIELD_INHERIT_VALUE}>{t('common.inherit', { value: inheritedLabel })}</SelectItem>
             {TRACE_EXPORTER_OPTIONS.map((option) => (
               <SelectItem key={option.value} value={option.value}>{t(option.labelKey)}</SelectItem>
-            ))}
-          </SelectGroup>
-        </SelectContent>
-      </Select>
-    </FieldRow>
-  )
-}
-
-function FontSelect({ label, value, inherited, onChange }: {
-  label: string
-  value?: string
-  inherited?: string
-  onChange: (v: string) => void
-}) {
-  const { t } = useTranslation()
-  const inheritedLabelKey = fontLabelKeyFor(inherited)
-  const inheritedLabel = inheritedLabelKey ? t(inheritedLabelKey) : (inherited || t('common.notSet'))
-  return (
-    <FieldRow label={label}>
-      <Select value={value || FIELD_INHERIT_VALUE} onValueChange={(v) => onChange(v === FIELD_INHERIT_VALUE ? '' : v)}>
-        <SelectTrigger size="sm" className="w-full">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent className="nova-panel border text-[var(--nova-text)]">
-          <SelectGroup>
-            <SelectItem value={FIELD_INHERIT_VALUE}>{t('common.inherit', { value: inheritedLabel })}</SelectItem>
-            {FONT_OPTIONS.map((font) => (
-              <SelectItem key={font.value} value={font.value}>{t(font.labelKey)}</SelectItem>
             ))}
           </SelectGroup>
         </SelectContent>

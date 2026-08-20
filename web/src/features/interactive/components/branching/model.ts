@@ -14,7 +14,7 @@ interface BranchNameLabels {
 export function branchCreationSourceFromTurn(turn: TurnEvent, fallbackTitle: string): BranchCreationSource {
   return {
     turnId: turn.id,
-    title: sourceTitle(turn.user || turn.narrative, fallbackTitle),
+    title: sourceTitle((turn.user_context_only ? turn.narrative : turn.user) || turn.narrative, fallbackTitle),
     summary: sourceSummary(turn.narrative),
   }
 }
@@ -50,7 +50,7 @@ function sourceSummary(value: string) {
 }
 
 function plotNodeFromTurn(turn: TurnEvent, index: number, total: number, translate: (key: string, options?: Record<string, unknown>) => string): PlotNode {
-  const title = firstLine(turn.user || turn.narrative) || `${translate('branchTimeline.nodeFallback')} ${index + 1}`
+  const title = firstLine((turn.user_context_only ? turn.narrative : turn.user) || turn.narrative) || `${translate('branchTimeline.nodeFallback')} ${index + 1}`
   return {
     id: turn.id,
     parent_id: turn.parent_id || undefined,

@@ -29,7 +29,6 @@ export const generalToolDetailAdapters: Record<string, ToolDetailAdapter> = {
   skill: outputAdapter(renderSkillInput, renderSkillOutput),
   task: outputAdapter(renderTaskInput, renderTaskOutput),
   script: inputAdapter(renderScriptInput, renderScriptOutput),
-  goal: inputAdapter(renderGoalInput, renderGoalOutput),
   config_read: outputAdapter(renderConfigReadInput, renderConfigReadOutput),
   config_apply: inputAdapter(renderConfigApplyInput, renderConfigApplyOutput),
 }
@@ -333,22 +332,6 @@ function renderScriptOutput({ result, t }: ToolDetailRenderProps) {
       {response.error === undefined && diagnostics.length === 0 && logs.length === 0 ? <DetailPre>{formatValue(response)}</DetailPre> : null}
     </DetailStack>
   )
-}
-
-function renderGoalInput({ input, t }: ToolDetailRenderProps) {
-  const action = stringValue(input.action)
-  return (
-    <DetailStack className="space-y-1.5">
-      <DetailPre className="text-[var(--nova-text)]">{stringValue(input.report) || t(`chat.tool.detail.goal.${action}`, { defaultValue: action })}</DetailPre>
-      <MetaLine items={[action, fieldMeta('id', input.expected_id), numericMeta('revision', input.expected_revision)]} />
-    </DetailStack>
-  )
-}
-
-function renderGoalOutput({ result }: ToolDetailRenderProps) {
-  const response = parseRecord(result)
-  if (!response) return <DetailPre>{formatMaybeJSON(result)}</DetailPre>
-  return <MetaLine items={[stringValue(response.status), numericMeta('revision', response.revision)]} />
 }
 
 function renderConfigReadInput({ input }: ToolDetailRenderProps) {

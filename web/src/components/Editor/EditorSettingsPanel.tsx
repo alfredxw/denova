@@ -3,8 +3,7 @@ import type { PointerEvent } from 'react'
 import { Check, MessageSquareQuote, Palette, Rows3, Type } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { AutosaveStatusIndicator, type AutosaveStatus } from '@/components/forms/autosave-status'
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { FONT_OPTIONS } from '@/features/settings/font-options'
+import { FontPicker } from '@/features/settings/FontPicker'
 
 export type EditorTheme = 'ide' | 'paper' | 'sepia'
 
@@ -111,25 +110,15 @@ export function EditorSettingsPanel({
               />
             </div>
             <div className="space-y-2">
-              <label className="block">
+              <div className="block">
                 <span className="mb-1 block text-[11px] text-[var(--nova-text-faint)]">{t('settings.appearance.readingFont')}</span>
-                <Select
+                <FontPicker
                   value={readingTypography.fontFamily}
                   disabled={readingTypography.loading}
                   onValueChange={readingTypography.onFontFamilyChange}
-                >
-                  <SelectTrigger size="sm" className="w-full bg-[var(--nova-surface)]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="nova-panel border text-[var(--nova-text)]">
-                    <SelectGroup>
-                      {FONT_OPTIONS.map((font) => (
-                        <SelectItem key={font.value} value={font.value}>{t(font.labelKey)}</SelectItem>
-                      ))}
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-              </label>
+                  className="bg-[var(--nova-surface)]"
+                />
+              </div>
               <label className="block">
                 <span className="mb-1 flex items-center justify-between gap-3 text-[11px] text-[var(--nova-text-faint)]">
                   <span>{t('settings.appearance.readingFontSize')}</span>

@@ -75,7 +75,7 @@ func (a *App) prepareInteractiveProfileCycle(
 		CommandID: string(request.CommandID),
 		StoryID:   binding.StoryID, BranchID: binding.BranchID,
 		Message: request.Request.Message, StyleScenes: request.Request.StyleScenes,
-		Locale: request.Request.Locale,
+		Locale: request.Request.Locale, InputVisibility: request.Request.InputVisibility,
 	})
 	if err != nil {
 		return agentexecution.Cycle{}, err

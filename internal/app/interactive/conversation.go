@@ -30,6 +30,7 @@ type Conversation struct {
 	storyID                  string
 	branchID                 string
 	user                     string
+	inputVisibility          agentrun.InputVisibility
 	replyTargetChars         int
 	directorTask             string
 	modelContextAppendMu     sync.Mutex
@@ -228,6 +229,17 @@ type DirectorGenerator func(context.Context, *config.Config, *book.State, agenti
 
 func NewConversation(store *interactive.Store, novaDir, workspace, storyID, branchID, user string, replyTargetChars int, cfg *config.Config) *Conversation {
 	return &Conversation{store: store, novaDir: novaDir, workspace: workspace, cfg: cfg, storyID: storyID, branchID: branchID, user: user, replyTargetChars: replyTargetChars}
+}
+
+// WithInputVisibility binds the accepted input's player-facing projection.
+// Both visible and model-only inputs remain canonical game model context.
+func (c *Conversation) WithInputVisibility(visibility agentrun.InputVisibility) *Conversation {
+	if c != nil {
+		c.mu.Lock()
+		c.inputVisibility = visibility
+		c.mu.Unlock()
+	}
+	return c
 }
 
 func (c *Conversation) BindDirectorRuntime(tasks *DirectorTaskGroup, generator DirectorGenerator, executionRuntimes ...*agentexecution.Runtime) *Conversation {
@@ -702,6 +714,15 @@ func (c *Conversation) MaterializeAgentCanonicalInput(
 	}, c.branchID, c.user)
 	if err != nil {
 		return interactive.PlayerInputReceipt{}, err
+	}
+	c.mu.Lock()
+	inputVisibility := c.inputVisibility
+	c.mu.Unlock()
+	if inputVisibility == agentrun.InputModelOnly {
+		intent, err = intent.WithContextOnly()
+		if err != nil {
+			return interactive.PlayerInputReceipt{}, err
+		}
 	}
 	intent, err = intent.WithAgentCanonicalHash(agentCanonicalHash)
 	if err != nil {

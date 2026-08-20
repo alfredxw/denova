@@ -393,7 +393,8 @@ func buildAgentDefinitionWithComposition(ctx context.Context, cfg *config.Config
 		return agentDefinitionAssembly{}, fmt.Errorf("create Agent Permission policy kind=%s: %w", spec.Kind, err)
 	}
 	var goalManager agent.GoalManager
-	if toolSettings.Allows(config.AgentToolGoal) {
+	switch spec.Kind {
+	case config.AgentKindGeneral, config.AgentKindIDE, config.AgentKindInteractiveStory:
 		goalManager = agentlifecycle.NewGoalManager()
 	}
 	rootTools, err := agent.StaticToolsIdentified(denovaCapabilityIdentity("denova.tools", struct {

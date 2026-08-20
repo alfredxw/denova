@@ -62,6 +62,67 @@ func TestPlayerInputAcceptedIsIdempotentPendingAndConsumedByTurn(t *testing.T) {
 	}
 }
 
+func TestContextOnlyPlayerInputRemainsModelVisibleAndIsNotPlayerAuthored(t *testing.T) {
+	store := NewStore(t.TempDir())
+	story, err := store.CreateStory(CreateStoryRequest{Title: "model-only input", StoryTellerID: "classic"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity := DomainCommitIdentity{CommandID: "goal-next", OperationID: "goal-run", Cycle: 2}
+	visible, err := NewPlayerInputIntent(identity, "main", "完成剩余目标")
+	if err != nil {
+		t.Fatal(err)
+	}
+	contextOnly, err := visible.WithContextOnly()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if contextOnly.Hash == visible.Hash {
+		t.Fatal("context-only projection must participate in the player input hash")
+	}
+	receipt, err := store.CommitPlayerInput(story.ID, contextOnly)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !receipt.Event.ContextOnly {
+		t.Fatalf("accepted input lost context-only projection: %#v", receipt.Event)
+	}
+	if _, err := store.CommitPlayerInput(story.ID, visible); !errors.Is(err, ErrPlayerInputIdentityConflict) {
+		t.Fatalf("same identity changed from context-only to visible: %v", err)
+	}
+	turn, _, err := store.AppendTurnWithState(story.ID, AppendTurnWithStateRequest{
+		BranchID: "main", User: contextOnly.Text, Narrative: "目标相关剧情继续推进。",
+		AgentCommandID: identity.CommandID, AgentOperationID: identity.OperationID, AgentCycle: identity.Cycle,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !turn.UserContextOnly {
+		t.Fatalf("turn lost model-only user projection: %#v", turn)
+	}
+	history, err := store.ReadModelHistory(story.ID, StoryModelHistoryQuery{BranchID: "main", StartTurn: 0, EndTurn: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(history.Turns) != 1 || history.Turns[0].User != contextOnly.Text {
+		t.Fatalf("context-only input disappeared from model history: %#v", history.Turns)
+	}
+	snapshot, err := store.Snapshot(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Graph.Nodes) != 1 || snapshot.Graph.Nodes[0].Title != turn.Narrative {
+		t.Fatalf("context-only input leaked into the player-facing graph: %#v", snapshot.Graph.Nodes)
+	}
+	search, err := store.SearchStoryHistory(story.ID, "main", StoryHistorySearchRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(search.Hits) != 1 || search.Hits[0].UserAction != "" {
+		t.Fatalf("context-only input leaked as a player action: %#v", search.Hits)
+	}
+}
+
 func TestJournalProjectionTracksOnlyUnconsumedPlayerInputIDs(t *testing.T) {
 	root := t.TempDir()
 	store := NewStore(root)

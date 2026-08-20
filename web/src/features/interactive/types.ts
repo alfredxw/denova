@@ -366,6 +366,7 @@ export interface TurnEvent {
   branch_id: string
   ts: string
   user: string
+  user_context_only?: boolean
   narrative: string
   thinking?: string
   run_id?: string
@@ -903,6 +904,7 @@ export interface PlayerInputAcceptedEvent {
   branch_id: string
   ts: string
   text: string
+  context_only?: boolean
   accepted_turn_count: number
   agent_command_id: string
   agent_operation_id: string

@@ -39,7 +39,7 @@ export function applyFontSettings(settings: FontSettingsInput) {
 
 export function applyReadingTypographySettings(settings: Pick<FontSettingsInput, 'readingFont' | 'readingFontSize'>) {
   if (typeof document === 'undefined') return
-  document.documentElement.style.setProperty('--nova-reading-font-family', fontStackFor(settings.readingFont, 'source-han-serif'))
+  document.documentElement.style.setProperty('--nova-reading-font-family', fontStackFor(settings.readingFont, 'apple-system'))
   document.documentElement.style.setProperty('--nova-reading-font-size', `${clampFontSize(settings.readingFontSize, 14, 28, 18)}px`)
 }
 

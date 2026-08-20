@@ -62,13 +62,6 @@ func applyPreparedGoal(
 	}
 	definitions := append([]ToolDefinition(nil), prepared.tools...)
 	definitions = append(definitions, goalPreparation.Tools...)
-	if goalPreparation.StandardTool {
-		tool, err := standardGoalTool(prepared.definition.Goal, session, run)
-		if err != nil {
-			return err
-		}
-		definitions = append(definitions, tool)
-	}
 	registry, err := NewRegistry(ctx, definitions...)
 	if err != nil {
 		return fmt.Errorf("prepare Goal tools: %w", err)

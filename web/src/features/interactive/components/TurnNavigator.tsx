@@ -5,6 +5,7 @@ export interface TurnNavigationItem {
   anchorId: string
   user: string
   narrative: string
+  contextOnly?: boolean
   pending?: boolean
 }
 
@@ -36,7 +37,9 @@ export function TurnNavigator({ items, activeAnchorId = '', onSelect }: TurnNavi
         {navigationItems.map(({ item, sourceIndex }) => {
           const active = item.anchorId === activeAnchorId
           const previewVisible = previewAnchorId === item.anchorId
-          const user = item.user.trim() || t('storyStage.turnNavigator.emptyUser')
+          const user = item.contextOnly
+            ? t('storyStage.turnNavigator.autonomousContinuation')
+            : item.user.trim() || t('storyStage.turnNavigator.emptyUser')
           const narrative = item.narrative.trim() || (item.pending ? t('storyStage.turnNavigator.generating') : t('storyStage.turnNavigator.emptyAgent'))
           return (
             <div key={item.anchorId} className="nova-turn-nav-slot" role="listitem" aria-posinset={sourceIndex + 1} aria-setsize={items.length}>

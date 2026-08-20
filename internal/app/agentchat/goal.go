@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 
-	"denova/config"
-
 	agent "github.com/alfredxw/denova/agent"
 	publicgoal "github.com/alfredxw/denova/agent/goal"
 )
@@ -27,12 +25,9 @@ func (service *Service) ConversationGoal(ctx context.Context, binding Binding) (
 func (service *Service) MutateConversationGoal(ctx context.Context, binding Binding, action string, objective string, expectedRevision uint64) (agent.GoalState, error) {
 	service.admission.Lock()
 	defer service.admission.Unlock()
-	resolved, project, runtimeCfg, err := service.conversationRuntime(ctx, binding)
+	resolved, project, _, err := service.conversationRuntime(ctx, binding)
 	if err != nil {
 		return agent.GoalState{}, err
-	}
-	if (action == "set" || action == "resume") && !config.ResolveAgentTools(&runtimeCfg, resolved.agentKind).Allows(config.AgentToolGoal) {
-		return agent.GoalState{}, errors.New("conversation goal is disabled for Agent Chat")
 	}
 	_, _, err = getOrCreateConversation(project, resolved)
 	if err != nil {

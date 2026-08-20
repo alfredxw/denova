@@ -69,6 +69,7 @@ const storyStage = {
   'storyStage.turnNavigator.label': '剧情轮次导航',
   'storyStage.turnNavigator.goto': '跳转到第 {{index}} 轮',
   'storyStage.turnNavigator.emptyUser': '用户输入为空',
+  'storyStage.turnNavigator.autonomousContinuation': '自动续跑',
   'storyStage.turnNavigator.emptyAgent': '暂无剧情正文',
   'storyStage.turnNavigator.generating': '正在生成…',
   'storyStage.history.backToLatest': '回到最新剧情',
