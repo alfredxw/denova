@@ -120,6 +120,7 @@ func hasImageAPIProfileDraftFields(profile ImageAPIProfileSettings) bool {
 		profile.APIKey != "" ||
 		strings.TrimSpace(profile.BaseURL) != "" ||
 		strings.TrimSpace(profile.Model) != "" ||
+		strings.TrimSpace(profile.PromptGuide) != "" ||
 		len(profile.Headers) > 0 ||
 		strings.TrimSpace(profile.DefaultSize) != "" ||
 		strings.TrimSpace(profile.DefaultAspectRatio) != "" ||

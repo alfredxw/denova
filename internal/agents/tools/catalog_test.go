@@ -83,6 +83,36 @@ func TestCatalogReadCapabilityFollowsTheBroadestRegisteredAdapter(t *testing.T) 
 	}
 }
 
+func TestCatalogConfigManagerExposesImageToolsOnlyForLoreOrigin(t *testing.T) {
+	settings := config.ResolvedAgentToolSettings{
+		config.AgentToolLoreRead:        true,
+		config.AgentToolImageGeneration: true,
+	}
+	nonLore, err := NewCatalog(&config.Config{Workspace: t.TempDir()}, nil, RuntimeExecutables{}).ConfigManager()(settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nonLore) != 0 {
+		t.Fatalf("non-lore Config Manager exposed scoped tools: %#v", nonLore)
+	}
+
+	lore, err := NewCatalog(&config.Config{Workspace: t.TempDir(), ConfigManagerOrigin: "lore"}, nil, RuntimeExecutables{}).ConfigManager()(settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{"read_lore_items": true, generateImageToolName: true}
+	for _, definition := range lore {
+		info, infoErr := definition.Tool.Info(context.Background())
+		if infoErr != nil {
+			t.Fatal(infoErr)
+		}
+		delete(want, info.Name)
+	}
+	if len(want) != 0 {
+		t.Fatalf("lore Config Manager missing scoped tools: %#v", want)
+	}
+}
+
 func TestCatalogResolvesLoginEnvironmentOnlyForEnabledShell(t *testing.T) {
 	resolutions := 0
 	catalog := NewCatalog(

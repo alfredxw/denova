@@ -111,6 +111,9 @@ export function bookCoverURL(path: string, version?: string): string {
 
 export async function generateBookCover(input: {
   path: string
+  mode?: 'agent' | 'custom'
+  commandId?: string
+  prompt?: string
   imagePresetId?: string
   instruction?: string
   profileId?: string
@@ -120,6 +123,9 @@ export async function generateBookCover(input: {
     headers: jsonHeaders,
     body: JSON.stringify({
       path: input.path,
+      mode: input.mode || 'agent',
+      command_id: input.commandId || '',
+      prompt: input.prompt || '',
       image_preset_id: input.imagePresetId || '',
       instruction: input.instruction || '',
       profile_id: input.profileId || '',

@@ -27,6 +27,9 @@ const (
 	DefaultImageAPIProtocol = ImageProtocolOpenAI
 	DefaultImageAPIBaseURL  = "https://api.openai.com/v1"
 	DefaultImageAPIModel    = "gpt-image-2"
+	// MaxImagePromptGuideBytes bounds one model-authored context fragment while
+	// leaving enough room for detailed examples and model-specific syntax.
+	MaxImagePromptGuideBytes = 64 * 1024
 
 	ComfyUIWorkflowBuiltin = "builtin"
 	ComfyUIWorkflowAPI     = "api"
@@ -61,6 +64,9 @@ type ImageAPIProfileSettings struct {
 	APIKey   string `toml:"api_key,omitempty" json:"api_key,omitempty"`
 	BaseURL  string `toml:"base_url,omitempty" json:"base_url,omitempty"`
 	Model    string `toml:"model,omitempty" json:"model,omitempty"`
+	// PromptGuide teaches prompt-authoring Agents the selected model's native
+	// syntax. It is model context only and is never sent to the image provider.
+	PromptGuide string `toml:"prompt_guide,omitempty" json:"prompt_guide,omitempty"`
 	// LegacyOpenAI* are presence-aware decode aliases for image profiles saved
 	// before provider/protocol adapters. Migration clears them before writes.
 	LegacyOpenAIAPIKey  *string                 `toml:"openai_api_key,omitempty" json:"openai_api_key,omitempty"`
@@ -83,6 +89,7 @@ type ResolvedImageAPIProfile struct {
 	APIKey       string
 	BaseURL      string
 	Model        string
+	PromptGuide  string
 	Headers      map[string]string
 	Size         string
 	AspectRatio  string
@@ -239,6 +246,10 @@ func resolveImageAPIProfile(profileID string, profile ImageAPIProfileSettings) (
 	if baseURL == "" {
 		return ResolvedImageAPIProfile{}, fmt.Errorf("image model base URL is missing")
 	}
+	promptGuide := strings.TrimSpace(profile.PromptGuide)
+	if len([]byte(promptGuide)) > MaxImagePromptGuideBytes {
+		return ResolvedImageAPIProfile{}, fmt.Errorf("image model prompt guide exceeds %d bytes", MaxImagePromptGuideBytes)
+	}
 
 	return ResolvedImageAPIProfile{
 		ProfileID:    profileID,
@@ -248,6 +259,7 @@ func resolveImageAPIProfile(profileID string, profile ImageAPIProfileSettings) (
 		APIKey:       strings.TrimSpace(profile.APIKey),
 		BaseURL:      baseURL,
 		Model:        model,
+		PromptGuide:  promptGuide,
 		Headers:      cloneImageHeaders(profile.Headers),
 		Size:         firstNonEmpty(normalizeImageAPISize(profile.DefaultSize), defaults.Size),
 		AspectRatio:  normalizeImageAPIAspectRatio(profile.DefaultAspectRatio),

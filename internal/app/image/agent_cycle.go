@@ -16,6 +16,7 @@ import (
 	agentrun "denova/internal/agents/run"
 	appagentruntime "denova/internal/app/agentruntime"
 	appsettings "denova/internal/app/settings"
+	imagepreset "denova/internal/image/preset"
 )
 
 const (
@@ -35,6 +36,15 @@ func (service *Service) prepareAgentCycle(runtime *Runtime, request AgentGenerat
 		appsettings.ApplyLayered(&cfg, layered)
 	} else {
 		slog.ErrorContext(runtime.Context(), fmt.Sprintf("[image-agent] load layered settings failed workspace=%s err=%v", runtime.Workspace, err))
+	}
+	if presetID := strings.TrimSpace(request.ImagePresetID); presetID != "" {
+		preset := loadImagePreset(cfg.DataDir(), presetID)
+		if strings.TrimSpace(request.SystemPrompt) == "" {
+			request.SystemPrompt = preset.PromptForTargets(imagepreset.TargetAgentSystem)
+		}
+		if strings.TrimSpace(request.ToolPrompt) == "" {
+			request.ToolPrompt = preset.PromptForTargets(imagepreset.TargetToolRequest)
+		}
 	}
 	cfg.ImagePresetToolPrompt = strings.TrimSpace(request.ToolPrompt)
 	modelSelection := config.ResolveAgentModel(&cfg, config.AgentKindImage)

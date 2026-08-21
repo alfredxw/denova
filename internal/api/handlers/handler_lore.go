@@ -8,7 +8,6 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
-	"denova/internal/api/sse"
 	loreapp "denova/internal/app/lore"
 	"denova/internal/book/lore"
 	imageasset "denova/internal/image/asset"
@@ -115,40 +114,6 @@ func (h *Handlers) HandleLoreItemImageUpload(ctx context.Context, c *app.Request
 		return
 	}
 	writeJSON(c, consts.StatusOK, item)
-}
-
-func (h *Handlers) HandleLoreImagesGenerateStream(ctx context.Context, c *app.RequestContext) {
-	scope, ok := requireProjectScope(c)
-	if !ok {
-		return
-	}
-	var body loreapp.ImagesGenerateRequest
-	if err := c.BindJSON(&body); err != nil {
-		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
-		return
-	}
-	task, err := h.app.Lore().StartImagesGenerateTask(ctx, scope.ProjectID, body)
-	if err != nil {
-		if errors.Is(err, loreapp.ErrImageTaskRunning) {
-			writeError(c, consts.StatusConflict, err.Error())
-			return
-		}
-		writeProjectBookError(c, err, "api.projectBook.loreFailed")
-		return
-	}
-	sse.StreamTask(ctx, c, task)
-}
-
-func (h *Handlers) HandleLoreImagesGenerateAbort(ctx context.Context, c *app.RequestContext) {
-	scope, ok := requireProjectScope(c)
-	if !ok {
-		return
-	}
-	if err := h.app.Lore().AbortImagesGenerateTask(scope.ProjectID); err != nil {
-		writeProjectBookError(c, err, "api.projectBook.loreFailed")
-		return
-	}
-	writeJSON(c, consts.StatusOK, map[string]string{"status": "ok"})
 }
 
 func (h *Handlers) HandleLoreItemImageDelete(ctx context.Context, c *app.RequestContext) {

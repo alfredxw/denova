@@ -315,14 +315,32 @@ func interactiveDirectorToolsFactory(cfg *config.Config, toolContexts ...Interac
 
 func configManagerToolsFactory(cfg *config.Config) Factory {
 	return func(settings config.ResolvedAgentToolSettings) ([]agent.ToolDefinition, error) {
-		if cfg == nil || (!settings.Allows(config.AgentToolConfigRead) && !settings.Allows(config.AgentToolConfigApply)) {
+		if cfg == nil {
 			return nil, nil
 		}
-		definitions, err := configresource.NewTools(cfg, catalogToolResultMaxBytes(cfg))
-		if err != nil {
-			return nil, err
+		var definitions []agent.ToolDefinition
+		if settings.Allows(config.AgentToolConfigRead) || settings.Allows(config.AgentToolConfigApply) {
+			configured, err := configresource.NewTools(cfg, catalogToolResultMaxBytes(cfg))
+			if err != nil {
+				return nil, err
+			}
+			definitions = append(definitions, enabledDefinitions(settings, configured)...)
 		}
-		return enabledDefinitions(settings, definitions), nil
+		if cfg.ConfigManagerOrigin == "lore" && settings.Allows(config.AgentToolLoreRead) {
+			lore, err := newLoreTools(cfg.Workspace, false)
+			if err != nil {
+				return nil, err
+			}
+			definitions = append(definitions, enabledDefinitions(settings, lore)...)
+		}
+		if cfg.ConfigManagerOrigin == "lore" && settings.Allows(config.AgentToolImageGeneration) {
+			images, err := newIllustrationTools(cfg)
+			if err != nil {
+				return nil, err
+			}
+			definitions = append(definitions, enabledDefinitions(settings, images)...)
+		}
+		return definitions, nil
 	}
 }
 

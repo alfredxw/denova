@@ -29,12 +29,14 @@ export function LoreEditor({
   imagePresets,
   imagePresetId,
   imageInstruction,
+  imageGenerationMode,
   imageBusyAction,
   searchQuery,
   setDraft,
   setTagDraft,
   onImagePresetChange,
   setImageInstruction,
+  onImageGenerationModeChange,
   onGenerateImage,
   onUploadImage,
   onClearImage,
@@ -50,12 +52,14 @@ export function LoreEditor({
   imagePresets: ImagePreset[]
   imagePresetId: string
   imageInstruction: string
+  imageGenerationMode: 'agent' | 'custom'
   imageBusyAction: 'generate' | 'upload' | 'clear' | ''
   searchQuery?: string
   setDraft: (draft: LoreItem | null) => void
   setTagDraft: (value: string) => void
   onImagePresetChange: (id: string) => void
   setImageInstruction: (value: string) => void
+  onImageGenerationModeChange: (value: 'agent' | 'custom') => void
   onGenerateImage: () => void
   onUploadImage: (file: File) => void
   onClearImage: () => void
@@ -266,10 +270,12 @@ export function LoreEditor({
         imagePresets={validImagePresets}
         imagePresetId={selectedImagePresetId}
         imageInstruction={imageInstruction}
+        imageGenerationMode={imageGenerationMode}
         imageBusyAction={imageBusyAction}
         onOpenChange={setImageDialogOpen}
         onImagePresetChange={onImagePresetChange}
         setImageInstruction={setImageInstruction}
+        onImageGenerationModeChange={onImageGenerationModeChange}
         onGenerateImage={onGenerateImage}
         onUploadImage={onUploadImage}
         onClearImage={onClearImage}
@@ -307,10 +313,12 @@ function LoreImageGenerateDialog({
   imagePresets,
   imagePresetId,
   imageInstruction,
+  imageGenerationMode,
   imageBusyAction,
   onOpenChange,
   onImagePresetChange,
   setImageInstruction,
+  onImageGenerationModeChange,
   onGenerateImage,
   onUploadImage,
   onClearImage,
@@ -321,10 +329,12 @@ function LoreImageGenerateDialog({
   imagePresets: ImagePreset[]
   imagePresetId: string
   imageInstruction: string
+  imageGenerationMode: 'agent' | 'custom'
   imageBusyAction: 'generate' | 'upload' | 'clear' | ''
   onOpenChange: (open: boolean) => void
   onImagePresetChange: (id: string) => void
   setImageInstruction: (value: string) => void
+  onImageGenerationModeChange: (value: 'agent' | 'custom') => void
   onGenerateImage: () => void
   onUploadImage: (file: File) => void
   onClearImage: () => void
@@ -342,7 +352,18 @@ function LoreImageGenerateDialog({
         </DialogHeader>
 
         <div className="grid gap-3">
-          <Field label={t('settingPanel.loreImage.preset')}>
+          <Field label={t('settingPanel.loreImage.generationMode')}>
+            <Select value={imageGenerationMode} onValueChange={(value) => onImageGenerationModeChange(value as 'agent' | 'custom')} disabled={imageBusy}>
+              <SelectTrigger size="sm" className={selectClassName}><SelectValue /></SelectTrigger>
+              <SelectContent className="nova-panel border text-[var(--nova-text)]">
+                <SelectGroup>
+                  <SelectItem value="agent">{t('settingPanel.loreImage.modeAgent')}</SelectItem>
+                  <SelectItem value="custom">{t('settingPanel.loreImage.modeCustom')}</SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </Field>
+          {imageGenerationMode === 'agent' && <Field label={t('settingPanel.loreImage.preset')}>
             <Select value={imagePresetId} onValueChange={onImagePresetChange} disabled={imageBusy}>
               <SelectTrigger size="sm" className={selectClassName}>
                 <SelectValue />
@@ -357,13 +378,13 @@ function LoreImageGenerateDialog({
                 </SelectGroup>
               </SelectContent>
             </Select>
-          </Field>
-          <Field label={t('settingPanel.loreImage.instruction')}>
+          </Field>}
+          <Field label={t(imageGenerationMode === 'custom' ? 'settingPanel.loreImage.customPrompt' : 'settingPanel.loreImage.instruction')}>
             <Textarea
               className="nova-field min-h-28 resize-y text-xs leading-5 shadow-none focus-visible:ring-0"
               value={imageInstruction}
               onChange={(event) => setImageInstruction(event.target.value)}
-              placeholder={t('settingPanel.loreImage.instructionPlaceholder')}
+              placeholder={t(imageGenerationMode === 'custom' ? 'settingPanel.loreImage.customPromptPlaceholder' : 'settingPanel.loreImage.instructionPlaceholder')}
               disabled={imageBusy}
             />
           </Field>

@@ -32,11 +32,14 @@ type AgentGenerateRequest struct {
 	BranchID      string
 	TurnID        string
 	AltText       string
+	LoreItemID    string
+	ImagePresetID string
 }
 
 type AgentGenerateResult struct {
 	AssistantText    string
 	InteractiveImage *imageasset.InteractiveResult
+	BookCover        *imageasset.CoverResult
 }
 
 type imageAgentRunHooks struct {
@@ -49,6 +52,20 @@ func (service *Service) GenerateWithAgent(ctx context.Context, req AgentGenerate
 		return AgentGenerateResult{}, err
 	}
 	runtime, err := service.AcquireRuntime(ctx, "")
+	if err != nil {
+		return AgentGenerateResult{}, err
+	}
+	defer runtime.Release()
+	return service.generateWithAgent(runtime, req)
+}
+
+// GenerateProjectWithAgent runs one Image Agent request against an explicit
+// Project without depending on the foreground writing workspace.
+func (service *Service) GenerateProjectWithAgent(ctx context.Context, projectID string, req AgentGenerateRequest) (AgentGenerateResult, error) {
+	if err := validateAgentCommandID(req.CommandID); err != nil {
+		return AgentGenerateResult{}, err
+	}
+	runtime, err := service.AcquireProjectRuntime(ctx, projectID)
 	if err != nil {
 		return AgentGenerateResult{}, err
 	}
@@ -92,6 +109,9 @@ func (service *Service) generateWithAgentUsingHooks(runtime *Runtime, req AgentG
 						hookErr = hooks.OnInteractiveImage(image)
 					}
 				}
+				if cover := eventBookCover(ev.Data); cover != nil {
+					result.BookCover = cover
+				}
 			case "error":
 				if runErr == nil {
 					runErr = errors.New(eventErrorMessage(ev.Data))
@@ -134,6 +154,9 @@ func (service *Service) generateWithAgentUsingHooks(runtime *Runtime, req AgentG
 	}
 	if strings.TrimSpace(req.Purpose) == "interactive_image" && result.InteractiveImage == nil {
 		return result, fmt.Errorf("image Agent did not generate an interactive image")
+	}
+	if strings.TrimSpace(req.Purpose) == "book_cover" && result.BookCover == nil {
+		return result, fmt.Errorf("image Agent did not generate a book cover")
 	}
 	if result.InteractiveImage != nil {
 		slog.InfoContext(context.Background(), fmt.Sprintf("[image-agent] generated interactive image workspace=%s story_id=%s branch_id=%s turn_id=%s path=%s", runtime.Workspace, result.InteractiveImage.StoryID, result.InteractiveImage.BranchID, result.InteractiveImage.TurnID, result.InteractiveImage.ImagePath))
@@ -286,11 +309,28 @@ func imageAgentMessage(req AgentGenerateRequest) string {
 	writeImageAgentField(&sb, "branch_id", req.BranchID)
 	writeImageAgentField(&sb, "turn_id", req.TurnID)
 	writeImageAgentField(&sb, "alt_text", req.AltText)
+	writeImageAgentField(&sb, "lore_item_id", req.LoreItemID)
 	writeImageAgentField(&sb, "source_context_sha256", imageAgentSemanticHash(req.SourceContext))
 	writeImageAgentField(&sb, "system_prompt_sha256", imageAgentSemanticHash(req.SystemPrompt))
 	writeImageAgentField(&sb, "tool_prompt_sha256", imageAgentSemanticHash(req.ToolPrompt))
 	sb.WriteString("\nLoad the required Skill, then call generate_image to complete the request.")
 	return strings.TrimSpace(sb.String())
+}
+
+func eventBookCover(data interface{}) *imageasset.CoverResult {
+	payload, ok := data.(map[string]interface{})
+	if !ok {
+		return nil
+	}
+	toolName, _ := payload["name"].(string)
+	content, _ := payload["content"].(string)
+	cover, err := agenttools.ParseBookCoverResult(toolName, content)
+	if err != nil {
+		slog.WarnContext(context.Background(), "[image-agent] decode book cover ToolResult failed",
+			"tool", strings.TrimSpace(toolName), "error", err)
+		return nil
+	}
+	return cover
 }
 
 func imageAgentSemanticHash(value string) string {

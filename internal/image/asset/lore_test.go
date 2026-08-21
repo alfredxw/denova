@@ -142,6 +142,17 @@ func TestBuildLorePromptBoundsLoreContent(t *testing.T) {
 	}
 }
 
+func TestBuildLorePromptPreservesCustomFinalPrompt(t *testing.T) {
+	const prompt = "masterpiece, 1girl, portrait, rim lighting"
+	got := BuildLorePrompt(LoreGenerateRequest{
+		Prompt: prompt, Item: lore.Item{ID: "hero", Name: "林川"},
+		ImagePresetPrompt: "must not be appended", Instruction: "must not be appended",
+	})
+	if got != prompt {
+		t.Fatalf("custom prompt changed: %q", got)
+	}
+}
+
 func TestGenerateStopsBeforeWritingWhenContextCanceledAfterModel(t *testing.T) {
 	workspace := t.TempDir()
 	ctx, cancel := context.WithCancel(context.Background())

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/url"
@@ -12,6 +13,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
 	bookapp "denova/internal/app/book"
+	imageapp "denova/internal/app/image"
 	appsettings "denova/internal/app/settings"
 	"denova/internal/book"
 	projectdomain "denova/internal/project"
@@ -95,6 +97,37 @@ func (h *Handlers) HandleBookCoverGenerate(ctx context.Context, c *app.RequestCo
 	}
 	if req.Path == "" {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.pathRequired")
+		return
+	}
+	if strings.TrimSpace(req.Mode) == "agent" {
+		meta, err := h.app.BookAssets().Info(req.Path)
+		if err != nil {
+			writeError(c, consts.StatusBadRequest, err.Error())
+			return
+		}
+		projectID, err := h.app.BookAssets().ProjectIDForPath(req.Path)
+		if err != nil {
+			writeError(c, consts.StatusBadRequest, err.Error())
+			return
+		}
+		source, err := json.Marshal(map[string]string{
+			"title": meta.Title, "author": meta.Author, "description": meta.Description,
+			"additional_user_requirements": strings.TrimSpace(req.Instruction),
+		})
+		if err != nil {
+			writeError(c, consts.StatusInternalServerError, err.Error())
+			return
+		}
+		agentResult, err := h.app.Images().GenerateProjectWithAgent(ctx, projectID, imageapp.AgentGenerateRequest{
+			CommandID: req.CommandID, Purpose: "book_cover", SourceContext: string(source), ImagePresetID: req.ImagePresetID,
+			SystemPrompt: "Generate exactly one vertical book-cover image grounded in the supplied book metadata. Do not generate text, titles, author names, watermarks, logos, UI panels, or QR codes.",
+			AltText:      "Book cover: " + meta.Title,
+		})
+		if err != nil {
+			writeError(c, consts.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(c, consts.StatusOK, agentResult.BookCover)
 		return
 	}
 	result, err := h.app.BookAssets().GenerateCover(ctx, req)

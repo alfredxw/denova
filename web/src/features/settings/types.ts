@@ -182,6 +182,7 @@ export interface ImageAPIProfileSettings {
   api_key?: string
   base_url?: string
   model?: string
+  prompt_guide?: string
   headers?: Record<string, string>
   default_size?: string
   default_aspect_ratio?: string

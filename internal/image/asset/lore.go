@@ -40,7 +40,10 @@ var (
 )
 
 type LoreGenerateRequest struct {
-	Item              lore.Item
+	Item lore.Item
+	// Prompt is a complete provider prompt. When set, no preset or natural-
+	// language template is added.
+	Prompt            string
 	Instruction       string
 	ImagePresetID     string
 	ImagePresetPrompt string
@@ -285,6 +288,9 @@ func loreImageMIMEType(ext string) string {
 }
 
 func BuildLorePrompt(request LoreGenerateRequest) string {
+	if prompt := strings.TrimSpace(request.Prompt); prompt != "" {
+		return prompt
+	}
 	item := request.Item
 	preset := trimRunes(request.ImagePresetPrompt, maxPresetChars)
 	brief := trimRunes(item.BriefDescription, maxBriefChars)

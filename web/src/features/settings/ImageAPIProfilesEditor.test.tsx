@@ -22,6 +22,7 @@ function EditorHarness({ initialProfiles = [{
     <>
       <output data-testid="default-profile-id">{defaultProfileID}</output>
       <output data-testid="profile-ids">{profiles.map(imageAPIProfileID).join(',')}</output>
+      <output data-testid="prompt-guides">{profiles.map((profile) => profile.prompt_guide || '').join('|')}</output>
       <ImageAPIProfilesEditor
         profiles={profiles}
         effectiveProfiles={profiles}
@@ -112,6 +113,16 @@ describe('ImageAPIProfilesEditor', () => {
     await user.click(screen.getByRole('button', { name: '添加图像模型' }))
 
     expect(screen.getByTestId('profile-ids')).toHaveTextContent('default,gpt-image-2,gpt-image-2-2')
+  })
+
+  it('stores a model-specific prompt guide without treating it as a workflow prompt', async () => {
+    const user = userEvent.setup()
+    render(<EditorHarness />)
+
+    await user.type(screen.getByRole('textbox', { name: '提示词指南' }), 'masterpiece, 1girl, portrait')
+
+    expect(screen.getByTestId('prompt-guides')).toHaveTextContent('masterpiece, 1girl, portrait')
+    expect(screen.getByText('仅用于指导 Agent 编写提示词，不会拼接到最终提示词，也不会发送给图像服务。')).toBeInTheDocument()
   })
 
   it('promotes the next image model without changing its stable ID when the default is deleted', async () => {

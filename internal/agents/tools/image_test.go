@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -199,15 +200,29 @@ func TestGeneratedImageReceiptUsesMetadataAsMutationTarget(t *testing.T) {
 	}
 }
 
-func TestMergeImagePresetToolPromptPrependsPreset(t *testing.T) {
-	got := mergeImagePresetToolPrompt(&config.Config{ImagePresetToolPrompt: "## 请求（tool_request）\n\n真实光影"}, "雨夜小巷，少女回头")
-	for _, required := range []string{"# Image Style Requirements", "真实光影", "# Current Image Request", "雨夜小巷"} {
-		if !strings.Contains(got, required) {
-			t.Fatalf("merged prompt missing %q:\n%s", required, got)
-		}
+func TestGenerateImageToolDescriptionCarriesPromptAuthoringGuidance(t *testing.T) {
+	cfg := &config.Config{
+		Workspace:             t.TempDir(),
+		ImagePresetToolPrompt: "cinematic lighting",
+		ImageAPIProfiles: []config.ImageAPIProfileSettings{{
+			ID: "default", Provider: "comfyui", Protocol: "comfyui-workflow",
+			BaseURL: "http://127.0.0.1:8188", Model: "model.safetensors",
+			PromptGuide: "Use comma-separated tags, for example: masterpiece, 1girl.",
+		}},
 	}
-	if strings.Index(got, "真实光影") > strings.Index(got, "雨夜小巷") {
-		t.Fatalf("preset should be prepended before image request:\n%s", got)
+	definitions, err := newIllustrationTools(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := definitions[0].Tool.Info(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	description := info.Desc
+	for _, required := range []string{"cinematic lighting", "comma-separated tags", "forwards it unchanged", "does not add a negative prompt"} {
+		if !strings.Contains(description, required) {
+			t.Fatalf("tool description missing %q:\n%s", required, description)
+		}
 	}
 }
 

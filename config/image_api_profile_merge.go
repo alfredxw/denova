@@ -56,6 +56,7 @@ func sanitizeImageAPIProfiles(profiles []ImageAPIProfileSettings) []ImageAPIProf
 		profile.Protocol = normalizeImageAPIProtocol(profile.Protocol)
 		profile.BaseURL = strings.TrimSpace(profile.BaseURL)
 		profile.Model = strings.TrimSpace(profile.Model)
+		profile.PromptGuide = strings.TrimSpace(profile.PromptGuide)
 		profile.Headers = sanitizeImageHeaders(profile.Headers)
 		profile.DefaultSize = normalizeImageAPISize(profile.DefaultSize)
 		profile.DefaultAspectRatio = normalizeImageAPIAspectRatio(profile.DefaultAspectRatio)
@@ -105,6 +106,7 @@ func mergeImageAPIProfile(parent, child ImageAPIProfileSettings) ImageAPIProfile
 			out.Protocol = ""
 			out.BaseURL = ""
 			out.Model = ""
+			out.PromptGuide = ""
 			out.ComfyUI = nil
 			clearImageProtocolDefaults(&out)
 		}
@@ -113,6 +115,7 @@ func mergeImageAPIProfile(parent, child ImageAPIProfileSettings) ImageAPIProfile
 		protocol := normalizeImageAPIProtocol(child.Protocol)
 		if previousProtocol != "" && protocol != previousProtocol {
 			out.Model = ""
+			out.PromptGuide = ""
 			out.ComfyUI = nil
 			clearImageProtocolDefaults(&out)
 		}
@@ -130,6 +133,9 @@ func mergeImageAPIProfile(parent, child ImageAPIProfileSettings) ImageAPIProfile
 	}
 	if child.Model != "" {
 		out.Model = strings.TrimSpace(child.Model)
+	}
+	if child.PromptGuide != "" {
+		out.PromptGuide = strings.TrimSpace(child.PromptGuide)
 	}
 	if child.Headers != nil {
 		out.Headers = cloneImageHeaders(child.Headers)

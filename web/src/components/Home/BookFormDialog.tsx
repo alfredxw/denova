@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/dialog'
 import {
   createBook,
+  createAgentCommandID,
   generateBookCover,
   getBookInfo,
   updateBookInfo,
@@ -71,6 +72,7 @@ export function BookFormDialog({
   const [formError, setFormError] = useState('')
   const [coverPresetId, setCoverPresetId] = useState(defaultImagePresetId || 'game-cg')
   const [coverInstruction, setCoverInstruction] = useState('')
+  const [coverGenerationMode, setCoverGenerationMode] = useState<'agent' | 'custom'>('agent')
   const [coverBusy, setCoverBusy] = useState<'upload' | 'generate' | ''>('')
   const [coverError, setCoverError] = useState('')
   const [pendingCoverFile, setPendingCoverFile] = useState<File | null>(null)
@@ -200,8 +202,11 @@ export function BookFormDialog({
       clearPendingCover()
       const result = await generateBookCover({
         path,
-        imagePresetId: coverPresetId || defaultImagePresetId || 'game-cg',
-        instruction: coverInstruction.trim(),
+        mode: coverGenerationMode,
+        commandId: coverGenerationMode === 'agent' ? createAgentCommandID() : undefined,
+        imagePresetId: coverGenerationMode === 'agent' ? coverPresetId || defaultImagePresetId || 'game-cg' : undefined,
+        instruction: coverGenerationMode === 'agent' ? coverInstruction.trim() : undefined,
+        prompt: coverGenerationMode === 'custom' ? coverInstruction.trim() : undefined,
       })
       onCoverUpdated(path, result.cover_updated_at || String(Date.now()))
       await Promise.resolve(onBooksChange())
@@ -324,6 +329,16 @@ export function BookFormDialog({
                   <div className="line-clamp-2 text-[11px] text-[var(--nova-text-faint)]">{t('home.coverUploadPending')}</div>
                 )}
                 <select
+                  aria-label={t('home.coverGenerationMode')}
+                  value={coverGenerationMode}
+                  onChange={(event) => setCoverGenerationMode(event.target.value as 'agent' | 'custom')}
+                  className={inputCls + ' h-8 py-1 text-xs'}
+                  disabled={busy}
+                >
+                  <option value="agent">{t('home.coverModeAgent')}</option>
+                  <option value="custom">{t('home.coverModeCustom')}</option>
+                </select>
+                {coverGenerationMode === 'agent' && <select
                   aria-label={t('home.coverPreset')}
                   value={coverPresetId || defaultImagePresetId || 'game-cg'}
                   onChange={(event) => setCoverPresetId(event.target.value)}
@@ -333,12 +348,12 @@ export function BookFormDialog({
                   {imagePresetOptions.map((preset) => (
                     <option key={preset.id} value={preset.id}>{preset.name || preset.id}</option>
                   ))}
-                </select>
+                </select>}
                 <Textarea
                   autoResize
                   value={coverInstruction}
                   onChange={(event) => setCoverInstruction(event.target.value)}
-                  placeholder={t('home.coverInstructionPlaceholder')}
+                  placeholder={t(coverGenerationMode === 'custom' ? 'home.coverCustomPromptPlaceholder' : 'home.coverInstructionPlaceholder')}
                   rows={3}
                   className={inputCls + ' min-h-20 resize-none'}
                   disabled={busy}
@@ -348,7 +363,7 @@ export function BookFormDialog({
                   type="button"
                   size="xs"
                   className={primaryButtonCls + ' w-full max-w-full justify-center'}
-                  disabled={busy || loading || (mode === 'create' && !novaDir.trim())}
+                  disabled={busy || loading || (mode === 'create' && !novaDir.trim()) || (coverGenerationMode === 'custom' && !coverInstruction.trim())}
                   onClick={() => void handleGenerateCover()}
                 >
                   {coverBusy === 'generate' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}

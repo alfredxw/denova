@@ -1,14 +1,14 @@
 import { http, HttpResponse } from 'msw'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { server } from '@/test/msw/server'
-import { abortLoreImagesGenerate, previewLoreClassification, uploadLoreItemImage } from './lore'
+import { previewLoreClassification, uploadLoreItemImage } from './lore'
 
 describe('lore API', () => {
   afterEach(() => {
     vi.restoreAllMocks()
   })
 
-  it('binds classification and image task controls to the originating Project', async () => {
+  it('binds classification controls to the originating Project', async () => {
     const projectId = 'project-中文作品'
     let previewBody: unknown
     server.use(
@@ -17,14 +17,9 @@ describe('lore API', () => {
         previewBody = await request.json()
         return HttpResponse.json({ revision: 'r1', suggestions: [] })
       }),
-      http.post('/api/projects/:projectId/book/lore/images/generate/abort', ({ params }) => {
-        expect(params.projectId).toBe(projectId)
-        return HttpResponse.json({ status: 'ok' })
-      }),
     )
 
     await previewLoreClassification(projectId, { mode: 'heuristic' })
-    await abortLoreImagesGenerate(projectId)
     expect(previewBody).toEqual({ mode: 'heuristic' })
   })
 

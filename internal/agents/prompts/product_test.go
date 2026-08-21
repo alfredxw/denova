@@ -42,6 +42,19 @@ func TestBuildInteractiveStoryInstructionIsIsolatedFromIDEPrompt(t *testing.T) {
 	}
 }
 
+func TestImageInstructionIncludesSelectedModelPromptGuide(t *testing.T) {
+	cfg := &config.Config{Workspace: t.TempDir(), ImageAPIProfiles: []config.ImageAPIProfileSettings{{
+		ID: "default", Provider: config.ImageProviderComfyUI, Model: "sdxl.safetensors",
+		PromptGuide: "Use comma-separated tags: masterpiece, 1girl.",
+	}}}
+	instruction := BuildImageInstructionComposition(cfg, nil, "").Instruction()
+	for _, required := range []string{"Selected Image Model Prompt Guide", "image model profile \"default\"", "comma-separated tags"} {
+		if !strings.Contains(instruction, required) {
+			t.Fatalf("image instruction missing %q:\n%s", required, instruction)
+		}
+	}
+}
+
 func TestBuildInteractiveStoryInstructionKeepsReplyTargetAboveCustomLengthPrompts(t *testing.T) {
 	state := book.NewState(t.TempDir())
 	instruction := BuildInteractiveStoryInstruction(&config.Config{

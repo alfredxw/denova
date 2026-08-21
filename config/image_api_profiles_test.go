@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestResolveImageAPIProfileUsesProviderDefaultsAndRequiresKey(t *testing.T) {
 	_, err := ResolveImageAPIProfile(&Config{}, "")
@@ -62,6 +65,26 @@ func TestResolveComfyUIBuiltInAndUploadedWorkflows(t *testing.T) {
 	}
 	if uploaded.Model != "" || uploaded.ComfyUI.WorkflowMode != ComfyUIWorkflowAPI {
 		t.Fatalf("uploaded ComfyUI profile mismatch: %#v", uploaded)
+	}
+}
+
+func TestResolveImageAPIProfileCarriesBoundedPromptGuide(t *testing.T) {
+	resolved, err := ResolveImageAPIProfile(&Config{ImageAPIProfiles: []ImageAPIProfileSettings{{
+		ID: "local", Provider: ImageProviderComfyUI, Model: "sdxl.safetensors",
+		PromptGuide: "  masterpiece, 1girl, portrait  ",
+	}}}, "local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.PromptGuide != "masterpiece, 1girl, portrait" {
+		t.Fatalf("prompt guide = %q", resolved.PromptGuide)
+	}
+	_, err = ResolveImageAPIProfile(&Config{ImageAPIProfiles: []ImageAPIProfileSettings{{
+		ID: "local", Provider: ImageProviderComfyUI, Model: "sdxl.safetensors",
+		PromptGuide: strings.Repeat("x", MaxImagePromptGuideBytes+1),
+	}}}, "local")
+	if err == nil || !strings.Contains(err.Error(), "prompt guide exceeds") {
+		t.Fatalf("oversized prompt guide error = %v", err)
 	}
 }
 
