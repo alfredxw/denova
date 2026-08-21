@@ -65,6 +65,7 @@ type safeImageAPIProfileSettings struct {
 	Protocol            string                      `json:"protocol,omitempty"`
 	BaseURL             string                      `json:"base_url,omitempty"`
 	Model               string                      `json:"model,omitempty"`
+	PromptGuide         string                      `json:"prompt_guide,omitempty"`
 	DefaultSize         string                      `json:"default_size,omitempty"`
 	DefaultAspectRatio  string                      `json:"default_aspect_ratio,omitempty"`
 	DefaultResolution   string                      `json:"default_resolution,omitempty"`
@@ -184,6 +185,7 @@ func safeImageAPIProfiles(profiles []config.ImageAPIProfileSettings) []safeImage
 			Protocol:            profile.Protocol,
 			BaseURL:             profile.BaseURL,
 			Model:               profile.Model,
+			PromptGuide:         profile.PromptGuide,
 			DefaultSize:         profile.DefaultSize,
 			DefaultAspectRatio:  profile.DefaultAspectRatio,
 			DefaultResolution:   profile.DefaultResolution,

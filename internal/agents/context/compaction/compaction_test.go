@@ -236,6 +236,17 @@ func TestContextTokenProjectionCalibratesFromExactPreviousProviderUsage(t *testi
 	}
 }
 
+func TestContextTokenProjectionNeverCalibratesBelowLocalEstimate(t *testing.T) {
+	const local = 800
+	calibrated := calibratedContextTokens(local, Input{
+		ObservedPromptTokens:   500,
+		ObservedEstimateTokens: 1000,
+	})
+	if calibrated != local {
+		t.Fatalf("downward provider calibration = %d, want local estimate %d", calibrated, local)
+	}
+}
+
 func TestRecalculateProjectionKeepsCalibrationAndReserves(t *testing.T) {
 	result := RecalculateProjection(Result{
 		ObservedPromptTokens:     840,

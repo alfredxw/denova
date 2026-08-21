@@ -40,8 +40,11 @@ type Service struct {
 }
 
 type CoverGenerateRequest struct {
-	Title             string
-	Description       string
+	Title       string
+	Description string
+	// Prompt is a complete provider prompt. When set, no cover template or
+	// image-preset text is added.
+	Prompt            string
 	Instruction       string
 	ImagePresetID     string
 	ImagePresetPrompt string
@@ -321,6 +324,9 @@ func (s *Service) UploadCover(bookService *book.Service, request CoverUploadRequ
 }
 
 func BuildCoverPrompt(request CoverGenerateRequest) string {
+	if prompt := strings.TrimSpace(request.Prompt); prompt != "" {
+		return prompt
+	}
 	title := trimRunes(request.Title, 200)
 	description := trimRunes(request.Description, 2000)
 	instruction := trimRunes(request.Instruction, 1000)

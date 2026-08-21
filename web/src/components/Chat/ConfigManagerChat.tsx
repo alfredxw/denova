@@ -30,11 +30,14 @@ interface ConfigManagerChatProps {
   storyId?: string
   branchId?: string
   context?: Record<string, string>
+  initialInstruction?: string
+  initialInstructionKey?: string
+  onInitialInstructionAccepted?: () => void
   onMutated?: () => void
   className?: string
 }
 
-export function ConfigManagerChat({ projectId, origin, resourceId, storyId, branchId, context, onMutated, className = '' }: ConfigManagerChatProps) {
+export function ConfigManagerChat({ projectId, origin, resourceId, storyId, branchId, context, initialInstruction, initialInstructionKey, onInitialInstructionAccepted, onMutated, className = '' }: ConfigManagerChatProps) {
   const { t } = useTranslation()
   const activeKeyRef = useRef('')
   const handledToolViewsRef = useRef(new Set<string>())
@@ -45,6 +48,8 @@ export function ConfigManagerChat({ projectId, origin, resourceId, storyId, bran
   const attachScopedTaskRef = useRef<(taskID: string, key: string) => Promise<void>>(async () => {})
   const attachedTaskIDRef = useRef('')
   const immediateReconnectRef = useRef('')
+  const acceptedInitialInstructionsRef = useRef(new Set<string>())
+  const sendRef = useRef<(message: string, onAccepted?: () => void) => Promise<boolean>>(async () => false)
   const [error, setError] = useState<string | null>(null)
   const [runtimeProjection, setRuntimeProjectionState] = useState<ActiveChatTask | null>(null)
   const [recoveryPending, setRecoveryPending] = useState(false)
@@ -301,9 +306,9 @@ export function ConfigManagerChat({ projectId, origin, resourceId, storyId, bran
     setMessages((current) => [...current, createAgentDataMessage({ type: 'agent-error', data: { content } })])
   }
 
-  const send = async (message: string) => {
+  const send = async (message: string, onAccepted?: () => void): Promise<boolean> => {
     const instruction = message.trim()
-    if (!instruction || running || recoveryPending) return
+    if (!instruction || running || recoveryPending) return false
     if (instruction === '/clear') {
       setError(null)
       try {
@@ -315,7 +320,7 @@ export function ConfigManagerChat({ projectId, origin, resourceId, storyId, bran
       } catch (err) {
         appendErrorMessage(`${t('configManager.clearFailed')}: ${errorMessage(err)}`)
       }
-      return
+      return true
     }
     setMessages((current) => [...current, createAgentTextMessage({ role: 'user', text: instruction })])
     setError(null)
@@ -338,16 +343,17 @@ export function ConfigManagerChat({ projectId, origin, resourceId, storyId, bran
         appendErrorMessage(`${t('configManager.runFailed')}: ${errorMessage(err)}`)
         void inspectRuntime(true)
       }
-      return
+      return false
     }
     // The backend has durably accepted the command. Scoped /active now owns
     // refresh and reconnect identity even if this component is remounted.
     startCommandIDsRef.current.delete(retryKey)
+    onAccepted?.()
     try {
       const projection = await getActiveConfigManagerTask(projectId, scope)
       if (activeKeyRef.current !== activeChatKey) {
         await stream.cancel().catch(() => {})
-        return
+        return true
       }
       const taskID = projection.task_id?.trim() || ''
       if (taskID) attachedTaskIDRef.current = taskID
@@ -364,7 +370,9 @@ export function ConfigManagerChat({ projectId, origin, resourceId, storyId, bran
         await stream.cancel().catch(() => {})
       }
     }
+    return true
   }
+  sendRef.current = send
 
   const abortRecovery = async () => {
     const action = runtimeProjectionRef.current?.recovery_actions?.find((candidate) => candidate.kind === 'abort')
@@ -396,6 +404,15 @@ export function ConfigManagerChat({ projectId, origin, resourceId, storyId, bran
   }
 
   const runtimeBusy = running || recoveryPending
+  useEffect(() => {
+    const key = initialInstructionKey?.trim() || ''
+    const instruction = initialInstruction?.trim() || ''
+    if (!key || !instruction || runtimeBusy || acceptedInitialInstructionsRef.current.has(key)) return
+    acceptedInitialInstructionsRef.current.add(key)
+    void sendRef.current(instruction, onInitialInstructionAccepted).then((accepted) => {
+      if (!accepted) acceptedInitialInstructionsRef.current.delete(key)
+    })
+  }, [initialInstruction, initialInstructionKey, onInitialInstructionAccepted, runtimeBusy])
   const canAbortRecovery = runtimeProjection?.recovery_actions?.some((action) => action.kind === 'abort') === true
   const resolveAsk = useCallback(async (view: AgentMessageView, action: { status: 'answered'; answers: AgentAskAnswer[] } | { status: 'cancelled' }) => {
     const askID = agentViewAskID(view)

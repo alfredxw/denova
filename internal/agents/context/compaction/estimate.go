@@ -1,8 +1,6 @@
 package compaction
 
 import (
-	"math"
-
 	agent "github.com/alfredxw/denova/agent"
 
 	"denova/config"
@@ -73,20 +71,15 @@ func projectedContextTokens(promptTokens int, input Input) int {
 	return max(1, promptTokens+max(0, input.ReservedCompletionTokens)+max(0, input.ReservedToolResultTokens))
 }
 
-// calibratedContextTokens uses provider usage only as a ratio measured on the
-// exact previous request. The current assembly is still projected locally, so
-// newly added tool results and completion reserves cannot be mistaken for
-// usage the provider has not observed yet.
+// calibratedContextTokens uses provider usage only as a one-way correction
+// measured on the exact previous request. The current assembly is still
+// projected locally, so newly added tool results and completion reserves
+// cannot be mistaken for usage the provider has not observed yet.
 func calibratedContextTokens(estimated int, input Input) int {
-	estimated = max(1, estimated)
-	if input.ObservedPromptTokens <= 0 || input.ObservedEstimateTokens <= 0 {
-		return estimated
-	}
-	ratio := float64(input.ObservedPromptTokens) / float64(input.ObservedEstimateTokens)
-	if ratio < 0.25 || ratio > 4 {
-		return estimated
-	}
-	return max(1, int(math.Round(float64(estimated)*ratio)))
+	return (agent.CompactionMetrics{
+		ObservedPromptTokens:   input.ObservedPromptTokens,
+		ObservedEstimateTokens: input.ObservedEstimateTokens,
+	}).CalibratedTokens(estimated)
 }
 
 // RecalculateProjection applies the same provider/local

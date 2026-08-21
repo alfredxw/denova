@@ -96,6 +96,16 @@ func TestGenerateWritesCoverSourceMetaAndBackup(t *testing.T) {
 	}
 }
 
+func TestBuildCoverPromptPreservesCustomFinalPrompt(t *testing.T) {
+	const prompt = "masterpiece, book cover, lone starship, cold palette"
+	got := BuildCoverPrompt(CoverGenerateRequest{
+		Prompt: prompt, Title: "星河边境", ImagePresetPrompt: "must not be appended", Instruction: "must not be appended",
+	})
+	if got != prompt {
+		t.Fatalf("custom prompt changed: %q", got)
+	}
+}
+
 func TestGenerateWithoutExistingCoverSkipsBackup(t *testing.T) {
 	workspace := t.TempDir()
 	generator := &coverFakeGenerator{result: imagegen.Result{

@@ -11,6 +11,7 @@ import (
 
 	"denova/config"
 	"denova/internal/book"
+	imageprompting "denova/internal/image/prompting"
 )
 
 const (
@@ -152,8 +153,11 @@ func buildImageBuiltinInstruction(cfg *config.Config, state *book.State, systemP
 		"You are Denova's general Image Agent. Convert bounded context supplied by the caller into an image-generation request.",
 		"Understand purpose, source_context, the caller's system prompt, and loaded Skills before calling generate_image.",
 		"Generate only images and image metadata. Do not modify story prose, chapter prose, lore, configuration, or other workspace content.",
-		"Image prompts should clearly describe the subject, scene, composition, lighting, visual style, mood, and any text, watermark, or logo to avoid.",
+		"Author one complete final prompt for the selected image model. Use natural language only when the selected model's prompt guide does not require another syntax.",
 		"If the caller requires a Skill, load the complete Skill with the skill tool before calling generate_image.",
+	}
+	if guide := imageprompting.SelectedGuide(cfg); guide != "" {
+		parts = append(parts, guide)
 	}
 	if trimmed := strings.TrimSpace(systemPrompt); trimmed != "" {
 		parts = append(parts, "## Caller System Prompt\n\n"+trimmed)

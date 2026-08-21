@@ -95,60 +95,6 @@ func TestLoreItemImageUploadAPIUpdatesItem(t *testing.T) {
 	}
 }
 
-func TestLoreImagesGenerateStreamSkipsExistingByDefault(t *testing.T) {
-	application, imageServer := newLoreImageTestApplication(t)
-	defer imageServer.Close()
-	server := NewServer(application, "0")
-	projectID := application.ProjectID()
-	base := "/api/projects/" + url.PathEscape(projectID) + "/book/lore"
-	withImage, err := application.ProjectBook().CreateLoreItem(projectID, lore.ItemInput{ID: "with-image", Type: "character", Name: "已有图", Importance: "major", Content: "已有。"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	withoutImage, err := application.ProjectBook().CreateLoreItem(projectID, lore.ItemInput{ID: "without-image", Type: "location", Name: "无图地点", Importance: "important", Content: "地点。"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := lore.NewStore(application.BookService().Workspace()).SetImage(withImage.ID, &lore.Image{
-		Schema:    "lore_item_image.v1",
-		ImagePath: "assets/lore/images/with-image/old/image.png",
-		MetaPath:  "assets/lore/images/with-image/old/meta.json",
-		ProfileID: "default",
-		Provider:  "openai",
-		Model:     "gpt-image-1",
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	resp := performJSONRequest(t, server, http.MethodPost, base+"/images/generate/stream", map[string]any{
-		"item_ids": []string{withImage.ID, withoutImage.ID},
-	})
-	if resp.Code != http.StatusOK {
-		t.Fatalf("stream status = %d body=%s", resp.Code, resp.Body.String())
-	}
-	body := resp.Body.String()
-	if !strings.Contains(body, `"status":"skipped"`) || !strings.Contains(body, `"item_id":"with-image"`) {
-		t.Fatalf("stream should report skipped existing image:\n%s", body)
-	}
-	if !strings.Contains(body, `"status":"success"`) || !strings.Contains(body, `"item_id":"without-image"`) {
-		t.Fatalf("stream should report generated item:\n%s", body)
-	}
-	items, err := application.ProjectBook().LoreItems(projectID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	byID := map[string]lore.Item{}
-	for _, item := range items {
-		byID[item.ID] = item
-	}
-	if byID[withImage.ID].Image == nil || byID[withImage.ID].Image.ImagePath != "assets/lore/images/with-image/old/image.png" {
-		t.Fatalf("existing image should be preserved: %#v", byID[withImage.ID])
-	}
-	if byID[withoutImage.ID].Image == nil || !strings.HasPrefix(byID[withoutImage.ID].Image.ImagePath, "assets/lore/images/without-image/") {
-		t.Fatalf("missing image should be generated: %#v", byID[withoutImage.ID])
-	}
-}
-
 func newLoreImageTestApplication(t *testing.T) (*runtimeapp.App, *httptest.Server) {
 	t.Helper()
 	var calls int

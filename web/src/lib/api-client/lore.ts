@@ -1,5 +1,5 @@
-import { fetchAPI, jsonHeaders, parseSSEStream, readErrorMessage, requestJSON } from './client'
-import type { LoreClassificationApplyRequest, LoreClassificationPreview, LoreClassificationPreviewRequest, LoreImagesGenerateRequest, LoreItem, LoreItemImageGenerateRequest, LoreTypeApplyResult, SSEEvent } from './types'
+import { jsonHeaders, requestJSON } from './client'
+import type { LoreClassificationApplyRequest, LoreClassificationPreview, LoreClassificationPreviewRequest, LoreItem, LoreItemImageGenerateRequest, LoreTypeApplyResult } from './types'
 import { projectAPIPath } from './project-scope'
 
 function lorePath(projectId: string, suffix: string): string {
@@ -41,24 +41,4 @@ export async function uploadLoreItemImage(projectId: string, id: string, file: F
 
 export async function clearLoreItemImage(projectId: string, id: string): Promise<LoreItem> {
   return requestJSON(lorePath(projectId, `items/${encodeURIComponent(id)}/image`), { method: 'DELETE' })
-}
-
-export async function streamLoreImagesGenerate(projectId: string, input: LoreImagesGenerateRequest, signal?: AbortSignal): Promise<ReadableStream<SSEEvent>> {
-  const res = await fetchAPI(lorePath(projectId, 'images/generate/stream'), {
-    method: 'POST',
-    headers: jsonHeaders,
-    body: JSON.stringify(input),
-    signal,
-  })
-  if (!res.ok) {
-    throw new Error(await readErrorMessage(res))
-  }
-  if (!res.body) {
-    throw new Error('No response stream')
-  }
-  return parseSSEStream(res.body)
-}
-
-export async function abortLoreImagesGenerate(projectId: string): Promise<void> {
-  await requestJSON(lorePath(projectId, 'images/generate/abort'), { method: 'POST' })
 }

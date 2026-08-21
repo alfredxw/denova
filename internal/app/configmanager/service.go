@@ -184,6 +184,7 @@ func (service *Service) buildCycle(
 		return agentexecution.Cycle{}, fmt.Errorf("load Config Manager project settings: %w", err)
 	}
 	appsettings.ApplyLocale(&runtimeConfig, request.Locale)
+	configureScopedTools(&runtimeConfig, request.Origin)
 	resourceSkills, err := loadResourceSkills(ctx, &runtimeConfig, request)
 	if err != nil {
 		return agentexecution.Cycle{}, fmt.Errorf("load Config Manager resource Skills: %w", err)
@@ -220,6 +221,21 @@ func (service *Service) buildCycle(
 			},
 		},
 	}, nil
+}
+
+func configureScopedTools(cfg *config.Config, origin string) {
+	if cfg == nil {
+		return
+	}
+	cfg.ConfigManagerOrigin = strings.TrimSpace(origin)
+	if cfg.ConfigManagerOrigin != "lore" {
+		return
+	}
+	if cfg.AgentTools.ConfigManager == nil {
+		cfg.AgentTools.ConfigManager = make(config.AgentToolOverride)
+	}
+	cfg.AgentTools.ConfigManager[config.AgentToolLoreRead] = true
+	cfg.AgentTools.ConfigManager[config.AgentToolImageGeneration] = true
 }
 
 func encodeConfigManagerRestoreData(request Request) (*agentrun.RestoreData, error) {

@@ -9,6 +9,7 @@ import { toast } from 'sonner'
 
 vi.mock('@/lib/api', () => ({
   bookCoverURL: (path: string, version?: string) => `/api/books/cover?path=${encodeURIComponent(path)}${version ? `&v=${encodeURIComponent(version)}` : ''}`,
+  createAgentCommandID: vi.fn(() => 'cover-command-1'),
   createBook: vi.fn(),
   downloadBookExport: vi.fn(),
   exportBook: vi.fn(),
@@ -132,8 +133,11 @@ describe('HomeView book covers', () => {
     await waitFor(() => {
       expect(generateBookCover).toHaveBeenCalledWith({
         path: '/books/star',
+        mode: 'agent',
+        commandId: 'cover-command-1',
         imagePresetId: 'realistic',
         instruction: '冷色调',
+        prompt: undefined,
       })
     })
     expect(onBooksChange).toHaveBeenCalled()
@@ -182,8 +186,11 @@ describe('HomeView book covers', () => {
       expect(createBook).toHaveBeenCalledWith('新书', undefined, undefined)
       expect(generateBookCover).toHaveBeenCalledWith({
         path: '/books/new',
+        mode: 'agent',
+        commandId: 'cover-command-1',
         imagePresetId: 'realistic',
         instruction: '冷色调',
+        prompt: undefined,
       })
     })
     expect(onSwitch).toHaveBeenCalledWith('/books/new')

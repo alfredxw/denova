@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
+import { Textarea } from '@/components/ui/textarea'
 import { ApiKeyInput } from './ApiKeyInput'
 import { ImageProfilePingButton } from './ImageProfilePingButton'
 import {
@@ -25,6 +26,7 @@ import { nextProfileIDAfterRemoval } from './profile-list'
 const INHERIT_VALUE = '__inherit__'
 const PROVIDER_DEFAULT_VALUE = '__provider_default__'
 const MAX_WORKFLOW_BYTES = 5 * 1024 * 1024
+const MAX_PROMPT_GUIDE_LENGTH = 64 * 1024
 const OPENAI_QUALITY_OPTIONS = ['auto', 'high', 'medium', 'low', 'standard', 'hd']
 const XAI_QUALITY_OPTIONS = ['medium', 'low']
 const FORMAT_OPTIONS = ['png', 'jpeg', 'webp']
@@ -244,6 +246,17 @@ export function ImageAPIProfilesEditor({ profiles, effectiveProfiles, defaultPro
                   </>
                 )}
                 <ProtocolOptions protocol={protocol} profile={profile} defaults={defaults} onUpdate={(patch) => updateProfile(index, patch)} />
+                <ProfileField label={t('settings.imageApi.promptGuide')} className="md:col-span-12">
+                  <Textarea
+                    aria-label={t('settings.imageApi.promptGuide')}
+                    value={profile.prompt_guide ?? ''}
+                    maxLength={MAX_PROMPT_GUIDE_LENGTH}
+                    rows={5}
+                    placeholder={t('settings.imageApi.promptGuidePlaceholder')}
+                    onChange={(event) => updateProfile(index, { prompt_guide: event.target.value })}
+                  />
+                  <span className="text-[11px] leading-4 text-[var(--nova-text-faint)]">{t('settings.imageApi.promptGuideHint')}</span>
+                </ProfileField>
               </div>
               <div className="border-t border-[var(--nova-border)] px-2.5 py-2"><ImageProfilePingButton profile={profile} /></div>
             </div>

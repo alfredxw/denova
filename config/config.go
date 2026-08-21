@@ -61,6 +61,7 @@ type Config struct {
 	InteractiveStoryTellerID    string                    `toml:"-"`
 	IDEImagePresetID            string                    `toml:"-"`
 	ImagePresetToolPrompt       string                    `toml:"-"`
+	ConfigManagerOrigin         string                    `toml:"-"`
 	WritingSkillDefault         string                    `toml:"writing_skill_default"`
 	MaxIteration                int                       `toml:"max_iteration"`
 	ModelMaxRetries             int                       `toml:"model_max_retries"`

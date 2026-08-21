@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { useState, type ComponentProps } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { toast, type Action } from 'sonner'
-import { APIError, deleteProjectLoreItem, generateLoreItemImage, getProjectLoreItems, readOptionalProjectFile, readProjectFile, saveProjectFile, streamLoreImagesGenerate, updateProjectLoreItem, uploadLoreItemImage, type LoreItem } from '@/lib/api'
+import { APIError, deleteProjectLoreItem, generateLoreItemImage, getProjectLoreItems, readOptionalProjectFile, readProjectFile, saveProjectFile, updateProjectLoreItem, uploadLoreItemImage, type LoreItem } from '@/lib/api'
 import { preserveAutosaveConflict } from '@/lib/api-client/autosave-conflicts'
 import { createActorState, createImagePreset, createInteractiveTeller, createStoryDirector, deleteActorState, deleteEventPackage, deleteImagePreset, deleteInteractiveTeller, deleteStoryDirector, getActorStates, getEventPackages, getImagePresets, getInteractiveTellers, getRuleSystems, getStoryDirectors, getStyleReferences, updateActorState, updateEventPackage, updateImagePreset, updateInteractiveTeller, updateRuleSystem, updateStoryDirector } from '../api'
 import { serializeBookOpeningPresets } from '../opening'
@@ -42,6 +42,8 @@ const { configManagerChatProps, markdownRichEditorProps, monacoEditorActions } =
   configManagerChatProps: [] as Array<{
     origin?: string
     resourceId?: string
+    initialInstruction?: string
+    initialInstructionKey?: string
     onMutated?: () => void
   }>,
   markdownRichEditorProps: [] as Array<{
@@ -117,6 +119,8 @@ vi.mock('@/components/Chat/ConfigManagerChat', () => ({
   ConfigManagerChat: (props: {
     origin?: string
     resourceId?: string
+    initialInstruction?: string
+    initialInstructionKey?: string
     onMutated?: () => void
   }) => {
     configManagerChatProps.push(props)
@@ -157,7 +161,6 @@ vi.mock('@/lib/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/api')>()
   return {
     ...actual,
-    abortLoreImagesGenerate: vi.fn(),
     clearLoreItemImage: vi.fn(),
     createProjectLoreItem: vi.fn(),
     deleteProjectLoreItem: vi.fn(),
@@ -166,7 +169,6 @@ vi.mock('@/lib/api', async (importOriginal) => {
     readOptionalProjectFile: vi.fn().mockResolvedValue(null),
     readProjectFile: vi.fn().mockResolvedValue(projectFileDocument('', '', '')),
     saveProjectFile: vi.fn(),
-    streamLoreImagesGenerate: vi.fn(),
     updateProjectLoreItem: vi.fn(),
     uploadLoreItemImage: vi.fn(),
   }
@@ -217,7 +219,6 @@ describe('SettingPanel', () => {
     vi.mocked(updateProjectLoreItem).mockReset()
     vi.mocked(deleteProjectLoreItem).mockReset()
     vi.mocked(generateLoreItemImage).mockReset()
-    vi.mocked(streamLoreImagesGenerate).mockReset()
     vi.mocked(uploadLoreItemImage).mockReset()
     vi.mocked(readProjectFile).mockReset()
     vi.mocked(readProjectFile).mockResolvedValue(projectFileDocument('', '', ''))
@@ -1684,13 +1685,6 @@ describe('SettingPanel', () => {
     const lin = loreItem('lin-chuan', '林川')
     const harbor = loreItem('moon-harbor', '月港', 'location')
     vi.mocked(getProjectLoreItems).mockResolvedValue([lin, harbor])
-    vi.mocked(streamLoreImagesGenerate).mockResolvedValue(new ReadableStream({
-      start(controller) {
-        controller.enqueue({ event: 'done', data: JSON.stringify({ generated: 1, skipped: 0, failed: 0 }) })
-        controller.close()
-      },
-    }))
-
     render(<SettingPanel mode="lore" imagePresets={[imagePreset('game-cg', '游戏 CG'), imagePreset('ink-wash', '水墨风格')]} />)
 
     await user.click(await screen.findByRole('button', { name: '批量生成资料图片' }))
@@ -1703,11 +1697,14 @@ describe('SettingPanel', () => {
     await user.click(screen.getByRole('button', { name: '开始生成' }))
 
     await waitFor(() => {
-      expect(streamLoreImagesGenerate).toHaveBeenCalledWith(TEST_PROJECT_ID, expect.objectContaining({
-        item_ids: ['lin-chuan'],
-        overwrite_existing: false,
-        image_preset_id: 'ink-wash',
-      }), expect.any(AbortSignal))
+      expect(configManagerChatProps.at(-1)).toMatchObject({
+        origin: 'lore',
+        resourceId: '__config_manager_lore__',
+        initialInstructionKey: expect.stringMatching(/^lore-images-/),
+      })
+      expect(configManagerChatProps.at(-1)?.initialInstruction).toContain('Exact lore item IDs: ["lin-chuan"]')
+      expect(configManagerChatProps.at(-1)?.initialInstruction).toContain('Image preset ID: "ink-wash"')
+      expect(configManagerChatProps.at(-1)?.initialInstruction).toContain('Overwrite existing images: no.')
     })
   })
 })

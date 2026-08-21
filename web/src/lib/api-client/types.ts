@@ -817,23 +817,12 @@ interface LoreItemImage {
 }
 
 export interface LoreItemImageGenerateRequest {
+  mode?: 'agent' | 'custom'
+  command_id?: string
+  prompt?: string
   instruction?: string
   image_preset_id?: string
   profile_id?: string
-}
-
-export interface LoreImagesGenerateRequest extends LoreItemImageGenerateRequest {
-  item_ids: string[]
-  overwrite_existing?: boolean
-}
-
-export interface LoreImageProgressEvent {
-  item_id: string
-  index: number
-  total: number
-  status: 'running' | 'skipped' | 'success' | 'error'
-  message?: string
-  item?: LoreItem
 }
 
 export type SkillScope = 'builtin' | 'user' | 'workspace'

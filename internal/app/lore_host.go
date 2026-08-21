@@ -6,11 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
 
 	"denova/config"
 	agentmodeltask "denova/internal/agents/modeltask"
-	"denova/internal/app/task"
 	booklore "denova/internal/book/lore"
 )
 
@@ -38,27 +36,6 @@ func (host loreHost) WithLoreStore(ctx context.Context, projectID string, action
 		return "", err
 	}
 	return workspace, nil
-}
-
-func (host loreHost) RegisterLoreTask(backgroundTask *task.Task, projectID string) (string, error) {
-	if host.app == nil {
-		return "", ErrNoWorkspace
-	}
-	projectID = strings.TrimSpace(projectID)
-	_, layout, err := host.app.resolveProject(projectID, true)
-	if err != nil {
-		return "", err
-	}
-	if err := host.app.registerProjectTask(backgroundTask, projectID, layout.ContentRoot, layout.StateRoot); err != nil {
-		return "", err
-	}
-	return layout.ContentRoot, nil
-}
-
-func (host loreHost) UnregisterLoreTask(backgroundTask *task.Task) {
-	if host.app != nil {
-		host.app.unregisterProjectTask(backgroundTask)
-	}
 }
 
 func (host loreHost) ClassifyLoreItems(ctx context.Context, projectID string, inputs []booklore.ClassificationInput) ([]booklore.ClassificationSuggestion, error) {

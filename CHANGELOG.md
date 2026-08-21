@@ -48,6 +48,8 @@ Denova records only major user-visible features, important compatibility or data
 
 ### Major fixes / 重要修复
 
+- 修复 Provider Token 校准可能下调本地保守估算、导致长会话过晚清理上下文的问题；真实用量现在只会向上修正上下文压力。
+- Fixed provider token calibration lowering conservative local estimates and delaying context cleanup in long sessions; observed usage now only raises projected pressure.
 - 修复部分 v0.3.3 游戏故事升级后因旧上下文事件而无法打开的问题；迁移会先完整备份原始 JSONL，再原子重连有效历史。
 - Fixed some v0.3.3 Game stories failing to open after upgrade because of obsolete context events. Migration now backs up the original JSONL before atomically reconnecting valid history.
 - 修复写作、游戏和工作台长任务在刷新、断线重连、中断或继续执行后可能丢失或重复消息、工具结果和已提交内容的问题。

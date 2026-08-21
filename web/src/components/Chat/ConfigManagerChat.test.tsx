@@ -108,6 +108,31 @@ describe('ConfigManagerChat durable runtime control', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'send config' })).toBeEnabled())
   })
 
+  it('submits one initial task after the scoped runtime is ready', async () => {
+    const accepted = vi.fn()
+    let resolveRefresh!: (projection: ActiveChatTask) => void
+    vi.mocked(getActiveConfigManagerTask)
+      .mockResolvedValueOnce(idleProjection())
+      .mockReturnValueOnce(new Promise((resolve) => { resolveRefresh = resolve }))
+    vi.mocked(runConfigManagerStream).mockResolvedValue(emptyStream())
+    render(
+      <ConfigManagerChat
+        projectId={projectID}
+        origin="lore"
+        initialInstruction="Generate selected lore images"
+        initialInstructionKey="lore-images-1"
+        onInitialInstructionAccepted={accepted}
+      />,
+    )
+
+    await waitFor(() => expect(runConfigManagerStream).toHaveBeenCalledWith(projectID, expect.objectContaining({
+      instruction: 'Generate selected lore images',
+      origin: 'lore',
+    })))
+    await waitFor(() => expect(accepted).toHaveBeenCalledTimes(1))
+    resolveRefresh(idleProjection())
+  })
+
   it('retains command_id after an uncertain network failure', async () => {
     vi.mocked(runConfigManagerStream)
       .mockRejectedValueOnce(new TypeError('Failed to fetch'))

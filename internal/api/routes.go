@@ -58,8 +58,6 @@ func (s *Server) registerRoutes(h *hertzserver.Hertz) {
 		projects.POST("/book/lore/items/:id/image/generate", apiHandlers.HandleLoreItemImageGenerate)
 		projects.POST("/book/lore/items/:id/image/upload", apiHandlers.HandleLoreItemImageUpload)
 		projects.DELETE("/book/lore/items/:id/image", apiHandlers.HandleLoreItemImageDelete)
-		projects.POST("/book/lore/images/generate/stream", apiHandlers.HandleLoreImagesGenerateStream)
-		projects.POST("/book/lore/images/generate/abort", apiHandlers.HandleLoreImagesGenerateAbort)
 		projects.GET("/book/document-review", apiHandlers.HandleProjectDocumentReview)
 		projects.POST("/book/document-comments", apiHandlers.HandleProjectDocumentCommentCreate)
 		projects.PATCH("/book/document-comments/:id", apiHandlers.HandleProjectDocumentCommentUpdate)

@@ -17,9 +17,23 @@ import (
 
 type CoverGenerateRequest struct {
 	Path          string `json:"path"`
+	Mode          string `json:"mode,omitempty"`
+	CommandID     string `json:"command_id,omitempty"`
+	Prompt        string `json:"prompt,omitempty"`
 	ImagePresetID string `json:"image_preset_id,omitempty"`
 	Instruction   string `json:"instruction,omitempty"`
 	ProfileID     string `json:"profile_id,omitempty"`
+}
+
+func (service *Service) ProjectIDForPath(path string) (string, error) {
+	if service == nil || service.registry == nil {
+		return "", fmt.Errorf("project registry is unavailable")
+	}
+	record, _, err := service.registry.ResolveByPath(path, true)
+	if err != nil {
+		return "", err
+	}
+	return record.ID, nil
 }
 
 func (service *Service) GenerateCover(ctx context.Context, request CoverGenerateRequest) (imageasset.CoverResult, error) {
@@ -35,13 +49,17 @@ func (service *Service) GenerateCover(ctx context.Context, request CoverGenerate
 	if err != nil {
 		return imageasset.CoverResult{}, err
 	}
-	preset, err := resolveBookCoverImagePreset(cfg, request.ImagePresetID)
-	if err != nil {
-		return imageasset.CoverResult{}, err
+	preset := imagepreset.Preset{}
+	if strings.TrimSpace(request.Prompt) == "" {
+		preset, err = resolveBookCoverImagePreset(cfg, request.ImagePresetID)
+		if err != nil {
+			return imageasset.CoverResult{}, err
+		}
 	}
 	return imageasset.NewService().GenerateCover(ctx, &cfg, book.NewService(absPath), imageasset.CoverGenerateRequest{
 		Title:             meta.Title,
 		Description:       meta.Description,
+		Prompt:            request.Prompt,
 		Instruction:       request.Instruction,
 		ImagePresetID:     preset.ID,
 		ImagePresetPrompt: preset.PromptForTargets(imagepreset.TargetToolRequest),
