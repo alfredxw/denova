@@ -28,7 +28,7 @@ export function WorkbenchContextSwitcherTrigger({
       type={type}
       data-slot="workbench-context-switcher-trigger"
       className={cn(
-        'flex min-w-0 items-center justify-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] outline-none transition-colors hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] focus-visible:ring-2 focus-visible:ring-[var(--nova-field-focus-border)] data-[state=open]:border-[var(--nova-field-focus-border)] data-[state=open]:bg-[var(--nova-active)] data-[state=open]:text-[var(--nova-text)]',
+        'flex min-w-0 select-none items-center justify-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] outline-none transition-colors hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] focus-visible:ring-2 focus-visible:ring-[var(--nova-field-focus-border)] data-[state=open]:border-[var(--nova-field-focus-border)] data-[state=open]:bg-[var(--nova-active)] data-[state=open]:text-[var(--nova-text)]',
         iconOnly
           ? 'size-8 p-0'
           : compact
@@ -40,7 +40,7 @@ export function WorkbenchContextSwitcherTrigger({
     >
       <Icon aria-hidden="true" className={cn('h-3.5 w-3.5 shrink-0', compact && !iconOnly && 'hidden')} />
       <span className={cn('min-w-0 truncate font-medium', iconOnly && 'sr-only')}>{label}</span>
-      {!iconOnly && <ChevronDown aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />}
+      {!iconOnly && <ChevronDown aria-hidden="true" className="ml-auto h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />}
     </button>
   )
 }

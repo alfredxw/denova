@@ -98,7 +98,7 @@ export function WorkbenchAppSidebar({
           role="navigation"
           aria-label={sidebarLabel}
         >
-          <SidebarHeader className="gap-2 p-2">
+          <SidebarHeader className="select-none gap-2 p-2">
             <div className={`flex h-8 items-center ${expanded ? 'gap-2 px-2' : 'justify-center'}`}>
               <WorkbenchBrandIcon />
               {expanded ? <span className="truncate text-xs font-semibold tracking-wide text-[var(--nova-text)]">Denova</span> : null}

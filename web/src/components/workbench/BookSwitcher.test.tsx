@@ -41,6 +41,26 @@ describe('BookSwitcher', () => {
     expect(trigger).not.toHaveTextContent('12,000 字')
   })
 
+  it('keeps switcher chrome unselectable and aligns the chevron to the far edge', () => {
+    const longTitle = '一部标题很长但仍应保留右侧展开符号的示例书'
+    renderSwitcher({ currentBookName: longTitle })
+
+    const trigger = screen.getByRole('button', { name: `切换书籍，当前：${longTitle}` })
+    expect(trigger).toHaveClass('select-none')
+    expect(within(trigger).getByText(longTitle)).toHaveClass('truncate')
+    expect(trigger.querySelector('svg:last-child')).toHaveClass('ml-auto')
+  })
+
+  it('keeps the trigger and empty state usable without any book data', async () => {
+    const user = userEvent.setup()
+    renderSwitcher({ books: [], currentBookName: '', workspace: '' })
+
+    const trigger = screen.getByRole('button', { name: '切换书籍，当前：' })
+    expect(trigger.querySelector('svg:last-child')).toHaveClass('ml-auto')
+    await user.click(trigger)
+    expect(screen.getByText('书架中暂无书籍')).toBeInTheDocument()
+  })
+
   it('switches without invoking book management and closes after a successful switch', async () => {
     const user = userEvent.setup()
     const onSwitchBook = vi.fn().mockResolvedValue(true)

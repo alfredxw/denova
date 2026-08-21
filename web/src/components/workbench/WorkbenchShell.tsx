@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { arrayMove } from '@dnd-kit/sortable'
 import { Group, Panel, Separator } from 'react-resizable-panels'
-import { BookOpen, Bot, Clock3, Database, History, MessageSquareText, PanelLeft, PenLine, Route, Search, Settings, SlidersHorizontal, Sparkles, Terminal } from 'lucide-react'
+import { BookOpen, Bot, Clock3, Database, Gamepad2, History, PanelLeft, PenLine, Route, Search, Settings, SlidersHorizontal, Sparkles, Terminal } from 'lucide-react'
 import { WorkspaceLayout } from '@/components/layout/workspace-layout'
 import { WorkspaceMobileLayout, type MobileNavItem } from '@/components/layout/workspace-mobile-layout'
 import { createStablePortalHost, StablePortalSlot } from '@/components/layout/stable-portal-slot'
@@ -328,7 +328,7 @@ export function WorkbenchShell({
       label: t('workbench.activity.game'),
       onClick: () => openInteractiveSubmode('story'),
       active: interactiveModeActive && (interactiveSubmode === 'story' || interactiveSubmode === 'director' || interactiveSubmode === 'timeline'),
-      icon: <MessageSquareText className="h-4 w-4" />,
+      icon: <Gamepad2 className="h-4 w-4" />,
     },
     {
       id: 'lore',

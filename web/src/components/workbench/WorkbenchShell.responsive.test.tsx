@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { setConfiguredLocale } from '@/i18n'
 import { WorkbenchShell } from './WorkbenchShell'
@@ -207,6 +207,7 @@ describe('WorkbenchShell responsive main content', () => {
     render(<WorkbenchShell {...workbenchProps(<div />)} />)
 
     const storyButton = screen.getByRole('button', { name: /^(游戏|Game)$/ })
+    expect(storyButton.querySelector('.lucide-gamepad-2')).toBeInTheDocument()
     expect(storyButton).toHaveAttribute('aria-current', 'page')
     expect(storyButton).toHaveAttribute('aria-roledescription', 'sortable')
     expect(storyButton.querySelector('[aria-roledescription="sortable"]')).toBeNull()
@@ -314,7 +315,7 @@ describe('WorkbenchShell responsive main content', () => {
   })
 
   it('keeps the Workspace menu label in sync with the current language', async () => {
-    render(<WorkbenchShell {...workbenchProps(<div />)} />)
+    render(<WorkbenchShell {...workbenchProps(<div />)} activityBarExpanded />)
     expect(screen.getByRole('button', { name: '工作台' })).toBeInTheDocument()
 
     await act(async () => {
@@ -323,6 +324,10 @@ describe('WorkbenchShell responsive main content', () => {
     })
 
     expect(screen.getByRole('button', { name: 'Workspace' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Books' })).toBeInTheDocument()
+    const modeSwitch = screen.getByRole('group', { name: 'Mode Switch' })
+    expect(within(modeSwitch).getByRole('button', { name: 'Writing Mode' })).toHaveTextContent('Writing')
+    expect(within(modeSwitch).getByRole('button', { name: 'Game Mode' })).toHaveTextContent('Game')
   })
 
   it.each([

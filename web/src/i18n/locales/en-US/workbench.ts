@@ -2,7 +2,7 @@ const workbench = {
   'workbench.activity.agentchat': 'Workspace',
   'workbench.activity.agents': 'Agents',
   'workbench.activity.automations': 'Automations',
-  'workbench.activity.books': 'Book Management',
+  'workbench.activity.books': 'Books',
   'workbench.activity.creator': 'Creator',
   'workbench.activity.director': 'Director',
   'workbench.activity.lore': 'Lore',
