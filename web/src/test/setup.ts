@@ -1,7 +1,6 @@
 import '@testing-library/jest-dom/vitest'
-import { afterAll, afterEach, beforeAll, vi } from 'vitest'
+import { afterEach, beforeAll, vi } from 'vitest'
 import { cleanup } from '@testing-library/react'
-import { server } from './msw/server'
 import { setConfiguredLocale } from '@/i18n'
 
 class ResizeObserverMock {
@@ -127,15 +126,9 @@ Object.defineProperty(document, 'elementFromPoint', {
 
 beforeAll(() => {
   setConfiguredLocale('zh-CN')
-  server.listen({ onUnhandledRequest: 'error' })
 })
 
 afterEach(() => {
   vi.useRealTimers()
   cleanup()
-  server.resetHandlers()
-})
-
-afterAll(() => {
-  server.close()
 })

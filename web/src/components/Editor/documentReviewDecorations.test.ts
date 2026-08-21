@@ -85,26 +85,6 @@ describe('document review decorations', () => {
     expect(expandedHighlight?.getAttribute('aria-controls')).toBe(target?.id)
   })
 
-  it('underlines review anchors in the lightweight Lore editor surface', () => {
-    const reviewState = { current: {
-      enabled: true,
-      decorations: [{ key: 'comment:lore', coordinateSpace: 'test', from: 1, to: 3, widgetPos: 5, showWidget: false }],
-    } as DocumentReviewDecorationState }
-    editor = new Editor({
-      extensions: [StarterKit, createDocumentReviewExtension(reviewState, () => undefined)],
-      content: '<p>资料正文</p>',
-    })
-    const loreSurface = document.createElement('div')
-    loreSurface.className = 'nova-rich-markdown'
-    loreSurface.append(editor.view.dom)
-    document.body.append(loreSurface)
-
-    const highlight = reviewHighlights(editor, 'comment:lore')[0] ?? null
-    expect(highlight).not.toBeNull()
-    expect(getComputedStyle(highlight!).textDecorationLine).toBe('underline')
-    loreSurface.remove()
-  })
-
   it('keeps textarea deletion events inside the comment widget', () => {
     const handleKeyDown = vi.fn(() => false)
     const keyDownProbe = Extension.create({

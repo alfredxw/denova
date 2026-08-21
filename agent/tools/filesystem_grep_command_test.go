@@ -402,7 +402,7 @@ func TestCompileGrepCommandSupportsExternalAndEscapingSymlinkPaths(t *testing.T)
 		t.Skip("symlink creation is not generally available to unprivileged Windows tests")
 	}
 	root := t.TempDir()
-	external := t.TempDir()
+	external := mustCanonicalTestPath(t, t.TempDir())
 	if err := os.Symlink(external, filepath.Join(root, "outside")); err != nil {
 		t.Fatal(err)
 	}
@@ -419,7 +419,7 @@ func TestCompileGrepCommandSupportsExternalAndEscapingSymlinkPaths(t *testing.T)
 }
 
 func TestCompileGrepCommandSupportsParentAbsoluteAndGlobExternalPaths(t *testing.T) {
-	parent := t.TempDir()
+	parent := mustCanonicalTestPath(t, t.TempDir())
 	project := filepath.Join(parent, "project")
 	external := filepath.Join(parent, "shared")
 	for _, directory := range []string{project, external} {

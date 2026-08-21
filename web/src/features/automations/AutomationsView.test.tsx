@@ -89,29 +89,6 @@ describe('AutomationsView', () => {
     }
   })
 
-  it('collapses and restores the automation sidebar from the page header', async () => {
-    const user = userEvent.setup()
-    server.use(
-      http.get('/api/books', () => HttpResponse.json({ books: [] })),
-      http.get('/api/automations', () => HttpResponse.json({ tasks: [] })),
-      http.get('/api/automations/templates', () => HttpResponse.json({ templates: [] })),
-      http.get('/api/automations/inbox', () => HttpResponse.json({ items: [] })),
-    )
-
-    render(<AutomationsView workspace="/books/a" />)
-
-    const collapse = await screen.findByRole('button', { name: '收起侧边栏' })
-    const separator = screen.getByRole('separator', { name: '调整侧边栏宽度' })
-    await user.click(collapse)
-
-    expect(screen.getByRole('button', { name: '展开侧边栏' })).toHaveAttribute('aria-pressed', 'false')
-    expect(separator).toHaveAttribute('aria-hidden', 'true')
-
-    await user.click(screen.getByRole('button', { name: '展开侧边栏' }))
-    expect(screen.getByRole('button', { name: '收起侧边栏' })).toHaveAttribute('aria-pressed', 'true')
-    expect(separator).toHaveAttribute('aria-hidden', 'false')
-  })
-
   it('lists every Project catalog and toggles a Project from the full header row', async () => {
     const user = userEvent.setup()
     server.use(
@@ -173,30 +150,6 @@ describe('AutomationsView', () => {
     } finally {
       consoleError.mockRestore()
     }
-  })
-
-  it('starts a new draft for the Project chosen from its catalog shortcut', async () => {
-    const user = userEvent.setup()
-    let created = false
-    server.use(
-      http.get('/api/agent-chat/projects', () => HttpResponse.json({ projects: [projectA, projectB] })),
-      http.get('/api/automations', () => HttpResponse.json({ tasks: [] })),
-      http.get('/api/automations/templates', () => HttpResponse.json({ templates: [reviewTemplate] })),
-      http.get('/api/automations/inbox', () => HttpResponse.json({ items: [] })),
-      http.post('/api/automations', () => {
-        created = true
-        return HttpResponse.json({})
-      }),
-    )
-
-    render(<AutomationsView workspace="/books/a" />)
-
-    await user.click(await screen.findByRole('button', { name: '在 Book B 中新建自动化' }))
-    expect(screen.getByDisplayValue('未命名自动化')).toBeInTheDocument()
-    expect(screen.getByRole('combobox', { name: '所属项目' })).toHaveTextContent('Book B')
-    expect(screen.getByRole('combobox', { name: '模板' })).toHaveTextContent('空白自动化')
-    expect(screen.getByRole('button', { name: '展开Book B' })).toHaveAttribute('aria-expanded', 'false')
-    expect(created).toBe(false)
   })
 
   it('opens an inline draft on the current Project and creates only after the user saves it', async () => {

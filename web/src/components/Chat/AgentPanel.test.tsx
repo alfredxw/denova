@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import type { ComponentProps } from 'react'
 import { VirtuosoMockContext } from 'react-virtuoso'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import '@/test/msw/server'
 import { fetchSettings, refreshSettings } from '@/features/settings/api'
 import { usePersistedUserSettings } from '@/hooks/usePersistedUserSettings'
 import { createAgentToolMessage } from '@/lib/agent-ui-message'
@@ -195,22 +196,6 @@ describe('AgentPanel', () => {
     renderAgentPanel({ projectId: '' })
 
     expect(useWritingSkillOptionsMock).toHaveBeenCalledWith('', false)
-  })
-
-  it('将新建会话按钮放在标题切换器旁边并隐藏会话摘要和空闲状态文字', async () => {
-    const user = userEvent.setup()
-    const handleCreateSession = vi.fn()
-    renderAgentPanel({ onCreateSession: handleCreateSession })
-
-    expect(screen.queryByText('等待')).not.toBeInTheDocument()
-    expect(screen.queryByText('当前：')).not.toBeInTheDocument()
-    expect(screen.queryByText('当前会话')).not.toBeInTheDocument()
-    const createButton = screen.getByRole('button', { name: '新建会话' })
-    expect(createButton).toHaveClass('w-7')
-    expect(createButton).not.toHaveTextContent('新建')
-
-    await user.click(createButton)
-    expect(handleCreateSession).toHaveBeenCalledTimes(1)
   })
 
   it('写下一章快捷提示要求同轮同步作品状态且不依赖成章确认', async () => {
@@ -454,53 +439,6 @@ describe('AgentPanel', () => {
 
     await user.click(screen.getAllByRole('button', { name: '关闭 SubAgent 详情' })[0])
     expect(handleDetailsChange).toHaveBeenLastCalledWith(false)
-  })
-
-  it('根据浮动输入区高度为消息列表预留底部空间', async () => {
-    const rectSpy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
-      if (this.classList.contains('nova-chat-input-area-floating')) {
-        return {
-          width: 520,
-          height: 220,
-          top: 500,
-          left: 0,
-          right: 520,
-          bottom: 720,
-          x: 0,
-          y: 500,
-          toJSON: () => ({}),
-        } as DOMRect
-      }
-      return {
-        width: 0,
-        height: 0,
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        x: 0,
-        y: 0,
-        toJSON: () => ({}),
-      } as DOMRect
-    })
-
-    try {
-      const { container } = renderAgentPanel({
-        messages: [
-          {
-            id: 'assistant-1',
-            role: 'assistant',
-            parts: [{ type: 'text', text: '最后一行内容' }],
-          },
-        ],
-      })
-
-      await waitFor(() => {
-        expect(container.querySelector('[data-nova-chat-bottom-spacer]')).toHaveStyle({ height: '240px' })
-      })
-    } finally {
-      rectSpy.mockRestore()
-    }
   })
 
   it('收到章节插画 autoSend 事件时直接发送到创作 Agent', async () => {

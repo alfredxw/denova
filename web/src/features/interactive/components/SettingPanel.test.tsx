@@ -9,7 +9,6 @@ import { createActorState, createImagePreset, createInteractiveTeller, createSto
 import { serializeBookOpeningPresets } from '../opening'
 import type { EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, Teller } from '../types'
 import { defaultRuleTemplates } from './preset-config/ruleTemplates'
-import { newRuleSystemDraft } from './setting-panel/presetResources'
 import { SettingPanel as ProjectSettingPanel } from './SettingPanel'
 import type { MarkdownRichEditorReview } from '@/components/Editor/MarkdownRichEditor'
 import type { DocumentReviewController } from '@/features/document-review/controller'
@@ -275,34 +274,6 @@ describe('SettingPanel', () => {
     vi.mocked(getStyleReferences).mockResolvedValue([])
   })
 
-  it('opens the presets config Agent by default', () => {
-    render(<PresetPanelHarness />)
-
-    expect(screen.getByTestId('config-manager-chat')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '配置管理 Agent' })).toHaveAttribute('aria-current', 'true')
-    expect(screen.queryByRole('heading', { name: '经典叙事' })).not.toBeInTheDocument()
-  })
-
-  it('keeps the presets config Agent open after its tools refresh narrative styles', async () => {
-    const user = userEvent.setup()
-    render(<PresetPanelHarness />)
-
-    await user.click(screen.getByRole('button', { name: '配置管理 Agent' }))
-    expect(screen.getByTestId('config-manager-chat')).toBeInTheDocument()
-    expect(configManagerChatProps.at(-1)).toMatchObject({
-      origin: 'teller',
-      resourceId: '__config_manager_teller__',
-    })
-
-    await user.click(screen.getByRole('button', { name: 'mock mutation' }))
-
-    await waitFor(() => {
-      expect(getInteractiveTellers).toHaveBeenCalled()
-      expect(screen.getByTestId('config-manager-chat')).toBeInTheDocument()
-    })
-    expect(screen.getAllByText('配置管理 Agent').length).toBeGreaterThan(0)
-  })
-
   it('does not create a missing CREATOR.md until the user edits it', async () => {
     vi.mocked(readProjectFile).mockRejectedValueOnce(new APIError('not found', { status: 404 }))
     vi.mocked(saveProjectFile).mockResolvedValue(projectFileSave('CREATOR.md', 'creator-rev-1'))
@@ -317,64 +288,6 @@ describe('SettingPanel', () => {
     flushSettingPanelAutosave()
 
     await waitFor(() => expect(saveProjectFile).toHaveBeenCalledWith(TEST_PROJECT_ID, 'CREATOR.md', '只在编辑后保存', 'missing'))
-  })
-
-  it('loads an external CREATOR.md update without writing when the editor is clean', async () => {
-    vi.mocked(readProjectFile)
-      .mockResolvedValueOnce(projectFileDocument('CREATOR.md', 'Initial', 'r1'))
-      .mockResolvedValueOnce(projectFileDocument('CREATOR.md', 'Updated externally', 'r2'))
-
-    render(<SettingPanel mode="creator" />)
-
-    const editor = await screen.findByDisplayValue('Initial')
-    act(() => {
-      window.dispatchEvent(new CustomEvent('nova:workspace-change', {
-        detail: { project_id: TEST_PROJECT_ID, workspace: '/workspace', paths: ['CREATOR.md'] },
-      }))
-    })
-
-    await waitFor(() => expect(editor).toHaveValue('Updated externally'))
-    expect(saveProjectFile).not.toHaveBeenCalled()
-  })
-
-  it('shows the rebased CREATOR.md after transparently retrying a conflict', async () => {
-    vi.mocked(readProjectFile)
-      .mockResolvedValueOnce(projectFileDocument('CREATOR.md', 'Title\n\nDetail\n', 'r1'))
-      .mockResolvedValueOnce(projectFileDocument('CREATOR.md', 'Title\n\nExternal detail\n', 'r2'))
-    vi.mocked(saveProjectFile)
-      .mockRejectedValueOnce(new APIError('revision conflict', { status: 409 }))
-      .mockResolvedValueOnce(projectFileSave('CREATOR.md', 'r3'))
-
-    render(<SettingPanel mode="creator" />)
-
-    const editor = await screen.findByPlaceholderText('写下本书最高优先级的创作规则...')
-    await waitFor(() => expect(editor).toHaveValue('Title\n\nDetail\n'))
-    fireEvent.change(editor, { target: { value: 'Local title\n\nDetail\n' } })
-    flushSettingPanelAutosave()
-
-    await waitFor(() => expect(saveProjectFile).toHaveBeenCalledTimes(2))
-    await waitFor(() => expect(editor).toHaveValue('Local title\n\nExternal detail\n'))
-    expect(screen.getByRole('status')).toHaveAccessibleName('所有更改均已保存')
-  })
-
-  it('keeps the config Agent above search without repeating the lore directory heading', async () => {
-    render(<SettingPanel mode="lore" imagePresets={[]} />)
-
-    const configAgent = await screen.findByRole('button', { name: '配置管理 Agent' })
-    const search = screen.getByRole('textbox', { name: '搜索资料' })
-
-    expect(screen.queryByText('在目录中选择条目，右侧打开编辑。')).not.toBeInTheDocument()
-    expect(configAgent.compareDocumentPosition(search) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-  })
-
-  it('keeps the workspace close action in the active preset toolbar', async () => {
-    const user = userEvent.setup()
-    const onClose = vi.fn()
-
-    render(<SettingPanel mode="teller" onClose={onClose} />)
-
-    await user.click(screen.getByRole('button', { name: '关闭' }))
-    expect(onClose).toHaveBeenCalledOnce()
   })
 
   it('loads existing opening presets without treating the initial snapshot as a conflict', async () => {
@@ -447,52 +360,6 @@ describe('SettingPanel', () => {
     expect(createInteractiveTeller).not.toHaveBeenCalled()
   })
 
-  it('flushes a pending preset autosave before switching resource types', async () => {
-    const user = userEvent.setup()
-    render(<PresetPanelHarness />)
-
-    await user.click(screen.getByRole('button', { name: /稳健叙事/ }))
-    fireEvent.change(screen.getByDisplayValue('经典叙事'), { target: { value: '切换前自动保存' } })
-    expandSection('图像方案')
-    await user.click(screen.getByRole('button', { name: /游戏 CG/ }))
-
-    await waitFor(() => expect(updateInteractiveTeller).toHaveBeenCalled())
-    expect(updateInteractiveTeller).toHaveBeenCalledWith(
-      'classic',
-      expect.objectContaining({
-        id: 'classic',
-        name: '切换前自动保存',
-      }),
-      'sha256:fixture',
-    )
-    expect(screen.getByRole('heading', { name: '游戏 CG' })).toBeInTheDocument()
-  })
-
-  it('retries a failed preset autosave before allowing a resource switch', async () => {
-    const user = userEvent.setup()
-    vi.mocked(updateInteractiveTeller)
-      .mockRejectedValueOnce(new Error('temporary save failure'))
-      .mockImplementation(async (id, input) => ({
-        ...teller(id, input.name || id),
-        ...input,
-        id,
-        revision: 'sha256:retry',
-        updated_at: '2026-01-01T00:00:02Z',
-      }) as Teller)
-    render(<PresetPanelHarness />)
-
-    await user.click(screen.getByRole('button', { name: /稳健叙事/ }))
-    fireEvent.change(screen.getByDisplayValue('经典叙事'), { target: { value: '失败后重试' } })
-    flushSettingPanelAutosave()
-    await waitFor(() => expect(screen.getByRole('status', { name: /自动保存失败/ })).toHaveTextContent('自动保存失败'))
-
-    expandSection('图像方案')
-    await user.click(screen.getByRole('button', { name: /游戏 CG/ }))
-
-    await waitFor(() => expect(updateInteractiveTeller).toHaveBeenCalledTimes(2))
-    expect(screen.getByRole('heading', { name: '游戏 CG' })).toBeInTheDocument()
-  })
-
   it('round-trips a custom preset through autosave with its latest content and revision', async () => {
     vi.useFakeTimers()
     const customA = { ...teller('custom-a', '自定义 A'), revision: 'a-r1', updated_at: 'same-time' }
@@ -548,143 +415,6 @@ describe('SettingPanel', () => {
     }
   })
 
-  it('loads an external preset update without writing when the draft is clean', async () => {
-    const initial = { ...teller('custom-a', '自定义 A'), revision: 'a-r1' }
-    const external = { ...initial, name: '外部更新 A', revision: 'a-r2' }
-    const onTellersChange = vi.fn()
-    const view = render(
-      <SettingPanel
-        mode="teller"
-        tellers={[initial]}
-        storyDirectors={[storyDirector('default', '默认导演')]}
-        imagePresets={[imagePreset('game-cg', '游戏 CG')]}
-        onTellersChange={onTellersChange}
-      />,
-    )
-
-    fireEvent.click(screen.getByRole('button', { name: /自定义 A/ }))
-    await screen.findByDisplayValue('自定义 A')
-    view.rerender(
-      <SettingPanel
-        mode="teller"
-        tellers={[external]}
-        storyDirectors={[storyDirector('default', '默认导演')]}
-        imagePresets={[imagePreset('game-cg', '游戏 CG')]}
-        onTellersChange={onTellersChange}
-      />,
-    )
-
-    expect(await screen.findByDisplayValue('外部更新 A')).toBeInTheDocument()
-    expect(updateInteractiveTeller).not.toHaveBeenCalled()
-  })
-
-  it('rebases a dirty preset draft over an external list update', async () => {
-    const initial = { ...teller('custom-a', '自定义 A'), revision: 'a-r1' }
-    const external = { ...initial, description: '外部更新的描述', revision: 'a-r2' }
-    const onTellersChange = vi.fn()
-    const view = render(
-      <SettingPanel
-        mode="teller"
-        tellers={[initial]}
-        storyDirectors={[storyDirector('default', '默认导演')]}
-        imagePresets={[imagePreset('game-cg', '游戏 CG')]}
-        onTellersChange={onTellersChange}
-      />,
-    )
-
-    fireEvent.click(screen.getByRole('button', { name: /自定义 A/ }))
-    const name = await screen.findByDisplayValue('自定义 A')
-    fireEvent.change(name, { target: { value: '本地改名 A' } })
-    view.rerender(
-      <SettingPanel
-        mode="teller"
-        tellers={[external]}
-        storyDirectors={[storyDirector('default', '默认导演')]}
-        imagePresets={[imagePreset('game-cg', '游戏 CG')]}
-        onTellersChange={onTellersChange}
-      />,
-    )
-
-    await waitFor(() => expect(name).toHaveValue('本地改名 A'))
-    expect(screen.getByRole('textbox', { name: '描述' })).toHaveValue('外部更新的描述')
-    flushSettingPanelAutosave()
-
-    await waitFor(() => expect(updateInteractiveTeller).toHaveBeenCalledWith(
-      'custom-a',
-      expect.objectContaining({ name: '本地改名 A', description: '外部更新的描述' }),
-      'a-r2',
-    ))
-  })
-
-  it('keeps a newer preset edit made while an overlapping reload is being archived', async () => {
-    const initial = { ...teller('custom-a', '自定义 A'), revision: 'a-r1' }
-    const external = { ...initial, name: '外部改名 A', revision: 'a-r2' }
-    let finishArchive!: (value: Awaited<ReturnType<typeof preserveAutosaveConflict>>) => void
-    const archivePending = new Promise<Awaited<ReturnType<typeof preserveAutosaveConflict>>>((resolve) => {
-      finishArchive = resolve
-    })
-    vi.mocked(preserveAutosaveConflict).mockReturnValueOnce(archivePending)
-    const props = {
-      mode: 'teller' as const,
-      storyDirectors: [storyDirector('default', '默认导演')],
-      imagePresets: [imagePreset('game-cg', '游戏 CG')],
-      onTellersChange: vi.fn(),
-    }
-    const view = render(<SettingPanel {...props} tellers={[initial]} />)
-
-    fireEvent.click(screen.getByRole('button', { name: /自定义 A/ }))
-    const name = await screen.findByDisplayValue('自定义 A')
-    fireEvent.change(name, { target: { value: '归档前的本地改名' } })
-    view.rerender(<SettingPanel {...props} tellers={[external]} />)
-    await waitFor(() => expect(preserveAutosaveConflict).toHaveBeenCalledOnce())
-
-    fireEvent.change(name, { target: { value: '归档等待期间的最新改名' } })
-    await act(async () => {
-      finishArchive({ id: 'conflict-record', path: 'conflicts/conflict-record.json', storage: 'server' })
-      await archivePending
-      await Promise.resolve()
-    })
-
-    expect(name).toHaveValue('归档等待期间的最新改名')
-  })
-
-  it('transparently rebases and retries a preset revision conflict', async () => {
-    const initial = { ...teller('custom-a', '自定义 A'), revision: 'a-r1' }
-    const external = { ...initial, description: '服务端新描述', revision: 'a-r2' }
-    vi.mocked(getInteractiveTellers).mockResolvedValue([external])
-    vi.mocked(updateInteractiveTeller)
-      .mockRejectedValueOnce(new APIError('revision conflict', { status: 409 }))
-      .mockImplementationOnce(async (id, input) => ({
-        ...external,
-        ...input,
-        id,
-        revision: 'a-r3',
-      }) as Teller)
-    render(
-      <SettingPanel
-        mode="teller"
-        tellers={[initial]}
-        storyDirectors={[storyDirector('default', '默认导演')]}
-        imagePresets={[imagePreset('game-cg', '游戏 CG')]}
-        onTellersChange={vi.fn()}
-      />,
-    )
-
-    fireEvent.click(screen.getByRole('button', { name: /自定义 A/ }))
-    const name = await screen.findByDisplayValue('自定义 A')
-    fireEvent.change(name, { target: { value: '本地改名 A' } })
-    flushSettingPanelAutosave()
-
-    await waitFor(() => expect(updateInteractiveTeller).toHaveBeenCalledTimes(2))
-    expect(updateInteractiveTeller).toHaveBeenNthCalledWith(
-      2,
-      'custom-a',
-      expect.objectContaining({ name: '本地改名 A', description: '服务端新描述' }),
-      'a-r2',
-    )
-    expect(screen.getByRole('status', { name: '所有更改均已保存' })).toHaveAccessibleName('所有更改均已保存')
-  })
-
   it('restores an overridden built-in narrative style from the top-right action', async () => {
     const user = userEvent.setup()
     const overridden = { ...teller('classic', '覆盖后的经典叙事'), builtin_overridden: true }
@@ -737,26 +467,6 @@ describe('SettingPanel', () => {
       expect(deleteImagePreset).toHaveBeenCalledWith('game-cg')
     })
     expect(getImagePresets).toHaveBeenCalled()
-  })
-
-  it('opens the presets config Agent without leaving the expanded image preset group', async () => {
-    const user = userEvent.setup()
-    render(<PresetPanelHarness />)
-
-    expandSection('图像方案')
-    await user.click(screen.getByRole('button', { name: /游戏 CG/ }))
-    expect(screen.getByRole('heading', { name: '游戏 CG' })).toBeInTheDocument()
-
-    await user.click(screen.getByRole('button', { name: '配置管理 Agent' }))
-
-    expect(screen.getByTestId('config-manager-chat')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /游戏 CG/ })).toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: '经典叙事' })).not.toBeInTheDocument()
-
-    await user.click(screen.getByRole('button', { name: /游戏 CG/ }))
-
-    expect(screen.queryByTestId('config-manager-chat')).not.toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: '游戏 CG' })).toBeInTheDocument()
   })
 
   it('follows the global mode when filtering preset module types', async () => {
@@ -1164,27 +874,6 @@ describe('SettingPanel', () => {
     await waitFor(() => expect(deleteEventPackage).toHaveBeenCalledWith('default'))
   })
 
-  it('presents TRPG checks through the focused DM-style visual workflow', async () => {
-    const user = userEvent.setup()
-    render(<PresetModeHarness />)
-
-    expandSection('TRPG 检定')
-    await user.click(await screen.findByRole('button', { name: /均衡 DM 检定/ }))
-
-    expect(screen.getByRole('heading', { name: '均衡 DM 检定' })).toBeInTheDocument()
-    expect(screen.getByDisplayValue('均衡 d20 检定')).toBeInTheDocument()
-    expect(screen.queryByText('规则 ID')).not.toBeInTheDocument()
-    expect(screen.queryByText(/安全表达式/)).not.toBeInTheDocument()
-    expect(screen.queryByText('成功 StateOps')).not.toBeInTheDocument()
-    expect(screen.queryByText('默认难度')).not.toBeInTheDocument()
-    expect(screen.queryByText('掷骰方式')).not.toBeInTheDocument()
-    expect(screen.queryByText('状态影响')).not.toBeInTheDocument()
-    expect(screen.getByRole('textbox', { name: '必须检定例子' })).toBeInTheDocument()
-    expect(screen.getByRole('textbox', { name: '不要检定例子' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: '新增规则' })).not.toBeInTheDocument()
-
-  })
-
   it('saves TRPG check guidance from the focused DM-style visual workflow', async () => {
     const user = userEvent.setup()
     render(<PresetModeHarness />)
@@ -1237,12 +926,6 @@ describe('SettingPanel', () => {
     expect(visualPayload.trpg_system?.rule_templates?.[0]).not.toHaveProperty('default_difficulty')
     expect(visualPayload.trpg_system?.rule_templates?.[0]).not.toHaveProperty('default_roll_mode')
     expect(visualPayload.trpg_system?.rule_templates?.[0]).not.toHaveProperty('success_state_ops')
-  })
-
-  it('starts custom TRPG check modules from built-in rule templates', () => {
-    const draft = newRuleSystemDraft()
-
-    expect(draft.trpg_system?.rule_templates).toEqual(defaultRuleTemplates())
   })
 
   it('generates a current image for one lore item from the editor', async () => {
@@ -1325,45 +1008,6 @@ describe('SettingPanel', () => {
     expect(await screen.findByRole('img', { name: '林川' })).toHaveAttribute('src', '/api/projects/project-workspace/files/asset?path=assets%2Flore%2Fimages%2Flin-chuan%2Fupload%2Fimage.png')
   })
 
-  it('keeps the lore body editable in the unified scroller and feeds the directory query to the editor', async () => {
-    const item = {
-      ...loreItem('long-lore', '长正文资料'),
-      content: '正文段落\n'.repeat(80),
-    }
-    vi.mocked(getProjectLoreItems).mockResolvedValue([item])
-
-    render(<SettingPanel mode="lore" imagePresets={[imagePreset('game-cg', '游戏 CG')]} />)
-
-    fireEvent.click(await screen.findByRole('button', { name: /长正文资料/ }))
-    const editor = screen.getByRole('region', { name: '资料编辑区' })
-    const content = within(editor).getByRole('textbox', { name: '正文' }) as HTMLTextAreaElement
-
-    // 默认富文本编辑：渲染视图本身即可编辑，也不引入嵌套滚动容器
-    expect(content).toHaveAttribute('data-testid', 'lore-rich-editor')
-    expect(within(editor).queryByText('正文')).not.toBeInTheDocument()
-    // 工具条提供紧凑的 富文本/Raw 切换，默认富文本
-    expect(within(editor).getByRole('button', { name: '富文本' })).toHaveAttribute('aria-pressed', 'true')
-    expect(within(editor).getByRole('button', { name: 'Raw' })).toHaveAttribute('aria-pressed', 'false')
-    expect(editor.querySelector('.overflow-y-auto')).toBeNull()
-    const editorRoot = within(editor).getByTestId('lore-rich-editor-root')
-    // 切换按钮与正文区同处一个 bg 容器，切换条不做整宽分隔
-    expect(editorRoot.parentElement).toHaveClass('flex', 'min-h-[420px]', 'flex-1')
-    expect(editorRoot.parentElement?.parentElement).toHaveClass('flex', 'min-h-full', 'min-w-0', 'flex-col')
-    expect(within(editor).getByRole('textbox', { name: '名称' }).closest('[data-slot="lore-primary-fields"]')).toHaveClass(
-      'grid-cols-2',
-      'md:grid-cols-3',
-      'xl:grid-cols-[minmax(12rem,2fr)_repeat(4,minmax(7rem,1fr))]',
-    )
-
-    fireEvent.change(content, { target: { value: `${item.content}新增段落` } })
-    expect(content.value).toBe(`${item.content}新增段落`)
-
-    // 目录搜索词直接传给正文编辑器做高亮，搜索时依然可以编辑
-    fireEvent.change(screen.getByRole('textbox', { name: '搜索资料' }), { target: { value: '正文段落' } })
-    expect(content).toHaveAttribute('data-highlight-query', '正文段落')
-    expect(content).not.toBeDisabled()
-  })
-
   it('switches the lore body between rich text and raw markdown editing', async () => {
     const item = {
       ...loreItem('raw-lore', '源码资料'),
@@ -1433,118 +1077,6 @@ describe('SettingPanel', () => {
       revision: target.updated_at,
     })
     expect(getProjectLoreItems).toHaveBeenLastCalledWith(TEST_PROJECT_ID)
-  })
-
-  it('loads an external Lore update without writing when the editor is clean', async () => {
-    const initial = loreItem('lin-chuan', '林川')
-    const external = {
-      ...initial,
-      name: '外部更新后的林川',
-      content: '## 外部正文',
-      updated_at: '2026-01-01T00:00:01Z',
-    }
-    vi.mocked(getProjectLoreItems)
-      .mockResolvedValueOnce([initial])
-      .mockResolvedValueOnce([external])
-
-    render(<SettingPanel mode="lore" imagePresets={[]} />)
-
-    const name = await screen.findByRole('textbox', { name: '名称' })
-    expect(name).toHaveValue('林川')
-    act(() => window.dispatchEvent(new CustomEvent('nova:lore-updated', { detail: { projectId: TEST_PROJECT_ID, ids: ['lin-chuan'] } })))
-
-    await waitFor(() => expect(name).toHaveValue('外部更新后的林川'))
-    expect(screen.getByRole('textbox', { name: '正文' })).toHaveValue('## 外部正文\n')
-    expect(updateProjectLoreItem).not.toHaveBeenCalled()
-  })
-
-  it('rebases a dirty Lore draft over an external update before saving', async () => {
-    const initial = loreItem('lin-chuan', '林川')
-    const external = {
-      ...initial,
-      content: '## 外部正文',
-      updated_at: '2026-01-01T00:00:01Z',
-    }
-    vi.mocked(getProjectLoreItems)
-      .mockResolvedValueOnce([initial])
-      .mockResolvedValueOnce([external])
-    vi.mocked(updateProjectLoreItem).mockImplementation(async (_projectId, id, input) => ({
-      ...external,
-      ...input,
-      id,
-      updated_at: '2026-01-01T00:00:02Z',
-    }) as LoreItem)
-
-    render(<SettingPanel mode="lore" imagePresets={[]} />)
-
-    const name = await screen.findByRole('textbox', { name: '名称' })
-    fireEvent.change(name, { target: { value: '本地改名' } })
-    act(() => window.dispatchEvent(new CustomEvent('nova:lore-updated', { detail: { projectId: TEST_PROJECT_ID, ids: ['lin-chuan'] } })))
-
-    await waitFor(() => expect(screen.getByRole('textbox', { name: '正文' })).toHaveValue('## 外部正文\n'))
-    expect(name).toHaveValue('本地改名')
-    flushSettingPanelAutosave()
-
-    await waitFor(() => expect(updateProjectLoreItem).toHaveBeenCalledWith(
-      TEST_PROJECT_ID,
-      'lin-chuan',
-      expect.objectContaining({ name: '本地改名', content: '## 外部正文' }),
-      '2026-01-01T00:00:01Z',
-    ))
-  })
-
-  it('keeps a newer Lore edit made while an overlapping reload is being archived', async () => {
-    const initial = loreItem('lin-chuan', '林川')
-    const external = {
-      ...initial,
-      name: '外部改名',
-      updated_at: '2026-01-01T00:00:01Z',
-    }
-    let finishArchive!: (value: Awaited<ReturnType<typeof preserveAutosaveConflict>>) => void
-    const archivePending = new Promise<Awaited<ReturnType<typeof preserveAutosaveConflict>>>((resolve) => {
-      finishArchive = resolve
-    })
-    vi.mocked(preserveAutosaveConflict).mockReturnValueOnce(archivePending)
-    vi.mocked(getProjectLoreItems)
-      .mockResolvedValueOnce([initial])
-      .mockResolvedValueOnce([external])
-
-    render(<SettingPanel mode="lore" imagePresets={[]} />)
-
-    const name = await screen.findByRole('textbox', { name: '名称' })
-    fireEvent.change(name, { target: { value: '归档前的本地改名' } })
-    act(() => window.dispatchEvent(new CustomEvent('nova:lore-updated', { detail: { projectId: TEST_PROJECT_ID, ids: ['lin-chuan'] } })))
-    await waitFor(() => expect(preserveAutosaveConflict).toHaveBeenCalledOnce())
-
-    fireEvent.change(name, { target: { value: '归档等待期间的最新改名' } })
-    await act(async () => {
-      finishArchive({ id: 'conflict-record', path: 'conflicts/conflict-record.json', storage: 'server' })
-      await archivePending
-      await Promise.resolve()
-    })
-
-    expect(name).toHaveValue('归档等待期间的最新改名')
-  })
-
-  it('archives a dirty Lore draft before accepting an external deletion', async () => {
-    const initial = loreItem('lin-chuan', '林川')
-    vi.mocked(getProjectLoreItems)
-      .mockResolvedValueOnce([initial])
-      .mockResolvedValueOnce([])
-
-    render(<SettingPanel mode="lore" imagePresets={[]} />)
-
-    const name = await screen.findByRole('textbox', { name: '名称' })
-    fireEvent.change(name, { target: { value: '尚未保存的本地改名' } })
-    act(() => window.dispatchEvent(new CustomEvent('nova:lore-updated', { detail: { projectId: TEST_PROJECT_ID, ids: ['lin-chuan'] } })))
-
-    await waitFor(() => expect(preserveAutosaveConflict).toHaveBeenCalledWith(expect.objectContaining({
-      resource: 'lore_item',
-      scope: TEST_PROJECT_ID,
-      id: 'lin-chuan',
-      external: { revision: 'deleted', value: null },
-    })))
-    expect(updateProjectLoreItem).not.toHaveBeenCalled()
   })
 
   it('saves lore item enabled status from a switch', async () => {

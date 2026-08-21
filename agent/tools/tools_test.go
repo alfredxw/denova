@@ -488,7 +488,7 @@ func TestLocalWorkspaceGlobAndGrep(t *testing.T) {
 	mustWriteTestFile(t, root, "chapters/two.md", "second dragon\n")
 	mustWriteTestFile(t, root, "chapters/ignored.md", "ignored dragon\n")
 	mustWriteTestFile(t, root, ".hidden.md", "hidden dragon\n")
-	external := t.TempDir()
+	external := mustCanonicalTestPath(t, t.TempDir())
 	mustWriteTestFile(t, external, "references/style.md", "external dragon style\n")
 	if err := os.MkdirAll(filepath.Join(external, "empty-reference"), 0o755); err != nil {
 		t.Fatal(err)
@@ -1329,6 +1329,15 @@ func mustOpenTestWorkspace(t *testing.T, root string) *LocalWorkspace {
 		t.Fatal(err)
 	}
 	return workspace
+}
+
+func mustCanonicalTestPath(t *testing.T, path string) string {
+	t.Helper()
+	canonical, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return canonical
 }
 
 func mustWriteTestFile(t *testing.T, root, relative, content string) {

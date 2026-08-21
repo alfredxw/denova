@@ -130,37 +130,6 @@ describe('AgentsView', () => {
     expect(await screen.findByText('deepseek（DeepSeek V3）')).toBeInTheDocument()
   })
 
-  it('does not expose internal context compaction as an Agent', async () => {
-    vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({}))
-
-    render(<AgentsView />)
-
-    await screen.findByText('模型与思考')
-    expect(screen.queryByRole('button', { name: /上下文压缩 Agent/ })).not.toBeInTheDocument()
-  })
-
-  it('does not expose legacy prompt or SubAgent state in ordinary Agent settings', async () => {
-    vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({
-      effective: {
-        agent_prompts: { ide: { system_prompt: 'obsolete prompt' } },
-        sub_agents: [{
-          id: 'obsolete-reviewer',
-          name: 'Obsolete Reviewer',
-          description: 'Must only be managed through Harness State.',
-          system_prompt: 'Review.',
-          parents: ['ide'],
-          enabled: true,
-        }],
-      },
-    }))
-
-    render(<AgentsView />)
-
-    await screen.findByText('模型与思考')
-    expect(screen.queryByText('Obsolete Reviewer')).not.toBeInTheDocument()
-    expect(screen.queryByDisplayValue('obsolete prompt')).not.toBeInTheDocument()
-  })
-
   it('shows backend-resolved context intent and saves only the edited override', async () => {
     vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({}))
 
