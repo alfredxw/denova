@@ -27,6 +27,8 @@ interface WorkspaceLayoutProps {
   bottomPanelVisible?: boolean
   rightPanelWide?: boolean
   centerFocus?: boolean
+  /** Route-level layout identity; changes bypass panel motion while explicit pane toggles animate. */
+  routeLayoutKey?: string | number
 }
 
 /** 工作台布局组件，只负责可拖拽区域编排，不承载业务逻辑。 */
@@ -43,6 +45,7 @@ export function WorkspaceLayout({
   bottomPanelVisible = true,
   rightPanelWide = false,
   centerFocus = false,
+  routeLayoutKey,
 }: WorkspaceLayoutProps) {
   const { t } = useTranslation()
   const horizontalGroupRef = useGroupRef()
@@ -58,6 +61,25 @@ export function WorkspaceLayout({
   const hasRightPanel = rightPanel !== null && rightPanel !== undefined
   if (hasRightPanel) retainedRightPanelRef.current = rightPanel
   const rightPanelOpen = hasRightPanel && rightPanelVisible
+  const panelMotionSnapshot = { routeLayoutKey, sidebarVisible, rightPanelOpen, rightPanelWide, centerFocus }
+  const previousPanelMotionSnapshotRef = useRef(panelMotionSnapshot)
+  const panelMotionSuspendedRef = useRef(false)
+  const previousPanelMotionSnapshot = previousPanelMotionSnapshotRef.current
+  if (routeLayoutKey !== undefined && previousPanelMotionSnapshot.routeLayoutKey !== routeLayoutKey) {
+    // Retained routes already hold their own state. Switching between them should replace the
+    // surrounding geometry directly, including the panel library's follow-up layout commits.
+    panelMotionSuspendedRef.current = true
+  } else if (
+    previousPanelMotionSnapshot.sidebarVisible !== sidebarVisible
+    || previousPanelMotionSnapshot.rightPanelOpen !== rightPanelOpen
+    || previousPanelMotionSnapshot.rightPanelWide !== rightPanelWide
+    || previousPanelMotionSnapshot.centerFocus !== centerFocus
+  ) {
+    // A geometry change inside the current route is an explicit layout action and should remain
+    // smooth. Keep this mode until the next route switch so internal panel commits cannot race it.
+    panelMotionSuspendedRef.current = false
+  }
+  previousPanelMotionSnapshotRef.current = panelMotionSnapshot
   const layoutBeforeEmphasisRef = useRef<Layout | null>(null)
   const lastNormalLayoutRef = useRef<Layout | null>(readStoredLayoutForWorkspace('nova-workspace-horizontal', ['sidebar', 'center', 'right']) ?? null)
   const lastRightPanelPixelsRef = useRef<number | null>(null)
@@ -166,6 +188,7 @@ export function WorkspaceLayout({
           {activityBar}
           <PanelMotionGroup
             id="nova-workspace-horizontal"
+            motionSuspended={panelMotionSuspendedRef.current}
             data-nova-layout-emphasis={layoutEmphasis}
             groupRef={horizontalGroupRef}
             defaultLayout={horizontalPanelLayout.defaultLayout}

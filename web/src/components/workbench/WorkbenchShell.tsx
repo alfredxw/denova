@@ -808,6 +808,7 @@ export function WorkbenchShell({
       <WorkspaceLayout
         topBar={topBar}
         activityBar={activityBar}
+        routeLayoutKey={presentedLayout}
         sidebar={sidebar}
         sidebarVisible={writingContentVisible && projectVisible}
         main={mainContentSlot}

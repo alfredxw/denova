@@ -223,7 +223,11 @@ export function TabController({
                           trailing={tab.pinned ? (
                             <Pin className="size-3 shrink-0 text-[var(--nova-text-faint)]" aria-hidden="true" />
                           ) : (
-                            <span className="size-4 shrink-0" aria-hidden="true" />
+                            <span
+                              data-slot="workbench-tab-close-space"
+                              className="-ml-1.5 h-4 w-0 shrink-0 transition-[width,margin] group-hover/tab:ml-0 group-hover/tab:w-4 group-aria-[selected=true]/tab:ml-0 group-aria-[selected=true]/tab:w-4 max-md:ml-0 max-md:w-4"
+                              aria-hidden="true"
+                            />
                           )}
                         />
                         {!tab.pinned ? (
@@ -232,7 +236,7 @@ export function TabController({
                             onPointerDown={(event) => event.stopPropagation()}
                             onKeyDown={(event) => event.stopPropagation()}
                             onClick={(event) => { event.stopPropagation(); onCloseTab(tab) }}
-                            className="nova-nav-item absolute right-2.5 top-1/2 z-10 -translate-y-1/2 rounded p-0.5 opacity-0 group-hover/tab:opacity-100 group-data-[selected=true]/tab:opacity-100 max-md:opacity-100"
+                            className="nova-nav-item pointer-events-none absolute right-2.5 top-1/2 z-10 -translate-y-1/2 rounded p-0.5 opacity-0 group-hover/tab:pointer-events-auto group-hover/tab:opacity-100 group-data-[selected=true]/tab:pointer-events-auto group-data-[selected=true]/tab:opacity-100 max-md:pointer-events-auto max-md:opacity-100"
                             aria-label={t('tab.close', { label })}
                           >
                             <X className="size-3" />

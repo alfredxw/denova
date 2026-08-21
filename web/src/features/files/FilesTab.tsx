@@ -14,6 +14,7 @@ import { ProjectExplorerPane } from '@/features/project-explorer/ProjectExplorer
 import { useProjectExplorerPreferences } from '@/features/project-explorer/preferences'
 import { useProjectExplorer } from '@/features/project-explorer/use-project-explorer'
 import { ProjectMarkdownPreview } from './ProjectMarkdownPreview'
+import { ProjectFileBreadcrumb } from './ProjectFileBreadcrumb'
 import { ProjectSourceEditor } from './ProjectSourceEditor'
 import { isPreviewableMarkdown } from './file-language'
 import {
@@ -240,14 +241,16 @@ export function FilesTab({
     >
       {(controls) => (
         <main className="flex h-full min-h-0 min-w-0 flex-col bg-[var(--nova-bg)] text-[var(--nova-text)]">
-          <div className="flex h-11 shrink-0 items-center gap-2 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-2.5 sm:px-3">
-            <FileCode2 className="size-4 shrink-0 text-[var(--nova-text-muted)]" aria-hidden="true" />
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-xs font-medium">{selectedPath?.split('/').at(-1) || t('files.title')}</div>
-              <div className="truncate font-mono text-[10px] text-[var(--nova-text-faint)]">
-                {selectedPath || workspace}
-              </div>
-            </div>
+          <div className="nova-files-toolbar flex h-11 shrink-0 items-center gap-2 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-2.5 sm:px-3">
+            <ProjectFileBreadcrumb
+              workspace={workspace}
+              nodes={tree.nodes}
+              selectedPath={selectedPath}
+              loading={tree.loading}
+              onSelectFile={selectFile}
+              onDirectoryExpand={tree.loadDirectory}
+              onLoadMore={tree.loadMore}
+            />
             {markdownDocument ? (
               <MarkdownViewToggle
                 preview={markdownPreview}
@@ -269,7 +272,13 @@ export function FilesTab({
               </Button>
             ) : null}
             {editor.document?.kind === 'text' && editor.document.editable ? (
-              <AutosaveStatusIndicator status={editor.status} error={editor.autoSaveError} onRetry={editor.retry} />
+              <AutosaveStatusIndicator
+                className="nova-files-autosave"
+                status={editor.status}
+                error={editor.autoSaveError}
+                onRetry={editor.retry}
+                showSavedLabel={false}
+              />
             ) : editor.document ? (
               <span className="hidden shrink-0 rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-faint)] sm:inline">
                 {t('files.editor.readOnly')}

@@ -13,6 +13,11 @@ import { cn } from '@/lib/utils'
 
 type PanelSide = 'left' | 'right'
 
+interface PanelMotionGroupProps extends GroupProps {
+  /** Keeps programmatic layout updates immediate until the owner enables motion again. */
+  motionSuspended?: boolean
+}
+
 /**
  * A panel group whose resize state is explicit rather than derived with CSS `:has()`.
  *
@@ -20,7 +25,7 @@ type PanelSide = 'left' | 'right'
  * group makes each of those mutations invalidate styles across the whole group, so resize state is
  * captured once at the interaction boundary instead.
  */
-export function PanelMotionGroup({ onPointerDownCapture, ...groupProps }: GroupProps) {
+export function PanelMotionGroup({ motionSuspended = false, onPointerDownCapture, ...groupProps }: PanelMotionGroupProps) {
   const activeGroupRef = useRef<HTMLDivElement | null>(null)
   const pointerCleanupRef = useRef<(() => void) | null>(null)
   const clearResizeState = useCallback(() => {
@@ -76,6 +81,7 @@ export function PanelMotionGroup({ onPointerDownCapture, ...groupProps }: GroupP
       // prevents it from injecting `*, *:hover` rules that invalidate styles for the whole app.
       disableCursor
       data-nova-panel-motion-group="true"
+      data-nova-panel-motion-suspended={motionSuspended ? 'true' : undefined}
       onPointerDownCapture={handlePointerDownCapture}
     />
   )

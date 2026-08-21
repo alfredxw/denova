@@ -137,6 +137,24 @@ describe('PanelMotionGroup', () => {
     expect(panelHarness.groupDisableCursor).toBe(true)
   })
 
+  it('exposes an explicit panel-motion suspension state', () => {
+    const { container, rerender } = render(
+      <PanelMotionGroup orientation="horizontal" motionSuspended>
+        <div />
+      </PanelMotionGroup>,
+    )
+    const group = container.firstElementChild
+
+    expect(group).toHaveAttribute('data-nova-panel-motion-suspended', 'true')
+
+    rerender(
+      <PanelMotionGroup orientation="horizontal">
+        <div />
+      </PanelMotionGroup>,
+    )
+    expect(group).not.toHaveAttribute('data-nova-panel-motion-suspended')
+  })
+
   it('tracks only its direct separator resize without a relational CSS selector', async () => {
     const { getByTestId } = render(
       <PanelMotionGroup orientation="horizontal">

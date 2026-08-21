@@ -30,4 +30,12 @@ describe('AutosaveStatusIndicator', () => {
 
     expect(screen.getByRole('status')).toHaveTextContent('修复配置后将自动保存')
   })
+
+  it('can represent the saved state with only its accessible icon', () => {
+    render(<AutosaveStatusIndicator status="saved" showSavedLabel={false} />)
+
+    const status = screen.getByRole('status', { name: '所有更改均已保存' })
+    expect(status).not.toHaveTextContent('所有更改均已保存')
+    expect(status.querySelector('svg')).toBeInTheDocument()
+  })
 })

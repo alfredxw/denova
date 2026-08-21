@@ -83,6 +83,54 @@ describe('WorkspaceLayout', () => {
     expect(container.querySelector('#right')).toHaveAttribute('data-nova-resize-behavior', 'preserve-pixel-size')
   })
 
+  it('switches retained route layouts immediately and restores motion for explicit pane toggles', () => {
+    const { container, rerender } = render(
+      <WorkspaceLayout
+        activityBar={<nav aria-label="一级菜单栏">菜单</nav>}
+        sidebar={<div>项目结构</div>}
+        sidebarVisible
+        main={<main>正文区域</main>}
+        routeLayoutKey="writing"
+      />,
+    )
+    const group = container.querySelector('[data-nova-panel-motion-group]')
+
+    expect(group).not.toHaveAttribute('data-nova-panel-motion-suspended')
+
+    rerender(
+      <WorkspaceLayout
+        activityBar={<nav aria-label="一级菜单栏">菜单</nav>}
+        sidebar={<div>项目结构</div>}
+        sidebarVisible={false}
+        main={<main>工作台</main>}
+        routeLayoutKey="full"
+      />,
+    )
+    expect(group).toHaveAttribute('data-nova-panel-motion-suspended', 'true')
+
+    rerender(
+      <WorkspaceLayout
+        activityBar={<nav aria-label="一级菜单栏">菜单</nav>}
+        sidebar={<div>项目结构</div>}
+        sidebarVisible
+        main={<main>正文区域</main>}
+        routeLayoutKey="writing"
+      />,
+    )
+    expect(group).toHaveAttribute('data-nova-panel-motion-suspended', 'true')
+
+    rerender(
+      <WorkspaceLayout
+        activityBar={<nav aria-label="一级菜单栏">菜单</nav>}
+        sidebar={<div>项目结构</div>}
+        sidebarVisible={false}
+        main={<main>正文区域</main>}
+        routeLayoutKey="writing"
+      />,
+    )
+    expect(group).not.toHaveAttribute('data-nova-panel-motion-suspended')
+  })
+
   it('does not pin the Agent panel with an important flex width while Review is focused', () => {
     const rectSpy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function getBoundingClientRect(this: HTMLElement) {
       const width = this.id === 'right' ? 420 : 1000

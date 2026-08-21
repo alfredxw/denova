@@ -965,8 +965,33 @@ html[data-nova-motion="off"] *::after {
   background: var(--nova-surface);
 }
 
+.nova-workbench-tab-title-fade {
+  -webkit-mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 1.75rem), transparent 100%);
+  mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 1.75rem), transparent 100%);
+}
+
 .nova-book-settings-header-row {
   container: nova-book-settings-header / inline-size;
+}
+
+.nova-files-toolbar {
+  container: nova-files-toolbar / inline-size;
+}
+
+.nova-file-breadcrumb {
+  scrollbar-width: none;
+}
+
+.nova-file-breadcrumb::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+@container nova-files-toolbar (max-width: 520px) {
+  .nova-files-autosave > span {
+    display: none;
+  }
 }
 
 @container nova-book-settings-header (max-width: 200px) {
@@ -1667,6 +1692,13 @@ html[data-nova-motion="off"] *::after {
    real flex share contracts, which lets the neighbouring workspace reflow continuously. */
 [data-nova-panel-motion-group] > [data-panel] {
   transition: flex-grow var(--nova-panel-motion-duration) var(--nova-panel-motion-ease);
+}
+
+/* Retained page routes should swap directly. Panel motion remains available for explicit layout
+   actions such as opening, closing, or resizing a pane within the current page. */
+[data-nova-panel-motion-group][data-nova-panel-motion-suspended="true"] {
+  --nova-panel-motion-duration: 0ms;
+  --nova-panel-fade-duration: 0ms;
 }
 
 [data-panel][data-nova-panel-motion="resizable"] {

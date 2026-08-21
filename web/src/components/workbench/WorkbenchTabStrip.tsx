@@ -197,7 +197,16 @@ function OverflowTabTitle({ label }: { label: string }) {
       delayDuration={DEFAULT_TOOLTIP_DELAY_MS}
     >
       <TooltipTrigger asChild>
-        <span ref={titleRef} className="min-w-0 flex-1 truncate text-left">{label}</span>
+        <span
+          ref={titleRef}
+          data-slot="workbench-tab-title"
+          className={cn(
+            'min-w-0 flex-1 overflow-hidden whitespace-nowrap text-left',
+            truncated && 'nova-workbench-tab-title-fade',
+          )}
+        >
+          {label}
+        </span>
       </TooltipTrigger>
       {truncated ? (
         <TooltipContent side="bottom" sideOffset={6} className="max-w-80 break-words">
