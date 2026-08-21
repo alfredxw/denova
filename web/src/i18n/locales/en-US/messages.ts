@@ -1,6 +1,7 @@
 const messages = {
   'messages.title': 'Message Center',
   'messages.description': 'See automation progress, pending actions, and product notices in one place.',
+  'messages.label': 'Messages',
   'messages.open': 'Open message center',
   'messages.loading': 'Loading messages',
   'messages.empty': 'No messages',

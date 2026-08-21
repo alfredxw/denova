@@ -926,11 +926,6 @@ html[data-nova-motion="off"] *::after {
   transition-duration: var(--nova-motion-fast);
 }
 
-.nova-activity-bar .nova-icon-button {
-  width: 100%;
-  justify-content: flex-start;
-}
-
 .nova-activity-bar .nova-icon-button:active,
 .nova-mobile-nav-item:active {
   background: var(--nova-hover);

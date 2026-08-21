@@ -5,6 +5,7 @@ import { MarkdownRenderer } from '@/components/common/MarkdownRenderer'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { formatDateTime } from '@/i18n'
 import { DENOVA_GITHUB_URL } from '@/lib/product-links'
+import { cn } from '@/lib/utils'
 import { getMessages, markAllMessagesRead, markMessageRead } from './api'
 import type { AutomationMessageNavigation, ProductMessage } from './types'
 
@@ -124,7 +125,13 @@ export function MessageCenterButton({ className = '', showLabel = false, unreadC
     <>
       <button
         type="button"
-        className={`nova-icon-button relative flex items-center justify-center rounded-[var(--nova-radius)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] ${showLabel ? '!h-9 !w-full !min-w-0 justify-start gap-2 px-2 text-xs font-medium' : ''} ${className}`}
+        className={cn(
+          'nova-icon-button relative flex items-center rounded-[var(--nova-radius)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]',
+          showLabel
+            ? '!h-9 !w-full !min-w-0 justify-start gap-2 px-2 text-xs font-medium'
+            : 'justify-center',
+          className,
+        )}
         aria-label={t('messages.open')}
         onClick={() => setOpen(true)}
       >
@@ -136,7 +143,7 @@ export function MessageCenterButton({ className = '', showLabel = false, unreadC
             </span>
           )}
         </span>
-        {showLabel ? <span className="truncate">{t('messages.open')}</span> : null}
+        {showLabel ? <span className="truncate">{t('messages.label')}</span> : null}
       </button>
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent

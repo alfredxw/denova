@@ -110,6 +110,33 @@ describe('WorkbenchShell responsive main content', () => {
     expect(collapsedToggle.querySelector('svg')?.getAttribute('class')).toBe(expandedToggleIconClass)
   })
 
+  it('aligns every expanded sidebar label to one fixed icon column', () => {
+    render(
+      <WorkbenchShell
+        {...workbenchProps(<div />)}
+        mode="ide"
+        presentedLayout="writing"
+        booksReturnMode="ide"
+        activityBarExpanded
+      />,
+    )
+
+    const buttons = [
+      screen.getByRole('button', { name: '写作' }),
+      screen.getByRole('button', { name: /自动化$/ }),
+      screen.getByRole('button', { name: '设置' }),
+      screen.getByRole('button', { name: '收起' }),
+    ]
+
+    for (const button of buttons) {
+      const spans = Array.from(button.children).filter((child) => child.tagName === 'SPAN')
+      const iconSlot = spans.at(-2)
+
+      expect(button).toHaveClass('gap-2')
+      expect(iconSlot).toHaveClass('size-4')
+    }
+  })
+
   it('keeps the main subtree mounted and preserves local state across the mobile breakpoint', () => {
     let unmountCount = 0
 
