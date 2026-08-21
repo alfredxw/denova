@@ -308,34 +308,26 @@ func storyDirectorForSnapshot(director interactive.StoryDirector, snapshot *inte
 }
 
 func LoadWritingTeller(novaDir, tellerID string) teller.Definition {
-	return loadInteractiveTeller(novaDir, tellerID, style.ModeWriting)
+	return loadInteractiveTeller(novaDir, tellerID)
 }
 
 func LoadGameTeller(novaDir, tellerID string) teller.Definition {
-	return loadInteractiveTeller(novaDir, tellerID, style.ModeGame)
+	return loadInteractiveTeller(novaDir, tellerID)
 }
 
-func loadInteractiveTeller(novaDir, tellerID, mode string) teller.Definition {
+func loadInteractiveTeller(novaDir, tellerID string) teller.Definition {
 	if novaDir == "" {
 		return teller.Definition{}
 	}
 	library := teller.NewLibrary(novaDir)
 	selected, err := library.Get(tellerID)
-	if err == nil && selected.SupportsMode(mode) {
+	if err == nil {
 		return selected
 	}
-	if err != nil {
-		slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-agent] load narrative style failed id=%s mode=%s err=%v", tellerID, mode, err))
-	} else {
-		slog.WarnContext(context.Background(), fmt.Sprintf("[interactive-agent] narrative style is unavailable in mode id=%s mode=%s", tellerID, mode))
-	}
+	slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-agent] load narrative style failed id=%s err=%v", tellerID, err))
 	fallback, fallbackErr := library.Get(style.DefaultID)
 	if fallbackErr != nil {
-		slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-agent] load default narrative style failed id=%s mode=%s err=%v", style.DefaultID, mode, fallbackErr))
-		return teller.Definition{}
-	}
-	if !fallback.SupportsMode(mode) {
-		slog.WarnContext(context.Background(), fmt.Sprintf("[interactive-agent] default narrative style is unavailable in mode id=%s mode=%s", fallback.ID, mode))
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-agent] load default narrative style failed id=%s err=%v", style.DefaultID, fallbackErr))
 		return teller.Definition{}
 	}
 	return fallback

@@ -50,7 +50,6 @@ export function presetResourceDraftSignature(item: object) {
 export function cloneTeller(teller: Teller): Teller {
   return {
     ...teller,
-    modes: [...(teller.modes || [])],
     slots: [...(teller.slots || [])],
     context_policy: { ...teller.context_policy },
     style_refs: [...(teller.style_refs || [])],
@@ -129,7 +128,6 @@ export function newTellerDraft(t?: PresetDraftTranslator): Partial<Teller> {
     id,
     name: presetDraftText(t, 'settingPanel.presetDraft.teller.name', '自定义叙事风格'),
     description: presetDraftText(t, 'settingPanel.presetDraft.teller.description', '新的叙事风格'),
-    modes: ['writing', 'game'],
     style_refs: [],
     style_rules: [],
     context_policy: {

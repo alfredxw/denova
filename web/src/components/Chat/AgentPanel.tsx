@@ -300,7 +300,7 @@ function AgentPanelComponent({
     : ''
   const messageListBottomPadding = inputAreaHeight > 0 ? inputAreaHeight + 20 : undefined
   const styleSceneSuggestions = useMemo(() => {
-    const teller = resolveNarrativeStyle(tellers, ideTellerId, 'writing')
+    const teller = resolveNarrativeStyle(tellers, ideTellerId)
     return Array.from(new Set((teller?.style_rules || []).map((rule) => rule.scene.trim()).filter((scene) => scene && !isGlobalStyleSceneName(scene))))
   }, [ideTellerId, tellers])
 

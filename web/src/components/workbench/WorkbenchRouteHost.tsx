@@ -14,8 +14,8 @@ export type WorkbenchRouteId =
   | 'books'
   | 'interactive'
   | 'versions'
-  | 'ide-lore'
-  | 'ide-teller'
+  | 'lore'
+  | 'presets'
   | 'ide-writing'
 
 const PRESENTED_LAYOUT_BY_ROUTE = {
@@ -28,8 +28,8 @@ const PRESENTED_LAYOUT_BY_ROUTE = {
   books: 'full',
   interactive: 'interactive',
   versions: 'full',
-  'ide-lore': 'full',
-  'ide-teller': 'full',
+  lore: 'full',
+  presets: 'full',
   'ide-writing': 'writing',
 } satisfies Record<WorkbenchRouteId, WorkbenchPresentedLayout>
 
@@ -92,7 +92,6 @@ export function useWorkbenchRouteHost({
 
 export function selectWorkbenchRoute({
   mode,
-  rightPanel,
   settingsOpen,
 }: WorkbenchRouteSelection): WorkbenchRouteId {
   if (settingsOpen) return 'settings'
@@ -104,10 +103,11 @@ export function selectWorkbenchRoute({
     case 'trajectory':
     case 'books':
     case 'interactive':
+    case 'lore':
+    case 'presets':
+    case 'versions':
       return mode
     case 'ide':
-      if (rightPanel === 'versions') return 'versions'
-      if (rightPanel === 'lore' || rightPanel === 'teller') return `ide-${rightPanel}`
       return 'ide-writing'
   }
 }

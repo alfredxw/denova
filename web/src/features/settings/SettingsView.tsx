@@ -1,4 +1,4 @@
-import { cloneElement, isValidElement, useEffect, useId, useMemo, useRef, useState, useCallback } from 'react'
+import { cloneElement, isValidElement, useEffect, useId, useRef, useState, useCallback } from 'react'
 import type { ReactNode } from 'react'
 import { ChevronDown, ChevronUp, Download, ExternalLink, Loader2, RefreshCw, Settings as SettingsIcon } from 'lucide-react'
 import { useReducedMotionConfig } from 'motion/react'
@@ -12,7 +12,7 @@ import { useLayeredSettingsDraft } from './use-layered-settings-draft'
 import { FontPicker } from './FontPicker'
 import { getInteractiveTellers } from '@/features/interactive/api'
 import type { Teller } from '@/features/interactive/types'
-import { DEFAULT_NARRATIVE_STYLE_ID, narrativeStyleName, narrativeStylesForMode } from '@/features/interactive/narrative-style'
+import { DEFAULT_NARRATIVE_STYLE_ID, narrativeStyleName } from '@/features/interactive/narrative-style'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 import { LoadingState } from '@/components/common/LoadingState'
 import { AutosaveStatusIndicator } from '@/components/forms/autosave-status'
@@ -113,8 +113,6 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
   }, [])
 
   const effective = layered?.effective ?? {}
-  const writingTellers = useMemo(() => narrativeStylesForMode(availableTellers, 'writing'), [availableTellers])
-  const gameTellers = useMemo(() => narrativeStylesForMode(availableTellers, 'game'), [availableTellers])
   // The "inherit" display must reflect the value that would apply if the current
   // layer (user/workspace) contributed nothing. `effective` includes the current
   // layer, so we merge only the lower layers to avoid the inherit label changing
@@ -610,7 +608,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
             label={t('settings.ide.defaultTeller')}
             value={draft.ide_story_teller_id}
             inherited={inherited.ide_story_teller_id}
-            tellers={writingTellers}
+            tellers={availableTellers}
             onChange={(v) => setField('ide_story_teller_id', v)}
           />
         </>
@@ -642,7 +640,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
             label={t('settings.interactive.defaultTeller')}
             value={draft.interactive_story_teller_id}
             inherited={inherited.interactive_story_teller_id}
-            tellers={gameTellers}
+            tellers={availableTellers}
             onChange={(v) => setField('interactive_story_teller_id', v)}
           />
           <Num label={t('settings.interactive.lineHeight')} value={draft.interactive_stage_line_height ?? null}

@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils'
 import { getActorStates, getEventPackages, getRuleSystems } from '../api'
 import { DEFAULT_INTERACTIVE_CHOICE_COUNT, DEFAULT_INTERACTIVE_REPLY_TARGET_CHARS, MAX_INTERACTIVE_CHOICE_COUNT, MIN_INTERACTIVE_CHOICE_COUNT, type StoryCreateInput } from '../opening'
 import type { ActorStateModule, EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, StoryDirectorModuleRefs, StoryDirectorRunMode, StoryDirectorRunPolicy, StoryStateSchemaMode, StorySummary, Teller } from '../types'
-import { DEFAULT_NARRATIVE_STYLE_ID, narrativeStyleName, narrativeStylesForMode, resolveNarrativeStyle } from '../narrative-style'
+import { DEFAULT_NARRATIVE_STYLE_ID, narrativeStyleName, resolveNarrativeStyle } from '../narrative-style'
 
 interface NewStorySetupPanelProps {
   stories: StorySummary[]
@@ -35,8 +35,7 @@ const moduleFields: Array<{ id: keyof StoryDirectorModuleRefs; disabled: keyof S
 
 export function NewStorySetupPanel({ stories, tellers, directors, imagePresets, recentNarrativeStyleID = DEFAULT_NARRATIVE_STYLE_ID, narrativeStyleLoading = false, story, onNarrativeStyleChange, onCancel, onCreate }: NewStorySetupPanelProps) {
   const { t } = useTranslation()
-  const gameTellers = useMemo(() => narrativeStylesForMode(tellers, 'game'), [tellers])
-  const recentTeller = resolveNarrativeStyle(gameTellers, recentNarrativeStyleID, 'game')
+  const recentTeller = resolveNarrativeStyle(tellers, recentNarrativeStyleID)
   const defaultDirector = directors[0]
   const initialDirector = directors.find((item) => item.id === story?.story_director_id) || defaultDirector
   const [title, setTitle] = useState(() => story?.title || defaultStoryTitle(stories, t))
@@ -62,7 +61,7 @@ export function NewStorySetupPanel({ stories, tellers, directors, imagePresets, 
   const [error, setError] = useState('')
   const [moduleCatalog, setModuleCatalog] = useState<DirectorModuleCatalog>({ eventPackages: [], ruleSystems: [], actorStates: [] })
   const director = directors.find((item) => item.id === directorId) || defaultDirector
-  const moduleOptions = useMemo(() => collectModuleOptions(directors, gameTellers, imagePresets, moduleCatalog, t), [directors, gameTellers, imagePresets, moduleCatalog, t])
+  const moduleOptions = useMemo(() => collectModuleOptions(directors, tellers, imagePresets, moduleCatalog, t), [directors, tellers, imagePresets, moduleCatalog, t])
 
   useEffect(() => {
     if (story || narrativeStyleSelectionLockedRef.current || !recentTeller) return
@@ -94,7 +93,7 @@ export function NewStorySetupPanel({ stories, tellers, directors, imagePresets, 
     setCreating(true)
     setError('')
     try {
-      const tellerID = resolveNarrativeStyle(gameTellers, moduleRefs.narrative_style_id || recentNarrativeStyleID, 'game')?.id || DEFAULT_NARRATIVE_STYLE_ID
+      const tellerID = resolveNarrativeStyle(tellers, moduleRefs.narrative_style_id || recentNarrativeStyleID)?.id || DEFAULT_NARRATIVE_STYLE_ID
       const normalizedChoiceCount = parseChoiceCount(choiceCount)
       if (normalizedChoiceCount === null) throw new Error(t('storyPicker.choiceCountError'))
       const directorRunPolicy = buildDirectorRunPolicy(directorRunMode, directorIntervalTurns)

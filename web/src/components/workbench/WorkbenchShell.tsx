@@ -4,9 +4,9 @@ import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { arrayMove } from '@dnd-kit/sortable'
 import { Group, Panel, Separator } from 'react-resizable-panels'
-import { BookOpen, Bot, Clock3, Database, Gamepad2, History, PanelLeft, PenLine, Route, Search, Settings, SlidersHorizontal, Sparkles, Terminal } from 'lucide-react'
+import { BookOpen, Bot, Clock3, Database, Gamepad2, History, Menu, PanelLeft, PenLine, Route, Search, Settings, SlidersHorizontal, Sparkles, Terminal } from 'lucide-react'
 import { WorkspaceLayout } from '@/components/layout/workspace-layout'
-import { WorkspaceMobileLayout, type MobileNavItem } from '@/components/layout/workspace-mobile-layout'
+import { MOBILE_NAVIGATION_OPEN_EVENT, WorkspaceMobileLayout, type MobileNavItem } from '@/components/layout/workspace-mobile-layout'
 import { createStablePortalHost, StablePortalSlot } from '@/components/layout/stable-portal-slot'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { MessageCenterButton } from '@/features/messages/MessageCenter'
@@ -15,16 +15,14 @@ import { requestAutomationNavigation } from '@/features/automations/automation-n
 import { setActivityMessageUnreadCount, useActivitySummary } from '@/features/activity/use-activity-summary'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import type { BookRecord, ChapterSummary, WorkspaceSummary } from '@/lib/api'
-import { isSharedWorkspaceMode, useWorkspaceStore, type RightPanel, type WorkspaceMode } from '@/stores/workspace-store'
+import { useWorkspaceStore, type RightPanel, type WorkspaceMode } from '@/stores/workspace-store'
 import type { InteractiveSubmode } from '@/features/interactive/types'
 import { BookSwitcher } from './BookSwitcher'
 import { WorkbenchNoticePill } from './WorkbenchNoticePill'
 import type { WorkbenchNotice } from '@/features/notices/use-workbench-notice'
 import { WorkbenchAppSidebar, WorkbenchBrandIcon } from './WorkbenchAppSidebar'
-import { WorkbenchModeSwitch } from './WorkbenchModeSwitch'
 import { WritingStatusBar } from './WritingStatusBar'
 import {
-  cleanupLegacyActivityOrderStorage,
   defaultActivityOrderForScope,
   isActivityItemID,
   mergeVisibleActivityOrder,
@@ -41,7 +39,6 @@ export type WorkbenchPresentedLayout = 'writing' | 'interactive' | 'full'
 interface WorkbenchShellProps {
   mode: WorkspaceMode
   presentedLayout: WorkbenchPresentedLayout
-  booksReturnMode: 'ide' | 'interactive'
   currentBookName: string
   workspace: string
   books: BookRecord[]
@@ -51,10 +48,8 @@ interface WorkbenchShellProps {
   isStreaming: boolean
   projectVisible: boolean
   activityBarExpanded: boolean
-  rightPanel: RightPanel
   settingsOpen: boolean
   developerMode?: boolean
-  interactiveSubmode: InteractiveSubmode
   sidebar: ReactNode
   main: ReactNode
   rightPanelContent: ReactNode
@@ -84,7 +79,6 @@ const ACTIVITY_BAR_WIDTH_KEYBOARD_STEP = 8
 export function WorkbenchShell({
   mode,
   presentedLayout,
-  booksReturnMode,
   currentBookName,
   workspace,
   books,
@@ -94,10 +88,8 @@ export function WorkbenchShell({
   isStreaming,
   projectVisible,
   activityBarExpanded,
-  rightPanel,
   settingsOpen,
   developerMode = false,
-  interactiveSubmode,
   sidebar,
   main,
   rightPanelContent,
@@ -151,17 +143,11 @@ export function WorkbenchShell({
     if (navigationFrameRef.current !== null) window.cancelAnimationFrame(navigationFrameRef.current)
   }, [])
 
-  useEffect(() => {
-    cleanupLegacyActivityOrderStorage()
-    setActivityOrders(readStoredActivityOrders())
-  }, [])
-
-  const loreVisible = rightPanel === 'lore'
-  const tellerVisible = rightPanel === 'teller'
-  const versionsVisible = rightPanel === 'versions'
-  const sharedMenuActive = settingsOpen || versionsVisible || isSharedWorkspaceMode(mode)
-  const ideModeActive = mode === 'ide' && !sharedMenuActive
-  const interactiveModeActive = mode === 'interactive' && !sharedMenuActive
+  const ideModeActive = mode === 'ide' && !settingsOpen
+  const interactiveModeActive = mode === 'interactive' && !settingsOpen
+  const loreActive = mode === 'lore' && !settingsOpen
+  const presetsActive = mode === 'presets' && !settingsOpen
+  const versionsActive = mode === 'versions' && !settingsOpen
   const skillsActive = mode === 'skills' && !settingsOpen
   const agentsActive = mode === 'agents' && !settingsOpen
   const automationsActive = mode === 'automations' && !settingsOpen
@@ -171,9 +157,7 @@ export function WorkbenchShell({
   // Layout must follow the content that is actually painted; mixing it with the newer
   // navigation state briefly squeezes or stretches the outgoing page.
   const writingContentVisible = presentedLayout === 'writing'
-  const interactiveContentVisible = presentedLayout === 'interactive'
-  const navigationMode = isSharedWorkspaceMode(mode) ? booksReturnMode : mode
-  const activityOrderScope: ActivityOrderScope = navigationMode === 'interactive' ? 'interactive' : 'ide'
+  const activityOrderScope: ActivityOrderScope = 'workspace'
   const activityOrder = activityOrders[activityOrderScope]
 
   const closeSettingsIfOpen = () => {
@@ -183,165 +167,80 @@ export function WorkbenchShell({
   const openWriting = () => {
     closeSettingsIfOpen()
     onSetMode('ide')
-    if (loreVisible || tellerVisible || versionsVisible) onSetRightPanel(null)
   }
 
-  const switchNavigationMode = (nextMode: 'ide' | 'interactive') => {
+  const openGame = () => {
     closeSettingsIfOpen()
-    if (versionsVisible) onSetRightPanel(null)
+    onSetInteractiveSubmode('story')
+    onSetMode('interactive')
+  }
+
+  const openRoute = (nextMode: WorkspaceMode) => {
+    closeSettingsIfOpen()
     onSetMode(nextMode)
   }
 
-  const toggleIdePanel = (panel: NonNullable<RightPanel>) => {
-    // A workspace panel can briefly retain its previous value while a shared route is being
-    // presented. Only treat this as a toggle-off when that panel is actually the active IDE menu.
-    const panelAlreadyActive = mode === 'ide' && !settingsOpen && rightPanel === panel
-    closeSettingsIfOpen()
-    onSetMode('ide')
-    onSetRightPanel(panelAlreadyActive ? null : panel)
-  }
-
-  const openVersions = () => {
-    closeSettingsIfOpen()
-    if (isSharedWorkspaceMode(mode)) {
-      onSetMode(booksReturnMode)
-    }
-    onSetRightPanel(versionsVisible ? null : 'versions')
-  }
-
-  const openInteractiveSubmode = (nextMode: InteractiveSubmode) => {
-    closeSettingsIfOpen()
-    if (versionsVisible) onSetRightPanel(null)
-    onSetMode('interactive')
-    onSetInteractiveSubmode(nextMode)
-  }
-
-  const returnFromBooks = () => {
-    if (booksReturnMode === 'interactive') {
-      onSetMode('interactive')
-      return
-    }
-    onSetMode('ide')
-    if (loreVisible || tellerVisible || versionsVisible) onSetRightPanel(null)
-  }
-
   const openBooks = () => {
-    if (mode === 'books' && !settingsOpen) {
-      returnFromBooks()
-      return
-    }
-    closeSettingsIfOpen()
-    if (versionsVisible) onSetRightPanel(null)
-    onSetMode('books')
+    openRoute('books')
   }
 
   const manageBooks = () => {
-    closeSettingsIfOpen()
-    if (versionsVisible) onSetRightPanel(null)
-    onSetMode('books')
+    openRoute('books')
   }
 
   const openAgents = () => {
-    if (mode === 'agents' && !settingsOpen) {
-      returnFromBooks()
-      return
-    }
-    closeSettingsIfOpen()
-    if (versionsVisible) onSetRightPanel(null)
-    onSetMode('agents')
+    openRoute('agents')
   }
 
   const openAgentChat = () => {
-    if (mode === 'agentchat' && !settingsOpen) {
-      returnFromBooks()
-      return
-    }
-    closeSettingsIfOpen()
-    if (versionsVisible) onSetRightPanel(null)
-    onSetMode('agentchat')
+    openRoute('agentchat')
   }
 
   const openSkills = () => {
-    if (mode === 'skills' && !settingsOpen) {
-      returnFromBooks()
-      return
-    }
-    closeSettingsIfOpen()
-    if (versionsVisible) onSetRightPanel(null)
-    onSetMode('skills')
+    openRoute('skills')
   }
 
   const openAutomations = () => {
-    if (mode === 'automations' && !settingsOpen) {
-      returnFromBooks()
-      return
-    }
-    closeSettingsIfOpen()
-    if (versionsVisible) onSetRightPanel(null)
-    onSetMode('automations')
+    openRoute('automations')
   }
 
   const openTrajectory = () => {
-    if (mode === 'trajectory' && !settingsOpen) {
-      returnFromBooks()
-      return
-    }
-    closeSettingsIfOpen()
-    if (versionsVisible) onSetRightPanel(null)
-    onSetMode('trajectory')
+    openRoute('trajectory')
   }
 
   const openAutomationNotification = (target: AutomationMessageNavigation) => {
     closeSettingsIfOpen()
-    if (versionsVisible) onSetRightPanel(null)
     requestAutomationNavigation(target)
     onSetMode('automations')
   }
 
-  const ideActivityItems: ActivityItem[] = [
+  const creationActivityItems: ActivityItem[] = [
     {
       id: 'writing',
       label: t('workbench.activity.writing'),
       onClick: openWriting,
-      active: ideModeActive && !loreVisible && !tellerVisible,
+      active: ideModeActive,
       icon: <PenLine className="h-4 w-4" />,
     },
     {
-      id: 'lore',
-      label: t('workbench.activity.lore'),
-      onClick: () => toggleIdePanel('lore'),
-      active: ideModeActive && loreVisible,
-      icon: <Database className="h-4 w-4" />,
-    },
-    {
-      id: 'teller',
-      label: t('workbench.activity.teller'),
-      onClick: () => toggleIdePanel('teller'),
-      active: ideModeActive && tellerVisible,
-      icon: <SlidersHorizontal className="h-4 w-4" />,
-    },
-  ]
-
-  const interactiveActivityItems: ActivityItem[] = [
-    {
       id: 'story',
       label: t('workbench.activity.game'),
-      onClick: () => openInteractiveSubmode('story'),
-      active: interactiveModeActive && (interactiveSubmode === 'story' || interactiveSubmode === 'director' || interactiveSubmode === 'timeline'),
+      onClick: openGame,
+      active: interactiveModeActive,
       icon: <Gamepad2 className="h-4 w-4" />,
     },
     {
       id: 'lore',
       label: t('workbench.activity.lore'),
-      onClick: () => openInteractiveSubmode('lore'),
-      active: interactiveModeActive && interactiveSubmode === 'lore',
+      onClick: () => openRoute('lore'),
+      active: loreActive,
       icon: <Database className="h-4 w-4" />,
     },
     {
       id: 'teller',
       label: t('workbench.activity.teller'),
-      onClick: () => openInteractiveSubmode('teller'),
-      active: interactiveModeActive && interactiveSubmode === 'teller',
+      onClick: () => openRoute('presets'),
+      active: presetsActive,
       icon: <SlidersHorizontal className="h-4 w-4" />,
     },
   ]
@@ -371,8 +270,8 @@ export function WorkbenchShell({
     {
       id: 'versions',
       label: t('workbench.activity.versions'),
-      onClick: openVersions,
-      active: versionsVisible && !settingsOpen,
+      onClick: () => openRoute('versions'),
+      active: versionsActive,
       icon: <History className="h-4 w-4" />,
     },
     {
@@ -400,10 +299,10 @@ export function WorkbenchShell({
 
   const activityItems = useMemo(
     () => sortActivityItems([
-      ...(navigationMode === 'interactive' ? interactiveActivityItems : ideActivityItems),
+      ...creationActivityItems,
       ...sharedActivityItems,
     ], activityOrder, defaultActivityOrderForScope(activityOrderScope)),
-    [activityOrder, activityOrderScope, agentChatActive, agentsActive, automationInboxUnread, automationRunning, automationsActive, booksReturnMode, developerMode, ideModeActive, interactiveModeActive, interactiveSubmode, loreVisible, mode, navigationMode, settingsOpen, skillsActive, t, tellerVisible, trajectoryActive, versionsVisible],
+    [activityOrder, activityOrderScope, agentChatActive, agentsActive, automationInboxUnread, automationRunning, automationsActive, developerMode, ideModeActive, interactiveModeActive, loreActive, mode, presetsActive, settingsOpen, skillsActive, t, trajectoryActive, versionsActive],
   )
 
   const handleActivityReorder = (activeId: string, overId: string) => {
@@ -480,13 +379,6 @@ export function WorkbenchShell({
           onManageBooks={manageBooks}
         />
       }
-      modeSwitch={(
-        <WorkbenchModeSwitch
-          navigationMode={navigationMode === 'interactive' ? 'interactive' : 'ide'}
-          collapsed={!activityBarExpanded}
-          onSwitch={switchNavigationMode}
-        />
-      )}
       notice={notice ? (
         <WorkbenchNoticePill
           expanded={activityBarExpanded}
@@ -535,7 +427,7 @@ export function WorkbenchShell({
   )
 
   if (isMobile) {
-    const compactMobileNavigation = interactiveContentVisible && interactiveSubmode === 'story'
+    const compactMobileNavigation = true
     const mobileTopBar = (
       <header className="nova-mobile-topbar nova-topbar shrink-0 border-b border-[var(--nova-border)] py-2 pl-3 pr-3">
         <div className="flex min-w-0 items-center justify-between gap-2">
@@ -562,11 +454,14 @@ export function WorkbenchShell({
             >
               <Search className="h-4 w-4" />
             </button>
-            <WorkbenchModeSwitch
-              navigationMode={navigationMode === 'interactive' ? 'interactive' : 'ide'}
-              compact
-              onSwitch={switchNavigationMode}
-            />
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new Event(MOBILE_NAVIGATION_OPEN_EVENT))}
+              className="nova-icon-button flex h-8 w-8 items-center justify-center rounded-[var(--nova-radius)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
+              aria-label={t('workbench.mobile.navigationMenu')}
+            >
+              <Menu className="h-4 w-4" />
+            </button>
           </div>
         </div>
         {notice && (
@@ -582,11 +477,7 @@ export function WorkbenchShell({
         )}
       </header>
     )
-    const mobileActivityItems: MobileNavItem[] = [
-      ...(navigationMode === 'interactive' ? interactiveActivityItems : ideActivityItems),
-      ...sharedActivityItems,
-    ]
-      .filter((item) => item.id !== 'writing')
+    const mobileActivityItems: MobileNavItem[] = activityItems
       .map((item) => ({
         id: item.id,
         label: item.label,

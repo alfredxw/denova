@@ -1,21 +1,27 @@
 import { create } from 'zustand'
 
-export type RightPanel = 'ai' | 'lore' | 'creator' | 'teller' | 'outline' | 'characters' | 'versions' | null
+export type RightPanel = 'ai' | null
 type BottomPanel = 'versions' | 'problems' | null
-export type WorkspaceMode = 'ide' | 'interactive' | 'books' | 'skills' | 'agents' | 'automations' | 'agentchat' | 'trajectory'
+export type WorkspaceRoute = 'ide' | 'interactive' | 'lore' | 'presets' | 'versions' | 'books' | 'skills' | 'agents' | 'automations' | 'agentchat' | 'trajectory'
+/** Historical internal name retained while the persisted key stays stable. */
+export type WorkspaceMode = WorkspaceRoute
 
 /**
- * Shared top-level menu modes, siblings of the two content modes (writing / interactive).
- * Entering one never changes the user's content mode, and leaving returns to it — clicking a
- * top-level menu item must not switch between writing and game mode on its own.
+ * Shared top-level destinations, alongside Writing and Game. The historical
+ * `mode` name remains in persisted state, but navigation no longer has a global mode switch.
  */
-const SHARED_WORKSPACE_MODES = ['books', 'skills', 'agents', 'automations', 'agentchat', 'trajectory'] as const
+const SHARED_WORKSPACE_MODES = ['lore', 'presets', 'versions', 'books', 'skills', 'agents', 'automations', 'agentchat', 'trajectory'] as const
 
 export type SharedWorkspaceMode = (typeof SHARED_WORKSPACE_MODES)[number]
 
 /** Reports whether a mode belongs to the shared top-level menu. */
 export function isSharedWorkspaceMode(mode: WorkspaceMode): mode is SharedWorkspaceMode {
   return (SHARED_WORKSPACE_MODES as readonly WorkspaceMode[]).includes(mode)
+}
+
+/** Reports whether a destination needs an active Book. */
+export function workspaceModeRequiresBook(mode: WorkspaceMode): boolean {
+  return mode === 'ide' || mode === 'interactive' || mode === 'lore' || mode === 'presets' || mode === 'versions'
 }
 
 const MODE_STORAGE_KEY = 'nova:mode'
@@ -32,17 +38,15 @@ function readInitialRightPanel(): RightPanel {
   if (typeof window === 'undefined') return 'ai'
   const stored = window.localStorage.getItem(RIGHT_PANEL_STORAGE_KEY)
   if (stored === null) return 'ai'
-  // Beta migration: Change Review moved from the right panel into the editor.
-  if (stored === 'review') return 'ai'
   return isRightPanel(stored) ? stored : 'ai'
 }
 
 function isWorkspaceMode(value: unknown): value is WorkspaceMode {
-  return value === 'ide' || value === 'interactive' || value === 'books' || value === 'skills' || value === 'agents' || value === 'automations' || value === 'agentchat' || value === 'trajectory'
+  return value === 'ide' || value === 'interactive' || value === 'lore' || value === 'presets' || value === 'versions' || value === 'books' || value === 'skills' || value === 'agents' || value === 'automations' || value === 'agentchat' || value === 'trajectory'
 }
 
 function isRightPanel(value: unknown): value is RightPanel {
-  return value === 'ai' || value === 'lore' || value === 'creator' || value === 'teller' || value === 'outline' || value === 'characters' || value === 'versions' || value === null
+  return value === 'ai' || value === null
 }
 
 function persistMode(mode: WorkspaceMode) {

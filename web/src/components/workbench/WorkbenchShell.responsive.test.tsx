@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { act, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { setConfiguredLocale } from '@/i18n'
 import { WorkbenchShell } from './WorkbenchShell'
@@ -118,7 +118,6 @@ describe('WorkbenchShell responsive main content', () => {
         {...workbenchProps(<div />)}
         mode="ide"
         presentedLayout="writing"
-        booksReturnMode="ide"
         activityBarExpanded
       />,
     )
@@ -171,18 +170,18 @@ describe('WorkbenchShell responsive main content', () => {
     expect(unmountCount).toBe(0)
   })
 
-  it('exposes the selected writing/game mode to assistive technology on desktop and mobile', () => {
+  it('exposes Writing and Game as peer destinations on desktop and mobile', () => {
     const props = workbenchProps(<div />)
     const { rerender } = render(<WorkbenchShell {...props} />)
 
-    expect(screen.getByRole('group', { name: /模式切换|Mode Switch/ })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /写作模式|Writing Mode/ })).toHaveAttribute('aria-pressed', 'false')
-    expect(screen.getByRole('button', { name: /游戏模式|Game Mode/ })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.queryByRole('group', { name: /模式切换|Mode Switch/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^(写作|Writing)$/ })).not.toHaveAttribute('aria-current')
+    expect(screen.getByRole('button', { name: /^(游戏|Game)$/ })).toHaveAttribute('aria-current', 'page')
 
     responsiveState.mobile = true
     rerender(<WorkbenchShell {...props} />)
-    expect(screen.getByRole('button', { name: /写作模式|Writing Mode/ })).toHaveAttribute('aria-pressed', 'false')
-    expect(screen.getByRole('button', { name: /游戏模式|Game Mode/ })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: /^(写作|Writing)$/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^(游戏|Game)$/ })).toHaveAttribute('aria-pressed', 'true')
   })
 
   it('keeps the global book switcher fixed across first-level menus on desktop and mobile', () => {
@@ -190,7 +189,6 @@ describe('WorkbenchShell responsive main content', () => {
       ...workbenchProps(<div />),
       mode: 'agentchat' as const,
       presentedLayout: 'full' as const,
-      booksReturnMode: 'ide' as const,
     }
     const { rerender } = render(<WorkbenchShell {...props} />)
 
@@ -239,7 +237,7 @@ describe('WorkbenchShell responsive main content', () => {
     cancelFrame.mockRestore()
   })
 
-  it('opens Lore from Workspace even while the previous Lore panel state is still settling', () => {
+  it('opens Lore as an independent destination', () => {
     const frames: FrameRequestCallback[] = []
     const requestFrame = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
       frames.push(callback)
@@ -247,17 +245,13 @@ describe('WorkbenchShell responsive main content', () => {
     })
     const cancelFrame = vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {})
     const onSetMode = vi.fn()
-    const onSetRightPanel = vi.fn()
 
     render(
       <WorkbenchShell
         {...workbenchProps(<div />)}
         mode="agentchat"
         presentedLayout="full"
-        booksReturnMode="ide"
-        rightPanel="lore"
         onSetMode={onSetMode}
-        onSetRightPanel={onSetRightPanel}
       />,
     )
 
@@ -265,8 +259,7 @@ describe('WorkbenchShell responsive main content', () => {
     act(() => { frames.shift()?.(0) })
     act(() => { frames.shift()?.(16) })
 
-    expect(onSetMode).toHaveBeenCalledWith('ide')
-    expect(onSetRightPanel).toHaveBeenCalledWith('lore')
+    expect(onSetMode).toHaveBeenCalledWith('lore')
 
     requestFrame.mockRestore()
     cancelFrame.mockRestore()
@@ -280,7 +273,6 @@ describe('WorkbenchShell responsive main content', () => {
         mode="agentchat"
         presentedLayout="writing"
         projectVisible
-        rightPanel="lore"
         rightPanelContent={<div />}
         rightPanelWide
         centerFocus
@@ -300,7 +292,6 @@ describe('WorkbenchShell responsive main content', () => {
         mode="ide"
         presentedLayout="full"
         projectVisible
-        rightPanel="ai"
         rightPanelContent={<div />}
         rightPanelWide
         centerFocus
@@ -325,21 +316,17 @@ describe('WorkbenchShell responsive main content', () => {
 
     expect(screen.getByRole('button', { name: 'Workspace' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Books' })).toBeInTheDocument()
-    const modeSwitch = screen.getByRole('group', { name: 'Mode Switch' })
-    expect(within(modeSwitch).getByRole('button', { name: 'Writing Mode' })).toHaveTextContent('Writing')
-    expect(within(modeSwitch).getByRole('button', { name: 'Game Mode' })).toHaveTextContent('Game')
+    expect(screen.getByRole('button', { name: 'Writing' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Game' })).toBeInTheDocument()
   })
 
-  it.each([
-    ['writing', 'nova.activity.order.ide.v2', 'ide', 'writing', ['writing', 'lore', 'teller', 'versions', 'books', 'skills', 'agents', 'automations']],
-    ['game', 'nova.activity.order.interactive.v2', 'interactive', 'story', ['story', 'lore', 'teller', 'versions', 'books', 'skills', 'agents', 'automations']],
-  ] as const)('places a newly introduced Workspace item after the %s entry', (_label, storageKey, mode, primaryID, storedOrder) => {
-    window.localStorage.setItem(storageKey, JSON.stringify(storedOrder))
-    const { container } = render(<WorkbenchShell {...workbenchProps(<div />)} mode={mode} booksReturnMode={mode} />)
+  it('places newly introduced items using the unified Workspace order', () => {
+    window.localStorage.setItem('nova.activity.order.workspace.v1', JSON.stringify(['writing', 'story', 'lore', 'teller', 'versions', 'books', 'skills', 'agents', 'automations']))
+    const { container } = render(<WorkbenchShell {...workbenchProps(<div />)} />)
 
     const activityIDs = Array.from(container.querySelectorAll('[data-activity-id]'))
       .map((element) => element.getAttribute('data-activity-id'))
-    expect(activityIDs.slice(0, 2)).toEqual([primaryID, 'agentchat'])
+    expect(activityIDs.slice(0, 3)).toEqual(['writing', 'story', 'agentchat'])
   })
 
   it('keeps Trajectory hidden until developer mode is enabled', () => {
@@ -368,7 +355,6 @@ describe('WorkbenchShell responsive main content', () => {
         {...workbenchProps(<div />)}
         mode={mode}
         presentedLayout={presentedLayout}
-        booksReturnMode={mode}
         developerMode
         onSetMode={onSetMode}
         onSetInteractiveSubmode={onSetInteractiveSubmode}
@@ -393,7 +379,6 @@ describe('WorkbenchShell responsive main content', () => {
         {...workbenchProps(<div />)}
         mode="ide"
         presentedLayout="writing"
-        booksReturnMode="ide"
         activityBarExpanded
         summary={{
           title: 'Test book',
@@ -440,7 +425,6 @@ describe('WorkbenchShell responsive main content', () => {
         {...workbenchProps(<div />)}
         mode="agentchat"
         presentedLayout="full"
-        booksReturnMode="ide"
         activityBarExpanded
       />,
     )
@@ -452,7 +436,6 @@ function workbenchProps(main: ReactNode) {
   return {
     mode: 'interactive' as const,
     presentedLayout: 'interactive' as const,
-    booksReturnMode: 'interactive' as const,
     currentBookName: 'Test book',
     workspace: '/tmp/test-book',
     books: [{ project_id: 'book-test', name: 'Test book', path: '/tmp/test-book', author: '', last_opened_at: '' }],
@@ -460,9 +443,7 @@ function workbenchProps(main: ReactNode) {
     isStreaming: false,
     projectVisible: false,
     activityBarExpanded: false,
-    rightPanel: null,
     settingsOpen: false,
-    interactiveSubmode: 'story' as const,
     sidebar: null,
     main,
     rightPanelContent: null,

@@ -25,7 +25,6 @@ import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { getImagePresets } from '../api'
 import { INTERACTIVE_OPENING_PRESET_PATH, INTERACTIVE_OPENING_PRESET_UPDATED_EVENT, INTERACTIVE_OPENING_PRESET_ENTRY_ID, LEGACY_INTERACTIVE_OPENING_PRESET_PATH, parseBookOpeningPresets, serializeBookOpeningPresets, type BookOpeningPreset } from '../opening'
-import type { PresetUsageMode } from '../preset-ownership'
 import type { ImagePreset, StoryDirector, Teller } from '../types'
 import { CreatorDirectory, CreatorEditor } from './setting-panel/CreatorEditor'
 import { LoreEditor } from './setting-panel/LoreEditor'
@@ -60,7 +59,6 @@ interface SettingPanelProps {
   tellers?: Teller[]
   storyDirectors?: StoryDirector[]
   imagePresets?: ImagePreset[]
-  presetUsageMode?: PresetUsageMode
   onTellersChange?: (tellers: Teller[]) => void
   onStoryDirectorsChange?: (directors: StoryDirector[]) => void
   onImagePresetsChange?: (presets: ImagePreset[]) => void
@@ -79,7 +77,6 @@ export function SettingPanel({
   tellers = EMPTY_TELLERS,
   storyDirectors = EMPTY_STORY_DIRECTORS,
   imagePresets = EMPTY_IMAGE_PRESETS,
-  presetUsageMode = 'game',
   onTellersChange,
   onStoryDirectorsChange,
   onImagePresetsChange,
@@ -99,7 +96,6 @@ export function SettingPanel({
         tellers={tellers}
         storyDirectors={storyDirectors}
         imagePresets={imagePresets}
-        presetUsageMode={presetUsageMode}
         onTellersChange={onTellersChange}
         onStoryDirectorsChange={onStoryDirectorsChange}
         onImagePresetsChange={onImagePresetsChange}

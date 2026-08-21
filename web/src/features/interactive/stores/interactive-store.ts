@@ -136,7 +136,7 @@ function rememberSubmode(submode: InteractiveSubmode) {
 }
 
 function isInteractiveSubmode(value: unknown): value is InteractiveSubmode {
-  return value === 'story' || value === 'timeline' || value === 'director' || value === 'lore' || value === 'creator' || value === 'teller'
+  return value === 'story' || value === 'timeline' || value === 'director'
 }
 
 export const useInteractiveStore = create<InteractiveStore>((set) => ({

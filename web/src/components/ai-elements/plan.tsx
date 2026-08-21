@@ -20,8 +20,6 @@ import { ChevronsUpDownIcon } from "lucide-react";
 import type { ComponentProps } from "react";
 import { createContext, useContext, useMemo } from "react";
 
-import { Shimmer } from "./shimmer";
-
 interface PlanContextValue {
   isStreaming: boolean;
 }
@@ -74,12 +72,16 @@ export type PlanTitleProps = Omit<
   children: string;
 };
 
-export const PlanTitle = ({ children, ...props }: PlanTitleProps) => {
+export const PlanTitle = ({ children, className, ...props }: PlanTitleProps) => {
   const { isStreaming } = usePlan();
 
   return (
-    <CardTitle data-slot="plan-title" {...props}>
-      {isStreaming ? <Shimmer>{children}</Shimmer> : children}
+    <CardTitle
+      className={cn(isStreaming && "shimmer", className)}
+      data-slot="plan-title"
+      {...props}
+    >
+      {children}
     </CardTitle>
   );
 };
@@ -100,11 +102,11 @@ export const PlanDescription = ({
 
   return (
     <CardDescription
-      className={cn("text-balance", className)}
+      className={cn("text-balance", isStreaming && "shimmer", className)}
       data-slot="plan-description"
       {...props}
     >
-      {isStreaming ? <Shimmer>{children}</Shimmer> : children}
+      {children}
     </CardDescription>
   );
 };

@@ -1,6 +1,6 @@
 # Narrative style (`narrative_style`)
 
-Narrative styles are shared prose-policy presets. `modes` controls whether a style appears in Writing, Game, or both; shared style-reference files can be attached globally or for named scene types.
+Narrative styles are shared prose-policy presets used by both Writing and Game. Shared style-reference files can be attached globally or for named scene types.
 
 This resource uses `user` scope. Create and update submit a complete editable resource. Update/delete require the latest content-addressed `revision` returned by `get`; `updated_at` is display metadata and is not a concurrency token.
 
@@ -11,7 +11,6 @@ This resource uses `user` scope. Create and update submit a complete editable re
 | `id` | string | create: recommended | Stable ID containing letters, digits, `_`, or `-`. It cannot change during update. |
 | `name` | string | yes | User-visible name. |
 | `description` | string | no | Concise catalog description. |
-| `modes` | string[] | no | Any non-empty subset of `writing`, `game`. Missing or unusable values mean both modes for legacy compatibility. |
 | `style_refs` | string[] | no | Global style-reference `display_path` values; every distinct valid path is retained. Resolve each with `style_reference` first. |
 | `style_rules` | object[] | no | Scene-specific mappings. Each item has non-empty `scene` and any number of distinct `style_refs`. Preserve returned legacy `style_contents`, but do not add new inline excerpts. |
 | `context_policy` | object | no | Short policy strings `creator`, `lore`, and `runtime_state`. Defaults are `always`, `relevant`, `always`; these are guidance tokens, not arbitrary story content. |
@@ -42,7 +41,6 @@ config_apply({
     "id": "close-suspense",
     "name": "Close suspense",
     "description": "Restricted viewpoint and escalating sensory tension.",
-    "modes": ["writing", "game"],
     "style_refs": [".denova/styles/tense-close-third.md"],
     "style_rules": [
       {
@@ -90,7 +88,6 @@ config_apply({
     "id": "close-suspense",
     "name": "Close suspense",
     "description": "Restricted viewpoint with restrained, escalating tension.",
-    "modes": ["writing", "game"],
     "style_refs": [".denova/styles/tense-close-third.md"],
     "style_rules": [
       {"scene": "quiet-investigation", "style_refs": [".denova/styles/tense-close-third.md"]}

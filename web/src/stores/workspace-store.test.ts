@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { isSharedWorkspaceMode, useWorkspaceStore, type WorkspaceMode } from './workspace-store'
 
 describe('useWorkspaceStore', () => {
@@ -24,30 +24,22 @@ describe('useWorkspaceStore', () => {
     expect(useWorkspaceStore.getInitialState().bottomPanel).toBeNull()
   })
 
-  it('persists the visible top-level mode and writing-side panel', () => {
+  it('persists the visible top-level destination and Agent panel', () => {
     useWorkspaceStore.getState().setMode('interactive')
     useWorkspaceStore.getState().setMode('agents')
-    useWorkspaceStore.getState().setRightPanel('versions')
+    useWorkspaceStore.getState().setRightPanel('ai')
 
     expect(window.localStorage.getItem('nova:mode')).toBe('agents')
     expect(window.localStorage.getItem('nova:content-mode')).toBe('interactive')
-    expect(window.localStorage.getItem('nova:right-panel')).toBe('versions')
+    expect(window.localStorage.getItem('nova:right-panel')).toBe('ai')
 
     useWorkspaceStore.getState().setRightPanel(null)
     expect(window.localStorage.getItem('nova:right-panel')).toBeNull()
   })
 
   it('classifies shared primary-menu surfaces without changing the foreground content mode', () => {
-    const modes: WorkspaceMode[] = ['ide', 'interactive', 'books', 'skills', 'agents', 'automations', 'agentchat', 'trajectory']
+    const modes: WorkspaceMode[] = ['ide', 'interactive', 'lore', 'presets', 'versions', 'books', 'skills', 'agents', 'automations', 'agentchat', 'trajectory']
 
-    expect(modes.filter(isSharedWorkspaceMode)).toEqual(['books', 'skills', 'agents', 'automations', 'agentchat', 'trajectory'])
-  })
-
-  it('migrates the legacy change-review right panel back to the Agent panel', async () => {
-    window.localStorage.setItem('nova:right-panel', 'review')
-    vi.resetModules()
-    const { useWorkspaceStore: reloadedStore } = await import('./workspace-store')
-
-    expect(reloadedStore.getInitialState().rightPanel).toBe('ai')
+    expect(modes.filter(isSharedWorkspaceMode)).toEqual(['lore', 'presets', 'versions', 'books', 'skills', 'agents', 'automations', 'agentchat', 'trajectory'])
   })
 })

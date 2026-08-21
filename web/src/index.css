@@ -754,6 +754,11 @@ html[data-nova-motion="off"] *::after {
   animation-iteration-count: 1 !important;
 }
 
+html[data-nova-motion="off"] .shimmer {
+  --shimmer-image: none;
+  --shimmer-text-fill: currentColor;
+}
+
 [data-nova-app-shell="true"] {
   background: var(--nova-bg);
   color: var(--nova-text);

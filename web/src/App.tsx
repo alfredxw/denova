@@ -11,7 +11,7 @@ import { CommandPalette } from '@/components/common/command-palette'
 import { useWorkspace } from '@/hooks/useWorkspace'
 import { useAgentChat } from '@/hooks/useAgentChat'
 import { useWorkspaceHotkeys } from '@/hooks/use-workspace-hotkeys'
-import { isSharedWorkspaceMode, useWorkspaceStore, type RightPanel, type WorkspaceMode } from '@/stores/workspace-store'
+import { isSharedWorkspaceMode, useWorkspaceStore, workspaceModeRequiresBook, type RightPanel, type WorkspaceMode } from '@/stores/workspace-store'
 import { useInteractiveStore } from '@/features/interactive/stores/interactive-store'
 import type { ChapterSummary } from '@/lib/api'
 import { toast } from 'sonner'
@@ -62,8 +62,7 @@ const MAX_OPEN_TABS_FALLBACK = 5
 const AUTO_SAVE_ENABLED_FALLBACK = true
 const AUTO_SAVE_DELAY_FALLBACK_MS = 1500
 type SidebarView = 'outline' | 'files' | 'search'
-type WritingRightPanel = Extract<RightPanel, 'ai'> | null
-type BooksReturnMode = 'ide' | 'interactive'
+type CreationRoute = 'ide' | 'interactive'
 
 function App() {
   const { t } = useTranslation()
@@ -97,9 +96,8 @@ function App() {
   const [characterCardImporting, setCharacterCardImporting] = useState(false)
   const [characterCardError, setCharacterCardError] = useState('')
   const [loreItems, setLoreItems] = useState<LoreItem[]>([])
-  const [booksReturnMode, setBooksReturnMode] = useState<BooksReturnMode>(() => readContentMode())
-  const booksReturnModeRef = useRef<BooksReturnMode>(readContentMode())
-  const writingRightPanelRef = useRef<WritingRightPanel>('ai')
+  const [lastCreationRoute, setLastCreationRoute] = useState<CreationRoute>(() => readContentMode())
+  const lastCreationRouteRef = useRef<CreationRoute>(readContentMode())
   const characterCardInputRef = useRef<HTMLInputElement>(null)
   const chatWorkspaceRef = useRef('')
   const updateCheckInFlightRef = useRef(false)
@@ -122,8 +120,8 @@ function App() {
   useEffect(() => {
     if (isSharedWorkspaceMode(mode)) return
     const contentMode = mode === 'interactive' ? 'interactive' : 'ide'
-    booksReturnModeRef.current = contentMode
-    setBooksReturnMode(contentMode)
+    lastCreationRouteRef.current = contentMode
+    setLastCreationRoute(contentMode)
   }, [mode])
 
   const {
@@ -385,7 +383,7 @@ function App() {
   useEffect(() => { window.localStorage.setItem(ACTIVITY_BAR_EXPANDED_KEY, String(activityBarExpanded)) }, [activityBarExpanded])
   useEffect(() => { window.localStorage.setItem(INTERACTIVE_RIGHT_VISIBLE_KEY, String(interactiveRightVisible)) }, [interactiveRightVisible])
   useEffect(() => { window.localStorage.setItem(SETTINGS_OPEN_KEY, String(settingsOpen)) }, [settingsOpen])
-  useEffect(() => { writeContentMode(booksReturnMode) }, [booksReturnMode])
+  useEffect(() => { writeContentMode(lastCreationRoute) }, [lastCreationRoute])
 
   useEffect(() => {
     if (workspace || !workspaceLoaded) return
@@ -394,7 +392,7 @@ function App() {
     clearSelectedFile()
     // User-owned surfaces, especially General Project AgentChat, remain usable
     // without a foreground Book. Only content modes need the Book picker fallback.
-    if (!isSharedWorkspaceMode(mode)) setMode('books')
+    if (workspaceModeRequiresBook(mode)) setMode('books')
   }, [clearSelectedFile, mode, setMode, workspace, workspaceLoaded])
 
   useEffect(() => {
@@ -460,7 +458,7 @@ function App() {
 
   const handleWorkspaceSwitch = (newPath: string) => {
     setWorkspace(newPath)
-    setMode(booksReturnModeRef.current)
+    setMode(lastCreationRouteRef.current)
     refreshAll()
     notifyVersionChange()
     notifyProjectStructureChange()
@@ -673,8 +671,7 @@ function App() {
       } else {
         await refresh()
       }
-      setMode('interactive')
-      useInteractiveStore.getState().setSubmode('lore')
+      setMode('lore')
       window.setTimeout(() => {
         notifyLoreUpdated({
           projectId: result.project_id || projectId,
@@ -739,41 +736,23 @@ function App() {
   }, [isStreaming, send, t])
 
   const handleSetMode = useCallback((nextMode: WorkspaceMode) => {
-    if (isSharedWorkspaceMode(nextMode)) {
-      const returnMode = mode === 'ide' || mode === 'interactive' ? mode : booksReturnModeRef.current
-      booksReturnModeRef.current = returnMode
-      setBooksReturnMode(returnMode)
-    } else if (nextMode === 'ide' || nextMode === 'interactive') {
-      booksReturnModeRef.current = nextMode
-      setBooksReturnMode(nextMode)
+    if (nextMode === 'ide' || nextMode === 'interactive') {
+      lastCreationRouteRef.current = nextMode
+      setLastCreationRoute(nextMode)
     }
     setSettingsOpen(false)
     setMode(nextMode)
-  }, [mode, setMode])
+  }, [setMode])
   useEffect(() => {
-    if (developerMode === false && mode === 'trajectory') handleSetMode(booksReturnModeRef.current)
+    if (developerMode === false && mode === 'trajectory') handleSetMode(lastCreationRouteRef.current)
   }, [developerMode, handleSetMode, mode])
   const handleSetRightPanel = useCallback((panel: RightPanel) => {
     setSettingsOpen(false)
-    if (isIdeWorkspacePanel(panel)) {
-      if (!isIdeWorkspacePanel(rightPanel)) writingRightPanelRef.current = toWritingRightPanel(rightPanel)
-      setRightPanel(panel)
-      return
-    }
-    if (panel === null && isIdeWorkspacePanel(rightPanel)) {
-      setRightPanel(writingRightPanelRef.current)
-      return
-    }
-    if (panel === 'ai' || panel === null) writingRightPanelRef.current = panel
     setRightPanel(panel)
-  }, [rightPanel, setRightPanel])
+  }, [setRightPanel])
   const handleOpenVersions = useCallback(() => {
-    setSettingsOpen(false)
-    if (mode !== 'ide' && mode !== 'interactive') {
-      setMode(booksReturnModeRef.current)
-    }
-    handleSetRightPanel('versions')
-  }, [handleSetRightPanel, mode, setMode])
+    handleSetMode('versions')
+  }, [handleSetMode])
 
   const handleSetChapterConfirmed = useCallback(async (path: string, confirmed: boolean) => {
     if (!projectId) return
@@ -804,7 +783,6 @@ function App() {
     }
     if (target === 'writing') {
       handleSetMode('ide')
-      if (rightPanel === 'lore' || rightPanel === 'teller' || rightPanel === 'versions') handleSetRightPanel(null)
       return
     }
     if (target === 'writing-agent') {
@@ -818,28 +796,16 @@ function App() {
       return
     }
     if (target === 'interactive') {
+      useInteractiveStore.getState().setSubmode('story')
       handleSetMode('interactive')
-      if (rightPanel === 'versions') handleSetRightPanel(null)
       return
     }
     if (target === 'lore') {
-      setSettingsOpen(false)
-      if (mode === 'interactive') {
-        useInteractiveStore.getState().setSubmode('lore')
-      } else {
-        handleSetMode('ide')
-        handleSetRightPanel('lore')
-      }
+      handleSetMode('lore')
       return
     }
     if (target === 'teller') {
-      setSettingsOpen(false)
-      if (mode === 'interactive') {
-        useInteractiveStore.getState().setSubmode('teller')
-      } else {
-        handleSetMode('ide')
-        handleSetRightPanel('teller')
-      }
+      handleSetMode('presets')
       return
     }
     if (target === 'versions') {
@@ -857,7 +823,7 @@ function App() {
     if (target === 'automations') {
       handleSetMode('automations')
     }
-  }, [handleOpenVersions, handleSetMode, handleSetRightPanel, mode, rightPanel])
+  }, [handleOpenVersions, handleSetMode, handleSetRightPanel])
 
   useWorkspaceHotkeys({
     onSave: triggerSave,
@@ -878,7 +844,7 @@ function App() {
     <NovaMotionProvider intensity={motionIntensity}>
       <ModeRouter
         mode={mode}
-        booksReturnMode={booksReturnMode}
+        lastCreationRoute={lastCreationRoute}
         currentBookName={currentBookName}
         workspace={workspace}
         projectId={projectId}
@@ -1051,13 +1017,13 @@ function readLayoutBoolean(key: string, fallback: boolean) {
   return value === 'true'
 }
 
-function readContentMode(): BooksReturnMode {
+function readContentMode(): CreationRoute {
   if (typeof window === 'undefined') return 'ide'
   const value = window.localStorage.getItem(CONTENT_MODE_STORAGE_KEY)
   return value === 'interactive' ? 'interactive' : 'ide'
 }
 
-function writeContentMode(mode: BooksReturnMode) {
+function writeContentMode(mode: CreationRoute) {
   if (typeof window === 'undefined') return
   window.localStorage.setItem(CONTENT_MODE_STORAGE_KEY, mode)
 }
@@ -1067,14 +1033,6 @@ function normalizeAutoSaveDelayMs(value: number | null | undefined) {
     return AUTO_SAVE_DELAY_FALLBACK_MS
   }
   return Math.floor(value)
-}
-
-function isIdeWorkspacePanel(panel: RightPanel): panel is 'lore' | 'creator' | 'teller' | 'versions' {
-  return panel === 'lore' || panel === 'creator' || panel === 'teller' || panel === 'versions'
-}
-
-function toWritingRightPanel(panel: RightPanel): WritingRightPanel {
-  return panel === 'ai' ? panel : null
 }
 
 function normalizeAppTheme(theme?: string) {

@@ -8,8 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"denova/internal/style"
 )
 
 func TestTellerLibraryMaterializesBuiltinsAndListsThem(t *testing.T) {
@@ -63,9 +61,6 @@ func TestTellerLibraryMaterializesBuiltinsAndListsThem(t *testing.T) {
 		if teller.ID != id || teller.Name != name || teller.PromptForTargets("system") == "" || teller.PromptForTargets("turn_context") == "" {
 			t.Fatalf("unexpected builtin teller %s: %#v", id, teller)
 		}
-		if !teller.SupportsMode(style.ModeWriting) || !teller.SupportsMode(style.ModeGame) {
-			t.Fatalf("built-in narrative style %s should support writing and game: %#v", id, teller.Modes)
-		}
 	}
 }
 
@@ -87,24 +82,6 @@ func TestBuiltInNarrativeStylePromptContracts(t *testing.T) {
 	directErotica := builtinTellers["direct-erotica"]
 	if directErotica.Name != "直白情色" || directErotica.Description != "以事件驱动故事，自然导向情色场景，文风直白粗俗" {
 		t.Fatalf("direct-erotica metadata changed: name=%q description=%q", directErotica.Name, directErotica.Description)
-	}
-}
-
-func TestTellerModesNormalizeLegacyAndScopedStyles(t *testing.T) {
-	library := NewLibrary(t.TempDir())
-	legacy, err := library.Create(Definition{ID: "legacy-shared", Name: "Legacy", Slots: []PromptSlot{{ID: "system", Target: "system", Enabled: true, Content: "shared"}}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !legacy.SupportsMode(style.ModeWriting) || !legacy.SupportsMode(style.ModeGame) {
-		t.Fatalf("legacy style should remain shared: %#v", legacy.Modes)
-	}
-	writingOnly, err := library.Create(Definition{ID: "writing-only", Name: "Writing", Modes: []string{style.ModeWriting}, Slots: []PromptSlot{{ID: "system", Target: "system", Enabled: true, Content: "writing"}}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !writingOnly.SupportsMode(style.ModeWriting) || writingOnly.SupportsMode(style.ModeGame) {
-		t.Fatalf("writing-only style mode mismatch: %#v", writingOnly.Modes)
 	}
 }
 

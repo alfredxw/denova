@@ -77,7 +77,7 @@ describe('NewStorySetupPanel', () => {
   it('uses rhythm for a first-time user and restores the previous game selection', async () => {
     const firstCreate = vi.fn().mockResolvedValue(undefined)
     const firstPreferenceChange = vi.fn()
-    const rhythm: Teller = { version: 1, id: 'rhythm', name: '节奏叙事', description: '', modes: ['writing', 'game'], context_policy: { creator: 'always', lore: 'relevant', runtime_state: 'always' }, slots: [], custom: false }
+    const rhythm: Teller = { version: 1, id: 'rhythm', name: '节奏叙事', description: '', context_policy: { creator: 'always', lore: 'relevant', runtime_state: 'always' }, slots: [], custom: false }
     const classic = { ...rhythm, id: 'classic', name: '稳健叙事' }
     const rhythmDirector = { ...director, module_refs: { ...director.module_refs, narrative_style_id: 'rhythm' } }
     const { unmount } = render(<NewStorySetupPanel stories={[]} tellers={[classic, rhythm]} directors={[rhythmDirector]} imagePresets={[]} onNarrativeStyleChange={firstPreferenceChange} onCancel={vi.fn()} onCreate={firstCreate} />)
@@ -96,7 +96,7 @@ describe('NewStorySetupPanel', () => {
   it('persists only an explicit narrative-style selection', async () => {
     const user = userEvent.setup()
     const onNarrativeStyleChange = vi.fn()
-    const rhythm: Teller = { version: 1, id: 'rhythm', name: '节奏叙事', description: '', modes: ['writing', 'game'], context_policy: { creator: 'always', lore: 'relevant', runtime_state: 'always' }, slots: [], custom: false }
+    const rhythm: Teller = { version: 1, id: 'rhythm', name: '节奏叙事', description: '', context_policy: { creator: 'always', lore: 'relevant', runtime_state: 'always' }, slots: [], custom: false }
     const classic = { ...rhythm, id: 'classic', name: '稳健叙事' }
     const rhythmDirector = { ...director, module_refs: { ...director.module_refs, narrative_style_id: 'rhythm' } }
     render(<NewStorySetupPanel stories={[]} tellers={[rhythm, classic]} directors={[rhythmDirector]} imagePresets={[]} onNarrativeStyleChange={onNarrativeStyleChange} onCancel={vi.fn()} onCreate={vi.fn()} />)
