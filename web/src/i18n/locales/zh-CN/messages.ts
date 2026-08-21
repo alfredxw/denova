@@ -1,6 +1,7 @@
 const messages = {
   'messages.title': '消息中心',
   'messages.description': '统一查看自动化进度、待处理事项和产品通知。',
+  'messages.label': '消息',
   'messages.open': '打开消息中心',
   'messages.loading': '加载消息中',
   'messages.empty': '暂无消息',

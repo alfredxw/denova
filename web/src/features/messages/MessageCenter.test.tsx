@@ -6,6 +6,21 @@ import { server } from '@/test/msw/server'
 import { MessageCenterButton } from './MessageCenter'
 
 describe('MessageCenterButton', () => {
+  it('centers the collapsed icon and uses a concise expanded label', () => {
+    const { rerender } = render(<MessageCenterButton showLabel />)
+
+    const expandedButton = screen.getByRole('button', { name: '打开消息中心' })
+    expect(expandedButton).toHaveClass('justify-start')
+    expect(expandedButton).toHaveTextContent('消息')
+    expect(expandedButton).not.toHaveTextContent('打开消息中心')
+
+    rerender(<MessageCenterButton />)
+
+    const collapsedButton = screen.getByRole('button', { name: '打开消息中心' })
+    expect(collapsedButton).toHaveClass('justify-center')
+    expect(screen.queryByText('消息')).not.toBeInTheDocument()
+  })
+
   it('marks the visible message as read when the center opens', async () => {
     const listMessages = vi.fn()
     const markRead = vi.fn()

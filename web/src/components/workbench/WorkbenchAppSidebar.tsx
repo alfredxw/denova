@@ -16,6 +16,7 @@ import {
   SidebarMenuItem,
 } from '@/components/ui/sidebar'
 import { novaEase } from '@/features/motion/motion-tokens'
+import { cn } from '@/lib/utils'
 
 export interface WorkbenchSidebarItem {
   id: string
@@ -139,12 +140,12 @@ export function WorkbenchAppSidebar({
               <SidebarMenuItem>{messageCenter}</SidebarMenuItem>
               <SidebarMenuItem>
                 <ActivityButton expanded={expanded} label={settingsLabel} onClick={onOpenSettings} active={settingsActive} data-onboarding-anchor="activity-settings">
-                  <Settings className="size-4" />
+                  <Settings data-icon="inline-start" />
                 </ActivityButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
                 <ActivityButton expanded={expanded} label={toggleLabel} onClick={onToggle}>
-                  <PanelLeft className="size-4" />
+                  <PanelLeft data-icon="inline-start" />
                 </ActivityButton>
               </SidebarMenuItem>
             </SidebarMenu>
@@ -223,12 +224,12 @@ function ActivityButton({
     <SidebarMenuButton
       tooltip={!expanded ? label : undefined}
       isActive={active}
-      className={`${className || ''} relative h-9 gap-2.5 text-xs text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] data-[active=true]:bg-[var(--nova-active)] data-[active=true]:text-[var(--nova-text)]`}
+      className={cn('relative h-9 gap-2 text-xs text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] data-[active=true]:bg-[var(--nova-active)] data-[active=true]:text-[var(--nova-text)]', className)}
       {...props}
       aria-current={active ? 'page' : undefined}
     >
       {active ? <motion.span layoutId="workbench-activity-active" className="absolute inset-0 rounded-[var(--nova-radius)] bg-[var(--nova-active)]" transition={PRIMARY_NAVIGATION_TRANSITION} /> : null}
-      <span className="relative z-10 flex shrink-0 items-center justify-center">{children}</span>
+      <span className="relative z-10 flex size-4 shrink-0 items-center justify-center">{children}</span>
       <span className="relative z-10 min-w-0 truncate text-left font-medium">{label}</span>
     </SidebarMenuButton>
   )
