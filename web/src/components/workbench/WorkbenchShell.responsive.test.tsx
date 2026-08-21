@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { formatDateTime, setConfiguredLocale } from '@/i18n'
+import { setConfiguredLocale } from '@/i18n'
 import { WorkbenchShell } from './WorkbenchShell'
 
 const responsiveState = vi.hoisted(() => ({ mobile: false }))
@@ -14,20 +14,16 @@ vi.mock('@/hooks/useIsMobile', () => ({
 
 vi.mock('@/components/layout/workspace-layout', () => ({
   WorkspaceLayout: ({
-    topBar,
-    activityBar,
+    appSidebar,
     main,
-    statusBar,
     sidebarVisible,
     rightPanelVisible,
     rightPanelWide,
     centerFocus,
     routeLayoutKey,
   }: {
-    topBar: ReactNode
-    activityBar: ReactNode
+    appSidebar: ReactNode
     main: ReactNode
-    statusBar: ReactNode
     sidebarVisible: boolean
     rightPanelVisible: boolean
     rightPanelWide: boolean
@@ -42,7 +38,7 @@ vi.mock('@/components/layout/workspace-layout', () => ({
       data-center-focus={centerFocus}
       data-route-layout-key={routeLayoutKey}
     >
-      {topBar}{activityBar}{main}{statusBar}
+      {appSidebar}{main}
     </section>
   ),
 }))
@@ -97,22 +93,20 @@ describe('WorkbenchShell responsive main content', () => {
     const props = workbenchProps(<div />)
     const { container, rerender } = render(<WorkbenchShell {...props} activityBarExpanded />)
 
-    const expandedBar = container.querySelector('.nova-activity-bar')
+    const expandedSidebar = container.querySelector('[data-slot="sidebar"]')
     const expandedToggle = screen.getByRole('button', { name: '收起' })
     const expandedToggleIconClass = expandedToggle.querySelector('svg')?.getAttribute('class')
-    expect(expandedBar).toHaveClass('items-stretch')
-    expect(expandedBar).not.toHaveClass('items-center')
-    expect(expandedToggle).toHaveClass('w-full', 'justify-start', 'gap-3', 'px-3')
+    expect(expandedSidebar).toHaveAttribute('data-state', 'expanded')
+    expect(expandedToggle).toHaveAttribute('data-slot', 'sidebar-menu-button')
     expect(expandedToggleIconClass).not.toContain('rotate')
     expect(expandedToggleIconClass).not.toContain('transition-transform')
 
     rerender(<WorkbenchShell {...props} activityBarExpanded={false} />)
 
-    const collapsedBar = container.querySelector('.nova-activity-bar')
+    const collapsedSidebar = container.querySelector('[data-slot="sidebar"]')
     const collapsedToggle = screen.getByRole('button', { name: '展开' })
-    expect(collapsedBar).toHaveClass('items-stretch')
-    expect(collapsedBar).not.toHaveClass('items-center')
-    expect(collapsedToggle).toHaveClass('w-full', 'justify-start', 'gap-3', 'px-3')
+    expect(collapsedSidebar).toHaveAttribute('data-state', 'collapsed')
+    expect(collapsedToggle).toHaveAttribute('data-slot', 'sidebar-menu-button')
     expect(collapsedToggle.querySelector('svg')?.getAttribute('class')).toBe(expandedToggleIconClass)
   })
 
@@ -373,20 +367,30 @@ describe('WorkbenchShell responsive main content', () => {
     cancelFrame.mockRestore()
   })
 
-  it('shows editor updated time and line in the global bottom status bar', () => {
-    const updatedAt = '2026-07-11 22:00'
-    render(<WorkbenchShell {...workbenchProps(<div />)}
-      mode="ide"
-      presentedLayout="writing"
-      currentChapter={{
-        path: 'chapters/ch01.md', file_name: 'ch01.md', display_title: '第一章', index: 1,
-        words: 100, status: 'draft', confirmed: false, updated_at: updatedAt,
-        volume: '', volume_path: '',
-      }}
-      editorLine={54}
-    />)
+  it('uses the full-height sidebar instead of global top and bottom bars', () => {
+    const { container } = render(
+      <WorkbenchShell
+        {...workbenchProps(<div />)}
+        mode="ide"
+        presentedLayout="writing"
+        booksReturnMode="ide"
+        activityBarExpanded
+        summary={{
+          title: 'Test book',
+          author: '',
+          chapter_count: 12,
+          total_words: 34567,
+          chapters: [],
+          chapter_plans: [],
+        }}
+      />,
+    )
 
-    expect(screen.getByText(`更新：${formatDateTime(updatedAt)} · 行 54`)).toBeInTheDocument()
+    expect(container.querySelector('.nova-topbar')).toBeNull()
+    expect(container.querySelector('.nova-statusbar')).toBeNull()
+    expect(screen.getByRole('navigation', { name: '工作台侧边栏' })).toBeInTheDocument()
+    expect(screen.getAllByText('12 章 · 34,567 字').length).toBeGreaterThan(0)
+    expect(screen.getByText('Denova vtest')).toBeInTheDocument()
   })
 })
 
@@ -400,7 +404,6 @@ function workbenchProps(main: ReactNode) {
     books: [{ project_id: 'book-test', name: 'Test book', path: '/tmp/test-book', author: '', last_opened_at: '' }],
     appVersion: 'test',
     summary: null,
-    isStreaming: false,
     projectVisible: false,
     activityBarExpanded: false,
     rightPanel: null,

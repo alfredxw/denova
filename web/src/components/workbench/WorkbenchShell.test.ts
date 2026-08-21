@@ -7,12 +7,12 @@ describe('WorkbenchShell activity bar width', () => {
   })
 
   it('uses a wider default so expanded primary menu labels fit', () => {
-    expect(readStoredActivityBarWidth()).toBe(180)
+    expect(readStoredActivityBarWidth()).toBe(224)
   })
 
   it('migrates the old narrow default width without overwriting custom widths', () => {
     window.localStorage.setItem('nova.layout.activityBarWidth', '152')
-    expect(readStoredActivityBarWidth()).toBe(180)
+    expect(readStoredActivityBarWidth()).toBe(224)
 
     window.localStorage.setItem('nova.layout.activityBarWidth', '240')
     expect(readStoredActivityBarWidth()).toBe(240)

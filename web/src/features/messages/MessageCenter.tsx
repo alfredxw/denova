@@ -12,12 +12,13 @@ type MessageFilter = 'all' | 'action' | 'automation' | 'product'
 
 interface MessageCenterButtonProps {
   className?: string
+  showLabel?: boolean
   unreadCount?: number
   onUnreadCountChange?: (count: number) => void
   onOpenAutomation?: (target: AutomationMessageNavigation) => void
 }
 
-export function MessageCenterButton({ className = '', unreadCount: reportedUnreadCount = 0, onUnreadCountChange, onOpenAutomation }: MessageCenterButtonProps) {
+export function MessageCenterButton({ className = '', showLabel = false, unreadCount: reportedUnreadCount = 0, onUnreadCountChange, onOpenAutomation }: MessageCenterButtonProps) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [items, setItems] = useState<ProductMessage[]>([])
@@ -123,16 +124,19 @@ export function MessageCenterButton({ className = '', unreadCount: reportedUnrea
     <>
       <button
         type="button"
-        className={`nova-icon-button relative flex items-center justify-center rounded-[var(--nova-radius)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] ${className}`}
+        className={`nova-icon-button relative flex items-center justify-center rounded-[var(--nova-radius)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] ${showLabel ? '!h-9 !w-full !min-w-0 justify-start gap-2 px-2 text-xs font-medium' : ''} ${className}`}
         aria-label={t('messages.open')}
         onClick={() => setOpen(true)}
       >
-        <Bell className="h-4 w-4" />
-        {unreadCount > 0 && (
-          <span className="absolute -right-1 -top-1 min-w-3.5 rounded-full bg-[var(--nova-danger-border)] px-0.5 text-center text-[8px] font-medium leading-3.5 text-white">
-            {unreadCount > 99 ? '99+' : unreadCount}
-          </span>
-        )}
+        <span className="relative flex size-4 shrink-0 items-center justify-center">
+          <Bell className="size-4" />
+          {unreadCount > 0 && (
+            <span className="absolute -right-2 -top-2 min-w-3.5 rounded-full bg-[var(--nova-danger-border)] px-0.5 text-center text-[8px] font-medium leading-3.5 text-white">
+              {unreadCount > 99 ? '99+' : unreadCount}
+            </span>
+          )}
+        </span>
+        {showLabel ? <span className="truncate">{t('messages.open')}</span> : null}
       </button>
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent

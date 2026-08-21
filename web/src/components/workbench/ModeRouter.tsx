@@ -216,7 +216,6 @@ export function ModeRouter(props: ModeRouterProps) {
   const toolNavigationNonceRef = useRef(0)
   const loreLibraryFlushHandlerRef = useRef<EditorFlushHandler | null>(null)
   const agentChatFlushHandlerRef = useRef<EditorFlushHandler | null>(null)
-  const [editorLine, setEditorLine] = useState(1)
   // The router is the lifecycle owner: the settings lane survives AgentPanel close/unmount.
   const composerSettings = usePersistedUserSettings({ workspace, defaults: WRITING_COMPOSER_SETTING_DEFAULTS })
   const flushComposerSettings = composerSettings.flushPending
@@ -263,10 +262,6 @@ export function ModeRouter(props: ModeRouterProps) {
     if (!(await flushAgentChatDrafts())) return false
     return onQuickSwitchBook(path)
   }, [flushAgentChatDrafts, flushComposerSettingsBestEffort, flushLoreLibraryDraft, onQuickSwitchBook])
-
-  useEffect(() => {
-    setEditorLine(1)
-  }, [selectedFile])
 
   useEffect(() => {
     setOutlineRevealRequest(null)
@@ -722,7 +717,6 @@ export function ModeRouter(props: ModeRouterProps) {
         onQuoteSelection={onQuoteSelection}
         onRevealChapter={revealCurrentChapterInOutline}
         onGenerateIllustration={requestChapterIllustration}
-        onEditorLineChange={setEditorLine}
         emptyText={t('router.chooseFile')}
         emptyLoreTitle={t('loreInit.ideTitle')}
         emptyLoreDescription={t('loreInit.ideDescription')}
@@ -827,9 +821,6 @@ export function ModeRouter(props: ModeRouterProps) {
       books={books}
       appVersion={appVersion}
       summary={summary}
-      currentChapter={currentChapter}
-      editorLine={editorLine}
-      isStreaming={isStreaming}
       projectVisible={projectVisible && !reviewVisible}
       activityBarExpanded={activityBarExpanded}
       rightPanel={rightPanel}

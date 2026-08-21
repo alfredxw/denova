@@ -59,7 +59,7 @@ describe('WorkspaceLayout', () => {
   it('marks the right panel wide variant for detail-heavy content', () => {
     const { container } = render(
       <WorkspaceLayout
-        activityBar={<nav aria-label="一级菜单栏">菜单</nav>}
+        appSidebar={<nav aria-label="一级菜单栏">菜单</nav>}
         main={<main>正文区域</main>}
         rightPanel={<aside>创作 Agent</aside>}
         rightPanelWide
@@ -72,7 +72,7 @@ describe('WorkspaceLayout', () => {
   it('marks a center-focused workspace so review can temporarily rebalance the layout', () => {
     const { container } = render(
       <WorkspaceLayout
-        activityBar={<nav aria-label="一级菜单栏">菜单</nav>}
+        appSidebar={<nav aria-label="一级菜单栏">菜单</nav>}
         main={<main>变更审阅</main>}
         rightPanel={<aside>创作 Agent</aside>}
         centerFocus
@@ -86,7 +86,7 @@ describe('WorkspaceLayout', () => {
   it('switches retained route layouts immediately and restores motion for explicit pane toggles', () => {
     const { container, rerender } = render(
       <WorkspaceLayout
-        activityBar={<nav aria-label="一级菜单栏">菜单</nav>}
+        appSidebar={<nav aria-label="一级菜单栏">菜单</nav>}
         sidebar={<div>项目结构</div>}
         sidebarVisible
         main={<main>正文区域</main>}
@@ -99,7 +99,7 @@ describe('WorkspaceLayout', () => {
 
     rerender(
       <WorkspaceLayout
-        activityBar={<nav aria-label="一级菜单栏">菜单</nav>}
+        appSidebar={<nav aria-label="一级菜单栏">菜单</nav>}
         sidebar={<div>项目结构</div>}
         sidebarVisible={false}
         main={<main>工作台</main>}
@@ -110,7 +110,7 @@ describe('WorkspaceLayout', () => {
 
     rerender(
       <WorkspaceLayout
-        activityBar={<nav aria-label="一级菜单栏">菜单</nav>}
+        appSidebar={<nav aria-label="一级菜单栏">菜单</nav>}
         sidebar={<div>项目结构</div>}
         sidebarVisible
         main={<main>正文区域</main>}
@@ -121,7 +121,7 @@ describe('WorkspaceLayout', () => {
 
     rerender(
       <WorkspaceLayout
-        activityBar={<nav aria-label="一级菜单栏">菜单</nav>}
+        appSidebar={<nav aria-label="一级菜单栏">菜单</nav>}
         sidebar={<div>项目结构</div>}
         sidebarVisible={false}
         main={<main>正文区域</main>}
@@ -139,7 +139,7 @@ describe('WorkspaceLayout', () => {
     try {
       const { container } = render(
         <WorkspaceLayout
-          activityBar={<nav aria-label="一级菜单栏">菜单</nav>}
+          appSidebar={<nav aria-label="一级菜单栏">菜单</nav>}
           sidebar={<div>项目结构</div>}
           sidebarVisible={false}
           main={<main>变更审阅</main>}
@@ -189,7 +189,7 @@ function renderWorkspaceLayout(sidebarVisible: boolean) {
 function workspaceLayout(sidebarVisible: boolean) {
   return (
     <WorkspaceLayout
-      activityBar={<nav aria-label="一级菜单栏">菜单</nav>}
+      appSidebar={<nav aria-label="一级菜单栏">菜单</nav>}
       sidebar={<div>项目结构</div>}
       sidebarVisible={sidebarVisible}
       main={<main>正文区域</main>}
@@ -200,7 +200,7 @@ function workspaceLayout(sidebarVisible: boolean) {
 function workspaceLayoutWithRightPanel(rightPanelVisible: boolean) {
   return (
     <WorkspaceLayout
-      activityBar={<nav aria-label="一级菜单栏">菜单</nav>}
+      appSidebar={<nav aria-label="一级菜单栏">菜单</nav>}
       main={<main>正文区域</main>}
       rightPanel={<aside>创作 Agent</aside>}
       rightPanelVisible={rightPanelVisible}
@@ -211,7 +211,7 @@ function workspaceLayoutWithRightPanel(rightPanelVisible: boolean) {
 function workspaceLayoutWithOptionalRightPanel(rightPanelVisible: boolean) {
   return (
     <WorkspaceLayout
-      activityBar={<nav aria-label="一级菜单栏">菜单</nav>}
+      appSidebar={<nav aria-label="一级菜单栏">菜单</nav>}
       main={<main>正文区域</main>}
       rightPanel={rightPanelVisible ? <aside>创作 Agent</aside> : undefined}
       rightPanelVisible={rightPanelVisible}

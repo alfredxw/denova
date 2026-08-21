@@ -27,10 +27,11 @@ export interface AgentChatProjectNavigationState {
 interface AgentChatProjectSwitcherProps {
   navigation: AgentChatProjectNavigationState | null
   compact?: boolean
+  iconOnly?: boolean
 }
 
 /** AgentChat-only project context switcher; changing it never changes the foreground Book. */
-export function AgentChatProjectSwitcher({ navigation, compact = false }: AgentChatProjectSwitcherProps) {
+export function AgentChatProjectSwitcher({ navigation, compact = false, iconOnly = false }: AgentChatProjectSwitcherProps) {
   const { t } = useTranslation()
   const menuLabelID = useId()
   const [open, setOpen] = useState(false)
@@ -59,6 +60,7 @@ export function AgentChatProjectSwitcher({ navigation, compact = false }: AgentC
           icon={TriggerIcon}
           label={label}
           compact={compact}
+          iconOnly={iconOnly}
           disabled={projects.length === 0}
           aria-busy={loading}
         />

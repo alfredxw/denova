@@ -906,6 +906,12 @@ html[data-nova-motion="off"] *::after {
 }
 
 .nova-activity-bar {
+  --sidebar: var(--nova-bg-deep);
+  --sidebar-foreground: var(--nova-text-muted);
+  --sidebar-accent: var(--nova-hover);
+  --sidebar-accent-foreground: var(--nova-text);
+  --sidebar-border: var(--nova-border);
+  --sidebar-ring: var(--nova-field-focus-border);
   border-color: var(--nova-border);
   background: var(--nova-bg-deep);
   color: var(--nova-text-muted);
@@ -1028,11 +1034,6 @@ html[data-nova-motion="off"] *::after {
   min-width: 40px;
   border-radius: var(--nova-radius);
   color: var(--nova-text-muted);
-}
-
-.nova-statusbar {
-  font-size: var(--nova-ui-compact-font-size);
-  line-height: var(--nova-ui-compact-line-height);
 }
 
 .nova-icon-button:hover {

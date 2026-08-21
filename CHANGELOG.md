@@ -30,6 +30,8 @@ Denova records only major user-visible features, important compatibility or data
 - Image generation now supports OpenAI Images, xAI/Grok, Volcengine Ark Seedream, Google Gemini Image, and ComfyUI Workflow, with reusable protocols for custom endpoints and partial success for multi-image jobs. v0.3.3 image settings migrate into Profiles automatically and are backed up before rewrite.
 - 工作台与创作界面进一步统一：项目页签收敛为写作、Files、资料库，支持可持久化双栏工作区；资料编辑器提供 Rich/Raw 模式、本地图片上传与评论，界面和阅读字体支持本机字体。书籍 Lore 与 Skills 迁至用户可见目录，v0.3.3 原文件保留为备份。
 - Unified the workbench and creation surfaces around Writing, Files, and Lore tabs with a persistent split workspace. Lore adds Rich/Raw editing, local image uploads, and comments, while UI and reading settings support local fonts. Book Lore and Skills move to user-visible directories, with the v0.3.3 source files retained as backups.
+- 桌面端工作台改为全高应用侧边栏，将书籍或项目切换、显式模式切换与全局入口集中到左侧，并移除常驻顶部栏和底部状态栏；移动端导航保持不变。
+- The desktop workbench now uses a full-height app sidebar for book or project switching, explicit mode switching, and global navigation, replacing the persistent top and bottom bars while retaining the mobile navigation.
 - 游戏剧情支持从任意已保存 AI 回复就地创建分支，并在导演控制台集中预览、切换和管理故事线。
 - Game stories can branch directly from any persisted AI reply, with branch preview, switching, and management consolidated in the Director Console.
 - Developer Mode 新增跨 Project 的 Trajectory 与 Harness 工作区，用于查看运行轨迹、导出诊断数据和优化 Agent 行为。
