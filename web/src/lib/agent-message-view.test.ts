@@ -235,6 +235,41 @@ describe('agent-message-view', () => {
     })
   })
 
+  it('从持久化工具输出恢复章节插画卡片数据', () => {
+    const output = JSON.stringify({
+      schema: 'chapter_illustration.v1',
+      chapter_path: 'chapters/ch01.md',
+      image_path: 'assets/illustrations/ch01/run/image.png',
+      meta_path: 'assets/illustrations/ch01/run/meta.json',
+      markdown: '![雨夜](assets/illustrations/ch01/run/image.png)',
+      alt_text: '雨夜',
+    })
+    const views = buildAgentMessageViews([{
+      id: 'assistant-illustration-history',
+      role: 'assistant',
+      metadata: { tool_presentation: { call: 'image', result: 'image' } },
+      parts: [{
+        type: 'dynamic-tool',
+        toolName: 'generate_image',
+        toolCallId: 'illustration-call',
+        state: 'output-available',
+        input: { purpose: 'chapter_illustration' },
+        output,
+      }],
+    }] as AgentUIMessage[])
+
+    expect(agentViewToRenderMessage(views[0])).toMatchObject({
+      role: 'tool_call',
+      status: 'success',
+      illustration: {
+        chapter_path: 'chapters/ch01.md',
+        image_path: 'assets/illustrations/ch01/run/image.png',
+        markdown: '![雨夜](assets/illustrations/ch01/run/image.png)',
+      },
+    })
+    expect(isAgentTraceView(views[0])).toBe(false)
+  })
+
   it('专用互动图片 data part 覆盖同一工具的标准 result card', () => {
     const views = buildAgentMessageViews([{
       id: 'assistant-live-media',

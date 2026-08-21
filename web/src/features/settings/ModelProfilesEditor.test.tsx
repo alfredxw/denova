@@ -215,23 +215,52 @@ it('configures a custom SessionKey mapping for compatible endpoints', async () =
   ])
 })
 
-function EditorHarness({ onChange = () => undefined }: { onChange?: (profiles: ModelProfileSettings[]) => void }) {
-  const [profiles, setProfiles] = useState<ModelProfileSettings[]>([{
+it('promotes the next language model without changing its stable ID when the default is deleted', async () => {
+  const user = userEvent.setup()
+  render(<EditorHarness profiles={[
+    { id: 'default', name: 'Primary', model: 'model-a' },
+    { id: 'fast', name: 'Fast', model: 'model-b' },
+    { id: 'quality', name: 'Quality', model: 'model-c' },
+  ]} />)
+
+  await user.click(screen.getAllByRole('button', { name: '删除语言模型' })[0])
+
+  expect(screen.getByTestId('default-profile-id')).toHaveTextContent('fast')
+  expect(screen.getByTestId('profile-ids')).toHaveTextContent('fast,quality')
+  expect(screen.getByText('默认模型')).toBeInTheDocument()
+})
+
+function EditorHarness({
+  profiles: initialProfiles = [{
     id: 'default',
     provider: MODEL_PROVIDER_OPENAI,
     protocol: MODEL_PROTOCOL_RESPONSES,
     api_key: 'test-key',
     base_url: 'https://api.openai.com/v1',
     model: 'gpt-5',
-  }])
+  }],
+  onChange = () => undefined,
+}: {
+  profiles?: ModelProfileSettings[]
+  onChange?: (profiles: ModelProfileSettings[]) => void
+}) {
+  const [profiles, setProfiles] = useState<ModelProfileSettings[]>(initialProfiles)
+  const [defaultProfileID, setDefaultProfileID] = useState('default')
   return (
-    <ModelProfilesEditor
-      profiles={profiles}
-      effectiveProfiles={[]}
-      onChange={(nextProfiles) => {
-        setProfiles(nextProfiles)
-        onChange(nextProfiles)
-      }}
-    />
+    <>
+      <output data-testid="default-profile-id">{defaultProfileID}</output>
+      <output data-testid="profile-ids">{profiles.map((profile) => profile.id).join(',')}</output>
+      <ModelProfilesEditor
+        profiles={profiles}
+        effectiveProfiles={[]}
+        defaultProfileID={defaultProfileID}
+        effectiveDefaultProfileID="default"
+        onDefaultProfileChange={setDefaultProfileID}
+        onChange={(nextProfiles) => {
+          setProfiles(nextProfiles)
+          onChange(nextProfiles)
+        }}
+      />
+    </>
   )
 }

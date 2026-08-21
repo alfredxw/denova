@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/alfredxw/denova/agent/internal/localfs"
 )
 
 const privateDirectory = ".git"
@@ -222,7 +224,7 @@ func atomicJSON(path string, value any) error {
 		err = os.Rename(temporaryPath, path)
 	}
 	if err == nil {
-		err = syncDirectory(filepath.Dir(path))
+		err = localfs.SyncDirectory(filepath.Dir(path))
 	}
 	if err != nil {
 		os.Remove(temporaryPath)
@@ -235,7 +237,7 @@ func removeDurable(path string) error {
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
-	return syncDirectory(filepath.Dir(path))
+	return localfs.SyncDirectory(filepath.Dir(path))
 }
 
 func syncTreeDirectories(root string) error {
@@ -257,19 +259,11 @@ func syncTreeDirectories(root string) error {
 	}
 	sort.Slice(directories, func(i, j int) bool { return len(directories[i]) > len(directories[j]) })
 	for _, directory := range directories {
-		if err := syncDirectory(directory); err != nil {
+		if err := localfs.SyncDirectory(directory); err != nil {
 			return err
 		}
 	}
 	return nil
-}
-
-func syncDirectory(path string) error {
-	directory, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	return errors.Join(directory.Sync(), directory.Close())
 }
 
 func readJSON(path string, value any) error {

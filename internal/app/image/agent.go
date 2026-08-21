@@ -16,6 +16,7 @@ import (
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 	novaskills "denova/internal/agents/skills"
+	agenttools "denova/internal/agents/tools"
 	apptask "denova/internal/app/task"
 	imageasset "denova/internal/image/asset"
 )
@@ -170,6 +171,11 @@ type imageAgentConversation struct {
 	skillConfig   config.Config
 }
 
+type imageAgentContextCommitState struct {
+	conversation *imageAgentConversation
+	messageHash  string
+}
+
 func (c *imageAgentConversation) ModelContextBudget() agentcontext.Budget {
 	if c == nil {
 		return agentcontext.DefaultBudget()
@@ -203,7 +209,14 @@ func (c *imageAgentConversation) AssembleModelContext(ctx context.Context, _ str
 	if err != nil {
 		return agentcontext.ModelContextResult{}, err
 	}
-	return agentcontext.ModelContextResult{Messages: assembled.Messages, Context: assembled}, nil
+	return agentcontext.ModelContextResult{
+		Messages: assembled.Messages,
+		Context:  assembled,
+		CommitState: imageAgentContextCommitState{
+			conversation: c,
+			messageHash:  imageAgentSemanticHash(c.message),
+		},
+	}, nil
 }
 
 func (c *imageAgentConversation) AppendAssistant(content string) error {
@@ -321,9 +334,20 @@ func eventInteractiveImage(data interface{}) *imageasset.InteractiveResult {
 		return value
 	case imageasset.InteractiveResult:
 		return &value
-	default:
+	}
+	// Protected, non-idempotent ToolResults always retain their bounded content,
+	// but the optional product display projection may be absent after a runtime
+	// boundary or replay. Decode the authoritative bounded result as a fallback
+	// so a generated asset cannot be mistaken for a failed generation.
+	toolName, _ := payload["name"].(string)
+	content, _ := payload["content"].(string)
+	image, err := agenttools.ParseInteractiveImageResult(toolName, content)
+	if err != nil {
+		slog.WarnContext(context.Background(), "[image-agent] decode interactive image ToolResult failed",
+			"tool", strings.TrimSpace(toolName), "error", err)
 		return nil
 	}
+	return image
 }
 
 func eventErrorMessage(data interface{}) string {

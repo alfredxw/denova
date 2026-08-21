@@ -158,6 +158,7 @@ const settings = {
   'settings.model.profileModelMissing': '未填写模型名',
   'settings.model.profileModelIdPlaceholder': '模型 ID',
   'settings.model.defaultProfileName': '默认模型',
+  'settings.model.defaultProfile': '默认语言模型',
   'settings.model.profileName': '语言模型 {{index}}',
   'settings.model.profileNamePlaceholder': '显示名称',
   'settings.model.profileTemperatureLabel': 'Temperature',

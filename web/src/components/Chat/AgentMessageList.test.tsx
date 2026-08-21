@@ -1186,6 +1186,49 @@ describe('Agent MessageList', () => {
     expect(screen.getAllByRole('region', { name: '思考内容' })[1]).toHaveTextContent('核对修复结果。')
   })
 
+  it('章节插画默认显示在主时间线，不藏进已折叠的执行过程', () => {
+    const onInsertIllustration = vi.fn()
+    renderMessageList(
+      <MessageList
+        projectId="project-illustration"
+        isStreaming={false}
+        activityContent=""
+        collapseTraceGroups
+        onInsertIllustration={onInsertIllustration}
+        messages={[
+          { id: 'reasoning', role: 'assistant', metadata: { run_id: 'run-illustration' }, parts: [{ type: 'reasoning', text: '选择非剧透场景。' }] },
+          {
+            id: 'illustration',
+            role: 'assistant',
+            metadata: { run_id: 'run-illustration', tool_presentation: { call: 'image', result: 'image' } },
+            parts: [{
+              type: 'dynamic-tool',
+              toolName: 'generate_image',
+              toolCallId: 'illustration-call',
+              state: 'output-available',
+              input: { purpose: 'chapter_illustration' },
+              output: JSON.stringify({
+                schema: 'chapter_illustration.v1',
+                chapter_path: 'chapters/ch01.md',
+                image_path: 'assets/illustrations/ch01/run/image.png',
+                meta_path: 'assets/illustrations/ch01/run/meta.json',
+                markdown: '![雨夜](assets/illustrations/ch01/run/image.png)',
+                alt_text: '雨夜',
+              }),
+            }],
+          },
+          { id: 'final', role: 'assistant', metadata: { run_id: 'run-illustration', display_phase: 'final' }, parts: [{ type: 'text', text: '插画已生成。' }] },
+        ] as AgentUIMessage[]}
+      />,
+    )
+
+    expect(screen.getByRole('img', { name: '雨夜' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '插入正文' })).toBeEnabled()
+    expect(screen.getByText('插画已生成。')).toBeInTheDocument()
+    expect(screen.queryByText('选择非剧透场景。')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /执行过程/ })).toHaveAttribute('aria-expanded', 'false')
+  })
+
   it('运行完成后仍按时间顺序保留结果正文前后的执行过程', () => {
     renderMessageList(
       <MessageList

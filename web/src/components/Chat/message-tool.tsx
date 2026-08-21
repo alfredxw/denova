@@ -15,7 +15,7 @@ import { formatMaybeJSON, hasSpecializedToolDetail, ToolCallDetail } from './mes
 import { toolPresentationKind } from '@/lib/tool-presentation'
 import { workspaceFileName } from '@/lib/workspace-path'
 
-export function ToolExecutionBlock({ message, onResolve, onLayoutChange }: { message: ToolCallChatMessage; onResolve?: AskInteractionResolver; onLayoutChange?: (element: HTMLElement) => void }) {
+export function ToolExecutionBlock({ message, showAgentSource = true, onResolve, onLayoutChange }: { message: ToolCallChatMessage; showAgentSource?: boolean; onResolve?: AskInteractionResolver; onLayoutChange?: (element: HTMLElement) => void }) {
   const { t } = useTranslation()
   const approvalInteraction = message.ask?.kind === 'tool_approval' ? message.ask : undefined
   const approvalPending = approvalInteraction?.status === 'pending'
@@ -108,7 +108,7 @@ export function ToolExecutionBlock({ message, onResolve, onLayoutChange }: { mes
                 {t('chat.subagent.delegating', { name: taskSubAgent })}
               </span>
             )}
-            {message.subagent && <AgentSourceBadge message={message} compact />}
+            {showAgentSource && message.subagent ? <AgentSourceBadge message={message} compact /> : null}
             {approvalPending && (
               <span className="shrink-0 rounded-full border border-amber-500/25 bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-700 dark:text-amber-300">
                 {t('agentApproval.approval.waiting')}

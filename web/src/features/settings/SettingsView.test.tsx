@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fetchSettings } from './api'
-import { modelProfilesForEditor, SettingsView, UpdatePanel } from './SettingsView'
+import { imageAPIProfilesForEditor, modelProfilesForEditor, SettingsView, UpdatePanel } from './SettingsView'
 import { MODEL_PROTOCOL_CHAT_COMPLETIONS, MODEL_PROVIDER_OPENAI, modelProfilesWithDefault } from './model-profiles'
 import { terminalCommandsForEditor } from './TerminalCommandsEditor'
 import type { LayeredSettings, UpdateCheckResult, UpdateInstallResult } from './types'
@@ -93,6 +93,37 @@ describe('modelProfilesForEditor', () => {
       protocol: '',
       base_url: '',
     })
+  })
+
+  it('keeps a deleted inherited default language model out after selecting the next model', () => {
+    const profiles = modelProfilesForEditor({
+      agent_models: { default: { profile_id: 'fast' } },
+      model_profiles: [{ id: 'fast', model: 'model-b' }],
+    }, {
+      model_profiles: [
+        { id: 'default', model: 'model-a' },
+        { id: 'fast', model: 'model-b' },
+      ],
+    })
+
+    expect(profiles.map((profile) => profile.id)).toEqual(['fast'])
+  })
+})
+
+describe('imageAPIProfilesForEditor', () => {
+  it('keeps a deleted inherited default image model out after selecting the next model', () => {
+    const profiles = imageAPIProfilesForEditor({
+      default_image_api_profile_id: 'fast-image',
+      image_api_profiles: [{ id: 'fast-image', provider: 'xai', model: 'image-b' }],
+    }, {
+      default_image_api_profile_id: 'default',
+      image_api_profiles: [
+        { id: 'default', provider: 'openai', model: 'image-a' },
+        { id: 'fast-image', provider: 'xai', model: 'image-b' },
+      ],
+    })
+
+    expect(profiles.map((profile) => profile.id)).toEqual(['fast-image'])
   })
 })
 

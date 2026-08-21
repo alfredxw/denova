@@ -1,4 +1,4 @@
-import { useId, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react'
+import { useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react'
 import { FileJson, Plus, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
@@ -20,6 +20,7 @@ import {
   type ImageAPIProvider,
 } from './image-profiles'
 import type { ImageAPIProfileSettings } from './types'
+import { nextProfileIDAfterRemoval } from './profile-list'
 
 const INHERIT_VALUE = '__inherit__'
 const PROVIDER_DEFAULT_VALUE = '__provider_default__'
@@ -43,7 +44,6 @@ export function ImageAPIProfilesEditor({ profiles, effectiveProfiles, defaultPro
   onChange: (profiles: ImageAPIProfileSettings[]) => void
 }) {
   const { t } = useTranslation()
-  const uploadID = useId()
   const profileKeysRef = useRef<string[]>([])
   const [workflowErrors, setWorkflowErrors] = useState<Record<string, string>>({})
   const profileKeys = useMemo(() => {
@@ -57,6 +57,7 @@ export function ImageAPIProfilesEditor({ profiles, effectiveProfiles, defaultPro
   const effectiveDefaultLabel = profileOptions.find((profile) => profile.id === effectiveDefaultProfileID)?.label
     || effectiveDefaultProfileID
     || DEFAULT_IMAGE_API_PROFILE_ID
+  const selectedDefaultProfileID = defaultProfileID || effectiveDefaultProfileID || DEFAULT_IMAGE_API_PROFILE_ID
 
   const updateProfile = (index: number, patch: Partial<ImageAPIProfileSettings>) => {
     onChange(profiles.map((profile, current) => current === index ? { ...profile, ...patch } : profile))
@@ -74,7 +75,7 @@ export function ImageAPIProfilesEditor({ profiles, effectiveProfiles, defaultPro
     onChange(profiles.map((profile, currentIndex) => currentIndex === index
       ? { id: nextID, name: current.name, ...defaults }
       : profile))
-    if (previousID && defaultProfileID === previousID && nextID !== previousID) onDefaultProfileChange(nextID || '')
+    if (previousID && selectedDefaultProfileID === previousID && nextID !== previousID) onDefaultProfileChange(nextID || '')
   }
   const updateModel = (index: number, model: string) => {
     const current = profiles[index]
@@ -83,12 +84,14 @@ export function ImageAPIProfilesEditor({ profiles, effectiveProfiles, defaultPro
     const syncID = !previousID || previousID === previousModel
     const nextID = syncID ? model : current.id
     updateProfile(index, { id: nextID, model })
-    if (syncID && previousID && defaultProfileID === previousID && nextID !== previousID) onDefaultProfileChange(nextID || '')
+    if (syncID && previousID && selectedDefaultProfileID === previousID && nextID !== previousID) onDefaultProfileChange(nextID || '')
   }
   const removeProfile = (index: number) => {
     const removedID = imageAPIProfileID(profiles[index])
+    if (removedID && selectedDefaultProfileID === removedID) {
+      onDefaultProfileChange(nextProfileIDAfterRemoval(profiles, index, imageAPIProfileID))
+    }
     onChange(profiles.filter((_, current) => current !== index))
-    if (removedID && defaultProfileID === removedID) onDefaultProfileChange('')
   }
   const uploadWorkflow = async (index: number, profileKey: string, event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -140,7 +143,6 @@ export function ImageAPIProfilesEditor({ profiles, effectiveProfiles, defaultPro
           const usesComfyUI = protocol === 'comfyui-workflow'
           const workflowMode = profile.comfyui?.workflow_mode === 'api' ? 'api' : 'builtin'
           const profileKey = profileKeys[index]
-          const inputID = `${uploadID}-${index}`
           return (
             <div key={profileKey} className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)]">
               <div className="flex items-center gap-2 px-2.5 py-2">
@@ -227,10 +229,10 @@ export function ImageAPIProfilesEditor({ profiles, effectiveProfiles, defaultPro
                       <div className="flex min-w-0 flex-col gap-1 md:col-span-5">
                         <span className="text-[11px] leading-none text-[var(--nova-text-faint)]">{t('settings.imageApi.workflowFile')}</span>
                         <div className="flex min-w-0 items-center gap-2">
-                          <input id={inputID} type="file" accept=".json,application/json" className="sr-only" onChange={(event) => void uploadWorkflow(index, profileKey, event)} />
-                          <Button variant="outline" size="sm" asChild>
-                            <label htmlFor={inputID}><FileJson data-icon="inline-start" />{profile.comfyui?.workflow ? t('settings.imageApi.workflowReplace') : t('settings.imageApi.workflowChoose')}</label>
-                          </Button>
+                          <WorkflowFilePicker
+                            hasWorkflow={Boolean(profile.comfyui?.workflow)}
+                            onChange={(event) => void uploadWorkflow(index, profileKey, event)}
+                          />
                           <span className="min-w-0 truncate text-xs text-[var(--nova-text-faint)]">{profile.comfyui?.workflow_name || t('settings.imageApi.workflowMissing')}</span>
                         </div>
                         {workflowErrors[profileKey] && <span role="alert" className="text-[11px] text-red-600 dark:text-red-400">{workflowErrors[profileKey]}</span>}
@@ -256,6 +258,24 @@ export function ImageAPIProfilesEditor({ profiles, effectiveProfiles, defaultPro
         </Button>
       </div>
     </div>
+  )
+}
+
+function WorkflowFilePicker({ hasWorkflow, onChange }: {
+  hasWorkflow: boolean
+  onChange: (event: ChangeEvent<HTMLInputElement>) => void
+}) {
+  const { t } = useTranslation()
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  return (
+    <>
+      <input ref={inputRef} type="file" accept=".json,application/json" className="hidden" onChange={onChange} />
+      <Button type="button" variant="outline" size="sm" onClick={() => inputRef.current?.click()}>
+        <FileJson data-icon="inline-start" />
+        {hasWorkflow ? t('settings.imageApi.workflowReplace') : t('settings.imageApi.workflowChoose')}
+      </Button>
+    </>
   )
 }
 

@@ -7,19 +7,20 @@ import type {
 } from 'react-arborist'
 import { Tree } from 'react-arborist'
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
+  type ComponentPropsWithRef,
   type ElementType,
-  type HTMLAttributes,
   type ReactNode,
   type RefObject,
 } from 'react'
 import { cn } from '@/lib/utils'
 import type { ProjectFileExplorerNode } from './model'
 
-interface ProjectFileTreeViewProps extends Omit<HTMLAttributes<HTMLDivElement>, 'children' | 'onSelect' | 'onToggle'> {
+interface ProjectFileTreeViewProps extends Omit<ComponentPropsWithRef<'div'>, 'children' | 'onSelect' | 'onToggle'> {
   nodes: readonly ProjectFileExplorerNode[]
   treeRef: RefObject<TreeApi<ProjectFileExplorerNode> | null>
   selectedPath?: string | null
@@ -73,10 +74,27 @@ export function ProjectFileTreeView({
   renderDragPreview,
   renderTree,
   overlay,
+  ref: forwardedRef,
   className,
   ...hostProps
 }: ProjectFileTreeViewProps) {
   const hostRef = useRef<HTMLDivElement>(null)
+  // Radix `asChild` triggers inject a ref for menu behavior. Preserve it while keeping
+  // the local host ref attached so ResizeObserver can size the virtualized tree.
+  const composedHostRef = useCallback((node: HTMLDivElement | null) => {
+    hostRef.current = node
+    if (typeof forwardedRef === 'function') {
+      const cleanup = forwardedRef(node)
+      if (typeof cleanup === 'function') {
+        return () => {
+          hostRef.current = null
+          cleanup()
+        }
+      }
+    } else if (forwardedRef) {
+      forwardedRef.current = node
+    }
+  }, [forwardedRef])
   const size = useElementSize(hostRef)
   const initialOpenState = useMemo(
     () => Object.fromEntries(expandedPaths.map((path) => [path, true])),
@@ -114,7 +132,7 @@ export function ProjectFileTreeView({
 
   return (
     <div
-      ref={hostRef}
+      ref={composedHostRef}
       className={cn('relative h-full min-h-0 min-w-0 overflow-hidden', className)}
       {...hostProps}
     >

@@ -231,6 +231,16 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
     }))
   }
 
+  const setDefaultModelProfile = (profileID: string) => {
+    setDraft((d) => ({
+      ...d,
+      agent_models: {
+        ...d.agent_models,
+        default: { ...d.agent_models?.default, profile_id: profileID },
+      },
+    }))
+  }
+
   const setImageAPIProfiles = (profiles: ImageAPIProfileSettings[]) => {
     setDraft((d) => ({
       ...d,
@@ -340,6 +350,9 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
           <ModelProfilesEditor
             profiles={modelProfilesForEditor(draft, effective)}
             effectiveProfiles={modelProfilesWithDefault(effective)}
+            defaultProfileID={draft.agent_models?.default?.profile_id ?? ''}
+            effectiveDefaultProfileID={inherited.agent_models?.default?.profile_id || DEFAULT_MODEL_PROFILE_ID}
+            onDefaultProfileChange={setDefaultModelProfile}
             onChange={setModelProfiles}
           />
         </>
@@ -847,8 +860,9 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
 export function modelProfilesForEditor(draft: Settings, effective: Settings): ModelProfileSettings[] {
   const localProfiles = draft.model_profiles ?? []
   const hasLocalDefault = localProfiles.some((profile) => modelProfileID(profile) === DEFAULT_MODEL_PROFILE_ID)
+  const hasLocalDefaultSelection = Boolean(draft.agent_models?.default?.profile_id?.trim())
   const hasLegacyDefault = Boolean(draft.openai_api_key || draft.openai_base_url || draft.openai_model || draft.openai_context_window_tokens)
-  if (hasLocalDefault || hasLegacyDefault) {
+  if (hasLocalDefault || hasLocalDefaultSelection || hasLegacyDefault) {
     return preserveDraftOnlyModelProfiles(modelProfilesWithDefault(draft), localProfiles)
   }
   const inherited = modelProfilesWithDefault(effective)
@@ -873,10 +887,11 @@ function stripInheritedModelSecret(profile: ModelProfileSettings): ModelProfileS
   return { ...profile, api_key: '' }
 }
 
-function imageAPIProfilesForEditor(draft: Settings, effective: Settings): ImageAPIProfileSettings[] {
+export function imageAPIProfilesForEditor(draft: Settings, effective: Settings): ImageAPIProfileSettings[] {
   const localProfiles = draft.image_api_profiles ?? []
   const hasLocalDefault = localProfiles.some((profile) => imageAPIProfileID(profile) === DEFAULT_IMAGE_API_PROFILE_ID)
-  if (hasLocalDefault) {
+  const hasLocalDefaultSelection = Boolean(draft.default_image_api_profile_id?.trim())
+  if (hasLocalDefault || hasLocalDefaultSelection) {
     return imageAPIProfilesWithDefault(draft)
   }
   const inherited = imageAPIProfilesWithDefault(effective)

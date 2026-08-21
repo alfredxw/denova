@@ -4,6 +4,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
   ParsedMarkdownDocumentCache,
+  createWorkspaceImageExtension,
+  insertPastedWorkspaceMarkdownImage,
   placeEditorCaretAtClick,
   replaceEditorDocument,
   replaceEditorDocumentWithFreshState,
@@ -148,5 +150,59 @@ describe('replaceEditorDocument', () => {
     expect(handled).toBe(false)
     expect(editor.state.selection.from).toBe(2)
     expect(editor.state.selection.to).toBe(5)
+  })
+})
+
+describe('insertPastedWorkspaceMarkdownImage', () => {
+  let editor: Editor | null = null
+
+  afterEach(() => {
+    editor?.destroy()
+    editor = null
+  })
+
+  it('inserts a copied workspace Markdown image instead of its rich code-block HTML', () => {
+    editor = new Editor({
+      extensions: [StarterKit, createWorkspaceImageExtension((path) => `/asset/${path}`)],
+      content: '<p>正文</p>',
+    })
+    editor.commands.setTextSelection(3)
+    const preventDefault = vi.fn()
+    const event = {
+      clipboardData: {
+        getData: (type: string) => type === 'text/plain'
+          ? '![坠碑夜](assets/illustrations/ch01/run/image.png)'
+          : '<pre><code>ignored</code></pre>',
+      },
+      preventDefault,
+    } as unknown as ClipboardEvent
+
+    expect(insertPastedWorkspaceMarkdownImage(editor.view, event)).toBe(true)
+    expect(preventDefault).toHaveBeenCalledTimes(1)
+    expect(editor.getJSON()).toEqual({
+      type: 'doc',
+      content: [
+        { type: 'paragraph', content: [{ type: 'text', text: '正文' }] },
+        { type: 'image', attrs: { src: 'assets/illustrations/ch01/run/image.png', alt: '坠碑夜', title: '坠碑夜', width: null, height: null } },
+        { type: 'paragraph' },
+      ],
+    })
+  })
+
+  it('accepts an explicitly fenced image reference but leaves ordinary code alone', () => {
+    editor = new Editor({
+      extensions: [StarterKit, createWorkspaceImageExtension((path) => path)],
+      content: '<p></p>',
+    })
+    const event = (text: string) => ({
+      clipboardData: { getData: () => text },
+      preventDefault: vi.fn(),
+    }) as unknown as ClipboardEvent
+
+    expect(insertPastedWorkspaceMarkdownImage(
+      editor.view,
+      event('```markdown\n![雨夜](assets/illustrations/ch01/rain.png)\n```'),
+    )).toBe(true)
+    expect(insertPastedWorkspaceMarkdownImage(editor.view, event('```markdown\n普通代码\n```'))).toBe(false)
   })
 })

@@ -60,6 +60,8 @@ Denova records only major user-visible features, important compatibility or data
 - Fixed embedded-terminal exit, reconnect, theme, and PTY lifecycle issues so interactive tools reliably return to the shell in the original working directory.
 - 修复 DeepSeek、MiniMax、Claude 等模型及游戏回合的输出上限被错误压低的问题，已知模型按其能力使用正确上限。
 - Fixed incorrectly low output limits for DeepSeek, MiniMax, Claude, and Game turns; known models now use limits derived from their capabilities.
+- 修复 DeepSeek 思考模式在工具结果投影后继续运行或启动 SubAgent 时可能因未回传 `reasoning_content` 而失败的问题。
+- Fixed DeepSeek thinking-mode runs failing after tool-result projection or SubAgent startup because `reasoning_content` was not replayed.
 - 升级 Go、`go-git` 与 `x/image` 安全基线，修复标准库、Git 路径/符号链接和 WebP 解码相关漏洞。
 - Upgraded Go, `go-git`, and `x/image` security baselines to address standard-library, Git path/symlink, and WebP decoding vulnerabilities.
 

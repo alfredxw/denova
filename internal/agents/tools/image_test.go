@@ -58,6 +58,50 @@ func TestParseLegacyChapterIllustrationToolResult(t *testing.T) {
 	}
 }
 
+func TestParseChapterIllustrationReceipt(t *testing.T) {
+	payload := generatedImageReceiptDetails{
+		Schema: generatedImageReceiptSchema, ResultSchema: imageasset.IllustrationResultSchema,
+		ChapterPath: "chapters/ch01.md", ProfileID: "default", Provider: "openai", Model: "gpt-image-1",
+		Images: []generatedImageReceiptFile{{
+			Path: "assets/illustrations/ch01/run/image.png", MetaPath: "assets/illustrations/ch01/run/meta.json",
+			Markdown: "![图](assets/illustrations/ch01/run/image.png)", AltText: "图", MIMEType: "image/png", SizeBytes: 42,
+		}},
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parsed, err := parseChapterIllustrationToolResult(generateImageToolName, string(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed == nil || parsed.ChapterPath != payload.ChapterPath || parsed.ImagePath != payload.Images[0].Path || parsed.Markdown != payload.Images[0].Markdown {
+		t.Fatalf("chapter illustration receipt = %#v", parsed)
+	}
+}
+
+func TestParseInteractiveImageReceipt(t *testing.T) {
+	payload := generatedImageReceiptDetails{
+		Schema: generatedImageReceiptSchema, ResultSchema: imageasset.InteractiveResultSchema,
+		StoryID: "story-1", BranchID: "branch-1", TurnID: "turn-1", Provider: "openai", Model: "gpt-image-1",
+		Images: []generatedImageReceiptFile{{
+			Path: "assets/interactive/images/turn-1.png", MetaPath: "assets/interactive/images/turn-1.json",
+			AltText: "雨夜", MIMEType: "image/png", SizeBytes: 42,
+		}},
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parsed, err := parseInteractiveImageToolResult(generateImageToolName, string(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed == nil || parsed.StoryID != payload.StoryID || parsed.ImagePath != payload.Images[0].Path || parsed.MetaPath != payload.Images[0].MetaPath {
+		t.Fatalf("interactive image receipt = %#v", parsed)
+	}
+}
+
 func TestParseGeneratedImageToolTarget(t *testing.T) {
 	payload := generatedImageToolResult{
 		Schema: generatedImageResultSchema,
@@ -71,6 +115,20 @@ func TestParseGeneratedImageToolTarget(t *testing.T) {
 	}
 	if target := parseGeneratedImageToolTarget(generateImageToolName, string(raw)); target != payload.Images[0].Path {
 		t.Fatalf("target = %q", target)
+	}
+}
+
+func TestParseGeneratedImageReceiptTarget(t *testing.T) {
+	payload := generatedImageReceiptDetails{
+		Schema: generatedImageReceiptSchema, ResultSchema: generatedImageResultSchema,
+		Images: []generatedImageReceiptFile{{Path: "assets/image/generated/receipt.png"}},
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if target := parseGeneratedImageToolTarget(generateImageToolName, string(raw)); target != payload.Images[0].Path {
+		t.Fatalf("receipt target = %q", target)
 	}
 }
 

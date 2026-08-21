@@ -158,6 +158,7 @@ const settings = {
   'settings.model.profileModelMissing': 'No model name',
   'settings.model.profileModelIdPlaceholder': 'Model ID',
   'settings.model.defaultProfileName': 'Default model',
+  'settings.model.defaultProfile': 'Default language model',
   'settings.model.profileName': 'Language Model {{index}}',
   'settings.model.profileNamePlaceholder': 'Display name',
   'settings.model.profileTemperatureLabel': 'Temperature',

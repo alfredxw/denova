@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/alfredxw/denova/agent/internal/localfs"
 )
 
 type transactionRecord struct {
@@ -125,7 +127,7 @@ func (store *Store) cacheSnapshot(snapshot Snapshot) error {
 		}
 		return err
 	}
-	return syncDirectory(filepath.Dir(root))
+	return localfs.SyncDirectory(filepath.Dir(root))
 }
 
 func (store *Store) loadCachedSnapshot(revision string) (Snapshot, error) {

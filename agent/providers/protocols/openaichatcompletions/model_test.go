@@ -185,7 +185,7 @@ func TestDeepSeekThinkingRequestUsesV4WireFormat(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			protocolOptions, err := providers.EncodeProtocolOptions(Compatibility{
 				ThinkingToggle:        ThinkingToggleNested,
-				ReasoningReplay:       ReasoningReplayToolCalls,
+				ReasoningReplay:       ReasoningReplayAlways,
 				ReasoningContentField: "reasoning_content",
 				EffortMap: map[string]string{
 					"off": "", "minimal": "low", "medium": "high",
@@ -220,6 +220,10 @@ func TestDeepSeekThinkingRequestUsesV4WireFormat(t *testing.T) {
 					ToolCalls: []agent.ToolCall{{ID: "call-1", Type: "function", Function: agent.FunctionCall{Name: "lookup", Arguments: `{}`}}},
 				},
 				{Role: agent.ToolRole, ToolCallID: "call-1", ToolName: "lookup", Content: "result"},
+				// This is the shape produced when Denova has already executed and
+				// projected a tool pair but retains the assistant turn. DeepSeek
+				// still requires its reasoning_content on the next request.
+				{Role: agent.Assistant, Content: "task started", ReasoningContent: "follow-up reasoning"},
 			})
 			if err != nil {
 				t.Fatal(err)
@@ -254,6 +258,11 @@ func TestDeepSeekThinkingRequestUsesV4WireFormat(t *testing.T) {
 			_, hasReasoningContent := assistantMessage["reasoning_content"]
 			if hasReasoningContent != test.wantReasoningContent {
 				t.Fatalf("reasoning_content present = %t, want %t: %#v", hasReasoningContent, test.wantReasoningContent, assistantMessage)
+			}
+			projectedAssistant := messages[3].(map[string]any)
+			_, hasProjectedReasoning := projectedAssistant["reasoning_content"]
+			if hasProjectedReasoning != test.wantReasoningContent {
+				t.Fatalf("projected reasoning_content present = %t, want %t: %#v", hasProjectedReasoning, test.wantReasoningContent, projectedAssistant)
 			}
 		})
 	}

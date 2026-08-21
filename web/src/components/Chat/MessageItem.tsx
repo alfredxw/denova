@@ -68,6 +68,7 @@ export const MessageItem = memo(function MessageItem({ projectId = '', message, 
   const markedVersionIndex = message.turn_versions?.findIndex((version) => version.current) ?? -1
   const versionIndex = message.turn_version_index ?? markedVersionIndex
   const canSwitchVersion = role === 'assistant' && versionCount > 1 && versionIndex >= 0 && Boolean(onSwitchVersion) && !message.streaming
+  const showAgentSource = subAgentPresentation !== 'content'
 
   switch (role) {
     case 'user':
@@ -154,7 +155,7 @@ export const MessageItem = memo(function MessageItem({ projectId = '', message, 
       // Live input is an opaque protocol text stream. Specialized renderers may
       // interpret arguments only after the input stream has completed.
       if (message.streaming === true) {
-        return <ToolExecutionBlock message={message} onResolve={onResolveAsk} onLayoutChange={onInteractiveCardLayoutChange} />
+        return <ToolExecutionBlock message={message} showAgentSource={showAgentSource} onResolve={onResolveAsk} onLayoutChange={onInteractiveCardLayoutChange} />
       }
       // A completed AI SDK dynamic-tool part contains both call and result
       // phases. Result refinement must win for interactive media when no richer
@@ -169,19 +170,19 @@ export const MessageItem = memo(function MessageItem({ projectId = '', message, 
         case 'image':
           return message.illustration
             ? <ChapterIllustrationBlock message={message} projectId={projectId} onInsert={onInsertIllustration} />
-            : <ToolExecutionBlock message={message} onResolve={onResolveAsk} onLayoutChange={onInteractiveCardLayoutChange} />
+            : <ToolExecutionBlock message={message} showAgentSource={showAgentSource} onResolve={onResolveAsk} onLayoutChange={onInteractiveCardLayoutChange} />
         case 'todo':
           return <TodoListBlock message={message} />
         case 'interaction':
           // A failed interaction never produced durable Ask state. Keep it as a
           // diagnostic tool card instead of parsing its rejected input as pending.
           if (message.status === 'error') {
-            return <ToolExecutionBlock message={message} onResolve={onResolveAsk} onLayoutChange={onInteractiveCardLayoutChange} />
+            return <ToolExecutionBlock message={message} showAgentSource={showAgentSource} onResolve={onResolveAsk} onLayoutChange={onInteractiveCardLayoutChange} />
           }
           if (message.ask?.kind === 'tool_approval') return <ToolApprovalCard message={message} onResolve={onResolveAsk} />
           return <AskInteractionCard message={message} onResolve={onResolveAsk} />
         case 'generic':
-          return <ToolExecutionBlock message={message} onResolve={onResolveAsk} onLayoutChange={onInteractiveCardLayoutChange} />
+          return <ToolExecutionBlock message={message} showAgentSource={showAgentSource} onResolve={onResolveAsk} onLayoutChange={onInteractiveCardLayoutChange} />
         default: {
           const exhaustive: never = renderer
           return exhaustive
