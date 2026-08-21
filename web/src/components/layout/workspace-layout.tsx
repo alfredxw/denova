@@ -15,13 +15,11 @@ const MAX_STORED_SIDEBAR_WIDTH_PX = 8192
 const SIDEBAR_WIDTH_STORAGE_KEY = 'nova.layout.workspaceSidebarWidth:v1'
 
 interface WorkspaceLayoutProps {
-  activityBar: ReactNode
-  topBar?: ReactNode
+  appSidebar: ReactNode
   sidebar?: ReactNode
   main: ReactNode
   rightPanel?: ReactNode
   bottomPanel?: ReactNode
-  statusBar?: ReactNode
   sidebarVisible?: boolean
   rightPanelVisible?: boolean
   bottomPanelVisible?: boolean
@@ -31,15 +29,13 @@ interface WorkspaceLayoutProps {
   routeLayoutKey?: string | number
 }
 
-/** 工作台布局组件，只负责可拖拽区域编排，不承载业务逻辑。 */
+/** Composes the resizable workbench regions without owning feature behavior. */
 export function WorkspaceLayout({
-  activityBar,
-  topBar,
+  appSidebar,
   sidebar,
   main,
   rightPanel,
   bottomPanel,
-  statusBar,
   sidebarVisible = true,
   rightPanelVisible = true,
   bottomPanelVisible = true,
@@ -181,12 +177,9 @@ export function WorkspaceLayout({
   }, [horizontalGroupRef, layoutEmphasis, rightPanelOpen, sidebarVisible])
 
   return (
-    <div data-nova-app-shell="true" className="h-dvh w-screen overflow-hidden">
-      <div className="flex h-full flex-col">
-        {topBar}
-        <div className="flex min-h-0 flex-1">
-          {activityBar}
-          <PanelMotionGroup
+    <div data-nova-app-shell="true" className="flex h-dvh w-screen overflow-hidden">
+      {appSidebar}
+      <PanelMotionGroup
             id="nova-workspace-horizontal"
             motionSuspended={panelMotionSuspendedRef.current}
             data-nova-layout-emphasis={layoutEmphasis}
@@ -298,10 +291,7 @@ export function WorkspaceLayout({
             >
               {retainedRightPanelRef.current}
             </CollapsibleResizablePanel>
-          </PanelMotionGroup>
-        </div>
-        {statusBar}
-      </div>
+      </PanelMotionGroup>
     </div>
   )
 }

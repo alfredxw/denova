@@ -67,7 +67,6 @@ interface WritingMainRouteProps {
   onQuoteSelection: (selection: TextSelection) => void
   onRevealChapter: EditorProps['onRevealChapter']
   onGenerateIllustration: EditorProps['onGenerateIllustration']
-  onEditorLineChange: EditorProps['onLineChange']
   emptyText: string
   emptyLoreTitle: string
   emptyLoreDescription: string
@@ -120,7 +119,6 @@ export function WritingMainRoute({
   onQuoteSelection,
   onRevealChapter,
   onGenerateIllustration,
-  onEditorLineChange,
   emptyText,
   emptyLoreTitle,
   emptyLoreDescription,
@@ -180,7 +178,6 @@ export function WritingMainRoute({
                   onGenerateIllustration={onGenerateIllustration}
                   generateIllustrationDisabled={isStreaming || !currentChapter}
                   illustrationInsertSignal={illustrationInsertSignal}
-                  onLineChange={onEditorLineChange}
                   onFlushHandlerChange={onEditorFlushHandlerChange}
                   documentReview={documentReview}
                   documentReviewNavigationIntent={documentReviewNavigationTarget?.target.kind === 'workspace_file' && documentReviewNavigationTarget.target.id === selectedFile ? documentReviewNavigationTarget : null}

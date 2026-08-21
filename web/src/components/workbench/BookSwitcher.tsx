@@ -11,7 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { formatDateTime } from '@/i18n'
+import { formatDateTime, formatLocaleNumber } from '@/i18n'
 import type { BookRecord } from '@/lib/api'
 import {
   WorkbenchContextSwitcherTrigger,
@@ -24,19 +24,25 @@ interface BookSwitcherProps {
   books: BookRecord[]
   currentBookName: string
   currentChapterCount?: number
+  currentWordCount?: number
   workspace: string
   compact?: boolean
+  iconOnly?: boolean
+  showCurrentStats?: boolean
   onSwitchBook: (path: string) => Promise<boolean>
   onManageBooks: () => void
 }
 
-/** 顶栏书籍上下文入口：只切换工作区，不改变用户当前所在的功能或创作模式。 */
+/** Switches the active book context without changing the current feature or creation mode. */
 export function BookSwitcher({
   books,
   currentBookName,
   currentChapterCount,
+  currentWordCount,
   workspace,
   compact = false,
+  iconOnly = false,
+  showCurrentStats = false,
   onSwitchBook,
   onManageBooks,
 }: BookSwitcherProps) {
@@ -58,13 +64,19 @@ export function BookSwitcher({
     try {
       if (await onSwitchBook(book.path)) setOpen(false)
     } catch (error) {
-      console.error('[BookSwitcher.tsx] 切换书籍失败', { from: workspace, to: book.path, error })
+      console.error('[BookSwitcher.tsx] Failed to switch books', { from: workspace, to: book.path, error })
     } finally {
       setSwitchingPath('')
     }
   }
 
   const triggerLabel = t('workbench.bookSwitcher.trigger', { title: currentBookName })
+  const triggerDescription = showCurrentStats && typeof currentChapterCount === 'number' && typeof currentWordCount === 'number'
+    ? t('workbench.bookSwitcher.stats', {
+      chapters: formatLocaleNumber(currentChapterCount),
+      words: formatLocaleNumber(currentWordCount),
+    })
+    : undefined
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
@@ -73,7 +85,9 @@ export function BookSwitcher({
           aria-label={triggerLabel}
           icon={BookOpen}
           label={currentBookName}
+          description={triggerDescription}
           compact={compact}
+          iconOnly={iconOnly}
         />
       </DropdownMenuTrigger>
       <DropdownMenuContent
@@ -111,7 +125,7 @@ export function BookSwitcher({
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-xs font-medium text-[var(--nova-text)]">{book.name}</span>
                   <span className="mt-0.5 block truncate text-[10px] text-[var(--nova-text-faint)]">
-                    {bookDetail(book, current, currentChapterCount, t)}
+                    {bookDetail(book, current, currentChapterCount, currentWordCount, t)}
                   </span>
                 </span>
                 {loading ? (
@@ -158,11 +172,18 @@ function bookDetail(
   book: BookRecord,
   current: boolean,
   currentChapterCount: number | undefined,
+  currentWordCount: number | undefined,
   t: TFunction,
 ) {
   if (current) {
+    if (typeof currentChapterCount === 'number' && typeof currentWordCount === 'number') {
+      return t('workbench.bookSwitcher.stats', {
+        chapters: formatLocaleNumber(currentChapterCount),
+        words: formatLocaleNumber(currentWordCount),
+      })
+    }
     return typeof currentChapterCount === 'number'
-      ? t('workbench.bookSwitcher.chapterCount', { count: currentChapterCount })
+      ? t('workbench.bookSwitcher.chapterCount', { count: formatLocaleNumber(currentChapterCount) })
       : t('workbench.bookSwitcher.current')
   }
   const lastOpened = formatDateTime(book.last_opened_at)
