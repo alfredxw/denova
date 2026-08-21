@@ -746,6 +746,7 @@ export function InputArea({
               <AgentApprovalModeMenu runActive={generationActive} conversationConfig={conversationBinding ? conversationConfig : undefined} />
               {planMode && onTogglePlanMode ? (
                 <ComposerModeChip
+                  icon={ClipboardList}
                   label={t('chat.plan.short')}
                   ariaLabel={t('chat.plan.exit')}
                   disabled={disabled || generationActive}
@@ -756,6 +757,7 @@ export function InputArea({
                 />
               ) : goalMode && onGoalSubmit ? (
                 <ComposerModeChip
+                  icon={Target}
                   label={t('chat.goal.short')}
                   ariaLabel={t('chat.goal.exitMode')}
                   disabled={disabled}

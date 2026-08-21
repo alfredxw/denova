@@ -325,7 +325,7 @@ export function StoryStageComposer({ layout, editor, story, runtime, goal, dialo
                   <DropdownMenuItem disabled={!storyId || streaming || branchTerminal || directorBlocking} onSelect={openContextAnalysis} className="cursor-pointer text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"><ScrollText className="h-3.5 w-3.5" />{t('chat.contextAnalysis.action')}</DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-              {goal.mode ? <ComposerModeChip label={t('chat.goal.short')} ariaLabel={t('chat.goal.exitMode')} disabled={goal.pending} onClose={goal.exit} /> : null}
+              {goal.mode ? <ComposerModeChip icon={Target} label={t('chat.goal.short')} ariaLabel={t('chat.goal.exitMode')} disabled={goal.pending} onClose={goal.exit} /> : null}
             </>}
             toolbarEnd={<>
               <ModelProfileSwitcher agentKey="interactive_story" workspace={workspace} conversationConfig={conversationConfig} disabled={streaming || directorBlocking || !approvalReady} />

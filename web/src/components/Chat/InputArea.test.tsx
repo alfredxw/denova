@@ -272,6 +272,17 @@ describe('InputArea command menu', () => {
     const indicator = screen.getByRole('button', { name: '退出计划模式' })
     expect(indicator).toHaveTextContent('计划')
     expect(indicator).toHaveAttribute('aria-pressed', 'true')
+    expect(indicator).toHaveClass('bg-transparent', 'text-[var(--nova-text-faint)]', 'hover:bg-[var(--nova-active)]')
+    expect(indicator.querySelector('[data-slot="composer-mode-icon"]')).toHaveClass(
+      'opacity-100',
+      'group-hover:opacity-0',
+      'group-focus-visible:opacity-0',
+    )
+    expect(indicator.querySelector('[data-slot="composer-mode-close"]')).toHaveClass(
+      'opacity-0',
+      'group-hover:opacity-100',
+      'group-focus-visible:opacity-100',
+    )
     expect(permission.compareDocumentPosition(indicator) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     await user.click(indicator)
     expect(handleTogglePlanMode).toHaveBeenCalledTimes(1)
