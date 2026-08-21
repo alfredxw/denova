@@ -1,5 +1,9 @@
 const files = {
   'files.title': '文件',
+  'files.breadcrumb.label': '文件路径',
+  'files.breadcrumb.browser': '文件浏览器',
+  'files.breadcrumb.browse': '浏览 {{name}}',
+  'files.breadcrumb.empty': '此目录为空。',
   'files.tree.title': '文件',
   'files.tree.open': '显示文件树',
   'files.tree.hide': '隐藏文件树',

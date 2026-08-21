@@ -1,5 +1,9 @@
 const files = {
   'files.title': 'Files',
+  'files.breadcrumb.label': 'File path',
+  'files.breadcrumb.browser': 'File browser',
+  'files.breadcrumb.browse': 'Browse {{name}}',
+  'files.breadcrumb.empty': 'This directory is empty.',
   'files.tree.title': 'Files',
   'files.tree.open': 'Show file tree',
   'files.tree.hide': 'Hide file tree',

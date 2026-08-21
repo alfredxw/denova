@@ -50,6 +50,12 @@ describe('TabController', () => {
     expect(loreTab).toHaveClass('rounded-[var(--nova-radius)]')
     expect(loreTab.parentElement?.parentElement).toHaveClass('h-7', 'min-w-24', 'max-w-40', 'flex-[1_1_10rem]', 'self-center', 'after:h-3')
     expect(screen.getByRole('button', { name: /关闭.*设定/ })).toHaveClass('group-data-[selected=true]/tab:opacity-100')
+    expect(document.querySelector('[data-slot="workbench-tab-close-space"]')).toHaveClass(
+      'w-0',
+      '-ml-1.5',
+      'group-hover/tab:w-4',
+      'group-aria-[selected=true]/tab:w-4',
+    )
     expect(loreTab).toHaveAttribute('aria-roledescription', '可排序标签页')
     expect(screen.getByRole('tablist')).toHaveClass('gap-1', 'overflow-x-auto', '[&::-webkit-scrollbar]:hidden')
   })

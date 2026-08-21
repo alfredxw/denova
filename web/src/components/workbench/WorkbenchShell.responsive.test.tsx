@@ -22,6 +22,7 @@ vi.mock('@/components/layout/workspace-layout', () => ({
     rightPanelVisible,
     rightPanelWide,
     centerFocus,
+    routeLayoutKey,
   }: {
     topBar: ReactNode
     activityBar: ReactNode
@@ -31,6 +32,7 @@ vi.mock('@/components/layout/workspace-layout', () => ({
     rightPanelVisible: boolean
     rightPanelWide: boolean
     centerFocus: boolean
+    routeLayoutKey: string
   }) => (
     <section
       data-testid="desktop-shell"
@@ -38,6 +40,7 @@ vi.mock('@/components/layout/workspace-layout', () => ({
       data-right-panel-visible={rightPanelVisible}
       data-right-panel-wide={rightPanelWide}
       data-center-focus={centerFocus}
+      data-route-layout-key={routeLayoutKey}
     >
       {topBar}{activityBar}{main}{statusBar}
     </section>
@@ -279,6 +282,7 @@ describe('WorkbenchShell responsive main content', () => {
     expect(desktopShell).toHaveAttribute('data-right-panel-visible', 'true')
     expect(desktopShell).toHaveAttribute('data-right-panel-wide', 'true')
     expect(desktopShell).toHaveAttribute('data-center-focus', 'true')
+    expect(desktopShell).toHaveAttribute('data-route-layout-key', 'writing')
 
     rerender(
       <WorkbenchShell
@@ -297,6 +301,7 @@ describe('WorkbenchShell responsive main content', () => {
     expect(desktopShell).toHaveAttribute('data-right-panel-visible', 'false')
     expect(desktopShell).toHaveAttribute('data-right-panel-wide', 'false')
     expect(desktopShell).toHaveAttribute('data-center-focus', 'false')
+    expect(desktopShell).toHaveAttribute('data-route-layout-key', 'full')
   })
 
   it('keeps the Workspace menu label in sync with the current language', async () => {

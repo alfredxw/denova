@@ -69,7 +69,13 @@ describe('AgentChatTabBar', () => {
     expect(activeTab).toHaveClass('rounded-[var(--nova-radius)]')
     expect(activeTab.parentElement).toHaveClass('h-7', 'min-w-24', 'max-w-40', 'flex-[1_1_10rem]', 'self-center', 'after:h-3')
     expect(screen.getByRole('tab', { name: /Writing tab/ }).parentElement).toHaveClass('h-7', 'min-w-24', 'max-w-40', 'flex-[1_1_10rem]', 'self-center')
-    expect(screen.getByRole('button', { name: '关闭 Lore tab' })).toHaveClass('group-aria-[selected=true]/tab:opacity-100')
+    expect(screen.getByRole('button', { name: '关闭 Lore tab' })).toHaveClass(
+      'w-0',
+      '-ml-1.5',
+      'group-hover/tab:w-4',
+      'group-aria-[selected=true]/tab:w-4',
+      'group-aria-[selected=true]/tab:opacity-100',
+    )
     expect(activeTab).toHaveAttribute('aria-roledescription', '可排序标签页')
     expect(screen.getByRole('tablist')).toHaveClass('overflow-x-auto', '[&::-webkit-scrollbar]:hidden')
     expect(screen.getByRole('tablist')).toHaveStyle({ scrollbarWidth: 'none' })
@@ -215,6 +221,9 @@ describe('AgentChatTabBar', () => {
       const tooltip = await screen.findByRole('tooltip')
       expect(tooltip).toHaveTextContent(longTitle)
       expect(document.querySelector('[data-slot="tooltip-content"]')).toHaveAttribute('data-side', 'bottom')
+      const title = document.querySelector('[data-slot="workbench-tab-title"]')
+      expect(title).toHaveClass('nova-workbench-tab-title-fade', 'overflow-hidden', 'whitespace-nowrap')
+      expect(title).not.toHaveClass('truncate')
     } finally {
       clientWidth.mockRestore()
       scrollWidth.mockRestore()
@@ -253,6 +262,7 @@ describe('AgentChatTabBar', () => {
       await new Promise((resolve) => window.setTimeout(resolve, 600))
       expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
       expect(document.querySelector('[data-slot="tooltip-content"]')).not.toBeInTheDocument()
+      expect(screen.getByText('Writing')).not.toHaveClass('nova-workbench-tab-title-fade')
     } finally {
       clientWidth.mockRestore()
       scrollWidth.mockRestore()

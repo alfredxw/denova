@@ -91,6 +91,53 @@ Fonts, copy, icon family, and tab-strip height remain unchanged. Dark and light 
 
 final result: passed
 
+# Design QA: shadcn file breadcrumb
+
+## Evidence
+
+- Source visual truth:
+  - `/var/folders/3p/tw35s8456m1033g5yxdztf_m0000gn/T/codex-clipboard-ceae0fea-d936-4abb-9985-027b4a196866.png` (`962 × 760` px), showing one expanded directory and its direct file children.
+  - `/var/folders/3p/tw35s8456m1033g5yxdztf_m0000gn/T/codex-clipboard-4e94b6a9-91ee-4a61-bb33-9c0a0c63a7a7.png` (`822 × 690` px), showing the project-level menu with only the selected root directory expanded to one child level.
+- Browser-rendered implementation: `/tmp/denova-breadcrumb-shadcn-final.png` (`1100 × 720` output pixels at a `1100 × 720` CSS viewport, 1× normalized capture).
+- Additional full-view evidence: `/tmp/denova-breadcrumb-shadcn-root.png` (`1280 × 720` px) and `/tmp/denova-breadcrumb-shadcn-compact.png` (`1100 × 720` px).
+- State: dark theme, Files workbench tab, `chapters/v00001-第一卷-青云宗篇/ch00009-第九章-首次双修.md` selected, current volume menu open.
+
+## Comparison
+
+The two source captures and the final browser capture were opened together in the same comparison input. The implementation now follows the supplied hierarchy: the selected directory remains pinned at the top, only that directory is expanded, only its direct children are shown, and the selected file is centered in the scroll viewport. The breadcrumb itself uses shadcn's Breadcrumb, BreadcrumbList, BreadcrumbItem, BreadcrumbLink, BreadcrumbPage, BreadcrumbSeparator, Button, and Popover composition. Segment triggers have no dropdown glyph. The current filename is the untruncated rightmost item; narrower desktop layouts scroll older ancestors out of view while keeping the full current filename visible.
+
+The full-view captures confirm the toolbar, editor, and adjacent controls remain stable at default and compact desktop widths. A separate crop was unnecessary because the menu and breadcrumb text are legible in the 1100 × 720 capture and the supplied references are already focused component crops.
+
+## Required fidelity surfaces
+
+- Fonts and typography: the project font stack is unchanged; shadcn's compact button sizing and Breadcrumb hierarchy provide the same muted-ancestor/current-page emphasis as the reference. The current filename is `whitespace-nowrap` and never receives truncation styling.
+- Spacing and layout rhythm: the existing 44 px toolbar and popover geometry are preserved. Separators come from shadcn Breadcrumb, the selected directory is sticky, and the selected child is vertically centered.
+- Colors and visual tokens: Breadcrumb and Button use the installed `radix-nova` semantic tokens; the directory tree continues to use Denova's existing surface, hover, active, border, and focus tokens.
+- Image quality and asset fidelity: no raster assets were added. Icons come from the project's configured Lucide library and the shadcn component implementation.
+- Copy and content: existing localized Chinese and English accessible labels are preserved; no new user-visible copy was introduced.
+
+## Findings
+
+No actionable P0, P1, or P2 differences remain.
+
+## Comparison history
+
+1. Initial P2: every selected ancestor expanded recursively, producing an unnecessarily deep project tree. Fix: initialize each menu with only its current directory expanded and its direct child level visible.
+2. Initial P2: opening a long directory did not reliably expose the selected file. Fix: center the deepest visible selected-path node after the menu mounts.
+3. Initial P2: centering a child could scroll the current directory row out of view. Fix: pin the expanded current-directory row at the top while its children scroll beneath it.
+4. Initial P2: segment triggers used custom breadcrumb markup with dropdown chevrons and the current filename shared ancestor truncation constraints. Fix: compose the toolbar from the installed shadcn Breadcrumb and Button primitives, remove trigger glyphs, and reserve truncation only for non-current ancestors.
+
+## Interaction and responsive checks
+
+- Project-level menu: only `chapters` is expanded and its current volume is visible but collapsed.
+- Volume-level menu: only the current volume is expanded; the selected chapter is centered and highlighted.
+- Default `1280 × 720` and compact `1100 × 720` desktop layouts.
+- Writing and Game workbench modes.
+- Empty directory and sibling-file switching remain covered by component tests.
+- Browser console warnings/errors: none.
+
+final result: passed
+
 # Goal UI Design QA
 
 ## Target
@@ -184,3 +231,64 @@ The reference is directional rather than a pixel-identical Denova screen: it sho
 
 - Denova keeps its existing review toolbar, full-thread stacked diffs, and optional Agent panel instead of copying the reference application's branch and commit controls.
 - Status badges use Denova's semantic success/warning/danger tokens so they remain legible in both supported themes.
+
+# Design QA: Workbench tab title overflow
+
+## Evidence
+
+- Source visual truth:
+  - `/var/folders/3p/tw35s8456m1033g5yxdztf_m0000gn/T/codex-clipboard-2e2bff41-56bd-4de4-bc0b-6d6aa10fde2b.png` (562 × 124 px)
+  - `/var/folders/3p/tw35s8456m1033g5yxdztf_m0000gn/T/codex-clipboard-93abec98-5b16-4eff-8ad9-36eedf9ad068.png` (244 × 98 px)
+- Browser-rendered implementation: `/tmp/denova-workbench-tab-after.png` (420 × 51 px)
+- Browser viewport: 1280 × 720 CSS px, dark theme.
+- Density normalization: the implementation was captured at 1 browser CSS pixel per output pixel. The source captures have unknown density and different content crops, so the comparison uses their interaction and truncation treatment as the visual truth rather than asserting absolute pixel geometry.
+- State: two document tabs; the first is inactive and not hovered, while the longer second tab is active with its close action visible.
+
+## Comparison
+
+### Full-view evidence
+
+The surrounding workbench was checked at the default 1280 × 720 viewport and at 760 × 720. No layout shift, tab-strip overflow, or persistent-control clipping was introduced. A focused comparison is the useful evidence because the requested change is isolated to a 36 px tab strip and the supplied references are component crops.
+
+### Focused region evidence
+
+Both source images and the browser capture were opened together in one comparison input. The implementation preserves the existing Denova tab geometry and tokens while adopting the requested behavior:
+
+- An inactive desktop tab no longer reserves space for its hidden close action. Its measured title width increased from 116 px to 138 px in a 160 px tab.
+- Hovering expands the close action to 16 px and reduces the title area only while the action is visible.
+- A genuinely clipped title uses a 28 px end mask instead of a rendered ellipsis.
+- The selected tab continues to show its close action.
+
+## Required fidelity surfaces
+
+- Fonts and typography: existing family, 12 px size, weight, line height, and antialiasing are unchanged. Overflow changes from ellipsis to a conditional end fade only when measured clipping occurs.
+- Spacing and layout rhythm: existing 160 px maximum tab width, padding, radius, strip height, and separators are unchanged. Hidden close spacing now collapses to zero and returns on hover/selection.
+- Colors and visual tokens: existing foreground, muted, hover, active, border, and focus tokens are unchanged. The fade is a color-independent mask and works in both themes.
+- Image quality and asset fidelity: no raster assets or custom icons are involved; the established icon component is preserved.
+- Copy and content: tab titles and accessible close labels are unchanged. Truncated titles continue to expose their full value through the existing tooltip.
+
+## Findings
+
+No actionable P0, P1, or P2 differences remain.
+
+## Comparison history
+
+- Initial P2: an invisible 16 px close action plus 6 px gap reduced every inactive title to 116 px, causing premature truncation. Titles also used a hard ellipsis.
+- Fix: collapse both the close width and its adjacent gap until hover/selection; replace ellipsis with a conditional 28 px mask fade.
+- Post-fix evidence: inactive title width is 138 px, hidden close action is width 0 with pointer events disabled, hover restores a 16 px close target, selected tabs retain it, and clipped titles report a computed mask gradient.
+
+## Interaction and responsive checks
+
+- Inactive desktop tab without hover
+- Inactive desktop tab on hover
+- Selected desktop tab
+- Full-title tooltip for actual overflow
+- 760 px responsive layout with the right workspace drawer open
+- Touch-width behavior where close actions remain visible
+- Browser console warnings/errors: none
+
+## Follow-up polish
+
+None required for this scope.
+
+final result: passed

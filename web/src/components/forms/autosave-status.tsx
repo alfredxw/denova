@@ -9,6 +9,7 @@ interface AutosaveStatusIndicatorProps {
   status: AutosaveStatus
   error?: string | null
   onRetry?: () => void | Promise<unknown>
+  showSavedLabel?: boolean
   className?: string
 }
 
@@ -21,7 +22,13 @@ const STATUS_STYLES: Record<AutosaveStatus, string> = {
 }
 
 /** Shared, non-blocking feedback for configuration pages that persist changes automatically. */
-export function AutosaveStatusIndicator({ status, error, onRetry, className }: AutosaveStatusIndicatorProps) {
+export function AutosaveStatusIndicator({
+  status,
+  error,
+  onRetry,
+  showSavedLabel = true,
+  className,
+}: AutosaveStatusIndicatorProps) {
   const { t } = useTranslation()
   const label = status === 'error' && error
     ? t('common.autosave.errorDetail', { error })
@@ -39,7 +46,9 @@ export function AutosaveStatusIndicator({ status, error, onRetry, className }: A
       {status === 'saving' && <Loader2 className="size-3.5 shrink-0 animate-spin" aria-hidden="true" />}
       {status === 'blocked' && <AlertTriangle className="size-3.5 shrink-0" aria-hidden="true" />}
       {status === 'error' && <AlertCircle className="size-3.5 shrink-0" aria-hidden="true" />}
-      <span className="hidden max-w-56 truncate sm:inline">{label}</span>
+      {status !== 'saved' || showSavedLabel ? (
+        <span className="hidden max-w-56 truncate sm:inline">{label}</span>
+      ) : null}
       {status === 'error' && onRetry ? (
         <Button
           type="button"
