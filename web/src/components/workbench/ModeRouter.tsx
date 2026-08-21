@@ -52,7 +52,7 @@ export function ModeRouter(props: ModeRouterProps) {
   const { t, i18n } = useTranslation()
   const {
     mode,
-    booksReturnMode,
+    lastCreationRoute,
     currentBookName,
     workspace,
     projectId,
@@ -200,9 +200,7 @@ export function ModeRouter(props: ModeRouterProps) {
     currentFile: selectedFile || undefined,
     openFiles: openTabs.flatMap((tab) => tab.kind === 'file' ? [tab.path] : []),
   }), [openTabs, selectedFile])
-  const versionsVisible = rightPanel === 'versions'
-  const ideWorkspacePanel = mode === 'ide' && (rightPanel === 'lore' || rightPanel === 'teller') ? rightPanel : null
-  const interactiveSubmode = useInteractiveStore((state) => state.submode)
+  const versionsVisible = mode === 'versions'
   const setInteractiveSubmode = useInteractiveStore((state) => state.setSubmode)
   const [tellers, setTellers] = useState<Teller[]>([])
   const [imagePresets, setImagePresets] = useState<ImagePreset[]>([])
@@ -326,7 +324,6 @@ export function ModeRouter(props: ModeRouterProps) {
   const openToolNavigationTarget = useCallback((target: ToolNavigationTarget) => {
     if (target.kind === 'workspace_file') {
       onSetMode('ide')
-      if (rightPanel === 'lore' || rightPanel === 'teller' || rightPanel === 'versions') onSetRightPanel(null)
       void selectWorkspacePath(target.path)
       return
     }
@@ -334,12 +331,7 @@ export function ModeRouter(props: ModeRouterProps) {
     toolNavigationNonceRef.current += 1
     setToolNavigationIntent({ target, nonce: toolNavigationNonceRef.current })
     if (target.kind === 'lore_item') {
-      if (mode === 'interactive') {
-        setInteractiveSubmode('lore')
-      } else {
-        onSetMode('ide')
-        void onOpenLoreTab()
-      }
+      onSetMode('lore')
       return
     }
 
@@ -361,21 +353,15 @@ export function ModeRouter(props: ModeRouterProps) {
       case 'rule_system':
       case 'state_system':
       case 'image_preset':
-        if (mode === 'interactive') {
-          setInteractiveSubmode('teller')
-        } else {
-          onSetMode('ide')
-          onSetRightPanel('teller')
-        }
+        onSetMode('presets')
         return
     }
-  }, [mode, onOpenLoreTab, onSetMode, onSetRightPanel, projectId, rightPanel, selectWorkspacePath, setInteractiveSubmode, workspace])
+  }, [onSetMode, projectId, selectWorkspacePath, workspace])
   const toolNavigation = useMemo(() => ({ workspace, open: openToolNavigationTarget }), [openToolNavigationTarget, workspace])
 
   const requestLoreInit = useCallback(() => {
-    onSetMode('interactive')
-    setInteractiveSubmode('lore')
-  }, [onSetMode, setInteractiveSubmode])
+    onSetMode('lore')
+  }, [onSetMode])
   const requestWritingInit = useCallback(() => {
     onSetMode('ide')
     onSetRightPanel('ai')
@@ -452,7 +438,7 @@ export function ModeRouter(props: ModeRouterProps) {
   } = useWritingChangeReview({
     workspace,
     contextKey: activeSessionId,
-    hostActive: mode === 'ide' && !settingsOpen && !versionsVisible && !ideWorkspacePanel,
+    hostActive: mode === 'ide' && !settingsOpen,
     selectedFile,
     agentVisible: aiVisible,
     onBeforeOpen: flushBeforeWorkspaceSwitch,
@@ -462,7 +448,7 @@ export function ModeRouter(props: ModeRouterProps) {
     projectId,
     // AgentChat owns its own conversation surface. Creating a comment there must not reveal
     // the hidden foreground Writing Agent panel.
-    agentVisible: aiVisible || mode === 'agentchat',
+    agentVisible: (mode === 'ide' && aiVisible) || mode === 'agentchat',
     onShowAgent: showAgent,
   })
   const reviewFeedback = useMemo<ReviewFeedbackBatch>(() => (
@@ -502,24 +488,18 @@ export function ModeRouter(props: ModeRouterProps) {
   })
   const reviewVisible = Boolean(activeReviewThreadID)
   const closeBooks = useCallback(() => {
-    if (booksReturnMode === 'interactive') {
-      onSetMode('interactive')
-      return
-    }
-    onSetMode('ide')
-    if (rightPanel === 'lore' || rightPanel === 'teller' || rightPanel === 'versions') onSetRightPanel(null)
-  }, [booksReturnMode, onSetMode, onSetRightPanel, rightPanel])
+    onSetMode(lastCreationRoute)
+  }, [lastCreationRoute, onSetMode])
   const chapters = summary?.chapters ?? EMPTY_CHAPTERS
   const fileSuggestions = useMemo(() => flattenFileTree(tree), [tree])
-  const closeIdeWorkspacePanel = useCallback(() => onSetRightPanel(null), [onSetRightPanel])
-  const returnToContentMode = useCallback(() => onSetMode(booksReturnMode), [booksReturnMode, onSetMode])
+  const returnToContentMode = useCallback(() => onSetMode(lastCreationRoute), [lastCreationRoute, onSetMode])
   const openAgentChatRoute = useCallback(() => onSetMode('agentchat'), [onSetMode])
   const selectOutlineFile = useCallback((path: string) => { void selectWorkspacePath(path) }, [selectWorkspacePath])
   const openLoreLibrary = useCallback(() => {
     void flushBeforeWorkspaceSwitch().then((saved) => {
-      if (saved) onSetRightPanel('lore')
+      if (saved) onSetMode('lore')
     })
-  }, [flushBeforeWorkspaceSwitch, onSetRightPanel])
+  }, [flushBeforeWorkspaceSwitch, onSetMode])
   const referenceLoreFromWorkspace = useCallback((id: string) => {
     onLoreReferenceAdd(id)
     onSetRightPanel('ai')
@@ -574,7 +554,7 @@ export function ModeRouter(props: ModeRouterProps) {
   const writingAgent = useWritingAgentPanel({
     projectId,
     workspace,
-    active: presentedRightPanel === 'ai' && presentedMainRoute !== 'agentchat',
+    active: presentedMainRoute === 'ide-writing' && presentedRightPanel === 'ai',
     chrome: 'panel',
     composerSettings,
     currentChapter,
@@ -633,7 +613,7 @@ export function ModeRouter(props: ModeRouterProps) {
     onReviewFeedbackSubmissionFailed: restoreActiveReviewFeedback,
     onOpenChangeReview: openAgentChangeReview,
     onWorkspaceChanged: notifyExternalStructureChange,
-    onClose: closeIdeWorkspacePanel,
+    onClose: () => onSetRightPanel(null),
     onSubAgentDetailsChange: setAgentSubAgentDetailsOpen,
   })
 
@@ -739,12 +719,11 @@ export function ModeRouter(props: ModeRouterProps) {
             narrativeStyleLoading={composerSettings.loading}
             onNarrativeStyleChange={persistNarrativeStyle}
             imagePresets={imagePresets}
-            onImagePresetsChange={setImagePresets}
             loreEmpty={loreEmpty}
             onRequestLoreInit={requestLoreInit}
+            onOpenPresets={() => onSetMode('presets')}
             rightPanelVisible={interactiveRightVisible}
             onToggleRightPanel={onToggleInteractiveRightPanel}
-            toolNavigationIntent={toolNavigationIntent}
           />
         </WorkbenchRouteLayer>
       )}
@@ -756,26 +735,26 @@ export function ModeRouter(props: ModeRouterProps) {
             workspace={workspace}
             refreshSignal={versionRefreshSignal}
             visible={versionsVisible}
-            onClose={closeIdeWorkspacePanel}
+            onClose={returnToContentMode}
           />
         </WorkbenchRouteLayer>
       )}
-      {routeHost.isMounted('ide-lore') && (
-        <WorkbenchRouteLayer visible={presentedMainRoute === 'ide-lore'} loadingLabel={t('router.loading')}>
+      {routeHost.isMounted('lore') && (
+        <WorkbenchRouteLayer visible={presentedMainRoute === 'lore'} loadingLabel={t('router.loading')}>
           <SettingPanel
             mode="lore"
             projectId={projectId}
             documentReview={documentReviewController}
             documentReviewNavigationIntent={documentReviewNavigationTarget?.target.kind === 'lore_item' ? documentReviewNavigationTarget : null}
-            onClose={closeIdeWorkspacePanel}
+            onClose={returnToContentMode}
             onFlushHandlerChange={handleLoreLibraryFlushHandlerChange}
             toolNavigationIntent={toolNavigationIntent}
           />
         </WorkbenchRouteLayer>
       )}
-      {routeHost.isMounted('ide-teller') && (
-        <WorkbenchRouteLayer visible={presentedMainRoute === 'ide-teller'} loadingLabel={t('router.loading')}>
-          <SettingPanel projectId={projectId} mode="teller" presetUsageMode="writing" tellers={tellers} imagePresets={imagePresets} onTellersChange={setTellers} onImagePresetsChange={setImagePresets} onClose={closeIdeWorkspacePanel} toolNavigationIntent={toolNavigationIntent} />
+      {routeHost.isMounted('presets') && (
+        <WorkbenchRouteLayer visible={presentedMainRoute === 'presets'} loadingLabel={t('router.loading')}>
+          <SettingPanel projectId={projectId} mode="teller" tellers={tellers} imagePresets={imagePresets} onTellersChange={setTellers} onImagePresetsChange={setImagePresets} onClose={returnToContentMode} toolNavigationIntent={toolNavigationIntent} />
         </WorkbenchRouteLayer>
       )}
 
@@ -819,7 +798,6 @@ export function ModeRouter(props: ModeRouterProps) {
     <WorkbenchShell
       mode={mode}
       presentedLayout={presentedLayout}
-      booksReturnMode={booksReturnMode}
       currentBookName={currentBookName}
       workspace={workspace}
       books={books}
@@ -831,12 +809,10 @@ export function ModeRouter(props: ModeRouterProps) {
       isStreaming={isStreaming}
       projectVisible={projectVisible && !reviewVisible}
       activityBarExpanded={activityBarExpanded}
-      rightPanel={rightPanel}
       rightPanelWide={agentSubAgentDetailsOpen && !reviewVisible}
       centerFocus={reviewVisible}
       settingsOpen={settingsOpen}
       developerMode={developerMode}
-      interactiveSubmode={interactiveSubmode}
       sidebar={sidebar}
       main={main}
       rightPanelContent={writingAgent.content}

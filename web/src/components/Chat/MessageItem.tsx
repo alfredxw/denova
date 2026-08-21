@@ -3,7 +3,6 @@ import type { CSSProperties } from 'react'
 import type { ChapterIllustration, ChatMessage } from '@/lib/api'
 import { subAgentSessionKey } from './subagent-session'
 import { Message as AIMessage, MessageContent as AIMessageContent } from '@/components/ai-elements/message'
-import { Shimmer } from '@/components/ai-elements/shimmer'
 import { StreamingContentStage } from './StreamingContentStage'
 import { AskInteractionCard, type AskInteractionResolver } from './AskInteractionCard'
 import { ToolApprovalCard } from './ToolApprovalCard'
@@ -259,7 +258,7 @@ export const MessageItem = memo(function MessageItem({ projectId = '', message, 
 export function AgentActivityShimmer({ content }: { content: string }) {
   return (
     <div className="flex justify-start px-1 py-1" role="status" aria-live="polite">
-      <Shimmer as="span" className="text-sm font-medium">{content}</Shimmer>
+      <span className="shimmer text-sm font-medium">{content}</span>
     </div>
   )
 }

@@ -3,9 +3,9 @@ import { Compass, Database, Dice5, ScrollText, SlidersHorizontal, Sparkles } fro
 import type { LucideIcon } from 'lucide-react'
 import type { TFunction } from 'i18next'
 import type { ResourceDirectoryItem, ResourceDirectorySection } from '@/components/resource-directory/types'
-import { presetResourceVisibleInMode, type PresetResourceKind, type PresetUsageMode } from '../../preset-ownership'
+import { presetModuleOwnership, type PresetResourceKind } from '../../preset-ownership'
 import type { ActorStateModule, EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, Teller } from '../../types'
-import { narrativeStyleDescription, narrativeStyleName, narrativeStylesForMode } from '../../narrative-style'
+import { narrativeStyleDescription, narrativeStyleName } from '../../narrative-style'
 import { presetStatusLabel } from '../preset-config/preset-status'
 import { enabledImagePresetSlotCount, normalizedImagePresetSlots } from './ImagePresetEditor'
 import { eventPackageSummaryCount, presetKindCreateLabel, presetKindDirectoryLabel, storyDirectorSummaryCount } from './editor-shared'
@@ -41,33 +41,35 @@ interface PresetDirectoryLists {
   actorStates: ActorStateModule[]
 }
 
-/** 按可见模式过滤分组并组装目录 sections；onCreateKind 负责组级新建。 */
+/** 组装完整预设目录；适用范围由资源类型固定决定，而不是由单条预设配置。 */
 export function buildPresetDirectorySections({
   lists,
-  presetUsageMode,
   onCreateKind,
   t,
 }: {
   lists: PresetDirectoryLists
-  presetUsageMode: PresetUsageMode
   onCreateKind: (kind: PresetResourceKind) => void
   t: TFunction
 }): ResourceDirectorySection[] {
   return PRESET_DIRECTORY_ORDER
-    .filter((kind) => presetResourceVisibleInMode(kind, presetUsageMode))
     .map((kind) => ({
       id: kind,
       label: presetKindDirectoryLabel(kind, t),
       icon: PRESET_DIRECTORY_ICONS[kind],
-      items: presetDirectoryItemsForKind(kind, lists, presetUsageMode, t),
+      items: presetDirectoryItemsForKind(kind, lists, t),
       onCreate: () => onCreateKind(kind),
       createLabel: presetKindCreateLabel(kind, t),
+      headerMeta: (
+        <span className="shrink-0 rounded-full border border-[var(--nova-border)] px-1.5 py-0.5 text-[9px] font-medium text-[var(--nova-text-faint)]">
+          {t(`settingPanel.presetAvailability.${presetModuleOwnership(kind)}`)}
+        </span>
+      ),
       defaultCollapsed: false,
       reorderable: true,
     }))
 }
 
-function presetDirectoryItemsForKind(kind: PresetResourceKind, lists: PresetDirectoryLists, presetUsageMode: PresetUsageMode, t: TFunction): ResourceDirectoryItem[] {
+function presetDirectoryItemsForKind(kind: PresetResourceKind, lists: PresetDirectoryLists, t: TFunction): ResourceDirectoryItem[] {
   const { tellers, storyDirectors, imagePresets, eventPackages, ruleSystems, actorStates } = lists
   if (kind === 'director') {
     return storyDirectors.map((director) => ({
@@ -81,7 +83,7 @@ function presetDirectoryItemsForKind(kind: PresetResourceKind, lists: PresetDire
     }))
   }
   if (kind === 'teller') {
-    return narrativeStylesForMode(tellers, presetUsageMode).map((teller) => ({
+    return tellers.map((teller) => ({
       id: presetDirectoryEntryId('teller', teller.id),
       title: narrativeStyleName(teller, t),
       summary: `${presetStatusLabel(teller, t)} · ${t('settingPanel.enabledRules', { count: (teller.slots || []).filter((slot) => slot.enabled).length })}`,

@@ -57,7 +57,7 @@ const TOUR_STEPS: TourStep[] = [
   { id: 'books', titleKey: 'onboarding.tour.books.title', bodyKey: 'onboarding.tour.books.body', anchor: 'activity-books', navigationTarget: 'books' },
   { id: 'writing', titleKey: 'onboarding.tour.writing.title', bodyKey: 'onboarding.tour.writing.body', anchor: 'activity-writing', navigationTarget: 'writing' },
   { id: 'agent', titleKey: 'onboarding.tour.agent.title', bodyKey: 'onboarding.tour.agent.body', anchor: 'agent-input', navigationTarget: 'writing-agent' },
-  { id: 'interactive', titleKey: 'onboarding.tour.interactive.title', bodyKey: 'onboarding.tour.interactive.body', anchor: 'mode-interactive', navigationTarget: 'interactive' },
+  { id: 'interactive', titleKey: 'onboarding.tour.interactive.title', bodyKey: 'onboarding.tour.interactive.body', anchor: 'activity-story', navigationTarget: 'interactive' },
   { id: 'lore', titleKey: 'onboarding.tour.lore.title', bodyKey: 'onboarding.tour.lore.body', anchor: 'activity-lore', navigationTarget: 'lore' },
   { id: 'teller', titleKey: 'onboarding.tour.teller.title', bodyKey: 'onboarding.tour.teller.body', anchor: 'activity-teller', navigationTarget: 'teller' },
   { id: 'versions', titleKey: 'onboarding.tour.versions.title', bodyKey: 'onboarding.tour.versions.body', anchor: 'activity-versions', navigationTarget: 'versions' },
@@ -376,7 +376,7 @@ function tourAnchor(step: TourStep, mode: WorkspaceMode, rightPanel: RightPanel,
   if (step.id === 'settings') return settingsOpen ? 'settings-model' : 'activity-settings'
   if (step.id === 'books') return mode === 'books' ? 'books-create' : 'activity-books'
   if (step.id === 'agent') return mode === 'ide' && rightPanel === 'ai' ? 'agent-input' : 'activity-writing'
-  if (step.id === 'interactive') return mode === 'interactive' ? 'activity-story' : 'mode-interactive'
+  if (step.id === 'interactive') return 'activity-story'
   return step.anchor
 }
 

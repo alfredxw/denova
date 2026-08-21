@@ -292,7 +292,7 @@ describe('ModeRouter autosave navigation policy', () => {
     const user = userEvent.setup()
     const onQuickSwitchBook = vi.fn(async () => true)
     loreLibraryFlushMock.mockResolvedValue(false)
-    render(withAppProviders(<ModeRouter {...modeRouterProps({ rightPanel: 'lore', onQuickSwitchBook })} />))
+    render(withAppProviders(<ModeRouter {...modeRouterProps({ mode: 'lore', onQuickSwitchBook })} />))
     await screen.findByTestId('full-lore-library')
 
     await user.click(screen.getByRole('button', { name: 'quick switch' }))
@@ -575,7 +575,7 @@ function modeRouterProps(
 ): ComponentProps<typeof ModeRouter> {
   return {
     mode: 'ide',
-    booksReturnMode: 'ide',
+    lastCreationRoute: 'ide',
     currentBookName: 'Book A',
     workspace: '/book-a',
     projectId: 'project-book-a',

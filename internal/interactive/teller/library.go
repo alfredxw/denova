@@ -32,7 +32,6 @@ type Definition struct {
 	ID                string        `json:"id"`
 	Name              string        `json:"name"`
 	Description       string        `json:"description"`
-	Modes             []string      `json:"modes,omitempty"`
 	StyleRefs         []string      `json:"style_refs,omitempty"`
 	StyleRules        []StyleRule   `json:"style_rules,omitempty"`
 	ContextPolicy     ContextPolicy `json:"context_policy"`
@@ -334,18 +333,12 @@ func (t Definition) PromptForTargets(targets ...string) string {
 	return strings.TrimSpace(sb.String())
 }
 
-// SupportsMode applies the legacy-compatible mode contract to one style.
-func (t Definition) SupportsMode(mode string) bool {
-	return style.Supports(t.Modes, mode)
-}
-
 // Normalize canonicalizes one definition before persistence or comparison.
 func Normalize(teller Definition) Definition {
 	teller.Version = tellerVersion
 	teller.ID = strings.TrimSpace(teller.ID)
 	teller.Name = strings.TrimSpace(teller.Name)
 	teller.Description = strings.TrimSpace(teller.Description)
-	teller.Modes = style.NormalizeModes(teller.Modes)
 	teller.StyleRefs = normalizeStyleRefs(teller.StyleRefs)
 	teller.StyleRules = NormalizeStyleRules(teller.StyleRules)
 	teller.ContextPolicy = normalizeContextPolicy(teller.ContextPolicy)

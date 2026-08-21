@@ -32,7 +32,6 @@ interface WorkbenchAppSidebarProps {
   activityItems: WorkbenchSidebarItem[]
   dragDisabled: boolean
   contextSwitcher: ReactNode
-  modeSwitch: ReactNode
   notice?: ReactNode
   messageCenter: ReactNode
   sidebarLabel: string
@@ -59,7 +58,6 @@ export function WorkbenchAppSidebar({
   activityItems,
   dragDisabled,
   contextSwitcher,
-  modeSwitch,
   notice,
   messageCenter,
   sidebarLabel,
@@ -104,7 +102,6 @@ export function WorkbenchAppSidebar({
               {expanded ? <span className="truncate text-xs font-semibold tracking-wide text-[var(--nova-text)]">Denova</span> : null}
             </div>
             {contextSwitcher}
-            {modeSwitch}
           </SidebarHeader>
           <SidebarContent>
             <SidebarGroup className="p-2">

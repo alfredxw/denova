@@ -2,7 +2,7 @@ import { SlidersHorizontal, Sparkles } from 'lucide-react'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { ImagePreset, Teller } from '@/features/interactive/types'
-import { narrativeStyleName, narrativeStylesForMode, resolveNarrativeStyle } from '@/features/interactive/narrative-style'
+import { narrativeStyleName, resolveNarrativeStyle } from '@/features/interactive/narrative-style'
 import { BUILTIN_WRITING_SKILLS, DEFAULT_WRITING_SKILL, type WritingSkillOption } from '@/hooks/useWritingSkillOptions'
 import { PersistedSettingsMenuSub } from './PersistedSettingsMenuSub'
 
@@ -71,8 +71,7 @@ export function WritingComposerSettingsMenu({
   onWritingSkillChange,
 }: WritingComposerSettingsMenuProps) {
   const { t } = useTranslation()
-  const writingTellers = useMemo(() => narrativeStylesForMode(tellers, 'writing'), [tellers])
-  const selectedTeller = resolveNarrativeStyle(writingTellers, tellerID, 'writing')
+  const selectedTeller = resolveNarrativeStyle(tellers, tellerID)
   const normalizedSkills = useMemo(() => (
     writingSkills.some((option) => option.name === writingSkill)
       ? writingSkills
@@ -85,13 +84,13 @@ export function WritingComposerSettingsMenu({
 
   return (
     <>
-      {writingTellers.length > 0 ? (
+      {tellers.length > 0 ? (
         <PersistedSettingsMenuSub
           icon={SlidersHorizontal}
           label={t('chat.teller')}
           currentLabel={selectedTeller ? narrativeStyleName(selectedTeller, t) : tellerID}
           value={selectedTeller?.id || tellerID}
-          options={writingTellers.map((item) => ({ id: item.id, label: narrativeStyleName(item, t) }))}
+          options={tellers.map((item) => ({ id: item.id, label: narrativeStyleName(item, t) }))}
           saving={savingTeller}
           disabled={!enabled}
           onValueChange={onTellerChange}

@@ -469,7 +469,7 @@ describe('SettingPanel', () => {
     expect(getImagePresets).toHaveBeenCalled()
   })
 
-  it('follows the global mode when filtering preset module types', async () => {
+  it('shows every preset type with a fixed availability label', async () => {
     const user = userEvent.setup()
     render(<PresetModeHarness />)
 
@@ -482,6 +482,8 @@ describe('SettingPanel', () => {
     expect(sectionToggle('叙事风格')).toBeInTheDocument()
     expect(sectionToggle('图像方案')).toBeInTheDocument()
     expect(sectionToggle('故事导演')).toBeInTheDocument()
+    expect(screen.getAllByText('通用')).toHaveLength(2)
+    expect(screen.getAllByText('游戏专用')).toHaveLength(4)
     expect(screen.getByRole('button', { name: /默认导演/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /稳健叙事/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '新建故事导演' })).toBeInTheDocument()
@@ -543,42 +545,6 @@ describe('SettingPanel', () => {
     expect(screen.getAllByRole('button', { name: '折叠全部' })).toHaveLength(1)
     expect(screen.queryByRole('button', { name: '展开全部' })).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: '写作模式' }))
-
-    expect(sectionToggle('叙事风格')).toBeInTheDocument()
-    expect(sectionToggle('图像方案')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /(展开|折叠)故事导演$/ })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /(展开|折叠)事件包$/ })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /(展开|折叠)TRPG 检定$/ })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /(展开|折叠)状态系统$/ })).not.toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: '默认事件包' })).not.toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: '经典叙事' })).toBeInTheDocument()
-  })
-
-  it('restores the remembered preset selection per usage mode when switching modes', async () => {
-    render(<PresetModeRoundTripHarness />)
-
-    // 游戏模式下选中事件包
-    expandSection('事件包')
-    fireEvent.click(await screen.findByRole('button', { name: /默认事件包/ }))
-    expect(await screen.findByRole('heading', { name: '默认事件包' })).toBeInTheDocument()
-
-    // 首次切到写作模式：无记忆，按兜底顺序选中第一个叙事风格
-    fireEvent.click(screen.getByRole('button', { name: '写作模式' }))
-    expect(await screen.findByRole('heading', { name: '经典叙事' })).toBeInTheDocument()
-
-    // 写作模式下改选图像方案
-    expandSection('图像方案')
-    fireEvent.click(screen.getByRole('button', { name: /游戏 CG/ }))
-    expect(await screen.findByRole('heading', { name: '游戏 CG' })).toBeInTheDocument()
-
-    // 切回游戏模式：恢复游戏模式记忆（默认事件包）
-    fireEvent.click(screen.getByRole('button', { name: '游戏模式' }))
-    expect(await screen.findByRole('heading', { name: '默认事件包' })).toBeInTheDocument()
-
-    // 再切回写作模式：恢复写作模式记忆（游戏 CG）
-    fireEvent.click(screen.getByRole('button', { name: '写作模式' }))
-    expect(await screen.findByRole('heading', { name: '游戏 CG' })).toBeInTheDocument()
   })
 
   it('saves visual edits from an event package card', async () => {
@@ -1269,27 +1235,10 @@ async function selectDefaultDirector(user: ReturnType<typeof userEvent.setup>) {
 }
 
 function PresetModeHarness() {
-  const [presetUsageMode, setPresetUsageMode] = useState<'writing' | 'game'>('game')
-  return (
-    <>
-      <button type="button" onClick={() => setPresetUsageMode('writing')}>写作模式</button>
-      <PresetPanelHarness presetUsageMode={presetUsageMode} />
-    </>
-  )
+  return <PresetPanelHarness />
 }
 
-function PresetModeRoundTripHarness() {
-  const [presetUsageMode, setPresetUsageMode] = useState<'writing' | 'game'>('game')
-  return (
-    <>
-      <button type="button" onClick={() => setPresetUsageMode('writing')}>写作模式</button>
-      <button type="button" onClick={() => setPresetUsageMode('game')}>游戏模式</button>
-      <PresetPanelHarness presetUsageMode={presetUsageMode} />
-    </>
-  )
-}
-
-function PresetPanelHarness({ presetUsageMode = 'game' }: { presetUsageMode?: 'writing' | 'game' }) {
+function PresetPanelHarness() {
   const [tellers, setTellers] = useState([teller('classic', '经典叙事')])
   const [storyDirectors, setStoryDirectors] = useState([storyDirector('default', '默认导演')])
   const [imagePresets, setImagePresets] = useState([imagePreset('game-cg', '游戏 CG')])
@@ -1300,7 +1249,6 @@ function PresetPanelHarness({ presetUsageMode = 'game' }: { presetUsageMode?: 'w
       tellers={tellers}
       storyDirectors={storyDirectors}
       imagePresets={imagePresets}
-      presetUsageMode={presetUsageMode}
       onTellersChange={setTellers}
       onStoryDirectorsChange={setStoryDirectors}
       onImagePresetsChange={setImagePresets}

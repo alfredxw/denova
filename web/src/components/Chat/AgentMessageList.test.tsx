@@ -670,7 +670,7 @@ describe('Agent MessageList', () => {
 
     const status = screen.getByRole('status')
     expect(status).toHaveTextContent('思考中')
-    expect(status.querySelector('.bg-clip-text')).toBeInTheDocument()
+    expect(status.querySelector('.shimmer')).toBeInTheDocument()
     expect(screen.getAllByText('继续下一章')).toHaveLength(1)
   })
 

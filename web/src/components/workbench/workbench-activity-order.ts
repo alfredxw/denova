@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 
 export type ActivityItemID = 'writing' | 'story' | 'lore' | 'teller' | 'versions' | 'books' | 'agentchat' | 'skills' | 'agents' | 'automations' | 'trajectory'
-export type ActivityOrderScope = 'ide' | 'interactive'
+export type ActivityOrderScope = 'workspace'
 
 export interface ActivityItem {
   id: ActivityItemID
@@ -11,17 +11,8 @@ export interface ActivityItem {
   icon: ReactNode
 }
 
-const LEGACY_ACTIVITY_ORDER_STORAGE_KEY = 'nova.activity.order.v1'
-const LEGACY_SCOPED_ACTIVITY_ORDER_STORAGE_KEYS: Record<ActivityOrderScope, string> = {
-  ide: 'nova.activity.order.ide.v1',
-  interactive: 'nova.activity.order.interactive.v1',
-}
-const ACTIVITY_ORDER_STORAGE_KEYS: Record<ActivityOrderScope, string> = {
-  ide: 'nova.activity.order.ide.v2',
-  interactive: 'nova.activity.order.interactive.v2',
-}
-const DEFAULT_IDE_ACTIVITY_ORDER: ActivityItemID[] = ['writing', 'agentchat', 'trajectory', 'lore', 'teller', 'versions', 'books', 'skills', 'agents', 'automations']
-const DEFAULT_INTERACTIVE_ACTIVITY_ORDER: ActivityItemID[] = ['story', 'agentchat', 'trajectory', 'lore', 'teller', 'versions', 'books', 'skills', 'agents', 'automations']
+const ACTIVITY_ORDER_STORAGE_KEY = 'nova.activity.order.workspace.v1'
+const DEFAULT_ACTIVITY_ORDER: ActivityItemID[] = ['writing', 'story', 'agentchat', 'trajectory', 'lore', 'teller', 'versions', 'books', 'skills', 'agents', 'automations']
 
 export function sortActivityItems(items: ActivityItem[], order: ActivityItemID[], defaultOrder: ActivityItemID[]) {
   const orderIndex = new Map<ActivityItemID, number>()
@@ -43,45 +34,36 @@ export function mergeVisibleActivityOrder(visibleIDs: ActivityItemID[], currentO
   return [...visibleIDs, ...hiddenIDs, ...missingIDs]
 }
 
-export function defaultActivityOrderForScope(scope: ActivityOrderScope) {
-  return scope === 'interactive' ? DEFAULT_INTERACTIVE_ACTIVITY_ORDER : DEFAULT_IDE_ACTIVITY_ORDER
+export function defaultActivityOrderForScope(_scope: ActivityOrderScope) {
+  return DEFAULT_ACTIVITY_ORDER
 }
 
 export function readStoredActivityOrders(): Record<ActivityOrderScope, ActivityItemID[]> {
   return {
-    ide: readStoredActivityOrder('ide'),
-    interactive: readStoredActivityOrder('interactive'),
+    workspace: readStoredActivityOrder(),
   }
 }
 
-export function storeActivityOrder(scope: ActivityOrderScope, order: ActivityItemID[]) {
+export function storeActivityOrder(_scope: ActivityOrderScope, order: ActivityItemID[]) {
   if (typeof window === 'undefined') return
-  window.localStorage.setItem(ACTIVITY_ORDER_STORAGE_KEYS[scope], JSON.stringify(order))
-  cleanupLegacyActivityOrderStorage()
-}
-
-export function cleanupLegacyActivityOrderStorage() {
-  if (typeof window === 'undefined') return
-  window.localStorage.removeItem(LEGACY_ACTIVITY_ORDER_STORAGE_KEY)
-  window.localStorage.removeItem(LEGACY_SCOPED_ACTIVITY_ORDER_STORAGE_KEYS.ide)
-  window.localStorage.removeItem(LEGACY_SCOPED_ACTIVITY_ORDER_STORAGE_KEYS.interactive)
+  window.localStorage.setItem(ACTIVITY_ORDER_STORAGE_KEY, JSON.stringify(order))
 }
 
 export function isActivityItemID(value: string): value is ActivityItemID {
-  return DEFAULT_IDE_ACTIVITY_ORDER.includes(value as ActivityItemID) || DEFAULT_INTERACTIVE_ACTIVITY_ORDER.includes(value as ActivityItemID)
+  return DEFAULT_ACTIVITY_ORDER.includes(value as ActivityItemID)
 }
 
-function readStoredActivityOrder(scope: ActivityOrderScope): ActivityItemID[] {
-  const defaultOrder = defaultActivityOrderForScope(scope)
+function readStoredActivityOrder(): ActivityItemID[] {
+  const defaultOrder = DEFAULT_ACTIVITY_ORDER
   if (typeof window === 'undefined') return defaultOrder
   try {
-    const raw = window.localStorage.getItem(ACTIVITY_ORDER_STORAGE_KEYS[scope])
+    const raw = window.localStorage.getItem(ACTIVITY_ORDER_STORAGE_KEY)
     if (!raw) return defaultOrder
     const parsed = JSON.parse(raw)
     if (!Array.isArray(parsed)) return defaultOrder
     const validIDs = new Set(defaultOrder)
-    const stored = parsed.filter((id): id is ActivityItemID => validIDs.has(id))
-    return insertMissingActivityItems(stored, defaultOrder)
+    const storedIDs = parsed.filter((id): id is ActivityItemID => validIDs.has(id))
+    return insertMissingActivityItems(storedIDs, defaultOrder)
   } catch {
     return defaultOrder
   }

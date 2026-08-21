@@ -63,7 +63,7 @@ describe('MessageItem', () => {
 
     const status = screen.getByRole('status')
     expect(status).toHaveTextContent('思考中...')
-    expect(status.querySelector('.bg-clip-text')).toBeInTheDocument()
+    expect(status.querySelector('.shimmer')).toBeInTheDocument()
   })
 
   it('流式 assistant 只渲染最新目标正文的一棵 Markdown 树', () => {

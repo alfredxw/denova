@@ -12,8 +12,7 @@ import { MobilePaneTrigger } from '@/components/layout/mobile-pane-trigger'
 import { ResourceDirectory } from '@/components/resource-directory/ResourceDirectory'
 import { Button } from '@/components/ui/button'
 import { createActorState, createEventPackage, createImagePreset, createInteractiveTeller, createRuleSystem, createStoryDirector, deleteActorState, deleteEventPackage, deleteImagePreset, deleteInteractiveTeller, deleteRuleSystem, deleteStoryDirector, getActorStates, getEventPackages, getImagePresets, getInteractiveTellers, getRuleSystems, getStoryDirectors, updateActorState, updateEventPackage, updateImagePreset, updateInteractiveTeller, updateRuleSystem, updateStoryDirector } from '../../api'
-import { narrativeStylesForMode } from '../../narrative-style'
-import { PRESET_RESOURCE_SCOPE, type PresetResourceKind, type PresetUsageMode } from '../../preset-ownership'
+import { PRESET_RESOURCE_SCOPE, type PresetResourceKind } from '../../preset-ownership'
 import type { ActorStateModule, EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, Teller } from '../../types'
 import { PresetResourcePane } from './PresetResourcePane'
 import { buildPresetDirectorySections, presetDirectoryEntryId } from './preset-directory-sections'
@@ -29,7 +28,6 @@ interface PresetSettingsPanelProps {
   tellers?: Teller[]
   storyDirectors?: StoryDirector[]
   imagePresets?: ImagePreset[]
-  presetUsageMode?: PresetUsageMode
   onTellersChange?: (tellers: Teller[]) => void
   onStoryDirectorsChange?: (directors: StoryDirector[]) => void
   onImagePresetsChange?: (presets: ImagePreset[]) => void
@@ -55,7 +53,6 @@ export function PresetSettingsPanel({
   tellers: externalTellers = EMPTY_TELLERS,
   storyDirectors: externalStoryDirectors = EMPTY_STORY_DIRECTORS,
   imagePresets: externalImagePresets = EMPTY_IMAGE_PRESETS,
-  presetUsageMode = 'game',
   onTellersChange,
   onStoryDirectorsChange,
   onImagePresetsChange,
@@ -356,18 +353,16 @@ export function PresetSettingsPanel({
     if (kind === 'event') return eventPackages
     if (kind === 'rule') return ruleSystems
     if (kind === 'actor-state') return actorStates
-    return narrativeStylesForMode(tellers, presetUsageMode)
+    return tellers
   }
 
   const { handleSelectTeller, selectPresetResource, handleSelectDirectoryEntry } = usePresetSelection({
-    presetUsageMode,
     presetResourceKind,
     setPresetResourceKind,
     activeTellerId,
     setActiveTellerId,
     currentActivePresetId,
     setActivePresetId,
-    presetItemsForKind,
     flushPresetResourceAutoSave,
     closeDirectory: () => closeDirectoryRef.current(),
   })
@@ -389,7 +384,7 @@ export function PresetSettingsPanel({
     toolNavigationNonceRef.current = intent.nonce
     if (kind === 'teller') void handleSelectTeller(id)
     else void selectPresetResource(kind, id)
-  }, [actorStates, eventPackages, imagePresets, presetUsageMode, ruleSystems, storyDirectors, tellers, toolNavigationIntent?.nonce])
+  }, [actorStates, eventPackages, imagePresets, ruleSystems, storyDirectors, tellers, toolNavigationIntent?.nonce])
 
   const handleCreateTeller = async () => {
     if (!(await flushPresetResourceAutoSave())) return
@@ -597,7 +592,6 @@ export function PresetSettingsPanel({
 
   const presetDirectorySections = applyPresetDirectoryOrder(buildPresetDirectorySections({
     lists: { tellers, storyDirectors, imagePresets, eventPackages, ruleSystems, actorStates },
-    presetUsageMode,
     onCreateKind: (kind) => void createPresetResource(kind),
     t,
   }), presetDirectoryOrder.order)

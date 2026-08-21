@@ -24,7 +24,7 @@ import type { WorkspaceChangeMetadata } from '@/features/changes/types'
 /** Public composition contract for the workbench route host. */
 export interface ModeRouterProps {
   mode: WorkspaceMode
-  booksReturnMode: 'ide' | 'interactive'
+  lastCreationRoute: 'ide' | 'interactive'
   currentBookName: string
   workspace: string
   projectId: string

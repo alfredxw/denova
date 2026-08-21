@@ -9,7 +9,6 @@ import { findDialogueHighlightRanges } from '@/lib/dialogue-highlight'
 import { useBottomScrollLock } from '@/hooks/useBottomScrollLock'
 import { isWorkspaceImagePath } from '@/lib/workspace-file-kind'
 import { Reasoning, ReasoningContent, ReasoningTrigger } from '@/components/ai-elements/reasoning'
-import { Shimmer } from '@/components/ai-elements/shimmer'
 import { agentContentPreview } from './agent-content-preview'
 import { AgentSourceBadge } from './message-source-badge'
 import { StreamingContentStage } from './StreamingContentStage'
@@ -18,7 +17,7 @@ export function StreamingPlaceholder() {
   const { t } = useTranslation()
   return (
     <div className="py-1" role="status" aria-live="polite">
-      <Shimmer as="span" className="text-sm font-medium">{t('chat.activity.thinking')}</Shimmer>
+      <span className="shimmer text-sm font-medium">{t('chat.activity.thinking')}</span>
     </div>
   )
 }
@@ -197,9 +196,9 @@ export function ThinkingBlock({ message, content, streaming }: { message: Thinki
             className="flex min-w-0 items-center gap-1 py-1 text-xs text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]"
           >
             {streaming && !preview ? (
-              <Shimmer as="span" className="shrink-0 text-xs font-medium">{t('chat.activity.thinking')}</Shimmer>
+              <span className="shimmer shrink-0 text-xs font-medium">{t('chat.activity.thinking')}</span>
             ) : streaming ? (
-              <Shimmer as="span" className="shrink-0 text-xs font-medium">{t('chat.trace.thinking')}</Shimmer>
+              <span className="shimmer shrink-0 text-xs font-medium">{t('chat.trace.thinking')}</span>
             ) : (
               <span className="shrink-0">{t('chat.trace.thinking')}</span>
             )}

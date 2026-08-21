@@ -11,35 +11,33 @@ import (
 	"denova/internal/style"
 )
 
-func TestNarrativeStyleRuntimeHonorsModeAndFallsBackToDefault(t *testing.T) {
+func TestNarrativeStyleRuntimeSharesCatalogAndFallsBackToDefault(t *testing.T) {
 	novaDir := t.TempDir()
 	library := teller.NewLibrary(novaDir)
-	create := func(id, mode string) {
+	create := func(id string) {
 		t.Helper()
 		_, err := library.Create(teller.Definition{
-			ID: id, Name: id, Modes: []string{mode},
+			ID: id, Name: id,
 			Slots: []teller.PromptSlot{{ID: "system", Target: "system", Enabled: true, Content: id}},
 		})
 		if err != nil {
 			t.Fatalf("create %s: %v", id, err)
 		}
 	}
-	create("writing-only", style.ModeWriting)
-	create("game-only", style.ModeGame)
+	create("custom")
 
-	if got := interactiveapp.LoadWritingTeller(novaDir, "writing-only"); got.ID != "writing-only" {
+	if got := interactiveapp.LoadWritingTeller(novaDir, "custom"); got.ID != "custom" {
 		t.Fatalf("writing runtime loaded %q", got.ID)
 	}
-	if got := interactiveapp.LoadGameTeller(novaDir, "game-only"); got.ID != "game-only" {
+	if got := interactiveapp.LoadGameTeller(novaDir, "custom"); got.ID != "custom" {
 		t.Fatalf("game runtime loaded %q", got.ID)
 	}
 	for _, got := range []teller.Definition{
-		interactiveapp.LoadGameTeller(novaDir, "writing-only"),
-		interactiveapp.LoadWritingTeller(novaDir, "game-only"),
+		interactiveapp.LoadGameTeller(novaDir, "missing"),
 		interactiveapp.LoadWritingTeller(novaDir, "missing"),
 	} {
 		if got.ID != style.DefaultID {
-			t.Fatalf("incompatible or missing style should fall back to %q, got %q", style.DefaultID, got.ID)
+			t.Fatalf("missing style should fall back to %q, got %q", style.DefaultID, got.ID)
 		}
 	}
 }
