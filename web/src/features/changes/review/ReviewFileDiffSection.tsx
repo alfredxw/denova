@@ -163,7 +163,7 @@ export function ReviewFileDiffSection({
 }
 
 /** Estimates the full editor height until Monaco reports its wrapped content height. */
-export function reviewEditorHeight(file: Pick<ReviewThreadFile, 'before_content' | 'after_content'>, layout: ReviewDiffLayout = 'unified'): number {
+function reviewEditorHeight(file: Pick<ReviewThreadFile, 'before_content' | 'after_content'>, layout: ReviewDiffLayout = 'unified'): number {
   const lines = layout === 'unified'
     ? estimateUnifiedReviewLineCount(file.before_content, file.after_content)
     : Math.max(lineCount(file.before_content), lineCount(file.after_content))

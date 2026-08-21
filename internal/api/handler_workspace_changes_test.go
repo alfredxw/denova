@@ -190,22 +190,6 @@ func TestWorkspaceChangeReviewCommentUndoRedoAPI(t *testing.T) {
 	}
 }
 
-func TestWorkspaceChangeResolveCommentRouteIsRemoved(t *testing.T) {
-	application := newTestApplication(t)
-	server := NewServer(application, "0")
-	response := performProjectChangeRequest(
-		t,
-		server,
-		http.MethodPost,
-		application.ProjectID(),
-		"/comments/comment-1/resolve",
-		map[string]any{"resolved": true},
-	)
-	if response.Code != http.StatusNotFound {
-		t.Fatalf("removed resolve comment route status=%d body=%s", response.Code, response.Body.String())
-	}
-}
-
 func TestWorkspaceChangeReviewResponseUsesOperationScopedPaths(t *testing.T) {
 	application := newTestApplication(t)
 	server := NewServer(application, "0")

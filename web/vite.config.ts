@@ -11,10 +11,11 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: './src/test/setup.ts',
     globals: true,
-    css: true,
-    // The CSS-enabled jsdom suites are CPU and memory intensive. Unbounded
-    // file parallelism turns scheduler contention into >1s individual tests;
-    // a proportional cap stays adaptive across developer and CI machines.
+    // Only the review workspace relies on computed CSS visibility in jsdom.
+    // Other styles are presentation-only and do not need Vitest processing.
+    css: { include: [/review-diff\.css$/] },
+    // jsdom suites are CPU and memory intensive. A proportional cap stays
+    // adaptive across developer and CI machines.
     maxWorkers: '25%',
   },
   resolve: {

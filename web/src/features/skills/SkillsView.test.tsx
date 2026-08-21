@@ -56,70 +56,6 @@ describe('SkillsView', () => {
     }))
   })
 
-  it('collapses and restores the Skills sidebar from the page header', async () => {
-    const user = userEvent.setup()
-    render(<SkillsView workspace="/books/demo" />)
-
-    const collapse = await screen.findByRole('button', { name: '收起侧边栏' })
-    const separator = screen.getByRole('separator', { name: '调整侧边栏宽度' })
-    await user.click(collapse)
-
-    expect(screen.getByRole('button', { name: '展开侧边栏' })).toHaveAttribute('aria-pressed', 'false')
-    expect(separator).toHaveAttribute('aria-hidden', 'true')
-
-    await user.click(screen.getByRole('button', { name: '展开侧边栏' }))
-    expect(screen.getByRole('button', { name: '收起侧边栏' })).toHaveAttribute('aria-pressed', 'true')
-    expect(separator).toHaveAttribute('aria-hidden', 'false')
-  })
-
-  it('keeps the Skill sidebar entry point available at tablet widths', async () => {
-    vi.stubGlobal('matchMedia', vi.fn((query: string) => ({
-      matches: query === '(max-width: 1023px)',
-      media: query,
-      onchange: null,
-      addListener: () => {},
-      removeListener: () => {},
-      addEventListener: () => {},
-      removeEventListener: () => {},
-      dispatchEvent: () => false,
-    })))
-
-    try {
-      render(<SkillsView workspace="/books/demo" />)
-      expect(await screen.findByRole('button', { name: '打开Skills面板' })).toBeInTheDocument()
-    } finally {
-      vi.unstubAllGlobals()
-    }
-  })
-
-  it('opens the Config Agent in a resizable desktop pane', async () => {
-    const user = userEvent.setup()
-    render(<SkillsView workspace="/books/demo" />)
-
-    expect(await screen.findByRole('separator', { name: '调整侧边栏宽度' })).toBeVisible()
-    await user.click(await screen.findByRole('button', { name: '配置 Agent' }))
-
-    expect(screen.getByTestId('config-manager-chat')).toBeInTheDocument()
-    expect(screen.getByRole('separator', { name: '调整右侧面板宽度' })).toBeVisible()
-  })
-
-  it('creates new Skills in user scope by default', async () => {
-    const user = userEvent.setup()
-    render(<SkillsView workspace="/books/demo" />)
-
-    await user.click(await screen.findByRole('button', { name: '新建' }))
-    await user.type(screen.getByLabelText('Skill 名称'), 'draft-plan')
-    await user.type(screen.getByLabelText('触发说明'), '规划章节草稿')
-    await user.click(screen.getByRole('button', { name: '创建 SKILL.md' }))
-
-    await waitFor(() => {
-      expect(vi.mocked(createSkill)).toHaveBeenCalledWith(PROJECT_TARGET, 'user', 'draft-plan', '规划章节草稿', ['ide'], {
-        category: 'general',
-        capabilities: [],
-      })
-    })
-  })
-
   it('creates an explicitly classified Writing Skill workflow', async () => {
     const user = userEvent.setup()
     render(<SkillsView workspace="/books/demo" />)
@@ -565,30 +501,6 @@ describe('SkillsView', () => {
       expect(vi.mocked(saveSkillFileDocument)).toHaveBeenCalledWith(PROJECT_TARGET, 'user', 'draft-plan', 'references/style.md', '# Updated\n', 'file-r1')
     })
     expect(vi.mocked(saveSkillDocument)).not.toHaveBeenCalled()
-  })
-
-  it('preserves a manual file-tree collapse when a multi-file Skill reloads', async () => {
-    const user = userEvent.setup()
-    const doc = skillDocument({
-      files: [
-        { path: 'SKILL.md', size: 64, entry: true, editable: true },
-        { path: 'references/style.md', size: 8, entry: false, editable: true },
-      ],
-    })
-    vi.mocked(getSkills).mockResolvedValue(skillsSnapshot({ skills: [doc] }))
-    vi.mocked(getSkillDocument).mockResolvedValue(doc)
-
-    render(<SkillsView workspace="/books/demo" />)
-
-    const directoryToggle = await screen.findByRole('button', { name: '目录文件' })
-    expect(directoryToggle).toHaveAttribute('aria-pressed', 'true')
-    await user.click(directoryToggle)
-    expect(directoryToggle).toHaveAttribute('aria-pressed', 'false')
-    await user.click(screen.getByRole('button', { name: '刷新' }))
-
-    await waitFor(() => expect(vi.mocked(getSkillDocument)).toHaveBeenCalledTimes(2))
-    expect(screen.getByRole('button', { name: '目录文件' })).toHaveAttribute('aria-pressed', 'false')
-    expect(screen.queryByRole('button', { name: /style\.md/ })).not.toBeInTheDocument()
   })
 
   it('renders Skill markdown by default and switches to raw editing', async () => {

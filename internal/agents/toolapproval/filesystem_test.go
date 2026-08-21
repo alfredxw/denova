@@ -61,7 +61,10 @@ func TestFilesystemReadPermissionSeparatesProjectExternalAndFullAccess(t *testin
 }
 
 func TestFilesystemReadRuleIsSharedByReadGlobAndGrepWithinExactRoot(t *testing.T) {
-	parent := t.TempDir()
+	parent, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	project := filepath.Join(parent, "project")
 	external := filepath.Join(parent, "shared")
 	other := filepath.Join(parent, "private")
