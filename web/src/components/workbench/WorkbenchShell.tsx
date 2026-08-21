@@ -14,15 +14,15 @@ import type { AutomationMessageNavigation } from '@/features/messages/types'
 import { requestAutomationNavigation } from '@/features/automations/automation-navigation'
 import { setActivityMessageUnreadCount, useActivitySummary } from '@/features/activity/use-activity-summary'
 import { useIsMobile } from '@/hooks/useIsMobile'
-import type { BookRecord, WorkspaceSummary } from '@/lib/api'
+import type { BookRecord, ChapterSummary, WorkspaceSummary } from '@/lib/api'
 import { isSharedWorkspaceMode, useWorkspaceStore, type RightPanel, type WorkspaceMode } from '@/stores/workspace-store'
 import type { InteractiveSubmode } from '@/features/interactive/types'
 import { BookSwitcher } from './BookSwitcher'
 import { WorkbenchNoticePill } from './WorkbenchNoticePill'
 import type { WorkbenchNotice } from '@/features/notices/use-workbench-notice'
-import { AgentChatProjectSwitcher, type AgentChatProjectNavigationState } from '@/features/agent-chat/AgentChatProjectSwitcher'
 import { WorkbenchAppSidebar, WorkbenchBrandIcon } from './WorkbenchAppSidebar'
 import { WorkbenchModeSwitch } from './WorkbenchModeSwitch'
+import { WritingStatusBar } from './WritingStatusBar'
 import {
   cleanupLegacyActivityOrderStorage,
   defaultActivityOrderForScope,
@@ -45,8 +45,10 @@ interface WorkbenchShellProps {
   currentBookName: string
   workspace: string
   books: BookRecord[]
-  appVersion: string
   summary: WorkspaceSummary | null
+  currentChapter?: ChapterSummary
+  editorLine?: number
+  isStreaming: boolean
   projectVisible: boolean
   activityBarExpanded: boolean
   rightPanel: RightPanel
@@ -56,7 +58,6 @@ interface WorkbenchShellProps {
   sidebar: ReactNode
   main: ReactNode
   rightPanelContent: ReactNode
-  agentChatProjectNavigation?: AgentChatProjectNavigationState | null
   rightPanelWide?: boolean
   centerFocus?: boolean
   notice?: WorkbenchNotice | null
@@ -87,8 +88,10 @@ export function WorkbenchShell({
   currentBookName,
   workspace,
   books,
-  appVersion,
   summary,
+  currentChapter,
+  editorLine,
+  isStreaming,
   projectVisible,
   activityBarExpanded,
   rightPanel,
@@ -98,7 +101,6 @@ export function WorkbenchShell({
   sidebar,
   main,
   rightPanelContent,
-  agentChatProjectNavigation = null,
   rightPanelWide = false,
   centerFocus = false,
   notice,
@@ -466,9 +468,7 @@ export function WorkbenchShell({
         onClick: () => selectPrimaryNavigation(item.id, item.onClick),
       }))}
       dragDisabled={settingsOpen}
-      contextSwitcher={agentChatActive ? (
-        <AgentChatProjectSwitcher navigation={agentChatProjectNavigation} iconOnly={!activityBarExpanded} />
-      ) : (
+      contextSwitcher={
         <BookSwitcher
           books={books}
           currentBookName={currentBookName}
@@ -476,11 +476,10 @@ export function WorkbenchShell({
           currentWordCount={summary?.total_words}
           workspace={workspace}
           iconOnly={!activityBarExpanded}
-          showCurrentStats={activityBarExpanded}
           onSwitchBook={onQuickSwitchBook}
           onManageBooks={manageBooks}
         />
-      )}
+      }
       modeSwitch={(
         <WorkbenchModeSwitch
           navigationMode={navigationMode === 'interactive' ? 'interactive' : 'ide'}
@@ -505,7 +504,6 @@ export function WorkbenchShell({
           onOpenAutomation={openAutomationNotification}
         />
       )}
-      appVersion={appVersion}
       sidebarLabel={t('workbench.sidebar.label')}
       settingsLabel={t('workbench.activity.settings')}
       settingsActive={optimisticNavigationId ? optimisticNavigationId === 'settings' : settingsOpen}
@@ -543,20 +541,16 @@ export function WorkbenchShell({
         <div className="flex min-w-0 items-center justify-between gap-2">
           <div className="flex min-w-0 flex-1 items-center gap-2">
             <WorkbenchBrandIcon />
-            {agentChatActive ? (
-              <AgentChatProjectSwitcher navigation={agentChatProjectNavigation} compact />
-            ) : (
-              <BookSwitcher
-                books={books}
-                currentBookName={currentBookName}
-                currentChapterCount={summary?.chapter_count}
-                currentWordCount={summary?.total_words}
-                workspace={workspace}
-                compact
-                onSwitchBook={onQuickSwitchBook}
-                onManageBooks={manageBooks}
-              />
-            )}
+            <BookSwitcher
+              books={books}
+              currentBookName={currentBookName}
+              currentChapterCount={summary?.chapter_count}
+              currentWordCount={summary?.total_words}
+              workspace={workspace}
+              compact
+              onSwitchBook={onQuickSwitchBook}
+              onManageBooks={manageBooks}
+            />
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
             <MessageCenterButton className="!size-8 !min-w-8" unreadCount={messageUnread} onUnreadCountChange={setActivityMessageUnreadCount} onOpenAutomation={openAutomationNotification} />
@@ -686,6 +680,14 @@ export function WorkbenchShell({
           rightPanelVisible={writingContentVisible && Boolean(rightPanelContent)}
           rightPanelWide={rightPanelWide && writingContentVisible && Boolean(rightPanelContent)}
           centerFocus={centerFocus && writingContentVisible}
+          footer={writingContentVisible ? (
+            <WritingStatusBar
+              summary={summary}
+              currentChapter={currentChapter}
+              editorLine={editorLine}
+              isStreaming={isStreaming}
+            />
+          ) : undefined}
         />
       </SidebarProvider>
       {mainContentPortal}

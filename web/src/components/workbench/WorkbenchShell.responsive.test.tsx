@@ -16,6 +16,7 @@ vi.mock('@/components/layout/workspace-layout', () => ({
   WorkspaceLayout: ({
     appSidebar,
     main,
+    footer,
     sidebarVisible,
     rightPanelVisible,
     rightPanelWide,
@@ -24,6 +25,7 @@ vi.mock('@/components/layout/workspace-layout', () => ({
   }: {
     appSidebar: ReactNode
     main: ReactNode
+    footer?: ReactNode
     sidebarVisible: boolean
     rightPanelVisible: boolean
     rightPanelWide: boolean
@@ -38,7 +40,7 @@ vi.mock('@/components/layout/workspace-layout', () => ({
       data-center-focus={centerFocus}
       data-route-layout-key={routeLayoutKey}
     >
-      {appSidebar}{main}
+      {appSidebar}{main}{footer}
     </section>
   ),
 }))
@@ -111,7 +113,7 @@ describe('WorkbenchShell responsive main content', () => {
   })
 
   it('aligns every expanded sidebar label to one fixed icon column', () => {
-    render(
+    const { container } = render(
       <WorkbenchShell
         {...workbenchProps(<div />)}
         mode="ide"
@@ -135,6 +137,8 @@ describe('WorkbenchShell responsive main content', () => {
       expect(button).toHaveClass('gap-2')
       expect(iconSlot).toHaveClass('size-4')
     }
+    expect(container.querySelector('[data-slot="sidebar-header"]')).not.toHaveClass('border-b')
+    expect(container.querySelector('[data-slot="sidebar-footer"]')).not.toHaveClass('border-t')
   })
 
   it('keeps the main subtree mounted and preserves local state across the mobile breakpoint', () => {
@@ -181,38 +185,22 @@ describe('WorkbenchShell responsive main content', () => {
     expect(screen.getByRole('button', { name: /游戏模式|Game Mode/ })).toHaveAttribute('aria-pressed', 'true')
   })
 
-  it('replaces the global book switcher with the AgentChat Project switcher across desktop and mobile layouts', () => {
-    const selectProject = vi.fn()
+  it('keeps the global book switcher fixed across first-level menus on desktop and mobile', () => {
     const props = {
       ...workbenchProps(<div />),
       mode: 'agentchat' as const,
       presentedLayout: 'full' as const,
       booksReturnMode: 'ide' as const,
-      agentChatProjectNavigation: {
-        projects: [{
-          id: 'agent-project',
-          type: 'book' as const,
-          path: '/projects/agent',
-          name: 'Agent Project',
-          status: 'available' as const,
-          current: false,
-          total: 4,
-          sessions: [],
-        }],
-        activeProjectId: 'agent-project',
-        loading: false,
-        selectProject,
-      },
     }
     const { rerender } = render(<WorkbenchShell {...props} />)
 
-    expect(screen.queryByRole('button', { name: /切换书籍|Switch book/ })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '切换项目，当前：Agent Project' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '切换书籍，当前：Test book' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /切换项目|Switch project/ })).not.toBeInTheDocument()
 
     responsiveState.mobile = true
     rerender(<WorkbenchShell {...props} />)
-    expect(screen.queryByRole('button', { name: /切换书籍|Switch book/ })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '切换项目，当前：Agent Project' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '切换书籍，当前：Test book' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /切换项目|Switch project/ })).not.toBeInTheDocument()
   })
 
   it('uses the whole active menu button as the sortable drag target', () => {
@@ -394,8 +382,8 @@ describe('WorkbenchShell responsive main content', () => {
     cancelFrame.mockRestore()
   })
 
-  it('uses the full-height sidebar instead of global top and bottom bars', () => {
-    const { container } = render(
+  it('keeps the sidebar full-height while rendering document status only in Writing', () => {
+    const { container, rerender } = render(
       <WorkbenchShell
         {...workbenchProps(<div />)}
         mode="ide"
@@ -410,14 +398,48 @@ describe('WorkbenchShell responsive main content', () => {
           chapters: [],
           chapter_plans: [],
         }}
+        currentChapter={{
+          path: 'chapters/ch01.md',
+          file_name: 'ch01.md',
+          display_title: '第一章',
+          index: 1,
+          words: 2836,
+          status: '成章',
+          confirmed: true,
+          updated_at: '2026-08-21T00:00:00Z',
+          volume: '',
+          volume_path: '',
+        }}
+        editorLine={42}
+        isStreaming
       />,
     )
 
     expect(container.querySelector('.nova-topbar')).toBeNull()
-    expect(container.querySelector('.nova-statusbar')).toBeNull()
+    const statusBar = container.querySelector('.nova-writing-statusbar')
+    expect(statusBar).toBeInTheDocument()
     expect(screen.getByRole('navigation', { name: '工作台侧边栏' })).toBeInTheDocument()
-    expect(screen.getAllByText('12 章 · 34,567 字').length).toBeGreaterThan(0)
-    expect(screen.getByText('Denova vtest')).toBeInTheDocument()
+    expect(statusBar).toHaveTextContent('《Test book》 · 12 章 · 34,567 字')
+    expect(statusBar).toHaveTextContent('当前：第一章 · 2,836 字')
+    expect(statusBar).toHaveTextContent('更新：')
+    expect(statusBar).toHaveTextContent('行 42')
+    expect(statusBar).not.toHaveTextContent('成章')
+    expect(screen.getByText(/更新：.*行 42/)).not.toHaveClass('ml-auto')
+    expect(statusBar?.querySelectorAll('.border-l')).toHaveLength(0)
+    expect(screen.getByText('生成中')).toHaveAttribute('role', 'status')
+    expect(screen.getByRole('button', { name: '切换书籍，当前：Test book' })).not.toHaveTextContent('12 章')
+    expect(screen.queryByText(/Denova v/)).not.toBeInTheDocument()
+
+    rerender(
+      <WorkbenchShell
+        {...workbenchProps(<div />)}
+        mode="agentchat"
+        presentedLayout="full"
+        booksReturnMode="ide"
+        activityBarExpanded
+      />,
+    )
+    expect(container.querySelector('.nova-writing-statusbar')).toBeNull()
   })
 })
 
@@ -429,8 +451,8 @@ function workbenchProps(main: ReactNode) {
     currentBookName: 'Test book',
     workspace: '/tmp/test-book',
     books: [{ project_id: 'book-test', name: 'Test book', path: '/tmp/test-book', author: '', last_opened_at: '' }],
-    appVersion: 'test',
     summary: null,
+    isStreaming: false,
     projectVisible: false,
     activityBarExpanded: false,
     rightPanel: null,

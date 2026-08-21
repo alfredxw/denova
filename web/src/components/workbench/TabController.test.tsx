@@ -58,6 +58,7 @@ describe('TabController', () => {
     )
     expect(loreTab).toHaveAttribute('aria-roledescription', '可排序标签页')
     expect(screen.getByRole('tablist')).toHaveClass('gap-1', 'overflow-x-auto', '[&::-webkit-scrollbar]:hidden')
+    expect(screen.getByRole('tablist').parentElement?.parentElement).toHaveClass('h-10', 'pt-1')
   })
 
   it('activates a tab when clicking the tab surface outside the label text', async () => {

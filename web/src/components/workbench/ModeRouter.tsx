@@ -20,7 +20,6 @@ import type { ReviewFeedbackBatch, ReviewFeedbackSelection } from '@/features/ch
 import type { WorkspaceChangeMetadata } from '@/features/changes/types'
 import { useDocumentReview } from '@/features/document-review/use-document-review'
 import { loreImportanceLabel, loreLoadModeLabel, loreTypeLabel } from '@/features/lore/options'
-import type { AgentChatProjectNavigationState } from '@/features/agent-chat/AgentChatProjectSwitcher'
 import { tabKey } from './TabController'
 import { WorkbenchShell } from './WorkbenchShell'
 import { useWorkbenchRouteHost, WorkbenchRouteLayer } from './WorkbenchRouteHost'
@@ -57,7 +56,6 @@ export function ModeRouter(props: ModeRouterProps) {
     currentBookName,
     workspace,
     projectId,
-    appVersion,
     summary,
     currentChapter,
     chapterStats,
@@ -209,16 +207,22 @@ export function ModeRouter(props: ModeRouterProps) {
   const [tellers, setTellers] = useState<Teller[]>([])
   const [imagePresets, setImagePresets] = useState<ImagePreset[]>([])
   const [agentSubAgentDetailsOpen, setAgentSubAgentDetailsOpen] = useState(false)
-  const [agentChatProjectNavigation, setAgentChatProjectNavigation] = useState<AgentChatProjectNavigationState | null>(null)
   const [illustrationInsertSignal, setIllustrationInsertSignal] = useState<{ illustration: ChapterIllustration; nonce: number } | null>(null)
   const [outlineRevealRequest, setOutlineRevealRequest] = useState<OutlineRevealRequest | null>(null)
   const [toolNavigationIntent, setToolNavigationIntent] = useState<ToolNavigationIntent | null>(null)
+  const [editorPosition, setEditorPosition] = useState<{ tabKey: string | null; line: number }>()
   const toolNavigationNonceRef = useRef(0)
   const loreLibraryFlushHandlerRef = useRef<EditorFlushHandler | null>(null)
   const agentChatFlushHandlerRef = useRef<EditorFlushHandler | null>(null)
   // The router is the lifecycle owner: the settings lane survives AgentPanel close/unmount.
   const composerSettings = usePersistedUserSettings({ workspace, defaults: WRITING_COMPOSER_SETTING_DEFAULTS })
   const flushComposerSettings = composerSettings.flushPending
+
+  const handleEditorLineChange = useCallback((line: number) => {
+    setEditorPosition((current) => current?.tabKey === activeTabKey && current.line === line
+      ? current
+      : { tabKey: activeTabKey, line })
+  }, [activeTabKey])
 
   const flushComposerSettingsBestEffort = useCallback(() => {
     void flushComposerSettings().then((saved) => {
@@ -714,6 +718,7 @@ export function ModeRouter(props: ModeRouterProps) {
         onOpenLoreLibrary={openLoreLibrary}
         onReferenceLoreItem={referenceLoreFromWorkspace}
         onSaveCurrentFile={onSaveCurrentFile}
+        onEditorLineChange={handleEditorLineChange}
         onQuoteSelection={onQuoteSelection}
         onRevealChapter={revealCurrentChapterInOutline}
         onGenerateIllustration={requestChapterIllustration}
@@ -802,7 +807,6 @@ export function ModeRouter(props: ModeRouterProps) {
         onBookCreated={onAgentChatBookCreated}
         onBooksChange={onBooksChange}
         onFlushHandlerChange={handleAgentChatFlushHandlerChange}
-        onProjectNavigationChange={setAgentChatProjectNavigation}
         onWorkspaceChanged={onWorkspaceChanged}
       />
     </main>
@@ -819,8 +823,12 @@ export function ModeRouter(props: ModeRouterProps) {
       currentBookName={currentBookName}
       workspace={workspace}
       books={books}
-      appVersion={appVersion}
       summary={summary}
+      currentChapter={currentChapter}
+      editorLine={activeTab?.kind === 'file' && activeFileKind === 'markdown' && editorPosition?.tabKey === activeTabKey
+        ? editorPosition.line
+        : undefined}
+      isStreaming={isStreaming}
       projectVisible={projectVisible && !reviewVisible}
       activityBarExpanded={activityBarExpanded}
       rightPanel={rightPanel}
@@ -832,7 +840,6 @@ export function ModeRouter(props: ModeRouterProps) {
       sidebar={sidebar}
       main={main}
       rightPanelContent={writingAgent.content}
-      agentChatProjectNavigation={agentChatProjectNavigation}
       notice={notice}
       onSetMode={onSetMode}
       onToggleActivityBarExpanded={onToggleActivityBarExpanded}

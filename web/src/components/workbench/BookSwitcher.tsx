@@ -28,7 +28,6 @@ interface BookSwitcherProps {
   workspace: string
   compact?: boolean
   iconOnly?: boolean
-  showCurrentStats?: boolean
   onSwitchBook: (path: string) => Promise<boolean>
   onManageBooks: () => void
 }
@@ -42,7 +41,6 @@ export function BookSwitcher({
   workspace,
   compact = false,
   iconOnly = false,
-  showCurrentStats = false,
   onSwitchBook,
   onManageBooks,
 }: BookSwitcherProps) {
@@ -71,12 +69,6 @@ export function BookSwitcher({
   }
 
   const triggerLabel = t('workbench.bookSwitcher.trigger', { title: currentBookName })
-  const triggerDescription = showCurrentStats && typeof currentChapterCount === 'number' && typeof currentWordCount === 'number'
-    ? t('workbench.bookSwitcher.stats', {
-      chapters: formatLocaleNumber(currentChapterCount),
-      words: formatLocaleNumber(currentWordCount),
-    })
-    : undefined
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
@@ -85,7 +77,6 @@ export function BookSwitcher({
           aria-label={triggerLabel}
           icon={BookOpen}
           label={currentBookName}
-          description={triggerDescription}
           compact={compact}
           iconOnly={iconOnly}
         />

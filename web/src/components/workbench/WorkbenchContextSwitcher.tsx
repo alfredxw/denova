@@ -9,7 +9,6 @@ export const WORKBENCH_CONTEXT_MENU_ITEM_CLASS = 'min-h-14 gap-2.5 border-b bord
 interface WorkbenchContextSwitcherTriggerProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'> {
   icon: LucideIcon
   label: string
-  description?: string
   compact?: boolean
   iconOnly?: boolean
 }
@@ -18,7 +17,6 @@ interface WorkbenchContextSwitcherTriggerProps extends Omit<ButtonHTMLAttributes
 export function WorkbenchContextSwitcherTrigger({
   icon: Icon,
   label,
-  description,
   compact = false,
   iconOnly = false,
   className,
@@ -33,20 +31,15 @@ export function WorkbenchContextSwitcherTrigger({
         'flex min-w-0 items-center justify-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] outline-none transition-colors hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] focus-visible:ring-2 focus-visible:ring-[var(--nova-field-focus-border)] data-[state=open]:border-[var(--nova-field-focus-border)] data-[state=open]:bg-[var(--nova-active)] data-[state=open]:text-[var(--nova-text)]',
         iconOnly
           ? 'size-8 p-0'
-          : description
-            ? 'min-h-11 w-full justify-start px-2 py-1.5 text-[11px]'
-            : compact
-              ? 'h-8 max-w-[34vw] px-2 text-[11px]'
-              : 'h-9 w-full max-w-none justify-start px-2.5 text-[11px]',
+          : compact
+            ? 'h-8 max-w-[34vw] px-2 text-[11px]'
+            : 'h-9 w-full max-w-none justify-start px-2.5 text-[11px]',
         className,
       )}
       {...props}
     >
       <Icon aria-hidden="true" className={cn('h-3.5 w-3.5 shrink-0', compact && !iconOnly && 'hidden')} />
-      <span className={cn('min-w-0 truncate font-medium', iconOnly && 'sr-only', description && 'flex flex-1 flex-col items-start')}>
-        <span className="max-w-full truncate">{label}</span>
-        {description ? <span className="max-w-full truncate text-[10px] font-normal text-[var(--nova-text-faint)]">{description}</span> : null}
-      </span>
+      <span className={cn('min-w-0 truncate font-medium', iconOnly && 'sr-only')}>{label}</span>
       {!iconOnly && <ChevronDown aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />}
     </button>
   )

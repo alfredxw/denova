@@ -1,4 +1,4 @@
-import { act, screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useEffect } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -23,7 +23,6 @@ import { persistWorkbenchState, readStoredWorkbenchState } from './tab-state'
 import { closeTerminalSession, getTerminalRuntimeStatus } from './terminal/api'
 import { AgentChatView } from './AgentChatView'
 import { consumeAgentChatSessionNavigation, requestAgentChatSessionNavigation } from './session-navigation'
-import type { AgentChatProjectNavigationState } from './AgentChatProjectSwitcher'
 import { useToolNavigation } from '@/components/Chat/tool-navigation'
 
 function FlushableProjectPage({
@@ -102,32 +101,6 @@ describe('AgentChatView project workbenches', () => {
     renderView(<AgentChatView composerSettings={{} as never} tellers={[]} imagePresets={[]} renderPage={() => null} renderReview={() => null} />)
 
     expect(await screen.findByTestId('conversation:/books/a:session-a')).toHaveTextContent('active')
-  })
-
-  it('publishes its live Project selection to the shared header navigator', async () => {
-    const onProjectNavigationChange = vi.fn<(navigation: AgentChatProjectNavigationState | null) => void>()
-    renderView(
-      <AgentChatView
-        composerSettings={{} as never}
-        tellers={[]}
-        imagePresets={[]}
-        renderPage={() => null}
-        renderReview={() => null}
-        onProjectNavigationChange={onProjectNavigationChange}
-      />,
-    )
-
-    await waitFor(() => {
-      const navigation = onProjectNavigationChange.mock.calls.at(-1)?.[0]
-      expect(navigation?.projects).toHaveLength(2)
-      expect(navigation?.activeProjectId).toBe('project-a')
-    })
-
-    const navigation = onProjectNavigationChange.mock.calls.at(-1)?.[0]
-    act(() => navigation?.selectProject('project-b'))
-    await waitFor(() => {
-      expect(onProjectNavigationChange.mock.calls.at(-1)?.[0]?.activeProjectId).toBe('project-b')
-    })
   })
 
   it('offers both Project entry paths before adding a selected folder', async () => {

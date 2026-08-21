@@ -64,6 +64,7 @@ interface WritingMainRouteProps {
   onOpenLoreLibrary: () => void
   onReferenceLoreItem: LoreWorkspaceProps['onReferenceItem']
   onSaveCurrentFile: EditorProps['onSave']
+  onEditorLineChange: NonNullable<EditorProps['onLineChange']>
   onQuoteSelection: (selection: TextSelection) => void
   onRevealChapter: EditorProps['onRevealChapter']
   onGenerateIllustration: EditorProps['onGenerateIllustration']
@@ -116,6 +117,7 @@ export function WritingMainRoute({
   onOpenLoreLibrary,
   onReferenceLoreItem,
   onSaveCurrentFile,
+  onEditorLineChange,
   onQuoteSelection,
   onRevealChapter,
   onGenerateIllustration,
@@ -172,6 +174,7 @@ export function WritingMainRoute({
                   saveSignal={saveSignal}
                   autoSaveEnabled={editorAutoSaveEnabled}
                   autoSaveDelayMs={editorAutoSaveDelayMs}
+                  onLineChange={onEditorLineChange}
                   chapterSummary={currentChapter}
                   onRevealChapter={onRevealChapter}
                   searchIntent={editorSearchIntent}

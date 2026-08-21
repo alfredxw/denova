@@ -35,7 +35,6 @@ import {
   CharacterCardImportDialog,
   type CharacterCardTargetMode,
 } from '@/components/workbench/CharacterCardImportDialog'
-import { APP_VERSION } from '@/app-version'
 import { RemoteAccessLogin } from '@/components/RemoteAccessLogin'
 import { OnboardingGuide, type OnboardingNavigationTarget } from '@/features/onboarding/OnboardingGuide'
 import { SETTINGS_SECTION_EVENT, WRITING_AGENT_INIT_EVENT } from '@/features/onboarding/events'
@@ -883,7 +882,6 @@ function App() {
         currentBookName={currentBookName}
         workspace={workspace}
         projectId={projectId}
-        appVersion={APP_VERSION}
         summary={summary}
         currentChapter={currentChapter}
         chapterStats={chapterStats}

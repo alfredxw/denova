@@ -35,7 +35,6 @@ interface WorkbenchAppSidebarProps {
   modeSwitch: ReactNode
   notice?: ReactNode
   messageCenter: ReactNode
-  appVersion: string
   sidebarLabel: string
   settingsLabel: string
   settingsActive: boolean
@@ -63,7 +62,6 @@ export function WorkbenchAppSidebar({
   modeSwitch,
   notice,
   messageCenter,
-  appVersion,
   sidebarLabel,
   settingsLabel,
   settingsActive,
@@ -100,7 +98,7 @@ export function WorkbenchAppSidebar({
           role="navigation"
           aria-label={sidebarLabel}
         >
-          <SidebarHeader className="gap-2 border-b border-[var(--nova-border)] p-2">
+          <SidebarHeader className="gap-2 p-2">
             <div className={`flex h-8 items-center ${expanded ? 'gap-2 px-2' : 'justify-center'}`}>
               <WorkbenchBrandIcon />
               {expanded ? <span className="truncate text-xs font-semibold tracking-wide text-[var(--nova-text)]">Denova</span> : null}
@@ -134,7 +132,7 @@ export function WorkbenchAppSidebar({
               </SidebarMenu>
             </SidebarGroup>
           </SidebarContent>
-          <SidebarFooter className="gap-1 border-t border-[var(--nova-border)] p-2">
+          <SidebarFooter className="gap-1 p-2">
             {notice}
             <SidebarMenu>
               <SidebarMenuItem>{messageCenter}</SidebarMenuItem>
@@ -149,7 +147,6 @@ export function WorkbenchAppSidebar({
                 </ActivityButton>
               </SidebarMenuItem>
             </SidebarMenu>
-            {expanded ? <div className="truncate px-2 pt-1 text-[10px] text-[var(--nova-text-faint)]">Denova v{appVersion}</div> : null}
             {expanded ? (
               <div
                 role="separator"
