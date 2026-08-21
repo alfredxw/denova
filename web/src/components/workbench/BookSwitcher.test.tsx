@@ -32,6 +32,15 @@ describe('BookSwitcher', () => {
     expect(screen.queryByRole('img', { name: '示例书' })).not.toBeInTheDocument()
   })
 
+  it('keeps aggregate stats out of the global trigger', () => {
+    renderSwitcher({ currentWordCount: 12000 })
+
+    const trigger = screen.getByRole('button', { name: '切换书籍，当前：示例书' })
+    expect(trigger).toHaveTextContent('示例书')
+    expect(trigger).not.toHaveTextContent('10 章')
+    expect(trigger).not.toHaveTextContent('12,000 字')
+  })
+
   it('switches without invoking book management and closes after a successful switch', async () => {
     const user = userEvent.setup()
     const onSwitchBook = vi.fn().mockResolvedValue(true)

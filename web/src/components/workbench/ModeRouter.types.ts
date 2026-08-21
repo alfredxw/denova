@@ -28,7 +28,6 @@ export interface ModeRouterProps {
   currentBookName: string
   workspace: string
   projectId: string
-  appVersion: string
   summary: WorkspaceSummary | null
   currentChapter?: ChapterSummary
   chapterStats: Record<string, ChapterSummary>

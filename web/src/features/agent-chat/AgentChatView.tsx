@@ -25,7 +25,6 @@ import {
 } from './api'
 import { AgentChatAddProjectDialog } from './AgentChatAddProjectDialog'
 import { AgentChatRenameDialog } from './AgentChatRenameDialog'
-import type { AgentChatProjectNavigationState } from './AgentChatProjectSwitcher'
 import {
   AgentChatProjectGroup,
   DESKTOP_SECONDARY_PANE_CONTROLS,
@@ -79,8 +78,6 @@ interface AgentChatViewProps {
   renderPage: (projectId: string, workspace: string, pageId: AgentChatPageId, context: AgentChatPageRenderContext) => ReactNode
   renderReview: (tab: AgentChatReviewTab, disabled: boolean, context: AgentChatReviewRenderContext) => ReactNode
   onFlushHandlerChange?: (handler: EditorFlushHandler | null) => void
-  /** Publishes the same project selection used by the sidebar to the shared workbench header. */
-  onProjectNavigationChange?: (navigation: AgentChatProjectNavigationState | null) => void
   onBeforeCreateBook?: () => Promise<boolean>
   onBookCreated?: (workspace: string) => void | Promise<void>
   onBooksChange?: () => void | Promise<void>
@@ -108,7 +105,6 @@ export function AgentChatView({
   renderPage,
   renderReview,
   onFlushHandlerChange,
-  onProjectNavigationChange,
   onBeforeCreateBook,
   onBookCreated,
   onBooksChange,
@@ -296,16 +292,6 @@ export function AgentChatView({
       projects: current.projects[projectID] ? current.projects : { ...current.projects, [projectID]: emptyProjectTabState() },
     }))
   }, [])
-
-  useEffect(() => {
-    onProjectNavigationChange?.({
-      projects,
-      activeProjectId,
-      loading: projectsLoading,
-      selectProject,
-    })
-  }, [activeProjectId, onProjectNavigationChange, projects, projectsLoading, selectProject])
-  useEffect(() => () => onProjectNavigationChange?.(null), [onProjectNavigationChange])
 
   const openSessionTab = useCallback(
     (project: AgentChatProject, session: AgentChatSession) => {

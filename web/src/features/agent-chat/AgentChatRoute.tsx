@@ -6,7 +6,6 @@ import type { WorkspaceChangeMetadata } from '@/features/changes/types'
 import type { ImagePreset, Teller } from '@/features/interactive/types'
 import { ProjectWritingSurface } from '@/features/writing/ProjectWritingSurface'
 import { AgentChatView } from './AgentChatView'
-import type { AgentChatProjectNavigationState } from './AgentChatProjectSwitcher'
 import type { AgentChatPageId, AgentChatPageRenderContext, AgentChatReviewRenderContext, AgentChatReviewTab } from './types'
 import { LoadingState } from '@/components/common/LoadingState'
 
@@ -27,7 +26,6 @@ interface AgentChatRouteProps {
   onBooksChange: () => void | Promise<void>
   /** Registers every mounted project-page draft with the workbench navigation guard. */
   onFlushHandlerChange?: (handler: EditorFlushHandler | null) => void
-  onProjectNavigationChange?: (navigation: AgentChatProjectNavigationState | null) => void
   onWorkspaceChanged?: (paths: string[], metadata: WorkspaceChangeMetadata) => void | Promise<void>
 }
 
@@ -47,7 +45,6 @@ function AgentChatRouteComponent({
   onBookCreated,
   onBooksChange,
   onFlushHandlerChange,
-  onProjectNavigationChange,
   onWorkspaceChanged,
 }: AgentChatRouteProps) {
   const { t } = useTranslation()
@@ -127,7 +124,6 @@ function AgentChatRouteComponent({
       renderPage={renderPage}
       renderReview={renderReview}
       onFlushHandlerChange={onFlushHandlerChange}
-      onProjectNavigationChange={onProjectNavigationChange}
       onBeforeCreateBook={onBeforeCreateBook}
       onBookCreated={onBookCreated}
       onBooksChange={onBooksChange}

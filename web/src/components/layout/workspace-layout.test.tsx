@@ -69,6 +69,23 @@ describe('WorkspaceLayout', () => {
     expect(container.querySelector('#right')).toHaveAttribute('data-nova-right-panel', 'wide')
   })
 
+  it('keeps the app sidebar full-height while the footer belongs to the workspace', () => {
+    const { container } = render(
+      <WorkspaceLayout
+        appSidebar={<nav aria-label="一级菜单栏">菜单</nav>}
+        main={<main>正文区域</main>}
+        footer={<footer>写作状态</footer>}
+      />,
+    )
+
+    const shell = container.querySelector('[data-nova-app-shell="true"]')
+    const appSidebar = screen.getByRole('navigation', { name: '一级菜单栏' })
+    const footer = screen.getByText('写作状态')
+    expect(shell?.children[0]).toBe(appSidebar)
+    expect(shell?.children[1]).toContainElement(footer)
+    expect(appSidebar).not.toContainElement(footer)
+  })
+
   it('marks a center-focused workspace so review can temporarily rebalance the layout', () => {
     const { container } = render(
       <WorkspaceLayout

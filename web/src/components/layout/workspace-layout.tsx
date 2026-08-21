@@ -20,6 +20,7 @@ interface WorkspaceLayoutProps {
   main: ReactNode
   rightPanel?: ReactNode
   bottomPanel?: ReactNode
+  footer?: ReactNode
   sidebarVisible?: boolean
   rightPanelVisible?: boolean
   bottomPanelVisible?: boolean
@@ -36,6 +37,7 @@ export function WorkspaceLayout({
   main,
   rightPanel,
   bottomPanel,
+  footer,
   sidebarVisible = true,
   rightPanelVisible = true,
   bottomPanelVisible = true,
@@ -179,6 +181,7 @@ export function WorkspaceLayout({
   return (
     <div data-nova-app-shell="true" className="flex h-dvh w-screen overflow-hidden">
       {appSidebar}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <PanelMotionGroup
             id="nova-workspace-horizontal"
             motionSuspended={panelMotionSuspendedRef.current}
@@ -203,7 +206,7 @@ export function WorkspaceLayout({
             }}
             orientation="horizontal"
             resizeTargetMinimumSize={{ coarse: 16, fine: 1 }}
-            className="min-w-0 flex-1"
+            className="min-h-0 min-w-0 flex-1"
           >
             {sidebar && (
               <>
@@ -292,6 +295,8 @@ export function WorkspaceLayout({
               {retainedRightPanelRef.current}
             </CollapsibleResizablePanel>
       </PanelMotionGroup>
+        {footer}
+      </div>
     </div>
   )
 }

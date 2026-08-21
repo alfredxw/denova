@@ -579,7 +579,6 @@ function modeRouterProps(
     currentBookName: 'Book A',
     workspace: '/book-a',
     projectId: 'project-book-a',
-    appVersion: 'test',
     summary: null,
     chapterStats: {},
     isStreaming: false,
