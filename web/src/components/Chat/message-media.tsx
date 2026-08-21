@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight, ImagePlus, Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { ImagePreviewDialog } from '@/components/common/ImagePreviewDialog'
+import { ContextCopyButton } from './ContextCopyButton'
 import type {
   AssistantChatMessage,
   ChapterIllustration,
@@ -21,6 +22,7 @@ export function ChapterIllustrationBlock({ projectId, message, onInsert }: { pro
   const status = message.status || 'running'
   const isMarkdownChapter = isMarkdownPath(illustration.chapter_path)
   const canInsert = status === 'success' && isMarkdownChapter && Boolean(onInsert)
+  const canCopyReference = status === 'success' && isMarkdownChapter && Boolean(illustration.markdown)
   const imageSrc = chatAssetURL(projectId, illustration.image_path)
   const imageTitle = illustration.alt_text || t('chat.illustration.previewAlt')
 
@@ -53,15 +55,25 @@ export function ChapterIllustrationBlock({ projectId, message, onInsert }: { pro
             {!isMarkdownChapter && (
               <span className="min-w-0 truncate text-[11px] text-[var(--nova-text-faint)]">{t('chat.illustration.markdownOnly')}</span>
             )}
-            <button
-              type="button"
-              disabled={!canInsert}
-              onClick={() => illustration && onInsert?.(illustration)}
-              className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 text-[11px] font-medium text-[var(--nova-text-muted)] transition hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] disabled:cursor-not-allowed disabled:opacity-45"
-            >
-              <ImagePlus className="h-3.5 w-3.5" />
-              {status === 'running' ? t('chat.illustration.generating') : t('chat.illustration.insert')}
-            </button>
+            {onInsert ? (
+              <button
+                type="button"
+                disabled={!canInsert}
+                onClick={() => onInsert(illustration)}
+                className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 text-[11px] font-medium text-[var(--nova-text-muted)] transition hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                <ImagePlus className="h-3.5 w-3.5" />
+                {status === 'running' ? t('chat.illustration.generating') : t('chat.illustration.insert')}
+              </button>
+            ) : (
+              <ContextCopyButton
+                content={canCopyReference ? illustration.markdown : ''}
+                label={status === 'running' ? t('chat.illustration.generating') : t('chat.illustration.copyReference')}
+                copiedLabel={t('chat.illustration.referenceCopied')}
+                failedLabel={t('chat.illustration.referenceCopyFailed')}
+                showLabel
+              />
+            )}
           </div>
         </div>
       </div>

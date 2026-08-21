@@ -23,6 +23,7 @@ import { createDocumentReviewExtension, type DocumentReviewDecorationState, type
 import {
   createIndentedHardBreakExtension,
   createWorkspaceImageExtension,
+  insertPastedWorkspaceMarkdownImage,
   normalizeEditorText,
   placeEditorCaretAtClick,
   replaceEditorDocument,
@@ -139,6 +140,9 @@ export function MarkdownEditor({
         'aria-multiline': 'true',
         ...(ariaLabel ? { 'aria-label': ariaLabel } : {}),
       },
+      handlePaste: (view, event) => (
+        modeRef.current === 'rich' && insertPastedWorkspaceMarkdownImage(view, event)
+      ),
       handleKeyDown: (_view, event) => {
         if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 'l' && reviewRef.current) {
           event.preventDefault()

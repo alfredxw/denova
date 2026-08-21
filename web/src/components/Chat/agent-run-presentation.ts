@@ -70,7 +70,7 @@ export function buildAgentRunPresentation(
 
 function isRootRunView(view?: AgentMessageView) {
   if (!view || view.metadata.subagent) return false
-  return view.kind === 'assistant' || isAgentTraceView(view)
+  return view.kind === 'assistant' || isAgentTraceView(view) || isVisibleMediaView(view)
 }
 
 function selectTerminalResultIndex(views: AgentMessageView[], active: boolean) {
@@ -95,7 +95,7 @@ function selectTerminalResultIndex(views: AgentMessageView[], active: boolean) {
 // timeline from several sibling disclosures into a different structure.
 function buildActiveSections(views: AgentMessageView[]): AgentRunPresentationSection[] {
   const sections: AgentRunPresentationSection[] = []
-  appendProcessSection(sections, views, true)
+  appendRunSections(sections, views, true)
   return sections
 }
 
@@ -105,29 +105,51 @@ function buildActiveSections(views: AgentMessageView[]): AgentRunPresentationSec
 // ahead of the narrative would make the completed timeline non-chronological.
 function buildTerminalSections(views: AgentMessageView[], resultIndex: number): AgentRunPresentationSection[] {
   const sections: AgentRunPresentationSection[] = []
-  appendProcessSection(sections, views.slice(0, resultIndex), false)
+  appendRunSections(sections, views.slice(0, resultIndex), false)
   const resultView = views[resultIndex]
   sections.push({
     key: `message-${agentViewStableKey(resultView)}`,
     kind: 'message',
     view: resultView,
   })
-  appendProcessSection(sections, views.slice(resultIndex + 1), false)
+  appendRunSections(sections, views.slice(resultIndex + 1), false)
   return sections
 }
 
-function appendProcessSection(
+function appendRunSections(
   sections: AgentRunPresentationSection[],
   views: AgentMessageView[],
   active: boolean,
 ) {
-  if (views.length === 0) return
-  sections.push({
-    active,
-    key: `process-${agentViewStableKey(views[0])}`,
-    kind: 'process',
-    views,
-  })
+  let processViews: AgentMessageView[] = []
+  const flushProcess = () => {
+    if (processViews.length === 0) return
+    sections.push({
+      active,
+      key: `process-${agentViewStableKey(processViews[0])}`,
+      kind: 'process',
+      views: processViews,
+    })
+    processViews = []
+  }
+  for (const view of views) {
+    if (!isVisibleMediaView(view)) {
+      processViews.push(view)
+      continue
+    }
+    flushProcess()
+    sections.push({
+      key: `message-${agentViewStableKey(view)}`,
+      kind: 'message',
+      view,
+    })
+  }
+  flushProcess()
+}
+
+function isVisibleMediaView(view: AgentMessageView) {
+  return view.kind === 'interactive-image' ||
+    ((view.kind === 'tool' || view.kind === 'tool-result') && !isAgentTraceView(view))
 }
 
 function isActiveRunSlice(views: AgentMessageView[], afterRunIndex: number, isStreaming: boolean) {

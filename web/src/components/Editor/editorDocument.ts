@@ -76,6 +76,27 @@ export function createWorkspaceImageExtension(resolveAsset: (path: string) => st
   })
 }
 
+/**
+ * Treat a copied workspace image reference as Markdown even when the clipboard
+ * also contains a rich-text <pre> fragment from a chat code block.
+ */
+export function insertPastedWorkspaceMarkdownImage(view: EditorView, event: ClipboardEvent): boolean {
+  let markdown = event.clipboardData?.getData('text/plain').trim() || ''
+  const fenced = markdown.match(/^```(?:markdown|md)?\s*\r?\n([\s\S]*?)\r?\n```$/i)
+  if (fenced) markdown = fenced[1].trim()
+
+  const match = markdown.match(/^!\[((?:\\.|[^\]])*)\]\((assets\/[^\s)]*)\)$/)
+  if (!match) return false
+  const imageType = view.state.schema.nodes.image
+  if (!imageType) return false
+
+  const alt = match[1].replace(/\\([\\\]])/g, '$1')
+  const image = imageType.create({ src: match[2], alt, title: alt || undefined })
+  event.preventDefault()
+  view.dispatch(view.state.tr.replaceSelectionWith(image).scrollIntoView())
+  return true
+}
+
 /** 与 StarterKit 中禁用的 hardBreak 对应，保留创作模式的段首缩进渲染。 */
 export function createIndentedHardBreakExtension() {
   return Node.create({

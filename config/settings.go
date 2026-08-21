@@ -201,7 +201,7 @@ func DefaultSettings() Settings {
 		TraceRetentionRuns:          intPtr(DefaultTraceRetentionRuns),
 		AgentModels: AgentModelSettings{
 			IDE:              AgentModelOverride{ThinkingLevel: string(providers.ThinkingLevelMedium)},
-			InteractiveStory: AgentModelOverride{ThinkingLevel: string(providers.ThinkingLevelOff)},
+			InteractiveStory: AgentModelOverride{ThinkingLevel: string(providers.ThinkingLevelMinimal)},
 			ConfigManager:    AgentModelOverride{ThinkingLevel: string(providers.ThinkingLevelMedium)},
 			VersionSummary:   AgentModelOverride{ThinkingLevel: string(providers.ThinkingLevelOff)},
 			ToolAgent:        AgentModelOverride{ThinkingLevel: string(providers.ThinkingLevelOff)},

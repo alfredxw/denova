@@ -25,7 +25,7 @@ Use this Skill when the author requests an illustration for a chapter or the edi
    - `alt_text`: a Chinese description suitable for a Markdown image.
    - `size`: optionally choose a supported 2K, 3K, or 4K size based on the composition; otherwise omit it and use the default policy.
    - `output_format`: `png` or `jpeg`; omit it when uncertain.
-6. After the tool returns, briefly report what was generated and tell the user it can be inserted manually. Do not edit the chapter prose automatically.
+6. After the tool returns, briefly report what was generated and tell the user to use the illustration card's insertion action. Do not repeat the Markdown image reference in a fenced code block. Do not edit the chapter prose automatically.
 
 ## Constraints
 

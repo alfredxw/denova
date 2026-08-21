@@ -116,6 +116,28 @@ func TestRegistrySupportsDeepSeekResponses(t *testing.T) {
 	}
 }
 
+func TestRegistryDeepSeekChatAlwaysReplaysVisibleReasoning(t *testing.T) {
+	registry, err := NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := registry.Resolve(providers.ModelConfig{
+		Provider: providers.ProviderDeepSeek,
+		Protocol: providers.ProtocolOpenAIChatCompletions,
+		Model:    "deepseek-v4-flash",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var compatibility openaichatcompletions.Compatibility
+	if err := providers.DecodeProtocolOptions(resolved.ProtocolOptions, &compatibility); err != nil {
+		t.Fatal(err)
+	}
+	if compatibility.ReasoningReplay != openaichatcompletions.ReasoningReplayAlways {
+		t.Fatalf("DeepSeek reasoning replay = %q, want %q", compatibility.ReasoningReplay, openaichatcompletions.ReasoningReplayAlways)
+	}
+}
+
 func TestDeepSeekPresetsKeepModelAwareXHighEffort(t *testing.T) {
 	registry, err := NewRegistry()
 	if err != nil {

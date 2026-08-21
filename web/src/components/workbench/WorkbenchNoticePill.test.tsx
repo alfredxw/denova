@@ -40,6 +40,7 @@ describe('WorkbenchNoticePill', () => {
     const link = screen.getByRole('link', { name: '点个 Star' })
     expect(link).toHaveAttribute('href', 'https://github.com/alfredxw/denova')
     expect(link).toHaveAttribute('target', '_blank')
+    expect(link.parentElement).toHaveClass('overflow-hidden')
 
     fireEvent.click(link)
     expect(onDismiss).toHaveBeenCalledTimes(1)

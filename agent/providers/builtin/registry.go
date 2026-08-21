@@ -52,8 +52,12 @@ func providerPresets() ([]providers.ProviderPreset, error) {
 		return nil, err
 	}
 	deepSeekChat, err := protocolOptions(openaichatcompletions.Compatibility{
-		ThinkingToggle:        openaichatcompletions.ThinkingToggleNested,
-		ReasoningReplay:       openaichatcompletions.ReasoningReplayToolCalls,
+		ThinkingToggle: openaichatcompletions.ThinkingToggleNested,
+		// DeepSeek requires reasoning from a tool-calling turn on every
+		// subsequent request. Denova may project the completed tool pair while
+		// retaining that assistant message, so replay cannot depend on the call
+		// still being present in the provider-visible projection.
+		ReasoningReplay:       openaichatcompletions.ReasoningReplayAlways,
 		ReasoningContentField: "reasoning_content",
 		EffortMap: map[string]string{
 			"off":     "",

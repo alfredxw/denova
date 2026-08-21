@@ -26,6 +26,7 @@ import {
   hasNativeIndent,
   isMarkdownFile,
   isTxtFile,
+  insertPastedWorkspaceMarkdownImage,
   placeEditorCaretAtClick,
   replaceEditorDocument,
   replaceEditorDocumentWithFreshState,
@@ -147,6 +148,8 @@ export function MarkdownEditor({
     parsedMarkdownDocumentsRef.current = new ParsedMarkdownDocumentCache()
   }
   const initialDocumentRef = useRef({ resourceScope, fileName, content })
+  const activeFileNameRef = useRef(fileName)
+  activeFileNameRef.current = fileName
   const documentReviewTarget = useMemo(() => fileName ? { kind: 'workspace_file' as const, id: fileName } : null, [fileName])
   const updateReviewPortalTargets = useCallback((targets: DocumentReviewPortalTarget[]) => {
     setReviewPortalTargets((current) => sameReviewPortalTargets(current, targets) ? current : targets)
@@ -183,6 +186,9 @@ export function MarkdownEditor({
     content,
     contentType: 'markdown',
     editorProps: {
+      handlePaste: (view, event) => (
+        isMarkdownFile(activeFileNameRef.current) && insertPastedWorkspaceMarkdownImage(view, event)
+      ),
       handleClick: (view, position, event) => {
         placeEditorCaretAtClick(view, position, event)
         // Keep review-highlight and future extension click handlers in the same event chain.

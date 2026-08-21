@@ -25,18 +25,23 @@ import {
   modelProfileLabel,
 } from './model-profiles'
 import type { ModelCatalog, ModelProfileSettings, ModelProviderPreset } from './types'
+import { nextProfileIDAfterRemoval } from './profile-list'
 
 const DEFAULT_CONTEXT_WINDOW_TOKENS = 400000
 const MIN_CONTEXT_WINDOW_TOKENS = 1024
 const MAX_CONTEXT_WINDOW_TOKENS = 2000000
 const CONTEXT_WINDOW_PRESETS = [200000, DEFAULT_CONTEXT_WINDOW_TOKENS, 1000000]
+const INHERIT_VALUE = '__inherit__'
 const PROVIDER_DEFAULT_PROTOCOL = '__provider_default__'
 const PROVIDER_DEFAULT_SESSION_KEY_MAPPING = '__provider_default__'
 const EMPTY_MODEL_CATALOG: ModelCatalog = { providers: [], protocols: FALLBACK_MODEL_PROTOCOLS }
 
-export function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
+export function ModelProfilesEditor({ profiles, effectiveProfiles, defaultProfileID, effectiveDefaultProfileID, onDefaultProfileChange, onChange }: {
   profiles: ModelProfileSettings[]
   effectiveProfiles: ModelProfileSettings[]
+  defaultProfileID: string
+  effectiveDefaultProfileID: string
+  onDefaultProfileChange: (profileID: string) => void
   onChange: (profiles: ModelProfileSettings[]) => void
 }) {
   const { t } = useTranslation()
@@ -51,6 +56,11 @@ export function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
     }
     return profileKeysRef.current
   }, [profiles.length])
+  const profileOptions = modelProfileOptions(profiles, effectiveProfiles)
+  const selectedDefaultProfileID = defaultProfileID || effectiveDefaultProfileID || DEFAULT_MODEL_PROFILE_ID
+  const effectiveDefaultLabel = profileOptions.find((profile) => profile.id === effectiveDefaultProfileID)?.label
+    || effectiveDefaultProfileID
+    || DEFAULT_MODEL_PROFILE_ID
 
   useEffect(() => {
     const request = new AbortController()
@@ -77,10 +87,14 @@ export function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
     const previousID = modelProfileID(profile)
     const previousModel = profile?.model?.trim() ?? ''
     const shouldSyncID = !previousID || previousID === previousModel
+    const nextID = shouldSyncID ? model : profile?.id
     updateProfile(index, {
-      id: shouldSyncID ? model : profile?.id,
+      id: nextID,
       model,
     })
+    if (shouldSyncID && previousID && selectedDefaultProfileID === previousID && nextID !== previousID) {
+      onDefaultProfileChange(nextID || '')
+    }
   }
   const updateProfileProvider = (index: number, provider: string) => {
     const profile = profiles[index]
@@ -99,6 +113,10 @@ export function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
     })
   }
   const removeProfile = (index: number) => {
+    const removedID = modelProfileID(profiles[index])
+    if (removedID && selectedDefaultProfileID === removedID) {
+      onDefaultProfileChange(nextProfileIDAfterRemoval(profiles, index, modelProfileID))
+    }
     profileKeysRef.current.splice(index, 1)
     onChange(profiles.filter((_, profileIndex) => profileIndex !== index))
   }
@@ -110,13 +128,24 @@ export function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
         {t('settings.model.routingHint')}
       </div>
       <div className="flex flex-col gap-2">
+        <ModelProfileField label={t('settings.model.defaultProfile')}>
+          <Select value={defaultProfileID || INHERIT_VALUE} onValueChange={(value) => onDefaultProfileChange(value === INHERIT_VALUE ? '' : value)}>
+            <SelectTrigger size="sm" className="w-full"><SelectValue /></SelectTrigger>
+            <SelectContent className="nova-panel border text-[var(--nova-text)]">
+              <SelectGroup>
+                <SelectItem value={INHERIT_VALUE}>{t('common.inherit', { value: effectiveDefaultLabel })}</SelectItem>
+                {profileOptions.map((profile) => <SelectItem key={profile.id} value={profile.id}>{profile.label}</SelectItem>)}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        </ModelProfileField>
         {profiles.length === 0 && (
           <div className="rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2.5 py-2 text-[var(--nova-text-faint)]">
             {t('settings.model.profileEmpty', { count: effectiveProfiles.length || 1 })}
           </div>
         )}
         {profiles.map((profile, index) => {
-          const isDefaultProfile = modelProfileID(profile) === DEFAULT_MODEL_PROFILE_ID
+          const isDefaultProfile = modelProfileID(profile) === selectedDefaultProfileID
           return (
             <div key={profileKeys[index]} className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)]">
               <div className="flex items-center gap-2 px-2.5 py-2">
@@ -272,6 +301,15 @@ export function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
       </div>
     </div>
   )
+}
+
+function modelProfileOptions(profiles: ModelProfileSettings[], effectiveProfiles: ModelProfileSettings[]): Array<{ id: string; label: string }> {
+  const options = new Map<string, string>()
+  for (const profile of [...effectiveProfiles, ...profiles]) {
+    const id = modelProfileID(profile)
+    if (id) options.set(id, modelProfileLabel(profile) || id)
+  }
+  return Array.from(options, ([id, label]) => ({ id, label }))
 }
 
 function ProviderPicker({ label, providers, value, placeholder, onChange }: {

@@ -70,6 +70,7 @@ export function imageAPIProfileLabel(profile?: ImageAPIProfileSettings): string 
 }
 
 export function imageAPIProfilesWithDefault(settings?: {
+  default_image_api_profile_id?: string
   image_api_profiles?: ImageAPIProfileSettings[]
 }): ImageAPIProfileSettings[] {
   const profiles = settings?.image_api_profiles ?? []
@@ -81,7 +82,8 @@ export function imageAPIProfilesWithDefault(settings?: {
     if (id === DEFAULT_IMAGE_API_PROFILE_ID) hasDefault = true
     out.push({ ...profile, id, provider: imageAPIProvider(profile.provider) })
   }
-  if (!hasDefault) {
+  const selectedDefaultID = settings?.default_image_api_profile_id?.trim() || DEFAULT_IMAGE_API_PROFILE_ID
+  if (!hasDefault && (profiles.length === 0 || selectedDefaultID === DEFAULT_IMAGE_API_PROFILE_ID)) {
     out.unshift({ id: DEFAULT_IMAGE_API_PROFILE_ID, ...newImageAPIProfile() })
   }
   return out

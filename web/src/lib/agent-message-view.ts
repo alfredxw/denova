@@ -259,7 +259,12 @@ export function agentViewNavigationAnchor(view: AgentMessageView) {
 
 export function isAgentTraceView(view: AgentMessageView) {
   if (view.kind === 'interactive-image') return false
-  if (view.metadata.tool_presentation?.call === 'interactive_media' || view.metadata.tool_presentation?.result === 'interactive_media') return false
+  if (
+    view.metadata.tool_presentation?.call === 'image' ||
+    view.metadata.tool_presentation?.result === 'image' ||
+    view.metadata.tool_presentation?.call === 'interactive_media' ||
+    view.metadata.tool_presentation?.result === 'interactive_media'
+  ) return false
   return view.kind === 'reasoning' || view.kind === 'tool' || view.kind === 'tool-result' ||
     (view.kind === 'ask' && agentViewAskInteraction(view)?.kind === 'tool_approval')
 }
@@ -425,7 +430,8 @@ export function agentViewToRenderMessage(view: AgentMessageView, options: { forc
         status,
         result,
         ask: view.approval,
-        illustration: readChapterIllustration(objectData(raw.toolMetadata).illustration),
+        illustration: readChapterIllustration(objectData(raw.toolMetadata).illustration)
+          || readChapterIllustration(view.output),
         streaming,
         ...meta,
       }
@@ -447,7 +453,8 @@ export function agentViewToRenderMessage(view: AgentMessageView, options: { forc
         content: view.content,
         name: view.toolName || readString(data.name),
         result: readString(data.result) || view.content,
-        illustration: readChapterIllustration(data.illustration),
+        illustration: readChapterIllustration(data.illustration)
+          || readChapterIllustration(readString(data.result) || view.content),
         status,
         streaming,
         ...meta,
@@ -707,7 +714,14 @@ function stringifyOutput(output: unknown) {
 }
 
 function readChapterIllustration(value: unknown): ChapterIllustration | undefined {
-  const data = objectData(value)
+  let data = objectData(value)
+  if (typeof value === 'string') {
+    try {
+      data = objectData(JSON.parse(value))
+    } catch {
+      return undefined
+    }
+  }
   const schema = readString(data.schema)
   const imagePath = readString(data.image_path)
   if (!schema || !imagePath) return undefined

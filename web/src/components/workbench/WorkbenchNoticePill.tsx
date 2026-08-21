@@ -31,7 +31,7 @@ export function WorkbenchNoticePill({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 4 }}
       transition={{ duration: 0.16 }}
-      className={`relative z-20 flex items-center rounded-[var(--nova-radius)] border bg-[var(--nova-surface)]/95 text-[11px] text-[var(--nova-text)] shadow-[var(--nova-shadow)] backdrop-blur ${isStarNotice ? 'border-[var(--nova-warning)]' : 'border-[var(--nova-accent)]'} ${expanded ? 'w-full' : 'w-44 -translate-x-1'}`}
+      className={`relative z-20 flex items-center overflow-hidden rounded-[var(--nova-radius)] border bg-[var(--nova-surface)]/95 text-[11px] text-[var(--nova-text)] shadow-[var(--nova-shadow)] backdrop-blur ${isStarNotice ? 'border-[var(--nova-warning)]' : 'border-[var(--nova-accent)]'} ${expanded ? 'w-full' : 'w-44 -translate-x-1'}`}
     >
       {notice.kind === 'update' ? (
         <button

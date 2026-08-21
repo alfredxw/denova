@@ -1122,6 +1122,42 @@ describe('MessageItem', () => {
     expect(screen.getByRole('button', { name: /插入正文/ })).toBeDisabled()
   })
 
+  it('没有正文编辑器时允许复制干净的 Markdown 图片引用', async () => {
+    const user = userEvent.setup()
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    })
+
+    render(
+      <MessageItem
+        message={{
+          role: 'tool_call',
+          content: 'generate_image',
+          name: 'generate_image',
+          status: 'success',
+          tool_presentation: { call: 'image', result: 'image' },
+          illustration: {
+            schema: 'chapter_illustration.v1',
+            chapter_path: 'chapters/ch01.md',
+            image_path: 'assets/illustrations/ch01/run/image.png',
+            meta_path: 'assets/illustrations/ch01/run/meta.json',
+            markdown: '![雨夜](assets/illustrations/ch01/run/image.png)',
+            alt_text: '雨夜',
+            profile_id: 'default',
+            provider: 'openai',
+            model: 'gpt-image-1',
+          },
+        }}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: '复制图片引用' }))
+    expect(writeText).toHaveBeenCalledWith('![雨夜](assets/illustrations/ch01/run/image.png)')
+    expect(screen.getByRole('button', { name: '图片引用已复制' })).toBeInTheDocument()
+  })
+
   it('工具调用流式预览默认锁定到底部', async () => {
     const initialContent = `完整起点。${'开头。'.repeat(250)}完整终点。`
     const nextContent = `${initialContent}${'继续。'.repeat(160)}新的完整终点。`

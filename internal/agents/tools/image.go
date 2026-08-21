@@ -380,6 +380,30 @@ func parseChapterIllustrationToolResult(toolName, content string) (*imageasset.I
 	if body == "" {
 		return nil, nil
 	}
+	var envelope struct {
+		Schema       string `json:"schema"`
+		ResultSchema string `json:"result_schema"`
+	}
+	if err := json.Unmarshal([]byte(body), &envelope); err != nil {
+		return nil, err
+	}
+	if envelope.Schema == generatedImageReceiptSchema && envelope.ResultSchema == imageasset.IllustrationResultSchema {
+		var receipt generatedImageReceiptDetails
+		if err := json.Unmarshal([]byte(body), &receipt); err != nil {
+			return nil, err
+		}
+		if len(receipt.Images) == 0 || strings.TrimSpace(receipt.Images[0].Path) == "" {
+			return nil, nil
+		}
+		image := receipt.Images[0]
+		return &imageasset.IllustrationResult{
+			Schema: receipt.ResultSchema, ChapterPath: receipt.ChapterPath,
+			ImagePath: image.Path, MetaPath: image.MetaPath, Markdown: image.Markdown, AltText: image.AltText,
+			ProfileID: receipt.ProfileID, Provider: receipt.Provider, Model: receipt.Model,
+			Size: receipt.Size, Quality: receipt.Quality, OutputFormat: receipt.OutputFormat, CreatedAt: receipt.CreatedAt,
+			MIMEType: image.MIMEType, SizeBytes: image.SizeBytes,
+		}, nil
+	}
 	var result imageasset.IllustrationResult
 	if err := json.Unmarshal([]byte(body), &result); err != nil {
 		return nil, err
@@ -407,6 +431,13 @@ func parseGeneratedImageToolTarget(toolName, content string) string {
 	if body == "" {
 		return ""
 	}
+	var receipt generatedImageReceiptDetails
+	if err := json.Unmarshal([]byte(body), &receipt); err == nil && receipt.Schema == generatedImageReceiptSchema {
+		if len(receipt.Images) == 0 {
+			return ""
+		}
+		return strings.TrimSpace(receipt.Images[0].Path)
+	}
 	var result generatedImageToolResult
 	if err := json.Unmarshal([]byte(body), &result); err != nil || result.Schema != generatedImageResultSchema {
 		return ""
@@ -432,6 +463,30 @@ func parseInteractiveImageToolResult(toolName, content string) (*imageasset.Inte
 	}
 	if body == "" {
 		return nil, nil
+	}
+	var envelope struct {
+		Schema       string `json:"schema"`
+		ResultSchema string `json:"result_schema"`
+	}
+	if err := json.Unmarshal([]byte(body), &envelope); err != nil {
+		return nil, err
+	}
+	if envelope.Schema == generatedImageReceiptSchema && envelope.ResultSchema == imageasset.InteractiveResultSchema {
+		var receipt generatedImageReceiptDetails
+		if err := json.Unmarshal([]byte(body), &receipt); err != nil {
+			return nil, err
+		}
+		if len(receipt.Images) == 0 || strings.TrimSpace(receipt.Images[0].Path) == "" {
+			return nil, nil
+		}
+		image := receipt.Images[0]
+		return &imageasset.InteractiveResult{
+			Schema: receipt.ResultSchema, StoryID: receipt.StoryID, BranchID: receipt.BranchID, TurnID: receipt.TurnID,
+			ImagePath: image.Path, MetaPath: image.MetaPath, AltText: image.AltText,
+			ProfileID: receipt.ProfileID, Provider: receipt.Provider, Model: receipt.Model,
+			Size: receipt.Size, Quality: receipt.Quality, OutputFormat: receipt.OutputFormat, CreatedAt: receipt.CreatedAt,
+			MIMEType: image.MIMEType, SizeBytes: image.SizeBytes,
+		}, nil
 	}
 	var result imageasset.InteractiveResult
 	if err := json.Unmarshal([]byte(body), &result); err != nil {

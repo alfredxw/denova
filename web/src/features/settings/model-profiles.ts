@@ -66,6 +66,7 @@ export function modelProfilesWithDefault(settings?: {
   openai_model?: string
   openai_context_window_tokens?: number | null
   model_profiles?: ModelProfileSettings[]
+  agent_models?: { default?: { profile_id?: string } }
 }): ModelProfileSettings[] {
   const profiles = settings?.model_profiles ?? []
   const defaultProfile = defaultModelProfileFromSettings(settings)
@@ -85,7 +86,8 @@ export function modelProfilesWithDefault(settings?: {
       out.push(normalizeModelProfileRouting({ ...profile, id }))
     }
   }
-  if (!hasDefault) {
+  const selectedDefaultID = settings?.agent_models?.default?.profile_id?.trim() || DEFAULT_MODEL_PROFILE_ID
+  if (!hasDefault && (profiles.length === 0 || selectedDefaultID === DEFAULT_MODEL_PROFILE_ID)) {
     out.unshift(defaultProfile)
   }
   return out

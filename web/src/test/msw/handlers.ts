@@ -10,7 +10,7 @@ function conversationConfigSnapshot(mode: string, changes: Record<string, unknow
           ? 'general'
           : 'ide',
     profile_id: 'default',
-    thinking_level: mode === 'interactive' ? 'off' : 'medium',
+    thinking_level: mode === 'interactive' ? 'minimal' : 'medium',
     approval_mode: 'write',
     ...changes,
     revision,

@@ -19,6 +19,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/alfredxw/denova/agent/internal/localfs"
 	"github.com/alfredxw/denova/agent/session"
 	"github.com/gofrs/flock"
 )
@@ -161,7 +162,7 @@ func (store *Store) Delete(ctx context.Context, key session.Key) error {
 			return fmt.Errorf("delete Agent Session file: %w", err)
 		}
 	}
-	return syncDirectory(store.root)
+	return localfs.SyncDirectory(store.root)
 }
 
 func (store *Store) baseForKey(key session.Key) (string, [sha256.Size]byte, error) {
@@ -429,7 +430,7 @@ func commitAtomicFile(path string, data []byte) error {
 		return err
 	}
 	committed = true
-	return syncDirectory(filepath.Dir(path))
+	return localfs.SyncDirectory(filepath.Dir(path))
 }
 
 func writeAll(file *os.File, data []byte) error {
@@ -444,14 +445,6 @@ func writeAll(file *os.File, data []byte) error {
 		data = data[written:]
 	}
 	return nil
-}
-
-func syncDirectory(path string) error {
-	directory, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	return errors.Join(directory.Sync(), directory.Close())
 }
 
 var fallbackSequence atomic.Uint64

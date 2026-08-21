@@ -9,20 +9,25 @@ import type { ImageAPIProfileSettings } from './types'
 
 vi.mock('./ImageProfilePingButton', () => ({ ImageProfilePingButton: () => null }))
 
-function EditorHarness() {
-  const [profiles, setProfiles] = useState<ImageAPIProfileSettings[]>([{
+function EditorHarness({ initialProfiles = [{
     id: 'default',
     ...newImageAPIProfile(),
-  }])
+  }], initialDefaultProfileID = 'default' }: {
+  initialProfiles?: ImageAPIProfileSettings[]
+  initialDefaultProfileID?: string
+} = {}) {
+  const [profiles, setProfiles] = useState<ImageAPIProfileSettings[]>(initialProfiles)
+  const [defaultProfileID, setDefaultProfileID] = useState(initialDefaultProfileID)
   return (
     <>
+      <output data-testid="default-profile-id">{defaultProfileID}</output>
       <output data-testid="profile-ids">{profiles.map(imageAPIProfileID).join(',')}</output>
       <ImageAPIProfilesEditor
         profiles={profiles}
         effectiveProfiles={profiles}
-        defaultProfileID="default"
+        defaultProfileID={defaultProfileID}
         effectiveDefaultProfileID="default"
-        onDefaultProfileChange={() => undefined}
+        onDefaultProfileChange={setDefaultProfileID}
         onChange={setProfiles}
       />
     </>
@@ -86,6 +91,19 @@ describe('ImageAPIProfilesEditor', () => {
     expect(screen.getByText('执行前会自动注入提示词和常用尺寸参数。')).toBeInTheDocument()
   })
 
+  it('keeps the native workflow input out of the settings layout', async () => {
+    const user = userEvent.setup()
+    const { container } = render(<EditorHarness />)
+    await user.click(screen.getByRole('combobox', { name: '服务商' }))
+    await user.click(screen.getByRole('option', { name: 'ComfyUI' }))
+    await user.click(screen.getByRole('combobox', { name: '工作流' }))
+    await user.click(screen.getByRole('option', { name: '上传 API Format' }))
+
+    const input = container.querySelector<HTMLInputElement>('input[type="file"]')
+    expect(input).toHaveClass('hidden')
+    expect(screen.getByRole('button', { name: '选择 JSON' })).toBeInTheDocument()
+  })
+
   it('assigns stable unique IDs to newly added profiles', async () => {
     const user = userEvent.setup()
     render(<EditorHarness />)
@@ -94,5 +112,19 @@ describe('ImageAPIProfilesEditor', () => {
     await user.click(screen.getByRole('button', { name: '添加图像模型' }))
 
     expect(screen.getByTestId('profile-ids')).toHaveTextContent('default,gpt-image-2,gpt-image-2-2')
+  })
+
+  it('promotes the next image model without changing its stable ID when the default is deleted', async () => {
+    const user = userEvent.setup()
+    render(<EditorHarness initialProfiles={[
+      { id: 'default', name: 'Primary', provider: 'openai', model: 'image-a' },
+      { id: 'fast-image', name: 'Fast image', provider: 'xai', model: 'image-b' },
+      { id: 'quality-image', name: 'Quality image', provider: 'google', model: 'image-c' },
+    ]} />)
+
+    await user.click(screen.getAllByRole('button', { name: '删除图像模型' })[0])
+
+    expect(screen.getByTestId('default-profile-id')).toHaveTextContent('fast-image')
+    expect(screen.getByTestId('profile-ids')).toHaveTextContent('fast-image,quality-image')
   })
 })

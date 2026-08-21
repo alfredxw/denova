@@ -63,6 +63,8 @@ describe('AgentSubAgentSessionPanel', () => {
     expect(screen.getByText('先读取待审章节。')).toBeInTheDocument()
     expect(screen.getByText('继续核对上下文。')).toBeInTheDocument()
     expect(screen.getByText('审稿完成。')).toBeInTheDocument()
+    expect(screen.getByText('general-purpose 子会话')).toBeInTheDocument()
+    expect(screen.queryByText('general-purpose')).not.toBeInTheDocument()
   })
 
   it('lets the active sub-agent row grow into its reserved response runway', () => {
