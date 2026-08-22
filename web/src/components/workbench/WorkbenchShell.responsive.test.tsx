@@ -99,6 +99,7 @@ describe('WorkbenchShell responsive main content', () => {
     const expandedToggle = screen.getByRole('button', { name: '收起' })
     const expandedToggleIconClass = expandedToggle.querySelector('svg')?.getAttribute('class')
     expect(expandedSidebar).toHaveAttribute('data-state', 'expanded')
+    expect(container.querySelector('[data-slot="sidebar-container"]')).toHaveClass('border-r-0!')
     expect(expandedToggle).toHaveAttribute('data-activity-bar-toggle', 'true')
     expect(expandedToggleIconClass).not.toContain('rotate')
     expect(expandedToggleIconClass).not.toContain('transition-transform')
