@@ -292,3 +292,89 @@ No actionable P0, P1, or P2 differences remain.
 None required for this scope.
 
 final result: passed
+
+# Design QA: Writing sidebar section dividers
+
+## Evidence
+
+- Source visual truth: `/var/folders/3p/tw35s8456m1033g5yxdztf_m0000gn/T/codex-clipboard-5195f4e5-365a-4d73-8e59-229700ca0b53.png` (`628 × 492` pixels at `2×`, normalized to `314 × 246` CSS pixels).
+- Browser-rendered implementation: `/Users/bytedance/Code/github/denova/docs/design-qa/writing-sidebar-no-section-dividers.png` (`1280 × 720` CSS/captured pixels at `1×`).
+- Focused implementation crop: `/Users/bytedance/Code/github/denova/docs/design-qa/writing-sidebar-implementation-focus.png` (`314 × 246` pixels).
+- Side-by-side comparison, source left and implementation right: `/Users/bytedance/Code/github/denova/docs/design-qa/writing-sidebar-comparison.png` (`628 × 246` pixels).
+- State: light theme, Writing outline view, book settings pinned, desktop sidebar.
+
+## Comparison
+
+The focused source and implementation were opened together at the same normalized size. The two requested horizontal dividers are absent in the implementation: one below the sidebar view switcher and one below the book-settings shortcuts. The vertical boundary between the sidebar and editor remains intact. No unrelated spacing, typography, controls, or content changed.
+
+## Required fidelity surfaces
+
+- Fonts and typography: existing font family, sizes, weights, line heights, and truncation are unchanged.
+- Spacing and layout rhythm: switcher and book-settings padding and heights are unchanged; only the two `border-bottom` declarations were removed.
+- Colors and visual tokens: existing surface, text, active, hover, and vertical-border tokens remain unchanged.
+- Image quality and asset fidelity: the target contains no product imagery or new assets; existing Lucide icons are unchanged.
+- Copy and content: all Chinese and English labels remain unchanged; no new user-visible copy was introduced.
+
+## Findings
+
+No actionable P0, P1, or P2 differences remain. The only visible differences from the supplied screenshot are the two intentionally removed horizontal dividers.
+
+## Interaction and responsive checks
+
+- Switched between `项目文件` and `作品目录` after the change.
+- Opened and closed the book-settings management menu.
+- Verified at `1280 × 720` and `430 × 800`; the narrow viewport has no horizontal overflow.
+- Computed styles report `0px` bottom borders for both target regions and retain the sidebar's `1px` right border.
+- Browser console warnings/errors: none.
+- Focused component tests: 14 passed.
+- Frontend production build: passed.
+
+## Comparison history
+
+- Single implementation pass: the focused comparison confirmed both requested dividers were removed without introducing any new P0/P1/P2 issue.
+
+final result: passed
+
+# Design QA: Tool card shadow trail
+
+## Evidence
+
+- Source visual truth: `/var/folders/3p/tw35s8456m1033g5yxdztf_m0000gn/T/codex-clipboard-016e4fd7-4ef0-4c29-9d77-afd00de2b0b2.png` (`686 × 968` pixels at `2×`, normalized to `343 × 484` CSS pixels).
+- Browser-rendered full implementation: `/Users/bytedance/Code/github/denova/docs/design-qa/tool-card-shadow-after-aligned.png` (`1280 × 720` CSS/captured pixels at `1×`).
+- Focused implementation crop: `/Users/bytedance/Code/github/denova/docs/design-qa/tool-card-shadow-implementation-focus.png` (`343 × 484` pixels).
+- Side-by-side focused comparison, source left and implementation right: `/Users/bytedance/Code/github/denova/docs/design-qa/tool-card-shadow-comparison.png` (`686 × 484` pixels).
+- State: light theme, Writing Agent panel, completed execution process expanded to eight tool cards, first card aligned near the top of the message viewport.
+
+## Findings
+
+No actionable P0, P1, or P2 differences remain. The source showed a P2 elevation mismatch: compact tool cards reused the dialog-level `--nova-shadow` (`0 18px 44px rgba(0, 0, 0, 0.14)` in light theme), so adjacent shadows overlapped into broad gray trails. The implementation now uses the established Tailwind `shadow-sm` card elevation (`0 1px 3px` plus `0 1px 2px -1px`).
+
+## Required fidelity surfaces
+
+- Fonts and typography: existing families, sizes, weights, line heights, labels, and truncation are unchanged.
+- Spacing and layout rhythm: card dimensions, padding, gaps, radii, borders, and execution-process layout are unchanged. Only shadow elevation and spread changed.
+- Colors and visual tokens: existing surfaces, borders, text, and green success treatment are unchanged. The compact shadow remains neutral in both light and dark themes.
+- Image quality and asset fidelity: no image assets are present or changed; existing Lucide status icons remain intact.
+- Copy and content: tool names, paths, thought previews, and localized labels are unchanged.
+
+## Interaction and responsive checks
+
+- Expanded and collapsed a completed `读取` tool card; `aria-expanded` changed from `false` to `true` and back.
+- Verified the same eight-card sequence in light and dark themes, then restored the original light theme.
+- Verified at `1280 × 720` and `430 × 800`; the narrow viewport has no horizontal overflow.
+- Computed light- and dark-theme card shadows remain within a 3px blur and 1px vertical offset.
+- Browser console warnings/errors: none.
+- Focused component tests: 76 passed.
+- Frontend production build: passed.
+
+## Comparison history
+
+1. Initial P2: the screenshot and live page both showed broad gray trails under every compact tool card. Computed evidence confirmed the dialog-level `18px / 44px` shadow.
+2. Fix: changed tool execution and standalone tool-result cards to `shadow-sm` while preserving all other card styling.
+3. Post-fix: the normalized side-by-side comparison shows clean separation between cards with no lingering shadow bands; no new P0/P1/P2 issue was found.
+
+## Follow-up polish
+
+None required for this scope.
+
+final result: passed

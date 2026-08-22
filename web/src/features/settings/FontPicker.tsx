@@ -1,9 +1,10 @@
-import { ChevronsUpDown, Laptop, Loader2 } from 'lucide-react'
+import { ChevronDown, Laptop, Loader2 } from 'lucide-react'
 import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { SELECT_TRIGGER_CLASS_NAME } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import {
   customFontFamilyFromValue,
@@ -117,15 +118,14 @@ export function FontPicker({
           disabled={disabled}
           aria-expanded={open}
           aria-label={t('settings.font.openPicker', { font: selectedName })}
-          className={cn('w-full min-w-0 justify-between font-normal', className)}
+          className={cn(
+            SELECT_TRIGGER_CLASS_NAME,
+            'w-full min-w-0 font-normal hover:bg-transparent aria-expanded:bg-transparent aria-expanded:text-inherit dark:aria-expanded:bg-input/30',
+            className,
+          )}
         >
-          <span
-            className="truncate"
-            style={{ fontFamily: fontStackFor(value || inherited, 'apple-system') }}
-          >
-            {selectedName}
-          </span>
-          <ChevronsUpDown className="opacity-50" />
+          <span className="truncate">{selectedName}</span>
+          <ChevronDown className="pointer-events-none size-4 text-muted-foreground" />
         </Button>
       </PopoverTrigger>
       <PopoverContent

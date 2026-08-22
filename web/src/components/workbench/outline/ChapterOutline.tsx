@@ -225,7 +225,7 @@ export function ChapterOutline({
   const chapterCountLabel = useCallback((count: number) => t('common.chapters', { count }), [t])
 
   const bookSettingsHeaderFrame = (
-    <div data-testid="book-settings-header-frame" className="shrink-0 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] p-2">
+    <div data-testid="book-settings-header-frame" className="shrink-0 bg-[var(--nova-surface)] p-2">
       <BookSettingsShortcuts
         projectId={projectId}
         tree={tree}

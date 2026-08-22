@@ -32,7 +32,8 @@ describe('FontPicker', () => {
     render(<FontPicker value="apple-system" onValueChange={onValueChange} />)
 
     const trigger = screen.getByRole('combobox', { name: '选择字体，当前：Apple / 苹方' })
-    expect(within(trigger).getByText('Apple / 苹方').getAttribute('style')).toContain('SF Pro Text')
+    expect(trigger).toHaveClass('h-7', 'border-input', 'bg-transparent', 'text-sm', 'font-normal')
+    expect(within(trigger).getByText('Apple / 苹方')).not.toHaveAttribute('style')
 
     await user.click(trigger)
     await user.click(screen.getByRole('option', { name: '系统无衬线（推荐）' }))
