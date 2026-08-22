@@ -38,6 +38,7 @@ interface ProjectFileTreeViewProps extends Omit<ComponentPropsWithRef<'div'>, 'c
   }) => boolean)
   onActivate?: (node: NodeApi<ProjectFileExplorerNode>) => void
   onToggle?: (id: string) => void
+  onScrollOffsetChange?: (scrollOffset: number) => void
   onRename?: (args: { node: NodeApi<ProjectFileExplorerNode>; name: string }) => void | Promise<void>
   onMove?: (args: { dragNodes: NodeApi<ProjectFileExplorerNode>[]; parentId: string | null; index: number }) => void | Promise<void>
   renderNode: ElementType<NodeRendererProps<ProjectFileExplorerNode>>
@@ -67,6 +68,7 @@ export function ProjectFileTreeView({
   disableDrop,
   onActivate,
   onToggle,
+  onScrollOffsetChange,
   onRename,
   onMove,
   renderNode,
@@ -121,6 +123,7 @@ export function ProjectFileTreeView({
       disableDrop={disableDrop}
       onActivate={onActivate}
       onToggle={onToggle}
+      onScroll={onScrollOffsetChange ? ({ scrollOffset }) => onScrollOffsetChange(scrollOffset) : undefined}
       onRename={onRename}
       onMove={onMove}
       renderRow={renderRow}

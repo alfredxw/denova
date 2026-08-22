@@ -1,10 +1,12 @@
-import type { KeyboardEventHandler, PointerEventHandler, ReactNode } from 'react'
+import { useState, type KeyboardEventHandler, type PointerEventHandler, type ReactNode } from 'react'
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { PanelLeft, Settings } from 'lucide-react'
+import { EyeOff, PanelLeft, Settings, SlidersHorizontal } from 'lucide-react'
 import { LayoutGroup, motion } from 'motion/react'
+import { useTranslation } from 'react-i18next'
 
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu'
 import {
   Sidebar,
   SidebarContent,
@@ -19,6 +21,7 @@ import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { novaEase } from '@/features/motion/motion-tokens'
 import { cn } from '@/lib/utils'
+import { WorkbenchSidebarCustomizationDialog } from './WorkbenchSidebarCustomizationDialog'
 
 export interface WorkbenchSidebarItem {
   id: string
@@ -32,6 +35,8 @@ interface WorkbenchAppSidebarProps {
   expanded: boolean
   activityOrderScope: string
   activityItems: WorkbenchSidebarItem[]
+  customizationItems: WorkbenchSidebarItem[]
+  hiddenActivityIDs: string[]
   dragDisabled: boolean
   contextSwitcher: ReactNode
   notice?: ReactNode
@@ -47,6 +52,8 @@ interface WorkbenchAppSidebarProps {
   onOpenSettings: () => void
   onToggle: () => void
   onReorder: (activeID: string, overID: string) => void
+  onCustomizationReorder: (activeID: string, overID: string) => void
+  onActivityVisibilityChange: (id: string, visible: boolean) => void
   onResizePointerDown: PointerEventHandler<HTMLDivElement>
   onResizeKeyDown: KeyboardEventHandler<HTMLDivElement>
 }
@@ -58,6 +65,8 @@ export function WorkbenchAppSidebar({
   expanded,
   activityOrderScope,
   activityItems,
+  customizationItems,
+  hiddenActivityIDs,
   dragDisabled,
   contextSwitcher,
   notice,
@@ -73,15 +82,21 @@ export function WorkbenchAppSidebar({
   onOpenSettings,
   onToggle,
   onReorder,
+  onCustomizationReorder,
+  onActivityVisibilityChange,
   onResizePointerDown,
   onResizeKeyDown,
 }: WorkbenchAppSidebarProps) {
+  const { t } = useTranslation()
+  const [customizationOpen, setCustomizationOpen] = useState(false)
+  const [contextActivityID, setContextActivityID] = useState<string | null>(null)
   const sensors = useSensors(
     // Keep the complete row draggable while allowing small pointer movement during clicks.
     useSensor(PointerSensor, { activationConstraint: { distance: 10 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
   const sortableIDs = activityItems.map((item) => sortableActivityID(activityOrderScope, item.id))
+  const contextActivity = activityItems.find((item) => item.id === contextActivityID)
 
   const handleDragEnd = (event: DragEndEvent) => {
     const activeID = activityIDFromSortable(event.active.id, activityOrderScope)
@@ -92,69 +107,104 @@ export function WorkbenchAppSidebar({
   return (
     <LayoutGroup id="workbench-activity-bar">
       <DndContext key={activityOrderScope} sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-        <Sidebar
-          collapsible="icon"
-          className="nova-activity-bar border-r-0! text-[var(--nova-text-muted)]"
-          role="navigation"
-          aria-label={sidebarLabel}
-        >
-          <SidebarHeader className="select-none gap-2 p-2">
-            <ActivityBarBrandRow expanded={expanded} toggleLabel={toggleLabel} onToggle={onToggle} />
-            {contextSwitcher}
-          </SidebarHeader>
-          <SidebarContent>
-            <SidebarGroup className="p-2">
-              <SidebarMenu>
-                <SortableContext key={activityOrderScope} items={sortableIDs} strategy={verticalListSortingStrategy}>
-                  {activityItems.map((item) => {
-                    const sortableID = sortableActivityID(activityOrderScope, item.id)
-                    return (
-                      <SidebarMenuItem key={sortableID}>
-                        <SortableActivityButton
-                          id={sortableID}
-                          activityID={item.id}
-                          dragDisabled={dragDisabled}
-                          expanded={expanded}
-                          label={item.label}
-                          onClick={item.onClick}
-                          active={item.active}
-                        >
-                          {item.icon}
-                        </SortableActivityButton>
-                      </SidebarMenuItem>
-                    )
-                  })}
-                </SortableContext>
-              </SidebarMenu>
-            </SidebarGroup>
-          </SidebarContent>
-          <SidebarFooter className="gap-1 p-2">
-            {notice}
-            <SidebarMenu>
-              <SidebarMenuItem>{messageCenter}</SidebarMenuItem>
-              <SidebarMenuItem>
-                <ActivityButton expanded={expanded} label={settingsLabel} onClick={onOpenSettings} active={settingsActive} data-onboarding-anchor="activity-settings">
-                  <Settings data-icon="inline-start" />
-                </ActivityButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-            {expanded ? (
-              <div
-                role="separator"
-                tabIndex={0}
-                aria-label={resizeLabel}
-                aria-orientation="vertical"
-                aria-valuemin={minWidth}
-                aria-valuemax={maxWidth}
-                aria-valuenow={Math.round(currentWidth)}
-                className="nova-activity-bar-resize-handle"
-                onPointerDown={onResizePointerDown}
-                onKeyDown={onResizeKeyDown}
-              />
+        <ContextMenu>
+          <ContextMenuTrigger asChild>
+            <Sidebar
+              collapsible="icon"
+              data-slot="sidebar-container"
+              className="nova-activity-bar select-none border-r-0! text-[var(--nova-text-muted)]"
+              role="navigation"
+              aria-label={sidebarLabel}
+              onContextMenuCapture={(event) => {
+                const target = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-activity-id]') : null
+                setContextActivityID(target?.dataset.activityId || null)
+              }}
+            >
+              <SidebarHeader className="gap-2 p-2">
+                <ActivityBarBrandRow expanded={expanded} toggleLabel={toggleLabel} onToggle={onToggle} />
+                {contextSwitcher}
+              </SidebarHeader>
+              <SidebarContent>
+                <SidebarGroup className="p-2">
+                  <SidebarMenu>
+                    <SortableContext key={activityOrderScope} items={sortableIDs} strategy={verticalListSortingStrategy}>
+                      {activityItems.map((item) => {
+                        const sortableID = sortableActivityID(activityOrderScope, item.id)
+                        return (
+                          <SidebarMenuItem key={sortableID}>
+                            <SortableActivityButton
+                              id={sortableID}
+                              activityID={item.id}
+                              dragDisabled={dragDisabled}
+                              expanded={expanded}
+                              label={item.label}
+                              onClick={item.onClick}
+                              active={item.active}
+                            >
+                              {item.icon}
+                            </SortableActivityButton>
+                          </SidebarMenuItem>
+                        )
+                      })}
+                    </SortableContext>
+                  </SidebarMenu>
+                </SidebarGroup>
+              </SidebarContent>
+              <SidebarFooter className="gap-1 p-2">
+                {notice}
+                <SidebarMenu>
+                  <SidebarMenuItem>{messageCenter}</SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <ActivityButton expanded={expanded} label={settingsLabel} onClick={onOpenSettings} active={settingsActive} data-onboarding-anchor="activity-settings">
+                      <Settings data-icon="inline-start" />
+                    </ActivityButton>
+                  </SidebarMenuItem>
+                </SidebarMenu>
+                {expanded ? (
+                  <div
+                    role="separator"
+                    tabIndex={0}
+                    aria-label={resizeLabel}
+                    aria-orientation="vertical"
+                    aria-valuemin={minWidth}
+                    aria-valuemax={maxWidth}
+                    aria-valuenow={Math.round(currentWidth)}
+                    className="nova-activity-bar-resize-handle"
+                    onPointerDown={onResizePointerDown}
+                    onKeyDown={onResizeKeyDown}
+                  />
+                ) : null}
+              </SidebarFooter>
+            </Sidebar>
+          </ContextMenuTrigger>
+          <ContextMenuContent className="min-w-48">
+            {contextActivity ? (
+              <>
+                <ContextMenuItem
+                  disabled={activityItems.length === 1}
+                  onSelect={() => onActivityVisibilityChange(contextActivity.id, false)}
+                >
+                  <EyeOff />
+                  {t('workbench.sidebar.hideAction')}
+                </ContextMenuItem>
+                <ContextMenuSeparator />
+              </>
             ) : null}
-          </SidebarFooter>
-        </Sidebar>
+            <ContextMenuItem onSelect={() => setCustomizationOpen(true)}>
+              <SlidersHorizontal />
+              {t('workbench.sidebar.customizeAction')}
+            </ContextMenuItem>
+          </ContextMenuContent>
+        </ContextMenu>
       </DndContext>
+      <WorkbenchSidebarCustomizationDialog
+        open={customizationOpen}
+        items={customizationItems}
+        hiddenItemIDs={hiddenActivityIDs}
+        onOpenChange={setCustomizationOpen}
+        onReorder={onCustomizationReorder}
+        onVisibilityChange={onActivityVisibilityChange}
+      />
     </LayoutGroup>
   )
 }

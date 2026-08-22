@@ -109,6 +109,44 @@ describe('ProjectExplorerPane', () => {
     await waitFor(() => expect(onCreateItem).toHaveBeenCalledWith('chapters/volume/notes.md', 'file'))
   })
 
+  it('only separates the toolbar after the file tree leaves the top', async () => {
+    render(
+      <ProjectExplorerPane
+        nodes={explorerNodes()}
+        workspace="/projects/one"
+        selectedPath={selectedPath}
+        expandedPaths={['chapters', 'chapters/volume']}
+        loading={false}
+        loadingPaths={new Set()}
+        error={null}
+        onSelectFile={vi.fn()}
+        onDirectoryExpand={vi.fn()}
+        onDirectoryExpandedChange={vi.fn()}
+        onCollapseAll={vi.fn()}
+        onLoadMore={vi.fn()}
+        onCreateItem={vi.fn()}
+        onDeleteItem={vi.fn()}
+        onRenameItem={vi.fn()}
+        onCopyItem={vi.fn()}
+        onMoveItem={vi.fn()}
+        onRefresh={vi.fn()}
+      />,
+    )
+
+    const toolbar = document.querySelector('[data-slot="project-explorer-toolbar"]')
+    const scrollViewport = screen.getByRole('tree', { name: '文件' }).firstElementChild
+    if (!(toolbar instanceof HTMLElement) || !(scrollViewport instanceof HTMLElement)) {
+      throw new Error('Project explorer chrome is not rendered')
+    }
+    expect(toolbar).toHaveClass('border-transparent')
+
+    fireEvent.scroll(scrollViewport, { target: { scrollTop: 1 } })
+    await waitFor(() => expect(toolbar).toHaveClass('border-[var(--nova-border)]'))
+
+    fireEvent.scroll(scrollViewport, { target: { scrollTop: 0 } })
+    await waitFor(() => expect(toolbar).toHaveClass('border-transparent'))
+  })
+
   it('creates a root folder inline when the project is empty', async () => {
     const user = userEvent.setup()
     const onCreateItem = vi.fn().mockResolvedValue(undefined)
