@@ -18,7 +18,7 @@ func (s *Service) verifyChecksum(ctx context.Context, assetName, archivePath str
 	}
 	checksumAsset := selectChecksumAsset(release.Assets)
 	if checksumAsset == nil {
-		slog.WarnContext(ctx, fmt.Sprintf("[update] Release 未提供 checksums.txt，跳过校验 asset=%s", assetName))
+		slog.WarnContext(ctx, fmt.Sprintf("[update] Release has no checksums.txt; skipping verification asset=%s", assetName))
 		return nil
 	}
 	temp, err := os.CreateTemp("", "denova-checksums-*")

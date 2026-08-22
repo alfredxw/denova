@@ -90,7 +90,7 @@ function readStoredConfiguredLocale(): LocaleCode {
   try {
     return normalizeLocaleCode(window.localStorage.getItem(CONFIGURED_LOCALE_STORAGE_KEY))
   } catch (error) {
-    console.warn('[i18n] 读取本地语言配置失败', error)
+    console.warn('[i18n] Failed to read the stored locale', error)
     return 'auto'
   }
 }
@@ -100,7 +100,7 @@ function writeStoredConfiguredLocale(locale: LocaleCode) {
   try {
     window.localStorage.setItem(CONFIGURED_LOCALE_STORAGE_KEY, locale)
   } catch (error) {
-    console.warn('[i18n] 写入本地语言配置失败', error)
+    console.warn('[i18n] Failed to store the locale', error)
   }
 }
 
@@ -134,7 +134,7 @@ i18next
     interpolation: { escapeValue: false },
   })
   .catch((error) => {
-    console.error('[i18n] 初始化失败', error)
+    console.error('[i18n] Initialization failed', error)
   })
 
 setConfiguredLocale(configuredLocale)

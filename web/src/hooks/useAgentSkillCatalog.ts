@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react'
 import { useQuery, type QueryClient } from '@tanstack/react-query'
-import { fetchProjectSettings } from '@/features/settings/api'
+import { projectSettingsTarget, settingsQueryKeys, settingsQueryOptions } from '@/features/settings/query'
 import type { LayeredSettings } from '@/features/settings/types'
 import { getSkills, projectSkillTarget } from '@/lib/api'
 import type { SkillSnapshot } from '@/lib/api'
@@ -14,15 +14,12 @@ interface AgentSkillCatalog {
 type AgentSkillCatalogSubscription = {
   consumers: number
   onSkillsUpdated: (event: Event) => void
-  onSettingsUpdated: (event: Event) => void
 }
 
 export const agentSkillCatalogKeys = {
   all: ['agent-skill-catalog'] as const,
   skills: () => [...agentSkillCatalogKeys.all, 'skills'] as const,
   skillsForProject: (projectId: string) => [...agentSkillCatalogKeys.skills(), projectId] as const,
-  settings: () => [...agentSkillCatalogKeys.all, 'settings'] as const,
-  settingsForProject: (projectId: string) => [...agentSkillCatalogKeys.settings(), projectId] as const,
 }
 
 const subscriptions = new WeakMap<QueryClient, AgentSkillCatalogSubscription>()
@@ -43,9 +40,14 @@ export function useAgentSkillCatalog(projectId: string, enabled = true) {
     queryFn: () => getSkills(projectSkillTarget(scope)),
     enabled: enabled && Boolean(scope),
   }, queryClient)
+  const settingsOptions = scope
+    ? settingsQueryOptions(projectSettingsTarget(scope))
+    : {
+        queryKey: settingsQueryKeys.project(''),
+        queryFn: (): Promise<LayeredSettings> => Promise.reject(new Error('Project ID is required')),
+      }
   const settings = useQuery({
-    queryKey: agentSkillCatalogKeys.settingsForProject(scope),
-    queryFn: () => fetchProjectSettings(scope),
+    ...settingsOptions,
     enabled: enabled && Boolean(scope),
   }, queryClient)
 
@@ -78,18 +80,9 @@ function subscribeAgentSkillCatalogEvents(queryClient: QueryClient) {
           : agentSkillCatalogKeys.skills(),
       })
     },
-    onSettingsUpdated: (event) => {
-      const projectId = (event as CustomEvent<{ projectId?: string }>).detail?.projectId?.trim()
-      void queryClient.invalidateQueries({
-        queryKey: projectId
-          ? agentSkillCatalogKeys.settingsForProject(projectId)
-          : agentSkillCatalogKeys.settings(),
-      })
-    },
   }
   subscriptions.set(queryClient, subscription)
   window.addEventListener('nova:skills-updated', subscription.onSkillsUpdated)
-  window.addEventListener('nova:settings-updated', subscription.onSettingsUpdated)
   return () => releaseAgentSkillCatalogSubscription(queryClient, subscription)
 }
 
@@ -97,6 +90,5 @@ function releaseAgentSkillCatalogSubscription(queryClient: QueryClient, subscrip
   subscription.consumers -= 1
   if (subscription.consumers > 0) return
   window.removeEventListener('nova:skills-updated', subscription.onSkillsUpdated)
-  window.removeEventListener('nova:settings-updated', subscription.onSettingsUpdated)
   subscriptions.delete(queryClient)
 }

@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'r
 import { Check, ChevronRight, Compass, Loader2, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
-import { fetchSettings, refreshSettings } from '@/features/settings/api'
+import { fetchSettings } from '@/features/settings/api'
+import { GLOBAL_SETTINGS_TARGET, subscribeSettingsTarget } from '@/features/settings/query'
 import type { AgentUIMessage } from '@/lib/agent-ui'
 import { hasCompletedAgentTurn } from '@/lib/agent-message-view'
 import type { RightPanel, WorkspaceMode } from '@/stores/workspace-store'
@@ -92,10 +93,9 @@ export function OnboardingGuide({
     [isStreaming, messages],
   )
 
-  const refreshModelState = useCallback((fresh = false) => {
+  const refreshModelState = useCallback(() => {
     setLoadingSettings(true)
-    const request = fresh ? refreshSettings() : fetchSettings()
-    request
+    fetchSettings()
       .then((settings) => {
         setModelReady(hasUsableLanguageModel(settings.effective))
       })
@@ -108,9 +108,10 @@ export function OnboardingGuide({
 
   useEffect(() => {
     refreshModelState()
-    const onSettingsUpdated = () => refreshModelState(true)
-    window.addEventListener('nova:settings-updated', onSettingsUpdated)
-    return () => window.removeEventListener('nova:settings-updated', onSettingsUpdated)
+    return subscribeSettingsTarget(GLOBAL_SETTINGS_TARGET, (settings) => {
+      setModelReady(hasUsableLanguageModel(settings.effective))
+      setLoadingSettings(false)
+    })
   }, [refreshModelState])
 
   useEffect(() => {

@@ -112,7 +112,7 @@ export const DocumentReviewAnnotations = forwardRef<DocumentReviewAnnotationsHan
       setDraft({ ...range, anchor, key: documentReviewAnchorKey(anchor), body: '', submitting: false })
     } catch (error) {
       if (request !== preparationRequestRef.current) return
-      console.error('准备文本资源审阅评论失败:', error instanceof Error ? error.message : String(error), { target, error })
+      console.error('Failed to prepare text resource review comments:', error instanceof Error ? error.message : String(error), { target, error })
       toast.error(withErrorLogID(t('editor.review.prepareFailed'), error))
     } finally {
       if (request === preparationRequestRef.current) setPreparing(false)
@@ -317,7 +317,7 @@ export const DocumentReviewAnnotations = forwardRef<DocumentReviewAnnotationsHan
       setExpandedKeys((current) => new Set(current).add(documentCommentGroupKey(created)))
       setDraft(null)
     } catch (error) {
-      console.error('创建文本资源审阅评论失败', { target, error })
+      console.error('Failed to create text resource review comment', { target, error })
       toast.error(withErrorLogID(t('editor.review.createFailed'), error))
       setDraft((current) => current ? { ...current, submitting: false } : current)
     }
@@ -360,14 +360,14 @@ export const DocumentReviewAnnotations = forwardRef<DocumentReviewAnnotationsHan
               } : undefined}
               onUpdate={async (comment, body) => {
                 try { await onUpdate(comment, body) } catch (error) {
-                  console.error('更新文本资源审阅评论失败', { target, resourceLabel, commentID: comment.id, error })
+                  console.error('Failed to update text resource review comment', { target, resourceLabel, commentID: comment.id, error })
                   toast.error(withErrorLogID(t('editor.review.updateFailed'), error))
                   throw error
                 }
               }}
               onDelete={async (comment) => {
                 try { await onDelete(comment) } catch (error) {
-                  console.error('删除文本资源审阅评论失败', { target, resourceLabel, commentID: comment.id, error })
+                  console.error('Failed to delete text resource review comment', { target, resourceLabel, commentID: comment.id, error })
                   toast.error(withErrorLogID(t('editor.review.deleteFailed'), error))
                   throw error
                 }

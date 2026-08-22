@@ -1,9 +1,11 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getSkills } from '@/lib/api'
 import { fetchSettings } from '@/features/settings/api'
+import { settingsQueryKeys } from '@/features/settings/query'
 import type { AgentToolCapability, LayeredSettings, ResolvedAgentContextSettings, ResolvedAgentToolCapability } from '@/features/settings/types'
+import { queryClient } from '@/lib/query-client'
 import { AgentsView as ProjectAgentsView } from './AgentsView'
 
 function AgentsView() {
@@ -66,6 +68,7 @@ describe('AgentsView', () => {
     vi.mocked(fetchSettings).mockReset()
     vi.mocked(updateUserSettings).mockReset()
     vi.mocked(updateWorkspaceSettings).mockReset()
+    queryClient.clear()
     vi.mocked(getSkills).mockReset()
     configManagerChatProps.length = 0
     vi.mocked(getSkills).mockResolvedValue({ scopes: [], skills: [] })
@@ -107,25 +110,27 @@ describe('AgentsView', () => {
     expect(screen.queryByRole('button', { name: /Harness 优化/ })).not.toBeInTheDocument()
   })
 
-  it('reloads model profiles when settings are updated elsewhere', async () => {
+  it('applies model profiles updated through the canonical settings query', async () => {
     const user = userEvent.setup()
-    vi.mocked(fetchSettings)
-      .mockResolvedValueOnce(settingsSnapshot({ effective: { openai_model: 'deepseek-chat' } }))
-      .mockResolvedValueOnce(settingsSnapshot({
-        effective: {
-          openai_model: 'deepseek-chat',
-          model_profiles: [{ id: 'deepseek', name: 'DeepSeek V3', model: 'deepseek-v3' }],
-        },
-      }))
+    vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({ effective: { openai_model: 'deepseek-chat' } }))
 
     render(<AgentsView />)
 
     await screen.findByText('模型与思考')
     expect(screen.queryByText('deepseek（DeepSeek V3）')).not.toBeInTheDocument()
 
-    window.dispatchEvent(new CustomEvent('nova:settings-updated'))
+    await act(async () => {
+      queryClient.setQueryData(
+        settingsQueryKeys.project('project-agents'),
+        settingsSnapshot({
+          effective: {
+            openai_model: 'deepseek-chat',
+            model_profiles: [{ id: 'deepseek', name: 'DeepSeek V3', model: 'deepseek-v3' }],
+          },
+        }),
+      )
+    })
 
-    await waitFor(() => expect(vi.mocked(fetchSettings)).toHaveBeenCalledTimes(2))
     await user.click(screen.getAllByRole('combobox')[0])
     expect(await screen.findByText('deepseek（DeepSeek V3）')).toBeInTheDocument()
   })

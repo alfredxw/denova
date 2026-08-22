@@ -78,7 +78,7 @@ func (a *App) inferVersionMessageForResources(ctx context.Context, explicitMessa
 		if ctx.Err() != nil {
 			return "", ctx.Err()
 		}
-		slog.ErrorContext(ctx, fmt.Sprintf("[versions] 读取变更状态用于生成版本说明失败 source=%s err=%v", source, err))
+		slog.ErrorContext(ctx, fmt.Sprintf("[versions] Failed to read changes for version summary source=%s err=%v", source, err))
 		return fallbackVersionMessage(source, nil), nil
 	}
 
@@ -92,7 +92,7 @@ func (a *App) inferVersionMessageForResources(ctx context.Context, explicitMessa
 			if ctx.Err() != nil {
 				return "", ctx.Err()
 			}
-			slog.ErrorContext(ctx, fmt.Sprintf("[versions] LLM 生成版本说明失败 source=%s workspace=%s err=%v", source, runtime.workspace, err))
+			slog.ErrorContext(ctx, fmt.Sprintf("[versions] LLM version summary generation failed source=%s workspace=%s err=%v", source, runtime.workspace, err))
 			persistAgentCallWithStore(runtime.sessionStore, config.AgentKindVersionSummary, instruction, "执行失败："+err.Error())
 		}
 	}

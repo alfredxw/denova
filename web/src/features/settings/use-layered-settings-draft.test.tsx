@@ -52,7 +52,7 @@ describe('useLayeredSettingsDraft', () => {
     expect(loadSettings).toHaveBeenCalledTimes(1)
   })
 
-  it('ignores its own update event and reloads external updates', async () => {
+  it('reloads an external settings update on demand', async () => {
     const loadSettings = vi.fn()
       .mockResolvedValueOnce(snapshot({ user: { theme: 'dark' } }))
       .mockResolvedValueOnce(snapshot({ user: { theme: 'light' } }))
@@ -66,10 +66,7 @@ describe('useLayeredSettingsDraft', () => {
 
     await waitFor(() => expect(result.current.draft).toEqual({ theme: 'dark' }))
 
-    act(() => result.current.notifyUpdated('user'))
-    expect(loadSettings).toHaveBeenCalledTimes(1)
-
-    act(() => window.dispatchEvent(new CustomEvent('nova:settings-updated', { detail: { source: 'another-view' } })))
+    await act(async () => { await result.current.reload(true) })
     await waitFor(() => expect(result.current.draft).toEqual({ theme: 'light' }))
     expect(loadSettings).toHaveBeenCalledTimes(2)
   })
@@ -249,7 +246,7 @@ describe('useLayeredSettingsDraft', () => {
     }))
     await waitFor(() => expect(result.current.draft).toEqual(initial.user))
 
-    act(() => window.dispatchEvent(new CustomEvent('nova:settings-updated', { detail: { source: 'other-view' } })))
+    await act(async () => { await result.current.reload(true) })
     await waitFor(() => expect(result.current.draft).toEqual(external.user))
     vi.useFakeTimers()
     await act(async () => { await vi.advanceTimersByTimeAsync(1100) })
@@ -286,8 +283,7 @@ describe('useLayeredSettingsDraft', () => {
     act(() => result.current.setDraft({
       agent_models: { ide: { profile_id: 'local-b' }, image: { profile_id: 'image-a' } },
     }))
-    act(() => window.dispatchEvent(new CustomEvent('nova:settings-updated', { detail: { source: 'other-view' } })))
-    await act(async () => { await Promise.resolve(); await Promise.resolve() })
+    await act(async () => { await result.current.reload(true) })
     expect(result.current.draft.agent_models).toEqual({
       ide: { profile_id: 'local-b' },
       image: { profile_id: 'image-b' },
@@ -316,7 +312,7 @@ describe('useLayeredSettingsDraft', () => {
     await waitFor(() => expect(result.current.draft).toEqual(initial.user))
 
     act(() => result.current.setDraft({ theme: 'system' }))
-    act(() => window.dispatchEvent(new CustomEvent('nova:settings-updated', { detail: { source: 'other-view' } })))
+    await act(async () => { await result.current.reload(true) })
 
     await waitFor(() => expect(result.current.draft).toEqual({ theme: 'system' }))
     expect(preserveAutosaveConflict).toHaveBeenCalledWith(expect.objectContaining({
@@ -407,7 +403,7 @@ describe('useLayeredSettingsDraft', () => {
     act(() => { savePromise = result.current.saveNow() })
     await waitFor(() => expect(saveUserSettings).toHaveBeenCalledOnce())
 
-    act(() => window.dispatchEvent(new CustomEvent('nova:settings-updated', { detail: { source: 'other-view' } })))
+    await act(async () => { await result.current.reload(true) })
     await waitFor(() => expect(result.current.draft).toEqual({ language: 'en-US', theme: 'light' }))
 
     await act(async () => {

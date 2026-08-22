@@ -10,9 +10,9 @@ import {
   type WorkspaceEventClientMessage,
   type WorkspaceEventWorkerMessage,
 } from './protocol'
+import { GLOBAL_SETTINGS_TARGET, subscribeSettingsTarget } from '@/features/settings/query'
 
 const SHARED_WORKER_NAME = 'denova-project-events-v2'
-const SETTINGS_UPDATED_EVENT = 'nova:settings-updated'
 
 /** Subscribes one page to the origin-wide SharedWorker-owned event stream. */
 export function subscribeProjectFileEvents(
@@ -95,12 +95,12 @@ export function subscribeProjectFileEvents(
   const updateAuthorization = () => {
     post({ type: 'authorization', authorization: getRemoteAccessAuthorization() })
   }
-  window.addEventListener(SETTINGS_UPDATED_EVENT, updateAuthorization)
+  const unsubscribeSettings = subscribeSettingsTarget(GLOBAL_SETTINGS_TARGET, updateAuthorization)
 
   const dispose = () => {
     if (disposed) return
     disposed = true
-    window.removeEventListener(SETTINGS_UPDATED_EVENT, updateAuthorization)
+    unsubscribeSettings()
     window.removeEventListener('pagehide', dispose)
     // The worker closes both ends after processing this message. Closing the
     // page-side port immediately can discard the queued unsubscribe.

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { createSettingsMergePatch, fetchSettings, invalidateSettingsCache, patchSettings, refreshSettings, revokeAgentApprovalRule } from './api'
+import { createSettingsMergePatch, fetchProjectSettings, fetchSettings, invalidateSettingsCache, patchSettings, refreshSettings, revokeAgentApprovalRule } from './api'
 import type { LayeredSettings } from './types'
 
 const apiClientMocks = vi.hoisted(() => ({ requestJSON: vi.fn() }))
@@ -25,7 +25,6 @@ describe('settings API request coalescing', () => {
     const first = fetchSettings()
     const concurrent = fetchSettings()
 
-    expect(concurrent).toBe(first)
     expect(apiClientMocks.requestJSON).toHaveBeenCalledTimes(1)
     await expect(Promise.all([first, concurrent])).resolves.toEqual([firstSnapshot, firstSnapshot])
 
@@ -35,29 +34,25 @@ describe('settings API request coalescing', () => {
     const refreshed = { effective: { language: 'en-US' } } as LayeredSettings
     apiClientMocks.requestJSON.mockResolvedValueOnce(refreshed)
     const refresh = refreshSettings()
-    expect(refreshSettings()).toBe(refresh)
-    await expect(refresh).resolves.toBe(refreshed)
+    await expect(Promise.all([refresh, refreshSettings()])).resolves.toEqual([refreshed, refreshed])
     expect(apiClientMocks.requestJSON).toHaveBeenCalledTimes(2)
   })
 
-  it('starts a newer read when a later update arrives before the previous refresh finishes', async () => {
+  it('coalesces concurrent forced refreshes', async () => {
     let resolveFirst!: (value: LayeredSettings) => void
     const firstRefresh = new Promise<LayeredSettings>((resolve) => { resolveFirst = resolve })
     const latestSnapshot = { effective: { language: 'en-US' } } as LayeredSettings
-    apiClientMocks.requestJSON
-      .mockReturnValueOnce(firstRefresh)
-      .mockResolvedValueOnce(latestSnapshot)
+    apiClientMocks.requestJSON.mockReturnValueOnce(firstRefresh)
 
-    const staleRequest = refreshSettings()
+    const first = refreshSettings()
     await Promise.resolve()
-    const latestRequest = refreshSettings()
+    const concurrent = refreshSettings()
 
-    expect(latestRequest).not.toBe(staleRequest)
-    await expect(latestRequest).resolves.toBe(latestSnapshot)
-    resolveFirst({ effective: { language: 'zh-CN' } } as LayeredSettings)
-    await staleRequest
+    expect(apiClientMocks.requestJSON).toHaveBeenCalledTimes(1)
+    resolveFirst(latestSnapshot)
+    await expect(Promise.all([first, concurrent])).resolves.toEqual([latestSnapshot, latestSnapshot])
     await expect(fetchSettings()).resolves.toBe(latestSnapshot)
-    expect(apiClientMocks.requestJSON).toHaveBeenCalledTimes(2)
+    expect(apiClientMocks.requestJSON).toHaveBeenCalledTimes(1)
   })
 
   it('uses one partial-update endpoint for every writable layer', async () => {
@@ -72,6 +67,22 @@ describe('settings API request coalescing', () => {
     })
     await expect(fetchSettings()).resolves.toBe(saved)
     expect(apiClientMocks.requestJSON).toHaveBeenCalledTimes(1)
+  })
+
+  it('refreshes cached project snapshots after a user-layer update', async () => {
+    const initialProject = { effective: { language: 'zh-CN' } } as LayeredSettings
+    const savedGlobal = { effective: { language: 'en-US' } } as LayeredSettings
+    const refreshedProject = { effective: { language: 'en-US' } } as LayeredSettings
+    apiClientMocks.requestJSON
+      .mockResolvedValueOnce(initialProject)
+      .mockResolvedValueOnce(savedGlobal)
+      .mockResolvedValueOnce(refreshedProject)
+
+    await expect(fetchProjectSettings('project-one')).resolves.toBe(initialProject)
+    await expect(patchSettings('user', { language: 'en-US' })).resolves.toBe(savedGlobal)
+    await expect(fetchProjectSettings('project-one')).resolves.toEqual(refreshedProject)
+
+    expect(apiClientMocks.requestJSON).toHaveBeenCalledTimes(3)
   })
 
   it('revokes a saved approval rule by stable ID and primes the canonical snapshot', async () => {

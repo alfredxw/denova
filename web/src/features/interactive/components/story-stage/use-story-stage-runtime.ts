@@ -380,7 +380,7 @@ export function useStoryStageRuntime({
             break
           } catch (error) {
             if (isAbortError(error) || abortController.signal.aborted || isDisposed()) throw error
-            console.warn('[interactive-stage] 规范故事历史恢复失败，保留运行态并等待重试', error)
+            console.warn('[interactive-stage] Failed to restore canonical story history; preserving runtime state for retry', error)
             updateStageRun((current) => ({
               ...current,
               streaming: true,
@@ -424,7 +424,7 @@ export function useStoryStageRuntime({
             break
           } catch (error) {
             if (isAbortError(error) || abortController.signal.aborted || isDisposed()) throw error
-            console.warn('[interactive-stage] 同一 Task 的展示后缀恢复失败，保留运行态并等待重试', error)
+            console.warn('[interactive-stage] Failed to restore the display suffix for the same task; preserving runtime state for retry', error)
             setStageRuntime((current) => ({
               ...current,
               connection: 'disconnected',
@@ -489,7 +489,7 @@ export function useStoryStageRuntime({
             lastImmediateReconnectRetry = projectionFingerprint
             continue
           }
-          console.warn('[interactive-stage] 互动流重连失败，保留运行态并等待下次连接机会', error)
+          console.warn('[interactive-stage] Interactive stream reconnection failed; preserving runtime state until the next attempt', error)
           await waitForStoryStageReconnect(abortController.signal, isDisposed)
         }
       }
@@ -529,7 +529,7 @@ export function useStoryStageRuntime({
   async function completeStream({ finishedNormally, receivedPersistedTurn, persistedSnapshot }: StoryStageStreamOutcome) {
     let nextSnapshot: Snapshot | void = persistedSnapshot
     if (persistedSnapshot) {
-      void Promise.resolve(onDone({ silent: true })).catch((error) => console.warn('[interactive-stage] 静默刷新互动快照失败', error))
+      void Promise.resolve(onDone({ silent: true })).catch((error) => console.warn('[interactive-stage] Silent interactive snapshot refresh failed', error))
     } else {
       nextSnapshot = await onDone(receivedPersistedTurn ? { silent: true } : undefined)
     }

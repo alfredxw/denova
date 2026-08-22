@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createSettingsMergePatch, fetchSettings, patchSettings, refreshSettings } from '@/features/settings/api'
+import { GLOBAL_SETTINGS_TARGET, subscribeSettingsTarget } from '@/features/settings/query'
 import type { LayeredSettings, Settings } from '@/features/settings/types'
 import { useSaveLane } from '@/hooks/use-save-lane'
 import { saveWithRevisionRecovery } from '@/lib/revision-conflict'
@@ -149,7 +150,6 @@ export function usePersistedUserSettings<TDefaults extends PersistedStringSettin
       setSavingKeys(new Set(pendingChangesRef.current.keys()))
       const remaining = saveRequestFor(pendingChangesRef.current)
       if (remaining) reloadLaneRef.current(remaining)
-      window.dispatchEvent(new CustomEvent('nova:settings-updated', { detail: { source: eventSource } }))
     },
     onError: ({ value: request }, error) => {
       console.warn('[usePersistedUserSettings.ts] failed to save user settings; local preference remains queued', {
@@ -208,13 +208,11 @@ export function usePersistedUserSettings<TDefaults extends PersistedStringSettin
   }, [])
 
   useEffect(() => {
-    const handleSettingsUpdated = (event: Event) => {
-      const source = (event as CustomEvent<{ source?: string }>).detail?.source
-      if (source !== eventSource) void load(true)
-    }
-    window.addEventListener('nova:settings-updated', handleSettingsUpdated)
-    return () => window.removeEventListener('nova:settings-updated', handleSettingsUpdated)
-  }, [eventSource, load])
+    return subscribeSettingsTarget(GLOBAL_SETTINGS_TARGET, (snapshot) => {
+      snapshotRef.current = snapshot
+      if (workspaceRef.current) applySnapshot(snapshot)
+    })
+  }, [applySnapshot])
 
   const persist = useCallback(<TKey extends keyof TDefaults>(key: TKey, next: string): Promise<boolean> => {
     const settingKey = key as PersistedStringSettingKey

@@ -9,6 +9,17 @@ import { useSkillCommands } from './useSkillCommands'
 import { useWritingSkillOptions } from './useWritingSkillOptions'
 
 vi.mock('@/features/settings/api', () => ({ fetchProjectSettings: vi.fn() }))
+vi.mock('@/features/settings/query', () => ({
+  projectSettingsTarget: (projectId: string) => {
+    if (!projectId.trim()) throw new Error('Project ID is required')
+    return { kind: 'project', projectId }
+  },
+  settingsQueryKeys: { project: (projectId: string) => ['settings', 'project', projectId.trim()] },
+  settingsQueryOptions: (target: { projectId: string }) => ({
+    queryKey: ['settings', 'project', target.projectId],
+    queryFn: async () => (await import('@/features/settings/api')).fetchProjectSettings(target.projectId),
+  }),
+}))
 vi.mock('@/lib/api', () => ({
   getSkills: vi.fn(),
   projectSkillTarget: (projectId: string) => ({ kind: 'project', projectId }),
@@ -55,15 +66,15 @@ describe('useAgentSkillCatalog', () => {
     await waitFor(() => expect(getSkills).toHaveBeenCalledTimes(2))
     expect(fetchProjectSettings).toHaveBeenCalledOnce()
 
-    act(() => window.dispatchEvent(new CustomEvent('nova:settings-updated', { detail: { projectId: PROJECT_ID } })))
-    await waitFor(() => expect(fetchProjectSettings).toHaveBeenCalledTimes(2))
+    act(() => queryClient.setQueryData(['settings', 'project', PROJECT_ID], settingsWithSkills()))
+    expect(fetchProjectSettings).toHaveBeenCalledOnce()
     expect(getSkills).toHaveBeenCalledTimes(2)
   })
 
-  it('does not load a catalog while its owning surface is disabled', async () => {
+  it('does not load a catalog before a Project is available', async () => {
     const { result } = renderHook(() => ({
-      commands: useSkillCommands({ agentKey: 'ide', projectId: '', enabled: false }),
-      writing: useWritingSkillOptions('', false),
+      commands: useSkillCommands({ agentKey: 'ide', projectId: '' }),
+      writing: useWritingSkillOptions('', true),
     }), { wrapper: strictWrapper })
 
     expect(result.current).toEqual({ commands: [], writing: [] })

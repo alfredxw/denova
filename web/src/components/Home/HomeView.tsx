@@ -88,7 +88,7 @@ export function HomeView({ workspace, novaDir, books, bookSortMode, onSwitch, on
         setDefaultImagePresetId(nextDefault)
       })
       .catch((err) => {
-        console.warn('加载封面图像方案失败', err)
+        console.warn('Failed to load the cover image preset', err)
         if (!cancelled) {
           setImagePresets([])
           setDefaultImagePresetId('game-cg')
@@ -109,7 +109,7 @@ export function HomeView({ workspace, novaDir, books, bookSortMode, onSwitch, on
       const data = await switchWorkspace(path)
       onSwitch(data.workspace || path)
     } catch (e) {
-      console.error('切换 workspace 失败', e)
+      console.error('Failed to switch workspace', e)
     }
   }
 
@@ -131,7 +131,7 @@ export function HomeView({ workspace, novaDir, books, bookSortMode, onSwitch, on
       await reorderBooks(nextBooks.map((book) => book.path))
       await onBooksChange()
     } catch (e) {
-      console.error('保存书籍排序失败', e)
+      console.error('Failed to save book order', e)
       setOrderedBooks(books)
     }
   }
@@ -143,7 +143,7 @@ export function HomeView({ workspace, novaDir, books, bookSortMode, onSwitch, on
       await setBookSortMode(mode)
       await onBooksChange()
     } catch (e) {
-      console.error('[HomeView.tsx] 保存书籍排序模式失败', { mode, error: e })
+      console.error('[HomeView.tsx] Failed to save book sort mode', { mode, error: e })
       toast.error(t('home.sortUpdateError'), {
         description: e instanceof Error ? e.message : String(e),
       })

@@ -454,6 +454,7 @@ export interface LayeredSettings {
   global: Settings
   user: Settings
   workspace: Settings
+  inherited?: Record<SettingsLayer, Settings>
   effective: Settings
   paths: SettingsPaths
   access?: SettingsAccess

@@ -160,7 +160,7 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 	app.ensureServices()
 
 	if workspace == "" {
-		slog.InfoContext(ctx, "[app] 启动时未指定 workspace 且无上次打开的书籍，进入无书籍状态，等待用户在前端选择")
+		slog.InfoContext(ctx, "[app] No workspace or previously opened book at startup; waiting for frontend selection")
 		cfg.Workspace = ""
 		app.Automation().StartScheduler(ctx)
 		app.ContinualLearning().StartScheduler(ctx)

@@ -150,10 +150,10 @@ export function PresetSettingsPanel({
     ),
     onSaved: mergeSavedTeller,
     onAutoSaveError: (err) => {
-      console.warn('[teller-editor] 自动保存叙事风格失败', err)
+      console.warn('[teller-editor] Failed to autosave narrative style', err)
       toast.error((err as Error).message || t('editor.saveFailed'))
     },
-    onFlushError: (err) => console.warn('[teller-editor] 切换条目前自动保存叙事风格失败', err),
+    onFlushError: (err) => console.warn('[teller-editor] Failed to autosave narrative style before selection change', err),
   })
 
   const storyDirectorAutosave = usePresetResourceAutosave<StoryDirector, Partial<StoryDirector>, StoryDirector>({
@@ -172,10 +172,10 @@ export function PresetSettingsPanel({
     ),
     onSaved: mergeSavedStoryDirector,
     onAutoSaveError: (err) => {
-      console.warn('[story-director-editor] 自动保存故事导演失败', err)
+      console.warn('[story-director-editor] Failed to autosave story director', err)
       toast.error((err as Error).message || t('editor.saveFailed'))
     },
-    onFlushError: (err) => console.warn('[story-director-editor] 切换条目前自动保存故事导演失败', err),
+    onFlushError: (err) => console.warn('[story-director-editor] Failed to autosave story director before selection change', err),
   })
 
   const imagePresetAutosave = usePresetResourceAutosave<ImagePreset, Partial<ImagePreset>, ImagePreset>({
@@ -193,10 +193,10 @@ export function PresetSettingsPanel({
     ),
     onSaved: mergeSavedImagePreset,
     onAutoSaveError: (err) => {
-      console.warn('[image-preset-editor] 自动保存图像方案失败', err)
+      console.warn('[image-preset-editor] Failed to autosave image preset', err)
       toast.error((err as Error).message || t('editor.saveFailed'))
     },
-    onFlushError: (err) => console.warn('[image-preset-editor] 切换条目前自动保存图像方案失败', err),
+    onFlushError: (err) => console.warn('[image-preset-editor] Failed to autosave image preset before selection change', err),
   })
 
   const eventPackageAutosave = usePresetResourceAutosave<EventPackageModule, Partial<EventPackageModule>, EventPackageModule>({
@@ -215,10 +215,10 @@ export function PresetSettingsPanel({
     ),
     onSaved: mergeSavedEventPackage,
     onAutoSaveError: (err) => {
-      console.warn('[event-package-editor] 自动保存事件包失败', err)
+      console.warn('[event-package-editor] Failed to autosave event package', err)
       toast.error((err as Error).message || t('editor.saveFailed'))
     },
-    onFlushError: (err) => console.warn('[event-package-editor] 切换条目前自动保存事件包失败', err),
+    onFlushError: (err) => console.warn('[event-package-editor] Failed to autosave event package before selection change', err),
   })
 
   const ruleSystemAutosave = usePresetResourceAutosave<RuleSystemModule, Partial<RuleSystemModule>, RuleSystemModule>({
@@ -237,10 +237,10 @@ export function PresetSettingsPanel({
     ),
     onSaved: mergeSavedRuleSystem,
     onAutoSaveError: (err) => {
-      console.warn('[rule-system-editor] 自动保存 TRPG 检定失败', err)
+      console.warn('[rule-system-editor] Failed to autosave TRPG rules', err)
       toast.error((err as Error).message || t('editor.saveFailed'))
     },
-    onFlushError: (err) => console.warn('[rule-system-editor] 切换条目前自动保存 TRPG 检定失败', err),
+    onFlushError: (err) => console.warn('[rule-system-editor] Failed to autosave TRPG rules before selection change', err),
   })
 
   const actorStateAutosave = usePresetResourceAutosave<ActorStateModule, Partial<ActorStateModule>, ActorStateModule>({
@@ -259,10 +259,10 @@ export function PresetSettingsPanel({
     ),
     onSaved: mergeSavedActorState,
     onAutoSaveError: (err) => {
-      console.warn('[actor-state-editor] 自动保存状态系统失败', err)
+      console.warn('[actor-state-editor] Failed to autosave actor state system', err)
       toast.error((err as Error).message || t('editor.saveFailed'))
     },
-    onFlushError: (err) => console.warn('[actor-state-editor] 切换条目前自动保存状态系统失败', err),
+    onFlushError: (err) => console.warn('[actor-state-editor] Failed to autosave actor state system before selection change', err),
   })
 
   usePresetDraftSync(resources, {
@@ -285,7 +285,7 @@ export function PresetSettingsPanel({
 
   const showInvalidPresetConfigNotice = () => {
     const canRestoreBuiltin = currentPresetBuiltinOverridden(presetResourceKind, presetDrafts)
-    console.warn('[preset-settings] 无效 JSON 阻止保存或切换配置', {
+    console.warn('[preset-settings] Invalid JSON blocked saving or switching presets', {
       kind: presetResourceKind,
       builtinOverride: canRestoreBuiltin,
     })
@@ -322,7 +322,7 @@ export function PresetSettingsPanel({
       await save
       return true
     } catch (err) {
-      console.warn('[preset-settings] 切换资源前保存失败，已保留当前编辑器', err)
+      console.warn('[preset-settings] Save before resource switch failed; preserving the current editor', err)
       toast.error((err as Error).message || t('editor.saveFailed'))
       return false
     } finally {

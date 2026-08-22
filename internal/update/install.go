@@ -79,7 +79,7 @@ func (s *Service) downloadAsset(ctx context.Context, url, target string, expecte
 	if strings.TrimSpace(url) == "" {
 		return fmt.Errorf("下载更新包失败: Release 资源缺少下载地址")
 	}
-	slog.InfoContext(ctx, fmt.Sprintf("[update] 开始下载更新包 url=%s target=%s", url, target))
+	slog.InfoContext(ctx, fmt.Sprintf("[update] Starting package download url=%s target=%s", url, target))
 	downloadCtx, cancel := context.WithTimeout(ctx, updateDownloadTimeout)
 	defer cancel()
 
@@ -136,7 +136,7 @@ func (s *Service) downloadAsset(ctx context.Context, url, target string, expecte
 				Percent:         100,
 				Message:         "更新包下载完成",
 			})
-			slog.InfoContext(ctx, fmt.Sprintf("[update] 更新包下载完成 target=%s size=%d", target, resp.BytesComplete()))
+			slog.InfoContext(ctx, fmt.Sprintf("[update] Package download completed target=%s size=%d", target, resp.BytesComplete()))
 			return nil
 		}
 	}
@@ -179,7 +179,7 @@ func (s *Service) stageUpdate(packageRoot string, check CheckResult) (InstallRes
 	if err := writePendingManifestRef(updateDir, manifestPath); err != nil {
 		return InstallResult{}, err
 	}
-	slog.InfoContext(context.Background(), fmt.Sprintf("[update] 更新已暂存 old=%s new=%s staged=%s manifest=%s", check.CurrentVersion, check.LatestVersion, stagedDir, manifestPath))
+	slog.InfoContext(context.Background(), fmt.Sprintf("[update] Update staged old=%s new=%s staged=%s manifest=%s", check.CurrentVersion, check.LatestVersion, stagedDir, manifestPath))
 	return InstallResult{
 		PreviousVersion:  check.CurrentVersion,
 		InstalledVersion: check.LatestVersion,

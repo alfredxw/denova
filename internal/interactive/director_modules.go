@@ -149,33 +149,13 @@ func NewActorStateLibrary(novaDir string) *ActorStateLibrary {
 }
 
 func (l *EventPackageLibrary) List() ([]EventPackageModule, error) {
-	if err := l.ensureBuiltins(); err != nil {
-		return nil, err
-	}
-	files, err := filepath.Glob(filepath.Join(l.dir(), "*.json"))
-	if err != nil {
-		return nil, err
-	}
-	items := make([]EventPackageModule, 0, len(files))
-	for _, file := range files {
-		item, err := parseEventPackageFile(file)
-		if err != nil {
-			id := strings.TrimSuffix(filepath.Base(file), ".json")
-			items = append(items, EventPackageModule{ID: id, Path: file, Invalid: true, Error: err.Error(), Custom: !IsBuiltinEventPackageID(id)})
-			continue
-		}
-		item.Path = file
-		item = applyEventPackageOwnership(item)
-		items = append(items, item)
-	}
-	sortEventPackages(items)
-	return items, nil
+	return listDirectorModuleFiles(l.dir(), l.ensureBuiltins, parseEventPackageFile,
+		func(id, path string, err error) EventPackageModule {
+			return EventPackageModule{ID: id, Path: path, Invalid: true, Error: err.Error(), Custom: !IsBuiltinEventPackageID(id)}
+		}, applyEventPackageOwnership, sortEventPackages)
 }
 
 func (l *EventPackageLibrary) Get(id string) (EventPackageModule, error) {
-	if err := l.ensureBuiltins(); err != nil {
-		return EventPackageModule{}, err
-	}
 	id = normalizeDirectorModuleID(id)
 	if id == "" {
 		id = DefaultEventPackageID
@@ -183,11 +163,7 @@ func (l *EventPackageLibrary) Get(id string) (EventPackageModule, error) {
 	if err := validateDirectorModuleID(id, "事件包"); err != nil {
 		return EventPackageModule{}, err
 	}
-	item, err := parseEventPackageFile(filepath.Join(l.dir(), id+".json"))
-	if err != nil {
-		return EventPackageModule{}, err
-	}
-	return applyEventPackageOwnership(item), nil
+	return getDirectorModuleFile(l.dir(), id, l.ensureBuiltins, parseEventPackageFile, applyEventPackageOwnership)
 }
 
 func (l *EventPackageLibrary) Create(item EventPackageModule) (EventPackageModule, error) {
@@ -275,50 +251,21 @@ func (l *EventPackageLibrary) dir() string {
 }
 
 func (l *EventPackageLibrary) ensureBuiltins() error {
-	if err := os.MkdirAll(l.dir(), 0o755); err != nil {
-		return err
-	}
-	for _, item := range builtinEventPackageModules() {
-		path := filepath.Join(l.dir(), item.ID+".json")
-		if current, err := parseEventPackageFile(path); err == nil && current.BuiltinOverridden {
-			continue
-		} else if err == nil && current.Version == item.Version {
-			continue
-		}
-		if err := writeEventPackageFile(path, item); err != nil {
-			return err
-		}
-	}
-	return nil
+	return ensureBuiltinModuleFiles(l.dir(), builtinEventPackageModules(),
+		func(item EventPackageModule) string { return item.ID }, parseEventPackageFile,
+		func(current, builtin EventPackageModule) bool {
+			return current.BuiltinOverridden || current.Version == builtin.Version
+		}, writeEventPackageFile)
 }
 
 func (l *RuleSystemLibrary) List() ([]RuleSystemModule, error) {
-	if err := l.ensureBuiltins(); err != nil {
-		return nil, err
-	}
-	files, err := filepath.Glob(filepath.Join(l.dir(), "*.json"))
-	if err != nil {
-		return nil, err
-	}
-	items := make([]RuleSystemModule, 0, len(files))
-	for _, file := range files {
-		item, err := parseRuleSystemFile(file)
-		if err != nil {
-			items = append(items, RuleSystemModule{ID: strings.TrimSuffix(filepath.Base(file), ".json"), Path: file, Invalid: true, Error: err.Error(), Custom: !IsBuiltinRuleSystemID(strings.TrimSuffix(filepath.Base(file), ".json"))})
-			continue
-		}
-		item.Path = file
-		item = applyRuleSystemOwnership(item)
-		items = append(items, item)
-	}
-	sortRuleSystems(items)
-	return items, nil
+	return listDirectorModuleFiles(l.dir(), l.ensureBuiltins, parseRuleSystemFile,
+		func(id, path string, err error) RuleSystemModule {
+			return RuleSystemModule{ID: id, Path: path, Invalid: true, Error: err.Error(), Custom: !IsBuiltinRuleSystemID(id)}
+		}, applyRuleSystemOwnership, sortRuleSystems)
 }
 
 func (l *RuleSystemLibrary) Get(id string) (RuleSystemModule, error) {
-	if err := l.ensureBuiltins(); err != nil {
-		return RuleSystemModule{}, err
-	}
 	id = normalizeDirectorModuleID(id)
 	if id == "" {
 		id = DefaultRuleSystemID
@@ -326,11 +273,7 @@ func (l *RuleSystemLibrary) Get(id string) (RuleSystemModule, error) {
 	if err := validateDirectorModuleID(id, "TRPG 检定"); err != nil {
 		return RuleSystemModule{}, err
 	}
-	item, err := parseRuleSystemFile(filepath.Join(l.dir(), id+".json"))
-	if err != nil {
-		return RuleSystemModule{}, err
-	}
-	return applyRuleSystemOwnership(item), nil
+	return getDirectorModuleFile(l.dir(), id, l.ensureBuiltins, parseRuleSystemFile, applyRuleSystemOwnership)
 }
 
 func (l *RuleSystemLibrary) Create(item RuleSystemModule) (RuleSystemModule, error) {
@@ -414,21 +357,11 @@ func (l *RuleSystemLibrary) dir() string {
 }
 
 func (l *RuleSystemLibrary) ensureBuiltins() error {
-	if err := os.MkdirAll(l.dir(), 0o755); err != nil {
-		return err
-	}
-	for _, builtin := range builtinRuleSystemModules() {
-		path := filepath.Join(l.dir(), builtin.ID+".json")
-		if current, err := parseRuleSystemFile(path); err == nil && current.BuiltinOverridden {
-			continue
-		} else if err == nil && current.Version == storyDirectorModuleVersion && !ruleSystemDiffersFromBuiltin(current) {
-			continue
-		}
-		if err := writeRuleSystemFile(path, builtin); err != nil {
-			return err
-		}
-	}
-	return nil
+	return ensureBuiltinModuleFiles(l.dir(), builtinRuleSystemModules(),
+		func(item RuleSystemModule) string { return item.ID }, parseRuleSystemFile,
+		func(current, _ RuleSystemModule) bool {
+			return current.BuiltinOverridden || current.Version == storyDirectorModuleVersion && !ruleSystemDiffersFromBuiltin(current)
+		}, writeRuleSystemFile)
 }
 
 func DefaultStoryDirectorModuleRefs() StoryDirectorModuleRefs {

@@ -1175,7 +1175,7 @@ func TestNormalizeTaskMigratesLegacyCharacterTriggerToSemantic(t *testing.T) {
 		t.Fatalf("trigger count = %d, want 1", len(task.Triggers))
 	}
 	trigger := task.Triggers[0]
-	if trigger.Type != TriggerTypeSemantic || !strings.Contains(trigger.SemanticCondition, "新") {
+	if trigger.Type != TriggerTypeSemantic || !strings.Contains(trigger.SemanticCondition, "important character") {
 		t.Fatalf("legacy trigger not migrated to semantic: %#v", trigger)
 	}
 }

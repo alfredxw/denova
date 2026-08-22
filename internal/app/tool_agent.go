@@ -15,7 +15,7 @@ func (a *App) InferNovelSplitRegex(ctx context.Context, sample string) (string, 
 	runtimeCfg, workspace := a.toolAgentConfig()
 	regex, err := agentmodeltask.InferChapterSplitRegex(ctx, &runtimeCfg, sample)
 	if err != nil {
-		slog.ErrorContext(ctx, fmt.Sprintf("[tool-agent] 小说导入章节正则推断失败 workspace=%s err=%v", workspace, err))
+		slog.ErrorContext(ctx, fmt.Sprintf("[tool-agent] Novel import chapter regex inference failed workspace=%s err=%v", workspace, err))
 		a.persistAgentCall(config.AgentKindToolAgent, sample, "执行失败："+err.Error())
 		return "", err
 	}
@@ -39,7 +39,7 @@ func (a *App) toolAgentConfig() (config.Config, string) {
 	); err == nil {
 		appsettings.ApplyLayered(&runtimeCfg, layered)
 	} else {
-		slog.ErrorContext(context.Background(), fmt.Sprintf("[tool-agent] 加载分层配置失败 workspace=%s err=%v", workspace, err))
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[tool-agent] Failed to load layered settings workspace=%s err=%v", workspace, err))
 	}
 	return runtimeCfg, workspace
 }

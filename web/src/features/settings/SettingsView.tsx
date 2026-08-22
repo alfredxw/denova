@@ -6,7 +6,7 @@ import type { AnimationPlaybackControls } from 'motion/react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { withErrorLogID } from '@/lib/api-client'
-import type { AgentApprovalMode, ImageAPIProfileSettings, LabSettings, LayeredSettings, ModelProfileSettings, Settings, SettingsLayer, ShellEnvironmentMode, UpdateApplyResult, UpdateCheckResult, UpdateInstallProgress, UpdateInstallResult, WebAccessSettings } from './types'
+import type { AgentApprovalMode, ImageAPIProfileSettings, LabSettings, ModelProfileSettings, Settings, ShellEnvironmentMode, UpdateApplyResult, UpdateCheckResult, UpdateInstallProgress, UpdateInstallResult, WebAccessSettings } from './types'
 import { applyUpdate, checkForUpdate, GLOBAL_SETTINGS_TARGET, installUpdateStream, revokeAgentApprovalRule } from './api'
 import { useLayeredSettingsDraft } from './use-layered-settings-draft'
 import { FontPicker } from './FontPicker'
@@ -67,7 +67,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
   const { t } = useTranslation()
   const reducedMotion = useReducedMotionConfig()
   const approval = useAgentApprovalMode()
-  const { layered, draft, setDraft, error, autosaveStatus, autosaveError, saveNow, reload, notifyUpdated } = useLayeredSettingsDraft({
+  const { layered, draft, setDraft, error, autosaveStatus, autosaveError, saveNow, reload } = useLayeredSettingsDraft({
     target: GLOBAL_SETTINGS_TARGET,
     layer: 'user',
     sourcePrefix: 'settings-view',
@@ -109,15 +109,11 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
   useEffect(() => {
     getInteractiveTellers()
       .then((items) => setAvailableTellers(items))
-      .catch((e) => console.warn('[settings] 获取导演列表失败', e))
+      .catch((e) => console.warn('[settings] Failed to load the director list', e))
   }, [])
 
   const effective = layered?.effective ?? {}
-  // The "inherit" display must reflect the value that would apply if the current
-  // layer (user/workspace) contributed nothing. `effective` includes the current
-  // layer, so we merge only the lower layers to avoid the inherit label changing
-  // whenever the user edits the field.
-  const inherited = layered ? inheritedSettings(layered, 'user') : {}
+  const inherited = layered?.inherited?.user ?? {}
   const showDebugSettings = layered?.runtime?.dev_mode === true
 
   const revokeApprovalRule = useCallback(async (id: string) => {
@@ -126,7 +122,6 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
     try {
       await revokeAgentApprovalRule(id)
       await reload()
-      notifyUpdated('user')
       toast.success(t('agentApproval.rules.revokeSucceeded'))
     } catch (cause) {
       console.error(`[settings] failed to revoke agent approval rule id=${id}`, cause)
@@ -134,7 +129,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
     } finally {
       setRevokingApprovalRuleID('')
     }
-  }, [notifyUpdated, reload, revokingApprovalRuleID, t])
+  }, [reload, revokingApprovalRuleID, t])
 
   const runUpdateCheck = useCallback(async (source: 'auto' | 'manual' = 'manual') => {
     setCheckingUpdate(true)
@@ -1485,115 +1480,4 @@ function TellerSelect({ label, value, inherited, tellers, onChange }: {
       </Select>
     </FieldRow>
   )
-}
-
-/**
- * Merges only the layers below `currentLayer` so the "inherit" display reflects
- * the value that would apply if the current layer contributed nothing. This
- * mirrors the backend `Merge` semantics: a non-empty/non-null value in a child
- * layer overrides the parent.
- */
-function inheritedSettings(layered: LayeredSettings, currentLayer: SettingsLayer): Settings {
-  const lowerLayers = currentLayer === 'user'
-    ? [layered.default, layered.global, layered.workspace]
-    : [layered.default, layered.global]
-  return lowerLayers.reduce<Settings>((acc, layer) => mergeSettingsLayer(acc, layer ?? {}), {})
-}
-
-function mergeSettingsLayer(parent: Settings, child: Settings): Settings {
-  const out: Settings = { ...parent }
-  const override = <K extends keyof Settings>(key: K, isSet: (v: Settings[K]) => boolean) => {
-    if (isSet(child[key])) out[key] = child[key]
-  }
-  const isNonEmptyString = (v: unknown) => typeof v === 'string' && v !== ''
-  const isNonNull = (v: unknown) => v !== null && v !== undefined
-  override('openai_api_key', isNonEmptyString)
-  override('openai_base_url', isNonEmptyString)
-  override('openai_model', isNonEmptyString)
-  override('openai_context_window_tokens', isNonNull)
-  if (child.model_profiles?.length) out.model_profiles = child.model_profiles
-  override('default_image_api_profile_id', isNonEmptyString)
-  if (child.image_api_profiles?.length) out.image_api_profiles = child.image_api_profiles
-  override('skills_dir', isNonEmptyString)
-  override('backend_port', isNonNull)
-  override('frontend_port', isNonNull)
-  override('allow_lan_access', isNonNull)
-  override('remote_access_username', isNonEmptyString)
-  if (child.remote_access_password_set) {
-    out.remote_access_password_set = true
-    out.remote_access_password = child.remote_access_password
-  }
-  override('auto_save_enabled', isNonNull)
-  override('auto_save_interval_ms', isNonNull)
-  override('chapter_filename_format', isNonEmptyString)
-  override('volume_dir_format', isNonEmptyString)
-  override('max_open_tabs', isNonNull)
-  override('project_file_tree_entry_limit', isNonNull)
-  override('chapter_group_min', isNonNull)
-  override('chapter_group_max', isNonNull)
-  override('version_timed_enabled', isNonNull)
-  override('version_timed_interval_minutes', isNonNull)
-  override('ui_font_family', isNonEmptyString)
-  override('ui_font_size', isNonNull)
-  override('reading_font_family', isNonEmptyString)
-  override('reading_font_size', isNonNull)
-  override('language', isNonEmptyString)
-  override('theme', isNonEmptyString)
-  override('motion_intensity', isNonEmptyString)
-  override('update_check_enabled', isNonNull)
-  override('max_iteration', isNonNull)
-  override('model_max_retries', isNonNull)
-  override('agent_idle_timeout_seconds', isNonNull)
-  override('agent_tool_result_limit_kb', isNonNull)
-  override('agent_tool_parallelism', isNonNull)
-  override('agent_script_timeout_seconds', isNonNull)
-  override('agent_approval_mode', isNonEmptyString)
-  override('shell_environment_mode', isNonEmptyString)
-  override('shell_environment_shell', isNonEmptyString)
-  override('agent_bash_path', isNonEmptyString)
-  override('terminal_enabled', isNonNull)
-  override('terminal_shell', isNonEmptyString)
-  if (child.terminal_commands !== undefined) out.terminal_commands = child.terminal_commands
-  override('terminal_max_sessions', isNonNull)
-  override('terminal_scrollback_kb', isNonNull)
-  override('llm_input_log_enabled', isNonNull)
-  override('trace_capture_level', isNonEmptyString)
-  override('trace_exporter', isNonEmptyString)
-  override('trace_retention_runs', isNonNull)
-  override('plan_mode_default', isNonNull)
-  override('ide_story_teller_id', isNonEmptyString)
-  override('interactive_story_teller_id', isNonEmptyString)
-  override('ide_image_preset_id', isNonEmptyString)
-  override('writing_skill_default', isNonEmptyString)
-  override('interactive_stage_font_size', isNonNull)
-  override('interactive_stage_line_height', isNonNull)
-  if (child.labs) {
-    out.labs = mergeLabSettings(parent.labs ?? {}, child.labs)
-  }
-  if (child.web_access) {
-    out.web_access = mergeWebAccess(parent.web_access ?? {}, child.web_access)
-  }
-  return out
-}
-
-function mergeLabSettings(parent: NonNullable<Settings['labs']>, child: NonNullable<Settings['labs']>): NonNullable<Settings['labs']> {
-  const out = { ...parent }
-  const isPositiveNumber = (value: number | null | undefined) => typeof value === 'number' && Number.isFinite(value) && value > 0
-  if (child.developer_mode !== null && child.developer_mode !== undefined) out.developer_mode = child.developer_mode
-  if (child.continual_learning_schedule !== null && child.continual_learning_schedule !== undefined) out.continual_learning_schedule = child.continual_learning_schedule
-  if (isPositiveNumber(child.continual_learning_interval_hours)) out.continual_learning_interval_hours = child.continual_learning_interval_hours
-  if (isPositiveNumber(child.continual_learning_trajectory_cap)) out.continual_learning_trajectory_cap = child.continual_learning_trajectory_cap
-  return out
-}
-
-function mergeWebAccess(parent: WebAccessSettings, child: WebAccessSettings): WebAccessSettings {
-  const out: WebAccessSettings = { ...parent }
-  const isNonEmptyString = (v: unknown) => typeof v === 'string' && v !== ''
-  const isNonNull = (v: unknown) => v !== null && v !== undefined
-  if (isNonEmptyString(child.searxng_base_url)) out.searxng_base_url = child.searxng_base_url
-  if (isNonNull(child.search_max_results)) out.search_max_results = child.search_max_results
-  if (isNonNull(child.search_provider_timeout_seconds)) out.search_provider_timeout_seconds = child.search_provider_timeout_seconds
-  if (isNonNull(child.fetch_max_response_kb)) out.fetch_max_response_kb = child.fetch_max_response_kb
-  if (isNonNull(child.fetch_max_content_chars)) out.fetch_max_content_chars = child.fetch_max_content_chars
-  return out
 }

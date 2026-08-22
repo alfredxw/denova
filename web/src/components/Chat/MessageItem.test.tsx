@@ -6,6 +6,13 @@ import { describe, expect, it, vi } from 'vitest'
 import { setConfiguredLocale } from '@/i18n'
 import { MessageItem as ProjectMessageItem } from './MessageItem'
 
+const refreshSettingsMock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
+
+vi.mock('@/features/settings/api', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/features/settings/api')>(),
+  refreshSettings: refreshSettingsMock,
+}))
+
 function MessageItem(props: ComponentProps<typeof ProjectMessageItem>) {
   return <ProjectMessageItem {...props} projectId={props.projectId || 'project-message'} />
 }
@@ -1659,8 +1666,7 @@ describe('MessageItem', () => {
 
   it('工具审批内联到原工具卡并可保存工作区命令规则', async () => {
     const user = userEvent.setup()
-    const settingsUpdated = vi.fn()
-    window.addEventListener('nova:settings-updated', settingsUpdated)
+    refreshSettingsMock.mockClear()
     const onResolve = vi.fn().mockResolvedValue({
       schema: 'ask.result.v1', id: 'approval-1', status: 'answered',
       answers: [{
@@ -1707,7 +1713,6 @@ describe('MessageItem', () => {
       { status: 'answered', answers: [{ question_id: 'tool-approval', selected_option_ids: ['allow-workspace'] }] },
     ))
     expect(screen.getByText('已在此工作区持续允许')).toBeInTheDocument()
-    expect(settingsUpdated).toHaveBeenCalledTimes(1)
-    window.removeEventListener('nova:settings-updated', settingsUpdated)
+    await waitFor(() => expect(refreshSettingsMock).toHaveBeenCalledTimes(1))
   })
 })

@@ -28,7 +28,7 @@ export function recordRuntimeLog(entry: Omit<RuntimeLogEntry, 'url' | 'userAgent
     const next = [...prev, fullEntry].slice(-MAX_LOGS)
     window.localStorage.setItem(RUNTIME_LOG_KEY, JSON.stringify(next))
   } catch (error) {
-    console.error('[nova-runtime] 写入本地日志失败', error)
+    console.error('[nova-runtime] Failed to write the local log', error)
   }
 }
 

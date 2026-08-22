@@ -62,7 +62,7 @@ func (s *workspaceService) acquireVersionCreateRuntime(ctx context.Context) (*ve
 	if layered, loadErr := config.LoadLayeredWithStartupConfigAt(runtime.cfg.DataDir(), workspace, projectConfigPath); loadErr == nil {
 		appsettings.ApplyLayered(&runtime.cfg, layered)
 	} else {
-		slog.ErrorContext(ctx, fmt.Sprintf("[versions] 加载分层配置用于版本说明失败 workspace=%s err=%v", workspace, loadErr))
+		slog.ErrorContext(ctx, fmt.Sprintf("[versions] Failed to load layered settings for version summary workspace=%s err=%v", workspace, loadErr))
 	}
 	return runtime, nil
 }

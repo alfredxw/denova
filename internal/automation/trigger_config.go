@@ -214,17 +214,17 @@ func migrateLegacySemanticTrigger(trigger TriggerDefinition) TriggerDefinition {
 	case "chapter_ready_for_review":
 		trigger.Type = TriggerTypeSemantic
 		if condition == "" {
-			trigger.SemanticCondition = "章节剧情或正文达到需要质量检查、连续性检查或完成度检查的状态"
+			trigger.SemanticCondition = "The chapter plot or prose has reached a state that requires a quality, continuity, or completeness review"
 		}
 	case "interactive_new_character":
 		trigger.Type = TriggerTypeSemantic
 		if condition == "" {
-			trigger.SemanticCondition = "最近章节剧情中有新的重要角色登场"
+			trigger.SemanticCondition = "A new important character has appeared in the recent chapter narrative"
 		}
 	case "interactive_character_state_changed":
 		trigger.Type = TriggerTypeSemantic
 		if condition == "" {
-			trigger.SemanticCondition = "最近章节剧情中已有角色的处境、关系、能力、情绪或阵营发生重要变化"
+			trigger.SemanticCondition = "An existing character's circumstances, relationships, abilities, emotions, or allegiance have changed significantly in the recent chapter narrative"
 		}
 	}
 	return trigger

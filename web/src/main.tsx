@@ -23,7 +23,7 @@ if (!root) {
     message: '前端启动失败',
     reason: 'root 节点不存在',
   })
-  throw new Error('root 节点不存在')
+  throw new Error('Root element not found')
 }
 
 createRoot(root).render(
@@ -52,6 +52,6 @@ async function bootstrapSettings() {
     setConfiguredLocale(settings?.effective?.language)
     applyFontSettings(fontSettingsFromEffective(settings?.effective))
   } catch (error) {
-    console.warn('[startup] 预加载界面设置失败，使用本地缓存或浏览器默认值', error)
+    console.warn('[startup] Failed to preload UI settings; using local cache or browser defaults', error)
   }
 }

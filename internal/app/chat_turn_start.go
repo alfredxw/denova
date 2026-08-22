@@ -24,7 +24,7 @@ func (a *App) StartTask(ctx context.Context, req agentchat.ChatRequest) *apptask
 func (s *ChatAppService) StartTask(ctx context.Context, req agentchat.ChatRequest) *apptask.Task {
 	task, err := s.StartTaskWithError(ctx, req)
 	if err != nil {
-		slog.ErrorContext(ctx, fmt.Sprintf("[agent-task] 准备 IDE Agent 运行时失败 err=%v", err))
+		slog.ErrorContext(ctx, fmt.Sprintf("[agent-task] Failed to prepare Agent runtime err=%v", err))
 		return nil
 	}
 	return task

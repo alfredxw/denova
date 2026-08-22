@@ -290,6 +290,10 @@ describe('SettingsView user scope', () => {
         continual_learning_trajectory_cap: 0,
       },
     }
+    settings.inherited = {
+      user: settings.effective,
+      workspace: settings.inherited?.workspace ?? {},
+    }
     vi.mocked(fetchSettings).mockResolvedValue(settings)
     vi.mocked(updateUserSettings).mockResolvedValue(settings)
 
@@ -448,6 +452,7 @@ function layeredSettings({ devMode }: { devMode: boolean }): LayeredSettings {
     global: {},
     user: {},
     workspace: {},
+    inherited: { user: settings, workspace: settings },
     effective: settings,
     resolved_agent_tool_manifests: {},
     resolved_agent_contexts: {},

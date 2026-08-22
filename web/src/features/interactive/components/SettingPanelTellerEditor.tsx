@@ -61,7 +61,7 @@ export function TellerEditor({ projectId, draft, setDraft, activeSlotId, setActi
       setStyleReferences(refs)
       return refs
     } catch (err) {
-      console.warn('[teller-editor] 加载共享文风参考失败', err)
+      console.warn('[teller-editor] Failed to load shared style references', err)
       setStyleReferences([])
       return []
     }
@@ -505,7 +505,7 @@ function StyleReferenceControls({ projectId, references, refreshReferences, refs
       setUploadError('')
       setUploadOpen(true)
     } catch (err) {
-      console.warn('[teller-editor] 读取风格内容文件失败', err)
+      console.warn('[teller-editor] Failed to read style content file', err)
     } finally {
       if (fileInputRef.current) fileInputRef.current.value = ''
     }

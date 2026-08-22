@@ -1,7 +1,7 @@
 import { type FormEvent, useEffect, useState } from 'react'
 import { LockKeyhole, LogIn } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { fetchSettings } from '@/features/settings/api'
+import { refreshSettings } from '@/features/settings/api'
 import { setRemoteAccessCredentials } from '@/lib/api-client'
 
 const REMOTE_ACCESS_REQUIRED_EVENT = 'nova:remote-access-required'
@@ -29,10 +29,9 @@ export function RemoteAccessLogin() {
     setError('')
     try {
       setRemoteAccessCredentials(username, password)
-      await fetchSettings()
+      await refreshSettings()
       setOpen(false)
       setPassword('')
-      window.dispatchEvent(new CustomEvent('nova:settings-updated'))
     } catch (e) {
       setError((e as Error).message || t('remoteAccess.loginFailed'))
     } finally {

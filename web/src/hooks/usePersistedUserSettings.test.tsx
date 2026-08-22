@@ -317,8 +317,7 @@ describe('usePersistedUserSettings', () => {
       revisions: { user: 'r2' },
     })
     await act(async () => {
-      window.dispatchEvent(new CustomEvent('nova:settings-updated', { detail: { source: 'settings-page' } }))
-      await Promise.resolve()
+      await result.current.reload()
     })
 
     expect(result.current.values).toEqual({

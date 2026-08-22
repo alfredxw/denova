@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useTheme } from 'next-themes'
 import { checkForUpdate, fetchProjectSettings, fetchSettings, refreshProjectSettings, refreshSettings } from '@/features/settings/api'
+import { subscribeSettingsTarget } from '@/features/settings/query'
 import { applyFontSettings, fontSettingsFromEffective } from '@/features/settings/font-variables'
 import { markAutoUpdateChecked, shouldRunAutoUpdateCheck, UPDATE_CHECK_RESULT_EVENT } from '@/features/settings/update-check-cache'
 import type { UpdateCheckResult } from '@/features/settings/types'
@@ -297,26 +298,28 @@ function App() {
 
   useEffect(() => {
     let cancelled = false
+    const target = projectId ? { kind: 'project' as const, projectId } : { kind: 'global' as const }
+    const applySettings = (data: Awaited<ReturnType<typeof fetchSettings>>) => {
+      if (cancelled) return
+      const effective = data.effective
+      const v = effective?.max_open_tabs
+      if (typeof v === 'number' && v >= 1) setMaxOpenTabs(Math.floor(v))
+      setEditorAutoSaveEnabled(effective?.auto_save_enabled ?? AUTO_SAVE_ENABLED_FALLBACK)
+      setEditorAutoSaveDelayMs(normalizeAutoSaveDelayMs(effective?.auto_save_interval_ms))
+      setUpdateCheckEnabled(effective?.update_check_enabled !== false)
+      setDeveloperMode(effective?.labs?.developer_mode === true)
+      setNovaDir(data.paths?.denova_dir || data.paths?.nova_dir || '')
+      setConfiguredLocale(effective?.language)
+      setTheme(normalizeAppTheme(effective?.theme))
+      setMotionIntensity(normalizeMotionIntensity(effective?.motion_intensity))
+      applyFontSettings(fontSettingsFromEffective(effective))
+    }
     const reload = (fresh = false) => {
       const request = projectId
         ? (fresh ? refreshProjectSettings(projectId) : fetchProjectSettings(projectId))
         : (fresh ? refreshSettings() : fetchSettings())
       request
-        .then((data) => {
-          if (cancelled) return
-          const effective = data?.effective
-          const v = effective?.max_open_tabs
-          if (typeof v === 'number' && v >= 1) setMaxOpenTabs(Math.floor(v))
-          setEditorAutoSaveEnabled(effective?.auto_save_enabled ?? AUTO_SAVE_ENABLED_FALLBACK)
-          setEditorAutoSaveDelayMs(normalizeAutoSaveDelayMs(effective?.auto_save_interval_ms))
-          setUpdateCheckEnabled(effective?.update_check_enabled !== false)
-          setDeveloperMode(effective?.labs?.developer_mode === true)
-          setNovaDir(data?.paths?.denova_dir || data?.paths?.nova_dir || '')
-          setConfiguredLocale(effective?.language)
-          setTheme(normalizeAppTheme(effective?.theme))
-          setMotionIntensity(normalizeMotionIntensity(effective?.motion_intensity))
-          applyFontSettings(fontSettingsFromEffective(effective))
-        })
+        .then(applySettings)
         .catch((e) => console.warn('[App.tsx] failed to load interface settings', e))
     }
     const workspaceChanged = workspaceLoaded
@@ -324,15 +327,10 @@ function App() {
       && settingsWorkspaceRef.current !== projectId
     if (workspaceLoaded) settingsWorkspaceRef.current = projectId
     reload(workspaceChanged)
-    const onUpdated = (event: Event) => {
-      const changedProjectId = (event as CustomEvent<{ projectId?: string }>).detail?.projectId
-      if (changedProjectId && changedProjectId !== projectId) return
-      reload(true)
-    }
-    window.addEventListener('nova:settings-updated', onUpdated)
+    const unsubscribe = subscribeSettingsTarget(target, applySettings)
     return () => {
       cancelled = true
-      window.removeEventListener('nova:settings-updated', onUpdated)
+      unsubscribe()
     }
   }, [projectId, setTheme, workspaceLoaded])
 
