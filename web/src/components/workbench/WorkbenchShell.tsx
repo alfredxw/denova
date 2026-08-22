@@ -27,8 +27,10 @@ import {
   isActivityItemID,
   mergeVisibleActivityOrder,
   readStoredActivityOrders,
+  readStoredHiddenActivityIDs,
   sortActivityItems,
   storeActivityOrder,
+  storeHiddenActivityIDs,
   type ActivityItem,
   type ActivityItemID,
   type ActivityOrderScope,
@@ -109,6 +111,7 @@ export function WorkbenchShell({
   const isMobile = useIsMobile()
   const setCommandOpen = useWorkspaceStore((state) => state.setCommandOpen)
   const [activityOrders, setActivityOrders] = useState<Record<ActivityOrderScope, ActivityItemID[]>>(readStoredActivityOrders)
+  const [hiddenActivityIDs, setHiddenActivityIDs] = useState<ActivityItemID[]>(readStoredHiddenActivityIDs)
   const [activityBarWidth, setActivityBarWidth] = useState(readStoredActivityBarWidth)
   const activitySummary = useActivitySummary().data
   const messageUnread = activitySummary?.message_unread_count ?? 0
@@ -297,13 +300,31 @@ export function WorkbenchShell({
     },
   ]
 
-  const activityItems = useMemo(
+  const allActivityItems = useMemo(
     () => sortActivityItems([
       ...creationActivityItems,
       ...sharedActivityItems,
     ], activityOrder, defaultActivityOrderForScope(activityOrderScope)),
     [activityOrder, activityOrderScope, agentChatActive, agentsActive, automationInboxUnread, automationRunning, automationsActive, developerMode, ideModeActive, interactiveModeActive, loreActive, mode, presetsActive, settingsOpen, skillsActive, t, trajectoryActive, versionsActive],
   )
+  const effectiveHiddenActivityIDs = useMemo(() => {
+    const hasVisibleItem = allActivityItems.some((item) => !hiddenActivityIDs.includes(item.id))
+    if (hasVisibleItem || allActivityItems.length === 0) return hiddenActivityIDs
+    return hiddenActivityIDs.filter((id) => id !== allActivityItems[0].id)
+  }, [allActivityItems, hiddenActivityIDs])
+  const activityItems = useMemo(
+    () => {
+      const hiddenIDs = new Set(effectiveHiddenActivityIDs)
+      return allActivityItems.filter((item) => !hiddenIDs.has(item.id))
+    },
+    [allActivityItems, effectiveHiddenActivityIDs],
+  )
+
+  useEffect(() => {
+    if (effectiveHiddenActivityIDs.length === hiddenActivityIDs.length) return
+    setHiddenActivityIDs(effectiveHiddenActivityIDs)
+    storeHiddenActivityIDs(effectiveHiddenActivityIDs)
+  }, [effectiveHiddenActivityIDs, hiddenActivityIDs])
 
   const handleActivityReorder = (activeId: string, overId: string) => {
     if (!isActivityItemID(activeId) || !isActivityItemID(overId)) return
@@ -316,6 +337,37 @@ export function WorkbenchShell({
     const nextOrder = mergeVisibleActivityOrder(nextVisibleIds, activityOrder, defaultActivityOrderForScope(activityOrderScope))
     setActivityOrders((current) => ({ ...current, [activityOrderScope]: nextOrder }))
     storeActivityOrder(activityOrderScope, nextOrder)
+  }
+
+  const handleCustomizationActivityReorder = (activeId: string, overId: string) => {
+    if (!isActivityItemID(activeId) || !isActivityItemID(overId)) return
+    const availableIDs = allActivityItems.map((item) => item.id)
+    const oldIndex = availableIDs.indexOf(activeId)
+    const newIndex = availableIDs.indexOf(overId)
+    if (oldIndex === -1 || newIndex === -1) return
+
+    const reorderedIDs = arrayMove(availableIDs, oldIndex, newIndex)
+    const nextOrder = mergeVisibleActivityOrder(reorderedIDs, activityOrder, defaultActivityOrderForScope(activityOrderScope))
+    setActivityOrders((current) => ({ ...current, [activityOrderScope]: nextOrder }))
+    storeActivityOrder(activityOrderScope, nextOrder)
+  }
+
+  const handleActivityVisibilityChange = (id: string, visible: boolean) => {
+    if (!isActivityItemID(id)) return
+    const currentlyVisibleItems = allActivityItems.filter((item) => !effectiveHiddenActivityIDs.includes(item.id))
+    if (!visible && currentlyVisibleItems.length <= 1) return
+
+    const nextHiddenIDs = visible
+      ? effectiveHiddenActivityIDs.filter((hiddenID) => hiddenID !== id)
+      : [...new Set([...effectiveHiddenActivityIDs, id])]
+    setHiddenActivityIDs(nextHiddenIDs)
+    storeHiddenActivityIDs(nextHiddenIDs)
+
+    const hiddenItem = allActivityItems.find((item) => item.id === id)
+    if (!visible && hiddenItem?.active) {
+      const fallback = allActivityItems.find((item) => !nextHiddenIDs.includes(item.id))
+      if (fallback) selectPrimaryNavigation(fallback.id, fallback.onClick)
+    }
   }
 
   const resizeActivityBar = (nextWidth: number) => {
@@ -366,6 +418,8 @@ export function WorkbenchShell({
         active: optimisticNavigationId ? optimisticNavigationId === item.id : item.active,
         onClick: () => selectPrimaryNavigation(item.id, item.onClick),
       }))}
+      customizationItems={allActivityItems}
+      hiddenActivityIDs={effectiveHiddenActivityIDs}
       dragDisabled={settingsOpen}
       contextSwitcher={
         <BookSwitcher
@@ -407,6 +461,8 @@ export function WorkbenchShell({
       onOpenSettings={() => selectPrimaryNavigation('settings', onToggleSettings)}
       onToggle={onToggleActivityBarExpanded}
       onReorder={handleActivityReorder}
+      onCustomizationReorder={handleCustomizationActivityReorder}
+      onActivityVisibilityChange={handleActivityVisibilityChange}
       onResizePointerDown={handleActivityBarResizePointerDown}
       onResizeKeyDown={handleActivityBarResizeKeyDown}
     />

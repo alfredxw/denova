@@ -122,6 +122,7 @@ export function ChapterOutline({
   const panelSelectionRef = useRef(false)
   const lastAutoLocatedRef = useRef<string | null>(null)
   const locateFrameRef = useRef<number | null>(null)
+  const [listScrolled, setListScrolled] = useState(false)
   const [backToTopVisible, setBackToTopVisible] = useState(false)
 
   const handleSelectFileFromPanel = useCallback((path: string) => {
@@ -185,6 +186,7 @@ export function ChapterOutline({
   useEffect(() => cancelScheduledLocate, [cancelScheduledLocate])
 
   const handleScrollTopChange = useCallback((scrollTop: number) => {
+    setListScrolled(scrollTop > 0)
     setBackToTopVisible(scrollTop > BACK_TO_TOP_THRESHOLD_PX)
   }, [])
 
@@ -225,7 +227,12 @@ export function ChapterOutline({
   const chapterCountLabel = useCallback((count: number) => t('common.chapters', { count }), [t])
 
   const bookSettingsHeaderFrame = (
-    <div data-testid="book-settings-header-frame" className="shrink-0 bg-[var(--nova-surface)] p-2">
+    <div
+      data-testid="book-settings-header-frame"
+      className={`shrink-0 border-b bg-[var(--nova-surface)] p-2 ${
+        headerPinned && listScrolled ? 'border-[var(--nova-border)]' : 'border-transparent'
+      }`}
+    >
       <BookSettingsShortcuts
         projectId={projectId}
         tree={tree}

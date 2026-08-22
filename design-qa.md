@@ -378,3 +378,46 @@ No actionable P0, P1, or P2 differences remain. The source showed a P2 elevation
 None required for this scope.
 
 final result: passed
+
+# Design QA: Sidebar customization
+
+## Evidence
+
+- Source dialog: `/var/folders/3p/tw35s8456m1033g5yxdztf_m0000gn/T/codex-clipboard-addaf0b0-1082-4e3a-a619-1198b0be4739.png` (`1248 × 1198` pixels).
+- Source context menu: `/var/folders/3p/tw35s8456m1033g5yxdztf_m0000gn/T/codex-clipboard-000066e6-d360-45aa-8dfb-654f0fed621d.png` (`478 × 324` pixels).
+- Full implementation dialog: `/Users/bytedance/Code/github/denova/docs/design-qa/sidebar-customization/implementation-dialog-full.png` (`1280 × 720` CSS/captured pixels).
+- Focused implementation dialog: `/Users/bytedance/Code/github/denova/docs/design-qa/sidebar-customization/implementation-dialog-focused.png` (`576 × 646` pixels).
+- Compact implementation dialog: `/Users/bytedance/Code/github/denova/docs/design-qa/sidebar-customization/implementation-dialog-compact.png` (`1024 × 640` CSS/captured pixels).
+- Context-menu implementation: `/Users/bytedance/Code/github/denova/docs/design-qa/sidebar-customization/implementation-context-menu-full.png` (`1280 × 720` CSS/captured pixels) and focused crop `/Users/bytedance/Code/github/denova/docs/design-qa/sidebar-customization/implementation-context-menu-focused.png` (`192 × 73` pixels).
+- Combined source/implementation comparison: `/Users/bytedance/Code/github/denova/docs/design-qa/sidebar-customization/reference-implementation-comparison.png` (`1280 × 1010` pixels).
+- Browser device pixel ratio was `2`; screenshots are normalized to one output pixel per CSS pixel. Browser chrome is excluded.
+
+## State and comparison
+
+- Route: local Denova workspace, book `《娱乐春秋》`.
+- Primary states: expanded desktop sidebar with the customization dialog open; menu-item context menu; compact desktop dialog; mobile navigation drawer.
+- The source and final implementation were inspected together in the combined comparison. Denova intentionally removes the source's grouping and badge-style controls, uses one switch per menu, and keeps the existing Lucide icon family and Denova density. These differences directly follow the requested simplified scope.
+- Typography, neutral surfaces, rounded list container, row rhythm, drag affordance, and menu placement follow the reference while reusing the project's existing shadcn and semantic theme primitives.
+
+## Findings
+
+- No actionable P0, P1, or P2 differences remain.
+- The active development workspace remained on the light effective theme after selecting Dark and reloading, so the final focused browser capture is light. The new UI introduces no literal theme colors and uses only existing Dialog, ContextMenu, Switch, Button, and `--nova-*` semantic tokens; this is a pre-existing live theme-propagation limitation rather than a sidebar-specific visual defect. The original light preference was restored.
+
+## Interaction and responsive checks
+
+- Right-clicking blank/sidebar footer space exposes only `自定义侧边栏`; right-clicking a first-level menu also exposes `从侧边栏隐藏`.
+- Hid and restored Lore and Automations from the dialog and verified persistence. Hid a menu directly from its own context menu.
+- Reordered Game with keyboard drag controls, verified the live first-level order, and restored the original order.
+- Verified that the active destination falls back to the first visible destination when hidden and that corrupt preferences cannot leave zero available menus.
+- Verified `user-select: none` on the first-level menu surface.
+- Verified Writing and Game routes, expanded and collapsed sidebars, `1024 × 640` compact scrolling, and a `600 × 800` mobile navigation drawer with hidden menus omitted.
+- Verified Chinese and English localization-key parity and accessible labels for the dialog, close action, switches, and drag handles.
+- Browser console warnings/errors after the final interaction pass: none.
+
+## Comparison history
+
+1. Pass 1 — P2: the focused close button ring touched and clipped against the dialog's top edge. Fix: inset the close action to the standard 12 px dialog corner position.
+2. Pass 2 — resolved: the final combined comparison shows the close control fully contained and no remaining P0/P1/P2 issue.
+
+final result: passed

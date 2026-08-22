@@ -63,6 +63,7 @@ interface ProjectExplorerTreeProps {
   onSelectFile: (path: string) => void
   onDirectoryExpand: (path: string) => void | Promise<void>
   onDirectoryExpandedChange: (path: string, expanded: boolean) => void
+  onScrollOffsetChange?: (scrollOffset: number) => void
   onLoadMore: (path: string) => void | Promise<void>
   onCreateItem: (path: string, type: 'file' | 'dir') => Promise<void>
   onDeleteItem: (path: string) => Promise<void>
@@ -86,6 +87,7 @@ export const ProjectExplorerTree = forwardRef<ProjectExplorerTreeHandle, Project
   onSelectFile,
   onDirectoryExpand,
   onDirectoryExpandedChange,
+  onScrollOffsetChange,
   onLoadMore,
   onCreateItem,
   onDeleteItem,
@@ -336,6 +338,7 @@ export const ProjectExplorerTree = forwardRef<ProjectExplorerTreeHandle, Project
             disableDrop={disableProjectFileDrop}
             onActivate={handleActivate}
             onToggle={handleToggle}
+            onScrollOffsetChange={onScrollOffsetChange}
             onRename={handleRename}
             onMove={handleMove}
             renderNode={ExplorerNode}

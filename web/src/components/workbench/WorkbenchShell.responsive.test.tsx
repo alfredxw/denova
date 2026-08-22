@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { setConfiguredLocale } from '@/i18n'
 import { WorkbenchShell } from './WorkbenchShell'
@@ -218,6 +219,50 @@ describe('WorkbenchShell responsive main content', () => {
     expect(storyButton).toHaveAttribute('aria-current', 'page')
     expect(storyButton).toHaveAttribute('aria-roledescription', 'sortable')
     expect(storyButton.querySelector('[aria-roledescription="sortable"]')).toBeNull()
+  })
+
+  it('opens sidebar customization from the sidebar context menu and persists visibility', async () => {
+    const user = userEvent.setup()
+    const { container } = render(<WorkbenchShell {...workbenchProps(<div />)} activityBarExpanded />)
+
+    const sidebar = screen.getByRole('navigation', { name: '工作台侧边栏' })
+    expect(sidebar).toHaveClass('select-none')
+    fireEvent.contextMenu(sidebar)
+    await user.click(await screen.findByRole('menuitem', { name: '自定义侧边栏' }))
+
+    const dialog = await screen.findByRole('dialog', { name: '自定义侧边栏' })
+    const loreVisibility = within(dialog).getByRole('switch', { name: '显示资料库' })
+    expect(loreVisibility).toBeChecked()
+    await user.click(loreVisibility)
+
+    await waitFor(() => expect(container.querySelector('[data-activity-id="lore"]')).toBeNull())
+    expect(JSON.parse(window.localStorage.getItem('nova.activity.hidden.workspace.v1') || '[]')).toContain('lore')
+  })
+
+  it('lets a first-level menu hide itself from its own context menu', async () => {
+    const user = userEvent.setup()
+    const { container } = render(<WorkbenchShell {...workbenchProps(<div />)} activityBarExpanded />)
+
+    fireEvent.contextMenu(screen.getByRole('button', { name: '写作' }))
+    expect(await screen.findByRole('menuitem', { name: '从侧边栏隐藏' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: '自定义侧边栏' })).toBeInTheDocument()
+    await user.click(screen.getByRole('menuitem', { name: '从侧边栏隐藏' }))
+
+    await waitFor(() => expect(container.querySelector('[data-activity-id="writing"]')).toBeNull())
+    expect(JSON.parse(window.localStorage.getItem('nova.activity.hidden.workspace.v1') || '[]')).toContain('writing')
+  })
+
+  it('repairs preferences when the only unhidden menu is unavailable', async () => {
+    window.localStorage.setItem('nova.activity.hidden.workspace.v1', JSON.stringify([
+      'writing', 'story', 'agentchat', 'lore', 'teller', 'versions', 'books', 'skills', 'agents', 'automations',
+    ]))
+
+    const { container } = render(<WorkbenchShell {...workbenchProps(<div />)} activityBarExpanded />)
+
+    expect(container.querySelector('[data-activity-id="writing"]')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(JSON.parse(window.localStorage.getItem('nova.activity.hidden.workspace.v1') || '[]')).not.toContain('writing')
+    })
   })
 
   it('paints one optimistic menu selection before running the heavy route action', () => {

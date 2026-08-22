@@ -82,7 +82,7 @@ describe('ChapterOutline', () => {
     expect(navigation).toContainElement(latestPlan)
     const bookSettingsHeader = screen.getByTestId('book-settings-header-frame')
     expect(bookSettingsHeader).not.toContainElement(latestPlan)
-    expect(bookSettingsHeader).not.toHaveClass('border-b')
+    expect(bookSettingsHeader).toHaveClass('border-transparent')
     expect(latestPlan).toHaveClass('px-2', 'py-1', '!text-sm', '!leading-normal')
     expect(latestPlan).not.toHaveClass('px-3', 'py-2', 'text-xs')
     expect(screen.getAllByText('第 6-10 章细纲')).toHaveLength(1)
@@ -198,6 +198,23 @@ describe('ChapterOutline', () => {
 
     fireEvent.click(backToTop)
     expect(scrollTo).toHaveBeenCalledWith({ top: 0, behavior: 'auto' })
+  })
+
+  it('仅在目录离开顶部后显示固定书籍设定的分隔线', async () => {
+    renderOutline()
+    const scrollContainer = screen.getByRole('navigation', { name: '作品大纲' })
+    const bookSettingsHeader = screen.getByTestId('book-settings-header-frame')
+    Object.defineProperty(scrollContainer, 'scrollTop', { configurable: true, writable: true, value: 0 })
+
+    expect(bookSettingsHeader).toHaveClass('border-transparent')
+
+    scrollContainer.scrollTop = 1
+    fireEvent.scroll(scrollContainer)
+    await waitFor(() => expect(bookSettingsHeader).toHaveClass('border-[var(--nova-border)]'))
+
+    scrollContainer.scrollTop = 0
+    fireEvent.scroll(scrollContainer)
+    await waitFor(() => expect(bookSettingsHeader).toHaveClass('border-transparent'))
   })
 
   it('响应编辑器发出的目录定位请求，并展开目标章节所在卷', async () => {

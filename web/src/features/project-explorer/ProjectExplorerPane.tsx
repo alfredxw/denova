@@ -1,6 +1,6 @@
 import type { TreeApi } from 'react-arborist'
 import { FilePlus, FolderPlus, ListCollapse, LocateFixed, RefreshCw } from 'lucide-react'
-import { memo, useCallback, useEffect, useRef } from 'react'
+import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { LoadingState } from '@/components/common/LoadingState'
@@ -56,6 +56,7 @@ export const ProjectExplorerPane = memo(function ProjectExplorerPane({
   const treeRef = useRef<TreeApi<ProjectFileExplorerNode>>(null)
   const explorerRef = useRef<ProjectExplorerTreeHandle>(null)
   const revealedPathRef = useRef<string | null>(null)
+  const [treeScrolled, setTreeScrolled] = useState(false)
   const actionButtonClass = 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
 
   const revealCurrentFile = useCallback(() => {
@@ -84,7 +85,12 @@ export const ProjectExplorerPane = memo(function ProjectExplorerPane({
 
   return (
     <aside className="flex h-full min-h-0 min-w-0 flex-col bg-[var(--nova-surface)] text-[var(--nova-text)]">
-      <div className="flex h-10 shrink-0 items-center gap-1 border-b border-[var(--nova-border)] px-2">
+      <div
+        data-slot="project-explorer-toolbar"
+        className={`flex h-9 shrink-0 items-center gap-1 border-b px-2 ${
+          treeScrolled ? 'border-[var(--nova-border)]' : 'border-transparent'
+        }`}
+      >
         <Button type="button" variant="ghost" size="icon-xs" className={`${actionButtonClass} ml-auto`} onClick={() => explorerRef.current?.beginCreate('file')} aria-label={t('sidebar.createFile')}>
           <FilePlus />
         </Button>
@@ -138,6 +144,7 @@ export const ProjectExplorerPane = memo(function ProjectExplorerPane({
             onSelectFile={onSelectFile}
             onDirectoryExpand={onDirectoryExpand}
             onDirectoryExpandedChange={onDirectoryExpandedChange}
+            onScrollOffsetChange={(scrollOffset) => setTreeScrolled(scrollOffset > 0)}
             onLoadMore={onLoadMore}
             onCreateItem={onCreateItem}
             onDeleteItem={onDeleteItem}
