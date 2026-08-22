@@ -427,8 +427,8 @@ describe('WorkbenchShell responsive main content', () => {
     cancelFrame.mockRestore()
   })
 
-  it('keeps the sidebar full-height while rendering document status only in Writing', () => {
-    const { container, rerender } = render(
+  it('keeps the writing sidebar full-height without a footer status bar', () => {
+    const { container } = render(
       <WorkbenchShell
         {...workbenchProps(<div />)}
         mode="ide"
@@ -442,47 +442,14 @@ describe('WorkbenchShell responsive main content', () => {
           chapters: [],
           chapter_plans: [],
         }}
-        currentChapter={{
-          path: 'chapters/ch01.md',
-          file_name: 'ch01.md',
-          display_title: '第一章',
-          index: 1,
-          words: 2836,
-          status: '成章',
-          confirmed: true,
-          updated_at: '2026-08-21T00:00:00Z',
-          volume: '',
-          volume_path: '',
-        }}
-        editorLine={42}
-        isStreaming
       />,
     )
 
     expect(container.querySelector('.nova-topbar')).toBeNull()
-    const statusBar = container.querySelector('.nova-writing-statusbar')
-    expect(statusBar).toBeInTheDocument()
     expect(screen.getByRole('navigation', { name: '工作台侧边栏' })).toBeInTheDocument()
-    expect(statusBar).toHaveTextContent('《Test book》 · 12 章 · 34,567 字')
-    expect(statusBar).toHaveTextContent('当前：第一章 · 2,836 字')
-    expect(statusBar).toHaveTextContent('更新：')
-    expect(statusBar).toHaveTextContent('行 42')
-    expect(statusBar).not.toHaveTextContent('成章')
-    expect(screen.getByText(/更新：.*行 42/)).not.toHaveClass('ml-auto')
-    expect(statusBar?.querySelectorAll('.border-l')).toHaveLength(0)
-    expect(screen.getByText('生成中')).toHaveAttribute('role', 'status')
+    expect(container.querySelector('.nova-writing-statusbar')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '切换书籍，当前：Test book' })).not.toHaveTextContent('12 章')
     expect(screen.queryByText(/Denova v/)).not.toBeInTheDocument()
-
-    rerender(
-      <WorkbenchShell
-        {...workbenchProps(<div />)}
-        mode="agentchat"
-        presentedLayout="full"
-        activityBarExpanded
-      />,
-    )
-    expect(container.querySelector('.nova-writing-statusbar')).toBeNull()
   })
 })
 
@@ -494,7 +461,6 @@ function workbenchProps(main: ReactNode) {
     workspace: '/tmp/test-book',
     books: [{ project_id: 'book-test', name: 'Test book', path: '/tmp/test-book', author: '', last_opened_at: '' }],
     summary: null,
-    isStreaming: false,
     projectVisible: false,
     activityBarExpanded: false,
     settingsOpen: false,

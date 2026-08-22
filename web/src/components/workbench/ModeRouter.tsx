@@ -208,19 +208,12 @@ export function ModeRouter(props: ModeRouterProps) {
   const [illustrationInsertSignal, setIllustrationInsertSignal] = useState<{ illustration: ChapterIllustration; nonce: number } | null>(null)
   const [outlineRevealRequest, setOutlineRevealRequest] = useState<OutlineRevealRequest | null>(null)
   const [toolNavigationIntent, setToolNavigationIntent] = useState<ToolNavigationIntent | null>(null)
-  const [editorPosition, setEditorPosition] = useState<{ tabKey: string | null; line: number }>()
   const toolNavigationNonceRef = useRef(0)
   const loreLibraryFlushHandlerRef = useRef<EditorFlushHandler | null>(null)
   const agentChatFlushHandlerRef = useRef<EditorFlushHandler | null>(null)
   // The router is the lifecycle owner: the settings lane survives AgentPanel close/unmount.
   const composerSettings = usePersistedUserSettings({ workspace, defaults: WRITING_COMPOSER_SETTING_DEFAULTS })
   const flushComposerSettings = composerSettings.flushPending
-
-  const handleEditorLineChange = useCallback((line: number) => {
-    setEditorPosition((current) => current?.tabKey === activeTabKey && current.line === line
-      ? current
-      : { tabKey: activeTabKey, line })
-  }, [activeTabKey])
 
   const flushComposerSettingsBestEffort = useCallback(() => {
     void flushComposerSettings().then((saved) => {
@@ -625,6 +618,8 @@ export function ModeRouter(props: ModeRouterProps) {
       workspace={workspace}
       tree={tree}
       chapters={chapters}
+      chapterCount={summary?.chapter_count}
+      totalWords={summary?.total_words}
       summaryAvailable={Boolean(summary)}
       ideas={summary?.ideas}
       outline={summary?.outline}
@@ -698,7 +693,6 @@ export function ModeRouter(props: ModeRouterProps) {
         onOpenLoreLibrary={openLoreLibrary}
         onReferenceLoreItem={referenceLoreFromWorkspace}
         onSaveCurrentFile={onSaveCurrentFile}
-        onEditorLineChange={handleEditorLineChange}
         onQuoteSelection={onQuoteSelection}
         onRevealChapter={revealCurrentChapterInOutline}
         onGenerateIllustration={requestChapterIllustration}
@@ -802,11 +796,6 @@ export function ModeRouter(props: ModeRouterProps) {
       workspace={workspace}
       books={books}
       summary={summary}
-      currentChapter={currentChapter}
-      editorLine={activeTab?.kind === 'file' && activeFileKind === 'markdown' && editorPosition?.tabKey === activeTabKey
-        ? editorPosition.line
-        : undefined}
-      isStreaming={isStreaming}
       projectVisible={projectVisible && !reviewVisible}
       activityBarExpanded={activityBarExpanded}
       rightPanelWide={agentSubAgentDetailsOpen && !reviewVisible}

@@ -73,7 +73,6 @@ interface MarkdownEditorProps {
   onRevealChapter?: (chapterPath: string) => void
   generateIllustrationDisabled?: boolean
   illustrationInsertSignal?: { illustration: ChapterIllustration; nonce: number } | null
-  onLineChange?: (line: number) => void
   onExternalConflict?: (conflict: { fileName: string; localContent: string; externalContent: string }) => void
   /** Registers the navigation guard used by tabs, previews, and workspace switches. */
   onFlushHandlerChange?: (handler: EditorFlushHandler | null) => void
@@ -107,7 +106,6 @@ export function MarkdownEditor({
   onRevealChapter,
   generateIllustrationDisabled = false,
   illustrationInsertSignal,
-  onLineChange,
   onExternalConflict,
   onFlushHandlerChange,
   documentReview,
@@ -120,6 +118,7 @@ export function MarkdownEditor({
   const [settings, setSettings] = useState<EditorSettings>(() => loadEditorSettings())
   const [nativeIndent, setNativeIndent] = useState(false)
   const [selectedCharacters, setSelectedCharacters] = useState(0)
+  const [documentCharacters, setDocumentCharacters] = useState(chapterSummary?.words ?? 0)
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchIndex, setSearchIndex] = useState(0)
@@ -261,10 +260,9 @@ export function MarkdownEditor({
     }
     if (options.resetHistory && !replaceWithFreshState) resetEditorStateHistory(editor)
     setNativeIndent(hasNativeIndent(nextContent))
-    updateCharacterStats(editor, setSelectedCharacters)
-    onLineChange?.(getLineNumber(editor.state.doc, editor.state.selection.head))
+    updateCharacterStats(editor, setSelectedCharacters, setDocumentCharacters)
     updateSearch(searchStateRef.current.query, 0)
-  }, [editor, onLineChange, resourceScope, updateSearch])
+  }, [editor, resourceScope, updateSearch])
 
   const {
     saveStatus,
@@ -304,22 +302,24 @@ export function MarkdownEditor({
     return { content: document.content || '', revision: document.revision }
   }, [documentReview, editor, fileName, flushCurrentDraft, projectId])
 
-  // 监听 TipTap 内容和选区变化，实时更新选区字数与光标行号。
+  // Keep the chapter count and selection actions synchronized with the active TipTap document.
   useEffect(() => {
     if (!editor) return
 
-    const updateStats = () => {
+    const updateDocumentStats = () => {
+      updateCharacterStats(editor, setSelectedCharacters, setDocumentCharacters)
+    }
+    const updateSelectionStats = () => {
       updateCharacterStats(editor, setSelectedCharacters)
-      onLineChange?.(getLineNumber(editor.state.doc, editor.state.selection.head))
     }
-    updateStats()
-    editor.on('update', updateStats)
-    editor.on('selectionUpdate', updateStats)
+    updateDocumentStats()
+    editor.on('update', updateDocumentStats)
+    editor.on('selectionUpdate', updateSelectionStats)
     return () => {
-      editor.off('update', updateStats)
-      editor.off('selectionUpdate', updateStats)
+      editor.off('update', updateDocumentStats)
+      editor.off('selectionUpdate', updateSelectionStats)
     }
-  }, [editor, onLineChange])
+  }, [editor])
 
   // 保存编辑器设置
   useEffect(() => {
@@ -523,6 +523,7 @@ export function MarkdownEditor({
         fileName={fileName}
         displayTitle={chapterSummary?.display_title}
         chapterPath={chapterSummary?.path}
+        chapterWords={chapterSummary ? documentCharacters : undefined}
         saveStatus={saveStatus}
         onSave={handleSave}
         settingsOpen={settingsOpen}

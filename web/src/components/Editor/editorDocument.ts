@@ -226,7 +226,12 @@ export function normalizeEditorText(text: string): string {
     .concat('\n')
 }
 
-export function updateCharacterStats(editor: Editor, setSelected: (value: number) => void) {
+export function updateCharacterStats(
+  editor: Editor,
+  setSelected: (value: number) => void,
+  setTotal?: (value: number) => void,
+) {
+  setTotal?.(editor.storage.characterCount.characters())
   const { from, to, empty } = editor.state.selection
   if (empty) {
     setSelected(0)

@@ -71,7 +71,7 @@ const tiptapMock = vi.hoisted(() => {
     chain: vi.fn(() => chainApi),
     storage: {
       characterCount: {
-        characters: () => 0,
+        characters: vi.fn(() => 0),
       },
     },
     schema,
@@ -129,6 +129,7 @@ const tiptapMock = vi.hoisted(() => {
       editor.state.doc.forEach.mockReset()
       vi.clearAllMocks()
       editor.view.hasFocus.mockReturnValue(false)
+      editor.storage.characterCount.characters.mockReturnValue(0)
     },
   }
 })
@@ -241,20 +242,14 @@ describe('MarkdownEditor', () => {
     expect(onFontSizeChange).toHaveBeenCalledWith(22)
   })
 
-  it('在更新时间右侧实时显示光标所在行号', () => {
-    const onLineChange = vi.fn()
-    tiptapMock.editor.state.doc.forEach.mockImplementation((callback) => {
-      callback({ nodeSize: 3 }, 0)
-      callback({ nodeSize: 3 }, 3)
-      callback({ nodeSize: 3 }, 6)
-    })
+  it('在章节标题栏实时显示当前章节字数', () => {
+    tiptapMock.editor.storage.characterCount.characters.mockReturnValue(10)
 
     render(
       <MarkdownEditor
         fileName="chapters/ch01.md"
         content="第一行\n\n第二行\n\n第三行"
         onSave={vi.fn()}
-        onLineChange={onLineChange}
         chapterSummary={{
           path: 'chapters/ch01.md',
           file_name: 'ch01.md',
@@ -270,15 +265,14 @@ describe('MarkdownEditor', () => {
       />,
     )
 
-    expect(onLineChange).toHaveBeenLastCalledWith(1)
+    expect(screen.getByText('10 字')).toBeInTheDocument()
 
+    tiptapMock.editor.storage.characterCount.characters.mockReturnValue(11)
     act(() => {
-      tiptapMock.editor.state.selection = { from: 7, to: 7, head: 7, empty: true }
-      tiptapMock.emit('selectionUpdate')
+      tiptapMock.emit('update')
     })
 
-    expect(onLineChange).toHaveBeenLastCalledWith(3)
-    expect(document.querySelector('.nova-editor-statusbar')).not.toBeInTheDocument()
+    expect(screen.getByText('11 字')).toBeInTheDocument()
   })
 
   it('注册 TipTap table 扩展以展示 GFM Markdown 表格', () => {

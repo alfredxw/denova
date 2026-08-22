@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronDown, ChevronRight, FileText } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { formatLocaleNumber } from '@/i18n'
 import type { FileNode } from '@/hooks/useWorkspace'
 import type { ChapterSummary, DocumentPreview } from '@/lib/api'
 import { BookSettingsShortcuts } from '@/components/workbench/BookSettingsShortcuts'
@@ -20,6 +21,8 @@ interface ChapterOutlineProps {
   projectId: string
   tree: FileNode[]
   chapters: ChapterSummary[]
+  chapterCount?: number
+  totalWords?: number
   ideas?: DocumentPreview
   outline?: DocumentPreview
   chapterPlans: DocumentPreview[]
@@ -49,6 +52,8 @@ export function ChapterOutline({
   projectId,
   tree,
   chapters,
+  chapterCount,
+  totalWords,
   ideas,
   outline,
   chapterPlans,
@@ -225,6 +230,9 @@ export function ChapterOutline({
   const stableRenameItem = onRenameItem ? handleRenameItem : undefined
   const stableDeleteItem = onDeleteItem ? handleDeleteItem : undefined
   const chapterCountLabel = useCallback((count: number) => t('common.chapters', { count }), [t])
+  const bookStats = chapterCount === undefined || totalWords === undefined
+    ? ''
+    : `${t('common.chapters', { count: formatLocaleNumber(chapterCount) })} · ${t('common.words', { count: formatLocaleNumber(totalWords) })}`
 
   const bookSettingsHeaderFrame = (
     <div
@@ -325,7 +333,10 @@ export function ChapterOutline({
           )}
 
           <section className="space-y-1.5">
-            <div className="px-1 text-[11px] font-medium text-[var(--nova-text-faint)]">{t('planning.volumeChapters')}</div>
+            <div className="flex items-center justify-between gap-2 px-1 text-[11px] font-medium text-[var(--nova-text-faint)]">
+              <span className="shrink-0">{t('planning.volumeChapters')}</span>
+              {bookStats ? <span className="min-w-0 truncate text-right font-normal" title={bookStats}>{bookStats}</span> : null}
+            </div>
             {volumes.length === 0 ? <PlanningEmptyState text={t('planning.noChapters')} /> : null}
           </section>
         </div>
