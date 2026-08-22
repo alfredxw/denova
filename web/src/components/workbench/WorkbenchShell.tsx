@@ -389,7 +389,7 @@ export function WorkbenchShell({
       ) : undefined}
       messageCenter={(
         <MessageCenterButton
-          className={activityBarExpanded ? '' : '!size-8 !min-w-8'}
+          className={activityBarExpanded ? '' : '!h-9 !w-8 !min-w-8'}
           showLabel={activityBarExpanded}
           unreadCount={messageUnread}
           onUnreadCountChange={setActivityMessageUnreadCount}

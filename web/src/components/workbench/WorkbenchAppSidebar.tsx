@@ -15,6 +15,8 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from '@/components/ui/sidebar'
+import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { novaEase } from '@/features/motion/motion-tokens'
 import { cn } from '@/lib/utils'
 
@@ -97,10 +99,7 @@ export function WorkbenchAppSidebar({
           aria-label={sidebarLabel}
         >
           <SidebarHeader className="select-none gap-2 p-2">
-            <div className={`flex h-8 items-center ${expanded ? 'gap-2 px-2' : 'justify-center'}`}>
-              <WorkbenchBrandIcon />
-              {expanded ? <span className="truncate text-xs font-semibold tracking-wide text-[var(--nova-text)]">Denova</span> : null}
-            </div>
+            <ActivityBarBrandRow expanded={expanded} toggleLabel={toggleLabel} onToggle={onToggle} />
             {contextSwitcher}
           </SidebarHeader>
           <SidebarContent>
@@ -138,11 +137,6 @@ export function WorkbenchAppSidebar({
                   <Settings data-icon="inline-start" />
                 </ActivityButton>
               </SidebarMenuItem>
-              <SidebarMenuItem>
-                <ActivityButton expanded={expanded} label={toggleLabel} onClick={onToggle}>
-                  <PanelLeft data-icon="inline-start" />
-                </ActivityButton>
-              </SidebarMenuItem>
             </SidebarMenu>
             {expanded ? (
               <div
@@ -167,6 +161,55 @@ export function WorkbenchAppSidebar({
 
 export function WorkbenchBrandIcon() {
   return <img src="/favicon.svg" alt="Denova" className="size-6 shrink-0 rounded-[7px]" draggable={false} />
+}
+
+/** Keeps the brand and the primary-menu toggle on one stable icon grid. */
+function ActivityBarBrandRow({
+  expanded,
+  toggleLabel,
+  onToggle,
+}: Pick<WorkbenchAppSidebarProps, 'expanded' | 'toggleLabel' | 'onToggle'>) {
+  const toggle = (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label={toggleLabel}
+          data-activity-bar-toggle="true"
+          className="size-8 rounded-[var(--nova-radius)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] focus-visible:ring-[var(--nova-field-focus-border)]"
+          onClick={onToggle}
+        >
+          <PanelLeft />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side={expanded ? 'bottom' : 'right'} align="center">
+        {toggleLabel}
+      </TooltipContent>
+    </Tooltip>
+  )
+
+  if (expanded) {
+    return (
+      <div className="grid h-8 grid-cols-[2rem_minmax(0,1fr)_2rem] items-center gap-2">
+        <span className="flex size-8 items-center justify-center"><WorkbenchBrandIcon /></span>
+        <span className="truncate text-xs font-semibold tracking-wide text-[var(--nova-text)]">Denova</span>
+        {toggle}
+      </div>
+    )
+  }
+
+  return (
+    <div className="group/activity-toggle relative flex h-8 items-center justify-center">
+      <span className="pointer-events-none flex size-8 items-center justify-center opacity-100 transition-opacity group-hover/activity-toggle:opacity-0 group-focus-within/activity-toggle:opacity-0 motion-reduce:transition-none">
+        <WorkbenchBrandIcon />
+      </span>
+      <span className="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover/activity-toggle:opacity-100 group-focus-within/activity-toggle:opacity-100 motion-reduce:transition-none">
+        {toggle}
+      </span>
+    </div>
+  )
 }
 
 function SortableActivityButton({
@@ -218,7 +261,7 @@ function ActivityButton({
     <SidebarMenuButton
       tooltip={!expanded ? label : undefined}
       isActive={active}
-      className={cn('relative h-9 gap-2 text-xs text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] data-[active=true]:bg-[var(--nova-active)] data-[active=true]:text-[var(--nova-text)]', className)}
+      className={cn('relative h-9 gap-2 text-xs text-[var(--nova-text-muted)] group-data-[collapsible=icon]:h-9! group-data-[collapsible=icon]:w-8! hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] data-[active=true]:bg-[var(--nova-active)] data-[active=true]:text-[var(--nova-text)]', className)}
       {...props}
       aria-current={active ? 'page' : undefined}
     >
