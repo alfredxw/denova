@@ -242,7 +242,7 @@ describe('MarkdownEditor', () => {
     expect(onFontSizeChange).toHaveBeenCalledWith(22)
   })
 
-  it('在章节标题栏实时显示当前章节字数', () => {
+  it('在章节标题栏实时显示当前章节字数和光标行号', () => {
     tiptapMock.editor.storage.characterCount.characters.mockReturnValue(10)
 
     render(
@@ -266,13 +266,21 @@ describe('MarkdownEditor', () => {
     )
 
     expect(screen.getByText('10 字')).toBeInTheDocument()
+    expect(screen.getByText('行 1')).toBeInTheDocument()
 
     tiptapMock.editor.storage.characterCount.characters.mockReturnValue(11)
+    tiptapMock.editor.state.doc.forEach.mockImplementation((callback) => {
+      callback({ nodeSize: 3 }, 0)
+      callback({ nodeSize: 3 }, 3)
+      callback({ nodeSize: 3 }, 6)
+    })
     act(() => {
+      tiptapMock.editor.state.selection = { from: 7, to: 7, head: 7, empty: true }
       tiptapMock.emit('update')
     })
 
     expect(screen.getByText('11 字')).toBeInTheDocument()
+    expect(screen.getByText('行 3')).toBeInTheDocument()
   })
 
   it('注册 TipTap table 扩展以展示 GFM Markdown 表格', () => {

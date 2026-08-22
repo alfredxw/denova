@@ -2,7 +2,7 @@ import { BookOpen, Check, Crosshair, ImagePlus, PanelLeft, Save, Settings } from
 import { useTranslation } from 'react-i18next'
 
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
-import { formatLocaleNumber } from '@/i18n'
+import { formatDateTime, formatLocaleNumber } from '@/i18n'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
@@ -54,6 +54,8 @@ interface EditorToolbarProps {
   displayTitle?: string
   chapterPath?: string
   chapterWords?: number
+  updatedAt?: string
+  currentLine?: number
   saveStatus: SaveStatus | null
   onSave: () => void | Promise<void>
   settingsOpen: boolean
@@ -72,6 +74,8 @@ export function EditorToolbar({
   displayTitle,
   chapterPath,
   chapterWords,
+  updatedAt,
+  currentLine,
   saveStatus,
   onSave,
   settingsOpen,
@@ -88,10 +92,11 @@ export function EditorToolbar({
   const saveStatusMeta = saveStatus ? SAVE_STATUS_META[saveStatus] : null
   const saveStatusLabel = saveStatusMeta ? t(saveStatusMeta.labelKey) : ''
   const saveStatusAriaLabel = saveStatusMeta ? t(saveStatusMeta.ariaLabelKey) : ''
+  const updatedTime = formatDateTime(updatedAt)
 
   return (
     <div className="nova-editor-toolbar flex h-9 shrink-0 items-center justify-between gap-3 overflow-hidden border-b px-3">
-      <div className="flex min-w-0 items-center gap-2 text-xs text-[var(--nova-text-muted)]">
+      <div className="flex min-w-0 flex-1 items-center gap-2 text-xs text-[var(--nova-text-muted)]">
         {onOpenOutline ? (
           <TooltipIconButton
             label={t('planning.outlineNavigation')}
@@ -107,8 +112,21 @@ export function EditorToolbar({
         <BookOpen className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />
         <span className="min-w-0 truncate font-medium text-[var(--nova-text)]">{displayTitle || fileName}</span>
         {chapterWords !== undefined ? (
-          <span className="shrink-0 text-[11px] font-normal text-[var(--nova-text-faint)]">
-            {t('common.words', { count: formatLocaleNumber(chapterWords) })}
+          <span className="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-[11px] font-normal text-[var(--nova-text-faint)]">
+            <span>{t('common.words', { count: formatLocaleNumber(chapterWords) })}</span>
+            {updatedTime ? (
+              <>
+                <span aria-hidden>·</span>
+                <span className="sm:hidden">{updatedTime}</span>
+                <span className="hidden sm:inline">{t('editor.updatedAt', { time: updatedTime })}</span>
+              </>
+            ) : null}
+            {currentLine !== undefined ? (
+              <>
+                <span aria-hidden>·</span>
+                <span>{t('editor.currentLine', { line: formatLocaleNumber(currentLine) })}</span>
+              </>
+            ) : null}
           </span>
         ) : null}
       </div>

@@ -606,7 +606,6 @@ export function ModeRouter(props: ModeRouterProps) {
     onReviewFeedbackSubmissionFailed: restoreActiveReviewFeedback,
     onOpenChangeReview: openAgentChangeReview,
     onWorkspaceChanged: notifyExternalStructureChange,
-    onClose: () => onSetRightPanel(null),
     onSubAgentDetailsChange: setAgentSubAgentDetailsOpen,
   })
 

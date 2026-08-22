@@ -26,6 +26,8 @@ const editor = {
   'editor.replaceAllDone': '已替换 {{count}} 处',
   'editor.chapterWords': '本章：{{count}} 字',
   'editor.bookWords': '全书：{{count}} 字',
+  'editor.updatedAt': '更新：{{time}}',
+  'editor.currentLine': '行 {{line}}',
   'editor.selectedWords': '已选：{{count}} 字',
   'editor.lineHeight': '行间距',
   'editor.dialogueHighlightColor': '对白高亮',

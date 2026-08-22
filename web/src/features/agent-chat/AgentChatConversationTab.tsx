@@ -218,7 +218,6 @@ function AgentChatConversationTabComponent({
         impact: 'structure',
         origin: 'external',
       })}
-      onClose={() => {}}
     />
   )
 }

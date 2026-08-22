@@ -144,7 +144,7 @@ describe('AgentPanel', () => {
 
   it('创作 Agent 顶部切换器不再展示 Review tab，并在输入选项中切换写作 Skill', async () => {
     const user = userEvent.setup()
-    renderAgentPanel()
+    const { container } = renderAgentPanel()
 
     expect(useWritingSkillOptionsMock).toHaveBeenCalledWith('project-workspace', true)
     expect(useProjectChangeGroupsMock).toHaveBeenCalledWith('project-workspace', {
@@ -153,6 +153,8 @@ describe('AgentPanel', () => {
     expect(screen.getByRole('button', { name: '对话' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '会话' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '运行追踪' })).toBeInTheDocument()
+    expect(container.querySelector('aside > div')).toHaveClass('h-9')
+    expect(screen.queryByRole('button', { name: '关闭创作 Agent' })).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '输入动作' }))
     expect(screen.getByText('叙事')).toBeInTheDocument()
     expect(screen.getByText('稳健叙事')).toBeInTheDocument()
@@ -898,7 +900,6 @@ function defaultAgentPanelProps(overrides: AgentPanelOverrides, composerSettings
     onPlanModeToggle: vi.fn(),
     onApproveProposedPlan: vi.fn(),
     onExitPlanMode: vi.fn(),
-    onClose: vi.fn(),
     ...overrides,
     projectId: overrides.projectId ?? 'project-workspace',
   }
