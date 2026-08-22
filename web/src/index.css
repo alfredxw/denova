@@ -643,8 +643,8 @@
   --sidebar-ring: oklch(0.708 0 0);
 }
 
-[data-theme="light"] [data-nova-app-shell="true"] {
-  background: var(--nova-bg);
+[data-theme="light"] [data-nova-app-shell="true"]:not([data-nova-mobile-shell="true"]) {
+  background: var(--nova-bg-deep);
 }
 
 [data-theme="light"] .nova-topbar {
@@ -922,6 +922,24 @@ html[data-nova-motion="off"] .shimmer {
   color: var(--nova-text-muted);
   transition-duration: var(--nova-panel-motion-duration) !important;
   transition-timing-function: var(--nova-panel-motion-ease) !important;
+}
+
+/* The primary menu belongs to the app canvas; the inset workspace is the single elevated surface. */
+.nova-workspace-frame {
+  border: 1px solid var(--nova-border-soft);
+  border-radius: 12px;
+  background: var(--nova-surface);
+  box-shadow:
+    0 1px 1px rgba(0, 0, 0, 0.48),
+    0 6px 18px -14px rgba(0, 0, 0, 0.9),
+    inset 0 1px 0 rgba(255, 255, 255, 0.025);
+}
+
+[data-theme="light"] .nova-workspace-frame {
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.06),
+    0 4px 10px -6px rgba(0, 0, 0, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72);
 }
 
 /* Primary navigation should acknowledge the press immediately. The route itself may contain a

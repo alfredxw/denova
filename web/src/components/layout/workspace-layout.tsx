@@ -179,122 +179,125 @@ export function WorkspaceLayout({
   }, [horizontalGroupRef, layoutEmphasis, rightPanelOpen, sidebarVisible])
 
   return (
-    <div data-nova-app-shell="true" className="flex h-dvh w-screen overflow-hidden">
+    <div data-nova-app-shell="true" className="flex h-dvh w-screen overflow-hidden bg-[var(--nova-bg-deep)]">
       {appSidebar}
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <PanelMotionGroup
-            id="nova-workspace-horizontal"
-            motionSuspended={panelMotionSuspendedRef.current}
-            data-nova-layout-emphasis={layoutEmphasis}
-            groupRef={horizontalGroupRef}
-            defaultLayout={horizontalPanelLayout.defaultLayout}
-            onLayoutChanged={(layout) => {
-              if (layoutEmphasis !== 'normal' || (sidebar && !sidebarVisible)) return
-              let normalLayout = layout
-              if (!rightPanelOpen) {
-                const retainedRightSize = lastNormalLayoutRef.current?.right
-                  ?? (typeof layout.right === 'number' && layout.right > 0 ? layout.right : undefined)
-                if (typeof retainedRightSize !== 'number') return
-                const sidebarSize = typeof layout.sidebar === 'number' ? layout.sidebar : 0
-                normalLayout = {
-                  ...layout,
-                  center: Math.max(100 - sidebarSize - retainedRightSize, 0),
-                  right: retainedRightSize,
-                }
+      <div
+        data-nova-workspace-frame="true"
+        className="nova-workspace-frame my-2 mr-2 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+      >
+        <PanelMotionGroup
+          id="nova-workspace-horizontal"
+          motionSuspended={panelMotionSuspendedRef.current}
+          data-nova-layout-emphasis={layoutEmphasis}
+          groupRef={horizontalGroupRef}
+          defaultLayout={horizontalPanelLayout.defaultLayout}
+          onLayoutChanged={(layout) => {
+            if (layoutEmphasis !== 'normal' || (sidebar && !sidebarVisible)) return
+            let normalLayout = layout
+            if (!rightPanelOpen) {
+              const retainedRightSize = lastNormalLayoutRef.current?.right
+                ?? (typeof layout.right === 'number' && layout.right > 0 ? layout.right : undefined)
+              if (typeof retainedRightSize !== 'number') return
+              const sidebarSize = typeof layout.sidebar === 'number' ? layout.sidebar : 0
+              normalLayout = {
+                ...layout,
+                center: Math.max(100 - sidebarSize - retainedRightSize, 0),
+                right: retainedRightSize,
               }
-              if (horizontalPanelLayout.persistUserLayout(normalLayout)) lastNormalLayoutRef.current = normalLayout
-            }}
-            orientation="horizontal"
-            resizeTargetMinimumSize={{ coarse: 16, fine: 1 }}
-            className="min-h-0 min-w-0 flex-1"
-          >
-            {sidebar && (
-              <>
-                <CollapsibleResizablePanel
-                  id="sidebar"
-                  panelRef={sidebarPanelRef}
-                  visible={sidebarVisible}
-                  side="left"
-                  initialExpandSize={`${storedSidebarWidthRef.current ?? DEFAULT_SIDEBAR_WIDTH_PX}px`}
-                  defaultSize={DEFAULT_SIDEBAR_WIDTH}
-                  minSize="180px"
-                  maxSize="36%"
-                  groupResizeBehavior="preserve-pixel-size"
-                  className="min-w-[180px]"
-                  data-nova-collapsible-panel="sidebar"
-                  onResize={(size) => {
-                    if (!horizontalPanelLayout.isUserResizeActive() || !Number.isFinite(size.inPixels) || size.inPixels <= 0) return
-                    persistWorkspaceSidebarWidth(size.inPixels)
-                    storedSidebarWidthRef.current = size.inPixels
-                  }}
-                >
-                  {sidebar}
-                </CollapsibleResizablePanel>
-                <WorkspaceResizeHandle
-                  visible={sidebarVisible}
-                  direction="vertical"
-                  label={t('layout.resize.sidebar')}
-                  {...horizontalPanelLayout.resizeHandleIntentProps}
-                />
-              </>
-            )}
-            <Panel id="center" minSize={rightPanelWide ? '260px' : '30%'} className="min-w-0">
-              <Group
-                id="nova-workspace-main-vertical"
-                disableCursor
-                defaultLayout={verticalPanelLayout.defaultLayout}
-                onLayoutChanged={(layout) => {
-                  verticalPanelLayout.persistUserLayout(layout)
+            }
+            if (horizontalPanelLayout.persistUserLayout(normalLayout)) lastNormalLayoutRef.current = normalLayout
+          }}
+          orientation="horizontal"
+          resizeTargetMinimumSize={{ coarse: 16, fine: 1 }}
+          className="min-h-0 min-w-0 flex-1"
+        >
+          {sidebar && (
+            <>
+              <CollapsibleResizablePanel
+                id="sidebar"
+                panelRef={sidebarPanelRef}
+                visible={sidebarVisible}
+                side="left"
+                initialExpandSize={`${storedSidebarWidthRef.current ?? DEFAULT_SIDEBAR_WIDTH_PX}px`}
+                defaultSize={DEFAULT_SIDEBAR_WIDTH}
+                minSize="180px"
+                maxSize="36%"
+                groupResizeBehavior="preserve-pixel-size"
+                className="min-w-[180px]"
+                data-nova-collapsible-panel="sidebar"
+                onResize={(size) => {
+                  if (!horizontalPanelLayout.isUserResizeActive() || !Number.isFinite(size.inPixels) || size.inPixels <= 0) return
+                  persistWorkspaceSidebarWidth(size.inPixels)
+                  storedSidebarWidthRef.current = size.inPixels
                 }}
-                orientation="vertical"
-                resizeTargetMinimumSize={{ coarse: 16, fine: 1 }}
               >
-                <Panel id="main" minSize="35%" className="min-h-0">
-                  {main}
-                </Panel>
-                {bottomPanelVisible && bottomPanel && (
-                  <>
-                    <WorkspaceResizeHandle
-                      direction="horizontal"
-                      label={t('layout.resize.bottom')}
-                      {...verticalPanelLayout.resizeHandleIntentProps}
-                    />
-                    <Panel id="bottom" defaultSize="18%" minSize="96px" maxSize="40%" className="min-h-[96px]">
-                      {bottomPanel}
-                    </Panel>
-                  </>
-                )}
-              </Group>
-            </Panel>
-            <WorkspaceResizeHandle
-              visible={rightPanelOpen}
-              direction="vertical"
-              label={t('layout.resize.right')}
-              {...horizontalPanelLayout.resizeHandleIntentProps}
-            />
-            <CollapsibleResizablePanel
-              id="right"
-              panelRef={rightPanelRef}
-              elementRef={rightPanelElementRef}
-              visible={rightPanelOpen}
-              side="right"
-              defaultSize={rightPanelWide ? '58%' : '34%'}
-              minSize={rightPanelWide ? '520px' : '360px'}
-              maxSize={rightPanelWide ? '68%' : '55%'}
-              groupResizeBehavior="preserve-pixel-size"
-              className={rightPanelWide ? 'min-w-[520px]' : 'min-w-[360px]'}
-              data-nova-right-panel={rightPanelWide ? 'wide' : 'default'}
-              data-nova-resize-behavior="preserve-pixel-size"
-              onResize={(size) => {
-                const emphasis = layoutEmphasisRef.current
-                const stableNormal = emphasis === 'normal' && previousEmphasisRef.current === 'normal'
-                const adjustableReview = emphasis === 'center' && centerWidthReadyRef.current
-                if ((stableNormal || adjustableReview) && size.inPixels > 0) lastRightPanelPixelsRef.current = size.inPixels
+                {sidebar}
+              </CollapsibleResizablePanel>
+              <WorkspaceResizeHandle
+                visible={sidebarVisible}
+                direction="vertical"
+                label={t('layout.resize.sidebar')}
+                {...horizontalPanelLayout.resizeHandleIntentProps}
+              />
+            </>
+          )}
+          <Panel id="center" minSize={rightPanelWide ? '260px' : '30%'} className="min-w-0">
+            <Group
+              id="nova-workspace-main-vertical"
+              disableCursor
+              defaultLayout={verticalPanelLayout.defaultLayout}
+              onLayoutChanged={(layout) => {
+                verticalPanelLayout.persistUserLayout(layout)
               }}
+              orientation="vertical"
+              resizeTargetMinimumSize={{ coarse: 16, fine: 1 }}
             >
-              {retainedRightPanelRef.current}
-            </CollapsibleResizablePanel>
-      </PanelMotionGroup>
+              <Panel id="main" minSize="35%" className="min-h-0">
+                {main}
+              </Panel>
+              {bottomPanelVisible && bottomPanel && (
+                <>
+                  <WorkspaceResizeHandle
+                    direction="horizontal"
+                    label={t('layout.resize.bottom')}
+                    {...verticalPanelLayout.resizeHandleIntentProps}
+                  />
+                  <Panel id="bottom" defaultSize="18%" minSize="96px" maxSize="40%" className="min-h-[96px]">
+                    {bottomPanel}
+                  </Panel>
+                </>
+              )}
+            </Group>
+          </Panel>
+          <WorkspaceResizeHandle
+            visible={rightPanelOpen}
+            direction="vertical"
+            label={t('layout.resize.right')}
+            {...horizontalPanelLayout.resizeHandleIntentProps}
+          />
+          <CollapsibleResizablePanel
+            id="right"
+            panelRef={rightPanelRef}
+            elementRef={rightPanelElementRef}
+            visible={rightPanelOpen}
+            side="right"
+            defaultSize={rightPanelWide ? '58%' : '34%'}
+            minSize={rightPanelWide ? '520px' : '360px'}
+            maxSize={rightPanelWide ? '68%' : '55%'}
+            groupResizeBehavior="preserve-pixel-size"
+            className={rightPanelWide ? 'min-w-[520px]' : 'min-w-[360px]'}
+            data-nova-right-panel={rightPanelWide ? 'wide' : 'default'}
+            data-nova-resize-behavior="preserve-pixel-size"
+            onResize={(size) => {
+              const emphasis = layoutEmphasisRef.current
+              const stableNormal = emphasis === 'normal' && previousEmphasisRef.current === 'normal'
+              const adjustableReview = emphasis === 'center' && centerWidthReadyRef.current
+              if ((stableNormal || adjustableReview) && size.inPixels > 0) lastRightPanelPixelsRef.current = size.inPixels
+            }}
+          >
+            {retainedRightPanelRef.current}
+          </CollapsibleResizablePanel>
+        </PanelMotionGroup>
         {footer}
       </div>
     </div>

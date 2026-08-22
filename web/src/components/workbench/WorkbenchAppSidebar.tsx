@@ -94,7 +94,7 @@ export function WorkbenchAppSidebar({
       <DndContext key={activityOrderScope} sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <Sidebar
           collapsible="icon"
-          className="nova-activity-bar text-[var(--nova-text-muted)]"
+          className="nova-activity-bar border-r-0! text-[var(--nova-text-muted)]"
           role="navigation"
           aria-label={sidebarLabel}
         >

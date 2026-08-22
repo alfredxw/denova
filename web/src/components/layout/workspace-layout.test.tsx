@@ -79,10 +79,13 @@ describe('WorkspaceLayout', () => {
     )
 
     const shell = container.querySelector('[data-nova-app-shell="true"]')
+    const workspaceFrame = container.querySelector('[data-nova-workspace-frame="true"]')
     const appSidebar = screen.getByRole('navigation', { name: '一级菜单栏' })
     const footer = screen.getByText('写作状态')
     expect(shell?.children[0]).toBe(appSidebar)
-    expect(shell?.children[1]).toContainElement(footer)
+    expect(shell?.children[1]).toBe(workspaceFrame)
+    expect(workspaceFrame).toHaveClass('nova-workspace-frame', 'my-2', 'mr-2', 'overflow-hidden')
+    expect(workspaceFrame).toContainElement(footer)
     expect(appSidebar).not.toContainElement(footer)
   })
 
