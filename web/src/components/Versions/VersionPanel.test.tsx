@@ -1,9 +1,9 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { createVersion, getVersionRestorePlan, getVersions, getVersionStatus, restoreVersion } from '@/lib/api'
-import type { VersionEntry, VersionRestorePlan } from '@/lib/api'
+import { createVersion, getVersionDiff, getVersionRestorePlan, getVersions, getVersionStatus, restoreVersion } from '@/lib/api'
+import type { VersionDiff, VersionEntry, VersionRestorePlan } from '@/lib/api'
 import { VersionPanel } from './VersionPanel'
 
 vi.mock('@/lib/api', () => ({
@@ -15,17 +15,22 @@ vi.mock('@/lib/api', () => ({
   restoreVersion: vi.fn(),
 }))
 
+vi.mock('@/features/chapters/components/chapter-diff-view', () => ({
+  ChapterDiffView: ({ original, modified }: { original: string; modified: string }) => <div>{original} → {modified}</div>,
+}))
+
 describe('VersionPanel', () => {
   beforeEach(() => {
     vi.mocked(createVersion).mockReset()
+    vi.mocked(getVersionDiff).mockReset()
     vi.mocked(getVersionRestorePlan).mockReset()
     vi.mocked(getVersions).mockReset()
     vi.mocked(getVersionStatus).mockReset()
     vi.mocked(restoreVersion).mockReset()
     vi.mocked(getVersionStatus).mockResolvedValue({
       has_versions: true,
-      clean: true,
-      changes: [],
+      clean: false,
+      changes: [{ path: 'chapters/current.md', status: 'modified' }],
       latest: versionEntry('second', '第二版本', ['chapters/second.md']),
       auto: {
         timed_enabled: false,
@@ -34,9 +39,10 @@ describe('VersionPanel', () => {
       },
     })
     vi.mocked(getVersions).mockResolvedValue([
-      versionEntry('first', '第一版本', ['chapters/first.md']),
       versionEntry('second', '第二版本', ['chapters/second.md']),
+      versionEntry('first', '第一版本', ['chapters/first.md']),
     ])
+    vi.mocked(getVersionDiff).mockImplementation(async (_projectId, id, path, comparison = 'workspace') => versionDiff(id, path, comparison))
   })
 
   it('ignores stale restore preview responses after another restore dialog opens', async () => {
@@ -49,28 +55,58 @@ describe('VersionPanel', () => {
 
     renderVersionPanel()
 
-    const rollbackButtons = await screen.findAllByRole('button', { name: '回滚' })
-    await user.click(rollbackButtons[0])
+    const restoreButton = await screen.findByRole('button', { name: '恢复版本' })
+    await user.click(restoreButton)
     expect(await screen.findByText('正在计算恢复影响…')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: '取消' }))
-    await user.click(rollbackButtons[1])
+    await user.click(screen.getByRole('button', { name: /第一版本/ }))
+    await user.click(await screen.findByRole('button', { name: '恢复版本' }))
 
     await act(async () => {
-      secondPreview.resolve(restorePlan('second', 'chapters/second.md'))
+      secondPreview.resolve(restorePlan('first', 'chapters/first.md'))
       await secondPreview.promise
     })
-    expect(await screen.findByText('chapters/second.md')).toBeInTheDocument()
+    expect(await within(screen.getByRole('alertdialog')).findByText('chapters/first.md')).toBeInTheDocument()
 
     await act(async () => {
-      firstPreview.resolve(restorePlan('first', 'chapters/first.md'))
+      firstPreview.resolve(restorePlan('second', 'chapters/second.md'))
       await firstPreview.promise
     })
 
     await waitFor(() => {
-      expect(screen.queryByText('chapters/first.md')).not.toBeInTheDocument()
+      expect(within(screen.getByRole('alertdialog')).queryByText('chapters/second.md')).not.toBeInTheDocument()
     })
-    expect(screen.getByText('chapters/second.md')).toBeInTheDocument()
+    expect(within(screen.getByRole('alertdialog')).getByText('chapters/first.md')).toBeInTheDocument()
+  })
+
+  it('compares history with its parent and current changes with the workspace', async () => {
+    const user = userEvent.setup()
+    renderVersionPanel()
+
+    await screen.findByText('chapters/second.md')
+    expect(getVersionDiff).toHaveBeenCalledWith('project-version', 'second', undefined, 'parent')
+    expect(getVersionDiff).toHaveBeenCalledWith('project-version', 'second', 'chapters/second.md', 'parent')
+
+    await user.click(screen.getByRole('button', { name: /当前变更/ }))
+    await waitFor(() => {
+      expect(getVersionDiff).toHaveBeenCalledWith('project-version', 'second', 'chapters/current.md', 'workspace')
+    })
+  })
+
+  it('shows a useful empty state before the first version is saved', async () => {
+    vi.mocked(getVersions).mockResolvedValue([])
+    vi.mocked(getVersionStatus).mockResolvedValue({
+      has_versions: false,
+      clean: true,
+      changes: [],
+      auto: { timed_enabled: false, timed_interval_minutes: 10, retention: 100 },
+    })
+
+    renderVersionPanel()
+
+    expect((await screen.findAllByText('暂无版本历史')).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('保存第一个版本后即可查看历史和恢复。').length).toBeGreaterThan(0)
   })
 })
 
@@ -108,6 +144,20 @@ function restorePlan(id: string, path: string): VersionRestorePlan {
     changes: [{ path, status: 'modified', text: true, binary: false }],
     will_create_backup: false,
     current_dirty: true,
+  }
+}
+
+function versionDiff(id: string, path: string | undefined, comparison: 'workspace' | 'parent'): VersionDiff {
+  const selectedPath = path || `chapters/${id}.md`
+  return {
+    version: versionEntry(id, id === 'second' ? '第二版本' : '第一版本', [selectedPath]),
+    comparison,
+    changes: [{ path: selectedPath, status: 'modified' }],
+    path,
+    original: path ? 'before' : undefined,
+    modified: path ? 'after' : undefined,
+    text: Boolean(path),
+    binary: false,
   }
 }
 

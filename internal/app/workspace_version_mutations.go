@@ -115,18 +115,18 @@ func (s *workspaceService) CreateVersion(ctx context.Context, message string) (b
 	return result, err
 }
 
-// VersionDiff 返回目标版本与当前工作区的差异。
-func (a *App) VersionDiff(ctx context.Context, id, path string) (book.VersionDiff, error) {
-	return a.workspaceService().VersionDiff(ctx, id, path)
+// VersionDiff returns the requested comparison for one saved version.
+func (a *App) VersionDiff(ctx context.Context, id, path string, comparison book.VersionDiffComparison) (book.VersionDiff, error) {
+	return a.workspaceService().VersionDiff(ctx, id, path, comparison)
 }
 
-func (s *workspaceService) VersionDiff(ctx context.Context, id, path string) (book.VersionDiff, error) {
+func (s *workspaceService) VersionDiff(ctx context.Context, id, path string, comparison book.VersionDiffComparison) (book.VersionDiff, error) {
 	_ = ctx
 	versionService := s.versionService()
 	if versionService == nil {
 		return book.VersionDiff{}, ErrNoWorkspace
 	}
-	return versionService.Diff(id, path)
+	return versionService.Diff(id, path, comparison)
 }
 
 // VersionRestorePlan 返回恢复版本前的影响预览。
@@ -258,13 +258,13 @@ func (a *App) CreateProjectVersion(ctx context.Context, projectID, message strin
 	)
 }
 
-func (a *App) ProjectVersionDiff(ctx context.Context, projectID, versionID, path string) (book.VersionDiff, error) {
+func (a *App) ProjectVersionDiff(ctx context.Context, projectID, versionID, path string, comparison book.VersionDiffComparison) (book.VersionDiff, error) {
 	operation, err := a.AcquireProjectOperation(ctx, projectID)
 	if err != nil {
 		return book.VersionDiff{}, err
 	}
 	defer operation.Release()
-	return a.ProjectFiles().VersionDiff(operation.Context(), operation.Layout().ProjectID, versionID, path)
+	return a.ProjectFiles().VersionDiff(operation.Context(), operation.Layout().ProjectID, versionID, path, comparison)
 }
 
 func (a *App) ProjectVersionRestorePlan(ctx context.Context, projectID, versionID string, paths []string) (book.VersionRestorePlan, error) {

@@ -736,15 +736,19 @@ export interface VersionRestoreResult {
 
 export interface VersionDiff {
   version: VersionEntry
+  base_version?: VersionEntry
+  comparison: VersionDiffComparison
   changes: VersionChange[]
   path?: string
   original?: string
   modified?: string
   text: boolean
   binary: boolean
-  missing_in_version?: boolean
-  missing_in_workspace?: boolean
+  missing_in_original?: boolean
+  missing_in_modified?: boolean
 }
+
+export type VersionDiffComparison = 'workspace' | 'parent'
 
 export interface LoreItem {
   id: string

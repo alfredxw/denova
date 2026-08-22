@@ -1,6 +1,6 @@
 import { jsonHeaders, requestJSON } from './client'
 import { projectAPIPath } from './project-scope'
-import type { VersionCommandResult, VersionDiff, VersionEntry, VersionRestorePlan, VersionRestoreResult, VersionStatus } from './types'
+import type { VersionCommandResult, VersionDiff, VersionDiffComparison, VersionEntry, VersionRestorePlan, VersionRestoreResult, VersionStatus } from './types'
 
 export async function getVersionStatus(projectId: string): Promise<VersionStatus> {
   const status = await requestJSON<VersionStatus>(projectAPIPath(projectId, 'versions/status'))
@@ -23,9 +23,10 @@ export async function createVersion(projectId: string, message = ''): Promise<Ve
   })
 }
 
-export async function getVersionDiff(projectId: string, id: string, path?: string): Promise<VersionDiff> {
-  const query = path ? `?path=${encodeURIComponent(path)}` : ''
-  return requestJSON(`${projectAPIPath(projectId, `versions/${encodeURIComponent(id)}/diff`)}${query}`)
+export async function getVersionDiff(projectId: string, id: string, path?: string, comparison: VersionDiffComparison = 'workspace'): Promise<VersionDiff> {
+  const query = new URLSearchParams({ comparison })
+  if (path) query.set('path', path)
+  return requestJSON(`${projectAPIPath(projectId, `versions/${encodeURIComponent(id)}/diff`)}?${query.toString()}`)
 }
 
 function restoreBody(paths?: string[]) {

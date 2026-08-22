@@ -141,7 +141,7 @@ func TestGoGitVersionCreateDiffAndRestore(t *testing.T) {
 	assertChange(t, status.Changes, "chapters/ch0002.md", "added")
 	assertChange(t, status.Changes, "setting/progress.md", "deleted")
 
-	diff, err := service.Diff(first.Version.ID, "chapters/ch0001.md")
+	diff, err := service.Diff(first.Version.ID, "chapters/ch0001.md", VersionDiffComparisonWorkspace)
 	if err != nil {
 		t.Fatalf("Diff failed: %v", err)
 	}
@@ -202,6 +202,47 @@ func TestGoGitVersionCreateDiffAndRestore(t *testing.T) {
 		!historyContains(history, first.Version.ID) ||
 		!historyContainsSource(history, VersionSourceRollbackBackup) {
 		t.Fatalf("continued history should preserve the restore backup chain: %#v", history)
+	}
+}
+
+func TestVersionDiffAgainstParent(t *testing.T) {
+	dir := t.TempDir()
+	service := newVersionTestService(t, dir)
+	settings := DefaultAutoSettings()
+	writeFile(t, dir, "chapters/changed.md", "first")
+	writeFile(t, dir, "chapters/deleted.md", "remove me")
+
+	first, err := service.Create("First", VersionSourceManual, settings)
+	if err != nil {
+		t.Fatalf("Create first failed: %v", err)
+	}
+	writeFile(t, dir, "chapters/changed.md", "second")
+	writeFile(t, dir, "chapters/added.md", "new")
+	if err := os.Remove(filepath.Join(dir, "chapters", "deleted.md")); err != nil {
+		t.Fatal(err)
+	}
+	second, err := service.Create("Second", VersionSourceManual, settings)
+	if err != nil {
+		t.Fatalf("Create second failed: %v", err)
+	}
+
+	summary, err := service.Diff(second.Version.ID, "", VersionDiffComparisonParent)
+	if err != nil {
+		t.Fatalf("Diff summary failed: %v", err)
+	}
+	if summary.Comparison != VersionDiffComparisonParent || summary.BaseVersion == nil || summary.BaseVersion.ID != first.Version.ID {
+		t.Fatalf("unexpected comparison metadata: %#v", summary)
+	}
+	assertChange(t, summary.Changes, "chapters/changed.md", "modified")
+	assertChange(t, summary.Changes, "chapters/added.md", "added")
+	assertChange(t, summary.Changes, "chapters/deleted.md", "deleted")
+
+	diff, err := service.Diff(second.Version.ID, "chapters/changed.md", VersionDiffComparisonParent)
+	if err != nil {
+		t.Fatalf("Diff file failed: %v", err)
+	}
+	if !diff.Text || diff.Original != "first" || diff.Modified != "second" {
+		t.Fatalf("unexpected parent diff: %#v", diff)
 	}
 }
 

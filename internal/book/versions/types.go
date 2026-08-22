@@ -24,6 +24,13 @@ const (
 	VersionRestoreScopePaths     = "paths"
 )
 
+type VersionDiffComparison string
+
+const (
+	VersionDiffComparisonWorkspace VersionDiffComparison = "workspace"
+	VersionDiffComparisonParent    VersionDiffComparison = "parent"
+)
+
 var (
 	ErrVersionNotFound = errors.New("版本不存在")
 	ErrVersionClean    = errors.New("当前工作区没有可保存的变更")
@@ -97,15 +104,17 @@ type VersionRestoreChange struct {
 }
 
 type VersionDiff struct {
-	Version            VersionEntry    `json:"version"`
-	Changes            []VersionChange `json:"changes"`
-	Path               string          `json:"path,omitempty"`
-	Original           string          `json:"original,omitempty"`
-	Modified           string          `json:"modified,omitempty"`
-	Text               bool            `json:"text"`
-	Binary             bool            `json:"binary"`
-	MissingInVersion   bool            `json:"missing_in_version,omitempty"`
-	MissingInWorkspace bool            `json:"missing_in_workspace,omitempty"`
+	Version           VersionEntry          `json:"version"`
+	BaseVersion       *VersionEntry         `json:"base_version,omitempty"`
+	Comparison        VersionDiffComparison `json:"comparison"`
+	Changes           []VersionChange       `json:"changes"`
+	Path              string                `json:"path,omitempty"`
+	Original          string                `json:"original,omitempty"`
+	Modified          string                `json:"modified,omitempty"`
+	Text              bool                  `json:"text"`
+	Binary            bool                  `json:"binary"`
+	MissingInOriginal bool                  `json:"missing_in_original,omitempty"`
+	MissingInModified bool                  `json:"missing_in_modified,omitempty"`
 }
 
 type VersionAutoSettings struct {

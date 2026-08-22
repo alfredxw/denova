@@ -2,16 +2,16 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { RollbackDialog } from './rollback-dialog'
-import type { VersionItem } from './version-timeline'
-import type { VersionRestorePlan } from '@/lib/api'
+import type { VersionEntry, VersionRestorePlan } from '@/lib/api'
 
-const version: VersionItem = {
+const version: VersionEntry = {
   id: 'abcdef123456',
-  title: '完善第一章',
-  description: 'abcdef1',
-  createdAt: '2026-05-17',
-  author: 'tester',
-  changedPaths: ['chapters/ch01.md'],
+  message: '完善第一章',
+  created_at: '2026-05-17T12:00:00Z',
+  source: 'manual',
+  file_count: 2,
+  total_bytes: 120,
+  changed_paths: ['chapters/ch01.md'],
 }
 
 const plan: VersionRestorePlan = {

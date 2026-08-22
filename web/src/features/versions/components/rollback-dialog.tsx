@@ -1,5 +1,4 @@
-import type { VersionItem } from './version-timeline'
-import type { VersionRestorePlan } from '@/lib/api'
+import type { VersionEntry, VersionRestorePlan } from '@/lib/api'
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle, FileText, ShieldCheck } from 'lucide-react'
 import {
@@ -15,15 +14,15 @@ import {
 
 interface RollbackDialogProps {
   open: boolean
-  version?: VersionItem | null
+  version?: VersionEntry | null
   plan?: VersionRestorePlan | null
   loading?: boolean
   planLoading?: boolean
   onOpenChange: (open: boolean) => void
-  onRollback: (version: VersionItem) => void | Promise<void>
+  onRollback: (version: VersionEntry) => void | Promise<void>
 }
 
-/** 回滚确认弹窗，通过二次确认避免误重置当前作品工作区。 */
+/** Confirms a restore after the server has calculated its exact impact. */
 export function RollbackDialog({
   open,
   version,
@@ -36,7 +35,7 @@ export function RollbackDialog({
   const { t } = useTranslation()
   const scope = plan?.scope ?? 'workspace'
   const changes = plan?.changes ?? []
-  const versionLabel = version?.title || version?.description || ''
+  const versionLabel = version?.message || version?.id.slice(0, 8) || ''
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent className="max-h-[calc(100dvh-2rem)] border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text)]">

@@ -83,7 +83,15 @@ func (h *Handlers) HandleVersionDiff(ctx context.Context, c *app.RequestContext)
 		writeErrorKey(c, consts.StatusBadRequest, "api.versions.idRequired")
 		return
 	}
-	diff, err := h.app.ProjectVersionDiff(ctx, scope.ProjectID, id, c.Query("path"))
+	comparison := book.VersionDiffComparison(c.Query("comparison"))
+	if comparison == "" {
+		comparison = book.VersionDiffComparisonWorkspace
+	}
+	if comparison != book.VersionDiffComparisonWorkspace && comparison != book.VersionDiffComparisonParent {
+		writeErrorKey(c, consts.StatusBadRequest, "api.versions.invalidDiffComparison")
+		return
+	}
+	diff, err := h.app.ProjectVersionDiff(ctx, scope.ProjectID, id, c.Query("path"), comparison)
 	if err != nil {
 		writeVersionError(c, err)
 		return

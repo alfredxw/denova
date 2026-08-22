@@ -1,22 +1,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { FileClock, MoreHorizontal, RefreshCw, ShieldCheck } from 'lucide-react'
+import { RefreshCw, X } from 'lucide-react'
 import { toast } from 'sonner'
-import { createVersion, getVersionDiff, getVersionRestorePlan, getVersions, getVersionStatus, restoreVersion } from '@/lib/api'
-import type { VersionRestorePlan } from '@/lib/api'
-import { Button } from '@/components/ui/button'
-import { ScrollArea } from '@/components/ui/scroll-area'
+import {
+  createVersion,
+  getVersionDiff,
+  getVersionRestorePlan,
+  getVersions,
+  getVersionStatus,
+  restoreVersion,
+} from '@/lib/api'
+import type { VersionDiff, VersionDiffComparison, VersionEntry, VersionRestorePlan } from '@/lib/api'
+import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
-import { InlineErrorNotice } from '@/components/common/inline-error-notice'
-import { VersionTimeline, type VersionItem } from '@/features/versions/components/version-timeline'
-import { AutoSummary } from './AutoSummary'
-import { ChangesList } from './ChangesList'
-import { SectionHeader } from './SectionHeader'
-import { VersionHeader } from './VersionHeader'
-import { versionToTimelineItem } from './version-panel-utils'
 import { RollbackDialog } from '@/features/versions/components/rollback-dialog'
-import { VersionDiffDialog } from '@/features/versions/components/version-diff-dialog'
+import { CURRENT_WORKSPACE_SELECTION, VersionSidebar } from './VersionSidebar'
+import { VersionDiffWorkspace, type VersionDiffMode } from './VersionDiffWorkspace'
 
 interface VersionPanelProps {
   projectId: string
@@ -27,27 +27,33 @@ interface VersionPanelProps {
   onWorkspaceChanged?: (paths: string[]) => void | Promise<void>
 }
 
+const INITIAL_HISTORY_LIMIT = 30
+const MAX_HISTORY_LIMIT = 200
+
 const versionKeys = {
   all: ['versions'] as const,
   status: (projectId: string) => ['versions', 'status', projectId] as const,
-  history: (projectId: string) => ['versions', 'history', projectId] as const,
+  history: (projectId: string, limit: number) => ['versions', 'history', projectId, limit] as const,
+  diff: (projectId: string, versionId: string, comparison: VersionDiffComparison, path = '') =>
+    ['versions', 'diff', projectId, versionId, comparison, path] as const,
 }
 
-/** Project-scoped version status, history, diff, and restore surface. */
+/** Project-scoped version history with a persistent, responsive diff workspace. */
 export function VersionPanel({ projectId, workspace, refreshSignal = 0, visible = true, onClose, onWorkspaceChanged }: VersionPanelProps) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [error, setError] = useState('')
-  const [changesExpanded, setChangesExpanded] = useState(true)
-  const [historyExpanded, setHistoryExpanded] = useState(true)
-  const [rollbackVersion, setRollbackVersion] = useState<VersionItem | null>(null)
+  const [historyLimit, setHistoryLimit] = useState(INITIAL_HISTORY_LIMIT)
+  const [search, setSearch] = useState('')
+  const [selectionKey, setSelectionKey] = useState('')
+  const [selectedPath, setSelectedPath] = useState('')
+  const [diffMode, setDiffMode] = useState<VersionDiffMode>('split')
+  const [rollbackVersion, setRollbackVersion] = useState<VersionEntry | null>(null)
   const [restorePaths, setRestorePaths] = useState<string[] | undefined>()
   const [restorePlan, setRestorePlan] = useState<VersionRestorePlan | null>(null)
   const [restorePlanLoading, setRestorePlanLoading] = useState(false)
-  const [diffVersion, setDiffVersion] = useState<VersionItem | null>(null)
-  const [diffPath, setDiffPath] = useState('')
-  const [diffText, setDiffText] = useState<{ original: string; modified: string } | null>(null)
   const restorePlanRequestRef = useRef(0)
+  const closeHistoryPaneRef = useRef<() => void>(() => {})
 
   const statusQuery = useQuery({
     queryKey: versionKeys.status(projectId),
@@ -57,11 +63,53 @@ export function VersionPanel({ projectId, workspace, refreshSignal = 0, visible 
   const status = statusQuery.data ?? null
 
   const historyQuery = useQuery({
-    queryKey: versionKeys.history(projectId),
-    queryFn: () => getVersions(projectId, 30),
+    queryKey: versionKeys.history(projectId, historyLimit),
+    queryFn: () => getVersions(projectId, historyLimit),
     enabled: Boolean(projectId && visible),
+    placeholderData: previous => previous,
   })
   const versions = historyQuery.data ?? []
+  const selectedKey = selectionKey || versions[0]?.id || CURRENT_WORKSPACE_SELECTION
+  const currentSelection = selectedKey === CURRENT_WORKSPACE_SELECTION
+  const selectedVersion = currentSelection ? null : versions.find(version => version.id === selectedKey) ?? null
+  const targetVersion = currentSelection ? status?.latest ?? null : selectedVersion
+  const comparison: VersionDiffComparison = currentSelection ? 'workspace' : 'parent'
+
+  const summaryQuery = useQuery({
+    queryKey: versionKeys.diff(projectId, targetVersion?.id ?? '', comparison),
+    queryFn: () => getVersionDiff(projectId, targetVersion!.id, undefined, comparison),
+    enabled: Boolean(projectId && visible && targetVersion && !currentSelection),
+  })
+  const summary = useMemo<VersionDiff | null>(() => {
+    if (!targetVersion) return null
+    if (!currentSelection) return summaryQuery.data ?? null
+    return {
+      version: targetVersion,
+      comparison: 'workspace',
+      changes: status?.changes ?? [],
+      text: false,
+      binary: false,
+    }
+  }, [currentSelection, status?.changes, summaryQuery.data, targetVersion])
+  const selectedChanges = summary?.changes ?? []
+
+  useEffect(() => {
+    setHistoryLimit(INITIAL_HISTORY_LIMIT)
+    setSearch('')
+    setSelectionKey('')
+    setSelectedPath('')
+    setError('')
+  }, [projectId])
+
+  useEffect(() => {
+    setSelectedPath(current => selectedChanges.some(change => change.path === current) ? current : selectedChanges[0]?.path || '')
+  }, [selectedKey, selectedChanges])
+
+  const fileDiffQuery = useQuery({
+    queryKey: versionKeys.diff(projectId, targetVersion?.id ?? '', comparison, selectedPath),
+    queryFn: () => getVersionDiff(projectId, targetVersion!.id, selectedPath, comparison),
+    enabled: Boolean(projectId && visible && targetVersion && selectedPath),
+  })
 
   const invalidateVersionQueries = useCallback(async () => {
     await queryClient.invalidateQueries({ queryKey: versionKeys.all })
@@ -71,10 +119,6 @@ export function VersionPanel({ projectId, workspace, refreshSignal = 0, visible 
     if (!projectId || !visible) return
     await invalidateVersionQueries()
   }, [invalidateVersionQueries, projectId, visible])
-
-  useEffect(() => {
-    setError('')
-  }, [projectId])
 
   useEffect(() => {
     void refresh()
@@ -89,66 +133,36 @@ export function VersionPanel({ projectId, workspace, refreshSignal = 0, visible 
 
   const createMutation = useMutation({
     mutationFn: () => createVersion(projectId),
-    onSuccess: async (result) => {
+    onSuccess: async result => {
       setError('')
+      setSelectionKey('')
       toast.success(t('versions.saved', { message: result.version?.message || result.message }))
       await invalidateVersionQueries()
     },
-    onError: (e) => showOperationError(e, t('versions.createFailed'), setError),
+    onError: cause => showOperationError(cause, t('versions.createFailed'), setError),
   })
 
   const restoreMutation = useMutation({
     mutationFn: ({ id, paths }: { id: string; paths?: string[] }) => restoreVersion(projectId, id, paths),
-    onSuccess: async (result) => {
-      setRollbackVersion(null)
-      setRestorePaths(undefined)
-      setRestorePlan(null)
+    onSuccess: async result => {
+      closeRestoreDialog()
       setError('')
       toast.success(t('versions.restoreSuccess'))
       if (result.restored_paths.length > 0) await onWorkspaceChanged?.(result.restored_paths)
       await invalidateVersionQueries()
     },
-    onError: (e) => showOperationError(e, t('versions.restoreFailed'), setError),
+    onError: cause => showOperationError(cause, t('versions.restoreFailed'), setError),
   })
 
-  const loading = statusQuery.isFetching || historyQuery.isFetching || createMutation.isPending || restoreMutation.isPending || restorePlanLoading
-  const changes = status?.changes ?? []
-  const canCreate = !loading && Boolean(projectId)
-  const timelineItems = useMemo(() => versions.map((version) => versionToTimelineItem(version, t)), [t, versions])
-  const currentVersionItem = useMemo(() => status?.latest ? versionToTimelineItem(status.latest, t) : null, [status?.latest, t])
-
-  const createManualVersion = () => {
-    if (loading) return
-    createMutation.mutate()
+  const closeRestoreDialog = () => {
+    restorePlanRequestRef.current += 1
+    setRollbackVersion(null)
+    setRestorePaths(undefined)
+    setRestorePlan(null)
+    setRestorePlanLoading(false)
   }
 
-  const openDiff = async (version: VersionItem, path?: string) => {
-    try {
-      setDiffVersion(version)
-      let selectedPath = path || ''
-      if (!selectedPath) {
-        const summary = await getVersionDiff(projectId, version.id)
-        selectedPath = summary.changes[0]?.path || ''
-      }
-      setDiffPath(selectedPath)
-      if (!selectedPath) {
-        setDiffText(null)
-        toast.info(t('versions.noComparableFiles'))
-        return
-      }
-      const diff = await getVersionDiff(projectId, version.id, selectedPath)
-      if (diff.text) {
-        setDiffText({ original: diff.original || '', modified: diff.modified || '' })
-      } else {
-        setDiffText(null)
-        toast.info(t('versions.fileBinary'))
-      }
-    } catch (e) {
-      showOperationError(e, t('versions.diffReadFailed'), setError)
-    }
-  }
-
-  const openRestoreDialog = async (version: VersionItem, paths?: string[]) => {
+  const openRestoreDialog = async (version: VersionEntry, paths?: string[]) => {
     const requestID = restorePlanRequestRef.current + 1
     restorePlanRequestRef.current = requestID
     setRollbackVersion(version)
@@ -160,70 +174,111 @@ export function VersionPanel({ projectId, workspace, refreshSignal = 0, visible 
       if (restorePlanRequestRef.current !== requestID) return
       setRestorePlan(plan)
       setError('')
-    } catch (e) {
+    } catch (cause) {
       if (restorePlanRequestRef.current !== requestID) return
-      setRollbackVersion(null)
-      setRestorePaths(undefined)
-      showOperationError(e, t('versions.restorePlanFailed'), setError)
+      closeRestoreDialog()
+      showOperationError(cause, t('versions.restorePlanFailed'), setError)
     } finally {
-      if (restorePlanRequestRef.current === requestID) {
-        setRestorePlanLoading(false)
-      }
+      if (restorePlanRequestRef.current === requestID) setRestorePlanLoading(false)
     }
   }
 
+  const queryError = statusQuery.error || historyQuery.error || summaryQuery.error || fileDiffQuery.error
+  const visibleError = error || (queryError instanceof Error ? queryError.message : '')
+  const operationLoading = createMutation.isPending || restoreMutation.isPending || restorePlanLoading
+  const refreshing = statusQuery.isFetching || historyQuery.isFetching
+  const canLoadMore = versions.length === historyLimit && historyLimit < MAX_HISTORY_LIMIT
+
+  const sidebar = (
+    <VersionSidebar
+      workspace={workspace}
+      status={status}
+      versions={versions}
+      changes={selectedChanges}
+      selectedKey={selectedKey}
+      selectedPath={selectedPath}
+      search={search}
+      error={visibleError}
+      historyLoading={historyQuery.isFetching}
+      statusLoading={statusQuery.isLoading}
+      operationLoading={operationLoading}
+      refreshing={refreshing}
+      canLoadMore={canLoadMore}
+      onSearchChange={setSearch}
+      onSelectCurrent={() => {
+        setSelectionKey(CURRENT_WORKSPACE_SELECTION)
+        closeHistoryPaneRef.current()
+      }}
+      onSelectVersion={version => {
+        setSelectionKey(version.id)
+        closeHistoryPaneRef.current()
+      }}
+      onSelectPath={path => {
+        setSelectedPath(path)
+        closeHistoryPaneRef.current()
+      }}
+      onRefresh={() => void refresh()}
+      onCreate={() => createMutation.mutate()}
+      onLoadMore={() => setHistoryLimit(limit => Math.min(limit + INITIAL_HISTORY_LIMIT, MAX_HISTORY_LIMIT))}
+    />
+  )
+
   return (
-    <div className="nova-sidebar flex h-full min-h-0 flex-col text-xs text-[var(--nova-text-muted)]">
-      <div className="nova-topbar flex h-9 shrink-0 items-center border-b px-3">
-        <span className="font-semibold text-[var(--nova-text)]">{t('versions.title')}</span>
-        <TooltipIconButton label={t('versions.refresh')} className="ml-auto text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" onClick={refresh} disabled={loading}>
-          <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+    <div className="flex h-full min-h-0 flex-col bg-background text-foreground">
+      <div className="flex h-9 shrink-0 items-center border-b px-3">
+        <span className="text-xs font-semibold">{t('versions.title')}</span>
+        <TooltipIconButton label={t('versions.refresh')} className="ml-auto" onClick={() => void refresh()} disabled={operationLoading || refreshing}>
+          <RefreshCw className={refreshing ? 'animate-spin' : ''} />
         </TooltipIconButton>
         {onClose && (
-          <TooltipIconButton label={t('versions.close')} className="text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" onClick={onClose}>
-            <MoreHorizontal className="h-3.5 w-3.5" />
+          <TooltipIconButton label={t('versions.close')} onClick={onClose}>
+            <X />
           </TooltipIconButton>
         )}
       </div>
 
-      <ScrollArea className="min-h-0 flex-1 overflow-x-hidden">
-        <div className="w-full max-w-full min-w-0 overflow-hidden px-3 py-2">
-          <VersionHeader workspace={workspace} status={status} changesCount={changes.length} />
-          <AutoSummary status={status} />
-
-          <div className="mt-3">
-            <div className="mb-1 flex items-center gap-2 text-[11px] font-semibold text-[var(--nova-text-muted)]">
-              <FileClock className="h-3.5 w-3.5" />
-              <span>{t('versions.manualSave')}</span>
-            </div>
-            <Button type="button" size="sm" className="mt-2 flex w-full items-center justify-center gap-2 border border-[var(--nova-border)] bg-[var(--nova-active)] font-medium text-[var(--nova-text)] hover:bg-[var(--nova-hover)] disabled:opacity-45" onClick={createManualVersion} disabled={!canCreate}>
-              <ShieldCheck className={`h-3.5 w-3.5 ${createMutation.isPending ? 'animate-pulse' : ''}`} />
-              <span>{createMutation.isPending ? t('versions.savingWithSummary') : t('versions.saveCurrent')}</span>
-            </Button>
-          </div>
-
-          <SectionHeader title={t('versions.currentChanges')} count={changes.length} expanded={changesExpanded} onToggle={() => setChangesExpanded(value => !value)} />
-          {changesExpanded && <ChangesList changes={changes} onOpenDiff={(path) => currentVersionItem && openDiff(currentVersionItem, path)} />}
-
-          <SectionHeader title={t('versions.history')} count={timelineItems.length} expanded={historyExpanded} onToggle={() => setHistoryExpanded(value => !value)} />
-          {historyExpanded && (
-            <VersionTimeline
-              versions={timelineItems}
-              selectedVersionId={status?.latest?.id}
-              loading={loading}
-              canRollback={timelineItems.length > 0}
-              onOpenDiff={(version) => void openDiff(version)}
-              onOpenDiffPath={(version, path) => void openDiff(version, path)}
-              onRollback={(version) => void openRestoreDialog(version)}
-              onRestorePath={(version, path) => void openRestoreDialog(version, [path])}
+      <AdaptiveSurface
+        className="min-h-0 flex-1"
+        collapseAt={960}
+        mobilePaneScope="surface"
+        left={{
+          id: 'version-history',
+          title: t('versions.history'),
+          side: 'left',
+          content: sidebar,
+          desktopClassName: 'border-r bg-background',
+          mobileClassName: 'bg-background',
+        }}
+        leftResize={{
+          layoutKey: 'denova:versions:history-layout',
+          label: t('versions.resizeHistorySidebar'),
+          defaultSize: '340px',
+          minSize: '280px',
+          maxSize: '46%',
+          mainMinSize: '420px',
+        }}
+      >
+        {controls => {
+          closeHistoryPaneRef.current = controls.closePane
+          return (
+            <VersionDiffWorkspace
+              currentSelection={currentSelection}
+              targetVersion={targetVersion}
+              summary={summary}
+              diff={fileDiffQuery.data ?? null}
+              selectedPath={selectedPath}
+              mode={diffMode}
+              isMobile={controls.isMobile}
+              loading={summaryQuery.isLoading || fileDiffQuery.isLoading}
+              restoring={operationLoading}
+              onModeChange={setDiffMode}
+              onOpenSidebar={controls.openLeft}
+              onRestoreVersion={() => targetVersion && void openRestoreDialog(targetVersion)}
+              onRestoreFile={() => targetVersion && selectedPath && void openRestoreDialog(targetVersion, [selectedPath])}
             />
-          )}
-
-          {error && (
-            <InlineErrorNotice className="mt-3" message={error} />
-          )}
-        </div>
-      </ScrollArea>
+          )
+        }}
+      </AdaptiveSurface>
 
       <RollbackDialog
         open={Boolean(rollbackVersion)}
@@ -231,32 +286,15 @@ export function VersionPanel({ projectId, workspace, refreshSignal = 0, visible 
         plan={restorePlan}
         loading={restoreMutation.isPending}
         planLoading={restorePlanLoading}
-        onOpenChange={(open) => {
-          if (!open) {
-            restorePlanRequestRef.current += 1
-            setRollbackVersion(null)
-            setRestorePaths(undefined)
-            setRestorePlan(null)
-            setRestorePlanLoading(false)
-          }
-        }}
-        onRollback={(version) => restoreMutation.mutate({ id: version.id, paths: restorePaths })}
-      />
-
-      <VersionDiffDialog
-        open={Boolean(diffVersion && diffPath && diffText)}
-        title={diffPath ? t('versions.diffTitleWithPath', { path: diffPath }) : t('versions.diffTitle')}
-        original={diffText?.original || ''}
-        modified={diffText?.modified || ''}
-        language="markdown"
-        onOpenChange={(open) => { if (!open) { setDiffVersion(null); setDiffText(null); setDiffPath('') } }}
+        onOpenChange={open => { if (!open) closeRestoreDialog() }}
+        onRollback={version => restoreMutation.mutate({ id: version.id, paths: restorePaths })}
       />
     </div>
   )
 }
 
-function showOperationError(e: unknown, fallback: string, setError: (message: string) => void) {
-  const message = e instanceof Error ? e.message : fallback
+function showOperationError(cause: unknown, fallback: string, setError: (message: string) => void) {
+  const message = cause instanceof Error ? cause.message : fallback
   setError(message)
   toast.error(message)
 }

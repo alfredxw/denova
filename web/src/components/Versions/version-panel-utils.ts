@@ -1,20 +1,8 @@
 import type { VersionEntry } from '@/lib/api'
-import type { VersionItem } from '@/features/versions/components/version-timeline'
 import type { TFunction } from 'i18next'
 import { formatDateTime } from '@/i18n'
 
-export function versionToTimelineItem(version: VersionEntry, t: TFunction): VersionItem {
-  return {
-    id: version.id,
-    title: version.message || t('versions.emptyMessage'),
-    description: sourceText(version.source, t),
-    createdAt: formatTime(version.created_at),
-    author: t('versions.filesBytes', { files: version.file_count, bytes: formatBytes(version.total_bytes) }),
-    changedPaths: version.changed_paths ?? [],
-  }
-}
-
-function sourceText(source: VersionEntry['source'], t: TFunction) {
+export function sourceText(source: VersionEntry['source'], t: TFunction) {
   if (source === 'timer') return t('versions.source.timer')
   if (source === 'agent') return t('versions.source.agent')
   if (source === 'rollback_backup') return t('versions.source.rollbackBackup')
@@ -58,7 +46,7 @@ export function formatTime(value: string) {
   return formatDateTime(value) || value
 }
 
-function formatBytes(value: number) {
+export function formatBytes(value: number) {
   if (!Number.isFinite(value) || value <= 0) return '0 B'
   if (value < 1024) return `${value} B`
   if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`

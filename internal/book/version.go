@@ -19,6 +19,11 @@ const (
 	VersionRestoreScopePaths     = versions.VersionRestoreScopePaths
 )
 
+const (
+	VersionDiffComparisonWorkspace = versions.VersionDiffComparisonWorkspace
+	VersionDiffComparisonParent    = versions.VersionDiffComparisonParent
+)
+
 var (
 	ErrVersionNotFound = versions.ErrVersionNotFound
 	ErrVersionClean    = versions.ErrVersionClean
@@ -32,6 +37,7 @@ type VersionCommandResult = versions.VersionCommandResult
 type VersionRestorePlan = versions.VersionRestorePlan
 type VersionRestoreResult = versions.VersionRestoreResult
 type VersionRestoreChange = versions.VersionRestoreChange
+type VersionDiffComparison = versions.VersionDiffComparison
 type VersionDiff = versions.VersionDiff
 type VersionAutoSettings = versions.VersionAutoSettings
 type VersionAutoResult = versions.VersionAutoResult
