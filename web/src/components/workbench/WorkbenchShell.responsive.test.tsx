@@ -99,17 +99,25 @@ describe('WorkbenchShell responsive main content', () => {
     const expandedToggle = screen.getByRole('button', { name: '收起' })
     const expandedToggleIconClass = expandedToggle.querySelector('svg')?.getAttribute('class')
     expect(expandedSidebar).toHaveAttribute('data-state', 'expanded')
-    expect(expandedToggle).toHaveAttribute('data-slot', 'sidebar-menu-button')
+    expect(expandedToggle).toHaveAttribute('data-activity-bar-toggle', 'true')
     expect(expandedToggleIconClass).not.toContain('rotate')
     expect(expandedToggleIconClass).not.toContain('transition-transform')
+    expect(screen.getByRole('button', { name: '设置' })).toHaveClass('h-9')
+    expect(screen.getByRole('button', { name: '写作' })).toHaveClass('h-9')
 
     rerender(<WorkbenchShell {...props} activityBarExpanded={false} />)
 
     const collapsedSidebar = container.querySelector('[data-slot="sidebar"]')
     const collapsedToggle = screen.getByRole('button', { name: '展开' })
     expect(collapsedSidebar).toHaveAttribute('data-state', 'collapsed')
-    expect(collapsedToggle).toHaveAttribute('data-slot', 'sidebar-menu-button')
+    expect(collapsedToggle).toHaveAttribute('data-activity-bar-toggle', 'true')
     expect(collapsedToggle.querySelector('svg')?.getAttribute('class')).toBe(expandedToggleIconClass)
+    expect(screen.getByRole('button', { name: '设置' })).toHaveClass('h-9')
+    expect(screen.getByRole('button', { name: '写作' })).toHaveClass('h-9')
+    expect(collapsedToggle.closest('[data-slot="sidebar-header"]')).not.toBeNull()
+    expect(collapsedToggle.closest('[data-slot="sidebar-footer"]')).toBeNull()
+    expect(collapsedToggle.parentElement).toHaveClass('opacity-0', 'group-hover/activity-toggle:opacity-100')
+    expect(screen.getByAltText('Denova').parentElement).toHaveClass('opacity-100', 'group-hover/activity-toggle:opacity-0')
   })
 
   it('aligns every expanded sidebar label to one fixed icon column', () => {
@@ -126,7 +134,6 @@ describe('WorkbenchShell responsive main content', () => {
       screen.getByRole('button', { name: '写作' }),
       screen.getByRole('button', { name: /自动化$/ }),
       screen.getByRole('button', { name: '设置' }),
-      screen.getByRole('button', { name: '收起' }),
     ]
 
     for (const button of buttons) {
@@ -136,6 +143,7 @@ describe('WorkbenchShell responsive main content', () => {
       expect(button).toHaveClass('gap-2')
       expect(iconSlot).toHaveClass('size-4')
     }
+    expect(screen.getByRole('button', { name: '收起' })).toHaveAttribute('data-activity-bar-toggle', 'true')
     expect(container.querySelector('[data-slot="sidebar-header"]')).not.toHaveClass('border-b')
     expect(container.querySelector('[data-slot="sidebar-footer"]')).not.toHaveClass('border-t')
   })
