@@ -14,14 +14,13 @@ import type { AutomationMessageNavigation } from '@/features/messages/types'
 import { requestAutomationNavigation } from '@/features/automations/automation-navigation'
 import { setActivityMessageUnreadCount, useActivitySummary } from '@/features/activity/use-activity-summary'
 import { useIsMobile } from '@/hooks/useIsMobile'
-import type { BookRecord, ChapterSummary, WorkspaceSummary } from '@/lib/api'
+import type { BookRecord, WorkspaceSummary } from '@/lib/api'
 import { useWorkspaceStore, type RightPanel, type WorkspaceMode } from '@/stores/workspace-store'
 import type { InteractiveSubmode } from '@/features/interactive/types'
 import { BookSwitcher } from './BookSwitcher'
 import { WorkbenchNoticePill } from './WorkbenchNoticePill'
 import type { WorkbenchNotice } from '@/features/notices/use-workbench-notice'
 import { WorkbenchAppSidebar, WorkbenchBrandIcon } from './WorkbenchAppSidebar'
-import { WritingStatusBar } from './WritingStatusBar'
 import {
   defaultActivityOrderForScope,
   isActivityItemID,
@@ -45,9 +44,6 @@ interface WorkbenchShellProps {
   workspace: string
   books: BookRecord[]
   summary: WorkspaceSummary | null
-  currentChapter?: ChapterSummary
-  editorLine?: number
-  isStreaming: boolean
   projectVisible: boolean
   activityBarExpanded: boolean
   settingsOpen: boolean
@@ -85,9 +81,6 @@ export function WorkbenchShell({
   workspace,
   books,
   summary,
-  currentChapter,
-  editorLine,
-  isStreaming,
   projectVisible,
   activityBarExpanded,
   settingsOpen,
@@ -627,14 +620,6 @@ export function WorkbenchShell({
           rightPanelVisible={writingContentVisible && Boolean(rightPanelContent)}
           rightPanelWide={rightPanelWide && writingContentVisible && Boolean(rightPanelContent)}
           centerFocus={centerFocus && writingContentVisible}
-          footer={writingContentVisible ? (
-            <WritingStatusBar
-              summary={summary}
-              currentChapter={currentChapter}
-              editorLine={editorLine}
-              isStreaming={isStreaming}
-            />
-          ) : undefined}
         />
       </SidebarProvider>
       {mainContentPortal}

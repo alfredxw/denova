@@ -72,6 +72,13 @@ describe('ChapterOutline', () => {
     vi.restoreAllMocks()
   })
 
+  it('shows book totals beside the volume and chapter heading', () => {
+    renderOutline({ chapterCount: 766, totalWords: 1872870 })
+
+    const heading = screen.getByText('分卷章节').parentElement
+    expect(heading).toHaveTextContent('766 章 · 1,872,870 字')
+  })
+
   it('当前细纲只在滚动目录展示一次，单击直接打开全文', async () => {
     const user = userEvent.setup()
     const { onSelectFile } = renderOutline()

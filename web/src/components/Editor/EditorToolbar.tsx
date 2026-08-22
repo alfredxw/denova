@@ -2,6 +2,7 @@ import { BookOpen, Check, Crosshair, ImagePlus, PanelLeft, Save, Settings } from
 import { useTranslation } from 'react-i18next'
 
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
+import { formatLocaleNumber } from '@/i18n'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
@@ -52,6 +53,7 @@ interface EditorToolbarProps {
   fileName: string
   displayTitle?: string
   chapterPath?: string
+  chapterWords?: number
   saveStatus: SaveStatus | null
   onSave: () => void | Promise<void>
   settingsOpen: boolean
@@ -69,6 +71,7 @@ export function EditorToolbar({
   fileName,
   displayTitle,
   chapterPath,
+  chapterWords,
   saveStatus,
   onSave,
   settingsOpen,
@@ -102,7 +105,12 @@ export function EditorToolbar({
           </TooltipIconButton>
         ) : null}
         <BookOpen className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />
-        <span className="truncate font-medium text-[var(--nova-text)]">{displayTitle || fileName}</span>
+        <span className="min-w-0 truncate font-medium text-[var(--nova-text)]">{displayTitle || fileName}</span>
+        {chapterWords !== undefined ? (
+          <span className="shrink-0 text-[11px] font-normal text-[var(--nova-text-faint)]">
+            {t('common.words', { count: formatLocaleNumber(chapterWords) })}
+          </span>
+        ) : null}
       </div>
       <TooltipProvider>
         <div className="flex shrink-0 items-center gap-1">

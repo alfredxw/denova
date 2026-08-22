@@ -295,6 +295,8 @@ export function ProjectWritingSurface({
             projectId={projectId}
             tree={tree}
             chapters={chapters}
+            chapterCount={summary?.chapter_count}
+            totalWords={summary?.total_words}
             ideas={summary?.ideas}
             outline={summary?.outline}
             chapterPlans={summary?.chapter_plans || []}

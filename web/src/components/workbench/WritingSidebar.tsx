@@ -18,6 +18,8 @@ interface WritingSidebarProps {
   workspace: string
   tree: FileNode[]
   chapters: ChapterSummary[]
+  chapterCount?: number
+  totalWords?: number
   summaryAvailable: boolean
   ideas?: DocumentPreview
   outline?: DocumentPreview
@@ -53,6 +55,8 @@ export const WritingSidebar = memo(function WritingSidebar({
   workspace,
   tree,
   chapters,
+  chapterCount,
+  totalWords,
   summaryAvailable,
   ideas,
   outline,
@@ -111,6 +115,8 @@ export const WritingSidebar = memo(function WritingSidebar({
             projectId={projectId}
             tree={tree}
             chapters={chapters}
+            chapterCount={chapterCount}
+            totalWords={totalWords}
             ideas={ideas}
             outline={outline}
             chapterPlans={chapterPlans}
