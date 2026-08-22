@@ -92,6 +92,8 @@ const settingPanel = {
   'settingPanel.directory.expandAll': '展开全部目录',
   'settingPanel.directory.collapseAll': '折叠全部目录',
   'settingPanel.directory.search': '搜索方案名称或描述',
+  'settingPanel.directory.subtitle': '按创作能力分类管理',
+  'settingPanel.directory.count': '共 {{count}} 个方案',
   'settingPanel.presetKind.teller': '叙事风格',
   'settingPanel.presetKind.event': '事件包',
   'settingPanel.presetKind.rule': 'TRPG 检定',

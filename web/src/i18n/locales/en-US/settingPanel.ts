@@ -92,6 +92,8 @@ const settingPanel = {
   'settingPanel.directory.expandAll': 'Expand all directories',
   'settingPanel.directory.collapseAll': 'Collapse all directories',
   'settingPanel.directory.search': 'Search preset names or descriptions',
+  'settingPanel.directory.subtitle': 'Organized by creative capability',
+  'settingPanel.directory.count': '{{count}} presets',
   'settingPanel.presetKind.teller': 'Narrative Styles',
   'settingPanel.presetKind.event': 'Event Packages',
   'settingPanel.presetKind.rule': 'TRPG Checks',

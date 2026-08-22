@@ -9,12 +9,12 @@ import type { AutosaveStatus } from '@/components/forms/autosave-status'
 import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
 import { FeaturePageShell } from '@/components/layout/feature-page-shell'
 import { MobilePaneTrigger } from '@/components/layout/mobile-pane-trigger'
-import { ResourceDirectory } from '@/components/resource-directory/ResourceDirectory'
 import { Button } from '@/components/ui/button'
 import { createActorState, createEventPackage, createImagePreset, createInteractiveTeller, createRuleSystem, createStoryDirector, deleteActorState, deleteEventPackage, deleteImagePreset, deleteInteractiveTeller, deleteRuleSystem, deleteStoryDirector, getActorStates, getEventPackages, getImagePresets, getInteractiveTellers, getRuleSystems, getStoryDirectors, updateActorState, updateEventPackage, updateImagePreset, updateInteractiveTeller, updateRuleSystem, updateStoryDirector } from '../../api'
 import { PRESET_RESOURCE_SCOPE, type PresetResourceKind } from '../../preset-ownership'
 import type { ActorStateModule, EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, Teller } from '../../types'
 import { PresetResourcePane } from './PresetResourcePane'
+import { PresetDirectorySidebar } from './PresetDirectorySidebar'
 import { buildPresetDirectorySections, presetDirectoryEntryId } from './preset-directory-sections'
 import { applyPresetDirectoryOrder, usePresetDirectoryOrder } from './use-preset-directory-order'
 import { usePresetDraftSync, usePresetResources } from './use-preset-resources'
@@ -610,22 +610,18 @@ export function PresetSettingsPanel({
     : presetDirectoryEntryId(presetResourceKind, currentActivePresetId(presetResourceKind))
 
   const directoryPanel = (
-    <div className="preset-directory nova-sidebar flex h-full min-h-0 flex-col overflow-hidden">
-      <ResourceDirectory
-        sections={presetDirectorySections}
-        activeId={activeDirectoryId}
-        onSelect={handleSelectDirectoryEntry}
-        saving={busy}
-        pinnedEntries={[{ id: TELLER_CONFIG_AGENT_ENTRY_ID, label: t('settingPanel.tellerAgent.title'), icon: Bot }]}
-        searchPlaceholder={t('settingPanel.directory.search')}
-        showExpandCollapseAll
-        expandedSectionId={presetResourceKind}
-        onReorderItems={(sectionId, orderedItemIds) => {
-          const kind = sectionId as PresetResourceKind
-          presetDirectoryOrder.reorderItems(kind, orderedItemIds, directoryItemIdsForKind(kind))
-        }}
-      />
-    </div>
+    <PresetDirectorySidebar
+      sections={presetDirectorySections}
+      activeId={activeDirectoryId}
+      activeSectionId={presetResourceKind}
+      agentEntryId={TELLER_CONFIG_AGENT_ENTRY_ID}
+      saving={busy}
+      onSelect={handleSelectDirectoryEntry}
+      onReorderItems={(sectionId, orderedItemIds) => {
+        const kind = sectionId as PresetResourceKind
+        presetDirectoryOrder.reorderItems(kind, orderedItemIds, directoryItemIdsForKind(kind))
+      }}
+    />
   )
 
   return (

@@ -87,6 +87,14 @@ describe('SkillsView', () => {
 
     expect(await screen.findByRole('button', { name: /\/slow-burn/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /\/image-helper/ })).toBeInTheDocument()
+    expect(screen.queryByText('技能库')).not.toBeInTheDocument()
+    expect(screen.queryByText('管理可复用的 Agent 工作流')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '折叠用户' })).toHaveClass('text-left')
+    const search = screen.getByRole('textbox', { name: '搜索 Skills' })
+    await user.type(search, 'Writing')
+    expect(screen.getByRole('button', { name: /\/slow-burn/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /\/image-helper/ })).not.toBeInTheDocument()
+    await user.clear(search)
     await user.click(screen.getByRole('combobox', { name: '按 Skill 分类筛选' }))
     await user.click(await screen.findByRole('option', { name: '图像' }))
 

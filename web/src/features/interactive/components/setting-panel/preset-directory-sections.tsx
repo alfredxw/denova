@@ -3,7 +3,7 @@ import { Compass, Database, Dice5, ScrollText, SlidersHorizontal, Sparkles } fro
 import type { LucideIcon } from 'lucide-react'
 import type { TFunction } from 'i18next'
 import type { ResourceDirectoryItem, ResourceDirectorySection } from '@/components/resource-directory/types'
-import { presetModuleOwnership, type PresetResourceKind } from '../../preset-ownership'
+import type { PresetResourceKind } from '../../preset-ownership'
 import type { ActorStateModule, EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, Teller } from '../../types'
 import { narrativeStyleDescription, narrativeStyleName } from '../../narrative-style'
 import { presetStatusLabel } from '../preset-config/preset-status'
@@ -59,12 +59,7 @@ export function buildPresetDirectorySections({
       items: presetDirectoryItemsForKind(kind, lists, t),
       onCreate: () => onCreateKind(kind),
       createLabel: presetKindCreateLabel(kind, t),
-      headerMeta: (
-        <span className="shrink-0 rounded-full border border-[var(--nova-border)] px-1.5 py-0.5 text-[9px] font-medium text-[var(--nova-text-faint)]">
-          {t(`settingPanel.presetAvailability.${presetModuleOwnership(kind)}`)}
-        </span>
-      ),
-      defaultCollapsed: false,
+      defaultCollapsed: true,
       reorderable: true,
     }))
 }

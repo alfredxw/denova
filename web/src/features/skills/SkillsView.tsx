@@ -628,7 +628,7 @@ export function SkillsView({ target, onClose, toolNavigationIntent }: SkillsView
           id: 'skills-list',
           title: t('skills.title'),
           side: 'left',
-          icon: <Sparkles className="h-4 w-4" />,
+          icon: <Sparkles className="size-4" />,
           content: (
             <SkillListPanel
               snapshot={snapshot}
@@ -653,7 +653,7 @@ export function SkillsView({ target, onClose, toolNavigationIntent }: SkillsView
                 id: 'skills-agent',
                 title: t('skills.agent.button'),
                 side: 'right',
-                icon: <Bot className="h-4 w-4" />,
+                icon: <Bot className="size-4" />,
                 content: agentPanel,
                 desktopClassName: 'min-h-0 border-l border-[var(--nova-border)]',
               }
