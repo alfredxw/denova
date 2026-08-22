@@ -22,6 +22,7 @@ type HostData struct {
 
 type Input struct {
 	Text           string
+	Attachments    []Attachment
 	IdempotencyKey string
 	Context        []ContextFragment
 	Goal           *GoalMutation

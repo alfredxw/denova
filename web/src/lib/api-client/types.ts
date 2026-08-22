@@ -51,9 +51,17 @@ interface ChatMessageBase {
   turn_version_index?: number
 }
 
+export interface ChatAttachment {
+  id?: string
+  name: string
+  media_type?: string
+  size: number
+}
+
 export interface UserChatMessage extends ChatMessageBase {
   role: 'user'
   user_references?: UserMessageReference[]
+  attachments?: ChatAttachment[]
 }
 
 export interface AssistantChatMessage extends ChatMessageBase {

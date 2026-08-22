@@ -75,7 +75,7 @@ func sessionCanonicalInputIntent(
 	}
 	intent, err := session.NewDomainCommitIntent(session.DomainCommitIdentity{
 		CommandID: string(request.CommandID), OperationID: string(request.RunID), Cycle: request.Cycle,
-	}, agent.UserMessage(request.Input.Text), session.MessageMetadata{
+	}, agent.UserMessageWithAttachments(request.Input.Text, request.Input.Attachments), session.MessageMetadata{
 		AgentKind:      request.Options.AgentKind,
 		UserReferences: cloneCanonicalUserReferences(agentchat.UserMessageReferencesForRequest(request.Request)),
 		ContextOnly:    request.Request.InputVisibility == agentrun.InputModelOnly,
@@ -125,6 +125,10 @@ func (a *App) gameCanonicalInput(
 			intent, err := interactive.NewPlayerInputIntent(interactive.DomainCommitIdentity{
 				CommandID: string(request.CommandID), OperationID: string(request.RunID), Cycle: request.Cycle,
 			}, request.Binding.BranchID, request.Input.Text)
+			if err != nil {
+				return agent.CommitReceipt{}, err
+			}
+			intent, err = intent.WithAttachments(request.Input.Attachments)
 			if err != nil {
 				return agent.CommitReceipt{}, err
 			}

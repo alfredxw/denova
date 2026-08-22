@@ -54,8 +54,8 @@ func TurnInput(kind TurnKind, request agentchat.ChatRequest, options agentrun.Op
 	}
 	request = agentchat.CaptureChatRequestCallerInput(request)
 	caller := agentchat.CallerView(request)
-	if strings.TrimSpace(caller.Message) == "" {
-		return agent.Input{}, errors.New("Denova Agent turn message is required")
+	if strings.TrimSpace(caller.Message) == "" && len(request.AttachedFiles) == 0 {
+		return agent.Input{}, errors.New("Denova Agent turn requires a message or attachments")
 	}
 	if options.RestoreData != nil && (strings.TrimSpace(options.RestoreData.Type) == "" ||
 		options.RestoreData.Version == 0 || !json.Valid(options.RestoreData.Data)) {
@@ -74,8 +74,9 @@ func TurnInput(kind TurnKind, request agentchat.ChatRequest, options agentrun.Op
 		return agent.Input{}, fmt.Errorf("encode Denova Agent turn HostData: %w", err)
 	}
 	return agent.Input{
-		Text: caller.Message, IdempotencyKey: strings.TrimSpace(caller.CommandID),
-		HostData: &agent.HostData{Type: turnHostDataType, Version: 2, Data: encoded},
+		Text: caller.Message, Attachments: append([]agent.Attachment(nil), request.AttachedFiles...),
+		IdempotencyKey: strings.TrimSpace(caller.CommandID),
+		HostData:       &agent.HostData{Type: turnHostDataType, Version: 2, Data: encoded},
 	}, nil
 }
 
@@ -106,7 +107,8 @@ func decodeTurnHostData(hostData *agent.HostData, inputText string) (TurnHostDat
 	default:
 		return TurnHostData{}, errors.New("Denova Agent turn HostData has an invalid turn kind")
 	}
-	if strings.TrimSpace(data.Caller.Message) == "" || inputText != "" && data.Caller.Message != inputText {
+	if strings.TrimSpace(data.Caller.Message) == "" && len(data.Caller.AttachmentIDs) == 0 ||
+		inputText != "" && data.Caller.Message != inputText {
 		return TurnHostData{}, errors.New("Denova Agent turn HostData does not match public Input")
 	}
 	if data.RestoreData != nil {
@@ -124,7 +126,8 @@ func decodeTurnHostData(hostData *agent.HostData, inputText string) (TurnHostDat
 func (data TurnHostData) ChatRequest() agentchat.ChatRequest {
 	return agentchat.ChatRequest{
 		CommandID: data.Caller.CommandID, Message: data.Caller.Message,
-		References: append([]string(nil), data.Caller.References...), LoreReferences: append([]string(nil), data.Caller.LoreReferences...),
+		AttachmentIDs: append([]string(nil), data.Caller.AttachmentIDs...),
+		References:    append([]string(nil), data.Caller.References...), LoreReferences: append([]string(nil), data.Caller.LoreReferences...),
 		StyleScenes: append([]string(nil), data.Caller.StyleScenes...), Selections: append([]agentchat.TextSelectionRef(nil), data.Caller.Selections...),
 		IDEContext: data.Caller.IDEContext, ReviewFeedback: data.Caller.ReviewFeedback.Clone(),
 		PlanMode: data.Caller.PlanMode, WritingSkill: data.Caller.WritingSkill,

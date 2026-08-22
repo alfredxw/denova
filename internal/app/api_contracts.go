@@ -1,6 +1,7 @@
 package app
 
 import (
+	agentattachment "denova/internal/agents/attachment"
 	agentchat "denova/internal/agents/chat"
 	agentexecution "denova/internal/agents/execution"
 	"strings"
@@ -18,8 +19,9 @@ import (
 // runtime engines, registries, and persistence stores out of this surface.
 
 type (
-	AgentEvent       = agentrun.Event
-	AgentChatRequest = agentchat.ChatRequest
+	AgentEvent            = agentrun.Event
+	AgentChatRequest      = agentchat.ChatRequest
+	AgentAttachmentUpload = agentattachment.Upload
 
 	CommandKind      = agentexecution.CommandKind
 	AgentOperationID = agentrun.OperationID

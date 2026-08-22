@@ -23,6 +23,25 @@ describe('agent-ui', () => {
     })
   })
 
+  it('preserves transport attachments and renders attachment-only user messages', () => {
+    const attachments = [{ name: 'notes.md', media_type: 'text/markdown', data_url: 'data:text/markdown;base64,aGVsbG8=' }]
+    expect(buildAgentChatRequestBody({ attachments })).toMatchObject({ attachments })
+
+    const messages: AgentUIMessage[] = [{
+      id: 'user-files',
+      role: 'user',
+      metadata: { attachments: [{ id: 'att-1', name: 'notes.md', media_type: 'text/markdown', size: 5 }] },
+      parts: [{ type: 'text', text: '' }],
+    }]
+    const views = buildAgentMessageViews(messages)
+    expect(views).toHaveLength(1)
+    expect(agentViewToRenderMessage(views[0])).toMatchObject({
+      role: 'user',
+      content: '',
+      attachments: [{ id: 'att-1', name: 'notes.md', size: 5 }],
+    })
+  })
+
   it('没有重复 part 时保留消息和 parts 引用，避免流式更新重渲染历史消息', () => {
     const historyPart = {
       type: 'text',

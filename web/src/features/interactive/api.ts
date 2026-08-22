@@ -1,6 +1,7 @@
 import { createAgentCommandID, fetchAPI, jsonHeaders, parseSSEStream, requestJSON, responseAPIError } from '@/lib/api-client'
 import type { AgentCommandReceipt, AgentRuntimeActiveOutput, AgentRuntimeOpenTool, AgentRuntimeOperation, AgentRuntimeQueuedCommand, AgentRuntimeRecoveryAction, AgentRuntimeRecoveryReceipt, ContextAnalysis, InteractiveImage } from '@/lib/api-client'
 import { isKnownAgentCommandOutcome } from '@/lib/agent-command'
+import type { ChatAttachmentUpload } from '@/lib/chat-attachments'
 import type { ActorStateModule, ActorTraitRollRequest, ActorTraitRollResult, BranchSummary, DirectorPlan, DirectorPlanStatus, EventPackageModule, ImagePreset, InitialActorTraitRoll, InteractiveSnapshotResponse, InteractiveSSEEvent, RuleResolution, RuleResolutionRerollInput, RuleSystemModule, StoryDirector, StoryDirectorModuleRefs, StoryDirectorRunPolicy, StoryHistoryPage, StoryStateSchemaPolicy, StyleReference, StyleReferenceFileDocument, StoryImageSettings, StoryIndex, StoryOpeningConfig, StorySummary, Teller, UpdateDirectorPlanInput, UpdateTurnNarrativeResult } from './types'
 
 function presetMutationBody<T extends object>(input: T, baseRevision?: string) {
@@ -368,6 +369,7 @@ export interface InteractiveStartInput {
   branch?: string
   message: string
   style_scenes?: string[]
+  attachments?: ChatAttachmentUpload[]
   regenerate_from_turn_id?: string
   signal?: AbortSignal
 }
@@ -423,6 +425,7 @@ export type InteractiveAgentCommand = InteractiveAgentCommandBase & (
     input: {
       message: string
       styleScenes?: string[]
+      attachments?: ChatAttachmentUpload[]
     }
   }
   | {
@@ -442,6 +445,7 @@ export function submitInteractiveAgentCommand(command: InteractiveAgentCommand):
     ? {
         message: command.input.message,
         ...(command.input.styleScenes?.length ? { style_scenes: command.input.styleScenes } : {}),
+        ...(command.input.attachments?.length ? { attachments: command.input.attachments } : {}),
       }
     : undefined
   const targetCommandId = 'targetCommandId' in command ? command.targetCommandId : ''

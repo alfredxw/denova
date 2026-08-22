@@ -33,6 +33,7 @@ import {
   type WritingTaskStatus,
 } from './use-agent-runtime-recovery'
 import { writingAgentChatClient, type AgentChatClient } from './agent-chat-client'
+import { attachmentDescriptors, attachmentUploadsRetryIdentity, filesToAttachmentUploads, type ChatAttachmentUpload } from '@/lib/chat-attachments'
 
 interface ChatOptions {
   projectId?: string
@@ -43,6 +44,7 @@ interface ChatOptions {
 }
 
 export interface ChatSendOptions {
+  attachments?: File[]
   writingSkill?: string
   ideContext?: IDEContext
   imagePresetId?: string
@@ -370,7 +372,7 @@ export function useAgentChat(options: ChatOptions = {}) {
           return false
         }
       }
-      const command = isStreaming ? '' : agentBypassCommand(input)
+      const command = isStreaming || sendOptions.attachments?.length ? '' : agentBypassCommand(input)
       if (command) {
         const result = await client.executeCommand(command)
         if (command === 'clear') {
@@ -395,6 +397,16 @@ export function useAgentChat(options: ChatOptions = {}) {
         setActivePlanMode(prepared.planMode)
       }
 
+      let attachmentUploads: ChatAttachmentUpload[] = []
+      if (sendOptions.attachments?.length) {
+        try {
+          attachmentUploads = await filesToAttachmentUploads(sendOptions.attachments)
+        } catch (error) {
+          toast.error(t('chat.attachment.readFailed', { error: String(error) }))
+          return false
+        }
+      }
+
       const body = buildAgentChatRequestBody({
         message: prepared.message,
         references: prepared.references,
@@ -416,11 +428,13 @@ export function useAgentChat(options: ChatOptions = {}) {
           review_thread_id: feedback.reviewThreadId,
           comment_ids: feedback.commentIds,
         })),
+        attachments: attachmentUploads,
       } as Parameters<typeof buildAgentChatRequestBody>[0] & {
         message: string
       }) as Record<string, unknown>
       body.message = prepared.message
       body.session_id = targetSessionID
+      const retryBody = { ...body, attachments: attachmentUploadsRetryIdentity(attachmentUploads) }
 
       const userReferences = buildUserMessageReferences(prepared, sendOptions)
       if (isStreaming) {
@@ -431,7 +445,7 @@ export function useAgentChat(options: ChatOptions = {}) {
           return false
         }
         const delivery = 'follow_up' as const
-        const retryKey = agentCommandRetryKey(operationID, delivery, body)
+        const retryKey = agentCommandRetryKey(operationID, delivery, retryBody)
         const commandID = rememberAgentCommandID(retryCommandIDsRef.current, retryKey, createAgentCommandID)
         commandSubmittingRef.current = true
         setCommandSubmitting(true)
@@ -479,7 +493,7 @@ export function useAgentChat(options: ChatOptions = {}) {
           setCommandSubmitting(false)
         }
       }
-      const initialRetryKey = agentCommandRetryKey('', 'start_turn', body)
+      const initialRetryKey = agentCommandRetryKey('', 'start_turn', retryBody)
       const initialCommandID = rememberAgentCommandID(initialStartCommandIDsRef.current, initialRetryKey, createAgentCommandID)
       body.command_id = initialCommandID
       let submissionStarted = false
@@ -490,6 +504,7 @@ export function useAgentChat(options: ChatOptions = {}) {
             metadata: {
               ...(sendOptions.hideUserMessage ? { display_hidden: true } : {}),
               ...(userReferences.length ? { user_references: userReferences } : {}),
+              ...(sendOptions.attachments?.length ? { attachments: attachmentDescriptors(sendOptions.attachments) } : {}),
             },
             parts: [{ type: 'text', text: sendOptions.displayMessage || input }],
           },

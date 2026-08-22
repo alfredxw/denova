@@ -244,6 +244,7 @@ func (s *InteractiveAppService) startInteractiveTask(ctx context.Context, reques
 		StoryID:   identity.request.StoryID, BranchID: identity.request.BranchID, Message: identity.request.Message,
 		StyleScenes: identity.request.StyleScenes, Locale: identity.request.Locale,
 		RegenerateFromTurnID: identity.request.RegenerateFromTurnID,
+		AttachmentIDs:        identity.request.AttachmentIDs, AttachedFiles: identity.request.AttachedFiles,
 	})
 	if err != nil {
 		slog.ErrorContext(ctx, fmt.Sprintf("[interactive-agent-task] prepare cycle failed command_id=%s story_id=%s branch_id=%s err=%v", identity.request.CommandID, identity.request.StoryID, identity.request.BranchID, err))
@@ -368,6 +369,7 @@ func emitInteractiveTurnPersistedResult(store *interactive.Store, storyID string
 		Branches:           snapshot.Graph.Branches,
 		ContextCompaction:  conversation.AgentCompactionProjection(snapshot),
 	}
+	event.Turn.Attachments = attachmentDescriptors(event.Turn.Attachments)
 	emit(agentrun.Event{Type: "interactive_turn_persisted", Data: event})
 	slog.InfoContext(context.Background(), fmt.Sprintf("[interactive-agent-task] emitted persisted turn story_id=%s branch_id=%s turn_id=%s", storyID, snapshot.BranchID, persistedTurn.ID))
 	return &snapshot, nil

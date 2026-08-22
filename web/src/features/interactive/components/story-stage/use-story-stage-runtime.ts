@@ -26,6 +26,7 @@ import type { useInteractiveAgentCommands } from '../../use-interactive-agent-co
 import { isAbortError, parseInlineStyleScenes } from './utils'
 import type { LiveMessageAccumulator } from './use-live-message-accumulator'
 import type { StoryImagesController } from './use-story-images'
+import { attachmentDescriptors, attachmentUploadsRetryIdentity, filesToAttachmentUploads, type ChatAttachmentDescriptor, type ChatAttachmentUpload } from '@/lib/chat-attachments'
 import { createStoryStageStreamConsumer, type StoryStageStreamOutcome } from './story-stage-stream-consumer'
 import {
   isRetryableStoryStageObservationError,
@@ -125,15 +126,25 @@ export function useStoryStageRuntime({
       })),
   })
 
-  async function send(override?: { message?: string; rewindTurnId?: string }) {
+  async function send(override?: { message?: string; rewindTurnId?: string; attachments?: File[] }) {
     const message = (override?.message ?? input).trim()
-    if (!message || !storyId || branchTerminal || blocked || commandSubmittingRef.current) return false
+    const files = override?.attachments || []
+    if ((!message && files.length === 0) || !storyId || branchTerminal || blocked || commandSubmittingRef.current) return false
+    let attachmentUploads: ChatAttachmentUpload[] = []
+    if (files.length) {
+      try {
+        attachmentUploads = await filesToAttachmentUploads(files)
+      } catch (error) {
+        appendError(error)
+        return false
+      }
+    }
     if (streaming) {
       const runtime = readStageRuntime()
       if (runtime.abortPending || !runtime.operationId || runtime.connection !== 'connected') return false
-      return submitFollowUp(message)
+      return submitFollowUp(message, attachmentUploads)
     }
-    if (message === '/compact') {
+    if (message === '/compact' && attachmentUploads.length === 0) {
       await compactCurrentContext()
       return true
     }
@@ -143,7 +154,7 @@ export function useStoryStageRuntime({
     clearComposer()
     commandSubmittingRef.current = true
     setCommandSubmitting(true)
-    prepareLiveRun(message, rewindTurnId)
+    prepareLiveRun(message, rewindTurnId, attachmentDescriptors(files))
     const abortController = new AbortController()
     registerStoryRunAbortController(stageKey, abortController)
     const request = {
@@ -151,10 +162,14 @@ export function useStoryStageRuntime({
       story_id: storyId,
       branch: branchId,
       message,
+      attachments: attachmentUploads,
       style_scenes: mergedStyleScenes,
       regenerate_from_turn_id: rewindTurnId || undefined,
     }
-    const retryKey = agentCommandRetryKey('', 'start_turn', request)
+    const retryKey = agentCommandRetryKey('', 'start_turn', {
+      ...request,
+      attachments: attachmentUploadsRetryIdentity(attachmentUploads),
+    })
     const commandID = rememberAgentCommandID(initialStartCommandIDsRef.current, retryKey, createAgentCommandID)
     try {
       const stream = await sendInteractiveMessage({
@@ -179,13 +194,13 @@ export function useStoryStageRuntime({
     }
   }
 
-  async function submitFollowUp(message: string) {
+  async function submitFollowUp(message: string, attachments: ChatAttachmentUpload[]) {
     const inlineStyleScenes = parseInlineStyleScenes(message)
     const mergedStyleScenes = Array.from(new Set([...styleScenes, ...inlineStyleScenes]))
     commandSubmittingRef.current = true
     setCommandSubmitting(true)
     try {
-      await interactiveAgentCommands.followUp({ message, styleScenes: mergedStyleScenes })
+      await interactiveAgentCommands.followUp({ message, styleScenes: mergedStyleScenes, attachments })
       clearComposer()
       return true
     } catch (error) {
@@ -497,10 +512,10 @@ export function useStoryStageRuntime({
     return progress
   }
 
-  function prepareLiveRun(message: string, rewindTurnId?: string) {
+  function prepareLiveRun(message: string, rewindTurnId?: string, attachments: ChatAttachmentDescriptor[] = []) {
     setActivity(message ? t('storyStage.activity.thinking') : t('storyStage.activity.recovering'))
-    if (message) {
-      liveAccumulator.prepareTurn(message, liveTurnNavigationAnchorId, 'replace')
+    if (message || attachments.length > 0) {
+      liveAccumulator.prepareTurn(message, liveTurnNavigationAnchorId, 'replace', attachments)
       updateStageRun({
         rewindTurnId: rewindTurnId || undefined,
         retryMessage: message,

@@ -57,6 +57,7 @@ import {
 } from '@/features/changes/agent/ReviewFeedbackTray'
 import { toast } from 'sonner'
 import type { ChatSendOptions } from '@/hooks/useAgentChat'
+import type { InputAreaSendOptions } from './InputArea'
 import { resolveAgentAskAndRefresh } from '@/lib/agent-ask'
 import type { ConversationConfigBinding } from '@/features/conversation-config/types'
 import { useConversationGoal } from '@/features/agent-goal/use-conversation-goal'
@@ -438,7 +439,7 @@ function AgentPanelComponent({
     [activeRunID, changeGroupsQuery.data, isExecutionActive, onOpenChangeReview, onWorkspaceChanged, projectId],
   )
 
-  const sendWithWritingSkill = async (message: string) => {
+  const sendWithWritingSkill = async (message: string, inputOptions?: InputAreaSendOptions) => {
     if (persistedSettings.loading) return false
     const feedbackSelection = reviewFeedback?.filter((selection) => selection.comments.length) ?? []
     const feedback = feedbackSelection.length
@@ -475,6 +476,7 @@ function AgentPanelComponent({
       onReviewFeedbackSubmissionFailed?.(feedbackSelection)
     }
     const accepted = await onSend(effectiveMessage, {
+      attachments: inputOptions?.attachments,
       ...(generalAgent ? {} : { writingSkill, ideContext, imagePresetId, tellerId: ideTellerId }),
       reviewFeedback: feedback,
       reviewFeedbackDisplay: feedbackSelection.length
@@ -491,14 +493,14 @@ function AgentPanelComponent({
     return accepted
   }
 
-  const submitGoal = async (objective: string) => {
+  const submitGoal = async (objective: string, inputOptions?: InputAreaSendOptions) => {
     if (planMode) onPlanModeChange(false)
     const next = await conversationGoal.set(objective)
     if (!next) {
       toast.error(t('chat.goal.updateFailed'))
       return false
     }
-    return sendWithWritingSkill(objective)
+    return sendWithWritingSkill(objective, inputOptions)
   }
 
   const pauseGoal = async () => {
@@ -587,6 +589,7 @@ function AgentPanelComponent({
   }
   const inputAreaProps = {
     onSend: sendWithWritingSkill,
+    attachmentsEnabled: true,
     onStop,
     disabled: sessionTransitionPending,
     sendBlocked: persistedSettings.loading || sessionTransitionPending,

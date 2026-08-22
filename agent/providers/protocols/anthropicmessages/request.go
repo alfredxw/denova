@@ -69,7 +69,19 @@ func requestMessages(input []*agent.Message, config providers.ModelConfig) ([]an
 		case agent.System:
 			system = append(system, anthropic.TextBlockParam{Text: message.Content})
 		case agent.User:
-			messages = append(messages, anthropic.NewUserMessage(anthropic.NewTextBlock(message.Content)))
+			blocks := []anthropic.ContentBlockParamUnion{anthropic.NewTextBlock(agent.ModelUserContent(message))}
+			for _, attachment := range message.Attachments {
+				if !agent.IsNativeImageMediaType(attachment.MediaType) {
+					continue
+				}
+				mediaType := strings.ToLower(strings.TrimSpace(attachment.MediaType))
+				encoded, err := agent.AttachmentBase64(attachment)
+				if err != nil {
+					return nil, nil, fmt.Errorf("anthropic messages input %d: %w", index, err)
+				}
+				blocks = append(blocks, anthropic.NewImageBlockBase64(mediaType, encoded))
+			}
+			messages = append(messages, anthropic.NewUserMessage(blocks...))
 		case agent.Assistant:
 			blocks, err := assistantBlocks(message, config)
 			if err != nil {

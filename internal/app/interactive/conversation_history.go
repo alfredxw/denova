@@ -7,6 +7,7 @@ import (
 	"denova/internal/book/lore"
 	"encoding/hex"
 	"fmt"
+	agent "github.com/alfredxw/denova/agent"
 	"log/slog"
 	"strconv"
 	"strings"
@@ -119,6 +120,7 @@ func interactiveStoryModelTurns(turns []interactive.TurnEvent) []interactive.Sto
 	for _, turn := range turns {
 		result = append(result, interactive.StoryModelTurn{
 			ID: turn.ID, BranchID: turn.BranchID, Ts: turn.Ts, User: turn.User, Narrative: turn.Narrative,
+			Attachments:          append([]agent.Attachment(nil), turn.Attachments...),
 			ModelContextMessages: interactive.CloneModelContextMessages(turn.ModelContextMessages),
 		})
 	}

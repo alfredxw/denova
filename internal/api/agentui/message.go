@@ -59,7 +59,7 @@ func messageFromHistoryEntry(entry appsvc.AgentSessionHistoryEntry, index int) (
 			"created_at": formatEntryTime(entry),
 		}), true
 	}
-	if entry.Content == "" && entry.Role != "tool_call" && entry.Role != "ask" {
+	if entry.Content == "" && len(entry.Attachments) == 0 && entry.Role != "tool_call" && entry.Role != "ask" {
 		if entry.Role == "execution_summary" {
 			return assistantDataMessage(entry, index, DataTypeExecutionSummary, entryPayload(entry)), true
 		}
@@ -68,10 +68,26 @@ func messageFromHistoryEntry(entry appsvc.AgentSessionHistoryEntry, index int) (
 
 	switch entry.Role {
 	case "user":
+		metadata := metadataFromHistoryEntry(entry)
+		if len(entry.Attachments) > 0 {
+			if metadata == nil {
+				metadata = map[string]any{}
+			}
+			attachments := make([]map[string]any, 0, len(entry.Attachments))
+			for _, attachment := range entry.Attachments {
+				attachments = append(attachments, map[string]any{
+					"id":         attachment.ID,
+					"name":       attachment.Name,
+					"media_type": attachment.MediaType,
+					"size":       attachment.Size,
+				})
+			}
+			metadata["attachments"] = attachments
+		}
 		return Message{
 			ID:       historyMessageID(entry, index),
 			Role:     "user",
-			Metadata: metadataFromHistoryEntry(entry),
+			Metadata: metadata,
 			Parts:    []map[string]any{textPart(entry.Content, "done", nil)},
 		}, true
 	case "assistant":

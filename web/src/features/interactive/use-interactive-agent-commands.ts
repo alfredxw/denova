@@ -9,6 +9,7 @@ import {
   type ActiveInteractiveChat,
 } from './api'
 import type { StoryStageRuntimeState } from './stores/interactive-store'
+import { attachmentUploadsRetryIdentity, type ChatAttachmentUpload } from '@/lib/chat-attachments'
 
 export type StoryStageRuntimeUpdater = StoryStageRuntimeState | ((current: StoryStageRuntimeState) => StoryStageRuntimeState)
 
@@ -140,13 +141,17 @@ export function useInteractiveAgentCommands({ storyId, branchId, readRuntime, on
     }
   }, [branchId, onRuntimeChange, requireProjectedOperation, storyId, t])
 
-  const followUp = useCallback(async (input: { message: string; styleScenes: string[] }) => {
+  const followUp = useCallback(async (input: { message: string; styleScenes: string[]; attachments?: ChatAttachmentUpload[] }) => {
     const runtime = requireProjectedOperation()
     const payload = {
       message: input.message.trim(),
       style_scenes: Array.from(new Set(input.styleScenes.map((scene) => scene.trim()).filter(Boolean))),
+      attachments: input.attachments || [],
     }
-    const retryKey = agentCommandRetryKey(runtime.operationId, 'follow_up', payload)
+    const retryKey = agentCommandRetryKey(runtime.operationId, 'follow_up', {
+      ...payload,
+      attachments: attachmentUploadsRetryIdentity(payload.attachments),
+    })
     const commandId = rememberAgentCommandID(retryCommandIDsRef.current, retryKey, createAgentCommandID)
     try {
       const receipt = await submitInteractiveAgentCommand({
@@ -155,7 +160,11 @@ export function useInteractiveAgentCommands({ storyId, branchId, readRuntime, on
         targetOperationId: runtime.operationId,
         storyId,
         branchId,
-        input: { message: payload.message, styleScenes: payload.style_scenes },
+        input: {
+          message: payload.message,
+          styleScenes: payload.style_scenes,
+          ...(payload.attachments.length ? { attachments: payload.attachments } : {}),
+        },
       })
       retryCommandIDsRef.current.delete(retryKey)
       recoveryAbortActionRef.current = null

@@ -139,6 +139,7 @@ function projectPersistedTurn(turn: TurnEvent, options: {
       display_role: 'user',
       turn_id: turn.id,
       navigation_turn_id: turn.id,
+      ...(turn.attachments?.length ? { attachments: turn.attachments } : {}),
     },
   })]
   const displayEvents = (turn.display_events || []).filter((event) => !isDirectorDisplayEvent(event))

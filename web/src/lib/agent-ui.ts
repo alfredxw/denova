@@ -4,6 +4,7 @@ import { fetchAPI, responseAPIError } from './api-client/client'
 import type { ToolPresentation, UserMessageReference } from './api-client/types'
 import { recordAgentToolInputChunk } from './agent-ui-message'
 import { agentToolInputRenderChunks } from './agent-tool-input-stream'
+import type { ChatAttachmentDescriptor, ChatAttachmentUpload } from './chat-attachments'
 
 export type AgentDisplayRole = 'user' | 'assistant' | 'thinking' | 'tool_call' | 'tool_result' | 'ask' | 'rule_roll' | 'context_compaction' | 'token_usage' | 'execution_summary' | 'proposed_plan' | 'system' | 'error'
 
@@ -30,6 +31,7 @@ export interface AgentMessageMetadata {
   turn_version_index?: number
   user_references?: UserMessageReference[]
   tool_presentation?: ToolPresentation
+  attachments?: ChatAttachmentDescriptor[]
 }
 
 type AgentDataPayload = Record<string, unknown>
@@ -82,6 +84,7 @@ interface AgentChatRequestBody {
     review_thread_id: string
     comment_ids: string[]
   }>
+  attachments?: ChatAttachmentUpload[]
 }
 
 export class AgentChatTransport implements ChatTransport<AgentUIMessage> {
@@ -236,6 +239,7 @@ export function buildAgentChatRequestBody(body: AgentChatRequestBody): AgentChat
     image_preset_id: body.image_preset_id || undefined,
     teller_id: body.teller_id || undefined,
     review_feedback: reviewFeedback.length ? reviewFeedback : undefined,
+    attachments: body.attachments?.length ? body.attachments : undefined,
   }
 }
 

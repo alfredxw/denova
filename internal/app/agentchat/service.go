@@ -9,6 +9,8 @@ import (
 	"sync"
 
 	"denova/config"
+	agentattachment "denova/internal/agents/attachment"
+	chatagent "denova/internal/agents/chat"
 	agentconversation "denova/internal/agents/conversation"
 	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
@@ -21,6 +23,33 @@ import (
 	projectdomain "denova/internal/project"
 	workspacechange "denova/internal/workspace/change"
 )
+
+// MaterializeAttachments persists one project-scoped Session upload before
+// command admission, while Project runtime resolution remains server-owned.
+func (service *Service) MaterializeAttachments(ctx context.Context, binding Binding, commandID string, request *chatagent.ChatRequest) error {
+	if request == nil || len(request.AttachmentUploads) == 0 {
+		return nil
+	}
+	resolved, err := service.ResolveBinding(binding)
+	if err != nil {
+		return err
+	}
+	project, err := service.projectRuntime(ctx, resolved.ProjectID)
+	if err != nil {
+		return err
+	}
+	files, err := agentattachment.Materialize(project.stateRoot, agentattachment.SessionScope(resolved.SessionID), commandID, request.AttachmentUploads)
+	if err != nil {
+		return fmt.Errorf("materialize AgentChat attachments: %w", err)
+	}
+	request.AttachmentUploads = nil
+	request.AttachedFiles = files
+	request.AttachmentIDs = make([]string, 0, len(files))
+	for _, file := range files {
+		request.AttachmentIDs = append(request.AttachmentIDs, file.ID)
+	}
+	return nil
+}
 
 type projectRuntime struct {
 	projectID        string

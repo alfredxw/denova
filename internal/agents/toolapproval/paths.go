@@ -7,11 +7,16 @@ import (
 )
 
 type pathBoundary struct {
-	workspace string
-	cwd       string
+	workspace    string
+	cwd          string
+	allowedFiles map[string]struct{}
 }
 
 func newPathBoundary(workspace, cwd string) (pathBoundary, bool) {
+	return newPathBoundaryWithAllowedFiles(workspace, cwd, nil)
+}
+
+func newPathBoundaryWithAllowedFiles(workspace, cwd string, allowedFiles []string) (pathBoundary, bool) {
 	root, err := filepath.Abs(workspace)
 	if err != nil {
 		return pathBoundary{}, false
@@ -28,7 +33,22 @@ func newPathBoundary(workspace, cwd string) (pathBoundary, bool) {
 	if err != nil || !withinRoot(root, current) {
 		return pathBoundary{}, false
 	}
-	return pathBoundary{workspace: root, cwd: current}, true
+	allowed := make(map[string]struct{}, len(allowedFiles))
+	for _, value := range allowedFiles {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		canonical, evalErr := filepath.EvalSymlinks(filepath.Clean(filepath.FromSlash(value)))
+		if evalErr != nil {
+			continue
+		}
+		info, statErr := os.Stat(canonical)
+		if statErr == nil && !info.IsDir() {
+			allowed[filepath.Clean(canonical)] = struct{}{}
+		}
+	}
+	return pathBoundary{workspace: root, cwd: current, allowedFiles: allowed}, true
 }
 
 func (boundary pathBoundary) changeDirectory(args []string) (pathBoundary, bool) {
@@ -62,7 +82,7 @@ func (boundary pathBoundary) changeDirectory(args []string) (pathBoundary, bool)
 	if err != nil || !info.IsDir() {
 		return pathBoundary{}, false
 	}
-	return pathBoundary{workspace: boundary.workspace, cwd: canonical}, true
+	return pathBoundary{workspace: boundary.workspace, cwd: canonical, allowedFiles: boundary.allowedFiles}, true
 }
 
 func (boundary pathBoundary) containsLiteral(value string) bool {
@@ -78,8 +98,16 @@ func (boundary pathBoundary) containsLiteral(value string) bool {
 		candidate = filepath.Join(boundary.cwd, candidate)
 	}
 	candidate, err := filepath.Abs(candidate)
-	if err != nil || !withinRoot(boundary.workspace, candidate) {
+	if err != nil {
 		return false
+	}
+	if !withinRoot(boundary.workspace, candidate) {
+		canonical, evalErr := filepath.EvalSymlinks(candidate)
+		if evalErr != nil {
+			return false
+		}
+		_, allowed := boundary.allowedFiles[filepath.Clean(canonical)]
+		return allowed
 	}
 	// Lexical containment is insufficient when an existing workspace symlink
 	// points outside. For a path that does not exist yet, canonicalize its

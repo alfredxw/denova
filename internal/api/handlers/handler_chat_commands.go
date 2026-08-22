@@ -56,9 +56,15 @@ func (h *Handlers) HandleChatCommand(ctx context.Context, c *app.RequestContext)
 		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "target_command_id 为必填项 / target_command_id is required", nil)
 		return
 	}
-	if kind != novaApp.CommandAbort && !queueControl && strings.TrimSpace(body.Input.Message) == "" {
+	if kind != novaApp.CommandAbort && !queueControl && strings.TrimSpace(body.Input.Message) == "" && len(body.Input.AttachmentUploads) == 0 {
 		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "消息不能为空 / Message is required", nil)
 		return
+	}
+	if kind != novaApp.CommandAbort && !queueControl {
+		if err := h.app.MaterializeWritingAttachments(sessionID, body.CommandID, &body.Input); err != nil {
+			writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
+			return
+		}
 	}
 	body.Input.Locale = requestLocale(c)
 	receipt, err := h.app.SubmitChatAgentCommandForSession(ctx, sessionID, novaApp.ChatAgentCommand{

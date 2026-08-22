@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	agentattachment "denova/internal/agents/attachment"
 	agentrun "denova/internal/agents/run"
 	apptask "denova/internal/app/task"
 	interactivestate "denova/internal/interactive/state"
@@ -350,6 +351,10 @@ func (s *InteractiveAppService) DeleteInteractiveStory(storyID string) error {
 	defer a.mu.Unlock()
 	store := a.interactive
 	sessionStore := a.sessionStore
+	stateRoot := ""
+	if a.cfg != nil {
+		stateRoot = a.cfg.ProjectStateDir
+	}
 	if store == nil {
 		return ErrNoWorkspace
 	}
@@ -364,6 +369,9 @@ func (s *InteractiveAppService) DeleteInteractiveStory(storyID string) error {
 	}
 	if err := store.DeleteStory(storyID); err != nil {
 		return err
+	}
+	if err := agentattachment.RemoveScope(stateRoot, agentattachment.StoryScope(storyID)); err != nil {
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-story] remove deleted Story attachments failed story_id=%s error=%v", storyID, err))
 	}
 	if sessionStore != nil {
 		return sessionStore.DeleteByPrefix("interactive-story-" + storyID + "-")
@@ -393,6 +401,7 @@ func (s *InteractiveAppService) InteractiveSnapshot(storyID, branchID string) (i
 	// must never hide already committed turns and state from the user.
 	snapshot.ContextCompaction = nil
 	if executionRuntime == nil {
+		redactInteractiveSnapshotAttachmentPaths(&snapshot)
 		return snapshot, nil
 	}
 	status, projected := projectAgentRuntime(context.Background(), executionRuntime, agentrun.Options{
@@ -400,6 +409,7 @@ func (s *InteractiveAppService) InteractiveSnapshot(storyID, branchID string) (i
 		StoryID: storyID, BranchID: snapshot.BranchID, Mode: "interactive",
 	})
 	if !projected {
+		redactInteractiveSnapshotAttachmentPaths(&snapshot)
 		return snapshot, nil
 	}
 	snapshot.ContextCompaction, err = interactiveapp.ProjectAgentCompaction(
@@ -412,6 +422,7 @@ func (s *InteractiveAppService) InteractiveSnapshot(storyID, branchID string) (i
 		))
 		snapshot.ContextCompaction = nil
 	}
+	redactInteractiveSnapshotAttachmentPaths(&snapshot)
 	return snapshot, nil
 }
 
@@ -424,7 +435,14 @@ func (s *InteractiveAppService) InteractiveHistoryPage(storyID, branchID, before
 	if store == nil {
 		return interactive.StoryHistoryPage{}, ErrNoWorkspace
 	}
-	return store.ReadHistoryPage(storyID, branchID, beforeCursor, limit)
+	page, err := store.ReadHistoryPage(storyID, branchID, beforeCursor, limit)
+	if err != nil {
+		return interactive.StoryHistoryPage{}, err
+	}
+	for index := range page.Turns {
+		page.Turns[index].Attachments = attachmentDescriptors(page.Turns[index].Attachments)
+	}
+	return page, nil
 }
 
 func (a *App) RerollInteractiveRuleResolution(storyID, resolutionID string, req interactive.RuleResolutionRerollRequest) (interactive.RuleResolution, error) {

@@ -2,6 +2,7 @@ package interactive
 
 import (
 	"fmt"
+	agent "github.com/alfredxw/denova/agent"
 	"strings"
 )
 
@@ -24,6 +25,7 @@ type StoryModelTurn struct {
 	PlayerInputID               string
 	Ts                          string
 	User                        string
+	Attachments                 []agent.Attachment
 	Narrative                   string
 	ResolvedPlayerInputContexts []ResolvedPlayerInputContext
 	ModelContextMessages        []ModelContextMessage
@@ -150,6 +152,7 @@ func (s *Store) ReadModelHistory(storyID string, query StoryModelHistoryQuery) (
 		}
 		result.Turns = append(result.Turns, StoryModelTurn{
 			ID: turn.ID, BranchID: turn.BranchID, PlayerInputID: turn.PlayerInputID, Ts: turn.Ts, User: turn.User, Narrative: turn.Narrative,
+			Attachments:                 append([]agent.Attachment(nil), turn.Attachments...),
 			ResolvedPlayerInputContexts: resolved,
 			ModelContextMessages:        sanitizeModelContextMessages(turn.ModelContextMessages),
 		})

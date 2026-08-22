@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	agent "github.com/alfredxw/denova/agent"
+
 	agents "denova/internal/agents"
 	agentcompaction "denova/internal/agents/context/compaction"
 	"denova/internal/interactive"
@@ -286,5 +288,22 @@ func TestInteractiveModelProjectionDoesNotReplaySettledNarrativeInsideToolProtoc
 	}
 	if count := strings.Count(joinedInteractiveProjectionContent(projection.SourceMessages), narrative); count != 1 {
 		t.Fatalf("compaction source narrative occurrence count = %d, want 1: %#v", count, projection.SourceMessages)
+	}
+}
+
+func TestInteractiveModelProjectionPreservesTurnAttachments(t *testing.T) {
+	attachment := agent.Attachment{ID: "att-1", Name: "map.png", MediaType: "image/png", Size: 8, Path: "/data/map.png"}
+	projection, err := BuildModelContextProjection(
+		interactive.StoryModelHistory{
+			StartTurn: 0, EndTurn: 1, TotalTurns: 1,
+			Turns: []interactive.StoryModelTurn{{User: "Inspect the map", Attachments: []agent.Attachment{attachment}, Narrative: "Done"}},
+		},
+		nil, interactive.Snapshot{}, toolresult.ContextPolicy{Enabled: true, MaxResultBytes: 256 * 1024}, agentrun.CycleIdentity{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(projection.Messages) != 2 || len(projection.Messages[0].Attachments) != 1 || projection.Messages[0].Attachments[0] != attachment {
+		t.Fatalf("turn attachment was not preserved in model history: %#v", projection.Messages)
 	}
 }

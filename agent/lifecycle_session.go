@@ -24,10 +24,11 @@ const (
 )
 
 type inputEnvelope struct {
-	Version  uint16            `json:"version"`
-	Context  []ContextFragment `json:"context,omitempty"`
-	Goal     *GoalMutation     `json:"goal,omitempty"`
-	HostData *HostData         `json:"host_data,omitempty"`
+	Version     uint16            `json:"version"`
+	Context     []ContextFragment `json:"context,omitempty"`
+	Attachments []Attachment      `json:"attachments,omitempty"`
+	Goal        *GoalMutation     `json:"goal,omitempty"`
+	HostData    *HostData         `json:"host_data,omitempty"`
 }
 
 type persistedSessionTranscript struct {
@@ -209,8 +210,8 @@ func (session *Session) start(ctx context.Context, input Input, ownership runSes
 }
 
 func encodeInput(input Input) (json.RawMessage, runstate.UserInput, error) {
-	if strings.TrimSpace(input.Text) == "" {
-		return nil, runstate.UserInput{}, errors.New("Agent Input Text is required")
+	if strings.TrimSpace(input.Text) == "" && len(input.Attachments) == 0 {
+		return nil, runstate.UserInput{}, errors.New("Agent Input requires Text or Attachments")
 	}
 	if input.HostData != nil {
 		if strings.TrimSpace(input.HostData.Type) == "" || input.HostData.Version == 0 || !json.Valid(input.HostData.Data) {
@@ -222,7 +223,8 @@ func encodeInput(input Input) (json.RawMessage, runstate.UserInput, error) {
 	}
 	envelope := inputEnvelope{
 		Version: 1, Context: append([]ContextFragment(nil), input.Context...),
-		Goal: cloneGoalMutation(input.Goal), HostData: cloneHostData(input.HostData),
+		Attachments: cloneAttachments(input.Attachments),
+		Goal:        cloneGoalMutation(input.Goal), HostData: cloneHostData(input.HostData),
 	}
 	encoded, err := json.Marshal(envelope)
 	if err != nil {
@@ -251,6 +253,7 @@ func decodeInput(input runstate.UserInput) (Input, error) {
 		return Input{}, fmt.Errorf("unsupported Agent Input version %d", envelope.Version)
 	}
 	result.Context = append([]ContextFragment(nil), envelope.Context...)
+	result.Attachments = cloneAttachments(envelope.Attachments)
 	result.Goal = cloneGoalMutation(envelope.Goal)
 	result.HostData = cloneHostData(envelope.HostData)
 	return result, nil

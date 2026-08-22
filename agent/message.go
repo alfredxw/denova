@@ -107,6 +107,8 @@ type ToolResultSummary struct {
 type Message struct {
 	Role    RoleType `json:"role"`
 	Content string   `json:"content"`
+	// Attachments reference application-owned copies and remain provider-neutral.
+	Attachments []Attachment `json:"attachments,omitempty"`
 
 	MultiContent             []json.RawMessage `json:"multi_content,omitempty"`
 	UserInputMultiContent    []json.RawMessage `json:"user_input_multi_content,omitempty"`
@@ -218,6 +220,7 @@ func (m *Message) Clone() *Message {
 		return nil
 	}
 	clone := *m
+	clone.Attachments = cloneAttachments(m.Attachments)
 	clone.MultiContent = cloneRawMessages(m.MultiContent)
 	clone.UserInputMultiContent = cloneRawMessages(m.UserInputMultiContent)
 	clone.AssistantGenMultiContent = cloneRawMessages(m.AssistantGenMultiContent)

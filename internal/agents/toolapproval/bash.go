@@ -17,7 +17,11 @@ const (
 )
 
 func classifyBash(command, workspace, cwd string, mode config.AgentApprovalMode) Decision {
-	boundary, ok := newPathBoundary(workspace, cwd)
+	return classifyBashWithAllowedFiles(command, workspace, cwd, mode, nil)
+}
+
+func classifyBashWithAllowedFiles(command, workspace, cwd string, mode config.AgentApprovalMode, allowedFiles []string) Decision {
+	boundary, ok := newPathBoundaryWithAllowedFiles(workspace, cwd, allowedFiles)
 	if !ok {
 		return prompt("invalid_workspace_boundary", RiskHigh,
 			"无法验证命令工作目录，需要你的确认。 / The command working directory cannot be verified, so approval is required.")

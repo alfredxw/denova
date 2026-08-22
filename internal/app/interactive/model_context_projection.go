@@ -5,6 +5,7 @@ import (
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/toolresult"
 	"fmt"
+	agent "github.com/alfredxw/denova/agent"
 	"strings"
 
 	agents "denova/internal/agents"
@@ -214,7 +215,7 @@ func projectInteractiveCompletedContext(
 		index := boundary - history.StartTurn
 		turn := history.Turns[index]
 		start := len(raw)
-		raw = append(raw, agents.UserMessage(turn.User))
+		raw = append(raw, agent.UserMessageWithAttachments(turn.User, turn.Attachments))
 		raw = append(raw, settledTurnToolContextMessages(turn.ModelContextMessages)...)
 		raw = append(raw, agents.AssistantMessage(turn.Narrative, nil))
 		turnSpans[index] = messageSpan{start: start, end: len(raw)}

@@ -49,6 +49,7 @@ import { branchCreationSourceFromMessage, branchCreationSourceFromTurn } from '.
 import type { StoryStageProps } from './story-stage/story-stage-props'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { useKeyboardInset } from '@/hooks/useKeyboardInset'
+import type { InputAreaSendOptions } from '@/components/Chat/InputArea'
 
 const DEFAULT_READING_FONT_SIZE = 18
 const EMPTY_STAGE_RUN = emptyStoryStageRun()
@@ -407,8 +408,8 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
     window.requestAnimationFrame(() => inputRef.current?.focus())
   }
 
-  const submitComposer = async () => {
-    if (!goalMode) return send()
+  const submitComposer = async (options?: InputAreaSendOptions) => {
+    if (!goalMode) return send(options)
     const objective = input.trim()
     if (!objective || conversationGoal.saving) return false
     const next = await conversationGoal.set(objective)
@@ -416,7 +417,7 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
       toast.error(t('chat.goal.updateFailed'))
       return false
     }
-    return send()
+    return send(options)
   }
 
   const editGoal = () => {
@@ -816,7 +817,7 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
         </div>
       </div>
       <StoryStageComposer
-        layout={{ projectId, creatingStory, isMobile, keyboardInset, inputTextStyle, workspace, inputFloatRef, inputRef, t }}
+        layout={{ projectId, creatingStory, isMobile, keyboardInset, inputTextStyle, workspace, inputFloatRef, inputRef, t, attachmentDraftKey: stageKey }}
         editor={{ input, editingTurn, styleScenes, styleSceneQuery, styleSceneSuggestions, showSkillCommands, activeSkillCommandIndex, skillCommands, filteredSkillCommands, filteredBuiltInCommandItems, filteredSkillCommandItems, setStyleSceneQuery, setShowSkillCommands, setSkillCommandQuery, setActiveSkillCommandIndex }}
         story={{ storyId, story, imagePresets, onImageSettingsChange, branchTerminal, directorBlocking, directorPlanStatus, directorStatusVisible, directorRetrying, directorRetryError, hotChoices, hotChoicesExpanded, showHotChoices, canUseHotChoices, setHotChoicesExpanded }}
         runtime={{ streaming, approvalReady, conversationConfig, abortPending: stageRun.runtime.abortPending, recoveryPaused: stageRun.runtime.recoveryPaused, recoveryAbortAvailable: stageRun.runtime.recoveryAbortAvailable, operationId: stageRun.runtime.operationId, connection: stageRun.runtime.connection, commandSubmitting, queue: stageRun.runtime.queue, queueActionPendingCommandID }}

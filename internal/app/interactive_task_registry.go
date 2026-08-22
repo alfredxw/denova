@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	agent "github.com/alfredxw/denova/agent"
 	"log/slog"
 	"strings"
 	"sync"
@@ -27,6 +28,8 @@ type InteractiveAgentStartRequest struct {
 	StyleScenes          []string
 	RegenerateFromTurnID string
 	Locale               string
+	AttachmentIDs        []string
+	AttachedFiles        []agent.Attachment
 }
 
 type interactiveStartIdentity struct {
@@ -175,7 +178,7 @@ func (s *InteractiveAppService) resolveInteractiveStart(request InteractiveAgent
 	if err := agentrun.ValidateCommandID(request.CommandID); err != nil {
 		return interactiveStartIdentity{}, err
 	}
-	if request.StoryID == "" || request.Message == "" {
+	if request.StoryID == "" || request.Message == "" && len(request.AttachedFiles) == 0 {
 		return interactiveStartIdentity{}, fmt.Errorf("interactive story and message are required")
 	}
 	if s == nil || s.app == nil {
@@ -196,7 +199,9 @@ func (s *InteractiveAppService) resolveInteractiveStart(request InteractiveAgent
 	request.BranchID = branchID
 	chatRequest := agentchat.CaptureChatRequestCallerInput(agentchat.ChatRequest{
 		CommandID: request.CommandID, Message: request.Message,
-		StyleScenes: append([]string(nil), request.StyleScenes...), Locale: request.Locale,
+		AttachmentIDs: append([]string(nil), request.AttachmentIDs...),
+		AttachedFiles: append([]agent.Attachment(nil), request.AttachedFiles...),
+		StyleScenes:   append([]string(nil), request.StyleScenes...), Locale: request.Locale,
 	})
 	descriptor := struct {
 		Workspace            string `json:"workspace"`

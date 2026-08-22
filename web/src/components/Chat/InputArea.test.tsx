@@ -26,9 +26,70 @@ vi.mock('@/features/agent-approval/AgentApprovalProvider', () => ({
 beforeEach(() => {
   setApprovalMode.mockReset()
   setApprovalMode.mockResolvedValue(true)
+  Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: vi.fn(() => 'blob:test-attachment') })
+  Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: vi.fn() })
 })
 
 describe('InputArea command menu', () => {
+  it('adds generic files from the existing action menu and sends an attachment-only turn', async () => {
+    const user = userEvent.setup()
+    const onSend = vi.fn(() => true)
+    render(<InputArea onSend={onSend} disabled={false} attachmentsEnabled />)
+
+    await user.click(screen.getByRole('button', { name: '输入动作' }))
+    expect(screen.getByRole('menuitem', { name: '添加文件' })).toBeInTheDocument()
+
+    const file = new File(['hello'], 'notes.md', { type: 'text/markdown' })
+    fireEvent.change(screen.getByLabelText('添加文件'), { target: { files: [file] } })
+    expect(screen.getByText('notes.md')).toBeInTheDocument()
+    await user.keyboard('{Escape}')
+
+    await user.click(screen.getByRole('button', { name: '发送' }))
+    expect(onSend).toHaveBeenCalledWith('', { attachments: [file] })
+    expect(screen.queryByText('notes.md')).not.toBeInTheDocument()
+  })
+
+  it('accepts pasted files and restores them when submission is rejected', async () => {
+    const file = new File(['{}'], 'data.json', { type: 'application/json' })
+    const onSend = vi.fn(() => false)
+    const { container } = render(<InputArea onSend={onSend} disabled={false} attachmentsEnabled />)
+
+    fireEvent.paste(container.firstElementChild as HTMLElement, { clipboardData: { files: [file] } })
+    expect(screen.getByText('data.json')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '发送' }))
+
+    expect(onSend).toHaveBeenCalledWith('', { attachments: [file] })
+    expect(screen.getByText('data.json')).toBeInTheDocument()
+  })
+
+  it('accepts dropped files through the same attachment pipeline', () => {
+    const file = new File(['drop'], 'dropped.txt', { type: 'text/plain' })
+    const onSend = vi.fn(() => true)
+    const { container } = render(<InputArea onSend={onSend} disabled={false} attachmentsEnabled />)
+    const composer = container.firstElementChild as HTMLElement
+
+    fireEvent.dragOver(composer, { dataTransfer: { types: ['Files'], dropEffect: 'none' } })
+    fireEvent.drop(composer, { dataTransfer: { files: [file] } })
+    expect(screen.getByText(file.name)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '发送' }))
+    expect(onSend).toHaveBeenCalledWith('', { attachments: [file] })
+  })
+
+  it('restores an unsent attachment when the responsive composer remounts', () => {
+    const file = new File(['draft'], 'responsive-draft.txt', { type: 'text/plain' })
+    const props = { onSend: vi.fn(), disabled: false, attachmentsEnabled: true, draftKey: 'responsive-attachment-test' }
+    const view = render(<InputArea {...props} />)
+
+    fireEvent.change(screen.getByLabelText('添加文件'), { target: { files: [file] } })
+    expect(screen.getByText(file.name)).toBeInTheDocument()
+    view.unmount()
+
+    render(<InputArea {...props} />)
+    expect(screen.getByText(file.name)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: `移除 ${file.name}` }))
+  })
+
   it('aligns a bounded floating composer with the conversation text inset', () => {
     const { container } = render(
       <InputArea

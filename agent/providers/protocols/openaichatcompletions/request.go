@@ -85,7 +85,31 @@ func requestMessage(message *agent.Message, compatibility Compatibility, thinkin
 		}
 		return result, nil
 	case agent.User:
-		result := sdk.UserMessage(message.Content)
+		content := agent.ModelUserContent(message)
+		var result sdk.ChatCompletionMessageParamUnion
+		hasNativeImage := false
+		for _, attachment := range message.Attachments {
+			if agent.IsNativeImageMediaType(attachment.MediaType) {
+				hasNativeImage = true
+				break
+			}
+		}
+		if !hasNativeImage {
+			result = sdk.UserMessage(content)
+		} else {
+			parts := []sdk.ChatCompletionContentPartUnionParam{sdk.TextContentPart(content)}
+			for _, attachment := range message.Attachments {
+				if !agent.IsNativeImageMediaType(attachment.MediaType) {
+					continue
+				}
+				dataURL, err := agent.AttachmentDataURL(attachment)
+				if err != nil {
+					return sdk.ChatCompletionMessageParamUnion{}, err
+				}
+				parts = append(parts, sdk.ImageContentPart(sdk.ChatCompletionContentPartImageImageURLParam{URL: dataURL, Detail: "auto"}))
+			}
+			result = sdk.UserMessage(parts)
+		}
 		if message.Name != "" {
 			result.OfUser.Name = sdk.String(message.Name)
 		}

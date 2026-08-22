@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 
+	agentattachment "denova/internal/agents/attachment"
 	"denova/internal/agents/conversationconfig"
 	"denova/internal/agents/conversationjournal"
 	"denova/internal/localfs"
@@ -328,6 +329,11 @@ func removeSessionJournal(path string) (resultErr error) {
 	}
 	if err := os.RemoveAll(sessionToolArtifactDirectory(path)); err != nil {
 		return fmt.Errorf("删除会话工具产物失败: %w", err)
+	}
+	sessionID := strings.TrimSuffix(filepath.Base(path), ".jsonl")
+	stateRoot := filepath.Dir(filepath.Dir(path))
+	if err := agentattachment.RemoveScope(stateRoot, agentattachment.SessionScope(sessionID)); err != nil {
+		return fmt.Errorf("delete Session attachments: %w", err)
 	}
 	if err := syncParentDirectory(path); err != nil {
 		return fmt.Errorf("同步会话删除目录失败: %w", err)

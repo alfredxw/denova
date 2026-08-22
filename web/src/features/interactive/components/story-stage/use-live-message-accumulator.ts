@@ -195,7 +195,7 @@ export function useLiveMessageAccumulator({ publicRuleRollVisible, setMessages }
     setMessages([])
   }, [setMessages, updateBatcher])
 
-  const prepareTurn = useCallback((message: string, navigationAnchorId: string, mode: 'replace' | 'append') => {
+  const prepareTurn = useCallback((message: string, navigationAnchorId: string, mode: 'replace' | 'append', attachments: import('@/lib/chat-attachments').ChatAttachmentDescriptor[] = []) => {
     flush()
     toolKeyToMessageIdRef.current = {}
     nonNarrativeStreamingRef.current = false
@@ -206,7 +206,7 @@ export function useLiveMessageAccumulator({ publicRuleRollVisible, setMessages }
       id: renderKeys.user,
       role: 'user',
       text: message,
-      metadata: { display_role: 'user', navigation_turn_id: navigationAnchorId },
+      metadata: { display_role: 'user', navigation_turn_id: navigationAnchorId, ...(attachments.length ? { attachments } : {}) },
     })
     setMessages((current) => mode === 'replace' ? [userMessage] : [...current, userMessage])
   }, [flush, setMessages])

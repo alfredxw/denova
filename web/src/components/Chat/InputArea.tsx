@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback, type ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
-import { Archive, BadgeHelp, BarChart3, ClipboardList, Eraser, List, ScrollText, Sparkles, Target } from 'lucide-react'
+import { Archive, BadgeHelp, BarChart3, ClipboardList, Eraser, List, Paperclip, ScrollText, Sparkles, Target } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { FileReferencePicker, type FileReferencePickerHandle, type ReferencePickerItem } from './FileReferencePicker'
 import { TokenUsageDialog, type TokenUsageRecord } from './TokenUsagePanel'
@@ -26,6 +26,7 @@ import type { ConversationConfigBinding } from '@/features/conversation-config/t
 import { cn } from '@/lib/utils'
 import type { ConversationGoal } from '@/features/agent-goal/types'
 import { ComposerModeChip } from './ComposerModeChip'
+import { ComposerAttachmentTray, useComposerAttachments } from './ComposerAttachments'
 
 /** 可用命令列表 */
 const COMMANDS: Array<{ cmd: string; descKey: string; hintKey: string; icon: LucideIcon }> = [
@@ -47,8 +48,12 @@ type BuiltinCommand = typeof COMMANDS[number]['cmd']
 const MAX_TOKEN_USAGE_MENU_COUNT = 10
 const inputDrafts = new Map<string, string>()
 
+export interface InputAreaSendOptions {
+  attachments?: File[]
+}
+
 interface InputAreaProps {
-  onSend: (message: string) => boolean | void | Promise<boolean | void>
+  onSend: (message: string, options?: InputAreaSendOptions) => boolean | void | Promise<boolean | void>
   onStop?: () => void
   disabled: boolean
   /** Agent execution and editor availability are independent: active runs can still accept instructions. */
@@ -67,7 +72,7 @@ interface InputAreaProps {
   onTogglePlanMode?: () => void
   goal?: ConversationGoal | null
   goalPending?: boolean
-  onGoalSubmit?: (objective: string) => boolean | void | Promise<boolean | void>
+  onGoalSubmit?: (objective: string, options?: InputAreaSendOptions) => boolean | void | Promise<boolean | void>
   onGoalPause?: () => void | Promise<void>
   onGoalClear?: () => void | Promise<void>
   draftKey?: string
@@ -103,6 +108,7 @@ interface InputAreaProps {
   workspace?: string
   conversationBinding?: ConversationConfigBinding
   composerSettingsControl?: ReactNode
+  attachmentsEnabled?: boolean
   onboardingAnchor?: string
   floating?: boolean
   onHeightChange?: (height: number) => void
@@ -166,6 +172,7 @@ export function InputArea({
   workspace,
   conversationBinding,
   composerSettingsControl,
+  attachmentsEnabled = false,
   onboardingAnchor,
   floating = false,
   onHeightChange,
@@ -193,6 +200,7 @@ export function InputArea({
   const stylePickerRef = useRef<FileReferencePickerHandle>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   const submittingRef = useRef(false)
+  const attachments = useComposerAttachments(attachmentsEnabled && !disabled, draftKey ? `chat:${draftKey}` : undefined)
   const effectiveCommandScope: CommandScope = commandsEnabled ? commandScope : 'none'
   const defaultPlaceholder = skills.length > 0 && effectiveCommandScope !== 'none'
     ? t('chat.input.placeholderWithSkills')
@@ -241,7 +249,7 @@ export function InputArea({
     .map((command, index) => ({ command, index }))
     .filter(({ command }) => command.source === 'skill'), [filteredCommands])
   const hasReviewFeedback = Boolean(reviewFeedback && reviewFeedbackCommentCount(reviewFeedback) > 0)
-  const hasReferences = textSelections.length > 0 || hasReviewFeedback
+  const hasReferences = textSelections.length > 0 || hasReviewFeedback || attachments.items.length > 0
   const knownFileTokens = useMemo(() => Array.from(new Set([...fileSuggestions, ...referencedFiles])), [fileSuggestions, referencedFiles])
   const knownLoreTokens = useMemo(() => {
     const byID = new Map<string, string>()
@@ -325,7 +333,7 @@ export function InputArea({
 
   useLayoutEffect(() => {
     syncHeight()
-  }, [value, hasReferences, showCommands, referenceQuery, styleSceneQuery, externalTokens, syncHeight])
+  }, [value, hasReferences, showCommands, referenceQuery, styleSceneQuery, externalTokens, attachments.items.length, syncHeight])
 
   useEffect(() => {
     if (!onHeightChange) return
@@ -466,19 +474,29 @@ export function InputArea({
   /** 发送消息 */
   const handleSend = () => {
     const trimmed = value.trim()
-    if ((!trimmed && !hasReviewFeedback) || disabled || !approvalReady || submittingRef.current) return
+    if ((!trimmed && !hasReviewFeedback && attachments.files.length === 0) || disabled || !approvalReady || submittingRef.current) return
     const submittedValue = value
+    const submittedAttachments = attachments.files
     submittingRef.current = true
     setSubmitting(true)
     let result: ReturnType<typeof onSend>
     try {
-      result = goalMode && onGoalSubmit ? onGoalSubmit(trimmed) : onSend(trimmed)
+      if (goalMode && onGoalSubmit) {
+        result = submittedAttachments.length
+          ? onGoalSubmit(trimmed, { attachments: submittedAttachments })
+          : onGoalSubmit(trimmed)
+      } else {
+        result = submittedAttachments.length
+          ? onSend(trimmed, { attachments: submittedAttachments })
+          : onSend(trimmed)
+      }
     } catch {
       submittingRef.current = false
       setSubmitting(false)
       return
     }
     setValue('')
+    attachments.clear()
     setShowCommands(false)
     setCommandQuery(null)
     setActiveCommandIndex(0)
@@ -486,16 +504,21 @@ export function InputArea({
     setStyleSceneQuery(null)
     if (result && typeof (result as PromiseLike<boolean | void>).then === 'function') {
       void Promise.resolve(result).then((accepted) => {
-        if (accepted === false) setValue((current) => current || submittedValue)
+        if (accepted === false) {
+          setValue((current) => current || submittedValue)
+          attachments.addFiles(submittedAttachments)
+        }
         else if (goalMode) setGoalMode(false)
       }).catch(() => {
         setValue((current) => current || submittedValue)
+        attachments.addFiles(submittedAttachments)
       }).finally(() => {
         submittingRef.current = false
         setSubmitting(false)
       })
     } else if (result === false) {
       setValue(submittedValue)
+      attachments.addFiles(submittedAttachments)
       submittingRef.current = false
       setSubmitting(false)
     } else {
@@ -563,6 +586,7 @@ export function InputArea({
   return (
     <div
       ref={rootRef}
+      {...attachments.dropProps}
       data-onboarding-anchor={onboardingAnchor}
       style={floating ? { bottom: keyboardInset } : undefined}
       className={cn(
@@ -624,6 +648,7 @@ export function InputArea({
         <AgentComposerShell
           references={hasReferences ? (
             <>
+              <ComposerAttachmentTray items={attachments.items} onRemove={attachments.remove} />
               {reviewFeedback && onReviewFeedbackRemove ? (
                 <ReviewFeedbackTray feedback={reviewFeedback} onOpen={onReviewFeedbackOpen} onRemove={onReviewFeedbackRemove} />
               ) : null}
@@ -690,13 +715,23 @@ export function InputArea({
                     type="button"
                     size="icon-sm"
                     className="nova-agent-composer-icon h-8 w-8 shrink-0 rounded-[10px] border border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] disabled:opacity-45"
-                    disabled={!onGoalSubmit && !onTogglePlanMode && !composerSettingsControl && !onContextAnalyze && tokenUsageMessages.length === 0}
+                    disabled={!attachmentsEnabled && !onGoalSubmit && !onTogglePlanMode && !composerSettingsControl && !onContextAnalyze && tokenUsageMessages.length === 0}
                     aria-label={t('chat.input.actions')}
                   >
                     <List className="h-3.5 w-3.5" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" side="top" className="w-80 border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 text-[var(--nova-text)]">
+                  {attachmentsEnabled ? (
+                    <DropdownMenuItem
+                      disabled={disabled}
+                      onSelect={attachments.openPicker}
+                      className="cursor-pointer text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
+                    >
+                      <Paperclip className="h-3.5 w-3.5" />
+                      {t('chat.attachment.add')}
+                    </DropdownMenuItem>
+                  ) : null}
                   {onGoalSubmit || onTogglePlanMode ? (
                     <>
                       {onGoalSubmit ? (
@@ -768,16 +803,17 @@ export function InputArea({
                 />
               ) : null}
               <TokenUsageDialog open={tokenUsageOpen} messages={tokenUsageMessages} onOpenChange={setTokenUsageOpen} onOpenTrace={onOpenTrace} />
+              {attachments.input}
             </>
           }
           toolbarEnd={<ModelProfileSwitcher agentKey={agentKey} workspace={workspace} conversationConfig={conversationBinding ? conversationConfig : undefined} disabled={disabled || generationActive} />}
           submitControl={(
             <AgentComposerControls
               generationActive={generationActive}
-              hasSendableContent={Boolean(value.trim() || hasReviewFeedback)}
+              hasSendableContent={Boolean(value.trim() || hasReviewFeedback || attachments.files.length)}
               onStop={onStop}
               onSend={handleSend}
-              sendDisabled={sendBlocked || !approvalReady || submitting || (!value.trim() && !hasReviewFeedback)}
+              sendDisabled={sendBlocked || !approvalReady || submitting || (!value.trim() && !hasReviewFeedback && attachments.files.length === 0)}
               disabled={disabled}
               abortPending={abortPending}
               actionPending={commandSubmitting}

@@ -129,6 +129,7 @@ func runViewForStructural(snapshot runstate.StructuralOperationSnapshot) RunView
 func assembleCycleMessages(
 	transcript []*Message,
 	userText string,
+	attachments []Attachment,
 	fragments []ContextFragment,
 ) ([]*Message, *Message, error) {
 	messages := make([]*Message, 0, len(transcript)+len(fragments)+1)
@@ -155,7 +156,7 @@ func assembleCycleMessages(
 	} else if len(prefixes) > 0 {
 		modelUserText = strings.Join(prefixes, "\n\n---\n\n") + "\n\n---\n\n# User request\n\n" + modelUserText
 	}
-	user := UserMessage(modelUserText)
+	user := UserMessageWithAttachments(modelUserText, attachments)
 	messages = append(messages, user)
 	return messages, CloneMessage(user), nil
 }
@@ -216,6 +217,7 @@ func prepareDefinitionModelRequest(
 	permission := effectivePermissionPolicy(prepared.definition.Permission)
 	permissionStage := &permissionMiddleware{
 		BaseMiddleware: &BaseMiddleware{}, policy: permission, session: session, run: run,
+		attachments: attachmentsFromMessages(messages),
 	}
 	loop, err := newPreparedDefinitionLoop(
 		ctx,

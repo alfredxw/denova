@@ -238,7 +238,7 @@ func (h *Handlers) HandleAgentChat(ctx context.Context, c *app.RequestContext) {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidBody")
 		return
 	}
-	if strings.TrimSpace(req.Message) == "" {
+	if strings.TrimSpace(req.Message) == "" && len(req.AttachmentUploads) == 0 {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.messageRequired")
 		return
 	}
@@ -249,6 +249,10 @@ func (h *Handlers) HandleAgentChat(ctx context.Context, c *app.RequestContext) {
 	req.Locale = requestLocale(c)
 	binding, ok := requireAgentChatBinding(c, req.SessionID)
 	if !ok {
+		return
+	}
+	if err := h.app.AgentChat().MaterializeAttachments(ctx, binding, req.CommandID, &req.ChatRequest); err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
 	task, err := h.app.AgentChat().StartTask(ctx, binding, req.ChatRequest)
@@ -318,7 +322,7 @@ func (h *Handlers) HandleAgentChatCommand(ctx context.Context, c *app.RequestCon
 	queueControl := kind == appsvc.CommandSteerQueued || kind == appsvc.CommandCancelQueued
 	if err != nil || strings.TrimSpace(body.CommandID) == "" || strings.TrimSpace(body.TargetOperationID) == "" ||
 		(queueControl && strings.TrimSpace(body.TargetCommandID) == "") ||
-		(kind != appsvc.CommandAbort && !queueControl && strings.TrimSpace(body.Input.Message) == "") {
+		(kind != appsvc.CommandAbort && !queueControl && strings.TrimSpace(body.Input.Message) == "" && len(body.Input.AttachmentUploads) == 0) {
 		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "AgentChat 命令 identity 或消息不完整 / AgentChat command identity or message is incomplete", nil)
 		return
 	}
@@ -326,6 +330,12 @@ func (h *Handlers) HandleAgentChatCommand(ctx context.Context, c *app.RequestCon
 	binding, ok := requireAgentChatBinding(c, body.SessionID)
 	if !ok {
 		return
+	}
+	if kind != appsvc.CommandAbort && !queueControl {
+		if err := h.app.AgentChat().MaterializeAttachments(ctx, binding, body.CommandID, &body.Input); err != nil {
+			writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
+			return
+		}
 	}
 	receipt, err := h.app.AgentChat().SubmitCommand(ctx, binding, appagentruntime.Command{
 		Kind: kind, CommandID: strings.TrimSpace(body.CommandID),

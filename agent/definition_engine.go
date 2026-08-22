@@ -120,7 +120,7 @@ func (engine *definitionEngine) Run(
 	if err != nil {
 		return runstate.EngineResult{}, err
 	}
-	controlTranscript := append(cloneMessages(state.Messages), UserMessage(strings.TrimSpace(input.Text)))
+	controlTranscript := append(cloneMessages(state.Messages), UserMessageWithAttachments(strings.TrimSpace(input.Text), input.Attachments))
 	var controlPrepared *preparedDefinition
 	preparationCheckpoint = func() error {
 		var encoded json.RawMessage
@@ -250,14 +250,14 @@ func (engine *definitionEngine) Run(
 	if err != nil {
 		return runstate.EngineResult{}, err
 	}
-	modelMessages, activeModelUser, err := assembleCycleMessages(effectiveTranscript, input.Text, prepared.fragments)
+	modelMessages, activeModelUser, err := assembleCycleMessages(effectiveTranscript, input.Text, input.Attachments, prepared.fragments)
 	if err != nil {
 		return runstate.EngineResult{}, err
 	}
 	activeUserIndex := len(cycleStateTranscript)
 	stablePrefixMessages := stableContextPrefixMessages(prepared.fragments, compaction, compactionPresent)
 	baseTranscript := cloneMessages(cycleStateTranscript)
-	baseTranscript = append(baseTranscript, UserMessage(strings.TrimSpace(input.Text)))
+	baseTranscript = append(baseTranscript, UserMessageWithAttachments(strings.TrimSpace(input.Text), input.Attachments))
 	controlTranscript = cloneMessages(baseTranscript)
 	initialLoopMessageCount := len(modelMessages)
 	if prepared.definition.Instructions != "" {
@@ -273,8 +273,9 @@ func (engine *definitionEngine) Run(
 	permission := effectivePermissionPolicy(prepared.definition.Permission)
 	permissionStage := &permissionMiddleware{
 		BaseMiddleware: &BaseMiddleware{}, policy: permission,
-		session: SessionView{Key: engine.key, Revision: uint64(request.Snapshot.ContextCursor)},
-		run:     runViewForTurn(request.Snapshot),
+		session:     SessionView{Key: engine.key, Revision: uint64(request.Snapshot.ContextCursor)},
+		run:         runViewForTurn(request.Snapshot),
+		attachments: attachmentsFromMessages(modelMessages),
 	}
 	maintenanceSelected := false
 	var pendingCleanup *stagedCleanup
@@ -488,7 +489,7 @@ func (engine *definitionEngine) Run(
 				if err != nil {
 					return nil, err
 				}
-				messages, _, err := assembleCycleMessages(effective, input.Text, nextPrepared.fragments)
+				messages, _, err := assembleCycleMessages(effective, input.Text, input.Attachments, nextPrepared.fragments)
 				if err != nil {
 					return nil, err
 				}
@@ -574,7 +575,7 @@ func (engine *definitionEngine) Run(
 			if effectiveErr != nil {
 				return nil, effectiveErr
 			}
-			restarted, _, effectiveErr = assembleCycleMessages(effective, input.Text, prepared.fragments)
+			restarted, _, effectiveErr = assembleCycleMessages(effective, input.Text, input.Attachments, prepared.fragments)
 			if effectiveErr != nil {
 				return nil, effectiveErr
 			}

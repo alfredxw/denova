@@ -519,7 +519,7 @@ function buildAgentMessageView(message: AgentUIMessage, part: AgentUIMessage['pa
 
   if (message.role === 'user' && type === 'text') {
     const content = readString(raw.text)
-    if (!content) return null
+    if (!content && !metadata.attachments?.length) return null
     return { ...base, kind: 'user', content, streaming: false }
   }
 
@@ -651,6 +651,7 @@ function metadataToChatFields(view: AgentMessageView): Partial<ChatMessage> {
     turn_versions: metadata.turn_versions,
     turn_version_index: metadata.turn_version_index,
     user_references: metadata.user_references,
+    attachments: metadata.attachments,
     tool_presentation: metadata.tool_presentation,
   }
 }
@@ -898,6 +899,7 @@ function providerAgentMetadata(value: unknown): AgentMessageMetadata {
     turn_versions: readTurnVersions(agent.turn_versions),
     turn_version_index: readNumber(agent.turn_version_index),
     user_references: readUserMessageReferences(agent.user_references),
+    attachments: readChatAttachments(agent.attachments),
     tool_presentation: readToolPresentation(agent.tool_presentation),
   }
 }
@@ -926,6 +928,24 @@ function readUserMessageReferences(value: unknown): AgentMessageMetadata['user_r
     })
     .filter((item): item is NonNullable<typeof item> => Boolean(item))
   return references.length ? references : undefined
+}
+
+function readChatAttachments(value: unknown): AgentMessageMetadata['attachments'] {
+  if (!Array.isArray(value)) return undefined
+  const attachments = value.flatMap((item) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return []
+    const data = item as Record<string, unknown>
+    const name = readString(data.name)
+    const size = readNumber(data.size)
+    if (!name || size === undefined || size < 0) return []
+    return [{
+      id: readString(data.id) || undefined,
+      name,
+      media_type: readString(data.media_type) || undefined,
+      size,
+    }]
+  })
+  return attachments.length ? attachments : undefined
 }
 
 function readUsageCalls(value: unknown): TokenUsageCall[] | undefined {

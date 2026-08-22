@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	agent "github.com/alfredxw/denova/agent"
 	"strings"
 	"time"
 )
@@ -18,19 +19,21 @@ type PlayerInputIntent struct {
 	Identity           DomainCommitIdentity `json:"identity"`
 	BranchID           string               `json:"branch_id"`
 	Text               string               `json:"text"`
+	Attachments        []agent.Attachment   `json:"attachments,omitempty"`
 	ContextOnly        bool                 `json:"context_only,omitempty"`
 	Hash               string               `json:"hash"`
 	AgentCanonicalHash string               `json:"agent_canonical_hash,omitempty"`
 }
 
 type PlayerInputAcceptedEvent struct {
-	V        int    `json:"v"`
-	Type     string `json:"type"`
-	ID       string `json:"id"`
-	ParentID string `json:"parent_id,omitempty"`
-	BranchID string `json:"branch_id"`
-	Ts       string `json:"ts"`
-	Text     string `json:"text"`
+	V           int                `json:"v"`
+	Type        string             `json:"type"`
+	ID          string             `json:"id"`
+	ParentID    string             `json:"parent_id,omitempty"`
+	BranchID    string             `json:"branch_id"`
+	Ts          string             `json:"ts"`
+	Text        string             `json:"text"`
+	Attachments []agent.Attachment `json:"attachments,omitempty"`
 	// ContextOnly keeps host-owned autonomous instructions in model history
 	// without projecting them as player-authored UI messages.
 	ContextOnly bool `json:"context_only,omitempty"`
@@ -69,7 +72,7 @@ func (i PlayerInputIntent) WithAgentCanonicalHash(hash string) (PlayerInputInten
 // WithContextOnly marks a host-owned input as model-visible but not
 // player-visible and rebinds the domain payload hash to that projection.
 func (i PlayerInputIntent) WithContextOnly() (PlayerInputIntent, error) {
-	canonical, err := newPlayerInputIntent(i.Identity, i.BranchID, i.Text, true)
+	canonical, err := newPlayerInputIntentWithAttachments(i.Identity, i.BranchID, i.Text, i.Attachments, true)
 	if err != nil {
 		return PlayerInputIntent{}, err
 	}
@@ -78,36 +81,52 @@ func (i PlayerInputIntent) WithContextOnly() (PlayerInputIntent, error) {
 }
 
 func NewPlayerInputIntent(identity DomainCommitIdentity, branchID, text string) (PlayerInputIntent, error) {
-	return newPlayerInputIntent(identity, branchID, text, false)
+	return newPlayerInputIntentWithAttachments(identity, branchID, text, nil, false)
 }
 
 func newPlayerInputIntent(identity DomainCommitIdentity, branchID, text string, contextOnly bool) (PlayerInputIntent, error) {
+	return newPlayerInputIntentWithAttachments(identity, branchID, text, nil, contextOnly)
+}
+
+// WithAttachments binds application-owned file copies to the same canonical
+// player input and recalculates its domain hash.
+func (i PlayerInputIntent) WithAttachments(attachments []agent.Attachment) (PlayerInputIntent, error) {
+	canonical, err := newPlayerInputIntentWithAttachments(i.Identity, i.BranchID, i.Text, attachments, i.ContextOnly)
+	if err != nil {
+		return PlayerInputIntent{}, err
+	}
+	canonical.AgentCanonicalHash = strings.TrimSpace(i.AgentCanonicalHash)
+	return canonical, nil
+}
+
+func newPlayerInputIntentWithAttachments(identity DomainCommitIdentity, branchID, text string, attachments []agent.Attachment, contextOnly bool) (PlayerInputIntent, error) {
 	identity.CommandID = strings.TrimSpace(identity.CommandID)
 	identity.OperationID = strings.TrimSpace(identity.OperationID)
 	branchID = strings.TrimSpace(branchID)
 	if identity.CommandID == "" || identity.OperationID == "" || identity.Cycle <= 0 || branchID == "" {
 		return PlayerInputIntent{}, fmt.Errorf("%w: command_id, operation_id, positive cycle, and branch_id are required", ErrPlayerInputIdentityConflict)
 	}
-	if strings.TrimSpace(text) == "" {
+	if strings.TrimSpace(text) == "" && len(attachments) == 0 {
 		return PlayerInputIntent{}, fmt.Errorf("%w: player input is empty", ErrPlayerInputIdentityConflict)
 	}
 	payload, err := json.Marshal(struct {
-		BranchID    string `json:"branch_id"`
-		Text        string `json:"text"`
-		ContextOnly bool   `json:"context_only,omitempty"`
-	}{BranchID: branchID, Text: text, ContextOnly: contextOnly})
+		BranchID    string             `json:"branch_id"`
+		Text        string             `json:"text"`
+		Attachments []agent.Attachment `json:"attachments,omitempty"`
+		ContextOnly bool               `json:"context_only,omitempty"`
+	}{BranchID: branchID, Text: text, Attachments: attachments, ContextOnly: contextOnly})
 	if err != nil {
 		return PlayerInputIntent{}, err
 	}
 	sum := sha256.Sum256(payload)
 	return PlayerInputIntent{
-		Identity: identity, BranchID: branchID, Text: text, ContextOnly: contextOnly,
+		Identity: identity, BranchID: branchID, Text: text, Attachments: append([]agent.Attachment(nil), attachments...), ContextOnly: contextOnly,
 		Hash: "sha256:" + hex.EncodeToString(sum[:]),
 	}, nil
 }
 
 func (s *Store) CommitPlayerInput(storyID string, intent PlayerInputIntent) (PlayerInputReceipt, error) {
-	canonical, err := newPlayerInputIntent(intent.Identity, intent.BranchID, intent.Text, intent.ContextOnly)
+	canonical, err := newPlayerInputIntentWithAttachments(intent.Identity, intent.BranchID, intent.Text, intent.Attachments, intent.ContextOnly)
 	if err != nil {
 		return PlayerInputReceipt{}, err
 	}
@@ -141,7 +160,7 @@ func (s *Store) CommitPlayerInput(storyID string, intent PlayerInputIntent) (Pla
 	event := PlayerInputAcceptedEvent{
 		V: schemaVersion, Type: StoryEventTypePlayerInput,
 		ID: deterministicPlayerInputID(canonical.Identity), ParentID: branch.Head,
-		BranchID: canonical.BranchID, Ts: now, Text: canonical.Text, ContextOnly: canonical.ContextOnly, AcceptedTurnCount: projection.Depth,
+		BranchID: canonical.BranchID, Ts: now, Text: canonical.Text, Attachments: append([]agent.Attachment(nil), canonical.Attachments...), ContextOnly: canonical.ContextOnly, AcceptedTurnCount: projection.Depth,
 		AgentCommandID: canonical.Identity.CommandID, AgentOperationID: canonical.Identity.OperationID,
 		AgentCycle: canonical.Identity.Cycle, AgentCommitHash: canonical.Hash,
 		AgentCanonicalHash: canonical.AgentCanonicalHash,
@@ -249,7 +268,7 @@ func findPlayerInputCommitInLines(
 			agentCanonicalHash != "" && strings.TrimSpace(event.AgentCanonicalHash) != agentCanonicalHash {
 			return PlayerInputReceipt{}, false, fmt.Errorf("%w: command_id=%q operation_id=%q cycle=%d", ErrPlayerInputIdentityConflict, identity.CommandID, identity.OperationID, identity.Cycle)
 		}
-		canonical, err := newPlayerInputIntent(identity, branchID, event.Text, event.ContextOnly)
+		canonical, err := newPlayerInputIntentWithAttachments(identity, branchID, event.Text, event.Attachments, event.ContextOnly)
 		if err != nil || hash != "" && canonical.Hash != hash || event.ID != deterministicPlayerInputID(identity) {
 			return PlayerInputReceipt{}, false, fmt.Errorf("%w: canonical player input payload changed", ErrPlayerInputIdentityConflict)
 		}
@@ -295,7 +314,7 @@ func playerInputForTurnRequest(
 		if event.AgentOperationID != identity.OperationID || event.AgentCycle != identity.Cycle || event.BranchID != branchID || event.Text != req.User {
 			return PlayerInputAcceptedEvent{}, false, fmt.Errorf("%w: completed turn does not match accepted player input", ErrPlayerInputIdentityConflict)
 		}
-		canonical, err := newPlayerInputIntent(identity, branchID, req.User, event.ContextOnly)
+		canonical, err := newPlayerInputIntentWithAttachments(identity, branchID, req.User, event.Attachments, event.ContextOnly)
 		if err != nil || canonical.Hash != event.AgentCommitHash {
 			return PlayerInputAcceptedEvent{}, false, fmt.Errorf("%w: completed turn player input hash changed", ErrPlayerInputIdentityConflict)
 		}

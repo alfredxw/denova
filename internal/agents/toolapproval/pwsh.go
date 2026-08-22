@@ -11,7 +11,11 @@ import (
 var powerShellProviderPath = regexp.MustCompile(`(?i)^[a-z][a-z0-9.+-]*:`)
 
 func classifyPowerShell(command, workspace, cwd string, mode config.AgentApprovalMode) Decision {
-	boundary, ok := newPathBoundary(workspace, cwd)
+	return classifyPowerShellWithAllowedFiles(command, workspace, cwd, mode, nil)
+}
+
+func classifyPowerShellWithAllowedFiles(command, workspace, cwd string, mode config.AgentApprovalMode, allowedFiles []string) Decision {
+	boundary, ok := newPathBoundaryWithAllowedFiles(workspace, cwd, allowedFiles)
 	if !ok {
 		return prompt("invalid_workspace_boundary", RiskHigh,
 			"无法验证命令工作目录，需要你的确认。 / The command working directory cannot be verified, so approval is required.")

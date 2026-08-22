@@ -86,6 +86,24 @@ func TestMessagesFromHistoryConvertsLegacyEntries(t *testing.T) {
 	}
 }
 
+func TestMessagesFromHistoryProjectsAttachmentMetadataWithoutLocalPath(t *testing.T) {
+	messages := MessagesFromHistory([]session.HistoryEntry{{
+		ID: "user-files", Role: "user", Attachments: []agent.Attachment{{
+			ID: "att-1", Name: "notes.md", MediaType: "text/markdown", Size: 42, Path: "/private/user-data/notes.md",
+		}},
+	}})
+	if len(messages) != 1 || len(messages[0].Parts) != 1 || messages[0].Parts[0]["text"] != "" {
+		t.Fatalf("attachment-only message was not projected: %#v", messages)
+	}
+	attachments, ok := messages[0].Metadata["attachments"].([]map[string]any)
+	if !ok || len(attachments) != 1 || attachments[0]["name"] != "notes.md" {
+		t.Fatalf("unexpected attachment metadata: %#v", messages[0].Metadata)
+	}
+	if _, leaked := attachments[0]["path"]; leaked {
+		t.Fatalf("local attachment path leaked to UI metadata: %#v", attachments[0])
+	}
+}
+
 func TestMessagesFromHistoryPreservesDisplaySegmentIDsInTextMetadata(t *testing.T) {
 	messages := MessagesFromHistory([]session.HistoryEntry{
 		{ID: "run-1-display-001-thinking", DisplaySegmentID: "run-1-display-001-thinking", Role: "thinking", Content: "分析", RunID: "run-1"},

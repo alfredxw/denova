@@ -10,9 +10,13 @@ import (
 	"github.com/hertz-contrib/gzip"
 
 	"denova/config"
-	"denova/internal/api/handlers"
 	"denova/internal/app"
 )
+
+// Chat attachments use base64 JSON at the local API boundary. This leaves
+// headroom for the 50 MiB decoded attachment batch plus request metadata;
+// individual handlers still enforce their own lower content limits.
+const maxRequestBodyBytes = 72 * 1024 * 1024
 
 // Server 包含 Hertz 引擎和应用运行时。
 type Server struct {
@@ -45,7 +49,7 @@ func newServer(application *app.App, port string, listener net.Listener) *Server
 
 	options := []hertzconfig.Option{
 		hertzserver.WithHostPorts(host + ":" + port),
-		hertzserver.WithMaxRequestBodySize(int(handlers.MaxCharacterCardUploadBytes)),
+		hertzserver.WithMaxRequestBodySize(maxRequestBodyBytes),
 	}
 	if listener != nil {
 		options = append(options, hertzserver.WithListener(listener))

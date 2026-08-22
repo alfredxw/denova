@@ -63,6 +63,74 @@ func TestEvaluateStructuredTools(t *testing.T) {
 	}
 }
 
+func TestAttachedFileReadIsAuthorizedWithoutOpeningItsDirectory(t *testing.T) {
+	t.Parallel()
+	workspace := t.TempDir()
+	external := t.TempDir()
+	attached := filepath.Join(external, "attached.txt")
+	sibling := filepath.Join(external, "sibling.txt")
+	if err := os.WriteFile(attached, []byte("attached"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(sibling, []byte("sibling"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	descriptor := agent.ToolDescriptor{
+		Capability:    config.AgentToolFilesystemRead,
+		Source:        agent.ToolSourceRead,
+		MutationScope: agent.ToolMutationNone,
+	}
+	request := func(path string) Decision {
+		arguments, err := json.Marshal(map[string]string{"path": path})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return Evaluate(Request{
+			Mode: config.AgentApprovalAsk, Workspace: workspace, ToolName: "read", Arguments: string(arguments),
+			Descriptor: descriptor, AttachmentPaths: []string{attached},
+		})
+	}
+	if got := request(attached); got.Action != ActionAllow || got.RuleID != "attached_file_read" {
+		t.Fatalf("attached read = %#v", got)
+	}
+	if got := request(sibling); got.Action != ActionPrompt {
+		t.Fatalf("sibling read = %#v, want prompt", got)
+	}
+}
+
+func TestAttachedFilePathExtendsShellBoundaryExactly(t *testing.T) {
+	t.Parallel()
+	workspace := t.TempDir()
+	external := t.TempDir()
+	attached := filepath.Join(external, "attached.json")
+	sibling := filepath.Join(external, "sibling.json")
+	for _, path := range []string{attached, sibling} {
+		if err := os.WriteFile(path, []byte(`{"ok":true}`), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	evaluate := func(mode config.AgentApprovalMode, command string) Decision {
+		arguments, err := json.Marshal(commandArguments{Command: command})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return Evaluate(Request{
+			Mode: mode, Workspace: workspace, ToolName: "bash", Arguments: string(arguments),
+			Descriptor:      agent.ToolDescriptor{Source: agent.ToolSourceShell, MutationScope: agent.ToolMutationExternal},
+			AttachmentPaths: []string{attached},
+		})
+	}
+	if got := evaluate(config.AgentApprovalAsk, "jq . "+attached); got.Action != ActionAllow {
+		t.Fatalf("attached shell read = %#v", got)
+	}
+	if got := evaluate(config.AgentApprovalAsk, "cat "+sibling); got.Action != ActionPrompt {
+		t.Fatalf("sibling shell read = %#v, want prompt", got)
+	}
+	if got := evaluate(config.AgentApprovalWrite, "touch "+attached); got.Action != ActionAllow {
+		t.Fatalf("attached copy edit = %#v", got)
+	}
+}
+
 func TestEvaluateBrowserModeMatrix(t *testing.T) {
 	t.Parallel()
 	workspace := t.TempDir()

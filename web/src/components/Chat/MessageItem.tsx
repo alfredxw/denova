@@ -26,6 +26,7 @@ import {
 import { ToolExecutionBlock, ToolResultBlock } from './message-tool'
 import { TodoListBlock } from './message-todo'
 import { toolCallRenderer, toolResultRenderer } from '@/lib/tool-presentation'
+import { SentMessageAttachments } from './ComposerAttachments'
 
 /** Progress prose omits conversation-level metadata such as time and actions. */
 export type AssistantMessagePresentation = 'message' | 'progress'
@@ -75,8 +76,9 @@ export const MessageItem = memo(function MessageItem({ projectId = '', message, 
         <AIMessage from="user" className="max-w-none items-end">
           <div className="nova-message-body-with-meta nova-message-body-with-meta-user max-w-[88%]">
             <AIMessageContent className="nova-user-message rounded-lg bg-[var(--nova-user-message-bg-to)] px-3 py-2 text-sm leading-5 text-[var(--nova-user-message-text)] whitespace-pre-wrap group-[.is-user]:px-3 group-[.is-user]:py-2" style={messageStyle}>
+              <SentMessageAttachments attachments={message.attachments} />
               <SentMessageReferences references={message.user_references} />
-              <span>{content}</span>
+              {content ? <span>{content}</span> : null}
             </AIMessageContent>
             <MessageInlineMeta message={message} content={content} align="right" reserveSpace={Boolean(onEdit)} onEdit={canEdit ? onEdit : undefined} />
           </div>

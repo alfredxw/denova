@@ -226,10 +226,16 @@ func (policy *denovaPermissionPolicy) evaluate(request agent.PermissionRequest, 
 	if decision, matched := harnessStatePermission(request, policy.config.AgentKind); matched {
 		return decision
 	}
+	attachmentPaths := make([]string, 0, len(request.Attachments))
+	for _, attachment := range request.Attachments {
+		if path := strings.TrimSpace(attachment.Path); path != "" {
+			attachmentPaths = append(attachmentPaths, path)
+		}
+	}
 	return toolapproval.Evaluate(toolapproval.Request{
 		Mode: policy.config.Mode, ProjectID: policy.config.ProjectID, Workspace: policy.config.Workspace,
 		ToolName: request.Tool, Arguments: string(request.Arguments), Descriptor: request.Descriptor,
-		GOOS: policy.config.GOOS, Rules: rules,
+		GOOS: policy.config.GOOS, Rules: rules, AttachmentPaths: attachmentPaths,
 	})
 }
 

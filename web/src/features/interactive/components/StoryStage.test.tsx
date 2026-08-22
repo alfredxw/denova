@@ -91,6 +91,8 @@ vi.mock('../api', () => ({
 }))
 
 beforeEach(() => {
+  Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: vi.fn(() => 'blob:test-attachment') })
+  Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: vi.fn() })
   resetStoryStageTestHarness(testMocks)
   getInteractiveHistoryPageMock.mockReset()
   patchConversationConfigMock.mockReset().mockResolvedValue(true)
@@ -157,6 +159,37 @@ describe('StoryStage loading presentation', () => {
 })
 
 describe('StoryStage TurnResult choices', () => {
+  it('uses the existing action menu for an attachment-only game turn', async () => {
+    const user = userEvent.setup()
+    render(
+      <VirtuosoMockContext.Provider value={{ viewportHeight: 1200, itemHeight: 120 }}>
+        <StoryStage
+          workspace="/tmp/book"
+          stories={[story()]}
+          story={story()}
+          tellers={[]}
+          storyId="story-1"
+          branchId="main"
+          snapshot={{ story_id: 'story-1', branch_id: 'main', turns: [], state: {} }}
+          onDone={() => undefined}
+        />
+      </VirtuosoMockContext.Provider>,
+    )
+
+    await user.click(screen.getByRole('button', { name: '输入动作' }))
+    expect(screen.getByRole('menuitem', { name: '添加文件' })).toBeInTheDocument()
+    const file = new File(['hello'], 'notes.md', { type: 'text/markdown' })
+    fireEvent.change(screen.getByLabelText('添加文件'), { target: { files: [file] } })
+    await user.keyboard('{Escape}')
+    await user.click(screen.getByRole('button', { name: '发送' }))
+
+    await waitFor(() => expect(sendInteractiveMessageMock).toHaveBeenCalledWith(expect.objectContaining({
+      story_id: 'story-1',
+      message: '',
+      attachments: [{ name: 'notes.md', media_type: 'text/markdown', data_url: 'data:text/markdown;base64,aGVsbG8=' }],
+    })))
+  })
+
 	it('places the model selector before the choice control and send action', async () => {
 		render(
 			<VirtuosoMockContext.Provider value={{ viewportHeight: 1200, itemHeight: 120 }}>

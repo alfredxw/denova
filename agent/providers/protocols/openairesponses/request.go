@@ -84,10 +84,41 @@ func requestInput(messages []*agent.Message, config providers.ModelConfig) (resp
 
 func requestMessage(message *agent.Message, config providers.ModelConfig) ([]responses.ResponseInputItemUnionParam, error) {
 	switch message.Role {
-	case agent.System, agent.User:
+	case agent.System:
 		role := responses.EasyInputMessageRole(message.Role)
 		return []responses.ResponseInputItemUnionParam{
 			responses.ResponseInputItemParamOfMessage(message.Content, role),
+		}, nil
+	case agent.User:
+		hasNativeImage := false
+		for _, attachment := range message.Attachments {
+			if agent.IsNativeImageMediaType(attachment.MediaType) {
+				hasNativeImage = true
+				break
+			}
+		}
+		if !hasNativeImage {
+			return []responses.ResponseInputItemUnionParam{
+				responses.ResponseInputItemParamOfMessage(agent.ModelUserContent(message), responses.EasyInputMessageRoleUser),
+			}, nil
+		}
+		content := responses.ResponseInputMessageContentListParam{
+			responses.ResponseInputContentParamOfInputText(agent.ModelUserContent(message)),
+		}
+		for _, attachment := range message.Attachments {
+			if !agent.IsNativeImageMediaType(attachment.MediaType) {
+				continue
+			}
+			dataURL, err := agent.AttachmentDataURL(attachment)
+			if err != nil {
+				return nil, err
+			}
+			image := responses.ResponseInputContentParamOfInputImage(responses.ResponseInputImageDetailAuto)
+			image.OfInputImage.ImageURL = sdk.String(dataURL)
+			content = append(content, image)
+		}
+		return []responses.ResponseInputItemUnionParam{
+			responses.ResponseInputItemParamOfMessage(content, responses.EasyInputMessageRoleUser),
 		}, nil
 	case agent.Assistant:
 		if replay, found, err := replayResponseOutput(message, config); found || err != nil {

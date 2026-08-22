@@ -53,6 +53,7 @@ type HistoryEntry struct {
 	DisplayPhase     string                  `json:"display_phase,omitempty"`
 	Role             string                  `json:"role,omitempty"`
 	Content          string                  `json:"content,omitempty"`
+	Attachments      []agent.Attachment      `json:"attachments,omitempty"`
 	Name             string                  `json:"name,omitempty"`
 	Args             string                  `json:"args,omitempty"`
 	Status           string                  `json:"status,omitempty"`

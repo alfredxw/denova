@@ -42,7 +42,7 @@ func (h *Handlers) HandleInteractiveChatCommand(ctx context.Context, c *app.Requ
 		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "target_command_id 为必填项 / target_command_id is required", nil)
 		return
 	}
-	if kind == novaApp.CommandFollowUp && strings.TrimSpace(body.Input.Message) == "" {
+	if kind == novaApp.CommandFollowUp && strings.TrimSpace(body.Input.Message) == "" && len(body.Input.AttachmentUploads) == 0 {
 		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "消息不能为空 / Message is required", nil)
 		return
 	}
@@ -51,6 +51,12 @@ func (h *Handlers) HandleInteractiveChatCommand(ctx context.Context, c *app.Requ
 		branchID = strings.TrimSpace(body.Branch)
 	}
 	body.Input.Locale = requestLocale(c)
+	if kind == novaApp.CommandFollowUp {
+		if err := h.app.MaterializeInteractiveAttachments(body.StoryID, body.CommandID, &body.Input); err != nil {
+			writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
+			return
+		}
+	}
 	receipt, err := h.app.SubmitInteractiveAgentCommand(ctx, novaApp.InteractiveAgentCommand{
 		Kind: kind, CommandID: strings.TrimSpace(body.CommandID),
 		OperationID:     novaApp.AgentOperationID(strings.TrimSpace(body.TargetOperationID)),

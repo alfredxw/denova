@@ -3,6 +3,7 @@ package toolapproval
 import (
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	agenttools "github.com/alfredxw/denova/agent/tools"
@@ -27,6 +28,9 @@ func evaluateFilesystemRead(request Request) (Decision, bool) {
 	if len(plan.External) == 0 {
 		return allow("project_filesystem_read", RiskLow, "The filesystem read is contained by the current Project."), true
 	}
+	if attachmentReadsAllowed(request.AttachmentPaths, plan.External) {
+		return allow("attached_file_read", RiskLow, "Every external target is a file explicitly attached by the user."), true
+	}
 	if request.Mode == config.AgentApprovalFullAccess {
 		return allow("external_filesystem_read_full_access", RiskMedium, "Full Access allows this external filesystem read."), true
 	}
@@ -45,6 +49,30 @@ func evaluateFilesystemRead(request Request) (Decision, bool) {
 	decision.Details = proposal.DisplayPattern
 	decision.Remember = &proposal
 	return decision, true
+}
+
+func attachmentReadsAllowed(paths []string, requested []agenttools.FilesystemReadGrant) bool {
+	if len(paths) == 0 || len(requested) == 0 {
+		return false
+	}
+	for _, target := range requested {
+		covered := false
+		for _, path := range paths {
+			canonical, err := filepath.EvalSymlinks(filepath.Clean(filepath.FromSlash(strings.TrimSpace(path))))
+			if err != nil {
+				continue
+			}
+			grant := agenttools.FilesystemReadGrant{Path: canonical}
+			if agenttools.FilesystemReadGrantContains(grant, target) {
+				covered = true
+				break
+			}
+		}
+		if !covered {
+			return false
+		}
+	}
+	return true
 }
 
 func filesystemReadRuleProposal(grants []agenttools.FilesystemReadGrant) (RuleProposal, error) {

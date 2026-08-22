@@ -270,6 +270,7 @@ func (s *Session) History() []HistoryEntry {
 				ID:                 record.messageMetadata.MessageID,
 				Role:               string(record.message.Role),
 				Content:            record.message.Content,
+				Attachments:        append([]agent.Attachment(nil), record.message.Attachments...),
 				Message:            record.message,
 				CreatedAt:          record.createdAt,
 				RunID:              record.messageMetadata.RunID,

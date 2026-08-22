@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	agent "github.com/alfredxw/denova/agent"
 	"log/slog"
 	"strings"
 	"time"
@@ -202,6 +203,7 @@ func (s *Store) AppendTurnWithState(storyID string, req AppendTurnWithStateReque
 		BranchID:                    branchID,
 		Ts:                          now,
 		User:                        req.User,
+		Attachments:                 append([]agent.Attachment(nil), playerInput.Attachments...),
 		UserContextOnly:             playerInput.ContextOnly,
 		Narrative:                   req.Narrative,
 		Thinking:                    strings.TrimSpace(req.Thinking),

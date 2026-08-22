@@ -33,12 +33,16 @@ func (h *Handlers) HandleChat(ctx context.Context, c *app.RequestContext) {
 	if !ok {
 		return
 	}
-	if strings.TrimSpace(req.Message) == "" {
+	if strings.TrimSpace(req.Message) == "" && len(req.AttachmentUploads) == 0 {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.messageRequired")
 		return
 	}
 	if strings.TrimSpace(req.CommandID) == "" {
 		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "缺少 command_id，无法安全重试请求 / command_id is required for safe request retries", nil)
+		return
+	}
+	if err := h.app.MaterializeWritingAttachments(sessionID, req.CommandID, &req); err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
 	req.Locale = requestLocale(c)

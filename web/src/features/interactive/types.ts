@@ -1,4 +1,5 @@
 import type { SSEEvent } from '@/lib/api'
+import type { ChatAttachment } from '@/lib/api-client/types'
 
 export type InteractiveSubmode = 'story' | 'timeline' | 'director'
 
@@ -365,6 +366,7 @@ export interface TurnEvent {
   branch_id: string
   ts: string
   user: string
+  attachments?: ChatAttachment[]
   user_context_only?: boolean
   narrative: string
   thinking?: string
@@ -903,6 +905,7 @@ export interface PlayerInputAcceptedEvent {
   branch_id: string
   ts: string
   text: string
+  attachments?: ChatAttachment[]
   context_only?: boolean
   accepted_turn_count: number
   agent_command_id: string

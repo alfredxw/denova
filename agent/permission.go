@@ -25,6 +25,10 @@ type PermissionRequest struct {
 	Tool       string
 	Arguments  json.RawMessage
 	Descriptor ToolDescriptor
+	// Attachments are the application-owned file copies visible in the active
+	// model transcript. Hosts may treat their exact paths as user-authorized
+	// input without granting access to the surrounding user-data directory.
+	Attachments []Attachment
 }
 
 type PermissionDecision struct {
@@ -179,9 +183,10 @@ func permissionOptions(canRemember bool) []PermissionOption {
 
 type permissionMiddleware struct {
 	*BaseMiddleware
-	policy  PermissionPolicy
-	session SessionView
-	run     RunView
+	policy      PermissionPolicy
+	session     SessionView
+	run         RunView
+	attachments []Attachment
 }
 
 func (middleware *permissionMiddleware) WrapToolCall(
@@ -196,7 +201,7 @@ func (middleware *permissionMiddleware) WrapToolCall(
 		request := PermissionRequest{
 			Session: middleware.session, Run: middleware.run,
 			CallID: tool.ExecutionID, Tool: tool.Name, Arguments: json.RawMessage(arguments),
-			Descriptor: tool.Definition.Descriptor,
+			Descriptor: tool.Definition.Descriptor, Attachments: cloneAttachments(middleware.attachments),
 		}
 		decision, err := middleware.policy.Evaluate(ctx, request)
 		if err != nil {

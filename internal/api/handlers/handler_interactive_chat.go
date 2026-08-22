@@ -15,19 +15,20 @@ import (
 
 func (h *Handlers) HandleInteractiveChat(ctx context.Context, c *app.RequestContext) {
 	var body struct {
-		CommandID          string   `json:"command_id"`
-		Mode               string   `json:"mode"`
-		StoryID            string   `json:"story_id"`
-		Branch             string   `json:"branch"`
-		Message            string   `json:"message"`
-		StyleScenes        []string `json:"style_scenes"`
-		RegenerateFromTurn string   `json:"regenerate_from_turn_id"`
+		CommandID          string                          `json:"command_id"`
+		Mode               string                          `json:"mode"`
+		StoryID            string                          `json:"story_id"`
+		Branch             string                          `json:"branch"`
+		Message            string                          `json:"message"`
+		StyleScenes        []string                        `json:"style_scenes"`
+		RegenerateFromTurn string                          `json:"regenerate_from_turn_id"`
+		Attachments        []novaApp.AgentAttachmentUpload `json:"attachments,omitempty"`
 	}
 	if err := c.BindJSON(&body); err != nil {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
-	if strings.TrimSpace(body.Message) == "" {
+	if strings.TrimSpace(body.Message) == "" && len(body.Attachments) == 0 {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.messageRequired")
 		return
 	}
@@ -43,11 +44,17 @@ func (h *Handlers) HandleInteractiveChat(ctx context.Context, c *app.RequestCont
 		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "缺少 command_id，无法安全重试请求 / command_id is required for safe request retries", nil)
 		return
 	}
+	chatRequest := novaApp.AgentChatRequest{CommandID: body.CommandID, Message: body.Message, AttachmentUploads: body.Attachments}
+	if err := h.app.MaterializeInteractiveAttachments(body.StoryID, body.CommandID, &chatRequest); err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
+		return
+	}
 
 	task, err := h.app.StartInteractiveTaskWithError(ctx, novaApp.InteractiveAgentStartRequest{
 		CommandID: body.CommandID, StoryID: body.StoryID, BranchID: body.Branch,
 		Message: body.Message, StyleScenes: body.StyleScenes,
 		RegenerateFromTurnID: body.RegenerateFromTurn, Locale: requestLocale(c),
+		AttachmentIDs: chatRequest.AttachmentIDs, AttachedFiles: chatRequest.AttachedFiles,
 	})
 	if err != nil {
 		h.writeChatPreparationError(c, err)

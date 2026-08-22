@@ -34,14 +34,15 @@ const (
 // Request contains only stable host facts. Mode and workspace must be
 // snapshotted by the run owner; a tool call cannot select either value.
 type Request struct {
-	Mode       config.AgentApprovalMode
-	ProjectID  string
-	Workspace  string
-	ToolName   string
-	Arguments  string
-	Descriptor agent.ToolDescriptor
-	GOOS       string
-	Rules      []config.AgentApprovalRule
+	Mode            config.AgentApprovalMode
+	ProjectID       string
+	Workspace       string
+	ToolName        string
+	Arguments       string
+	Descriptor      agent.ToolDescriptor
+	GOOS            string
+	Rules           []config.AgentApprovalRule
+	AttachmentPaths []string
 }
 
 // RuleProposal is a policy-generated, human-readable authorization boundary.
@@ -164,9 +165,9 @@ func evaluateShell(request Request) Decision {
 		result.Command, result.Cwd = input.Command, input.Cwd
 		return result
 	}
-	classification := classifyBash(input.Command, workspace, input.Cwd, request.Mode)
+	classification := classifyBashWithAllowedFiles(input.Command, workspace, input.Cwd, request.Mode, request.AttachmentPaths)
 	if request.ToolName == "pwsh" || request.GOOS == "windows" {
-		classification = classifyPowerShell(input.Command, workspace, input.Cwd, request.Mode)
+		classification = classifyPowerShellWithAllowedFiles(input.Command, workspace, input.Cwd, request.Mode, request.AttachmentPaths)
 	}
 	classification.Command, classification.Cwd = input.Command, input.Cwd
 	if classification.Action == ActionPrompt {

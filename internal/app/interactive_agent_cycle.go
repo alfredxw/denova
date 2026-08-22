@@ -6,6 +6,7 @@ import (
 	agentexecution "denova/internal/agents/execution"
 	agentinteractive "denova/internal/agents/interactive"
 	"fmt"
+	agent "github.com/alfredxw/denova/agent"
 	"log/slog"
 	"strings"
 
@@ -82,6 +83,8 @@ type interactiveAgentCycleRequest struct {
 	Locale               string
 	InputVisibility      agentrun.InputVisibility
 	RegenerateFromTurnID string
+	AttachmentIDs        []string
+	AttachedFiles        []agent.Attachment
 }
 
 func (s *InteractiveAppService) prepareInteractiveAgentCycle(ctx context.Context, request interactiveAgentCycleRequest) (*interactiveAgentCycle, error) {
@@ -147,7 +150,9 @@ func (s *InteractiveAppService) prepareInteractiveAgentCycle(ctx context.Context
 	cycle.tellerInput.ChoiceCount = storyContext.Meta.ChoiceCount
 	cycle.request = agentchat.ChatRequest{
 		Message: strings.TrimSpace(request.Message), StyleScenes: append([]string(nil), request.StyleScenes...),
-		StyleRules: styleRules, Locale: strings.TrimSpace(request.Locale), InputVisibility: request.InputVisibility,
+		AttachmentIDs: append([]string(nil), request.AttachmentIDs...),
+		AttachedFiles: append([]agent.Attachment(nil), request.AttachedFiles...),
+		StyleRules:    styleRules, Locale: strings.TrimSpace(request.Locale), InputVisibility: request.InputVisibility,
 	}
 	cycle.conversation = interactiveapp.NewConversation(
 		cycle.store, cycle.novaDir, cycle.workspace, cycle.storyID, cycle.branchID,
