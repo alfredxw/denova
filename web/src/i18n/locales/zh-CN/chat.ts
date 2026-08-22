@@ -29,7 +29,6 @@ const chat = {
   'chat.cancelRename': '取消重命名',
   'chat.keepOneSession': '至少保留一个会话',
   'chat.unknownTime': '时间未知',
-  'chat.closeAgent': '关闭创作 Agent',
   'chat.teller': '叙事',
   'chat.tellerTitle': '写作 Agent 下一轮使用的默认叙事风格',
   'chat.imagePreset': '图像方案',

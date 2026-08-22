@@ -13,6 +13,8 @@ describe('EditorToolbar chapter outline navigation', () => {
         displayTitle="第一章"
         chapterPath="chapters/chapter-01.md"
         chapterWords={2206}
+        updatedAt="2026-07-11 22:00"
+        currentLine={49}
         saveStatus={null}
         onSave={vi.fn()}
         settingsOpen={false}
@@ -25,6 +27,8 @@ describe('EditorToolbar chapter outline navigation', () => {
     )
 
     expect(screen.getByText('2,206 字')).toBeInTheDocument()
+    expect(screen.getByText('更新：07/11 22:00')).toBeInTheDocument()
+    expect(screen.getByText('行 49')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '在作品目录中显示当前章节' }))
     expect(onRevealChapter).toHaveBeenCalledWith('chapters/chapter-01.md')
 

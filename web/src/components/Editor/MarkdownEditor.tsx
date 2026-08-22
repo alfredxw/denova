@@ -119,6 +119,7 @@ export function MarkdownEditor({
   const [nativeIndent, setNativeIndent] = useState(false)
   const [selectedCharacters, setSelectedCharacters] = useState(0)
   const [documentCharacters, setDocumentCharacters] = useState(chapterSummary?.words ?? 0)
+  const [currentLine, setCurrentLine] = useState(1)
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchIndex, setSearchIndex] = useState(0)
@@ -261,6 +262,7 @@ export function MarkdownEditor({
     if (options.resetHistory && !replaceWithFreshState) resetEditorStateHistory(editor)
     setNativeIndent(hasNativeIndent(nextContent))
     updateCharacterStats(editor, setSelectedCharacters, setDocumentCharacters)
+    setCurrentLine(getLineNumber(editor.state.doc, editor.state.selection.head))
     updateSearch(searchStateRef.current.query, 0)
   }, [editor, resourceScope, updateSearch])
 
@@ -308,9 +310,11 @@ export function MarkdownEditor({
 
     const updateDocumentStats = () => {
       updateCharacterStats(editor, setSelectedCharacters, setDocumentCharacters)
+      setCurrentLine(getLineNumber(editor.state.doc, editor.state.selection.head))
     }
     const updateSelectionStats = () => {
       updateCharacterStats(editor, setSelectedCharacters)
+      setCurrentLine(getLineNumber(editor.state.doc, editor.state.selection.head))
     }
     updateDocumentStats()
     editor.on('update', updateDocumentStats)
@@ -524,6 +528,8 @@ export function MarkdownEditor({
         displayTitle={chapterSummary?.display_title}
         chapterPath={chapterSummary?.path}
         chapterWords={chapterSummary ? documentCharacters : undefined}
+        updatedAt={chapterSummary?.updated_at}
+        currentLine={chapterSummary ? currentLine : undefined}
         saveStatus={saveStatus}
         onSave={handleSave}
         settingsOpen={settingsOpen}

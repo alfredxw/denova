@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Activity, Bot, ChevronLeft, FileText, PenLine, Plus, SearchCheck, Sparkles, WandSparkles, X } from 'lucide-react'
+import { Activity, Bot, ChevronLeft, FileText, PenLine, Plus, SearchCheck, Sparkles, WandSparkles } from 'lucide-react'
 import { motion } from 'motion/react'
 import { Group, Panel, Separator } from 'react-resizable-panels'
 import { createPortal } from 'react-dom'
@@ -165,7 +165,6 @@ interface AgentPanelProps {
   onReviewFeedbackSubmissionFailed?: (feedback: ReviewFeedbackBatch) => void
   onOpenChangeReview?: (reviewThreadID: string, groupID: string) => void
   onWorkspaceChanged?: (paths: string[]) => void | Promise<void>
-  onClose: () => void
   onSubAgentDetailsChange?: (open: boolean) => void
 }
 
@@ -243,7 +242,6 @@ function AgentPanelComponent({
   onReviewFeedbackSubmissionFailed,
   onOpenChangeReview,
   onWorkspaceChanged,
-  onClose,
   onSubAgentDetailsChange,
 }: AgentPanelProps) {
   const { t } = useTranslation()
@@ -690,7 +688,7 @@ function AgentPanelComponent({
         workbench only.
       */}
       {dockedChrome && (
-        <div className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--nova-border)] px-3">
+        <div className="flex h-9 shrink-0 items-center gap-2 border-b border-[var(--nova-border)] px-3">
           <div className="flex min-w-0 shrink-0 items-center gap-2 text-xs font-medium text-[var(--nova-text)]">
             <Bot className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />
             {t('chat.agent')}
@@ -738,9 +736,6 @@ function AgentPanelComponent({
             </motion.span>
           </button>
           <div className="min-w-0 flex-1" />
-          <button type="button" onClick={onClose} className="nova-nav-item rounded p-1" aria-label={t('chat.closeAgent')}>
-            <X className="h-3.5 w-3.5" />
-          </button>
         </div>
       )}
 

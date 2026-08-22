@@ -29,7 +29,6 @@ const chat = {
   'chat.cancelRename': 'Cancel Rename',
   'chat.keepOneSession': 'Keep at least one session',
   'chat.unknownTime': 'Unknown time',
-  'chat.closeAgent': 'Close Writing Agent',
   'chat.teller': 'Narrative',
   'chat.tellerTitle': 'Default narrative direction for the next Writing Agent turn',
   'chat.imagePreset': 'Image Preset',

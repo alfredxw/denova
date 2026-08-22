@@ -26,6 +26,8 @@ const editor = {
   'editor.replaceAllDone': 'Replaced {{count}} occurrences',
   'editor.chapterWords': 'Chapter: {{count}} words',
   'editor.bookWords': 'Book: {{count}} words',
+  'editor.updatedAt': 'Updated: {{time}}',
+  'editor.currentLine': 'Line {{line}}',
   'editor.selectedWords': 'Selected: {{count}} words',
   'editor.lineHeight': 'Line Height',
   'editor.dialogueHighlightColor': 'Dialogue Highlight',
