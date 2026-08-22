@@ -201,7 +201,7 @@ export function useAgentChat(options: ChatOptions = {}) {
       .then((data) => {
         if (!cancelled) setDefaultPlanMode(data.effective?.plan_mode_default === true)
       })
-      .catch((e) => console.warn('加载 Plan Mode 默认配置失败', e))
+      .catch((e) => console.warn('Failed to load the default Plan Mode setting', e))
     return () => {
       cancelled = true
     }

@@ -1,36 +1,31 @@
-import { useMemo, type ReactNode, type Ref } from 'react'
+import { useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import {
-  DragDropContext,
-  Draggable,
-  Droppable,
-  type DraggableProvidedDragHandleProps,
-  type DraggableProvidedDraggableProps,
-  type DropResult,
-} from '@hello-pangea/dnd'
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+  type DraggableAttributes,
+  type DraggableSyntheticListeners,
+} from '@dnd-kit/core'
+import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, GripVertical, RotateCcw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import {
-  moveStoryStateLayoutField,
-  moveStoryStateLayoutGroup,
-  reconcileStoryStateLayout,
-  type StoryStateTemplateLayout,
-} from './layout-preference'
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { moveStoryStateLayoutField, moveStoryStateLayoutGroup, reconcileStoryStateLayout, type StoryStateTemplateLayout } from './layout-preference'
 import type { LedgerFieldGroup } from './model'
 
-const GROUPS_DROPPABLE_ID = 'state-layout-groups'
 const groupDragId = (key: string) => `group:${key}`
+const groupDropId = (key: string) => `group-fields:${key}`
 const fieldDragId = (id: string) => `field:${id}`
 
 interface StateLayoutEditorProps {
@@ -47,17 +42,31 @@ export function StateLayoutEditor({ open, title, groups, value, onOpenChange, on
   const { t } = useTranslation()
   const layout = useMemo(() => reconcileStoryStateLayout(groups, value), [groups, value])
   const fieldLabels = useMemo(() => new Map(groups.flatMap((group) => group.fields.map((field) => [field.id, field.label] as const))), [groups])
+  const [activeDragId, setActiveDragId] = useState<string | null>(null)
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  )
 
-  const handleDragEnd = ({ draggableId, destination, source, type }: DropResult) => {
-    if (!destination) return
-    if (destination.droppableId === source.droppableId && destination.index === source.index) return
-    if (type === 'group') {
-      const overKey = layout.groups[destination.index]?.key
-      if (!overKey) return
-      onChange(moveStoryStateLayoutGroup(layout, draggableId.slice('group:'.length), overKey))
+  const handleDragEnd = ({ active, over }: DragEndEvent) => {
+    setActiveDragId(null)
+    if (!over || active.id === over.id) return
+    const activeData = active.data.current
+    const overData = over.data.current
+    if (activeData?.type === 'group') {
+      const targetGroupKey = overData?.groupKey
+      if (typeof targetGroupKey === 'string') {
+        onChange(moveStoryStateLayoutGroup(layout, activeData.groupKey, targetGroupKey))
+      }
       return
     }
-    onChange(moveStoryStateLayoutField(layout, draggableId.slice('field:'.length), destination.droppableId, destination.index))
+    if (activeData?.type !== 'field' || typeof overData?.groupKey !== 'string') return
+    const targetGroup = layout.groups.find((group) => group.key === overData.groupKey)
+    if (!targetGroup) return
+    const targetIndex = overData.type === 'field'
+      ? targetGroup.field_ids.indexOf(overData.fieldId)
+      : targetGroup.field_ids.length
+    onChange(moveStoryStateLayoutField(layout, activeData.fieldId, targetGroup.key, targetIndex))
   }
 
   const moveGroup = (groupIndex: number, delta: number) => {
@@ -76,12 +85,16 @@ export function StateLayoutEditor({ open, title, groups, value, onOpenChange, on
   }
 
   const moveFieldAcrossGroup = (groupIndex: number, fieldIndex: number, delta: number) => {
-    const group = layout.groups[groupIndex]
-    const fieldId = group?.field_ids[fieldIndex]
+    const fieldId = layout.groups[groupIndex]?.field_ids[fieldIndex]
     const target = layout.groups[groupIndex + delta]
     if (!fieldId || !target) return
     onChange(moveStoryStateLayoutField(layout, fieldId, target.key, target.field_ids.length))
   }
+
+  const activeGroup = activeDragId?.startsWith('group:')
+    ? layout.groups.find((group) => groupDragId(group.key) === activeDragId)
+    : undefined
+  const activeFieldId = activeDragId?.startsWith('field:') ? activeDragId.slice('field:'.length) : ''
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -90,55 +103,44 @@ export function StateLayoutEditor({ open, title, groups, value, onOpenChange, on
           <DialogTitle>{t('storyStage.state.layout.title', { name: title })}</DialogTitle>
           <DialogDescription>{t('storyStage.state.layout.description')}</DialogDescription>
         </DialogHeader>
-        <DragDropContext onDragEnd={handleDragEnd}>
-          <Droppable
-            droppableId={GROUPS_DROPPABLE_ID}
-            type="group"
-            renderClone={(provided, _snapshot, rubric) => {
-              const group = layout.groups.find((candidate) => groupDragId(candidate.key) === rubric.draggableId)
-              if (!group) return null
-              return createPortal(
-                <GroupSectionView
-                  label={builtinGroupLabel(group.key, t)}
-                  fieldCount={group.field_ids.length}
-                  innerRef={provided.innerRef}
-                  draggableProps={provided.draggableProps}
-                  dragHandleProps={provided.dragHandleProps}
-                  dragging
-                >
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragStart={({ active }: DragStartEvent) => setActiveDragId(String(active.id))}
+          onDragCancel={() => setActiveDragId(null)}
+          onDragEnd={handleDragEnd}
+        >
+          <div className="min-h-0 space-y-2 overflow-y-auto px-4 pb-2">
+            <SortableContext items={layout.groups.map((group) => groupDragId(group.key))} strategy={verticalListSortingStrategy}>
+              {layout.groups.map((group, groupIndex) => (
+                <SortableGroupSection
+                  key={group.key}
+                  group={group}
+                  groupIndex={groupIndex}
+                  groupCount={layout.groups.length}
+                  fieldLabels={fieldLabels}
+                  onMoveGroup={moveGroup}
+                  onMoveField={moveField}
+                  onMoveFieldAcrossGroup={moveFieldAcrossGroup}
+                />
+              ))}
+            </SortableContext>
+          </div>
+          {createPortal(
+            <DragOverlay>
+              {activeGroup ? (
+                <GroupSectionView label={builtinGroupLabel(activeGroup.key, t)} fieldCount={activeGroup.field_ids.length} dragging>
                   <div className="space-y-1">
-                    {group.field_ids.map((fieldId) => (
-                      <FieldRowView key={fieldId} label={fieldLabels.get(fieldId) || fieldId} />
-                    ))}
+                    {activeGroup.field_ids.map((fieldId) => <FieldRowView key={fieldId} label={fieldLabels.get(fieldId) || fieldId} />)}
                   </div>
-                </GroupSectionView>,
-                document.body,
-              )
-            }}
-          >
-            {(provided) => (
-              <div
-                ref={provided.innerRef}
-                {...provided.droppableProps}
-                className="min-h-0 space-y-2 overflow-y-auto px-4 pb-2"
-              >
-                {layout.groups.map((group, groupIndex) => (
-                  <SortableGroupSection
-                    key={group.key}
-                    group={group}
-                    groupIndex={groupIndex}
-                    groupCount={layout.groups.length}
-                    fieldLabels={fieldLabels}
-                    onMoveGroup={moveGroup}
-                    onMoveField={moveField}
-                    onMoveFieldAcrossGroup={moveFieldAcrossGroup}
-                  />
-                ))}
-                {provided.placeholder}
-              </div>
-            )}
-          </Droppable>
-        </DragDropContext>
+                </GroupSectionView>
+              ) : activeFieldId ? (
+                <FieldRowView label={fieldLabels.get(activeFieldId) || activeFieldId} dragging />
+              ) : null}
+            </DragOverlay>,
+            document.body,
+          )}
+        </DndContext>
         <DialogFooter className="m-0">
           <Button type="button" variant="outline" onClick={onReset}>
             <RotateCcw data-icon="inline-start" />
@@ -164,82 +166,63 @@ function SortableGroupSection({ group, groupIndex, groupCount, fieldLabels, onMo
 }) {
   const { t } = useTranslation()
   const label = builtinGroupLabel(group.key, t)
+  const sortable = useSortable({ id: groupDragId(group.key), data: { type: 'group', groupKey: group.key } })
+  const droppable = useDroppable({ id: groupDropId(group.key), data: { type: 'group-drop', groupKey: group.key } })
   return (
-    <Draggable draggableId={groupDragId(group.key)} index={groupIndex}>
-      {(provided, snapshot) => (
-        <GroupSectionView
-          label={label}
-          fieldCount={group.field_ids.length}
-          gripLabel={t('storyStage.state.layout.dragGroup', { name: label })}
-          innerRef={provided.innerRef}
-          draggableProps={provided.draggableProps}
-          dragHandleProps={provided.dragHandleProps}
-          dimmed={snapshot.isDragging}
-          actions={(
-            <>
-              <MoveButton icon={ArrowUp} label={t('storyStage.state.layout.moveGroupUp', { name: label })} disabled={groupIndex === 0} onClick={() => onMoveGroup(groupIndex, -1)} />
-              <MoveButton icon={ArrowDown} label={t('storyStage.state.layout.moveGroupDown', { name: label })} disabled={groupIndex === groupCount - 1} onClick={() => onMoveGroup(groupIndex, 1)} />
-            </>
+    <GroupSectionView
+      label={label}
+      fieldCount={group.field_ids.length}
+      gripLabel={t('storyStage.state.layout.dragGroup', { name: label })}
+      innerRef={sortable.setNodeRef}
+      style={{ transform: CSS.Transform.toString(sortable.transform), transition: sortable.transition }}
+      dragAttributes={sortable.attributes}
+      dragListeners={sortable.listeners}
+      dimmed={sortable.isDragging}
+      actions={(
+        <>
+          <MoveButton icon={ArrowUp} label={t('storyStage.state.layout.moveGroupUp', { name: label })} disabled={groupIndex === 0} onClick={() => onMoveGroup(groupIndex, -1)} />
+          <MoveButton icon={ArrowDown} label={t('storyStage.state.layout.moveGroupDown', { name: label })} disabled={groupIndex === groupCount - 1} onClick={() => onMoveGroup(groupIndex, 1)} />
+        </>
+      )}
+    >
+      <SortableContext items={group.field_ids.map(fieldDragId)} strategy={verticalListSortingStrategy}>
+        <div
+          ref={droppable.setNodeRef}
+          className={cn(
+            'space-y-1 rounded-lg transition-[background-color,border-color]',
+            group.field_ids.length === 0 && (droppable.isOver
+              ? 'min-h-10 border border-dashed border-[var(--nova-accent)]'
+              : 'flex min-h-10 items-center justify-center border border-dashed border-[var(--nova-border)]'),
+            droppable.isOver && 'bg-[var(--nova-active)]',
           )}
         >
-          <Droppable
-            droppableId={group.key}
-            type="field"
-            renderClone={(fieldProvided, _fieldSnapshot, rubric) => {
-              const fieldId = rubric.draggableId.slice('field:'.length)
-              return createPortal(
-                <FieldRowView
-                  label={fieldLabels.get(fieldId) || fieldId}
-                  innerRef={fieldProvided.innerRef}
-                  draggableProps={fieldProvided.draggableProps}
-                  dragHandleProps={fieldProvided.dragHandleProps}
-                  dragging
-                />,
-                document.body,
-              )
-            }}
-          >
-            {(fieldsProvided, fieldsSnapshot) => (
-              <div
-                ref={fieldsProvided.innerRef}
-                {...fieldsProvided.droppableProps}
-                className={cn(
-                  'space-y-1 rounded-lg transition-[background-color,border-color]',
-                  group.field_ids.length === 0 && (fieldsSnapshot.isDraggingOver
-                    ? 'min-h-10 border border-dashed border-[var(--nova-accent)]'
-                    : 'flex min-h-10 items-center justify-center border border-dashed border-[var(--nova-border)]'),
-                  fieldsSnapshot.isDraggingOver && 'bg-[var(--nova-active)]',
-                )}
-              >
-                {group.field_ids.length === 0 && !fieldsSnapshot.isDraggingOver ? (
-                  <span className="text-[10px] text-[var(--nova-text-faint)]">{t('storyStage.state.layout.emptyGroup')}</span>
-                ) : null}
-                {group.field_ids.map((fieldId, fieldIndex) => (
-                  <SortableFieldRow
-                    key={fieldId}
-                    fieldId={fieldId}
-                    label={fieldLabels.get(fieldId) || fieldId}
-                    groupIndex={groupIndex}
-                    groupCount={groupCount}
-                    fieldIndex={fieldIndex}
-                    fieldCount={group.field_ids.length}
-                    onMove={onMoveField}
-                    onMoveAcrossGroup={onMoveFieldAcrossGroup}
-                  />
-                ))}
-                {fieldsProvided.placeholder}
-              </div>
-            )}
-          </Droppable>
-        </GroupSectionView>
-      )}
-    </Draggable>
+          {group.field_ids.length === 0 && !droppable.isOver ? (
+            <span className="text-[10px] text-[var(--nova-text-faint)]">{t('storyStage.state.layout.emptyGroup')}</span>
+          ) : null}
+          {group.field_ids.map((fieldId, fieldIndex) => (
+            <SortableFieldRow
+              key={fieldId}
+              fieldId={fieldId}
+              label={fieldLabels.get(fieldId) || fieldId}
+              groupKey={group.key}
+              groupIndex={groupIndex}
+              groupCount={groupCount}
+              fieldIndex={fieldIndex}
+              fieldCount={group.field_ids.length}
+              onMove={onMoveField}
+              onMoveAcrossGroup={onMoveFieldAcrossGroup}
+            />
+          ))}
+        </div>
+      </SortableContext>
+    </GroupSectionView>
   )
 }
 
-function SortableFieldRow({ fieldId, label, groupIndex, groupCount, fieldIndex, fieldCount, onMove, onMoveAcrossGroup }: {
+function SortableFieldRow({ fieldId, label, groupKey, groupIndex, groupCount, fieldIndex, fieldCount, onMove, onMoveAcrossGroup }: {
   fieldId: string
   label: string
+  groupKey: string
   groupIndex: number
   groupCount: number
   fieldIndex: number
@@ -248,38 +231,36 @@ function SortableFieldRow({ fieldId, label, groupIndex, groupCount, fieldIndex, 
   onMoveAcrossGroup: (groupIndex: number, fieldIndex: number, delta: number) => void
 }) {
   const { t } = useTranslation()
+  const sortable = useSortable({ id: fieldDragId(fieldId), data: { type: 'field', fieldId, groupKey } })
   return (
-    <Draggable draggableId={fieldDragId(fieldId)} index={fieldIndex}>
-      {(provided, snapshot) => (
-        <FieldRowView
-          label={label}
-          gripLabel={t('storyStage.state.layout.dragField', { name: label })}
-          innerRef={provided.innerRef}
-          draggableProps={provided.draggableProps}
-          dragHandleProps={provided.dragHandleProps}
-          dimmed={snapshot.isDragging}
-          actions={(
-            <>
-              <MoveButton icon={ArrowLeft} label={t('storyStage.state.layout.moveFieldPreviousGroup', { name: label })} disabled={groupIndex === 0} onClick={() => onMoveAcrossGroup(groupIndex, fieldIndex, -1)} />
-              <MoveButton icon={ArrowRight} label={t('storyStage.state.layout.moveFieldNextGroup', { name: label })} disabled={groupIndex === groupCount - 1} onClick={() => onMoveAcrossGroup(groupIndex, fieldIndex, 1)} />
-              <MoveButton icon={ArrowUp} label={t('storyStage.state.layout.moveFieldUp', { name: label })} disabled={fieldIndex === 0} onClick={() => onMove(groupIndex, fieldIndex, -1)} />
-              <MoveButton icon={ArrowDown} label={t('storyStage.state.layout.moveFieldDown', { name: label })} disabled={fieldIndex === fieldCount - 1} onClick={() => onMove(groupIndex, fieldIndex, 1)} />
-            </>
-          )}
-        />
+    <FieldRowView
+      label={label}
+      gripLabel={t('storyStage.state.layout.dragField', { name: label })}
+      innerRef={sortable.setNodeRef}
+      style={{ transform: CSS.Transform.toString(sortable.transform), transition: sortable.transition }}
+      dragAttributes={sortable.attributes}
+      dragListeners={sortable.listeners}
+      dimmed={sortable.isDragging}
+      actions={(
+        <>
+          <MoveButton icon={ArrowLeft} label={t('storyStage.state.layout.moveFieldPreviousGroup', { name: label })} disabled={groupIndex === 0} onClick={() => onMoveAcrossGroup(groupIndex, fieldIndex, -1)} />
+          <MoveButton icon={ArrowRight} label={t('storyStage.state.layout.moveFieldNextGroup', { name: label })} disabled={groupIndex === groupCount - 1} onClick={() => onMoveAcrossGroup(groupIndex, fieldIndex, 1)} />
+          <MoveButton icon={ArrowUp} label={t('storyStage.state.layout.moveFieldUp', { name: label })} disabled={fieldIndex === 0} onClick={() => onMove(groupIndex, fieldIndex, -1)} />
+          <MoveButton icon={ArrowDown} label={t('storyStage.state.layout.moveFieldDown', { name: label })} disabled={fieldIndex === fieldCount - 1} onClick={() => onMove(groupIndex, fieldIndex, 1)} />
+        </>
       )}
-    </Draggable>
+    />
   )
 }
 
-/** Presentational group card shared by the sortable row and the drag clone. */
-function GroupSectionView({ label, fieldCount, gripLabel, innerRef, draggableProps, dragHandleProps, dragging, dimmed, actions, children }: {
+function GroupSectionView({ label, fieldCount, gripLabel, innerRef, style, dragAttributes, dragListeners, dragging, dimmed, actions, children }: {
   label: string
   fieldCount: number
   gripLabel?: string
-  innerRef?: Ref<HTMLElement>
-  draggableProps?: DraggableProvidedDraggableProps
-  dragHandleProps?: DraggableProvidedDragHandleProps | null
+  innerRef?: (node: HTMLElement | null) => void
+  style?: CSSProperties
+  dragAttributes?: DraggableAttributes
+  dragListeners?: DraggableSyntheticListeners
   dragging?: boolean
   dimmed?: boolean
   actions?: ReactNode
@@ -288,7 +269,7 @@ function GroupSectionView({ label, fieldCount, gripLabel, innerRef, draggablePro
   return (
     <section
       ref={innerRef}
-      {...(draggableProps ?? {})}
+      style={style}
       className={cn(
         'rounded-xl border border-[var(--nova-border)] bg-[var(--nova-surface)] p-2 transition-[border-color,background-color,opacity,box-shadow]',
         dragging && 'border-[var(--nova-accent)] shadow-xl',
@@ -298,7 +279,8 @@ function GroupSectionView({ label, fieldCount, gripLabel, innerRef, draggablePro
       <header className="mb-2 flex min-w-0 items-center gap-1.5">
         <button
           type="button"
-          {...(dragHandleProps ?? {})}
+          {...dragAttributes}
+          {...dragListeners}
           className="flex size-7 shrink-0 cursor-grab items-center justify-center rounded-md text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] active:cursor-grabbing"
           aria-label={gripLabel}
         >
@@ -313,13 +295,13 @@ function GroupSectionView({ label, fieldCount, gripLabel, innerRef, draggablePro
   )
 }
 
-/** Presentational field row shared by the sortable row and the drag clone. */
-function FieldRowView({ label, gripLabel, innerRef, draggableProps, dragHandleProps, dragging, dimmed, actions }: {
+function FieldRowView({ label, gripLabel, innerRef, style, dragAttributes, dragListeners, dragging, dimmed, actions }: {
   label: string
   gripLabel?: string
-  innerRef?: Ref<HTMLDivElement>
-  draggableProps?: DraggableProvidedDraggableProps
-  dragHandleProps?: DraggableProvidedDragHandleProps | null
+  innerRef?: (node: HTMLDivElement | null) => void
+  style?: CSSProperties
+  dragAttributes?: DraggableAttributes
+  dragListeners?: DraggableSyntheticListeners
   dragging?: boolean
   dimmed?: boolean
   actions?: ReactNode
@@ -327,7 +309,7 @@ function FieldRowView({ label, gripLabel, innerRef, draggableProps, dragHandlePr
   return (
     <div
       ref={innerRef}
-      {...(draggableProps ?? {})}
+      style={style}
       className={cn(
         'flex min-w-0 items-center gap-1 rounded-lg border border-[var(--nova-border-soft)] bg-[var(--nova-surface-2)] px-1.5 py-1 transition-[border-color,background-color,opacity,box-shadow]',
         dragging && 'border-[var(--nova-accent)] shadow-lg',
@@ -336,7 +318,8 @@ function FieldRowView({ label, gripLabel, innerRef, draggableProps, dragHandlePr
     >
       <button
         type="button"
-        {...(dragHandleProps ?? {})}
+        {...dragAttributes}
+        {...dragListeners}
         className="flex size-7 shrink-0 cursor-grab items-center justify-center rounded-md text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] active:cursor-grabbing"
         aria-label={gripLabel}
       >

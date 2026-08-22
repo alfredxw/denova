@@ -183,7 +183,7 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
         return nextSnapshot
       } catch (error) {
         if (requestSeq === snapshotRequestSeqRef.current) {
-          console.error('[interactive-layout] 刷新互动快照失败', error)
+          console.error('[interactive-layout] Failed to refresh interactive snapshot', error)
           if (!silent) setSnapshotLoadFailed(true)
         }
         if (silent) return
@@ -289,7 +289,7 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
       .then(() => selectInteractiveStory(storyId))
     storySelectionQueueRef.current = persisted
     void persisted.catch((error) => {
-      console.error('[interactive-layout] 持久化当前故事线失败', { storyId, error })
+      console.error('[interactive-layout] Failed to persist the active story', { storyId, error })
     })
   }, [setCurrentStoryId])
 
@@ -297,16 +297,16 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
     const uniqueStoryIds = Array.from(new Set(storyIds.filter(Boolean)))
     if (uniqueStoryIds.length === 0) return
 
-    console.info('[interactive-layout] 开始删除故事线', { count: uniqueStoryIds.length, storyIds: uniqueStoryIds })
+    console.info('[interactive-layout] Deleting stories', { count: uniqueStoryIds.length, storyIds: uniqueStoryIds })
     const results = await Promise.allSettled(uniqueStoryIds.map((storyId) => deleteInteractiveStory(storyId)))
     await reloadStories()
     const failed = results.flatMap((result, index) => result.status === 'rejected' ? [{ storyId: uniqueStoryIds[index], reason: result.reason }] : [])
     if (failed.length > 0) {
-      console.error('[interactive-layout] 删除故事线失败', { requested: uniqueStoryIds.length, failed })
+      console.error('[interactive-layout] Failed to delete stories', { requested: uniqueStoryIds.length, failed })
       const reason = failed[0].reason
       throw reason instanceof Error ? reason : new Error(String(reason))
     }
-    console.info('[interactive-layout] 故事线删除完成', { count: uniqueStoryIds.length })
+    console.info('[interactive-layout] Stories deleted', { count: uniqueStoryIds.length })
   }
 
   const handleStorySetupUpdate = async (input: StoryCreateInput) => {

@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { fetchSettings, patchSettings, refreshSettings } from '@/features/settings/api'
+import { fetchSettings, patchSettings } from '@/features/settings/api'
+import { GLOBAL_SETTINGS_TARGET, subscribeSettingsTarget } from '@/features/settings/query'
 import type { LayeredSettings } from '@/features/settings/types'
 import {
   DEFAULT_AGENT_APPROVAL_MODE,
@@ -56,7 +57,6 @@ export function AgentApprovalProvider({ children }: { children: ReactNode }) {
       if (!saved) throw new Error('server response did not include the saved user mode')
       setModeState(saved)
       setInitialized(true)
-      window.dispatchEvent(new CustomEvent('nova:settings-updated', { detail: { source: 'agent-approval-provider' } }))
       return true
     } catch (reason) {
       console.error('[agent-approval] failed to save the user safety mode', reason)
@@ -68,18 +68,10 @@ export function AgentApprovalProvider({ children }: { children: ReactNode }) {
   }, [])
 
   useEffect(() => {
-    const reloadExternalChange = (event: Event) => {
-      const source = (event as CustomEvent<{ source?: string }>).detail?.source
-      if (source === 'agent-approval-provider') return
-      void refreshSettings().then((settings) => {
-        setModeState(resolveAgentApprovalMode(settings))
-        setInitialized(true)
-      }).catch((reason) => {
-        console.warn('[agent-approval] failed to refresh the safety mode after a settings update', reason)
-      })
-    }
-    window.addEventListener('nova:settings-updated', reloadExternalChange)
-    return () => window.removeEventListener('nova:settings-updated', reloadExternalChange)
+    return subscribeSettingsTarget(GLOBAL_SETTINGS_TARGET, (settings) => {
+      setModeState(resolveAgentApprovalMode(settings))
+      setInitialized(true)
+    })
   }, [])
 
   const value = useMemo<AgentApprovalContextValue>(() => ({

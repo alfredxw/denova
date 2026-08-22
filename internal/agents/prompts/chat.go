@@ -30,8 +30,8 @@ Requirements:
 8. Do not output execution results outside <proposed_plan>.`
 }
 
-// ContextBoundary 在用户消息前追加上下文边界说明，强调当前请求才是“这次要做什么”，
-// 工作区/已确认小说状态是“背景是什么”，历史对话只能用于辅助理解。
+// ContextBoundary precedes a user message and distinguishes the current request
+// from workspace state and conversation history that provide background only.
 func ContextBoundary(message string) string {
 	return `[Context Boundary]
 - The current user request defines what to do now. Act only on this turn's request, explicit @ references, # scene-style selection, and editor selection.
@@ -44,14 +44,14 @@ Current request:
 ` + message
 }
 
-// InterruptedResume 描述上一轮异常中断的现场。
+// InterruptedResume describes the state left by an interrupted previous turn.
 type InterruptedResume struct {
 	UserMessage      string
 	AssistantContent string
 	Reason           string
 }
 
-// ResumeFromInterruption 在用户输入“继续”等指令时，把上一轮中断现场拼成本轮提示。
+// ResumeFromInterruption adds the previous interruption state when the user asks to continue.
 func ResumeFromInterruption(current string, prev InterruptedResume) string {
 	var sb strings.Builder
 	sb.WriteString("[Interrupted Run Recovery]\n")
@@ -72,7 +72,7 @@ func ResumeFromInterruption(current string, prev InterruptedResume) string {
 	return sb.String()
 }
 
-// StyleReference 表示一个可由 Agent 按路径读取的共享文风参考。
+// StyleReference identifies a shared style reference the Agent can read by path.
 type StyleReference struct {
 	Name        string
 	Description string
@@ -82,7 +82,7 @@ type StyleReference struct {
 	Error       string
 }
 
-// StyleRule 表示全局或「场景 → 文风参考」映射。
+// StyleRule maps either the global scope or a scene to a style reference.
 type StyleRule struct {
 	Global          bool
 	Scene           string
@@ -90,7 +90,7 @@ type StyleRule struct {
 	StyleContents   []string
 }
 
-// StyleRulesInstruction 把导演的文风参考索引拼成稳定 system prompt 片段。
+// StyleRulesInstruction renders the director's style index as a stable system prompt fragment.
 func StyleRulesInstruction(rules []StyleRule) string {
 	var sb strings.Builder
 	sb.WriteString("## Prose Style References\n\n")
@@ -154,16 +154,16 @@ func StyleRulesInstruction(rules []StyleRule) string {
 	return sb.String()
 }
 
-// ReferenceHeader 在用户 @ 引用文件块前追加的固定标题。
+// ReferenceHeader precedes files referenced by the user.
 const ReferenceHeader = "\n\n---\nFiles referenced by the user:\n"
 
-// ReferenceOverflowHint 引用内容总量超限时，提示后续文件未读取。
+// ReferenceOverflowHint reports that later references were omitted due to the size limit.
 const ReferenceOverflowHint = "The total referenced content exceeded the limit; subsequent files were not read.\n"
 
-// SelectionHeader 在编辑器选中片段块前追加的固定标题。
+// SelectionHeader precedes content selected in the editor.
 const SelectionHeader = "\n\n---\nText selected by the user in the editor; operate on this content:\n"
 
-// UnknownToolMessage LLM 调用了不存在工具时回灌给模型的可读错误。
+// UnknownToolMessage is returned to the model when it calls an unavailable tool.
 func UnknownToolMessage(name string) string {
 	return fmt.Sprintf(
 		"[tool error] Tool %q does not exist or is currently unavailable. Diagnose the error:\n"+

@@ -24,11 +24,11 @@ func main() {
 		return
 	}
 	if manifestPath == "" {
-		fmt.Fprintln(os.Stderr, "缺少 --manifest 参数")
+		fmt.Fprintln(os.Stderr, "Missing required --manifest argument")
 		os.Exit(2)
 	}
 	if err := update.RunUpdater(context.Background(), manifestPath, update.UpdaterOptions{}); err != nil {
-		fmt.Fprintf(os.Stderr, "应用更新失败: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Failed to apply update: %v\n", err)
 		os.Exit(1)
 	}
 }

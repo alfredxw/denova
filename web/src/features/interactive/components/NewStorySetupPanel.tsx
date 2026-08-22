@@ -74,7 +74,7 @@ export function NewStorySetupPanel({ stories, tellers, directors, imagePresets, 
       .then(([eventPackages, ruleSystems, actorStates]) => {
         if (!cancelled) setModuleCatalog({ eventPackages, ruleSystems, actorStates })
       })
-      .catch((reason) => console.error('[new-story-setup] 加载导演模块方案预设失败', reason))
+      .catch((reason) => console.error('[new-story-setup] Failed to load director module presets', reason))
     return () => { cancelled = true }
   }, [])
 

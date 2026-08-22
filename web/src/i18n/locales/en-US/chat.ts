@@ -539,11 +539,17 @@ const chat = {
   'chat.quick.targetFile': 'current file {{file}}',
   'chat.quick.targetWork': 'current work',
   'chat.quick.nextGroup': 'Next Group Outline',
+  'chat.quick.nextGroupPrompt': "Using the current outline, existing chapter prose, setting/progress.md, setting/character-states.md, and durable lore, create an outline for the next short narrative unit. Plan only the next group rather than generating many groups at once. Keep the outline concise and maintainable for reading, comments, and later updates, with only key points for each chapter and no long background explanations. If the existing prose has diverged from the outline, explain the deviation first and ask me whether to revise the outline or return to the main plot.",
   'chat.quick.writeNextChapter': 'Write Next Chapter from Outline',
+  'chat.quick.writeNextChapterPrompt': "Read the current chapter-group outline, long-term outline, setting/progress.md, setting/character-states.md, durable lore, and at least the two most recent actual chapters, then write the next chapter according to the outline. Before writing, use existing chapter paths and non-empty prose to determine the next chapter number, title, and volume; treat setting/progress.md only as a summary. If the chapter belongs to a volume, write it under chapters/<volume-name>/ using the configured chapter filename template. After self-review and the final revision for this turn, update setting/progress.md and setting/character-states.md in the same turn; chapter-status labels do not gate synchronization.",
   'chat.quick.continueParagraph': 'Continue Next Paragraph',
+  'chat.quick.continueParagraphPrompt': 'Continue the actual latest non-empty chapter with the next prose passage. Determine the target from existing chapter files and their non-empty content, not from the currently selected editor file or setting/progress.md. Read the end of that chapter and the necessary recent context, then append directly to the same chapter file while preserving narrative rhythm and character state. Do not create a new chapter or advance to the next outline item.',
   'chat.quick.polishChapter': 'Polish Current Chapter',
+  'chat.quick.polishChapterPrompt': 'Review and polish {{target}}, focusing on sentence rhythm, action writing, and emotional progression without changing the core plot.',
   'chat.quick.finalizeState': 'Sync Story State',
+  'chat.quick.finalizeStatePrompt': 'Check {{target}} for continuity with adjacent prose and the current chapter-group outline, then resynchronize setting/progress.md and setting/character-states.md from the actual prose. Update lore only when stable facts such as identity, characterization, long-term relationships, power systems, or world rules have clearly changed. Chapter status is only a UI editing marker; do not change the long-term outline unless I explicitly ask.',
   'chat.quick.consistencyCheck': 'Consistency Check',
+  'chat.quick.consistencyCheckPrompt': 'Check {{target}} for consistency, focusing on character motivation, timeline, objects, locations, and conflicts with surrounding prose.',
 } as const
 
 export default chat

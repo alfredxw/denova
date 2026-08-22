@@ -134,7 +134,7 @@ export function StoryImagePresetMenu({ story, presets, disabled, onChange }: { s
     try {
       await onChange(normalizeStoryImageSettings({ ...current, preset_id: presetId }))
     } catch (err) {
-      console.warn('[interactive-stage] 保存图像方案失败', err)
+      console.warn('[interactive-stage] Failed to save image preset', err)
     } finally {
       setSaving(false)
     }

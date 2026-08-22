@@ -74,25 +74,25 @@ func StyleRulesProtocolFooter() string {
 	return "Trigger rule: use prose-style references only for chapter prose creation, continuation, or rewriting, and for generating the next interactive-story turn. Global references apply to all prose generation by default. Before writing an interactive-story turn, use read to load every global reference path listed here. Choose scene-specific references only when they closely match the current chapter, interactive scene, or this turn's # scene selection; do not force a match. Before using a scene-specific path, read the actual file and use it only as guidance for voice, pacing, narration, sentence structure, and atmosphere. Do not copy its characters, plot, or setting.\nIgnore these references for brainstorming, outlines, setting work, Q&A, planning, and other non-prose tasks. If no scene clearly matches, do not select a scene-specific reference."
 }
 
-// SystemInstructionInput 用于构建 Agent 系统指令的可注入上下文。
+// SystemInstructionInput provides context for building Agent system instructions.
 type SystemInstructionInput struct {
-	// Workspace 当前作品工作目录的绝对路径，用于在指令中提示文件位置。
+	// Workspace is the absolute path to the current work and locates files in the instructions.
 	Workspace string
-	// StoryTellerID 是写作模式默认导演 ID；为空则不注入导演规则。
+	// StoryTellerID identifies the default writing director; empty omits director rules.
 	StoryTellerID string
-	// StoryTellerName 是写作模式默认导演名称。
+	// StoryTellerName is the default writing director's name.
 	StoryTellerName string
-	// StoryTellerDescription 是写作模式默认导演说明。
+	// StoryTellerDescription describes the default writing director.
 	StoryTellerDescription string
-	// StoryTellerPrompt 是写作模式可复用的导演 system/turn_context 规则。
+	// StoryTellerPrompt contains reusable director system and turn-context rules.
 	StoryTellerPrompt string
-	// StyleRules 是当前导演的文风参考；调用方需先按本轮 # 选择和大小上限过滤分场景规则。
+	// StyleRules contains director style references already filtered for this turn and size limit.
 	StyleRules []StyleRule
-	// ChapterFilenameFormat 是章节文件名模板，例如 ch{order:05}-{chapter}-{title}.md。
+	// ChapterFilenameFormat is the chapter filename template, such as ch{order:05}-{chapter}-{title}.md.
 	ChapterFilenameFormat string
-	// VolumeDirFormat 是分卷目录模板，例如 v{order:05}-{volume}。
+	// VolumeDirFormat is the volume directory template, such as v{order:05}-{volume}.
 	VolumeDirFormat string
-	// ChapterGroupMin / Max 是章节组建议规模。
+	// ChapterGroupMin and ChapterGroupMax define the recommended chapter-group size.
 	ChapterGroupMin int
 	ChapterGroupMax int
 }

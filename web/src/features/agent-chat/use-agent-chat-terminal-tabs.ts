@@ -4,6 +4,7 @@ import { createTabId, setTerminalTabTitle, type AgentChatWorkbenchState } from '
 import { getTerminalRuntimeStatus } from './terminal/api'
 import type { AgentChatTerminalStatus } from './terminal/TerminalTabView'
 import type { AgentChatGroupId, AgentChatTab, TerminalCommandProfile, TerminalProfileId } from './types'
+import { GLOBAL_SETTINGS_TARGET, subscribeSettingsTarget } from '@/features/settings/query'
 
 interface AgentChatTerminalTabsOptions {
   setWorkbench: Dispatch<SetStateAction<AgentChatWorkbenchState>>
@@ -26,9 +27,7 @@ export function useAgentChatTerminalTabs({ setWorkbench, openTab }: AgentChatTer
 
   useEffect(() => {
     void refreshCommands()
-    const onSettingsUpdated = () => void refreshCommands()
-    window.addEventListener('nova:settings-updated', onSettingsUpdated)
-    return () => window.removeEventListener('nova:settings-updated', onSettingsUpdated)
+    return subscribeSettingsTarget(GLOBAL_SETTINGS_TARGET, () => { void refreshCommands() })
   }, [refreshCommands])
 
   const openTerminal = useCallback((

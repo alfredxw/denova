@@ -39,7 +39,7 @@ export function AgentsView({ target, onClose, toolNavigationIntent }: { target: 
   const agentAvailable = targetKind === 'project'
   const [selectedLayer, setActiveLayer] = useState<SettingsLayer>('user')
   const activeLayer: SettingsLayer = targetKind === 'project' ? selectedLayer : 'user'
-  const { layered, draft, setDraft, error, autosaveStatus, autosaveError, reload, notifyUpdated, saveNow } = useLayeredSettingsDraft({
+  const { layered, draft, setDraft, error, autosaveStatus, autosaveError, reload, saveNow } = useLayeredSettingsDraft({
     target: resourceTarget,
     layer: activeLayer,
     sourcePrefix: 'agents-view',
@@ -111,10 +111,9 @@ export function AgentsView({ target, onClose, toolNavigationIntent }: { target: 
     void saveNow()
       .then(async () => {
         await reload()
-        notifyUpdated(activeLayer)
       })
       .catch(() => undefined)
-  }, [activeLayer, notifyUpdated, reload, saveNow])
+  }, [reload, saveNow])
 
   const switchLayer = async (layer: SettingsLayer) => {
     if (layer === activeLayer) return

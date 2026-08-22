@@ -640,8 +640,22 @@ func TestLoadLayeredKeepsGeneralSettingsUserScopedAndAppliesWorkspaceAgentOverri
 	if layered.Workspace.OpenAIModel != "" {
 		t.Fatalf("workspace general setting should be filtered: %s", layered.Workspace.OpenAIModel)
 	}
+	if layered.Inherited.User.OpenAIModel == "user-model" {
+		t.Fatalf("user inheritance must exclude the user layer")
+	}
+	if layered.Inherited.Workspace.OpenAIModel != "user-model" {
+		t.Fatalf("workspace inheritance must include the user layer: %s", layered.Inherited.Workspace.OpenAIModel)
+	}
 	if enabled, present := layered.Effective.AgentTools.IDE[AgentToolShell]; !present || enabled {
 		t.Fatalf("workspace Agent override should remain effective: %#v", layered.Effective.AgentTools.IDE)
+	}
+}
+
+func TestWithResolvedLabsNormalizesInheritedValues(t *testing.T) {
+	invalidCap := 0
+	resolved := withResolvedLabs(Settings{Labs: LabSettings{ContinualLearningTrajectoryCap: &invalidCap}})
+	if got := resolved.Labs.ContinualLearningTrajectoryCap; got == nil || *got != DefaultContinualLearningTrajectoryCap {
+		t.Fatalf("inherited trajectory cap = %v, want %d", got, DefaultContinualLearningTrajectoryCap)
 	}
 }
 

@@ -438,6 +438,7 @@ type LayeredSettings struct {
 	Global                     Settings                                 `json:"global"`
 	User                       Settings                                 `json:"user"`
 	Workspace                  Settings                                 `json:"workspace"`
+	Inherited                  SettingsInheritance                      `json:"inherited"`
 	Effective                  Settings                                 `json:"effective"`
 	Paths                      SettingsPaths                            `json:"paths"`
 	Revisions                  SettingsRevisions                        `json:"revisions"`
@@ -449,6 +450,14 @@ type LayeredSettings struct {
 	AgentToolCapabilities      []AgentToolCapabilityCatalogEntry        `json:"agent_tool_capabilities"`
 	ResolvedAgentToolManifests map[string][]ResolvedAgentToolCapability `json:"resolved_agent_tool_manifests"`
 	ResolvedAgentContexts      map[string]ResolvedAgentContextSettings  `json:"resolved_agent_contexts"`
+}
+
+// SettingsInheritance contains the authoritative value below each writable
+// layer. The Settings UI uses it for "inherit" labels without duplicating
+// Merge semantics in the frontend.
+type SettingsInheritance struct {
+	User      Settings `json:"user"`
+	Workspace Settings `json:"workspace"`
 }
 
 var (
@@ -712,6 +721,10 @@ func LoadLayeredWithGlobalAt(novaDir, workspace, projectConfigPath string, globa
 		global.NovaDir = globalDir
 	}
 	eff := Merge(Merge(Merge(def, global), user), ws)
+	inherited := SettingsInheritance{
+		User:      withResolvedLabs(Merge(Merge(def, global), ws)),
+		Workspace: withResolvedLabs(Merge(Merge(def, global), user)),
+	}
 	toolConfig := &Config{AgentTools: eff.AgentTools}
 	contextConfig := &Config{AgentContexts: eff.AgentContexts}
 	backendPort := settingsInt(eff.BackendPort, 8080)
@@ -734,6 +747,7 @@ func LoadLayeredWithGlobalAt(novaDir, workspace, projectConfigPath string, globa
 		Global:    global,
 		User:      user,
 		Workspace: ws,
+		Inherited: inherited,
 		Effective: eff,
 		Paths: SettingsPaths{
 			DenovaDir:       novaDir,
@@ -751,6 +765,17 @@ func LoadLayeredWithGlobalAt(novaDir, workspace, projectConfigPath string, globa
 		ResolvedAgentToolManifests: ResolveAgentToolManifestsForGOOS(toolConfig, runtime.GOOS),
 		ResolvedAgentContexts:      ResolveAgentContexts(contextConfig),
 	}, nil
+}
+
+func withResolvedLabs(settings Settings) Settings {
+	labs := ResolveLabs(settings.Labs)
+	settings.Labs = LabSettings{
+		DeveloperMode:                  boolPtr(labs.DeveloperMode),
+		ContinualLearningSchedule:      boolPtr(labs.ContinualLearningSchedule),
+		ContinualLearningIntervalHours: intPtr(labs.ContinualLearningIntervalHours),
+		ContinualLearningTrajectoryCap: intPtr(labs.ContinualLearningTrajectoryCap),
+	}
+	return settings
 }
 
 // PrepareWorkspaceAgentSettingsForWrite replaces only the Agent overrides that

@@ -120,6 +120,7 @@ export function MarkdownEditor({
   const [selectedCharacters, setSelectedCharacters] = useState(0)
   const [documentCharacters, setDocumentCharacters] = useState(chapterSummary?.words ?? 0)
   const [currentLine, setCurrentLine] = useState(1)
+  const [editorFocused, setEditorFocused] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchIndex, setSearchIndex] = useState(0)
@@ -316,12 +317,18 @@ export function MarkdownEditor({
       updateCharacterStats(editor, setSelectedCharacters)
       setCurrentLine(getLineNumber(editor.state.doc, editor.state.selection.head))
     }
+    const handleFocus = () => setEditorFocused(true)
+    const handleBlur = () => setEditorFocused(false)
     updateDocumentStats()
     editor.on('update', updateDocumentStats)
     editor.on('selectionUpdate', updateSelectionStats)
+    editor.on('focus', handleFocus)
+    editor.on('blur', handleBlur)
     return () => {
       editor.off('update', updateDocumentStats)
       editor.off('selectionUpdate', updateSelectionStats)
+      editor.off('focus', handleFocus)
+      editor.off('blur', handleBlur)
     }
   }, [editor])
 
@@ -529,7 +536,7 @@ export function MarkdownEditor({
         chapterPath={chapterSummary?.path}
         chapterWords={chapterSummary ? documentCharacters : undefined}
         updatedAt={chapterSummary?.updated_at}
-        currentLine={chapterSummary ? currentLine : undefined}
+        currentLine={chapterSummary && editorFocused ? currentLine : undefined}
         saveStatus={saveStatus}
         onSave={handleSave}
         settingsOpen={settingsOpen}

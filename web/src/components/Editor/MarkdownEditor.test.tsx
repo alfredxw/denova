@@ -266,6 +266,11 @@ describe('MarkdownEditor', () => {
     )
 
     expect(screen.getByText('10 字')).toBeInTheDocument()
+    expect(screen.queryByText('行 1')).not.toBeInTheDocument()
+
+    act(() => {
+      tiptapMock.emit('focus')
+    })
     expect(screen.getByText('行 1')).toBeInTheDocument()
 
     tiptapMock.editor.storage.characterCount.characters.mockReturnValue(11)
@@ -281,6 +286,11 @@ describe('MarkdownEditor', () => {
 
     expect(screen.getByText('11 字')).toBeInTheDocument()
     expect(screen.getByText('行 3')).toBeInTheDocument()
+
+    act(() => {
+      tiptapMock.emit('blur')
+    })
+    expect(screen.queryByText('行 3')).not.toBeInTheDocument()
   })
 
   it('注册 TipTap table 扩展以展示 GFM Markdown 表格', () => {

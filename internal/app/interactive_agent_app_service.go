@@ -210,7 +210,7 @@ func (s *InteractiveAppService) startInteractiveTask(ctx context.Context, reques
 	a.mu.RLock()
 	if a.interactive == nil || a.bookState == nil || a.cfg == nil || a.executionRuntime == nil {
 		a.mu.RUnlock()
-		slog.InfoContext(ctx, "[interactive-agent-task] 未选择 workspace，无法启动任务")
+		slog.InfoContext(ctx, "[interactive-agent-task] Cannot start task without a selected workspace")
 		return nil, ErrNoWorkspace
 	}
 	workspace := a.workspace

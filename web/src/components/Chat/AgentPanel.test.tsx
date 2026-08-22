@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import '@/test/msw/server'
 import { fetchSettings, refreshSettings } from '@/features/settings/api'
 import { usePersistedUserSettings } from '@/hooks/usePersistedUserSettings'
+import { setConfiguredLocale } from '@/i18n'
 import { createAgentToolMessage } from '@/lib/agent-ui-message'
 import { AgentPanel, WRITING_COMPOSER_SETTING_DEFAULTS, type WritingComposerSettingsController } from './AgentPanel'
 
@@ -83,6 +84,7 @@ vi.mock('@/features/changes/use-change-review', async (importOriginal) => ({
 
 describe('AgentPanel', () => {
   beforeEach(() => {
+    setConfiguredLocale('zh-CN')
     vi.mocked(fetchSettings).mockClear()
     vi.mocked(refreshSettings).mockReset().mockImplementation(() => fetchSettings())
     vi.mocked(updateUserSettings).mockClear()
@@ -139,6 +141,7 @@ describe('AgentPanel', () => {
   })
 
   afterEach(() => {
+    setConfiguredLocale('zh-CN')
     vi.useRealTimers()
   })
 
@@ -240,12 +243,28 @@ describe('AgentPanel', () => {
     await user.click(screen.getByRole('button', { name: '续写下一段' }))
 
     expect(handleSend).toHaveBeenCalledWith(
-      expect.stringContaining('actual latest non-empty chapter'),
+      expect.stringContaining('实际最新的非空章节'),
       expect.objectContaining({ writingSkill: 'novel-lite' }),
     )
-    expect(handleSend.mock.calls[0][0]).toContain('not from the currently selected editor file')
-    expect(handleSend.mock.calls[0][0]).toContain('Do not create a new chapter')
+    expect(handleSend.mock.calls[0][0]).toContain('不要以当前编辑器选中的文件')
+    expect(handleSend.mock.calls[0][0]).toContain('不要创建新章节')
     expect(handleSend.mock.calls[0][0]).not.toContain('第一章 穿越与觉醒')
+  })
+
+  it('英文界面的快捷创作发送对应英文提示', async () => {
+    const user = userEvent.setup()
+    const handleSend = vi.fn()
+    act(() => setConfiguredLocale('en-US'))
+    renderAgentPanel({ onSend: handleSend })
+
+    await user.click(screen.getByRole('button', { name: 'Continue Next Paragraph' }))
+
+    expect(handleSend).toHaveBeenCalledWith(
+      expect.stringContaining('Continue the actual latest non-empty chapter'),
+      expect.objectContaining({ writingSkill: 'novel-lite' }),
+    )
+    expect(handleSend.mock.calls[0][0]).toContain('Do not create a new chapter')
+    expect(handleSend.mock.calls[0][0]).not.toContain('续写实际最新的非空章节正文')
   })
 
   it('创作 Agent 将思考和工具调用折叠到同一个执行过程', async () => {

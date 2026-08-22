@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"denova/internal/revisionfile"
@@ -39,32 +38,13 @@ func attachBuiltinActorStateLegacyPaths(id string, system StoryDirectorActorStat
 }
 
 func (l *ActorStateLibrary) List() ([]ActorStateModule, error) {
-	if err := l.ensureBuiltins(); err != nil {
-		return nil, err
-	}
-	files, err := filepath.Glob(filepath.Join(l.dir(), "*.json"))
-	if err != nil {
-		return nil, err
-	}
-	items := make([]ActorStateModule, 0, len(files))
-	for _, file := range files {
-		item, err := parseActorStateFile(file)
-		if err != nil {
-			items = append(items, ActorStateModule{ID: strings.TrimSuffix(filepath.Base(file), ".json"), Path: file, Invalid: true, Error: err.Error(), Custom: !IsBuiltinActorStateID(strings.TrimSuffix(filepath.Base(file), ".json"))})
-			continue
-		}
-		item.Path = file
-		item = applyActorStateOwnership(item)
-		items = append(items, item)
-	}
-	sortActorStates(items)
-	return items, nil
+	return listDirectorModuleFiles(l.dir(), l.ensureBuiltins, parseActorStateFile,
+		func(id, path string, err error) ActorStateModule {
+			return ActorStateModule{ID: id, Path: path, Invalid: true, Error: err.Error(), Custom: !IsBuiltinActorStateID(id)}
+		}, applyActorStateOwnership, sortActorStates)
 }
 
 func (l *ActorStateLibrary) Get(id string) (ActorStateModule, error) {
-	if err := l.ensureBuiltins(); err != nil {
-		return ActorStateModule{}, err
-	}
 	id = normalizeDirectorModuleID(id)
 	if id == "" {
 		id = DefaultActorStateModuleID
@@ -72,11 +52,7 @@ func (l *ActorStateLibrary) Get(id string) (ActorStateModule, error) {
 	if err := validateDirectorModuleID(id, "状态系统"); err != nil {
 		return ActorStateModule{}, err
 	}
-	item, err := parseActorStateFile(filepath.Join(l.dir(), id+".json"))
-	if err != nil {
-		return ActorStateModule{}, err
-	}
-	return applyActorStateOwnership(item), nil
+	return getDirectorModuleFile(l.dir(), id, l.ensureBuiltins, parseActorStateFile, applyActorStateOwnership)
 }
 
 func (l *ActorStateLibrary) Create(item ActorStateModule) (ActorStateModule, error) {
@@ -164,19 +140,9 @@ func (l *ActorStateLibrary) dir() string {
 }
 
 func (l *ActorStateLibrary) ensureBuiltins() error {
-	if err := os.MkdirAll(l.dir(), 0o755); err != nil {
-		return err
-	}
-	for _, builtin := range builtinActorStateModules() {
-		path := filepath.Join(l.dir(), builtin.ID+".json")
-		if current, err := parseActorStateFile(path); err == nil && current.BuiltinOverridden {
-			continue
-		} else if err == nil && current.ID == builtin.ID && current.Version == storyDirectorModuleVersion && !actorStateDiffersFromBuiltin(current) {
-			continue
-		}
-		if err := writeActorStateFile(path, builtin); err != nil {
-			return err
-		}
-	}
-	return nil
+	return ensureBuiltinModuleFiles(l.dir(), builtinActorStateModules(),
+		func(item ActorStateModule) string { return item.ID }, parseActorStateFile,
+		func(current, builtin ActorStateModule) bool {
+			return current.BuiltinOverridden || current.ID == builtin.ID && current.Version == storyDirectorModuleVersion && !actorStateDiffersFromBuiltin(current)
+		}, writeActorStateFile)
 }

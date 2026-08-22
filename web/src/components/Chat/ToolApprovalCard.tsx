@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import type { AgentAskResolution } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { normalizeAgentApprovalMode } from '@/features/agent-approval/modes'
+import { refreshSettings } from '@/features/settings/api'
 import type { AskInteractionMessage, AskInteractionResolver } from './AskInteractionCard'
 
 type ApprovalOption = 'allow-once' | 'allow-workspace' | 'deny'
@@ -72,8 +73,10 @@ export function ToolApprovalPanel({ message, onResolve, embedded = false, onLayo
       })
       setLocalResolution(resolution)
       const resolvedOption = resolution.answers?.[0]?.selected_options?.[0]?.id
-      if (resolution.status === 'answered' && resolvedOption === 'allow-workspace' && typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('nova:settings-updated', { detail: { source: 'tool-approval' } }))
+      if (resolution.status === 'answered' && resolvedOption === 'allow-workspace') {
+        void refreshSettings().catch((reason) => {
+          console.warn('[tool-approval] Failed to refresh settings after saving a workspace rule', reason)
+        })
       }
     } catch {
       setError(t('agentApproval.approval.submitFailed'))

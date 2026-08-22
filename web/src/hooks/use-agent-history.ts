@@ -43,7 +43,7 @@ export function useWritingAgentHistory({ setMessages, client = writingAgentChatC
       setActiveSessionId(fixedSessionId || list.find((item) => item.active)?.id || list[0]?.id || '')
       return list
     } catch (error) {
-      console.error('加载会话列表失败', error)
+      console.error('Failed to load the conversation list', error)
       return []
     }
   }, [client, fixedSessionId])
@@ -78,7 +78,7 @@ export function useWritingAgentHistory({ setMessages, client = writingAgentChatC
       try {
         await loadHistoryAuthoritative(sessionId)
       } catch (error) {
-        console.error('加载历史失败', error)
+        console.error('Failed to load conversation history', error)
       }
     },
     [loadHistoryAuthoritative],
@@ -110,7 +110,7 @@ export function useWritingAgentHistory({ setMessages, client = writingAgentChatC
       setMessages((messages) => normalizeAgentUIMessages([...earlierMessages, ...messages]))
     } catch (error) {
       if (historyGeneration === historyRequestGenerationRef.current && requestID === earlierHistoryRequestRef.current) {
-        console.error('加载更早历史失败', error)
+        console.error('Failed to load earlier conversation history', error)
       }
     } finally {
       if (requestID === earlierHistoryRequestRef.current) {

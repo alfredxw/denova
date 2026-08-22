@@ -7,6 +7,13 @@ import { queryClient } from '@/lib/query-client'
 import { useSkillCommands } from './useSkillCommands'
 
 vi.mock('@/features/settings/api', () => ({ fetchProjectSettings: vi.fn() }))
+vi.mock('@/features/settings/query', () => ({
+  projectSettingsTarget: (projectId: string) => ({ kind: 'project', projectId }),
+  settingsQueryOptions: (target: { projectId: string }) => ({
+    queryKey: ['settings', 'project', target.projectId],
+    queryFn: async () => (await import('@/features/settings/api')).fetchProjectSettings(target.projectId),
+  }),
+}))
 vi.mock('@/lib/api', () => ({
   getSkills: vi.fn(),
   projectSkillTarget: (projectId: string) => ({ kind: 'project', projectId }),

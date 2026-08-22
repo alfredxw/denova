@@ -52,7 +52,7 @@ export function LoreClassificationDialog({
       })
       .catch((err) => {
         if (cancelled) return
-        console.warn('[lore-classification] 生成分类预览失败', err)
+        console.warn('[lore-classification] Failed to generate classification preview', err)
         setPreview(null)
         setError(t('settingPanel.loreClassification.previewFailed'))
       })
@@ -91,7 +91,7 @@ export function LoreClassificationDialog({
       toast.success(t('settingPanel.loreClassification.applied', { count: result.updated.length }))
       onOpenChange(false)
     } catch (err) {
-      console.warn('[lore-classification] 应用分类失败', err)
+      console.warn('[lore-classification] Failed to apply classification', err)
       setError(t('settingPanel.loreClassification.applyFailed'))
     } finally {
       setApplying(false)

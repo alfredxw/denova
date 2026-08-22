@@ -11,6 +11,7 @@ import {
   refreshProjectSettings,
   refreshSettings,
 } from '@/features/settings/api'
+import { GLOBAL_SETTINGS_TARGET, projectSettingsTarget, subscribeSettingsTarget } from '@/features/settings/query'
 import {
   DEFAULT_IMAGE_API_PROFILE_ID,
   imageAPIProfileID,
@@ -39,8 +40,6 @@ type ImageAgentModelSelection =
 interface ModelMenuOption extends PersistedSettingsMenuOption {
   currentLabel: string
 }
-
-let nextImageAgentModelMenuSourceID = 1
 
 /** Shared composer shortcuts for the Image Agent's reasoning and output models. */
 export function ImageAgentModelSettingsMenu({ disabled = false, projectId = '' }: ImageAgentModelSettingsMenuProps) {
@@ -99,11 +98,6 @@ function useImageAgentModelSettings(projectId: string) {
   const [settings, setSettings] = useState<LayeredSettings | null>(null)
   const [saving, setSaving] = useState<ImageAgentModelSelection | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [eventSource] = useState(() => {
-    const source = `image-agent-model-menu-${nextImageAgentModelMenuSourceID}`
-    nextImageAgentModelMenuSourceID += 1
-    return source
-  })
   const mountedRef = useRef(true)
   const loadSequenceRef = useRef(0)
 
@@ -137,15 +131,11 @@ function useImageAgentModelSettings(projectId: string) {
   }, [load])
 
   useEffect(() => {
-    const onSettingsUpdated = (event: Event) => {
-      const detail = (event as CustomEvent<{ source?: string; projectId?: string }>).detail
-      if (detail?.source === eventSource) return
-      if (detail?.projectId && detail.projectId !== projectId) return
-      void load(true)
-    }
-    window.addEventListener('nova:settings-updated', onSettingsUpdated)
-    return () => window.removeEventListener('nova:settings-updated', onSettingsUpdated)
-  }, [eventSource, load])
+    const target = projectId ? projectSettingsTarget(projectId) : GLOBAL_SETTINGS_TARGET
+    return subscribeSettingsTarget(target, (snapshot) => {
+      if (mountedRef.current) setSettings(snapshot)
+    })
+  }, [projectId])
 
   const select = useCallback(async (selection: ImageAgentModelSelection) => {
     if (!settings || saving || selectionMatchesSettings(settings, selection)) return
@@ -179,12 +169,6 @@ function useImageAgentModelSettings(projectId: string) {
         loadSequenceRef.current += 1
         setSettings(next)
       }
-      window.dispatchEvent(new CustomEvent('nova:settings-updated', {
-        detail: {
-          source: eventSource,
-          projectId: layer === 'workspace' ? projectId : undefined,
-        },
-      }))
     } catch (cause) {
       if (!mountedRef.current) return
       const message = cause instanceof Error ? cause.message : String(cause)
@@ -197,7 +181,7 @@ function useImageAgentModelSettings(projectId: string) {
     } finally {
       if (mountedRef.current) setSaving(null)
     }
-  }, [eventSource, projectId, saving, settings])
+  }, [projectId, saving, settings])
 
   return { settings, saving, error, select }
 }
