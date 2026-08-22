@@ -1324,7 +1324,8 @@ describe('MessageItem', () => {
 
     const header = container.querySelector('[data-nova-tool-header]')
     expect(header).toHaveClass('grid', 'min-h-9', 'grid-cols-[auto_minmax(0,1fr)]', 'px-2.5', 'text-left')
-    expect(header?.parentElement).toHaveClass('text-[11px]')
+    expect(header?.parentElement).toHaveClass('text-[11px]', 'shadow-sm')
+    expect(header?.parentElement).not.toHaveClass('shadow-[var(--nova-shadow)]')
     expect(header).toHaveAttribute('aria-expanded', 'false')
     expect(screen.getByText(longToolName)).toHaveClass('min-w-0', 'truncate')
     expect(screen.getByText(longAgentName)).toHaveClass('truncate')

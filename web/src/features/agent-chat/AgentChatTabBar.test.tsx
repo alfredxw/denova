@@ -63,7 +63,8 @@ describe('AgentChatTabBar', () => {
 
     const activeTab = screen.getByRole('tab', { name: /Lore tab/ })
     expect(screen.getByRole('tablist')).toHaveClass('!h-full')
-    expect(screen.getByRole('tablist').parentElement?.parentElement).toHaveClass('h-10', 'pt-1')
+    expect(screen.getByRole('tablist').parentElement?.parentElement).toHaveClass('h-9')
+    expect(screen.getByRole('tablist').parentElement?.parentElement).not.toHaveClass('pt-1')
     expect(activeTab).toHaveAttribute('aria-selected', 'true')
     expect(activeTab.className).toContain('aria-selected:bg-[var(--nova-active)]')
     expect(screen.getByRole('tab', { name: /Writing tab/ })).toHaveAttribute('aria-selected', 'false')

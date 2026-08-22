@@ -81,7 +81,7 @@ export function ToolExecutionBlock({ message, showAgentSource = true, onResolve,
 
   return (
     <div className="flex justify-start">
-      <Tool open={expanded} onOpenChange={setExpanded} className="mb-0 w-full overflow-hidden rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface)] text-[11px] shadow-[var(--nova-shadow)]">
+      <Tool open={expanded} onOpenChange={setExpanded} className="mb-0 w-full overflow-hidden rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface)] text-[11px] shadow-sm">
         <CollapsibleTrigger
           type="button"
           disabled={!canToggleDetail}
@@ -180,7 +180,7 @@ export function ToolResultBlock({ content }: { content: string }) {
 
   return (
     <div className="flex justify-start">
-      <div className="w-full overflow-hidden rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface)] text-xs shadow-[var(--nova-shadow)]">
+      <div className="w-full overflow-hidden rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface)] text-xs shadow-sm">
         <div className="flex items-start gap-3 px-3 py-2.5">
           <span className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md border ${tone}`}>
             {severity === 'error'

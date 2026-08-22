@@ -89,7 +89,7 @@ export const WritingSidebar = memo(function WritingSidebar({
 
   return (
     <section className="nova-sidebar flex h-full flex-col border-r">
-      <div className="border-b border-[var(--nova-border)] px-3 py-2">
+      <div data-slot="writing-sidebar-view-switcher" className="px-3 py-2">
         <div className="grid grid-cols-3 gap-1">
           {(['outline', 'files', 'search'] as const).map((view) => (
             <button

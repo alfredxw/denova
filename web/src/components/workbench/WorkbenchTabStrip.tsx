@@ -98,7 +98,7 @@ export function WorkbenchTabStrip({
   return (
     <div
       className={cn(
-        'nova-sidebar flex h-10 shrink-0 items-stretch border-b border-[var(--nova-border)] bg-[var(--nova-surface)] pt-1 text-xs',
+        'nova-sidebar flex h-9 shrink-0 items-stretch border-b border-[var(--nova-border)] bg-[var(--nova-surface)] text-xs',
         className,
       )}
       {...props}
