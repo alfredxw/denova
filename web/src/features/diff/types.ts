@@ -18,6 +18,8 @@ export type DiffLayout = 'unified' | 'split'
 export interface DiffFileNavigationItem {
   path: string
   kind: DiffFileKind
+  additions?: number
+  deletions?: number
   conflicted?: boolean
   accepted?: boolean
 }

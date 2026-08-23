@@ -1,4 +1,4 @@
-export interface MonacoTextPosition {
+export interface TextPosition {
   lineNumber: number
   column: number
 }
@@ -31,7 +31,7 @@ export class Utf8OffsetIndex {
     this.lineCount = this.lines.length
   }
 
-  positionAtByteOffset(offset: number): MonacoTextPosition {
+  positionAtByteOffset(offset: number): TextPosition {
     const target = clampInteger(offset, 0, this.byteLength)
     const lineIndex = findLineByByteOffset(this.lines, target)
     const line = this.lines[lineIndex]
@@ -42,7 +42,7 @@ export class Utf8OffsetIndex {
     }
   }
 
-  byteOffsetAtPosition(position: MonacoTextPosition): number {
+  byteOffsetAtPosition(position: TextPosition): number {
     const lineIndex = clampInteger(position.lineNumber, 1, this.lines.length) - 1
     const line = this.lines[lineIndex]
     const requestedUnits = clampInteger(position.column, 1, line.utf16End - line.utf16Start + 1) - 1

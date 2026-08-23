@@ -1,10 +1,9 @@
-import { lazy, Suspense, useMemo } from 'react'
+import { useMemo } from 'react'
 import {
   ChevronsDownUp,
   ChevronsUpDown,
   Columns2,
   FileCode2,
-  Loader2,
   PanelLeft,
   PanelRightClose,
   PanelRightOpen,
@@ -18,14 +17,11 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
-import { DiffFileSection } from '@/features/diff/DiffFileSection'
-import { MultiFileDiffViewport } from '@/features/diff/MultiFileDiffViewport'
+import { CodeDiffSurface, type CodeDiffSurfaceFile } from '@/features/diff/CodeDiffSurface'
+import { lineDiffStats } from '@/features/changes/diff-stats'
 import type { DiffFileDocument, DiffFileNavigationItem, DiffLayout } from '@/features/diff/types'
 import { useMultiFileDiffNavigation } from '@/features/diff/use-multi-file-diff-navigation'
-import { loadReviewDiffEditor } from '@/features/changes/review/review-editor-loader'
 import { formatBytes, formatTime, sourceText } from './version-panel-utils'
-
-const DiffEditor = lazy(() => loadReviewDiffEditor().then((module) => ({ default: module.DiffEditor })))
 
 export type VersionDiffMode = DiffLayout
 
@@ -66,6 +62,14 @@ export function VersionDiffWorkspace({
 }: VersionDiffWorkspaceProps) {
   const { t } = useTranslation()
   const files = useMemo(() => versionDiffDocuments(summary, summaryRevision), [summary, summaryRevision])
+  const surfaceFiles = useMemo<CodeDiffSurfaceFile[]>(() => files.map((file) => ({
+    ...file,
+    unavailableContent: file.binary
+      ? t('versions.fileBinary')
+      : !file.text
+        ? t('versions.diffReadFailed')
+        : undefined,
+  })), [files, t])
   const paths = useMemo(() => files.map((file) => file.path), [files])
   const navigatorFiles = useMemo<DiffFileNavigationItem[]>(() => files.map((file) => ({
     path: file.path,
@@ -75,6 +79,12 @@ export function VersionDiffWorkspace({
     identity: `${targetVersion?.id ?? 'empty'}:${summary?.comparison ?? 'none'}`,
     paths,
   })
+  const diffTotals = useMemo(() => files.reduce((totals, file) => {
+    const stats = lineDiffStats(file.before_content, file.after_content)
+    totals.additions += stats.additions
+    totals.deletions += stats.deletions
+    return totals
+  }, { additions: 0, deletions: 0 }), [files])
   const title = currentSelection
     ? t('versions.currentChanges')
     : targetVersion?.message || t('versions.emptyMessage')
@@ -89,32 +99,25 @@ export function VersionDiffWorkspace({
   return (
     <main className="flex h-full min-h-0 min-w-0 flex-col bg-[var(--nova-bg)] text-[var(--nova-text)]">
       <header className="shrink-0 border-b border-[var(--nova-border)] bg-[var(--nova-surface)]">
-        <div className="flex min-h-12 items-center gap-2 px-2.5 py-1.5 sm:px-3">
+        <div className="flex min-h-12 flex-wrap items-center gap-1.5 px-2.5 py-1.5 sm:px-3">
           {isMobile && (
             <Button type="button" variant="outline" size="icon-sm" onClick={onOpenSidebar} aria-label={t('versions.openHistorySidebar')}>
               <PanelLeft />
             </Button>
           )}
-          <div className="min-w-0 flex-1">
+          <div className="min-w-40 flex-1">
             <div className="flex min-w-0 items-center gap-2">
               <h2 className="truncate text-sm font-semibold">{title}</h2>
               {targetVersion && <Badge variant="secondary" className="max-w-32 truncate text-[10px]">{sourceText(targetVersion.source, t)}</Badge>}
             </div>
             <p className="mt-0.5 truncate text-[11px] text-[var(--nova-text-faint)]">{description}</p>
           </div>
-          {targetVersion && !currentSelection && (
-            <Button type="button" variant="outline" size="sm" onClick={onRestoreVersion} disabled={restoring} aria-label={t('versions.restoreVersion')} className="border-destructive/50 px-2 text-destructive hover:bg-destructive/10 hover:text-destructive sm:px-3">
-              <RotateCcw />
-              <span className="hidden sm:inline">{t('versions.restoreVersion')}</span>
-            </Button>
-          )}
-        </div>
-
-        <div className="flex min-h-9 flex-wrap items-center gap-1.5 border-t border-[var(--nova-border-soft)] px-2.5 py-1">
           <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--nova-text-muted)]">
             {t('changes.filesChanged', { count: files.length })}
           </span>
-          <Badge variant="outline" className="mr-auto text-[10px]">{t('versions.diffReadOnly')}</Badge>
+          <span className="font-mono text-[10px] tabular-nums text-[var(--nova-success)]">+{diffTotals.additions}</span>
+          <span className="font-mono text-[10px] tabular-nums text-[var(--nova-danger)]">−{diffTotals.deletions}</span>
+          <Badge variant="outline" className="hidden text-[10px] lg:inline-flex">{t('versions.diffReadOnly')}</Badge>
 
           <div role="group" aria-label={t('versions.diffLayout')} className="flex h-7 items-center rounded-md border border-[var(--nova-border)] bg-[var(--nova-bg)] p-0.5">
             <button
@@ -156,45 +159,27 @@ export function VersionDiffWorkspace({
           >
             <NavigatorIcon />
           </Button>
+          {targetVersion && !currentSelection && (
+            <Button type="button" variant="outline" size="sm" onClick={onRestoreVersion} disabled={restoring} aria-label={t('versions.restoreVersion')} className="border-destructive/50 px-2 text-destructive hover:bg-destructive/10 hover:text-destructive sm:px-3">
+              <RotateCcw />
+              <span className="hidden sm:inline">{t('versions.restoreVersion')}</span>
+            </Button>
+          )}
         </div>
       </header>
 
-      <MultiFileDiffViewport
-        files={loading ? [] : files}
+      <CodeDiffSurface
+        files={loading ? [] : surfaceFiles}
         navigatorFiles={loading ? [] : navigatorFiles}
         navigation={navigation}
+        layout={mode}
         ariaLabel={t('versions.diffLayout')}
         empty={versionDiffEmptyState({ loading, targetVersion, t })}
-        renderFile={(file, state) => (
-          <DiffFileSection
-            key={file.path}
-            file={file}
-            layout={mode}
-            active={state.active}
-            preRender={state.preRender}
-            collapsed={state.collapsed}
-            sectionRef={state.sectionRef}
-            onToggle={state.onToggle}
-            action={targetVersion ? (
-              <Button type="button" size="xs" variant="ghost" disabled={restoring} onClick={() => onRestoreFile(file.path)}>
-                <Undo2 />{t('versions.restoreFile')}
-              </Button>
-            ) : null}
-            renderContent={({ initialHeight, onHeightChange }) => file.binary || !file.text ? (
-              <VersionFileUnavailable binary={file.binary === true} />
-            ) : (
-              <Suspense fallback={<VersionEditorLoading />}>
-                <DiffEditor
-                  surfaceID={`version:${targetVersion?.id ?? 'empty'}:${summary?.comparison ?? 'none'}`}
-                  file={file}
-                  layout={mode}
-                  initialHeight={initialHeight}
-                  onHeightChange={onHeightChange}
-                />
-              </Suspense>
-            )}
-          />
-        )}
+        renderHeaderAction={(file) => targetVersion ? (
+          <Button type="button" size="icon-xs" variant="ghost" disabled={restoring} onClick={() => onRestoreFile(file.path)} aria-label={t('versions.restoreFile')}>
+            <Undo2 />
+          </Button>
+        ) : null}
       />
 
       {targetVersion && (
@@ -247,22 +232,4 @@ function versionDiffEmptyState({ loading, targetVersion, t }: {
       </EmptyHeader>
     </Empty>
   )
-}
-
-function VersionFileUnavailable({ binary }: { binary: boolean }) {
-  const { t } = useTranslation()
-  return (
-    <Empty className="h-full rounded-none border-0">
-      <EmptyHeader>
-        <EmptyMedia variant="icon"><FileCode2 /></EmptyMedia>
-        <EmptyTitle>{t(binary ? 'versions.binaryFileTitle' : 'versions.diffUnavailable')}</EmptyTitle>
-        <EmptyDescription>{t(binary ? 'versions.fileBinary' : 'versions.diffReadFailed')}</EmptyDescription>
-      </EmptyHeader>
-    </Empty>
-  )
-}
-
-function VersionEditorLoading() {
-  const { t } = useTranslation()
-  return <div className="flex h-full items-center justify-center gap-2 text-xs text-[var(--nova-text-faint)]"><Loader2 className="size-4 animate-spin" />{t('versions.loadingDiff')}</div>
 }

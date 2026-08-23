@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ReviewThread, WorkspaceChangeGroup } from '../types'
 import { ChangeReviewWorkspace, deriveFeedbackComments } from './ChangeReviewWorkspace'
@@ -21,14 +21,30 @@ const queryMocks = vi.hoisted(() => ({
 
 vi.mock('../api', () => apiMocks)
 vi.mock('../use-change-review', () => queryMocks)
-vi.mock('./ReviewDiffEditor', () => ({
-  ReviewDiffEditor: ({ file, layout, onDraftChange, onHeightChange }: { file: { path: string; revision: string }; layout: string; onDraftChange?: (hasDraft: boolean) => void; onHeightChange?: (height: number) => void }) => (
-    <div data-testid="review-diff-editor" data-layout={layout} data-revision={file.revision}>
-      {file.path}
-      <button type="button" onClick={() => onDraftChange?.(true)}>开始评论草稿</button>
-      <button type="button" onClick={() => onDraftChange?.(false)}>取消评论草稿</button>
-      <button type="button" onClick={() => onHeightChange?.(999)}>更新高度 {file.path}</button>
-    </div>
+vi.mock('@/features/diff/CodeDiffSurface', () => ({
+  CodeDiffSurface: ({ files, layout, annotationsByPath, renderAnnotation, renderHeaderMeta, renderHeaderAction, onLineSelectionEnd }: {
+    files: Array<{ path: string; revision: string; after_exists?: boolean }>
+    layout: string
+    annotationsByPath?: Map<string, Array<{ side: string; lineNumber: number; metadata: unknown }>>
+    renderAnnotation?: (annotation: { side: string; lineNumber: number; metadata: unknown }, file: { path: string; revision: string }) => React.ReactNode
+    renderHeaderMeta?: (file: { path: string; revision: string; after_exists?: boolean }) => React.ReactNode
+    renderHeaderAction?: (file: { path: string; revision: string; after_exists?: boolean }) => React.ReactNode
+    onLineSelectionEnd?: (file: { path: string; revision: string; after_exists?: boolean }, range: { start: number; end: number; side: 'additions' }) => void
+  }) => (
+    <main aria-label="完整 Diff">
+      {files.map((file) => (
+        <section key={file.path} data-testid="review-diff-editor" data-layout={layout} data-revision={file.revision}>
+          {file.path}
+          {file.after_exists === false ? <span>已删除</span> : null}
+          {renderHeaderMeta?.(file)}
+          {renderHeaderAction?.(file)}
+          {(annotationsByPath?.get(file.path) ?? []).map((annotation, index) => (
+            <div key={index}>{renderAnnotation?.(annotation, file)}</div>
+          ))}
+          <button type="button" onClick={() => onLineSelectionEnd?.(file, { start: 1, end: 1, side: 'additions' })}>开始评论草稿</button>
+        </section>
+      ))}
+    </main>
   ),
 }))
 
@@ -36,7 +52,6 @@ describe('ChangeReviewWorkspace', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     window.localStorage.clear()
-    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: vi.fn() })
     queryMocks.invalidateProjectChangeQueries.mockResolvedValue(undefined)
     queryMocks.useProjectChangeGroup.mockReturnValue(emptyGroupQuery())
     queryMocks.useProjectChangeReviewThread.mockReturnValue({
@@ -132,93 +147,6 @@ describe('ChangeReviewWorkspace', () => {
     expect(screen.getByRole('button', { name: /撤销整组|Undo group/i })).toBeDisabled()
   })
 
-  it('renders every file in one review scroll while file navigation leaves the selected history scope unchanged', async () => {
-    const thread = reviewThread()
-    thread.groups[0].paths = ['chapters/a.md']
-    thread.groups[1].paths = ['chapters/b.md']
-    thread.files = [
-      { ...thread.files[0], path: 'chapters/a.md', latest_group_id: 'group-1', latest_change_set_id: 'set-1', group_ids: ['group-1'], change_set_ids: ['set-1'] },
-      { ...thread.files[0], path: 'chapters/b.md', base_group_id: 'group-2', base_change_set_id: 'set-2', latest_group_id: 'group-2', latest_change_set_id: 'set-2', group_ids: ['group-2'], change_set_ids: ['set-2'] },
-    ]
-    queryMocks.useProjectChangeReviewThread.mockReturnValue({
-      data: thread,
-      isLoading: false,
-      isError: false,
-      isFetching: false,
-      refetch: vi.fn(),
-    })
-    renderWorkspace()
-
-    const scopeSelector = await screen.findByRole('button', { name: /全部审阅变更|All review changes/i })
-    expect(screen.getByRole('main', { name: /完整 Diff|Full Diff/i })).toHaveClass('nova-review-scrollbar')
-    expect(document.querySelector('[data-review-scroll-root] [data-slot="scroll-area-scrollbar"]')).toBeInTheDocument()
-    const editors = await screen.findAllByTestId('review-diff-editor')
-    expect(editors).toHaveLength(2)
-    expect(editors[0]).toHaveTextContent('chapters/a.md')
-    expect(editors[1]).toHaveTextContent('chapters/b.md')
-    await flushAnimationFrames()
-    expect(HTMLElement.prototype.scrollIntoView).not.toHaveBeenCalled()
-
-    fireEvent.click(screen.getByRole('treeitem', { name: /chapters\/b\.md/ }))
-    expect(scopeSelector).toHaveTextContent(/全部审阅变更|All review changes/i)
-    await waitFor(() => expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(1))
-
-    fireEvent.click(screen.getByRole('button', { name: '更新高度 chapters/a.md' }))
-    await flushAnimationFrames()
-    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(1)
-
-    const reviewScroll = screen.getByRole('main', { name: /完整 Diff|Full Diff/i })
-    const scrollTo = vi.fn()
-    Object.defineProperty(reviewScroll, 'scrollTo', { configurable: true, value: scrollTo })
-    fireEvent.keyDown(reviewScroll, { key: 'End' })
-    expect(scrollTo).not.toHaveBeenCalled()
-
-    fireEvent.scroll(reviewScroll)
-    await flushAnimationFrames()
-    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledTimes(1)
-  })
-
-  it('collapses files together or individually and lets the right navigator be hidden and restored', async () => {
-    const thread = reviewThread()
-    thread.files.push({
-      ...thread.files[0],
-      path: 'setting/progress.md',
-      latest_change_set_id: 'set-3',
-      change_set_ids: ['set-3'],
-      pending_edit_ids: ['edit-3'],
-    })
-    queryMocks.useProjectChangeReviewThread.mockReturnValue({
-      data: thread,
-      isLoading: false,
-      isError: false,
-      isFetching: false,
-      refetch: vi.fn(),
-    })
-    renderWorkspace()
-    await screen.findAllByTestId('review-diff-editor')
-
-    fireEvent.click(screen.getByRole('button', { name: /折叠全部 Diff|Collapse all diffs/i }))
-    for (const content of document.querySelectorAll('[data-review-file-content]')) {
-      expect(content).toHaveAttribute('hidden')
-    }
-    fireEvent.click(screen.getByRole('button', { name: /展开全部 Diff|Expand all diffs/i }))
-    for (const content of document.querySelectorAll('[data-review-file-content]')) {
-      expect(content).not.toHaveAttribute('hidden')
-    }
-
-    fireEvent.click(screen.getByRole('button', { name: /折叠 chapters\/ch01\.md|Collapse chapters\/ch01\.md/i }))
-    expect(document.querySelector('[data-review-file-content="chapters/ch01.md"]')).toHaveAttribute('hidden')
-
-    const navigator = document.querySelector<HTMLElement>('[data-review-file-navigator]')
-    expect(navigator).not.toBeNull()
-    const navigatorMotion = navigator?.closest('[data-nova-panel-motion="inline"]')
-    fireEvent.click(within(navigator as HTMLElement).getByRole('button', { name: /收起文件导航|Hide file navigator/i }))
-    expect(navigatorMotion).toHaveAttribute('data-state', 'closed')
-    expect(navigatorMotion).toHaveAttribute('aria-hidden', 'true')
-    fireEvent.click(screen.getByRole('button', { name: /展开文件导航|Show file navigator/i }))
-    expect(navigatorMotion).toHaveAttribute('data-state', 'open')
-  })
-
   it('keeps an Agent toggle in the Review toolbar after the Agent panel is closed', async () => {
     const onToggleAgent = vi.fn()
     renderWorkspace({ agentVisible: false, onToggleAgent })
@@ -240,17 +168,11 @@ describe('ChangeReviewWorkspace', () => {
     expect(scopeButton()).toBeDisabled()
     expect(screen.getByRole('button', { name: /\u5237\u65b0|Refresh/i })).toBeDisabled()
     expect(screen.getByRole('button', { name: /\u6253\u5f00\u6587\u4ef6|Open file/i })).toBeDisabled()
-    expect(screen.getByRole('treeitem', { name: /chapters\/ch01\.md/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /折叠全部 Diff|Collapse all diffs/i })).toBeEnabled()
     expect(screen.getByRole('button', { name: /\u64a4\u9500\u6574\u7ec4|Undo group/i })).toBeDisabled()
     expect(screen.getByRole('button', { name: /\u63a5\u53d7\u672c\u8f6e|Accept run/i })).toBeDisabled()
 
-    fireEvent.click(screen.getByRole('button', { name: /折叠 chapters\/ch01\.md|Collapse chapters\/ch01\.md/i }))
-    expect(document.querySelector('[data-review-file-content="chapters/ch01.md"]')).toHaveAttribute('hidden')
-    expect(screen.getByTestId('review-diff-editor')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: /展开 chapters\/ch01\.md|Expand chapters\/ch01\.md/i }))
-
-    fireEvent.click(screen.getByRole('button', { name: '取消评论草稿' }))
+    fireEvent.click(screen.getByRole('button', { name: /取消|Cancel/i }))
     expect(scopeButton()).toBeEnabled()
   })
 
@@ -344,29 +266,6 @@ describe('ChangeReviewWorkspace', () => {
     expect(scopeButton()).toHaveTextContent(/第 2 轮修改|Agent edit 2/i)
   })
 
-  it('freezes the displayed snapshot while a comment draft is open and adopts refreshes after cancel', async () => {
-    let currentThread = reviewThread()
-    queryMocks.useProjectChangeReviewThread.mockImplementation(() => ({
-      data: currentThread,
-      isLoading: false,
-      isError: false,
-      isFetching: false,
-      refetch: vi.fn().mockResolvedValue(undefined),
-    }))
-    renderWorkspace()
-    expect(await screen.findByTestId('review-diff-editor')).toHaveAttribute('data-revision', 'after-revision')
-
-    fireEvent.click(screen.getByRole('button', { name: '开始评论草稿' }))
-    currentThread = {
-      ...currentThread,
-      files: currentThread.files.map((file) => ({ ...file, revision: 'refreshed-revision', after_content: `${file.after_content}刷新内容\n` })),
-    }
-    fireEvent.click(layoutButton('split'))
-    expect(screen.getByTestId('review-diff-editor')).toHaveAttribute('data-revision', 'after-revision')
-
-    fireEvent.click(screen.getByRole('button', { name: '取消评论草稿' }))
-    await waitFor(() => expect(screen.getByTestId('review-diff-editor')).toHaveAttribute('data-revision', 'refreshed-revision'))
-  })
 })
 
 describe('deriveFeedbackComments', () => {
@@ -425,11 +324,6 @@ function renderWorkspace(overrides: Partial<React.ComponentProps<typeof ChangeRe
       />
     </QueryClientProvider>,
   )
-}
-
-async function flushAnimationFrames() {
-  await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()))
-  await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()))
 }
 
 function reviewThread(): ReviewThread {

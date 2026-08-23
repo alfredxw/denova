@@ -15,6 +15,32 @@ vi.mock('@/lib/api', () => ({
   restoreVersion: vi.fn(),
 }))
 
+vi.mock('@/features/diff/CodeDiffSurface', () => ({
+  CodeDiffSurface: ({ files, navigation, renderHeaderAction, empty }: {
+    files: Array<{ path: string }>
+    navigation: { collapsedPaths: Set<string> }
+    renderHeaderAction?: (file: { path: string }) => React.ReactNode
+    empty: React.ReactNode
+  }) => files.length ? (
+    <div>
+      <main>
+        {files.map((file) => (
+          <section key={file.path} data-review-file={file.path}>
+            <span>{file.path}</span>
+            {renderHeaderAction?.(file)}
+            <div data-review-file-content={file.path} hidden={navigation.collapsedPaths.has(file.path)}>Diff</div>
+          </section>
+        ))}
+      </main>
+      <aside role="complementary" aria-label="文件导航" className="border-l">
+        <div role="tree" aria-label="文件导航">
+          {files.map((file) => <div key={file.path} role="treeitem" aria-label={file.path}>{file.path}</div>)}
+        </div>
+      </aside>
+    </div>
+  ) : empty,
+}))
+
 describe('VersionPanel', () => {
   beforeEach(() => {
     vi.mocked(createVersion).mockReset()

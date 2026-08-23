@@ -1,32 +1,62 @@
-import { render, screen, within } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
+import { act, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import type { ReviewThreadFile } from '../types'
 import { ReviewFileNavigator } from './ReviewFileNavigator'
 
+const treeState = vi.hoisted(() => ({
+  instance: null as null | {
+    getSelectedPaths: () => string[]
+    selectFromTree: (path: string) => void
+  },
+  options: null as TreeOptions | null,
+}))
+
+interface TreeOptions {
+  paths: string[]
+  gitStatus: Array<{ path: string; status: string }>
+  flattenEmptyDirectories: boolean
+  initialExpansion: string
+  fileTreeSearchMode: string
+  search: boolean
+  onSelectionChange: (paths: readonly string[]) => void
+}
+
+vi.mock('@pierre/trees', () => ({
+  FileTree: class MockFileTree {
+    selected = new Set<string>()
+    scrollToPath = vi.fn()
+    render = vi.fn()
+    cleanUp = vi.fn()
+    options: TreeOptions
+
+    constructor(options: TreeOptions) {
+      this.options = options
+      treeState.instance = this
+      treeState.options = options
+    }
+
+    getSelectedPaths() {
+      return [...this.selected]
+    }
+
+    getItem(path: string) {
+      if (!this.options.paths.includes(path)) return null
+      return {
+        deselect: () => this.selected.delete(path),
+        isSelected: () => this.selected.has(path),
+        select: () => this.selected.add(path),
+      }
+    }
+
+    selectFromTree(path: string) {
+      this.selected = new Set([path])
+      this.options.onSelectionChange([path])
+    }
+  },
+}))
+
 describe('ReviewFileNavigator', () => {
-  it('provides a dropdown jump list when the review surface is compact', async () => {
-    const user = userEvent.setup()
-    const onSelect = vi.fn()
-    render(
-      <ReviewFileNavigator
-        files={[reviewFile('chapters/one.md'), reviewFile('setting/progress.md')]}
-        selectedPath="chapters/one.md"
-        onSelect={onSelect}
-        onCollapse={vi.fn()}
-      />,
-    )
-
-    await user.click(screen.getByRole('button', { name: /变更文件.*2/ }))
-    const progress = screen.getByRole('menuitemcheckbox', { name: /setting\/progress\.md/ })
-    expect(progress).toBeVisible()
-
-    await user.click(progress)
-    expect(onSelect).toHaveBeenCalledWith('setting/progress.md')
-  })
-
-  it('groups only changed files, toggles directories from the whole row, and marks change kinds', async () => {
-    const user = userEvent.setup()
+  it('feeds changed paths and statuses directly into the Pierre tree', () => {
     render(
       <ReviewFileNavigator
         files={[
@@ -36,25 +66,37 @@ describe('ReviewFileNavigator', () => {
         ]}
         selectedPath="chapters/modified.md"
         onSelect={vi.fn()}
-        onCollapse={vi.fn()}
       />,
     )
 
-    expect(screen.getAllByLabelText('新增文件').length).toBeGreaterThan(0)
-    expect(screen.getAllByLabelText('修改文件').length).toBeGreaterThan(0)
-    expect(screen.getAllByLabelText('删除文件').length).toBeGreaterThan(0)
+    expect(treeState.options).toMatchObject({
+      paths: ['chapters/added.md', 'chapters/modified.md', 'setting/deleted.md'],
+      gitStatus: [
+        { path: 'chapters/added.md', status: 'added' },
+        { path: 'chapters/modified.md', status: 'modified' },
+        { path: 'setting/deleted.md', status: 'deleted' },
+      ],
+      flattenEmptyDirectories: true,
+      initialExpansion: 'open',
+      fileTreeSearchMode: 'hide-non-matches',
+      search: true,
+    })
+    expect(treeState.instance?.getSelectedPaths()).toEqual(['chapters/modified.md'])
+    expect(screen.getByRole('complementary', { name: '文件导航' })).not.toHaveTextContent('变更文件')
+  })
 
-    const tree = screen.getByRole('tree', { name: '文件导航' })
-    const chapters = within(tree).getByRole('treeitem', { name: 'chapters' })
-    expect(chapters).toHaveAttribute('aria-expanded', 'true')
-    await user.click(chapters)
-    expect(chapters).toHaveAttribute('aria-expanded', 'false')
-    expect(within(tree).queryByRole('treeitem', { name: /chapters\/added\.md/ })).not.toBeInTheDocument()
+  it('bridges tree selection back to the continuous diff', () => {
+    const onSelect = vi.fn()
+    render(
+      <ReviewFileNavigator
+        files={[reviewFile('chapters/one.md'), reviewFile('setting/progress.md')]}
+        selectedPath="chapters/one.md"
+        onSelect={onSelect}
+      />,
+    )
 
-    await user.type(screen.getByRole('textbox', { name: '筛选文件…' }), 'deleted')
-    const filteredTree = screen.getByRole('tree', { name: '文件导航' })
-    expect(within(filteredTree).getByRole('treeitem', { name: /setting\/deleted\.md/ })).toBeInTheDocument()
-    expect(within(filteredTree).queryByRole('treeitem', { name: /chapters\/modified\.md/ })).not.toBeInTheDocument()
+    act(() => treeState.instance?.selectFromTree('setting/progress.md'))
+    expect(onSelect).toHaveBeenCalledWith('setting/progress.md')
   })
 })
 

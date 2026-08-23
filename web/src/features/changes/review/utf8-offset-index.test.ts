@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { Utf8OffsetIndex } from './utf8-offset-index'
 
-describe('Utf8OffsetIndex', () => {
+describe('Utf8OffsetIndex byte mapping', () => {
   it('maps Chinese, emoji, CRLF and trailing lines between UTF-8 bytes and Monaco positions', () => {
     const index = new Utf8OffsetIndex('A中😀\r\n尾\n')
 

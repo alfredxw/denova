@@ -6,7 +6,6 @@ interface ReviewFileNavigatorProps {
   files: ReviewThreadFile[]
   selectedPath: string
   onSelect: (path: string) => void
-  onCollapse: () => void
 }
 
 /** Adds Review status metadata to the shared changed-file navigator. */

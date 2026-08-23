@@ -10,7 +10,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import type { ReviewThread, WorkspaceChangeGroupSummary } from '../types'
-import type { ReviewDiffLayout } from './monaco/review-editor-adapter'
+import type { DiffLayout } from '@/features/diff/types'
 
 interface ReviewToolbarProps {
   thread: ReviewThread
@@ -19,13 +19,13 @@ interface ReviewToolbarProps {
   fileCount: number
   additions: number
   deletions: number
-  layout: ReviewDiffLayout
+  layout: DiffLayout
   busy: boolean
   refreshing: boolean
   allDiffsCollapsed: boolean
   navigatorVisible: boolean
   agentVisible: boolean
-  onLayoutChange: (layout: ReviewDiffLayout) => void
+  onLayoutChange: (layout: DiffLayout) => void
   onScopeChange: (scopeID: string) => void
   onReview: (decision: 'accept' | 'reject') => void
   onHistory: (action: 'undo' | 'redo') => void
@@ -52,11 +52,6 @@ export function ReviewToolbar({ thread, selectedGroup, selectedScopeID, fileCoun
     <header className="shrink-0 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] text-xs text-[var(--nova-text-muted)]">
       <div className="flex min-h-9 flex-wrap items-center gap-1.5 px-2.5 py-1">
         <div className="flex min-w-0 flex-1 items-center gap-1.5">
-          <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--nova-text-muted)]">
-            {t('changes.filesChanged', { count: fileCount })}
-          </span>
-          <span className="font-mono text-[10px] tabular-nums text-[var(--nova-success)]">+{additions}</span>
-          <span className="font-mono text-[10px] tabular-nums text-[var(--nova-danger)]">−{deletions}</span>
           {thread.groups.length > 0 && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -82,6 +77,11 @@ export function ReviewToolbar({ thread, selectedGroup, selectedScopeID, fileCoun
               </DropdownMenuContent>
             </DropdownMenu>
           )}
+          <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--nova-text-muted)]">
+            {t('changes.filesChanged', { count: fileCount })}
+          </span>
+          <span className="font-mono text-[10px] tabular-nums text-[var(--nova-success)]">+{additions}</span>
+          <span className="font-mono text-[10px] tabular-nums text-[var(--nova-danger)]">−{deletions}</span>
         </div>
 
         <div role="group" aria-label={t('changes.viewDiff')} className="flex h-7 items-center rounded-md border border-[var(--nova-border)] bg-[var(--nova-bg)] p-0.5">

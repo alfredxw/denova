@@ -11,12 +11,7 @@ const apiMocks = vi.hoisted(() => ({
   listProjectChangeGroups: vi.fn(),
   undoProjectChangeGroup: vi.fn(),
 }))
-const preloadReviewDiffEditorMock = vi.hoisted(() => vi.fn())
-
 vi.mock('../api', () => apiMocks)
-vi.mock('../review/review-editor-loader', () => ({
-  preloadReviewDiffEditor: preloadReviewDiffEditorMock,
-}))
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -34,7 +29,6 @@ beforeEach(() => {
     comments: [],
     files: [],
   })
-  preloadReviewDiffEditorMock.mockResolvedValue(undefined)
 })
 
 describe('summarizeGroupFiles', () => {
@@ -78,29 +72,26 @@ describe('canUndoAgentChange', () => {
 })
 
 describe('AgentChangeSummaryCard review preload', () => {
-  it('warms the newest review thread and editor as soon as its card mounts', async () => {
+  it('warms the newest review thread as soon as its card mounts', async () => {
     renderSummaryCard(true)
 
     await waitFor(() => expect(apiMocks.getProjectChangeReviewThread).toHaveBeenCalledWith('project-book', 'thread-1'))
-    expect(preloadReviewDiffEditorMock).toHaveBeenCalledTimes(1)
   })
 
   it('waits for user intent before warming an older review card', async () => {
     const { container } = renderSummaryCard(false)
     await waitFor(() => expect(apiMocks.getProjectChangeGroup).toHaveBeenCalled())
     expect(apiMocks.getProjectChangeReviewThread).not.toHaveBeenCalled()
-    expect(preloadReviewDiffEditorMock).not.toHaveBeenCalled()
 
     fireEvent.pointerEnter(container.querySelector('[data-change-summary-card="group-1"]')!)
 
     await waitFor(() => expect(apiMocks.getProjectChangeReviewThread).toHaveBeenCalledWith('project-book', 'thread-1'))
-    expect(preloadReviewDiffEditorMock).toHaveBeenCalledTimes(1)
   })
 
-  it('opens only after the review editor preload settles', async () => {
+  it('opens only after the review thread preload settles', async () => {
     let finishPreload: (() => void) | undefined
-    preloadReviewDiffEditorMock.mockReturnValue(new Promise<void>((resolve) => {
-      finishPreload = resolve
+    apiMocks.getProjectChangeReviewThread.mockReturnValue(new Promise((resolve) => {
+      finishPreload = () => resolve({ id: 'thread-1', latest_group_id: 'group-1', groups: [], comments: [], files: [] })
     }))
     const onReview = vi.fn()
     const view = renderSummaryCard(false, { onReview })

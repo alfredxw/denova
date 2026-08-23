@@ -9,7 +9,6 @@ import { invalidateProjectChangeQueries, prefetchProjectChangeReviewThread, proj
 import type { WorkspaceChangeGroup, WorkspaceChangeGroupSummary, WorkspaceChangeSet } from '../types'
 import { logWorkspaceChangeError, workspaceChangeErrorMessage } from '../errors'
 import { lineDiffStats } from '../diff-stats'
-import { preloadReviewDiffEditor } from '../review/review-editor-loader'
 
 interface AgentChangeSummaryCardProps {
   projectId: string
@@ -50,10 +49,7 @@ export function AgentChangeSummaryCard({ projectId, summary, disabled = false, e
   const preloadReview = useCallback(async () => {
     if (disabled || !projectId || !reviewThreadID) return
     try {
-      await Promise.all([
-        prefetchProjectChangeReviewThread(queryClient, projectId, reviewThreadID),
-        preloadReviewDiffEditor(),
-      ])
+      await prefetchProjectChangeReviewThread(queryClient, projectId, reviewThreadID)
     } catch (error) {
       console.warn('[AgentChangeSummaryCard.tsx] failed to preload Diff review; the click path will retry', {
         projectId,

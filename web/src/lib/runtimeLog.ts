@@ -65,6 +65,10 @@ export function normalizeRuntimeError(error: unknown) {
 /** 注册全局 JS 异常和 Promise 异常监听。 */
 export function installGlobalRuntimeLoggers() {
   window.addEventListener('error', event => {
+    // ResizeObserver reports a browser scheduling diagnostic as a window error
+    // when a virtualized layout needs another frame. It is not an application exception.
+    if (event.message === 'ResizeObserver loop completed with undelivered notifications.'
+      || event.message === 'ResizeObserver loop limit exceeded') return
     const normalized = normalizeRuntimeError(event.error || event.message)
     recordRuntimeLog({
       type: 'window_error',
