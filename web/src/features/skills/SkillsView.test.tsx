@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createSkill, deleteSkillDocument, getSkillDocument, getSkillFileDocument, getSkills, installSkillRemote, installSkillZip, previewSkillRemoteInstall, previewSkillZipInstall, saveSkillDocument, saveSkillFileDocument } from '@/lib/api'
 import { APIError } from '@/lib/api-client'
 import type { SkillDocument, SkillFileDocument, SkillSnapshot } from '@/lib/api'
+import { fileTreeHost, fileTreeRow } from '@/test/file-tree'
 import { SkillsView as ProjectSkillsView } from './SkillsView'
 
 const PROJECT_ID = 'project-demo'
@@ -491,8 +492,8 @@ describe('SkillsView', () => {
     const { container } = render(<SkillsView workspace="/books/demo" />)
 
     expect(await screen.findByRole('button', { name: '目录文件' })).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByRole('tree').closest('aside')).toHaveClass('h-full')
-    await user.click(await screen.findByRole('button', { name: /style\.md/ }))
+    await waitFor(() => expect(fileTreeHost('目录文件').closest('aside')).toHaveClass('h-full'))
+    await user.click(fileTreeRow('references/style.md', '目录文件'))
     await waitFor(() => {
       expect(vi.mocked(getSkillFileDocument)).toHaveBeenCalledWith(PROJECT_TARGET, 'user', 'draft-plan', 'references/style.md')
     })
@@ -504,7 +505,7 @@ describe('SkillsView', () => {
     await user.clear(editor)
     await user.type(editor, '# Updated\n')
     expect(screen.queryByRole('button', { name: '保存' })).not.toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'SKILL.md' }))
+    await user.click(fileTreeRow('SKILL.md', '目录文件'))
 
     await waitFor(() => {
       expect(vi.mocked(saveSkillFileDocument)).toHaveBeenCalledWith(PROJECT_TARGET, 'user', 'draft-plan', 'references/style.md', '# Updated\n', 'file-r1')

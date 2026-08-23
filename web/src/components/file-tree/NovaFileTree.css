@@ -1,0 +1,101 @@
+.nova-file-tree {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+  padding-top: 0.25rem;
+  --trees-padding-inline-override: 0.375rem;
+  --trees-bg-override: var(--nova-surface);
+  --trees-bg-muted-override: var(--nova-hover);
+  --trees-fg-override: var(--nova-text-muted);
+  --trees-fg-muted-override: var(--nova-text-faint);
+  --trees-selected-bg-override: var(--nova-active);
+  --trees-selected-fg-override: var(--nova-text);
+  --trees-selected-focused-border-color-override: transparent;
+  --trees-border-color-override: var(--nova-border);
+  --trees-input-bg-override: var(--nova-bg);
+  --trees-focus-ring-color-override: var(--nova-accent-blue);
+  --trees-font-family-override: var(--font-sans);
+  --trees-font-size-override: 12px;
+}
+
+.nova-file-tree-menu {
+  position: fixed;
+  z-index: 80;
+  width: max-content;
+  min-width: 8rem;
+  max-width: min(18rem, calc(100vw - 1rem));
+  max-height: calc(100dvh - 1rem);
+  box-sizing: border-box;
+  overflow-x: hidden;
+  overflow-y: auto;
+  border: 1px solid var(--nova-border);
+  border-radius: 0.375rem;
+  background: var(--nova-menu-bg);
+  color: var(--nova-text-muted);
+  padding: 0.1875rem;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 22%), 0 1px 4px rgb(0 0 0 / 16%);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 1rem;
+  visibility: hidden;
+}
+
+.nova-file-tree-menu-item {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  min-height: 1.625rem;
+  align-items: center;
+  gap: 0.375rem;
+  border: 0;
+  border-radius: 0.25rem;
+  background: transparent;
+  padding: 0.1875rem 0.375rem;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.nova-file-tree-menu-item > svg {
+  width: 0.875rem;
+  height: 0.875rem;
+  flex: none;
+  color: var(--nova-tree-icon);
+  stroke-width: 1.75;
+}
+
+.nova-file-tree-menu-item:hover,
+.nova-file-tree-menu-item:focus-visible {
+  background: var(--nova-menu-item-hover-bg);
+  color: var(--nova-text);
+  outline: none;
+}
+
+.nova-file-tree-menu-item:hover > svg,
+.nova-file-tree-menu-item:focus-visible > svg {
+  color: currentColor;
+}
+
+.nova-file-tree-menu-item:disabled {
+  pointer-events: none;
+  opacity: 0.45;
+}
+
+.nova-file-tree-menu-item[data-variant='destructive'] {
+  color: var(--nova-danger);
+}
+
+.nova-file-tree-menu-item[data-variant='destructive'] > svg {
+  color: currentColor;
+}
+
+.nova-file-tree-menu-separator {
+  height: 1px;
+  margin: 0.1875rem -0.1875rem;
+  background: var(--nova-border-soft);
+}

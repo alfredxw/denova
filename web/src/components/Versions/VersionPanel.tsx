@@ -10,6 +10,7 @@ import {
   getVersions,
   getVersionStatus,
   restoreVersion,
+  versionQueryKeys,
 } from '@/lib/api'
 import type { VersionDiffComparison, VersionEntry, VersionRestorePlan } from '@/lib/api'
 import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
@@ -30,14 +31,6 @@ interface VersionPanelProps {
 const INITIAL_HISTORY_LIMIT = 30
 const MAX_HISTORY_LIMIT = 200
 
-const versionKeys = {
-  all: ['versions'] as const,
-  status: (projectId: string) => ['versions', 'status', projectId] as const,
-  history: (projectId: string, limit: number) => ['versions', 'history', projectId, limit] as const,
-  diff: (projectId: string, versionId: string, comparison: VersionDiffComparison) =>
-    ['versions', 'diff', projectId, versionId, comparison] as const,
-}
-
 /** Project-scoped version history with a persistent, responsive diff workspace. */
 export function VersionPanel({ projectId, workspace, refreshSignal = 0, visible = true, onClose, onWorkspaceChanged }: VersionPanelProps) {
   const { t } = useTranslation()
@@ -55,14 +48,14 @@ export function VersionPanel({ projectId, workspace, refreshSignal = 0, visible 
   const closeAdaptivePaneRef = useRef<() => void>(() => {})
 
   const statusQuery = useQuery({
-    queryKey: versionKeys.status(projectId),
+    queryKey: versionQueryKeys.status(projectId),
     queryFn: () => getVersionStatus(projectId),
     enabled: Boolean(projectId && visible),
   })
   const status = statusQuery.data ?? null
 
   const historyQuery = useQuery({
-    queryKey: versionKeys.history(projectId, historyLimit),
+    queryKey: versionQueryKeys.history(projectId, historyLimit),
     queryFn: () => getVersions(projectId, historyLimit),
     enabled: Boolean(projectId && visible),
     placeholderData: previous => previous,
@@ -75,7 +68,7 @@ export function VersionPanel({ projectId, workspace, refreshSignal = 0, visible 
   const comparison: VersionDiffComparison = currentSelection ? 'workspace' : 'parent'
 
   const summaryQuery = useQuery({
-    queryKey: versionKeys.diff(projectId, targetVersion?.id ?? '', comparison),
+    queryKey: versionQueryKeys.diff(projectId, targetVersion?.id ?? '', comparison),
     queryFn: () => getVersionDiff(projectId, targetVersion!.id, undefined, comparison),
     enabled: Boolean(projectId && visible && targetVersion),
   })
@@ -89,7 +82,7 @@ export function VersionPanel({ projectId, workspace, refreshSignal = 0, visible 
   }, [projectId])
 
   const invalidateVersionQueries = useCallback(async () => {
-    await queryClient.invalidateQueries({ queryKey: versionKeys.all })
+    await queryClient.invalidateQueries({ queryKey: versionQueryKeys.all })
   }, [queryClient])
 
   const refresh = useCallback(async () => {

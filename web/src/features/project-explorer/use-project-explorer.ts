@@ -1,4 +1,7 @@
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import type { GitStatus, GitStatusEntry } from '@pierre/trees'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { getVersionStatus, versionQueryKeys } from '@/lib/api-client/versions'
 import {
   applyProjectFileOperations,
   resolveProjectFileTree,
@@ -25,6 +28,7 @@ interface ProjectExplorerOptions {
 
 export interface ProjectExplorerState {
   nodes: ProjectFileExplorerNode[]
+  gitStatus: GitStatusEntry[]
   loading: boolean
   loadingPaths: ReadonlySet<string>
   error: string | null
@@ -54,6 +58,12 @@ export function useProjectExplorer({
   expandedPaths,
   selectedPath,
 }: ProjectExplorerOptions): ProjectExplorerState {
+  const queryClient = useQueryClient()
+  const statusQuery = useQuery({
+    queryKey: versionQueryKeys.status(projectId),
+    queryFn: () => getVersionStatus(projectId),
+    enabled: Boolean(projectId),
+  })
   const [directories, setDirectories] = useState<ReadonlyMap<string, CachedProjectDirectory>>(() => new Map())
   const directoriesRef = useRef(directories)
   directoriesRef.current = directories
@@ -190,6 +200,10 @@ export function useProjectExplorer({
     if (firstFailure) throw new Error(firstFailure.error || 'Project directory refresh failed')
   }, [resolveTargets])
 
+  const refreshGitStatus = useCallback(async () => {
+    await queryClient.invalidateQueries({ queryKey: versionQueryKeys.status(projectId), exact: true })
+  }, [projectId, queryClient])
+
   const loadMore = useCallback(async (path: string) => {
     const continuation = directoriesRef.current.get(path)?.continuation
     if (!continuation) return
@@ -224,7 +238,8 @@ export function useProjectExplorer({
     const root = results.find((result) => result.path === '')
     setError(root && !root.ok ? root.error ?? null : null)
     throwForFailedTarget(results, '')
-  }, [resolveTargets])
+    await refreshGitStatus()
+  }, [refreshGitStatus, resolveTargets])
 
   const applyOperation = useCallback(async (
     operation: ProjectFileOperation,
@@ -241,8 +256,9 @@ export function useProjectExplorer({
       })
     }
     await refreshDirectories(affectedParents)
+    await refreshGitStatus()
     return result.path || operation.path
-  }, [projectId, refreshDirectories])
+  }, [projectId, refreshDirectories, refreshGitStatus])
 
   const createItem = useCallback(async (path: string, type: ProjectFileEntryType) => {
     const hierarchy = directoryHierarchy(parentPath(path))
@@ -277,8 +293,12 @@ export function useProjectExplorer({
     () => buildProjectFileExplorerNodes('', directories, loadingPaths),
     [directories, loadingPaths],
   )
+  const gitStatus = useMemo<GitStatusEntry[]>(() => (statusQuery.data?.changes ?? []).flatMap((change) => (
+    isGitStatus(change.status) ? [{ path: change.path, status: change.status }] : []
+  )), [statusQuery.data?.changes])
   return {
     nodes,
+    gitStatus,
     loading: loadingPaths.has('') && !directories.has(''),
     loadingPaths,
     error,
@@ -291,6 +311,15 @@ export function useProjectExplorer({
     copyItem,
     moveItem,
   }
+}
+
+function isGitStatus(status: string): status is GitStatus {
+  return status === 'added'
+    || status === 'deleted'
+    || status === 'ignored'
+    || status === 'modified'
+    || status === 'renamed'
+    || status === 'untracked'
 }
 
 function bootstrapTargets(expandedPaths: readonly string[], selectedPath: string | null): ProjectFileTreeResolveTarget[] {

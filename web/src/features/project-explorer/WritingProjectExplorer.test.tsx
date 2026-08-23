@@ -2,7 +2,9 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { fileTreeRow } from '@/test/file-tree'
 import { server } from '@/test/msw/server'
+import { TestQueryClientProvider } from '@/test/query-client'
 import { WritingProjectExplorer } from './WritingProjectExplorer'
 
 const chapterPath = 'chapters/第一章.md'
@@ -69,22 +71,29 @@ describe('WritingProjectExplorer', () => {
       onMoveItem: vi.fn().mockResolvedValue(undefined),
       onRefreshWorkspace,
     }
-    const { rerender } = render(<WritingProjectExplorer {...props} />)
+    const { rerender } = render(
+      <TestQueryClientProvider>
+        <WritingProjectExplorer {...props} />
+      </TestQueryClientProvider>,
+    )
 
-    expect(await screen.findByText('1.2k')).toBeInTheDocument()
-    expect(screen.getByText('draft')).toBeInTheDocument()
+    await waitFor(() => expect(fileTreeRow(chapterPath)).toHaveTextContent('1.2k · draft'))
 
-    fireEvent.contextMenu(screen.getByLabelText('第一章.md'))
+    fireEvent.contextMenu(fileTreeRow(chapterPath))
     await user.click(await screen.findByRole('menuitem', { name: '引用到 Chat' }))
     expect(onReferenceFile).toHaveBeenCalledWith(chapterPath)
 
-    fireEvent.contextMenu(screen.getByLabelText('第一章.md'))
+    fireEvent.contextMenu(fileTreeRow(chapterPath))
     await user.click(await screen.findByRole('menuitem', { name: '删除' }))
     expect(await screen.findByText(/版本历史恢复/)).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '取消' }))
 
     const requestsBeforeSignal = resolveRequests
-    rerender(<WritingProjectExplorer {...props} structureRefreshSignal={1} />)
+    rerender(
+      <TestQueryClientProvider>
+        <WritingProjectExplorer {...props} structureRefreshSignal={1} />
+      </TestQueryClientProvider>,
+    )
     await waitFor(() => expect(resolveRequests).toBeGreaterThan(requestsBeforeSignal))
 
     await user.click(screen.getByRole('button', { name: '刷新' }))

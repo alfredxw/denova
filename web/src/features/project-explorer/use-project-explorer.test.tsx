@@ -2,12 +2,22 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import { server } from '@/test/msw/server'
+import { TestQueryClientProvider } from '@/test/query-client'
 import { useProjectExplorer } from './use-project-explorer'
 
 describe('useProjectExplorer', () => {
   it('loads an ordinary nested tree in one recursive bootstrap request', async () => {
     const requestBodies: unknown[] = []
     server.use(
+      http.get('/api/projects/project-one/versions/status', () => HttpResponse.json({
+        has_versions: true,
+        clean: false,
+        changes: [
+          { path: 'a/nested/one.md', status: 'modified' },
+          { path: 'unsupported.md', status: 'unsupported' },
+        ],
+        auto: { timed_enabled: false, timed_interval_minutes: 10, retention: 100 },
+      })),
       http.post('/api/projects/project-one/files/resolve', async ({ request }) => {
         requestBodies.push(await request.json())
         return HttpResponse.json({
@@ -44,9 +54,10 @@ describe('useProjectExplorer', () => {
       projectId: 'project-one',
       expandedPaths: ['a', 'a/nested'],
       selectedPath: 'a/nested/one.md',
-    }))
+    }), { wrapper: TestQueryClientProvider })
 
     await waitFor(() => expect(result.current.nodes[0]?.children?.[0]?.children?.[0]?.path).toBe('a/nested/one.md'))
+    await waitFor(() => expect(result.current.gitStatus).toEqual([{ path: 'a/nested/one.md', status: 'modified' }]))
     await act(() => result.current.loadDirectory('a/nested'))
 
     expect(requestBodies).toEqual([{
@@ -89,7 +100,7 @@ describe('useProjectExplorer', () => {
       projectId: 'project-one',
       expandedPaths: ['a'],
       selectedPath: 'b/current.ts',
-    }))
+    }), { wrapper: TestQueryClientProvider })
 
     await waitFor(() => expect(result.current.loading).toBe(false))
     await act(() => result.current.createItem('a/new.ts', 'file'))
@@ -127,7 +138,7 @@ describe('useProjectExplorer', () => {
       projectId: 'project-one',
       expandedPaths: ['a'],
       selectedPath,
-    }), { initialProps: { selectedPath: 'a/one.md' } })
+    }), { initialProps: { selectedPath: 'a/one.md' }, wrapper: TestQueryClientProvider })
 
     await waitFor(() => expect(result.current.loading).toBe(false))
     expect(resolvedTargets).toEqual([[''], ['a']])
@@ -171,7 +182,7 @@ describe('useProjectExplorer', () => {
       projectId: 'project-one',
       expandedPaths: ['drafts'],
       selectedPath: null,
-    }))
+    }), { wrapper: TestQueryClientProvider })
 
     await waitFor(() => expect(result.current.nodes[0]?.loaded).toBe(true))
     branchRemoved = true
@@ -218,7 +229,7 @@ describe('useProjectExplorer', () => {
       projectId: 'project-one',
       expandedPaths: [],
       selectedPath: null,
-    }))
+    }), { wrapper: TestQueryClientProvider })
 
     await waitFor(() => expect(result.current.loading).toBe(false))
     await act(() => result.current.createItem('nested/deep/story.md', 'file'))

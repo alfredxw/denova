@@ -1,325 +1,103 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
+import { fileTreeRow } from '@/test/file-tree'
 import type { ProjectFileExplorerNode } from '@/features/project-explorer/model'
 import { ProjectFileBreadcrumb } from './ProjectFileBreadcrumb'
 
-const nodes: ProjectFileExplorerNode[] = [
-  {
-    id: 'docs',
-    path: 'docs',
-    name: 'docs',
-    type: 'dir',
-    ignored: false,
-    symlink: false,
-    loaded: true,
-    loading: false,
-    children: [{
-      id: 'docs/guide.md',
-      path: 'docs/guide.md',
-      name: 'guide.md',
-      type: 'file',
-      ignored: false,
-      symlink: false,
-      loaded: false,
-      loading: false,
-    }],
-  },
-  {
-    id: 'src',
-    path: 'src',
-    name: 'src',
-    type: 'dir',
-    ignored: false,
-    symlink: false,
-    loaded: true,
-    loading: false,
-    children: [
-      {
-        id: 'src/main.ts',
-        path: 'src/main.ts',
-        name: 'main.ts',
-        type: 'file',
-        ignored: false,
-        symlink: false,
-        loaded: false,
-        loading: false,
-      },
-      {
-        id: 'src/utils.ts',
-        path: 'src/utils.ts',
-        name: 'utils.ts',
-        type: 'file',
-        ignored: false,
-        symlink: false,
-        loaded: false,
-        loading: false,
-      },
-    ],
-  },
-]
-
-const deepNodes: ProjectFileExplorerNode[] = [{
-  id: 'chapters',
-  path: 'chapters',
-  name: 'chapters',
-  type: 'dir',
-  ignored: false,
-  symlink: false,
-  loaded: true,
-  loading: false,
-  children: [{
-    id: 'chapters/volume-one',
-    path: 'chapters/volume-one',
-    name: 'volume-one',
-    type: 'dir',
-    ignored: false,
-    symlink: false,
-    loaded: true,
-    loading: false,
-    children: [
-      {
-        id: 'chapters/volume-one/chapter-one.md',
-        path: 'chapters/volume-one/chapter-one.md',
-        name: 'chapter-one.md',
-        type: 'file',
-        ignored: false,
-        symlink: false,
-        loaded: false,
-        loading: false,
-      },
-      {
-        id: 'chapters/volume-one/chapter-two.md',
-        path: 'chapters/volume-one/chapter-two.md',
-        name: 'chapter-two.md',
-        type: 'file',
-        ignored: false,
-        symlink: false,
-        loaded: false,
-        loading: false,
-      },
-    ],
-  }],
-}]
-
 describe('ProjectFileBreadcrumb', () => {
-  it('opens the selected file siblings and switches files', async () => {
+  it('opens a Pierre browser for a segment and switches sibling files', async () => {
     const user = userEvent.setup()
     const onSelectFile = vi.fn()
-    render(
-      <ProjectFileBreadcrumb
-        workspace="/projects/one"
-        nodes={nodes}
-        selectedPath="src/main.ts"
-        loading={false}
-        onSelectFile={onSelectFile}
-        onDirectoryExpand={vi.fn()}
-        onLoadMore={vi.fn()}
-      />,
-    )
+    renderBreadcrumb({ onSelectFile })
 
-    expect(screen.getByRole('navigation', { name: '文件路径' })).toHaveTextContent('one')
-    expect(screen.getByRole('navigation', { name: '文件路径' })).toHaveClass('nova-file-breadcrumb', 'overflow-x-auto')
-    expect(screen.getByRole('navigation', { name: '文件路径' })).toHaveAttribute('data-slot', 'breadcrumb')
     expect(screen.getByRole('navigation', { name: '文件路径' })).toHaveTextContent('src')
-    const workspaceTrigger = screen.getByRole('button', { name: '浏览 one' })
-    const directoryTrigger = screen.getByRole('button', { name: '浏览 src' })
-    const currentTrigger = screen.getByRole('button', { name: '浏览 main.ts' })
-    expect(workspaceTrigger.querySelector('svg')).not.toBeInTheDocument()
-    expect(directoryTrigger.querySelector('svg')).not.toBeInTheDocument()
-    expect(currentTrigger.querySelector('svg')).not.toBeInTheDocument()
-    expect(currentTrigger).toHaveAttribute('aria-current', 'page')
-    expect(currentTrigger).not.toHaveClass('max-w-48')
-    expect(currentTrigger.querySelector('[data-slot="breadcrumb-page"]')).toHaveClass('whitespace-nowrap')
-    expect(currentTrigger.closest('[data-slot="breadcrumb-item"]')?.nextElementSibling).toBeNull()
-
-    await user.click(currentTrigger)
-    expect(screen.getByRole('tree', { name: '文件浏览器' })).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'utils.ts' }))
+    const current = screen.getByRole('button', { name: '浏览 main.ts' })
+    expect(current).toHaveAttribute('aria-current', 'page')
+    await user.click(current)
+    await user.click(fileTreeRow('src/utils.ts', '文件浏览器'))
 
     expect(onSelectFile).toHaveBeenCalledWith('src/utils.ts')
-    expect(screen.queryByRole('tree', { name: '文件浏览器' })).not.toBeInTheDocument()
+    expect(document.querySelector('file-tree-container')).not.toBeInTheDocument()
   })
 
-  it('expands a folder from the full project menu by clicking its row', async () => {
+  it('uses the same compact tree for the full project and exposes Git status', async () => {
     const user = userEvent.setup()
     const onSelectFile = vi.fn()
-    render(
-      <ProjectFileBreadcrumb
-        workspace="/projects/one"
-        nodes={nodes}
-        selectedPath="src/main.ts"
-        loading={false}
-        onSelectFile={onSelectFile}
-        onDirectoryExpand={vi.fn()}
-        onLoadMore={vi.fn()}
-      />,
-    )
+    renderBreadcrumb({ onSelectFile, gitStatus: [{ path: 'docs/guide.md', status: 'modified' }] })
 
     await user.click(screen.getByRole('button', { name: '浏览 one' }))
-    await user.click(screen.getByRole('button', { name: '展开 docs' }))
-    await user.click(screen.getByRole('button', { name: 'guide.md' }))
-
+    expect(fileTreeRow('docs/guide.md', '文件浏览器')).toHaveAttribute('data-item-git-status', 'modified')
+    await user.click(fileTreeRow('docs/guide.md', '文件浏览器'))
     expect(onSelectFile).toHaveBeenCalledWith('docs/guide.md')
   })
 
   it('lists project-root siblings from a root file segment', async () => {
     const user = userEvent.setup()
     const onSelectFile = vi.fn()
-    const rootFiles: ProjectFileExplorerNode[] = [
-      ...nodes,
-      {
-        id: 'README.md',
-        path: 'README.md',
-        name: 'README.md',
-        type: 'file',
-        ignored: false,
-        symlink: false,
-        loaded: false,
-        loading: false,
-      },
-      {
-        id: 'CHANGELOG.md',
-        path: 'CHANGELOG.md',
-        name: 'CHANGELOG.md',
-        type: 'file',
-        ignored: false,
-        symlink: false,
-        loaded: false,
-        loading: false,
-      },
-    ]
-    render(
-      <ProjectFileBreadcrumb
-        workspace="/projects/one"
-        nodes={rootFiles}
-        selectedPath="README.md"
-        loading={false}
-        onSelectFile={onSelectFile}
-        onDirectoryExpand={vi.fn()}
-        onLoadMore={vi.fn()}
-      />,
-    )
+    renderBreadcrumb({
+      nodes: [...nodes, file('README.md'), file('CHANGELOG.md')],
+      selectedPath: 'README.md',
+      onSelectFile,
+    })
 
     await user.click(screen.getByRole('button', { name: '浏览 README.md' }))
-    await user.click(screen.getByRole('button', { name: 'CHANGELOG.md' }))
-
+    await user.click(fileTreeRow('CHANGELOG.md', '文件浏览器'))
     expect(onSelectFile).toHaveBeenCalledWith('CHANGELOG.md')
-  })
-
-  it('opens only the current directory and scrolls to the deepest visible location', async () => {
-    const user = userEvent.setup()
-    const scrollIntoView = vi.spyOn(HTMLElement.prototype, 'scrollIntoView')
-
-    try {
-      render(
-        <ProjectFileBreadcrumb
-          workspace="/projects/one"
-          nodes={deepNodes}
-          selectedPath="chapters/volume-one/chapter-two.md"
-          loading={false}
-          onSelectFile={vi.fn()}
-          onDirectoryExpand={vi.fn()}
-          onLoadMore={vi.fn()}
-        />,
-      )
-
-      await user.click(screen.getByRole('button', { name: '浏览 one' }))
-
-      expect(screen.getByRole('button', { name: '折叠 chapters' })).toHaveClass('sticky', 'top-0')
-      expect(screen.getByRole('button', { name: '展开 volume-one' })).toBeInTheDocument()
-      expect(screen.queryByRole('button', { name: 'chapter-two.md' })).not.toBeInTheDocument()
-      const currentLocation = document.querySelector('[data-breadcrumb-current-location="true"]')
-      expect(currentLocation).toHaveTextContent('volume-one')
-      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center', inline: 'nearest' })
-      expect(scrollIntoView.mock.instances.at(-1)).toBe(currentLocation)
-    } finally {
-      scrollIntoView.mockRestore()
-    }
-  })
-
-  it('shows one child level and centers the selected file from its directory segment', async () => {
-    const user = userEvent.setup()
-    const scrollIntoView = vi.spyOn(HTMLElement.prototype, 'scrollIntoView')
-
-    try {
-      render(
-        <ProjectFileBreadcrumb
-          workspace="/projects/one"
-          nodes={deepNodes}
-          selectedPath="chapters/volume-one/chapter-two.md"
-          loading={false}
-          onSelectFile={vi.fn()}
-          onDirectoryExpand={vi.fn()}
-          onLoadMore={vi.fn()}
-        />,
-      )
-
-      await user.click(screen.getByRole('button', { name: '浏览 volume-one' }))
-
-      expect(screen.getByRole('button', { name: '折叠 volume-one' })).toHaveClass('sticky', 'top-0')
-      expect(screen.getByRole('button', { name: 'chapter-one.md' })).toBeInTheDocument()
-      const currentLocation = document.querySelector('[data-breadcrumb-current-location="true"]')
-      expect(currentLocation).toHaveTextContent('chapter-two.md')
-      expect(currentLocation).toHaveAttribute('aria-selected', 'true')
-      expect(scrollIntoView.mock.instances.at(-1)).toBe(currentLocation)
-    } finally {
-      scrollIntoView.mockRestore()
-    }
-  })
-
-  it('keeps the current segment visible when the breadcrumb width changes', () => {
-    let resize: ResizeObserverCallback | undefined
-    const observe = vi.fn()
-    const disconnect = vi.fn()
-    const NativeResizeObserver = globalThis.ResizeObserver
-    globalThis.ResizeObserver = class ResizeObserver {
-      constructor(callback: ResizeObserverCallback) {
-        resize = callback
-      }
-      observe = observe
-      unobserve = vi.fn()
-      disconnect = disconnect
-    }
-
-    try {
-      render(
-        <ProjectFileBreadcrumb
-          workspace="/projects/one"
-          nodes={nodes}
-          selectedPath="src/main.ts"
-          loading={false}
-          onSelectFile={vi.fn()}
-          onDirectoryExpand={vi.fn()}
-          onLoadMore={vi.fn()}
-        />,
-      )
-      const breadcrumb = screen.getByRole('navigation', { name: '文件路径' })
-      Object.defineProperty(breadcrumb, 'scrollWidth', { configurable: true, value: 420 })
-      resize?.([], {} as ResizeObserver)
-
-      expect(observe).toHaveBeenCalledWith(breadcrumb)
-      expect(breadcrumb.scrollLeft).toBe(420)
-    } finally {
-      globalThis.ResizeObserver = NativeResizeObserver
-    }
   })
 
   it('shows a localized empty state when the project has no files', async () => {
     const user = userEvent.setup()
-    render(
-      <ProjectFileBreadcrumb
-        workspace="/projects/empty"
-        nodes={[]}
-        selectedPath={null}
-        loading={false}
-        onSelectFile={vi.fn()}
-        onDirectoryExpand={vi.fn()}
-        onLoadMore={vi.fn()}
-      />,
-    )
+    renderBreadcrumb({ nodes: [], selectedPath: null })
 
-    await user.click(screen.getByRole('button', { name: '浏览 empty' }))
+    await user.click(screen.getByRole('button', { name: '浏览 one' }))
     expect(screen.getByText('此目录为空。')).toBeInTheDocument()
   })
 })
+
+function renderBreadcrumb(overrides: Partial<React.ComponentProps<typeof ProjectFileBreadcrumb>> = {}) {
+  return render(
+    <ProjectFileBreadcrumb
+      workspace="/projects/one"
+      nodes={nodes}
+      selectedPath="src/main.ts"
+      loading={false}
+      onSelectFile={vi.fn()}
+      onDirectoryExpand={vi.fn()}
+      onLoadMore={vi.fn()}
+      {...overrides}
+    />,
+  )
+}
+
+const nodes: ProjectFileExplorerNode[] = [
+  directory('docs', [file('docs/guide.md')]),
+  directory('src', [file('src/main.ts'), file('src/utils.ts')]),
+]
+
+function file(path: string): ProjectFileExplorerNode {
+  return {
+    id: path,
+    path,
+    name: path.slice(path.lastIndexOf('/') + 1),
+    type: 'file',
+    ignored: false,
+    symlink: false,
+    loaded: false,
+    loading: false,
+  }
+}
+
+function directory(path: string, children: ProjectFileExplorerNode[]): ProjectFileExplorerNode {
+  return {
+    id: path,
+    path,
+    name: path.slice(path.lastIndexOf('/') + 1),
+    type: 'dir',
+    ignored: false,
+    symlink: false,
+    loaded: true,
+    loading: false,
+    children,
+  }
+}

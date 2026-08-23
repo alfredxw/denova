@@ -2,6 +2,14 @@ import { jsonHeaders, requestJSON } from './client'
 import { projectAPIPath } from './project-scope'
 import type { VersionCommandResult, VersionDiff, VersionDiffComparison, VersionEntry, VersionRestorePlan, VersionRestoreResult, VersionStatus } from './types'
 
+export const versionQueryKeys = {
+  all: ['versions'] as const,
+  status: (projectId: string) => ['versions', 'status', projectId] as const,
+  history: (projectId: string, limit: number) => ['versions', 'history', projectId, limit] as const,
+  diff: (projectId: string, versionId: string, comparison: VersionDiffComparison) =>
+    ['versions', 'diff', projectId, versionId, comparison] as const,
+}
+
 export async function getVersionStatus(projectId: string): Promise<VersionStatus> {
   const status = await requestJSON<VersionStatus>(projectAPIPath(projectId, 'versions/status'))
   return {

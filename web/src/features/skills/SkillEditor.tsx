@@ -166,7 +166,7 @@ export function SkillEditor({
               <FileText className="h-3.5 w-3.5" />
               <span className="truncate">{t('skills.files.title')}</span>
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto p-2">
+            <div className="flex min-h-0 flex-1 overflow-hidden p-1">
               <SkillFileTree
                 key={keyOf(document)}
                 nodes={skillFileTree}

@@ -6,7 +6,8 @@ import { createVersion, getVersionDiff, getVersionRestorePlan, getVersions, getV
 import type { VersionDiff, VersionEntry, VersionRestorePlan } from '@/lib/api'
 import { VersionPanel } from './VersionPanel'
 
-vi.mock('@/lib/api', () => ({
+vi.mock('@/lib/api', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/lib/api')>(),
   createVersion: vi.fn(),
   getVersionDiff: vi.fn(),
   getVersionRestorePlan: vi.fn(),

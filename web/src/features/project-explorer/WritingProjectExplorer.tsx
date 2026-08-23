@@ -125,20 +125,11 @@ export function WritingProjectExplorer({
       icon: <AtSign className="size-3.5" />,
       onSelect: () => onReferenceFile(node.path),
     }] : [],
-    renderNodeMeta: (node) => {
+    getRowDecoration: (node) => {
       const chapter = chapterStats[node.path]
       if (!chapter) return null
       const words = formatCompactWords(chapter.words)
-      return (
-        <span
-          className="flex shrink-0 items-center gap-1 text-[10px] text-[var(--nova-text-faint)]"
-        >
-          <span>{words}</span>
-          <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1 text-[var(--nova-text-muted)]">
-            {chapter.status}
-          </span>
-        </span>
-      )
+      return { text: `${words} · ${chapter.status}`, title: `${words} · ${chapter.status}` }
     },
   }), [chapterStats, onReferenceFile, t])
 
@@ -148,6 +139,7 @@ export function WritingProjectExplorer({
       workspace={workspace}
       selectedPath={selectedPath}
       expandedPaths={preferences.preferences.expandedPaths}
+      gitStatus={tree.gitStatus}
       loading={tree.loading}
       loadingPaths={tree.loadingPaths}
       error={tree.error}

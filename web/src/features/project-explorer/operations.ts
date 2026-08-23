@@ -1,14 +1,4 @@
-import type { ProjectFileEntryType } from '@/lib/api-client/project-files'
 import type { ProjectFileExplorerNode } from './model'
-
-export const PROJECT_FILE_DRAFT_PREFIX = '\u0000project-file-draft:'
-
-export interface ProjectFileDraft {
-  id: string
-  parentPath: string
-  type: ProjectFileEntryType
-  index: number
-}
 
 export interface ProjectFileClipboard {
   mode: 'copy' | 'cut'
@@ -18,39 +8,6 @@ export interface ProjectFileClipboard {
 export interface ProjectFileTransfer {
   source: string
   destination: string
-}
-
-/** Inserts the temporary input row without mutating the server-backed tree. */
-export function insertProjectFileDraft(
-  nodes: readonly ProjectFileExplorerNode[],
-  draft: ProjectFileDraft | null,
-): ProjectFileExplorerNode[] {
-  if (!draft) return [...nodes]
-  const draftNode: ProjectFileExplorerNode = {
-    id: draft.id,
-    path: draft.id,
-    name: '',
-    type: draft.type,
-    ignored: false,
-    symlink: false,
-    loaded: draft.type === 'dir',
-    loading: false,
-    children: draft.type === 'dir' ? [] : undefined,
-    draft: true,
-  }
-  if (!draft.parentPath) return insertAt(nodes, draftNode, draft.index)
-
-  let inserted = false
-  const visit = (items: readonly ProjectFileExplorerNode[]): ProjectFileExplorerNode[] => items.map((item) => {
-    if (item.path === draft.parentPath && item.type === 'dir') {
-      inserted = true
-      return { ...item, children: insertAt(item.children ?? [], draftNode, draft.index) }
-    }
-    if (!item.children?.length) return item
-    return { ...item, children: visit(item.children) }
-  })
-  const next = visit(nodes)
-  return inserted ? next : [...nodes]
 }
 
 /** Builds collision-free copy targets and rejects moving a folder into itself. */
@@ -108,16 +65,6 @@ export function joinProjectPath(parent: string, name: string): string {
 export function absoluteProjectPath(workspace: string, path: string): string {
   const root = workspace.replace(/[\\/]+$/, '')
   return root ? `${root}/${path}` : path
-}
-
-function insertAt(
-  nodes: readonly ProjectFileExplorerNode[],
-  node: ProjectFileExplorerNode,
-  index: number,
-): ProjectFileExplorerNode[] {
-  const next = [...nodes]
-  next.splice(Math.max(0, Math.min(index, next.length)), 0, node)
-  return next
 }
 
 function childrenAt(nodes: readonly ProjectFileExplorerNode[], path: string): readonly ProjectFileExplorerNode[] {

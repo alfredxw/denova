@@ -10,6 +10,7 @@
   overscroll-behavior: contain;
   --diffs-font-size: 12px;
   --diffs-line-height: 20px;
+  --diffs-gap-block: 0px;
   --diffs-light-bg: var(--nova-bg);
   --diffs-dark-bg: var(--nova-bg);
   --diffs-light: var(--nova-text);
@@ -25,6 +26,7 @@
 
 .nova-code-diff-header {
   width: 100%;
+  border-top: 2px solid var(--nova-border);
   border-bottom: 1px solid var(--nova-border);
   background: var(--nova-surface-2);
   color: var(--nova-text-muted);

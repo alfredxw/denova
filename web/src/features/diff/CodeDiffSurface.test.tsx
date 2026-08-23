@@ -7,11 +7,11 @@ import { useMultiFileDiffNavigation } from './use-multi-file-diff-navigation'
 
 const codeViewState = vi.hoisted(() => ({
   itemIDs: [] as string[],
-  options: null as null | { enableGutterUtility?: boolean; unsafeCSS?: string },
+  options: null as null | { enableGutterUtility?: boolean; unsafeCSS?: string; layout?: { gap?: number } },
 }))
 
 vi.mock('@pierre/diffs/react', () => ({
-  CodeView: forwardRef(function MockCodeView(props: { items: Array<{ id: string }>; options?: { enableGutterUtility?: boolean; unsafeCSS?: string }; renderCustomHeader?: (item: { id: string }) => React.ReactNode }, ref) {
+  CodeView: forwardRef(function MockCodeView(props: { items: Array<{ id: string }>; options?: { enableGutterUtility?: boolean; unsafeCSS?: string; layout?: { gap?: number } }; renderCustomHeader?: (item: { id: string }) => React.ReactNode }, ref) {
     codeViewState.itemIDs = props.items.map((item) => item.id)
     codeViewState.options = props.options ?? null
     useImperativeHandle(ref, () => ({
@@ -42,6 +42,7 @@ describe('CodeDiffSurface', () => {
   it('passes all small files to one virtualized CodeView', () => {
     render(<SurfaceHarness files={[file('a.ts', 'old', 'new'), file('b.ts', 'one', 'two')]} />)
     expect(codeViewState.itemIDs).toEqual(['a.ts', 'b.ts'])
+    expect(codeViewState.options?.layout?.gap).toBe(0)
     expect(screen.queryByText(/Diff 较大|diff is large/i)).not.toBeInTheDocument()
   })
 

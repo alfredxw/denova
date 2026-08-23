@@ -19,8 +19,33 @@ export interface ProjectFileExplorerNode {
   loaded: boolean
   loading: boolean
   children?: ProjectFileExplorerNode[]
-  /** Client-only placeholder used while a new name is being entered. */
-  draft?: true
+}
+
+export interface ProjectFileTreeProjection {
+  /** Canonical Pierre paths in the server-defined tree order. */
+  paths: string[]
+  nodesByPath: ReadonlyMap<string, ProjectFileExplorerNode>
+  incompletePaths: string[]
+}
+
+/** Projects the normalized server tree into Pierre's path-first model. */
+export function projectFileTreeProjection(nodes: readonly ProjectFileExplorerNode[]): ProjectFileTreeProjection {
+  const paths: string[] = []
+  const nodesByPath = new Map<string, ProjectFileExplorerNode>()
+  const incompletePaths: string[] = []
+  const visit = (items: readonly ProjectFileExplorerNode[]) => {
+    for (const node of items) {
+      if (node.type === 'more') {
+        incompletePaths.push(node.path)
+        continue
+      }
+      nodesByPath.set(node.path, node)
+      paths.push(node.type === 'dir' ? `${node.path}/` : node.path)
+      if (node.children) visit(node.children)
+    }
+  }
+  visit(nodes)
+  return { paths, nodesByPath, incompletePaths }
 }
 
 interface MutablePathTreeNode {
@@ -87,7 +112,7 @@ export function mergeProjectDirectories(
   return next
 }
 
-/** Derives react-arborist data while keeping unresolved directories expandable. */
+/** Derives the UI projection while keeping unresolved directories expandable. */
 export function buildProjectFileExplorerNodes(
   path: string,
   directories: ReadonlyMap<string, CachedProjectDirectory>,

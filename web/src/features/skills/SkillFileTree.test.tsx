@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
+import { fileTreeRow } from '@/test/file-tree'
 import { SkillFileTree } from './SkillFileTree'
 
 describe('SkillFileTree', () => {
@@ -19,11 +20,11 @@ describe('SkillFileTree', () => {
       />,
     )
 
-    expect(screen.getByText('SKILL.md')).toBeInTheDocument()
-    expect(screen.getByText('guide.md')).toBeInTheDocument()
+    expect(fileTreeRow('SKILL.md')).toBeInTheDocument()
+    expect(fileTreeRow('references/guide.md')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '新建文件' })).not.toBeInTheDocument()
 
-    await user.click(screen.getByText('guide.md'))
+    await user.click(fileTreeRow('references/guide.md'))
     expect(onSelectFile).toHaveBeenCalledWith('references/guide.md')
   })
 })

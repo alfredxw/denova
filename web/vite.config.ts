@@ -8,7 +8,7 @@ const backendPort = process.env.DENOVA_BACKEND_PORT || process.env.NOVA_BACKEND_
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   optimizeDeps: {
-    include: ['@pierre/diffs', '@pierre/diffs/react', '@pierre/trees'],
+    include: ['@pierre/diffs', '@pierre/diffs/react', '@pierre/trees', '@pierre/trees/react'],
   },
   test: {
     environment: 'jsdom',

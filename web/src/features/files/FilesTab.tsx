@@ -197,6 +197,7 @@ export function FilesTab({
       workspace={workspace}
       selectedPath={selectedPath}
       expandedPaths={preferences.expandedPaths}
+      gitStatus={tree.gitStatus}
       loading={tree.loading}
       loadingPaths={tree.loadingPaths}
       error={tree.error}
@@ -247,6 +248,7 @@ export function FilesTab({
               nodes={tree.nodes}
               selectedPath={selectedPath}
               loading={tree.loading}
+              gitStatus={tree.gitStatus}
               onSelectFile={selectFile}
               onDirectoryExpand={tree.loadDirectory}
               onLoadMore={tree.loadMore}

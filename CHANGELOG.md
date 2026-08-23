@@ -14,6 +14,8 @@ Denova records only major user-visible features, important compatibility or data
 
 ### Major changes / 重大变更
 
+- 项目、Skill、版本 Diff 与面包屑文件树统一升级，采用一致的默认密度，并支持完整文件图标、空目录折叠、Git 状态、名称搜索与上下文菜单；项目文件树同时支持拖放整理。
+- Project, Skill, version Diff, and breadcrumb file trees now share a consistent default density, complete file icons, flattened empty directories, Git status, name search, and context menus; Project files also support drag-and-drop organization.
 - 版本管理改为可调整的历史侧栏与常驻 Diff 工作区，支持搜索和加载更早版本、按版本浏览文件，并直接恢复版本或单个文件。
 - Version Management now uses a resizable history sidebar and persistent Diff workspace, with history search and loading, per-version file browsing, and direct version or file restore.
 - 新增通用 Agent 与基于稳定 Project ID 的工作台；书籍和任意本地目录都可并行打开对话、Files、终端、阅读器与资料库。v0.3.3 Project 数据会保留源文件并自动复制迁移。

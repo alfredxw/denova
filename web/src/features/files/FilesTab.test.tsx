@@ -4,7 +4,9 @@ import { http, HttpResponse } from 'msw'
 import { useEffect, useState, type ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { WorkspaceChangeMetadata } from '@/features/changes/types'
+import { fileTreeRow } from '@/test/file-tree'
 import { server } from '@/test/msw/server'
+import { TestQueryClientProvider } from '@/test/query-client'
 import { FilesTab } from './FilesTab'
 
 vi.mock('@monaco-editor/react', () => ({
@@ -61,17 +63,19 @@ function FilesHarness({
 }) {
   const [selectedPath, setSelectedPath] = useState<string | null>(initialPath)
   return (
-    <FilesTab
-      projectId="project-one"
-      workspace="/projects/one"
-      selectedPath={selectedPath}
-      autoSaveEnabled={autoSaveEnabled}
-      autoSaveDelayMs={50}
-      editorRefreshSignal={editorRefreshSignal}
-      treeRefreshSignal={treeRefreshSignal}
-      onSelectedPathChange={setSelectedPath}
-      onWorkspaceChanged={onWorkspaceChanged}
-    />
+    <TestQueryClientProvider>
+      <FilesTab
+        projectId="project-one"
+        workspace="/projects/one"
+        selectedPath={selectedPath}
+        autoSaveEnabled={autoSaveEnabled}
+        autoSaveDelayMs={50}
+        editorRefreshSignal={editorRefreshSignal}
+        treeRefreshSignal={treeRefreshSignal}
+        onSelectedPathChange={setSelectedPath}
+        onWorkspaceChanged={onWorkspaceChanged}
+      />
+    </TestQueryClientProvider>
   )
 }
 
@@ -117,8 +121,9 @@ describe('FilesTab', () => {
     )
 
     render(<FilesHarness onWorkspaceChanged={onWorkspaceChanged} />)
-    await user.click(await screen.findByRole('button', { name: '展开 src' }))
-    await user.click(await screen.findByLabelText('main.ts'))
+    await waitFor(() => expect(fileTreeRow('src/')).toBeInTheDocument())
+    await user.click(fileTreeRow('src/'))
+    await user.click(fileTreeRow('src/main.ts'))
 
     const editor = await screen.findByRole('textbox', { name: 'src/main.ts 的源码编辑器' })
     fireEvent.change(editor, { target: { value: 'after\n' } })

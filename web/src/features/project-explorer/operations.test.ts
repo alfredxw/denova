@@ -2,27 +2,9 @@ import { describe, expect, it } from 'vitest'
 import type { ProjectFileExplorerNode } from './model'
 import {
   buildProjectFilePastePlan,
-  insertProjectFileDraft,
-  PROJECT_FILE_DRAFT_PREFIX,
 } from './operations'
 
 describe('project file tree operations', () => {
-  it('places a new row at the start of its target directory', () => {
-    const nodes = [directory('src', [file('src/main.ts')])]
-    const rendered = insertProjectFileDraft(nodes, {
-      id: `${PROJECT_FILE_DRAFT_PREFIX}1`,
-      parentPath: 'src',
-      type: 'file',
-      index: 0,
-    })
-
-    expect(rendered[0].children?.map((node) => ({ draft: node.draft, path: node.path }))).toEqual([
-      { draft: true, path: `${PROJECT_FILE_DRAFT_PREFIX}1` },
-      { draft: undefined, path: 'src/main.ts' },
-    ])
-    expect(nodes[0].children?.map((node) => node.path)).toEqual(['src/main.ts'])
-  })
-
   it('uses VS Code-style copy names for same-folder collisions', () => {
     const nodes = [file('notes.md'), file('notes copy.md')]
 

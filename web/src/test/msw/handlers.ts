@@ -198,6 +198,18 @@ export const handlers = [
       },
     }),
   ),
+  http.get('/api/projects/:projectId/versions/status', () =>
+    HttpResponse.json({
+      has_versions: false,
+      clean: true,
+      changes: [],
+      auto: {
+        timed_enabled: false,
+        timed_interval_minutes: 10,
+        retention: 100,
+      },
+    }),
+  ),
   http.get('/api/settings', () =>
     HttpResponse.json({
       default: {},
