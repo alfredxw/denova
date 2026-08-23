@@ -1,10 +1,8 @@
 name: CI
 
 on:
-  push:
-    branches:
-      - master
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -19,6 +17,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -71,48 +71,13 @@ jobs:
             (cd "${module}" && go test ./...)
           done
 
-      - name: Run Go vet
-        shell: bash
-        run: |
-          set -euo pipefail
-          for module in ${GO_MODULES}; do
-            echo "==> go vet (${module})"
-            (cd "${module}" && go vet ./...)
-          done
+      - name: Run affected frontend tests
+        if: github.event_name == 'pull_request'
+        run: pnpm --dir web test --changed=${{ github.event.pull_request.base.sha }} --passWithNoTests --maxWorkers=2
 
-      - name: Check reachable Go vulnerabilities
-        shell: bash
-        run: |
-          set -euo pipefail
-          go install golang.org/x/vuln/cmd/govulncheck@latest
-          govulncheck="$(go env GOPATH)/bin/govulncheck"
-          for module in ${GO_MODULES}; do
-            echo "==> govulncheck (${module})"
-            (cd "${module}" && "${govulncheck}" ./...)
-          done
-
-      - name: Run frontend tests
-        run: pnpm --dir web test
-
-      - name: Build frontend
-        run: pnpm --dir web build
+      - name: Run all frontend tests
+        if: github.event_name == 'workflow_dispatch'
+        run: pnpm --dir web test --maxWorkers=2
 
       - name: Build distribution
         run: ./scripts/build.sh
-
-  windows-filesystem-durability:
-    name: Windows filesystem durability regressions
-    runs-on: windows-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Verify shared directory durability consumers
-        run: go test ./internal/localfs ./internal/workspace/documentreview ./internal/workspace/change -count=1

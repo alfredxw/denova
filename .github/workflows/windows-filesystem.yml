@@ -1,0 +1,33 @@
+name: Windows filesystem durability
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/windows-filesystem.yml"
+      - "go.mod"
+      - "go.sum"
+      - "internal/localfs/**"
+      - "internal/workspace/documentreview/**"
+      - "internal/workspace/change/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Windows filesystem durability regressions
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Verify shared directory durability consumers
+        run: go test ./internal/localfs ./internal/workspace/documentreview ./internal/workspace/change -count=1
