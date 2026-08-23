@@ -6,6 +6,7 @@ import {
   projectFileAssetURL,
   readOptionalProjectFile,
   readProjectFile,
+  revealProjectFile,
   resolveProjectFileTree,
   saveProjectFile,
 } from './project-files'
@@ -102,6 +103,17 @@ describe('project files API', () => {
       { id: 'one', kind: 'create', ok: true, path: 'one.txt' },
       { id: 'two', kind: 'delete', ok: false, path: 'missing.txt', code: 'not_found', error: 'Missing' },
     ])
+  })
+
+  it('reveals only a project-relative path through the scoped endpoint', async () => {
+    server.use(
+      http.post('/api/projects/p1/files/reveal', async ({ request }) => {
+        expect(await request.json()).toEqual({ path: 'chapters/one.md' })
+        return HttpResponse.json({ project_id: 'p1', path: 'chapters/one.md' })
+      }),
+    )
+
+    await expect(revealProjectFile('p1', 'chapters/one.md')).resolves.toBeUndefined()
   })
 
   it('treats an optional missing file as data and shares concurrent reads', async () => {

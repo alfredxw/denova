@@ -23,6 +23,14 @@ const NOVA_FILE_TREE_UNSAFE_CSS = `
 [data-type="item"][data-item-focused="true"]:not(:focus-visible)::before {
   outline: none;
 }
+
+[data-type="item"]:not([data-item-git-status]):not([data-item-contains-git-change="true"]) > [data-item-section="git"] {
+  display: none;
+}
+
+[data-type="item"][data-item-context-menu-button-visibility="when-needed"]:not(:hover):not(:focus-visible):not([data-item-context-hover="true"]) > [data-item-section="action"] {
+  display: none;
+}
 `
 
 export interface NovaFileTreeProps {

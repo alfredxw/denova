@@ -193,6 +193,7 @@ export function FilesTab({
 
   const sidebar = (
     <ProjectExplorerPane
+      projectId={projectId}
       nodes={tree.nodes}
       workspace={workspace}
       selectedPath={selectedPath}

@@ -60,6 +60,26 @@ func TestServiceResolvesBatchedBranchesAndSingleChildChains(t *testing.T) {
 	}
 }
 
+func TestServiceResolvesExistingHostPathInsideProject(t *testing.T) {
+	service, projectID, workspace := projectFilesTestService(t)
+	mustWriteProjectFile(t, workspace, "chapters/one.md", "one")
+
+	resolved, err := service.ResolveHostPath(projectID, "chapters/one.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	canonicalWorkspace, err := filepath.EvalSymlinks(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(canonicalWorkspace, "chapters", "one.md"); resolved != want {
+		t.Fatalf("resolved host path = %q, want %q", resolved, want)
+	}
+	if _, err := service.ResolveHostPath(projectID, "../outside.md"); err == nil {
+		t.Fatal("parent traversal should be rejected")
+	}
+}
+
 func TestServiceRecursivelyResolvesOrdinaryTreeWithinConfiguredLimit(t *testing.T) {
 	service, projectID, workspace := projectFilesTestService(t)
 	mustWriteProjectFile(t, workspace, "a/nested/one.md", "one")

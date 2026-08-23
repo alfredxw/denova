@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ProjectFileExplorerNode } from './model'
 import {
+  buildProjectFileDuplicatePlan,
   buildProjectFilePastePlan,
 } from './operations'
 
@@ -17,6 +18,18 @@ describe('project file tree operations', () => {
     const nodes = [directory('src', [directory('src/nested')])]
 
     expect(buildProjectFilePastePlan(nodes, { mode: 'cut', paths: ['src'] }, 'src/nested')).toEqual([])
+  })
+
+  it('duplicates each selected item beside its source with collision-free names', () => {
+    const nodes = [
+      directory('docs', [file('docs/guide.md'), file('docs/guide copy.md')]),
+      directory('src'),
+    ]
+
+    expect(buildProjectFileDuplicatePlan(nodes, ['docs/guide.md', 'src'])).toEqual([
+      { source: 'src', destination: 'src copy' },
+      { source: 'docs/guide.md', destination: 'docs/guide copy 2.md' },
+    ])
   })
 })
 

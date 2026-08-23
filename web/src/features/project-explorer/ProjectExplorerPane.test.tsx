@@ -1,6 +1,7 @@
+import { FileTree } from '@pierre/trees'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { fileTreeRow, fileTreeShadow } from '@/test/file-tree'
 import type { ProjectFileExplorerNode } from './model'
 import { ProjectExplorerPane } from './ProjectExplorerPane'
@@ -8,6 +9,17 @@ import { ProjectExplorerPane } from './ProjectExplorerPane'
 const selectedPath = 'chapters/volume/chapter.md'
 
 describe('ProjectExplorerPane', () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  it('does not move the viewport while synchronizing the current file selection', async () => {
+    const scrollToPath = vi.spyOn(FileTree.prototype, 'scrollToPath')
+
+    renderPane()
+
+    await waitFor(() => expect(fileTreeRow(selectedPath)).toHaveAttribute('aria-selected', 'true'))
+    expect(scrollToPath).not.toHaveBeenCalled()
+  })
+
   it('collapses all folders and reveals the selected file again', async () => {
     renderPane()
 
@@ -69,6 +81,7 @@ describe('ProjectExplorerPane', () => {
 function renderPane(overrides: Partial<React.ComponentProps<typeof ProjectExplorerPane>> = {}) {
   return render(
     <ProjectExplorerPane
+      projectId="project-one"
       nodes={explorerNodes()}
       workspace="/projects/one"
       selectedPath={selectedPath}

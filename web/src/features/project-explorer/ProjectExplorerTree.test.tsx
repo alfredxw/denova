@@ -75,6 +75,54 @@ describe('ProjectExplorerTree', () => {
 
     await waitFor(() => expect(onCopyItem).toHaveBeenCalledWith('notes.md', 'docs/notes.md'))
   })
+
+  it('offers the expanded native-style file menu without product-specific preview actions', async () => {
+    renderTree({ nodes: [file('chapter.md')] })
+
+    fireEvent.contextMenu(fileTreeRow('chapter.md'), { clientX: 10, clientY: 10 })
+
+    for (const label of ['新建文件', '新建目录', '复制', '复制路径', '复制相对路径', '创建副本', '查看文件', '在文件管理器中显示', '重命名', '删除']) {
+      expect(await screen.findByRole('menuitem', { name: label })).toBeInTheDocument()
+    }
+    expect(screen.queryByText(/Orca Browser/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Markdown Preview/i)).not.toBeInTheDocument()
+  })
+
+  it('creates beside a file and runs duplicate, view, and reveal actions', async () => {
+    const user = userEvent.setup()
+    const onCreateItem = vi.fn().mockResolvedValue(undefined)
+    const onCopyItem = vi.fn().mockResolvedValue(undefined)
+    const onSelectFile = vi.fn()
+    const onRevealItem = vi.fn().mockResolvedValue(undefined)
+    renderTree({
+      nodes: [directory('docs', [file('docs/chapter.md')])],
+      expandedPaths: ['docs'],
+      onCreateItem,
+      onCopyItem,
+      onSelectFile,
+      onRevealItem,
+    })
+
+    const openMenu = () => fireEvent.contextMenu(fileTreeRow('docs/chapter.md'), { clientX: 10, clientY: 10 })
+    openMenu()
+    await user.click(await screen.findByRole('menuitem', { name: '新建文件' }))
+    const createInput = await shadowInput()
+    fireEvent.input(createInput, { target: { value: 'notes.md' } })
+    fireEvent.keyDown(createInput, { key: 'Enter' })
+    await waitFor(() => expect(onCreateItem).toHaveBeenCalledWith('docs/notes.md', 'file'))
+
+    openMenu()
+    await user.click(await screen.findByRole('menuitem', { name: '创建副本' }))
+    await waitFor(() => expect(onCopyItem).toHaveBeenCalledWith('docs/chapter.md', 'docs/chapter copy.md'))
+
+    openMenu()
+    await user.click(await screen.findByRole('menuitem', { name: '查看文件' }))
+    expect(onSelectFile).toHaveBeenCalledWith('docs/chapter.md')
+
+    openMenu()
+    await user.click(await screen.findByRole('menuitem', { name: '在文件管理器中显示' }))
+    await waitFor(() => expect(onRevealItem).toHaveBeenCalledWith('docs/chapter.md'))
+  })
 })
 
 function renderTree(overrides: Partial<React.ComponentProps<typeof ProjectExplorerTree>> & { ref?: React.Ref<ProjectExplorerTreeHandle> } = {}) {
@@ -94,6 +142,7 @@ function renderTree(overrides: Partial<React.ComponentProps<typeof ProjectExplor
       onRenameItem={vi.fn().mockResolvedValue(undefined)}
       onCopyItem={vi.fn().mockResolvedValue(undefined)}
       onMoveItem={vi.fn().mockResolvedValue(undefined)}
+      onRevealItem={vi.fn().mockResolvedValue(undefined)}
       {...props}
     />,
   )

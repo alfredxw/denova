@@ -67,6 +67,11 @@ export function FileTreeMenuSeparator() {
   return <div role="separator" className="nova-file-tree-menu-separator" />
 }
 
+/** Visually describes an implemented shortcut without changing the menu item's accessible name. */
+export function FileTreeMenuShortcut({ children }: { children: ReactNode }) {
+  return <span aria-hidden="true" className="nova-file-tree-menu-shortcut">{children}</span>
+}
+
 function placeMenu(
   anchor: ContextMenuAnchorRect,
   width: number,

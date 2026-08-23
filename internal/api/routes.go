@@ -44,6 +44,7 @@ func (s *Server) registerRoutes(h *hertzserver.Hertz) {
 		projects.GET("/files/asset", apiHandlers.HandleProjectFileAsset)
 		projects.PUT("/files/file", apiHandlers.HandleProjectFileSave)
 		projects.POST("/files/operations", apiHandlers.HandleProjectFileOperations)
+		projects.POST("/files/reveal", localHostEffectMiddleware, apiHandlers.HandleProjectFileReveal)
 		projects.GET("/book", apiHandlers.HandleProjectBookSnapshot)
 		projects.GET("/book/tree", apiHandlers.HandleProjectBookTree)
 		projects.GET("/book/summary", apiHandlers.HandleProjectBookSummary)

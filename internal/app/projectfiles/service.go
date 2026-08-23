@@ -463,6 +463,28 @@ func (service *Service) ReadAsset(_ context.Context, projectID, path string) ([]
 	return data, contentType, nil
 }
 
+// ResolveHostPath converts a project-relative tree item into an existing host
+// path for an explicitly user-triggered native UI effect. Symlink parents are
+// rejected so a scoped project request cannot escape through a linked folder.
+func (service *Service) ResolveHostPath(projectID, path string) (string, error) {
+	runtime, err := service.resolve(projectID)
+	if err != nil {
+		return "", err
+	}
+	rel, err := normalizeRelativePath(path, false)
+	if err != nil {
+		return "", err
+	}
+	if err := rejectSymlinkParents(runtime.layout.ContentRoot, rel); err != nil {
+		return "", err
+	}
+	hostPath := filepath.Join(runtime.layout.ContentRoot, filepath.FromSlash(rel))
+	if _, err := os.Lstat(hostPath); err != nil {
+		return "", err
+	}
+	return hostPath, nil
+}
+
 func (service *Service) SaveFile(ctx context.Context, projectID string, request SaveRequest) (SaveResult, error) {
 	runtime, err := service.resolve(projectID)
 	if err != nil {

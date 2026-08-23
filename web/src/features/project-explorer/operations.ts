@@ -32,6 +32,18 @@ export function buildProjectFilePastePlan(
   return transfers
 }
 
+/** Builds collision-free copies beside each source, preserving multi-selection semantics. */
+export function buildProjectFileDuplicatePlan(
+  nodes: readonly ProjectFileExplorerNode[],
+  paths: readonly string[],
+): ProjectFileTransfer[] {
+  return removeNestedProjectPaths(paths).flatMap((source) => buildProjectFilePastePlan(
+    nodes,
+    { mode: 'copy', paths: [source] },
+    projectParentPath(source),
+  ))
+}
+
 export function findProjectFileNode(
   nodes: readonly ProjectFileExplorerNode[],
   path: string,

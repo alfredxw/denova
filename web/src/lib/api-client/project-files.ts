@@ -180,6 +180,16 @@ export function applyProjectFileOperations(
   })
 }
 
+/** Opens the host file manager for a user-selected, project-scoped tree item. */
+export async function revealProjectFile(projectId: string, path: string): Promise<void> {
+  const response = await requestJSON<{ project_id: string; path: string }>(`${projectFilesURL(projectId)}/reveal`, {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify({ path }),
+  })
+  assertProjectScope(projectId, response.project_id, 'Project file reveal response')
+}
+
 export function projectFileAssetURL(projectId: string, path: string, revision = '') {
   const params = new URLSearchParams({ path })
   if (revision) params.set('revision', revision)

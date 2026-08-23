@@ -7,6 +7,7 @@ import "denova/internal/hostdialog"
 type Handlers struct {
 	app             *novaApp.App
 	directoryPicker hostdialog.DirectoryPicker
+	pathRevealer    hostdialog.PathRevealer
 }
 
 // New creates a handler set bound to one application runtime.
@@ -14,5 +15,6 @@ func New(application *novaApp.App) *Handlers {
 	return &Handlers{
 		app:             application,
 		directoryPicker: hostdialog.NewDirectoryPicker(),
+		pathRevealer:    hostdialog.NewPathRevealer(),
 	}
 }

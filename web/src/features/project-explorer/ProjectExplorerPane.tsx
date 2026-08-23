@@ -1,15 +1,17 @@
 import type { GitStatusEntry } from '@pierre/trees'
 import { FilePlus, FolderPlus, ListCollapse, Loader2, LocateFixed, MoreHorizontal, RefreshCw } from 'lucide-react'
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { LoadingState } from '@/components/common/LoadingState'
+import { revealProjectFile } from '@/lib/api-client/project-files'
 import { ProjectExplorerTree, type ProjectExplorerTreeHandle } from './ProjectExplorerTree'
 import type { ProjectFileExplorerNode } from './model'
 import { projectFileTreeProjection } from './model'
 import type { ProjectExplorerExtensions } from './types'
 
 interface ProjectExplorerPaneProps {
+  projectId: string
   nodes: readonly ProjectFileExplorerNode[]
   workspace: string
   selectedPath: string | null
@@ -34,6 +36,7 @@ interface ProjectExplorerPaneProps {
 
 /** Virtualized project Explorer surface shared by Writing and Game layouts. */
 export const ProjectExplorerPane = memo(function ProjectExplorerPane({
+  projectId,
   nodes,
   workspace,
   selectedPath,
@@ -57,25 +60,15 @@ export const ProjectExplorerPane = memo(function ProjectExplorerPane({
 }: ProjectExplorerPaneProps) {
   const { t } = useTranslation()
   const explorerRef = useRef<ProjectExplorerTreeHandle>(null)
-  const revealedPathRef = useRef<string | null>(null)
   const [treeScrolled, setTreeScrolled] = useState(false)
   const incompletePaths = useMemo(() => projectFileTreeProjection(nodes).incompletePaths, [nodes])
   const actionButtonClass = 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
+  const revealItem = useCallback((path: string) => revealProjectFile(projectId, path), [projectId])
 
   const revealCurrentFile = useCallback(() => {
     if (!selectedPath) return false
     return explorerRef.current?.revealPath(selectedPath) ?? false
-  }, [nodes, selectedPath])
-
-  useEffect(() => {
-    if (!selectedPath) {
-      revealedPathRef.current = null
-      return
-    }
-    if (revealedPathRef.current !== selectedPath && revealCurrentFile()) {
-      revealedPathRef.current = selectedPath
-    }
-  }, [nodes, revealCurrentFile, selectedPath])
+  }, [selectedPath])
 
   return (
     <aside className="flex h-full min-h-0 min-w-0 flex-col bg-[var(--nova-surface)] text-[var(--nova-text)]">
@@ -144,6 +137,7 @@ export const ProjectExplorerPane = memo(function ProjectExplorerPane({
             onRenameItem={onRenameItem}
             onCopyItem={onCopyItem}
             onMoveItem={onMoveItem}
+            onRevealItem={revealItem}
             extensions={extensions}
           />
         )}

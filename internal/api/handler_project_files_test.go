@@ -186,3 +186,14 @@ func TestProjectFileOperationsAPIReportsPartialSuccess(t *testing.T) {
 		t.Fatalf("successful operation was not retained: content=%q err=%v", content, err)
 	}
 }
+
+func TestProjectFileRevealAPIRejectsPathsOutsideProject(t *testing.T) {
+	application := newTestApplication(t)
+	server := NewServer(application, "0")
+	response := performJSONRequest(t, server, http.MethodPost, "/api/projects/"+url.PathEscape(application.ProjectID())+"/files/reveal", map[string]string{
+		"path": "../outside.md",
+	})
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("reveal status = %d body=%s", response.Code, response.Body.String())
+	}
+}

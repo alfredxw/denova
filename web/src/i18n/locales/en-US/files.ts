@@ -29,6 +29,7 @@ const files = {
   'files.tree.git.untracked': 'Untracked',
   'files.tree.git.descendant': 'Contains changes',
   'files.tree.copyPathFailed': 'Failed to copy file path',
+  'files.tree.revealFailed': 'Failed to reveal the project file in the file manager',
   'files.tree.refreshFailed': 'Failed to refresh project files',
   'files.editor.noSelection': 'Select a file',
   'files.editor.noSelectionDescription': 'Choose a file from the project tree to inspect or edit its source.',

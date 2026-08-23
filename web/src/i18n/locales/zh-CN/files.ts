@@ -29,6 +29,7 @@ const files = {
   'files.tree.git.untracked': '未跟踪',
   'files.tree.git.descendant': '包含更改',
   'files.tree.copyPathFailed': '复制文件路径失败',
+  'files.tree.revealFailed': '无法在文件管理器中显示项目文件',
   'files.tree.refreshFailed': '刷新项目文件失败',
   'files.editor.noSelection': '选择一个文件',
   'files.editor.noSelectionDescription': '从右侧项目文件树选择文件，即可查看或编辑源码。',

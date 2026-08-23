@@ -13,7 +13,7 @@ import (
 	"github.com/ncruces/zenity"
 )
 
-var ErrUnavailable = errors.New("native directory picker is unavailable")
+var ErrUnavailable = errors.New("native host UI is unavailable")
 
 // DirectorySelection distinguishes a deliberate cancellation from a host error.
 type DirectorySelection struct {
