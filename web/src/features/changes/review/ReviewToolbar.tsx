@@ -84,13 +84,13 @@ export function ReviewToolbar({ thread, selectedGroup, selectedScopeID, fileCoun
           <span className="font-mono text-[10px] tabular-nums text-[var(--nova-danger)]">−{deletions}</span>
         </div>
 
-        <div role="group" aria-label={t('changes.viewDiff')} className="flex h-7 items-center rounded-md border border-[var(--nova-border)] bg-[var(--nova-bg)] p-0.5">
+        <div role="group" aria-label={t('changes.viewDiff')} className="flex h-7 items-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-bg)] p-0.5">
           <button
             type="button"
             data-review-layout="unified"
             aria-pressed={layout === 'unified'}
             onClick={() => onLayoutChange('unified')}
-            className={`flex h-6 items-center gap-1 rounded px-2 text-[10px] ${layout === 'unified' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text)]'}`}
+            className={`flex h-6 items-center gap-1 rounded-[calc(var(--nova-radius)-2px)] px-2 text-[10px] ${layout === 'unified' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text)]'}`}
           >
             <Rows3 className="h-3 w-3" />{t('changes.diff.unified')}
           </button>
@@ -99,7 +99,7 @@ export function ReviewToolbar({ thread, selectedGroup, selectedScopeID, fileCoun
             data-review-layout="split"
             aria-pressed={layout === 'split'}
             onClick={() => onLayoutChange('split')}
-            className={`flex h-6 items-center gap-1 rounded px-2 text-[10px] ${layout === 'split' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text)]'}`}
+            className={`flex h-6 items-center gap-1 rounded-[calc(var(--nova-radius)-2px)] px-2 text-[10px] ${layout === 'split' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text)]'}`}
           >
             <Columns2 className="h-3 w-3" />{t('changes.diff.split')}
           </button>

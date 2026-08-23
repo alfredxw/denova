@@ -83,6 +83,7 @@
   --trees-fg-muted-override: var(--nova-text-faint);
   --trees-selected-bg-override: var(--nova-active);
   --trees-selected-fg-override: var(--nova-text);
+  --trees-selected-focused-border-color-override: transparent;
   --trees-border-color-override: var(--nova-border);
   --trees-input-bg-override: var(--nova-bg);
   --trees-focus-ring-color-override: var(--nova-accent-blue);
