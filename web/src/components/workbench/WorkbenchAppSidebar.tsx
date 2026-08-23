@@ -20,6 +20,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { novaEase } from '@/features/motion/motion-tokens'
+import { verticalAxisModifiers } from '@/lib/dnd'
 import { cn } from '@/lib/utils'
 import { WorkbenchSidebarCustomizationDialog } from './WorkbenchSidebarCustomizationDialog'
 
@@ -106,7 +107,7 @@ export function WorkbenchAppSidebar({
 
   return (
     <LayoutGroup id="workbench-activity-bar">
-      <DndContext key={activityOrderScope} sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <DndContext key={activityOrderScope} sensors={sensors} collisionDetection={closestCenter} modifiers={verticalAxisModifiers} onDragEnd={handleDragEnd}>
         <ContextMenu>
           <ContextMenuTrigger asChild>
             <Sidebar

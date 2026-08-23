@@ -244,7 +244,7 @@ export function AgentsView({ target, onClose, toolNavigationIntent }: { target: 
           title: 'Agents',
           side: 'left',
           icon: <Bot className="h-4 w-4" />,
-          content: <div className="h-full min-h-0 overflow-y-auto bg-[var(--nova-surface-2)] p-3"><AgentList active={activeAgent} onSelect={setActiveAgent} /></div>,
+          content: <AgentList active={activeAgent} onSelect={setActiveAgent} />,
           desktopClassName: 'min-h-0 border-r border-[var(--nova-border)]',
           desktopVisible: sidebarVisible,
           mobileClassName: 'w-[min(88vw,340px)]',
@@ -435,17 +435,17 @@ function resolveInheritedImageProfileID(layered: LayeredSettings | null, layer: 
 
 function AgentList({ active, onSelect }: { active: VisibleAgentKey; onSelect: (agent: VisibleAgentKey) => void }) {
   const { t } = useTranslation()
-  const groups = AGENTS.reduce<Array<{ group: string; agents: typeof AGENTS }>>((acc, agent) => {
-    const last = acc[acc.length - 1]
-    if (last?.group === agent.groupKey) last.agents.push(agent)
-    else acc.push({ group: agent.groupKey, agents: [agent] })
-    return acc
-  }, [])
+  const groups = new Map<string, AgentViewDefinition[]>()
+  for (const agent of AGENTS) {
+    const group = groups.get(agent.groupKey)
+    if (group) group.push(agent)
+    else groups.set(agent.groupKey, [agent])
+  }
 
-  const navigationGroups: SectionedNavigationGroup<VisibleAgentKey>[] = groups.map((group, index) => ({
-    id: `${group.group}:${index}`,
-    title: t(group.group),
-    items: group.agents.map((agent) => ({
+  const navigationGroups: SectionedNavigationGroup<VisibleAgentKey>[] = Array.from(groups, ([group, agents]) => ({
+    id: group,
+    title: t(group),
+    items: agents.map((agent) => ({
       id: agent.key,
       title: t(agent.titleKey),
       description: t(agent.subtitleKey),
@@ -457,7 +457,6 @@ function AgentList({ active, onSelect }: { active: VisibleAgentKey; onSelect: (a
       groups={navigationGroups}
       activeId={active}
       onSelect={onSelect}
-      itemClassName="py-2"
     />
   )
 }

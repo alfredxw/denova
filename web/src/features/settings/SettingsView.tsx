@@ -63,7 +63,7 @@ const TRACE_CAPTURE_OPTIONS = [
 const TRACE_EXPORTER_OPTIONS = [
   { value: 'local', labelKey: 'settings.debug.traceExporterLocal' },
 ] as const
-export function SettingsView({ onClose }: { onClose?: () => void }) {
+export function SettingsView({ onClose, visible = true }: { onClose?: () => void; visible?: boolean }) {
   const { t } = useTranslation()
   const reducedMotion = useReducedMotionConfig()
   const approval = useAgentApprovalMode()
@@ -101,7 +101,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
     interactive: true,
   })
   const contentRef = useRef<HTMLDivElement | null>(null)
-  const sectionRefs = useRef<Record<string, HTMLElement | null>>({})
+  const sectionRefs = useRef<Partial<Record<SettingsSectionId, HTMLElement | null>>>({})
   const sectionScrollFrameRef = useRef<number | null>(null)
   const sectionScrollAnimationRef = useRef<AnimationPlaybackControls | null>(null)
   const sectionScrollTargetRef = useRef<SettingsSectionId | null>(null)
@@ -687,6 +687,22 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
 
   useEffect(() => cancelSectionScroll, [cancelSectionScroll])
 
+  const syncActiveSection = useCallback(() => {
+    if (sectionScrollTargetRef.current) return
+    const current = settingsSectionAtScrollPosition(contentRef.current, sectionRefs.current)
+    if (current) setActiveSection(current)
+  }, [])
+
+  useEffect(() => {
+    if (!visible) {
+      cancelSectionScroll()
+      return
+    }
+    if (!layered) return
+    const frame = window.requestAnimationFrame(syncActiveSection)
+    return () => window.cancelAnimationFrame(frame)
+  }, [cancelSectionScroll, layered, syncActiveSection, visible])
+
   const jumpToSection = useCallback((id: SettingsSectionId) => {
     cancelSectionScroll()
     setActiveSection(id)
@@ -728,16 +744,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
   }, [jumpToSection])
 
   const onContentScroll = () => {
-    if (sectionScrollTargetRef.current) return
-    const container = contentRef.current
-    if (!container) return
-    const top = container.getBoundingClientRect().top
-    const current = sections.reduce<SettingsSectionId>((acc, section) => {
-      const node = sectionRefs.current[section.id]
-      if (!node) return acc
-      return node.getBoundingClientRect().top <= top + 72 ? section.id : acc
-    }, sections[0]?.id ?? 'model')
-    if (current !== activeSection) setActiveSection(current)
+    syncActiveSection()
   }
 
   const navGroups = sections.reduce<Array<{ group: SettingsSection['group']; items: SettingsSection[] }>>((groups, section) => {
@@ -758,8 +765,6 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
       }))}
       activeId={activeSection}
       onSelect={jumpToSection}
-      className="h-full min-h-0 overflow-y-auto bg-[var(--nova-surface-2)] px-2 py-4 sm:px-3"
-      itemClassName="font-normal"
     />
   )
 
@@ -848,6 +853,23 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
       )}
     </FeaturePageShell>
   )
+}
+
+function settingsSectionAtScrollPosition(
+  container: HTMLElement | null,
+  refs: Partial<Record<SettingsSectionId, HTMLElement | null>>,
+): SettingsSectionId | null {
+  if (!container) return null
+  const threshold = container.getBoundingClientRect().top + 72
+  let nearestBefore: { id: SettingsSectionId; top: number } | null = null
+  let nearestAfter: { id: SettingsSectionId; top: number } | null = null
+  for (const [id, node] of Object.entries(refs) as Array<[SettingsSectionId, HTMLElement | null]>) {
+    if (!node) continue
+    const top = node.getBoundingClientRect().top
+    if (top <= threshold && (!nearestBefore || top > nearestBefore.top)) nearestBefore = { id, top }
+    if (top > threshold && (!nearestAfter || top < nearestAfter.top)) nearestAfter = { id, top }
+  }
+  return nearestBefore?.id ?? nearestAfter?.id ?? null
 }
 
 export function modelProfilesForEditor(draft: Settings, effective: Settings): ModelProfileSettings[] {

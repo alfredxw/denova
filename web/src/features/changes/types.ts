@@ -1,3 +1,5 @@
+import type { DiffFileDocument } from '@/features/diff/types'
+
 export type ChangeReviewDecision = 'accept' | 'reject'
 export type ChangeReviewStatus = 'pending' | 'accepted' | 'rejected' | 'mixed'
 export type ChangeApplyState = 'prepared' | 'applied' | 'reverted' | 'conflicted'
@@ -123,12 +125,7 @@ export interface WorkspaceChangeGroupSummary {
 export type ReviewThreadContinuity = 'continuous' | 'discontinuous' | 'conflicted'
 
 /** Server-composed cumulative file projection for a review thread. */
-export interface ReviewThreadFile {
-  path: string
-  before_content: string
-  after_content: string
-  base_revision: string
-  revision: string
+export interface ReviewThreadFile extends DiffFileDocument {
   base_group_id: string
   base_change_set_id: string
   latest_group_id: string
@@ -141,10 +138,6 @@ export interface ReviewThreadFile {
   continuity: ReviewThreadContinuity
   /** Earlier, non-contiguous changes excluded from the displayed snapshot. */
   omitted_iteration_count?: number
-  before_exists?: boolean
-  after_exists?: boolean
-  additions?: number
-  deletions?: number
 }
 
 /** Durable review identity spanning one or more independent Agent runs. */

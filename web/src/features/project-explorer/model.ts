@@ -23,6 +23,47 @@ export interface ProjectFileExplorerNode {
   draft?: true
 }
 
+interface MutablePathTreeNode {
+  path: string
+  name: string
+  type: 'file' | 'dir'
+  children: Map<string, MutablePathTreeNode>
+}
+
+/** Builds a complete, read-only Project-shaped tree from a flat list of file paths. */
+export function buildProjectFileTreeFromPaths(paths: readonly string[]): ProjectFileExplorerNode[] {
+  const root: MutablePathTreeNode = { path: '', name: '', type: 'dir', children: new Map() }
+  for (const filePath of paths) {
+    const parts = filePath.split('/').filter(Boolean)
+    let parent = root
+    parts.forEach((name, index) => {
+      const path = parts.slice(0, index + 1).join('/')
+      const type = index === parts.length - 1 ? 'file' : 'dir'
+      let child = parent.children.get(name)
+      if (!child) {
+        child = { path, name, type, children: new Map() }
+        parent.children.set(name, child)
+      }
+      parent = child
+    })
+  }
+  return materializePathTree(root)
+}
+
+/** Returns every directory path in tree order for consumers that expand the projection by default. */
+export function collectProjectFileTreeDirectoryPaths(nodes: readonly ProjectFileExplorerNode[]): string[] {
+  const paths: string[] = []
+  const visit = (items: readonly ProjectFileExplorerNode[]) => {
+    for (const node of items) {
+      if (node.type !== 'dir') continue
+      paths.push(node.path)
+      if (node.children) visit(node.children)
+    }
+  }
+  visit(nodes)
+  return paths
+}
+
 /** Merges a resolve response into the normalized cache, appending only cursor pages. */
 export function mergeProjectDirectories(
   current: ReadonlyMap<string, CachedProjectDirectory>,
@@ -92,6 +133,24 @@ function explorerNode(
       ? buildProjectFileExplorerNodes(entry.path, directories, loadingPaths, ancestors)
       : undefined,
   }
+}
+
+function materializePathTree(parent: MutablePathTreeNode): ProjectFileExplorerNode[] {
+  return [...parent.children.values()]
+    .sort((left, right) => left.type === right.type
+      ? left.name.localeCompare(right.name)
+      : left.type === 'dir' ? -1 : 1)
+    .map((node) => ({
+      id: node.path,
+      path: node.path,
+      name: node.name,
+      type: node.type,
+      ignored: false,
+      symlink: false,
+      loaded: true,
+      loading: false,
+      children: node.type === 'dir' ? materializePathTree(node) : undefined,
+    }))
 }
 
 function mergeEntries(current: readonly ProjectFileEntry[], incoming: readonly ProjectFileEntry[]) {

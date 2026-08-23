@@ -108,6 +108,7 @@ type VersionDiff struct {
 	BaseVersion       *VersionEntry         `json:"base_version,omitempty"`
 	Comparison        VersionDiffComparison `json:"comparison"`
 	Changes           []VersionChange       `json:"changes"`
+	Files             []VersionFileDiff     `json:"files,omitempty"`
 	Path              string                `json:"path,omitempty"`
 	Original          string                `json:"original,omitempty"`
 	Modified          string                `json:"modified,omitempty"`
@@ -115,6 +116,20 @@ type VersionDiff struct {
 	Binary            bool                  `json:"binary"`
 	MissingInOriginal bool                  `json:"missing_in_original,omitempty"`
 	MissingInModified bool                  `json:"missing_in_modified,omitempty"`
+}
+
+// VersionFileDiff is the complete content projection for one changed file.
+// Summary requests return these in change order so clients can render one
+// continuous review surface without repeating the workspace comparison.
+type VersionFileDiff struct {
+	Path              string `json:"path"`
+	Status            string `json:"status"`
+	Original          string `json:"original,omitempty"`
+	Modified          string `json:"modified,omitempty"`
+	Text              bool   `json:"text"`
+	Binary            bool   `json:"binary"`
+	MissingInOriginal bool   `json:"missing_in_original,omitempty"`
+	MissingInModified bool   `json:"missing_in_modified,omitempty"`
 }
 
 type VersionAutoSettings struct {

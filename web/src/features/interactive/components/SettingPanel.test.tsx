@@ -499,7 +499,10 @@ describe('SettingPanel', () => {
     expandSection('事件包')
     expandSection('TRPG 检定')
     expect(await screen.findByRole('button', { name: /默认事件包/ })).toBeInTheDocument()
-    expect(await screen.findByRole('button', { name: /均衡 DM 检定/ })).toBeInTheDocument()
+    const defaultRuleButton = await screen.findByRole('button', { name: /均衡 DM 检定/ })
+    expect(defaultRuleButton).not.toHaveClass('cursor-grab')
+    expect(defaultRuleButton).toHaveAttribute('aria-roledescription', 'sortable')
+    expect(within(defaultRuleButton.closest('[data-sidebar="menu-item"]') as HTMLElement).queryByRole('button', { name: '拖拽排序' })).not.toBeInTheDocument()
     const expectedSectionOrder = ['故事导演', '叙事风格', '状态系统', 'TRPG 检定', '图像方案', '事件包']
     for (const [index, name] of expectedSectionOrder.entries()) {
       const nextName = expectedSectionOrder[index + 1]

@@ -1,12 +1,27 @@
 import { describe, expect, it } from 'vitest'
 import type { ProjectFileTreeResolveResult } from '@/lib/api-client/project-files'
 import {
+  buildProjectFileTreeFromPaths,
   buildProjectFileExplorerNodes,
+  collectProjectFileTreeDirectoryPaths,
   mergeProjectDirectories,
   PROJECT_FILE_LOAD_MORE_PREFIX,
 } from './model'
 
 describe('project file explorer model', () => {
+  it('builds a sorted read-only tree from flat file paths', () => {
+    const nodes = buildProjectFileTreeFromPaths([
+      'setting/progress.md',
+      'chapters/two.md',
+      'README.md',
+      'chapters/one.md',
+    ])
+
+    expect(nodes.map((node) => node.path)).toEqual(['chapters', 'setting', 'README.md'])
+    expect(nodes[0].children?.map((node) => node.path)).toEqual(['chapters/one.md', 'chapters/two.md'])
+    expect(collectProjectFileTreeDirectoryPaths(nodes)).toEqual(['chapters', 'setting'])
+  })
+
   it('appends stable cursor pages and removes the load-more row when complete', () => {
     const first = mergeProjectDirectories(new Map(), [result({
       path: '',

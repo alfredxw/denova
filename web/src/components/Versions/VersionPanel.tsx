@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { RefreshCw, X } from 'lucide-react'
@@ -11,7 +11,7 @@ import {
   getVersionStatus,
   restoreVersion,
 } from '@/lib/api'
-import type { VersionDiff, VersionDiffComparison, VersionEntry, VersionRestorePlan } from '@/lib/api'
+import type { VersionDiffComparison, VersionEntry, VersionRestorePlan } from '@/lib/api'
 import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
 import { RollbackDialog } from '@/features/versions/components/rollback-dialog'
@@ -34,8 +34,8 @@ const versionKeys = {
   all: ['versions'] as const,
   status: (projectId: string) => ['versions', 'status', projectId] as const,
   history: (projectId: string, limit: number) => ['versions', 'history', projectId, limit] as const,
-  diff: (projectId: string, versionId: string, comparison: VersionDiffComparison, path = '') =>
-    ['versions', 'diff', projectId, versionId, comparison, path] as const,
+  diff: (projectId: string, versionId: string, comparison: VersionDiffComparison) =>
+    ['versions', 'diff', projectId, versionId, comparison] as const,
 }
 
 /** Project-scoped version history with a persistent, responsive diff workspace. */
@@ -46,14 +46,13 @@ export function VersionPanel({ projectId, workspace, refreshSignal = 0, visible 
   const [historyLimit, setHistoryLimit] = useState(INITIAL_HISTORY_LIMIT)
   const [search, setSearch] = useState('')
   const [selectionKey, setSelectionKey] = useState('')
-  const [selectedPath, setSelectedPath] = useState('')
-  const [diffMode, setDiffMode] = useState<VersionDiffMode>('split')
+  const [diffMode, setDiffMode] = useState<VersionDiffMode>('unified')
   const [rollbackVersion, setRollbackVersion] = useState<VersionEntry | null>(null)
   const [restorePaths, setRestorePaths] = useState<string[] | undefined>()
   const [restorePlan, setRestorePlan] = useState<VersionRestorePlan | null>(null)
   const [restorePlanLoading, setRestorePlanLoading] = useState(false)
   const restorePlanRequestRef = useRef(0)
-  const closeHistoryPaneRef = useRef<() => void>(() => {})
+  const closeAdaptivePaneRef = useRef<() => void>(() => {})
 
   const statusQuery = useQuery({
     queryKey: versionKeys.status(projectId),
@@ -78,38 +77,16 @@ export function VersionPanel({ projectId, workspace, refreshSignal = 0, visible 
   const summaryQuery = useQuery({
     queryKey: versionKeys.diff(projectId, targetVersion?.id ?? '', comparison),
     queryFn: () => getVersionDiff(projectId, targetVersion!.id, undefined, comparison),
-    enabled: Boolean(projectId && visible && targetVersion && !currentSelection),
+    enabled: Boolean(projectId && visible && targetVersion),
   })
-  const summary = useMemo<VersionDiff | null>(() => {
-    if (!targetVersion) return null
-    if (!currentSelection) return summaryQuery.data ?? null
-    return {
-      version: targetVersion,
-      comparison: 'workspace',
-      changes: status?.changes ?? [],
-      text: false,
-      binary: false,
-    }
-  }, [currentSelection, status?.changes, summaryQuery.data, targetVersion])
-  const selectedChanges = summary?.changes ?? []
+  const summary = targetVersion ? summaryQuery.data ?? null : null
 
   useEffect(() => {
     setHistoryLimit(INITIAL_HISTORY_LIMIT)
     setSearch('')
     setSelectionKey('')
-    setSelectedPath('')
     setError('')
   }, [projectId])
-
-  useEffect(() => {
-    setSelectedPath(current => selectedChanges.some(change => change.path === current) ? current : selectedChanges[0]?.path || '')
-  }, [selectedKey, selectedChanges])
-
-  const fileDiffQuery = useQuery({
-    queryKey: versionKeys.diff(projectId, targetVersion?.id ?? '', comparison, selectedPath),
-    queryFn: () => getVersionDiff(projectId, targetVersion!.id, selectedPath, comparison),
-    enabled: Boolean(projectId && visible && targetVersion && selectedPath),
-  })
 
   const invalidateVersionQueries = useCallback(async () => {
     await queryClient.invalidateQueries({ queryKey: versionKeys.all })
@@ -183,10 +160,10 @@ export function VersionPanel({ projectId, workspace, refreshSignal = 0, visible 
     }
   }
 
-  const queryError = statusQuery.error || historyQuery.error || summaryQuery.error || fileDiffQuery.error
+  const queryError = statusQuery.error || historyQuery.error || summaryQuery.error
   const visibleError = error || (queryError instanceof Error ? queryError.message : '')
   const operationLoading = createMutation.isPending || restoreMutation.isPending || restorePlanLoading
-  const refreshing = statusQuery.isFetching || historyQuery.isFetching
+  const refreshing = statusQuery.isFetching || historyQuery.isFetching || summaryQuery.isFetching
   const canLoadMore = versions.length === historyLimit && historyLimit < MAX_HISTORY_LIMIT
 
   const sidebar = (
@@ -194,9 +171,7 @@ export function VersionPanel({ projectId, workspace, refreshSignal = 0, visible 
       workspace={workspace}
       status={status}
       versions={versions}
-      changes={selectedChanges}
       selectedKey={selectedKey}
-      selectedPath={selectedPath}
       search={search}
       error={visibleError}
       historyLoading={historyQuery.isFetching}
@@ -207,22 +182,17 @@ export function VersionPanel({ projectId, workspace, refreshSignal = 0, visible 
       onSearchChange={setSearch}
       onSelectCurrent={() => {
         setSelectionKey(CURRENT_WORKSPACE_SELECTION)
-        closeHistoryPaneRef.current()
+        closeAdaptivePaneRef.current()
       }}
       onSelectVersion={version => {
         setSelectionKey(version.id)
-        closeHistoryPaneRef.current()
-      }}
-      onSelectPath={path => {
-        setSelectedPath(path)
-        closeHistoryPaneRef.current()
+        closeAdaptivePaneRef.current()
       }}
       onRefresh={() => void refresh()}
       onCreate={() => createMutation.mutate()}
       onLoadMore={() => setHistoryLimit(limit => Math.min(limit + INITIAL_HISTORY_LIMIT, MAX_HISTORY_LIMIT))}
     />
   )
-
   return (
     <div className="flex h-full min-h-0 flex-col bg-background text-foreground">
       <div className="flex h-9 shrink-0 items-center border-b px-3">
@@ -239,7 +209,7 @@ export function VersionPanel({ projectId, workspace, refreshSignal = 0, visible 
 
       <AdaptiveSurface
         className="min-h-0 flex-1"
-        collapseAt={960}
+        collapseAt={1080}
         mobilePaneScope="surface"
         left={{
           id: 'version-history',
@@ -259,22 +229,21 @@ export function VersionPanel({ projectId, workspace, refreshSignal = 0, visible 
         }}
       >
         {controls => {
-          closeHistoryPaneRef.current = controls.closePane
+          closeAdaptivePaneRef.current = controls.closePane
           return (
             <VersionDiffWorkspace
               currentSelection={currentSelection}
               targetVersion={targetVersion}
               summary={summary}
-              diff={fileDiffQuery.data ?? null}
-              selectedPath={selectedPath}
+              summaryRevision={summaryQuery.dataUpdatedAt}
               mode={diffMode}
               isMobile={controls.isMobile}
-              loading={summaryQuery.isLoading || fileDiffQuery.isLoading}
+              loading={summaryQuery.isLoading}
               restoring={operationLoading}
               onModeChange={setDiffMode}
               onOpenSidebar={controls.openLeft}
               onRestoreVersion={() => targetVersion && void openRestoreDialog(targetVersion)}
-              onRestoreFile={() => targetVersion && selectedPath && void openRestoreDialog(targetVersion, [selectedPath])}
+              onRestoreFile={path => targetVersion && void openRestoreDialog(targetVersion, [path])}
             />
           )
         }}

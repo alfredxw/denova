@@ -1,7 +1,7 @@
-import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from '@dnd-kit/core'
+import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Bot, ChevronDown, ChevronsDownUp, ChevronsUpDown, FileText, Plus, Search } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { ResourceDirectoryItem, ResourceDirectorySection } from '@/components/resource-directory/types'
@@ -9,8 +9,8 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
+import { EmbeddedSidebar } from '@/components/navigation/embedded-sidebar'
 import {
-  Sidebar,
   SidebarContent,
   SidebarFooter,
   SidebarGroup,
@@ -22,9 +22,9 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarProvider,
   SidebarSeparator,
 } from '@/components/ui/sidebar'
+import { verticalAxisModifiers } from '@/lib/dnd'
 import { cn } from '@/lib/utils'
 import { presetModuleOwnership, type PresetResourceKind } from '../../preset-ownership'
 
@@ -61,9 +61,9 @@ export function PresetDirectorySidebar({
   const { t } = useTranslation()
   const [query, setQuery] = useState('')
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({})
-  const [draggingItem, setDraggingItem] = useState<ResourceDirectoryItem | null>(null)
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    // Match primary navigation: keep the complete row draggable without turning small click movement into a drag.
+    useSensor(PointerSensor, { activationConstraint: { distance: 10 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
 
@@ -107,13 +107,7 @@ export function PresetDirectorySidebar({
     }))
   }
 
-  const handleDragStart = (event: DragStartEvent) => {
-    const activeItemId = String(event.active.id)
-    setDraggingItem(visibleSections.flatMap(({ items }) => items).find((item) => item.id === activeItemId) ?? null)
-  }
-
   const handleDragEnd = (event: DragEndEvent) => {
-    setDraggingItem(null)
     if (!event.over || event.active.id === event.over.id) return
     const activeItemId = String(event.active.id)
     const overItemId = String(event.over.id)
@@ -128,11 +122,7 @@ export function PresetDirectorySidebar({
   }
 
   return (
-    <SidebarProvider
-      className="preset-directory nova-sidebar h-full min-h-0 w-full overflow-hidden"
-      style={{ '--sidebar-width': '100%' } as CSSProperties}
-    >
-      <Sidebar collapsible="none" className="w-full">
+    <EmbeddedSidebar className="preset-directory nova-sidebar overflow-hidden">
         <SidebarHeader className="gap-3 p-3">
           <div className="flex items-center gap-3 px-1">
             <div className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -181,8 +171,7 @@ export function PresetDirectorySidebar({
             <DndContext
               sensors={sensors}
               collisionDetection={closestCenter}
-              onDragStart={handleDragStart}
-              onDragCancel={() => setDraggingItem(null)}
+              modifiers={verticalAxisModifiers}
               onDragEnd={handleDragEnd}
             >
               {visibleSections.map(({ section, items }) => {
@@ -252,7 +241,6 @@ export function PresetDirectorySidebar({
                   </Collapsible>
                 )
               })}
-              <DragOverlay>{draggingItem ? <PresetItemDragOverlay item={draggingItem} /> : null}</DragOverlay>
             </DndContext>
           )}
         </SidebarContent>
@@ -270,25 +258,22 @@ export function PresetDirectorySidebar({
             {t('settingPanel.tellerAgent.title')}
           </Button>
         </SidebarFooter>
-      </Sidebar>
-    </SidebarProvider>
+    </EmbeddedSidebar>
   )
 }
 
 function SortablePresetItem({ item, active, onSelect }: { item: ResourceDirectoryItem; active: boolean; onSelect: () => void }) {
-  const { attributes, listeners, setActivatorNodeRef, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id })
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id })
   return (
-    <SidebarMenuItem>
+    <SidebarMenuItem
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={cn(isDragging && 'z-10 opacity-80')}
+    >
       <SidebarMenuButton
-        ref={(node) => {
-          setNodeRef(node)
-          setActivatorNodeRef(node)
-        }}
         type="button"
         size="lg"
-        style={{ transform: CSS.Transform.toString(transform), transition }}
         isActive={active}
-        className={cn('cursor-grab', isDragging && 'opacity-35')}
         aria-current={active ? 'true' : undefined}
         title={item.summary ? `${item.title}\n${item.summary}` : item.title}
         onClick={onSelect}
@@ -327,13 +312,5 @@ function PresetItemContent({ item }: { item: ResourceDirectoryItem }) {
         {item.summary && <span className="truncate text-xs text-sidebar-foreground/60">{item.summary}</span>}
       </span>
     </>
-  )
-}
-
-function PresetItemDragOverlay({ item }: { item: ResourceDirectoryItem }) {
-  return (
-    <div className="flex w-64 items-center gap-2 rounded-md bg-sidebar p-2 text-sm text-sidebar-foreground shadow-lg ring-1 ring-sidebar-border">
-      <PresetItemContent item={item} />
-    </div>
   )
 }

@@ -739,7 +739,19 @@ export interface VersionDiff {
   base_version?: VersionEntry
   comparison: VersionDiffComparison
   changes: VersionChange[]
+  files?: VersionFileDiff[]
   path?: string
+  original?: string
+  modified?: string
+  text: boolean
+  binary: boolean
+  missing_in_original?: boolean
+  missing_in_modified?: boolean
+}
+
+export interface VersionFileDiff {
+  path: string
+  status: VersionChange['status']
   original?: string
   modified?: string
   text: boolean

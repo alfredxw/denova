@@ -15,10 +15,6 @@ vi.mock('@/lib/api', () => ({
   restoreVersion: vi.fn(),
 }))
 
-vi.mock('@/features/chapters/components/chapter-diff-view', () => ({
-  ChapterDiffView: ({ original, modified }: { original: string; modified: string }) => <div>{original} → {modified}</div>,
-}))
-
 describe('VersionPanel', () => {
   beforeEach(() => {
     vi.mocked(createVersion).mockReset()
@@ -84,14 +80,28 @@ describe('VersionPanel', () => {
     const user = userEvent.setup()
     renderVersionPanel()
 
-    await screen.findByText('chapters/second.md')
+    expect((await screen.findAllByText('chapters/second.md')).length).toBeGreaterThan(0)
     expect(getVersionDiff).toHaveBeenCalledWith('project-version', 'second', undefined, 'parent')
-    expect(getVersionDiff).toHaveBeenCalledWith('project-version', 'second', 'chapters/second.md', 'parent')
+    expect(getVersionDiff).not.toHaveBeenCalledWith('project-version', 'second', 'chapters/second.md', 'parent')
 
     await user.click(screen.getByRole('button', { name: /当前变更/ }))
     await waitFor(() => {
-      expect(getVersionDiff).toHaveBeenCalledWith('project-version', 'second', 'chapters/current.md', 'workspace')
+      expect(getVersionDiff).toHaveBeenCalledWith('project-version', 'second', undefined, 'workspace')
     })
+  })
+
+  it('shows every changed file continuously with a synchronized right navigator and one-click collapse', async () => {
+    const user = userEvent.setup()
+    renderVersionPanel()
+
+    const navigator = await screen.findByRole('complementary', { name: '文件导航' })
+    expect(within(navigator).getByRole('tree', { name: '文件导航' })).toBeInTheDocument()
+    expect(await within(navigator).findByRole('treeitem', { name: /chapters\/second\.md/ })).toBeInTheDocument()
+    expect(navigator).toHaveClass('border-l')
+    expect(document.querySelectorAll('[data-review-file]')).toHaveLength(2)
+
+    await user.click(screen.getByRole('button', { name: '折叠全部 Diff' }))
+    expect(document.querySelectorAll('[data-review-file-content][hidden]')).toHaveLength(2)
   })
 
   it('shows a useful empty state before the first version is saved', async () => {
@@ -148,15 +158,32 @@ function restorePlan(id: string, path: string): VersionRestorePlan {
 }
 
 function versionDiff(id: string, path: string | undefined, comparison: 'workspace' | 'parent'): VersionDiff {
-  const selectedPath = path || `chapters/${id}.md`
+  const selectedPath = comparison === 'workspace' ? 'chapters/current.md' : `chapters/${id}.md`
+  const files = [
+    {
+      path: selectedPath,
+      status: 'modified',
+      original: 'before',
+      modified: 'after',
+      text: true,
+      binary: false,
+    },
+    ...(comparison === 'parent' && id === 'second' ? [{
+      path: 'setting/deleted.md',
+      status: 'deleted',
+      original: 'deleted',
+      text: true,
+      binary: false,
+      missing_in_modified: true,
+    }] : []),
+  ]
   return {
     version: versionEntry(id, id === 'second' ? '第二版本' : '第一版本', [selectedPath]),
     comparison,
-    changes: [{ path: selectedPath, status: 'modified' }],
+    changes: files.map(file => ({ path: file.path, status: file.status })),
+    files,
     path,
-    original: path ? 'before' : undefined,
-    modified: path ? 'after' : undefined,
-    text: Boolean(path),
+    text: false,
     binary: false,
   }
 }

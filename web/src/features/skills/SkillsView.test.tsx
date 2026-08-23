@@ -491,6 +491,7 @@ describe('SkillsView', () => {
     const { container } = render(<SkillsView workspace="/books/demo" />)
 
     expect(await screen.findByRole('button', { name: '目录文件' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('tree').closest('aside')).toHaveClass('h-full')
     await user.click(await screen.findByRole('button', { name: /style\.md/ }))
     await waitFor(() => {
       expect(vi.mocked(getSkillFileDocument)).toHaveBeenCalledWith(PROJECT_TARGET, 'user', 'draft-plan', 'references/style.md')

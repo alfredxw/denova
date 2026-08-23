@@ -4,8 +4,8 @@ import { AlertTriangle, Check, FileDiff, Loader2, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
-import { InlineCollapsiblePane } from '@/components/layout/panel-motion'
-import { ScrollArea } from '@/components/ui/scroll-area'
+import { MultiFileDiffViewport } from '@/features/diff/MultiFileDiffViewport'
+import { useMultiFileDiffNavigation } from '@/features/diff/use-multi-file-diff-navigation'
 import { lineDiffStats } from '../diff-stats'
 import { logWorkspaceChangeError, workspaceChangeErrorMessage } from '../errors'
 import {
@@ -26,13 +26,12 @@ import type {
 } from '../types'
 import { invalidateProjectChangeQueries, useProjectChangeGroup, useProjectChangeReviewThread } from '../use-change-review'
 import { ReviewFileDiffSection } from './ReviewFileDiffSection'
-import { ReviewFileNavigator } from './ReviewFileNavigator'
+import { reviewFileNavigationItems } from './ReviewFileNavigator'
 import { ReviewToolbar } from './ReviewToolbar'
 import type { ReviewDiffLayout } from './monaco/review-editor-adapter'
 import { Utf8OffsetIndex } from './monaco/utf8-offset-index'
 import { projectReviewGroupFiles } from './review-group-projection'
 import type { ChangeReviewScopeRequest } from '../use-writing-change-review'
-import './review-diff.css'
 
 const REVIEW_LAYOUT_STORAGE_KEY = 'nova:change-review-layout'
 const REVIEW_SCOPE_THREAD = 'thread'
@@ -77,12 +76,9 @@ export function ChangeReviewWorkspace({ projectId, threadID, scopeRequest, disab
   const queryClient = useQueryClient()
   const threadQuery = useProjectChangeReviewThread(projectId, threadID)
   const [layout, setLayout] = useState<ReviewDiffLayout>(readReviewLayout)
-  const [activePath, setActivePath] = useState('')
   const [selectedScopeID, setSelectedScopeID] = useState(REVIEW_SCOPE_THREAD)
   const [error, setError] = useState('')
   const [commentDraftPaths, setCommentDraftPaths] = useState<ReadonlySet<string>>(() => new Set())
-  const [collapsedPaths, setCollapsedPaths] = useState<ReadonlySet<string>>(() => new Set())
-  const [navigatorVisible, setNavigatorVisible] = useState(true)
   const freezeProjection = commentDraftPaths.size > 0
   const historicalGroupID = selectedScopeID === REVIEW_SCOPE_THREAD ? '' : selectedScopeID
   const historicalGroupQuery = useProjectChangeGroup(projectId, historicalGroupID)
@@ -91,6 +87,13 @@ export function ChangeReviewWorkspace({ projectId, threadID, scopeRequest, disab
   const reviewFiles = useMemo(() => selectedScopeID === REVIEW_SCOPE_THREAD
     ? (thread?.files ?? [])
     : projectReviewGroupFiles(historicalGroup), [historicalGroup, selectedScopeID, thread?.files])
+  const reviewPaths = useMemo(() => reviewFiles.map((file) => file.path), [reviewFiles])
+  const navigatorFiles = useMemo(() => reviewFileNavigationItems(reviewFiles), [reviewFiles])
+  const navigation = useMultiFileDiffNavigation({
+    identity: `${projectId}:${threadID}:${selectedScopeID}`,
+    paths: reviewPaths,
+    preferredPath: selectedPath,
+  })
   const reviewTotals = useMemo(() => reviewFiles.reduce((totals, file) => {
     const stats = file.additions === undefined || file.deletions === undefined
       ? lineDiffStats(file.before_content, file.after_content)
@@ -99,28 +102,10 @@ export function ChangeReviewWorkspace({ projectId, threadID, scopeRequest, disab
     totals.deletions += stats.deletions
     return totals
   }, { additions: 0, deletions: 0 }), [reviewFiles])
-  // Pre-render the editors of the active file's immediate neighbors so they are
-  // already mounted and measured before the user scrolls across the boundary.
-  // Without this, scrolling up into the previous file mounts its editor inside
-  // the viewport and the late height measurement causes a visible jump.
-  const preRenderPaths = useMemo(() => {
-    const paths = new Set<string>()
-    const index = reviewFiles.findIndex((file) => file.path === activePath)
-    if (index < 0) return paths
-    if (index > 0) paths.add(reviewFiles[index - 1].path)
-    paths.add(reviewFiles[index].path)
-    if (index < reviewFiles.length - 1) paths.add(reviewFiles[index + 1].path)
-    return paths
-  }, [activePath, reviewFiles])
   const reviewComments = (selectedScopeID === REVIEW_SCOPE_THREAD ? (thread?.comments ?? []) : (historicalGroup?.comments ?? []))
     .filter((comment) => !hiddenCommentIDs?.has(comment.id))
   const activeProjectRef = useRef(projectId)
   const feedbackCallbackRef = useRef(onFeedbackCommentsChange)
-  const reviewScrollRef = useRef<HTMLDivElement | null>(null)
-  const fileSectionRefs = useRef(new Map<string, HTMLElement>())
-  const scrollFrameRef = useRef<number | null>(null)
-  const jumpFrameRef = useRef<number | null>(null)
-  const pendingJumpPathRef = useRef('')
   const appliedScopeRequestRef = useRef(0)
   activeProjectRef.current = projectId
   feedbackCallbackRef.current = onFeedbackCommentsChange
@@ -134,14 +119,10 @@ export function ChangeReviewWorkspace({ projectId, threadID, scopeRequest, disab
   }, [layout])
 
   useEffect(() => {
-    setActivePath('')
     setSelectedScopeID(REVIEW_SCOPE_THREAD)
     setError('')
     setCommentDraftPaths(new Set())
-    setCollapsedPaths(new Set())
-    setNavigatorVisible(true)
     appliedScopeRequestRef.current = 0
-    fileSectionRefs.current.clear()
   }, [projectId, threadID])
 
   useEffect(() => {
@@ -152,28 +133,7 @@ export function ChangeReviewWorkspace({ projectId, threadID, scopeRequest, disab
   }, [scopeRequest, thread?.groups, threadID])
 
   useEffect(() => {
-    setActivePath('')
-    setCollapsedPaths(new Set())
-    fileSectionRefs.current.clear()
-  }, [selectedScopeID])
-
-  useEffect(() => {
-    const files = reviewFiles
-    if (!files.length) {
-      setActivePath('')
-      return
-    }
-    if (files.some((file) => file.path === activePath)) return
-    const preferred = selectedPath && files.some((file) => file.path === selectedPath) ? selectedPath : files[0].path
-    setActivePath(preferred)
-  }, [activePath, reviewFiles, selectedPath])
-
-  useEffect(() => {
     const available = new Set(reviewFiles.map((file) => file.path))
-    setCollapsedPaths((current) => {
-      const next = new Set([...current].filter((path) => available.has(path)))
-      return next.size === current.size ? current : next
-    })
     setCommentDraftPaths((current) => {
       const next = new Set([...current].filter((path) => available.has(path)))
       return next.size === current.size ? current : next
@@ -275,7 +235,6 @@ export function ChangeReviewWorkspace({ projectId, threadID, scopeRequest, disab
 
   const busy = disabled || reviewMutation.isPending || historyMutation.isPending || commentMutation.isPending
   const reviewLocked = busy || commentDraftPaths.size > 0
-  const allDiffsCollapsed = reviewFiles.length > 0 && reviewFiles.every((file) => collapsedPaths.has(file.path))
   const scopeLoading = selectedScopeID !== REVIEW_SCOPE_THREAD && historicalGroupQuery.isLoading
   const scopeError = selectedScopeID !== REVIEW_SCOPE_THREAD && historicalGroupQuery.isError
 
@@ -288,87 +247,6 @@ export function ChangeReviewWorkspace({ projectId, threadID, scopeRequest, disab
       return next
     })
   }, [])
-
-  const registerFileSection = useCallback((path: string, node: HTMLElement | null) => {
-    if (node) fileSectionRefs.current.set(path, node)
-    else fileSectionRefs.current.delete(path)
-  }, [])
-
-  const toggleFile = useCallback((path: string) => {
-    setActivePath(path)
-    setCollapsedPaths((current) => {
-      const next = new Set(current)
-      if (next.has(path)) next.delete(path)
-      else next.add(path)
-      return next
-    })
-  }, [])
-
-  const toggleAllDiffs = useCallback(() => {
-    setCollapsedPaths(allDiffsCollapsed ? new Set() : new Set(reviewFiles.map((file) => file.path)))
-  }, [allDiffsCollapsed, reviewFiles])
-
-  const cancelPendingJump = useCallback(() => {
-    pendingJumpPathRef.current = ''
-    if (jumpFrameRef.current !== null) {
-      window.cancelAnimationFrame(jumpFrameRef.current)
-      jumpFrameRef.current = null
-    }
-  }, [])
-
-  const scheduleFileNavigation = useCallback((path: string) => {
-    pendingJumpPathRef.current = path
-    if (jumpFrameRef.current !== null) window.cancelAnimationFrame(jumpFrameRef.current)
-    jumpFrameRef.current = window.requestAnimationFrame(() => {
-      jumpFrameRef.current = null
-      const pendingPath = pendingJumpPathRef.current
-      pendingJumpPathRef.current = ''
-      const section = fileSectionRefs.current.get(pendingPath)
-      if (typeof section?.scrollIntoView === 'function') {
-        section.scrollIntoView({ behavior: 'auto', block: 'start', inline: 'nearest' })
-      }
-    })
-  }, [])
-
-  const jumpToFile = useCallback((path: string) => {
-    setActivePath(path)
-    setCollapsedPaths((current) => {
-      if (!current.has(path)) return current
-      const next = new Set(current)
-      next.delete(path)
-      return next
-    })
-    scheduleFileNavigation(path)
-  }, [scheduleFileNavigation])
-
-  const syncActivePathFromScroll = useCallback(() => {
-    scrollFrameRef.current = null
-    const scroll = reviewScrollRef.current
-    if (!scroll || reviewFiles.length === 0) return
-    if (pendingJumpPathRef.current) return
-    const activationLine = scroll.getBoundingClientRect().top + 48
-    let nextPath = reviewFiles[0].path
-    for (const file of reviewFiles) {
-      const section = fileSectionRefs.current.get(file.path)
-      if (!section || section.getBoundingClientRect().top > activationLine) break
-      nextPath = file.path
-    }
-    if (scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight <= 2) {
-      nextPath = reviewFiles[reviewFiles.length - 1].path
-    }
-    setActivePath((current) => current === nextPath ? current : nextPath)
-  }, [reviewFiles])
-
-  const handleReviewScroll = useCallback(() => {
-    cancelPendingJump()
-    if (scrollFrameRef.current !== null) return
-    scrollFrameRef.current = window.requestAnimationFrame(syncActivePathFromScroll)
-  }, [cancelPendingJump, syncActivePathFromScroll])
-
-  useEffect(() => () => {
-    if (scrollFrameRef.current !== null) window.cancelAnimationFrame(scrollFrameRef.current)
-    cancelPendingJump()
-  }, [cancelPendingJump])
 
   if (threadQuery.isLoading) {
     return <ReviewSurfaceState onClose={onClose} icon={<Loader2 className="h-5 w-5 animate-spin" />} label={t('changes.loading')} />
@@ -397,8 +275,8 @@ export function ChangeReviewWorkspace({ projectId, threadID, scopeRequest, disab
         layout={layout}
         busy={reviewLocked}
         refreshing={threadQuery.isFetching || historicalGroupQuery.isFetching}
-        allDiffsCollapsed={allDiffsCollapsed}
-        navigatorVisible={navigatorVisible}
+        allDiffsCollapsed={navigation.allDiffsCollapsed}
+        navigatorVisible={navigation.navigatorVisible}
         agentVisible={agentVisible}
         onLayoutChange={setLayout}
         onScopeChange={setSelectedScopeID}
@@ -408,34 +286,20 @@ export function ChangeReviewWorkspace({ projectId, threadID, scopeRequest, disab
           void threadQuery.refetch()
           if (selectedScopeID !== REVIEW_SCOPE_THREAD) void historicalGroupQuery.refetch()
         }}
-        onToggleAllDiffs={toggleAllDiffs}
-        onToggleNavigator={() => setNavigatorVisible((visible) => !visible)}
+        onToggleAllDiffs={navigation.toggleAllDiffs}
+        onToggleNavigator={() => navigation.setNavigatorVisible((visible) => !visible)}
         onToggleAgent={onToggleAgent}
         onClose={onClose}
       />
 
       {error && <div role="alert" className="shrink-0 border-b border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-3 py-2 text-[11px] text-[var(--nova-danger)]">{error}</div>}
 
-      <div className="nova-review-container min-h-0 flex-1">
-        <div className="nova-review-layout flex h-full min-h-0">
-          <ScrollArea
-            type="always"
-            data-review-scroll-root="true"
-            className="min-h-0 min-w-0 flex-1 overflow-hidden"
-            viewportRef={reviewScrollRef}
-            viewportProps={{
-              role: 'main',
-              tabIndex: 0,
-              'aria-label': t('changes.viewDiff'),
-              onScroll: handleReviewScroll,
-              onWheelCapture: cancelPendingJump,
-              onPointerDownCapture: cancelPendingJump,
-              onKeyDownCapture: cancelPendingJump,
-              onTouchStartCapture: cancelPendingJump,
-              className: 'nova-review-scrollbar overscroll-contain focus-visible:ring-0 focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-[-1px] focus-visible:outline-[var(--nova-accent-blue)]',
-            }}
-          >
-          {scopeLoading ? (
+      <MultiFileDiffViewport
+        files={scopeLoading || scopeError ? [] : reviewFiles}
+        navigatorFiles={scopeLoading || scopeError ? [] : navigatorFiles}
+        navigation={navigation}
+        ariaLabel={t('changes.viewDiff')}
+        empty={scopeLoading ? (
             <ReviewState icon={<Loader2 className="h-5 w-5 animate-spin" />} label={t('changes.loading')} />
           ) : scopeError ? (
             <ReviewState
@@ -443,48 +307,32 @@ export function ChangeReviewWorkspace({ projectId, threadID, scopeRequest, disab
               label={workspaceChangeErrorMessage(t, historicalGroupQuery.error, 'changes.loadFailed')}
               action={<Button type="button" size="sm" variant="outline" onClick={() => void historicalGroupQuery.refetch()}>{t('changes.retry')}</Button>}
             />
-          ) : reviewFiles.length > 0 ? (
-            reviewFiles.map((file) => (
-              <ReviewFileDiffSection
-                key={file.path}
-                threadID={thread.id}
-                file={file}
-                comments={commentsForFile(file, reviewComments)}
-                layout={layout}
-                active={file.path === activePath}
-                preRender={preRenderPaths.has(file.path)}
-                collapsed={collapsedPaths.has(file.path)}
-                hasDraft={commentDraftPaths.has(file.path)}
-                mutationBusy={busy}
-                navigationLocked={reviewLocked}
-                sectionRef={(node) => registerFileSection(file.path, node)}
-                onToggle={() => toggleFile(file.path)}
-                onOpenFile={onOpenFile}
-                onDraftChange={(hasDraft) => handleDraftChange(file.path, hasDraft)}
-                onCreateComment={(request) => commentMutation.mutateAsync({ action: 'create', projectId, request }).then(() => undefined)}
-                onUpdateComment={(comment, body) => commentMutation.mutateAsync({ action: 'update', projectId, comment, body }).then(() => undefined)}
-                onDeleteComment={(comment) => commentMutation.mutateAsync({ action: 'delete', projectId, comment }).then(() => undefined)}
-              />
-            ))
           ) : (
             <ReviewState icon={<Check className="h-5 w-5 text-[var(--nova-success)]" />} label={t('changes.noPendingTitle')} />
           )}
-          </ScrollArea>
-          <InlineCollapsiblePane
-            visible={navigatorVisible}
-            side="right"
-            size="clamp(14rem, 19vw, 17rem)"
-            className="nova-review-file-navigator-motion"
-          >
-            <ReviewFileNavigator
-              files={reviewFiles}
-              selectedPath={activePath}
-              onSelect={jumpToFile}
-              onCollapse={() => setNavigatorVisible(false)}
-            />
-          </InlineCollapsiblePane>
-        </div>
-      </div>
+        renderFile={(file, state) => (
+          <ReviewFileDiffSection
+            key={file.path}
+            threadID={thread.id}
+            file={file}
+            comments={commentsForFile(file, reviewComments)}
+            layout={layout}
+            active={state.active}
+            preRender={state.preRender}
+            collapsed={state.collapsed}
+            hasDraft={commentDraftPaths.has(file.path)}
+            mutationBusy={busy}
+            navigationLocked={reviewLocked}
+            sectionRef={state.sectionRef}
+            onToggle={state.onToggle}
+            onOpenFile={onOpenFile}
+            onDraftChange={(hasDraft) => handleDraftChange(file.path, hasDraft)}
+            onCreateComment={(request) => commentMutation.mutateAsync({ action: 'create', projectId, request }).then(() => undefined)}
+            onUpdateComment={(comment, body) => commentMutation.mutateAsync({ action: 'update', projectId, comment, body }).then(() => undefined)}
+            onDeleteComment={(comment) => commentMutation.mutateAsync({ action: 'delete', projectId, comment }).then(() => undefined)}
+          />
+        )}
+      />
     </section>
   )
 }

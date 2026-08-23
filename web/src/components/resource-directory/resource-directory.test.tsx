@@ -51,8 +51,9 @@ describe('ResourceDirectory', () => {
     await user.click(screen.getByText('凯尔'))
     expect(onSelect).toHaveBeenCalledWith('c2')
     const activeRow = screen.getByText('艾拉').closest('button')
-    expect(activeRow).toHaveClass('is-active')
+    expect(activeRow).toHaveAttribute('data-active', 'true')
     expect(activeRow).toHaveAttribute('aria-current', 'true')
+    expect(screen.getByText('凯尔').closest('button')).toHaveAttribute('data-active', 'false')
     expect(screen.getByText('凯尔').closest('button')).not.toHaveAttribute('aria-current')
   })
 
@@ -141,7 +142,7 @@ describe('ResourceDirectory', () => {
     )
 
     const pinned = screen.getByText('配置管理 Agent').closest('button')
-    expect(pinned).toHaveClass('is-active')
+    expect(pinned).toHaveAttribute('data-active', 'true')
     expect(pinned).toHaveAttribute('aria-current', 'true')
     await user.click(pinned!)
     expect(onSelect).toHaveBeenCalledWith('__agent__')
@@ -150,7 +151,7 @@ describe('ResourceDirectory', () => {
   it('keeps non-empty sections ahead of empty ones when emptySectionsLast is set', () => {
     const { container } = render(<ResourceDirectory sections={buildSections()} activeId={null} onSelect={() => {}} emptySectionsLast />)
 
-    const labels = Array.from(container.querySelectorAll('section span.font-medium')).map((node) => node.textContent)
+    const labels = Array.from(container.querySelectorAll('[data-resource-directory-section-label]')).map((node) => node.textContent)
     expect(labels).toEqual(['角色', '规则', '地点'])
   })
 })

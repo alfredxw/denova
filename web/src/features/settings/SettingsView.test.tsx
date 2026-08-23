@@ -232,6 +232,41 @@ describe('SettingsView user scope', () => {
     vi.mocked(updateUserSettings).mockReset()
   })
 
+  it('realigns the active navigation item when the retained page becomes visible again', async () => {
+    const settings = layeredSettings({ devMode: false })
+    vi.mocked(fetchSettings).mockResolvedValue(settings)
+    vi.mocked(updateUserSettings).mockResolvedValue(settings)
+
+    const { rerender } = render(<SettingsView visible={false} />)
+
+    await screen.findByText('界面语言')
+    const content = document.querySelector<HTMLElement>('[data-nova-settings-content="true"]')
+    expect(content).not.toBeNull()
+    vi.spyOn(content as HTMLElement, 'getBoundingClientRect').mockReturnValue(settingsRect(0))
+
+    const sections = [...(content as HTMLElement).querySelectorAll<HTMLElement>(':scope > div > section')]
+    const appearanceSection = screen.getByRole('button', { name: '公共配置外观' }).closest<HTMLElement>('section')
+    const updatesSection = screen.getByRole('button', { name: '公共配置应用更新' }).closest<HTMLElement>('section')
+    expect(appearanceSection).not.toBeNull()
+    expect(updatesSection).not.toBeNull()
+
+    const sectionTops = new Map(sections.map((section, index) => [section, 1_000 + index * 100]))
+    for (const section of sections) {
+      vi.spyOn(section, 'getBoundingClientRect').mockImplementation(() => settingsRect(sectionTops.get(section) ?? 0))
+    }
+
+    sectionTops.set(appearanceSection as HTMLElement, -400)
+    sectionTops.set(updatesSection as HTMLElement, 0)
+    fireEvent.scroll(content as HTMLElement)
+    expect(screen.getByRole('button', { name: '应用更新' })).toHaveAttribute('aria-current', 'page')
+
+    sectionTops.set(appearanceSection as HTMLElement, 0)
+    sectionTops.set(updatesSection as HTMLElement, 400)
+    rerender(<SettingsView visible />)
+
+    await waitFor(() => expect(screen.getByRole('button', { name: '外观' })).toHaveAttribute('aria-current', 'page'))
+  })
+
   it('shows one user settings surface and persists every section to the user config', async () => {
     const settings = layeredSettings({ devMode: false })
     settings.user = { version_timed_interval_minutes: 10 }
@@ -470,5 +505,19 @@ function layeredSettings({ devMode }: { devMode: boolean }): LayeredSettings {
       user: 'user-rev',
       workspace: 'workspace-rev',
     },
+  }
+}
+
+function settingsRect(top: number): DOMRect {
+  return {
+    x: 0,
+    y: top,
+    top,
+    right: 0,
+    bottom: top,
+    left: 0,
+    width: 0,
+    height: 0,
+    toJSON: () => ({}),
   }
 }

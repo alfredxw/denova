@@ -1,11 +1,12 @@
 import type { Monaco, MonacoDiffEditor } from '@monaco-editor/react'
 import type { IDisposable, editor } from 'monaco-editor'
-import type { ReviewThreadFile, WorkspaceChangeCommentAnchor } from '../../types'
+import type { WorkspaceChangeCommentAnchor } from '../../types'
+import type { DiffFileDocument, DiffLayout } from '@/features/diff/types'
 import { ReviewCommentGutter } from './review-comment-gutter'
 import { installReviewEditorPointerFocus } from './review-editor-dom'
 import { Utf8OffsetIndex } from './utf8-offset-index'
 
-export type ReviewDiffLayout = 'unified' | 'split'
+export type ReviewDiffLayout = DiffLayout
 
 export interface ReviewZoneDescriptor {
   key: string
@@ -65,7 +66,7 @@ export class ReviewEditorAdapter {
   private readonly modifiedGutter: ReviewCommentGutter
   private zones: ZoneRecord[] = []
   private portalTargets: ReviewZonePortalTarget[] = []
-  private file: ReviewThreadFile | null = null
+  private file: DiffFileDocument | null = null
   private layout: ReviewDiffLayout = 'unified'
   private zoneDescriptors: ReviewZoneDescriptor[] = []
   private commentingDisabled = false
@@ -101,7 +102,7 @@ export class ReviewEditorAdapter {
     )
   }
 
-  update(file: ReviewThreadFile, layout: ReviewDiffLayout, zones: ReviewZoneDescriptor[], commentingDisabled = false) {
+  update(file: DiffFileDocument, layout: ReviewDiffLayout, zones: ReviewZoneDescriptor[], commentingDisabled = false) {
     if (this.disposed) return
     const contentChanged = this.file?.path !== file.path
       || this.file.base_revision !== file.base_revision

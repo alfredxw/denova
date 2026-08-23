@@ -99,6 +99,15 @@ describe('AgentsView', () => {
     expect(separator).toHaveAttribute('aria-hidden', 'false')
   })
 
+  it('renders each Agent category once even when registry entries are not adjacent', async () => {
+    vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({}))
+
+    render(<AgentsView />)
+
+    await screen.findByRole('button', { name: /General Agent/ })
+    expect(screen.getAllByText('工具', { selector: '[data-sidebar="group-label"]' })).toHaveLength(1)
+  })
+
   it('never exposes Harness optimization in Agents', async () => {
     vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({
       effective: { labs: { developer_mode: true } },

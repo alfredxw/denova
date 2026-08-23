@@ -161,7 +161,7 @@ export function SkillEditor({
       </div>
       <div className="flex min-h-0 flex-1">
         <InlineCollapsiblePane visible={fileTreeOpen} side="left" size="clamp(9rem, 42vw, 15rem)">
-          <aside className="flex min-h-0 w-[min(42vw,15rem)] min-w-36 shrink-0 flex-col border-r border-[var(--nova-border)] bg-[var(--nova-surface)]">
+          <aside className="flex h-full min-h-0 w-[min(42vw,15rem)] min-w-36 shrink-0 flex-col border-r border-[var(--nova-border)] bg-[var(--nova-surface)]">
             <div className="flex h-9 shrink-0 items-center gap-2 border-b border-[var(--nova-border)] px-3 text-[10px] font-medium uppercase text-[var(--nova-text-faint)]">
               <FileText className="h-3.5 w-3.5" />
               <span className="truncate">{t('skills.files.title')}</span>

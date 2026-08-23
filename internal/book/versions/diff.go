@@ -68,32 +68,68 @@ func (s *Service) Diff(id, path string, comparison VersionDiffComparison) (Versi
 
 	path = strings.TrimSpace(path)
 	if path == "" {
+		diff.Files = make([]VersionFileDiff, 0, len(diff.Changes))
+		for _, change := range diff.Changes {
+			file, fileErr := readVersionFileDiff(s.workspace, change.Path, change.Status, originalReader, modifiedReader)
+			if fileErr != nil {
+				return VersionDiff{}, fileErr
+			}
+			diff.Files = append(diff.Files, file)
+		}
 		return diff, nil
 	}
-	if _, err := safeVisiblePath(s.workspace, path); err != nil {
+	file, err := readVersionFileDiff(s.workspace, path, versionChangeStatus(diff.Changes, path), originalReader, modifiedReader)
+	if err != nil {
 		return VersionDiff{}, err
 	}
-	diff.Path = filepath.ToSlash(filepath.Clean(filepath.FromSlash(path)))
-	original, originalErr := originalReader(diff.Path)
-	modified, modifiedErr := modifiedReader(diff.Path)
+	diff.Path = file.Path
+	diff.Original = file.Original
+	diff.Modified = file.Modified
+	diff.Text = file.Text
+	diff.Binary = file.Binary
+	diff.MissingInOriginal = file.MissingInOriginal
+	diff.MissingInModified = file.MissingInModified
+	return diff, nil
+}
+
+func readVersionFileDiff(workspace, path, status string, originalReader, modifiedReader func(string) ([]byte, error)) (VersionFileDiff, error) {
+	if _, err := safeVisiblePath(workspace, path); err != nil {
+		return VersionFileDiff{}, err
+	}
+	file := VersionFileDiff{
+		Path:   filepath.ToSlash(filepath.Clean(filepath.FromSlash(path))),
+		Status: status,
+	}
+	original, originalErr := originalReader(file.Path)
+	modified, modifiedErr := modifiedReader(file.Path)
 	if errors.Is(originalErr, object.ErrFileNotFound) {
-		diff.MissingInOriginal = true
+		file.MissingInOriginal = true
 	} else if originalErr != nil {
-		return VersionDiff{}, originalErr
+		return VersionFileDiff{}, originalErr
 	}
 	if errors.Is(modifiedErr, os.ErrNotExist) || errors.Is(modifiedErr, object.ErrFileNotFound) {
-		diff.MissingInModified = true
+		file.MissingInModified = true
 	} else if modifiedErr != nil {
-		return VersionDiff{}, modifiedErr
+		return VersionFileDiff{}, modifiedErr
 	}
 	if isTextBytes(original) && isTextBytes(modified) {
-		diff.Text = true
-		diff.Original = string(original)
-		diff.Modified = string(modified)
+		file.Text = true
+		file.Original = string(original)
+		file.Modified = string(modified)
 	} else {
-		diff.Binary = true
+		file.Binary = true
 	}
-	return diff, nil
+	return file, nil
+}
+
+func versionChangeStatus(changes []VersionChange, path string) string {
+	cleanPath := filepath.ToSlash(filepath.Clean(filepath.FromSlash(path)))
+	for _, change := range changes {
+		if change.Path == cleanPath {
+			return change.Status
+		}
+	}
+	return ""
 }
 
 func (s *Service) parentVersion(id string) (string, *VersionEntry, error) {

@@ -236,6 +236,12 @@ func TestVersionDiffAgainstParent(t *testing.T) {
 	assertChange(t, summary.Changes, "chapters/changed.md", "modified")
 	assertChange(t, summary.Changes, "chapters/added.md", "added")
 	assertChange(t, summary.Changes, "chapters/deleted.md", "deleted")
+	if len(summary.Files) != 3 {
+		t.Fatalf("summary should include all changed file contents: %#v", summary.Files)
+	}
+	assertVersionFileDiff(t, summary.Files, "chapters/changed.md", "first", "second", false, false)
+	assertVersionFileDiff(t, summary.Files, "chapters/added.md", "", "new", true, false)
+	assertVersionFileDiff(t, summary.Files, "chapters/deleted.md", "remove me", "", false, true)
 
 	diff, err := service.Diff(second.Version.ID, "chapters/changed.md", VersionDiffComparisonParent)
 	if err != nil {
@@ -244,6 +250,20 @@ func TestVersionDiffAgainstParent(t *testing.T) {
 	if !diff.Text || diff.Original != "first" || diff.Modified != "second" {
 		t.Fatalf("unexpected parent diff: %#v", diff)
 	}
+}
+
+func assertVersionFileDiff(t *testing.T, files []VersionFileDiff, path, original, modified string, missingOriginal, missingModified bool) {
+	t.Helper()
+	for _, file := range files {
+		if file.Path != path {
+			continue
+		}
+		if !file.Text || file.Original != original || file.Modified != modified || file.MissingInOriginal != missingOriginal || file.MissingInModified != missingModified {
+			t.Fatalf("unexpected file diff for %s: %#v", path, file)
+		}
+		return
+	}
+	t.Fatalf("missing file diff for %s: %#v", path, files)
 }
 
 func TestGoGitVersionTracksNovaDeletesWhenGitIgnored(t *testing.T) {

@@ -65,7 +65,7 @@ export function SharedWorkbenchRoutes({
       )}
       {isMounted('settings') && (
         <WorkbenchRouteLayer visible={route === 'settings'} loadingLabel={loadingLabel}>
-          <SettingsView onClose={onCloseSettings} />
+          <SettingsView visible={route === 'settings'} onClose={onCloseSettings} />
         </WorkbenchRouteLayer>
       )}
     </>

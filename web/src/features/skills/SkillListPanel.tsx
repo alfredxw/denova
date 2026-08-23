@@ -1,12 +1,12 @@
-import { useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Bot, ChevronDown, Download, FileText, Plus, Search, Tags } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { EmptyState } from '@/components/common/EmptyState'
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { EmbeddedSidebar } from '@/components/navigation/embedded-sidebar'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
-  Sidebar,
   SidebarContent,
   SidebarFooter,
   SidebarGroup,
@@ -19,7 +19,6 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarMenuSkeleton,
-  SidebarProvider,
   SidebarSeparator,
 } from '@/components/ui/sidebar'
 import type { SkillScope, SkillSnapshot } from '@/lib/api'
@@ -98,11 +97,7 @@ export function SkillListPanel({
       : t('skills.category.empty')
 
   return (
-    <SidebarProvider
-      className="h-full min-h-0 w-full"
-      style={{ '--sidebar-width': '100%' } as CSSProperties}
-    >
-      <Sidebar collapsible="none" className="w-full">
+    <EmbeddedSidebar>
         <SidebarHeader className="gap-3 p-3">
           <div className="grid grid-cols-2 gap-2">
             <Button
@@ -243,7 +238,6 @@ export function SkillListPanel({
             </SidebarFooter>
           </>
         )}
-      </Sidebar>
-    </SidebarProvider>
+    </EmbeddedSidebar>
   )
 }

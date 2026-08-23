@@ -1,6 +1,7 @@
 import type { Monaco } from '@monaco-editor/react'
 import type { IDisposable, editor } from 'monaco-editor'
-import type { ReviewThreadFile, WorkspaceChangeCommentAnchor } from '../../types'
+import type { WorkspaceChangeCommentAnchor } from '../../types'
+import type { DiffFileDocument } from '@/features/diff/types'
 import { sameReviewZonePortalTargets, trackReviewZoneContentHeight, type ReviewZoneDescriptor, type ReviewZonePortalTarget } from './review-editor-adapter'
 import { ReviewCommentGutter } from './review-comment-gutter'
 import { installReviewEditorPointerFocus } from './review-editor-dom'
@@ -36,7 +37,7 @@ export class UnifiedReviewEditorAdapter {
   private readonly gutter: ReviewCommentGutter
   private zones: ZoneRecord[] = []
   private portalTargets: ReviewZonePortalTarget[] = []
-  private file: ReviewThreadFile | null = null
+  private file: DiffFileDocument | null = null
   private projection: UnifiedReviewProjection = { value: '', lines: [] }
   private zoneDescriptors: ReviewZoneDescriptor[] = []
   private beforeIndex = new Utf8OffsetIndex('')
@@ -73,7 +74,7 @@ export class UnifiedReviewEditorAdapter {
     )
   }
 
-  update(file: ReviewThreadFile, projection: UnifiedReviewProjection, zones: ReviewZoneDescriptor[], commentingDisabled = false) {
+  update(file: DiffFileDocument, projection: UnifiedReviewProjection, zones: ReviewZoneDescriptor[], commentingDisabled = false) {
     if (this.disposed) return
     const contentChanged = this.file?.path !== file.path
       || this.file.base_revision !== file.base_revision

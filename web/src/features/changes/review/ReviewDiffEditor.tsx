@@ -5,6 +5,7 @@ import { AlertTriangle, Loader2 } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { useTranslation } from 'react-i18next'
 import { DenovaMonacoDiffEditor, DenovaMonacoEditor } from '@/components/monaco/DenovaMonaco'
+import type { DiffFileDocument } from '@/features/diff/types'
 import type {
   CreateWorkspaceChangeCommentRequest,
   ReviewThreadFile,
@@ -39,6 +40,25 @@ interface ReviewDiffEditorProps {
   onDeleteComment: (comment: WorkspaceChangeComment) => Promise<void>
 }
 
+interface DiffEditorCommenting {
+  comments: WorkspaceChangeComment[]
+  busy: boolean
+  onDraftChange?: (hasDraft: boolean) => void
+  targetForSide: (side: 'before' | 'after') => Pick<CreateWorkspaceChangeCommentRequest, 'group_id' | 'change_set_id'>
+  onCreate: (request: CreateWorkspaceChangeCommentRequest) => Promise<void>
+  onUpdate: (comment: WorkspaceChangeComment, body: string) => Promise<void>
+  onDelete: (comment: WorkspaceChangeComment) => Promise<void>
+}
+
+interface DiffEditorProps {
+  surfaceID: string
+  file: DiffFileDocument
+  layout: ReviewDiffLayout
+  commenting?: DiffEditorCommenting
+  initialHeight?: number
+  onHeightChange?: (height: number) => void
+}
+
 interface ResolvedCommentThread extends ReviewZoneDescriptor {
   comments: WorkspaceChangeComment[]
 }
@@ -52,9 +72,33 @@ export async function preloadReviewMonaco(): Promise<void> {
   await loader.init()
 }
 
-export function ReviewDiffEditor({ threadID, file, comments, layout, busy = false, onDraftChange, initialHeight = 240, onHeightChange, onCreateComment, onUpdateComment, onDeleteComment }: ReviewDiffEditorProps) {
+export function ReviewDiffEditor({ threadID, file, comments, layout, busy = false, onDraftChange, initialHeight, onHeightChange, onCreateComment, onUpdateComment, onDeleteComment }: ReviewDiffEditorProps) {
+  return (
+    <DiffEditor
+      surfaceID={`review:${threadID}`}
+      file={file}
+      layout={layout}
+      initialHeight={initialHeight}
+      onHeightChange={onHeightChange}
+      commenting={{
+        comments,
+        busy,
+        onDraftChange,
+        targetForSide: (side) => reviewCommentTarget(file, side),
+        onCreate: onCreateComment,
+        onUpdate: onUpdateComment,
+        onDelete: onDeleteComment,
+      }}
+    />
+  )
+}
+
+export function DiffEditor({ surfaceID, file, layout, commenting, initialHeight = 240, onHeightChange }: DiffEditorProps) {
   const { t } = useTranslation()
   const { resolvedTheme } = useTheme()
+  const comments = commenting?.comments ?? []
+  const busy = commenting?.busy ?? true
+  const onDraftChange = commenting?.onDraftChange
   const splitAdapterRef = useRef<ReviewEditorAdapter | null>(null)
   const unifiedAdapterRef = useRef<UnifiedReviewEditorAdapter | null>(null)
   const monacoRef = useRef<Monaco | null>(null)
@@ -74,17 +118,19 @@ export function ReviewDiffEditor({ threadID, file, comments, layout, busy = fals
   const hasDraft = drafts.length > 0 || editingThreadKeys.size > 0
   const draftsRef = useRef<CommentDraft[]>(drafts)
   const draftBodiesRef = useRef(draftBodies)
-  const busyRef = useRef(busy)
+  const commentingRef = useRef(commenting)
+  const busyRef = useRef(!commenting || busy)
   const onDraftChangeRef = useRef(onDraftChange)
   draftsRef.current = drafts
   draftBodiesRef.current = draftBodies
-  busyRef.current = busy
+  commentingRef.current = commenting
+  busyRef.current = !commenting || busy
   onDraftChangeRef.current = onDraftChange
   const beforeIndex = useMemo(() => new Utf8OffsetIndex(file.before_content), [file.before_content])
   const afterIndex = useMemo(() => new Utf8OffsetIndex(file.after_content), [file.after_content])
-  const originalModelPath = reviewModelPath(threadID, file, 'before')
-  const modifiedModelPath = reviewModelPath(threadID, file, 'after')
-  const unifiedModelPath = reviewModelPath(threadID, file, 'unified')
+  const originalModelPath = diffModelPath(surfaceID, file, 'before')
+  const modifiedModelPath = diffModelPath(surfaceID, file, 'after')
+  const unifiedModelPath = diffModelPath(surfaceID, file, 'unified')
   const language = languageForPath(file.path)
   const lightTheme = resolvedTheme === 'light'
 
@@ -115,7 +161,7 @@ export function ReviewDiffEditor({ threadID, file, comments, layout, busy = fals
       visibleSourceLines,
     },
   ), [expandedRegionIDs, file.after_content, file.before_content, t, visibleSourceLines])
-  const commentingDisabled = busy
+  const commentingDisabled = !commenting || busy
   const latestConfigRef = useRef({ file, layout, zones: zoneDescriptors, commentingDisabled, unifiedProjection })
   latestConfigRef.current = { file, layout, zones: zoneDescriptors, commentingDisabled, unifiedProjection }
 
@@ -199,7 +245,7 @@ export function ReviewDiffEditor({ threadID, file, comments, layout, busy = fals
   }, [])
 
   const handleCommentRequest = useCallback((anchor: WorkspaceChangeCommentAnchor) => {
-    if (busyRef.current) return
+    if (busyRef.current || !commentingRef.current) return
     setCommentError('')
     const key = commentDraftKey(anchor)
     if (draftsRef.current.some((draft) => draft.key === key)) return
@@ -285,14 +331,15 @@ export function ReviewDiffEditor({ threadID, file, comments, layout, busy = fals
   }, [])
 
   const submitDraft = async (key: string) => {
+    const capability = commentingRef.current
     const draft = draftsRef.current.find((candidate) => candidate.key === key)
     const body = (draftBodiesRef.current[key] ?? '').trim()
-    if (!draft || !body) return
+    if (!capability || !draft || !body) return
     setSubmittingDraftKeys((current) => new Set(current).add(key))
     setCommentError('')
     try {
-      await onCreateComment({
-        ...reviewCommentTarget(file, draft.anchor.side ?? 'after'),
+      await capability.onCreate({
+        ...capability.targetForSide(draft.anchor.side ?? 'after'),
         body,
         anchor: draft.anchor,
       })
@@ -312,7 +359,7 @@ export function ReviewDiffEditor({ threadID, file, comments, layout, busy = fals
 
   return (
     <div ref={rootRef} data-review-theme={lightTheme ? 'light' : 'dark'} className="nova-review-editor flex h-full min-h-0 flex-col bg-[var(--nova-bg)]">
-      {outdated.length > 0 && (
+      {commenting && outdated.length > 0 && (
         <div role="status" className="max-h-36 shrink-0 overflow-y-auto border-b border-[var(--nova-warning)]/30 bg-[var(--nova-warning-bg)] px-3 py-2 text-xs text-[var(--nova-text-muted)]">
           <div className="mb-1.5 flex items-center gap-2 font-medium text-[var(--nova-warning)]">
             <AlertTriangle className="h-3.5 w-3.5" />
@@ -323,8 +370,8 @@ export function ReviewDiffEditor({ threadID, file, comments, layout, busy = fals
             anchorLabel={t('changes.comments.outdatedDescription')}
             disabled={busy}
             onEditingChange={(editing) => handleThreadEditingChange('outdated', editing)}
-            onUpdate={onUpdateComment}
-            onDelete={onDeleteComment}
+            onUpdate={commenting.onUpdate}
+            onDelete={commenting.onDelete}
           />
         </div>
       )}
@@ -404,8 +451,8 @@ export function ReviewDiffEditor({ threadID, file, comments, layout, busy = fals
                 minimumLineCount: 8,
                 revealLineCount: 20,
               },
-              originalAriaLabel: `${file.path} · ${t('versions.diffSnapshot', { defaultValue: 'Before' })}`,
-              modifiedAriaLabel: `${file.path} · ${t('versions.diffWorkspace', { defaultValue: 'After' })}`,
+              originalAriaLabel: `${file.path} · ${t('changes.diff.before')}`,
+              modifiedAriaLabel: `${file.path} · ${t('changes.diff.after')}`,
               accessibilityVerbose: true,
               scrollbar: {
                 vertical: 'hidden',
@@ -419,7 +466,7 @@ export function ReviewDiffEditor({ threadID, file, comments, layout, busy = fals
         )}
       </div>
 
-      {portalTargets.map((target) => {
+      {commenting ? portalTargets.map((target) => {
         const draft = drafts.find((candidate) => candidate.key === target.key)
         if (draft) {
           const index = draft.anchor.side === 'before' ? beforeIndex : afterIndex
@@ -453,13 +500,13 @@ export function ReviewDiffEditor({ threadID, file, comments, layout, busy = fals
             anchorLabel={anchorLabel(file.path, index, thread.start)}
             disabled={busy}
             onEditingChange={(editing) => handleThreadEditingChange(thread.key, editing)}
-            onUpdate={onUpdateComment}
-            onDelete={onDeleteComment}
+            onUpdate={commenting.onUpdate}
+            onDelete={commenting.onDelete}
           />,
           target.domNode,
           target.key,
         )
-      })}
+      }) : null}
     </div>
   )
 }
@@ -471,7 +518,7 @@ export function reviewCommentTarget(file: ReviewThreadFile, side: 'before' | 'af
     : { group_id: file.latest_group_id, change_set_id: file.latest_change_set_id }
 }
 
-export function resolveCommentThreads(file: ReviewThreadFile, comments: WorkspaceChangeComment[]): { threads: ResolvedCommentThread[]; outdated: WorkspaceChangeComment[] } {
+export function resolveCommentThreads(file: DiffFileDocument, comments: WorkspaceChangeComment[]): { threads: ResolvedCommentThread[]; outdated: WorkspaceChangeComment[] } {
   const grouped = new Map<string, ResolvedCommentThread>()
   const outdated: WorkspaceChangeComment[] = []
   for (const comment of comments) {
@@ -489,7 +536,7 @@ export function resolveCommentThreads(file: ReviewThreadFile, comments: Workspac
   return { threads: Array.from(grouped.values()), outdated }
 }
 
-function resolveCommentAnchor(file: ReviewThreadFile, comment: WorkspaceChangeComment): Omit<ReviewZoneDescriptor, 'key'> | null {
+function resolveCommentAnchor(file: DiffFileDocument, comment: WorkspaceChangeComment): Omit<ReviewZoneDescriptor, 'key'> | null {
   const anchor = comment.anchor
   if (!anchor || (anchor.encoding && anchor.encoding !== 'utf8-bytes-v1')) return null
   const side = anchor.side ?? (anchor.revision === file.base_revision ? 'before' : 'after')
@@ -519,13 +566,13 @@ function commentDraftKey(anchor: WorkspaceChangeCommentAnchor): string {
   return `new-comment-draft:${anchor.side ?? 'after'}:${anchor.start ?? 0}:${anchor.end ?? anchor.start ?? 0}`
 }
 
-function reviewModelPath(threadID: string, file: ReviewThreadFile, side: 'before' | 'after' | 'unified'): string {
+function diffModelPath(surfaceID: string, file: DiffFileDocument, side: 'before' | 'after' | 'unified'): string {
   const revision = side === 'before'
     ? file.base_revision
     : side === 'after'
       ? file.revision
       : `${file.base_revision}:${file.revision}`
-  return `denova-review://thread/${encodeURIComponent(threadID)}/${encodeURIComponent(file.path)}?side=${side}&revision=${encodeURIComponent(revision)}`
+  return `denova-diff://surface/${encodeURIComponent(surfaceID)}/${encodeURIComponent(file.path)}?side=${side}&revision=${encodeURIComponent(revision)}`
 }
 
 function ReviewEditorLoading({ label }: { label: string }) {

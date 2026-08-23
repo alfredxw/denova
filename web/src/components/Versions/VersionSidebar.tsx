@@ -1,17 +1,16 @@
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Clock3, FileClock, RefreshCw, Search, ShieldCheck } from 'lucide-react'
-import type { VersionChange, VersionEntry, VersionStatus } from '@/lib/api'
+import type { VersionEntry, VersionStatus } from '@/lib/api'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
-import { dirName, fileName, formatBytes, formatTime, sourceText, statusColor, statusLabel, workspaceName } from './version-panel-utils'
+import { formatTime, sourceText, workspaceName } from './version-panel-utils'
 
 export const CURRENT_WORKSPACE_SELECTION = '__workspace__'
 
@@ -19,9 +18,7 @@ interface VersionSidebarProps {
   workspace: string
   status: VersionStatus | null
   versions: VersionEntry[]
-  changes: VersionChange[]
   selectedKey: string
-  selectedPath: string
   search: string
   error: string
   historyLoading: boolean
@@ -32,20 +29,17 @@ interface VersionSidebarProps {
   onSearchChange: (value: string) => void
   onSelectCurrent: () => void
   onSelectVersion: (version: VersionEntry) => void
-  onSelectPath: (path: string) => void
   onRefresh: () => void
   onCreate: () => void
   onLoadMore: () => void
 }
 
-/** Compact local navigation for the workspace baseline, history, and changed files. */
+/** Compact local navigation for the workspace baseline and version history. */
 export function VersionSidebar({
   workspace,
   status,
   versions,
-  changes,
   selectedKey,
-  selectedPath,
   search,
   error,
   historyLoading,
@@ -56,7 +50,6 @@ export function VersionSidebar({
   onSearchChange,
   onSelectCurrent,
   onSelectVersion,
-  onSelectPath,
   onRefresh,
   onCreate,
   onLoadMore,
@@ -174,42 +167,6 @@ export function VersionSidebar({
             </div>
           )}
         </ScrollArea>
-      </section>
-
-      <Separator />
-
-      <section className="flex h-[38%] min-h-[170px] max-h-[360px] shrink-0 flex-col">
-        <div className="flex h-9 shrink-0 items-center gap-2 px-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-          <FileClock className="size-3.5" />
-          <span>{t('versions.changedFiles')}</span>
-          <span className="ml-auto tabular-nums">{changes.length}</span>
-        </div>
-        <ScrollArea className="min-h-0 flex-1 px-2 pb-2">
-          {changes.length === 0 ? (
-            <div className="px-2 py-6 text-center text-xs text-muted-foreground">{t('versions.noComparableFiles')}</div>
-          ) : changes.map(change => (
-            <button
-              type="button"
-              key={`${change.status}:${change.path}`}
-              className={`flex w-full min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-muted ${selectedPath === change.path ? 'bg-muted' : ''}`}
-              onClick={() => onSelectPath(change.path)}
-            >
-              <span className={`w-3 shrink-0 text-center font-mono text-[10px] font-semibold ${statusColor(change.status)}`}>{statusLabel(change.status)}</span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-xs text-foreground">{fileName(change.path)}</span>
-                <span className="block truncate text-[10px] text-muted-foreground">{dirName(change.path) || '—'}</span>
-              </span>
-            </button>
-          ))}
-        </ScrollArea>
-        {selectedKey !== CURRENT_WORKSPACE_SELECTION && (
-          <div className="shrink-0 border-t px-3 py-2 text-[10px] text-muted-foreground">
-            {t('versions.filesBytes', {
-              files: versions.find(version => version.id === selectedKey)?.file_count ?? 0,
-              bytes: formatBytes(versions.find(version => version.id === selectedKey)?.total_bytes ?? 0),
-            })}
-          </div>
-        )}
       </section>
     </aside>
   )

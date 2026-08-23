@@ -989,6 +989,24 @@ html[data-nova-motion="off"] .shimmer {
   background: var(--nova-surface);
 }
 
+/* Embedded navigation needs the same glanceable hierarchy as the primary sidebar in light mode.
+   Keep dark-mode shadcn tokens unchanged, where hover and selection already have enough contrast. */
+[data-theme="light"] .nova-embedded-sidebar {
+  --sidebar-accent: var(--nova-hover);
+  --sidebar-accent-foreground: var(--nova-text);
+}
+
+[data-theme="light"] .nova-embedded-sidebar [data-sidebar="menu-button"][data-active="true"] {
+  background: var(--nova-active);
+  color: var(--nova-text);
+  font-weight: 600;
+}
+
+/* Menu labels are the first row in each item's text stack; descriptions keep their quieter weight. */
+[data-theme="light"] .nova-embedded-sidebar [data-sidebar="menu-button"][data-active="true"] > :is(span, div) > :first-child {
+  font-weight: 600;
+}
+
 .nova-workbench-tab-title-fade {
   -webkit-mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 1.75rem), transparent 100%);
   mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 1.75rem), transparent 100%);
