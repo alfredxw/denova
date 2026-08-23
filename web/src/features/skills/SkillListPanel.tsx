@@ -204,7 +204,7 @@ export function SkillListPanel({
                               <FileText aria-hidden="true" />
                               <div className="grid min-w-0 flex-1 gap-0.5">
                                 <span className="truncate font-mono text-xs text-sidebar-foreground">/{skill.name}</span>
-                                <span className="truncate text-xs text-sidebar-foreground/60">
+                                <span className="truncate text-[11px] text-sidebar-foreground/60">
                                   {skill.description || skillCategoryLabel(skillCategory(skill), t)}
                                 </span>
                               </div>

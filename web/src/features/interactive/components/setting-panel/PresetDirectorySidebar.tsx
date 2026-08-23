@@ -309,7 +309,7 @@ function PresetItemContent({ item }: { item: ResourceDirectoryItem }) {
       <FileText aria-hidden="true" />
       <span className="grid min-w-0 flex-1 gap-0.5">
         <span className="truncate text-xs text-sidebar-foreground">{item.title}</span>
-        {item.summary && <span className="truncate text-xs text-sidebar-foreground/60">{item.summary}</span>}
+        {item.summary && <span className="truncate text-[11px] text-sidebar-foreground/60">{item.summary}</span>}
       </span>
     </>
   )

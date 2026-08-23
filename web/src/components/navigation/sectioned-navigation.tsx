@@ -63,7 +63,7 @@ export function SectionedNavigation<TID extends string>({
                             <span className="grid min-w-0 flex-1 gap-0.5">
                               <span className="truncate font-medium text-sidebar-foreground">{item.title}</span>
                               {item.description ? (
-                                <span className="truncate text-xs text-sidebar-foreground/60">{item.description}</span>
+                                <span className="truncate text-[11px] text-sidebar-foreground/60">{item.description}</span>
                               ) : null}
                             </span>
                           </SidebarMenuButton>

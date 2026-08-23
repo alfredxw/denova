@@ -365,7 +365,6 @@ export function WritingDocumentEditor({
     const targetIndex = searchIntent.line > 0
       ? matches.findIndex((match) => getLineNumber(editor.state.doc, match.from) === searchIntent.line)
       : -1
-    setSearchOpen(true)
     updateSearch(searchIntent.query, targetIndex >= 0 ? targetIndex : 0)
   }, [editor, searchIntent, updateSearch, useRegex])
 

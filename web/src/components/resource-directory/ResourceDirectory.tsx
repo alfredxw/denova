@@ -264,7 +264,7 @@ export function ResourceDirectory({
                           <PinnedIcon aria-hidden="true" />
                           <span className="grid min-w-0 flex-1 gap-0.5">
                             <span className="truncate text-sidebar-foreground">{entry.label}</span>
-                            {entry.summary ? <span className="truncate text-xs text-sidebar-foreground/60">{entry.summary}</span> : null}
+                            {entry.summary ? <span className="truncate text-[11px] text-sidebar-foreground/60">{entry.summary}</span> : null}
                           </span>
                         </SidebarMenuButton>
                       </SidebarMenuItem>
@@ -388,7 +388,7 @@ function DirectoryItemContent({ item }: { item: ResourceDirectoryItem }) {
       )}
       <span className="min-w-0 flex-1">
         <span className="block truncate">{item.title}</span>
-        {item.summary && <span className="block truncate text-xs text-sidebar-foreground/60">{item.summary}</span>}
+        {item.summary && <span className="block truncate text-[11px] text-sidebar-foreground/60">{item.summary}</span>}
       </span>
       {item.badges?.map((badge, index) => <ItemBadge key={`${badge.label}-${index}`} badge={badge} />)}
     </>
