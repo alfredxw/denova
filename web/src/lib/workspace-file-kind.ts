@@ -1,4 +1,4 @@
-export type WorkspaceFileKind = 'markdown' | 'image' | 'json' | 'jsonl' | 'other'
+export type WorkspaceFileKind = 'markdown' | 'image' | 'source'
 
 const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif'])
 
@@ -6,9 +6,7 @@ export function workspaceFileKind(path?: string | null): WorkspaceFileKind {
   const ext = fileExtension(path)
   if (ext === '.md' || ext === '.markdown') return 'markdown'
   if (IMAGE_EXTENSIONS.has(ext)) return 'image'
-  if (ext === '.json') return 'json'
-  if (ext === '.jsonl') return 'jsonl'
-  return 'other'
+  return 'source'
 }
 
 export function isWorkspaceImagePath(path?: string | null): boolean {

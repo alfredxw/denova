@@ -36,6 +36,8 @@ Denova records only major user-visible features, important compatibility or data
 - Image generation now supports OpenAI Images, xAI/Grok, Volcengine Ark Seedream, Google Gemini Image, and ComfyUI Workflow, with reusable protocols for custom endpoints and partial success for multi-image jobs. v0.3.3 image settings migrate into Profiles automatically and are backed up before rewrite.
 - 工作台与创作界面进一步统一：项目页签收敛为写作、Files、资料库，支持可持久化双栏工作区；资料编辑器提供 Rich/Raw 模式、本地图片上传与评论，界面和阅读字体支持本机字体。书籍 Lore 与 Skills 迁至用户可见目录，v0.3.3 原文件保留为备份。
 - Unified the workbench and creation surfaces around Writing, Files, and Lore tabs with a persistent split workspace. Lore adds Rich/Raw editing, local image uploads, and comments, while UI and reading settings support local fonts. Book Lore and Skills move to user-visible directories, with the v0.3.3 source files retained as backups.
+- 写作页按文件类型选择编辑器：Markdown 使用文档编辑器，图片使用预览，JSON、JSONL 等其他文本使用 Monaco 源码编辑器，并共享自动保存与冲突保护。
+- Writing now selects editors by file type: Markdown uses the document editor, images use preview, and other text such as JSON and JSONL uses Monaco with the same autosave and conflict protection.
 - 工作台改为统一且可自定义的一级导航：写作与游戏成为并列入口，菜单支持调整顺序和显隐；资料库、方案预设和版本管理不再按创作入口重复。方案预设统一展示全部类型，并标明通用、游戏专用或写作专用。
 - The workbench now uses unified, customizable top-level navigation: Writing and Game are peer destinations, menus can be reordered or hidden, and Lore, Presets, and Versions are no longer duplicated by creative context. Presets show every type with fixed Shared, Game-only, or Writing-only labels.
 - 游戏剧情支持从任意已保存 AI 回复就地创建分支，并在导演控制台集中预览、切换和管理故事线。

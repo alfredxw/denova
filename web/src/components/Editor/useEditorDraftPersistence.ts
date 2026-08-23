@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
-import type { Editor } from '@tiptap/core'
 import { toast } from 'sonner'
 import { useTranslation } from 'react-i18next'
 
@@ -9,11 +8,17 @@ import { rebaseTextWithConflicts } from '@/lib/three-way-rebase'
 import { WorkspaceFileRevisionConflictError } from '@/lib/autosave/workspace-file-revision-conflict'
 import { useSaveLane } from '@/hooks/use-save-lane'
 import { MISSING_WORKSPACE_REVISION } from '@/lib/api-client/workspace'
-import type { SaveStatus } from './EditorToolbar'
+import type { SaveStatus } from './EditorSaveStatus'
 import { preserveEditorConflict } from './editorConflictRecovery'
-import { readEditorText } from './editorDocument'
 
 export type EditorFlushHandler = () => Promise<boolean>
+
+/** Minimal document-editor contract required by the shared draft save lane. */
+export interface EditorDraftAdapter {
+  isAvailable: () => boolean
+  readText: (fileName: string | null) => string
+  subscribe: (onUpdate: () => void) => () => void
+}
 
 type EditorSaveResponse = boolean | { revision?: string }
 
@@ -86,7 +91,7 @@ interface UseEditorDraftPersistenceOptions {
   fileName: string | null
   content: string
   revision: string
-  editor: Editor | null
+  editor: EditorDraftAdapter | null
   editorContainerRef: RefObject<HTMLDivElement | null>
   onSave: (fileName: string, content: string, baseRevision: string) => Promise<EditorSaveResponse>
   saveSignal: number
@@ -238,8 +243,8 @@ export function useEditorDraftPersistence({
       lastSyncedContentRef.current = request.text
       lastSyncedRevisionRef.current = savedRevision
       const submittedSnapshotIsCurrent = !editor
-        || editor.isDestroyed
-        || readEditorText(editor, request.fileName) === request.text
+        || !editor.isAvailable()
+        || editor.readText(request.fileName) === request.text
       dirtyRef.current = !submittedSnapshotIsCurrent
       if (submittedSnapshotIsCurrent) {
         const conflict = externalConflictRef.current
@@ -285,7 +290,7 @@ export function useEditorDraftPersistence({
           lastSyncedContentRef.current = externalContent
           lastSyncedRevisionRef.current = externalRevision
           dirtyRef.current = true
-          if (!editor || editor.isDestroyed || merged.value !== readEditorText(editor, request.fileName)) {
+          if (!editor || !editor.isAvailable() || merged.value !== editor.readText(request.fileName)) {
             applyExternalContent(request.fileName, merged.value, { resetHistory: false, preserveSelection: true })
           }
           clearSaveStatusTimer()
@@ -543,7 +548,7 @@ export function useEditorDraftPersistence({
   // Synchronize canonical props with the active editor. Dirty reloads are
   // rebased; only actual editor update events establish a new delay deadline.
   useLayoutEffect(() => {
-    if (!editor || editor.isDestroyed) return
+    if (!editor || !editor.isAvailable()) return
 
     const previousFile = lastSyncedFileRef.current
     const previousWorkspace = lastSyncedWorkspaceRef.current
@@ -574,7 +579,7 @@ export function useEditorDraftPersistence({
       lastSyncedRevisionRef.current = acknowledgedRevision
       localSaveEchoesRef.current.delete(currentKey)
       confirmedSnapshotsRef.current.set(currentKey, { content, revision: acknowledgedRevision })
-      if (readEditorText(editor, fileName) === content) dirtyRef.current = false
+      if (editor.readText(fileName) === content) dirtyRef.current = false
       workspaceRef.current = workspace
       fileNameRef.current = fileName
       return
@@ -584,7 +589,7 @@ export function useEditorDraftPersistence({
       const targetFile = fileName || ''
       const baselineContent = lastSyncedContentRef.current
       const baselineRevision = lastSyncedRevisionRef.current
-      const localContent = readEditorText(editor, fileName)
+      const localContent = editor.readText(fileName)
       const merged = rebaseTextWithConflicts(baselineContent, localContent, content)
       lastSyncedContentRef.current = content
       lastSyncedRevisionRef.current = revision
@@ -625,7 +630,7 @@ export function useEditorDraftPersistence({
     // Navigation normally flushes first. This fallback starts the old draft
     // before loading the new file, so the shared lane can serialize both.
     if (fileChanged && previousFile && previousWorkspace === workspace && dirtyRef.current) {
-      const oldText = readEditorText(editor, previousFile)
+      const oldText = editor.readText(previousFile)
       queueSave(pendingSave(previousWorkspace, previousFile, oldText, 'manual'))
       void flush()
     }
@@ -671,8 +676,8 @@ export function useEditorDraftPersistence({
   const saveEditorContent = useCallback(async (mode: 'manual' | 'auto'): Promise<boolean> => {
     const targetWorkspace = workspaceRef.current
     const targetFile = fileNameRef.current
-    if (!editor || editor.isDestroyed || !targetFile) return true
-    queueSave(pendingSave(targetWorkspace, targetFile, readEditorText(editor, targetFile), mode))
+    if (!editor || !editor.isAvailable() || !targetFile) return true
+    queueSave(pendingSave(targetWorkspace, targetFile, editor.readText(targetFile), mode))
     await flush()
     return getSnapshot().status !== 'error'
   }, [editor, flush, getSnapshot, pendingSave, queueSave])
@@ -696,9 +701,9 @@ export function useEditorDraftPersistence({
   useEffect(() => () => {
     const targetWorkspace = workspaceRef.current
     const targetFile = fileNameRef.current
-    if (!editor || editor.isDestroyed || !targetFile || !dirtyRef.current) return
+    if (!editor || !editor.isAvailable() || !targetFile || !dirtyRef.current) return
     dirtyRef.current = false
-    queueSave(pendingSave(targetWorkspace, targetFile, readEditorText(editor, targetFile), 'manual'))
+    queueSave(pendingSave(targetWorkspace, targetFile, editor.readText(targetFile), 'manual'))
     void flush()
   }, [editor, flush, pendingSave, queueSave])
 
@@ -729,19 +734,16 @@ export function useEditorDraftPersistence({
       queueSave(pendingSave(
         workspaceRef.current,
         targetFile,
-        readEditorText(editor, targetFile),
+        editor.readText(targetFile),
         'auto',
       ))
     }
-    editor.on('update', handleUpdate)
-    return () => {
-      editor.off('update', handleUpdate)
-    }
+    return editor.subscribe(handleUpdate)
   }, [clearSaveStatusTimer, editor, pendingSave, queueSave])
 
   const loadExternalVersion = useCallback(() => {
     const conflict = externalConflictRef.current
-    if (!conflict || !editor || editor.isDestroyed) return
+    if (!conflict || !editor || !editor.isAvailable()) return
     if (conflict.workspace !== workspaceRef.current || conflict.fileName !== fileNameRef.current) return
     dirtyRef.current = false
     recoveryRef.current = null

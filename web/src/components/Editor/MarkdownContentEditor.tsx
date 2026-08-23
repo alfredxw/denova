@@ -38,7 +38,7 @@ import { projectFileAssetURL } from '@/lib/api-client/project-files'
 
 export type MarkdownContentMode = 'rich' | 'source'
 
-export interface MarkdownRichEditorReview {
+export interface MarkdownContentEditorReview {
   target: DocumentReviewTarget
   resourceLabel: string
   controller: DocumentReviewController
@@ -46,7 +46,7 @@ export interface MarkdownRichEditorReview {
   navigationIntent?: DocumentReviewNavigationIntent | null
 }
 
-export interface MarkdownEditorProps {
+export interface MarkdownContentEditorProps {
   /** Stable owner for relative assets embedded in the Markdown. */
   projectId: string
   /** The canonical Markdown draft shared by both visual and source representations. */
@@ -56,24 +56,17 @@ export interface MarkdownEditorProps {
   /** External library search query; all matches are decorated in either mode. */
   highlightQuery?: string
   onSaveShortcut?: () => void
-  review?: MarkdownRichEditorReview
+  review?: MarkdownContentEditorReview
   'aria-label'?: string
   className?: string
 }
 
-type MarkdownRichEditorProps = Omit<MarkdownEditorProps, 'mode'>
-
-/** Compatibility interface for callers that only need the visual Markdown editor. */
-export function MarkdownRichEditor(props: MarkdownRichEditorProps) {
-  return <MarkdownEditor {...props} mode="rich" />
-}
-
 /**
- * TipTap-backed Markdown editor with visual and literal-source representations.
+ * Controlled TipTap Markdown editor with visual and literal-source representations.
  * Persistence and review anchors always use the shared Markdown value; mode is
  * only a document/UI representation and never a second draft owner.
  */
-export function MarkdownEditor({
+export function MarkdownContentEditor({
   projectId,
   value,
   onChange,
@@ -83,7 +76,7 @@ export function MarkdownEditor({
   review,
   className,
   'aria-label': ariaLabel,
-}: MarkdownEditorProps) {
+}: MarkdownContentEditorProps) {
   const initialModeRef = useRef(mode)
   const renderedModeRef = useRef(mode)
   const modeRef = useRef(mode)

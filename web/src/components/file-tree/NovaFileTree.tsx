@@ -5,6 +5,7 @@ import {
   type ContextMenuItem,
   type ContextMenuOpenContext,
   type FileTreeDragAndDropConfig,
+  type ContextMenuTriggerMode,
   type FileTreeInitialExpansion,
   type FileTreeRenamingConfig,
   type FileTreeRowDecorationRenderer,
@@ -33,6 +34,12 @@ const NOVA_FILE_TREE_UNSAFE_CSS = `
 }
 `
 
+const COLOR_ONLY_GIT_STATUS_UNSAFE_CSS = `
+[data-type="item"] > [data-item-section="git"] {
+  display: none;
+}
+`
+
 export interface NovaFileTreeProps {
   paths: readonly string[]
   presorted?: boolean
@@ -43,10 +50,12 @@ export interface NovaFileTreeProps {
   initialExpandedPaths?: readonly string[]
   selectedPaths?: readonly string[]
   gitStatus?: readonly GitStatusEntry[]
+  gitStatusPresentation?: 'lane' | 'color-only'
   dragAndDrop?: false | FileTreeDragAndDropConfig
   renaming?: false | FileTreeRenamingConfig
   renderRowDecoration?: FileTreeRowDecorationRenderer
   renderContextMenu?: (item: ContextMenuItem, context: ContextMenuOpenContext) => ReactNode
+  contextMenuTriggerMode?: ContextMenuTriggerMode
   onSelectionChange?: (paths: readonly string[]) => void
   onDirectoryExpandedChange?: (path: string, expanded: boolean) => void
   onDirectoryExpand?: (path: string) => void | Promise<void>
@@ -68,10 +77,12 @@ export const NovaFileTree = forwardRef<FileTreeModel, NovaFileTreeProps>(functio
   initialExpandedPaths = [],
   selectedPaths = [],
   gitStatus = [],
+  gitStatusPresentation = 'lane',
   dragAndDrop = false,
   renaming = false,
   renderRowDecoration,
   renderContextMenu,
+  contextMenuTriggerMode = 'both',
   onSelectionChange,
   onDirectoryExpandedChange,
   onDirectoryExpand,
@@ -102,11 +113,13 @@ export const NovaFileTree = forwardRef<FileTreeModel, NovaFileTreeProps>(functio
     search: true,
     searchBlurBehavior: 'retain',
     stickyFolders: true,
-    unsafeCSS: NOVA_FILE_TREE_UNSAFE_CSS,
+    unsafeCSS: gitStatusPresentation === 'color-only'
+      ? `${NOVA_FILE_TREE_UNSAFE_CSS}${COLOR_ONLY_GIT_STATUS_UNSAFE_CSS}`
+      : NOVA_FILE_TREE_UNSAFE_CSS,
     composition: renderContextMenu ? {
       contextMenu: {
         enabled: true,
-        triggerMode: 'both',
+        triggerMode: contextMenuTriggerMode,
         buttonVisibility: 'when-needed',
       },
     } : undefined,

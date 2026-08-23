@@ -5,14 +5,12 @@ import Placeholder from '@tiptap/extension-placeholder'
 import { CharacterCount } from '@tiptap/extension-character-count'
 import { TableKit } from '@tiptap/extension-table'
 import { Markdown } from '@tiptap/markdown'
-import { TriangleAlert } from 'lucide-react'
 import { toast } from 'sonner'
 import { useTranslation } from 'react-i18next'
 
 import type { ChapterIllustration, TextSelection as QuoteSelection } from '@/lib/api'
 import type { ChapterSummary } from '@/lib/api'
 import { isEditableTarget } from '@/lib/keyboard'
-import { Button } from '@/components/ui/button'
 import { THEME_STYLES, loadEditorSettings } from './EditorSettingsPanel'
 import type { EditorSettings, ReadingTypographySettings } from './EditorSettingsPanel'
 import { EditorSurface } from './EditorSurface'
@@ -30,6 +28,7 @@ import {
   placeEditorCaretAtClick,
   replaceEditorDocument,
   replaceEditorDocumentWithFreshState,
+  readEditorText,
   resetEditorStateHistory,
   updateCharacterStats,
 } from './editorDocument'
@@ -44,19 +43,19 @@ import {
   selectSearchMatch,
 } from './editorDecorations'
 import type { SearchMatch, SearchState } from './editorDecorations'
-import { useEditorDraftPersistence, type EditorFlushHandler } from './useEditorDraftPersistence'
-import { MISSING_WORKSPACE_REVISION } from '@/lib/api-client/workspace'
+import { useEditorDraftPersistence, type EditorDraftAdapter, type EditorFlushHandler } from './useEditorDraftPersistence'
 import { projectFileAssetURL, readProjectFile } from '@/lib/api-client/project-files'
 import { sameDocumentReviewTarget } from '@/features/document-review/types'
 import type { DocumentReviewController, DocumentReviewNavigationIntent } from '@/features/document-review/controller'
 import { DocumentReviewAnnotations, type DocumentReviewAnnotationsHandle } from './DocumentReviewAnnotations'
 import type { DocumentReviewSnapshot } from './documentReviewAnchors'
 import { createDocumentReviewExtension, type DocumentReviewDecorationState, type DocumentReviewPortalTarget } from './documentReviewDecorations'
+import { EditorPersistenceNotices } from './EditorPersistenceNotices'
 
 export type { EditorFlushHandler } from './useEditorDraftPersistence'
 export type { DocumentReviewController, DocumentReviewNavigationIntent } from '@/features/document-review/controller'
 
-interface MarkdownEditorProps {
+export interface WritingDocumentEditorProps {
   /** Stable resource identity used for reads, assets, review snapshots, and caches. */
   projectId: string
   fileName: string | null
@@ -89,8 +88,8 @@ interface EditorSearchIntent {
   nonce: number
 }
 
-/** TipTap 编辑器组件，支持 Markdown 和纯文本格式 */
-export function MarkdownEditor({
+/** Writing-specific TipTap editor for Markdown manuscripts. */
+export function WritingDocumentEditor({
   projectId,
   fileName,
   content,
@@ -112,7 +111,7 @@ export function MarkdownEditor({
   documentReviewNavigationIntent,
   readingTypography,
   onOpenOutline,
-}: MarkdownEditorProps) {
+}: WritingDocumentEditorProps) {
   const { t } = useTranslation()
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settings, setSettings] = useState<EditorSettings>(() => loadEditorSettings())
@@ -206,6 +205,14 @@ export function MarkdownEditor({
       )
     },
   })
+  const draftAdapter = useMemo<EditorDraftAdapter | null>(() => editor ? ({
+    isAvailable: () => !editor.isDestroyed,
+    readText: (activeFile) => readEditorText(editor, activeFile),
+    subscribe: (onUpdate) => {
+      editor.on('update', onUpdate)
+      return () => editor.off('update', onUpdate)
+    },
+  }) : null, [editor])
 
   useEffect(() => {
     if (!documentReviewNavigationIntent) return
@@ -280,7 +287,7 @@ export function MarkdownEditor({
     fileName,
     content,
     revision,
-    editor,
+    editor: draftAdapter,
     editorContainerRef,
     onSave,
     saveSignal,
@@ -549,31 +556,15 @@ export function MarkdownEditor({
         onRevealChapter={onRevealChapter}
         generateIllustrationDisabled={generateIllustrationDisabled}
       />
-      {revision === MISSING_WORKSPACE_REVISION && (
-        <div role="alert" className="flex shrink-0 items-start gap-2 border-b border-[var(--nova-warning)]/30 bg-[var(--nova-warning-bg)] px-3 py-2 text-[11px] text-[var(--nova-text-muted)]">
-          <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-[var(--nova-warning)]" />
-          <div className="min-w-0">
-            <div className="font-medium text-[var(--nova-text)]">{t('editor.orphaned.title')}</div>
-            <div className="mt-0.5 text-[var(--nova-text-faint)]">{t('editor.orphaned.description')}</div>
-          </div>
-        </div>
-      )}
-      {externalConflict?.workspace === resourceScope && externalConflict.fileName === fileName && (
-        <div role="alert" className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--nova-warning)]/30 bg-[var(--nova-warning-bg)] px-3 py-2 text-[11px] text-[var(--nova-text-muted)]">
-          <TriangleAlert className="h-4 w-4 shrink-0 text-[var(--nova-warning)]" />
-          <div className="min-w-[180px] flex-1">
-            <div className="font-medium text-[var(--nova-text)]">{t('editor.externalConflict.title')}</div>
-            <div className="mt-0.5 text-[var(--nova-text-faint)]">{t('editor.externalConflict.description')}</div>
-            {externalConflict.recoveryID ? (
-              <div className="mt-0.5 font-mono text-[10px] text-[var(--nova-text-faint)]">
-                {t('editor.externalConflict.recovery', { id: externalConflict.recoveryID })}
-              </div>
-            ) : null}
-          </div>
-          <Button type="button" size="xs" variant="outline" disabled={externalConflictSaving} onClick={() => void keepLocalVersion()}>{t('editor.externalConflict.keepLocal')}</Button>
-          <Button type="button" size="xs" disabled={externalConflictSaving} onClick={loadExternalVersion}>{t('editor.externalConflict.loadExternal')}</Button>
-        </div>
-      )}
+      <EditorPersistenceNotices
+        workspace={resourceScope}
+        fileName={fileName}
+        revision={revision}
+        externalConflict={externalConflict}
+        externalConflictSaving={externalConflictSaving}
+        onKeepLocal={keepLocalVersion}
+        onLoadExternal={loadExternalVersion}
+      />
       <EditorSurface
         containerRef={editorContainerRef}
         editor={editor}

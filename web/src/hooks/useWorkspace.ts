@@ -16,6 +16,7 @@ import { workspaceFileKind } from '@/lib/workspace-file-kind'
 import { MISSING_WORKSPACE_REVISION } from '@/lib/api-client/workspace'
 import {
   applyProjectFileOperations,
+  type ProjectFileDocument,
   type ProjectFileOperation,
   type ProjectFileOperationResult,
 } from '@/lib/api-client/project-files'
@@ -25,11 +26,6 @@ export interface FileNode {
   name: string
   type: 'file' | 'dir'
   children?: FileNode[]
-}
-
-interface WorkspaceFileDocumentState {
-  content: string
-  revision: string
 }
 
 interface WorkspaceRefreshOptions {
@@ -49,9 +45,9 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
   const [tree, setTree] = useState<FileNode[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
-  const [fileDocument, setFileDocumentState] = useState<WorkspaceFileDocumentState>({ content: '', revision: '' })
-  const fileContent = fileDocument.content
-  const fileRevision = fileDocument.revision
+  const [fileDocument, setFileDocumentState] = useState<ProjectFileDocument | null>(null)
+  const fileContent = fileDocument?.content ?? ''
+  const fileRevision = fileDocument?.revision ?? ''
   const [workspace, setWorkspaceState] = useState<string>('')
   const [projectId, setProjectId] = useState<string>('')
   const [workspaceLoaded, setWorkspaceLoaded] = useState(false)
@@ -83,7 +79,7 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
   workspaceRef.current = workspace
   projectIdRef.current = projectId
 
-  const setFileDocument = useCallback((next: WorkspaceFileDocumentState) => {
+  const setFileDocument = useCallback((next: ProjectFileDocument | null) => {
     fileDocumentRef.current = next
     setFileDocumentState(next)
   }, [])
@@ -102,7 +98,7 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
     filePreviewVersionRef.current = 0
     setTree([])
     setSelectedFile(null)
-    setFileDocument({ content: '', revision: '' })
+    setFileDocument(null)
     setSummary(null)
     setLoading(Boolean(nextWorkspace))
     setWorkspaceSnapshotLoaded(false)
@@ -138,7 +134,7 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
     setTree([])
     setLoading(false)
     setSelectedFile(null)
-    setFileDocument({ content: '', revision: '' })
+    setFileDocument(null)
     selectFileRequestRef.current += 1
     fileVersionsRef.current.clear()
     fileReadGenerationsRef.current.clear()
@@ -330,7 +326,7 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
     selectFileRequestRef.current = requestID
     if (workspaceFileKind(path) === 'image') {
       setSelectedFile(path)
-      setFileDocument({ content: '', revision: '' })
+      setFileDocument(imageProjectFileDocument(targetProjectId, path))
       return 'selected'
     }
     if (!targetProjectId) return 'unavailable'
@@ -340,9 +336,9 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
       if (requestID !== selectFileRequestRef.current) return 'unavailable'
       if (!isLatestFileRead(key, generation)) return 'unavailable'
       if (projectIdRef.current !== targetProjectId || data.project_id !== targetProjectId) return 'unavailable'
-      // React 18 自动批量：两个 setState 合并为一次渲染，确保 MarkdownEditor 拿到一致的 (fileName, content)
+      // React batches these updates so the active editor receives one consistent document snapshot.
       setSelectedFile(path)
-      setFileDocument({ content: data.content || '', revision: data.revision || '' })
+      setFileDocument(data)
       recordFileVersion(data.project_id, path, data.revision || '')
       return 'selected'
     } catch (e) {
@@ -361,7 +357,7 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
   /** 清空当前选中文件，用于关闭最后一个 tab 等场景 */
   const clearSelectedFile = useCallback(() => {
     setSelectedFile(null)
-    setFileDocument({ content: '', revision: '' })
+    setFileDocument(null)
   }, [setFileDocument])
 
   /** 读取指定文件内容 */
@@ -383,10 +379,8 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
 
     if (deleted) {
       if (!isCurrentTarget()) return
-      setFileDocument({
-        content: fileDocumentRef.current.content,
-        revision: MISSING_WORKSPACE_REVISION,
-      })
+      const currentDocument = fileDocumentRef.current
+      if (currentDocument) setFileDocument({ ...currentDocument, revision: MISSING_WORKSPACE_REVISION })
       recordFileVersion(targetProjectId, currentFile, MISSING_WORKSPACE_REVISION)
       console.info('[useWorkspace.ts] selected workspace file became orphaned', {
         projectId: targetProjectId,
@@ -398,21 +392,22 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
     if (workspaceFileKind(currentFile) === 'image') {
       if (!isCurrentTarget()) return
       filePreviewVersionRef.current += 1
-      setFileDocument({ content: '', revision: `watch:${filePreviewVersionRef.current}` })
+      const currentDocument = fileDocumentRef.current
+      setFileDocument(currentDocument
+        ? { ...currentDocument, revision: `watch:${filePreviewVersionRef.current}` }
+        : imageProjectFileDocument(targetProjectId, currentFile, `watch:${filePreviewVersionRef.current}`))
       return
     }
 
     try {
       const data = await readProjectFile(targetProjectId, currentFile)
       if (!isCurrentTarget() || data.project_id !== targetProjectId) return
-      setFileDocument({ content: data.content || '', revision: data.revision || '' })
+      setFileDocument(data)
       recordFileVersion(data.project_id, currentFile, data.revision || '')
     } catch (error) {
       if (error instanceof APIError && error.status === 404 && isCurrentTarget()) {
-        setFileDocument({
-          content: fileDocumentRef.current.content,
-          revision: MISSING_WORKSPACE_REVISION,
-        })
+        const currentDocument = fileDocumentRef.current
+        if (currentDocument) setFileDocument({ ...currentDocument, revision: MISSING_WORKSPACE_REVISION })
         recordFileVersion(targetProjectId, currentFile, MISSING_WORKSPACE_REVISION)
         console.info('[useWorkspace.ts] selected workspace file was missing during refresh', {
           projectId: targetProjectId,
@@ -499,7 +494,7 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
             throw error
           }
           if (projectIdRef.current === targetProjectId && selectedFileRef.current === path) {
-            setFileDocument({ content: latest.content || '', revision: latest.revision || '' })
+            setFileDocument(latest)
             recordFileVersion(targetProjectId, path, latest.revision || '')
           }
           throw new WorkspaceFileRevisionConflictError(error, {
@@ -523,8 +518,14 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
       if (currentVersion?.projectId === targetProjectId && currentVersion.revision === draftBaseRevision) {
         recordFileVersion(targetProjectId, path, result.revision)
       }
-      if (selectedFileRef.current === path && fileDocumentRef.current.revision === draftBaseRevision) {
-        setFileDocument({ content, revision: result.revision })
+      if (selectedFileRef.current === path && fileDocumentRef.current?.revision === draftBaseRevision) {
+        const currentDocument = fileDocumentRef.current
+        if (currentDocument) setFileDocument({
+          ...currentDocument,
+          content,
+          revision: result.revision,
+          size: new TextEncoder().encode(content).byteLength,
+        })
       }
     }
     // 文件写入成功即完成保存；章节统计是派生数据，不能延长编辑器的 saving 状态。
@@ -560,7 +561,7 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
     treeRequestRef.current += 1
     summaryRequestRef.current += 1
     setSelectedFile(null)
-    setFileDocument({ content: '', revision: '' })
+    setFileDocument(null)
     selectFileRequestRef.current += 1
     fileVersionsRef.current.clear()
     fileReadGenerationsRef.current.clear()
@@ -587,7 +588,7 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
     await applyWorkspaceFileOperation({ kind: 'delete', path })
     if (selectedFile === path || selectedFile?.startsWith(`${path}/`)) {
       setSelectedFile(null)
-      setFileDocument({ content: '', revision: '' })
+      setFileDocument(null)
     }
     await fetchBookSnapshot()
   }, [applyWorkspaceFileOperation, fetchBookSnapshot, selectedFile, setFileDocument])
@@ -641,6 +642,7 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
     tree,
     loading,
     selectedFile,
+    fileDocument,
     fileContent,
     fileRevision,
     workspace,
@@ -684,4 +686,16 @@ export function workspaceChangeAffectsSummary(change: WorkspaceFileChange): bool
 
 function pathContainsFile(path: string, file: string): boolean {
   return path === file || file.startsWith(`${path}/`)
+}
+
+function imageProjectFileDocument(projectId: string, path: string, revision = ''): ProjectFileDocument {
+  return {
+    project_id: projectId,
+    path,
+    revision,
+    kind: 'image',
+    mime_type: 'application/octet-stream',
+    size: 0,
+    editable: false,
+  }
 }

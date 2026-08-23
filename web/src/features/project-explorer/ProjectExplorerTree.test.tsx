@@ -15,9 +15,13 @@ describe('ProjectExplorerTree', () => {
     expect(rows.length).toBeGreaterThan(0)
     expect(rows.length).toBeLessThan(80)
     expect(fileTreeRow('file-0.ts')).toHaveAttribute('data-item-git-status', 'modified')
+    expect(fileTreeRow('file-0.ts').querySelector('[data-item-section="action"]')).not.toBeInTheDocument()
     expect((fileTreeShadow().host as HTMLElement).style.getPropertyValue('--trees-item-height')).toBe('30px')
     expect(fileTreeShadow().querySelector('[data-file-tree-unsafe-css]')).toHaveTextContent(
       '[data-type="item"][data-item-focused="true"]:not(:focus-visible)::before',
+    )
+    expect(fileTreeShadow().querySelector('[data-file-tree-unsafe-css]')).toHaveTextContent(
+      '[data-type="item"] > [data-item-section="git"]',
     )
     await waitFor(() => expect(fileTreeShadow().querySelector('[data-file-tree-search-input]')).toHaveAttribute('placeholder', '按名称筛选…'))
   })

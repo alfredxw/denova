@@ -34,8 +34,8 @@ vi.mock('@/components/workbench/outline/ChapterOutline', () => ({
   ),
 }))
 
-vi.mock('@/components/Editor/MarkdownEditor', () => ({
-  MarkdownEditor: ({ projectId, fileName, content, revision, onSave }: {
+vi.mock('@/components/Editor/WritingDocumentEditor', () => ({
+  WritingDocumentEditor: ({ projectId, fileName, content, revision, onSave }: {
     projectId: string
     fileName: string
     content: string
@@ -46,6 +46,12 @@ vi.mock('@/components/Editor/MarkdownEditor', () => ({
       <span data-testid="project-document">{projectId}|{fileName}|{content}|{revision}</span>
       <button type="button" onClick={() => void onSave(fileName, 'After', revision)}>Save</button>
     </div>
+  ),
+}))
+
+vi.mock('@/components/Editor/WritingSourceEditor', () => ({
+  WritingSourceEditor: ({ document }: { document: { path: string; content?: string } }) => (
+    <div data-testid="project-source-document">{document.path}|{document.content}</div>
   ),
 }))
 
@@ -83,6 +89,10 @@ describe('ProjectWritingSurface', () => {
       path: 'chapters/ch01.md',
       content: 'Before',
       revision: 'r1',
+      kind: 'text',
+      mime_type: 'text/markdown',
+      size: 6,
+      editable: true,
     })
     api.saveProjectFile.mockResolvedValue({
       project_id: 'book-b',
@@ -129,5 +139,35 @@ describe('ProjectWritingSurface', () => {
       ['chapters/ch01.md'],
       { impact: 'content', origin: 'project-page' },
     )
+  })
+
+  it('opens non-Markdown text with the shared Monaco source surface', async () => {
+    const snapshot = await api.getProjectBookSnapshot('book-b')
+    api.getProjectBookSnapshot.mockResolvedValue({
+      ...snapshot,
+      tree: [{ name: 'data.json', type: 'file' }],
+    })
+    api.readProjectFile.mockResolvedValue({
+      project_id: 'book-b',
+      path: 'data.json',
+      content: '{"exact":true}',
+      revision: 'r-json',
+      kind: 'text',
+      mime_type: 'application/json',
+      size: 14,
+      editable: true,
+    })
+
+    render(
+      <ProjectWritingSurface
+        projectId="book-b"
+        initialPath="data.json"
+        documentReview={{ comments: [], onCreate: vi.fn(), onUpdate: vi.fn(), onDelete: vi.fn() }}
+        onFlushHandlerChange={vi.fn()}
+      />,
+    )
+
+    expect(await screen.findByTestId('project-source-document')).toHaveTextContent('data.json|{"exact":true}')
+    expect(screen.queryByTestId('project-document')).not.toBeInTheDocument()
   })
 })

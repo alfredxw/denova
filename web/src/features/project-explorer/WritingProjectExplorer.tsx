@@ -2,7 +2,6 @@ import { AtSign } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import type { ChapterSummary } from '@/lib/api'
 import { ProjectExplorerPane } from './ProjectExplorerPane'
 import { useProjectExplorerPreferences } from './preferences'
 import type { ProjectExplorerExtensions } from './types'
@@ -14,7 +13,6 @@ interface WritingProjectExplorerProps {
   projectId: string
   workspace: string
   selectedPath: string | null
-  chapterStats: Readonly<Record<string, ChapterSummary>>
   structureRefreshSignal: number
   onSelectFile: (path: string) => boolean | void | Promise<boolean | void>
   onReferenceFile: (path: string) => void
@@ -31,7 +29,6 @@ export function WritingProjectExplorer({
   projectId,
   workspace,
   selectedPath,
-  chapterStats,
   structureRefreshSignal,
   onSelectFile,
   onReferenceFile,
@@ -125,13 +122,7 @@ export function WritingProjectExplorer({
       icon: <AtSign className="size-3.5" />,
       onSelect: () => onReferenceFile(node.path),
     }] : [],
-    getRowDecoration: (node) => {
-      const chapter = chapterStats[node.path]
-      if (!chapter) return null
-      const words = formatCompactWords(chapter.words)
-      return { text: `${words} · ${chapter.status}`, title: `${words} · ${chapter.status}` }
-    },
-  }), [chapterStats, onReferenceFile, t])
+  }), [onReferenceFile, t])
 
   return (
     <ProjectExplorerPane
@@ -163,10 +154,4 @@ export function WritingProjectExplorer({
 function renamedPath(path: string, newName: string) {
   const separator = path.lastIndexOf('/')
   return separator < 0 ? newName : `${path.slice(0, separator)}/${newName}`
-}
-
-function formatCompactWords(words: number) {
-  if (words >= 10_000) return `${(words / 10_000).toFixed(1)}w`
-  if (words >= 1_000) return `${(words / 1_000).toFixed(1)}k`
-  return String(words)
 }

@@ -3,6 +3,7 @@ import type { ComponentProps, KeyboardEvent, ReactNode } from 'react'
 import { useEffect, useLayoutEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { cn } from '@/lib/utils'
+import './FileTreeMenu.css'
 
 interface FileTreeMenuProps {
   children: ReactNode
@@ -40,7 +41,7 @@ export function FileTreeMenu({ children, anchorRect }: FileTreeMenuProps) {
       ref={ref}
       role="menu"
       data-file-tree-context-menu-root="true"
-      className="nova-file-tree-menu"
+      className="nova-file-tree-menu nova-file-tree-menu-surface"
       onKeyDown={moveMenuFocus}
     >
       {children}

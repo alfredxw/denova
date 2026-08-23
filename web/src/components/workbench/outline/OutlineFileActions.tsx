@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/context-menu'
 import { DeleteConfirmDialog } from '@/components/Sidebar/DeleteConfirmDialog'
 import { FileOperationDialog } from '@/components/Sidebar/FileOperationDialog'
+import '@/components/file-tree/FileTreeMenu.css'
 import { workspaceFileName } from '@/lib/workspace-path'
 
 interface OutlineFileActionsProps {
@@ -31,13 +32,7 @@ interface OutlineFileAction {
   onSelect?: () => void
 }
 
-const MENU_CONTENT_CLASS =
-  'min-w-[180px] rounded-lg border-[var(--nova-border)] bg-[var(--nova-menu-bg)] p-1 text-[var(--nova-text)] shadow-[0_12px_32px_rgba(0,0,0,0.18)] backdrop-blur'
-const MENU_ITEM_CLASS =
-  'cursor-pointer gap-2 rounded-md px-2 py-1.5 text-xs text-[var(--nova-text-muted)] transition-colors focus:bg-[var(--nova-menu-item-hover-bg)] focus:text-[var(--nova-text)] data-[highlighted]:bg-[var(--nova-menu-item-hover-bg)] data-[highlighted]:text-[var(--nova-text)] [&_svg]:text-[var(--nova-tree-icon)] focus:[&_svg]:text-[var(--nova-text)] data-[highlighted]:[&_svg]:text-[var(--nova-text)]'
-const MENU_DANGER_CLASS =
-  'text-[var(--nova-danger)] focus:bg-[var(--nova-danger-bg)] focus:text-[var(--nova-danger)] data-[highlighted]:bg-[var(--nova-danger-bg)] data-[highlighted]:text-[var(--nova-danger)] [&_svg]:text-[var(--nova-danger)]'
-const MENU_SEPARATOR_CLASS = 'mx-1 my-1 h-px bg-[var(--nova-border)]'
+const MENU_CONTENT_CLASS = 'nova-file-tree-menu-surface nova-file-tree-menu-radix'
 
 /** File actions shared by the discoverable trigger and the native context-menu gesture. */
 export function OutlineFileActions({
@@ -137,11 +132,15 @@ function compactActions(actions: OutlineFileAction[]) {
 function renderActions(actions: OutlineFileAction[]) {
   return actions.map((action, index) => {
     if (action.separator) {
-      return <ContextMenuSeparator key={index} className={MENU_SEPARATOR_CLASS} />
+      return <ContextMenuSeparator key={index} className="nova-file-tree-menu-separator" />
     }
-    const className = `${MENU_ITEM_CLASS} ${action.danger ? MENU_DANGER_CLASS : ''}`
     return (
-      <ContextMenuItem key={action.label} className={className} onSelect={action.onSelect}>
+      <ContextMenuItem
+        key={action.label}
+        className="nova-file-tree-menu-item"
+        variant={action.danger ? 'destructive' : 'default'}
+        onSelect={action.onSelect}
+      >
         {action.icon}
         {action.label}
       </ContextMenuItem>

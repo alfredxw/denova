@@ -2,16 +2,15 @@ import { render } from '@testing-library/react'
 import type { ComponentProps } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  MarkdownEditor as ProjectMarkdownEditor,
-  MarkdownRichEditor as ProjectMarkdownRichEditor,
-} from './MarkdownRichEditor'
+  MarkdownContentEditor as ProjectMarkdownEditor,
+} from './MarkdownContentEditor'
 
 function MarkdownEditor(props: Omit<ComponentProps<typeof ProjectMarkdownEditor>, 'projectId'> & { projectId?: string }) {
   return <ProjectMarkdownEditor {...props} projectId={props.projectId || 'project-rich-editor-test'} />
 }
 
-function MarkdownRichEditor(props: Omit<ComponentProps<typeof ProjectMarkdownRichEditor>, 'projectId'> & { projectId?: string }) {
-  return <ProjectMarkdownRichEditor {...props} projectId={props.projectId || 'project-rich-editor-test'} />
+function MarkdownRichEditor(props: Omit<ComponentProps<typeof ProjectMarkdownEditor>, 'projectId' | 'mode'> & { projectId?: string }) {
+  return <ProjectMarkdownEditor {...props} mode="rich" projectId={props.projectId || 'project-rich-editor-test'} />
 }
 
 const tiptapMock = vi.hoisted(() => {

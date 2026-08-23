@@ -41,7 +41,7 @@ interface EditorSurfaceProps {
   reviewAnnotations?: ReactNode
 }
 
-/** 编辑器的纯展示层；文档同步、保存和冲突状态由 MarkdownEditor 管理。 */
+/** Pure presentation surface; WritingDocumentEditor owns synchronization and persistence. */
 export function EditorSurface({
   containerRef,
   editor,

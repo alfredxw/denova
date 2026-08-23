@@ -31,7 +31,7 @@ import {
   type Tab,
 } from '@/components/workbench/TabController'
 import { ModeRouter } from '@/components/workbench/ModeRouter'
-import type { EditorFlushHandler } from '@/components/Editor/MarkdownEditor'
+import type { EditorFlushHandler } from '@/components/Editor/useEditorDraftPersistence'
 import {
   CharacterCardImportDialog,
   type CharacterCardTargetMode,
@@ -126,7 +126,7 @@ function App() {
   }, [mode])
 
   const {
-    tree, loading, selectedFile, fileContent, fileRevision, workspace, projectId, workspaceLoaded, summary, books, bookSortMode,
+    tree, loading, selectedFile, fileDocument, fileContent, fileRevision, workspace, projectId, workspaceLoaded, summary, books, bookSortMode,
     selectFile, clearSelectedFile, saveFileDraft, createItem, deleteItem, renameItem, copyItem, moveItem,
     refresh, refreshSummary, refreshAfterAgentFileChange, refreshAll, refreshBooks, setWorkspace,
   } = useWorkspace()
@@ -848,7 +848,6 @@ function App() {
         projectId={projectId}
         summary={summary}
         currentChapter={currentChapter}
-        chapterStats={chapterStats}
         isStreaming={isStreaming}
         sessionTransitionPending={sessionTransitionPending}
         isExecutionActive={isExecutionActive}
@@ -868,6 +867,7 @@ function App() {
         tree={tree}
         loading={loading}
         selectedFile={selectedFile}
+        fileDocument={fileDocument}
         fileContent={fileContent}
         fileRevision={fileRevision}
         openTabs={openTabs}

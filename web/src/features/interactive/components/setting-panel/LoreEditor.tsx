@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { FileCode2, Loader2, Sparkles, Trash2, Type, Upload } from 'lucide-react'
+import { Loader2, Sparkles, Trash2, Upload } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -10,7 +10,6 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectVa
 import { Textarea } from '@/components/ui/textarea'
 import { ImagePreviewDialog } from '@/components/common/ImagePreviewDialog'
 import { SearchHighlightTextarea } from '@/components/common/SearchHighlightTextarea'
-import { MarkdownRichEditor } from '@/components/Editor/MarkdownRichEditor'
 import { projectFileAssetURL, type LoreItem } from '@/lib/api'
 import type { ImagePreset } from '../../types'
 import { presetActionButtonClassName as actionButtonClassName, presetIconActionClassName as iconActionClassName, presetInputClassName as inputClassName, presetSelectClassName as selectClassName } from '../preset-config/editor-styles'
@@ -20,6 +19,7 @@ import { BooleanSwitchField } from './BooleanSwitchField'
 import { IMPORTANCE_OPTIONS, LOAD_MODE_OPTIONS, loadModeDescription, LORE_RESIDENT_TOTAL_WARNING_BYTES, loreImportanceLabel, loreLoadModeLabel, loreTypeLabel, TYPE_OPTIONS } from '@/features/lore/options'
 import type { DocumentReviewController, DocumentReviewNavigationIntent } from '@/features/document-review/controller'
 import type { DocumentReviewSnapshot } from '@/components/Editor/documentReviewAnchors'
+import { LoreContentEditor } from '@/features/lore/LoreContentEditor'
 
 export function LoreEditor({
   projectId,
@@ -70,8 +70,6 @@ export function LoreEditor({
 }) {
   const { t } = useTranslation()
   const [imageDialogOpen, setImageDialogOpen] = useState(false)
-  // Default to rich text while retaining the chosen mode when switching lore entries.
-  const [contentMode, setContentMode] = useState<'rich' | 'raw'>('rich')
   if (!draft) {
     return <EmptyState title={t('settingPanel.editor.noLoreSelected')} description={t('settingPanel.editor.noLoreSelectedDesc')} />
   }
@@ -200,51 +198,10 @@ export function LoreEditor({
               </div>
             </div>
           </div>
-          {/* Keep the mode switch and editor on one surface so the content remains visually connected. */}
           <div className="flex min-h-[420px] min-w-0 flex-1 flex-col bg-[var(--nova-bg)]">
-            <div className="flex shrink-0 items-center px-3 pt-2.5 sm:px-4">
-              <div role="group" aria-label={t('settingPanel.field.content')} className="inline-flex shrink-0 overflow-hidden rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0.5">
-                <button
-                  type="button"
-                  onClick={() => setContentMode('rich')}
-                  aria-pressed={contentMode === 'rich'}
-                  className={cn(
-                    'nova-nav-item inline-flex h-6 items-center gap-1 rounded px-2 text-[11px]',
-                    contentMode === 'rich' ? 'is-active' : 'text-[var(--nova-text-muted)]',
-                  )}
-                >
-                  <Type className="h-3.5 w-3.5" />
-                  {t('settingPanel.editor.contentModeRich')}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setContentMode('raw')}
-                  aria-pressed={contentMode === 'raw'}
-                  className={cn(
-                    'nova-nav-item inline-flex h-6 items-center gap-1 rounded px-2 text-[11px]',
-                    contentMode === 'raw' ? 'is-active' : 'text-[var(--nova-text-muted)]',
-                  )}
-                >
-                  <FileCode2 className="h-3.5 w-3.5" />
-                  {t('common.raw')}
-                </button>
-              </div>
-            </div>
-            {contentMode === 'raw' ? (
-              <SearchHighlightTextarea
-                containerClassName="min-h-0 flex-1"
-                autoResize={false}
-                spellCheck={false}
-                value={draft.content || ''}
-                highlightQuery={searchQuery}
-                onChange={(event) => setDraft({ ...draft, content: event.target.value })}
-                aria-label={t('settingPanel.field.content')}
-                className="h-full min-h-0 min-w-0 resize-none rounded-none border-0 bg-transparent px-5 pb-4 pt-2 font-mono text-xs leading-5 text-[var(--nova-text)] shadow-none focus-visible:ring-0 sm:px-6 md:text-xs"
-              />
-            ) : (
-              <MarkdownRichEditor
+            <LoreContentEditor
                 projectId={projectId}
-                key={draft.id}
+                resourceKey={draft.id}
                 value={draft.content || ''}
                 onChange={(content) => setDraft({ ...draft, content })}
                 highlightQuery={searchQuery}
@@ -256,10 +213,10 @@ export function LoreEditor({
                   prepareSnapshot: onPrepareReviewSnapshot,
                   navigationIntent: documentReviewNavigationIntent,
                 } : undefined}
-                aria-label={t('settingPanel.field.content')}
-                className="flex min-h-0 min-w-0 flex-1 flex-col text-xs leading-5 [&_.tiptap]:min-h-0 [&_.tiptap]:min-w-0 [&_.tiptap]:flex-1 [&_.tiptap]:px-5 [&_.tiptap]:pb-4 [&_.tiptap]:pt-2 sm:[&_.tiptap]:px-6"
-              />
-            )}
+                richAriaLabel={t('settingPanel.field.content')}
+                sourceAriaLabel={t('settingPanel.field.content')}
+                editorClassName="text-xs leading-5 [&_.tiptap]:min-h-0 [&_.tiptap]:min-w-0 [&_.tiptap]:flex-1 [&_.tiptap]:px-5 [&_.tiptap]:pb-4 [&_.tiptap]:pt-2 sm:[&_.tiptap]:px-6"
+            />
           </div>
         </div>
       </ScrollArea>

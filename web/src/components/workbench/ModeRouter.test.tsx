@@ -114,8 +114,8 @@ vi.mock('@/features/interactive/components/SettingPanel', () => ({
   },
 }))
 
-vi.mock('@/components/Editor/MarkdownEditor', () => ({
-  MarkdownEditor: ({ fileName, chapterSummary, onRevealChapter, documentReviewNavigationIntent }: {
+vi.mock('@/components/Editor/WritingDocumentEditor', () => ({
+  WritingDocumentEditor: ({ fileName, chapterSummary, onRevealChapter, documentReviewNavigationIntent }: {
     fileName: string | null
     chapterSummary?: { path: string }
     onRevealChapter?: (path: string) => void
@@ -138,6 +138,12 @@ vi.mock('@/components/Editor/MarkdownEditor', () => ({
       </>
     )
   },
+}))
+
+vi.mock('@/components/Editor/WritingSourceEditor', () => ({
+  WritingSourceEditor: ({ document }: { document: { path: string; content?: string } }) => (
+    <div data-testid="writing-source-editor" data-content={document.content}>{document.path}</div>
+  ),
 }))
 
 vi.mock('@/features/interactive/api', () => ({
@@ -568,6 +574,32 @@ describe('ModeRouter autosave navigation policy', () => {
     expect(markdownEditorLifecycle.mounts).toBe(1)
     expect(markdownEditorLifecycle.unmounts).toBe(0)
   })
+
+  it('routes non-Markdown text tabs to Monaco source editing without transforming content', async () => {
+    const path = 'data/events.jsonl'
+    const content = '{"event":1}\nnot-json'
+    render(withAppProviders(<ModeRouter {...modeRouterProps({
+      selectedFile: path,
+      fileDocument: {
+        project_id: 'project-book-a',
+        path,
+        content,
+        revision: 'r-source',
+        kind: 'text',
+        mime_type: 'application/x-ndjson',
+        size: content.length,
+        editable: true,
+      },
+      fileContent: content,
+      fileRevision: 'r-source',
+      openTabs: [{ kind: 'file', path }],
+      activeTabKey: `file:${path}`,
+    })} />))
+
+    await waitFor(() => expect(screen.getByTestId('writing-source-editor')).toHaveAttribute('data-content', content))
+    expect(screen.getByTestId('writing-source-editor')).toHaveTextContent(path)
+    expect(screen.queryByTestId('markdown-editor-navigation')).not.toBeInTheDocument()
+  })
 })
 
 function modeRouterProps(
@@ -580,7 +612,6 @@ function modeRouterProps(
     workspace: '/book-a',
     projectId: 'project-book-a',
     summary: null,
-    chapterStats: {},
     isStreaming: false,
     isExecutionActive: false,
     projectVisible: true,
@@ -594,6 +625,7 @@ function modeRouterProps(
     tree: [],
     loading: false,
     selectedFile: null,
+    fileDocument: null,
     fileContent: '',
     fileRevision: '',
     openTabs: [],

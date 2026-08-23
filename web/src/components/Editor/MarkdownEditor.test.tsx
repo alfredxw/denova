@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import type { ComponentProps } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { WorkspaceFileRevisionConflictError } from '@/lib/autosave/workspace-file-revision-conflict'
-import { MarkdownEditor as ProjectMarkdownEditor } from './MarkdownEditor'
+import { WritingDocumentEditor as ProjectMarkdownEditor } from './WritingDocumentEditor'
 
 function MarkdownEditor({ workspace, ...props }: Omit<ComponentProps<typeof ProjectMarkdownEditor>, 'projectId'> & { projectId?: string; workspace?: string }) {
   return <ProjectMarkdownEditor {...props} projectId={props.projectId || workspace || 'project-editor-test'} />

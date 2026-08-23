@@ -1,6 +1,6 @@
 import { type Monaco, type OnChange, type OnMount } from '@monaco-editor/react'
 import { FileWarning, Maximize2 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { IDisposable, editor } from 'monaco-editor'
 import { EmptyState } from '@/components/common/EmptyState'
@@ -9,7 +9,7 @@ import { DenovaMonacoEditor } from '@/components/monaco/DenovaMonaco'
 import { projectFileAssetURL, type ProjectFileDocument } from '@/lib/api-client/project-files'
 import { projectFileLanguage } from './file-language'
 
-interface ProjectSourceEditorProps {
+export interface ProjectSourceEditorProps {
   projectId: string
   document: ProjectFileDocument
   value: string
@@ -19,6 +19,19 @@ interface ProjectSourceEditorProps {
   onSave: () => void
 }
 
+export interface ProjectTextEditorHandle {
+  getValue: () => string
+  replaceValue: (value: string) => void
+  revealLine: (line: number) => void
+  focus: () => void
+}
+
+export interface ProjectTextEditorProps extends ProjectSourceEditorProps {
+  /** Files owns its value; Writing delegates external rebases to its shared persistence lane. */
+  syncExternalValue?: boolean
+  onQuoteSelection?: (selection: { content: string; startLine: number; endLine: number }) => void
+}
+
 /** Monaco-backed source surface shared by Writing and Game projects. */
 export function ProjectSourceEditor(props: ProjectSourceEditorProps) {
   if (props.document.kind === 'image') return <ProjectImagePreview {...props} />
@@ -26,7 +39,7 @@ export function ProjectSourceEditor(props: ProjectSourceEditorProps) {
   return <ProjectTextEditor {...props} />
 }
 
-function ProjectTextEditor({
+export const ProjectTextEditor = forwardRef<ProjectTextEditorHandle, ProjectTextEditorProps>(function ProjectTextEditor({
   projectId,
   document,
   value,
@@ -34,7 +47,9 @@ function ProjectTextEditor({
   onWordWrapToggle,
   onChange,
   onSave,
-}: ProjectSourceEditorProps) {
+  syncExternalValue = true,
+  onQuoteSelection,
+}, forwardedRef) {
   const { t } = useTranslation()
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
   const actionDisposablesRef = useRef<IDisposable[]>([])
@@ -42,9 +57,29 @@ function ProjectTextEditor({
   const valueRef = useRef(value)
   const onSaveRef = useRef(onSave)
   const onWordWrapToggleRef = useRef(onWordWrapToggle)
+  const onQuoteSelectionRef = useRef(onQuoteSelection)
   onSaveRef.current = onSave
   onWordWrapToggleRef.current = onWordWrapToggle
+  onQuoteSelectionRef.current = onQuoteSelection
   valueRef.current = value
+
+  useImperativeHandle(forwardedRef, () => ({
+    getValue: () => editorRef.current?.getValue() ?? valueRef.current,
+    replaceValue: (nextValue) => {
+      const model = editorRef.current?.getModel()
+      if (model && model.getValue() !== nextValue) model.setValue(nextValue)
+      valueRef.current = nextValue
+    },
+    revealLine: (line) => {
+      const editorInstance = editorRef.current
+      if (!editorInstance) return
+      const safeLine = Math.max(1, Math.min(line, editorInstance.getModel()?.getLineCount() ?? 1))
+      editorInstance.revealLineInCenter(safeLine)
+      editorInstance.setPosition({ lineNumber: safeLine, column: 1 })
+      editorInstance.focus()
+    },
+    focus: () => editorRef.current?.focus(),
+  }), [])
 
   const options = useMemo<editor.IStandaloneEditorConstructionOptions>(() => ({
     ariaLabel: t('files.editor.source', { path: document.path }),
@@ -95,8 +130,19 @@ function ProjectTextEditor({
     actionDisposablesRef.current = installEditorActions(editorInstance, monaco, {
       saveLabel: t('files.editor.save'),
       wrapLabel: t('files.editor.toggleWordWrap'),
+      quoteLabel: t('editor.quoteSelectionShortcut'),
       onSave: () => onSaveRef.current(),
       onWordWrapToggle: () => onWordWrapToggleRef.current(),
+      onQuoteSelection: onQuoteSelectionRef.current ? () => {
+        const selection = editorInstance.getSelection()
+        const selectedText = selection ? editorInstance.getModel()?.getValueInRange(selection) ?? '' : ''
+        if (!selection || !selectedText.trim()) return
+        onQuoteSelectionRef.current?.({
+          content: selectedText,
+          startLine: selection.startLineNumber,
+          endLine: selection.endLineNumber,
+        })
+      } : undefined,
     })
   }, [t])
 
@@ -111,9 +157,10 @@ function ProjectTextEditor({
   // the model, eliminating a React round trip from the scrolling hot path.
   useEffect(() => {
     const model = editorRef.current?.getModel()
+    if (!syncExternalValue) return
     const externalValue = valueRef.current
     if (model && model.getValue() !== externalValue) model.setValue(externalValue)
-  }, [document.revision])
+  }, [document.revision, syncExternalValue])
 
   return (
     <div
@@ -135,7 +182,7 @@ function ProjectTextEditor({
       />
     </div>
   )
-}
+})
 
 function ProjectImagePreview({ projectId, document }: ProjectSourceEditorProps) {
   const { t } = useTranslation()
@@ -159,7 +206,7 @@ function ProjectImagePreview({ projectId, document }: ProjectSourceEditorProps) 
   )
 }
 
-function ProjectBinaryPreview() {
+export function ProjectBinaryPreview() {
   const { t } = useTranslation()
   return (
     <EmptyState
@@ -174,10 +221,12 @@ function ProjectBinaryPreview() {
 function installEditorActions(editorInstance: editor.IStandaloneCodeEditor, monaco: Monaco, actions: {
   saveLabel: string
   wrapLabel: string
+  quoteLabel: string
   onSave: () => void
   onWordWrapToggle: () => void
+  onQuoteSelection?: () => void
 }): IDisposable[] {
-  return [
+  const disposables = [
     editorInstance.addAction({
       id: 'denova.project-file.save',
       label: actions.saveLabel,
@@ -191,6 +240,15 @@ function installEditorActions(editorInstance: editor.IStandaloneCodeEditor, mona
       run: actions.onWordWrapToggle,
     }),
   ]
+  if (actions.onQuoteSelection) {
+    disposables.push(editorInstance.addAction({
+      id: 'denova.project-file.quote-selection',
+      label: actions.quoteLabel,
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyL],
+      run: actions.onQuoteSelection,
+    }))
+  }
+  return disposables
 }
 
 export function projectFileModelPath(projectId: string, path: string) {

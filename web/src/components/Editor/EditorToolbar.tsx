@@ -1,4 +1,4 @@
-import { BookOpen, Check, Crosshair, ImagePlus, PanelLeft, Save, Settings } from 'lucide-react'
+import { BookOpen, Crosshair, ImagePlus, PanelLeft, Save, Settings } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
@@ -8,46 +8,9 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { EditorSettingsPanel } from './EditorSettingsPanel'
 import type { EditorSettings, ReadingTypographySettings } from './EditorSettingsPanel'
+import { EditorSaveStatus, type SaveStatus } from './EditorSaveStatus'
 
-export type SaveStatus = 'dirty' | 'auto-saving' | 'auto-saved' | 'manual-saving' | 'manual-saved' | 'error'
-
-const SAVE_STATUS_META: Record<SaveStatus, { labelKey: string; ariaLabelKey: string; className: string; dotClassName?: string; subtle?: boolean }> = {
-  dirty: {
-    labelKey: 'editor.status.dirty',
-    ariaLabelKey: 'editor.status.dirtyAria',
-    className: 'text-[var(--nova-text-faint)]',
-    dotClassName: 'bg-[var(--nova-text-faint)] opacity-60',
-    subtle: true,
-  },
-  'auto-saving': {
-    labelKey: 'editor.status.autoSaving',
-    ariaLabelKey: 'editor.status.autoSavingAria',
-    className: 'text-[var(--nova-text-faint)]',
-    dotClassName: 'animate-pulse bg-[var(--nova-text-muted)] opacity-70',
-    subtle: true,
-  },
-  'auto-saved': {
-    labelKey: 'editor.status.autoSaved',
-    ariaLabelKey: 'editor.status.autoSavedAria',
-    className: 'text-[var(--nova-text-faint)]',
-    subtle: true,
-  },
-  'manual-saving': {
-    labelKey: 'editor.status.manualSaving',
-    ariaLabelKey: 'editor.status.manualSavingAria',
-    className: 'text-[var(--nova-text-muted)]',
-  },
-  'manual-saved': {
-    labelKey: 'editor.status.manualSaved',
-    ariaLabelKey: 'editor.status.manualSavedAria',
-    className: 'text-[var(--nova-accent-green)]',
-  },
-  error: {
-    labelKey: 'editor.status.error',
-    ariaLabelKey: 'editor.status.errorAria',
-    className: 'text-[var(--nova-danger)]',
-  },
-}
+export type { SaveStatus } from './EditorSaveStatus'
 
 interface EditorToolbarProps {
   fileName: string
@@ -89,9 +52,6 @@ export function EditorToolbar({
   generateIllustrationDisabled,
 }: EditorToolbarProps) {
   const { t } = useTranslation()
-  const saveStatusMeta = saveStatus ? SAVE_STATUS_META[saveStatus] : null
-  const saveStatusLabel = saveStatusMeta ? t(saveStatusMeta.labelKey) : ''
-  const saveStatusAriaLabel = saveStatusMeta ? t(saveStatusMeta.ariaLabelKey) : ''
   const updatedTime = formatDateTime(updatedAt)
 
   return (
@@ -132,20 +92,7 @@ export function EditorToolbar({
       </div>
       <TooltipProvider>
         <div className="flex shrink-0 items-center gap-1">
-          {saveStatusMeta && (
-            <span
-              className={`inline-flex h-5 min-w-5 items-center justify-end gap-1 text-[11px] transition-colors ${saveStatusMeta.className}`}
-              aria-live="polite"
-              aria-label={saveStatusAriaLabel}
-            >
-              {saveStatus === 'auto-saved' ? (
-                <Check className="h-3 w-3 opacity-45" />
-              ) : saveStatusMeta.dotClassName ? (
-                <span className={`h-1.5 w-1.5 rounded-full ${saveStatusMeta.dotClassName}`} />
-              ) : null}
-              <span className={saveStatusMeta.subtle ? 'sr-only' : ''}>{saveStatusLabel}</span>
-            </span>
-          )}
+          <EditorSaveStatus status={saveStatus} />
           {onGenerateIllustration && (
             <TooltipIconButton
               label={generateIllustrationDisabled ? t('editor.generateIllustrationDisabled') : t('editor.generateIllustration')}

@@ -6,8 +6,8 @@ import type { CreateDocumentCommentRequest, DocumentReviewComment } from '@/feat
 import type { LoreItem } from '@/lib/api'
 import { LoreWorkspaceEditor } from './LoreWorkspaceEditor'
 
-vi.mock('@/components/Editor/MarkdownRichEditor', () => ({
-  MarkdownEditor: (props: {
+vi.mock('@/components/Editor/MarkdownContentEditor', () => ({
+  MarkdownContentEditor: (props: {
     value: string
     mode: 'rich' | 'source'
     highlightQuery?: string

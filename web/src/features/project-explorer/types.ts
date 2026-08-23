@@ -1,4 +1,3 @@
-import type { FileTreeRowDecoration } from '@pierre/trees'
 import type { ReactNode } from 'react'
 import type { ProjectFileExplorerNode } from './model'
 
@@ -19,5 +18,4 @@ export interface ProjectExplorerNodeContext {
 export interface ProjectExplorerExtensions {
   deleteRecovery?: 'version-history' | 'none'
   getNodeActions?: (context: ProjectExplorerNodeContext) => readonly ProjectExplorerNodeAction[]
-  getRowDecoration?: (node: ProjectFileExplorerNode) => FileTreeRowDecoration | null
 }

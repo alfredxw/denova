@@ -395,6 +395,7 @@ export const ProjectExplorerTree = forwardRef<ProjectExplorerTreeHandle, Project
           initialExpandedPaths={canonicalExpandedPaths}
           selectedPaths={canonicalSelectedPaths}
           gitStatus={mergedGitStatus}
+          gitStatusPresentation="color-only"
           dragAndDrop={{
             canDrag: (paths) => !busyRef.current && paths.every((path) => projection.nodesByPath.has(applicationFileTreePath(path))),
             canDrop: ({ draggedPaths, target }) => {
@@ -419,11 +420,11 @@ export const ProjectExplorerTree = forwardRef<ProjectExplorerTreeHandle, Project
               console.error('[features/project-explorer/ProjectExplorerTree.tsx] Pierre rejected a project file rename', { error })
             },
           }}
-          renderRowDecoration={({ item }) => {
-            const node = projection.nodesByPath.get(applicationFileTreePath(item.path))
-            return node ? extensions.getRowDecoration?.(node) ?? (node.symlink ? { text: '↗' } : null) : null
-          }}
+          renderRowDecoration={({ item }) => (
+            projection.nodesByPath.get(applicationFileTreePath(item.path))?.symlink ? { text: '↗' } : null
+          )}
           renderContextMenu={renderContextMenu}
+          contextMenuTriggerMode="right-click"
           onSelectionChange={handleSelectionChange}
           onDirectoryExpandedChange={(path, expanded) => onDirectoryExpandedChange(applicationFileTreePath(path), expanded)}
           onDirectoryExpand={(path) => onDirectoryExpand(applicationFileTreePath(path))}

@@ -45,24 +45,23 @@ describe('ProjectExplorerPane', () => {
     expect(screen.queryByText('项目文件')).not.toBeInTheDocument()
   })
 
-  it('separates the toolbar only after the Pierre viewport scrolls', async () => {
+  it('keeps the toolbar borderless while the Pierre viewport scrolls', () => {
     renderPane()
     const toolbar = document.querySelector('[data-slot="project-explorer-toolbar"]')
     const scroll = fileTreeShadow().querySelector('[data-file-tree-virtualized-scroll]')
     if (!(toolbar instanceof HTMLElement) || !(scroll instanceof HTMLElement)) throw new Error('Explorer chrome is unavailable')
-    expect(toolbar).toHaveClass('border-transparent')
+    expect(toolbar).not.toHaveClass('border-b')
 
     Object.defineProperty(scroll, 'scrollTop', { configurable: true, get: () => 1, set: () => {} })
     fireEvent.scroll(scroll)
-    await waitFor(() => expect(toolbar).toHaveClass('border-[var(--nova-border)]'))
+    expect(toolbar).not.toHaveClass('border-b')
   })
 
-  it('keeps writing metadata and actions behind extension points', async () => {
+  it('keeps writing actions behind extension points', async () => {
     const user = userEvent.setup()
     const onReferenceFile = vi.fn()
     renderPane({
       extensions: {
-        getRowDecoration: (node) => node.path === selectedPath ? { text: '1.2k · draft' } : null,
         getNodeActions: ({ node, paths }) => node.type === 'file' && paths.length === 1 ? [{
           id: 'reference',
           label: '引用到对话',
@@ -71,7 +70,6 @@ describe('ProjectExplorerPane', () => {
       },
     })
 
-    expect(fileTreeRow(selectedPath)).toHaveTextContent('1.2k · draft')
     fireEvent.contextMenu(fileTreeRow(selectedPath), { clientX: 10, clientY: 10 })
     await user.click(await screen.findByRole('menuitem', { name: '引用到对话' }))
     expect(onReferenceFile).toHaveBeenCalledWith(selectedPath)

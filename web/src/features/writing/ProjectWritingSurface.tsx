@@ -5,13 +5,16 @@ import { EmptyState } from '@/components/common/EmptyState'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 import { LoadingState } from '@/components/common/LoadingState'
 import { SearchPanel } from '@/components/Sidebar/SearchPanel'
-import { MarkdownEditor } from '@/components/Editor/MarkdownEditor'
+import { WritingDocumentEditor } from '@/components/Editor/WritingDocumentEditor'
+import { WritingSourceEditor } from '@/components/Editor/WritingSourceEditor'
 import type { EditorFlushHandler } from '@/components/Editor/useEditorDraftPersistence'
 import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
 import { ChapterOutline } from '@/components/workbench/outline/ChapterOutline'
 import type { WorkspaceChangeMetadata } from '@/features/changes/types'
 import type { DocumentReviewController } from '@/features/document-review/controller'
 import type { AgentChatDocumentReviewNavigation } from '@/features/agent-chat/types'
+import { ProjectSourceEditor } from '@/features/files/ProjectSourceEditor'
+import { isPreviewableMarkdown } from '@/features/files/file-language'
 import {
   APIError,
   getProjectBookSummary,
@@ -23,6 +26,7 @@ import {
   type WorkspaceSearchResult,
   type WorkspaceSummary,
 } from '@/lib/api'
+import type { ProjectFileDocument } from '@/lib/api-client/project-files'
 import { WorkspaceFileRevisionConflictError } from '@/lib/autosave/workspace-file-revision-conflict'
 
 interface ProjectWritingSurfaceProps {
@@ -37,14 +41,6 @@ interface ProjectWritingSurfaceProps {
   onFlushHandlerChange: (handler: EditorFlushHandler | null) => void
   onWorkspaceChanged?: (paths: string[], metadata: WorkspaceChangeMetadata) => void | Promise<void>
 }
-
-interface OpenDocument {
-  path: string
-  content: string
-  revision: string
-}
-
-const EMPTY_DOCUMENT: OpenDocument = { path: '', content: '', revision: '' }
 
 /**
  * Project-scoped manuscript surface shared by embedded Writing hosts.
@@ -68,7 +64,7 @@ export function ProjectWritingSurface({
   const [tree, setTree] = useState<ProjectBookFileNode[]>([])
   const [summary, setSummary] = useState<WorkspaceSummary | null>(null)
   const [selectedPath, setSelectedPath] = useState(initialPath || '')
-  const [document, setDocument] = useState<OpenDocument>(EMPTY_DOCUMENT)
+  const [document, setDocument] = useState<ProjectFileDocument | null>(null)
   const [sidebarView, setSidebarView] = useState<'outline' | 'search'>('outline')
   const [searchIntent, setSearchIntent] = useState<{ path: string; query: string; line: number; nonce: number } | null>(null)
   const [loadingBook, setLoadingBook] = useState(Boolean(projectId))
@@ -144,7 +140,7 @@ export function ProjectWritingSurface({
   const loadDocument = useCallback(async (path: string) => {
     const request = ++documentRequestRef.current
     if (!projectId || !path) {
-      setDocument(EMPTY_DOCUMENT)
+      setDocument(null)
       return
     }
     setLoadingDocument(true)
@@ -153,7 +149,7 @@ export function ProjectWritingSurface({
       const file = await readProjectFile(projectId, path)
       if (request !== documentRequestRef.current) return
       if (file.project_id !== projectId) return
-      setDocument({ path: file.path, content: file.content || '', revision: file.revision })
+      setDocument(file)
     } catch (cause) {
       if (request !== documentRequestRef.current) return
       console.error('[features/writing/ProjectWritingSurface.tsx] reading project file failed', {
@@ -162,7 +158,7 @@ export function ProjectWritingSurface({
         cause,
       })
       setError(cause instanceof Error ? cause.message : String(cause))
-      setDocument(EMPTY_DOCUMENT)
+      setDocument(null)
     } finally {
       if (request === documentRequestRef.current) setLoadingDocument(false)
     }
@@ -173,7 +169,7 @@ export function ProjectWritingSurface({
     setSummary(null)
     selectedPathRef.current = initialPath || ''
     setSelectedPath(selectedPathRef.current)
-    setDocument(EMPTY_DOCUMENT)
+    setDocument(null)
     refreshSignalRef.current = refreshSignal
     void loadSnapshot()
     return () => {
@@ -221,8 +217,8 @@ export function ProjectWritingSurface({
   const save = useCallback(async (path: string, content: string, baseRevision: string) => {
     try {
       const result = await saveProjectFile(projectId, path, content, baseRevision)
-      setDocument((current) => current.path === path
-        ? { ...current, content, revision: result.revision || current.revision }
+      setDocument((current) => current?.path === path
+        ? { ...current, content, revision: result.revision || current.revision, size: new TextEncoder().encode(content).byteLength }
         : current)
       void loadSummary()
       await onWorkspaceChanged?.([path], { impact: 'content', origin: 'project-page' })
@@ -265,7 +261,7 @@ export function ProjectWritingSurface({
     ])
   }, [loadDocument, loadSnapshot, onWorkspaceChanged, selectedPath])
 
-  const displayedChapter = chapters.find((chapter) => chapter.path === document.path)
+  const displayedChapter = chapters.find((chapter) => chapter.path === document?.path)
   const directory = (
     <div className="nova-sidebar flex h-full min-h-0 flex-col bg-[var(--nova-surface-2)]">
       <div className="grid shrink-0 grid-cols-2 gap-1 border-b border-[var(--nova-border)] p-2">
@@ -341,23 +337,45 @@ export function ProjectWritingSurface({
               <div className="p-3">
                 <InlineErrorNotice message={error} title={t('agentChat.reader.loadFailed')} />
               </div>
-            ) : document.path ? (
+            ) : document?.path ? (
               <div className="relative flex min-h-0 flex-1 flex-col">
-                <MarkdownEditor
-                  projectId={projectId}
-                  fileName={document.path}
-                  content={document.content}
-                  revision={document.revision}
-                  chapterSummary={displayedChapter}
-                  searchIntent={searchIntent?.path === document.path ? searchIntent : null}
-                  autoSaveEnabled={autoSaveEnabled}
-                  autoSaveDelayMs={autoSaveDelayMs}
-                  onSave={save}
-                  onFlushHandlerChange={handleFlushHandlerChange}
-                  documentReview={documentReview}
-                  documentReviewNavigationIntent={navigationPath === document.path ? navigationIntent : null}
-                  onOpenOutline={isMobile ? openLeft : undefined}
-                />
+                {document.kind === 'text' && isPreviewableMarkdown(document.path) ? (
+                  <WritingDocumentEditor
+                    projectId={projectId}
+                    fileName={document.path}
+                    content={document.content ?? ''}
+                    revision={document.revision}
+                    chapterSummary={displayedChapter}
+                    searchIntent={searchIntent?.path === document.path ? searchIntent : null}
+                    autoSaveEnabled={autoSaveEnabled}
+                    autoSaveDelayMs={autoSaveDelayMs}
+                    onSave={save}
+                    onFlushHandlerChange={handleFlushHandlerChange}
+                    documentReview={documentReview}
+                    documentReviewNavigationIntent={navigationPath === document.path ? navigationIntent : null}
+                    onOpenOutline={isMobile ? openLeft : undefined}
+                  />
+                ) : document.kind === 'text' ? (
+                  <WritingSourceEditor
+                    projectId={projectId}
+                    document={document}
+                    searchIntent={searchIntent?.path === document.path ? searchIntent : null}
+                    autoSaveEnabled={autoSaveEnabled}
+                    autoSaveDelayMs={autoSaveDelayMs}
+                    onSave={save}
+                    onFlushHandlerChange={handleFlushHandlerChange}
+                  />
+                ) : (
+                  <ProjectSourceEditor
+                    projectId={projectId}
+                    document={document}
+                    value={document.content ?? ''}
+                    wordWrap
+                    onWordWrapToggle={() => {}}
+                    onChange={() => {}}
+                    onSave={() => {}}
+                  />
+                )}
                 {loadingDocument ? (
                   <LoadingState label={t('router.loading')} className="absolute inset-0 z-10 min-h-0 bg-[var(--nova-bg)]/80 backdrop-blur-[1px]" />
                 ) : null}

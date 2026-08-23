@@ -3,15 +3,12 @@ import {
   AtSign,
   BookMarked,
   ChevronDown,
-  FileCode2,
   LibraryBig,
   SlidersHorizontal,
   Trash2,
-  Type,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { LoreItem } from '@/lib/api'
-import { cn } from '@/lib/utils'
 import { SearchHighlightTextarea } from '@/components/common/SearchHighlightTextarea'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
@@ -34,7 +31,6 @@ import {
   AutosaveStatusIndicator,
   type AutosaveStatus,
 } from '@/components/forms/autosave-status'
-import { MarkdownEditor } from '@/components/Editor/MarkdownRichEditor'
 import { MobilePaneTrigger } from '@/components/layout/mobile-pane-trigger'
 import type {
   DocumentReviewController,
@@ -48,6 +44,7 @@ import {
   loreTypeLabel,
   TYPE_OPTIONS,
 } from './options'
+import { LoreContentEditor } from './LoreContentEditor'
 
 interface LoreWorkspaceEditorProps {
   projectId: string
@@ -89,7 +86,6 @@ export function LoreWorkspaceEditor({
 }: LoreWorkspaceEditorProps) {
   const { t } = useTranslation()
   const [metadataOpen, setMetadataOpen] = useState(false)
-  const [contentMode, setContentMode] = useState<'rich' | 'raw'>('rich')
   const [deleteTarget, setDeleteTarget] = useState<{
     id: string
     name: string
@@ -191,10 +187,6 @@ export function LoreWorkspaceEditor({
               <ChevronDown className="h-3.5 w-3.5 shrink-0 transition-transform group-data-[state=open]:rotate-180" />
             </button>
           </CollapsibleTrigger>
-          <ContentModeToggle
-            value={contentMode}
-            onChange={setContentMode}
-          />
         </div>
         <CollapsibleContent className="grid min-w-0 gap-2 border-t border-[var(--nova-border)] px-4 py-3 sm:grid-cols-2 xl:grid-cols-4">
           <MetadataField label={t('settingPanel.field.enabled')}>
@@ -327,11 +319,9 @@ export function LoreWorkspaceEditor({
         </CollapsibleContent>
       </Collapsible>
 
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-[var(--nova-bg)]">
-        <MarkdownEditor
+      <LoreContentEditor
           projectId={projectId}
-          key={draft.id}
-          mode={contentMode === 'raw' ? 'source' : 'rich'}
+          resourceKey={draft.id}
           value={draft.content || ''}
           onChange={(content) => onDraftChange({ ...draft, content })}
           onSaveShortcut={() => {
@@ -345,12 +335,10 @@ export function LoreWorkspaceEditor({
             prepareSnapshot: onPrepareSnapshot,
             navigationIntent,
           }}
-          aria-label={contentMode === 'raw'
-            ? t('loreWorkspace.rawContentLabel', { name: draft.name })
-            : t('loreWorkspace.contentLabel', { name: draft.name })}
-          className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto bg-[var(--nova-bg)] text-sm leading-7 [&_.tiptap]:mx-auto [&_.tiptap]:min-h-full [&_.tiptap]:w-full [&_.tiptap]:max-w-[880px] [&_.tiptap]:px-6 [&_.tiptap]:py-8 md:[&_.tiptap]:px-10 md:[&_.tiptap]:py-10"
-        />
-      </div>
+          richAriaLabel={t('loreWorkspace.contentLabel', { name: draft.name })}
+          sourceAriaLabel={t('loreWorkspace.rawContentLabel', { name: draft.name })}
+          editorClassName="bg-[var(--nova-bg)] text-sm leading-7 [&_.tiptap]:mx-auto [&_.tiptap]:min-h-full [&_.tiptap]:w-full [&_.tiptap]:max-w-[880px] [&_.tiptap]:px-6 [&_.tiptap]:py-8 md:[&_.tiptap]:px-10 md:[&_.tiptap]:py-10"
+      />
       <ConfirmDialog
         open={Boolean(deleteTarget)}
         onOpenChange={(open) => {
@@ -366,48 +354,6 @@ export function LoreWorkspaceEditor({
           deleteTarget ? onDelete(deleteTarget.id) : false
         }
       />
-    </div>
-  )
-}
-
-function ContentModeToggle({
-  value,
-  onChange,
-}: {
-  value: 'rich' | 'raw'
-  onChange: (value: 'rich' | 'raw') => void
-}) {
-  const { t } = useTranslation()
-  return (
-    <div
-      role="group"
-      aria-label={t('settingPanel.field.content')}
-      className="mr-2 inline-flex shrink-0 overflow-hidden rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-0.5"
-    >
-      <button
-        type="button"
-        onClick={() => onChange('rich')}
-        aria-pressed={value === 'rich'}
-        className={cn(
-          'nova-nav-item inline-flex h-5 items-center gap-1 rounded px-1.5 text-[10px]',
-          value === 'rich' ? 'is-active' : 'text-[var(--nova-text-muted)]',
-        )}
-      >
-        <Type className="h-3 w-3" />
-        {t('settingPanel.editor.contentModeRich')}
-      </button>
-      <button
-        type="button"
-        onClick={() => onChange('raw')}
-        aria-pressed={value === 'raw'}
-        className={cn(
-          'nova-nav-item inline-flex h-5 items-center gap-1 rounded px-1.5 text-[10px]',
-          value === 'raw' ? 'is-active' : 'text-[var(--nova-text-muted)]',
-        )}
-      >
-        <FileCode2 className="h-3 w-3" />
-        {t('common.raw')}
-      </button>
     </div>
   )
 }

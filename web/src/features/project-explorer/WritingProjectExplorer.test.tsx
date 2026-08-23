@@ -12,7 +12,7 @@ const chapterPath = 'chapters/第一章.md'
 describe('WritingProjectExplorer', () => {
   beforeEach(() => window.localStorage.clear())
 
-  it('adds Writing metadata, references, recovery, and external refresh to the shared Explorer', async () => {
+  it('adds Writing actions, recovery, and external refresh to the shared Explorer', async () => {
     const user = userEvent.setup()
     const onReferenceFile = vi.fn()
     const onRefreshWorkspace = vi.fn().mockResolvedValue(undefined)
@@ -47,20 +47,6 @@ describe('WritingProjectExplorer', () => {
       projectId: 'book-project',
       workspace: '/books/one',
       selectedPath: chapterPath,
-      chapterStats: {
-        [chapterPath]: {
-          path: chapterPath,
-          file_name: '第一章.md',
-          display_title: '第一章',
-          index: 1,
-          words: 1200,
-          status: 'draft',
-          confirmed: false,
-          updated_at: '',
-          volume: '',
-          volume_path: '',
-        },
-      },
       structureRefreshSignal: 0,
       onSelectFile: vi.fn(),
       onReferenceFile,
@@ -77,7 +63,8 @@ describe('WritingProjectExplorer', () => {
       </TestQueryClientProvider>,
     )
 
-    await waitFor(() => expect(fileTreeRow(chapterPath)).toHaveTextContent('1.2k · draft'))
+    await waitFor(() => expect(fileTreeRow(chapterPath)).toBeInTheDocument())
+    expect(fileTreeRow(chapterPath)).not.toHaveTextContent(/1\.2k|draft/)
 
     fireEvent.contextMenu(fileTreeRow(chapterPath))
     await user.click(await screen.findByRole('menuitem', { name: '引用到 Chat' }))

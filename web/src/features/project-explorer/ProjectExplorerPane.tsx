@@ -1,6 +1,6 @@
 import type { GitStatusEntry } from '@pierre/trees'
 import { FilePlus, FolderPlus, ListCollapse, Loader2, LocateFixed, MoreHorizontal, RefreshCw } from 'lucide-react'
-import { memo, useCallback, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { LoadingState } from '@/components/common/LoadingState'
@@ -60,7 +60,6 @@ export const ProjectExplorerPane = memo(function ProjectExplorerPane({
 }: ProjectExplorerPaneProps) {
   const { t } = useTranslation()
   const explorerRef = useRef<ProjectExplorerTreeHandle>(null)
-  const [treeScrolled, setTreeScrolled] = useState(false)
   const incompletePaths = useMemo(() => projectFileTreeProjection(nodes).incompletePaths, [nodes])
   const actionButtonClass = 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
   const revealItem = useCallback((path: string) => revealProjectFile(projectId, path), [projectId])
@@ -74,9 +73,7 @@ export const ProjectExplorerPane = memo(function ProjectExplorerPane({
     <aside className="flex h-full min-h-0 min-w-0 flex-col bg-[var(--nova-surface)] text-[var(--nova-text)]">
       <div
         data-slot="project-explorer-toolbar"
-        className={`flex h-9 shrink-0 items-center gap-1 border-b px-2 ${
-          treeScrolled ? 'border-[var(--nova-border)]' : 'border-transparent'
-        }`}
+        className="flex h-9 shrink-0 items-center gap-1 px-2"
       >
         <Button type="button" variant="ghost" size="icon-xs" className={`${actionButtonClass} ml-auto`} onClick={() => explorerRef.current?.beginCreate('file')} aria-label={t('sidebar.createFile')}>
           <FilePlus />
@@ -117,7 +114,7 @@ export const ProjectExplorerPane = memo(function ProjectExplorerPane({
           {error}
         </div>
       ) : null}
-      <div className="flex min-h-0 flex-1 flex-col p-1">
+      <div className="flex min-h-0 flex-1 flex-col px-1 pb-1">
         {loading ? (
           <LoadingState label={t('files.tree.loading')} variant="panel" />
         ) : (
@@ -131,7 +128,6 @@ export const ProjectExplorerPane = memo(function ProjectExplorerPane({
             onSelectFile={onSelectFile}
             onDirectoryExpand={onDirectoryExpand}
             onDirectoryExpandedChange={onDirectoryExpandedChange}
-            onScrollOffsetChange={(scrollOffset) => setTreeScrolled(scrollOffset > 0)}
             onCreateItem={onCreateItem}
             onDeleteItem={onDeleteItem}
             onRenameItem={onRenameItem}

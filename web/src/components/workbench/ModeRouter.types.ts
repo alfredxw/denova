@@ -1,4 +1,4 @@
-import type { EditorFlushHandler } from '@/components/Editor/MarkdownEditor'
+import type { EditorFlushHandler } from '@/components/Editor/useEditorDraftPersistence'
 import type { WorkbenchNotice } from '@/features/notices/use-workbench-notice'
 import type { FileNode } from '@/hooks/useWorkspace'
 import type { ChatSendOptions } from '@/hooks/useAgentChat'
@@ -20,6 +20,7 @@ import type { AgentUIMessage } from '@/lib/agent-ui'
 import type { RightPanel, WorkspaceMode } from '@/stores/workspace-store'
 import type { Tab } from './TabController'
 import type { WorkspaceChangeMetadata } from '@/features/changes/types'
+import type { ProjectFileDocument } from '@/lib/api-client/project-files'
 
 /** Public composition contract for the workbench route host. */
 export interface ModeRouterProps {
@@ -30,7 +31,6 @@ export interface ModeRouterProps {
   projectId: string
   summary: WorkspaceSummary | null
   currentChapter?: ChapterSummary
-  chapterStats: Record<string, ChapterSummary>
   isStreaming: boolean
   sessionTransitionPending?: boolean
   isExecutionActive: boolean
@@ -50,6 +50,7 @@ export interface ModeRouterProps {
   tree: FileNode[]
   loading: boolean
   selectedFile: string | null
+  fileDocument: ProjectFileDocument | null
   fileContent: string
   fileRevision: string
   openTabs: Tab[]

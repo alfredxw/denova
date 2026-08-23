@@ -46,7 +46,17 @@ vi.mock('@/lib/api', () => ({
     const workspaceName = String(document.workspace || '').split('/').filter(Boolean).at(-1)
     const returnedProjectId = document.project_id
       || (document.workspace === '/books/demo' ? 'project-demo' : `project-${workspaceName}`)
-    return { ...document, project_id: returnedProjectId || projectId }
+    const content = String(document.content ?? '')
+    return {
+      kind: 'text',
+      mime_type: 'text/plain',
+      size: new TextEncoder().encode(content).byteLength,
+      editable: true,
+      ...document,
+      content,
+      project_id: returnedProjectId || projectId,
+      path: document.path || path,
+    }
   },
   saveProjectFile: (projectId: string, path: string, content: string, baseRevision: string) => (
     apiMock.saveFile(path, content, baseRevision, projectId)

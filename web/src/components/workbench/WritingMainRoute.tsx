@@ -2,10 +2,14 @@ import { lazy, memo } from 'react'
 import type { ComponentProps, ReactNode } from 'react'
 import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Sparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { FilePreview } from './FilePreview'
-import { MarkdownEditor, type EditorFlushHandler } from '@/components/Editor/MarkdownEditor'
+import { ImageFilePreview } from './ImageFilePreview'
+import { WritingDocumentEditor } from '@/components/Editor/WritingDocumentEditor'
+import type { EditorFlushHandler } from '@/components/Editor/useEditorDraftPersistence'
+import { WritingSourceEditor } from '@/components/Editor/WritingSourceEditor'
 import { ChangeReviewWorkspace } from '@/features/changes/review/ChangeReviewWorkspace'
+import { ProjectBinaryPreview } from '@/features/files/ProjectSourceEditor'
 import type { ChapterSummary, TextSelection, WorkspaceSummary } from '@/lib/api'
+import type { ProjectFileDocument } from '@/lib/api-client/project-files'
 import type { ReviewFeedbackNavigationTarget } from './use-review-feedback-navigation'
 import type { Tab } from './TabController'
 import { TabController } from './TabController'
@@ -13,13 +17,15 @@ import { WorkbenchRouteLayer } from './WorkbenchRouteHost'
 import type { ToolNavigationIntent } from '@/components/Chat/tool-navigation'
 
 const LoreWorkspaceTab = memo(lazy(() => import('@/features/lore/LoreWorkspaceTab').then((module) => ({ default: module.LoreWorkspaceTab }))))
-const StableFilePreview = memo(FilePreview)
-const StableMarkdownEditor = memo(MarkdownEditor)
+const StableImageFilePreview = memo(ImageFilePreview)
+const StableWritingDocumentEditor = memo(WritingDocumentEditor)
+const StableWritingSourceEditor = memo(WritingSourceEditor)
+const StableProjectBinaryPreview = memo(ProjectBinaryPreview)
 const StableChangeReviewWorkspace = memo(ChangeReviewWorkspace)
 const StableTabController = memo(TabController)
 
 type ChangeReviewProps = ComponentProps<typeof ChangeReviewWorkspace>
-type EditorProps = ComponentProps<typeof MarkdownEditor>
+type EditorProps = ComponentProps<typeof WritingDocumentEditor>
 type LoreWorkspaceProps = ComponentProps<typeof LoreWorkspaceTab>
 
 interface WritingMainRouteProps {
@@ -38,6 +44,7 @@ interface WritingMainRouteProps {
   summary: WorkspaceSummary | null
   tabActions: ReactNode
   activeFileKind: string | null
+  fileDocument: ProjectFileDocument | null
   fileContent: string
   fileRevision: string
   saveSignal: number
@@ -90,6 +97,7 @@ export function WritingMainRoute({
   summary,
   tabActions,
   activeFileKind,
+  fileDocument,
   fileContent,
   fileRevision,
   saveSignal,
@@ -126,6 +134,7 @@ export function WritingMainRoute({
   onRequestWritingInit,
 }: WritingMainRouteProps) {
   const reviewVisible = Boolean(activeReviewThreadID)
+  const activeDocument = fileDocument?.path === selectedFile ? fileDocument : null
   return (
     <WorkbenchRouteLayer visible={visible} loadingLabel={loadingLabel}>
       <div
@@ -159,10 +168,24 @@ export function WritingMainRoute({
                   onOpenLibrary={onOpenLoreLibrary}
                   onReferenceItem={onReferenceLoreItem}
                 />
-              ) : activeFileKind === 'image' || activeFileKind === 'json' || activeFileKind === 'jsonl' ? (
-                <StableFilePreview projectId={projectId} path={selectedFile || activeTab.path} content={fileContent} revision={fileRevision} />
+              ) : activeFileKind === 'image' || activeDocument?.kind === 'image' ? (
+                <StableImageFilePreview projectId={projectId} path={selectedFile || activeTab.path} revision={fileRevision} />
+              ) : activeDocument?.kind === 'binary' ? (
+                <StableProjectBinaryPreview />
+              ) : activeFileKind !== 'markdown' && activeDocument?.kind === 'text' ? (
+                <StableWritingSourceEditor
+                  projectId={projectId}
+                  document={activeDocument}
+                  onSave={onSaveCurrentFile}
+                  onQuoteSelection={onQuoteSelection}
+                  saveSignal={saveSignal}
+                  autoSaveEnabled={editorAutoSaveEnabled}
+                  autoSaveDelayMs={editorAutoSaveDelayMs}
+                  searchIntent={editorSearchIntent}
+                  onFlushHandlerChange={onEditorFlushHandlerChange}
+                />
               ) : (
-                <StableMarkdownEditor
+                <StableWritingDocumentEditor
                   projectId={projectId}
                   fileName={selectedFile}
                   content={fileContent}

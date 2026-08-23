@@ -2,7 +2,7 @@ import { lazy, memo, useCallback, useEffect, useMemo, useRef, useState } from 'r
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { WRITING_COMPOSER_SETTING_DEFAULTS } from '@/components/Chat/AgentPanel'
-import type { EditorFlushHandler } from '@/components/Editor/MarkdownEditor'
+import type { EditorFlushHandler } from '@/components/Editor/useEditorDraftPersistence'
 import type { OutlineRevealRequest } from '@/components/workbench/outline/ChapterOutline'
 import { getImagePresets, getInteractiveTellers } from '@/features/interactive/api'
 import { useInteractiveStore } from '@/features/interactive/stores/interactive-store'
@@ -58,7 +58,6 @@ export function ModeRouter(props: ModeRouterProps) {
     projectId,
     summary,
     currentChapter,
-    chapterStats,
     isStreaming,
     sessionTransitionPending = false,
     isExecutionActive,
@@ -78,6 +77,7 @@ export function ModeRouter(props: ModeRouterProps) {
     tree,
     loading,
     selectedFile,
+    fileDocument,
     fileContent,
     fileRevision,
     openTabs,
@@ -626,7 +626,6 @@ export function ModeRouter(props: ModeRouterProps) {
       selectedFile={selectedFile}
       loreTabActive={activeTab?.kind === 'lore'}
       revealRequest={outlineRevealRequest}
-      chapterStats={chapterStats}
       projectExplorerRefreshSignal={projectExplorerRefreshSignal}
       onSetSidebarView={onSetSidebarView}
       onSelectOutlineFile={selectOutlineFile}
@@ -659,6 +658,7 @@ export function ModeRouter(props: ModeRouterProps) {
         submittedReviewCommentIDs={submittedReviewCommentIDs}
         isStreaming={isStreaming}
         selectedFile={selectedFile}
+        fileDocument={fileDocument}
         agentVisible={aiVisible}
         tabs={openTabs}
         activeTabKey={activeTabKey}

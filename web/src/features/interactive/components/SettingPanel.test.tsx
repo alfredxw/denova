@@ -10,7 +10,7 @@ import { serializeBookOpeningPresets } from '../opening'
 import type { EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, Teller } from '../types'
 import { defaultRuleTemplates } from './preset-config/ruleTemplates'
 import { SettingPanel as ProjectSettingPanel } from './SettingPanel'
-import type { MarkdownRichEditorReview } from '@/components/Editor/MarkdownRichEditor'
+import type { MarkdownContentEditorReview } from '@/components/Editor/MarkdownContentEditor'
 import type { DocumentReviewController } from '@/features/document-review/controller'
 import type { CreateDocumentCommentRequest, DocumentReviewComment } from '@/features/document-review/types'
 
@@ -47,7 +47,7 @@ const { configManagerChatProps, markdownRichEditorProps, monacoEditorActions } =
   }>,
   markdownRichEditorProps: [] as Array<{
     projectId: string
-    review?: MarkdownRichEditorReview
+    review?: MarkdownContentEditorReview
   }>,
   monacoEditorActions: [] as string[],
 }))
@@ -131,13 +131,14 @@ vi.mock('@/components/Chat/ConfigManagerChat', () => ({
   },
 }))
 
-vi.mock('@/components/Editor/MarkdownRichEditor', () => ({
-  MarkdownRichEditor: (props: {
+vi.mock('@/components/Editor/MarkdownContentEditor', () => ({
+  MarkdownContentEditor: (props: {
     projectId: string
     value: string
     onChange: (value: string) => void
+    mode: 'rich' | 'source'
     highlightQuery?: string
-    review?: MarkdownRichEditorReview
+    review?: MarkdownContentEditorReview
     className?: string
     'aria-label'?: string
   }) => {
@@ -147,10 +148,15 @@ vi.mock('@/components/Editor/MarkdownRichEditor', () => ({
         <textarea
           data-testid="lore-rich-editor"
           aria-label={props['aria-label']}
+          data-content-mode={props.mode}
           data-highlight-query={props.highlightQuery ?? ''}
+          className={props.mode === 'source' ? 'font-mono' : ''}
           value={props.value}
           onChange={(event) => props.onChange(event.target.value)}
         />
+        {props.highlightQuery && props.value.includes(props.highlightQuery)
+          ? <mark>{props.highlightQuery}</mark>
+          : null}
       </div>
     )
   },
@@ -1008,10 +1014,10 @@ describe('SettingPanel', () => {
     // 默认富文本编辑
     expect(within(editor).getByTestId('lore-rich-editor')).toBeInTheDocument()
 
-    // 切换为 Raw 源码编辑：同一草稿内容（草稿加载时已归一化补结尾换行），等宽 textarea
+    // 切换为 Raw 源码编辑：同一编辑器保留草稿与审阅能力，并切换为等宽源码表示。
     fireEvent.click(within(editor).getByRole('button', { name: 'Raw' }))
-    expect(within(editor).queryByTestId('lore-rich-editor')).not.toBeInTheDocument()
     const raw = within(editor).getByRole('textbox', { name: '正文' }) as HTMLTextAreaElement
+    expect(raw).toHaveAttribute('data-content-mode', 'source')
     expect(raw.value).toBe('## 标题\n\n正文内容\n')
     expect(raw).toHaveClass('font-mono')
     expect(within(editor).getByRole('button', { name: 'Raw' })).toHaveAttribute('aria-pressed', 'true')

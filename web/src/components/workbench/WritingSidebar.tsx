@@ -27,7 +27,6 @@ interface WritingSidebarProps {
   selectedFile: string | null
   loreTabActive: boolean
   revealRequest: OutlineRevealRequest | null
-  chapterStats: Record<string, ChapterSummary>
   projectExplorerRefreshSignal: number
   onSetSidebarView: (view: 'outline' | 'files' | 'search') => void
   onSelectOutlineFile: (path: string) => void
@@ -64,7 +63,6 @@ export const WritingSidebar = memo(function WritingSidebar({
   selectedFile,
   loreTabActive,
   revealRequest,
-  chapterStats,
   projectExplorerRefreshSignal,
   onSetSidebarView,
   onSelectOutlineFile,
@@ -93,7 +91,7 @@ export const WritingSidebar = memo(function WritingSidebar({
 
   return (
     <section className="nova-sidebar flex h-full flex-col border-r">
-      <div data-slot="writing-sidebar-view-switcher" className="px-3 pb-1 pt-2">
+      <div data-slot="writing-sidebar-view-switcher" className="px-3 pt-2">
         <div className="grid grid-cols-3 gap-1">
           {(['outline', 'files', 'search'] as const).map((view) => (
             <button
@@ -151,7 +149,6 @@ export const WritingSidebar = memo(function WritingSidebar({
                 projectId={projectId}
                 workspace={workspace}
                 selectedPath={selectedFile}
-                chapterStats={chapterStats}
                 structureRefreshSignal={projectExplorerRefreshSignal}
                 onSelectFile={onSelectFile}
                 onReferenceFile={onReferenceFile}
