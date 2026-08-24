@@ -2,6 +2,7 @@ package teller
 
 import (
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -65,17 +66,17 @@ func TestTellerLibraryMaterializesBuiltinsAndListsThem(t *testing.T) {
 }
 
 func TestBuiltInNarrativeStylePromptContracts(t *testing.T) {
-	if !strings.Contains(screenwriterSystemPrompt, "deliver a standard script directly") || !strings.Contains(screenwriterTurnContext, "do not invent clues") {
+	if !strings.Contains(screenwriterSystemPrompt, "直接交付标准剧本") || !strings.Contains(screenwriterTurnContext, "不为了影视效果另造线索") {
 		t.Fatalf("screenwriter prompt must request standard screenplay form without changing the plot")
 	}
-	if strings.Contains(screenwriterSystemPrompt, "characters never state their true intent directly") {
+	if strings.Contains(screenwriterSystemPrompt, "人物不总是直说真实意图") {
 		t.Fatalf("screenwriter prompt must not force hidden intent")
 	}
-	if !strings.Contains(rhythmSystemPrompt, "Honor setup with payoff") || !strings.Contains(steadySystemPrompt, "Measured pacing is not flatness") || !strings.Contains(bleakSystemPrompt, "Pressure does not remove agency") {
+	if !strings.Contains(rhythmSystemPrompt, "铺垫的兑现") || !strings.Contains(steadySystemPrompt, "从容不等于平淡") || !strings.Contains(bleakSystemPrompt, "压力不夺走人物的能动性") {
 		t.Fatalf("narrative style intent is incomplete")
 	}
 	got := fmt.Sprintf("%x", sha256.Sum256([]byte(directEroticaSystemPrompt+"\x00"+directEroticaTurnContext)))
-	const unchangedDirectEroticaHash = "de361809485bc4a80a8f5c4289ce5224776b342118f8b16d47e5e307f27319f8"
+	const unchangedDirectEroticaHash = "30f2cd3843fb3adebe1c77920051a86c4b7449a723050175dd47f5c6de083f64"
 	if got != unchangedDirectEroticaHash {
 		t.Fatalf("direct-erotica prompt changed: hash=%s", got)
 	}
@@ -124,6 +125,40 @@ func TestTellerLibraryRefreshesOldBuiltinVersion(t *testing.T) {
 	}
 	if classic.Version != tellerVersion || classic.Name != builtinTellers["classic"].Name || !containsTellerSlot(classic, "turn_context") {
 		t.Fatalf("classic builtin should be refreshed to current version: %#v", classic)
+	}
+}
+
+func TestTellerLibraryRefreshesVersionNineEnglishBuiltin(t *testing.T) {
+	novaDir := t.TempDir()
+	tellerDir := filepath.Join(novaDir, "story-tellers")
+	if err := os.MkdirAll(tellerDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	englishClassic := builtinTellers["classic"]
+	englishClassic.Version = 9
+	englishClassic.Slots = append([]PromptSlot(nil), englishClassic.Slots...)
+	for i := range englishClassic.Slots {
+		switch englishClassic.Slots[i].Target {
+		case "system":
+			englishClassic.Slots[i].Content = "Use steady narration that values credibility, continuity, and cumulative worth in a long story."
+		case "turn_context":
+			englishClassic.Slots[i].Content = "Continue from established facts, character state, and unfinished material."
+		}
+	}
+	data, err := json.Marshal(englishClassic)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tellerDir, "classic.json"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	classic, err := NewLibrary(novaDir).Get("classic")
+	if err != nil {
+		t.Fatalf("Get classic failed: %v", err)
+	}
+	if classic.Version != tellerVersion || !strings.Contains(classic.PromptForTargets("system"), "你采用稳健叙事") || strings.Contains(classic.PromptForTargets("system"), "Use steady narration") {
+		t.Fatalf("version 9 English builtin should be refreshed to the Chinese default: %#v", classic)
 	}
 }
 

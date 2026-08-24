@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	tellerVersion = 9
+	tellerVersion = 10
 )
 
 type Library struct {

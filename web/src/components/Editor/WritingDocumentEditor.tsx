@@ -15,6 +15,7 @@ import { THEME_STYLES, loadEditorSettings } from './EditorSettingsPanel'
 import type { EditorSettings, ReadingTypographySettings } from './EditorSettingsPanel'
 import { EditorSurface } from './EditorSurface'
 import { EditorToolbar } from './EditorToolbar'
+import type { WritingEditorMode } from './EditorToolbar'
 import {
   ParsedMarkdownDocumentCache,
   countTextCharacters,
@@ -44,13 +45,15 @@ import {
 } from './editorDecorations'
 import type { SearchMatch, SearchState } from './editorDecorations'
 import { useEditorDraftPersistence, type EditorDraftAdapter, type EditorFlushHandler } from './useEditorDraftPersistence'
-import { projectFileAssetURL, readProjectFile } from '@/lib/api-client/project-files'
+import { projectFileAssetURL, readProjectFile, type ProjectFileDocument } from '@/lib/api-client/project-files'
 import { sameDocumentReviewTarget } from '@/features/document-review/types'
 import type { DocumentReviewController, DocumentReviewNavigationIntent } from '@/features/document-review/controller'
 import { DocumentReviewAnnotations, type DocumentReviewAnnotationsHandle } from './DocumentReviewAnnotations'
 import type { DocumentReviewSnapshot } from './documentReviewAnchors'
 import { createDocumentReviewExtension, type DocumentReviewDecorationState, type DocumentReviewPortalTarget } from './documentReviewDecorations'
 import { EditorPersistenceNotices } from './EditorPersistenceNotices'
+import { ProjectTextEditor, type ProjectTextEditorHandle } from '@/features/files/ProjectSourceEditor'
+import { persistProjectFileEditorPreferences, readProjectFileEditorPreferences } from '@/features/files/preferences'
 
 export type { EditorFlushHandler } from './useEditorDraftPersistence'
 export type { DocumentReviewController, DocumentReviewNavigationIntent } from '@/features/document-review/controller'
@@ -113,6 +116,8 @@ export function WritingDocumentEditor({
   onOpenOutline,
 }: WritingDocumentEditorProps) {
   const { t } = useTranslation()
+  const [editorMode, setEditorMode] = useState<WritingEditorMode>('document')
+  const [sourceWordWrap, setSourceWordWrap] = useState(() => readProjectFileEditorPreferences().wordWrap)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settings, setSettings] = useState<EditorSettings>(() => loadEditorSettings())
   const [nativeIndent, setNativeIndent] = useState(false)
@@ -129,6 +134,10 @@ export function WritingDocumentEditor({
   const [replaceText, setReplaceText] = useState('')
   const [reviewPortalTargets, setReviewPortalTargets] = useState<DocumentReviewPortalTarget[]>([])
   const searchInputRef = useRef<HTMLInputElement>(null)
+  const sourceEditorRef = useRef<ProjectTextEditorHandle>(null)
+  const sourceUpdateListenersRef = useRef(new Set<() => void>())
+  const editorModeRef = useRef<WritingEditorMode>(editorMode)
+  const draftContentRef = useRef(content)
   const lastIllustrationInsertNonceRef = useRef<number | null>(null)
   const lastSearchIntentNonceRef = useRef<number | null>(null)
   const lastDocumentReviewNavigationNonceRef = useRef<number | null>(null)
@@ -150,6 +159,7 @@ export function WritingDocumentEditor({
   const initialDocumentRef = useRef({ resourceScope, fileName, content })
   const activeFileNameRef = useRef(fileName)
   activeFileNameRef.current = fileName
+  editorModeRef.current = editorMode
   const documentReviewTarget = useMemo(() => fileName ? { kind: 'workspace_file' as const, id: fileName } : null, [fileName])
   const updateReviewPortalTargets = useCallback((targets: DocumentReviewPortalTarget[]) => {
     setReviewPortalTargets((current) => sameReviewPortalTargets(current, targets) ? current : targets)
@@ -207,19 +217,23 @@ export function WritingDocumentEditor({
   })
   const draftAdapter = useMemo<EditorDraftAdapter | null>(() => editor ? ({
     isAvailable: () => !editor.isDestroyed,
-    readText: (activeFile) => readEditorText(editor, activeFile),
+    // One canonical Markdown draft survives representation switches. TipTap
+    // serialization becomes authoritative only after an actual document edit.
+    readText: () => draftContentRef.current,
     subscribe: (onUpdate) => {
-      editor.on('update', onUpdate)
-      return () => editor.off('update', onUpdate)
+      const handleDocumentUpdate = () => {
+        if (editorModeRef.current !== 'document') return
+        draftContentRef.current = readEditorText(editor, activeFileNameRef.current)
+        onUpdate()
+      }
+      editor.on('update', handleDocumentUpdate)
+      sourceUpdateListenersRef.current.add(onUpdate)
+      return () => {
+        editor.off('update', handleDocumentUpdate)
+        sourceUpdateListenersRef.current.delete(onUpdate)
+      }
     },
   }) : null, [editor])
-
-  useEffect(() => {
-    if (!documentReviewNavigationIntent) return
-    if (lastDocumentReviewNavigationNonceRef.current === documentReviewNavigationIntent.nonce) return
-    const revealed = reviewAnnotationsRef.current?.revealComment(documentReviewNavigationIntent.commentID)
-    if (revealed) lastDocumentReviewNavigationNonceRef.current = documentReviewNavigationIntent.nonce
-  }, [documentReview?.comments, documentReviewNavigationIntent])
 
   const themeStyle = THEME_STYLES[settings.theme]
 
@@ -237,7 +251,7 @@ export function WritingDocumentEditor({
     }
   }, [editor, useRegex])
 
-  const applyExternalContent = useCallback((
+  const applyRichContent = useCallback((
     nextFile: string | null,
     nextContent: string,
     options: { resetHistory: boolean; preserveSelection: boolean },
@@ -273,6 +287,70 @@ export function WritingDocumentEditor({
     setCurrentLine(getLineNumber(editor.state.doc, editor.state.selection.head))
     updateSearch(searchStateRef.current.query, 0)
   }, [editor, resourceScope, updateSearch])
+
+  const applyExternalContent = useCallback((
+    nextFile: string | null,
+    nextContent: string,
+    options: { resetHistory: boolean; preserveSelection: boolean },
+  ) => {
+    draftContentRef.current = nextContent
+    if (editorModeRef.current === 'source') {
+      sourceEditorRef.current?.replaceValue(nextContent)
+      return
+    }
+    applyRichContent(nextFile, nextContent, options)
+  }, [applyRichContent])
+
+  const handleEditorModeChange = useCallback((nextMode: WritingEditorMode) => {
+    if (nextMode === editorModeRef.current || !fileName) return
+    if (nextMode === 'source') {
+      setSettingsOpen(false)
+      setSearchOpen(false)
+      setEditorFocused(false)
+      setSelectedCharacters(0)
+    } else {
+      const source = sourceEditorRef.current?.getValue() ?? draftContentRef.current
+      draftContentRef.current = source
+      applyRichContent(fileName, source, { resetHistory: true, preserveSelection: false })
+    }
+    editorModeRef.current = nextMode
+    setEditorMode(nextMode)
+  }, [applyRichContent, fileName])
+
+  const handleSourceChange = useCallback((nextContent: string) => {
+    draftContentRef.current = nextContent
+    sourceUpdateListenersRef.current.forEach((listener) => listener())
+  }, [])
+
+  const toggleSourceWordWrap = useCallback(() => {
+    setSourceWordWrap((current) => {
+      const next = !current
+      persistProjectFileEditorPreferences({ wordWrap: next })
+      return next
+    })
+  }, [])
+
+  const sourceDocument = useMemo<ProjectFileDocument | null>(() => fileName ? ({
+    project_id: projectId,
+    path: fileName,
+    content,
+    revision,
+    kind: 'text',
+    mime_type: 'text/markdown',
+    size: new TextEncoder().encode(content).byteLength,
+    editable: true,
+  }) : null, [content, fileName, projectId, revision])
+
+  useEffect(() => {
+    if (!documentReviewNavigationIntent) return
+    if (lastDocumentReviewNavigationNonceRef.current === documentReviewNavigationIntent.nonce) return
+    if (editorMode === 'source') {
+      handleEditorModeChange('document')
+      return
+    }
+    const revealed = reviewAnnotationsRef.current?.revealComment(documentReviewNavigationIntent.commentID)
+    if (revealed) lastDocumentReviewNavigationNonceRef.current = documentReviewNavigationIntent.nonce
+  }, [documentReview?.comments, documentReviewNavigationIntent, editorMode, handleEditorModeChange])
 
   const {
     saveStatus,
@@ -357,6 +435,7 @@ export function WritingDocumentEditor({
   }, [searchOpen, searchQuery, searchIndex, updateSearch])
 
   useEffect(() => {
+    if (editorMode !== 'document') return
     if (!editor || !searchIntent || !searchIntent.query.trim()) return
     if (lastSearchIntentNonceRef.current === searchIntent.nonce) return
 
@@ -372,11 +451,22 @@ export function WritingDocumentEditor({
       lastSearchIntentNonceRef.current = searchIntent.nonce
     })
     return () => cancelAnimationFrame(frame)
-  }, [editor, fileName, searchIntent, updateSearch, useRegex])
+  }, [editor, editorMode, fileName, searchIntent, updateSearch, useRegex])
+
+  useEffect(() => {
+    if (editorMode !== 'source' || !searchIntent) return
+    if (lastSearchIntentNonceRef.current === searchIntent.nonce) return
+    sourceEditorRef.current?.revealLine(searchIntent.line)
+    lastSearchIntentNonceRef.current = searchIntent.nonce
+  }, [editorMode, fileName, searchIntent])
 
   useEffect(() => {
     if (!editor || !illustrationInsertSignal) return
     if (lastIllustrationInsertNonceRef.current === illustrationInsertSignal.nonce) return
+    if (editorMode === 'source') {
+      handleEditorModeChange('document')
+      return
+    }
     lastIllustrationInsertNonceRef.current = illustrationInsertSignal.nonce
     if (!fileName || isTxtFile(fileName) || !isMarkdownFile(fileName)) {
       toast.error(t('editor.illustrationMarkdownOnly'))
@@ -405,10 +495,11 @@ export function WritingDocumentEditor({
       toast.error(t('editor.illustrationInsertFailed'))
       return
     }
-  }, [editor, fileName, illustrationInsertSignal, t])
+  }, [editor, editorMode, fileName, handleEditorModeChange, illustrationInsertSignal, t])
 
   // Ctrl+F / Cmd+F 打开文章内搜索，保存快捷键由工作台统一分发。
   useEffect(() => {
+    if (editorMode !== 'document') return
     const handler = (e: KeyboardEvent) => {
       // 当焦点在 chat 输入框等 textarea/input 时，不拦截快捷键
       const inCurrentEditor = Boolean(
@@ -423,7 +514,7 @@ export function WritingDocumentEditor({
     }
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
-  }, [editor])
+  }, [editor, editorMode])
 
   /** 引用当前选区到 Chat */
   const quoteCurrentSelection = useCallback(() => {
@@ -446,6 +537,7 @@ export function WritingDocumentEditor({
 
   // Cmd+Shift+L：正文支持评论时创建评论，其他文件保留原有的选区引用能力。
   useEffect(() => {
+    if (editorMode !== 'document') return
     const handler = (e: KeyboardEvent) => {
       const inCurrentEditor = Boolean(
         editor && !editor.isDestroyed && e.target instanceof globalThis.Node && editor.view.dom.contains(e.target),
@@ -460,7 +552,7 @@ export function WritingDocumentEditor({
     }
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
-  }, [commentCurrentSelection, documentCommentsAvailable, editor, quoteCurrentSelection])
+  }, [commentCurrentSelection, documentCommentsAvailable, editor, editorMode, quoteCurrentSelection])
 
   /** 跳转到下一处搜索结果。 */
   const goToSearchMatch = useCallback((direction: 1 | -1) => {
@@ -546,10 +638,14 @@ export function WritingDocumentEditor({
         fileName={fileName}
         displayTitle={chapterSummary?.display_title}
         chapterPath={chapterSummary?.path}
-        chapterWords={chapterSummary ? documentCharacters : undefined}
-        currentLine={chapterSummary && editorFocused ? currentLine : undefined}
+        chapterWords={editorMode === 'document' && chapterSummary ? documentCharacters : undefined}
+        currentLine={editorMode === 'document' && chapterSummary && editorFocused ? currentLine : undefined}
         saveStatus={saveStatus}
         onSave={handleSave}
+        editorMode={editorMode}
+        onEditorModeChange={handleEditorModeChange}
+        sourceWordWrap={sourceWordWrap}
+        onSourceWordWrapToggle={toggleSourceWordWrap}
         settingsOpen={settingsOpen}
         onSettingsOpenChange={setSettingsOpen}
         settings={settings}
@@ -569,50 +665,69 @@ export function WritingDocumentEditor({
         onKeepLocal={keepLocalVersion}
         onLoadExternal={loadExternalVersion}
       />
-      <EditorSurface
-        containerRef={editorContainerRef}
-        editor={editor}
-        settings={settings}
-        themeStyle={themeStyle}
-        nativeIndent={nativeIndent}
-        search={{
-          open: searchOpen,
-          inputRef: searchInputRef,
-          query: searchQuery,
-          matchIndex: searchIndex,
-          matchCount: searchMatches.length,
-          useRegex,
-          replaceOpen,
-          replaceText,
-          onQueryChange: (query) => updateSearch(query, 0),
-          onNavigate: goToSearchMatch,
-          onClose: closeSearch,
-          onToggleRegex: toggleRegex,
-          onToggleReplace: toggleReplace,
-          onReplaceChange: setReplaceText,
-          onReplace: handleReplace,
-          onReplaceAll: handleReplaceAll,
-        }}
-        showSelectionToolbar={selectedCharacters > 0 && (documentCommentsAvailable || Boolean(onQuoteSelection))}
-        selectionToolbarMode={documentCommentsAvailable ? 'comment' : 'quote'}
-        onSelectionAction={documentCommentsAvailable ? commentCurrentSelection : quoteCurrentSelection}
-        reviewAnnotations={editor && fileName && documentReview && documentReviewTarget && documentCommentsAvailable ? (
-          <DocumentReviewAnnotations
-            ref={reviewAnnotationsRef}
-            editor={editor}
-            target={documentReviewTarget}
-            resourceLabel={fileName}
-            containerRef={editorContainerRef}
-            comments={documentReview.comments.filter((comment) => sameDocumentReviewTarget(comment.target, documentReviewTarget))}
-            decorationStateRef={reviewDecorationStateRef}
-            portalTargets={reviewPortalTargets}
-            onPrepareSnapshot={prepareDocumentReviewSnapshot}
-            onCreate={documentReview.onCreate}
-            onUpdate={documentReview.onUpdate}
-            onDelete={documentReview.onDelete}
+      {editorMode === 'source' && sourceDocument ? (
+        <div ref={editorContainerRef} className="min-h-0 flex-1 overflow-hidden bg-[var(--nova-bg)]">
+          <ProjectTextEditor
+            ref={sourceEditorRef}
+            projectId={projectId}
+            document={sourceDocument}
+            value={draftContentRef.current}
+            wordWrap={sourceWordWrap}
+            onWordWrapToggle={toggleSourceWordWrap}
+            onChange={handleSourceChange}
+            onSave={() => void handleSave()}
+            syncExternalValue={false}
+            onQuoteSelection={!documentReview && onQuoteSelection
+              ? (selection) => onQuoteSelection({ fileName, ...selection })
+              : undefined}
           />
-        ) : null}
-      />
+        </div>
+      ) : (
+        <EditorSurface
+          containerRef={editorContainerRef}
+          editor={editor}
+          settings={settings}
+          themeStyle={themeStyle}
+          nativeIndent={nativeIndent}
+          search={{
+            open: searchOpen,
+            inputRef: searchInputRef,
+            query: searchQuery,
+            matchIndex: searchIndex,
+            matchCount: searchMatches.length,
+            useRegex,
+            replaceOpen,
+            replaceText,
+            onQueryChange: (query) => updateSearch(query, 0),
+            onNavigate: goToSearchMatch,
+            onClose: closeSearch,
+            onToggleRegex: toggleRegex,
+            onToggleReplace: toggleReplace,
+            onReplaceChange: setReplaceText,
+            onReplace: handleReplace,
+            onReplaceAll: handleReplaceAll,
+          }}
+          showSelectionToolbar={selectedCharacters > 0 && (documentCommentsAvailable || Boolean(onQuoteSelection))}
+          selectionToolbarMode={documentCommentsAvailable ? 'comment' : 'quote'}
+          onSelectionAction={documentCommentsAvailable ? commentCurrentSelection : quoteCurrentSelection}
+          reviewAnnotations={editor && fileName && documentReview && documentReviewTarget && documentCommentsAvailable ? (
+            <DocumentReviewAnnotations
+              ref={reviewAnnotationsRef}
+              editor={editor}
+              target={documentReviewTarget}
+              resourceLabel={fileName}
+              containerRef={editorContainerRef}
+              comments={documentReview.comments.filter((comment) => sameDocumentReviewTarget(comment.target, documentReviewTarget))}
+              decorationStateRef={reviewDecorationStateRef}
+              portalTargets={reviewPortalTargets}
+              onPrepareSnapshot={prepareDocumentReviewSnapshot}
+              onCreate={documentReview.onCreate}
+              onUpdate={documentReview.onUpdate}
+              onDelete={documentReview.onDelete}
+            />
+          ) : null}
+        />
+      )}
     </div>
   )
 }

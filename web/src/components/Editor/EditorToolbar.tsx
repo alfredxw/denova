@@ -1,16 +1,18 @@
-import { BookOpen, Crosshair, ImagePlus, PanelLeft, Save, Settings } from 'lucide-react'
+import { BookOpen, Code2, Crosshair, FileText, ImagePlus, PanelLeft, Save, Settings, WrapText } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
 import { formatLocaleNumber } from '@/i18n'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { EditorSettingsPanel } from './EditorSettingsPanel'
 import type { EditorSettings, ReadingTypographySettings } from './EditorSettingsPanel'
 import { EditorSaveStatus, type SaveStatus } from './EditorSaveStatus'
 
 export type { SaveStatus } from './EditorSaveStatus'
+export type WritingEditorMode = 'document' | 'source'
 
 interface EditorToolbarProps {
   fileName: string
@@ -20,6 +22,10 @@ interface EditorToolbarProps {
   currentLine?: number
   saveStatus: SaveStatus | null
   onSave: () => void | Promise<void>
+  editorMode: WritingEditorMode
+  onEditorModeChange: (mode: WritingEditorMode) => void
+  sourceWordWrap: boolean
+  onSourceWordWrapToggle: () => void
   settingsOpen: boolean
   onSettingsOpenChange: (open: boolean) => void
   settings: EditorSettings
@@ -39,6 +45,10 @@ export function EditorToolbar({
   currentLine,
   saveStatus,
   onSave,
+  editorMode,
+  onEditorModeChange,
+  sourceWordWrap,
+  onSourceWordWrapToggle,
   settingsOpen,
   onSettingsOpenChange,
   settings,
@@ -83,6 +93,48 @@ export function EditorToolbar({
       <TooltipProvider>
         <div className="flex shrink-0 items-center gap-1">
           <EditorSaveStatus status={saveStatus} />
+          <ToggleGroup
+            type="single"
+            value={editorMode}
+            onValueChange={(value) => {
+              if (value === 'document' || value === 'source') onEditorModeChange(value)
+            }}
+            variant="outline"
+            size="sm"
+            spacing={0}
+            aria-label={t('editor.mode.label')}
+            className="rounded-[var(--nova-radius)]"
+          >
+            <ToggleGroupItem
+              value="document"
+              aria-label={t('editor.mode.document')}
+              className="h-6 min-w-6 rounded-[var(--nova-radius)] border-[var(--nova-border)] px-1.5 text-[10px] text-[var(--nova-text-muted)] data-[state=on]:bg-[var(--nova-active)] data-[state=on]:text-[var(--nova-text)] sm:px-2"
+            >
+              <FileText className="size-3" />
+              <span className="hidden sm:inline">{t('editor.mode.document')}</span>
+            </ToggleGroupItem>
+            <ToggleGroupItem
+              value="source"
+              aria-label={t('editor.mode.source')}
+              className="h-6 min-w-6 rounded-[var(--nova-radius)] border-[var(--nova-border)] px-1.5 text-[10px] text-[var(--nova-text-muted)] data-[state=on]:bg-[var(--nova-active)] data-[state=on]:text-[var(--nova-text)] sm:px-2"
+            >
+              <Code2 className="size-3" />
+              <span className="hidden sm:inline">{t('editor.mode.source')}</span>
+            </ToggleGroupItem>
+          </ToggleGroup>
+          {editorMode === 'source' ? (
+            <TooltipIconButton
+              label={t(sourceWordWrap ? 'files.editor.disableWordWrap' : 'files.editor.enableWordWrap')}
+              size="icon-xs"
+              tooltipSide="bottom"
+              useTooltipProvider={false}
+              className={sourceWordWrap ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)]'}
+              aria-pressed={sourceWordWrap}
+              onClick={onSourceWordWrapToggle}
+            >
+              <WrapText className="h-3.5 w-3.5" />
+            </TooltipIconButton>
+          ) : null}
           {onGenerateIllustration && (
             <TooltipIconButton
               label={generateIllustrationDisabled ? t('editor.generateIllustrationDisabled') : t('editor.generateIllustration')}
@@ -120,7 +172,7 @@ export function EditorToolbar({
           >
             <Save className="w-3.5 h-3.5" />
           </TooltipIconButton>
-          <Popover open={settingsOpen} onOpenChange={onSettingsOpenChange}>
+          {editorMode === 'document' ? <Popover open={settingsOpen} onOpenChange={onSettingsOpenChange}>
             <Tooltip>
               <TooltipTrigger asChild>
                 <PopoverTrigger asChild>
@@ -149,7 +201,7 @@ export function EditorToolbar({
                 readingTypography={readingTypography}
               />
             </PopoverContent>
-          </Popover>
+          </Popover> : null}
         </div>
       </TooltipProvider>
     </div>

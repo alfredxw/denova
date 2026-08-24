@@ -174,6 +174,42 @@ vi.mock('@/lib/api-client/project-files', async (importOriginal) => {
   }
 })
 vi.mock('@/lib/api-client/autosave-conflicts', () => ({ preserveAutosaveConflict: conflictArchiveMock.preserve }))
+vi.mock('@/features/files/ProjectSourceEditor', async () => {
+  const { forwardRef, useImperativeHandle, useRef, useState } = await import('react')
+  return {
+    ProjectTextEditor: forwardRef<unknown, {
+      document: { path: string }
+      value: string
+      wordWrap: boolean
+      onChange: (value: string) => void
+    }>((props, ref) => {
+      const [value, setValue] = useState(props.value)
+      const valueRef = useRef(value)
+      valueRef.current = value
+      useImperativeHandle(ref, () => ({
+        getValue: () => valueRef.current,
+        replaceValue: (nextValue: string) => {
+          valueRef.current = nextValue
+          setValue(nextValue)
+        },
+        revealLine: vi.fn(),
+        focus: vi.fn(),
+      }))
+      return (
+        <textarea
+          aria-label={`source:${props.document.path}`}
+          data-word-wrap={String(props.wordWrap)}
+          value={value}
+          onChange={(event) => {
+            valueRef.current = event.target.value
+            setValue(event.target.value)
+            props.onChange(event.target.value)
+          }}
+        />
+      )
+    }),
+  }
+})
 vi.mock('./DocumentReviewAnnotations', async () => {
   const { forwardRef, useImperativeHandle } = await import('react')
   return {
@@ -331,6 +367,60 @@ describe('MarkdownEditor', () => {
 
     const options = tiptapMock.useEditorOptions as { editorProps?: { handleClick?: unknown } }
     expect(options.editorProps?.handleClick).toBeTypeOf('function')
+  })
+
+  it('在文档与 Monaco 源码间切换时共享未保存草稿且不触发保存', async () => {
+    const user = userEvent.setup()
+    const onSave = vi.fn()
+    tiptapMock.markdown = '## 标题\n\n正文'
+
+    render(
+      <MarkdownEditor
+        fileName="chapters/ch01.md"
+        content={'## 标题\n\n正文\n'}
+        onSave={onSave}
+        autoSaveEnabled={false}
+      />,
+    )
+
+    act(() => tiptapMock.emit('update'))
+    await user.click(screen.getByRole('radio', { name: '源码' }))
+    const source = screen.getByRole('textbox', { name: 'source:chapters/ch01.md' })
+    expect(source).toHaveValue('## 标题\n\n正文\n')
+
+    const exactSource = '---\ntitle: 示例\n---\n\n# 标题  \n'
+    fireEvent.change(source, { target: { value: exactSource } })
+    await user.click(screen.getByRole('radio', { name: '文档' }))
+    expect(tiptapMock.editor.markdown.parse).toHaveBeenCalledWith(exactSource)
+
+    tiptapMock.markdown = exactSource
+    await user.click(screen.getByRole('radio', { name: '源码' }))
+    expect(screen.getByRole('textbox', { name: 'source:chapters/ch01.md' })).toHaveValue(exactSource)
+    expect(onSave).not.toHaveBeenCalled()
+  })
+
+  it('从 Monaco 源码模式自动保存完全一致的 Markdown', async () => {
+    const user = userEvent.setup()
+    const onSave = vi.fn().mockResolvedValue({ revision: 'r2' })
+    tiptapMock.markdown = '# 初始'
+
+    render(
+      <MarkdownEditor
+        fileName="chapters/ch01.md"
+        content={'# 初始\n'}
+        revision="r1"
+        onSave={onSave}
+        autoSaveDelayMs={1}
+      />,
+    )
+
+    await user.click(screen.getByRole('radio', { name: '源码' }))
+    const exactSource = '# 标题  \n\n```ts\nconst value = 1\n```\n'
+    fireEvent.change(screen.getByRole('textbox', { name: 'source:chapters/ch01.md' }), {
+      target: { value: exactSource },
+    })
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith('chapters/ch01.md', exactSource, 'r1'))
   })
 
   it('默认对白高亮跟随编辑器背景主题变化，手动颜色优先', async () => {
