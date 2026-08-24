@@ -1,7 +1,8 @@
-import { render } from '@testing-library/react'
+import { act, render } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Monaco } from '@monaco-editor/react'
 import type { editor } from 'monaco-editor'
+import { DEFAULT_SOURCE_EDITOR_FONT, setSourceEditorFont } from '@/features/settings/source-editor-font'
 
 const harness = vi.hoisted(() => ({
   editorProps: [] as Array<Record<string, unknown>>,
@@ -39,6 +40,7 @@ describe('DenovaMonaco', () => {
     harness.editorProps.splice(0)
     harness.diffEditorProps.splice(0)
     harness.resolvedTheme = 'dark'
+    setSourceEditorFont(DEFAULT_SOURCE_EDITOR_FONT)
   })
 
   it('installs syntax-preserving light and dark themes once per Monaco runtime', () => {
@@ -98,6 +100,7 @@ describe('DenovaMonaco', () => {
     expect(harness.editorProps.at(-1)).toMatchObject({
       theme: DENOVA_MONACO_THEME_DARK,
       options: {
+        fontFamily: expect.stringContaining('Noto Sans Mono CJK SC'),
         unicodeHighlight: {
           nonBasicASCII: false,
           invisibleCharacters: true,
@@ -122,6 +125,7 @@ describe('DenovaMonaco', () => {
     expect(harness.diffEditorProps.at(-1)).toMatchObject({
       theme: DENOVA_MONACO_THEME_LIGHT,
       options: {
+        fontFamily: expect.stringContaining('Noto Sans Mono CJK SC'),
         unicodeHighlight: {
           nonBasicASCII: false,
           invisibleCharacters: true,
@@ -132,6 +136,18 @@ describe('DenovaMonaco', () => {
             ja: true,
           },
         },
+      },
+    })
+  })
+
+  it('updates mounted editors when the source editor font setting changes', () => {
+    render(<DenovaMonacoEditor />)
+
+    act(() => setSourceEditorFont('custom:My CJK Code Font'))
+
+    expect(harness.editorProps.at(-1)).toMatchObject({
+      options: {
+        fontFamily: expect.stringMatching(/^"My CJK Code Font", .*Noto Sans Mono CJK SC/),
       },
     })
   })

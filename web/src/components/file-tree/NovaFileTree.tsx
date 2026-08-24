@@ -235,7 +235,14 @@ export const NovaFileTree = forwardRef<FileTreeModel, NovaFileTreeProps>(functio
       })
       localize()
       observer = new MutationObserver(localize)
-      if (host.shadowRoot) observer.observe(host.shadowRoot, { childList: true, subtree: true })
+      // Pierre reuses row DOM across paths. Observe only its identity attributes
+      // so stale injected labels are cleared without reacting to our own updates.
+      if (host.shadowRoot) observer.observe(host.shadowRoot, {
+        attributes: true,
+        attributeFilter: ['data-item-path', 'data-item-flattened-subitem'],
+        childList: true,
+        subtree: true,
+      })
     }
     connect()
     return () => {

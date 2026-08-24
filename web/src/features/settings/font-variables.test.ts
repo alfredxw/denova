@@ -12,6 +12,7 @@ describe('font variables', () => {
       ui_font_size: 13,
       reading_font_family: 'lxgw-wenkai',
       reading_font_size: 21,
+      source_editor_font_family: 'custom:Sarasa Mono SC',
     }))
 
     const style = document.documentElement.style
@@ -19,6 +20,7 @@ describe('font variables', () => {
     expect(style.getPropertyValue('--nova-ui-sm-font-size')).toBe('15px')
     expect(style.getPropertyValue('--nova-reading-font-size')).toBe('21px')
     expect(style.getPropertyValue('--nova-reading-font-family')).toContain('LXGW WenKai')
+    expect(style.getPropertyValue('--nova-source-editor-font-family')).toContain('Sarasa Mono SC')
   })
 
   it('clamps out-of-range sizes before writing variables', () => {
@@ -31,6 +33,7 @@ describe('font variables', () => {
     expect(style.getPropertyValue('--nova-ui-font-size')).toBe('16px')
     expect(style.getPropertyValue('--nova-reading-font-size')).toBe('14px')
     expect(style.getPropertyValue('--nova-reading-font-family')).toContain('SF Pro Text')
+    expect(style.getPropertyValue('--nova-source-editor-font-family')).toContain('Noto Sans Mono CJK SC')
   })
 
   it('previews reading typography without changing UI font variables', () => {

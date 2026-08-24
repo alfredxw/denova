@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { VirtuosoMockContext } from 'react-virtuoso'
 import { describe, expect, it, vi } from 'vitest'
 import type { AgentUIMessage } from '@/lib/agent-ui'
+import { createAgentReasoningMessage } from '@/lib/agent-ui-message'
 import { AgentSubAgentSessionPanel } from './AgentSubAgentSessionPanel'
 
 describe('AgentSubAgentSessionPanel', () => {
@@ -22,6 +23,11 @@ describe('AgentSubAgentSessionPanel', () => {
               metadata: { ...metadata, subagent_session_id: 'run-review-subagent-01-general-purpose' },
               parts: [{ type: 'text', text: '先读取待审章节。' }],
             },
+            createAgentReasoningMessage({
+              id: 'review-thinking',
+              text: '核对章节约束。',
+              metadata: { ...metadata, subagent_session_id: 'run-review-subagent-01-general-purpose' },
+            }),
             {
               id: 'review-tool', role: 'assistant',
               metadata: { ...metadata, subagent_session_id: 'run-review-subagent-01-general-purpose' },
@@ -65,6 +71,10 @@ describe('AgentSubAgentSessionPanel', () => {
     expect(screen.getByText('审稿完成。')).toBeInTheDocument()
     expect(screen.getByText('general-purpose 子会话')).toBeInTheDocument()
     expect(screen.queryByText('general-purpose')).not.toBeInTheDocument()
+
+    const rows = document.querySelectorAll('[data-nova-chat-item="subagent-message"]')
+    expect(rows[0]).toHaveClass('pb-2')
+    expect(rows[rows.length - 1]).toHaveClass('pb-0')
   })
 
   it('lets the active sub-agent row grow into its reserved response runway', () => {

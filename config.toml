@@ -243,6 +243,7 @@ ui_font_family = "apple-system"
 ui_font_size = 14
 reading_font_family = "apple-system"
 reading_font_size = 18
+source_editor_font_family = "mono"
 
 # Agent
 model_max_retries = 5

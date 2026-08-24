@@ -6,8 +6,9 @@ import {
   type Monaco,
 } from '@monaco-editor/react'
 import { useTheme } from 'next-themes'
-import { useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useSyncExternalStore } from 'react'
 import type { editor } from 'monaco-editor'
+import { getSourceEditorFontFamily, subscribeSourceEditorFont } from '@/features/settings/source-editor-font'
 
 export const DENOVA_MONACO_THEME_DARK = 'denova-dark'
 export const DENOVA_MONACO_THEME_LIGHT = 'denova-light'
@@ -39,11 +40,13 @@ type DenovaMonacoDiffEditorProps = Omit<DiffEditorProps, 'theme'>
 /** Monaco editor with Denova's shared visual language and Unicode policy. */
 export function DenovaMonacoEditor({ beforeMount, options, ...props }: DenovaMonacoEditorProps) {
   const theme = useDenovaMonacoTheme()
+  const sourceEditorFontFamily = useSourceEditorFontFamily()
   const handleBeforeMount = useDenovaBeforeMount(beforeMount)
   const denovaOptions = useMemo<editor.IStandaloneEditorConstructionOptions>(() => ({
     ...options,
+    fontFamily: options?.fontFamily || sourceEditorFontFamily,
     unicodeHighlight: denovaUnicodeHighlight(options?.unicodeHighlight),
-  }), [options])
+  }), [options, sourceEditorFontFamily])
 
   return (
     <MonacoEditor
@@ -58,11 +61,13 @@ export function DenovaMonacoEditor({ beforeMount, options, ...props }: DenovaMon
 /** Monaco diff editor sharing the exact theme and safeguards of regular editors. */
 export function DenovaMonacoDiffEditor({ beforeMount, options, ...props }: DenovaMonacoDiffEditorProps) {
   const theme = useDenovaMonacoTheme()
+  const sourceEditorFontFamily = useSourceEditorFontFamily()
   const handleBeforeMount = useDenovaBeforeMount(beforeMount)
   const denovaOptions = useMemo<editor.IStandaloneDiffEditorConstructionOptions>(() => ({
     ...options,
+    fontFamily: options?.fontFamily || sourceEditorFontFamily,
     unicodeHighlight: denovaUnicodeHighlight(options?.unicodeHighlight),
-  }), [options])
+  }), [options, sourceEditorFontFamily])
 
   return (
     <MonacoDiffEditor
@@ -87,6 +92,14 @@ export function installDenovaMonacoThemes(monaco: Monaco) {
 function useDenovaMonacoTheme() {
   const { resolvedTheme } = useTheme()
   return resolvedTheme === 'light' ? DENOVA_MONACO_THEME_LIGHT : DENOVA_MONACO_THEME_DARK
+}
+
+function useSourceEditorFontFamily() {
+  return useSyncExternalStore(
+    subscribeSourceEditorFont,
+    getSourceEditorFontFamily,
+    getSourceEditorFontFamily,
+  )
 }
 
 function useDenovaBeforeMount(beforeMount: ((monaco: Monaco) => void) | undefined) {

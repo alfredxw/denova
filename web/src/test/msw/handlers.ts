@@ -222,6 +222,7 @@ export const handlers = [
         ui_font_size: 14,
         reading_font_family: 'apple-system',
         reading_font_size: 18,
+        source_editor_font_family: 'mono',
         interactive_stage_line_height: 1.78,
       },
       builtin_agent_prompt_blocks: {
@@ -270,6 +271,7 @@ export const handlers = [
         ui_font_size: 14,
         reading_font_family: 'apple-system',
         reading_font_size: 18,
+        source_editor_font_family: 'mono',
         interactive_stage_line_height: 1.78,
       },
       builtin_agent_prompts: {},

@@ -11,7 +11,7 @@ const codeViewState = vi.hoisted(() => ({
 }))
 
 vi.mock('@pierre/diffs/react', () => ({
-  CodeView: forwardRef(function MockCodeView(props: { items: Array<{ id: string }>; options?: { enableGutterUtility?: boolean; unsafeCSS?: string; layout?: { gap?: number } }; renderCustomHeader?: (item: { id: string }) => React.ReactNode }, ref) {
+  CodeView: forwardRef(function MockCodeView(props: { items: Array<{ id: string }>; options?: { enableGutterUtility?: boolean; unsafeCSS?: string; layout?: { gap?: number } }; className?: string; renderCustomHeader?: (item: { id: string }) => React.ReactNode }, ref) {
     codeViewState.itemIDs = props.items.map((item) => item.id)
     codeViewState.options = props.options ?? null
     useImperativeHandle(ref, () => ({
@@ -19,7 +19,7 @@ vi.mock('@pierre/diffs/react', () => ({
       clearSelectedLines: vi.fn(),
       getInstance: () => undefined,
     }))
-    return <div data-testid="code-view">{props.items.map((item) => <div key={item.id}>{props.renderCustomHeader?.(item)}</div>)}</div>
+    return <div data-testid="code-view" className={props.className}>{props.items.map((item) => <div key={item.id}>{props.renderCustomHeader?.(item)}</div>)}</div>
   }),
 }))
 
@@ -43,6 +43,7 @@ describe('CodeDiffSurface', () => {
     render(<SurfaceHarness files={[file('a.ts', 'old', 'new'), file('b.ts', 'one', 'two')]} />)
     expect(codeViewState.itemIDs).toEqual(['a.ts', 'b.ts'])
     expect(codeViewState.options?.layout?.gap).toBe(0)
+    expect(getComputedStyle(screen.getByTestId('code-view')).getPropertyValue('--diffs-font-family').trim()).toBe('var(--nova-source-editor-font-family)')
     expect(screen.queryByText(/Diff 较大|diff is large/i)).not.toBeInTheDocument()
   })
 

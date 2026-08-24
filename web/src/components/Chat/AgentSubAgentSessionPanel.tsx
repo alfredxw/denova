@@ -58,6 +58,7 @@ export function AgentSubAgentSessionPanel({ projectId, messages, sessionKey, onC
       <SubAgentSessionRow
         projectId={projectId}
         view={resolvedView}
+        isLast={index === sessionViews.length - 1}
         streamingTail={running && index === sessionViews.length - 1}
         streamingRowRef={scrollLock.streamingRowRef}
         syncStreamingTailLayout={scrollLock.syncStreamingTailLayout}
@@ -131,9 +132,10 @@ export function AgentSubAgentSessionPanel({ projectId, messages, sessionKey, onC
   )
 }
 
-function SubAgentSessionRow({ projectId, view, streamingTail, streamingRowRef, syncStreamingTailLayout, highlightDialogue, messageStyle, onResolveAsk }: {
+function SubAgentSessionRow({ projectId, view, isLast, streamingTail, streamingRowRef, syncStreamingTailLayout, highlightDialogue, messageStyle, onResolveAsk }: {
   projectId?: string
   view: AgentMessageView
+  isLast: boolean
   streamingTail: boolean
   streamingRowRef: RefCallback<HTMLElement>
   syncStreamingTailLayout: () => void
@@ -150,7 +152,7 @@ function SubAgentSessionRow({ projectId, view, streamingTail, streamingRowRef, s
       ref={streamingTail ? streamingRowRef : undefined}
       data-nova-chat-item="subagent-message"
       data-nova-chat-tail-row
-      className="min-w-0 px-4 pb-3 last:pb-0"
+      className={`min-w-0 px-4 ${isLast ? 'pb-0' : 'pb-2'}`}
     >
       <AgentMessageItem
         projectId={projectId}

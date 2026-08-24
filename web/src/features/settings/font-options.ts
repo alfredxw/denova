@@ -48,7 +48,7 @@ export const FONT_OPTIONS: FontOption[] = [
   {
     value: 'mono',
     labelKey: 'settings.font.mono',
-    stack: '"SFMono-Regular", "Cascadia Code", "JetBrains Mono", Consolas, "Liberation Mono", monospace',
+    stack: '"SFMono-Regular", "SF Mono", "Cascadia Mono", "Cascadia Code", "JetBrains Mono", "Sarasa Mono SC", "Noto Sans Mono CJK SC", Menlo, Monaco, Consolas, "Liberation Mono", "Noto Sans SC", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", monospace',
   },
 ]
 

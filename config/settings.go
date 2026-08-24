@@ -71,14 +71,15 @@ type Settings struct {
 	VersionTimedIntervalMinutes *int   `toml:"version_timed_interval_minutes,omitempty" json:"version_timed_interval_minutes,omitempty"`
 
 	// 外观
-	UIFontFamily       string `toml:"ui_font_family,omitempty" json:"ui_font_family,omitempty"`
-	UIFontSize         *int   `toml:"ui_font_size,omitempty" json:"ui_font_size,omitempty"`
-	ReadingFontFamily  string `toml:"reading_font_family,omitempty" json:"reading_font_family,omitempty"`
-	ReadingFontSize    *int   `toml:"reading_font_size,omitempty" json:"reading_font_size,omitempty"`
-	Language           string `toml:"language,omitempty" json:"language,omitempty"`
-	Theme              string `toml:"theme,omitempty" json:"theme,omitempty"`
-	MotionIntensity    string `toml:"motion_intensity,omitempty" json:"motion_intensity,omitempty"`
-	UpdateCheckEnabled *bool  `toml:"update_check_enabled,omitempty" json:"update_check_enabled,omitempty"`
+	UIFontFamily           string `toml:"ui_font_family,omitempty" json:"ui_font_family,omitempty"`
+	UIFontSize             *int   `toml:"ui_font_size,omitempty" json:"ui_font_size,omitempty"`
+	ReadingFontFamily      string `toml:"reading_font_family,omitempty" json:"reading_font_family,omitempty"`
+	ReadingFontSize        *int   `toml:"reading_font_size,omitempty" json:"reading_font_size,omitempty"`
+	SourceEditorFontFamily string `toml:"source_editor_font_family,omitempty" json:"source_editor_font_family,omitempty"`
+	Language               string `toml:"language,omitempty" json:"language,omitempty"`
+	Theme                  string `toml:"theme,omitempty" json:"theme,omitempty"`
+	MotionIntensity        string `toml:"motion_intensity,omitempty" json:"motion_intensity,omitempty"`
+	UpdateCheckEnabled     *bool  `toml:"update_check_enabled,omitempty" json:"update_check_enabled,omitempty"`
 
 	// Agent
 	MaxIteration              *int                `toml:"max_iteration,omitempty" json:"max_iteration,omitempty"`
@@ -180,6 +181,7 @@ func DefaultSettings() Settings {
 		UIFontSize:                  intPtr(14),
 		ReadingFontFamily:           "apple-system",
 		ReadingFontSize:             intPtr(18),
+		SourceEditorFontFamily:      "mono",
 		Language:                    "auto",
 		Theme:                       "dark",
 		MotionIntensity:             "system",
@@ -323,6 +325,9 @@ func Merge(parent, child Settings) Settings {
 	}
 	if child.ReadingFontSize != nil {
 		out.ReadingFontSize = child.ReadingFontSize
+	}
+	if child.SourceEditorFontFamily != "" {
+		out.SourceEditorFontFamily = child.SourceEditorFontFamily
 	}
 	if child.Language != "" {
 		out.Language = child.Language

@@ -41,6 +41,7 @@ export interface Settings {
   ui_font_size?: number | null
   reading_font_family?: string
   reading_font_size?: number | null
+  source_editor_font_family?: string
   language?: string
   theme?: string
   motion_intensity?: string

@@ -1,4 +1,5 @@
 import { fontStackFor } from './font-options'
+import { getSourceEditorFontFamily, setSourceEditorFont } from './source-editor-font'
 import type { Settings } from './types'
 
 export interface FontSettingsInput {
@@ -6,6 +7,7 @@ export interface FontSettingsInput {
   uiFontSize?: number | null
   readingFont?: string | null
   readingFontSize?: number | null
+  sourceEditorFont?: string | null
 }
 
 export function fontSettingsFromEffective(effective?: Settings | null): FontSettingsInput {
@@ -14,6 +16,7 @@ export function fontSettingsFromEffective(effective?: Settings | null): FontSett
     uiFontSize: effective?.ui_font_size,
     readingFont: effective?.reading_font_family,
     readingFontSize: effective?.reading_font_size,
+    sourceEditorFont: effective?.source_editor_font_family,
   }
 }
 
@@ -26,6 +29,8 @@ export function applyFontSettings(settings: FontSettingsInput) {
 
   document.documentElement.style.setProperty('--nova-ui-font-family', fontStackFor(settings.uiFont, 'apple-system'))
   applyReadingTypographySettings(settings)
+  setSourceEditorFont(settings.sourceEditorFont)
+  document.documentElement.style.setProperty('--nova-source-editor-font-family', getSourceEditorFontFamily())
   document.documentElement.style.setProperty('--nova-ui-font-size', `${baseSize}px`)
   document.documentElement.style.setProperty('--nova-ui-line-height', `${baseSize + 6}px`)
   document.documentElement.style.setProperty('--nova-ui-sm-font-size', `${smSize}px`)

@@ -150,7 +150,7 @@ export const MessageItem = memo(function MessageItem({ projectId = '', message, 
     }
 
     case 'thinking':
-      return <ThinkingBlock message={message} content={content} streaming={message.streaming === true} />
+      return <ThinkingBlock message={message} content={content} streaming={message.streaming === true} showAgentSource={showAgentSource} />
 
     case 'tool_call': {
       // Live input is an opaque protocol text stream. Specialized renderers may

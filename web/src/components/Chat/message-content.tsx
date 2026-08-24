@@ -159,7 +159,7 @@ function highlightDialogueText(text: string, enabled: boolean, keyPrefix: string
 }
 
 /** Reasoning follows streaming until the user takes explicit control. */
-export function ThinkingBlock({ message, content, streaming }: { message: ThinkingChatMessage; content: string; streaming: boolean }) {
+export function ThinkingBlock({ message, content, streaming, showAgentSource = true }: { message: ThinkingChatMessage; content: string; streaming: boolean; showAgentSource?: boolean }) {
   const { t } = useTranslation()
   const preview = agentContentPreview(content)
   const [expanded, setExpanded] = useState(streaming)
@@ -208,7 +208,7 @@ export function ThinkingBlock({ message, content, streaming }: { message: Thinki
                 <span data-thinking-preview className="min-w-0 flex-1 truncate text-left">{preview}</span>
               </>
             ) : <span className="flex-1" />}
-            {message.subagent && <AgentSourceBadge message={message} compact />}
+            {showAgentSource && message.subagent && <AgentSourceBadge message={message} compact />}
             {expanded ? <ChevronDown aria-hidden="true" className="size-3 shrink-0" /> : <ChevronRight aria-hidden="true" className="size-3 shrink-0" />}
           </ReasoningTrigger>
           <ReasoningContent className="mt-0 text-xs">

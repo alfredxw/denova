@@ -1,11 +1,8 @@
 import type { FileTreeRowDecoration } from '@pierre/trees'
-import { Copy, ExternalLink } from 'lucide-react'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
-import { FileTreeMenu, FileTreeMenuItem, FileTreeMenuSeparator } from '@/components/file-tree/FileTreeMenu'
 import { NovaFileTree } from '@/components/file-tree/NovaFileTree'
-import { applicationFileTreePath, writeClipboardText } from '@/components/file-tree/paths'
+import { applicationFileTreePath } from '@/components/file-tree/paths'
 import type { DiffFileNavigationItem } from './types'
 
 interface DiffFileNavigatorProps {
@@ -42,26 +39,6 @@ export function DiffFileNavigator({ files, selectedPath, onSelect }: DiffFileNav
         onSelectionChange={(selected) => {
           const path = applicationFileTreePath(selected.at(-1) ?? '')
           if (fileByPath.has(path)) onSelect(path)
-        }}
-        renderContextMenu={(item, context) => {
-          const path = applicationFileTreePath(item.path)
-          if (!fileByPath.has(path)) return null
-          const closeThen = (action: () => void) => {
-            context.close()
-            action()
-          }
-          return (
-            <FileTreeMenu anchorRect={context.anchorRect}>
-              <FileTreeMenuItem onClick={() => closeThen(() => onSelect(path))}><ExternalLink />{t('changes.openFile')}</FileTreeMenuItem>
-              <FileTreeMenuSeparator />
-              <FileTreeMenuItem onClick={() => closeThen(() => {
-                void writeClipboardText(path).catch((cause) => {
-                  console.error('[features/diff/DiffFileNavigator.tsx] copying diff file path failed', { path, cause })
-                  toast.error(t('files.tree.copyPathFailed'))
-                })
-              })}><Copy />{t('changes.copyPath')}</FileTreeMenuItem>
-            </FileTreeMenu>
-          )
         }}
       />
     </aside>

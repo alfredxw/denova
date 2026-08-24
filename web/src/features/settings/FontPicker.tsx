@@ -25,6 +25,7 @@ interface FontPickerProps {
   value?: string
   inherited?: string
   allowInherit?: boolean
+  fallback?: string
   disabled?: boolean
   className?: string
   onValueChange: (value: string) => void
@@ -36,6 +37,7 @@ export function FontPicker({
   value,
   inherited,
   allowInherit = false,
+  fallback = 'apple-system',
   disabled = false,
   className,
   onValueChange,
@@ -152,7 +154,7 @@ export function FontPicker({
                 >
                   <span
                     className="truncate"
-                    style={{ fontFamily: fontStackFor(inherited, 'apple-system') }}
+                    style={{ fontFamily: fontStackFor(inherited, fallback) }}
                   >
                     {t('common.inherit', { value: inheritedName })}
                   </span>
@@ -182,7 +184,7 @@ export function FontPicker({
                       data-checked={currentCustomFamily?.toLocaleLowerCase() === family.toLocaleLowerCase() || undefined}
                       onSelect={() => { if (fontValue) selectValue(fontValue) }}
                     >
-                      <span className="truncate" style={{ fontFamily: fontStackFor(fontValue, 'apple-system') }}>{family}</span>
+                      <span className="truncate" style={{ fontFamily: fontStackFor(fontValue, fallback) }}>{family}</span>
                     </CommandItem>
                   )
                 })}
@@ -199,7 +201,7 @@ export function FontPicker({
                 >
                   <span
                     className="truncate"
-                    style={{ fontFamily: fontStackFor(customCandidateValue, 'apple-system') }}
+                    style={{ fontFamily: fontStackFor(customCandidateValue, fallback) }}
                   >
                     {customCandidateFamily}
                   </span>

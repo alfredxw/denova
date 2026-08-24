@@ -8,6 +8,7 @@
   min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
+  --diffs-font-family: var(--nova-source-editor-font-family);
   --diffs-font-size: 12px;
   --diffs-line-height: 20px;
   --diffs-gap-block: 0px;

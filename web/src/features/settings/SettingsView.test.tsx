@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fetchSettings } from './api'
 import { imageAPIProfilesForEditor, modelProfilesForEditor, SettingsView, UpdatePanel } from './SettingsView'
@@ -284,6 +285,7 @@ describe('SettingsView user scope', () => {
     expect(screen.getByText('自动创建 Git 版本')).toBeInTheDocument()
     expect(screen.queryByText('Agent 大量输出自动保存')).not.toBeInTheDocument()
     expect(screen.getByText('故事舞台行间距')).toBeInTheDocument()
+    expect(screen.getByText('源编辑器字体')).toBeInTheDocument()
     expect(screen.getAllByText('网页访问').length).toBeGreaterThan(0)
     expect(screen.getByLabelText('SearXNG 实例地址')).toBeInTheDocument()
     expect(screen.getByLabelText('单次搜索结果上限')).toHaveAttribute('max', '20')
@@ -302,6 +304,26 @@ describe('SettingsView user scope', () => {
       expect.objectContaining({ version_timed_interval_minutes: 20 }),
       'user-rev',
     )
+  })
+
+  it('persists a dedicated source editor font choice', async () => {
+    const user = userEvent.setup()
+    const settings = layeredSettings({ devMode: false })
+    vi.mocked(fetchSettings).mockResolvedValue(settings)
+    vi.mocked(updateUserSettings).mockResolvedValue(settings)
+
+    render(<SettingsView />)
+
+    const label = await screen.findByText('源编辑器字体')
+    const row = label.closest('.nova-settings-row')
+    expect(row).not.toBeNull()
+    await user.click(within(row as HTMLElement).getByRole('combobox'))
+    await user.click(screen.getByRole('option', { name: '微软雅黑 UI' }))
+
+    await waitFor(() => expect(updateUserSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ source_editor_font_family: 'microsoft-yahei' }),
+      'user-rev',
+    ), { timeout: 2_000 })
   })
 
   it('uses Developer Mode as the sole Lab switch for the global Trajectory and Harness workspace', async () => {
@@ -474,6 +496,7 @@ function layeredSettings({ devMode }: { devMode: boolean }): LayeredSettings {
   const settings = {
     language: 'zh-CN',
     theme: 'dark',
+    source_editor_font_family: 'mono',
     update_check_enabled: false,
     llm_input_log_enabled: false,
     terminal_enabled: true,

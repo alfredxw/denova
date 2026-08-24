@@ -97,6 +97,9 @@ func TestDefaultSettingsValues(t *testing.T) {
 	if s.ReadingFontSize == nil || *s.ReadingFontSize != 18 {
 		t.Fatalf("ReadingFontSize default")
 	}
+	if s.SourceEditorFontFamily != "mono" {
+		t.Fatalf("SourceEditorFontFamily default: %s", s.SourceEditorFontFamily)
+	}
 	if s.Language != "auto" {
 		t.Fatalf("Language default: %s", s.Language)
 	}
@@ -151,6 +154,7 @@ func TestMergeOverridesNonZero(t *testing.T) {
 		UIFontSize:                 intPtr(14),
 		ReadingFontFamily:          "apple-system",
 		ReadingFontSize:            intPtr(18),
+		SourceEditorFontFamily:     "mono",
 		Language:                   "auto",
 		Theme:                      "dark",
 		MotionIntensity:            "system",
@@ -176,6 +180,7 @@ func TestMergeOverridesNonZero(t *testing.T) {
 		UIFontSize:                 intPtr(13),
 		ReadingFontFamily:          "system-serif",
 		ReadingFontSize:            intPtr(20),
+		SourceEditorFontFamily:     "custom:Sarasa Mono SC",
 		Language:                   "en-US",
 		Theme:                      "light",
 		MotionIntensity:            "reduced",
@@ -225,6 +230,9 @@ func TestMergeOverridesNonZero(t *testing.T) {
 	}
 	if out.ReadingFontSize == nil || *out.ReadingFontSize != 20 {
 		t.Fatalf("ReadingFontSize should override parent")
+	}
+	if out.SourceEditorFontFamily != "custom:Sarasa Mono SC" {
+		t.Fatalf("SourceEditorFontFamily should override parent: %s", out.SourceEditorFontFamily)
 	}
 	if out.Language != "en-US" {
 		t.Fatalf("Language should override parent: %s", out.Language)
