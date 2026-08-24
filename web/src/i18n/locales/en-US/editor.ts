@@ -26,7 +26,6 @@ const editor = {
   'editor.currentLine': 'Line {{line}}',
   'editor.selectedWords': 'Selected: {{count}} words',
   'editor.lineHeight': 'Line Height',
-  'editor.lineNumbers': 'Line Numbers',
   'editor.dialogueHighlightColor': 'Dialogue Highlight',
   'editor.dialogueHighlightReset': 'Reset default',
   'editor.dialogueHighlightField': 'Choose dialogue highlight color',

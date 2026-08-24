@@ -6,6 +6,7 @@ import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 import { LoadingState } from '@/components/common/LoadingState'
 import { SearchPanel } from '@/components/Sidebar/SearchPanel'
 import { WritingDocumentEditor } from '@/components/Editor/WritingDocumentEditor'
+import type { ReadingTypographySettings } from '@/components/Editor/EditorSettingsPanel'
 import { WritingSourceEditor } from '@/components/Editor/WritingSourceEditor'
 import type { EditorFlushHandler } from '@/components/Editor/useEditorDraftPersistence'
 import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
@@ -34,6 +35,7 @@ interface ProjectWritingSurfaceProps {
   initialPath?: string | null
   autoSaveEnabled?: boolean
   autoSaveDelayMs?: number
+  readingTypography: ReadingTypographySettings
   documentReview: DocumentReviewController
   navigationIntent?: AgentChatDocumentReviewNavigation | null
   refreshSignal?: number
@@ -53,6 +55,7 @@ export function ProjectWritingSurface({
   initialPath,
   autoSaveEnabled = true,
   autoSaveDelayMs,
+  readingTypography,
   documentReview,
   navigationIntent,
   refreshSignal = 0,
@@ -359,6 +362,7 @@ export function ProjectWritingSurface({
                     onFlushHandlerChange={handleFlushHandlerChange}
                     documentReview={documentReview}
                     documentReviewNavigationIntent={navigationPath === document.path ? navigationIntent : null}
+                    readingTypography={readingTypography}
                     onOpenOutline={isMobile ? openLeft : undefined}
                   />
                 ) : document.kind === 'text' ? (

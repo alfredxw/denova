@@ -11,6 +11,15 @@ const api = vi.hoisted(() => ({
   setProjectChapterConfirmed: vi.fn(),
 }))
 const projectFiles = vi.hoisted(() => ({ applyProjectFileOperations: vi.fn() }))
+const readingTypography = {
+  fontFamily: 'source-han-serif',
+  fontSize: 18,
+  loading: false,
+  status: 'saved' as const,
+  onFontFamilyChange: vi.fn(),
+  onFontSizeChange: vi.fn(),
+  onRetry: vi.fn(),
+}
 
 vi.mock('@/lib/api', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/lib/api')>(),
@@ -47,15 +56,16 @@ vi.mock('@/components/workbench/outline/ChapterOutline', () => ({
 }))
 
 vi.mock('@/components/Editor/WritingDocumentEditor', () => ({
-  WritingDocumentEditor: ({ projectId, fileName, content, revision, onSave }: {
+  WritingDocumentEditor: ({ projectId, fileName, content, revision, readingTypography: typography, onSave }: {
     projectId: string
     fileName: string
     content: string
     revision: string
+    readingTypography: { fontFamily: string; fontSize: number }
     onSave: (path: string, content: string, baseRevision: string) => Promise<unknown>
   }) => (
     <div>
-      <span data-testid="project-document">{projectId}|{fileName}|{content}|{revision}</span>
+      <span data-testid="project-document">{projectId}|{fileName}|{content}|{revision}|{typography.fontFamily}|{typography.fontSize}</span>
       <button type="button" onClick={() => void onSave(fileName, 'After', revision)}>Save</button>
     </div>
   ),
@@ -126,6 +136,7 @@ describe('ProjectWritingSurface', () => {
     render(
       <ProjectWritingSurface
         projectId="book-b"
+        readingTypography={readingTypography}
         documentReview={{ comments: [], onCreate: vi.fn(), onUpdate: vi.fn(), onDelete: vi.fn() }}
         onFlushHandlerChange={vi.fn()}
         onWorkspaceChanged={onWorkspaceChanged}
@@ -152,6 +163,7 @@ describe('ProjectWritingSurface', () => {
     render(
       <ProjectWritingSurface
         projectId="book-b"
+        readingTypography={readingTypography}
         documentReview={{ comments: [], onCreate: vi.fn(), onUpdate: vi.fn(), onDelete: vi.fn() }}
         onFlushHandlerChange={vi.fn()}
         onWorkspaceChanged={onWorkspaceChanged}
@@ -159,7 +171,7 @@ describe('ProjectWritingSurface', () => {
     )
 
     expect(await screen.findByTestId('project-document')).toHaveTextContent(
-      'book-b|chapters/ch01.md|Before|r1',
+      'book-b|chapters/ch01.md|Before|r1|source-han-serif|18',
     )
     expect(api.getProjectBookSnapshot).toHaveBeenCalledWith('book-b')
     expect(api.readProjectFile).toHaveBeenCalledWith('book-b', 'chapters/ch01.md')
@@ -205,6 +217,7 @@ describe('ProjectWritingSurface', () => {
       <ProjectWritingSurface
         projectId="book-b"
         initialPath="data.json"
+        readingTypography={readingTypography}
         documentReview={{ comments: [], onCreate: vi.fn(), onUpdate: vi.fn(), onDelete: vi.fn() }}
         onFlushHandlerChange={vi.fn()}
       />,

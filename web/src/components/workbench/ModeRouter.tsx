@@ -775,6 +775,7 @@ export function ModeRouter(props: ModeRouterProps) {
         imagePresets={imagePresets}
         autoSaveEnabled={editorAutoSaveEnabled}
         autoSaveDelayMs={editorAutoSaveDelayMs}
+        readingTypography={readingTypography}
         onBeforeCreateBook={flushBeforeWorkspaceSwitch}
         onBookCreated={onAgentChatBookCreated}
         onBooksChange={onBooksChange}

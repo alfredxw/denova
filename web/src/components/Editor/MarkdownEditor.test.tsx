@@ -204,7 +204,7 @@ describe('MarkdownEditor', () => {
     vi.useRealTimers()
   })
 
-  it('在紧凑的编辑器设置中保留字体字号，并可持久化开启行号', async () => {
+  it('在编辑器设置中保留字体和字号配置', async () => {
     const user = userEvent.setup()
     const onFontFamilyChange = vi.fn()
     const onFontSizeChange = vi.fn()
@@ -245,16 +245,7 @@ describe('MarkdownEditor', () => {
     expect(readingFontSize).toHaveValue('18')
     fireEvent.change(readingFontSize, { target: { value: '22' } })
     expect(onFontSizeChange).toHaveBeenCalledWith(22)
-
-    const lineNumbers = screen.getByRole('switch', { name: '行号' })
-    expect(lineNumbers).not.toBeChecked()
-    expect(screen.getByTestId('editor-content')).not.toHaveClass('show-line-numbers')
-
-    await user.click(lineNumbers)
-
-    expect(lineNumbers).toBeChecked()
-    expect(screen.getByTestId('editor-content')).toHaveClass('show-line-numbers')
-    expect(JSON.parse(window.localStorage.getItem('nova.editor.settings') || '{}')).toMatchObject({ showLineNumbers: true })
+    expect(screen.queryByText('行号')).not.toBeInTheDocument()
   })
 
   it('在章节标题栏实时显示当前章节字数和光标行号，但不显示更新时间', () => {

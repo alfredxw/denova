@@ -87,7 +87,7 @@ export function EditorSurface({
       )}
       <EditorContent
         editor={editor}
-        className={`editor-content editor-theme-${settings.theme}${nativeIndent ? ' native-indent' : ''}${settings.showLineNumbers ? ' show-line-numbers' : ''}`}
+        className={`editor-content editor-theme-${settings.theme}${nativeIndent ? ' native-indent' : ''}`}
       />
       {reviewAnnotations}
       {editor && showSelectionToolbar && (

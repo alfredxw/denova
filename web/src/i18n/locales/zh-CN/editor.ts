@@ -26,7 +26,6 @@ const editor = {
   'editor.currentLine': '行 {{line}}',
   'editor.selectedWords': '已选：{{count}} 字',
   'editor.lineHeight': '行间距',
-  'editor.lineNumbers': '行号',
   'editor.dialogueHighlightColor': '对白高亮',
   'editor.dialogueHighlightReset': '恢复默认',
   'editor.dialogueHighlightField': '选择对白高亮颜色',

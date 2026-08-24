@@ -7,6 +7,15 @@ const view = vi.hoisted(() => ({
   workspace: '/books/b',
   pageId: 'lore' as 'lore' | 'reader',
 }))
+const readingTypography = {
+  fontFamily: 'source-han-serif',
+  fontSize: 18,
+  loading: false,
+  status: 'saved' as const,
+  onFontFamilyChange: vi.fn(),
+  onFontSizeChange: vi.fn(),
+  onRetry: vi.fn(),
+}
 
 vi.mock('./AgentChatView', () => ({
   AgentChatView: (props: {
@@ -22,8 +31,11 @@ vi.mock('./AgentChatView', () => ({
 }))
 
 vi.mock('@/features/writing/ProjectWritingSurface', () => ({
-  ProjectWritingSurface: ({ projectId }: { projectId: string }) => (
-    <div data-testid="shared-project-writing">{projectId}</div>
+  ProjectWritingSurface: ({ projectId, readingTypography: typography }: {
+    projectId: string
+    readingTypography: { fontFamily: string; fontSize: number }
+  }) => (
+    <div data-testid="shared-project-writing">{projectId}|{typography.fontFamily}|{typography.fontSize}</div>
   ),
 }))
 
@@ -44,6 +56,7 @@ function routeProps(): React.ComponentProps<typeof AgentChatRoute> {
     composerSettings: {} as never,
     tellers: [],
     imagePresets: [],
+    readingTypography,
     onBeforeCreateBook: vi.fn(async () => true),
     onBookCreated: vi.fn(),
     onBooksChange: vi.fn(),
@@ -67,6 +80,6 @@ describe('AgentChatRoute resource pages', () => {
     view.pageId = 'reader'
     render(<AgentChatRoute {...routeProps()} />)
 
-    expect(await screen.findByTestId('shared-project-writing')).toHaveTextContent('book-b')
+    expect(await screen.findByTestId('shared-project-writing')).toHaveTextContent('book-b|source-han-serif|18')
   })
 })

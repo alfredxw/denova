@@ -1,6 +1,7 @@
 import { lazy, memo, Suspense, useCallback, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { WritingComposerSettingsController } from '@/components/Chat/AgentPanel'
+import type { ReadingTypographySettings } from '@/components/Editor/EditorSettingsPanel'
 import type { EditorFlushHandler } from '@/components/Editor/useEditorDraftPersistence'
 import type { WorkspaceChangeMetadata } from '@/features/changes/types'
 import type { ImagePreset, Teller } from '@/features/interactive/types'
@@ -21,6 +22,7 @@ interface AgentChatRouteProps {
   imagePresets: ImagePreset[]
   autoSaveEnabled?: boolean
   autoSaveDelayMs?: number
+  readingTypography: ReadingTypographySettings
   onBeforeCreateBook: () => Promise<boolean>
   onBookCreated: (workspace: string) => void | Promise<void>
   onBooksChange: () => void | Promise<void>
@@ -41,6 +43,7 @@ function AgentChatRouteComponent({
   imagePresets,
   autoSaveEnabled = true,
   autoSaveDelayMs = 1200,
+  readingTypography,
   onBeforeCreateBook,
   onBookCreated,
   onBooksChange,
@@ -63,6 +66,7 @@ function AgentChatRouteComponent({
             projectId={projectId}
             autoSaveEnabled={autoSaveEnabled}
             autoSaveDelayMs={autoSaveDelayMs}
+            readingTypography={readingTypography}
             documentReview={context.documentReview}
             navigationIntent={context.navigationIntent?.target.kind === 'workspace_file' ? context.navigationIntent : null}
             refreshSignal={context.refreshSignal}
@@ -85,7 +89,7 @@ function AgentChatRouteComponent({
           />
         )
     }
-  }, [autoSaveDelayMs, autoSaveEnabled])
+  }, [autoSaveDelayMs, autoSaveEnabled, readingTypography])
 
   /** Keep each lazy page inside its own boundary so opening it never replaces live conversations. */
   const renderPage = useCallback((

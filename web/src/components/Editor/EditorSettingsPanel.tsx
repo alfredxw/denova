@@ -3,14 +3,12 @@ import type { PointerEvent } from 'react'
 import { Check, MessageSquareQuote, Type } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { AutosaveStatusIndicator, type AutosaveStatus } from '@/components/forms/autosave-status'
-import { Switch } from '@/components/ui/switch'
 import { FontPicker } from '@/features/settings/FontPicker'
 
 export type EditorTheme = 'ide' | 'paper' | 'sepia'
 
 export interface EditorSettings {
   lineHeight: number
-  showLineNumbers: boolean
   theme: EditorTheme
   dialogueHighlightColor: string
 }
@@ -56,7 +54,6 @@ const DEFAULT_PICKER_COLOR = '#ffd166'
 
 const DEFAULT_SETTINGS: EditorSettings = {
   lineHeight: 1.9,
-  showLineNumbers: false,
   theme: 'ide',
   dialogueHighlightColor: DEFAULT_DIALOGUE_HIGHLIGHT_COLOR,
 }
@@ -130,34 +127,22 @@ export function EditorSettingsPanel({
           </>
         ) : null}
 
-        <div className="grid grid-cols-2 gap-2">
-          <label className="nova-editor-control block rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2.5">
-            <span className="mb-1 flex items-center justify-between gap-2 text-[11px]">
-              <span className="font-medium text-[var(--nova-text-muted)]">{t('editor.lineHeight')}</span>
-              <span className="font-mono text-[11px] text-[var(--nova-text)]">{settings.lineHeight.toFixed(1)}</span>
-            </span>
-            <input
-              type="range"
-              min="1.4"
-              max="2.6"
-              step="0.1"
-              value={settings.lineHeight}
-              aria-label={t('editor.lineHeight')}
-              onChange={(e) => patch({ lineHeight: Number(e.target.value) })}
-              className="nova-editor-range w-full"
-            />
-          </label>
-
-          <label className="nova-editor-control flex cursor-pointer items-center justify-between gap-2 rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2.5">
-            <span className="text-[11px] font-medium text-[var(--nova-text-muted)]">{t('editor.lineNumbers')}</span>
-            <Switch
-              size="sm"
-              checked={settings.showLineNumbers}
-              onCheckedChange={(showLineNumbers) => patch({ showLineNumbers })}
-              aria-label={t('editor.lineNumbers')}
-            />
-          </label>
-        </div>
+        <label className="nova-editor-control block rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2.5">
+          <span className="mb-1 flex items-center justify-between gap-2 text-[11px]">
+            <span className="font-medium text-[var(--nova-text-muted)]">{t('editor.lineHeight')}</span>
+            <span className="font-mono text-[11px] text-[var(--nova-text)]">{settings.lineHeight.toFixed(1)}</span>
+          </span>
+          <input
+            type="range"
+            min="1.4"
+            max="2.6"
+            step="0.1"
+            value={settings.lineHeight}
+            aria-label={t('editor.lineHeight')}
+            onChange={(e) => patch({ lineHeight: Number(e.target.value) })}
+            className="nova-editor-range w-full"
+          />
+        </label>
 
         <div className="nova-editor-control block rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2.5">
           <div className="mb-1.5 flex items-center justify-between gap-3 text-xs">
@@ -220,7 +205,6 @@ export function loadEditorSettings(): EditorSettings {
     const parsed = JSON.parse(raw) as Partial<EditorSettings>
     return {
       lineHeight: parsed.lineHeight ?? DEFAULT_SETTINGS.lineHeight,
-      showLineNumbers: parsed.showLineNumbers === true,
       theme: parsed.theme && parsed.theme in THEME_STYLES ? parsed.theme : DEFAULT_SETTINGS.theme,
       dialogueHighlightColor: normalizeColorValue(parsed.dialogueHighlightColor) ?? DEFAULT_SETTINGS.dialogueHighlightColor,
     }

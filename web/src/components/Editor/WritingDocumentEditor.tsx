@@ -51,7 +51,6 @@ import { DocumentReviewAnnotations, type DocumentReviewAnnotationsHandle } from 
 import type { DocumentReviewSnapshot } from './documentReviewAnchors'
 import { createDocumentReviewExtension, type DocumentReviewDecorationState, type DocumentReviewPortalTarget } from './documentReviewDecorations'
 import { EditorPersistenceNotices } from './EditorPersistenceNotices'
-import { createSourceLineNumberExtension } from './editorSourceLineNumbers'
 
 export type { EditorFlushHandler } from './useEditorDraftPersistence'
 export type { DocumentReviewController, DocumentReviewNavigationIntent } from '@/features/document-review/controller'
@@ -136,7 +135,6 @@ export function WritingDocumentEditor({
   const searchStateRef = useRef<SearchState>({ query: '', index: 0, useRegex: false })
   const searchExtension = useMemo(() => createSearchHighlightExtension(searchStateRef), [])
   const dialogueHighlightExtension = useMemo(() => createDialogueHighlightExtension(), [])
-  const sourceLineNumberExtension = useMemo(() => createSourceLineNumberExtension(), [])
   const resourceScope = projectId
   const workspaceImageExtension = useMemo(
     () => createWorkspaceImageExtension((path) => projectFileAssetURL(projectId, path)),
@@ -165,7 +163,6 @@ export function WritingDocumentEditor({
       createIndentedHardBreakExtension(),
       searchExtension,
       dialogueHighlightExtension,
-      sourceLineNumberExtension,
       workspaceImageExtension,
       reviewExtension,
       TableKit.configure({
