@@ -3,7 +3,7 @@ import { BookOpen, CheckCircle2, Circle, Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { ChapterSummary } from '@/lib/api'
 import { formatNumber } from '../workbench-utils'
-import { OutlineFileActions } from './OutlineFileActions'
+import { OutlineFileActions, type OutlineFileMenuOperations } from './OutlineFileActions'
 
 interface ChapterOutlineItemProps {
   chapter: ChapterSummary
@@ -14,6 +14,7 @@ interface ChapterOutlineItemProps {
   onRevealFile?: (path: string) => void | Promise<void>
   onRenameItem?: (path: string, newName: string) => Promise<void>
   onDeleteItem?: (path: string) => Promise<void>
+  fileOperations?: OutlineFileMenuOperations
 }
 
 /** One windowed outline row; the data path lets navigation find an already mounted target. */
@@ -26,6 +27,7 @@ export const ChapterOutlineItem = memo(function ChapterOutlineItem({
   onRevealFile,
   onRenameItem,
   onDeleteItem,
+  fileOperations,
 }: ChapterOutlineItemProps) {
   const { t } = useTranslation()
   const [saving, setSaving] = useState(false)
@@ -53,6 +55,7 @@ export const ChapterOutlineItem = memo(function ChapterOutlineItem({
       onRevealFile={onRevealFile}
       onRenameItem={onRenameItem}
       onDeleteItem={onDeleteItem}
+      fileOperations={fileOperations}
     >
       <div
         className={`nova-nav-item relative w-full border text-left ${

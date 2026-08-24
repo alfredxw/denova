@@ -85,7 +85,10 @@ export function EditorSurface({
           onReplaceAll={search.onReplaceAll}
         />
       )}
-      <EditorContent editor={editor} className={`editor-content editor-theme-${settings.theme}${nativeIndent ? ' native-indent' : ''}`} />
+      <EditorContent
+        editor={editor}
+        className={`editor-content editor-theme-${settings.theme}${nativeIndent ? ' native-indent' : ''}${settings.showLineNumbers ? ' show-line-numbers' : ''}`}
+      />
       {reviewAnnotations}
       {editor && showSelectionToolbar && (
         <SelectionToolbar editor={editor} mode={selectionToolbarMode} onAction={onSelectionAction} />

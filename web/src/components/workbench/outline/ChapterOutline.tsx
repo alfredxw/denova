@@ -1,16 +1,22 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, ChevronRight, FileText } from 'lucide-react'
+import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, FileText } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { formatLocaleNumber } from '@/i18n'
+import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
 import type { FileNode } from '@/hooks/useWorkspace'
 import type { ChapterSummary, DocumentPreview } from '@/lib/api'
 import { BookSettingsShortcuts } from '@/components/workbench/BookSettingsShortcuts'
+import { flattenFileTree } from '@/components/workbench/workbench-utils'
 import {
   ChapterOutlineList,
   type ChapterOutlineListHandle,
   type ChapterOutlineVolume,
 } from './ChapterOutlineList'
-import { OutlineFileActions } from './OutlineFileActions'
+import {
+  ManuscriptCreateDialog,
+  ManuscriptCreateMenu,
+  type ManuscriptCreateRequest,
+} from './ManuscriptCreateDialog'
+import { OutlineFileActions, type OutlineFileMenuOperations } from './OutlineFileActions'
 
 export interface OutlineRevealRequest {
   path: string
@@ -19,10 +25,9 @@ export interface OutlineRevealRequest {
 
 interface ChapterOutlineProps {
   projectId: string
+  workspace?: string
   tree: FileNode[]
   chapters: ChapterSummary[]
-  chapterCount?: number
-  totalWords?: number
   ideas?: DocumentPreview
   outline?: DocumentPreview
   chapterPlans: DocumentPreview[]
@@ -35,6 +40,8 @@ interface ChapterOutlineProps {
   onRevealFile?: (path: string) => void | Promise<void>
   onRenameItem?: (path: string, newName: string) => Promise<void>
   onDeleteItem?: (path: string) => Promise<void>
+  onCopyItem?: (from: string, to: string) => Promise<void>
+  onCreateItem?: (path: string, type: 'file' | 'dir') => Promise<void>
   onRequestBookSettingCreate?: (item: { path: string; title: string }) => void
   onSetChapterConfirmed: (path: string, confirmed: boolean) => void | Promise<void>
 }
@@ -50,10 +57,9 @@ const BACK_TO_TOP_THRESHOLD_PX = 320
  */
 export function ChapterOutline({
   projectId,
+  workspace,
   tree,
   chapters,
-  chapterCount,
-  totalWords,
   ideas,
   outline,
   chapterPlans,
@@ -66,6 +72,8 @@ export function ChapterOutline({
   onRevealFile,
   onRenameItem,
   onDeleteItem,
+  onCopyItem,
+  onCreateItem,
   onRequestBookSettingCreate,
   onSetChapterConfirmed,
 }: ChapterOutlineProps) {
@@ -73,6 +81,7 @@ export function ChapterOutline({
   const [headerPinned, setHeaderPinned] = useState(readBookSettingsHeaderPinned)
   const [collapsedVolumes, setCollapsedVolumes] = useState<Set<string>>(() => new Set())
   const [chapterPlanHistoryExpanded, setChapterPlanHistoryExpanded] = useState(false)
+  const [createRequest, setCreateRequest] = useState<ManuscriptCreateRequest | null>(null)
   const volumes = useMemo(() => groupChaptersByVolume(chapters, t), [chapters, t])
   const latestChapterPlan = chapterPlans[chapterPlans.length - 1]
   const historicalChapterPlans = useMemo(() => chapterPlans.slice(0, -1), [chapterPlans])
@@ -100,6 +109,13 @@ export function ChapterOutline({
       return next
     })
   }, [])
+  const allVolumesCollapsed = volumes.length > 0 && volumes.every((volume) => collapsedVolumes.has(volume.key))
+  const toggleAllVolumes = useCallback(() => {
+    setCollapsedVolumes((previous) => {
+      const shouldExpand = volumes.length > 0 && volumes.every((volume) => previous.has(volume.key))
+      return shouldExpand ? new Set() : new Set(volumes.map((volume) => volume.key))
+    })
+  }, [volumes])
 
   // Keep row callbacks stable so selecting one chapter cannot invalidate every mounted row.
   const callbackRef = useRef({
@@ -109,6 +125,8 @@ export function ChapterOutline({
     onRevealFile,
     onRenameItem,
     onDeleteItem,
+    onCopyItem,
+    onCreateItem,
     onRequestBookSettingCreate,
     onSetChapterConfirmed,
   })
@@ -119,6 +137,8 @@ export function ChapterOutline({
     onRevealFile,
     onRenameItem,
     onDeleteItem,
+    onCopyItem,
+    onCreateItem,
     onRequestBookSettingCreate,
     onSetChapterConfirmed,
   }
@@ -150,6 +170,12 @@ export function ChapterOutline({
   const handleDeleteItem = useCallback((path: string) => {
     return callbackRef.current.onDeleteItem?.(path) ?? Promise.resolve()
   }, [])
+  const handleCopyItem = useCallback((from: string, to: string) => {
+    return callbackRef.current.onCopyItem?.(from, to) ?? Promise.resolve()
+  }, [])
+  const handleCreateFile = useCallback((path: string) => {
+    return callbackRef.current.onCreateItem?.(path, 'file') ?? Promise.resolve()
+  }, [])
   const handleOpenLoreTab = useCallback(() => callbackRef.current.onOpenLoreTab?.(), [])
   const handleRequestBookSettingCreate = useCallback((item: { path: string; title: string }) => {
     callbackRef.current.onRequestBookSettingCreate?.(item)
@@ -162,6 +188,18 @@ export function ChapterOutline({
     }
     return result
   }, [volumes])
+  const defaultVolumePath = (selectedFile && chapterVolumeByPath.get(selectedFile))
+    || latestChapter?.volume_path
+    || 'chapters'
+
+  const handleCreatedChapter = useCallback((path: string) => {
+    panelSelectionRef.current = false
+    lastAutoLocatedRef.current = null
+    return callbackRef.current.onSelectFile(path)
+  }, [])
+  const handleCreateChapterInVolume = useCallback((volumePath: string) => {
+    setCreateRequest({ kind: 'chapter', volumePath })
+  }, [])
 
   const cancelScheduledLocate = useCallback(() => {
     if (locateFrameRef.current === null) return
@@ -229,11 +267,18 @@ export function ChapterOutline({
   const stableRevealFile = onRevealFile ? handleRevealFile : undefined
   const stableRenameItem = onRenameItem ? handleRenameItem : undefined
   const stableDeleteItem = onDeleteItem ? handleDeleteItem : undefined
+  const stableCopyItem = onCopyItem ? handleCopyItem : undefined
+  const existingPaths = useMemo(() => flattenFileTree(tree), [tree])
+  const existingPathsRef = useRef(existingPaths)
+  existingPathsRef.current = existingPaths
+  const getExistingPaths = useCallback(() => existingPathsRef.current, [])
+  const chapterFileOperations = useMemo<OutlineFileMenuOperations>(() => ({
+    projectId,
+    workspace,
+    getExistingPaths,
+    onCopyItem: stableCopyItem,
+  }), [getExistingPaths, projectId, stableCopyItem, workspace])
   const chapterCountLabel = useCallback((count: number) => t('common.chapters', { count }), [t])
-  const bookStats = chapterCount === undefined || totalWords === undefined
-    ? ''
-    : `${t('common.chapters', { count: formatLocaleNumber(chapterCount) })} · ${t('common.words', { count: formatLocaleNumber(totalWords) })}`
-
   const bookSettingsHeaderFrame = (
     <div
       data-testid="book-settings-header-frame"
@@ -335,7 +380,19 @@ export function ChapterOutline({
           <section className="space-y-1.5">
             <div className="flex items-center justify-between gap-2 px-1 text-[11px] font-medium text-[var(--nova-text-faint)]">
               <span className="shrink-0">{t('planning.volumeChapters')}</span>
-              {bookStats ? <span className="min-w-0 truncate text-right font-normal" title={bookStats}>{bookStats}</span> : null}
+              <div className="flex items-center gap-1">
+                {volumes.length > 0 ? (
+                  <TooltipIconButton
+                    label={t(allVolumesCollapsed ? 'common.expandAll' : 'common.collapseAll')}
+                    tooltipSide="bottom"
+                    className="shrink-0"
+                    onClick={toggleAllVolumes}
+                  >
+                    {allVolumesCollapsed ? <ChevronsUpDown className="h-3.5 w-3.5" /> : <ChevronsDownUp className="h-3.5 w-3.5" />}
+                  </TooltipIconButton>
+                ) : null}
+                {onCreateItem ? <ManuscriptCreateMenu onSelect={setCreateRequest} /> : null}
+              </div>
             </div>
             {volumes.length === 0 ? <PlanningEmptyState text={t('planning.noChapters')} /> : null}
           </section>
@@ -363,7 +420,21 @@ export function ChapterOutline({
         onRevealFile={stableRevealFile}
         onRenameItem={stableRenameItem}
         onDeleteItem={stableDeleteItem}
+        onCreateChapterInVolume={onCreateItem ? handleCreateChapterInVolume : undefined}
+        fileOperations={chapterFileOperations}
       />
+      {onCreateItem ? (
+        <ManuscriptCreateDialog
+          projectId={projectId}
+          request={createRequest}
+          chapters={chapters}
+          volumes={volumes}
+          defaultVolumePath={defaultVolumePath}
+          onOpenChange={(open) => { if (!open) setCreateRequest(null) }}
+          onCreateFile={handleCreateFile}
+          onCreated={handleCreatedChapter}
+        />
+      ) : null}
     </div>
   )
 }

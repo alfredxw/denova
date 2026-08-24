@@ -1,4 +1,4 @@
-import type { Key, ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -20,16 +20,12 @@ vi.mock('@/lib/api', async (importOriginal) => ({
 vi.mock('react-virtuoso', () => ({
   GroupedVirtuoso: ({
     groupCounts = [],
-    data = [],
     groupContent,
     itemContent,
-    computeItemKey,
   }: {
     groupCounts?: number[]
-    data?: WorkspaceSearchResult[]
     groupContent?: (groupIndex: number) => ReactNode
-    itemContent?: (index: number, groupIndex: number, item: WorkspaceSearchResult) => ReactNode
-    computeItemKey?: (index: number, item?: WorkspaceSearchResult) => Key
+    itemContent?: (index: number, groupIndex: number) => ReactNode
   }) => {
     let itemOffset = 0
     return (
@@ -38,14 +34,13 @@ vi.mock('react-virtuoso', () => ({
           const groupOffset = itemOffset
           itemOffset += count
           return (
-            <section key={computeItemKey?.(groupIndex, undefined) ?? groupIndex}>
+            <section key={groupIndex}>
               {groupContent?.(groupIndex)}
               {Array.from({ length: count }, (_, localIndex) => {
                 const index = groupOffset + localIndex
-                const item = data[index]
                 return (
-                  <div key={computeItemKey?.(index, item) ?? index}>
-                    {itemContent?.(index, groupIndex, item)}
+                  <div key={index}>
+                    {itemContent?.(index, groupIndex)}
                   </div>
                 )
               })}
@@ -57,43 +52,24 @@ vi.mock('react-virtuoso', () => ({
   },
 }))
 
-vi.mock('@/components/ui/dropdown-menu', () => ({
-  DropdownMenu: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  DropdownMenuTrigger: ({ children }: { children: ReactNode }) => <>{children}</>,
-  DropdownMenuContent: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  DropdownMenuCheckboxItem: ({
-    children,
-    checked,
-    onCheckedChange,
-  }: {
-    children: ReactNode
-    checked: boolean
-    onCheckedChange: (checked: boolean) => void
-  }) => (
-    <button type="button" role="menuitemcheckbox" aria-checked={checked} onClick={() => onCheckedChange(!checked)}>
-      {children}
-    </button>
-  ),
-  DropdownMenuItem: ({ children, onSelect }: { children: ReactNode; onSelect: () => void }) => (
-    <button type="button" role="menuitem" onClick={onSelect}>{children}</button>
-  ),
-}))
-
 describe('SearchPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     api.searchWorkspace.mockResolvedValue([])
   })
 
-  it('focuses the full-width query and keeps regex and replace in search options', async () => {
+  it('focuses the full-width query and exposes regex and replace as independent toggles', async () => {
     const user = userEvent.setup()
     render(<SearchPanel projectId="book-a" onSelectResult={vi.fn()} />)
 
     const input = screen.getByPlaceholderText('搜索当前书籍...')
+    const regexToggle = screen.getByRole('button', { name: '正则匹配' })
+    const replaceToggle = screen.getByRole('button', { name: '替换' })
     expect(input).toHaveFocus()
+    expect(regexToggle).toHaveAttribute('aria-pressed', 'false')
+    expect(replaceToggle).toHaveAttribute('aria-pressed', 'false')
 
-    await user.click(screen.getByRole('button', { name: '搜索选项' }))
-    await user.click(screen.getByRole('menuitemcheckbox', { name: '正则匹配' }))
+    await user.click(regexToggle)
     await user.type(input, 'alpha')
 
     await waitFor(() => expect(api.searchWorkspace).toHaveBeenLastCalledWith(
@@ -102,9 +78,10 @@ describe('SearchPanel', () => {
       100,
       { regex: true },
     ))
+    expect(regexToggle).toHaveAttribute('aria-pressed', 'true')
 
-    await user.click(screen.getByRole('button', { name: '搜索选项' }))
-    await user.click(screen.getByRole('menuitem', { name: '替换' }))
+    await user.click(replaceToggle)
+    expect(replaceToggle).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByPlaceholderText('替换为...')).toBeVisible()
   })
 

@@ -11,6 +11,7 @@ import { BookOpen, ChevronDown, ChevronRight } from 'lucide-react'
 import { Virtuoso, type Components, type VirtuosoHandle } from 'react-virtuoso'
 import type { ChapterSummary } from '@/lib/api'
 import { ChapterOutlineItem } from './ChapterOutlineItem'
+import { OutlineFileActions, type OutlineFileMenuOperations } from './OutlineFileActions'
 
 export interface ChapterOutlineVolume {
   key: string
@@ -38,6 +39,8 @@ interface ChapterOutlineListProps {
   onRevealFile?: (path: string) => void | Promise<void>
   onRenameItem?: (path: string, newName: string) => Promise<void>
   onDeleteItem?: (path: string) => Promise<void>
+  onCreateChapterInVolume?: (volumePath: string) => void
+  fileOperations: OutlineFileMenuOperations
 }
 
 interface VolumeRow {
@@ -66,6 +69,8 @@ interface ChapterOutlineListContext {
   onRevealFile?: (path: string) => void | Promise<void>
   onRenameItem?: (path: string, newName: string) => Promise<void>
   onDeleteItem?: (path: string) => Promise<void>
+  onCreateChapterInVolume?: (volumePath: string) => void
+  fileOperations: OutlineFileMenuOperations
 }
 
 const OUTLINE_LIST_COMPONENTS: Components<ChapterOutlineRow, ChapterOutlineListContext> = {
@@ -92,6 +97,8 @@ export const ChapterOutlineList = forwardRef<ChapterOutlineListHandle, ChapterOu
   onRevealFile,
   onRenameItem,
   onDeleteItem,
+  onCreateChapterInVolume,
+  fileOperations,
 }, forwardedRef) {
   const virtuosoRef = useRef<VirtuosoHandle>(null)
   const scrollerRef = useRef<HTMLElement | null>(null)
@@ -136,7 +143,9 @@ export const ChapterOutlineList = forwardRef<ChapterOutlineListHandle, ChapterOu
     onRevealFile,
     onRenameItem,
     onDeleteItem,
-  }), [chapterCountLabel, header, onDeleteItem, onReferenceFile, onRenameItem, onRevealFile, onSelectFile, onSetChapterConfirmed, onToggleVolume, selectedFile])
+    onCreateChapterInVolume,
+    fileOperations,
+  }), [chapterCountLabel, fileOperations, header, onCreateChapterInVolume, onDeleteItem, onReferenceFile, onRenameItem, onRevealFile, onSelectFile, onSetChapterConfirmed, onToggleVolume, selectedFile])
 
   const handleScrollerRef = useCallback((element: HTMLElement | Window | null) => {
     scrollerRef.current = element instanceof HTMLElement ? element : null
@@ -179,22 +188,27 @@ function renderChapterOutlineRow(_index: number, row: ChapterOutlineRow, context
     const countLabel = context.chapterCountLabel(volume.chapters.length)
     return (
       <div className="px-2 pb-1 pt-1.5">
-        <button
-          type="button"
-          className="nova-nav-item flex w-full items-center gap-2 border border-transparent bg-[var(--nova-surface)] px-2 py-1.5 text-left"
-          aria-label={`${volume.label} ${countLabel}`}
-          aria-expanded={expanded}
-          onClick={() => context.onToggleVolume(volume.key)}
+        <OutlineFileActions
+          path={volume.key}
+          onCreateChapter={context.onCreateChapterInVolume}
         >
-          {expanded ? (
-            <ChevronDown className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />
-          ) : (
-            <ChevronRight className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />
-          )}
-          <BookOpen className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />
-          <span className="min-w-0 flex-1 truncate text-xs font-medium text-[var(--nova-text)]">{volume.label}</span>
-          <span className="shrink-0 text-[11px] text-[var(--nova-text-faint)]">{countLabel}</span>
-        </button>
+          <button
+            type="button"
+            className="nova-nav-item flex w-full items-center gap-2 border border-transparent bg-[var(--nova-surface)] px-2 py-1.5 pr-8 text-left"
+            aria-label={`${volume.label} ${countLabel}`}
+            aria-expanded={expanded}
+            onClick={() => context.onToggleVolume(volume.key)}
+          >
+            {expanded ? (
+              <ChevronDown className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />
+            ) : (
+              <ChevronRight className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />
+            )}
+            <BookOpen className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />
+            <span className="min-w-0 flex-1 truncate text-xs font-medium text-[var(--nova-text)]">{volume.label}</span>
+            <span className="shrink-0 text-[11px] text-[var(--nova-text-faint)]">{countLabel}</span>
+          </button>
+        </OutlineFileActions>
       </div>
     )
   }
@@ -211,6 +225,7 @@ function renderChapterOutlineRow(_index: number, row: ChapterOutlineRow, context
         onRevealFile={context.onRevealFile}
         onRenameItem={context.onRenameItem}
         onDeleteItem={context.onDeleteItem}
+        fileOperations={context.fileOperations}
       />
     </div>
   )

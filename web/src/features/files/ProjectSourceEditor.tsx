@@ -52,8 +52,14 @@ export const ProjectTextEditor = forwardRef<ProjectTextEditorHandle, ProjectText
 }, forwardedRef) {
   const { t } = useTranslation()
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
-  const actionDisposablesRef = useRef<IDisposable[]>([])
-  const initialValueRef = useRef(value)
+  const pendingRevealLineRef = useRef<number | null>(null)
+  const editorDisposablesRef = useRef<IDisposable[]>([])
+  const modelPath = projectFileModelPath(projectId, document.path)
+  const modelPathRef = useRef(modelPath)
+  const modelDefaultRef = useRef({ path: modelPath, value })
+  if (modelDefaultRef.current.path !== modelPath) {
+    modelDefaultRef.current = { path: modelPath, value }
+  }
   const valueRef = useRef(value)
   const onSaveRef = useRef(onSave)
   const onWordWrapToggleRef = useRef(onWordWrapToggle)
@@ -61,25 +67,44 @@ export const ProjectTextEditor = forwardRef<ProjectTextEditorHandle, ProjectText
   onSaveRef.current = onSave
   onWordWrapToggleRef.current = onWordWrapToggle
   onQuoteSelectionRef.current = onQuoteSelection
+  modelPathRef.current = modelPath
   valueRef.current = value
+
+  // Monaco changes the active path model after React layout effects. Guard
+  // every external write by URI, then synchronize again on the model event.
+  const syncCurrentModel = useCallback(() => {
+    const model = editorRef.current?.getModel()
+    if (!model || model.uri.toString() !== modelPathRef.current) return false
+    if (model.getValue() !== valueRef.current) model.setValue(valueRef.current)
+    return true
+  }, [])
+
+  const revealLine = useCallback((line: number) => {
+    const editorInstance = editorRef.current
+    const model = editorInstance?.getModel()
+    if (!editorInstance || !model || model.uri.toString() !== modelPathRef.current) {
+      pendingRevealLineRef.current = line
+      return
+    }
+    pendingRevealLineRef.current = null
+    const safeLine = Math.max(1, Math.min(line, model.getLineCount()))
+    editorInstance.revealLineInCenter(safeLine)
+    editorInstance.setPosition({ lineNumber: safeLine, column: 1 })
+    editorInstance.focus()
+  }, [])
 
   useImperativeHandle(forwardedRef, () => ({
     getValue: () => editorRef.current?.getValue() ?? valueRef.current,
     replaceValue: (nextValue) => {
-      const model = editorRef.current?.getModel()
-      if (model && model.getValue() !== nextValue) model.setValue(nextValue)
       valueRef.current = nextValue
+      const model = editorRef.current?.getModel()
+      if (model?.uri.toString() === modelPathRef.current && model.getValue() !== nextValue) {
+        model.setValue(nextValue)
+      }
     },
-    revealLine: (line) => {
-      const editorInstance = editorRef.current
-      if (!editorInstance) return
-      const safeLine = Math.max(1, Math.min(line, editorInstance.getModel()?.getLineCount() ?? 1))
-      editorInstance.revealLineInCenter(safeLine)
-      editorInstance.setPosition({ lineNumber: safeLine, column: 1 })
-      editorInstance.focus()
-    },
+    revealLine,
     focus: () => editorRef.current?.focus(),
-  }), [])
+  }), [revealLine])
 
   const options = useMemo<editor.IStandaloneEditorConstructionOptions>(() => ({
     ariaLabel: t('files.editor.source', { path: document.path }),
@@ -124,31 +149,37 @@ export const ProjectTextEditor = forwardRef<ProjectTextEditorHandle, ProjectText
 
   const handleMount = useCallback<OnMount>((editorInstance, monaco) => {
     editorRef.current = editorInstance
-    const model = editorInstance.getModel()
-    if (model && model.getValue() !== valueRef.current) model.setValue(valueRef.current)
-    actionDisposablesRef.current.forEach((disposable) => disposable.dispose())
-    actionDisposablesRef.current = installEditorActions(editorInstance, monaco, {
-      saveLabel: t('files.editor.save'),
-      wrapLabel: t('files.editor.toggleWordWrap'),
-      quoteLabel: t('editor.quoteSelectionShortcut'),
-      onSave: () => onSaveRef.current(),
-      onWordWrapToggle: () => onWordWrapToggleRef.current(),
-      onQuoteSelection: onQuoteSelectionRef.current ? () => {
-        const selection = editorInstance.getSelection()
-        const selectedText = selection ? editorInstance.getModel()?.getValueInRange(selection) ?? '' : ''
-        if (!selection || !selectedText.trim()) return
-        onQuoteSelectionRef.current?.({
-          content: selectedText,
-          startLine: selection.startLineNumber,
-          endLine: selection.endLineNumber,
-        })
-      } : undefined,
-    })
-  }, [t])
+    editorDisposablesRef.current.forEach((disposable) => disposable.dispose())
+    editorDisposablesRef.current = [
+      editorInstance.onDidChangeModel(() => {
+        if (!syncCurrentModel()) return
+        if (pendingRevealLineRef.current !== null) revealLine(pendingRevealLineRef.current)
+      }),
+      ...installEditorActions(editorInstance, monaco, {
+        saveLabel: t('files.editor.save'),
+        wrapLabel: t('files.editor.toggleWordWrap'),
+        quoteLabel: t('editor.quoteSelectionShortcut'),
+        onSave: () => onSaveRef.current(),
+        onWordWrapToggle: () => onWordWrapToggleRef.current(),
+        onQuoteSelection: onQuoteSelectionRef.current ? () => {
+          const selection = editorInstance.getSelection()
+          const selectedText = selection ? editorInstance.getModel()?.getValueInRange(selection) ?? '' : ''
+          if (!selection || !selectedText.trim()) return
+          onQuoteSelectionRef.current?.({
+            content: selectedText,
+            startLine: selection.startLineNumber,
+            endLine: selection.endLineNumber,
+          })
+        } : undefined,
+      }),
+    ]
+    if (!syncCurrentModel()) return
+    if (pendingRevealLineRef.current !== null) revealLine(pendingRevealLineRef.current)
+  }, [revealLine, syncCurrentModel, t])
 
   useEffect(() => () => {
-    actionDisposablesRef.current.forEach((disposable) => disposable.dispose())
-    actionDisposablesRef.current = []
+    editorDisposablesRef.current.forEach((disposable) => disposable.dispose())
+    editorDisposablesRef.current = []
     editorRef.current = null
   }, [])
 
@@ -156,11 +187,9 @@ export const ProjectTextEditor = forwardRef<ProjectTextEditorHandle, ProjectText
   // keystrokes therefore stay inside Monaco; only an external rebase touches
   // the model, eliminating a React round trip from the scrolling hot path.
   useEffect(() => {
-    const model = editorRef.current?.getModel()
     if (!syncExternalValue) return
-    const externalValue = valueRef.current
-    if (model && model.getValue() !== externalValue) model.setValue(externalValue)
-  }, [document.revision, syncExternalValue])
+    syncCurrentModel()
+  }, [document.revision, syncCurrentModel, syncExternalValue])
 
   return (
     <div
@@ -171,9 +200,9 @@ export const ProjectTextEditor = forwardRef<ProjectTextEditorHandle, ProjectText
     >
       <DenovaMonacoEditor
         height="100%"
-        path={projectFileModelPath(projectId, document.path)}
+        path={modelPath}
         language={projectFileLanguage(document.path)}
-        defaultValue={initialValueRef.current}
+        defaultValue={modelDefaultRef.current.value}
         keepCurrentModel={false}
         saveViewState={false}
         onChange={handleChange}

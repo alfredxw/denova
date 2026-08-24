@@ -10,10 +10,16 @@ const api = vi.hoisted(() => ({
   saveProjectFile: vi.fn(),
   setProjectChapterConfirmed: vi.fn(),
 }))
+const projectFiles = vi.hoisted(() => ({ applyProjectFileOperations: vi.fn() }))
 
 vi.mock('@/lib/api', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/lib/api')>(),
   ...api,
+}))
+
+vi.mock('@/lib/api-client/project-files', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/lib/api-client/project-files')>(),
+  ...projectFiles,
 }))
 
 vi.mock('@/components/layout/adaptive-surface', () => ({
@@ -24,13 +30,19 @@ vi.mock('@/components/layout/adaptive-surface', () => ({
 }))
 
 vi.mock('@/components/workbench/outline/ChapterOutline', () => ({
-  ChapterOutline: ({ projectId, onSetChapterConfirmed }: {
+  ChapterOutline: ({ projectId, onCreateItem, onSetChapterConfirmed }: {
     projectId: string
+    onCreateItem: (path: string, type: 'file' | 'dir') => Promise<void>
     onSetChapterConfirmed: (path: string, confirmed: boolean) => Promise<void>
   }) => (
-    <button type="button" onClick={() => void onSetChapterConfirmed('chapters/ch01.md', true)}>
-      Confirm {projectId}
-    </button>
+    <div>
+      <button type="button" onClick={() => void onSetChapterConfirmed('chapters/ch01.md', true)}>
+        Confirm {projectId}
+      </button>
+      <button type="button" onClick={() => void onCreateItem('chapters/ch00002-new.md', 'file')}>
+        Create chapter {projectId}
+      </button>
+    </div>
   ),
 }))
 
@@ -101,6 +113,37 @@ describe('ProjectWritingSurface', () => {
       changed: true,
     })
     api.setProjectChapterConfirmed.mockResolvedValue({ confirmed: true })
+    projectFiles.applyProjectFileOperations.mockResolvedValue([{
+      kind: 'create',
+      ok: true,
+      path: 'chapters/ch00002-new.md',
+    }])
+  })
+
+  it('creates chapters in an embedded Book without switching the foreground workspace', async () => {
+    const user = userEvent.setup()
+    const onWorkspaceChanged = vi.fn()
+    render(
+      <ProjectWritingSurface
+        projectId="book-b"
+        documentReview={{ comments: [], onCreate: vi.fn(), onUpdate: vi.fn(), onDelete: vi.fn() }}
+        onFlushHandlerChange={vi.fn()}
+        onWorkspaceChanged={onWorkspaceChanged}
+      />,
+    )
+
+    await user.click(await screen.findByRole('button', { name: 'Create chapter book-b' }))
+
+    await waitFor(() => expect(projectFiles.applyProjectFileOperations).toHaveBeenCalledWith('book-b', [{
+      kind: 'create',
+      path: 'chapters/ch00002-new.md',
+      type: 'file',
+      content: '',
+    }]))
+    expect(onWorkspaceChanged).toHaveBeenCalledWith(
+      ['chapters/ch00002-new.md'],
+      { impact: 'structure', origin: 'project-page' },
+    )
   })
 
   it('reads, edits, and confirms a background Book through its Project ID', async () => {

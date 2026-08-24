@@ -51,6 +51,7 @@ import { DocumentReviewAnnotations, type DocumentReviewAnnotationsHandle } from 
 import type { DocumentReviewSnapshot } from './documentReviewAnchors'
 import { createDocumentReviewExtension, type DocumentReviewDecorationState, type DocumentReviewPortalTarget } from './documentReviewDecorations'
 import { EditorPersistenceNotices } from './EditorPersistenceNotices'
+import { createSourceLineNumberExtension } from './editorSourceLineNumbers'
 
 export type { EditorFlushHandler } from './useEditorDraftPersistence'
 export type { DocumentReviewController, DocumentReviewNavigationIntent } from '@/features/document-review/controller'
@@ -135,6 +136,7 @@ export function WritingDocumentEditor({
   const searchStateRef = useRef<SearchState>({ query: '', index: 0, useRegex: false })
   const searchExtension = useMemo(() => createSearchHighlightExtension(searchStateRef), [])
   const dialogueHighlightExtension = useMemo(() => createDialogueHighlightExtension(), [])
+  const sourceLineNumberExtension = useMemo(() => createSourceLineNumberExtension(), [])
   const resourceScope = projectId
   const workspaceImageExtension = useMemo(
     () => createWorkspaceImageExtension((path) => projectFileAssetURL(projectId, path)),
@@ -163,6 +165,7 @@ export function WritingDocumentEditor({
       createIndentedHardBreakExtension(),
       searchExtension,
       dialogueHighlightExtension,
+      sourceLineNumberExtension,
       workspaceImageExtension,
       reviewExtension,
       TableKit.configure({
@@ -359,14 +362,20 @@ export function WritingDocumentEditor({
   useEffect(() => {
     if (!editor || !searchIntent || !searchIntent.query.trim()) return
     if (lastSearchIntentNonceRef.current === searchIntent.nonce) return
-    lastSearchIntentNonceRef.current = searchIntent.nonce
 
-    const matches = findSearchMatches(editor, searchIntent.query, useRegex)
-    const targetIndex = searchIntent.line > 0
-      ? matches.findIndex((match) => getLineNumber(editor.state.doc, match.from) === searchIntent.line)
-      : -1
-    updateSearch(searchIntent.query, targetIndex >= 0 ? targetIndex : 0)
-  }, [editor, searchIntent, updateSearch, useRegex])
+    // File navigation restores its saved view position on the next frame.
+    // Queue explicit search reveals after that work so the user's destination wins.
+    const frame = requestAnimationFrame(() => {
+      if (editor.isDestroyed) return
+      const matches = findSearchMatches(editor, searchIntent.query, useRegex)
+      const targetIndex = searchIntent.line > 0
+        ? matches.findIndex((match) => getLineNumber(editor.state.doc, match.from) === searchIntent.line)
+        : -1
+      updateSearch(searchIntent.query, targetIndex >= 0 ? targetIndex : 0)
+      lastSearchIntentNonceRef.current = searchIntent.nonce
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [editor, fileName, searchIntent, updateSearch, useRegex])
 
   useEffect(() => {
     if (!editor || !illustrationInsertSignal) return
@@ -541,7 +550,6 @@ export function WritingDocumentEditor({
         displayTitle={chapterSummary?.display_title}
         chapterPath={chapterSummary?.path}
         chapterWords={chapterSummary ? documentCharacters : undefined}
-        updatedAt={chapterSummary?.updated_at}
         currentLine={chapterSummary && editorFocused ? currentLine : undefined}
         saveStatus={saveStatus}
         onSave={handleSave}

@@ -3,6 +3,7 @@ import type { ProjectFileExplorerNode } from './model'
 import {
   buildProjectFileDuplicatePlan,
   buildProjectFilePastePlan,
+  nextProjectFileDuplicatePath,
 } from './operations'
 
 describe('project file tree operations', () => {
@@ -30,6 +31,13 @@ describe('project file tree operations', () => {
       { source: 'src', destination: 'src copy' },
       { source: 'docs/guide.md', destination: 'docs/guide copy 2.md' },
     ])
+  })
+
+  it('chooses a collision-free duplicate path from a flat workspace file list', () => {
+    expect(nextProjectFileDuplicatePath([
+      'chapters/chapter.md',
+      'chapters/chapter copy.md',
+    ], 'chapters/chapter.md')).toBe('chapters/chapter copy 2.md')
   })
 })
 

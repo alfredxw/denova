@@ -12,7 +12,6 @@ import {
   ClipboardPaste,
   Copy,
   CopyPlus,
-  Eye,
   FilePlus2,
   FolderSearch,
   FolderPlus,
@@ -28,6 +27,7 @@ import { DeleteConfirmDialog } from '@/components/Sidebar/DeleteConfirmDialog'
 import { FileTreeMenu, FileTreeMenuItem, FileTreeMenuSeparator, FileTreeMenuShortcut } from '@/components/file-tree/FileTreeMenu'
 import { NovaFileTree } from '@/components/file-tree/NovaFileTree'
 import { applicationFileTreePath, canonicalFileTreePath, writeClipboardText } from '@/components/file-tree/paths'
+import { fileTreeMenuPlatformPresentation } from '@/components/file-tree/platform'
 import type { ProjectFileExplorerNode } from './model'
 import { projectFileTreeProjection } from './model'
 import {
@@ -58,6 +58,7 @@ interface ProjectExplorerTreeProps {
   onCopyItem: (from: string, to: string) => Promise<void>
   onMoveItem: (from: string, to: string) => Promise<void>
   onRevealItem: (path: string) => Promise<void>
+  hideWritingFilenameAffixes?: boolean
   extensions?: ProjectExplorerExtensions
 }
 
@@ -89,6 +90,7 @@ export const ProjectExplorerTree = forwardRef<ProjectExplorerTreeHandle, Project
   onCopyItem,
   onMoveItem,
   onRevealItem,
+  hideWritingFilenameAffixes = false,
   extensions = {},
 }, ref) {
   const { t } = useTranslation()
@@ -101,9 +103,14 @@ export const ProjectExplorerTree = forwardRef<ProjectExplorerTreeHandle, Project
   const [clipboard, setClipboard] = useState<ProjectFileClipboard | null>(null)
   const [deletePaths, setDeletePaths] = useState<string[]>([])
   const projection = useMemo(() => projectFileTreeProjection(nodes), [nodes])
-  const platformPresentation = useMemo(projectFileTreePlatformPresentation, [])
+  const platformPresentation = useMemo(fileTreeMenuPlatformPresentation, [])
   const canonicalExpandedPaths = useMemo(() => expandedPaths.map((path) => canonicalFileTreePath(path, true)), [expandedPaths])
   const canonicalSelectedPaths = useMemo(() => selectedPath ? [selectedPath] : [], [selectedPath])
+  const getDisplayName = useCallback((path: string) => {
+    if (!hideWritingFilenameAffixes) return null
+    const node = projection.nodesByPath.get(applicationFileTreePath(path))
+    return node ? writingFilenameDisplayName(node) : null
+  }, [hideWritingFilenameAffixes, projection.nodesByPath])
   const mergedGitStatus = useMemo(() => {
     const statuses = new Map(gitStatus.map((entry) => [entry.path, entry]))
     for (const node of projection.nodesByPath.values()) {
@@ -320,9 +327,6 @@ export const ProjectExplorerTree = forwardRef<ProjectExplorerTreeHandle, Project
         <FileTreeMenuItem onClick={() => closeThen(() => copyPath(path, false))}><Copy />{t('sidebar.copyPath')}<FileTreeMenuShortcut>{platformPresentation.copyPath}</FileTreeMenuShortcut></FileTreeMenuItem>
         <FileTreeMenuItem onClick={() => closeThen(() => copyPath(path, true))}><Copy />{t('sidebar.copyRelativePath')}<FileTreeMenuShortcut>{platformPresentation.copyRelativePath}</FileTreeMenuShortcut></FileTreeMenuItem>
         <FileTreeMenuItem disabled={busy || containsSymlink} onClick={() => closeThen(() => duplicatePaths(actionPaths))}><CopyPlus />{t('sidebar.duplicate')}</FileTreeMenuItem>
-        {node.type === 'file' ? (
-          <FileTreeMenuItem onClick={() => closeThen(() => onSelectFile(path))}><Eye />{t('sidebar.viewFile')}</FileTreeMenuItem>
-        ) : null}
         <FileTreeMenuItem onClick={() => closeThen(() => revealItem(path))}><FolderSearch />{t(platformPresentation.revealKey)}</FileTreeMenuItem>
         <FileTreeMenuSeparator />
         <FileTreeMenuItem disabled={busy} onClick={() => closeThen(() => { tree?.startRenaming(item.path) }, false)}><Pencil />{t('sidebar.rename')}</FileTreeMenuItem>
@@ -420,6 +424,7 @@ export const ProjectExplorerTree = forwardRef<ProjectExplorerTreeHandle, Project
               console.error('[features/project-explorer/ProjectExplorerTree.tsx] Pierre rejected a project file rename', { error })
             },
           }}
+          getDisplayName={getDisplayName}
           renderRowDecoration={({ item }) => (
             projection.nodesByPath.get(applicationFileTreePath(item.path))?.symlink ? { text: '↗' } : null
           )}
@@ -484,13 +489,14 @@ function consumeKeyboardEvent(event: ReactKeyboardEvent) {
   event.stopPropagation()
 }
 
-function projectFileTreePlatformPresentation() {
-  const platform = typeof navigator === 'undefined' ? '' : navigator.platform
-  if (/Mac|iPhone|iPad/.test(platform)) {
-    return { copy: '⌘C', copyPath: '⌘⌥C', copyRelativePath: '⌘⌥⇧C', delete: '⌘⌫', revealKey: 'sidebar.revealInFinder' as const }
+const HIDDEN_CHAPTER_AFFIX_PATTERN = /^ch\d{5}[-_ ]+(.+)\.md$/i
+const HIDDEN_VOLUME_PREFIX_PATTERN = /^v\d{5}[-_ ]+(.+)$/i
+
+function writingFilenameDisplayName(node: ProjectFileExplorerNode) {
+  if (!node.path.startsWith('chapters/')) return null
+  if (node.type === 'file') return node.name.match(HIDDEN_CHAPTER_AFFIX_PATTERN)?.[1] ?? null
+  if (node.type === 'dir' && projectParentPath(node.path) === 'chapters') {
+    return node.name.match(HIDDEN_VOLUME_PREFIX_PATTERN)?.[1] ?? null
   }
-  if (/Win/.test(platform)) {
-    return { copy: 'Ctrl+C', copyPath: 'Ctrl+Alt+C', copyRelativePath: 'Ctrl+Alt+Shift+C', delete: 'Delete', revealKey: 'sidebar.revealInFileExplorer' as const }
-  }
-  return { copy: 'Ctrl+C', copyPath: 'Ctrl+Alt+C', copyRelativePath: 'Ctrl+Alt+Shift+C', delete: 'Delete', revealKey: 'sidebar.revealInFileManager' as const }
+  return null
 }

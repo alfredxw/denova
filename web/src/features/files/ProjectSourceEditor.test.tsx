@@ -1,7 +1,13 @@
-import { render } from '@testing-library/react'
+import { act, render } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { createRef } from 'react'
 import type { ProjectFileDocument } from '@/lib/api-client/project-files'
-import { ProjectSourceEditor, projectFileModelPath } from './ProjectSourceEditor'
+import {
+  ProjectSourceEditor,
+  ProjectTextEditor,
+  type ProjectTextEditorHandle,
+  projectFileModelPath,
+} from './ProjectSourceEditor'
 
 const { editorProps } = vi.hoisted(() => ({ editorProps: [] as Array<Record<string, unknown>> }))
 
@@ -75,8 +81,13 @@ describe('ProjectSourceEditor', () => {
     const setValue = vi.fn()
     const addAction = vi.fn(() => ({ dispose: vi.fn() }))
     ;(edited.onMount as (editor: unknown, monaco: unknown) => void)({
-      getModel: () => ({ getValue: () => 'before\n', setValue }),
+      getModel: () => ({
+        uri: { toString: () => projectFileModelPath('project one', document.path) },
+        getValue: () => 'before\n',
+        setValue,
+      }),
       addAction,
+      onDidChangeModel: vi.fn(() => ({ dispose: vi.fn() })),
     }, {
       KeyMod: { CtrlCmd: 1, Alt: 2 },
       KeyCode: { KeyS: 3, KeyZ: 4 },
@@ -85,6 +96,104 @@ describe('ProjectSourceEditor', () => {
 
     rerender(<ProjectSourceEditor {...common} value={'locally edited\n'} wordWrap={false} />)
     expect(editorProps.at(-1)?.options).toMatchObject({ wordWrap: 'off' })
+  })
+
+  it('seeds a newly selected file model with that file content', () => {
+    const common = {
+      projectId: 'project one',
+      wordWrap: true,
+      onWordWrapToggle: vi.fn(),
+      onChange: vi.fn(),
+      onSave: vi.fn(),
+    }
+    const { rerender } = render(
+      <ProjectSourceEditor {...common} document={document} value={'before\n'} />,
+    )
+
+    const nextDocument: ProjectFileDocument = {
+      ...document,
+      path: 'src/second file.ts',
+      content: 'content from second file\n',
+      revision: 'r2',
+    }
+    rerender(
+      <ProjectSourceEditor
+        {...common}
+        document={nextDocument}
+        value={'content from second file\n'}
+      />,
+    )
+
+    expect(editorProps.at(-1)).toMatchObject({
+      path: projectFileModelPath('project one', 'src/second file.ts'),
+      defaultValue: 'content from second file\n',
+    })
+  })
+
+  it('waits for Monaco to switch models before synchronizing the selected file content', () => {
+    const firstPath = projectFileModelPath('project one', document.path)
+    const secondDocument: ProjectFileDocument = {
+      ...document,
+      path: 'src/second file.ts',
+      content: 'content from second file\n',
+      revision: 'r2',
+    }
+    const secondPath = projectFileModelPath('project one', secondDocument.path)
+    const firstSetValue = vi.fn()
+    const secondSetValue = vi.fn()
+    const firstModel = {
+      uri: { toString: () => firstPath },
+      getValue: () => 'before\n',
+      setValue: firstSetValue,
+      getLineCount: () => 20,
+    }
+    const secondModel = {
+      uri: { toString: () => secondPath },
+      getValue: () => 'stale second content\n',
+      setValue: secondSetValue,
+      getLineCount: () => 20,
+    }
+    let currentModel = firstModel
+    let notifyModelChange = () => {}
+    const editor = {
+      getModel: () => currentModel,
+      addAction: vi.fn(() => ({ dispose: vi.fn() })),
+      onDidChangeModel: vi.fn((listener: () => void) => {
+        notifyModelChange = listener
+        return { dispose: vi.fn() }
+      }),
+    }
+    const common = {
+      projectId: 'project one',
+      wordWrap: true,
+      onWordWrapToggle: vi.fn(),
+      onChange: vi.fn(),
+      onSave: vi.fn(),
+    }
+    const { rerender } = render(
+      <ProjectSourceEditor {...common} document={document} value={'before\n'} />,
+    )
+    act(() => {
+      ;(editorProps.at(-1)?.onMount as (editor: unknown, monaco: unknown) => void)(editor, {
+        KeyMod: { CtrlCmd: 1, Alt: 2 },
+        KeyCode: { KeyS: 3, KeyZ: 4 },
+      })
+    })
+
+    rerender(
+      <ProjectSourceEditor
+        {...common}
+        document={secondDocument}
+        value={'content from second file\n'}
+      />,
+    )
+
+    expect(firstSetValue).not.toHaveBeenCalledWith('content from second file\n')
+    act(() => {
+      currentModel = secondModel
+      notifyModelChange()
+    })
+    expect(secondSetValue).toHaveBeenCalledWith('content from second file\n')
   })
 
   it('creates an encoded, project-scoped model URI', () => {
@@ -113,5 +222,50 @@ describe('ProjectSourceEditor', () => {
 
     handleChange('typed by the user\n', { isFlush: false })
     expect(onChange).toHaveBeenCalledWith('typed by the user\n')
+  })
+
+  it('queues a requested line reveal until Monaco is mounted', () => {
+    const ref = createRef<ProjectTextEditorHandle>()
+    render(
+      <ProjectTextEditor
+        ref={ref}
+        projectId="project one"
+        document={document}
+        value="before\n"
+        wordWrap
+        onWordWrapToggle={vi.fn()}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+      />,
+    )
+
+    act(() => ref.current?.revealLine(7))
+
+    const revealLineInCenter = vi.fn()
+    const setPosition = vi.fn()
+    const focus = vi.fn()
+    const addAction = vi.fn(() => ({ dispose: vi.fn() }))
+    act(() => {
+      ;(editorProps.at(-1)?.onMount as (editor: unknown, monaco: unknown) => void)({
+        getModel: () => ({
+          uri: { toString: () => projectFileModelPath('project one', document.path) },
+          getValue: () => 'before\n',
+          setValue: vi.fn(),
+          getLineCount: () => 20,
+        }),
+        addAction,
+        onDidChangeModel: vi.fn(() => ({ dispose: vi.fn() })),
+        revealLineInCenter,
+        setPosition,
+        focus,
+      }, {
+        KeyMod: { CtrlCmd: 1, Alt: 2 },
+        KeyCode: { KeyS: 3, KeyZ: 4 },
+      })
+    })
+
+    expect(revealLineInCenter).toHaveBeenCalledWith(7)
+    expect(setPosition).toHaveBeenCalledWith({ lineNumber: 7, column: 1 })
+    expect(focus).toHaveBeenCalled()
   })
 })

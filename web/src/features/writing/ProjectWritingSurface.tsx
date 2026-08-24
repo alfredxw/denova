@@ -26,7 +26,7 @@ import {
   type WorkspaceSearchResult,
   type WorkspaceSummary,
 } from '@/lib/api'
-import type { ProjectFileDocument } from '@/lib/api-client/project-files'
+import { applyProjectFileOperations, type ProjectFileDocument } from '@/lib/api-client/project-files'
 import { WorkspaceFileRevisionConflictError } from '@/lib/autosave/workspace-file-revision-conflict'
 
 interface ProjectWritingSurfaceProps {
@@ -243,6 +243,13 @@ export function ProjectWritingSurface({
     await onWorkspaceChanged?.([path], { impact: 'content', origin: 'project-page' })
   }, [loadSummary, onWorkspaceChanged, projectId])
 
+  const createItem = useCallback(async (path: string, type: 'file' | 'dir') => {
+    const [result] = await applyProjectFileOperations(projectId, [{ kind: 'create', path, type, content: '' }])
+    if (!result?.ok) throw new Error(result?.error || t('files.operation.failed'))
+    await loadSnapshot()
+    await onWorkspaceChanged?.([path], { impact: 'structure', origin: 'project-page' })
+  }, [loadSnapshot, onWorkspaceChanged, projectId, t])
+
   const selectSearchResult = useCallback(async (result: WorkspaceSearchResult, query: string) => {
     if (!await selectFile(result.path)) return
     setSearchIntent((current) => ({
@@ -291,14 +298,13 @@ export function ProjectWritingSurface({
             projectId={projectId}
             tree={tree}
             chapters={chapters}
-            chapterCount={summary?.chapter_count}
-            totalWords={summary?.total_words}
             ideas={summary?.ideas}
             outline={summary?.outline}
             chapterPlans={summary?.chapter_plans || []}
             selectedFile={selectedPath || null}
             onSelectFile={selectOutlineFile}
             onOpenLoreTab={onOpenLoreTab}
+            onCreateItem={createItem}
             onSetChapterConfirmed={setChapterConfirmed}
           />
         )}

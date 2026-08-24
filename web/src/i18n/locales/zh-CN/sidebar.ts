@@ -9,7 +9,6 @@ const sidebar = {
   'sidebar.copyPath': '复制路径',
   'sidebar.copyRelativePath': '复制相对路径',
   'sidebar.duplicate': '创建副本',
-  'sidebar.viewFile': '查看文件',
   'sidebar.revealInFinder': '在 Finder 中显示',
   'sidebar.revealInFileExplorer': '在文件资源管理器中显示',
   'sidebar.revealInFileManager': '在文件管理器中显示',

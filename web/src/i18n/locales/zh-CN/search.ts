@@ -8,7 +8,6 @@ const search = {
   'search.noResults': '没有找到匹配内容',
   'search.line': '第 {{line}} 行',
   'search.pathMatch': '路径匹配',
-  'search.options': '搜索选项',
   'search.toggleRegex': '正则匹配',
   'search.toggleReplace': '替换',
   'search.expandFileResults': '展开 {{name}} 的全部 {{count}} 条结果',

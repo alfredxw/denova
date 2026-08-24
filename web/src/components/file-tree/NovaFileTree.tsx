@@ -32,6 +32,14 @@ const NOVA_FILE_TREE_UNSAFE_CSS = `
 [data-type="item"][data-item-context-menu-button-visibility="when-needed"]:not(:hover):not(:focus-visible):not([data-item-context-hover="true"]) > [data-item-section="action"] {
   display: none;
 }
+
+[data-nova-file-tree-display-name] > :not([data-nova-file-tree-display-name-value]) {
+  display: none;
+}
+
+[data-nova-file-tree-display-name-value] {
+  white-space: nowrap;
+}
 `
 
 const COLOR_ONLY_GIT_STATUS_UNSAFE_CSS = `
@@ -53,6 +61,7 @@ export interface NovaFileTreeProps {
   gitStatusPresentation?: 'lane' | 'color-only'
   dragAndDrop?: false | FileTreeDragAndDropConfig
   renaming?: false | FileTreeRenamingConfig
+  getDisplayName?: (path: string) => string | null
   renderRowDecoration?: FileTreeRowDecorationRenderer
   renderContextMenu?: (item: ContextMenuItem, context: ContextMenuOpenContext) => ReactNode
   contextMenuTriggerMode?: ContextMenuTriggerMode
@@ -80,6 +89,7 @@ export const NovaFileTree = forwardRef<FileTreeModel, NovaFileTreeProps>(functio
   gitStatusPresentation = 'lane',
   dragAndDrop = false,
   renaming = false,
+  getDisplayName,
   renderRowDecoration,
   renderContextMenu,
   contextMenuTriggerMode = 'both',
@@ -212,6 +222,7 @@ export const NovaFileTree = forwardRef<FileTreeModel, NovaFileTreeProps>(functio
         searchLabel,
         optionsLabel: t('sidebar.moreActions'),
         renameLabel: t('files.tree.renameInput'),
+        getDisplayName,
         gitStatusLabels: {
           added: t('files.tree.git.added'),
           deleted: t('files.tree.git.deleted'),
@@ -231,7 +242,7 @@ export const NovaFileTree = forwardRef<FileTreeModel, NovaFileTreeProps>(functio
       window.clearTimeout(retry)
       observer?.disconnect()
     }
-  }, [ariaLabel, model, resolvedTheme, searchLabel, t])
+  }, [ariaLabel, getDisplayName, model, resolvedTheme, searchLabel, t])
 
   useEffect(() => {
     if (!onScrollOffsetChange) return
@@ -286,6 +297,7 @@ interface TreeLabels {
   searchLabel: string
   optionsLabel: string
   renameLabel: string
+  getDisplayName?: (path: string) => string | null
   gitStatusLabels: Record<'added' | 'deleted' | 'ignored' | 'modified' | 'renamed' | 'untracked' | 'descendant', string>
 }
 
@@ -304,10 +316,52 @@ function localizeTree(host: HTMLElement, labels: TreeLabels) {
     setAttribute(input, 'aria-label', labels.renameLabel.replace('{{name}}', name))
   }
   for (const row of root.querySelectorAll<HTMLElement>('[data-item-path]')) {
+    localizeDisplayName(row, labels.getDisplayName)
     const status = row.dataset.itemGitStatus as keyof TreeLabels['gitStatusLabels'] | undefined
     const git = row.querySelector('[data-item-section="git"]')
     if (git) setAttribute(git, 'title', status ? labels.gitStatusLabels[status] : labels.gitStatusLabels.descendant)
   }
+}
+
+function localizeDisplayName(row: HTMLElement, getDisplayName?: (path: string) => string | null) {
+  const flattenedSegments = row.querySelectorAll<HTMLElement>('[data-item-flattened-subitem]')
+  if (flattenedSegments.length > 0) {
+    const names = [...flattenedSegments].map((segment) => {
+      const path = segment.dataset.itemFlattenedSubitem ?? ''
+      const displayName = getDisplayName?.(path) ?? null
+      setDisplayName(segment, displayName)
+      return displayName ?? fileTreePathBaseName(path)
+    })
+    setAttribute(row, 'aria-label', names.join(' / '))
+    return
+  }
+
+  const path = row.dataset.itemPath ?? ''
+  const displayName = getDisplayName?.(path) ?? null
+  setDisplayName(row.querySelector<HTMLElement>('[data-item-section="content"]'), displayName)
+  setAttribute(row, 'aria-label', displayName ?? fileTreePathBaseName(path))
+}
+
+function setDisplayName(container: HTMLElement | null, displayName: string | null) {
+  if (!container) return
+  const current = [...container.children].find((child) => child.hasAttribute('data-nova-file-tree-display-name-value'))
+  if (!displayName || container.querySelector('[data-item-rename-input]')) {
+    current?.remove()
+    container.removeAttribute('data-nova-file-tree-display-name')
+    return
+  }
+  const value = current ?? container.ownerDocument.createElement('span')
+  if (!current) {
+    value.setAttribute('data-nova-file-tree-display-name-value', '')
+    container.append(value)
+  }
+  if (value.textContent !== displayName) value.textContent = displayName
+  container.setAttribute('data-nova-file-tree-display-name', '')
+}
+
+function fileTreePathBaseName(path: string) {
+  const value = path.endsWith('/') ? path.slice(0, -1) : path
+  return value.slice(value.lastIndexOf('/') + 1)
 }
 
 function setAttribute(element: Element | null, name: string, value: string) {

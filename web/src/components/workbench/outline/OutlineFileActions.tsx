@@ -1,6 +1,7 @@
 import { useCallback, useState, type MouseEvent, type ReactNode } from 'react'
-import { AtSign, FolderSearch, MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
+import { AtSign, Copy, CopyPlus, FilePlus2, FolderOpen, FolderSearch, MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -11,17 +12,30 @@ import {
 import { DeleteConfirmDialog } from '@/components/Sidebar/DeleteConfirmDialog'
 import { FileOperationDialog } from '@/components/Sidebar/FileOperationDialog'
 import '@/components/file-tree/FileTreeMenu.css'
+import { writeClipboardText } from '@/components/file-tree/paths'
+import { fileTreeMenuPlatformPresentation } from '@/components/file-tree/platform'
+import { absoluteProjectPath, nextProjectFileDuplicatePath } from '@/features/project-explorer/operations'
+import { revealProjectFile } from '@/lib/api-client/project-files'
 import { workspaceFileName } from '@/lib/workspace-path'
+
+export interface OutlineFileMenuOperations {
+  projectId: string
+  workspace?: string
+  getExistingPaths: () => readonly string[]
+  onCopyItem?: (from: string, to: string) => Promise<void>
+}
 
 interface OutlineFileActionsProps {
   path: string
   children: ReactNode
   triggerPlacement?: 'center' | 'top'
   showTrigger?: boolean
+  fileOperations?: OutlineFileMenuOperations
   onReferenceFile?: (path: string) => void
   onRevealFile?: (path: string) => void | Promise<void>
   onRenameItem?: (path: string, newName: string) => Promise<void>
   onDeleteItem?: (path: string) => Promise<void>
+  onCreateChapter?: (volumePath: string) => void
 }
 
 interface OutlineFileAction {
@@ -40,17 +54,60 @@ export function OutlineFileActions({
   children,
   triggerPlacement = 'center',
   showTrigger = true,
+  fileOperations,
   onReferenceFile,
   onRevealFile,
   onRenameItem,
   onDeleteItem,
+  onCreateChapter,
 }: OutlineFileActionsProps) {
   const { t } = useTranslation()
   const [renameOpen, setRenameOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
-  const actions = compactActions([
-    ...(onReferenceFile ? [{ label: t('sidebar.referenceToChat'), icon: <AtSign className="h-3.5 w-3.5" />, onSelect: () => onReferenceFile(path) }] : []),
+  const platformPresentation = fileTreeMenuPlatformPresentation()
+  const copyPath = (relative: boolean) => {
+    const value = relative || !fileOperations?.workspace
+      ? path
+      : absoluteProjectPath(fileOperations.workspace, path)
+    void writeClipboardText(value).catch((cause) => {
+      console.error('[components/workbench/outline/OutlineFileActions.tsx] copying outline file path failed', { path, relative, cause })
+      toast.error(t('files.tree.copyPathFailed'))
+    })
+  }
+  const duplicateFile = () => {
+    if (!fileOperations?.onCopyItem) return
+    const destination = nextProjectFileDuplicatePath(fileOperations.getExistingPaths(), path)
+    void fileOperations.onCopyItem(path, destination).catch((cause) => {
+      console.error('[components/workbench/outline/OutlineFileActions.tsx] duplicating outline file failed', { path, destination, cause })
+      toast.error(t('files.operation.failed'), {
+        description: cause instanceof Error ? cause.message : String(cause),
+      })
+    })
+  }
+  const revealInFileManager = () => {
+    if (!fileOperations?.projectId) return
+    void revealProjectFile(fileOperations.projectId, path).catch((cause) => {
+      console.error('[components/workbench/outline/OutlineFileActions.tsx] revealing outline file in the host file manager failed', { path, cause })
+      toast.error(t('files.tree.revealFailed'), {
+        description: cause instanceof Error ? cause.message : String(cause),
+      })
+    })
+  }
+  const commonActions = compactActions([
+    ...(fileOperations?.workspace ? [{ label: t('sidebar.copyPath'), icon: <Copy className="h-3.5 w-3.5" />, onSelect: () => copyPath(false) }] : []),
+    ...(fileOperations ? [
+      { label: t('sidebar.copyRelativePath'), icon: <Copy className="h-3.5 w-3.5" />, onSelect: () => copyPath(true) },
+      ...(fileOperations.onCopyItem ? [{ label: t('sidebar.duplicate'), icon: <CopyPlus className="h-3.5 w-3.5" />, onSelect: duplicateFile }] : []),
+    ] : []),
     ...(onRevealFile ? [{ label: t('sidebar.revealInProjectFiles'), icon: <FolderSearch className="h-3.5 w-3.5" />, onSelect: () => { void onRevealFile(path) } }] : []),
+    ...(fileOperations?.projectId ? [{ label: t(platformPresentation.revealKey), icon: <FolderOpen className="h-3.5 w-3.5" />, onSelect: revealInFileManager }] : []),
+  ])
+  const actions = compactActions([
+    ...(onCreateChapter ? [{ label: t('planning.create.inVolume'), icon: <FilePlus2 className="h-3.5 w-3.5" />, onSelect: () => onCreateChapter(path) }] : []),
+    ...(onCreateChapter ? [{ separator: true }] : []),
+    ...(onReferenceFile ? [{ label: t('sidebar.referenceToChat'), icon: <AtSign className="h-3.5 w-3.5" />, onSelect: () => onReferenceFile(path) }] : []),
+    ...(onReferenceFile && commonActions.length > 0 ? [{ separator: true }] : []),
+    ...commonActions,
     ...(onRenameItem || onDeleteItem ? [{ separator: true }] : []),
     ...(onRenameItem ? [{ label: t('sidebar.renameFile'), icon: <Pencil className="h-3.5 w-3.5" />, onSelect: () => setRenameOpen(true) }] : []),
     ...(onDeleteItem ? [{ label: t('sidebar.delete'), icon: <Trash2 className="h-3.5 w-3.5" />, danger: true, onSelect: () => setDeleteOpen(true) }] : []),

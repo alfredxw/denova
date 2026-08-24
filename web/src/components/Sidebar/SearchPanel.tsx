@@ -1,19 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, ChevronRight, FileText, Loader2, Regex, Replace, Search, SlidersHorizontal } from 'lucide-react'
+import { ChevronDown, ChevronRight, FileText, Loader2, Regex, Replace, Search } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { GroupedVirtuoso } from 'react-virtuoso'
 import { toast } from 'sonner'
-import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { HighlightedText } from '@/components/common/HighlightedText'
+import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
 import { replaceWorkspace, searchWorkspace, type WorkspaceSearchResult } from '@/lib/api'
 import { workspaceFileName } from '@/lib/workspace-path'
 
@@ -137,32 +130,32 @@ export function SearchPanel({ projectId, onSelectResult, onBeforeReplace, onWork
               ? t(results.length === SEARCH_LIMIT ? 'search.resultLimit' : 'search.resultCount', { count: results.length })
               : null}
           </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="xs"
-                className={useRegex || replaceOpen ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)]'}
-              >
-                <SlidersHorizontal data-icon="inline-start" />
-                {t('search.options')}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-40">
-              <DropdownMenuCheckboxItem
-                checked={useRegex}
-                onCheckedChange={(checked) => setUseRegex(checked === true)}
-              >
-                <Regex />
-                {t('search.toggleRegex')}
-              </DropdownMenuCheckboxItem>
-              <DropdownMenuItem onSelect={() => setReplaceOpen((value) => !value)}>
-                <Replace />
-                {t('search.toggleReplace')}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <div className="flex shrink-0 items-center gap-0.5">
+            <TooltipIconButton
+              label={t('search.toggleRegex')}
+              size="icon-xs"
+              tooltipSide="top"
+              aria-pressed={useRegex}
+              className={useRegex
+                ? 'bg-[var(--nova-active)] text-[var(--nova-text)]'
+                : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'}
+              onClick={() => setUseRegex((value) => !value)}
+            >
+              <Regex className="h-3.5 w-3.5" />
+            </TooltipIconButton>
+            <TooltipIconButton
+              label={t('search.toggleReplace')}
+              size="icon-xs"
+              tooltipSide="top"
+              aria-pressed={replaceOpen}
+              className={replaceOpen
+                ? 'bg-[var(--nova-active)] text-[var(--nova-text)]'
+                : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'}
+              onClick={() => setReplaceOpen((value) => !value)}
+            >
+              <Replace className="h-3.5 w-3.5" />
+            </TooltipIconButton>
+          </div>
         </div>
         {replaceOpen && (
           <div className="flex items-center gap-1">
@@ -208,8 +201,6 @@ export function SearchPanel({ projectId, onSelectResult, onBeforeReplace, onWork
           <GroupedVirtuoso
             className="h-full"
             groupCounts={visibleResults.groupCounts}
-            data={visibleResults.items}
-            computeItemKey={(index, result) => result ? `result:${searchResultKey(result)}` : `group:${index}`}
             groupContent={(groupIndex) => {
               const group = groups[groupIndex]
               const expandable = group.results.length > FILE_RESULT_PREVIEW_LIMIT
@@ -261,7 +252,10 @@ export function SearchPanel({ projectId, onSelectResult, onBeforeReplace, onWork
                 </div>
               )
             }}
-            itemContent={(_, _groupIndex, result) => {
+            itemContent={(index) => {
+              // GroupedVirtuoso excludes group headers from this index. Resolve
+              // the flat result here so a header can never shift file ownership.
+              const result = visibleResults.items[index]
               const key = searchResultKey(result)
               const selected = selectedResultKey === `${trimmedQuery}:${key}`
               return (

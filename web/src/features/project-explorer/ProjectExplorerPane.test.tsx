@@ -6,7 +6,8 @@ import { fileTreeRow, fileTreeShadow } from '@/test/file-tree'
 import type { ProjectFileExplorerNode } from './model'
 import { ProjectExplorerPane } from './ProjectExplorerPane'
 
-const selectedPath = 'chapters/volume/chapter.md'
+const volumePath = 'chapters/v00001-第一卷-风起'
+const selectedPath = `${volumePath}/ch00011-第十章-交锋.md`
 
 describe('ProjectExplorerPane', () => {
   afterEach(() => vi.restoreAllMocks())
@@ -24,7 +25,7 @@ describe('ProjectExplorerPane', () => {
     renderPane()
 
     fireEvent.click(screen.getByRole('button', { name: '折叠全部文件夹' }))
-    await waitFor(() => expect(fileTreeRow('chapters/volume/')).toHaveAttribute('aria-expanded', 'false'))
+    await waitFor(() => expect(fileTreeRow('chapters/')).toHaveAttribute('aria-expanded', 'false'))
 
     fireEvent.click(screen.getByRole('button', { name: '定位当前文件' }))
     await waitFor(() => expect(fileTreeRow(selectedPath)).toHaveAttribute('aria-selected', 'true'))
@@ -41,8 +42,49 @@ describe('ProjectExplorerPane', () => {
     fireEvent.input(input, { target: { value: 'notes.md' } })
     fireEvent.keyDown(input, { key: 'Enter' })
 
-    await waitFor(() => expect(onCreateItem).toHaveBeenCalledWith('chapters/volume/notes.md', 'file'))
+    await waitFor(() => expect(onCreateItem).toHaveBeenCalledWith(`${volumePath}/notes.md`, 'file'))
     expect(screen.queryByText('项目文件')).not.toBeInTheDocument()
+  })
+
+  it('toggles writing filename affixes without changing rename values or ordinary files', async () => {
+    const user = userEvent.setup()
+    renderPane()
+
+    const showAffixes = screen.getByRole('button', { name: '显示章节/卷排序前缀和 .md 后缀' })
+    const collapseAll = screen.getByRole('button', { name: '折叠全部文件夹' })
+    expect(showAffixes.nextElementSibling).toBe(collapseAll)
+    await waitFor(() => {
+      expect(fileTreeRow(selectedPath)).toHaveAttribute('aria-label', '第十章-交锋')
+      expect(fileTreeRow(selectedPath).querySelector('[data-nova-file-tree-display-name-value]')).toHaveTextContent('第十章-交锋')
+      expect(fileTreeRow('chapters/notes.md')).toHaveAttribute('aria-label', 'notes.md')
+      expect(fileTreeRow('chapters/notes.md').querySelector('[data-nova-file-tree-display-name-value]')).not.toBeInTheDocument()
+      expect(fileTreeRow(`${volumePath}/`)).toHaveAttribute('aria-label', expect.stringContaining('第一卷-风起'))
+    })
+
+    fireEvent.contextMenu(fileTreeRow(selectedPath), { clientX: 10, clientY: 10 })
+    await user.click(await screen.findByRole('menuitem', { name: '重命名' }))
+    const input = await shadowInput()
+    expect(input).toHaveValue('ch00011-第十章-交锋.md')
+    fireEvent.keyDown(input, { key: 'Escape' })
+
+    await user.click(showAffixes)
+    await waitFor(() => {
+      expect(fileTreeRow(selectedPath)).toHaveAttribute('aria-label', 'ch00011-第十章-交锋.md')
+      expect(fileTreeRow(selectedPath).querySelector('[data-nova-file-tree-display-name-value]')).not.toBeInTheDocument()
+      expect(fileTreeRow(`${volumePath}/`)).toHaveAttribute('aria-label', expect.stringContaining('v00001-第一卷-风起'))
+    })
+    expect(screen.getByRole('button', { name: '隐藏章节/卷排序前缀和 .md 后缀' })).toBeInTheDocument()
+  })
+
+  it('shows toolbar tooltips below the icon buttons', async () => {
+    renderPane()
+
+    fireEvent.focus(screen.getByRole('button', { name: '新建文件' }))
+
+    await screen.findByRole('tooltip')
+    const tooltip = document.querySelector('[data-slot="tooltip-content"]')
+    expect(tooltip).toHaveTextContent('新建文件')
+    expect(tooltip).toHaveAttribute('data-side', 'bottom')
   })
 
   it('keeps the toolbar borderless while the Pierre viewport scrolls', () => {
@@ -83,7 +125,7 @@ function renderPane(overrides: Partial<React.ComponentProps<typeof ProjectExplor
       nodes={explorerNodes()}
       workspace="/projects/one"
       selectedPath={selectedPath}
-      expandedPaths={['chapters', 'chapters/volume']}
+      expandedPaths={['chapters', volumePath]}
       loading={false}
       loadingPaths={new Set()}
       error={null}
@@ -123,9 +165,9 @@ function explorerNodes(): ProjectFileExplorerNode[] {
     loaded: true,
     loading: false,
     children: [{
-      id: 'chapters/volume',
-      path: 'chapters/volume',
-      name: 'volume',
+      id: volumePath,
+      path: volumePath,
+      name: 'v00001-第一卷-风起',
       type: 'dir',
       ignored: false,
       symlink: false,
@@ -134,13 +176,22 @@ function explorerNodes(): ProjectFileExplorerNode[] {
       children: [{
         id: selectedPath,
         path: selectedPath,
-        name: 'chapter.md',
+        name: 'ch00011-第十章-交锋.md',
         type: 'file',
         ignored: false,
         symlink: false,
         loaded: false,
         loading: false,
       }],
+    }, {
+      id: 'chapters/notes.md',
+      path: 'chapters/notes.md',
+      name: 'notes.md',
+      type: 'file',
+      ignored: false,
+      symlink: false,
+      loaded: false,
+      loading: false,
     }],
   }]
 }

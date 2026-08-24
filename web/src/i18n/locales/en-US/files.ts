@@ -12,6 +12,8 @@ const files = {
   'files.tree.expandDirectory': 'Expand {{name}}',
   'files.tree.collapseDirectory': 'Collapse {{name}}',
   'files.tree.collapseAll': 'Collapse all folders',
+  'files.tree.showWritingFilenameAffixes': 'Show chapter/volume prefixes and .md suffixes',
+  'files.tree.hideWritingFilenameAffixes': 'Hide chapter/volume prefixes and .md suffixes',
   'files.tree.recursiveFoldHint': 'Alt/Option-click a folder arrow to fold its loaded branch.',
   'files.tree.revealCurrent': 'Reveal current file',
   'files.tree.moreActions': 'More file actions',

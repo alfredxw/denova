@@ -48,6 +48,7 @@ const tiptapMock = vi.hoisted(() => {
       content: { size: 100 },
       textContent: '',
       forEach: vi.fn(),
+      descendants: vi.fn(),
     },
     selection: { from: 0, to: 0, head: 0, empty: true },
     tr: {} as {
@@ -127,6 +128,7 @@ const tiptapMock = vi.hoisted(() => {
       this.text = ''
       editor.state.selection = { from: 0, to: 0, head: 0, empty: true }
       editor.state.doc.forEach.mockReset()
+      editor.state.doc.descendants.mockReset()
       vi.clearAllMocks()
       editor.view.hasFocus.mockReturnValue(false)
       editor.storage.characterCount.characters.mockReturnValue(0)
@@ -135,7 +137,7 @@ const tiptapMock = vi.hoisted(() => {
 })
 
 vi.mock('@tiptap/react', () => ({
-  EditorContent: () => <div data-testid="editor-content" />,
+  EditorContent: ({ className }: { className?: string }) => <div data-testid="editor-content" className={className} />,
   useEditor: (options: { onCreate?: (payload: { editor: typeof tiptapMock.editor }) => void }) => {
     tiptapMock.useEditorOptions = options
     if (!tiptapMock.created) {
@@ -202,7 +204,7 @@ describe('MarkdownEditor', () => {
     vi.useRealTimers()
   })
 
-  it('打开编辑器设置 Popover 后展示行间距、对白高亮和背景主题', async () => {
+  it('在紧凑的编辑器设置中保留字体字号，并可持久化开启行号', async () => {
     const user = userEvent.setup()
     const onFontFamilyChange = vi.fn()
     const onFontSizeChange = vi.fn()
@@ -234,15 +236,28 @@ describe('MarkdownEditor', () => {
     expect(screen.getByRole('textbox', { name: '十六进制颜色' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '恢复默认' })).toBeInTheDocument()
     expect(screen.getByText('背景主题')).toBeInTheDocument()
-    expect(screen.getByText('字体与字号')).toBeInTheDocument()
+    expect(screen.getByText('阅读字体')).toBeInTheDocument()
+    expect(screen.getByText('阅读字号 (px)')).toBeInTheDocument()
+    expect(screen.queryByText('字体与字号')).not.toBeInTheDocument()
+    expect(screen.queryByText('与全局外观设置共享，修改后自动保存')).not.toBeInTheDocument()
     expect(screen.getByText('思源宋体阅读')).toBeInTheDocument()
     const readingFontSize = screen.getByRole('slider', { name: '阅读字号 (px)' })
     expect(readingFontSize).toHaveValue('18')
     fireEvent.change(readingFontSize, { target: { value: '22' } })
     expect(onFontSizeChange).toHaveBeenCalledWith(22)
+
+    const lineNumbers = screen.getByRole('switch', { name: '行号' })
+    expect(lineNumbers).not.toBeChecked()
+    expect(screen.getByTestId('editor-content')).not.toHaveClass('show-line-numbers')
+
+    await user.click(lineNumbers)
+
+    expect(lineNumbers).toBeChecked()
+    expect(screen.getByTestId('editor-content')).toHaveClass('show-line-numbers')
+    expect(JSON.parse(window.localStorage.getItem('nova.editor.settings') || '{}')).toMatchObject({ showLineNumbers: true })
   })
 
-  it('在章节标题栏实时显示当前章节字数和光标行号', () => {
+  it('在章节标题栏实时显示当前章节字数和光标行号，但不显示更新时间', () => {
     tiptapMock.editor.storage.characterCount.characters.mockReturnValue(10)
 
     render(
@@ -266,6 +281,7 @@ describe('MarkdownEditor', () => {
     )
 
     expect(screen.getByText('10 字')).toBeInTheDocument()
+    expect(screen.queryByText(/更新/)).not.toBeInTheDocument()
     expect(screen.queryByText('行 1')).not.toBeInTheDocument()
 
     act(() => {
@@ -1198,6 +1214,48 @@ describe('MarkdownEditor', () => {
       <MarkdownEditor fileName="chapters/ch01.md" content="第一章" onSave={vi.fn()} />,
     )
     expect(scrollContainer.scrollTop).toBe(360)
+
+    animationFrame.mockRestore()
+  })
+
+  it('跨文件搜索定位等待目标文件滚动位置恢复完成', () => {
+    const animationFrames: FrameRequestCallback[] = []
+    const animationFrame = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      animationFrames.push(callback)
+      return animationFrames.length
+    })
+    const { rerender } = render(
+      <MarkdownEditor fileName="chapters/ch01.md" content="第一章" onSave={vi.fn()} />,
+    )
+
+    act(() => {
+      animationFrames.splice(0).forEach((callback) => callback(0))
+    })
+    tiptapMock.editor.view.dispatch.mockClear()
+
+    rerender(
+      <MarkdownEditor
+        fileName="chapters/ch02.md"
+        content="目标章节"
+        onSave={vi.fn()}
+        searchIntent={{ query: '目标', line: 1, nonce: 1 }}
+      />,
+    )
+
+    // Applying the new document updates decorations once. The explicit reveal
+    // must remain queued behind the file-position restoration frame.
+    expect(tiptapMock.editor.view.dispatch).toHaveBeenCalledTimes(1)
+    expect(animationFrames).toHaveLength(2)
+
+    act(() => {
+      animationFrames.shift()?.(0)
+    })
+    expect(tiptapMock.editor.view.dispatch).toHaveBeenCalledTimes(1)
+
+    act(() => {
+      animationFrames.shift()?.(0)
+    })
+    expect(tiptapMock.editor.view.dispatch).toHaveBeenCalledTimes(2)
 
     animationFrame.mockRestore()
   })

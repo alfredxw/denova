@@ -12,6 +12,8 @@ const files = {
   'files.tree.expandDirectory': '展开 {{name}}',
   'files.tree.collapseDirectory': '折叠 {{name}}',
   'files.tree.collapseAll': '折叠全部文件夹',
+  'files.tree.showWritingFilenameAffixes': '显示章节/卷排序前缀和 .md 后缀',
+  'files.tree.hideWritingFilenameAffixes': '隐藏章节/卷排序前缀和 .md 后缀',
   'files.tree.recursiveFoldHint': '按住 Alt/Option 点击文件夹箭头，可递归折叠已加载分支。',
   'files.tree.revealCurrent': '定位当前文件',
   'files.tree.moreActions': '更多文件操作',

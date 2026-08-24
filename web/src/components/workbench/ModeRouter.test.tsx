@@ -115,11 +115,12 @@ vi.mock('@/features/interactive/components/SettingPanel', () => ({
 }))
 
 vi.mock('@/components/Editor/WritingDocumentEditor', () => ({
-  WritingDocumentEditor: ({ fileName, chapterSummary, onRevealChapter, documentReviewNavigationIntent }: {
+  WritingDocumentEditor: ({ fileName, chapterSummary, onRevealChapter, documentReviewNavigationIntent, searchIntent }: {
     fileName: string | null
     chapterSummary?: { path: string }
     onRevealChapter?: (path: string) => void
     documentReviewNavigationIntent?: { commentID: string; nonce: number } | null
+    searchIntent?: { query: string; line: number; nonce: number } | null
   }) => {
     useEffect(() => {
       markdownEditorLifecycle.mounts += 1
@@ -131,6 +132,9 @@ vi.mock('@/components/Editor/WritingDocumentEditor', () => ({
       <>
         <div data-testid="markdown-editor-navigation">
           {fileName || 'none'}|{documentReviewNavigationIntent?.commentID || 'none'}|{documentReviewNavigationIntent?.nonce || 0}
+        </div>
+        <div data-testid="markdown-search-navigation">
+          {searchIntent ? `${searchIntent.query}|${searchIntent.line}|${searchIntent.nonce}` : 'none'}
         </div>
         {chapterSummary ? (
           <button type="button" onClick={() => onRevealChapter?.(chapterSummary.path)}>reveal chapter in outline</button>
@@ -573,6 +577,50 @@ describe('ModeRouter autosave navigation policy', () => {
     expect(screen.getByTestId('markdown-editor-navigation')).toHaveTextContent(`${secondPath}|none|0`)
     expect(markdownEditorLifecycle.mounts).toBe(1)
     expect(markdownEditorLifecycle.unmounts).toBe(0)
+  })
+
+  it('delivers a global search reveal only after the target document is loaded', async () => {
+    const firstPath = 'chapters/ch01.md'
+    const secondPath = 'chapters/ch02.md'
+    const intent = { path: secondPath, query: 'target', line: 12, nonce: 7 }
+    const openTabs: Tab[] = [{ kind: 'file', path: secondPath }]
+    const staleDocument = {
+      project_id: 'project-book-a',
+      path: firstPath,
+      content: 'first',
+      revision: 'r1',
+      kind: 'text' as const,
+      mime_type: 'text/markdown',
+      size: 5,
+      editable: true,
+    }
+    const { rerender } = render(withAppProviders(<ModeRouter {...modeRouterProps({
+      selectedFile: secondPath,
+      fileDocument: staleDocument,
+      fileContent: staleDocument.content,
+      fileRevision: staleDocument.revision,
+      openTabs,
+      activeTabKey: `file:${secondPath}`,
+      editorSearchIntent: intent,
+    })} />))
+
+    await act(async () => { await Promise.resolve() })
+    expect(screen.getByTestId('markdown-search-navigation')).toHaveTextContent('none')
+
+    await act(async () => {
+      rerender(withAppProviders(<ModeRouter {...modeRouterProps({
+        selectedFile: secondPath,
+        fileDocument: { ...staleDocument, path: secondPath, content: 'target', revision: 'r2' },
+        fileContent: 'target',
+        fileRevision: 'r2',
+        openTabs,
+        activeTabKey: `file:${secondPath}`,
+        editorSearchIntent: intent,
+      })} />))
+      await Promise.resolve()
+    })
+
+    expect(screen.getByTestId('markdown-search-navigation')).toHaveTextContent('target|12|7')
   })
 
   it('routes non-Markdown text tabs to Monaco source editing without transforming content', async () => {

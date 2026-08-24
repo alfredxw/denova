@@ -84,7 +84,8 @@
 }
 
 .nova-file-tree-menu-shortcut {
-  margin-left: 1rem;
+  margin-left: auto;
+  padding-left: 1rem;
   color: inherit;
   font-size: 11px;
   font-variant-numeric: tabular-nums;

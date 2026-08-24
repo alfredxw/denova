@@ -79,6 +79,12 @@ export function absoluteProjectPath(workspace: string, path: string): string {
   return root ? `${root}/${path}` : path
 }
 
+/** Chooses a collision-free sibling path for duplicating one file outside the project tree UI. */
+export function nextProjectFileDuplicatePath(existingPaths: readonly string[], source: string): string {
+  const parent = projectParentPath(source)
+  return nextCopyPath(parent, projectBaseName(source), true, new Set(existingPaths))
+}
+
 function childrenAt(nodes: readonly ProjectFileExplorerNode[], path: string): readonly ProjectFileExplorerNode[] {
   if (!path) return nodes
   return findProjectFileNode(nodes, path)?.children ?? []

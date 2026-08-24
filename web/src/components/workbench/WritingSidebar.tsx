@@ -18,8 +18,6 @@ interface WritingSidebarProps {
   workspace: string
   tree: FileNode[]
   chapters: ChapterSummary[]
-  chapterCount?: number
-  totalWords?: number
   summaryAvailable: boolean
   ideas?: DocumentPreview
   outline?: DocumentPreview
@@ -54,8 +52,6 @@ export const WritingSidebar = memo(function WritingSidebar({
   workspace,
   tree,
   chapters,
-  chapterCount,
-  totalWords,
   summaryAvailable,
   ideas,
   outline,
@@ -111,10 +107,9 @@ export const WritingSidebar = memo(function WritingSidebar({
         ) : sidebarView === 'outline' ? (
           <StableChapterOutline
             projectId={projectId}
+            workspace={workspace}
             tree={tree}
             chapters={chapters}
-            chapterCount={chapterCount}
-            totalWords={totalWords}
             ideas={ideas}
             outline={outline}
             chapterPlans={chapterPlans}
@@ -127,6 +122,8 @@ export const WritingSidebar = memo(function WritingSidebar({
             onRevealFile={onRevealFile}
             onRenameItem={onRenameItem}
             onDeleteItem={onDeleteItem}
+            onCopyItem={onCopyItem}
+            onCreateItem={onCreateItem}
             onRequestBookSettingCreate={onRequestBookSettingCreate}
             onSetChapterConfirmed={onSetChapterConfirmed}
           />

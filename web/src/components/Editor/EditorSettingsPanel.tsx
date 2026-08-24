@@ -1,14 +1,16 @@
 import { useCallback, useMemo, useRef } from 'react'
 import type { PointerEvent } from 'react'
-import { Check, MessageSquareQuote, Palette, Rows3, Type } from 'lucide-react'
+import { Check, MessageSquareQuote, Type } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { AutosaveStatusIndicator, type AutosaveStatus } from '@/components/forms/autosave-status'
+import { Switch } from '@/components/ui/switch'
 import { FontPicker } from '@/features/settings/FontPicker'
 
 export type EditorTheme = 'ide' | 'paper' | 'sepia'
 
 export interface EditorSettings {
   lineHeight: number
+  showLineNumbers: boolean
   theme: EditorTheme
   dialogueHighlightColor: string
 }
@@ -54,6 +56,7 @@ const DEFAULT_PICKER_COLOR = '#ffd166'
 
 const DEFAULT_SETTINGS: EditorSettings = {
   lineHeight: 1.9,
+  showLineNumbers: false,
   theme: 'ide',
   dialogueHighlightColor: DEFAULT_DIALOGUE_HIGHLIGHT_COLOR,
 }
@@ -74,93 +77,90 @@ export function EditorSettingsPanel({
 
   return (
     <div>
-      <div className="border-b border-[var(--nova-border-soft)] px-3 py-3">
+      <div className="border-b border-[var(--nova-border-soft)] px-3 py-2">
         <div className="flex items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-2">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]">
-              <Palette className="h-3.5 w-3.5" />
-            </span>
-            <div className="min-w-0">
-              <div className="text-xs font-medium text-[var(--nova-text)]">{t('editor.settings')}</div>
-              <div className="text-[11px] text-[var(--nova-text-faint)]">{t('editor.settingsDescription')}</div>
-            </div>
-          </div>
+          <div className="text-xs font-medium text-[var(--nova-text)]">{t('editor.settings')}</div>
           <button type="button" className="rounded px-2 py-1 text-xs text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" onClick={onClose}>
             {t('common.close')}
           </button>
         </div>
       </div>
 
-      <div className="space-y-3 p-3">
+      <div className="space-y-2 p-2.5">
         {readingTypography ? (
-          <div className="nova-editor-control rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-3">
-            <div className="mb-2 flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 text-xs font-medium text-[var(--nova-text-muted)]">
+          <>
+            <div className="nova-editor-control rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2.5">
+              <div className="mb-1.5 flex items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-2 text-xs font-medium text-[var(--nova-text-muted)]">
                   <Type className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
-                  {t('editor.readingTypography')}
+                  {t('settings.appearance.readingFont')}
                 </div>
-                <div className="mt-0.5 text-[11px] leading-4 text-[var(--nova-text-faint)]">{t('editor.readingTypographyDescription')}</div>
+                <AutosaveStatusIndicator
+                  status={readingTypography.status}
+                  error={readingTypography.error}
+                  onRetry={readingTypography.onRetry}
+                  className="shrink-0"
+                />
               </div>
-              <AutosaveStatusIndicator
-                status={readingTypography.status}
-                error={readingTypography.error}
-                onRetry={readingTypography.onRetry}
-                className="shrink-0"
+              <FontPicker
+                value={readingTypography.fontFamily}
+                disabled={readingTypography.loading}
+                onValueChange={readingTypography.onFontFamilyChange}
+                className="h-8 bg-[var(--nova-surface)]"
               />
             </div>
-            <div className="space-y-2">
-              <div className="block">
-                <span className="mb-1 block text-[11px] text-[var(--nova-text-faint)]">{t('settings.appearance.readingFont')}</span>
-                <FontPicker
-                  value={readingTypography.fontFamily}
-                  disabled={readingTypography.loading}
-                  onValueChange={readingTypography.onFontFamilyChange}
-                  className="bg-[var(--nova-surface)]"
-                />
-              </div>
-              <label className="block">
-                <span className="mb-1 flex items-center justify-between gap-3 text-[11px] text-[var(--nova-text-faint)]">
-                  <span>{t('settings.appearance.readingFontSize')}</span>
-                  <span className="font-mono text-[var(--nova-text)]">{readingTypography.fontSize}px</span>
-                </span>
-                <input
-                  type="range"
-                  min="14"
-                  max="28"
-                  step="1"
-                  value={readingTypography.fontSize}
-                  disabled={readingTypography.loading}
-                  aria-label={t('settings.appearance.readingFontSize')}
-                  onChange={(event) => readingTypography.onFontSizeChange(Number(event.target.value))}
-                  className="nova-editor-range w-full"
-                />
-              </label>
-            </div>
-          </div>
+
+            <label className="nova-editor-control block rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2.5">
+              <span className="mb-1 flex items-center justify-between gap-3 text-xs">
+                <span className="font-medium text-[var(--nova-text-muted)]">{t('settings.appearance.readingFontSize')}</span>
+                <span className="font-mono text-[11px] text-[var(--nova-text)]">{readingTypography.fontSize}px</span>
+              </span>
+              <input
+                type="range"
+                min="14"
+                max="28"
+                step="1"
+                value={readingTypography.fontSize}
+                disabled={readingTypography.loading}
+                aria-label={t('settings.appearance.readingFontSize')}
+                onChange={(event) => readingTypography.onFontSizeChange(Number(event.target.value))}
+                className="nova-editor-range w-full"
+              />
+            </label>
+          </>
         ) : null}
 
-        <label className="nova-editor-control block rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-3">
-          <div className="mb-2 flex items-center justify-between gap-3 text-xs">
-            <span className="flex items-center gap-2 font-medium text-[var(--nova-text-muted)]">
-              <Rows3 className="h-3.5 w-3.5 text-[var(--nova-text-faint)]" />
-              {t('editor.lineHeight')}
+        <div className="grid grid-cols-2 gap-2">
+          <label className="nova-editor-control block rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2.5">
+            <span className="mb-1 flex items-center justify-between gap-2 text-[11px]">
+              <span className="font-medium text-[var(--nova-text-muted)]">{t('editor.lineHeight')}</span>
+              <span className="font-mono text-[11px] text-[var(--nova-text)]">{settings.lineHeight.toFixed(1)}</span>
             </span>
-            <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-0.5 font-mono text-[11px] text-[var(--nova-text)]">{settings.lineHeight.toFixed(1)}</span>
-          </div>
-          <input
-            type="range"
-            min="1.4"
-            max="2.6"
-            step="0.1"
-            value={settings.lineHeight}
-            onChange={(e) => patch({ lineHeight: Number(e.target.value) })}
-            className="nova-editor-range w-full"
-          />
-        </label>
+            <input
+              type="range"
+              min="1.4"
+              max="2.6"
+              step="0.1"
+              value={settings.lineHeight}
+              aria-label={t('editor.lineHeight')}
+              onChange={(e) => patch({ lineHeight: Number(e.target.value) })}
+              className="nova-editor-range w-full"
+            />
+          </label>
 
-        <div className="nova-editor-control block rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-3">
-          <div className="mb-2 flex items-center justify-between gap-3 text-xs">
+          <label className="nova-editor-control flex cursor-pointer items-center justify-between gap-2 rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2.5">
+            <span className="text-[11px] font-medium text-[var(--nova-text-muted)]">{t('editor.lineNumbers')}</span>
+            <Switch
+              size="sm"
+              checked={settings.showLineNumbers}
+              onCheckedChange={(showLineNumbers) => patch({ showLineNumbers })}
+              aria-label={t('editor.lineNumbers')}
+            />
+          </label>
+        </div>
+
+        <div className="nova-editor-control block rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2.5">
+          <div className="mb-1.5 flex items-center justify-between gap-3 text-xs">
             <span className="flex items-center gap-2 font-medium text-[var(--nova-text-muted)]">
               <MessageSquareQuote className="h-3.5 w-3.5 text-[var(--nova-text-faint)]" />
               {t('editor.dialogueHighlightColor')}
@@ -175,16 +175,16 @@ export function EditorSettingsPanel({
         </div>
 
         <div>
-          <div className="mb-2 flex items-center justify-between text-xs text-[var(--nova-text-muted)]">
+          <div className="mb-1.5 flex items-center justify-between px-0.5 text-xs text-[var(--nova-text-muted)]">
             <span className="font-medium">{t('editor.backgroundTheme')}</span>
-            <span className="text-[11px] text-[var(--nova-text-faint)]">{t('editor.currentTheme', { theme: t(THEME_STYLES[settings.theme].labelKey) })}</span>
           </div>
-          <div className="grid gap-2">
+          <div className="grid grid-cols-3 gap-1.5">
             {(Object.keys(THEME_STYLES) as EditorTheme[]).map((theme) => (
               <button
                 key={theme}
                 type="button"
-                className={`nova-editor-theme-option flex w-full items-center justify-between rounded-lg border px-2.5 py-2 text-left text-xs ${
+                aria-pressed={settings.theme === theme}
+                className={`nova-editor-theme-option relative flex min-w-0 items-center gap-1.5 rounded-lg border p-1.5 text-left text-xs ${
                   settings.theme === theme
                     ? 'is-active border-[var(--nova-border)] bg-[var(--nova-active)] text-[var(--nova-text)]'
                     : 'border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
@@ -193,7 +193,7 @@ export function EditorSettingsPanel({
               >
                 <span className="flex min-w-0 items-center gap-2">
                   <span
-                    className="flex h-9 w-12 shrink-0 items-center justify-center rounded-md border border-black/15 text-[10px]"
+                    className="flex h-7 w-8 shrink-0 items-center justify-center rounded border border-black/15 text-[9px]"
                     style={{
                       background: THEME_STYLES[theme].background,
                       color: THEME_STYLES[theme].color,
@@ -201,12 +201,9 @@ export function EditorSettingsPanel({
                   >
                     Aa
                   </span>
-                  <span className="min-w-0">
-                    <span className="block font-medium">{t(THEME_STYLES[theme].labelKey)}</span>
-                    <span className="mt-0.5 block text-[11px] text-[var(--nova-text-faint)]">{t('editor.themePreview')}</span>
-                  </span>
+                  <span className="truncate font-medium">{t(THEME_STYLES[theme].labelKey)}</span>
                 </span>
-                {settings.theme === theme && <Check className="h-3.5 w-3.5 shrink-0 text-[var(--nova-accent-green)]" />}
+                {settings.theme === theme && <Check className="absolute right-1 top-1 h-3 w-3 text-[var(--nova-accent-green)]" />}
               </button>
             ))}
           </div>
@@ -223,6 +220,7 @@ export function loadEditorSettings(): EditorSettings {
     const parsed = JSON.parse(raw) as Partial<EditorSettings>
     return {
       lineHeight: parsed.lineHeight ?? DEFAULT_SETTINGS.lineHeight,
+      showLineNumbers: parsed.showLineNumbers === true,
       theme: parsed.theme && parsed.theme in THEME_STYLES ? parsed.theme : DEFAULT_SETTINGS.theme,
       dialogueHighlightColor: normalizeColorValue(parsed.dialogueHighlightColor) ?? DEFAULT_SETTINGS.dialogueHighlightColor,
     }
@@ -275,7 +273,7 @@ function DialogueHighlightColorPicker({ value, defaultColor, onChange, onReset }
       <button
         ref={fieldRef}
         type="button"
-        className="relative h-24 w-full overflow-hidden rounded-md border border-[var(--nova-border)]"
+        className="relative h-16 w-full overflow-hidden rounded-md border border-[var(--nova-border)]"
         aria-label={t('editor.dialogueHighlightField')}
         onPointerDown={handlePointerDrag((event) => updateFieldColor(event.clientX, event.clientY))}
         onPointerMove={(event) => { if (event.buttons === 1) updateFieldColor(event.clientX, event.clientY) }}
@@ -291,7 +289,7 @@ function DialogueHighlightColorPicker({ value, defaultColor, onChange, onReset }
       <button
         ref={hueRef}
         type="button"
-        className="relative h-5 w-full rounded-md border border-[var(--nova-border)]"
+        className="relative h-4 w-full rounded-md border border-[var(--nova-border)]"
         aria-label={t('editor.dialogueHighlightHue')}
         onPointerDown={handlePointerDrag((event) => updateHueColor(event.clientX))}
         onPointerMove={(event) => { if (event.buttons === 1) updateHueColor(event.clientX) }}

@@ -9,7 +9,6 @@ const sidebar = {
   'sidebar.copyPath': 'Copy Path',
   'sidebar.copyRelativePath': 'Copy Relative Path',
   'sidebar.duplicate': 'Duplicate',
-  'sidebar.viewFile': 'View File',
   'sidebar.revealInFinder': 'Reveal in Finder',
   'sidebar.revealInFileExplorer': 'Reveal in File Explorer',
   'sidebar.revealInFileManager': 'Reveal in File Manager',

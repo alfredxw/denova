@@ -6,6 +6,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ChapterSummary, DocumentPreview } from '@/lib/api'
 import { ChapterOutline } from './ChapterOutline'
 
+vi.mock('@/features/settings/api', () => ({
+  fetchProjectSettings: vi.fn(async () => ({
+    effective: {
+      chapter_filename_format: 'ch{order:05}-{chapter}-{title}.md',
+      volume_dir_format: 'v{order:05}-{volume}',
+    },
+  })),
+}))
+
 function makeChapter(overrides: Partial<ChapterSummary>): ChapterSummary {
   return {
     path: 'chapters/ch1.md',
@@ -72,11 +81,80 @@ describe('ChapterOutline', () => {
     vi.restoreAllMocks()
   })
 
-  it('shows book totals beside the volume and chapter heading', () => {
-    renderOutline({ chapterCount: 766, totalWords: 1872870 })
+  it('只隐藏全书总数，保留每卷章节数和每章字数', () => {
+    renderOutline()
 
-    const heading = screen.getByText('分卷章节').parentElement
-    expect(heading).toHaveTextContent('766 章 · 1,872,870 字')
+    expect(screen.getByText('分卷章节').parentElement).not.toHaveTextContent('2 章 · 2,400 字')
+    expect(screen.getByRole('button', { name: '未分卷 2 章' })).toHaveTextContent('2 章')
+    expect(screen.getAllByText('1,200 字')).toHaveLength(2)
+  })
+
+  it('可从创建按钮左侧统一收起和展开分卷', async () => {
+    const user = userEvent.setup()
+    renderOutline({ onCreateItem: vi.fn(async () => undefined) })
+
+    const collapseAll = screen.getByRole('button', { name: '收起全部' })
+    const create = screen.getByRole('button', { name: '新建章节或卷' })
+    expect(collapseAll.compareDocumentPosition(create) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
+    await user.click(collapseAll)
+    expect(screen.queryByText('第 1 章 起点')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '展开全部' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '展开全部' }))
+    expect(screen.getByText('第 1 章 起点')).toBeInTheDocument()
+  })
+
+  it('通过顶部菜单追加章节并在创建后打开', async () => {
+    const user = userEvent.setup()
+    const onCreateItem = vi.fn(async () => undefined)
+    const { onSelectFile } = renderOutline({ onCreateItem })
+
+    await user.click(screen.getByRole('button', { name: '新建章节或卷' }))
+    await user.click(screen.getByRole('menuitem', { name: '新建章节' }))
+    await user.type(screen.getByLabelText('章节标题（不含序号）'), '潮声')
+    await user.click(screen.getByRole('button', { name: '创建' }))
+
+    await waitFor(() => expect(onCreateItem).toHaveBeenCalledWith('chapters/ch00003-第3章-潮声.md', 'file'))
+    expect(onSelectFile).toHaveBeenCalledWith('chapters/ch00003-第3章-潮声.md')
+  })
+
+  it('新建卷时同时创建并打开首章', async () => {
+    const user = userEvent.setup()
+    const onCreateItem = vi.fn(async () => undefined)
+    const { onSelectFile } = renderOutline({ onCreateItem })
+
+    await user.click(screen.getByRole('button', { name: '新建章节或卷' }))
+    await user.click(screen.getByRole('menuitem', { name: '新建卷' }))
+    await user.type(screen.getByLabelText('卷名'), '荒原')
+    await user.type(screen.getByLabelText('首章标题（不含序号）'), '相逢')
+    await user.click(screen.getByRole('button', { name: '创建' }))
+
+    const path = 'chapters/v00001-荒原/ch00003-第3章-相逢.md'
+    await waitFor(() => expect(onCreateItem).toHaveBeenCalledWith(path, 'file'))
+    expect(onSelectFile).toHaveBeenCalledWith(path)
+  })
+
+  it('卷菜单默认在对应卷内追加章节', async () => {
+    const user = userEvent.setup()
+    const onCreateItem = vi.fn(async () => undefined)
+    const volumeChapters = [makeChapter({
+      path: 'chapters/v00001-荒原/ch00002-第2章-旧路.md',
+      file_name: 'ch00002-第2章-旧路.md',
+      display_title: '第2章 旧路',
+      index: 2,
+      volume: '荒原',
+      volume_path: 'chapters/v00001-荒原',
+    })]
+    renderOutline({ chapters: volumeChapters, onCreateItem })
+
+    await user.pointer({ keys: '[MouseRight]', target: screen.getByRole('button', { name: '荒原 1 章' }) })
+    await user.click(screen.getByRole('menuitem', { name: '在此处新建章节' }))
+    expect(screen.getByRole('combobox', { name: '所属卷' })).toHaveTextContent('荒原')
+    await user.type(screen.getByLabelText('章节标题（不含序号）'), '归途')
+    await user.click(screen.getByRole('button', { name: '创建' }))
+
+    await waitFor(() => expect(onCreateItem).toHaveBeenCalledWith('chapters/v00001-荒原/ch00003-第3章-归途.md', 'file'))
   })
 
   it('当前细纲只在滚动目录展示一次，单击直接打开全文', async () => {
@@ -247,6 +325,38 @@ describe('ChapterOutline', () => {
     await user.click(await screen.findByRole('menuitem', { name: '引用到 Chat' }))
 
     expect(onReferenceFile).toHaveBeenCalledWith('chapters/ch2.md')
+  })
+
+  it('章节右键菜单提供通用文件操作', async () => {
+    const user = userEvent.setup()
+    const onCopyItem = vi.fn(async () => undefined)
+    renderOutline({
+      workspace: '/projects/demo',
+      tree: [{
+        name: 'chapters',
+        type: 'dir',
+        children: [
+          { name: 'ch1.md', type: 'file' },
+          { name: 'ch2.md', type: 'file' },
+          { name: 'ch2 copy.md', type: 'file' },
+        ],
+      }],
+      onCopyItem,
+      onReferenceFile: vi.fn(),
+      onRevealFile: vi.fn(),
+      onRenameItem: vi.fn(async () => undefined),
+      onDeleteItem: vi.fn(async () => undefined),
+    })
+    const openMenu = () => user.pointer({ keys: '[MouseRight]', target: screen.getByText('第 2 章 转折') })
+
+    await openMenu()
+    for (const label of ['引用到 Chat', '复制路径', '复制相对路径', '创建副本', '在项目文件中显示', '在文件管理器中显示', '重命名文件', '删除']) {
+      expect(await screen.findByRole('menuitem', { name: label })).toBeInTheDocument()
+    }
+
+    await user.click(screen.getByRole('menuitem', { name: '创建副本' }))
+    await waitFor(() => expect(onCopyItem).toHaveBeenCalledWith('chapters/ch2.md', 'chapters/ch2 copy 2.md'))
+
   })
 
   it('章节文件可通过更多菜单重命名和确认删除', async () => {

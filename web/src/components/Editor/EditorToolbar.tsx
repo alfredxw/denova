@@ -2,7 +2,7 @@ import { BookOpen, Crosshair, ImagePlus, PanelLeft, Save, Settings } from 'lucid
 import { useTranslation } from 'react-i18next'
 
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
-import { formatDateTime, formatLocaleNumber } from '@/i18n'
+import { formatLocaleNumber } from '@/i18n'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
@@ -17,7 +17,6 @@ interface EditorToolbarProps {
   displayTitle?: string
   chapterPath?: string
   chapterWords?: number
-  updatedAt?: string
   currentLine?: number
   saveStatus: SaveStatus | null
   onSave: () => void | Promise<void>
@@ -37,7 +36,6 @@ export function EditorToolbar({
   displayTitle,
   chapterPath,
   chapterWords,
-  updatedAt,
   currentLine,
   saveStatus,
   onSave,
@@ -52,7 +50,6 @@ export function EditorToolbar({
   generateIllustrationDisabled,
 }: EditorToolbarProps) {
   const { t } = useTranslation()
-  const updatedTime = formatDateTime(updatedAt)
 
   return (
     <div className="nova-editor-toolbar flex h-9 shrink-0 items-center justify-between gap-3 overflow-hidden border-b px-3">
@@ -74,13 +71,6 @@ export function EditorToolbar({
         {chapterWords !== undefined ? (
           <span className="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-[11px] font-normal text-[var(--nova-text-faint)]">
             <span>{t('common.words', { count: formatLocaleNumber(chapterWords) })}</span>
-            {updatedTime ? (
-              <>
-                <span aria-hidden>·</span>
-                <span className="sm:hidden">{updatedTime}</span>
-                <span className="hidden sm:inline">{t('editor.updatedAt', { time: updatedTime })}</span>
-              </>
-            ) : null}
             {currentLine !== undefined ? (
               <>
                 <span aria-hidden>·</span>
@@ -150,7 +140,7 @@ export function EditorToolbar({
             <PopoverContent
               align="end"
               side="bottom"
-              className="nova-editor-settings-panel w-[340px] overflow-hidden rounded-lg border border-[var(--nova-border)] p-0 text-[var(--nova-text)]"
+              className="nova-editor-settings-panel w-[320px] max-w-[calc(100vw-16px)] overflow-hidden rounded-lg border border-[var(--nova-border)] p-0 text-[var(--nova-text)]"
             >
               <EditorSettingsPanel
                 settings={settings}

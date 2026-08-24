@@ -8,7 +8,6 @@ const search = {
   'search.noResults': 'No matching content found',
   'search.line': 'Line {{line}}',
   'search.pathMatch': 'Path match',
-  'search.options': 'Search options',
   'search.toggleRegex': 'Regular expression',
   'search.toggleReplace': 'Replace',
   'search.expandFileResults': 'Show all {{count}} results in {{name}}',

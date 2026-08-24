@@ -617,8 +617,6 @@ export function ModeRouter(props: ModeRouterProps) {
       workspace={workspace}
       tree={tree}
       chapters={chapters}
-      chapterCount={summary?.chapter_count}
-      totalWords={summary?.total_words}
       summaryAvailable={Boolean(summary)}
       ideas={summary?.ideas}
       outline={summary?.outline}
@@ -672,7 +670,9 @@ export function ModeRouter(props: ModeRouterProps) {
         editorAutoSaveEnabled={editorAutoSaveEnabled}
         editorAutoSaveDelayMs={editorAutoSaveDelayMs}
         currentChapter={currentChapter}
-        editorSearchIntent={editorSearchIntent?.path === selectedFile ? editorSearchIntent : null}
+        editorSearchIntent={editorSearchIntent?.path === selectedFile && fileDocument?.path === selectedFile
+          ? editorSearchIntent
+          : null}
         illustrationInsertSignal={illustrationInsertSignal}
         documentReview={documentReviewController}
         documentReviewNavigationTarget={documentReviewNavigationTarget}
