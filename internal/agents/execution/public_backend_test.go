@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1422,7 +1423,24 @@ func TestAgentRuntimeRestartMarksUnfinishedRunInterrupted(t *testing.T) {
 	// Snapshot the flushed transcript while the first process is still inside the
 	// provider call. Opening the copy accurately models a process crash without
 	// asking Agent.Close to perform its intentional graceful abort.
-	if err := os.CopyFS(recoveredDataDir, os.DirFS(liveDataDir)); err != nil {
+	sourceFS := os.DirFS(liveDataDir)
+	if err := fs.WalkDir(sourceFS, ".", func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if strings.HasSuffix(path, ".lease") {
+			return nil
+		}
+		target := filepath.Join(recoveredDataDir, filepath.FromSlash(path))
+		if entry.IsDir() {
+			return os.MkdirAll(target, 0o755)
+		}
+		data, readErr := fs.ReadFile(sourceFS, path)
+		if readErr != nil {
+			return readErr
+		}
+		return os.WriteFile(target, data, 0o600)
+	}); err != nil {
 		t.Fatal(err)
 	}
 

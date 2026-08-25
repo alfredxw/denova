@@ -7,9 +7,10 @@ import (
 	"sync/atomic"
 	"testing"
 
-	agents "denova/internal/agents"
 	agentcontext "denova/internal/agents/context"
+	agentlifecycle "denova/internal/agents/lifecycle"
 	agentrun "denova/internal/agents/run"
+	agentsession "denova/internal/agents/session"
 	interactiveapp "denova/internal/app/interactive"
 	"denova/internal/interactive"
 	interactivestate "denova/internal/interactive/state"
@@ -17,23 +18,12 @@ import (
 
 var interactiveAgentTestCycle atomic.Uint64
 
-// commitInteractiveAssistantForTest crosses the same durable output barrier
-// as production. Tests that exercise parsing or validation failures should
-// call AppendAssistant directly and assert the pre-commit error instead.
-func commitInteractiveAssistantForTest(
-	t testing.TB,
-	store *interactive.Store,
-	storyID, branchID, user string,
-	conversation *interactiveapp.Conversation,
-	content, thinking string,
-) error {
+func commitInteractiveAssistantForTest(t testing.TB, store *interactive.Store, storyID, branchID, user string, conversation *interactiveapp.Conversation, content, thinking string) error {
 	t.Helper()
 	cycle := interactiveAgentTestCycle.Add(1)
 	identity := fmt.Sprintf("test-cycle:%d", cycle)
 	conversation.BindAgentCycleIdentity(agentrun.CycleIdentity{
-		CommandID:   agentrun.CommandID(identity),
-		OperationID: agentrun.OperationID(identity),
-		Cycle:       1,
+		CommandID: agentrun.CommandID(identity), OperationID: agentrun.OperationID(identity), Cycle: 1,
 	})
 	materializeInteractiveInputForTest(t, store, storyID, branchID, user, conversation.AgentCycleIdentitySnapshot())
 	if err := conversation.AppendAssistantWithThinking(content, thinking); err != nil {
@@ -42,21 +32,15 @@ func commitInteractiveAssistantForTest(
 	return conversation.CommitAgentCycleStage(context.Background(), agentrun.DomainCommitOutput, agentrun.Outcome{Status: agentrun.OutcomeCompleted})
 }
 
-func materializeInteractiveInputForTest(
-	t testing.TB,
-	store *interactive.Store,
-	storyID, branchID, user string,
-	identity agentrun.CycleIdentity,
-) {
+func materializeInteractiveInputForTest(t testing.TB, store *interactive.Store, storyID, branchID, user string, identity agentrun.CycleIdentity) {
 	t.Helper()
 	storyContext, err := store.StoryContext(storyID, branchID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	branchID = storyContext.Snapshot.BranchID
 	intent, err := interactive.NewPlayerInputIntent(interactive.DomainCommitIdentity{
 		CommandID: string(identity.CommandID), OperationID: string(identity.OperationID), Cycle: identity.Cycle,
-	}, branchID, user)
+	}, storyContext.Snapshot.BranchID, user)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,13 +49,7 @@ func materializeInteractiveInputForTest(
 	}
 }
 
-func submitTestTurnResult(
-	t *testing.T,
-	store *interactive.Store,
-	storyID, branchID string,
-	conversation *interactiveapp.Conversation,
-	intent, goal string,
-) {
+func submitTestTurnResult(t *testing.T, store *interactive.Store, storyID, branchID string, conversation *interactiveapp.Conversation, intent, goal string) {
 	t.Helper()
 	updates := []interactivestate.Update{}
 	storyContext, err := store.StoryContext(storyID, branchID)
@@ -103,25 +81,26 @@ func submitTestTurnResult(
 		)
 	}
 	choices := []string{"继续当前行动", "观察周围变化", "询问在场人物", "检查自身状态", "暂时等待"}
-	receipt, err := conversation.SubmitTurnResult(context.Background(), interactive.TurnSubmissionInput{
-		StateUpdates: &updates,
-		Choices:      &choices,
-	})
+	receipt, err := conversation.SubmitTurnResult(context.Background(), interactive.TurnSubmissionInput{StateUpdates: &updates, Choices: &choices})
 	if err != nil || !receipt.Ready {
 		t.Fatalf("SubmitTurnResult failed: receipt=%#v err=%v", receipt, err)
 	}
 }
 
-func assembleAndCommitInteractiveContextForTest(
-	conversation *interactiveapp.Conversation,
-	originalMessage, userMessage string,
-) ([]*agents.Message, error) {
-	result, err := conversation.AssembleModelContext(context.Background(), originalMessage, agentcontext.ModelContextInput{
-		UserMessage: userMessage,
-		Budget:      conversation.ModelContextBudget(),
-	})
-	if err == nil {
-		err = conversation.CommitModelInput(context.Background(), originalMessage, result)
-	}
-	return result.Messages, err
+type interactiveReplayConversation struct {
+	store    *interactive.Store
+	storyID  string
+	branchID string
+	message  string
 }
+
+func (*interactiveReplayConversation) AssembleModelContext(ctx context.Context, _ string, input agentcontext.ModelContextInput) (agentcontext.ModelContextResult, error) {
+	return agentcontext.AssembleSingleUserModelContext(ctx, input)
+}
+
+func (*interactiveReplayConversation) AppendAssistant(string) error                    { return nil }
+func (*interactiveReplayConversation) MarkInterrupted(string, string, string) error    { return nil }
+func (*interactiveReplayConversation) PendingInterruption() *agentsession.Interruption { return nil }
+func (*interactiveReplayConversation) ResolveInterruption(string) error                { return nil }
+
+var _ agentlifecycle.ConversationCommitter = interactiveReplayConversationCommitter{}

@@ -7,12 +7,25 @@ import (
 	"sync/atomic"
 	"testing"
 
+	agents "denova/internal/agents"
+	agentcontext "denova/internal/agents/context"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/interactive"
 	interactivestate "denova/internal/interactive/state"
 )
 
 var testCycleSequence atomic.Uint64
+
+func assembleAndCommitInteractiveContextForTest(conversation *Conversation, originalMessage, userMessage string) ([]*agents.Message, error) {
+	result, err := conversation.AssembleModelContext(context.Background(), originalMessage, agentcontext.ModelContextInput{
+		UserMessage: userMessage,
+		Budget:      conversation.ModelContextBudget(),
+	})
+	if err == nil {
+		err = conversation.CommitModelInput(context.Background(), originalMessage, result)
+	}
+	return result.Messages, err
+}
 
 func commitInteractiveAssistantForTest(t testing.TB, conversation *Conversation, content, thinking string) error {
 	t.Helper()
@@ -82,4 +95,13 @@ func submitTestTurnResult(t *testing.T, conversation *Conversation, intent, goal
 	if err != nil || !receipt.Ready {
 		t.Fatalf("SubmitTurnResult failed: receipt=%#v err=%v", receipt, err)
 	}
+}
+
+func testTurnSubmissionInput(updates []interactivestate.Update, includeChoices bool) interactive.TurnSubmissionInput {
+	input := interactive.TurnSubmissionInput{StateUpdates: &updates}
+	if includeChoices {
+		choices := []string{"继续当前行动", "观察周围变化", "询问在场人物", "检查自身状态", "暂时等待"}
+		input.Choices = &choices
+	}
+	return input
 }

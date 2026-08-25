@@ -985,3 +985,12 @@ func TestLoadLayeredIgnoresTraceDebugSettingsFromWorkspaceLayer(t *testing.T) {
 		t.Fatalf("user trace debug settings should remain effective: %#v", layered.Effective)
 	}
 }
+
+func resolvedManifestCapability(manifest []ResolvedAgentToolCapability, capability string) (ResolvedAgentToolCapability, bool) {
+	for _, entry := range manifest {
+		if entry.Capability == capability {
+			return entry, true
+		}
+	}
+	return ResolvedAgentToolCapability{}, false
+}

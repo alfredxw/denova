@@ -1,10 +1,53 @@
 package interactive
 
 import (
+	"denova/internal/book/lore"
 	"denova/internal/interactive/director"
 	"errors"
 	"testing"
 )
+
+type directorPatchTestRun struct {
+	store        *Store
+	story        StorySummary
+	turn         TurnEvent
+	token        DirectorPlanRunToken
+	plan         DirectorPlan
+	loreRevision string
+	draft        *DirectorPlanUpdateDraft
+}
+
+func startDirectorPatchTestRun(t *testing.T, workspace, title string) directorPatchTestRun {
+	t.Helper()
+	store := NewStore(workspace)
+	story, err := store.CreateStory(CreateStoryRequest{Title: title})
+	if err != nil {
+		t.Fatal(err)
+	}
+	turn, _, err := store.AppendTurnWithState(story.ID, AppendTurnWithStateRequest{BranchID: "main", User: "前进", Narrative: "抵达门前。"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := store.DirectorPlanRunToken(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.MarkDirectorPlanRunStarted(story.ID, "main", token, turn.ID); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := store.DirectorPlan(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	loreRevision, err := lore.NewStore(workspace).Revision()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return directorPatchTestRun{
+		store: store, story: story, turn: turn, token: token, plan: plan, loreRevision: loreRevision,
+		draft: NewDirectorPlanUpdateDraft(plan.Docs, token),
+	}
+}
 
 func TestCommitDirectorPlanRunReplaysCanonicalReceiptAfterStoreRestart(t *testing.T) {
 	workspace := t.TempDir()

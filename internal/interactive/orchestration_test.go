@@ -26,6 +26,10 @@ func sampleTurnCheckRequest() TurnCheckRequest {
 	}
 }
 
+func floatPtr(value float64) *float64 {
+	return &value
+}
+
 func seedForTurnCheckOutcome(t *testing.T, dice, mode, difficulty string, modifier, bonus float64, want string) int64 {
 	t.Helper()
 	baseTarget, ok := turnCheckDifficultyTarget(dice, difficulty)
