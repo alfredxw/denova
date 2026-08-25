@@ -82,7 +82,6 @@ const agents = {
   'agents.field.thinkingLevel': '思考强度',
   'agents.thinkingLevel.default': '模型默认',
   'agents.thinkingLevel.off': '关闭',
-  'agents.thinkingLevel.minimal': '最低',
   'agents.thinkingLevel.low': '低',
   'agents.thinkingLevel.medium': '中',
   'agents.thinkingLevel.high': '高',

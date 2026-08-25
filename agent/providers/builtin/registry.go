@@ -60,9 +60,8 @@ func providerPresets() ([]providers.ProviderPreset, error) {
 		ReasoningReplay:       openaichatcompletions.ReasoningReplayAlways,
 		ReasoningContentField: "reasoning_content",
 		EffortMap: map[string]string{
-			"off":     "",
-			"minimal": "low",
-			"medium":  "high",
+			"off":    "",
+			"medium": "high",
 		},
 	})
 	if err != nil {
@@ -72,8 +71,7 @@ func providerPresets() ([]providers.ProviderPreset, error) {
 		Store:            openairesponses.StoreModeOmit,
 		ReasoningSummary: openairesponses.ReasoningSummaryOmit,
 		EffortMap: map[string]string{
-			"minimal": "low",
-			"medium":  "high",
+			"medium": "high",
 		},
 	})
 	if err != nil {
@@ -103,9 +101,6 @@ func providerPresets() ([]providers.ProviderPreset, error) {
 	anthropicNative, err := protocolOptions(anthropicmessages.Compatibility{
 		ThinkingMode:           anthropicmessages.ThinkingModeAdaptive,
 		DefaultMaxOutputTokens: 65536,
-		EffortMap: map[string]string{
-			"minimal": "low",
-		},
 	})
 	if err != nil {
 		return nil, err
@@ -115,8 +110,7 @@ func providerPresets() ([]providers.ProviderPreset, error) {
 		DefaultThinkingBudget:  8192,
 		DefaultMaxOutputTokens: 65536,
 		EffortMap: map[string]string{
-			"minimal": "low",
-			"medium":  "high",
+			"medium": "high",
 		},
 	})
 	if err != nil {

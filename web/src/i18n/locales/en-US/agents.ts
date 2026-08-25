@@ -82,7 +82,6 @@ const agents = {
   'agents.field.thinkingLevel': 'Thinking Level',
   'agents.thinkingLevel.default': 'Model default',
   'agents.thinkingLevel.off': 'Off',
-  'agents.thinkingLevel.minimal': 'Minimal',
   'agents.thinkingLevel.low': 'Low',
   'agents.thinkingLevel.medium': 'Medium',
   'agents.thinkingLevel.high': 'High',

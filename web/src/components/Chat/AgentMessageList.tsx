@@ -38,6 +38,8 @@ import { LoadingState } from '@/components/common/LoadingState'
 interface MessageListProps {
   projectId?: string
   messages: AgentUIMessage[]
+  /** Optional projection of the parent transcript, such as one SubAgent invocation. */
+  projection?: AgentMessageListProjection
   isStreaming: boolean
   /** Whether the persistently mounted chat surface currently has measurable layout geometry. */
   visible?: boolean
@@ -81,6 +83,12 @@ interface MessageListProps {
   onResolveAsk?: (view: AgentMessageView, action: { status: 'answered'; answers: AgentAskAnswer[] } | { status: 'cancelled' }) => Promise<AgentAskResolution>
   turnScrollRequest?: TurnScrollRequest
   onVisibleTurnAnchorChange?: (anchorId: string) => void
+}
+
+export interface AgentMessageListProjection {
+  views: AgentMessageView[]
+  initialPosition: 'start' | 'end'
+  subAgentPresentation: 'card' | 'content'
 }
 
 /** Durable UI attached to the last visible row of one Agent run. */
@@ -128,13 +136,15 @@ interface MessageListVirtuosoContext {
   onLoadEarlierMessages?: () => void | Promise<void>
 }
 
-export function MessageList({ projectId, messages, isStreaming, visible = true, isExecutionActive = isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', bottomPaddingPx, contentClassName, afterContent, afterContentKey, hasEarlierMessages = false, isLoadingEarlierMessages = false, onLoadEarlierMessages, timelineAttachments = [], messageStyle, collapseTraceGroups = false, activeTraceDisplay = 'expanded', canMutateMessage, onEditMessage, onEditAssistantReply, onCreateBranch, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onResolveAsk, turnScrollRequest, onVisibleTurnAnchorChange }: MessageListProps) {
+export function MessageList({ projectId, messages, projection, isStreaming, visible = true, isExecutionActive = isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', bottomPaddingPx, contentClassName, afterContent, afterContentKey, hasEarlierMessages = false, isLoadingEarlierMessages = false, onLoadEarlierMessages, timelineAttachments = [], messageStyle, collapseTraceGroups = false, activeTraceDisplay = 'expanded', canMutateMessage, onEditMessage, onEditAssistantReply, onCreateBranch, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onResolveAsk, turnScrollRequest, onVisibleTurnAnchorChange }: MessageListProps) {
   const { t } = useTranslation()
   const containerRef = useRef<HTMLDivElement | null>(null)
   const renderedItemsRef = useRef<ListItem<AgentChatListItem>[]>([])
   const lastVisibleTurnAnchorRef = useRef('')
   const lastTurnScrollRequestIdRef = useRef<number | null>(null)
-  const views = useMemo(() => buildAgentMessageViews(messages), [messages])
+  const views = useMemo(() => projection?.views ?? buildAgentMessageViews(messages), [messages, projection?.views])
+  const initialPosition = projection?.initialPosition ?? 'end'
+  const subAgentPresentation = projection?.subAgentPresentation ?? 'card'
   const executionTimings = useMemo(() => selectAgentExecutionTimings(views), [views])
   const hasActiveResponse = views.some((view) =>
     view.kind !== 'user' &&
@@ -164,15 +174,16 @@ export function MessageList({ projectId, messages, isStreaming, visible = true, 
   const tailFollowActive = isStreaming || isExecutionActive
   const firstItemIndex = usePrependStableFirstItemIndex(listItems, scrollResetKey)
   const initialPositionKey = scrollResetKey || 'default'
-  const hasInitialContent = messages.length > 0 || isStreaming || Boolean(activityContent)
+  const hasInitialContent = views.length > 0 || isStreaming || Boolean(activityContent)
   const [positionedKey, setPositionedKey] = useState('')
-  const initialPositionReady = !visible || !hasInitialContent || positionedKey === initialPositionKey
+  const initialPositionReady = initialPosition === 'start' || !visible || !hasInitialContent || positionedKey === initialPositionKey
   const resolveMessageScroller = useCallback(
     () => containerRef.current?.querySelector<HTMLElement>('.nova-chat-canvas') || null,
     [],
   )
   const scrollLock = useVirtuosoBottomLock({
     resetKey: scrollResetKey,
+    resetPosition: initialPosition,
     itemCount: listItems.length,
     autoFollowEnabled: tailFollowActive,
     visible,
@@ -289,6 +300,7 @@ export function MessageList({ projectId, messages, isStreaming, visible = true, 
         isStreaming={isStreaming}
         tailFollowActive={tailFollowActive}
         activeTraceDisplay={activeTraceDisplay}
+        subAgentPresentation={subAgentPresentation}
         highlightDialogue={highlightDialogue}
         messageStyle={messageStyle}
         canMutateMessage={canMutateMessage}
@@ -312,10 +324,10 @@ export function MessageList({ projectId, messages, isStreaming, visible = true, 
         syncStreamingTailLayout={tailFollowActive ? scrollLock.syncStreamingTailLayout : undefined}
       />
     )
-  }, [activeSubAgentSessionKey, activeTraceDisplay, anchorLatestInteractiveCardBottom, canMutateMessage, contentClassName, executionTimings, firstItemIndex, generatingInteractiveImageTurnId, highlightDialogue, isStreaming, listItems, messageStyle, onApprovePlan, onContinuePlan, onCreateBranch, onEditAssistantReply, onEditMessage, onExitPlanMode, onGenerateInteractiveImage, onInsertIllustration, onOpenSubAgentSession, onOpenTrace, onRegenerateMessage, onResolveAsk, onSwitchMessageVersion, projectId, scrollLock.streamingRowRef, scrollLock.syncStreamingTailLayout, tailFollowActive])
+  }, [activeSubAgentSessionKey, activeTraceDisplay, anchorLatestInteractiveCardBottom, canMutateMessage, contentClassName, executionTimings, firstItemIndex, generatingInteractiveImageTurnId, highlightDialogue, isStreaming, listItems, messageStyle, onApprovePlan, onContinuePlan, onCreateBranch, onEditAssistantReply, onEditMessage, onExitPlanMode, onGenerateInteractiveImage, onInsertIllustration, onOpenSubAgentSession, onOpenTrace, onRegenerateMessage, onResolveAsk, onSwitchMessageVersion, projectId, scrollLock.streamingRowRef, scrollLock.syncStreamingTailLayout, subAgentPresentation, tailFollowActive])
 
   useLayoutEffect(() => {
-    if (!visible || !hasInitialContent || positionedKey === initialPositionKey) return
+    if (initialPosition !== 'end' || !visible || !hasInitialContent || positionedKey === initialPositionKey) return
     const scroller = resolveMessageScroller()
     if (!scroller || scroller.clientHeight <= 0) {
       setPositionedKey(initialPositionKey)
@@ -337,7 +349,7 @@ export function MessageList({ projectId, messages, isStreaming, visible = true, 
       window.cancelAnimationFrame(firstFrame)
       if (secondFrame) window.cancelAnimationFrame(secondFrame)
     }
-  }, [hasInitialContent, initialPositionKey, positionedKey, resolveMessageScroller, visible])
+  }, [hasInitialContent, initialPosition, initialPositionKey, positionedKey, resolveMessageScroller, visible])
 
   return (
     <div ref={containerRef} className="relative flex min-h-0 flex-1 flex-col">
@@ -375,7 +387,7 @@ export function MessageList({ projectId, messages, isStreaming, visible = true, 
         )}
         aria-busy={!initialPositionReady}
         aria-hidden={!initialPositionReady || undefined}
-        aria-label={t('common.messages', { count: messages.length })}
+        aria-label={t('common.messages', { count: views.length })}
       />
       {!initialPositionReady ? (
         <LoadingState
@@ -468,7 +480,7 @@ function MessageListFooter({ context }: ContextProp<MessageListVirtuosoContext>)
   )
 }
 
-function AgentChatListRow({ projectId, item, executionTimings, isLast, isStreaming, tailFollowActive, activeTraceDisplay, highlightDialogue, messageStyle, contentClassName, canMutateMessage, onEditMessage, onEditAssistantReply, onCreateBranch, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onResolveAsk, onInteractiveCardLayoutChange, streamingRowRef, syncStreamingTailLayout }: {
+function AgentChatListRow({ projectId, item, executionTimings, isLast, isStreaming, tailFollowActive, activeTraceDisplay, subAgentPresentation, highlightDialogue, messageStyle, contentClassName, canMutateMessage, onEditMessage, onEditAssistantReply, onCreateBranch, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onResolveAsk, onInteractiveCardLayoutChange, streamingRowRef, syncStreamingTailLayout }: {
   projectId?: string
   item: AgentChatListItem
   executionTimings: ReadonlyMap<string, AgentExecutionTiming>
@@ -476,6 +488,7 @@ function AgentChatListRow({ projectId, item, executionTimings, isLast, isStreami
   isStreaming: boolean
   tailFollowActive: boolean
   activeTraceDisplay: 'expanded' | 'collapsed'
+  subAgentPresentation: 'card' | 'content'
   highlightDialogue: boolean
   messageStyle?: CSSProperties
   contentClassName?: string
@@ -521,6 +534,7 @@ function AgentChatListRow({ projectId, item, executionTimings, isLast, isStreami
         onGenerateInteractiveImage={isStreaming || !mutationsAllowed ? undefined : onGenerateInteractiveImage}
         generatingInteractiveImageTurnId={generatingInteractiveImageTurnId}
         activeSubAgentSessionKey={activeSubAgentSessionKey}
+        subAgentPresentation={subAgentPresentation}
         onApprovePlan={isStreaming ? undefined : onApprovePlan}
         onContinuePlan={isStreaming ? undefined : onContinuePlan}
         onExitPlanMode={isStreaming ? undefined : onExitPlanMode}

@@ -1,15 +1,12 @@
-import { useCallback, useLayoutEffect, useMemo } from 'react'
-import type { CSSProperties, RefCallback } from 'react'
+import { useMemo } from 'react'
+import type { CSSProperties } from 'react'
 import { Bot, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { Virtuoso } from 'react-virtuoso'
-import type { Components, ContextProp } from 'react-virtuoso'
 import type { AgentUIMessage } from '@/lib/agent-ui'
 import type { AgentAskAnswer, AgentAskResolution } from '@/lib/api'
-import { agentSubAgentSessionKey, buildAgentMessageViews, buildAgentSubAgentTimelineGroups, type AgentMessageView } from '@/lib/agent-message-view'
-import { AgentMessageItem } from './AgentMessageItem'
-import { VIRTUOSO_BOTTOM_THRESHOLD, useVirtuosoBottomLock } from './useVirtuosoBottomLock'
-import { ScrollToBottomButton } from './ScrollToBottomButton'
+import { buildAgentMessageViews, type AgentMessageView } from '@/lib/agent-message-view'
+import { MessageList, type AgentMessageListProjection } from './AgentMessageList'
+import { selectSubAgentSessionViews } from './subagent-session'
 
 interface AgentSubAgentSessionPanelProps {
   projectId?: string
@@ -21,56 +18,26 @@ interface AgentSubAgentSessionPanelProps {
   onResolveAsk?: (view: AgentMessageView, action: { status: 'answered'; answers: AgentAskAnswer[] } | { status: 'cancelled' }) => Promise<AgentAskResolution>
 }
 
-interface SubAgentSessionVirtuosoContext {
-  streamingSpacerPx?: number
-}
-
-const SUBAGENT_SESSION_COMPONENTS: Components<AgentMessageView, SubAgentSessionVirtuosoContext> = {
-  Header: SubAgentSessionListPadding,
-  Footer: SubAgentSessionListFooter,
-}
-
 export function AgentSubAgentSessionPanel({ projectId, messages, sessionKey, onClose, highlightDialogue = false, messageStyle, onResolveAsk }: AgentSubAgentSessionPanelProps) {
   const { t } = useTranslation()
-  const sessionViews = useMemo(() => {
-    const views = buildAgentMessageViews(messages)
-    const group = buildAgentSubAgentTimelineGroups(views).find(candidate => candidate.sessionKeys.includes(sessionKey))
-    if (group) return group.views
-    return views.filter((view) => agentSubAgentSessionKey(view) === sessionKey && view.kind !== 'token-usage')
+  const projection = useMemo<AgentMessageListProjection>(() => {
+    const views = selectSubAgentSessionViews(buildAgentMessageViews(messages), sessionKey)
+    return {
+      views,
+      initialPosition: views.some(view => view.streaming) ? 'end' : 'start',
+      subAgentPresentation: 'content',
+    }
   }, [messages, sessionKey])
+  const sessionViews = projection.views
   const first = sessionViews[0]
   const name = first?.metadata.agent_name || first?.metadata.subagent_type || t('chat.subagent.label')
   const running = sessionViews.some((view) => view.streaming)
-  const scrollLock = useVirtuosoBottomLock({
-    resetKey: sessionKey,
-    resetPosition: running ? 'end' : 'start',
-    itemCount: sessionViews.length,
-    autoFollowEnabled: running,
-    bottomInsetPx: 16,
-  })
-  const virtuosoContext = useMemo<SubAgentSessionVirtuosoContext>(() => ({
-    streamingSpacerPx: scrollLock.streamingSpacerPx,
-  }), [scrollLock.streamingSpacerPx])
-  const itemContent = useCallback((index: number, view?: AgentMessageView) => {
-    const resolvedView = view || sessionViews[index]
-    if (!resolvedView) return null
-    return (
-      <SubAgentSessionRow
-        projectId={projectId}
-        view={resolvedView}
-        isLast={index === sessionViews.length - 1}
-        streamingTail={running && index === sessionViews.length - 1}
-        streamingRowRef={scrollLock.streamingRowRef}
-        syncStreamingTailLayout={scrollLock.syncStreamingTailLayout}
-        highlightDialogue={highlightDialogue}
-        messageStyle={messageStyle}
-        onResolveAsk={onResolveAsk}
-      />
-    )
-  }, [highlightDialogue, messageStyle, onResolveAsk, projectId, running, scrollLock.streamingRowRef, scrollLock.syncStreamingTailLayout, sessionViews])
 
   return (
-    <section className="flex h-full min-h-0 flex-col border-l border-[var(--nova-border)] bg-[var(--nova-surface-2)] shadow-[-12px_0_26px_-24px_rgba(0,0,0,0.72)]">
+    <section
+      aria-label={t('chat.subagent.sessionTitle', { name })}
+      className="flex h-full min-h-0 flex-col border-l border-[var(--nova-border)] bg-[var(--nova-surface-2)] shadow-[-12px_0_26px_-24px_rgba(0,0,0,0.72)]"
+    >
       <div className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-3">
         <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]">
           <Bot className="h-3.5 w-3.5" />
@@ -95,93 +62,21 @@ export function AgentSubAgentSessionPanel({ projectId, messages, sessionKey, onC
           </div>
         </div>
       ) : (
-        <div className="relative flex min-h-0 flex-1 flex-col">
-          <Virtuoso
-            ref={scrollLock.virtuosoRef}
-            scrollerRef={scrollLock.scrollerRef}
-            onScroll={scrollLock.onScroll}
-            onWheel={scrollLock.onWheel}
-            onKeyDown={scrollLock.onKeyDown}
-            atBottomStateChange={scrollLock.onAtBottomStateChange}
-            atBottomThreshold={VIRTUOSO_BOTTOM_THRESHOLD}
-            totalListHeightChanged={running ? scrollLock.syncStreamingTailLayout : scrollLock.syncIdleBottomLayout}
-            initialItemCount={Math.min(sessionViews.length, 40)}
-            data={sessionViews}
-            context={virtuosoContext}
-            components={SUBAGENT_SESSION_COMPONENTS}
-            // Completed history opens from its beginning; only a live child owns
-            // bottom following while its response grows.
-            alignToBottom={false}
-            computeItemKey={(index, view) => subAgentSessionMessageKey(view, index)}
-            itemContent={itemContent}
-            overscan={{ main: 360, reverse: 180 }}
-            increaseViewportBy={{ top: 300, bottom: 560 }}
-            data-stream-active={running ? '' : undefined}
-            className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden [overflow-anchor:none]"
-            aria-label={t('chat.subagent.sessionTitle', { name })}
-          />
-          <ScrollToBottomButton
-            visible={scrollLock.isAwayFromBottom}
-            onClick={scrollLock.scrollToBottom}
-            bottomOffsetPx={16}
-            rightOffsetPx={16}
-          />
-        </div>
+        <MessageList
+          projectId={projectId}
+          messages={messages}
+          projection={projection}
+          isStreaming={running}
+          isExecutionActive={running}
+          activityContent=""
+          scrollResetKey={sessionKey}
+          bottomPaddingPx={16}
+          contentClassName="px-4"
+          highlightDialogue={highlightDialogue}
+          messageStyle={messageStyle}
+          onResolveAsk={onResolveAsk}
+        />
       )}
     </section>
   )
-}
-
-function SubAgentSessionRow({ projectId, view, isLast, streamingTail, streamingRowRef, syncStreamingTailLayout, highlightDialogue, messageStyle, onResolveAsk }: {
-  projectId?: string
-  view: AgentMessageView
-  isLast: boolean
-  streamingTail: boolean
-  streamingRowRef: RefCallback<HTMLElement>
-  syncStreamingTailLayout: () => void
-  highlightDialogue: boolean
-  messageStyle?: CSSProperties
-  onResolveAsk?: AgentSubAgentSessionPanelProps['onResolveAsk']
-}) {
-  useLayoutEffect(() => {
-    if (streamingTail) syncStreamingTailLayout()
-  }, [streamingTail, syncStreamingTailLayout, view])
-
-  return (
-    <div
-      ref={streamingTail ? streamingRowRef : undefined}
-      data-nova-chat-item="subagent-message"
-      data-nova-chat-tail-row
-      className={`min-w-0 px-4 ${isLast ? 'pb-0' : 'pb-2'}`}
-    >
-      <AgentMessageItem
-        projectId={projectId}
-        view={view}
-        highlightDialogue={highlightDialogue}
-        messageStyle={messageStyle}
-        subAgentPresentation="content"
-        onResolveAsk={onResolveAsk}
-      />
-    </div>
-  )
-}
-
-function SubAgentSessionListPadding() {
-  return <div aria-hidden="true" className="h-4 shrink-0" />
-}
-
-function SubAgentSessionListFooter({ context }: ContextProp<SubAgentSessionVirtuosoContext>) {
-  return (
-    <div
-      aria-hidden="true"
-      className="min-h-4 shrink-0"
-      style={typeof context.streamingSpacerPx === 'number' ? { height: context.streamingSpacerPx } : undefined}
-    />
-  )
-}
-
-function subAgentSessionMessageKey(view: AgentMessageView | undefined, index: number) {
-  if (view?.partId) return view.partId
-  if (view?.metadata.created_at) return `${view.metadata.created_at}-${index}`
-  return index
 }

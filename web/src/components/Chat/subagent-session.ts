@@ -1,4 +1,17 @@
 import type { ChatMessage } from '@/lib/api'
+import {
+  agentSubAgentSessionKey,
+  buildAgentSubAgentTimelineGroups,
+  type AgentMessageView,
+} from '@/lib/agent-message-view'
+
+/** Projects one delegated invocation from the parent conversation timeline. */
+export function selectSubAgentSessionViews(views: AgentMessageView[], sessionKey: string) {
+  const group = buildAgentSubAgentTimelineGroups(views)
+    .find(candidate => candidate.sessionKeys.includes(sessionKey))
+  if (group) return group.views
+  return views.filter(view => agentSubAgentSessionKey(view) === sessionKey && view.kind !== 'token-usage')
+}
 
 export function subAgentSessionKey(message?: Pick<ChatMessage, 'subagent' | 'subagent_session_id' | 'run_id' | 'agent_name' | 'root_agent_name' | 'run_path'> | null) {
   if (!message?.subagent) return ''

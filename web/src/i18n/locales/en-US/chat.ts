@@ -107,7 +107,6 @@ const chat = {
   'chat.modelProfile.thinking.inherit': 'Follow configuration',
   'chat.modelProfile.thinking.default': 'Default',
   'chat.modelProfile.thinking.off': 'Off',
-  'chat.modelProfile.thinking.minimal': 'Minimal',
   'chat.modelProfile.thinking.low': 'Low',
   'chat.modelProfile.thinking.medium': 'Medium',
   'chat.modelProfile.thinking.high': 'High',

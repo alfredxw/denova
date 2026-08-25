@@ -21,7 +21,7 @@ func TestDeepSeekThinkingRequestAndSignedContinuationReplay(t *testing.T) {
 		ThinkingMode:           ThinkingModeBudget,
 		DefaultThinkingBudget:  8192,
 		DefaultMaxOutputTokens: 65536,
-		EffortMap:              map[string]string{"minimal": "low", "medium": "high"},
+		EffortMap:              map[string]string{"medium": "high"},
 	})
 	if err != nil {
 		t.Fatal(err)

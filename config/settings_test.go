@@ -79,8 +79,8 @@ func TestDefaultSettingsValues(t *testing.T) {
 	if s.AgentModels.ConfigManager.ThinkingLevel != string(providers.ThinkingLevelMedium) {
 		t.Fatalf("ConfigManager thinking level = %q, want medium", s.AgentModels.ConfigManager.ThinkingLevel)
 	}
-	if s.AgentModels.InteractiveStory.ThinkingLevel != string(providers.ThinkingLevelMinimal) {
-		t.Fatalf("InteractiveStory thinking level = %q, want minimal", s.AgentModels.InteractiveStory.ThinkingLevel)
+	if s.AgentModels.InteractiveStory.ThinkingLevel != string(providers.ThinkingLevelLow) {
+		t.Fatalf("InteractiveStory thinking level = %q, want low", s.AgentModels.InteractiveStory.ThinkingLevel)
 	}
 	if s.AgentModels.ToolAgent.ThinkingLevel != string(providers.ThinkingLevelOff) {
 		t.Fatalf("ToolAgent thinking level = %q, want off", s.AgentModels.ToolAgent.ThinkingLevel)

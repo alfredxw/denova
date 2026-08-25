@@ -15,8 +15,8 @@
 # protocol 可选：openai-chat-completions / openai-responses / anthropic-messages。
 # 已知 provider 可省略 base_url 并使用预设；自定义端点需显式填写 protocol 和 base_url。
 # 不配置 temperature 时使用平台/模型默认值。
-# thinking_level 可选：default / off / minimal / low / medium / high / xhigh / max。
-# 游戏正文、快捷选项和版本说明 Agent 内置默认 off；写作与配置 Agent 默认 medium。各 Agent 均可单独覆盖。
+# thinking_level 可选：default / off / low / medium / high / xhigh / max。
+# 游戏正文 Agent 内置默认 low，快捷选项和版本说明 Agent 默认 off，写作与配置 Agent 默认 medium。各 Agent 均可单独覆盖。
 [[model_profiles]]
 id = "default"
 name = "DeepSeek 写作"

@@ -33,7 +33,6 @@ func TestApplyThinkingLevelCoversOpenAIResponsesEfforts(t *testing.T) {
 	}{
 		{level: providers.ThinkingLevelDefault},
 		{level: providers.ThinkingLevelOff, wantEffort: shared.ReasoningEffortNone},
-		{level: providers.ThinkingLevelMinimal, wantEffort: shared.ReasoningEffortMinimal, wantSummary: shared.ReasoningSummaryAuto},
 		{level: providers.ThinkingLevelLow, wantEffort: shared.ReasoningEffortLow, wantSummary: shared.ReasoningSummaryAuto},
 		{level: providers.ThinkingLevelMedium, wantEffort: shared.ReasoningEffortMedium, wantSummary: shared.ReasoningSummaryAuto},
 		{level: providers.ThinkingLevelHigh, wantEffort: shared.ReasoningEffortHigh, wantSummary: shared.ReasoningSummaryAuto},

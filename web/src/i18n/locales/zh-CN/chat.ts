@@ -107,7 +107,6 @@ const chat = {
   'chat.modelProfile.thinking.inherit': '跟随配置',
   'chat.modelProfile.thinking.default': '默认',
   'chat.modelProfile.thinking.off': '关闭',
-  'chat.modelProfile.thinking.minimal': '最低',
   'chat.modelProfile.thinking.low': '低',
   'chat.modelProfile.thinking.medium': '中',
   'chat.modelProfile.thinking.high': '高',

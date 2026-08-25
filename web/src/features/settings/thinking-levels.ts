@@ -1,7 +1,6 @@
 export const THINKING_LEVELS = [
   'default',
   'off',
-  'minimal',
   'low',
   'medium',
   'high',
@@ -20,7 +19,7 @@ export function normalizeThinkingLevel(value: string | null | undefined): Thinki
   if (!normalized) return null
   if (['auto', 'model-default', 'provider-default'].includes(normalized)) normalized = 'default'
   if (['none', 'disabled'].includes(normalized)) normalized = 'off'
-  if (normalized === 'light') normalized = 'low'
+  if (['minimal', 'light'].includes(normalized)) normalized = 'low'
   if (['extra-high', 'extra-high-effort'].includes(normalized)) normalized = 'xhigh'
   if (normalized === 'maximum') normalized = 'max'
   return THINKING_LEVELS.includes(normalized as ThinkingLevel) ? normalized as ThinkingLevel : null

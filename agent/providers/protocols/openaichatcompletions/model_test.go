@@ -98,7 +98,6 @@ func TestCompatibilityReasoningEffortCoversUnifiedThinkingLevels(t *testing.T) {
 	}{
 		{level: providers.ThinkingLevelDefault},
 		{level: providers.ThinkingLevelOff, want: "none", ok: true},
-		{level: providers.ThinkingLevelMinimal, want: "minimal", ok: true},
 		{level: providers.ThinkingLevelLow, want: "low", ok: true},
 		{level: providers.ThinkingLevelMedium, want: "medium", ok: true},
 		{level: providers.ThinkingLevelHigh, want: "high", ok: true},
@@ -114,7 +113,7 @@ func TestCompatibilityReasoningEffortCoversUnifiedThinkingLevels(t *testing.T) {
 		})
 	}
 	deepSeekOptions, err := providers.EncodeProtocolOptions(Compatibility{EffortMap: map[string]string{
-		"off": "", "minimal": "low", "medium": "high",
+		"off": "", "medium": "high",
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -130,7 +129,6 @@ func TestCompatibilityReasoningEffortCoversUnifiedThinkingLevels(t *testing.T) {
 	}{
 		{level: providers.ThinkingLevelDefault},
 		{level: providers.ThinkingLevelOff},
-		{level: providers.ThinkingLevelMinimal, want: "low", ok: true},
 		{level: providers.ThinkingLevelLow, want: "low", ok: true},
 		{level: providers.ThinkingLevelMedium, want: "high", ok: true},
 		{level: providers.ThinkingLevelHigh, want: "high", ok: true},
@@ -177,7 +175,7 @@ func TestDeepSeekThinkingRequestUsesV4WireFormat(t *testing.T) {
 	}{
 		{name: "default", level: providers.ThinkingLevelDefault, wantReasoningContent: true},
 		{name: "off", level: providers.ThinkingLevelOff, wantThinking: "disabled"},
-		{name: "minimal", level: providers.ThinkingLevelMinimal, wantThinking: "enabled", wantEffort: "low", wantReasoningContent: true},
+		{name: "low", level: providers.ThinkingLevelLow, wantThinking: "enabled", wantEffort: "low", wantReasoningContent: true},
 		{name: "high", level: providers.ThinkingLevelHigh, wantThinking: "enabled", wantEffort: "high", wantReasoningContent: true},
 		{name: "xhigh", level: providers.ThinkingLevelXHigh, wantThinking: "enabled", wantEffort: "xhigh", wantReasoningContent: true},
 	}
@@ -188,7 +186,7 @@ func TestDeepSeekThinkingRequestUsesV4WireFormat(t *testing.T) {
 				ReasoningReplay:       ReasoningReplayAlways,
 				ReasoningContentField: "reasoning_content",
 				EffortMap: map[string]string{
-					"off": "", "minimal": "low", "medium": "high",
+					"off": "", "medium": "high",
 				},
 			})
 			if err != nil {

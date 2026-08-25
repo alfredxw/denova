@@ -12,7 +12,7 @@ import { fetchSettings } from '@/features/settings/api'
 import { GLOBAL_SETTINGS_TARGET, subscribeSettingsTarget } from '@/features/settings/query'
 import type { LayeredSettings, ModelProfileSettings } from '@/features/settings/types'
 import { modelProfileID, modelProfileLabel, modelProfilesWithDefault } from '@/features/settings/model-profiles'
-import { THINKING_LEVELS, type ThinkingLevel } from '@/features/settings/thinking-levels'
+import { normalizeThinkingLevel, THINKING_LEVELS, type ThinkingLevel } from '@/features/settings/thinking-levels'
 import type { VisibleAgentKey } from '@/features/agents/agent-registry'
 import type { ConversationConfigController } from '@/features/conversation-config/types'
 
@@ -138,7 +138,7 @@ function useModelProfileSelector({ agentKey, conversationConfig, disabled = fals
   )
   const currentProfile = conversationConfig?.snapshot?.profile_id || 'default'
   const currentModelLabel = options.find((option) => option.id === currentProfile)?.modelLabel || currentProfile
-  const currentThinkingLevel = conversationConfig?.snapshot?.thinking_level || ''
+  const currentThinkingLevel = normalizeThinkingLevel(conversationConfig?.snapshot?.thinking_level) ?? ''
   const currentThinkingLevelLabel = currentThinkingLevel
     ? t(`chat.modelProfile.thinking.${currentThinkingLevel}`)
     : ''

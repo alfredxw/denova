@@ -13,7 +13,6 @@ type ThinkingLevel string
 const (
 	ThinkingLevelDefault ThinkingLevel = "default"
 	ThinkingLevelOff     ThinkingLevel = "off"
-	ThinkingLevelMinimal ThinkingLevel = "minimal"
 	ThinkingLevelLow     ThinkingLevel = "low"
 	ThinkingLevelMedium  ThinkingLevel = "medium"
 	ThinkingLevelHigh    ThinkingLevel = "high"
@@ -24,7 +23,6 @@ const (
 var thinkingLevels = [...]ThinkingLevel{
 	ThinkingLevelDefault,
 	ThinkingLevelOff,
-	ThinkingLevelMinimal,
 	ThinkingLevelLow,
 	ThinkingLevelMedium,
 	ThinkingLevelHigh,
@@ -50,7 +48,7 @@ func NormalizeThinkingLevel(value string) ThinkingLevel {
 		return ThinkingLevelDefault
 	case "none", "disabled":
 		return ThinkingLevelOff
-	case "light":
+	case "minimal", "light":
 		return ThinkingLevelLow
 	case "extra-high", "extra-high-effort":
 		return ThinkingLevelXHigh
