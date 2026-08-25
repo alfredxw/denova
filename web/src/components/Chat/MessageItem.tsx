@@ -8,10 +8,8 @@ import { AskInteractionCard, type AskInteractionResolver } from './AskInteractio
 import { ToolApprovalCard } from './ToolApprovalCard'
 import {
   MarkdownContent,
-  PlainTextContent,
   StreamingPlaceholder,
   ThinkingBlock,
-  isPlainAssistantText,
   sanitizeThinkTags,
 } from './message-content'
 import { ContextCompactionBlock, ProposedPlanBlock } from './message-plan'
@@ -111,15 +109,19 @@ export const MessageItem = memo(function MessageItem({ projectId = '', message, 
           <div className="w-full">
             <div className="nova-message-body-with-meta nova-message-body-with-meta-assistant">
               <AIMessageContent className="chat-agent-message block w-full gap-0 px-1 text-sm text-[var(--nova-text)]" style={messageStyle}>
-                {/* Streaming keeps a cheap paragraph tree whose spacing matches persisted Markdown;
-                    only completed Markdown pays the parser cost. */}
+                {/* Live and settled replies share one streaming-aware Markdown tree. */}
                 {message.streaming && !visibleContent ? (
                   <StreamingPlaceholder />
                 ) : (
                   <StreamingContentStage content={content} targetContent={streamingTargetContent} streaming={message.streaming === true}>
-                    {(value) => message.streaming || isPlainAssistantText(value)
-                      ? <PlainTextContent content={sanitizeThinkTags(value)} />
-                      : <MarkdownContent content={value} highlightDialogue={highlightDialogue} projectId={projectId} />}
+                    {(value) => (
+                      <MarkdownContent
+                        content={sanitizeThinkTags(value)}
+                        highlightDialogue={highlightDialogue}
+                        projectId={projectId}
+                        streaming={message.streaming === true}
+                      />
+                    )}
                   </StreamingContentStage>
                 )}
               </AIMessageContent>

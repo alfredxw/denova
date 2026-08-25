@@ -1,9 +1,17 @@
 import { Children, Fragment, cloneElement, isValidElement, memo, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
+import { cjk } from '@streamdown/cjk'
+import { math } from '@streamdown/math'
 import { ChevronDown, ChevronRight } from 'lucide-react'
+import {
+  Streamdown,
+  defaultRehypePlugins,
+  type Components as StreamdownComponents,
+  type ControlsConfig,
+  type StreamdownTranslations,
+} from 'streamdown'
 import { useTranslation } from 'react-i18next'
 import { ImagePreviewDialog } from '@/components/common/ImagePreviewDialog'
-import { MarkdownRenderer, type MarkdownRendererComponents } from '@/components/common/MarkdownRenderer'
 import { projectFileAssetURL, type ThinkingChatMessage } from '@/lib/api'
 import { findDialogueHighlightRanges } from '@/lib/dialogue-highlight'
 import { useBottomScrollLock } from '@/hooks/useBottomScrollLock'
@@ -12,6 +20,35 @@ import { Reasoning, ReasoningContent, ReasoningTrigger } from '@/components/ai-e
 import { agentContentPreview } from './agent-content-preview'
 import { AgentSourceBadge } from './message-source-badge'
 import { StreamingContentStage } from './StreamingContentStage'
+
+const chatMarkdownPlugins = { cjk, math }
+const chatMarkdownControls = {
+  code: { copy: true, download: false },
+  table: { copy: true, download: false, fullscreen: true },
+  image: false,
+  mermaid: false,
+} satisfies ControlsConfig
+// Keep Streamdown's HTML sanitization without its final URL hardener: that
+// hardener replaces Denova's bare workspace image paths before our image
+// component can resolve them through the authenticated Project asset API.
+const chatMarkdownRehypePlugins = [
+  defaultRehypePlugins.raw,
+  defaultRehypePlugins.sanitize,
+]
+
+interface MarkdownContentProps {
+  content: string
+  highlightDialogue: boolean
+  projectId: string
+  streaming?: boolean
+}
+
+interface ChatMarkdownImageProps {
+  src?: string
+  alt?: string
+  title?: string
+  projectId?: string
+}
 
 export function StreamingPlaceholder() {
   const { t } = useTranslation()
@@ -40,36 +77,51 @@ export function sanitizeThinkTags(text: string): string {
   return result.replace(/<\/?\s*think\s*>/gi, '')
 }
 
-export const PlainTextContent = memo(function PlainTextContent({ content }: { content: string }) {
-  return content
-    .split(/\n[ \t]*\n+/)
-    .filter((paragraph) => paragraph.length > 0)
-    .map((paragraph, index) => (
-      <p key={index} className="whitespace-pre-wrap break-words">{paragraph}</p>
-    ))
-})
-
-export function isPlainAssistantText(content: string) {
-  return !(/[\n*_`~\[\]<>#]|^\s*(?:[-+>] |\d+[.)] |-{3,}|={3,})/.test(content)
-    || /\b(?:https?:\/\/|www\.)/i.test(content))
-}
-
-export const MarkdownContent = memo(function MarkdownContent({ content, highlightDialogue, projectId }: { content: string; highlightDialogue: boolean; projectId: string }) {
-  const components = useMemo<MarkdownRendererComponents>(() => ({
+export const MarkdownContent = memo(function MarkdownContent({
+  content,
+  highlightDialogue,
+  projectId,
+  streaming = false,
+}: MarkdownContentProps) {
+  const { t } = useTranslation()
+  const components = useMemo(() => ({
     ...(highlightDialogue ? dialogueMarkdownComponents : markdownComponents),
-    img: (props) => <ChatMarkdownImage {...props} projectId={projectId} />,
-  }), [highlightDialogue, projectId])
+    img: (props: ChatMarkdownImageProps) => <ChatMarkdownImage {...props} projectId={projectId} />,
+  }) as StreamdownComponents, [highlightDialogue, projectId])
+  const translations = useMemo<Partial<StreamdownTranslations>>(() => ({
+    copied: t('chat.action.copyMessageDone'),
+    copyCode: t('chat.markdown.copyCode'),
+    copyTable: t('chat.markdown.copyTable'),
+    copyTableAsCsv: t('chat.markdown.copyTableAsCsv'),
+    copyTableAsMarkdown: t('chat.markdown.copyTableAsMarkdown'),
+    copyTableAsTsv: t('chat.markdown.copyTableAsTsv'),
+    exitFullscreen: t('chat.markdown.exitFullscreen'),
+    viewFullscreen: t('chat.markdown.viewFullscreen'),
+  }), [t])
   return (
-    <MarkdownRenderer content={content} components={components} />
+    <Streamdown
+      animated
+      className="min-w-0"
+      components={components}
+      controls={chatMarkdownControls}
+      isAnimating={streaming}
+      lineNumbers={false}
+      mode="streaming"
+      plugins={chatMarkdownPlugins}
+      rehypePlugins={chatMarkdownRehypePlugins}
+      translations={translations}
+    >
+      {content}
+    </Streamdown>
   )
 })
 
-const markdownComponents: MarkdownRendererComponents = {
+const markdownComponents = {
   a: ChatMarkdownLink,
   img: ChatMarkdownImage,
 }
 
-const dialogueMarkdownComponents: MarkdownRendererComponents = {
+const dialogueMarkdownComponents = {
   ...markdownComponents,
   p: ({ children }: { children?: ReactNode }) => <p>{highlightDialogueNodes(children)}</p>,
   li: ({ children }: { children?: ReactNode }) => <li>{highlightDialogueNodes(children)}</li>,
@@ -94,7 +146,7 @@ function ChatMarkdownLink({ href, children }: { href?: string; title?: string; c
   )
 }
 
-function ChatMarkdownImage({ src = '', alt = '', title = '', projectId = '' }: { src?: string; alt?: string; title?: string; projectId?: string }) {
+function ChatMarkdownImage({ src = '', alt = '', title = '', projectId = '' }: ChatMarkdownImageProps) {
   const { t } = useTranslation()
   const imageSrc = normalizeChatImageSrc(src, projectId)
   if (!imageSrc) return null

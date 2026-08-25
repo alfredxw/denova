@@ -362,7 +362,14 @@ export function SubAgentOutputWindow({
           {hasContent ? (
             <div className="chat-agent-message text-sm text-[var(--nova-text)]" style={messageStyle}>
               <StreamingContentStage content={shownContent} targetContent={shownTargetContent} streaming={message.streaming === true}>
-                {(value) => <MarkdownContent content={value} highlightDialogue={highlightDialogue} projectId={projectId} />}
+                {(value) => (
+                  <MarkdownContent
+                    content={value}
+                    highlightDialogue={highlightDialogue}
+                    projectId={projectId}
+                    streaming={message.streaming === true}
+                  />
+                )}
               </StreamingContentStage>
             </div>
           ) : (
@@ -373,5 +380,3 @@ export function SubAgentOutputWindow({
     </div>
   )
 }
-
-

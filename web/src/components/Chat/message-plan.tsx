@@ -90,7 +90,12 @@ export function ProposedPlanBlock({ projectId, message, highlightDialogue, onApp
     <PlanShell icon={<ClipboardCheck className="h-3.5 w-3.5" />} title={t('chat.plan.proposalTitle')} badge={t('chat.plan.proposalBadge')}>
       <div className="flex max-h-[min(680px,calc(100vh-220px))] min-h-0 flex-col">
         <div className="chat-agent-message min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1 text-sm leading-6 text-[var(--nova-text)] [scrollbar-gutter:stable]">
-          <MarkdownContent content={display} highlightDialogue={highlightDialogue === true} projectId={projectId} />
+          <MarkdownContent
+            content={display}
+            highlightDialogue={highlightDialogue === true}
+            projectId={projectId}
+            streaming={message.streaming === true}
+          />
         </div>
         {planAction ? (
           <PlanActionStatus text={planActionStatusText(t, planAction)} />

@@ -1,5 +1,8 @@
 allowBuilds:
   msw: true
+minimumReleaseAgeExclude:
+  - remend@1.3.1
+  - streamdown@2.6.0
 # @monaco-editor/react 4.7 retains disposed editors when React reconnects
 # Activity/Suspense effects. Remove this once an upstream release resets them.
 patchedDependencies:

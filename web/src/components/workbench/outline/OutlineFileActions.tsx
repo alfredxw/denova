@@ -1,4 +1,4 @@
-import { useCallback, useState, type MouseEvent, type ReactNode } from 'react'
+import { useCallback, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import { AtSign, Copy, CopyPlus, FilePlus2, FolderOpen, FolderSearch, MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/context-menu'
 import { DeleteConfirmDialog } from '@/components/Sidebar/DeleteConfirmDialog'
 import { FileOperationDialog } from '@/components/Sidebar/FileOperationDialog'
-import '@/components/file-tree/FileTreeMenu.css'
+import { FileTreeMenuShortcut } from '@/components/file-tree/FileTreeMenu'
 import { writeClipboardText } from '@/components/file-tree/paths'
 import { fileTreeMenuPlatformPresentation } from '@/components/file-tree/platform'
 import { absoluteProjectPath, nextProjectFileDuplicatePath } from '@/features/project-explorer/operations'
@@ -41,6 +41,7 @@ interface OutlineFileActionsProps {
 interface OutlineFileAction {
   label?: string
   icon?: ReactNode
+  shortcut?: ReactNode
   danger?: boolean
   separator?: boolean
   onSelect?: () => void
@@ -94,9 +95,9 @@ export function OutlineFileActions({
     })
   }
   const commonActions = compactActions([
-    ...(fileOperations?.workspace ? [{ label: t('sidebar.copyPath'), icon: <Copy className="h-3.5 w-3.5" />, onSelect: () => copyPath(false) }] : []),
+    ...(fileOperations?.workspace ? [{ label: t('sidebar.copyPath'), icon: <Copy className="h-3.5 w-3.5" />, shortcut: platformPresentation.copyPath, onSelect: () => copyPath(false) }] : []),
     ...(fileOperations ? [
-      { label: t('sidebar.copyRelativePath'), icon: <Copy className="h-3.5 w-3.5" />, onSelect: () => copyPath(true) },
+      { label: t('sidebar.copyRelativePath'), icon: <Copy className="h-3.5 w-3.5" />, shortcut: platformPresentation.copyRelativePath, onSelect: () => copyPath(true) },
       ...(fileOperations.onCopyItem ? [{ label: t('sidebar.duplicate'), icon: <CopyPlus className="h-3.5 w-3.5" />, onSelect: duplicateFile }] : []),
     ] : []),
     ...(onRevealFile ? [{ label: t('sidebar.revealInProjectFiles'), icon: <FolderSearch className="h-3.5 w-3.5" />, onSelect: () => { void onRevealFile(path) } }] : []),
@@ -110,8 +111,23 @@ export function OutlineFileActions({
     ...commonActions,
     ...(onRenameItem || onDeleteItem ? [{ separator: true }] : []),
     ...(onRenameItem ? [{ label: t('sidebar.renameFile'), icon: <Pencil className="h-3.5 w-3.5" />, onSelect: () => setRenameOpen(true) }] : []),
-    ...(onDeleteItem ? [{ label: t('sidebar.delete'), icon: <Trash2 className="h-3.5 w-3.5" />, danger: true, onSelect: () => setDeleteOpen(true) }] : []),
+    ...(onDeleteItem ? [{ label: t('sidebar.delete'), icon: <Trash2 className="h-3.5 w-3.5" />, shortcut: platformPresentation.delete, danger: true, onSelect: () => setDeleteOpen(true) }] : []),
   ])
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const command = event.metaKey || event.ctrlKey
+    if (command && event.altKey && event.key.toLowerCase() === 'c' && fileOperations && (event.shiftKey || fileOperations.workspace)) {
+      event.preventDefault()
+      event.stopPropagation()
+      copyPath(event.shiftKey)
+      return
+    }
+    if ((event.key === 'Delete' || (event.key === 'Backspace' && command)) && onDeleteItem) {
+      event.preventDefault()
+      event.stopPropagation()
+      setDeleteOpen(true)
+    }
+  }
 
   const openContextMenuFromTrigger = useCallback((event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault()
@@ -131,7 +147,7 @@ export function OutlineFileActions({
     <>
       <ContextMenu>
         <ContextMenuTrigger asChild>
-          <div className="group relative min-w-0">
+          <div className="group relative min-w-0" onKeyDown={handleKeyDown}>
             {children}
             {showTrigger ? (
               <button
@@ -200,6 +216,7 @@ function renderActions(actions: OutlineFileAction[]) {
       >
         {action.icon}
         {action.label}
+        {action.shortcut ? <FileTreeMenuShortcut>{action.shortcut}</FileTreeMenuShortcut> : null}
       </ContextMenuItem>
     )
   })

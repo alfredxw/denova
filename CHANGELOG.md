@@ -24,6 +24,8 @@ Denova records only major user-visible features, important compatibility or data
 - Writing, Game, Workspace, and configuration conversations now accept queued follow-ups during a run, recover after refresh or restart, and persist model, thinking, and permission settings per conversation.
 - 写作、游戏与通用 Agent 对话支持从现有输入菜单、拖拽或粘贴添加多个通用文件；Denova 保存独立副本供 Agent 使用，并将图片作为原生视觉输入发送给模型。
 - Writing, Game, and General Agent chats now accept multiple generic files from the existing input menu, drag-and-drop, or paste. Denova stores independent copies for the Agent and sends images as native vision input.
+- Agent 回复现在会在生成过程中实时呈现 Markdown、数学公式与中日韩文本排版，并以平滑动画展示新增内容。
+- Agent replies now render Markdown, math, and CJK typography during generation, with smooth animation for newly streamed content.
 - 新增 Ask、Write、Full access 安全模式；Project 外部文件读取按模式授权，写入与 Shell 工作目录仍受 Project 边界保护。
 - Added Ask, Write, and Full access safety modes. Reads outside a Project are approval-aware, while writes and shell working directories remain Project-bound.
 - 新增会话级 Goal、JavaScript `script` 编排和 Project `AGENTS.md` 指令，并将现有 `CREATOR.md` 与多 Skill 按需协作统一到所有 Project Agent，支持更长时间的自主执行。
