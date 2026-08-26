@@ -382,7 +382,7 @@ export function MessageList({ projectId, messages, projection, isStreaming, visi
         increaseViewportBy={MESSAGE_LIST_INCREASE_VIEWPORT_BY}
         data-stream-active={tailFollowActive ? '' : undefined}
         className={cn(
-          'nova-chat-canvas min-h-0 flex-1 overflow-y-auto overflow-x-hidden [overflow-anchor:none]',
+          'nova-chat-canvas min-h-0 flex-1 overflow-y-auto overflow-x-hidden [overflow-anchor:none] [scrollbar-gutter:stable]',
           !initialPositionReady && 'pointer-events-none opacity-0',
         )}
         aria-busy={!initialPositionReady}

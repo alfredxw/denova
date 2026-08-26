@@ -50,7 +50,7 @@ export function ToolCallDetail({ name, rawArgs, result, resultSeverity }: ToolCa
   return (
     <ToolContent
       data-nova-tool-detail={name}
-      className="max-h-48 min-w-0 max-w-full space-y-0 overflow-x-hidden overflow-y-hidden border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0 font-mono text-[11px] leading-relaxed"
+      className="min-w-0 max-w-full border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] font-mono text-[11px] leading-relaxed"
     >
       <div className="flex max-h-48 min-h-0 flex-col">
         <section

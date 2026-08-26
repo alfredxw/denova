@@ -1521,7 +1521,7 @@ html[data-nova-motion="off"] .shimmer {
   }
 }
 
-@keyframes nova-agent-execution-expand {
+@keyframes nova-collapsible-expand {
   from {
     height: 0;
     opacity: 0;
@@ -1533,7 +1533,7 @@ html[data-nova-motion="off"] .shimmer {
   }
 }
 
-@keyframes nova-agent-execution-collapse {
+@keyframes nova-collapsible-collapse {
   from {
     height: var(--radix-collapsible-content-height);
     opacity: 1;
@@ -1545,20 +1545,24 @@ html[data-nova-motion="off"] .shimmer {
   }
 }
 
-.nova-agent-execution-content {
+.nova-agent-execution-content,
+.nova-tool-content {
   overflow: hidden;
 }
 
-.nova-agent-execution-content[data-state="open"] {
-  animation: nova-agent-execution-expand var(--nova-motion-fast) var(--nova-panel-motion-ease);
+.nova-agent-execution-content[data-state="open"],
+.nova-tool-content[data-state="open"] {
+  animation: nova-collapsible-expand var(--nova-motion-fast) var(--nova-panel-motion-ease);
 }
 
-.nova-agent-execution-content[data-state="closed"] {
-  animation: nova-agent-execution-collapse var(--nova-motion-fast) var(--nova-panel-motion-ease);
+.nova-agent-execution-content[data-state="closed"],
+.nova-tool-content[data-state="closed"] {
+  animation: nova-collapsible-collapse var(--nova-motion-fast) var(--nova-panel-motion-ease);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .nova-agent-execution-content {
+  .nova-agent-execution-content,
+  .nova-tool-content {
     animation-duration: 1ms !important;
   }
 }
