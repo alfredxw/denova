@@ -44,7 +44,7 @@ func IsProviderRequestError(err error) bool {
 
 // Ping performs one minimal real image generation without writing the returned
 // bytes into a workspace. This validates the same adapter used by real runs.
-func (service *Service) Ping(ctx context.Context, profile config.ImageAPIProfileSettings) (PingResult, error) {
+func (service *Service) Ping(ctx context.Context, endpoint config.ImageAPIEndpointSettings, profile config.ImageAPIProfileSettings) (PingResult, error) {
 	if service == nil || service.host == nil {
 		return PingResult{}, fmt.Errorf("image ping: service host is unavailable")
 	}
@@ -53,17 +53,21 @@ func (service *Service) Ping(ctx context.Context, profile config.ImageAPIProfile
 		return PingResult{}, fmt.Errorf("image ping: configuration snapshot is unavailable")
 	}
 	snapshot := host.ImageConfigSnapshot()
-	resolved, err := config.ResolveImageAPIProfileDraft(&snapshot, profile)
+	resolved, err := config.ResolveImageAPIProfileEndpointDraft(&snapshot, endpoint, profile)
 	if err != nil {
 		return PingResult{}, fmt.Errorf("image ping: %w", err)
 	}
 	const validationProfileID = "__image_ping__"
 	validationConfig := config.Config{
 		DefaultImageAPIProfileID: validationProfileID,
-		ImageAPIProfiles: []config.ImageAPIProfileSettings{{
-			ID: validationProfileID, Name: resolved.Name, Provider: resolved.Provider,
+		ImageAPIEndpoints: []config.ImageAPIEndpointSettings{{
+			ID: validationProfileID, Name: endpoint.Name, Provider: resolved.Provider,
 			Protocol: resolved.Protocol, APIKey: resolved.APIKey, BaseURL: resolved.BaseURL,
-			Model: resolved.Model, Headers: resolved.Headers, DefaultSize: resolved.Size,
+			Headers: resolved.Headers,
+		}},
+		ImageAPIProfiles: []config.ImageAPIProfileSettings{{
+			ID: validationProfileID, Name: resolved.Name, EndpointID: validationProfileID,
+			Model: resolved.Model, DefaultSize: resolved.Size,
 			DefaultAspectRatio: resolved.AspectRatio, DefaultResolution: resolved.Resolution,
 			DefaultQuality: resolved.Quality, DefaultOutputFormat: resolved.OutputFormat,
 			ComfyUI: &resolved.ComfyUI,

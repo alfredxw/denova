@@ -34,22 +34,33 @@ type agentConfigLayeredSnapshot struct {
 }
 
 type agentConfigLayerSnapshot struct {
-	DefaultModel     string                              `json:"default_model,omitempty"`
-	ModelProfiles    []safeModelProfileSettings          `json:"model_profiles,omitempty"`
-	DefaultImageAPI  string                              `json:"default_image_api_profile_id,omitempty"`
-	ImageAPIProfiles []safeImageAPIProfileSettings       `json:"image_api_profiles,omitempty"`
-	AgentModels      config.AgentModelSettings           `json:"agent_models,omitempty"`
-	AgentTools       config.AgentToolSettings            `json:"agent_tools,omitempty"`
-	AgentPrompts     config.AgentPromptSettings          `json:"agent_prompts,omitempty"`
-	AgentSkills      config.AgentSkillSettings           `json:"agent_skills,omitempty"`
-	AgentContext     config.AgentContextSettings         `json:"agent_context,omitempty"`
-	GeneralSubAgents config.AgentGeneralSubAgentSettings `json:"general_sub_agents,omitempty"`
-	SubAgents        []config.SubAgentConfig             `json:"sub_agents,omitempty"`
+	DefaultModel      string                              `json:"default_model,omitempty"`
+	ModelEndpoints    []safeModelEndpointSettings         `json:"model_endpoints,omitempty"`
+	ModelProfiles     []safeModelProfileSettings          `json:"model_profiles,omitempty"`
+	DefaultImageAPI   string                              `json:"default_image_api_profile_id,omitempty"`
+	ImageAPIEndpoints []safeImageAPIEndpointSettings      `json:"image_api_endpoints,omitempty"`
+	ImageAPIProfiles  []safeImageAPIProfileSettings       `json:"image_api_profiles,omitempty"`
+	AgentModels       config.AgentModelSettings           `json:"agent_models,omitempty"`
+	AgentTools        config.AgentToolSettings            `json:"agent_tools,omitempty"`
+	AgentPrompts      config.AgentPromptSettings          `json:"agent_prompts,omitempty"`
+	AgentSkills       config.AgentSkillSettings           `json:"agent_skills,omitempty"`
+	AgentContext      config.AgentContextSettings         `json:"agent_context,omitempty"`
+	GeneralSubAgents  config.AgentGeneralSubAgentSettings `json:"general_sub_agents,omitempty"`
+	SubAgents         []config.SubAgentConfig             `json:"sub_agents,omitempty"`
+}
+
+type safeModelEndpointSettings struct {
+	ID       string `json:"id,omitempty"`
+	Name     string `json:"name,omitempty"`
+	Provider string `json:"provider,omitempty"`
+	Protocol string `json:"protocol,omitempty"`
+	BaseURL  string `json:"base_url,omitempty"`
 }
 
 type safeModelProfileSettings struct {
 	ID                  string   `json:"id,omitempty"`
 	Name                string   `json:"name,omitempty"`
+	EndpointID          string   `json:"endpoint_id,omitempty"`
 	Provider            string   `json:"provider,omitempty"`
 	Protocol            string   `json:"protocol,omitempty"`
 	BaseURL             string   `json:"base_url,omitempty"`
@@ -58,9 +69,18 @@ type safeModelProfileSettings struct {
 	ContextWindowTokens *int     `json:"context_window_tokens,omitempty"`
 }
 
+type safeImageAPIEndpointSettings struct {
+	ID       string `json:"id,omitempty"`
+	Name     string `json:"name,omitempty"`
+	Provider string `json:"provider,omitempty"`
+	Protocol string `json:"protocol,omitempty"`
+	BaseURL  string `json:"base_url,omitempty"`
+}
+
 type safeImageAPIProfileSettings struct {
 	ID                  string                      `json:"id,omitempty"`
 	Name                string                      `json:"name,omitempty"`
+	EndpointID          string                      `json:"endpoint_id,omitempty"`
 	Provider            string                      `json:"provider,omitempty"`
 	Protocol            string                      `json:"protocol,omitempty"`
 	BaseURL             string                      `json:"base_url,omitempty"`
@@ -151,18 +171,48 @@ func agentConfigToolCapabilities() []agentConfigToolCapability {
 
 func agentConfigLayer(settings config.Settings) agentConfigLayerSnapshot {
 	return agentConfigLayerSnapshot{
-		DefaultModel:     settings.OpenAIModel,
-		ModelProfiles:    safeModelProfiles(settings.ModelProfiles),
-		DefaultImageAPI:  settings.DefaultImageAPIProfileID,
-		ImageAPIProfiles: safeImageAPIProfiles(settings.ImageAPIProfiles),
-		AgentModels:      settings.AgentModels,
-		AgentTools:       settings.AgentTools,
-		AgentPrompts:     settings.AgentPrompts,
-		AgentSkills:      settings.AgentSkills,
-		AgentContext:     settings.AgentContexts,
-		GeneralSubAgents: settings.GeneralSubAgents,
-		SubAgents:        settings.SubAgents,
+		DefaultModel:      settings.OpenAIModel,
+		ModelEndpoints:    safeModelEndpoints(settings.ModelEndpoints),
+		ModelProfiles:     safeModelProfiles(settings.ModelProfiles),
+		DefaultImageAPI:   settings.DefaultImageAPIProfileID,
+		ImageAPIEndpoints: safeImageAPIEndpoints(settings.ImageAPIEndpoints),
+		ImageAPIProfiles:  safeImageAPIProfiles(settings.ImageAPIProfiles),
+		AgentModels:       settings.AgentModels,
+		AgentTools:        settings.AgentTools,
+		AgentPrompts:      settings.AgentPrompts,
+		AgentSkills:       settings.AgentSkills,
+		AgentContext:      settings.AgentContexts,
+		GeneralSubAgents:  settings.GeneralSubAgents,
+		SubAgents:         settings.SubAgents,
 	}
+}
+
+func safeModelEndpoints(endpoints []config.ModelEndpointSettings) []safeModelEndpointSettings {
+	if len(endpoints) == 0 {
+		return nil
+	}
+	out := make([]safeModelEndpointSettings, 0, len(endpoints))
+	for _, endpoint := range endpoints {
+		out = append(out, safeModelEndpointSettings{
+			ID: endpoint.ID, Name: endpoint.Name, Provider: endpoint.Provider,
+			Protocol: endpoint.Protocol, BaseURL: endpoint.BaseURL,
+		})
+	}
+	return out
+}
+
+func safeImageAPIEndpoints(endpoints []config.ImageAPIEndpointSettings) []safeImageAPIEndpointSettings {
+	if len(endpoints) == 0 {
+		return nil
+	}
+	out := make([]safeImageAPIEndpointSettings, 0, len(endpoints))
+	for _, endpoint := range endpoints {
+		out = append(out, safeImageAPIEndpointSettings{
+			ID: endpoint.ID, Name: endpoint.Name, Provider: endpoint.Provider,
+			Protocol: endpoint.Protocol, BaseURL: endpoint.BaseURL,
+		})
+	}
+	return out
 }
 
 func safeImageAPIProfiles(profiles []config.ImageAPIProfileSettings) []safeImageAPIProfileSettings {
@@ -181,6 +231,7 @@ func safeImageAPIProfiles(profiles []config.ImageAPIProfileSettings) []safeImage
 		out = append(out, safeImageAPIProfileSettings{
 			ID:                  profile.ID,
 			Name:                profile.Name,
+			EndpointID:          profile.EndpointID,
 			Provider:            profile.Provider,
 			Protocol:            profile.Protocol,
 			BaseURL:             profile.BaseURL,
@@ -206,6 +257,7 @@ func safeModelProfiles(profiles []config.ModelProfileSettings) []safeModelProfil
 		out = append(out, safeModelProfileSettings{
 			ID:                  profile.ID,
 			Name:                profile.Name,
+			EndpointID:          profile.EndpointID,
 			Provider:            profile.Provider,
 			Protocol:            profile.Protocol,
 			BaseURL:             profile.BaseURL,

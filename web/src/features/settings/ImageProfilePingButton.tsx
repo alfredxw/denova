@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 import { pingImageProfile } from './api'
-import type { ImageAPIProfileSettings, ImagePingResult } from './types'
+import type { ImageAPIEndpointSettings, ImageAPIProfileSettings, ImagePingResult } from './types'
 
 type PingState =
   | { status: 'idle' }
@@ -13,11 +13,11 @@ type PingState =
   | { status: 'error'; message: string }
 
 /** Owns a cancellable real-generation check for one editable image profile. */
-export function ImageProfilePingButton({ profile }: { profile: ImageAPIProfileSettings }) {
+export function ImageProfilePingButton({ endpoint, profile }: { endpoint: ImageAPIEndpointSettings; profile: ImageAPIProfileSettings }) {
   const { t } = useTranslation()
   const [state, setState] = useState<PingState>({ status: 'idle' })
   const requestRef = useRef<AbortController | null>(null)
-  const fingerprint = useMemo(() => JSON.stringify(profile), [profile])
+  const fingerprint = useMemo(() => JSON.stringify({ endpoint, profile }), [endpoint, profile])
 
   useEffect(() => {
     requestRef.current?.abort()
@@ -33,7 +33,7 @@ export function ImageProfilePingButton({ profile }: { profile: ImageAPIProfileSe
     requestRef.current = request
     setState({ status: 'loading' })
     try {
-      const result = await pingImageProfile(profile, request.signal)
+      const result = await pingImageProfile(endpoint, profile, request.signal)
       if (requestRef.current === request) {
         requestRef.current = null
         setState({ status: 'success', result })

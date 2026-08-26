@@ -10,12 +10,12 @@ import (
 	"denova/internal/revisionfile"
 )
 
-func preserveImageSettingsMigrationBackup(path string, snapshot revisionfile.Snapshot) (string, error) {
+func preserveModelSettingsMigrationBackup(path string, snapshot revisionfile.Snapshot) (string, error) {
 	if !snapshot.Exists {
 		return "", errors.New("cannot back up a missing settings file")
 	}
 	sum := sha256.Sum256(snapshot.Content)
-	backupPath := fmt.Sprintf("%s.pre-image-provider-migration-%x.bak", path, sum[:6])
+	backupPath := fmt.Sprintf("%s.pre-model-endpoint-migration-%x.bak", path, sum[:6])
 	_, err := revisionfile.ReplaceIfRevision(
 		context.Background(),
 		backupPath,
@@ -37,4 +37,10 @@ func preserveImageSettingsMigrationBackup(path string, snapshot revisionfile.Sna
 		return "", fmt.Errorf("legacy image settings backup collision at %s", backupPath)
 	}
 	return backupPath, nil
+}
+
+// preserveImageSettingsMigrationBackup keeps the old helper available to the
+// focused migration tests while all settings migrations now share one backup.
+func preserveImageSettingsMigrationBackup(path string, snapshot revisionfile.Snapshot) (string, error) {
+	return preserveModelSettingsMigrationBackup(path, snapshot)
 }

@@ -25,13 +25,14 @@ func (h *Handlers) HandleModelCatalog(_ context.Context, c *app.RequestContext) 
 // potentially unsaved profile. Custom model text remains valid independently.
 func (h *Handlers) HandleModelList(ctx context.Context, c *app.RequestContext) {
 	var body struct {
-		Profile config.ModelProfileSettings `json:"profile"`
+		Endpoint config.ModelEndpointSettings `json:"endpoint"`
+		Profile  config.ModelProfileSettings  `json:"profile"`
 	}
 	if err := decodeStrictJSONRequest(c.Request.Body(), &body); err != nil {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
-	result, err := h.app.Models().List(ctx, body.Profile)
+	result, err := h.app.Models().List(ctx, body.Endpoint, body.Profile)
 	if err != nil {
 		if modelsapp.IsProviderRequestError(err) {
 			writeError(c, consts.StatusUnprocessableEntity, err.Error())
@@ -47,13 +48,14 @@ func (h *Handlers) HandleModelList(ctx context.Context, c *app.RequestContext) {
 // a minimal real generation request.
 func (h *Handlers) HandleModelPing(ctx context.Context, c *app.RequestContext) {
 	var body struct {
-		Profile config.ModelProfileSettings `json:"profile"`
+		Endpoint config.ModelEndpointSettings `json:"endpoint"`
+		Profile  config.ModelProfileSettings  `json:"profile"`
 	}
 	if err := decodeStrictJSONRequest(c.Request.Body(), &body); err != nil {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
-	result, err := h.app.Models().Ping(ctx, body.Profile)
+	result, err := h.app.Models().Ping(ctx, body.Endpoint, body.Profile)
 	if err != nil {
 		if modelsapp.IsProviderRequestError(err) {
 			writeError(c, consts.StatusUnprocessableEntity, err.Error())

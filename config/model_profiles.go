@@ -14,13 +14,17 @@ const (
 )
 
 type ModelProfileSettings struct {
-	ID       string `toml:"id,omitempty" json:"id,omitempty"`
-	Name     string `toml:"name,omitempty" json:"name,omitempty"`
+	ID         string `toml:"id,omitempty" json:"id,omitempty"`
+	Name       string `toml:"name,omitempty" json:"name,omitempty"`
+	EndpointID string `toml:"endpoint_id,omitempty" json:"endpoint_id,omitempty"`
+	Model      string `toml:"model,omitempty" json:"model,omitempty"`
+	// Provider, Protocol, APIKey, BaseURL and route options are decode-only
+	// fields from the released profile schema. Settings migration moves them to
+	// ModelEndpointSettings so one connection can serve multiple models.
 	Provider string `toml:"provider,omitempty" json:"provider,omitempty"`
 	Protocol string `toml:"protocol,omitempty" json:"protocol,omitempty"`
 	APIKey   string `toml:"api_key,omitempty" json:"api_key,omitempty"`
 	BaseURL  string `toml:"base_url,omitempty" json:"base_url,omitempty"`
-	Model    string `toml:"model,omitempty" json:"model,omitempty"`
 	// LegacyOpenAI* are decode-only aliases for profiles persisted before the
 	// provider/protocol split. Sanitization moves them into the generic fields
 	// and clears them, so every subsequent write uses the canonical schema.
@@ -32,6 +36,21 @@ type ModelProfileSettings struct {
 	SessionKeyMapping   *providers.SessionKeyMapping `toml:"session_key_mapping,omitempty" json:"session_key_mapping,omitempty"`
 	Temperature         *float64                     `toml:"temperature,omitempty" json:"temperature,omitempty"`
 	ContextWindowTokens *int                         `toml:"context_window_tokens,omitempty" json:"context_window_tokens,omitempty"`
+}
+
+// ModelEndpointSettings owns one language-model network route and its
+// credentials. Profiles reference it by ID and contain only model-specific
+// behavior, allowing any number of models to reuse one authenticated endpoint.
+type ModelEndpointSettings struct {
+	ID                string                       `toml:"id,omitempty" json:"id,omitempty"`
+	Name              string                       `toml:"name,omitempty" json:"name,omitempty"`
+	Provider          string                       `toml:"provider,omitempty" json:"provider,omitempty"`
+	Protocol          string                       `toml:"protocol,omitempty" json:"protocol,omitempty"`
+	APIKey            string                       `toml:"api_key,omitempty" json:"api_key,omitempty"`
+	BaseURL           string                       `toml:"base_url,omitempty" json:"base_url,omitempty"`
+	Headers           map[string]string            `toml:"headers,omitempty" json:"headers,omitempty"`
+	ProtocolOptions   map[string]any               `toml:"protocol_options,omitempty" json:"protocol_options,omitempty"`
+	SessionKeyMapping *providers.SessionKeyMapping `toml:"session_key_mapping,omitempty" json:"session_key_mapping,omitempty"`
 }
 
 type AgentModelSettings struct {
@@ -96,6 +115,7 @@ func ResolveAgentModel(cfg *Config, agentKind string) ResolvedModelSettings {
 		if id == "" {
 			continue
 		}
+		profile = modelProfileWithEndpoint(cfg, profile)
 		base := profiles[id]
 		profile = normalizeModelProfileRouting(profile)
 		profile.ID = id
@@ -173,6 +193,34 @@ func ResolveAgentModel(cfg *Config, agentKind string) ResolvedModelSettings {
 		ContextWindowTokens: *profile.ContextWindowTokens,
 		ThinkingLevel:       resolvedThinkingLevel(agentOverride.ThinkingLevel),
 	}
+}
+
+// ResolveModelProfileDraft validates an unsaved model together with its shared
+// endpoint. Empty credentials inherit only from the stored endpoint with the
+// same ID and unchanged credential scope.
+func ResolveModelProfileDraft(cfg *Config, endpoint ModelEndpointSettings, profile ModelProfileSettings) (ResolvedModelSettings, error) {
+	if cfg == nil {
+		return ResolvedModelSettings{}, fmt.Errorf("config is nil")
+	}
+	endpoint.ID = firstNonEmpty(modelEndpointID(endpoint), strings.TrimSpace(profile.EndpointID), "__model_endpoint_draft__")
+	if stored, ok := findModelEndpoint(cfg, endpoint.ID); ok {
+		endpoint = mergeModelEndpoint(stored, endpoint)
+	}
+	profile.EndpointID = endpoint.ID
+	temporary := *cfg
+	temporary.ModelEndpoints = append([]ModelEndpointSettings(nil), cfg.ModelEndpoints...)
+	replaced := false
+	for index, current := range temporary.ModelEndpoints {
+		if modelEndpointID(current) == endpoint.ID {
+			temporary.ModelEndpoints[index] = endpoint
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		temporary.ModelEndpoints = append(temporary.ModelEndpoints, endpoint)
+	}
+	return ResolveModelProfile(&temporary, profile)
 }
 
 // ResolveModelProfile resolves an inline profile using the same inheritance as
@@ -289,8 +337,7 @@ func sanitizeModelProfiles(profiles []ModelProfileSettings) []ModelProfileSettin
 	}
 	out := make([]ModelProfileSettings, 0, len(profiles))
 	for _, profile := range profiles {
-		profile = migrateLegacyModelProfile(profile)
-		profile = normalizeModelProfileRouting(profile)
+		profile.EndpointID = strings.TrimSpace(profile.EndpointID)
 		profile.Model = strings.TrimSpace(profile.Model)
 		profile.ID = modelProfileID(profile)
 		if profile.ID == "" {
@@ -380,6 +427,9 @@ func mergeModelProfile(parent, child ModelProfileSettings) ModelProfileSettings 
 		out.ID = id
 	}
 	out.Name = strings.TrimSpace(child.Name)
+	if child.EndpointID != "" {
+		out.EndpointID = strings.TrimSpace(child.EndpointID)
+	}
 	if child.Provider != "" {
 		inheritedProvider := strings.TrimSpace(out.Provider)
 		if inheritedProvider == "" && strings.TrimSpace(out.BaseURL) != "" {

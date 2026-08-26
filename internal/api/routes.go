@@ -263,6 +263,8 @@ func (s *Server) registerRoutes(h *hertzserver.Hertz) {
 		api.POST("/models/discover", apiHandlers.HandleModelList)
 		api.POST("/models/ping", apiHandlers.HandleModelPing)
 		api.POST("/images/ping", apiHandlers.HandleImagePing)
+		api.POST("/images/comfyui/workflows/discover", apiHandlers.HandleComfyUIWorkflowDiscovery)
+		api.POST("/images/comfyui/workflows/load", apiHandlers.HandleComfyUIWorkflowLoad)
 		api.GET("/conversation-config", apiHandlers.HandleConversationConfigGet)
 		api.PATCH("/conversation-config", apiHandlers.HandleConversationConfigPatch)
 		api.GET("/update/check", apiHandlers.HandleUpdateCheck)

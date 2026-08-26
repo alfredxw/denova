@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 import { pingModelProfile } from './api'
-import type { ModelPingResult, ModelProfileSettings } from './types'
+import type { ModelEndpointSettings, ModelPingResult, ModelProfileSettings } from './types'
 
 type PingState =
   | { status: 'idle' }
@@ -14,11 +14,11 @@ type PingState =
 
 /** Owns one cancellable connection check so editing or removing a profile
  * cannot leave stale validation state attached to a different route. */
-export function ModelProfilePingButton({ profile }: { profile: ModelProfileSettings }) {
+export function ModelProfilePingButton({ endpoint, profile }: { endpoint: ModelEndpointSettings; profile: ModelProfileSettings }) {
   const { t } = useTranslation()
   const [state, setState] = useState<PingState>({ status: 'idle' })
   const requestRef = useRef<AbortController | null>(null)
-  const fingerprint = useMemo(() => JSON.stringify(profile), [profile])
+  const fingerprint = useMemo(() => JSON.stringify({ endpoint, profile }), [endpoint, profile])
 
   useEffect(() => {
     requestRef.current?.abort()
@@ -34,7 +34,7 @@ export function ModelProfilePingButton({ profile }: { profile: ModelProfileSetti
     requestRef.current = request
     setState({ status: 'loading' })
     try {
-      const result = await pingModelProfile(profile, request.signal)
+      const result = await pingModelProfile(endpoint, profile, request.signal)
       if (requestRef.current === request) {
         requestRef.current = null
         setState({ status: 'success', result })

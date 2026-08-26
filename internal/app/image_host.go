@@ -25,6 +25,7 @@ func (host imageHost) ImageConfigSnapshot() config.Config {
 		return config.Config{}
 	}
 	snapshot := *host.app.cfg
+	snapshot.ImageAPIEndpoints = append([]config.ImageAPIEndpointSettings(nil), host.app.cfg.ImageAPIEndpoints...)
 	snapshot.ImageAPIProfiles = append([]config.ImageAPIProfileSettings(nil), host.app.cfg.ImageAPIProfiles...)
 	return snapshot
 }

@@ -8,7 +8,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { cn } from '@/lib/utils'
 import { discoverModels } from './api'
 import { MODEL_PROTOCOL_ANTHROPIC_MESSAGES, MODEL_PROTOCOL_CHAT_COMPLETIONS, MODEL_PROTOCOL_RESPONSES } from './model-profiles'
-import type { ModelInfo, ModelProfileSettings } from './types'
+import type { ModelEndpointSettings, ModelInfo, ModelProfileSettings } from './types'
 
 type DiscoveryState =
   | { status: 'idle'; models: ModelInfo[] }
@@ -16,7 +16,8 @@ type DiscoveryState =
   | { status: 'success'; models: ModelInfo[] }
   | { status: 'error'; models: ModelInfo[]; message: string }
 
-export function ModelDiscoveryInput({ profile, defaultProtocol, value, placeholder, onChange }: {
+export function ModelDiscoveryInput({ endpoint, profile, defaultProtocol, value, placeholder, onChange }: {
+  endpoint: ModelEndpointSettings
   profile: ModelProfileSettings
   defaultProtocol?: string
   value: string
@@ -27,19 +28,19 @@ export function ModelDiscoveryInput({ profile, defaultProtocol, value, placehold
   const [open, setOpen] = useState(false)
   const [state, setState] = useState<DiscoveryState>({ status: 'idle', models: [] })
   const requestRef = useRef<AbortController | null>(null)
-  const protocol = profile.protocol?.trim() || defaultProtocol?.trim() || ''
+  const protocol = endpoint.protocol?.trim() || defaultProtocol?.trim() || ''
   const supported = protocol === MODEL_PROTOCOL_CHAT_COMPLETIONS
     || protocol === MODEL_PROTOCOL_RESPONSES
     || protocol === MODEL_PROTOCOL_ANTHROPIC_MESSAGES
   const routeFingerprint = useMemo(() => JSON.stringify({
-    id: profile.id,
-    provider: profile.provider,
+    id: endpoint.id,
+    provider: endpoint.provider,
     protocol,
-    api_key: profile.api_key,
-    base_url: profile.base_url,
-    headers: profile.headers,
-    protocol_options: profile.protocol_options,
-  }), [profile.api_key, profile.base_url, profile.headers, profile.id, profile.protocol_options, profile.provider, protocol])
+    api_key: endpoint.api_key,
+    base_url: endpoint.base_url,
+    headers: endpoint.headers,
+    protocol_options: endpoint.protocol_options,
+  }), [endpoint.api_key, endpoint.base_url, endpoint.headers, endpoint.id, endpoint.protocol_options, endpoint.provider, protocol])
 
   useEffect(() => {
     requestRef.current?.abort()
@@ -56,7 +57,7 @@ export function ModelDiscoveryInput({ profile, defaultProtocol, value, placehold
     requestRef.current = request
     setState((current) => ({ status: 'loading', models: current.models }))
     try {
-      const result = await discoverModels(profile, request.signal)
+      const result = await discoverModels(endpoint, profile, request.signal)
       if (requestRef.current === request) {
         requestRef.current = null
         setState({ status: 'success', models: result.models ?? [] })
@@ -72,7 +73,7 @@ export function ModelDiscoveryInput({ profile, defaultProtocol, value, placehold
     }
   }
 
-  const available = supported && Boolean(profile.provider?.trim())
+  const available = supported && Boolean(endpoint.provider?.trim())
   const actionLabel = available
     ? t('settings.model.discoveryAction')
     : t('settings.model.discoveryUnsupported')

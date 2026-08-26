@@ -1,5 +1,5 @@
 import { fetchAPI, jsonHeaders, parseSSEStream, readErrorMessage, requestJSON } from '@/lib/api-client'
-import type { ImageAPIProfileSettings, ImagePingResult, LayeredSettings, ModelCatalog, ModelDiscoveryResult, ModelPingResult, ModelProfileSettings, Settings, SettingsLayer, UpdateApplyResult, UpdateCheckResult } from './types'
+import type { ComfyUIWorkflowCatalog, ComfyUIWorkflowSnapshot, ImageAPIEndpointSettings, ImageAPIProfileSettings, ImagePingResult, LayeredSettings, ModelCatalog, ModelDiscoveryResult, ModelEndpointSettings, ModelPingResult, ModelProfileSettings, Settings, SettingsLayer, UpdateApplyResult, UpdateCheckResult } from './types'
 import type { SSEEvent } from '@/lib/api-client'
 import { projectAPIPath } from '@/lib/api-client/project-scope'
 import { queryClient } from '@/lib/query-client'
@@ -176,31 +176,51 @@ export function fetchModelCatalog(signal?: AbortSignal): Promise<ModelCatalog> {
 
 /** Loads optional protocol-native model suggestions without validating or
  * restricting the profile's custom model text. */
-export function discoverModels(profile: ModelProfileSettings, signal?: AbortSignal): Promise<ModelDiscoveryResult> {
+export function discoverModels(endpoint: ModelEndpointSettings, profile: ModelProfileSettings, signal?: AbortSignal): Promise<ModelDiscoveryResult> {
   return requestJSON('/api/models/discover', {
     method: 'POST',
     headers: jsonHeaders,
-    body: JSON.stringify({ profile }),
+    body: JSON.stringify({ endpoint, profile }),
     signal,
   })
 }
 
 /** Validates an unsaved profile through the same resolver and adapter as a real Agent run. */
-export function pingModelProfile(profile: ModelProfileSettings, signal?: AbortSignal): Promise<ModelPingResult> {
+export function pingModelProfile(endpoint: ModelEndpointSettings, profile: ModelProfileSettings, signal?: AbortSignal): Promise<ModelPingResult> {
   return requestJSON('/api/models/ping', {
     method: 'POST',
     headers: jsonHeaders,
-    body: JSON.stringify({ profile }),
+    body: JSON.stringify({ endpoint, profile }),
     signal,
   })
 }
 
 /** Validates an unsaved image profile through one minimal real Images API request. */
-export function pingImageProfile(profile: ImageAPIProfileSettings, signal?: AbortSignal): Promise<ImagePingResult> {
+export function pingImageProfile(endpoint: ImageAPIEndpointSettings, profile: ImageAPIProfileSettings, signal?: AbortSignal): Promise<ImagePingResult> {
   return requestJSON('/api/images/ping', {
     method: 'POST',
     headers: jsonHeaders,
-    body: JSON.stringify({ profile }),
+    body: JSON.stringify({ endpoint, profile }),
+    signal,
+  })
+}
+
+/** Lists saved ComfyUI workflows without requiring the draft profile to be runnable yet. */
+export function discoverComfyUIWorkflows(endpoint: ImageAPIEndpointSettings, profile: ImageAPIProfileSettings, signal?: AbortSignal): Promise<ComfyUIWorkflowCatalog> {
+  return requestJSON('/api/images/comfyui/workflows/discover', {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify({ endpoint, profile }),
+    signal,
+  })
+}
+
+/** Imports the latest successful API graph for one fresh saved ComfyUI workflow. */
+export function loadComfyUIWorkflow(endpoint: ImageAPIEndpointSettings, profile: ImageAPIProfileSettings, path: string, signal?: AbortSignal): Promise<ComfyUIWorkflowSnapshot> {
+  return requestJSON('/api/images/comfyui/workflows/load', {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify({ endpoint, profile, path }),
     signal,
   })
 }

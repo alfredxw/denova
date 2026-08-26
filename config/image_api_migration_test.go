@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -36,13 +37,16 @@ default_size = "1024x1536"
 		t.Fatalf("migrated image settings = %#v", settings)
 	}
 	profiles := imageProfilesByID(settings.ImageAPIProfiles)
+	endpoints := imageEndpointsByID(settings.ImageAPIEndpoints)
 	portrait := profiles["portrait"]
-	if portrait.Provider != ImageProviderOpenAI || portrait.Protocol != ImageProtocolOpenAI ||
-		portrait.APIKey != "profile-key" || portrait.BaseURL != "https://images.example.test/v1" || portrait.Model != "portrait-v1" {
+	portraitEndpoint := endpoints[portrait.EndpointID]
+	if portraitEndpoint.Provider != ImageProviderOpenAI || portraitEndpoint.Protocol != ImageProtocolOpenAI ||
+		portraitEndpoint.APIKey != "profile-key" || portraitEndpoint.BaseURL != "https://images.example.test/v1" || portrait.Model != "portrait-v1" {
 		t.Fatalf("migrated legacy profile = %#v", portrait)
 	}
 	defaultProfile := profiles[DefaultImageAPIProfileID]
-	if defaultProfile.APIKey != "top-level-key" || defaultProfile.Model != legacyDefaultImageAPIModel {
+	defaultEndpoint := endpoints[defaultProfile.EndpointID]
+	if defaultEndpoint.APIKey != "top-level-key" || defaultProfile.Model != legacyDefaultImageAPIModel {
 		t.Fatalf("migrated top-level profile = %#v", defaultProfile)
 	}
 	if settings.LegacyImageAPIKey != nil || portrait.LegacyOpenAIAPIKey != nil {
@@ -58,7 +62,7 @@ default_size = "1024x1536"
 			t.Fatalf("legacy field %q remained in migrated config:\n%s", legacyField, persisted)
 		}
 	}
-	backups, err := filepath.Glob(path + ".pre-image-provider-migration-*.bak")
+	backups, err := filepath.Glob(path + ".pre-model-endpoint-migration-*.bak")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +80,7 @@ default_size = "1024x1536"
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0o600 {
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
 		t.Fatalf("migration backup mode = %o", info.Mode().Perm())
 	}
 
@@ -218,10 +222,11 @@ func TestMutateSettingsFileBacksUpLegacyImageSettingsBeforePatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if settings.Theme != "light" || imageProfilesByID(settings.ImageAPIProfiles)[DefaultImageAPIProfileID].APIKey != "legacy-key" {
+	defaultProfile := imageProfilesByID(settings.ImageAPIProfiles)[DefaultImageAPIProfileID]
+	if settings.Theme != "light" || imageEndpointsByID(settings.ImageAPIEndpoints)[defaultProfile.EndpointID].APIKey != "legacy-key" {
 		t.Fatalf("mutated migrated settings = %#v", settings)
 	}
-	backups, err := filepath.Glob(path + ".pre-image-provider-migration-*.bak")
+	backups, err := filepath.Glob(path + ".pre-model-endpoint-migration-*.bak")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -234,7 +239,8 @@ func TestSettingsFromConfigMigratesLegacyStartupImageFields(t *testing.T) {
 	key, model := "startup-key", "startup-image"
 	settings := settingsFromConfig(&Config{LegacyImageAPIKey: &key, LegacyImageAPIModel: &model})
 	profiles := imageProfilesByID(settings.ImageAPIProfiles)
-	if profiles[DefaultImageAPIProfileID].APIKey != key || profiles[DefaultImageAPIProfileID].Model != model {
+	profile := profiles[DefaultImageAPIProfileID]
+	if imageEndpointsByID(settings.ImageAPIEndpoints)[profile.EndpointID].APIKey != key || profile.Model != model {
 		t.Fatalf("legacy startup image settings = %#v", settings.ImageAPIProfiles)
 	}
 }
@@ -243,6 +249,14 @@ func imageProfilesByID(profiles []ImageAPIProfileSettings) map[string]ImageAPIPr
 	out := make(map[string]ImageAPIProfileSettings, len(profiles))
 	for _, profile := range profiles {
 		out[imageAPIProfileID(profile)] = profile
+	}
+	return out
+}
+
+func imageEndpointsByID(endpoints []ImageAPIEndpointSettings) map[string]ImageAPIEndpointSettings {
+	out := make(map[string]ImageAPIEndpointSettings, len(endpoints))
+	for _, endpoint := range endpoints {
+		out[imageAPIEndpointID(endpoint)] = endpoint
 	}
 	return out
 }

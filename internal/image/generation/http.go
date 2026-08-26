@@ -14,6 +14,15 @@ import (
 
 const maxImageAPIJSONBytes = 64 << 20
 
+type imageAPIHTTPError struct {
+	status  int
+	message string
+}
+
+func (err *imageAPIHTTPError) Error() string {
+	return fmt.Sprintf("image API returned HTTP %d: %s", err.status, err.message)
+}
+
 func doJSON(ctx context.Context, client *http.Client, method, endpoint string, headers map[string]string, body, target any) error {
 	var reader io.Reader
 	if body != nil {
@@ -91,7 +100,7 @@ func imageAPIStatusError(status int, payload []byte) error {
 	if message == "" {
 		message = http.StatusText(status)
 	}
-	return fmt.Errorf("image API returned HTTP %d: %s", status, message)
+	return &imageAPIHTTPError{status: status, message: message}
 }
 
 func bearerHeaders(apiKey string, extra map[string]string) map[string]string {

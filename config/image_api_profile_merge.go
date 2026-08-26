@@ -46,6 +46,7 @@ func sanitizeImageAPIProfiles(profiles []ImageAPIProfileSettings) []ImageAPIProf
 	out := make([]ImageAPIProfileSettings, 0, len(profiles))
 	for _, profile := range profiles {
 		profile.Name = strings.TrimSpace(profile.Name)
+		profile.EndpointID = strings.TrimSpace(profile.EndpointID)
 		if profile.Provider != "" {
 			provider := normalizeImageAPIProvider(profile.Provider)
 			if provider == "" {
@@ -95,6 +96,9 @@ func mergeImageAPIProfile(parent, child ImageAPIProfileSettings) ImageAPIProfile
 		out.ID = id
 	}
 	out.Name = strings.TrimSpace(child.Name)
+	if child.EndpointID != "" {
+		out.EndpointID = strings.TrimSpace(child.EndpointID)
+	}
 	if child.Provider != "" {
 		provider := normalizeImageAPIProvider(child.Provider)
 		if provider == "" {

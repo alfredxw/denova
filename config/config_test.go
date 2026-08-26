@@ -126,7 +126,7 @@ func TestLoadWithWorkspaceUsesUserSettingsAndWorkspaceAgentOverrides(t *testing.
 	if cfg.IDEImagePresetID != "realistic" {
 		t.Fatalf("user image preset default expected, got %s", cfg.IDEImagePresetID)
 	}
-	if layered.User.OpenAIModel != "user-model" {
+	if len(layered.User.ModelProfiles) != 1 || layered.User.ModelProfiles[0].Model != "user-model" {
 		t.Fatalf("user layer raw value lost")
 	}
 	if layered.Workspace.OpenAIModel != "" || layered.Workspace.Language != "" || layered.Workspace.WritingSkillDefault != "" {
@@ -327,7 +327,7 @@ func TestLoadWithWorkspaceUsesGlobalConfigNovaDir(t *testing.T) {
 	if cfg.NovaDir != wantNovaDir {
 		t.Fatalf("global nova_dir should locate user config: want=%s got=%s", wantNovaDir, cfg.NovaDir)
 	}
-	if layered.User.OpenAIModel != "user-model" {
+	if len(layered.User.ModelProfiles) != 1 || layered.User.ModelProfiles[0].Model != "user-model" {
 		t.Fatalf("user config should be loaded from global nova_dir")
 	}
 }
@@ -351,8 +351,24 @@ func TestLoadWithWorkspaceUsesGlobalConfigAsBaseLayer(t *testing.T) {
 	if cfg.OpenAIModel != "global-model" {
 		t.Fatalf("global config should be effective when user/workspace unset: %s", cfg.OpenAIModel)
 	}
-	if layered.Global.OpenAIModel != "global-model" {
-		t.Fatalf("global layer should be exposed: %s", layered.Global.OpenAIModel)
+	if len(layered.Global.ModelProfiles) != 1 || layered.Global.ModelProfiles[0].Model != "global-model" {
+		t.Fatalf("global layer should expose the migrated model profile: %#v", layered.Global.ModelProfiles)
+	}
+}
+
+func TestApplyModelEnvironmentOverridesSharedDefaultEndpoint(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "env-key")
+	t.Setenv("OPENAI_BASE_URL", "https://env.example/v1")
+	t.Setenv("OPENAI_MODEL", "env-model")
+	cfg := &Config{
+		ModelEndpoints: []ModelEndpointSettings{{ID: DefaultModelEndpointID, Provider: "openai", APIKey: "file-key", BaseURL: "https://file.example/v1"}},
+		ModelProfiles:  []ModelProfileSettings{{ID: DefaultModelEndpointID, EndpointID: DefaultModelEndpointID, Model: "file-model"}},
+	}
+
+	ApplyModelEnvironment(cfg)
+	resolved := ResolveAgentModel(cfg, AgentKindIDE)
+	if resolved.APIKey != "env-key" || resolved.BaseURL != "https://env.example/v1" || resolved.Model != "env-model" {
+		t.Fatalf("environment model = %#v", resolved)
 	}
 }
 

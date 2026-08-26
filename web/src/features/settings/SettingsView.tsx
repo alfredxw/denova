@@ -6,7 +6,7 @@ import type { AnimationPlaybackControls } from 'motion/react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { withErrorLogID } from '@/lib/api-client'
-import type { AgentApprovalMode, ImageAPIProfileSettings, LabSettings, ModelProfileSettings, Settings, ShellEnvironmentMode, UpdateApplyResult, UpdateCheckResult, UpdateInstallProgress, UpdateInstallResult, WebAccessSettings } from './types'
+import type { AgentApprovalMode, ImageAPIEndpointSettings, ImageAPIProfileSettings, LabSettings, ModelEndpointSettings, ModelProfileSettings, Settings, ShellEnvironmentMode, UpdateApplyResult, UpdateCheckResult, UpdateInstallProgress, UpdateInstallResult, WebAccessSettings } from './types'
 import { applyUpdate, checkForUpdate, GLOBAL_SETTINGS_TARGET, installUpdateStream, revokeAgentApprovalRule } from './api'
 import { useLayeredSettingsDraft } from './use-layered-settings-draft'
 import { FontPicker } from './FontPicker'
@@ -29,11 +29,13 @@ import { markAutoUpdateChecked, notifyUpdateCheckResult, shouldRunAutoUpdateChec
 import { scheduleFrontendReloadAfterUpdate } from './update-reload'
 import {
   DEFAULT_MODEL_PROFILE_ID,
+  modelEndpointID,
+  modelEndpointsWithDefault,
   modelProfileID,
   modelProfilesWithDefault,
 } from './model-profiles'
 import { ModelProfilesEditor } from './ModelProfilesEditor'
-import { DEFAULT_IMAGE_API_PROFILE_ID, imageAPIProfileID, imageAPIProfilesWithDefault } from './image-profiles'
+import { DEFAULT_IMAGE_API_PROFILE_ID, imageAPIEndpointID, imageAPIEndpointsWithDefault, imageAPIProfileID, imageAPIProfilesWithDefault } from './image-profiles'
 import { ImageAPIProfilesEditor } from './ImageAPIProfilesEditor'
 import { ONBOARDING_OPEN_EVENT, SETTINGS_SECTION_EVENT, type SettingsSectionRequest } from '@/features/onboarding/events'
 import { TerminalCommandsEditor, terminalCommandsForEditor } from './TerminalCommandsEditor'
@@ -224,6 +226,15 @@ export function SettingsView({ onClose, visible = true }: { onClose?: () => void
     }))
   }
 
+  const setModelEndpoints = (endpoints: ModelEndpointSettings[]) => {
+    setDraft((d) => ({
+      ...d,
+      openai_api_key: '',
+      openai_base_url: '',
+      model_endpoints: endpoints,
+    }))
+  }
+
   const setDefaultModelProfile = (profileID: string) => {
     setDraft((d) => ({
       ...d,
@@ -238,6 +249,13 @@ export function SettingsView({ onClose, visible = true }: { onClose?: () => void
     setDraft((d) => ({
       ...d,
       image_api_profiles: profiles,
+    }))
+  }
+
+  const setImageAPIEndpoints = (endpoints: ImageAPIEndpointSettings[]) => {
+    setDraft((d) => ({
+      ...d,
+      image_api_endpoints: endpoints,
     }))
   }
 
@@ -348,12 +366,15 @@ export function SettingsView({ onClose, visible = true }: { onClose?: () => void
       children: (
         <>
           <ModelProfilesEditor
+            endpoints={modelEndpointsForEditor(draft, effective)}
+            effectiveEndpoints={modelEndpointsWithDefault(effective)}
             profiles={modelProfilesForEditor(draft, effective)}
             effectiveProfiles={modelProfilesWithDefault(effective)}
             defaultProfileID={draft.agent_models?.default?.profile_id ?? ''}
             effectiveDefaultProfileID={inherited.agent_models?.default?.profile_id || DEFAULT_MODEL_PROFILE_ID}
             onDefaultProfileChange={setDefaultModelProfile}
-            onChange={setModelProfiles}
+            onEndpointsChange={setModelEndpoints}
+            onProfilesChange={setModelProfiles}
           />
         </>
       ),
@@ -365,12 +386,15 @@ export function SettingsView({ onClose, visible = true }: { onClose?: () => void
       children: (
         <>
           <ImageAPIProfilesEditor
+            endpoints={imageAPIEndpointsForEditor(draft, effective)}
+            effectiveEndpoints={imageAPIEndpointsWithDefault(effective)}
             profiles={imageAPIProfilesForEditor(draft, effective)}
             effectiveProfiles={imageAPIProfilesWithDefault(effective)}
             defaultProfileID={draft.default_image_api_profile_id ?? ''}
             effectiveDefaultProfileID={inherited.default_image_api_profile_id || DEFAULT_IMAGE_API_PROFILE_ID}
             onDefaultProfileChange={(v) => setField('default_image_api_profile_id', v)}
-            onChange={setImageAPIProfiles}
+            onEndpointsChange={setImageAPIEndpoints}
+            onProfilesChange={setImageAPIProfiles}
           />
         </>
       ),
@@ -890,8 +914,22 @@ export function modelProfilesForEditor(draft: Settings, effective: Settings): Mo
   const inherited = modelProfilesWithDefault(effective)
   const localIDs = new Set(localProfiles.map(modelProfileID).filter(Boolean))
   return [
-    ...inherited.filter((profile) => !localIDs.has(modelProfileID(profile))).map(stripInheritedModelSecret),
+    ...inherited.filter((profile) => !localIDs.has(modelProfileID(profile))),
     ...localProfiles,
+  ]
+}
+
+export function modelEndpointsForEditor(draft: Settings, effective: Settings): ModelEndpointSettings[] {
+  const localEndpoints = draft.model_endpoints ?? []
+  const hasLocalDefault = localEndpoints.some((endpoint) => modelEndpointID(endpoint) === 'default')
+  const hasLocalDefaultSelection = Boolean(draft.agent_models?.default?.profile_id?.trim())
+  const hasLegacyDefault = Boolean(draft.openai_api_key || draft.openai_base_url)
+  if (hasLocalDefault || hasLocalDefaultSelection || hasLegacyDefault) return modelEndpointsWithDefault(draft)
+  const inherited = modelEndpointsWithDefault(effective)
+  const localIDs = new Set(localEndpoints.map(modelEndpointID).filter(Boolean))
+  return [
+    ...inherited.filter((endpoint) => !localIDs.has(modelEndpointID(endpoint))).map(stripInheritedModelEndpointSecret),
+    ...localEndpoints,
   ]
 }
 
@@ -905,8 +943,8 @@ function preserveDraftOnlyModelProfiles(profiles: ModelProfileSettings[], draftP
   return [...profiles, ...draftOnlyProfiles]
 }
 
-function stripInheritedModelSecret(profile: ModelProfileSettings): ModelProfileSettings {
-  return { ...profile, api_key: '' }
+function stripInheritedModelEndpointSecret(endpoint: ModelEndpointSettings): ModelEndpointSettings {
+  return { ...endpoint, api_key: '' }
 }
 
 export function imageAPIProfilesForEditor(draft: Settings, effective: Settings): ImageAPIProfileSettings[] {
@@ -919,13 +957,26 @@ export function imageAPIProfilesForEditor(draft: Settings, effective: Settings):
   const inherited = imageAPIProfilesWithDefault(effective)
   const localIDs = new Set(localProfiles.map(imageAPIProfileID).filter(Boolean))
   return [
-    ...inherited.filter((profile) => !localIDs.has(imageAPIProfileID(profile))).map(stripInheritedImageAPISecret),
+    ...inherited.filter((profile) => !localIDs.has(imageAPIProfileID(profile))),
     ...localProfiles,
   ]
 }
 
-function stripInheritedImageAPISecret(profile: ImageAPIProfileSettings): ImageAPIProfileSettings {
-  return { ...profile, api_key: '' }
+export function imageAPIEndpointsForEditor(draft: Settings, effective: Settings): ImageAPIEndpointSettings[] {
+  const localEndpoints = draft.image_api_endpoints ?? []
+  const hasLocalDefault = localEndpoints.some((endpoint) => imageAPIEndpointID(endpoint) === 'default')
+  const hasLocalDefaultSelection = Boolean(draft.default_image_api_profile_id?.trim())
+  if (hasLocalDefault || hasLocalDefaultSelection) return imageAPIEndpointsWithDefault(draft)
+  const inherited = imageAPIEndpointsWithDefault(effective)
+  const localIDs = new Set(localEndpoints.map(imageAPIEndpointID).filter(Boolean))
+  return [
+    ...inherited.filter((endpoint) => !localIDs.has(imageAPIEndpointID(endpoint))).map(stripInheritedImageAPIEndpointSecret),
+    ...localEndpoints,
+  ]
+}
+
+function stripInheritedImageAPIEndpointSecret(endpoint: ImageAPIEndpointSettings): ImageAPIEndpointSettings {
+  return { ...endpoint, api_key: '' }
 }
 
 function Section({

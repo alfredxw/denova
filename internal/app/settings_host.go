@@ -168,8 +168,29 @@ func (host modelHost) ModelConfigSnapshot() config.Config {
 		return config.Config{}
 	}
 	snapshot := *host.app.cfg
+	snapshot.ModelEndpoints = cloneModelEndpoints(host.app.cfg.ModelEndpoints)
 	snapshot.ModelProfiles = cloneModelProfiles(host.app.cfg.ModelProfiles)
 	return snapshot
+}
+
+func cloneModelEndpoints(endpoints []config.ModelEndpointSettings) []config.ModelEndpointSettings {
+	if endpoints == nil {
+		return nil
+	}
+	cloned := make([]config.ModelEndpointSettings, len(endpoints))
+	for index, endpoint := range endpoints {
+		cloned[index] = endpoint
+		if endpoint.Headers != nil {
+			cloned[index].Headers = make(map[string]string, len(endpoint.Headers))
+			for name, value := range endpoint.Headers {
+				cloned[index].Headers[name] = value
+			}
+		}
+		if endpoint.ProtocolOptions != nil {
+			cloned[index].ProtocolOptions = cloneModelProtocolOptions(endpoint.ProtocolOptions)
+		}
+	}
+	return cloned
 }
 
 func cloneModelProfiles(profiles []config.ModelProfileSettings) []config.ModelProfileSettings {

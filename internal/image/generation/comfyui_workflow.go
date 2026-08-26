@@ -1,9 +1,11 @@
 package generation
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math/big"
 	"sort"
 	"strings"
@@ -16,8 +18,8 @@ const maxComfyUIWorkflowBytes = 5 << 20
 type comfyUIWorkflow map[string]any
 
 func prepareComfyUIWorkflow(profile config.ResolvedImageAPIProfile, request GenerateRequest) (comfyUIWorkflow, error) {
-	if profile.ComfyUI.WorkflowMode == config.ComfyUIWorkflowAPI {
-		return prepareUploadedComfyUIWorkflow(profile.ComfyUI.Workflow, request)
+	if profile.ComfyUI.WorkflowMode != config.ComfyUIWorkflowBuiltin {
+		return prepareUploadedComfyUIWorkflow(profile.ComfyUI, request)
 	}
 	return builtinComfyUIWorkflow(profile.Model, request)
 }
@@ -68,16 +70,16 @@ func builtinComfyUIWorkflow(checkpoint string, request GenerateRequest) (comfyUI
 	}, nil
 }
 
-func prepareUploadedComfyUIWorkflow(raw string, request GenerateRequest) (comfyUIWorkflow, error) {
-	raw = strings.TrimSpace(raw)
+func prepareUploadedComfyUIWorkflow(settings config.ComfyUIProfileSettings, request GenerateRequest) (comfyUIWorkflow, error) {
+	raw := strings.TrimSpace(settings.Workflow)
 	if raw == "" {
 		return nil, fmt.Errorf("ComfyUI API-format workflow is missing")
 	}
 	if len(raw) > maxComfyUIWorkflowBytes {
 		return nil, fmt.Errorf("ComfyUI workflow exceeds %d bytes", maxComfyUIWorkflowBytes)
 	}
-	var workflow comfyUIWorkflow
-	if err := json.Unmarshal([]byte(raw), &workflow); err != nil {
+	workflow, err := decodeComfyUIWorkflowJSON([]byte(raw))
+	if err != nil {
 		return nil, fmt.Errorf("decode ComfyUI API-format workflow: %w", err)
 	}
 	if len(workflow) == 0 {
@@ -86,11 +88,99 @@ func prepareUploadedComfyUIWorkflow(raw string, request GenerateRequest) (comfyU
 	if err := validateComfyUIWorkflow(workflow); err != nil {
 		return nil, err
 	}
+	if len(settings.Parameters) > 0 {
+		promptBound, err := applyComfyUIParameters(workflow, settings.Parameters, request)
+		if err != nil {
+			return nil, err
+		}
+		if !promptBound {
+			if err := injectComfyUIPrompt(workflow, request.Prompt); err != nil {
+				return nil, err
+			}
+		}
+		return workflow, nil
+	}
 	if err := injectComfyUIPrompt(workflow, request.Prompt); err != nil {
 		return nil, err
 	}
 	injectComfyUIRequestOptions(workflow, request)
 	return workflow, nil
+}
+
+func decodeComfyUIWorkflowJSON(raw []byte) (comfyUIWorkflow, error) {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	var workflow comfyUIWorkflow
+	if err := decoder.Decode(&workflow); err != nil {
+		return nil, err
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		if err == nil {
+			return nil, fmt.Errorf("workflow contains multiple JSON values")
+		}
+		return nil, err
+	}
+	return workflow, nil
+}
+
+func applyComfyUIParameters(workflow comfyUIWorkflow, parameters []config.ComfyUIParameterSettings, request GenerateRequest) (bool, error) {
+	width, height := comfyUIImageDimensions(request.Size)
+	seed, seedErr := randomComfyUISeed()
+	promptBound := false
+	for _, parameter := range parameters {
+		node, ok := workflow[parameter.NodeID].(map[string]any)
+		if !ok {
+			return false, fmt.Errorf("ComfyUI parameter node %q is missing", parameter.NodeID)
+		}
+		inputs, ok := node["inputs"].(map[string]any)
+		if !ok {
+			return false, fmt.Errorf("ComfyUI parameter node %q has invalid inputs", parameter.NodeID)
+		}
+		if _, ok := inputs[parameter.InputName]; !ok {
+			return false, fmt.Errorf("ComfyUI parameter %s.%s is missing", parameter.NodeID, parameter.InputName)
+		}
+		value, err := decodeComfyUIParameterValue(parameter)
+		if err != nil {
+			return false, err
+		}
+		inputs[parameter.InputName] = value
+		switch parameter.Role {
+		case config.ComfyUIParameterRolePrompt:
+			inputs[parameter.InputName] = request.Prompt
+			promptBound = true
+		case config.ComfyUIParameterRoleWidth:
+			inputs[parameter.InputName] = width
+		case config.ComfyUIParameterRoleHeight:
+			inputs[parameter.InputName] = height
+		case config.ComfyUIParameterRoleBatchSize:
+			inputs[parameter.InputName] = request.N
+		case config.ComfyUIParameterRoleSeed:
+			if seedErr != nil {
+				return false, seedErr
+			}
+			inputs[parameter.InputName] = seed
+		case config.ComfyUIParameterRoleParameter, config.ComfyUIParameterRoleNegativePrompt, "":
+		default:
+			return false, fmt.Errorf("ComfyUI parameter %s.%s has unsupported role %q", parameter.NodeID, parameter.InputName, parameter.Role)
+		}
+	}
+	return promptBound, nil
+}
+
+func decodeComfyUIParameterValue(parameter config.ComfyUIParameterSettings) (any, error) {
+	decoder := json.NewDecoder(strings.NewReader(parameter.Value))
+	decoder.UseNumber()
+	var value any
+	if err := decoder.Decode(&value); err != nil {
+		return nil, fmt.Errorf("decode ComfyUI parameter %s.%s: %w", parameter.NodeID, parameter.InputName, err)
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		if err == nil {
+			return nil, fmt.Errorf("ComfyUI parameter %s.%s contains multiple JSON values", parameter.NodeID, parameter.InputName)
+		}
+		return nil, fmt.Errorf("decode ComfyUI parameter %s.%s: %w", parameter.NodeID, parameter.InputName, err)
+	}
+	return value, nil
 }
 
 func validateComfyUIWorkflow(workflow comfyUIWorkflow) error {

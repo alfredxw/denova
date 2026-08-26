@@ -30,11 +30,12 @@ openai_model = "doubao-seed"
 		t.Fatalf("model profile count = %d, want 1", len(settings.ModelProfiles))
 	}
 	profile := settings.ModelProfiles[0]
-	if profile.APIKey != "legacy-key" || profile.BaseURL != "https://ark.cn-beijing.volces.com/api/v3" || profile.Model != "doubao-seed" {
+	endpoint, ok := modelEndpointByID(settings.ModelEndpoints, profile.EndpointID)
+	if !ok || endpoint.APIKey != "legacy-key" || endpoint.BaseURL != "https://ark.cn-beijing.volces.com/api/v3" || profile.Model != "doubao-seed" {
 		t.Fatalf("legacy model profile was not migrated: %#v", profile)
 	}
-	if profile.Provider != string(providers.ProviderVolcengine) || profile.Protocol != string(providers.ProtocolOpenAIChatCompletions) {
-		t.Fatalf("legacy route = provider %q protocol %q", profile.Provider, profile.Protocol)
+	if endpoint.Provider != string(providers.ProviderVolcengine) || endpoint.Protocol != string(providers.ProtocolOpenAIChatCompletions) {
+		t.Fatalf("legacy route = provider %q protocol %q", endpoint.Provider, endpoint.Protocol)
 	}
 	if err := WriteSettingsFile(path, settings); err != nil {
 		t.Fatal(err)
@@ -74,9 +75,78 @@ openai_model = "legacy-model"
 		t.Fatal(err)
 	}
 	profile := settings.ModelProfiles[0]
-	if profile.APIKey != "canonical-key" || profile.BaseURL != "https://canonical.example/v1" || profile.Model != "canonical-model" {
+	endpoint, ok := modelEndpointByID(settings.ModelEndpoints, profile.EndpointID)
+	if !ok || endpoint.APIKey != "canonical-key" || endpoint.BaseURL != "https://canonical.example/v1" || profile.Model != "canonical-model" {
 		t.Fatalf("canonical fields must win over legacy aliases: %#v", profile)
 	}
+}
+
+func TestResolveAgentModelsReuseOneEndpoint(t *testing.T) {
+	cfg := &Config{
+		ModelEndpoints: []ModelEndpointSettings{{
+			ID: "shared", Provider: string(providers.ProviderOpenAI),
+			Protocol: string(providers.ProtocolOpenAIChatCompletions),
+			APIKey:   "shared-key", BaseURL: "https://models.example/v1",
+		}},
+		ModelProfiles: []ModelProfileSettings{
+			{ID: "writer", EndpointID: "shared", Model: "writer-model"},
+			{ID: "game", EndpointID: "shared", Model: "game-model"},
+		},
+		AgentModels: AgentModelSettings{
+			IDE:              AgentModelOverride{ProfileID: "writer"},
+			InteractiveStory: AgentModelOverride{ProfileID: "game"},
+		},
+	}
+
+	writer := ResolveAgentModel(cfg, AgentKindIDE)
+	game := ResolveAgentModel(cfg, AgentKindInteractiveStory)
+	for name, resolved := range map[string]ResolvedModelSettings{"writer": writer, "game": game} {
+		if resolved.APIKey != "shared-key" || resolved.BaseURL != "https://models.example/v1" {
+			t.Fatalf("%s route = %#v", name, resolved)
+		}
+	}
+	if writer.Model != "writer-model" || game.Model != "game-model" {
+		t.Fatalf("resolved models writer=%#v game=%#v", writer, game)
+	}
+}
+
+func TestLegacyProfilesWithSameRouteMigrateToOneEndpoint(t *testing.T) {
+	settings, migrated := migrateModelEndpointSettings(Settings{ModelProfiles: []ModelProfileSettings{
+		{ID: "first", Provider: string(providers.ProviderOpenAI), APIKey: "key", BaseURL: "https://models.example/v1", Model: "first-model"},
+		{ID: "second", Provider: string(providers.ProviderOpenAI), APIKey: "key", BaseURL: "https://models.example/v1", Model: "second-model"},
+	}})
+	if !migrated || len(settings.ModelEndpoints) != 1 || len(settings.ModelProfiles) != 2 {
+		t.Fatalf("migration result = %#v", settings)
+	}
+	if settings.ModelProfiles[0].EndpointID == "" || settings.ModelProfiles[0].EndpointID != settings.ModelProfiles[1].EndpointID {
+		t.Fatalf("profiles did not share one endpoint: %#v", settings.ModelProfiles)
+	}
+}
+
+func TestResolveModelProfileDraftUsesEditedEndpoint(t *testing.T) {
+	cfg := &Config{
+		ModelEndpoints: []ModelEndpointSettings{{ID: "shared", Provider: string(providers.ProviderOpenAI), BaseURL: "https://old.example/v1", APIKey: "old-key"}},
+		ModelProfiles:  []ModelProfileSettings{{ID: "writer", EndpointID: "shared", Model: "writer-model"}},
+	}
+	resolved, err := ResolveModelProfileDraft(cfg,
+		ModelEndpointSettings{ID: "shared", Provider: string(providers.ProviderOpenAI), BaseURL: "https://new.example/v1", APIKey: "new-key"},
+		ModelProfileSettings{ID: "writer", EndpointID: "shared", Model: "writer-model"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.BaseURL != "https://new.example/v1" || resolved.APIKey != "new-key" {
+		t.Fatalf("resolved draft = %#v", resolved)
+	}
+}
+
+func modelEndpointByID(endpoints []ModelEndpointSettings, id string) (ModelEndpointSettings, bool) {
+	for _, endpoint := range endpoints {
+		if modelEndpointID(endpoint) == id {
+			return endpoint, true
+		}
+	}
+	return ModelEndpointSettings{}, false
 }
 
 func TestResolveAgentModelProviderProtocolRouting(t *testing.T) {
@@ -471,7 +541,6 @@ func TestSanitizeModelProfilesCapsContextWindow(t *testing.T) {
 	tooLarge := 3000000
 	invalid := -1
 	settings := sanitizeEditableSettings(Settings{
-		OpenAIContextWindowTokens: &tooLarge,
 		ModelProfiles: []ModelProfileSettings{
 			{ID: "large", ContextWindowTokens: &tooLarge},
 			{ID: "bad", ContextWindowTokens: &invalid},
@@ -480,9 +549,6 @@ func TestSanitizeModelProfilesCapsContextWindow(t *testing.T) {
 	})
 	if len(settings.ModelProfiles) != 2 {
 		t.Fatalf("sanitized model profiles length = %d, want 2", len(settings.ModelProfiles))
-	}
-	if got := *settings.OpenAIContextWindowTokens; got != MaxContextWindowTokens {
-		t.Fatalf("main context window = %d, want %d", got, MaxContextWindowTokens)
 	}
 	if got := *settings.ModelProfiles[0].ContextWindowTokens; got != MaxContextWindowTokens {
 		t.Fatalf("large profile context window = %d, want %d", got, MaxContextWindowTokens)
@@ -530,7 +596,8 @@ func TestSanitizeModelProfilesKeepsIncompleteDraft(t *testing.T) {
 	if draft.ID != "" || draft.Model != "" {
 		t.Fatalf("incomplete draft must stay ineligible for model resolution: %#v", draft)
 	}
-	if draft.Name != "Draft provider" || draft.BaseURL != "https://api.example.com/v1" {
+	endpoint, ok := modelEndpointByID(settings.ModelEndpoints, draft.EndpointID)
+	if draft.Name != "Draft provider" || !ok || endpoint.BaseURL != "https://api.example.com/v1" || endpoint.APIKey != "draft-key" {
 		t.Fatalf("incomplete draft fields were not normalized: %#v", draft)
 	}
 	if draft.ContextWindowTokens == nil || *draft.ContextWindowTokens != DefaultContextWindowTokens {
@@ -563,7 +630,8 @@ func TestWriteSettingsFileKeepsIncompleteModelDraft(t *testing.T) {
 	if draft.ID != "" || draft.Model != "" {
 		t.Fatalf("incomplete draft must remain ineligible after a write/read round trip: %#v", draft)
 	}
-	if draft.Name != "Draft provider" || draft.APIKey != "draft-key" || draft.BaseURL != "https://api.example.com/v1" {
+	endpoint, ok := modelEndpointByID(saved.ModelEndpoints, draft.EndpointID)
+	if draft.Name != "Draft provider" || !ok || endpoint.APIKey != "draft-key" || endpoint.BaseURL != "https://api.example.com/v1" {
 		t.Fatalf("incomplete draft was not preserved after a write/read round trip: %#v", draft)
 	}
 }
@@ -608,7 +676,7 @@ func TestSanitizeSettingsClearsLegacyModelFieldsWhenDefaultProfileExists(t *test
 	}
 }
 
-func TestSanitizeSettingsKeepsLegacyModelFieldsForAliasOnlyDefaultProfile(t *testing.T) {
+func TestSanitizeSettingsMigratesLegacyModelFieldsForAliasOnlyDefaultProfile(t *testing.T) {
 	contextWindow := 1000000
 	settings := sanitizeEditableSettings(Settings{
 		OpenAIAPIKey:              "legacy-key",
@@ -619,7 +687,15 @@ func TestSanitizeSettingsKeepsLegacyModelFieldsForAliasOnlyDefaultProfile(t *tes
 			{ID: "default", Name: "Main"},
 		},
 	})
-	if settings.OpenAIAPIKey != "legacy-key" || settings.OpenAIBaseURL != "https://legacy.example/v1" || settings.OpenAIModel != "legacy-model" || settings.OpenAIContextWindowTokens == nil {
-		t.Fatalf("alias-only default profile should keep legacy model fields: %#v", settings)
+	if settings.OpenAIAPIKey != "" || settings.OpenAIBaseURL != "" || settings.OpenAIModel != "" || settings.OpenAIContextWindowTokens != nil {
+		t.Fatalf("legacy model fields were not cleared: %#v", settings)
+	}
+	profile := settings.ModelProfiles[0]
+	endpoint, ok := modelEndpointByID(settings.ModelEndpoints, profile.EndpointID)
+	if !ok || endpoint.APIKey != "legacy-key" || endpoint.BaseURL != "https://legacy.example/v1" {
+		t.Fatalf("legacy connection was not migrated: profile=%#v endpoint=%#v", profile, endpoint)
+	}
+	if profile.Model != "" {
+		t.Fatalf("canonical alias-only profile must keep its intentionally empty model: %#v", profile)
 	}
 }

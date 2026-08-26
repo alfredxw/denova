@@ -33,6 +33,15 @@ const (
 
 	ComfyUIWorkflowBuiltin = "builtin"
 	ComfyUIWorkflowAPI     = "api"
+	ComfyUIWorkflowRemote  = "remote"
+
+	ComfyUIParameterRoleParameter      = "parameter"
+	ComfyUIParameterRolePrompt         = "prompt"
+	ComfyUIParameterRoleNegativePrompt = "negative_prompt"
+	ComfyUIParameterRoleWidth          = "width"
+	ComfyUIParameterRoleHeight         = "height"
+	ComfyUIParameterRoleBatchSize      = "batch_size"
+	ComfyUIParameterRoleSeed           = "seed"
 )
 
 var (
@@ -44,26 +53,56 @@ var (
 	ErrImageProtocolInvalid    = errors.New("image protocol is invalid")
 )
 
+// ComfyUIParameterSettings describes one writable API-graph input. Value is a
+// JSON literal so large integer seeds and custom string values survive settings
+// round trips without lossy type coercion.
+type ComfyUIParameterSettings struct {
+	NodeID    string `toml:"node_id" json:"node_id"`
+	InputName string `toml:"input_name" json:"input_name"`
+	Label     string `toml:"label,omitempty" json:"label,omitempty"`
+	Type      string `toml:"type" json:"type"`
+	Role      string `toml:"role,omitempty" json:"role,omitempty"`
+	Value     string `toml:"value" json:"value"`
+	// Options is refreshed from object_info and intentionally not persisted;
+	// model-backed combo lists can contain thousands of installation-local values.
+	Options   []string `toml:"-" json:"options,omitempty"`
+	Min       *float64 `toml:"min,omitempty" json:"min,omitempty"`
+	Max       *float64 `toml:"max,omitempty" json:"max,omitempty"`
+	Step      *float64 `toml:"step,omitempty" json:"step,omitempty"`
+	Multiline bool     `toml:"multiline,omitempty" json:"multiline,omitempty"`
+}
+
 // ComfyUIProfileSettings owns the workflow source used by the ComfyUI
-// protocol. Builtin mode uses Denova's core-node text-to-image graph; API mode
-// executes an uploaded ComfyUI API-format graph.
+// protocol. Builtin mode uses Denova's core-node text-to-image graph, API mode
+// executes an uploaded API-format graph, and remote mode executes a cached
+// snapshot discovered from a saved ComfyUI workflow.
 type ComfyUIProfileSettings struct {
-	WorkflowMode string `toml:"workflow_mode,omitempty" json:"workflow_mode,omitempty"`
-	Workflow     string `toml:"workflow,omitempty" json:"workflow,omitempty"`
-	WorkflowName string `toml:"workflow_name,omitempty" json:"workflow_name,omitempty"`
+	WorkflowMode     string                     `toml:"workflow_mode,omitempty" json:"workflow_mode,omitempty"`
+	Workflow         string                     `toml:"workflow,omitempty" json:"workflow,omitempty"`
+	WorkflowName     string                     `toml:"workflow_name,omitempty" json:"workflow_name,omitempty"`
+	WorkflowID       string                     `toml:"workflow_id,omitempty" json:"workflow_id,omitempty"`
+	WorkflowPath     string                     `toml:"workflow_path,omitempty" json:"workflow_path,omitempty"`
+	WorkflowModified int64                      `toml:"workflow_modified,omitempty" json:"workflow_modified,omitempty"`
+	WorkflowJobID    string                     `toml:"workflow_job_id,omitempty" json:"workflow_job_id,omitempty"`
+	WorkflowJobTime  int64                      `toml:"workflow_job_time,omitempty" json:"workflow_job_time,omitempty"`
+	Parameters       []ComfyUIParameterSettings `toml:"parameters,omitempty" json:"parameters,omitempty"`
 }
 
 // ImageAPIProfileSettings is provider-neutral persistent configuration. A
 // provider supplies ergonomic defaults while Protocol selects the wire format.
 // Custom profiles can combine their own endpoint with any installed protocol.
 type ImageAPIProfileSettings struct {
-	ID       string `toml:"id,omitempty" json:"id,omitempty"`
-	Name     string `toml:"name,omitempty" json:"name,omitempty"`
+	ID         string `toml:"id,omitempty" json:"id,omitempty"`
+	Name       string `toml:"name,omitempty" json:"name,omitempty"`
+	EndpointID string `toml:"endpoint_id,omitempty" json:"endpoint_id,omitempty"`
+	Model      string `toml:"model,omitempty" json:"model,omitempty"`
+	// Provider, Protocol, APIKey, BaseURL and Headers are decode-only fields
+	// from the released profile schema. Migration moves them to a shared image
+	// endpoint before settings are persisted again.
 	Provider string `toml:"provider,omitempty" json:"provider,omitempty"`
 	Protocol string `toml:"protocol,omitempty" json:"protocol,omitempty"`
 	APIKey   string `toml:"api_key,omitempty" json:"api_key,omitempty"`
 	BaseURL  string `toml:"base_url,omitempty" json:"base_url,omitempty"`
-	Model    string `toml:"model,omitempty" json:"model,omitempty"`
 	// PromptGuide teaches prompt-authoring Agents the selected model's native
 	// syntax. It is model context only and is never sent to the image provider.
 	PromptGuide string `toml:"prompt_guide,omitempty" json:"prompt_guide,omitempty"`
@@ -79,6 +118,18 @@ type ImageAPIProfileSettings struct {
 	DefaultQuality      string                  `toml:"default_quality,omitempty" json:"default_quality,omitempty"`
 	DefaultOutputFormat string                  `toml:"default_output_format,omitempty" json:"default_output_format,omitempty"`
 	ComfyUI             *ComfyUIProfileSettings `toml:"comfyui,omitempty" json:"comfyui,omitempty"`
+}
+
+// ImageAPIEndpointSettings owns one image API route and its credentials. Image
+// profiles keep model, output, prompt-guide, and workflow settings only.
+type ImageAPIEndpointSettings struct {
+	ID       string            `toml:"id,omitempty" json:"id,omitempty"`
+	Name     string            `toml:"name,omitempty" json:"name,omitempty"`
+	Provider string            `toml:"provider,omitempty" json:"provider,omitempty"`
+	Protocol string            `toml:"protocol,omitempty" json:"protocol,omitempty"`
+	APIKey   string            `toml:"api_key,omitempty" json:"api_key,omitempty"`
+	BaseURL  string            `toml:"base_url,omitempty" json:"base_url,omitempty"`
+	Headers  map[string]string `toml:"headers,omitempty" json:"headers,omitempty"`
 }
 
 type ResolvedImageAPIProfile struct {
@@ -109,13 +160,18 @@ type imageProviderDefaults struct {
 	OutputFormat string
 }
 
+type imageProfileResolutionPurpose int
+
+const (
+	imageProfileForGeneration imageProfileResolutionPurpose = iota
+	imageProfileForConnection
+)
+
 func DefaultImageAPIProfile() ImageAPIProfileSettings {
 	return ImageAPIProfileSettings{
 		ID:                  DefaultImageAPIProfileID,
 		Name:                "Default image model",
-		Provider:            DefaultImageAPIProvider,
-		Protocol:            DefaultImageAPIProtocol,
-		BaseURL:             DefaultImageAPIBaseURL,
+		EndpointID:          DefaultImageAPIProfileID,
 		Model:               DefaultImageAPIModel,
 		DefaultQuality:      "auto",
 		DefaultOutputFormat: "png",
@@ -143,28 +199,43 @@ func ApplyImageAPIEnvironment(cfg *Config) {
 			protocol = ImageProtocolOpenAI
 		}
 	}
-	override := ImageAPIProfileSettings{
+	endpointOverride := ImageAPIEndpointSettings{
 		ID:       DefaultImageAPIProfileID,
 		Provider: provider,
 		Protocol: protocol,
 		APIKey:   apiKey,
 		BaseURL:  strings.TrimSpace(baseURL),
-		Model:    strings.TrimSpace(model),
 	}
-	if !hasImageAPIProfileDraftFields(override) {
+	model = strings.TrimSpace(model)
+	if endpointOverride.Provider == "" && endpointOverride.Protocol == "" && endpointOverride.APIKey == "" && endpointOverride.BaseURL == "" && model == "" {
 		return
 	}
-	found := false
+	foundEndpoint := false
+	for index, endpoint := range cfg.ImageAPIEndpoints {
+		if imageAPIEndpointID(endpoint) != DefaultImageAPIProfileID {
+			continue
+		}
+		cfg.ImageAPIEndpoints[index] = mergeImageAPIEndpoint(endpoint, endpointOverride)
+		foundEndpoint = true
+		break
+	}
+	if !foundEndpoint {
+		cfg.ImageAPIEndpoints = append(cfg.ImageAPIEndpoints, mergeImageAPIEndpoint(DefaultImageAPIEndpoint(), endpointOverride))
+	}
+	if model == "" {
+		return
+	}
+	foundProfile := false
 	for index, profile := range cfg.ImageAPIProfiles {
 		if imageAPIProfileID(profile) != DefaultImageAPIProfileID {
 			continue
 		}
-		cfg.ImageAPIProfiles[index] = mergeImageAPIProfile(profile, override)
-		found = true
+		cfg.ImageAPIProfiles[index] = mergeImageAPIProfile(profile, ImageAPIProfileSettings{ID: DefaultImageAPIProfileID, Model: model})
+		foundProfile = true
 		break
 	}
-	if !found {
-		cfg.ImageAPIProfiles = append(cfg.ImageAPIProfiles, mergeImageAPIProfile(DefaultImageAPIProfile(), override))
+	if !foundProfile {
+		cfg.ImageAPIProfiles = append(cfg.ImageAPIProfiles, mergeImageAPIProfile(DefaultImageAPIProfile(), ImageAPIProfileSettings{ID: DefaultImageAPIProfileID, Model: model}))
 	}
 }
 
@@ -185,13 +256,14 @@ func ResolveImageAPIProfile(cfg *Config, requestedID string) (ResolvedImageAPIPr
 		return ResolvedImageAPIProfile{}, ErrImageAPIProfileNotFound
 	}
 	profiles := map[string]ImageAPIProfileSettings{
-		DefaultImageAPIProfileID: DefaultImageAPIProfile(),
+		DefaultImageAPIProfileID: imageProfileWithEndpoint(cfg, DefaultImageAPIProfile()),
 	}
 	for _, profile := range cfg.ImageAPIProfiles {
 		id := imageAPIProfileID(profile)
 		if id == "" {
 			continue
 		}
+		profile = imageProfileWithEndpoint(cfg, profile)
 		base := profiles[id]
 		profile.ID = id
 		profiles[id] = mergeImageAPIProfile(base, profile)
@@ -212,6 +284,10 @@ func ResolveImageAPIProfile(cfg *Config, requestedID string) (ResolvedImageAPIPr
 }
 
 func resolveImageAPIProfile(profileID string, profile ImageAPIProfileSettings) (ResolvedImageAPIProfile, error) {
+	return resolveImageAPIProfileForPurpose(profileID, profile, imageProfileForGeneration)
+}
+
+func resolveImageAPIProfileForPurpose(profileID string, profile ImageAPIProfileSettings, purpose imageProfileResolutionPurpose) (ResolvedImageAPIProfile, error) {
 	provider := normalizeImageAPIProvider(profile.Provider)
 	if provider == "" {
 		return ResolvedImageAPIProfile{}, fmt.Errorf("%w: %s", ErrImageProviderInvalid, profile.Provider)
@@ -231,14 +307,16 @@ func resolveImageAPIProfile(profileID string, profile ImageAPIProfileSettings) (
 	baseURL := firstNonEmpty(strings.TrimSpace(profile.BaseURL), defaults.BaseURL)
 	model := firstNonEmpty(strings.TrimSpace(profile.Model), defaults.Model)
 	comfy := normalizeComfyUIProfile(profile.ComfyUI)
-	if protocol == ImageProtocolComfyUI && comfy.WorkflowMode == ComfyUIWorkflowBuiltin && model == "" {
-		return ResolvedImageAPIProfile{}, ErrImageAPIModelMissing
-	}
-	if protocol == ImageProtocolComfyUI && comfy.WorkflowMode == ComfyUIWorkflowAPI && comfy.Workflow == "" {
-		return ResolvedImageAPIProfile{}, ErrComfyUIWorkflowMissing
-	}
-	if protocol != ImageProtocolComfyUI && model == "" {
-		return ResolvedImageAPIProfile{}, ErrImageAPIModelMissing
+	if purpose == imageProfileForGeneration {
+		if protocol == ImageProtocolComfyUI && comfy.WorkflowMode == ComfyUIWorkflowBuiltin && model == "" {
+			return ResolvedImageAPIProfile{}, ErrImageAPIModelMissing
+		}
+		if protocol == ImageProtocolComfyUI && comfy.WorkflowMode != ComfyUIWorkflowBuiltin && comfy.Workflow == "" {
+			return ResolvedImageAPIProfile{}, ErrComfyUIWorkflowMissing
+		}
+		if protocol != ImageProtocolComfyUI && model == "" {
+			return ResolvedImageAPIProfile{}, ErrImageAPIModelMissing
+		}
 	}
 	if imageProviderRequiresAPIKey(provider) && strings.TrimSpace(profile.APIKey) == "" {
 		return ResolvedImageAPIProfile{}, ErrImageAPIKeyMissing
@@ -274,6 +352,53 @@ func resolveImageAPIProfile(profileID string, profile ImageAPIProfileSettings) (
 // for connection validation. Stored credentials may follow edits on the same
 // endpoint origin, but are never copied to a different network destination.
 func ResolveImageAPIProfileDraft(cfg *Config, draft ImageAPIProfileSettings) (ResolvedImageAPIProfile, error) {
+	return resolveImageAPIProfileDraftForPurpose(cfg, draft, imageProfileForGeneration)
+}
+
+// ResolveImageAPIProfileEndpointDraft validates an unsaved image model with a
+// shared endpoint. Stored secrets can be inherited only through the same
+// endpoint ID and credential scope.
+func ResolveImageAPIProfileEndpointDraft(cfg *Config, endpoint ImageAPIEndpointSettings, draft ImageAPIProfileSettings) (ResolvedImageAPIProfile, error) {
+	return resolveImageAPIProfileEndpointDraftForPurpose(cfg, endpoint, draft, imageProfileForGeneration)
+}
+
+// ResolveImageAPIProfileConnectionDraft resolves endpoint credentials and
+// protocol defaults without requiring a runnable model or workflow. Discovery
+// services use it before the user has selected a remote workflow snapshot.
+func ResolveImageAPIProfileConnectionDraft(cfg *Config, draft ImageAPIProfileSettings) (ResolvedImageAPIProfile, error) {
+	return resolveImageAPIProfileDraftForPurpose(cfg, draft, imageProfileForConnection)
+}
+
+func ResolveImageAPIConnectionEndpointDraft(cfg *Config, endpoint ImageAPIEndpointSettings, draft ImageAPIProfileSettings) (ResolvedImageAPIProfile, error) {
+	return resolveImageAPIProfileEndpointDraftForPurpose(cfg, endpoint, draft, imageProfileForConnection)
+}
+
+func resolveImageAPIProfileEndpointDraftForPurpose(cfg *Config, endpoint ImageAPIEndpointSettings, draft ImageAPIProfileSettings, purpose imageProfileResolutionPurpose) (ResolvedImageAPIProfile, error) {
+	if cfg == nil {
+		return ResolvedImageAPIProfile{}, fmt.Errorf("config is nil")
+	}
+	endpoint.ID = firstNonEmpty(imageAPIEndpointID(endpoint), strings.TrimSpace(draft.EndpointID), "__image_endpoint_draft__")
+	if stored, ok := findImageAPIEndpoint(cfg, endpoint.ID); ok {
+		endpoint = mergeImageAPIEndpoint(stored, endpoint)
+	}
+	draft.EndpointID = endpoint.ID
+	temporary := *cfg
+	temporary.ImageAPIEndpoints = append([]ImageAPIEndpointSettings(nil), cfg.ImageAPIEndpoints...)
+	replaced := false
+	for index, current := range temporary.ImageAPIEndpoints {
+		if imageAPIEndpointID(current) == endpoint.ID {
+			temporary.ImageAPIEndpoints[index] = endpoint
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		temporary.ImageAPIEndpoints = append(temporary.ImageAPIEndpoints, endpoint)
+	}
+	return resolveImageAPIProfileDraftForPurpose(&temporary, draft, purpose)
+}
+
+func resolveImageAPIProfileDraftForPurpose(cfg *Config, draft ImageAPIProfileSettings, purpose imageProfileResolutionPurpose) (ResolvedImageAPIProfile, error) {
 	if cfg == nil {
 		return ResolvedImageAPIProfile{}, fmt.Errorf("config is nil")
 	}
@@ -291,6 +416,8 @@ func ResolveImageAPIProfileDraft(cfg *Config, draft ImageAPIProfileSettings) (Re
 			break
 		}
 	}
+	base = imageProfileWithEndpoint(cfg, base)
+	draft = imageProfileWithEndpoint(cfg, draft)
 	merged := mergeImageAPIProfile(base, draft)
 	if draft.APIKey == "" {
 		merged.APIKey = ""
@@ -298,5 +425,5 @@ func ResolveImageAPIProfileDraft(cfg *Config, draft ImageAPIProfileSettings) (Re
 			merged.APIKey = base.APIKey
 		}
 	}
-	return resolveImageAPIProfile(originalID, merged)
+	return resolveImageAPIProfileForPurpose(originalID, merged, purpose)
 }

@@ -10,7 +10,7 @@ import (
 
 func TestMutateSettingsFileAllowsOnlyOneWriterForSameRevision(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.toml")
-	if err := WriteSettingsFile(path, Settings{OpenAIModel: "base"}); err != nil {
+	if err := WriteSettingsFile(path, Settings{ModelProfiles: []ModelProfileSettings{{ID: "default", EndpointID: "default", Model: "base"}}}); err != nil {
 		t.Fatal(err)
 	}
 	baseRevision, err := SettingsFileRevision(path)
@@ -29,7 +29,7 @@ func TestMutateSettingsFileAllowsOnlyOneWriterForSameRevision(t *testing.T) {
 			defer captureSettingsMutationPanic(&errs[index])
 			<-start
 			_, errs[index] = MutateSettingsFile(path, baseRevision, func(current Settings) (Settings, error) {
-				current.OpenAIModel = model
+				current.ModelProfiles[0].Model = model
 				return current, nil
 			})
 		}(index, model)
@@ -57,14 +57,14 @@ func TestMutateSettingsFileAllowsOnlyOneWriterForSameRevision(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if settings.OpenAIModel != "first" && settings.OpenAIModel != "second" {
-		t.Fatalf("unexpected persisted model %q", settings.OpenAIModel)
+	if len(settings.ModelProfiles) != 1 || (settings.ModelProfiles[0].Model != "first" && settings.ModelProfiles[0].Model != "second") {
+		t.Fatalf("unexpected persisted models %#v", settings.ModelProfiles)
 	}
 }
 
 func TestMutateSettingsFileSerializesBlindReadModifyWrite(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.toml")
-	if err := WriteSettingsFile(path, Settings{OpenAIModel: "base", Theme: "dark"}); err != nil {
+	if err := WriteSettingsFile(path, Settings{ModelProfiles: []ModelProfileSettings{{ID: "default", EndpointID: "default", Model: "base"}}, Theme: "dark"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -80,7 +80,7 @@ func TestMutateSettingsFileSerializesBlindReadModifyWrite(t *testing.T) {
 		_, errs[0] = MutateSettingsFile(path, "", func(current Settings) (Settings, error) {
 			close(firstEntered)
 			<-releaseFirst
-			current.OpenAIModel = "first"
+			current.ModelProfiles[0].Model = "first"
 			return current, nil
 		})
 	}()
@@ -107,7 +107,7 @@ func TestMutateSettingsFileSerializesBlindReadModifyWrite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if settings.OpenAIModel != "first" || settings.Theme != "light" {
+	if len(settings.ModelProfiles) != 1 || settings.ModelProfiles[0].Model != "first" || settings.Theme != "light" {
 		t.Fatalf("serialized mutations lost a field: %#v", settings)
 	}
 }

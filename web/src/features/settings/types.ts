@@ -8,8 +8,10 @@ export interface Settings {
   openai_base_url?: string
   openai_model?: string
   openai_context_window_tokens?: number | null
+  model_endpoints?: ModelEndpointSettings[]
   model_profiles?: ModelProfileSettings[]
   default_image_api_profile_id?: string
+  image_api_endpoints?: ImageAPIEndpointSettings[]
   image_api_profiles?: ImageAPIProfileSettings[]
   agent_models?: AgentModelSettings
   agent_tools?: AgentToolSettings
@@ -120,16 +122,22 @@ export interface WebAccessSettings {
 export interface ModelProfileSettings {
   id?: string
   name?: string
+  endpoint_id?: string
+  model?: string
+  temperature?: number | null
+  context_window_tokens?: number | null
+}
+
+export interface ModelEndpointSettings {
+  id?: string
+  name?: string
   provider?: string
   protocol?: string
   api_key?: string
   base_url?: string
-  model?: string
   headers?: Record<string, string>
   protocol_options?: Record<string, unknown>
   session_key_mapping?: ModelSessionKeyMapping
-  temperature?: number | null
-  context_window_tokens?: number | null
 }
 
 export interface ModelSessionKeyMapping {
@@ -178,13 +186,9 @@ export interface ModelDiscoveryResult {
 export interface ImageAPIProfileSettings {
   id?: string
   name?: string
-  provider?: string
-  protocol?: string
-  api_key?: string
-  base_url?: string
+  endpoint_id?: string
   model?: string
   prompt_guide?: string
-  headers?: Record<string, string>
   default_size?: string
   default_aspect_ratio?: string
   default_resolution?: string
@@ -193,10 +197,65 @@ export interface ImageAPIProfileSettings {
   comfyui?: ComfyUIProfileSettings
 }
 
+export interface ImageAPIEndpointSettings {
+  id?: string
+  name?: string
+  provider?: string
+  protocol?: string
+  api_key?: string
+  base_url?: string
+  headers?: Record<string, string>
+}
+
 export interface ComfyUIProfileSettings {
-  workflow_mode?: 'builtin' | 'api'
+  workflow_mode?: 'builtin' | 'api' | 'remote'
   workflow?: string
   workflow_name?: string
+  workflow_id?: string
+  workflow_path?: string
+  workflow_modified?: number
+  workflow_job_id?: string
+  workflow_job_time?: number
+  parameters?: ComfyUIParameterSettings[]
+}
+
+export type ComfyUIParameterRole = 'parameter' | 'prompt' | 'negative_prompt' | 'width' | 'height' | 'batch_size' | 'seed'
+
+export interface ComfyUIParameterSettings {
+  node_id: string
+  input_name: string
+  label?: string
+  type: 'STRING' | 'INT' | 'FLOAT' | 'BOOLEAN' | 'COMBO' | string
+  role?: ComfyUIParameterRole
+  /** JSON literal retained as text to preserve ComfyUI value types and large integers. */
+  value: string
+  options?: string[]
+  min?: number
+  max?: number
+  step?: number
+  multiline?: boolean
+}
+
+export type ComfyUIWorkflowStatus = 'ready' | 'stale' | 'not_run' | 'invalid'
+
+export interface ComfyUIWorkflowSummary {
+  name: string
+  path: string
+  workflow_id?: string
+  modified: number
+  status: ComfyUIWorkflowStatus
+  job_id?: string
+  job_time?: number
+  detail?: string
+}
+
+export interface ComfyUIWorkflowCatalog {
+  workflows: ComfyUIWorkflowSummary[]
+}
+
+export interface ComfyUIWorkflowSnapshot extends ComfyUIWorkflowSummary {
+  workflow: string
+  parameters?: ComfyUIParameterSettings[]
 }
 
 export interface ImagePingResult {

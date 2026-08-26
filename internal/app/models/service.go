@@ -80,7 +80,7 @@ func (service *Service) Catalog() (modelio.Catalog, error) {
 // List returns optional protocol-native model results as suggestions. A
 // synthetic ID lets a new profile discover models before its custom model
 // name has been entered; normal Agent resolution still requires a model.
-func (service *Service) List(ctx context.Context, profile config.ModelProfileSettings) (ListResult, error) {
+func (service *Service) List(ctx context.Context, endpoint config.ModelEndpointSettings, profile config.ModelProfileSettings) (ListResult, error) {
 	if service == nil || service.host == nil {
 		return ListResult{}, fmt.Errorf("model list: service host is unavailable")
 	}
@@ -91,7 +91,7 @@ func (service *Service) List(ctx context.Context, profile config.ModelProfileSet
 		profile.ID = "__model_discovery_draft__"
 	}
 	snapshot := service.host.ModelConfigSnapshot()
-	resolvedProfile, err := config.ResolveModelProfile(&snapshot, profile)
+	resolvedProfile, err := config.ResolveModelProfileDraft(&snapshot, endpoint, profile)
 	if err != nil {
 		return ListResult{}, fmt.Errorf("model list: %w", err)
 	}
@@ -121,7 +121,7 @@ func (service *Service) List(ctx context.Context, profile config.ModelProfileSet
 // Ping performs a minimal real generation. This validates routing, transport,
 // authentication, model availability, protocol serialization, and response
 // parsing rather than merely checking whether an HTTP server is reachable.
-func (service *Service) Ping(ctx context.Context, profile config.ModelProfileSettings) (PingResult, error) {
+func (service *Service) Ping(ctx context.Context, endpoint config.ModelEndpointSettings, profile config.ModelProfileSettings) (PingResult, error) {
 	if service == nil || service.host == nil {
 		return PingResult{}, fmt.Errorf("model ping: service host is unavailable")
 	}
@@ -129,7 +129,7 @@ func (service *Service) Ping(ctx context.Context, profile config.ModelProfileSet
 		return PingResult{}, fmt.Errorf("model ping: provider runtime is unavailable")
 	}
 	snapshot := service.host.ModelConfigSnapshot()
-	resolvedProfile, err := config.ResolveModelProfile(&snapshot, profile)
+	resolvedProfile, err := config.ResolveModelProfileDraft(&snapshot, endpoint, profile)
 	if err != nil {
 		return PingResult{}, fmt.Errorf("model ping: %w", err)
 	}

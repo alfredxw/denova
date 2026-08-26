@@ -111,6 +111,7 @@ func (service *Service) coverConfig(workspace string) (config.Config, error) {
 	effective := layered.Effective
 	cfg := config.Config{
 		DefaultImageAPIProfileID: effective.DefaultImageAPIProfileID,
+		ImageAPIEndpoints:        effective.ImageAPIEndpoints,
 		ImageAPIProfiles:         effective.ImageAPIProfiles,
 		DenovaDir:                layered.Paths.DenovaDir,
 		NovaDir:                  layered.Paths.DenovaDir,

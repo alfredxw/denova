@@ -59,16 +59,84 @@ func normalizeComfyUIProfile(settings *ComfyUIProfileSettings) ComfyUIProfileSet
 		return ComfyUIProfileSettings{WorkflowMode: ComfyUIWorkflowBuiltin}
 	}
 	out := ComfyUIProfileSettings{
-		WorkflowMode: strings.ToLower(strings.TrimSpace(settings.WorkflowMode)),
-		Workflow:     strings.TrimSpace(settings.Workflow),
-		WorkflowName: strings.TrimSpace(settings.WorkflowName),
+		WorkflowMode:     strings.ToLower(strings.TrimSpace(settings.WorkflowMode)),
+		Workflow:         strings.TrimSpace(settings.Workflow),
+		WorkflowName:     strings.TrimSpace(settings.WorkflowName),
+		WorkflowID:       strings.TrimSpace(settings.WorkflowID),
+		WorkflowPath:     strings.TrimSpace(settings.WorkflowPath),
+		WorkflowModified: settings.WorkflowModified,
+		WorkflowJobID:    strings.TrimSpace(settings.WorkflowJobID),
+		WorkflowJobTime:  settings.WorkflowJobTime,
+		Parameters:       normalizeComfyUIParameters(settings.Parameters),
 	}
-	if out.WorkflowMode != ComfyUIWorkflowAPI {
+	switch out.WorkflowMode {
+	case ComfyUIWorkflowAPI:
+		out.WorkflowID = ""
+		out.WorkflowPath = ""
+		out.WorkflowModified = 0
+		out.WorkflowJobID = ""
+		out.WorkflowJobTime = 0
+		out.Parameters = nil
+	case ComfyUIWorkflowRemote:
+	case ComfyUIWorkflowBuiltin, "":
 		out.WorkflowMode = ComfyUIWorkflowBuiltin
 		out.Workflow = ""
 		out.WorkflowName = ""
+		out.WorkflowID = ""
+		out.WorkflowPath = ""
+		out.WorkflowModified = 0
+		out.WorkflowJobID = ""
+		out.WorkflowJobTime = 0
+		out.Parameters = nil
+	default:
+		out = ComfyUIProfileSettings{WorkflowMode: ComfyUIWorkflowBuiltin}
 	}
 	return out
+}
+
+func normalizeComfyUIParameters(parameters []ComfyUIParameterSettings) []ComfyUIParameterSettings {
+	if len(parameters) == 0 {
+		return nil
+	}
+	out := make([]ComfyUIParameterSettings, 0, len(parameters))
+	for _, parameter := range parameters {
+		parameter.NodeID = strings.TrimSpace(parameter.NodeID)
+		parameter.InputName = strings.TrimSpace(parameter.InputName)
+		if parameter.NodeID == "" || parameter.InputName == "" {
+			continue
+		}
+		parameter.Label = strings.TrimSpace(parameter.Label)
+		parameter.Type = strings.ToUpper(strings.TrimSpace(parameter.Type))
+		parameter.Role = normalizeComfyUIParameterRole(parameter.Role)
+		parameter.Value = strings.TrimSpace(parameter.Value)
+		parameter.Options = append([]string(nil), parameter.Options...)
+		out = append(out, parameter)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func normalizeComfyUIParameterRole(role string) string {
+	switch strings.ToLower(strings.TrimSpace(role)) {
+	case ComfyUIParameterRolePrompt:
+		return ComfyUIParameterRolePrompt
+	case ComfyUIParameterRoleNegativePrompt:
+		return ComfyUIParameterRoleNegativePrompt
+	case ComfyUIParameterRoleWidth:
+		return ComfyUIParameterRoleWidth
+	case ComfyUIParameterRoleHeight:
+		return ComfyUIParameterRoleHeight
+	case ComfyUIParameterRoleBatchSize:
+		return ComfyUIParameterRoleBatchSize
+	case ComfyUIParameterRoleSeed:
+		return ComfyUIParameterRoleSeed
+	case ComfyUIParameterRoleParameter, "":
+		return ComfyUIParameterRoleParameter
+	default:
+		return ComfyUIParameterRoleParameter
+	}
 }
 
 func normalizeImageAPISize(size string) string {

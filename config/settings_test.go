@@ -360,7 +360,7 @@ func TestReadSettingsFileMissingReturnsZero(t *testing.T) {
 func TestWriteThenReadSettings(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "config.toml")
-	in := Settings{OpenAIModel: "abc", AutoSaveEnabled: boolPtr(false), Language: "en-US"}
+	in := Settings{ModelProfiles: []ModelProfileSettings{{ID: "default", EndpointID: "default", Model: "abc"}}, AutoSaveEnabled: boolPtr(false), Language: "en-US"}
 	if err := WriteSettingsFile(p, in); err != nil {
 		t.Fatal(err)
 	}
@@ -368,7 +368,7 @@ func TestWriteThenReadSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out.OpenAIModel != "abc" {
+	if len(out.ModelProfiles) != 1 || out.ModelProfiles[0].Model != "abc" {
 		t.Fatalf("model")
 	}
 	if out.AutoSaveEnabled == nil || *out.AutoSaveEnabled != false {
@@ -636,23 +636,23 @@ func TestLoadLayeredKeepsGeneralSettingsUserScopedAndAppliesWorkspaceAgentOverri
 	if err != nil {
 		t.Fatal(err)
 	}
-	if layered.Effective.OpenAIModel != "user-model" {
-		t.Fatalf("general settings should stay user-scoped: %s", layered.Effective.OpenAIModel)
+	if modelFromProfiles(layered.Effective.ModelProfiles, "default") != "user-model" {
+		t.Fatalf("general settings should stay user-scoped: %#v", layered.Effective.ModelProfiles)
 	}
 	if layered.Effective.MaxIteration == nil || *layered.Effective.MaxIteration != 20 {
 		t.Fatalf("user MaxIteration should inherit: %v", layered.Effective.MaxIteration)
 	}
-	if layered.User.OpenAIModel != "user-model" {
+	if modelFromProfiles(layered.User.ModelProfiles, "default") != "user-model" {
 		t.Fatalf("raw user should be preserved")
 	}
 	if layered.Workspace.OpenAIModel != "" {
 		t.Fatalf("workspace general setting should be filtered: %s", layered.Workspace.OpenAIModel)
 	}
-	if layered.Inherited.User.OpenAIModel == "user-model" {
+	if modelFromProfiles(layered.Inherited.User.ModelProfiles, "default") == "user-model" {
 		t.Fatalf("user inheritance must exclude the user layer")
 	}
-	if layered.Inherited.Workspace.OpenAIModel != "user-model" {
-		t.Fatalf("workspace inheritance must include the user layer: %s", layered.Inherited.Workspace.OpenAIModel)
+	if modelFromProfiles(layered.Inherited.Workspace.ModelProfiles, "default") != "user-model" {
+		t.Fatalf("workspace inheritance must include the user layer: %#v", layered.Inherited.Workspace.ModelProfiles)
 	}
 	if enabled, present := layered.Effective.AgentTools.IDE[AgentToolShell]; !present || enabled {
 		t.Fatalf("workspace Agent override should remain effective: %#v", layered.Effective.AgentTools.IDE)
@@ -759,9 +759,18 @@ func TestLoadLayeredIgnoresNovaDirFromEditableLayers(t *testing.T) {
 	if layered.Effective.NovaDir != normalizePath(home) {
 		t.Fatalf("editable layers should not override startup nova_dir: %q", layered.Effective.NovaDir)
 	}
-	if layered.Effective.OpenAIModel != "user-model" {
-		t.Fatalf("workspace general fields should not override user settings: %q", layered.Effective.OpenAIModel)
+	if modelFromProfiles(layered.Effective.ModelProfiles, "default") != "user-model" {
+		t.Fatalf("workspace general fields should not override user settings: %#v", layered.Effective.ModelProfiles)
 	}
+}
+
+func modelFromProfiles(profiles []ModelProfileSettings, id string) string {
+	for _, profile := range profiles {
+		if modelProfileID(profile) == id {
+			return profile.Model
+		}
+	}
+	return ""
 }
 
 func TestPrepareWorkspaceAgentSettingsForWritePreservesLegacyGeneralValues(t *testing.T) {

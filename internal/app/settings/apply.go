@@ -51,10 +51,15 @@ func ApplyLayered(cfg *config.Config, layered config.LayeredSettings) {
 	if len(effective.ModelProfiles) > 0 {
 		cfg.ModelProfiles = effective.ModelProfiles
 	}
+	if len(effective.ModelEndpoints) > 0 {
+		cfg.ModelEndpoints = effective.ModelEndpoints
+	}
 	if effective.DefaultImageAPIProfileID != "" {
 		cfg.DefaultImageAPIProfileID = effective.DefaultImageAPIProfileID
 	}
+	cfg.ImageAPIEndpoints = append([]config.ImageAPIEndpointSettings(nil), effective.ImageAPIEndpoints...)
 	cfg.ImageAPIProfiles = append([]config.ImageAPIProfileSettings(nil), effective.ImageAPIProfiles...)
+	config.ApplyModelEnvironment(cfg)
 	config.ApplyImageAPIEnvironment(cfg)
 	cfg.AgentModels = effective.AgentModels
 	cfg.AgentTools = effective.AgentTools
@@ -179,11 +184,17 @@ func ApplyLayer(cfg *config.Config, settings config.Settings) {
 	if len(settings.ModelProfiles) > 0 {
 		cfg.ModelProfiles = config.Merge(config.Settings{ModelProfiles: cfg.ModelProfiles}, config.Settings{ModelProfiles: settings.ModelProfiles}).ModelProfiles
 	}
+	if len(settings.ModelEndpoints) > 0 {
+		cfg.ModelEndpoints = config.Merge(config.Settings{ModelEndpoints: cfg.ModelEndpoints}, config.Settings{ModelEndpoints: settings.ModelEndpoints}).ModelEndpoints
+	}
 	if settings.DefaultImageAPIProfileID != "" {
 		cfg.DefaultImageAPIProfileID = settings.DefaultImageAPIProfileID
 	}
 	if len(settings.ImageAPIProfiles) > 0 {
 		cfg.ImageAPIProfiles = config.Merge(config.Settings{ImageAPIProfiles: cfg.ImageAPIProfiles}, config.Settings{ImageAPIProfiles: settings.ImageAPIProfiles}).ImageAPIProfiles
+	}
+	if len(settings.ImageAPIEndpoints) > 0 {
+		cfg.ImageAPIEndpoints = config.Merge(config.Settings{ImageAPIEndpoints: cfg.ImageAPIEndpoints}, config.Settings{ImageAPIEndpoints: settings.ImageAPIEndpoints}).ImageAPIEndpoints
 	}
 	config.ApplyImageAPIEnvironment(cfg)
 	cfg.AgentModels = config.MergeAgentModelSettings(cfg.AgentModels, settings.AgentModels)

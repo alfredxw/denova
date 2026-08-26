@@ -16,17 +16,19 @@ import (
 
 // Config 保存 Denova 的全局配置。
 type Config struct {
-	OpenAIAPIKey              string                 `toml:"openai_api_key"`
-	OpenAIBaseURL             string                 `toml:"openai_base_url"`
-	OpenAIModel               string                 `toml:"openai_model"`
-	OpenAIContextWindowTokens int                    `toml:"openai_context_window_tokens"`
-	ModelProfiles             []ModelProfileSettings `toml:"model_profiles"`
+	OpenAIAPIKey              string                  `toml:"openai_api_key"`
+	OpenAIBaseURL             string                  `toml:"openai_base_url"`
+	OpenAIModel               string                  `toml:"openai_model"`
+	OpenAIContextWindowTokens int                     `toml:"openai_context_window_tokens"`
+	ModelEndpoints            []ModelEndpointSettings `toml:"model_endpoints"`
+	ModelProfiles             []ModelProfileSettings  `toml:"model_profiles"`
 	// LegacyImageAPI* keep startup config files readable while their values are
 	// projected into the canonical image profile schema.
 	LegacyImageAPIKey        *string                      `toml:"image_api_key"`
 	LegacyImageAPIBaseURL    *string                      `toml:"image_api_base_url"`
 	LegacyImageAPIModel      *string                      `toml:"image_api_model"`
 	DefaultImageAPIProfileID string                       `toml:"default_image_api_profile_id"`
+	ImageAPIEndpoints        []ImageAPIEndpointSettings   `toml:"image_api_endpoints"`
 	ImageAPIProfiles         []ImageAPIProfileSettings    `toml:"image_api_profiles"`
 	AgentModels              AgentModelSettings           `toml:"agent_models"`
 	AgentTools               AgentToolSettings            `toml:"agent_tools"`
@@ -116,8 +118,10 @@ func configFromLayered(novaDir, workspace string, layered LayeredSettings) *Conf
 		OpenAIBaseURL:               s.OpenAIBaseURL,
 		OpenAIModel:                 s.OpenAIModel,
 		OpenAIContextWindowTokens:   settingsInt(s.OpenAIContextWindowTokens, DefaultContextWindowTokens),
+		ModelEndpoints:              s.ModelEndpoints,
 		ModelProfiles:               s.ModelProfiles,
 		DefaultImageAPIProfileID:    s.DefaultImageAPIProfileID,
+		ImageAPIEndpoints:           s.ImageAPIEndpoints,
 		ImageAPIProfiles:            s.ImageAPIProfiles,
 		AgentModels:                 s.AgentModels,
 		AgentTools:                  s.AgentTools,
@@ -176,6 +180,7 @@ func configFromLayered(novaDir, workspace string, layered LayeredSettings) *Conf
 
 	// 环境变量始终最高优先级
 	overrideFromEnv(cfg)
+	syncLegacyModelProjection(cfg)
 
 	if cfg.Workspace != "" {
 		if abs, err := filepath.Abs(cfg.Workspace); err == nil {
@@ -250,11 +255,13 @@ func settingsFromConfig(cfg *Config) Settings {
 		OpenAIAPIKey:             cfg.OpenAIAPIKey,
 		OpenAIBaseURL:            cfg.OpenAIBaseURL,
 		OpenAIModel:              cfg.OpenAIModel,
+		ModelEndpoints:           sanitizeModelEndpoints(cfg.ModelEndpoints),
 		ModelProfiles:            sanitizeModelProfiles(cfg.ModelProfiles),
 		LegacyImageAPIKey:        cfg.LegacyImageAPIKey,
 		LegacyImageAPIBaseURL:    cfg.LegacyImageAPIBaseURL,
 		LegacyImageAPIModel:      cfg.LegacyImageAPIModel,
 		DefaultImageAPIProfileID: cfg.DefaultImageAPIProfileID,
+		ImageAPIEndpoints:        cfg.ImageAPIEndpoints,
 		ImageAPIProfiles:         cfg.ImageAPIProfiles,
 		AgentModels:              cfg.AgentModels,
 		AgentTools:               cfg.AgentTools,
@@ -341,8 +348,11 @@ func settingsFromConfig(cfg *Config) Settings {
 	if cfg.OpenAIContextWindowTokens > 0 {
 		settings.OpenAIContextWindowTokens = &cfg.OpenAIContextWindowTokens
 	}
-	settings, _ = migrateLegacyImageSettings(settings)
+	settings, _ = migrateModelEndpointSettings(settings)
+	settings, _ = migrateImageAPIEndpointSettings(settings)
+	settings.ModelEndpoints = sanitizeModelEndpoints(settings.ModelEndpoints)
 	settings.ImageAPIProfiles = sanitizeImageAPIProfiles(settings.ImageAPIProfiles)
+	settings.ImageAPIEndpoints = sanitizeImageAPIEndpoints(settings.ImageAPIEndpoints)
 	return preserveTerminalCommandRegistryPresence(settings)
 }
 
@@ -365,8 +375,10 @@ func Load() *Config {
 			OpenAIBaseURL:               d.OpenAIBaseURL,
 			OpenAIModel:                 d.OpenAIModel,
 			OpenAIContextWindowTokens:   settingsInt(d.OpenAIContextWindowTokens, DefaultContextWindowTokens),
+			ModelEndpoints:              d.ModelEndpoints,
 			ModelProfiles:               d.ModelProfiles,
 			DefaultImageAPIProfileID:    d.DefaultImageAPIProfileID,
+			ImageAPIEndpoints:           d.ImageAPIEndpoints,
 			ImageAPIProfiles:            d.ImageAPIProfiles,
 			AgentModels:                 d.AgentModels,
 			AgentTools:                  d.AgentTools,
@@ -521,15 +533,7 @@ func settingsString(v, fallback string) string {
 
 // overrideFromEnv 用环境变量覆盖配置
 func overrideFromEnv(cfg *Config) {
-	if v := os.Getenv("OPENAI_API_KEY"); v != "" {
-		cfg.OpenAIAPIKey = v
-	}
-	if v := os.Getenv("OPENAI_BASE_URL"); v != "" {
-		cfg.OpenAIBaseURL = v
-	}
-	if v := os.Getenv("OPENAI_MODEL"); v != "" {
-		cfg.OpenAIModel = v
-	}
+	ApplyModelEnvironment(cfg)
 	ApplyImageAPIEnvironment(cfg)
 	if v := envCompat("DENOVA_SKILLS_DIR", "NOVA_SKILLS_DIR"); v != "" {
 		cfg.SkillsDir = v
@@ -564,6 +568,68 @@ func overrideFromEnv(cfg *Config) {
 	if v := strings.TrimSpace(os.Getenv("DENOVA_SEARXNG_BASE_URL")); v != "" {
 		cfg.WebAccess.SearXNGBaseURL = strings.TrimRight(v, "/")
 	}
+}
+
+// ApplyModelEnvironment reapplies the released model environment variables
+// after persisted settings refreshes so their highest-precedence contract is
+// identical for writing and game runtimes.
+func ApplyModelEnvironment(cfg *Config) {
+	if cfg == nil {
+		return
+	}
+	endpointOverride := ModelEndpointSettings{ID: DefaultModelEndpointID}
+	profileOverride := ModelProfileSettings{ID: DefaultModelEndpointID}
+	if v := os.Getenv("OPENAI_API_KEY"); v != "" {
+		cfg.OpenAIAPIKey = v
+		endpointOverride.APIKey = v
+	}
+	if v := os.Getenv("OPENAI_BASE_URL"); v != "" {
+		cfg.OpenAIBaseURL = v
+		endpointOverride.BaseURL = v
+	}
+	if v := os.Getenv("OPENAI_MODEL"); v != "" {
+		cfg.OpenAIModel = v
+		profileOverride.Model = v
+	}
+	if endpointOverride.APIKey != "" || endpointOverride.BaseURL != "" {
+		found := false
+		for index, endpoint := range cfg.ModelEndpoints {
+			if modelEndpointID(endpoint) == DefaultModelEndpointID {
+				cfg.ModelEndpoints[index] = mergeModelEndpoint(endpoint, endpointOverride)
+				found = true
+				break
+			}
+		}
+		if !found {
+			cfg.ModelEndpoints = append(cfg.ModelEndpoints, mergeModelEndpoint(legacyModelEndpoint(cfg), endpointOverride))
+		}
+	}
+	if profileOverride.Model != "" {
+		found := false
+		for index, profile := range cfg.ModelProfiles {
+			if modelProfileID(profile) == DefaultModelEndpointID {
+				cfg.ModelProfiles[index] = mergeModelProfile(profile, profileOverride)
+				found = true
+				break
+			}
+		}
+		if !found {
+			profileOverride.EndpointID = DefaultModelEndpointID
+			cfg.ModelProfiles = append(cfg.ModelProfiles, profileOverride)
+		}
+	}
+	syncLegacyModelProjection(cfg)
+}
+
+func syncLegacyModelProjection(cfg *Config) {
+	if cfg == nil {
+		return
+	}
+	resolved := ResolveAgentModel(cfg, "")
+	cfg.OpenAIAPIKey = resolved.APIKey
+	cfg.OpenAIBaseURL = resolved.BaseURL
+	cfg.OpenAIModel = resolved.Model
+	cfg.OpenAIContextWindowTokens = resolved.ContextWindowTokens
 }
 
 func (cfg *Config) RemoteAccessConfig() RemoteAccessConfig {

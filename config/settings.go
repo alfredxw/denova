@@ -22,17 +22,19 @@ import (
 type Settings struct {
 
 	// 模型
-	OpenAIAPIKey              string                 `toml:"openai_api_key,omitempty" json:"openai_api_key,omitempty"`
-	OpenAIBaseURL             string                 `toml:"openai_base_url,omitempty" json:"openai_base_url,omitempty"`
-	OpenAIModel               string                 `toml:"openai_model,omitempty" json:"openai_model,omitempty"`
-	OpenAIContextWindowTokens *int                   `toml:"openai_context_window_tokens,omitempty" json:"openai_context_window_tokens,omitempty"`
-	ModelProfiles             []ModelProfileSettings `toml:"model_profiles,omitempty" json:"model_profiles,omitempty"`
+	OpenAIAPIKey              string                  `toml:"openai_api_key,omitempty" json:"openai_api_key,omitempty"`
+	OpenAIBaseURL             string                  `toml:"openai_base_url,omitempty" json:"openai_base_url,omitempty"`
+	OpenAIModel               string                  `toml:"openai_model,omitempty" json:"openai_model,omitempty"`
+	OpenAIContextWindowTokens *int                    `toml:"openai_context_window_tokens,omitempty" json:"openai_context_window_tokens,omitempty"`
+	ModelEndpoints            []ModelEndpointSettings `toml:"model_endpoints,omitempty" json:"model_endpoints,omitempty"`
+	ModelProfiles             []ModelProfileSettings  `toml:"model_profiles,omitempty" json:"model_profiles,omitempty"`
 	// LegacyImageAPI* are presence-aware decode aliases for the former
 	// top-level image settings. They are migrated into ImageAPIProfiles.
 	LegacyImageAPIKey        *string                      `toml:"image_api_key,omitempty" json:"image_api_key,omitempty"`
 	LegacyImageAPIBaseURL    *string                      `toml:"image_api_base_url,omitempty" json:"image_api_base_url,omitempty"`
 	LegacyImageAPIModel      *string                      `toml:"image_api_model,omitempty" json:"image_api_model,omitempty"`
 	DefaultImageAPIProfileID string                       `toml:"default_image_api_profile_id,omitempty" json:"default_image_api_profile_id,omitempty"`
+	ImageAPIEndpoints        []ImageAPIEndpointSettings   `toml:"image_api_endpoints,omitempty" json:"image_api_endpoints,omitempty"`
 	ImageAPIProfiles         []ImageAPIProfileSettings    `toml:"image_api_profiles,omitempty" json:"image_api_profiles,omitempty"`
 	AgentModels              AgentModelSettings           `toml:"agent_models,omitempty" json:"agent_models,omitempty"`
 	AgentTools               AgentToolSettings            `toml:"agent_tools,omitempty" json:"agent_tools,omitempty"`
@@ -156,10 +158,19 @@ const (
 // DefaultSettings 返回内置默认配置（最低优先级）。
 func DefaultSettings() Settings {
 	return Settings{
-		OpenAIBaseURL:               "https://api.deepseek.com",
-		OpenAIModel:                 "deepseek-v4-pro",
-		OpenAIContextWindowTokens:   intPtr(DefaultContextWindowTokens),
+		OpenAIBaseURL:             "https://api.deepseek.com",
+		OpenAIModel:               "deepseek-v4-pro",
+		OpenAIContextWindowTokens: intPtr(DefaultContextWindowTokens),
+		ModelEndpoints: []ModelEndpointSettings{{
+			ID: DefaultModelEndpointID, Name: "Default endpoint", Provider: string(providers.ProviderDeepSeek),
+			Protocol: string(providers.ProtocolOpenAIChatCompletions), BaseURL: "https://api.deepseek.com",
+		}},
+		ModelProfiles: []ModelProfileSettings{{
+			ID: DefaultModelEndpointID, Name: "Default model", EndpointID: DefaultModelEndpointID,
+			Model: "deepseek-v4-pro", ContextWindowTokens: intPtr(DefaultContextWindowTokens),
+		}},
 		DefaultImageAPIProfileID:    DefaultImageAPIProfileID,
+		ImageAPIEndpoints:           []ImageAPIEndpointSettings{DefaultImageAPIEndpoint()},
 		ImageAPIProfiles:            []ImageAPIProfileSettings{DefaultImageAPIProfile()},
 		SkillsDir:                   "./skills",
 		DenovaDir:                   "./" + workspacelayout.DataDirName,
@@ -243,10 +254,12 @@ func Merge(parent, child Settings) Settings {
 	if child.OpenAIContextWindowTokens != nil {
 		out.OpenAIContextWindowTokens = child.OpenAIContextWindowTokens
 	}
+	out.ModelEndpoints = mergeModelEndpoints(out.ModelEndpoints, child.ModelEndpoints)
 	out.ModelProfiles = mergeModelProfiles(out.ModelProfiles, child.ModelProfiles)
 	if child.DefaultImageAPIProfileID != "" {
 		out.DefaultImageAPIProfileID = child.DefaultImageAPIProfileID
 	}
+	out.ImageAPIEndpoints = mergeImageAPIEndpoints(out.ImageAPIEndpoints, child.ImageAPIEndpoints)
 	out.ImageAPIProfiles = mergeImageAPIProfiles(out.ImageAPIProfiles, child.ImageAPIProfiles)
 	out.AgentModels = MergeAgentModelSettings(out.AgentModels, child.AgentModels)
 	out.AgentTools = MergeAgentToolSettings(out.AgentTools, child.AgentTools)
@@ -519,7 +532,7 @@ func ReadSettingsFile(path string) (Settings, error) {
 				return snapshot.Content, nil
 			}
 			migrationDetected = true
-			backupPath, decodeErr = preserveImageSettingsMigrationBackup(path, snapshot)
+			backupPath, decodeErr = preserveModelSettingsMigrationBackup(path, snapshot)
 			if decodeErr != nil {
 				return nil, decodeErr
 			}
@@ -535,13 +548,13 @@ func ReadSettingsFile(path string) (Settings, error) {
 	}
 	if err != nil {
 		if migrationDetected {
-			slog.WarnContext(context.Background(), "[config] could not persist migrated image settings; using the migrated in-memory view", "path", path, "error", err)
+			slog.WarnContext(context.Background(), "[config] could not persist migrated model settings; using the migrated in-memory view", "path", path, "error", err)
 			return settings, nil
 		}
 		return Settings{}, fmt.Errorf("读取 %s 失败: %w", path, err)
 	}
 	if backupPath != "" {
-		slog.InfoContext(context.Background(), "[config] migrated legacy image settings", "path", path, "backup_path", backupPath)
+		slog.InfoContext(context.Background(), "[config] migrated legacy model settings", "path", path, "backup_path", backupPath)
 	}
 	return settings, nil
 }
@@ -556,7 +569,7 @@ func decodeSettingsFileWithMigration(path string, data []byte) (Settings, bool, 
 	if err := toml.Unmarshal(data, &s); err != nil {
 		return Settings{}, false, fmt.Errorf("解析 %s 失败: %w", path, err)
 	}
-	migrated := hasLegacyImageSettings(s)
+	migrated := hasLegacyImageSettings(s) || hasEmbeddedModelEndpointSettings(s) || hasEmbeddedImageAPIEndpointSettings(s)
 	return sanitizeEditableSettings(s), migrated, nil
 }
 
@@ -615,7 +628,7 @@ func MutateSettingsFile(
 					return nil, decodeErr
 				}
 				if migrated {
-					backupPath, decodeErr = preserveImageSettingsMigrationBackup(path, snapshot)
+					backupPath, decodeErr = preserveModelSettingsMigrationBackup(path, snapshot)
 					if decodeErr != nil {
 						return nil, decodeErr
 					}
@@ -636,7 +649,7 @@ func MutateSettingsFile(
 		return "", err
 	}
 	if backupPath != "" {
-		slog.InfoContext(context.Background(), "[config] migrated legacy image settings during mutation", "path", path, "backup_path", backupPath)
+		slog.InfoContext(context.Background(), "[config] migrated legacy model settings during mutation", "path", path, "backup_path", backupPath)
 	}
 	return result.Revision, nil
 }
@@ -814,7 +827,8 @@ func workspaceAgentSettings(settings Settings) Settings {
 
 func sanitizeEditableSettings(s Settings) Settings {
 	s = preserveTerminalCommandRegistryPresence(s)
-	s, _ = migrateLegacyImageSettings(s)
+	s, _ = migrateModelEndpointSettings(s)
+	s, _ = migrateImageAPIEndpointSettings(s)
 	// denova_dir/nova_dir 是启动级定位参数，不能由用户级/工作区级配置反向修改自身位置。
 	s.DenovaDir = ""
 	s.NovaDir = ""
@@ -850,22 +864,10 @@ func sanitizeEditableSettings(s Settings) Settings {
 	s.TerminalMaxSessions = normalizeTerminalMaxSessions(s.TerminalMaxSessions)
 	s.TerminalScrollbackKB = normalizeTerminalScrollbackKB(s.TerminalScrollbackKB)
 	s.WebAccess = sanitizeWebAccessSettings(s.WebAccess)
+	s.ModelEndpoints = sanitizeModelEndpoints(s.ModelEndpoints)
 	s.ModelProfiles = sanitizeModelProfiles(s.ModelProfiles)
+	s.ImageAPIEndpoints = sanitizeImageAPIEndpoints(s.ImageAPIEndpoints)
 	s.ImageAPIProfiles = sanitizeImageAPIProfiles(s.ImageAPIProfiles)
-	if defaultProfile, ok := defaultModelProfile(s.ModelProfiles); ok {
-		if defaultProfile.APIKey != "" {
-			s.OpenAIAPIKey = ""
-		}
-		if defaultProfile.BaseURL != "" {
-			s.OpenAIBaseURL = ""
-		}
-		if defaultProfile.Model != "" {
-			s.OpenAIModel = ""
-		}
-		if defaultProfile.ContextWindowTokens != nil {
-			s.OpenAIContextWindowTokens = nil
-		}
-	}
 	s.AgentPrompts = sanitizeAgentPromptSettings(s.AgentPrompts)
 	s.AgentContexts = sanitizeAgentContextSettings(s.AgentContexts)
 	s.SubAgents = SanitizeSubAgents(s.SubAgents)
