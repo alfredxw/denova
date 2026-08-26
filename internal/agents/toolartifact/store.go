@@ -13,6 +13,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	agent "github.com/alfredxw/denova/agent"
@@ -419,6 +420,12 @@ func normalizedExtension(extension string) string {
 }
 
 func syncArtifactDirectory(root *os.Root, directory string) error {
+	// Windows does not support syncing directory handles through os.File.Sync.
+	// The artifact file itself is synced before publication, so retain the
+	// directory durability barrier only on platforms that implement it.
+	if runtime.GOOS == "windows" {
+		return nil
+	}
 	handle, err := root.Open(directory)
 	if err != nil {
 		return err

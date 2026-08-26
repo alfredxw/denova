@@ -27,6 +27,7 @@ type ToolReceipt struct {
 	ApplyState     string            `json:"apply_state"`
 	Edits          []ToolReceiptEdit `json:"edits,omitempty"`
 	FileStats      *FileStats        `json:"file_stats,omitempty"`
+	Warnings       []string          `json:"warnings,omitempty"`
 }
 
 // ToolReceiptEdit is the bounded per-edit projection needed by review and
@@ -48,11 +49,12 @@ type modelToolReceipt struct {
 	ApplyState     string            `json:"apply_state"`
 	Edits          []ToolReceiptEdit `json:"edits,omitempty"`
 	FileStats      *FileStats        `json:"file_stats,omitempty"`
+	Warnings       []string          `json:"warnings,omitempty"`
 }
 
 // NewToolReceipt projects a committed change set into the stable tool
 // protocol without making the tool package own workspace durability fields.
-func NewToolReceipt(workspace string, changeSet ChangeSet) ToolReceipt {
+func NewToolReceipt(workspace string, changeSet ChangeSet, warnings ...string) ToolReceipt {
 	edits := make([]ToolReceiptEdit, 0, len(changeSet.Edits))
 	for _, edit := range changeSet.Edits {
 		edits = append(edits, ToolReceiptEdit{ID: edit.ID, Replacements: len(edit.Hunks)})
@@ -68,13 +70,13 @@ func NewToolReceipt(workspace string, changeSet ChangeSet) ToolReceipt {
 		ChangeSetID: changeSet.ID, Path: changeSet.Path,
 		BaseRevision: changeSet.BaseRevision, Revision: changeSet.Revision,
 		ReviewStatus: changeSet.ReviewStatus, ApplyState: changeSet.ApplyState, Edits: edits,
-		FileStats: fileStats,
+		FileStats: fileStats, Warnings: append([]string(nil), warnings...),
 	}
 }
 
 // MarshalToolReceipt serializes the complete recovery receipt.
-func MarshalToolReceipt(workspace string, changeSet ChangeSet) (string, error) {
-	data, err := json.Marshal(NewToolReceipt(workspace, changeSet))
+func MarshalToolReceipt(workspace string, changeSet ChangeSet, warnings ...string) (string, error) {
+	data, err := json.Marshal(NewToolReceipt(workspace, changeSet, warnings...))
 	return string(data), err
 }
 
@@ -112,7 +114,7 @@ func ToolReceiptForModel(toolName, content string) string {
 		ChangeGroupID: receipt.ChangeGroupID, ReviewThreadID: receipt.ReviewThreadID,
 		ChangeSetID: receipt.ChangeSetID, Path: receipt.Path,
 		ReviewStatus: receipt.ReviewStatus, ApplyState: receipt.ApplyState, Edits: receipt.Edits,
-		FileStats: receipt.FileStats,
+		FileStats: receipt.FileStats, Warnings: receipt.Warnings,
 	})
 	if err != nil {
 		return content

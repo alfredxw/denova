@@ -467,10 +467,15 @@ func TestWriteAndEditPublishSmallExactInterfaces(t *testing.T) {
 	if adapter.edit.Operation != EditOperationDelete || len(adapter.edit.Edits) != 0 {
 		t.Fatalf("delete request = %#v", adapter.edit)
 	}
+	if _, err := editDefinition.Tool.Run(context.Background(), `{"path":"ideas.md","operation":"delete","edits":[{"old_string":"old","new_string":"new"}]}`); err != nil {
+		t.Fatalf("delete with ignored edits failed: %v", err)
+	}
+	if adapter.edit.Operation != EditOperationDelete || len(adapter.edit.Edits) != 0 || adapter.edit.IgnoredEditCount != 1 {
+		t.Fatalf("tolerant delete request = %#v", adapter.edit)
+	}
 	for _, invalid := range []string{
 		`{"path":"ideas.md"}`,
 		`{"path":"ideas.md","operation":"replace"}`,
-		`{"path":"ideas.md","operation":"delete","edits":[{"old_string":"old","new_string":"new"}]}`,
 		`{"path":"ideas.md","operation":"remove"}`,
 	} {
 		if _, err := editDefinition.Tool.Run(context.Background(), invalid); err == nil {

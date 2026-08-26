@@ -16,6 +16,8 @@ import (
 	workspacechange "denova/internal/workspace/change"
 )
 
+const ignoredDeleteEditsWarning = `Deletion succeeded. Ignored "edits" because operation="delete" takes precedence. Do not retry.`
+
 type workspaceChangeService interface {
 	Workspace() string
 	ReadFile(string) (content string, revision string, err error)
@@ -103,7 +105,7 @@ func (adapter *workspaceMutationAdapter) Edit(ctx context.Context, request agent
 		}
 	case agenttools.EditOperationDelete:
 		if len(request.Edits) != 0 {
-			return agent.ToolResult{}, fmt.Errorf("edit delete must not include edits")
+			return agent.ToolResult{}, fmt.Errorf("normalized edit delete must not include edits")
 		}
 	default:
 		return agent.ToolResult{}, fmt.Errorf("unsupported edit operation %q", request.Operation)
@@ -119,6 +121,9 @@ func (adapter *workspaceMutationAdapter) Edit(ctx context.Context, request agent
 		})
 		if deleteErr != nil {
 			return agent.ToolResult{}, deleteErr
+		}
+		if request.IgnoredEditCount > 0 {
+			return workspaceChangeToolResult(adapter.workspace, changeSet, ignoredDeleteEditsWarning)
 		}
 		return workspaceChangeToolResult(adapter.workspace, changeSet)
 	}
@@ -246,8 +251,8 @@ func workspaceChangeMetadata(ctx context.Context, provider WorkspaceMetadataProv
 	}
 }
 
-func workspaceChangeToolResult(workspace string, changeSet workspacechange.ChangeSet) (agent.ToolResult, error) {
-	content, err := workspacechange.MarshalToolReceipt(workspace, changeSet)
+func workspaceChangeToolResult(workspace string, changeSet workspacechange.ChangeSet, warnings ...string) (agent.ToolResult, error) {
+	content, err := workspacechange.MarshalToolReceipt(workspace, changeSet, warnings...)
 	if err != nil {
 		return agent.ToolResult{}, fmt.Errorf("serialize workspace change receipt: %w", err)
 	}

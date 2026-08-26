@@ -173,7 +173,7 @@ func TestWorkspaceEditDeleteUsesDurableChangeServiceAndReturnsReviewReceipt(t *t
 		t.Fatal(err)
 	}
 	result, err := adapter.Edit(context.Background(), agenttools.EditRequest{
-		Path: "chapters/obsolete.md", Operation: agenttools.EditOperationDelete,
+		Path: "chapters/obsolete.md", Operation: agenttools.EditOperationDelete, IgnoredEditCount: 1,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -184,8 +184,15 @@ func TestWorkspaceEditDeleteUsesDurableChangeServiceAndReturnsReviewReceipt(t *t
 		t.Fatalf("delete request = %#v service=%#v", service.deleteRequest, service)
 	}
 	receipt, ok := workspacechange.ParseToolReceipt("edit", result.ModelContent)
-	if !ok || receipt.ChangeSetID != "delete-1" || receipt.Path != "chapters/obsolete.md" || receipt.Revision != "missing" {
+	if !ok || receipt.ChangeSetID != "delete-1" || receipt.Path != "chapters/obsolete.md" || receipt.Revision != "missing" ||
+		len(receipt.Warnings) != 1 || receipt.Warnings[0] != ignoredDeleteEditsWarning ||
+		!strings.Contains(result.ModelContent, `"status":"applied"`) {
 		t.Fatalf("delete receipt = %s", result.ModelContent)
+	}
+	projected := workspacechange.ToolReceiptForModel("edit", result.ModelContent)
+	projectedReceipt, ok := workspacechange.ParseToolReceipt("edit", projected)
+	if !ok || len(projectedReceipt.Warnings) != 1 || projectedReceipt.Warnings[0] != ignoredDeleteEditsWarning {
+		t.Fatalf("projected delete receipt = %s", projected)
 	}
 }
 
@@ -207,7 +214,7 @@ func TestWorkspaceEditDeleteAppearsInReviewAndRejectRestoresFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := definition.Tool.Run(context.Background(), `{"path":"obsolete.md","operation":"delete"}`)
+	result, err := definition.Tool.Run(context.Background(), `{"path":"obsolete.md","operation":"delete","edits":[{"old_string":"ignored","new_string":"replacement"}]}`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,7 +222,7 @@ func TestWorkspaceEditDeleteAppearsInReviewAndRejectRestoresFile(t *testing.T) {
 		t.Fatalf("deleted file remains visible: %v", statErr)
 	}
 	receipt, ok := workspacechange.ParseToolReceipt("edit", result.ModelContent)
-	if !ok {
+	if !ok || len(receipt.Warnings) != 1 || receipt.Warnings[0] != ignoredDeleteEditsWarning {
 		t.Fatalf("delete result has no review receipt: %s", result.ModelContent)
 	}
 	group, err := service.GetGroup(context.Background(), receipt.ChangeGroupID)

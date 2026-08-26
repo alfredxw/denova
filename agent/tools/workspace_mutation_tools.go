@@ -33,12 +33,15 @@ const (
 )
 
 // EditRequest applies one explicit single-file mutation. Replace evaluates all
-// exact replacements against the same current snapshot. Delete requires no
-// replacements and removes the complete file through the mutation Adapter.
+// exact replacements against the same current snapshot. Delete requests reaching
+// the Adapter are normalized and never contain replacements.
 type EditRequest struct {
 	Path      string
 	Operation EditOperation
 	Edits     []EditReplacement
+	// IgnoredEditCount records replacements discarded while normalizing an
+	// explicit delete so the Adapter can report the correction to the model.
+	IgnoredEditCount int
 }
 
 // MutationAdapter is the product seam behind write and edit. Identity must
@@ -85,8 +88,8 @@ func Write(adapter MutationAdapter, options ...DefinitionOption) (agent.ToolDefi
 
 type editInput struct {
 	Path      string           `json:"path" jsonschema:"maxLength=4096" jsonschema_description:"Project-relative path, or absolute path inside the current Project, of the single file to edit or delete."`
-	Operation EditOperation    `json:"operation,omitempty" jsonschema:"enum=replace,enum=delete" jsonschema_description:"Optional operation. Omit for replace. Delete must be explicit and must not include edits."`
-	Edits     []editEntryInput `json:"edits,omitempty" jsonschema:"minItems=1,maxItems=256" jsonschema_description:"Required for replace: non-overlapping exact replacements evaluated against the same original file snapshot and committed together. Omit for delete."`
+	Operation EditOperation    `json:"operation,omitempty" jsonschema:"enum=replace,enum=delete" jsonschema_description:"Optional operation. Omit for replace. Explicit delete takes precedence over edits."`
+	Edits     []editEntryInput `json:"edits,omitempty" jsonschema:"minItems=1,maxItems=256" jsonschema_description:"Required for replace: non-overlapping exact replacements evaluated against the same original file snapshot and committed together. When operation=delete, supplied edits are ignored and reported in the successful result."`
 }
 
 type editEntryInput struct {
@@ -103,12 +106,13 @@ func Edit(adapter MutationAdapter, options ...DefinitionOption) (agent.ToolDefin
 	if err := validateAdapterIdentity("edit MutationAdapter", adapter.Identity()); err != nil {
 		return agent.ToolDefinition{}, err
 	}
-	tool, err := agent.InferTool("edit", `Replace text in or delete one workspace file as one atomic, reviewable change. Omit operation for ordinary replacement and provide edits. File deletion must be explicit with operation=delete and no edits. For replacement, every edits item is matched against the same current file snapshot, not against earlier replacements in the list. Without replace_all, old_string must occur exactly once. All ranges must be non-overlapping; if any item is invalid, the file is not changed. The file may have changed since an earlier read as long as every old_string still matches the current content exactly as required.`, func(ctx context.Context, input editInput) (agent.ToolResult, error) {
+	tool, err := agent.InferTool("edit", `Replace text in or delete one workspace file as one atomic, reviewable change. Omit operation for ordinary replacement and provide edits. Explicit operation=delete takes precedence: the file is deleted, supplied edits are ignored, and the successful result reports that normalization. For replacement, every edits item is matched against the same current file snapshot, not against earlier replacements in the list. Without replace_all, old_string must occur exactly once. All ranges must be non-overlapping; if any item is invalid, the file is not changed. The file may have changed since an earlier read as long as every old_string still matches the current content exactly as required.`, func(ctx context.Context, input editInput) (agent.ToolResult, error) {
 		path := strings.TrimSpace(input.Path)
 		if path == "" {
 			return agent.ToolResult{}, errors.New("edit path is required")
 		}
 		operation := EditOperation(strings.TrimSpace(string(input.Operation)))
+		ignoredEditCount := 0
 		switch operation {
 		case "", EditOperationReplace:
 			operation = EditOperationReplace
@@ -119,9 +123,8 @@ func Edit(adapter MutationAdapter, options ...DefinitionOption) (agent.ToolDefin
 				return agent.ToolResult{}, fmt.Errorf("edit exceeds the %d-item mutation limit", maxMutationEdits)
 			}
 		case EditOperationDelete:
-			if len(input.Edits) != 0 {
-				return agent.ToolResult{}, errors.New("edit delete must not include edits")
-			}
+			ignoredEditCount = len(input.Edits)
+			input.Edits = nil
 		default:
 			return agent.ToolResult{}, fmt.Errorf("unsupported edit operation %q", operation)
 		}
@@ -131,7 +134,9 @@ func Edit(adapter MutationAdapter, options ...DefinitionOption) (agent.ToolDefin
 				OldString: edit.OldString, NewString: edit.NewString, ReplaceAll: edit.ReplaceAll,
 			}
 		}
-		result, err := adapter.Edit(ctx, EditRequest{Path: path, Operation: operation, Edits: replacements})
+		result, err := adapter.Edit(ctx, EditRequest{
+			Path: path, Operation: operation, Edits: replacements, IgnoredEditCount: ignoredEditCount,
+		})
 		if err == nil && result.Status == "" {
 			result.Status = agent.ToolResultSuccess
 		}

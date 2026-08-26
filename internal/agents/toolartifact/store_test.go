@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -180,6 +181,9 @@ func TestWorkspaceStoreConcurrentReplayIsIdempotent(t *testing.T) {
 }
 
 func TestWorkspaceStoreRepairsOwnedArtifactPermissionsWithoutChangingParents(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not expose POSIX permission bits")
+	}
 	workspace := t.TempDir()
 	if err := os.Chmod(workspace, 0o755); err != nil {
 		t.Fatal(err)

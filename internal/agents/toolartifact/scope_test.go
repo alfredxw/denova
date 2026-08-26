@@ -81,7 +81,7 @@ func TestWorkspaceScopeRemovalRejectsSymlinkTarget(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.Symlink(outside, scopeRoot); err != nil {
-		t.Fatal(err)
+		t.Skipf("symlinks are unavailable: %v", err)
 	}
 	if err := RemoveWorkspaceScope(workspace, scope); err == nil {
 		t.Fatal("scope removal accepted a symlink target")
