@@ -110,8 +110,6 @@ export function HarnessStateEditor({
             readOnly,
             domReadOnly: readOnly,
             minimap: { enabled: false },
-            fontSize: 12,
-            lineHeight: 20,
             scrollBeyondLastLine: false,
             wordWrap: 'on',
             padding: { top: 12, bottom: 16 },

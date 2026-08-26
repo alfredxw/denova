@@ -43,6 +43,14 @@ import { useAgentApprovalMode } from '@/features/agent-approval/AgentApprovalPro
 import { AGENT_APPROVAL_MODES } from '@/features/agent-approval/modes'
 import { ApprovalRulesEditor } from './ApprovalRulesEditor'
 import { scrollSettingsSectionIntoView } from './settings-section-scroll'
+import { applyReadingTypographySettings, applyUIFontSize } from './font-variables'
+import {
+  DEFAULT_READING_FONT_SIZE,
+  DEFAULT_UI_FONT_SIZE,
+  READING_FONT_SIZE_STEPS,
+  UI_FONT_SIZE_STEPS,
+} from './font-size-steps'
+import { TextSizeControl } from './TextSizeControl'
 
 type SettingsSectionId = 'model' | 'image' | 'paths' | 'access' | 'appearance' | 'updates' | 'labs' | 'agent' | 'terminal' | 'web-access' | 'debug' | 'ide-editor' | 'ide-output' | 'versions' | 'interactive'
 
@@ -293,22 +301,47 @@ export function SettingsView({ onClose, visible = true }: { onClose?: () => void
                         allowInherit
                         onValueChange={(v) => setField('ui_font_family', v)} />
           </FieldRow>
-          <Num label={t('settings.appearance.uiFontSize')} value={draft.ui_font_size ?? null}
-               placeholder={placeholderFor('ui_font_size')}
-               min={11}
-               max={16}
-               onChange={(v) => setField('ui_font_size', v)} />
+          <TextSizeRow
+            label={t('settings.appearance.uiFontSize')}
+            description={t('settings.appearance.uiFontSizeDescription')}
+          >
+            <TextSizeControl
+              value={draft.ui_font_size ?? effective.ui_font_size ?? DEFAULT_UI_FONT_SIZE}
+              steps={UI_FONT_SIZE_STEPS}
+              defaultValue={DEFAULT_UI_FONT_SIZE}
+              ariaLabel={t('settings.appearance.uiFontSize')}
+              disabled={!layered}
+              onValueChange={(value) => {
+                applyUIFontSize(value)
+                setField('ui_font_size', value)
+              }}
+            />
+          </TextSizeRow>
           <FieldRow label={t('settings.appearance.readingFont')}>
             <FontPicker value={draft.reading_font_family}
                         inherited={inherited.reading_font_family}
                         allowInherit
                         onValueChange={(v) => setField('reading_font_family', v)} />
           </FieldRow>
-          <Num label={t('settings.appearance.readingFontSize')} value={draft.reading_font_size ?? null}
-               placeholder={placeholderFor('reading_font_size')}
-               min={14}
-               max={28}
-               onChange={(v) => setField('reading_font_size', v)} />
+          <TextSizeRow
+            label={t('settings.appearance.readingFontSize')}
+            description={t('settings.appearance.readingFontSizeDescription')}
+          >
+            <TextSizeControl
+              value={draft.reading_font_size ?? effective.reading_font_size ?? DEFAULT_READING_FONT_SIZE}
+              steps={READING_FONT_SIZE_STEPS}
+              defaultValue={DEFAULT_READING_FONT_SIZE}
+              ariaLabel={t('settings.appearance.readingFontSize')}
+              disabled={!layered}
+              onValueChange={(value) => {
+                applyReadingTypographySettings({
+                  readingFont: draft.reading_font_family || effective.reading_font_family,
+                  readingFontSize: value,
+                })
+                setField('reading_font_size', value)
+              }}
+            />
+          </TextSizeRow>
           <FieldRow label={t('settings.appearance.sourceEditorFont')}>
             <FontPicker value={draft.source_editor_font_family}
                         inherited={inherited.source_editor_font_family}
@@ -1243,6 +1276,20 @@ function ValueRow({ label, children }: { label: string; children: ReactNode }) {
       className="nova-settings-row rounded-md border-0 bg-transparent px-2 py-1.5"
       contentClassName="sm:w-44 sm:flex-none"
       controlClassName="flex-1"
+    >
+      {children}
+    </SettingsFieldRow>
+  )
+}
+
+function TextSizeRow({ label, description, children }: { label: string; description: string; children: ReactNode }) {
+  return (
+    <SettingsFieldRow
+      title={label}
+      description={description}
+      className="nova-settings-row rounded-md border-0 bg-transparent px-2 py-2"
+      contentClassName="sm:w-44 sm:flex-none"
+      controlClassName="flex-1 sm:max-w-md"
     >
       {children}
     </SettingsFieldRow>

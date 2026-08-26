@@ -496,16 +496,30 @@
   --nova-shadow: 0 18px 50px rgba(0, 0, 0, 0.36);
   --nova-ui-font-size: 14px;
   --nova-ui-line-height: 20px;
-  --nova-ui-sm-font-size: 16px;
-  --nova-ui-sm-line-height: 22px;
-  --nova-ui-caption-size: 13px;
-  --nova-ui-compact-font-size: 13px;
-  --nova-ui-compact-line-height: 18px;
+  --nova-ui-nano-font-size: 10px;
+  --nova-ui-nano-line-height: 14px;
   --nova-ui-micro-font-size: 12px;
   --nova-ui-micro-line-height: 16px;
+  --nova-ui-compact-font-size: 13px;
+  --nova-ui-compact-line-height: 18px;
+  --nova-ui-body-font-size: 14px;
+  --nova-ui-body-line-height: 20px;
+  --nova-ui-large-font-size: 16px;
+  --nova-ui-large-line-height: 22px;
+  --nova-ui-title-font-size: 18px;
+  --nova-ui-title-line-height: 24px;
+  --nova-ui-heading-font-size: 20px;
+  --nova-ui-heading-line-height: 28px;
+  --nova-ui-display-font-size: 24px;
+  --nova-ui-display-line-height: 32px;
+  --nova-ui-sm-font-size: 16px;
+  --nova-ui-sm-line-height: 22px;
   --nova-reading-font-size: 18px;
+  --nova-source-editor-font-size: 14px;
+  --nova-terminal-font-size: 12px;
   --nova-ui-font-family: "SF Pro Text", "SF Pro Display", "PingFang SC", "Hiragino Sans GB", -apple-system, BlinkMacSystemFont, sans-serif;
   --nova-reading-font-family: var(--nova-ui-font-family);
+  --nova-source-editor-font-family: "SFMono-Regular", "Cascadia Code", Consolas, "Liberation Mono", monospace;
   color-scheme: dark;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
@@ -811,29 +825,26 @@ html[data-nova-motion="off"] .shimmer {
   }
 }
 
-[data-nova-app-shell="true"] .text-xs {
-  font-size: var(--nova-ui-font-size);
-  line-height: var(--nova-ui-line-height);
-}
-
-[data-nova-app-shell="true"] .text-sm {
-  font-size: var(--nova-ui-sm-font-size);
-  line-height: var(--nova-ui-sm-line-height);
-}
-
-[data-nova-app-shell="true"] [class*="text-[11px]"] {
+/* Tailwind's named text utilities use the unified ramp through @theme below.
+   Normalize the remaining legacy fixed-size utilities until they are migrated. */
+:where([data-nova-app-shell="true"], [data-slot="dialog-content"], [data-slot="alert-dialog-content"], [data-slot="popover-content"], [data-slot="command"], .nova-command-menu, .nova-panel) :is([class*="text-[11px]"], [class*="text-[13px]"], [class*="text-[0.8rem]"]) {
   font-size: var(--nova-ui-compact-font-size);
   line-height: var(--nova-ui-compact-line-height);
 }
 
-:where([data-nova-app-shell="true"], [data-slot="dialog-content"], [data-slot="alert-dialog-content"], [data-slot="popover-content"], [data-slot="command"], .nova-command-menu, .nova-panel) [class*="text-[10px]"] {
+:where([data-nova-app-shell="true"], [data-slot="dialog-content"], [data-slot="alert-dialog-content"], [data-slot="popover-content"], [data-slot="command"], .nova-command-menu, .nova-panel) :is([class*="text-[10px]"], [class*="text-[12px]"]) {
   font-size: var(--nova-ui-micro-font-size);
   line-height: var(--nova-ui-micro-line-height);
 }
 
-:where([data-slot="dialog-content"], [data-slot="alert-dialog-content"], [data-slot="popover-content"], [data-slot="command"], .nova-command-menu, .nova-panel) .text-xs {
-  font-size: var(--nova-ui-font-size);
-  line-height: var(--nova-ui-line-height);
+:where([data-nova-app-shell="true"], [data-slot="dialog-content"], [data-slot="alert-dialog-content"], [data-slot="popover-content"], [data-slot="command"], .nova-command-menu, .nova-panel) :is([class*="text-[8px]"], [class*="text-[9px]"]) {
+  font-size: var(--nova-ui-nano-font-size);
+  line-height: var(--nova-ui-nano-line-height);
+}
+
+:where([data-nova-app-shell="true"], [data-slot="dialog-content"], [data-slot="alert-dialog-content"], [data-slot="popover-content"], [data-slot="command"], .nova-command-menu, .nova-panel) :is([class*="text-[15px]"], [class*="text-[16px]"]) {
+  font-size: var(--nova-ui-large-font-size);
+  line-height: var(--nova-ui-large-line-height);
 }
 
 @media (max-width: 767px) {
@@ -895,16 +906,6 @@ html[data-nova-motion="off"] .shimmer {
   [data-nova-mobile-shell="true"] .nova-message-meta {
     opacity: 1;
   }
-}
-
-:where([data-slot="dialog-content"], [data-slot="alert-dialog-content"], [data-slot="popover-content"], [data-slot="command"], .nova-command-menu, .nova-panel) .text-sm {
-  font-size: var(--nova-ui-sm-font-size);
-  line-height: var(--nova-ui-sm-line-height);
-}
-
-:where([data-slot="dialog-content"], [data-slot="alert-dialog-content"], [data-slot="popover-content"], [data-slot="command"], .nova-command-menu, .nova-panel) [class*="text-[11px]"] {
-  font-size: var(--nova-ui-compact-font-size);
-  line-height: var(--nova-ui-compact-line-height);
 }
 
 .nova-topbar {
@@ -1243,7 +1244,7 @@ html[data-nova-motion="off"] .shimmer {
   border-radius: var(--nova-radius);
   background: color-mix(in srgb, var(--nova-surface) 90%, transparent);
   padding: 12px 14px;
-  font-size: 12px;
+  font-size: var(--nova-ui-micro-font-size);
   text-align: left;
   opacity: 0;
   box-shadow: 0 18px 44px rgba(0, 0, 0, 0.22);
@@ -1272,9 +1273,9 @@ html[data-nova-motion="off"] .shimmer {
 
 .nova-turn-nav-preview-user {
   color: var(--nova-text);
-  font-size: 13px;
+  font-size: var(--nova-ui-compact-font-size);
   font-weight: 700;
-  line-height: 18px;
+  line-height: var(--nova-ui-compact-line-height);
   white-space: nowrap;
 }
 
@@ -1284,9 +1285,9 @@ html[data-nova-motion="off"] .shimmer {
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
   color: var(--nova-text-muted);
-  font-size: 12px;
+  font-size: var(--nova-ui-micro-font-size);
   font-weight: 500;
-  line-height: 18px;
+  line-height: var(--nova-ui-micro-line-height);
   white-space: normal;
 }
 
@@ -1584,8 +1585,8 @@ html[data-nova-motion="off"] .shimmer {
   align-items: center;
   gap: 0.5rem;
   margin-top: 0.5rem;
-  font-size: 13px;
-  line-height: 1.25rem;
+  font-size: var(--nova-ui-compact-font-size);
+  line-height: var(--nova-ui-compact-line-height);
   color: var(--nova-text-faint);
   opacity: 0;
   transition: opacity var(--nova-motion-fast) var(--nova-ease);
@@ -2225,9 +2226,9 @@ html[data-nova-motion="off"] .nova-change-review-layer {
    decorations share the visual editor's interaction model. */
 .nova-markdown-editor[data-content-mode="source"] .tiptap {
   tab-size: 2;
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-  font-size: 0.75rem;
-  line-height: 1.5rem;
+  font-family: var(--nova-source-editor-font-family);
+  font-size: var(--nova-source-editor-font-size);
+  line-height: 1.7;
 }
 
 .nova-markdown-editor[data-content-mode="source"] .tiptap pre[data-nova-raw-markdown] {
@@ -2253,7 +2254,8 @@ html[data-nova-motion="off"] .nova-change-review-layer {
 
 /* AI 对话区 Markdown 输出样式 */
 .chat-agent-message {
-  font-size: var(--nova-ui-sm-font-size);
+  font-family: var(--nova-reading-font-family);
+  font-size: var(--nova-reading-font-size);
   line-height: 1.72;
 }
 
@@ -2471,6 +2473,18 @@ html[data-nova-motion="off"] .nova-change-review-layer {
 @theme inline {
   --font-heading: var(--font-sans);
   --font-sans: 'Inter Variable', sans-serif;
+  --text-xs: var(--nova-ui-body-font-size);
+  --text-xs--line-height: var(--nova-ui-body-line-height);
+  --text-sm: var(--nova-ui-large-font-size);
+  --text-sm--line-height: var(--nova-ui-large-line-height);
+  --text-base: var(--nova-ui-large-font-size);
+  --text-base--line-height: var(--nova-ui-large-line-height);
+  --text-lg: var(--nova-ui-title-font-size);
+  --text-lg--line-height: var(--nova-ui-title-line-height);
+  --text-xl: var(--nova-ui-heading-font-size);
+  --text-xl--line-height: var(--nova-ui-heading-line-height);
+  --text-2xl: var(--nova-ui-display-font-size);
+  --text-2xl--line-height: var(--nova-ui-display-line-height);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -2635,8 +2649,8 @@ html[data-nova-motion="off"] .nova-change-review-layer {
   gap: 8px;
   border-top: 1px solid var(--nova-border-soft);
   padding: 6px 10px;
-  font-size: 11px;
-  line-height: 16px;
+  font-size: var(--nova-ui-compact-font-size);
+  line-height: var(--nova-ui-compact-line-height);
 }
 
 .story-state-ledger__summary-title {
@@ -2680,7 +2694,7 @@ html[data-nova-motion="off"] .nova-change-review-layer {
 .story-state-ledger__section-title {
   overflow: hidden;
   flex: 1;
-  font-size: 12px;
+  font-size: var(--nova-ui-micro-font-size);
   font-weight: 600;
   color: var(--nova-text);
   text-overflow: ellipsis;
@@ -2689,7 +2703,7 @@ html[data-nova-motion="off"] .nova-change-review-layer {
 
 .story-state-ledger__section-count {
   flex-shrink: 0;
-  font-size: 10px;
+  font-size: var(--nova-ui-micro-font-size);
   color: var(--nova-text-faint);
 }
 
@@ -2701,7 +2715,7 @@ html[data-nova-motion="off"] .nova-change-review-layer {
   padding: 5px;
   border: 1px dashed var(--nova-border);
   border-radius: 8px;
-  font-size: 11px;
+  font-size: var(--nova-ui-compact-font-size);
   color: var(--nova-text-faint);
   transition: color 120ms ease, border-color 120ms ease;
 }
@@ -2734,7 +2748,7 @@ html[data-nova-motion="off"] .nova-change-review-layer {
 
 .story-state-ledger__field-label {
   overflow: hidden;
-  font-size: 11px;
+  font-size: var(--nova-ui-compact-font-size);
   font-weight: 500;
   color: var(--nova-text-faint);
   text-overflow: ellipsis;
@@ -2742,7 +2756,7 @@ html[data-nova-motion="off"] .nova-change-review-layer {
 }
 
 .story-state-ledger__block-text {
-  font-size: 13px;
+  font-size: var(--nova-ui-compact-font-size);
   line-height: 1.7;
   color: var(--nova-text);
   overflow-wrap: anywhere;
@@ -2765,7 +2779,7 @@ html[data-nova-motion="off"] .nova-change-review-layer {
 .story-state-ledger__item-row {
   position: relative;
   padding-left: 10px;
-  font-size: 12px;
+  font-size: var(--nova-ui-micro-font-size);
   line-height: 1.6;
   color: var(--nova-text);
   overflow-wrap: anywhere;
@@ -2783,7 +2797,7 @@ html[data-nova-motion="off"] .nova-change-review-layer {
   flex-direction: column;
   gap: 1px;
   min-width: 0;
-  font-size: 12px;
+  font-size: var(--nova-ui-micro-font-size);
 }
 
 .story-state-ledger__nested-object-list--nested {
@@ -2800,7 +2814,7 @@ html[data-nova-motion="off"] .nova-change-review-layer {
 .story-state-ledger__nested-object-key {
   display: inline;
   margin-right: 0.45em;
-  font-size: 11px;
+  font-size: var(--nova-ui-compact-font-size);
   color: var(--nova-text-faint);
 }
 
@@ -2813,7 +2827,7 @@ html[data-nova-motion="off"] .nova-change-review-layer {
 .story-state-ledger__nested-object-item--branch > .story-state-ledger__nested-object-key {
   display: block;
   margin-right: 0;
-  font-size: 12px;
+  font-size: var(--nova-ui-micro-font-size);
   font-weight: 500;
   color: var(--nova-text-muted);
 }
@@ -2844,7 +2858,7 @@ html[data-nova-motion="off"] .nova-change-review-layer {
 
 .story-state-ledger__change-chip {
   flex-shrink: 0;
-  font-size: 10px;
+  font-size: var(--nova-ui-micro-font-size);
   font-weight: 500;
   line-height: 1.4;
   font-variant-numeric: tabular-nums;

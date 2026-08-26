@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 'react'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type MutableRefObject } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useTheme } from 'next-themes'
 import { FitAddon } from '@xterm/addon-fit'
@@ -12,6 +12,7 @@ import type { AgentChatTerminalTab } from '../types'
 import { closeTerminalSession, createTerminalSession, getTerminalRuntimeStatus, terminalAttachURL, type TerminalSessionInfo } from './api'
 import { TerminalConnection } from './connection'
 import { terminalTheme } from './theme'
+import { getContentFontScale, subscribeContentFontScale } from '@/features/settings/content-font-scale'
 
 /** Attach lifecycle for one terminal tab. Every state is rendered explicitly. */
 export type AgentChatTerminalStatus = 'connecting' | 'ready' | 'exited' | 'error'
@@ -41,6 +42,11 @@ export function TerminalTabView({ tab, active, onSessionEstablished, onTitleChan
   const { t } = useTranslation()
   const { resolvedTheme } = useTheme()
   const dark = resolvedTheme !== 'light'
+  const contentFontScale = useSyncExternalStore(
+    subscribeContentFontScale,
+    getContentFontScale,
+    getContentFontScale,
+  )
   const containerRef = useRef<HTMLDivElement | null>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
@@ -89,7 +95,7 @@ export function TerminalTabView({ tab, active, onSessionEstablished, onTitleChan
       allowProposedApi: true,
       convertEol: false,
       cursorBlink: true,
-      fontSize: 12,
+      fontSize: getContentFontScale().terminal,
       fontFamily: TERMINAL_FONT_FAMILY,
       scrollback: 5000,
       theme: terminalTheme(dark),
@@ -131,6 +137,17 @@ export function TerminalTabView({ tab, active, onSessionEstablished, onTitleChan
     })
     return () => window.cancelAnimationFrame(id)
   }, [dark])
+
+  useEffect(() => {
+    const terminal = terminalRef.current
+    if (!terminal) return
+    terminal.options.fontSize = contentFontScale.terminal
+    const id = window.requestAnimationFrame(() => {
+      fitTerminal()
+      terminal.refresh(0, terminal.rows - 1)
+    })
+    return () => window.cancelAnimationFrame(id)
+  }, [contentFontScale.terminal, fitTerminal])
 
   useEffect(() => {
     if (!active) return

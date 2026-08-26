@@ -14,8 +14,8 @@
   padding: 0.1875rem;
   box-shadow: 0 8px 24px rgb(0 0 0 / 22%), 0 1px 4px rgb(0 0 0 / 16%);
   font-family: var(--font-sans);
-  font-size: 12px;
-  line-height: 1rem;
+  font-size: var(--nova-ui-micro-font-size);
+  line-height: var(--nova-ui-micro-line-height);
 }
 
 .nova-file-tree-menu {
@@ -87,7 +87,7 @@
   margin-left: auto;
   padding-left: 1rem;
   color: inherit;
-  font-size: 11px;
+  font-size: var(--nova-ui-compact-font-size);
   font-variant-numeric: tabular-nums;
 }
 

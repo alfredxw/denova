@@ -18,5 +18,5 @@
   --trees-input-bg-override: var(--nova-bg);
   --trees-focus-ring-color-override: var(--nova-accent-blue);
   --trees-font-family-override: var(--font-sans);
-  --trees-font-size-override: 12px;
+  --trees-font-size-override: var(--nova-ui-micro-font-size);
 }

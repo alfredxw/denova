@@ -38,6 +38,6 @@
 :is(.editor-content, .nova-rich-markdown) .tiptap .nova-document-review-widget .nova-review-comment-thread {
   margin-inline: 0;
   font-family: var(--nova-font-sans, Inter, sans-serif);
-  font-size: 12px;
+  font-size: var(--nova-ui-micro-font-size);
   line-height: 1.5;
 }

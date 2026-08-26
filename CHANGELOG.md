@@ -14,6 +14,8 @@ Denova records only major user-visible features, important compatibility or data
 
 ### Major changes / 重大变更
 
+- 字体设置改为类似 Dynamic Type 的统一离散档位：界面字号按完整层级缩放，阅读字号同步覆盖写作、游戏剧情、Agent 回复、源码编辑器、Diff 与终端。
+- Font settings now use unified Dynamic Type-style steps: interface text scales as one hierarchy, while reading size also covers Writing, Game story, Agent replies, source editors, diffs, and terminals.
 - 项目、Skill、版本 Diff 与面包屑文件树统一升级，采用一致的默认密度，并支持完整文件图标、空目录折叠、Git 状态、名称搜索与上下文菜单；项目文件树同时支持拖放整理。
 - Project, Skill, version Diff, and breadcrumb file trees now share a consistent default density, complete file icons, flattened empty directories, Git status, name search, and context menus; Project files also support drag-and-drop organization.
 - 版本管理改为可调整的历史侧栏与常驻 Diff 工作区，支持搜索和加载更早版本、按版本浏览文件，并直接恢复版本或单个文件。

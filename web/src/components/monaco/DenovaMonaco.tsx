@@ -9,6 +9,7 @@ import { useTheme } from 'next-themes'
 import { useCallback, useMemo, useSyncExternalStore } from 'react'
 import type { editor } from 'monaco-editor'
 import { getSourceEditorFontFamily, subscribeSourceEditorFont } from '@/features/settings/source-editor-font'
+import { getContentFontScale, subscribeContentFontScale } from '@/features/settings/content-font-scale'
 
 export const DENOVA_MONACO_THEME_DARK = 'denova-dark'
 export const DENOVA_MONACO_THEME_LIGHT = 'denova-light'
@@ -41,12 +42,14 @@ type DenovaMonacoDiffEditorProps = Omit<DiffEditorProps, 'theme'>
 export function DenovaMonacoEditor({ beforeMount, options, ...props }: DenovaMonacoEditorProps) {
   const theme = useDenovaMonacoTheme()
   const sourceEditorFontFamily = useSourceEditorFontFamily()
+  const contentFontScale = useContentFontScale()
   const handleBeforeMount = useDenovaBeforeMount(beforeMount)
   const denovaOptions = useMemo<editor.IStandaloneEditorConstructionOptions>(() => ({
     ...options,
     fontFamily: options?.fontFamily || sourceEditorFontFamily,
+    fontSize: options?.fontSize ?? contentFontScale.sourceEditor,
     unicodeHighlight: denovaUnicodeHighlight(options?.unicodeHighlight),
-  }), [options, sourceEditorFontFamily])
+  }), [contentFontScale.sourceEditor, options, sourceEditorFontFamily])
 
   return (
     <MonacoEditor
@@ -62,12 +65,14 @@ export function DenovaMonacoEditor({ beforeMount, options, ...props }: DenovaMon
 export function DenovaMonacoDiffEditor({ beforeMount, options, ...props }: DenovaMonacoDiffEditorProps) {
   const theme = useDenovaMonacoTheme()
   const sourceEditorFontFamily = useSourceEditorFontFamily()
+  const contentFontScale = useContentFontScale()
   const handleBeforeMount = useDenovaBeforeMount(beforeMount)
   const denovaOptions = useMemo<editor.IStandaloneDiffEditorConstructionOptions>(() => ({
     ...options,
     fontFamily: options?.fontFamily || sourceEditorFontFamily,
+    fontSize: options?.fontSize ?? contentFontScale.sourceEditor,
     unicodeHighlight: denovaUnicodeHighlight(options?.unicodeHighlight),
-  }), [options, sourceEditorFontFamily])
+  }), [contentFontScale.sourceEditor, options, sourceEditorFontFamily])
 
   return (
     <MonacoDiffEditor
@@ -99,6 +104,14 @@ function useSourceEditorFontFamily() {
     subscribeSourceEditorFont,
     getSourceEditorFontFamily,
     getSourceEditorFontFamily,
+  )
+}
+
+function useContentFontScale() {
+  return useSyncExternalStore(
+    subscribeContentFontScale,
+    getContentFontScale,
+    getContentFontScale,
   )
 }
 

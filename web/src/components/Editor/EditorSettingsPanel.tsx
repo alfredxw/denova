@@ -4,6 +4,8 @@ import { Check, MessageSquareQuote, Type } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { AutosaveStatusIndicator, type AutosaveStatus } from '@/components/forms/autosave-status'
 import { FontPicker } from '@/features/settings/FontPicker'
+import { TextSizeControl } from '@/features/settings/TextSizeControl'
+import { DEFAULT_READING_FONT_SIZE, READING_FONT_SIZE_STEPS } from '@/features/settings/font-size-steps'
 
 export type EditorTheme = 'ide' | 'paper' | 'sepia'
 
@@ -107,23 +109,19 @@ export function EditorSettingsPanel({
               />
             </div>
 
-            <label className="nova-editor-control block rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2.5">
-              <span className="mb-1 flex items-center justify-between gap-3 text-xs">
-                <span className="font-medium text-[var(--nova-text-muted)]">{t('settings.appearance.readingFontSize')}</span>
-                <span className="font-mono text-[11px] text-[var(--nova-text)]">{readingTypography.fontSize}px</span>
-              </span>
-              <input
-                type="range"
-                min="14"
-                max="28"
-                step="1"
+            <div className="nova-editor-control rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2.5">
+              <div className="mb-2 text-xs font-medium text-[var(--nova-text-muted)]">
+                {t('settings.appearance.readingFontSize')}
+              </div>
+              <TextSizeControl
                 value={readingTypography.fontSize}
+                steps={READING_FONT_SIZE_STEPS}
+                defaultValue={DEFAULT_READING_FONT_SIZE}
+                ariaLabel={t('settings.appearance.readingFontSize')}
                 disabled={readingTypography.loading}
-                aria-label={t('settings.appearance.readingFontSize')}
-                onChange={(event) => readingTypography.onFontSizeChange(Number(event.target.value))}
-                className="nova-editor-range w-full"
+                onValueChange={readingTypography.onFontSizeChange}
               />
-            </label>
+            </div>
           </>
         ) : null}
 
