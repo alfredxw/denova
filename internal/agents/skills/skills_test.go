@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -251,6 +252,9 @@ func TestSaveSkillFileIfRevisionRejectsExternalUpdate(t *testing.T) {
 }
 
 func TestReadAndSaveSkillFileRejectSymlinkEscape(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("requires optional Windows symlink privileges")
+	}
 	ctx := context.Background()
 	root := t.TempDir()
 	userDir := filepath.Join(root, "skills")

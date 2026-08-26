@@ -86,6 +86,25 @@ func TestStoreRejectsInvalidCandidateWithoutChangingLiveDirectory(t *testing.T) 
 	}
 }
 
+func TestStoreWriteAllowsInvalidCandidateForConsumerValidation(t *testing.T) {
+	store := openTestStore(t)
+	before, err := store.Current(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := store.Write(context.Background(), ChangeSet{
+		BaseRevision: before.Revision,
+		Changes:      []Change{{Path: "prompts/general.md", Content: nil}},
+	})
+	if err != nil {
+		t.Fatalf("unchecked State write failed: %v", err)
+	}
+	assertSnapshotFile(t, result.Snapshot, "prompts/general.md", "")
+	if err := store.validate(context.Background(), result.Snapshot); err == nil {
+		t.Fatal("expected the consumer validator to reject the written snapshot")
+	}
+}
+
 func TestPreparedTransactionRetainsMarkerUntilRollbackSucceeds(t *testing.T) {
 	store := openTestStore(t)
 	ctx := context.Background()

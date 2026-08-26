@@ -23,10 +23,14 @@ import (
 )
 
 func Prepare(ctx context.Context, runtime Runtime, request agentchat.ChatRequest) (Runtime, agentchat.ChatRequest, error) {
-	if runtime.ProjectType == projectdomain.TypeGeneral {
+	switch runtime.ProjectType {
+	case projectdomain.TypeGeneral, projectdomain.TypeHarness:
 		return prepareGeneral(ctx, runtime, request)
+	case projectdomain.TypeBook:
+		return prepareWriting(ctx, runtime, request)
+	default:
+		return Runtime{}, request, fmt.Errorf("unsupported project type %q", runtime.ProjectType)
 	}
-	return prepareWriting(ctx, runtime, request)
 }
 
 func prepareGeneral(ctx context.Context, runtime Runtime, request agentchat.ChatRequest) (Runtime, agentchat.ChatRequest, error) {
@@ -106,8 +110,8 @@ func prepareWriting(ctx context.Context, runtime Runtime, request agentchat.Chat
 }
 
 func ProjectConversation(runtime Runtime, request agentchat.ChatRequest) *agentconversation.SessionConversation {
-	if runtime.AgentKind == agentrun.AgentKindGeneral {
-		return agentconversation.NewSessionConversationForAgent(runtime.Session, &runtime.Config, config.AgentKindGeneral).
+	if runtime.AgentKind == agentrun.AgentKindGeneral || runtime.AgentKind == agentrun.AgentKindHarness {
+		return agentconversation.NewSessionConversationForAgent(runtime.Session, &runtime.Config, runtime.AgentKind).
 			WithInputVisibility(request.InputVisibility)
 	}
 	runtimeContexts := prompts.IDEWorkspaceRuntimeContextsForContext(runtime.State, request.IDEContext)

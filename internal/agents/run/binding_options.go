@@ -28,7 +28,7 @@ func RuntimeBindingForOptions(options Options) (RuntimeBinding, error) {
 			AgentKind: options.AgentKind, ProjectID: projectID, Mode: options.Mode,
 			Workspace: options.Workspace, SessionID: options.SessionID,
 		}
-	case AgentKindGeneral:
+	case AgentKindGeneral, AgentKindHarness:
 		binding = RuntimeBinding{
 			AgentKind: options.AgentKind, ProjectID: options.ProjectID, Mode: options.Mode,
 			Workspace: options.Workspace, SessionID: options.SessionID,
@@ -40,8 +40,6 @@ func RuntimeBindingForOptions(options Options) (RuntimeBinding, error) {
 		}
 	case AgentKindConfigManager:
 		binding = RuntimeBinding{AgentKind: options.AgentKind, Workspace: options.Workspace, SessionID: options.SessionID}
-	case AgentKindHarnessOptimizer:
-		binding = RuntimeBinding{AgentKind: options.AgentKind, SessionID: options.SessionID}
 	case AgentKindImage:
 		sessionID := options.SessionID
 		if sessionID == "" {

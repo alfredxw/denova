@@ -209,7 +209,7 @@ func (service *Service) AcceptTurn(ctx context.Context, input TurnRequest) (*Acc
 	if err := applyTurnPolicy(&runtime, input.Policy); err != nil {
 		return nil, err
 	}
-	agentHost, err := service.host.HarnessAgentHostCapabilities(ctx, &runtime.Config, runtime.AgentKind)
+	agentHost, err := service.host.ProjectAgentHostCapabilities(ctx, runtime.ProjectType, &runtime.Config, runtime.AgentKind)
 	if err != nil {
 		return nil, fmt.Errorf("build AgentChat Harness State capabilities: %w", err)
 	}
@@ -314,7 +314,7 @@ func applyTurnPolicy(runtime *conversationapp.Runtime, policy TurnPolicy) error 
 	switch runtime.AgentKind {
 	case agentrun.AgentKindIDE:
 		runtime.Config.AgentTools.IDE = override
-	case agentrun.AgentKindGeneral:
+	case agentrun.AgentKindGeneral, agentrun.AgentKindHarness:
 		runtime.Config.AgentTools.General = override
 	default:
 		return fmt.Errorf("unsupported project Agent kind %q", runtime.AgentKind)
@@ -386,7 +386,7 @@ func (service *Service) prepareCommandExecution(ctx context.Context, active *run
 	if err := applyTurnPolicy(&runtime, active.policy); err != nil {
 		return agentexecution.Cycle{}, err
 	}
-	agentHost, err := service.host.HarnessAgentHostCapabilities(ctx, &runtime.Config, runtime.AgentKind)
+	agentHost, err := service.host.ProjectAgentHostCapabilities(ctx, runtime.ProjectType, &runtime.Config, runtime.AgentKind)
 	if err != nil {
 		return agentexecution.Cycle{}, err
 	}

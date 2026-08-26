@@ -308,7 +308,7 @@ func setAgentModelOverride(settings *config.Settings, agent string, value config
 	switch agent {
 	case "default":
 		settings.AgentModels.Default = value
-	case config.AgentKindGeneral:
+	case config.AgentKindGeneral, config.AgentKindHarness:
 		settings.AgentModels.General = value
 	case config.AgentKindIDE:
 		settings.AgentModels.IDE = value
@@ -331,7 +331,7 @@ func setAgentToolOverride(settings *config.Settings, agent string, value config.
 	switch agent {
 	case "default":
 		settings.AgentTools.Default = value
-	case config.AgentKindGeneral:
+	case config.AgentKindGeneral, config.AgentKindHarness:
 		settings.AgentTools.General = value
 	case config.AgentKindIDE:
 		settings.AgentTools.IDE = value
@@ -354,7 +354,7 @@ func setAgentPromptOverride(settings *config.Settings, agent string, value confi
 	switch agent {
 	case "default":
 		settings.AgentPrompts.Default = value
-	case config.AgentKindGeneral:
+	case config.AgentKindGeneral, config.AgentKindHarness:
 		settings.AgentPrompts.General = value
 	case config.AgentKindIDE:
 		settings.AgentPrompts.IDE = value
@@ -377,7 +377,7 @@ func setAgentSkillOverride(settings *config.Settings, agent string, value config
 	switch agent {
 	case "default":
 		settings.AgentSkills.Default = value
-	case config.AgentKindGeneral:
+	case config.AgentKindGeneral, config.AgentKindHarness:
 		settings.AgentSkills.General = value
 	case config.AgentKindIDE:
 		settings.AgentSkills.IDE = value
@@ -400,7 +400,7 @@ func setAgentContextOverride(settings *config.Settings, agent string, value conf
 	switch agent {
 	case "default":
 		settings.AgentContexts.Default = value
-	case config.AgentKindGeneral:
+	case config.AgentKindGeneral, config.AgentKindHarness:
 		settings.AgentContexts.General = value
 	case config.AgentKindIDE:
 		settings.AgentContexts.IDE = value
@@ -423,7 +423,7 @@ func setGeneralSubAgentOverride(settings *config.Settings, agent string, value *
 	switch agent {
 	case "default":
 		settings.GeneralSubAgents.Default = value
-	case config.AgentKindGeneral:
+	case config.AgentKindGeneral, config.AgentKindHarness:
 		settings.GeneralSubAgents.General = value
 	case config.AgentKindIDE:
 		settings.GeneralSubAgents.IDE = value

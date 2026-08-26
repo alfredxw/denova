@@ -50,7 +50,7 @@ func TestVerifyPostRunMutationsAcceptsAbsolutePathInsideWorkspace(t *testing.T) 
 	if result.Status != "ok" {
 		t.Fatalf("workspace-contained absolute path should verify: status=%s checks=%#v warnings=%#v", result.Status, result.Checks, result.Warnings)
 	}
-	if len(result.Checks) != 1 || result.Checks[0].Status != "ok" || result.Checks[0].Target != absoluteTarget {
+	if len(result.Checks) != 1 || result.Checks[0].Status != "ok" || result.Checks[0].Target != filepath.ToSlash(absoluteTarget) {
 		t.Fatalf("absolute target should remain visible in verification output: %#v", result.Checks)
 	}
 }

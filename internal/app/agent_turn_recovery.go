@@ -194,9 +194,6 @@ func (app *App) executionProfiles() []agentexecution.Profile {
 		profile(agentexecution.ProfileConfigManager, func(ctx context.Context, request agentexecution.CycleRestoreRequest) (agentexecution.Cycle, error) {
 			return app.ConfigManager().PrepareCycle(ctx, request, request.Binding)
 		}, app.sessionCanonicalInput),
-		profile(agentexecution.ProfileHarnessOptimizer, func(ctx context.Context, request agentexecution.CycleRestoreRequest) (agentexecution.Cycle, error) {
-			return app.ContinualLearning().PrepareCycle(ctx, request, request.Binding)
-		}, app.sessionCanonicalInput),
 		profile(agentexecution.ProfileImage, func(ctx context.Context, request agentexecution.CycleRestoreRequest) (agentexecution.Cycle, error) {
 			return app.Images().PrepareCycle(ctx, request, request.Binding)
 		}, app.sessionCanonicalInput),

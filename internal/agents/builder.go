@@ -92,20 +92,19 @@ func BuildGeneralDefinitionWithCompositionForHost(ctx context.Context, cfg *conf
 	return assembly.Definition, assembly.Composition, err
 }
 
-// BuildHarnessOptimizerDefinitionWithCompositionForHost assembles the
-// user-level continual-learning Agent around trajectory read and atomic State
-// update only. It deliberately has no live workspace or Script capability.
-func BuildHarnessOptimizerDefinitionWithCompositionForHost(ctx context.Context, cfg *config.Config, host AgentHostCapabilities) (agent.Definition, prompts.SystemPromptComposition, error) {
-	composition, err := prompts.ComposeHarnessOptimizerInstruction(cfg)
+// BuildHarnessDefinitionWithCompositionForHost assembles the system-managed
+// Harness Project Agent with ordinary workspace tools and trajectory adapters.
+func BuildHarnessDefinitionWithCompositionForHost(ctx context.Context, cfg *config.Config, host AgentHostCapabilities) (agent.Definition, prompts.SystemPromptComposition, error) {
+	composition, err := prompts.ComposeHarnessInstruction(cfg)
 	if err != nil {
 		return agent.Definition{}, prompts.SystemPromptComposition{}, err
 	}
 	assembly, err := buildAgentDefinitionWithComposition(ctx, cfg, agentBuildSpec{
-		Kind:            config.AgentKindHarnessOptimizer,
-		Name:            "DenovaHarnessOptimizer",
-		Description:     "Optimizes user-level Harness State from trajectory evidence",
+		Kind:            config.AgentKindHarness,
+		Name:            "DenovaHarnessAgent",
+		Description:     "Maintains user-level Harness State from trajectory evidence",
 		Composition:     composition,
-		EnableSkills:    false,
+		EnableSkills:    true,
 		InteractiveHost: host.Interactive,
 		ExtraTools:      host.RootTools,
 		ReadAdapters:    host.ReadAdapters,
@@ -352,7 +351,7 @@ func buildAgentDefinitionWithComposition(ctx context.Context, cfg *config.Config
 		tools = append(tools, prepared...)
 		builtinToolsets = append(builtinToolsets, todoToolset.Identity())
 	}
-	if spec.InteractiveHost && toolSettings.Allows(config.AgentToolAsk) && (spec.Kind == config.AgentKindGeneral || spec.Kind == config.AgentKindIDE || spec.Kind == config.AgentKindConfigManager || spec.Kind == config.AgentKindHarnessOptimizer) {
+	if spec.InteractiveHost && toolSettings.Allows(config.AgentToolAsk) && (spec.Kind == config.AgentKindGeneral || spec.Kind == config.AgentKindIDE || spec.Kind == config.AgentKindConfigManager || spec.Kind == config.AgentKindHarness) {
 		askToolset := publictools.Ask()
 		prepared, err := askToolset.PrepareTools(ctx, agent.ToolRequest{})
 		if err != nil {
@@ -394,7 +393,7 @@ func buildAgentDefinitionWithComposition(ctx context.Context, cfg *config.Config
 	}
 	var goalManager agent.GoalManager
 	switch spec.Kind {
-	case config.AgentKindGeneral, config.AgentKindIDE, config.AgentKindInteractiveStory:
+	case config.AgentKindGeneral, config.AgentKindHarness, config.AgentKindIDE, config.AgentKindInteractiveStory:
 		goalManager = agentlifecycle.NewGoalManager()
 	}
 	rootTools, err := agent.StaticToolsIdentified(denovaCapabilityIdentity("denova.tools", struct {

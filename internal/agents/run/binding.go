@@ -16,14 +16,13 @@ const (
 	bindingKindAutomation = "automation"
 	bindingKindUser       = "user"
 
-	bindingProfileWriting          = "writing"
-	bindingProfileAgentChat        = "agent_chat"
-	bindingProfileGame             = "game"
-	bindingProfileAutomation       = "automation"
-	bindingProfileConfigManager    = "config_manager"
-	bindingProfileHarnessOptimizer = "harness_optimizer"
-	bindingProfileImage            = "image"
-	bindingProfileDirector         = "director"
+	bindingProfileWriting       = "writing"
+	bindingProfileAgentChat     = "agent_chat"
+	bindingProfileGame          = "game"
+	bindingProfileAutomation    = "automation"
+	bindingProfileConfigManager = "config_manager"
+	bindingProfileImage         = "image"
+	bindingProfileDirector      = "director"
 
 	bindingLabelWorkspace = "workspace"
 	bindingLabelProject   = "project_id"
@@ -110,13 +109,13 @@ func (binding RuntimeBinding) identity() (bindingIdentity, error) {
 			return invalid()
 		}
 		identity = bindingIdentity{kind: bindingKindWriting, profile: profile, id: attributes[bindingLabelSession], attributes: attributes}
-	case AgentKindGeneral:
+	case AgentKindGeneral, AgentKindHarness:
 		if strings.TrimSpace(binding.Mode) != bindingProfileAgentChat || attributes[bindingLabelProject] == "" ||
 			attributes[bindingLabelSession] == "" || binding.StoryID != "" || binding.BranchID != "" || binding.TaskID != "" {
 			return invalid()
 		}
 		delete(attributes, bindingLabelWorkspace)
-		attributes[bindingLabelAgentKind] = AgentKindGeneral
+		attributes[bindingLabelAgentKind] = strings.TrimSpace(binding.AgentKind)
 		identity = bindingIdentity{
 			kind: bindingKindProject, profile: bindingProfileAgentChat,
 			id: attributes[bindingLabelProject] + ":" + attributes[bindingLabelSession], attributes: attributes,
@@ -136,12 +135,6 @@ func (binding RuntimeBinding) identity() (bindingIdentity, error) {
 			return invalid()
 		}
 		identity = bindingIdentity{kind: bindingKindWriting, profile: bindingProfileConfigManager, id: attributes[bindingLabelSession], attributes: attributes}
-	case AgentKindHarnessOptimizer:
-		if attributes[bindingLabelSession] == "" || binding.ProjectID != "" || binding.Workspace != "" ||
-			binding.StoryID != "" || binding.BranchID != "" || binding.TaskID != "" {
-			return invalid()
-		}
-		identity = bindingIdentity{kind: bindingKindUser, profile: bindingProfileHarnessOptimizer, id: attributes[bindingLabelSession], attributes: attributes}
 	case AgentKindImage:
 		if attributes[bindingLabelWorkspace] == "" || attributes[bindingLabelSession] == "" ||
 			binding.StoryID != "" || binding.BranchID != "" || binding.TaskID != "" {
@@ -193,7 +186,7 @@ func BindingSelector(agentKind, workspace string) (agent.SessionSelector, error)
 	var kind, profile string
 	switch strings.TrimSpace(agentKind) {
 	case "":
-	case AgentKindGeneral:
+	case AgentKindGeneral, AgentKindHarness:
 		kind, profile = bindingKindProject, bindingProfileAgentChat
 	case AgentKindIDE:
 		kind, profile = bindingKindWriting, bindingProfileWriting
@@ -201,8 +194,6 @@ func BindingSelector(agentKind, workspace string) (agent.SessionSelector, error)
 		kind, profile = bindingKindGame, bindingProfileGame
 	case AgentKindConfigManager:
 		kind, profile = bindingKindWriting, bindingProfileConfigManager
-	case AgentKindHarnessOptimizer:
-		kind, profile = bindingKindUser, bindingProfileHarnessOptimizer
 	case AgentKindImage:
 		kind, profile = bindingKindWriting, bindingProfileImage
 	case AgentKindAutomation:

@@ -94,7 +94,7 @@ func (service *Service) AnalyzeContext(ctx context.Context, binding Binding, req
 		return chatagent.ContextAnalysis{}, err
 	}
 	mode := "ide"
-	if runtime.AgentKind == agentrun.AgentKindGeneral {
+	if runtime.AgentKind == agentrun.AgentKindGeneral || runtime.AgentKind == agentrun.AgentKindHarness {
 		mode = "general"
 	}
 	return chatagent.BuildInspectedContextAnalysis(

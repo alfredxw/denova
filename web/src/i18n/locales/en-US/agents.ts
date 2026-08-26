@@ -56,7 +56,7 @@ const agents = {
   'agents.tool.script.title': 'Script Orchestration',
   'agents.tool.script.subtitle': 'Run one JavaScript tool workflow',
   'agents.tool.harnessState.title': 'User Harness State',
-  'agents.tool.harnessState.subtitle': 'read(harness://…) / update_harness_state',
+  'agents.tool.harnessState.subtitle': 'Read Harness State and trajectory resources',
   'agents.tool.configRead.title': 'Read Configuration',
   'agents.tool.configRead.subtitle': 'config_read',
   'agents.tool.configApply.title': 'Change Configuration',

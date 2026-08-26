@@ -4,20 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"path/filepath"
 	"strings"
 	"sync"
 
 	"denova/config"
-	agentconversation "denova/internal/agents/conversation"
 	"denova/internal/agents/harnessstate"
-	agentrun "denova/internal/agents/run"
-	"denova/internal/agents/session"
 	"denova/internal/agents/trajectory"
-	appagentruntime "denova/internal/app/agentruntime"
-	apptask "denova/internal/app/task"
 
 	agentstate "github.com/alfredxw/denova/agent/state"
 )
@@ -32,11 +26,7 @@ type Service struct {
 	dataDir     string
 	manager     *harnessstate.Manager
 	history     *stateHistory
-	sessions    *session.Store
 	outcomes    *trajectory.OutcomeStore
-
-	admission sync.Mutex
-	starts    apptask.StartRegistry
 
 	schedulerOnce sync.Once
 	schedulerStop context.CancelFunc
@@ -45,10 +35,7 @@ type Service struct {
 }
 
 func NewService(host Host) *Service {
-	return &Service{
-		host:   host,
-		starts: apptask.NewStartRegistry(apptask.StartRegistryOptions{Label: "Harness Optimizer"}),
-	}
+	return &Service{host: host}
 }
 
 func (service *Service) initialize() error {
@@ -82,30 +69,16 @@ func (service *Service) initialize() error {
 	if err != nil {
 		return err
 	}
-	sessions, err := session.NewStore(filepath.Join(dataDir, "continual-learning", "sessions"))
-	if err != nil {
-		return err
-	}
 	outcomes, err := trajectory.NewOutcomeStore(dataDir)
 	if err != nil {
-		_ = sessions.Close()
 		return err
 	}
 	service.dataDir = dataDir
 	service.manager = manager
 	service.history = history
-	service.sessions = sessions
 	service.outcomes = outcomes
 	service.initialized = true
 	return nil
-}
-
-// CheckEnabled gates user-facing endpoints before they inspect process-local
-// tasks. Disabling Developer Mode hides the surface and pauses new work without
-// deleting State or history.
-func (service *Service) CheckEnabled() error {
-	_, err := service.requireEnabled()
-	return err
 }
 
 func (service *Service) requireEnabled() (Runtime, error) {
@@ -156,7 +129,7 @@ func (service *Service) UpdateState(ctx context.Context, request StateUpdateRequ
 	}
 	var result StateUpdateResult
 	err := service.history.withLock(ctx, func() error {
-		updated, err := service.manager.Store().Update(ctx, agentstate.ChangeSet{
+		updated, err := service.manager.Store().Write(ctx, agentstate.ChangeSet{
 			BaseRevision: request.BaseRevision,
 			Changes:      changes,
 		})
@@ -179,6 +152,23 @@ func (service *Service) UpdateState(ctx context.Context, request StateUpdateRequ
 		return nil
 	})
 	return result, err
+}
+
+// RecordCurrentState snapshots a valid Agent-edited workspace into optional
+// Git history. Invalid intermediate files remain live and diagnosable; unlike
+// an explicit UI save, they are not auto-recorded when an Agent turn settles.
+func (service *Service) RecordCurrentState(ctx context.Context, summary string) error {
+	if _, err := service.requireEnabled(); err != nil {
+		return err
+	}
+	return service.history.withLock(ctx, func() error {
+		snapshot, err := service.manager.ValidatedSnapshot(ctx)
+		if err != nil {
+			return err
+		}
+		_, _, err = service.history.record(snapshot, summary)
+		return err
+	})
 }
 
 func scriptToolSummaries(metadata []harnessstate.ScriptToolMetadata) []ScriptToolSummary {
@@ -235,7 +225,7 @@ func (service *Service) Restore(ctx context.Context, id StateVersionID) (StateUp
 		if err != nil {
 			return err
 		}
-		updated, err := service.manager.Store().Update(ctx, agentstate.ChangeSet{
+		updated, err := service.manager.Store().Write(ctx, agentstate.ChangeSet{
 			BaseRevision: current.Revision,
 			Changes:      stateReplacementChanges(current.Files(), files),
 		})
@@ -272,99 +262,6 @@ func (service *Service) Outcomes(limit int) ([]trajectory.Outcome, error) {
 	return service.outcomes.List(limit)
 }
 
-func (service *Service) Messages(ctx context.Context, before, limit int) (session.HistoryPage, error) {
-	if _, err := service.requireEnabled(); err != nil {
-		return session.HistoryPage{}, err
-	}
-	target, err := service.optimizerSession()
-	if err != nil {
-		return session.HistoryPage{}, err
-	}
-	return target.ReadHistoryPage(ctx, before, limit)
-}
-
-func (service *Service) Clear(ctx context.Context) error {
-	runtime, err := service.requireEnabled()
-	if err != nil {
-		return err
-	}
-	service.admission.Lock()
-	defer service.admission.Unlock()
-	sessionID, err := optimizerSessionID()
-	if err != nil {
-		return err
-	}
-	if latest := service.starts.Latest(userScope, sessionID).Task; latest != nil && !latest.Finished() {
-		return appagentruntime.ErrOperationActive
-	}
-	if runtime.Execution != nil {
-		if err := runtime.Execution.ClearSession(ctx, optimizerRunOptions(service.dataDir, sessionID)); err != nil {
-			return err
-		}
-	}
-	target, err := service.optimizerSession()
-	if err != nil {
-		return err
-	}
-	if err := target.Clear(); err != nil {
-		return err
-	}
-	service.starts.ReleaseScope(userScope, sessionID)
-	return nil
-}
-
-func (service *Service) AnswerAsk(ctx context.Context, askID string, answers []agentconversation.HostAskAnswer) (agentconversation.HostAskResolution, error) {
-	runtime, err := service.requireEnabled()
-	if err != nil {
-		return agentconversation.HostAskResolution{}, err
-	}
-	sessionID, err := optimizerSessionID()
-	if err != nil {
-		return agentconversation.HostAskResolution{}, err
-	}
-	return runtime.Execution.ResolveAsk(ctx, optimizerRunOptions(service.dataDir, sessionID), askID, session.AskAnswered, answers, "")
-}
-
-func (service *Service) CancelAsk(ctx context.Context, askID, reason string) (agentconversation.HostAskResolution, error) {
-	runtime, err := service.requireEnabled()
-	if err != nil {
-		return agentconversation.HostAskResolution{}, err
-	}
-	sessionID, err := optimizerSessionID()
-	if err != nil {
-		return agentconversation.HostAskResolution{}, err
-	}
-	return runtime.Execution.ResolveAsk(ctx, optimizerRunOptions(service.dataDir, sessionID), askID, session.AskCancelled, nil, reason)
-}
-
-func (service *Service) optimizerSession() (*session.Session, error) {
-	if service.sessions == nil {
-		return nil, errors.New("Harness Optimizer session store is unavailable")
-	}
-	sessionID, err := optimizerSessionID()
-	if err != nil {
-		return nil, err
-	}
-	return service.sessions.GetOrCreate(sessionID)
-}
-
-func optimizerSessionID() (string, error) {
-	sessionID, ok := session.AgentSessionID(config.AgentKindHarnessOptimizer)
-	if !ok {
-		return "", fmt.Errorf("Harness Optimizer Agent session is not configured")
-	}
-	return sessionID, nil
-}
-
-func optimizerRunOptions(dataDir, sessionID string) agentrun.Options {
-	return agentrun.Options{
-		AgentKind: agentrun.AgentKindHarnessOptimizer,
-		StateRoot: filepath.Join(dataDir, "continual-learning"),
-		SessionID: sessionID,
-		Mode:      RuntimeMode,
-	}
-}
-
 func (service *Service) Close(ctx context.Context) error {
 	if service == nil {
 		return nil
@@ -378,16 +275,6 @@ func (service *Service) Close(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		}
-	}
-	if service.sessions != nil {
-		if task := service.ActiveTask(); task != nil && !task.Finished() {
-			if err := appagentruntime.AbortAndWait(ctx, task); err != nil {
-				return err
-			}
-		}
-	}
-	if service.sessions != nil {
-		return service.sessions.Close()
 	}
 	return nil
 }

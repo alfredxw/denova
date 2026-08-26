@@ -64,7 +64,7 @@ const (
 	AgentKindIDE              = "ide"
 	AgentKindInteractiveStory = "interactive_story"
 	AgentKindConfigManager    = "config_manager"
-	AgentKindHarnessOptimizer = "harness_optimizer"
+	AgentKindHarness          = "harness"
 	AgentKindImage            = "image"
 	AgentKindAutomation       = "automation"
 )
@@ -155,8 +155,8 @@ func RootAgentName(kind string) string {
 		return "DenovaInteractiveStoryAgent"
 	case AgentKindConfigManager:
 		return "DenovaConfigManagerAgent"
-	case AgentKindHarnessOptimizer:
-		return "DenovaHarnessOptimizer"
+	case AgentKindHarness:
+		return "DenovaHarnessAgent"
 	case AgentKindImage:
 		return "DenovaImageAgent"
 	case AgentKindAutomation:

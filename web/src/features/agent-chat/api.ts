@@ -13,7 +13,7 @@ export interface AgentChatSession {
   active: boolean
 }
 
-export type AgentChatProjectType = 'book' | 'general'
+export type AgentChatProjectType = 'book' | 'general' | 'harness'
 export type AgentChatProjectStatus = 'available' | 'missing' | 'archived'
 
 /** One user-managed Project with its conversations. */

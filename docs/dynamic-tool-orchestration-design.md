@@ -34,8 +34,9 @@ ctx.tools.parallel(calls)
 User Harness State 的管理也保持直接：
 
 - 读取复用现有 `read`，路径为 `harness://state/...`。
-- 修改只增加一个原子工具 `update_harness_state`。
-- UI、普通根 Agent 和 Harness Optimizer 共用同一个 State Service。
+- Harness 是特殊分类的真实 Project，其 workspace 就是 live State 目录。
+- Harness Agent 与普通 Project Agent 一样使用文件工具、shell 和多会话；UI 编辑器也直接保存文件。
+- 写入阶段不做完整 schema gate；State 在被 Agent builder 消费时整体校验，无效时整层拒绝并回退到基础 Agent。
 
 核心规则：
 
@@ -46,7 +47,7 @@ User Harness State 的管理也保持直接：
 5. Harness State 只有一个 current snapshot。Agent 构建和恢复都读取当前内容，不保存历史版本 pin。
 6. 嵌套调用复用现有 lifecycle，只增加直接父调用字段 `ParentCallID`。
 7. 只有外层脚本结果进入调用方模型 transcript；内部调用仍进入权限、Chat、Trajectory 和审计。
-8. State 更新使用完整 candidate 校验和 CAS；校验或冲突失败时零写入。
+8. State 写入保持自由；消费时完整校验，任何 diagnostic 都使本次 User Harness contribution 整体不生效，原文件保留供诊断和修复。
 
 ### 1.1 用户可感知能力
 
@@ -58,7 +59,7 @@ User Harness State 的管理也保持直接：
 - 明确要求根 Agent 直接保存或修改 User Script Tool，并确认跨项目的 User State 修改。
 - 在 Chat 中看到脚本内部真实发生的递归工具树。
 - 在 Trajectory 中看到同样的父子关系与真实执行时间。
-- 让 Harness Optimizer 从重复的高质量 trajectory 中创建或改进 Script Tool。
+- 在轨迹侧栏显式调用 Harness Agent 做 Agent Health 诊断，并在独立会话中创建或改进 Script Tool。
 
 不会提供 Session 级工具、active Run 热注册、脚本内工具管理、Node.js 环境或编辑器专用执行协议。
 
@@ -74,7 +75,7 @@ User Harness State 的管理也保持直接：
 | Script 专用 scheduler、权限和事件 | 复用现有 Tool executor 与 lifecycle |
 | Script 专用子 Agent API | 调用现有 `task` |
 | 新建 `read_harness_state` | 复用 `read` 的 URI adapter |
-| Script Tool CRUD API | 一个通用原子 `update_harness_state` |
+| Script Tool CRUD API | Harness Project workspace 中的普通文件操作 |
 | Run pin、revision archive 与 resolver | 唯一 current State |
 | 静态工作流图 | 固定脚本来源加本次真实调用树 |
 
@@ -84,7 +85,7 @@ User Harness State 的管理也保持直接：
 - 同步脚本返回时，其非 detached 内部调用已经完成。
 - provider transcript 始终保持外层 tool call/result 配对。
 - Chat 与 Trajectory 使用同一个父子调用事实。
-- State 校验或 CAS 失败时不发生部分更新。
+- 无效 State 不会向 Agent Registry 部分注入；整个 User contribution 一次性拒绝。
 
 ## 3. 总体架构
 
@@ -105,8 +106,9 @@ flowchart TD
 
     STATE["Current User Harness State"]
     READ["read(harness://...)"]
-    UPDATE["update_harness_state"]
-    STORE["validate + CAS"]
+    WRITE["ordinary file tools / editor"]
+    STORE["live Project workspace"]
+    VALIDATE["consume-time validation"]
     HISTORY["Git history for UI only"]
     BUILDER["Agent builder / recovery"]
 
@@ -118,9 +120,9 @@ flowchart TD
     EVENTS --> TRACE
 
     MODEL --> READ --> STORE
-    MODEL --> UPDATE --> STORE --> STATE
+    MODEL --> WRITE --> STORE --> STATE
     STORE -. management history .-> HISTORY
-    STATE --> BUILDER --> REGISTRY
+    STATE --> VALIDATE --> BUILDER --> REGISTRY
 ```
 
 Goja 只是编排语言。Registry、权限、调度、mutation receipt、artifact、task 生命周期和 trajectory 事实仍由 Go 侧拥有。
@@ -135,7 +137,7 @@ Goja 只是编排语言。Registry、权限、调度、mutation receipt、artifa
 | `internal/agents/harnessstate` | 当前 `tools/*.js` 的解析、校验与物化 | Git、Session、VM 执行 |
 | `internal/agents/scripttools` | Denova 配置到 Script Tool definitions 的组装 | 文件解析、Goja 细节 |
 | `agent/state` | current Snapshot、candidate 校验、CAS、原子替换 | Harness 语义、Git、prompt |
-| `internal/app/continuallearning` | State API、read adapter、更新工具、history、Optimizer | Script Engine、Tool pipeline |
+| `internal/app/continuallearning` | State API、read adapter、history、Harness Project 能力与计划维护 | Script Engine、Tool pipeline |
 | Chat / Run | 树投影与 span 父子关系 | 推断未记录的执行事实 |
 
 依赖保持单向：
@@ -247,10 +249,9 @@ const results = ctx.tools.parallel([
 Script Host 只额外拒绝：
 
 - 即时 `script` 本身，避免递归 eval。
-- `update_harness_state`。
 - `read` 的 `harness://` 资源。
 
-后两项避免脚本持久化自修改。脚本通过现有 `task` action 编排子 Agent，不获得 `ctx.agents`。
+后者避免脚本通过专用资源旁路管理 State。脚本通过现有 `task` action 编排子 Agent，不获得 `ctx.agents`。
 
 ### 4.5 JSON 与运行边界
 
@@ -489,75 +490,56 @@ harness://state/<relative-path>
 - revision 只用于下一次 State 写入的并发检查，不是运行版本。
 - 即使 current State 无效，raw files 与已发现 diagnostics 仍可读取，以便修复。
 
-### 8.2 唯一写入口
+### 8.2 Project workspace 写入
 
-```json
-{
-  "base_revision": "4d967b...",
-  "summary": "Add a reusable company research tool",
-  "changes": [
-    {
-      "path": "tools/research_company.js",
-      "content": "---\nname: research_company\n..."
-    }
-  ]
-}
-```
+Harness 在 Project Registry 中使用稳定 ID 和特殊 `harness` 类型，workspace 直接指向 live State 目录。Harness Agent 可以使用与 General Agent 相同的文件工具、Bash 或 PowerShell；UI 编辑器同样直接保存文件，不增加专用 update tool 或 Script Tool CRUD API。
 
-`update_harness_state`：
+写入边界只负责路径安全、revision 与事务完整性，不把完整 Harness schema 作为前置 gate。这样 Agent 可以先产生暂时不完整的中间状态，再继续修复，而不会被每一步写入协议限制。
 
-- Descriptor 为 `config_exclusive`、`MutationScope=config`、`PostCheck=config_revision`、`Recovery=reconcilable`。
-- `base_revision` 必填，防止两个编辑者静默覆盖；它不用于选择运行版本。
-- 每项只能是完整 content replacement 或 `delete: true`。
-- list 内独立输入错误和完整 State diagnostics 一次返回。
-- 整个 ChangeSet 原子执行；任一错误或 conflict 都是零写入。
-- conflict 返回 current revision，调用方重新读并形成新的完整 ChangeSet。
-
-UI、普通 Agent 与 Optimizer 都调用同一个 `Service.UpdateState`。不增加 source-specific service、origin DTO 或 Script Tool CRUD。
+完整校验发生在 State 被 Agent builder 消费时：只要存在 diagnostic，本次 User Harness contribution 就整体拒绝，基础 Agent 继续工作。无效文件不会被删除或回滚，`harness://state/current` 仍返回 diagnostics 和 raw files，Harness Agent 可继续诊断修复。
 
 ### 8.3 唯一 current State
 
 - live directory 是运行时唯一事实源。
-- revision 只是 CAS token。
+- revision 服务 UI 并发保护与历史记录，不选择运行版本。
 - Agent builder、delegated child 构建和恢复路径都读取 current Harness。
 - 不提供 runtime revision archive、exact snapshot resolver、revision URI 或 source digest pin。
 - Git 只服务管理 UI 的 Versions、Diff、Restore，不参与 Agent 执行选择。
-- Restore 把历史文件作为一次普通的完整校验与 CAS 更新，成功后它就成为新的 current State。
-- Git record 失败不会回滚已经成功的 State CAS，只写清晰的运维日志。
+- Restore 把历史文件写回 live State；若内容无效，消费层会拒绝该 contribution，但文件仍可继续修复。
+- UI 显式保存可记录管理快照；Agent 自动记录只接受通过消费校验的 State。Git record 失败不会回滚已经成功的文件写入，只写清晰的运维日志。
 
 已进入执行的 Run 自然持有本次构建出的 Registry，不做 active Run 热替换；下一次构建或恢复读取那一刻的 current State。这不需要额外的版本协议。
 
 ### 8.4 普通 Agent 直接管理
 
-当用户明确要求持久化修改时，General、IDE/写作和 Interactive Story/游戏根 Agent 使用：
+当用户明确要求持久化修改时，General、IDE/写作和 Interactive Story/游戏根 Agent 可读取 `harness://state/...`；完整编辑体验由 Harness Project Agent 提供：
 
 ```text
-read harness://state/current
-→ read relevant State files
-→ form one ChangeSet
-→ update_harness_state
-→ validate + CAS
+open Harness Project conversation
+→ inspect trajectory:// and harness://state/current
+→ edit live workspace with ordinary file or shell tools
+→ inspect diagnostics and repair
+→ next Agent build validates the whole contribution
 ```
 
 约束：
 
-- `harness_state` capability 只控制 root 的 read adapter 与 update tool，不控制 Saved Script Tool availability。
-- manifest 可直接读取；User State 文件正文和 update 进入独立 permission domain。
-- Root adapter 与 update tool 不进入 delegated child，Script Host 也拒绝它们。
-- Agent 不获得 live directory、Git handle 或 Registry mutation handle。
-- 固定英文 instruction 仅说明在用户明确要求时使用这些工具，不注入 State 内容或 revision。
+- `harness_state` capability 控制普通 root 的 read adapter，不控制 Saved Script Tool availability。
+- manifest 与 raw files 可通过 adapter 读取；普通 Project Agent 不获得 Harness live directory。
+- Harness Project Agent 自己以 live State 为 workspace，使用标准工具权限与会话管理。
+- 固定英文 instruction 说明写后检查 diagnostics，不注入 State 内容或 revision。
 
-### 8.5 Harness Optimizer
+### 8.5 Harness Agent 与 Agent Health
 
-Optimizer 复用相同的 read/update：
+Harness Agent 是标准 AgentChat Project Agent，额外获得 trajectory read adapter：
 
 1. 读取 trajectory 与 outcome。
 2. 读取 current manifest 和相关 State files。
-3. 在一次 update arguments 中形成完整 ChangeSet。
-4. 后端完整校验并 CAS。
-5. conflict 时重新读取，不自动合并可执行代码。
+3. 使用普通文件或 shell 工具编辑 live workspace。
+4. 再读取 diagnostics 并修复。
+5. 消费层在下次组装 Agent 时整体接受或拒绝 User contribution。
 
-Optimizer 只拥有 trajectory read、Harness read 与 update，不拥有 live workspace、shell、即时 `script` 或 Saved Script Tools。
+轨迹侧栏提供通用 Harness Agent 入口和显式“一键诊断”。打开 run 不会自动运行诊断；只有用户点击后才发送限定证据范围的 Agent Health 提示。Harness 对话支持多会话，并可在 Agent 工作台继续使用。计划任务使用保留会话 `harness-scheduled`，但仍复用同一个 Project AgentChat runtime。
 
 只有用户明确要求，或多个高质量 trajectory 显示稳定复用价值时才创建 Script Tool。不得把凭证、绝对路径、项目正文、模型 thinking、Session ID 或 TaskRef 写入 User State；单个已有工具或 Skill 可以解决时不创建脚本。
 
@@ -598,18 +580,17 @@ internal/agents/scripttools/
 └── tools.go                          # timeout/result policy + assembly
 
 internal/app/continuallearning/
-├── agent_capabilities.go             # root read/update composition
-├── state_update_tool.go              # update_harness_state adapter
-├── service.go                        # shared State operations
+├── agent_capabilities.go             # root read + Harness Project adapters
+├── service.go                        # State inspection and UI operations
 ├── state_history.go                  # Versions/Diff/Restore
-└── optimizer.go                      # same read/update protocol
+└── maintenance.go                    # scheduled turn through Project AgentChat
 ```
 
 已有调用点只做薄连接：
 
-- config：`script`、`harness_state` capability 与 timeout setting。
+- config：`script`、`harness_state` capability、Harness Agent 与 timeout setting。
 - Agent builder：组装当前 Harness 的 Script Tools。
-- application composition：向各 root Agent 注入 Harness adapter/update tool。
+- application composition：向普通 root 注入 Harness read adapter，为 Harness Project 注入 live workspace 与 trajectory adapter。
 - Chat/Run：透传 `ParentCallID` 并投影树。
 
 这些薄改动分布在多种 root Agent 和 writing/game DTO 上，是同一字段穿过现有显式边界，不是新增多个子系统。
@@ -624,7 +605,8 @@ web/src/
 ├── features/agents/harness-state/
 │   ├── HarnessStateEditor.tsx
 │   └── NewScriptToolDialog.tsx
-├── features/agents/ContinualLearningPage.tsx
+├── features/trajectory/HarnessAgentPanel.tsx
+├── features/agent-chat/AgentChatConversationTab.tsx
 └── i18n/locales/{zh-CN,en-US}/
 ```
 
@@ -637,10 +619,10 @@ web/src/
 | Capability | 用户文案 | 作用 |
 | --- | --- | --- |
 | `script` | 脚本编排 / Script orchestration | 即时 `script` |
-| `harness_state` | 用户状态管理 / User State management | `harness://` adapter 与 update tool |
+| `harness_state` | 用户状态管理 / User State management | 普通 root 的 `harness://` read adapter |
 
 - General 与 IDE/写作默认开启；游戏具备相同能力上限但默认关闭，用户可开启。
-- Harness Optimizer 固定启用 `harness_state`，没有 `script`。
+- Harness Agent 使用 General 的工具与模型配置，并额外获得 Harness/trajectory read adapter 与 live State workspace。
 - 两个 capability 都不控制 Saved Script Tool；它由文件的 `enabled/agents` 和 Registry 决定。
 - 设置页提供可选 timeout，并说明 in-process 不是安全沙箱。
 - 共享一级菜单不自动切换写作或游戏模式。
@@ -651,7 +633,7 @@ web/src/
 - New 向导收集 name、英文 description、target Agents 和简单 input fields，生成完整文件模板。
 - Monaco 编辑同一个 frontmatter + JavaScript 文件，不建立 metadata 双事实源。
 - 后端 diagnostics 映射为 editor markers 与 Problems。
-- Save/Delete 继续使用现有 State CAS；冲突不覆盖本地未保存内容。
+- Save/Delete 保留 revision 并发保护，但允许保存暂时无效的内容；diagnostics 明确显示当前 contribution 不会被消费。
 - Versions/Diff/Restore 继续使用现有 history UI。
 - 保存后提示当前 State 已更新；不承诺 active Run 热替换。
 - 用户文案支持中英文、light/dark 与自适应布局。
@@ -733,7 +715,7 @@ Denova integration：
 - General、IDE/写作和游戏从 current Harness 构建。
 - body-only 更新不改变 provider-visible contract。
 - `harness://` manifest、bounded file read、无效 State 修复。
-- update 完整 diagnostics、CAS conflict、零部分写入和独立 permission。
+- unchecked write、revision conflict、完整 diagnostics 与无效 contribution 整体拒绝。
 - builder/recovery 不接受 Harness revision 参数。
 
 UI / trajectory：
@@ -752,16 +734,16 @@ UI / trajectory：
 5. 每个 nested call 经过完整 Tool pipeline。
 6. lifecycle 只增加 `ParentCallID`，Chat 和 Trajectory 呈现同一真实树。
 7. 只有外层脚本结果进入调用方 transcript。
-8. State 读取复用 `read(harness://...)`，写入只用 `update_harness_state`。
-9. State 更新完整校验并 CAS；失败零写入。
-10. revision 只用于 CAS；构建与恢复读取 current State，不保存 runtime pin。
-11. 普通根 Agent 仅在用户明确要求并通过独立 permission 后修改 User State。
-12. Optimizer 复用同一 read/update，不建立 draft 或第二套发布协议。
+8. Harness 是稳定 ID 的特殊 Project，workspace 直接使用 live State 目录，并复用标准 AgentChat 多会话。
+9. State 可通过普通文件工具、shell 或 UI 写入；完整 schema 校验移到消费层。
+10. 任一 diagnostic 都使整个 User contribution 不生效，基础 Agent 继续工作，原文件保留供修复。
+11. revision 只用于并发保护；构建与恢复读取 current State，不保存 runtime pin。
+12. 轨迹侧栏只在用户点击后触发 Agent Health 诊断；计划维护复用保留的 Project 会话。
 13. General、IDE/写作和 Interactive Story/游戏均有配置、测试与回归路径。
 
 ## 13. 取舍与参考
 
-明确不采用：Promise/event loop、用户声明 `main`、每工具 JS 方法、Runtime provider interface、script 专用 events、workflow API、Session 工具、Script CRUD、普通文件工具直接写 live State、runtime Harness version pin/archive、`defineTool`、`user_` 前缀、直接 `Tool.Run`、active Run 热注册、全局 Goja Runtime、编辑器 eval 和静态流程预绘制。
+明确不采用：Promise/event loop、用户声明 `main`、每工具 JS 方法、Runtime provider interface、script 专用 events、workflow API、Session 工具、Script CRUD、专用 Harness update tool、写时完整 schema gate、runtime Harness version pin/archive、`defineTool`、`user_` 前缀、直接 `Tool.Run`、active Run 热注册、全局 Goja Runtime、编辑器 eval 和静态流程预绘制。
 
 设计吸收了 sibling repository 中 Code Mode、嵌套调用树和 workflow 的经验，但没有照搬其命名或异步协议：
 

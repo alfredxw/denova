@@ -91,6 +91,18 @@ func (store *Store) Current(ctx context.Context) (Snapshot, error) {
 }
 
 func (store *Store) Update(ctx context.Context, changes ChangeSet) (Result, error) {
+	return store.update(ctx, changes, true)
+}
+
+// Write atomically applies a management change without invoking the State
+// schema validator. Path and revision safety still apply. This supports live
+// workspaces where consumers, rather than editors, accept or reject the whole
+// snapshot.
+func (store *Store) Write(ctx context.Context, changes ChangeSet) (Result, error) {
+	return store.update(ctx, changes, false)
+}
+
+func (store *Store) update(ctx context.Context, changes ChangeSet, validate bool) (Result, error) {
 	if diagnostics := ValidateChanges(changes.Changes); len(diagnostics) != 0 {
 		return Result{}, &ValidationError{Diagnostics: diagnostics}
 	}
@@ -110,8 +122,10 @@ func (store *Store) Update(ctx context.Context, changes ChangeSet) (Result, erro
 		if err != nil {
 			return err
 		}
-		if err := store.validate(ctx, candidate); err != nil {
-			return err
+		if validate {
+			if err := store.validate(ctx, candidate); err != nil {
+				return err
+			}
 		}
 		result, err = store.apply(base, candidate)
 		return err

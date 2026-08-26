@@ -27,6 +27,9 @@ func newPathBoundaryWithAllowedFiles(workspace, cwd string, allowedFiles []strin
 	}
 	current := root
 	if strings.TrimSpace(cwd) != "" {
+		if isForeignAbsolutePath(cwd) {
+			return pathBoundary{}, false
+		}
 		current = filepath.Join(root, filepath.FromSlash(cwd))
 	}
 	current, err = filepath.Abs(current)
@@ -70,6 +73,9 @@ func (boundary pathBoundary) changeDirectory(args []string) (pathBoundary, bool)
 	if len(operands) != 1 || strings.TrimSpace(operands[0]) == "" || operands[0] == "-" {
 		return pathBoundary{}, false
 	}
+	if isForeignAbsolutePath(operands[0]) {
+		return pathBoundary{}, false
+	}
 	candidate := filepath.FromSlash(operands[0])
 	if !filepath.IsAbs(candidate) {
 		candidate = filepath.Join(boundary.cwd, candidate)
@@ -91,6 +97,9 @@ func (boundary pathBoundary) containsLiteral(value string) bool {
 		return true
 	}
 	if strings.HasPrefix(value, "~") || strings.ContainsAny(value, "*?[\x00\r\n") {
+		return false
+	}
+	if isForeignAbsolutePath(value) {
 		return false
 	}
 	candidate := filepath.FromSlash(value)
@@ -132,6 +141,9 @@ func (boundary pathBoundary) isWorkspaceRoot(value string) bool {
 	if value == "" || strings.HasPrefix(value, "~") || strings.ContainsAny(value, "*?[\x00\r\n") {
 		return false
 	}
+	if isForeignAbsolutePath(value) {
+		return false
+	}
 	candidate := filepath.FromSlash(value)
 	if !filepath.IsAbs(candidate) {
 		candidate = filepath.Join(boundary.cwd, candidate)
@@ -144,6 +156,14 @@ func (boundary pathBoundary) isWorkspaceRoot(value string) bool {
 		candidate = canonical
 	}
 	return filepath.Clean(candidate) == filepath.Clean(boundary.workspace)
+}
+
+// filepath follows the host OS, while an explicitly selected shell can use a
+// different path grammar. A path rooted in that foreign grammar is never a
+// relative workspace path and must fail closed.
+func isForeignAbsolutePath(value string) bool {
+	value = strings.TrimSpace(value)
+	return strings.HasPrefix(value, "/") && !filepath.IsAbs(filepath.FromSlash(value))
 }
 
 func withinRoot(root, candidate string) bool {

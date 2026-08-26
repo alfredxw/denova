@@ -37,6 +37,11 @@ func BuildConversationAgent(
 		if err != nil {
 			return BuiltAgent{}, fmt.Errorf("build General Agent Definition: %w", err)
 		}
+	case agentrun.AgentKindHarness:
+		definition, composition, err = agents.BuildHarnessDefinitionWithCompositionForHost(ctx, cfg, host)
+		if err != nil {
+			return BuiltAgent{}, fmt.Errorf("build Harness Agent Definition: %w", err)
+		}
 	case agentrun.AgentKindIDE:
 		definition, composition, err = agents.BuildDefinitionWithCompositionForHost(ctx, cfg, state, teller, host)
 		if err != nil {
@@ -44,21 +49,6 @@ func BuildConversationAgent(
 		}
 	default:
 		return BuiltAgent{}, fmt.Errorf("unsupported conversation Agent kind %q", agentKind)
-	}
-	return BuiltAgent{Definition: definition, Composition: composition}, nil
-}
-
-func BuildHarnessOptimizerAgent(
-	ctx context.Context,
-	cfg *config.Config,
-	host agents.AgentHostCapabilities,
-) (BuiltAgent, error) {
-	host.Interactive = true
-	definition, composition, err := agents.BuildHarnessOptimizerDefinitionWithCompositionForHost(
-		ctx, cfg, host,
-	)
-	if err != nil {
-		return BuiltAgent{}, fmt.Errorf("build Harness Optimizer Definition: %w", err)
 	}
 	return BuiltAgent{Definition: definition, Composition: composition}, nil
 }

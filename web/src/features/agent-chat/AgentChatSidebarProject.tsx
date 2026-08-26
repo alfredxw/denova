@@ -2,7 +2,7 @@ import { useEffect, useState, type CSSProperties } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { useTranslation } from 'react-i18next'
-import { CircleAlert, Bot, ChevronRight, Clock3, Folder, FolderOpen, MoreHorizontal, Pencil, Pin, PinOff, Plus } from 'lucide-react'
+import { CircleAlert, Bot, ChevronRight, Clock3, Folder, FolderOpen, MoreHorizontal, Pencil, Pin, PinOff, Plus, Stethoscope } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -99,6 +99,10 @@ export function AgentChatSidebarProject({
     transform: CSS.Transform.toString(transform),
     transition,
   }
+  const managedProject = project.type === 'harness'
+  let ProjectIcon = expanded ? FolderOpen : Folder
+  if (project.type === 'general') ProjectIcon = Bot
+  if (managedProject) ProjectIcon = Stethoscope
 
   return (
     <div ref={setNodeRef} style={style} className={`mb-1 ${isDragging ? 'relative z-20 opacity-80' : ''}`}>
@@ -137,13 +141,7 @@ export function AgentChatSidebarProject({
                     !hasExpandableContent && 'invisible',
                   )}
                 />
-                {project.type === 'general' ? (
-                  <Bot className={cn('size-3.5 shrink-0', active ? 'text-[var(--nova-accent)]' : 'text-[var(--nova-text-muted)]')} />
-                ) : expanded ? (
-                  <FolderOpen className={cn('size-3.5 shrink-0', active ? 'text-[var(--nova-accent)]' : 'text-[var(--nova-text-muted)]')} />
-                ) : (
-                  <Folder className={cn('size-3.5 shrink-0', active ? 'text-[var(--nova-accent)]' : 'text-[var(--nova-text-muted)]')} />
-                )}
+                <ProjectIcon className={cn('size-3.5 shrink-0', active ? 'text-[var(--nova-accent)]' : 'text-[var(--nova-text-muted)]')} />
                 <span className="min-w-0 flex-1 truncate text-xs font-medium text-[var(--nova-text)]">{name}</span>
                 {project.status === 'missing' ? (
                   <CircleAlert className="size-3 shrink-0 text-[var(--nova-warning)]" aria-label={t('agentChat.project.missing')} />
@@ -175,15 +173,21 @@ export function AgentChatSidebarProject({
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="min-w-36">
-                  <DropdownMenuItem onSelect={onRename}>{t('agentChat.project.rename')}</DropdownMenuItem>
-                  <DropdownMenuItem onSelect={onRelink}>{t('agentChat.project.relink')}</DropdownMenuItem>
+                  {!managedProject ? (
+                    <>
+                      <DropdownMenuItem onSelect={onRename}>{t('agentChat.project.rename')}</DropdownMenuItem>
+                      <DropdownMenuItem onSelect={onRelink}>{t('agentChat.project.relink')}</DropdownMenuItem>
+                    </>
+                  ) : null}
                   <DropdownMenuItem onSelect={onTogglePinned}>
                     {pinned ? <PinOff /> : <Pin />}
                     {t(pinned ? 'agentChat.sidebar.unpinProject' : 'agentChat.sidebar.pinProject')}
                   </DropdownMenuItem>
-                  <DropdownMenuItem className="text-[var(--nova-danger)]" onSelect={onArchive}>
-                    {t('agentChat.project.archive')}
-                  </DropdownMenuItem>
+                  {!managedProject ? (
+                    <DropdownMenuItem className="text-[var(--nova-danger)]" onSelect={onArchive}>
+                      {t('agentChat.project.archive')}
+                    </DropdownMenuItem>
+                  ) : null}
                 </DropdownMenuContent>
               </DropdownMenu>
               <Button
@@ -201,18 +205,22 @@ export function AgentChatSidebarProject({
           </ContextMenuTrigger>
         </AgentChatProjectDetailsCard>
         <ContextMenuContent className="min-w-40">
-          <ContextMenuItem onSelect={onRename}>
-            <Pencil />
-            {t('agentChat.project.rename')}
-          </ContextMenuItem>
-          <ContextMenuItem onSelect={onRelink}>{t('agentChat.project.relink')}</ContextMenuItem>
+          {!managedProject ? (
+            <ContextMenuItem onSelect={onRename}>
+              <Pencil />
+              {t('agentChat.project.rename')}
+            </ContextMenuItem>
+          ) : null}
+          {!managedProject ? <ContextMenuItem onSelect={onRelink}>{t('agentChat.project.relink')}</ContextMenuItem> : null}
           <ContextMenuItem onSelect={onTogglePinned}>
             {pinned ? <PinOff /> : <Pin />}
             {t(pinned ? 'agentChat.sidebar.unpinProject' : 'agentChat.sidebar.pinProject')}
           </ContextMenuItem>
-          <ContextMenuItem variant="destructive" onSelect={onArchive}>
-            {t('agentChat.project.archive')}
-          </ContextMenuItem>
+          {!managedProject ? (
+            <ContextMenuItem variant="destructive" onSelect={onArchive}>
+              {t('agentChat.project.archive')}
+            </ContextMenuItem>
+          ) : null}
         </ContextMenuContent>
       </ContextMenu>
 

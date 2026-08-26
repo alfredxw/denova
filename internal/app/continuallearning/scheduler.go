@@ -30,9 +30,8 @@ type scheduleRecord struct {
 	LastTaskID  string    `json:"last_task_id,omitempty"`
 }
 
-// StartScheduler starts the user-level periodic trigger. Manual and scheduled
-// learning converge on StartTask, so live-State validation and Git history
-// recording are identical.
+// StartScheduler starts the user-level periodic trigger. Scheduled maintenance
+// runs in the same Harness Project conversation runtime as interactive work.
 func (service *Service) StartScheduler(ctx context.Context) {
 	if service == nil || service.host == nil {
 		return
@@ -48,7 +47,7 @@ func (service *Service) StartScheduler(ctx context.Context) {
 			defer close(service.schedulerDone)
 			defer func() {
 				if recovered := recover(); recovered != nil {
-					slog.Error("[harness-optimizer-scheduler] panic recovered", "panic", recovered)
+					slog.Error("[harness-scheduler] panic recovered", "panic", recovered)
 				}
 			}()
 			service.runScheduleTick(schedulerCtx, time.Now().UTC())
@@ -104,28 +103,25 @@ func (service *Service) runScheduleTick(ctx context.Context, now time.Time) {
 		return
 	}
 	if err := service.initialize(); err != nil {
-		slog.WarnContext(ctx, "[harness-optimizer-scheduler] initialize failed", "error", err)
+		slog.WarnContext(ctx, "[harness-scheduler] initialize failed", "error", err)
 		return
 	}
 	service.scheduleMu.Lock()
 	defer service.scheduleMu.Unlock()
 	record, err := service.readScheduleRecordUnlocked()
 	if err != nil {
-		slog.WarnContext(ctx, "[harness-optimizer-scheduler] read state failed", "error", err)
+		slog.WarnContext(ctx, "[harness-scheduler] read state failed", "error", err)
 		return
 	}
 	interval := time.Duration(labs.ContinualLearningIntervalHours) * time.Hour
 	if !record.LastAttempt.IsZero() && now.Sub(record.LastAttempt) < interval {
 		return
 	}
-	if task := service.ActiveTask(); task != nil && !task.Finished() {
-		return
-	}
 	bucket := now.Unix() / int64(interval/time.Second)
 	record.LastAttempt = now
 	record.LastTaskID = ""
 	if err := service.writeScheduleRecordUnlocked(record); err != nil {
-		slog.WarnContext(ctx, "[harness-optimizer-scheduler] persist attempt failed", "error", err)
+		slog.WarnContext(ctx, "[harness-scheduler] persist attempt failed", "error", err)
 		return
 	}
 	task, err := service.StartTask(ctx, Request{
@@ -133,13 +129,13 @@ func (service *Service) runScheduleTick(ctx context.Context, now time.Time) {
 	})
 	if err != nil {
 		if !errors.Is(err, ErrDisabled) {
-			slog.WarnContext(ctx, "[harness-optimizer-scheduler] start failed", "error", err)
+			slog.WarnContext(ctx, "[harness-scheduler] start failed", "error", err)
 		}
 		return
 	}
 	record.LastTaskID = task.ID()
 	if err := service.writeScheduleRecordUnlocked(record); err != nil {
-		slog.WarnContext(ctx, "[harness-optimizer-scheduler] persist attempt failed", "task_id", task.ID(), "error", err)
+		slog.WarnContext(ctx, "[harness-scheduler] persist attempt failed", "task_id", task.ID(), "error", err)
 	}
 	go service.observeScheduledTask(ctx, task, now)
 }
@@ -147,7 +143,7 @@ func (service *Service) runScheduleTick(ctx context.Context, now time.Time) {
 func (service *Service) observeScheduledTask(ctx context.Context, task *apptask.Task, attemptedAt time.Time) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			slog.Error("[harness-optimizer-scheduler] observer panic recovered", "panic", recovered)
+			slog.Error("[harness-scheduler] observer panic recovered", "panic", recovered)
 		}
 	}()
 	select {
@@ -166,7 +162,7 @@ func (service *Service) observeScheduledTask(ctx context.Context, task *apptask.
 	}
 	record.LastSuccess = attemptedAt
 	if err := service.writeScheduleRecordUnlocked(record); err != nil {
-		slog.WarnContext(ctx, "[harness-optimizer-scheduler] persist success failed", "task_id", task.ID(), "error", err)
+		slog.WarnContext(ctx, "[harness-scheduler] persist success failed", "task_id", task.ID(), "error", err)
 	}
 }
 
@@ -186,7 +182,7 @@ func (service *Service) readScheduleRecordUnlocked() (scheduleRecord, error) {
 	}
 	var record scheduleRecord
 	if err := json.Unmarshal(content, &record); err != nil {
-		return scheduleRecord{}, fmt.Errorf("decode Harness Optimizer schedule state: %w", err)
+		return scheduleRecord{}, fmt.Errorf("decode Harness schedule state: %w", err)
 	}
 	return record, nil
 }

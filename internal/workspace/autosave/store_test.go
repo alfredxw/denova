@@ -36,14 +36,14 @@ func TestStoreAppendPersistsPrivateAtomicRecord(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stat conflict directory: %v", err)
 	}
-	if got := dirInfo.Mode().Perm(); got != 0o700 {
+	if got := dirInfo.Mode().Perm(); runtime.GOOS != "windows" && got != 0o700 {
 		t.Fatalf("conflict directory mode = %o, want 700", got)
 	}
 	fileInfo, err := os.Stat(result.Path)
 	if err != nil {
 		t.Fatalf("stat conflict record: %v", err)
 	}
-	if got := fileInfo.Mode().Perm(); got != 0o600 {
+	if got := fileInfo.Mode().Perm(); runtime.GOOS != "windows" && got != 0o600 {
 		t.Fatalf("conflict record mode = %o, want 600", got)
 	}
 

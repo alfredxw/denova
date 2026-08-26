@@ -2,12 +2,14 @@ package app
 
 import (
 	"context"
+	"log/slog"
 
 	"denova/config"
 	agents "denova/internal/agents"
 	agentexecution "denova/internal/agents/execution"
 	agenttool "denova/internal/agents/tool"
 	"denova/internal/book"
+	projectdomain "denova/internal/project"
 )
 
 // agentChatHost is the narrow composition adapter between the project-scoped
@@ -49,13 +51,17 @@ func (host agentChatHost) CurrentWorkspace() string {
 	return host.app.workspace
 }
 
-func (host agentChatHost) HarnessAgentHostCapabilities(
+func (host agentChatHost) ProjectAgentHostCapabilities(
 	ctx context.Context,
+	projectType projectdomain.Type,
 	cfg *config.Config,
 	agentKind string,
 ) (agents.AgentHostCapabilities, error) {
 	if host.app == nil {
 		return agents.AgentHostCapabilities{}, nil
+	}
+	if projectType == projectdomain.TypeHarness {
+		return host.app.ContinualLearning().HarnessProjectAgentHostCapabilities(ctx, cfg, agentKind)
 	}
 	return host.app.HarnessAgentHostCapabilities(ctx, cfg, agentKind)
 }
@@ -74,4 +80,9 @@ func (host agentChatHost) OnVerifiedMutations(
 	host.app.verifiedWorkspaceMutationCallback(
 		source, versionService, versionAutoSettingsForConfig(&cfg),
 	)(ctx, mutations, verification)
+	if cfg.ProjectID == projectdomain.HarnessProjectID && len(mutations) > 0 {
+		if err := host.app.ContinualLearning().RecordCurrentState(ctx, "Harness Agent update"); err != nil {
+			slog.WarnContext(ctx, "[harness-state] live Agent changes were not recorded as a valid version", "error", err)
+		}
+	}
 }

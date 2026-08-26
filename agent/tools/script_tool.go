@@ -14,8 +14,7 @@ import (
 )
 
 const (
-	ScriptToolName         = "script"
-	HarnessStateUpdateTool = "update_harness_state"
+	ScriptToolName = "script"
 )
 
 // ScriptConfig controls the Tool wrapper. Engine owns source/output limits;
@@ -294,8 +293,6 @@ func blockedScriptHostCall(call agentscript.Call) string {
 	switch strings.TrimSpace(call.Name) {
 	case ScriptToolName:
 		return "Scripts cannot invoke the immediate script tool."
-	case HarnessStateUpdateTool:
-		return "Scripts cannot modify User Harness State."
 	case "read":
 		var input struct {
 			Path string `json:"path"`

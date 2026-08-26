@@ -60,6 +60,32 @@ func TestRegistryKeepsStableProjectIdentityAcrossMetadataAndPathChanges(t *testi
 	}
 }
 
+func TestEnsureHarnessRegistersOneManagedProject(t *testing.T) {
+	denovaDir := t.TempDir()
+	harnessRoot := filepath.Join(denovaDir, "state")
+	if err := os.MkdirAll(harnessRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	registry := NewRegistry(denovaDir)
+	first, err := registry.EnsureHarness(harnessRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := registry.EnsureHarness(harnessRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.ID != HarnessProjectID || second.ID != first.ID || second.Type != TypeHarness || second.Name != "Harness" {
+		t.Fatalf("unexpected Harness Project: first=%#v second=%#v", first, second)
+	}
+	if _, err := registry.Rename(first.ID, "Renamed"); err == nil {
+		t.Fatal("managed Harness Project should not be renamed")
+	}
+	if _, err := registry.Archive(first.ID); err == nil {
+		t.Fatal("managed Harness Project should not be archived")
+	}
+}
+
 func TestRegistryDoesNotExposeDenovaRootUnlessExplicitlyAdded(t *testing.T) {
 	denovaDir := t.TempDir()
 	registry := NewRegistry(denovaDir)

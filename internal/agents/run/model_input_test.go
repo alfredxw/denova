@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -400,10 +401,12 @@ func TestAppendModelInputLogKeepsOnlyRecentLines(t *testing.T) {
 	if !bytes.Contains(lines[0], []byte(`"seq":2`)) || !bytes.Contains(lines[len(lines)-1], []byte(`"seq":11`)) {
 		t.Fatalf("unexpected retained range: first=%s last=%s", lines[0], lines[len(lines)-1])
 	}
-	if info, err := os.Stat(modelInputLogPath); err != nil || info.Mode().Perm() != 0o600 {
-		t.Fatalf("model input log mode = %v err=%v, want 0600", infoMode(info), err)
-	}
-	if info, err := os.Stat(filepath.Dir(modelInputLogPath)); err != nil || info.Mode().Perm() != 0o700 {
-		t.Fatalf("model input log directory mode = %v err=%v, want 0700", infoMode(info), err)
+	if runtime.GOOS != "windows" {
+		if info, err := os.Stat(modelInputLogPath); err != nil || info.Mode().Perm() != 0o600 {
+			t.Fatalf("model input log mode = %v err=%v, want 0600", infoMode(info), err)
+		}
+		if info, err := os.Stat(filepath.Dir(modelInputLogPath)); err != nil || info.Mode().Perm() != 0o700 {
+			t.Fatalf("model input log directory mode = %v err=%v, want 0700", infoMode(info), err)
+		}
 	}
 }

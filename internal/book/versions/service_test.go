@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"testing"
 	"time"
@@ -587,6 +588,9 @@ func TestGoGitVersionRestorePublicLorePath(t *testing.T) {
 }
 
 func TestGoGitVersionRestorePathsRejectsSymlinkEscape(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("requires optional Windows symlink privileges")
+	}
 	dir := t.TempDir()
 	service := newVersionTestService(t, dir)
 	settings := DefaultAutoSettings()

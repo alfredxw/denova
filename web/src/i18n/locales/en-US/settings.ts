@@ -338,7 +338,7 @@ const settings = {
   'settings.section.labs': 'Labs',
   'settings.labs.sectionTitle': 'Experimental features',
   'settings.labs.developerMode': 'Developer Mode',
-  'settings.labs.developerModeHint': 'Enables the global Trajectory and Harness workspace in Writing and Game modes, complete local Run capture, User Harness State, Harness Optimizer, and scheduled optimization. Captured model-visible content can include sensitive project data and follows trace retention.',
+  'settings.labs.developerModeHint': 'Enables the global Trajectory and Harness workspace in Writing and Game modes, complete local Run capture, User Harness State, Harness Agent, and scheduled maintenance. Captured model-visible content can include sensitive project data and follows trace retention.',
   'settings.labs.continualLearningSchedule': 'Scheduled optimization',
   'settings.labs.continualLearningIntervalHours': 'Optimization interval (hours)',
   'settings.labs.continualLearningTrajectoryCap': 'Global trajectory read limit',

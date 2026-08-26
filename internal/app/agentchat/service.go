@@ -233,6 +233,11 @@ func (service *Service) ResolveBinding(binding Binding) (Binding, error) {
 		binding.agentKind = agentrun.AgentKindIDE
 	case projectdomain.TypeGeneral:
 		binding.agentKind = agentrun.AgentKindGeneral
+	case projectdomain.TypeHarness:
+		if !service.harnessProjectsEnabled() {
+			return Binding{}, fmt.Errorf("Harness Project requires Developer Mode / Harness Project 需要开发者模式")
+		}
+		binding.agentKind = agentrun.AgentKindHarness
 	default:
 		return Binding{}, fmt.Errorf("unsupported project type %q", record.Type)
 	}
@@ -289,7 +294,9 @@ func (service *Service) projectRuntime(ctx context.Context, projectID string) (*
 	var state *book.State
 	var versionService *book.VersionService
 	agentKind := agentrun.AgentKindGeneral
-	if record.Type == projectdomain.TypeBook {
+	switch record.Type {
+	case projectdomain.TypeBook:
+		agentKind = agentrun.AgentKindIDE
 		state = book.NewState(workspace)
 		if err := changes.WithExclusiveWorkspace(ctx, state.InitWorkspace); err != nil {
 			return nil, err
@@ -298,7 +305,12 @@ func (service *Service) projectRuntime(ctx context.Context, projectID string) (*
 		if err != nil {
 			return nil, fmt.Errorf("resolve shared Project version service: %w", err)
 		}
-		agentKind = agentrun.AgentKindIDE
+	case projectdomain.TypeGeneral:
+		agentKind = agentrun.AgentKindGeneral
+	case projectdomain.TypeHarness:
+		agentKind = agentrun.AgentKindHarness
+	default:
+		return nil, fmt.Errorf("unsupported project type %q", record.Type)
 	}
 	store, err := service.projectSessionStore(record.ID, layout.SessionsDir(), true)
 	if err != nil {

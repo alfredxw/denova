@@ -35,7 +35,7 @@ export function TrajectoryRunList({ runs, selectedRunURI, onSelect }: Trajectory
   }, [selectedSessionKey])
 
   return (
-    <aside className="min-h-0 overflow-auto border-b border-[var(--nova-border)] bg-[var(--nova-surface-2)] md:border-r md:border-b-0" aria-label={t('trajectory.runs.title')}>
+    <aside className="h-full min-h-0 overflow-auto bg-[var(--nova-surface-2)]" aria-label={t('trajectory.runs.title')}>
       <div className="sticky top-0 z-10 flex h-9 items-center border-b border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--nova-text-muted)]">
         {t('trajectory.runs.title')}<span className="ml-1 font-mono text-[var(--nova-text-faint)]">{runs.length}</span>
         <div className="ml-auto flex items-center gap-0.5 rounded-md border border-[var(--nova-border)] p-0.5" role="group" aria-label={t('trajectory.runs.organization')}>
@@ -61,7 +61,7 @@ export function TrajectoryRunList({ runs, selectedRunURI, onSelect }: Trajectory
           </Button>
         </div>
       </div>
-      <div className="flex gap-1 overflow-x-auto p-2 md:block md:space-y-1 md:overflow-x-hidden">
+      <div className="space-y-1 overflow-x-hidden p-2">
         {organization === 'run'
           ? runs.map((run) => (
               <RunListItem key={run.trajectory_uri} run={run} selected={selectedRunURI === run.trajectory_uri} onSelect={onSelect} />
@@ -72,7 +72,7 @@ export function TrajectoryRunList({ runs, selectedRunURI, onSelect }: Trajectory
               const sessionLabel = group.sessionID || t('trajectory.runs.noSession')
               const sessionTitle = group.sessionTitle || sessionLabel
               return (
-                <div key={group.key} className="w-72 shrink-0 md:w-full">
+                <div key={group.key} className="w-full">
                   <button
                     type="button"
                     className={cn(
@@ -138,8 +138,7 @@ function RunListItem({
       onClick={() => onSelect(run.trajectory_uri)}
       aria-current={selected ? 'true' : undefined}
       className={cn(
-        'shrink-0 rounded-[var(--nova-radius)] border border-transparent px-2.5 py-2 text-left transition-colors focus-visible:bg-[var(--nova-hover)] focus-visible:outline-none',
-        grouped ? 'w-full' : 'w-72 md:w-full',
+        'w-full rounded-[var(--nova-radius)] border border-transparent px-2.5 py-2 text-left transition-colors focus-visible:bg-[var(--nova-hover)] focus-visible:outline-none',
         selected ? 'bg-[var(--nova-active)]' : 'hover:bg-[var(--nova-surface)]',
       )}
     >

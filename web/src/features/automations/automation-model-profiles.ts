@@ -1,4 +1,5 @@
 import { modelProfileID, modelProfileLabel, modelProfilesWithDefault } from '@/features/settings/model-profiles'
+import type { AgentChatProjectType } from '@/features/agent-chat/api'
 import type { ModelProfileSettings, Settings } from '@/features/settings/types'
 
 type Translate = (key: string, options?: Record<string, unknown>) => string
@@ -15,9 +16,9 @@ export function buildAutomationModelProfileOptions(settings: Settings | null, se
   }))
 }
 
-export function inheritedAutomationModelProfileLabel(settings: Settings | null, projectType: 'book' | 'general', t: Translate) {
+export function inheritedAutomationModelProfileLabel(settings: Settings | null, projectType: AgentChatProjectType, t: Translate) {
   const labels = modelProfileLabels(settings, t)
-  const inheritedID = (projectType === 'general' ? settings?.agent_models?.general?.profile_id : settings?.agent_models?.ide?.profile_id)
+  const inheritedID = (projectType === 'book' ? settings?.agent_models?.ide?.profile_id : settings?.agent_models?.general?.profile_id)
     || settings?.agent_models?.default?.profile_id
     || 'default'
   return labels.get(inheritedID) || t('automations.model.unknownProfile', { id: inheritedID })

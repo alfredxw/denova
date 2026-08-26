@@ -21,7 +21,7 @@
 - 所有注入模型的提示词、上下文片段、工具描述、schema 描述和模型可见工具反馈统一使用英文，不得中英双语重复；仅面向用户的本地化交互保留中英双语。
 - Denova 内置的模型可见内容保持产品中立，不得提及或类比其他 Agent 产品、CLI 或品牌；对照研究只保留在明确的审计文档中。
 - 影响模型上下文相关设计的改动必须将缓存命中率（即前缀匹配）放在高优先级考虑事项。
-- 所有注入模型的片段都要有明确来源、用途、需要注意硬上限需要配置高一些（&gt;50KB），避免随意截断。
+- 所有注入模型的片段都要有明确来源、用途、需要注意硬上限需要配置高一些，避免随意截断。
 - Do not preserve backward compatibility for internal APIs or unreleased formats. Protect user data from the latest release, using a small explicit migration only when necessary.
 - Choose the simplest implementation that fully meets the current requirements. Avoid speculative abstractions, configuration, and indirection.
 - Grow the system in layers. Start from the smallest version that works end to end, and add each new capability on top of a product that already works. Never trade a working product for unfinished complexity.

@@ -198,7 +198,6 @@ func TestHarnessStateUsesDedicatedCrossProjectApproval(t *testing.T) {
 	}{
 		{name: `manifest`, want: agent.PermissionAllow},
 		{name: `file`, want: agent.PermissionAsk},
-		{name: `update`, want: agent.PermissionAsk},
 	}
 	for _, test := range requests {
 		var request agent.PermissionRequest
@@ -207,8 +206,6 @@ func TestHarnessStateUsesDedicatedCrossProjectApproval(t *testing.T) {
 			request = agent.PermissionRequest{Tool: "read", Arguments: json.RawMessage(`{"path":"harness://state/current"}`)}
 		case "file":
 			request = agent.PermissionRequest{Tool: "read", Arguments: json.RawMessage(`{"path":"harness://state/tools/a.js"}`)}
-		case "update":
-			request = agent.PermissionRequest{Tool: "update_harness_state", Arguments: json.RawMessage(`{"base_revision":"r","changes":[]}`)}
 		}
 		decision, err := userPolicy.Evaluate(context.Background(), request)
 		if err != nil || decision.Kind != test.want {
@@ -216,17 +213,17 @@ func TestHarnessStateUsesDedicatedCrossProjectApproval(t *testing.T) {
 		}
 	}
 
-	optimizer, err := NewPermissionPolicy(PermissionConfig{
-		Mode: config.AgentApprovalAsk, AgentKind: config.AgentKindHarnessOptimizer,
+	harnessProject, err := NewPermissionPolicy(PermissionConfig{
+		Mode: config.AgentApprovalAsk, AgentKind: config.AgentKindHarness,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	decision, err := optimizer.Evaluate(context.Background(), agent.PermissionRequest{
-		Tool: "update_harness_state", Arguments: json.RawMessage(`{"base_revision":"r","changes":[]}`),
+	decision, err := harnessProject.Evaluate(context.Background(), agent.PermissionRequest{
+		Tool: "read", Arguments: json.RawMessage(`{"path":"harness://state/tools/a.js"}`),
 	})
 	if err != nil || decision.Kind != agent.PermissionAllow {
-		t.Fatalf("optimizer decision=%#v err=%v", decision, err)
+		t.Fatalf("Harness Project decision=%#v err=%v", decision, err)
 	}
 }
 

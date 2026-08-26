@@ -338,7 +338,7 @@ const settings = {
   'settings.section.labs': '实验功能',
   'settings.labs.sectionTitle': '实验功能开关',
   'settings.labs.developerMode': '开发者模式',
-  'settings.labs.developerModeHint': '统一开启写作和游戏模式的全局“轨迹 / Harness”工作区、完整本地 Run 采集、用户 Harness State、Harness Optimizer 与定时优化。采集的模型可见内容可能包含敏感项目数据，并按轨迹保留策略清理。',
+  'settings.labs.developerModeHint': '统一开启写作和游戏模式的全局“轨迹 / Harness”工作区、完整本地 Run 采集、用户 Harness State、Harness Agent 与定时维护。采集的模型可见内容可能包含敏感项目数据，并按轨迹保留策略清理。',
   'settings.labs.continualLearningSchedule': '定时优化',
   'settings.labs.continualLearningIntervalHours': '优化间隔（小时）',
   'settings.labs.continualLearningTrajectoryCap': '全局 trajectory 读取条数上限',

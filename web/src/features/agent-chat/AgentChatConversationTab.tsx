@@ -12,7 +12,7 @@ import { createProjectAgentChatClient } from '@/hooks/agent-chat-client'
 
 interface AgentChatConversationTabProps {
   projectId: string
-  projectType: 'book' | 'general'
+  projectType: 'book' | 'general' | 'harness'
   workspace: string
   sessionId: string
   /** Changes when an external owner starts or settles a turn in this durable conversation. */
@@ -31,6 +31,12 @@ interface AgentChatConversationTabProps {
   onWorkspaceChanged?: (workspace: string, paths: string[], metadata: WorkspaceChangeMetadata) => void | Promise<void>
   onRunningChange?: (projectID: string, sessionId: string, running: boolean | null) => void
   onDraftCommitted?: (message: string) => void
+  pendingAction?: {
+    id: string
+    message: string
+    displayMessage: string
+  } | null
+  onPendingActionConsumed?: (id: string) => void
 }
 
 /**
@@ -59,6 +65,8 @@ function AgentChatConversationTabComponent({
   onWorkspaceChanged,
   onRunningChange,
   onDraftCommitted,
+  pendingAction,
+  onPendingActionConsumed,
 }: AgentChatConversationTabProps) {
   const client = useMemo(() => createProjectAgentChatClient(projectId, sessionId), [projectId, sessionId])
   const chat = useAgentChat({
@@ -78,6 +86,7 @@ function AgentChatConversationTabComponent({
   const observedSyncRevisionRef = useRef(syncRevision)
   const [initialContentReady, setInitialContentReady] = useState(draft)
   const mountedRef = useRef(false)
+  const submittedActionRef = useRef('')
 
   useEffect(() => {
     mountedRef.current = true
@@ -139,6 +148,13 @@ function AgentChatConversationTabComponent({
   )
 
   useEffect(() => {
+    if (!pendingAction || !initialContentReady || chat.isExecutionActive || submittedActionRef.current === pendingAction.id) return
+    submittedActionRef.current = pendingAction.id
+    onPendingActionConsumed?.(pendingAction.id)
+    void send(pendingAction.message, { displayMessage: pendingAction.displayMessage })
+  }, [chat.isExecutionActive, initialContentReady, onPendingActionConsumed, pendingAction, send])
+
+  useEffect(() => {
     onRunningChange?.(projectId, sessionId, chat.isExecutionActive)
   }, [chat.isExecutionActive, onRunningChange, projectId, sessionId])
 
@@ -153,7 +169,7 @@ function AgentChatConversationTabComponent({
     <AgentPanel
       projectId={projectId}
       active={active}
-      agentKind={projectType === 'general' ? 'general' : 'writing'}
+      agentKind={projectType === 'book' ? 'writing' : 'general'}
       workspace={workspace}
       chrome="workbench"
       initializing={!initialContentReady}

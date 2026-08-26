@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -660,11 +661,13 @@ func TestRunLedgerPersistsOnlyContentFreeTelemetry(t *testing.T) {
 		!strings.Contains(encoded, `"cache_miss_reason":"provider_cached_prefix_zero_or_unreported"`) {
 		t.Fatalf("safe maintenance telemetry was not retained:\n%s", encoded)
 	}
-	if info, err := os.Stat(ledger.Path()); err != nil || info.Mode().Perm() != 0o600 {
-		t.Fatalf("ledger mode = %v err=%v, want 0600", infoMode(info), err)
-	}
-	if info, err := os.Stat(filepath.Dir(ledger.Path())); err != nil || info.Mode().Perm() != 0o700 {
-		t.Fatalf("ledger directory mode = %v err=%v, want 0700", infoMode(info), err)
+	if runtime.GOOS != "windows" {
+		if info, err := os.Stat(ledger.Path()); err != nil || info.Mode().Perm() != 0o600 {
+			t.Fatalf("ledger mode = %v err=%v, want 0600", infoMode(info), err)
+		}
+		if info, err := os.Stat(filepath.Dir(ledger.Path())); err != nil || info.Mode().Perm() != 0o700 {
+			t.Fatalf("ledger directory mode = %v err=%v, want 0700", infoMode(info), err)
+		}
 	}
 }
 

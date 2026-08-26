@@ -52,16 +52,18 @@ func ComposeGeneralInstruction(cfg *config.Config) (SystemPromptComposition, err
 	)
 }
 
-func ComposeHarnessOptimizerInstruction(cfg *config.Config) (SystemPromptComposition, error) {
+// ComposeHarnessInstruction assembles the system-managed Harness Project
+// Agent workflow. The live Harness State directory is its ordinary workspace.
+func ComposeHarnessInstruction(cfg *config.Config) (SystemPromptComposition, error) {
 	workspace := ""
 	if cfg != nil {
 		workspace = cfg.Workspace
 	}
 	return ComposeBuiltinSystemInstruction(
-		cfg, config.AgentKindHarnessOptimizer, "harness_optimizer", workspace,
-		"harness_optimizer_builtin", "Harness Optimizer",
-		"analyze trajectory evidence and submit minimal validated User Harness State changes",
-		staticPromptAsset(harnessOptimizerWorkflowAsset),
+		cfg, config.AgentKindHarness, "harness", workspace,
+		"harness_builtin", "Harness Agent workflow",
+		"inspect trajectory evidence and maintain the live Harness State workspace",
+		staticPromptAsset(harnessAgentWorkflowAsset),
 	)
 }
 

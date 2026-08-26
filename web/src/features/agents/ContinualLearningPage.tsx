@@ -107,7 +107,7 @@ export function ContinualLearningPage({
 
   useEffect(() => {
     void load(selectedPath)
-    // refreshToken signals that a Harness Optimizer run settled and the live
+    // refreshToken signals that a Harness Agent run settled and the live
     // directory plus Git-backed management history should be reloaded.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshToken])

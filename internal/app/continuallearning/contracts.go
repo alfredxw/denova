@@ -10,19 +10,15 @@ import (
 	"time"
 
 	"denova/config"
-	agentexecution "denova/internal/agents/execution"
 	"denova/internal/agents/trajectory"
+	apptask "denova/internal/app/task"
 
 	agentstate "github.com/alfredxw/denova/agent/state"
 )
 
 const (
-	RuntimeMode        = "harness_optimizer"
-	TriggerManual      = "manual"
-	TriggerScheduled   = "scheduled"
-	userScope          = "user"
-	restoreDataType    = "denova.harness_optimizer.request"
-	restoreDataVersion = 2
+	TriggerManual    = "manual"
+	TriggerScheduled = "scheduled"
 )
 
 type Outcome = trajectory.Outcome
@@ -57,19 +53,20 @@ type StateUpdateResult struct {
 }
 
 type Runtime struct {
-	Config    config.Config
-	Execution *agentexecution.Runtime
-}
-
-type Operation interface {
-	Context() context.Context
-	Release()
+	Config config.Config
 }
 
 type Host interface {
 	Runtime() Runtime
-	AcquireRootOperation(context.Context) (Operation, error)
 	TrajectorySources(context.Context) ([]trajectory.Source, error)
+	StartHarnessTurn(context.Context, HarnessTurnRequest) (*apptask.Task, error)
+}
+
+type HarnessTurnRequest struct {
+	CommandID string
+	SessionID string
+	Message   string
+	Locale    string
 }
 
 type Request struct {

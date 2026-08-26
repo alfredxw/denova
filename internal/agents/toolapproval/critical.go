@@ -161,7 +161,7 @@ func matchCriticalCommand(command, toolName, goos string) *Decision {
 			return &result
 		}
 	}
-	if toolName == "pwsh" || goos == "windows" {
+	if usesPowerShell(toolName, goos) {
 		if decision := criticalPowerShellCommand(normalized); decision != nil {
 			return decision
 		}

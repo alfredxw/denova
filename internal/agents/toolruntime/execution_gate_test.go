@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -149,6 +150,9 @@ func TestToolExecutionGateCanceledWaiterDoesNotStartEndpoint(t *testing.T) {
 }
 
 func TestToolExecutionGateCanonicalizesWorkspaceSymlink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("requires optional Windows symlink privileges")
+	}
 	workspace := t.TempDir()
 	link := filepath.Join(t.TempDir(), "workspace-link")
 	if err := os.Symlink(workspace, link); err != nil {

@@ -60,7 +60,7 @@ func RuntimeBindingFromAgentSessionKey(key agent.SessionKey) (RuntimeBinding, er
 		binding.AgentKind, binding.Mode = AgentKindIDE, bindingProfileAgentChat
 	case kind == bindingKindProject && profile == bindingProfileAgentChat:
 		binding.AgentKind = attribute(bindingLabelAgentKind)
-		if binding.AgentKind != AgentKindIDE && binding.AgentKind != AgentKindGeneral {
+		if binding.AgentKind != AgentKindIDE && binding.AgentKind != AgentKindGeneral && binding.AgentKind != AgentKindHarness {
 			return RuntimeBinding{}, fmt.Errorf("%w: unsupported project Agent kind %q", ErrInvalidBinding, binding.AgentKind)
 		}
 		binding.Mode = bindingProfileAgentChat
@@ -68,8 +68,6 @@ func RuntimeBindingFromAgentSessionKey(key agent.SessionKey) (RuntimeBinding, er
 		binding.AgentKind = AgentKindInteractiveStory
 	case kind == bindingKindWriting && profile == bindingProfileConfigManager:
 		binding.AgentKind = AgentKindConfigManager
-	case kind == bindingKindUser && profile == bindingProfileHarnessOptimizer:
-		binding.AgentKind = AgentKindHarnessOptimizer
 	case kind == bindingKindWriting && profile == bindingProfileImage:
 		binding.AgentKind = AgentKindImage
 	case kind == bindingKindAutomation && profile == bindingProfileAutomation:

@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -110,6 +112,13 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 		return nil, ErrAgentDataDirRequired
 	}
 	registry := projectdomain.NewRegistry(dataDir)
+	harnessRoot := filepath.Join(dataDir, "state")
+	if err := os.MkdirAll(harnessRoot, 0o700); err != nil {
+		return nil, fmt.Errorf("initialize Harness Project directory: %w", err)
+	}
+	if _, err := registry.EnsureHarness(harnessRoot); err != nil {
+		return nil, fmt.Errorf("register Harness Project: %w", err)
+	}
 	bookMetaStore := book.NewMetaStore(dataDir)
 	app := &App{
 		cfg:             cfg,

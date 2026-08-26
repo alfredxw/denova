@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"testing"
 )
@@ -82,10 +83,10 @@ func TestReplaceIfRevisionAtomicallyReplacesAndPreservesMode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if os.SameFile(before, after) {
+	if runtime.GOOS != "windows" && os.SameFile(before, after) {
 		t.Fatal("replacement reused the target inode instead of renaming a complete temporary file")
 	}
-	if after.Mode().Perm() != 0o600 {
+	if runtime.GOOS != "windows" && after.Mode().Perm() != 0o600 {
 		t.Fatalf("file mode changed: got=%o want=600", after.Mode().Perm())
 	}
 	data, err := os.ReadFile(path)

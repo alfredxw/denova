@@ -241,7 +241,7 @@ func sanitizePositiveLimit(value *int, fallback, maximum int) {
 
 func defaultToolResultContextEnabled(agentKind string) bool {
 	switch agentKind {
-	case AgentKindGeneral, AgentKindIDE, AgentKindInteractiveStory:
+	case AgentKindGeneral, AgentKindHarness, AgentKindIDE, AgentKindInteractiveStory:
 		return true
 	default:
 		return false

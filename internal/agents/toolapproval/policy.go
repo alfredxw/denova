@@ -166,7 +166,7 @@ func evaluateShell(request Request) Decision {
 		return result
 	}
 	classification := classifyBashWithAllowedFiles(input.Command, workspace, input.Cwd, request.Mode, request.AttachmentPaths)
-	if request.ToolName == "pwsh" || request.GOOS == "windows" {
+	if usesPowerShell(request.ToolName, request.GOOS) {
 		classification = classifyPowerShellWithAllowedFiles(input.Command, workspace, input.Cwd, request.Mode, request.AttachmentPaths)
 	}
 	classification.Command, classification.Cwd = input.Command, input.Cwd
@@ -182,6 +182,19 @@ func evaluateShell(request Request) Decision {
 		}
 	}
 	return classification
+}
+
+// An explicit tool name defines the command language. GOOS is only a fallback
+// for legacy shell descriptors that do not identify their executor.
+func usesPowerShell(toolName, goos string) bool {
+	switch strings.ToLower(strings.TrimSpace(toolName)) {
+	case "bash", "sh", "zsh", "ksh", "fish":
+		return false
+	case "pwsh", "powershell":
+		return true
+	default:
+		return strings.EqualFold(strings.TrimSpace(goos), "windows")
+	}
 }
 
 func dangerousShellEnvironment(environment map[string]string) string {

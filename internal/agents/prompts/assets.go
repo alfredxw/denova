@@ -12,8 +12,8 @@ import (
 //go:embed assets/general-agent.md
 var generalAgentWorkflowAsset string
 
-//go:embed assets/harness-optimizer.md
-var harnessOptimizerWorkflowAsset string
+//go:embed assets/harness-agent.md
+var harnessAgentWorkflowAsset string
 
 //go:embed assets/interactive-director.md
 var interactiveDirectorWorkflowAsset string

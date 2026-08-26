@@ -29,7 +29,7 @@ type Host interface {
 	ProjectVersionService(string) (*book.VersionService, error)
 	CurrentWorkspace() string
 	OnVerifiedMutations(context.Context, string, *book.VersionService, config.Config, []agenttool.Mutation, agenttool.Verification)
-	HarnessAgentHostCapabilities(context.Context, *config.Config, string) (agents.AgentHostCapabilities, error)
+	ProjectAgentHostCapabilities(context.Context, projectdomain.Type, *config.Config, string) (agents.AgentHostCapabilities, error)
 }
 
 // Binding is the explicit Project conversation identity carried by every

@@ -3,6 +3,7 @@ package project
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -187,6 +188,9 @@ func TestEnsureStateIsIdempotentForConcurrentProjectResolution(t *testing.T) {
 }
 
 func TestEnsureStateRejectsLegacySymlinks(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("requires optional Windows symlink privileges")
+	}
 	denovaDir := t.TempDir()
 	workspace := t.TempDir()
 	legacySessions := workspacelayout.Path(workspace, "sessions")

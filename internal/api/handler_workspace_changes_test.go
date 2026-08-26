@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -237,6 +238,9 @@ func TestWorkspaceChangeReviewResponseUsesOperationScopedPaths(t *testing.T) {
 }
 
 func TestWorkspaceSwitchCanonicalizesSymlinkIdentity(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("requires optional Windows symlink privileges")
+	}
 	application := newTestApplication(t)
 	workspace := application.Workspace()
 	link := filepath.Join(t.TempDir(), "workspace-link")

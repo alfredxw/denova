@@ -73,6 +73,9 @@ func (service *Service) Projects() []Project {
 	runningBindings := service.runningBindingKeys()
 	projects := make([]Project, 0, len(records))
 	for _, record := range records {
+		if record.Type == projectdomain.TypeHarness && !service.harnessProjectsEnabled() {
+			continue
+		}
 		project := Project{
 			ID: record.ID, Type: record.Type, Path: record.WorkspacePath,
 			Name: record.Name, Status: record.Status,
@@ -147,6 +150,9 @@ func (service *Service) History(query HistoryQuery) HistoryPage {
 	items := make([]HistoryItem, 0)
 	records, _ := service.registry.List(false)
 	for _, record := range records {
+		if record.Type == projectdomain.TypeHarness && !service.harnessProjectsEnabled() {
+			continue
+		}
 		if projectID != "" && record.ID != projectID {
 			continue
 		}
@@ -194,6 +200,14 @@ func (service *Service) History(query HistoryQuery) HistoryPage {
 		len([]rune(normalizedQuery)), page.Total, page.Offset, len(page.Items), time.Since(startedAt),
 	))
 	return page
+}
+
+func (service *Service) harnessProjectsEnabled() bool {
+	if service == nil || service.host == nil {
+		return false
+	}
+	cfg, _ := service.host.BaseRuntime()
+	return cfg.Labs.DeveloperMode
 }
 
 func (service *Service) readProjectSessions(projectID, sessionsDir string) ([]session.SessionMeta, error) {

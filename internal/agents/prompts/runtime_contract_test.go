@@ -91,7 +91,7 @@ func TestSubAgentParentRuntimeContractsIncludeDelegationProtocol(t *testing.T) {
 func TestRuntimeContractsCoverAllAgentKinds(t *testing.T) {
 	tests := map[string]string{
 		config.AgentKindGeneral:             "General Agent",
-		config.AgentKindHarnessOptimizer:    "Harness Optimizer",
+		config.AgentKindHarness:             "live Harness State directory",
 		config.AgentKindIDE:                 "CREATOR.md",
 		config.AgentKindInteractiveStory:    "Output only the story prose",
 		config.AgentKindImage:               "Image Agent",

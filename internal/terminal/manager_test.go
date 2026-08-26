@@ -106,6 +106,9 @@ func TestAttachedSessionClosesOutputAfterFinalProcessBytes(t *testing.T) {
 }
 
 func TestCLIStartupReturnsToWorkspaceShell(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("terminal manager startup chaining targets unix pty")
+	}
 	manager := NewManager(Config{
 		Enabled: true,
 		Shell:   "/bin/sh",

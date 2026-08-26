@@ -1,8 +1,4 @@
-import type { UIMessageChunk } from 'ai'
-import type { AgentUIMessage } from '@/lib/agent-ui'
-import type { ActiveChatTask } from './chat'
-import type { AgentAskAnswer, AgentAskResolution } from './types'
-import { fetchAPI, jsonHeaders, parseUIMessageStream, requestJSON, responseAPIError } from './client'
+import { jsonHeaders, requestJSON } from './client'
 
 const ROOT = '/api/continual-learning'
 
@@ -61,11 +57,6 @@ export interface HarnessStateUpdateResult {
   changed: boolean
 }
 
-export interface HarnessOptimizerMessagesPage {
-  messages: AgentUIMessage[]
-  page: { next_before: string; has_more: boolean; total: number }
-}
-
 export interface ContinualLearningScheduleStatus {
   enabled: boolean
   interval_hours: number
@@ -105,53 +96,4 @@ export function restoreHarnessStateVersion(id: string): Promise<HarnessStateUpda
 
 export function getContinualLearningSchedule(): Promise<ContinualLearningScheduleStatus> {
   return requestJSON(`${ROOT}/schedule`)
-}
-
-export async function runHarnessOptimizer(commandId: string, instruction = '', evidence?: string[]): Promise<ReadableStream<UIMessageChunk>> {
-  const response = await fetchAPI(`${ROOT}/optimize/stream`, {
-    method: 'POST',
-    headers: jsonHeaders,
-    body: JSON.stringify({ command_id: commandId, instruction, ...(evidence === undefined ? {} : { evidence }) }),
-  })
-  if (!response.ok) throw await responseAPIError(response)
-  if (!response.body) throw new Error('Harness Optimizer returned no response body')
-  return parseUIMessageStream(response.body)
-}
-
-export async function reconnectHarnessOptimizer(taskId: string): Promise<ReadableStream<UIMessageChunk>> {
-  const params = new URLSearchParams({ task_id: taskId })
-  const response = await fetchAPI(`${ROOT}/optimize/stream?${params.toString()}`)
-  if (!response.ok) throw await responseAPIError(response)
-  if (!response.body) throw new Error('Harness Optimizer returned no response body')
-  return parseUIMessageStream(response.body)
-}
-
-export function getActiveHarnessOptimizer(): Promise<ActiveChatTask> {
-  return requestJSON(`${ROOT}/optimize/active`)
-}
-
-export function getHarnessOptimizerMessages(before?: string, limit = 100): Promise<HarnessOptimizerMessagesPage> {
-  const params = new URLSearchParams({ limit: String(limit) })
-  if (before) params.set('before', before)
-  return requestJSON(`${ROOT}/optimize/messages?${params.toString()}`)
-}
-
-export async function clearHarnessOptimizer(): Promise<void> {
-  await requestJSON(`${ROOT}/optimize/clear`, { method: 'POST' })
-}
-
-export function answerHarnessOptimizerAsk(askId: string, answers: AgentAskAnswer[]): Promise<AgentAskResolution> {
-  return requestJSON(`${ROOT}/optimize/asks/${encodeURIComponent(askId)}/answer`, {
-    method: 'POST',
-    headers: jsonHeaders,
-    body: JSON.stringify({ answers }),
-  })
-}
-
-export function cancelHarnessOptimizerAsk(askId: string): Promise<AgentAskResolution> {
-  return requestJSON(`${ROOT}/optimize/asks/${encodeURIComponent(askId)}/cancel`, {
-    method: 'POST',
-    headers: jsonHeaders,
-    body: JSON.stringify({ reason: 'user_cancelled' }),
-  })
 }

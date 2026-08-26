@@ -240,15 +240,11 @@ func (policy *denovaPermissionPolicy) evaluate(request agent.PermissionRequest, 
 }
 
 // harnessStatePermission is intentionally separate from workspace approval
-// rules. User Harness State is global across Projects, so neither a workspace
-// read allowance nor a remembered shell rule may authorize its contents or a
-// mutation. The dedicated optimizer is the only pre-authorized caller.
+// rules. The Harness Project may inspect its own complete State; other Agents
+// need confirmation before reading global State contents.
 func harnessStatePermission(request agent.PermissionRequest, agentKind string) (toolapproval.Decision, bool) {
 	toolName := strings.TrimSpace(request.Tool)
-	operation := ""
 	switch toolName {
-	case "update_harness_state":
-		operation = "update"
 	case "read":
 		var input struct {
 			Path string `json:"path"`
@@ -266,25 +262,18 @@ func harnessStatePermission(request agent.PermissionRequest, agentKind string) (
 				RuleID: "harness_state_manifest", Reason: "Harness State manifests are safe to inspect.",
 			}, true
 		}
-		operation = "read"
 	default:
 		return toolapproval.Decision{}, false
 	}
-	if agentKind == config.AgentKindHarnessOptimizer {
+	if agentKind == config.AgentKindHarness {
 		return toolapproval.Decision{
-			Action: toolapproval.ActionAllow, Risk: toolapproval.RiskMedium,
-			RuleID: "harness_state_optimizer", Reason: "自动 Harness 优化已获用户授权。 / Automated Harness optimization is user-authorized.",
-		}, true
-	}
-	if operation == "read" {
-		return toolapproval.Decision{
-			Action: toolapproval.ActionPrompt, Risk: toolapproval.RiskMedium,
-			RuleID: "harness_state_read", Reason: "该工具将读取所有项目共享的用户状态，需要你的确认。 / This tool will read User State shared by every Project and requires approval.",
+			Action: toolapproval.ActionAllow, Risk: toolapproval.RiskLow,
+			RuleID: "harness_project_read", Reason: "The Harness Project is authorized to inspect its own State resources.",
 		}, true
 	}
 	return toolapproval.Decision{
-		Action: toolapproval.ActionPrompt, Risk: toolapproval.RiskHigh,
-		RuleID: "harness_state_update", Reason: "该工具将修改所有项目共享的当前用户状态，需要你的确认。 / This tool will modify the current User State shared by every Project and requires approval.",
+		Action: toolapproval.ActionPrompt, Risk: toolapproval.RiskMedium,
+		RuleID: "harness_state_read", Reason: "该工具将读取所有项目共享的用户状态，需要你的确认。 / This tool will read User State shared by every Project and requires approval.",
 	}, true
 }
 

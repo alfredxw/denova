@@ -30,7 +30,7 @@ import {
   type AutomationTriggerDefinition,
 } from '@/lib/api'
 import { fetchProjectSettings } from '@/features/settings/api'
-import { getAgentChatProjects } from '@/features/agent-chat/api'
+import { getAgentChatProjects, type AgentChatProjectType } from '@/features/agent-chat/api'
 import { requestAgentChatSessionNavigation } from '@/features/agent-chat/session-navigation'
 import { rebaseJSONWithRecovery } from '@/lib/autosave/rebase-with-recovery'
 import { rebaseJSONValue } from '@/lib/three-way-rebase'
@@ -77,7 +77,7 @@ export function AutomationsView({
   onClose,
 }: {
   projectId?: string
-  projectType?: 'book' | 'general'
+  projectType?: AgentChatProjectType
   workspace: string
   onOpenAgentChat?: () => void
   onClose?: () => void

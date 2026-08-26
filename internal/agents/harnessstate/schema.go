@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -255,8 +256,9 @@ func (m *Manager) Validate(ctx context.Context) error {
 	return err
 }
 
-// Load opens and validates the current user State directory. Every Agent
-// build observes the files that are live at that moment.
+// Load opens the live user State directory and applies it only when the whole
+// snapshot is valid. Invalid user State is rejected as one contribution so a
+// malformed edit cannot prevent the base Agent from being built.
 func Load(ctx context.Context, cfg *config.Config) (Harness, error) {
 	if cfg == nil {
 		return Harness{}, fmt.Errorf("load Harness State: config is nil")
@@ -271,7 +273,16 @@ func Load(ctx context.Context, cfg *config.Config) (Harness, error) {
 	if err != nil {
 		return Harness{}, err
 	}
-	return manager.Current(ctx)
+	inspection, err := manager.Inspect(ctx)
+	if err != nil {
+		return Harness{}, err
+	}
+	if len(inspection.Diagnostics) != 0 {
+		slog.WarnContext(ctx, "[harness-state] rejecting invalid user Harness contribution",
+			"revision", inspection.Snapshot.Revision, "diagnostics", len(inspection.Diagnostics))
+		return emptyHarness(), nil
+	}
+	return inspection.Harness, nil
 }
 
 func (m *Manager) validate(ctx context.Context, snapshot agentstate.Snapshot) []agentstate.Diagnostic {

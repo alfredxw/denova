@@ -7,11 +7,12 @@ import (
 	agents "denova/internal/agents"
 	"denova/internal/agents/harnessstate"
 	producttools "denova/internal/agents/tools"
+	"denova/internal/agents/trajectory"
 )
 
-// AgentHostCapabilities returns the complete root-only User State management
-// surface for one Agent policy. Saved Script Tools are assembled separately
-// from the immutable Harness snapshot and do not depend on this capability.
+// AgentHostCapabilities returns the read-only User State inspection surface
+// shared by ordinary Agents. State mutation belongs to the Harness Project's
+// ordinary workspace tools.
 func (service *Service) AgentHostCapabilities(
 	ctx context.Context,
 	cfg *config.Config,
@@ -32,11 +33,37 @@ func (service *Service) AgentHostCapabilities(
 	if err != nil {
 		return agents.AgentHostCapabilities{}, err
 	}
-	update, err := service.StateUpdateTool()
+	host.ReadAdapters = []producttools.ReadAdapterBinding{binding}
+	return host, nil
+}
+
+// HarnessProjectAgentHostCapabilities adds trajectory resources to the live
+// Harness Project while retaining the same read-only State inspection view.
+func (service *Service) HarnessProjectAgentHostCapabilities(
+	ctx context.Context,
+	cfg *config.Config,
+	agentKind string,
+) (agents.AgentHostCapabilities, error) {
+	host, err := service.AgentHostCapabilities(ctx, cfg, agentKind)
 	if err != nil {
 		return agents.AgentHostCapabilities{}, err
 	}
-	host.ReadAdapters = []producttools.ReadAdapterBinding{binding}
-	host.RootTools = []agents.ToolDefinition{update}
+	runtime, err := service.requireEnabled()
+	if err != nil {
+		return agents.AgentHostCapabilities{}, err
+	}
+	adapter, err := trajectory.NewReadAdapter(trajectory.Catalog{
+		Sources:  service.host.TrajectorySources,
+		Outcomes: service.outcomes,
+		Limit:    runtime.Config.Labs.ContinualLearningTrajectoryCap,
+	})
+	if err != nil {
+		return agents.AgentHostCapabilities{}, err
+	}
+	binding, err := producttools.NewReadAdapterBinding(config.AgentToolHarnessState, adapter)
+	if err != nil {
+		return agents.AgentHostCapabilities{}, err
+	}
+	host.ReadAdapters = append(host.ReadAdapters, binding)
 	return host, nil
 }

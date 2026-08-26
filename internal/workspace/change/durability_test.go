@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -243,6 +244,9 @@ func TestPreparedRecoverySyncsParentBeforeTerminalProjection(t *testing.T) {
 }
 
 func TestChangeStoreRejectsPrivateDirectorySymlink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("requires optional Windows symlink privileges")
+	}
 	workspace := t.TempDir()
 	external := t.TempDir()
 	if err := os.Symlink(external, filepath.Join(workspace, ".denova")); err != nil {
@@ -256,6 +260,9 @@ func TestChangeStoreRejectsPrivateDirectorySymlink(t *testing.T) {
 }
 
 func TestChangeStoreRejectsLedgerSymlink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("requires optional Windows symlink privileges")
+	}
 	workspace := t.TempDir()
 	changesDir := filepath.Join(workspace, ".denova", "changes")
 	if err := os.MkdirAll(filepath.Join(changesDir, "blobs"), 0o700); err != nil {
@@ -277,6 +284,9 @@ func TestChangeStoreRejectsLedgerSymlink(t *testing.T) {
 }
 
 func TestForWorkspaceCanonicalizesWorkspaceSymlink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("requires optional Windows symlink privileges")
+	}
 	workspace := t.TempDir()
 	link := filepath.Join(t.TempDir(), "workspace-link")
 	if err := os.Symlink(workspace, link); err != nil {

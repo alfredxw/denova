@@ -56,7 +56,7 @@ const agents = {
   'agents.tool.script.title': '脚本编排',
   'agents.tool.script.subtitle': '即时运行一段 JavaScript 工具流程',
   'agents.tool.harnessState.title': '用户 Harness State',
-  'agents.tool.harnessState.subtitle': 'read(harness://…) / update_harness_state',
+  'agents.tool.harnessState.subtitle': '读取 Harness State 与轨迹资源',
   'agents.tool.configRead.title': '读取配置',
   'agents.tool.configRead.subtitle': 'config_read',
   'agents.tool.configApply.title': '修改配置',

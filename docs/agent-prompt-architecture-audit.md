@@ -568,7 +568,7 @@ turn-dynamic context                     current state/evidence
 current user request                     current instruction
 ```
 
-两个 fragment 都使用 User role 和稳定的短 framing，按 `AGENTS.md`、`CREATOR.md` 排序并位于历史与当前请求之前，因此可以与 system definition 一起形成长稳定前缀。General、写作、游戏、Director、Config Manager、Image 及其项目子 Agent 使用同一来源；Harness Optimizer 等非项目 Agent 不注入。每个文件的 `Source`、`Purpose`、`Resource`、revision/hash 和硬上限分别保存在 host metadata；模型只看到对应短标题、正文和一句“较新的显式用户请求优先”。
+两个 fragment 都使用 User role 和稳定的短 framing，按 `AGENTS.md`、`CREATOR.md` 排序并位于历史与当前请求之前，因此可以与 system definition 一起形成长稳定前缀。General、写作、游戏、Harness Agent、Director、Config Manager、Image 及其项目子 Agent 使用同一来源。每个文件的 `Source`、`Purpose`、`Resource`、revision/hash 和硬上限分别保存在 host metadata；模型只看到对应短标题、正文和一句“较新的显式用户请求优先”。
 
 这项调整的首要收益是让每份高相关项目指令各自只出现一次，并把 Agent 固有 Prompt 留给真正跨项目成立的行为；来源审计和跨 Agent 复用由 host 侧同时获得。它不是为了修复不存在的 steady-state cache 问题。
 
@@ -667,9 +667,9 @@ Config Manager 是目前 progressive disclosure 最好的示例：
 
 剩余问题是内置 Config Manager flow、自动加载 root Skill、`config_read`/`config_apply` description 之间仍有重复。资源 Schema 和 mutation semantics 应由 `describe` 与 reference 权威提供，不应全部复制进 system prompt。
 
-### 6.6 Harness Optimizer
+### 6.6 Harness Agent
 
-Prompt 紧凑、证据驱动，并明确允许 no-op，整体很好。主要补完整请求快照即可。完成条件可固定成四项：evidence、State Diff 或显式 no-op、validation、预期行为影响。
+Prompt 紧凑、证据驱动，并明确允许 no-op。Harness 作为特殊 Project 后复用标准多会话与工作区指令；Agent Health 快捷操作应保持 diagnosis-only，实际修改由用户后续明确要求。维护型任务的完成条件可固定成四项：evidence、State Diff 或显式 no-op、validation、预期行为影响。
 
 ### 6.7 Image Agent
 

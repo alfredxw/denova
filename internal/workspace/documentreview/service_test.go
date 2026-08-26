@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -202,6 +203,9 @@ func TestNormalizeTargetRejectsWorkspacePathsOutsideTheBook(t *testing.T) {
 }
 
 func TestDocumentReviewStorageRejectsSymlinkedDirectory(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("requires optional Windows symlink privileges")
+	}
 	workspace := t.TempDir()
 	external := t.TempDir()
 	if err := os.Mkdir(filepath.Join(workspace, ".denova"), 0o700); err != nil {

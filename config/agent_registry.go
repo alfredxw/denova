@@ -9,7 +9,7 @@ import (
 const (
 	AgentKindIDE                 = "ide"
 	AgentKindGeneral             = "general"
-	AgentKindHarnessOptimizer    = "harness_optimizer"
+	AgentKindHarness             = "harness"
 	AgentKindInteractiveStory    = "interactive_story"
 	AgentKindConfigManager       = "config_manager"
 	AgentKindInteractiveDirector = "interactive_director"
@@ -55,20 +55,22 @@ var agentKindRegistry = []AgentKindDefinition{
 		ContextOverride:  func(settings AgentContextSettings) AgentContextOverride { return settings.General },
 	},
 	{
-		Kind:      AgentKindHarnessOptimizer,
-		SessionID: "harness-optimizer-agent",
-		// The optimizer reads trajectory and Harness resources through the one
-		// read endpoint, then submits one validated CAS update. It never receives
-		// the live State directory or unrelated project capabilities.
-		ToolCapabilities: []string{AgentToolHarnessState},
+		Kind:      AgentKindHarness,
+		SessionID: "harness-scheduled",
+		// Harness is a real Project Agent. Its workspace is the live Harness
+		// State directory, so ordinary file and shell tools remain available.
+		ToolCapabilities: []string{
+			AgentToolFilesystemRead, AgentToolWorkspaceWrite, AgentToolShell,
+			AgentToolWebSearch, AgentToolWebFetch, AgentToolBrowser,
+			AgentToolAsk, AgentToolTodo, AgentToolSkills, AgentToolDelegation,
+			AgentToolScript, AgentToolHarnessState,
+		},
 		ModelOverride:    func(settings AgentModelSettings) AgentModelOverride { return settings.General },
 		SetModelOverride: func(settings *AgentModelSettings, override AgentModelOverride) { settings.General = override },
-		ToolOverride: func(AgentToolSettings) AgentToolOverride {
-			return AgentToolOverride{AgentToolHarnessState: true}
-		},
-		PromptOverride:  func(settings AgentPromptSettings) AgentPromptOverride { return settings.General },
-		SkillOverride:   func(settings AgentSkillSettings) AgentSkillOverride { return settings.General },
-		ContextOverride: func(settings AgentContextSettings) AgentContextOverride { return settings.General },
+		ToolOverride:     func(settings AgentToolSettings) AgentToolOverride { return settings.General },
+		PromptOverride:   func(settings AgentPromptSettings) AgentPromptOverride { return settings.General },
+		SkillOverride:    func(settings AgentSkillSettings) AgentSkillOverride { return settings.General },
+		ContextOverride:  func(settings AgentContextSettings) AgentContextOverride { return settings.General },
 	},
 	{
 		Kind: AgentKindIDE,
@@ -246,11 +248,8 @@ var agentToolCapabilities = []AgentToolCapability{
 	), agent.ToolResultProtected))),
 	withRuntimeResultLimit(runtimeSubAgentUnavailableCapabilityDefinitionWithToolDescriptors(
 		AgentToolHarnessState, "agents.tool.harnessState.title", "agents.tool.harnessState.subtitle",
-		[]string{"read", "update_harness_state"},
-		descriptorWithSource(descriptorSummary(
-			agent.ToolExecutionConfigExclusive, agent.ToolMutationConfig, agent.ToolPostCheckConfigRevision,
-			agent.ToolRecoveryReconcilable, agent.SteeringFinishCurrent, agent.ToolPresentationFile,
-		), agent.ToolSourceWrite),
+		[]string{"read"},
+		descriptorWithSource(readOnlyDescriptor(agent.ToolPresentationFile, agent.ToolResultRecoveryRead), agent.ToolSourceRead),
 		map[string]agent.ToolDescriptor{
 			"read": descriptorWithSource(readOnlyDescriptor(agent.ToolPresentationFile, agent.ToolResultRecoveryRead), agent.ToolSourceRead),
 		},

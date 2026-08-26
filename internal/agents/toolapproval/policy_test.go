@@ -261,6 +261,21 @@ func TestEvaluateBashRejectsSymlinkEscape(t *testing.T) {
 	}
 }
 
+func TestExplicitShellToolOverridesHostOS(t *testing.T) {
+	t.Parallel()
+	workspace := t.TempDir()
+
+	bash := evaluateShellCommandForOS(t, workspace, "bash", "windows", config.AgentApprovalAsk, `rg -n "TODO" .`)
+	if bash.Action != ActionAllow || bash.RuleID != "bash_safe_read" {
+		t.Fatalf("explicit bash on Windows = %#v, want bash allow", bash)
+	}
+
+	pwsh := evaluateShellCommandForOS(t, workspace, "pwsh", "linux", config.AgentApprovalAsk, "Get-Content README.md")
+	if pwsh.Action != ActionAllow || pwsh.RuleID != "pwsh_safe_read" {
+		t.Fatalf("explicit pwsh on Linux = %#v, want PowerShell allow", pwsh)
+	}
+}
+
 func TestEvaluateCriticalCommandsAreDeniedInEveryMode(t *testing.T) {
 	t.Parallel()
 	workspace := t.TempDir()
@@ -527,12 +542,18 @@ func TestArgumentsHashCanonicalizesJSONObjectOrder(t *testing.T) {
 
 func evaluateShellCommand(t *testing.T, workspace, tool string, mode config.AgentApprovalMode, command string) Decision {
 	t.Helper()
+	return evaluateShellCommandForOS(t, workspace, tool, "", mode, command)
+}
+
+func evaluateShellCommandForOS(t *testing.T, workspace, tool, goos string, mode config.AgentApprovalMode, command string) Decision {
+	t.Helper()
 	arguments, err := json.Marshal(commandArguments{Command: command})
 	if err != nil {
 		t.Fatal(err)
 	}
 	return Evaluate(Request{
 		Mode: mode, Workspace: workspace, ToolName: tool, Arguments: string(arguments),
+		GOOS:       goos,
 		Descriptor: agent.ToolDescriptor{Source: agent.ToolSourceShell, MutationScope: agent.ToolMutationExternal},
 	})
 }

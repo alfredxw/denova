@@ -30,7 +30,7 @@ func (a *App) prepareChildDefinition(
 	}
 	parentRequest := turn.ChatRequest()
 	switch binding.AgentKind {
-	case agentrun.AgentKindGeneral:
+	case agentrun.AgentKindGeneral, agentrun.AgentKindHarness:
 		return a.AgentChat().PrepareChildDefinition(ctx, binding, request.Child, parentRequest)
 	case agentrun.AgentKindIDE:
 		if binding.Mode == agentrun.ModeAgentChat {
@@ -67,15 +67,6 @@ func (a *App) prepareChildDefinition(
 		return agentdelegation.ChildDefinition(cycle.definition, request.Child)
 	case agentrun.AgentKindConfigManager:
 		cycle, err := a.ConfigManager().PrepareCycle(ctx, agentexecution.CycleRestoreRequest{
-			Binding: binding, CommandID: agentrun.CommandID(parentRequest.CommandID), Request: parentRequest,
-			Options: agentrun.Options{RestoreData: turn.RestoreData},
-		}, binding)
-		if err != nil {
-			return agent.Definition{}, err
-		}
-		return agentdelegation.ChildDefinition(cycle.Definition, request.Child)
-	case agentrun.AgentKindHarnessOptimizer:
-		cycle, err := a.ContinualLearning().PrepareCycle(ctx, agentexecution.CycleRestoreRequest{
 			Binding: binding, CommandID: agentrun.CommandID(parentRequest.CommandID), Request: parentRequest,
 			Options: agentrun.Options{RestoreData: turn.RestoreData},
 		}, binding)
