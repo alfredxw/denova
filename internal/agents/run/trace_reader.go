@@ -1,8 +1,6 @@
 package agentrun
 
 import (
-	"bufio"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -200,37 +198,23 @@ func resolveRunTracePath(location TraceLocation, id string) (string, error) {
 }
 
 func readRunTraceFile(path string, recordCap int) (RunTrace, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return RunTrace{}, err
-	}
-	defer file.Close()
 	trace := RunTrace{}
 	var tail []RunTraceRecord
-	totalRecords := 0
-	scanner := bufio.NewScanner(file)
-	scanner.Buffer(make([]byte, 0, 64*1024), maxRunTraceRecordBytes)
-	for scanner.Scan() {
-		var record RunTraceRecord
-		if err := json.Unmarshal(scanner.Bytes(), &record); err != nil {
-			continue
-		}
-		totalRecords++
-		updateRunTraceSummary(&trace.Summary, record, path)
+	summary, totalRecords, err := scanRunTraceFile(path, func(_ int, record RunTraceRecord) error {
 		if recordCap <= 0 {
 			trace.Records = append(trace.Records, record)
-			continue
+			return nil
 		}
 		if trace.Truncated {
 			tail = append(tail, record)
 			if tailCap := traceTailRecordCap(recordCap); len(tail) > tailCap {
 				tail = tail[len(tail)-tailCap:]
 			}
-			continue
+			return nil
 		}
 		if len(trace.Records) < recordCap {
 			trace.Records = append(trace.Records, record)
-			continue
+			return nil
 		}
 		trace.Truncated = true
 		headCap := recordCap / 2
@@ -244,10 +228,12 @@ func readRunTraceFile(path string, recordCap int) (RunTrace, error) {
 		if tailCap := traceTailRecordCap(recordCap); len(tail) > tailCap {
 			tail = tail[len(tail)-tailCap:]
 		}
-	}
-	if err := scanner.Err(); err != nil {
+		return nil
+	})
+	if err != nil {
 		return RunTrace{}, err
 	}
+	trace.Summary = summary
 	if trace.Truncated {
 		omitted := totalRecords - len(trace.Records) - len(tail)
 		if omitted < 0 {
@@ -263,12 +249,6 @@ func readRunTraceFile(path string, recordCap int) (RunTrace, error) {
 			},
 		})
 		trace.Records = append(trace.Records, tail...)
-	}
-	if trace.Summary.ID == "" {
-		trace.Summary.ID = strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
-	}
-	if trace.Summary.Path == "" {
-		trace.Summary.Path = path
 	}
 	return trace, nil
 }

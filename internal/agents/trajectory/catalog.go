@@ -53,9 +53,8 @@ type Catalog struct {
 	Limit    int
 }
 
-// Resource is one redacted, model-visible trajectory document. Product
-// surfaces use the same projection as the read adapter so viewing evidence and
-// asking Harness Agent to analyze it can never drift into two contracts.
+// Resource is one redacted, model-visible trajectory document. Persisted traces
+// and product-facing detail views remain exact and use their own bounded reader.
 type Resource struct {
 	URI     string `json:"uri"`
 	Kind    string `json:"kind"`
@@ -63,8 +62,10 @@ type Resource struct {
 }
 
 type readInput struct {
-	Path  string `json:"path" jsonschema_description:"Trajectory resource URI: trajectory://index, trajectory://outcomes, trajectory://projects/{project_id}/sessions/{session_id}, or trajectory://projects/{project_id}/runs/{run_id}."`
-	Limit int    `json:"limit,omitempty" jsonschema:"minimum=1" jsonschema_description:"Maximum index or outcome entries. Defaults to and cannot exceed the configured trajectory cap; the configurable ceiling is 500."`
+	Path       string `json:"path" jsonschema_description:"Trajectory resource URI: trajectory://index, trajectory://outcomes, trajectory://projects/{project_id}/sessions/{session_id}, or trajectory://projects/{project_id}/runs/{run_id}."`
+	Offset     int    `json:"offset,omitempty" jsonschema:"minimum=1" jsonschema_description:"One-based first JSONL line for a Run trajectory; defaults to 1. The first line is always the Run summary."`
+	ByteOffset int    `json:"byte_offset,omitempty" jsonschema:"minimum=0" jsonschema_description:"Zero-based UTF-8 byte offset within the selected first Run trajectory line for exact continuation."`
+	Limit      int    `json:"limit,omitempty" jsonschema:"minimum=1" jsonschema_description:"Maximum selected Run trajectory lines or index/outcome entries. Defaults to and cannot exceed the configured trajectory cap; the configurable ceiling is 500."`
 }
 
 type projectIndex struct {
@@ -93,15 +94,16 @@ func NewReadAdapter(catalog Catalog) (agenttools.ReadAdapter, error) {
 		return nil, errors.New("trajectory source provider is required")
 	}
 	return agenttools.NewReadAdapter(agent.CapabilityIdentity{
-		Kind: "denova.read.trajectory", Version: 1,
+		Kind: "denova.read.trajectory", Version: 2,
 		ConfigHash: fmt.Sprintf("limit=%d", effectiveTrajectoryLimit(catalog.Limit)),
 	}, "trajectory", func(_ context.Context, resource string) (bool, error) {
 		return strings.HasPrefix(strings.ToLower(strings.TrimSpace(resource)), Scheme), nil
 	}, catalog.read)
 }
 
-// Read returns the exact redacted resource exposed through the ordinary Agent
-// read tool. The limit applies only to index and outcome resources.
+// Read returns the redacted resource exposed through the ordinary Agent read
+// tool. Run resources use the default first JSONL window because this compact
+// API does not expose continuation offsets.
 func (catalog Catalog) Read(ctx context.Context, resource string, limit int) (Resource, error) {
 	if catalog.Sources == nil {
 		return Resource{}, errors.New("trajectory source provider is required")
@@ -131,9 +133,15 @@ func (catalog Catalog) read(ctx context.Context, input readInput) (agenttools.Re
 	}
 	segments := pathSegments(parsed)
 	if parsed.Host == "index" && len(segments) == 0 {
+		if input.Offset > 0 || input.ByteOffset > 0 {
+			return agenttools.ReadResult{}, errors.New("trajectory offset and byte_offset are supported only for Run resources")
+		}
 		return catalog.readIndex(ctx, resource, limit)
 	}
 	if parsed.Host == "outcomes" && len(segments) == 0 {
+		if input.Offset > 0 || input.ByteOffset > 0 {
+			return agenttools.ReadResult{}, errors.New("trajectory offset and byte_offset are supported only for Run resources")
+		}
 		return catalog.readOutcomes(resource, limit)
 	}
 	if parsed.Host != "projects" || len(segments) != 3 {
@@ -145,6 +153,9 @@ func (catalog Catalog) read(ctx context.Context, input readInput) (agenttools.Re
 	}
 	switch segments[1] {
 	case "sessions":
+		if input.Offset > 0 || input.ByteOffset > 0 {
+			return agenttools.ReadResult{}, errors.New("trajectory offset and byte_offset are supported only for Run resources")
+		}
 		directory := sessionDir(source.StateRoot)
 		if _, err := os.Stat(directory); err != nil {
 			if errors.Is(err, fs.ErrNotExist) {
@@ -165,11 +176,7 @@ func (catalog Catalog) read(ctx context.Context, input readInput) (agenttools.Re
 			"schema": "denova.trajectory.session.v1", "project": source, "session_id": segments[2], "history": trajectorySessionHistory(target.History()),
 		}, source)
 	case "runs":
-		trace, err := agentrun.ReadRunTrace(agentrun.TraceLocation{Workspace: source.Workspace, StateRoot: source.StateRoot}, segments[2])
-		if err != nil {
-			return agenttools.ReadResult{}, err
-		}
-		return redactedJSONResult(resource, "trajectory_run", trace, source)
+		return catalog.readRunResource(ctx, resource, source, segments[2], input, limit)
 	default:
 		return agenttools.ReadResult{}, fs.ErrNotExist
 	}
@@ -336,30 +343,85 @@ func redactedJSONResult(resource, kind string, value any, source Source) (agentt
 }
 
 func redactTrajectoryValue(value any, source Source) any {
+	return newTrajectoryRedactor(source).redact(value)
+}
+
+type trajectoryRedactor struct {
+	privateRoots []string
+}
+
+func newTrajectoryRedactor(source Source) trajectoryRedactor {
+	privateRoots := make([]string, 0, 6)
+	for _, root := range []string{source.StateRoot, source.Workspace} {
+		root = strings.TrimSpace(root)
+		if root == "" {
+			continue
+		}
+		cleaned := filepath.Clean(root)
+		if filepath.Dir(cleaned) == cleaned {
+			continue
+		}
+		for _, candidate := range []string{
+			root,
+			cleaned,
+			filepath.ToSlash(cleaned),
+			strings.ReplaceAll(cleaned, "/", `\`),
+		} {
+			if candidate == "" || containsFold(privateRoots, candidate) {
+				continue
+			}
+			privateRoots = append(privateRoots, candidate)
+		}
+	}
+	sort.Slice(privateRoots, func(i, j int) bool { return len(privateRoots[i]) > len(privateRoots[j]) })
+	return trajectoryRedactor{privateRoots: privateRoots}
+}
+
+func (redactor trajectoryRedactor) redact(value any) any {
 	switch typed := value.(type) {
 	case map[string]any:
 		result := make(map[string]any, len(typed))
 		for key, item := range typed {
-			result[key] = redactTrajectoryValue(item, source)
+			result[key] = redactor.redact(item)
 		}
 		return result
 	case []any:
 		result := make([]any, len(typed))
 		for index, item := range typed {
-			result[index] = redactTrajectoryValue(item, source)
+			result[index] = redactor.redact(item)
 		}
 		return result
 	case string:
 		result := typed
-		for _, privateRoot := range []string{source.StateRoot, source.Workspace} {
-			privateRoot = strings.TrimSpace(privateRoot)
-			if privateRoot != "" {
-				result = strings.ReplaceAll(result, privateRoot, "[private-root]")
-			}
+		for _, privateRoot := range redactor.privateRoots {
+			result = replaceAllFold(result, privateRoot, "[private-root]")
 		}
 		return result
 	default:
 		return value
+	}
+}
+
+func containsFold(values []string, target string) bool {
+	for _, value := range values {
+		if strings.EqualFold(value, target) {
+			return true
+		}
+	}
+	return false
+}
+
+func replaceAllFold(value, old, replacement string) string {
+	if old == "" {
+		return value
+	}
+	lowerOld := strings.ToLower(old)
+	for {
+		index := strings.Index(strings.ToLower(value), lowerOld)
+		if index < 0 {
+			return value
+		}
+		value = value[:index] + replacement + value[index+len(old):]
 	}
 }
 

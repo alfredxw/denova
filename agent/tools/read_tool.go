@@ -14,7 +14,7 @@ import (
 	"github.com/invopop/jsonschema"
 )
 
-const readToolContractVersion = 2
+const readToolContractVersion = 3
 
 // ReadResult is the provider-neutral result returned by every ReadAdapter.
 // Offset is one-based when Content should be rendered with source line numbers;
@@ -30,6 +30,7 @@ type ReadResult struct {
 	Truncated      bool
 	NextOffset     int
 	NextByteOffset int
+	Unit           string
 }
 
 // ReadMatcher decides whether an Adapter owns one resource path. A matcher
@@ -440,13 +441,14 @@ type readSource struct {
 }
 
 type readLimits struct {
-	Offset         int  `json:"offset,omitempty"`
-	ByteOffset     int  `json:"byte_offset,omitempty"`
-	Returned       int  `json:"returned,omitempty"`
-	Total          int  `json:"total,omitempty"`
-	Truncated      bool `json:"truncated"`
-	NextOffset     int  `json:"next_offset,omitempty"`
-	NextByteOffset int  `json:"next_byte_offset,omitempty"`
+	Offset         int    `json:"offset,omitempty"`
+	ByteOffset     int    `json:"byte_offset,omitempty"`
+	Returned       int    `json:"returned,omitempty"`
+	Total          int    `json:"total,omitempty"`
+	Truncated      bool   `json:"truncated"`
+	NextOffset     int    `json:"next_offset,omitempty"`
+	NextByteOffset int    `json:"next_byte_offset,omitempty"`
+	Unit           string `json:"unit,omitempty"`
 }
 
 type readRecovery struct {
@@ -480,7 +482,7 @@ func readResultEnvelope(result ReadResult) readEnvelope {
 		Source: readSource{Kind: result.Kind, Path: result.Path},
 		Limits: readLimits{
 			Offset: result.Offset, ByteOffset: result.ByteOffset, Returned: result.Limit, Total: result.Total,
-			Truncated: result.Truncated, NextOffset: result.NextOffset, NextByteOffset: result.NextByteOffset,
+			Truncated: result.Truncated, NextOffset: result.NextOffset, NextByteOffset: result.NextByteOffset, Unit: result.Unit,
 		},
 		Recovery: recovery,
 	}
