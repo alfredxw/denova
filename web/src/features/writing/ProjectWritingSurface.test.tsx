@@ -136,6 +136,7 @@ describe('ProjectWritingSurface', () => {
     render(
       <ProjectWritingSurface
         projectId="book-b"
+        workspace="D:/Books/Background"
         readingTypography={readingTypography}
         documentReview={{ comments: [], onCreate: vi.fn(), onUpdate: vi.fn(), onDelete: vi.fn() }}
         onFlushHandlerChange={vi.fn()}
@@ -163,6 +164,7 @@ describe('ProjectWritingSurface', () => {
     render(
       <ProjectWritingSurface
         projectId="book-b"
+        workspace="D:/Books/Background"
         readingTypography={readingTypography}
         documentReview={{ comments: [], onCreate: vi.fn(), onUpdate: vi.fn(), onDelete: vi.fn() }}
         onFlushHandlerChange={vi.fn()}
@@ -216,6 +218,7 @@ describe('ProjectWritingSurface', () => {
     render(
       <ProjectWritingSurface
         projectId="book-b"
+        workspace="D:/Books/Background"
         initialPath="data.json"
         readingTypography={readingTypography}
         documentReview={{ comments: [], onCreate: vi.fn(), onUpdate: vi.fn(), onDelete: vi.fn() }}

@@ -1,9 +1,11 @@
-import { FileCode2, Save, WrapText } from 'lucide-react'
+import { Save, WrapText } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
+import { ProjectFileSnapshotBreadcrumb } from '@/features/files/ProjectFileBreadcrumb'
 import { ProjectTextEditor, type ProjectTextEditorHandle } from '@/features/files/ProjectSourceEditor'
+import type { ProjectFileExplorerNode } from '@/features/project-explorer/model'
 import {
   persistProjectFileEditorPreferences,
   readProjectFileEditorPreferences,
@@ -20,7 +22,10 @@ import {
 
 interface WritingSourceEditorProps {
   projectId: string
+  workspace: string
+  fileTree: readonly ProjectFileExplorerNode[]
   document: ProjectFileDocument
+  onSelectFile: (path: string) => unknown
   onSave: (fileName: string, content: string, baseRevision: string) => Promise<boolean | { revision?: string }>
   onQuoteSelection?: (selection: TextSelection) => void
   saveSignal?: number
@@ -33,7 +38,10 @@ interface WritingSourceEditorProps {
 /** Monaco source editor that shares Writing's autosave, flush, and conflict semantics. */
 export function WritingSourceEditor({
   projectId,
+  workspace,
+  fileTree,
   document,
+  onSelectFile,
   onSave,
   onQuoteSelection,
   saveSignal = 0,
@@ -113,18 +121,15 @@ export function WritingSourceEditor({
     })
   }, [])
 
-  const title = document.path.split('/').at(-1) || document.path
-
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-[var(--nova-bg)] text-[var(--nova-text)]">
       <div className="nova-editor-toolbar flex h-9 shrink-0 items-center justify-between gap-3 overflow-hidden border-b px-3">
-        <div className="flex min-w-0 flex-1 items-center gap-2 text-xs text-[var(--nova-text-muted)]">
-          <FileCode2 className="h-3.5 w-3.5 shrink-0" />
-          <span className="min-w-0 truncate font-medium text-[var(--nova-text)]">{title}</span>
-          <span className="hidden min-w-0 truncate font-mono text-[10px] text-[var(--nova-text-faint)] sm:block">
-            {document.path}
-          </span>
-        </div>
+        <ProjectFileSnapshotBreadcrumb
+          workspace={workspace}
+          nodes={fileTree}
+          selectedPath={document.path}
+          onSelectFile={onSelectFile}
+        />
         <div className="flex shrink-0 items-center gap-1">
           <EditorSaveStatus status={saveStatus} />
           <TooltipIconButton

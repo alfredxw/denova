@@ -77,11 +77,11 @@ The two creative flows share durable assets such as lore, presets, model and Age
 
 Denova is iterating quickly. Feedback, bug reports, usage notes, and workflow discussions are welcome.
 
-Join the [Discord community](https://discord.gg/QuHu2aPya) to connect with other creators.
-
 <p align="center">
   <img src="./img/wechat.jpg" alt="WeChat group" width="240">
 </p>
+
+[Discord community](https://discord.gg/QuHu2aPya)
 
 ## Quick Start
 

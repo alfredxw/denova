@@ -54,6 +54,17 @@ describe('i18n', () => {
 
     expect(window.localStorage.getItem('nova.locale.configured')).toBe('en-US')
   })
+
+  it('formats user-facing times with a 24-hour clock', async () => {
+    vi.resetModules()
+    const { formatDateTime, setConfiguredLocale } = await import('./index')
+    setConfiguredLocale('en-US')
+
+    const formatted = formatDateTime(new Date(2026, 7, 26, 23, 4))
+
+    expect(formatted).toContain('23:04')
+    expect(formatted).not.toMatch(/\b(?:AM|PM)\b/i)
+  })
 })
 
 function setBrowserLanguage(language: string) {

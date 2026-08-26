@@ -77,11 +77,12 @@ Denova 面向长期创作项目和互动娱乐，把写作 IDE、互动故事、
 
 Denova 仍在快速迭代中，欢迎反馈问题、分享用法或一起讨论创作工作流。
 
-加入 [Discord 社区](https://discord.gg/QuHu2aPya) 一起交流。
-
 <p align="center">
   <img src="./img/wechat.jpg" alt="微信交流" width="240">
 </p>
+
+[Discord 社区](https://discord.gg/QuHu2aPya)
+
 
 ## 快速开始
 

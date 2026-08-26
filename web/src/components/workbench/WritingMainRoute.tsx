@@ -8,6 +8,7 @@ import type { EditorFlushHandler } from '@/components/Editor/useEditorDraftPersi
 import { WritingSourceEditor } from '@/components/Editor/WritingSourceEditor'
 import { ChangeReviewWorkspace } from '@/features/changes/review/ChangeReviewWorkspace'
 import { ProjectBinaryPreview } from '@/features/files/ProjectSourceEditor'
+import type { ProjectFileExplorerNode } from '@/features/project-explorer/model'
 import type { ChapterSummary, TextSelection, WorkspaceSummary } from '@/lib/api'
 import type { ProjectFileDocument } from '@/lib/api-client/project-files'
 import type { ReviewFeedbackNavigationTarget } from './use-review-feedback-navigation'
@@ -32,6 +33,8 @@ interface WritingMainRouteProps {
   visible: boolean
   loadingLabel: string
   projectId: string
+  workspace: string
+  fileTree: readonly ProjectFileExplorerNode[]
   activeReviewThreadID: string
   activeReviewRequest: ChangeReviewProps['scopeRequest']
   submittedReviewCommentIDs: ChangeReviewProps['hiddenCommentIDs']
@@ -70,6 +73,7 @@ interface WritingMainRouteProps {
   onEditorFlushHandlerChange: (handler: EditorFlushHandler | null) => void
   onOpenLoreLibrary: () => void
   onReferenceLoreItem: LoreWorkspaceProps['onReferenceItem']
+  onSelectFile: (path: string) => unknown
   onSaveCurrentFile: EditorProps['onSave']
   onQuoteSelection: (selection: TextSelection) => void
   onRevealChapter: EditorProps['onRevealChapter']
@@ -85,6 +89,8 @@ export function WritingMainRoute({
   visible,
   loadingLabel,
   projectId,
+  workspace,
+  fileTree,
   activeReviewThreadID,
   activeReviewRequest,
   submittedReviewCommentIDs,
@@ -123,6 +129,7 @@ export function WritingMainRoute({
   onEditorFlushHandlerChange,
   onOpenLoreLibrary,
   onReferenceLoreItem,
+  onSelectFile,
   onSaveCurrentFile,
   onQuoteSelection,
   onRevealChapter,
@@ -175,7 +182,10 @@ export function WritingMainRoute({
               ) : activeFileKind !== 'markdown' && activeDocument?.kind === 'text' ? (
                 <StableWritingSourceEditor
                   projectId={projectId}
+                  workspace={workspace}
+                  fileTree={fileTree}
                   document={activeDocument}
+                  onSelectFile={onSelectFile}
                   onSave={onSaveCurrentFile}
                   onQuoteSelection={onQuoteSelection}
                   saveSignal={saveSignal}

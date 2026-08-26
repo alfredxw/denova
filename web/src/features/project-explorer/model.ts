@@ -55,6 +55,33 @@ interface MutablePathTreeNode {
   children: Map<string, MutablePathTreeNode>
 }
 
+interface ProjectFileTreeSourceNode {
+  name: string
+  type: 'file' | 'dir'
+  children?: readonly ProjectFileTreeSourceNode[]
+}
+
+/** Adapts an already-resolved Project tree without dropping empty directories or server order. */
+export function buildProjectFileTreeFromNodes(
+  nodes: readonly ProjectFileTreeSourceNode[],
+  parentPath = '',
+): ProjectFileExplorerNode[] {
+  return nodes.map((node) => {
+    const path = parentPath ? `${parentPath}/${node.name}` : node.name
+    return {
+      id: path,
+      path,
+      name: node.name,
+      type: node.type,
+      ignored: false,
+      symlink: false,
+      loaded: true,
+      loading: false,
+      children: node.type === 'dir' ? buildProjectFileTreeFromNodes(node.children ?? [], path) : undefined,
+    }
+  })
+}
+
 /** Builds a complete, read-only Project-shaped tree from a flat list of file paths. */
 export function buildProjectFileTreeFromPaths(paths: readonly string[]): ProjectFileExplorerNode[] {
   const root: MutablePathTreeNode = { path: '', name: '', type: 'dir', children: new Map() }

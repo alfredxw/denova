@@ -33,6 +33,7 @@ import { SharedWorkbenchRoutes } from './SharedWorkbenchRoutes'
 import { AgentChatWorkbenchRoute } from './AgentChatWorkbenchRoute'
 import { ToolNavigationProvider, type ToolNavigationIntent, type ToolNavigationTarget } from '@/components/Chat/tool-navigation'
 import { requestAutomationNavigation } from '@/features/automations/automation-navigation'
+import { buildProjectFileTreeFromNodes } from '@/features/project-explorer/model'
 
 const WRITING_AGENT_INIT_EVENT = 'nova:writing-agent-init'
 const InteractiveLayout = memo(lazy(() => import('@/features/interactive/components/InteractiveLayout').then((module) => ({ default: module.InteractiveLayout }))))
@@ -196,6 +197,7 @@ export function ModeRouter(props: ModeRouterProps) {
   }, [readingFontFamily, readingTypographyDraft.setDraft])
   const activeTab = openTabs.find((tab) => tabKey(tab) === activeTabKey) ?? null
   const activeFileKind = selectedFile ? workspaceFileKind(selectedFile) : null
+  const projectFileTree = useMemo(() => buildProjectFileTreeFromNodes(tree), [tree])
   const ideContext = useMemo(() => ({
     currentFile: selectedFile || undefined,
     openFiles: openTabs.flatMap((tab) => tab.kind === 'file' ? [tab.path] : []),
@@ -651,6 +653,8 @@ export function ModeRouter(props: ModeRouterProps) {
         visible={presentedMainRoute === 'ide-writing'}
         loadingLabel={t('router.loading')}
         projectId={projectId}
+        workspace={workspace}
+        fileTree={projectFileTree}
         activeReviewThreadID={activeReviewThreadID}
         activeReviewRequest={activeReviewRequest}
         submittedReviewCommentIDs={submittedReviewCommentIDs}
@@ -691,6 +695,7 @@ export function ModeRouter(props: ModeRouterProps) {
         onEditorFlushHandlerChange={onEditorFlushHandlerChange}
         onOpenLoreLibrary={openLoreLibrary}
         onReferenceLoreItem={referenceLoreFromWorkspace}
+        onSelectFile={selectWorkspacePath}
         onSaveCurrentFile={onSaveCurrentFile}
         onQuoteSelection={onQuoteSelection}
         onRevealChapter={revealCurrentChapterInOutline}

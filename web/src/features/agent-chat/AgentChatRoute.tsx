@@ -54,7 +54,7 @@ function AgentChatRouteComponent({
 
   const pageContent = useCallback((
     projectId: string,
-    _tabWorkspace: string,
+    tabWorkspace: string,
     pageId: AgentChatPageId,
     context: AgentChatPageRenderContext,
   ): ReactNode => {
@@ -64,6 +64,7 @@ function AgentChatRouteComponent({
           <ProjectWritingSurface
             key={projectId}
             projectId={projectId}
+            workspace={tabWorkspace}
             autoSaveEnabled={autoSaveEnabled}
             autoSaveDelayMs={autoSaveDelayMs}
             readingTypography={readingTypography}

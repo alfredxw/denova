@@ -26,7 +26,7 @@ interface ProjectFileBreadcrumbProps {
   selectedPath: string | null
   loading: boolean
   gitStatus?: readonly GitStatusEntry[]
-  onSelectFile: (path: string) => void | Promise<void>
+  onSelectFile: (path: string) => unknown
   onDirectoryExpand: (path: string) => void | Promise<void>
   onLoadMore: (path: string) => void | Promise<void>
 }
@@ -35,6 +35,33 @@ interface BreadcrumbSegment {
   key: string
   label: string
   parentPath: string | null
+}
+
+interface ProjectFileSnapshotBreadcrumbProps {
+  workspace: string
+  nodes: readonly ProjectFileExplorerNode[]
+  selectedPath: string
+  onSelectFile: (path: string) => unknown
+}
+
+/** Interactive breadcrumb backed by a complete, already-resolved Project tree. */
+export function ProjectFileSnapshotBreadcrumb({
+  workspace,
+  nodes,
+  selectedPath,
+  onSelectFile,
+}: ProjectFileSnapshotBreadcrumbProps) {
+  return (
+    <ProjectFileBreadcrumb
+      workspace={workspace}
+      nodes={nodes}
+      selectedPath={selectedPath}
+      loading={false}
+      onSelectFile={onSelectFile}
+      onDirectoryExpand={ignoreResolvedTreeRequest}
+      onLoadMore={ignoreResolvedTreeRequest}
+    />
+  )
 }
 
 /** Compact path navigation with per-segment file browsing. */
@@ -218,7 +245,7 @@ function ProjectBreadcrumbTree({
   selectedPath: string | null
   defaultExpandedPath: string | null
   focusedPath: string | null
-  onSelectFile: (path: string) => void | Promise<void>
+  onSelectFile: (path: string) => unknown
   onDirectoryExpand: (path: string) => void | Promise<void>
   onLoadMore: (path: string) => void | Promise<void>
   gitStatus: readonly GitStatusEntry[]
@@ -309,6 +336,8 @@ function ProjectBreadcrumbTree({
     </>
   )
 }
+
+function ignoreResolvedTreeRequest() {}
 
 function findMoreNode(nodes: readonly ProjectFileExplorerNode[], path: string): ProjectFileExplorerNode | null {
   for (const node of nodes) {

@@ -16,6 +16,7 @@ import type { DocumentReviewController } from '@/features/document-review/contro
 import type { AgentChatDocumentReviewNavigation } from '@/features/agent-chat/types'
 import { ProjectSourceEditor } from '@/features/files/ProjectSourceEditor'
 import { isPreviewableMarkdown } from '@/features/files/file-language'
+import { buildProjectFileTreeFromNodes } from '@/features/project-explorer/model'
 import {
   APIError,
   getProjectBookSummary,
@@ -32,6 +33,7 @@ import { WorkspaceFileRevisionConflictError } from '@/lib/autosave/workspace-fil
 
 interface ProjectWritingSurfaceProps {
   projectId: string
+  workspace: string
   initialPath?: string | null
   autoSaveEnabled?: boolean
   autoSaveDelayMs?: number
@@ -52,6 +54,7 @@ interface ProjectWritingSurfaceProps {
  */
 export function ProjectWritingSurface({
   projectId,
+  workspace,
   initialPath,
   autoSaveEnabled = true,
   autoSaveDelayMs,
@@ -84,6 +87,7 @@ export function ProjectWritingSurface({
     () => [...(summary?.chapters || [])].sort((left, right) => left.index - right.index),
     [summary?.chapters],
   )
+  const projectFileTree = useMemo(() => buildProjectFileTreeFromNodes(tree), [tree])
 
   const loadSnapshot = useCallback(async () => {
     const request = ++snapshotRequestRef.current
@@ -368,7 +372,10 @@ export function ProjectWritingSurface({
                 ) : document.kind === 'text' ? (
                   <WritingSourceEditor
                     projectId={projectId}
+                    workspace={workspace}
+                    fileTree={projectFileTree}
                     document={document}
+                    onSelectFile={selectFile}
                     searchIntent={searchIntent?.path === document.path ? searchIntent : null}
                     autoSaveEnabled={autoSaveEnabled}
                     autoSaveDelayMs={autoSaveDelayMs}
