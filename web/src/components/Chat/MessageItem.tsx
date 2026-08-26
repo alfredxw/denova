@@ -152,7 +152,7 @@ export const MessageItem = memo(function MessageItem({ projectId = '', message, 
     }
 
     case 'thinking':
-      return <ThinkingBlock message={message} content={content} streaming={message.streaming === true} showAgentSource={showAgentSource} />
+      return <ThinkingBlock projectId={projectId} message={message} content={content} streaming={message.streaming === true} showAgentSource={showAgentSource} />
 
     case 'tool_call': {
       // Live input is an opaque protocol text stream. Specialized renderers may
@@ -262,7 +262,7 @@ export const MessageItem = memo(function MessageItem({ projectId = '', message, 
 export function AgentActivityShimmer({ content }: { content: string }) {
   return (
     <div className="flex justify-start px-1 py-1" role="status" aria-live="polite">
-      <span className="shimmer text-sm font-medium">{content}</span>
+      <span className="shimmer text-sm font-medium [--shimmer-color:var(--nova-text-faint)]">{content}</span>
     </div>
   )
 }

@@ -273,7 +273,7 @@ export function createStoryStageStreamConsumer({
         }
         case 'tool_args_delta': {
           const data = event.data
-          await liveAccumulator.appendToolArgs(data)
+          liveAccumulator.appendToolArgs(data)
           break
         }
         case 'tool_started':

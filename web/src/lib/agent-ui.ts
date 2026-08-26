@@ -1,9 +1,7 @@
-import type { ChatTransport, UIMessage, UIMessageChunk } from 'ai'
+import type { ChatTransport, UIMessage } from 'ai'
 import { DefaultChatTransport } from 'ai'
 import { fetchAPI, responseAPIError } from './api-client/client'
 import type { ToolPresentation, UserMessageReference } from './api-client/types'
-import { recordAgentToolInputChunk } from './agent-ui-message'
-import { agentToolInputRenderChunks } from './agent-tool-input-stream'
 import type { ChatAttachmentDescriptor, ChatAttachmentUpload } from './chat-attachments'
 
 export type AgentDisplayRole = 'user' | 'assistant' | 'thinking' | 'tool_call' | 'tool_result' | 'ask' | 'rule_roll' | 'context_compaction' | 'token_usage' | 'execution_summary' | 'proposed_plan' | 'system' | 'error'
@@ -93,9 +91,6 @@ export class AgentChatTransport implements ChatTransport<AgentUIMessage> {
   private activeStreamAfter = 0
   private activeStreamScope: Record<string, string> = {}
   private readonly initialSubmissionOutcomes = new Map<string, InitialSubmissionOutcome>()
-  private readonly toolInputTextByToolCall = new Map<string, string>()
-  private readonly toolInputTextListeners = new Set<() => void>()
-  private toolInputTextSnapshot: ReadonlyMap<string, string> = new Map()
 
   private readonly streamApi: string
   private readonly scope: Record<string, string>
@@ -133,23 +128,15 @@ export class AgentChatTransport implements ChatTransport<AgentUIMessage> {
   sendMessages(options: Parameters<ChatTransport<AgentUIMessage>['sendMessages']>[0]) {
     // A new POST creates a new backend task. It must be rebound from `/active`
     // before any reconnect can target a stream.
-    this.resetToolInputText()
     this.activeStreamTaskID = ''
     this.activeStreamAfter = 0
     this.activeStreamScope = {}
-    return this.trackToolInputStream(this.transport.sendMessages(options))
+    return this.transport.sendMessages(options)
   }
 
   reconnectToStream(options: Parameters<ChatTransport<AgentUIMessage>['reconnectToStream']>[0]) {
-    return this.trackToolInputStream(this.transport.reconnectToStream(options))
+    return this.transport.reconnectToStream(options)
   }
-
-  subscribeToolInputText = (listener: () => void) => {
-    this.toolInputTextListeners.add(listener)
-    return () => this.toolInputTextListeners.delete(listener)
-  }
-
-  getToolInputTextSnapshot = () => this.toolInputTextSnapshot
 
   /** Select the exact backend task and optional server-issued display cursor. */
   setActiveStreamTarget(taskID: string, after?: number, scope: Record<string, string> = {}) {
@@ -182,33 +169,6 @@ export class AgentChatTransport implements ChatTransport<AgentUIMessage> {
     const outcome = this.initialSubmissionOutcomes.get(key) || missingOutcome
     this.initialSubmissionOutcomes.delete(key)
     return outcome
-  }
-
-  private async trackToolInputStream<T extends ReadableStream<UIMessageChunk> | null>(streamPromise: PromiseLike<T>): Promise<T> {
-    const stream = await streamPromise
-    if (!stream) return stream
-    return stream.pipeThrough(new TransformStream<UIMessageChunk, UIMessageChunk>({
-      transform: async (chunk, controller) => {
-        for await (const renderChunk of agentToolInputRenderChunks(chunk)) {
-          if (recordAgentToolInputChunk(renderChunk, this.toolInputTextByToolCall)) {
-            this.publishToolInputText()
-          }
-          controller.enqueue(renderChunk)
-        }
-      },
-    })) as T
-  }
-
-  private publishToolInputText() {
-    this.toolInputTextSnapshot = new Map(this.toolInputTextByToolCall)
-    for (const listener of this.toolInputTextListeners) listener()
-  }
-
-  private resetToolInputText() {
-    this.toolInputTextByToolCall.clear()
-    if (this.toolInputTextSnapshot.size === 0) return
-    this.toolInputTextSnapshot = new Map()
-    for (const listener of this.toolInputTextListeners) listener()
   }
 
   private activeStreamURL() {

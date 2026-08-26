@@ -80,4 +80,35 @@ describe('MessageItem streaming Markdown', () => {
     expect(screen.getByTitle('退出全屏')).toBeInTheDocument()
     expect(screen.queryByTitle(/下载|download/i)).not.toBeInTheDocument()
   })
+
+  it('renders streaming thinking as Markdown', () => {
+    const content = [
+      '**正在分析。**',
+      '',
+      '$$',
+      'x^2 + y^2 = z^2',
+      '$$',
+      '',
+      '![分析图](assets/image/generated/analysis.png)',
+    ].join('\n')
+    const { container, rerender } = render(
+      <MessageItem projectId="project-thinking" message={{ role: 'thinking', content, streaming: true }} />,
+    )
+
+    expect(container.querySelector('[data-streamdown="strong"]')).toHaveTextContent('正在分析。')
+    expect(container.querySelector('.katex-display')).toBeInTheDocument()
+    expect(container.querySelector('[data-sd-animate]')).toBeInTheDocument()
+    expect(container.querySelector('img[alt="分析图"]')).toHaveAttribute(
+      'src',
+      '/api/projects/project-thinking/files/asset?path=assets%2Fimage%2Fgenerated%2Fanalysis.png',
+    )
+
+    rerender(
+      <MessageItem projectId="project-thinking" message={{ role: 'thinking', content, streaming: false }} />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: '展开思考' }))
+
+    expect(container.querySelector('[data-streamdown="strong"]')).toHaveTextContent('正在分析。')
+    expect(container.querySelector('[data-sd-animate]')).not.toBeInTheDocument()
+  })
 })

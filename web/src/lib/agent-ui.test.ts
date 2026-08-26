@@ -424,6 +424,27 @@ describe('agent-ui', () => {
     }
   })
 
+  it('renders the AI SDK partial tool input as the only streaming input state', () => {
+    const input = { path: 'chapters/ch01.md', content: '正在生成' }
+    const views = buildAgentMessageViews([{
+      id: 'assistant-write',
+      role: 'assistant',
+      parts: [{
+        type: 'dynamic-tool',
+        toolName: 'write',
+        toolCallId: 'tool-write',
+        state: 'input-streaming',
+        input,
+      }],
+    }] as AgentUIMessage[])
+
+    expect(agentViewToRenderMessage(views[0])).toMatchObject({
+      role: 'tool_call',
+      streaming: true,
+      args: JSON.stringify(input),
+    })
+  })
+
   it('preserves structured API errors and request IDs from a rejected initial turn', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(
       JSON.stringify({

@@ -52,39 +52,25 @@ describe('useAgentUIMessageStream', () => {
     expect(messageText(result.current.messages[0])).toBe('final')
   })
 
-  it('preserves the exact append-only input text beside parsed tool snapshots', async () => {
-    const firstDelta = '{"path":"chapters/ch01.md","edits":[{"old_string":"旧正文'
-    const secondDelta = '仍在生成'
-    streamMocks.readUIMessageStream.mockImplementation(({ stream }: { stream: ReadableStream<UIMessageChunk> }) => (async function* () {
-      const reader = stream.getReader()
-      let inputVersion = 0
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) return
-        if (value.type !== 'tool-input-start' && value.type !== 'tool-input-delta') continue
-        if (value.type === 'tool-input-delta') inputVersion += 1
-        yield toolMessage({ parsedVersion: inputVersion })
-      }
+  it('uses the AI SDK parsed tool input without a second raw-text state', async () => {
+    const firstInput = { path: 'chapters/ch01.md', content: '正在' }
+    const finalInput = { path: 'chapters/ch01.md', content: '正在生成' }
+    streamMocks.readUIMessageStream.mockReturnValue((async function* () {
+      yield toolMessage(firstInput)
+      yield toolMessage(finalInput)
     })())
     const onView = vi.fn()
     const { result } = renderHook(() => useAgentUIMessageStream({ onView }))
-    const stream = new ReadableStream<UIMessageChunk>({
-      start(controller) {
-        controller.enqueue({ type: 'tool-input-start', toolCallId: 'tool-1', toolName: 'edit', dynamic: true })
-        controller.enqueue({ type: 'tool-input-delta', toolCallId: 'tool-1', inputTextDelta: firstDelta })
-        controller.enqueue({ type: 'tool-input-delta', toolCallId: 'tool-1', inputTextDelta: secondDelta })
-        controller.close()
-      },
-    })
+    const stream = new ReadableStream<UIMessageChunk>()
 
     await act(async () => {
       await result.current.consumeAgentUIStream(stream)
     })
 
-    expect(onView.mock.calls.map(([view]) => view.inputText)).toEqual(['', firstDelta, `${firstDelta}${secondDelta}`])
+    expect(streamMocks.readUIMessageStream).toHaveBeenCalledWith({ stream, terminateOnError: true })
+    expect(onView.mock.calls.map(([view]) => view.input)).toEqual([firstInput, finalInput])
     expect(result.current.messages[0].parts[0]).toMatchObject({
-      input: { parsedVersion: 2 },
-      inputText: `${firstDelta}${secondDelta}`,
+      input: finalInput,
     })
   })
 })

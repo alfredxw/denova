@@ -13,6 +13,7 @@ import {
 } from '@/lib/api'
 import { AgentChatTransport } from '@/lib/agent-ui'
 import { APIError } from '@/lib/api-client'
+import { STREAMING_RENDER_INTERVAL_MS } from '@/lib/streaming/raf-update-batcher'
 import { writingAgentChatClient } from './agent-chat-client'
 import { useAgentChat } from './useAgentChat'
 
@@ -103,70 +104,13 @@ describe('useAgentChat', () => {
     toastMock.info.mockReset()
   })
 
-  it('renders exact edit input deltas from the main chat transport instead of the SDK partial parse', async () => {
-    const firstDelta = '{"path":"chapters/ch01.md","edits":[{"old_string":"旧正文'
-    const secondDelta = '仍在生成","new_string":"新正文"}]}'
-    const inputText = `${firstDelta}${secondDelta}`
-    chatMock.messages = [
-      {
-        id: 'assistant-edit',
-        role: 'assistant',
-        parts: [
-          {
-            type: 'dynamic-tool',
-            toolName: 'edit',
-            toolCallId: 'tool-edit',
-            state: 'input-streaming',
-            input: { path: 'chapters/ch01.md' },
-          },
-        ],
-      },
-    ]
-    const frames = [
-      { type: 'start', messageId: 'assistant-edit' },
-      { type: 'tool-input-start', toolCallId: 'tool-edit', toolName: 'edit', dynamic: true },
-      { type: 'tool-input-delta', toolCallId: 'tool-edit', inputTextDelta: firstDelta },
-      { type: 'tool-input-delta', toolCallId: 'tool-edit', inputTextDelta: secondDelta },
-      { type: 'finish', finishReason: 'stop' },
-    ].map((frame) => `data: ${JSON.stringify(frame)}\n\n`).join('') + 'data: [DONE]\n\n'
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(frames, {
-      status: 200,
-      headers: { 'Content-Type': 'text/event-stream' },
-    }))
+  it('uses the AI SDK as the single throttled message state', () => {
+    renderHook(() => useAgentChat())
 
-    try {
-      const { result } = renderHook(() => useAgentChat())
-      const transport = (chatMock.options as { transport: AgentChatTransport }).transport
-      const reader = (await transport.sendMessages(agentTransportSendOptions())).getReader()
-
-      await act(async () => {
-        await reader.read() // start
-        await reader.read() // tool-input-start
-      })
-      expect(result.current.messages[0]?.parts[0]).toMatchObject({ inputText: '' })
-
-      await act(async () => {
-        await reader.read() // first tool-input-delta
-      })
-      expect(result.current.messages[0]?.parts[0]).toMatchObject({ inputText: firstDelta })
-
-      await act(async () => {
-        await reader.read() // second tool-input-delta
-      })
-      expect(result.current.messages[0]?.parts[0]).toMatchObject({
-        state: 'input-streaming',
-        input: { path: 'chapters/ch01.md' },
-        inputText,
-      })
-
-      await act(async () => {
-        while (!(await reader.read()).done) {
-          // Drain the remaining protocol frames.
-        }
-      })
-    } finally {
-      fetchSpy.mockRestore()
-    }
+    expect(chatMock.options).toMatchObject({
+      throttle: STREAMING_RENDER_INTERVAL_MS,
+      transport: expect.any(AgentChatTransport),
+    })
   })
 
   it('keeps the confirmed session selected and blocks sends while a switch is pending', async () => {
@@ -1936,20 +1880,4 @@ function deferred<T>() {
     reject = rej
   })
   return { promise, resolve, reject }
-}
-
-function agentTransportSendOptions() {
-  return {
-    trigger: 'submit-message' as const,
-    chatId: 'chat-tool-input',
-    messageId: undefined,
-    abortSignal: undefined,
-    messages: [
-      {
-        id: 'user-tool-input',
-        role: 'user' as const,
-        parts: [{ type: 'text' as const, text: 'stream edit input' }],
-      },
-    ],
-  }
 }

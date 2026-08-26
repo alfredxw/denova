@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { buildContextCompactionMessage, createContextCompactionMessageId, upsertContextCompactionMessage } from '@/components/Chat/context-compaction-message'
 import type { AgentMessageMetadata, AgentUIMessage } from '@/lib/agent-ui'
-import { agentToolInputText, createAgentDataMessage, createAgentTextMessage, createAgentToolMessage, parseAgentToolInput } from '@/lib/agent-ui-message'
-import { toolInputTextRenderChunks } from '@/lib/agent-tool-input-stream'
+import { createAgentDataMessage, createAgentTextMessage, createAgentToolMessage, parseAgentToolInput } from '@/lib/agent-ui-message'
 import { createRafUpdateBatcher, STREAMING_RENDER_INTERVAL_MS } from '@/lib/streaming/raf-update-batcher'
 import {
   appendBufferedLiveMessage,
@@ -14,8 +13,8 @@ import {
   promoteMessageTarget,
   promoteMessageTargets,
   streamMetadataFromPayload,
-  toolMessageInputText,
-  updateToolMessageInputText,
+  toolMessageInput,
+  updateToolMessageInput,
   type BufferedLiveMessage,
 } from './live-stream-messages'
 import { publicRuleRollFromToolOutput } from './rule-roll'
@@ -97,7 +96,7 @@ export function useLiveMessageAccumulator({ publicRuleRollVisible, setMessages }
     const mappedId = findMappedLiveToolId(toolKeys, toolKeyToMessageIdRef.current)
     const id = payload.id || mappedId || `tool-${Date.now()}-${Math.random().toString(16).slice(2)}`
     const name = payload.name || 'unknown_tool'
-    const inputText = payload.args ?? ''
+    const input = payload.args ?? ''
     if (toolKeys.length > 0) {
       toolKeyToMessageIdRef.current = bindLiveToolEventKeys(toolKeys, toolKeyToMessageIdRef.current, id)
     }
@@ -108,33 +107,29 @@ export function useLiveMessageAccumulator({ publicRuleRollVisible, setMessages }
         id,
         name,
         state: 'input-streaming',
-        inputText,
+        input,
         metadata: streamMetadataFromPayload(payload),
       }),
     ])
   }, [flush, setMessages])
 
-  const appendToolArgs = useCallback(async (payload: Record<string, unknown> & { id?: string; name?: string; args?: string; delta?: string }) => {
+  const appendToolArgs = useCallback((payload: Record<string, unknown> & { id?: string; name?: string; args?: string; delta?: string }) => {
     if (!payload.id && !payload.name && liveToolEventKeys(payload).length === 0) return
-    const inputText = payload.args !== undefined ? payload.args : (payload.delta || '')
-    let firstChunk = true
-    for await (const chunk of toolInputTextRenderChunks(inputText)) {
-      const replaceInput = payload.args !== undefined && firstChunk
-      updateBatcher.enqueue((current) => {
-        const targetIndex = findToolMessageIndexForPayload(current, payload, toolKeyToMessageIdRef.current)
-        if (targetIndex < 0) return current
-        const matchedId = current[targetIndex].id
-        if (matchedId) {
-          toolKeyToMessageIdRef.current = bindLiveToolEventKeys(liveToolEventKeys(payload), toolKeyToMessageIdRef.current, matchedId)
-        }
-        return current.map((message, index) => {
-          if (index !== targetIndex) return message
-          const args = replaceInput ? chunk : `${toolMessageInputText(message)}${chunk}`
-          return updateToolMessageInputText(message, args)
-        })
+    const inputDelta = payload.args !== undefined ? payload.args : (payload.delta || '')
+    const replaceInput = payload.args !== undefined
+    updateBatcher.enqueue((current) => {
+      const targetIndex = findToolMessageIndexForPayload(current, payload, toolKeyToMessageIdRef.current)
+      if (targetIndex < 0) return current
+      const matchedId = current[targetIndex].id
+      if (matchedId) {
+        toolKeyToMessageIdRef.current = bindLiveToolEventKeys(liveToolEventKeys(payload), toolKeyToMessageIdRef.current, matchedId)
+      }
+      return current.map((message, index) => {
+        if (index !== targetIndex) return message
+        const input = replaceInput ? inputDelta : `${toolMessageInput(message)}${inputDelta}`
+        return updateToolMessageInput(message, input)
       })
-      firstChunk = false
-    }
+    })
   }, [updateBatcher])
 
   const completeToolCall = useCallback((payload: Record<string, unknown> & { id?: string; name?: string }, result = '') => {
@@ -275,7 +270,7 @@ function settleAgentMessage(message: AgentUIMessage, includeNarrative: boolean):
       changed = true
       return {
         ...part,
-        input: parseAgentToolInput(agentToolInputText(part) ?? ''),
+        input: typeof part.input === 'string' ? parseAgentToolInput(part.input) : part.input,
         state: 'output-available' as const,
       }
     }

@@ -1,5 +1,5 @@
 import type { AgentMessageMetadata, AgentUIMessage } from '@/lib/agent-ui'
-import { agentMessageDisplayText, agentToolInputText, createAgentReasoningMessage, createAgentTextMessage, parseAgentToolInput } from '@/lib/agent-ui-message'
+import { agentMessageDisplayText, createAgentReasoningMessage, createAgentTextMessage, parseAgentToolInput } from '@/lib/agent-ui-message'
 import { readToolPresentation } from '@/lib/tool-presentation'
 
 export type BufferedLiveMessage = {
@@ -143,26 +143,22 @@ function findToolMessageIndex(messages: AgentUIMessage[], id?: string, name?: st
   return -1
 }
 
-export function updateToolMessageInputText(message: AgentUIMessage, inputText: string): AgentUIMessage {
-  return updateToolPart(message, (part) => ({ ...part, inputText }))
+export function updateToolMessageInput(message: AgentUIMessage, input: string): AgentUIMessage {
+  return updateToolPart(message, (part) => ({ ...part, input }))
 }
 
 export function completeToolMessage(message: AgentUIMessage, result: string): AgentUIMessage {
-  return updateToolPart(message, (part) => {
-    const inputText = typeof part.inputText === 'string' ? part.inputText : ''
-    return {
-      ...part,
-      // Parsing belongs to the completed-state view, never the delta path.
-      input: parseAgentToolInput(inputText),
-      state: 'output-available',
-      output: result,
-    }
-  })
+  return updateToolPart(message, (part) => ({
+    ...part,
+    input: typeof part.input === 'string' ? parseAgentToolInput(part.input) : part.input,
+    state: 'output-available',
+    output: result,
+  }))
 }
 
-export function toolMessageInputText(message: AgentUIMessage) {
+export function toolMessageInput(message: AgentUIMessage) {
   const part = toolPart(message)
-  return part ? (agentToolInputText(part as AgentUIMessage['parts'][number]) ?? '') : ''
+  return typeof part?.input === 'string' ? part.input : ''
 }
 
 function updateToolPart(message: AgentUIMessage, update: (part: Record<string, unknown>) => Record<string, unknown>): AgentUIMessage {

@@ -54,7 +54,7 @@ export function StreamingPlaceholder() {
   const { t } = useTranslation()
   return (
     <div className="py-1" role="status" aria-live="polite">
-      <span className="shimmer text-sm font-medium">{t('chat.activity.thinking')}</span>
+      <span className="shimmer text-sm font-medium [--shimmer-color:var(--nova-text-faint)]">{t('chat.activity.thinking')}</span>
     </div>
   )
 }
@@ -211,7 +211,7 @@ function highlightDialogueText(text: string, enabled: boolean, keyPrefix: string
 }
 
 /** Reasoning follows streaming until the user takes explicit control. */
-export function ThinkingBlock({ message, content, streaming, showAgentSource = true }: { message: ThinkingChatMessage; content: string; streaming: boolean; showAgentSource?: boolean }) {
+export function ThinkingBlock({ projectId, message, content, streaming, showAgentSource = true }: { projectId: string; message: ThinkingChatMessage; content: string; streaming: boolean; showAgentSource?: boolean }) {
   const { t } = useTranslation()
   const preview = agentContentPreview(content)
   const [expanded, setExpanded] = useState(streaming)
@@ -274,10 +274,17 @@ export function ThinkingBlock({ message, content, streaming, showAgentSource = t
                 onScroll={contentScrollLock.onScroll}
                 onWheel={contentScrollLock.onWheel}
                 onKeyDown={contentScrollLock.onKeyDown}
-                className="scroll-fade-y scroll-fade-8 max-h-80 overflow-x-hidden overflow-y-auto overscroll-contain px-2.5 py-2 text-xs leading-4 text-[var(--nova-text-muted)] whitespace-pre-wrap break-words [overflow-anchor:none] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[var(--nova-accent)]"
+                className="scroll-fade-y scroll-fade-8 max-h-80 overflow-x-hidden overflow-y-auto overscroll-contain px-2.5 py-2 text-xs leading-4 text-[var(--nova-text-muted)] whitespace-normal break-words [overflow-anchor:none] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[var(--nova-accent)]"
               >
                 <StreamingContentStage content={content} targetContent={streaming ? message.streaming_target_content : undefined} streaming={streaming}>
-                  {(value) => value}
+                  {(value) => (
+                    <MarkdownContent
+                      content={value}
+                      highlightDialogue={false}
+                      projectId={projectId}
+                      streaming={streaming}
+                    />
+                  )}
                 </StreamingContentStage>
               </div>
             </div>

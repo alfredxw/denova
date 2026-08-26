@@ -1,4 +1,3 @@
-import type { UIMessageChunk } from 'ai'
 import type { AgentDataParts, AgentMessageMetadata, AgentUIMessage } from './agent-ui'
 
 type AgentTextRole = 'user' | 'system' | 'assistant'
@@ -25,7 +24,6 @@ interface AgentToolMessageInput {
   name: string
   state: AgentToolState
   input?: unknown
-  inputText?: string
   output?: unknown
   errorText?: string
   metadata?: AgentMessageMetadata
@@ -57,7 +55,7 @@ export function createAgentReasoningMessage({ id, text, state = 'done', metadata
   } as AgentUIMessage
 }
 
-export function createAgentToolMessage({ id, name, state, input, inputText, output, errorText, metadata }: AgentToolMessageInput): AgentUIMessage {
+export function createAgentToolMessage({ id, name, state, input, output, errorText, metadata }: AgentToolMessageInput): AgentUIMessage {
   const messageID = id || localAgentMessageID('tool')
   const part: Record<string, unknown> = {
     type: 'dynamic-tool',
@@ -66,7 +64,6 @@ export function createAgentToolMessage({ id, name, state, input, inputText, outp
     state,
     input,
   }
-  if (inputText !== undefined) part.inputText = inputText
   if (output !== undefined && state !== 'output-error') part.output = output
   if (errorText !== undefined || state === 'output-error') part.errorText = errorText || String(output || '')
   return { id: messageID, role: 'assistant', metadata, parts: [part] } as AgentUIMessage
@@ -105,58 +102,6 @@ export function parseAgentToolInput(value: string) {
   } catch {
     return value
   }
-}
-
-/** Returns only the exact protocol text; structured input is a separate completed-state view. */
-export function agentToolInputText(part: AgentUIMessage['parts'][number]) {
-  const raw = part as Record<string, unknown>
-  return typeof raw.inputText === 'string' ? raw.inputText : undefined
-}
-
-/** Accumulates the protocol's append-only raw input without interpreting a tool schema. */
-export function recordAgentToolInputChunk(chunk: UIMessageChunk, inputTextByToolCall: Map<string, string>) {
-  if (chunk.type === 'tool-input-start') {
-    inputTextByToolCall.set(chunk.toolCallId, '')
-    return true
-  }
-  if (chunk.type !== 'tool-input-delta') return false
-  inputTextByToolCall.set(
-    chunk.toolCallId,
-    (inputTextByToolCall.get(chunk.toolCallId) ?? '') + chunk.inputTextDelta,
-  )
-  return true
-}
-
-/** Adds the raw protocol input beside the SDK's parsed view for presentation. */
-export function attachAgentToolInputText(
-  message: AgentUIMessage,
-  inputTextByToolCall: ReadonlyMap<string, string>,
-): AgentUIMessage {
-  let changed = false
-  const parts = message.parts.map((part) => {
-    const raw = part as Record<string, unknown>
-    const toolCallId = typeof raw.toolCallId === 'string' ? raw.toolCallId : ''
-    if (!toolCallId || !inputTextByToolCall.has(toolCallId)) return part
-    const inputText = inputTextByToolCall.get(toolCallId) ?? ''
-    if (raw.inputText === inputText) return part
-    changed = true
-    return { ...raw, inputText } as unknown as AgentUIMessage['parts'][number]
-  })
-  return changed ? { ...message, parts } : message
-}
-
-export function attachAgentToolInputTexts(
-  messages: AgentUIMessage[],
-  inputTextByToolCall: ReadonlyMap<string, string>,
-) {
-  if (inputTextByToolCall.size === 0) return messages
-  let changed = false
-  const next = messages.map((message) => {
-    const attached = attachAgentToolInputText(message, inputTextByToolCall)
-    if (attached !== message) changed = true
-    return attached
-  })
-  return changed ? next : messages
 }
 
 function localAgentMessageID(prefix: string) {
