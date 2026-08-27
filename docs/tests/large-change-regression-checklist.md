@@ -131,6 +131,16 @@ pnpm --dir web test
 
 ## 6. 测试数据与浏览器环境
 
+前端测试分层：
+
+- `pnpm --dir web test:playwright`：主测试层，同一套 Playwright Test 同时承载浏览器行为回归与核心 E2E。
+- `pnpm --dir web test:browser`：浏览器交互回归，重点验证导航、响应式布局、主题与双语行为。
+- `pnpm --dir web test:e2e`：连接隔离的真实 Denova 后端与本地确定性模型，覆盖写作保存和游戏回合持久化等核心链路。
+- `pnpm --dir web test:unit`：辅助测试层，仅保留纯逻辑、解析器、状态转换和需要快速反馈的组件/Hook 测试。
+- `pnpm --dir web test`：CI 与发布使用的完整前端测试入口，先跑 Vitest，再一次性跑全部 Playwright 项目。
+
+Playwright 的后端数据固定写入 `web/test-results/runtime`，每次启动时重建；模型请求只发送到本地确定性服务。自动化测试不得复用开发者正在运行的 Denova 后端，也不得读取真实 `DENOVA_DIR`。
+
 根据选中的影响域准备最小测试集，不必为无关变更创建所有数据：
 
 - 全新的临时 `DENOVA_DIR`：用于首次启动、创建和安装类测试。

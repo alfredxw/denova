@@ -1,0 +1,65 @@
+import { expect, type APIRequestContext, type APIResponse } from '@playwright/test'
+
+export interface E2EBook {
+  projectId: string
+  workspace: string
+}
+
+export interface E2EStory {
+  id: string
+}
+
+async function expectSuccessful(response: APIResponse): Promise<void> {
+  const failureDetails = response.ok() ? undefined : await response.text()
+  expect(response.ok(), failureDetails).toBe(true)
+}
+
+export async function createAndOpenBook(request: APIRequestContext, title: string): Promise<E2EBook> {
+  const created = await request.post('/api/books/create', {
+    data: { title, author: 'Denova E2E' },
+  })
+  await expectSuccessful(created)
+  const body = await created.json() as { project_id: string; workspace: string }
+  const switched = await request.post('/api/workspace/switch', { data: { path: body.workspace } })
+  await expectSuccessful(switched)
+  return { projectId: body.project_id, workspace: body.workspace }
+}
+
+export async function createProjectFile(
+  request: APIRequestContext,
+  projectId: string,
+  path: string,
+  content: string,
+): Promise<void> {
+  const response = await request.post(`/api/projects/${encodeURIComponent(projectId)}/files/operations`, {
+    data: { operations: [{ id: 'seed', kind: 'create', path, type: 'file', content }] },
+  })
+  await expectSuccessful(response)
+  const body = await response.json() as { results?: Array<{ ok: boolean; error?: string }> }
+  expect(body.results?.[0]).toMatchObject({ ok: true })
+}
+
+export async function readProjectFile(
+  request: APIRequestContext,
+  projectId: string,
+  path: string,
+): Promise<{ content: string; revision: string }> {
+  const query = new URLSearchParams({ path })
+  const response = await request.get(`/api/projects/${encodeURIComponent(projectId)}/files/file?${query}`)
+  await expectSuccessful(response)
+  return response.json()
+}
+
+export async function createStory(request: APIRequestContext, title: string): Promise<E2EStory> {
+  const response = await request.post('/api/interactive/stories', {
+    data: {
+      title,
+      origin: '一扇石门挡在旧车站入口。',
+      choice_count: 2,
+      director_run_policy: { mode: 'manual' },
+      state_schema_policy: { mode: 'fixed_template' },
+    },
+  })
+  await expectSuccessful(response)
+  return response.json()
+}

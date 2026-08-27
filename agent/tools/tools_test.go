@@ -600,7 +600,7 @@ func TestLocalWorkspaceGlobAndGrep(t *testing.T) {
 		t.Fatalf("grep count mode = %#v, %v", counts, err)
 	}
 	externalGrep, err := unpaged.Grep(context.Background(), GrepRequest{
-		Command: "rg -n dragon -- " + shellQuoteTestWord(filepath.Join(external, "references")),
+		Command: "rg -n dragon -- " + quoteCanonicalGrepWord(filepath.Join(external, "references")),
 	})
 	if err != nil || len(externalGrep.Entries) != 1 || !strings.Contains(externalGrep.Entries[0], wantExternalFile) ||
 		!strings.Contains(externalGrep.Entries[0], "external dragon style") {

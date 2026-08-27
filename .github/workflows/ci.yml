@@ -71,13 +71,25 @@ jobs:
             (cd "${module}" && go test ./...)
           done
 
-      - name: Run affected frontend tests
-        if: github.event_name == 'pull_request'
-        run: pnpm --dir web test --changed=${{ github.event.pull_request.base.sha }} --passWithNoTests --maxWorkers=2
+      - name: Install Playwright browser
+        run: pnpm --dir web exec playwright install --with-deps chromium
 
-      - name: Run all frontend tests
-        if: github.event_name == 'workflow_dispatch'
-        run: pnpm --dir web test --maxWorkers=2
+      - name: Check frontend translations
+        run: pnpm --dir web check:i18n
+
+      - name: Run frontend tests
+        run: pnpm --dir web test
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            web/playwright-report
+            web/test-results/artifacts
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Build distribution
         run: ./scripts/build.sh

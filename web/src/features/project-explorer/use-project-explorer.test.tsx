@@ -1,15 +1,29 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
-import { http, HttpResponse } from 'msw'
-import { describe, expect, it } from 'vitest'
-import { server } from '@/test/msw/server'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { apiRoute, installApiMock, jsonResponse } from '@/test/api-mock'
 import { TestQueryClientProvider } from '@/test/query-client'
 import { useProjectExplorer } from './use-project-explorer'
 
+let apiMock: ReturnType<typeof installApiMock>
+
 describe('useProjectExplorer', () => {
+  beforeEach(() => {
+    apiMock = installApiMock(
+      apiRoute.get('/api/projects/project-one/versions/status', () => jsonResponse({
+        has_versions: false,
+        clean: true,
+        changes: [],
+        auto: { timed_enabled: false, timed_interval_minutes: 10, retention: 100 },
+      })),
+    )
+  })
+
+  afterEach(() => vi.unstubAllGlobals())
+
   it('loads an ordinary nested tree in one recursive bootstrap request', async () => {
     const requestBodies: unknown[] = []
-    server.use(
-      http.get('/api/projects/project-one/versions/status', () => HttpResponse.json({
+    apiMock.use(
+      apiRoute.get('/api/projects/project-one/versions/status', () => jsonResponse({
         has_versions: true,
         clean: false,
         changes: [
@@ -18,9 +32,9 @@ describe('useProjectExplorer', () => {
         ],
         auto: { timed_enabled: false, timed_interval_minutes: 10, retention: 100 },
       })),
-      http.post('/api/projects/project-one/files/resolve', async ({ request }) => {
+      apiRoute.post('/api/projects/project-one/files/resolve', async ({ request }) => {
         requestBodies.push(await request.json())
-        return HttpResponse.json({
+        return jsonResponse({
           project_id: 'project-one',
           results: [{
             path: '',
@@ -70,12 +84,12 @@ describe('useProjectExplorer', () => {
   it('batches bootstrap resolution and refreshes only mutation parents', async () => {
     const resolvedTargets: string[][] = []
     const includeIgnoredValues: unknown[] = []
-    server.use(
-      http.post('/api/projects/project-one/files/resolve', async ({ request }) => {
+    apiMock.use(
+      apiRoute.post('/api/projects/project-one/files/resolve', async ({ request }) => {
         const body = await request.json() as { targets: Array<{ path: string }>; include_ignored?: boolean }
         resolvedTargets.push(body.targets.map((target) => target.path))
         includeIgnoredValues.push(body.include_ignored)
-        return HttpResponse.json({
+        return jsonResponse({
           project_id: 'project-one',
           results: body.targets.map((target) => ({
             path: target.path,
@@ -91,7 +105,7 @@ describe('useProjectExplorer', () => {
           })),
         })
       }),
-      http.post('/api/projects/project-one/files/operations', () => HttpResponse.json({
+      apiRoute.post('/api/projects/project-one/files/operations', () => jsonResponse({
         project_id: 'project-one',
         results: [{ kind: 'create', ok: true, path: 'a/new.ts' }],
       })),
@@ -111,11 +125,11 @@ describe('useProjectExplorer', () => {
 
   it('keeps loaded branches cached across file switches and resolves only missing ancestors', async () => {
     const resolvedTargets: string[][] = []
-    server.use(
-      http.post('/api/projects/project-one/files/resolve', async ({ request }) => {
+    apiMock.use(
+      apiRoute.post('/api/projects/project-one/files/resolve', async ({ request }) => {
         const body = await request.json() as { targets: Array<{ path: string }> }
         resolvedTargets.push(body.targets.map((target) => target.path))
-        return HttpResponse.json({
+        return jsonResponse({
           project_id: 'project-one',
           results: body.targets.map((target) => ({
             path: target.path,
@@ -153,10 +167,10 @@ describe('useProjectExplorer', () => {
 
   it('evicts a stale loaded branch without failing an otherwise successful refresh', async () => {
     let branchRemoved = false
-    server.use(
-      http.post('/api/projects/project-one/files/resolve', async ({ request }) => {
+    apiMock.use(
+      apiRoute.post('/api/projects/project-one/files/resolve', async ({ request }) => {
         const body = await request.json() as { targets: Array<{ path: string }> }
-        return HttpResponse.json({
+        return jsonResponse({
           project_id: 'project-one',
           results: body.targets.map((target) => {
             if (branchRemoved && target.path === 'drafts') {
@@ -195,11 +209,11 @@ describe('useProjectExplorer', () => {
   it('resolves intermediate folders created from one inline path', async () => {
     let created = false
     const resolvedTargets: string[][] = []
-    server.use(
-      http.post('/api/projects/project-one/files/resolve', async ({ request }) => {
+    apiMock.use(
+      apiRoute.post('/api/projects/project-one/files/resolve', async ({ request }) => {
         const body = await request.json() as { targets: Array<{ path: string }> }
         resolvedTargets.push(body.targets.map((target) => target.path))
-        return HttpResponse.json({
+        return jsonResponse({
           project_id: 'project-one',
           results: body.targets.map((target) => ({
             path: target.path,
@@ -217,9 +231,9 @@ describe('useProjectExplorer', () => {
           })),
         })
       }),
-      http.post('/api/projects/project-one/files/operations', () => {
+      apiRoute.post('/api/projects/project-one/files/operations', () => {
         created = true
-        return HttpResponse.json({
+        return jsonResponse({
           project_id: 'project-one',
           results: [{ kind: 'create', ok: true, path: 'nested/deep/story.md' }],
         })

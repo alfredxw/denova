@@ -10,10 +10,15 @@
     "preview": "vite preview",
     "check:i18n": "node scripts/check-i18n-keys.mjs",
     "generate-icons": "node scripts/generate-pwa-icons.mjs",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "test": "pnpm test:unit && pnpm test:playwright",
+    "test:unit": "vitest run",
+    "test:unit:watch": "vitest",
+    "test:playwright": "playwright test",
+    "test:browser": "playwright test --project=browser",
+    "test:e2e": "playwright test --project=e2e"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
@@ -22,7 +27,6 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.2",
     "jsdom": "^29.1.1",
-    "msw": "^2.14.6",
     "sharp": "^0.35.2",
     "typescript": "~6.0.2",
     "vite": "^8.0.12",

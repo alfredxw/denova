@@ -169,6 +169,7 @@ chmod 0755 "${DIST_DIR}/install.sh"
 
 echo "==> 安装前端依赖并执行发布校验"
 run_pnpm -C "${ROOT_DIR}/web" install --frozen-lockfile
+run_pnpm -C "${ROOT_DIR}/web" exec playwright install --with-deps chromium
 verify_go_modules
 run_pnpm -C "${ROOT_DIR}/web" test
 run_pnpm -C "${ROOT_DIR}/web" check:i18n

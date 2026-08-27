@@ -1,5 +1,4 @@
-import { http, HttpResponse } from 'msw'
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   answerSessionAsk,
   cancelSessionAsk,
@@ -17,19 +16,35 @@ import {
   sendMessage,
   switchSession,
 } from './api'
-import { server } from '@/test/msw/server'
+import { apiRoute, installApiMock, jsonResponse, textResponse } from '@/test/api-mock'
+
+let apiMock: ReturnType<typeof installApiMock>
 
 describe('api', () => {
+  beforeEach(() => {
+    apiMock = installApiMock(
+      apiRoute.get('/api/session/messages', () => jsonResponse([])),
+      apiRoute.get('/api/sessions', () => jsonResponse({ sessions: [] })),
+      apiRoute.get('/api/chat/active', () => jsonResponse({ active: false })),
+      apiRoute.post('/api/command', async ({ request }) => {
+        const body = await request.json() as { command?: string }
+        return jsonResponse({ result: `executed:${body.command || ''}` })
+      }),
+    )
+  })
+
+  afterEach(() => vi.unstubAllGlobals())
+
   it('answers and cancels only the exact session Ask identity', async () => {
     const requests: Array<{ path: string; body: unknown }> = []
-    server.use(
-      http.post('/api/session/asks/:askID/answer', async ({ request }) => {
+    apiMock.use(
+      apiRoute.post('/api/session/asks/:askID/answer', async ({ request }) => {
         requests.push({ path: new URL(request.url).pathname, body: await request.json() })
-        return HttpResponse.json({ schema: 'ask.result.v1', id: 'ask/1', status: 'answered' })
+        return jsonResponse({ schema: 'ask.result.v1', id: 'ask/1', status: 'answered' })
       }),
-      http.post('/api/session/asks/:askID/cancel', async ({ request }) => {
+      apiRoute.post('/api/session/asks/:askID/cancel', async ({ request }) => {
         requests.push({ path: new URL(request.url).pathname, body: await request.json() })
-        return HttpResponse.json({ schema: 'ask.result.v1', id: 'ask/1', status: 'cancelled' })
+        return jsonResponse({ schema: 'ask.result.v1', id: 'ask/1', status: 'cancelled' })
       }),
     )
 
@@ -50,10 +65,10 @@ describe('api', () => {
 
   it('恢复已接受运行时只回传服务器投影的 identity', async () => {
     let requestBody: unknown
-    server.use(
-      http.post('/api/chat/recovery', async ({ request }) => {
+    apiMock.use(
+      apiRoute.post('/api/chat/recovery', async ({ request }) => {
         requestBody = await request.json()
-        return HttpResponse.json({
+        return jsonResponse({
           task_id: 'recovery-task-1',
           status: 'running',
           stream_cursor: 0,
@@ -79,12 +94,12 @@ describe('api', () => {
 
   it('覆盖会话 CRUD、切换和指定会话消息读取', async () => {
     const requests: Array<{ path: string; body?: unknown }> = []
-    server.use(
-      http.get('/api/session/messages', ({ request }) => {
+    apiMock.use(
+      apiRoute.get('/api/session/messages', ({ request }) => {
         requests.push({
           path: new URL(request.url).pathname + new URL(request.url).search,
         })
-        return HttpResponse.json([
+        return jsonResponse([
           {
             id: 'message-1',
             role: 'user',
@@ -92,8 +107,8 @@ describe('api', () => {
           },
         ])
       }),
-      http.get('/api/sessions', () =>
-        HttpResponse.json({
+      apiRoute.get('/api/sessions', () =>
+        jsonResponse({
           sessions: [
             {
               id: 'session-a',
@@ -106,10 +121,10 @@ describe('api', () => {
           ],
         }),
       ),
-      http.post('/api/sessions', async ({ request }) => {
+      apiRoute.post('/api/sessions', async ({ request }) => {
         const body = await request.json()
         requests.push({ path: '/api/sessions', body })
-        return HttpResponse.json({
+        return jsonResponse({
           id: 'session-b',
           title: '会话 B',
           active: true,
@@ -118,10 +133,10 @@ describe('api', () => {
           updated_at: '',
         })
       }),
-      http.post('/api/sessions/switch', async ({ request }) => {
+      apiRoute.post('/api/sessions/switch', async ({ request }) => {
         const body = await request.json()
         requests.push({ path: '/api/sessions/switch', body })
-        return HttpResponse.json({
+        return jsonResponse({
           id: 'session-a',
           title: '会话 A',
           active: true,
@@ -130,15 +145,15 @@ describe('api', () => {
           updated_at: '',
         })
       }),
-      http.post('/api/sessions/rename', async ({ request }) => {
+      apiRoute.post('/api/sessions/rename', async ({ request }) => {
         const body = await request.json()
         requests.push({ path: '/api/sessions/rename', body })
-        return HttpResponse.json({ status: 'ok' })
+        return jsonResponse({ status: 'ok' })
       }),
-      http.post('/api/sessions/delete', async ({ request }) => {
+      apiRoute.post('/api/sessions/delete', async ({ request }) => {
         const body = await request.json()
         requests.push({ path: '/api/sessions/delete', body })
-        return HttpResponse.json({
+        return jsonResponse({
           id: 'session-a',
           title: '会话 A',
           active: true,
@@ -183,10 +198,10 @@ describe('api', () => {
 
   it('读取 AI SDK UI 消息历史时使用 canonical 消息接口', async () => {
     const requests: string[] = []
-    server.use(
-      http.get('/api/session/messages', ({ request }) => {
+    apiMock.use(
+      apiRoute.get('/api/session/messages', ({ request }) => {
         requests.push(new URL(request.url).pathname + new URL(request.url).search)
-        return HttpResponse.json([
+        return jsonResponse([
           {
             id: 'message-1',
             role: 'assistant',
@@ -208,10 +223,10 @@ describe('api', () => {
 
   it('从最新消息向前分页读取会话展示历史', async () => {
     let requestPath = ''
-    server.use(
-      http.get('/api/session/messages', ({ request }) => {
+    apiMock.use(
+      apiRoute.get('/api/session/messages', ({ request }) => {
         requestPath = new URL(request.url).pathname + new URL(request.url).search
-        return HttpResponse.json({
+        return jsonResponse({
           messages: [
             {
               id: 'message-older',
@@ -245,10 +260,10 @@ describe('api', () => {
 
   it('保存 Skill 配置时可提交目标 scope、名称和基础 revision', async () => {
     let requestBody: unknown
-    server.use(
-      http.put('/api/projects/project-demo/skills/document', async ({ request }) => {
+    apiMock.use(
+      apiRoute.put('/api/projects/project-demo/skills/document', async ({ request }) => {
         requestBody = await request.json()
-        return HttpResponse.json({
+        return jsonResponse({
           name: 'beat-plan',
           description: 'Beat planning',
           scope: 'workspace',
@@ -277,8 +292,8 @@ describe('api', () => {
 
   it('发送聊天请求时提交引用、场景风格、选中文本和 planMode，并解析 SSE', async () => {
     let requestBody: unknown
-    server.use(
-      http.post('/api/chat', async ({ request }) => {
+    apiMock.use(
+      apiRoute.post('/api/chat', async ({ request }) => {
         requestBody = await request.json()
         return new Response(
           'data: {"type":"start","messageId":"assistant-1"}\n\n' +
@@ -355,7 +370,7 @@ describe('api', () => {
   })
 
   it('聊天接口失败时抛出 HTTP 错误', async () => {
-    server.use(http.post('/api/chat', () => HttpResponse.text('bad gateway', { status: 502 })))
+    apiMock.use(apiRoute.post('/api/chat', () => textResponse('bad gateway', { status: 502 })))
 
     await expect(sendMessage('session-a', '失败场景')).rejects.toThrow('HTTP 502')
   })

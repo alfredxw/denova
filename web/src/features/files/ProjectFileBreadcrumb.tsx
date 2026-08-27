@@ -135,6 +135,8 @@ export function ProjectFileBreadcrumb({
             defaultExpandedPath = selectedDirectories[0] ?? null
           } else if (selectedDirectories.includes(segment.key)) {
             defaultExpandedPath = segment.key
+          } else if (isCurrent) {
+            defaultExpandedPath = segment.parentPath
           }
           const focusedChildName = defaultExpandedPath && selectedPath?.startsWith(`${defaultExpandedPath}/`)
             ? selectedPath.slice(defaultExpandedPath.length + 1).split('/')[0]
@@ -253,13 +255,10 @@ function ProjectBreadcrumbTree({
   const { t } = useTranslation()
   const treeRef = useRef<FileTree | null>(null)
   const projection = useMemo(() => projectFileTreeProjection(nodes), [nodes])
-  const initialExpandedPaths = useMemo(() => {
-    const paths = [...projection.nodesByPath.values()]
-      .filter((node) => node.type === 'dir')
-      .map((node) => canonicalFileTreePath(node.path, true))
-    if (defaultExpandedPath) paths.push(canonicalFileTreePath(defaultExpandedPath, true))
-    return [...new Set(paths)]
-  }, [defaultExpandedPath, projection.nodesByPath])
+  const initialExpandedPaths = useMemo(
+    () => defaultExpandedPath ? [canonicalFileTreePath(defaultExpandedPath, true)] : [],
+    [defaultExpandedPath],
+  )
   const mergedGitStatus = useMemo(() => {
     const statuses = new Map(gitStatus.map((entry) => [entry.path, entry]))
     for (const node of projection.nodesByPath.values()) {
@@ -287,7 +286,7 @@ function ProjectBreadcrumbTree({
         presorted
         ariaLabel={t('files.breadcrumb.browser')}
         searchLabel={t('files.tree.search')}
-        initialExpansion="open"
+        initialExpansion="closed"
         initialExpandedPaths={initialExpandedPaths}
         selectedPaths={selectedPaths}
         gitStatus={mergedGitStatus}

@@ -27,6 +27,18 @@ func (schemaTaskExecutor) Respond(context.Context, TaskRef, string, agent.Intera
 }
 func (schemaTaskExecutor) Abort(context.Context, TaskRef, agent.AbortRequest) error { return nil }
 
+type schemaSkillSource struct{}
+
+func (schemaSkillSource) Identity() agent.CapabilityIdentity {
+	return agent.CapabilityIdentity{Kind: "skills.schema-test", Version: 1}
+}
+func (schemaSkillSource) List(context.Context, SkillQuery) ([]Skill, error) {
+	return nil, nil
+}
+func (schemaSkillSource) Read(context.Context, SkillRef) (SkillContent, error) {
+	return SkillContent{}, nil
+}
+
 func TestActionToolsExposeDisjointOperationSchemas(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -44,7 +56,7 @@ func TestActionToolsExposeDisjointOperationSchemas(t *testing.T) {
 			},
 		},
 		{
-			name: "skill", build: func() agent.Toolset { return Skills(testSkillSource{}) },
+			name: "skill", build: func() agent.Toolset { return Skills(schemaSkillSource{}) },
 			actions: []string{"list", "read"},
 			properties: map[string][]string{
 				"list": {"action", "limit", "query"}, "read": {"action", "refs"},
