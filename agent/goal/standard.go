@@ -49,7 +49,7 @@ func Standard(options ...Option) agent.GoalManager {
 type standardManager struct{ clock Clock }
 
 func (*standardManager) Identity() agent.CapabilityIdentity {
-	return agent.CapabilityIdentity{Kind: "goal.standard", Version: 2}
+	return agent.CapabilityIdentity{Kind: "goal.standard", Version: 3}
 }
 
 func (manager *standardManager) Apply(_ context.Context, request agent.GoalApplyRequest) (agent.GoalState, error) {
@@ -111,7 +111,7 @@ func (*standardManager) Prepare(_ context.Context, request agent.GoalPrepareRequ
 		Source: "goal.standard", Purpose: "active objective", Resource: "session-goal",
 		Revision: fmt.Sprintf("%d", request.State.Revision), Stability: agent.ContextTurn, Placement: agent.ContextFinalUserPrefix,
 		Content: content, HardLimit: 128 << 10,
-	}}}, nil
+	}}, ReservedTokens: maxGoalEvaluationOutputTokens + agent.EstimateTextTokens(goalEvaluationPrompt)}, nil
 }
 
 func set(current agent.GoalState, present bool, mutation agent.GoalMutation, now time.Time) (agent.GoalState, error) {

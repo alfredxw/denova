@@ -905,6 +905,12 @@ func (engine *definitionEngine) evaluateGoal(
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
+		if emitErr := emit(runstate.EngineGoalEvaluationFailed{
+			GoalID: state.ID, GoalRevision: state.Revision,
+			Code: GoalEvaluationFailedCode, Detail: err.Error(),
+		}); emitErr != nil {
+			return nil, emitErr
+		}
 		slog.WarnContext(ctx, "Agent Goal evaluation failed; stopping autonomous continuation without changing Goal state",
 			"session", engine.key, "run_id", request.Snapshot.OperationID, "cycle", request.Snapshot.Cycle,
 			"goal_id", state.ID, "goal_revision", state.Revision, "error", err)
@@ -1047,13 +1053,14 @@ func (state engineTranscript) ownsDefinition(snapshot runstate.TurnSnapshot) boo
 // intentionally narrower and only protects the provider cache prefix.
 func materializedDefinitionFingerprint(prepared preparedDefinition) (string, error) {
 	return hashCanonical(struct {
-		BehaviorKey string
-		Tools       []ToolDefinitionSnapshot
-		Context     []contextFragmentIdentity
+		BehaviorKey        string
+		Tools              []ToolDefinitionSnapshot
+		Context            []contextFragmentIdentity
+		GoalReservedTokens int
 	}{
 		BehaviorKey: prepared.behaviorKey,
 		Tools:       append([]ToolDefinitionSnapshot(nil), prepared.toolSnapshots...),
-		Context:     contextFragmentIdentities(prepared.fragments),
+		Context:     contextFragmentIdentities(prepared.fragments), GoalReservedTokens: prepared.goalReservedTokens,
 	})
 }
 

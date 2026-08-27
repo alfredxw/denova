@@ -20,6 +20,7 @@ func (engine *definitionEngine) applyGoalPreparation(
 	if prepared == nil || prepared.definition.Goal == nil {
 		return nil
 	}
+	prepared.goalReservedTokens = 0
 	raw, present := request.Snapshot.Capabilities[goalCapability]
 	var state GoalState
 	var err error
@@ -60,6 +61,9 @@ func applyPreparedGoal(
 	if err != nil {
 		return fmt.Errorf("prepare Goal capability: %w", err)
 	}
+	if goalPreparation.ReservedTokens < 0 {
+		return errors.New("prepare Goal capability: reserved tokens cannot be negative")
+	}
 	definitions := append([]ToolDefinition(nil), prepared.tools...)
 	definitions = append(definitions, goalPreparation.Tools...)
 	registry, err := NewRegistry(ctx, definitions...)
@@ -69,6 +73,7 @@ func applyPreparedGoal(
 	prepared.tools = registry.Definitions()
 	prepared.toolSnapshots = registry.Snapshots()
 	prepared.goalFragments = append([]ContextFragment(nil), goalPreparation.Context...)
+	prepared.goalReservedTokens = goalPreparation.ReservedTokens
 	prepared.fragments = append(prepared.fragments, prepared.goalFragments...)
 	if err := validateContextFragments(prepared.fragments); err != nil {
 		return err

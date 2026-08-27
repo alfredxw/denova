@@ -427,6 +427,12 @@ func (projector *PublicEventProjector) projectLocked(event agent.Event, inherite
 			"active_duration_millis": payload.State.ActiveDurationMillis,
 		})
 		projector.emitEvent(agentrun.Event{Type: "goal_updated", Data: data})
+	case agent.GoalEvaluationFailed:
+		projector.emitEvent(agentrun.Event{Type: "goal_evaluation_failed", Data: meta.appendTo(map[string]any{
+			"code": payload.Code, "goal_id": payload.GoalID, "goal_revision": payload.GoalRevision,
+			"message": "目标完成度评估失败，目标仍保持进行中；请重试或继续执行。 / Goal completion evaluation failed; the goal remains active. Retry or continue execution.",
+			"detail":  payload.Detail,
+		})})
 	case agent.TodoUpdated:
 		items := make([]map[string]any, len(payload.State.Items))
 		for index, item := range payload.State.Items {

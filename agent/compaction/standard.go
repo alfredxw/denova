@@ -196,6 +196,10 @@ func (manager *standardManager) SummaryLimitBytes() int {
 }
 
 func (manager *standardManager) Plan(_ context.Context, request agent.CompactionPlanRequest) (agent.CompactionPlan, error) {
+	if request.LifecycleReservedTokens < 0 || request.LifecycleReservedTokens > int(^uint(0)>>1)-manager.config.ReservedTokens {
+		return agent.CompactionPlan{}, errors.New("Compaction lifecycle token reserve is invalid")
+	}
+	reservedTokens := manager.config.ReservedTokens + request.LifecycleReservedTokens
 	bytes := messageBytes(request.ModelRequest)
 	if len(request.ModelRequest) == 0 {
 		bytes = messageBytes(request.Messages)
@@ -203,7 +207,7 @@ func (manager *standardManager) Plan(_ context.Context, request agent.Compaction
 	metrics := compactionPlanMetrics(request)
 	policy := agent.CompactionValidationPolicy{
 		ContextWindowTokens: manager.config.ContextWindowTokens,
-		ReservedTokens:      manager.config.ReservedTokens,
+		ReservedTokens:      reservedTokens,
 		Threshold:           manager.config.TriggerRatio,
 		RecoveryBand:        manager.config.RecoveryBand,
 		MinimumChangeTokens: manager.config.MinimumChangeTokens,

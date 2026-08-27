@@ -1,7 +1,6 @@
 package openaichatcompletions
 
 import (
-	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -166,63 +165,17 @@ func requestTools(tools []*agent.ToolInfo) ([]sdk.ChatCompletionToolUnionParam, 
 			definition.Description = sdk.String(tool.Desc)
 		}
 		if tool.ParamsOneOf != nil {
-			schema, err := tool.ParamsOneOf.ToJSONSchema()
+			parameters, err := tool.ParamsOneOf.ToJSONSchemaMap()
 			if err != nil {
 				return nil, fmt.Errorf("openai request tool %q schema: %w", tool.Name, err)
 			}
-			if schema != nil {
-				parameters, err := functionParameters(schema)
-				if err != nil {
-					return nil, fmt.Errorf("openai request tool %q schema: %w", tool.Name, err)
-				}
-				definition.Parameters = parameters
+			if parameters != nil {
+				definition.Parameters = shared.FunctionParameters(parameters)
 			}
 		}
 		result = append(result, sdk.ChatCompletionFunctionTool(definition))
 	}
 	return result, nil
-}
-
-func functionParameters(schema any) (shared.FunctionParameters, error) {
-	data, err := json.Marshal(schema)
-	if err != nil {
-		return nil, fmt.Errorf("marshal JSON Schema: %w", err)
-	}
-	parameters := shared.FunctionParameters{}
-	if err := json.Unmarshal(data, &parameters); err != nil {
-		return nil, fmt.Errorf("decode JSON Schema: %w", err)
-	}
-	sortRequired(parameters)
-	return parameters, nil
-}
-
-func sortRequired(value any) {
-	switch typed := value.(type) {
-	case map[string]any:
-		if required, ok := typed["required"].([]any); ok {
-			values := make([]string, 0, len(required))
-			allStrings := true
-			for _, item := range required {
-				text, ok := item.(string)
-				if !ok {
-					allStrings = false
-					break
-				}
-				values = append(values, text)
-			}
-			if allStrings {
-				sort.Strings(values)
-				typed["required"] = values
-			}
-		}
-		for _, child := range typed {
-			sortRequired(child)
-		}
-	case []any:
-		for _, child := range typed {
-			sortRequired(child)
-		}
-	}
 }
 
 func filterTools(tools []*agent.ToolInfo, names []string) []*agent.ToolInfo {

@@ -178,6 +178,21 @@ func TestSessionConversationPrependsStableContextBeforeHistory(t *testing.T) {
 	}
 }
 
+func TestWorkspaceRuntimeContextUsesReplaceableStablePrefix(t *testing.T) {
+	conversation := &SessionConversation{
+		stableContextTitle: "Stable Workspace",
+		stableContext:      "current workspace snapshot",
+	}
+	fragments := conversation.runtimeContextFragments()
+	if len(fragments) != 1 {
+		t.Fatalf("runtime fragments = %#v", fragments)
+	}
+	fragment := fragments[0]
+	if fragment.Stability != agent.ContextStablePrefix || fragment.Placement != agentcontext.PlacementLeadingMessage || fragment.StateID != "" {
+		t.Fatalf("stable workspace fragment = %#v", fragment)
+	}
+}
+
 func TestSessionConversationKeepsStableContextBeforeAgentTranscript(t *testing.T) {
 	store, err := session.NewStore(t.TempDir())
 	if err != nil {

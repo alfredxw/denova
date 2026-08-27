@@ -90,9 +90,19 @@ func (r *RecoveryObservation) DisplayMetadata(ctx context.Context, action Runtim
 	}
 	data, err := agentlifecycle.DecodeTurnHostData(input)
 	if err != nil {
-		return RuntimeRecoveryDisplayMetadata{Message: input.Text}, nil
+		return RuntimeRecoveryDisplayMetadata{Message: input.Text, Attachments: publicAttachmentDescriptors(input.Attachments)}, nil
 	}
 	return RuntimeRecoveryDisplayMetadata{
 		Message: strings.TrimSpace(data.Caller.Message), RegenerateFromTurnID: data.TurnID,
+		Attachments: publicAttachmentDescriptors(input.Attachments),
 	}, nil
+}
+
+func publicAttachmentDescriptors(values []agent.Attachment) []agent.Attachment {
+	result := append([]agent.Attachment(nil), values...)
+	for index := range result {
+		result[index].Path = ""
+		result[index].SHA256 = ""
+	}
+	return result
 }

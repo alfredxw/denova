@@ -529,17 +529,24 @@ func TestPublicEventProjectorProjectsPublicGoalAndTodoAuthority(t *testing.T) {
 	projector.Project(agent.Event{RunID: "run", Payload: agent.GoalUpdated{
 		Present: true, State: agent.GoalState{ID: "goal-1", Objective: "Ship", Status: agent.GoalActive, Revision: 2},
 	}})
+	projector.Project(agent.Event{RunID: "run", Payload: agent.GoalEvaluationFailed{
+		GoalID: "goal-1", GoalRevision: 2, Code: "agent_runtime.goal_evaluation_failed", Detail: "invalid JSON",
+	}})
 	projector.Project(agent.Event{RunID: "run", Payload: agent.TodoUpdated{State: agent.TodoState{
 		Revision: 3, Items: []agent.TodoItem{{ID: "todo-1", Text: "Verify", Status: agent.TodoInProgress}},
 	}}})
-	if len(events) != 2 || events[0].Type != "goal_updated" || events[1].Type != "todo_updated" {
+	if len(events) != 3 || events[0].Type != "goal_updated" || events[1].Type != "goal_evaluation_failed" || events[2].Type != "todo_updated" {
 		t.Fatalf("capability events = %#v", events)
 	}
 	goal, _ := events[0].Data.(map[string]any)
 	if goal["schema"] != "agent.goal.v1" || goal["id"] != "goal-1" || goal["status"] != agent.GoalActive || goal["revision"] != uint64(2) {
 		t.Fatalf("goal projection = %#v", goal)
 	}
-	todo, _ := events[1].Data.(map[string]any)
+	failure, _ := events[1].Data.(map[string]any)
+	if failure["code"] != "agent_runtime.goal_evaluation_failed" || failure["goal_id"] != "goal-1" || failure["detail"] != "invalid JSON" {
+		t.Fatalf("Goal evaluation failure projection = %#v", failure)
+	}
+	todo, _ := events[2].Data.(map[string]any)
 	items, _ := todo["items"].([]map[string]any)
 	if todo["schema"] != "agent.todo.v1" || todo["revision"] != uint64(3) || len(items) != 1 || items[0]["status"] != agent.TodoInProgress {
 		t.Fatalf("todo projection = %#v", todo)

@@ -163,6 +163,7 @@ const storyStage = {
   'storyStage.activity.processingTool': 'Processing {{name}}...',
   'storyStage.activity.toolCall': 'tool call',
   'storyStage.activity.unknownError': 'Unknown error',
+  'storyStage.activity.goalEvaluationFailed': 'Goal evaluation failed. The goal remains active; retry or continue working.',
   'storyStage.activity.unsupportedEvent': 'Unsupported Agent event: {{event}}',
   'storyStage.activity.invalidEvent': 'Ignored malformed Agent event: {{event}}',
   'storyStage.activity.persistenceMissing': 'This turn was not confirmed as persisted. The uncommitted response was discarded and the story was reloaded. Please retry.',

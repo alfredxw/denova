@@ -223,6 +223,7 @@ func (s *InteractiveAppService) RecoverAgentRuntime(ctx context.Context, request
 		CommandID: string(request.Action.CommandID), Workspace: workspace,
 		StoryID: request.StoryID, BranchID: branchID,
 		Message: display.Message, RegenerateFromTurnID: display.RegenerateFromTurnID,
+		Attachments: display.Attachments,
 	}
 	var run *interactiveTaskRun
 	task, err := apptask.NewDeferredWithContext(ctx, func(task *apptask.Task) error {

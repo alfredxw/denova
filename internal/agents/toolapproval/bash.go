@@ -233,32 +233,36 @@ func classifyLiteralCommand(words []string, boundary pathBoundary, mode config.A
 	if mode != config.AgentApprovalWrite {
 		return commandUnknown
 	}
+	// Attached files extend only the read boundary. They are immutable inputs,
+	// not extra workspace paths that Write mode may mutate automatically.
+	writeBoundary := boundary
+	writeBoundary.allowedFiles = nil
 	switch name {
 	case "mkdir", "touch":
-		if safeSimpleWorkspaceWrite(name, args, boundary) {
+		if safeSimpleWorkspaceWrite(name, args, writeBoundary) {
 			return commandWrite
 		}
 	case "cp", "mv":
-		if safeCopyMoveArguments(args, boundary) {
+		if safeCopyMoveArguments(args, writeBoundary) {
 			return commandWrite
 		}
 	case "rm", "rmdir":
 		paths := nonFlagArguments(args)
-		if len(paths) > 0 && !containsBroadWorkspaceTarget(boundary, paths) && allPathsInside(boundary, paths) {
+		if len(paths) > 0 && !containsBroadWorkspaceTarget(writeBoundary, paths) && allPathsInside(writeBoundary, paths) {
 			return commandWrite
 		}
 	case "tee":
-		if len(args) > 0 && allPathsInside(boundary, nonFlagArguments(args)) {
+		if len(args) > 0 && allPathsInside(writeBoundary, nonFlagArguments(args)) {
 			return commandWrite
 		}
 	case "git":
-		return classifyGitWrite(args, boundary)
+		return classifyGitWrite(args, writeBoundary)
 	case "go", "cargo", "make", "cmake", "ninja", "gradle", "gradlew", "mvn", "pytest", "ruff", "eslint", "prettier", "tsc", "vite":
-		if safeDevelopmentCommand(name, args, boundary) {
+		if safeDevelopmentCommand(name, args, writeBoundary) {
 			return commandWrite
 		}
 	case "npm", "pnpm", "yarn", "bun", "npx", "bunx":
-		if safePackageCommand(name, args, boundary) {
+		if safePackageCommand(name, args, writeBoundary) {
 			return commandWrite
 		}
 	case "python", "python3":
@@ -269,11 +273,11 @@ func classifyLiteralCommand(words []string, boundary pathBoundary, mode config.A
 			return commandWrite
 		}
 	case "curl":
-		if safeCurl(args, boundary) {
+		if safeCurl(args, writeBoundary) {
 			return commandNetworkRead
 		}
 	case "wget":
-		if safeWget(args, boundary) {
+		if safeWget(args, writeBoundary) {
 			return commandNetworkRead
 		}
 	}

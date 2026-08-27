@@ -130,6 +130,53 @@ func TestLegacyTopLevelModelFeedsLegacyDefaultProfile(t *testing.T) {
 	}
 }
 
+func TestReleasedImageProfilesPreserveInheritedAndExplicitCredentialsDuringEndpointMigration(t *testing.T) {
+	defaultKey, defaultBaseURL := "default-key", "https://default.example/v1"
+	sharedBaseURL, inheritedModel := "https://shared.example/v1", "inherited-image"
+	explicitKey, explicitModel := "explicit-key", "explicit-image"
+	settings, migrated := migrateImageAPIEndpointSettings(Settings{
+		LegacyImageAPIKey:     &defaultKey,
+		LegacyImageAPIBaseURL: &defaultBaseURL,
+		ImageAPIProfiles: []ImageAPIProfileSettings{
+			{ID: "inherited", LegacyOpenAIBaseURL: &sharedBaseURL, LegacyOpenAIModel: &inheritedModel},
+			{ID: "explicit", LegacyOpenAIAPIKey: &explicitKey, LegacyOpenAIBaseURL: &sharedBaseURL, LegacyOpenAIModel: &explicitModel},
+		},
+	})
+	if !migrated {
+		t.Fatal("released image settings were not migrated")
+	}
+	profiles := imageProfilesByID(settings.ImageAPIProfiles)
+	endpoints := imageEndpointsByID(settings.ImageAPIEndpoints)
+	inheritedEndpoint := endpoints[profiles["inherited"].EndpointID]
+	explicitEndpoint := endpoints[profiles["explicit"].EndpointID]
+	if inheritedEndpoint.APIKey != defaultKey || explicitEndpoint.APIKey != explicitKey {
+		t.Fatalf("migrated credentials inherited=%q explicit=%q", inheritedEndpoint.APIKey, explicitEndpoint.APIKey)
+	}
+	if profiles["inherited"].EndpointID == profiles["explicit"].EndpointID {
+		t.Fatalf("profiles with different effective credentials shared endpoint %q", profiles["inherited"].EndpointID)
+	}
+}
+
+func TestReleasedImageProfilesDoNotTreatMissingCredentialAsReusable(t *testing.T) {
+	sharedBaseURL, firstModel := "https://shared.example/v1", "first-image"
+	explicitKey, secondModel := "explicit-key", "second-image"
+	settings, migrated := migrateImageAPIEndpointSettings(Settings{ImageAPIProfiles: []ImageAPIProfileSettings{
+		{ID: "first", LegacyOpenAIBaseURL: &sharedBaseURL, LegacyOpenAIModel: &firstModel},
+		{ID: "second", LegacyOpenAIAPIKey: &explicitKey, LegacyOpenAIBaseURL: &sharedBaseURL, LegacyOpenAIModel: &secondModel},
+	}})
+	if !migrated {
+		t.Fatal("released image settings were not migrated")
+	}
+	profiles := imageProfilesByID(settings.ImageAPIProfiles)
+	endpoints := imageEndpointsByID(settings.ImageAPIEndpoints)
+	if endpoints[profiles["first"].EndpointID].APIKey != "" || endpoints[profiles["second"].EndpointID].APIKey != explicitKey {
+		t.Fatalf("migrated endpoints = %#v", endpoints)
+	}
+	if profiles["first"].EndpointID == profiles["second"].EndpointID {
+		t.Fatalf("missing and explicit credentials shared endpoint %q", profiles["first"].EndpointID)
+	}
+}
+
 func TestReadSettingsFilePreservesLegacyImplicitImageModel(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.toml")
 	if err := os.WriteFile(path, []byte(`image_api_key = "legacy-key"`+"\n"), 0o644); err != nil {

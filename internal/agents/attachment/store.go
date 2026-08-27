@@ -4,6 +4,7 @@
 package attachment
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -151,15 +152,26 @@ func decodeUpload(upload Upload, commandID string, index int) (agent.Attachment,
 	_, _ = digest.Write([]byte{0})
 	_, _ = digest.Write(data)
 	id := "att_" + hex.EncodeToString(digest.Sum(nil))[:32]
-	return agent.Attachment{ID: id, Name: name, MediaType: mediaType, Size: int64(len(data))}, data, nil
+	contentDigest := sha256.Sum256(data)
+	return agent.Attachment{
+		ID:        id,
+		Name:      name,
+		MediaType: mediaType,
+		Size:      int64(len(data)),
+		SHA256:    hex.EncodeToString(contentDigest[:]),
+	}, data, nil
 }
 
 func writeCopy(path string, data []byte) error {
 	if _, err := os.Stat(path); err == nil {
-		// The content-derived filename already proves this is the same original
-		// upload. Preserve the working copy if a previous run edited it; an HTTP
-		// retry must never overwrite user- or model-authored changes.
-		return nil
+		existing, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if !bytes.Equal(existing, data) {
+			return errors.New("immutable attachment copy differs from the accepted upload")
+		}
+		return os.Chmod(path, 0o400)
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
@@ -178,6 +190,10 @@ func writeCopy(path string, data []byte) error {
 		return err
 	}
 	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Chmod(0o400); err != nil {
 		_ = tmp.Close()
 		return err
 	}

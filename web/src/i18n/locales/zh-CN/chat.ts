@@ -482,6 +482,7 @@ const chat = {
   'chat.activity.done': '完成',
   'chat.activity.aborted': '已中断',
   'chat.activity.unknownError': '未知错误',
+  'chat.activity.goalEvaluationFailed': '目标完成度评估失败，目标仍保持进行中；请重试或继续执行。',
   'chat.activity.abortMessage': '已中断 AI 执行',
   'chat.activity.requestFailed': '请求失败: {{error}}',
   'chat.planUsage': '用法: /plan <需求描述>\n\n例如: /plan 给主角增加一个新的技能体系',

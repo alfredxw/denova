@@ -403,6 +403,7 @@ describe('StoryStage runtime stream lifecycle', () => {
       story_id: 'story-1',
       branch_id: 'main',
       message: '推开石门',
+      attachments: [{ id: 'att-1', name: '石门地图.png', media_type: 'image/png', size: 42 }],
     })
     streamActiveInteractiveChatMock.mockResolvedValue(stream.readable)
 
@@ -419,6 +420,7 @@ describe('StoryStage runtime stream lifecycle', () => {
         })
       })
       expect(screen.getByText('推开石门')).toBeInTheDocument()
+      expect(screen.getByText('石门地图.png')).toBeInTheDocument()
       expect(sendInteractiveMessageMock).not.toHaveBeenCalled()
 
       await act(async () => {

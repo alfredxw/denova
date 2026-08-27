@@ -64,6 +64,7 @@ func attachmentDescriptors(files []agent.Attachment) []agent.Attachment {
 	result := append([]agent.Attachment(nil), files...)
 	for index := range result {
 		result[index].Path = ""
+		result[index].SHA256 = ""
 	}
 	return result
 }

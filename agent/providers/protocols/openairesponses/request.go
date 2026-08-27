@@ -219,15 +219,10 @@ func requestTools(tools []*agent.ToolInfo) ([]responses.ToolUnionParam, error) {
 		}
 		parameters := map[string]any{"type": "object", "properties": map[string]any{}}
 		if tool.ParamsOneOf != nil {
-			schema, err := tool.ParamsOneOf.ToJSONSchema()
+			var err error
+			parameters, err = tool.ParamsOneOf.ToJSONSchemaMap()
 			if err != nil {
 				return nil, fmt.Errorf("openai responses tool %q schema: %w", tool.Name, err)
-			}
-			if schema != nil {
-				parameters, err = schemaMap(schema)
-				if err != nil {
-					return nil, fmt.Errorf("openai responses tool %q schema: %w", tool.Name, err)
-				}
 			}
 		}
 		definition := responses.ToolParamOfFunction(tool.Name, parameters, false)

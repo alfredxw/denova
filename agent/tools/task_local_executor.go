@@ -512,6 +512,8 @@ func taskEventType(payload agent.EventPayload) string {
 		return "event_stream_gap"
 	case agent.GoalUpdated:
 		return "goal_updated"
+	case agent.GoalEvaluationFailed:
+		return "goal_evaluation_failed"
 	case agent.TodoUpdated:
 		return "todo_updated"
 	case agent.InteractionRequested:

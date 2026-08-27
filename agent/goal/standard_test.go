@@ -82,7 +82,11 @@ func (*fixedGoalModelOptionMiddleware) BeforeModelCall(
 	call *agent.ModelCall,
 	_ *agent.ModelContext,
 ) (context.Context, *agent.ModelCall, error) {
-	call.Options = append(call.Options, agent.WithMaxTokens(777))
+	call.Options = append(call.Options,
+		agent.WithTools([]*agent.ToolInfo{{Name: "lookup", Desc: "Lookup evidence"}}),
+		agent.WithMaxTokens(777),
+		agent.WithSessionKey("goal-cache-session"),
+	)
 	return ctx, call, nil
 }
 
@@ -118,14 +122,16 @@ func TestStandardGoalEvaluatorForksExactFinalRequestAndCompletes(t *testing.T) {
 		t.Fatalf("model calls=%d, want primary plus evaluator", len(calls))
 	}
 	primary, evaluator := calls[0], calls[1]
-	if !primary.streaming || evaluator.streaming != primary.streaming {
+	if !primary.streaming || evaluator.streaming {
 		t.Fatalf("streaming modes primary=%t evaluator=%t", primary.streaming, evaluator.streaming)
 	}
-	if !reflect.DeepEqual(primary.options, evaluator.options) {
-		t.Fatalf("evaluator options changed\nprimary=%#v\nevaluator=%#v", primary.options, evaluator.options)
-	}
-	if primary.options.MaxTokens == nil || *primary.options.MaxTokens != 777 {
+	if primary.options.MaxTokens == nil || *primary.options.MaxTokens != 777 || len(primary.options.Tools) != 1 {
 		t.Fatalf("middleware options were not captured: %#v", primary.options)
+	}
+	if evaluator.options.MaxTokens == nil || *evaluator.options.MaxTokens != maxGoalEvaluationOutputTokens ||
+		len(evaluator.options.Tools) != 0 || evaluator.options.ToolChoice != nil ||
+		evaluator.options.SessionKey != primary.options.SessionKey {
+		t.Fatalf("evaluator did not preserve cache routing with a bounded tool-free output: %#v", evaluator.options)
 	}
 	if len(evaluator.messages) != len(primary.messages)+2 ||
 		!reflect.DeepEqual(evaluator.messages[:len(primary.messages)], primary.messages) {
@@ -222,6 +228,12 @@ func TestStandardGoalEvaluatorFailureStopsWithoutFalseCompletion(t *testing.T) {
 			owner, session := newGoalTestSession(t, "goal-evaluation-failure-"+test.name, model, Standard())
 			defer func() { _ = owner.Close(context.Background()) }()
 			created := setGoalForTest(t, session, "不能被误判完成")
+			observationContext, cancelObservation := context.WithCancel(context.Background())
+			observation, err := session.Observe(observationContext, 0)
+			if err != nil {
+				cancelObservation()
+				t.Fatal(err)
+			}
 
 			run, err := session.Run(context.Background(), agent.Text("执行一次"))
 			if err != nil {
@@ -236,6 +248,17 @@ func TestStandardGoalEvaluatorFailureStopsWithoutFalseCompletion(t *testing.T) {
 			}
 			if calls := model.recordedCalls(); len(calls) != 2 {
 				t.Fatalf("model calls=%d, evaluator failure must stop autonomous continuation", len(calls))
+			}
+			cancelObservation()
+			var failure *agent.GoalEvaluationFailed
+			for event := range observation.Events {
+				if payload, ok := event.Payload.(agent.GoalEvaluationFailed); ok {
+					copy := payload
+					failure = &copy
+				}
+			}
+			if failure == nil || failure.GoalID != created.ID || failure.GoalRevision != created.Revision || failure.Code != "agent_runtime.goal_evaluation_failed" || strings.TrimSpace(failure.Detail) == "" {
+				t.Fatalf("Goal evaluation failure event = %#v", failure)
 			}
 		})
 	}
@@ -338,7 +361,7 @@ func TestStandardGoalPreparationIsActiveOnlyEscapedAndToolFree(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(prepared.Tools) != 0 || len(prepared.Context) != 0 {
+			if len(prepared.Tools) != 0 || len(prepared.Context) != 0 || prepared.ReservedTokens != 0 {
 				t.Fatalf("inactive Goal preparation=%#v", prepared)
 			}
 		})
@@ -353,7 +376,7 @@ func TestStandardGoalPreparationIsActiveOnlyEscapedAndToolFree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(prepared.Tools) != 0 || len(prepared.Context) != 1 {
+	if len(prepared.Tools) != 0 || len(prepared.Context) != 1 || prepared.ReservedTokens < maxGoalEvaluationOutputTokens {
 		t.Fatalf("active Goal preparation=%#v", prepared)
 	}
 	content := prepared.Context[0].Content

@@ -41,6 +41,17 @@ func WithTools(tools []*ToolInfo) ModelOption {
 	}}
 }
 
+// WithoutTools removes every tool schema and inherited tool-choice setting
+// from a side fork. An empty schema is the provider-neutral enforcement
+// boundary for read-only model judgments.
+func WithoutTools() ModelOption {
+	return ModelOption{apply: func(options *Options) {
+		options.Tools = []*ToolInfo{}
+		options.ToolChoice = nil
+		options.AllowedToolNames = nil
+	}}
+}
+
 // WithMaxTokens sets a provider-neutral response token limit.
 func WithMaxTokens(maxTokens int) ModelOption {
 	return ModelOption{apply: func(options *Options) {

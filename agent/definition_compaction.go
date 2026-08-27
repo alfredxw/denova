@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-	"unicode"
 
 	runstate "github.com/alfredxw/denova/agent/internal/runstate"
 )
@@ -294,9 +293,10 @@ func executeCompaction(
 	}
 	plan, err := prepared.definition.Compaction.Plan(ctx, CompactionPlanRequest{
 		Session: session, Run: run, Messages: cloneMessages(messages), ModelRequest: modelRequest,
-		ModelSnapshot: modelSnapshot,
-		Force:         request.Force || present && len(current.Summary) > summaryLimit,
-		Current:       current, Present: present,
+		ModelSnapshot:           modelSnapshot,
+		LifecycleReservedTokens: prepared.goalReservedTokens,
+		Force:                   request.Force || present && len(current.Summary) > summaryLimit,
+		Current:                 current, Present: present,
 	})
 	if err != nil {
 		return CompactionState{}, false, CompactionMetrics{}, err
@@ -429,37 +429,10 @@ func validateCompactionProjection(before, after *ModelRequestSnapshot, plan Comp
 }
 
 func estimateCompactionRequestTokens(messages []*Message, tools []*ToolInfo) int {
-	tokens := 0
-	for _, message := range messages {
-		if message == nil {
-			continue
-		}
-		encoded, _ := json.Marshal(message)
-		tokens += 4 + estimateCompactionStringTokens(string(encoded))
-	}
+	tokens := EstimateMessagesTokens(messages)
 	if encoded, err := json.Marshal(tools); err == nil && string(encoded) != "null" {
-		tokens += estimateCompactionStringTokens(string(encoded))
+		tokens += EstimateTextTokens(string(encoded))
 	}
-	return max(1, tokens)
-}
-
-func estimateCompactionStringTokens(value string) int {
-	tokens, ascii := 0, 0
-	flush := func() {
-		if ascii > 0 {
-			tokens += (ascii + 3) / 4
-			ascii = 0
-		}
-	}
-	for _, item := range value {
-		if item <= unicode.MaxASCII {
-			ascii++
-		} else {
-			flush()
-			tokens++
-		}
-	}
-	flush()
 	return max(1, tokens)
 }
 

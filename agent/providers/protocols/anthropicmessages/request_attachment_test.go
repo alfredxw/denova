@@ -1,7 +1,9 @@
 package anthropicmessages
 
 import (
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,7 +19,7 @@ func TestRequestMessagesSendsAttachedImagesNatively(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, messages, err := requestMessages([]*agent.Message{agent.UserMessageWithAttachments("inspect", []agent.Attachment{{
-		Name: "image.png", MediaType: "image/png", Path: path, Size: 3,
+		Name: "image.png", MediaType: "image/png", Path: path, Size: 3, SHA256: fmt.Sprintf("%x", sha256.Sum256([]byte("png"))),
 	}})}, providers.ModelConfig{})
 	if err != nil {
 		t.Fatal(err)

@@ -111,6 +111,10 @@ export function useAgentChat(options: ChatOptions = {}) {
       }
       if (part.type === 'data-agent-activity') {
         const data = part.data as Record<string, unknown>
+        if (data.event === 'goal_evaluation_failed' || data.code === 'agent_runtime.goal_evaluation_failed') {
+          toast.error(t('chat.activity.goalEvaluationFailed'))
+          return
+        }
         if (data.event === 'agent_cycle_started') {
           const operationID = typeof data.operation_id === 'string' ? data.operation_id.trim() : ''
           const cycle = typeof data.cycle === 'number' ? data.cycle : Number(data.cycle)

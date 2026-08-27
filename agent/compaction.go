@@ -73,9 +73,12 @@ type CompactionPlanRequest struct {
 	// ModelSnapshot is the exact final request for both automatic model-step and
 	// explicit structural planning. Agent freezes it before Manager code runs.
 	ModelSnapshot *ModelRequestSnapshot
-	Force         bool
-	Current       CompactionState
-	Present       bool
+	// LifecycleReservedTokens is the active capability reserve that must be
+	// added to manager-owned reserves for trigger and validation calculations.
+	LifecycleReservedTokens int
+	Force                   bool
+	Current                 CompactionState
+	Present                 bool
 }
 
 type CompactionPlan struct {

@@ -406,6 +406,7 @@ type preparedDefinition struct {
 	toolSnapshots           []ToolDefinitionSnapshot
 	fragments               []ContextFragment
 	goalFragments           []ContextFragment
+	goalReservedTokens      int
 	definitionKey           string
 	behaviorKey             string
 	prefixFingerprint       string
@@ -533,6 +534,7 @@ func materializeDefinitionCapabilities(
 	}
 	prepared.fragments = fragments
 	prepared.goalFragments = nil
+	prepared.goalReservedTokens = 0
 	return updatePreparedPrefixFingerprint(prepared)
 }
 

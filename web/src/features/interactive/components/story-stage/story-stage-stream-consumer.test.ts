@@ -158,6 +158,25 @@ describe('story stage stream event contract', () => {
     expect(error?.content).toContain('019ffb1f-0171-7436-828c-1d8f45095fe4')
     expect(outcome).toMatchObject({ streamFailed: true, terminalStatus: 'error', terminalEventReceived: true })
   })
+
+  it('shows a Goal evaluation failure without failing the completed primary turn', async () => {
+    const fixture = consumerFixture()
+    const outcome = await fixture.consumer.consume(
+      eventStream([
+        {
+          id: '1',
+          event: 'goal_evaluation_failed',
+          data: JSON.stringify({ code: 'agent_runtime.goal_evaluation_failed', detail: 'invalid JSON' }),
+        },
+        { id: '2', event: 'done', data: '{}' },
+      ]),
+      fixture.consumer.initialOutcome(),
+    )
+
+    const warning = buildAgentMessageViews(fixture.messages()).find((view) => view.kind === 'error')
+    expect(warning?.content).toBe('storyStage.activity.goalEvaluationFailed')
+    expect(outcome).toMatchObject({ streamFailed: false, finishedNormally: true, terminalEventReceived: true })
+  })
 })
 
 describe('story stage display checkpoint recovery', () => {

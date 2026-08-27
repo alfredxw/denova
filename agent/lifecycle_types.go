@@ -234,6 +234,19 @@ type GoalUpdated struct {
 
 func (GoalUpdated) eventPayload() {}
 
+const GoalEvaluationFailedCode = "agent_runtime.goal_evaluation_failed"
+
+// GoalEvaluationFailed reports a bounded post-run evaluator failure without
+// changing the active Goal or failing the successfully completed primary turn.
+type GoalEvaluationFailed struct {
+	GoalID       string
+	GoalRevision uint64
+	Code         string
+	Detail       string
+}
+
+func (GoalEvaluationFailed) eventPayload() {}
+
 type TodoStatus string
 
 const (

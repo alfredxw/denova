@@ -163,6 +163,7 @@ const storyStage = {
   'storyStage.activity.processingTool': '正在处理 {{name}}…',
   'storyStage.activity.toolCall': '工具调用',
   'storyStage.activity.unknownError': '未知错误',
+  'storyStage.activity.goalEvaluationFailed': '目标完成度评估失败，目标仍保持进行中；请重试或继续执行。',
   'storyStage.activity.unsupportedEvent': '收到暂不支持的 Agent 事件：{{event}}',
   'storyStage.activity.invalidEvent': '已忽略格式错误的 Agent 事件：{{event}}',
   'storyStage.activity.persistenceMissing': '本轮没有收到持久化确认，已丢弃未落盘的正文并重新加载故事。请重试。',

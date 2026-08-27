@@ -10,6 +10,7 @@ import (
 
 	"denova/config"
 	agents "denova/internal/agents"
+	agentcontext "denova/internal/agents/context"
 	agentcompaction "denova/internal/agents/context/compaction"
 	"denova/internal/agents/prompts"
 	"denova/internal/agents/session"
@@ -18,6 +19,7 @@ import (
 	interactivestate "denova/internal/interactive/state"
 
 	agent "github.com/alfredxw/denova/agent"
+	publiccontext "github.com/alfredxw/denova/agent/context"
 )
 
 func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *testing.T) {
@@ -51,10 +53,31 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 	}
 
 	conversation := NewConversation(store, novaDir, workspace, story.ID, "", "我在黄泉酒馆点燃火把", story.ReplyTargetChars, nil)
-	history, err := assembleAndCommitInteractiveContextForTest(conversation, "我在黄泉酒馆点燃火把", "我在黄泉酒馆点燃火把")
+	assembled, err := conversation.AssembleModelContext(context.Background(), "我在黄泉酒馆点燃火把", agentcontext.ModelContextInput{
+		UserMessage: "我在黄泉酒馆点燃火把",
+		Budget:      conversation.ModelContextBudget(),
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
+	lifecycleFragments, err := publiccontext.ExportLifecycleFragments(assembled.Context)
+	if err != nil {
+		t.Fatal(err)
+	}
+	residentStable := false
+	for _, fragment := range lifecycleFragments {
+		if fragment.Source != "interactive.resident_lore" {
+			continue
+		}
+		residentStable = fragment.Stability == agent.ContextStablePrefix && fragment.Placement == agent.ContextLeadingMessage && fragment.StateID == ""
+	}
+	if !residentStable {
+		t.Fatalf("resident lore must be one replaceable stable-prefix fragment: %#v", lifecycleFragments)
+	}
+	if err := conversation.CommitModelInput(context.Background(), "我在黄泉酒馆点燃火把", assembled); err != nil {
+		t.Fatal(err)
+	}
+	history := assembled.Messages
 	if len(history) != 4 {
 		t.Fatalf("history length = %d, want 4", len(history))
 	}

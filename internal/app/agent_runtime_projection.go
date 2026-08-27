@@ -145,7 +145,7 @@ func (a *App) InteractiveAgentActiveView(ctx context.Context, storyID, branchID 
 
 	a.mu.RLock()
 	currentTask, currentInfo := activeInteractiveTaskLocked(a, storyID, branchID)
-	if lifecycleWorkspaceKey(a.workspace) != lifecycleWorkspaceKey(workspace) || a.executionRuntime != executionRuntime || a.interactive != store || currentTask != task || currentInfo != info {
+	if lifecycleWorkspaceKey(a.workspace) != lifecycleWorkspaceKey(workspace) || a.executionRuntime != executionRuntime || a.interactive != store || currentTask != task || !sameInteractiveTaskInfo(currentInfo, info) {
 		a.mu.RUnlock()
 		return InteractiveAgentActiveView{}
 	}
@@ -156,6 +156,20 @@ func (a *App) InteractiveAgentActiveView(ctx context.Context, storyID, branchID 
 	}
 	a.mu.RUnlock()
 	return InteractiveAgentActiveView{Task: taskSnapshot, Info: info, Runtime: runtimeSnapshot, RuntimeProjectionOK: projected}
+}
+
+func sameInteractiveTaskInfo(left, right InteractiveTaskInfo) bool {
+	if left.TaskID != right.TaskID || left.CommandID != right.CommandID || left.Workspace != right.Workspace ||
+		left.StoryID != right.StoryID || left.BranchID != right.BranchID || left.Message != right.Message ||
+		left.RegenerateFromTurnID != right.RegenerateFromTurnID || len(left.Attachments) != len(right.Attachments) {
+		return false
+	}
+	for index := range left.Attachments {
+		if left.Attachments[index] != right.Attachments[index] {
+			return false
+		}
+	}
+	return true
 }
 
 // Projection-only methods remain useful to non-active callers while sharing

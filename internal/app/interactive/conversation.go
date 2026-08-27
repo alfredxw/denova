@@ -583,11 +583,11 @@ func (c *Conversation) AssembleModelContext(ctx context.Context, originalMessage
 	fragments := append([]agentcontext.Fragment(nil), input.Fragments...)
 	if strings.TrimSpace(residentLore) != "" {
 		fragments = append(fragments, agentcontext.Fragment{
-			ID: "interactive_resident_lore", StateID: "interactive_resident_lore", Source: "interactive.resident_lore", Title: "Resident Lore",
+			ID: "interactive_resident_lore", Source: "interactive.resident_lore", Title: "Resident Lore",
 			Purpose: "provide revisioned enabled resident lore for the current agent session",
 			Content: residentLore, Placement: agentcontext.PlacementLeadingMessage, Limit: interactiveResidentLoreMessageMaxBytes, Included: true,
-			Stability: agent.ContextSessionState,
-			Note:      "source=enabled resident lore; lifecycle=session state; revision=" + strings.TrimSpace(loreRevision),
+			Stability: agent.ContextStablePrefix,
+			Note:      "source=enabled resident lore; lifecycle=replaceable stable prefix; revision=" + strings.TrimSpace(loreRevision),
 		})
 	}
 	if strings.TrimSpace(tellerTurnContextPrompt) != "" {

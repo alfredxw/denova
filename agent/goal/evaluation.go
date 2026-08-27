@@ -5,15 +5,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"strings"
 
 	agent "github.com/alfredxw/denova/agent"
 )
 
 const (
-	maxGoalEvaluationBytes      = 256 << 10
-	maxGoalEvaluationFieldBytes = 64 << 10
+	maxGoalEvaluationBytes        = 256 << 10
+	maxGoalEvaluationFieldBytes   = 64 << 10
+	maxGoalEvaluationOutputTokens = 512
 )
 
 // goalEvaluationPrompt is deliberately static. The exact active Goal,
@@ -46,7 +46,10 @@ func (manager *standardManager) AfterRun(ctx context.Context, request agent.Goal
 	if request.ModelRequest == nil || request.Final == nil || request.Final.Role != agent.Assistant || len(request.Final.ToolCalls) != 0 {
 		return agent.GoalAfterRunDecision{}, errors.New("Goal evaluation requires the exact final model request and canonical assistant result")
 	}
-	fork := request.ModelRequest.Append(request.Final.Clone(), agent.UserMessage(goalEvaluationPrompt))
+	fork := request.ModelRequest.Append(request.Final.Clone(), agent.UserMessage(goalEvaluationPrompt)).WithOptions(
+		agent.WithoutTools(),
+		agent.WithMaxTokens(maxGoalEvaluationOutputTokens),
+	)
 	response, err := executeEvaluationFork(ctx, fork)
 	decision := evaluationMetadata(response)
 	if err != nil {
@@ -74,28 +77,7 @@ func executeEvaluationFork(ctx context.Context, snapshot *agent.ModelRequestSnap
 	if snapshot == nil {
 		return nil, errors.New("Goal evaluation model request is unavailable")
 	}
-	if !snapshot.Streaming() {
-		return snapshot.Generate(ctx)
-	}
-	stream, err := snapshot.Stream(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer stream.Close()
-	var chunks []*agent.Message
-	for {
-		message, receiveErr := stream.Recv()
-		if errors.Is(receiveErr, io.EOF) {
-			break
-		}
-		if receiveErr != nil {
-			return nil, receiveErr
-		}
-		if message != nil {
-			chunks = append(chunks, message)
-		}
-	}
-	return agent.ConcatMessages(chunks)
+	return snapshot.Generate(ctx)
 }
 
 func evaluationMetadata(response *agent.Message) agent.GoalAfterRunDecision {

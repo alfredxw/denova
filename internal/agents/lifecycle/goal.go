@@ -23,7 +23,7 @@ func NewGoalManager() agent.GoalManager {
 type denovaGoalManager struct{ delegate agent.GoalManager }
 
 func (manager denovaGoalManager) Identity() agent.CapabilityIdentity {
-	return agent.CapabilityIdentity{Kind: "denova.goal.standard", Version: 2}
+	return agent.CapabilityIdentity{Kind: "denova.goal.standard", Version: 3}
 }
 
 func (manager denovaGoalManager) Apply(ctx context.Context, request agent.GoalApplyRequest) (agent.GoalState, error) {

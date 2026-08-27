@@ -57,6 +57,36 @@ func TestStandardCalibratesPlanFromExactPreviousProviderUsage(t *testing.T) {
 	}
 }
 
+func TestStandardIncludesLifecycleSideForkReserveInTriggerAndValidation(t *testing.T) {
+	manager := compaction.Standard(compaction.StandardConfig{
+		Summarizer: compaction.SummarizerFunc{
+			Capability: agent.CapabilityIdentity{Kind: "compaction.lifecycle-reserve-summary", Version: 1},
+			Func: func(context.Context, compaction.SummaryRequest) (compaction.Summary, error) {
+				return compaction.Summary{Content: "summary", TokenEstimate: 2}, nil
+			},
+		},
+		TriggerBytes: 1024, KeepRecentBytes: 128, HardLimitBytes: 8 << 20, SummaryLimitBytes: 256 << 10,
+		ContextWindowTokens: 2_000, TriggerRatio: .85, RecoveryBand: .8,
+	})
+	messages := []*agent.Message{
+		agent.UserMessage(strings.Repeat("old request ", 100)),
+		agent.AssistantMessage("old answer", nil),
+		agent.UserMessage("current request"),
+		agent.AssistantMessage("current answer", nil),
+	}
+	plan, err := manager.Plan(context.Background(), agent.CompactionPlanRequest{
+		Messages: messages, ModelRequest: messages,
+		ModelSnapshot: (&agent.ModelCall{Messages: messages}).Snapshot(), LifecycleReservedTokens: 1_600,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Action != agent.CompactionCreate || plan.Validation.ReservedTokens != 1_600 || plan.Metrics.ReservedTokens != 1_600 ||
+		plan.Metrics.ProjectedTokensBefore != plan.Metrics.CalibratedTokens(plan.Metrics.EstimatedTokensBefore)+1_600 {
+		t.Fatalf("lifecycle-reserved Compaction plan = %#v", plan)
+	}
+}
+
 func TestStandardPlansOnlyCompleteTurnAndToolBatchBoundaries(t *testing.T) {
 	manager := compaction.Standard(compaction.StandardConfig{
 		Summarizer: compaction.SummarizerFunc{

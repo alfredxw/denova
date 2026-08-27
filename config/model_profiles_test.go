@@ -123,6 +123,36 @@ func TestLegacyProfilesWithSameRouteMigrateToOneEndpoint(t *testing.T) {
 	}
 }
 
+func TestReleasedProfilesPreserveInheritedAndExplicitCredentialsDuringEndpointMigration(t *testing.T) {
+	settings, migrated := migrateModelEndpointSettings(Settings{
+		OpenAIAPIKey:  "default-key",
+		OpenAIBaseURL: "https://default.example/v1",
+		OpenAIModel:   "default-model",
+		ModelProfiles: []ModelProfileSettings{
+			{ID: "inherited", LegacyOpenAIBaseURL: "https://shared.example/v1", LegacyOpenAIModel: "inherited-model"},
+			{ID: "explicit", LegacyOpenAIAPIKey: "explicit-key", LegacyOpenAIBaseURL: "https://shared.example/v1", LegacyOpenAIModel: "explicit-model"},
+		},
+	})
+	if !migrated {
+		t.Fatal("released model settings were not migrated")
+	}
+	profiles := make(map[string]ModelProfileSettings, len(settings.ModelProfiles))
+	for _, profile := range settings.ModelProfiles {
+		profiles[modelProfileID(profile)] = profile
+	}
+	inheritedEndpoint, inheritedOK := modelEndpointByID(settings.ModelEndpoints, profiles["inherited"].EndpointID)
+	explicitEndpoint, explicitOK := modelEndpointByID(settings.ModelEndpoints, profiles["explicit"].EndpointID)
+	if !inheritedOK || !explicitOK {
+		t.Fatalf("migrated endpoints are missing: %#v", settings)
+	}
+	if inheritedEndpoint.APIKey != "default-key" || explicitEndpoint.APIKey != "explicit-key" {
+		t.Fatalf("migrated credentials inherited=%q explicit=%q", inheritedEndpoint.APIKey, explicitEndpoint.APIKey)
+	}
+	if profiles["inherited"].EndpointID == profiles["explicit"].EndpointID {
+		t.Fatalf("profiles with different effective credentials shared endpoint %q", profiles["inherited"].EndpointID)
+	}
+}
+
 func TestResolveModelProfileDraftUsesEditedEndpoint(t *testing.T) {
 	cfg := &Config{
 		ModelEndpoints: []ModelEndpointSettings{{ID: "shared", Provider: string(providers.ProviderOpenAI), BaseURL: "https://old.example/v1", APIKey: "old-key"}},

@@ -334,6 +334,14 @@ export function createStoryStageStreamConsumer({
           setActivity(t('storyStage.activity.thinking'))
           break
         }
+        case 'goal_evaluation_failed': {
+          liveAccumulator.flush()
+          setMessages((current) => [
+            ...current,
+            errorMessage(t('storyStage.activity.goalEvaluationFailed')),
+          ])
+          break
+        }
         case 'error': {
           const data = event.data
           if (data.code === 'agent_runtime.recovery_required') {

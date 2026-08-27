@@ -254,6 +254,7 @@ func (identity interactiveStartIdentity) taskInfo(taskID string) InteractiveTask
 		Workspace: identity.workspace, StoryID: identity.request.StoryID,
 		BranchID: identity.request.BranchID, Message: identity.request.Message,
 		RegenerateFromTurnID: identity.request.RegenerateFromTurnID,
+		Attachments:          attachmentDescriptors(identity.request.AttachedFiles),
 	}
 }
 
@@ -268,6 +269,7 @@ type InteractiveTaskInfo struct {
 	BranchID             string
 	Message              string
 	RegenerateFromTurnID string
+	Attachments          []agent.Attachment
 }
 
 type interactiveTaskRun struct {

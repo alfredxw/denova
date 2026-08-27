@@ -2,7 +2,6 @@ package cleanup
 
 import (
 	"encoding/json"
-	"unicode"
 
 	agent "github.com/alfredxw/denova/agent"
 )
@@ -31,41 +30,9 @@ func EstimateInspectedTokens(messages []*agent.Message, inspection agent.ModelRe
 }
 
 func EstimateMessages(messages []*agent.Message) int {
-	tokens := 0
-	for _, message := range messages {
-		if message == nil {
-			continue
-		}
-		tokens += 4 + EstimateStringTokens(string(message.Role)) + EstimateStringTokens(message.Content) + EstimateStringTokens(message.ReasoningContent)
-		for _, value := range []any{message.ToolCalls, message.MultiContent, message.UserInputMultiContent, message.AssistantGenMultiContent} {
-			if encoded, err := json.Marshal(value); err == nil && string(encoded) != "null" && string(encoded) != "[]" {
-				tokens += EstimateStringTokens(string(encoded))
-			}
-		}
-		tokens += EstimateStringTokens(message.ToolName) + EstimateStringTokens(message.ToolCallID)
-	}
-	return tokens
+	return agent.EstimateMessagesTokens(messages)
 }
 
 func EstimateStringTokens(content string) int {
-	if content == "" {
-		return 0
-	}
-	tokens, ascii := 0, 0
-	flush := func() {
-		if ascii > 0 {
-			tokens += (ascii + 3) / 4
-			ascii = 0
-		}
-	}
-	for _, value := range content {
-		if value <= unicode.MaxASCII {
-			ascii++
-		} else {
-			flush()
-			tokens++
-		}
-	}
-	flush()
-	return max(1, tokens)
+	return agent.EstimateTextTokens(content)
 }

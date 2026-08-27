@@ -121,28 +121,32 @@ func classifyPowerShellCall(words []string, boundary pathBoundary, mode config.A
 	if mode != config.AgentApprovalWrite {
 		return commandUnknown
 	}
+	// Attached files extend only the read boundary. They are immutable inputs,
+	// not extra workspace paths that Write mode may mutate automatically.
+	writeBoundary := boundary
+	writeBoundary.allowedFiles = nil
 	switch name {
 	case "new-item", "set-content", "add-content", "copy-item", "move-item", "remove-item":
 		paths := powerShellPathArguments(args)
-		if name == "remove-item" && containsBroadWorkspaceTarget(boundary, paths) {
+		if name == "remove-item" && containsBroadWorkspaceTarget(writeBoundary, paths) {
 			return commandUnknown
 		}
-		if allPathsInside(boundary, paths) {
+		if allPathsInside(writeBoundary, paths) {
 			return commandWrite
 		}
 	case "git":
-		return classifyGitWrite(args, boundary)
+		return classifyGitWrite(args, writeBoundary)
 	case "npm", "pnpm", "yarn", "bun", "npx", "bunx":
-		if safePackageCommand(name, args, boundary) {
+		if safePackageCommand(name, args, writeBoundary) {
 			return commandWrite
 		}
 	case "go", "cargo", "dotnet", "msbuild":
-		if safeDevelopmentCommand(name, args, boundary) || (name == "dotnet" || name == "msbuild") &&
-			!hasExternalLiteralArgument(args, boundary) && !containsArgument(args, "publish", "deploy") {
+		if safeDevelopmentCommand(name, args, writeBoundary) || (name == "dotnet" || name == "msbuild") &&
+			!hasExternalLiteralArgument(args, writeBoundary) && !containsArgument(args, "publish", "deploy") {
 			return commandWrite
 		}
 	case "invoke-webrequest", "iwr":
-		if powerShellNetworkRead(args, boundary) {
+		if powerShellNetworkRead(args, writeBoundary) {
 			return commandNetworkRead
 		}
 	}

@@ -286,7 +286,7 @@ export function useStoryStageRuntime({
   async function resumeActiveStoryRun(active: ActiveInteractiveChat, abortController: AbortController, isDisposed: () => boolean) {
     const message = active.message?.trim() || ''
     const previousRuntime = readStageRuntime()
-    prepareLiveRun(message, active.regenerate_from_turn_id)
+    prepareLiveRun(message, active.regenerate_from_turn_id, active.attachments)
     try {
       if (active.runtime_recoverable) setActivity(t('storyStage.activity.recovering'))
       const recovered = await interactiveAgentCommands.recover(active)

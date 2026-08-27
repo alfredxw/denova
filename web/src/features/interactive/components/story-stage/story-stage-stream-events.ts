@@ -22,6 +22,7 @@ export const INTERACTIVE_STREAM_EVENT_CONTRACT = {
   token_usage: 'handled',
   interactive_turn_persisted: 'handled',
   runtime_recovery_required: 'handled',
+  goal_evaluation_failed: 'handled',
   error: 'handled',
   done: 'handled',
   aborted: 'handled',

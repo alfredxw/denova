@@ -219,7 +219,7 @@ func reusableImageAPIEndpointID(candidate ImageAPIEndpointSettings, endpoints []
 		if imageAPIEndpointRouteSignature(endpoint) != candidateRoute {
 			continue
 		}
-		if candidate.APIKey == "" || endpoint.APIKey == "" || candidate.APIKey == endpoint.APIKey {
+		if candidate.APIKey == endpoint.APIKey {
 			return imageAPIEndpointID(endpoint)
 		}
 	}

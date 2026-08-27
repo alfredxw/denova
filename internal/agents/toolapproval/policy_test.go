@@ -98,7 +98,7 @@ func TestAttachedFileReadIsAuthorizedWithoutOpeningItsDirectory(t *testing.T) {
 	}
 }
 
-func TestAttachedFilePathExtendsShellBoundaryExactly(t *testing.T) {
+func TestAttachedFilePathExtendsOnlyTheShellReadBoundary(t *testing.T) {
 	t.Parallel()
 	workspace := t.TempDir()
 	external := t.TempDir()
@@ -109,25 +109,28 @@ func TestAttachedFilePathExtendsShellBoundaryExactly(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	evaluate := func(mode config.AgentApprovalMode, command string) Decision {
+	evaluate := func(toolName string, mode config.AgentApprovalMode, command string) Decision {
 		arguments, err := json.Marshal(commandArguments{Command: command})
 		if err != nil {
 			t.Fatal(err)
 		}
 		return Evaluate(Request{
-			Mode: mode, Workspace: workspace, ToolName: "bash", Arguments: string(arguments),
+			Mode: mode, Workspace: workspace, ToolName: toolName, Arguments: string(arguments),
 			Descriptor:      agent.ToolDescriptor{Source: agent.ToolSourceShell, MutationScope: agent.ToolMutationExternal},
 			AttachmentPaths: []string{attached},
 		})
 	}
-	if got := evaluate(config.AgentApprovalAsk, "jq . "+attached); got.Action != ActionAllow {
+	if got := evaluate("bash", config.AgentApprovalAsk, "jq . "+attached); got.Action != ActionAllow {
 		t.Fatalf("attached shell read = %#v", got)
 	}
-	if got := evaluate(config.AgentApprovalAsk, "cat "+sibling); got.Action != ActionPrompt {
+	if got := evaluate("bash", config.AgentApprovalAsk, "cat "+sibling); got.Action != ActionPrompt {
 		t.Fatalf("sibling shell read = %#v, want prompt", got)
 	}
-	if got := evaluate(config.AgentApprovalWrite, "touch "+attached); got.Action != ActionAllow {
-		t.Fatalf("attached copy edit = %#v", got)
+	if got := evaluate("bash", config.AgentApprovalWrite, "touch "+attached); got.Action != ActionPrompt {
+		t.Fatalf("attached bash mutation = %#v, want prompt", got)
+	}
+	if got := evaluate("pwsh", config.AgentApprovalWrite, "Set-Content -Path "+attached+" changed"); got.Action != ActionPrompt {
+		t.Fatalf("attached PowerShell mutation = %#v, want prompt", got)
 	}
 }
 

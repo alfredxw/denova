@@ -201,6 +201,11 @@ func (run *Run) handleEngineEvent(event runstate.EngineEvent) error {
 		run.publish(CompactionFailed{ID: value.ID, Reason: value.Reason, Automatic: value.Automatic, ConsecutiveFailures: value.ConsecutiveFailures, FailureFuseOpen: value.FailureFuseOpen, Metrics: publicCompactionMetrics(value.Metrics)})
 	case runstate.EngineCompactionSkipped:
 		run.publish(CompactionSkipped{ID: value.ID, Reason: value.Reason, Automatic: value.Automatic, ConsecutiveFailures: value.ConsecutiveFailures, FailureFuseOpen: value.FailureFuseOpen, Metrics: publicCompactionMetrics(value.Metrics)})
+	case runstate.EngineGoalEvaluationFailed:
+		run.publish(GoalEvaluationFailed{
+			GoalID: value.GoalID, GoalRevision: value.GoalRevision,
+			Code: value.Code, Detail: value.Detail,
+		})
 	case runstate.EngineInteractionRequested:
 		var request InteractionRequest
 		if err := json.Unmarshal(value.Request, &request); err != nil {

@@ -84,6 +84,9 @@ type GoalPrepareRequest struct {
 type GoalPreparation struct {
 	Context []ContextFragment
 	Tools   []ToolDefinition
+	// ReservedTokens protects bounded post-run Goal side forks during context
+	// pressure planning. It is applied only while this preparation is active.
+	ReservedTokens int
 }
 
 type GoalAfterRunRequest struct {

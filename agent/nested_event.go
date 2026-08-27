@@ -131,6 +131,8 @@ func encodeEventPayload(payload EventPayload) (string, json.RawMessage, error) {
 		kind = "event_stream_gap"
 	case GoalUpdated:
 		kind = "goal_updated"
+	case GoalEvaluationFailed:
+		kind = "goal_evaluation_failed"
 	case TodoUpdated:
 		kind = "todo_updated"
 	case InteractionRequested:
@@ -214,6 +216,8 @@ func decodeEventPayload(kind string, data json.RawMessage) (EventPayload, error)
 		target = &EventStreamGap{}
 	case "goal_updated":
 		target = &GoalUpdated{}
+	case "goal_evaluation_failed":
+		target = &GoalEvaluationFailed{}
 	case "todo_updated":
 		target = &TodoUpdated{}
 	case "interaction_requested":
@@ -288,6 +292,8 @@ func dereferenceEventPayload(payload EventPayload) EventPayload {
 	case *EventStreamGap:
 		return *value
 	case *GoalUpdated:
+		return *value
+	case *GoalEvaluationFailed:
 		return *value
 	case *TodoUpdated:
 		return *value

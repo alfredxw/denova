@@ -91,6 +91,29 @@ func (params *ParamsOneOf) ToJSONSchema() (*jsonschema.Schema, error) {
 	return result, nil
 }
 
+// ToJSONSchemaMap returns the object shape required by provider SDKs. The outer
+// map is intentionally unordered; ordering that matters to tool generation is
+// retained inside the raw "properties" value and embedded verbatim on the wire.
+func (params *ParamsOneOf) ToJSONSchemaMap() (map[string]any, error) {
+	schema, err := params.ToJSONSchema()
+	if err != nil || schema == nil {
+		return nil, err
+	}
+	data, err := json.Marshal(schema)
+	if err != nil {
+		return nil, fmt.Errorf("marshal JSON Schema: %w", err)
+	}
+	rawFields := map[string]json.RawMessage{}
+	if err := json.Unmarshal(data, &rawFields); err != nil {
+		return nil, fmt.Errorf("decode JSON Schema object: %w", err)
+	}
+	result := make(map[string]any, len(rawFields))
+	for name, value := range rawFields {
+		result[name] = value
+	}
+	return result, nil
+}
+
 func parameterSchemaMap(parameter *ParameterInfo) map[string]any {
 	if parameter == nil {
 		return map[string]any{}

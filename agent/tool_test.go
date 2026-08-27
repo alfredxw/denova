@@ -45,6 +45,17 @@ func TestInferToolSchemaAndNormalizedInvoke(t *testing.T) {
 	if strings.Contains(string(encoded), `"$schema"`) || strings.Contains(string(encoded), `"$ref"`) {
 		t.Fatalf("schema is not provider-inline: %s", encoded)
 	}
+	providerSchema, err := info.ToJSONSchemaMap()
+	if err != nil {
+		t.Fatal(err)
+	}
+	providerWire, err := json.Marshal(providerSchema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if modeIndex, countIndex := strings.Index(string(providerWire), `"mode"`), strings.Index(string(providerWire), `"count"`); modeIndex < 0 || countIndex < 0 || modeIndex > countIndex {
+		t.Fatalf("provider schema lost declared property order: %s", providerWire)
+	}
 	mode, exists := schema.Properties.Get("mode")
 	if !exists || mode.Description != "Execution mode." || len(mode.Enum) != 2 {
 		t.Fatalf("mode schema lost description/enum: %#v", mode)

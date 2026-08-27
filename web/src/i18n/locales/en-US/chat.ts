@@ -482,6 +482,7 @@ const chat = {
   'chat.activity.done': 'Done',
   'chat.activity.aborted': 'Aborted',
   'chat.activity.unknownError': 'Unknown error',
+  'chat.activity.goalEvaluationFailed': 'Goal evaluation failed. The goal remains active; retry or continue working.',
   'chat.activity.abortMessage': 'AI execution aborted',
   'chat.activity.requestFailed': 'Request failed: {{error}}',
   'chat.planUsage': 'Usage: /plan <requirement>\n\nExample: /plan add a new skill system for the protagonist',

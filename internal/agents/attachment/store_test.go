@@ -1,7 +1,9 @@
 package attachment
 
 import (
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,12 +22,20 @@ func TestMaterializePersistsConversationOwnedCopies(t *testing.T) {
 	if len(files) != 2 || files[0].Name != "notes.md" || files[0].Size != 5 || files[1].MediaType != "image/png" {
 		t.Fatalf("unexpected attachments: %#v", files)
 	}
+	wantDigest := sha256.Sum256([]byte("hello"))
+	if files[0].SHA256 != hex.EncodeToString(wantDigest[:]) {
+		t.Fatalf("attachment digest = %q", files[0].SHA256)
+	}
 	for _, file := range files {
 		if !strings.HasPrefix(file.Path, filepath.Join(root, "attachments", "v1")+string(filepath.Separator)) {
 			t.Fatalf("copy escaped attachment root: %q", file.Path)
 		}
-		if _, err := os.Stat(file.Path); err != nil {
+		info, err := os.Stat(file.Path)
+		if err != nil {
 			t.Fatalf("copy missing: %v", err)
+		}
+		if info.Mode().Perm()&0o222 != 0 {
+			t.Fatalf("attachment copy is writable: %o", info.Mode().Perm())
 		}
 	}
 	if err := RemoveScope(root, SessionScope("session-1")); err != nil {
@@ -54,29 +64,28 @@ func TestMaterializeRejectsInvalidBatchWithoutLeavingCopies(t *testing.T) {
 	}
 }
 
-func TestMaterializeExactRetryPreservesModifiedCopy(t *testing.T) {
+func TestMaterializeRejectsModifiedInputOnRetry(t *testing.T) {
 	root := t.TempDir()
 	uploads := []Upload{{Name: "notes.txt", DataURL: dataURL("text/plain", []byte("original"))}}
 	files, err := Materialize(root, SessionScope("session-1"), "command-1", uploads)
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := os.Chmod(files[0].Path, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(files[0].Path, []byte("changed"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	retried, err := Materialize(root, SessionScope("session-1"), "command-1", uploads)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(retried) != 1 || retried[0].Path != files[0].Path {
-		t.Fatalf("retry attachments = %#v", retried)
+	if _, err := Materialize(root, SessionScope("session-1"), "command-1", uploads); err == nil || !strings.Contains(err.Error(), "immutable attachment copy differs") {
+		t.Fatalf("retry error = %v", err)
 	}
 	content, err := os.ReadFile(files[0].Path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if string(content) != "changed" {
-		t.Fatalf("retry overwrote modified copy: %q", content)
+		t.Fatalf("retry replaced modified input: %q", content)
 	}
 }
 

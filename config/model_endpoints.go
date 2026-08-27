@@ -150,6 +150,7 @@ func clearModelProfileEndpoint(profile ModelProfileSettings) ModelProfileSetting
 
 func migrateModelEndpointSettings(settings Settings) (Settings, bool) {
 	migrated := hasEmbeddedModelEndpointSettings(settings)
+	hasLegacyTopLevel := hasLegacyTopLevelModelSettings(settings)
 	endpoints := sanitizeModelEndpoints(settings.ModelEndpoints)
 	profiles := make([]ModelProfileSettings, 0, len(settings.ModelProfiles)+1)
 
@@ -158,7 +159,7 @@ func migrateModelEndpointSettings(settings Settings) (Settings, bool) {
 		BaseURL: settings.OpenAIBaseURL, Model: settings.OpenAIModel,
 		ContextWindowTokens: settings.OpenAIContextWindowTokens,
 	})
-	if hasLegacyTopLevelModelSettings(settings) {
+	if hasLegacyTopLevel {
 		endpoint := modelEndpointFromProfile(legacyDefault, DefaultModelEndpointID)
 		endpoints = upsertMigratedModelEndpoint(endpoints, endpoint)
 	}
@@ -166,6 +167,18 @@ func migrateModelEndpointSettings(settings Settings) (Settings, bool) {
 	hasDefaultProfile := false
 	for _, raw := range settings.ModelProfiles {
 		profile := migrateLegacyModelProfile(raw)
+		// Released profiles inherited the top-level OpenAI connection before the
+		// endpoint split. Materialize that effective connection before grouping so
+		// migration preserves behavior even when a profile overrides only its URL.
+		// Generic embedded routing was never released and must not inherit secrets.
+		if hasLegacyTopLevel && strings.TrimSpace(raw.EndpointID) == "" && !modelProfileHasRouting(raw) {
+			if profile.APIKey == "" {
+				profile.APIKey = legacyDefault.APIKey
+			}
+			if strings.TrimSpace(profile.BaseURL) == "" {
+				profile.BaseURL = legacyDefault.BaseURL
+			}
+		}
 		id := modelProfileID(profile)
 		if id == "" {
 			if strings.TrimSpace(profile.EndpointID) == "" && modelProfileHasRouting(profile) {
@@ -207,7 +220,7 @@ func migrateModelEndpointSettings(settings Settings) (Settings, bool) {
 		profile.ID = id
 		profiles = append(profiles, clearModelProfileEndpoint(profile))
 	}
-	if hasLegacyTopLevelModelSettings(settings) && !hasDefaultProfile {
+	if hasLegacyTopLevel && !hasDefaultProfile {
 		legacyDefault.EndpointID = DefaultModelEndpointID
 		profiles = append([]ModelProfileSettings{clearModelProfileEndpoint(legacyDefault)}, profiles...)
 	}
@@ -267,7 +280,7 @@ func reusableModelEndpointID(candidate ModelEndpointSettings, endpoints []ModelE
 		if modelEndpointRouteSignature(endpoint) != candidateRoute {
 			continue
 		}
-		if candidate.APIKey == "" || endpoint.APIKey == "" || candidate.APIKey == endpoint.APIKey {
+		if candidate.APIKey == endpoint.APIKey {
 			return modelEndpointID(endpoint)
 		}
 	}
@@ -275,6 +288,7 @@ func reusableModelEndpointID(candidate ModelEndpointSettings, endpoints []ModelE
 }
 
 func modelEndpointRouteSignature(endpoint ModelEndpointSettings) string {
+	profile := normalizeModelProfileRouting(modelProfileFromEndpoint(endpoint))
 	stable := struct {
 		Provider          string
 		Protocol          string
@@ -283,10 +297,10 @@ func modelEndpointRouteSignature(endpoint ModelEndpointSettings) string {
 		ProtocolOptions   map[string]any
 		SessionKeyMapping *providers.SessionKeyMapping
 	}{
-		Provider: strings.TrimSpace(endpoint.Provider), Protocol: strings.TrimSpace(endpoint.Protocol),
-		BaseURL: strings.TrimRight(strings.TrimSpace(endpoint.BaseURL), "/"),
-		Headers: endpoint.Headers, ProtocolOptions: endpoint.ProtocolOptions,
-		SessionKeyMapping: endpoint.SessionKeyMapping,
+		Provider: strings.TrimSpace(profile.Provider), Protocol: strings.TrimSpace(profile.Protocol),
+		BaseURL: strings.TrimRight(strings.TrimSpace(profile.BaseURL), "/"),
+		Headers: profile.Headers, ProtocolOptions: profile.ProtocolOptions,
+		SessionKeyMapping: profile.SessionKeyMapping,
 	}
 	encoded, _ := json.Marshal(stable)
 	return string(encoded)

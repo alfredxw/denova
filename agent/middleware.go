@@ -200,6 +200,20 @@ func (snapshot *ModelRequestSnapshot) Append(messages ...*Message) *ModelRequest
 	}
 }
 
+// WithOptions returns a detached side fork that preserves the exact model,
+// message prefix, cache boundary, and existing options before applying the
+// supplied bounded overrides.
+func (snapshot *ModelRequestSnapshot) WithOptions(options ...ModelOption) *ModelRequestSnapshot {
+	if snapshot == nil {
+		return nil
+	}
+	return &ModelRequestSnapshot{
+		model: snapshot.model, messages: cloneMessages(snapshot.messages),
+		options:   append(append([]ModelOption(nil), snapshot.options...), options...),
+		streaming: snapshot.streaming, stablePrefixMessages: snapshot.StablePrefixMessages(),
+	}
+}
+
 // Generate executes exactly one non-streaming model request from the snapshot.
 func (snapshot *ModelRequestSnapshot) Generate(ctx context.Context) (*Message, error) {
 	if snapshot == nil || snapshot.model == nil {

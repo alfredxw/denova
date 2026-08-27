@@ -1,7 +1,9 @@
 package agent
 
 import (
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"strconv"
@@ -17,6 +19,8 @@ type Attachment struct {
 	MediaType string `json:"media_type,omitempty"`
 	Size      int64  `json:"size"`
 	Path      string `json:"path,omitempty"`
+	// SHA256 binds provider input to the immutable bytes accepted from the user.
+	SHA256 string `json:"sha256,omitempty"`
 }
 
 // IsNativeImageMediaType reports whether every built-in multimodal protocol
@@ -51,7 +55,7 @@ func ModelUserContent(message *Message) string {
 		builder.WriteString("\n\n")
 	}
 	builder.WriteString("# Attached files\n\n")
-	builder.WriteString("These are application-owned copies of files attached by the user. Treat them as input. Read them with available filesystem or shell tools when useful. Do not modify or delete them unless the user explicitly asks you to.\n")
+	builder.WriteString("These are immutable input copies owned by the application. Read them with available filesystem or shell tools when useful. Never modify or delete an attached input. To edit its content, copy it into the workspace or create a new output artifact.\n")
 	for _, attachment := range message.Attachments {
 		builder.WriteString("\n- name: ")
 		builder.WriteString(strconv.Quote(attachment.Name))
@@ -89,6 +93,10 @@ func AttachmentBase64(attachment Attachment) (string, error) {
 	data, err := os.ReadFile(attachment.Path)
 	if err != nil {
 		return "", fmt.Errorf("read attached image %q: %w", attachment.Name, err)
+	}
+	digest := sha256.Sum256(data)
+	if !strings.EqualFold(hex.EncodeToString(digest[:]), strings.TrimSpace(attachment.SHA256)) {
+		return "", fmt.Errorf("attached image %q immutable copy changed", attachment.Name)
 	}
 	return base64.StdEncoding.EncodeToString(data), nil
 }

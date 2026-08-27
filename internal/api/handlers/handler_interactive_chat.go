@@ -145,6 +145,9 @@ func (h *Handlers) HandleInteractiveChatActive(ctx context.Context, c *app.Reque
 		"message":                 view.Info.Message,
 		"regenerate_from_turn_id": view.Info.RegenerateFromTurnID,
 	}
+	if len(view.Info.Attachments) > 0 {
+		response["attachments"] = view.Info.Attachments
+	}
 	addAgentRuntimeProjection(response, view.Runtime, agentRuntimeProjectionOptions{
 		Available: view.RuntimeProjectionOK, StreamAttached: true,
 	})

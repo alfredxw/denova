@@ -279,6 +279,17 @@ type EngineCompactionSkipped struct {
 
 func (EngineCompactionSkipped) engineEvent() {}
 
+// EngineGoalEvaluationFailed makes post-run evaluator failures observable
+// while preserving the completed primary result and active Goal state.
+type EngineGoalEvaluationFailed struct {
+	GoalID       string
+	GoalRevision uint64
+	Code         string
+	Detail       string
+}
+
+func (EngineGoalEvaluationFailed) engineEvent() {}
+
 // CompactionMetrics is a provider-neutral projection of context pressure,
 // post-validation health, and cache evidence.
 type CompactionMetrics struct {

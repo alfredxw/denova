@@ -145,31 +145,18 @@ func requestTools(tools []*agent.ToolInfo) ([]anthropic.ToolUnionParam, error) {
 		if tool == nil || strings.TrimSpace(tool.Name) == "" {
 			return nil, fmt.Errorf("anthropic messages tool %d: name is required", index)
 		}
-		schema := map[string]any{"type": "object", "properties": map[string]any{}}
+		schema := map[string]any{"properties": json.RawMessage(`{}`)}
 		if tool.ParamsOneOf != nil {
-			value, err := tool.ParamsOneOf.ToJSONSchema()
+			var err error
+			schema, err = tool.ParamsOneOf.ToJSONSchemaMap()
 			if err != nil {
 				return nil, fmt.Errorf("anthropic messages tool %q schema: %w", tool.Name, err)
 			}
-			if value != nil {
-				data, err := json.Marshal(value)
-				if err != nil {
-					return nil, fmt.Errorf("anthropic messages tool %q schema: %w", tool.Name, err)
-				}
-				if err := json.Unmarshal(data, &schema); err != nil {
-					return nil, fmt.Errorf("anthropic messages tool %q schema: %w", tool.Name, err)
-				}
-			}
 		}
-		sortRequired(schema)
 		inputSchema := anthropic.ToolInputSchemaParam{Properties: schema["properties"]}
-		if required, ok := schema["required"].([]string); ok {
-			inputSchema.Required = required
-		} else if required, ok := schema["required"].([]any); ok {
-			for _, value := range required {
-				if text, ok := value.(string); ok {
-					inputSchema.Required = append(inputSchema.Required, text)
-				}
+		if required, ok := schema["required"].(json.RawMessage); ok {
+			if err := json.Unmarshal(required, &inputSchema.Required); err != nil {
+				return nil, fmt.Errorf("anthropic messages tool %q required fields: %w", tool.Name, err)
 			}
 		}
 		inputSchema.ExtraFields = make(map[string]any)
@@ -292,34 +279,6 @@ func filterTools(tools []*agent.ToolInfo, names []string) []*agent.ToolInfo {
 		}
 	}
 	return result
-}
-
-func sortRequired(value any) {
-	switch typed := value.(type) {
-	case map[string]any:
-		if required, ok := typed["required"].([]any); ok {
-			values := make([]string, 0, len(required))
-			for _, item := range required {
-				text, ok := item.(string)
-				if !ok {
-					values = nil
-					break
-				}
-				values = append(values, text)
-			}
-			if values != nil {
-				sort.Strings(values)
-				typed["required"] = values
-			}
-		}
-		for _, child := range typed {
-			sortRequired(child)
-		}
-	case []any:
-		for _, child := range typed {
-			sortRequired(child)
-		}
-	}
 }
 
 func escapeJSONPathKey(key string) string {
