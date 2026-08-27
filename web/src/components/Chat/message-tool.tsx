@@ -299,10 +299,10 @@ function buildToolResultEnvelopeSummary(t: ReturnType<typeof useTranslation>['t'
       headline = t('chat.tool.result.cancelled')
     }
   }
-  const isContinuablePage = result.status === 'partial'
-    && result.continuation !== undefined
+  const isExpectedPartialPage = result.status === 'partial'
+    && result.severity === 'success'
     && (result.schema === 'resource.read.v1' || result.schema === 'workspace.search.v1')
-  if (!headline && isContinuablePage) {
+  if (!headline && isExpectedPartialPage) {
     headline = t('chat.tool.result.pageReady')
   } else if (!headline && (result.status === 'partial' || result.truncated)) {
     headline = t(result.status === 'partial' ? 'chat.tool.result.partial' : 'chat.tool.result.truncated')
@@ -320,6 +320,7 @@ function buildToolResultEnvelopeSummary(t: ReturnType<typeof useTranslation>['t'
   // may be the intended diagnostic result rather than a command to "fix".
   const recovery = !isWebAccess
     && !result.continuation
+    && !isExpectedPartialPage
     && !(result.schema === 'process.result.v1' && result.status === 'failed')
     && result.recovery
     ? result.recovery

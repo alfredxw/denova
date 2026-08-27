@@ -107,11 +107,17 @@ function resultSeverity(schema: string, status: string, truncated: boolean, hasC
     return status === 'completed' || status === 'success' ? 'success' : 'error'
   }
   if (status === 'failed' || status === 'error' || status === 'cancelled' || status === 'timed_out') return 'error'
-  // read/search use "partial" for a bounded page even when they returned the
-  // requested range successfully. A continuation is useful metadata, not a
-  // warning; partial results without a continuation still need attention.
-  if (status === 'partial' && hasContinuation && (schema === 'resource.read.v1' || schema === 'workspace.search.v1')) return 'success'
+  if (isExpectedPartialPage(schema, status, hasContinuation)) return 'success'
   return status === 'partial' || truncated ? 'warning' : 'success'
+}
+
+function isExpectedPartialPage(schema: string, status: string, hasContinuation: boolean) {
+  if (status !== 'partial') return false
+  // Read is intentionally bounded, and directory trees cannot expose a stable
+  // continuation. Reaching the requested bound is still a successful read.
+  // Search remains neutral only when it provides an exact continuation.
+  return schema === 'resource.read.v1'
+    || (schema === 'workspace.search.v1' && hasContinuation)
 }
 
 function recordValue(value: unknown): Record<string, unknown> {
