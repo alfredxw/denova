@@ -71,6 +71,37 @@ vi.mock('@/components/Chat/AgentPanel', () => ({
   },
 }))
 
+vi.mock('@/features/agent-chat/WritingAgentWorkspace', () => ({
+  readWritingSessionRailVisibility: () => true,
+  writeWritingSessionRailVisibility: vi.fn(),
+  WRITING_SESSION_RAIL_STORAGE_KEY: 'nova.writingAgent.sessionRailVisible.v1',
+  WritingAgentWorkspace: ({ reviewFeedback, onReviewFeedbackOpen }: {
+    reviewFeedback?: Array<{ comments: Array<{ id: string }> }>
+    onReviewFeedbackOpen?: (selection: unknown, comment: unknown) => void
+  }) => {
+    const [localState, setLocalState] = useState(0)
+    agentPanelLifecycle.renders += 1
+    useEffect(() => {
+      agentPanelLifecycle.mounts += 1
+      return () => {
+        agentPanelLifecycle.unmounts += 1
+      }
+    }, [])
+    const selection = reviewFeedback?.[0]
+    const comment = selection?.comments[0]
+    return (
+      <>
+        <button type="button" onClick={() => setLocalState((current) => current + 1)}>
+          agent panel state {localState}
+        </button>
+        <button type="button" disabled={!selection || !comment} onClick={() => onReviewFeedbackOpen?.(selection, comment)}>
+          open document feedback
+        </button>
+      </>
+    )
+  },
+}))
+
 vi.mock('@/features/agent-chat/AgentChatRoute', () => ({
   AgentChatRoute: ({ projectId, onFlushHandlerChange }: {
     projectId: string

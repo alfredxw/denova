@@ -353,7 +353,7 @@ export function StoryStageComposer({ layout, editor, story, runtime, goal, dialo
           />
         </div>
         <ContextAnalysisDialog open={contextAnalysisOpen} loading={contextAnalysisLoading} error={contextAnalysisError} analysis={contextAnalysis} onOpenChange={setContextAnalysisOpen} onRemoveCompaction={removeContextCompaction} />
-        <TokenUsageDialog open={tokenUsageOpen} messages={tokenUsageMessages} onOpenChange={setTokenUsageOpen} onOpenTrace={openTraceRun} />
+        <TokenUsageDialog projectId={projectId} open={tokenUsageOpen} messages={tokenUsageMessages} onOpenChange={setTokenUsageOpen} onOpenTrace={openTraceRun} />
         <Dialog open={traceOpen} onOpenChange={setTraceOpen}>
           <DialogContent className="flex h-[min(88vh,760px)] max-w-[min(96vw,1120px)] flex-col gap-0 overflow-hidden border-[var(--nova-border)] bg-[var(--nova-bg)] p-0 text-[var(--nova-text)]">
             <DialogHeader className="border-b border-[var(--nova-border)] px-4 py-3"><DialogTitle className="flex items-center gap-2 text-sm"><Activity className="h-4 w-4 text-[var(--nova-text-muted)]" />{t('chat.tracePanel.title')}</DialogTitle></DialogHeader>

@@ -1,5 +1,11 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AgentPanel, type WritingComposerSettingsController } from '@/components/Chat/AgentPanel'
+import {
+  AgentPanel,
+  type AgentPanelChrome,
+  type AgentPanelProps,
+  type AgentPanelView,
+  type WritingComposerSettingsController,
+} from '@/components/Chat/AgentPanel'
 import type { ImagePreset, Teller } from '@/features/interactive/types'
 import type { ReviewFeedbackBatch, ReviewFeedbackComment, ReviewFeedbackSelection } from '@/features/changes/agent/ReviewFeedbackTray'
 import {
@@ -37,6 +43,47 @@ interface AgentChatConversationTabProps {
     displayMessage: string
   } | null
   onPendingActionConsumed?: (id: string) => void
+  onConversationStateChange?: (state: AgentChatConversationState) => void
+  host?: AgentChatConversationHost
+}
+
+export interface AgentChatConversationState {
+  messages: AgentPanelProps['messages']
+  isStreaming: boolean
+}
+
+/** Optional controls supplied when a durable conversation is hosted in the Writing dock. */
+export interface AgentChatConversationHost {
+  chrome: AgentPanelChrome
+  view: AgentPanelView
+  onViewChange: (view: AgentPanelView) => void
+  sessions: AgentPanelProps['sessions']
+  sessionTransitionPending: boolean
+  sessionActionsDisabled: boolean
+  sessionRailVisible: boolean
+  onSessionRailVisibleChange: (visible: boolean) => void
+  onCreateSession: AgentPanelProps['onCreateSession']
+  onSwitchSession: AgentPanelProps['onSwitchSession']
+  onRenameSession: AgentPanelProps['onRenameSession']
+  onDeleteSession: AgentPanelProps['onDeleteSession']
+  currentChapter?: AgentPanelProps['currentChapter']
+  selectedFile: AgentPanelProps['selectedFile']
+  ideContext?: AgentPanelProps['ideContext']
+  fileSuggestions: AgentPanelProps['fileSuggestions']
+  loreReferenceLabels: AgentPanelProps['loreReferenceLabels']
+  loreSuggestions: AgentPanelProps['loreSuggestions']
+  onInsertIllustration?: AgentPanelProps['onInsertIllustration']
+  onSubAgentDetailsChange?: AgentPanelProps['onSubAgentDetailsChange']
+  composerContext: {
+    references: AgentPanelProps['references']
+    loreReferences: AgentPanelProps['loreReferences']
+    styleScenes: AgentPanelProps['styleScenes']
+    textSelections: AgentPanelProps['textSelections']
+    onReferenceConsumed: AgentPanelProps['onReferenceRemove']
+    onLoreReferenceConsumed: AgentPanelProps['onLoreReferenceRemove']
+    onStyleSceneConsumed: AgentPanelProps['onStyleSceneRemove']
+    onTextSelectionConsumed: AgentPanelProps['onTextSelectionRemove']
+  }
 }
 
 /**
@@ -67,6 +114,8 @@ function AgentChatConversationTabComponent({
   onDraftCommitted,
   pendingAction,
   onPendingActionConsumed,
+  onConversationStateChange,
+  host,
 }: AgentChatConversationTabProps) {
   const client = useMemo(() => createProjectAgentChatClient(projectId, sessionId), [projectId, sessionId])
   const chat = useAgentChat({
@@ -87,6 +136,8 @@ function AgentChatConversationTabComponent({
   const [initialContentReady, setInitialContentReady] = useState(draft)
   const mountedRef = useRef(false)
   const submittedActionRef = useRef('')
+  const consumedComposerStringsRef = useRef(new Set<string>())
+  const consumedTextSelectionsRef = useRef(new Set<AgentPanelProps['textSelections'][number]>())
 
   useEffect(() => {
     mountedRef.current = true
@@ -158,6 +209,61 @@ function AgentChatConversationTabComponent({
     onRunningChange?.(projectId, sessionId, chat.isExecutionActive)
   }, [chat.isExecutionActive, onRunningChange, projectId, sessionId])
 
+  useEffect(() => {
+    onConversationStateChange?.({ messages: chat.messages, isStreaming: chat.isStreaming })
+  }, [chat.isStreaming, chat.messages, onConversationStateChange])
+
+  const hostedComposerContext = host?.composerContext
+  useEffect(() => {
+    if (!active || !hostedComposerContext) return
+    const availableStringKeys = new Set([
+      ...hostedComposerContext.references.map((value) => `file:${value}`),
+      ...hostedComposerContext.loreReferences.map((value) => `lore:${value}`),
+      ...hostedComposerContext.styleScenes.map((value) => `style:${value}`),
+    ])
+    for (const key of consumedComposerStringsRef.current) {
+      if (!availableStringKeys.has(key)) consumedComposerStringsRef.current.delete(key)
+    }
+    for (const selection of consumedTextSelectionsRef.current) {
+      if (!hostedComposerContext.textSelections.includes(selection)) consumedTextSelectionsRef.current.delete(selection)
+    }
+    for (const reference of hostedComposerContext.references) {
+      const key = `file:${reference}`
+      if (consumedComposerStringsRef.current.has(key)) continue
+      consumedComposerStringsRef.current.add(key)
+      chat.addReference(reference)
+      hostedComposerContext.onReferenceConsumed(reference)
+    }
+    for (const reference of hostedComposerContext.loreReferences) {
+      const key = `lore:${reference}`
+      if (consumedComposerStringsRef.current.has(key)) continue
+      consumedComposerStringsRef.current.add(key)
+      chat.addLoreReference(reference)
+      hostedComposerContext.onLoreReferenceConsumed(reference)
+    }
+    for (const scene of hostedComposerContext.styleScenes) {
+      const key = `style:${scene}`
+      if (consumedComposerStringsRef.current.has(key)) continue
+      consumedComposerStringsRef.current.add(key)
+      chat.addStyleScene(scene)
+      hostedComposerContext.onStyleSceneConsumed(scene)
+    }
+    for (let index = hostedComposerContext.textSelections.length - 1; index >= 0; index -= 1) {
+      const selection = hostedComposerContext.textSelections[index]
+      if (consumedTextSelectionsRef.current.has(selection)) continue
+      consumedTextSelectionsRef.current.add(selection)
+      chat.addTextSelection(selection)
+      hostedComposerContext.onTextSelectionConsumed(index)
+    }
+  }, [
+    active,
+    chat.addLoreReference,
+    chat.addReference,
+    chat.addStyleScene,
+    chat.addTextSelection,
+    hostedComposerContext,
+  ])
+
   useEffect(
     () => () => {
       onRunningChange?.(projectId, sessionId, null)
@@ -171,10 +277,16 @@ function AgentChatConversationTabComponent({
       active={active}
       agentKind={projectType === 'book' ? 'writing' : 'general'}
       workspace={workspace}
-      chrome="workbench"
+      chrome={host?.chrome ?? 'workbench'}
+      view={host?.view}
+      onViewChange={host?.onViewChange}
+      sessionActionsDisabled={host?.sessionActionsDisabled}
+      sessionRailVisible={host?.sessionRailVisible}
+      onSessionRailVisibleChange={host?.onSessionRailVisibleChange}
       initializing={!initialContentReady}
       composerSettings={composerSettings}
-      selectedFile={null}
+      currentChapter={host?.currentChapter}
+      selectedFile={host?.selectedFile ?? null}
       tellers={tellers}
       imagePresets={imagePresets}
       reviewFeedback={reviewFeedback}
@@ -183,9 +295,10 @@ function AgentChatConversationTabComponent({
       onReviewFeedbackSubmitted={onReviewFeedbackSubmitted}
       onReviewFeedbackSubmissionFailed={onReviewFeedbackSubmissionFailed}
       messages={chat.messages}
-      sessions={chat.sessions}
+      sessions={host?.sessions ?? chat.sessions}
       activeSessionId={chat.activeSessionId || sessionId}
       sessionDraft={draft}
+      sessionTransitionPending={host?.sessionTransitionPending}
       conversationBinding={{ mode: 'agent_chat', project_id: projectId, session_id: sessionId }}
       isStreaming={chat.isStreaming}
       isExecutionActive={chat.isExecutionActive}
@@ -196,18 +309,18 @@ function AgentChatConversationTabComponent({
       activityContent={chat.activityContent}
       references={chat.references}
       loreReferences={chat.loreReferences}
-      loreReferenceLabels={{}}
-      loreSuggestions={[]}
+      loreReferenceLabels={host?.loreReferenceLabels ?? {}}
+      loreSuggestions={host?.loreSuggestions ?? []}
       styleScenes={chat.styleScenes}
       textSelections={chat.textSelections}
       planMode={chat.planMode}
       hasEarlierMessages={chat.hasEarlierMessages}
       isLoadingEarlierHistory={chat.isLoadingEarlierHistory}
-      fileSuggestions={[]}
-      onCreateSession={chat.createChatSession}
-      onSwitchSession={chat.switchChatSession}
-      onRenameSession={chat.renameChatSession}
-      onDeleteSession={chat.deleteChatSession}
+      fileSuggestions={host?.fileSuggestions ?? []}
+      onCreateSession={host?.onCreateSession ?? chat.createChatSession}
+      onSwitchSession={host?.onSwitchSession ?? chat.switchChatSession}
+      onRenameSession={host?.onRenameSession ?? chat.renameChatSession}
+      onDeleteSession={host?.onDeleteSession ?? chat.deleteChatSession}
       onLoadEarlierHistory={chat.loadEarlierHistory}
       onRefreshHistory={chat.loadHistory}
       onAnswerAsk={client.answerSessionAsk}
@@ -215,6 +328,7 @@ function AgentChatConversationTabComponent({
       onRemoveContextCompaction={client.removeContextCompaction}
       onSend={send}
       onAnalyzeContext={chat.analyzeContext}
+      ideContext={host?.ideContext}
       onStop={chat.stop}
       onSteerQueuedCommand={chat.steerQueuedCommand}
       onDeleteQueuedCommand={chat.deleteQueuedCommand}
@@ -225,11 +339,13 @@ function AgentChatConversationTabComponent({
       onStyleSceneAdd={chat.addStyleScene}
       onStyleSceneRemove={chat.removeStyleScene}
       onTextSelectionRemove={chat.removeTextSelection}
+      onInsertIllustration={host?.onInsertIllustration}
       onPlanModeChange={chat.setPlanMode}
       onPlanModeToggle={chat.togglePlanMode}
       onApproveProposedPlan={chat.approveProposedPlan}
       onExitPlanMode={chat.exitPlanMode}
       onOpenChangeReview={onOpenChangeReview}
+      onSubAgentDetailsChange={active ? host?.onSubAgentDetailsChange : undefined}
       onWorkspaceChanged={(paths) => onWorkspaceChanged?.(workspace, paths, {
         impact: 'structure',
         origin: 'external',

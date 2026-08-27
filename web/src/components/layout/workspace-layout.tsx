@@ -25,6 +25,7 @@ interface WorkspaceLayoutProps {
   rightPanelVisible?: boolean
   bottomPanelVisible?: boolean
   rightPanelWide?: boolean
+  rightPanelRailVisible?: boolean
   centerFocus?: boolean
   /** Route-level layout identity; changes bypass panel motion while explicit pane toggles animate. */
   routeLayoutKey?: string | number
@@ -42,6 +43,7 @@ export function WorkspaceLayout({
   rightPanelVisible = true,
   bottomPanelVisible = true,
   rightPanelWide = false,
+  rightPanelRailVisible = false,
   centerFocus = false,
   routeLayoutKey,
 }: WorkspaceLayoutProps) {
@@ -59,7 +61,7 @@ export function WorkspaceLayout({
   const hasRightPanel = rightPanel !== null && rightPanel !== undefined
   if (hasRightPanel) retainedRightPanelRef.current = rightPanel
   const rightPanelOpen = hasRightPanel && rightPanelVisible
-  const panelMotionSnapshot = { routeLayoutKey, sidebarVisible, rightPanelOpen, rightPanelWide, centerFocus }
+  const panelMotionSnapshot = { routeLayoutKey, sidebarVisible, rightPanelOpen, rightPanelWide, rightPanelRailVisible, centerFocus }
   const previousPanelMotionSnapshotRef = useRef(panelMotionSnapshot)
   const panelMotionSuspendedRef = useRef(false)
   const previousPanelMotionSnapshot = previousPanelMotionSnapshotRef.current
@@ -71,6 +73,7 @@ export function WorkspaceLayout({
     previousPanelMotionSnapshot.sidebarVisible !== sidebarVisible
     || previousPanelMotionSnapshot.rightPanelOpen !== rightPanelOpen
     || previousPanelMotionSnapshot.rightPanelWide !== rightPanelWide
+    || previousPanelMotionSnapshot.rightPanelRailVisible !== rightPanelRailVisible
     || previousPanelMotionSnapshot.centerFocus !== centerFocus
   ) {
     // A geometry change inside the current route is an explicit layout action and should remain
@@ -84,6 +87,8 @@ export function WorkspaceLayout({
   const centerWidthReadyRef = useRef(false)
   const previousEmphasisRef = useRef<'normal' | 'right' | 'center'>('normal')
   const layoutEmphasis = rightPanelWide ? 'right' : centerFocus ? 'center' : 'normal'
+  const rightPanelMinSize = rightPanelWide ? '520px' : rightPanelRailVisible ? '404px' : '360px'
+  const rightPanelMinClassName = rightPanelWide ? 'min-w-[520px]' : rightPanelRailVisible ? 'min-w-[404px]' : 'min-w-[360px]'
   const layoutEmphasisRef = useRef(layoutEmphasis)
   layoutEmphasisRef.current = layoutEmphasis
   const horizontalPanelLayout = usePersistedPanelLayout({
@@ -282,10 +287,10 @@ export function WorkspaceLayout({
             visible={rightPanelOpen}
             side="right"
             defaultSize={rightPanelWide ? '58%' : '34%'}
-            minSize={rightPanelWide ? '520px' : '360px'}
+            minSize={rightPanelMinSize}
             maxSize={rightPanelWide ? '68%' : '55%'}
             groupResizeBehavior="preserve-pixel-size"
-            className={rightPanelWide ? 'min-w-[520px]' : 'min-w-[360px]'}
+            className={rightPanelMinClassName}
             data-nova-right-panel={rightPanelWide ? 'wide' : 'default'}
             data-nova-resize-behavior="preserve-pixel-size"
             onResize={(size) => {

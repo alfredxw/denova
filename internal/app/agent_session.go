@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -49,6 +50,13 @@ type GlobalAgentRunTraceIssue struct {
 type GlobalAgentRunTraceCatalog struct {
 	Runs   []GlobalAgentRunTraceSummary `json:"runs"`
 	Issues []GlobalAgentRunTraceIssue   `json:"issues"`
+}
+
+// GlobalAgentRunTraceTarget keeps an explicitly opened Run in the bounded
+// global catalog even when newer Runs would otherwise push it past the limit.
+type GlobalAgentRunTraceTarget struct {
+	ProjectID string
+	RunID     string
 }
 
 func (a *App) persistAgentCall(agentKind, instruction, response string) {
@@ -172,13 +180,15 @@ func (a *App) AgentRunTraces(limit int) ([]agentrun.RunTraceSummary, error) {
 
 // GlobalAgentRunTraces merges recent Runs from every registered Project. A
 // broken Project is reported independently and never hides healthy Runs.
-func (a *App) GlobalAgentRunTraces(ctx context.Context, limit int) (GlobalAgentRunTraceCatalog, error) {
+func (a *App) GlobalAgentRunTraces(ctx context.Context, limit int, target GlobalAgentRunTraceTarget) (GlobalAgentRunTraceCatalog, error) {
 	if !a.DeveloperModeEnabled() {
 		return GlobalAgentRunTraceCatalog{}, ErrDeveloperModeDisabled
 	}
 	if limit <= 0 || limit > defaultGlobalAgentRunTraceLimit {
 		limit = defaultGlobalAgentRunTraceLimit
 	}
+	target.ProjectID = strings.TrimSpace(target.ProjectID)
+	target.RunID = strings.TrimSpace(target.RunID)
 	sources, issues, err := a.globalTrajectorySources(ctx)
 	if err != nil {
 		return GlobalAgentRunTraceCatalog{}, err
@@ -198,6 +208,16 @@ func (a *App) GlobalAgentRunTraces(ctx context.Context, limit int) (GlobalAgentR
 				ProjectID: source.ProjectID, ProjectName: source.Name, Message: "Run trajectories are unavailable for this Project",
 			})
 			continue
+		}
+		if source.ProjectID == target.ProjectID && target.RunID != "" && !slices.ContainsFunc(runs, func(run agentrun.RunTraceSummary) bool {
+			return run.ID == target.RunID
+		}) {
+			trace, targetErr := agentrun.ReadRunTrace(agentrun.TraceLocation{Workspace: source.Workspace, StateRoot: source.StateRoot}, target.RunID)
+			if targetErr == nil {
+				runs = append(runs, trace.Summary)
+			} else if !os.IsNotExist(targetErr) {
+				slog.WarnContext(ctx, "[trajectory] targeted Run read failed", "project_id", source.ProjectID, "run_id", target.RunID, "error", targetErr)
+			}
 		}
 		sessionTitles, titleErr := projectSessionTitles(source.StateRoot, runs)
 		if titleErr != nil {
@@ -224,10 +244,27 @@ func (a *App) GlobalAgentRunTraces(ctx context.Context, limit int) (GlobalAgentR
 		}
 		return left.ID < right.ID
 	})
-	if len(result.Runs) > limit {
-		result.Runs = result.Runs[:limit]
-	}
+	result.Runs = boundedGlobalRunCatalog(result.Runs, limit, target)
 	return result, nil
+}
+
+func boundedGlobalRunCatalog(runs []GlobalAgentRunTraceSummary, limit int, target GlobalAgentRunTraceTarget) []GlobalAgentRunTraceSummary {
+	if len(runs) <= limit {
+		return runs
+	}
+	targetIndex := -1
+	for index, run := range runs {
+		if run.ProjectID == target.ProjectID && run.ID == target.RunID {
+			targetIndex = index
+			break
+		}
+	}
+	if targetIndex < limit || targetIndex < 0 {
+		return runs[:limit]
+	}
+	bounded := append([]GlobalAgentRunTraceSummary(nil), runs[:limit]...)
+	bounded[limit-1] = runs[targetIndex]
+	return bounded
 }
 
 // projectSessionTitles reads only existing Session projections. Missing or

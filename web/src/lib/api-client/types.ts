@@ -350,6 +350,8 @@ export interface SessionSummary {
   updated_at: string
   active: boolean
   message_count: number
+  /** Project-scoped runtimes expose execution state per conversation. */
+  running?: boolean
 }
 
 export interface IDEContext {

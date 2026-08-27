@@ -6,6 +6,8 @@ const trajectory = {
   'trajectory.tab.harness': 'Harness',
   'trajectory.developerBadge': 'Developer',
   'trajectory.refresh': 'Refresh trajectories',
+  'trajectory.openRun': 'Open in Trajectory',
+  'trajectory.navigation.notFound': 'This run trajectory is no longer available or has been cleaned up.',
   'trajectory.noProject': 'No project selected',
   'trajectory.noProjectDescription': 'Select a book project to inspect the Agent trajectories it produces.',
   'trajectory.loadingDescription': 'Loading Agent trajectories for the current project.',

@@ -52,6 +52,7 @@ interface WorkbenchShellProps {
   main: ReactNode
   rightPanelContent: ReactNode
   rightPanelWide?: boolean
+  rightPanelRailVisible?: boolean
   centerFocus?: boolean
   notice?: WorkbenchNotice | null
   onSetMode: (mode: WorkspaceMode) => void
@@ -89,6 +90,7 @@ export function WorkbenchShell({
   main,
   rightPanelContent,
   rightPanelWide = false,
+  rightPanelRailVisible = false,
   centerFocus = false,
   notice,
   onSetMode,
@@ -619,6 +621,7 @@ export function WorkbenchShell({
           rightPanel={rightPanelContent}
           rightPanelVisible={writingContentVisible && Boolean(rightPanelContent)}
           rightPanelWide={rightPanelWide && writingContentVisible && Boolean(rightPanelContent)}
+          rightPanelRailVisible={rightPanelRailVisible && writingContentVisible && Boolean(rightPanelContent)}
           centerFocus={centerFocus && writingContentVisible}
         />
       </SidebarProvider>

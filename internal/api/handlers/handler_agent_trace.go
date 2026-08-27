@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strconv"
+	"strings"
 
 	appsvc "denova/internal/app"
 
@@ -15,7 +16,14 @@ import (
 // registered Project without consulting or changing the foreground Book.
 func (h *Handlers) HandleGlobalAgentRunTraces(ctx context.Context, c *app.RequestContext) {
 	limit, _ := strconv.Atoi(c.Query("limit"))
-	catalog, err := h.app.GlobalAgentRunTraces(ctx, limit)
+	target := appsvc.GlobalAgentRunTraceTarget{
+		ProjectID: strings.TrimSpace(c.Query("project_id")),
+		RunID:     strings.TrimSpace(c.Query("run_id")),
+	}
+	if (target.ProjectID == "") != (target.RunID == "") {
+		target = appsvc.GlobalAgentRunTraceTarget{}
+	}
+	catalog, err := h.app.GlobalAgentRunTraces(ctx, limit, target)
 	if err != nil {
 		if errors.Is(err, appsvc.ErrDeveloperModeDisabled) {
 			writeErrorKey(c, consts.StatusNotFound, "api.continualLearning.disabled")

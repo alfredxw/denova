@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Activity, Bot, ChevronLeft, FileText, PenLine, Plus, SearchCheck, Sparkles, WandSparkles } from 'lucide-react'
+import { Activity, Bot, ChevronLeft, FileText, PanelRightClose, PanelRightOpen, PenLine, Plus, SearchCheck, Sparkles, WandSparkles } from 'lucide-react'
 import { motion } from 'motion/react'
 import { Group, Panel, Separator } from 'react-resizable-panels'
 import { createPortal } from 'react-dom'
@@ -62,7 +62,7 @@ import { resolveAgentAskAndRefresh } from '@/lib/agent-ask'
 import type { ConversationConfigBinding } from '@/features/conversation-config/types'
 import { useConversationGoal } from '@/features/agent-goal/use-conversation-goal'
 
-type AgentPanelView = 'chat' | 'sessions' | 'traces'
+export type AgentPanelView = 'chat' | 'sessions' | 'traces'
 export type AgentPanelChrome = 'panel' | 'workbench'
 
 const WRITING_AGENT_INIT_EVENT = 'nova:writing-agent-init'
@@ -75,7 +75,7 @@ export const WRITING_COMPOSER_SETTING_DEFAULTS = {
 
 export type WritingComposerSettingsController = PersistedUserSettingsController<typeof WRITING_COMPOSER_SETTING_DEFAULTS>
 
-interface AgentPanelProps {
+export interface AgentPanelProps {
   /** Stable identity for every project-owned API and cache key. */
   projectId: string
   workspace: string
@@ -88,6 +88,13 @@ interface AgentPanelProps {
    * conversation as a full-width surface (AgentChat tab), where the host owns closing.
    */
   chrome?: AgentPanelChrome
+  /** A dock host may keep the same panel section selected across mounted conversations. */
+  view?: AgentPanelView
+  onViewChange?: (view: AgentPanelView) => void
+  /** Project-scoped conversations may be managed while the displayed conversation is running. */
+  sessionActionsDisabled?: boolean
+  sessionRailVisible?: boolean
+  onSessionRailVisibleChange?: (visible: boolean) => void
   /** Keeps first-load history hidden until the virtualized list can mount at its final position. */
   initializing?: boolean
   /** Owned above the conditional panel so closing the panel cannot discard delayed saves. */
@@ -180,6 +187,11 @@ function AgentPanelComponent({
   agentKind = 'writing',
   active = true,
   chrome = 'panel',
+  view: controlledView,
+  onViewChange,
+  sessionActionsDisabled,
+  sessionRailVisible = true,
+  onSessionRailVisibleChange,
   initializing = false,
   composerSettings: persistedSettings,
   currentChapter,
@@ -248,7 +260,12 @@ function AgentPanelComponent({
   const { t } = useTranslation()
   const dockedChrome = chrome === 'panel'
   const generalAgent = agentKind === 'general'
-  const [view, setView] = useState<AgentPanelView>('chat')
+  const [internalView, setInternalView] = useState<AgentPanelView>('chat')
+  const view = controlledView ?? internalView
+  const setView = useCallback((nextView: AgentPanelView) => {
+    if (controlledView === undefined) setInternalView(nextView)
+    onViewChange?.(nextView)
+  }, [controlledView, onViewChange])
   const [inputPrefill, setInputPrefill] = useState<{
     prompt: string
     nonce: number
@@ -266,6 +283,7 @@ function AgentPanelComponent({
   const recoveryAbortAvailable = Boolean(runtimeProjection?.recovery_actions?.some((action) => action.kind === 'abort'))
   const activeControlsDisabled =
     isStreaming && (!runtimeProjection?.active_operation_id?.trim() || Boolean(runtimeProjection?.runtime_recoverable && !runtimeProjection.stream_attached))
+  const sessionControlsDisabled = sessionActionsDisabled ?? (isStreaming || sessionTransitionPending)
   const [chatPaneHost] = useState(() => createStablePortalHost('relative flex h-full min-h-0 w-full min-w-0 flex-col'))
   const ideTellerId = persistedSettings.values.ide_story_teller_id
   const imagePresetId = persistedSettings.values.ide_image_preset_id
@@ -725,7 +743,7 @@ function AgentPanelComponent({
           </div>
           <button
             type="button"
-            disabled={isStreaming || sessionTransitionPending}
+            disabled={sessionControlsDisabled}
             onClick={() => void onCreateSession()}
             className="nova-nav-item flex h-7 w-7 shrink-0 items-center justify-center rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] disabled:cursor-not-allowed disabled:opacity-45"
             aria-label={t('chat.newSession')}
@@ -739,6 +757,16 @@ function AgentPanelComponent({
             </motion.span>
           </button>
           <div className="min-w-0 flex-1" />
+          {onSessionRailVisibleChange ? (
+            <button
+              type="button"
+              onClick={() => onSessionRailVisibleChange(!sessionRailVisible)}
+              className="nova-nav-item hidden size-7 shrink-0 items-center justify-center rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] md:flex"
+              aria-label={t(sessionRailVisible ? 'chat.sessionRail.hide' : 'chat.sessionRail.show')}
+            >
+              {sessionRailVisible ? <PanelRightClose className="size-3.5" /> : <PanelRightOpen className="size-3.5" />}
+            </button>
+          ) : null}
         </div>
       )}
 
@@ -801,7 +829,7 @@ function AgentPanelComponent({
         <SessionManagementPanel
           sessions={sessions}
           activeSessionId={activeSessionId}
-          disabled={isStreaming || sessionTransitionPending}
+          disabled={sessionControlsDisabled}
           onCreate={onCreateSession}
           onSwitch={onSwitchSession}
           onRename={onRenameSession}

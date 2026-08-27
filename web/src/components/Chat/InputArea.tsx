@@ -802,7 +802,7 @@ export function InputArea({
                   }}
                 />
               ) : null}
-              <TokenUsageDialog open={tokenUsageOpen} messages={tokenUsageMessages} onOpenChange={setTokenUsageOpen} onOpenTrace={onOpenTrace} />
+              <TokenUsageDialog projectId={conversationBinding?.project_id} open={tokenUsageOpen} messages={tokenUsageMessages} onOpenChange={setTokenUsageOpen} onOpenTrace={onOpenTrace} />
               {attachments.input}
             </>
           }

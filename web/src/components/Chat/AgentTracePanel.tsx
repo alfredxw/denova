@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Activity, Bot, Braces, CheckCircle2, Database, Download, Hammer, RefreshCw, XCircle } from 'lucide-react'
+import { Activity, Bot, Braces, CheckCircle2, Database, Download, Hammer, RefreshCw, Route, XCircle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { downloadAgentRunTrace, exportAgentRunTrace, getAgentRunTrace, getAgentRunTraces } from '@/lib/api'
 import type { AgentRunTrace, AgentRunTraceRecord, AgentRunTraceSummary } from '@/lib/api'
 import { ContextCopyButton } from './ContextCopyButton'
+import { useTrajectoryNavigation } from '@/features/trajectory/trajectory-navigation'
 
 type TraceFilter = 'all' | 'llm' | 'tools' | 'context' | 'errors'
 type TraceCategory = 'run' | 'llm' | 'tools' | 'context' | 'verification' | 'errors' | 'event'
@@ -185,6 +186,7 @@ export function AgentTracePanel({ projectId, disabled, selectedRunId }: AgentTra
 
 function TraceRunActions({ projectId, runID }: { projectId: string; runID: string }) {
   const { t } = useTranslation()
+  const trajectoryNavigation = useTrajectoryNavigation()
   const [exporting, setExporting] = useState(false)
 
   const handleExport = async () => {
@@ -209,6 +211,16 @@ function TraceRunActions({ projectId, runID }: { projectId: string; runID: strin
         <code className="min-w-0 truncate font-mono text-[var(--nova-text)]">{runID}</code>
       </div>
       <div className="flex shrink-0 items-center gap-1">
+        {trajectoryNavigation.enabled ? (
+          <button
+            type="button"
+            onClick={() => trajectoryNavigation.open({ projectId, runId: runID })}
+            className="inline-flex h-7 items-center gap-1.5 rounded-[6px] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 text-[11px] text-[var(--nova-text-muted)] transition-colors hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
+          >
+            <Route className="h-3.5 w-3.5" />
+            <span>{t('trajectory.openRun')}</span>
+          </button>
+        ) : null}
         <ContextCopyButton
           content={runID}
           label={t('chat.tracePanel.copyRunId')}

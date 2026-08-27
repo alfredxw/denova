@@ -15,6 +15,7 @@ import { HarnessRunPicker } from './HarnessRunPicker'
 import { HarnessWorkspace } from './HarnessWorkspace'
 import { TrajectoryRunList } from './TrajectoryRunList'
 import { TrajectoryTraceWorkspace } from './TrajectoryTraceWorkspace'
+import { useTrajectoryNavigation, type TrajectoryNavigationIntent } from './trajectory-navigation'
 
 interface TrajectoryPageProps {
   onClose?: () => void
@@ -25,6 +26,7 @@ type DeveloperWorkspaceTab = 'trajectory' | 'harness'
 /** Global developer workspace for inspecting Runs and evolving Harness State. */
 export function TrajectoryPage({ onClose }: TrajectoryPageProps) {
   const { t } = useTranslation()
+  const trajectoryNavigation = useTrajectoryNavigation()
   const [workspaceTab, setWorkspaceTab] = useState<DeveloperWorkspaceTab>('trajectory')
   const [runsOpen, setRunsOpen] = useState(true)
   const [agentOpen, setAgentOpen] = useState(true)
@@ -54,11 +56,11 @@ export function TrajectoryPage({ onClose }: TrajectoryPageProps) {
     selectedEvidenceRef.current = selectedEvidence
   }, [selectedEvidence])
 
-  const loadRuns = useCallback(async (preferredRunURI?: string) => {
+  const loadRuns = useCallback(async (preferred?: { runURI?: string; target?: TrajectoryNavigationIntent }) => {
     setLoadingRuns(true)
     setError(null)
     try {
-      const catalog = await getGlobalAgentRunTraces(100)
+      const catalog = await getGlobalAgentRunTraces(100, preferred?.target)
       setRuns(catalog.runs)
       setIssues(catalog.issues ?? [])
       const validURIs = new Set(catalog.runs.map((run) => run.trajectory_uri))
@@ -69,9 +71,20 @@ export function TrajectoryPage({ onClose }: TrajectoryPageProps) {
       if (removedCount > 0) {
         toast.warning(t('continualLearning.evidence.removed', { count: removedCount }))
       }
-      const nextRunURI = preferredRunURI && validURIs.has(preferredRunURI)
-        ? preferredRunURI
-        : catalog.runs[0]?.trajectory_uri ?? ''
+      const target = preferred?.target
+      const targetRun = target
+        ? catalog.runs.find((run) => run.project_id === target.projectId && run.id === target.runId)
+        : undefined
+      if (target && !targetRun) {
+        setWorkspaceTab('trajectory')
+        setSelectedRunURI('')
+        setTrace(null)
+        toast.warning(t('trajectory.navigation.notFound'))
+        return
+      }
+      const nextRunURI = targetRun?.trajectory_uri
+        ?? (preferred?.runURI && validURIs.has(preferred.runURI) ? preferred.runURI : catalog.runs[0]?.trajectory_uri ?? '')
+      if (targetRun) setWorkspaceTab('trajectory')
       setSelectedRunURI(nextRunURI)
       if (!nextRunURI) setTrace(null)
     } catch (cause) {
@@ -87,8 +100,8 @@ export function TrajectoryPage({ onClose }: TrajectoryPageProps) {
   }, [t])
 
   useEffect(() => {
-    void loadRuns()
-  }, [loadRuns])
+    void loadRuns({ target: trajectoryNavigation.intent ?? undefined })
+  }, [loadRuns, trajectoryNavigation.intent])
 
   useEffect(() => {
     if (!selectedRun) {
@@ -269,7 +282,7 @@ export function TrajectoryPage({ onClose }: TrajectoryPageProps) {
                     size="icon-xs"
                     variant="ghost"
                     disabled={loadingRuns || loadingTrace}
-                    onClick={() => void loadRuns(selectedRunURI)}
+                    onClick={() => void loadRuns({ runURI: selectedRunURI })}
                     aria-label={t('trajectory.refresh')}
                   >
                     <RefreshCw className={cn((loadingRuns || loadingTrace) && 'animate-spin')} />

@@ -128,6 +128,7 @@ export const MessageItem = memo(function MessageItem({ projectId = '', message, 
               <InteractiveImageStrip message={message} projectId={projectId} />
               {assistantPresentation === 'message' ? (
                 <MessageInlineMeta
+                  projectId={projectId}
                   message={message}
                   content={content}
                   align="left"
@@ -246,7 +247,7 @@ export const MessageItem = memo(function MessageItem({ projectId = '', message, 
               <span className="min-w-0 whitespace-pre-wrap break-words">{content}</span>
               <TraceLinkButton runID={message.run_id} onOpenTrace={onOpenTrace} />
             </div>
-            <MessageInlineMeta message={message} content={content} align="left" onRegenerate={canRegenerate ? onRegenerate : undefined} />
+            <MessageInlineMeta projectId={projectId} message={message} content={content} align="left" onRegenerate={canRegenerate ? onRegenerate : undefined} />
           </div>
         </div>
       )

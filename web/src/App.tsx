@@ -53,6 +53,7 @@ import {
 } from '@/lib/autosave/rebase-with-recovery'
 import { useWorkbenchNotice } from '@/features/notices/use-workbench-notice'
 import { LORE_UPDATED_EVENT, notifyLoreUpdated, type LoreUpdatedDetail } from '@/features/lore/events'
+import type { AgentChatConversationState } from '@/features/agent-chat/AgentChatConversationTab'
 
 const PROJECT_VISIBLE_KEY = 'nova.layout.projectVisible'
 const ACTIVITY_BAR_EXPANDED_KEY = 'nova.layout.activityBarExpanded'
@@ -97,10 +98,13 @@ function App() {
   const [characterCardImporting, setCharacterCardImporting] = useState(false)
   const [characterCardError, setCharacterCardError] = useState('')
   const [loreItems, setLoreItems] = useState<LoreItem[]>([])
+  const [writingAgentConversation, setWritingAgentConversation] = useState<AgentChatConversationState>({
+    messages: [],
+    isStreaming: false,
+  })
   const [lastCreationRoute, setLastCreationRoute] = useState<CreationRoute>(() => readContentMode())
   const lastCreationRouteRef = useRef<CreationRoute>(readContentMode())
   const characterCardInputRef = useRef<HTMLInputElement>(null)
-  const chatWorkspaceRef = useRef('')
   const updateCheckInFlightRef = useRef(false)
   const tabActivationsRef = useRef<Map<string, number>>(new Map())
   const tabActivationCounterRef = useRef(0)
@@ -191,7 +195,6 @@ function App() {
     sessions,
     activeSessionId,
     sessionTransitionPending,
-    isStreaming,
     isExecutionActive,
     runtimeProjection,
     abortPending,
@@ -209,12 +212,10 @@ function App() {
     approveProposedPlan,
     exitPlanMode,
     stop,
-    loadSessions,
     loadHistory,
     loadEarlierHistory,
     hasEarlierMessages,
     isLoadingEarlierHistory,
-    resumeActiveChat,
     createChatSession,
     switchChatSession,
     renameChatSession,
@@ -233,7 +234,7 @@ function App() {
     removeTextSelection,
   } = useAgentChat({ projectId, onAgentFileChange: handleAgentFileChange, onWorkspaceChange: handleWorkspaceChangeEvent })
 
-  const { notice, applyUpdateCheckResult, dismissNotice } = useWorkbenchNotice({ messages, isStreaming })
+  const { notice, applyUpdateCheckResult, dismissNotice } = useWorkbenchNotice(writingAgentConversation)
 
   const handleChatPlanModeChange = useCallback((value: boolean) => {
     setPlanMode(value)
@@ -286,15 +287,6 @@ function App() {
   const limitTabs = useCallback((tabs: Tab[], protectedKey: string | null): Tab[] => {
     return enforceTabLimit(tabs, protectedKey, maxOpenTabs, tabActivationsRef.current)
   }, [maxOpenTabs])
-
-  useEffect(() => {
-    if (!workspaceLoaded || !workspace || chatWorkspaceRef.current === workspace) return
-    chatWorkspaceRef.current = workspace
-    void Promise.all([loadSessions(), loadHistory()]).then(([loadedSessions]) => {
-      const sessionID = loadedSessions.find((session) => session.active)?.id || loadedSessions[0]?.id || ''
-      if (sessionID) return resumeActiveChat(sessionID)
-    })
-  }, [loadHistory, loadSessions, resumeActiveChat, workspace, workspaceLoaded])
 
   useEffect(() => {
     let cancelled = false
@@ -730,8 +722,14 @@ function App() {
 
   const triggerSave = useCallback(() => setSaveSignal((value) => value + 1), [])
   const continueWriting = useCallback(() => {
-    if (!isStreaming) send(t('command.continueWritingPrompt'))
-  }, [isStreaming, send, t])
+    setMode('ide')
+    setRightPanel('ai')
+    window.requestAnimationFrame(() => {
+      window.dispatchEvent(new CustomEvent(WRITING_AGENT_INIT_EVENT, {
+        detail: { prompt: t('command.continueWritingPrompt'), autoSend: true },
+      }))
+    })
+  }, [setMode, setRightPanel, t])
 
   const handleSetMode = useCallback((nextMode: WorkspaceMode) => {
     if (nextMode === 'ide' || nextMode === 'interactive') {
@@ -848,7 +846,7 @@ function App() {
         projectId={projectId}
         summary={summary}
         currentChapter={currentChapter}
-        isStreaming={isStreaming}
+        isStreaming={writingAgentConversation.isStreaming}
         sessionTransitionPending={sessionTransitionPending}
         isExecutionActive={isExecutionActive}
         runtimeProjection={runtimeProjection}
@@ -888,6 +886,7 @@ function App() {
         loreItems={loreItems}
         styleScenes={styleScenes}
         textSelections={textSelections}
+        onWritingAgentConversationStateChange={setWritingAgentConversation}
         chatPlanMode={planMode}
         hasEarlierMessages={hasEarlierMessages}
         isLoadingEarlierHistory={isLoadingEarlierHistory}
@@ -951,7 +950,7 @@ function App() {
       />
       <CommandPalette
         open={commandOpen}
-        isStreaming={isStreaming}
+        isStreaming={writingAgentConversation.isStreaming}
         onOpenChange={setCommandOpen}
         onSave={triggerSave}
         onOpenAgent={() => {
@@ -999,8 +998,8 @@ function App() {
         workspace={workspace}
         booksCount={books.length}
         currentBookName={currentBookName}
-        messages={messages}
-        isStreaming={isStreaming}
+        messages={writingAgentConversation.messages}
+        isStreaming={writingAgentConversation.isStreaming}
         onNavigate={handleOnboardingNavigate}
       />
       <RemoteAccessLogin />

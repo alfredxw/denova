@@ -6,6 +6,8 @@ const trajectory = {
   'trajectory.tab.harness': 'Harness',
   'trajectory.developerBadge': '开发者',
   'trajectory.refresh': '刷新轨迹',
+  'trajectory.openRun': '在轨迹中打开',
+  'trajectory.navigation.notFound': '对应运行轨迹已不存在或已被清理。',
   'trajectory.noProject': '未选择项目',
   'trajectory.noProjectDescription': '选择一个书籍项目后，可以查看该项目产生的 Agent 运行轨迹。',
   'trajectory.loadingDescription': '正在读取当前项目的运行轨迹。',

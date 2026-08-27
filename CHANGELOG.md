@@ -22,6 +22,8 @@ Denova records only major user-visible features, important compatibility or data
 - Version Management now uses a resizable history sidebar and persistent Diff workspace, with history search and loading, per-version file browsing, and direct version or file restore.
 - 新增通用 Agent 与基于稳定 Project ID 的工作台；书籍和任意本地目录都可并行打开对话、Files、终端、阅读器与资料库。v0.3.3 Project 数据会保留源文件并自动复制迁移。
 - Added a General Agent and a stable Project-ID-based workbench. Books and arbitrary local directories can run chats and open Files, terminals, Reader, and Lore in parallel. v0.3.3 Project data is copy-migrated automatically while retaining the source files.
+- 写作页创作 Agent 支持同一本书的多个会话并行运行，并新增可隐藏的快捷会话栏；切换会话不会中断后台任务。
+- The Writing Agent now runs multiple conversations in the same Book concurrently, with an optional quick-session rail; switching conversations no longer stops background work.
 - 写作、游戏、工作台与配置对话支持运行中连续追加 Follow Up，刷新或重启后恢复任务，并按会话保存模型、思考强度与权限设置。
 - Writing, Game, Workspace, and configuration conversations now accept queued follow-ups during a run, recover after refresh or restart, and persist model, thinking, and permission settings per conversation.
 - 写作、游戏与通用 Agent 对话支持从现有输入菜单、拖拽或粘贴添加多个通用文件；Denova 保存独立副本供 Agent 使用，并将图片作为原生视觉输入发送给模型。

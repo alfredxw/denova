@@ -15,7 +15,7 @@ interface SessionManagementPanelProps {
   onEnterChat: () => void
 }
 
-/** 右侧面板内的完整会话管理视图，承载搜索、切换、重命名和删除。 */
+/** Full session management surface for search, switching, rename and deletion. */
 export function SessionManagementPanel({
   sessions,
   activeSessionId,
@@ -130,7 +130,7 @@ export function SessionManagementPanel({
             {t('chat.noMatchedSession')}
           </div>
         ) : (
-          <div className="space-y-1.5">
+          <div className="flex flex-col gap-1.5">
             {filteredSessions.map((session) => {
               const active = session.id === displayedActiveSessionId
               const editing = editingId === session.id
@@ -139,6 +139,7 @@ export function SessionManagementPanel({
                 <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-normal text-[var(--nova-text-faint)]">
                   <span>{t('common.messages', { count: session.message_count })}</span>
                   <span>{formatSessionTime(session.updated_at || session.created_at, t)}</span>
+                  {session.running && <span className="text-[var(--nova-success)]">{t('chat.sessionRail.running')}</span>}
                   {active && <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 text-[var(--nova-text-muted)]">{t('common.current')}</span>}
                 </span>
               )
@@ -227,7 +228,7 @@ export function SessionManagementPanel({
                           </button>
                           <button
                             type="button"
-                            disabled={disabled || sessions.length <= 1}
+                            disabled={disabled || session.running || sessions.length <= 1}
                             onClick={() => void handleDelete(session.id)}
                             className="nova-nav-item rounded p-1 hover:bg-[var(--nova-danger-bg)] hover:text-[var(--nova-danger)] disabled:cursor-not-allowed disabled:opacity-30"
                             aria-label={`${t('chat.deleteSession')} ${displaySessionTitle(session, t)}`}

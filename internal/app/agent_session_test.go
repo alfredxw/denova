@@ -6,12 +6,81 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"denova/config"
 	agents "denova/internal/agents"
+	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 	configmanagerapp "denova/internal/app/configmanager"
+	projectdomain "denova/internal/project"
 )
+
+func TestBoundedGlobalRunCatalogKeepsExplicitTarget(t *testing.T) {
+	runs := []GlobalAgentRunTraceSummary{
+		{RunTraceSummary: agentrun.RunTraceSummary{ID: "newest"}, ProjectID: "project-new"},
+		{RunTraceSummary: agentrun.RunTraceSummary{ID: "target"}, ProjectID: "project-old"},
+	}
+
+	bounded := boundedGlobalRunCatalog(runs, 1, GlobalAgentRunTraceTarget{ProjectID: "project-old", RunID: "target"})
+
+	if len(bounded) != 1 || bounded[0].ProjectID != "project-old" || bounded[0].ID != "target" {
+		t.Fatalf("bounded global Run catalog = %#v, want explicit target", bounded)
+	}
+}
+
+func TestGlobalAgentRunTracesReadsTargetPastPerProjectLimit(t *testing.T) {
+	root := t.TempDir()
+	workspace := filepath.Join(root, "project")
+	if err := os.MkdirAll(workspace, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	registry := projectdomain.NewRegistry(filepath.Join(root, "denova"))
+	record, err := registry.Add(workspace, projectdomain.TypeGeneral, "Project")
+	if err != nil {
+		t.Fatal(err)
+	}
+	layout, err := registry.EnsureState(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(layout.RunsDir(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	writeRun := func(runID, createdAt string, modifiedAt time.Time) {
+		t.Helper()
+		payload := strings.Join([]string{
+			`{"type":"run_created","run_id":"` + runID + `","created_at":"` + createdAt + `","data":{"agent_kind":"ide"}}`,
+			`{"type":"run_finished","run_id":"` + runID + `","created_at":"` + createdAt + `","data":{"status":"success"}}`,
+		}, "\n") + "\n"
+		path := filepath.Join(layout.RunsDir(), runID+".jsonl")
+		if err := os.WriteFile(path, []byte(payload), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(path, modifiedAt, modifiedAt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	baseTime := time.Date(2026, 8, 27, 12, 0, 0, 0, time.UTC)
+	writeRun("target", "2026-08-26T12:00:00Z", baseTime)
+	writeRun("newest", "2026-08-27T12:00:00Z", baseTime.Add(time.Hour))
+
+	application := &App{
+		cfg:             &config.Config{Labs: config.ResolvedLabs{DeveloperMode: true}},
+		projectRegistry: registry,
+	}
+	catalog, err := application.GlobalAgentRunTraces(context.Background(), 1, GlobalAgentRunTraceTarget{
+		ProjectID: record.ID,
+		RunID:     "target",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(catalog.Runs) != 1 || catalog.Runs[0].ProjectID != record.ID || catalog.Runs[0].ID != "target" {
+		t.Fatalf("targeted global Run catalog = %#v, want explicit target", catalog.Runs)
+	}
+}
 
 func TestAgentRunTracesUseProjectStateRoot(t *testing.T) {
 	workspace := t.TempDir()

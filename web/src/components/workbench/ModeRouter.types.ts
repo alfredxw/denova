@@ -21,6 +21,7 @@ import type { RightPanel, WorkspaceMode } from '@/stores/workspace-store'
 import type { Tab } from './TabController'
 import type { WorkspaceChangeMetadata } from '@/features/changes/types'
 import type { ProjectFileDocument } from '@/lib/api-client/project-files'
+import type { AgentChatConversationState } from '@/features/agent-chat/AgentChatConversationTab'
 
 /** Public composition contract for the workbench route host. */
 export interface ModeRouterProps {
@@ -71,6 +72,7 @@ export interface ModeRouterProps {
   loreItems: LoreItem[]
   styleScenes: string[]
   textSelections: TextSelection[]
+  onWritingAgentConversationStateChange?: (state: AgentChatConversationState) => void
   chatPlanMode: boolean
   hasEarlierMessages: boolean
   isLoadingEarlierHistory: boolean

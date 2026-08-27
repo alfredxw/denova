@@ -347,8 +347,13 @@ export async function getAgentRunTraces(projectId: string, limit = 20): Promise<
   return data.runs || []
 }
 
-export function getGlobalAgentRunTraces(limit = 100): Promise<GlobalAgentRunTraceCatalog> {
-  return requestJSON(`/api/agent-runs?limit=${encodeURIComponent(String(limit))}`)
+export function getGlobalAgentRunTraces(limit = 100, target?: { projectId: string; runId: string }): Promise<GlobalAgentRunTraceCatalog> {
+  const query = new URLSearchParams({ limit: String(limit) })
+  if (target) {
+    query.set('project_id', target.projectId)
+    query.set('run_id', target.runId)
+  }
+  return requestJSON(`/api/agent-runs?${query}`)
 }
 
 export async function getAgentRunTrace(projectId: string, id: string): Promise<AgentRunTrace> {

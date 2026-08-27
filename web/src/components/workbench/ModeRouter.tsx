@@ -34,6 +34,11 @@ import { AgentChatWorkbenchRoute } from './AgentChatWorkbenchRoute'
 import { ToolNavigationProvider, type ToolNavigationIntent, type ToolNavigationTarget } from '@/components/Chat/tool-navigation'
 import { requestAutomationNavigation } from '@/features/automations/automation-navigation'
 import { buildProjectFileTreeFromNodes } from '@/features/project-explorer/model'
+import {
+  TrajectoryNavigationProvider,
+  type TrajectoryNavigationIntent,
+  type TrajectoryNavigationTarget,
+} from '@/features/trajectory/trajectory-navigation'
 
 const WRITING_AGENT_INIT_EVENT = 'nova:writing-agent-init'
 const InteractiveLayout = memo(lazy(() => import('@/features/interactive/components/InteractiveLayout').then((module) => ({ default: module.InteractiveLayout }))))
@@ -99,6 +104,7 @@ export function ModeRouter(props: ModeRouterProps) {
     loreItems,
     styleScenes,
     textSelections,
+    onWritingAgentConversationStateChange,
     chatPlanMode,
     hasEarlierMessages,
     isLoadingEarlierHistory,
@@ -210,7 +216,9 @@ export function ModeRouter(props: ModeRouterProps) {
   const [illustrationInsertSignal, setIllustrationInsertSignal] = useState<{ illustration: ChapterIllustration; nonce: number } | null>(null)
   const [outlineRevealRequest, setOutlineRevealRequest] = useState<OutlineRevealRequest | null>(null)
   const [toolNavigationIntent, setToolNavigationIntent] = useState<ToolNavigationIntent | null>(null)
+  const [trajectoryNavigationIntent, setTrajectoryNavigationIntent] = useState<TrajectoryNavigationIntent | null>(null)
   const toolNavigationNonceRef = useRef(0)
+  const trajectoryNavigationNonceRef = useRef(0)
   const loreLibraryFlushHandlerRef = useRef<EditorFlushHandler | null>(null)
   const agentChatFlushHandlerRef = useRef<EditorFlushHandler | null>(null)
   // The router is the lifecycle owner: the settings lane survives AgentPanel close/unmount.
@@ -353,6 +361,17 @@ export function ModeRouter(props: ModeRouterProps) {
     }
   }, [onSetMode, projectId, selectWorkspacePath, workspace])
   const toolNavigation = useMemo(() => ({ workspace, open: openToolNavigationTarget }), [openToolNavigationTarget, workspace])
+  const openTrajectory = useCallback((target: TrajectoryNavigationTarget) => {
+    if (!developerMode) return
+    trajectoryNavigationNonceRef.current += 1
+    setTrajectoryNavigationIntent({ ...target, nonce: trajectoryNavigationNonceRef.current })
+    onSetMode('trajectory')
+  }, [developerMode, onSetMode])
+  const trajectoryNavigation = useMemo(() => ({
+    enabled: developerMode,
+    intent: trajectoryNavigationIntent,
+    open: openTrajectory,
+  }), [developerMode, openTrajectory, trajectoryNavigationIntent])
 
   const requestLoreInit = useCallback(() => {
     onSetMode('lore')
@@ -609,6 +628,7 @@ export function ModeRouter(props: ModeRouterProps) {
     onOpenChangeReview: openAgentChangeReview,
     onWorkspaceChanged: notifyExternalStructureChange,
     onSubAgentDetailsChange: setAgentSubAgentDetailsOpen,
+    onConversationStateChange: onWritingAgentConversationStateChange,
   })
 
   const sidebar = (
@@ -792,36 +812,37 @@ export function ModeRouter(props: ModeRouterProps) {
 
 
   return (
-    <ToolNavigationProvider value={toolNavigation}>
-    <>
-    <WorkbenchShell
-      mode={mode}
-      presentedLayout={presentedLayout}
-      currentBookName={currentBookName}
-      workspace={workspace}
-      books={books}
-      summary={summary}
-      projectVisible={projectVisible && !reviewVisible}
-      activityBarExpanded={activityBarExpanded}
-      rightPanelWide={agentSubAgentDetailsOpen && !reviewVisible}
-      centerFocus={reviewVisible}
-      settingsOpen={settingsOpen}
-      developerMode={developerMode}
-      sidebar={sidebar}
-      main={main}
-      rightPanelContent={writingAgent.content}
-      notice={notice}
-      onSetMode={onSetMode}
-      onToggleActivityBarExpanded={onToggleActivityBarExpanded}
-      onSetInteractiveSubmode={setInteractiveSubmode}
-      onSetRightPanel={onSetRightPanel}
-      onToggleSettings={onToggleSettings}
-      onCloseSettings={onCloseSettings}
-      onQuickSwitchBook={quickSwitchBook}
-      onDismissNotice={onDismissNotice}
-    />
-    {writingAgent.portal}
-    </>
-    </ToolNavigationProvider>
+    <TrajectoryNavigationProvider value={trajectoryNavigation}>
+      <ToolNavigationProvider value={toolNavigation}>
+        <WorkbenchShell
+          mode={mode}
+          presentedLayout={presentedLayout}
+          currentBookName={currentBookName}
+          workspace={workspace}
+          books={books}
+          summary={summary}
+          projectVisible={projectVisible && !reviewVisible}
+          activityBarExpanded={activityBarExpanded}
+          rightPanelWide={agentSubAgentDetailsOpen && !reviewVisible}
+          rightPanelRailVisible={writingAgent.railVisible && !reviewVisible}
+          centerFocus={reviewVisible}
+          settingsOpen={settingsOpen}
+          developerMode={developerMode}
+          sidebar={sidebar}
+          main={main}
+          rightPanelContent={writingAgent.content}
+          notice={notice}
+          onSetMode={onSetMode}
+          onToggleActivityBarExpanded={onToggleActivityBarExpanded}
+          onSetInteractiveSubmode={setInteractiveSubmode}
+          onSetRightPanel={onSetRightPanel}
+          onToggleSettings={onToggleSettings}
+          onCloseSettings={onCloseSettings}
+          onQuickSwitchBook={quickSwitchBook}
+          onDismissNotice={onDismissNotice}
+        />
+        {writingAgent.portal}
+      </ToolNavigationProvider>
+    </TrajectoryNavigationProvider>
   )
 }
