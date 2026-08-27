@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"strconv"
 	"strings"
 
@@ -48,6 +49,50 @@ func (h *Handlers) HandleInteractiveMemorySearch(ctx context.Context, c *app.Req
 		return
 	}
 	writeJSON(c, consts.StatusOK, result)
+}
+
+// HandleInteractiveMemoryAppend 直接往叙事记忆事件日志注入一条事件。
+// POST /api/interactive/stories/:id/memory?branch=
+//
+// 请求体:{"source_turn_id":"...","records":[...]}。
+//
+// 落库前会走 Store 写入路径的全部校验与实体对齐,所以面板、检索、向量召回
+// 看到的与模型抽取产出无差别。返回完整事件,含 trace 与对齐留痕。
+func (h *Handlers) HandleInteractiveMemoryAppend(ctx context.Context, c *app.RequestContext) {
+	body := c.Request.Body()
+	if len(body) == 0 {
+		writeError(c, consts.StatusBadRequest, "请求体为空")
+		return
+	}
+	var payload struct {
+		SourceTurnID string                               `json:"source_turn_id"`
+		Records      []interactive.NarrativeMemoryRecord  `json:"records"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		writeError(c, consts.StatusBadRequest, "解析请求体失败: "+err.Error())
+		return
+	}
+	if strings.TrimSpace(payload.SourceTurnID) == "" {
+		writeError(c, consts.StatusBadRequest, "source_turn_id 必填且必须指向当前分支上的回合")
+		return
+	}
+	if len(payload.Records) == 0 {
+		writeError(c, consts.StatusBadRequest, "records 不能为空")
+		return
+	}
+	event, err := h.app.AppendInteractiveMemory(
+		c.Param("id"),
+		strings.TrimSpace(string(c.Query("branch"))),
+		interactive.NarrativeMemoryEvent{
+			SourceTurnID: payload.SourceTurnID,
+			Records:      payload.Records,
+		},
+	)
+	if err != nil {
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, event)
 }
 
 // splitMemoryQueryKeywords 把空格分隔的查询拆为关键词列表。

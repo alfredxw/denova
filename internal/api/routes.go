@@ -101,6 +101,7 @@ func (s *Server) registerRoutes(h *hertzserver.Hertz) {
 		api.DELETE("/interactive/stories/:id/context-compaction/active", apiHandlers.HandleInteractiveContextCompactionRemove)
 		api.GET("/interactive/stories/:id/memory", apiHandlers.HandleInteractiveMemoryBrowse)
 		api.GET("/interactive/stories/:id/memory/search", apiHandlers.HandleInteractiveMemorySearch)
+		api.POST("/interactive/stories/:id/memory", apiHandlers.HandleInteractiveMemoryAppend)
 		api.GET("/interactive/tellers", apiHandlers.HandleInteractiveTellers)
 		api.POST("/interactive/tellers", apiHandlers.HandleInteractiveTellerCreate)
 		api.GET("/interactive/tellers/:id", apiHandlers.HandleInteractiveTeller)

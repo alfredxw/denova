@@ -532,6 +532,21 @@ func (s *InteractiveAppService) BrowseInteractiveMemory(storyID, branchID, kind,
 	return store.BrowseStoryMemory(storyID, branchID, kind, beforeTurnID)
 }
 
+// AppendInteractiveMemory 直接往故事日志注入一条叙事记忆事件,供调试、种
+// lore 与没有 LLM 时手工建库使用。落库前会走 Store 写入路径的全部校验
+// 与实体对齐,所以面板和检索看到的内容与抽取产出无差别。
+func (a *App) AppendInteractiveMemory(storyID, branchID string, event interactive.NarrativeMemoryEvent) (interactive.NarrativeMemoryEvent, error) {
+	return a.interactiveService().AppendInteractiveMemory(storyID, branchID, event)
+}
+
+func (s *InteractiveAppService) AppendInteractiveMemory(storyID, branchID string, event interactive.NarrativeMemoryEvent) (interactive.NarrativeMemoryEvent, error) {
+	store := s.store()
+	if store == nil {
+		return interactive.NarrativeMemoryEvent{}, ErrNoWorkspace
+	}
+	return store.AppendNarrativeMemory(storyID, branchID, event)
+}
+
 // SearchInteractiveMemory 跑完整记忆检索管线,返回带 Explain 的调试结果。
 // 与 Agent 工具走同一条混合召回路径,让面板里看到的名次就是模型看到的名次。
 func (a *App) SearchInteractiveMemory(ctx context.Context, storyID, branchID string, req interactive.MemorySearchRequest) (interactive.MemorySearchResult, error) {
