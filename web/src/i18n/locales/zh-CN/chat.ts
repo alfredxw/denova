@@ -389,6 +389,8 @@ const chat = {
   'chat.contextAnalysis.kind.assistantBody': '助手正文',
   'chat.contextAnalysis.kind.toolCall': '工具调用',
   'chat.contextAnalysis.kind.toolResult': '工具结果',
+  'chat.contextAnalysis.kind.reasoning': '推理摘要',
+  'chat.contextAnalysis.kind.providerContinuation': '模型延续状态',
   'chat.contextAnalysis.partSize': '{{chars}} 字符 / {{bytes}} bytes',
   'chat.contextAnalysis.tokenEstimate': '预计上下文 Token',
   'chat.contextAnalysis.projectedTokenHint': 'Prompt {{prompt}} + 预计输出 {{completion}} + 工具结果预留 {{tools}}',

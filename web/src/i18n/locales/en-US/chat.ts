@@ -389,6 +389,8 @@ const chat = {
   'chat.contextAnalysis.kind.assistantBody': 'Assistant body',
   'chat.contextAnalysis.kind.toolCall': 'Tool call',
   'chat.contextAnalysis.kind.toolResult': 'Tool result',
+  'chat.contextAnalysis.kind.reasoning': 'Reasoning summary',
+  'chat.contextAnalysis.kind.providerContinuation': 'Model continuation',
   'chat.contextAnalysis.partSize': '{{chars}} chars / {{bytes}} bytes',
   'chat.contextAnalysis.tokenEstimate': 'Projected Context Tokens',
   'chat.contextAnalysis.projectedTokenHint': 'Prompt {{prompt}} + completion reserve {{completion}} + tool-result reserve {{tools}}',

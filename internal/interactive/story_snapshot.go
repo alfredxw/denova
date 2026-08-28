@@ -16,6 +16,10 @@ func snapshotFromLines(storyID, branchID string, meta StoryMeta, lines []StoryEv
 	if err != nil {
 		return Snapshot{}, err
 	}
+	modelContextContinuations, err := modelContextProviderContinuationsByOwner(lines)
+	if err != nil {
+		return Snapshot{}, err
+	}
 	if branchID == "" {
 		branchID = meta.CurrentBranch
 	}
@@ -39,7 +43,12 @@ func snapshotFromLines(storyID, branchID string, meta StoryMeta, lines []StoryEv
 				return Snapshot{}, err
 			}
 			turn.DisplayEvents = sanitizeDisplayEvents(turn.DisplayEvents)
-			turn.ModelContextMessages = sanitizeModelContextMessages(turn.ModelContextMessages)
+			turn.ModelContextMessages, err = hydrateModelContextProviderContinuations(
+				turn.ModelContextMessages, turn.ID, modelContextContinuations,
+			)
+			if err != nil {
+				return Snapshot{}, err
+			}
 			turn.ProviderContinuation = cloneProviderContinuation(providerContinuations[turn.ID])
 			turn.ResolvedPlayerInputContexts, err = normalizeResolvedPlayerInputContexts(
 				turn.ResolvedPlayerInputContexts, turn.BranchID, turn.PlayerInputID, turn.ConsumedPlayerInputIDs,
@@ -80,7 +89,7 @@ func snapshotFromLines(storyID, branchID string, meta StoryMeta, lines []StoryEv
 			for _, op := range delta.ActorOps {
 				applyActorStateOp(state, op)
 			}
-		case StoryEventTypePlayerInput, StoryEventTypeModelContextBatch, StoryEventTypeProviderContinuation, StoryEventTypeBranch, StoryEventTypeHotChoices, StoryEventTypeTurnVersionSelected:
+		case StoryEventTypePlayerInput, StoryEventTypeModelContextBatch, StoryEventTypeModelContextProviderContinuation, StoryEventTypeProviderContinuation, StoryEventTypeBranch, StoryEventTypeHotChoices, StoryEventTypeTurnVersionSelected:
 			// These are side/audit events. They are projected separately or are
 			// intentionally absent from model-visible turn/state history.
 		}
@@ -110,7 +119,9 @@ func snapshotFromLines(storyID, branchID string, meta StoryMeta, lines []StoryEv
 		return Snapshot{}, err
 	}
 	snapshot.PendingPlayerInputs = pendingInputs
-	pendingBatches, err := pendingModelContextBatchesForBranch(lines, branchID, pathSet, pendingInputs)
+	pendingBatches, err := pendingModelContextBatchesForBranch(
+		lines, branchID, pathSet, pendingInputs, modelContextContinuations,
+	)
 	if err != nil {
 		return Snapshot{}, err
 	}
@@ -124,6 +135,7 @@ func pendingModelContextBatchesForBranch(
 	branchID string,
 	activeAncestry map[string]bool,
 	pendingInputs []PlayerInputAcceptedEvent,
+	continuations map[string]map[int]map[string]any,
 ) ([]ModelContextBatchEvent, error) {
 	inputOrder := make(map[string]int, len(pendingInputs))
 	inputs := make(map[string]PlayerInputAcceptedEvent, len(pendingInputs))
@@ -141,6 +153,10 @@ func pendingModelContextBatchesForBranch(
 			return nil, err
 		}
 		normalized, err := normalizeModelContextBatchEvent(event)
+		if err != nil {
+			return nil, err
+		}
+		normalized.Messages, err = hydrateModelContextProviderContinuations(normalized.Messages, normalized.ID, continuations)
 		if err != nil {
 			return nil, err
 		}

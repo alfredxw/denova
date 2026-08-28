@@ -403,6 +403,10 @@ function contextAnalysisKindLabel(part: ContextAnalysisPart, t: ReturnType<typeo
       return t('chat.contextAnalysis.kind.toolCall')
     case 'tool_result':
       return t('chat.contextAnalysis.kind.toolResult')
+    case 'reasoning':
+      return t('chat.contextAnalysis.kind.reasoning')
+    case 'provider_continuation':
+      return t('chat.contextAnalysis.kind.providerContinuation')
     case 'body':
       if (part.role === 'user') return t('chat.contextAnalysis.kind.userBody')
       if (part.role === 'assistant') return t('chat.contextAnalysis.kind.assistantBody')

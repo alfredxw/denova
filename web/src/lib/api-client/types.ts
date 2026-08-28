@@ -436,7 +436,7 @@ export interface ContextAnalysisPart {
   note?: string
   bytes: number
   chars: number
-  /** Diagnostic source breakdown; content remains the exact model-visible message. */
+  /** Provider-neutral fields and safe opaque-state metadata for diagnostics. */
   parts?: ContextAnalysisPart[]
 }
 

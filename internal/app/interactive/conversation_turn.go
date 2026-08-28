@@ -156,7 +156,12 @@ func interactiveContextMessageFromSchema(msg *agents.Message) (interactive.Model
 		if len(calls) == 0 {
 			return interactive.ModelContextMessage{}, false
 		}
-		return interactive.ModelContextMessage{Role: string(agents.RoleAssistant), Content: cloned.Content, ToolCalls: calls}, true
+		return interactive.ModelContextMessage{
+			Role:                 string(agents.RoleAssistant),
+			Content:              cloned.Content,
+			ToolCalls:            calls,
+			ProviderContinuation: providers.ContinuationExtra(cloned.Extra),
+		}, true
 	case agents.RoleTool:
 		if strings.TrimSpace(cloned.ToolCallID) == "" && strings.TrimSpace(cloned.ToolName) == "" {
 			return interactive.ModelContextMessage{}, false
@@ -207,7 +212,9 @@ func schemaMessagesFromInteractiveContext(messages []interactive.ModelContextMes
 		case string(agents.RoleAssistant):
 			calls := schemaToolCallsFromInteractive(msg.ToolCalls)
 			if len(calls) > 0 {
-				result = append(result, agents.AssistantMessage(msg.Content, calls))
+				assistant := agents.AssistantMessage(msg.Content, calls)
+				assistant.Extra = providers.ContinuationExtra(msg.ProviderContinuation)
+				result = append(result, assistant.Clone())
 			}
 		case string(agents.RoleTool):
 			if strings.TrimSpace(msg.ToolCallID) != "" || strings.TrimSpace(msg.ToolName) != "" {

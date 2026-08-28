@@ -1,11 +1,13 @@
 package interactive
 
 import (
+	"encoding/json"
 	"reflect"
 	"strings"
 	"testing"
 
 	agent "github.com/alfredxw/denova/agent"
+	"github.com/alfredxw/denova/agent/providers"
 )
 
 func TestModelContextBatchPersistsWithoutAdvancingBranch(t *testing.T) {
@@ -28,6 +30,20 @@ func TestModelContextBatchPersistsWithoutAdvancingBranch(t *testing.T) {
 		t.Fatal(err)
 	}
 	messages := durableModelContextBatchFixture()
+	modelConfig := providers.ModelConfig{
+		Provider: providers.ProviderOpenAI, Protocol: providers.ProtocolOpenAIResponses,
+		Model: "gpt-5.6", BaseURL: "https://api.openai.com/v1",
+	}
+	continuation, err := providers.NewContinuation(modelConfig, []json.RawMessage{
+		json.RawMessage(`{"id":"reasoning_1","type":"reasoning","encrypted_content":"private-batch-state","summary":[]}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	messages[0].ProviderContinuation, err = normalizeProviderContinuation(map[string]any{providers.ExtraKeyContinuation: continuation})
+	if err != nil {
+		t.Fatal(err)
+	}
 	intents, err := NewModelContextBatchIntents(identity, "main", 0, messages)
 	if err != nil {
 		t.Fatal(err)
@@ -61,6 +77,13 @@ func TestModelContextBatchPersistsWithoutAdvancingBranch(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertPendingModelContextBatch(t, reloadedContext.Snapshot, messages)
+	publicJSON, err := json.Marshal(reloadedContext.Snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(publicJSON), "private-batch-state") || strings.Contains(string(publicJSON), providers.ExtraKeyContinuation) {
+		t.Fatalf("private model-context continuation leaked into public Story JSON: %s", publicJSON)
+	}
 }
 
 func TestModelContextBatchPersistsAcrossRecentSideEventWindow(t *testing.T) {

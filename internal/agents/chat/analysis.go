@@ -62,7 +62,8 @@ type ContextAnalysisPart struct {
 	Note       string `json:"note,omitempty"`
 	Bytes      int    `json:"bytes"`
 	Chars      int    `json:"chars"`
-	// Parts decomposes one exact model-visible message for diagnostics; Content remains the copy/source-of-truth payload.
+	// Parts decomposes provider-neutral message fields and safe opaque-state
+	// metadata for diagnostics. Content remains the copyable message body.
 	Parts []ContextAnalysisPart `json:"parts,omitempty"`
 }
 
@@ -133,7 +134,11 @@ func contextAnalysisPartFromMessage(id, source, title string, msg *agent.Message
 			input.Note = "tool_call_id=" + strings.TrimSpace(input.ToolCallID)
 		}
 	}
-	return NewContextAnalysisPart(input)
+	part := NewContextAnalysisPart(input)
+	if parts := contextAnalysisAssistantParts(id, source, msg); len(parts) > 0 {
+		part.Parts = parts
+	}
+	return part
 }
 
 func contextAnalysisToolCallNames(calls []agent.ToolCall) string {

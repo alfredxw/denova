@@ -420,11 +420,23 @@ func decodeLocatedStoryRecords(records []conversationjournal.Record) ([]locatedS
 
 func storyHistoryProjectionRecords(pathNewestFirst, candidates []locatedStoryRecord, branchID string) []StoryEventRecord {
 	pathIDs := make(map[string]bool, len(pathNewestFirst))
+	continuationOwnerIDs := make(map[string]bool, len(pathNewestFirst))
 	versionKeys := make(map[string]bool, len(pathNewestFirst))
 	for _, item := range pathNewestFirst {
 		pathIDs[item.record.Envelope.ID] = true
+		continuationOwnerIDs[item.record.Envelope.ID] = true
 		if item.record.Envelope.Type == StoryEventTypeTurn {
 			versionKeys[turnVersionKey(item.record.Envelope.BranchID, parentIDFromRaw(item.record.Raw))] = true
+		}
+	}
+	for _, item := range candidates {
+		record := item.record
+		if record.Envelope.Type != StoryEventTypeModelContextBatch {
+			continue
+		}
+		parentID := parentIDFromRaw(record.Raw)
+		if parentID == "" || pathIDs[parentID] {
+			continuationOwnerIDs[record.Envelope.ID] = true
 		}
 	}
 	selected := make([]locatedStoryRecord, 0, len(pathNewestFirst)+len(candidates))
@@ -453,6 +465,10 @@ func storyHistoryProjectionRecords(pathNewestFirst, candidates []locatedStoryRec
 			var event providerContinuationEvent
 			_ = mapToStruct(record.Raw, &event)
 			include = pathIDs[event.TurnID]
+		case StoryEventTypeModelContextProviderContinuation:
+			var event modelContextProviderContinuationEvent
+			_ = mapToStruct(record.Raw, &event)
+			include = continuationOwnerIDs[event.OwnerID]
 		}
 		if include {
 			selected = append(selected, item)
@@ -498,7 +514,7 @@ func storyRevisionTurnID(record StoryEventRecord) string {
 
 func isStoryHistorySideCandidate(eventType string) bool {
 	switch eventType {
-	case StoryEventTypeTurn, StoryEventTypePlayerInput, StoryEventTypeModelContextBatch, StoryEventTypeProviderContinuation, StoryEventTypeHotChoices,
+	case StoryEventTypeTurn, StoryEventTypePlayerInput, StoryEventTypeModelContextBatch, StoryEventTypeModelContextProviderContinuation, StoryEventTypeProviderContinuation, StoryEventTypeHotChoices,
 		StoryEventTypeTurnNarrativeRevised, StoryEventTypeTurnDisplayAppended, StoryEventTypeTurnStateRevised:
 		return true
 	default:

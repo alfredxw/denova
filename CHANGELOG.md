@@ -66,8 +66,8 @@ Denova records only major user-visible features, important compatibility or data
 
 ### Major fixes / 重要修复
 
-- 修复 OpenAI Responses 跨轮与重启后丢失加密推理上下文的问题；写作与游戏现在会安全保留并复用完整的 provider continuation。
-- Fixed encrypted reasoning context being lost across OpenAI Responses turns or restarts; Writing and Game now safely retain and reuse the complete provider continuation.
+- 修复跨轮、工具调用边界或重启后丢失推理上下文的问题；写作与游戏现在会安全保留并复用完整的 provider continuation。
+- Fixed reasoning context being lost across turns, tool-call boundaries, or restarts; Writing and Game now safely retain and reuse the complete provider continuation.
 - 修复 Provider Token 校准可能下调本地保守估算、导致长会话过晚清理上下文的问题；真实用量现在只会向上修正上下文压力。
 - Fixed provider token calibration lowering conservative local estimates and delaying context cleanup in long sessions; observed usage now only raises projected pressure.
 - 修复部分 v0.3.3 游戏故事升级后因旧上下文事件而无法打开的问题；迁移会先完整备份原始 JSONL，再原子重连有效历史。

@@ -1,6 +1,8 @@
 package interactive
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -23,12 +25,50 @@ type providerContinuationEvent struct {
 	ProviderContinuation map[string]any `json:"provider_continuation"`
 }
 
+// modelContextProviderContinuationEvent stores provider-owned state for one
+// assistant tool-call message. Keeping it outside Turn and batch payloads
+// prevents opaque signed or encrypted data from entering public Story JSON.
+type modelContextProviderContinuationEvent struct {
+	V                    int            `json:"v"`
+	Type                 string         `json:"type"`
+	ID                   string         `json:"id"`
+	ParentID             string         `json:"parent_id"`
+	BranchID             string         `json:"branch_id"`
+	Ts                   string         `json:"ts"`
+	OwnerID              string         `json:"owner_id"`
+	MessageIndex         int            `json:"message_index"`
+	ProviderContinuation map[string]any `json:"provider_continuation"`
+}
+
 func newProviderContinuationEvent(turn TurnEvent, continuation map[string]any) providerContinuationEvent {
 	return providerContinuationEvent{
 		V: schemaVersion, Type: StoryEventTypeProviderContinuation, ID: newID("tpc"),
 		ParentID: turn.ID, BranchID: turn.BranchID, Ts: turn.Ts, TurnID: turn.ID,
 		ProviderContinuation: cloneProviderContinuation(continuation),
 	}
+}
+
+func newModelContextProviderContinuationEvents(
+	ownerID, branchID, timestamp string,
+	messages []ModelContextMessage,
+) ([]any, error) {
+	result := make([]any, 0)
+	for index, message := range messages {
+		continuation, err := normalizeProviderContinuation(message.ProviderContinuation)
+		if err != nil {
+			return nil, err
+		}
+		if len(continuation) == 0 {
+			continue
+		}
+		result = append(result, modelContextProviderContinuationEvent{
+			V: schemaVersion, Type: StoryEventTypeModelContextProviderContinuation,
+			ID: deterministicModelContextProviderContinuationID(ownerID, index), ParentID: ownerID,
+			BranchID: strings.TrimSpace(branchID), Ts: strings.TrimSpace(timestamp), OwnerID: ownerID,
+			MessageIndex: index, ProviderContinuation: continuation,
+		})
+	}
+	return result, nil
 }
 
 func normalizeProviderContinuation(extra map[string]any) (map[string]any, error) {
@@ -89,4 +129,93 @@ func providerContinuationsByTurn(lines []StoryEventRecord) (map[string]map[strin
 		result[event.TurnID] = event.ProviderContinuation
 	}
 	return result, nil
+}
+
+func normalizeModelContextProviderContinuationEvent(
+	event modelContextProviderContinuationEvent,
+) (modelContextProviderContinuationEvent, error) {
+	event.OwnerID = strings.TrimSpace(event.OwnerID)
+	event.ParentID = strings.TrimSpace(event.ParentID)
+	event.BranchID = strings.TrimSpace(event.BranchID)
+	event.Ts = strings.TrimSpace(event.Ts)
+	if event.V <= 0 || event.V > schemaVersion || event.Type != StoryEventTypeModelContextProviderContinuation ||
+		event.OwnerID == "" || event.ParentID != event.OwnerID || event.BranchID == "" || event.Ts == "" || event.MessageIndex < 0 ||
+		strings.TrimSpace(event.ID) != deterministicModelContextProviderContinuationID(event.OwnerID, event.MessageIndex) {
+		return modelContextProviderContinuationEvent{}, fmt.Errorf("Game model-context provider continuation event is invalid")
+	}
+	continuation, err := normalizeProviderContinuation(event.ProviderContinuation)
+	if err != nil {
+		return modelContextProviderContinuationEvent{}, err
+	}
+	if len(continuation) == 0 {
+		return modelContextProviderContinuationEvent{}, fmt.Errorf("Game model-context provider continuation event is empty")
+	}
+	event.ProviderContinuation = continuation
+	return event, nil
+}
+
+func modelContextProviderContinuationsByOwner(
+	lines []StoryEventRecord,
+) (map[string]map[int]map[string]any, error) {
+	result := make(map[string]map[int]map[string]any)
+	for _, record := range lines {
+		if record.Envelope.Type != StoryEventTypeModelContextProviderContinuation {
+			continue
+		}
+		var event modelContextProviderContinuationEvent
+		if err := mapToStruct(record.Raw, &event); err != nil {
+			return nil, fmt.Errorf("decode Game model-context provider continuation event: %w", err)
+		}
+		event, err := normalizeModelContextProviderContinuationEvent(event)
+		if err != nil {
+			return nil, err
+		}
+		byIndex := result[event.OwnerID]
+		if byIndex == nil {
+			byIndex = make(map[int]map[string]any)
+			result[event.OwnerID] = byIndex
+		}
+		if _, duplicate := byIndex[event.MessageIndex]; duplicate {
+			return nil, fmt.Errorf("Game model-context owner %s has duplicate provider continuation for message %d", event.OwnerID, event.MessageIndex)
+		}
+		byIndex[event.MessageIndex] = event.ProviderContinuation
+	}
+	return result, nil
+}
+
+func hydrateModelContextProviderContinuations(
+	messages []ModelContextMessage,
+	ownerID string,
+	continuations map[string]map[int]map[string]any,
+) ([]ModelContextMessage, error) {
+	result := sanitizeModelContextMessages(messages)
+	for index, continuation := range continuations[strings.TrimSpace(ownerID)] {
+		if index < 0 || index >= len(result) || result[index].Role != "assistant" {
+			return nil, fmt.Errorf("Game model-context owner %s has provider continuation for invalid message %d", ownerID, index)
+		}
+		result[index].ProviderContinuation = cloneProviderContinuation(continuation)
+	}
+	return result, nil
+}
+
+func modelContextProviderContinuationFingerprint(messages []ModelContextMessage) (string, error) {
+	continuations := make([]map[string]any, len(messages))
+	for index, message := range messages {
+		continuation, err := normalizeProviderContinuation(message.ProviderContinuation)
+		if err != nil {
+			return "", err
+		}
+		continuations[index] = continuation
+	}
+	data, err := json.Marshal(continuations)
+	if err != nil {
+		return "", err
+	}
+	digest := sha256.Sum256(data)
+	return hex.EncodeToString(digest[:]), nil
+}
+
+func deterministicModelContextProviderContinuationID(ownerID string, messageIndex int) string {
+	digest := sha256.Sum256([]byte(strings.TrimSpace(ownerID) + "\x00" + fmt.Sprint(messageIndex)))
+	return "model-provider-continuation-" + hex.EncodeToString(digest[:16])
 }

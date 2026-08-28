@@ -12,22 +12,23 @@ import (
 )
 
 const (
-	StoryEventTypeMeta                 = "meta"
-	StoryEventTypePlayerInput          = "player_input_accepted"
-	StoryEventTypeModelContextBatch    = "model_context_batch"
-	StoryEventTypeProviderContinuation = "turn_provider_continuation"
-	StoryEventTypeTurn                 = "turn"
-	StoryEventTypeStateDelta           = "state_delta"
-	StoryEventTypeBranch               = "branch"
-	StoryEventTypeHotChoices           = "hot_choices"
-	StoryEventTypeTurnVersionSelected  = "turn_version_selected"
-	StoryEventTypeTurnNarrativeRevised = "turn_narrative_revised"
-	StoryEventTypeTurnDisplayAppended  = "turn_display_appended"
-	StoryEventTypeTurnStateRevised     = "turn_state_revised"
-	StoryEventTypeStoryConfigUpdated   = "story_config_updated"
-	StoryEventTypeBranchSwitched       = "branch_switched"
-	StoryEventTypeBranchArchived       = "branch_archived"
-	StoryEventTypeBranchHeadMoved      = "branch_head_moved"
+	StoryEventTypeMeta                             = "meta"
+	StoryEventTypePlayerInput                      = "player_input_accepted"
+	StoryEventTypeModelContextBatch                = "model_context_batch"
+	StoryEventTypeModelContextProviderContinuation = "model_context_provider_continuation"
+	StoryEventTypeProviderContinuation             = "turn_provider_continuation"
+	StoryEventTypeTurn                             = "turn"
+	StoryEventTypeStateDelta                       = "state_delta"
+	StoryEventTypeBranch                           = "branch"
+	StoryEventTypeHotChoices                       = "hot_choices"
+	StoryEventTypeTurnVersionSelected              = "turn_version_selected"
+	StoryEventTypeTurnNarrativeRevised             = "turn_narrative_revised"
+	StoryEventTypeTurnDisplayAppended              = "turn_display_appended"
+	StoryEventTypeTurnStateRevised                 = "turn_state_revised"
+	StoryEventTypeStoryConfigUpdated               = "story_config_updated"
+	StoryEventTypeBranchSwitched                   = "branch_switched"
+	StoryEventTypeBranchArchived                   = "branch_archived"
+	StoryEventTypeBranchHeadMoved                  = "branch_head_moved"
 
 	stateOpSchemaVersion = 2
 )
@@ -38,6 +39,8 @@ const (
 var persistedStoryEventModelContextChanges = map[string]bool{
 	StoryEventTypePlayerInput:       true,
 	StoryEventTypeModelContextBatch: true,
+	// The owning Turn or model-context batch already changes model context.
+	StoryEventTypeModelContextProviderContinuation: false,
 	// The parent Turn already advances the context revision in the same atomic
 	// transaction. This side event only carries its opaque provider state.
 	StoryEventTypeProviderContinuation: false,
@@ -121,6 +124,15 @@ func mapToStoryEventRecord(raw map[string]any) (StoryEventRecord, error) {
 			return StoryEventRecord{}, err
 		}
 		if _, err := normalizeProviderContinuationEvent(event); err != nil {
+			return StoryEventRecord{}, err
+		}
+	}
+	if envelope.Type == StoryEventTypeModelContextProviderContinuation {
+		var event modelContextProviderContinuationEvent
+		if err := mapToStruct(raw, &event); err != nil {
+			return StoryEventRecord{}, err
+		}
+		if _, err := normalizeModelContextProviderContinuationEvent(event); err != nil {
 			return StoryEventRecord{}, err
 		}
 	}

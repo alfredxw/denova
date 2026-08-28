@@ -22,7 +22,7 @@ func TestModelContextMiddlewaresContainProjectionThenNormalizer(t *testing.T) {
 	}
 }
 
-func TestModelHistoryProjectionHidesSettledToolsAndReasoningButKeepsCurrentBatch(t *testing.T) {
+func TestModelHistoryProjectionHidesDisabledSettledToolsButPreservesProviderReasoning(t *testing.T) {
 	call := agent.ToolCall{ID: "historical", Type: "function", Function: agent.FunctionCall{Name: "read", Arguments: `{}`}}
 	current := agent.ToolCall{ID: "current", Type: "function", Function: agent.FunctionCall{Name: "read", Arguments: `{}`}}
 	middleware := NewModelHistoryProjectionMiddleware(toolresult.ContextPolicy{Enabled: false})
@@ -49,9 +49,9 @@ func TestModelHistoryProjectionHidesSettledToolsAndReasoningButKeepsCurrentBatch
 		if message != nil && message.ToolCallID == "historical" {
 			t.Fatalf("historical tool result remained model-visible: %#v", projected.Messages)
 		}
-		if message != nil && message.ReasoningContent == "private historical reasoning" {
-			t.Fatalf("historical reasoning remained model-visible: %#v", projected.Messages)
-		}
+	}
+	if projected.Messages[1].ReasoningContent != "private historical reasoning" {
+		t.Fatalf("historical provider reasoning was filtered: %#v", projected.Messages)
 	}
 	if currentCall.ReasoningContent != "current tool reasoning" || projected.Messages[len(projected.Messages)-2].ReasoningContent != "current tool reasoning" {
 		t.Fatalf("current-cycle reasoning was filtered: %#v", projected.Messages)

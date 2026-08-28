@@ -201,8 +201,14 @@ func (s *Store) AppendModelContextBatch(storyID string, intent ModelContextBatch
 		AgentCycle: canonical.Identity.Cycle, BatchOrdinal: canonical.Ordinal,
 		BatchHash: canonical.Hash, Messages: canonical.Messages,
 	}
+	continuationEvents, err := newModelContextProviderContinuationEvents(event.ID, event.BranchID, event.Ts, event.Messages)
+	if err != nil {
+		return ModelContextBatchReceipt{}, err
+	}
 	meta.UpdatedAt = now
-	if err := s.appendStoryTransactionLocked(storyID, meta, event); err != nil {
+	newEvents := []any{event}
+	newEvents = append(newEvents, continuationEvents...)
+	if err := s.appendStoryTransactionLocked(storyID, meta, newEvents...); err != nil {
 		return ModelContextBatchReceipt{}, err
 	}
 	s.syncStoryIndexProjectionLocked(storyID)
@@ -223,8 +229,27 @@ func findModelContextBatchInLines(lines []StoryEventRecord, intent ModelContextB
 		if err != nil {
 			return ModelContextBatchReceipt{}, false, err
 		}
+		continuations, err := modelContextProviderContinuationsByOwner(lines)
+		if err != nil {
+			return ModelContextBatchReceipt{}, false, err
+		}
+		normalized.Messages, err = hydrateModelContextProviderContinuations(normalized.Messages, normalized.ID, continuations)
+		if err != nil {
+			return ModelContextBatchReceipt{}, false, err
+		}
 		if normalized.BranchID != intent.BranchID || normalized.PlayerInputID != intent.PlayerInputID || normalized.BatchHash != intent.Hash {
 			return ModelContextBatchReceipt{}, false, fmt.Errorf("%w: batch ordinal %d has different content", ErrModelContextBatchIdentityConflict, intent.Ordinal)
+		}
+		storedContinuationHash, err := modelContextProviderContinuationFingerprint(normalized.Messages)
+		if err != nil {
+			return ModelContextBatchReceipt{}, false, err
+		}
+		intentContinuationHash, err := modelContextProviderContinuationFingerprint(intent.Messages)
+		if err != nil {
+			return ModelContextBatchReceipt{}, false, err
+		}
+		if storedContinuationHash != intentContinuationHash {
+			return ModelContextBatchReceipt{}, false, fmt.Errorf("%w: batch ordinal %d has different provider continuation", ErrModelContextBatchIdentityConflict, intent.Ordinal)
 		}
 		return modelContextBatchReceipt(intent.Identity, normalized), true, nil
 	}
@@ -318,6 +343,10 @@ func modelContextBatchReceipt(identity DomainCommitIdentity, event ModelContextB
 
 func modelContextBatchesForPlayerInput(lines []StoryEventRecord, branchID, playerInputID string) ([]ModelContextBatchEvent, error) {
 	batches := make([]ModelContextBatchEvent, 0)
+	continuations, err := modelContextProviderContinuationsByOwner(lines)
+	if err != nil {
+		return nil, err
+	}
 	for _, record := range lines {
 		if record.Envelope.Type != StoryEventTypeModelContextBatch || record.Envelope.BranchID != branchID {
 			continue
@@ -327,6 +356,10 @@ func modelContextBatchesForPlayerInput(lines []StoryEventRecord, branchID, playe
 			return nil, err
 		}
 		normalized, err := normalizeModelContextBatchEvent(event)
+		if err != nil {
+			return nil, err
+		}
+		normalized.Messages, err = hydrateModelContextProviderContinuations(normalized.Messages, normalized.ID, continuations)
 		if err != nil {
 			return nil, err
 		}

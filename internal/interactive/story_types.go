@@ -314,7 +314,9 @@ type DisplayEvent struct {
 }
 
 // ModelContextMessage is model-visible turn evidence hidden from the chat UI.
-// It stores only assistant tool calls and tool results, never raw thinking.
+// It stores assistant tool calls, tool results, and only the provider-owned
+// opaque continuation needed to replay a tool boundary. Raw thinking and
+// unrelated response metadata are never persisted here.
 type ModelContextMessage struct {
 	Role       string                   `json:"role"`
 	Content    string                   `json:"content,omitempty"`
@@ -323,6 +325,9 @@ type ModelContextMessage struct {
 	ToolCallID string                   `json:"tool_call_id,omitempty"`
 	ToolName   string                   `json:"tool_name,omitempty"`
 	ToolResult *agent.ToolResultSummary `json:"tool_result,omitempty"`
+	// ProviderContinuation is persisted through a private side event and is
+	// hydrated only for model-history projections.
+	ProviderContinuation map[string]any `json:"-"`
 }
 
 type ModelContextToolCall struct {

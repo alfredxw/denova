@@ -34,9 +34,25 @@ func TestInteractiveProviderContinuationSurvivesTurnCommitAndReload(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
+	toolContinuation, err := providers.NewContinuation(modelConfig, []json.RawMessage{
+		json.RawMessage(`{"id":"reasoning_tool","type":"reasoning","encrypted_content":"tool-encrypted-state","summary":[]}`),
+		json.RawMessage(`{"id":"call_1","type":"function_call","call_id":"call-open","name":"open_gate","arguments":"{}"}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	_, _, err = store.AppendTurnWithState(story.ID, interactive.AppendTurnWithStateRequest{
 		BranchID: "main", User: "开门", Narrative: "门开了。",
 		ProviderContinuation: map[string]any{providers.ExtraKeyContinuation: continuation},
+		ModelContextMessages: []interactive.ModelContextMessage{
+			{
+				Role: "assistant", ToolCalls: []interactive.ModelContextToolCall{{
+					ID: "call-open", Type: "function", Function: interactive.ModelContextFunctionCall{Name: "open_gate", Arguments: `{}`},
+				}},
+				ProviderContinuation: map[string]any{providers.ExtraKeyContinuation: toolContinuation},
+			},
+			{Role: "tool", ToolCallID: "call-open", ToolName: "open_gate", Content: "opened"},
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -49,20 +65,26 @@ func TestInteractiveProviderContinuationSurvivesTurnCommitAndReload(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	projection, err := BuildModelContextProjection(history, nil, interactive.Snapshot{}, toolresult.ContextPolicy{}, agentrun.CycleIdentity{})
+	projection, err := BuildModelContextProjection(history, nil, interactive.Snapshot{}, toolresult.ContextPolicy{Enabled: true}, agentrun.CycleIdentity{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(projection.Messages) != 2 || projection.Messages[1].Role != agents.RoleAssistant {
-		t.Fatalf("projected messages = %#v, want user and assistant", projection.Messages)
+	if len(projection.Messages) != 4 || projection.Messages[1].Role != agents.RoleAssistant ||
+		projection.Messages[2].Role != agents.RoleTool || projection.Messages[3].Role != agents.RoleAssistant {
+		t.Fatalf("projected messages = %#v, want user, tool batch, and final assistant", projection.Messages)
 	}
 	var items []json.RawMessage
-	matched, err := providers.DecodeContinuation(projection.Messages[1].Extra, modelConfig, &items)
+	matched, err := providers.DecodeContinuation(projection.Messages[3].Extra, modelConfig, &items)
 	if err != nil || !matched || len(items) != 2 {
 		t.Fatalf("reloaded continuation items = %#v matched=%t err=%v", items, matched, err)
 	}
 	if !strings.Contains(string(items[0]), "encrypted-state") || !strings.Contains(string(items[1]), `"phase":"final_answer"`) {
 		t.Fatalf("reloaded continuation changed Responses output items: %s", items)
+	}
+	items = nil
+	matched, err = providers.DecodeContinuation(projection.Messages[1].Extra, modelConfig, &items)
+	if err != nil || !matched || len(items) != 2 || !strings.Contains(string(items[0]), "tool-encrypted-state") {
+		t.Fatalf("reloaded tool-boundary continuation = %#v matched=%t err=%v", items, matched, err)
 	}
 	snapshot, err := reloaded.Snapshot(story.ID, "main")
 	if err != nil {
@@ -72,7 +94,7 @@ func TestInteractiveProviderContinuationSurvivesTurnCommitAndReload(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(publicJSON), "encrypted-state") || strings.Contains(string(publicJSON), providers.ExtraKeyContinuation) {
+	if strings.Contains(string(publicJSON), "encrypted-state") || strings.Contains(string(publicJSON), "tool-encrypted-state") || strings.Contains(string(publicJSON), providers.ExtraKeyContinuation) {
 		t.Fatalf("opaque provider continuation leaked into public Game snapshot: %s", publicJSON)
 	}
 }
@@ -120,6 +142,43 @@ func TestInteractiveToolResultSummaryRoundTripsThroughStorySchema(t *testing.T) 
 	stored.ToolResult.ContextHints.Recovery.Reference["path"] = "mutated"
 	if got := message.ToolResult.ContextHints.Recovery.Reference["path"]; got != "chapters/one.md" {
 		t.Fatalf("story conversion aliased the source recovery hint: %v", got)
+	}
+}
+
+func TestInteractiveAssistantToolCallProviderContinuationRoundTrips(t *testing.T) {
+	modelConfig := providers.ModelConfig{
+		Provider: providers.ProviderOpenAI, Protocol: providers.ProtocolOpenAIResponses,
+		Model: "gpt-5.6", BaseURL: "https://api.openai.com/v1",
+	}
+	continuation, err := providers.NewContinuation(modelConfig, []json.RawMessage{
+		json.RawMessage(`{"id":"reasoning_1","type":"reasoning","encrypted_content":"opaque-tool-state","summary":[]}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	message := agents.AssistantMessage("I will inspect the gate.", []agents.ToolCall{{
+		ID: "call-gate", Type: "function", Function: agents.FunctionCall{Name: "read_gate", Arguments: `{}`},
+	}})
+	message.Extra = map[string]any{
+		providers.ExtraKeyContinuation: continuation,
+		"response-telemetry":           map[string]any{"request_id": "must-not-persist"},
+	}
+
+	stored, ok := interactiveContextMessageFromSchema(message)
+	if !ok {
+		t.Fatal("assistant tool call was rejected from story model context")
+	}
+	if _, leaked := stored.ProviderContinuation["response-telemetry"]; leaked {
+		t.Fatalf("unrelated provider metadata leaked into story context: %#v", stored.ProviderContinuation)
+	}
+	rehydrated := schemaMessagesFromInteractiveContext(interactive.CloneModelContextMessages([]interactive.ModelContextMessage{stored}))
+	if len(rehydrated) != 1 {
+		t.Fatalf("rehydrated messages = %d, want 1", len(rehydrated))
+	}
+	var items []json.RawMessage
+	matched, err := providers.DecodeContinuation(rehydrated[0].Extra, modelConfig, &items)
+	if err != nil || !matched || len(items) != 1 || !strings.Contains(string(items[0]), "opaque-tool-state") {
+		t.Fatalf("assistant tool continuation did not round trip: items=%s matched=%t err=%v", items, matched, err)
 	}
 }
 

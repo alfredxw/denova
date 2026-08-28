@@ -175,16 +175,13 @@ func (session *Session) SyncTranscript(ctx context.Context, request TranscriptSy
 // transcriptSourceEquivalent compares only fields owned by the canonical
 // product source. AgentMeta, ResponseMeta, and provider reasoning are generated
 // by the Agent loop; asking a product store to duplicate them would create a
-// second execution-metadata authority. Denova's model-history middleware drops
-// settled reasoning from later provider requests, while raw Agent history keeps
-// it for subsequent turns and audit. A product revision that settles the same visible
-// response can therefore advance without discarding maintenance capabilities.
+// second execution-metadata authority. A product may also intentionally omit
+// complete assistant/tool-result protocol batches from its visible transcript.
+// Those Agent-owned batches stay authoritative in raw history, while a tool
+// batch present in both sources must still match exactly.
 func transcriptSourceEquivalent(current, canonical []*Message) (bool, error) {
-	current = productOwnedTranscriptMessages(current)
-	if len(current) != len(canonical) {
-		return false, nil
-	}
 	project := func(messages []*Message) ([]*Message, error) {
+		messages = productOwnedTranscriptMessages(messages)
 		if err := validateImportedTranscript(messages); err != nil {
 			return nil, err
 		}
@@ -207,15 +204,61 @@ func transcriptSourceEquivalent(current, canonical []*Message) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	leftHash, err := hashCanonical(left)
+	fingerprint := func(messages []*Message) ([]string, error) {
+		result := make([]string, len(messages))
+		for index, message := range messages {
+			value, err := hashCanonical(message)
+			if err != nil {
+				return nil, err
+			}
+			result[index] = value
+		}
+		return result, nil
+	}
+	leftFingerprints, err := fingerprint(left)
 	if err != nil {
 		return false, err
 	}
-	rightHash, err := hashCanonical(right)
+	rightFingerprints, err := fingerprint(right)
 	if err != nil {
 		return false, err
 	}
-	return leftHash == rightHash, nil
+	leftIndex, rightIndex := 0, 0
+	for leftIndex < len(left) && rightIndex < len(right) {
+		if leftFingerprints[leftIndex] == rightFingerprints[rightIndex] {
+			leftIndex++
+			rightIndex++
+			continue
+		}
+		if end, ok := completeToolBatchEnd(left, leftIndex); ok {
+			leftIndex = end
+			continue
+		}
+		return false, nil
+	}
+	for leftIndex < len(left) {
+		end, ok := completeToolBatchEnd(left, leftIndex)
+		if !ok {
+			break
+		}
+		leftIndex = end
+	}
+	return leftIndex == len(left) && rightIndex == len(right), nil
+}
+
+func completeToolBatchEnd(messages []*Message, start int) (int, bool) {
+	if start < 0 || start >= len(messages) {
+		return start, false
+	}
+	message := messages[start]
+	if message == nil || message.Role != Assistant || len(message.ToolCalls) == 0 {
+		return start, false
+	}
+	end := start + 1
+	for end < len(messages) && messages[end] != nil && messages[end].Role == ToolRole {
+		end++
+	}
+	return end, true
 }
 
 func productOwnedTranscriptMessages(messages []*Message) []*Message {

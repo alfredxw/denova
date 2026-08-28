@@ -107,7 +107,12 @@ func sanitizeModelContextMessages(messages []ModelContextMessage) []ModelContext
 			if len(calls) == 0 {
 				continue
 			}
-			result = append(result, ModelContextMessage{Role: role, Content: msg.Content, ToolCalls: calls})
+			result = append(result, ModelContextMessage{
+				Role:                 role,
+				Content:              msg.Content,
+				ToolCalls:            calls,
+				ProviderContinuation: cloneProviderContinuation(msg.ProviderContinuation),
+			})
 		case "tool":
 			toolCallID := strings.TrimSpace(msg.ToolCallID)
 			toolName := strings.TrimSpace(msg.ToolName)
@@ -131,7 +136,8 @@ func sanitizeModelContextMessages(messages []ModelContextMessage) []ModelContext
 }
 
 // CloneModelContextMessages returns the same bounded model-only projection used
-// by story persistence, including an independently mutable tool-result summary.
+// by story persistence, including independently mutable tool-result and
+// provider-continuation state.
 func CloneModelContextMessages(messages []ModelContextMessage) []ModelContextMessage {
 	return sanitizeModelContextMessages(messages)
 }

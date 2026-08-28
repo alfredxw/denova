@@ -52,7 +52,13 @@ func (s *Store) AppendTurn(storyID string, req AppendTurnRequest) (TurnEvent, er
 	branch.Head = event.ID
 	meta.Branches[branchID] = branch
 	meta.UpdatedAt = now
-	if err := s.appendStoryTransactionLocked(storyID, meta, event); err != nil {
+	continuationEvents, err := newModelContextProviderContinuationEvents(event.ID, event.BranchID, event.Ts, event.ModelContextMessages)
+	if err != nil {
+		return TurnEvent{}, err
+	}
+	newEvents := []any{event}
+	newEvents = append(newEvents, continuationEvents...)
+	if err := s.appendStoryTransactionLocked(storyID, meta, newEvents...); err != nil {
 		return TurnEvent{}, err
 	}
 	if err := s.syncStorySummaryLocked(storyID); err != nil {

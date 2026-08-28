@@ -298,6 +298,11 @@ func (s *Store) AppendTurnWithState(storyID string, req AppendTurnWithStateReque
 	meta.Branches[branchID] = branch
 	meta.UpdatedAt = now
 	newEvents := []any{turn}
+	modelContinuationEvents, err := newModelContextProviderContinuationEvents(turn.ID, turn.BranchID, turn.Ts, turn.ModelContextMessages)
+	if err != nil {
+		return TurnEvent{}, nil, err
+	}
+	newEvents = append(newEvents, modelContinuationEvents...)
 	if len(req.ProviderContinuation) != 0 {
 		newEvents = append(newEvents, newProviderContinuationEvent(turn, req.ProviderContinuation))
 	}
