@@ -56,6 +56,7 @@ const common = {
   'common.imageViewer.zoomIn': '放大',
   'common.imageViewer.zoomOut': '缩小',
   'common.imageViewer.resetZoom': '重置缩放',
+  'common.imageViewer.instructions': '滚动缩放，拖动平移，使用方向键移动，按 Escape 关闭。',
 } as const
 
 export default common

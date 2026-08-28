@@ -595,7 +595,7 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
     if (!turnId) {
       const liveUserMessage = [...liveMessages].reverse().find((item) => item.role === 'user')
       const source = stageRun.retryMessage || (liveUserMessage ? agentMessageDisplayText(liveUserMessage) : '')
-      if (source.trim()) void send({ message: source })
+      if (source.trim()) void send({ message: source, rewindTurnId: stageRun.rewindTurnId })
       return
     }
     const source = turnsById.get(turnId)?.user || agentViewContent(view)

@@ -34,6 +34,10 @@ interface SavingSelection {
   value: string
 }
 
+// User-selected fonts can paint beyond their line box. Clip model labels only
+// horizontally so ellipsis still works without cutting off glyphs vertically.
+const MODEL_LABEL_OVERFLOW_CLASS = 'min-w-0 overflow-x-clip overflow-y-visible text-ellipsis whitespace-nowrap'
+
 export function ModelProfileSwitcher({ agentKey, workspace, conversationConfig, disabled = false }: ModelProfileSwitcherProps) {
   const selector = useModelProfileSelector({ agentKey, workspace, conversationConfig, disabled })
   const [open, setOpen] = useState(false)
@@ -52,7 +56,7 @@ export function ModelProfileSwitcher({ agentKey, workspace, conversationConfig, 
           data-current-model={selector.currentModelLabel}
           data-current-thinking-level={selector.currentThinkingLevel}
         >
-          <span className="min-w-0 truncate">{selector.settings ? selector.currentModelLabel : selector.t('chat.modelProfile.loading')}</span>
+          <span className={MODEL_LABEL_OVERFLOW_CLASS}>{selector.settings ? selector.currentModelLabel : selector.t('chat.modelProfile.loading')}</span>
           {selector.currentThinkingLevelLabel ? (
             <span className="shrink-0 font-normal text-[var(--nova-text-faint)]">{selector.currentThinkingLevelLabel}</span>
           ) : null}
@@ -215,7 +219,7 @@ function ModelProfileOptions({
           {savingSelection?.kind === 'profile' && savingSelection.value === option.id
             ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
             : <Check className={`h-3.5 w-3.5 ${option.id === currentProfile ? 'opacity-100' : 'opacity-0'}`} />}
-          <span className="min-w-0 flex-1 truncate">{option.label}</span>
+          <span className={`${MODEL_LABEL_OVERFLOW_CLASS} flex-1`}>{option.label}</span>
         </DropdownMenuItem>
       ))}
       {options.length === 0 ? (

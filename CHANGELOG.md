@@ -74,6 +74,8 @@ Denova records only major user-visible features, important compatibility or data
 - Fixed some v0.3.3 Game stories failing to open after upgrade because of obsolete context events. Migration now backs up the original JSONL before atomically reconnecting valid history.
 - 修复写作、游戏和工作台长任务在刷新、断线重连、中断或继续执行后可能丢失或重复消息、工具结果和已提交内容的问题。
 - Fixed Writing, Game, and Workspace runs losing or duplicating messages, tool results, or committed content after refresh, reconnect, interruption, or continuation.
+- 修复游戏回合重生成失败后再次重试会丢失原回合定位、把原提示误提交为新回合的问题。
+- Fixed retrying a failed Game turn regeneration losing its target and submitting the original prompt as a new turn.
 - 修复写作与资料编辑中的自动保存、外部修改合并、评论消费和版本恢复问题，避免草稿被覆盖或已提交反馈重复出现。
 - Fixed autosave, external-edit merging, comment consumption, and version restoration in Writing and Lore, preventing draft overwrites and submitted feedback from reappearing.
 - 修复游戏新故事空回合崩溃、历史回合跳转错位、回合数错误及刷新后重复回放已结算剧情的问题。

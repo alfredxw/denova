@@ -494,6 +494,58 @@ describe('StoryStage runtime stream lifecycle', () => {
     }
   })
 
+  it('retries a failed persisted-turn regeneration against the same turn', async () => {
+    const user = userEvent.setup()
+    const firstStream = controllableInteractiveStream()
+    const retryStream = controllableInteractiveStream()
+    sendInteractiveMessageMock.mockResolvedValueOnce(firstStream.readable).mockResolvedValueOnce(retryStream.readable)
+
+    try {
+      render(<StoryStageHarness
+        initialSnapshot={{
+          story_id: 'story-1',
+          branch_id: 'main',
+          turns: [{
+            id: 'turn-1',
+            parent_id: null,
+            branch_id: 'main',
+            ts: '2026-06-28T00:00:00Z',
+            user: '生成故事开场',
+            narrative: '旧的故事开场。',
+          }],
+          state: {},
+        }}
+        onDone={vi.fn().mockResolvedValue(undefined)}
+      />)
+
+      await user.click(await screen.findByRole('button', { name: '重新生成这一轮' }))
+      await waitFor(() => expect(sendInteractiveMessageMock).toHaveBeenCalledTimes(1))
+      expect(sendInteractiveMessageMock.mock.calls[0][0]).toMatchObject({
+        message: '生成故事开场',
+        regenerate_from_turn_id: 'turn-1',
+      })
+
+      act(() => {
+        firstStream.enqueue({
+          event: 'error',
+          data: JSON.stringify({ message: '[NodeRunError] 400 Bad Request' }),
+        })
+        firstStream.close()
+      })
+
+      await screen.findByText('[NodeRunError] 400 Bad Request')
+      await user.click(await screen.findByRole('button', { name: '重新生成这一轮' }))
+      await waitFor(() => expect(sendInteractiveMessageMock).toHaveBeenCalledTimes(2))
+      expect(sendInteractiveMessageMock.mock.calls[1][0]).toMatchObject({
+        message: '生成故事开场',
+        regenerate_from_turn_id: 'turn-1',
+      })
+    } finally {
+      firstStream.close()
+      retryStream.close()
+    }
+  })
+
   it('reuses the initial command id when transport acceptance remains uncertain', async () => {
     const user = userEvent.setup()
     const retryStream = controllableInteractiveStream()

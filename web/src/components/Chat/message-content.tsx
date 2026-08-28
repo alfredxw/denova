@@ -166,7 +166,15 @@ function normalizeChatImageSrc(src: string, projectId: string) {
   const trimmed = src.trim()
   if (!trimmed) return ''
   if (/^(https?:|data:|blob:|\/)/i.test(trimmed)) return trimmed
-  if (isWorkspaceImagePath(trimmed)) return chatAssetURL(projectId, trimmed)
+  let workspacePath = trimmed
+  try {
+    // Markdown normalizes non-ASCII destinations to encoded URIs. Decode that
+    // representation once before URLSearchParams encodes the API query value.
+    workspacePath = decodeURIComponent(trimmed)
+  } catch {
+    // Invalid percent sequences can be literal filename characters.
+  }
+  if (isWorkspaceImagePath(workspacePath)) return chatAssetURL(projectId, workspacePath)
   return trimmed
 }
 

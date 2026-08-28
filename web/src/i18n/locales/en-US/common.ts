@@ -56,6 +56,7 @@ const common = {
   'common.imageViewer.zoomIn': 'Zoom in',
   'common.imageViewer.zoomOut': 'Zoom out',
   'common.imageViewer.resetZoom': 'Reset zoom',
+  'common.imageViewer.instructions': 'Scroll to zoom, drag to pan, use the arrow keys to move, and press Escape to close.',
 } as const
 
 export default common

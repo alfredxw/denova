@@ -40,7 +40,7 @@ describe('MessageItem streaming Markdown', () => {
           projectId="project-message"
           message={{
             role: 'assistant',
-            content: '[参考资料](https://example.com/docs)\n\n[危险链接](javascript:alert(1))\n\n![封面](assets/image/generated/cover.png)',
+            content: '[参考资料](https://example.com/docs)\n\n[危险链接](javascript:alert(1))\n\n![封面](assets/illustrations/坠碑夜/cover.png)',
           }}
         />
       </>,
@@ -50,7 +50,7 @@ describe('MessageItem streaming Markdown', () => {
     expect(container.querySelector('a[href^="javascript:"]')).not.toBeInTheDocument()
     expect(container.querySelector('img[alt="封面"]')).toHaveAttribute(
       'src',
-      '/api/projects/project-message/files/asset?path=assets%2Fimage%2Fgenerated%2Fcover.png',
+      '/api/projects/project-message/files/asset?path=assets%2Fillustrations%2F%E5%9D%A0%E7%A2%91%E5%A4%9C%2Fcover.png',
     )
   })
 
