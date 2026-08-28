@@ -2324,6 +2324,38 @@ html[data-nova-motion="off"] .nova-change-review-layer {
   margin: 1em 0;
 }
 
+/* Streamdown supplies its own block and list spacing. Keep the chat rhythm
+   compact instead of stacking those defaults with Denova's reading styles. */
+.chat-agent-message .nova-streamdown p {
+  margin: 0.3em 0;
+}
+
+.chat-agent-message .nova-streamdown h1 {
+  margin: 0.8em 0 0.35em;
+}
+
+.chat-agent-message .nova-streamdown h2 {
+  margin: 0.72em 0 0.3em;
+}
+
+.chat-agent-message .nova-streamdown h3 {
+  margin: 0.62em 0 0.28em;
+}
+
+.chat-agent-message .nova-streamdown ul,
+.chat-agent-message .nova-streamdown ol {
+  margin: 0.45em 0;
+}
+
+.chat-agent-message .nova-streamdown li {
+  margin: 0.14em 0;
+  padding-block: 0;
+}
+
+.chat-agent-message .nova-streamdown hr {
+  margin: 0.8em 0;
+}
+
 .chat-agent-message code {
   border-radius: 4px;
   background: var(--nova-code-bg);

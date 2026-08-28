@@ -101,7 +101,7 @@ export const MarkdownContent = memo(function MarkdownContent({
   return (
     <Streamdown
       animated
-      className="min-w-0"
+      className="nova-streamdown min-w-0 space-y-2"
       components={components}
       controls={chatMarkdownControls}
       isAnimating={streaming}
