@@ -1,6 +1,6 @@
 const home = {
-  'home.authorPlaceholder': '作者（选填）',
-  'home.authorUnset': '未填写作者',
+  'home.authorPlaceholder': '作者（选填，留空则使用当前系统用户）',
+  'home.authorUnset': '佚名',
   'home.bookTitlePlaceholder': '书名（必填）',
   'home.close': '关闭书籍管理',
   'home.cover': '封面',

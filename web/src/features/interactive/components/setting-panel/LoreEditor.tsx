@@ -93,7 +93,13 @@ export function LoreEditor({
 
   return (
     <>
-      <ScrollArea className="min-h-0 flex-1" role="region" aria-label={t('settingPanel.lore.editorScrollArea')}>
+      {/* Mobile grows with content for page scrolling; desktop needs Radix's wrapper to inherit the pane height. */}
+      <ScrollArea
+        className="min-h-0 flex-1"
+        viewportProps={{ className: 'md:[&>div]:h-full' }}
+        role="region"
+        aria-label={t('settingPanel.lore.editorScrollArea')}
+      >
         <div className="flex min-h-full min-w-0 flex-col">
           <div className={topGridClassName}>
             {hasImage ? (

@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"os/user"
 	"strings"
 
 	"github.com/cloudwego/hertz/pkg/app"
@@ -44,6 +45,7 @@ func (h *Handlers) HandleCreateBook(ctx context.Context, c *app.RequestContext) 
 		writeErrorKey(c, consts.StatusBadRequest, "api.books.titleRequired")
 		return
 	}
+	req.Author = defaultBookAuthor(req.Author)
 	layered, err := h.app.SettingsService().Snapshot(appsettings.Global())
 	if err != nil {
 		writeError(c, consts.StatusInternalServerError, err.Error())
@@ -67,6 +69,26 @@ func (h *Handlers) HandleCreateBook(ctx context.Context, c *app.RequestContext) 
 		"workspace":  created.Workspace,
 		"book_meta":  created.Meta,
 	})
+}
+
+func defaultBookAuthor(author string) string {
+	current, _ := user.Current()
+	return resolveBookAuthor(author, current)
+}
+
+func resolveBookAuthor(author string, current *user.User) string {
+	if author = strings.TrimSpace(author); author != "" {
+		return author
+	}
+	if current != nil {
+		if name := strings.TrimSpace(current.Name); name != "" {
+			return name
+		}
+		if username := strings.TrimSpace(current.Username); username != "" {
+			return username
+		}
+	}
+	return "User"
 }
 
 // HandleBookCover GET /api/books/cover?path=... — 读取指定书籍固定封面。

@@ -1,6 +1,6 @@
 const home = {
-  'home.authorPlaceholder': 'Author (optional)',
-  'home.authorUnset': 'No author',
+  'home.authorPlaceholder': 'Author (optional; defaults to the current system user)',
+  'home.authorUnset': 'Anonymous',
   'home.bookTitlePlaceholder': 'Book title (required)',
   'home.close': 'Close Book Management',
   'home.cover': 'Cover',
