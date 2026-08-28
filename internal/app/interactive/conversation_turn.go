@@ -16,6 +16,7 @@ import (
 	"denova/internal/interactive"
 
 	agent "github.com/alfredxw/denova/agent"
+	"github.com/alfredxw/denova/agent/providers"
 )
 
 func (c *Conversation) PrepareInteractiveTurn(ctx context.Context, request interactive.TurnCheckRequest) (interactive.RuleResolution, error) {
@@ -369,7 +370,7 @@ func (c *Conversation) stageAssistantOutput(content, thinking string, metadata s
 	if c == nil || c.store == nil {
 		return fmt.Errorf("互动故事不存在")
 	}
-	if strings.TrimSpace(metadata.RunID) != "" {
+	if strings.TrimSpace(metadata.RunID) != "" || len(metadata.ProviderContinuation) != 0 {
 		c.mu.Lock()
 		c.assistantMetadata = metadata
 		c.mu.Unlock()
@@ -403,6 +404,7 @@ func (c *Conversation) stageAssistantOutput(content, thinking string, metadata s
 		AgentOperationID:     string(cycleIdentity.OperationID),
 		AgentCycle:           cycleIdentity.Cycle,
 		AgentCanonicalHash:   strings.TrimSpace(agentCanonicalHash),
+		ProviderContinuation: providers.ContinuationExtra(assistantMetadata.ProviderContinuation),
 		DisplayEvents:        withInteractiveNarrativeAnchor(c.DisplayEventsSnapshot()),
 		ModelContextMessages: c.modelContextMessagesSnapshot(),
 		RuleResolution:       c.ruleResolutionSnapshot(),
@@ -438,6 +440,7 @@ func (c *Conversation) CommitAgentCanonicalOutput(
 	if message == nil || message.Role != agent.Assistant || len(message.ToolCalls) != 0 {
 		return interactive.DomainCommitReceipt{}, fmt.Errorf("canonical game output requires a final assistant message")
 	}
+	metadata.ProviderContinuation = providers.ContinuationExtra(message.Extra)
 	if err := c.stageAssistantOutput(message.Content, message.ReasoningContent, metadata, agentCanonicalHash); err != nil {
 		return interactive.DomainCommitReceipt{}, err
 	}

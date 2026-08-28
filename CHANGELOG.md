@@ -50,8 +50,8 @@ Denova records only major user-visible features, important compatibility or data
 - The workbench now uses unified, customizable top-level navigation: Writing and Game are peer destinations, menus can be reordered or hidden, and Lore, Presets, and Versions are no longer duplicated by creative context. Presets show every type with fixed Shared, Game-only, or Writing-only labels.
 - 游戏剧情支持从任意已保存 AI 回复就地创建分支，并在导演控制台集中预览、切换和管理故事线。
 - Game stories can branch directly from any persisted AI reply, with branch preview, switching, and management consolidated in the Director Console.
-- Developer Mode 新增跨 Project 的 Trajectory 与 Harness 工作区，用于查看运行轨迹、导出诊断数据和优化 Agent 行为。
-- Developer Mode adds cross-Project Trajectory and Harness workspaces for run inspection, diagnostic export, and Agent optimization.
+- Developer Mode 新增跨 Project 的 Trajectory 与 Harness 工作区，用于查看运行轨迹、导出诊断数据和优化 Agent 行为；Harness 改动先保存为草稿，可按目标 Agent 调试、整体发布，并可随时停用自定义 State 而不删除数据。
+- Developer Mode adds cross-Project Trajectory and Harness workspaces for run inspection, diagnostic export, and Agent optimization. Harness changes are saved as a draft, can be debugged per target Agent, published together, and disabled without deleting custom State data.
 - 终端启动方式改为用户级可排序注册表，并新增 macOS/Linux 一键安装器和 Windows PowerShell 快速重启脚本。
 - Terminal launchers now use a user-level ordered registry, with a macOS/Linux installer and a native Windows PowerShell quick-restart script.
 
@@ -66,6 +66,8 @@ Denova records only major user-visible features, important compatibility or data
 
 ### Major fixes / 重要修复
 
+- 修复 OpenAI Responses 跨轮与重启后丢失加密推理上下文的问题；写作与游戏现在会安全保留并复用完整的 provider continuation。
+- Fixed encrypted reasoning context being lost across OpenAI Responses turns or restarts; Writing and Game now safely retain and reuse the complete provider continuation.
 - 修复 Provider Token 校准可能下调本地保守估算、导致长会话过晚清理上下文的问题；真实用量现在只会向上修正上下文压力。
 - Fixed provider token calibration lowering conservative local estimates and delaying context cleanup in long sessions; observed usage now only raises projected pressure.
 - 修复部分 v0.3.3 游戏故事升级后因旧上下文事件而无法打开的问题；迁移会先完整备份原始 JSONL，再原子重连有效历史。

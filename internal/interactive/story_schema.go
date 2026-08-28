@@ -15,6 +15,7 @@ const (
 	StoryEventTypeMeta                 = "meta"
 	StoryEventTypePlayerInput          = "player_input_accepted"
 	StoryEventTypeModelContextBatch    = "model_context_batch"
+	StoryEventTypeProviderContinuation = "turn_provider_continuation"
 	StoryEventTypeTurn                 = "turn"
 	StoryEventTypeStateDelta           = "state_delta"
 	StoryEventTypeBranch               = "branch"
@@ -35,8 +36,11 @@ const (
 // canonical story event rows. Envelope validation and the journal projection
 // both consult this table, so adding an event requires an explicit context decision.
 var persistedStoryEventModelContextChanges = map[string]bool{
-	StoryEventTypePlayerInput:          true,
-	StoryEventTypeModelContextBatch:    true,
+	StoryEventTypePlayerInput:       true,
+	StoryEventTypeModelContextBatch: true,
+	// The parent Turn already advances the context revision in the same atomic
+	// transaction. This side event only carries its opaque provider state.
+	StoryEventTypeProviderContinuation: false,
 	StoryEventTypeTurn:                 true,
 	StoryEventTypeStateDelta:           true,
 	StoryEventTypeBranch:               true,
@@ -109,6 +113,15 @@ func mapToStoryEventRecord(raw map[string]any) (StoryEventRecord, error) {
 			if err := validateStateDelta(*turn.StateDelta); err != nil {
 				return StoryEventRecord{}, fmt.Errorf("校验回合状态变化失败: %w", err)
 			}
+		}
+	}
+	if envelope.Type == StoryEventTypeProviderContinuation {
+		var event providerContinuationEvent
+		if err := mapToStruct(raw, &event); err != nil {
+			return StoryEventRecord{}, err
+		}
+		if _, err := normalizeProviderContinuationEvent(event); err != nil {
+			return StoryEventRecord{}, err
 		}
 	}
 	if envelope.Type == StoryEventTypeStateDelta {

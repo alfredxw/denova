@@ -70,7 +70,8 @@ func TestSessionConversationStagesAssistantUntilAuthorizedCycleCommit(t *testing
 }
 
 func TestSessionConversationCommitsOnlyProviderContinuationWithFinalAssistant(t *testing.T) {
-	store, err := session.NewStore(t.TempDir())
+	dir := t.TempDir()
+	store, err := session.NewStore(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,6 +111,23 @@ func TestSessionConversationCommitsOnlyProviderContinuationWithFinalAssistant(t 
 	matched, err := providers.DecodeContinuation(messages[0].Extra, config, &output)
 	if err != nil || !matched || len(output) != 1 {
 		t.Fatalf("committed continuation = %#v matched=%t err=%v", messages[0].Extra, matched, err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopenedStore, err := session.NewStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = reopenedStore.Close() })
+	reopened, err := reopenedStore.Get("provider-continuation")
+	if err != nil {
+		t.Fatal(err)
+	}
+	messages = reopened.GetEffectiveMessages()
+	matched, err = providers.DecodeContinuation(messages[0].Extra, config, &output)
+	if err != nil || !matched || len(messages) != 1 || len(output) != 1 {
+		t.Fatalf("reopened continuation = %#v matched=%t err=%v", messages, matched, err)
 	}
 }
 

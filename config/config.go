@@ -233,6 +233,7 @@ func loadGlobalConfig() *Config {
 	cfg := &Config{
 		AgentIdleTimeoutSeconds: -1, AgentToolResultLimitKB: -1, AgentToolParallelism: -1,
 		AgentScriptTimeoutSeconds: -1,
+		Labs:                      ResolvedLabs{HarnessStateEnabled: true},
 	}
 	for _, path := range globalConfigCandidates() {
 		data, err := os.ReadFile(path)
@@ -273,6 +274,7 @@ func settingsFromConfig(cfg *Config) Settings {
 		WebAccess:                settingsFromWebAccessConfig(cfg.WebAccess),
 		Labs: LabSettings{
 			DeveloperMode:                  boolPtr(cfg.Labs.DeveloperMode),
+			HarnessStateEnabled:            boolPtr(cfg.Labs.HarnessStateEnabled),
 			ContinualLearningSchedule:      boolPtr(cfg.Labs.ContinualLearningSchedule),
 			ContinualLearningIntervalHours: intPtr(cfg.Labs.ContinualLearningIntervalHours),
 			ContinualLearningTrajectoryCap: intPtr(cfg.Labs.ContinualLearningTrajectoryCap),
@@ -388,6 +390,7 @@ func Load() *Config {
 			GeneralSubAgents:            d.GeneralSubAgents,
 			SubAgents:                   d.SubAgents,
 			WebAccess:                   ResolveWebAccessSettings(d.WebAccess),
+			Labs:                        ResolveLabs(d.Labs),
 			SkillsDir:                   d.SkillsDir,
 			BackendPort:                 settingsInt(d.BackendPort, 8080),
 			FrontendPort:                settingsInt(d.FrontendPort, 5173),

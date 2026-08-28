@@ -48,6 +48,7 @@ func TestBuildAgentExposesGeneralAndConfiguredSubAgentsThroughTask(t *testing.T)
 		},
 	}
 	cfg.Labs.DeveloperMode = true
+	cfg.Labs.HarnessStateEnabled = true
 	manager, err := harnessstate.Open(cfg)
 	if err != nil {
 		t.Fatal(err)

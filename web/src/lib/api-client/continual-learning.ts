@@ -9,8 +9,10 @@ export interface HarnessStateFile {
 
 export interface HarnessStateSnapshot {
   revision: string
+  published_revision: string
   files: HarnessStateFile[]
   source: 'user' | 'builtin'
+  changed: boolean
   script_tools?: ScriptToolMetadata[]
   diagnostics?: HarnessStateDiagnostic[]
 }
@@ -57,6 +59,23 @@ export interface HarnessStateUpdateResult {
   changed: boolean
 }
 
+export interface HarnessStatePublishResult {
+  version?: HarnessStateVersion
+  draft_revision: string
+  published_revision: string
+  changed: boolean
+}
+
+export interface HarnessDebugResult {
+  revision: string
+  agent_kind: string
+  prompt_resource?: string
+  contexts: Array<{ id: string; purpose: string; resource: string }>
+  script_tools: ScriptToolMetadata[]
+  subagents: Array<{ id: string; name: string; description: string; resource: string }>
+  tool_descriptions: string[]
+}
+
 export interface ContinualLearningScheduleStatus {
   enabled: boolean
   interval_hours: number
@@ -79,6 +98,23 @@ export function updateHarnessState(request: {
     headers: jsonHeaders,
     body: JSON.stringify(request),
   })
+}
+
+export function publishHarnessState(request: {
+  draft_revision: string
+  published_revision: string
+  summary: string
+}): Promise<HarnessStatePublishResult> {
+  return requestJSON(`${ROOT}/publish`, {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify(request),
+  })
+}
+
+export function debugHarnessState(agentKind: string, revision: string): Promise<HarnessDebugResult> {
+  const params = new URLSearchParams({ agent_kind: agentKind, revision })
+  return requestJSON(`${ROOT}/debug?${params.toString()}`)
 }
 
 export function getHarnessStateVersions(limit = 100): Promise<HarnessStateVersion[]> {

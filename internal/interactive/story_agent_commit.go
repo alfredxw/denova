@@ -43,6 +43,11 @@ type DomainCommitReceipt struct {
 }
 
 func NewDomainCommitIntent(req AppendTurnWithStateRequest) (DomainCommitIntent, error) {
+	providerContinuation, err := normalizeProviderContinuation(req.ProviderContinuation)
+	if err != nil {
+		return DomainCommitIntent{}, err
+	}
+	req.ProviderContinuation = providerContinuation
 	identity := DomainCommitIdentity{
 		CommandID:   strings.TrimSpace(req.AgentCommandID),
 		OperationID: strings.TrimSpace(req.AgentOperationID),
@@ -84,6 +89,11 @@ func (s *Store) CommitDomainTurn(storyID string, intent DomainCommitIntent) (Dom
 // ambiguous post-rename filesystem error to reconcile the exact committed
 // turn without executing the cycle twice.
 func (s *Store) AppendTurnWithState(storyID string, req AppendTurnWithStateRequest) (TurnEvent, *StateDeltaEvent, error) {
+	providerContinuation, err := normalizeProviderContinuation(req.ProviderContinuation)
+	if err != nil {
+		return TurnEvent{}, nil, err
+	}
+	req.ProviderContinuation = providerContinuation
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	releaseStory, err := s.acquireStoryMutationLeaseLocked(storyID)
@@ -288,6 +298,9 @@ func (s *Store) AppendTurnWithState(storyID string, req AppendTurnWithStateReque
 	meta.Branches[branchID] = branch
 	meta.UpdatedAt = now
 	newEvents := []any{turn}
+	if len(req.ProviderContinuation) != 0 {
+		newEvents = append(newEvents, newProviderContinuationEvent(turn, req.ProviderContinuation))
+	}
 	if appendErr := s.appendStoryTransactionLocked(storyID, meta, newEvents...); appendErr != nil {
 		return TurnEvent{}, nil, appendErr
 	}
@@ -334,26 +347,27 @@ func agentTurnRequestHash(req AppendTurnWithStateRequest) (string, error) {
 	// accepted player input and batch ordinal. Excluding them keeps a staged Turn
 	// identity stable when the store atomically folds those batches into it.
 	payload := struct {
-		BranchID            string
-		ExpectedParentID    *string
-		ReplaceTurnID       string
-		User                string
-		Narrative           string
-		Thinking            string
-		RunID               string
-		AgentKind           string
-		DisplayEvents       []DisplayEvent
-		Ops                 []interactivestate.Op
-		ActorOps            []ActorStateOp
-		RuleResolution      *RuleResolution
-		TurnResult          *TurnResult
-		TerminalOutcome     *TerminalOutcome
-		StateSchemaProposal *ActorStateSchemaProposal
+		BranchID             string
+		ExpectedParentID     *string
+		ReplaceTurnID        string
+		User                 string
+		Narrative            string
+		Thinking             string
+		RunID                string
+		AgentKind            string
+		ProviderContinuation map[string]any
+		DisplayEvents        []DisplayEvent
+		Ops                  []interactivestate.Op
+		ActorOps             []ActorStateOp
+		RuleResolution       *RuleResolution
+		TurnResult           *TurnResult
+		TerminalOutcome      *TerminalOutcome
+		StateSchemaProposal  *ActorStateSchemaProposal
 	}{
 		BranchID: strings.TrimSpace(req.BranchID), ExpectedParentID: req.ExpectedParentID,
 		ReplaceTurnID: strings.TrimSpace(req.ReplaceTurnID),
 		User:          req.User, Narrative: req.Narrative, Thinking: req.Thinking,
-		RunID: req.RunID, AgentKind: req.AgentKind,
+		RunID: req.RunID, AgentKind: req.AgentKind, ProviderContinuation: req.ProviderContinuation,
 		DisplayEvents: req.DisplayEvents,
 		Ops:           req.Ops, ActorOps: req.ActorOps, RuleResolution: req.RuleResolution,
 		TurnResult: req.TurnResult, TerminalOutcome: req.TerminalOutcome,

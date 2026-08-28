@@ -35,6 +35,29 @@ func (h *Handlers) HandleContinualLearningStateUpdate(ctx context.Context, c *ap
 	writeJSON(c, consts.StatusOK, result)
 }
 
+func (h *Handlers) HandleContinualLearningPublish(ctx context.Context, c *app.RequestContext) {
+	var request continuallearningapp.StatePublishRequest
+	if err := decodeStrictJSONRequest(c.Request.Body(), &request); err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidBody")
+		return
+	}
+	result, err := h.app.ContinualLearning().Publish(ctx, request)
+	if err != nil {
+		writeContinualLearningError(c, err)
+		return
+	}
+	writeJSON(c, consts.StatusOK, result)
+}
+
+func (h *Handlers) HandleContinualLearningDebug(ctx context.Context, c *app.RequestContext) {
+	result, err := h.app.ContinualLearning().Debug(ctx, c.Query("agent_kind"), c.Query("revision"))
+	if err != nil {
+		writeContinualLearningError(c, err)
+		return
+	}
+	writeJSON(c, consts.StatusOK, result)
+}
+
 func (h *Handlers) HandleContinualLearningVersions(ctx context.Context, c *app.RequestContext) {
 	limit, ok := optionalPositiveLimit(c, 100)
 	if !ok {

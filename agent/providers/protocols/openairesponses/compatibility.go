@@ -25,6 +25,18 @@ const (
 	ReasoningSummaryAuto ReasoningSummary = "auto"
 )
 
+// ReasoningContext controls how much prior reasoning the provider may reuse.
+// Omit remains the compatible-endpoint default because not every Responses
+// dialect implements this OpenAI reasoning option.
+type ReasoningContext string
+
+const (
+	ReasoningContextOmit        ReasoningContext = "omit"
+	ReasoningContextAuto        ReasoningContext = "auto"
+	ReasoningContextCurrentTurn ReasoningContext = "current_turn"
+	ReasoningContextAllTurns    ReasoningContext = "all_turns"
+)
+
 // Compatibility describes only Responses-dialect traits. Provider identity is
 // deliberately absent so custom endpoints can reuse the same behavior.
 type Compatibility struct {
@@ -32,6 +44,7 @@ type Compatibility struct {
 	IncludeEncryptedReasoning bool              `json:"include_encrypted_reasoning,omitempty"`
 	SupportsReasoningEffort   *bool             `json:"supports_reasoning_effort,omitempty"`
 	EffortMap                 map[string]string `json:"effort_map,omitempty"`
+	ReasoningContext          ReasoningContext  `json:"reasoning_context,omitempty"`
 	ReasoningSummary          ReasoningSummary  `json:"reasoning_summary,omitempty"`
 	SupportsToolChoice        *bool             `json:"supports_tool_choice,omitempty"`
 	ExtraBody                 map[string]any    `json:"extra_body,omitempty"`
@@ -57,6 +70,14 @@ func resolveCompatibility(config providers.ModelConfig) (Compatibility, error) {
 	case ReasoningSummaryOmit, ReasoningSummaryAuto:
 	default:
 		return Compatibility{}, fmt.Errorf("openai responses compatibility: unsupported reasoning summary %q", compatibility.ReasoningSummary)
+	}
+	if compatibility.ReasoningContext == "" {
+		compatibility.ReasoningContext = ReasoningContextOmit
+	}
+	switch compatibility.ReasoningContext {
+	case ReasoningContextOmit, ReasoningContextAuto, ReasoningContextCurrentTurn, ReasoningContextAllTurns:
+	default:
+		return Compatibility{}, fmt.Errorf("openai responses compatibility: unsupported reasoning context %q", compatibility.ReasoningContext)
 	}
 	if compatibility.SupportsReasoningEffort == nil {
 		compatibility.SupportsReasoningEffort = boolPointer(true)

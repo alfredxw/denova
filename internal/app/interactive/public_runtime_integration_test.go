@@ -2,6 +2,7 @@ package interactiveapp
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -18,6 +19,7 @@ import (
 
 	agent "github.com/alfredxw/denova/agent"
 	agentpermission "github.com/alfredxw/denova/agent/permission"
+	"github.com/alfredxw/denova/agent/providers"
 )
 
 type publicGameCommitModel struct{ narrative string }
@@ -60,9 +62,10 @@ func (model *publicGameSequenceModel) response() (*agent.Message, error) {
 }
 
 type publicGameHistoryModel struct {
-	mu        sync.Mutex
-	narrative string
-	inputs    [][]*agent.Message
+	mu           sync.Mutex
+	narrative    string
+	continuation map[string]any
+	inputs       [][]*agent.Message
 }
 
 func (model *publicGameHistoryModel) Generate(_ context.Context, messages []*agent.Message, _ ...agent.ModelOption) (*agent.Message, error) {
@@ -81,7 +84,9 @@ func (model *publicGameHistoryModel) response(messages []*agent.Message) *agent.
 		cloned[index] = agent.CloneMessage(message)
 	}
 	model.inputs = append(model.inputs, cloned)
-	return agent.AssistantMessage(model.narrative, nil)
+	response := agent.AssistantMessage(model.narrative, nil)
+	response.Extra = providers.ContinuationExtra(model.continuation)
+	return response
 }
 
 func (model *publicGameHistoryModel) lastInput(t *testing.T) []*agent.Message {
@@ -382,6 +387,63 @@ func TestGameCanonicalTranscriptRetainsRichToolHistoryOutsideModelVisibilityPoli
 	if !containsMessageContent(visibleModel.lastInput(t), rich) {
 		t.Fatal("re-enabled Game tool-context policy could not recover rich history from public Agent raw transcript")
 	}
+}
+
+func TestGameCanonicalTranscriptRestoresProviderContinuationAfterColdRestart(t *testing.T) {
+	ctx := context.Background()
+	workspace := t.TempDir()
+	store := interactive.NewStore(workspace)
+	story, err := store.CreateStory(interactive.CreateStoryRequest{Title: "cold provider continuation", StoryTellerID: "classic"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	modelConfig := providers.ModelConfig{
+		Provider: providers.ProviderOpenAI, Protocol: providers.ProtocolOpenAIResponses,
+		Model: "gpt-5.6", BaseURL: "https://api.openai.com/v1",
+	}
+	continuation, err := providers.NewContinuation(modelConfig, []json.RawMessage{
+		json.RawMessage(`{"id":"reasoning_1","type":"reasoning","encrypted_content":"cold-encrypted-state","summary":[]}`),
+		json.RawMessage(`{"id":"message_1","type":"message","status":"completed","role":"assistant","phase":"final_answer","content":[{"type":"output_text","text":"第一轮。","annotations":[]}]}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile := publicGameNoopProfile(workspace, story.ID)
+	newRuntime := func(dataDir string) *agentexecution.Runtime {
+		runtime, runtimeErr := agentexecution.NewAgentRuntime(ctx, dataDir,
+			agentexecution.WithProfiles(profile),
+			agentexecution.WithToolMutationApplier(func(context.Context, agenttoolruntime.CommittedToolMutation) error { return nil }),
+		)
+		if runtimeErr != nil {
+			t.Fatal(runtimeErr)
+		}
+		return runtime
+	}
+	firstRuntime := newRuntime(t.TempDir())
+	firstModel := &publicGameHistoryModel{
+		narrative: "第一轮。", continuation: map[string]any{providers.ExtraKeyContinuation: continuation},
+	}
+	runPublicGameTurn(t, firstRuntime, store, story.ID, "main", workspace, nil, firstModel, nil, nil, "game-provider-first", "开始")
+	if err := firstRuntime.Close(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	secondRuntime := newRuntime(t.TempDir())
+	t.Cleanup(func() { _ = secondRuntime.Close(context.Background()) })
+	secondModel := &publicGameHistoryModel{narrative: "第二轮。"}
+	runPublicGameTurn(t, secondRuntime, store, story.ID, "main", workspace, nil, secondModel, nil, nil, "game-provider-second", "继续")
+	for _, message := range secondModel.lastInput(t) {
+		if message == nil || message.Role != agent.Assistant || message.Content != firstModel.narrative {
+			continue
+		}
+		var items []json.RawMessage
+		matched, decodeErr := providers.DecodeContinuation(message.Extra, modelConfig, &items)
+		if decodeErr != nil || !matched || len(items) != 2 || !strings.Contains(string(items[0]), "cold-encrypted-state") {
+			t.Fatalf("cold Game continuation = %#v matched=%t err=%v", items, matched, decodeErr)
+		}
+		return
+	}
+	t.Fatal("cold Game model input omitted the prior assistant continuation")
 }
 
 func TestGamePublicCleanupCompactionRemovalAndColdReopenRestoreRichHistory(t *testing.T) {

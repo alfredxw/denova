@@ -24,7 +24,7 @@ func TestLoadRejectsInvalidUserContributionWithoutFailingAgentBuild(t *testing.T
 	if err := os.WriteFile(filepath.Join(stateRoot, "prompts", "general.md"), []byte("must not apply partially"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cfg := &config.Config{DenovaDir: dataDir, Labs: config.ResolvedLabs{DeveloperMode: true}}
+	cfg := &config.Config{DenovaDir: dataDir, Labs: config.ResolvedLabs{DeveloperMode: true, HarnessStateEnabled: true}}
 
 	harness, err := Load(context.Background(), cfg)
 	if err != nil {

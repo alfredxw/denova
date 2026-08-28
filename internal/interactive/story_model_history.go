@@ -27,6 +27,7 @@ type StoryModelTurn struct {
 	User                        string
 	Attachments                 []agent.Attachment
 	Narrative                   string
+	ProviderContinuation        map[string]any
 	ResolvedPlayerInputContexts []ResolvedPlayerInputContext
 	ModelContextMessages        []ModelContextMessage
 }
@@ -153,6 +154,7 @@ func (s *Store) ReadModelHistory(storyID string, query StoryModelHistoryQuery) (
 		result.Turns = append(result.Turns, StoryModelTurn{
 			ID: turn.ID, BranchID: turn.BranchID, PlayerInputID: turn.PlayerInputID, Ts: turn.Ts, User: turn.User, Narrative: turn.Narrative,
 			Attachments:                 append([]agent.Attachment(nil), turn.Attachments...),
+			ProviderContinuation:        cloneProviderContinuation(turn.ProviderContinuation),
 			ResolvedPlayerInputContexts: resolved,
 			ModelContextMessages:        sanitizeModelContextMessages(turn.ModelContextMessages),
 		})

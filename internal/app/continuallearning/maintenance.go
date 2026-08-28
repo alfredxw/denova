@@ -67,7 +67,7 @@ func maintenanceMessage(request Request) string {
 %s
 
 [Task]
-Evaluate recurring failures and durable user preferences. Inspect the relevant trajectory resources and current Harness State. When a minimal reusable improvement is justified, edit the live Project workspace with ordinary file tools. Then inspect harness://state/current and repair every diagnostic. Never copy project content, complete trajectories, secrets, or private reasoning into State.
+Evaluate recurring failures and durable user preferences. Inspect the relevant trajectory resources and current Harness Draft. When a minimal reusable improvement is justified, edit the Draft workspace with ordinary file tools. Then inspect harness://state/current and repair every diagnostic. Do not publish; publication is an explicit user action. Never copy project content, complete trajectories, secrets, or private reasoning into State.
 
 [User Instruction]
 %s`, normalizeTrigger(request.Trigger), evidenceScope, strings.TrimSpace(request.Instruction)))

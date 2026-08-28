@@ -240,6 +240,9 @@ func (projection *storyJournalProjection) applyEvent(cursor conversationjournal.
 			return err
 		}
 		projection.rememberCommit(cursor, StoryEventTypeModelContextBatch, normalized.ID, normalized.BranchID, normalized.AgentCommandID, normalized.AgentOperationID, normalized.AgentCycle, normalized.BatchHash, "")
+	case StoryEventTypeProviderContinuation:
+		// The opaque state is joined to its Turn only by bounded model-history
+		// reads. It never changes branch state or public projections by itself.
 	case StoryEventTypeTurnStateRevised:
 		var revision TurnStateRevisedEvent
 		if err := mapToStruct(record.Raw, &revision); err != nil {

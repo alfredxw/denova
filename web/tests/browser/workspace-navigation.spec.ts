@@ -1,13 +1,13 @@
 import { expect, test } from '@playwright/test'
 import { createAndOpenBook } from '../support/api'
 
-test('keeps exactly one primary destination active while switching Writing, Game, and Lore', async ({ page, request }) => {
+test('keeps exactly one primary destination active across the normal workbench routes', async ({ page, request }) => {
   await createAndOpenBook(request, 'Browser Navigation Book')
   await page.goto('/')
 
   const sidebar = page.getByLabel('工作台侧边栏')
   await expect(sidebar).toBeVisible()
-  for (const destination of ['写作', '游戏', '资料库']) {
+  for (const destination of ['写作', '游戏', '资料库', '方案预设', '工作台', '书籍管理', '版本管理', 'Skills', 'Agents', '自动化']) {
     await sidebar.getByRole('button', { name: destination, exact: true }).click()
     await expect(sidebar.locator('[aria-current="page"]')).toHaveCount(1)
     await expect(sidebar.getByRole('button', { name: destination, exact: true })).toHaveAttribute('aria-current', 'page')

@@ -789,6 +789,7 @@ func withResolvedLabs(settings Settings) Settings {
 	labs := ResolveLabs(settings.Labs)
 	settings.Labs = LabSettings{
 		DeveloperMode:                  boolPtr(labs.DeveloperMode),
+		HarnessStateEnabled:            boolPtr(labs.HarnessStateEnabled),
 		ContinualLearningSchedule:      boolPtr(labs.ContinualLearningSchedule),
 		ContinualLearningIntervalHours: intPtr(labs.ContinualLearningIntervalHours),
 		ContinualLearningTrajectoryCap: intPtr(labs.ContinualLearningTrajectoryCap),

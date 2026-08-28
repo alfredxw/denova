@@ -6,6 +6,7 @@ import (
 	"denova/internal/agents/toolresult"
 	"fmt"
 	agent "github.com/alfredxw/denova/agent"
+	"github.com/alfredxw/denova/agent/providers"
 	"strings"
 
 	agents "denova/internal/agents"
@@ -217,7 +218,9 @@ func projectInteractiveCompletedContext(
 		start := len(raw)
 		raw = append(raw, agent.UserMessageWithAttachments(turn.User, turn.Attachments))
 		raw = append(raw, settledTurnToolContextMessages(turn.ModelContextMessages)...)
-		raw = append(raw, agents.AssistantMessage(turn.Narrative, nil))
+		assistant := agents.AssistantMessage(turn.Narrative, nil)
+		assistant.Extra = providers.ContinuationExtra(turn.ProviderContinuation)
+		raw = append(raw, assistant)
 		turnSpans[index] = messageSpan{start: start, end: len(raw)}
 	}
 	checkpoint := append([]*agents.Message(nil), raw[:checkpointCount]...)

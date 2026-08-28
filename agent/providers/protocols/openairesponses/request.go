@@ -317,6 +317,9 @@ func requestToolChoice(choice *agent.ToolChoice, toolCount int, supported bool) 
 }
 
 func applyThinkingLevel(params *responses.ResponseNewParams, compatibility Compatibility, level providers.ThinkingLevel) {
+	if compatibility.ReasoningContext != ReasoningContextOmit {
+		params.Reasoning.Context = shared.ReasoningContext(compatibility.ReasoningContext)
+	}
 	effort, ok := compatibility.mappedEffort(level)
 	if !ok {
 		return

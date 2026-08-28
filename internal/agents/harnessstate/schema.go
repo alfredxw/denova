@@ -21,11 +21,12 @@ import (
 )
 
 const (
-	stateDirectoryName = "state"
-	toolsFilePath      = "tools.toml"
+	stateDirectoryName          = "state"
+	publishedStateDirectoryName = "state-published"
+	toolsFilePath               = "tools.toml"
 )
 
-// Harness is the complete contribution produced from the live State
+// Harness is the complete contribution produced from one State snapshot
 // directory. Maps and slices are private so callers cannot mutate one Agent
 // build after it has been admitted.
 type Harness struct {
@@ -166,6 +167,16 @@ func Open(cfg *config.Config) (*Manager, error) {
 }
 
 func OpenWithConfigSource(source ConfigSource) (*Manager, error) {
+	return openWithConfigSource(source, stateDirectoryName, "harness-state")
+}
+
+// OpenPublishedWithConfigSource opens the immutable runtime-facing Harness
+// State. The editable workspace remains owned by OpenWithConfigSource.
+func OpenPublishedWithConfigSource(source ConfigSource) (*Manager, error) {
+	return openWithConfigSource(source, publishedStateDirectoryName, "harness-state-published")
+}
+
+func openWithConfigSource(source ConfigSource, directoryName, runtimeDirectoryName string) (*Manager, error) {
 	if source == nil {
 		return nil, fmt.Errorf("open Harness State: config source is nil")
 	}
@@ -179,8 +190,8 @@ func OpenWithConfigSource(source ConfigSource) (*Manager, error) {
 	}
 	manager := &Manager{configSource: source}
 	store, err := agentstate.Open(agentstate.Options{
-		Root:        filepath.Join(dataDir, stateDirectoryName),
-		RuntimeRoot: filepath.Join(dataDir, "runtime", "harness-state"),
+		Root:        filepath.Join(dataDir, directoryName),
+		RuntimeRoot: filepath.Join(dataDir, "runtime", runtimeDirectoryName),
 		Validator:   agentstate.ValidatorFunc(manager.validate),
 	})
 	if err != nil {
@@ -234,6 +245,20 @@ func (m *Manager) ValidatedSnapshot(ctx context.Context) (agentstate.Snapshot, e
 	return snapshot, err
 }
 
+// ValidatedAtRevision returns one immutable validated Harness only when the
+// editable snapshot still matches the caller's optimistic concurrency token.
+// Debug and publish therefore cannot silently consume a newer Agent edit.
+func (m *Manager) ValidatedAtRevision(ctx context.Context, expected string) (agentstate.Snapshot, Harness, error) {
+	snapshot, harness, err := m.readValidated(ctx)
+	if err != nil {
+		return agentstate.Snapshot{}, Harness{}, err
+	}
+	if expected = strings.TrimSpace(expected); expected != "" && snapshot.Revision != expected {
+		return agentstate.Snapshot{}, Harness{}, fmt.Errorf("%w: expected=%s current=%s", agentstate.ErrConflict, expected, snapshot.Revision)
+	}
+	return snapshot, harness, nil
+}
+
 func (m *Manager) readValidated(ctx context.Context) (agentstate.Snapshot, Harness, error) {
 	if m == nil || m.store == nil {
 		return agentstate.Snapshot{}, Harness{}, fmt.Errorf("Harness State manager is unavailable")
@@ -256,9 +281,9 @@ func (m *Manager) Validate(ctx context.Context) error {
 	return err
 }
 
-// Load opens the live user State directory and applies it only when the whole
-// snapshot is valid. Invalid user State is rejected as one contribution so a
-// malformed edit cannot prevent the base Agent from being built.
+// Load opens the runtime-facing Published State and applies it only when the
+// whole snapshot is valid. Invalid user State is rejected as one contribution
+// so a malformed edit cannot prevent the base Agent from being built.
 func Load(ctx context.Context, cfg *config.Config) (Harness, error) {
 	if cfg == nil {
 		return Harness{}, fmt.Errorf("load Harness State: config is nil")
@@ -266,10 +291,26 @@ func Load(ctx context.Context, cfg *config.Config) (Harness, error) {
 	if !cfg.Labs.DeveloperMode {
 		return emptyHarness(), nil
 	}
+	if !cfg.Labs.HarnessStateEnabled {
+		slog.DebugContext(ctx, "[harness-state] custom Harness State is disabled; using the built-in Agent composition")
+		return emptyHarness(), nil
+	}
 	if strings.TrimSpace(cfg.DenovaDir) == "" && strings.TrimSpace(cfg.NovaDir) == "" {
 		return emptyHarness(), nil
 	}
-	manager, err := Open(cfg)
+	ready, err := PublishedReady(cfg)
+	if err != nil {
+		return Harness{}, err
+	}
+	var manager *Manager
+	if ready {
+		manager, err = OpenPublishedWithConfigSource(func() *config.Config { return cfg })
+	} else {
+		// Before the explicit publication boundary is initialized, the released
+		// v0.3.3 live State remains authoritative. The application service seeds
+		// Published State and records the marker before serving management APIs.
+		manager, err = Open(cfg)
+	}
 	if err != nil {
 		return Harness{}, err
 	}

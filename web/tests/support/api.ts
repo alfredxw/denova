@@ -9,6 +9,11 @@ export interface E2EStory {
   id: string
 }
 
+export interface E2EStoryTurn {
+  user?: string
+  narrative?: string
+}
+
 async function expectSuccessful(response: APIResponse): Promise<void> {
   const failureDetails = response.ok() ? undefined : await response.text()
   expect(response.ok(), failureDetails).toBe(true)
@@ -50,6 +55,37 @@ export async function readProjectFile(
   return response.json()
 }
 
+export async function saveProjectFile(
+  request: APIRequestContext,
+  projectId: string,
+  path: string,
+  content: string,
+): Promise<void> {
+  const current = await readProjectFile(request, projectId, path)
+  const response = await request.put(`/api/projects/${encodeURIComponent(projectId)}/files/file`, {
+    data: { path, content, base_revision: current.revision },
+  })
+  await expectSuccessful(response)
+}
+
+export async function getCurrentWorkspace(
+  request: APIRequestContext,
+): Promise<{ workspace: string; project_id: string; has_state: boolean }> {
+  const response = await request.get('/api/workspace/current')
+  await expectSuccessful(response)
+  return response.json()
+}
+
+export async function getProjectLoreItems(
+  request: APIRequestContext,
+  projectId: string,
+): Promise<Array<{ id: string; name: string; content: string }>> {
+  const response = await request.get(`/api/projects/${encodeURIComponent(projectId)}/book/lore/items`)
+  await expectSuccessful(response)
+  const body = await response.json() as { items?: Array<{ id: string; name: string; content: string }> }
+  return body.items ?? []
+}
+
 export async function createStory(request: APIRequestContext, title: string): Promise<E2EStory> {
   const response = await request.post('/api/interactive/stories', {
     data: {
@@ -62,4 +98,26 @@ export async function createStory(request: APIRequestContext, title: string): Pr
   })
   await expectSuccessful(response)
   return response.json()
+}
+
+export async function getStorySnapshot(
+  request: APIRequestContext,
+  storyId: string,
+  branch = 'main',
+): Promise<{ turns: E2EStoryTurn[] }> {
+  const query = new URLSearchParams({ branch })
+  const response = await request.get(`/api/interactive/stories/${encodeURIComponent(storyId)}/snapshot?${query}`)
+  await expectSuccessful(response)
+  const body = await response.json() as { turns?: E2EStoryTurn[] }
+  return { turns: body.turns ?? [] }
+}
+
+export async function getStoryBranches(
+  request: APIRequestContext,
+  storyId: string,
+): Promise<Array<{ id: string; title: string; current?: boolean }>> {
+  const response = await request.get(`/api/interactive/stories/${encodeURIComponent(storyId)}/branches`)
+  await expectSuccessful(response)
+  const body = await response.json() as { branches?: Array<{ id: string; title: string; current?: boolean }> }
+  return body.branches ?? []
 }

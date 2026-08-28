@@ -26,6 +26,9 @@ func TestDefaultSettingsValues(t *testing.T) {
 	if s.AutoSaveEnabled == nil || *s.AutoSaveEnabled != true {
 		t.Fatalf("AutoSaveEnabled default")
 	}
+	if s.Labs.HarnessStateEnabled == nil || !*s.Labs.HarnessStateEnabled {
+		t.Fatalf("HarnessStateEnabled should default on")
+	}
 	if s.VersionTimedEnabled == nil || !*s.VersionTimedEnabled {
 		t.Fatalf("VersionTimedEnabled should default on")
 	}
@@ -664,6 +667,9 @@ func TestWithResolvedLabsNormalizesInheritedValues(t *testing.T) {
 	resolved := withResolvedLabs(Settings{Labs: LabSettings{ContinualLearningTrajectoryCap: &invalidCap}})
 	if got := resolved.Labs.ContinualLearningTrajectoryCap; got == nil || *got != DefaultContinualLearningTrajectoryCap {
 		t.Fatalf("inherited trajectory cap = %v, want %d", got, DefaultContinualLearningTrajectoryCap)
+	}
+	if got := resolved.Labs.HarnessStateEnabled; got == nil || !*got {
+		t.Fatalf("Harness State should default on: %v", got)
 	}
 }
 

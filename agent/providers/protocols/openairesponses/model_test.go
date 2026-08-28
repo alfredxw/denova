@@ -21,6 +21,7 @@ import (
 
 func TestApplyThinkingLevelCoversOpenAIResponsesEfforts(t *testing.T) {
 	compatibility, err := resolveCompatibility(providers.ModelConfig{ProtocolOptions: mustProtocolOptions(t, Compatibility{
+		ReasoningContext: ReasoningContextAllTurns,
 		ReasoningSummary: ReasoningSummaryAuto,
 	})})
 	if err != nil {
@@ -43,8 +44,9 @@ func TestApplyThinkingLevelCoversOpenAIResponsesEfforts(t *testing.T) {
 		t.Run(string(test.level), func(t *testing.T) {
 			params := responses.ResponseNewParams{}
 			applyThinkingLevel(&params, compatibility, test.level)
-			if params.Reasoning.Effort != test.wantEffort || params.Reasoning.Summary != test.wantSummary {
-				t.Fatalf("reasoning = %#v, want effort %q summary %q", params.Reasoning, test.wantEffort, test.wantSummary)
+			if params.Reasoning.Context != shared.ReasoningContextAllTurns ||
+				params.Reasoning.Effort != test.wantEffort || params.Reasoning.Summary != test.wantSummary {
+				t.Fatalf("reasoning = %#v, want context %q effort %q summary %q", params.Reasoning, shared.ReasoningContextAllTurns, test.wantEffort, test.wantSummary)
 			}
 		})
 	}
@@ -253,6 +255,7 @@ func TestGenerateMapsRequestResponseAndReplaysOutputItems(t *testing.T) {
 		ProtocolOptions: mustProtocolOptions(t, Compatibility{
 			Store:                     StoreModeFalse,
 			IncludeEncryptedReasoning: true,
+			ReasoningContext:          ReasoningContextAllTurns,
 			ReasoningSummary:          ReasoningSummaryAuto,
 		}),
 	}
@@ -335,7 +338,7 @@ func TestGenerateMapsRequestResponseAndReplaysOutputItems(t *testing.T) {
 		t.Fatalf("include = %#v", firstRequest["include"])
 	}
 	reasoning, _ := firstRequest["reasoning"].(map[string]any)
-	if reasoning["effort"] != "high" || reasoning["summary"] != "auto" {
+	if reasoning["context"] != "all_turns" || reasoning["effort"] != "high" || reasoning["summary"] != "auto" {
 		t.Fatalf("reasoning = %#v", reasoning)
 	}
 	textConfig, _ := firstRequest["text"].(map[string]any)

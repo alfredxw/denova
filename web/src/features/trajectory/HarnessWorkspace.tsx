@@ -22,6 +22,8 @@ export function HarnessWorkspace({ refreshToken }: HarnessWorkspaceProps) {
   })
   const inheritedScheduleEnabled = resolveInheritedLabBoolean(layered, 'continual_learning_schedule', false)
   const inheritedScheduleIntervalHours = resolveInheritedLabNumber(layered, 'continual_learning_interval_hours', 24, 1, 720)
+  const harnessStateEnabled = draft.labs?.harness_state_enabled
+    ?? resolveInheritedLabBoolean(layered, 'harness_state_enabled', true)
 
   const setLabField = <K extends keyof LabSettings>(key: K, value: LabSettings[K]) => {
     setDraft((current) => ({
@@ -39,6 +41,8 @@ export function HarnessWorkspace({ refreshToken }: HarnessWorkspaceProps) {
       {error ? <div className="shrink-0 border-b border-[var(--nova-border)] bg-red-500/5 px-4 py-2 text-xs text-red-400">{error}</div> : null}
       <ContinualLearningPage
         refreshToken={refreshToken}
+        harnessStateEnabled={harnessStateEnabled}
+        onHarnessStateEnabledChange={(enabled) => setLabField('harness_state_enabled', enabled)}
         scheduleSettings={{
           enabled: draft.labs?.continual_learning_schedule ?? null,
           inheritedEnabled: inheritedScheduleEnabled,

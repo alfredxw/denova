@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { FileCode2, FilePlus2, History, Plus, RotateCcw, Save, ShieldCheck, Trash2 } from 'lucide-react'
+import { Bug, FileCode2, FilePlus2, History, Plus, Rocket, RotateCcw, Save, ShieldCheck, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import {
@@ -8,6 +8,7 @@ import {
   getHarnessState,
   getHarnessStateVersionDiff,
   getHarnessStateVersions,
+  publishHarnessState,
   restoreHarnessStateVersion,
   updateHarnessState,
 } from '@/lib/api'
@@ -21,12 +22,14 @@ import { formatDateTime } from '@/i18n'
 import { AGENTS } from './agent-registry'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { VersionTimeline } from '@/features/versions/components/version-timeline'
 import type { VersionItem } from '@/features/versions/components/version-timeline'
 import { HarnessOptimizationSchedule } from './HarnessOptimizationSchedule'
 import type { HarnessOptimizationScheduleSettings } from './HarnessOptimizationSchedule'
 import { HarnessStateEditor } from './harness-state/HarnessStateEditor'
+import { HarnessDebugPanel } from './harness-state/HarnessDebugPanel'
 import { NewScriptToolDialog } from './harness-state/NewScriptToolDialog'
 import {
   DropdownMenu,
@@ -45,16 +48,23 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 
-type PendingAction = { kind: 'delete'; path: string } | { kind: 'restore'; version: HarnessStateVersion }
+type PendingAction =
+  | { kind: 'delete'; path: string }
+  | { kind: 'restore'; version: HarnessStateVersion }
+  | { kind: 'publish' }
 
 export type ContinualLearningScheduleSettings = HarnessOptimizationScheduleSettings
 
 export function ContinualLearningPage({
   refreshToken = 0,
+  harnessStateEnabled,
+  onHarnessStateEnabledChange,
   scheduleSettings,
   headerActions,
 }: {
   refreshToken?: number
+  harnessStateEnabled: boolean
+  onHarnessStateEnabledChange: (enabled: boolean) => void
   scheduleSettings: ContinualLearningScheduleSettings
   headerActions?: ReactNode
 }) {
@@ -195,6 +205,28 @@ export function ContinualLearningPage({
     }
   }
 
+  const publish = async () => {
+    if (!snapshot || saving || dirty) return
+    setSaving(true)
+    setError(null)
+    try {
+      const result = await publishHarnessState({
+        draft_revision: snapshot.revision,
+        published_revision: snapshot.published_revision,
+        summary: 'Publish Harness State',
+      })
+      toast.success(result.changed ? t('continualLearning.release.published') : t('continualLearning.release.noChanges'))
+      await load(selectedPath)
+    } catch (cause) {
+      const nextDiagnostics = diagnosticsFromError(cause)
+      if (nextDiagnostics.length > 0) setDiagnostics(nextDiagnostics)
+      setError(errorMessage(cause))
+    } finally {
+      setSaving(false)
+      setPendingAction(null)
+    }
+  }
+
   const showDiff = async (index: number) => {
     const current = versions[index]
     const previous = versions[index + 1]
@@ -254,6 +286,15 @@ export function ContinualLearningPage({
   const selectedScriptTool = snapshot?.script_tools?.find(tool => tool.resource === selectedPath)
   const selectedInvalid = diagnostics.some(diagnostic => diagnostic.path === selectedPath)
   const selectedStatus = selectedInvalid ? 'invalid' : dirty ? 'unsaved' : 'valid'
+  let harnessStateStatus = t('continualLearning.release.current')
+  let harnessStateStatusClass: string | undefined = 'text-[var(--nova-accent-green)]'
+  if (!harnessStateEnabled) {
+    harnessStateStatus = t('continualLearning.stateEnabled.disabled')
+    harnessStateStatusClass = undefined
+  } else if (snapshot?.changed) {
+    harnessStateStatus = t('continualLearning.release.unpublished')
+    harnessStateStatusClass = 'text-amber-500'
+  }
   const versionItems = useMemo<VersionItem[]>(() => versions.map((version) => ({
     id: version.id,
     title: version.summary,
@@ -261,25 +302,69 @@ export function ContinualLearningPage({
     createdAt: formatDateTime(version.created_at),
     changedPaths: [],
   })), [versions])
+
+  let confirmationTitle = t('continualLearning.history.restoreTitle')
+  let confirmationDescription = t('continualLearning.history.restoreDescription')
+  let confirmationAction = t('continualLearning.history.restore')
+  if (pendingAction?.kind === 'delete') {
+    confirmationTitle = t('continualLearning.deleteTitle')
+    confirmationDescription = t('continualLearning.deleteDescription', { path: pendingAction.path })
+    confirmationAction = t('continualLearning.delete')
+  } else if (pendingAction?.kind === 'publish') {
+    confirmationTitle = t('continualLearning.release.publishTitle')
+    confirmationDescription = t('continualLearning.release.publishDescription')
+    confirmationAction = t('continualLearning.release.publish')
+  }
+
+  const confirmPendingAction = () => {
+    if (pendingAction?.kind === 'delete') void deleteFile(pendingAction.path)
+    else if (pendingAction?.kind === 'publish') void publish()
+    else if (pendingAction?.kind === 'restore') void restoreVersion(pendingAction.version)
+  }
+
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--nova-bg)]">
       <header className="flex shrink-0 flex-wrap items-start gap-3 border-b border-[var(--nova-border)] px-4 py-3 sm:px-5">
-        <div className="min-w-0 flex-1">
+        <div className="min-w-64 flex-1">
           <div className="flex items-center gap-2">
             <h1 className="text-sm font-semibold text-[var(--nova-text)]">{t('continualLearning.title')}</h1>
             <Badge variant="outline" className="h-4 px-1.5 text-[9px] tracking-[0.12em]">LAB</Badge>
           </div>
           <p className="mt-1 max-w-2xl text-[11px] leading-4 text-[var(--nova-text-faint)]">{t('continualLearning.description')}</p>
         </div>
-        <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
-          <HarnessOptimizationSchedule status={schedule} settings={scheduleSettings} />
+        <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2">
+          <label className="flex items-center gap-2 text-[10px] text-[var(--nova-text-muted)]">
+            <span>{t('continualLearning.stateEnabled.label')}</span>
+            <Switch
+              checked={harnessStateEnabled}
+              onCheckedChange={onHarnessStateEnabledChange}
+              aria-label={t('continualLearning.stateEnabled.label')}
+            />
+          </label>
+          {snapshot ? (
+            <Badge variant="outline" className={harnessStateStatusClass}>
+              {harnessStateStatus}
+            </Badge>
+          ) : null}
+          <Button
+            type="button"
+            size="sm"
+            disabled={!snapshot?.changed || dirty || saving || diagnostics.length > 0}
+            onClick={() => setPendingAction({ kind: 'publish' })}
+          >
+            <Rocket />{t('continualLearning.release.publish')}
+          </Button>
           {headerActions}
+        </div>
+        <div className="basis-full">
+          <HarnessOptimizationSchedule status={schedule} settings={scheduleSettings} />
         </div>
       </header>
       {error && <div className="shrink-0 border-b border-[var(--nova-border)] bg-red-500/5 px-4 py-2 text-xs text-red-400">{error}</div>}
       <Tabs defaultValue="state" className="min-h-0 flex-1 gap-0">
         <TabsList variant="line" className="mx-4 h-10 shrink-0 sm:mx-5">
           <TabsTrigger value="state"><FileCode2 />{t('continualLearning.state')}</TabsTrigger>
+          <TabsTrigger value="debug"><Bug />{t('continualLearning.debug.tab')}</TabsTrigger>
           <TabsTrigger value="history"><History />{t('continualLearning.history')}</TabsTrigger>
         </TabsList>
         <TabsContent value="state" className="min-h-0 overflow-hidden border-t border-[var(--nova-border)]">
@@ -378,6 +463,9 @@ export function ContinualLearningPage({
             </div>
           )}
         </TabsContent>
+        <TabsContent value="debug" className="min-h-0 overflow-hidden border-t border-[var(--nova-border)]">
+          {snapshot ? <HarnessDebugPanel snapshot={snapshot} /> : null}
+        </TabsContent>
         <TabsContent value="history" className="min-h-0 overflow-hidden border-t border-[var(--nova-border)]">
           <div className="grid h-full min-h-0 md:grid-cols-[minmax(240px,34%)_minmax(0,1fr)]">
             <div className="min-h-0 overflow-y-auto border-b border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-3 md:border-r md:border-b-0">
@@ -405,19 +493,16 @@ export function ContinualLearningPage({
       <AlertDialog open={pendingAction !== null} onOpenChange={(open) => { if (!open) setPendingAction(null) }}>
         <AlertDialogContent size="sm">
           <AlertDialogHeader>
-            <AlertDialogTitle>{pendingAction?.kind === 'delete' ? t('continualLearning.deleteTitle') : t('continualLearning.history.restoreTitle')}</AlertDialogTitle>
-            <AlertDialogDescription>{pendingAction?.kind === 'delete' ? t('continualLearning.deleteDescription', { path: pendingAction.path }) : t('continualLearning.history.restoreDescription')}</AlertDialogDescription>
+            <AlertDialogTitle>{confirmationTitle}</AlertDialogTitle>
+            <AlertDialogDescription>{confirmationDescription}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
             <AlertDialogAction
               variant={pendingAction?.kind === 'delete' ? 'destructive' : 'default'}
-              onClick={() => {
-                if (pendingAction?.kind === 'delete') void deleteFile(pendingAction.path)
-                else if (pendingAction?.kind === 'restore') void restoreVersion(pendingAction.version)
-              }}
+              onClick={confirmPendingAction}
             >
-              {pendingAction?.kind === 'delete' ? t('continualLearning.delete') : t('continualLearning.history.restore')}
+              {confirmationAction}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

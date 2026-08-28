@@ -19,13 +19,14 @@ func (service *Service) AgentHostCapabilities(
 	agentKind string,
 ) (agents.AgentHostCapabilities, error) {
 	host := agents.AgentHostCapabilities{Interactive: true}
-	if cfg == nil || !cfg.Labs.DeveloperMode || !config.ResolveAgentTools(cfg, agentKind).Allows(config.AgentToolHarnessState) {
+	if cfg == nil || !cfg.Labs.DeveloperMode || !cfg.Labs.HarnessStateEnabled ||
+		!config.ResolveAgentTools(cfg, agentKind).Allows(config.AgentToolHarnessState) {
 		return host, nil
 	}
 	if _, err := service.requireEnabled(); err != nil {
 		return agents.AgentHostCapabilities{}, err
 	}
-	adapter, err := harnessstate.NewReadAdapter(service.manager)
+	adapter, err := harnessstate.NewReadAdapter(service.published)
 	if err != nil {
 		return agents.AgentHostCapabilities{}, err
 	}
@@ -37,21 +38,27 @@ func (service *Service) AgentHostCapabilities(
 	return host, nil
 }
 
-// HarnessProjectAgentHostCapabilities adds trajectory resources to the live
-// Harness Project while retaining the same read-only State inspection view.
+// HarnessProjectAgentHostCapabilities adds trajectory resources to the Draft
+// workspace and exposes that same Draft through harness://state/current.
 func (service *Service) HarnessProjectAgentHostCapabilities(
 	ctx context.Context,
 	cfg *config.Config,
 	agentKind string,
 ) (agents.AgentHostCapabilities, error) {
-	host, err := service.AgentHostCapabilities(ctx, cfg, agentKind)
-	if err != nil {
-		return agents.AgentHostCapabilities{}, err
-	}
+	host := agents.AgentHostCapabilities{Interactive: true}
 	runtime, err := service.requireEnabled()
 	if err != nil {
 		return agents.AgentHostCapabilities{}, err
 	}
+	stateAdapter, err := harnessstate.NewReadAdapter(service.manager)
+	if err != nil {
+		return agents.AgentHostCapabilities{}, err
+	}
+	stateBinding, err := producttools.NewReadAdapterBinding(config.AgentToolHarnessState, stateAdapter)
+	if err != nil {
+		return agents.AgentHostCapabilities{}, err
+	}
+	host.ReadAdapters = append(host.ReadAdapters, stateBinding)
 	adapter, err := trajectory.NewReadAdapter(trajectory.Catalog{
 		Sources:  service.host.TrajectorySources,
 		Outcomes: service.outcomes,

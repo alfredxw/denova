@@ -46,6 +46,7 @@ func providerPresets() ([]providers.ProviderPreset, error) {
 	openAIResponses, err := protocolOptions(openairesponses.Compatibility{
 		Store:                     openairesponses.StoreModeFalse,
 		IncludeEncryptedReasoning: true,
+		ReasoningContext:          openairesponses.ReasoningContextAllTurns,
 		ReasoningSummary:          openairesponses.ReasoningSummaryAuto,
 	})
 	if err != nil {

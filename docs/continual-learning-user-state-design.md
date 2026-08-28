@@ -1,11 +1,11 @@
 # Harness 优化 V1 设计
 
-> 状态：Superseded；当前 Harness 管理与运行语义以 [Script 工具与动态编排设计](dynamic-tool-orchestration-design.md) 为准
+> 状态：Superseded；当前 Harness 使用用户控制的全局 Draft / Published 边界，完整语义以 [Script 工具与动态编排设计](dynamic-tool-orchestration-design.md) 为准
 > 范围：仅 User State 与 Harness Optimization，不包含 Project State 和 Weight Learner
 
 ## 1. 结论
 
-本文保留早期 Harness 优化方案作为审计记录。当前实现不再使用 isolated draft 或 Run revision pin；Harness State 只有 current 内容，Agent 构建与恢复都读取最新 State。
+本文保留早期“每次 Optimizer Run 创建 isolated draft 并自动发布”的方案作为审计记录。当前实现不使用 per-Run isolated draft 或 Run revision pin；所有编辑进入一份全局 Draft，由用户按 Agent 调试后整体发布，Agent 构建与恢复只读取 Published State。
 
 ```mermaid
 flowchart LR
@@ -172,7 +172,7 @@ Return concise findings with evidence.
 - State content revision 参与 Prompt、Context、Tool composition identity，但时间、作者和 Git metadata 不进入模型。
 - State 校验与运行时物化读取当前应用配置快照；模型 profile、工具策略或注入预算在长驻进程中更新后，不会继续使用 Manager 初始化时的旧配置。
 - 同内容得到同 revision、稳定排序和相同前缀；State 实际变化才改变后续 Run。
-- Lab 关闭时 Harness State 返回空 contribution，不把保留在磁盘上的 State 注入普通 Agent。
+- Developer Mode 或用户级 `labs.harness_state_enabled` 关闭时，Harness State 返回空 contribution，不把保留在磁盘上的 Published State 注入普通 Agent；Draft、Published 与 Git 历史均保留，Harness 工作区仍可用于编辑、调试和发布。
 
 ## 6. Trajectory
 
@@ -238,6 +238,7 @@ Optimizer contract 明确禁止把 Project 私有正文、完整 trajectory、�
 ```toml
 [labs]
 developer_mode = true
+harness_state_enabled = true
 continual_learning_schedule = true
 continual_learning_interval_hours = 24
 continual_learning_trajectory_cap = 100

@@ -1,6 +1,6 @@
 // Package continuallearning owns Denova's user-level Harness State management
-// workflow. The live directory is authoritative; Git history, optimizer
-// execution, trajectory discovery, scheduling, and UI contracts live here.
+// workflow. It coordinates the editable Draft, runtime-facing Published State,
+// Git history, trajectory discovery, scheduling, and UI contracts.
 package continuallearning
 
 import (
@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"denova/config"
+	"denova/internal/agents/harnessstate"
 	"denova/internal/agents/trajectory"
 	apptask "denova/internal/app/task"
 
@@ -100,11 +101,13 @@ type ScriptToolSummary struct {
 }
 
 type StateSnapshot struct {
-	Revision    string              `json:"revision"`
-	Files       []StateFile         `json:"files"`
-	ScriptTools []ScriptToolSummary `json:"script_tools,omitempty"`
-	Diagnostics []StateDiagnostic   `json:"diagnostics,omitempty"`
-	Source      string              `json:"source"`
+	Revision          string              `json:"revision"`
+	PublishedRevision string              `json:"published_revision"`
+	Files             []StateFile         `json:"files"`
+	ScriptTools       []ScriptToolSummary `json:"script_tools,omitempty"`
+	Diagnostics       []StateDiagnostic   `json:"diagnostics,omitempty"`
+	Source            string              `json:"source"`
+	Changed           bool                `json:"changed"`
 }
 
 const (
@@ -122,4 +125,22 @@ type StateUpdateRequest struct {
 	BaseRevision string        `json:"base_revision"`
 	Summary      string        `json:"summary"`
 	Changes      []StateChange `json:"changes"`
+}
+
+type StatePublishRequest struct {
+	DraftRevision     string `json:"draft_revision"`
+	PublishedRevision string `json:"published_revision"`
+	Summary           string `json:"summary"`
+}
+
+type StatePublishResult struct {
+	Version           *StateVersion `json:"version,omitempty"`
+	DraftRevision     string        `json:"draft_revision"`
+	PublishedRevision string        `json:"published_revision"`
+	Changed           bool          `json:"changed"`
+}
+
+type StateDebugResult struct {
+	Revision string `json:"revision"`
+	harnessstate.AgentDebugProjection
 }

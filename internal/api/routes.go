@@ -25,6 +25,8 @@ func (s *Server) registerRoutes(h *hertzserver.Hertz) {
 		learning := api.Group("/continual-learning")
 		learning.GET("/state", apiHandlers.HandleContinualLearningState)
 		learning.PUT("/state", apiHandlers.HandleContinualLearningStateUpdate)
+		learning.POST("/publish", apiHandlers.HandleContinualLearningPublish)
+		learning.GET("/debug", apiHandlers.HandleContinualLearningDebug)
 		learning.GET("/versions", apiHandlers.HandleContinualLearningVersions)
 		learning.GET("/versions/diff", apiHandlers.HandleContinualLearningVersionDiff)
 		learning.POST("/versions/:id/restore", apiHandlers.HandleContinualLearningVersionRestore)

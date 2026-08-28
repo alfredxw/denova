@@ -3,16 +3,79 @@ package interactiveapp
 import (
 	"context"
 	"denova/internal/agents/toolresult"
+	"encoding/json"
 	"reflect"
 	"strings"
 	"testing"
 
 	agent "github.com/alfredxw/denova/agent"
+	"github.com/alfredxw/denova/agent/providers"
 
 	agents "denova/internal/agents"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/interactive"
 )
+
+func TestInteractiveProviderContinuationSurvivesTurnCommitAndReload(t *testing.T) {
+	workspace := t.TempDir()
+	store := interactive.NewStore(workspace)
+	story, err := store.CreateStory(interactive.CreateStoryRequest{Title: "provider continuation", StoryTellerID: "classic"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	modelConfig := providers.ModelConfig{
+		Provider: providers.ProviderOpenAI, Protocol: providers.ProtocolOpenAIResponses,
+		Model: "gpt-5.6", BaseURL: "https://api.openai.com/v1",
+	}
+	continuation, err := providers.NewContinuation(modelConfig, []json.RawMessage{
+		json.RawMessage(`{"id":"reasoning_1","type":"reasoning","encrypted_content":"encrypted-state","summary":[]}`),
+		json.RawMessage(`{"id":"message_1","type":"message","status":"completed","role":"assistant","phase":"final_answer","content":[{"type":"output_text","text":"门开了。","annotations":[]}]}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = store.AppendTurnWithState(story.ID, interactive.AppendTurnWithStateRequest{
+		BranchID: "main", User: "开门", Narrative: "门开了。",
+		ProviderContinuation: map[string]any{providers.ExtraKeyContinuation: continuation},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	reloaded := interactive.NewStore(workspace)
+	history, err := reloaded.ReadModelHistory(story.ID, interactive.StoryModelHistoryQuery{
+		BranchID: "main", StartTurn: 0, EndTurn: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	projection, err := BuildModelContextProjection(history, nil, interactive.Snapshot{}, toolresult.ContextPolicy{}, agentrun.CycleIdentity{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(projection.Messages) != 2 || projection.Messages[1].Role != agents.RoleAssistant {
+		t.Fatalf("projected messages = %#v, want user and assistant", projection.Messages)
+	}
+	var items []json.RawMessage
+	matched, err := providers.DecodeContinuation(projection.Messages[1].Extra, modelConfig, &items)
+	if err != nil || !matched || len(items) != 2 {
+		t.Fatalf("reloaded continuation items = %#v matched=%t err=%v", items, matched, err)
+	}
+	if !strings.Contains(string(items[0]), "encrypted-state") || !strings.Contains(string(items[1]), `"phase":"final_answer"`) {
+		t.Fatalf("reloaded continuation changed Responses output items: %s", items)
+	}
+	snapshot, err := reloaded.Snapshot(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicJSON, err := json.Marshal(snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(publicJSON), "encrypted-state") || strings.Contains(string(publicJSON), providers.ExtraKeyContinuation) {
+		t.Fatalf("opaque provider continuation leaked into public Game snapshot: %s", publicJSON)
+	}
+}
 
 func TestInteractiveToolResultSummaryRoundTripsThroughStorySchema(t *testing.T) {
 	message := &agents.Message{

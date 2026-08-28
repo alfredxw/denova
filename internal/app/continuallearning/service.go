@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"path/filepath"
 	"strings"
@@ -25,6 +26,7 @@ type Service struct {
 	initialized bool
 	dataDir     string
 	manager     *harnessstate.Manager
+	published   *harnessstate.Manager
 	history     *stateHistory
 	outcomes    *trajectory.OutcomeStore
 
@@ -62,6 +64,13 @@ func (service *Service) initialize() error {
 	if err != nil {
 		return err
 	}
+	published, err := harnessstate.OpenPublishedWithConfigSource(func() *config.Config {
+		current := service.host.Runtime().Config
+		return &current
+	})
+	if err != nil {
+		return err
+	}
 	history, err := openStateHistory(
 		manager.Root(),
 		filepath.Join(dataDir, "runtime", "harness-state-history.lock"),
@@ -75,8 +84,12 @@ func (service *Service) initialize() error {
 	}
 	service.dataDir = dataDir
 	service.manager = manager
+	service.published = published
 	service.history = history
 	service.outcomes = outcomes
+	if err := service.initializePublishedState(context.Background(), &runtime.Config); err != nil {
+		return err
+	}
 	service.initialized = true
 	return nil
 }
@@ -103,12 +116,26 @@ func (service *Service) State(ctx context.Context) (StateSnapshot, error) {
 	if err != nil {
 		return StateSnapshot{}, err
 	}
+	published, err := service.published.Inspect(ctx)
+	if err != nil {
+		return StateSnapshot{}, err
+	}
+	if len(published.Diagnostics) != 0 {
+		// Keep the management surface available when a later configuration
+		// change makes the immutable Published snapshot invalid. Runtime loading
+		// still rejects that contribution, while the user can repair the Draft
+		// and publish a valid replacement.
+		slog.WarnContext(ctx, "[continual-learning] Published Harness State is invalid under the current configuration",
+			"revision", published.Snapshot.Revision, "diagnostics", len(published.Diagnostics))
+	}
 	result := StateSnapshot{
-		Revision:    inspection.Snapshot.Revision,
-		Files:       make([]StateFile, 0, len(inspection.Snapshot.Files())),
-		ScriptTools: scriptToolSummaries(inspection.Harness.ScriptToolMetadata()),
-		Diagnostics: append([]StateDiagnostic(nil), inspection.Diagnostics...),
-		Source:      StateSourceUser,
+		Revision:          inspection.Snapshot.Revision,
+		PublishedRevision: published.Snapshot.Revision,
+		Files:             make([]StateFile, 0, len(inspection.Snapshot.Files())),
+		ScriptTools:       scriptToolSummaries(inspection.Harness.ScriptToolMetadata()),
+		Diagnostics:       append([]StateDiagnostic(nil), inspection.Diagnostics...),
+		Source:            StateSourceUser,
+		Changed:           inspection.Snapshot.Revision != published.Snapshot.Revision,
 	}
 	for _, file := range inspection.Snapshot.Files() {
 		result.Files = append(result.Files, StateFile{Path: file.Path, Content: string(file.Content)})
@@ -117,6 +144,42 @@ func (service *Service) State(ctx context.Context) (StateSnapshot, error) {
 		result.Source = StateSourceBuiltin
 	}
 	return result, nil
+}
+
+func (service *Service) initializePublishedState(ctx context.Context, cfg *config.Config) error {
+	ready, err := harnessstate.PublishedReady(cfg)
+	if err != nil || ready {
+		return err
+	}
+	inspection, err := service.manager.Inspect(ctx)
+	if err != nil {
+		return err
+	}
+	if len(inspection.Diagnostics) == 0 {
+		current, err := service.published.Store().Current(ctx)
+		if err != nil {
+			return err
+		}
+		updated, err := service.published.Store().Update(ctx, agentstate.ChangeSet{
+			BaseRevision: current.Revision,
+			Changes:      stateReplacementChanges(current.Files(), inspection.Snapshot.Files()),
+		})
+		if err != nil {
+			return fmt.Errorf("seed published Harness State: %w", err)
+		}
+		if updated.CleanupError != nil {
+			slog.WarnContext(ctx, "[continual-learning] seeded Published State with deferred cleanup", "error", updated.CleanupError)
+		}
+	} else {
+		slog.WarnContext(ctx, "[continual-learning] preserving invalid released State as Draft; keeping the safe Published snapshot",
+			"diagnostics", len(inspection.Diagnostics))
+	}
+	if err := harnessstate.MarkPublishedReady(cfg); err != nil {
+		return err
+	}
+	slog.InfoContext(ctx, "[continual-learning] initialized Draft/Published Harness boundary",
+		"draft_revision", inspection.Snapshot.Revision)
+	return nil
 }
 
 func (service *Service) UpdateState(ctx context.Context, request StateUpdateRequest) (StateUpdateResult, error) {
@@ -139,11 +202,11 @@ func (service *Service) UpdateState(ctx context.Context, request StateUpdateRequ
 		if updated.CleanupError != nil {
 			slog.WarnContext(ctx, "[continual-learning] updated State with deferred cleanup", "error", updated.CleanupError)
 		}
-		slog.InfoContext(ctx, "[continual-learning] committed Harness State",
+		slog.InfoContext(ctx, "[continual-learning] committed Harness Draft",
 			"revision", updated.Snapshot.Revision, "changed", updated.Changed)
 		version, _, historyErr := service.history.record(updated.Snapshot, request.Summary)
 		if historyErr != nil {
-			slog.WarnContext(ctx, "[continual-learning] State committed without Git history",
+			slog.WarnContext(ctx, "[continual-learning] Harness Draft committed without Git history",
 				"revision", updated.Snapshot.Revision, "error", historyErr)
 		}
 		result = StateUpdateResult{

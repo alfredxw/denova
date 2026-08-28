@@ -41,18 +41,22 @@ type AppendTurnRequest struct {
 }
 
 type AppendTurnWithStateRequest struct {
-	BranchID             string                    `json:"branch_id"`
-	ExpectedParentID     *string                   `json:"expected_parent_id,omitempty"`
-	ReplaceTurnID        string                    `json:"replace_turn_id,omitempty"`
-	User                 string                    `json:"user"`
-	Narrative            string                    `json:"narrative"`
-	Thinking             string                    `json:"thinking,omitempty"`
-	RunID                string                    `json:"run_id,omitempty"`
-	AgentKind            string                    `json:"agent_kind,omitempty"`
-	AgentCommandID       string                    `json:"agent_command_id,omitempty"`
-	AgentOperationID     string                    `json:"agent_operation_id,omitempty"`
-	AgentCycle           int                       `json:"agent_cycle,omitempty"`
-	AgentCanonicalHash   string                    `json:"agent_canonical_hash,omitempty"`
+	BranchID           string  `json:"branch_id"`
+	ExpectedParentID   *string `json:"expected_parent_id,omitempty"`
+	ReplaceTurnID      string  `json:"replace_turn_id,omitempty"`
+	User               string  `json:"user"`
+	Narrative          string  `json:"narrative"`
+	Thinking           string  `json:"thinking,omitempty"`
+	RunID              string  `json:"run_id,omitempty"`
+	AgentKind          string  `json:"agent_kind,omitempty"`
+	AgentCommandID     string  `json:"agent_command_id,omitempty"`
+	AgentOperationID   string  `json:"agent_operation_id,omitempty"`
+	AgentCycle         int     `json:"agent_cycle,omitempty"`
+	AgentCanonicalHash string  `json:"agent_canonical_hash,omitempty"`
+	// ProviderContinuation is opaque model-visible state from the exact final
+	// assistant output. Story persistence retains it without exposing it in UI
+	// projections or interpreting provider-owned payloads.
+	ProviderContinuation map[string]any            `json:"-"`
 	DisplayEvents        []DisplayEvent            `json:"display_events,omitempty"`
 	ModelContextMessages []ModelContextMessage     `json:"model_context_messages,omitempty"`
 	Ops                  []interactivestate.Op     `json:"ops,omitempty"`
@@ -245,8 +249,11 @@ type TurnEvent struct {
 	AgentCycle         int    `json:"agent_cycle,omitempty"`
 	AgentCommitHash    string `json:"agent_commit_hash,omitempty"`
 	AgentCanonicalHash string `json:"agent_canonical_hash,omitempty"`
-	PlayerInputID      string `json:"player_input_id,omitempty"`
-	PlayerInputHash    string `json:"player_input_hash,omitempty"`
+	// ProviderContinuation is hydrated from a private side event for model
+	// history only. It is deliberately absent from public Game JSON.
+	ProviderContinuation map[string]any `json:"-"`
+	PlayerInputID        string         `json:"player_input_id,omitempty"`
+	PlayerInputHash      string         `json:"player_input_hash,omitempty"`
 	// ConsumedPlayerInputIDs closes every reachable accepted input whose intent
 	// was visible to this successful cycle. PlayerInputID remains the exact
 	// current command identity; older interrupted inputs are resolved without

@@ -11,6 +11,7 @@ import {
   type AgentChatProject,
 } from '@/features/agent-chat/api'
 import { usePersistedUserSettings } from '@/hooks/usePersistedUserSettings'
+import { AGENTS, type VisibleAgentKey } from '@/features/agents/agent-registry'
 
 const SCHEDULED_SESSION_ID = 'harness-scheduled'
 
@@ -28,6 +29,7 @@ export function HarnessAgentPanel({ evidence, evidenceControl, onSettled }: Harn
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
   const [running, setRunning] = useState(false)
+  const [targetAgent, setTargetAgent] = useState<VisibleAgentKey>('general')
   const [error, setError] = useState('')
   const [pendingAction, setPendingAction] = useState<{ id: string; message: string; displayMessage: string } | null>(null)
   const runningSessionsRef = useRef(new Map<string, boolean>())
@@ -111,10 +113,10 @@ export function HarnessAgentPanel({ evidence, evidenceControl, onSettled }: Harn
     if (!sessionID || running) return
     setPendingAction({
       id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      message: diagnosisPrompt(evidence),
+      message: diagnosisPrompt(evidence, targetAgent),
       displayMessage: t('continualLearning.agent.diagnoseDisplay'),
     })
-  }, [evidence, running, sessionID, t])
+  }, [evidence, running, sessionID, t, targetAgent])
 
   let conversationContent: ReactNode = null
   if (project && sessionID) {
@@ -148,6 +150,16 @@ export function HarnessAgentPanel({ evidence, evidenceControl, onSettled }: Harn
           <div className="truncate text-xs font-medium text-[var(--nova-text)]">{t('continualLearning.agent.title')}</div>
           <div className="truncate text-[10px] text-[var(--nova-text-faint)]">{t('continualLearning.agent.subtitle')}</div>
         </div>
+        <Select value={targetAgent} onValueChange={(value) => setTargetAgent(value as VisibleAgentKey)} disabled={running}>
+          <SelectTrigger size="sm" className="w-36" aria-label={t('continualLearning.agent.target')}>
+            <SelectValue placeholder={t('continualLearning.agent.target')} />
+          </SelectTrigger>
+          <SelectContent>
+            {AGENTS.map((agent) => (
+              <SelectItem key={agent.key} value={agent.key}>{t(agent.titleKey)}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         {evidenceControl}
         <Button type="button" size="xs" variant="outline" disabled={!sessionID || running || loading} onClick={diagnose}>
           <Stethoscope />{t('continualLearning.agent.diagnose')}
@@ -176,13 +188,16 @@ export function HarnessAgentPanel({ evidence, evidenceControl, onSettled }: Harn
   )
 }
 
-function diagnosisPrompt(evidence?: string[]) {
+function diagnosisPrompt(evidence: string[] | undefined, targetAgent: string) {
   const scope = evidence?.length
     ? `Use only these selected trajectory resources as evidence:\n- ${evidence.join('\n- ')}`
     : 'Start with trajectory://index and select the most relevant recent run or session evidence.'
   return `[Agent Health Diagnosis]
 
+[Target Agent]
+${targetAgent}
+
 ${scope}
 
-Inspect the complete relevant trajectory resources and harness://state/current. Diagnose concrete Agent Health issues, separating symptoms, likely causes, and evidence-backed recommendations. Check tool failures, repeated retries, context pressure, instruction conflicts, invalid Harness State, and missed user intent. This is diagnosis only: do not modify workspace files unless the user explicitly asks in a follow-up. Report healthy areas as well as problems, and say when evidence is insufficient.`
+Inspect the complete relevant trajectory resources and harness://state/current. Diagnose concrete health issues for the selected target Agent, separating symptoms, likely causes, and evidence-backed recommendations. Treat evidence from other Agent kinds only as supporting context. Check tool failures, repeated retries, context pressure, instruction conflicts, invalid Harness Draft, and missed user intent. This is diagnosis only: do not modify workspace files unless the user explicitly asks in a follow-up. Report healthy areas as well as problems, and say when evidence is insufficient.`
 }

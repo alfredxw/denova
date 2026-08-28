@@ -57,8 +57,8 @@ var agentKindRegistry = []AgentKindDefinition{
 	{
 		Kind:      AgentKindHarness,
 		SessionID: "harness-scheduled",
-		// Harness is a real Project Agent. Its workspace is the live Harness
-		// State directory, so ordinary file and shell tools remain available.
+		// Harness is a real Project Agent. Its workspace is the editable Harness
+		// Draft directory, so ordinary file and shell tools remain available.
 		ToolCapabilities: []string{
 			AgentToolFilesystemRead, AgentToolWorkspaceWrite, AgentToolShell,
 			AgentToolWebSearch, AgentToolWebFetch, AgentToolBrowser,

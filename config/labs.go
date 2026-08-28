@@ -5,6 +5,7 @@ package config
 // these product capabilities.
 type LabSettings struct {
 	DeveloperMode                  *bool `toml:"developer_mode,omitempty" json:"developer_mode,omitempty"`
+	HarnessStateEnabled            *bool `toml:"harness_state_enabled,omitempty" json:"harness_state_enabled,omitempty"`
 	ContinualLearningSchedule      *bool `toml:"continual_learning_schedule,omitempty" json:"continual_learning_schedule,omitempty"`
 	ContinualLearningIntervalHours *int  `toml:"continual_learning_interval_hours,omitempty" json:"continual_learning_interval_hours,omitempty"`
 	ContinualLearningTrajectoryCap *int  `toml:"continual_learning_trajectory_cap,omitempty" json:"continual_learning_trajectory_cap,omitempty"`
@@ -12,6 +13,7 @@ type LabSettings struct {
 
 type ResolvedLabs struct {
 	DeveloperMode                  bool `toml:"developer_mode" json:"developer_mode"`
+	HarnessStateEnabled            bool `toml:"harness_state_enabled" json:"harness_state_enabled"`
 	ContinualLearningSchedule      bool `toml:"continual_learning_schedule" json:"continual_learning_schedule"`
 	ContinualLearningIntervalHours int  `toml:"continual_learning_interval_hours" json:"continual_learning_interval_hours"`
 	ContinualLearningTrajectoryCap int  `toml:"continual_learning_trajectory_cap" json:"continual_learning_trajectory_cap"`
@@ -27,6 +29,7 @@ const (
 func DefaultLabSettings() LabSettings {
 	return LabSettings{
 		DeveloperMode:                  boolPtr(false),
+		HarnessStateEnabled:            boolPtr(true),
 		ContinualLearningSchedule:      boolPtr(false),
 		ContinualLearningIntervalHours: intPtr(DefaultContinualLearningIntervalHours),
 		ContinualLearningTrajectoryCap: intPtr(DefaultContinualLearningTrajectoryCap),
@@ -37,6 +40,9 @@ func MergeLabSettings(parent, child LabSettings) LabSettings {
 	out := parent
 	if child.DeveloperMode != nil {
 		out.DeveloperMode = child.DeveloperMode
+	}
+	if child.HarnessStateEnabled != nil {
+		out.HarnessStateEnabled = child.HarnessStateEnabled
 	}
 	if child.ContinualLearningSchedule != nil {
 		out.ContinualLearningSchedule = child.ContinualLearningSchedule
@@ -53,6 +59,7 @@ func MergeLabSettings(parent, child LabSettings) LabSettings {
 func ResolveLabs(settings LabSettings) ResolvedLabs {
 	return ResolvedLabs{
 		DeveloperMode:                  boolValue(settings.DeveloperMode, false),
+		HarnessStateEnabled:            boolValue(settings.HarnessStateEnabled, true),
 		ContinualLearningSchedule:      boolValue(settings.ContinualLearningSchedule, false),
 		ContinualLearningIntervalHours: boundedLabInt(settings.ContinualLearningIntervalHours, DefaultContinualLearningIntervalHours, 1, MaxContinualLearningIntervalHours),
 		ContinualLearningTrajectoryCap: boundedLabInt(settings.ContinualLearningTrajectoryCap, DefaultContinualLearningTrajectoryCap, 1, MaxContinualLearningTrajectoryCap),
