@@ -24,9 +24,10 @@ import {
   SidebarMenuItem,
   SidebarSeparator,
 } from '@/components/ui/sidebar'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { verticalAxisModifiers } from '@/lib/dnd'
 import { cn } from '@/lib/utils'
-import { presetModuleOwnership, type PresetResourceKind } from '../../preset-ownership'
+import { presetModuleOwnership, presetResourceVisibleInMode, type PresetResourceKind, type PresetUsageMode } from '../../preset-ownership'
 
 interface PresetDirectorySidebarProps {
   sections: ResourceDirectorySection[]
@@ -42,6 +43,10 @@ interface VisiblePresetSection {
   section: ResourceDirectorySection
   items: ResourceDirectoryItem[]
 }
+
+type PresetDirectoryFilter = 'all' | PresetUsageMode
+
+const PRESET_DIRECTORY_FILTERS: PresetDirectoryFilter[] = ['all', 'writing', 'game']
 
 function filterPresetItem(item: ResourceDirectoryItem, words: string[]) {
   const searchable = `${item.title}\n${item.summary ?? ''}\n${item.searchText ?? ''}`.toLocaleLowerCase()
@@ -59,6 +64,7 @@ export function PresetDirectorySidebar({
   onReorderItems,
 }: PresetDirectorySidebarProps) {
   const { t } = useTranslation()
+  const [filter, setFilter] = useState<PresetDirectoryFilter>('all')
   const [query, setQuery] = useState('')
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({})
   const sensors = useSensors(
@@ -76,12 +82,16 @@ export function PresetDirectorySidebar({
     [query],
   )
   const searching = searchWords.length > 0
-  const visibleSections = useMemo<VisiblePresetSection[]>(() => sections
+  const filteredSections = useMemo(() => {
+    if (filter === 'all') return sections
+    return sections.filter((section) => presetResourceVisibleInMode(section.id as PresetResourceKind, filter))
+  }, [filter, sections])
+  const visibleSections = useMemo<VisiblePresetSection[]>(() => filteredSections
     .map((section) => ({
       section,
       items: searching ? section.items.filter((item) => filterPresetItem(item, searchWords)) : section.items,
     }))
-    .filter(({ items }) => !searching || items.length > 0), [searchWords, searching, sections])
+    .filter(({ items }) => !searching || items.length > 0), [filteredSections, searchWords, searching])
 
   useEffect(() => {
     if (!searching) return
@@ -94,7 +104,7 @@ export function PresetDirectorySidebar({
     })
   }, [searching, visibleSections])
 
-  const totalCount = sections.reduce((count, section) => count + section.items.length, 0)
+  const totalCount = filteredSections.reduce((count, section) => count + section.items.length, 0)
   const sectionIsOpen = (section: ResourceDirectorySection) => (
     openSections[section.id] ?? (searching || section.id === activeSectionId || section.defaultCollapsed === false)
   )
@@ -133,6 +143,23 @@ export function PresetDirectorySidebar({
               {totalCount}
             </Badge>
           </div>
+
+          <ToggleGroup
+            type="single"
+            value={filter}
+            onValueChange={(value) => value && setFilter(value as PresetDirectoryFilter)}
+            variant="outline"
+            size="sm"
+            spacing={0}
+            aria-label={t('settingPanel.directory.filterLabel')}
+            className="w-full"
+          >
+            {PRESET_DIRECTORY_FILTERS.map((value) => (
+              <ToggleGroupItem key={value} value={value} className="min-w-0 flex-1">
+                {t(`settingPanel.directory.filter.${value}`)}
+              </ToggleGroupItem>
+            ))}
+          </ToggleGroup>
 
           <div className="flex items-center gap-2">
             <div className="relative min-w-0 flex-1">

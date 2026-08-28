@@ -10,7 +10,8 @@ import { presetStatusLabel } from '../preset-config/preset-status'
 import { enabledImagePresetSlotCount, normalizedImagePresetSlots } from './ImagePresetEditor'
 import { eventPackageSummaryCount, presetKindCreateLabel, presetKindDirectoryLabel, storyDirectorSummaryCount } from './editor-shared'
 
-const PRESET_DIRECTORY_ORDER: PresetResourceKind[] = ['director', 'teller', 'actor-state', 'rule', 'image', 'event']
+// Keep ownership groups stable: shared, writing-only, then game-only.
+const PRESET_DIRECTORY_ORDER: PresetResourceKind[] = ['teller', 'image', 'director', 'actor-state', 'rule', 'event']
 
 const PRESET_DIRECTORY_ICONS: Record<PresetResourceKind, LucideIcon> = {
   director: Compass,
