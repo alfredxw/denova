@@ -50,11 +50,16 @@ func TestRegistryLegacyMigrationArchivesMissingAndHiddenBooks(t *testing.T) {
 	if persisted.Version != registryVersion {
 		t.Fatalf("registry version = %d, want %d", persisted.Version, registryVersion)
 	}
+	for _, record := range persisted.Projects {
+		if record.StateDirName == "" {
+			t.Fatalf("legacy Project missing readable state directory: %#v", record)
+		}
+	}
 }
 
 func TestRegistryRejectsUnsupportedIntermediateVersion(t *testing.T) {
 	denovaDir := t.TempDir()
-	raw, err := json.Marshal(registryData{Version: registryVersion - 1, Projects: []Record{}})
+	raw, err := json.Marshal(registryData{Version: projectIDStateDirectoryRegistryVersion - 1, Projects: []Record{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,6 +68,63 @@ func TestRegistryRejectsUnsupportedIntermediateVersion(t *testing.T) {
 	}
 	if _, err := NewRegistry(denovaDir).List(true); err == nil {
 		t.Fatal("registry accepted an unsupported intermediate schema")
+	}
+}
+
+func TestRegistryMigratesProjectIDStateDirectoriesWithoutChangingIdentity(t *testing.T) {
+	denovaDir := t.TempDir()
+	firstWorkspace := t.TempDir()
+	secondWorkspace := t.TempDir()
+	firstID := "project-first"
+	secondID := "project-second"
+	legacy := registryData{
+		Version: projectIDStateDirectoryRegistryVersion,
+		Projects: []Record{
+			{ID: firstID, Type: TypeGeneral, Name: "我的 项目", WorkspacePath: firstWorkspace},
+			{ID: secondID, Type: TypeGeneral, Name: "我的-项目", WorkspacePath: secondWorkspace},
+		},
+	}
+	raw, err := json.MarshalIndent(legacy, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(denovaDir, "projects.json"), append(raw, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	legacyState := filepath.Join(denovaDir, StateDirectoryName, firstID, "sessions")
+	if err := os.MkdirAll(legacyState, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(legacyState, "history.jsonl"), []byte("history\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	projects, err := NewRegistry(denovaDir).List(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID := make(map[string]Record, len(projects))
+	for _, record := range projects {
+		byID[record.ID] = record
+	}
+	if byID[firstID].StateDirName != "我的-项目" || byID[secondID].StateDirName != "我的-项目-2" {
+		t.Fatalf("readable state directory migration = %#v", byID)
+	}
+	if _, err := os.Stat(filepath.Join(denovaDir, StateDirectoryName, firstID)); !os.IsNotExist(err) {
+		t.Fatalf("legacy ID state directory still exists: %v", err)
+	}
+	migratedHistory := filepath.Join(denovaDir, StateDirectoryName, "我的-项目", "sessions", "history.jsonl")
+	if data, err := os.ReadFile(migratedHistory); err != nil || string(data) != "history\n" {
+		t.Fatalf("migrated Project state data=%q err=%v", data, err)
+	}
+
+	var persisted registryData
+	readJSONFileForTest(t, filepath.Join(denovaDir, "projects.json"), &persisted)
+	if persisted.Version != registryVersion {
+		t.Fatalf("migrated registry version = %d, want %d", persisted.Version, registryVersion)
+	}
+	if len(persisted.Projects) != 2 || persisted.Projects[0].ID != firstID || persisted.Projects[1].ID != secondID {
+		t.Fatalf("Project identity changed during state migration: %#v", persisted.Projects)
 	}
 }
 

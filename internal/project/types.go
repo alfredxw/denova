@@ -51,9 +51,13 @@ const (
 // Record is the durable user-owned Project definition. WorkspacePath points
 // at project content; it is not the Project identity and is safe to relink.
 type Record struct {
-	ID            string     `json:"id"`
-	Type          Type       `json:"type"`
-	Name          string     `json:"name"`
+	ID   string `json:"id"`
+	Type Type   `json:"type"`
+	Name string `json:"name"`
+	// StateDirName is the immutable, human-readable directory segment below
+	// project-state. It is deliberately separate from both stable identity and
+	// the mutable display name.
+	StateDirName  string     `json:"state_dir"`
 	WorkspacePath string     `json:"path"`
 	Status        Status     `json:"status"`
 	CreatedAt     time.Time  `json:"created_at"`

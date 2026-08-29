@@ -9,6 +9,8 @@ import (
 	"time"
 )
 
+const projectIDStateDirectoryRegistryVersion = 2
+
 type legacyBookRecord struct {
 	Name         string `json:"name"`
 	Path         string `json:"path"`
@@ -30,15 +32,37 @@ func (registry *Registry) loadOrMigrateLocked() (registryData, bool, error) {
 		if err := json.Unmarshal(raw, &data); err != nil {
 			return registryData{}, false, fmt.Errorf("decode project registry: %w", err)
 		}
-		if data.Version != registryVersion {
+		switch data.Version {
+		case registryVersion:
+			normalizeRegistryData(&data)
+			if err := validateStateDirNames(data.Projects); err != nil {
+				return registryData{}, false, err
+			}
+			if err := registry.migrateProjectIDStateDirectoriesOnce(data.Projects); err != nil {
+				return registryData{}, false, err
+			}
+			return data, false, nil
+		case projectIDStateDirectoryRegistryVersion:
+			normalizeRegistryData(&data)
+			if err := registry.assignReadableStateDirNames(&data); err != nil {
+				return registryData{}, false, err
+			}
+			// Persist the mapping before moving state. If a move fails, the next
+			// load reads the new mapping and safely resumes the remaining moves.
+			if err := registry.saveLocked(data); err != nil {
+				return registryData{}, false, fmt.Errorf("persist readable project state directories: %w", err)
+			}
+			if err := registry.migrateProjectIDStateDirectoriesOnce(data.Projects); err != nil {
+				return registryData{}, false, err
+			}
+			return data, false, nil
+		default:
 			return registryData{}, false, fmt.Errorf(
 				"project registry version %d does not match supported version %d",
 				data.Version,
 				registryVersion,
 			)
 		}
-		normalizeRegistryData(&data)
-		return data, false, nil
 	}
 	if !errors.Is(err, os.ErrNotExist) {
 		return registryData{}, false, err
@@ -65,7 +89,7 @@ func (registry *Registry) importLegacyBooksLocked(data *registryData) (bool, err
 		if canonicalErr != nil || canonical == "" || pathToID[canonical] != "" {
 			continue
 		}
-		record, recordErr := newRecord(canonical, TypeBook, book.Name, now)
+		record, recordErr := registry.newRecord(data, canonical, TypeBook, book.Name, now)
 		if recordErr != nil {
 			return false, recordErr
 		}
@@ -89,7 +113,7 @@ func (registry *Registry) importLegacyBooksLocked(data *registryData) (bool, err
 		if canonicalErr != nil || canonical == "" || pathToID[canonical] != "" {
 			continue
 		}
-		record, recordErr := newRecord(canonical, TypeBook, filepath.Base(canonical), now)
+		record, recordErr := registry.newRecord(data, canonical, TypeBook, filepath.Base(canonical), now)
 		if recordErr != nil {
 			return false, recordErr
 		}

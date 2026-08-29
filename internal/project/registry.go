@@ -17,7 +17,7 @@ import (
 	workspacelayout "denova/internal/workspace"
 )
 
-const registryVersion = 2
+const registryVersion = 3
 
 // HarnessProjectID is the stable identity of the single user-level Harness
 // Project. Its content directory is managed by Denova while its Sessions and
@@ -36,11 +36,12 @@ type registryData struct {
 // Filesystem availability is projected at read time rather than persisted as
 // an event, so moving a directory never destroys its user-owned state.
 type Registry struct {
-	mu              sync.Mutex
-	stateMu         sync.Mutex
-	path            string
-	legacyBooksPath string
-	denovaDir       string
+	mu                              sync.Mutex
+	stateMu                         sync.Mutex
+	stateDirectoryMigrationComplete bool
+	path                            string
+	legacyBooksPath                 string
+	denovaDir                       string
 }
 
 func NewRegistry(denovaDir string) *Registry {
@@ -191,7 +192,7 @@ func (registry *Registry) Add(path string, kind Type, name string) (Record, erro
 		}
 		return projectStatus(*record), nil
 	}
-	record, err := newRecord(canonical, kind, name, now)
+	record, err := registry.newRecord(&data, canonical, kind, name, now)
 	if err != nil {
 		return Record{}, err
 	}
@@ -234,7 +235,7 @@ func (registry *Registry) EnsureBook(path string) (Record, error) {
 		}
 	}
 	now := time.Now().UTC()
-	record, err := newRecord(canonical, TypeBook, "", now)
+	record, err := registry.newRecord(&data, canonical, TypeBook, "", now)
 	if err != nil {
 		return Record{}, err
 	}
@@ -281,7 +282,7 @@ func (registry *Registry) EnsureHarness(path string) (Record, error) {
 		return projectStatus(*record), nil
 	}
 	record := Record{
-		ID: HarnessProjectID, Type: TypeHarness, Name: "Harness", WorkspacePath: canonical,
+		ID: HarnessProjectID, Type: TypeHarness, Name: "Harness", StateDirName: harnessStateDirName, WorkspacePath: canonical,
 		Status: StatusAvailable, CreatedAt: now, UpdatedAt: now,
 	}
 	data.Projects = append(data.Projects, record)
@@ -548,7 +549,7 @@ func (registry *Registry) discoverBooksLocked(data *registryData) (bool, error) 
 			if canonicalErr != nil || known[path] || !isBookWorkspace(path) {
 				continue
 			}
-			record, recordErr := newRecord(path, TypeBook, entry.Name(), time.Now().UTC())
+			record, recordErr := registry.newRecord(data, path, TypeBook, entry.Name(), time.Now().UTC())
 			if recordErr != nil {
 				return false, recordErr
 			}
@@ -563,6 +564,9 @@ func (registry *Registry) discoverBooksLocked(data *registryData) (bool, error) 
 
 func (registry *Registry) saveLocked(data registryData) error {
 	normalizeRegistryData(&data)
+	if err := validateStateDirNames(data.Projects); err != nil {
+		return err
+	}
 	if err := os.MkdirAll(filepath.Dir(registry.path), 0o755); err != nil {
 		return err
 	}
@@ -678,7 +682,7 @@ func recentLess(left, right Record) bool {
 	return left.ID < right.ID
 }
 
-func newRecord(path string, kind Type, name string, now time.Time) (Record, error) {
+func (registry *Registry) newRecord(data *registryData, path string, kind Type, name string, now time.Time) (Record, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		name = filepath.Base(path)
@@ -687,8 +691,12 @@ func newRecord(path string, kind Type, name string, now time.Time) (Record, erro
 	if err != nil {
 		return Record{}, fmt.Errorf("generate project ID: %w", err)
 	}
+	stateDirName, err := registry.nextStateDirName(name, data.Projects)
+	if err != nil {
+		return Record{}, fmt.Errorf("allocate project state directory: %w", err)
+	}
 	return Record{
-		ID: id, Type: kind, Name: name, WorkspacePath: filepath.Clean(path),
+		ID: id, Type: kind, Name: name, StateDirName: stateDirName, WorkspacePath: filepath.Clean(path),
 		CreatedAt: now, UpdatedAt: now,
 	}, nil
 }

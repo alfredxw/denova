@@ -21,6 +21,7 @@ func TestRegistryKeepsStableProjectIdentityAcrossMetadataAndPathChanges(t *testi
 		t.Fatal(err)
 	}
 	originalID := record.ID
+	originalStateDir := record.StateDirName
 	if record.Type != TypeGeneral || record.Status != StatusAvailable {
 		t.Fatalf("unexpected new Project: %#v", record)
 	}
@@ -37,8 +38,15 @@ func TestRegistryKeepsStableProjectIdentityAcrossMetadataAndPathChanges(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if record.ID != originalID || record.Name != "Renamed" || record.WorkspacePath != canonicalSecond {
+	if record.ID != originalID || record.StateDirName != originalStateDir || record.Name != "Renamed" || record.WorkspacePath != canonicalSecond {
 		t.Fatalf("Project identity changed across relink: %#v", record)
+	}
+	layout, err := registry.Layout(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filepath.Base(layout.StateRoot) != originalStateDir {
+		t.Fatalf("Project state directory changed across rename and relink: %#v", layout)
 	}
 
 	if err := os.Remove(second); err != nil {
@@ -57,6 +65,45 @@ func TestRegistryKeepsStableProjectIdentityAcrossMetadataAndPathChanges(t *testi
 	}
 	if archived.Status != StatusArchived {
 		t.Fatalf("archive should be a tombstone, got %#v", archived)
+	}
+}
+
+func TestRegistryAllocatesReadableUniqueStateDirectories(t *testing.T) {
+	registry := NewRegistry(t.TempDir())
+	add := func(name string) Record {
+		t.Helper()
+		workspace := t.TempDir()
+		record, err := registry.Add(workspace, TypeGeneral, name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return record
+	}
+
+	first := add("我的 小说")
+	second := add("我的-小说")
+	if _, err := registry.Archive(first.ID); err != nil {
+		t.Fatal(err)
+	}
+	third := add("我的小说")
+	reserved := add("CON")
+
+	if first.StateDirName != "我的-小说" {
+		t.Fatalf("first readable state directory = %q", first.StateDirName)
+	}
+	if second.StateDirName != "我的-小说-2" {
+		t.Fatalf("second readable state directory = %q", second.StateDirName)
+	}
+	if third.StateDirName != "我的小说" {
+		t.Fatalf("distinct Project name state directory = %q", third.StateDirName)
+	}
+	if reserved.StateDirName != "Project-CON" {
+		t.Fatalf("Windows reserved state directory = %q", reserved.StateDirName)
+	}
+
+	fourth := add("我的 小说")
+	if fourth.StateDirName != "我的-小说-3" {
+		t.Fatalf("archived state directory was reused: %q", fourth.StateDirName)
 	}
 }
 

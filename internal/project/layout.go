@@ -20,11 +20,14 @@ func (registry *Registry) Layout(record Record) (Layout, error) {
 	if err := ValidateID(record.ID); err != nil {
 		return Layout{}, err
 	}
+	if err := validateStateDirName(record.StateDirName); err != nil {
+		return Layout{}, err
+	}
 	return Layout{
 		ProjectID:   record.ID,
 		Type:        record.Type,
 		ContentRoot: record.WorkspacePath,
-		StateRoot:   filepath.Join(registry.denovaDir, StateDirectoryName, record.ID),
+		StateRoot:   filepath.Join(registry.denovaDir, StateDirectoryName, record.StateDirName),
 	}, nil
 }
 
