@@ -765,6 +765,7 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
             ) : (
               <MessageList
                 projectId={projectId}
+                attachmentScope={storyId ? { kind: 'story', id: storyId } : undefined}
                 messages={agentMessages}
                 isStreaming={streaming}
                 activityContent={stageRun.runtime.recoveryPaused ? t('storyStage.activity.recoveryPaused') : activityContent}

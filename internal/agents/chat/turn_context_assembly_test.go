@@ -276,9 +276,10 @@ func TestSessionConversationReusesMaterializedInputExactlyOnceInRealModelAssembl
 	}
 	identity := agentrun.CycleIdentity{CommandID: "materialized-command", OperationID: "materialized-operation", Cycle: 1}
 	references := []agentcontext.UserReference{{Kind: "file", Label: "chapters/01.md"}}
+	attachment := agent.Attachment{ID: "att_0123456789abcdef0123456789abcdef", Name: "reference.png", MediaType: "image/png", Size: 8, Path: "/state/reference.png", SHA256: "digest"}
 	intent, err := session.NewDomainCommitIntent(session.DomainCommitIdentity{
 		CommandID: string(identity.CommandID), OperationID: string(identity.OperationID), Cycle: identity.Cycle,
-	}, agent.UserMessage("继续写"), session.MessageMetadata{AgentKind: config.AgentKindIDE, UserReferences: references})
+	}, agent.UserMessageWithAttachments("继续写", []agent.Attachment{attachment}), session.MessageMetadata{AgentKind: config.AgentKindIDE, UserReferences: references})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -289,6 +290,7 @@ func TestSessionConversationReusesMaterializedInputExactlyOnceInRealModelAssembl
 	conversation.BindAgentCycleIdentity(identity)
 	assembled, err := conversation.AssembleModelContext(context.Background(), "继续写", agentcontext.ModelContextInput{
 		UserMessage:    "继续写",
+		Attachments:    []agent.Attachment{attachment},
 		UserReferences: references,
 		Budget:         conversation.ModelContextBudget(),
 		Fragments: []agentcontext.Fragment{{
@@ -303,6 +305,9 @@ func TestSessionConversationReusesMaterializedInputExactlyOnceInRealModelAssembl
 	for _, message := range assembled.Messages {
 		if message != nil && message.Role == agent.User && strings.Contains(message.Content, "继续写") {
 			userMessages++
+			if len(message.Attachments) != 1 || message.Attachments[0] != attachment {
+				t.Fatalf("enhanced model input lost attachments: %#v", message.Attachments)
+			}
 			if message.Content == "继续写" {
 				t.Fatal("materialized raw input was duplicated beside the enhanced final user message")
 			}
@@ -314,7 +319,7 @@ func TestSessionConversationReusesMaterializedInputExactlyOnceInRealModelAssembl
 	if err := agentcontext.CommitModelInput(context.Background(), conversation, "different projection text must not change canonical input", assembled); err != nil {
 		t.Fatal(err)
 	}
-	if history := sess.History(); len(history) != 1 || history[0].Content != "继续写" {
+	if history := sess.History(); len(history) != 1 || history[0].Content != "继续写" || len(history[0].Attachments) != 1 || history[0].Attachments[0] != attachment {
 		t.Fatalf("CommitModelInput duplicated or rewrote canonical input: %#v", history)
 	}
 }

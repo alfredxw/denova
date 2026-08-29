@@ -2,11 +2,13 @@ package chat
 
 import (
 	"context"
-	agentcontext "denova/internal/agents/context"
 	"fmt"
 	"strings"
 	"time"
 
+	agent "github.com/alfredxw/denova/agent"
+
+	agentcontext "denova/internal/agents/context"
 	"denova/internal/agents/session"
 	novaskills "denova/internal/agents/skills"
 	"denova/internal/book"
@@ -102,6 +104,7 @@ func prepareTurnContext(ctx context.Context, input turnContextPreparationInput) 
 	})
 	assembled, err := agentcontext.AssembleModelContext(ctx, input.Conversation, projection.OriginalMessage, agentcontext.ModelContextInput{
 		UserMessage:    input.Request.Message,
+		Attachments:    append([]agent.Attachment(nil), input.Request.AttachedFiles...),
 		UserReferences: userMessageReferencesForRequest(input.Request),
 		Fragments:      projection.Fragments,
 		Budget:         budget,

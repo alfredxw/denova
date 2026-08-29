@@ -572,6 +572,7 @@ function AgentPanelComponent({
   )
   const messageListProps = {
     projectId,
+    attachmentScope: activeSessionId ? { kind: 'session' as const, id: activeSessionId } : undefined,
     messages,
     isStreaming,
     visible: active,

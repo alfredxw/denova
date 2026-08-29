@@ -64,7 +64,8 @@ func (committer *sessionConversationCommitter) MaterializeInput(
 ) (agent.CommitReceipt, error) {
 	receipt, err := committer.config.Conversation.MaterializeAgentCanonicalInput(
 		ctx,
-		committer.config.Request.Message,
+		request.Input.Text,
+		request.Input.Attachments,
 		agentchat.UserMessageReferences(committer.config.Request),
 		request.Hash,
 	)

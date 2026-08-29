@@ -26,8 +26,8 @@ Denova records only major user-visible features, important compatibility or data
 - The Writing Agent now runs multiple conversations in the same Book concurrently, with an optional quick-session rail; switching conversations no longer stops background work.
 - 写作、游戏、工作台与配置对话支持运行中连续追加 Follow Up，刷新或重启后恢复任务，并按会话保存模型、思考强度与权限设置。
 - Writing, Game, Workspace, and configuration conversations now accept queued follow-ups during a run, recover after refresh or restart, and persist model, thinking, and permission settings per conversation.
-- 写作、游戏与通用 Agent 对话支持从现有输入菜单、拖拽或粘贴添加多个通用文件；Denova 保存独立副本供 Agent 使用，并将图片作为原生视觉输入发送给模型。
-- Writing, Game, and General Agent chats now accept multiple generic files from the existing input menu, drag-and-drop, or paste. Denova stores independent copies for the Agent and sends images as native vision input.
+- 写作、游戏与通用 Agent 对话支持从现有输入菜单、拖拽或粘贴添加多个通用文件；Denova 保存独立副本供 Agent 使用，将图片作为原生视觉输入发送给模型，并在输入区与已发送消息中提供图片预览。
+- Writing, Game, and General Agent chats now accept multiple generic files from the existing input menu, drag-and-drop, or paste. Denova stores independent copies for the Agent, sends images as native vision input, and previews images in both the composer and sent messages.
 - Agent 回复现在会在生成过程中实时呈现 Markdown、数学公式与中日韩文本排版，并以平滑动画展示新增内容。
 - Agent replies now render Markdown, math, and CJK typography during generation, with smooth animation for newly streamed content.
 - 新增 Ask、Write、Full access 安全模式；Project 外部文件读取按模式授权，写入与 Shell 工作目录仍受 Project 边界保护。

@@ -33,7 +33,7 @@ func (c *SessionConversation) AssembleModelContext(ctx context.Context, _ string
 	if err := c.session.RefreshCanonical(ctx); err != nil {
 		return agentcontext.ModelContextResult{}, err
 	}
-	intent, err := c.acceptedInputDomainCommitIntent(input.UserMessage, input.UserReferences)
+	intent, err := c.acceptedInputDomainCommitIntent(input.UserMessage, input.Attachments, input.UserReferences)
 	durableInput := err == nil
 	if err != nil && !errors.Is(err, ErrMissingAgentCycleIdentity) {
 		return agentcontext.ModelContextResult{}, err
@@ -64,7 +64,7 @@ func (c *SessionConversation) AssembleModelContext(ctx context.Context, _ string
 	fragments := make([]agentcontext.Fragment, 0, len(input.Fragments)+1)
 	fragments = append(fragments, input.Fragments...)
 	fragments = append(fragments, c.runtimeContextFragments()...)
-	canonicalMessages := c.modelMessagesWithAcceptedInput(snapshot, inputIndex, materialized, input.UserMessage)
+	canonicalMessages := c.modelMessagesWithAcceptedInput(snapshot, inputIndex, materialized, input.UserMessage, input.Attachments)
 	assembled, err := agentcontext.NewAssembler(input.Budget).Assemble(ctx, agentcontext.AssembleRequest{
 		Messages:  canonicalMessages,
 		Fragments: fragments,
@@ -130,6 +130,7 @@ func (c *SessionConversation) CommitModelInput(ctx context.Context, _ string, as
 func (c *SessionConversation) MaterializeAgentCanonicalInput(
 	ctx context.Context,
 	message string,
+	attachments []agent.Attachment,
 	references []agentcontext.UserReference,
 	agentCanonicalHash string,
 ) (session.DomainCommitReceipt, error) {
@@ -139,7 +140,7 @@ func (c *SessionConversation) MaterializeAgentCanonicalInput(
 	if err := ctx.Err(); err != nil {
 		return session.DomainCommitReceipt{}, err
 	}
-	intent, err := c.acceptedInputDomainCommitIntent(message, references)
+	intent, err := c.acceptedInputDomainCommitIntent(message, attachments, references)
 	if err != nil {
 		return session.DomainCommitReceipt{}, err
 	}
@@ -177,7 +178,11 @@ func (c *SessionConversation) ApplyAgentPreparedContext(assembled agentcontext.M
 	return nil
 }
 
-func (c *SessionConversation) acceptedInputDomainCommitIntent(message string, references []agentcontext.UserReference) (session.DomainCommitIntent, error) {
+func (c *SessionConversation) acceptedInputDomainCommitIntent(
+	message string,
+	attachments []agent.Attachment,
+	references []agentcontext.UserReference,
+) (session.DomainCommitIntent, error) {
 	identity := c.agentCycleIdentitySnapshot()
 	if !agentrun.ValidCycleIdentity(identity) {
 		return session.DomainCommitIntent{}, ErrMissingAgentCycleIdentity
@@ -191,7 +196,7 @@ func (c *SessionConversation) acceptedInputDomainCommitIntent(message string, re
 	}
 	return session.NewDomainCommitIntent(session.DomainCommitIdentity{
 		CommandID: string(identity.CommandID), OperationID: string(identity.OperationID), Cycle: identity.Cycle,
-	}, agent.UserMessage(message), session.MessageMetadata{
+	}, agent.UserMessageWithAttachments(message, attachments), session.MessageMetadata{
 		AgentKind: c.agentKind, UserReferences: userReferences,
 		ContextOnly: c.inputVisibility == agentrun.InputModelOnly,
 	})
@@ -202,14 +207,17 @@ func (c *SessionConversation) modelMessagesWithAcceptedInput(
 	inputIndex int,
 	materialized bool,
 	agentMessage string,
+	attachments []agent.Attachment,
 ) []*agent.Message {
 	if materialized {
 		snapshot.EffectiveMessages = append([]*agent.Message(nil), snapshot.EffectiveMessages...)
-		snapshot.EffectiveMessages[inputIndex] = agent.UserMessage(agentMessage)
+		acceptedInput := snapshot.EffectiveMessages[inputIndex].Clone()
+		acceptedInput.Content = agentMessage
+		snapshot.EffectiveMessages[inputIndex] = acceptedInput
 		return c.modelHistory(snapshot)
 	}
 	history := c.modelHistory(snapshot)
-	return append(history, agent.UserMessage(agentMessage))
+	return append(history, agent.UserMessageWithAttachments(agentMessage, attachments))
 }
 
 func (c *SessionConversation) modelHistory(snapshot session.ContextSnapshot) []*agent.Message {

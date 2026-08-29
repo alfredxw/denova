@@ -81,6 +81,7 @@ const chat = {
   'chat.input.stop': '中断 AI 执行',
   'chat.attachment.add': '添加文件',
   'chat.attachment.remove': '移除 {{name}}',
+  'chat.attachment.preview': '预览 {{name}}',
   'chat.attachment.tooMany': '最多可添加 {{maximum}} 个文件。',
   'chat.attachment.fileTooLarge': '{{name}} 超过单个文件 {{maximum}} 的限制。',
   'chat.attachment.totalTooLarge': '附件总大小超过 {{maximum}} 的限制。',

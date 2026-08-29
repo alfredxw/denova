@@ -43,7 +43,12 @@ func (committer *canonicalConversationCommitter) MaterializeInput(
 	ctx context.Context,
 	request agent.InputCommitRequest,
 ) (agent.CommitReceipt, error) {
-	receipt, err := committer.config.Conversation.MaterializeAgentCanonicalInput(ctx, request.Hash)
+	receipt, err := committer.config.Conversation.MaterializeAgentCanonicalInput(
+		ctx,
+		request.Input.Text,
+		request.Input.Attachments,
+		request.Hash,
+	)
 	if err != nil {
 		return agent.CommitReceipt{}, err
 	}

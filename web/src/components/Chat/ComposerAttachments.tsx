@@ -1,5 +1,14 @@
-import { useCallback, useEffect, useRef, useState, type ClipboardEvent, type DragEvent } from 'react'
-import { Paperclip } from 'lucide-react'
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ClipboardEvent,
+  type DragEvent,
+  type ReactNode,
+} from 'react'
 import { toast } from 'sonner'
 import { useTranslation } from 'react-i18next'
 import {
@@ -10,11 +19,14 @@ import {
   Attachments,
   type AttachmentData,
 } from '@/components/ai-elements/attachments'
+import { ImagePreviewDialog } from '@/components/common/ImagePreviewDialog'
 import {
+  chatAttachmentImageURL,
   MAX_CHAT_ATTACHMENT_BYTES,
   MAX_CHAT_ATTACHMENT_FILES,
   MAX_CHAT_ATTACHMENTS_BYTES,
   type ChatAttachmentDescriptor,
+  type ChatAttachmentScope,
 } from '@/lib/chat-attachments'
 
 interface ComposerAttachment {
@@ -25,6 +37,28 @@ interface ComposerAttachment {
 
 const attachmentDrafts = new Map<string, File[]>()
 const MAX_ATTACHMENT_DRAFTS = 8
+const PREVIEWABLE_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp'])
+
+interface AttachmentPreviewScopeValue {
+  projectId: string
+  scope?: ChatAttachmentScope
+}
+
+interface AttachmentPreviewScopeProviderProps {
+  projectId?: string
+  scope?: ChatAttachmentScope
+  children: ReactNode
+}
+
+const AttachmentPreviewScopeContext = createContext<AttachmentPreviewScopeValue>({ projectId: '' })
+
+export function AttachmentPreviewScopeProvider({
+  projectId = '',
+  scope,
+  children,
+}: AttachmentPreviewScopeProviderProps): ReactNode {
+  return <AttachmentPreviewScopeContext.Provider value={{ projectId, scope }}>{children}</AttachmentPreviewScopeContext.Provider>
+}
 
 export function useComposerAttachments(enabled = true, draftKey?: string) {
   const { t } = useTranslation()
@@ -166,8 +200,19 @@ export function ComposerAttachmentTray({ items, onRemove }: {
           onRemove={() => onRemove(item.id)}
           className="max-w-[min(18rem,100%)] border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-xs text-[var(--nova-text)]"
         >
-          <AttachmentPreview />
-          <AttachmentInfo />
+          {isPreviewableImage(item.file.type) ? (
+            <ImagePreviewDialog src={item.previewURL} title={item.file.name} alt={item.file.name}>
+              <button type="button" className="flex min-w-0 flex-1 items-center gap-1.5 text-left" aria-label={t('chat.attachment.preview', { name: item.file.name })}>
+                <AttachmentPreview />
+                <AttachmentInfo />
+              </button>
+            </ImagePreviewDialog>
+          ) : (
+            <div className="flex min-w-0 flex-1 items-center gap-1.5">
+              <AttachmentPreview />
+              <AttachmentInfo />
+            </div>
+          )}
           <AttachmentRemove label={t('chat.attachment.remove', { name: item.file.name })} />
         </Attachment>
       ))}
@@ -176,17 +221,46 @@ export function ComposerAttachmentTray({ items, onRemove }: {
 }
 
 export function SentMessageAttachments({ attachments }: { attachments?: ChatAttachmentDescriptor[] }) {
+  const { t } = useTranslation()
+  const { projectId, scope } = useContext(AttachmentPreviewScopeContext)
   if (!attachments?.length) return null
   return (
-    <div data-testid="sent-message-attachments" className="mb-1.5 flex max-w-full flex-wrap gap-1.5 border-b border-current/10 pb-1.5">
-      {attachments.map((attachment, index) => (
-        <span key={`${attachment.id || attachment.name}:${index}`} className="inline-flex max-w-full items-center gap-1 rounded border border-current/15 bg-black/5 px-1.5 py-0.5 text-[11px] dark:bg-white/5">
-          <Paperclip className="h-3 w-3 shrink-0 opacity-70" />
-          <span className="truncate">{attachment.name}</span>
-        </span>
-      ))}
-    </div>
+    <Attachments variant="inline" data-testid="sent-message-attachments" className="mb-1.5 max-w-full gap-1.5 border-b border-current/10 pb-1.5">
+      {attachments.map((attachment, index) => {
+        const previewURL = projectId && scope && attachment.id && isPreviewableImage(attachment.media_type)
+          ? chatAttachmentImageURL(projectId, scope, attachment.id)
+          : ''
+        const data = {
+          type: 'file',
+          id: attachment.id || `${attachment.name}:${index}`,
+          url: previewURL,
+          filename: attachment.name,
+          mediaType: attachment.media_type || 'application/octet-stream',
+        } satisfies AttachmentData
+        return (
+          <Attachment key={`${attachment.id || attachment.name}:${index}`} data={data} className="h-8 max-w-[min(18rem,100%)] border-current/15 bg-black/5 text-[11px] text-current dark:bg-white/5">
+            {previewURL ? (
+              <ImagePreviewDialog src={previewURL} title={attachment.name} alt={attachment.name}>
+                <button type="button" className="flex min-w-0 flex-1 items-center gap-1.5 text-left" aria-label={t('chat.attachment.preview', { name: attachment.name })}>
+                  <AttachmentPreview />
+                  <AttachmentInfo />
+                </button>
+              </ImagePreviewDialog>
+            ) : (
+              <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                <AttachmentPreview />
+                <AttachmentInfo />
+              </div>
+            )}
+          </Attachment>
+        )
+      })}
+    </Attachments>
   )
+}
+
+function isPreviewableImage(mediaType?: string): boolean {
+  return PREVIEWABLE_IMAGE_TYPES.has((mediaType || '').toLowerCase().trim())
 }
 
 function formatBytes(bytes: number) {

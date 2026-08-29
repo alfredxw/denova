@@ -26,6 +26,18 @@ const (
 	maxFilenameLen = 240
 )
 
+var (
+	ErrImageNotFound        = errors.New("attachment image not found")
+	ErrImagePreviewDisabled = errors.New("attachment does not support image preview")
+)
+
+// Image is a verified application-owned image suitable for an inline preview.
+type Image struct {
+	Data      []byte
+	MediaType string
+	SHA256    string
+}
+
 // Upload is the transport-only file payload. It is discarded after the copy is
 // persisted and never enters Agent history or idempotency metadata.
 type Upload struct {
@@ -112,6 +124,60 @@ func RemoveScope(stateRoot string, scope Scope) error {
 		return nil
 	}
 	return os.RemoveAll(filepath.Join(stateRoot, "attachments", "v1", scopeKey(scope)))
+}
+
+// ReadImage locates one immutable copy inside its conversation scope. The
+// strict ID and directory walk keep caller input out of filesystem paths.
+func ReadImage(stateRoot string, scope Scope, attachmentID string) (Image, error) {
+	stateRoot = strings.TrimSpace(stateRoot)
+	scope.Kind = strings.TrimSpace(scope.Kind)
+	scope.ID = strings.TrimSpace(scope.ID)
+	attachmentID = strings.TrimSpace(attachmentID)
+	if stateRoot == "" || scope.ID == "" || !validScopeKind(scope.Kind) || !validAttachmentID(attachmentID) {
+		return Image{}, ErrImageNotFound
+	}
+	scopeRoot := filepath.Join(stateRoot, "attachments", "v1", scopeKey(scope))
+	commandDirs, err := os.ReadDir(scopeRoot)
+	if errors.Is(err, os.ErrNotExist) {
+		return Image{}, ErrImageNotFound
+	}
+	if err != nil {
+		return Image{}, fmt.Errorf("read attachment scope: %w", err)
+	}
+	for _, commandDir := range commandDirs {
+		if !commandDir.IsDir() || commandDir.Type()&os.ModeSymlink != 0 {
+			continue
+		}
+		commandPath := filepath.Join(scopeRoot, commandDir.Name())
+		files, err := os.ReadDir(commandPath)
+		if err != nil {
+			return Image{}, fmt.Errorf("read attachment command directory: %w", err)
+		}
+		for _, file := range files {
+			if file.IsDir() || file.Type()&os.ModeSymlink != 0 || strings.TrimSuffix(file.Name(), filepath.Ext(file.Name())) != attachmentID {
+				continue
+			}
+			path := filepath.Join(commandPath, file.Name())
+			info, err := file.Info()
+			if err != nil {
+				return Image{}, fmt.Errorf("inspect attachment image: %w", err)
+			}
+			if !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > MaxFileBytes {
+				return Image{}, ErrImagePreviewDisabled
+			}
+			data, err := os.ReadFile(path)
+			if err != nil {
+				return Image{}, fmt.Errorf("read attachment image: %w", err)
+			}
+			mediaType := http.DetectContentType(data)
+			if !agent.IsNativeImageMediaType(mediaType) {
+				return Image{}, ErrImagePreviewDisabled
+			}
+			digest := sha256.Sum256(data)
+			return Image{Data: data, MediaType: mediaType, SHA256: hex.EncodeToString(digest[:])}, nil
+		}
+	}
+	return Image{}, ErrImageNotFound
 }
 
 func decodeUpload(upload Upload, commandID string, index int) (agent.Attachment, []byte, error) {
@@ -224,4 +290,22 @@ func safeExtension(name string) string {
 		return ""
 	}
 	return ext
+}
+
+func validScopeKind(kind string) bool {
+	return kind == "session" || kind == "story"
+}
+
+func validAttachmentID(id string) bool {
+	if len(id) != len("att_")+32 || !strings.HasPrefix(id, "att_") {
+		return false
+	}
+	for _, char := range id[len("att_"):] {
+		isDigit := char >= '0' && char <= '9'
+		isLowerHexLetter := char >= 'a' && char <= 'f'
+		if !isDigit && !isLowerHexLetter {
+			return false
+		}
+	}
+	return true
 }

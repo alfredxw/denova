@@ -34,9 +34,12 @@ import { scheduleChatRowBottomAnchor, scheduleResolvedChatRowBottomAnchor } from
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { LoadingState } from '@/components/common/LoadingState'
+import { AttachmentPreviewScopeProvider } from './ComposerAttachments'
+import type { ChatAttachmentScope } from '@/lib/chat-attachments'
 
 interface MessageListProps {
   projectId?: string
+  attachmentScope?: ChatAttachmentScope
   messages: AgentUIMessage[]
   /** Optional projection of the parent transcript, such as one SubAgent invocation. */
   projection?: AgentMessageListProjection
@@ -136,7 +139,7 @@ interface MessageListVirtuosoContext {
   onLoadEarlierMessages?: () => void | Promise<void>
 }
 
-export function MessageList({ projectId, messages, projection, isStreaming, visible = true, isExecutionActive = isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', bottomPaddingPx, contentClassName, afterContent, afterContentKey, hasEarlierMessages = false, isLoadingEarlierMessages = false, onLoadEarlierMessages, timelineAttachments = [], messageStyle, collapseTraceGroups = false, activeTraceDisplay = 'expanded', canMutateMessage, onEditMessage, onEditAssistantReply, onCreateBranch, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onResolveAsk, turnScrollRequest, onVisibleTurnAnchorChange }: MessageListProps) {
+export function MessageList({ projectId, attachmentScope, messages, projection, isStreaming, visible = true, isExecutionActive = isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', bottomPaddingPx, contentClassName, afterContent, afterContentKey, hasEarlierMessages = false, isLoadingEarlierMessages = false, onLoadEarlierMessages, timelineAttachments = [], messageStyle, collapseTraceGroups = false, activeTraceDisplay = 'expanded', canMutateMessage, onEditMessage, onEditAssistantReply, onCreateBranch, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onResolveAsk, turnScrollRequest, onVisibleTurnAnchorChange }: MessageListProps) {
   const { t } = useTranslation()
   const containerRef = useRef<HTMLDivElement | null>(null)
   const renderedItemsRef = useRef<ListItem<AgentChatListItem>[]>([])
@@ -352,7 +355,8 @@ export function MessageList({ projectId, messages, projection, isStreaming, visi
   }, [hasInitialContent, initialPosition, initialPositionKey, positionedKey, resolveMessageScroller, visible])
 
   return (
-    <div ref={containerRef} className="relative flex min-h-0 flex-1 flex-col">
+    <AttachmentPreviewScopeProvider projectId={projectId} scope={attachmentScope}>
+      <div ref={containerRef} className="relative flex min-h-0 flex-1 flex-col">
       <Virtuoso
         key={scrollResetKey || 'default'}
         ref={scrollLock.virtuosoRef}
@@ -403,7 +407,8 @@ export function MessageList({ projectId, messages, projection, isStreaming, visi
         bottomOffsetPx={scrollButtonBottomOffset}
         rightOffsetPx={24}
       />
-    </div>
+      </div>
+    </AttachmentPreviewScopeProvider>
   )
 }
 

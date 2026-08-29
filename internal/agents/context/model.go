@@ -26,6 +26,7 @@ type UserReference struct {
 // projected model context with explicit provenance.
 type ModelContextInput struct {
 	UserMessage    string
+	Attachments    []agent.Attachment
 	UserReferences []UserReference
 	Fragments      []Fragment
 	Budget         Budget
@@ -83,7 +84,7 @@ func ContextBudgetForAgent(cfg *config.Config, agentKind string) Budget {
 // turn fragments.
 func AssembleSingleUserModelContext(ctx context.Context, input ModelContextInput) (ModelContextResult, error) {
 	assembled, err := NewAssembler(input.Budget).Assemble(ctx, AssembleRequest{
-		Messages: []*agent.Message{agent.UserMessage(input.UserMessage)}, Fragments: input.Fragments,
+		Messages: []*agent.Message{agent.UserMessageWithAttachments(input.UserMessage, input.Attachments)}, Fragments: input.Fragments,
 	})
 	if err != nil {
 		return ModelContextResult{}, err

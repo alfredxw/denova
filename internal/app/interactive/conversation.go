@@ -605,7 +605,7 @@ func (c *Conversation) AssembleModelContext(ctx context.Context, originalMessage
 		})
 	}
 	baseInstruction := prompts.InteractiveStoryTurnInstruction(input.UserMessage, "", "")
-	history = append(history, agents.UserMessage(baseInstruction))
+	history = append(history, agent.UserMessageWithAttachments(baseInstruction, input.Attachments))
 	assembled, err := agentcontext.NewAssembler(input.Budget).Assemble(ctx, agentcontext.AssembleRequest{Messages: history, Fragments: fragments})
 	if err != nil {
 		return agentcontext.ModelContextResult{}, err
@@ -697,6 +697,8 @@ func (c *Conversation) CommitModelInput(ctx context.Context, _ string, assembled
 // input projection when its context is assembled immediately afterwards.
 func (c *Conversation) MaterializeAgentCanonicalInput(
 	ctx context.Context,
+	message string,
+	attachments []agent.Attachment,
 	agentCanonicalHash string,
 ) (interactive.PlayerInputReceipt, error) {
 	if c == nil || c.store == nil {
@@ -711,7 +713,11 @@ func (c *Conversation) MaterializeAgentCanonicalInput(
 	}
 	intent, err := interactive.NewPlayerInputIntent(interactive.DomainCommitIdentity{
 		CommandID: string(identity.CommandID), OperationID: string(identity.OperationID), Cycle: identity.Cycle,
-	}, c.branchID, c.user)
+	}, c.branchID, message)
+	if err != nil {
+		return interactive.PlayerInputReceipt{}, err
+	}
+	intent, err = intent.WithAttachments(attachments)
 	if err != nil {
 		return interactive.PlayerInputReceipt{}, err
 	}

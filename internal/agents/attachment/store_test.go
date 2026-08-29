@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -98,6 +99,45 @@ func TestMaterializeDoesNotTrustNativeImageMIMEClaim(t *testing.T) {
 	}
 	if len(files) != 1 || files[0].MediaType != "text/plain; charset=utf-8" {
 		t.Fatalf("spoofed image attachment = %#v", files)
+	}
+}
+
+func TestReadImageRequiresExactConversationScope(t *testing.T) {
+	root := t.TempDir()
+	files, err := Materialize(root, SessionScope("session-1"), "command-1", []Upload{{
+		Name: "pixel.png", MediaType: "image/png", DataURL: dataURL("image/png", tinyPNG),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	image, err := ReadImage(root, SessionScope("session-1"), files[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if image.MediaType != "image/png" || !strings.EqualFold(image.SHA256, files[0].SHA256) || string(image.Data) != string(tinyPNG) {
+		t.Fatalf("unexpected image: %#v", image)
+	}
+	if _, err := ReadImage(root, SessionScope("session-2"), files[0].ID); !errors.Is(err, ErrImageNotFound) {
+		t.Fatalf("cross-scope read error = %v", err)
+	}
+	if _, err := ReadImage(root, StoryScope("session-1"), files[0].ID); !errors.Is(err, ErrImageNotFound) {
+		t.Fatalf("cross-kind read error = %v", err)
+	}
+}
+
+func TestReadImageRejectsNonImageAndInvalidID(t *testing.T) {
+	root := t.TempDir()
+	files, err := Materialize(root, StoryScope("story-1"), "command-1", []Upload{{
+		Name: "notes.txt", MediaType: "text/plain", DataURL: dataURL("text/plain", []byte("hello")),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReadImage(root, StoryScope("story-1"), files[0].ID); !errors.Is(err, ErrImagePreviewDisabled) {
+		t.Fatalf("non-image read error = %v", err)
+	}
+	if _, err := ReadImage(root, StoryScope("story-1"), "../pixel.png"); !errors.Is(err, ErrImageNotFound) {
+		t.Fatalf("invalid ID read error = %v", err)
 	}
 }
 

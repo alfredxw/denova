@@ -81,6 +81,7 @@ const chat = {
   'chat.input.stop': 'Stop AI execution',
   'chat.attachment.add': 'Add files',
   'chat.attachment.remove': 'Remove {{name}}',
+  'chat.attachment.preview': 'Preview {{name}}',
   'chat.attachment.tooMany': 'You can attach up to {{maximum}} files.',
   'chat.attachment.fileTooLarge': '{{name}} exceeds the {{maximum}} per-file limit.',
   'chat.attachment.totalTooLarge': 'Attachments exceed the {{maximum}} total limit.',

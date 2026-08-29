@@ -15,6 +15,16 @@ export interface ChatAttachmentDescriptor {
   size: number
 }
 
+export interface ChatAttachmentScope {
+  kind: 'session' | 'story'
+  id: string
+}
+
+export function chatAttachmentImageURL(projectId: string, scope: ChatAttachmentScope, attachmentId: string): string {
+  const params = new URLSearchParams({ scope: scope.kind, scope_id: scope.id })
+  return `/api/projects/${encodeURIComponent(projectId)}/attachments/${encodeURIComponent(attachmentId)}?${params.toString()}`
+}
+
 export async function filesToAttachmentUploads(files: File[]): Promise<ChatAttachmentUpload[]> {
   return Promise.all(files.map(async (file) => ({
     name: file.name,
