@@ -5,9 +5,9 @@ import {
   DropdownMenuItem,
   DropdownMenuSub,
   DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
 } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
+import { ComposerMenuSubTrigger } from './ComposerMenuRow'
 
 export interface PersistedSettingsMenuOption {
   id: string
@@ -42,11 +42,13 @@ export function PersistedSettingsMenuSub({
   return (
     <DropdownMenuGroup>
       <DropdownMenuSub>
-        <DropdownMenuSubTrigger disabled={disabled || saving} className="cursor-pointer text-xs" aria-label={label}>
-          <Icon />
-          <span className="min-w-0 flex-1">{label}</span>
-          <span className="max-w-36 truncate text-[10px] text-muted-foreground">{currentLabel}</span>
-        </DropdownMenuSubTrigger>
+        <ComposerMenuSubTrigger
+          icon={Icon}
+          label={label}
+          detail={currentLabel}
+          disabled={disabled || saving}
+          aria-label={label}
+        />
         <DropdownMenuSubContent className="w-72 max-w-[calc(100vw-1rem)] border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 text-xs text-[var(--nova-text)] max-[700px]:[translate:calc(-100%+0.5rem)_0]">
           <DropdownMenuGroup>
             {options.map((option) => {

@@ -2,11 +2,12 @@ import { useEffect, useMemo, useState } from 'react'
 import { Check, ImagePlus, Loader2, Sparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Input } from '@/components/ui/input'
+import { ComposerMenuSubTrigger } from '@/components/Chat/ComposerMenuRow'
 import {
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuSub,
   DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
 } from '@/components/ui/dropdown-menu'
 import type { ImagePreset, StoryImageSettings, StorySummary } from '../../types'
 
@@ -45,18 +46,16 @@ export function InteractiveImageSettingsMenu({ story, disabled, onChange }: { st
   }
 
   return (
-    <>
+    <DropdownMenuGroup>
       <DropdownMenuSub>
-        <DropdownMenuSubTrigger
+        <ComposerMenuSubTrigger
+          icon={saving ? Loader2 : ImagePlus}
+          iconClassName={saving ? 'animate-spin text-[var(--nova-text-faint)]' : undefined}
+          label={t('storyStage.interactiveImage.menuTitle')}
+          detail={imageSettingsSummary(current, t)}
+          detailTone="faint"
           disabled={disabled}
-          className="flex cursor-pointer items-center gap-2 text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
-        >
-          <span className="flex h-3.5 w-3.5 items-center justify-center">
-            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--nova-text-faint)]" /> : <ImagePlus className="h-3.5 w-3.5" />}
-          </span>
-          <span className="min-w-0 flex-1 truncate">{t('storyStage.interactiveImage.menuTitle')}</span>
-          <span className="max-w-36 shrink-0 truncate text-right text-[10px] text-[var(--nova-text-faint)]">{imageSettingsSummary(current, t)}</span>
-        </DropdownMenuSubTrigger>
+        />
         <DropdownMenuSubContent className="w-72 border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 text-[var(--nova-text)]">
           <DropdownMenuItem
             disabled={disabled || saving}
@@ -114,7 +113,7 @@ export function InteractiveImageSettingsMenu({ story, disabled, onChange }: { st
           </div>
         </DropdownMenuSubContent>
       </DropdownMenuSub>
-    </>
+    </DropdownMenuGroup>
   )
 }
 
@@ -143,39 +142,39 @@ export function StoryImagePresetMenu({ story, presets, disabled, onChange }: { s
   if (normalizedPresets.length === 0) return null
 
   return (
-    <DropdownMenuSub>
-      <DropdownMenuSubTrigger
-        disabled={disabled || saving}
-        className="flex cursor-pointer items-center gap-2 text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
-        aria-label={t('storyStage.imagePreset.menuTitle')}
-      >
-        <span className="flex h-3.5 w-3.5 items-center justify-center">
-          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--nova-text-faint)]" /> : <Sparkles className="h-3.5 w-3.5" />}
-        </span>
-        <span className="min-w-0 flex-1 truncate">{t('storyStage.imagePreset.menuTitle')}</span>
-        <span className="max-w-36 shrink-0 truncate text-right text-[10px] text-[var(--nova-text-faint)]">{selected?.name || current.preset_id}</span>
-      </DropdownMenuSubTrigger>
-      <DropdownMenuSubContent className="w-72 max-w-[calc(100vw-1rem)] border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 text-[var(--nova-text)] max-[700px]:[translate:calc(-100%+0.5rem)_0]">
-        {normalizedPresets.map((preset) => {
-          const selectedPreset = preset.id === selected?.id
-          return (
-            <DropdownMenuItem
-              key={preset.id}
-              disabled={disabled || saving}
-              onSelect={(event) => {
-                event.preventDefault()
-                void save(preset.id)
-              }}
-              onClick={() => void save(preset.id)}
-              className="cursor-pointer text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
-            >
-              <Check className={`h-3.5 w-3.5 ${selectedPreset ? 'opacity-100' : 'opacity-0'}`} />
-              <span className="min-w-0 flex-1 truncate">{preset.name || preset.id}</span>
-            </DropdownMenuItem>
-          )
-        })}
-      </DropdownMenuSubContent>
-    </DropdownMenuSub>
+    <DropdownMenuGroup>
+      <DropdownMenuSub>
+        <ComposerMenuSubTrigger
+          icon={saving ? Loader2 : Sparkles}
+          iconClassName={saving ? 'animate-spin text-[var(--nova-text-faint)]' : undefined}
+          label={t('storyStage.imagePreset.menuTitle')}
+          detail={selected?.name || current.preset_id}
+          detailTone="faint"
+          disabled={disabled || saving}
+          aria-label={t('storyStage.imagePreset.menuTitle')}
+        />
+        <DropdownMenuSubContent className="w-72 max-w-[calc(100vw-1rem)] border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 text-[var(--nova-text)] max-[700px]:[translate:calc(-100%+0.5rem)_0]">
+          {normalizedPresets.map((preset) => {
+            const selectedPreset = preset.id === selected?.id
+            return (
+              <DropdownMenuItem
+                key={preset.id}
+                disabled={disabled || saving}
+                onSelect={(event) => {
+                  event.preventDefault()
+                  void save(preset.id)
+                }}
+                onClick={() => void save(preset.id)}
+                className="cursor-pointer text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
+              >
+                <Check className={`h-3.5 w-3.5 ${selectedPreset ? 'opacity-100' : 'opacity-0'}`} />
+                <span className="min-w-0 flex-1 truncate">{preset.name || preset.id}</span>
+              </DropdownMenuItem>
+            )
+          })}
+        </DropdownMenuSubContent>
+      </DropdownMenuSub>
+    </DropdownMenuGroup>
   )
 }
 

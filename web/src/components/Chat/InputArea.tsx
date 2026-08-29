@@ -11,7 +11,7 @@ import { AgentComposerShell } from './AgentComposerShell'
 import { ModelProfileSwitcher } from './ModelProfileSwitcher'
 import { ComposerTokenInput, type ComposerTokenInputHandle, type ComposerTokenSpec, type ComposerTrigger } from './composer-token-input'
 import { workspaceFileName } from '@/lib/workspace-path'
-import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useKeyboardInset } from '@/hooks/useKeyboardInset'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { ReviewFeedbackTray, reviewFeedbackCommentCount, type ReviewFeedbackBatch, type ReviewFeedbackComment, type ReviewFeedbackSelection } from '@/features/changes/agent/ReviewFeedbackTray'
@@ -27,6 +27,7 @@ import { cn } from '@/lib/utils'
 import type { ConversationGoal } from '@/features/agent-goal/types'
 import { ComposerModeChip } from './ComposerModeChip'
 import { ComposerAttachmentTray, useComposerAttachments } from './ComposerAttachments'
+import { ComposerMenuCheckboxItem, ComposerMenuItem, ComposerMenuShortcut } from './ComposerMenuRow'
 
 /** 可用命令列表 */
 const COMMANDS: Array<{ cmd: string; descKey: string; hintKey: string; icon: LucideIcon }> = [
@@ -721,61 +722,54 @@ export function InputArea({
                     <List className="h-3.5 w-3.5" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" side="top" className="w-80 border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 text-[var(--nova-text)]">
-                  {attachmentsEnabled ? (
-                    <DropdownMenuItem
-                      disabled={disabled}
-                      onSelect={attachments.openPicker}
-                      className="cursor-pointer text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
-                    >
-                      <Paperclip className="h-3.5 w-3.5" />
-                      {t('chat.attachment.add')}
-                    </DropdownMenuItem>
-                  ) : null}
-                  {onGoalSubmit || onTogglePlanMode ? (
-                    <>
+                <DropdownMenuContent align="start" side="top" className="w-80 max-w-[calc(100vw-1rem)] border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 text-[var(--nova-text)]">
+                  {attachmentsEnabled || onGoalSubmit || onTogglePlanMode ? (
+                    <DropdownMenuGroup>
+                      {attachmentsEnabled ? (
+                        <ComposerMenuItem
+                          icon={Paperclip}
+                          label={t('chat.attachment.add')}
+                          disabled={disabled}
+                          onSelect={attachments.openPicker}
+                        />
+                      ) : null}
                       {onGoalSubmit ? (
-                        <DropdownMenuCheckboxItem
+                        <ComposerMenuCheckboxItem
+                          icon={Target}
+                          label={t('chat.goal.short')}
                           checked={goalMode}
                           disabled={disabled}
                           onCheckedChange={(checked) => setGoalModeExclusive(checked === true)}
-                          className="cursor-pointer pr-1.5 text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)] [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:static [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:order-2 [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:size-4"
-                        >
-                          <Target className="h-3.5 w-3.5" />
-                          <span className="min-w-0 flex-1">{t('chat.goal.short')}</span>
-                        </DropdownMenuCheckboxItem>
+                        />
                       ) : null}
                       {onTogglePlanMode ? (
-                        <DropdownMenuCheckboxItem
+                        <ComposerMenuCheckboxItem
+                          icon={ClipboardList}
+                          label={t('chat.plan.short')}
+                          detail={<ComposerMenuShortcut>Shift+Tab</ComposerMenuShortcut>}
                           checked={planMode}
                           disabled={disabled || generationActive}
                           onCheckedChange={togglePlanModeExclusive}
-                          className="cursor-pointer pr-1.5 text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)] [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:static [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:order-2 [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:size-4"
-                        >
-                          <ClipboardList className="h-3.5 w-3.5" />
-                          <span className="min-w-0 flex-1">{t('chat.plan.short')}</span>
-                          <span className="order-3 ml-auto shrink-0 text-[10px] text-[var(--nova-text-faint)]">Shift+Tab</span>
-                        </DropdownMenuCheckboxItem>
+                        />
                       ) : null}
-                    </>
+                    </DropdownMenuGroup>
                   ) : null}
                   {composerSettingsControl}
-                  <DropdownMenuItem
-                    onSelect={() => setTokenUsageOpen(true)}
-                    className="cursor-pointer text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
-                  >
-                    <BarChart3 className="h-3.5 w-3.5" />
-                    <span className="min-w-0 flex-1">{t('chat.tokenUsage.action')}</span>
-                    <span className="text-[10px] text-[var(--nova-text-faint)]">{t('chat.tokenUsage.subtitle', { count: tokenUsageCount })}</span>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    disabled={disabled || generationActive}
-                    onSelect={handleContextAnalyze}
-                    className="cursor-pointer text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
-                  >
-                    <ScrollText className="h-3.5 w-3.5" />
-                    {t('chat.contextAnalysis.action')}
-                  </DropdownMenuItem>
+                  <DropdownMenuGroup>
+                    <ComposerMenuItem
+                      icon={BarChart3}
+                      label={t('chat.tokenUsage.action')}
+                      detail={t('chat.tokenUsage.subtitle', { count: tokenUsageCount })}
+                      detailTone="faint"
+                      onSelect={() => setTokenUsageOpen(true)}
+                    />
+                    <ComposerMenuItem
+                      icon={ScrollText}
+                      label={t('chat.contextAnalysis.action')}
+                      disabled={disabled || generationActive}
+                      onSelect={handleContextAnalyze}
+                    />
+                  </DropdownMenuGroup>
                 </DropdownMenuContent>
               </DropdownMenu>
               <AgentApprovalModeMenu runActive={generationActive} conversationConfig={conversationBinding ? conversationConfig : undefined} />

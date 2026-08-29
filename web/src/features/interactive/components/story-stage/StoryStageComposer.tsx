@@ -13,11 +13,12 @@ import { ModelProfileSwitcher } from '@/components/Chat/ModelProfileSwitcher'
 import { ImageGenerationSettingsMenu } from '@/components/Chat/ImageGenerationSettingsMenu'
 import { TokenUsageDialog } from '@/components/Chat/TokenUsagePanel'
 import { AgentTracePanel } from '@/components/Chat/AgentTracePanel'
+import { ComposerMenuItem } from '@/components/Chat/ComposerMenuRow'
 import { ComposerTokenInput, type ComposerTokenInputHandle, type ComposerTokenSpec, type ComposerTrigger } from '@/components/Chat/composer-token-input'
 import { Button } from '@/components/ui/button'
 import { AgentApprovalModeMenu } from '@/features/agent-approval/AgentApprovalModeMenu'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import type { AgentRuntimeQueuedCommand, ContextAnalysis } from '@/lib/api'
 import type { AgentTokenUsageRecord } from '@/lib/agent-message-view'
 import type { DirectorPlanStatus, ImagePreset, StoryImageSettings, StorySummary } from '../../types'
@@ -329,16 +330,41 @@ export function StoryStageComposer({ layout, editor, story, runtime, goal, dialo
             toolbarStart={<>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild><Button type="button" variant="outline" size="icon-sm" className="nova-agent-composer-icon h-8 w-8 shrink-0 rounded-[10px] border border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] disabled:opacity-45" disabled={branchTerminal || directorBlocking || (!storyId && tokenUsageMessages.length === 0)} aria-label={t('chat.input.actions')}><List className="h-3.5 w-3.5" /></Button></DropdownMenuTrigger>
-                <DropdownMenuContent align="start" side="top" className="w-80 border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 text-[var(--nova-text)]">
-                  <DropdownMenuItem disabled={branchTerminal || directorBlocking || goal.pending} onSelect={attachments.openPicker} className="cursor-pointer text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"><Paperclip className="h-3.5 w-3.5" />{t('chat.attachment.add')}</DropdownMenuItem>
-                  <DropdownMenuItem disabled={streaming || branchTerminal || directorBlocking || goal.pending} onSelect={goal.mode ? goal.exit : goal.enter} className="cursor-pointer text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"><Target className="h-3.5 w-3.5" />{t(goal.mode ? 'chat.goal.exitMode' : 'chat.goal.enterMode')}</DropdownMenuItem>
+                <DropdownMenuContent align="start" side="top" className="w-80 max-w-[calc(100vw-1rem)] border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 text-[var(--nova-text)]">
+                  <DropdownMenuGroup>
+                    <ComposerMenuItem
+                      icon={Paperclip}
+                      label={t('chat.attachment.add')}
+                      disabled={branchTerminal || directorBlocking || goal.pending}
+                      onSelect={attachments.openPicker}
+                    />
+                    <ComposerMenuItem
+                      icon={Target}
+                      label={t(goal.mode ? 'chat.goal.exitMode' : 'chat.goal.enterMode')}
+                      disabled={streaming || branchTerminal || directorBlocking || goal.pending}
+                      onSelect={goal.mode ? goal.exit : goal.enter}
+                    />
+                  </DropdownMenuGroup>
                   <AgentApprovalModeMenu runActive={streaming} presentation="submenu" conversationConfig={conversationConfig} />
                   <ImageGenerationSettingsMenu projectId={projectId} disabled={streaming || directorBlocking}>
                     <StoryImagePresetMenu story={currentStory} presets={imagePresets} disabled={!storyId || streaming || directorBlocking || !onImageSettingsChange} onChange={onImageSettingsChange} />
                   </ImageGenerationSettingsMenu>
                   <InteractiveImageSettingsMenu story={currentStory} disabled={!storyId || streaming || directorBlocking || !onImageSettingsChange} onChange={onImageSettingsChange} />
-                  <DropdownMenuItem onSelect={() => setTokenUsageOpen(true)} className="cursor-pointer text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"><BarChart3 className="h-3.5 w-3.5" /><span className="min-w-0 flex-1">{t('chat.tokenUsage.action')}</span><span className="text-[10px] text-[var(--nova-text-faint)]">{t('chat.tokenUsage.subtitle', { count: tokenUsageMessages.length })}</span></DropdownMenuItem>
-                  <DropdownMenuItem disabled={!storyId || streaming || branchTerminal || directorBlocking} onSelect={openContextAnalysis} className="cursor-pointer text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"><ScrollText className="h-3.5 w-3.5" />{t('chat.contextAnalysis.action')}</DropdownMenuItem>
+                  <DropdownMenuGroup>
+                    <ComposerMenuItem
+                      icon={BarChart3}
+                      label={t('chat.tokenUsage.action')}
+                      detail={t('chat.tokenUsage.subtitle', { count: tokenUsageMessages.length })}
+                      detailTone="faint"
+                      onSelect={() => setTokenUsageOpen(true)}
+                    />
+                    <ComposerMenuItem
+                      icon={ScrollText}
+                      label={t('chat.contextAnalysis.action')}
+                      disabled={!storyId || streaming || branchTerminal || directorBlocking}
+                      onSelect={openContextAnalysis}
+                    />
+                  </DropdownMenuGroup>
                 </DropdownMenuContent>
               </DropdownMenu>
               {goal.mode ? <ComposerModeChip icon={Target} label={t('chat.goal.short')} ariaLabel={t('chat.goal.exitMode')} disabled={goal.pending} onClose={goal.exit} /> : null}

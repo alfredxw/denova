@@ -4,14 +4,15 @@ import { Check, ChevronDown, Loader2, PencilLine, ShieldAlert, ShieldQuestion } 
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import { ComposerMenuSubTrigger } from '@/components/Chat/ComposerMenuRow'
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuSub,
   DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useAgentApprovalMode } from './AgentApprovalProvider'
@@ -98,25 +99,23 @@ export function AgentApprovalModeMenu({ runActive, presentation = 'standalone', 
 
   if (presentation === 'submenu') {
     return (
-      <DropdownMenuSub>
-        <DropdownMenuSubTrigger
-          disabled={approval.saving}
-          className="flex cursor-pointer items-center gap-2 text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
-          aria-label={`${t('agentApproval.input.section')}: ${t(`agentApproval.mode.${displayedMode}.label`)}`}
-        >
-          {approval.saving
-            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            : <CurrentIcon className={`h-3.5 w-3.5 ${modePresentation[displayedMode].tone}`} />}
-          <span className="min-w-0 flex-1 truncate">{t('agentApproval.input.section')}</span>
-          <span className="max-w-28 shrink-0 truncate text-right text-[10px] text-[var(--nova-text-faint)]">
-            {t(`agentApproval.mode.${displayedMode}.label`)}
-          </span>
-        </DropdownMenuSubTrigger>
-        {/* Narrow viewports use a drill-in layer because side-by-side submenus are clipped by the viewport edge. */}
-        <DropdownMenuSubContent className="w-80 max-w-[calc(100vw-1rem)] border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-1.5 text-[var(--nova-text)] max-[700px]:[translate:calc(-100%+0.5rem)_0]">
-          {modeItems}
-        </DropdownMenuSubContent>
-      </DropdownMenuSub>
+      <DropdownMenuGroup>
+        <DropdownMenuSub>
+          <ComposerMenuSubTrigger
+            icon={approval.saving ? Loader2 : CurrentIcon}
+            iconClassName={approval.saving ? 'animate-spin' : modePresentation[displayedMode].tone}
+            label={t('agentApproval.input.section')}
+            detail={t(`agentApproval.mode.${displayedMode}.label`)}
+            detailTone="faint"
+            disabled={approval.saving}
+            aria-label={`${t('agentApproval.input.section')}: ${t(`agentApproval.mode.${displayedMode}.label`)}`}
+          />
+          {/* Narrow viewports use a drill-in layer because side-by-side submenus are clipped by the viewport edge. */}
+          <DropdownMenuSubContent className="w-80 max-w-[calc(100vw-1rem)] border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-1.5 text-[var(--nova-text)] max-[700px]:[translate:calc(-100%+0.5rem)_0]">
+            {modeItems}
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
+      </DropdownMenuGroup>
     )
   }
 
