@@ -1,4 +1,5 @@
 const home = {
+  'home.authorEditPlaceholder': 'Author (optional; blank displays as Anonymous)',
   'home.authorPlaceholder': 'Author (optional; defaults to the current system user)',
   'home.authorUnset': 'Anonymous',
   'home.bookTitlePlaceholder': 'Book title (required)',

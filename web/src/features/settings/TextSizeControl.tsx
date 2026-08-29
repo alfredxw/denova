@@ -1,6 +1,6 @@
 import { useId } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Slider } from '@/components/ui/slider'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { cn } from '@/lib/utils'
 import { nearestFontSizeStepIndex, TEXT_SIZE_LABEL_KEYS } from './font-size-steps'
 
@@ -14,7 +14,7 @@ interface TextSizeControlProps {
   onValueChange: (value: number) => void
 }
 
-/** A discrete, named text-size control; persisted pixel values remain an implementation detail. */
+/** A discrete text-size picker that previews every option at its resulting size. */
 export function TextSizeControl({
   value,
   steps,
@@ -32,51 +32,50 @@ export function TextSizeControl({
 
   return (
     <div className={cn('w-full min-w-0', className)}>
-      <div className="flex items-center gap-2.5">
-        <span aria-hidden="true" className="shrink-0 text-[var(--nova-ui-micro-font-size)] font-medium text-[var(--nova-text-faint)]">
-          A
-        </span>
-        <div className="min-w-28 flex-1">
-          <Slider
-            value={[selectedIndex]}
-            min={0}
-            max={steps.length - 1}
-            step={1}
-            disabled={disabled}
-            aria-label={ariaLabel}
-            aria-describedby={labelId}
-            aria-valuetext={t('settings.textSize.ariaValue', {
-              label: selectedLabel,
-              position: selectedIndex + 1,
-              count: steps.length,
-            })}
-            onValueChange={([index]) => {
-              const nextValue = steps[index]
-              if (nextValue !== undefined) onValueChange(nextValue)
-            }}
-          />
-          <div aria-hidden="true" className="mt-1 flex justify-between px-1.5">
-            {steps.map((step, index) => (
-              <span
-                key={step}
-                className={cn(
-                  'size-1 rounded-full bg-[var(--nova-border)]',
-                  index === defaultIndex && 'ring-1 ring-[var(--nova-text-faint)] ring-offset-1 ring-offset-[var(--nova-surface)]',
-                )}
-              />
-            ))}
-          </div>
-        </div>
-        <span aria-hidden="true" className="shrink-0 text-[var(--nova-ui-large-font-size)] font-semibold text-[var(--nova-text-muted)]">
-          A
-        </span>
-        <span
-          id={labelId}
-          aria-live="polite"
-          className="min-w-12 shrink-0 text-right text-[var(--nova-ui-compact-font-size)] text-[var(--nova-text-muted)]"
-        >
-          {selectedLabel}
-        </span>
+      <ToggleGroup
+        type="single"
+        variant="outline"
+        spacing={0}
+        value={String(selectedIndex)}
+        aria-label={ariaLabel}
+        aria-describedby={labelId}
+        className="grid w-full grid-cols-7"
+        onValueChange={(indexValue) => {
+          if (!indexValue) return
+          const nextValue = steps[Number(indexValue)]
+          if (nextValue !== undefined) onValueChange(nextValue)
+        }}
+      >
+        {steps.map((step, index) => {
+          const optionLabel = t(TEXT_SIZE_LABEL_KEYS[index] ?? TEXT_SIZE_LABEL_KEYS[defaultIndex])
+          const accessibleLabel = t('settings.textSize.ariaValue', {
+            label: optionLabel,
+            position: index + 1,
+            count: steps.length,
+          })
+
+          return (
+            <ToggleGroupItem
+              key={step}
+              value={String(index)}
+              disabled={disabled}
+              aria-label={accessibleLabel}
+              title={optionLabel}
+              className="h-12 min-w-0 px-0"
+            >
+              <span aria-hidden="true" style={{ fontSize: `${step}px`, lineHeight: 1 }}>
+                Aa
+              </span>
+            </ToggleGroupItem>
+          )
+        })}
+      </ToggleGroup>
+      <div
+        id={labelId}
+        aria-live="polite"
+        className="mt-1.5 text-right text-[var(--nova-ui-compact-font-size)] text-[var(--nova-text-muted)]"
+      >
+        {selectedLabel}
       </div>
     </div>
   )

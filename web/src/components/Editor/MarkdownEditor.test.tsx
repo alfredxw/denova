@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ComponentProps } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -278,9 +278,10 @@ describe('MarkdownEditor', () => {
     expect(screen.queryByText('与全局外观设置共享，修改后自动保存')).not.toBeInTheDocument()
     expect(screen.getByText('思源宋体阅读')).toBeInTheDocument()
     expect(screen.getByText('默认')).toBeInTheDocument()
-    const readingFontSize = screen.getByRole('slider', { name: '阅读内容大小' })
-    expect(readingFontSize).toHaveAttribute('aria-valuenow', '3')
-    fireEvent.keyDown(readingFontSize, { key: 'ArrowRight' })
+    const readingFontSize = screen.getByRole('group', { name: '阅读内容大小' })
+    expect(within(readingFontSize).getAllByRole('radio')).toHaveLength(7)
+    expect(within(readingFontSize).getByRole('radio', { name: '默认，第 4 档，共 7 档' })).toBeChecked()
+    fireEvent.click(within(readingFontSize).getByRole('radio', { name: '大，第 5 档，共 7 档' }))
     expect(onFontSizeChange).toHaveBeenCalledWith(20)
     expect(screen.queryByText('行号')).not.toBeInTheDocument()
   })

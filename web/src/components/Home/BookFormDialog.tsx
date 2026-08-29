@@ -270,7 +270,7 @@ export function BookFormDialog({
                   type="text"
                   value={author}
                   onChange={(event) => setAuthor(event.target.value)}
-                  placeholder={t('home.authorPlaceholder')}
+                  placeholder={t(mode === 'create' ? 'home.authorPlaceholder' : 'home.authorEditPlaceholder')}
                   className={inputCls}
                 />
                 {mode === 'create' && !createdPath && (
