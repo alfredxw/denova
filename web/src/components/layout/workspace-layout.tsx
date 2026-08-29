@@ -13,6 +13,7 @@ const COMFORTABLE_SIDEBAR_WIDTH_PX = 224
 const MIN_SIDEBAR_WIDTH_PX = 180
 const MAX_STORED_SIDEBAR_WIDTH_PX = 8192
 const SIDEBAR_WIDTH_STORAGE_KEY = 'nova.layout.workspaceSidebarWidth:v1'
+const MIN_COMFORTABLE_PINNED_AGENT_WIDTH_PX = 528
 
 interface WorkspaceLayoutProps {
   appSidebar: ReactNode
@@ -87,8 +88,10 @@ export function WorkspaceLayout({
   const centerWidthReadyRef = useRef(false)
   const previousEmphasisRef = useRef<'normal' | 'right' | 'center'>('normal')
   const layoutEmphasis = rightPanelWide ? 'right' : centerFocus ? 'center' : 'normal'
-  const rightPanelMinSize = rightPanelWide ? '520px' : rightPanelRailVisible ? '404px' : '360px'
-  const rightPanelMinClassName = rightPanelWide ? 'min-w-[520px]' : rightPanelRailVisible ? 'min-w-[404px]' : 'min-w-[360px]'
+  const rightPanelMinSize = rightPanelWide ? '520px' : '360px'
+  const rightPanelMinClassName = rightPanelWide ? 'min-w-[520px]' : 'min-w-[360px]'
+  const rightPanelWidthBeforePinRef = useRef<number | null>(null)
+  const wasSessionRailVisibleRef = useRef(false)
   const layoutEmphasisRef = useRef(layoutEmphasis)
   layoutEmphasisRef.current = layoutEmphasis
   const horizontalPanelLayout = usePersistedPanelLayout({
@@ -120,6 +123,32 @@ export function WorkspaceLayout({
     const width = rightPanelElementRef.current?.getBoundingClientRect().width ?? 0
     if (width > 0) lastRightPanelPixelsRef.current = width
   }, [layoutEmphasis, rightPanelOpen])
+
+  useLayoutEffect(() => {
+    if (!rightPanelOpen) {
+      wasSessionRailVisibleRef.current = false
+      return
+    }
+    if (layoutEmphasis !== 'normal') return
+    const wasRailVisible = wasSessionRailVisibleRef.current
+    if (wasRailVisible === rightPanelRailVisible) return
+    wasSessionRailVisibleRef.current = rightPanelRailVisible
+
+    const panel = rightPanelRef.current
+    if (!panel) return
+    if (rightPanelRailVisible) {
+      const currentWidth = panel.getSize().inPixels
+      if (currentWidth > 0 && currentWidth < MIN_COMFORTABLE_PINNED_AGENT_WIDTH_PX) {
+        rightPanelWidthBeforePinRef.current ??= currentWidth
+        panel.resize(`${MIN_COMFORTABLE_PINNED_AGENT_WIDTH_PX}px`)
+      }
+      return
+    }
+
+    const restoreWidth = rightPanelWidthBeforePinRef.current
+    rightPanelWidthBeforePinRef.current = null
+    if (restoreWidth !== null) panel.resize(`${restoreWidth}px`)
+  }, [layoutEmphasis, rightPanelOpen, rightPanelRailVisible, rightPanelRef])
 
   useLayoutEffect(() => {
     if (!rightPanelOpen) {
@@ -294,6 +323,9 @@ export function WorkspaceLayout({
             data-nova-right-panel={rightPanelWide ? 'wide' : 'default'}
             data-nova-resize-behavior="preserve-pixel-size"
             onResize={(size) => {
+              if (horizontalPanelLayout.isUserResizeActive() && rightPanelRailVisible) {
+                rightPanelWidthBeforePinRef.current = null
+              }
               const emphasis = layoutEmphasisRef.current
               const stableNormal = emphasis === 'normal' && previousEmphasisRef.current === 'normal'
               const adjustableReview = emphasis === 'center' && centerWidthReadyRef.current

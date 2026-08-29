@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Activity, Bot, ChevronLeft, FileText, PanelRightClose, PanelRightOpen, PenLine, Plus, SearchCheck, Sparkles, WandSparkles } from 'lucide-react'
+import { Activity, ChevronLeft, FileText, PanelRight, PenLine, Plus, SearchCheck, Sparkles, WandSparkles } from 'lucide-react'
 import { motion } from 'motion/react'
 import { Group, Panel, Separator } from 'react-resizable-panels'
 import { createPortal } from 'react-dom'
@@ -36,6 +36,7 @@ import { DEFAULT_WRITING_SKILL, resolveWritingSkillSelection, useWritingSkillOpt
 import type { PersistedUserSettingsController } from '@/hooks/usePersistedUserSettings'
 import { AgentChatPane } from './AgentChatPane'
 import { LoadingState } from '@/components/common/LoadingState'
+import { SessionHistoryPopover } from './SessionHistoryPopover'
 import { SessionManagementPanel } from './SessionManagementPanel'
 import { AgentTracePanel } from './AgentTracePanel'
 import { AgentSubAgentSessionPanel } from './AgentSubAgentSessionPanel'
@@ -696,6 +697,7 @@ function AgentPanelComponent({
     />
   )
   const chatPanePortal = view === 'chat' && chatPaneHost ? createPortal(chatPane, chatPaneHost, 'agent-chat-pane') : null
+  const sessionRailToggleLabel = t(sessionRailVisible ? 'chat.sessionRail.hide' : 'chat.sessionRail.show')
 
   return (
     <aside
@@ -709,13 +711,9 @@ function AgentPanelComponent({
         workbench only.
       */}
       {dockedChrome && (
-        <div className="flex h-9 shrink-0 items-center gap-2 border-b border-[var(--nova-border)] px-3">
-          <div className="flex min-w-0 shrink-0 items-center gap-2 text-xs font-medium text-[var(--nova-text)]">
-            <Bot className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />
-            {t('chat.agent')}
-          </div>
+        <div className="flex h-9 shrink-0 items-center gap-1.5 border-b border-[var(--nova-border)] px-2">
           <div
-            className="flex h-7 min-w-0 shrink-0 items-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0.5"
+            className="flex h-7 shrink-0 items-center rounded-[var(--nova-radius)] bg-[var(--nova-surface-2)] p-0.5"
             aria-label={t('chat.panelSwitch')}
           >
             <button
@@ -727,13 +725,6 @@ function AgentPanelComponent({
             </button>
             <button
               type="button"
-              onClick={() => setView('sessions')}
-              className={`rounded-[6px] px-2 py-0.5 text-[11px] transition-colors ${view === 'sessions' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
-            >
-              {t('chat.view.sessions')}
-            </button>
-            <button
-              type="button"
               onClick={() => setView('traces')}
               className={`rounded-[6px] px-1.5 py-0.5 text-[11px] transition-colors ${view === 'traces' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
               aria-label={t('chat.view.traces')}
@@ -741,30 +732,42 @@ function AgentPanelComponent({
               <Activity className="h-3 w-3" />
             </button>
           </div>
-          <button
-            type="button"
-            disabled={sessionControlsDisabled}
-            onClick={() => void onCreateSession()}
-            className="nova-nav-item flex h-7 w-7 shrink-0 items-center justify-center rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] disabled:cursor-not-allowed disabled:opacity-45"
-            aria-label={t('chat.newSession')}
-          >
-            <motion.span
-              className="flex"
-              animate={sessionTransitionPending ? { rotate: 90, scale: 0.78 } : { rotate: 0, scale: 1 }}
-              transition={{ duration: sessionTransitionPending ? 0.1 : 0.16, ease: novaEase }}
+          <div className="flex h-7 shrink-0 items-center rounded-[var(--nova-radius)] bg-[var(--nova-surface-2)] p-0.5">
+            <SessionHistoryPopover
+              sessions={sessions}
+              activeSessionId={activeSessionId}
+              active={view === 'sessions'}
+              disabled={sessionControlsDisabled}
+              onSwitch={onSwitchSession}
+              onManage={() => setView('sessions')}
+            />
+            <button
+              type="button"
+              disabled={sessionControlsDisabled}
+              onClick={() => void onCreateSession()}
+              className="nova-nav-item flex size-6 shrink-0 items-center justify-center rounded-[6px] disabled:cursor-not-allowed disabled:opacity-45"
+              aria-label={t('chat.newSession')}
             >
-              <Plus className="h-3.5 w-3.5" />
-            </motion.span>
-          </button>
+              <motion.span
+                className="flex"
+                animate={sessionTransitionPending ? { rotate: 90, scale: 0.78 } : { rotate: 0, scale: 1 }}
+                transition={{ duration: sessionTransitionPending ? 0.1 : 0.16, ease: novaEase }}
+              >
+                <Plus className="size-3.5" />
+              </motion.span>
+            </button>
+          </div>
           <div className="min-w-0 flex-1" />
           {onSessionRailVisibleChange ? (
             <button
               type="button"
               onClick={() => onSessionRailVisibleChange(!sessionRailVisible)}
-              className="nova-nav-item hidden size-7 shrink-0 items-center justify-center rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] md:flex"
-              aria-label={t(sessionRailVisible ? 'chat.sessionRail.hide' : 'chat.sessionRail.show')}
+              aria-label={sessionRailToggleLabel}
+              aria-pressed={sessionRailVisible}
+              title={sessionRailToggleLabel}
+              className={`nova-nav-item flex size-7 shrink-0 items-center justify-center rounded-[var(--nova-radius)] border transition-colors ${sessionRailVisible ? 'border-[var(--nova-border)] bg-[var(--nova-active)] text-[var(--nova-text)]' : 'border-transparent text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text-muted)]'}`}
             >
-              {sessionRailVisible ? <PanelRightClose className="size-3.5" /> : <PanelRightOpen className="size-3.5" />}
+              <PanelRight aria-hidden="true" className="size-3.5" />
             </button>
           ) : null}
         </div>

@@ -322,10 +322,7 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
         <WritingSessionRail
           sessions={sessions}
           activeSessionId={activeSessionId}
-          pending={sessionPending}
-          onCreate={createSession}
           onSwitch={selectSession}
-          onManage={() => setView('sessions')}
         />
       ) : null}
     </div>
@@ -341,7 +338,6 @@ function firstAvailableSession(sessions: AgentChatSession[], ...preferredIds: st
 
 function sortSessions(sessions: AgentChatSession[]) {
   return [...sessions].sort((left, right) => {
-    if (left.running !== right.running) return left.running ? -1 : 1
     return Date.parse(right.updated_at || right.created_at || '') - Date.parse(left.updated_at || left.created_at || '')
   })
 }

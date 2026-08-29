@@ -23,7 +23,11 @@ vi.mock('./AgentChatConversationTab', () => ({
     active: boolean
     projectId: string
     onRunningChange?: (projectId: string, sessionId: string, running: boolean) => void
-    host?: { sessionRailVisible: boolean; onSessionRailVisibleChange: (visible: boolean) => void }
+    host?: {
+      sessionRailVisible: boolean
+      onSessionRailVisibleChange: (visible: boolean) => void
+      onCreateSession: () => void | Promise<void>
+    }
   }) => (
     <div data-testid={`conversation:${sessionId}`}>
       {active ? 'active' : 'hidden'}
@@ -31,9 +35,16 @@ vi.mock('./AgentChatConversationTab', () => ({
         mark {sessionId} running
       </button>
       {active && host ? (
-        <button type="button" onClick={() => host.onSessionRailVisibleChange(!host.sessionRailVisible)}>
-          {host.sessionRailVisible ? '隐藏快捷会话栏' : '显示快捷会话栏'}
-        </button>
+        <>
+          <button
+            type="button"
+            aria-pressed={host.sessionRailVisible}
+            onClick={() => host.onSessionRailVisibleChange(!host.sessionRailVisible)}
+          >
+            {host.sessionRailVisible ? '隐藏会话侧栏' : '显示会话侧栏'}
+          </button>
+          <button type="button" onClick={() => void host.onCreateSession()}>新建会话</button>
+        </>
       ) : null}
     </div>
   ),
@@ -114,7 +125,7 @@ describe('WritingAgentWorkspace', () => {
     renderWorkspace({ onSwitchSession: legacySwitch })
 
     expect(await screen.findByTestId('conversation:session-a')).toHaveTextContent('active')
-    await user.click(screen.getByRole('button', { name: '切换到会话 Character notes' }))
+    await user.click(screen.getByRole('button', { name: '切换到会话 Character notes，空闲' }))
 
     expect(screen.getByTestId('conversation:session-a')).toHaveTextContent('hidden')
     expect(screen.getByTestId('conversation:session-b')).toHaveTextContent('active')
@@ -145,21 +156,28 @@ describe('WritingAgentWorkspace', () => {
     const user = userEvent.setup()
     renderWorkspace()
 
-    await user.click(await screen.findByRole('button', { name: '隐藏快捷会话栏' }))
+    const hideRailButton = await screen.findByRole('button', { name: '隐藏会话侧栏' })
+    expect(screen.getAllByRole('button', { name: '隐藏会话侧栏' })).toHaveLength(1)
+    await user.click(hideRailButton)
 
     expect(window.localStorage.getItem('nova.writingAgent.sessionRailVisible.v1')).toBe('false')
-    expect(screen.getByRole('button', { name: '显示快捷会话栏' })).toBeInTheDocument()
+    const showRailButton = screen.getByRole('button', { name: '显示会话侧栏' })
+    expect(showRailButton).toHaveAttribute('aria-pressed', 'false')
+    await user.click(showRailButton)
+
+    expect(window.localStorage.getItem('nova.writingAgent.sessionRailVisible.v1')).toBe('true')
+    expect(screen.getByRole('button', { name: '隐藏会话侧栏' })).toHaveAttribute('aria-pressed', 'true')
   })
 
   it('projects independent running state for multiple conversations in the same Book', async () => {
     const user = userEvent.setup()
     renderWorkspace()
 
-    await user.click(await screen.findByRole('button', { name: '切换到会话 Character notes' }))
+    await user.click(await screen.findByRole('button', { name: '切换到会话 Character notes，空闲' }))
     await user.click(screen.getByRole('button', { name: 'mark session-b running' }))
 
-    expect(screen.getByRole('button', { name: '切换到会话 Running draft' })).toHaveAttribute('data-running', 'true')
-    expect(screen.getByRole('button', { name: '切换到会话 Character notes' })).toHaveAttribute('data-running', 'true')
+    expect(screen.getByRole('button', { name: '切换到会话 Running draft，运行中' })).toHaveAttribute('data-running', 'true')
+    expect(screen.getByRole('button', { name: '切换到会话 Character notes，运行中' })).toHaveAttribute('data-running', 'true')
   })
 
   it('shows a recoverable empty state when a Book has no conversations yet', async () => {
