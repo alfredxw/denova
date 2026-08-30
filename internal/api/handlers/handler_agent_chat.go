@@ -19,7 +19,8 @@ import (
 )
 
 type agentChatSessionCreateRequest struct {
-	Title string `json:"title"`
+	Title         string  `json:"title"`
+	CustomAgentID *string `json:"custom_agent_id"`
 }
 
 type agentChatSessionRequest struct {
@@ -183,7 +184,7 @@ func (h *Handlers) HandleAgentChatSessionCreate(ctx context.Context, c *app.Requ
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidBody")
 		return
 	}
-	sess, err := h.app.AgentChat().CreateSession(scope.ProjectID, strings.TrimSpace(req.Title))
+	sess, err := h.app.AgentChat().CreateSession(scope.ProjectID, strings.TrimSpace(req.Title), req.CustomAgentID)
 	if err != nil {
 		slog.ErrorContext(ctx, fmt.Sprintf("[api/handlers/handler_agent_chat.go] creating session failed project_id=%q err=%v", scope.ProjectID, err))
 		writeError(c, consts.StatusBadRequest, err.Error())

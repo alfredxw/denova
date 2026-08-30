@@ -2,6 +2,7 @@ package session
 
 import (
 	"fmt"
+	"strings"
 
 	agent "github.com/alfredxw/denova/agent"
 
@@ -15,6 +16,20 @@ func AgentSessionID(agentKind string) (string, bool) {
 		return "", false
 	}
 	return definition.SessionID, true
+}
+
+// AgentInstanceSession isolates a custom background Agent's journal while
+// preserving the built-in session identity when no instance is selected.
+func AgentInstanceSession(store *Store, agentKind, instanceID string) (*Session, error) {
+	instanceID = config.NormalizeCustomAgentID(instanceID)
+	if instanceID == "" {
+		return AgentSession(store, agentKind)
+	}
+	baseID, ok := AgentSessionID(agentKind)
+	if !ok {
+		return nil, fmt.Errorf("Agent session is not configured: %s", agentKind)
+	}
+	return store.GetOrCreate(strings.TrimSuffix(baseID, "-") + "-" + instanceID)
 }
 
 // AgentSession returns the fixed background Agent journal session.

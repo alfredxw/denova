@@ -749,8 +749,8 @@ export function useAgentChat(options: ChatOptions = {}) {
   }, [loadHistoryAuthoritative, loadSessions, resumeActiveChat, setActiveSessionId, setUIMessages, stopAIStream])
 
   const createChatSession = useCallback(
-    async (title?: string) => {
-      await runSessionTransition(() => client.createSession(title))
+    async (title?: string, customAgentId?: string) => {
+      await runSessionTransition(() => client.createSession(title, customAgentId))
     },
     [client, runSessionTransition],
   )

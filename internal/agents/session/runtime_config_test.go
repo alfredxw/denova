@@ -44,6 +44,11 @@ func TestRuntimeConfigPersistsWithCASAndMetadataProjection(t *testing.T) {
 	if _, err := sess.SetRuntimeConfig(seed, initial.Revision); !errors.Is(err, conversationconfig.ErrRevisionConflict) {
 		t.Fatalf("stale writer should conflict, got %v", err)
 	}
+	switchedAgent := next
+	switchedAgent.CustomAgentID = "focused-editor"
+	if _, err := sess.SetRuntimeConfig(switchedAgent, saved.Revision); err == nil {
+		t.Fatal("existing conversation must not switch custom Agent identity")
+	}
 	wrongKind := next
 	wrongKind.AgentKind = config.AgentKindGeneral
 	if _, err := sess.SetRuntimeConfig(wrongKind, saved.Revision); err == nil {

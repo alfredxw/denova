@@ -145,11 +145,11 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
     return () => window.removeEventListener(AGENT_CHAT_PROJECT_UPDATED_EVENT, onProjectUpdated)
   }, [props.projectId, refreshSessions])
 
-  const createSession = useCallback(async () => {
+  const createSession = useCallback(async (title?: string, customAgentId?: string) => {
     if (sessionPending) return
     setSessionPending(true)
     try {
-      const created = await createAgentChatSession(props.projectId)
+      const created = await createAgentChatSession(props.projectId, title ?? '', customAgentId)
       setSessions((current) => sortSessions([created, ...current.filter((session) => session.id !== created.id)]))
       sessionsRef.current = [created, ...sessionsRef.current.filter((session) => session.id !== created.id)]
       setActiveSessionId(created.id)

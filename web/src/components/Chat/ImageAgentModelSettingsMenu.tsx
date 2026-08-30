@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { BrainCircuit, ImagePlus } from 'lucide-react'
+import { Bot, BrainCircuit, ImagePlus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
 import {
@@ -25,6 +25,7 @@ import {
   modelProfilesWithDefault,
 } from '@/features/settings/model-profiles'
 import type { LayeredSettings, Settings } from '@/features/settings/types'
+import { customAgentsForBase } from '@/features/agents/CustomAgentSelect'
 import { saveWithRevisionRecovery } from '@/lib/revision-conflict'
 import { PersistedSettingsMenuSub, type PersistedSettingsMenuOption } from './PersistedSettingsMenuSub'
 
@@ -36,10 +37,13 @@ interface ImageAgentModelSettingsMenuProps {
 type ImageAgentModelSelection =
   | { kind: 'language'; value: string }
   | { kind: 'image'; value: string }
+  | { kind: 'agent'; value: string }
 
 interface ModelMenuOption extends PersistedSettingsMenuOption {
   currentLabel: string
 }
+
+const BUILTIN_IMAGE_AGENT_ID = '__builtin_image_agent__'
 
 /** Shared composer shortcuts for the Image Agent's reasoning and output models. */
 export function ImageAgentModelSettingsMenu({ disabled = false, projectId = '' }: ImageAgentModelSettingsMenuProps) {
@@ -53,12 +57,16 @@ export function ImageAgentModelSettingsMenu({ disabled = false, projectId = '' }
     () => buildImageModelOptions(selector.settings, t),
     [selector.settings, t],
   )
+  const agentOptions = useMemo(() => buildImageAgentOptions(selector.settings, t), [selector.settings, t])
   const currentLanguageModel = selector.saving?.kind === 'language'
     ? selector.saving.value
     : resolveImageAgentLanguageModelID(selector.settings)
   const currentImageModel = selector.saving?.kind === 'image'
     ? selector.saving.value
     : resolveImageAgentOutputModelID(selector.settings)
+  const currentAgent = selector.saving?.kind === 'agent'
+    ? selector.saving.value
+    : resolveImageAgentID(selector.settings)
   const controlsDisabled = disabled || !selector.settings
 
   return (
@@ -73,6 +81,17 @@ export function ImageAgentModelSettingsMenu({ disabled = false, projectId = '' }
         disabled={controlsDisabled}
         emptyLabel={t('chat.imageAgentModels.languageEmpty')}
         onValueChange={(value) => selector.select({ kind: 'language', value })}
+      />
+      <PersistedSettingsMenuSub
+        icon={Bot}
+        label={t('agents.custom.imageDefault')}
+        currentLabel={optionCurrentLabel(agentOptions, currentAgent)}
+        value={currentAgent}
+        options={agentOptions}
+        saving={selector.saving?.kind === 'agent'}
+        disabled={controlsDisabled}
+        emptyLabel={t('agents.custom.builtin', { agent: t('agents.image.title') })}
+        onValueChange={(value) => selector.select({ kind: 'agent', value })}
       />
       <PersistedSettingsMenuSub
         icon={ImagePlus}
@@ -187,6 +206,9 @@ function useImageAgentModelSettings(projectId: string) {
 }
 
 function applySelection(settings: Settings, selection: ImageAgentModelSelection): Settings {
+  if (selection.kind === 'agent') {
+    return { ...settings, default_image_agent_id: selection.value === BUILTIN_IMAGE_AGENT_ID ? '' : selection.value }
+  }
   if (selection.kind === 'image') {
     return { ...settings, default_image_api_profile_id: selection.value }
   }
@@ -203,6 +225,7 @@ function applySelection(settings: Settings, selection: ImageAgentModelSelection)
 }
 
 function selectionMatchesSettings(settings: LayeredSettings, selection: ImageAgentModelSelection): boolean {
+  if (selection.kind === 'agent') return resolveImageAgentID(settings) === selection.value
   return selection.kind === 'language'
     ? resolveImageAgentLanguageModelID(settings) === selection.value
     : resolveImageAgentOutputModelID(settings) === selection.value
@@ -213,6 +236,7 @@ function selectionSettingsLayer(
   selection: ImageAgentModelSelection,
   projectId: string,
 ) {
+  if (selection.kind === 'agent') return projectId ? 'workspace' as const : 'user' as const
   if (!projectId || selection.kind === 'language') return 'user' as const
   const workspaceHasDefault = Boolean(settings.workspace.default_image_api_profile_id?.trim())
   const workspaceDefinesProfile = settings.workspace.image_api_profiles?.some(
@@ -229,6 +253,28 @@ function resolveImageAgentLanguageModelID(settings: LayeredSettings | null): str
 
 function resolveImageAgentOutputModelID(settings: LayeredSettings | null): string {
   return settings?.effective.default_image_api_profile_id?.trim() || DEFAULT_IMAGE_API_PROFILE_ID
+}
+
+function resolveImageAgentID(settings: LayeredSettings | null): string {
+  return settings?.effective.default_image_agent_id?.trim() || BUILTIN_IMAGE_AGENT_ID
+}
+
+function buildImageAgentOptions(
+  settings: LayeredSettings | null,
+  t: (key: string, options?: Record<string, unknown>) => string,
+): ModelMenuOption[] {
+  const builtinLabel = t('agents.custom.builtin', { agent: t('agents.image.title') })
+  const options: ModelMenuOption[] = [{ id: BUILTIN_IMAGE_AGENT_ID, label: builtinLabel, currentLabel: builtinLabel }]
+  for (const agent of customAgentsForBase(settings?.effective.custom_agents, 'image')) {
+    if (!agent.id) continue
+    options.push({
+      id: agent.id,
+      label: agent.name || agent.id,
+      currentLabel: agent.name || agent.id,
+      meta: agent.description,
+    })
+  }
+  return includeCurrentOption(options, resolveImageAgentID(settings))
 }
 
 function buildLanguageModelOptions(

@@ -8,25 +8,33 @@ import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
 import { FeaturePageShell } from '@/components/layout/feature-page-shell'
 import { MobilePaneTrigger } from '@/components/layout/mobile-pane-trigger'
 import { SidebarVisibilityToggle } from '@/components/layout/sidebar-visibility-toggle'
-import { SectionedNavigation } from '@/components/navigation/sectioned-navigation'
-import type { SectionedNavigationGroup } from '@/components/navigation/sectioned-navigation'
 import { Button } from '@/components/ui/button'
 import { LoadingState } from '@/components/common/LoadingState'
 import { Input } from '@/components/ui/input'
-import type { AgentContextOverride, AgentModelOverride, AgentSkillOverride, AgentToolOverride, ImageAPIProfileSettings, LayeredSettings, ModelProfileSettings, Settings, SettingsLayer } from '@/features/settings/types'
+import type { AgentContextOverride, AgentModelOverride, AgentPromptOverride, AgentSkillOverride, AgentToolOverride, CustomAgentConfig, ImageAPIProfileSettings, LayeredSettings, ModelProfileSettings, Settings, SettingsLayer } from '@/features/settings/types'
 import { modelProfileID, modelProfileLabel, modelProfilesWithDefault } from '@/features/settings/model-profiles'
 import { imageAPIProfileID, imageAPIProfileLabel, imageAPIProfilesWithDefault } from '@/features/settings/image-profiles'
 import { useLayeredSettingsDraft } from '@/features/settings/use-layered-settings-draft'
 import { getSkills, resourceTargetKey } from '@/lib/api'
 import type { ResourceTarget, SkillSummary } from '@/lib/api'
 import { AgentRuntimeContextSection } from './AgentRuntimeContextSection'
-import { AgentBuiltInCapabilitySection, AgentContextSection, AgentImageModelSection, AgentModelOnlySection, AgentModelSection, AgentSkillSection, AgentToolSection, mergeAgentModelOverride } from './agent-configuration-sections'
+import { AgentBuiltInCapabilitySection, AgentContextSection, AgentImageModelSection, AgentModelOnlySection, AgentModelSection, AgentPromptSection, AgentSkillSection, AgentToolSection, mergeAgentModelOverride, mergeAgentPromptOverride } from './agent-configuration-sections'
 import { AGENTS, toolDefinitionsFromManifest } from './agent-registry'
-import type { AgentViewDefinition, ToolKey, VisibleAgentKey } from './agent-registry'
+import type { ToolKey, VisibleAgentKey } from './agent-registry'
+import {
+  AgentHeader,
+  AgentList,
+  CreateCustomAgentDialog,
+  CustomAgentIdentitySection,
+  findCustomAgent,
+  isVisibleCustomAgent,
+  mergeCustomAgentViews,
+  updateCustomAgent,
+  type AgentSelectionID,
+} from './custom-agent-management'
 import type { ToolNavigationIntent } from '@/components/Chat/tool-navigation'
 
 const tabCls = 'nova-nav-item rounded-[var(--nova-radius)] px-2.5 py-1 text-xs'
-
 export function AgentsView({ target, onClose, toolNavigationIntent }: { target: ResourceTarget; onClose?: () => void; toolNavigationIntent?: ToolNavigationIntent | null }) {
   const { t } = useTranslation()
   const targetKind = target.kind
@@ -44,7 +52,8 @@ export function AgentsView({ target, onClose, toolNavigationIntent }: { target: 
     layer: activeLayer,
     sourcePrefix: 'agents-view',
   })
-  const [activeAgent, setActiveAgent] = useState<VisibleAgentKey>('ide')
+  const [activeSelection, setActiveSelection] = useState<AgentSelectionID>('ide')
+  const [createOpen, setCreateOpen] = useState(false)
   const [skills, setSkills] = useState<SkillSummary[]>([])
   const [agentChatOpen, setAgentChatOpen] = useState(false)
   const [sidebarVisible, setSidebarVisible] = useState(true)
@@ -55,10 +64,11 @@ export function AgentsView({ target, onClose, toolNavigationIntent }: { target: 
     if (!intent || intent.nonce === toolNavigationNonceRef.current || intent.target.kind !== 'config_resource' || intent.target.resource !== 'agent_profile') return
     toolNavigationNonceRef.current = intent.nonce
     const fixedAgent = AGENTS.find((agent) => agent.key === intent.target.id)
-    if (fixedAgent) setActiveAgent(fixedAgent.key)
+    if (fixedAgent) setActiveSelection(fixedAgent.key)
+    else if (layered?.effective.custom_agents?.some((agent) => agent.id === intent.target.id)) setActiveSelection(`custom:${intent.target.id}`)
     if (intent.target.scope === 'workspace' && targetKind === 'project') setActiveLayer('workspace')
     else if (intent.target.scope === 'user') setActiveLayer('user')
-  }, [targetKind, toolNavigationIntent?.nonce])
+  }, [layered?.effective.custom_agents, targetKind, toolNavigationIntent?.nonce])
 
   useEffect(() => {
     let cancelled = false
@@ -85,27 +95,45 @@ export function AgentsView({ target, onClose, toolNavigationIntent }: { target: 
   }, [resourceTarget, targetKey])
 
   const effective = layered?.effective ?? {}
+  const customAgentID = activeSelection.startsWith('custom:') ? activeSelection.slice('custom:'.length) : ''
+  const effectiveCustomAgents = mergeCustomAgentViews(effective.custom_agents, draft.custom_agents).filter(isVisibleCustomAgent)
+  const selectedCustomAgent = effectiveCustomAgents.find((agent) => agent.id === customAgentID)
+  const activeAgent = (selectedCustomAgent?.base_kind ?? (customAgentID ? 'ide' : activeSelection)) as VisibleAgentKey
   const selected = AGENTS.find((agent) => agent.key === activeAgent) ?? AGENTS[0]
+  const layerCustomAgent = findCustomAgent(draft, customAgentID)
+  const inheritedSettings = layered?.inherited?.[activeLayer] ?? {}
+  const inheritedCustomAgent = findCustomAgent(inheritedSettings, customAgentID)
   const profileOptions = useMemo(() => buildProfileOptions(draft, effective, t), [draft, effective, t])
   const imageProfileOptions = useMemo(() => buildImageProfileOptions(draft, effective, t), [draft, effective, t])
-  const inheritedImageProfileID = resolveInheritedImageProfileID(layered, activeLayer)
-  const modelValue = draft.agent_models?.[activeAgent] ?? {}
-  const inheritedModel = mergeAgentModelOverride(effective.agent_models?.default ?? {}, effective.agent_models?.[activeAgent] ?? {})
-  const toolValue = draft.agent_tools?.[activeAgent] ?? {}
-  const resolvedToolManifest = layered?.resolved_agent_tool_manifests?.[activeAgent]
+  const baseInheritedModel = mergeAgentModelOverride(inheritedSettings.agent_models?.default ?? {}, inheritedSettings.agent_models?.[activeAgent] ?? {})
+  const modelValue = selectedCustomAgent ? layerCustomAgent?.model ?? {} : draft.agent_models?.[activeAgent] ?? {}
+  const inheritedModel = selectedCustomAgent ? mergeAgentModelOverride(baseInheritedModel, inheritedCustomAgent?.model ?? {}) : baseInheritedModel
+  const baseInheritedPrompt = mergeAgentPromptOverride(inheritedSettings.agent_prompts?.default ?? {}, inheritedSettings.agent_prompts?.[activeAgent] ?? {})
+  const promptValue = selectedCustomAgent ? layerCustomAgent?.prompt ?? {} : draft.agent_prompts?.[activeAgent] ?? {}
+  const inheritedPrompt = selectedCustomAgent ? mergeAgentPromptOverride(baseInheritedPrompt, inheritedCustomAgent?.prompt ?? {}) : baseInheritedPrompt
+  const toolValue = selectedCustomAgent ? layerCustomAgent?.tools ?? {} : draft.agent_tools?.[activeAgent] ?? {}
+  const resolvedToolManifest = layered?.resolved_agent_tool_manifests?.[selectedCustomAgent?.id ?? activeAgent]
   const toolRows = useMemo(() => toolDefinitionsFromManifest(resolvedToolManifest), [resolvedToolManifest])
   const skillsAllowed = Boolean(toolValue.skills ?? toolRows.find((tool) => tool.key === 'skills')?.allowed ?? false)
-  const skillValue = draft.agent_skills?.[activeAgent] ?? {}
-  const contextValue = draft.agent_context?.[activeAgent] ?? {}
-  const resolvedContext = layered?.resolved_agent_contexts?.[activeAgent]
+  const skillValue = selectedCustomAgent ? layerCustomAgent?.skills ?? {} : draft.agent_skills?.[activeAgent] ?? {}
+  const effectiveSkillSettings = selectedCustomAgent ? {
+    ...(effective.agent_skills ?? {}),
+    [activeAgent]: { ...(effective.agent_skills?.[activeAgent] ?? {}), ...(selectedCustomAgent.skills ?? {}) },
+  } : effective.agent_skills
+  const contextValue = selectedCustomAgent ? layerCustomAgent?.context ?? {} : draft.agent_context?.[activeAgent] ?? {}
+  const resolvedContext = layered?.resolved_agent_contexts?.[selectedCustomAgent?.id ?? activeAgent]
+  const inheritedImageProfileID = selectedCustomAgent
+    ? inheritedCustomAgent?.image_api_profile_id || resolveInheritedImageProfileID(layered, activeLayer)
+    : resolveInheritedImageProfileID(layered, activeLayer)
   const inheritedToolParallelism = resolveInheritedToolParallelism(layered, activeLayer)
+  const activeAgentTitle = selectedCustomAgent?.name || t(selected.titleKey)
   const configurationContext = useMemo(() => ({
     active_settings_layer: activeLayer,
-    active_agent: activeAgent,
-    active_agent_title: t(selected.titleKey),
+    active_agent: selectedCustomAgent?.id ?? activeAgent,
+    active_agent_title: activeAgentTitle,
     write_scope_required: 'true',
     write_scope_hint: activeLayer,
-  }), [activeAgent, activeLayer, selected.titleKey, t])
+  }), [activeAgent, activeAgentTitle, activeLayer, selectedCustomAgent?.id])
 
   const reloadAfterAgentMutation = useCallback(() => {
     void saveNow()
@@ -126,6 +154,10 @@ export function AgentsView({ target, onClose, toolNavigationIntent }: { target: 
   }
 
   const setAgentModel = (patch: Partial<AgentModelOverride>) => {
+    if (selectedCustomAgent) {
+      setDraft((current) => updateCustomAgent(current, selectedCustomAgent, (agent) => ({ ...agent, model: { ...(agent.model ?? {}), ...patch } })))
+      return
+    }
     setDraft((current) => ({
       ...current,
       agent_models: {
@@ -136,6 +168,15 @@ export function AgentsView({ target, onClose, toolNavigationIntent }: { target: 
   }
 
   const setAgentTool = (key: ToolKey, value: boolean | null) => {
+    if (selectedCustomAgent) {
+      setDraft((current) => updateCustomAgent(current, selectedCustomAgent, (agent) => {
+        const tools: AgentToolOverride = { ...(agent.tools ?? {}) }
+        if (value === null) delete tools[key]
+        else tools[key] = value
+        return { ...agent, tools }
+      }))
+      return
+    }
     setDraft((current) => {
       const nextAgentTools = { ...(current.agent_tools ?? {}) }
       const nextOverrides: AgentToolOverride = { ...(nextAgentTools[activeAgent] ?? {}) }
@@ -147,6 +188,15 @@ export function AgentsView({ target, onClose, toolNavigationIntent }: { target: 
   }
 
   const setAgentSkill = (name: string, value: boolean | null) => {
+    if (selectedCustomAgent) {
+      setDraft((current) => updateCustomAgent(current, selectedCustomAgent, (agent) => {
+        const agentSkills: AgentSkillOverride = { ...(agent.skills ?? {}) }
+        if (value === null) delete agentSkills[name]
+        else agentSkills[name] = value
+        return { ...agent, skills: agentSkills }
+      }))
+      return
+    }
     setDraft((current) => {
       const nextAgentSkills = { ...(current.agent_skills ?? {}) }
       const nextOverrides: AgentSkillOverride = { ...(nextAgentSkills[activeAgent] ?? {}) }
@@ -161,6 +211,10 @@ export function AgentsView({ target, onClose, toolNavigationIntent }: { target: 
   }
 
   const setAgentContext = (patch: Partial<AgentContextOverride>) => {
+    if (selectedCustomAgent) {
+      setDraft((current) => updateCustomAgent(current, selectedCustomAgent, (agent) => ({ ...agent, context: { ...(agent.context ?? {}), ...patch } })))
+      return
+    }
     setDraft((current) => ({
       ...current,
       agent_context: {
@@ -175,7 +229,36 @@ export function AgentsView({ target, onClose, toolNavigationIntent }: { target: 
   }
 
   const setImageProfile = (profileID: string) => {
+    if (selectedCustomAgent) {
+      setDraft((current) => updateCustomAgent(current, selectedCustomAgent, (agent) => ({ ...agent, image_api_profile_id: profileID })))
+      return
+    }
     setDraft((current) => ({ ...current, default_image_api_profile_id: profileID }))
+  }
+
+  const setAgentPrompt = (patch: Partial<AgentPromptOverride>) => {
+    if (selectedCustomAgent) {
+      setDraft((current) => updateCustomAgent(current, selectedCustomAgent, (agent) => ({ ...agent, prompt: { ...(agent.prompt ?? {}), ...patch } })))
+      return
+    }
+    setDraft((current) => ({
+      ...current,
+      agent_prompts: {
+        ...(current.agent_prompts ?? {}),
+        [activeAgent]: { ...(current.agent_prompts?.[activeAgent] ?? {}), ...patch },
+      },
+    }))
+  }
+
+  const archiveCustomAgent = () => {
+    if (!selectedCustomAgent) return
+    setDraft((current) => updateCustomAgent(current, selectedCustomAgent, (agent) => ({ ...agent, enabled: false })))
+    setActiveSelection(selectedCustomAgent.base_kind ?? 'ide')
+  }
+
+  const setCustomIdentity = (patch: Partial<Pick<CustomAgentConfig, 'name' | 'description'>>) => {
+    if (!selectedCustomAgent) return
+    setDraft((current) => updateCustomAgent(current, selectedCustomAgent, (agent) => ({ ...agent, ...patch })))
   }
 
   return (
@@ -244,7 +327,14 @@ export function AgentsView({ target, onClose, toolNavigationIntent }: { target: 
           title: 'Agents',
           side: 'left',
           icon: <Bot className="h-4 w-4" />,
-          content: <AgentList active={activeAgent} onSelect={setActiveAgent} />,
+          content: (
+            <AgentList
+              active={activeSelection}
+              customAgents={effectiveCustomAgents}
+              onSelect={setActiveSelection}
+              onCreate={() => setCreateOpen(true)}
+            />
+          ),
           desktopClassName: 'min-h-0 border-r border-[var(--nova-border)]',
           desktopVisible: sidebarVisible,
           mobileClassName: 'w-[min(88vw,340px)]',
@@ -291,14 +381,21 @@ export function AgentsView({ target, onClose, toolNavigationIntent }: { target: 
             {isMobile && (
               <div className="sticky top-0 z-10 flex h-10 items-center gap-2 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-3">
                 <MobilePaneTrigger side="left" label={t('workbench.mobile.openSidePanel', { label: 'Agents' })} onClick={openLeft} />
-                <span className="min-w-0 truncate text-[11px] text-[var(--nova-text-muted)]">{t(selected.titleKey)}</span>
+                <span className="min-w-0 truncate text-[11px] text-[var(--nova-text-muted)]">{activeAgentTitle}</span>
                 {agentAvailable && agentChatOpen && (
                   <MobilePaneTrigger side="right" label={t('workbench.mobile.openSidePanel', { label: t('agents.configAgent.title') })} onClick={openRight} className="ml-auto" />
                 )}
               </div>
             )}
             <div className="mx-auto flex w-full min-w-0 max-w-5xl flex-col gap-5 px-4 py-5 sm:px-6">
-              <AgentHeader agent={selected} />
+              <AgentHeader agent={selected} customAgent={selectedCustomAgent} onArchive={selectedCustomAgent ? archiveCustomAgent : undefined} />
+              {selectedCustomAgent ? (
+                <CustomAgentIdentitySection
+                  agent={selectedCustomAgent}
+                  value={layerCustomAgent}
+                  onChange={setCustomIdentity}
+                />
+              ) : null}
               <AgentToolSchedulingSection
                 value={draft.agent_tool_parallelism ?? null}
                 inherited={inheritedToolParallelism}
@@ -316,9 +413,9 @@ export function AgentsView({ target, onClose, toolNavigationIntent }: { target: 
                   {t('agents.model.userScoped')}
                 </section>
               )}
-              {activeAgent === 'image' && (
+              {activeAgent === 'image' && activeLayer === 'user' && (
                 <AgentImageModelSection
-                  value={draft.default_image_api_profile_id ?? ''}
+                  value={selectedCustomAgent ? layerCustomAgent?.image_api_profile_id ?? '' : draft.default_image_api_profile_id ?? ''}
                   inherited={inheritedImageProfileID}
                   profiles={imageProfileOptions}
                   onChange={setImageProfile}
@@ -331,6 +428,14 @@ export function AgentsView({ target, onClose, toolNavigationIntent }: { target: 
                   onChange={setAgentContext}
                 />
               )}
+              <AgentPromptSection
+                value={promptValue}
+                inherited={inheritedPrompt}
+                builtin={layered.builtin_agent_prompts?.[activeAgent]?.system_prompt ?? ''}
+                blocks={layered.builtin_agent_prompt_blocks?.[activeAgent]}
+                sources={layered.builtin_agent_prompt_sources?.[activeAgent]?.sources}
+                onChange={setAgentPrompt}
+              />
               {selected.capabilityMode === 'tools' ? (
                 <>
                   <AgentToolSection
@@ -343,7 +448,7 @@ export function AgentsView({ target, onClose, toolNavigationIntent }: { target: 
                       agent={activeAgent}
                       skills={skills}
                       value={skillValue}
-                      effective={effective.agent_skills}
+                      effective={effectiveSkillSettings}
                       onChange={setAgentSkill}
                     />
                   )}
@@ -359,6 +464,14 @@ export function AgentsView({ target, onClose, toolNavigationIntent }: { target: 
         )}
       </AdaptiveSurface>
       )}
+      <CreateCustomAgentDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        onCreate={(agent) => {
+          setDraft((current) => ({ ...current, custom_agents: [...(current.custom_agents ?? []), agent] }))
+          setActiveSelection(`custom:${agent.id}`)
+        }}
+      />
     </FeaturePageShell>
   )
 }
@@ -431,52 +544,6 @@ function resolveInheritedImageProfileID(layered: LayeredSettings | null, layer: 
     if (candidate) value = candidate
   }
   return value
-}
-
-function AgentList({ active, onSelect }: { active: VisibleAgentKey; onSelect: (agent: VisibleAgentKey) => void }) {
-  const { t } = useTranslation()
-  const groups = new Map<string, AgentViewDefinition[]>()
-  for (const agent of AGENTS) {
-    const group = groups.get(agent.groupKey)
-    if (group) group.push(agent)
-    else groups.set(agent.groupKey, [agent])
-  }
-
-  const navigationGroups: SectionedNavigationGroup<VisibleAgentKey>[] = Array.from(groups, ([group, agents]) => ({
-    id: group,
-    title: t(group),
-    items: agents.map((agent) => ({
-      id: agent.key,
-      title: t(agent.titleKey),
-      description: t(agent.subtitleKey),
-      icon: agent.icon,
-    })),
-  }))
-  return (
-    <SectionedNavigation
-      groups={navigationGroups}
-      activeId={active}
-      onSelect={onSelect}
-    />
-  )
-}
-
-function AgentHeader({ agent }: { agent: AgentViewDefinition }) {
-  const { t } = useTranslation()
-  const Icon = agent.icon
-  return (
-    <section className="border-b border-[var(--nova-border)] pb-4">
-      <div className="flex items-center gap-3">
-        <div className="flex h-9 w-9 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)]">
-          <Icon className="h-4 w-4 text-[var(--nova-text-muted)]" />
-        </div>
-        <div className="min-w-0">
-          <h1 className="truncate text-sm font-semibold">{t(agent.titleKey)}</h1>
-          <div className="mt-1 text-[11px] text-[var(--nova-text-faint)]">{t(agent.subtitleKey)}</div>
-        </div>
-      </div>
-    </section>
-  )
 }
 
 function buildProfileOptions(draft: Settings, effective: Settings, t: (key: string, options?: Record<string, unknown>) => string): Array<{ id: string; label: string }> {

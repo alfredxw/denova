@@ -697,6 +697,7 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
             ) : null}
             {creatingStory ? (
               <NewStorySetupPanel
+                projectId={projectId}
                 stories={stories}
                 tellers={tellers}
                 directors={storyDirectors}

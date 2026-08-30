@@ -75,7 +75,7 @@ export interface AgentChatClient {
     imagePresetId?: string,
     tellerId?: string,
   ) => Promise<ContextAnalysis>
-  createSession: (title?: string) => Promise<SessionSummary>
+  createSession: (title?: string, customAgentId?: string) => Promise<SessionSummary>
   switchSession: (id: string) => Promise<SessionSummary>
   renameSession: (id: string, title: string) => Promise<void>
   deleteSession: (id: string) => Promise<SessionSummary>

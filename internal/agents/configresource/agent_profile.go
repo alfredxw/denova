@@ -10,20 +10,22 @@ import (
 
 const (
 	agentProfileKindAgent           = "agent"
+	agentProfileKindCustomAgent     = "custom_agent"
 	agentProfileKindGeneralSubAgent = "general_sub_agent"
 	agentProfileKindSubAgent        = "sub_agent"
 	agentProfileSnapshotID          = "registry"
 )
 
 type agentProfileConfigValue struct {
-	Kind     string                       `json:"kind,omitempty"`
-	Model    *config.AgentModelOverride   `json:"model,omitempty"`
-	Tools    *config.AgentToolOverride    `json:"tools,omitempty"`
-	Prompt   *config.AgentPromptOverride  `json:"prompt,omitempty"`
-	Skills   *config.AgentSkillOverride   `json:"skills,omitempty"`
-	Context  *config.AgentContextOverride `json:"context,omitempty"`
-	Enabled  *bool                        `json:"enabled,omitempty"`
-	SubAgent *config.SubAgentConfig       `json:"sub_agent,omitempty"`
+	Kind        string                       `json:"kind,omitempty"`
+	Model       *config.AgentModelOverride   `json:"model,omitempty"`
+	Tools       *config.AgentToolOverride    `json:"tools,omitempty"`
+	Prompt      *config.AgentPromptOverride  `json:"prompt,omitempty"`
+	Skills      *config.AgentSkillOverride   `json:"skills,omitempty"`
+	Context     *config.AgentContextOverride `json:"context,omitempty"`
+	Enabled     *bool                        `json:"enabled,omitempty"`
+	CustomAgent *config.CustomAgentConfig    `json:"custom_agent,omitempty"`
+	SubAgent    *config.SubAgentConfig       `json:"sub_agent,omitempty"`
 }
 
 type agentProfileDeleteValue struct {
@@ -39,7 +41,7 @@ type agentProfileReadResult struct {
 func newAgentProfileResource(cfg *config.Config) Adapter {
 	return configResourceAdapter{
 		descriptor: Descriptor{
-			Name: "agent_profile", Description: "Singleton registry snapshot for layered model, capability, prompt, Skill, context, and SubAgent configuration; its read ID is registry.",
+			Name: "agent_profile", Description: "Singleton registry snapshot for layered fixed Agent, custom Agent, capability, prompt, Skill, context, and SubAgent configuration; its read ID is registry.",
 			Scopes: []string{"user", "workspace"}, Operations: configCRUDOperations(), RevisionField: "revision", Reference: "references/agent-profile.md",
 		},
 		list: func(_ context.Context, request ReadRequest) (any, error) {
@@ -71,7 +73,7 @@ func newAgentProfileResource(cfg *config.Config) Adapter {
 				}
 				value.Kind = strings.TrimSpace(deleteValue.Kind)
 				if value.Kind == "" {
-					return nil, fmt.Errorf("agent_profile delete requires value.kind to be agent, general_sub_agent, or sub_agent")
+					return nil, fmt.Errorf("agent_profile delete requires value.kind to be agent, custom_agent, general_sub_agent, or sub_agent")
 				}
 			} else {
 				if err := decodeConfigValue(mutation.Value, &value); err != nil {
@@ -86,12 +88,14 @@ func newAgentProfileResource(cfg *config.Config) Adapter {
 				if strings.TrimSpace(mutation.Revision) == "" {
 					return nil, fmt.Errorf("agent_profile create requires the latest %s scope revision", scope)
 				}
-				if kind != agentProfileKindSubAgent {
-					return nil, fmt.Errorf("agent_profile create is only valid for a new sub_agent; fixed Agent profiles use update")
+				if kind != agentProfileKindSubAgent && kind != agentProfileKindCustomAgent {
+					return nil, fmt.Errorf("agent_profile create is only valid for a new custom_agent or sub_agent; fixed Agent profiles use update")
 				}
 			}
 			receiptID := strings.TrimSpace(mutation.ID)
-			if receiptID == "" && value.SubAgent != nil {
+			if receiptID == "" && value.CustomAgent != nil {
+				receiptID = config.NormalizeCustomAgentID(value.CustomAgent.ID)
+			} else if receiptID == "" && value.SubAgent != nil {
 				receiptID = config.NormalizeSubAgentID(value.SubAgent.ID)
 			}
 			path, err := writableAgentConfigPath(cfg, scope)
@@ -147,7 +151,7 @@ func readAgentProfiles(cfg *config.Config) (agentProfileReadResult, error) {
 		return agentProfileReadResult{}, err
 	}
 	snapshot := agentConfigSnapshot{
-		Paths: layered.Paths, Agents: agentConfigDefinitions(), SubAgentParents: config.SubAgentParentKinds(),
+		Paths: layered.Paths, Agents: agentConfigDefinitions(), CustomAgentBases: config.CustomizableAgentKinds(), SubAgentParents: config.SubAgentParentKinds(),
 		ToolCapabilities: agentConfigToolCapabilities(),
 		Layers: agentConfigLayeredSnapshot{
 			User: agentConfigLayer(layered.User), Workspace: agentConfigLayer(layered.Workspace), Effective: agentConfigLayer(layered.Effective),
@@ -156,9 +160,9 @@ func readAgentProfiles(cfg *config.Config) (agentProfileReadResult, error) {
 		Notes: []string{
 			"scope must be user or workspace; model overrides are user-only",
 			"API keys and other secrets are never returned by this resource",
-			"kind selects agent, general_sub_agent, or sub_agent",
-			"sub_agent create requires the latest target-scope revision; fixed profiles use update",
-			"delete requires value.kind to disambiguate agent, general_sub_agent, or sub_agent",
+			"kind selects agent, custom_agent, general_sub_agent, or sub_agent",
+			"custom_agent and sub_agent create require the latest target-scope revision; fixed profiles use update",
+			"delete requires value.kind to disambiguate agent, custom_agent, general_sub_agent, or sub_agent",
 		},
 	}
 	return agentProfileReadResult{ID: agentProfileSnapshotID, Revisions: layered.Revisions, Snapshot: snapshot}, nil
@@ -166,7 +170,9 @@ func readAgentProfiles(cfg *config.Config) (agentProfileReadResult, error) {
 
 func applyAgentProfileMutation(settings *config.Settings, layered config.LayeredSettings, scope, kind string, mutation Mutation, value agentProfileConfigValue) error {
 	id := strings.TrimSpace(mutation.ID)
-	if id == "" && value.SubAgent != nil {
+	if id == "" && value.CustomAgent != nil {
+		id = value.CustomAgent.ID
+	} else if id == "" && value.SubAgent != nil {
 		id = value.SubAgent.ID
 	}
 	switch kind {
@@ -204,6 +210,8 @@ func applyAgentProfileMutation(settings *config.Settings, layered config.Layered
 			setAgentContextOverride(settings, id, *value.Context)
 		}
 		return nil
+	case agentProfileKindCustomAgent:
+		return applyCustomAgentMutation(settings, layered, scope, id, mutation.Operation, value.CustomAgent)
 	case agentProfileKindGeneralSubAgent:
 		if !validGeneralSubAgentKey(id) {
 			return fmt.Errorf("invalid general SubAgent parent %q", id)
@@ -249,6 +257,110 @@ func applyAgentProfileMutation(settings *config.Settings, layered config.Layered
 	default:
 		return fmt.Errorf("invalid agent_profile kind %q", kind)
 	}
+}
+
+func applyCustomAgentMutation(
+	settings *config.Settings,
+	layered config.LayeredSettings,
+	scope string,
+	id string,
+	operation string,
+	value *config.CustomAgentConfig,
+) error {
+	id = config.NormalizeCustomAgentID(id)
+	if operation == ApplyDelete {
+		if id == "" {
+			return fmt.Errorf("custom_agent delete requires id")
+		}
+		settings.CustomAgents = deleteCustomAgent(settings.CustomAgents, id)
+		return nil
+	}
+	if value == nil {
+		return fmt.Errorf("custom_agent create/update requires value.custom_agent")
+	}
+	agent := *value
+	valueID := config.NormalizeCustomAgentID(agent.ID)
+	if id != "" && valueID != "" && id != valueID {
+		return fmt.Errorf("custom_agent id %q does not match mutation id %q", valueID, id)
+	}
+	if id == "" {
+		id = valueID
+	}
+	if id == "" {
+		return fmt.Errorf("custom_agent create/update requires a stable id")
+	}
+	agent.ID = id
+
+	existing, exists := findCustomAgentByID(layered.Effective.CustomAgents, id)
+	if operation == ApplyCreate {
+		if exists {
+			return fmt.Errorf("custom_agent %q already exists; use update", id)
+		}
+		if strings.TrimSpace(agent.Name) == "" || !config.IsCustomizableAgentKind(agent.BaseKind) {
+			return fmt.Errorf("invalid custom Agent: name and a base_kind from custom_agent_bases are required")
+		}
+	} else {
+		if !exists {
+			return fmt.Errorf("custom_agent %q does not exist; use create", id)
+		}
+		if strings.TrimSpace(agent.BaseKind) != "" && strings.TrimSpace(agent.BaseKind) != existing.BaseKind {
+			return fmt.Errorf("custom Agent base_kind is immutable: %q is based on %q", id, existing.BaseKind)
+		}
+	}
+
+	baseKind := strings.TrimSpace(agent.BaseKind)
+	if baseKind == "" {
+		baseKind = existing.BaseKind
+	}
+	if scope == "workspace" && (hasAgentModelOverride(agent.Model) || strings.TrimSpace(agent.ImageAPIProfileID) != "") {
+		return fmt.Errorf("custom Agent model and image API profile overrides are user-scoped")
+	}
+	if err := validateAgentToolOverride(baseKind, agent.Tools); err != nil {
+		return err
+	}
+	sanitized := config.SanitizeCustomAgents([]config.CustomAgentConfig{agent})
+	if len(sanitized) != 1 {
+		return fmt.Errorf("invalid custom Agent %q", id)
+	}
+	settings.CustomAgents = upsertCustomAgent(settings.CustomAgents, sanitized[0])
+	return nil
+}
+
+func hasAgentModelOverride(value config.AgentModelOverride) bool {
+	return strings.TrimSpace(value.ProfileID) != "" || value.Temperature != nil || strings.TrimSpace(value.ThinkingLevel) != ""
+}
+
+func findCustomAgentByID(agents []config.CustomAgentConfig, id string) (config.CustomAgentConfig, bool) {
+	id = config.NormalizeCustomAgentID(id)
+	for _, agent := range agents {
+		if config.NormalizeCustomAgentID(agent.ID) == id {
+			return agent, true
+		}
+	}
+	return config.CustomAgentConfig{}, false
+}
+
+func upsertCustomAgent(current []config.CustomAgentConfig, agent config.CustomAgentConfig) []config.CustomAgentConfig {
+	id := config.NormalizeCustomAgentID(agent.ID)
+	out := append([]config.CustomAgentConfig{}, current...)
+	for index := range out {
+		if config.NormalizeCustomAgentID(out[index].ID) == id {
+			out[index] = agent
+			return out
+		}
+	}
+	return append(out, agent)
+}
+
+func deleteCustomAgent(current []config.CustomAgentConfig, id string) []config.CustomAgentConfig {
+	id = config.NormalizeCustomAgentID(id)
+	out := make([]config.CustomAgentConfig, 0, len(current))
+	for _, agent := range current {
+		if config.NormalizeCustomAgentID(agent.ID) != id {
+			out = append(out, agent)
+		}
+	}
+	return out
 }
 
 // validateAgentToolOverride rejects dormant capability names and capabilities

@@ -7,6 +7,10 @@ import { Button } from '@/components/ui/button'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
+import { useQuery } from '@tanstack/react-query'
+import { projectSettingsTarget, settingsQueryOptions } from '@/features/settings/query'
+import { customAgentsForBase } from '@/features/agents/CustomAgentSelect'
+import { queryClient } from '@/lib/query-client'
 import type { AgentChatProject, AgentChatSession } from './api'
 import { AgentChatProjectDetailsCard } from './AgentChatProjectDetailsCard'
 import type { AgentChatActivityStatus, AgentChatSidebarActivity } from './sidebar-activity'
@@ -30,7 +34,7 @@ interface AgentChatSidebarProjectProps {
   pinned: boolean
   activities: readonly AgentChatSidebarActivity[]
   onToggle: () => void
-  onCreateSession: () => void
+  onCreateSession: (customAgentId?: string) => void
   onTogglePinned: () => void
   onRename: () => void
   onRelink: () => void
@@ -100,6 +104,9 @@ export function AgentChatSidebarProject({
     transition,
   }
   const managedProject = project.type === 'harness'
+  const baseAgentKind = project.type === 'book' ? 'ide' : 'general'
+  const settingsQuery = useQuery(settingsQueryOptions(projectSettingsTarget(project.id)), queryClient)
+  const customAgents = customAgentsForBase(settingsQuery.data?.effective.custom_agents, baseAgentKind)
   let ProjectIcon = expanded ? FolderOpen : Folder
   if (project.type === 'general') ProjectIcon = Bot
   if (managedProject) ProjectIcon = Stethoscope
@@ -190,17 +197,45 @@ export function AgentChatSidebarProject({
                   ) : null}
                 </DropdownMenuContent>
               </DropdownMenu>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-xs"
-                className="shrink-0 opacity-60 transition-opacity hover:opacity-100 focus-visible:opacity-100"
-                disabled={project.status !== 'available'}
-                onClick={onCreateSession}
-                aria-label={t('agentChat.sidebar.newChatIn', { name })}
-              >
-                <Plus />
-              </Button>
+              {customAgents.length > 0 ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-xs"
+                      className="shrink-0 opacity-60 transition-opacity hover:opacity-100 data-[state=open]:opacity-100 focus-visible:opacity-100"
+                      disabled={project.status !== 'available'}
+                      aria-label={t('agentChat.sidebar.newChatIn', { name })}
+                    >
+                      <Plus />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="min-w-48">
+                    <DropdownMenuItem onSelect={() => onCreateSession('')}>
+                      {t('agents.custom.builtin', { agent: t(baseAgentKind === 'ide' ? 'agents.ide.title' : 'agents.general.title') })}
+                    </DropdownMenuItem>
+                    {customAgents.map((agent) => (
+                      <DropdownMenuItem key={agent.id} onSelect={() => onCreateSession(agent.id)}>
+                        <Bot />
+                        {agent.name}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  className="shrink-0 opacity-60 transition-opacity hover:opacity-100 focus-visible:opacity-100"
+                  disabled={project.status !== 'available'}
+                  onClick={() => onCreateSession()}
+                  aria-label={t('agentChat.sidebar.newChatIn', { name })}
+                >
+                  <Plus />
+                </Button>
+              )}
             </div>
           </ContextMenuTrigger>
         </AgentChatProjectDetailsCard>

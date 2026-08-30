@@ -18,6 +18,7 @@ export interface ConversationConfigBinding {
 /** Fully resolved runtime selection persisted with one conversation. */
 export interface ConversationConfigSnapshot {
   agent_kind: string
+  custom_agent_id?: string
   profile_id: string
   thinking_level: ThinkingLevel
   approval_mode: AgentApprovalMode
@@ -25,6 +26,7 @@ export interface ConversationConfigSnapshot {
 }
 
 export interface ConversationConfigChanges {
+  custom_agent_id?: string
   profile_id?: string
   thinking_level?: ThinkingLevel
   approval_mode?: AgentApprovalMode

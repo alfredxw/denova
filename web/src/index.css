@@ -2324,35 +2324,35 @@ html[data-nova-motion="off"] .nova-change-review-layer {
   margin: 1em 0;
 }
 
-/* Streamdown supplies its own block and list spacing. Keep the chat rhythm
+/* Streamdown supplies its own block and list spacing. Keep Agent Markdown rhythm
    compact instead of stacking those defaults with Denova's reading styles. */
-.chat-agent-message .nova-streamdown p {
+.nova-streamdown p {
   margin: 0.3em 0;
 }
 
-.chat-agent-message .nova-streamdown h1 {
+.nova-streamdown h1 {
   margin: 0.8em 0 0.35em;
 }
 
-.chat-agent-message .nova-streamdown h2 {
+.nova-streamdown h2 {
   margin: 0.72em 0 0.3em;
 }
 
-.chat-agent-message .nova-streamdown h3 {
+.nova-streamdown h3 {
   margin: 0.62em 0 0.28em;
 }
 
-.chat-agent-message .nova-streamdown ul,
-.chat-agent-message .nova-streamdown ol {
+.nova-streamdown ul,
+.nova-streamdown ol {
   margin: 0.45em 0;
 }
 
-.chat-agent-message .nova-streamdown li {
+.nova-streamdown li {
   margin: 0.14em 0;
   padding-block: 0;
 }
 
-.chat-agent-message .nova-streamdown hr {
+.nova-streamdown hr {
   margin: 0.8em 0;
 }
 
@@ -2379,7 +2379,7 @@ html[data-nova-motion="off"] .nova-change-review-layer {
 
 /* Streamdown already owns the code-block shell; undo the legacy renderer's
    extra pre border and padding instead of restyling the upstream component. */
-.chat-agent-message [data-streamdown="code-block-body"] > pre {
+.nova-streamdown [data-streamdown="code-block-body"] > pre {
   overflow: visible;
   border: 0;
   border-radius: 0;
@@ -2389,7 +2389,7 @@ html[data-nova-motion="off"] .nova-change-review-layer {
 
 /* Keep Streamdown's controls, but let the bordered content surface carry the
    visual hierarchy instead of wrapping it in a second card. */
-.chat-agent-message :is(
+.nova-streamdown :is(
   [data-streamdown="code-block"],
   [data-streamdown="table-wrapper"]
 ) {

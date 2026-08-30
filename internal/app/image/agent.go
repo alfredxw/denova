@@ -23,6 +23,7 @@ import (
 
 type AgentGenerateRequest struct {
 	CommandID     string
+	CustomAgentID string
 	Purpose       string
 	SourceContext string
 	SystemPrompt  string
@@ -168,8 +169,8 @@ func (service *Service) generateWithAgentUsingHooks(runtime *Runtime, req AgentG
 
 // prepareImageAgentSession establishes the canonical journal before the
 // durable harness can accept or recover an input bound to it.
-func prepareImageAgentSession(store *session.Store) (*session.Session, error) {
-	sess, err := session.AgentSession(store, config.AgentKindImage)
+func prepareImageAgentSession(store *session.Store, customAgentID string) (*session.Session, error) {
+	sess, err := session.AgentInstanceSession(store, config.AgentKindImage, customAgentID)
 	if err != nil {
 		return nil, fmt.Errorf("initialize Image Agent session: %w", err)
 	}

@@ -60,11 +60,12 @@ type ActiveView struct {
 }
 
 type Session struct {
-	ID           string    `json:"id"`
-	Title        string    `json:"title"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
-	MessageCount int       `json:"message_count"`
+	ID            string    `json:"id"`
+	CustomAgentID string    `json:"custom_agent_id,omitempty"`
+	Title         string    `json:"title"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+	MessageCount  int       `json:"message_count"`
 	// Active is retained by the transport contract. AgentChat has no singleton
 	// active session; Running is the exact scoped execution state.
 	Active  bool `json:"active"`

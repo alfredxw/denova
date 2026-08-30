@@ -15,7 +15,7 @@ export function getInteractiveStories(): Promise<StoryIndex> {
   return requestJSON('/api/interactive/stories')
 }
 
-export function createInteractiveStory(input: { title: string; origin?: string; story_teller_id: string; story_director_id?: string; planning_mode?: StoryPlanningMode; module_refs?: StoryDirectorModuleRefs; reply_target_chars?: number; choice_count?: number; image_settings?: StoryImageSettings; opening?: StoryOpeningConfig; initial_trait_rolls?: InitialActorTraitRoll[]; state_schema_policy?: StoryStateSchemaPolicy }): Promise<StorySummary> {
+export function createInteractiveStory(input: { title: string; custom_agent_id?: string; origin?: string; story_teller_id: string; story_director_id?: string; planning_mode?: StoryPlanningMode; module_refs?: StoryDirectorModuleRefs; reply_target_chars?: number; choice_count?: number; image_settings?: StoryImageSettings; opening?: StoryOpeningConfig; initial_trait_rolls?: InitialActorTraitRoll[]; state_schema_policy?: StoryStateSchemaPolicy }): Promise<StorySummary> {
   return requestJSON('/api/interactive/stories', {
     method: 'POST',
     headers: jsonHeaders,
@@ -276,7 +276,7 @@ export async function getInteractiveBranches(storyId: string): Promise<BranchSum
   return data.branches || []
 }
 
-export function createInteractiveBranch(storyId: string, input: { parent_event_id: string; title: string }): Promise<BranchSummary> {
+export function createInteractiveBranch(storyId: string, input: { parent_event_id: string; title: string; custom_agent_id?: string }): Promise<BranchSummary> {
   return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/branches`, {
     method: 'POST',
     headers: jsonHeaders,

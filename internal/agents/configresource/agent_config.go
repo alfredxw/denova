@@ -10,6 +10,7 @@ import (
 type agentConfigSnapshot struct {
 	Paths            config.SettingsPaths          `json:"paths"`
 	Agents           []agentConfigAgentDefinition  `json:"agents"`
+	CustomAgentBases []string                      `json:"custom_agent_bases"`
 	SubAgentParents  []string                      `json:"subagent_parents"`
 	ToolCapabilities []agentConfigToolCapability   `json:"tool_capabilities"`
 	Layers           agentConfigLayeredSnapshot    `json:"layers"`
@@ -46,6 +47,8 @@ type agentConfigLayerSnapshot struct {
 	AgentSkills       config.AgentSkillSettings           `json:"agent_skills,omitempty"`
 	AgentContext      config.AgentContextSettings         `json:"agent_context,omitempty"`
 	GeneralSubAgents  config.AgentGeneralSubAgentSettings `json:"general_sub_agents,omitempty"`
+	CustomAgents      []config.CustomAgentConfig          `json:"custom_agents,omitempty"`
+	DefaultImageAgent *string                             `json:"default_image_agent_id,omitempty"`
 	SubAgents         []config.SubAgentConfig             `json:"sub_agents,omitempty"`
 }
 
@@ -183,6 +186,8 @@ func agentConfigLayer(settings config.Settings) agentConfigLayerSnapshot {
 		AgentSkills:       settings.AgentSkills,
 		AgentContext:      settings.AgentContexts,
 		GeneralSubAgents:  settings.GeneralSubAgents,
+		CustomAgents:      settings.CustomAgents,
+		DefaultImageAgent: settings.DefaultImageAgentID,
 		SubAgents:         settings.SubAgents,
 	}
 }

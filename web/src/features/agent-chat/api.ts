@@ -5,6 +5,7 @@ import { projectAPIPath } from '@/lib/api-client/project-scope'
 /** One conversation in the AgentChat project tree. */
 export interface AgentChatSession {
   id: string
+  custom_agent_id?: string
   title: string
   created_at: string
   updated_at: string
@@ -116,11 +117,11 @@ export function getAgentChatHistory(
 }
 
 /** Create a conversation inside any project, open or not. */
-export async function createAgentChatSession(projectId: string, title = ''): Promise<AgentChatSession> {
+export async function createAgentChatSession(projectId: string, title = '', customAgentId?: string): Promise<AgentChatSession> {
   return requestJSON<AgentChatSession>(projectAPIPath(projectId, 'agent-chat/sessions'), {
     method: 'POST',
     headers: jsonHeaders,
-    body: JSON.stringify({ title }),
+    body: JSON.stringify({ title, ...(customAgentId !== undefined ? { custom_agent_id: customAgentId } : {}) }),
   })
 }
 

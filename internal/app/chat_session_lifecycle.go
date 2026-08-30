@@ -7,6 +7,7 @@ import (
 
 	"denova/config"
 	agentconversation "denova/internal/agents/conversation"
+	"denova/internal/agents/conversationconfig"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 )
@@ -63,10 +64,16 @@ func (s *ChatAppService) Sessions() ([]session.SessionMeta, error) {
 
 // CreateSession 新建会话并设置为当前激活会话。
 func (a *App) CreateSession(title string) (*session.Session, error) {
-	return a.chat().CreateSession(title)
+	return a.CreateSessionWithCustomAgent(title, nil)
 }
 
-func (s *ChatAppService) CreateSession(title string) (*session.Session, error) {
+// CreateSessionWithCustomAgent creates a conversation from either the recent
+// selection (nil) or an explicit built-in/custom Agent choice.
+func (a *App) CreateSessionWithCustomAgent(title string, customAgentID *string) (*session.Session, error) {
+	return a.chat().CreateSession(title, customAgentID)
+}
+
+func (s *ChatAppService) CreateSession(title string, customAgentID *string) (*session.Session, error) {
 	s.admission.Lock()
 	defer s.admission.Unlock()
 	fence, err := s.drainWritingBinding(context.Background(), "")
@@ -84,7 +91,12 @@ func (s *ChatAppService) CreateSession(title string) (*session.Session, error) {
 	if a.cfg != nil {
 		runtimeCfg = *a.cfg
 	}
-	seed, err := agentconversation.RecentSessionSeed(fence.store, &runtimeCfg, config.AgentKindIDE, "")
+	var seed conversationconfig.Config
+	if customAgentID == nil {
+		seed, err = agentconversation.RecentSessionSeed(fence.store, &runtimeCfg, config.AgentKindIDE, "")
+	} else {
+		seed, err = conversationconfig.DefaultWithCustomAgent(&runtimeCfg, config.AgentKindIDE, *customAgentID)
+	}
 	if err != nil {
 		return nil, err
 	}

@@ -87,6 +87,9 @@ func (s *Store) SetBranchRuntimeConfig(storyID, branchID string, next conversati
 	if branch.RuntimeConfig == nil || branch.RuntimeConfigRevision == 0 {
 		return conversationconfig.Snapshot{}, conversationconfig.ErrNotInitialized
 	}
+	if next.CustomAgentID != branch.RuntimeConfig.CustomAgentID {
+		return conversationconfig.Snapshot{}, fmt.Errorf("conversation custom Agent is immutable; create a new branch to switch Agents")
+	}
 	if expectedRevision == 0 || branch.RuntimeConfigRevision != expectedRevision {
 		return conversationconfig.Snapshot{}, fmt.Errorf("%w: have=%d want=%d", conversationconfig.ErrRevisionConflict, branch.RuntimeConfigRevision, expectedRevision)
 	}

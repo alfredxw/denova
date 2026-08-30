@@ -28,7 +28,7 @@ type configApplyInput struct {
 	Resource  string         `json:"resource" jsonschema_description:"Resource kind returned by config_read describe."`
 	ID        string         `json:"id,omitempty" jsonschema_description:"Exact resource ID; required for update and delete."`
 	Scope     string         `json:"scope,omitempty" jsonschema_description:"Required for scoped resources such as skill and agent_profile."`
-	Revision  string         `json:"revision,omitempty" jsonschema_description:"Required for update and delete, and for agent_profile SubAgent create; copy the latest exact-scope revision from config_read."`
+	Revision  string         `json:"revision,omitempty" jsonschema_description:"Required for update and delete, and for agent_profile SubAgent create; custom Agent create has the same exact-scope revision requirement. Copy it from config_read."`
 	Value     map[string]any `json:"value,omitempty" jsonschema_description:"Complete create/update value documented by the resource Skill reference; agent_profile delete requires value.kind."`
 }
 
@@ -65,7 +65,7 @@ func NewTools(cfg *config.Config, maxResultBytes int) ([]agent.ToolDefinition, e
 	}
 	applyTool, err := agent.InferTool(
 		"config_apply",
-		"Create, update, or delete exactly one Denova configuration resource. Updates, deletes, and agent_profile SubAgent creates require the latest revision from config_read; agent_profile deletes require value.kind. Resource-specific value shapes live in the configuration Skill references.",
+		"Create, update, or delete exactly one Denova configuration resource. Updates, deletes, and agent_profile SubAgent creates require the latest revision from config_read; custom Agent creates use the same requirement. agent_profile deletes require value.kind. Resource-specific value shapes live in the configuration Skill references.",
 		func(ctx context.Context, input configApplyInput) (agent.ToolResult, error) {
 			value, err := registry.Apply(ctx, Mutation{
 				Operation: input.Operation, Resource: input.Resource, ID: input.ID, Scope: input.Scope, Revision: input.Revision, Value: input.Value,

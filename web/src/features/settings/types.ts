@@ -20,6 +20,8 @@ export interface Settings {
   agent_context?: AgentContextSettings
   general_sub_agents?: AgentGeneralSubAgentSettings
   sub_agents?: SubAgentConfig[]
+  custom_agents?: CustomAgentConfig[]
+  default_image_agent_id?: string
   web_access?: WebAccessSettings
   labs?: LabSettings
   skills_dir?: string
@@ -428,6 +430,23 @@ export interface SubAgentConfig {
   tools?: AgentToolOverride
 }
 
+/** User-owned Agent instance backed by one fixed runtime Agent kind. */
+export interface CustomAgentConfig {
+  id?: string
+  name?: string
+  description?: string
+  base_kind?: CustomAgentBaseKind
+  enabled?: boolean | null
+  model?: AgentModelOverride
+  tools?: AgentToolOverride
+  prompt?: AgentPromptOverride
+  skills?: AgentSkillOverride
+  context?: AgentContextOverride
+  image_api_profile_id?: string
+}
+
+export type CustomAgentBaseKind = 'general' | 'ide' | 'interactive_story' | 'image'
+
 interface AgentPromptSettings {
   default?: AgentPromptOverride
   general?: AgentPromptOverride
@@ -525,8 +544,8 @@ export interface LayeredSettings {
   builtin_agent_prompt_blocks?: AgentPromptBlockSettings
   builtin_agent_prompt_sources?: AgentPromptSourceSettings
   agent_tool_capabilities?: AgentToolCapabilityCatalogEntry[]
-  resolved_agent_tool_manifests: Partial<Record<Exclude<keyof AgentModelSettings, 'default'>, ResolvedAgentToolCapability[]>>
-  resolved_agent_contexts: Partial<Record<Exclude<keyof AgentContextSettings, 'default'>, ResolvedAgentContextSettings>>
+  resolved_agent_tool_manifests: Record<string, ResolvedAgentToolCapability[] | undefined>
+  resolved_agent_contexts: Record<string, ResolvedAgentContextSettings | undefined>
 }
 
 export type SettingsLayer = 'user' | 'workspace'

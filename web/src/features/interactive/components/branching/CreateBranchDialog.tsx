@@ -5,24 +5,28 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { CustomAgentSelect } from '@/features/agents/CustomAgentSelect'
 import type { BranchCreationSource } from './model'
 
 interface CreateBranchDialogProps {
+  projectId: string
   source: BranchCreationSource | null
   onClose: () => void
-  onCreate: (source: BranchCreationSource, title: string) => void | Promise<void>
+  onCreate: (source: BranchCreationSource, title: string, customAgentId?: string) => void | Promise<void>
 }
 
 /** Shared branch creation boundary used by story replies and the full route map. */
-export function CreateBranchDialog({ source, onClose, onCreate }: CreateBranchDialogProps) {
+export function CreateBranchDialog({ projectId, source, onClose, onCreate }: CreateBranchDialogProps) {
   const { t } = useTranslation()
   const inputId = useId()
   const [title, setTitle] = useState('')
+  const [customAgentId, setCustomAgentId] = useState<string | undefined>(undefined)
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
     setTitle(source ? t('branchTimeline.newFromNode', { title: source.title }) : '')
+    setCustomAgentId(undefined)
     setError('')
   }, [source, t])
 
@@ -35,7 +39,7 @@ export function CreateBranchDialog({ source, onClose, onCreate }: CreateBranchDi
     setCreating(true)
     setError('')
     try {
-      await onCreate(source, title.trim() || t('branchTimeline.newBranch'))
+      await onCreate(source, title.trim() || t('branchTimeline.newBranch'), customAgentId)
       onClose()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : t('branchTimeline.createFailed'))
@@ -69,6 +73,16 @@ export function CreateBranchDialog({ source, onClose, onCreate }: CreateBranchDi
             placeholder={t('branchTimeline.namePlaceholder')}
             autoFocus
           />
+          <Label>{t('agents.custom.select')}</Label>
+          <CustomAgentSelect
+            projectId={projectId}
+            baseKind="interactive_story"
+            value={customAgentId}
+            onValueChange={setCustomAgentId}
+            inheritLabel={t('agents.custom.inheritCurrent')}
+            className="nova-field h-9 w-full"
+          />
+          <div className="text-[11px] leading-4 text-[var(--nova-text-faint)]">{t('agents.custom.switchNote')}</div>
           {source?.summary ? <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-2 text-xs leading-5 text-[var(--nova-text-muted)]">{source.summary}</div> : null}
           {error ? (
             <div role="alert" className="rounded-[var(--nova-radius)] border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] p-2 text-xs text-[var(--nova-danger)]">

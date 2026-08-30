@@ -10,6 +10,7 @@ import (
 
 type CreateStoryRequest struct {
 	Title                     string                            `json:"title"`
+	CustomAgentID             *string                           `json:"custom_agent_id,omitempty"`
 	Origin                    string                            `json:"origin"`
 	StoryTellerID             string                            `json:"story_teller_id"`
 	StoryDirectorID           string                            `json:"story_director_id,omitempty"`
@@ -137,8 +138,10 @@ type UpdateStoryRequest struct {
 }
 
 type CreateBranchRequest struct {
-	ParentEventID string `json:"parent_event_id"`
-	Title         string `json:"title"`
+	ParentEventID string                     `json:"parent_event_id"`
+	Title         string                     `json:"title"`
+	CustomAgentID *string                    `json:"custom_agent_id,omitempty"`
+	RuntimeConfig *conversationconfig.Config `json:"-"`
 }
 
 type Index struct {

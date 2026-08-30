@@ -27,7 +27,8 @@ type sessionDTO struct {
 }
 
 type sessionCreateRequest struct {
-	Title string `json:"title"`
+	Title         string  `json:"title"`
+	CustomAgentID *string `json:"custom_agent_id"`
 }
 
 type sessionIDRequest struct {
@@ -129,7 +130,7 @@ func (h *Handlers) HandleSessionCreate(ctx context.Context, c *app.RequestContex
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidBody")
 		return
 	}
-	sess, err := h.app.CreateSession(req.Title)
+	sess, err := h.app.CreateSessionWithCustomAgent(req.Title, req.CustomAgentID)
 	if err != nil {
 		writeError(c, consts.StatusInternalServerError, err.Error())
 		return

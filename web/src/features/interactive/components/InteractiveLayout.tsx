@@ -386,12 +386,13 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
     await reloadSnapshot(branchId, storyId)
   }
 
-  const handleCreateBranch = async (turnId: string, title: string) => {
+  const handleCreateBranch = async (turnId: string, title: string, customAgentId?: string) => {
     const storyId = currentStoryId || useInteractiveStore.getState().currentStoryId
     if (!storyId) throw new Error(t('branchTimeline.createUnavailable'))
     const branch = await createInteractiveBranch(storyId, {
       parent_event_id: turnId,
       title,
+      ...(customAgentId !== undefined ? { custom_agent_id: customAgentId } : {}),
     })
     setCurrentBranchId(branch.id)
     await reloadSnapshot(branch.id, storyId)
@@ -467,7 +468,7 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
           <div className="flex min-w-0 flex-1 flex-col bg-[var(--nova-surface-2)]">
             <motion.div key={contentKey} variants={panelPresence} initial="initial" animate="animate" transition={{ duration: 0.2, ease: novaEase }} className="flex min-h-0 flex-1 flex-col">
               {submode === 'timeline' ? (
-                <BranchTimeline snapshot={displaySnapshot} branches={branches} currentBranchId={currentBranchId} onSwitchBranch={handleSwitchBranch} onCreateBranch={handleCreateBranch} onDeleteBranch={handleDeleteBranch} fill variant="workspace" onBackToStory={() => setSubmode('story')} headerControls={<StoryPicker stories={stories} currentStoryId={currentStoryId} onSelect={handleStorySelect} onCreate={() => undefined} onDeleteStories={handleDeleteStories} hideCreate />} />
+                <BranchTimeline projectId={projectId} snapshot={displaySnapshot} branches={branches} currentBranchId={currentBranchId} onSwitchBranch={handleSwitchBranch} onCreateBranch={handleCreateBranch} onDeleteBranch={handleDeleteBranch} fill variant="workspace" onBackToStory={() => setSubmode('story')} headerControls={<StoryPicker stories={stories} currentStoryId={currentStoryId} onSelect={handleStorySelect} onCreate={() => undefined} onDeleteStories={handleDeleteStories} hideCreate />} />
               ) : isMobile ? (
                 <MobilePaneHost
                   panes={[{
@@ -551,9 +552,10 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
         </div>
       </div>
       <CreateBranchDialog
+        projectId={projectId}
         source={branchCreationSource}
         onClose={() => setBranchCreationSource(null)}
-        onCreate={(source, title) => handleCreateBranch(source.turnId, title)}
+        onCreate={(source, title, customAgentId) => handleCreateBranch(source.turnId, title, customAgentId)}
       />
     </div>
   )

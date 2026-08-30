@@ -28,6 +28,8 @@ Denova records only major user-visible features, important compatibility or data
 - The Writing Agent now runs multiple conversations in the same Book concurrently, with an optional quick-session rail; switching conversations no longer stops background work.
 - 配置管理不再运行独立 Agent；通用与 IDE Project Agent 通过 `/configuration` Skill 承担完整配置能力，各配置页面保留复用 AgentChat 的右侧管理面板，并与主 Agent 共用会话、历史和恢复状态。
 - Configuration no longer runs a standalone Agent. General and IDE Project Agents provide the complete workflow through `/configuration`; configuration pages retain a right-side manager that reuses AgentChat and shares the main Agent's sessions, history, and recovery state.
+- Agents 页面支持基于固定 General、IDE、Game 与 Image 运行时创建、配置和归档自定义 Agent；写作、通用对话、游戏故事/分支与图像生成可选择这些实例，已有历史继续绑定原 Agent。
+- The Agents page now creates, configures, and archives custom Agents backed by the fixed General, IDE, Game, and Image runtimes. Writing, General chats, Game stories/branches, and image generation can select these instances while existing history stays bound to its original Agent.
 - 写作、游戏与 Project Agent 会话支持运行中连续追加 Follow Up，刷新或重启后恢复任务，并按会话保存模型、思考强度与权限设置。
 - Writing, Game, and Project Agent conversations now accept queued follow-ups during a run, recover after refresh or restart, and persist model, thinking, and permission settings per conversation.
 - 写作、游戏与通用 Agent 对话支持从现有输入菜单、拖拽或粘贴添加多个通用文件；Denova 保存独立副本供 Agent 使用，将图片作为原生视觉输入发送给模型，并在输入区与已发送消息中提供图片预览。

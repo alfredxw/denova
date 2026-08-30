@@ -380,11 +380,11 @@ export function downloadAgentRunTrace(file: AgentRunTraceExportFile) {
   URL.revokeObjectURL(href)
 }
 
-export async function createSession(title?: string): Promise<SessionSummary> {
+export async function createSession(title?: string, customAgentId?: string): Promise<SessionSummary> {
   return requestJSON('/api/sessions', {
     method: 'POST',
     headers: jsonHeaders,
-    body: JSON.stringify({ title: title ?? '' }),
+    body: JSON.stringify({ title: title ?? '', ...(customAgentId !== undefined ? { custom_agent_id: customAgentId } : {}) }),
   })
 }
 

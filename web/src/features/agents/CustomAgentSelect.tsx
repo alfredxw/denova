@@ -1,0 +1,81 @@
+import { useQuery } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { GLOBAL_SETTINGS_TARGET, projectSettingsTarget, settingsQueryOptions } from '@/features/settings/query'
+import type { CustomAgentBaseKind, CustomAgentConfig } from '@/features/settings/types'
+
+const BUILTIN_VALUE = '__builtin_agent__'
+const INHERIT_VALUE = '__inherit_agent__'
+
+interface CustomAgentSelectProps {
+  projectId?: string
+  baseKind: CustomAgentBaseKind
+  value?: string
+  onValueChange: (customAgentId: string | undefined) => void
+  inheritLabel?: string
+  disabled?: boolean
+  className?: string
+}
+
+/** Selects one Agent instance without exposing runtime kinds as user-defined code. */
+export function CustomAgentSelect({ projectId = '', baseKind, value, onValueChange, inheritLabel, disabled = false, className }: CustomAgentSelectProps) {
+  const { t } = useTranslation()
+  const target = projectId.trim() ? projectSettingsTarget(projectId) : GLOBAL_SETTINGS_TARGET
+  const query = useQuery(settingsQueryOptions(target))
+  const catalog = query.data?.effective.custom_agents
+  const agents = customAgentsForBase(catalog, baseKind)
+  const archivedSelection = value
+    ? catalog?.find((agent) => agent.id === value && agent.base_kind === baseKind && agent.enabled === false)
+    : undefined
+  const baseTitle = t(baseAgentTitleKey(baseKind))
+  let selectedValue = value || BUILTIN_VALUE
+  if (value === undefined && inheritLabel) selectedValue = INHERIT_VALUE
+
+  const handleValueChange = (next: string) => {
+    if (next === INHERIT_VALUE) {
+      onValueChange(undefined)
+      return
+    }
+    onValueChange(next === BUILTIN_VALUE ? '' : next)
+  }
+
+  return (
+    <Select
+      value={selectedValue}
+      onValueChange={handleValueChange}
+      disabled={disabled || query.isLoading}
+    >
+      <SelectTrigger className={className} aria-label={t('agents.custom.select')}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {inheritLabel ? <SelectItem value={INHERIT_VALUE}>{inheritLabel}</SelectItem> : null}
+        <SelectItem value={BUILTIN_VALUE}>{t('agents.custom.builtin', { agent: baseTitle })}</SelectItem>
+        {archivedSelection?.id ? (
+          <SelectItem value={archivedSelection.id} disabled>
+            {archivedSelection.name || archivedSelection.id} · {t('agents.custom.archived')}
+          </SelectItem>
+        ) : null}
+        {agents.map((agent) => <SelectItem key={agent.id} value={agent.id!}>{agent.name}</SelectItem>)}
+      </SelectContent>
+    </Select>
+  )
+}
+
+export function customAgentsForBase(agents: CustomAgentConfig[] | undefined, baseKind: CustomAgentBaseKind) {
+  return (agents ?? []).filter((agent) => (
+    agent.enabled !== false
+    && agent.base_kind === baseKind
+    && Boolean(agent.id?.trim())
+    && Boolean(agent.name?.trim())
+  ))
+}
+
+function baseAgentTitleKey(baseKind: CustomAgentBaseKind) {
+  switch (baseKind) {
+    case 'general': return 'agents.general.title'
+    case 'ide': return 'agents.ide.title'
+    case 'interactive_story': return 'agents.interactiveStory.title'
+    case 'image': return 'agents.image.title'
+  }
+}

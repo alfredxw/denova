@@ -6,9 +6,17 @@ import (
 	"log/slog"
 	"strings"
 	"time"
+
+	"denova/config"
+	"denova/internal/agents/conversationconfig"
 )
 
 func (s *Store) CreateBranch(storyID string, req CreateBranchRequest) (BranchSummary, error) {
+	if req.RuntimeConfig != nil {
+		if err := conversationconfig.ValidateShape(*req.RuntimeConfig, config.AgentKindInteractiveStory); err != nil {
+			return BranchSummary{}, fmt.Errorf("invalid branch runtime config: %w", err)
+		}
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	releaseStory, err := s.acquireStoryMutationLeaseLocked(storyID)
@@ -45,7 +53,13 @@ func (s *Store) CreateBranch(storyID string, req CreateBranchRequest) (BranchSum
 		FromEvent: parentID,
 		Title:     title,
 	}
-	if source := meta.Branches[fromBranch]; source.RuntimeConfig != nil {
+	if req.RuntimeConfig != nil {
+		branch := meta.Branches[branchID]
+		value := *req.RuntimeConfig
+		branch.RuntimeConfig = &value
+		branch.RuntimeConfigRevision = 1
+		meta.Branches[branchID] = branch
+	} else if source := meta.Branches[fromBranch]; source.RuntimeConfig != nil {
 		branch := meta.Branches[branchID]
 		value := *source.RuntimeConfig
 		branch.RuntimeConfig = &value

@@ -4,7 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 
+	"denova/config"
+	"denova/internal/agents/conversationconfig"
+	appsettings "denova/internal/app/settings"
 	"denova/internal/interactive"
 )
 
@@ -28,6 +32,20 @@ func (s *InteractiveAppService) CreateInteractiveBranch(storyID string, req inte
 	defer a.mu.Unlock()
 	if err := fence.validateLocked(a); err != nil {
 		return interactive.BranchSummary{}, err
+	}
+	if req.CustomAgentID != nil {
+		if a.cfg == nil || strings.TrimSpace(a.workspace) == "" {
+			return interactive.BranchSummary{}, ErrNoWorkspace
+		}
+		runtimeCfg, refreshErr := appsettings.RefreshProject(*a.cfg, a.workspace, a.cfg.ProjectStateDir)
+		if refreshErr != nil {
+			return interactive.BranchSummary{}, refreshErr
+		}
+		seed, seedErr := conversationconfig.DefaultWithCustomAgent(&runtimeCfg, config.AgentKindInteractiveStory, *req.CustomAgentID)
+		if seedErr != nil {
+			return interactive.BranchSummary{}, seedErr
+		}
+		req.RuntimeConfig = &seed
 	}
 	return store.CreateBranch(storyID, req)
 }

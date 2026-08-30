@@ -66,6 +66,9 @@ func (s *Session) SetRuntimeConfig(next conversationconfig.Config, expectedRevis
 		if next.AgentKind != s.runtimeConfig.AgentKind {
 			return fmt.Errorf("conversation Agent kind is immutable: have=%q want=%q", s.runtimeConfig.AgentKind, next.AgentKind)
 		}
+		if next.CustomAgentID != s.runtimeConfig.CustomAgentID {
+			return fmt.Errorf("conversation custom Agent is immutable; create a new conversation to switch Agents")
+		}
 		if expectedRevision == 0 || s.runtimeConfigRevision != expectedRevision {
 			return fmt.Errorf("%w: have=%d want=%d", conversationconfig.ErrRevisionConflict, s.runtimeConfigRevision, expectedRevision)
 		}

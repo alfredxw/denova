@@ -24,7 +24,7 @@ export interface AgentChatActivitySidebarProps {
   onOpenActivity: (project: AgentChatProject, activity: AgentChatSidebarActivity) => void
   onOpenSession: (project: AgentChatProject, session: AgentChatSession) => void
   onRenameSession: (project: AgentChatProject, session: AgentChatSession) => void
-  onCreateSession: (project: AgentChatProject) => void
+  onCreateSession: (project: AgentChatProject, customAgentId?: string) => void
   onOpenHistory: (project?: AgentChatProject) => void
   onAddProject: () => void
   projectDirectoryBusy: boolean
@@ -171,9 +171,9 @@ export function AgentChatActivitySidebar({
                     pinned={preferences.isProjectPinned(project.id)}
                     activities={activitiesByProject.get(project.id) ?? []}
                     onToggle={() => toggleProject(project)}
-                    onCreateSession={() => {
+                    onCreateSession={(customAgentId) => {
                       preferences.recordProjectOpened(project.id)
-                      onCreateSession(project)
+                      onCreateSession(project, customAgentId)
                     }}
                     onTogglePinned={() => preferences.toggleProjectPinned(project.id)}
                     onRename={() => onRenameProject(project)}
@@ -337,9 +337,9 @@ export function AgentChatSidebarRail({ onExpand, onCreateDefaultSession, createD
               setPeeking(false)
               tree.onOpenSession(project, session)
             }}
-            onCreateSession={(project) => {
+            onCreateSession={(project, customAgentId) => {
               setPeeking(false)
-              tree.onCreateSession(project)
+              tree.onCreateSession(project, customAgentId)
             }}
             onOpenHistory={(project) => {
               setPeeking(false)

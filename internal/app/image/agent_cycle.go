@@ -37,6 +37,23 @@ func (service *Service) prepareAgentCycle(runtime *Runtime, request AgentGenerat
 	} else {
 		slog.ErrorContext(runtime.Context(), fmt.Sprintf("[image-agent] load layered settings failed workspace=%s err=%v", runtime.Workspace, err))
 	}
+	usingDefaultAgent := strings.TrimSpace(request.CustomAgentID) == ""
+	if usingDefaultAgent {
+		request.CustomAgentID = cfg.DefaultImageAgentID
+	}
+	if err := config.ApplyCustomAgent(&cfg, config.AgentKindImage, request.CustomAgentID); err != nil {
+		if !usingDefaultAgent || !errors.Is(err, config.ErrCustomAgentNotFound) {
+			return agentexecution.Cycle{}, nil, err
+		}
+		slog.WarnContext(runtime.Context(), fmt.Sprintf(
+			"[image-agent] configured default custom Agent is unavailable; using built-in Image Agent custom_agent_id=%q error=%v",
+			request.CustomAgentID, err,
+		))
+		request.CustomAgentID = ""
+		if fallbackErr := config.ApplyCustomAgent(&cfg, config.AgentKindImage, ""); fallbackErr != nil {
+			return agentexecution.Cycle{}, nil, fallbackErr
+		}
+	}
 	if presetID := strings.TrimSpace(request.ImagePresetID); presetID != "" {
 		preset := loadImagePreset(cfg.DataDir(), presetID)
 		if strings.TrimSpace(request.SystemPrompt) == "" {
@@ -49,10 +66,10 @@ func (service *Service) prepareAgentCycle(runtime *Runtime, request AgentGenerat
 	cfg.ImagePresetToolPrompt = strings.TrimSpace(request.ToolPrompt)
 	modelSelection := config.ResolveAgentModel(&cfg, config.AgentKindImage)
 	slog.InfoContext(runtime.Context(), fmt.Sprintf(
-		"[image-agent] preparing run workspace=%s profile_id=%s thinking_level=%s",
-		runtime.Workspace, strings.TrimSpace(modelSelection.ProfileID), strings.TrimSpace(modelSelection.ThinkingLevel),
+		"[image-agent] preparing run workspace=%s custom_agent_id=%q profile_id=%s thinking_level=%s",
+		runtime.Workspace, cfg.ActiveCustomAgentID, strings.TrimSpace(modelSelection.ProfileID), strings.TrimSpace(modelSelection.ThinkingLevel),
 	))
-	sess, err := prepareImageAgentSession(runtime.SessionStore)
+	sess, err := prepareImageAgentSession(runtime.SessionStore, cfg.ActiveCustomAgentID)
 	if err != nil {
 		return agentexecution.Cycle{}, nil, err
 	}

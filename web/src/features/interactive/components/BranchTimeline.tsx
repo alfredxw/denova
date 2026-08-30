@@ -9,11 +9,12 @@ import { CreateBranchDialog } from './branching/CreateBranchDialog'
 import { branchCreationSourceFromPlotNode, branchDisplayName, plotNodesFromSnapshot, type BranchCreationSource } from './branching/model'
 
 interface BranchTimelineProps {
+  projectId: string
   snapshot: Snapshot | null
   branches: BranchSummary[]
   currentBranchId: string
   onSwitchBranch: (branchId: string) => void
-  onCreateBranch: (turnId: string, title: string) => void | Promise<void>
+  onCreateBranch: (turnId: string, title: string, customAgentId?: string) => void | Promise<void>
   onDeleteBranch: (branchId: string) => void
   expanded?: boolean
   fill?: boolean
@@ -99,6 +100,7 @@ const BRANCH_COLORS = [
 ]
 
 export function BranchTimeline({
+  projectId,
   snapshot,
   branches,
   currentBranchId,
@@ -350,9 +352,10 @@ export function BranchTimeline({
       )}
 
       <CreateBranchDialog
+        projectId={projectId}
         source={branchCreationSource}
         onClose={() => setBranchCreationSource(null)}
-        onCreate={(source, title) => onCreateBranch(source.turnId, title)}
+        onCreate={(source, title, customAgentId) => onCreateBranch(source.turnId, title, customAgentId)}
       />
       <ConfirmDialog
         open={Boolean(deleteBranchTarget)}

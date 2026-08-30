@@ -9,6 +9,7 @@ import (
 	"time"
 
 	agentconversation "denova/internal/agents/conversation"
+	"denova/internal/agents/conversationconfig"
 	"denova/internal/agents/session"
 	projectdomain "denova/internal/project"
 )
@@ -132,9 +133,13 @@ func sessionRunning(projectID, sessionID string, runningBindings map[string]stru
 }
 
 func sessionFromMeta(meta session.SessionMeta, projectID string, runningBindings map[string]struct{}) Session {
+	customAgentID := ""
+	if meta.RuntimeConfig != nil {
+		customAgentID = meta.RuntimeConfig.CustomAgentID
+	}
 	return Session{
 		ID: meta.ID, Title: meta.Title, CreatedAt: meta.CreatedAt, UpdatedAt: meta.UpdatedAt,
-		MessageCount: meta.MessageCount, Running: sessionRunning(projectID, meta.ID, runningBindings),
+		MessageCount: meta.MessageCount, Running: sessionRunning(projectID, meta.ID, runningBindings), CustomAgentID: customAgentID,
 	}
 }
 
@@ -229,7 +234,7 @@ func (service *Service) readProjectSessions(projectID, sessionsDir string) ([]se
 	return visible, nil
 }
 
-func (service *Service) CreateSession(projectID, title string) (Session, error) {
+func (service *Service) CreateSession(projectID, title string, customAgentID *string) (Session, error) {
 	binding, err := service.ResolveBinding(Binding{ProjectID: projectID, SessionID: "draft"})
 	if err != nil {
 		return Session{}, err
@@ -242,7 +247,12 @@ func (service *Service) CreateSession(projectID, title string) (Session, error) 
 	if err != nil {
 		return Session{}, err
 	}
-	seed, err := agentconversation.RecentSessionSeed(project.store, &runtimeCfg, binding.agentKind, "")
+	var seed conversationconfig.Config
+	if customAgentID == nil {
+		seed, err = agentconversation.RecentSessionSeed(project.store, &runtimeCfg, binding.agentKind, "")
+	} else {
+		seed, err = conversationconfig.DefaultWithCustomAgent(&runtimeCfg, binding.agentKind, *customAgentID)
+	}
 	if err != nil {
 		return Session{}, err
 	}
@@ -251,12 +261,12 @@ func (service *Service) CreateSession(projectID, title string) (Session, error) 
 		return Session{}, err
 	}
 	slog.InfoContext(context.Background(), fmt.Sprintf(
-		"[app/agentchat] created project session project_id=%s workspace=%q session_id=%s",
-		binding.ProjectID, binding.Workspace, sess.ID,
+		"[app/agentchat] created project session project_id=%s workspace=%q session_id=%s custom_agent_id=%q",
+		binding.ProjectID, binding.Workspace, sess.ID, seed.CustomAgentID,
 	))
 	return Session{
 		ID: sess.ID, Title: sess.Title(), CreatedAt: sess.CreatedAt, UpdatedAt: sess.UpdatedAt,
-		MessageCount: sess.MessageCount(),
+		MessageCount: sess.MessageCount(), CustomAgentID: seed.CustomAgentID,
 	}, nil
 }
 

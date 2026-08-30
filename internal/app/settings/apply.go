@@ -68,6 +68,10 @@ func ApplyLayered(cfg *config.Config, layered config.LayeredSettings) {
 	cfg.AgentContexts = effective.AgentContexts
 	cfg.GeneralSubAgents = effective.GeneralSubAgents
 	cfg.SubAgents = effective.SubAgents
+	cfg.CustomAgents = effective.CustomAgents
+	if effective.DefaultImageAgentID != nil {
+		cfg.DefaultImageAgentID = config.NormalizeCustomAgentID(*effective.DefaultImageAgentID)
+	}
 	cfg.WebAccess = config.ResolveWebAccessSettings(effective.WebAccess)
 	cfg.Labs = config.ResolveLabs(effective.Labs)
 	if cfg.SkillsDir == "" && effective.SkillsDir != "" {
@@ -204,6 +208,10 @@ func ApplyLayer(cfg *config.Config, settings config.Settings) {
 	cfg.AgentContexts = config.MergeAgentContextSettings(cfg.AgentContexts, settings.AgentContexts)
 	cfg.GeneralSubAgents = config.MergeAgentGeneralSubAgentSettings(cfg.GeneralSubAgents, settings.GeneralSubAgents)
 	cfg.SubAgents = config.MergeSubAgents(cfg.SubAgents, settings.SubAgents)
+	cfg.CustomAgents = config.MergeCustomAgents(cfg.CustomAgents, settings.CustomAgents)
+	if settings.DefaultImageAgentID != nil {
+		cfg.DefaultImageAgentID = config.NormalizeCustomAgentID(*settings.DefaultImageAgentID)
+	}
 	if settings.SkillsDir != "" && os.Getenv("DENOVA_SKILLS_DIR") == "" && os.Getenv("NOVA_SKILLS_DIR") == "" {
 		cfg.SkillsDir = settings.SkillsDir
 	}

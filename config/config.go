@@ -37,6 +37,8 @@ type Config struct {
 	AgentContexts            AgentContextSettings         `toml:"agent_context"`
 	GeneralSubAgents         AgentGeneralSubAgentSettings `toml:"general_sub_agents"`
 	SubAgents                []SubAgentConfig             `toml:"sub_agents"`
+	CustomAgents             []CustomAgentConfig          `toml:"custom_agents"`
+	DefaultImageAgentID      string                       `toml:"default_image_agent_id"`
 	WebAccess                WebAccessConfig              `toml:"web_access"`
 	Labs                     ResolvedLabs                 `toml:"labs"`
 	SkillsDir                string                       `toml:"skills_dir"`
@@ -53,6 +55,8 @@ type Config struct {
 	// persist into user configuration or enter the content workspacelayout.
 	ProjectID                   string                    `toml:"-"`
 	ProjectStateDir             string                    `toml:"-"`
+	ActiveCustomAgentID         string                    `toml:"-"`
+	ActiveCustomAgentName       string                    `toml:"-"`
 	RuntimeWebPort              int                       `toml:"-"`
 	DevMode                     bool                      `toml:"-"`
 	LLMInputLogEnabled          bool                      `toml:"llm_input_log_enabled"`
@@ -129,6 +133,8 @@ func configFromLayered(novaDir, workspace string, layered LayeredSettings) *Conf
 		AgentContexts:               s.AgentContexts,
 		GeneralSubAgents:            s.GeneralSubAgents,
 		SubAgents:                   s.SubAgents,
+		CustomAgents:                s.CustomAgents,
+		DefaultImageAgentID:         settingsOptionalString(s.DefaultImageAgentID),
 		WebAccess:                   ResolveWebAccessSettings(s.WebAccess),
 		Labs:                        ResolveLabs(s.Labs),
 		SkillsDir:                   s.SkillsDir,
@@ -270,6 +276,8 @@ func settingsFromConfig(cfg *Config) Settings {
 		AgentContexts:            cfg.AgentContexts,
 		GeneralSubAgents:         cfg.GeneralSubAgents,
 		SubAgents:                cfg.SubAgents,
+		CustomAgents:             cfg.CustomAgents,
+		DefaultImageAgentID:      stringPtr(cfg.DefaultImageAgentID),
 		WebAccess:                settingsFromWebAccessConfig(cfg.WebAccess),
 		Labs: LabSettings{
 			DeveloperMode:                  boolPtr(cfg.Labs.DeveloperMode),
@@ -388,6 +396,8 @@ func Load() *Config {
 			AgentContexts:               d.AgentContexts,
 			GeneralSubAgents:            d.GeneralSubAgents,
 			SubAgents:                   d.SubAgents,
+			CustomAgents:                d.CustomAgents,
+			DefaultImageAgentID:         settingsOptionalString(d.DefaultImageAgentID),
 			WebAccess:                   ResolveWebAccessSettings(d.WebAccess),
 			Labs:                        ResolveLabs(d.Labs),
 			SkillsDir:                   d.SkillsDir,
@@ -531,6 +541,13 @@ func settingsString(v, fallback string) string {
 		return fallback
 	}
 	return v
+}
+
+func settingsOptionalString(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return strings.TrimSpace(*value)
 }
 
 // overrideFromEnv 用环境变量覆盖配置

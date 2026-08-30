@@ -148,7 +148,7 @@ describe('WritingAgentWorkspace', () => {
 
     await user.click(await screen.findByRole('button', { name: '新建会话' }))
 
-    await waitFor(() => expect(createAgentChatSession).toHaveBeenCalledWith('book-a'))
+    await waitFor(() => expect(createAgentChatSession).toHaveBeenCalledWith('book-a', '', undefined))
     expect(screen.getByTestId('conversation:session-a')).toHaveTextContent('hidden')
     expect(screen.getByTestId('conversation:session-c')).toHaveTextContent('active')
   })

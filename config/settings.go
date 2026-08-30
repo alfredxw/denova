@@ -43,6 +43,8 @@ type Settings struct {
 	AgentContexts            AgentContextSettings         `toml:"agent_context,omitempty" json:"agent_context,omitempty"`
 	GeneralSubAgents         AgentGeneralSubAgentSettings `toml:"general_sub_agents,omitempty" json:"general_sub_agents,omitempty"`
 	SubAgents                []SubAgentConfig             `toml:"sub_agents,omitempty" json:"sub_agents,omitempty"`
+	CustomAgents             []CustomAgentConfig          `toml:"custom_agents,omitempty" json:"custom_agents,omitempty"`
+	DefaultImageAgentID      *string                      `toml:"default_image_agent_id,omitempty" json:"default_image_agent_id,omitempty"`
 	WebAccess                WebAccessSettings            `toml:"web_access,omitempty" json:"web_access,omitempty"`
 	Labs                     LabSettings                  `toml:"labs,omitempty" json:"labs,omitempty"`
 
@@ -170,6 +172,7 @@ func DefaultSettings() Settings {
 			Model: "deepseek-v4-pro", ContextWindowTokens: intPtr(DefaultContextWindowTokens),
 		}},
 		DefaultImageAPIProfileID:    DefaultImageAPIProfileID,
+		DefaultImageAgentID:         stringPtr(""),
 		ImageAPIEndpoints:           []ImageAPIEndpointSettings{DefaultImageAPIEndpoint()},
 		ImageAPIProfiles:            []ImageAPIProfileSettings{DefaultImageAPIProfile()},
 		SkillsDir:                   "./skills",
@@ -267,6 +270,11 @@ func Merge(parent, child Settings) Settings {
 	out.AgentContexts = MergeAgentContextSettings(out.AgentContexts, child.AgentContexts)
 	out.GeneralSubAgents = MergeAgentGeneralSubAgentSettings(out.GeneralSubAgents, child.GeneralSubAgents)
 	out.SubAgents = MergeSubAgents(out.SubAgents, child.SubAgents)
+	out.CustomAgents = MergeCustomAgents(out.CustomAgents, child.CustomAgents)
+	if child.DefaultImageAgentID != nil {
+		value := NormalizeCustomAgentID(*child.DefaultImageAgentID)
+		out.DefaultImageAgentID = &value
+	}
 	out.WebAccess = MergeWebAccessSettings(out.WebAccess, child.WebAccess)
 	out.Labs = MergeLabSettings(out.Labs, child.Labs)
 	if child.SkillsDir != "" {
@@ -742,8 +750,22 @@ func LoadLayeredWithGlobalAt(novaDir, workspace, projectConfigPath string, globa
 		User:      withResolvedLabs(Merge(Merge(def, global), ws)),
 		Workspace: withResolvedLabs(Merge(Merge(def, global), user)),
 	}
-	toolConfig := &Config{AgentTools: eff.AgentTools}
-	contextConfig := &Config{AgentContexts: eff.AgentContexts}
+	catalogConfig := &Config{
+		AgentModels: eff.AgentModels, AgentTools: eff.AgentTools, AgentPrompts: eff.AgentPrompts,
+		AgentSkills: eff.AgentSkills, AgentContexts: eff.AgentContexts, CustomAgents: eff.CustomAgents,
+	}
+	resolvedToolManifests := ResolveAgentToolManifestsForGOOS(catalogConfig, runtime.GOOS)
+	resolvedContexts := ResolveAgentContexts(catalogConfig)
+	for _, customAgent := range eff.CustomAgents {
+		customConfig := *catalogConfig
+		if err := ApplyCustomAgent(&customConfig, customAgent.BaseKind, customAgent.ID); err != nil {
+			continue
+		}
+		resolvedToolManifests[customAgent.ID] = ResolveAgentToolManifestForGOOS(
+			ResolveAgentTools(&customConfig, customAgent.BaseKind), customAgent.BaseKind, runtime.GOOS,
+		)
+		resolvedContexts[customAgent.ID] = ResolveAgentContext(&customConfig, customAgent.BaseKind)
+	}
 	backendPort := settingsInt(eff.BackendPort, 8080)
 	revisions := SettingsRevisions{}
 	userConfigPath := UserConfigPath(novaDir)
@@ -779,8 +801,8 @@ func LoadLayeredWithGlobalAt(novaDir, workspace, projectConfigPath string, globa
 		},
 		Runtime:                    SettingsRuntime{GOOS: runtime.GOOS},
 		AgentToolCapabilities:      AgentToolCapabilityCatalogForGOOS(runtime.GOOS),
-		ResolvedAgentToolManifests: ResolveAgentToolManifestsForGOOS(toolConfig, runtime.GOOS),
-		ResolvedAgentContexts:      ResolveAgentContexts(contextConfig),
+		ResolvedAgentToolManifests: resolvedToolManifests,
+		ResolvedAgentContexts:      resolvedContexts,
 	}, nil
 }
 
@@ -807,6 +829,8 @@ func PrepareWorkspaceAgentSettingsForWrite(existing, incoming Settings) Settings
 	existing.AgentContexts = scoped.AgentContexts
 	existing.GeneralSubAgents = scoped.GeneralSubAgents
 	existing.SubAgents = scoped.SubAgents
+	existing.CustomAgents = scoped.CustomAgents
+	existing.DefaultImageAgentID = scoped.DefaultImageAgentID
 	existing.AgentToolParallelism = scoped.AgentToolParallelism
 	return existing
 }
@@ -821,6 +845,8 @@ func workspaceAgentSettings(settings Settings) Settings {
 		AgentContexts:        settings.AgentContexts,
 		GeneralSubAgents:     settings.GeneralSubAgents,
 		SubAgents:            settings.SubAgents,
+		CustomAgents:         settings.CustomAgents,
+		DefaultImageAgentID:  settings.DefaultImageAgentID,
 		AgentToolParallelism: settings.AgentToolParallelism,
 	}
 }
@@ -871,6 +897,11 @@ func sanitizeEditableSettings(s Settings) Settings {
 	s.AgentPrompts = sanitizeAgentPromptSettings(s.AgentPrompts)
 	s.AgentContexts = sanitizeAgentContextSettings(s.AgentContexts)
 	s.SubAgents = SanitizeSubAgents(s.SubAgents)
+	s.CustomAgents = SanitizeCustomAgents(s.CustomAgents)
+	if s.DefaultImageAgentID != nil {
+		value := NormalizeCustomAgentID(*s.DefaultImageAgentID)
+		s.DefaultImageAgentID = &value
+	}
 	return s
 }
 

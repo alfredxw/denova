@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"denova/config"
+	"denova/internal/agents/conversationconfig"
 	interactiveapp "denova/internal/app/interactive"
 	appsettings "denova/internal/app/settings"
 	"denova/internal/interactive"
@@ -106,7 +107,13 @@ func (s *InteractiveAppService) CreateInteractiveStoryContext(ctx context.Contex
 		if err != nil {
 			return interactive.StorySummary{}, err
 		}
-		seed, seedErr := interactiveapp.RecentConversationSeed(store, &runtimeCfg, "")
+		var seed conversationconfig.Config
+		var seedErr error
+		if req.CustomAgentID == nil {
+			seed, seedErr = interactiveapp.RecentConversationSeed(store, &runtimeCfg, "")
+		} else {
+			seed, seedErr = conversationconfig.DefaultWithCustomAgent(&runtimeCfg, config.AgentKindInteractiveStory, *req.CustomAgentID)
+		}
 		if seedErr != nil {
 			return interactive.StorySummary{}, seedErr
 		}

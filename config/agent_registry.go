@@ -30,13 +30,17 @@ type AgentKindDefinition struct {
 	SessionID string
 	// ToolCapabilities is the authoritative capability ceiling for this
 	// Agent kind, as well as the stable display order of its tool manifest.
-	ToolCapabilities []string
-	ModelOverride    func(AgentModelSettings) AgentModelOverride
-	SetModelOverride func(*AgentModelSettings, AgentModelOverride)
-	ToolOverride     func(AgentToolSettings) AgentToolOverride
-	PromptOverride   func(AgentPromptSettings) AgentPromptOverride
-	SkillOverride    func(AgentSkillSettings) AgentSkillOverride
-	ContextOverride  func(AgentContextSettings) AgentContextOverride
+	ToolCapabilities   []string
+	ModelOverride      func(AgentModelSettings) AgentModelOverride
+	SetModelOverride   func(*AgentModelSettings, AgentModelOverride)
+	ToolOverride       func(AgentToolSettings) AgentToolOverride
+	SetToolOverride    func(*AgentToolSettings, AgentToolOverride)
+	PromptOverride     func(AgentPromptSettings) AgentPromptOverride
+	SetPromptOverride  func(*AgentPromptSettings, AgentPromptOverride)
+	SkillOverride      func(AgentSkillSettings) AgentSkillOverride
+	SetSkillOverride   func(*AgentSkillSettings, AgentSkillOverride)
+	ContextOverride    func(AgentContextSettings) AgentContextOverride
+	SetContextOverride func(*AgentContextSettings, AgentContextOverride)
 }
 
 var agentKindRegistry = []AgentKindDefinition{
@@ -49,12 +53,16 @@ var agentKindRegistry = []AgentKindDefinition{
 			AgentToolScript, AgentToolHarnessState,
 			AgentToolConfigRead, AgentToolConfigApply,
 		},
-		ModelOverride:    func(settings AgentModelSettings) AgentModelOverride { return settings.General },
-		SetModelOverride: func(settings *AgentModelSettings, override AgentModelOverride) { settings.General = override },
-		ToolOverride:     func(settings AgentToolSettings) AgentToolOverride { return settings.General },
-		PromptOverride:   func(settings AgentPromptSettings) AgentPromptOverride { return settings.General },
-		SkillOverride:    func(settings AgentSkillSettings) AgentSkillOverride { return settings.General },
-		ContextOverride:  func(settings AgentContextSettings) AgentContextOverride { return settings.General },
+		ModelOverride:      func(settings AgentModelSettings) AgentModelOverride { return settings.General },
+		SetModelOverride:   func(settings *AgentModelSettings, override AgentModelOverride) { settings.General = override },
+		ToolOverride:       func(settings AgentToolSettings) AgentToolOverride { return settings.General },
+		SetToolOverride:    func(settings *AgentToolSettings, override AgentToolOverride) { settings.General = override },
+		PromptOverride:     func(settings AgentPromptSettings) AgentPromptOverride { return settings.General },
+		SetPromptOverride:  func(settings *AgentPromptSettings, override AgentPromptOverride) { settings.General = override },
+		SkillOverride:      func(settings AgentSkillSettings) AgentSkillOverride { return settings.General },
+		SetSkillOverride:   func(settings *AgentSkillSettings, override AgentSkillOverride) { settings.General = override },
+		ContextOverride:    func(settings AgentContextSettings) AgentContextOverride { return settings.General },
+		SetContextOverride: func(settings *AgentContextSettings, override AgentContextOverride) { settings.General = override },
 	},
 	{
 		Kind:      AgentKindHarness,
@@ -67,12 +75,16 @@ var agentKindRegistry = []AgentKindDefinition{
 			AgentToolAsk, AgentToolTodo, AgentToolSkills, AgentToolDelegation,
 			AgentToolScript, AgentToolHarnessState,
 		},
-		ModelOverride:    func(settings AgentModelSettings) AgentModelOverride { return settings.General },
-		SetModelOverride: func(settings *AgentModelSettings, override AgentModelOverride) { settings.General = override },
-		ToolOverride:     func(settings AgentToolSettings) AgentToolOverride { return settings.General },
-		PromptOverride:   func(settings AgentPromptSettings) AgentPromptOverride { return settings.General },
-		SkillOverride:    func(settings AgentSkillSettings) AgentSkillOverride { return settings.General },
-		ContextOverride:  func(settings AgentContextSettings) AgentContextOverride { return settings.General },
+		ModelOverride:      func(settings AgentModelSettings) AgentModelOverride { return settings.General },
+		SetModelOverride:   func(settings *AgentModelSettings, override AgentModelOverride) { settings.General = override },
+		ToolOverride:       func(settings AgentToolSettings) AgentToolOverride { return settings.General },
+		SetToolOverride:    func(settings *AgentToolSettings, override AgentToolOverride) { settings.General = override },
+		PromptOverride:     func(settings AgentPromptSettings) AgentPromptOverride { return settings.General },
+		SetPromptOverride:  func(settings *AgentPromptSettings, override AgentPromptOverride) { settings.General = override },
+		SkillOverride:      func(settings AgentSkillSettings) AgentSkillOverride { return settings.General },
+		SetSkillOverride:   func(settings *AgentSkillSettings, override AgentSkillOverride) { settings.General = override },
+		ContextOverride:    func(settings AgentContextSettings) AgentContextOverride { return settings.General },
+		SetContextOverride: func(settings *AgentContextSettings, override AgentContextOverride) { settings.General = override },
 	},
 	{
 		Kind: AgentKindIDE,
@@ -84,12 +96,16 @@ var agentKindRegistry = []AgentKindDefinition{
 			AgentToolConfigRead, AgentToolConfigApply,
 			AgentToolLoreRead, AgentToolLoreWrite, AgentToolImageGeneration,
 		},
-		ModelOverride:    func(settings AgentModelSettings) AgentModelOverride { return settings.IDE },
-		SetModelOverride: func(settings *AgentModelSettings, override AgentModelOverride) { settings.IDE = override },
-		ToolOverride:     func(settings AgentToolSettings) AgentToolOverride { return settings.IDE },
-		PromptOverride:   func(settings AgentPromptSettings) AgentPromptOverride { return settings.IDE },
-		SkillOverride:    func(settings AgentSkillSettings) AgentSkillOverride { return settings.IDE },
-		ContextOverride:  func(settings AgentContextSettings) AgentContextOverride { return settings.IDE },
+		ModelOverride:      func(settings AgentModelSettings) AgentModelOverride { return settings.IDE },
+		SetModelOverride:   func(settings *AgentModelSettings, override AgentModelOverride) { settings.IDE = override },
+		ToolOverride:       func(settings AgentToolSettings) AgentToolOverride { return settings.IDE },
+		SetToolOverride:    func(settings *AgentToolSettings, override AgentToolOverride) { settings.IDE = override },
+		PromptOverride:     func(settings AgentPromptSettings) AgentPromptOverride { return settings.IDE },
+		SetPromptOverride:  func(settings *AgentPromptSettings, override AgentPromptOverride) { settings.IDE = override },
+		SkillOverride:      func(settings AgentSkillSettings) AgentSkillOverride { return settings.IDE },
+		SetSkillOverride:   func(settings *AgentSkillSettings, override AgentSkillOverride) { settings.IDE = override },
+		ContextOverride:    func(settings AgentContextSettings) AgentContextOverride { return settings.IDE },
+		SetContextOverride: func(settings *AgentContextSettings, override AgentContextOverride) { settings.IDE = override },
 	},
 	{
 		Kind: AgentKindInteractiveStory,
@@ -101,9 +117,17 @@ var agentKindRegistry = []AgentKindDefinition{
 		ModelOverride:    func(settings AgentModelSettings) AgentModelOverride { return settings.InteractiveStory },
 		SetModelOverride: func(settings *AgentModelSettings, override AgentModelOverride) { settings.InteractiveStory = override },
 		ToolOverride:     func(settings AgentToolSettings) AgentToolOverride { return settings.InteractiveStory },
+		SetToolOverride:  func(settings *AgentToolSettings, override AgentToolOverride) { settings.InteractiveStory = override },
 		PromptOverride:   func(settings AgentPromptSettings) AgentPromptOverride { return settings.InteractiveStory },
+		SetPromptOverride: func(settings *AgentPromptSettings, override AgentPromptOverride) {
+			settings.InteractiveStory = override
+		},
 		SkillOverride:    func(settings AgentSkillSettings) AgentSkillOverride { return settings.InteractiveStory },
+		SetSkillOverride: func(settings *AgentSkillSettings, override AgentSkillOverride) { settings.InteractiveStory = override },
 		ContextOverride:  func(settings AgentContextSettings) AgentContextOverride { return settings.InteractiveStory },
+		SetContextOverride: func(settings *AgentContextSettings, override AgentContextOverride) {
+			settings.InteractiveStory = override
+		},
 	},
 	{
 		Kind:             AgentKindVersionSummary,
@@ -133,12 +157,16 @@ var agentKindRegistry = []AgentKindDefinition{
 			AgentToolWebSearch, AgentToolWebFetch, AgentToolBrowser,
 			AgentToolSkills, AgentToolImageGeneration,
 		},
-		ModelOverride:    func(settings AgentModelSettings) AgentModelOverride { return settings.Image },
-		SetModelOverride: func(settings *AgentModelSettings, override AgentModelOverride) { settings.Image = override },
-		ToolOverride:     func(settings AgentToolSettings) AgentToolOverride { return settings.Image },
-		PromptOverride:   func(settings AgentPromptSettings) AgentPromptOverride { return settings.Image },
-		SkillOverride:    func(settings AgentSkillSettings) AgentSkillOverride { return settings.Image },
-		ContextOverride:  func(settings AgentContextSettings) AgentContextOverride { return settings.Image },
+		ModelOverride:      func(settings AgentModelSettings) AgentModelOverride { return settings.Image },
+		SetModelOverride:   func(settings *AgentModelSettings, override AgentModelOverride) { settings.Image = override },
+		ToolOverride:       func(settings AgentToolSettings) AgentToolOverride { return settings.Image },
+		SetToolOverride:    func(settings *AgentToolSettings, override AgentToolOverride) { settings.Image = override },
+		PromptOverride:     func(settings AgentPromptSettings) AgentPromptOverride { return settings.Image },
+		SetPromptOverride:  func(settings *AgentPromptSettings, override AgentPromptOverride) { settings.Image = override },
+		SkillOverride:      func(settings AgentSkillSettings) AgentSkillOverride { return settings.Image },
+		SetSkillOverride:   func(settings *AgentSkillSettings, override AgentSkillOverride) { settings.Image = override },
+		ContextOverride:    func(settings AgentContextSettings) AgentContextOverride { return settings.Image },
+		SetContextOverride: func(settings *AgentContextSettings, override AgentContextOverride) { settings.Image = override },
 	},
 }
 

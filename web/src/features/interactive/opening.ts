@@ -3,6 +3,7 @@ import type { InitialActorTraitRoll, StoryDirectorModuleRefs, StoryImageSettings
 
 export interface StoryCreateInput {
   title: string
+  custom_agent_id?: string
   origin: string
   story_teller_id: string
   story_director_id: string

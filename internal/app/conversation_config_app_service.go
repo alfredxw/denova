@@ -46,6 +46,7 @@ type ConversationConfigBinding struct {
 // transport layer depends on this type instead of reaching through app into
 // the Agent implementation package.
 type ConversationConfigPatch struct {
+	CustomAgentID *string                   `json:"custom_agent_id,omitempty"`
 	ProfileID     *string                   `json:"profile_id,omitempty"`
 	ThinkingLevel *string                   `json:"thinking_level,omitempty"`
 	ApprovalMode  *config.AgentApprovalMode `json:"approval_mode,omitempty"`
@@ -214,6 +215,7 @@ func (patch *ConversationConfigPatch) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	*patch = ConversationConfigPatch{
+		CustomAgentID: parsed.CustomAgentID,
 		ProfileID:     parsed.ProfileID,
 		ThinkingLevel: parsed.ThinkingLevel,
 		ApprovalMode:  parsed.ApprovalMode,
@@ -252,10 +254,11 @@ func (a *App) ConversationConfig(ctx context.Context, binding ConversationConfig
 }
 
 func (a *App) PatchConversationConfig(ctx context.Context, binding ConversationConfigBinding, patch ConversationConfigPatch, baseRevision uint64) (conversationconfig.Snapshot, error) {
-	if patch.ProfileID == nil && patch.ThinkingLevel == nil && patch.ApprovalMode == nil {
+	if patch.CustomAgentID == nil && patch.ProfileID == nil && patch.ThinkingLevel == nil && patch.ApprovalMode == nil {
 		return conversationconfig.Snapshot{}, errors.New("conversation config changes are empty")
 	}
 	change := conversationconfig.Patch{
+		CustomAgentID: patch.CustomAgentID,
 		ProfileID:     patch.ProfileID,
 		ThinkingLevel: patch.ThinkingLevel,
 		ApprovalMode:  patch.ApprovalMode,

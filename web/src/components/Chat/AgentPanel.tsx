@@ -62,6 +62,8 @@ import type { InputAreaSendOptions } from './InputArea'
 import { resolveAgentAskAndRefresh } from '@/lib/agent-ask'
 import type { ConversationConfigBinding } from '@/features/conversation-config/types'
 import { useConversationGoal } from '@/features/agent-goal/use-conversation-goal'
+import { useConversationConfig } from '@/features/conversation-config/use-conversation-config'
+import { CustomAgentSelect } from '@/features/agents/CustomAgentSelect'
 
 export type AgentPanelView = 'chat' | 'sessions' | 'traces'
 export type AgentPanelChrome = 'panel' | 'workbench'
@@ -132,7 +134,7 @@ export interface AgentPanelProps {
   hasEarlierMessages: boolean
   isLoadingEarlierHistory: boolean
   fileSuggestions: string[]
-  onCreateSession: (title?: string) => void | Promise<void>
+  onCreateSession: (title?: string, customAgentId?: string) => void | Promise<void>
   onSwitchSession: (id: string) => void | Promise<void>
   onRenameSession: (id: string, title: string) => void | Promise<void>
   onDeleteSession: (id: string) => void | Promise<void>
@@ -302,6 +304,7 @@ function AgentPanelComponent({
   const effectiveConversationBinding = useMemo<ConversationConfigBinding | undefined>(() => conversationBinding ?? (activeSessionId
     ? { mode: generalAgent ? 'agent_chat' : 'writing', project_id: projectId, session_id: activeSessionId }
     : undefined), [activeSessionId, conversationBinding, generalAgent, projectId])
+  const agentSelectionConfig = useConversationConfig(effectiveConversationBinding)
   const conversationGoal = useConversationGoal(effectiveConversationBinding, isExecutionActive)
   const activeRunID = useMemo(() => {
     if (!isExecutionActive) return ''
@@ -758,6 +761,20 @@ function AgentPanelComponent({
               </motion.span>
             </button>
           </div>
+          <CustomAgentSelect
+            projectId={projectId}
+            baseKind={generalAgent ? 'general' : 'ide'}
+            value={agentSelectionConfig.snapshot?.custom_agent_id ?? ''}
+            disabled={sessionControlsDisabled || agentSelectionConfig.loading}
+            className="h-7 w-[min(11rem,28vw)] border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[11px]"
+            onValueChange={(customAgentId) => {
+              if (customAgentId === undefined) return
+              if (customAgentId === (agentSelectionConfig.snapshot?.custom_agent_id ?? '')) return
+              void Promise.resolve(onCreateSession(undefined, customAgentId)).catch((cause) => {
+                toast.error(t('chat.sessionRail.createFailed'), { description: cause instanceof Error ? cause.message : String(cause) })
+              })
+            }}
+          />
           <div className="min-w-0 flex-1" />
           {onSessionRailVisibleChange ? (
             <button

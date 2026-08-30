@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch'
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
+import { CustomAgentSelect } from '@/features/agents/CustomAgentSelect'
 import { getActorStates, getEventPackages, getRuleSystems } from '../api'
 import { DEFAULT_INTERACTIVE_CHOICE_COUNT, DEFAULT_INTERACTIVE_REPLY_TARGET_CHARS, MAX_INTERACTIVE_CHOICE_COUNT, MIN_INTERACTIVE_CHOICE_COUNT, type StoryCreateInput } from '../opening'
 import type { ActorStateModule, EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, StoryDirectorModuleRefs, StoryStateSchemaMode, StorySummary, Teller } from '../types'
@@ -17,6 +18,7 @@ import { DEFAULT_NARRATIVE_STYLE_ID, narrativeStyleName, resolveNarrativeStyle }
 import { gamePresetName } from '../game-preset'
 
 interface NewStorySetupPanelProps {
+  projectId: string
   stories: StorySummary[]
   tellers: Teller[]
   directors: StoryDirector[]
@@ -35,13 +37,14 @@ const moduleFields: Array<{ id: keyof StoryDirectorModuleRefs; disabled: keyof S
   { id: 'image_preset_id', disabled: 'image_preset_disabled', label: 'imagePreset', icon: Image },
 ]
 
-export function NewStorySetupPanel({ stories, tellers, directors, imagePresets, recentNarrativeStyleID = DEFAULT_NARRATIVE_STYLE_ID, narrativeStyleLoading = false, story, onNarrativeStyleChange, onCancel, onCreate }: NewStorySetupPanelProps) {
+export function NewStorySetupPanel({ projectId, stories, tellers, directors, imagePresets, recentNarrativeStyleID = DEFAULT_NARRATIVE_STYLE_ID, narrativeStyleLoading = false, story, onNarrativeStyleChange, onCancel, onCreate }: NewStorySetupPanelProps) {
   const { t } = useTranslation()
   const recentTeller = resolveNarrativeStyle(tellers, recentNarrativeStyleID)
   const defaultDirector = directors[0]
   const initialDirector = directors.find((item) => item.id === story?.story_director_id) || defaultDirector
   const [title, setTitle] = useState(() => story?.title || defaultStoryTitle(stories, t))
   const [origin, setOrigin] = useState(story?.origin || '')
+  const [customAgentId, setCustomAgentId] = useState('')
   const [directorId, setDirectorId] = useState(initialDirector?.id || 'default')
   const [replyTargetChars, setReplyTargetChars] = useState(String(story?.reply_target_chars || DEFAULT_INTERACTIVE_REPLY_TARGET_CHARS))
   const [choiceCount, setChoiceCount] = useState(String(story?.choice_count || DEFAULT_INTERACTIVE_CHOICE_COUNT))
@@ -102,6 +105,7 @@ export function NewStorySetupPanel({ stories, tellers, directors, imagePresets, 
       }
       await onCreate({
         title: title.trim() || defaultStoryTitle(stories, t),
+        ...(!story ? { custom_agent_id: customAgentId } : {}),
         origin: origin.trim(),
         story_teller_id: tellerID,
         story_director_id: directorId,
@@ -142,6 +146,11 @@ export function NewStorySetupPanel({ stories, tellers, directors, imagePresets, 
             <Field label={t('storyPicker.choiceCount')}><Input type="number" min={MIN_INTERACTIVE_CHOICE_COUNT} max={MAX_INTERACTIVE_CHOICE_COUNT} value={choiceCount} onChange={(event) => setChoiceCount(event.target.value)} className="nova-field" /></Field>
             <p className="-mt-1.5 text-[11px] leading-4 text-[var(--nova-text-faint)] sm:col-span-2 lg:col-span-4">{t('storyPicker.choiceCountHint')}</p>
           </div>
+          {!story ? (
+            <Field label={t('agents.custom.select')} hint={t('agents.custom.switchNote')}>
+              <CustomAgentSelect projectId={projectId} baseKind="interactive_story" value={customAgentId} onValueChange={(value) => setCustomAgentId(value ?? '')} className="nova-field h-8 w-full sm:max-w-sm" />
+            </Field>
+          ) : null}
           <Field label={t('storyPicker.setup.brief')} hint={t('storyPicker.setup.briefHint')}><Textarea autoResize value={origin} maxLength={4000} onChange={(event) => setOrigin(event.target.value)} className="nova-field min-h-20 resize-y" placeholder={t('storyPicker.originPlaceholder')} /></Field>
 
           <PlanningModeCard enabled={planningEnabled} onChange={setPlanningEnabled} t={t} />

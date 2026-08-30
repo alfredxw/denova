@@ -14,6 +14,7 @@ import { useProjectFileEvents } from '@/hooks/useProjectFileEvents'
 import {
   addAgentChatProject,
   archiveAgentChatProject,
+  createAgentChatSession,
   deleteAgentChatSession,
   getAgentChatProjects,
   relinkAgentChatProject,
@@ -322,6 +323,21 @@ export function AgentChatView({
     },
     [openTab],
   )
+
+  const openConfiguredSessionInProject = useCallback(async (project: AgentChatProject, customAgentId: string) => {
+    try {
+      const session = await createAgentChatSession(project.id, '', customAgentId)
+      await refreshProjects()
+      openSessionTab(project, session)
+    } catch (error) {
+      console.error('[features/agent-chat/AgentChatView.tsx] creating configured conversation failed', {
+        projectID: project.id,
+        customAgentID: customAgentId,
+        error,
+      })
+      toast.error(t('chat.sessionRail.createFailed'), { description: error instanceof Error ? error.message : String(error) })
+    }
+  }, [openSessionTab, refreshProjects, t])
 
   const commitDraftSession = useCallback(
     (projectID: string, tabId: string, message: string) => {
@@ -672,7 +688,10 @@ export function AgentChatView({
     onOpenActivity: openSidebarActivity,
     onOpenSession: openOrActivateSession,
     onRenameSession: (project: AgentChatProject, session: AgentChatSession) => setSessionRenameTarget({ project, session }),
-    onCreateSession: (project: AgentChatProject) => openDraftSessionInProject(project),
+    onCreateSession: (project: AgentChatProject, customAgentId?: string) => {
+      if (customAgentId === undefined) openDraftSessionInProject(project)
+      else void openConfiguredSessionInProject(project, customAgentId)
+    },
     onOpenHistory: openHistory,
     onAddProject: () => setAddProjectOpen(true),
     projectDirectoryBusy,
