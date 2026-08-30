@@ -142,6 +142,15 @@ func (catalog *Catalog) Parallelism() int {
 	return catalog.config.Parallelism
 }
 
+// MaxResultBytes returns the shared bounded-context budget used for delegated
+// tool results and asynchronous task-completion projections.
+func (catalog *Catalog) MaxResultBytes() int {
+	if catalog == nil {
+		return 0
+	}
+	return catalog.config.MaxResultBytes
+}
+
 func (catalog *Catalog) Bind(executor publictools.TaskExecutor) (agent.Toolset, error) {
 	if catalog == nil || executor == nil {
 		return nil, errors.New("bind Denova delegation: Catalog and TaskExecutor are required")

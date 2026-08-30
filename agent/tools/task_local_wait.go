@@ -23,6 +23,12 @@ type localTaskPendingInteraction struct {
 	request agent.InteractionRequest
 }
 
+type localTaskWaitSource struct {
+	stream  int
+	isErr   bool
+	mailbox bool
+}
+
 func (tasks *LocalTasks) Wait(ctx context.Context, refs []TaskRef) ([]TaskWaitOutcome, error) {
 	if len(refs) == 0 {
 		return nil, errors.New("task wait requires at least one ref")
@@ -37,6 +43,12 @@ func (tasks *LocalTasks) Wait(ctx context.Context, refs []TaskRef) ([]TaskWaitOu
 	defer cancel()
 	outcomes := make([]TaskWaitOutcome, len(refs))
 	ready := make(map[int]bool)
+	completionIndexes := make(map[string][]int, len(refs))
+	completionIDs := make([]string, len(refs))
+	for index, ref := range refs {
+		completionIDs[index] = taskCompletionID(ref)
+		completionIndexes[completionIDs[index]] = append(completionIndexes[completionIDs[index]], index)
+	}
 	streams := make([]localTaskWaitStream, 0, len(refs))
 	var pending []localTaskPendingInteraction
 
@@ -86,6 +98,15 @@ func (tasks *LocalTasks) Wait(ctx context.Context, refs []TaskRef) ([]TaskWaitOu
 		})
 	}
 
+	var completionWatch agent.TaskCompletionWatch
+	if tasks.completionParent != nil {
+		watch, watchErr := tasks.completionParent.WatchTaskCompletions(waitCtx, completionIDs)
+		if watchErr != nil {
+			return nil, fmt.Errorf("watch parent task completions: %w", watchErr)
+		}
+		completionWatch = watch
+		markTaskCompletionReady(ready, completionIndexes, completionWatch.PendingIDs)
+	}
 	if len(ready) != 0 {
 		cancel()
 		return tasks.collectWaitOutcomes(ctx, refs, outcomes, ready), nil
@@ -108,22 +129,20 @@ func (tasks *LocalTasks) Wait(ctx context.Context, refs []TaskRef) ([]TaskWaitOu
 	}
 
 	cases := []reflect.SelectCase{{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(ctx.Done())}}
-	sources := []struct {
-		stream int
-		isErr  bool
-	}{{stream: -1}}
+	sources := []localTaskWaitSource{{stream: -1}}
+	if completionWatch.Activity != nil {
+		cases = append(cases, reflect.SelectCase{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(completionWatch.Activity)})
+		sources = append(sources, localTaskWaitSource{stream: -1, mailbox: true})
+	}
 	for index, stream := range streams {
 		cases = append(cases,
 			reflect.SelectCase{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(stream.events)},
 			reflect.SelectCase{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(stream.errors)},
 		)
-		sources = append(sources, struct {
-			stream int
-			isErr  bool
-		}{index, false}, struct {
-			stream int
-			isErr  bool
-		}{index, true})
+		sources = append(sources,
+			localTaskWaitSource{stream: index},
+			localTaskWaitSource{stream: index, isErr: true},
+		)
 	}
 	openStreams := len(streams)
 	for openStreams > 0 {
@@ -132,6 +151,20 @@ func (tasks *LocalTasks) Wait(ctx context.Context, refs []TaskRef) ([]TaskWaitOu
 			return nil, ctx.Err()
 		}
 		source := sources[chosen]
+		if source.mailbox {
+			watch, watchErr := tasks.completionParent.WatchTaskCompletions(waitCtx, completionIDs)
+			if watchErr != nil {
+				return nil, fmt.Errorf("recheck parent task completions: %w", watchErr)
+			}
+			completionWatch = watch
+			markTaskCompletionReady(ready, completionIndexes, completionWatch.PendingIDs)
+			if len(ready) != 0 {
+				cancel()
+				return tasks.collectWaitOutcomes(ctx, refs, outcomes, ready), nil
+			}
+			cases[chosen].Chan = reflect.ValueOf(completionWatch.Activity)
+			continue
+		}
 		stream := &streams[source.stream]
 		if !ok {
 			cases[chosen].Chan = reflect.Value{}
@@ -208,10 +241,26 @@ func (tasks *LocalTasks) collectWaitOutcomes(
 			outcomes[index] = TaskWaitOutcome{Err: err}
 			continue
 		}
+		if isTaskTerminal(task.Status) {
+			if err := tasks.enqueueTaskCompletion(ctx, task); err != nil {
+				outcomes[index] = TaskWaitOutcome{Err: fmt.Errorf("queue task completion: %w", err)}
+				continue
+			}
+		}
+		task.Output = ""
+		task.Reason = ""
 		outcomes[index].Task = &task
 		outcomes[index].Ready = ready[index] || isTaskTerminal(task.Status)
 	}
 	return outcomes
+}
+
+func markTaskCompletionReady(ready map[int]bool, indexes map[string][]int, ids []string) {
+	for _, id := range ids {
+		for _, index := range indexes[id] {
+			ready[index] = true
+		}
+	}
 }
 
 func (tasks *LocalTasks) taskSnapshot(ctx context.Context, ref TaskRef) (Task, error) {

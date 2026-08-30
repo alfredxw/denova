@@ -33,10 +33,22 @@ func taskFromSnapshot(ref TaskRef, snapshot agent.SessionSnapshot) (Task, error)
 	case "running", "waiting_input", "aborting",
 		string(agent.ResultCompleted), string(agent.ResultFailed), string(agent.ResultIncomplete),
 		string(agent.ResultBlocked), string(agent.ResultAborted):
-		return Task{Ref: ref, Status: status, Output: taskSnapshotOutput(snapshot, ref.Run)}, nil
+		return Task{
+			Ref: ref, Status: status, Reason: taskSnapshotReason(snapshot, ref.Run),
+			Output: taskSnapshotOutput(snapshot, ref.Run),
+		}, nil
 	default:
 		return Task{}, fmt.Errorf("unsupported task status %q", status)
 	}
+}
+
+func taskSnapshotReason(snapshot agent.SessionSnapshot, runID string) string {
+	for _, recent := range snapshot.RecentRuns {
+		if recent.ID == runID {
+			return recent.Reason
+		}
+	}
+	return ""
 }
 
 func isTaskTerminal(status string) bool {

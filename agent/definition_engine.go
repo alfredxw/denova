@@ -279,7 +279,12 @@ func (engine *definitionEngine) Run(
 	}
 	maintenanceSelected := false
 	var pendingCleanup *stagedCleanup
-	var transcript []*Message
+	transcript := cloneMessages(baseTranscript)
+	var taskCompletionMessages []*Message
+	controlledTranscript := func() []*Message {
+		messages := cloneMessages(baseTranscript)
+		return append(messages, cloneMessages(taskCompletionMessages)...)
+	}
 	maintenanceGate := modelCallGate(nil)
 	if len(prepared.definition.Middlewares) != 0 || prepared.definition.Cleanup != nil || prepared.definition.Compaction != nil {
 		maintenanceGate = func(
@@ -356,7 +361,7 @@ func (engine *definitionEngine) Run(
 							return nil, err
 						}
 						frozen, freezeErr := freezeCleanupTargets(
-							modelSnapshot.Messages(), modelContext.contextMaintenanceMessages(), baseTranscript,
+							modelSnapshot.Messages(), modelContext.contextMaintenanceMessages(), controlledTranscript(),
 							initialLoopMessageCount, plan.Replacements,
 						)
 						if freezeErr != nil {
@@ -493,6 +498,7 @@ func (engine *definitionEngine) Run(
 				if err != nil {
 					return nil, err
 				}
+				messages = append(messages, cloneMessages(taskCompletionMessages)...)
 				loop, err := newPreparedDefinitionLoop(gateCtx, nextPrepared, middlewares, permissionStage, nil)
 				if err != nil {
 					return nil, err
@@ -582,6 +588,7 @@ func (engine *definitionEngine) Run(
 			if prepared.definition.Instructions != "" {
 				restarted = append([]*Message{SystemMessage(prepared.definition.Instructions)}, restarted...)
 			}
+			restarted = append(restarted, cloneMessages(taskCompletionMessages)...)
 			restartStablePrefix := stableContextPrefixMessages(prepared.fragments, compaction, compactionPresent)
 			if prepared.definition.Instructions != "" {
 				restartStablePrefix++
@@ -650,7 +657,6 @@ func (engine *definitionEngine) Run(
 		Messages: modelMessages, EnableStreaming: true,
 		stablePrefixMessages: stablePrefixMessages,
 	}, runOption)
-	transcript = cloneMessages(baseTranscript)
 	startedTools := make(map[string]bool)
 	var final *Message
 	for {
@@ -663,7 +669,7 @@ func (engine *definitionEngine) Run(
 		}
 		if event.Err != nil {
 			controls.stop()
-			if controlled, controlledErr, handled := engine.controlledLoopResult(controls, prepared, baseTranscript, emit); handled {
+			if controlled, controlledErr, handled := engine.controlledLoopResult(controls, prepared, controlledTranscript(), emit); handled {
 				return controlled, controlledErr
 			}
 			var cancelErr *cancelError
@@ -677,6 +683,31 @@ func (engine *definitionEngine) Run(
 		}
 		source := runtimeEventSource(event)
 		rootEvent := rootAgentEvent(event, prepared.definition.Name)
+		if boundary := event.Output.TaskCompletions; boundary != nil {
+			if !rootEvent {
+				err := errors.New("nested Agent emitted a task completion boundary into the root transcript")
+				boundary.acknowledge(err)
+				controls.stop()
+				return runstate.EngineResult{}, err
+			}
+			ids, messages := boundary.snapshot()
+			transcript = append(transcript, cloneMessages(messages)...)
+			taskCompletionMessages = append(taskCompletionMessages, cloneMessages(messages)...)
+			checkpoint, checkpointErr := encodeActiveEngineTranscript(
+				prepared, transcript, activeModelUser, activeUserIndex,
+			)
+			if checkpointErr == nil {
+				checkpointErr = emit(runstate.EngineTranscriptUpdated{
+					State: checkpoint, TaskCompletionIDs: append([]string(nil), ids...),
+				})
+			}
+			boundary.acknowledge(checkpointErr)
+			if checkpointErr != nil {
+				controls.stop()
+				return runstate.EngineResult{}, checkpointErr
+			}
+			continue
+		}
 		if nested := event.Output.NestedEvent; nested != nil {
 			record, encodeErr := encodeNestedEvent(*nested)
 			if encodeErr != nil {
@@ -711,7 +742,7 @@ func (engine *definitionEngine) Run(
 			message, err := consumeMessageVariant(variant, source, !rootEvent, emit)
 			if err != nil {
 				controls.stop()
-				if controlled, controlledErr, handled := engine.controlledLoopResult(controls, prepared, baseTranscript, emit); handled {
+				if controlled, controlledErr, handled := engine.controlledLoopResult(controls, prepared, controlledTranscript(), emit); handled {
 					return controlled, controlledErr
 				}
 				return runstate.EngineResult{}, err
@@ -776,9 +807,9 @@ loopControlsStopped:
 	}
 	switch control.kind() {
 	case runstate.EngineControlPreempt:
-		return engine.controlledResult(runstate.EnginePreempted, prepared, baseTranscript, emit)
+		return engine.controlledResult(runstate.EnginePreempted, prepared, controlledTranscript(), emit)
 	case runstate.EngineControlAbort:
-		return engine.controlledResult(runstate.EngineAborted, prepared, baseTranscript, emit)
+		return engine.controlledResult(runstate.EngineAborted, prepared, controlledTranscript(), emit)
 	}
 	if completion.requestedCompletion() && final != nil && len(final.ToolCalls) != 0 {
 		final = completionFinalAssistant(transcript[len(baseTranscript):], final)

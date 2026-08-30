@@ -14,13 +14,14 @@ import (
 )
 
 const (
-	sessionTranscriptRecord   = "session.transcript"
-	sessionCapabilitiesRecord = "session.capabilities"
-	turnStartedRecord         = "turn.started"
-	turnFinishedRecord        = "turn.finished"
-	turnInterruptedRecord     = "turn.interrupted"
-	sessionRecordVersion      = 1
-	retainedSessionEvents     = 4096
+	sessionTranscriptRecord             = "session.transcript"
+	sessionCapabilitiesRecord           = "session.capabilities"
+	sessionTaskCompletionDeliveryRecord = "session.task_completion_delivery"
+	turnStartedRecord                   = "turn.started"
+	turnFinishedRecord                  = "turn.finished"
+	turnInterruptedRecord               = "turn.interrupted"
+	sessionRecordVersion                = 1
+	retainedSessionEvents               = 4096
 )
 
 type inputEnvelope struct {
@@ -37,6 +38,10 @@ type persistedSessionTranscript struct {
 
 type persistedSessionCapabilities struct {
 	Capabilities map[string]json.RawMessage `json:"capabilities,omitempty"`
+}
+
+type persistedTaskCompletionDelivery struct {
+	IDs []string `json:"ids"`
 }
 
 type persistedTurn struct {
@@ -64,20 +69,21 @@ type Session struct {
 	engine  runstate.Engine
 	log     agentsession.Log
 
-	mu           sync.RWMutex
-	closed       bool
-	revision     agentsession.Revision
-	engineState  json.RawMessage
-	capabilities map[string]json.RawMessage
-	active       *Run
-	maintenance  bool
-	pending      []*Run
-	runs         map[string]*Run
-	recent       []RunSummary
-	cursor       Cursor
-	history      []Event
-	observers    map[uint64]*sessionObserver
-	nextObserver uint64
+	mu              sync.RWMutex
+	closed          bool
+	revision        agentsession.Revision
+	engineState     json.RawMessage
+	capabilities    map[string]json.RawMessage
+	active          *Run
+	maintenance     bool
+	pending         []*Run
+	runs            map[string]*Run
+	recent          []RunSummary
+	cursor          Cursor
+	history         []Event
+	observers       map[uint64]*sessionObserver
+	nextObserver    uint64
+	taskCompletions taskCompletionMailbox
 }
 
 func (session *Session) Key() SessionKey {
@@ -106,6 +112,21 @@ func (session *Session) replay(ctx context.Context) error {
 				return fmt.Errorf("decode Agent Session capabilities at revision %d: %w", record.Revision, err)
 			}
 			session.capabilities = cloneRawStateMap(capabilities.Capabilities)
+		case sessionTaskCompletionDeliveryRecord:
+			var delivery persistedTaskCompletionDelivery
+			if err := json.Unmarshal(record.Data, &delivery); err != nil {
+				return fmt.Errorf("decode Agent task completion delivery at revision %d: %w", record.Revision, err)
+			}
+			if len(delivery.IDs) == 0 {
+				return fmt.Errorf("decode Agent task completion delivery at revision %d: empty delivery", record.Revision)
+			}
+			for _, id := range delivery.IDs {
+				id = strings.TrimSpace(id)
+				if id == "" || len(id) > maxTaskCompletionIDBytes {
+					return fmt.Errorf("decode Agent task completion delivery at revision %d: invalid completion ID", record.Revision)
+				}
+				session.taskCompletions.delivered[id] = struct{}{}
+			}
 		case turnStartedRecord:
 			var turn persistedTurn
 			if err := json.Unmarshal(record.Data, &turn); err != nil {
@@ -484,6 +505,7 @@ func (session *Session) Close(_ context.Context) error {
 		return nil
 	}
 	session.closed = true
+	close(session.taskCompletions.activity)
 	active := session.active
 	pending := append([]*Run(nil), session.pending...)
 	session.pending = nil

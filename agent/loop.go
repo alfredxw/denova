@@ -264,6 +264,10 @@ func (agent *modelToolLoop) run(parent context.Context, input *loopInput, option
 			events.Send(agent.errorEvent(err))
 			return
 		}
+		if err := agent.deliverPendingTaskCompletions(ctx, state, events); err != nil {
+			events.Send(agent.errorEvent(err))
+			return
+		}
 
 		modelContext := &ModelContext{
 			Tools: cloneToolInfos(state.ToolInfos), Retry: agent.retry, Iteration: iteration,
@@ -458,6 +462,35 @@ func (agent *modelToolLoop) run(parent context.Context, input *loopInput, option
 			events.Send(agent.errorEvent(err))
 			return
 		}
+	}
+}
+
+func (agent *modelToolLoop) deliverPendingTaskCompletions(
+	ctx context.Context,
+	state *RunState,
+	events *asyncGenerator[*loopEvent],
+) error {
+	completions := pendingTaskCompletionsFromContext(ctx)
+	if len(completions) == 0 {
+		return nil
+	}
+	boundary := &taskCompletionBoundary{
+		completions: completions,
+		receipt:     make(chan error, 1),
+	}
+	for _, completion := range completions {
+		state.Messages = append(state.Messages, completion.Message.Clone())
+	}
+	events.Send(&loopEvent{
+		AgentName: agent.name,
+		RunPath:   []loopRunStep{newLoopRunStep(agent.name)},
+		Output:    &loopOutput{TaskCompletions: boundary},
+	})
+	select {
+	case err := <-boundary.receipt:
+		return err
+	case <-ctx.Done():
+		return agent.contextError(ctx, nil)
 	}
 }
 

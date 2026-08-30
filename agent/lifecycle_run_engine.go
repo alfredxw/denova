@@ -134,7 +134,8 @@ func (run *Run) executeCycle(input Input, delivery runstate.DeliveryKind, autono
 	}
 	run.publish(RunStarted{Cycle: cycle, CommandID: commandID, Delivery: string(snapshot.Delivery), StartedAt: startedAt})
 	var continuation *runstate.EngineContinuation
-	result, err := run.session.engine.Run(run.ctx, runstate.EngineRequest{
+	engineCtx := contextWithTaskCompletionSession(run.ctx, run.session)
+	result, err := run.session.engine.Run(engineCtx, runstate.EngineRequest{
 		Binding: run.session.binding.Clone(), Snapshot: snapshot, Controls: run.controls,
 	}, func(event runstate.EngineEvent) error {
 		if final, ok := event.(runstate.EngineAssistantFinal); ok {
@@ -182,6 +183,9 @@ func (run *Run) handleEngineEvent(event runstate.EngineEvent) error {
 			CompletionTokensDetails: CompletionTokensDetails{ReasoningTokens: value.Usage.ReasoningTokens},
 		}, FinishReason: value.FinishReason, RequestedTools: append([]string(nil), value.RequestedTools...), Source: publicEventSource(value.Source)})
 	case runstate.EngineTranscriptUpdated:
+		if len(value.TaskCompletionIDs) != 0 {
+			return run.persistTaskCompletionCheckpoint(value.State, value.TaskCompletionIDs)
+		}
 		return run.updateEngineTranscript(value.State, false)
 	case runstate.EngineCapabilityState:
 		return run.applyCapabilityUpdates([]runstate.EngineCapabilityState{value})

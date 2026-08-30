@@ -110,6 +110,7 @@ func TestTaskWaitReturnsValidTargetsBesideInvalidTargets(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(response.Results) != 3 || response.Results[0].Task == nil || !response.Results[0].Ready ||
+		response.Results[0].Task.Output != "" ||
 		response.Results[1].ErrorCode != "task_error" || response.Results[2].ErrorCode != "invalid_input" {
 		t.Fatalf("wait results = %#v", response.Results)
 	}

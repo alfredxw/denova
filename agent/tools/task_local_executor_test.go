@@ -251,7 +251,7 @@ func TestLocalTasksWaitReturnsFirstReadyAndLeavesOtherRunning(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(outcomes) != 2 || outcomes[0].Task == nil || !outcomes[0].Ready || outcomes[0].Task.Status != string(agent.ResultCompleted) || outcomes[0].Task.Output != "fast result" {
+	if len(outcomes) != 2 || outcomes[0].Task == nil || !outcomes[0].Ready || outcomes[0].Task.Status != string(agent.ResultCompleted) || outcomes[0].Task.Output != "" {
 		t.Fatalf("fast wait outcome = %#v", outcomes)
 	}
 	if outcomes[1].Task == nil || outcomes[1].Ready || outcomes[1].Task.Status != "running" {
@@ -259,8 +259,180 @@ func TestLocalTasksWaitReturnsFirstReadyAndLeavesOtherRunning(t *testing.T) {
 	}
 	close(release)
 	outcomes, err = executor.Wait(ctx, []TaskRef{slowTask.Ref})
-	if err != nil || len(outcomes) != 1 || outcomes[0].Task == nil || !outcomes[0].Ready || outcomes[0].Task.Output != "slow result" {
+	if err != nil || len(outcomes) != 1 || outcomes[0].Task == nil || !outcomes[0].Ready || outcomes[0].Task.Output != "" {
 		t.Fatalf("settled slow outcome=%#v err=%v", outcomes, err)
+	}
+}
+
+func TestLocalTasksPublishesCompletionWithoutTaskWait(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	parentOwner := newTaskAgent(t, agentsession.Memory(), &taskModel{})
+	defer parentOwner.Close(context.Background())
+	parent, err := parentOwner.Session(ctx, agent.NamedSession("completion-parent"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	child := newTaskAgent(t, agentsession.Memory(), &taskModel{responses: []*agent.Message{
+		agent.AssistantMessage("mailbox result", nil),
+	}})
+	defer child.Close(context.Background())
+	executor, err := NewLocalTasks(LocalTaskOptions{
+		Parallelism: 4, CompletionParent: parent, MaxResultBytes: 4096,
+	}, LocalTaskAgent{
+		Name: "researcher", Description: "Research", Opener: child,
+		Identity: agent.CapabilityIdentity{Kind: "test.task.mailbox", Version: 1},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, err := executor.Start(ctx, TaskRequest{
+		Agent: "researcher", Prompt: "research", IdempotencyKey: "mailbox-task",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	childSession, err := child.Session(ctx, agent.SessionKey{
+		Namespace: "task.researcher", ID: task.Ref.Session, Attributes: map[string]string{"agent": "researcher"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, found, err := childSession.AttachRun(ctx, task.Ref.Run)
+	if err != nil || !found {
+		t.Fatalf("attach child found=%t err=%v", found, err)
+	}
+	if _, err := run.Wait(ctx); err != nil {
+		t.Fatal(err)
+	}
+	id := taskCompletionID(task.Ref)
+	watch, err := parent.WatchTaskCompletions(ctx, []string{id})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(watch.PendingIDs) == 0 {
+		select {
+		case <-watch.Activity:
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		}
+		watch, err = parent.WatchTaskCompletions(ctx, []string{id})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(watch.PendingIDs) != 1 || watch.PendingIDs[0] != id {
+		t.Fatalf("pending completion IDs = %#v", watch.PendingIDs)
+	}
+}
+
+func TestLocalTasksWaitQueuesTerminalCompletionBeforeReturning(t *testing.T) {
+	ctx := context.Background()
+	child := newTaskAgent(t, agentsession.Memory(), &taskModel{responses: []*agent.Message{
+		agent.AssistantMessage("synchronized result", nil),
+	}})
+	defer child.Close(context.Background())
+	started := newTaskExecutor(t, child)
+	task, err := started.Start(ctx, TaskRequest{
+		Agent: "researcher", Prompt: "research", IdempotencyKey: "synchronized-task",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	childSession, err := child.Session(ctx, agent.SessionKey{
+		Namespace: "task.researcher", ID: task.Ref.Session, Attributes: map[string]string{"agent": "researcher"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, found, err := childSession.AttachRun(ctx, task.Ref.Run)
+	if err != nil || !found {
+		t.Fatalf("attach child found=%t err=%v", found, err)
+	}
+	if _, err := run.Wait(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	parentOwner := newTaskAgent(t, agentsession.Memory(), &taskModel{})
+	defer parentOwner.Close(context.Background())
+	parent, err := parentOwner.Session(ctx, agent.NamedSession("wait-completion-parent"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	executor, err := NewLocalTasks(LocalTaskOptions{
+		Parallelism: 4, CompletionParent: parent, MaxResultBytes: 4096,
+	}, LocalTaskAgent{
+		Name: "researcher", Description: "Research", Opener: child,
+		Identity: agent.CapabilityIdentity{Kind: "test.task.wait-mailbox", Version: 1},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	outcomes, err := executor.Wait(ctx, []TaskRef{task.Ref})
+	if err != nil || len(outcomes) != 1 || outcomes[0].Task == nil || !outcomes[0].Ready || outcomes[0].Task.Output != "" {
+		t.Fatalf("wait outcomes=%#v err=%v", outcomes, err)
+	}
+	id := taskCompletionID(task.Ref)
+	watch, err := parent.WatchTaskCompletions(ctx, []string{id})
+	if err != nil || len(watch.PendingIDs) != 1 {
+		t.Fatalf("completion after wait=%#v err=%v", watch.PendingIDs, err)
+	}
+}
+
+func TestLocalTasksReconcilesCompletionFromDurableChildSession(t *testing.T) {
+	ctx := context.Background()
+	childStore := agentsession.Memory()
+	first := newTaskAgent(t, childStore, &taskModel{responses: []*agent.Message{
+		agent.AssistantMessage("cold mailbox result", nil),
+	}})
+	started := newTaskExecutor(t, first)
+	task, err := started.Start(ctx, TaskRequest{
+		Agent: "researcher", Prompt: "research", IdempotencyKey: "cold-mailbox-task",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	childSession, err := first.Session(ctx, agent.SessionKey{
+		Namespace: "task.researcher", ID: task.Ref.Session, Attributes: map[string]string{"agent": "researcher"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, found, err := childSession.AttachRun(ctx, task.Ref.Run)
+	if err != nil || !found {
+		t.Fatalf("attach child found=%t err=%v", found, err)
+	}
+	if _, err := run.Wait(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := first.Close(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	parentOwner := newTaskAgent(t, agentsession.Memory(), &taskModel{})
+	defer parentOwner.Close(context.Background())
+	parent, err := parentOwner.Session(ctx, agent.NamedSession("cold-completion-parent"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cold := newTaskAgent(t, childStore, &taskModel{})
+	defer cold.Close(context.Background())
+	executor, err := NewLocalTasks(LocalTaskOptions{
+		Parallelism: 4, CompletionParent: parent, MaxResultBytes: 4096,
+	}, LocalTaskAgent{
+		Name: "researcher", Description: "Research", Opener: cold,
+		Identity: agent.CapabilityIdentity{Kind: "test.task.mailbox-recovery", Version: 1},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := executor.ReconcileTaskCompletions(ctx); err != nil {
+		t.Fatal(err)
+	}
+	id := taskCompletionID(task.Ref)
+	watch, err := parent.WatchTaskCompletions(ctx, []string{id})
+	if err != nil || len(watch.PendingIDs) != 1 || watch.PendingIDs[0] != id {
+		t.Fatalf("reconciled completion IDs=%#v err=%v", watch.PendingIDs, err)
 	}
 }
 

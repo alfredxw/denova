@@ -139,9 +139,13 @@ type EngineModelCompleted struct {
 func (EngineModelCompleted) engineEvent() {}
 
 // EngineTranscriptUpdated replaces the in-process transcript used by later
-// cycles in this Run. Session persists only a final or deliberately aborted
-// transcript, never an unfinished model/tool boundary.
-type EngineTranscriptUpdated struct{ State json.RawMessage }
+// cycles in this Run. TaskCompletionIDs make one safe-boundary checkpoint
+// durable together with its completion delivery receipts; ordinary unfinished
+// model/tool boundaries remain in-process only.
+type EngineTranscriptUpdated struct {
+	State             json.RawMessage
+	TaskCompletionIDs []string
+}
 
 func (EngineTranscriptUpdated) engineEvent() {}
 

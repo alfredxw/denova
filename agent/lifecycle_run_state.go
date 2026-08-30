@@ -34,6 +34,19 @@ func (run *Run) persistEngineTranscript() error {
 	return err
 }
 
+// persistTaskCompletionCheckpoint atomically commits the model-visible
+// messages and their delivery receipts. A completion remains pending when the
+// Session log cannot commit the whole transaction.
+func (run *Run) persistTaskCompletionCheckpoint(state json.RawMessage, ids []string) error {
+	if err := run.session.commitTaskCompletionCheckpoint(context.Background(), state, ids); err != nil {
+		return err
+	}
+	run.mu.Lock()
+	run.snapshot.State = append(json.RawMessage(nil), state...)
+	run.mu.Unlock()
+	return nil
+}
+
 func (run *Run) snapshotForCurrentCycle() (runstate.TurnSnapshot, error) {
 	run.mu.RLock()
 	snapshot := run.snapshot

@@ -686,11 +686,19 @@ func (backend *publicBackend) bindDefinition(
 				Attributes: attributes, LookupAttributes: parentAttributes,
 			}
 		}
+		parentSession, taskErr := backend.agent.Session(ctx, request.Session.Key)
+		if taskErr != nil {
+			return agent.Definition{}, fmt.Errorf("open parent Agent Session for delegated completion delivery: %w", taskErr)
+		}
 		executor, taskErr := publictools.NewLocalTasks(publictools.LocalTaskOptions{
-			Parallelism: taskCatalog.Parallelism(),
+			Parallelism: taskCatalog.Parallelism(), CompletionParent: parentSession,
+			MaxResultBytes: taskCatalog.MaxResultBytes(),
 		}, candidates...)
 		if taskErr != nil {
 			return agent.Definition{}, fmt.Errorf("bind delegated Agent executor: %w", taskErr)
+		}
+		if taskErr = executor.ReconcileTaskCompletions(ctx); taskErr != nil {
+			return agent.Definition{}, fmt.Errorf("reconcile delegated Agent completions: %w", taskErr)
 		}
 		definition.Tools, taskErr = taskCatalog.Bind(executor)
 		if taskErr != nil {

@@ -86,6 +86,15 @@ type AgentMessageMeta struct {
 	ModelResponseOrdinal int `json:"model_response_ordinal,omitempty"`
 }
 
+// TaskCompletionMessageMeta identifies one model-visible completion delivered
+// from a child task. Provider adapters intentionally ignore this metadata; the
+// Session uses it to keep completion messages distinct from user steering.
+type TaskCompletionMessageMeta struct {
+	CompletionID string `json:"completion_id"`
+	Author       string `json:"author"`
+	Recipient    string `json:"recipient"`
+}
+
 // ToolResultSummary preserves transcript pairing and bounded context policy
 // metadata without persisting display content or the full durability payload.
 type ToolResultSummary struct {
@@ -121,10 +130,11 @@ type Message struct {
 	ToolName   string             `json:"tool_name,omitempty"`
 	ToolResult *ToolResultSummary `json:"tool_result,omitempty"`
 
-	ResponseMeta     *ResponseMeta     `json:"response_meta,omitempty"`
-	AgentMeta        *AgentMessageMeta `json:"agent_meta,omitempty"`
-	ReasoningContent string            `json:"reasoning_content,omitempty"`
-	Extra            map[string]any    `json:"extra,omitempty"`
+	ResponseMeta     *ResponseMeta              `json:"response_meta,omitempty"`
+	AgentMeta        *AgentMessageMeta          `json:"agent_meta,omitempty"`
+	TaskCompletion   *TaskCompletionMessageMeta `json:"task_completion,omitempty"`
+	ReasoningContent string                     `json:"reasoning_content,omitempty"`
+	Extra            map[string]any             `json:"extra,omitempty"`
 }
 
 // AssistantOutputMultiContent returns the assistant multimodal wire elements.
@@ -238,6 +248,10 @@ func (m *Message) Clone() *Message {
 	if m.AgentMeta != nil {
 		meta := *m.AgentMeta
 		clone.AgentMeta = &meta
+	}
+	if m.TaskCompletion != nil {
+		meta := *m.TaskCompletion
+		clone.TaskCompletion = &meta
 	}
 	return &clone
 }

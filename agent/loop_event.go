@@ -141,7 +141,36 @@ type loopOutput struct {
 	MessageOutput    *loopMessage
 	ToolExecution    *toolExecutionEvent
 	NestedEvent      *NestedEvent
+	TaskCompletions  *taskCompletionBoundary
 	CustomizedOutput any
+}
+
+// taskCompletionBoundary orders asynchronous child completion delivery behind
+// every preceding model/tool event. The low-level loop does not proceed to the
+// provider until the Definition lifecycle durably acknowledges this batch.
+type taskCompletionBoundary struct {
+	completions []TaskCompletion
+	receipt     chan error
+}
+
+func (boundary *taskCompletionBoundary) acknowledge(err error) {
+	if boundary == nil || boundary.receipt == nil {
+		return
+	}
+	boundary.receipt <- err
+}
+
+func (boundary *taskCompletionBoundary) snapshot() ([]string, []*Message) {
+	if boundary == nil {
+		return nil, nil
+	}
+	ids := make([]string, 0, len(boundary.completions))
+	messages := make([]*Message, 0, len(boundary.completions))
+	for _, completion := range boundary.completions {
+		ids = append(ids, completion.ID)
+		messages = append(messages, completion.Message.Clone())
+	}
+	return ids, messages
 }
 
 // toolExecutionPhase is the exhaustive lifecycle of one concrete call.

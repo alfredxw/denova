@@ -14,8 +14,8 @@ Denova records only major user-visible features, important compatibility or data
 
 ### Major changes / 重大变更
 
-- 主 Agent 仍默认自行处理任务，仅在用户明确要求多 Agent 协作或已加载 Skill 明确要求时委派；委派任务现在异步并行运行，主 Agent 可继续当前工作并在真实依赖点等待任一结果，等待可被用户新指令打断而不会终止 SubAgent。
-- The main Agent still works by itself by default and delegates only when the user explicitly requests multi-Agent work or a loaded Skill requires it. Delegated tasks now run asynchronously in parallel, letting the main Agent continue local work and wait for any result only at a real dependency point; new user input can interrupt that wait without stopping SubAgents.
+- 主 Agent 仍默认自行处理任务，仅在用户明确要求多 Agent 协作或已加载 Skill 明确要求时委派；委派任务现在异步并行运行，完成结果会在安全执行边界可靠送达而无需主动等待，真实依赖点的等待仍可被用户新指令打断且不会终止 SubAgent。
+- The main Agent still works by itself by default and delegates only when the user explicitly requests multi-Agent work or a loaded Skill requires it. Delegated tasks now run asynchronously in parallel, with completed results delivered reliably at safe execution boundaries without requiring an explicit wait; waits at real dependency points remain interruptible without stopping SubAgents.
 - `.denova` 数据目录现在可在 Denova 完全退出后整体移动或复制到 Windows、WSL、Linux 与 macOS 的任意合法可写位置；受管 Project 的会话、游戏、版本、附件、工具产物和自动化会按稳定 Project ID 与相对路径继续使用，v0.3.3 索引在首次切换前自动备份并迁移。
 - After Denova fully exits, the complete `.denova` data directory can be moved or copied to any valid writable location on Windows, WSL, Linux, or macOS. Managed Project sessions, Game state, versions, attachments, tool artifacts, and automations continue through stable Project IDs and relative paths, with v0.3.3 indexes backed up before the first migration.
 - 字体设置改为类似 Dynamic Type 的统一离散档位：界面字号按完整层级缩放，阅读字号同步覆盖写作、游戏剧情、Agent 回复、源码编辑器、Diff 与终端。

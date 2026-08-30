@@ -213,7 +213,8 @@ func (agent *Agent) Session(ctx context.Context, key SessionKey) (*Session, erro
 	session := &Session{
 		agent: agent, key: key, binding: binding, engine: engine, log: log,
 		capabilities: make(map[string]json.RawMessage), runs: make(map[string]*Run),
-		observers: make(map[uint64]*sessionObserver),
+		observers:       make(map[uint64]*sessionObserver),
+		taskCompletions: newTaskCompletionMailbox(),
 	}
 	if err := session.replay(ctx); err != nil {
 		_ = log.Close()

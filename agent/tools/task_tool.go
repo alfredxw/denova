@@ -29,6 +29,7 @@ type TaskRequest struct {
 type Task struct {
 	Ref    TaskRef `json:"ref"`
 	Status string  `json:"status"`
+	Reason string  `json:"reason,omitempty"`
 	Output string  `json:"output,omitempty"`
 }
 
@@ -45,9 +46,11 @@ type TaskObserveTarget struct {
 	Cursor string  `json:"cursor,omitempty" jsonschema_description:"Opaque cursor returned by the previous observation of this task."`
 }
 
-// TaskWaitOutcome is one executor-owned snapshot returned after any target is
-// ready. Err is per-target; a top-level Wait error is reserved for an
-// interrupted wait or a failed Host interaction.
+// TaskWaitOutcome is one executor-owned synchronization snapshot returned
+// after any target is ready. Task contains identity and status only; terminal
+// payloads arrive through the parent completion mailbox or explicit observe.
+// Err is per-target; a top-level Wait error is reserved for an interrupted wait
+// or a failed Host interaction.
 type TaskWaitOutcome struct {
 	Task  *Task
 	Ready bool

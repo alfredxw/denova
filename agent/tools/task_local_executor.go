@@ -25,7 +25,9 @@ type activeSessionCounter interface {
 }
 
 type LocalTaskOptions struct {
-	Parallelism int
+	Parallelism      int
+	CompletionParent *agent.Session
+	MaxResultBytes   int
 }
 
 // LocalTaskAgent binds one stable selector to an Agent owner. Different
@@ -50,11 +52,13 @@ type LocalTaskAgent struct {
 // executor keeps no authoritative task map: TaskRef is sufficient to reopen a
 // Session and attach a Run after a cold restart.
 type LocalTasks struct {
-	agents      map[string]LocalTaskAgent
-	ordered     []TaskAgentInfo
-	parallelism int
-	identity    agent.CapabilityIdentity
-	startMu     sync.Mutex
+	agents           map[string]LocalTaskAgent
+	ordered          []TaskAgentInfo
+	parallelism      int
+	identity         agent.CapabilityIdentity
+	completionParent *agent.Session
+	maxResultBytes   int
+	startMu          sync.Mutex
 }
 
 func NewLocalTasks(options LocalTaskOptions, candidates ...LocalTaskAgent) (*LocalTasks, error) {
@@ -63,6 +67,9 @@ func NewLocalTasks(options LocalTaskOptions, candidates ...LocalTaskAgent) (*Loc
 	}
 	if options.Parallelism <= 0 {
 		return nil, errors.New("local tasks require positive parallelism")
+	}
+	if options.MaxResultBytes <= 0 {
+		options.MaxResultBytes = defaultResultBytes
 	}
 	resolved := make(map[string]LocalTaskAgent, len(candidates))
 	identities := make([]struct {
@@ -98,10 +105,12 @@ func NewLocalTasks(options LocalTaskOptions, candidates ...LocalTaskAgent) (*Loc
 	}
 	return &LocalTasks{
 		agents: resolved, ordered: ordered, parallelism: options.Parallelism,
+		completionParent: options.CompletionParent, maxResultBytes: options.MaxResultBytes,
 		identity: toolsetIdentity("tasks.local", struct {
-			Parallelism int
-			Agents      any
-		}{options.Parallelism, identities}),
+			Parallelism    int
+			MaxResultBytes int
+			Agents         any
+		}{options.Parallelism, options.MaxResultBytes, identities}),
 	}, nil
 }
 
@@ -142,6 +151,11 @@ func (tasks *LocalTasks) Start(ctx context.Context, request TaskRequest) (Task, 
 	if existing, found, existingErr := tasks.existingTask(ctx, candidate, sessionID, commandID); existingErr != nil {
 		return Task{}, existingErr
 	} else if found {
+		if isTaskTerminal(existing.Status) {
+			if completionErr := tasks.enqueueTaskCompletion(ctx, existing); completionErr != nil {
+				return Task{}, completionErr
+			}
+		}
 		return existing, nil
 	}
 	active, err := tasks.activeTaskCount(ctx)
@@ -166,6 +180,7 @@ func (tasks *LocalTasks) Start(ctx context.Context, request TaskRequest) (Task, 
 		return Task{}, fmt.Errorf("start task Run: %w", err)
 	}
 	ref := TaskRef{Agent: candidate.Name, Session: sessionID, Run: run.ID()}
+	tasks.watchCompletion(run, ref)
 	return Task{Ref: ref, Status: "running"}, nil
 }
 

@@ -22,7 +22,7 @@ func newTaskWaitDefinition(executor TaskExecutor) (agent.ToolDefinition, error) 
 	}
 	tool, err := newSchemaTool(
 		"task_wait",
-		"Wait until any previously started delegated task is ready. Call only at a real dependency point, and pass all tasks whose results can unblock the current work. User steering interrupts this wait without aborting the tasks.",
+		"Synchronize until any previously started delegated task is ready. Terminal payloads are delivered separately through task result messages, so do not call this tool merely to retrieve output. Call only at a real dependency point, and pass all tasks whose readiness can unblock the current work. User steering interrupts this wait without aborting the tasks.",
 		schema,
 		func(ctx context.Context, input taskWaitInput) (agent.ToolResult, error) {
 			if len(input.Targets) == 0 {
@@ -54,7 +54,12 @@ func newTaskWaitDefinition(executor TaskExecutor) (agent.ToolDefinition, error) 
 			}
 			for index, outcome := range outcomes {
 				resultIndex := indices[index]
-				results[resultIndex].Task = outcome.Task
+				if outcome.Task != nil {
+					task := *outcome.Task
+					task.Output = ""
+					task.Reason = ""
+					results[resultIndex].Task = &task
+				}
 				results[resultIndex].Ready = outcome.Ready
 				setTaskItemError(&results[resultIndex], outcome.Err)
 			}
