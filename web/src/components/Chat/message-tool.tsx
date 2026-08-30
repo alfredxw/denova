@@ -4,12 +4,12 @@ import { useTranslation } from 'react-i18next'
 import type { ToolCallChatMessage } from '@/lib/api'
 import { CollapsibleTrigger } from '@/components/ui/collapsible'
 import { decodeToolResultEnvelope, type ToolResultEnvelope } from '@/lib/tool-result-envelope'
-import { useBottomScrollLock } from '@/hooks/useBottomScrollLock'
 import { Tool, ToolContent } from '@/components/ai-elements/tool'
 import { ToolApprovalPanel } from './ToolApprovalCard'
 import type { AskInteractionResolver } from './AskInteractionCard'
 import { AgentSourceBadge } from './message-source-badge'
 import { ToolStatusIcon } from './message-tool-status'
+import { StreamingToolInput } from './StreamingToolInput'
 import { toolDisplayName } from './tool-display-name'
 import { formatMaybeJSON, hasSpecializedToolDetail, ToolCallDetail } from './message-tool-detail'
 import { toolPresentationKind } from '@/lib/tool-presentation'
@@ -73,11 +73,6 @@ export function ToolExecutionBlock({ message, showAgentSource = true, onResolve,
   const headerSummary = approvalPending ? t('agentApproval.approval.waiting') : displaySummary
   const hasDetail = Boolean(approvalInteraction || detailArgs || result)
   const canToggleDetail = hasDetail && !isInputStreaming
-  const inputStreamScrollLock = useBottomScrollLock<HTMLDivElement>({
-    enabled: isInputStreaming,
-    resetKey: `${message.id || name}:tool-input-stream`,
-    contentKey: `${status}:${rawArgs.length}`,
-  })
 
   return (
     <div className="flex justify-start">
@@ -130,16 +125,7 @@ export function ToolExecutionBlock({ message, showAgentSource = true, onResolve,
           )}
         </CollapsibleTrigger>
         {isInputStreaming && (
-          <div
-            ref={inputStreamScrollLock.ref}
-            onScroll={inputStreamScrollLock.onScroll}
-            onWheel={inputStreamScrollLock.onWheel}
-            onKeyDown={inputStreamScrollLock.onKeyDown}
-            data-nova-scroll-lock="tool-input-stream"
-            className="min-w-0 max-w-full max-h-32 overflow-x-hidden overflow-y-auto border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2.5 font-mono text-[11px] leading-relaxed text-[var(--nova-accent-green)] whitespace-pre-wrap [overflow-anchor:none] [overflow-wrap:anywhere]"
-          >
-            {rawArgs}
-          </div>
+          <StreamingToolInput rawInput={rawArgs} streamKey={message.id || name} />
         )}
         {!isInputStreaming && !approvalInteraction && hasSpecializedToolDetail(name) && (
           <ToolCallDetail
