@@ -11,7 +11,7 @@ import { SidebarVisibilityToggle } from '@/components/layout/sidebar-visibility-
 import { Button } from '@/components/ui/button'
 import { LoadingState } from '@/components/common/LoadingState'
 import { Input } from '@/components/ui/input'
-import type { AgentContextOverride, AgentModelOverride, AgentPromptOverride, AgentSkillOverride, AgentToolOverride, CustomAgentConfig, ImageAPIProfileSettings, LayeredSettings, ModelProfileSettings, Settings, SettingsLayer } from '@/features/settings/types'
+import type { AgentContextOverride, AgentModelOverride, AgentPromptOverride, AgentSkillOverride, AgentToolOverride, CustomAgentBaseKind, CustomAgentConfig, ImageAPIProfileSettings, LayeredSettings, ModelProfileSettings, Settings, SettingsLayer } from '@/features/settings/types'
 import { modelProfileID, modelProfileLabel, modelProfilesWithDefault } from '@/features/settings/model-profiles'
 import { imageAPIProfileID, imageAPIProfileLabel, imageAPIProfilesWithDefault } from '@/features/settings/image-profiles'
 import { useLayeredSettingsDraft } from '@/features/settings/use-layered-settings-draft'
@@ -54,6 +54,7 @@ export function AgentsView({ target, onClose, toolNavigationIntent }: { target: 
   })
   const [activeSelection, setActiveSelection] = useState<AgentSelectionID>('ide')
   const [createOpen, setCreateOpen] = useState(false)
+  const [createBaseKind, setCreateBaseKind] = useState<CustomAgentBaseKind>('ide')
   const [skills, setSkills] = useState<SkillSummary[]>([])
   const [agentChatOpen, setAgentChatOpen] = useState(false)
   const [sidebarVisible, setSidebarVisible] = useState(true)
@@ -332,7 +333,10 @@ export function AgentsView({ target, onClose, toolNavigationIntent }: { target: 
               active={activeSelection}
               customAgents={effectiveCustomAgents}
               onSelect={setActiveSelection}
-              onCreate={() => setCreateOpen(true)}
+              onCreate={(baseKind) => {
+                setCreateBaseKind(baseKind)
+                setCreateOpen(true)
+              }}
             />
           ),
           desktopClassName: 'min-h-0 border-r border-[var(--nova-border)]',
@@ -466,6 +470,7 @@ export function AgentsView({ target, onClose, toolNavigationIntent }: { target: 
       )}
       <CreateCustomAgentDialog
         open={createOpen}
+        initialBaseKind={createBaseKind}
         onOpenChange={setCreateOpen}
         onCreate={(agent) => {
           setDraft((current) => ({ ...current, custom_agents: [...(current.custom_agents ?? []), agent] }))

@@ -1,0 +1,52 @@
+import type { ReactNode } from 'react'
+import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { describe, expect, it, vi } from 'vitest'
+import { TooltipProvider } from '@/components/ui/tooltip'
+import type { CustomAgentBaseKind } from '@/features/settings/types'
+import { AgentList, CreateCustomAgentDialog } from './custom-agent-management'
+
+function renderWithTooltips(ui: ReactNode) {
+  return render(<TooltipProvider delayDuration={0}>{ui}</TooltipProvider>)
+}
+
+describe('AgentList', () => {
+  it('places the top-level create action before navigation and offers supported category shortcuts', async () => {
+    const user = userEvent.setup()
+    const onCreate = vi.fn<(baseKind: CustomAgentBaseKind) => void>()
+    renderWithTooltips(
+      <AgentList active="ide" customAgents={[]} onSelect={vi.fn()} onCreate={onCreate} />,
+    )
+
+    const createButton = screen.getByRole('button', { name: '新建自定义 Agent' })
+    const navigation = screen.getByRole('navigation')
+    expect(createButton.compareDocumentPosition(navigation) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
+    const shortcuts: Array<[string, CustomAgentBaseKind]> = [
+      ['基于General Agent新建自定义 Agent', 'general'],
+      ['基于写作 Agent新建自定义 Agent', 'ide'],
+      ['基于游戏叙事 Agent新建自定义 Agent', 'interactive_story'],
+      ['基于图像 Agent新建自定义 Agent', 'image'],
+    ]
+    for (const [name, baseKind] of shortcuts) {
+      await user.click(screen.getByRole('button', { name }))
+      expect(onCreate).toHaveBeenLastCalledWith(baseKind)
+    }
+    expect(screen.queryByRole('button', { name: /基于版本说明 Agent新建自定义 Agent/ })).not.toBeInTheDocument()
+  })
+})
+
+describe('CreateCustomAgentDialog', () => {
+  it('opens with the base selected by a category shortcut', () => {
+    renderWithTooltips(
+      <CreateCustomAgentDialog
+        open
+        initialBaseKind="interactive_story"
+        onOpenChange={vi.fn()}
+        onCreate={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('combobox', { name: '运行时底座' })).toHaveTextContent('游戏叙事 Agent')
+  })
+})

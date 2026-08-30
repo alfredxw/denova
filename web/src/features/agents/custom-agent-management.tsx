@@ -6,12 +6,16 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { SidebarGroupAction } from '@/components/ui/sidebar'
 import { Textarea } from '@/components/ui/textarea'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type { CustomAgentBaseKind, CustomAgentConfig, Settings } from '@/features/settings/types'
 import { createAgentCommandID } from '@/lib/api'
 import { AGENTS, type AgentViewDefinition, type VisibleAgentKey } from './agent-registry'
 
 export type AgentSelectionID = VisibleAgentKey | `custom:${string}`
+
+const CUSTOM_AGENT_BASE_KINDS: CustomAgentBaseKind[] = ['general', 'ide', 'interactive_story', 'image']
 
 export function AgentList({
   active,
@@ -22,7 +26,7 @@ export function AgentList({
   active: AgentSelectionID
   customAgents: CustomAgentConfig[]
   onSelect: (agent: AgentSelectionID) => void
-  onCreate: () => void
+  onCreate: (baseKind: CustomAgentBaseKind) => void
 }) {
   const { t } = useTranslation()
   const groups = new Map<string, Array<{ id: AgentSelectionID; agent: AgentViewDefinition; title: string; description: string }>>()
@@ -45,26 +49,41 @@ export function AgentList({
     groups.set(base.groupKey, group)
   }
 
-  const navigationGroups: SectionedNavigationGroup<AgentSelectionID>[] = Array.from(groups, ([group, agents]) => ({
-    id: group,
-    title: t(group),
-    items: agents.map((item) => ({
-      id: item.id,
-      title: item.title,
-      description: item.description,
-      icon: item.agent.icon,
-    })),
-  }))
+  const navigationGroups: SectionedNavigationGroup<AgentSelectionID>[] = Array.from(groups, ([group, agents]) => {
+    const baseKind = CUSTOM_AGENT_BASE_KINDS.find((kind) => AGENTS.find((agent) => agent.key === kind)?.groupKey === group)
+    const baseAgent = AGENTS.find((agent) => agent.key === baseKind)
+    const createLabel = baseAgent ? t('agents.custom.createFor', { agent: t(baseAgent.titleKey) }) : ''
+    return {
+      id: group,
+      title: t(group),
+      action: baseKind ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <SidebarGroupAction type="button" aria-label={createLabel} onClick={() => onCreate(baseKind)}>
+              <Plus aria-hidden="true" />
+            </SidebarGroupAction>
+          </TooltipTrigger>
+          <TooltipContent side="right">{createLabel}</TooltipContent>
+        </Tooltip>
+      ) : undefined,
+      items: agents.map((item) => ({
+        id: item.id,
+        title: item.title,
+        description: item.description,
+        icon: item.agent.icon,
+      })),
+    }
+  })
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <SectionedNavigation groups={navigationGroups} activeId={active} onSelect={onSelect} />
-      </div>
-      <div className="border-t border-[var(--nova-border)] p-2">
-        <Button type="button" variant="outline" size="sm" className="w-full justify-start" onClick={onCreate}>
-          <Plus className="h-3.5 w-3.5" />
+      <div className="border-b border-[var(--nova-border)] p-2">
+        <Button type="button" variant="outline" size="sm" className="w-full justify-start" onClick={() => onCreate('ide')}>
+          <Plus data-icon="inline-start" />
           {t('agents.custom.create')}
         </Button>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <SectionedNavigation groups={navigationGroups} activeId={active} onSelect={onSelect} />
       </div>
     </div>
   )
@@ -136,10 +155,12 @@ export function CustomAgentIdentitySection({
 
 export function CreateCustomAgentDialog({
   open,
+  initialBaseKind,
   onOpenChange,
   onCreate,
 }: {
   open: boolean
+  initialBaseKind: CustomAgentBaseKind
   onOpenChange: (open: boolean) => void
   onCreate: (agent: CustomAgentConfig & { id: string }) => void
 }) {
@@ -152,8 +173,8 @@ export function CreateCustomAgentDialog({
     if (!open) return
     setName('')
     setDescription('')
-    setBaseKind('ide')
-  }, [open])
+    setBaseKind(initialBaseKind)
+  }, [initialBaseKind, open])
 
   const create = () => {
     const normalizedName = name.trim()

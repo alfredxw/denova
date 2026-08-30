@@ -1,6 +1,7 @@
 import type { LucideIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { EmbeddedSidebar } from '@/components/navigation/embedded-sidebar'
+import { cn } from '@/lib/utils'
 import {
   SidebarContent,
   SidebarGroup,
@@ -21,6 +22,7 @@ export interface SectionedNavigationItem<TID extends string = string> {
 export interface SectionedNavigationGroup<TID extends string = string> {
   id: string
   title: ReactNode
+  action?: ReactNode
   items: SectionedNavigationItem<TID>[]
 }
 
@@ -44,7 +46,8 @@ export function SectionedNavigation<TID extends string>({
           <nav>
             {groups.map((group) => (
               <SidebarGroup key={group.id} className="py-1">
-                <SidebarGroupLabel>{group.title}</SidebarGroupLabel>
+                <SidebarGroupLabel className={cn(group.action && 'pr-8')}>{group.title}</SidebarGroupLabel>
+                {group.action}
                 <SidebarGroupContent>
                   <SidebarMenu>
                     {group.items.map((item) => {

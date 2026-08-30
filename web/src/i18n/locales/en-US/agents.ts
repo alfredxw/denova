@@ -19,6 +19,7 @@ const agents = {
   'agents.image.title': 'Image Agent',
   'agents.image.subtitle': 'General image generation and interactive images',
   'agents.custom.create': 'New custom Agent',
+  'agents.custom.createFor': 'New custom Agent based on {{agent}}',
   'agents.custom.createTitle': 'Create a custom Agent',
   'agents.custom.createDescription': 'Choose a fixed runtime base, then customize its model, prompts, tools, Skills, and context. No preset is added automatically.',
   'agents.custom.baseKind': 'Runtime Base',

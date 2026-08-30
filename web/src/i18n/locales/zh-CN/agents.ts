@@ -19,6 +19,7 @@ const agents = {
   'agents.image.title': '图像 Agent',
   'agents.image.subtitle': '通用图像生成与互动图像',
   'agents.custom.create': '新建自定义 Agent',
+  'agents.custom.createFor': '基于{{agent}}新建自定义 Agent',
   'agents.custom.createTitle': '创建自定义 Agent',
   'agents.custom.createDescription': '先选择固定运行时底座，再配置模型、提示词、工具、Skills 和上下文。系统不会自动添加预设。',
   'agents.custom.baseKind': '运行时底座',
