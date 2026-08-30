@@ -32,6 +32,8 @@ import (
 	"denova/internal/book"
 	"denova/internal/concurrency"
 	"denova/internal/interactive"
+	"denova/internal/localfs"
+	"denova/internal/portablepath"
 	projectdomain "denova/internal/project"
 	"denova/internal/terminal"
 	"denova/internal/workspace/filewatch"
@@ -111,6 +113,25 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 	if dataDir == "" {
 		return nil, ErrAgentDataDirRequired
 	}
+	if err := os.MkdirAll(dataDir, 0o700); err != nil {
+		return nil, fmt.Errorf("initialize Denova data directory: %w", err)
+	}
+	releaseStartupLease, err := localfs.AcquireLease(ctx, filepath.Join(dataDir, "runtime", "portable-startup.lock"))
+	if err != nil {
+		return nil, fmt.Errorf("acquire Denova data migration lock: %w", err)
+	}
+	defer func() {
+		if releaseErr := releaseStartupLease(); releaseErr != nil {
+			slog.ErrorContext(context.Background(), "[internal/app/app.go] release portable startup lock failed", "error", releaseErr)
+		}
+	}()
+	if err := portablepath.PreflightTree(dataDir); err != nil {
+		return nil, fmt.Errorf("Denova data directory is not portable across Windows, WSL, Linux, and macOS: %w", err)
+	}
+	migrationBackups, err := preparePortableDataMigration(dataDir)
+	if err != nil {
+		return nil, fmt.Errorf("prepare portable Denova data migration: %w", err)
+	}
 	registry := projectdomain.NewRegistry(dataDir)
 	harnessRoot := filepath.Join(dataDir, "state")
 	if err := os.MkdirAll(harnessRoot, 0o700); err != nil {
@@ -120,6 +141,31 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 		return nil, fmt.Errorf("register Harness Project: %w", err)
 	}
 	bookMetaStore := book.NewMetaStore(dataDir)
+	registeredProjects, err := registry.List(true)
+	if err != nil {
+		return nil, fmt.Errorf("load registered Projects for metadata migration: %w", err)
+	}
+	for _, record := range registeredProjects {
+		if record.Type != projectdomain.TypeBook || record.Status != projectdomain.StatusAvailable {
+			continue
+		}
+		layout, layoutErr := registry.EnsureState(record)
+		if layoutErr != nil {
+			return nil, fmt.Errorf("prepare Book Project state for metadata migration: %w", layoutErr)
+		}
+		if migrationErr := bookMetaStore.MigrateLegacy(layout.ContentRoot, layout.StateRoot); migrationErr != nil {
+			return nil, fmt.Errorf("migrate Book metadata: %w", migrationErr)
+		}
+	}
+	if err := migratePortableApprovalSettings(dataDir, registry); err != nil {
+		return nil, fmt.Errorf("migrate Agent approval rules: %w", err)
+	}
+	if rules, changed := portableApprovalRules(registeredProjects, cfg.AgentApprovalRules); changed {
+		cfg.AgentApprovalRules = rules
+	}
+	if err := completePortableDataMigration(dataDir, migrationBackups, len(registeredProjects)); err != nil {
+		return nil, fmt.Errorf("complete portable Denova data migration: %w", err)
+	}
 	app := &App{
 		cfg:             cfg,
 		projectRegistry: registry,
@@ -143,6 +189,7 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 				return config.NormalizeAgentApprovalRules(layered.Effective.AgentApprovalRules), nil
 			},
 			Persist: func(ctx context.Context, rule config.AgentApprovalRule) error {
+				rule = canonicalApprovalRuleForPersistence(app.projectRegistry, rule)
 				_, err := app.SettingsService().EnsureAgentApprovalRule(rule)
 				return err
 			},

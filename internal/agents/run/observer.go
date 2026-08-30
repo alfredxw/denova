@@ -268,9 +268,6 @@ func (o *Observer) RecordToolExecution(result agenttool.ExecutionRecord) {
 		attrs["domain_diagnostic_count"] = result.DomainDiagnosticCount
 		attrs["retry_modules"] = append([]string(nil), result.RetryModules...)
 	}
-	if result.Workspace != "" {
-		attrs["workspace"] = result.Workspace
-	}
 	if result.ChangeGroupID != "" {
 		attrs["change_group_id"] = result.ChangeGroupID
 	}

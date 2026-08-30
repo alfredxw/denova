@@ -17,7 +17,7 @@ import (
 	workspacelayout "denova/internal/workspace"
 )
 
-const registryVersion = 3
+const registryVersion = 4
 
 // HarnessProjectID is the stable identity of the single user-level Harness
 // Project. Its content directory is managed by Denova while its Sessions and
@@ -36,16 +36,19 @@ type registryData struct {
 // Filesystem availability is projected at read time rather than persisted as
 // an event, so moving a directory never destroys its user-owned state.
 type Registry struct {
-	mu                              sync.Mutex
-	stateMu                         sync.Mutex
-	stateDirectoryMigrationComplete bool
-	path                            string
-	legacyBooksPath                 string
-	denovaDir                       string
+	mu                            sync.Mutex
+	stateMu                       sync.Mutex
+	stateStorageMigrationComplete bool
+	path                          string
+	legacyBooksPath               string
+	denovaDir                     string
 }
 
 func NewRegistry(denovaDir string) *Registry {
 	denovaDir = strings.TrimSpace(denovaDir)
+	if absolute, err := filepath.Abs(denovaDir); err == nil {
+		denovaDir = filepath.Clean(absolute)
+	}
 	return &Registry{
 		path:            filepath.Join(denovaDir, "projects.json"),
 		legacyBooksPath: filepath.Join(denovaDir, "books.json"),
@@ -272,6 +275,11 @@ func (registry *Registry) EnsureHarness(path string) (Record, error) {
 		if samePath(record.WorkspacePath, canonical) && record.Name == "Harness" && record.ArchivedAt == nil {
 			return projectStatus(*record), nil
 		}
+		location, locationErr := registry.locationForWorkspace(canonical)
+		if locationErr != nil {
+			return Record{}, locationErr
+		}
+		record.Location = location
 		record.WorkspacePath = canonical
 		record.Name = "Harness"
 		record.ArchivedAt = nil
@@ -281,8 +289,13 @@ func (registry *Registry) EnsureHarness(path string) (Record, error) {
 		}
 		return projectStatus(*record), nil
 	}
+	location, err := registry.locationForWorkspace(canonical)
+	if err != nil {
+		return Record{}, err
+	}
 	record := Record{
-		ID: HarnessProjectID, Type: TypeHarness, Name: "Harness", StateDirName: harnessStateDirName, WorkspacePath: canonical,
+		ID: HarnessProjectID, Type: TypeHarness, Name: "Harness", StateDirName: harnessStateDirName,
+		Location: location, WorkspacePath: canonical,
 		Status: StatusAvailable, CreatedAt: now, UpdatedAt: now,
 	}
 	data.Projects = append(data.Projects, record)
@@ -372,6 +385,10 @@ func (registry *Registry) Relink(id, path string) (Record, error) {
 	if err != nil {
 		return Record{}, err
 	}
+	location, err := registry.locationForWorkspace(canonical)
+	if err != nil {
+		return Record{}, err
+	}
 	registry.mu.Lock()
 	defer registry.mu.Unlock()
 	data, _, err := registry.loadAndDiscoverLocked()
@@ -394,6 +411,7 @@ func (registry *Registry) Relink(id, path string) (Record, error) {
 		if data.Projects[index].Type == TypeHarness {
 			return Record{}, errors.New("the Harness project directory is managed by Denova")
 		}
+		data.Projects[index].Location = location
 		data.Projects[index].WorkspacePath = canonical
 		data.Projects[index].ArchivedAt = nil
 		data.Projects[index].UpdatedAt = now
@@ -529,7 +547,11 @@ func (registry *Registry) discoverBooksLocked(data *registryData) (bool, error) 
 	}
 	known := make(map[string]bool, len(data.Projects))
 	for _, record := range data.Projects {
-		known[filepath.Clean(record.WorkspacePath)] = true
+		key, keyErr := projectLocationKey(record.Location)
+		if keyErr != nil {
+			return false, keyErr
+		}
+		known[key] = true
 	}
 	candidates := []string{filepath.Join(root, ContentDirectoryName), root}
 	changed := false
@@ -545,17 +567,28 @@ func (registry *Registry) discoverBooksLocked(data *registryData) (bool, error) 
 			if !entry.IsDir() || (index == 1 && isUserDataDirectory(entry.Name())) {
 				continue
 			}
-			path, canonicalErr := canonicalDirectory(filepath.Join(parent, entry.Name()), true)
-			if canonicalErr != nil || known[path] || !isBookWorkspace(path) {
+			workspace, canonicalErr := canonicalDirectory(filepath.Join(parent, entry.Name()), true)
+			if canonicalErr != nil || !isBookWorkspace(workspace) {
 				continue
 			}
-			record, recordErr := registry.newRecord(data, path, TypeBook, entry.Name(), time.Now().UTC())
+			location, locationErr := registry.locationForWorkspace(workspace)
+			if locationErr != nil {
+				return false, locationErr
+			}
+			key, keyErr := projectLocationKey(location)
+			if keyErr != nil {
+				return false, keyErr
+			}
+			if known[key] {
+				continue
+			}
+			record, recordErr := registry.newRecord(data, workspace, TypeBook, entry.Name(), time.Now().UTC())
 			if recordErr != nil {
 				return false, recordErr
 			}
 			data.Projects = append(data.Projects, record)
 			data.Order = append(data.Order, record.ID)
-			known[path] = true
+			known[key] = true
 			changed = true
 		}
 	}
@@ -563,14 +596,19 @@ func (registry *Registry) discoverBooksLocked(data *registryData) (bool, error) 
 }
 
 func (registry *Registry) saveLocked(data registryData) error {
-	normalizeRegistryData(&data)
-	if err := validateStateDirNames(data.Projects); err != nil {
+	if err := registry.normalizeRegistryData(&data); err != nil {
 		return err
 	}
 	if err := os.MkdirAll(filepath.Dir(registry.path), 0o755); err != nil {
 		return err
 	}
-	raw, err := json.MarshalIndent(data, "", "  ")
+	persisted := data
+	persisted.Projects = append([]Record(nil), data.Projects...)
+	for index := range persisted.Projects {
+		persisted.Projects[index].WorkspacePath = ""
+		persisted.Projects[index].Status = ""
+	}
+	raw, err := json.MarshalIndent(persisted, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -605,26 +643,32 @@ func (registry *Registry) saveLocked(data registryData) error {
 	return nil
 }
 
-func normalizeRegistryData(data *registryData) {
+func (registry *Registry) normalizeRegistryData(data *registryData) error {
 	data.Version = registryVersion
 	data.SortMode = normalizedSortMode(data.SortMode, len(data.Order) > 0)
 	seenIDs := make(map[string]bool, len(data.Projects))
-	seenPaths := make(map[string]bool, len(data.Projects))
+	seenLocations := make(map[string]string, len(data.Projects))
 	projects := make([]Record, 0, len(data.Projects))
 	for _, record := range data.Projects {
-		canonical, err := canonicalDirectory(record.WorkspacePath, false)
-		if err != nil || canonical == "" || seenPaths[canonical] {
-			continue
-		}
-		record.WorkspacePath = canonical
 		if !record.Type.Valid() {
-			record.Type = TypeBook
+			return fmt.Errorf("project %s has invalid type %q", record.ID, record.Type)
 		}
-		if ValidateID(record.ID) != nil || seenIDs[record.ID] {
-			record.ID = uniqueStableID(canonical, seenIDs)
+		if err := ValidateID(record.ID); err != nil || seenIDs[record.ID] {
+			return fmt.Errorf("invalid or duplicate project ID %q", record.ID)
+		}
+		key, err := projectLocationKey(record.Location)
+		if err != nil {
+			return fmt.Errorf("project %s: %w", record.ID, err)
+		}
+		if existing := seenLocations[key]; existing != "" {
+			return fmt.Errorf("projects %s and %s share one content location", existing, record.ID)
+		}
+		record, err = registry.projectRecordAtRuntime(record)
+		if err != nil {
+			return err
 		}
 		if record.Name = strings.TrimSpace(record.Name); record.Name == "" {
-			record.Name = filepath.Base(canonical)
+			record.Name = projectLocationBase(record.Location)
 		}
 		if record.CreatedAt.IsZero() {
 			record.CreatedAt = time.Now().UTC()
@@ -634,10 +678,11 @@ func normalizeRegistryData(data *registryData) {
 		}
 		record.Status = ""
 		seenIDs[record.ID] = true
-		seenPaths[canonical] = true
+		seenLocations[key] = record.ID
 		projects = append(projects, record)
 	}
 	data.Projects = projects
+	return validateStateDirNames(data.Projects)
 }
 
 func orderedRecords(data registryData, includeArchived bool) []Record {
@@ -683,9 +728,23 @@ func recentLess(left, right Record) bool {
 }
 
 func (registry *Registry) newRecord(data *registryData, path string, kind Type, name string, now time.Time) (Record, error) {
+	location, err := registry.locationForWorkspace(path)
+	if err != nil {
+		return Record{}, fmt.Errorf("resolve project location: %w", err)
+	}
+	return registry.newRecordAtLocation(data, location, kind, name, now)
+}
+
+func (registry *Registry) newRecordAtLocation(
+	data *registryData,
+	location ProjectLocation,
+	kind Type,
+	name string,
+	now time.Time,
+) (Record, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
-		name = filepath.Base(path)
+		name = projectLocationBase(location)
 	}
 	id, err := randomID()
 	if err != nil {
@@ -695,8 +754,13 @@ func (registry *Registry) newRecord(data *registryData, path string, kind Type, 
 	if err != nil {
 		return Record{}, fmt.Errorf("allocate project state directory: %w", err)
 	}
+	workspace, err := registry.resolveLocation(location)
+	if err != nil {
+		return Record{}, fmt.Errorf("resolve Project content directory: %w", err)
+	}
 	return Record{
-		ID: id, Type: kind, Name: name, StateDirName: stateDirName, WorkspacePath: filepath.Clean(path),
+		ID: id, Type: kind, Name: name, StateDirName: stateDirName,
+		Location: location, WorkspacePath: workspace,
 		CreatedAt: now, UpdatedAt: now,
 	}, nil
 }
@@ -730,6 +794,10 @@ func uniqueStableID(path string, existing map[string]bool) string {
 func projectStatus(record Record) Record {
 	if record.ArchivedAt != nil {
 		record.Status = StatusArchived
+		return record
+	}
+	if record.Location.Kind == LocationExternal && !filepath.IsAbs(record.WorkspacePath) {
+		record.Status = StatusMissing
 		return record
 	}
 	info, err := os.Stat(record.WorkspacePath)

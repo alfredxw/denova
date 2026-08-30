@@ -177,7 +177,7 @@ func (a *App) interactiveGoalRuntime(binding ConversationConfigBinding) (*agente
 		return nil, agentrun.Options{}, ErrNoWorkspace
 	}
 	return executionRuntime, agentrun.Options{
-		AgentKind: agentrun.AgentKindInteractiveStory, StateRoot: runtimeCfg.ProjectStateDir,
+		AgentKind: agentrun.AgentKindInteractiveStory, ProjectID: runtimeCfg.ProjectID, StateRoot: runtimeCfg.ProjectStateDir,
 		Workspace: workspace, StoryID: binding.StoryID, BranchID: branchID, Mode: "interactive",
 	}, nil
 }
@@ -200,7 +200,7 @@ func (a *App) writingGoalRuntime(requestedSessionID string) (*agentexecution.Run
 		return nil, agentrun.Options{}, config.Config{}, ErrNoWorkspace
 	}
 	return executionRuntime, agentrun.Options{
-		AgentKind: agentrun.AgentKindIDE, StateRoot: runtimeCfg.ProjectStateDir,
+		AgentKind: agentrun.AgentKindIDE, ProjectID: runtimeCfg.ProjectID, StateRoot: runtimeCfg.ProjectStateDir,
 		Workspace: workspace, SessionID: sessionID, Mode: "ide",
 	}, runtimeCfg, nil
 }

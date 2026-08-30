@@ -3,8 +3,6 @@ package prompts
 import (
 	"fmt"
 	"strings"
-
-	workspacelayout "denova/internal/workspace"
 )
 
 // StyleRulesProtocolHeader and StyleRulesProtocolFooter are the stable framing
@@ -76,7 +74,9 @@ func StyleRulesProtocolFooter() string {
 
 // SystemInstructionInput provides context for building Agent system instructions.
 type SystemInstructionInput struct {
-	// Workspace is the absolute path to the current work and locates files in the instructions.
+	// Workspace is retained as runtime input for callers, but is deliberately
+	// never rendered into model-visible instructions. Project paths are always
+	// expressed relative to the current Project root.
 	Workspace string
 	// StoryTellerID identifies the default writing director; empty omits director rules.
 	StoryTellerID string
@@ -139,10 +139,10 @@ func BuildIDEWritingFlowInstruction(in SystemInstructionInput) string {
 	sb.WriteString("- Write chapter prose directly under chapters/. The UI may show a non-empty unconfirmed chapter as a draft and the author may mark it as a chapter, but chapter status is only an editing marker; it does not affect next-chapter detection, context selection, or state synchronization.\n")
 	sb.WriteString("\n---\n\n")
 
-	ws := in.Workspace
-	dataDir := workspacelayout.Dir(ws)
+	const projectRoot = "."
 	sb.WriteString(fmt.Sprintf(systemInstructionBody,
-		ws, ws, ws, ws, ws, ws, ws, ws, ws, ws, ws, dataDir, ws))
+		projectRoot, projectRoot, projectRoot, projectRoot, projectRoot, projectRoot,
+		projectRoot, projectRoot, projectRoot, projectRoot, projectRoot, projectRoot))
 	return sb.String()
 }
 
@@ -181,7 +181,8 @@ func normalizedVolumeDirFormat(format string) string {
 }
 
 // systemInstructionBody contains Denova's base writing rules and workflow. It
-// has 13 %s placeholders.
+// has 12 %s placeholders. Every rendered path is Project-relative so moving
+// the same Denova data directory does not invalidate the model prompt prefix.
 const systemInstructionBody = `You are Denova, a professional AI novel-writing assistant. Help the author develop outlines, continue chapters, rewrite prose, manage characters, and complete related creative work.
 
 ## Important Rules
@@ -231,7 +232,7 @@ Directory structure:
 - %s/skills/ — Skill bundles owned by the current book. Each Skill has its own directory and SKILL.md and can be viewed and managed by the user.
 - %s/setting/chapter-groups/ — chapter-group plans. Each file plans the short-term narrative objective, continuity, chapter-by-chapter arrangement, and hooks for the next contiguous chapter group.
 - %s/chapters/ — chapter prose, named by the configured template and optionally grouped into outline-defined volume directories, for example chapters/v00001-volume-one/ch00002-chapter-one-opening.md.
-- %s/ — internal data such as backups; users do not need to manage it.
+- Denova State is maintained outside visible Project content; do not access or modify it directly.
 
 ## Workflow
 

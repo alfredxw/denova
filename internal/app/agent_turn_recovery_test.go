@@ -17,14 +17,15 @@ func TestAppRestoresWritingAndGameQueuedTurnDependencies(t *testing.T) {
 
 	application.mu.RLock()
 	workspace := application.workspace
+	projectID := application.cfg.ProjectID
 	sessionID := application.session.ID
 	application.mu.RUnlock()
 	writingRequest := agentexecution.CycleRestoreRequest{
-		Binding: agentrun.RuntimeBinding{AgentKind: agentrun.AgentKindIDE, Workspace: workspace, SessionID: sessionID},
+		Binding: agentrun.RuntimeBinding{AgentKind: agentrun.AgentKindIDE, ProjectID: projectID, SessionID: sessionID},
 		Kind:    agentexecution.CommandFollowUp, CommandID: "restore-writing-follow-up",
 		OperationID: "writing-operation", Request: agentchat.ChatRequest{Message: "continue", Locale: "en-US"},
 		Options: agentrun.Options{
-			AgentKind: agentrun.AgentKindIDE, Workspace: workspace, SessionID: sessionID, Mode: "ide",
+			AgentKind: agentrun.AgentKindIDE, ProjectID: projectID, Workspace: workspace, SessionID: sessionID, Mode: "ide",
 		},
 		Deferred: true,
 	}
@@ -43,11 +44,11 @@ func TestAppRestoresWritingAndGameQueuedTurnDependencies(t *testing.T) {
 		t.Fatal(err)
 	}
 	gameRequest := agentexecution.CycleRestoreRequest{
-		Binding: agentrun.RuntimeBinding{AgentKind: agentrun.AgentKindInteractiveStory, Workspace: workspace, StoryID: story.ID, BranchID: "main"},
+		Binding: agentrun.RuntimeBinding{AgentKind: agentrun.AgentKindInteractiveStory, ProjectID: projectID, StoryID: story.ID, BranchID: "main"},
 		Kind:    agentexecution.CommandSteer, CommandID: "restore-game-steer",
 		OperationID: "game-operation", Request: agentchat.ChatRequest{Message: "open the door", Locale: "zh-CN"},
 		Options: agentrun.Options{
-			AgentKind: agentrun.AgentKindInteractiveStory, Workspace: workspace,
+			AgentKind: agentrun.AgentKindInteractiveStory, ProjectID: projectID, Workspace: workspace,
 			StoryID: story.ID, BranchID: "main", Mode: "interactive",
 		},
 		Deferred: true,

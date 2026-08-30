@@ -80,8 +80,12 @@ func (agent *modelToolLoop) callModelWithRetry(
 		if responseOrdinal == 0 {
 			responseOrdinal = nextModelResponseOrdinal(ctx)
 		}
+		providerMessages, projectionErr := projectToolArtifactPaths(ctx, agent.artifacts, currentCall.Messages)
+		if projectionErr != nil {
+			return nil, 0, acceptedMessages, ctx, projectionErr
+		}
 		message, err, deliveredOnStream := agent.callModel(
-			ctx, currentCall.Model, registry, currentCall.Messages, currentCall.Options,
+			ctx, currentCall.Model, registry, providerMessages, currentCall.Options,
 			currentCall.Streaming, events, cancel, streamOutput, responseOrdinal,
 		)
 		if contextErr := agent.contextError(ctx, cancel); contextErr != nil {

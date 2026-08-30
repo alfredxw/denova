@@ -37,17 +37,10 @@ func (s *Service) ApplyToolMutation(ctx context.Context, committed agenttoolrunt
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	payload, err := json.Marshal(admittedToolMutationPayload{
-		Version: admittedToolMutationVersion, Binding: committed.Binding,
-		RuntimeOperation: committed.RuntimeOperation, RuntimeCycle: committed.RuntimeCycle,
-		ToolCallID: committed.ToolCallID, Origin: committed.Origin, Mutation: committed.Mutation,
-	})
+	projectID, workspace, portablePayload := portableAdmittedToolMutation(committed)
+	payload, err := json.Marshal(portablePayload)
 	if err != nil {
 		return fmt.Errorf("encode agent host effect %q: %w", committed.EffectID, err)
-	}
-	workspace := strings.TrimSpace(committed.Mutation.Workspace)
-	if workspace == "" {
-		workspace = strings.TrimSpace(committed.Origin.Workspace)
 	}
 	catalog, err := s.host.Catalog()
 	if err != nil {
@@ -56,7 +49,7 @@ func (s *Service) ApplyToolMutation(ctx context.Context, committed agenttoolrunt
 	store := automation.NewStore(catalog.DataDir, "")
 	admitted, err := store.AdmitHostEffect(ctx, automation.HostEffectObligation{
 		ID: string(committed.EffectID), Kind: agentrun.HostEffectToolMutationCommitted,
-		Workspace: workspace, Payload: payload,
+		ProjectID: projectID, Workspace: workspace, Payload: payload,
 	})
 	if err != nil {
 		return fmt.Errorf("admit agent host effect %q: %w", committed.EffectID, err)
@@ -71,6 +64,36 @@ func (s *Service) ApplyToolMutation(ctx context.Context, committed agenttoolrunt
 	}
 	s.SignalReconciliation()
 	return nil
+}
+
+// portableAdmittedToolMutation separates durable Project identity from the
+// runtime filesystem projection. It is the last boundary before the global
+// host-effect outbox is written.
+func portableAdmittedToolMutation(committed agenttoolruntime.CommittedToolMutation) (string, string, admittedToolMutationPayload) {
+	projectID := strings.TrimSpace(committed.Binding.ProjectID)
+	if projectID == "" {
+		projectID = strings.TrimSpace(committed.Origin.ProjectID)
+	}
+	origin := committed.Origin
+	binding := committed.Binding
+	mutation := committed.Mutation
+	workspace := strings.TrimSpace(mutation.Workspace)
+	if workspace == "" {
+		workspace = strings.TrimSpace(origin.Workspace)
+	}
+	if projectID != "" {
+		origin.ProjectID = projectID
+		origin.Workspace = ""
+		binding.ProjectID = projectID
+		binding.Workspace = ""
+		mutation.Workspace = ""
+		workspace = ""
+	}
+	return projectID, workspace, admittedToolMutationPayload{
+		Version: admittedToolMutationVersion, Binding: binding,
+		RuntimeOperation: committed.RuntimeOperation, RuntimeCycle: committed.RuntimeCycle,
+		ToolCallID: committed.ToolCallID, Origin: origin, Mutation: mutation,
+	}
 }
 
 func (s *Service) reconcilePersistedHostEffects(ctx context.Context) {
@@ -115,11 +138,11 @@ func (s *Service) reconcilePersistedHostEffect(ctx context.Context, effect autom
 	}
 	paths := automationCompletionMutationPaths([]agenttool.Mutation{payload.Mutation})
 	workspace := strings.TrimSpace(effect.Workspace)
-	if workspace == "" || len(paths) == 0 {
+	if (effect.ProjectID == "" && workspace == "") || len(paths) == 0 {
 		return true, s.storeAllWorkspaces().AcknowledgeHostEffect(ctx, effect)
 	}
 	snap, operation, err := s.acquireTargetRuntime(ctx, automation.ExecutionTarget{
-		Kind: automation.TargetKindWorkspace, Workspace: workspace,
+		Kind: automation.TargetKindWorkspace, ProjectID: effect.ProjectID, Workspace: workspace,
 	})
 	if err != nil {
 		return false, err
@@ -253,12 +276,8 @@ func (s *Service) transferAutomationHostEffect(
 	runID := strings.TrimSpace(payload.Origin.TaskID)
 	operationID := strings.TrimSpace(string(payload.RuntimeOperation))
 	paths := automationCompletionMutationPaths([]agenttool.Mutation{payload.Mutation})
-	catalog, err := s.host.Catalog()
-	if err != nil {
-		return false, fmt.Errorf("resolve automation catalog for host effect transfer: %w", err)
-	}
-	store := automation.NewStore(catalog.DataDir, effect.Workspace)
-	_, _, err = store.MergeRunMutationEffect(ctx, runID, operationID, effect.ID, paths)
+	store := s.storeAllWorkspaces()
+	_, _, err := store.MergeRunMutationEffect(ctx, runID, operationID, effect.ID, paths)
 	if err != nil {
 		if errors.Is(err, automation.ErrRunNotFound) {
 			return false, fmt.Errorf("automation run has not materialized yet: %w", err)

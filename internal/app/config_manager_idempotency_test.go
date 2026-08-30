@@ -106,7 +106,7 @@ func TestConfigManagerReplayCapacityRejectsBeforeRuntimeAdmission(t *testing.T) 
 	executionRuntime := application.executionRuntime
 	application.mu.RUnlock()
 	status, err := executionRuntime.RuntimeStatusProjection(context.Background(), agentrun.Options{
-		AgentKind: agentrun.AgentKindConfigManager, SessionID: sessionID,
+		AgentKind: agentrun.AgentKindConfigManager, ProjectID: application.ProjectID(), SessionID: sessionID,
 		Workspace: workspace, Mode: "config_manager",
 	})
 	if err != nil {

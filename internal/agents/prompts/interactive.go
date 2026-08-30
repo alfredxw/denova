@@ -86,11 +86,8 @@ func BuildInteractiveStorySystemInstruction(in InteractiveStorySystemInstruction
 	sb.WriteString("Output only the story prose that can be displayed on the story stage for this turn.\n")
 	sb.WriteString("- Write only scenes, actions, dialogue, and consequences. Do not output plans, explanations, tool instructions, Markdown headings, XML wrappers, or state JSON.\n")
 	sb.WriteString("- Do not output hidden-state blocks, shortcut-choice blocks, structured state operations, or any JSON. Output all player-visible prose first, then call submit_interactive_turn. End immediately when the receipt is ready; do not repeat, rewrite, or append prose.\n")
-	if ws := strings.TrimSpace(in.Workspace); ws != "" {
-		sb.WriteString("\n## Work Workspace\n")
-		sb.WriteString(ws)
-		sb.WriteString("\n")
-	}
+	// Runtime roots are intentionally omitted. File tools resolve all Project
+	// paths from the current Project, keeping this prefix stable after a move.
 	return sb.String()
 }
 

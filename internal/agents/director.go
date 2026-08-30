@@ -90,6 +90,7 @@ func BuildInteractiveDirectorCycle(
 	}
 	runOptions := agentrun.Options{
 		AgentKind:       config.AgentKindInteractiveDirector,
+		ProjectID:       cfg.ProjectID,
 		StoryID:         toolContext.StoryID,
 		BranchID:        toolContext.BranchID,
 		TurnID:          toolContext.TurnID,

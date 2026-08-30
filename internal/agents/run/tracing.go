@@ -167,7 +167,7 @@ func WithStandaloneTrace(ctx context.Context, cfg *config.Config, agentKind, sou
 		return ctx, func(error) {}
 	}
 	rootAttrs := map[string]any{
-		"workspace":  cfg.Workspace,
+		"project_id": cfg.ProjectID,
 		"agent_kind": options.AgentKind,
 		"source":     strings.TrimSpace(source),
 		"mode":       options.Mode,

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os/exec"
 	"sort"
 	"strings"
 	"sync"
@@ -227,8 +228,14 @@ func validateLaunchCommand(commandLine string) error {
 }
 
 func resolveShell(configured string) string {
+	configured = strings.TrimSpace(configured)
 	if configured != "" {
-		return configured
+		if _, err := exec.LookPath(configured); err == nil {
+			return configured
+		} else {
+			slog.Warn("[internal/terminal/manager.go] configured terminal shell is unavailable; using current-host default",
+				"configured_shell", configured, "error", err)
+		}
 	}
 	return platformDefaultShell()
 }

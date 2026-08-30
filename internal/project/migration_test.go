@@ -1,12 +1,14 @@
 package project
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	bookversions "denova/internal/book/versions"
 	workspacelayout "denova/internal/workspace"
@@ -93,6 +95,127 @@ func TestEnsureStateRejectsUnsupportedIntermediateReceipt(t *testing.T) {
 	}
 	if _, err := registry.EnsureState(record); err == nil || !strings.Contains(err.Error(), "does not match supported version") {
 		t.Fatalf("unsupported receipt error = %v", err)
+	}
+}
+
+func TestEnsureStateMigratesReleasedReceiptWithoutRecopyingState(t *testing.T) {
+	denovaDir := t.TempDir()
+	workspace := t.TempDir()
+	registry := NewRegistry(denovaDir)
+	record, err := registry.Add(workspace, TypeBook, "Book")
+	if err != nil {
+		t.Fatal(err)
+	}
+	layout, err := registry.Layout(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(layout.SessionsDir(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	currentSession := filepath.Join(layout.SessionsDir(), "current.jsonl")
+	if err := os.WriteFile(currentSession, []byte("current\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	completedAt := time.Date(2026, time.August, 1, 2, 3, 4, 0, time.UTC)
+	released := struct {
+		Version     int       `json:"version"`
+		Source      string    `json:"source"`
+		CompletedAt time.Time `json:"completed_at"`
+		Copied      []string  `json:"copied"`
+	}{
+		Version: 3, Source: workspace,
+		CompletedAt: completedAt, Copied: []string{"sessions"},
+	}
+	raw, err := json.MarshalIndent(released, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	receiptPath := filepath.Join(layout.StateRoot, "migration.json")
+	if err := os.WriteFile(receiptPath, append(raw, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := registry.EnsureState(record); err != nil {
+		t.Fatal(err)
+	}
+	if session, err := os.ReadFile(currentSession); err != nil || string(session) != "current\n" {
+		t.Fatalf("completed state migration was repeated: data=%q err=%v", session, err)
+	}
+	migratedRaw, err := os.ReadFile(receiptPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(migratedRaw), `"source"`) || strings.Contains(string(migratedRaw), workspace) {
+		t.Fatalf("migrated receipt retained its runtime source: %s", migratedRaw)
+	}
+	var migrated migrationReceipt
+	if err := json.Unmarshal(migratedRaw, &migrated); err != nil {
+		t.Fatal(err)
+	}
+	if migrated.Version != stateMigrationVersion || !migrated.CompletedAt.Equal(completedAt) ||
+		len(migrated.Copied) != 1 || migrated.Copied[0] != "sessions" {
+		t.Fatalf("migrated receipt = %#v", migrated)
+	}
+}
+
+func TestRegistryMigrationUpgradesReleasedReceiptsForUnavailableProjects(t *testing.T) {
+	denovaDir := t.TempDir()
+	registry := NewRegistry(denovaDir)
+	workspaces := []string{t.TempDir(), t.TempDir()}
+	records := make([]Record, 0, len(workspaces))
+	for _, workspace := range workspaces {
+		record, err := registry.Add(workspace, TypeGeneral, "Project")
+		if err != nil {
+			t.Fatal(err)
+		}
+		layout, err := registry.Layout(record)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(layout.StateRoot, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		released := struct {
+			Version int    `json:"version"`
+			Source  string `json:"source"`
+		}{Version: 3, Source: workspace}
+		raw, err := json.Marshal(released)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(layout.StateRoot, "migration.json"), append(raw, '\n'), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		records = append(records, record)
+	}
+	if err := os.Remove(workspaces[1]); err != nil {
+		t.Fatal(err)
+	}
+
+	projects, err := NewRegistry(denovaDir).List(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(projects) != len(records) || projects[1].Status != StatusMissing {
+		t.Fatalf("migrated Projects = %#v", projects)
+	}
+	for _, record := range records {
+		receiptPath := filepath.Join(denovaDir, StateDirectoryName, record.StateDirName, "migration.json")
+		raw, err := os.ReadFile(receiptPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(raw), `"source"`) {
+			t.Fatalf("Project %s receipt was not upgraded: %s", record.ID, raw)
+		}
+		var receipt migrationReceipt
+		if err := json.Unmarshal(raw, &receipt); err != nil {
+			t.Fatal(err)
+		}
+		if receipt.Version != stateMigrationVersion {
+			t.Fatalf("Project %s receipt version = %d", record.ID, receipt.Version)
+		}
 	}
 }
 

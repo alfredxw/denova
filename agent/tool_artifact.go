@@ -44,6 +44,13 @@ type ToolArtifactVerifier interface {
 	VerifyToolArtifact(context.Context, ToolArtifactRef, ToolArtifactRequest) error
 }
 
+// ToolArtifactPathResolver projects one durable owner-relative path for the
+// current host. Agent invokes it only on detached provider input; the absolute
+// result never enters Session transcripts or recovery receipts.
+type ToolArtifactPathResolver interface {
+	ResolveToolArtifactPath(context.Context, string) (string, error)
+}
+
 // ToolArtifactBackend is the host storage contract before Definition identity
 // is attached. Keeping publication and verification in one contract prevents
 // a store that can write artifacts from accidentally claiming that arbitrary
@@ -67,6 +74,17 @@ type identifiedToolArtifactStorage struct {
 }
 
 func (storage identifiedToolArtifactStorage) Identity() CapabilityIdentity { return storage.identity }
+
+func (storage identifiedToolArtifactStorage) ResolveToolArtifactPath(ctx context.Context, path string) (string, error) {
+	resolver, ok := storage.ToolArtifactBackend.(ToolArtifactPathResolver)
+	if !ok {
+		// Backends that already publish a provider-readable path do not need a
+		// projection hook. Denova's Project State store implements the hook for
+		// owner-relative durable references.
+		return path, nil
+	}
+	return resolver.ResolveToolArtifactPath(ctx, path)
+}
 
 // IdentifyToolArtifactStorage binds a host store to a stable capability
 // identity without forcing reusable storage implementations to own Definition

@@ -10,6 +10,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"denova/internal/portablepath"
+
 	"golang.org/x/text/cases"
 	"golang.org/x/text/unicode/norm"
 )
@@ -103,7 +105,7 @@ func stateDirNameBase(name string) string {
 	if result == "" {
 		result = defaultStateDirName
 	}
-	if isWindowsReservedStateDirName(result) {
+	if portablepath.ValidateComponent(result) != nil {
 		result = defaultStateDirName + "-" + result
 	}
 	return result
@@ -118,17 +120,6 @@ func truncateStateDirName(name string, maxBytes int) string {
 		name = name[:len(name)-size]
 	}
 	return strings.TrimRight(name, "-")
-}
-
-func isWindowsReservedStateDirName(name string) bool {
-	switch strings.ToUpper(name) {
-	case "CON", "PRN", "AUX", "NUL",
-		"COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
-		"LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9":
-		return true
-	default:
-		return false
-	}
 }
 
 func stateDirNameKey(name string) string {
@@ -165,14 +156,19 @@ func validateStateDirNames(projects []Record) error {
 	return nil
 }
 
-func (registry *Registry) migrateProjectIDStateDirectoriesOnce(projects []Record) error {
-	if registry.stateDirectoryMigrationComplete {
+// migrateProjectStateStorageOnce completes the coupled directory and receipt
+// migrations before the Registry exposes any runtime Project layout.
+func (registry *Registry) migrateProjectStateStorageOnce(projects []Record) error {
+	if registry.stateStorageMigrationComplete {
 		return nil
 	}
 	if err := registry.migrateProjectIDStateDirectories(projects); err != nil {
 		return err
 	}
-	registry.stateDirectoryMigrationComplete = true
+	if err := registry.migrateReleasedStateReceipts(projects); err != nil {
+		return err
+	}
+	registry.stateStorageMigrationComplete = true
 	return nil
 }
 

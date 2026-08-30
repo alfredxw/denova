@@ -101,7 +101,6 @@ func newLedger(workspace string, policy LedgerPolicy, options Options, runID str
 	}
 	ledger := &Ledger{id: id, path: path, file: file}
 	if err := ledger.Record("run_created", map[string]any{
-		"path":             path,
 		"project_id":       options.ProjectID,
 		"task_id":          options.TaskID,
 		"agent_kind":       options.AgentKind,
@@ -111,7 +110,6 @@ func newLedger(workspace string, policy LedgerPolicy, options Options, runID str
 		"branch_id":        options.BranchID,
 		"turn_id":          options.TurnID,
 		"maintenance_task": options.MaintenanceTask,
-		"workspace":        options.Workspace,
 		"mode":             options.Mode,
 	}); err != nil {
 		_ = file.Close()
@@ -469,7 +467,7 @@ func sanitizeDirectRunLedgerRecord(recordType string, data map[string]any) map[s
 	switch strings.TrimSpace(recordType) {
 	case "run_created", "run_started", "run_context":
 		out := selectLedgerFields(data,
-			"task_id", "agent_kind", "session_id", "review_thread_id", "story_id", "branch_id", "turn_id",
+			"project_id", "task_id", "agent_kind", "session_id", "review_thread_id", "story_id", "branch_id", "turn_id",
 			"maintenance_task", "mode", "source", "references", "lore_references", "style_scenes", "selections",
 			"plan_mode", "writing_skill", "message_bytes", "message_chars",
 		)
@@ -491,7 +489,7 @@ func sanitizeDirectRunLedgerRecord(recordType string, data map[string]any) map[s
 
 func sanitizeTraceAttrs(attrs map[string]any) map[string]any {
 	out := selectLedgerFields(attrs,
-		"agent_kind", "source", "mode", "model", "call_id", "provider_request_id", "finish_reason",
+		"project_id", "agent_kind", "source", "mode", "model", "call_id", "provider_request_id", "finish_reason",
 		"ttft_ms",
 		"attempt", "message_count", "tool_count", "history_messages", "context_parts", "message_chars",
 		"agent_message_chars", "plan_mode", "writing_skill", "prompt_tokens", "cached_prompt_tokens",

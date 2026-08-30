@@ -121,7 +121,7 @@ func TestProjectStoreMigratesReleasedPathOnlyInboxRecordsOnRead(t *testing.T) {
 	if err := json.Unmarshal(persisted, &migrated); err != nil {
 		t.Fatal(err)
 	}
-	if len(migrated.Items) != 1 || migrated.Items[0].ProjectID != "project-inbox-migration" || migrated.Items[0].Workspace != canonicalStoreRoot(relinkedWorkspace) {
-		t.Fatalf("mutated inbox record did not persist its migrated Project target: %#v", migrated.Items)
+	if len(migrated.Items) != 1 || migrated.Items[0].ProjectID != "project-inbox-migration" || migrated.Items[0].Workspace != "" {
+		t.Fatalf("mutated inbox record retained host routing instead of only Project identity: %#v", migrated.Items)
 	}
 }

@@ -193,7 +193,7 @@ func TestPublicAgentRuntimeCommitsCompleteGameTurnAndDisplay(t *testing.T) {
 	t.Cleanup(func() { _ = runtime.Close(context.Background()) })
 	request := agentchat.ChatRequest{CommandID: "public-game-start", Message: "推开石门", Locale: "zh-CN"}
 	options := agentrun.Options{
-		AgentKind: agentrun.AgentKindInteractiveStory, StoryID: story.ID, BranchID: "main",
+		AgentKind: agentrun.AgentKindInteractiveStory, ProjectID: "project-test", StoryID: story.ID, BranchID: "main",
 		Workspace: workspace, TaskID: "public-game-task", RootAgentName: "game",
 	}
 	var eventsMu sync.Mutex
@@ -288,7 +288,7 @@ func TestPublicAgentRuntimeCommitsAccumulatedGameNarrativeWhenFinalModelMessageI
 	t.Cleanup(func() { _ = runtime.Close(context.Background()) })
 	request := agentchat.ChatRequest{CommandID: "public-game-projected-start", Message: "推开石门", Locale: "zh-CN"}
 	options := agentrun.Options{
-		AgentKind: agentrun.AgentKindInteractiveStory, StoryID: story.ID, BranchID: "main",
+		AgentKind: agentrun.AgentKindInteractiveStory, ProjectID: "project-test", StoryID: story.ID, BranchID: "main",
 		Workspace: workspace, TaskID: "public-game-projected-task", RootAgentName: "game",
 	}
 	var events []agentrun.Event
@@ -688,7 +688,7 @@ func publicGameNoopProfile(workspace, storyID string) publicGameTestProfile {
 
 func publicGameOptions(workspace, storyID, branchID string) agentrun.Options {
 	return agentrun.Options{
-		AgentKind: agentrun.AgentKindInteractiveStory, StoryID: storyID, BranchID: branchID,
+		AgentKind: agentrun.AgentKindInteractiveStory, ProjectID: "project-test", StoryID: storyID, BranchID: branchID,
 		Workspace: workspace, TaskID: "public-game-history-task", RootAgentName: "game",
 	}.Normalize(workspace)
 }

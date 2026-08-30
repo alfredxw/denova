@@ -210,7 +210,10 @@ func MutationFromExecutionRecord(record ExecutionRecord) (Mutation, bool) {
 func validMutationReceipt(record ExecutionRecord, mutation Mutation) bool {
 	switch strings.TrimSpace(record.MutationReceiptSchema) {
 	case MutationReceiptWorkspaceChange:
-		return mutation.Workspace != "" && mutation.Target != "" && mutation.ChangeGroupID != "" && mutation.ChangeSetID != ""
+		// Project-owned Agent Session identity supplies the current runtime root.
+		// Final receipts therefore persist only the Project-relative target;
+		// v0.3.3 receipts may still decode an inert Workspace for compatibility.
+		return mutation.Target != "" && mutation.ChangeGroupID != "" && mutation.ChangeSetID != ""
 	case MutationReceiptLoreWrite:
 		return len(mutation.LoreItemIDs) > 0 || len(mutation.DeletedLoreItemIDs) > 0
 	case MutationReceiptGeneratedImage:

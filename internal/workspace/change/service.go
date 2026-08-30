@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"denova/internal/portablepath"
 )
 
 var workspaceServices = struct {
@@ -274,6 +276,9 @@ func (s *Service) visibleRelPath(input string) (string, error) {
 		}
 		rel = candidate
 	} else {
+		if strings.Contains(input, `\`) {
+			return "", newError(ErrorCodeConflict, "workspace paths must use forward slashes", map[string]any{"path": input})
+		}
 		rel = filepath.Clean(filepath.FromSlash(input))
 	}
 	if rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
@@ -284,7 +289,14 @@ func (s *Service) visibleRelPath(input string) (string, error) {
 			return "", newError(ErrorCodeConflict, "hidden workspace paths cannot be changed", map[string]any{"path": input})
 		}
 	}
-	return filepath.ToSlash(rel), nil
+	portableRelative := filepath.ToSlash(rel)
+	if err := portablepath.Validate(portableRelative); err != nil {
+		return "", newError(ErrorCodeConflict, "workspace path is not portable", map[string]any{"path": input, "cause": err.Error()})
+	}
+	if err := portablepath.CheckNoCollision(s.workspace, portableRelative); err != nil {
+		return "", newError(ErrorCodeConflict, "workspace path has a cross-platform filename collision", map[string]any{"path": input, "cause": err.Error()})
+	}
+	return portableRelative, nil
 }
 
 func (s *Service) readVisibleFile(rel string) ([]byte, error) {

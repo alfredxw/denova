@@ -17,8 +17,6 @@ import (
 	"strings"
 
 	agent "github.com/alfredxw/denova/agent"
-
-	workspacelayout "denova/internal/workspace"
 )
 
 // Store publishes immutable artifacts beneath one already-existing boundary.
@@ -29,41 +27,41 @@ type Store struct {
 	artifactRoot string
 }
 
-// NewWorkspaceStore creates a lazy store at the active Denova data directory
-// for one opaque session/story scope. The scope is hashed so user-controlled
-// names never become filesystem paths or model-visible metadata.
-func NewWorkspaceStore(workspaceRoot, scopeID string) (*Store, error) {
-	workspaceRoot = strings.TrimSpace(workspaceRoot)
+// NewStateStore creates a lazy store beneath one Project StateRoot for an
+// opaque Session scope. The scope is hashed so user-controlled names never
+// become filesystem paths or model-visible metadata.
+func NewStateStore(stateRoot, scopeID string) (*Store, error) {
+	stateRoot = strings.TrimSpace(stateRoot)
 	scopeID = strings.TrimSpace(scopeID)
-	if workspaceRoot == "" {
-		return nil, errors.New("artifact workspace is required")
+	if stateRoot == "" {
+		return nil, errors.New("artifact state root is required")
 	}
 	if scopeID == "" {
 		return nil, errors.New("artifact scope ID is required")
 	}
-	absolute, err := filepath.Abs(workspaceRoot)
+	absolute, err := filepath.Abs(stateRoot)
 	if err != nil {
-		return nil, fmt.Errorf("resolve artifact workspace: %w", err)
+		return nil, fmt.Errorf("resolve artifact state root: %w", err)
 	}
 	canonical, err := filepath.EvalSymlinks(absolute)
 	if err != nil {
-		return nil, fmt.Errorf("canonicalize artifact workspace: %w", err)
+		return nil, fmt.Errorf("canonicalize artifact state root: %w", err)
 	}
 	info, err := os.Stat(canonical)
 	if err != nil {
-		return nil, fmt.Errorf("stat artifact workspace: %w", err)
+		return nil, fmt.Errorf("stat artifact state root: %w", err)
 	}
 	if !info.IsDir() {
-		return nil, errors.New("artifact workspace is not a directory")
+		return nil, errors.New("artifact state root is not a directory")
 	}
 	scopeDigest := sha256.Sum256([]byte(scopeID))
-	artifactRoot := workspacelayout.Path(canonical, "artifacts", "scope-"+hex.EncodeToString(scopeDigest[:16]))
+	artifactRoot := filepath.Join(canonical, "artifacts", "scope-"+hex.EncodeToString(scopeDigest[:16]))
 	return NewBoundedStore(canonical, artifactRoot)
 }
 
 // NewBoundedStore creates a lazy store whose artifact directory is a strict
 // descendant of boundaryRoot. This constructor is used by canonical session
-// storage and by NewWorkspaceStore; callers cannot widen access after creation.
+// storage and by NewStateStore; callers cannot widen access after creation.
 func NewBoundedStore(boundaryRoot, artifactRoot string) (*Store, error) {
 	boundaryRoot = strings.TrimSpace(boundaryRoot)
 	artifactRoot = strings.TrimSpace(artifactRoot)
@@ -217,6 +215,37 @@ func (store *Store) VerifyToolArtifact(ctx context.Context, reference agent.Tool
 	return nil
 }
 
+// ResolveToolArtifactPath validates a durable relative reference and projects
+// it beneath this store's current boundary for provider/tool use.
+func (store *Store) ResolveToolArtifactPath(ctx context.Context, readablePath string) (string, error) {
+	if store == nil || store.boundaryRoot == "" || store.artifactRoot == "" {
+		return "", errors.New("tool artifact store is not configured")
+	}
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
+	}
+	readablePath = strings.TrimSpace(readablePath)
+	if readablePath == "" || filepath.IsAbs(readablePath) || strings.Contains(readablePath, "\\") {
+		return "", errors.New("tool artifact durable path must be slash-relative")
+	}
+	absolutePath := filepath.Join(store.boundaryRoot, filepath.FromSlash(readablePath))
+	expectedDirectory := filepath.Join(store.boundaryRoot, filepath.FromSlash(store.artifactRoot))
+	relative, err := filepath.Rel(expectedDirectory, absolutePath)
+	if err != nil || relative == "." || pathEscapesBoundary(relative) || filepath.Dir(relative) != "." {
+		return "", errors.New("tool artifact path is outside this store")
+	}
+	info, err := os.Lstat(absolutePath)
+	if err != nil {
+		return "", fmt.Errorf("inspect tool artifact: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return "", errors.New("tool artifact path is not a regular file")
+	}
+	return absolutePath, nil
+}
+
 type writer struct {
 	root        *os.Root
 	file        *os.File
@@ -346,9 +375,8 @@ func (w *writer) matchesPublishedArtifact() (bool, error) {
 
 func (w *writer) finish() agent.ToolArtifactRef {
 	w.terminal = true
-	readablePath := filepath.ToSlash(filepath.Join(w.root.Name(), filepath.FromSlash(w.finalName)))
 	reference := agent.ToolArtifactRef{
-		ID: w.id, Purpose: w.purpose, ReadablePath: readablePath, ContentType: w.contentType,
+		ID: w.id, Purpose: w.purpose, ReadablePath: w.finalName, ContentType: w.contentType,
 		EstimatedBytes: w.byteSize, EstimatedTokens: estimatedTokens(w.byteSize), Complete: true,
 		SHA256: hex.EncodeToString(w.digest.Sum(nil)),
 	}

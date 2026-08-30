@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -53,7 +54,7 @@ func ResolveEnvironment(ctx context.Context, options EnvironmentOptions) (Enviro
 	if runtime.GOOS == "windows" || mode == EnvironmentProcess {
 		return EnvironmentSnapshot{Environment: normalizedEnvironment(os.Environ())}, nil
 	}
-	shell, err := resolveLoginShell(options.Shell)
+	shell, err := resolveConfiguredLoginShell(options.Shell)
 	if err != nil {
 		return EnvironmentSnapshot{}, err
 	}
@@ -78,6 +79,40 @@ func ResolveEnvironment(ctx context.Context, options EnvironmentOptions) (Enviro
 		snapshotCache.Unlock()
 	}
 	return snapshot, captureErr
+}
+
+// resolveConfiguredLoginShell treats a persisted host path as a preference,
+// not durable identity. Moving the data directory to another operating system
+// therefore falls back to that host's login shell instead of disabling Agent
+// shell tools until the user edits Settings.
+func resolveConfiguredLoginShell(configured string) (string, error) {
+	configured = strings.TrimSpace(configured)
+	if configured != "" {
+		shell, err := resolveLoginShell(configured)
+		if err == nil {
+			return shell, nil
+		}
+		slog.Warn("[internal/hostruntime/environment.go] configured login shell is unavailable; using current-host default",
+			"configured_shell", configured, "error", err)
+	}
+	shell, err := resolveLoginShell("")
+	if err == nil {
+		return shell, nil
+	}
+	// SHELL belongs to the current process rather than Denova data, but it can
+	// still be stale in a GUI launch. Use the platform baseline as the last
+	// current-host fallback.
+	platformShell := "/bin/bash"
+	if runtime.GOOS == "darwin" {
+		platformShell = "/bin/zsh"
+	}
+	fallback, fallbackErr := resolveLoginShell(platformShell)
+	if fallbackErr == nil {
+		slog.Warn("[internal/hostruntime/environment.go] process login shell is unavailable; using platform default",
+			"configured_shell", strings.TrimSpace(os.Getenv("SHELL")), "fallback_shell", fallback, "error", err)
+		return fallback, nil
+	}
+	return "", errors.Join(err, fmt.Errorf("resolve platform login shell %q: %w", platformShell, fallbackErr))
 }
 
 func capture(ctx context.Context, shell, home string, base []string) (EnvironmentSnapshot, error) {

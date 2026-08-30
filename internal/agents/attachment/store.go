@@ -88,7 +88,8 @@ func Materialize(stateRoot string, scope Scope, commandID string, uploads []Uplo
 		}
 		decoded = append(decoded, decodedUpload{attachment: attachment, data: data})
 	}
-	dir := filepath.Join(stateRoot, "attachments", "v1", scopeKey(scope), hashText(commandID))
+	relativeDir := filepath.ToSlash(filepath.Join("attachments", "v1", scopeKey(scope), hashText(commandID)))
+	dir := filepath.Join(stateRoot, filepath.FromSlash(relativeDir))
 	_, statErr := os.Stat(dir)
 	dirCreated := errors.Is(statErr, os.ErrNotExist)
 	if statErr != nil && !dirCreated {
@@ -108,8 +109,9 @@ func Materialize(stateRoot string, scope Scope, commandID string, uploads []Uplo
 	result = make([]agent.Attachment, 0, len(decoded))
 	for _, upload := range decoded {
 		attachment := upload.attachment
-		attachment.Path = filepath.Join(dir, attachment.ID+safeExtension(attachment.Name))
-		if err := writeCopy(attachment.Path, upload.data); err != nil {
+		attachment.Path = relativeDir + "/" + attachment.ID + safeExtension(attachment.Name)
+		attachment.RuntimePath = filepath.Join(stateRoot, filepath.FromSlash(attachment.Path))
+		if err := writeCopy(attachment.RuntimePath, upload.data); err != nil {
 			result = nil
 			return nil, fmt.Errorf("persist attachment %q: %w", attachment.Name, err)
 		}

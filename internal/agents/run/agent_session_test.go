@@ -11,16 +11,15 @@ import (
 
 func TestAgentSessionKeyRoundTripsEveryDenovaBinding(t *testing.T) {
 	cases := []RuntimeBinding{
-		{AgentKind: AgentKindIDE, Workspace: "/book", SessionID: "writing"},
-		{AgentKind: AgentKindIDE, Mode: ModeAgentChat, Workspace: "/book", SessionID: "legacy-chat"},
+		{AgentKind: AgentKindIDE, ProjectID: "project", Workspace: "/book", SessionID: "writing"},
 		{AgentKind: AgentKindIDE, Mode: ModeAgentChat, ProjectID: "project", Workspace: "/mutable", SessionID: "ide-chat"},
 		{AgentKind: AgentKindGeneral, Mode: ModeAgentChat, ProjectID: "project", Workspace: "/mutable", SessionID: "general-chat"},
 		{AgentKind: AgentKindHarness, Mode: ModeAgentChat, ProjectID: "harness", Workspace: "/state", SessionID: "harness-chat"},
-		{AgentKind: AgentKindInteractiveStory, Workspace: "/book", StoryID: "story", BranchID: "branch"},
-		{AgentKind: AgentKindConfigManager, Workspace: "/book", SessionID: "config"},
-		{AgentKind: AgentKindImage, Workspace: "/book", SessionID: "image"},
-		{AgentKind: AgentKindAutomation, Workspace: "/book", SessionID: "automation", TaskID: "task"},
-		{AgentKind: config.AgentKindInteractiveDirector, Workspace: "/book", StoryID: "story", BranchID: "branch"},
+		{AgentKind: AgentKindInteractiveStory, ProjectID: "project", Workspace: "/book", StoryID: "story", BranchID: "branch"},
+		{AgentKind: AgentKindConfigManager, ProjectID: "project", Workspace: "/book", SessionID: "config"},
+		{AgentKind: AgentKindImage, ProjectID: "project", Workspace: "/book", SessionID: "image"},
+		{AgentKind: AgentKindAutomation, ProjectID: "project", Workspace: "/book", SessionID: "automation", TaskID: "task"},
+		{AgentKind: config.AgentKindInteractiveDirector, ProjectID: "project", Workspace: "/book", StoryID: "story", BranchID: "branch"},
 	}
 	seen := make(map[string]RuntimeBinding, len(cases))
 	for _, original := range cases {
@@ -40,10 +39,7 @@ func TestAgentSessionKeyRoundTripsEveryDenovaBinding(t *testing.T) {
 		if err != nil {
 			t.Fatalf("restore %#v: %v", key, err)
 		}
-		// Project-scoped AgentChat intentionally discards mutable workspace paths.
-		if original.ProjectID != "" {
-			original.Workspace = ""
-		}
+		original.Workspace = ""
 		if !reflect.DeepEqual(restored, original) {
 			t.Fatalf("round trip got=%#v want=%#v", restored, original)
 		}
@@ -59,22 +55,21 @@ func TestDenovaSessionSelectorsMatchOnlyTheirOwnedLanes(t *testing.T) {
 		}
 		return result
 	}
-	writing := key(RuntimeBinding{AgentKind: AgentKindIDE, Workspace: "/book", SessionID: "writing"})
-	legacyChat := key(RuntimeBinding{AgentKind: AgentKindIDE, Mode: ModeAgentChat, Workspace: "/book", SessionID: "chat"})
+	writing := key(RuntimeBinding{AgentKind: AgentKindIDE, ProjectID: "project", Workspace: "/book", SessionID: "writing"})
 	projectIDE := key(RuntimeBinding{AgentKind: AgentKindIDE, Mode: ModeAgentChat, ProjectID: "project", SessionID: "ide"})
 	projectGeneral := key(RuntimeBinding{AgentKind: AgentKindGeneral, Mode: ModeAgentChat, ProjectID: "project", SessionID: "general"})
-	game := key(RuntimeBinding{AgentKind: AgentKindInteractiveStory, Workspace: "/book", StoryID: "story", BranchID: "main"})
-	director := key(RuntimeBinding{AgentKind: config.AgentKindInteractiveDirector, Workspace: "/book", StoryID: "story", BranchID: "main"})
-	otherBranch := key(RuntimeBinding{AgentKind: AgentKindInteractiveStory, Workspace: "/book", StoryID: "story", BranchID: "fork"})
+	game := key(RuntimeBinding{AgentKind: AgentKindInteractiveStory, ProjectID: "project", Workspace: "/book", StoryID: "story", BranchID: "main"})
+	director := key(RuntimeBinding{AgentKind: config.AgentKindInteractiveDirector, ProjectID: "project", Workspace: "/book", StoryID: "story", BranchID: "main"})
+	otherBranch := key(RuntimeBinding{AgentKind: AgentKindInteractiveStory, ProjectID: "project", Workspace: "/book", StoryID: "story", BranchID: "fork"})
 
-	foreground, err := ForegroundWorkspaceBindingSelectors("/book")
+	foreground, err := ForegroundProjectBindingSelectors("project")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !matchesAnySelector(foreground, writing) || !matchesAnySelector(foreground, game) || !matchesAnySelector(foreground, director) {
 		t.Fatalf("foreground selectors missed owned lanes: %#v", foreground)
 	}
-	if matchesAnySelector(foreground, legacyChat) || matchesAnySelector(foreground, projectIDE) {
+	if matchesAnySelector(foreground, projectIDE) {
 		t.Fatalf("foreground selectors captured user conversation lanes: %#v", foreground)
 	}
 
@@ -82,15 +77,21 @@ func TestDenovaSessionSelectorsMatchOnlyTheirOwnedLanes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !project.Matches(projectIDE) || !project.Matches(projectGeneral) || project.Matches(writing) {
+	if !project.Matches(projectIDE) || !project.Matches(projectGeneral) || !project.Matches(writing) {
 		t.Fatalf("project selector crossed ownership boundary: %#v", project)
 	}
-	story, err := StoryBindingSelector("/book", "story", "main")
+	story, err := StoryBindingSelector("project", "story", "main")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !story.Matches(game) || !story.Matches(director) || story.Matches(otherBranch) {
 		t.Fatalf("story selector crossed branch boundary: %#v", story)
+	}
+}
+
+func TestSessionBindingSelectorRequiresProjectOwner(t *testing.T) {
+	if _, err := SessionBindingSelector(AgentKindIDE, "", "session"); err == nil {
+		t.Fatal("session selector accepted an empty Project owner")
 	}
 }
 
@@ -126,20 +127,20 @@ func TestProjectAgentSessionIdentitySurvivesWorkspaceRelink(t *testing.T) {
 	}
 }
 
-func TestWritingAgentSessionIdentityIgnoresProjectRoutingMetadata(t *testing.T) {
-	withoutProject, err := AgentSessionKeyForOptions(Options{
-		AgentKind: AgentKindIDE, Workspace: "/books/current", SessionID: "session-1",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	withProject, err := AgentSessionKeyForOptions(Options{
+func TestWritingAgentSessionIdentityUsesStableProjectOwner(t *testing.T) {
+	firstProject, err := AgentSessionKeyForOptions(Options{
 		AgentKind: AgentKindIDE, ProjectID: "project-1", Workspace: "/books/current", SessionID: "session-1",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(withProject, withoutProject) {
-		t.Fatalf("Project event metadata forked Writing Session identity: without=%#v with=%#v", withoutProject, withProject)
+	secondProject, err := AgentSessionKeyForOptions(Options{
+		AgentKind: AgentKindIDE, ProjectID: "project-2", Workspace: "/books/current", SessionID: "session-1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reflect.DeepEqual(secondProject, firstProject) {
+		t.Fatalf("different Projects shared a Writing Session identity: first=%#v second=%#v", firstProject, secondProject)
 	}
 }

@@ -455,9 +455,9 @@ func (backend *publicBackend) resolveTaskDefinition(
 	definition.Permission = agentlifecycle.BindPermissionRuleStore(
 		definition.Permission, backend.permissionRuleStore.Load, backend.permissionRuleStore.Persist,
 	)
-	if strings.TrimSpace(binding.Workspace) != "" {
+	if strings.TrimSpace(definition.AttachmentRoot) != "" {
 		canonical, _ := agentsession.CanonicalKey(request.Session.Key)
-		store, storeErr := agenttoolartifact.NewWorkspaceStore(binding.Workspace, canonical)
+		store, storeErr := agenttoolartifact.NewStateStore(definition.AttachmentRoot, canonical)
 		if storeErr != nil {
 			return agent.Definition{}, fmt.Errorf("create delegated Agent artifact Store: %w", storeErr)
 		}
@@ -664,6 +664,7 @@ func (backend *publicBackend) bindDefinition(
 		return agent.Definition{}, err
 	}
 	definition := cycle.Definition
+	definition.AttachmentRoot = options.StateRoot
 	definition.Execution.IdleTimeout = options.IdleTimeout
 	if taskCatalog, ok := agentdelegation.AsCatalog(definition.Tools); ok {
 		parentAttributes, attributeErr := agentdelegation.ParentAttributes(request.Session.Key)
@@ -742,7 +743,7 @@ func projectInputCommitEffect(
 			}
 			if projector != nil {
 				projector.EmitProduct(agentrun.Event{Type: "workspace_change", Data: map[string]interface{}{
-					"project_id": options.ProjectID, "workspace": options.Workspace,
+					"project_id":       options.ProjectID,
 					"review_thread_id": options.ReviewThreadID, "action": "review_feedback_consumed",
 				}})
 			}

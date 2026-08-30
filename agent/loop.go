@@ -339,8 +339,15 @@ func (agent *modelToolLoop) run(parent context.Context, input *loopInput, option
 		}
 		modelCall.stablePrefixMessages = authenticatedStablePrefixMessages(modelCall.Messages, stablePrefixSeed)
 		if modelRequestCaptureRequested(ctx) {
+			projectedMessages, projectionErr := projectToolArtifactPaths(ctx, agent.artifacts, modelCall.Messages)
+			if projectionErr != nil {
+				events.Send(agent.errorEvent(projectionErr))
+				return
+			}
+			projectedCall := *modelCall
+			projectedCall.Messages = projectedMessages
 			events.Send(&loopEvent{AgentName: agent.name, Action: &loopAction{
-				CustomizedAction: preparedModelRequest{snapshot: modelCall.Snapshot()},
+				CustomizedAction: preparedModelRequest{snapshot: projectedCall.Snapshot()},
 			}})
 			return
 		}

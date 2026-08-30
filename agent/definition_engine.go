@@ -250,7 +250,7 @@ func (engine *definitionEngine) Run(
 	if err != nil {
 		return runstate.EngineResult{}, err
 	}
-	modelMessages, activeModelUser, err := assembleCycleMessages(effectiveTranscript, input.Text, input.Attachments, prepared.fragments)
+	modelMessages, activeModelUser, err := assembleCycleMessages(effectiveTranscript, input.Text, input.Attachments, prepared.fragments, prepared.definition.AttachmentRoot)
 	if err != nil {
 		return runstate.EngineResult{}, err
 	}
@@ -489,7 +489,7 @@ func (engine *definitionEngine) Run(
 				if err != nil {
 					return nil, err
 				}
-				messages, _, err := assembleCycleMessages(effective, input.Text, input.Attachments, nextPrepared.fragments)
+				messages, _, err := assembleCycleMessages(effective, input.Text, input.Attachments, nextPrepared.fragments, nextPrepared.definition.AttachmentRoot)
 				if err != nil {
 					return nil, err
 				}
@@ -575,7 +575,7 @@ func (engine *definitionEngine) Run(
 			if effectiveErr != nil {
 				return nil, effectiveErr
 			}
-			restarted, _, effectiveErr = assembleCycleMessages(effective, input.Text, input.Attachments, prepared.fragments)
+			restarted, _, effectiveErr = assembleCycleMessages(effective, input.Text, input.Attachments, prepared.fragments, prepared.definition.AttachmentRoot)
 			if effectiveErr != nil {
 				return nil, effectiveErr
 			}

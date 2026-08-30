@@ -52,7 +52,7 @@ func projectPublicToolResult(
 		data["workspace_change"] = receipt
 		if emit != nil {
 			emit(agentrun.Event{Type: "workspace_change", Data: eventMeta.appendTo(map[string]any{
-				"id": receipt.ChangeSetID, "project_id": options.ProjectID, "workspace": receipt.Workspace,
+				"id": receipt.ChangeSetID, "project_id": options.ProjectID,
 				"change_group_id": receipt.ChangeGroupID, "review_thread_id": receipt.ReviewThreadID,
 				"change_set_id": receipt.ChangeSetID, "path": receipt.Path,
 				"affected_paths": []string{receipt.Path}, "base_revision": receipt.BaseRevision,

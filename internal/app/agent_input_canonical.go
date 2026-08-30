@@ -97,10 +97,13 @@ func (a *App) commitSessionAcceptedInput(
 ) (session.DomainCommitReceipt, error) {
 	if a != nil {
 		a.mu.RLock()
-		workspace := strings.TrimSpace(a.workspace)
+		projectID := ""
+		if a.cfg != nil {
+			projectID = strings.TrimSpace(a.cfg.ProjectID)
+		}
 		store := a.sessionStore
 		a.mu.RUnlock()
-		if store != nil && workspace != "" && workspace == strings.TrimSpace(binding.Workspace) {
+		if store != nil && projectID != "" && projectID == strings.TrimSpace(binding.ProjectID) {
 			sess, err := store.Get(binding.SessionID)
 			if err != nil {
 				return session.DomainCommitReceipt{}, err
@@ -119,6 +122,10 @@ func (a *App) gameCanonicalInput(
 	_ context.Context,
 	request agentexecution.CanonicalInputRequest,
 ) (agent.CanonicalAdapter, error) {
+	_, layout, err := a.resolveProject(request.Binding.ProjectID, true)
+	if err != nil {
+		return nil, err
+	}
 	return agent.CanonicalAdapterFuncs{
 		CapabilityIdentity: request.Identity,
 		MaterializeInputFn: func(_ context.Context, input agent.InputCommitRequest) (agent.CommitReceipt, error) {
@@ -142,7 +149,7 @@ func (a *App) gameCanonicalInput(
 			if err != nil {
 				return agent.CommitReceipt{}, err
 			}
-			receipt, err := interactive.NewStore(request.Binding.Workspace).CommitPlayerInput(request.Binding.StoryID, intent)
+			receipt, err := interactive.NewStore(layout.ContentRoot).CommitPlayerInput(request.Binding.StoryID, intent)
 			if err != nil {
 				return agent.CommitReceipt{}, err
 			}
@@ -155,7 +162,7 @@ func (a *App) sessionDirectoryForBinding(binding agentrun.RuntimeBinding) (strin
 	if strings.TrimSpace(binding.SessionID) == "" {
 		return "", errors.New("Session canonical input binding has no session id")
 	}
-	if binding.AgentKind == agentrun.AgentKindAutomation && strings.TrimSpace(binding.Workspace) == "" {
+	if binding.AgentKind == agentrun.AgentKindAutomation && strings.TrimSpace(binding.ProjectID) == "" {
 		if a == nil || a.cfg == nil || strings.TrimSpace(a.cfg.DataDir()) == "" {
 			return "", ErrAgentDataDirRequired
 		}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,11 +15,13 @@ import (
 	workspacelayout "denova/internal/workspace"
 )
 
-const stateMigrationVersion = 3
+const (
+	releasedStateMigrationVersion = 3
+	stateMigrationVersion         = 4
+)
 
 type migrationReceipt struct {
 	Version     int       `json:"version"`
-	Source      string    `json:"source"`
 	CompletedAt time.Time `json:"completed_at"`
 	Copied      []string  `json:"copied"`
 }
@@ -41,21 +44,12 @@ func (registry *Registry) EnsureState(record Record) (Layout, error) {
 		return Layout{}, fmt.Errorf("create project state root: %w", err)
 	}
 	receiptPath := filepath.Join(layout.StateRoot, "migration.json")
-	if raw, readErr := os.ReadFile(receiptPath); readErr == nil {
-		var receipt migrationReceipt
-		if err := json.Unmarshal(raw, &receipt); err != nil {
-			return Layout{}, fmt.Errorf("decode project state migration receipt: %w", err)
-		}
-		if receipt.Version != stateMigrationVersion {
-			return Layout{}, fmt.Errorf(
-				"project state migration receipt version %d does not match supported version %d",
-				receipt.Version,
-				stateMigrationVersion,
-			)
-		}
+	complete, err := ensureCurrentStateMigrationReceipt(receiptPath, record.ID)
+	if err != nil {
+		return Layout{}, err
+	}
+	if complete {
 		return layout, nil
-	} else if !errors.Is(readErr, os.ErrNotExist) {
-		return Layout{}, fmt.Errorf("read project state migration receipt: %w", readErr)
 	}
 	legacy := []struct {
 		name        string
@@ -100,8 +94,7 @@ func (registry *Registry) EnsureState(record Record) (Layout, error) {
 		copied = append(copied, item.name)
 	}
 	receipt := migrationReceipt{
-		Version: stateMigrationVersion, Source: layout.ContentRoot,
-		CompletedAt: time.Now().UTC(), Copied: copied,
+		Version: stateMigrationVersion, CompletedAt: time.Now().UTC(), Copied: copied,
 	}
 	raw, err := json.MarshalIndent(receipt, "", "  ")
 	if err != nil {
@@ -111,6 +104,58 @@ func (registry *Registry) EnsureState(record Record) (Layout, error) {
 		return Layout{}, fmt.Errorf("write project state migration receipt: %w", err)
 	}
 	return layout, nil
+}
+
+// ensureCurrentStateMigrationReceipt accepts the current receipt, upgrades the
+// v0.3.3 receipt without replaying its completed copy, and reports false only
+// when no receipt exists yet.
+func ensureCurrentStateMigrationReceipt(receiptPath, projectID string) (bool, error) {
+	raw, err := os.ReadFile(receiptPath)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("read project state migration receipt: %w", err)
+	}
+	var receipt migrationReceipt
+	if err := json.Unmarshal(raw, &receipt); err != nil {
+		return false, fmt.Errorf("decode project state migration receipt: %w", err)
+	}
+	switch receipt.Version {
+	case stateMigrationVersion:
+		return true, nil
+	case releasedStateMigrationVersion:
+		receipt.Version = stateMigrationVersion
+		migrated, err := json.MarshalIndent(receipt, "", "  ")
+		if err != nil {
+			return false, fmt.Errorf("encode migrated project state receipt: %w", err)
+		}
+		if err := writeFileAtomic(receiptPath, append(migrated, '\n'), 0o600); err != nil {
+			return false, fmt.Errorf("migrate released project state receipt: %w", err)
+		}
+		slog.Info("[internal/project/migration.go] migrated released Project state receipt",
+			"project_id", projectID,
+			"from_version", releasedStateMigrationVersion,
+			"to_version", stateMigrationVersion,
+		)
+		return true, nil
+	default:
+		return false, fmt.Errorf(
+			"project state migration receipt version %d does not match supported version %d",
+			receipt.Version,
+			stateMigrationVersion,
+		)
+	}
+}
+
+func (registry *Registry) migrateReleasedStateReceipts(projects []Record) error {
+	for _, record := range projects {
+		receiptPath := filepath.Join(registry.denovaDir, StateDirectoryName, record.StateDirName, "migration.json")
+		if _, err := ensureCurrentStateMigrationReceipt(receiptPath, record.ID); err != nil {
+			return fmt.Errorf("migrate Project %s state receipt: %w", record.ID, err)
+		}
+	}
+	return nil
 }
 
 func copyStateEntry(source, destination string) error {

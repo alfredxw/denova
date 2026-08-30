@@ -19,6 +19,7 @@ import (
 	"unicode/utf8"
 
 	"denova/internal/book"
+	"denova/internal/portablepath"
 	projectdomain "denova/internal/project"
 	workspacechange "denova/internal/workspace/change"
 )
@@ -656,6 +657,9 @@ func normalizeRelativePath(path string, allowRoot bool) (string, error) {
 	if filepath.IsAbs(path) {
 		return "", fmt.Errorf("absolute project file paths are not allowed")
 	}
+	if strings.Contains(path, `\`) {
+		return "", fmt.Errorf("project file paths must use forward slashes")
+	}
 	raw := filepath.FromSlash(path)
 	for _, component := range strings.Split(raw, string(filepath.Separator)) {
 		if component == ".." {
@@ -674,7 +678,11 @@ func normalizeRelativePath(path string, allowRoot bool) (string, error) {
 			return "", fmt.Errorf("hidden project paths are not available")
 		}
 	}
-	return filepath.ToSlash(rel), nil
+	portableRelative := filepath.ToSlash(rel)
+	if err := portablepath.Validate(portableRelative); err != nil {
+		return "", fmt.Errorf("project file path is not portable: %w", err)
+	}
+	return portableRelative, nil
 }
 
 func joinRelativePath(parent, name string) string {

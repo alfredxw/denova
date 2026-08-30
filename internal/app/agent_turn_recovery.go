@@ -30,7 +30,7 @@ func (a *App) prepareWritingProfileCycle(
 		if err != nil {
 			return agentexecution.Cycle{}, err
 		}
-		if task.ID() != strings.TrimSpace(request.Options.TaskID) || activeRuntime.workspace != binding.Workspace || activeRuntime.sess == nil || activeRuntime.sess.ID != binding.SessionID {
+		if task.ID() != strings.TrimSpace(request.Options.TaskID) || activeRuntime.projectID != binding.ProjectID || activeRuntime.sess == nil || activeRuntime.sess.ID != binding.SessionID {
 			return agentexecution.Cycle{}, ErrAgentContextChanged
 		}
 	}
@@ -38,7 +38,7 @@ func (a *App) prepareWritingProfileCycle(
 	if err != nil {
 		return agentexecution.Cycle{}, err
 	}
-	if strings.TrimSpace(runtime.workspace) != binding.Workspace || runtime.sess == nil || runtime.sess.ID != binding.SessionID {
+	if strings.TrimSpace(runtime.projectID) != binding.ProjectID || runtime.sess == nil || runtime.sess.ID != binding.SessionID {
 		return agentexecution.Cycle{}, fmt.Errorf(
 			"%w: prepared writing runtime does not match durable binding",
 			agentexecution.ErrCyclePreparationUnavailable,
@@ -80,7 +80,7 @@ func (a *App) prepareInteractiveProfileCycle(
 	if err != nil {
 		return agentexecution.Cycle{}, err
 	}
-	if cycle.workspace != binding.Workspace || cycle.storyID != binding.StoryID || cycle.branchID != binding.BranchID {
+	if cycle.runtimeCfg.ProjectID != binding.ProjectID || cycle.storyID != binding.StoryID || cycle.branchID != binding.BranchID {
 		return agentexecution.Cycle{}, fmt.Errorf(
 			"%w: prepared game runtime does not match durable binding",
 			agentexecution.ErrCyclePreparationUnavailable,

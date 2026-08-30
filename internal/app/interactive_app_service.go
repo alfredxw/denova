@@ -364,7 +364,7 @@ func (s *InteractiveAppService) DeleteInteractiveStory(storyID string) error {
 	if fence.chat == nil {
 		return ErrNoWorkspace
 	}
-	if err := fence.chat.DeleteStoryBindings(context.Background(), fence.workspace, storyID, ""); err != nil {
+	if err := fence.chat.DeleteStoryBindings(context.Background(), fence.projectID, storyID, ""); err != nil {
 		return err
 	}
 	if err := store.DeleteStory(storyID); err != nil {
@@ -394,6 +394,10 @@ func (s *InteractiveAppService) InteractiveSnapshot(storyID, branchID string) (i
 	}
 	s.app.mu.RLock()
 	workspace := s.app.workspace
+	projectID := ""
+	if s.app.cfg != nil {
+		projectID = s.app.cfg.ProjectID
+	}
 	executionRuntime := s.app.executionRuntime
 	s.app.mu.RUnlock()
 	// Story Store owns every user-visible game fact. Agent Session contributes
@@ -405,7 +409,7 @@ func (s *InteractiveAppService) InteractiveSnapshot(storyID, branchID string) (i
 		return snapshot, nil
 	}
 	status, projected := projectAgentRuntime(context.Background(), executionRuntime, agentrun.Options{
-		AgentKind: agentrun.AgentKindInteractiveStory, Workspace: workspace,
+		AgentKind: agentrun.AgentKindInteractiveStory, ProjectID: projectID, Workspace: workspace,
 		StoryID: storyID, BranchID: snapshot.BranchID, Mode: "interactive",
 	})
 	if !projected {

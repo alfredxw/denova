@@ -149,7 +149,7 @@ func (s *InteractiveAppService) DeleteInteractiveBranch(storyID, branchID string
 	if fence.chat == nil {
 		return ErrNoWorkspace
 	}
-	if err := fence.chat.DeleteStoryBindings(context.Background(), fence.workspace, storyID, branchID); err != nil {
+	if err := fence.chat.DeleteStoryBindings(context.Background(), fence.projectID, storyID, branchID); err != nil {
 		return err
 	}
 	return store.DeleteBranch(storyID, branchID)

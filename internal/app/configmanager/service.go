@@ -281,7 +281,7 @@ func (service *Service) PrepareCycle(
 	if err != nil {
 		return agentexecution.Cycle{}, err
 	}
-	if runtime.ProjectID != binding.ProjectID || runtime.Workspace != binding.Workspace {
+	if runtime.ProjectID != binding.ProjectID {
 		return agentexecution.Cycle{}, fmt.Errorf("%w: Config Manager runtime changed", agentexecution.ErrCyclePreparationUnavailable)
 	}
 	cycle, err := service.buildCycle(ctx, runtime, request, recovery.Request, binding.SessionID)

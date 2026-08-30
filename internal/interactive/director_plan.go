@@ -531,7 +531,7 @@ func (s *Store) readDirectorPlanLocked(storyID, branchID string) (DirectorPlan, 
 	} else if err != nil {
 		return DirectorPlan{}, err
 	}
-	metadata.Docs = directorPlanDocInfos(s.directorPlanBranchDir(storyID, branchID), docs)
+	metadata.Docs = directorPlanDocInfos(s.root, s.directorPlanBranchDir(storyID, branchID), docs)
 	metadata.Revision = directorPlanRevision(docs, metadata.UpdatedAt)
 	return DirectorPlan{
 		StoryID:  storyID,
@@ -612,6 +612,6 @@ func (s *Store) buildDirectorPlanMetadataLocked(storyID, branchID string, branch
 		UpdatedAt:           now,
 		Source:              strings.TrimSpace(source),
 		SourceTurnID:        strings.TrimSpace(sourceTurnID),
-		Docs:                directorPlanDocInfos(s.directorPlanBranchDir(storyID, branchID), docs),
+		Docs:                directorPlanDocInfos(s.root, s.directorPlanBranchDir(storyID, branchID), docs),
 	}
 }

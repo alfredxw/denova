@@ -212,7 +212,7 @@ func (trace *publicAgentRunTrace) openLocked(options agentrun.Options) error {
 	trace.ledger = ledger
 	if ledger != nil {
 		trace.rootSpan = agentrun.StartRootTraceSpan(ledger, map[string]any{
-			"workspace": options.Workspace, "agent_kind": options.AgentKind, "mode": options.Mode,
+			"project_id": options.ProjectID, "agent_kind": options.AgentKind, "mode": options.Mode,
 		})
 		rootSpanID := ""
 		if trace.rootSpan != nil {

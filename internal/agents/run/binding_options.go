@@ -17,15 +17,8 @@ func RuntimeBindingForOptions(options Options) (RuntimeBinding, error) {
 	var binding RuntimeBinding
 	switch options.AgentKind {
 	case AgentKindIDE:
-		// Foreground Writing remains workspace/session-owned. ProjectID is
-		// routing metadata for product events and must not fork the public
-		// Agent Session identity when a Project is relinked or reindexed.
-		projectID := options.ProjectID
-		if options.Mode != ModeAgentChat {
-			projectID = ""
-		}
 		binding = RuntimeBinding{
-			AgentKind: options.AgentKind, ProjectID: projectID, Mode: options.Mode,
+			AgentKind: options.AgentKind, ProjectID: options.ProjectID, Mode: options.Mode,
 			Workspace: options.Workspace, SessionID: options.SessionID,
 		}
 	case AgentKindGeneral, AgentKindHarness:
@@ -35,17 +28,17 @@ func RuntimeBindingForOptions(options Options) (RuntimeBinding, error) {
 		}
 	case AgentKindInteractiveStory:
 		binding = RuntimeBinding{
-			AgentKind: options.AgentKind, Workspace: options.Workspace,
+			AgentKind: options.AgentKind, ProjectID: options.ProjectID, Workspace: options.Workspace,
 			StoryID: options.StoryID, BranchID: options.BranchID,
 		}
 	case AgentKindConfigManager:
-		binding = RuntimeBinding{AgentKind: options.AgentKind, Workspace: options.Workspace, SessionID: options.SessionID}
+		binding = RuntimeBinding{AgentKind: options.AgentKind, ProjectID: options.ProjectID, Workspace: options.Workspace, SessionID: options.SessionID}
 	case AgentKindImage:
 		sessionID := options.SessionID
 		if sessionID == "" {
 			sessionID = imageAgentSessionID
 		}
-		binding = RuntimeBinding{AgentKind: options.AgentKind, Workspace: options.Workspace, SessionID: sessionID}
+		binding = RuntimeBinding{AgentKind: options.AgentKind, ProjectID: options.ProjectID, Workspace: options.Workspace, SessionID: sessionID}
 	case AgentKindAutomation:
 		taskID := options.AutomationTaskID
 		if taskID == "" {
@@ -57,7 +50,7 @@ func RuntimeBindingForOptions(options Options) (RuntimeBinding, error) {
 		}
 	case config.AgentKindInteractiveDirector:
 		binding = RuntimeBinding{
-			AgentKind: options.AgentKind, Workspace: options.Workspace,
+			AgentKind: options.AgentKind, ProjectID: options.ProjectID, Workspace: options.Workspace,
 			StoryID: options.StoryID, BranchID: options.BranchID,
 		}
 	default:

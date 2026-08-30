@@ -174,6 +174,10 @@ func (s *InteractiveAppService) RecoverAgentRuntime(ctx context.Context, request
 	a := s.app
 	a.mu.RLock()
 	workspace := strings.TrimSpace(a.workspace)
+	projectID := ""
+	if a.cfg != nil {
+		projectID = strings.TrimSpace(a.cfg.ProjectID)
+	}
 	executionRuntime := a.executionRuntime
 	store := a.interactive
 	existing := a.activeInteractiveRun
@@ -203,7 +207,7 @@ func (s *InteractiveAppService) RecoverAgentRuntime(ctx context.Context, request
 		return AgentRuntimeRecoveryResult{}, ErrAgentOperationActive
 	}
 	options := agentrun.Options{
-		AgentKind: agentrun.AgentKindInteractiveStory, Workspace: workspace,
+		AgentKind: agentrun.AgentKindInteractiveStory, ProjectID: projectID, Workspace: workspace,
 		StoryID: request.StoryID, BranchID: branchID, Mode: "interactive",
 	}
 	recovery, err := executionRuntime.OpenRecoveryObservation(operation.Context(), options)
@@ -220,7 +224,7 @@ func (s *InteractiveAppService) RecoverAgentRuntime(ctx context.Context, request
 		return AgentRuntimeRecoveryResult{}, err
 	}
 	info := InteractiveTaskInfo{
-		CommandID: string(request.Action.CommandID), Workspace: workspace,
+		CommandID: string(request.Action.CommandID), ProjectID: projectID, Workspace: workspace,
 		StoryID: request.StoryID, BranchID: branchID,
 		Message: display.Message, RegenerateFromTurnID: display.RegenerateFromTurnID,
 		Attachments: display.Attachments,

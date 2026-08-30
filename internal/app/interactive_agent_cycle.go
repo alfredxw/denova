@@ -191,6 +191,7 @@ func (s *InteractiveAppService) prepareInteractiveAgentCycle(ctx context.Context
 func (c *interactiveAgentCycle) options(taskID string) agentrun.Options {
 	return agentrun.Options{
 		AgentKind:          agentrun.AgentKindInteractiveStory,
+		ProjectID:          c.runtimeCfg.ProjectID,
 		StateRoot:          c.runtimeCfg.ProjectStateDir,
 		TaskID:             strings.TrimSpace(taskID),
 		StoryID:            c.storyID,

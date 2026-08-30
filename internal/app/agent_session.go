@@ -147,8 +147,10 @@ func (a *App) resolveSessionAsk(ctx context.Context, sessionID, askID, status st
 	workspace := a.workspace
 	executionRuntime := a.executionRuntime
 	stateRoot := ""
+	projectID := ""
 	if a.cfg != nil {
 		stateRoot = a.cfg.ProjectStateDir
+		projectID = a.cfg.ProjectID
 	}
 	a.mu.RUnlock()
 	if store == nil || selected == nil || executionRuntime == nil {
@@ -165,7 +167,7 @@ func (a *App) resolveSessionAsk(ctx context.Context, sessionID, askID, status st
 		return AgentAskResolution{}, err
 	}
 	return executionRuntime.ResolveAsk(ctx, agentrun.Options{
-		AgentKind: agentrun.AgentKindIDE, StateRoot: stateRoot,
+		AgentKind: agentrun.AgentKindIDE, ProjectID: projectID, StateRoot: stateRoot,
 		Workspace: workspace, SessionID: sessionID, Mode: "ide",
 	}, askID, status, answers, cancelReason)
 }

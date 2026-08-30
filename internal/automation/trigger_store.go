@@ -325,7 +325,11 @@ func (s *Store) writeInboxScope(scope string, items []TriggerInboxItem) error {
 	if err != nil {
 		return err
 	}
-	data, err := json.MarshalIndent(inboxFile{Items: items}, "", "  ")
+	persisted := make([]TriggerInboxItem, len(items))
+	for index := range items {
+		persisted[index] = portableInboxItem(items[index])
+	}
+	data, err := json.MarshalIndent(inboxFile{Items: persisted}, "", "  ")
 	if err != nil {
 		return err
 	}

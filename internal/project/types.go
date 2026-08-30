@@ -48,8 +48,30 @@ const (
 	SortManual SortMode = "manual"
 )
 
-// Record is the durable user-owned Project definition. WorkspacePath points
-// at project content; it is not the Project identity and is safe to relink.
+// LocationKind identifies how Project content is resolved. Managed content is
+// relative to the current Denova data root; external content is an opaque host
+// path and may be unavailable after moving the data root to another host.
+type LocationKind string
+
+const (
+	LocationManaged  LocationKind = "managed"
+	LocationExternal LocationKind = "external"
+)
+
+func (kind LocationKind) Valid() bool {
+	return kind == LocationManaged || kind == LocationExternal
+}
+
+// ProjectLocation is the durable content locator. Managed paths always use
+// canonical slash-relative syntax. External paths are never rewritten merely
+// because the registry is opened on another operating system.
+type ProjectLocation struct {
+	Kind LocationKind `json:"kind"`
+	Path string       `json:"path"`
+}
+
+// Record is the durable user-owned Project definition. WorkspacePath and
+// Status are runtime/API projections and are cleared before registry storage.
 type Record struct {
 	ID   string `json:"id"`
 	Type Type   `json:"type"`
@@ -57,9 +79,12 @@ type Record struct {
 	// StateDirName is the immutable, human-readable directory segment below
 	// project-state. It is deliberately separate from both stable identity and
 	// the mutable display name.
-	StateDirName  string     `json:"state_dir"`
-	WorkspacePath string     `json:"path"`
-	Status        Status     `json:"status"`
+	StateDirName string          `json:"state_dir"`
+	Location     ProjectLocation `json:"location"`
+	// WorkspacePath is resolved from Location for the current host. It remains
+	// in API responses for existing clients but is never authoritative on disk.
+	WorkspacePath string     `json:"path,omitempty"`
+	Status        Status     `json:"status,omitempty"`
 	CreatedAt     time.Time  `json:"created_at"`
 	UpdatedAt     time.Time  `json:"updated_at"`
 	LastOpenedAt  time.Time  `json:"last_opened_at,omitempty"`

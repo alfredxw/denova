@@ -29,6 +29,7 @@ docs/tests/*
 !docs/agent-package-migration-parity-audit.md
 !docs/agent-prompt-architecture-audit.md
 !docs/agent-prompt-context-architecture-benchmark.md
+!docs/portable-denova-data-directory-design.md
 .worktrees/
 .pnpm-store/
 .DS_Store

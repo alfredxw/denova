@@ -404,7 +404,7 @@ func TestCommittedReviewFeedbackPersistsWithUserMessageAndDisappearsAfterReload(
 	}
 	application := &App{workspace: workspace}
 	chat := &ChatAppService{app: application}
-	runtime := ideChatRuntime{workspace: workspace, sess: sess}
+	runtime := ideChatRuntime{projectID: "project-test", workspace: workspace, sess: sess}
 	req := agentchat.ChatRequest{
 		CommandID: "review-feedback-commit", Message: "Please handle this review comment.",
 		ReviewFeedback: agentreview.Refs{{
@@ -420,6 +420,7 @@ func TestCommittedReviewFeedbackPersistsWithUserMessageAndDisappearsAfterReload(
 	var emittedEventTypes []string
 	options := chat.bindReviewFeedbackInputCommit(agentrun.Options{
 		AgentKind: agentrun.AgentKindIDE,
+		ProjectID: "project-test",
 		SessionID: sess.ID,
 		Workspace: workspace,
 	}, runtime, req)

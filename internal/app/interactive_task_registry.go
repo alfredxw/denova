@@ -34,6 +34,7 @@ type InteractiveAgentStartRequest struct {
 
 type interactiveStartIdentity struct {
 	request     InteractiveAgentStartRequest
+	projectID   string
 	workspace   string
 	fingerprint string
 	chatRequest agentchat.ChatRequest
@@ -187,9 +188,13 @@ func (s *InteractiveAppService) resolveInteractiveStart(request InteractiveAgent
 	a := s.app
 	a.mu.RLock()
 	workspace := strings.TrimSpace(a.workspace)
+	projectID := ""
+	if a.cfg != nil {
+		projectID = strings.TrimSpace(a.cfg.ProjectID)
+	}
 	store := a.interactive
 	a.mu.RUnlock()
-	if workspace == "" || store == nil {
+	if projectID == "" || workspace == "" || store == nil {
 		return interactiveStartIdentity{}, ErrNoWorkspace
 	}
 	branchID, err := resolveInteractiveProjectionBranch(store, request.StoryID, request.BranchID)
@@ -204,20 +209,20 @@ func (s *InteractiveAppService) resolveInteractiveStart(request InteractiveAgent
 		StyleScenes:   append([]string(nil), request.StyleScenes...), Locale: request.Locale,
 	})
 	descriptor := struct {
-		Workspace            string `json:"workspace"`
+		ProjectID            string `json:"project_id"`
 		StoryID              string `json:"story_id"`
 		BranchID             string `json:"branch_id"`
 		RegenerateFromTurnID string `json:"regenerate_from_turn_id"`
 		Request              string `json:"request"`
 	}{
-		Workspace: workspace, StoryID: request.StoryID, BranchID: request.BranchID,
+		ProjectID: projectID, StoryID: request.StoryID, BranchID: request.BranchID,
 		RegenerateFromTurnID: request.RegenerateFromTurnID,
 		Request:              agentexecution.RequestSemanticFingerprint(chatRequest),
 	}
 	encoded, _ := json.Marshal(descriptor)
 	sum := sha256.Sum256(encoded)
 	return interactiveStartIdentity{
-		request: request, workspace: workspace,
+		request: request, projectID: projectID, workspace: workspace,
 		fingerprint: hex.EncodeToString(sum[:]), chatRequest: chatRequest,
 	}, nil
 }
@@ -241,7 +246,7 @@ func normalizeInteractiveStartStyleScenes(values []string) []string {
 
 func (identity interactiveStartIdentity) options(taskID string) agentrun.Options {
 	return agentrun.Options{
-		AgentKind: agentrun.AgentKindInteractiveStory, TaskID: strings.TrimSpace(taskID),
+		AgentKind: agentrun.AgentKindInteractiveStory, ProjectID: identity.projectID, TaskID: strings.TrimSpace(taskID),
 		StoryID: identity.request.StoryID, BranchID: identity.request.BranchID,
 		TurnID:    identity.request.RegenerateFromTurnID,
 		Workspace: identity.workspace, Mode: "interactive",
@@ -251,7 +256,7 @@ func (identity interactiveStartIdentity) options(taskID string) agentrun.Options
 func (identity interactiveStartIdentity) taskInfo(taskID string) InteractiveTaskInfo {
 	return InteractiveTaskInfo{
 		TaskID: strings.TrimSpace(taskID), CommandID: identity.request.CommandID,
-		Workspace: identity.workspace, StoryID: identity.request.StoryID,
+		ProjectID: identity.projectID, Workspace: identity.workspace, StoryID: identity.request.StoryID,
 		BranchID: identity.request.BranchID, Message: identity.request.Message,
 		RegenerateFromTurnID: identity.request.RegenerateFromTurnID,
 		Attachments:          attachmentDescriptors(identity.request.AttachedFiles),
@@ -264,6 +269,7 @@ func (identity interactiveStartIdentity) taskInfo(taskID string) InteractiveTask
 type InteractiveTaskInfo struct {
 	TaskID               string
 	CommandID            string
+	ProjectID            string
 	Workspace            string
 	StoryID              string
 	BranchID             string

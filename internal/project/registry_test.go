@@ -3,8 +3,95 @@ package project
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
+
+func TestRegistryManagedProjectSurvivesDataDirectoryRelocation(t *testing.T) {
+	parent := t.TempDir()
+	firstRoot := filepath.Join(parent, "first-root")
+	secondRoot := filepath.Join(parent, "second-root")
+	workspace := filepath.Join(firstRoot, ContentDirectoryName, "Portable Book")
+	if err := os.MkdirAll(workspace, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	firstRegistry := NewRegistry(firstRoot)
+	created, err := firstRegistry.Add(workspace, TypeGeneral, "Portable")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.Location.Kind != LocationManaged || created.Location.Path != "projects/Portable Book" {
+		t.Fatalf("managed Project location = %#v", created.Location)
+	}
+	firstLayout, err := firstRegistry.EnsureState(created)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(firstLayout.StateRoot, "marker.txt"), []byte("portable\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.Rename(firstRoot, secondRoot); err != nil {
+		t.Fatal(err)
+	}
+	secondRegistry := NewRegistry(secondRoot)
+	relocated, err := secondRegistry.Get(created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantWorkspace := filepath.Join(secondRoot, ContentDirectoryName, "Portable Book")
+	if relocated.ID != created.ID || relocated.WorkspacePath != wantWorkspace || relocated.Status != StatusAvailable {
+		t.Fatalf("relocated Project = %#v, want workspace %s", relocated, wantWorkspace)
+	}
+	secondLayout, err := secondRegistry.Layout(relocated)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if data, err := os.ReadFile(filepath.Join(secondLayout.StateRoot, "marker.txt")); err != nil || string(data) != "portable\n" {
+		t.Fatalf("relocated Project state data=%q err=%v", data, err)
+	}
+
+	var persisted registryData
+	readJSONFileForTest(t, filepath.Join(secondRoot, "projects.json"), &persisted)
+	if len(persisted.Projects) != 1 || persisted.Projects[0].WorkspacePath != "" {
+		t.Fatalf("registry persisted a runtime absolute path: %#v", persisted.Projects)
+	}
+}
+
+func TestRegistryPreservesForeignExternalLocationVerbatim(t *testing.T) {
+	denovaDir := t.TempDir()
+	foreignPath := `C:\Users\writer\Novel`
+	if runtime.GOOS == "windows" {
+		foreignPath = "/Users/writer/Novel"
+	}
+	data := registryData{
+		Version: registryVersion,
+		Projects: []Record{{
+			ID:           "project-external",
+			Type:         TypeGeneral,
+			Name:         "External",
+			StateDirName: "External",
+			Location:     ProjectLocation{Kind: LocationExternal, Path: foreignPath},
+		}},
+	}
+	if err := NewRegistry(denovaDir).saveLocked(data); err != nil {
+		t.Fatal(err)
+	}
+
+	record, err := NewRegistry(denovaDir).Get("project-external")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if record.Location.Path != foreignPath || record.WorkspacePath != foreignPath || record.Status != StatusMissing {
+		t.Fatalf("foreign external location was reinterpreted: %#v", record)
+	}
+	var persisted registryData
+	readJSONFileForTest(t, filepath.Join(denovaDir, "projects.json"), &persisted)
+	if persisted.Projects[0].Location.Path != foreignPath || persisted.Projects[0].WorkspacePath != "" {
+		t.Fatalf("foreign external location changed on disk: %#v", persisted.Projects[0])
+	}
+}
 
 func TestRegistryKeepsStableProjectIdentityAcrossMetadataAndPathChanges(t *testing.T) {
 	denovaDir := t.TempDir()

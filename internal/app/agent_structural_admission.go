@@ -18,6 +18,7 @@ import (
 // mutations. Slow cancellation and actor shutdown happen without App.mu; the
 // caller must validate the fence again under App.mu immediately before write.
 type writingStructuralFence struct {
+	projectID           string
 	workspace           string
 	stateRoot           string
 	workspaceGeneration uint64
@@ -54,6 +55,7 @@ func (s *ChatAppService) drainWritingBinding(ctx context.Context, sessionID stri
 		sessionID:           sessionID,
 	}
 	if a.cfg != nil {
+		fence.projectID = strings.TrimSpace(a.cfg.ProjectID)
 		fence.stateRoot = a.cfg.ProjectStateDir
 	}
 	fence.task = writingTaskForSessionLocked(a, fence.workspace, sessionID)
@@ -65,7 +67,7 @@ func (s *ChatAppService) drainWritingBinding(ctx context.Context, sessionID stri
 		return writingStructuralFence{}, err
 	}
 	if err := closeAgentBindings(fence.chat, func(chat *agentexecution.Runtime) error {
-		return chat.CloseSessionBindings(ctx, agentrun.AgentKindIDE, fence.workspace, sessionID)
+		return chat.CloseSessionBindings(ctx, agentrun.AgentKindIDE, fence.projectID, sessionID)
 	}); err != nil {
 		return writingStructuralFence{}, err
 	}
@@ -99,6 +101,7 @@ func (f writingStructuralFence) validateLocked(a *App, requireSelected bool) err
 // interactiveStructuralFence applies the same barrier to a whole story or one
 // branch. A blank branchID intentionally means the exact story scope.
 type interactiveStructuralFence struct {
+	projectID           string
 	workspace           string
 	workspaceGeneration uint64
 	store               *interactive.Store
@@ -136,6 +139,9 @@ func (s *InteractiveAppService) drainInteractiveBinding(ctx context.Context, sto
 		storyID:             storyID,
 		branchID:            branchID,
 	}
+	if a.cfg != nil {
+		fence.projectID = strings.TrimSpace(a.cfg.ProjectID)
+	}
 	fence.task = interactiveTaskForScopeLocked(a, fence.workspace, storyID, branchID)
 	a.mu.RUnlock()
 
@@ -143,7 +149,7 @@ func (s *InteractiveAppService) drainInteractiveBinding(ctx context.Context, sto
 		return interactiveStructuralFence{}, err
 	}
 	closeStoryBindings := func(chat *agentexecution.Runtime) error {
-		return chat.CloseStoryBindings(ctx, fence.workspace, storyID, branchID)
+		return chat.CloseStoryBindings(ctx, fence.projectID, storyID, branchID)
 	}
 	if err := closeAgentBindings(fence.chat, closeStoryBindings); err != nil {
 		return interactiveStructuralFence{}, err

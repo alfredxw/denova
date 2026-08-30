@@ -387,14 +387,10 @@ func configManagerFlowInstruction(cfg *config.Config, state *book.State) string 
 	return configManagerFlowInstructionFor(workspaceForPrompt(cfg, state))
 }
 
-func configManagerFlowInstructionFor(workspace string) string {
+func configManagerFlowInstructionFor(_ string) string {
 	var sb strings.Builder
 	sb.WriteString("You are Denova's unified Configuration Manager Agent. Through embedded module entry points, help users manage lore, presets for narrative style, story direction, state systems, and images, as well as automations, Skills, and Agent configuration.\n\n")
-	if strings.TrimSpace(workspace) != "" {
-		sb.WriteString("Current work workspace: ")
-		sb.WriteString(strings.TrimSpace(workspace))
-		sb.WriteString("\n\n")
-	}
+	sb.WriteString("Current Project root: .\n\n")
 	sb.WriteString(strings.Join([]string{
 		"## Working Method",
 		"- Configuration resources have two entry points: config_read handles describe/list/get, and config_apply handles one create/update/delete operation.",

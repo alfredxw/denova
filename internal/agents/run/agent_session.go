@@ -12,9 +12,8 @@ import (
 
 const agentSessionNamespacePrefix = "denova."
 
-// AgentSessionKey maps Denova product identity directly onto the public Agent
-// Session boundary. Product content paths remain mutable metadata for
-// project-owned conversations; writing and game lanes stay workspace-scoped.
+// AgentSessionKey maps stable Project-owned product identity directly onto the
+// public Agent Session boundary. Mutable content paths never enter the key.
 func (binding RuntimeBinding) AgentSessionKey() (agent.SessionKey, error) {
 	identity, err := binding.identity()
 	if err != nil {

@@ -136,6 +136,7 @@ func assembleCycleMessages(
 	userText string,
 	attachments []Attachment,
 	fragments []ContextFragment,
+	attachmentRoot string,
 ) ([]*Message, *Message, error) {
 	messages := make([]*Message, 0, len(transcript)+len(fragments)+1)
 	messages = append(messages, leadingContextMessages(fragments)...)
@@ -163,7 +164,11 @@ func assembleCycleMessages(
 	}
 	user := UserMessageWithAttachments(modelUserText, attachments)
 	messages = append(messages, user)
-	return messages, CloneMessage(user), nil
+	resolved, err := resolveMessageAttachmentPaths(attachmentRoot, messages)
+	if err != nil {
+		return nil, nil, err
+	}
+	return resolved, CloneMessage(resolved[len(resolved)-1]), nil
 }
 
 // leadingContextMessages is the single assembly rule for lifecycle-owned
@@ -219,6 +224,11 @@ func prepareDefinitionModelRequest(
 	messages []*Message,
 	stablePrefixMessages int,
 ) (*ModelRequestSnapshot, error) {
+	var err error
+	messages, err = resolveMessageAttachmentPaths(prepared.definition.AttachmentRoot, messages)
+	if err != nil {
+		return nil, err
+	}
 	permission := effectivePermissionPolicy(prepared.definition.Permission)
 	permissionStage := &permissionMiddleware{
 		BaseMiddleware: &BaseMiddleware{}, policy: permission, session: session, run: run,

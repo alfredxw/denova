@@ -252,7 +252,7 @@ func workspaceChangeMetadata(ctx context.Context, provider WorkspaceMetadataProv
 }
 
 func workspaceChangeToolResult(workspace string, changeSet workspacechange.ChangeSet, warnings ...string) (agent.ToolResult, error) {
-	content, err := workspacechange.MarshalToolReceipt(workspace, changeSet, warnings...)
+	content, err := workspacechange.MarshalToolReceipt(changeSet, warnings...)
 	if err != nil {
 		return agent.ToolResult{}, fmt.Errorf("serialize workspace change receipt: %w", err)
 	}

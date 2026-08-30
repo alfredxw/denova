@@ -550,7 +550,7 @@ func (s *Store) normalizeTaskList(path, scope string, tasks []Task) ([]Task, err
 		if err != nil {
 			return nil, fmt.Errorf("invalid automation task %s: %w", task.ID, err)
 		}
-		out = append(out, normalized)
+		out = append(out, s.bindProjectTaskRuntime(normalized))
 	}
 	return out, nil
 }
@@ -656,6 +656,7 @@ func (s *Store) writeScopeFile(scope string, file storeFile) error {
 	persisted := storeFile{SeedVersion: file.SeedVersion, Tasks: make([]Task, len(file.Tasks))}
 	copy(persisted.Tasks, file.Tasks)
 	for i := range persisted.Tasks {
+		persisted.Tasks[i] = portableTask(persisted.Tasks[i])
 		persisted.Tasks[i].Revision = ""
 	}
 	data, err := json.MarshalIndent(persisted, "", "  ")

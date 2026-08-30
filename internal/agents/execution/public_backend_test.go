@@ -291,7 +291,7 @@ func TestAgentRuntimeVerifiesCommittedMutationsBeforeTerminalDisplay(t *testing.
 		Conversation: agentconversation.NewSessionConversationForAgent(sess, nil, agentrun.AgentKindIDE),
 		Request:      agentchatRequest("mutation-command", "change it"),
 		Options: agentrun.Options{
-			AgentKind: agentrun.AgentKindIDE, SessionID: sess.ID, Workspace: workspace,
+			AgentKind: agentrun.AgentKindIDE, ProjectID: "project-test", SessionID: sess.ID, Workspace: workspace,
 			TaskID: "mutation-task", RootAgentName: "root",
 			OnMutationsVerified: func(_ context.Context, mutations []agenttool.Mutation, value agenttool.Verification) {
 				verified = append([]agenttool.Mutation(nil), mutations...)
@@ -391,7 +391,7 @@ func TestAgentRuntimeWorkspaceMutationsRetainConversationDiffReviewScope(t *test
 		Conversation: agentconversation.NewSessionConversationForAgent(sess, nil, agentrun.AgentKindIDE),
 		Request:      agentchatRequest("diff-review-command", "mutate three files"),
 		Options: agentrun.Options{
-			AgentKind: agentrun.AgentKindIDE, SessionID: sess.ID, Workspace: workspace,
+			AgentKind: agentrun.AgentKindIDE, ProjectID: "project-test", SessionID: sess.ID, Workspace: workspace,
 			TaskID: "diff-review-task", RootAgentName: "root",
 		},
 	}})
@@ -532,7 +532,7 @@ func TestAgentRuntimeCommitsARealDenovaSessionAndFinalizesDisplay(t *testing.T) 
 		Conversation: conversation,
 		Request:      agentchatRequest("public-command", "hello"),
 		Options: agentrun.Options{
-			AgentKind: agentrun.AgentKindIDE, SessionID: sess.ID, Workspace: workspace,
+			AgentKind: agentrun.AgentKindIDE, ProjectID: "project-test", SessionID: sess.ID, Workspace: workspace,
 			TaskID: "task", RootAgentName: "root",
 			InputCommitEffect: agentrun.InputCommitEffectFuncs{
 				ApplyFunc: func(context.Context, agentrun.InputCommitEffectRequest) error {
@@ -623,7 +623,7 @@ func TestAgentRuntimeBindsProviderTraceToDurablePublicRun(t *testing.T) {
 		Conversation: agentconversation.NewSessionConversationForAgent(sess, nil, agentrun.AgentKindIDE),
 		Request:      agentchatRequest("provider-trace-command", "trace it"),
 		Options: agentrun.Options{
-			AgentKind: agentrun.AgentKindIDE, SessionID: sess.ID, Workspace: workspace,
+			AgentKind: agentrun.AgentKindIDE, ProjectID: "project-test", SessionID: sess.ID, Workspace: workspace,
 			TaskID: "provider-trace-task", RootAgentName: "root",
 		},
 	}})
@@ -697,7 +697,7 @@ func TestAgentRuntimeLoadsExplicitSkillsBeforeFirstModelCallAndPersistsCards(t *
 		Conversation: agentconversation.NewSessionConversationForAgent(sess, cfg, agentrun.AgentKindIDE),
 		Request:      agentchatRequest("explicit-skills-command", message),
 		Options: agentrun.Options{
-			AgentKind: agentrun.AgentKindIDE, SessionID: sess.ID, Workspace: workspace,
+			AgentKind: agentrun.AgentKindIDE, ProjectID: "project-test", SessionID: sess.ID, Workspace: workspace,
 			TaskID: "explicit-skills-task", RootAgentName: "root",
 		},
 	}, Emit: func(event agentrun.Event) {
@@ -768,7 +768,7 @@ func TestAgentRuntimePlanAskPersistsAndResumesSamePublicRun(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = runtime.Close(context.Background()) })
 	options := agentrun.Options{
-		AgentKind: agentrun.AgentKindIDE, SessionID: sess.ID, Workspace: workspace,
+		AgentKind: agentrun.AgentKindIDE, ProjectID: "project-test", SessionID: sess.ID, Workspace: workspace,
 		TaskID: "plan-ask-task", RootAgentName: "root",
 	}
 	pending := make(chan map[string]any, 1)
@@ -889,7 +889,7 @@ func TestAgentRuntimeSteerPreemptsAndContinuesSamePublicRun(t *testing.T) {
 		)},
 	}
 	options := agentrun.Options{
-		AgentKind: agentrun.AgentKindIDE, SessionID: sess.ID, Workspace: workspace,
+		AgentKind: agentrun.AgentKindIDE, ProjectID: "project-test", SessionID: sess.ID, Workspace: workspace,
 		TaskID: "steer-task", RootAgentName: "root",
 	}
 	var prepareMu sync.Mutex
@@ -1028,7 +1028,7 @@ func TestAgentRuntimeFollowUpQueuesAndContinuesSamePublicRun(t *testing.T) {
 		)},
 	}
 	options := agentrun.Options{
-		AgentKind: agentrun.AgentKindIDE, SessionID: sess.ID, Workspace: workspace,
+		AgentKind: agentrun.AgentKindIDE, ProjectID: "project-test", SessionID: sess.ID, Workspace: workspace,
 		TaskID: "follow-up-task", RootAgentName: "root",
 	}
 	var prepareMu sync.Mutex
@@ -1135,7 +1135,7 @@ func TestAgentRuntimeCancelQueuedRemovesAcceptedFollowUp(t *testing.T) {
 		ModelIdentity: agent.CapabilityIdentity{Kind: "model.public-backend-cancel-queued", Version: 1},
 	}
 	options := agentrun.Options{
-		AgentKind: agentrun.AgentKindIDE, SessionID: sess.ID, Workspace: t.TempDir(),
+		AgentKind: agentrun.AgentKindIDE, ProjectID: "project-test", SessionID: sess.ID, Workspace: t.TempDir(),
 		TaskID: "cancel-queued-task", RootAgentName: "root",
 	}
 	profile := publicBackendTestProfile{prepare: func(_ context.Context, request CycleRestoreRequest) (Cycle, error) {
@@ -1214,7 +1214,7 @@ func TestAgentRuntimeNextTurnChainsASeparatePublicRunToOneDisplayTask(t *testing
 		ModelIdentity: agent.CapabilityIdentity{Kind: "model.public-backend-next-turn", Version: 1},
 	}
 	options := agentrun.Options{
-		AgentKind: agentrun.AgentKindIDE, SessionID: sess.ID, Workspace: workspace,
+		AgentKind: agentrun.AgentKindIDE, ProjectID: "project-test", SessionID: sess.ID, Workspace: workspace,
 		TaskID: "next-turn-task", RootAgentName: "root",
 	}
 	profile := publicBackendTestProfile{prepare: func(_ context.Context, request CycleRestoreRequest) (Cycle, error) {
@@ -1312,7 +1312,7 @@ func TestAgentRuntimeRestartRetainsTranscriptAndRunsNewInput(t *testing.T) {
 		Conversation: agentconversation.NewSessionConversationForAgent(sess, nil, agentrun.AgentKindIDE),
 		Request:      agentchatRequest("replay-command", "hello once"),
 		Options: agentrun.Options{
-			AgentKind: agentrun.AgentKindIDE, SessionID: sess.ID, Workspace: workspace,
+			AgentKind: agentrun.AgentKindIDE, ProjectID: "project-test", SessionID: sess.ID, Workspace: workspace,
 			TaskID: "replay-task", RootAgentName: "root",
 		},
 	}
@@ -1396,7 +1396,7 @@ func TestAgentRuntimeRestartMarksUnfinishedRunInterrupted(t *testing.T) {
 		Key: "public-backend-cold-recovery", Name: "root", Model: blocking, ModelIdentity: modelIdentity,
 	}
 	options := agentrun.Options{
-		AgentKind: agentrun.AgentKindIDE, SessionID: sess.ID, Workspace: workspace,
+		AgentKind: agentrun.AgentKindIDE, ProjectID: "project-test", SessionID: sess.ID, Workspace: workspace,
 		TaskID: "cold-recovery-task", RootAgentName: "root",
 	}
 	first, err := NewAgentRuntime(ctx, liveDataDir, WithToolMutationApplier(
@@ -1500,7 +1500,7 @@ func TestAgentRuntimeDisplayCancellationExplicitlyAbortsDurableRun(t *testing.T)
 	}
 	t.Cleanup(func() { _ = runtime.Close(context.Background()) })
 	options := agentrun.Options{
-		AgentKind: agentrun.AgentKindIDE, SessionID: sess.ID, Workspace: workspace,
+		AgentKind: agentrun.AgentKindIDE, ProjectID: "project-test", SessionID: sess.ID, Workspace: workspace,
 		TaskID: "cancel-task", RootAgentName: "root",
 	}
 	operation, err := runtime.Start(ctx, StartRequest{Cycle: Cycle{

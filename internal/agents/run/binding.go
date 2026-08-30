@@ -39,8 +39,8 @@ const (
 const ModeAgentChat = bindingProfileAgentChat
 
 // RuntimeBinding is Denova's product identity adapter for the reusable public
-// Agent Session. Product modes and workspace/session semantics stay here; the
-// Agent package receives only its provider-neutral SessionKey.
+// Agent Session. ProjectID is the durable owner; Workspace is runtime-only
+// environment metadata and never enters the public SessionKey.
 type RuntimeBinding struct {
 	AgentKind string
 	ProjectID string
@@ -82,81 +82,77 @@ func (binding RuntimeBinding) identity() (bindingIdentity, error) {
 	appendAttribute(bindingLabelStory, binding.StoryID)
 	appendAttribute(bindingLabelBranch, binding.BranchID)
 	appendAttribute(bindingLabelTask, binding.TaskID)
+	projectID := attributes[bindingLabelProject]
+	dropRuntimeWorkspace := func() { delete(attributes, bindingLabelWorkspace) }
 
 	invalid := func() (bindingIdentity, error) { return bindingIdentity{}, ErrInvalidBinding }
 	var identity bindingIdentity
 	switch strings.TrimSpace(binding.AgentKind) {
 	case AgentKindIDE:
-		if attributes[bindingLabelSession] == "" || binding.StoryID != "" || binding.BranchID != "" || binding.TaskID != "" {
+		if projectID == "" || attributes[bindingLabelSession] == "" || binding.StoryID != "" || binding.BranchID != "" || binding.TaskID != "" {
 			return invalid()
 		}
+		dropRuntimeWorkspace()
 		profile := bindingProfileWriting
 		if strings.TrimSpace(binding.Mode) == bindingProfileAgentChat {
-			if attributes[bindingLabelProject] != "" {
-				// Project is the durable owner. Its content directory is mutable
-				// metadata and must not fork the Session when relinked.
-				delete(attributes, bindingLabelWorkspace)
-				attributes[bindingLabelAgentKind] = AgentKindIDE
-				identity = bindingIdentity{
-					kind: bindingKindProject, profile: bindingProfileAgentChat,
-					id: attributes[bindingLabelProject] + ":" + attributes[bindingLabelSession], attributes: attributes,
-				}
-				break
+			attributes[bindingLabelAgentKind] = AgentKindIDE
+			identity = bindingIdentity{
+				kind: bindingKindProject, profile: bindingProfileAgentChat,
+				id: projectID + ":" + attributes[bindingLabelSession], attributes: attributes,
 			}
-			profile = bindingProfileAgentChat
+			break
 		}
-		if attributes[bindingLabelWorkspace] == "" {
-			return invalid()
-		}
-		identity = bindingIdentity{kind: bindingKindWriting, profile: profile, id: attributes[bindingLabelSession], attributes: attributes}
+		identity = bindingIdentity{kind: bindingKindWriting, profile: profile, id: projectID + ":" + attributes[bindingLabelSession], attributes: attributes}
 	case AgentKindGeneral, AgentKindHarness:
-		if strings.TrimSpace(binding.Mode) != bindingProfileAgentChat || attributes[bindingLabelProject] == "" ||
+		if strings.TrimSpace(binding.Mode) != bindingProfileAgentChat || projectID == "" ||
 			attributes[bindingLabelSession] == "" || binding.StoryID != "" || binding.BranchID != "" || binding.TaskID != "" {
 			return invalid()
 		}
-		delete(attributes, bindingLabelWorkspace)
+		dropRuntimeWorkspace()
 		attributes[bindingLabelAgentKind] = strings.TrimSpace(binding.AgentKind)
 		identity = bindingIdentity{
 			kind: bindingKindProject, profile: bindingProfileAgentChat,
-			id: attributes[bindingLabelProject] + ":" + attributes[bindingLabelSession], attributes: attributes,
+			id: projectID + ":" + attributes[bindingLabelSession], attributes: attributes,
 		}
 	case AgentKindInteractiveStory:
-		if attributes[bindingLabelWorkspace] == "" || attributes[bindingLabelStory] == "" ||
+		if projectID == "" || attributes[bindingLabelStory] == "" ||
 			attributes[bindingLabelBranch] == "" || binding.TaskID != "" {
 			return invalid()
 		}
+		dropRuntimeWorkspace()
 		identity = bindingIdentity{
 			kind: bindingKindGame, profile: bindingProfileGame,
-			id: attributes[bindingLabelStory] + ":" + attributes[bindingLabelBranch], attributes: attributes,
+			id: projectID + ":" + attributes[bindingLabelStory] + ":" + attributes[bindingLabelBranch], attributes: attributes,
 		}
 	case AgentKindConfigManager:
-		if attributes[bindingLabelWorkspace] == "" || attributes[bindingLabelSession] == "" ||
+		if projectID == "" || attributes[bindingLabelSession] == "" ||
 			binding.StoryID != "" || binding.BranchID != "" || binding.TaskID != "" {
 			return invalid()
 		}
-		identity = bindingIdentity{kind: bindingKindWriting, profile: bindingProfileConfigManager, id: attributes[bindingLabelSession], attributes: attributes}
+		dropRuntimeWorkspace()
+		identity = bindingIdentity{kind: bindingKindWriting, profile: bindingProfileConfigManager, id: projectID + ":" + attributes[bindingLabelSession], attributes: attributes}
 	case AgentKindImage:
-		if attributes[bindingLabelWorkspace] == "" || attributes[bindingLabelSession] == "" ||
+		if projectID == "" || attributes[bindingLabelSession] == "" ||
 			binding.StoryID != "" || binding.BranchID != "" || binding.TaskID != "" {
 			return invalid()
 		}
-		identity = bindingIdentity{kind: bindingKindWriting, profile: bindingProfileImage, id: attributes[bindingLabelSession], attributes: attributes}
+		dropRuntimeWorkspace()
+		identity = bindingIdentity{kind: bindingKindWriting, profile: bindingProfileImage, id: projectID + ":" + attributes[bindingLabelSession], attributes: attributes}
 	case AgentKindAutomation:
-		if attributes[bindingLabelSession] == "" || attributes[bindingLabelTask] == "" || binding.StoryID != "" || binding.BranchID != "" {
+		if projectID == "" || attributes[bindingLabelSession] == "" || attributes[bindingLabelTask] == "" || binding.StoryID != "" || binding.BranchID != "" {
 			return invalid()
 		}
-		// ProjectID owns task records outside Agent. Existing automation Session
-		// identity remains workspace/session/task scoped.
-		delete(attributes, bindingLabelProject)
-		identity = bindingIdentity{kind: bindingKindAutomation, profile: bindingProfileAutomation, id: attributes[bindingLabelSession], attributes: attributes}
+		dropRuntimeWorkspace()
+		identity = bindingIdentity{kind: bindingKindAutomation, profile: bindingProfileAutomation, id: projectID + ":" + attributes[bindingLabelSession], attributes: attributes}
 	case config.AgentKindInteractiveDirector:
-		if attributes[bindingLabelWorkspace] == "" || attributes[bindingLabelStory] == "" ||
+		if projectID == "" || attributes[bindingLabelStory] == "" ||
 			attributes[bindingLabelBranch] == "" || binding.TaskID != "" {
 			return invalid()
 		}
+		dropRuntimeWorkspace()
 		identity = bindingIdentity{
 			kind: bindingKindGame, profile: bindingProfileDirector,
-			id: attributes[bindingLabelStory] + ":" + attributes[bindingLabelBranch], attributes: attributes,
+			id: projectID + ":" + attributes[bindingLabelStory] + ":" + attributes[bindingLabelBranch], attributes: attributes,
 		}
 	default:
 		return bindingIdentity{}, fmt.Errorf("%w: unsupported agent profile %q", ErrInvalidBinding, binding.AgentKind)
@@ -176,12 +172,11 @@ func (binding RuntimeBinding) ProfileID() (string, error) {
 }
 
 // BindingSelector returns a bounded public Session selector for one Denova
-// agent kind. Empty fields remain unconstrained; at least one constraint is
-// required.
-func BindingSelector(agentKind, workspace string) (agent.SessionSelector, error) {
+// agent kind and optional stable Project owner.
+func BindingSelector(agentKind, projectID string) (agent.SessionSelector, error) {
 	selector := agent.SessionSelector{}
-	if workspace = strings.TrimSpace(workspace); workspace != "" {
-		selector.Attributes = map[string]string{bindingLabelWorkspace: workspace}
+	if projectID = strings.TrimSpace(projectID); projectID != "" {
+		selector.Attributes = map[string]string{bindingLabelProject: projectID}
 	}
 	var kind, profile string
 	switch strings.TrimSpace(agentKind) {
@@ -209,19 +204,13 @@ func BindingSelector(agentKind, workspace string) (agent.SessionSelector, error)
 	return validatedBindingSelector(selector)
 }
 
-// WorkspaceBindingSelector selects every Denova Session rooted in one
-// workspace, regardless of product mode or profile.
-func WorkspaceBindingSelector(workspace string) (agent.SessionSelector, error) {
-	workspace = strings.TrimSpace(workspace)
-	if workspace == "" {
+// SessionBindingSelector selects one session-backed Denova Agent Session.
+func SessionBindingSelector(agentKind, projectID, sessionID string) (agent.SessionSelector, error) {
+	projectID = strings.TrimSpace(projectID)
+	if projectID == "" {
 		return agent.SessionSelector{}, ErrInvalidBinding
 	}
-	return validatedBindingSelector(agent.SessionSelector{Attributes: map[string]string{bindingLabelWorkspace: workspace}})
-}
-
-// SessionBindingSelector selects one session-backed Denova Agent Session.
-func SessionBindingSelector(agentKind, workspace, sessionID string) (agent.SessionSelector, error) {
-	selector, err := BindingSelector(agentKind, workspace)
+	selector, err := BindingSelector(agentKind, projectID)
 	if err != nil {
 		return agent.SessionSelector{}, err
 	}
@@ -229,7 +218,7 @@ func SessionBindingSelector(agentKind, workspace, sessionID string) (agent.Sessi
 	if sessionID == "" {
 		return agent.SessionSelector{}, ErrInvalidBinding
 	}
-	selector.ID = sessionID
+	selector.ID = projectID + ":" + sessionID
 	if selector.Attributes == nil {
 		selector.Attributes = make(map[string]string)
 	}
@@ -239,24 +228,24 @@ func SessionBindingSelector(agentKind, workspace, sessionID string) (agent.Sessi
 
 // StoryBindingSelector selects all story Sessions for an exact story or
 // branch scope. Callers add the game or Director namespace explicitly.
-func StoryBindingSelector(workspace, storyID, branchID string) (agent.SessionSelector, error) {
-	workspace, storyID, branchID = strings.TrimSpace(workspace), strings.TrimSpace(storyID), strings.TrimSpace(branchID)
-	if workspace == "" || storyID == "" {
+func StoryBindingSelector(projectID, storyID, branchID string) (agent.SessionSelector, error) {
+	projectID, storyID, branchID = strings.TrimSpace(projectID), strings.TrimSpace(storyID), strings.TrimSpace(branchID)
+	if projectID == "" || storyID == "" {
 		return agent.SessionSelector{}, ErrInvalidBinding
 	}
-	attributes := map[string]string{bindingLabelWorkspace: workspace, bindingLabelStory: storyID}
+	attributes := map[string]string{bindingLabelProject: projectID, bindingLabelStory: storyID}
 	if branchID != "" {
 		attributes[bindingLabelBranch] = branchID
 	}
 	return validatedBindingSelector(agent.SessionSelector{Attributes: attributes})
 }
 
-// ForegroundWorkspaceBindingSelectors returns the exact product profiles that
-// are owned by a foreground workspace. Project-scoped AgentChat bindings are
+// ForegroundProjectBindingSelectors returns the exact product profiles that
+// are owned by a foreground Project. Project-scoped AgentChat bindings are
 // intentionally excluded.
-func ForegroundWorkspaceBindingSelectors(workspace string) ([]agent.SessionSelector, error) {
-	workspace = strings.TrimSpace(workspace)
-	if workspace == "" {
+func ForegroundProjectBindingSelectors(projectID string) ([]agent.SessionSelector, error) {
+	projectID = strings.TrimSpace(projectID)
+	if projectID == "" {
 		return nil, ErrInvalidBinding
 	}
 	profiles := []struct{ kind, profile string }{
@@ -271,7 +260,7 @@ func ForegroundWorkspaceBindingSelectors(workspace string) ([]agent.SessionSelec
 	for _, candidate := range profiles {
 		selector, err := validatedBindingSelector(agent.SessionSelector{
 			Namespace:  agentSessionNamespacePrefix + candidate.kind + "." + candidate.profile,
-			Attributes: map[string]string{bindingLabelWorkspace: workspace},
+			Attributes: map[string]string{bindingLabelProject: projectID},
 		})
 		if err != nil {
 			return nil, err
@@ -279,17 +268,6 @@ func ForegroundWorkspaceBindingSelectors(workspace string) ([]agent.SessionSelec
 		selectors = append(selectors, selector)
 	}
 	return selectors, nil
-}
-
-func AgentChatSessionBindingSelector(workspace, sessionID string) (agent.SessionSelector, error) {
-	workspace, sessionID = strings.TrimSpace(workspace), strings.TrimSpace(sessionID)
-	if workspace == "" || sessionID == "" {
-		return agent.SessionSelector{}, ErrInvalidBinding
-	}
-	return validatedBindingSelector(agent.SessionSelector{
-		Namespace: agentSessionNamespacePrefix + bindingKindWriting + "." + bindingProfileAgentChat,
-		ID:        sessionID, Attributes: map[string]string{bindingLabelWorkspace: workspace, bindingLabelSession: sessionID},
-	})
 }
 
 func ProjectSessionBindingSelector(projectID, sessionID string) (agent.SessionSelector, error) {
@@ -310,7 +288,6 @@ func ProjectBindingSelector(projectID string) (agent.SessionSelector, error) {
 		return agent.SessionSelector{}, ErrInvalidBinding
 	}
 	return validatedBindingSelector(agent.SessionSelector{
-		Namespace:  agentSessionNamespacePrefix + bindingKindProject + "." + bindingProfileAgentChat,
 		Attributes: map[string]string{bindingLabelProject: projectID},
 	})
 }

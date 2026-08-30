@@ -34,6 +34,7 @@ type RunTraceSummary struct {
 	Reason                string    `json:"reason,omitempty"`
 	Events                int       `json:"events"`
 	ContextParts          int       `json:"context_parts"`
+	ProjectID             string    `json:"project_id,omitempty"`
 	TaskID                string    `json:"task_id,omitempty"`
 	AgentKind             string    `json:"agent_kind,omitempty"`
 	SessionID             string    `json:"session_id,omitempty"`
@@ -272,6 +273,7 @@ func updateRunTraceSummary(summary *RunTraceSummary, record RunTraceRecord, path
 	case "llm_input":
 		summary.ContentCaptured = true
 	case "run_created":
+		summary.ProjectID = stringField(record.Data, "project_id")
 		summary.TaskID = stringField(record.Data, "task_id")
 		summary.AgentKind = stringField(record.Data, "agent_kind")
 		summary.SessionID = stringField(record.Data, "session_id")

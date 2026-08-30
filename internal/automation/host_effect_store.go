@@ -33,6 +33,7 @@ var ErrHostEffectConflict = errors.New("automation host effect obligation confli
 type HostEffectObligation struct {
 	ID         string          `json:"id"`
 	Kind       string          `json:"kind"`
+	ProjectID  string          `json:"project_id,omitempty"`
 	Workspace  string          `json:"workspace,omitempty"`
 	Payload    json.RawMessage `json:"payload"`
 	IntentHash string          `json:"intent_hash"`
@@ -71,7 +72,7 @@ func (s *Store) AdmitHostEffect(ctx context.Context, effect HostEffectObligation
 			return HostEffectObligation{}, readErr
 		}
 		if found {
-			if existing.IntentHash != effect.IntentHash || existing.Kind != effect.Kind || existing.Workspace != effect.Workspace {
+			if existing.IntentHash != effect.IntentHash || existing.Kind != effect.Kind || existing.ProjectID != effect.ProjectID || existing.Workspace != effect.Workspace {
 				return HostEffectObligation{}, fmt.Errorf("%w: effect_id=%s", ErrHostEffectConflict, effect.ID)
 			}
 			return existing, nil
@@ -157,7 +158,7 @@ func (s *Store) AcknowledgeHostEffect(ctx context.Context, effect HostEffectObli
 		if !found {
 			return struct{}{}, nil
 		}
-		if existing.IntentHash != effect.IntentHash || existing.Kind != effect.Kind || existing.Workspace != effect.Workspace {
+		if existing.IntentHash != effect.IntentHash || existing.Kind != effect.Kind || existing.ProjectID != effect.ProjectID || existing.Workspace != effect.Workspace {
 			return struct{}{}, fmt.Errorf("%w: acknowledge effect_id=%s", ErrHostEffectConflict, effect.ID)
 		}
 		if removeErr := os.Remove(path); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
@@ -174,7 +175,11 @@ func (s *Store) AcknowledgeHostEffect(ctx context.Context, effect HostEffectObli
 func normalizeHostEffectObligation(effect HostEffectObligation) (HostEffectObligation, error) {
 	effect.ID = strings.TrimSpace(effect.ID)
 	effect.Kind = strings.TrimSpace(effect.Kind)
+	effect.ProjectID = strings.TrimSpace(effect.ProjectID)
 	effect.Workspace = canonicalStoreRoot(effect.Workspace)
+	if effect.ProjectID != "" {
+		effect.Workspace = ""
+	}
 	if effect.ID == "" || len(effect.ID) > maxHostEffectIDBytes || effect.Kind == "" || len(effect.Kind) > maxHostEffectKindBytes {
 		return HostEffectObligation{}, fmt.Errorf("host effect identity is invalid")
 	}
@@ -190,7 +195,7 @@ func normalizeHostEffectObligation(effect HostEffectObligation) (HostEffectOblig
 		return HostEffectObligation{}, fmt.Errorf("canonicalize host effect payload: %w", err)
 	}
 	effect.Payload = append(json.RawMessage(nil), canonicalPayload.Bytes()...)
-	wantHash := hostEffectIntentHash(effect.Kind, effect.Workspace, effect.Payload)
+	wantHash := hostEffectIntentHash(effect.Kind, firstNonEmpty(effect.ProjectID, effect.Workspace), effect.Payload)
 	if effect.IntentHash != "" && effect.IntentHash != wantHash {
 		return HostEffectObligation{}, fmt.Errorf("%w: effect_id=%s intent hash mismatch", ErrHostEffectConflict, effect.ID)
 	}
@@ -203,13 +208,22 @@ func normalizeHostEffectObligation(effect HostEffectObligation) (HostEffectOblig
 	return effect, nil
 }
 
-func hostEffectIntentHash(kind, workspace string, payload json.RawMessage) string {
+func hostEffectIntentHash(kind, target string, payload json.RawMessage) string {
 	hash := sha256.New()
-	for _, part := range [][]byte{[]byte(kind), []byte(workspace), payload} {
+	for _, part := range [][]byte{[]byte(kind), []byte(target), payload} {
 		_, _ = hash.Write(part)
 		_, _ = hash.Write([]byte{0})
 	}
 	return hex.EncodeToString(hash.Sum(nil))
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 func (s *Store) hostEffectObligationDirectory() (string, error) {

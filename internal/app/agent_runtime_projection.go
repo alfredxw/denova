@@ -42,6 +42,10 @@ func (a *App) WritingAgentActiveView(ctx context.Context) WritingAgentActiveView
 	}
 	a.mu.RLock()
 	workspace := strings.TrimSpace(a.workspace)
+	projectID := ""
+	if a.cfg != nil {
+		projectID = strings.TrimSpace(a.cfg.ProjectID)
+	}
 	a.mu.RUnlock()
 	if workspace == "" {
 		return WritingAgentActiveView{}
@@ -70,6 +74,7 @@ func (a *App) WritingAgentActiveView(ctx context.Context) WritingAgentActiveView
 	if sessionID != "" && executionRuntime != nil {
 		runtimeSnapshot, projected = projectAgentRuntime(operation.Context(), executionRuntime, agentrun.Options{
 			AgentKind: agentrun.AgentKindIDE,
+			ProjectID: projectID,
 			StateRoot: stateRoot,
 			Workspace: workspace,
 			SessionID: sessionID,
@@ -108,6 +113,10 @@ func (a *App) InteractiveAgentActiveView(ctx context.Context, storyID, branchID 
 	branchID = strings.TrimSpace(branchID)
 	a.mu.RLock()
 	workspace := strings.TrimSpace(a.workspace)
+	projectID := ""
+	if a.cfg != nil {
+		projectID = strings.TrimSpace(a.cfg.ProjectID)
+	}
 	a.mu.RUnlock()
 	if workspace == "" || storyID == "" {
 		return InteractiveAgentActiveView{}
@@ -137,6 +146,7 @@ func (a *App) InteractiveAgentActiveView(ctx context.Context, storyID, branchID 
 	if resolved != "" && executionRuntime != nil {
 		runtimeSnapshot, projected = projectAgentRuntime(operation.Context(), executionRuntime, agentrun.Options{
 			AgentKind: agentrun.AgentKindInteractiveStory,
+			ProjectID: projectID,
 			Workspace: workspace,
 			StoryID:   storyID,
 			BranchID:  resolved,
@@ -159,7 +169,7 @@ func (a *App) InteractiveAgentActiveView(ctx context.Context, storyID, branchID 
 }
 
 func sameInteractiveTaskInfo(left, right InteractiveTaskInfo) bool {
-	if left.TaskID != right.TaskID || left.CommandID != right.CommandID || left.Workspace != right.Workspace ||
+	if left.TaskID != right.TaskID || left.CommandID != right.CommandID || left.ProjectID != right.ProjectID || left.Workspace != right.Workspace ||
 		left.StoryID != right.StoryID || left.BranchID != right.BranchID || left.Message != right.Message ||
 		left.RegenerateFromTurnID != right.RegenerateFromTurnID || len(left.Attachments) != len(right.Attachments) {
 		return false

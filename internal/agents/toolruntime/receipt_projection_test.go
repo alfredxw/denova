@@ -62,6 +62,20 @@ func TestToolExecutionRecordAssociatesWorkspaceChangeReceipt(t *testing.T) {
 	}
 }
 
+func TestToolExecutionRecordAcceptsPortableWorkspaceChangeReceipt(t *testing.T) {
+	receipt := `{"schema":"workspace_change.tool_result.v1","status":"applied","change_group_id":"group-1","change_set_id":"change-1","path":"chapters/ch01.md","base_revision":"sha256:before","revision":"sha256:after","review_status":"pending","apply_state":"applied"}`
+	descriptor := producttools.WorkspaceWriteDescriptor(agent.ToolSourceWrite, config.AgentToolWorkspaceWrite, agent.ToolRecoveryReconcilable)
+	record := agenttool.ExecutionRecord{ToolName: "edit", ExecutionID: "call-1", Status: "success", Descriptor: descriptor}
+	applyToolMutationReceiptToExecutionRecord(&record, agent.ToolResult{Details: []byte(receipt)})
+	mutation, ok := agenttool.MutationFromExecutionRecord(record)
+	if !ok {
+		t.Fatalf("portable receipt did not produce a mutation: %#v", record)
+	}
+	if mutation.Workspace != "" || mutation.Target != "chapters/ch01.md" || mutation.ChangeGroupID != "group-1" || mutation.ChangeSetID != "change-1" {
+		t.Fatalf("portable workspace change identity = %#v", mutation)
+	}
+}
+
 func TestWorkspaceChangeReceiptUpdatesOnlyTrustedToolExecutionRecords(t *testing.T) {
 	content := `{"schema":"workspace_change.tool_result.v1","status":"applied","workspace":"/workspace/book-a","change_group_id":"group-1","change_set_id":"change-1","path":"chapters/ch01.md","base_revision":"sha256:before","revision":"sha256:after","review_status":"pending","apply_state":"applied"}`
 	record := agenttool.ExecutionRecord{ToolName: "write"}

@@ -29,7 +29,7 @@ func DiscoverForExecutable(executablePath string) Executables {
 func DiscoverForExecutableWithEnvironment(executablePath string, environment []string, bashOverride string) Executables {
 	bashCandidates := []string{"bash", "bash.exe"}
 	if strings.TrimSpace(bashOverride) != "" {
-		bashCandidates = []string{bashOverride}
+		bashCandidates = append([]string{bashOverride}, bashCandidates...)
 	}
 	return Executables{
 		Ripgrep: discoverBundledRipgrep(executablePath),

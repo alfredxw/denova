@@ -361,12 +361,20 @@ func (s *Store) durableRunPathIn(scope, directory, runID string) (string, error)
 
 func (s *Store) readDurableRun(scope, runID string) (durableRunFile, bool, error) {
 	path, err := s.durableRunPath(scope, runID)
-	return readDurableRunFile(path, runID, err)
+	entry, found, readErr := readDurableRunFile(path, runID, err)
+	if found {
+		entry.Run = s.bindProjectRunRuntime(entry.Run)
+	}
+	return entry, found, readErr
 }
 
 func (s *Store) readDurableRunObligation(scope, runID string) (durableRunFile, bool, error) {
 	path, err := s.durableRunObligationPath(scope, runID)
-	return readDurableRunFile(path, runID, err)
+	entry, found, readErr := readDurableRunFile(path, runID, err)
+	if found {
+		entry.Run = s.bindProjectRunRuntime(entry.Run)
+	}
+	return entry, found, readErr
 }
 
 func readDurableRunFile(path, runID string, pathErr error) (durableRunFile, bool, error) {
@@ -425,6 +433,7 @@ func (s *Store) readDurableRunsIn(scope, directory string) ([]durableRunFile, er
 		if err != nil {
 			return nil, err
 		}
+		entry.Run = s.bindProjectRunRuntime(entry.Run)
 		result = append(result, entry)
 	}
 	return result, nil
@@ -455,6 +464,7 @@ func writeDurableRunFile(path string, entry durableRunFile, pathErr error) error
 	if pathErr != nil {
 		return pathErr
 	}
+	entry.Run = portableRun(entry.Run)
 	data, err := json.MarshalIndent(entry, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode automation run %s: %w", entry.Run.ID, err)

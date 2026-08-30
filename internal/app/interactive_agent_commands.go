@@ -54,7 +54,7 @@ func (s *InteractiveAppService) SubmitAgentCommand(ctx context.Context, command 
 
 func interactiveAgentCommandOptions(target interactiveAgentCommandTarget) agentrun.Options {
 	return agentrun.Options{
-		AgentKind: agentrun.AgentKindInteractiveStory, TaskID: target.task.ID(),
+		AgentKind: agentrun.AgentKindInteractiveStory, ProjectID: target.info.ProjectID, TaskID: target.task.ID(),
 		StoryID: target.info.StoryID, BranchID: target.info.BranchID,
 		Workspace: target.info.Workspace, Mode: "interactive",
 	}

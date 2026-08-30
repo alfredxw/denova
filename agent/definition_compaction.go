@@ -718,7 +718,7 @@ func compactionModelRequest(
 		result = append(result, effective...)
 		return result, nil
 	}
-	cycle, _, err := assembleCycleMessages(effective, currentInput, nil, prepared.fragments)
+	cycle, _, err := assembleCycleMessages(effective, currentInput, nil, prepared.fragments, prepared.definition.AttachmentRoot)
 	if err != nil {
 		return nil, err
 	}

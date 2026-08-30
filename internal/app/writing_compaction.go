@@ -39,7 +39,7 @@ func (s *ChatAppService) executeWritingContextCompaction(ctx context.Context, re
 		Action:    agentstructural.Compact,
 		Ref:       agentrun.ContextCompactionRef{Force: true},
 		Options: agentrun.Options{
-			AgentKind: agentrun.AgentKindIDE, StateRoot: fence.stateRoot,
+			AgentKind: agentrun.AgentKindIDE, ProjectID: fence.projectID, StateRoot: fence.stateRoot,
 			Workspace: fence.workspace, SessionID: fence.selected.ID, Mode: "ide",
 		},
 	})
@@ -79,7 +79,7 @@ func (s *ChatAppService) executeWritingContextCompactionRemoval(ctx context.Cont
 		CommandID: commandID,
 		Action:    agentstructural.Remove,
 		Options: agentrun.Options{
-			AgentKind: agentrun.AgentKindIDE, StateRoot: fence.stateRoot,
+			AgentKind: agentrun.AgentKindIDE, ProjectID: fence.projectID, StateRoot: fence.stateRoot,
 			Workspace: fence.workspace, SessionID: fence.selected.ID, Mode: "ide",
 		},
 	})

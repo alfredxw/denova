@@ -32,7 +32,7 @@ func (s *ChatAppService) ClearSession() error {
 		return ErrNoWorkspace
 	}
 	if err := fence.chat.ClearSession(context.Background(), agentrun.Options{
-		AgentKind: agentrun.AgentKindIDE, StateRoot: fence.stateRoot,
+		AgentKind: agentrun.AgentKindIDE, ProjectID: fence.projectID, StateRoot: fence.stateRoot,
 		Workspace: fence.workspace, SessionID: fence.sessionID, Mode: "ide",
 	}); err != nil {
 		return err
@@ -200,7 +200,7 @@ func (s *ChatAppService) DeleteSession(id string) (*session.Session, error) {
 	if fence.chat == nil {
 		return nil, ErrNoWorkspace
 	}
-	if err := fence.chat.DeleteSessionBindings(context.Background(), agentrun.AgentKindIDE, fence.workspace, id); err != nil {
+	if err := fence.chat.DeleteSessionBindings(context.Background(), agentrun.AgentKindIDE, fence.projectID, id); err != nil {
 		return nil, err
 	}
 	if err := fence.store.Delete(id); err != nil {

@@ -4,6 +4,8 @@ import (
 	"errors"
 	"path/filepath"
 	"strings"
+
+	"denova/internal/portablepath"
 )
 
 // ValidateNewName 校验重命名目标文件名，避免通过文件名逃逸目录。
@@ -17,5 +19,5 @@ func ValidateNewName(name string) error {
 	if strings.HasPrefix(name, ".") {
 		return errors.New("不允许使用隐藏文件名")
 	}
-	return nil
+	return portablepath.ValidateComponent(name)
 }

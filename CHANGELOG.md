@@ -14,6 +14,8 @@ Denova records only major user-visible features, important compatibility or data
 
 ### Major changes / 重大变更
 
+- `.denova` 数据目录现在可在 Denova 完全退出后整体移动或复制到 Windows、WSL、Linux 与 macOS 的任意合法可写位置；受管 Project 的会话、游戏、版本、附件、工具产物和自动化会按稳定 Project ID 与相对路径继续使用，v0.3.3 索引在首次切换前自动备份并迁移。
+- After Denova fully exits, the complete `.denova` data directory can be moved or copied to any valid writable location on Windows, WSL, Linux, or macOS. Managed Project sessions, Game state, versions, attachments, tool artifacts, and automations continue through stable Project IDs and relative paths, with v0.3.3 indexes backed up before the first migration.
 - 字体设置改为类似 Dynamic Type 的统一离散档位：界面字号按完整层级缩放，阅读字号同步覆盖写作、游戏剧情、Agent 回复、源码编辑器、Diff 与终端。
 - Font settings now use unified Dynamic Type-style steps: interface text scales as one hierarchy, while reading size also covers Writing, Game story, Agent replies, source editors, diffs, and terminals.
 - 项目、Skill、版本 Diff 与面包屑文件树统一升级，采用一致的默认密度，并支持完整文件图标、空目录折叠、Git 状态、名称搜索与上下文菜单；项目文件树同时支持拖放整理。
@@ -66,6 +68,8 @@ Denova records only major user-visible features, important compatibility or data
 
 ### Major fixes / 重要修复
 
+- 修复数据目录绝对路径参与 Project 与会话身份，导致重启或搬迁后历史看似消失、受管 Project 被重复识别的问题。
+- Fixed absolute data-directory paths participating in Project and session identity, which could make history appear missing or register duplicate managed Projects after restart or relocation.
 - 修复跨轮、工具调用边界或重启后丢失推理上下文的问题；写作与游戏现在会安全保留并复用完整的 provider continuation。
 - Fixed reasoning context being lost across turns, tool-call boundaries, or restarts; Writing and Game now safely retain and reuse the complete provider continuation.
 - 修复 Provider Token 校准可能下调本地保守估算、导致长会话过晚清理上下文的问题；真实用量现在只会向上修正上下文压力。

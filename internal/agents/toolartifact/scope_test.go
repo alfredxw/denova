@@ -137,7 +137,11 @@ func writeScopedArtifact(t *testing.T, workspace string, scope WorkspaceScope, c
 	if err != nil {
 		t.Fatal(err)
 	}
-	return reference.ReadablePath
+	resolved, err := store.ResolveToolArtifactPath(context.Background(), reference.ReadablePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return resolved
 }
 
 func assertArtifactContent(t *testing.T, path, expected string) {

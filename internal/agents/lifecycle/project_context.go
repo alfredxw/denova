@@ -49,13 +49,17 @@ func NewProjectInstructionsContextSource(cfg *config.Config, agentKind string, s
 		return nil, fmt.Errorf("project instruction context requires an Agent kind")
 	}
 	workspace := strings.TrimSpace(state.Workspace())
+	projectID := ""
+	if cfg != nil {
+		projectID = strings.TrimSpace(cfg.ProjectID)
+	}
 	limit := config.ResolveAgentContext(cfg, agentKind).MaxFragmentBytes
 	encoded, err := json.Marshal(struct {
 		AgentKind string
-		Workspace string
+		ProjectID string
 		Resources []string
 		Limit     int
-	}{agentKind, workspace, []string{book.AgentInstructionsFileName, book.CreatorFileName}, limit})
+	}{agentKind, projectID, []string{book.AgentInstructionsFileName, book.CreatorFileName}, limit})
 	if err != nil {
 		return nil, fmt.Errorf("encode project instruction context identity: %w", err)
 	}
@@ -64,7 +68,7 @@ func NewProjectInstructionsContextSource(cfg *config.Config, agentKind string, s
 		files: book.NewService(workspace),
 		limit: limit,
 		identity: agent.CapabilityIdentity{
-			Kind: "denova.project_instructions.context", Version: 2, ConfigHash: hex.EncodeToString(digest[:]),
+			Kind: "denova.project_instructions.context", Version: 3, ConfigHash: hex.EncodeToString(digest[:]),
 		},
 	}, nil
 }

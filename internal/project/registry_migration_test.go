@@ -4,8 +4,150 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
+
+func TestRegistryLegacyMigrationRebasesManagedProjectFromForeignRoot(t *testing.T) {
+	denovaDir := t.TempDir()
+	workspace := filepath.Join(denovaDir, ContentDirectoryName, "portable-book")
+	if err := os.MkdirAll(filepath.Join(workspace, ".denova"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	foreignPath := `C:\old-root\Projects\portable-book`
+	if runtime.GOOS == "windows" {
+		foreignPath = "/Users/writer/old-root/Projects/portable-book"
+	}
+	writeLegacyBookRegistryForTest(t, denovaDir, legacyBookRegistry{
+		Current: foreignPath,
+		Books:   []legacyBookRecord{{Name: "Portable", Path: foreignPath}},
+	})
+
+	projects, err := NewRegistry(denovaDir).List(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(projects) != 1 {
+		t.Fatalf("migrated Projects = %#v", projects)
+	}
+	if projects[0].Location.Kind != LocationManaged || projects[0].Location.Path != "projects/portable-book" {
+		t.Fatalf("legacy managed Project location = %#v", projects[0].Location)
+	}
+	if projects[0].WorkspacePath != workspace || projects[0].Status != StatusAvailable {
+		t.Fatalf("legacy managed Project was not rebased: %#v", projects[0])
+	}
+	all, err := NewRegistry(denovaDir).List(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 1 || all[0].Name != "Portable" {
+		t.Fatalf("legacy managed Project was duplicated during rebasing: %#v", all)
+	}
+}
+
+func TestRegistryLegacyMigrationRebasesRootBookFromForeignDataRoot(t *testing.T) {
+	denovaDir := t.TempDir()
+	workspace := filepath.Join(denovaDir, "Legacy Root Book")
+	if err := os.MkdirAll(filepath.Join(workspace, ".denova"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	foreignPath := `C:\old-root\.denova\LEGACY ROOT BOOK`
+	if runtime.GOOS == "windows" {
+		foreignPath = "/Users/writer/.denova/LEGACY ROOT BOOK"
+	}
+	writeLegacyBookRegistryForTest(t, denovaDir, legacyBookRegistry{
+		Current: foreignPath,
+		Books:   []legacyBookRecord{{Name: "Legacy title", Path: foreignPath}},
+	})
+
+	registry := NewRegistry(denovaDir)
+	projects, err := registry.List(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(projects) != 1 {
+		t.Fatalf("root Book migration created duplicate Projects: %#v", projects)
+	}
+	project := projects[0]
+	if project.Location.Kind != LocationManaged || project.Location.Path != "Legacy Root Book" ||
+		project.WorkspacePath != workspace || project.Name != "Legacy title" || project.Status != StatusAvailable {
+		t.Fatalf("foreign-root Book was not rebased onto its original identity: %#v", project)
+	}
+	if registry.CurrentBookPath() != workspace {
+		t.Fatalf("current Book was not preserved: %q", registry.CurrentBookPath())
+	}
+}
+
+func TestRegistryMigrationKeepsOneManagedOwnerForDuplicatedLegacyPaths(t *testing.T) {
+	denovaDir := t.TempDir()
+	workspace := filepath.Join(denovaDir, ContentDirectoryName, "Portable Book")
+	if err := os.MkdirAll(filepath.Join(workspace, ".denova"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	stalePath := `/old-root/projects/Portable Book`
+	if runtime.GOOS == "windows" {
+		stalePath = `Z:\old-root\projects\Portable Book`
+	}
+	const (
+		staleID   = "project-stale"
+		currentID = "project-current"
+	)
+	legacy := registryData{
+		Version:       projectIDStateDirectoryRegistryVersion,
+		CurrentBookID: currentID,
+		Projects: []Record{
+			{ID: staleID, Type: TypeBook, Name: "Portable Book", WorkspacePath: stalePath},
+			{ID: currentID, Type: TypeBook, Name: "Portable Book", WorkspacePath: workspace},
+		},
+	}
+	raw, err := json.MarshalIndent(legacy, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(denovaDir, "projects.json"), append(raw, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{staleID, currentID} {
+		stateRoot := filepath.Join(denovaDir, StateDirectoryName, id)
+		if err := os.MkdirAll(stateRoot, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(stateRoot, "identity.txt"), []byte(id), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	registry := NewRegistry(denovaDir)
+	projects, err := registry.List(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(projects) != 2 {
+		t.Fatalf("migration changed Project identities: %#v", projects)
+	}
+	byID := make(map[string]Record, len(projects))
+	for _, record := range projects {
+		byID[record.ID] = record
+	}
+	current := byID[currentID]
+	if current.Location.Kind != LocationManaged || current.Location.Path != "projects/Portable Book" ||
+		current.WorkspacePath != workspace || current.Status != StatusAvailable {
+		t.Fatalf("current Project did not retain the managed content location: %#v", current)
+	}
+	stale := byID[staleID]
+	if stale.Location.Kind != LocationExternal || stale.Location.Path != stalePath || stale.Status != StatusMissing {
+		t.Fatalf("stale duplicate Project was not preserved as its original external location: %#v", stale)
+	}
+	if registry.CurrentBookPath() != workspace {
+		t.Fatalf("current Book path = %q, want %q", registry.CurrentBookPath(), workspace)
+	}
+	for _, record := range projects {
+		identityPath := filepath.Join(denovaDir, StateDirectoryName, record.StateDirName, "identity.txt")
+		if identity, err := os.ReadFile(identityPath); err != nil || string(identity) != record.ID {
+			t.Fatalf("Project %s state identity=%q err=%v", record.ID, identity, err)
+		}
+	}
+}
 
 func TestRegistryLegacyMigrationArchivesMissingAndHiddenBooks(t *testing.T) {
 	denovaDir := t.TempDir()
@@ -125,6 +267,11 @@ func TestRegistryMigratesProjectIDStateDirectoriesWithoutChangingIdentity(t *tes
 	}
 	if len(persisted.Projects) != 2 || persisted.Projects[0].ID != firstID || persisted.Projects[1].ID != secondID {
 		t.Fatalf("Project identity changed during state migration: %#v", persisted.Projects)
+	}
+	for _, record := range persisted.Projects {
+		if record.Location.Kind != LocationExternal || record.Location.Path == "" || record.WorkspacePath != "" {
+			t.Fatalf("legacy Project location was not normalized: %#v", record)
+		}
 	}
 }
 

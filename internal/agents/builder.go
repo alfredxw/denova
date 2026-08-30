@@ -468,8 +468,7 @@ func identifyDenovaMiddlewares(kind string, cfg *config.Config, middlewares []ag
 			Index     int
 			Type      string
 			ProjectID string
-			Workspace string
-		}{kind, index, fmt.Sprintf("%T", middleware), configProjectID(cfg), configWorkspace(cfg)}))
+		}{kind, index, fmt.Sprintf("%T", middleware), configProjectID(cfg)}))
 	}
 	return identified
 }

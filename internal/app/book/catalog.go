@@ -3,7 +3,6 @@ package bookapp
 import (
 	"fmt"
 	"log/slog"
-	"path/filepath"
 	"time"
 
 	bookdomain "denova/internal/book"
@@ -35,11 +34,14 @@ func (service *Service) Books() []Record {
 	for _, project := range projects {
 		record := bookRecord(project)
 		if service.metadata != nil {
-			if metadata, readErr := service.metadata.Read(record.Path); readErr == nil {
-				if metadata.Title != "" {
-					record.Name = metadata.Title
+			layout, layoutErr := service.registry.Layout(project)
+			if layoutErr == nil {
+				if metadata, readErr := service.metadata.Read(layout.ContentRoot, layout.StateRoot); readErr == nil {
+					if metadata.Title != "" {
+						record.Name = metadata.Title
+					}
+					record.Author = metadata.Author
 				}
-				record.Author = metadata.Author
 			}
 		}
 		record.CoverUpdatedAt = CoverUpdatedAt(record.Path)
@@ -56,14 +58,14 @@ func (service *Service) SortMode() projectdomain.SortMode {
 }
 
 func (service *Service) Info(path string) (bookdomain.BookMeta, error) {
-	absPath, err := filepath.Abs(path)
-	if err != nil {
-		return bookdomain.BookMeta{}, fmt.Errorf("invalid Book path: %w", err)
-	}
 	if service == nil || service.metadata == nil {
 		return bookdomain.BookMeta{}, fmt.Errorf("Book metadata store is unavailable")
 	}
-	return service.metadata.Read(absPath)
+	layout, err := service.metadataLayout(path)
+	if err != nil {
+		return bookdomain.BookMeta{}, err
+	}
+	return service.metadata.Read(layout.ContentRoot, layout.StateRoot)
 }
 
 func (service *Service) UpdateInfo(path, title, author, description string) (bookdomain.BookMeta, error) {
@@ -76,11 +78,11 @@ func (service *Service) UpdateInfo(path, title, author, description string) (boo
 	}
 	metadata.Author = author
 	metadata.Description = description
-	absPath, err := filepath.Abs(path)
+	layout, err := service.metadataLayout(path)
 	if err != nil {
-		return bookdomain.BookMeta{}, fmt.Errorf("invalid Book path: %w", err)
+		return bookdomain.BookMeta{}, err
 	}
-	return service.metadata.Write(absPath, metadata)
+	return service.metadata.Write(layout.ContentRoot, layout.StateRoot, metadata)
 }
 
 func (service *Service) Reorder(paths []string) error {

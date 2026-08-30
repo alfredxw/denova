@@ -99,17 +99,12 @@ func (service *Service) PrepareCycle(
 	if err != nil {
 		return agentexecution.Cycle{}, err
 	}
-	var runtime *Runtime
-	if strings.TrimSpace(binding.ProjectID) != "" {
-		runtime, err = service.AcquireProjectRuntime(ctx, binding.ProjectID)
-	} else {
-		runtime, err = service.AcquireRuntime(ctx, binding.Workspace)
-	}
+	runtime, err := service.AcquireProjectRuntime(ctx, binding.ProjectID)
 	if err != nil {
 		return agentexecution.Cycle{}, err
 	}
 	defer runtime.Release()
-	if runtime.Workspace != binding.Workspace || restored.CommandID != string(request.CommandID) {
+	if runtime.ProjectID != binding.ProjectID || restored.CommandID != string(request.CommandID) {
 		return agentexecution.Cycle{}, fmt.Errorf("%w: Image Agent runtime changed", agentexecution.ErrCyclePreparationUnavailable)
 	}
 	cycle, _, err := service.prepareAgentCycle(runtime, restored)

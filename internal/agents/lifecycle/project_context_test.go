@@ -109,3 +109,39 @@ func TestProjectInstructionsContextSourceRejectsEachOversizeFile(t *testing.T) {
 		})
 	}
 }
+
+func TestProjectInstructionsContextIdentityUsesProjectIDInsteadOfRuntimeRoot(t *testing.T) {
+	firstRoot := t.TempDir()
+	secondRoot := t.TempDir()
+	first, err := NewProjectInstructionsContextSource(
+		&config.Config{ProjectID: "project-portable", Workspace: firstRoot},
+		config.AgentKindIDE,
+		book.NewState(firstRoot),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := NewProjectInstructionsContextSource(
+		&config.Config{ProjectID: "project-portable", Workspace: secondRoot},
+		config.AgentKindIDE,
+		book.NewState(secondRoot),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Identity() != second.Identity() {
+		t.Fatalf("context identity changed after moving the same Project: first=%#v second=%#v", first.Identity(), second.Identity())
+	}
+
+	otherProject, err := NewProjectInstructionsContextSource(
+		&config.Config{ProjectID: "project-other", Workspace: secondRoot},
+		config.AgentKindIDE,
+		book.NewState(secondRoot),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Identity() == otherProject.Identity() {
+		t.Fatal("context identity must distinguish different Projects")
+	}
+}

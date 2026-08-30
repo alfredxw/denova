@@ -35,7 +35,7 @@ func TestPublicEventProjectorPreservesUsageAndStructuredToolDisplay(t *testing.T
 		},
 		FinishReason: "tool_calls", RequestedTools: []string{"write"},
 	}})
-	receipt := json.RawMessage(`{"schema":"workspace_change.tool_result.v1","status":"applied","workspace":"/workspace","change_group_id":"group","review_thread_id":"review-run","change_set_id":"change","path":"chapters/one.md","base_revision":"sha256:before","revision":"sha256:after","review_status":"pending","apply_state":"applied"}`)
+	receipt := json.RawMessage(`{"schema":"workspace_change.tool_result.v1","status":"applied","change_group_id":"group","review_thread_id":"review-run","change_set_id":"change","path":"chapters/one.md","base_revision":"sha256:before","revision":"sha256:after","review_status":"pending","apply_state":"applied"}`)
 	projector.Project(agent.Event{RunID: "run", Payload: agent.ToolFinished{
 		CallID: "call", Name: "write", Result: "written",
 		Projection: &agent.ToolResult{
@@ -69,7 +69,7 @@ func TestPublicEventProjectorPreservesUsageAndStructuredToolDisplay(t *testing.T
 	}
 	workspaceChange := events[indexes["workspace_change"]]
 	if workspaceChange.DataString("id") != "change" || workspaceChange.DataString("project_id") != "project" ||
-		workspaceChange.DataString("run_id") != "run" || workspaceChange.DataString("workspace") != "/workspace" ||
+		workspaceChange.DataString("run_id") != "run" || workspaceChange.DataString("workspace") != "" ||
 		workspaceChange.DataString("change_group_id") != "group" || workspaceChange.DataString("review_thread_id") != "review-run" ||
 		workspaceChange.DataString("path") != "chapters/one.md" || workspaceChange.DataString("base_revision") != "sha256:before" ||
 		workspaceChange.DataString("revision") != "sha256:after" || workspaceChange.DataString("review_status") != "pending" ||

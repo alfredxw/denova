@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"denova/internal/portablepath"
 )
 
 // ErrFileRevisionConflict 表示保存时文件已被其他来源更新，调用方应重新读取后再写入。
@@ -300,6 +302,9 @@ func SafePath(workspace, relPath string) (string, error) {
 	if filepath.IsAbs(relPath) {
 		return "", errors.New("不允许使用绝对路径")
 	}
+	if strings.Contains(relPath, `\`) {
+		return "", errors.New("project paths must use forward slashes")
+	}
 
 	cleanRel := filepath.Clean(filepath.FromSlash(relPath))
 	if cleanRel == "." || strings.HasPrefix(cleanRel, ".."+string(filepath.Separator)) || cleanRel == ".." {
@@ -310,6 +315,13 @@ func SafePath(workspace, relPath string) (string, error) {
 		if part == "" || strings.HasPrefix(part, ".") {
 			return "", errors.New("不允许操作隐藏文件或隐藏目录")
 		}
+	}
+	portableRelative := filepath.ToSlash(cleanRel)
+	if err := portablepath.Validate(portableRelative); err != nil {
+		return "", err
+	}
+	if err := portablepath.CheckNoCollision(workspace, portableRelative); err != nil {
+		return "", err
 	}
 
 	cleanWorkspace := filepath.Clean(workspace)

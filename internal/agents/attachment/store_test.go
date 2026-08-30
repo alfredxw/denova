@@ -28,10 +28,13 @@ func TestMaterializePersistsConversationOwnedCopies(t *testing.T) {
 		t.Fatalf("attachment digest = %q", files[0].SHA256)
 	}
 	for _, file := range files {
-		if !strings.HasPrefix(file.Path, filepath.Join(root, "attachments", "v1")+string(filepath.Separator)) {
-			t.Fatalf("copy escaped attachment root: %q", file.Path)
+		if !strings.HasPrefix(file.Path, "attachments/v1/") || strings.Contains(file.Path, "\\") || filepath.IsAbs(file.Path) {
+			t.Fatalf("attachment durable path is not portable: %q", file.Path)
 		}
-		info, err := os.Stat(file.Path)
+		if !strings.HasPrefix(file.RuntimePath, filepath.Join(root, "attachments", "v1")+string(filepath.Separator)) {
+			t.Fatalf("copy escaped attachment root: %q", file.RuntimePath)
+		}
+		info, err := os.Stat(file.RuntimePath)
 		if err != nil {
 			t.Fatalf("copy missing: %v", err)
 		}
@@ -42,7 +45,7 @@ func TestMaterializePersistsConversationOwnedCopies(t *testing.T) {
 	if err := RemoveScope(root, SessionScope("session-1")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(files[0].Path); !os.IsNotExist(err) {
+	if _, err := os.Stat(files[0].RuntimePath); !os.IsNotExist(err) {
 		t.Fatalf("scope removal left copy behind: %v", err)
 	}
 }
@@ -72,16 +75,16 @@ func TestMaterializeRejectsModifiedInputOnRetry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Chmod(files[0].Path, 0o600); err != nil {
+	if err := os.Chmod(files[0].RuntimePath, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(files[0].Path, []byte("changed"), 0o600); err != nil {
+	if err := os.WriteFile(files[0].RuntimePath, []byte("changed"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := Materialize(root, SessionScope("session-1"), "command-1", uploads); err == nil || !strings.Contains(err.Error(), "immutable attachment copy differs") {
 		t.Fatalf("retry error = %v", err)
 	}
-	content, err := os.ReadFile(files[0].Path)
+	content, err := os.ReadFile(files[0].RuntimePath)
 	if err != nil {
 		t.Fatal(err)
 	}

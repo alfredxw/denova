@@ -482,9 +482,9 @@ func (a *App) restoreWorkspaceGenerationAfterFailedTransition(currentWorkspace s
 	}
 }
 
-// closeWorkspaceRuntimeBindings evicts foreground-owned harness actors only
-// after the App workspace generation has drained. Project-scoped AgentChat
-// actors deliberately survive foreground Book changes.
+// closeWorkspaceRuntimeBindings resolves mutable workspace paths to stable
+// Project owners before evicting foreground actors. Project AgentChat actors
+// deliberately survive foreground Book changes.
 func (a *App) closeWorkspaceRuntimeBindings(ctx context.Context, workspaces ...string) error {
 	if a == nil || a.executionRuntime == nil {
 		return nil
@@ -495,11 +495,18 @@ func (a *App) closeWorkspaceRuntimeBindings(ctx context.Context, workspaces ...s
 		if strings.TrimSpace(workspace) == "" {
 			continue
 		}
-		if _, exists := seen[workspace]; exists {
+		record, found, err := a.projectRegistry.FindByPath(workspace, true)
+		if err != nil {
+			return err
+		}
+		if !found {
 			continue
 		}
-		seen[workspace] = struct{}{}
-		if err := a.executionRuntime.CloseForegroundWorkspaceBindings(ctx, workspace); err != nil {
+		if _, exists := seen[record.ID]; exists {
+			continue
+		}
+		seen[record.ID] = struct{}{}
+		if err := a.executionRuntime.CloseForegroundProjectBindings(ctx, record.ID); err != nil {
 			return err
 		}
 	}

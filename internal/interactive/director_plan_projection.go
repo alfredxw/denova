@@ -190,16 +190,22 @@ func (s *Store) directorPlanBranchDir(storyID, branchID string) string {
 	return filepath.Join(s.root, "interactive", "stories", storyID, "director", branchID)
 }
 
-func directorPlanDocInfos(dir string, docs DirectorPlanDocs) map[string]DirectorPlanDocInfo {
+func directorPlanDocInfos(root, dir string, docs DirectorPlanDocs) map[string]DirectorPlanDocInfo {
 	return map[string]DirectorPlanDocInfo{
-		DirectorPlanDocPlan:        directorPlanDocInfo(filepath.Join(dir, directorPlanFile), docs.Plan, ""),
-		DirectorPlanDocAgentBrief:  directorPlanDocInfo(filepath.Join(dir, directorAgentBriefFile), docs.AgentBrief, docs.AgentBrief),
-		DirectorPlanDocLoreContext: directorPlanDocInfo(filepath.Join(dir, directorLoreContextFile), docs.LoreContext, ExtractDirectorLoreContextActiveSection(docs.LoreContext)),
+		DirectorPlanDocPlan:        directorPlanDocInfo(root, filepath.Join(dir, directorPlanFile), docs.Plan, ""),
+		DirectorPlanDocAgentBrief:  directorPlanDocInfo(root, filepath.Join(dir, directorAgentBriefFile), docs.AgentBrief, docs.AgentBrief),
+		DirectorPlanDocLoreContext: directorPlanDocInfo(root, filepath.Join(dir, directorLoreContextFile), docs.LoreContext, ExtractDirectorLoreContextActiveSection(docs.LoreContext)),
 	}
 }
 
-func directorPlanDocInfo(path, content, visible string) DirectorPlanDocInfo {
-	return DirectorPlanDocInfo{Path: filepath.ToSlash(path), Bytes: len([]byte(content)), Hash: textHash(content), VisibleBytes: len([]byte(visible))}
+func directorPlanDocInfo(root, filePath, content, visible string) DirectorPlanDocInfo {
+	relative, err := filepath.Rel(root, filePath)
+	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		// All Director documents are constructed below Store.root. Keep an
+		// impossible boundary violation visible instead of persisting a host path.
+		relative = filepath.Base(filePath)
+	}
+	return DirectorPlanDocInfo{Path: filepath.ToSlash(relative), Bytes: len([]byte(content)), Hash: textHash(content), VisibleBytes: len([]byte(visible))}
 }
 
 func directorPlanHashes(docs DirectorPlanDocs) map[string]string {

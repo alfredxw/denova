@@ -29,18 +29,36 @@ func (a *App) prepareChildDefinition(
 		return agent.Definition{}, fmt.Errorf("decode delegated parent input: %w", err)
 	}
 	parentRequest := turn.ChatRequest()
+	finalize := func(definition agent.Definition, definitionErr error) (agent.Definition, error) {
+		if definitionErr != nil {
+			return agent.Definition{}, definitionErr
+		}
+		if a == nil || a.projectRegistry == nil {
+			return agent.Definition{}, agentexecution.ErrCyclePreparationUnavailable
+		}
+		record, err := a.projectRegistry.Get(binding.ProjectID)
+		if err != nil {
+			return agent.Definition{}, err
+		}
+		layout, err := a.projectRegistry.EnsureState(record)
+		if err != nil {
+			return agent.Definition{}, err
+		}
+		definition.AttachmentRoot = layout.StateRoot
+		return definition, nil
+	}
 	switch binding.AgentKind {
 	case agentrun.AgentKindGeneral, agentrun.AgentKindHarness:
-		return a.AgentChat().PrepareChildDefinition(ctx, binding, request.Child, parentRequest)
+		return finalize(a.AgentChat().PrepareChildDefinition(ctx, binding, request.Child, parentRequest))
 	case agentrun.AgentKindIDE:
 		if binding.Mode == agentrun.ModeAgentChat {
-			return a.AgentChat().PrepareChildDefinition(ctx, binding, request.Child, parentRequest)
+			return finalize(a.AgentChat().PrepareChildDefinition(ctx, binding, request.Child, parentRequest))
 		}
 		runtime, _, err := a.chat().prepareIDEChatRuntime(ctx, parentRequest)
 		if err != nil {
 			return agent.Definition{}, err
 		}
-		if runtime.workspace != strings.TrimSpace(binding.Workspace) || runtime.sess == nil || runtime.sess.ID != strings.TrimSpace(binding.SessionID) {
+		if runtime.projectID != strings.TrimSpace(binding.ProjectID) || runtime.sess == nil || runtime.sess.ID != strings.TrimSpace(binding.SessionID) {
 			return agent.Definition{}, fmt.Errorf("%w: delegated Writing parent is not the active Session", agentexecution.ErrCyclePreparationUnavailable)
 		}
 		agentHost, err := a.HarnessAgentHostCapabilities(ctx, &runtime.cfg, config.AgentKindIDE)
@@ -54,7 +72,7 @@ func (a *App) prepareChildDefinition(
 		if err != nil {
 			return agent.Definition{}, err
 		}
-		return agentdelegation.ChildDefinition(built.Definition, request.Child)
+		return finalize(agentdelegation.ChildDefinition(built.Definition, request.Child))
 	case agentrun.AgentKindInteractiveStory:
 		cycle, err := a.interactiveService().prepareInteractiveAgentCycle(ctx, interactiveAgentCycleRequest{
 			CommandID: parentRequest.CommandID, StoryID: binding.StoryID, BranchID: binding.BranchID,
@@ -64,7 +82,7 @@ func (a *App) prepareChildDefinition(
 		if err != nil {
 			return agent.Definition{}, err
 		}
-		return agentdelegation.ChildDefinition(cycle.definition, request.Child)
+		return finalize(agentdelegation.ChildDefinition(cycle.definition, request.Child))
 	case agentrun.AgentKindConfigManager:
 		cycle, err := a.ConfigManager().PrepareCycle(ctx, agentexecution.CycleRestoreRequest{
 			Binding: binding, CommandID: agentrun.CommandID(parentRequest.CommandID), Request: parentRequest,
@@ -73,7 +91,7 @@ func (a *App) prepareChildDefinition(
 		if err != nil {
 			return agent.Definition{}, err
 		}
-		return agentdelegation.ChildDefinition(cycle.Definition, request.Child)
+		return finalize(agentdelegation.ChildDefinition(cycle.Definition, request.Child))
 	default:
 		return agent.Definition{}, fmt.Errorf("%w: Agent kind %q does not support delegation", agentexecution.ErrCyclePreparationUnavailable, binding.AgentKind)
 	}

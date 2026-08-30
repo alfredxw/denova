@@ -137,7 +137,7 @@ func (session *Session) Inspect(ctx context.Context, input Input) (Inspection, e
 	if err != nil {
 		return Inspection{}, err
 	}
-	messages, _, err := assembleCycleMessages(effective, input.Text, input.Attachments, prepared.fragments)
+	messages, _, err := assembleCycleMessages(effective, input.Text, input.Attachments, prepared.fragments, prepared.definition.AttachmentRoot)
 	if err != nil {
 		return Inspection{}, err
 	}

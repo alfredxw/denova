@@ -21,8 +21,8 @@ const (
 
 const (
 	// AgentApprovalRuleWorkspace is deliberately the only persisted scope. A
-	// project may never grant permissions to another workspace or to the host
-	// globally through a checked-in configuration file.
+	// managed Project binds this scope to ProjectID so the authorization moves
+	// with Denova State; an external Project keeps a host workspace boundary.
 	AgentApprovalRuleWorkspace      = "workspace"
 	AgentApprovalRuleMatcherVersion = 1
 	AgentApprovalMatcherShell       = "shell_command"
@@ -32,7 +32,9 @@ const (
 	MaxAgentApprovalRuleKeyBytes    = 2 * 1024
 )
 
-// AgentApprovalRule is a user-owned, workspace-scoped authorization. MatchKey
+// AgentApprovalRule is a user-owned Project/workspace authorization. Exactly
+// which durable boundary is used depends on Project ownership: managed Projects
+// use ProjectID, while external Projects retain their host workspace. MatchKey
 // is emitted and revalidated by its named matcher; it is never a user-authored
 // glob or prefix. ApprovedArgsHash preserves the exact approved request for
 // audit without making volatile arguments the match key.
@@ -94,8 +96,8 @@ func ValidateAgentApprovalRules(rules []AgentApprovalRule) error {
 		if rule.Scope != AgentApprovalRuleWorkspace {
 			return fmt.Errorf("%s.scope must be %q", path, AgentApprovalRuleWorkspace)
 		}
-		if rule.Workspace == "" {
-			return fmt.Errorf("%s.workspace is required", path)
+		if rule.ProjectID == "" && rule.Workspace == "" {
+			return fmt.Errorf("%s.project_id or workspace is required", path)
 		}
 		switch rule.Matcher {
 		case AgentApprovalMatcherShell:

@@ -73,22 +73,12 @@ func (s *Runtime) deleteRuntimeBindings(ctx context.Context, selector agent.Sess
 	return s.public.deleteSessions(ctx, selector)
 }
 
-// CloseWorkspaceBindings evicts every durable Agent binding rooted in one
-// workspace after the app has drained that workspace generation.
-func (s *Runtime) CloseWorkspaceBindings(ctx context.Context, workspace string) error {
-	selector, err := agentrun.WorkspaceBindingSelector(workspace)
-	if err != nil {
-		return err
-	}
-	return s.closeRuntimeBindings(ctx, selector)
-}
-
-// CloseForegroundWorkspaceBindings evicts bindings owned by the foreground
-// workspace runtime while deliberately preserving user-level AgentChat runs.
+// CloseForegroundProjectBindings evicts bindings owned by the foreground
+// Project runtime while deliberately preserving user-level AgentChat runs.
 // AgentChat reuses the IDE implementation, but its distinct durable profile is
 // allowed to keep running when the title-bar book selection changes.
-func (s *Runtime) CloseForegroundWorkspaceBindings(ctx context.Context, workspace string) error {
-	selectors, err := agentrun.ForegroundWorkspaceBindingSelectors(workspace)
+func (s *Runtime) CloseForegroundProjectBindings(ctx context.Context, projectID string) error {
+	selectors, err := agentrun.ForegroundProjectBindingSelectors(projectID)
 	if err != nil {
 		return err
 	}
@@ -98,25 +88,6 @@ func (s *Runtime) CloseForegroundWorkspaceBindings(ctx context.Context, workspac
 		}
 	}
 	return nil
-}
-
-// CloseAgentChatSessionBindings evicts one user-level project conversation.
-func (s *Runtime) CloseAgentChatSessionBindings(ctx context.Context, workspace, sessionID string) error {
-	selector, err := agentrun.AgentChatSessionBindingSelector(workspace, sessionID)
-	if err != nil {
-		return err
-	}
-	return s.closeRuntimeBindings(ctx, selector)
-}
-
-// DeleteAgentChatSessionBindings permanently removes one legacy workspace-
-// scoped AgentChat Session.
-func (s *Runtime) DeleteAgentChatSessionBindings(ctx context.Context, workspace, sessionID string) error {
-	selector, err := agentrun.AgentChatSessionBindingSelector(workspace, sessionID)
-	if err != nil {
-		return err
-	}
-	return s.deleteRuntimeBindings(ctx, selector)
 }
 
 // CloseProjectSessionBindings evicts one stable Project conversation. The
@@ -137,7 +108,7 @@ func (s *Runtime) DeleteProjectSessionBindings(ctx context.Context, projectID, s
 	return s.deleteRuntimeBindings(ctx, selector)
 }
 
-// CloseProjectBindings evicts all AgentChat runtime actors owned by a Project.
+// CloseProjectBindings evicts all runtime actors owned by a Project.
 func (s *Runtime) CloseProjectBindings(ctx context.Context, projectID string) error {
 	selector, err := agentrun.ProjectBindingSelector(projectID)
 	if err != nil {
@@ -155,16 +126,16 @@ func (s *Runtime) DeleteProjectBindings(ctx context.Context, projectID string) e
 }
 
 // CloseSessionBindings evicts one session-backed Agent binding.
-func (s *Runtime) CloseSessionBindings(ctx context.Context, agentKind, workspace, sessionID string) error {
-	selector, err := agentrun.SessionBindingSelector(agentKind, workspace, sessionID)
+func (s *Runtime) CloseSessionBindings(ctx context.Context, agentKind, projectID, sessionID string) error {
+	selector, err := agentrun.SessionBindingSelector(agentKind, projectID, sessionID)
 	if err != nil {
 		return err
 	}
 	return s.closeRuntimeBindings(ctx, selector)
 }
 
-func (s *Runtime) DeleteSessionBindings(ctx context.Context, agentKind, workspace, sessionID string) error {
-	selector, err := agentrun.SessionBindingSelector(agentKind, workspace, sessionID)
+func (s *Runtime) DeleteSessionBindings(ctx context.Context, agentKind, projectID, sessionID string) error {
+	selector, err := agentrun.SessionBindingSelector(agentKind, projectID, sessionID)
 	if err != nil {
 		return err
 	}
@@ -172,22 +143,22 @@ func (s *Runtime) DeleteSessionBindings(ctx context.Context, agentKind, workspac
 }
 
 // CloseStoryBindings evicts every Agent binding for an exact story scope.
-func (s *Runtime) CloseStoryBindings(ctx context.Context, workspace, storyID, branchID string) error {
-	return s.forEachStorySelector(workspace, storyID, branchID, func(selector agent.SessionSelector) error {
+func (s *Runtime) CloseStoryBindings(ctx context.Context, projectID, storyID, branchID string) error {
+	return s.forEachStorySelector(projectID, storyID, branchID, func(selector agent.SessionSelector) error {
 		return s.closeRuntimeBindings(ctx, selector)
 	})
 }
 
 // DeleteStoryBindings permanently removes every public game/director Session
 // in the selected story or branch scope.
-func (s *Runtime) DeleteStoryBindings(ctx context.Context, workspace, storyID, branchID string) error {
-	return s.forEachStorySelector(workspace, storyID, branchID, func(selector agent.SessionSelector) error {
+func (s *Runtime) DeleteStoryBindings(ctx context.Context, projectID, storyID, branchID string) error {
+	return s.forEachStorySelector(projectID, storyID, branchID, func(selector agent.SessionSelector) error {
 		return s.deleteRuntimeBindings(ctx, selector)
 	})
 }
 
-func (s *Runtime) forEachStorySelector(workspace, storyID, branchID string, apply func(agent.SessionSelector) error) error {
-	base, err := agentrun.StoryBindingSelector(workspace, storyID, branchID)
+func (s *Runtime) forEachStorySelector(projectID, storyID, branchID string, apply func(agent.SessionSelector) error) error {
+	base, err := agentrun.StoryBindingSelector(projectID, storyID, branchID)
 	if err != nil {
 		return err
 	}

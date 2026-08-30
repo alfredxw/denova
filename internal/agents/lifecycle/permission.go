@@ -228,7 +228,11 @@ func (policy *denovaPermissionPolicy) evaluate(request agent.PermissionRequest, 
 	}
 	attachmentPaths := make([]string, 0, len(request.Attachments))
 	for _, attachment := range request.Attachments {
-		if path := strings.TrimSpace(attachment.Path); path != "" {
+		path := strings.TrimSpace(attachment.RuntimePath)
+		if path == "" {
+			path = strings.TrimSpace(attachment.Path)
+		}
+		if path != "" {
 			attachmentPaths = append(attachmentPaths, path)
 		}
 	}

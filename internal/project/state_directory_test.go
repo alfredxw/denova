@@ -13,6 +13,7 @@ func TestStateDirNameBaseProducesPortableReadableNames(t *testing.T) {
 		"我的/小说":        "我的-小说",
 		"✨":            "Project",
 		"CON":          "Project-CON",
+		"COM¹":         "Project-COM¹",
 		"Cafe\u0301":   "Café",
 	}
 	for input, want := range tests {

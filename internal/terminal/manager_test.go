@@ -19,6 +19,13 @@ func newTestManager(t *testing.T) *Manager {
 	return manager
 }
 
+func TestResolveShellFallsBackWhenConfiguredExecutableIsUnavailable(t *testing.T) {
+	configured := "denova-shell-that-does-not-exist"
+	if got, want := resolveShell(configured), platformDefaultShell(); got != want {
+		t.Fatalf("resolveShell(%q) = %q, want platform fallback %q", configured, got, want)
+	}
+}
+
 // collect reads output until the session exits or the deadline passes, returning what it saw.
 func collect(t *testing.T, session *Session, out <-chan []byte, want string) string {
 	t.Helper()

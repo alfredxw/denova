@@ -42,8 +42,14 @@ func TestAgentApprovalRuleValidationAndWorkspaceBoundary(t *testing.T) {
 	}
 	projectOnly := rule
 	projectOnly.Workspace = ""
-	if err := ValidateAgentApprovalRules([]AgentApprovalRule{projectOnly}); err == nil {
-		t.Fatal("project-only approval rule was accepted without a workspace boundary")
+	if err := ValidateAgentApprovalRules([]AgentApprovalRule{projectOnly}); err != nil {
+		t.Fatalf("managed Project approval rule was rejected: %v", err)
+	}
+	withoutBoundary := rule
+	withoutBoundary.ProjectID = ""
+	withoutBoundary.Workspace = ""
+	if err := ValidateAgentApprovalRules([]AgentApprovalRule{withoutBoundary}); err == nil {
+		t.Fatal("approval rule without a Project or workspace boundary was accepted")
 	}
 	workspace := PrepareWorkspaceAgentSettingsForWrite(Settings{}, Settings{AgentApprovalRules: []AgentApprovalRule{rule}})
 	if workspace.AgentApprovalRules != nil {

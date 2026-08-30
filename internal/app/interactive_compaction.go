@@ -52,7 +52,7 @@ func (s *InteractiveAppService) executeInteractiveContextCompaction(
 		Action:    agentstructural.Compact,
 		Ref:       agentrun.ContextCompactionRef{Force: true},
 		Options: agentrun.Options{
-			AgentKind: agentrun.AgentKindInteractiveStory, Workspace: fence.workspace,
+			AgentKind: agentrun.AgentKindInteractiveStory, ProjectID: fence.projectID, Workspace: fence.workspace,
 			StoryID: storyID, BranchID: branchID, Mode: "interactive",
 		},
 	})
@@ -109,7 +109,7 @@ func (s *InteractiveAppService) executeInteractiveContextCompactionRemoval(
 		CommandID: commandID,
 		Action:    agentstructural.Remove,
 		Options: agentrun.Options{
-			AgentKind: agentrun.AgentKindInteractiveStory, Workspace: fence.workspace,
+			AgentKind: agentrun.AgentKindInteractiveStory, ProjectID: fence.projectID, Workspace: fence.workspace,
 			StoryID: storyID, BranchID: branchID, Mode: "interactive",
 		},
 	})

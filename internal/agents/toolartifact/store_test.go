@@ -12,9 +12,9 @@ import (
 	agent "github.com/alfredxw/denova/agent"
 )
 
-func TestWorkspaceStorePublishesInsideWorkspaceScope(t *testing.T) {
-	workspace := t.TempDir()
-	store, err := NewWorkspaceStore(workspace, "story/../../sensitive-title")
+func TestStateStorePublishesPortablePathInsideStateScope(t *testing.T) {
+	stateRoot := t.TempDir()
+	store, err := NewStateStore(stateRoot, "story/../../sensitive-title")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,20 +33,19 @@ func TestWorkspaceStorePublishesInsideWorkspaceScope(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	canonicalWorkspace, err := filepath.EvalSymlinks(workspace)
-	if err != nil {
-		t.Fatal(err)
-	}
-	relative, err := filepath.Rel(canonicalWorkspace, filepath.FromSlash(reference.ReadablePath))
-	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-		t.Fatalf("artifact escaped workspace: path=%q relative=%q err=%v", reference.ReadablePath, relative, err)
+	if filepath.IsAbs(reference.ReadablePath) || strings.Contains(reference.ReadablePath, "\\") {
+		t.Fatalf("artifact reference is not portable: %q", reference.ReadablePath)
 	}
 	if strings.Contains(reference.ReadablePath, "sensitive-title") || strings.Contains(reference.ReadablePath, "../") ||
-		!strings.Contains(filepath.ToSlash(relative), "/artifacts/scope-") || !reference.Complete ||
+		!strings.HasPrefix(reference.ReadablePath, "artifacts/scope-") || !reference.Complete ||
 		reference.Purpose != agent.ToolArtifactPurposeCompleteModelOutput {
 		t.Fatalf("unsafe or incomplete artifact reference: %#v", reference)
 	}
-	content, err := os.ReadFile(reference.ReadablePath)
+	runtimePath, err := store.ResolveToolArtifactPath(context.Background(), reference.ReadablePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(runtimePath)
 	if err != nil || string(content) != "complete game tool result" {
 		t.Fatalf("artifact content=%q err=%v", content, err)
 	}
@@ -60,8 +59,8 @@ func TestWorkspaceStorePublishesInsideWorkspaceScope(t *testing.T) {
 	}
 }
 
-func TestWorkspaceStoreDefaultsUnspecifiedArtifactPurposeToAttachment(t *testing.T) {
-	store, err := NewWorkspaceStore(t.TempDir(), "attachment-scope")
+func TestStateStoreDefaultsUnspecifiedArtifactPurposeToAttachment(t *testing.T) {
+	store, err := NewStateStore(t.TempDir(), "attachment-scope")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,8 +82,57 @@ func TestWorkspaceStoreDefaultsUnspecifiedArtifactPurposeToAttachment(t *testing
 	}
 }
 
-func TestWorkspaceStoreSeparatesArtifactPurposesForOneToolCall(t *testing.T) {
-	store, err := NewWorkspaceStore(t.TempDir(), "purpose-scope")
+func TestStateStoreReferenceSurvivesDataRootMove(t *testing.T) {
+	parent := t.TempDir()
+	oldRoot := filepath.Join(parent, "old-root")
+	newRoot := filepath.Join(parent, "new-root")
+	if err := os.MkdirAll(oldRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	store, err := NewStateStore(oldRoot, "portable-session")
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := agent.ToolArtifactRequest{
+		ToolName: "read", ToolCallID: "portable-call", Purpose: agent.ToolArtifactPurposeCompleteModelOutput,
+		MIMEType: "text/plain", Extension: "txt",
+	}
+	writer, err := store.BeginToolArtifact(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writer.Write([]byte("portable output")); err != nil {
+		t.Fatal(err)
+	}
+	reference, err := writer.Commit()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(oldRoot, newRoot); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := NewStateStore(newRoot, "portable-session")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := reopened.VerifyToolArtifact(context.Background(), reference, request); err != nil {
+		t.Fatalf("moved store rejected durable reference: %v", err)
+	}
+	resolved, err := reopened.ResolveToolArtifactPath(context.Background(), reference.ReadablePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(filepath.ToSlash(reference.ReadablePath), filepath.ToSlash(parent)) || !strings.HasPrefix(resolved, newRoot) {
+		t.Fatalf("reference did not rebase: durable=%q runtime=%q", reference.ReadablePath, resolved)
+	}
+	content, err := os.ReadFile(resolved)
+	if err != nil || string(content) != "portable output" {
+		t.Fatalf("moved artifact content=%q err=%v", content, err)
+	}
+}
+
+func TestStateStoreSeparatesArtifactPurposesForOneToolCall(t *testing.T) {
+	store, err := NewStateStore(t.TempDir(), "purpose-scope")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,8 +173,8 @@ func TestBoundedStoreRejectsArtifactRootOutsideBoundary(t *testing.T) {
 	}
 }
 
-func TestWorkspaceStoreConcurrentReplayIsIdempotent(t *testing.T) {
-	store, err := NewWorkspaceStore(t.TempDir(), "story-session-1")
+func TestStateStoreConcurrentReplayIsIdempotent(t *testing.T) {
+	store, err := NewStateStore(t.TempDir(), "story-session-1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,15 +228,15 @@ func TestWorkspaceStoreConcurrentReplayIsIdempotent(t *testing.T) {
 	}
 }
 
-func TestWorkspaceStoreRepairsOwnedArtifactPermissionsWithoutChangingParents(t *testing.T) {
+func TestStateStoreRepairsOwnedArtifactPermissionsWithoutChangingParents(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Windows does not expose POSIX permission bits")
 	}
-	workspace := t.TempDir()
-	if err := os.Chmod(workspace, 0o755); err != nil {
+	stateRoot := t.TempDir()
+	if err := os.Chmod(stateRoot, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	store, err := NewWorkspaceStore(workspace, "legacy-permission-scope")
+	store, err := NewStateStore(stateRoot, "legacy-permission-scope")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,7 +264,7 @@ func TestWorkspaceStoreRepairsOwnedArtifactPermissionsWithoutChangingParents(t *
 		t.Fatal(err)
 	}
 	assertPathPermissions(t, artifactRoot, 0o700)
-	assertPathPermissions(t, workspace, 0o755)
+	assertPathPermissions(t, stateRoot, 0o755)
 	assertPathPermissions(t, artifactParent, 0o755)
 	if _, err := writer.Write([]byte("legacy output")); err != nil {
 		t.Fatal(err)
@@ -225,7 +273,11 @@ func TestWorkspaceStoreRepairsOwnedArtifactPermissionsWithoutChangingParents(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertPathPermissions(t, reference.ReadablePath, 0o600)
+	runtimePath, err := store.ResolveToolArtifactPath(context.Background(), reference.ReadablePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertPathPermissions(t, runtimePath, 0o600)
 
 	// Simulate a legacy scope and artifact, then exercise the idempotent replay
 	// path. Begin repairs only the owned leaf; Commit repairs the matched final
@@ -233,7 +285,7 @@ func TestWorkspaceStoreRepairsOwnedArtifactPermissionsWithoutChangingParents(t *
 	if err := os.Chmod(artifactRoot, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Chmod(reference.ReadablePath, 0o644); err != nil {
+	if err := os.Chmod(runtimePath, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	replayWriter, err := store.BeginToolArtifact(context.Background(), request)
@@ -241,7 +293,7 @@ func TestWorkspaceStoreRepairsOwnedArtifactPermissionsWithoutChangingParents(t *
 		t.Fatal(err)
 	}
 	assertPathPermissions(t, artifactRoot, 0o700)
-	assertPathPermissions(t, reference.ReadablePath, 0o644)
+	assertPathPermissions(t, runtimePath, 0o644)
 	if _, err := replayWriter.Write([]byte("legacy output")); err != nil {
 		t.Fatal(err)
 	}
@@ -252,8 +304,8 @@ func TestWorkspaceStoreRepairsOwnedArtifactPermissionsWithoutChangingParents(t *
 	if replayed.ID != reference.ID || replayed.ReadablePath != reference.ReadablePath {
 		t.Fatalf("replayed artifact changed identity: first=%#v replay=%#v", reference, replayed)
 	}
-	assertPathPermissions(t, replayed.ReadablePath, 0o600)
-	assertPathPermissions(t, workspace, 0o755)
+	assertPathPermissions(t, runtimePath, 0o600)
+	assertPathPermissions(t, stateRoot, 0o755)
 	assertPathPermissions(t, artifactParent, 0o755)
 }
 

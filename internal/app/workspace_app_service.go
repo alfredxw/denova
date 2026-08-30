@@ -13,6 +13,7 @@ import (
 	"denova/internal/agents/session"
 	"denova/internal/book"
 	"denova/internal/interactive"
+	"denova/internal/portablepath"
 	projectdomain "denova/internal/project"
 	"denova/internal/workspace/filewatch"
 )
@@ -317,7 +318,15 @@ func (s *workspaceService) CreateBook(ctx context.Context, parentDir, title, aut
 		return BookCreationResult{}, fmt.Errorf("路径无效: %w", err)
 	}
 
-	dir := filepath.Join(absParent, title)
+	directoryName, err := portablepath.NormalizeComponent(title)
+	if err != nil {
+		return BookCreationResult{}, fmt.Errorf("书名不能作为跨平台目录名: %w", err)
+	}
+	if err := portablepath.CheckNoCollision(absParent, directoryName); err != nil {
+		return BookCreationResult{}, fmt.Errorf("书籍目录名在其他平台会发生冲突: %w", err)
+	}
+	title = directoryName
+	dir := filepath.Join(absParent, directoryName)
 	if _, err := os.Stat(dir); err == nil {
 		return BookCreationResult{}, fmt.Errorf("目录已存在: %s", dir)
 	}
@@ -341,7 +350,15 @@ func (s *workspaceService) CreateBook(ctx context.Context, parentDir, title, aut
 	}
 
 	meta := book.BookMeta{Title: title, Author: author, Description: description}
-	meta, err = a.bookMetaStore.Write(dir, meta)
+	project, err := a.projectRegistry.EnsureBook(dir)
+	if err != nil {
+		return BookCreationResult{}, fmt.Errorf("注册书籍 Project 失败: %w", err)
+	}
+	layout, err := a.projectRegistry.EnsureState(project)
+	if err != nil {
+		return BookCreationResult{}, fmt.Errorf("初始化书籍状态失败: %w", err)
+	}
+	meta, err = a.bookMetaStore.Write(layout.ContentRoot, layout.StateRoot, meta)
 	if err != nil {
 		return BookCreationResult{}, fmt.Errorf("写入书籍元信息失败: %w", err)
 	}
@@ -354,7 +371,7 @@ func (s *workspaceService) CreateBook(ctx context.Context, parentDir, title, aut
 	if switchErr != nil {
 		return BookCreationResult{}, fmt.Errorf("切换工作区失败: %w", switchErr)
 	}
-	project, _, err := a.resolveProjectByWorkspace(workspace)
+	project, _, err = a.resolveProjectByWorkspace(workspace)
 	if err != nil {
 		return BookCreationResult{}, fmt.Errorf("resolve created Book Project: %w", err)
 	}
