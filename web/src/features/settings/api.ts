@@ -215,7 +215,7 @@ export function discoverComfyUIWorkflows(endpoint: ImageAPIEndpointSettings, pro
   })
 }
 
-/** Imports the latest successful API graph for one fresh saved ComfyUI workflow. */
+/** Imports the latest API graph for one fresh saved ComfyUI workflow. */
 export function loadComfyUIWorkflow(endpoint: ImageAPIEndpointSettings, profile: ImageAPIProfileSettings, path: string, signal?: AbortSignal): Promise<ComfyUIWorkflowSnapshot> {
   return requestJSON('/api/images/comfyui/workflows/load', {
     method: 'POST',

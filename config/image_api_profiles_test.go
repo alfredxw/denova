@@ -12,13 +12,13 @@ func TestResolveComfyUIConnectionDraftBeforeWorkflowSelection(t *testing.T) {
 	}}}
 	draft := ImageAPIProfileSettings{
 		ID: "comfy", Provider: ImageProviderComfyUI,
-		ComfyUI: &ComfyUIProfileSettings{WorkflowMode: ComfyUIWorkflowRemote},
 	}
 	resolved, err := ResolveImageAPIProfileConnectionDraft(cfg, draft)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resolved.Protocol != ImageProtocolComfyUI || resolved.BaseURL != "http://127.0.0.1:8188" {
+	if resolved.Protocol != ImageProtocolComfyUI || resolved.BaseURL != "http://127.0.0.1:8188" ||
+		resolved.ComfyUI.WorkflowMode != ComfyUIWorkflowRemote {
 		t.Fatalf("connection draft = %#v", resolved)
 	}
 	if _, err := ResolveImageAPIProfileDraft(cfg, draft); !errors.Is(err, ErrComfyUIWorkflowMissing) {

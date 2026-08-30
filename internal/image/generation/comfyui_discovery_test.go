@@ -15,6 +15,9 @@ import (
 func TestComfyUIWorkflowDiscoveryAndLoad(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Content-Type", "application/json")
+		if request.URL.Path == "/api/jobs" && request.URL.Query().Get("status") != "" {
+			t.Errorf("jobs status filter = %q, want all runs", request.URL.Query().Get("status"))
+		}
 		switch {
 		case request.URL.Path == "/userdata" && request.URL.Query().Get("dir") == "workflows":
 			writeComfyUITestJSON(t, response, []map[string]any{
@@ -33,7 +36,7 @@ func TestComfyUIWorkflowDiscoveryAndLoad(t *testing.T) {
 			writeComfyUITestJSON(t, response, map[string]any{})
 		case request.URL.Path == "/api/jobs" && request.URL.Query().Get("workflow_id") == "ready-workflow":
 			writeComfyUITestJSON(t, response, comfyUIJobsResponseForTest([]map[string]any{{
-				"id": "ready-job", "status": "completed", "create_time": 200, "workflow_id": "ready-workflow",
+				"id": "ready-job", "status": "failed", "create_time": 200, "workflow_id": "ready-workflow",
 			}}))
 		case request.URL.Path == "/api/jobs" && request.URL.Query().Get("workflow_id") == "stale-workflow":
 			writeComfyUITestJSON(t, response, comfyUIJobsResponseForTest([]map[string]any{
@@ -128,6 +131,24 @@ func TestPrepareDiscoveredComfyUIWorkflowAppliesBindings(t *testing.T) {
 	seed := workflow["5"].(map[string]any)["inputs"].(map[string]any)["seed"]
 	if seed == json.Number("9007199254740993") {
 		t.Fatal("runtime seed was not regenerated")
+	}
+}
+
+func TestPrepareImportedComfyUIWorkflowInjectsRequestValues(t *testing.T) {
+	raw := mustMarshalComfyUITestJSON(t, comfyUITestWorkflow())
+	workflow, err := prepareUploadedComfyUIWorkflow(config.ComfyUIProfileSettings{
+		WorkflowMode: config.ComfyUIWorkflowAPI,
+		Workflow:     string(raw),
+	}, GenerateRequest{Prompt: "runtime prompt", N: 2, Size: "768x1024"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prompt := workflow["2"].(map[string]any)["inputs"].(map[string]any)["text"]; prompt != "runtime prompt" {
+		t.Fatalf("prompt = %#v", prompt)
+	}
+	latent := workflow["4"].(map[string]any)["inputs"].(map[string]any)
+	if latent["width"] != 768 || latent["height"] != 1024 || latent["batch_size"] != 2 {
+		t.Fatalf("latent inputs = %#v", latent)
 	}
 }
 

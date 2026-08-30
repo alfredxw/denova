@@ -31,9 +31,8 @@ const (
 	// leaving enough room for detailed examples and model-specific syntax.
 	MaxImagePromptGuideBytes = 64 * 1024
 
-	ComfyUIWorkflowBuiltin = "builtin"
-	ComfyUIWorkflowAPI     = "api"
-	ComfyUIWorkflowRemote  = "remote"
+	ComfyUIWorkflowAPI    = "api"
+	ComfyUIWorkflowRemote = "remote"
 )
 
 var (
@@ -63,10 +62,9 @@ type ComfyUIBindings struct {
 	Height *ComfyUIInputBinding `toml:"height,omitempty" json:"height,omitempty"`
 }
 
-// ComfyUIProfileSettings owns the workflow source used by the ComfyUI
-// protocol. Builtin mode uses Denova's core-node text-to-image graph, API mode
-// executes an uploaded API-format graph, and remote mode executes a cached
-// snapshot discovered from a saved ComfyUI workflow.
+// ComfyUIProfileSettings owns the executable graph used by the ComfyUI
+// protocol. API mode executes an imported API-format graph, while remote mode
+// executes a cached snapshot discovered from a saved ComfyUI workflow.
 type ComfyUIProfileSettings struct {
 	WorkflowMode     string           `toml:"workflow_mode,omitempty" json:"workflow_mode,omitempty"`
 	Workflow         string           `toml:"workflow,omitempty" json:"workflow,omitempty"`
@@ -299,10 +297,7 @@ func resolveImageAPIProfileForPurpose(profileID string, profile ImageAPIProfileS
 	model := firstNonEmpty(strings.TrimSpace(profile.Model), defaults.Model)
 	comfy := normalizeComfyUIProfile(profile.ComfyUI)
 	if purpose == imageProfileForGeneration {
-		if protocol == ImageProtocolComfyUI && comfy.WorkflowMode == ComfyUIWorkflowBuiltin && model == "" {
-			return ResolvedImageAPIProfile{}, ErrImageAPIModelMissing
-		}
-		if protocol == ImageProtocolComfyUI && comfy.WorkflowMode != ComfyUIWorkflowBuiltin && comfy.Workflow == "" {
+		if protocol == ImageProtocolComfyUI && comfy.Workflow == "" {
 			return ResolvedImageAPIProfile{}, ErrComfyUIWorkflowMissing
 		}
 		if protocol != ImageProtocolComfyUI && model == "" {

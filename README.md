@@ -118,7 +118,7 @@ corepack enable
 
 Denova 的语言模型将 provider 与 API 协议分开配置：provider 从内置服务商目录选择，协议统一为 OpenAI Chat Completions、OpenAI Responses 或 Anthropic Messages。自定义端点选择「兼容 / 自定义端点」服务商，再设置协议与 Base URL；Gemini 使用 Google 官方的 OpenAI 兼容入口。OpenAI 默认使用 Responses API，DeepSeek 同时提供 Chat Completions、Responses 与 Anthropic 路由，MiniMax 默认使用能完整续传 thinking block 的 Anthropic 路由。设置页会按当前协议通过 OpenAI-compatible 或 Anthropic `/models` 获取模型候选，但模型名始终可自定义；也可直接用当前未保存配置发送一次最小生成请求来测试连接。旧 `model_profiles` 的 `openai_*` 字段和下面的 `OPENAI_*` 环境变量会继续按 Chat Completions 兼容读取。
 
-图像模型支持 OpenAI、xAI/Grok、ComfyUI、火山引擎 Seedream、Google Gemini Image，以及可选择上述任一协议的自定义端点。ComfyUI 可直接使用内置基础文生图工作流，只需填写地址与 checkpoint；复杂工作流可上传 API Format JSON，或从当前 ComfyUI 服务发现。Denova 只绑定提示词、图片数量和尺寸，模型、采样器、CFG 等静态参数始终沿用工作流。旧版 `image_api_*` 和图像 Profile 的 `openai_api_*` 配置会在首次读取时自动迁移，原文件会先保存为带内容摘要的 `.bak` 备份。推荐先在设置页配置语言模型、图像模型、Agent 参数、默认写作 Skill、编辑器、游戏模式、版本管理、语言、主题和字体。
+图像模型支持 OpenAI、xAI/Grok、ComfyUI、火山引擎 Seedream、Google Gemini Image，以及可选择上述任一协议的自定义端点。ComfyUI 默认发现当前服务中用户保存的工作流；保存后运行一次即可解析 API Graph，也可导入从 ComfyUI 导出的 API Format JSON。Denova 只绑定提示词、图片数量和尺寸，模型、采样器、CFG 等静态参数始终沿用工作流。旧版 `image_api_*` 和图像 Profile 的 `openai_api_*` 配置会在首次读取时自动迁移，原文件会先保存为带内容摘要的 `.bak` 备份。推荐先在设置页配置语言模型、图像模型、Agent 参数、默认写作 Skill、编辑器、游戏模式、版本管理、语言、主题和字体。
 
 需要脚本化启动或部署时，也可以用环境变量覆盖模型配置：
 

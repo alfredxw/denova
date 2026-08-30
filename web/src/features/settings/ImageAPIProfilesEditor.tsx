@@ -1,5 +1,5 @@
-import { useMemo, useRef, useState, type ChangeEvent, type MutableRefObject, type ReactNode } from 'react'
-import { FileJson, Plus, Trash2 } from 'lucide-react'
+import { useMemo, useRef, type MutableRefObject, type ReactNode } from 'react'
+import { Plus, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
@@ -25,11 +25,10 @@ import {
 } from './image-profiles'
 import { nextProfileIDAfterRemoval } from './profile-list'
 import { SettingsDisclosureCard } from './SettingsDisclosureCard'
-import type { ComfyUIProfileSettings, ImageAPIEndpointSettings, ImageAPIProfileSettings } from './types'
+import type { ImageAPIEndpointSettings, ImageAPIProfileSettings } from './types'
 
 const INHERIT_VALUE = '__inherit__'
 const PROVIDER_DEFAULT_VALUE = '__provider_default__'
-const MAX_WORKFLOW_BYTES = 5 * 1024 * 1024
 const MAX_PROMPT_GUIDE_LENGTH = 64 * 1024
 const OPENAI_QUALITY_OPTIONS = ['auto', 'high', 'medium', 'low', 'standard', 'hd']
 const XAI_QUALITY_OPTIONS = ['medium', 'low']
@@ -66,7 +65,6 @@ export function ImageAPIProfilesEditor({
 }: ImageAPIProfilesEditorProps) {
   const { t } = useTranslation()
   const profileKeysRef = useRef<string[]>([])
-  const [workflowErrors, setWorkflowErrors] = useState<Record<string, string>>({})
   const profileKeys = useMemo(() => stableKeys(profileKeysRef, profiles.length), [profiles.length])
   const profileOptions = imageProfileOptions(profiles, effectiveProfiles)
   const effectiveDefaultLabel = profileOptions.find((profile) => profile.id === effectiveDefaultProfileID)?.label
@@ -103,29 +101,6 @@ export function ImageAPIProfilesEditor({
     profileKeysRef.current.splice(index, 1)
     onProfilesChange(profiles.filter((_, current) => current !== index))
   }
-  const uploadWorkflow = async (index: number, profileKey: string, event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    event.target.value = ''
-    if (!file) return
-    if (file.size > MAX_WORKFLOW_BYTES) {
-      setWorkflowErrors((current) => ({ ...current, [profileKey]: t('settings.imageApi.workflowTooLarge') }))
-      return
-    }
-    try {
-      const workflow = await file.text()
-      const parsed: unknown = JSON.parse(workflow)
-      if (!isComfyUIAPIWorkflow(parsed)) throw new Error('invalid-api-format')
-      updateProfile(index, {
-        id: imageAPIProfileID(profiles[index]) || uniqueImageProfileID('comfyui', profiles, index),
-        comfyui: { workflow_mode: 'api', workflow, workflow_name: file.name },
-      })
-      setWorkflowErrors((current) => ({ ...current, [profileKey]: '' }))
-    } catch (error) {
-      console.warn(`[settings] failed to read ComfyUI API workflow file=${file.name}`, error)
-      setWorkflowErrors((current) => ({ ...current, [profileKey]: t('settings.imageApi.workflowInvalid') }))
-    }
-  }
-
   return (
     <div className="nova-settings-row rounded-md px-2 py-1.5">
       <div className="mb-1.5 text-[var(--nova-text-muted)]">{t('settings.imageApi.profiles')}</div>
@@ -220,15 +195,14 @@ export function ImageAPIProfilesEditor({
                   {endpointProfiles.map(({ profile, index }, childIndex) => {
                     const defaults = imageAPIProfileDefaults(provider)
                     const usesComfyUI = protocol === 'comfyui-workflow'
-                    const workflowMode = profile.comfyui?.workflow_mode === 'api' || profile.comfyui?.workflow_mode === 'remote' ? profile.comfyui.workflow_mode : 'builtin'
                     const profileKey = profileKeys[index]
-                    const configured = Boolean(profile.model?.trim() || profile.comfyui?.workflow)
+                    const configured = usesComfyUI ? Boolean(profile.comfyui?.workflow) : Boolean(profile.model?.trim())
                     return (
                       <SettingsDisclosureCard
                         key={profileKey}
                         badge={imageAPIProfileID(profile) === selectedDefaultProfileID ? t('settings.imageApi.defaultProfileName') : t('settings.imageApi.profileName', { index: childIndex + 1 })}
                         title={imageAPIProfileLabel(profile) || t('settings.imageApi.profileUntitled')}
-                        subtitle={profile.model?.trim() || profile.comfyui?.workflow_name?.trim() || t('settings.imageApi.profileModelMissing')}
+                        subtitle={(usesComfyUI ? profile.comfyui?.workflow_name?.trim() : profile.model?.trim()) || t('settings.imageApi.profileModelMissing')}
                         defaultOpen={!configured}
                         className="bg-[var(--nova-surface-1)]"
                         actions={<Button type="button" variant="ghost" size="icon-sm" onClick={() => removeProfile(index)} aria-label={t('settings.imageApi.deleteProfile')}><Trash2 /></Button>}
@@ -243,38 +217,7 @@ export function ImageAPIProfilesEditor({
                             <Input value={profile.name ?? ''} placeholder={t('settings.imageApi.profileAliasPlaceholder')} onChange={(event) => updateProfile(index, { name: event.target.value })} />
                           </ProfileField>
                           {usesComfyUI && (
-                            <>
-                              <ProfileField label={t('settings.imageApi.workflowMode')} className="md:col-span-4">
-                                <Select value={workflowMode} onValueChange={(value) => updateProfile(index, { comfyui: comfyUISettingsForMode(profile.comfyui, value as NonNullable<ComfyUIProfileSettings['workflow_mode']>) })}>
-                                  <SelectTrigger size="sm" className="w-full"><SelectValue /></SelectTrigger>
-                                  <SelectContent className="nova-panel border text-[var(--nova-text)]">
-                                    <SelectGroup>
-                                      <SelectItem value="builtin">{t('settings.imageApi.workflowBuiltin')}</SelectItem>
-                                      <SelectItem value="api">{t('settings.imageApi.workflowUpload')}</SelectItem>
-                                      <SelectItem value="remote">{t('settings.imageApi.workflowRemote')}</SelectItem>
-                                    </SelectGroup>
-                                  </SelectContent>
-                                </Select>
-                              </ProfileField>
-                              {workflowMode === 'builtin' && (
-                                <ProfileField label={t('settings.imageApi.checkpoint')} className="md:col-span-5">
-                                  <Input value={profile.model ?? ''} placeholder={t('settings.imageApi.checkpointPlaceholder')} onChange={(event) => updateModel(index, event.target.value)} />
-                                </ProfileField>
-                              )}
-                              {workflowMode === 'api' && (
-                                <div className="flex min-w-0 flex-col gap-1 md:col-span-8">
-                                  <span className="text-[11px] leading-none text-[var(--nova-text-faint)]">{t('settings.imageApi.workflowFile')}</span>
-                                  <div className="flex min-w-0 items-center gap-2">
-                                    <WorkflowFilePicker hasWorkflow={Boolean(profile.comfyui?.workflow)} onChange={(event) => void uploadWorkflow(index, profileKey, event)} />
-                                    <span className="min-w-0 truncate text-xs text-[var(--nova-text-faint)]">{profile.comfyui?.workflow_name || t('settings.imageApi.workflowMissing')}</span>
-                                  </div>
-                                  {workflowErrors[profileKey] && <span role="alert" className="text-[11px] text-red-600 dark:text-red-400">{workflowErrors[profileKey]}</span>}
-                                </div>
-                              )}
-                              {workflowMode === 'remote' && <div className="self-end text-[11px] leading-5 text-[var(--nova-text-faint)] md:col-span-8">{t('settings.imageApi.workflowRemoteModeHint')}</div>}
-                              {workflowMode !== 'remote' && <div className="self-end text-[11px] leading-5 text-[var(--nova-text-faint)] md:col-span-3">{workflowMode === 'builtin' ? t('settings.imageApi.workflowBuiltinHint') : t('settings.imageApi.workflowUploadHint')}</div>}
-                              {workflowMode === 'remote' && <ComfyUIWorkflowBrowser endpoint={endpoint} profile={profile} onChange={(comfyui) => updateProfile(index, { comfyui })} />}
-                            </>
+                            <ComfyUIWorkflowBrowser endpoint={endpoint} profile={profile} onChange={(comfyui) => updateProfile(index, { comfyui })} />
                           )}
                           <ProtocolOptions protocol={protocol} profile={profile} defaults={defaults} onUpdate={(patch) => updateProfile(index, patch)} />
                           <ProfileField label={t('settings.imageApi.promptGuide')} className="md:col-span-12">
@@ -301,25 +244,6 @@ export function ImageAPIProfilesEditor({
       </div>
     </div>
   )
-}
-
-function WorkflowFilePicker({ hasWorkflow, onChange }: { hasWorkflow: boolean; onChange: (event: ChangeEvent<HTMLInputElement>) => void }) {
-  const { t } = useTranslation()
-  const inputRef = useRef<HTMLInputElement>(null)
-  return (
-    <>
-      <input ref={inputRef} type="file" accept=".json,application/json" className="hidden" onChange={onChange} />
-      <Button type="button" variant="outline" size="sm" onClick={() => inputRef.current?.click()}>
-        <FileJson data-icon="inline-start" />
-        {hasWorkflow ? t('settings.imageApi.workflowReplace') : t('settings.imageApi.workflowChoose')}
-      </Button>
-    </>
-  )
-}
-
-function comfyUISettingsForMode(current: ComfyUIProfileSettings | undefined, mode: NonNullable<ComfyUIProfileSettings['workflow_mode']>): ComfyUIProfileSettings {
-  if (current?.workflow_mode === mode) return current
-  return { workflow_mode: mode }
 }
 
 function ProtocolOptions({ protocol, profile, defaults, onUpdate }: { protocol: string; profile: ImageAPIProfileSettings; defaults: ImageAPIProfileSettings; onUpdate: (patch: Partial<ImageAPIProfileSettings>) => void }) {
@@ -415,16 +339,6 @@ function uniqueID(base: string, values: string[]): string {
     const candidate = `${normalized}-${suffix}`
     if (!used.has(candidate)) return candidate
   }
-}
-
-function isComfyUIAPIWorkflow(value: unknown): value is Record<string, unknown> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
-  const nodes = Object.values(value)
-  return nodes.length > 0 && nodes.every((node) => {
-    if (!node || typeof node !== 'object' || Array.isArray(node)) return false
-    const record = node as Record<string, unknown>
-    return typeof record.class_type === 'string' && Boolean(record.inputs) && typeof record.inputs === 'object' && !Array.isArray(record.inputs)
-  })
 }
 
 function providerLabel(provider: ImageAPIProvider, t: (key: string) => string): string {

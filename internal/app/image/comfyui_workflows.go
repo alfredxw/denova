@@ -26,7 +26,7 @@ func (service *Service) DiscoverComfyUIWorkflows(ctx context.Context, endpoint c
 	return catalog, nil
 }
 
-// LoadComfyUIWorkflow imports one fresh successful API snapshot and its
+// LoadComfyUIWorkflow imports one fresh API snapshot and its
 // provider-neutral runtime bindings from the configured ComfyUI server.
 func (service *Service) LoadComfyUIWorkflow(ctx context.Context, endpoint config.ImageAPIEndpointSettings, profile config.ImageAPIProfileSettings, workflowPath string) (imagegen.ComfyUIWorkflowSnapshot, error) {
 	resolved, err := service.resolveComfyUIConnection(endpoint, profile)

@@ -18,56 +18,7 @@ const maxComfyUIWorkflowBytes = 5 << 20
 type comfyUIWorkflow map[string]any
 
 func prepareComfyUIWorkflow(profile config.ResolvedImageAPIProfile, request GenerateRequest) (comfyUIWorkflow, error) {
-	if profile.ComfyUI.WorkflowMode != config.ComfyUIWorkflowBuiltin {
-		return prepareUploadedComfyUIWorkflow(profile.ComfyUI, request)
-	}
-	return builtinComfyUIWorkflow(profile.Model, request)
-}
-
-func builtinComfyUIWorkflow(checkpoint string, request GenerateRequest) (comfyUIWorkflow, error) {
-	checkpoint = strings.TrimSpace(checkpoint)
-	if checkpoint == "" {
-		return nil, config.ErrImageAPIModelMissing
-	}
-	width, height := comfyUIImageDimensions(request.Size)
-	seed, err := randomComfyUISeed()
-	if err != nil {
-		return nil, err
-	}
-	return comfyUIWorkflow{
-		"3": map[string]any{
-			"class_type": "KSampler",
-			"inputs": map[string]any{
-				"seed": seed, "steps": 24, "cfg": 7.0, "sampler_name": "euler",
-				"scheduler": "normal", "denoise": 1.0, "model": []any{"4", 0},
-				"positive": []any{"6", 0}, "negative": []any{"7", 0}, "latent_image": []any{"5", 0},
-			},
-		},
-		"4": map[string]any{
-			"class_type": "CheckpointLoaderSimple",
-			"inputs":     map[string]any{"ckpt_name": checkpoint},
-		},
-		"5": map[string]any{
-			"class_type": "EmptyLatentImage",
-			"inputs":     map[string]any{"width": width, "height": height, "batch_size": request.N},
-		},
-		"6": map[string]any{
-			"class_type": "CLIPTextEncode",
-			"inputs":     map[string]any{"text": request.Prompt, "clip": []any{"4", 1}},
-		},
-		"7": map[string]any{
-			"class_type": "CLIPTextEncode",
-			"inputs":     map[string]any{"text": "", "clip": []any{"4", 1}},
-		},
-		"8": map[string]any{
-			"class_type": "VAEDecode",
-			"inputs":     map[string]any{"samples": []any{"3", 0}, "vae": []any{"4", 2}},
-		},
-		"9": map[string]any{
-			"class_type": "SaveImage",
-			"inputs":     map[string]any{"filename_prefix": "Denova", "images": []any{"8", 0}},
-		},
-	}, nil
+	return prepareUploadedComfyUIWorkflow(profile.ComfyUI, request)
 }
 
 func prepareUploadedComfyUIWorkflow(settings config.ComfyUIProfileSettings, request GenerateRequest) (comfyUIWorkflow, error) {
@@ -88,19 +39,23 @@ func prepareUploadedComfyUIWorkflow(settings config.ComfyUIProfileSettings, requ
 	if err := validateComfyUIWorkflow(workflow); err != nil {
 		return nil, err
 	}
-	if settings.WorkflowMode == config.ComfyUIWorkflowRemote {
+	switch settings.WorkflowMode {
+	case config.ComfyUIWorkflowRemote:
 		if err := applyComfyUIBindings(workflow, settings.Bindings, request); err != nil {
 			return nil, err
 		}
 		return workflow, nil
+	case config.ComfyUIWorkflowAPI:
+		if err := injectComfyUIPrompt(workflow, request.Prompt); err != nil {
+			return nil, err
+		}
+		if err := injectComfyUIRequestOptions(workflow, request); err != nil {
+			return nil, err
+		}
+		return workflow, nil
+	default:
+		return nil, fmt.Errorf("unsupported ComfyUI workflow mode %q", settings.WorkflowMode)
 	}
-	if err := injectComfyUIPrompt(workflow, request.Prompt); err != nil {
-		return nil, err
-	}
-	if err := injectComfyUIRequestOptions(workflow, request); err != nil {
-		return nil, err
-	}
-	return workflow, nil
 }
 
 func decodeComfyUIWorkflowJSON(raw []byte) (comfyUIWorkflow, error) {

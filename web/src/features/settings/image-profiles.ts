@@ -29,7 +29,7 @@ const ENDPOINT_DEFAULTS: Record<ImageAPIProvider, ImageAPIEndpointSettings> = {
 const PROFILE_DEFAULTS: Record<ImageAPIProvider, ImageAPIProfileSettings> = {
   openai: { model: DEFAULT_IMAGE_API_MODEL, default_quality: 'auto', default_output_format: 'png' },
   xai: { model: 'grok-imagine-image-2.0', default_resolution: '1k', default_quality: 'medium' },
-  comfyui: { default_size: '1024x1024', comfyui: { workflow_mode: 'builtin' } },
+  comfyui: { default_size: '1024x1024', comfyui: { workflow_mode: 'remote' } },
   volcengine: { model: 'doubao-seedream-5-0-260128', default_resolution: '2K', default_output_format: 'png' },
   google: { model: 'gemini-3.1-flash-image', default_resolution: '1K' },
   custom: {},
@@ -76,8 +76,8 @@ export function imageAPIProfileID(profile?: ImageAPIProfileSettings): string {
 
 export function imageAPIProfileLabel(profile?: ImageAPIProfileSettings): string {
   return profile?.name?.trim()
-    || profile?.model?.trim()
     || profile?.comfyui?.workflow_name?.trim()
+    || profile?.model?.trim()
     || imageAPIProfileID(profile)
 }
 

@@ -209,7 +209,7 @@ export interface ImageAPIEndpointSettings {
 }
 
 export interface ComfyUIProfileSettings {
-  workflow_mode?: 'builtin' | 'api' | 'remote'
+  workflow_mode?: 'api' | 'remote'
   workflow?: string
   workflow_name?: string
   workflow_id?: string

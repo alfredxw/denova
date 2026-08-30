@@ -56,7 +56,7 @@ func imageProviderRequiresAPIKey(provider string) bool {
 
 func normalizeComfyUIProfile(settings *ComfyUIProfileSettings) ComfyUIProfileSettings {
 	if settings == nil {
-		return ComfyUIProfileSettings{WorkflowMode: ComfyUIWorkflowBuiltin}
+		return ComfyUIProfileSettings{WorkflowMode: ComfyUIWorkflowRemote}
 	}
 	out := ComfyUIProfileSettings{
 		WorkflowMode:     strings.ToLower(strings.TrimSpace(settings.WorkflowMode)),
@@ -78,18 +78,10 @@ func normalizeComfyUIProfile(settings *ComfyUIProfileSettings) ComfyUIProfileSet
 		out.WorkflowJobTime = 0
 		out.Bindings = nil
 	case ComfyUIWorkflowRemote:
-	case ComfyUIWorkflowBuiltin, "":
-		out.WorkflowMode = ComfyUIWorkflowBuiltin
-		out.Workflow = ""
-		out.WorkflowName = ""
-		out.WorkflowID = ""
-		out.WorkflowPath = ""
-		out.WorkflowModified = 0
-		out.WorkflowJobID = ""
-		out.WorkflowJobTime = 0
-		out.Bindings = nil
+	case "":
+		out.WorkflowMode = ComfyUIWorkflowRemote
 	default:
-		out = ComfyUIProfileSettings{WorkflowMode: ComfyUIWorkflowBuiltin}
+		out = ComfyUIProfileSettings{WorkflowMode: ComfyUIWorkflowRemote}
 	}
 	return out
 }

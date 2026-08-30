@@ -21,8 +21,8 @@ const (
 	ComfyUIWorkflowStatusInvalid = "invalid"
 )
 
-// ComfyUIWorkflowSummary reports whether one saved UI workflow has a fresh,
-// successful API-format execution snapshot that Denova can safely reuse.
+// ComfyUIWorkflowSummary reports whether one saved UI workflow has a fresh
+// API-format execution snapshot that Denova can reuse.
 type ComfyUIWorkflowSummary struct {
 	Name       string `json:"name"`
 	Path       string `json:"path"`
@@ -39,7 +39,7 @@ type ComfyUIWorkflowCatalog struct {
 }
 
 // ComfyUIWorkflowSnapshot is the executable graph, inferred semantic bindings,
-// and transient repair candidates captured from one successful ComfyUI job.
+// and transient repair candidates captured when ComfyUI last ran the workflow.
 type ComfyUIWorkflowSnapshot struct {
 	ComfyUIWorkflowSummary
 	Workflow   string                   `json:"workflow"`
@@ -74,7 +74,7 @@ type comfyUIJobDetail struct {
 }
 
 // DiscoverWorkflows lists saved ComfyUI workflows and checks whether their
-// latest successful jobs are new enough to represent the saved files.
+// latest jobs are new enough to represent the saved files.
 func (adapter *ComfyUIAdapter) DiscoverWorkflows(ctx context.Context, profile config.ResolvedImageAPIProfile) (ComfyUIWorkflowCatalog, error) {
 	files, err := adapter.listSavedWorkflows(ctx, profile)
 	if err != nil {
@@ -103,7 +103,7 @@ func (adapter *ComfyUIAdapter) DiscoverWorkflows(ctx context.Context, profile co
 			workflows = append(workflows, summary)
 			continue
 		}
-		job, jobErr := adapter.latestCompletedJob(ctx, profile, summary.WorkflowID)
+		job, jobErr := adapter.latestWorkflowJob(ctx, profile, summary.WorkflowID)
 		if jobErr != nil {
 			summary.Detail = jobErr.Error()
 			workflows = append(workflows, summary)
@@ -158,15 +158,15 @@ func (adapter *ComfyUIAdapter) LoadWorkflow(ctx context.Context, profile config.
 	if workflowID == "" {
 		return ComfyUIWorkflowSnapshot{}, fmt.Errorf("saved workflow %q is missing id", workflowPath)
 	}
-	job, err := adapter.latestCompletedJob(ctx, profile, workflowID)
+	job, err := adapter.latestWorkflowJob(ctx, profile, workflowID)
 	if err != nil {
 		return ComfyUIWorkflowSnapshot{}, err
 	}
 	if job.ID == "" {
-		return ComfyUIWorkflowSnapshot{}, fmt.Errorf("saved workflow %q has no successful execution", workflowPath)
+		return ComfyUIWorkflowSnapshot{}, fmt.Errorf("saved workflow %q has not been run", workflowPath)
 	}
 	if file.Modified > job.CreateTime {
-		return ComfyUIWorkflowSnapshot{}, fmt.Errorf("saved workflow %q changed after its latest successful execution", workflowPath)
+		return ComfyUIWorkflowSnapshot{}, fmt.Errorf("saved workflow %q changed after it was last run", workflowPath)
 	}
 
 	jobEndpoint, err := endpointURL(profile.BaseURL, "api/jobs/"+url.PathEscape(job.ID))
@@ -252,7 +252,7 @@ func (adapter *ComfyUIAdapter) savedWorkflow(ctx context.Context, profile config
 	return workflow, nil
 }
 
-func (adapter *ComfyUIAdapter) latestCompletedJob(ctx context.Context, profile config.ResolvedImageAPIProfile, workflowID string) (comfyUIJobSummary, error) {
+func (adapter *ComfyUIAdapter) latestWorkflowJob(ctx context.Context, profile config.ResolvedImageAPIProfile, workflowID string) (comfyUIJobSummary, error) {
 	endpoint, err := comfyUIJobsEndpoint(profile.BaseURL, workflowID)
 	if err != nil {
 		return comfyUIJobSummary{}, err
@@ -274,7 +274,6 @@ func comfyUIJobsEndpoint(baseURL, workflowID string) (string, error) {
 	}
 	parsed, _ := url.Parse(endpoint)
 	query := parsed.Query()
-	query.Set("status", "completed")
 	query.Set("sort_by", "created_at")
 	query.Set("sort_order", "desc")
 	query.Set("limit", "1")

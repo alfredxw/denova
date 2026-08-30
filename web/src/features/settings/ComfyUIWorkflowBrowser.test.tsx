@@ -96,6 +96,64 @@ describe('ComfyUIWorkflowBrowser', () => {
     }))
     expect(screen.queryByText('Sampler · cfg')).not.toBeInTheDocument()
   })
+
+  it('selects an unparsed workflow and explains how to finish API parsing', async () => {
+    vi.mocked(discoverComfyUIWorkflows).mockResolvedValue({
+      workflows: [{ ...summary, status: 'not_run', job_id: undefined, job_time: undefined }],
+    })
+    const onChange = vi.fn()
+    const user = userEvent.setup()
+    render(<WorkflowHarness onChange={onChange} />)
+
+    await user.click(screen.getByRole('button', { name: '发现工作流' }))
+    await user.click(await screen.findByRole('button', { name: /Portrait/ }))
+
+    expect(await screen.findByText('需要完成 API 解析')).toBeInTheDocument()
+    expect(screen.getByText(/运行一次这个工作流，然后刷新/)).toBeInTheDocument()
+    expect(onChange).toHaveBeenLastCalledWith({
+      workflow_mode: 'remote',
+      workflow_name: 'Portrait',
+      workflow_id: 'workflow-id',
+      workflow_path: 'portrait.json',
+      workflow_modified: 100,
+    })
+    expect(loadComfyUIWorkflow).not.toHaveBeenCalled()
+
+    vi.mocked(discoverComfyUIWorkflows).mockResolvedValue({ workflows: [summary] })
+    vi.mocked(loadComfyUIWorkflow).mockResolvedValue({
+      ...summary,
+      workflow: '{"workflow":true}',
+      bindings: { prompt: { node_id: '2', input_name: 'text' } },
+      candidates: { prompt: [{ node_id: '2', input_name: 'text', label: 'Positive Prompt' }] },
+    })
+    await user.click(screen.getAllByRole('button', { name: '刷新工作流' })[0])
+
+    expect(await screen.findByText('生成输入绑定')).toBeInTheDocument()
+    expect(loadComfyUIWorkflow).toHaveBeenCalledWith(endpoint, expect.anything(), 'portrait.json', expect.any(AbortSignal))
+  })
+
+  it('imports API Format JSON as the fallback workflow source', async () => {
+    const onChange = vi.fn()
+    const user = userEvent.setup()
+    const workflow = JSON.stringify({
+      1: { class_type: 'CLIPTextEncode', inputs: { text: 'portrait' } },
+    })
+    render(<WorkflowHarness onChange={onChange} />)
+
+    await user.upload(
+      screen.getByLabelText('导入 API JSON'),
+      new File([workflow], 'portrait-api.json', { type: 'application/json' }),
+    )
+
+    expect(await screen.findByText('portrait-api.json')).toBeInTheDocument()
+    expect(screen.getByText(/已导入 ComfyUI API Format JSON/)).toBeInTheDocument()
+    expect(onChange).toHaveBeenLastCalledWith({
+      workflow_mode: 'api',
+      workflow,
+      workflow_name: 'portrait-api.json',
+    })
+    expect(screen.queryByText('生成输入绑定')).not.toBeInTheDocument()
+  })
 })
 
 function WorkflowHarness({ onChange }: { onChange: (settings: ComfyUIProfileSettings) => void }) {
