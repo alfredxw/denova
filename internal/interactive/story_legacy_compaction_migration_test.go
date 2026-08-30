@@ -160,6 +160,26 @@ func TestOpenStoryMigratesReleasedCompactionEvents(t *testing.T) {
 	if len(backups) != 1 {
 		t.Fatalf("idempotent migration backups = %#v, want one", backups)
 	}
+
+	continued := NewStoreWithNovaDir(root, dataRoot)
+	t.Cleanup(func() { _ = continued.Close() })
+	third, err := continued.AppendTurn(story.ID, AppendTurnRequest{
+		BranchID: "main", User: "continue", Narrative: "Third turn after the v0.3.3 migration.",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	continuedContext, err := continued.StoryContext(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(continuedContext.Snapshot.Turns) != 3 || continuedContext.Snapshot.Turns[0].ID != first.ID ||
+		continuedContext.Snapshot.Turns[1].ID != second.ID || continuedContext.Snapshot.Turns[2].ID != third.ID {
+		t.Fatalf("continued migrated turns = %#v", continuedContext.Snapshot.Turns)
+	}
+	if err := continued.Close(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func cloneRawMapForLegacyMigrationTest(t *testing.T, value map[string]any) map[string]any {

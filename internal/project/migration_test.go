@@ -197,8 +197,15 @@ func TestRegistryMigrationUpgradesReleasedReceiptsForUnavailableProjects(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(projects) != len(records) || projects[1].Status != StatusMissing {
+	if len(projects) != len(records) {
 		t.Fatalf("migrated Projects = %#v", projects)
+	}
+	statusByID := make(map[string]Status, len(projects))
+	for _, project := range projects {
+		statusByID[project.ID] = project.Status
+	}
+	if statusByID[records[0].ID] != StatusAvailable || statusByID[records[1].ID] != StatusMissing {
+		t.Fatalf("migrated Project statuses = %#v", statusByID)
 	}
 	for _, record := range records {
 		receiptPath := filepath.Join(denovaDir, StateDirectoryName, record.StateDirName, "migration.json")

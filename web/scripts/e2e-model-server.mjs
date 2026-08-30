@@ -5,6 +5,8 @@ const port = Number(process.env.DENOVA_E2E_MODEL_PORT || '18081')
 const narrative = '石门缓缓开启，暖色灯光照亮了前方的旧车站。'
 const agentEditMarker = 'E2E_EDIT_CHAPTER'
 const delayedReplyMarker = 'E2E_DELAYED_AGENT_REPLY'
+const legacyWritingContinuationMarker = 'E2E_V033_WRITING_CONTINUE'
+const legacyWritingHistoryMarker = '第一章保留了 v0.3.3 的正文。'
 const agentEditArguments = JSON.stringify({
   path: 'chapters/e2e-agent-chapter.md',
   edits: [{ old_string: 'Agent 修改前。', new_string: 'Agent 已通过工具完成修改。' }],
@@ -166,6 +168,13 @@ const server = createServer(async (request, response) => {
   if (requestIncludesMarker(body, delayedReplyMarker)) {
     await waitForDelayedRelease()
     writeChatCompletion(response, textCompletionFrames('Recovered response completed exactly once.'))
+    return
+  }
+  if (requestIncludesMarker(body, legacyWritingContinuationMarker)) {
+    const content = requestIncludesMarker(body, legacyWritingHistoryMarker)
+      ? 'v0.3.3 写作历史续聊成功。'
+      : 'v0.3.3 写作历史未传入模型。'
+    writeChatCompletion(response, textCompletionFrames(content))
     return
   }
   writeChatCompletion(response, textCompletionFrames('Deterministic E2E response completed.'))

@@ -62,12 +62,15 @@ writeFileSync(path.join(denovaDir, 'config.toml'), config, 'utf8')
 
 const legacyWorkspace = path.join(denovaDir, 'projects', 'Legacy E2E Book')
 const legacyLorePath = path.join(legacyWorkspace, '.nova', 'lore', 'items.json')
+const legacySessionsDir = path.join(legacyWorkspace, '.nova', 'sessions')
+const legacyWritingSessionID = 'v033-writing-main-e2e'
 const legacyStoryDir = path.join(legacyWorkspace, 'interactive', 'story')
 const legacyStoryID = 'st_legacy_v033_e2e'
 const legacyStoryTimestamp = '2026-01-01T00:00:00Z'
 const legacyDirectorDir = path.join(legacyWorkspace, 'interactive', 'stories', legacyStoryID, 'director', 'main')
 mkdirSync(path.join(legacyWorkspace, 'chapters'), { recursive: true })
 mkdirSync(path.dirname(legacyLorePath), { recursive: true })
+mkdirSync(legacySessionsDir, { recursive: true })
 mkdirSync(legacyStoryDir, { recursive: true })
 mkdirSync(legacyDirectorDir, { recursive: true })
 writeFileSync(path.join(legacyWorkspace, 'book.json'), JSON.stringify({
@@ -89,6 +92,47 @@ writeFileSync(legacyLorePath, JSON.stringify({
     content: '旧资料库正文',
   }],
 }, null, 2), 'utf8')
+const legacyWritingRows = [{
+  type: 'session',
+  id: legacyWritingSessionID,
+  title: 'v0.3.3 写作会话',
+  created_at: '2026-01-01T00:00:00Z',
+  updated_at: '2026-01-01T00:02:00Z',
+}, {
+  type: 'message',
+  created_at: '2026-01-01T00:01:00Z',
+  message: { role: 'user', content: '旧会话问题：第一章保留了什么？' },
+}, {
+  type: 'message',
+  created_at: '2026-01-01T00:02:00Z',
+  message: { role: 'assistant', content: '第一章保留了 v0.3.3 的正文。' },
+}]
+const legacySecondaryWritingRows = [{
+  type: 'session',
+  id: 'v033-writing-secondary-e2e',
+  title: 'v0.3.3 备用会话',
+  created_at: '2025-12-31T00:00:00Z',
+  updated_at: '2025-12-31T00:01:00Z',
+}, {
+  type: 'message',
+  created_at: '2025-12-31T00:01:00Z',
+  message: { role: 'user', content: '备用旧会话仍然存在。' },
+}]
+writeFileSync(
+  path.join(legacySessionsDir, `${legacyWritingSessionID}.jsonl`),
+  `${legacyWritingRows.map((row) => JSON.stringify(row)).join('\n')}\n`,
+  'utf8',
+)
+writeFileSync(
+  path.join(legacySessionsDir, 'v033-writing-secondary-e2e.jsonl'),
+  `${legacySecondaryWritingRows.map((row) => JSON.stringify(row)).join('\n')}\n`,
+  'utf8',
+)
+writeFileSync(
+  path.join(legacySessionsDir, 'active.json'),
+  JSON.stringify({ active_id: legacyWritingSessionID }, null, 2),
+  'utf8',
+)
 writeFileSync(path.join(legacyStoryDir, 'index.json'), JSON.stringify({
   current_story_id: legacyStoryID,
   stories: [{
