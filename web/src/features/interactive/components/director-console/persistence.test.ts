@@ -17,9 +17,9 @@ describe('director-console persistence', () => {
 
   it('round-trips every console tab per story and rejects unknown values', () => {
     expect(readStoredDirectorConsoleTab('story-a')).toBeNull()
-    writeStoredDirectorConsoleTab('story-a', 'tuning')
+    writeStoredDirectorConsoleTab('story-a', 'controls')
     writeStoredDirectorConsoleTab('story-b', 'routes')
-    expect(readStoredDirectorConsoleTab('story-a')).toBe('tuning')
+    expect(readStoredDirectorConsoleTab('story-a')).toBe('controls')
     expect(readStoredDirectorConsoleTab('story-b')).toBe('routes')
     window.localStorage.setItem('nova.directorConsole.tab.story-a', 'bogus')
     expect(readStoredDirectorConsoleTab('story-a')).toBeNull()
@@ -28,7 +28,9 @@ describe('director-console persistence', () => {
   it('migrates former state and branch tab preferences', () => {
     window.localStorage.setItem('nova.directorConsole.stateTab.story-a', 'world')
     window.localStorage.setItem('nova.directorConsole.tab.story-b', 'branches')
+    window.localStorage.setItem('nova.directorConsole.tab.story-c', 'tuning')
     expect(readStoredDirectorConsoleTab('story-a')).toBe('overview')
     expect(readStoredDirectorConsoleTab('story-b')).toBe('routes')
+    expect(readStoredDirectorConsoleTab('story-c')).toBe('controls')
   })
 })

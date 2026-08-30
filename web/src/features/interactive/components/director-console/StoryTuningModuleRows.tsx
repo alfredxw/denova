@@ -17,7 +17,6 @@ export const PRESET_VALUE = '__preset__'
 
 interface ModuleSelectRowProps {
   label: string
-  description?: string
   value: string
   baseValue: string
   moduleDisabled: boolean
@@ -28,14 +27,14 @@ interface ModuleSelectRowProps {
   onChange: (value: string) => void
 }
 
-export function ModuleSelectRow({ label, description, value, baseValue, moduleDisabled, options, busy, disabled, locked, onChange }: ModuleSelectRowProps) {
+export function ModuleSelectRow({ label, value, baseValue, moduleDisabled, options, busy, disabled, locked, onChange }: ModuleSelectRowProps) {
   const { t } = useTranslation()
   const visibleOptions = includeIDs(options, baseValue, value)
   const source = moduleSelectSource(locked, moduleDisabled, value === baseValue)
   const selectValue = value === baseValue ? PRESET_VALUE : value
   const baseLabel = optionLabel(visibleOptions, baseValue) || baseValue || t('directorPanel.tuning.none')
   return (
-    <TuningRow title={label} description={description} source={source} busy={busy} disabled={disabled}>
+    <TuningRow title={label} source={source} busy={busy} disabled={disabled}>
       <TuningSelect
         value={selectValue || PRESET_VALUE}
         options={[{ id: PRESET_VALUE, label: t('directorPanel.tuning.usePreset', { value: baseLabel }) }, ...visibleOptions]}
@@ -69,7 +68,7 @@ export function EventPackagesRow({ refs, presetRefs, options, busy, disabled, on
     <TuningRow title={t('directorPanel.tuning.agent.events')} source={source} busy={busy} disabled={disabled}>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button type="button" variant="outline" size="sm" disabled={disabled} className="w-36 min-w-0 max-w-full justify-between bg-background text-xs font-normal text-foreground">
+          <Button type="button" variant="outline" size="sm" disabled={disabled} className="director-control-select w-32 min-w-0 max-w-full justify-between bg-background text-xs font-normal text-foreground">
             <span className="truncate">{summary}</span>
             <ChevronDown data-icon="inline-end" />
           </Button>

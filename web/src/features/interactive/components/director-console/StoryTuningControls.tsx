@@ -1,47 +1,34 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { ChevronDown, Loader2 } from 'lucide-react'
+import { Loader2, Settings2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { Field, FieldContent, FieldDescription, FieldError, FieldTitle } from '@/components/ui/field'
+import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldTitle } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { cn } from '@/lib/utils'
 
 export type TuningSource = 'preset' | 'story' | 'off' | 'locked'
 
-export function TuningSection({
+export function ControlSection({
   icon,
   title,
-  summary,
-  open,
-  onOpenChange,
+  action,
   children,
 }: {
   icon: ReactNode
   title: string
-  summary: string
-  open: boolean
-  onOpenChange: (open: boolean) => void
+  action?: ReactNode
   children: ReactNode
 }) {
   return (
-    <Collapsible open={open} onOpenChange={onOpenChange} className="overflow-hidden rounded-xl border border-border bg-card">
-      <CollapsibleTrigger asChild>
-        <button type="button" className="flex w-full min-w-0 items-center gap-3 px-3 py-3 text-left transition-colors hover:bg-muted/50">
-          <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-background text-[var(--director-brass)]">{icon}</span>
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-xs font-semibold text-foreground">{title}</span>
-            <span className="mt-0.5 block truncate text-[10px] text-muted-foreground">{summary}</span>
-          </span>
-          <ChevronDown className={cn('size-4 shrink-0 text-muted-foreground transition-transform', open && 'rotate-180')} />
-        </button>
-      </CollapsibleTrigger>
-      <CollapsibleContent>
-        <div className="flex flex-col gap-3 border-t border-border px-3 py-3">{children}</div>
-      </CollapsibleContent>
-    </Collapsible>
+    <section className="overflow-hidden rounded-xl border border-border bg-card">
+      <header className="flex min-h-9 items-center gap-2 px-2.5 py-1.5">
+        <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-muted text-[var(--director-brass)]">{icon}</span>
+        <h3 className="min-w-0 flex-1 truncate text-xs font-semibold text-foreground">{title}</h3>
+        {action ? <div className="director-control-section__action shrink-0">{action}</div> : null}
+      </header>
+      <FieldGroup className="gap-0 border-t border-border">{children}</FieldGroup>
+    </section>
   )
 }
 
@@ -61,16 +48,16 @@ export function TuningRow({
   children: ReactNode
 }) {
   return (
-    <Field orientation="responsive" data-disabled={disabled || undefined} className="min-w-0 rounded-lg border border-border bg-background/50 p-2.5">
-      <FieldContent className="min-w-0">
+    <Field orientation="horizontal" data-disabled={disabled || undefined} className="director-control-row min-w-0 items-center gap-1.5 px-2.5 py-2 [&:not(:last-child)]:border-b [&:not(:last-child)]:border-border">
+      <FieldContent className="min-w-0 overflow-hidden">
         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-          <FieldTitle className="text-xs">{title}</FieldTitle>
-          {source ? <TuningSourceBadge source={source} /> : null}
+          <FieldTitle className="max-w-full truncate whitespace-nowrap text-xs" title={title}>{title}</FieldTitle>
+          {source && source !== 'preset' ? <TuningSourceBadge source={source} /> : null}
           {busy ? <Loader2 className="size-3 animate-spin text-muted-foreground" aria-label={title} /> : null}
         </div>
         {description ? <FieldDescription className="text-[10px] leading-4">{description}</FieldDescription> : null}
       </FieldContent>
-      <div className="flex min-w-0 shrink-0 items-center justify-end">{children}</div>
+      <div className="director-control-row__value flex min-w-0 shrink-0 items-center justify-end">{children}</div>
     </Field>
   )
 }
@@ -104,7 +91,7 @@ export function TuningSelect({
 }) {
   return (
     <Select value={value} disabled={disabled} onValueChange={onChange}>
-      <SelectTrigger size="sm" aria-label={label} className="w-36 min-w-0 max-w-full bg-background text-xs text-foreground">
+      <SelectTrigger size="sm" aria-label={label} className="director-control-select w-32 min-w-0 max-w-full shrink-0 bg-background text-xs text-foreground">
         <SelectValue />
       </SelectTrigger>
       <SelectContent position="popper">
@@ -155,7 +142,7 @@ export function NumberSettingInput({
         disabled={disabled}
         aria-label={label}
         aria-invalid={!valid}
-        className="h-7 w-20 bg-background text-right text-xs text-foreground tabular-nums"
+        className="h-7 w-16 bg-background text-right text-xs text-foreground tabular-nums"
         onChange={(event) => setDraft(event.target.value)}
         onBlur={commit}
         onKeyDown={(event) => {
@@ -171,6 +158,20 @@ export function NumberSettingInput({
   )
 }
 
-export function TuningLinkButton({ children, onClick }: { children: ReactNode; onClick?: () => void }) {
-  return <Button type="button" variant="ghost" size="xs" disabled={!onClick} onClick={onClick}>{children}</Button>
+export function TuningLinkButton({ label, onClick }: { label: string; onClick?: () => void }) {
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="xs"
+      aria-label={label}
+      title={label}
+      disabled={!onClick}
+      className="director-control-section__action-button"
+      onClick={onClick}
+    >
+      <Settings2 className="director-control-section__action-icon hidden size-3.5" aria-hidden="true" />
+      <span className="director-control-section__action-label">{label}</span>
+    </Button>
+  )
 }

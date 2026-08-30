@@ -13,9 +13,9 @@ interface DirectorConsoleTabsProps {
 export function DirectorConsoleTabs({ activeTab, onChange, branchesCount }: DirectorConsoleTabsProps) {
   const { t } = useTranslation()
   const items: Array<{ id: DirectorConsoleTab; label: string; icon: React.ReactNode; count?: number }> = [
-    { id: 'overview', label: t('directorPanel.consoleTab.overview'), icon: <LayoutDashboard className="size-3.5" /> },
-    { id: 'tuning', label: t('directorPanel.consoleTab.tuning'), icon: <SlidersHorizontal className="size-3.5" /> },
-    { id: 'routes', label: t('directorPanel.consoleTab.routes'), icon: <GitBranch className="size-3.5" />, count: branchesCount },
+    { id: 'overview', label: t('directorPanel.consoleTab.overview'), icon: <LayoutDashboard className="director-console-tab__icon size-3.5" /> },
+    { id: 'controls', label: t('directorPanel.consoleTab.controls'), icon: <SlidersHorizontal className="director-console-tab__icon size-3.5" /> },
+    { id: 'routes', label: t('directorPanel.consoleTab.routes'), icon: <GitBranch className="director-console-tab__icon size-3.5" />, count: branchesCount },
   ]
 
   return (

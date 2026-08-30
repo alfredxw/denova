@@ -65,17 +65,8 @@ interface StateLedgerPresentation {
  */
 export function StoryStateLedger({ snapshot, displayPreference, onDisplayPreferenceChange, onOpenDirectorState }: StoryStateLedgerProps) {
   const { t } = useTranslation()
-  const model = useMemo(() => buildStoryStateModel(snapshot), [snapshot])
-  const actorLedgers = useMemo(() => model.actors.map(([actorId, actor]) => buildActorLedger(actorId, actor, snapshot, model.changes)), [model.actors, model.changes, snapshot])
-  const worldLedger = useMemo(() => buildWorldLedger(model.worldFacts, model.changes), [model.changes, model.worldFacts])
-  const allActors = useMemo<ActorStateEntry[]>(() => [
-    ...model.actors,
-    ...model.archivedActors.map((entry): ActorStateEntry => [entry.actorId, { name: entry.name, template_id: entry.templateId }]),
-  ], [model.actors, model.archivedActors])
-  const actorTabs = useMemo(() => actorLedgers.map((ledger) => ({ id: ledger.id, name: ledger.name })), [actorLedgers])
-  const hasWorldFacts = model.worldFacts.length > 0
-  const [selectedTab, setSelectedTab] = useState(actorTabs[0]?.id || WORLD_STATE_TAB)
-  const storyId = snapshot?.story_id || ''
+  const { model, actorLedgers, worldLedger, allActors, actorTabs, hasWorldFacts, storyId } = useStoryStateLedgerData(snapshot)
+  const [selectedTab, setSelectedTab] = useStoryStateTab(actorTabs, hasWorldFacts)
   const [layoutState, setLayoutState] = useState<{ storyId: string; layouts: StoryStateLayouts }>(() => ({ storyId, layouts: readStoryStateLayouts(storyId) }))
   const [layoutEditorOpen, setLayoutEditorOpen] = useState(false)
   const turnKey = `${snapshot?.story_id || ''}:${snapshot?.branch_id || ''}:${snapshot?.current_turn?.id || ''}`
@@ -84,12 +75,6 @@ export function StoryStateLedger({ snapshot, displayPreference, onDisplayPrefere
   const selectedLedger = selectedTab === WORLD_STATE_TAB
     ? worldLedger
     : actorLedgers.find((ledger) => ledger.id === selectedTab)
-
-  useEffect(() => {
-    if (selectedTab === WORLD_STATE_TAB && hasWorldFacts) return
-    if (actorTabs.some((actor) => actor.id === selectedTab)) return
-    setSelectedTab(actorTabs[0]?.id || WORLD_STATE_TAB)
-  }, [actorTabs, hasWorldFacts, selectedTab])
 
   useEffect(() => {
     setPanelMode(PANEL_MODE_BY_PREFERENCE[displayPreference])
@@ -156,42 +141,17 @@ export function StoryStateLedger({ snapshot, displayPreference, onDisplayPrefere
           {model.changes.length > 0 ? (
             <ChangesSummary changes={model.changes} actors={allActors} schema={snapshot?.actor_state_schema} />
           ) : null}
-          {actorLedgers.length > 0 || hasWorldFacts ? (
-            <Tabs value={selectedTab} onValueChange={setSelectedTab} className="gap-0">
-              <StateEntityTabs actors={actorTabs} showWorld={hasWorldFacts} />
-              {actorLedgers.map((ledger) => (
-                <TabsContent
-                  key={ledger.id}
-                  value={ledger.id}
-                  forceMount
-                  hidden={selectedTab !== ledger.id}
-                  className="mt-0"
-                >
-                  <ActorLedgerBody
-                    ledger={ledger}
-                    layout={layouts[ledger.templateId]}
-                    panelMode={panelMode === 'expanded' ? 'expanded' : 'preview'}
-                    onPanelModeChange={setPanelMode}
-                  />
-                </TabsContent>
-              ))}
-              {hasWorldFacts ? (
-                <TabsContent
-                  value={WORLD_STATE_TAB}
-                  forceMount
-                  hidden={selectedTab !== WORLD_STATE_TAB}
-                  className="mt-0"
-                >
-                  <WorldLedgerBody
-                    ledger={worldLedger}
-                    layout={layouts[worldLedger.templateId]}
-                    panelMode={panelMode === 'expanded' ? 'expanded' : 'preview'}
-                    onPanelModeChange={setPanelMode}
-                  />
-                </TabsContent>
-              ) : null}
-            </Tabs>
-          ) : null}
+          <StateEntityPanels
+            actorLedgers={actorLedgers}
+            actorTabs={actorTabs}
+            worldLedger={worldLedger}
+            showWorld={hasWorldFacts}
+            selectedTab={selectedTab}
+            layouts={layouts}
+            panelMode={panelMode === 'expanded' ? 'expanded' : 'preview'}
+            onSelectedTabChange={setSelectedTab}
+            onPanelModeChange={setPanelMode}
+          />
           <ActorArchiveList entries={model.archivedActors} />
         </CollapsibleContent>
         {selectedLedger ? (
@@ -216,6 +176,131 @@ export function StoryStateLedger({ snapshot, displayPreference, onDisplayPrefere
         ) : null}
       </section>
     </Collapsible>
+  )
+}
+
+/**
+ * Full-width state projection for secondary surfaces such as the Story Console
+ * dialog. It reuses the stage ledger's grouping, field renderers, saved layout,
+ * and Actor/world navigation without repeating the narrow sidebar treatment.
+ */
+export function StoryStateDetails({ snapshot }: { snapshot: Snapshot | null }) {
+  const { t } = useTranslation()
+  const { model, actorLedgers, worldLedger, allActors, actorTabs, hasWorldFacts, storyId } = useStoryStateLedgerData(snapshot)
+  const layouts = useMemo(() => readStoryStateLayouts(storyId), [storyId])
+  const [selectedTab, setSelectedTab] = useStoryStateTab(actorTabs, hasWorldFacts)
+  const [panelMode, setPanelMode] = useState<StoryStatePanelMode>('expanded')
+
+  useEffect(() => {
+    setPanelMode('expanded')
+  }, [storyId])
+
+  if (!model.hasState) return <StateSectionEmpty label={t('directorPanel.stateEmpty')} />
+
+  return (
+    <section className="story-state-ledger overflow-hidden rounded-xl border border-[var(--nova-border)] bg-[var(--story-state-canvas)]">
+      {model.changes.length > 0 ? (
+        <ChangesSummary changes={model.changes} actors={allActors} schema={snapshot?.actor_state_schema} standalone />
+      ) : null}
+      <StateEntityPanels
+        actorLedgers={actorLedgers}
+        actorTabs={actorTabs}
+        worldLedger={worldLedger}
+        showWorld={hasWorldFacts}
+        selectedTab={selectedTab}
+        layouts={layouts}
+        panelMode={panelMode === 'expanded' ? 'expanded' : 'preview'}
+        onSelectedTabChange={setSelectedTab}
+        onPanelModeChange={setPanelMode}
+      />
+      <ActorArchiveList entries={model.archivedActors} />
+    </section>
+  )
+}
+
+function useStoryStateLedgerData(snapshot: Snapshot | null) {
+  const model = useMemo(() => buildStoryStateModel(snapshot), [snapshot])
+  const actorLedgers = useMemo(
+    () => model.actors.map(([actorId, actor]) => buildActorLedger(actorId, actor, snapshot, model.changes)),
+    [model.actors, model.changes, snapshot],
+  )
+  const worldLedger = useMemo(() => buildWorldLedger(model.worldFacts, model.changes), [model.changes, model.worldFacts])
+  const allActors = useMemo<ActorStateEntry[]>(() => [
+    ...model.actors,
+    ...model.archivedActors.map((entry): ActorStateEntry => [entry.actorId, { name: entry.name, template_id: entry.templateId }]),
+  ], [model.actors, model.archivedActors])
+  const actorTabs = useMemo(() => actorLedgers.map(({ id, name }) => ({ id, name })), [actorLedgers])
+
+  return {
+    model,
+    actorLedgers,
+    worldLedger,
+    allActors,
+    actorTabs,
+    hasWorldFacts: model.worldFacts.length > 0,
+    storyId: snapshot?.story_id || '',
+  }
+}
+
+function useStoryStateTab(actorTabs: Array<{ id: string; name: string }>, showWorld: boolean) {
+  const [selectedTab, setSelectedTab] = useState(actorTabs[0]?.id || WORLD_STATE_TAB)
+
+  useEffect(() => {
+    if (selectedTab === WORLD_STATE_TAB && showWorld) return
+    if (actorTabs.some(({ id }) => id === selectedTab)) return
+    setSelectedTab(actorTabs[0]?.id || WORLD_STATE_TAB)
+  }, [actorTabs, selectedTab, showWorld])
+
+  return [selectedTab, setSelectedTab] as const
+}
+
+function StateEntityPanels({
+  actorLedgers,
+  actorTabs,
+  worldLedger,
+  showWorld,
+  selectedTab,
+  layouts,
+  panelMode,
+  onSelectedTabChange,
+  onPanelModeChange,
+}: {
+  actorLedgers: StateLedgerPresentation[]
+  actorTabs: Array<{ id: string; name: string }>
+  worldLedger: StateLedgerPresentation
+  showWorld: boolean
+  selectedTab: string
+  layouts: StoryStateLayouts
+  panelMode: 'preview' | 'expanded'
+  onSelectedTabChange: (tab: string) => void
+  onPanelModeChange: (mode: StoryStatePanelMode) => void
+}) {
+  if (actorLedgers.length === 0 && !showWorld) return null
+
+  return (
+    <Tabs value={selectedTab} onValueChange={onSelectedTabChange} className="gap-0">
+      <StateEntityTabs actors={actorTabs} showWorld={showWorld} />
+      {actorLedgers.map((ledger) => (
+        <TabsContent key={ledger.id} value={ledger.id} forceMount hidden={selectedTab !== ledger.id} className="mt-0">
+          <ActorLedgerBody
+            ledger={ledger}
+            layout={layouts[ledger.templateId]}
+            panelMode={panelMode}
+            onPanelModeChange={onPanelModeChange}
+          />
+        </TabsContent>
+      ))}
+      {showWorld ? (
+        <TabsContent value={WORLD_STATE_TAB} forceMount hidden={selectedTab !== WORLD_STATE_TAB} className="mt-0">
+          <WorldLedgerBody
+            ledger={worldLedger}
+            layout={layouts[worldLedger.templateId]}
+            panelMode={panelMode}
+            onPanelModeChange={onPanelModeChange}
+          />
+        </TabsContent>
+      ) : null}
+    </Tabs>
   )
 }
 

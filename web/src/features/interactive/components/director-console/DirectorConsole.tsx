@@ -8,7 +8,6 @@ import { OverviewView } from './OverviewView'
 import { readStoredDirectorConsoleTab, writeStoredDirectorConsoleTab } from './persistence'
 import { StoryTuningView } from './StoryTuningView'
 import type { DirectorConsoleTab } from './types'
-import { stateEntries } from './utils'
 
 export interface DirectorConsoleProps {
   storyId?: string
@@ -58,7 +57,6 @@ export function DirectorConsole({
     writeStoredDirectorConsoleTab(storyId, tab)
   }
 
-  const stateFacts = useMemo(() => stateEntries(snapshot?.state), [snapshot?.state])
   const branchesCount = useMemo(() => {
     const branchIds = new Set([...branches, ...(snapshot?.graph?.branches || [])].map((branch) => branch.id))
     if (branchId) branchIds.add(branchId)
@@ -70,7 +68,7 @@ export function DirectorConsole({
   let activeView
   if (activeTab === 'routes') {
     activeView = <BranchPreview branches={branches} currentBranchId={branchId} snapshot={snapshot} onSwitchBranch={onSwitchBranch} onOpenTimeline={onOpenBranchTimeline} />
-  } else if (activeTab === 'tuning') {
+  } else if (activeTab === 'controls') {
     activeView = (
       <StoryTuningView
         story={story}
@@ -88,12 +86,9 @@ export function DirectorConsole({
     activeView = (
       <OverviewView
         snapshot={snapshot}
-        stateFacts={stateFacts}
         stateError={stateError}
         plan={snapshot?.branch_plan}
         planningEnabled={story?.planning_mode === 'enabled'}
-        stateDisplayPreference={stateDisplayPreference}
-        onStateDisplayPreferenceChange={onStateDisplayPreferenceChange}
       />
     )
   }

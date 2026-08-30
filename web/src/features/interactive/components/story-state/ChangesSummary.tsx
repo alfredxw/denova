@@ -18,7 +18,7 @@ interface SummaryItem {
  * It replaces the old per-field "updated this turn" notes; field-level detail
  * remains available through each field's change chip and reason tooltip.
  */
-export function ChangesSummary({ changes, actors, schema }: { changes: StoryStateChange[]; actors: ActorStateEntry[]; schema?: ActorStateSchemaSnapshot }) {
+export function ChangesSummary({ changes, actors, schema, standalone = false }: { changes: StoryStateChange[]; actors: ActorStateEntry[]; schema?: ActorStateSchemaSnapshot; standalone?: boolean }) {
   const { t } = useTranslation()
   if (changes.length === 0) return null
 
@@ -33,7 +33,7 @@ export function ChangesSummary({ changes, actors, schema }: { changes: StoryStat
   const hiddenCount = items.length - visible.length
 
   return (
-    <div className="story-state-ledger__summary" aria-label={t('storyStage.state.changesTitle', { count: changes.length })}>
+    <div className="story-state-ledger__summary" data-standalone={standalone || undefined} aria-label={t('storyStage.state.changesTitle', { count: changes.length })}>
       <span className="story-state-ledger__summary-title">
         <Sparkle aria-hidden="true" className="size-3" />
         {t('storyStage.state.changesTitle', { count: changes.length })}

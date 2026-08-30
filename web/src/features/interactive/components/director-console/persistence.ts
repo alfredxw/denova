@@ -43,7 +43,8 @@ export function writeStoredDirectorConsoleTab(storyId: string | undefined, tab: 
 }
 
 function migrateDirectorConsoleTab(value: string | null): DirectorConsoleTab | null {
-  if (value === 'overview' || value === 'tuning' || value === 'routes') return value
+  if (value === 'overview' || value === 'controls' || value === 'routes') return value
+  if (value === 'tuning') return 'controls'
   if (value === 'branches') return 'routes'
   if (value === 'changes' || value === 'actors' || value === 'world' || value === 'plan') return 'overview'
   return null

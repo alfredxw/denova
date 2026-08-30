@@ -25,17 +25,16 @@ import type {
 import { StateDisplayPreferenceMenu } from '../story-state/StateDisplayPreferenceMenu'
 import type { StoryStateDisplayPreference } from '../story-state/display-preference'
 import {
+  ControlSection,
   NumberSettingInput,
   TuningLinkButton,
   TuningRow,
-  TuningSection,
   TuningSelect,
   type TuningSelectOption,
   type TuningSource,
 } from './StoryTuningControls'
 import { EventPackagesRow, ModuleSelectRow, PRESET_VALUE } from './StoryTuningModuleRows'
 
-type TuningSectionID = 'agent' | 'checks' | 'images' | 'state'
 type ModuleIDKey = 'narrative_style_id' | 'rule_system_id' | 'actor_state_id' | 'image_preset_id'
 type ModuleDisabledKey = 'narrative_style_disabled' | 'rule_system_disabled' | 'actor_state_disabled' | 'image_preset_disabled'
 
@@ -63,7 +62,6 @@ export function StoryTuningView({
   onOpenPresets,
 }: StoryTuningViewProps) {
   const { t } = useTranslation()
-  const [openSection, setOpenSection] = useState<TuningSectionID | null>('agent')
   const [savingKey, setSavingKey] = useState('')
   const [eventPackages, setEventPackages] = useState<EventPackageModule[]>([])
   const [ruleSystems, setRuleSystems] = useState<RuleSystemModule[]>([])
@@ -175,33 +173,19 @@ export function StoryTuningView({
   )
 
   const ruleEnabled = !refs.rule_system_disabled
-  const ruleName = optionLabel(ruleOptions, refs.rule_system_id || presetRefs.rule_system_id)
-  const narrativeName = optionLabel(narrativeOptions, refs.narrative_style_id || presetRefs.narrative_style_id)
-  const stateName = optionLabel(stateOptions, refs.actor_state_id || presetRefs.actor_state_id)
-  const difficultyName = t(`directorPanel.tuning.check.difficulty.${checkSettings.difficulty_shift}`)
 
   return (
-    <div className="director-console__scroll h-full min-h-0 overflow-y-auto px-3 py-3">
-      <div className="mb-3 flex items-start justify-between gap-3 px-1">
-        <div className="min-w-0">
-          <h3 className="text-xs font-semibold text-foreground">{t('directorPanel.tuning.title')}</h3>
-          <p className="mt-0.5 text-[10px] leading-4 text-muted-foreground">{t('directorPanel.tuning.description')}</p>
-        </div>
-        <TuningLinkButton onClick={onOpenPresets}>{t('directorPanel.tuning.editPresets')}</TuningLinkButton>
-      </div>
-
+    <div className="director-console__scroll h-full min-h-0 overflow-y-auto px-2.5 py-2.5">
       <div className="flex flex-col gap-2">
-        <TuningSection
+        <ControlSection
           icon={<Bot className="size-4" />}
           title={t('directorPanel.tuning.agent.title')}
-          summary={`${director ? gamePresetName(director, t) : '—'} · ${narrativeName || '—'}`}
-          open={openSection === 'agent'}
-          onOpenChange={(open) => setOpenSection(open ? 'agent' : null)}
+          action={<TuningLinkButton label={t('directorPanel.tuning.editPresets')} onClick={onOpenPresets} />}
         >
           <TuningRow title={t('directorPanel.tuning.agent.preset')} busy={savingKey === 'director'}>
             <TuningSelect value={story?.story_director_id || director?.id || ''} options={directorOptions} label={t('directorPanel.tuning.agent.preset')} disabled={!story || !onDirectorChange || Boolean(savingKey)} onChange={(value) => void selectDirector(value)} />
           </TuningRow>
-          <TuningRow title={t('directorPanel.tuning.agent.planning')} description={t('directorPanel.tuning.agent.planningHint')} busy={savingKey === 'planning'}>
+          <TuningRow title={t('directorPanel.tuning.agent.planning')} busy={savingKey === 'planning'}>
             <Switch checked={story?.planning_mode === 'enabled'} disabled={disabled} aria-label={t('directorPanel.tuning.agent.planning')} onCheckedChange={(enabled) => void save('planning', { planning_mode: enabled ? 'enabled' : 'disabled' })} />
           </TuningRow>
           <ModuleSelectRow
@@ -228,21 +212,17 @@ export function StoryTuningView({
           <TuningRow title={t('directorPanel.tuning.agent.choiceCount')} busy={savingKey === 'choice-count'}>
             <NumberSettingInput value={story?.choice_count || 5} min={MIN_INTERACTIVE_CHOICE_COUNT} max={MAX_INTERACTIVE_CHOICE_COUNT} label={t('directorPanel.tuning.agent.choiceCount')} disabled={disabled} onCommit={(choice_count) => void save('choice-count', { choice_count })} />
           </TuningRow>
-        </TuningSection>
+        </ControlSection>
 
-        <TuningSection
+        <ControlSection
           icon={<Dices className="size-4" />}
           title={t('directorPanel.tuning.check.title')}
-          summary={ruleEnabled ? `${ruleName || 'D20'} · ${difficultyName} · ${formatSigned(checkSettings.roll_modifier)}` : t('directorPanel.tuning.disabled')}
-          open={openSection === 'checks'}
-          onOpenChange={(open) => setOpenSection(open ? 'checks' : null)}
         >
-          <TuningRow title={t('directorPanel.tuning.check.enabled')} description={t('directorPanel.tuning.check.enabledHint')} busy={savingKey === 'checks-enabled'} source={ruleEnabled ? moduleSource(story, refs.rule_system_id, presetRefs.rule_system_id, false) : 'off'}>
+          <TuningRow title={t('directorPanel.tuning.check.enabled')} busy={savingKey === 'checks-enabled'} source={ruleEnabled ? moduleSource(story, refs.rule_system_id, presetRefs.rule_system_id, false) : 'off'}>
             <Switch checked={ruleEnabled} disabled={disabled} aria-label={t('directorPanel.tuning.check.enabled')} onCheckedChange={setRuleChecksEnabled} />
           </TuningRow>
           <ModuleSelectRow
             label={t('directorPanel.tuning.check.system')}
-            description={structureLocked ? t('directorPanel.tuning.structureLocked') : undefined}
             value={String(refs.rule_system_id || '')}
             baseValue={String(presetRefs.rule_system_id || '')}
             moduleDisabled={!ruleEnabled}
@@ -252,23 +232,19 @@ export function StoryTuningView({
             locked={structureLocked}
             onChange={(value) => updateModule('rule-system', 'rule_system_id', 'rule_system_disabled', value, undefined, true)}
           />
-          <TuningRow title={t('directorPanel.tuning.check.difficulty')} description={t('directorPanel.tuning.check.difficultyHint')} busy={savingKey === 'difficulty'}>
+          <TuningRow title={t('directorPanel.tuning.check.difficulty')} busy={savingKey === 'difficulty'}>
             <TuningSelect value={String(checkSettings.difficulty_shift)} options={difficultyOptions(t)} label={t('directorPanel.tuning.check.difficulty')} disabled={disabled || !ruleEnabled} onChange={(value) => void save('difficulty', { check_settings: { ...checkSettings, difficulty_shift: Number(value) } })} />
           </TuningRow>
-          <TuningRow title={t('directorPanel.tuning.check.rollModifier')} description={t('directorPanel.tuning.check.rollModifierHint')} busy={savingKey === 'roll-modifier'}>
+          <TuningRow title={t('directorPanel.tuning.check.rollModifier')} description={t('directorPanel.tuning.check.formula', { modifier: formatSigned(checkSettings.roll_modifier) })} busy={savingKey === 'roll-modifier'}>
             <NumberSettingInput value={checkSettings.roll_modifier} min={-20} max={20} label={t('directorPanel.tuning.check.rollModifier')} disabled={disabled || !ruleEnabled} onCommit={(roll_modifier) => void save('roll-modifier', { check_settings: { ...checkSettings, roll_modifier } })} />
           </TuningRow>
-          <p className="rounded-lg bg-muted px-2.5 py-2 font-mono text-[9px] leading-4 text-muted-foreground">{t('directorPanel.tuning.check.formula', { modifier: formatSigned(checkSettings.roll_modifier) })}</p>
-        </TuningSection>
+        </ControlSection>
 
-        <TuningSection
+        <ControlSection
           icon={<ImagePlus className="size-4" />}
           title={t('directorPanel.tuning.image.title')}
-          summary={imageSettings.mode === 'interval' ? t('directorPanel.tuning.image.intervalSummary', { count: imageSettings.interval_turns }) : t('directorPanel.tuning.image.manualSummary')}
-          open={openSection === 'images'}
-          onOpenChange={(open) => setOpenSection(open ? 'images' : null)}
         >
-          <TuningRow title={t('directorPanel.tuning.image.automatic')} description={t('directorPanel.tuning.image.automaticHint')} busy={savingKey === 'image-mode'}>
+          <TuningRow title={t('directorPanel.tuning.image.automatic')} busy={savingKey === 'image-mode'}>
             <Switch checked={imageSettings.mode === 'interval'} disabled={disabled} aria-label={t('directorPanel.tuning.image.automatic')} onCheckedChange={setImageMode} />
           </TuningRow>
           <TuningRow title={t('directorPanel.tuning.image.interval')} busy={savingKey === 'image-interval'}>
@@ -284,19 +260,14 @@ export function StoryTuningView({
             disabled={disabled}
             onChange={(value) => updateModule('image-preset', 'image_preset_id', 'image_preset_disabled', value, (nextID) => ({ image_settings: { ...imageSettings, preset_id: nextID } }))}
           />
-          <p className="text-[10px] leading-4 text-muted-foreground">{t('directorPanel.tuning.image.globalHint')}</p>
-        </TuningSection>
+        </ControlSection>
 
-        <TuningSection
+        <ControlSection
           icon={<UserRound className="size-4" />}
           title={t('directorPanel.tuning.state.title')}
-          summary={`${stateName || '—'} · ${t(`storyStage.state.display.${stateDisplayPreference}`)}`}
-          open={openSection === 'state'}
-          onOpenChange={(open) => setOpenSection(open ? 'state' : null)}
         >
           <ModuleSelectRow
             label={t('directorPanel.tuning.state.system')}
-            description={structureLocked ? t('directorPanel.tuning.structureLocked') : undefined}
             value={String(refs.actor_state_id || '')}
             baseValue={String(presetRefs.actor_state_id || '')}
             moduleDisabled={Boolean(refs.actor_state_disabled)}
@@ -306,13 +277,10 @@ export function StoryTuningView({
             locked={structureLocked}
             onChange={(value) => updateModule('state-system', 'actor_state_id', 'actor_state_disabled', value, undefined, true)}
           />
-          <TuningRow title={t('directorPanel.tuning.state.display')} description={t('directorPanel.tuning.state.displayHint')}>
+          <TuningRow title={t('directorPanel.tuning.state.display')}>
             <StateDisplayPreferenceMenu value={stateDisplayPreference} onChange={onStateDisplayPreferenceChange} />
           </TuningRow>
-          <TuningRow title={t('directorPanel.tuning.state.fullEditor')}>
-            <TuningLinkButton onClick={onOpenPresets}>{t('directorPanel.tuning.editPresets')}</TuningLinkButton>
-          </TuningRow>
-        </TuningSection>
+        </ControlSection>
       </div>
     </div>
   )
@@ -326,10 +294,6 @@ function moduleSource(story: StorySummary | undefined, value: string | undefined
 
 function cloneRefs(refs: StoryDirectorModuleRefs): StoryDirectorModuleRefs {
   return { ...refs, event_package_ids: [...(refs.event_package_ids || [])] }
-}
-
-function optionLabel(options: TuningSelectOption[], id: string | undefined): string {
-  return options.find((option) => option.id === id)?.label || id || ''
 }
 
 function formatSigned(value: number): string {

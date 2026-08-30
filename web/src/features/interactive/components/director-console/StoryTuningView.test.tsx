@@ -62,10 +62,13 @@ describe('StoryTuningView', () => {
 
   beforeEach(() => onUpdate.mockClear())
 
-  it('shows preset provenance and saves story-level agent tuning', async () => {
+  it('shows every control group by default and saves story-level agent tuning', async () => {
     render(<StoryTuningView story={story()} directors={[director]} tellers={[teller]} imagePresets={[{ version: 1, id: 'game-cg', name: 'Game CG', description: '', custom: false }]} stateDisplayPreference="preview" onStateDisplayPreferenceChange={vi.fn()} onDirectorChange={vi.fn()} onUpdate={onUpdate} />)
 
-    expect((await screen.findAllByText('继承预设')).length).toBeGreaterThan(0)
+    expect(screen.getByRole('heading', { name: 'Game Agent' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '回合判定' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '互动图像' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '状态面板' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('switch', { name: '导演规划' }))
     await waitFor(() => expect(onUpdate).toHaveBeenCalledWith({ planning_mode: 'enabled' }))
   })
@@ -73,7 +76,6 @@ describe('StoryTuningView', () => {
   it('locks structural rule selection after the first turn but leaves checks configurable', async () => {
     render(<StoryTuningView story={story(1)} directors={[director]} tellers={[teller]} imagePresets={[]} stateDisplayPreference="preview" onStateDisplayPreferenceChange={vi.fn()} onUpdate={onUpdate} />)
 
-    fireEvent.click(screen.getByRole('button', { name: /回合判定/ }))
     expect(await screen.findByLabelText('规则系统')).toBeDisabled()
     expect(screen.getByLabelText('全局难度')).not.toBeDisabled()
   })
