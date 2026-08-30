@@ -86,7 +86,10 @@ func currentInputLanguageContract() string {
 
 func subAgentDelegationContract() string {
 	return strings.Join([]string{
-		"- Use the task tool only when the user or a loaded Skill requests delegation.",
+		"- Use the task tool only when the current user explicitly requests delegation or multi-Agent work, or when a loaded Skill explicitly requires delegation. Otherwise do the work yourself, even when delegation could be helpful.",
+		"- Do not delegate merely to parallelize, review, research, or save time.",
+		"- Starting a task returns immediately. Start independent tasks together, continue useful local work, and call task_wait with all relevant TaskRefs only when their results become a dependency.",
+		"- User steering can interrupt task_wait without aborting child tasks. Resume waiting only when their results are still needed.",
 		"- Give the SubAgent a self-contained goal, constraints, relevant paths or resource IDs, expected output, and write scope. Pass references instead of copying content it can read itself.",
 		"- Verify the returned result before reporting it to the user.",
 	}, "\n")

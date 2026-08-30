@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef } from 'react'
 import type { PointerEvent } from 'react'
-import { Check, MessageSquareQuote, Type } from 'lucide-react'
+import { Check, Quote, Type } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { AutosaveStatusIndicator, type AutosaveStatus } from '@/components/forms/autosave-status'
 import { FontPicker } from '@/features/settings/FontPicker'
@@ -145,7 +145,7 @@ export function EditorSettingsPanel({
         <div className="nova-editor-control block rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2.5">
           <div className="mb-1.5 flex items-center justify-between gap-3 text-xs">
             <span className="flex items-center gap-2 font-medium text-[var(--nova-text-muted)]">
-              <MessageSquareQuote className="h-3.5 w-3.5 text-[var(--nova-text-faint)]" />
+              <Quote className="h-3.5 w-3.5 text-[var(--nova-text-faint)]" />
               {t('editor.dialogueHighlightColor')}
             </span>
           </div>

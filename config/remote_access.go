@@ -71,11 +71,15 @@ func LANAddress() string {
 // existing password hash.
 func PrepareUserSettingsForWrite(existing, incoming Settings) (Settings, error) {
 	out := preserveTerminalCommandRegistryPresence(incoming)
+	out.AgentQuickPrompts = normalizeAgentQuickPrompts(out.AgentQuickPrompts)
 	out.AgentApprovalRules = NormalizeAgentApprovalRules(out.AgentApprovalRules)
 	if err := ValidateAgentApprovalRules(out.AgentApprovalRules); err != nil {
 		return Settings{}, err
 	}
 	if err := validateTerminalCommands(out.TerminalCommands); err != nil {
+		return Settings{}, err
+	}
+	if err := validateAgentQuickPrompts(out.AgentQuickPrompts); err != nil {
 		return Settings{}, err
 	}
 	out.RemoteAccessUsername = strings.TrimSpace(out.RemoteAccessUsername)

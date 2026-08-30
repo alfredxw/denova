@@ -5,12 +5,17 @@ import { WRITING_COMPOSER_SETTING_DEFAULTS } from '@/components/Chat/AgentPanel'
 import { Button } from '@/components/ui/button'
 import { WritingAgentWorkspace } from '@/features/agent-chat/WritingAgentWorkspace'
 import { getAgentChatProjects, type AgentChatProject } from '@/features/agent-chat/api'
-import { buildConfigurationAgentMessage, type ConfigurationPageContext } from '@/features/agent-chat/configuration-message'
+import {
+  buildConfigurationAgentMessage,
+  type ConfigurationPageContext,
+  type ConfigurationPageOrigin,
+} from '@/features/agent-chat/configuration-message'
+import type { AgentQuickPromptScope } from '@/features/agent-quick-prompts/defaults'
 import { usePersistedUserSettings } from '@/hooks/usePersistedUserSettings'
 
 interface ConfigManagerChatProps {
   projectId: string
-  origin: string
+  origin: ConfigurationPageOrigin
   resourceId?: string
   storyId?: string
   branchId?: string
@@ -28,6 +33,14 @@ const EMPTY_IMAGE_PRESETS: never[] = []
 const EMPTY_LORE_SUGGESTIONS: never[] = []
 const EMPTY_TEXT_SELECTIONS: never[] = []
 const EMPTY_LABELS: Record<string, string> = {}
+const PRESET_QUICK_PROMPT_SCOPE_BY_KIND: Record<string, AgentQuickPromptScope> = {
+  teller: 'preset-teller',
+  event: 'preset-event',
+  rule: 'preset-rule',
+  'actor-state': 'preset-actor-state',
+  director: 'preset-director',
+  image: 'preset-image',
+}
 
 /**
  * Keeps Configuration Manager as a visible page surface while every turn uses the
@@ -112,6 +125,13 @@ export function ConfigManagerChat({
     branchId,
     context,
   }), [branchId, context, origin, resourceId, storyId])
+  const quickPromptScope = configurationQuickPromptScope(origin, context?.active_resource_kind)
+  const composerDraftScope = configurationComposerDraftScope(
+    quickPromptScope,
+    resourceId,
+    storyId,
+    branchId,
+  )
   const messageTransform = useCallback(
     (message: string) => buildConfigurationAgentMessage(message, pageContext),
     [pageContext],
@@ -152,7 +172,8 @@ export function ConfigManagerChat({
         projectId={project.id}
         projectType={project.type}
         sessionChannel="configuration"
-        sessionCreation="on-first-message"
+        quickPromptScope={quickPromptScope}
+        composerDraftScope={composerDraftScope}
         workspace={project.path}
         composerSettings={composerSettings}
         tellers={EMPTY_TELLERS}
@@ -181,6 +202,33 @@ export function ConfigManagerChat({
 }
 
 function noop(): void {}
+
+function configurationQuickPromptScope(
+  origin: ConfigurationPageOrigin,
+  activeResourceKind?: string,
+): AgentQuickPromptScope {
+  switch (origin) {
+    case 'skills':
+    case 'agents':
+    case 'automation':
+    case 'lore':
+      return origin
+    case 'teller':
+      return PRESET_QUICK_PROMPT_SCOPE_BY_KIND[activeResourceKind || ''] ?? 'preset-teller'
+  }
+}
+
+function configurationComposerDraftScope(
+  promptScope: AgentQuickPromptScope,
+  resourceId?: string,
+  storyId?: string,
+  branchId?: string,
+): string {
+  return ['configuration', promptScope, resourceId, storyId, branchId]
+    .filter((value): value is string => Boolean(value))
+    .map((value) => encodeURIComponent(value))
+    .join(':')
+}
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error || 'Unknown error')

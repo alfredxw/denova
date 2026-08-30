@@ -6,7 +6,7 @@ import type { AgentUIMessage } from '@/lib/agent-ui'
 import type { AgentAskAnswer, AgentAskResolution } from '@/lib/api'
 import { buildAgentMessageViews, type AgentMessageView } from '@/lib/agent-message-view'
 import { MessageList, type AgentMessageListProjection } from './AgentMessageList'
-import { selectSubAgentSessionViews } from './subagent-session'
+import { isActiveSubAgentStatus, selectSubAgentSessionViews, subAgentStatusFromViews, subAgentStatusTranslationKey } from './subagent-session'
 
 interface AgentSubAgentSessionPanelProps {
   projectId?: string
@@ -31,7 +31,8 @@ export function AgentSubAgentSessionPanel({ projectId, messages, sessionKey, onC
   const sessionViews = projection.views
   const first = sessionViews[0]
   const name = first?.metadata.agent_name || first?.metadata.subagent_type || t('chat.subagent.label')
-  const running = sessionViews.some((view) => view.streaming)
+  const status = subAgentStatusFromViews(sessionViews)
+  const running = status ? isActiveSubAgentStatus(status) : sessionViews.some((view) => view.streaming)
 
   return (
     <section
@@ -44,7 +45,7 @@ export function AgentSubAgentSessionPanel({ projectId, messages, sessionKey, onC
         </span>
         <div className="min-w-0 flex-1">
           <div className="truncate text-xs font-medium text-[var(--nova-text)]">{t('chat.subagent.sessionTitle', { name })}</div>
-          <div className="truncate text-[10px] text-[var(--nova-text-faint)]">{running ? t('chat.subagent.status.streaming') : t('chat.subagent.status.done')}</div>
+          <div className="truncate text-[10px] text-[var(--nova-text-faint)]">{t(subAgentStatusTranslationKey(status, running))}</div>
         </div>
         <button
           type="button"

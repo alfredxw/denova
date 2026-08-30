@@ -244,6 +244,8 @@ source_editor_font_family = "mono"
 model_max_retries = 5
 # 连续 parallel_read 工具的最大并发数；用户级和工作区级均可覆盖，范围 1–64。
 agent_tool_parallelism = 8
+# 同一父会话下同时运行的 SubAgent 上限；用户级和工作区级均可覆盖，范围 1–32。
+agent_subagent_parallelism = 4
 plan_mode_default = false
 # 写作 Agent 默认叙事编排 ID（当前工作区级配置，字段名沿用 ide_story_teller_id）
 ide_story_teller_id = "classic"

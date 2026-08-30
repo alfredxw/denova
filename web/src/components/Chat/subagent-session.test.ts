@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import type { ChatMessage } from '@/lib/api'
 import type { AgentMessageView, AgentMessageViewKind } from '@/lib/agent-message-view'
-import { selectSubAgentSessionViews } from './subagent-session'
+import { buildSubAgentProgressMessage, selectSubAgentSessionViews, subAgentStatusFromViews } from './subagent-session'
 
 describe('selectSubAgentSessionViews', () => {
   it('projects every contiguous slice of one legacy delegated invocation', () => {
@@ -17,6 +18,18 @@ describe('selectSubAgentSessionViews', () => {
     const second = subAgentView('second', 'child-session-2')
 
     expect(selectSubAgentSessionViews([first, root, second], 'child-session-2')).toEqual([second])
+  })
+
+  it('retains the exact terminal status in the shared SubAgent card projection', () => {
+    const content = subAgentView('content', 'child-session')
+    const settled = { ...subAgentView('settled', 'child-session', { kind: 'subagent-status' }), data: { status: 'failed' } }
+    expect(subAgentStatusFromViews([content, settled])).toBe('failed')
+
+    const progress = buildSubAgentProgressMessage([
+      { role: 'assistant', content: 'partial output', streaming: true, subagent: true, subagent_session_id: 'child-session' },
+      { role: 'system', content: '', subagent: true, subagent_session_id: 'child-session', subagent_status: 'failed' },
+    ] as ChatMessage[])
+    expect(progress).toMatchObject({ role: 'assistant', content: 'partial output', subagent_status: 'failed', streaming: false })
   })
 })
 

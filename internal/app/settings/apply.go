@@ -117,6 +117,9 @@ func ApplyLayered(cfg *config.Config, layered config.LayeredSettings) {
 	if effective.AgentToolParallelism != nil {
 		cfg.AgentToolParallelism = toolParallelism(effective.AgentToolParallelism)
 	}
+	if effective.AgentSubAgentParallelism != nil {
+		cfg.AgentSubAgentParallelism = subAgentParallelism(effective.AgentSubAgentParallelism)
+	}
 	cfg.AgentApprovalMode = config.NormalizeAgentApprovalMode(effective.AgentApprovalMode)
 	cfg.AgentApprovalRules = config.NormalizeAgentApprovalRules(effective.AgentApprovalRules)
 	cfg.ShellEnvironmentMode = effective.ShellEnvironmentMode
@@ -254,6 +257,9 @@ func ApplyLayer(cfg *config.Config, settings config.Settings) {
 	if settings.AgentToolParallelism != nil {
 		cfg.AgentToolParallelism = toolParallelism(settings.AgentToolParallelism)
 	}
+	if settings.AgentSubAgentParallelism != nil {
+		cfg.AgentSubAgentParallelism = subAgentParallelism(settings.AgentSubAgentParallelism)
+	}
 	if settings.AgentApprovalMode != "" {
 		cfg.AgentApprovalMode = config.NormalizeAgentApprovalMode(settings.AgentApprovalMode)
 	}
@@ -339,6 +345,16 @@ func toolParallelism(value *int) int {
 	}
 	if *value > config.MaxAgentToolParallelism {
 		return config.MaxAgentToolParallelism
+	}
+	return *value
+}
+
+func subAgentParallelism(value *int) int {
+	if value == nil || *value <= 0 {
+		return config.DefaultAgentSubAgentParallelism
+	}
+	if *value > config.MaxAgentSubAgentParallelism {
+		return config.MaxAgentSubAgentParallelism
 	}
 	return *value
 }

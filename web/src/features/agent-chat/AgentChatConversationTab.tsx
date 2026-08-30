@@ -72,6 +72,8 @@ export interface AgentChatConversationHost {
   onSwitchSession: AgentPanelProps['onSwitchSession']
   onRenameSession: AgentPanelProps['onRenameSession']
   onDeleteSession: AgentPanelProps['onDeleteSession']
+  quickPromptScope?: AgentPanelProps['quickPromptScope']
+  composerDraftScope?: AgentPanelProps['composerDraftScope']
   currentChapter?: AgentPanelProps['currentChapter']
   selectedFile: AgentPanelProps['selectedFile']
   ideContext?: AgentPanelProps['ideContext']
@@ -313,6 +315,8 @@ function AgentChatConversationTabComponent({
       sessionRailVisible={host?.sessionRailVisible}
       onSessionRailVisibleChange={host?.onSessionRailVisibleChange}
       initializing={!initialContentReady}
+      quickPromptScope={host?.quickPromptScope}
+      composerDraftScope={host?.composerDraftScope}
       composerSettings={composerSettings}
       currentChapter={host?.currentChapter}
       selectedFile={host?.selectedFile ?? null}

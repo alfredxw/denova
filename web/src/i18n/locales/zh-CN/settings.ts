@@ -6,6 +6,7 @@ const settings = {
   'settings.agent.idleTimeoutSeconds': '空闲超时（秒，0 为不限制）',
   'settings.agent.toolResultLimitKB': '工具结果安全上限（KB）',
   'settings.agent.toolParallelism': '只读工具并发数（1–64）',
+  'settings.agent.subAgentParallelism': 'SubAgent 并发数（1–32）',
   'settings.agent.scriptTimeoutSeconds': '脚本超时（秒，0 为不限制）',
   'settings.agent.scriptIsolationHint': '脚本使用受限 JavaScript 宿主在 Denova 进程内运行，不是安全沙箱。它不能直接访问文件系统、网络、进程或环境变量；每个实际工具调用仍遵循该工具的正常权限策略。',
   'settings.agent.approvalMode': 'Agent 安全模式',

@@ -535,8 +535,15 @@ func eventID(data map[string]any, fallback string) string {
 	if id := readString(data, "id"); id != "" {
 		return id
 	}
+	subAgentSessionID := readString(data, "subagent_session_id")
 	if runID := readString(data, "run_id"); runID != "" {
+		if subAgentSessionID != "" {
+			return fallback + "-" + runID + "-" + subAgentSessionID
+		}
 		return fallback + "-" + runID
+	}
+	if subAgentSessionID != "" {
+		return fallback + "-" + subAgentSessionID
 	}
 	return fallback
 }

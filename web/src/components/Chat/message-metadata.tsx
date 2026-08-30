@@ -13,6 +13,7 @@ import {
 import { StreamingContentStage } from './StreamingContentStage'
 import { MarkdownContent } from './message-content'
 import { buildMarkdownPreview } from './message-tool'
+import { subAgentStatusTranslationKey } from './subagent-session'
 import { useTrajectoryNavigation } from '@/features/trajectory/trajectory-navigation'
 
 const copyFeedbackDurationMs = 1200
@@ -330,7 +331,7 @@ export function SubAgentOutputWindow({
   const name = message.agent_name || message.subagent_type || t('chat.subagent.label')
   const preview = buildMarkdownPreview(content, 220)
   const hasContent = Boolean(content.trim())
-  const statusLabel = message.streaming ? t('chat.subagent.status.streaming') : t('chat.subagent.status.done')
+  const statusLabel = t(subAgentStatusTranslationKey(message.subagent_status, message.streaming === true))
   const detailMode = Boolean(onOpen)
   const actionLabel = detailMode ? t('chat.subagent.openSession') : (expanded ? t('chat.subagent.collapse') : t('chat.subagent.expand'))
   const shownContent = detailMode || !expanded ? preview : content

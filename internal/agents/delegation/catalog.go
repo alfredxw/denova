@@ -25,12 +25,13 @@ type Child struct {
 	Identity    agent.CapabilityIdentity
 }
 
-// Config contains the Denova policy projection for the common task tool.
+// Config contains the Denova policy projection for the common delegation tools.
 // These values affect the model-visible tool contract and are fingerprinted.
 type Config struct {
 	Capability         string
 	Description        string
 	MaxResultBytes     int
+	Parallelism        int
 	ValidationIdentity agent.CapabilityIdentity
 	Validate           func(context.Context, []agent.ToolDefinition) error `json:"-"`
 }
@@ -55,9 +56,9 @@ func NewCatalog(base agent.Toolset, config Config, children ...Child) (*Catalog,
 	}
 	config.Capability = strings.TrimSpace(config.Capability)
 	config.Description = strings.TrimSpace(config.Description)
-	if config.Capability == "" || config.MaxResultBytes <= 0 || config.Validate == nil ||
+	if config.Capability == "" || config.MaxResultBytes <= 0 || config.Parallelism <= 0 || config.Validate == nil ||
 		config.ValidationIdentity.Kind == "" || config.ValidationIdentity.Version == 0 {
-		return nil, errors.New("delegation Catalog requires capability, positive result limit, and identified manifest validation")
+		return nil, errors.New("delegation Catalog requires capability, positive result limit, positive parallelism, and identified manifest validation")
 	}
 	resolved := make([]Child, len(children))
 	seen := make(map[string]struct{}, len(children))
@@ -78,6 +79,7 @@ func NewCatalog(base agent.Toolset, config Config, children ...Child) (*Catalog,
 		Capability         string
 		Description        string
 		MaxResultBytes     int
+		Parallelism        int
 		ValidationIdentity agent.CapabilityIdentity
 		Children           []struct {
 			Name, Description string
@@ -85,7 +87,7 @@ func NewCatalog(base agent.Toolset, config Config, children ...Child) (*Catalog,
 		}
 	}{
 		Base: base.Identity(), Capability: config.Capability, Description: config.Description,
-		MaxResultBytes: config.MaxResultBytes, ValidationIdentity: config.ValidationIdentity,
+		MaxResultBytes: config.MaxResultBytes, Parallelism: config.Parallelism, ValidationIdentity: config.ValidationIdentity,
 		Children: childIdentities(resolved),
 	})
 	digest := sha256.Sum256(encoded)
@@ -132,6 +134,14 @@ func (catalog *Catalog) Children() []Child {
 	return append([]Child(nil), catalog.children...)
 }
 
+// Parallelism returns the maximum active child Runs for one parent Session.
+func (catalog *Catalog) Parallelism() int {
+	if catalog == nil {
+		return 0
+	}
+	return catalog.config.Parallelism
+}
+
 func (catalog *Catalog) Bind(executor publictools.TaskExecutor) (agent.Toolset, error) {
 	if catalog == nil || executor == nil {
 		return nil, errors.New("bind Denova delegation: Catalog and TaskExecutor are required")
@@ -175,9 +185,16 @@ func (bound *boundCatalog) PrepareTools(ctx context.Context, request agent.ToolR
 		return nil, err
 	}
 	for index := range tasks {
+		if tasks[index].Tool == nil {
+			return nil, fmt.Errorf("delegated Agent tool %d is nil", index)
+		}
 		tasks[index].Descriptor.Capability = bound.catalog.config.Capability
 		tasks[index].Descriptor.MaxResultBytes = bound.catalog.config.MaxResultBytes
-		if bound.catalog.config.Description != "" && tasks[index].Tool != nil {
+		info, infoErr := tasks[index].Tool.Info(ctx)
+		if infoErr != nil {
+			return nil, fmt.Errorf("inspect delegated Agent tool %d: %w", index, infoErr)
+		}
+		if bound.catalog.config.Description != "" && info != nil && info.Name == "task" {
 			tasks[index].Tool = describedTaskTool{Tool: tasks[index].Tool, description: bound.catalog.config.Description}
 		}
 	}

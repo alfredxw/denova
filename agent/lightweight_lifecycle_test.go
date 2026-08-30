@@ -175,6 +175,49 @@ func TestActiveRunDoesNotPersistPartialTranscript(t *testing.T) {
 	}
 }
 
+func TestCloseSessionsClosesActiveChildSessionTree(t *testing.T) {
+	ctx := context.Background()
+	model := &gatedLifecycleModel{started: make(chan struct{}), release: make(chan struct{})}
+	owner, err := New(ctx, Definition{Name: "test", Model: model}, WithSessionStore(agentsession.Memory()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = owner.Close(context.Background()) })
+	parent, err := owner.Session(ctx, NamedSession("parent"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	attributes, err := ChildSessionAttributes(parent.Key())
+	if err != nil {
+		t.Fatal(err)
+	}
+	attributes["agent"] = "researcher"
+	child, err := owner.Session(ctx, SessionKey{Namespace: "task.researcher", ID: "child", Attributes: attributes})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, err := child.Run(ctx, Text("wait"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-model.started
+	childSelector := SessionSelector{Namespace: "task.researcher", Attributes: map[string]string{"agent": "researcher"}}
+	if count, err := owner.CountActiveSessions(ctx, childSelector); err != nil || count != 1 {
+		t.Fatalf("active child count = %d, err = %v", count, err)
+	}
+	parentKey := parent.Key()
+	if err := owner.CloseSessions(ctx, SessionSelector{Namespace: parentKey.Namespace, ID: parentKey.ID}); err != nil {
+		t.Fatal(err)
+	}
+	result, err := run.Wait(ctx)
+	if err != nil || result.Status != ResultAborted {
+		t.Fatalf("closed child result = %#v, err = %v", result, err)
+	}
+	if count, err := owner.CountActiveSessions(ctx, childSelector); err != nil || count != 0 {
+		t.Fatalf("active child count after close = %d, err = %v", count, err)
+	}
+}
+
 type gatedLifecycleModel struct {
 	mu      sync.Mutex
 	started chan struct{}

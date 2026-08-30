@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import type { SessionSummary } from '@/lib/api'
@@ -68,6 +68,31 @@ describe('SessionHistoryPopover', () => {
     await user.click(screen.getByRole('button', { name: '管理全部会话' }))
 
     expect(onManage).toHaveBeenCalledOnce()
+  })
+
+  it('closes before an asynchronous session switch settles', async () => {
+    const user = userEvent.setup()
+    let resolveSwitch!: () => void
+    const onSwitch = vi.fn(() => new Promise<void>((resolve) => {
+      resolveSwitch = resolve
+    }))
+    render(
+      <SessionHistoryPopover
+        sessions={sessions()}
+        activeSessionId="session-a"
+        onSwitch={onSwitch}
+        onManage={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: '会话历史' }))
+    await user.click(screen.getByRole('option', { name: '切换到会话 Character notes' }))
+
+    expect(onSwitch).toHaveBeenCalledWith('session-b')
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+    await act(async () => {
+      resolveSwitch()
+    })
   })
 
   it('shows the existing empty result state when no sessions are available', async () => {

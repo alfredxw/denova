@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import {
   Database,
   FolderTree,
-  MessageSquareText,
+  MessageCirclePlus,
   PenLine,
   TerminalSquare,
 } from 'lucide-react'
@@ -47,7 +47,7 @@ export function AgentChatNewTabMenuItems({
   return (
     <>
       <DropdownMenuItem disabled={newChatDisabled} onSelect={() => onNewAgentTab(group)}>
-        <MessageSquareText />
+        <MessageCirclePlus />
         {t('agentChat.tabs.newChat')}
       </DropdownMenuItem>
       <DropdownMenuItem onSelect={() => onNewTerminalTab(group, 'shell')}>

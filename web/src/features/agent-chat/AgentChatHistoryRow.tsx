@@ -1,4 +1,4 @@
-import { Edit3, MessageSquareText, MoreHorizontal, Trash2 } from 'lucide-react'
+import { Edit3, MessageCircle, MoreHorizontal, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import {
@@ -30,7 +30,7 @@ export function AgentChatHistoryRow({ item, onOpen, onRename, onDelete }: AgentC
         aria-label={t('agentChat.history.openSession', { title })}
         className="flex min-h-8 min-w-0 flex-1 items-center gap-2 rounded-[var(--nova-radius)] px-2 py-1.5 text-left outline-none focus-visible:ring-1 focus-visible:ring-[var(--nova-accent)]"
       >
-        <MessageSquareText className={`size-3.5 shrink-0 ${item.session.running ? 'text-[var(--nova-success)]' : 'text-[var(--nova-text-faint)]'}`} />
+        <MessageCircle className={`size-3.5 shrink-0 ${item.session.running ? 'text-[var(--nova-success)]' : 'text-[var(--nova-text-faint)]'}`} />
         <span className="min-w-0 flex-1 truncate text-xs text-[var(--nova-text)]">{title}</span>
         {item.session.running ? (
           <span className="inline-flex shrink-0 items-center gap-1 text-[9px] text-[var(--nova-success)]">

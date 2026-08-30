@@ -91,6 +91,7 @@ type Settings struct {
 	AgentIdleTimeoutSeconds   *int                `toml:"agent_idle_timeout_seconds,omitempty" json:"agent_idle_timeout_seconds,omitempty"`
 	AgentToolResultLimitKB    *int                `toml:"agent_tool_result_limit_kb,omitempty" json:"agent_tool_result_limit_kb,omitempty"`
 	AgentToolParallelism      *int                `toml:"agent_tool_parallelism,omitempty" json:"agent_tool_parallelism,omitempty"`
+	AgentSubAgentParallelism  *int                `toml:"agent_subagent_parallelism,omitempty" json:"agent_subagent_parallelism,omitempty"`
 	AgentScriptTimeoutSeconds *int                `toml:"agent_script_timeout_seconds,omitempty" json:"agent_script_timeout_seconds,omitempty"`
 	AgentApprovalMode         AgentApprovalMode   `toml:"agent_approval_mode,omitempty" json:"agent_approval_mode,omitempty"`
 	AgentApprovalRules        []AgentApprovalRule `toml:"agent_approval_rules,omitempty" json:"agent_approval_rules,omitempty"`
@@ -109,6 +110,9 @@ type Settings struct {
 	IDEStoryTellerID    string `toml:"ide_story_teller_id,omitempty" json:"ide_story_teller_id,omitempty"`
 	IDEImagePresetID    string `toml:"ide_image_preset_id,omitempty" json:"ide_image_preset_id,omitempty"`
 	WritingSkillDefault string `toml:"writing_skill_default,omitempty" json:"writing_skill_default,omitempty"`
+	// AgentQuickPrompts is a user-level UI preference. Workspace configuration
+	// must not replace one creator's personal shortcut layout.
+	AgentQuickPrompts AgentQuickPromptRegistry `toml:"agent_quick_prompts,omitempty" json:"agent_quick_prompts,omitempty"`
 
 	// Terminal (the AgentChat terminal tabs). A terminal runs arbitrary commands on this
 	// machine, so this entire section is user-scoped and cannot be overridden by a workspacelayout.
@@ -139,13 +143,15 @@ const (
 	// Keep one model-visible tool result above the shared 50 KiB fragment floor
 	// while preventing a single successful call from consuming most of the
 	// default 400K-token context window.
-	DefaultAgentToolResultLimitKB = 128
-	DefaultAgentToolParallelism   = 8
-	MaxAgentToolParallelism       = 64
-	DefaultAgentScriptTimeoutSecs = 0
-	DefaultTraceCaptureLevel      = "summary"
-	DefaultTraceExporter          = "local"
-	DefaultTraceRetentionRuns     = 100
+	DefaultAgentToolResultLimitKB   = 128
+	DefaultAgentToolParallelism     = 8
+	MaxAgentToolParallelism         = 64
+	DefaultAgentSubAgentParallelism = 4
+	MaxAgentSubAgentParallelism     = 32
+	DefaultAgentScriptTimeoutSecs   = 0
+	DefaultTraceCaptureLevel        = "summary"
+	DefaultTraceExporter            = "local"
+	DefaultTraceRetentionRuns       = 100
 	// An ordinary creator project should fit comfortably in one response. The
 	// hard ceiling keeps an accidental generated tree from growing without
 	// bound even when the user raises the normal limit.
@@ -204,6 +210,7 @@ func DefaultSettings() Settings {
 		AgentIdleTimeoutSeconds:     intPtr(DefaultAgentIdleTimeoutSeconds),
 		AgentToolResultLimitKB:      intPtr(DefaultAgentToolResultLimitKB),
 		AgentToolParallelism:        intPtr(DefaultAgentToolParallelism),
+		AgentSubAgentParallelism:    intPtr(DefaultAgentSubAgentParallelism),
 		AgentScriptTimeoutSeconds:   intPtr(DefaultAgentScriptTimeoutSecs),
 		AgentApprovalMode:           AgentApprovalWrite,
 		ShellEnvironmentMode:        ShellEnvironmentAuto,
@@ -376,6 +383,9 @@ func Merge(parent, child Settings) Settings {
 	if child.AgentToolParallelism != nil {
 		out.AgentToolParallelism = child.AgentToolParallelism
 	}
+	if child.AgentSubAgentParallelism != nil {
+		out.AgentSubAgentParallelism = child.AgentSubAgentParallelism
+	}
 	if child.AgentScriptTimeoutSeconds != nil {
 		out.AgentScriptTimeoutSeconds = child.AgentScriptTimeoutSeconds
 	}
@@ -436,6 +446,9 @@ func Merge(parent, child Settings) Settings {
 	}
 	if child.WritingSkillDefault != "" {
 		out.WritingSkillDefault = child.WritingSkillDefault
+	}
+	if child.AgentQuickPrompts != nil {
+		out.AgentQuickPrompts = cloneAgentQuickPrompts(child.AgentQuickPrompts)
 	}
 	if child.InteractiveStageFontSize != nil {
 		out.InteractiveStageFontSize = child.InteractiveStageFontSize
@@ -715,6 +728,7 @@ func LoadLayeredWithGlobalAt(novaDir, workspace, projectConfigPath string, globa
 	}
 	global.AgentToolResultLimitKB = normalizeAgentToolResultLimitKB(global.AgentToolResultLimitKB)
 	global.AgentToolParallelism = normalizeAgentToolParallelism(global.AgentToolParallelism)
+	global.AgentSubAgentParallelism = normalizeAgentSubAgentParallelism(global.AgentSubAgentParallelism)
 	global.AgentScriptTimeoutSeconds = normalizeAgentScriptTimeoutSeconds(global.AgentScriptTimeoutSeconds)
 	global.ProjectFileTreeEntryLimit = normalizeProjectFileTreeEntryLimit(global.ProjectFileTreeEntryLimit)
 	user, err := ReadSettingsFile(UserConfigPath(novaDir))
@@ -832,6 +846,7 @@ func PrepareWorkspaceAgentSettingsForWrite(existing, incoming Settings) Settings
 	existing.CustomAgents = scoped.CustomAgents
 	existing.DefaultImageAgentID = scoped.DefaultImageAgentID
 	existing.AgentToolParallelism = scoped.AgentToolParallelism
+	existing.AgentSubAgentParallelism = scoped.AgentSubAgentParallelism
 	return existing
 }
 
@@ -839,15 +854,16 @@ func PrepareWorkspaceAgentSettingsForWrite(existing, incoming Settings) Settings
 // Model selection and every setting shown on the Settings page are user-scoped.
 func workspaceAgentSettings(settings Settings) Settings {
 	return Settings{
-		AgentTools:           settings.AgentTools,
-		AgentPrompts:         settings.AgentPrompts,
-		AgentSkills:          settings.AgentSkills,
-		AgentContexts:        settings.AgentContexts,
-		GeneralSubAgents:     settings.GeneralSubAgents,
-		SubAgents:            settings.SubAgents,
-		CustomAgents:         settings.CustomAgents,
-		DefaultImageAgentID:  settings.DefaultImageAgentID,
-		AgentToolParallelism: settings.AgentToolParallelism,
+		AgentTools:               settings.AgentTools,
+		AgentPrompts:             settings.AgentPrompts,
+		AgentSkills:              settings.AgentSkills,
+		AgentContexts:            settings.AgentContexts,
+		GeneralSubAgents:         settings.GeneralSubAgents,
+		SubAgents:                settings.SubAgents,
+		CustomAgents:             settings.CustomAgents,
+		DefaultImageAgentID:      settings.DefaultImageAgentID,
+		AgentToolParallelism:     settings.AgentToolParallelism,
+		AgentSubAgentParallelism: settings.AgentSubAgentParallelism,
 	}
 }
 
@@ -870,11 +886,13 @@ func sanitizeEditableSettings(s Settings) Settings {
 	s.InteractiveStoryTellerID = strings.TrimSpace(s.InteractiveStoryTellerID)
 	s.IDEImagePresetID = strings.TrimSpace(s.IDEImagePresetID)
 	s.WritingSkillDefault = strings.TrimSpace(s.WritingSkillDefault)
+	s.AgentQuickPrompts = normalizeAgentQuickPrompts(s.AgentQuickPrompts)
 	s.OpenAIContextWindowTokens = normalizeContextWindowTokens(s.OpenAIContextWindowTokens)
 	s.DefaultImageAPIProfileID = strings.TrimSpace(s.DefaultImageAPIProfileID)
 	s.AgentIdleTimeoutSeconds = normalizeAgentIdleTimeoutSeconds(s.AgentIdleTimeoutSeconds)
 	s.AgentToolResultLimitKB = normalizeAgentToolResultLimitKB(s.AgentToolResultLimitKB)
 	s.AgentToolParallelism = normalizeAgentToolParallelism(s.AgentToolParallelism)
+	s.AgentSubAgentParallelism = normalizeAgentSubAgentParallelism(s.AgentSubAgentParallelism)
 	s.AgentScriptTimeoutSeconds = normalizeAgentScriptTimeoutSeconds(s.AgentScriptTimeoutSeconds)
 	s.ProjectFileTreeEntryLimit = normalizeProjectFileTreeEntryLimit(s.ProjectFileTreeEntryLimit)
 	if s.AgentApprovalMode != "" {
@@ -937,6 +955,19 @@ func normalizeAgentToolParallelism(value *int) *int {
 	}
 	if *value > MaxAgentToolParallelism {
 		return intPtr(MaxAgentToolParallelism)
+	}
+	return value
+}
+
+func normalizeAgentSubAgentParallelism(value *int) *int {
+	if value == nil {
+		return nil
+	}
+	if *value <= 0 {
+		return intPtr(DefaultAgentSubAgentParallelism)
+	}
+	if *value > MaxAgentSubAgentParallelism {
+		return intPtr(MaxAgentSubAgentParallelism)
 	}
 	return value
 }

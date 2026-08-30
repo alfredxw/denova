@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Clock3, Folder, LoaderCircle, MessageSquareText, PanelLeftOpen, Search } from 'lucide-react'
+import { Clock3, Folder, LoaderCircle, MessageCircle, PanelLeftOpen, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -278,7 +278,7 @@ export function AgentChatSessionHistoryDialog({
                   </div>
                 ) : items.length === 0 ? (
                   <div className="flex h-28 flex-col items-center justify-center gap-2 px-6 text-center text-xs text-[var(--nova-text-faint)]">
-                    <MessageSquareText className="size-5" />
+                    <MessageCircle className="size-5" />
                     {t(query.trim() ? 'agentChat.history.noResults' : 'agentChat.history.emptyProject')}
                   </div>
                 ) : (
@@ -287,7 +287,7 @@ export function AgentChatSessionHistoryDialog({
                       const key = historyItemKey(item)
                       return editing && historyItemKey(editing) === key ? (
                         <div key={key} className="flex items-center gap-2 rounded-[var(--nova-radius)] bg-[var(--nova-active)] px-2 py-1">
-                          <MessageSquareText className="size-3.5 shrink-0 text-[var(--nova-text-faint)]" />
+                          <MessageCircle className="size-3.5 shrink-0 text-[var(--nova-text-faint)]" />
                           <Input
                             autoFocus
                             value={draftTitle}

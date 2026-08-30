@@ -73,7 +73,8 @@ func ValidateWorkspaceSettingsPatch(changes json.RawMessage) error {
 	for field := range fields {
 		switch field {
 		case "agent_tools", "agent_prompts", "agent_skills", "agent_context",
-			"general_sub_agents", "sub_agents", "custom_agents", "default_image_agent_id", "agent_tool_parallelism":
+			"general_sub_agents", "sub_agents", "custom_agents", "default_image_agent_id",
+			"agent_tool_parallelism", "agent_subagent_parallelism":
 		default:
 			return fmt.Errorf("%w: field %q is not workspace-scoped", ErrInvalidSettingsPatch, field)
 		}

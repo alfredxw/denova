@@ -357,6 +357,7 @@ func (session *Session) snapshotLocked() SessionSnapshot {
 	if session.active != nil {
 		snapshot.ActiveRunID = session.active.id
 		snapshot.ActiveCommandID = session.active.commandID
+		snapshot.ActiveAbortPending = session.active.abortRequested()
 		snapshot.ActiveReceiptCursor = session.active.Receipt().Cursor
 		snapshot.ActiveCycle = session.active.cycleValue()
 		snapshot.ActiveOutput = session.active.outputSnapshot()

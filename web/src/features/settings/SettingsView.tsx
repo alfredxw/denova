@@ -508,6 +508,11 @@ export function SettingsView({ onClose, visible = true }: { onClose?: () => void
                min={1}
                max={64}
                onChange={(v) => setField('agent_tool_parallelism', v)} />
+          <Num label={t('settings.agent.subAgentParallelism')} value={draft.agent_subagent_parallelism ?? null}
+               placeholder={placeholderFor('agent_subagent_parallelism')}
+               min={1}
+               max={32}
+               onChange={(v) => setField('agent_subagent_parallelism', v)} />
           <Num label={t('settings.agent.scriptTimeoutSeconds')} value={draft.agent_script_timeout_seconds ?? null}
                placeholder={placeholderFor('agent_script_timeout_seconds')}
                min={0}

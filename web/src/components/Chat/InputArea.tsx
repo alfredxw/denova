@@ -53,6 +53,17 @@ export interface InputAreaSendOptions {
   attachments?: File[]
 }
 
+export interface InputAreaPrefill {
+  prompt: string
+  nonce: number
+  mode?: 'replace' | 'append'
+}
+
+export function applyInputPrefill(current: string, prefill: InputAreaPrefill): string {
+  if (prefill.mode !== 'append' || !current.trim()) return prefill.prompt
+  return `${current.trimEnd()}\n\n${prefill.prompt}`
+}
+
 interface InputAreaProps {
   onSend: (message: string, options?: InputAreaSendOptions) => boolean | void | Promise<boolean | void>
   onStop?: () => void
@@ -79,7 +90,7 @@ interface InputAreaProps {
   onGoalPause?: () => void | Promise<void>
   onGoalClear?: () => void | Promise<void>
   draftKey?: string
-  inputPrefill?: { prompt: string; nonce: number } | null
+  inputPrefill?: InputAreaPrefill | null
   onInputPrefillConsumed?: () => void
   referencedFiles?: string[]
   onReferenceRemove?: (path: string) => void
@@ -314,7 +325,7 @@ export function InputArea({
 
   useEffect(() => {
     if (!inputPrefill) return
-    setValue(inputPrefill.prompt)
+    setValue((current) => applyInputPrefill(current, inputPrefill))
     setShowCommands(false)
     setCommandQuery(null)
     setActiveCommandIndex(0)

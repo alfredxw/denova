@@ -49,6 +49,29 @@ describe('agent-ui', () => {
     expect(agentViewToRenderMessage(view)).toMatchObject({ status: 'cancelled' })
   })
 
+  it('projects a settled SubAgent status without adding a visible system message', () => {
+    const views = buildAgentMessageViews([{
+      id: 'subagent-status',
+      role: 'assistant',
+      parts: [{
+        type: 'data-agent-activity',
+        id: 'settled',
+        data: {
+          event: 'subagent_settled',
+          status: 'blocked',
+          subagent: true,
+          subagent_session_id: 'child-session',
+          agent_name: 'researcher',
+          run_id: 'parent-run',
+        },
+      }],
+    } as AgentUIMessage])
+
+    expect(views).toHaveLength(1)
+    expect(views[0]).toMatchObject({ kind: 'subagent-status', data: { status: 'blocked' } })
+    expect(agentViewToRenderMessage(views[0])).toMatchObject({ role: 'system', content: '', subagent_status: 'blocked' })
+  })
+
   it('preserves transport attachments and renders attachment-only user messages', () => {
     const attachments = [{ name: 'notes.md', media_type: 'text/markdown', data_url: 'data:text/markdown;base64,aGVsbG8=' }]
     expect(buildAgentChatRequestBody({ attachments })).toMatchObject({ attachments })

@@ -4,12 +4,11 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
-	"strconv"
 	"strings"
+	"sync"
 
 	agent "github.com/alfredxw/denova/agent"
 )
@@ -19,6 +18,14 @@ import (
 type SessionOpener interface {
 	Session(context.Context, agent.SessionKey) (*agent.Session, error)
 	ListSessions(context.Context, agent.SessionSelector) ([]agent.SessionKey, error)
+}
+
+type activeSessionCounter interface {
+	CountActiveSessions(context.Context, agent.SessionSelector) (int, error)
+}
+
+type LocalTaskOptions struct {
+	Parallelism int
 }
 
 // LocalTaskAgent binds one stable selector to an Agent owner. Different
@@ -43,14 +50,19 @@ type LocalTaskAgent struct {
 // executor keeps no authoritative task map: TaskRef is sufficient to reopen a
 // Session and attach a Run after a cold restart.
 type LocalTasks struct {
-	agents   map[string]LocalTaskAgent
-	ordered  []TaskAgentInfo
-	identity agent.CapabilityIdentity
+	agents      map[string]LocalTaskAgent
+	ordered     []TaskAgentInfo
+	parallelism int
+	identity    agent.CapabilityIdentity
+	startMu     sync.Mutex
 }
 
-func NewLocalTasks(candidates ...LocalTaskAgent) (*LocalTasks, error) {
+func NewLocalTasks(options LocalTaskOptions, candidates ...LocalTaskAgent) (*LocalTasks, error) {
 	if len(candidates) == 0 {
 		return nil, errors.New("local tasks require at least one Agent")
+	}
+	if options.Parallelism <= 0 {
+		return nil, errors.New("local tasks require positive parallelism")
 	}
 	resolved := make(map[string]LocalTaskAgent, len(candidates))
 	identities := make([]struct {
@@ -85,8 +97,11 @@ func NewLocalTasks(candidates ...LocalTaskAgent) (*LocalTasks, error) {
 		ordered[index] = TaskAgentInfo{Name: candidate.Name, Description: candidate.Description}
 	}
 	return &LocalTasks{
-		agents: resolved, ordered: ordered,
-		identity: toolsetIdentity("tasks.local", identities),
+		agents: resolved, ordered: ordered, parallelism: options.Parallelism,
+		identity: toolsetIdentity("tasks.local", struct {
+			Parallelism int
+			Agents      any
+		}{options.Parallelism, identities}),
 	}, nil
 }
 
@@ -121,7 +136,22 @@ func (tasks *LocalTasks) Start(ctx context.Context, request TaskRequest) (Task, 
 		}
 	}
 	sessionID := localTaskSessionID(candidate.Name, commandID)
-	session, err := tasks.openOrCreate(ctx, candidate, sessionID)
+
+	tasks.startMu.Lock()
+	defer tasks.startMu.Unlock()
+	if existing, found, existingErr := tasks.existingTask(ctx, candidate, sessionID, commandID); existingErr != nil {
+		return Task{}, existingErr
+	} else if found {
+		return existing, nil
+	}
+	active, err := tasks.activeTaskCount(ctx)
+	if err != nil {
+		return Task{}, fmt.Errorf("count active tasks: %w", err)
+	}
+	if active >= tasks.parallelism {
+		return Task{}, fmt.Errorf("%w: %d active tasks reached the configured limit of %d", ErrTaskCapacityExceeded, active, tasks.parallelism)
+	}
+	session, err := candidate.Opener.Session(ctx, localTaskSessionKey(candidate, sessionID))
 	if err != nil {
 		return Task{}, fmt.Errorf("open task Session: %w", err)
 	}
@@ -136,17 +166,11 @@ func (tasks *LocalTasks) Start(ctx context.Context, request TaskRequest) (Task, 
 		return Task{}, fmt.Errorf("start task Run: %w", err)
 	}
 	ref := TaskRef{Agent: candidate.Name, Session: sessionID, Run: run.ID()}
-	if request.Detached {
-		// Session.Close is a structural binding close, not a handle release: it
-		// durably aborts an active Run. Leave detached bindings under their Agent
-		// owner's normal idle-capacity policy; TaskRef can reopen them at any time.
-		return Task{Ref: ref, Status: "running"}, nil
-	}
-	return tasks.wait(ctx, session, run, ref)
+	return Task{Ref: ref, Status: "running"}, nil
 }
 
 func (tasks *LocalTasks) Observe(ctx context.Context, ref TaskRef, cursor string) (TaskObservation, error) {
-	candidate, session, err := tasks.open(ctx, ref)
+	_, session, err := tasks.open(ctx, ref)
 	if err != nil {
 		return TaskObservation{}, err
 	}
@@ -158,13 +182,17 @@ func (tasks *LocalTasks) Observe(ctx context.Context, ref TaskRef, cursor string
 	if err != nil {
 		return TaskObservation{}, err
 	}
-	result := TaskObservation{Task: Task{Ref: ref, Status: taskStatus(observation.Snapshot, ref.Run)}}
+	task, err := taskFromSnapshot(ref, observation.Snapshot)
+	if err != nil {
+		return TaskObservation{}, err
+	}
+	result := TaskObservation{Task: task}
 	result.Events, result.Cursor, result.Output, result.Incomplete, err = collectTaskEvents(ctx, observation, ref.Run, after)
-	result.Interactions = cloneTaskInteractions(observation.Snapshot.PendingInteractions)
 	if result.Output == "" {
 		result.Output = taskSnapshotOutput(observation.Snapshot, ref.Run)
 	}
-	if err == nil && result.Output == "" && result.Task.Status != "running" {
+	terminal := isTaskTerminal(result.Task.Status)
+	if err == nil && result.Output == "" && terminal {
 		var replayIncomplete bool
 		result.Output, replayIncomplete, err = replayTaskFinal(ctx, session, ref.Run, observation.Snapshot.RetentionStart)
 		result.Incomplete = result.Incomplete || replayIncomplete
@@ -172,7 +200,9 @@ func (tasks *LocalTasks) Observe(ctx context.Context, ref TaskRef, cursor string
 	if result.Output != "" {
 		result.Task.Output = result.Output
 	}
-	_ = candidate
+	if terminal {
+		err = errors.Join(err, session.Close(context.Background()))
+	}
 	return result, err
 }
 
@@ -228,120 +258,84 @@ func (tasks *LocalTasks) Abort(ctx context.Context, ref TaskRef, request agent.A
 	return err
 }
 
-func (tasks *LocalTasks) wait(ctx context.Context, session *agent.Session, run *agent.Run, ref TaskRef) (Task, error) {
-	var output strings.Builder
-	events := run.Events()
-	for events != nil {
-		var event agent.Event
-		var ok bool
-		select {
-		case event, ok = <-events:
-			if !ok {
-				events = nil
-				continue
-			}
-		case <-ctx.Done():
-			_, abortErr := run.Abort(context.WithoutCancel(ctx), agent.AbortRequest{
-				Reason:         "parent task context cancelled",
-				IdempotencyKey: ref.Session + ":" + ref.Run + ":parent-cancel",
-			})
-			if abortErr != nil {
-				return Task{Ref: ref, Status: "failed", Output: output.String()}, errors.Join(ctx.Err(), abortErr)
-			}
-			return Task{Ref: ref, Status: "aborting", Output: output.String()}, ctx.Err()
-		}
-		if err := forwardTaskEvent(ctx, ref, event); err != nil {
-			return Task{Ref: ref, Status: "failed", Output: output.String()}, err
-		}
-		switch payload := event.Payload.(type) {
-		case agent.AssistantDelta:
-			if payload.Delta != "" {
-				output.WriteString(payload.Delta)
-			}
-		case agent.InteractionRequested:
-			resolution, interactionErr := agent.RequestInteraction(ctx, payload.Request)
-			if interactionErr != nil {
-				return Task{Ref: ref, Status: "blocked"}, fmt.Errorf("route child Interaction: %w", interactionErr)
-			}
-			if err := run.Respond(ctx, payload.Request.ID, responseFromResolution(resolution)); err != nil {
-				return Task{Ref: ref, Status: "failed"}, err
-			}
-		case agent.AssistantFinal:
-			output.Reset()
-			output.WriteString(payload.Content)
-		}
-	}
-	result, err := run.Wait(ctx)
-	if closeErr := session.Close(context.Background()); closeErr != nil {
-		err = errors.Join(err, closeErr)
-	}
-	status := string(result.Status)
+func (tasks *LocalTasks) existingTask(
+	ctx context.Context,
+	candidate LocalTaskAgent,
+	sessionID string,
+	commandID string,
+) (Task, bool, error) {
+	keys, err := taskSessionKeys(ctx, candidate, sessionID)
 	if err != nil {
-		return Task{Ref: ref, Status: status, Output: output.String()}, err
+		return Task{}, false, err
 	}
-	return Task{Ref: ref, Status: status, Output: output.String()}, nil
-}
-
-func forwardTaskEvent(ctx context.Context, ref TaskRef, event agent.Event) error {
-	source := taskEventSource(event.Payload)
-	childPath := append([]string(nil), source.Path...)
-	if len(childPath) == 0 {
-		childPath = []string{firstTaskEventValue(source.Name, ref.Agent)}
-	}
-	path := make([]string, 0, len(childPath)+2)
-	if scope, ok := agent.InvocationScopeFromContext(ctx); ok {
-		path = append(path, scope.RunPath...)
-	}
-	if len(path) != 0 && len(childPath) != 0 && path[len(path)-1] == childPath[0] {
-		childPath = childPath[1:]
-	}
-	path = append(path, childPath...)
-	name := firstTaskEventValue(source.Name, ref.Agent)
-	if len(path) != 0 {
-		name = path[len(path)-1]
-	}
-	return agent.ForwardNestedEvent(ctx, agent.NestedEvent{
-		Source: agent.EventSource{
-			Name: name, Path: path, InvocationID: ref.Session + "/" + ref.Run, InvocationType: "task",
-		},
-		SessionID: ref.Session, Child: event,
-	})
-}
-
-func taskEventSource(payload agent.EventPayload) agent.EventSource {
-	switch value := payload.(type) {
-	case agent.AssistantDelta:
-		return value.Source
-	case agent.ThinkingDelta:
-		return value.Source
-	case agent.ToolStarted:
-		return value.Source
-	case agent.ToolProgress:
-		return value.Source
-	case agent.ToolFinished:
-		return value.Source
-	case agent.ToolInputStarted:
-		return value.Source
-	case agent.ToolInputDelta:
-		return value.Source
-	case agent.ModelCompleted:
-		return value.Source
-	case agent.ArtifactProduced:
-		return value.Source
-	case agent.NestedEvent:
-		return value.Source
+	switch len(keys) {
+	case 0:
+		return Task{}, false, nil
+	case 1:
 	default:
-		return agent.EventSource{}
+		return Task{}, false, errors.New("task Session identity is ambiguous")
 	}
+	session, err := candidate.Opener.Session(ctx, keys[0])
+	if err != nil {
+		return Task{}, false, err
+	}
+	snapshot, err := session.Snapshot(ctx)
+	if err != nil {
+		return Task{}, false, err
+	}
+	ref := TaskRef{Agent: candidate.Name, Session: sessionID}
+	if snapshot.ActiveCommandID == commandID {
+		ref.Run = snapshot.ActiveRunID
+		task, taskErr := taskFromSnapshot(ref, snapshot)
+		return task, true, taskErr
+	}
+	for index := len(snapshot.RecentRuns) - 1; index >= 0; index-- {
+		if snapshot.RecentRuns[index].CommandID != commandID {
+			continue
+		}
+		ref.Run = snapshot.RecentRuns[index].ID
+		task, taskErr := tasks.taskFromSessionSnapshot(ctx, session, ref, snapshot)
+		if closeErr := session.Close(context.Background()); closeErr != nil {
+			taskErr = errors.Join(taskErr, closeErr)
+		}
+		return task, true, taskErr
+	}
+	return Task{}, false, errors.New("task Session idempotency identity is inconsistent")
 }
 
-func firstTaskEventValue(values ...string) string {
-	for _, value := range values {
-		if value = strings.TrimSpace(value); value != "" {
-			return value
+func (tasks *LocalTasks) activeTaskCount(ctx context.Context) (int, error) {
+	total := 0
+	for _, candidate := range tasks.agents {
+		selector := taskSessionSelector(candidate, "")
+		if counter, ok := candidate.Opener.(activeSessionCounter); ok {
+			count, err := counter.CountActiveSessions(ctx, selector)
+			if err != nil {
+				return 0, err
+			}
+			total += count
+			continue
+		}
+		keys, err := candidate.Opener.ListSessions(ctx, selector)
+		if err != nil {
+			return 0, err
+		}
+		for _, key := range keys {
+			session, openErr := candidate.Opener.Session(ctx, key)
+			if openErr != nil {
+				return 0, openErr
+			}
+			snapshot, snapshotErr := session.Snapshot(ctx)
+			if snapshotErr != nil {
+				return 0, snapshotErr
+			}
+			if snapshot.ActiveRunID != "" {
+				total++
+			} else if closeErr := session.Close(context.Background()); closeErr != nil {
+				return 0, closeErr
+			}
 		}
 	}
-	return "agent"
+	return total, nil
 }
 
 func (tasks *LocalTasks) open(ctx context.Context, ref TaskRef) (LocalTaskAgent, *agent.Session, error) {
@@ -354,25 +348,6 @@ func (tasks *LocalTasks) open(ctx context.Context, ref TaskRef) (LocalTaskAgent,
 	}
 	session, err := tasks.openExisting(ctx, candidate, ref.Session)
 	return candidate, session, err
-}
-
-func (tasks *LocalTasks) openOrCreate(
-	ctx context.Context,
-	candidate LocalTaskAgent,
-	sessionID string,
-) (*agent.Session, error) {
-	keys, err := taskSessionKeys(ctx, candidate, sessionID)
-	if err != nil {
-		return nil, err
-	}
-	switch len(keys) {
-	case 0:
-		return candidate.Opener.Session(ctx, localTaskSessionKey(candidate, sessionID))
-	case 1:
-		return candidate.Opener.Session(ctx, keys[0])
-	default:
-		return nil, errors.New("task Session identity is ambiguous")
-	}
 }
 
 func (tasks *LocalTasks) openExisting(
@@ -398,16 +373,20 @@ func taskSessionKeys(
 	candidate LocalTaskAgent,
 	sessionID string,
 ) ([]agent.SessionKey, error) {
+	return candidate.Opener.ListSessions(ctx, taskSessionSelector(candidate, sessionID))
+}
+
+func taskSessionSelector(candidate LocalTaskAgent, sessionID string) agent.SessionSelector {
 	attributes := cloneTaskAttributes(candidate.LookupAttributes)
 	if attributes == nil {
 		attributes = make(map[string]string, 1)
 	}
 	attributes["agent"] = candidate.Name
-	return candidate.Opener.ListSessions(ctx, agent.SessionSelector{
+	return agent.SessionSelector{
 		Namespace:  "task." + candidate.Name,
 		ID:         sessionID,
 		Attributes: attributes,
-	})
+	}
 }
 
 func (tasks *LocalTasks) agent(name string) (LocalTaskAgent, error) {
@@ -422,193 +401,6 @@ func (tasks *LocalTasks) agent(name string) (LocalTaskAgent, error) {
 	return candidate, nil
 }
 
-func collectTaskEvents(ctx context.Context, observation agent.Observation, runID string, after agent.Cursor) ([]TaskEvent, string, string, bool, error) {
-	var events []TaskEvent
-	var output string
-	target := observation.Snapshot.Cursor
-	cursor := after
-	if cursor >= target {
-		return nil, strconv.FormatUint(uint64(target), 10), "", observation.Snapshot.MessagesTruncated, nil
-	}
-	for {
-		select {
-		case event, ok := <-observation.Events:
-			if !ok {
-				return events, strconv.FormatUint(uint64(cursor), 10), output, true, nil
-			}
-			cursor = event.Cursor
-			if event.RunID != runID {
-				if cursor >= target {
-					return events, strconv.FormatUint(uint64(target), 10), output, observation.Snapshot.MessagesTruncated, nil
-				}
-				continue
-			}
-			projected := TaskEvent{
-				Cursor: strconv.FormatUint(uint64(event.Cursor), 10), Type: taskEventType(event.Payload),
-				Run: event.RunID, Event: event,
-			}
-			switch payload := event.Payload.(type) {
-			case agent.AssistantDelta:
-				projected.Type, projected.Text = "assistant_delta", payload.Delta
-			case agent.ThinkingDelta:
-				projected.Type, projected.Text = "thinking_delta", payload.Delta
-			case agent.AssistantFinal:
-				projected.Type, projected.Text, output = "assistant_final", payload.Content, payload.Content
-			case agent.ToolStarted:
-				projected.Type, projected.Tool = "tool_started", payload.Name
-			case agent.ToolProgress:
-				projected.Type, projected.Tool, projected.Text = "tool_progress", payload.Name, payload.Delta
-			case agent.ToolFinished:
-				projected.Type, projected.Tool, projected.Text = "tool_finished", payload.Name, payload.Result
-			case agent.InteractionRequested:
-				projected.Type = "interaction_requested"
-			case agent.RunSettled:
-				projected.Type, projected.Text = "run_settled", string(payload.Status)
-			}
-			events = append(events, projected)
-			if cursor >= target {
-				return events, strconv.FormatUint(uint64(target), 10), output, observation.Snapshot.MessagesTruncated, nil
-			}
-		case err, ok := <-observation.Errors:
-			if ok && err != nil {
-				return events, strconv.FormatUint(uint64(cursor), 10), output, true, err
-			}
-			observation.Errors = nil
-		case <-ctx.Done():
-			return events, strconv.FormatUint(uint64(cursor), 10), output, true, ctx.Err()
-		}
-	}
-}
-
-func taskEventType(payload agent.EventPayload) string {
-	switch payload.(type) {
-	case agent.RunAccepted:
-		return "run_accepted"
-	case agent.RunStarted:
-		return "run_started"
-	case agent.AssistantDelta:
-		return "assistant_delta"
-	case agent.ThinkingDelta:
-		return "thinking_delta"
-	case agent.ModelCompleted:
-		return "model_completed"
-	case agent.ContextNormalized:
-		return "context_normalized"
-	case agent.AssistantFinal:
-		return "assistant_final"
-	case agent.ToolInputStarted:
-		return "tool_input_started"
-	case agent.ToolInputDelta:
-		return "tool_input_delta"
-	case agent.ToolStarted:
-		return "tool_started"
-	case agent.ToolProgress:
-		return "tool_progress"
-	case agent.ToolFinished:
-		return "tool_finished"
-	case agent.ArtifactProduced:
-		return "artifact_produced"
-	case agent.EventStreamGap:
-		return "event_stream_gap"
-	case agent.GoalUpdated:
-		return "goal_updated"
-	case agent.GoalEvaluationFailed:
-		return "goal_evaluation_failed"
-	case agent.TodoUpdated:
-		return "todo_updated"
-	case agent.InteractionRequested:
-		return "interaction_requested"
-	case agent.InteractionResolved:
-		return "interaction_resolved"
-	case agent.CompactionStarted:
-		return "compaction_started"
-	case agent.CompactionCommitted:
-		return "compaction_committed"
-	case agent.CompactionRemoved:
-		return "compaction_removed"
-	case agent.CompactionFailed:
-		return "compaction_failed"
-	case agent.CompactionSkipped:
-		return "compaction_skipped"
-	case agent.CleanupStarted:
-		return "cleanup_started"
-	case agent.CleanupCompleted:
-		return "cleanup_completed"
-	case agent.CleanupFailed:
-		return "cleanup_failed"
-	case agent.CleanupSkipped:
-		return "cleanup_skipped"
-	case agent.CleanupCommitted:
-		return "cleanup_committed"
-	case agent.SessionCleared:
-		return "session_cleared"
-	case agent.TranscriptSynchronized:
-		return "transcript_synchronized"
-	case agent.ContextLimitReached:
-		return "context_limit_reached"
-	case agent.RunSettled:
-		return "run_settled"
-	case agent.NestedEvent:
-		return "nested"
-	default:
-		return "unknown"
-	}
-}
-
-func taskStatus(snapshot agent.SessionSnapshot, runID string) string {
-	if snapshot.ActiveRunID == runID {
-		return "running"
-	}
-	for _, recent := range snapshot.RecentRuns {
-		if recent.ID == runID {
-			return string(recent.Status)
-		}
-	}
-	return "unknown"
-}
-
-func taskSnapshotOutput(snapshot agent.SessionSnapshot, runID string) string {
-	if snapshot.ActiveRunID == runID {
-		return snapshot.ActiveOutput.Content
-	}
-	for _, recent := range snapshot.RecentRuns {
-		if recent.ID == runID {
-			return recent.Output
-		}
-	}
-	return ""
-}
-
-func parseTaskCursor(value string) (agent.Cursor, error) {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return 0, nil
-	}
-	parsed, err := strconv.ParseUint(value, 10, 64)
-	if err != nil {
-		return 0, fmt.Errorf("invalid task cursor: %w", err)
-	}
-	return agent.Cursor(parsed), nil
-}
-
-func replayTaskFinal(
-	ctx context.Context,
-	session *agent.Session,
-	runID string,
-	retentionStart agent.Cursor,
-) (string, bool, error) {
-	after := agent.Cursor(0)
-	if retentionStart > 0 {
-		after = retentionStart - 1
-	}
-	observation, err := session.Observe(ctx, after)
-	if err != nil {
-		return "", true, err
-	}
-	_, _, output, incomplete, err := collectTaskEvents(ctx, observation, runID, after)
-	return output, incomplete || output == "", err
-}
-
 func localTaskSessionID(agentName, commandID string) string {
 	return toolsetIdentity("task.session", struct{ Agent, Command string }{agentName, commandID}).ConfigHash[:32]
 }
@@ -619,13 +411,6 @@ func localTaskID(prefix string) (string, error) {
 		return "", fmt.Errorf("generate task id: %w", err)
 	}
 	return prefix + "-" + hex.EncodeToString(value[:]), nil
-}
-
-func responseFromResolution(resolution agent.InteractionResolution) agent.InteractionResponse {
-	return agent.InteractionResponse{
-		Answers:    append([]agent.InteractionAnswer(nil), resolution.Answers...),
-		Permission: resolution.Permission, Cancelled: resolution.Cancelled,
-	}
 }
 
 func localTaskSessionKey(candidate LocalTaskAgent, sessionID string) agent.SessionKey {
@@ -644,21 +429,6 @@ func cloneTaskAttributes(source map[string]string) map[string]string {
 	cloned := make(map[string]string, len(source))
 	for name, value := range source {
 		cloned[name] = value
-	}
-	return cloned
-}
-
-func cloneTaskInteractions(source []agent.InteractionRequest) []agent.InteractionRequest {
-	if len(source) == 0 {
-		return nil
-	}
-	encoded, err := json.Marshal(source)
-	if err != nil {
-		return append([]agent.InteractionRequest(nil), source...)
-	}
-	var cloned []agent.InteractionRequest
-	if json.Unmarshal(encoded, &cloned) != nil {
-		return append([]agent.InteractionRequest(nil), source...)
 	}
 	return cloned
 }

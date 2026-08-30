@@ -1,5 +1,7 @@
+export type ConfigurationPageOrigin = 'skills' | 'agents' | 'automation' | 'lore' | 'teller'
+
 export interface ConfigurationPageContext {
-  origin: string
+  origin: ConfigurationPageOrigin
   resourceId?: string
   storyId?: string
   branchId?: string

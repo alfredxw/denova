@@ -422,6 +422,7 @@ type SessionSnapshot struct {
 	RetentionStart      Cursor
 	ActiveRunID         string
 	ActiveCommandID     string
+	ActiveAbortPending  bool
 	ActiveReceiptCursor Cursor
 	ActiveCycle         int
 	ActiveOutput        ActiveOutputSnapshot

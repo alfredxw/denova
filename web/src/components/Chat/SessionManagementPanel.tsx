@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Check, Edit3, LogIn, MessageSquareText, Plus, Search, Trash2, X } from 'lucide-react'
+import { Check, Edit3, LogIn, MessageCircle, Plus, Search, Trash2, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { formatDateTime } from '@/i18n'
 import type { SessionSummary } from '@/lib/api'
@@ -155,7 +155,7 @@ export function SessionManagementPanel({
                   <div className="flex min-w-0 items-start gap-2">
                     {editing ? (
                       <div className="flex min-w-0 flex-1 items-start gap-2">
-                        <MessageSquareText className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${active ? 'text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)]'}`} />
+                        <MessageCircle className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${active ? 'text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)]'}`} />
                         <div className="min-w-0 flex-1">
                           <input
                             autoFocus
@@ -178,7 +178,7 @@ export function SessionManagementPanel({
                         aria-current={active ? 'true' : undefined}
                         className="flex min-w-0 flex-1 items-start gap-2 rounded-sm text-left outline-none focus-visible:ring-2 focus-visible:ring-[var(--nova-accent)]"
                       >
-                        <MessageSquareText className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${active ? 'text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)]'}`} />
+                        <MessageCircle className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${active ? 'text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)]'}`} />
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-xs font-medium text-[var(--nova-text)]">{title}</span>
                           {metadata}

@@ -379,6 +379,7 @@ func buildAgentDefinitionWithComposition(ctx context.Context, cfg *config.Config
 			Capability:         config.AgentToolDelegation,
 			Description:        taskDescription,
 			MaxResultBytes:     toolresult.LimitBytes(cfg),
+			Parallelism:        configSubAgentParallelism(cfg),
 			ValidationIdentity: validationIdentity,
 			Validate:           validateManifest,
 		}, taskAgents...)
@@ -783,4 +784,14 @@ func configToolParallelism(cfg *config.Config) int {
 		return config.MaxAgentToolParallelism
 	}
 	return cfg.AgentToolParallelism
+}
+
+func configSubAgentParallelism(cfg *config.Config) int {
+	if cfg == nil || cfg.AgentSubAgentParallelism <= 0 {
+		return config.DefaultAgentSubAgentParallelism
+	}
+	if cfg.AgentSubAgentParallelism > config.MaxAgentSubAgentParallelism {
+		return config.MaxAgentSubAgentParallelism
+	}
+	return cfg.AgentSubAgentParallelism
 }

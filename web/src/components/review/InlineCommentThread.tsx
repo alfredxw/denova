@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { Check, ChevronUp, MessageSquarePlus, Pencil, Trash2, X } from 'lucide-react'
+import { Check, ChevronUp, MessageCircle, MessageCirclePlus, Pencil, Trash2, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -72,7 +72,7 @@ export function InlineCommentThread<T extends InlineReviewComment>({ comments = 
   return (
     <div className="nova-review-comment-thread mx-2 my-1 overflow-hidden rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface)] text-xs text-[var(--nova-text)] shadow-[var(--nova-shadow)]">
       <div className="flex min-h-8 items-center gap-2 border-b border-[var(--nova-border)] px-3 py-1.5 text-[10px] text-[var(--nova-text-faint)]">
-        <MessageSquarePlus className="h-3.5 w-3.5" />
+        <MessageCircle className="h-3.5 w-3.5" />
         <span className="min-w-0 flex-1 truncate">{anchorLabel || t('changes.comments')}</span>
         {comments.length > 0 && <span className="whitespace-nowrap">{t(comments.length === 1 ? 'changes.commentCount.one' : 'changes.commentCount.other', { count: comments.length })}</span>}
         {onCollapse && (
@@ -116,7 +116,7 @@ export function InlineCommentThread<T extends InlineReviewComment>({ comments = 
           <Textarea ref={editorRef} value={draft.body} disabled={disabled || draft.submitting} onChange={(event) => draft.onChange(event.target.value)} placeholder={t('changes.commentPlaceholder')} minRows={2} maxRows={8} className={INLINE_COMMENT_EDITOR_CLASS} />
           <div className="mt-2 flex justify-end gap-1.5">
             <Button type="button" size="xs" variant="ghost" disabled={disabled || draft.submitting} onClick={draft.onCancel}><X />{t('common.cancel')}</Button>
-            <Button type="button" size="xs" disabled={disabled || draft.submitting || !draft.body.trim()} onClick={draft.onSubmit}><MessageSquarePlus />{t('changes.addComment')}</Button>
+            <Button type="button" size="xs" disabled={disabled || draft.submitting || !draft.body.trim()} onClick={draft.onSubmit}><MessageCirclePlus />{t('changes.addComment')}</Button>
           </div>
         </div>
       )}

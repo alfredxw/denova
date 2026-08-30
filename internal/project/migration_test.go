@@ -75,6 +75,88 @@ func TestEnsureStateCopiesLegacyProjectDataWithoutDeletingSource(t *testing.T) {
 	}
 }
 
+func TestResolveMissingProjectDefersStateMigrationUntilContentReturns(t *testing.T) {
+	denovaDir := t.TempDir()
+	workspace := filepath.Join(t.TempDir(), "book")
+	if err := os.MkdirAll(workspace, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	registry := NewRegistry(denovaDir)
+	record, err := registry.Add(workspace, TypeBook, "Book")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(workspace); err != nil {
+		t.Fatal(err)
+	}
+
+	missing, layout, err := registry.Resolve(record.ID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if missing.Status != StatusMissing {
+		t.Fatalf("resolved Project status = %s, want %s", missing.Status, StatusMissing)
+	}
+	if _, err := os.Stat(layout.StateRoot); !os.IsNotExist(err) {
+		t.Fatalf("missing Project finalized state migration: %v", err)
+	}
+
+	legacySession := workspacelayout.Path(workspace, "sessions", "session.jsonl")
+	if err := os.MkdirAll(filepath.Dir(legacySession), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(legacySession, []byte("history\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, restoredLayout, err := registry.Resolve(record.ID, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	migratedSession := filepath.Join(restoredLayout.SessionsDir(), "session.jsonl")
+	if data, err := os.ReadFile(migratedSession); err != nil || string(data) != "history\n" {
+		t.Fatalf("deferred Project state migration data=%q err=%v", data, err)
+	}
+}
+
+func TestResolveMalformedExternalProjectForArchiveDoesNotOpenWorkspace(t *testing.T) {
+	denovaDir := t.TempDir()
+	const projectID = "project-broken-path"
+	registry := NewRegistry(denovaDir)
+	if err := registry.saveLocked(registryData{
+		Version: registryVersion,
+		Projects: []Record{{
+			ID:           projectID,
+			Type:         TypeBook,
+			Name:         "Book",
+			StateDirName: "Book",
+			Location: ProjectLocation{
+				Kind: LocationExternal,
+				Path: `D:\mnt\d\Code\denova\D:\mnt\d\Code\denova\.denova\projects\Book`,
+			},
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	record, layout, err := registry.Resolve(projectID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if record.Status != StatusMissing {
+		t.Fatalf("malformed external Project status = %s, want %s", record.Status, StatusMissing)
+	}
+	if _, err := os.Stat(layout.StateRoot); !os.IsNotExist(err) {
+		t.Fatalf("malformed external Project opened migration state: %v", err)
+	}
+	archived, err := registry.Archive(projectID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if archived.Status != StatusArchived {
+		t.Fatalf("malformed external Project archive status = %s", archived.Status)
+	}
+}
+
 func TestEnsureStateRejectsUnsupportedIntermediateReceipt(t *testing.T) {
 	denovaDir := t.TempDir()
 	workspace := t.TempDir()

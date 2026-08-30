@@ -237,10 +237,19 @@ var agentToolCapabilities = []AgentToolCapability{
 	withRuntimeResultLimit(runtimeCapabilityDefinitionWithToolDescriptors(AgentToolSkills, "agents.tool.skills.title", "agents.tool.skills.subtitle", []string{"skill", "read"}, readOnlyDescriptor(agent.ToolPresentationGeneric, agent.ToolResultRecoveryRerun), map[string]agent.ToolDescriptor{
 		"read": descriptorWithSource(readOnlyDescriptor(agent.ToolPresentationGeneric, agent.ToolResultRecoveryRead), agent.ToolSourceRead),
 	}), "read"),
-	withRuntimeResultLimit(runtimeSubAgentUnavailableCapabilityDefinition(AgentToolDelegation, "agents.tool.delegation.title", "agents.tool.delegation.subtitle", []string{"task"}, descriptorWithRetention(descriptorSummary(
-		agent.ToolExecutionChild, agent.ToolMutationNone, agent.ToolPostCheckNone,
-		agent.ToolRecoveryReconcilable, agent.SteeringFinishCurrent, agent.ToolPresentationDelegation,
-	), agent.ToolResultProtected))),
+	withRuntimeResultLimit(runtimeSubAgentUnavailableCapabilityDefinitionWithToolDescriptors(
+		AgentToolDelegation, "agents.tool.delegation.title", "agents.tool.delegation.subtitle", []string{"task", "task_wait"},
+		descriptorWithRetention(descriptorSummary(
+			agent.ToolExecutionChild, agent.ToolMutationNone, agent.ToolPostCheckNone,
+			agent.ToolRecoveryReconcilable, agent.SteeringFinishCurrent, agent.ToolPresentationDelegation,
+		), agent.ToolResultProtected),
+		map[string]agent.ToolDescriptor{
+			"task_wait": descriptorWithRetention(descriptorSummary(
+				agent.ToolExecutionInteractiveWait, agent.ToolMutationNone, agent.ToolPostCheckNone,
+				agent.ToolRecoveryReadOnly, agent.SteeringInterruptibleWait, agent.ToolPresentationDelegation,
+			), agent.ToolResultProtected),
+		},
+	)),
 	withRuntimeResultLimit(capabilityDefinition(AgentToolScript, "agents.tool.script.title", "agents.tool.script.subtitle", []string{"script"}, descriptorWithRetention(descriptorSummary(
 		agent.ToolExecutionChild, agent.ToolMutationNone, agent.ToolPostCheckNone,
 		agent.ToolRecoveryNonIdempotent, agent.SteeringFinishCurrent, agent.ToolPresentationScript,

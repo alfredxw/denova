@@ -171,6 +171,16 @@ func (run *Run) setAbortReason(reason string) {
 	run.mu.Unlock()
 }
 
+func (run *Run) abortRequested() bool {
+	if run == nil {
+		return false
+	}
+	run.mu.RLock()
+	requested := run.abortReason != ""
+	run.mu.RUnlock()
+	return requested
+}
+
 func (run *Run) currentAbortReason() string {
 	run.mu.RLock()
 	reason := run.abortReason

@@ -1,4 +1,4 @@
-import { PanelRightClose, PanelRightOpen } from 'lucide-react'
+import { MessageCircleMore } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 
@@ -14,7 +14,6 @@ export function SessionRailToggle({
 }: SessionRailToggleProps) {
   const { t } = useTranslation()
   const label = t(visible ? 'chat.sessionRail.hide' : 'chat.sessionRail.show')
-  const Icon = visible ? PanelRightClose : PanelRightOpen
 
   return (
     <Button
@@ -26,7 +25,7 @@ export function SessionRailToggle({
       aria-pressed={visible}
       title={label}
     >
-      <Icon data-icon="inline-start" aria-hidden="true" />
+      <MessageCircleMore data-icon="inline-start" aria-hidden="true" />
     </Button>
   )
 }

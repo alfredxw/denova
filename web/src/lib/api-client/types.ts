@@ -5,6 +5,7 @@
 export type ChatMessageStatus = 'running' | 'success' | 'error' | 'cancelled'
 export type ChatPlanAction = 'approved' | 'continue' | 'exited'
 export type InteractiveImageStatus = Exclude<ChatMessageStatus, 'cancelled'>
+export type SubAgentStatus = 'running' | 'waiting_input' | 'aborting' | 'completed' | 'failed' | 'incomplete' | 'blocked' | 'aborted'
 
 export type ToolPresentationKind =
   | 'generic'
@@ -43,7 +44,8 @@ interface ChatMessageBase {
   subagent?: boolean
   subagent_session_id?: string
   subagent_type?: string
-	parent_call_id?: string
+  subagent_status?: SubAgentStatus
+  parent_call_id?: string
   streaming?: boolean
   created_at?: string
   tool_presentation?: ToolPresentation

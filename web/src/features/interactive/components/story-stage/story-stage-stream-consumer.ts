@@ -249,6 +249,23 @@ export function createStoryStageStreamConsumer({
           setActivity('')
           break
         }
+        case 'subagent_settled': {
+          const data = event.data
+          liveAccumulator.flush()
+          const metadata = streamMetadataFromPayload(data)
+          const source = metadata.subagent_session_id || metadata.parent_call_id || metadata.agent_name || 'subagent'
+          const messageID = `subagent-settled:${metadata.run_id || 'run'}:${source}`
+          const message = createAgentDataMessage({
+            id: messageID,
+            partId: messageID,
+            type: 'agent-activity',
+            data: { ...data, event: 'subagent_settled' },
+            metadata,
+          })
+          setMessages((current) => current.some((candidate) => candidate.id === messageID) ? current : [...current, message])
+          setActivity('')
+          break
+        }
         case 'thinking': {
           const data = event.data
           liveAccumulator.appendThinking(data.content || '', streamMetadataFromPayload(data))

@@ -103,6 +103,9 @@ describe('story stage stream event contract', () => {
       'context_normalizer',
       'post_run_verification',
       'run_state',
+      'subagent_artifact',
+      'subagent_final',
+      'subagent_transcript_synchronized',
       'tool_target',
       'verification',
       'workspace_change',
@@ -134,6 +137,34 @@ describe('story stage stream event contract', () => {
     )
 
     expect(fixture.setActivity).toHaveBeenCalledWith('storyStage.activity.processingTool')
+  })
+
+  it('projects one durable terminal status for a settled SubAgent', async () => {
+    const fixture = consumerFixture()
+    const settled = {
+      status: 'failed',
+      reason: 'review failed',
+      run_id: 'parent-run',
+      subagent: true,
+      subagent_session_id: 'child-session',
+      agent_name: 'reviewer',
+    }
+
+    await fixture.consumer.consume(
+      eventStream([
+        { id: '1', event: 'subagent_settled', data: JSON.stringify(settled) },
+        { id: '2', event: 'subagent_settled', data: JSON.stringify(settled) },
+        { id: '3', event: 'done', data: '{}' },
+      ]),
+      fixture.consumer.initialOutcome(),
+    )
+
+    const statuses = buildAgentMessageViews(fixture.messages()).filter((view) => view.kind === 'subagent-status')
+    expect(statuses).toHaveLength(1)
+    expect(statuses[0]).toMatchObject({
+      data: { status: 'failed', reason: 'review failed' },
+      metadata: { run_id: 'parent-run', subagent_session_id: 'child-session', agent_name: 'reviewer' },
+    })
   })
 
   it('rejects one malformed payload without aborting later stream events', async () => {

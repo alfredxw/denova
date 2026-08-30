@@ -137,6 +137,28 @@ func TestStreamEncoderFinishesCleanlyWhenUserPauses(t *testing.T) {
 	}
 }
 
+func TestStreamEncoderKeepsSubAgentActivityIDsDistinct(t *testing.T) {
+	var out bytes.Buffer
+	encoder := NewStreamEncoder(&out, "")
+	for _, sessionID := range []string{"child-a", "child-b"} {
+		if err := encoder.WriteEvent(agentrun.Event{Type: "subagent_settled", Data: map[string]any{
+			"run_id": "parent-run", "subagent": true, "subagent_session_id": sessionID, "status": "completed",
+		}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := encoder.WriteEvent(agentrun.Event{Type: "done", Data: map[string]any{}}); err != nil {
+		t.Fatal(err)
+	}
+
+	chunks, done := parseUIStreamChunks(t, out.String())
+	if !done {
+		t.Fatal("stream did not finish")
+	}
+	assertChunk(t, chunks, DataTypeActivity, "id", "subagent_settled-parent-run-child-a")
+	assertChunk(t, chunks, DataTypeActivity, "id", "subagent_settled-parent-run-child-b")
+}
+
 func assertChunkAgentPresentation(t *testing.T, chunks []map[string]any, chunkType, call, result string) {
 	t.Helper()
 	for _, chunk := range chunks {

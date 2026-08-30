@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Bot, ChevronRight, FileText, MessagesSquare, Wrench } from 'lucide-react'
+import { Bot, ChevronRight, FileText, MessageCircle, Wrench } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { formatDateTime } from '@/i18n'
@@ -142,7 +142,7 @@ function SessionRunListItem({
         onClick={onToggle}
       >
         <ChevronRight className={cn('size-3 shrink-0 text-[var(--nova-text-faint)] transition-transform', expanded && 'rotate-90')} />
-        <MessagesSquare className="size-3 shrink-0 text-[var(--nova-text-faint)]" />
+        <MessageCircle className="size-3 shrink-0 text-[var(--nova-text-faint)]" />
         <span className="min-w-0 flex-1 truncate text-[10px] font-medium text-[var(--nova-text-muted)]" title={fullTitle}>{sessionTitle}</span>
         <span className="shrink-0 font-mono text-[9px] text-[var(--nova-text-faint)]">{t('trajectory.runs.sessionCount', { count: session.runs.length })}</span>
       </button>

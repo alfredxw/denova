@@ -14,6 +14,8 @@ Denova records only major user-visible features, important compatibility or data
 
 ### Major changes / 重大变更
 
+- 主 Agent 仍默认自行处理任务，仅在用户明确要求多 Agent 协作或已加载 Skill 明确要求时委派；委派任务现在异步并行运行，主 Agent 可继续当前工作并在真实依赖点等待任一结果，等待可被用户新指令打断而不会终止 SubAgent。
+- The main Agent still works by itself by default and delegates only when the user explicitly requests multi-Agent work or a loaded Skill requires it. Delegated tasks now run asynchronously in parallel, letting the main Agent continue local work and wait for any result only at a real dependency point; new user input can interrupt that wait without stopping SubAgents.
 - `.denova` 数据目录现在可在 Denova 完全退出后整体移动或复制到 Windows、WSL、Linux 与 macOS 的任意合法可写位置；受管 Project 的会话、游戏、版本、附件、工具产物和自动化会按稳定 Project ID 与相对路径继续使用，v0.3.3 索引在首次切换前自动备份并迁移。
 - After Denova fully exits, the complete `.denova` data directory can be moved or copied to any valid writable location on Windows, WSL, Linux, or macOS. Managed Project sessions, Game state, versions, attachments, tool artifacts, and automations continue through stable Project IDs and relative paths, with v0.3.3 indexes backed up before the first migration.
 - 字体设置改为类似 Dynamic Type 的统一离散档位：界面字号按完整层级缩放，阅读字号同步覆盖写作、游戏剧情、Agent 回复、源码编辑器、Diff 与终端。
@@ -28,6 +30,8 @@ Denova records only major user-visible features, important compatibility or data
 - The Writing Agent now runs multiple conversations in the same Book concurrently, with an optional quick-session rail; switching conversations no longer stops background work.
 - 配置管理不再运行独立 Agent；通用与写作 Agent 通过 `/configuration` Skill 承担完整配置能力，各配置页面复用 AgentChat 的右侧管理面板、历史与恢复能力，同时按 Project 维护独立于普通 Agent 的配置会话列表。
 - Configuration no longer runs a standalone Agent. General and Writing Agents provide the complete workflow through `/configuration`; configuration pages reuse AgentChat's right-side manager, history, and recovery while keeping a separate configuration conversation list in each Project.
+- 写作与各配置页面提供独立的快捷指令组；用户可调整内容、顺序和显隐，并为每条指令选择填入输入框或立即发送。
+- Writing and each configuration page now have independent quick-prompt groups whose content, order, visibility, and fill-or-send behavior can be customized.
 - Agents 页面支持基于固定 General、IDE、Game 与 Image 运行时创建、配置和归档自定义 Agent；写作、通用对话、游戏故事/分支与图像生成可选择这些实例，已有历史继续绑定原 Agent。
 - The Agents page now creates, configures, and archives custom Agents backed by the fixed General, IDE, Game, and Image runtimes. Writing, General chats, Game stories/branches, and image generation can select these instances while existing history stays bound to its original Agent.
 - 写作、游戏与 Project Agent 会话支持运行中连续追加 Follow Up，刷新或重启后恢复任务，并按会话保存模型、思考强度与权限设置。

@@ -17,6 +17,7 @@ export type AgentMessageViewKind =
   | 'system'
   | 'error'
   | 'activity'
+  | 'subagent-status'
   | 'interactive-image'
   | 'clear'
 
@@ -473,6 +474,8 @@ export function agentViewToRenderMessage(view: AgentMessageView, options: { forc
       return { id, role: 'error', content: view.content, streaming, ...meta }
     case 'activity':
       return { id, role: 'system', content: view.content, streaming, ...meta }
+    case 'subagent-status':
+      return { id, role: 'system', content: '', subagent_status: readSubAgentStatus(data.status), streaming: false, ...meta }
     case 'interactive-image':
       return {
         id,
@@ -607,6 +610,9 @@ function buildAgentMessageView(message: AgentUIMessage, part: AgentUIMessage['pa
         output: data.result ?? data.content,
       }
     case 'data-agent-activity': {
+      if (readString(data.event) === 'subagent_settled') {
+        return { ...base, kind: 'subagent-status', data, content: '', status, streaming: false }
+      }
       if (readString(data.event) === 'agent_cycle_started' && readString(data.run_id) && readString(data.run_started_at)) {
         return { ...base, kind: 'execution-summary', data, content: '', streaming: false }
       }
@@ -1011,6 +1017,13 @@ function toolStatus(state: string | undefined): AgentMessageView['status'] {
 function normalizeStatus(value: unknown): AgentMessageView['status'] {
   const status = readString(value)
   return status === 'running' || status === 'error' || status === 'success' || status === 'cancelled' ? status : undefined
+}
+
+export function readSubAgentStatus(value: unknown) {
+  const status = readString(value)
+  return ['running', 'waiting_input', 'aborting', 'completed', 'failed', 'incomplete', 'blocked', 'aborted'].includes(status)
+    ? status as import('./api-client/types').SubAgentStatus
+    : undefined
 }
 
 function objectData(value: unknown): Record<string, unknown> {

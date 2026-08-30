@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { MessageSquareText } from 'lucide-react'
+import { MessageCirclePlus } from 'lucide-react'
 import type { AdaptiveSurfaceControls } from '@/components/layout/adaptive-surface'
 import { MobilePaneTrigger } from '@/components/layout/mobile-pane-trigger'
 import { EmptyState } from '@/components/common/EmptyState'
@@ -147,7 +147,7 @@ export function AgentChatProjectGroup({
         {groupTabs.length === 0 ? (
           <EmptyState
             variant="page"
-            icon={MessageSquareText}
+            icon={MessageCirclePlus}
             title={t('agentChat.empty.title')}
             description={t('agentChat.empty.description')}
             action={{ label: t('agentChat.tabs.newChat'), onClick: () => onNewAgentTab(group) }}

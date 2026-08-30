@@ -75,7 +75,11 @@ func TestSubAgentParentRuntimeContractsIncludeDelegationProtocol(t *testing.T) {
 		t.Run(agentKind, func(t *testing.T) {
 			instruction := protectedSystemInstruction(&config.Config{}, agentKind, "BUILT IN PROMPT")
 			for _, required := range []string{
-				"Use the task tool only when the user or a loaded Skill requests delegation",
+				"current user explicitly requests delegation or multi-Agent work",
+				"Otherwise do the work yourself",
+				"Starting a task returns immediately",
+				"call task_wait with all relevant TaskRefs only when their results become a dependency",
+				"User steering can interrupt task_wait without aborting child tasks",
 				"self-contained goal, constraints, relevant paths or resource IDs, expected output, and write scope",
 				"Pass references instead of copying content it can read itself",
 				"Verify the returned result before reporting it to the user",

@@ -128,6 +128,7 @@ export function AgentsView({ target, onClose, toolNavigationIntent }: { target: 
     ? inheritedCustomAgent?.image_api_profile_id || resolveInheritedImageProfileID(layered, activeLayer)
     : resolveInheritedImageProfileID(layered, activeLayer)
   const inheritedToolParallelism = resolveInheritedToolParallelism(layered, activeLayer)
+  const inheritedSubAgentParallelism = resolveInheritedSubAgentParallelism(layered, activeLayer)
   const activeAgentTitle = selectedCustomAgent?.name || t(selected.titleKey)
   const configurationContext = useMemo(() => ({
     active_settings_layer: activeLayer,
@@ -228,6 +229,10 @@ export function AgentsView({ target, onClose, toolNavigationIntent }: { target: 
 
   const setToolParallelism = (value: number | null) => {
     setDraft((current) => ({ ...current, agent_tool_parallelism: value }))
+  }
+
+  const setSubAgentParallelism = (value: number | null) => {
+    setDraft((current) => ({ ...current, agent_subagent_parallelism: value }))
   }
 
   const setImageProfile = (profileID: string) => {
@@ -397,9 +402,12 @@ export function AgentsView({ target, onClose, toolNavigationIntent }: { target: 
                 />
               ) : null}
               <AgentToolSchedulingSection
-                value={draft.agent_tool_parallelism ?? null}
-                inherited={inheritedToolParallelism}
-                onChange={setToolParallelism}
+                toolValue={draft.agent_tool_parallelism ?? null}
+                inheritedToolValue={inheritedToolParallelism}
+                onToolChange={setToolParallelism}
+                subAgentValue={draft.agent_subagent_parallelism ?? null}
+                inheritedSubAgentValue={inheritedSubAgentParallelism}
+                onSubAgentChange={setSubAgentParallelism}
               />
               {activeLayer === 'user' ? (
                 <AgentModelSection
@@ -478,43 +486,75 @@ export function AgentsView({ target, onClose, toolNavigationIntent }: { target: 
 }
 
 function AgentToolSchedulingSection({
-  value,
-  inherited,
-  onChange,
+  toolValue,
+  inheritedToolValue,
+  onToolChange,
+  subAgentValue,
+  inheritedSubAgentValue,
+  onSubAgentChange,
 }: {
-  value: number | null
-  inherited: number
-  onChange: (value: number | null) => void
+  toolValue: number | null
+  inheritedToolValue: number
+  onToolChange: (value: number | null) => void
+  subAgentValue: number | null
+  inheritedSubAgentValue: number
+  onSubAgentChange: (value: number | null) => void
 }) {
   const { t } = useTranslation()
-  const inputID = useId()
+  const toolInputID = useId()
+  const subAgentInputID = useId()
   return (
     <section className="border-b border-[var(--nova-border)] pb-5">
       <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--nova-text-muted)]">
         {t('agents.section.toolScheduling')}
       </h2>
       <SettingsFieldRow
-        htmlFor={inputID}
+        htmlFor={toolInputID}
         title={t('settings.agent.toolParallelism')}
         description={t('agents.tool.parallelismNote')}
-        meta={value === null ? <span className="text-[10px] text-[var(--nova-text-faint)]">{t('common.inherit', { value: inherited })}</span> : undefined}
+        meta={toolValue === null ? <span className="text-[10px] text-[var(--nova-text-faint)]">{t('common.inherit', { value: inheritedToolValue })}</span> : undefined}
         controlClassName="sm:w-36"
       >
         <Input
-          id={inputID}
+          id={toolInputID}
           type="number"
           min={1}
           max={64}
-          value={value ?? ''}
-          placeholder={String(inherited)}
+          value={toolValue ?? ''}
+          placeholder={String(inheritedToolValue)}
           aria-label={t('settings.agent.toolParallelism')}
           onChange={(event) => {
             if (event.target.value === '') {
-              onChange(null)
+              onToolChange(null)
               return
             }
             const parsed = Number(event.target.value)
-            if (Number.isFinite(parsed)) onChange(Math.min(64, Math.max(1, Math.trunc(parsed))))
+            if (Number.isFinite(parsed)) onToolChange(Math.min(64, Math.max(1, Math.trunc(parsed))))
+          }}
+        />
+      </SettingsFieldRow>
+      <SettingsFieldRow
+        htmlFor={subAgentInputID}
+        title={t('settings.agent.subAgentParallelism')}
+        description={t('agents.tool.subAgentParallelismNote')}
+        meta={subAgentValue === null ? <span className="text-[10px] text-[var(--nova-text-faint)]">{t('common.inherit', { value: inheritedSubAgentValue })}</span> : undefined}
+        controlClassName="sm:w-36"
+      >
+        <Input
+          id={subAgentInputID}
+          type="number"
+          min={1}
+          max={32}
+          value={subAgentValue ?? ''}
+          placeholder={String(inheritedSubAgentValue)}
+          aria-label={t('settings.agent.subAgentParallelism')}
+          onChange={(event) => {
+            if (event.target.value === '') {
+              onSubAgentChange(null)
+              return
+            }
+            const parsed = Number(event.target.value)
+            if (Number.isFinite(parsed)) onSubAgentChange(Math.min(32, Math.max(1, Math.trunc(parsed))))
           }}
         />
       </SettingsFieldRow>
@@ -531,6 +571,19 @@ function resolveInheritedToolParallelism(layered: LayeredSettings | null, layer:
     const candidate = settings?.agent_tool_parallelism
     if (candidate === null || candidate === undefined) continue
     value = candidate <= 0 ? 8 : Math.min(64, Math.trunc(candidate))
+  }
+  return value
+}
+
+function resolveInheritedSubAgentParallelism(layered: LayeredSettings | null, layer: SettingsLayer) {
+  const layers = layer === 'workspace'
+    ? [layered?.default, layered?.global, layered?.user]
+    : [layered?.default, layered?.global]
+  let value = 4
+  for (const settings of layers) {
+    const candidate = settings?.agent_subagent_parallelism
+    if (candidate === null || candidate === undefined) continue
+    value = candidate <= 0 ? 4 : Math.min(32, Math.trunc(candidate))
   }
   return value
 }

@@ -28,6 +28,7 @@ export const generalToolDetailAdapters: Record<string, ToolDetailAdapter> = {
   browser: outputAdapter(renderBrowserInput, renderBrowserOutput),
   skill: outputAdapter(renderSkillInput, renderSkillOutput),
   task: outputAdapter(renderTaskInput, renderTaskOutput),
+  task_wait: outputAdapter(renderTaskWaitInput, renderTaskOutput),
   script: inputAdapter(renderScriptInput, renderScriptOutput),
   config_read: outputAdapter(renderConfigReadInput, renderConfigReadOutput),
   config_apply: inputAdapter(renderConfigApplyInput, renderConfigApplyOutput),
@@ -235,26 +236,39 @@ function SkillRefLink({ refValue }: { refValue: Record<string, unknown> }) {
 
 function renderTaskInput({ input, t }: ToolDetailRenderProps) {
   const action = stringValue(input.action)
-  if (!['start', 'observe', 'steer', 'respond', 'abort'].includes(action)) {
+  if (!['start', 'observe', 'steer', 'abort'].includes(action)) {
     return <DetailPre>{formatMaybeJSON(JSON.stringify(input))}</DetailPre>
   }
   if (action === 'start') {
     return <TaskStarts values={recordArray(input.starts)} t={t} />
   }
+  const targets = action === 'observe' ? recordArray(input.targets) : []
   const refs = recordArray(input.refs)
   return (
     <DetailStack>
       <DetailPre className="text-[var(--nova-text)]">{action}</DetailPre>
       {stringValue(input.input) ? <DetailPre>{stringValue(input.input)}</DetailPre> : null}
       {stringValue(input.reason) ? <DetailPre>{stringValue(input.reason)}</DetailPre> : null}
-      {refs.map((ref, index) => <TaskRefLine key={`${stringValue(ref.run)}-${index}`} value={ref} />)}
-      {recordArray(input.responses).map((response, index) => (
-        <DetailBlock key={`${stringValue(response.interaction_id)}-${index}`} title={stringValue(response.interaction_id)}>
-          <TaskRefLine value={recordValue(response.ref)} />
-          <DetailPre>{formatValue(response.response)}</DetailPre>
-        </DetailBlock>
+      {targets.map((target, index) => (
+        <div key={`${stringValue(recordValue(target.ref).run)}-${index}`}>
+          <TaskRefLine value={recordValue(target.ref)} />
+          <MetaLine items={[fieldMeta('cursor', target.cursor)]} />
+        </div>
       ))}
-      <MetaLine items={[fieldMeta('cursor', input.cursor)]} />
+      {refs.map((ref, index) => <TaskRefLine key={`${stringValue(ref.run)}-${index}`} value={ref} />)}
+      {input.cursor === undefined ? null : <MetaLine items={[fieldMeta('cursor', input.cursor)]} />}
+    </DetailStack>
+  )
+}
+
+function renderTaskWaitInput({ input, t }: ToolDetailRenderProps) {
+  const targets = recordArray(input.targets)
+  if (!targets.length) return <span>{t('chat.subagent.waiting')}</span>
+  return (
+    <DetailStack>
+      {targets.map((target, index) => (
+        <TaskRefLine key={`${stringValue(recordValue(target.ref).run)}-${index}`} value={recordValue(target.ref)} />
+      ))}
     </DetailStack>
   )
 }
@@ -290,24 +304,41 @@ function renderTaskOutput({ result, t }: ToolDetailRenderProps) {
         const observedTask = recordValue(observation.task)
         const visibleTask = Object.keys(task).length ? task : observedTask
         const error = stringValue(item.error)
+        const errorCode = stringValue(item.error_code)
         const output = stringValue(observation.output) || stringValue(visibleTask.output)
         return (
           <DetailBlock key={`${item.index ?? index}`} title={`#${item.index ?? index}`} tone={error ? 'danger' : 'normal'}>
             {Object.keys(visibleTask).length ? (
               <>
                 <TaskRefLine value={recordValue(visibleTask.ref)} />
-                <MetaLine items={[stringValue(visibleTask.status), observation.incomplete === true ? t('chat.tool.detail.incomplete') : '', fieldMeta('cursor', observation.cursor)]} />
+                <MetaLine items={[
+                  taskStatusLabel(stringValue(visibleTask.status), t),
+                  item.ready === true ? t('chat.tool.detail.taskReady') : '',
+                  observation.incomplete === true ? t('chat.tool.detail.incomplete') : '',
+                  fieldMeta('cursor', observation.cursor),
+                ]} />
               </>
             ) : null}
             {output ? <DetailPre>{output}</DetailPre> : null}
             {recordArray(observation.events).length ? <DetailPre>{formatValue(observation.events)}</DetailPre> : null}
-            {recordArray(observation.interactions).length ? <DetailPre>{formatValue(observation.interactions)}</DetailPre> : null}
+            {errorCode ? <MetaLine items={[taskErrorCodeLabel(errorCode, t)]} /> : null}
             {error ? <DetailPre>{error}</DetailPre> : null}
           </DetailBlock>
         )
       })}
     </DetailStack>
   )
+}
+
+function taskStatusLabel(status: string, t: ToolDetailRenderProps['t']) {
+  if (!status) return ''
+  const known = ['running', 'waiting_input', 'aborting', 'completed', 'failed', 'incomplete', 'blocked', 'aborted']
+  return known.includes(status) ? t(`chat.tool.detail.taskStatus.${status}`) : status
+}
+
+function taskErrorCodeLabel(code: string, t: ToolDetailRenderProps['t']) {
+  const known = ['invalid_input', 'capacity_exceeded', 'task_error']
+  return known.includes(code) ? t(`chat.tool.detail.taskError.${code}`) : code
 }
 
 function renderScriptInput({ input, t }: ToolDetailRenderProps) {

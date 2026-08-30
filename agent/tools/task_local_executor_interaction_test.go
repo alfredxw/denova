@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -9,9 +10,11 @@ import (
 	agentsession "github.com/alfredxw/denova/agent/session"
 )
 
-func TestLocalTasksRespondsToDetachedInteractionWithoutExecutorProcessState(t *testing.T) {
+func TestTaskWaitRoutesChildInteractionThroughHost(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
 	ask := Ask()
-	owner, err := agent.New(context.Background(), agent.Definition{
+	owner, err := agent.New(ctx, agent.Definition{
 		Name: "researcher",
 		Model: &taskModel{responses: []*agent.Message{
 			agent.AssistantMessage("", []agent.ToolCall{{
@@ -28,51 +31,103 @@ func TestLocalTasksRespondsToDetachedInteractionWithoutExecutorProcessState(t *t
 	}
 	defer owner.Close(context.Background())
 
-	started, err := newTaskExecutor(t, owner).Start(context.Background(), TaskRequest{
-		Agent: "researcher", Prompt: "inspect", IdempotencyKey: "detached-interaction", Detached: true,
+	started, err := newTaskExecutor(t, owner).Start(ctx, TaskRequest{
+		Agent: "researcher", Prompt: "inspect", IdempotencyKey: "interaction",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	deadline := time.Now().Add(2 * time.Second)
-	var pending agent.InteractionRequest
-	for pending.ID == "" && time.Now().Before(deadline) {
-		observation, observeErr := newTaskExecutor(t, owner).Observe(context.Background(), started.Ref, "0")
-		if observeErr != nil {
-			t.Fatal(observeErr)
-		}
-		if len(observation.Interactions) != 0 {
-			pending = observation.Interactions[0]
-			break
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
-	if pending.ID == "" || pending.Kind != agent.InteractionAsk {
-		t.Fatalf("pending interaction = %#v", pending)
-	}
-
-	// A fresh executor has no process-local waiter or task registry. TaskRef and
-	// the durable Session snapshot are the complete interaction-resume identity.
 	reopened := newTaskExecutor(t, owner)
-	if err := reopened.Respond(context.Background(), started.Ref, pending.ID, agent.InteractionResponse{
-		Answers: []agent.InteractionAnswer{{QuestionID: "scope", Text: "the whole repository"}},
-	}); err != nil {
+	childSession, err := owner.Session(ctx, agent.SessionKey{
+		Namespace: "task.researcher", ID: started.Ref.Session, Attributes: map[string]string{"agent": "researcher"},
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
-
-	for time.Now().Before(deadline) {
-		observation, observeErr := reopened.Observe(context.Background(), started.Ref, "0")
-		if observeErr != nil {
-			t.Fatal(observeErr)
-		}
-		if observation.Task.Status == string(agent.ResultCompleted) {
-			if observation.Output != "interaction resumed" {
-				t.Fatalf("completed observation = %#v", observation)
-			}
-			return
-		}
-		time.Sleep(5 * time.Millisecond)
+	childEvents, err := childSession.Observe(ctx, 0)
+	if err != nil {
+		t.Fatal(err)
 	}
-	t.Fatal("detached interaction did not resume and settle")
+	waitingForInput := false
+	for !waitingForInput {
+		select {
+		case event, ok := <-childEvents.Events:
+			if !ok {
+				t.Fatal("child event stream closed before the interaction request")
+			}
+			_, waitingForInput = event.Payload.(agent.InteractionRequested)
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		}
+	}
+	waiting, err := reopened.Observe(ctx, started.Ref, "0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if waiting.Task.Status != "waiting_input" || waiting.Incomplete {
+		t.Fatalf("waiting observation = %#v", waiting)
+	}
+
+	arguments, err := json.Marshal(taskWaitInput{Targets: []taskWaitTarget{{Ref: started.Ref}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitCall := func(id string) *agent.Message {
+		return agent.AssistantMessage("", []agent.ToolCall{{
+			ID: id, Type: "function", Function: agent.FunctionCall{Name: "task_wait", Arguments: string(arguments)},
+		}})
+	}
+	parent, err := agent.New(ctx, agent.Definition{
+		Name: "root", Model: &taskModel{responses: []*agent.Message{
+			waitCall("wait-interaction"), waitCall("wait-final"), agent.AssistantMessage("parent resumed", nil),
+		}},
+		ModelIdentity: agent.CapabilityIdentity{Kind: "test.task.interaction.parent", Version: 1},
+		Tools:         Tasks(reopened),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer parent.Close(context.Background())
+	run, err := parent.Run(ctx, agent.Text("wait for the delegated task"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	interactions := 0
+	events := run.Events()
+	for events != nil {
+		select {
+		case event, ok := <-events:
+			if !ok {
+				events = nil
+				continue
+			}
+			requested, ok := event.Payload.(agent.InteractionRequested)
+			if !ok {
+				continue
+			}
+			interactions++
+			if requested.Request.Kind != agent.InteractionAsk {
+				t.Fatalf("interaction kind = %q", requested.Request.Kind)
+			}
+			if err := run.Respond(ctx, requested.Request.ID, agent.InteractionResponse{
+				Answers: []agent.InteractionAnswer{{QuestionID: "scope", Text: "the whole repository"}},
+			}); err != nil {
+				t.Fatal(err)
+			}
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		}
+	}
+	result, err := run.Wait(ctx)
+	if err != nil || result.Status != agent.ResultCompleted || interactions != 1 {
+		t.Fatalf("parent result=%#v interactions=%d err=%v", result, interactions, err)
+	}
+	observation, err := reopened.Observe(ctx, started.Ref, "0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if observation.Task.Status != string(agent.ResultCompleted) || observation.Output != "interaction resumed" {
+		t.Fatalf("completed observation = %#v", observation)
+	}
 }

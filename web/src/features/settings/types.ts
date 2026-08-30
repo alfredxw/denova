@@ -55,6 +55,7 @@ export interface Settings {
   agent_idle_timeout_seconds?: number | null
   agent_tool_result_limit_kb?: number | null
   agent_tool_parallelism?: number | null
+  agent_subagent_parallelism?: number | null
   agent_script_timeout_seconds?: number | null
   agent_approval_mode?: AgentApprovalMode
   agent_approval_rules?: AgentApprovalRule[]
@@ -75,6 +76,7 @@ export interface Settings {
   interactive_story_teller_id?: string
   ide_image_preset_id?: string
   writing_skill_default?: string
+  agent_quick_prompts?: AgentQuickPromptRegistry
   interactive_stage_font_size?: number | null
   interactive_stage_line_height?: number | null
 }
@@ -130,6 +132,18 @@ export interface ModelProfileSettings {
   temperature?: number | null
   context_window_tokens?: number | null
 }
+
+export type AgentQuickPromptBehavior = 'fill' | 'send'
+
+export interface AgentQuickPromptSettings {
+  id: string
+  name: string
+  prompt: string
+  behavior: AgentQuickPromptBehavior
+  enabled: boolean
+}
+
+export type AgentQuickPromptRegistry = Record<string, AgentQuickPromptSettings[]>
 
 export interface ModelEndpointSettings {
   id?: string

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { ChevronDown, MessagesSquare } from 'lucide-react'
+import { ChevronDown, MessageCircleMore } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import {
@@ -50,10 +50,10 @@ export function SessionHistoryPopover({
       setOpen(false)
       return
     }
+    setOpen(false)
     setSwitchingId(sessionId)
     try {
       await onSwitch(sessionId)
-      setOpen(false)
     } catch (error) {
       console.error('[components/Chat/SessionHistoryPopover.tsx] failed to switch chat session', {
         sessionID: sessionId,
@@ -82,7 +82,7 @@ export function SessionHistoryPopover({
         </button>
       </PopoverTrigger>
 
-      <PopoverContent align="start" sideOffset={5} className="w-[min(22rem,calc(100vw-1rem))] gap-0 p-0">
+      <PopoverContent align="start" sideOffset={5} className="w-[min(22rem,calc(100vw-1rem))] gap-0 p-0 data-closed:hidden">
         <Command label={t('chat.searchSession')}>
           <CommandInput autoFocus placeholder={t('chat.searchSessionPlaceholder')} aria-label={t('chat.searchSession')} />
           <CommandList className="max-h-[min(24rem,50vh)]">
@@ -136,7 +136,7 @@ export function SessionHistoryPopover({
               onManage()
             }}
           >
-            <MessagesSquare data-icon="inline-start" />
+            <MessageCircleMore data-icon="inline-start" />
             {t('chat.sessionRail.manage')}
           </Button>
         </div>

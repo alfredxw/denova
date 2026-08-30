@@ -290,6 +290,8 @@ Denova 是长时间、高频使用的生产工具，而不是只展示一次的�
 - 图标颜色继承文字语义，不直接硬编码颜色。
 - 图标按钮必须有本地化的 accessible name；优先使用 `TooltipIconButton`。
 - 不能仅靠陌生图标表达关键动作。空间允许时显示文字，空间受限时提供 tooltip。
+- 对话域统一使用圆形气泡：`MessageCircle` 表示单个对话、会话或评论，`MessageCirclePlus` 表示创建或添加，`MessageCircleMore` 表示多条对话或评论的集合以及会话切换与管理，`MessageCircleQuestion` 表示提问或澄清；不要用 `MessageSquare*` 作为通用对话图标。
+- 图标首先表达对象与动作，不为外形统一牺牲语义：引用与对白使用 `Quote`，Project 或工作区状态使用对应的 `Folder*`，Run 与轨迹入口使用 `Route`。
 - Emoji 不作为导航、状态或功能图标。
 
 ### 列表、树与卡片

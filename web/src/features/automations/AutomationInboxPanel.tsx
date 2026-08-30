@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Check, Inbox, MessageSquareText, Play, X } from 'lucide-react'
+import { Check, Inbox, Play, Route, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { EmptyState } from '@/components/common/EmptyState'
 import type { AutomationInboxItem, AutomationTask } from '@/lib/api'
@@ -68,13 +68,13 @@ export function InboxPanel({
               )}
               {item.run_id && (
                 <button type="button" onClick={() => onOpenRun(item.run_id || '')} className="nova-nav-item inline-flex items-center gap-1.5 rounded-[var(--nova-radius)] px-2 py-1 text-[var(--nova-text-muted)]">
-                  <MessageSquareText className="h-3.5 w-3.5" />
+                  <Route className="h-3.5 w-3.5" />
                   {t('automations.runs.viewTimeline')}
                 </button>
               )}
               {!item.run_id && item.source_run_id && (
                 <button type="button" onClick={() => onOpenRun(item.source_run_id || '')} className="nova-nav-item inline-flex items-center gap-1.5 rounded-[var(--nova-radius)] px-2 py-1 text-[var(--nova-text-muted)]">
-                  <MessageSquareText className="h-3.5 w-3.5" />
+                  <Route className="h-3.5 w-3.5" />
                   {t('automations.inbox.viewSourceRun')}
                 </button>
               )}

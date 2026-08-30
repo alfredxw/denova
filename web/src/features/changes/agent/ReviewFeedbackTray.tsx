@@ -1,4 +1,4 @@
-import { MessageSquareText, X } from 'lucide-react'
+import { MessageCircleMore, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 export const MAX_REVIEW_FEEDBACK_COMMENT_COUNT = 256
@@ -60,7 +60,7 @@ export function ReviewFeedbackTray({ feedback, onRemove, onOpen }: ReviewFeedbac
   return (
     <div className="mb-2 rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2" data-review-feedback-tray>
       <div className="mb-1.5 flex items-center gap-2 text-[11px] font-medium text-[var(--nova-text-muted)]">
-        <MessageSquareText className="h-3.5 w-3.5" />
+        <MessageCircleMore className="h-3.5 w-3.5" />
         <span>{t('changes.feedback.selected', { count: selectedComments.length })}</span>
       </div>
       {selectedComments.length > MAX_REVIEW_FEEDBACK_COMMENT_COUNT && (

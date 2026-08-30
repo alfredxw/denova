@@ -237,6 +237,49 @@ func (agent *Agent) ListSessions(ctx context.Context, selector SessionSelector) 
 	return agent.store.List(ctx, selector)
 }
 
+// CountActiveSessions reports matching in-process Runs without opening durable
+// terminal Sessions. Active Runs are process-owned, so every one of them must
+// already have a live Session binding.
+func (agent *Agent) CountActiveSessions(ctx context.Context, selector SessionSelector) (int, error) {
+	if agent == nil {
+		return 0, ErrAgentClosed
+	}
+	if err := selector.Validate(); err != nil {
+		return 0, err
+	}
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			return 0, err
+		}
+	}
+	agent.mu.RLock()
+	if agent.closed {
+		agent.mu.RUnlock()
+		return 0, ErrAgentClosed
+	}
+	sessions := make([]*Session, 0, len(agent.sessions))
+	for _, session := range agent.sessions {
+		if selector.Matches(session.key) {
+			sessions = append(sessions, session)
+		}
+	}
+	agent.mu.RUnlock()
+	count := 0
+	for _, session := range sessions {
+		active, found, err := session.Active(ctx)
+		if err != nil {
+			if errors.Is(err, ErrSessionClosed) {
+				continue
+			}
+			return 0, err
+		}
+		if found && active != nil {
+			count++
+		}
+	}
+	return count, nil
+}
+
 func (agent *Agent) CloseSessions(ctx context.Context, selector SessionSelector) error {
 	if err := selector.Validate(); err != nil {
 		return err
@@ -244,7 +287,7 @@ func (agent *Agent) CloseSessions(ctx context.Context, selector SessionSelector)
 	agent.mu.RLock()
 	open := make([]*Session, 0, len(agent.sessions))
 	for _, session := range agent.sessions {
-		if selector.Matches(session.key) {
+		if sessionSelectorMatchesTree(selector, session.key) {
 			open = append(open, session)
 		}
 	}

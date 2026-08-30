@@ -53,7 +53,6 @@ type RequiredWorkspaceProps = Pick<AgentPanelProps,
 export type WritingAgentWorkspaceProps = RequiredWorkspaceProps & Partial<AgentPanelProps> & {
   projectType?: AgentChatProjectType
   sessionChannel?: AgentChatSessionChannel
-  sessionCreation?: 'immediate' | 'on-first-message'
   pendingAction?: AgentChatPendingAction | null
   onPendingActionConsumed?: (id: string) => void
   messageTransform?: (message: string) => string
@@ -66,7 +65,6 @@ type WorkspaceSession = AgentChatSession & { draft?: boolean }
 export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
   const { t } = useTranslation()
   const sessionChannel = props.sessionChannel ?? 'agent'
-  const sessionCreation = props.sessionCreation ?? 'immediate'
   const [sessions, setSessions] = useState<WorkspaceSession[]>([])
   const [activeSessionId, setActiveSessionId] = useState('')
   const [mountedSessionIds, setMountedSessionIds] = useState<string[]>([])
@@ -159,7 +157,7 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
     if (!props.projectId.trim()) return () => { cancelled = true }
     void refreshSessions()
       .then((nextSessions) => {
-        if (!cancelled && nextSessions.length === 0 && sessionCreation === 'on-first-message') {
+        if (!cancelled && nextSessions.length === 0) {
           createDraftSession()
         }
       })
@@ -175,7 +173,7 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
         if (!cancelled) setLoading(false)
       })
     return () => { cancelled = true }
-  }, [props.projectId, sessionChannel, sessionCreation]) // Project or list channel changes reset every mounted transport.
+  }, [props.projectId, sessionChannel]) // Project or list channel changes reset every mounted transport.
 
   useEffect(() => {
     const onProjectUpdated = (event: Event) => {
@@ -194,7 +192,7 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
 
   const createSession = useCallback(async (title?: string, customAgentId?: string) => {
     if (sessionPending) return
-    if (sessionCreation === 'on-first-message' && customAgentId === undefined) {
+    if (customAgentId === undefined) {
       createDraftSession(title)
       return
     }
@@ -224,7 +222,7 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
     } finally {
       setSessionPending(false)
     }
-  }, [activeSessionId, createDraftSession, props.projectId, sessionChannel, sessionCreation, sessionPending, storeActiveSession, t])
+  }, [activeSessionId, createDraftSession, props.projectId, sessionChannel, sessionPending, storeActiveSession, t])
 
   const renameSession = useCallback(async (sessionId: string, title: string) => {
     const target = sessionsRef.current.find((session) => session.id === sessionId)
@@ -329,6 +327,8 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
     onSwitchSession: selectSession,
     onRenameSession: renameSession,
     onDeleteSession: deleteSession,
+    quickPromptScope: props.quickPromptScope,
+    composerDraftScope: props.composerDraftScope,
     currentChapter: props.currentChapter,
     selectedFile: props.selectedFile,
     ideContext: props.ideContext,
@@ -351,6 +351,7 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
     createSession,
     deleteSession,
     props.chrome,
+    props.composerDraftScope,
     props.currentChapter,
     props.fileSuggestions,
     props.ideContext,
@@ -363,6 +364,7 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
     props.onStyleSceneRemove,
     props.onSubAgentDetailsChange,
     props.onTextSelectionRemove,
+    props.quickPromptScope,
     props.references,
     props.selectedFile,
     props.styleScenes,

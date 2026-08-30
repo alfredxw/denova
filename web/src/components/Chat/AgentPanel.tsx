@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Activity, ChevronLeft, FileText, PenLine, Plus, SearchCheck, Sparkles, WandSparkles } from 'lucide-react'
+import { Activity, ChevronLeft, Plus } from 'lucide-react'
 import { motion } from 'motion/react'
 import { Group, Panel, Separator } from 'react-resizable-panels'
 import { createPortal } from 'react-dom'
@@ -65,6 +65,8 @@ import type { ConversationConfigBinding } from '@/features/conversation-config/t
 import { useConversationGoal } from '@/features/agent-goal/use-conversation-goal'
 import { useConversationConfig } from '@/features/conversation-config/use-conversation-config'
 import { CustomAgentSelect } from '@/features/agents/CustomAgentSelect'
+import { AgentQuickPrompts } from '@/features/agent-quick-prompts/AgentQuickPrompts'
+import type { AgentQuickPromptScope } from '@/features/agent-quick-prompts/defaults'
 
 export type AgentPanelView = 'chat' | 'sessions' | 'traces'
 export type AgentPanelChrome = 'panel' | 'workbench'
@@ -101,6 +103,10 @@ export interface AgentPanelProps {
   onSessionRailVisibleChange?: (visible: boolean) => void
   /** Keeps first-load history hidden until the virtualized list can mount at its final position. */
   initializing?: boolean
+  /** Selects the page-owned prompt starters shown in an empty docked conversation. */
+  quickPromptScope?: AgentQuickPromptScope
+  /** Keeps unsent configuration drafts isolated while the shared conversation changes resources. */
+  composerDraftScope?: string
   /** Owned above the conditional panel so closing the panel cannot discard delayed saves. */
   composerSettings: WritingComposerSettingsController
   currentChapter?: ChapterSummary
@@ -197,6 +203,8 @@ function AgentPanelComponent({
   sessionRailVisible = true,
   onSessionRailVisibleChange,
   initializing = false,
+  quickPromptScope: configuredQuickPromptScope,
+  composerDraftScope,
   composerSettings: persistedSettings,
   currentChapter,
   selectedFile,
@@ -273,6 +281,7 @@ function AgentPanelComponent({
   const [inputPrefill, setInputPrefill] = useState<{
     prompt: string
     nonce: number
+    mode?: 'replace' | 'append'
   } | null>(null)
   const [contextAnalysisOpen, setContextAnalysisOpen] = useState(false)
   const [contextAnalysisLoading, setContextAnalysisLoading] = useState(false)
@@ -553,11 +562,31 @@ function AgentPanelComponent({
     }))
   }, [onEditQueuedCommand])
 
-  // Quick actions are writing-workbench affordances tied to the current chapter. The AgentChat
-  // workbench is a general project surface, so it opens on a clean conversation instead.
+  const quickPromptScope = configuredQuickPromptScope ?? (generalAgent ? undefined : 'writing')
+  let quickPromptTarget = t('chat.quick.targetWork', { lng: 'en-US' })
+  if (currentChapter) {
+    quickPromptTarget = t('chat.quick.targetChapter', { title: currentChapter.display_title, lng: 'en-US' })
+  } else if (selectedFile) {
+    quickPromptTarget = t('chat.quick.targetFile', { file: selectedFile, lng: 'en-US' })
+  }
+  const fillQuickPrompt = useCallback((prompt: string) => {
+    setInputPrefill((current) => ({
+      prompt,
+      nonce: (current?.nonce || 0) + 1,
+      mode: 'append',
+    }))
+  }, [])
+  // Prompt starters belong to the docked page surface. The full AgentChat workbench opens on a
+  // clean conversation because its project tabs are not tied to one page task.
   const emptyChatContent =
-    dockedChrome && messages.length === 0 && !isStreaming ? (
-      <AgentQuickActions chapter={currentChapter} selectedFile={selectedFile} disabled={persistedSettings.loading} onSend={sendWithWritingSkill} />
+    dockedChrome && quickPromptScope && messages.length === 0 && !isStreaming ? (
+      <AgentQuickPrompts
+        scope={quickPromptScope}
+        writingTarget={quickPromptTarget}
+        disabled={persistedSettings.loading}
+        onFill={fillQuickPrompt}
+        onSend={sendWithWritingSkill}
+      />
     ) : null
   const resolveAsk = useCallback(
     async (view: AgentMessageView, action: { status: 'answered'; answers: AgentAskAnswer[] } | { status: 'cancelled' }) => {
@@ -635,7 +664,7 @@ function AgentPanelComponent({
     onGoalSubmit: submitGoal,
     onGoalPause: pauseGoal,
     onGoalClear: clearGoal,
-    draftKey: `ide-agent:${workspace || 'global'}:${activeSessionId || 'current'}`,
+    draftKey: `ide-agent:${workspace || 'global'}:${activeSessionId || 'current'}${composerDraftScope ? `:${composerDraftScope}` : ''}`,
     inputPrefill,
     onInputPrefillConsumed: () => setInputPrefill(null),
     referencedFiles: references,
@@ -868,84 +897,4 @@ function isGlobalStyleSceneName(scene: string) {
 
 function SubAgentDetailsResizeHandle({ label }: { label: string }) {
   return <Separator aria-label={label} className="nova-resize-handle z-10 -mx-1 hidden w-2 cursor-col-resize bg-transparent transition-colors lg:block" />
-}
-
-function AgentQuickActions({
-  chapter,
-  selectedFile,
-  disabled,
-  onSend,
-}: {
-  chapter?: ChapterSummary
-  selectedFile: string | null
-  disabled?: boolean
-  onSend: (message: string) => void
-}) {
-  const { t } = useTranslation()
-  const target = chapter
-    ? t('chat.quick.targetChapter', { title: chapter.display_title })
-    : selectedFile
-      ? t('chat.quick.targetFile', { file: selectedFile })
-      : t('chat.quick.targetWork')
-  const actions = useMemo(
-    () => [
-      {
-        label: t('chat.quick.nextGroup'),
-        icon: FileText,
-        prompt: t('chat.quick.nextGroupPrompt'),
-      },
-      {
-        label: t('chat.quick.writeNextChapter'),
-        icon: PenLine,
-        prompt: t('chat.quick.writeNextChapterPrompt'),
-      },
-      {
-        label: t('chat.quick.continueParagraph'),
-        icon: PenLine,
-        prompt: t('chat.quick.continueParagraphPrompt'),
-      },
-      {
-        label: t('chat.quick.polishChapter'),
-        icon: WandSparkles,
-        prompt: t('chat.quick.polishChapterPrompt', { target }),
-      },
-      {
-        label: t('chat.quick.finalizeState'),
-        icon: FileText,
-        prompt: t('chat.quick.finalizeStatePrompt', { target }),
-      },
-      {
-        label: t('chat.quick.consistencyCheck'),
-        icon: SearchCheck,
-        prompt: t('chat.quick.consistencyCheckPrompt', { target }),
-      },
-    ],
-    [target, t],
-  )
-
-  return (
-    <div className="border-b border-[var(--nova-border)] bg-[var(--nova-bg)] p-3">
-      <div className="mb-2 flex items-center gap-2 text-xs font-medium text-[var(--nova-text-muted)]">
-        <Sparkles className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />
-        {t('chat.quickActions')}
-      </div>
-      <div className="grid grid-cols-2 gap-2">
-        {actions.map((action) => {
-          const Icon = action.icon
-          return (
-            <button
-              key={action.label}
-              type="button"
-              disabled={disabled}
-              className="nova-nav-item flex items-center gap-2 border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2 text-left text-xs"
-              onClick={() => onSend(action.prompt)}
-            >
-              <Icon className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />
-              <span className="truncate">{action.label}</span>
-            </button>
-          )
-        })}
-      </div>
-    </div>
-  )
 }

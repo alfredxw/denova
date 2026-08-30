@@ -29,7 +29,7 @@ vi.mock('./AgentChatConversationTab', () => ({
     host?: {
       sessionRailVisible: boolean
       onSessionRailVisibleChange: (visible: boolean) => void
-      onCreateSession: () => void | Promise<void>
+      onCreateSession: (title?: string, customAgentId?: string) => void | Promise<void>
     }
   }) => (
     <div
@@ -56,6 +56,7 @@ vi.mock('./AgentChatConversationTab', () => ({
             </button>
           ) : null}
           <button type="button" onClick={() => void host.onCreateSession()}>新建会话</button>
+          <button type="button" onClick={() => void host.onCreateSession(undefined, 'focused-editor')}>切换自定义 Agent</button>
         </>
       ) : null}
     </div>
@@ -146,12 +147,24 @@ describe('WritingAgentWorkspace', () => {
     expect(legacySwitch).not.toHaveBeenCalled()
   })
 
-  it('can create and enter another conversation while the current one is running', async () => {
+  it('keeps a new Writing conversation local while the current one is running', async () => {
+    const user = userEvent.setup()
+    renderWorkspace()
+
+    await user.click(await screen.findByRole('button', { name: '新建会话' }))
+
+    expect(await screen.findByTestId('conversation:draft')).toHaveTextContent('active')
+    expect(createAgentChatSession).not.toHaveBeenCalled()
+    expect(screen.getByTestId('conversation:session-a')).toHaveTextContent('hidden')
+  })
+
+  it('persists a new conversation immediately when selecting a custom Agent', async () => {
     const user = userEvent.setup()
     vi.mocked(createAgentChatSession).mockResolvedValue({
       id: 'session-c',
       channel: 'agent',
-      title: 'New branch',
+      custom_agent_id: 'focused-editor',
+      title: 'Focused editor',
       created_at: '2026-08-26T11:00:00Z',
       updated_at: '2026-08-26T11:00:00Z',
       message_count: 0,
@@ -160,10 +173,9 @@ describe('WritingAgentWorkspace', () => {
     })
     renderWorkspace()
 
-    await user.click(await screen.findByRole('button', { name: '新建会话' }))
+    await user.click(await screen.findByRole('button', { name: '切换自定义 Agent' }))
 
-    await waitFor(() => expect(createAgentChatSession).toHaveBeenCalledWith('book-a', '', undefined, 'agent'))
-    expect(screen.getByTestId('conversation:session-a')).toHaveTextContent('hidden')
+    await waitFor(() => expect(createAgentChatSession).toHaveBeenCalledWith('book-a', '', 'focused-editor', 'agent'))
     expect(screen.getByTestId('conversation:session-c')).toHaveTextContent('active')
   })
 
@@ -202,7 +214,7 @@ describe('WritingAgentWorkspace', () => {
     expect(screen.getByRole('button', { name: '切换到会话 Character notes，运行中' })).toHaveAttribute('data-running', 'true')
   })
 
-  it('shows a recoverable empty state when a Book has no conversations yet', async () => {
+  it('opens a local draft when a Book has no conversations yet', async () => {
     const empty = project()
     empty.total = 0
     empty.sessions = []
@@ -210,8 +222,9 @@ describe('WritingAgentWorkspace', () => {
 
     renderWorkspace()
 
-    expect(await screen.findByText('暂无会话')).toBeInTheDocument()
-    expect(screen.getAllByRole('button', { name: '新建会话' }).length).toBeGreaterThan(0)
+    expect(await screen.findByTestId('conversation:draft')).toHaveAttribute('data-channel', 'agent')
+    expect(screen.queryByText('暂无会话')).not.toBeInTheDocument()
+    expect(createAgentChatSession).not.toHaveBeenCalled()
   })
 
   it('keeps a configuration conversation local until its first submission', async () => {
@@ -223,7 +236,6 @@ describe('WritingAgentWorkspace', () => {
 
     renderWorkspace({
       sessionChannel: 'configuration',
-      sessionCreation: 'on-first-message',
       sessionRailVisible: false,
     })
 

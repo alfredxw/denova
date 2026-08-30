@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Editor } from '@tiptap/react'
-import { MessageSquarePlus, MessageSquareQuote } from 'lucide-react'
+import { MessageCirclePlus, Quote } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 /**
@@ -74,7 +74,7 @@ export function SelectionToolbar({ editor, mode = 'quote', onAction }: { editor:
         className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-[var(--nova-text-muted)] hover:bg-[var(--nova-menu-item-hover-bg)] hover:text-[var(--nova-text)]"
         onClick={onAction}
       >
-        {mode === 'comment' ? <MessageSquarePlus className="h-3.5 w-3.5" /> : <MessageSquareQuote className="h-3.5 w-3.5" />}
+        {mode === 'comment' ? <MessageCirclePlus className="h-3.5 w-3.5" /> : <Quote className="h-3.5 w-3.5" />}
         <span>{t(mode === 'comment' ? 'editor.review.addComment' : 'editor.quoteSelection')}</span>
       </button>
     </div>

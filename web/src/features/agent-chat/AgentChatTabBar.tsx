@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next'
 import {
   FileDiff,
   FolderTree,
-  MessageSquareText,
+  MessageCircle,
   Pencil,
   Pin,
   PinOff,
@@ -120,7 +120,7 @@ export function AgentChatTabBar({
   const tabIcon = (tab: AgentChatTab) => {
     switch (tab.kind) {
       case 'agent':
-        return <MessageSquareText className="size-3.5" />
+        return <MessageCircle className="size-3.5" />
       case 'terminal':
         return <TerminalSquare className="size-3.5" />
       case 'files':

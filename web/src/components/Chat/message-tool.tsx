@@ -31,13 +31,16 @@ export function ToolExecutionBlock({ message, showAgentSource = true, onResolve,
   const result = message.result || ''
   const presentationKind = toolPresentationKind(message, 'call')
   const isDelegationTool = presentationKind === 'delegation'
+  const isTaskWait = name === 'task_wait'
   const isScriptTool = presentationKind === 'script'
   const taskSubAgent = canInterpretInput && isDelegationTool ? (message.subagent_type || parseTaskSubagentType(rawArgs)) : ''
   // The raw input remains opaque while streaming. File cards may read only the
   // path field as a non-authoritative label; this never rewrites the input.
   const fileTarget = isWorkspaceFileTool(name) ? extractToolArgPath(rawArgs) : ''
   const fileTargetSummary = fileTarget ? workspaceFileName(fileTarget) : ''
-  const displayName = isDelegationTool ? t('chat.subagent.taskLabel') : toolDisplayName(name, t)
+  let displayName = toolDisplayName(name, t)
+  if (isDelegationTool) displayName = t('chat.subagent.taskLabel')
+  if (isTaskWait) displayName = t('chat.subagent.waitLabel')
   const detailArgs = canInterpretInput
     ? (isDelegationTool ? formatTaskDelegationArgs(rawArgs) : args)
     : ''
@@ -46,32 +49,34 @@ export function ToolExecutionBlock({ message, showAgentSource = true, onResolve,
     if (approvalPending) setExpanded(true)
   }, [approvalPending, approvalInteraction?.id])
   const commandDescription = isDescribedTool(name) ? readToolArgDescription(rawArgs) : ''
-  const summary = inputStreaming
-    ? (fileTargetSummary || commandDescription || t('chat.tool.preparing'))
-    : (taskSubAgent
-        ? t('chat.subagent.delegating', { name: taskSubAgent })
-        : commandDescription || fileTargetSummary || buildToolArgSummary(args) || t('chat.tool.preparing'))
+  let summary = fileTargetSummary || commandDescription || t('chat.tool.preparing')
+  if (!inputStreaming) {
+    if (isTaskWait) {
+      summary = t('chat.subagent.waiting')
+    } else if (taskSubAgent) {
+      summary = t('chat.subagent.delegating', { name: taskSubAgent })
+    } else {
+      summary = commandDescription || fileTargetSummary || buildToolArgSummary(args) || t('chat.tool.preparing')
+    }
+  }
   const resultBody = stripToolResultMetadata(result)
   const resultEnvelope = decodeToolResultEnvelope(resultBody)
   const resultSeverity = status === 'error' ? 'error' : resultEnvelope?.severity || 'success'
   const showReadableOutcome = resultSeverity !== 'success'
   const showStackedOutcome = resultSeverity === 'warning'
-  const resultPreview = resultEnvelope
-    ? buildToolResultEnvelopeSummary(t, resultEnvelope)
-    : buildPreview(resultBody, 80)
+  let resultPreview = buildPreview(resultBody, 80)
+  if (resultEnvelope) resultPreview = buildToolResultEnvelopeSummary(t, resultEnvelope)
+  if (isTaskWait && resultBody) resultPreview = taskWaitResultSummary(resultBody, t)
   const fileResultSummary = fileTargetSummary
     ? (resultPreview && (showReadableOutcome || resultEnvelope?.status === 'partial')
         ? `${fileTargetSummary} · ${resultPreview}`
         : fileTargetSummary)
     : ''
   const detailResult = resultEnvelope ? formatMaybeJSON(resultBody) : result
-  const displaySummary = hasResult
-    ? (commandDescription || fileResultSummary || resultPreview || t('chat.tool.done'))
-    : status === 'error'
-      ? buildPreview(resultBody, 160) || t('chat.tool.failed')
-      : status === 'cancelled'
-        ? t('chat.tool.result.cancelled')
-      : summary
+  let displaySummary = summary
+  if (status === 'cancelled') displaySummary = t('chat.tool.result.cancelled')
+  if (status === 'error') displaySummary = buildPreview(resultBody, 160) || t('chat.tool.failed')
+  if (hasResult) displaySummary = commandDescription || fileResultSummary || resultPreview || t('chat.tool.done')
   const headerSummary = approvalPending ? t('agentApproval.approval.waiting') : displaySummary
   const hasDetail = Boolean(approvalInteraction || detailArgs || result)
   const canToggleDetail = hasDetail && !isInputStreaming
@@ -235,10 +240,30 @@ function parseTaskSubagentType(args: string) {
   if (!args) return ''
   try {
     const data = JSON.parse(args) as Record<string, unknown>
-    return typeof data.subagent_type === 'string' ? data.subagent_type : ''
+    if (typeof data.subagent_type === 'string') return data.subagent_type
+    const starts = Array.isArray(data.starts) ? data.starts : []
+    const first = starts[0]
+    return first && typeof first === 'object' && typeof (first as Record<string, unknown>).agent === 'string'
+      ? String((first as Record<string, unknown>).agent)
+      : ''
   } catch {
     const match = args.match(/"subagent_type"\s*:\s*"([^"]+)"/)
     return match?.[1] || ''
+  }
+}
+
+function taskWaitResultSummary(result: string, t: (key: string, options?: Record<string, unknown>) => string) {
+  try {
+    const parsed = JSON.parse(result) as { results?: Array<{ ready?: boolean; error?: string }> }
+    const outcomes = Array.isArray(parsed.results) ? parsed.results : []
+    if (!outcomes.length) return t('chat.subagent.waitComplete')
+    const ready = outcomes.filter((outcome) => outcome.ready === true).length
+    const failed = outcomes.filter((outcome) => Boolean(outcome.error)).length
+    return failed > 0
+      ? t('chat.subagent.waitResultWithFailures', { ready, total: outcomes.length, failed })
+      : t('chat.subagent.waitResult', { ready, total: outcomes.length })
+  } catch {
+    return buildPreview(result, 80) || t('chat.subagent.waitComplete')
   }
 }
 

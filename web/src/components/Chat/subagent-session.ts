@@ -1,7 +1,8 @@
-import type { ChatMessage } from '@/lib/api'
+import type { ChatMessage, SubAgentStatus } from '@/lib/api'
 import {
   agentSubAgentSessionKey,
   buildAgentSubAgentTimelineGroups,
+  readSubAgentStatus,
   type AgentMessageView,
 } from '@/lib/agent-message-view'
 
@@ -40,11 +41,15 @@ export function buildSubAgentProgressMessage(messages: ChatMessage[]): ChatMessa
     ? latest.name || latest.content || ''
     : latest.content || ''
   const sessionKey = subAgentSessionKey(first)
+  const subAgentStatus = reversed.find((message) => message.subagent_status)?.subagent_status
+  const streaming = subAgentStatus
+    ? isActiveSubAgentStatus(subAgentStatus)
+    : messages.some((message) => message.streaming === true || ('status' in message && message.status === 'running'))
   return {
     id: sessionKey ? `subagent-progress:${sessionKey}` : first.id ? `${first.id}:progress` : 'subagent-progress',
     role: 'assistant',
     content,
-    streaming: messages.some((message) => message.streaming === true || ('status' in message && message.status === 'running')),
+    streaming,
     created_at: first.created_at,
     run_id: first.run_id,
     display_segment_id: first.display_segment_id,
@@ -55,5 +60,24 @@ export function buildSubAgentProgressMessage(messages: ChatMessage[]): ChatMessa
     subagent: true,
     subagent_session_id: first.subagent_session_id,
     subagent_type: first.subagent_type,
+    subagent_status: subAgentStatus,
   }
+}
+
+export function subAgentStatusFromViews(views: AgentMessageView[]): SubAgentStatus | undefined {
+  const settled = [...views].reverse().find((view) => view.kind === 'subagent-status')
+  const status = readSubAgentStatus(settled?.data.status)
+  if (status) return status
+  if (views.some((view) => view.kind === 'ask' && view.streaming)) return 'waiting_input'
+  if (views.some((view) => view.streaming)) return 'running'
+  return undefined
+}
+
+export function subAgentStatusTranslationKey(status: SubAgentStatus | undefined, running: boolean) {
+  const resolved = status ?? (running ? 'running' : 'completed')
+  return `chat.subagent.status.${resolved}`
+}
+
+export function isActiveSubAgentStatus(status: SubAgentStatus) {
+  return status === 'running' || status === 'waiting_input' || status === 'aborting'
 }

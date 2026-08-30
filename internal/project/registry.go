@@ -96,7 +96,8 @@ func (registry *Registry) Get(id string) (Record, error) {
 
 // Resolve returns one non-archived project and its durable layout. When
 // requireAvailable is true, a missing content directory is rejected before a
-// runtime can bind to it.
+// runtime can bind to it. Missing Projects keep their migration pending until
+// the content directory returns, while remaining addressable for relink/archive.
 func (registry *Registry) Resolve(id string, requireAvailable bool) (Record, Layout, error) {
 	if registry == nil {
 		return Record{}, Layout{}, fmt.Errorf("project registry is unavailable")
@@ -111,6 +112,10 @@ func (registry *Registry) Resolve(id string, requireAvailable bool) (Record, Lay
 	}
 	if requireAvailable && record.Status != StatusAvailable {
 		return Record{}, Layout{}, fmt.Errorf("%w: %s", ErrUnavailable, record.WorkspacePath)
+	}
+	if record.Status != StatusAvailable {
+		layout, layoutErr := registry.Layout(record)
+		return record, layout, layoutErr
 	}
 	layout, err := registry.EnsureState(record)
 	if err != nil {

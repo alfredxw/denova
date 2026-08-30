@@ -21,6 +21,9 @@ func (schemaTaskExecutor) Start(context.Context, TaskRequest) (Task, error) { re
 func (schemaTaskExecutor) Observe(context.Context, TaskRef, string) (TaskObservation, error) {
 	return TaskObservation{}, nil
 }
+func (schemaTaskExecutor) Wait(context.Context, []TaskRef) ([]TaskWaitOutcome, error) {
+	return nil, nil
+}
 func (schemaTaskExecutor) Steer(context.Context, TaskRef, agent.Input) error { return nil }
 func (schemaTaskExecutor) Respond(context.Context, TaskRef, string, agent.InteractionResponse) error {
 	return nil
@@ -42,16 +45,17 @@ func (schemaSkillSource) Read(context.Context, SkillRef) (SkillContent, error) {
 func TestActionToolsExposeDisjointOperationSchemas(t *testing.T) {
 	tests := []struct {
 		name       string
+		toolName   string
 		build      func() agent.Toolset
 		actions    []string
 		properties map[string][]string
 	}{
 		{
-			name: "task", build: func() agent.Toolset { return Tasks(schemaTaskExecutor{}) },
-			actions: []string{"start", "observe", "steer", "respond", "abort"},
+			name: "task", toolName: "task", build: func() agent.Toolset { return Tasks(schemaTaskExecutor{}) },
+			actions: []string{"start", "observe", "steer", "abort"},
 			properties: map[string][]string{
-				"start": {"action", "starts"}, "observe": {"action", "cursor", "refs"},
-				"steer": {"action", "input", "refs"}, "respond": {"action", "responses"},
+				"start": {"action", "starts"}, "observe": {"action", "targets"},
+				"steer": {"action", "input", "refs"},
 				"abort": {"action", "reason", "refs"},
 			},
 		},
@@ -74,7 +78,7 @@ func TestActionToolsExposeDisjointOperationSchemas(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			schema := preparedToolSchema(t, test.build)
+			schema := preparedNamedToolSchema(t, test.build, test.toolName)
 			if schema.Type != "object" {
 				t.Fatalf("root schema type = %q, want object", schema.Type)
 			}
@@ -102,6 +106,20 @@ func TestActionToolsExposeDisjointOperationSchemas(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestTaskWaitUsesOneClosedTargetSchema(t *testing.T) {
+	schema := preparedNamedToolSchema(t, func() agent.Toolset { return Tasks(schemaTaskExecutor{}) }, "task_wait")
+	if schema.Type != "object" || !containsString(schema.Required, "targets") {
+		t.Fatalf("task_wait schema = %#v", schema)
+	}
+	if got := schemaPropertyNames(schema); !reflect.DeepEqual(got, []string{"targets"}) {
+		t.Fatalf("task_wait properties = %#v", got)
+	}
+	encoded, err := json.Marshal(schema)
+	if err != nil || !strings.Contains(string(encoded), `"additionalProperties":false`) {
+		t.Fatalf("task_wait schema is not closed: %s, %v", encoded, err)
 	}
 }
 
@@ -146,13 +164,34 @@ func TestAskSchemaSeparatesFreeTextAndChoiceQuestions(t *testing.T) {
 }
 
 func preparedToolSchema(t *testing.T, build func() agent.Toolset) *jsonschema.Schema {
+	return preparedNamedToolSchema(t, build, "")
+}
+
+func preparedNamedToolSchema(t *testing.T, build func() agent.Toolset, name string) *jsonschema.Schema {
 	t.Helper()
 	toolset := build()
 	definitions, err := toolset.PrepareTools(context.Background(), agent.ToolRequest{})
-	if err != nil || len(definitions) != 1 {
+	if err != nil || len(definitions) == 0 {
 		t.Fatalf("definitions = %d, error = %v", len(definitions), err)
 	}
-	info, err := definitions[0].Tool.Info(context.Background())
+	definition := definitions[0]
+	if name != "" {
+		found := false
+		for _, candidate := range definitions {
+			info, infoErr := candidate.Tool.Info(context.Background())
+			if infoErr != nil {
+				t.Fatal(infoErr)
+			}
+			if info.Name == name {
+				definition, found = candidate, true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("tool %q was not prepared", name)
+		}
+	}
+	info, err := definition.Tool.Info(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}

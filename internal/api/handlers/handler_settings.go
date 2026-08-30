@@ -65,6 +65,7 @@ func (h *Handlers) HandleSettingsPatch(ctx context.Context, c *app.RequestContex
 		case errors.Is(err, appsvc.ErrNoWorkspaceOpen):
 			writeErrorKey(c, consts.StatusBadRequest, "api.settings.workspaceMissing")
 		case errors.Is(err, config.ErrInvalidTerminalCommand),
+			errors.Is(err, config.ErrInvalidAgentQuickPrompt),
 			errors.Is(err, config.ErrInvalidSettingsPatch),
 			errors.Is(err, config.ErrUnsupportedSettingsLayer):
 			writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())

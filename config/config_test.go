@@ -263,6 +263,48 @@ func TestLoadWithWorkspaceLayersAndNormalizesAgentToolParallelism(t *testing.T) 
 	}
 }
 
+func TestLoadWithWorkspaceLayersAndNormalizesAgentSubAgentParallelism(t *testing.T) {
+	tests := []struct {
+		name          string
+		user          int
+		workspace     int
+		wantUser      int
+		wantWorkspace int
+		wantEffective int
+	}{
+		{name: "workspace override", user: 2, workspace: 6, wantUser: 2, wantWorkspace: 6, wantEffective: 6},
+		{name: "zero uses default", user: 3, workspace: 0, wantUser: 3, wantWorkspace: DefaultAgentSubAgentParallelism, wantEffective: DefaultAgentSubAgentParallelism},
+		{name: "upper bound", user: 4, workspace: 100, wantUser: 4, wantWorkspace: MaxAgentSubAgentParallelism, wantEffective: MaxAgentSubAgentParallelism},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			novaDir := t.TempDir()
+			workspace := t.TempDir()
+			t.Setenv("NOVA_DIR", novaDir)
+			t.Setenv("DENOVA_DIR", "")
+			t.Setenv("OPENAI_API_KEY", "")
+			t.Setenv("OPENAI_MODEL", "")
+			if err := WriteSettingsFile(filepath.Join(novaDir, "config.toml"), Settings{AgentSubAgentParallelism: intPtr(test.user)}); err != nil {
+				t.Fatal(err)
+			}
+			if err := WriteSettingsFile(filepath.Join(workspace, ".nova", "config.toml"), Settings{AgentSubAgentParallelism: intPtr(test.workspace)}); err != nil {
+				t.Fatal(err)
+			}
+			cfg, layered, err := LoadWithWorkspace(workspace)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if layered.User.AgentSubAgentParallelism == nil || *layered.User.AgentSubAgentParallelism != test.wantUser ||
+				layered.Workspace.AgentSubAgentParallelism == nil || *layered.Workspace.AgentSubAgentParallelism != test.wantWorkspace ||
+				layered.Effective.AgentSubAgentParallelism == nil || *layered.Effective.AgentSubAgentParallelism != test.wantEffective ||
+				cfg.AgentSubAgentParallelism != test.wantEffective {
+				t.Fatalf("subagent parallelism cfg=%d user=%v workspace=%v effective=%v", cfg.AgentSubAgentParallelism,
+					layered.User.AgentSubAgentParallelism, layered.Workspace.AgentSubAgentParallelism, layered.Effective.AgentSubAgentParallelism)
+			}
+		})
+	}
+}
+
 func TestLoadWithWorkspaceDefaultsLLMInputLogDisabled(t *testing.T) {
 	novaDir := t.TempDir()
 	ws := t.TempDir()

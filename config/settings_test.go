@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	agent "github.com/alfredxw/denova/agent"
 	"github.com/alfredxw/denova/agent/providers"
 )
 
@@ -49,6 +50,9 @@ func TestDefaultSettingsValues(t *testing.T) {
 	}
 	if s.AgentToolParallelism == nil || *s.AgentToolParallelism != DefaultAgentToolParallelism {
 		t.Fatalf("AgentToolParallelism default")
+	}
+	if s.AgentSubAgentParallelism == nil || *s.AgentSubAgentParallelism != DefaultAgentSubAgentParallelism {
+		t.Fatalf("AgentSubAgentParallelism default")
 	}
 	if len(s.TerminalCommands) != 2 ||
 		s.TerminalCommands[0] != (TerminalCommandSettings{ID: "codex", Name: "Codex CLI", Command: DefaultTerminalCodexCommand, Enabled: true}) ||
@@ -153,6 +157,7 @@ func TestMergeOverridesNonZero(t *testing.T) {
 		AgentIdleTimeoutSeconds:    intPtr(120),
 		AgentToolResultLimitKB:     intPtr(0),
 		AgentToolParallelism:       intPtr(4),
+		AgentSubAgentParallelism:   intPtr(2),
 		UIFontFamily:               "apple-system",
 		UIFontSize:                 intPtr(14),
 		ReadingFontFamily:          "apple-system",
@@ -179,6 +184,7 @@ func TestMergeOverridesNonZero(t *testing.T) {
 		AgentIdleTimeoutSeconds:    intPtr(240),
 		AgentToolResultLimitKB:     intPtr(64),
 		AgentToolParallelism:       intPtr(12),
+		AgentSubAgentParallelism:   intPtr(6),
 		UIFontFamily:               "humanist-sans",
 		UIFontSize:                 intPtr(13),
 		ReadingFontFamily:          "system-serif",
@@ -221,6 +227,9 @@ func TestMergeOverridesNonZero(t *testing.T) {
 	}
 	if out.AgentToolParallelism == nil || *out.AgentToolParallelism != 12 {
 		t.Fatalf("AgentToolParallelism should override parent")
+	}
+	if out.AgentSubAgentParallelism == nil || *out.AgentSubAgentParallelism != 6 {
+		t.Fatalf("AgentSubAgentParallelism should override parent")
 	}
 	if out.UIFontFamily != "humanist-sans" {
 		t.Fatalf("UIFontFamily should override parent: %s", out.UIFontFamily)
@@ -702,6 +711,16 @@ func TestLoadLayeredPublishesResolvedAgentToolCatalogAndManifests(t *testing.T) 
 	}
 	if len(shell.ToolNames) != 1 || shell.ToolNames[0] != wantShell {
 		t.Fatalf("resolved shell tools = %#v, want [%s]", shell.ToolNames, wantShell)
+	}
+	delegation, found := resolvedManifestCapability(ide, AgentToolDelegation)
+	if !found || strings.Join(delegation.ToolNames, ",") != "task,task_wait" {
+		t.Fatalf("resolved delegation tools = %#v", delegation)
+	}
+	waitDescriptor, found := delegation.ToolDescriptors["task_wait"]
+	if !found || waitDescriptor.Execution != agent.ToolExecutionInteractiveWait ||
+		waitDescriptor.Steering != agent.SteeringInterruptibleWait ||
+		waitDescriptor.Recovery != agent.ToolRecoveryReadOnly {
+		t.Fatalf("resolved task_wait descriptor = %#v", waitDescriptor)
 	}
 	for _, kind := range []string{AgentKindVersionSummary, AgentKindToolAgent} {
 		manifest, present := layered.ResolvedAgentToolManifests[kind]

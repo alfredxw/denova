@@ -6,6 +6,7 @@ const settings = {
   'settings.agent.idleTimeoutSeconds': 'Idle Timeout (s, 0 = unlimited)',
   'settings.agent.toolResultLimitKB': 'Tool Result Safety Limit (KB)',
   'settings.agent.toolParallelism': 'Parallel Read Tools (1–64)',
+  'settings.agent.subAgentParallelism': 'Concurrent SubAgents (1–32)',
   'settings.agent.scriptTimeoutSeconds': 'Script Timeout (s, 0 = unlimited)',
   'settings.agent.scriptIsolationHint': 'Scripts run inside the Denova process with a restricted JavaScript host, not a security sandbox. They have no direct filesystem, network, process, or environment access; every actual tool call still follows that tool\'s normal permission policy.',
   'settings.agent.approvalMode': 'Agent Safety Mode',

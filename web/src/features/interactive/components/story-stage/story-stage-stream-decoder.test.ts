@@ -25,6 +25,28 @@ describe('interactive stream decoder', () => {
     })
   })
 
+  it('accepts exact terminal SubAgent statuses and rejects non-terminal ones', () => {
+    expect(decodeInteractiveStreamEvent({
+      event: 'subagent_settled',
+      data: JSON.stringify({
+        status: 'blocked',
+        reason: 'needs input',
+        subagent: true,
+        subagent_session_id: 'child-session',
+      }),
+    })).toMatchObject({
+      kind: 'handled',
+      event: {
+        type: 'subagent_settled',
+        data: { status: 'blocked', subagent_session_id: 'child-session' },
+      },
+    })
+    expect(decodeInteractiveStreamEvent({
+      event: 'subagent_settled',
+      data: JSON.stringify({ status: 'running' }),
+    })).toMatchObject({ kind: 'invalid', type: 'subagent_settled' })
+  })
+
   it('isolates invalid JSON and schema violations', () => {
     expect(decodeInteractiveStreamEvent({ event: 'thinking', data: '{broken' })).toMatchObject({
       kind: 'invalid',

@@ -15,6 +15,7 @@ func TestPlanReadOnlyAccessFiltersModelToolSurface(t *testing.T) {
 	definitions := []agent.ToolDefinition{
 		accessPolicyDefinition(t, "read", producttools.BoundedReadDescriptor(agent.ToolSourceRead, config.AgentToolFilesystemRead)),
 		accessPolicyDefinition(t, "task", accessPolicyDescriptor(agent.ToolExecutionChild, agent.ToolMutationNone, config.AgentToolDelegation)),
+		accessPolicyDefinition(t, "task_wait", accessPolicyDescriptor(agent.ToolExecutionInteractiveWait, agent.ToolMutationNone, config.AgentToolDelegation)),
 		accessPolicyDefinition(t, "ask", accessPolicyDescriptor(agent.ToolExecutionInteractiveWait, agent.ToolMutationSession, config.AgentToolAsk)),
 		accessPolicyDefinition(t, "todo", accessPolicyDescriptor(agent.ToolExecutionSessionExclusive, agent.ToolMutationSession, config.AgentToolTodo)),
 		accessPolicyDefinition(t, "submit_domain_state", accessPolicyDescriptor(agent.ToolExecutionSessionExclusive, agent.ToolMutationSession, "domain_commit")),
@@ -38,7 +39,7 @@ func TestPlanReadOnlyAccessFiltersModelToolSurface(t *testing.T) {
 	if len(original.Tools) != len(definitions) {
 		t.Fatalf("original tool surface was mutated: got %d tools, want %d", len(original.Tools), len(definitions))
 	}
-	if got, want := accessPolicyToolNames(t, filtered.Tools), []string{"read", "task", "ask", "todo"}; strings.Join(got, ",") != strings.Join(want, ",") {
+	if got, want := accessPolicyToolNames(t, filtered.Tools), []string{"read", "task", "task_wait", "ask", "todo"}; strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("filtered tools = %v, want %v", got, want)
 	}
 }
