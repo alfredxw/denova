@@ -43,8 +43,6 @@ func TestComfyUIWorkflowDiscoveryAndLoad(t *testing.T) {
 			writeComfyUITestJSON(t, response, comfyUIJobsResponseForTest(nil))
 		case request.URL.Path == "/api/jobs/ready-job":
 			writeComfyUITestJSON(t, response, map[string]any{"workflow": map[string]any{"prompt": comfyUITestWorkflow()}})
-		case request.URL.Path == "/object_info":
-			writeComfyUITestJSON(t, response, comfyUITestObjectInfo())
 		default:
 			http.Error(response, `{"error":"not found"}`, http.StatusNotFound)
 		}
@@ -76,27 +74,24 @@ func TestComfyUIWorkflowDiscoveryAndLoad(t *testing.T) {
 	if snapshot.WorkflowID != "ready-workflow" || snapshot.JobID != "ready-job" || snapshot.Status != ComfyUIWorkflowStatusReady {
 		t.Fatalf("workflow snapshot metadata = %#v", snapshot.ComfyUIWorkflowSummary)
 	}
-	roles := make(map[string]string, len(snapshot.Parameters))
-	values := make(map[string]string, len(snapshot.Parameters))
-	for _, parameter := range snapshot.Parameters {
-		key := parameter.NodeID + "." + parameter.InputName
-		roles[key] = parameter.Role
-		values[key] = parameter.Value
+	if snapshot.Bindings == nil {
+		t.Fatal("workflow bindings are missing")
 	}
-	for key, want := range map[string]string{
-		"2.text": config.ComfyUIParameterRolePrompt, "3.text": config.ComfyUIParameterRoleNegativePrompt,
-		"4.width": config.ComfyUIParameterRoleWidth, "4.height": config.ComfyUIParameterRoleHeight,
-		"4.batch_size": config.ComfyUIParameterRoleBatchSize, "5.seed": config.ComfyUIParameterRoleSeed,
+	for name, binding := range map[string]*config.ComfyUIInputBinding{
+		"prompt": snapshot.Bindings.Prompt, "count": snapshot.Bindings.Count,
+		"width": snapshot.Bindings.Width, "height": snapshot.Bindings.Height,
 	} {
-		if roles[key] != want {
-			t.Errorf("parameter %s role = %q, want %q", key, roles[key], want)
+		if binding == nil {
+			t.Fatalf("%s binding is missing", name)
 		}
 	}
-	if values["5.seed"] != "9007199254740993" {
-		t.Fatalf("large seed value = %q", values["5.seed"])
+	if snapshot.Bindings.Prompt.NodeID != "2" || snapshot.Bindings.Prompt.InputName != "text" ||
+		snapshot.Bindings.Count.NodeID != "4" || snapshot.Bindings.Count.InputName != "batch_size" {
+		t.Fatalf("workflow bindings = %#v", snapshot.Bindings)
 	}
-	if roles["5.cfg"] != config.ComfyUIParameterRoleParameter {
-		t.Fatalf("cfg role = %q", roles["5.cfg"])
+	if len(snapshot.Candidates.Prompt) != 1 || len(snapshot.Candidates.Count) != 1 ||
+		len(snapshot.Candidates.Width) != 1 || len(snapshot.Candidates.Height) != 1 {
+		t.Fatalf("binding candidates = %#v", snapshot.Candidates)
 	}
 }
 
@@ -105,29 +100,18 @@ func TestPrepareDiscoveredComfyUIWorkflowAppliesBindings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	parameters, err := analyzeComfyUIParameters(mustDecodeComfyUITestWorkflow(t, raw), decodeComfyUITestObjectInfo(t))
-	if err != nil {
-		t.Fatal(err)
-	}
-	for index := range parameters {
-		if parameters[index].NodeID == "3" && parameters[index].InputName == "text" {
-			parameters[index].Value = `"soft shadows"`
-		}
-		if parameters[index].NodeID == "5" && parameters[index].InputName == "cfg" {
-			parameters[index].Value = "6.25"
-		}
-	}
+	bindings, _ := analyzeComfyUIBindings(mustDecodeComfyUITestWorkflow(t, raw))
 	workflow, err := prepareUploadedComfyUIWorkflow(config.ComfyUIProfileSettings{
 		WorkflowMode: config.ComfyUIWorkflowRemote,
 		Workflow:     string(raw),
-		Parameters:   parameters,
+		Bindings:     bindings,
 	}, GenerateRequest{Prompt: "runtime prompt", N: 3, Size: "768x1024"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	wantValues := map[string]string{
-		"2.text": `"runtime prompt"`, "3.text": `"soft shadows"`,
-		"4.width": "768", "4.height": "1024", "4.batch_size": "3", "5.cfg": "6.25",
+		"2.text": `"runtime prompt"`, "3.text": `"saved negative"`,
+		"4.width": "768", "4.height": "1024", "4.batch_size": "3", "5.cfg": "7",
 	}
 	for key, want := range wantValues {
 		parts := strings.Split(key, ".")
@@ -147,6 +131,25 @@ func TestPrepareDiscoveredComfyUIWorkflowAppliesBindings(t *testing.T) {
 	}
 }
 
+func TestAnalyzeComfyUIBindingsLeavesAmbiguousPromptForManualSelection(t *testing.T) {
+	workflow := mustDecodeComfyUITestWorkflow(t, mustMarshalComfyUITestJSON(t, comfyUITestWorkflow()))
+	workflow["6"] = map[string]any{
+		"class_type": "CLIPTextEncode", "inputs": map[string]any{"text": "second positive", "clip": []any{"1", 1}},
+	}
+	workflow["5"].(map[string]any)["inputs"].(map[string]any)["positive"] = []any{"7", 0}
+	workflow["7"] = map[string]any{
+		"class_type": "ConditioningCombine", "inputs": map[string]any{"conditioning_1": []any{"2", 0}, "conditioning_2": []any{"6", 0}},
+	}
+
+	bindings, candidates := analyzeComfyUIBindings(workflow)
+	if bindings == nil || bindings.Prompt != nil {
+		t.Fatalf("ambiguous prompt binding = %#v", bindings)
+	}
+	if len(candidates.Prompt) != 2 {
+		t.Fatalf("prompt candidates = %#v", candidates.Prompt)
+	}
+}
+
 func comfyUITestWorkflow() map[string]any {
 	return map[string]any{
 		"1": map[string]any{"class_type": "CheckpointLoaderSimple", "inputs": map[string]any{"ckpt_name": "model.safetensors"}},
@@ -157,27 +160,6 @@ func comfyUITestWorkflow() map[string]any {
 			"seed": json.Number("9007199254740993"), "steps": 20, "cfg": 7.0, "sampler_name": "euler",
 			"positive": []any{"2", 0}, "negative": []any{"3", 0}, "latent_image": []any{"4", 0},
 		}},
-	}
-}
-
-func comfyUITestObjectInfo() map[string]any {
-	return map[string]any{
-		"CheckpointLoaderSimple": map[string]any{"input": map[string]any{"required": map[string]any{
-			"ckpt_name": []any{[]string{"model.safetensors", "other.safetensors"}},
-		}}},
-		"CLIPTextEncode": map[string]any{"input": map[string]any{"required": map[string]any{
-			"text": []any{"STRING", map[string]any{"multiline": true}},
-		}}},
-		"EmptyLatentImage": map[string]any{"input": map[string]any{"required": map[string]any{
-			"width":      []any{"INT", map[string]any{"min": 64, "max": 4096, "step": 8}},
-			"height":     []any{"INT", map[string]any{"min": 64, "max": 4096, "step": 8}},
-			"batch_size": []any{"INT", map[string]any{"min": 1, "max": 64}},
-		}}},
-		"KSampler": map[string]any{"input": map[string]any{"required": map[string]any{
-			"seed": []any{"INT"}, "steps": []any{"INT", map[string]any{"min": 1, "max": 100}},
-			"cfg":          []any{"FLOAT", map[string]any{"min": 0, "max": 30, "step": 0.1}},
-			"sampler_name": []any{[]string{"euler", "dpmpp_2m"}},
-		}}},
 	}
 }
 
@@ -192,6 +174,15 @@ func writeComfyUITestJSON(t *testing.T, response http.ResponseWriter, value any)
 	}
 }
 
+func mustMarshalComfyUITestJSON(t *testing.T, value any) []byte {
+	t.Helper()
+	raw, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
+}
+
 func mustDecodeComfyUITestWorkflow(t *testing.T, raw []byte) comfyUIWorkflow {
 	t.Helper()
 	workflow, err := decodeComfyUIWorkflowJSON(raw)
@@ -199,17 +190,4 @@ func mustDecodeComfyUITestWorkflow(t *testing.T, raw []byte) comfyUIWorkflow {
 		t.Fatal(err)
 	}
 	return workflow
-}
-
-func decodeComfyUITestObjectInfo(t *testing.T) map[string]comfyUINodeInfo {
-	t.Helper()
-	raw, err := json.Marshal(comfyUITestObjectInfo())
-	if err != nil {
-		t.Fatal(err)
-	}
-	var info map[string]comfyUINodeInfo
-	if err := json.Unmarshal(raw, &info); err != nil {
-		t.Fatal(err)
-	}
-	return info
 }

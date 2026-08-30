@@ -33,13 +33,14 @@ export function FileTreeMenu({ children, anchorRect }: FileTreeMenuProps) {
   }, [anchorRect])
 
   useEffect(() => {
-    ref.current?.querySelector<HTMLElement>('[role="menuitem"]:not(:disabled)')?.focus()
+    ref.current?.focus()
   }, [])
 
   return createPortal(
     <div
       ref={ref}
       role="menu"
+      tabIndex={-1}
       data-file-tree-context-menu-root="true"
       className="nova-file-tree-menu nova-file-tree-menu-surface"
       onKeyDown={moveMenuFocus}

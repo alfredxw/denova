@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from '../support/fixtures'
 import { createAndOpenBook, createProjectFile, readProjectFile } from '../support/api'
 
 test('edits and persists a chapter through the Writing workbench', async ({ page, request }) => {

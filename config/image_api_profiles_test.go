@@ -82,10 +82,10 @@ func TestResolveDiscoveredComfyUIWorkflowPreservesBindings(t *testing.T) {
 				WorkflowMode: ComfyUIWorkflowRemote, Workflow: `{"1":{"class_type":"Example","inputs":{"value":1}}}`,
 				WorkflowName: "Portrait", WorkflowID: "workflow-id", WorkflowPath: "folder/portrait.json",
 				WorkflowModified: 100, WorkflowJobID: "job-id", WorkflowJobTime: 110,
-				Parameters: []ComfyUIParameterSettings{{
-					NodeID: "1", InputName: "value", Label: " Example ", Type: "int", Role: ComfyUIParameterRoleWidth,
-					Value: "512", Options: []string{"installation-local"},
-				}},
+				Bindings: &ComfyUIBindings{
+					Prompt: &ComfyUIInputBinding{NodeID: " 1 ", InputName: " text "},
+					Width:  &ComfyUIInputBinding{NodeID: "1", InputName: "value"},
+				},
 			},
 		}},
 	}
@@ -93,12 +93,11 @@ func TestResolveDiscoveredComfyUIWorkflowPreservesBindings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resolved.ComfyUI.WorkflowMode != ComfyUIWorkflowRemote || resolved.ComfyUI.WorkflowID != "workflow-id" || len(resolved.ComfyUI.Parameters) != 1 {
+	if resolved.ComfyUI.WorkflowMode != ComfyUIWorkflowRemote || resolved.ComfyUI.WorkflowID != "workflow-id" || resolved.ComfyUI.Bindings == nil {
 		t.Fatalf("resolved ComfyUI settings = %#v", resolved.ComfyUI)
 	}
-	parameter := resolved.ComfyUI.Parameters[0]
-	if parameter.Label != "Example" || parameter.Type != "INT" || parameter.Role != ComfyUIParameterRoleWidth || parameter.Value != "512" {
-		t.Fatalf("normalized parameter = %#v", parameter)
+	if got := resolved.ComfyUI.Bindings.Prompt; got == nil || got.NodeID != "1" || got.InputName != "text" {
+		t.Fatalf("normalized prompt binding = %#v", got)
 	}
 }
 
@@ -110,10 +109,10 @@ func TestDiscoveredComfyUIWorkflowSettingsRoundTrip(t *testing.T) {
 		ComfyUI: &ComfyUIProfileSettings{
 			WorkflowMode: ComfyUIWorkflowRemote, Workflow: wantWorkflow,
 			WorkflowName: "Saved", WorkflowID: "workflow-id", WorkflowPath: "folder/saved.json",
-			Parameters: []ComfyUIParameterSettings{{
-				NodeID: "1", InputName: "seed", Type: "INT", Role: ComfyUIParameterRoleSeed,
-				Value: "9007199254740993", Options: []string{"not-persisted"},
-			}},
+			Bindings: &ComfyUIBindings{
+				Prompt: &ComfyUIInputBinding{NodeID: "2", InputName: "text"},
+				Count:  &ComfyUIInputBinding{NodeID: "4", InputName: "batch_size"},
+			},
 		},
 	}}}
 	if err := WriteSettingsFile(settingsPath, settings); err != nil {
@@ -127,10 +126,10 @@ func TestDiscoveredComfyUIWorkflowSettingsRoundTrip(t *testing.T) {
 		t.Fatalf("loaded image profiles = %#v", loaded.ImageAPIProfiles)
 	}
 	comfy := loaded.ImageAPIProfiles[0].ComfyUI
-	if comfy.Workflow != wantWorkflow || comfy.WorkflowID != "workflow-id" || len(comfy.Parameters) != 1 {
+	if comfy.Workflow != wantWorkflow || comfy.WorkflowID != "workflow-id" || comfy.Bindings == nil {
 		t.Fatalf("loaded ComfyUI settings = %#v", comfy)
 	}
-	if comfy.Parameters[0].Value != "9007199254740993" || len(comfy.Parameters[0].Options) != 0 {
-		t.Fatalf("loaded ComfyUI parameter = %#v", comfy.Parameters[0])
+	if comfy.Bindings.Prompt == nil || comfy.Bindings.Prompt.NodeID != "2" || comfy.Bindings.Count == nil || comfy.Bindings.Count.InputName != "batch_size" {
+		t.Fatalf("loaded ComfyUI bindings = %#v", comfy.Bindings)
 	}
 }

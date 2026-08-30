@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from '../support/fixtures'
 import { createAndOpenBook, getProjectLoreItems } from '../support/api'
 
 test('creates, autosaves, and reloads a Lore item across Writing and Game', async ({ page, request }) => {

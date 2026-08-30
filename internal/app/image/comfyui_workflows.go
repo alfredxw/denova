@@ -27,7 +27,7 @@ func (service *Service) DiscoverComfyUIWorkflows(ctx context.Context, endpoint c
 }
 
 // LoadComfyUIWorkflow imports one fresh successful API snapshot and its
-// editable parameter schema from the configured ComfyUI server.
+// provider-neutral runtime bindings from the configured ComfyUI server.
 func (service *Service) LoadComfyUIWorkflow(ctx context.Context, endpoint config.ImageAPIEndpointSettings, profile config.ImageAPIProfileSettings, workflowPath string) (imagegen.ComfyUIWorkflowSnapshot, error) {
 	resolved, err := service.resolveComfyUIConnection(endpoint, profile)
 	if err != nil {
@@ -39,7 +39,7 @@ func (service *Service) LoadComfyUIWorkflow(ctx context.Context, endpoint config
 	if err != nil {
 		return imagegen.ComfyUIWorkflowSnapshot{}, &ProviderRequestError{cause: fmt.Errorf("load ComfyUI workflow: %w", err)}
 	}
-	slog.InfoContext(ctx, fmt.Sprintf("[image-comfyui] loaded workflow snapshot profile_id=%s workflow_id=%s parameters=%d", resolved.ProfileID, snapshot.WorkflowID, len(snapshot.Parameters)))
+	slog.InfoContext(ctx, fmt.Sprintf("[image-comfyui] loaded workflow snapshot profile_id=%s workflow_id=%s prompt_candidates=%d", resolved.ProfileID, snapshot.WorkflowID, len(snapshot.Candidates.Prompt)))
 	return snapshot, nil
 }
 

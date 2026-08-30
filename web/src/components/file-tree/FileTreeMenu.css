@@ -13,6 +13,7 @@
   color: light-dark(#000000, #ffffff);
   padding: 0.1875rem;
   box-shadow: 0 8px 24px rgb(0 0 0 / 22%), 0 1px 4px rgb(0 0 0 / 16%);
+  outline: none;
   font-family: var(--font-sans);
   font-size: var(--nova-ui-micro-font-size);
   line-height: var(--nova-ui-micro-line-height);
@@ -26,10 +27,11 @@
 
 .nova-file-tree-menu-surface.nova-file-tree-menu-radix {
   z-index: 80;
-  outline: none;
+  animation: none;
 }
 
 .nova-file-tree-menu-item {
+  appearance: none;
   display: flex;
   width: 100%;
   min-width: 0;

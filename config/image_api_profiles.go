@@ -34,14 +34,6 @@ const (
 	ComfyUIWorkflowBuiltin = "builtin"
 	ComfyUIWorkflowAPI     = "api"
 	ComfyUIWorkflowRemote  = "remote"
-
-	ComfyUIParameterRoleParameter      = "parameter"
-	ComfyUIParameterRolePrompt         = "prompt"
-	ComfyUIParameterRoleNegativePrompt = "negative_prompt"
-	ComfyUIParameterRoleWidth          = "width"
-	ComfyUIParameterRoleHeight         = "height"
-	ComfyUIParameterRoleBatchSize      = "batch_size"
-	ComfyUIParameterRoleSeed           = "seed"
 )
 
 var (
@@ -53,23 +45,22 @@ var (
 	ErrImageProtocolInvalid    = errors.New("image protocol is invalid")
 )
 
-// ComfyUIParameterSettings describes one writable API-graph input. Value is a
-// JSON literal so large integer seeds and custom string values survive settings
-// round trips without lossy type coercion.
-type ComfyUIParameterSettings struct {
+// ComfyUIInputBinding points one provider-neutral image input at a writable
+// ComfyUI API-graph input. The workflow snapshot remains the source of every
+// static value; bindings contain no duplicated workflow configuration.
+type ComfyUIInputBinding struct {
 	NodeID    string `toml:"node_id" json:"node_id"`
 	InputName string `toml:"input_name" json:"input_name"`
-	Label     string `toml:"label,omitempty" json:"label,omitempty"`
-	Type      string `toml:"type" json:"type"`
-	Role      string `toml:"role,omitempty" json:"role,omitempty"`
-	Value     string `toml:"value" json:"value"`
-	// Options is refreshed from object_info and intentionally not persisted;
-	// model-backed combo lists can contain thousands of installation-local values.
-	Options   []string `toml:"-" json:"options,omitempty"`
-	Min       *float64 `toml:"min,omitempty" json:"min,omitempty"`
-	Max       *float64 `toml:"max,omitempty" json:"max,omitempty"`
-	Step      *float64 `toml:"step,omitempty" json:"step,omitempty"`
-	Multiline bool     `toml:"multiline,omitempty" json:"multiline,omitempty"`
+}
+
+// ComfyUIBindings is the complete public control surface Denova projects onto
+// a discovered workflow. Width and height form the optional size capability;
+// random seed handling remains an adapter policy rather than a user binding.
+type ComfyUIBindings struct {
+	Prompt *ComfyUIInputBinding `toml:"prompt,omitempty" json:"prompt,omitempty"`
+	Count  *ComfyUIInputBinding `toml:"count,omitempty" json:"count,omitempty"`
+	Width  *ComfyUIInputBinding `toml:"width,omitempty" json:"width,omitempty"`
+	Height *ComfyUIInputBinding `toml:"height,omitempty" json:"height,omitempty"`
 }
 
 // ComfyUIProfileSettings owns the workflow source used by the ComfyUI
@@ -77,15 +68,15 @@ type ComfyUIParameterSettings struct {
 // executes an uploaded API-format graph, and remote mode executes a cached
 // snapshot discovered from a saved ComfyUI workflow.
 type ComfyUIProfileSettings struct {
-	WorkflowMode     string                     `toml:"workflow_mode,omitempty" json:"workflow_mode,omitempty"`
-	Workflow         string                     `toml:"workflow,omitempty" json:"workflow,omitempty"`
-	WorkflowName     string                     `toml:"workflow_name,omitempty" json:"workflow_name,omitempty"`
-	WorkflowID       string                     `toml:"workflow_id,omitempty" json:"workflow_id,omitempty"`
-	WorkflowPath     string                     `toml:"workflow_path,omitempty" json:"workflow_path,omitempty"`
-	WorkflowModified int64                      `toml:"workflow_modified,omitempty" json:"workflow_modified,omitempty"`
-	WorkflowJobID    string                     `toml:"workflow_job_id,omitempty" json:"workflow_job_id,omitempty"`
-	WorkflowJobTime  int64                      `toml:"workflow_job_time,omitempty" json:"workflow_job_time,omitempty"`
-	Parameters       []ComfyUIParameterSettings `toml:"parameters,omitempty" json:"parameters,omitempty"`
+	WorkflowMode     string           `toml:"workflow_mode,omitempty" json:"workflow_mode,omitempty"`
+	Workflow         string           `toml:"workflow,omitempty" json:"workflow,omitempty"`
+	WorkflowName     string           `toml:"workflow_name,omitempty" json:"workflow_name,omitempty"`
+	WorkflowID       string           `toml:"workflow_id,omitempty" json:"workflow_id,omitempty"`
+	WorkflowPath     string           `toml:"workflow_path,omitempty" json:"workflow_path,omitempty"`
+	WorkflowModified int64            `toml:"workflow_modified,omitempty" json:"workflow_modified,omitempty"`
+	WorkflowJobID    string           `toml:"workflow_job_id,omitempty" json:"workflow_job_id,omitempty"`
+	WorkflowJobTime  int64            `toml:"workflow_job_time,omitempty" json:"workflow_job_time,omitempty"`
+	Bindings         *ComfyUIBindings `toml:"bindings,omitempty" json:"bindings,omitempty"`
 }
 
 // ImageAPIProfileSettings is provider-neutral persistent configuration. A

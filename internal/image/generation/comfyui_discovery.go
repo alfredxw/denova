@@ -38,12 +38,13 @@ type ComfyUIWorkflowCatalog struct {
 	Workflows []ComfyUIWorkflowSummary `json:"workflows"`
 }
 
-// ComfyUIWorkflowSnapshot is the executable graph and editable input schema
-// captured from one fresh successful ComfyUI job.
+// ComfyUIWorkflowSnapshot is the executable graph, inferred semantic bindings,
+// and transient repair candidates captured from one successful ComfyUI job.
 type ComfyUIWorkflowSnapshot struct {
 	ComfyUIWorkflowSummary
-	Workflow   string                            `json:"workflow"`
-	Parameters []config.ComfyUIParameterSettings `json:"parameters,omitempty"`
+	Workflow   string                   `json:"workflow"`
+	Bindings   *config.ComfyUIBindings  `json:"bindings,omitempty"`
+	Candidates ComfyUIBindingCandidates `json:"candidates"`
 }
 
 type comfyUIUserFile struct {
@@ -128,8 +129,8 @@ func (adapter *ComfyUIAdapter) DiscoverWorkflows(ctx context.Context, profile co
 	return ComfyUIWorkflowCatalog{Workflows: workflows}, nil
 }
 
-// LoadWorkflow revalidates one catalog entry, then joins its API graph with
-// object_info to produce editable parameter bindings.
+// LoadWorkflow revalidates one catalog entry, then infers runtime bindings and
+// compatible repair candidates directly from its executable graph.
 func (adapter *ComfyUIAdapter) LoadWorkflow(ctx context.Context, profile config.ResolvedImageAPIProfile, workflowPath string) (ComfyUIWorkflowSnapshot, error) {
 	workflowPath, err := normalizeComfyUIWorkflowPath(workflowPath)
 	if err != nil {
@@ -186,18 +187,7 @@ func (adapter *ComfyUIAdapter) LoadWorkflow(ctx context.Context, profile config.
 	if err := validateComfyUIWorkflow(workflow); err != nil {
 		return ComfyUIWorkflowSnapshot{}, err
 	}
-	infoEndpoint, err := endpointURL(profile.BaseURL, "object_info")
-	if err != nil {
-		return ComfyUIWorkflowSnapshot{}, err
-	}
-	var nodeInfo map[string]comfyUINodeInfo
-	if err := doJSON(ctx, adapter.httpClient, http.MethodGet, infoEndpoint, bearerHeaders(profile.APIKey, profile.Headers), nil, &nodeInfo); err != nil {
-		return ComfyUIWorkflowSnapshot{}, fmt.Errorf("load ComfyUI node metadata: %w", err)
-	}
-	parameters, err := analyzeComfyUIParameters(workflow, nodeInfo)
-	if err != nil {
-		return ComfyUIWorkflowSnapshot{}, err
-	}
+	bindings, candidates := analyzeComfyUIBindings(workflow)
 	return ComfyUIWorkflowSnapshot{
 		ComfyUIWorkflowSummary: ComfyUIWorkflowSummary{
 			Name:       strings.TrimSuffix(path.Base(file.Path), path.Ext(file.Path)),
@@ -209,7 +199,8 @@ func (adapter *ComfyUIAdapter) LoadWorkflow(ctx context.Context, profile config.
 			JobTime:    job.CreateTime,
 		},
 		Workflow:   strings.TrimSpace(string(detail.Workflow.Prompt)),
-		Parameters: parameters,
+		Bindings:   bindings,
+		Candidates: candidates,
 	}, nil
 }
 

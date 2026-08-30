@@ -1,12 +1,31 @@
 import { createServer } from 'node:http'
+import path from 'node:path'
 import process from 'node:process'
 
 const port = Number(process.env.DENOVA_E2E_MODEL_PORT || '18081')
 const narrative = '石门缓缓开启，暖色灯光照亮了前方的旧车站。'
 const agentEditMarker = 'E2E_EDIT_CHAPTER'
 const delayedReplyMarker = 'E2E_DELAYED_AGENT_REPLY'
+const sessionADelayMarker = 'E2E_SESSION_A_DELAY'
+const sessionBDelayMarker = 'E2E_SESSION_B_DELAY'
+const sessionAFollowUpMarker = 'E2E_SESSION_A_FOLLOW_UP'
+const writingAttachmentMarker = 'E2E_WRITING_IMAGE_ATTACHMENT'
+const gameAttachmentMarker = 'E2E_GAME_IMAGE_ATTACHMENT'
+const gameRegenerationMarker = 'E2E_GAME_REGENERATE_FAILURE'
+const generalProjectAlphaMarker = 'E2E_GENERAL_PROJECT_ALPHA_WRITE'
+const generalProjectBetaMarker = 'E2E_GENERAL_PROJECT_BETA_WRITE'
+const externalReadAskMarker = 'E2E_EXTERNAL_READ_ASK'
+const externalReadWriteMarker = 'E2E_EXTERNAL_READ_WRITE'
+const externalReadFullMarker = 'E2E_EXTERNAL_READ_FULL_ACCESS'
 const legacyWritingContinuationMarker = 'E2E_V033_WRITING_CONTINUE'
 const legacyWritingHistoryMarker = '第一章保留了 v0.3.3 的正文。'
+const writingAttachmentName = 'writing-e2e.png'
+const gameAttachmentName = 'game-e2e.png'
+const gameAttachmentNarrative = '图像中的蓝色信标亮起，旧车站的侧门随之打开。'
+const originalRegenerationNarrative = '第一次生成的钟声从旧车站深处传来。'
+const regeneratedNarrative = '重试后，月台广播给出了全新的撤离路线。'
+const externalSecret = 'DENOVA_E2E_EXTERNAL_SECRET'
+const externalSecretPath = path.resolve('test-results', 'runtime', 'e2e-external-secret.txt')
 const agentEditArguments = JSON.stringify({
   path: 'chapters/e2e-agent-chapter.md',
   edits: [{ old_string: 'Agent 修改前。', new_string: 'Agent 已通过工具完成修改。' }],
@@ -19,7 +38,15 @@ const turnSubmission = JSON.stringify({
   choices: ['走进旧车站', '留在门外观察'],
 })
 
-const delayedWaiters = new Set()
+const delayedResponses = new Map([
+  [delayedReplyMarker, 'Recovered response completed exactly once.'],
+  [sessionADelayMarker, 'Session A initial response completed.'],
+  [sessionBDelayMarker, 'Session B response completed independently.'],
+])
+const delayedWaiters = new Map()
+const requestCounts = new Map()
+let gameRegenerationAllowed = false
+let gameRegenerationFailureRequests = 0
 
 function completionFrame(delta, finishReason = '') {
   return {
@@ -61,9 +88,9 @@ function toolCompletionFrames(name, argumentsJSON, id) {
   ]
 }
 
-function chatCompletionFrames() {
+function chatCompletionFrames(content = narrative) {
   return [
-    completionFrame({ role: 'assistant', content: narrative }),
+    completionFrame({ role: 'assistant', content }),
     ...toolCompletionFrames('submit_interactive_turn', turnSubmission, 'call-submit-interactive-turn'),
   ]
 }
@@ -87,13 +114,44 @@ function requestHasToolResult(body) {
   return Array.isArray(body.messages) && body.messages.some((message) => message?.role === 'tool')
 }
 
-function waitForDelayedRelease() {
-  return new Promise((resolve) => delayedWaiters.add(resolve))
+function requestToolResults(body) {
+  return JSON.stringify((body.messages ?? []).filter((message) => message?.role === 'tool'))
 }
 
-function releaseDelayedRequests() {
-  for (const resolve of delayedWaiters) resolve()
-  delayedWaiters.clear()
+function requestIncludesImageAttachment(body, name) {
+  const messages = JSON.stringify(body.messages ?? [])
+  return messages.includes(name) && messages.includes('data:image/png;base64,')
+}
+
+function recordRequest(marker) {
+  requestCounts.set(marker, (requestCounts.get(marker) ?? 0) + 1)
+}
+
+function waitForDelayedRelease(marker) {
+  return new Promise((resolve) => {
+    const waiters = delayedWaiters.get(marker) ?? new Set()
+    waiters.add(resolve)
+    delayedWaiters.set(marker, waiters)
+  })
+}
+
+function releaseDelayedRequests(marker = '') {
+  const markers = marker ? [marker] : [...delayedWaiters.keys()]
+  let released = 0
+  for (const current of markers) {
+    const waiters = delayedWaiters.get(current)
+    if (!waiters) continue
+    for (const resolve of waiters) {
+      resolve()
+      released += 1
+    }
+    delayedWaiters.delete(current)
+  }
+  return released
+}
+
+function delayedStatus() {
+  return Object.fromEntries([...delayedWaiters].map(([marker, waiters]) => [marker, waiters.size]))
 }
 
 function writeJSON(response, status, body) {
@@ -122,18 +180,38 @@ function writeGeneratedCompletion(response, content) {
   })
 }
 
+function writeModelError(response, message) {
+  writeJSON(response, 500, {
+    error: { message, type: 'server_error', code: 'denova_e2e_model_failure' },
+  })
+}
+
 const server = createServer(async (request, response) => {
   if (request.method === 'GET' && request.url === '/health') {
     writeJSON(response, 200, { status: 'ok' })
     return
   }
   if (request.method === 'GET' && request.url === '/control/status') {
-    writeJSON(response, 200, { delayed_waiting: delayedWaiters.size })
+    const delayedWaitingByMarker = delayedStatus()
+    writeJSON(response, 200, {
+      delayed_waiting: Object.values(delayedWaitingByMarker).reduce((total, count) => total + count, 0),
+      delayed_waiting_by_marker: delayedWaitingByMarker,
+      request_counts: Object.fromEntries(requestCounts),
+      game_regeneration_allowed: gameRegenerationAllowed,
+      game_regeneration_failure_requests: gameRegenerationFailureRequests,
+      external_secret_path: externalSecretPath,
+    })
     return
   }
   if (request.method === 'POST' && request.url === '/control/release') {
-    releaseDelayedRequests()
-    writeJSON(response, 200, { released: true })
+    const body = await readJSONBody(request)
+    const released = releaseDelayedRequests(typeof body.marker === 'string' ? body.marker : '')
+    writeJSON(response, 200, { released })
+    return
+  }
+  if (request.method === 'POST' && request.url === '/control/allow-game-regeneration') {
+    gameRegenerationAllowed = true
+    writeJSON(response, 200, { allowed: true })
     return
   }
   if (request.method !== 'POST' || request.url !== '/v1/chat/completions') {
@@ -154,8 +232,54 @@ const server = createServer(async (request, response) => {
     return
   }
 
+  if (requestIncludesMarker(body, gameAttachmentMarker) && requestIncludesTool(body, 'submit_interactive_turn')) {
+    recordRequest(gameAttachmentMarker)
+    const content = requestIncludesImageAttachment(body, gameAttachmentName)
+      ? gameAttachmentNarrative
+      : 'Game image attachment was not delivered to the model.'
+    writeChatCompletion(response, chatCompletionFrames(content))
+    return
+  }
+  if (requestIncludesMarker(body, gameRegenerationMarker) && requestIncludesTool(body, 'submit_interactive_turn')) {
+    recordRequest(gameRegenerationMarker)
+    if ((requestCounts.get(gameRegenerationMarker) ?? 0) === 1) {
+      writeChatCompletion(response, chatCompletionFrames(originalRegenerationNarrative))
+      return
+    }
+    if (!gameRegenerationAllowed) {
+      gameRegenerationFailureRequests += 1
+      writeModelError(response, 'Deterministic Game regeneration failure.')
+      return
+    }
+    writeChatCompletion(response, chatCompletionFrames(regeneratedNarrative))
+    return
+  }
   if (requestIncludesTool(body, 'submit_interactive_turn')) {
     writeChatCompletion(response, chatCompletionFrames())
+    return
+  }
+  if (requestIncludesMarker(body, sessionAFollowUpMarker)) {
+    recordRequest(sessionAFollowUpMarker)
+    writeChatCompletion(response, textCompletionFrames('Session A follow-up reached only Session A.'))
+    return
+  }
+  for (const [marker, content] of delayedResponses) {
+    if (!requestIncludesMarker(body, marker)) continue
+    recordRequest(marker)
+    await waitForDelayedRelease(marker)
+    writeChatCompletion(response, textCompletionFrames(content))
+    return
+  }
+  for (const [marker, content] of [
+    [generalProjectAlphaMarker, 'alpha-project-only'],
+    [generalProjectBetaMarker, 'beta-project-only'],
+  ]) {
+    if (!requestIncludesMarker(body, marker)) continue
+    recordRequest(marker)
+    const frames = requestHasToolResult(body)
+      ? textCompletionFrames(`General Project write completed: ${content}.`)
+      : toolCompletionFrames('write', JSON.stringify({ path: 'e2e-project-proof.txt', content }), `call-${content}`)
+    writeChatCompletion(response, frames)
     return
   }
   if (requestIncludesMarker(body, agentEditMarker)) {
@@ -165,9 +289,34 @@ const server = createServer(async (request, response) => {
     writeChatCompletion(response, frames)
     return
   }
-  if (requestIncludesMarker(body, delayedReplyMarker)) {
-    await waitForDelayedRelease()
-    writeChatCompletion(response, textCompletionFrames('Recovered response completed exactly once.'))
+  for (const [marker, label] of [
+    [externalReadAskMarker, 'Ask'],
+    [externalReadWriteMarker, 'Write'],
+    [externalReadFullMarker, 'Full access'],
+  ]) {
+    if (!requestIncludesMarker(body, marker)) continue
+    recordRequest(marker)
+    if (!requestHasToolResult(body)) {
+      writeChatCompletion(response, toolCompletionFrames(
+        'read',
+        JSON.stringify({ path: externalSecretPath }),
+        `call-external-read-${label.toLowerCase().replaceAll(' ', '-')}`,
+      ))
+      return
+    }
+    const toolResults = requestToolResults(body)
+    const content = toolResults.includes(externalSecret)
+      ? `External read completed in ${label} mode.`
+      : `External read was denied in ${label} mode.`
+    writeChatCompletion(response, textCompletionFrames(content))
+    return
+  }
+  if (requestIncludesMarker(body, writingAttachmentMarker)) {
+    recordRequest(writingAttachmentMarker)
+    const content = requestIncludesImageAttachment(body, writingAttachmentName)
+      ? 'Writing image attachment reached the model.'
+      : 'Writing image attachment was not delivered to the model.'
+    writeChatCompletion(response, textCompletionFrames(content))
     return
   }
   if (requestIncludesMarker(body, legacyWritingContinuationMarker)) {

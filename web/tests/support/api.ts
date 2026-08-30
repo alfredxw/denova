@@ -14,6 +14,20 @@ export interface E2EStoryTurn {
   narrative?: string
 }
 
+export interface E2EAgentChatProject {
+  id: string
+  type: 'book' | 'general' | 'harness'
+  path: string
+  name: string
+}
+
+export interface E2EAgentChatSession {
+  id: string
+  title: string
+}
+
+export type E2EAgentApprovalMode = 'ask' | 'write' | 'full_access'
+
 async function expectSuccessful(response: APIResponse): Promise<void> {
   const failureDetails = response.ok() ? undefined : await response.text()
   expect(response.ok(), failureDetails).toBe(true)
@@ -120,4 +134,48 @@ export async function getStoryBranches(
   await expectSuccessful(response)
   const body = await response.json() as { branches?: Array<{ id: string; title: string; current?: boolean }> }
   return body.branches ?? []
+}
+
+export async function registerAgentChatProject(
+  request: APIRequestContext,
+  path: string,
+): Promise<E2EAgentChatProject> {
+  const response = await request.post('/api/agent-chat/projects', { data: { path } })
+  await expectSuccessful(response)
+  return response.json()
+}
+
+export async function createAgentChatSession(
+  request: APIRequestContext,
+  projectId: string,
+  title: string,
+): Promise<E2EAgentChatSession> {
+  const response = await request.post(`/api/projects/${encodeURIComponent(projectId)}/agent-chat/sessions`, {
+    data: { title },
+  })
+  await expectSuccessful(response)
+  return response.json()
+}
+
+export async function setAgentChatApprovalMode(
+  request: APIRequestContext,
+  projectId: string,
+  sessionId: string,
+  approvalMode: E2EAgentApprovalMode,
+): Promise<void> {
+  const binding = { mode: 'agent_chat', session_id: sessionId }
+  const query = new URLSearchParams(binding)
+  const path = `/api/projects/${encodeURIComponent(projectId)}/conversation-config`
+  const current = await request.get(`${path}?${query}`)
+  await expectSuccessful(current)
+  const snapshot = await current.json() as { revision: number }
+  const updated = await request.patch(path, {
+    data: {
+      binding,
+      base_revision: snapshot.revision,
+      changes: { approval_mode: approvalMode },
+    },
+  })
+  await expectSuccessful(updated)
+  expect(await updated.json()).toMatchObject({ approval_mode: approvalMode })
 }

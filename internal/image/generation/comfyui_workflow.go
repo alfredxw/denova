@@ -88,22 +88,18 @@ func prepareUploadedComfyUIWorkflow(settings config.ComfyUIProfileSettings, requ
 	if err := validateComfyUIWorkflow(workflow); err != nil {
 		return nil, err
 	}
-	if len(settings.Parameters) > 0 {
-		promptBound, err := applyComfyUIParameters(workflow, settings.Parameters, request)
-		if err != nil {
+	if settings.WorkflowMode == config.ComfyUIWorkflowRemote {
+		if err := applyComfyUIBindings(workflow, settings.Bindings, request); err != nil {
 			return nil, err
-		}
-		if !promptBound {
-			if err := injectComfyUIPrompt(workflow, request.Prompt); err != nil {
-				return nil, err
-			}
 		}
 		return workflow, nil
 	}
 	if err := injectComfyUIPrompt(workflow, request.Prompt); err != nil {
 		return nil, err
 	}
-	injectComfyUIRequestOptions(workflow, request)
+	if err := injectComfyUIRequestOptions(workflow, request); err != nil {
+		return nil, err
+	}
 	return workflow, nil
 }
 
@@ -123,64 +119,46 @@ func decodeComfyUIWorkflowJSON(raw []byte) (comfyUIWorkflow, error) {
 	return workflow, nil
 }
 
-func applyComfyUIParameters(workflow comfyUIWorkflow, parameters []config.ComfyUIParameterSettings, request GenerateRequest) (bool, error) {
+func applyComfyUIBindings(workflow comfyUIWorkflow, bindings *config.ComfyUIBindings, request GenerateRequest) error {
+	if bindings == nil || bindings.Prompt == nil {
+		return fmt.Errorf("ComfyUI workflow prompt binding is missing")
+	}
 	width, height := comfyUIImageDimensions(request.Size)
-	seed, seedErr := randomComfyUISeed()
-	promptBound := false
-	for _, parameter := range parameters {
-		node, ok := workflow[parameter.NodeID].(map[string]any)
-		if !ok {
-			return false, fmt.Errorf("ComfyUI parameter node %q is missing", parameter.NodeID)
-		}
-		inputs, ok := node["inputs"].(map[string]any)
-		if !ok {
-			return false, fmt.Errorf("ComfyUI parameter node %q has invalid inputs", parameter.NodeID)
-		}
-		if _, ok := inputs[parameter.InputName]; !ok {
-			return false, fmt.Errorf("ComfyUI parameter %s.%s is missing", parameter.NodeID, parameter.InputName)
-		}
-		value, err := decodeComfyUIParameterValue(parameter)
-		if err != nil {
-			return false, err
-		}
-		inputs[parameter.InputName] = value
-		switch parameter.Role {
-		case config.ComfyUIParameterRolePrompt:
-			inputs[parameter.InputName] = request.Prompt
-			promptBound = true
-		case config.ComfyUIParameterRoleWidth:
-			inputs[parameter.InputName] = width
-		case config.ComfyUIParameterRoleHeight:
-			inputs[parameter.InputName] = height
-		case config.ComfyUIParameterRoleBatchSize:
-			inputs[parameter.InputName] = request.N
-		case config.ComfyUIParameterRoleSeed:
-			if seedErr != nil {
-				return false, seedErr
-			}
-			inputs[parameter.InputName] = seed
-		case config.ComfyUIParameterRoleParameter, config.ComfyUIParameterRoleNegativePrompt, "":
-		default:
-			return false, fmt.Errorf("ComfyUI parameter %s.%s has unsupported role %q", parameter.NodeID, parameter.InputName, parameter.Role)
+	if err := setComfyUIBindingValue(workflow, bindings.Prompt, request.Prompt); err != nil {
+		return err
+	}
+	if bindings.Count != nil {
+		if err := setComfyUIBindingValue(workflow, bindings.Count, request.N); err != nil {
+			return err
 		}
 	}
-	return promptBound, nil
+	if bindings.Width != nil {
+		if err := setComfyUIBindingValue(workflow, bindings.Width, width); err != nil {
+			return err
+		}
+	}
+	if bindings.Height != nil {
+		if err := setComfyUIBindingValue(workflow, bindings.Height, height); err != nil {
+			return err
+		}
+	}
+	return injectComfyUISeeds(workflow)
 }
 
-func decodeComfyUIParameterValue(parameter config.ComfyUIParameterSettings) (any, error) {
-	decoder := json.NewDecoder(strings.NewReader(parameter.Value))
-	decoder.UseNumber()
-	var value any
-	if err := decoder.Decode(&value); err != nil {
-		return nil, fmt.Errorf("decode ComfyUI parameter %s.%s: %w", parameter.NodeID, parameter.InputName, err)
+func setComfyUIBindingValue(workflow comfyUIWorkflow, binding *config.ComfyUIInputBinding, value any) error {
+	node, ok := workflow[binding.NodeID].(map[string]any)
+	if !ok {
+		return fmt.Errorf("ComfyUI binding node %q is missing", binding.NodeID)
 	}
-	if err := decoder.Decode(&struct{}{}); err != io.EOF {
-		if err == nil {
-			return nil, fmt.Errorf("ComfyUI parameter %s.%s contains multiple JSON values", parameter.NodeID, parameter.InputName)
-		}
-		return nil, fmt.Errorf("decode ComfyUI parameter %s.%s: %w", parameter.NodeID, parameter.InputName, err)
+	inputs, ok := node["inputs"].(map[string]any)
+	if !ok {
+		return fmt.Errorf("ComfyUI binding node %q has invalid inputs", binding.NodeID)
 	}
-	return value, nil
+	if _, ok := inputs[binding.InputName]; !ok {
+		return fmt.Errorf("ComfyUI binding %s.%s is missing", binding.NodeID, binding.InputName)
+	}
+	inputs[binding.InputName] = value
+	return nil
 }
 
 func validateComfyUIWorkflow(workflow comfyUIWorkflow) error {
@@ -238,9 +216,8 @@ func injectComfyUIPrompt(workflow comfyUIWorkflow, prompt string) error {
 	return fmt.Errorf("ComfyUI workflow has no unambiguous writable positive CLIPTextEncode prompt")
 }
 
-func injectComfyUIRequestOptions(workflow comfyUIWorkflow, request GenerateRequest) {
+func injectComfyUIRequestOptions(workflow comfyUIWorkflow, request GenerateRequest) error {
 	width, height := comfyUIImageDimensions(request.Size)
-	seed, seedErr := randomComfyUISeed()
 	for _, rawNode := range workflow {
 		node, _ := rawNode.(map[string]any)
 		classType := nodeString(node, "class_type")
@@ -256,7 +233,20 @@ func injectComfyUIRequestOptions(workflow comfyUIWorkflow, request GenerateReque
 				inputs["batch_size"] = request.N
 			}
 		}
-		if strings.Contains(classType, "KSampler") && seedErr == nil {
+	}
+	return injectComfyUISeeds(workflow)
+}
+
+func injectComfyUISeeds(workflow comfyUIWorkflow) error {
+	seed, err := randomComfyUISeed()
+	if err != nil {
+		return err
+	}
+	for _, rawNode := range workflow {
+		node, _ := rawNode.(map[string]any)
+		classType := nodeString(node, "class_type")
+		inputs, _ := node["inputs"].(map[string]any)
+		if strings.Contains(classType, "KSampler") {
 			if _, ok := inputs["seed"]; ok {
 				inputs["seed"] = seed
 			}
@@ -265,6 +255,7 @@ func injectComfyUIRequestOptions(workflow comfyUIWorkflow, request GenerateReque
 			}
 		}
 	}
+	return nil
 }
 
 func setComfyUIText(rawNode any, prompt string) bool {

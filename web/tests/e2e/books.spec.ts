@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from '../support/fixtures'
 import { getCurrentWorkspace } from '../support/api'
 
 test('creates a Book from the bookshelf and keeps it selected after reload', async ({ page, request }) => {

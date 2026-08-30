@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from '../support/fixtures'
 import { createAndOpenBook, createProjectFile, readProjectFile, saveProjectFile } from '../support/api'
 
 async function openVersionHistory(page: Page) {

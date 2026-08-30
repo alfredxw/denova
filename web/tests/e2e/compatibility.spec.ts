@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
-import { expect, test } from '@playwright/test'
+import { expect, test } from '../support/fixtures'
 import { getCurrentWorkspace, getProjectLoreItems, getStorySnapshot } from '../support/api'
 
 const legacyWorkspace = path.resolve('test-results/runtime/denova/projects/Legacy E2E Book')

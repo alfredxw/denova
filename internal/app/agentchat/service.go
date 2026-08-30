@@ -138,7 +138,12 @@ type Service struct {
 func NewService(host Host, registry *projectdomain.Registry) *Service {
 	return &Service{
 		host: host, registry: registry,
-		starts:   apptask.NewStartRegistry(apptask.StartRegistryOptions{Label: "Agent Chat"}),
+		// Independent AgentChat conversations may run concurrently; process-wide
+		// replay admission remains the authoritative upper bound.
+		starts: apptask.NewStartRegistry(apptask.StartRegistryOptions{
+			Label:           "Agent Chat",
+			ReplayByteLimit: apptask.DefaultActiveReplayByteLimit,
+		}),
 		projects: make(map[string]*projectRuntime), active: make(map[string]*run),
 		stores: make(map[string]cachedProjectSessionStore),
 	}

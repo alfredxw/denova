@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from '../support/fixtures'
 import { createAndOpenBook } from '../support/api'
 
 test('keeps exactly one primary destination active across the normal workbench routes', async ({ page, request }) => {

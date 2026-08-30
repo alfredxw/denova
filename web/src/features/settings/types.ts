@@ -217,24 +217,30 @@ export interface ComfyUIProfileSettings {
   workflow_modified?: number
   workflow_job_id?: string
   workflow_job_time?: number
-  parameters?: ComfyUIParameterSettings[]
+  bindings?: ComfyUIBindings
 }
 
-export type ComfyUIParameterRole = 'parameter' | 'prompt' | 'negative_prompt' | 'width' | 'height' | 'batch_size' | 'seed'
-
-export interface ComfyUIParameterSettings {
+export interface ComfyUIInputBinding {
   node_id: string
   input_name: string
-  label?: string
-  type: 'STRING' | 'INT' | 'FLOAT' | 'BOOLEAN' | 'COMBO' | string
-  role?: ComfyUIParameterRole
-  /** JSON literal retained as text to preserve ComfyUI value types and large integers. */
-  value: string
-  options?: string[]
-  min?: number
-  max?: number
-  step?: number
-  multiline?: boolean
+}
+
+export interface ComfyUIBindings {
+  prompt?: ComfyUIInputBinding
+  count?: ComfyUIInputBinding
+  width?: ComfyUIInputBinding
+  height?: ComfyUIInputBinding
+}
+
+export interface ComfyUIInputCandidate extends ComfyUIInputBinding {
+  label: string
+}
+
+export interface ComfyUIBindingCandidates {
+  prompt?: ComfyUIInputCandidate[]
+  count?: ComfyUIInputCandidate[]
+  width?: ComfyUIInputCandidate[]
+  height?: ComfyUIInputCandidate[]
 }
 
 export type ComfyUIWorkflowStatus = 'ready' | 'stale' | 'not_run' | 'invalid'
@@ -256,7 +262,8 @@ export interface ComfyUIWorkflowCatalog {
 
 export interface ComfyUIWorkflowSnapshot extends ComfyUIWorkflowSummary {
   workflow: string
-  parameters?: ComfyUIParameterSettings[]
+  bindings?: ComfyUIBindings
+  candidates: ComfyUIBindingCandidates
 }
 
 export interface ImagePingResult {

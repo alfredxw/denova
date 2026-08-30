@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { FileTreeMenu, FileTreeMenuItem } from './FileTreeMenu'
 
 const anchorRect = {
@@ -25,6 +25,21 @@ describe('FileTreeMenu', () => {
     const menu = screen.getByRole('menu')
     expect(screen.getByTestId('tree-host')).not.toContainElement(menu)
     expect(menu.parentElement).toBe(document.body)
+  })
+
+  it('starts on the menu surface and enters its items with arrow navigation', () => {
+    render(
+      <FileTreeMenu anchorRect={anchorRect}>
+        <FileTreeMenuItem>Rename</FileTreeMenuItem>
+        <FileTreeMenuItem>Delete</FileTreeMenuItem>
+      </FileTreeMenu>,
+    )
+
+    const menu = screen.getByRole('menu')
+    expect(menu).toHaveFocus()
+
+    fireEvent.keyDown(menu, { key: 'ArrowDown' })
+    expect(screen.getByRole('menuitem', { name: 'Rename' })).toHaveFocus()
   })
 
   it('flips toward the viewport when the preferred side would overflow', () => {

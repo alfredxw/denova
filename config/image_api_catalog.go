@@ -67,7 +67,7 @@ func normalizeComfyUIProfile(settings *ComfyUIProfileSettings) ComfyUIProfileSet
 		WorkflowModified: settings.WorkflowModified,
 		WorkflowJobID:    strings.TrimSpace(settings.WorkflowJobID),
 		WorkflowJobTime:  settings.WorkflowJobTime,
-		Parameters:       normalizeComfyUIParameters(settings.Parameters),
+		Bindings:         normalizeComfyUIBindings(settings.Bindings),
 	}
 	switch out.WorkflowMode {
 	case ComfyUIWorkflowAPI:
@@ -76,7 +76,7 @@ func normalizeComfyUIProfile(settings *ComfyUIProfileSettings) ComfyUIProfileSet
 		out.WorkflowModified = 0
 		out.WorkflowJobID = ""
 		out.WorkflowJobTime = 0
-		out.Parameters = nil
+		out.Bindings = nil
 	case ComfyUIWorkflowRemote:
 	case ComfyUIWorkflowBuiltin, "":
 		out.WorkflowMode = ComfyUIWorkflowBuiltin
@@ -87,56 +87,41 @@ func normalizeComfyUIProfile(settings *ComfyUIProfileSettings) ComfyUIProfileSet
 		out.WorkflowModified = 0
 		out.WorkflowJobID = ""
 		out.WorkflowJobTime = 0
-		out.Parameters = nil
+		out.Bindings = nil
 	default:
 		out = ComfyUIProfileSettings{WorkflowMode: ComfyUIWorkflowBuiltin}
 	}
 	return out
 }
 
-func normalizeComfyUIParameters(parameters []ComfyUIParameterSettings) []ComfyUIParameterSettings {
-	if len(parameters) == 0 {
+func normalizeComfyUIBindings(bindings *ComfyUIBindings) *ComfyUIBindings {
+	if bindings == nil {
 		return nil
 	}
-	out := make([]ComfyUIParameterSettings, 0, len(parameters))
-	for _, parameter := range parameters {
-		parameter.NodeID = strings.TrimSpace(parameter.NodeID)
-		parameter.InputName = strings.TrimSpace(parameter.InputName)
-		if parameter.NodeID == "" || parameter.InputName == "" {
-			continue
-		}
-		parameter.Label = strings.TrimSpace(parameter.Label)
-		parameter.Type = strings.ToUpper(strings.TrimSpace(parameter.Type))
-		parameter.Role = normalizeComfyUIParameterRole(parameter.Role)
-		parameter.Value = strings.TrimSpace(parameter.Value)
-		parameter.Options = append([]string(nil), parameter.Options...)
-		out = append(out, parameter)
+	out := &ComfyUIBindings{
+		Prompt: normalizeComfyUIInputBinding(bindings.Prompt),
+		Count:  normalizeComfyUIInputBinding(bindings.Count),
+		Width:  normalizeComfyUIInputBinding(bindings.Width),
+		Height: normalizeComfyUIInputBinding(bindings.Height),
 	}
-	if len(out) == 0 {
+	if out.Prompt == nil && out.Count == nil && out.Width == nil && out.Height == nil {
 		return nil
 	}
 	return out
 }
 
-func normalizeComfyUIParameterRole(role string) string {
-	switch strings.ToLower(strings.TrimSpace(role)) {
-	case ComfyUIParameterRolePrompt:
-		return ComfyUIParameterRolePrompt
-	case ComfyUIParameterRoleNegativePrompt:
-		return ComfyUIParameterRoleNegativePrompt
-	case ComfyUIParameterRoleWidth:
-		return ComfyUIParameterRoleWidth
-	case ComfyUIParameterRoleHeight:
-		return ComfyUIParameterRoleHeight
-	case ComfyUIParameterRoleBatchSize:
-		return ComfyUIParameterRoleBatchSize
-	case ComfyUIParameterRoleSeed:
-		return ComfyUIParameterRoleSeed
-	case ComfyUIParameterRoleParameter, "":
-		return ComfyUIParameterRoleParameter
-	default:
-		return ComfyUIParameterRoleParameter
+func normalizeComfyUIInputBinding(binding *ComfyUIInputBinding) *ComfyUIInputBinding {
+	if binding == nil {
+		return nil
 	}
+	out := &ComfyUIInputBinding{
+		NodeID:    strings.TrimSpace(binding.NodeID),
+		InputName: strings.TrimSpace(binding.InputName),
+	}
+	if out.NodeID == "" || out.InputName == "" {
+		return nil
+	}
+	return out
 }
 
 func normalizeImageAPISize(size string) string {
