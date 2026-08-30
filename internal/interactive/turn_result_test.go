@@ -24,6 +24,7 @@ func TestAppendTurnWithStatePersistsTurnResultAndActorStateAtomically(t *testing
 		Origin:        "林风进入外门",
 		StoryTellerID: "classic",
 		ActorState:    &system,
+		PlanningMode:  StoryPlanningModeEnabled,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -39,17 +40,14 @@ func TestAppendTurnWithStatePersistsTurnResultAndActorStateAtomically(t *testing
 				Path:  "/protagonist/持续效果",
 				Value: []any{"掌心灼伤｜轻微影响抓握｜休息后解除"},
 			}},
-			Choices: testTurnChoices(),
-			DirectorUpdate: &DirectorUpdateHint{
-				Needed: true,
-				Reason: "主角接受关键角色帮助，公开关系与阶段调查方向发生变化",
-			},
+			Choices:    testTurnChoices(),
+			PlanUpdate: testStringPointer("下一步围绕苏灿灿与青冥灵根的调查推进。"),
 		},
 	})
 	if err != nil {
 		t.Fatalf("AppendTurnWithState failed: %v", err)
 	}
-	if turn.TurnResult == nil || len(turn.TurnResult.StateUpdates) != 1 || turn.TurnResult.StateUpdates[0].Path != "/protagonist/持续效果" || turn.TurnResult.DirectorUpdate == nil || !turn.TurnResult.DirectorUpdate.Needed {
+	if turn.TurnResult == nil || len(turn.TurnResult.StateUpdates) != 1 || turn.TurnResult.StateUpdates[0].Path != "/protagonist/持续效果" || turn.TurnResult.PlanUpdate == nil {
 		t.Fatalf("turn result not persisted: %#v", turn.TurnResult)
 	}
 	if delta == nil || turn.StateDelta == nil || len(turn.StateDelta.ActorOps) == 0 {
@@ -77,6 +75,12 @@ func TestAppendTurnWithStatePersistsTurnResultAndActorStateAtomically(t *testing
 	snapshot, err := store.Snapshot(story.ID, "main")
 	if err != nil {
 		t.Fatal(err)
+	}
+	if snapshot.BranchPlan == nil || snapshot.BranchPlan.Markdown != "下一步围绕苏灿灿与青冥灵根的调查推进。" || snapshot.BranchPlan.UpdatedTurnID != turn.ID {
+		t.Fatalf("branch plan was not committed atomically: %#v", snapshot.BranchPlan)
+	}
+	if snapshot.Turns[len(snapshot.Turns)-1].TurnResult.PlanUpdate != nil {
+		t.Fatalf("historical TurnResult must not expose branch plan updates: %#v", snapshot.Turns[len(snapshot.Turns)-1].TurnResult)
 	}
 	effects, ok := actorStateFieldValue(snapshot.State, "protagonist", "持续效果").([]any)
 	if !ok {
@@ -177,19 +181,23 @@ func TestNormalizeTurnResultKeepsDistinctChoices(t *testing.T) {
 	}
 }
 
-func TestNormalizeTurnResultOmitsRoutineDirectorHintAndValidatesMaterialReason(t *testing.T) {
-	routine := NormalizeTurnResult(TurnResult{DirectorUpdate: &DirectorUpdateHint{Needed: false, Reason: "普通承接"}})
-	if routine.DirectorUpdate != nil {
-		t.Fatalf("needed=false should normalize to omission: %#v", routine.DirectorUpdate)
+func TestNormalizeTurnResultValidatesFullPlanReplacement(t *testing.T) {
+	value := "  下一阶段调查失踪者。  "
+	result := NormalizeTurnResult(TurnResult{Choices: testTurnChoices(), PlanUpdate: &value})
+	if result.PlanUpdate == nil || *result.PlanUpdate != "下一阶段调查失踪者。" {
+		t.Fatalf("plan replacement was not normalized: %#v", result.PlanUpdate)
 	}
-	material := TurnResult{Choices: testTurnChoices(), DirectorUpdate: &DirectorUpdateHint{Needed: true}}
-	if err := ValidateTurnResult(material); err == nil || !strings.Contains(err.Error(), "reason") {
-		t.Fatalf("material Director hint without evidence reason should fail: %v", err)
+	if err := ValidateTurnResult(result); err != nil {
+		t.Fatalf("bounded plan replacement should pass: %v", err)
 	}
-	material.DirectorUpdate.Reason = "阶段目标已经完成"
-	if err := ValidateTurnResult(material); err != nil {
-		t.Fatalf("bounded material Director hint should pass: %v", err)
+	empty := " "
+	if err := ValidateTurnResult(TurnResult{Choices: testTurnChoices(), PlanUpdate: &empty}); err == nil || !strings.Contains(err.Error(), "non-empty") {
+		t.Fatalf("empty plan replacement should fail: %v", err)
 	}
+}
+
+func testStringPointer(value string) *string {
+	return &value
 }
 
 func TestAppendTurnWithStateUsesStoryChoiceCount(t *testing.T) {

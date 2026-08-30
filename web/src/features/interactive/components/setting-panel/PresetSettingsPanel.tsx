@@ -20,7 +20,7 @@ import { applyPresetDirectoryOrder, usePresetDirectoryOrder } from './use-preset
 import { usePresetDraftSync, usePresetResources } from './use-preset-resources'
 import { usePresetSelection } from './use-preset-selection'
 import { createPresetConflictResolver, usePresetResourceAutosave } from './usePresetResourceAutosave'
-import { currentPresetBuiltinOverridden, EMPTY_IMAGE_PRESETS, EMPTY_STORY_DIRECTORS, EMPTY_TELLERS, isPresetConfigResourceKind, makeActorStatePayload, makeEventPackagePayload, makeImagePresetPayload, makeRuleSystemPayload, makeStoryDirectorPayload, makeTellerPayload, newActorStateDraft, newEventPackageDraft, newImagePresetDraft, newRuleSystemDraft, newStoryDirectorDraft, newTellerDraft, presetEditorSubtitle, presetEditorTitle, presetResourceDraftSignature, PRESET_DELETE_COPY, TELLER_CONFIG_AGENT_ENTRY_ID, type PresetDeleteTarget } from './presetResources'
+import { currentPresetBuiltinOverridden, EMPTY_IMAGE_PRESETS, EMPTY_STORY_DIRECTORS, EMPTY_TELLERS, isPresetConfigResourceKind, makeActorStatePayload, makeEventPackagePayload, makeImagePresetPayload, makeRuleSystemPayload, makeStoryDirectorPayload, makeTellerPayload, newActorStateDraft, newEventPackageDraft, newImagePresetDraft, newRuleSystemDraft, newStoryDirectorDraft, newTellerDraft, presetEditorSubtitle, presetEditorTitle, presetResourceDraftSignature, PRESET_DELETE_COPY, type PresetDeleteTarget } from './presetResources'
 import type { ToolNavigationIntent } from '@/components/Chat/tool-navigation'
 
 interface PresetSettingsPanelProps {
@@ -63,6 +63,7 @@ export function PresetSettingsPanel({
   const { t } = useTranslation()
   const [saving, setSaving] = useState(false)
   const [transitioning, setTransitioning] = useState(false)
+  const [agentOpen, setAgentOpen] = useState(false)
   const [deletePresetTarget, setDeletePresetTarget] = useState<PresetDeleteTarget | null>(null)
   const [presetConfigValid, setPresetConfigValid] = useState(true)
   const presetConfigValidRef = useRef(true)
@@ -138,7 +139,7 @@ export function PresetSettingsPanel({
   const tellerAutosave = usePresetResourceAutosave<Teller, Partial<Teller>, Teller>({
     draft: tellerDraft,
     scopeKey: PRESET_RESOURCE_SCOPE,
-    active: presetResourceKind === 'teller' && activeTellerId !== TELLER_CONFIG_AGENT_ENTRY_ID,
+    active: presetResourceKind === 'teller',
     makePayload: makeTellerPayload,
     baselineFromSaved: (saved) => saved,
     signature: presetResourceDraftSignature,
@@ -172,10 +173,10 @@ export function PresetSettingsPanel({
     ),
     onSaved: mergeSavedStoryDirector,
     onAutoSaveError: (err) => {
-      console.warn('[story-director-editor] Failed to autosave story director', err)
+      console.warn('[game-preset-editor] Failed to autosave Game Preset', err)
       toast.error((err as Error).message || t('editor.saveFailed'))
     },
-    onFlushError: (err) => console.warn('[story-director-editor] Failed to autosave story director before selection change', err),
+    onFlushError: (err) => console.warn('[game-preset-editor] Failed to autosave Game Preset before selection change', err),
   })
 
   const imagePresetAutosave = usePresetResourceAutosave<ImagePreset, Partial<ImagePreset>, ImagePreset>({
@@ -484,7 +485,6 @@ export function PresetSettingsPanel({
   }
 
   const handleDelete = () => {
-    if (activeTellerId === TELLER_CONFIG_AGENT_ENTRY_ID) return
     const target = currentPresetDraft()
     requestDeletePreset(presetResourceKind, target)
   }
@@ -581,14 +581,13 @@ export function PresetSettingsPanel({
     return tellerDraft
   }
 
-  const isTellerConfigAgentActive = activeTellerId === TELLER_CONFIG_AGENT_ENTRY_ID
   const activeDraft = currentPresetDraft()
   const activeAutosave = autosaveForKind(presetResourceKind)
   const busy = saving || transitioning
-  const canRestoreBuiltinPreset = !isTellerConfigAgentActive && currentPresetBuiltinOverridden(presetResourceKind, presetDrafts)
-  const titleIcon = isTellerConfigAgentActive ? Bot : presetResourceIcon(presetResourceKind)
-  const title = isTellerConfigAgentActive ? t('settingPanel.tellerAgent.title') : presetEditorTitle(presetResourceKind, presetDrafts, t)
-  const subtitle = isTellerConfigAgentActive ? t('settingPanel.tellerAgent.subtitle') : presetEditorSubtitle(presetResourceKind, presetDrafts, t)
+  const canRestoreBuiltinPreset = currentPresetBuiltinOverridden(presetResourceKind, presetDrafts)
+  const titleIcon = presetResourceIcon(presetResourceKind)
+  const title = presetEditorTitle(presetResourceKind, presetDrafts, t)
+  const subtitle = presetEditorSubtitle(presetResourceKind, presetDrafts, t)
 
   const presetDirectorySections = applyPresetDirectoryOrder(buildPresetDirectorySections({
     lists: { tellers, storyDirectors, imagePresets, eventPackages, ruleSystems, actorStates },
@@ -605,18 +604,17 @@ export function PresetSettingsPanel({
     return tellers.map((item) => presetDirectoryEntryId(kind, item.id))
   }
 
-  const activeDirectoryId = isTellerConfigAgentActive
-    ? TELLER_CONFIG_AGENT_ENTRY_ID
-    : presetDirectoryEntryId(presetResourceKind, currentActivePresetId(presetResourceKind))
+  const activeDirectoryId = presetDirectoryEntryId(presetResourceKind, currentActivePresetId(presetResourceKind))
 
   const directoryPanel = (
     <PresetDirectorySidebar
       sections={presetDirectorySections}
       activeId={activeDirectoryId}
       activeSectionId={presetResourceKind}
-      agentEntryId={TELLER_CONFIG_AGENT_ENTRY_ID}
+      agentOpen={agentOpen}
       saving={busy}
       onSelect={handleSelectDirectoryEntry}
+      onToggleAgent={() => setAgentOpen((open) => !open)}
       onReorderItems={(sectionId, orderedItemIds) => {
         const kind = sectionId as PresetResourceKind
         presetDirectoryOrder.reorderItems(kind, orderedItemIds, directoryItemIdsForKind(kind))
@@ -636,6 +634,39 @@ export function PresetSettingsPanel({
           desktopClassName: 'min-h-0 border-r border-[var(--preset-line)]',
           mobileClassName: embedded ? 'w-[min(86vw,320px)]' : 'w-[min(90vw,360px)]',
         }}
+        right={agentOpen ? {
+          id: 'preset-config-manager',
+          title: t('settingPanel.tellerAgent.title'),
+          side: 'right',
+          icon: <Bot className="h-3.5 w-3.5" />,
+          content: (
+            <ConfigManagerChat
+              projectId={projectId}
+              origin="teller"
+              resourceId={presetResourceKind}
+              context={{
+                active_resource_kind: presetResourceKind,
+                active_resource_id: currentActivePresetId(presetResourceKind),
+                teller_count: String(tellers.length),
+                event_package_count: String(eventPackages.length),
+                rule_system_count: String(ruleSystems.length),
+                actor_state_count: String(actorStates.length),
+                story_director_count: String(storyDirectors.length),
+                image_preset_count: String(imagePresets.length),
+              }}
+              onMutated={() => {
+                void refreshTellers()
+                void refreshEventPackages()
+                void refreshRuleSystems()
+                void refreshActorStates()
+                void refreshStoryDirectors()
+                void refreshImagePresets()
+              }}
+            />
+          ),
+          desktopClassName: 'min-h-0 border-l border-[var(--preset-line)]',
+          mobileClassName: 'w-[min(92vw,420px)]',
+        } : undefined}
         className="h-full"
         mainClassName="min-h-0 min-w-0"
         leftResize={{
@@ -645,9 +676,17 @@ export function PresetSettingsPanel({
           minSize: embedded ? '180px' : '220px',
           maxSize: '42%',
         }}
+        rightResize={{
+          layoutKey: embedded ? 'nova-embedded-preset-config-manager-layout' : 'nova-preset-config-manager-layout',
+          label: t('layout.resize.right'),
+          defaultSize: '420px',
+          minSize: '300px',
+          maxSize: '65%',
+          mainMinSize: '240px',
+        }}
         collapseAt={embedded ? 760 : 820}
       >
-        {({ isMobile, openLeft, closePane }) => {
+        {({ isMobile, openLeft, openRight, closePane }) => {
           closeDirectoryRef.current = closePane
           return (
           <main className="preset-workspace-main flex h-full min-h-0 min-w-0 flex-1 flex-col">
@@ -656,17 +695,26 @@ export function PresetSettingsPanel({
               title={title}
               subtitle={subtitle}
               leadingContent={isMobile ? (
-                <MobilePaneTrigger
-                  side="left"
-                  label={t('workbench.mobile.openSidePanel', { label: t('settingPanel.mode.teller') })}
-                  onClick={openLeft}
-                />
+                <div className="flex items-center gap-1">
+                  <MobilePaneTrigger
+                    side="left"
+                    label={t('workbench.mobile.openSidePanel', { label: t('settingPanel.mode.teller') })}
+                    onClick={openLeft}
+                  />
+                  {agentOpen ? (
+                    <MobilePaneTrigger
+                      side="right"
+                      label={t('workbench.mobile.openSidePanel', { label: t('settingPanel.tellerAgent.title') })}
+                      onClick={openRight}
+                    />
+                  ) : null}
+                </div>
               ) : undefined}
-              onSaveShortcut={isTellerConfigAgentActive ? undefined : flushActivePresetAutosave}
+              onSaveShortcut={flushActivePresetAutosave}
               onClose={onClose ? () => void closePanel() : undefined}
               actions={(
                 <>
-                  {!isTellerConfigAgentActive && activeDraft ? (
+                  {activeDraft ? (
                     <AutosaveStatusIndicator
                       status={activeAutosave.status}
                       error={activeAutosave.error}
@@ -679,40 +727,21 @@ export function PresetSettingsPanel({
                       <span className="preset-action-label">{t('settingPanel.restoreBuiltin')}</span>
                     </Button>
                   )}
-                  {!isTellerConfigAgentActive && activeDraft?.custom ? (
+                  {activeDraft?.custom ? (
                     <Button className={iconActionClassName} variant="outline" size="icon" disabled={busy} onClick={handleDelete} aria-label={t(PRESET_DELETE_COPY[presetResourceKind].titleKey)}>
                       <Trash2 data-icon="inline-start" />
                     </Button>
                   ) : null}
+                  <Button type="button" variant={agentOpen ? 'secondary' : 'outline'} size="sm" aria-label={t('settingPanel.tellerAgent.title')} aria-pressed={agentOpen} onClick={() => setAgentOpen((open) => !open)}>
+                    <Bot data-icon="inline-start" />
+                    <span className="preset-action-label">{t('settingPanel.tellerAgent.title')}</span>
+                  </Button>
                 </>
               )}
               className="text-[var(--nova-text)]"
               topbarClassName="preset-workspace-toolbar"
             >
-              {isTellerConfigAgentActive ? (
-                <ConfigManagerChat
-                  projectId={projectId}
-                  origin="teller"
-                  resourceId={TELLER_CONFIG_AGENT_ENTRY_ID}
-                  context={{
-                    teller_count: String(tellers.length),
-                    event_package_count: String(eventPackages.length),
-                    rule_system_count: String(ruleSystems.length),
-                    actor_state_count: String(actorStates.length),
-                    story_director_count: String(storyDirectors.length),
-                    image_preset_count: String(imagePresets.length),
-                  }}
-                  onMutated={() => {
-                    void refreshTellers()
-                    void refreshEventPackages()
-                    void refreshRuleSystems()
-                    void refreshActorStates()
-                    void refreshStoryDirectors()
-                    void refreshImagePresets()
-                  }}
-                />
-              ) : (
-                <PresetResourcePane
+              <PresetResourcePane
                   kind={presetResourceKind}
                   projectId={projectId}
                   tellers={tellers}
@@ -739,8 +768,7 @@ export function PresetSettingsPanel({
                   onOpenRuleSystem={(id) => selectPresetResource('rule', id)}
                   onSave={flushActivePresetAutosave}
                   onValidityChange={setPresetConfigValid}
-                />
-              )}
+              />
             </FeaturePageShell>
           </main>
           )

@@ -15,55 +15,31 @@ type InteractiveStorySystemInstructionInput struct {
 	StoryTellerSystemPrompt string
 	// StyleRules are prose references for the current narrative style. The
 	// caller filters scene rules by this turn's # selection and size limit.
-	StyleRules []StyleRule
+	StyleRules    []StyleRule
+	PlanningGuide string
 }
 
 type InteractiveStoryPromptInput struct {
-	Title                       string
-	Origin                      string
-	StoryTellerID               string
-	StoryDirectorID             string
-	BranchID                    string
-	ReplyTargetChars            int
-	ChoiceCount                 int
-	DirectorPlanVisible         string
-	StoryDirectorRules          string
-	ActorState                  string
-	StateSchemaInitialization   string
-	StoryDirectorStrategyPrompt string
-	PreviousTurnsSummary        string
-	LoreContext                 string
-}
-
-type InteractiveDirectorPromptInput struct {
-	Title                       string
-	Origin                      string
-	OpeningContext              string
-	OpeningInitialization       bool
-	StoryTellerID               string
-	StoryDirectorID             string
-	BranchID                    string
-	TaskHint                    string
-	DirectorPlanDocs            string
-	PlanningTemplates           string
-	BranchPlanningTurns         int
-	LoreContext                 string
-	TurnAuditJSON               string
-	TurnHistory                 string
-	ActorStateSchema            string
-	ActorState                  string
-	StoryDirectorPlan           string
-	StoryDirectorStrategyPrompt string
-	DirectorEventCatalog        string
-	EventOpportunity            string
-	EventRuntime                string
+	Title                     string
+	Origin                    string
+	StoryTellerID             string
+	BranchID                  string
+	ReplyTargetChars          int
+	ChoiceCount               int
+	BranchPlan                string
+	PlanningEnabled           bool
+	GamePresetRules           string
+	ActorState                string
+	StateSchemaInitialization string
+	PreviousTurnsSummary      string
+	LoreContext               string
 }
 
 const interactiveTrackableActorInstruction = "When a named character or hostile entity first appears in prose and is marked as a major or important lore character, becomes a key relationship or target, is expected to recur, or has independent mutable state that must persist, create a dedicated Actor in the same state_changes call. Writing only protagonist/关系 or story/在场角色 does not replace create. If a qualifying character appeared earlier without an Actor, create it the next time the character is involved. Update an existing Actor instead of creating a duplicate. Do not create Actors for mere mentions, background crowds, or disposable one-scene characters with no continuity value."
 
-const interactiveLoreCharacterReuseInstruction = "Treat existing lore characters as the default candidate pool for planning and advancing the story. Before creating a new named character, or assigning an undefined character an important event, ongoing relationship, or future narrative role, inspect ResidentLore, the current LoreContext, the prose-agent brief, and Actor State for a natural fit. For an important character likely to affect future turns, run one bounded list_lore_items search when the current context lacks enough candidates. Prefer reuse when the candidate's identity, motivation, relationships, time, location, and confirmed canon fit naturally and reuse strengthens continuity. Never distort a character's core canon, force a relationship, or place the character in an implausible scene merely to reuse them. Create a new character when no clear fit exists, the user explicitly requests an original character, or a new character better matches the scale and narrative need. Temporary background and disposable characters require no search. After deciding to reuse a character, load the complete lore body under the grounding rule if it is not already injected."
+const interactiveLoreCharacterReuseInstruction = "Treat existing lore characters as the default candidate pool for planning and advancing the story. Before creating a new named character, or assigning an undefined character an important event, ongoing relationship, or future narrative role, inspect ResidentLore, the current LoreContext, the branch plan, and Actor State for a natural fit. For an important character likely to affect future turns, run one bounded list_lore_items search when the current context lacks enough candidates. Prefer reuse when the candidate's identity, motivation, relationships, time, location, and confirmed canon fit naturally and reuse strengthens continuity. Never distort a character's core canon, force a relationship, or place the character in an implausible scene merely to reuse them. Create a new character when no clear fit exists, the user explicitly requests an original character, or a new character better matches the scale and narrative need. Temporary background and disposable characters require no search. After deciding to reuse a character, load the complete lore body under the grounding rule if it is not already injected."
 
-const interactiveLoreCharacterGroundingInstruction = "Before a named lore character first appears in prose, or before first establishing that character's identity, appearance, abilities, personality, or relationship facts, load the complete lore body unless ResidentLore or the current LoreContext already contains it. Catalog names, tags, summaries, Actor State, and director briefs do not count as complete lore. Call read_lore_items directly for a known unique name; use list_lore_items with detail=full when searching or disambiguating. Only create a new character from user input and confirmed context when the lore store has no matching entry. Never infer full canon from a summary. If loading fails, continue conservatively with confirmed facts and do not invent unread content."
+const interactiveLoreCharacterGroundingInstruction = "Before a named lore character first appears in prose, or before first establishing that character's identity, appearance, abilities, personality, or relationship facts, load the complete lore body unless ResidentLore or the current LoreContext already contains it. Catalog names, tags, summaries, Actor State, and branch-plan references do not count as complete lore. Call read_lore_items directly for a known unique name; use list_lore_items with detail=full when searching or disambiguating. Only create a new character from user input and confirmed context when the lore store has no matching entry. Never infer full canon from a summary. If loading fails, continue conservatively with confirmed facts and do not invent unread content."
 
 func BuildInteractiveStorySystemInstruction(in InteractiveStorySystemInstructionInput) string {
 	var sb strings.Builder
@@ -106,9 +82,9 @@ func BuildInteractiveStoryFlowInstruction(in InteractiveStorySystemInstructionIn
 	sb.WriteString("- Context includes a bounded lore-name catalog. For a known unique name, call read_lore_items directly. For semantic filtering, use list_lore_items; detail=full can return matching bodies in the same call. Never invent unread lore.\n")
 	sb.WriteString("- " + interactiveLoreCharacterReuseInstruction + "\n")
 	sb.WriteString("- " + interactiveLoreCharacterGroundingInstruction + "\n")
-	sb.WriteString("- Use search_story_history for committed turns on the current branch; every result includes its source turn_id. Turn is the source of historical truth, Actor State is the current projection, director.md is future planning, and lore is stable canon. Do not conflate them.\n")
+	sb.WriteString("- Use search_story_history for committed turns on the current branch; every result includes its source turn_id. Turns are historical truth, Actor State is the current projection, the branch plan is future intent, and Lore is stable canon. Do not conflate them.\n")
 	sb.WriteString("- Before prose, use thinking only for brief intent planning: identify this turn's objective, constraints, required tools, critical state facts, and scene destination. Do not draft, outline paragraph by paragraph, restate, or fully review the prose in thinking, and do not pre-expand complete tool JSON. Produce player-visible prose once in the prose channel.\n")
-	sb.WriteString("- Follow this sequence every turn: understand the user action and snapshot -> load lore or search turns when needed -> decide whether a fixed check is required -> call prepare_interactive_turn if required -> form prose and consistent state changes -> output the complete prose -> call submit_interactive_turn with state_changes and choices -> end once both modules succeed.\n")
+	sb.WriteString("- Follow this sequence every turn: understand the user action, current branch plan, and snapshot -> load lore or search turns when needed -> decide whether a fixed check is required -> call prepare_interactive_turn if required -> form prose and consistent state changes -> output the complete prose -> call submit_interactive_turn with state_changes, choices, and any required plan_update -> end once all required modules succeed.\n")
 	sb.WriteString("- Not every action needs a check. Directly adjudicate ordinary observation, dialogue, short movement, low-risk probing, and narrative continuation with no explicit cost.\n")
 	sb.WriteString("- Call prepare_interactive_turn only when a fixed-rule ruling is required because the action has explicit risk, resource/relationship/numeric changes, matches the current TRPG check configuration, has failure tiers, irreversible consequences, or a terminal candidate.\n")
 	sb.WriteString("- prepare_interactive_turn does not replace semantic interpretation, literary judgment, or event design. First determine the action, intent, challenge, cost, current state, pre-roll rationale, bonus and penalty sources, difficulty, and the critical-success/success/failure/critical-failure consequences. Then use the tool for the roll.\n")
@@ -120,13 +96,13 @@ func BuildInteractiveStoryFlowInstruction(in InteractiveStorySystemInstructionIn
 	sb.WriteString("- prepare_interactive_turn protocol: difficulty is one of very_easy/easy/normal/hard/very_hard. rule is optional; when present it uses template=dice_check and roll_mode=normal/advantage/disadvantage. The tool always uses d20; do not pass another die and do not use medium or moderate.\n")
 	sb.WriteString("- Call submit_interactive_turn after completing prose on every turn. The first call includes state_changes and choices; the backend parses, validates, and retains them independently. When ready=false, resubmit only fields named by retry_modules through the same tool and do not repeat accepted modules. End immediately when ready=true.\n")
 	sb.WriteString("- On the opening turn of a dynamic state schema, after initialize_story_state_schema returns finalized, the first state_changes must fill every writable field still missing an initial value as listed by initialization_guide.required_state_changes. Template defaults are already initialized. Do not bypass initialization with empty, unset, unknown, or pending placeholders.\n")
-	sb.WriteString("- choices may include director_update. Omit it for ordinary continuation, small changes within one scene, routine resource costs, and progression of an established conflict. Set needed=true only when established events change the current objective or phase, materially alter a key relationship or faction, reveal a major secret, cause an irreversible result, or invalidate the current brief. Report only established facts; the Director decides patch/replan and document changes.\n")
+	sb.WriteString("- Game Agent planning is story-configurable. Runtime context states enabled or disabled. When enabled, maintain one private future-facing branch plan through plan_update: provide a complete plan when none exists, preserve it by omission while it remains useful, or submit a complete replacement when intent changes. Follow the planning guide and user preferences; the backend prescribes no headings, pacing curve, cadence, or steering style. When disabled, omit plan_update and continue entirely from user actions, committed history, Lore, and Actor State.\n")
 	sb.WriteString("- state_changes supports only replace, delta, and create. Copy existing actor_id values exactly from the state handbook. For create, name is required and actor_id must exactly equal name in the story language; do not generate an English, romanized, or slug ID. Copy field_id and template_id exactly. replace assigns a complete new value; delta adjusts an existing number and cannot treat a missing value as zero; object children use a string-array subpath. Do not assemble path strings and do not repeat fields already consumed by RuleResolution.\n")
 	sb.WriteString("- " + interactiveTrackableActorInstruction + "\n")
 	sb.WriteString("- For state-panel object records, use a stable, readable map key in the story language as the record ID. Do not invent an English, romanized, or slug ID. Organize child values according to the field description and existing records; no duplicate name field is required.\n")
 	sb.WriteString("- story_context is mandatory every turn: state_changes must at least replace actor_id=story, field_id=当前事件. Also replace field_id=当前详细地点 when it is uninitialized or prose establishes a location change. Update other fields only from facts established in prose; otherwise preserve their values and never overwrite them with empties.\n")
 	sb.WriteString(fmt.Sprintf("- A non-terminal turn must provide exactly %d choices with distinct text, distinct action directions, and consistency with the prose ending. Submit an empty array only for a terminal turn whose prepare_interactive_turn result has terminal_candidate.\n", normalizeInteractiveChoiceCount(in.ChoiceCount)))
-	sb.WriteString("- The background director plan is an interpreted current plan, not an event-system catalog. Read only its prose-agent-visible section and do not force events merely to cite event IDs or types.\n")
+	sb.WriteString("- Treat the current branch plan as revisable future intent, never as an established event or mandatory event-card checklist. User intent and committed facts take priority over it.\n")
 	sb.WriteString("- If a tool is unavailable or recall fails, continue from injected snapshots and history. Do not expose tool errors or technical details in prose.\n\n")
 	sb.WriteString("## Interactive Narrator Principles\n")
 	sb.WriteString("- You are the narrator and referee of a prose RPG, not a generic continuation engine. Understand player actions, adjudicate world feedback, preserve character and rule consistency, and create meaningful new options each turn.\n")
@@ -149,25 +125,29 @@ func InteractiveStoryRuntimeContext(in InteractiveStoryPromptInput) string {
 	writeInteractiveReplyTargetInstruction(&sb, in.ReplyTargetChars, false)
 	sb.WriteString(fmt.Sprintf("Every non-terminal turn in this story must generate exactly %d distinct choices.\n", normalizeInteractiveChoiceCount(in.ChoiceCount)))
 	sb.WriteString("\n## Recall Notes\n")
-	sb.WriteString("Complete resident lore is provided as separate stable context. The current on-demand section of lore-context.md appears below. Recall only material outside that working set through the name catalog, list_lore_items, or read_lore_items.\n")
+	sb.WriteString("Complete resident lore is provided as separate stable context. The current on-demand lore working set appears below. Recall only material outside that working set through the name catalog, list_lore_items, or read_lore_items.\n")
 	sb.WriteString("A bounded checkpoint covers older history. If this turn depends on a specific earlier fact, search current-branch turns with search_story_history and cite the returned turn_id as the source.\n\n")
 	if strings.TrimSpace(in.LoreContext) != "" {
-		writeBlock(&sb, "Rules and Current Lore Working Set (source: rule lore + lore-context.md, bounded)", in.LoreContext)
+		writeBlock(&sb, "Rules and Current Lore Working Set (source: rule lore + selected lore, bounded)", in.LoreContext)
 	}
-	if strings.TrimSpace(in.DirectorPlanVisible) != "" {
-		writeBlock(&sb, "Prose Agent Brief (source: agent-brief.md, bounded)", in.DirectorPlanVisible)
+	if in.PlanningEnabled {
+		sb.WriteString("\n## Game Agent Planning\n\nStatus: enabled. Maintain the branch plan through submit_interactive_turn.plan_update.\n")
+		if strings.TrimSpace(in.BranchPlan) != "" {
+			writeBlock(&sb, "Current Branch Plan (source: branch_plan_updated event, bounded)", in.BranchPlan)
+		} else {
+			sb.WriteString("No branch plan exists yet. The current turn must submit the initial complete plan.\n")
+		}
+	} else {
+		sb.WriteString("\n## Game Agent Planning\n\nStatus: disabled. Do not submit plan_update.\n")
 	}
-	if strings.TrimSpace(in.StoryDirectorRules) != "" {
-		writeBlock(&sb, "Story Director Rule Catalog (source: StoryDirector, bounded)", in.StoryDirectorRules)
+	if strings.TrimSpace(in.GamePresetRules) != "" {
+		writeBlock(&sb, "Game Preset Rule Catalog (source: game preset, bounded)", in.GamePresetRules)
 	}
 	if strings.TrimSpace(in.ActorState) != "" {
 		writeBlock(&sb, "Actor State Handbook (source: Snapshot.State.actors + effective Actor schema, bounded Markdown)", in.ActorState)
 	}
 	if strings.TrimSpace(in.StateSchemaInitialization) != "" {
 		writeBlock(&sb, "Opening State Schema Contract (source: StoryMeta.state_schema_policy + state_schema_initialization, bounded)", in.StateSchemaInitialization)
-	}
-	if strings.TrimSpace(in.StoryDirectorStrategyPrompt) != "" {
-		writeBlock(&sb, "Story Director Markdown Strategy Prompt (source: StoryDirector.strategy.prompt_markdown, bounded)", strategyPromptWithPriorityNote(in.StoryDirectorStrategyPrompt))
 	}
 	if strings.TrimSpace(in.PreviousTurnsSummary) != "" {
 		writeBlock(&sb, "Older Story Context Checkpoint (source: committed turns, rebuildable, bounded)", in.PreviousTurnsSummary)
@@ -183,10 +163,10 @@ func writeInteractiveReplyTargetInstruction(sb *strings.Builder, value int, bull
 		suffix = ""
 	}
 	if value > 0 {
-		fmt.Fprintf(sb, "%s[Highest length constraint] The target length for each interactive turn is about %d Chinese characters. This is the only built-in length target for interactive-story prose and takes precedence over CREATOR.md chapter length, director rules, and other Denova built-in length preferences. A non-terminal turn should generally stay within 80%%-120%% of the target and should not end before a meaningful choice point. Constrain the content deliberately instead of relying on output truncation.%s", prefix, value, suffix)
+		fmt.Fprintf(sb, "%s[Highest length constraint] The target length for each interactive turn is about %d Chinese characters. This is the only built-in length target for interactive-story prose and takes precedence over CREATOR.md chapter length, game-preset rules, and other built-in length preferences. A non-terminal turn should generally stay within 80%%-120%% of the target and should not end before a meaningful choice point. Constrain the content deliberately instead of relying on output truncation.%s", prefix, value, suffix)
 		return
 	}
-	fmt.Fprintf(sb, "%s[Highest length constraint] A story-level runtime parameter determines the target length for each interactive turn. This is the only built-in length target for interactive-story prose and takes precedence over CREATOR.md chapter length, director rules, and other Denova built-in length preferences. Once the runtime provides the value, constrain the content deliberately and favor a focused, advancing, still-interactive turn instead of relying on output truncation.%s", prefix, suffix)
+	fmt.Fprintf(sb, "%s[Highest length constraint] A story-level runtime parameter determines the target length for each interactive turn. This is the only built-in length target for interactive-story prose and takes precedence over CREATOR.md chapter length, game-preset rules, and other built-in length preferences. Once the runtime provides the value, constrain the content deliberately and favor a focused, advancing, still-interactive turn instead of relying on output truncation.%s", prefix, suffix)
 }
 
 func InteractiveStoryTurnInstruction(message, turnContext, runtimeContext string) string {
@@ -217,61 +197,6 @@ func InteractiveStoryTurnContextRule(turnContext string) string {
 	}
 	return "Storyteller context rule for this turn:\n" + turnContext +
 		"\n\nThe rule above must materially affect adjudication, proactive NPC responses, costs, hidden-thread progression, and available choices. Do not output the rule text as prose."
-}
-
-func BuildInteractiveDirectorSystemInstruction() string {
-	return staticPromptAsset(interactiveDirectorWorkflowAsset)
-}
-
-func InteractiveDirectorInstruction(in InteractiveDirectorPromptInput) string {
-	var sb strings.Builder
-	if in.OpeningInitialization {
-		sb.WriteString("Build the first branch plan before opening prose. Use mode=replan and update all three documents from the supplied setup, initial state, and lore; do not claim unprovided history.\n\n")
-	} else {
-		sb.WriteString("Maintain the branch plan from this committed turn. Choose keep, patch, or replan using the supplied audit, state, and current documents.\n\n")
-	}
-	sb.WriteString("## Task\n")
-	taskHint := strings.TrimSpace(in.TaskHint)
-	if taskHint == "" {
-		taskHint = "director_plan_update: inspect committed facts, choose keep, patch, or replan, and maintain only the three director documents for the current branch."
-	}
-	sb.WriteString(taskHint)
-	sb.WriteString("\n\n")
-	writeBlock(&sb, "Story Title", in.Title)
-	writeBlock(&sb, "Opening Setup", in.Origin)
-	writeBlock(&sb, "Opening Input (source: first Game Agent request, bounded)", in.OpeningContext)
-	writeBlock(&sb, "Narrative Style ID", in.StoryTellerID)
-	writeBlock(&sb, "Story Director ID", in.StoryDirectorID)
-	writeBlock(&sb, "Current Branch", in.BranchID)
-	if in.BranchPlanningTurns > 0 {
-		writeBlock(&sb, "Recent Branch Planning Turns", fmt.Sprint(in.BranchPlanningTurns))
-	}
-	writeBlock(&sb, "Current Director Document Snapshots (source: DirectorPlan docs, bounded)", in.DirectorPlanDocs)
-	writeBlock(&sb, "Director Planning Template Requirements (source: StoryDirector.strategy.planning_templates, bounded)", in.PlanningTemplates)
-	writeBlock(&sb, "Director Lore Context (source: resident lore, revision-bound name roster, lore-context.md and committed recalls)", in.LoreContext)
-	writeBlock(&sb, "TurnResult / RuleResolution / StateDelta Audit JSON (source: committed turn, bounded)", in.TurnAuditJSON)
-	writeBlock(&sb, "Recent Story History (source: current branch turns, bounded)", in.TurnHistory)
-	writeBlock(&sb, "State System Schema (source: story director actor_state, bounded)", in.ActorStateSchema)
-	writeBlock(&sb, "Current State Snapshot (source: Snapshot.State.actors, bounded)", in.ActorState)
-	writeBlock(&sb, "Story Director Planning Configuration (source: StoryDirector, bounded)", in.StoryDirectorPlan)
-	if strings.TrimSpace(in.StoryDirectorStrategyPrompt) != "" {
-		writeBlock(&sb, "Story Director Markdown Strategy Prompt (source: StoryDirector.strategy.prompt_markdown, bounded)", strategyPromptWithPriorityNote(in.StoryDirectorStrategyPrompt))
-	}
-	writeBlock(&sb, "Event Runtime (source: Director metadata, bounded)", in.EventRuntime)
-	writeBlock(&sb, "Event Opportunity for This Turn (source: deterministic cadence, bounded)", in.EventOpportunity)
-	if strings.TrimSpace(in.DirectorEventCatalog) != "" {
-		writeBlock(&sb, "Compact Optional Event-card Index (source: explicitly selected event packages, bounded)", in.DirectorEventCatalog)
-	}
-	sb.WriteString("\nAfter inspection, omit event_decision or include it in decision according to this turn's event-opportunity rules, then submit incrementally through submit_director_plan_update. Retry only rejected files. End immediately after finalize succeeds without outputting a summary, JSON, complete Markdown, or story prose.\n")
-	return sb.String()
-}
-
-func strategyPromptWithPriorityNote(prompt string) string {
-	prompt = strings.TrimSpace(prompt)
-	if prompt == "" {
-		return ""
-	}
-	return "Apply this Director strategy to planning preferences, pacing, and scheduling:\n\n" + prompt
 }
 
 func normalizeInteractiveChoiceCount(value int) int {

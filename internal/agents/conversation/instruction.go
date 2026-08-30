@@ -25,7 +25,7 @@ type InstructionOptions struct {
 }
 
 // InstructionConversation is a storage-free one-request conversation with an
-// optional bounded stable prefix. Director execution and context diagnostics
+// optional bounded stable prefix. One-shot execution and context diagnostics
 // share it so their provider-visible layouts cannot drift.
 type InstructionConversation struct {
 	instruction           string
@@ -80,10 +80,10 @@ func (c *InstructionConversation) AssembleModelContext(ctx context.Context, _ st
 			return agentcontext.ModelContextResult{}, fmt.Errorf("rendered stable model context exceeds its limit: %d > %d bytes", len([]byte(stableMessage)), c.stableContextMaxBytes)
 		}
 		fragments = append(fragments, agentcontext.Fragment{
-			ID: "interactive_director_resident_lore", Source: "interactive.director.resident_lore", Title: title,
-			Purpose: "provide complete enabled resident lore as the director's stable model prefix",
+			ID: "instruction_stable_context", Source: "instruction.stable_context", Title: title,
+			Purpose: "provide bounded stable context for the one-shot instruction",
 			Content: stable, Placement: agentcontext.PlacementLeadingMessage, Limit: c.stableContextMaxBytes, Included: true,
-			Note: "source=enabled resident lore; complete=true",
+			Note: "source=caller-provided stable context; complete=true",
 		})
 	}
 	assembled, err := agentcontext.NewAssembler(input.Budget).Assemble(ctx, agentcontext.AssembleRequest{

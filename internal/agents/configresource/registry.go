@@ -28,7 +28,7 @@ const (
 )
 
 // Descriptor is the bounded, model-readable contract for one resource type.
-// Details that change frequently belong in the config-manager Skill reference,
+// Details that change frequently belong in the configuration Skill reference,
 // not in this routing type.
 type Descriptor struct {
 	Name          string   `json:"name"`

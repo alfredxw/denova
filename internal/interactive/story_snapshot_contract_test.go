@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestSnapshotJSONContractIncludesRuntimeProjectionAndOmitsDirectorPlan(t *testing.T) {
+func TestSnapshotJSONContractIncludesRuntimeProjectionAndBranchPlan(t *testing.T) {
 	snapshot := Snapshot{
 		StoryID: "story", BranchID: "main", ContextRevision: 7,
 		Turns:                      []TurnEvent{},
@@ -14,8 +14,7 @@ func TestSnapshotJSONContractIncludesRuntimeProjectionAndOmitsDirectorPlan(t *te
 		CurrentTurn:                &TurnEvent{ID: "turn"},
 		TokenUsageEvents:           []TokenUsageEvent{{ID: "usage"}},
 		ContextCompaction:          &ContextCompactionProjection{ID: "compaction"},
-		DirectorPlan:               &DirectorPlan{},
-		DirectorPlanStatus:         &DirectorPlanStatus{StoryID: "story"},
+		BranchPlan:                 &BranchPlan{Markdown: "Keep the branch coherent."},
 		State:                      map[string]any{},
 		ActorStateSchema:           &ActorStateSchemaSnapshot{},
 		StateSchemaInitialization: &StateSchemaInitializationStatus{
@@ -35,7 +34,7 @@ func TestSnapshotJSONContractIncludesRuntimeProjectionAndOmitsDirectorPlan(t *te
 	for _, name := range []string{
 		"story_id", "branch_id", "context_revision", "turns", "pending_player_inputs",
 		"pending_model_context_batches", "current_turn", "token_usage_events", "context_compaction",
-		"director_plan_status", "state",
+		"branch_plan", "state",
 		"actor_state_schema", "state_schema_initialization", "graph", "turn_count", "turn_start",
 		"history_before_cursor", "has_earlier_turns",
 	} {
@@ -43,7 +42,7 @@ func TestSnapshotJSONContractIncludesRuntimeProjectionAndOmitsDirectorPlan(t *te
 			t.Fatalf("Snapshot JSON field %q is missing: %s", name, encoded)
 		}
 	}
-	if _, ok := fields["director_plan"]; ok {
-		t.Fatalf("Snapshot leaked the dedicated Director API payload: %s", encoded)
+	if _, ok := fields["director_plan_status"]; ok {
+		t.Fatalf("Snapshot leaked the removed Director runtime payload: %s", encoded)
 	}
 }

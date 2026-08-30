@@ -16,6 +16,7 @@ type storyEventCheckpoint struct {
 	LatestTurnID   string
 	Depth          int
 	State          map[string]any
+	Plan           *BranchPlan
 }
 
 // checkpointAtTurnLocked resolves one historical turn without materializing
@@ -85,14 +86,39 @@ func (s *Store) checkpointAtTurnLocked(storyID, turnID string) (storyEventCheckp
 		if stateErr != nil {
 			return storyEventCheckpoint{}, stateErr
 		}
+		plan, planErr := s.planForStoryAncestorsLocked(handle, ancestorIDs)
+		if planErr != nil {
+			return storyEventCheckpoint{}, planErr
+		}
 		return storyEventCheckpoint{
 			SourceBranchID: sourceBranchID,
 			LatestTurnID:   turnID,
 			Depth:          depth,
 			State:          state,
+			Plan:           plan,
 		}, nil
 	}
 	return storyEventCheckpoint{}, fmt.Errorf("父回合不存在 / Parent turn not found: %s", turnID)
+}
+
+func (s *Store) planForStoryAncestorsLocked(handle *storyJournalHandle, ancestorIDs map[string]bool) (*BranchPlan, error) {
+	var plan *BranchPlan
+	if err := scanStoryEventsLocked(handle, func(record StoryEventRecord) error {
+		if record.Envelope.Type != StoryEventTypeBranchPlanUpdated {
+			return nil
+		}
+		var event BranchPlanUpdatedEvent
+		if err := mapToStruct(record.Raw, &event); err != nil {
+			return err
+		}
+		if ancestorIDs[event.TurnID] {
+			plan = &BranchPlan{Markdown: event.Markdown, UpdatedTurnID: event.TurnID, UpdatedAt: event.Ts}
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	return plan, nil
 }
 
 func (s *Store) stateForStoryAncestorsLocked(handle *storyJournalHandle, ancestorIDs map[string]bool) (map[string]any, error) {

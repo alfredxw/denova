@@ -11,9 +11,9 @@ import (
 )
 
 const (
-	TurnSubmissionModuleStateChanges  = "state_changes"
-	TurnSubmissionModuleChoices       = "choices"
-	turnSubmissionDirectorUpdateField = "director_update"
+	TurnSubmissionModuleStateChanges = "state_changes"
+	TurnSubmissionModuleChoices      = "choices"
+	TurnSubmissionModulePlanUpdate   = "plan_update"
 
 	TurnSubmissionModuleAccepted = "accepted"
 	TurnSubmissionModuleRejected = "rejected"
@@ -54,10 +54,11 @@ type TurnSubmissionDiagnostic struct {
 type TurnSubmissionModuleStatus struct {
 	StateChanges string `json:"state_changes"`
 	Choices      string `json:"choices"`
+	PlanUpdate   string `json:"plan_update"`
 }
 
 // TurnSubmissionReceipt reports independent module acceptance. Ready becomes
-// true only after both modules have been accepted, possibly across calls.
+// true only after all required modules have been accepted, possibly across calls.
 type TurnSubmissionReceipt struct {
 	Ready                bool                       `json:"ready"`
 	ModuleStatus         TurnSubmissionModuleStatus `json:"module_status"`
@@ -70,10 +71,10 @@ type TurnSubmissionReceipt struct {
 // TurnSubmissionInput holds independently retryable fields decoded from one
 // submit_interactive_turn call. Either field may be absent on a targeted retry.
 type TurnSubmissionInput struct {
-	StateUpdates   *[]interactivestate.Update
-	Choices        *[]string
-	DirectorUpdate *DirectorUpdateHint
-	Diagnostics    []TurnSubmissionDiagnostic
+	StateUpdates *[]interactivestate.Update
+	Choices      *[]string
+	PlanUpdate   *string
+	Diagnostics  []TurnSubmissionDiagnostic
 }
 
 // TurnSubmissionContext contains all story-scoped validation inputs. IDs and
@@ -85,6 +86,8 @@ type TurnSubmissionContext struct {
 	RuleResolution              *RuleResolution
 	RuleStateConsumptionMode    string
 	RequireCompleteInitialState bool
+	PlanningMode                string
+	CurrentPlan                 *BranchPlan
 }
 
 // PreparedTurnSubmission holds accepted modules while failed modules are
@@ -93,6 +96,7 @@ type PreparedTurnSubmission struct {
 	result               TurnResult
 	stateUpdatesAccepted bool
 	choicesAccepted      bool
+	planUpdateAccepted   bool
 }
 
 func (s *PreparedTurnSubmission) TurnResult() TurnResult {
@@ -100,50 +104,34 @@ func (s *PreparedTurnSubmission) TurnResult() TurnResult {
 		return TurnResult{}
 	}
 	return TurnResult{
-		StateUpdates:   append([]interactivestate.Update(nil), s.result.StateUpdates...),
-		Choices:        append([]string(nil), s.result.Choices...),
-		DirectorUpdate: normalizeDirectorUpdateHint(s.result.DirectorUpdate),
+		StateUpdates: append([]interactivestate.Update(nil), s.result.StateUpdates...),
+		Choices:      append([]string(nil), s.result.Choices...),
+		PlanUpdate:   cloneStringPointer(s.result.PlanUpdate),
 	}
 }
 
 func (s *PreparedTurnSubmission) Ready() bool {
-	return s != nil && s.stateUpdatesAccepted && s.choicesAccepted
-}
-
-func decodeDirectorUpdateHint(raw json.RawMessage) (*DirectorUpdateHint, []TurnSubmissionDiagnostic) {
-	var hint DirectorUpdateHint
-	if err := decodeStrictJSON(raw, &hint, false); err != nil {
-		return nil, []TurnSubmissionDiagnostic{*newTurnSubmissionDiagnostic(
-			TurnSubmissionModuleChoices, nil, TurnSubmissionDiagnosticInvalidModule, "/director_update", "{needed:true,reason:string}", "invalid director_update",
-			fmt.Sprintf("director_update is invalid: %v", err),
-		)}
-	}
-	normalized := normalizeDirectorUpdateHint(&hint)
-	if !hint.Needed {
-		return nil, nil
-	}
-	if err := validateDirectorUpdateHint(normalized); err != nil {
-		return nil, []TurnSubmissionDiagnostic{*newTurnSubmissionDiagnostic(
-			TurnSubmissionModuleChoices, nil, TurnSubmissionDiagnosticInvalidModule, "/director_update", "needed=true with a bounded reason", "invalid director_update",
-			"director_update must set needed=true with a bounded non-empty reason.",
-		)}
-	}
-	return normalized, nil
+	return s != nil && s.stateUpdatesAccepted && s.choicesAccepted && s.planUpdateAccepted
 }
 
 // PrepareTurnSubmission accepts valid modules independently and retains any
 // module accepted by an earlier call. state_changes remains atomic internally.
 func PrepareTurnSubmission(validation TurnSubmissionContext, current *PreparedTurnSubmission, input TurnSubmissionInput) (*PreparedTurnSubmission, TurnSubmissionReceipt) {
 	prepared := clonePreparedTurnSubmission(current)
+	planningEnabled := normalizeStoryPlanningMode(validation.PlanningMode) == StoryPlanningModeEnabled
 	diagnostics := make([]TurnSubmissionDiagnostic, 0, len(input.Diagnostics))
 	rejected := map[string]bool{}
 	for _, diagnostic := range input.Diagnostics {
+		if diagnostic.Module == TurnSubmissionModulePlanUpdate && !planningEnabled {
+			continue
+		}
 		if (diagnostic.Module == TurnSubmissionModuleStateChanges && prepared.stateUpdatesAccepted) ||
-			(diagnostic.Module == TurnSubmissionModuleChoices && prepared.choicesAccepted) {
+			(diagnostic.Module == TurnSubmissionModuleChoices && prepared.choicesAccepted) ||
+			(diagnostic.Module == TurnSubmissionModulePlanUpdate && prepared.planUpdateAccepted) {
 			continue
 		}
 		diagnostics = append(diagnostics, diagnostic)
-		if diagnostic.Module == TurnSubmissionModuleStateChanges || diagnostic.Module == TurnSubmissionModuleChoices {
+		if diagnostic.Module == TurnSubmissionModuleStateChanges || diagnostic.Module == TurnSubmissionModuleChoices || diagnostic.Module == TurnSubmissionModulePlanUpdate {
 			rejected[diagnostic.Module] = true
 		}
 	}
@@ -190,9 +178,32 @@ func PrepareTurnSubmission(validation TurnSubmissionContext, current *PreparedTu
 			rejected[TurnSubmissionModuleChoices] = true
 		} else {
 			prepared.result.Choices = choices
-			prepared.result.DirectorUpdate = normalizeDirectorUpdateHint(input.DirectorUpdate)
 			prepared.choicesAccepted = true
 		}
+	}
+
+	if !planningEnabled {
+		// The story-level switch is authoritative. A stale or mistaken model
+		// field must not make an otherwise valid turn retry, and must never be
+		// retained for a story whose planning feature is disabled.
+		prepared.result.PlanUpdate = nil
+		prepared.planUpdateAccepted = true
+	} else if input.PlanUpdate != nil && !prepared.planUpdateAccepted && !rejected[TurnSubmissionModulePlanUpdate] {
+		value := normalizeBranchPlanMarkdown(*input.PlanUpdate)
+		if err := validateBranchPlanMarkdown(value); err != nil {
+			diagnostics = append(diagnostics, *newTurnSubmissionDiagnostic(
+				TurnSubmissionModulePlanUpdate, nil, TurnSubmissionDiagnosticInvalidModule,
+				"/plan_update", fmt.Sprintf("non-empty Markdown up to %d bytes", maxBranchPlanBytes),
+				fmt.Sprintf("%d bytes", len([]byte(value))), err.Error(),
+			))
+			rejected[TurnSubmissionModulePlanUpdate] = true
+		} else {
+			prepared.result.PlanUpdate = &value
+			prepared.planUpdateAccepted = true
+		}
+	}
+	if planningEnabled && !prepared.planUpdateAccepted && !rejected[TurnSubmissionModulePlanUpdate] && input.PlanUpdate == nil && validation.CurrentPlan != nil {
+		prepared.planUpdateAccepted = true
 	}
 
 	receipt := buildTurnSubmissionReceipt(prepared, rejected, diagnostics)
@@ -205,12 +216,13 @@ func clonePreparedTurnSubmission(current *PreparedTurnSubmission) *PreparedTurnS
 	}
 	return &PreparedTurnSubmission{
 		result: TurnResult{
-			StateUpdates:   append([]interactivestate.Update(nil), current.result.StateUpdates...),
-			Choices:        append([]string(nil), current.result.Choices...),
-			DirectorUpdate: normalizeDirectorUpdateHint(current.result.DirectorUpdate),
+			StateUpdates: append([]interactivestate.Update(nil), current.result.StateUpdates...),
+			Choices:      append([]string(nil), current.result.Choices...),
+			PlanUpdate:   cloneStringPointer(current.result.PlanUpdate),
 		},
 		stateUpdatesAccepted: current.stateUpdatesAccepted,
 		choicesAccepted:      current.choicesAccepted,
+		planUpdateAccepted:   current.planUpdateAccepted,
 	}
 }
 
@@ -218,10 +230,13 @@ func buildTurnSubmissionReceipt(prepared *PreparedTurnSubmission, rejected map[s
 	receipt := TurnSubmissionReceipt{Ready: prepared.Ready()}
 	receipt.ModuleStatus.StateChanges = turnSubmissionModuleStatus(prepared.stateUpdatesAccepted, rejected[TurnSubmissionModuleStateChanges])
 	receipt.ModuleStatus.Choices = turnSubmissionModuleStatus(prepared.choicesAccepted, rejected[TurnSubmissionModuleChoices])
-	for _, module := range []string{TurnSubmissionModuleStateChanges, TurnSubmissionModuleChoices} {
+	receipt.ModuleStatus.PlanUpdate = turnSubmissionModuleStatus(prepared.planUpdateAccepted, rejected[TurnSubmissionModulePlanUpdate])
+	for _, module := range []string{TurnSubmissionModuleStateChanges, TurnSubmissionModuleChoices, TurnSubmissionModulePlanUpdate} {
 		status := receipt.ModuleStatus.StateChanges
 		if module == TurnSubmissionModuleChoices {
 			status = receipt.ModuleStatus.Choices
+		} else if module == TurnSubmissionModulePlanUpdate {
+			status = receipt.ModuleStatus.PlanUpdate
 		}
 		if status != TurnSubmissionModuleAccepted {
 			receipt.RetryModules = append(receipt.RetryModules, module)
@@ -236,6 +251,14 @@ func buildTurnSubmissionReceipt(prepared *PreparedTurnSubmission, rejected map[s
 	}
 	receipt.Diagnostics = diagnostics
 	return receipt
+}
+
+func cloneStringPointer(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
 }
 
 func turnSubmissionModuleStatus(accepted, rejected bool) string {

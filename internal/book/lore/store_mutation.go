@@ -1,13 +1,11 @@
 package lore
 
 import (
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -57,9 +55,9 @@ func (s *Store) Get(id string) (Item, error) {
 	return Item{}, fmt.Errorf("资料不存在: %s: %w", id, os.ErrNotExist)
 }
 
-// Revision identifies the current enabled lore catalog for incremental
-// Director review. It changes when a name, summary, body or enabled state
-// changes, without exposing the full collection to metadata consumers.
+// Revision identifies the current enabled Lore catalog for model-context
+// invalidation. It changes when a name, summary, body, or enabled state
+// changes without exposing the full collection to metadata consumers.
 func (s *Store) Revision() (string, error) {
 	items, err := s.List()
 	if err != nil {
@@ -198,28 +196,8 @@ func (s *Store) Update(id string, input ItemInput) (Item, error) {
 		if loreItemNameIndex(collection.Items, updated.Name, id) >= 0 {
 			return Item{}, fmt.Errorf("资料名称已存在: %s", updated.Name)
 		}
-		if !updated.Enabled && previous.Enabled {
-			paths, err := loreReferencePaths(s.workspace, previous.Name)
-			if err != nil {
-				return Item{}, err
-			}
-			if len(paths) > 0 {
-				return Item{}, fmt.Errorf("资料 %s 正被 %d 个互动分支引用，请先从 lore-context.md 移除后再禁用", previous.Name, len(paths))
-			}
-		}
-		rewrites, err := prepareLoreReferenceRewrites(s.workspace, previous.Name, updated.Name)
-		if err != nil {
-			return Item{}, err
-		}
 		collection.Items[i] = updated
 		if err := s.save(collection); err != nil {
-			return Item{}, err
-		}
-		if err := applyLoreReferenceRewrites(rewrites); err != nil {
-			collection.Items[i] = previous
-			if rollbackErr := s.save(collection); rollbackErr != nil {
-				slog.ErrorContext(context.Background(), fmt.Sprintf("[lore-reference] rollback lore item failed id=%s err=%v", id, rollbackErr))
-			}
 			return Item{}, err
 		}
 		return updated, nil
@@ -238,19 +216,6 @@ func (s *Store) Delete(id string) error {
 	collection, err := s.loadOrCreate()
 	if err != nil {
 		return err
-	}
-	for _, item := range collection.Items {
-		if item.ID != id {
-			continue
-		}
-		paths, refErr := loreReferencePaths(s.workspace, item.Name)
-		if refErr != nil {
-			return refErr
-		}
-		if len(paths) > 0 {
-			return fmt.Errorf("资料 %s 正被 %d 个互动分支引用，请先从 lore-context.md 移除后再删除", item.Name, len(paths))
-		}
-		break
 	}
 	next := make([]Item, 0, len(collection.Items))
 	found := false
@@ -306,6 +271,9 @@ func (s *Store) ApplyOperations(message string, ops []Operation) (ApplyResult, e
 			if item.Name == "" {
 				return ApplyResult{}, errors.New("创建资料时名称不能为空")
 			}
+			if err := validateLoreReferenceName(item.Name); err != nil {
+				return ApplyResult{}, err
+			}
 			if loreItemNameIndex(next, item.Name, "") >= 0 {
 				return ApplyResult{}, fmt.Errorf("资料名称已存在: %s", item.Name)
 			}
@@ -356,6 +324,9 @@ func (s *Store) ApplyOperations(message string, ops []Operation) (ApplyResult, e
 			}
 			if updated.Name == "" {
 				return ApplyResult{}, fmt.Errorf("资料名称不能为空: %s", id)
+			}
+			if err := validateLoreReferenceName(updated.Name); err != nil {
+				return ApplyResult{}, err
 			}
 			if loreItemNameIndex(next, updated.Name, id) >= 0 {
 				return ApplyResult{}, fmt.Errorf("资料名称已存在: %s", updated.Name)

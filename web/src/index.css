@@ -1430,7 +1430,7 @@ html[data-nova-motion="off"] .shimmer {
   min-height: 2.5rem;
   min-width: 0;
   grid-template-areas: "start body end";
-  grid-template-columns: auto minmax(0, 1fr) max-content;
+  grid-template-columns: auto minmax(0, 1fr) minmax(0, max-content);
   align-items: center;
   gap: 0.5rem;
 }
@@ -1494,7 +1494,7 @@ html[data-nova-motion="off"] .shimmer {
   grid-template-areas:
     "body body body"
     "start spacer end";
-  grid-template-columns: minmax(0, max-content) minmax(0, 1fr) max-content;
+  grid-template-columns: minmax(0, max-content) minmax(0, 1fr) minmax(0, max-content);
   align-items: stretch;
   row-gap: 0.375rem;
 }
@@ -2919,7 +2919,7 @@ html[data-nova-motion="off"] .nova-change-review-layer {
 }
 
 
-/* Director Console: a story continuity desk, scoped to the resizable game sidebar. */
+/* Game Console: a story-continuity surface scoped to the resizable game sidebar. */
 .director-console {
   --director-canvas: #070707;
   --director-panel: #11110f;
@@ -2971,27 +2971,9 @@ html[data-nova-motion="off"] .nova-change-review-layer {
   scrollbar-width: thin;
 }
 
-.director-plan-sheet {
-  scrollbar-color: var(--nova-scrollbar-thumb) transparent;
-  scrollbar-width: thin;
-}
-
-.director-plan-action-label {
-  display: none;
-}
-
 @container director-console (min-width: 400px) {
   .director-state-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .director-run-metrics,
-  .director-process-actions {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .director-plan-action-label {
-    display: inline;
   }
 }
 

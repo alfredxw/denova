@@ -180,20 +180,16 @@ func BuiltinAgentPrompts(cfg *config.Config, state *book.State, ideTeller IDESto
 	ide, ideErr := ComposeInstruction(promptCfg, state, ideTeller)
 	general, generalErr := ComposeGeneralInstruction(promptCfg)
 	interactiveStory, interactiveErr := ComposeInteractiveStoryInstruction(promptCfg, state, InteractiveStorySystemInstructionInput{})
-	configManager, configErr := ComposeConfigManagerInstruction(promptCfg, state)
-	director, directorErr := ComposeBuiltinSystemInstruction(promptCfg, config.AgentKindInteractiveDirector, "interactive_director", workspaceForPrompt(promptCfg, state), "builtin_base", "Background Director System Rules", "define the interactive director planning workflow", BuildInteractiveDirectorSystemInstruction())
 	version, versionErr := ComposeBuiltinSystemInstruction(promptCfg, config.AgentKindVersionSummary, "version_summary", workspaceForPrompt(promptCfg, state), "builtin_base", "Version Summary Generation Rules", "define the version summary task and output constraint", versionSummarySystemInstruction)
 	toolAgent, toolErr := ComposeBuiltinSystemInstruction(promptCfg, config.AgentKindToolAgent, "tool_agent", workspaceForPrompt(promptCfg, state), "builtin_base", "Chapter Split Regex Task", "define the structured chapter-regex inference task", ChapterSplitRegexSystemInstruction())
 	image, imageErr := ComposeImageInstruction(promptCfg, state, "")
 	return config.AgentPromptSettings{
-		General:             config.AgentPromptOverride{SystemPrompt: systemPromptPreview(general, generalErr)},
-		IDE:                 config.AgentPromptOverride{SystemPrompt: systemPromptPreview(ide, ideErr)},
-		InteractiveStory:    config.AgentPromptOverride{SystemPrompt: systemPromptPreview(interactiveStory, interactiveErr)},
-		ConfigManager:       config.AgentPromptOverride{SystemPrompt: systemPromptPreview(configManager, configErr)},
-		InteractiveDirector: config.AgentPromptOverride{SystemPrompt: systemPromptPreview(director, directorErr)},
-		VersionSummary:      config.AgentPromptOverride{SystemPrompt: systemPromptPreview(version, versionErr)},
-		ToolAgent:           config.AgentPromptOverride{SystemPrompt: systemPromptPreview(toolAgent, toolErr)},
-		Image:               config.AgentPromptOverride{SystemPrompt: systemPromptPreview(image, imageErr)},
+		General:          config.AgentPromptOverride{SystemPrompt: systemPromptPreview(general, generalErr)},
+		IDE:              config.AgentPromptOverride{SystemPrompt: systemPromptPreview(ide, ideErr)},
+		InteractiveStory: config.AgentPromptOverride{SystemPrompt: systemPromptPreview(interactiveStory, interactiveErr)},
+		VersionSummary:   config.AgentPromptOverride{SystemPrompt: systemPromptPreview(version, versionErr)},
+		ToolAgent:        config.AgentPromptOverride{SystemPrompt: systemPromptPreview(toolAgent, toolErr)},
+		Image:            config.AgentPromptOverride{SystemPrompt: systemPromptPreview(image, imageErr)},
 	}
 }
 
@@ -213,16 +209,13 @@ func BuiltinAgentPromptBlocks(cfg *config.Config, state *book.State, ideTeller I
 	}
 	ideWorkspace := workspaceForPrompt(promptCfg, state)
 	interactiveWorkspace := workspaceForPrompt(promptCfg, state)
-	configManagerFlow := configManagerFlowInstruction(promptCfg, state)
 	return config.AgentPromptBlockSettings{
-		General:             builtinPromptBlocks(promptCfg, config.AgentKindGeneral, generalAgentFlowInstruction(promptCfg)),
-		IDE:                 builtinPromptBlocks(promptCfg, config.AgentKindIDE, ideFlowInstruction(promptCfg, ideWorkspace)),
-		InteractiveStory:    builtinPromptBlocks(promptCfg, config.AgentKindInteractiveStory, interactiveStoryFlowInstruction(promptCfg, interactiveWorkspace)),
-		ConfigManager:       builtinPromptBlocks(promptCfg, config.AgentKindConfigManager, configManagerFlow),
-		InteractiveDirector: builtinPromptBlocks(promptCfg, config.AgentKindInteractiveDirector, BuildInteractiveDirectorSystemInstruction()),
-		VersionSummary:      builtinPromptBlocks(promptCfg, config.AgentKindVersionSummary, versionSummarySystemInstruction),
-		ToolAgent:           builtinPromptBlocks(promptCfg, config.AgentKindToolAgent, ChapterSplitRegexSystemInstruction()),
-		Image:               builtinPromptBlocks(promptCfg, config.AgentKindImage, ""),
+		General:          builtinPromptBlocks(promptCfg, config.AgentKindGeneral, generalAgentFlowInstruction(promptCfg)),
+		IDE:              builtinPromptBlocks(promptCfg, config.AgentKindIDE, ideFlowInstruction(promptCfg, ideWorkspace)),
+		InteractiveStory: builtinPromptBlocks(promptCfg, config.AgentKindInteractiveStory, interactiveStoryFlowInstruction(promptCfg, interactiveWorkspace)),
+		VersionSummary:   builtinPromptBlocks(promptCfg, config.AgentKindVersionSummary, versionSummarySystemInstruction),
+		ToolAgent:        builtinPromptBlocks(promptCfg, config.AgentKindToolAgent, ChapterSplitRegexSystemInstruction()),
+		Image:            builtinPromptBlocks(promptCfg, config.AgentKindImage, ""),
 	}
 }
 
@@ -235,18 +228,15 @@ func BuiltinAgentPromptSources(cfg *config.Config, state *book.State, ideTeller 
 	}
 	ideWorkspace := workspaceForPrompt(promptCfg, state)
 	interactiveWorkspace := workspaceForPrompt(promptCfg, state)
-	configManagerFlow := configManagerFlowInstruction(promptCfg, state)
 	return config.AgentPromptSourceSettings{
 		General: builtinPromptSourceList(promptCfg, config.AgentKindGeneral, generalAgentFlowInstruction(promptCfg)),
 		IDE: builtinPromptSourceList(promptCfg, config.AgentKindIDE, ideFlowInstruction(promptCfg, ideWorkspace),
 			readonlyPromptSource("teller", "Default IDE Storyteller Rules", ideTeller.ID, ideTeller.Prompt),
 		),
-		InteractiveStory:    builtinPromptSourceList(promptCfg, config.AgentKindInteractiveStory, interactiveStoryFlowInstruction(promptCfg, interactiveWorkspace)),
-		ConfigManager:       builtinPromptSourceList(promptCfg, config.AgentKindConfigManager, configManagerFlow),
-		InteractiveDirector: builtinPromptSourceList(promptCfg, config.AgentKindInteractiveDirector, BuildInteractiveDirectorSystemInstruction()),
-		VersionSummary:      builtinPromptSourceList(promptCfg, config.AgentKindVersionSummary, versionSummarySystemInstruction),
-		ToolAgent:           builtinPromptSourceList(promptCfg, config.AgentKindToolAgent, ChapterSplitRegexSystemInstruction()),
-		Image:               builtinPromptSourceList(promptCfg, config.AgentKindImage, ""),
+		InteractiveStory: builtinPromptSourceList(promptCfg, config.AgentKindInteractiveStory, interactiveStoryFlowInstruction(promptCfg, interactiveWorkspace)),
+		VersionSummary:   builtinPromptSourceList(promptCfg, config.AgentKindVersionSummary, versionSummarySystemInstruction),
+		ToolAgent:        builtinPromptSourceList(promptCfg, config.AgentKindToolAgent, ChapterSplitRegexSystemInstruction()),
+		Image:            builtinPromptSourceList(promptCfg, config.AgentKindImage, ""),
 	}
 }
 
@@ -368,8 +358,6 @@ func interactiveStoryFlowInstruction(cfg *config.Config, workspace string) strin
 
 func editablePromptFlowForAgent(agentKind, flow string) string {
 	switch agentKind {
-	case config.AgentKindInteractiveDirector:
-		return ""
 	case config.AgentKindVersionSummary:
 		return ""
 	case config.AgentKindToolAgent:
@@ -377,39 +365,6 @@ func editablePromptFlowForAgent(agentKind, flow string) string {
 	default:
 		return strings.TrimSpace(flow)
 	}
-}
-
-func BuildConfigManagerInstruction(cfg *config.Config, state *book.State, resourceSkills ...ConfigManagerResourceSkill) string {
-	return BuildConfigManagerInstructionComposition(cfg, state, resourceSkills...).Instruction()
-}
-
-func configManagerFlowInstruction(cfg *config.Config, state *book.State) string {
-	return configManagerFlowInstructionFor(workspaceForPrompt(cfg, state))
-}
-
-func configManagerFlowInstructionFor(_ string) string {
-	var sb strings.Builder
-	sb.WriteString("You are Denova's unified Configuration Manager Agent. Through embedded module entry points, help users manage lore, presets for narrative style, story direction, state systems, and images, as well as automations, Skills, and Agent configuration.\n\n")
-	sb.WriteString("Current Project root: .\n\n")
-	sb.WriteString(strings.Join([]string{
-		"## Working Method",
-		"- Configuration resources have two entry points: config_read handles describe/list/get, and config_apply handles one create/update/delete operation.",
-		"- For an unfamiliar resource, call config_read with operation=describe, then follow the corresponding reference in the config-manager Skill.",
-		"- Narrow reads with list before get by exact ID. update/delete must include the revision returned by the most recent config_read.",
-		"- Each config_apply call changes one independent resource. Continue with the new revision in the receipt; never overwrite concurrent changes with an old revision.",
-		"- Agent-page configuration uses resource=agent_profile and requires explicit scope=user or scope=workspace.",
-		"- Do not change ports, themes, remote access, editor appearance, or other settings outside the Agent page.",
-		"- Do not directly edit backing files for lore, presets, automations, Skills, or Agent configuration with file tools.",
-		"- Deletion, hiding, overwriting, and broad rewrites require an explicit user instruction. Ask first when the instruction is absent.",
-		"",
-		"## Module Boundaries",
-		"- Lore stores stable, long-lived canon. In Game Mode, established events belong to Turn history, while current location, injuries, relationships, resources, and rule values belong to Actor State and do not enter lore by default.",
-		"- Narrative styles own prose style, prompt slots, scene styles, and context policy. Story directors own orchestration and combine narrative styles, event packages, TRPG checks, state systems, and image presets through module_refs. Event packages contain event cards. Each TRPG check resource represents a DM check style, always uses d20, and may bind state fields through state_bindings. The state system is the source of truth for structured state, opening traits, current time and location, current event, computed fields, and rule-consumed fields. Templates are state-table schemas and may represent story context, protagonists, important characters, enemies, worlds, countdowns, specific characters, factions, bases, instances, or other state objects. Image presets own visual style, medium, composition, constraints, and avoid lists.",
-		"- The opening page configures state-schema policy per new story. In dynamic mode, the foreground Game Agent completes the schema draft before the first atomic turn submission; fixed mode changes values only. The Story Director neither owns nor changes the state schema.",
-		"- resource=skill writes SKILL.md and must explain use cases, context acquisition, and a concrete workflow. A built-in preset Skill can be changed only through a same-name workspace override, never by writing the built-in Skills directory.",
-		"- Automation tasks must keep trigger conditions, notification or execution policy, and write permissions explicit.",
-	}, "\n"))
-	return sb.String()
 }
 
 type promptSource struct {

@@ -11,7 +11,6 @@ import (
 	"denova/config"
 	agentcontext "denova/internal/agents/context"
 	agentcompaction "denova/internal/agents/context/compaction"
-	agentconversation "denova/internal/agents/conversation"
 	"denova/internal/agents/prompts"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/book"
@@ -266,62 +265,6 @@ func BuildInteractiveStoryContextAnalysis(cfg *config.Config, state *book.State,
 	}, nil
 }
 
-func BuildInteractiveDirectorContextAnalysis(cfg *config.Config, instruction string) (ContextAnalysis, error) {
-	return BuildInteractiveDirectorContextAnalysisWithStableContext(cfg, "", "", 0, instruction)
-}
-
-// BuildInteractiveDirectorContextAnalysisWithStableContext mirrors the exact
-// two-message layout used by the tool-enabled Director when resident Lore is
-// present, rather than hiding that stable prefix from context diagnostics.
-func BuildInteractiveDirectorContextAnalysisWithStableContext(cfg *config.Config, stableTitle, stableContext string, stableMaxBytes int, instruction string) (ContextAnalysis, error) {
-	systemPrompt, systemParts, err := buildInteractiveDirectorSystemPromptAnalysis(cfg)
-	if err != nil {
-		return ContextAnalysis{}, err
-	}
-	conversation := agentconversation.NewInstructionConversation(agentconversation.InstructionOptions{
-		Instruction: instruction, StableContextTitle: stableTitle, StableContext: stableContext,
-		StableContextMaxBytes: stableMaxBytes,
-		ContextBudget:         agentcontext.ContextBudgetForAgent(cfg, config.AgentKindInteractiveDirector),
-	})
-	turn, err := prepareTurnContext(context.Background(), turnContextPreparationInput{
-		Conversation: conversation,
-		Request:      ChatRequest{Message: instruction},
-		Environment:  newTurnRuntimeEnvironment(contextAnalysisWorkspace(cfg, nil)),
-	})
-	if err != nil {
-		return ContextAnalysis{}, err
-	}
-	messages := turn.ModelContext.Messages
-	contextMessages := make([]ContextAnalysisPart, 0, len(messages)+8)
-	if len(messages) > 1 {
-		part := contextAnalysisPartFromMessage("resident_lore", "enabled resident lore", strings.TrimSpace(stableTitle), messages[0])
-		part.Note = fmt.Sprintf("stable_model_prefix; complete=true; max_bytes=%d", stableMaxBytes)
-		contextMessages = append(contextMessages, part)
-	}
-	instructionParts := buildInteractiveDirectorInstructionContextParts(instruction)
-	if len(instructionParts) == 0 {
-		instructionParts = append(instructionParts, contextAnalysisPartFromMessage("director_instruction", "本轮导演指令", "后台导演规划指令", messages[len(messages)-1]))
-	}
-	contextMessages = append(contextMessages, instructionParts...)
-	usage := analyzeContextUsage(cfg, config.AgentKindInteractiveDirector, systemPrompt, messages, 1024)
-	return ContextAnalysis{
-		AgentKind:                config.AgentKindInteractiveDirector,
-		Mode:                     "interactive_director",
-		SystemPrompt:             systemPrompt,
-		SystemPromptParts:        systemParts,
-		ContextParts:             contextBuildLogFromAssembly(agentrun.DefaultLoopPolicy().ContextLedger, turn.OriginalMessage, turn.ModelContext.Context).FullParts(),
-		ContextMessages:          contextMessages,
-		MessageCount:             len(messages),
-		TokenEstimate:            usage.tokens,
-		ProjectedTokenEstimate:   usage.projectedTokens,
-		ReservedCompletionTokens: usage.completionReserve,
-		ReservedToolResultTokens: usage.toolResultReserve,
-		ContextWindowTokens:      usage.window,
-		ContextUsageRatio:        usage.ratio,
-		WouldCompact:             usage.wouldCompact,
-	}, nil
-}
-
 func interactiveCompactionEpoch(compaction *interactive.ContextCompactionProjection, fallback int) int {
 	if compaction == nil {
 		return fallback
@@ -407,14 +350,6 @@ func buildInteractiveStorySystemPromptAnalysis(cfg *config.Config, state *book.S
 	return composition.Instruction(), systemPromptAnalysisParts(composition), nil
 }
 
-func buildInteractiveDirectorSystemPromptAnalysis(cfg *config.Config) (string, []ContextAnalysisPart, error) {
-	composition, err := prompts.ComposeInteractiveDirectorInstruction(cfg, nil)
-	if err != nil {
-		return "", nil, err
-	}
-	return composition.Instruction(), systemPromptAnalysisParts(composition), nil
-}
-
 func systemPromptAnalysisParts(composition prompts.SystemPromptComposition) []ContextAnalysisPart {
 	resolvedFragments := composition.Fragments()
 	fragments := make(map[string]prompts.SystemPromptFragment, len(resolvedFragments))
@@ -445,89 +380,6 @@ func systemPromptAnalysisParts(composition prompts.SystemPromptComposition) []Co
 		}))
 	}
 	return parts
-}
-
-func buildInteractiveDirectorInstructionContextParts(instruction string) []ContextAnalysisPart {
-	instruction = strings.TrimSpace(instruction)
-	if instruction == "" {
-		return nil
-	}
-	segments := strings.Split("\n"+instruction, "\n## ")
-	parts := make([]ContextAnalysisPart, 0, len(segments))
-	if preamble := strings.TrimSpace(strings.TrimPrefix(segments[0], "\n")); preamble != "" {
-		parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
-			ID:      "director_instruction_preamble",
-			Source:  "本轮导演指令",
-			Title:   "后台导演任务与约束",
-			Role:    "user",
-			Kind:    "body",
-			Content: preamble,
-			Note:    "final_user_message",
-		}))
-	}
-	for _, segment := range segments[1:] {
-		segment = strings.TrimSpace(segment)
-		if segment == "" {
-			continue
-		}
-		heading, content, _ := strings.Cut(segment, "\n")
-		title, source, note := directorInstructionHeadingMeta(heading)
-		role := ""
-		if len(parts) == 0 {
-			role = "user"
-		}
-		parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
-			ID:      fmt.Sprintf("director_instruction_part_%02d", len(parts)+1),
-			Source:  source,
-			Title:   title,
-			Role:    role,
-			Kind:    "body",
-			Content: strings.TrimSpace(content),
-			Note:    note,
-		}))
-	}
-	return parts
-}
-
-func directorInstructionHeadingMeta(heading string) (title, source, note string) {
-	title = strings.TrimSpace(heading)
-	source = "后台导演上下文"
-	if strings.Contains(title, "（source:") {
-		if before, after, ok := strings.Cut(title, "（source:"); ok {
-			title = strings.TrimSpace(before)
-			source = strings.TrimSpace(strings.TrimSuffix(after, "）"))
-		}
-	} else if strings.Contains(title, "(source:") {
-		if before, after, ok := strings.Cut(title, "(source:"); ok {
-			title = strings.TrimSpace(before)
-			source = strings.TrimSpace(strings.TrimSuffix(after, ")"))
-		}
-	}
-	if title == "" {
-		title = "导演上下文片段"
-	}
-	if source == "" {
-		source = "后台导演上下文"
-	}
-	if strings.Contains(source, "bounded") || strings.Contains(title, "上限") {
-		note = "bounded"
-	}
-	switch title {
-	case "文件操作要求", "固定标题", "更新原则":
-		source = "Denova built-in"
-		if note == "" {
-			note = "final_user_message"
-		} else {
-			note += " · final_user_message"
-		}
-	default:
-		if note == "" {
-			note = "final_user_message"
-		} else {
-			note += " · final_user_message"
-		}
-	}
-	return title, source, note
 }
 
 func styleRuleContextAnalysisParts(rules []prompts.StyleRule) []ContextAnalysisPart {

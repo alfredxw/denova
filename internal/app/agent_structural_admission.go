@@ -10,7 +10,6 @@ import (
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 	appagentruntime "denova/internal/app/agentruntime"
-	interactiveapp "denova/internal/app/interactive"
 	"denova/internal/interactive"
 )
 
@@ -106,7 +105,6 @@ type interactiveStructuralFence struct {
 	workspaceGeneration uint64
 	store               *interactive.Store
 	chat                *agentexecution.Runtime
-	directorTasks       *interactiveapp.DirectorTaskGroup
 	storyID             string
 	branchID            string
 	task                *apptask.Task
@@ -135,7 +133,6 @@ func (s *InteractiveAppService) drainInteractiveBinding(ctx context.Context, sto
 		workspaceGeneration: a.workspaceGeneration,
 		store:               a.interactive,
 		chat:                a.executionRuntime,
-		directorTasks:       a.workspaceDirectorTasks,
 		storyID:             storyID,
 		branchID:            branchID,
 	}
@@ -151,15 +148,6 @@ func (s *InteractiveAppService) drainInteractiveBinding(ctx context.Context, sto
 	closeStoryBindings := func(chat *agentexecution.Runtime) error {
 		return chat.CloseStoryBindings(ctx, fence.projectID, storyID, branchID)
 	}
-	if err := closeAgentBindings(fence.chat, closeStoryBindings); err != nil {
-		return interactiveStructuralFence{}, err
-	}
-	if err := fence.waitDirectorMaintenance(ctx); err != nil {
-		return interactiveStructuralFence{}, err
-	}
-	// A maintenance item that was queued but had not opened its Director actor
-	// can do so after the first scope close releases. Evict once more after the
-	// queue drains so the returned fence has no late-open binding behind it.
 	if err := closeAgentBindings(fence.chat, closeStoryBindings); err != nil {
 		return interactiveStructuralFence{}, err
 	}
@@ -180,32 +168,8 @@ func interactiveTaskForScopeLocked(a *App, workspace, storyID, branchID string) 
 	return run.task
 }
 
-func (f interactiveStructuralFence) waitDirectorMaintenance(ctx context.Context) error {
-	if f.directorTasks == nil {
-		return nil
-	}
-	branchIDs := []string{f.branchID}
-	if f.branchID == "" {
-		branches, err := f.store.Branches(f.storyID)
-		if err != nil {
-			return err
-		}
-		branchIDs = make([]string, 0, len(branches))
-		for _, branch := range branches {
-			branchIDs = append(branchIDs, branch.ID)
-		}
-	}
-	for _, branchID := range branchIDs {
-		key := f.storyID + ":" + strings.TrimSpace(branchID) + ":derived"
-		if err := f.directorTasks.WaitKey(ctx, key); err != nil {
-			return fmt.Errorf("wait interactive Director maintenance for %s/%s: %w", f.storyID, branchID, err)
-		}
-	}
-	return nil
-}
-
 func (f interactiveStructuralFence) validateLocked(a *App) error {
-	if a == nil || a.workspace != f.workspace || a.workspaceGeneration != f.workspaceGeneration || a.interactive != f.store || a.executionRuntime != f.chat || a.workspaceDirectorTasks != f.directorTasks {
+	if a == nil || a.workspace != f.workspace || a.workspaceGeneration != f.workspaceGeneration || a.interactive != f.store || a.executionRuntime != f.chat {
 		return ErrAgentContextChanged
 	}
 	if task := interactiveTaskForScopeLocked(a, f.workspace, f.storyID, f.branchID); task != nil {

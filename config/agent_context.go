@@ -43,16 +43,16 @@ const (
 // cleanup and compaction mechanics are derived by the backend so every client
 // and Agent kind observes one coherent policy.
 type AgentContextSettings struct {
-	Default             AgentContextOverride `toml:"default,omitempty" json:"default,omitempty"`
-	General             AgentContextOverride `toml:"general,omitempty" json:"general,omitempty"`
-	IDE                 AgentContextOverride `toml:"ide,omitempty" json:"ide,omitempty"`
-	InteractiveStory    AgentContextOverride `toml:"interactive_story,omitempty" json:"interactive_story,omitempty"`
-	ConfigManager       AgentContextOverride `toml:"config_manager,omitempty" json:"config_manager,omitempty"`
-	InteractiveDirector AgentContextOverride `toml:"interactive_director,omitempty" json:"interactive_director,omitempty"`
-	VersionSummary      AgentContextOverride `toml:"version_summary,omitempty" json:"version_summary,omitempty"`
-	ToolAgent           AgentContextOverride `toml:"tool_agent,omitempty" json:"tool_agent,omitempty"`
-	Image               AgentContextOverride `toml:"image,omitempty" json:"image,omitempty"`
-	Automation          AgentContextOverride `toml:"automation,omitempty" json:"automation,omitempty"`
+	Default          AgentContextOverride `toml:"default,omitempty" json:"default,omitempty"`
+	General          AgentContextOverride `toml:"general,omitempty" json:"general,omitempty"`
+	IDE              AgentContextOverride `toml:"ide,omitempty" json:"ide,omitempty"`
+	InteractiveStory AgentContextOverride `toml:"interactive_story,omitempty" json:"interactive_story,omitempty"`
+	// ConfigManager preserves retired v0.3.3 settings during unrelated writes.
+	ConfigManager  AgentContextOverride `toml:"config_manager,omitempty" json:"config_manager,omitempty"`
+	VersionSummary AgentContextOverride `toml:"version_summary,omitempty" json:"version_summary,omitempty"`
+	ToolAgent      AgentContextOverride `toml:"tool_agent,omitempty" json:"tool_agent,omitempty"`
+	Image          AgentContextOverride `toml:"image,omitempty" json:"image,omitempty"`
+	Automation     AgentContextOverride `toml:"automation,omitempty" json:"automation,omitempty"`
 }
 
 type AgentContextOverride struct {
@@ -95,16 +95,15 @@ func DefaultAgentContextSettings() AgentContextSettings {
 
 func MergeAgentContextSettings(parent, child AgentContextSettings) AgentContextSettings {
 	return AgentContextSettings{
-		Default:             mergeAgentContextOverride(parent.Default, child.Default),
-		General:             mergeAgentContextOverride(parent.General, child.General),
-		IDE:                 mergeAgentContextOverride(parent.IDE, child.IDE),
-		InteractiveStory:    mergeAgentContextOverride(parent.InteractiveStory, child.InteractiveStory),
-		ConfigManager:       mergeAgentContextOverride(parent.ConfigManager, child.ConfigManager),
-		InteractiveDirector: mergeAgentContextOverride(parent.InteractiveDirector, child.InteractiveDirector),
-		VersionSummary:      mergeAgentContextOverride(parent.VersionSummary, child.VersionSummary),
-		ToolAgent:           mergeAgentContextOverride(parent.ToolAgent, child.ToolAgent),
-		Image:               mergeAgentContextOverride(parent.Image, child.Image),
-		Automation:          mergeAgentContextOverride(parent.Automation, child.Automation),
+		Default:          mergeAgentContextOverride(parent.Default, child.Default),
+		General:          mergeAgentContextOverride(parent.General, child.General),
+		IDE:              mergeAgentContextOverride(parent.IDE, child.IDE),
+		InteractiveStory: mergeAgentContextOverride(parent.InteractiveStory, child.InteractiveStory),
+		ConfigManager:    mergeAgentContextOverride(parent.ConfigManager, child.ConfigManager),
+		VersionSummary:   mergeAgentContextOverride(parent.VersionSummary, child.VersionSummary),
+		ToolAgent:        mergeAgentContextOverride(parent.ToolAgent, child.ToolAgent),
+		Image:            mergeAgentContextOverride(parent.Image, child.Image),
+		Automation:       mergeAgentContextOverride(parent.Automation, child.Automation),
 	}
 }
 
@@ -190,7 +189,6 @@ func sanitizeAgentContextSettings(settings AgentContextSettings) AgentContextSet
 	settings.IDE = sanitizeAgentContextOverride(settings.IDE)
 	settings.InteractiveStory = sanitizeAgentContextOverride(settings.InteractiveStory)
 	settings.ConfigManager = sanitizeAgentContextOverride(settings.ConfigManager)
-	settings.InteractiveDirector = sanitizeAgentContextOverride(settings.InteractiveDirector)
 	settings.VersionSummary = sanitizeAgentContextOverride(settings.VersionSummary)
 	settings.ToolAgent = sanitizeAgentContextOverride(settings.ToolAgent)
 	settings.Image = sanitizeAgentContextOverride(settings.Image)

@@ -4,8 +4,6 @@ import (
 	"strings"
 )
 
-const DirectorPatchSourceInteractiveDirector = "interactive_director"
-
 func DefaultDirectorEventTemplates() []DirectorEvent {
 	return []DirectorEvent{
 		directorEventTemplate("face_slap", "打脸反转", "打脸", "让轻视主角的一方在公开场合被事实反证。"),

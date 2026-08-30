@@ -8,7 +8,6 @@ import (
 
 	"denova/config"
 	"denova/internal/agents/conversationconfig"
-	"denova/internal/interactive/director"
 )
 
 const (
@@ -29,6 +28,7 @@ const (
 	StoryEventTypeBranchSwitched                   = "branch_switched"
 	StoryEventTypeBranchArchived                   = "branch_archived"
 	StoryEventTypeBranchHeadMoved                  = "branch_head_moved"
+	StoryEventTypeBranchPlanUpdated                = "branch_plan_updated"
 
 	stateOpSchemaVersion = 2
 )
@@ -56,6 +56,9 @@ var persistedStoryEventModelContextChanges = map[string]bool{
 	StoryEventTypeBranchSwitched:       false,
 	StoryEventTypeBranchArchived:       false,
 	StoryEventTypeBranchHeadMoved:      true,
+	// The owning Turn already advances the model-context revision in the same
+	// atomic transaction. This private event only carries its next-turn plan.
+	StoryEventTypeBranchPlanUpdated: false,
 }
 
 func storyEventChangesModelContext(eventType string) (bool, error) {
@@ -183,6 +186,18 @@ func mapToStoryEventRecord(raw map[string]any) (StoryEventRecord, error) {
 			return StoryEventRecord{}, err
 		}
 	}
+	if envelope.Type == StoryEventTypeBranchPlanUpdated {
+		var event BranchPlanUpdatedEvent
+		if err := mapToStruct(raw, &event); err != nil {
+			return StoryEventRecord{}, err
+		}
+		if strings.TrimSpace(event.TurnID) == "" || strings.TrimSpace(event.ParentID) != strings.TrimSpace(event.TurnID) {
+			return StoryEventRecord{}, fmt.Errorf("branch plan update must reference its owning turn")
+		}
+		if err := validateBranchPlanMarkdown(event.Markdown); err != nil {
+			return StoryEventRecord{}, err
+		}
+	}
 	return StoryEventRecord{Envelope: envelope, Raw: raw}, nil
 }
 
@@ -265,10 +280,8 @@ func validateStoryMeta(meta StoryMeta) error {
 	if err := validateStoryChoiceCount(meta.ChoiceCount); err != nil {
 		return err
 	}
-	if meta.DirectorRunPolicy != nil {
-		if err := director.ValidateRunPolicy(*meta.DirectorRunPolicy); err != nil {
-			return err
-		}
+	if err := validateStoryPlanningMode(meta.PlanningMode); err != nil {
+		return err
 	}
 	switch meta.ImageSettings.Mode {
 	case StoryImageModeManual, StoryImageModeInterval:

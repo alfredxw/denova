@@ -1,35 +1,4 @@
-import type { StoryDirector, StoryDirectorActorStateSystem, StoryDirectorModuleRefs, StoryDirectorTRPGSystem, TellerEventPackage } from '../../types'
-import { DIRECTOR_PRIVATE_PLAN_REQUIRED_HEADINGS, STORY_DIRECTOR_BRANCH_PLANNING_TURNS_FALLBACK, STORY_DIRECTOR_PLANNING_TEMPLATE_LIMIT } from './constants'
-
-export function parseDecimalInput(value: string) {
-  const parsed = Number(value)
-  return Number.isFinite(parsed) ? parsed : 0
-}
-
-export function normalizeBranchPlanningTurns(value: string) {
-  const parsed = Number(value)
-  if (!Number.isFinite(parsed)) return STORY_DIRECTOR_BRANCH_PLANNING_TURNS_FALLBACK
-  return Math.min(12, Math.max(1, Math.round(parsed)))
-}
-
-export function validateDirectorPlanningTemplate(value: string, requiredHeadings: readonly string[] = DIRECTOR_PRIVATE_PLAN_REQUIRED_HEADINGS) {
-  const bytes = utf8ByteLength(value || '')
-  if (!String(value || '').trim()) {
-    return { bytes, missingHeadings: [], valid: true }
-  }
-  const missingHeadings = requiredHeadings.filter((heading) => !String(value || '').includes(heading))
-  return {
-    bytes,
-    missingHeadings,
-    valid: bytes <= STORY_DIRECTOR_PLANNING_TEMPLATE_LIMIT && missingHeadings.length === 0,
-  }
-}
-
-export function strategyRateValue(value: number | undefined, fallbackValue: string): string {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return fallbackValue
-  const clamped = Math.min(1, Math.max(0, value))
-  return String(clamped)
-}
+import type { StoryDirector, StoryDirectorModuleRefs, TellerEventPackage } from '../../types'
 
 export function strategyOptionText(t: (key: string, values?: Record<string, string>) => string, key: string, value: string): string {
   return t(key, { value })
@@ -72,16 +41,6 @@ export function directorResolvedEventPackages(director: StoryDirector): TellerEv
     : director.resolved_snapshot?.event_packages?.length
       ? director.resolved_snapshot.event_packages
       : []
-}
-
-export function newEmptyStoryDirectorSections(): {
-  trpg_system: StoryDirectorTRPGSystem
-  actor_state: StoryDirectorActorStateSystem
-} {
-  return {
-    trpg_system: { rule_templates: [] },
-    actor_state: { templates: [], trait_pools: [], initial_actors: [] },
-  }
 }
 
 export function findById<T extends { id: string }>(items: T[], id: string): T | undefined {

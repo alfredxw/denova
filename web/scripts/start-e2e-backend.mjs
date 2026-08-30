@@ -53,10 +53,6 @@ thinking_level = "off"
 [agent_models.interactive_story]
 profile_id = "e2e"
 thinking_level = "off"
-
-[agent_models.interactive_director]
-profile_id = "e2e"
-thinking_level = "off"
 `
 writeFileSync(path.join(denovaDir, 'config.toml'), config, 'utf8')
 
@@ -67,12 +63,10 @@ const legacyWritingSessionID = 'v033-writing-main-e2e'
 const legacyStoryDir = path.join(legacyWorkspace, 'interactive', 'story')
 const legacyStoryID = 'st_legacy_v033_e2e'
 const legacyStoryTimestamp = '2026-01-01T00:00:00Z'
-const legacyDirectorDir = path.join(legacyWorkspace, 'interactive', 'stories', legacyStoryID, 'director', 'main')
 mkdirSync(path.join(legacyWorkspace, 'chapters'), { recursive: true })
 mkdirSync(path.dirname(legacyLorePath), { recursive: true })
 mkdirSync(legacySessionsDir, { recursive: true })
 mkdirSync(legacyStoryDir, { recursive: true })
-mkdirSync(legacyDirectorDir, { recursive: true })
 writeFileSync(path.join(legacyWorkspace, 'book.json'), JSON.stringify({
   title: 'Legacy E2E Book',
   author: 'Denova v0.3.3',
@@ -189,55 +183,6 @@ writeFileSync(
   `${legacyStoryRows.map((row) => JSON.stringify(row)).join('\n')}\n`,
   'utf8',
 )
-writeFileSync(path.join(legacyDirectorDir, 'director.md'), `# 导演私密规划
-
-${[
-  '阶段目标与隐藏钩子', '资料库锚点', '选角覆盖', '核心角色与关系张力',
-  '重要势力与阶段阻力', '当前场景幕后信息', '信息揭示与线索密度', '遭遇、检定与代价',
-  '爽点、危机与反转', '状态连续性', '最近分支安排', '伏笔与回收',
-].map((heading) => `## ${heading}\n保留 v0.3.3 的导演规划。`).join('\n\n')}
-`, 'utf8')
-writeFileSync(path.join(legacyDirectorDir, 'agent-brief.md'), `# 正文 Agent 简报
-
-${[
-  '当前目标与可见钩子', '当前场景与行动空间', '当前角色与可见关系', '已公开信息与可发现线索',
-  '遭遇、检定与可见代价', '状态连续性', '最近分支承接',
-].map((heading) => `## ${heading}\n承接 v0.3.3 保存的旧车站剧情。`).join('\n\n')}
-`, 'utf8')
-writeFileSync(path.join(legacyDirectorDir, 'lore-context.md'), `# 分支资料工作集
-
-## 当前
-
-[[林川]] 仍在旧车站。
-
-## 候场
-
-暂无。
-
-## 暂离场
-
-暂无。
-`, 'utf8')
-writeFileSync(path.join(legacyDirectorDir, 'metadata.json'), JSON.stringify({
-  version: 1,
-  story_id: legacyStoryID,
-  branch_id: 'main',
-  revision: 'legacy-v033',
-  branch_planning_turns: 5,
-  updated_at: legacyStoryTimestamp,
-  source: 'interactive_director',
-  source_turn_id: 'turn_legacy_v033_e2e',
-  last_run: {
-    status: 'ready',
-    summary: 'v0.3.3 保存的导演规划。',
-    source_turn_id: 'turn_legacy_v033_e2e',
-    updated_at: legacyStoryTimestamp,
-    planned_docs: 3,
-    completed_docs: 3,
-    start_ready: true,
-    blocking: false,
-  },
-}, null, 2), 'utf8')
 writeFileSync(path.join(denovaDir, 'books.json'), JSON.stringify({
   current: legacyWorkspace,
   books: [{

@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"denova/config"
-
 	agent "github.com/alfredxw/denova/agent"
 	agentsession "github.com/alfredxw/denova/agent/session"
 )
@@ -65,14 +63,10 @@ func RuntimeBindingFromAgentSessionKey(key agent.SessionKey) (RuntimeBinding, er
 		binding.Mode = bindingProfileAgentChat
 	case kind == bindingKindGame && profile == bindingProfileGame:
 		binding.AgentKind = AgentKindInteractiveStory
-	case kind == bindingKindWriting && profile == bindingProfileConfigManager:
-		binding.AgentKind = AgentKindConfigManager
 	case kind == bindingKindWriting && profile == bindingProfileImage:
 		binding.AgentKind = AgentKindImage
 	case kind == bindingKindAutomation && profile == bindingProfileAutomation:
 		binding.AgentKind = AgentKindAutomation
-	case kind == bindingKindGame && profile == bindingProfileDirector:
-		binding.AgentKind = config.AgentKindInteractiveDirector
 	default:
 		return RuntimeBinding{}, fmt.Errorf("%w: unsupported Denova Session namespace %q", ErrInvalidBinding, namespace)
 	}

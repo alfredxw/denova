@@ -314,10 +314,6 @@ func setAgentModelOverride(settings *config.Settings, agent string, value config
 		settings.AgentModels.IDE = value
 	case config.AgentKindInteractiveStory:
 		settings.AgentModels.InteractiveStory = value
-	case config.AgentKindConfigManager:
-		settings.AgentModels.ConfigManager = value
-	case config.AgentKindInteractiveDirector:
-		settings.AgentModels.InteractiveDirector = value
 	case config.AgentKindVersionSummary:
 		settings.AgentModels.VersionSummary = value
 	case config.AgentKindToolAgent:
@@ -337,10 +333,6 @@ func setAgentToolOverride(settings *config.Settings, agent string, value config.
 		settings.AgentTools.IDE = value
 	case config.AgentKindInteractiveStory:
 		settings.AgentTools.InteractiveStory = value
-	case config.AgentKindConfigManager:
-		settings.AgentTools.ConfigManager = value
-	case config.AgentKindInteractiveDirector:
-		settings.AgentTools.InteractiveDirector = value
 	case config.AgentKindVersionSummary:
 		settings.AgentTools.VersionSummary = value
 	case config.AgentKindToolAgent:
@@ -360,10 +352,6 @@ func setAgentPromptOverride(settings *config.Settings, agent string, value confi
 		settings.AgentPrompts.IDE = value
 	case config.AgentKindInteractiveStory:
 		settings.AgentPrompts.InteractiveStory = value
-	case config.AgentKindConfigManager:
-		settings.AgentPrompts.ConfigManager = value
-	case config.AgentKindInteractiveDirector:
-		settings.AgentPrompts.InteractiveDirector = value
 	case config.AgentKindVersionSummary:
 		settings.AgentPrompts.VersionSummary = value
 	case config.AgentKindToolAgent:
@@ -383,10 +371,6 @@ func setAgentSkillOverride(settings *config.Settings, agent string, value config
 		settings.AgentSkills.IDE = value
 	case config.AgentKindInteractiveStory:
 		settings.AgentSkills.InteractiveStory = value
-	case config.AgentKindConfigManager:
-		settings.AgentSkills.ConfigManager = value
-	case config.AgentKindInteractiveDirector:
-		settings.AgentSkills.InteractiveDirector = value
 	case config.AgentKindVersionSummary:
 		settings.AgentSkills.VersionSummary = value
 	case config.AgentKindToolAgent:
@@ -406,10 +390,6 @@ func setAgentContextOverride(settings *config.Settings, agent string, value conf
 		settings.AgentContexts.IDE = value
 	case config.AgentKindInteractiveStory:
 		settings.AgentContexts.InteractiveStory = value
-	case config.AgentKindConfigManager:
-		settings.AgentContexts.ConfigManager = value
-	case config.AgentKindInteractiveDirector:
-		settings.AgentContexts.InteractiveDirector = value
 	case config.AgentKindVersionSummary:
 		settings.AgentContexts.VersionSummary = value
 	case config.AgentKindToolAgent:
@@ -429,8 +409,6 @@ func setGeneralSubAgentOverride(settings *config.Settings, agent string, value *
 		settings.GeneralSubAgents.IDE = value
 	case config.AgentKindInteractiveStory:
 		settings.GeneralSubAgents.InteractiveStory = value
-	case config.AgentKindConfigManager:
-		settings.GeneralSubAgents.ConfigManager = value
 	}
 }
 

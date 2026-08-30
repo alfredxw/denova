@@ -1,4 +1,4 @@
-import { ChevronDown, Clock3, GitBranch, Image, Loader2, Lock, MousePointerClick, Package, Scale, Sparkles, UserRound, WandSparkles, Zap } from 'lucide-react'
+import { ChevronDown, GitBranch, Image, Loader2, Lock, Map, Package, Scale, Sparkles, UserRound, WandSparkles } from 'lucide-react'
 import type { ElementType } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -7,12 +7,14 @@ import { Input } from '@/components/ui/input'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
 import { getActorStates, getEventPackages, getRuleSystems } from '../api'
 import { DEFAULT_INTERACTIVE_CHOICE_COUNT, DEFAULT_INTERACTIVE_REPLY_TARGET_CHARS, MAX_INTERACTIVE_CHOICE_COUNT, MIN_INTERACTIVE_CHOICE_COUNT, type StoryCreateInput } from '../opening'
-import type { ActorStateModule, EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, StoryDirectorModuleRefs, StoryDirectorRunMode, StoryDirectorRunPolicy, StoryStateSchemaMode, StorySummary, Teller } from '../types'
+import type { ActorStateModule, EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, StoryDirectorModuleRefs, StoryStateSchemaMode, StorySummary, Teller } from '../types'
 import { DEFAULT_NARRATIVE_STYLE_ID, narrativeStyleName, resolveNarrativeStyle } from '../narrative-style'
+import { gamePresetName } from '../game-preset'
 
 interface NewStorySetupPanelProps {
   stories: StorySummary[]
@@ -54,13 +56,12 @@ export function NewStorySetupPanel({ stories, tellers, directors, imagePresets, 
     return { ...initial, narrative_style_id: recentTeller?.id || DEFAULT_NARRATIVE_STYLE_ID }
   })
   const [stateSchemaMode, setStateSchemaMode] = useState<StoryStateSchemaMode>(story?.state_schema_policy?.mode || 'adapt_template')
-  const initialRunPolicy = story?.director_run_policy || defaultDirectorRunPolicy(initialDirector)
-  const [directorRunMode, setDirectorRunMode] = useState<StoryDirectorRunMode>(initialRunPolicy.mode)
-  const [directorIntervalTurns, setDirectorIntervalTurns] = useState(String(initialRunPolicy.interval_turns || 3))
+  const [planningEnabled, setPlanningEnabled] = useState(story ? story.planning_mode === 'enabled' : true)
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState('')
   const [moduleCatalog, setModuleCatalog] = useState<DirectorModuleCatalog>({ eventPackages: [], ruleSystems: [], actorStates: [] })
   const director = directors.find((item) => item.id === directorId) || defaultDirector
+  const directorName = director ? gamePresetName(director, t) : directorId
   const moduleOptions = useMemo(() => collectModuleOptions(directors, tellers, imagePresets, moduleCatalog, t), [directors, tellers, imagePresets, moduleCatalog, t])
 
   useEffect(() => {
@@ -80,12 +81,9 @@ export function NewStorySetupPanel({ stories, tellers, directors, imagePresets, 
 
   const selectDirector = (id: string) => {
     const next = directors.find((item) => item.id === id)
-    const nextRunPolicy = defaultDirectorRunPolicy(next)
     const nextRefs = { ...(next?.module_refs || {}) }
     setDirectorId(id)
     setModuleRefs(nextRefs)
-    setDirectorRunMode(nextRunPolicy.mode)
-    setDirectorIntervalTurns(String(nextRunPolicy.interval_turns || 3))
     narrativeStyleSelectionLockedRef.current = true
   }
   const submit = async () => {
@@ -96,8 +94,6 @@ export function NewStorySetupPanel({ stories, tellers, directors, imagePresets, 
       const tellerID = resolveNarrativeStyle(tellers, moduleRefs.narrative_style_id || recentNarrativeStyleID)?.id || DEFAULT_NARRATIVE_STYLE_ID
       const normalizedChoiceCount = parseChoiceCount(choiceCount)
       if (normalizedChoiceCount === null) throw new Error(t('storyPicker.choiceCountError'))
-      const directorRunPolicy = buildDirectorRunPolicy(directorRunMode, directorIntervalTurns)
-      if (!directorRunPolicy) throw new Error(t('storyPicker.setup.directorRun.intervalError'))
       const selectedActorStateID = moduleRefs.actor_state_id || director?.module_refs?.actor_state_id
       const submittedModuleRefs: StoryDirectorModuleRefs = {
         ...moduleRefs,
@@ -109,7 +105,7 @@ export function NewStorySetupPanel({ stories, tellers, directors, imagePresets, 
         origin: origin.trim(),
         story_teller_id: tellerID,
         story_director_id: directorId,
-        director_run_policy: directorRunPolicy,
+        planning_mode: planningEnabled ? 'enabled' : 'disabled',
         reply_target_chars: normalizeReplyTargetChars(replyTargetChars),
         choice_count: normalizedChoiceCount,
         module_refs: submittedModuleRefs,
@@ -139,7 +135,7 @@ export function NewStorySetupPanel({ stories, tellers, directors, imagePresets, 
             <Field label={t('storyPicker.storyDirector')}>
               <Select value={directorId} onValueChange={selectDirector}>
                 <SelectTrigger className="nova-field h-8 w-full text-sm"><SelectValue /></SelectTrigger>
-                <SelectContent position="popper" className="nova-panel border text-[var(--nova-text)]">{directors.map((item) => <SelectItem key={item.id} value={item.id}>{item.name || item.id}</SelectItem>)}</SelectContent>
+                <SelectContent position="popper" className="nova-panel border text-[var(--nova-text)]">{directors.map((item) => <SelectItem key={item.id} value={item.id}>{gamePresetName(item, t)}</SelectItem>)}</SelectContent>
               </Select>
             </Field>
             <Field label={t('storyPicker.replyTargetChars')}><Input type="number" min={1} value={replyTargetChars} onChange={(event) => setReplyTargetChars(event.target.value)} className="nova-field" /></Field>
@@ -148,10 +144,10 @@ export function NewStorySetupPanel({ stories, tellers, directors, imagePresets, 
           </div>
           <Field label={t('storyPicker.setup.brief')} hint={t('storyPicker.setup.briefHint')}><Textarea autoResize value={origin} maxLength={4000} onChange={(event) => setOrigin(event.target.value)} className="nova-field min-h-20 resize-y" placeholder={t('storyPicker.originPlaceholder')} /></Field>
 
-          <DirectorRunPolicyCard mode={directorRunMode} intervalTurns={directorIntervalTurns} onModeChange={setDirectorRunMode} onIntervalTurnsChange={setDirectorIntervalTurns} t={t} />
+          <PlanningModeCard enabled={planningEnabled} onChange={setPlanningEnabled} t={t} />
 
           <section className="border-t border-[var(--nova-border)] pt-4">
-            <SectionHeader title={t('storyPicker.setup.modules')} description={t('storyPicker.setup.modulesHint', { director: director?.name || directorId })} />
+            <SectionHeader title={t('storyPicker.setup.modules')} description={t('storyPicker.setup.modulesHint', { director: directorName })} />
             <div className="mt-3 grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
               {moduleFields.map((field) => <ModuleSelectCard key={field.label} field={field} refs={moduleRefs} directorRefs={director?.module_refs || {}} options={moduleOptions[field.id]} onChange={setModuleRefs} onNarrativeStyleChange={(id) => { narrativeStyleSelectionLockedRef.current = true; void onNarrativeStyleChange?.(id) }} t={t} />)}
               <EventPackagesCard refs={moduleRefs} directorRefs={director?.module_refs || {}} options={moduleCatalog.eventPackages.map(moduleOption)} onChange={setModuleRefs} t={t} />
@@ -179,7 +175,7 @@ function SectionHeader({ title, description, titleId }: { title: string; descrip
   )
 }
 
-/** 单选选项卡片：后台导演运行方式与状态结构共用的紧凑选项样式。 */
+/** Compact radio-card style shared by state-schema choices. */
 function OptionRadioCard({ id, value, icon: Icon, selected, title, badge, description }: { id: string; value: string; icon: ElementType; selected: boolean; title: string; badge?: string; description: string }) {
   return (
     <label htmlFor={id} className={cn('relative flex cursor-pointer items-start gap-2 rounded-[10px] border p-2.5 transition-colors', selected ? 'border-[var(--nova-field-focus-border)] bg-[var(--nova-surface)]' : 'border-[var(--nova-border)] hover:bg-[var(--nova-surface)]/60')}>
@@ -195,22 +191,6 @@ function OptionRadioCard({ id, value, icon: Icon, selected, title, badge, descri
 function normalizeReplyTargetChars(value: string) { const parsed = Number(value); return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : DEFAULT_INTERACTIVE_REPLY_TARGET_CHARS }
 function parseChoiceCount(value: string) { const parsed = Number(value); return Number.isInteger(parsed) && parsed >= MIN_INTERACTIVE_CHOICE_COUNT && parsed <= MAX_INTERACTIVE_CHOICE_COUNT ? parsed : null }
 function defaultStoryTitle(stories: StorySummary[], t: (key: string, options?: Record<string, unknown>) => string) { return stories.length === 0 ? t('storyPicker.firstTitle') : t('storyPicker.numberedTitle', { number: stories.length + 1 }) }
-
-function defaultDirectorRunPolicy(director?: StoryDirector): StoryDirectorRunPolicy {
-  switch (director?.strategy?.director_agent_mode) {
-    case 'every_turn': return { mode: 'interval', interval_turns: 1 }
-    case 'off': return { mode: 'manual' }
-    case 'triggered':
-    default: return { mode: 'on_demand' }
-  }
-}
-
-function buildDirectorRunPolicy(mode: StoryDirectorRunMode, intervalTurns: string): StoryDirectorRunPolicy | null {
-  if (mode !== 'interval') return { mode }
-  const parsed = Number(intervalTurns)
-  if (!Number.isInteger(parsed) || parsed <= 0) return null
-  return { mode, interval_turns: parsed }
-}
 
 type ModuleOptionMap = Record<keyof StoryDirectorModuleRefs, Array<{ id: string; label: string }>>
 interface DirectorModuleCatalog {
@@ -239,22 +219,17 @@ const stateSchemaModes: Array<{ mode: StoryStateSchemaMode; icon: ElementType }>
   { mode: 'generate', icon: WandSparkles },
 ]
 
-const directorRunModes: Array<{ mode: StoryDirectorRunMode; icon: ElementType }> = [
-  { mode: 'on_demand', icon: Zap },
-  { mode: 'manual', icon: MousePointerClick },
-  { mode: 'interval', icon: Clock3 },
-]
-
-function DirectorRunPolicyCard({ mode, intervalTurns, onModeChange, onIntervalTurnsChange, t }: { mode: StoryDirectorRunMode; intervalTurns: string; onModeChange: (mode: StoryDirectorRunMode) => void; onIntervalTurnsChange: (value: string) => void; t: (key: string, options?: Record<string, unknown>) => string }) {
+function PlanningModeCard({ enabled, onChange, t }: { enabled: boolean; onChange: (enabled: boolean) => void; t: (key: string, options?: Record<string, unknown>) => string }) {
   return (
-    <section className="border-t border-[var(--nova-border)] pt-4" aria-labelledby="director-run-policy-title">
-      <SectionHeader titleId="director-run-policy-title" title={t('storyPicker.setup.directorRun.title')} description={t('storyPicker.setup.directorRun.description')} />
-      <RadioGroup value={mode} onValueChange={(value) => onModeChange(value as StoryDirectorRunMode)} className="mt-3 grid gap-2 md:grid-cols-3" aria-label={t('storyPicker.setup.directorRun.title')}>
-        {directorRunModes.map(({ mode: optionMode, icon }) => (
-          <OptionRadioCard key={optionMode} id={`director-run-${optionMode}`} value={optionMode} icon={icon} selected={mode === optionMode} title={t(`storyPicker.setup.directorRun.${optionMode}.title`)} badge={optionMode === 'on_demand' ? t('storyPicker.setup.directorRun.recommended') : undefined} description={t(`storyPicker.setup.directorRun.${optionMode}.description`)} />
-        ))}
-      </RadioGroup>
-      {mode === 'interval' ? <Field label={t('storyPicker.setup.directorRun.intervalLabel')} hint={t('storyPicker.setup.directorRun.intervalHint')} className="mt-2.5 sm:max-w-xs"><Input aria-label={t('storyPicker.setup.directorRun.intervalLabel')} type="number" min={1} step={1} value={intervalTurns} onChange={(event) => onIntervalTurnsChange(event.target.value)} className="nova-field" /></Field> : null}
+    <section className="border-t border-[var(--nova-border)] pt-4" aria-labelledby="planning-mode-title">
+      <div className="flex items-center gap-3 rounded-[12px] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-3">
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface)]"><Map className="size-4 text-[var(--nova-accent)]" /></span>
+        <div className="min-w-0 flex-1">
+          <h3 id="planning-mode-title" className="text-xs font-medium text-[var(--nova-text)]">{t('storyPicker.setup.planning.title')}</h3>
+          <p className="mt-0.5 text-[11px] leading-4 text-[var(--nova-text-faint)]">{t('storyPicker.setup.planning.description')}</p>
+        </div>
+        <Switch checked={enabled} onCheckedChange={onChange} aria-label={t('storyPicker.setup.planning.title')} />
+      </div>
     </section>
   )
 }

@@ -55,34 +55,6 @@ func (h *Handlers) HandleSessionAskCancel(ctx context.Context, c *app.RequestCon
 	writeJSON(c, consts.StatusOK, result)
 }
 
-func (h *Handlers) HandleConfigManagerAskAnswer(ctx context.Context, c *app.RequestContext) {
-	var request askAnswerRequest
-	if err := c.BindJSON(&request); err != nil {
-		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidBody")
-		return
-	}
-	result, err := h.app.ConfigManager().AnswerAsk(ctx, configManagerRequestFromQuery(c), strings.TrimSpace(c.Param("ask_id")), request.Answers)
-	if err != nil {
-		writeAskResolutionError(c, err)
-		return
-	}
-	writeJSON(c, consts.StatusOK, result)
-}
-
-func (h *Handlers) HandleConfigManagerAskCancel(ctx context.Context, c *app.RequestContext) {
-	var request askCancelRequest
-	if err := c.BindJSON(&request); err != nil {
-		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidBody")
-		return
-	}
-	result, err := h.app.ConfigManager().CancelAsk(ctx, configManagerRequestFromQuery(c), strings.TrimSpace(c.Param("ask_id")), request.Reason)
-	if err != nil {
-		writeAskResolutionError(c, err)
-		return
-	}
-	writeJSON(c, consts.StatusOK, result)
-}
-
 func writeAskResolutionError(c *app.RequestContext, err error) {
 	switch {
 	case errors.Is(err, appsvc.ErrAgentAskNotFound):

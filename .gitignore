@@ -30,6 +30,7 @@ docs/tests/*
 !docs/agent-prompt-architecture-audit.md
 !docs/agent-prompt-context-architecture-benchmark.md
 !docs/portable-denova-data-directory-design.md
+!docs/subagent-async-orchestration-design.md
 .worktrees/
 .pnpm-store/
 .DS_Store

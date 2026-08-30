@@ -68,15 +68,7 @@ func (catalog *Catalog) InteractiveStory(toolContext InteractiveContext) Factory
 	return interactiveStoryToolsFactory(catalog.cfg, toolContext)
 }
 
-func (catalog *Catalog) InteractiveDirector(toolContext InteractiveContext) Factory {
-	return interactiveDirectorToolsFactory(catalog.cfg, toolContext)
-}
-
-func (catalog *Catalog) InteractiveDirectorRead(toolContext InteractiveContext) ReadAdapterFactory {
-	return interactiveDirectorReadAdapterFactory(toolContext)
-}
-
-func (catalog *Catalog) ConfigManager() Factory { return configManagerToolsFactory(catalog.cfg) }
+func (catalog *Catalog) Configuration() Factory { return configurationToolsFactory(catalog.cfg) }
 
 func (catalog *Catalog) Workspace(settings config.ResolvedAgentToolSettings, readAdapters ...ReadAdapterBinding) ([]agent.ToolDefinition, error) {
 	workspace := ""
@@ -216,6 +208,11 @@ func ideToolsFactory(cfg *config.Config) Factory {
 			}
 			definitions = append(definitions, enabledDefinitions(settings, images)...)
 		}
+		configured, err := configurationToolsFactory(cfg)(settings)
+		if err != nil {
+			return nil, err
+		}
+		definitions = append(definitions, configured...)
 		return definitions, nil
 	}
 }
@@ -269,78 +266,16 @@ func interactiveStoryToolsFactory(cfg *config.Config, toolContexts ...Interactiv
 	}
 }
 
-func interactiveDirectorToolsFactory(cfg *config.Config, toolContexts ...InteractiveContext) Factory {
+func configurationToolsFactory(cfg *config.Config) Factory {
 	return func(settings config.ResolvedAgentToolSettings) ([]agent.ToolDefinition, error) {
-		var definitions []agent.ToolDefinition
-		var toolContext InteractiveContext
-		if len(toolContexts) > 0 {
-			toolContext = toolContexts[0]
-			if toolContext.MaxResultBytes <= 0 {
-				toolContext.MaxResultBytes = catalogToolResultMaxBytes(cfg)
-			}
-		}
-		if cfg != nil && settings.Allows(config.AgentToolLoreRead) {
-			var options []loreToolsOptions
-			switch strings.TrimSpace(toolContext.MaintenanceTask) {
-			case "director_plan_update", "opening_plan":
-				policy := defaultLoreReadPolicy()
-				policy.OnRead = toolContext.OnLoreItemsRead
-				options = append(options, loreToolsOptions{ReadPolicy: policy})
-			}
-			lore, err := newLoreTools(cfg.Workspace, false, options...)
-			if err != nil {
-				return nil, err
-			}
-			definitions = append(definitions, enabledDefinitions(settings, lore)...)
-		}
-		if len(toolContexts) == 0 {
-			return definitions, nil
-		}
-		switch strings.TrimSpace(toolContext.MaintenanceTask) {
-		case "director_plan_update", "opening_plan":
-			history, err := newInteractiveHistoryTools(toolContext)
-			if err != nil {
-				return nil, err
-			}
-			plan, err := newInteractiveDirectorPlanTools(toolContext)
-			if err != nil {
-				return nil, err
-			}
-			definitions = append(definitions, history...)
-			definitions = append(definitions, plan...)
-		}
-		return definitions, nil
-	}
-}
-
-func configManagerToolsFactory(cfg *config.Config) Factory {
-	return func(settings config.ResolvedAgentToolSettings) ([]agent.ToolDefinition, error) {
-		if cfg == nil {
+		if cfg == nil || (!settings.Allows(config.AgentToolConfigRead) && !settings.Allows(config.AgentToolConfigApply)) {
 			return nil, nil
 		}
-		var definitions []agent.ToolDefinition
-		if settings.Allows(config.AgentToolConfigRead) || settings.Allows(config.AgentToolConfigApply) {
-			configured, err := configresource.NewTools(cfg, catalogToolResultMaxBytes(cfg))
-			if err != nil {
-				return nil, err
-			}
-			definitions = append(definitions, enabledDefinitions(settings, configured)...)
+		definitions, err := configresource.NewTools(cfg, catalogToolResultMaxBytes(cfg))
+		if err != nil {
+			return nil, err
 		}
-		if cfg.ConfigManagerOrigin == "lore" && settings.Allows(config.AgentToolLoreRead) {
-			lore, err := newLoreTools(cfg.Workspace, false)
-			if err != nil {
-				return nil, err
-			}
-			definitions = append(definitions, enabledDefinitions(settings, lore)...)
-		}
-		if cfg.ConfigManagerOrigin == "lore" && settings.Allows(config.AgentToolImageGeneration) {
-			images, err := newIllustrationTools(cfg)
-			if err != nil {
-				return nil, err
-			}
-			definitions = append(definitions, enabledDefinitions(settings, images)...)
-		}
-		return definitions, nil
+		return enabledDefinitions(settings, definitions), nil
 	}
 }
 

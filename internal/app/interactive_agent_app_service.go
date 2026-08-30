@@ -2,20 +2,16 @@ package app
 
 import (
 	"context"
-	agents "denova/internal/agents"
 	agentchat "denova/internal/agents/chat"
 	agentexecution "denova/internal/agents/execution"
-	agentinteractive "denova/internal/agents/interactive"
 	apptask "denova/internal/app/task"
 	"fmt"
 	"log/slog"
 	"strings"
 
-	"denova/config"
 	agentcompaction "denova/internal/agents/context/compaction"
 	agentrun "denova/internal/agents/run"
 	interactiveapp "denova/internal/app/interactive"
-	appsettings "denova/internal/app/settings"
 	"denova/internal/interactive"
 )
 
@@ -70,100 +66,6 @@ func (s *InteractiveAppService) AnalyzeInteractiveContext(storyID, branchID, mes
 	return agentchat.BuildInteractiveInspectedContextAnalysis(
 		&cycle.runtimeCfg, cycle.systemPrompt, inspection,
 	), nil
-}
-
-func (a *App) AnalyzeInteractiveDirectorContext(storyID, branchID, turnID string, locale string) (agentchat.ContextAnalysis, error) {
-	return a.interactiveService().AnalyzeInteractiveDirectorContext(storyID, branchID, turnID, locale)
-}
-
-func (s *InteractiveAppService) AnalyzeInteractiveDirectorContext(storyID, branchID, turnID string, locale string) (agentchat.ContextAnalysis, error) {
-	a := s.app
-	a.mu.RLock()
-	workspace := a.workspace
-	a.mu.RUnlock()
-	operation, err := a.acquireWorkspaceOperation(context.Background(), workspace, true)
-	if err != nil {
-		return agentchat.ContextAnalysis{}, err
-	}
-	defer operation.Release()
-	ctx := operation.Context()
-	a.mu.RLock()
-	if a.interactive == nil || a.bookState == nil || a.cfg == nil || a.executionRuntime == nil {
-		a.mu.RUnlock()
-		return agentchat.ContextAnalysis{}, ErrNoWorkspace
-	}
-	store := a.interactive
-	state := a.bookState
-	executionRuntime := a.executionRuntime
-	runtimeCfg := *a.cfg
-	runtimeCfg.Workspace = workspace
-	novaDir := runtimeCfg.DataDir()
-	a.mu.RUnlock()
-
-	if layered, err := config.LoadLayeredWithStartupConfigAt(
-		novaDir, workspace, config.ProjectConfigPath(runtimeCfg.ProjectStateDir),
-	); err == nil {
-		appsettings.ApplyLayered(&runtimeCfg, layered)
-	} else {
-		slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-director-analysis] load interactive settings failed workspace=%s err=%v", workspace, err))
-	}
-	appsettings.ApplyLocale(&runtimeCfg, locale)
-
-	storyCtx, err := store.StoryContext(storyID, branchID)
-	if err != nil {
-		return agentchat.ContextAnalysis{}, err
-	}
-	turn, err := interactiveDirectorAnalysisTurn(storyCtx.Snapshot, turnID)
-	if err != nil {
-		return agentchat.ContextAnalysis{}, err
-	}
-	conversation := interactiveapp.NewConversation(store, novaDir, workspace, storyID, storyCtx.Snapshot.BranchID, turn.User, storyCtx.Meta.ReplyTargetChars, &runtimeCfg)
-	stableContext, instruction, err := conversation.BuildDirectorModelInput(turn)
-	if err != nil {
-		return agentchat.ContextAnalysis{}, err
-	}
-	directorCycle, err := agents.BuildInteractiveDirectorCycle(ctx, &runtimeCfg, state, agentinteractive.InteractiveStoryToolContext{
-		Store:                 store,
-		StoryID:               storyID,
-		BranchID:              storyCtx.Snapshot.BranchID,
-		TurnID:                turn.ID,
-		MaintenanceTask:       interactiveapp.DirectorTaskPlanUpdate,
-		StableContextTitle:    stableContext.Title,
-		StableContext:         stableContext.Content,
-		StableContextMaxBytes: stableContext.MaxBytes,
-		// Inspection never executes tools, but the callback must be present so
-		// the inspected schema is identical to an executable plan-update cycle.
-		SubmitDirectorPlanUpdate: func(context.Context, interactive.DirectorPlanUpdateSubmission) (interactive.DirectorPlanUpdateReceipt, error) {
-			return interactive.DirectorPlanUpdateReceipt{}, fmt.Errorf("Director plan updates are unavailable during read-only inspection")
-		},
-	}, instruction)
-	if err != nil {
-		return agentchat.ContextAnalysis{}, err
-	}
-	inspection, err := executionRuntime.Inspect(ctx, directorCycle)
-	if err != nil {
-		return agentchat.ContextAnalysis{}, err
-	}
-	slog.InfoContext(ctx, fmt.Sprintf("[interactive-director-analysis] inspected exact public context story_id=%s branch_id=%s turn_id=%s instruction=%s", storyID, storyCtx.Snapshot.BranchID, turn.ID, interactiveapp.PartSummary(instruction)))
-	return agentchat.BuildInteractiveDirectorInspectedContextAnalysis(
-		&runtimeCfg, directorCycle.Options.SystemPromptLog, inspection,
-	), nil
-}
-
-func interactiveDirectorAnalysisTurn(snapshot interactive.Snapshot, turnID string) (interactive.TurnEvent, error) {
-	turnID = strings.TrimSpace(turnID)
-	if turnID == "" {
-		if snapshot.CurrentTurn == nil {
-			return interactive.TurnEvent{}, fmt.Errorf("开局尚未完成，无法分析导演上下文")
-		}
-		return *snapshot.CurrentTurn, nil
-	}
-	for _, turn := range snapshot.Turns {
-		if turn.ID == turnID {
-			return turn, nil
-		}
-	}
-	return interactive.TurnEvent{}, fmt.Errorf("回合不存在: %s", turnID)
 }
 
 func (a *App) CompactInteractiveContext(ctx context.Context, storyID, branchID string) (agentcompaction.Result, error) {
@@ -359,15 +261,15 @@ func emitInteractiveTurnPersistedResult(store *interactive.Store, storyID string
 		}
 	}
 	event := InteractiveTurnPersistedEvent{
-		StoryID:            storyID,
-		BranchID:           snapshot.BranchID,
-		TurnCount:          snapshot.TurnCount,
-		Turn:               persistedTurn,
-		DirectorPlanStatus: snapshot.DirectorPlanStatus,
-		State:              snapshot.State,
-		Graph:              snapshot.Graph,
-		Branches:           snapshot.Graph.Branches,
-		ContextCompaction:  conversation.AgentCompactionProjection(snapshot),
+		StoryID:           storyID,
+		BranchID:          snapshot.BranchID,
+		TurnCount:         snapshot.TurnCount,
+		Turn:              persistedTurn,
+		BranchPlan:        snapshot.BranchPlan,
+		State:             snapshot.State,
+		Graph:             snapshot.Graph,
+		Branches:          snapshot.Graph.Branches,
+		ContextCompaction: conversation.AgentCompactionProjection(snapshot),
 	}
 	event.Turn.Attachments = attachmentDescriptors(event.Turn.Attachments)
 	emit(agentrun.Event{Type: "interactive_turn_persisted", Data: event})

@@ -4,7 +4,7 @@ const loreInit = {
   'loreInit.ideAction': 'Talk ideas with Writing Agent',
   'loreInit.interactiveTitle': 'Initialize shared lore first',
   'loreInit.interactiveDescription': 'Interactive openings are saved into lore and CREATOR.md first; no story is created automatically.',
-  'loreInit.openAgent': 'Open Config Manager Agent',
+  'loreInit.openAgent': 'Open Configuration Manager',
 } as const
 
 export default loreInit

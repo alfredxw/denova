@@ -171,6 +171,7 @@ export function ModelProfilesEditor({
           return (
             <SettingsDisclosureCard
               key={endpointID || `endpoint-${endpointIndex}`}
+              level="connection"
               badge={t('settings.model.endpointName', { index: endpointIndex + 1 })}
               title={modelEndpointLabel(endpoint) || t('settings.model.endpointUntitled')}
               subtitle={endpointSummary(endpoint, endpointProfiles.length, t)}
@@ -189,7 +190,10 @@ export function ModelProfilesEditor({
                 </Button>
               )}
             >
-              <div className="grid gap-2 p-2.5 md:grid-cols-12">
+              <div className="px-3 pt-2.5 text-[11px] font-medium text-[var(--nova-text-muted)]">
+                {t('settings.model.endpointSettings')}
+              </div>
+              <div className="grid gap-2 p-3 pt-2 md:grid-cols-12">
                 <ModelProfileField label={t('settings.model.endpointAliasLabel')} className="md:col-span-4">
                   <Input value={endpoint.name ?? ''} placeholder={t('settings.model.endpointAliasPlaceholder')} onChange={(event) => updateEndpoint(endpointIndex, { name: event.target.value })} />
                 </ModelProfileField>
@@ -217,7 +221,7 @@ export function ModelProfilesEditor({
               </div>
               <div className="border-t border-[var(--nova-border)] p-2.5">
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-[11px] text-[var(--nova-text-faint)]">{t('settings.model.endpointModels', { count: endpointProfiles.length })}</span>
+                  <span className="text-[11px] font-medium text-[var(--nova-text-muted)]">{t('settings.model.endpointModels', { count: endpointProfiles.length })}</span>
                   <div className="flex flex-wrap gap-2">
                     <ModelDiscoveryPicker endpoint={endpoint} defaultProtocol={defaultProtocol} existingModels={endpointProfiles.map(({ profile }) => profile.model ?? '')} onAdd={(models) => addModels(endpoint, models)} />
                     <Button type="button" variant="outline" size="sm" onClick={() => onProfilesChange([...profiles, {
@@ -228,35 +232,44 @@ export function ModelProfilesEditor({
                     </Button>
                   </div>
                 </div>
-                <div className="flex flex-col gap-2">
+                <div className={cn(
+                  'flex flex-col gap-1.5',
+                  endpointProfiles.length > 0 && 'ml-1 border-l border-[var(--nova-border)] pl-2.5',
+                )}>
                   {endpointProfiles.length === 0 && <div className="rounded-md border border-dashed border-[var(--nova-border)] px-2.5 py-3 text-xs text-[var(--nova-text-faint)]">{t('settings.model.endpointModelsEmpty')}</div>}
-                  {endpointProfiles.map(({ profile, index }, childIndex) => (
-                    <SettingsDisclosureCard
-                      key={profileKeys[index]}
-                      badge={modelProfileID(profile) === selectedDefaultProfileID ? t('settings.model.defaultProfileName') : t('settings.model.profileName', { index: childIndex + 1 })}
-                      title={modelProfileLabel(profile) || t('settings.model.profileUntitled')}
-                      subtitle={profile.model?.trim() || t('settings.model.profileModelMissing')}
-                      defaultOpen={!profile.model?.trim()}
-                      className="bg-[var(--nova-surface-1)]"
-                      actions={<Button type="button" variant="ghost" size="icon-sm" onClick={() => removeProfile(index)} aria-label={t('settings.model.deleteProfile')}><Trash2 /></Button>}
-                    >
-                      <div className="grid gap-2 p-2.5 md:grid-cols-12">
-                        <ModelProfileField label={t('settings.model.profileModelLabel')} className="md:col-span-8">
-                          <ModelDiscoveryInput endpoint={endpoint} profile={profile} defaultProtocol={defaultProtocol} value={profile.model ?? ''} placeholder={t('settings.model.profileModelPlaceholder')} onChange={(model) => updateProfileModel(index, model)} />
-                        </ModelProfileField>
-                        <ModelProfileField label={t('settings.model.profileAliasLabel')} className="md:col-span-4">
-                          <Input value={profile.name ?? ''} placeholder={t('settings.model.profileAliasPlaceholder')} onChange={(event) => updateProfile(index, { name: event.target.value })} />
-                        </ModelProfileField>
-                        <ModelProfileField label={t('settings.model.profileTemperatureLabel')} className="md:col-span-3">
-                          <Input type="number" step={0.01} min={0} max={1} value={profile.temperature ?? ''} placeholder="0-1" onChange={(event) => updateProfile(index, { temperature: event.target.value === '' ? null : Number(event.target.value) })} className="max-w-24" />
-                        </ModelProfileField>
-                        <ModelProfileField label={t('settings.model.contextWindow')} className="md:col-span-9">
-                          <ContextWindowInput value={profile.context_window_tokens ?? DEFAULT_CONTEXT_WINDOW_TOKENS} onChange={(value) => updateProfile(index, { context_window_tokens: value })} />
-                        </ModelProfileField>
-                      </div>
-                      <div className="border-t border-[var(--nova-border)] px-2.5 py-2"><ModelProfilePingButton endpoint={endpoint} profile={profile} /></div>
-                    </SettingsDisclosureCard>
-                  ))}
+                  {endpointProfiles.map(({ profile, index }, childIndex) => {
+                    const profileTitle = modelProfileLabel(profile) || t('settings.model.profileUntitled')
+                    return (
+                      <SettingsDisclosureCard
+                        key={profileKeys[index]}
+                        level="model"
+                        badge={modelProfileID(profile) === selectedDefaultProfileID ? t('settings.model.defaultProfileName') : t('settings.model.profileName', { index: childIndex + 1 })}
+                        title={profileTitle}
+                        subtitle={modelProfileSummary(profile, endpoint, profileTitle, t('settings.model.profileModelMissing'))}
+                        defaultOpen={!profile.model?.trim()}
+                        actions={<Button type="button" variant="ghost" size="icon-sm" onClick={() => removeProfile(index)} aria-label={t('settings.model.deleteProfile')}><Trash2 /></Button>}
+                      >
+                        <div className="px-2.5 pt-2.5 text-[11px] font-medium text-[var(--nova-text-muted)]">
+                          {t('settings.model.profileSettings')}
+                        </div>
+                        <div className="grid gap-2 p-2.5 pt-2 md:grid-cols-12">
+                          <ModelProfileField label={t('settings.model.profileModelLabel')} className="md:col-span-8">
+                            <ModelDiscoveryInput endpoint={endpoint} profile={profile} defaultProtocol={defaultProtocol} value={profile.model ?? ''} placeholder={t('settings.model.profileModelPlaceholder')} onChange={(model) => updateProfileModel(index, model)} />
+                          </ModelProfileField>
+                          <ModelProfileField label={t('settings.model.profileAliasLabel')} className="md:col-span-4">
+                            <Input value={profile.name ?? ''} placeholder={t('settings.model.profileAliasPlaceholder')} onChange={(event) => updateProfile(index, { name: event.target.value })} />
+                          </ModelProfileField>
+                          <ModelProfileField label={t('settings.model.profileTemperatureLabel')} className="md:col-span-3">
+                            <Input type="number" step={0.01} min={0} max={1} value={profile.temperature ?? ''} placeholder="0-1" onChange={(event) => updateProfile(index, { temperature: event.target.value === '' ? null : Number(event.target.value) })} className="max-w-24" />
+                          </ModelProfileField>
+                          <ModelProfileField label={t('settings.model.contextWindow')} className="md:col-span-9">
+                            <ContextWindowInput value={profile.context_window_tokens ?? DEFAULT_CONTEXT_WINDOW_TOKENS} onChange={(value) => updateProfile(index, { context_window_tokens: value })} />
+                          </ModelProfileField>
+                        </div>
+                        <div className="border-t border-[var(--nova-border-soft)] px-2.5 py-2"><ModelProfilePingButton endpoint={endpoint} profile={profile} /></div>
+                      </SettingsDisclosureCard>
+                    )
+                  })}
                 </div>
               </div>
             </SettingsDisclosureCard>
@@ -359,6 +372,16 @@ function ProviderPicker({ label, providers, value, placeholder, onChange }: { la
 function endpointSummary(endpoint: ModelEndpointSettings, count: number, t: (key: string, options?: Record<string, unknown>) => string): string {
   const route = endpoint.base_url?.trim() || endpoint.provider?.trim() || t('settings.model.endpointRouteMissing')
   return t('settings.model.endpointSummary', { route, count })
+}
+
+function modelProfileSummary(profile: ModelProfileSettings, endpoint: ModelEndpointSettings, title: string, missingModel: string): string {
+  const model = profile.model?.trim() ?? ''
+  const connection = modelEndpointLabel(endpoint)
+  const details: string[] = []
+  if (!model) details.push(missingModel)
+  else if (model !== title) details.push(model)
+  if (connection && connection !== title && connection !== model) details.push(connection)
+  return details.join(' · ') || model || missingModel
 }
 
 function isEndpointComplete(endpoint: ModelEndpointSettings, modelCount: number): boolean {

@@ -669,7 +669,7 @@ function AgentPanelComponent({
           />
         </ImageGenerationSettingsMenu>
         <WritingComposerSettingsMenu
-          enabled={Boolean(workspace) && !persistedSettings.loading && !isStreaming}
+          enabled={Boolean(workspace) && !persistedSettings.loading}
           tellers={tellers}
           tellerID={ideTellerId}
           writingSkills={writingSkillOptions}

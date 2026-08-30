@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Clock3, Inbox, Loader2, Play, Plus, RefreshCw, Settings2 } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Bot, Clock3, Inbox, Loader2, Play, Plus, RefreshCw, Settings2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { EmptyState } from '@/components/common/EmptyState'
@@ -68,7 +68,7 @@ import {
   type AutomationProjectOption,
 } from './automation-projects'
 
-type AutomationPanelView = 'config' | 'inbox' | 'agent'
+type AutomationPanelView = 'config' | 'inbox'
 
 export function AutomationsView({
   projectId = '',
@@ -97,6 +97,7 @@ export function AutomationsView({
   const [draft, setDraft] = useState<AutomationTask>(() => newAutomationTask(unassignedProjectTarget, t('automations.defaultName')))
   const [creating, setCreating] = useState(false)
   const [panelView, setPanelView] = useState<AutomationPanelView>('config')
+  const [agentOpen, setAgentOpen] = useState(false)
   const [sidebarVisible, setSidebarVisible] = useState(true)
   const [saving, setSaving] = useState(false)
   const [initialLoadComplete, setInitialLoadComplete] = useState(false)
@@ -552,13 +553,62 @@ export function AutomationsView({
       projects={projects}
       activeRuns={catalogActiveRuns}
       activeId={activeId}
-      agentActive={panelView === 'agent'}
+      agentActive={agentOpen}
       onSelect={selectTask}
       onCreate={() => void createNew()}
       onCreateForProject={(project) => void createNew(project)}
-      onOpenAgent={() => setPanelView('agent')}
+      onOpenAgent={() => setAgentOpen((open) => !open)}
     />
   )
+
+  let panelContent: ReactNode
+  if (panelView === 'inbox') {
+    panelContent = (
+      <InboxPanel
+        items={inboxItems}
+        tasks={tasks}
+        onRead={readInboxItem}
+        onConfirm={confirmInboxItem}
+        onDismiss={dismissInboxItem}
+        onOpenRun={(runId) => {
+          const run = tasks.flatMap((task) => task.recent_runs || []).find((candidate) => candidate.id === runId)
+          if (run) void openRun(run)
+        }}
+      />
+    )
+  } else if (hasEditableDraft) {
+    panelContent = (
+      <AutomationConfigPanel
+        activeId={activeId}
+        activeRunId={activeRunId}
+        draft={draft}
+        inheritedModelProfile={inheritedAutomationProfile}
+        modelProfileOptions={modelProfileOptions}
+        projects={projects}
+        templates={templates}
+        creating={creating}
+        running={running}
+        saving={saving}
+        onChange={setDraftField}
+        onOpenRun={openRun}
+        onProjectChange={setDraftProject}
+        onTemplateChange={setDraftTemplate}
+        onRemove={() => void requestRemove()}
+        onTriggersChange={setDraftTriggers}
+      />
+    )
+  } else {
+    panelContent = (
+      <EmptyState
+        variant="page"
+        icon={Plus}
+        title={t('automations.empty.title')}
+        description={t('automations.empty.description')}
+        action={{ label: t('automations.newTask'), onClick: () => void createNew() }}
+        className="min-h-0 flex-1 overflow-y-auto px-4 py-10"
+      />
+    )
+  }
 
   return (
     <FeaturePageShell
@@ -619,6 +669,29 @@ export function AutomationsView({
           desktopVisible: sidebarVisible,
           mobileClassName: 'w-[min(90vw,360px)]',
         }}
+        right={agentOpen ? {
+          id: 'automations-config-manager',
+          title: t('automations.view.agent'),
+          side: 'right',
+          icon: <Bot className="h-4 w-4" />,
+          content: (
+            <ConfigManagerChat
+              projectId={draftProject?.id || projectId}
+              origin="automation"
+              resourceId={activeId}
+              context={{
+                active_automation_id: activeId,
+                active_automation_name: draft.name || '',
+                automation_scope: draft.scope,
+                automation_target_kind: draft.target?.kind || '',
+                automation_target_workspace: draft.target?.workspace || '',
+              }}
+              onMutated={() => void load()}
+            />
+          ),
+          desktopClassName: 'min-h-0 border-l border-[var(--nova-border)]',
+          mobileClassName: 'w-[min(92vw,420px)]',
+        } : undefined}
         className="flex-1 text-xs"
         mainClassName="min-h-0 min-w-0"
         leftResize={{
@@ -628,8 +701,16 @@ export function AutomationsView({
           minSize: '220px',
           maxSize: '40%',
         }}
+        rightResize={{
+          layoutKey: 'nova-automations-config-manager-layout',
+          label: t('layout.resize.right'),
+          defaultSize: '420px',
+          minSize: '300px',
+          maxSize: '65%',
+          mainMinSize: '240px',
+        }}
       >
-        {({ isMobile, openLeft }) => (
+        {({ isMobile, openLeft, openRight }) => (
           <main className="flex h-full min-h-0 flex-col">
             <div className="flex h-10 shrink-0 items-center gap-2 overflow-x-auto border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 sm:px-4">
               {isMobile && (
@@ -639,6 +720,13 @@ export function AutomationsView({
                   onClick={openLeft}
                 />
               )}
+              {isMobile && agentOpen ? (
+                <MobilePaneTrigger
+                  side="right"
+                  label={t('workbench.mobile.openSidePanel', { label: t('automations.view.agent') })}
+                  onClick={openRight}
+                />
+              ) : null}
               <div className="flex h-7 items-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0.5">
                 <button
                   type="button"
@@ -666,61 +754,7 @@ export function AutomationsView({
               )}
             </div>
 
-            {panelView === 'config' ? hasEditableDraft ? (
-              <AutomationConfigPanel
-                activeId={activeId}
-                activeRunId={activeRunId}
-                draft={draft}
-                inheritedModelProfile={inheritedAutomationProfile}
-                modelProfileOptions={modelProfileOptions}
-                projects={projects}
-                templates={templates}
-                creating={creating}
-                running={running}
-                saving={saving}
-                onChange={setDraftField}
-                onOpenRun={openRun}
-                onProjectChange={setDraftProject}
-                onTemplateChange={setDraftTemplate}
-                onRemove={() => void requestRemove()}
-                onTriggersChange={setDraftTriggers}
-              />
-            ) : (
-              <EmptyState
-                variant="page"
-                icon={Plus}
-                title={t('automations.empty.title')}
-                description={t('automations.empty.description')}
-                action={{ label: t('automations.newTask'), onClick: () => void createNew() }}
-                className="min-h-0 flex-1 overflow-y-auto px-4 py-10"
-              />
-            ) : panelView === 'inbox' ? (
-            <InboxPanel
-              items={inboxItems}
-              tasks={tasks}
-              onRead={readInboxItem}
-              onConfirm={confirmInboxItem}
-              onDismiss={dismissInboxItem}
-              onOpenRun={(runId) => {
-                const run = tasks.flatMap((task) => task.recent_runs || []).find((candidate) => candidate.id === runId)
-                if (run) void openRun(run)
-              }}
-            />
-          ) : (
-            <ConfigManagerChat
-              projectId={draftProject?.id || projectId}
-              origin="automation"
-              resourceId={activeId}
-              context={{
-                active_automation_id: activeId,
-                active_automation_name: draft.name || '',
-                automation_scope: draft.scope,
-                automation_target_kind: draft.target?.kind || '',
-                automation_target_workspace: draft.target?.workspace || '',
-              }}
-              onMutated={() => void load()}
-            />
-          )}
+            {panelContent}
           </main>
         )}
       </AdaptiveSurface>

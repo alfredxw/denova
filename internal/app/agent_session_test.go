@@ -9,10 +9,8 @@ import (
 	"time"
 
 	"denova/config"
-	agents "denova/internal/agents"
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
-	configmanagerapp "denova/internal/app/configmanager"
 	projectdomain "denova/internal/project"
 )
 
@@ -199,75 +197,6 @@ func TestClearAgentSessionInStoreMarksEffectiveContextForEveryBuiltInAgent(t *te
 		if !hasClear {
 			t.Fatalf("agent %s history should keep clear marker: %#v", agentKind, history)
 		}
-	}
-}
-
-func TestConfigManagerScopedSessionsAreIsolated(t *testing.T) {
-	root := t.TempDir()
-	application, err := New(context.Background(), &config.Config{
-		OpenAIModel: "test-model", NovaDir: root, Workspace: root, ResumeLastWorkspace: false,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(application.Close)
-	projectID := application.ProjectID()
-	automationReq := configmanagerapp.Request{ProjectID: projectID, Origin: "automation", ResourceID: "daily-review"}
-	loreReq := configmanagerapp.Request{ProjectID: projectID, Origin: "lore", ResourceID: "__config_manager_lore__"}
-
-	automationID, err := configmanagerapp.SessionID(automationReq)
-	if err != nil {
-		t.Fatal(err)
-	}
-	loreID, err := configmanagerapp.SessionID(loreReq)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if automationID == loreID {
-		t.Fatalf("scoped config manager sessions should differ: %s", automationID)
-	}
-	runtime, err := application.AgentChat().ProjectRuntime(context.Background(), projectID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	automationSession, err := runtime.SessionStore.GetOrCreate(automationID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := automationSession.Append(agents.UserMessage("自动化配置")); err != nil {
-		t.Fatal(err)
-	}
-	loreSession, err := runtime.SessionStore.GetOrCreate(loreID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := loreSession.Append(agents.UserMessage("资料库配置")); err != nil {
-		t.Fatal(err)
-	}
-
-	automationHistory, err := application.ConfigManager().Messages(automationReq)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(automationHistory) != 1 || automationHistory[0].Content != "自动化配置" {
-		t.Fatalf("automation history should stay scoped: %#v", automationHistory)
-	}
-	loreHistory, err := application.ConfigManager().Messages(loreReq)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(loreHistory) != 1 || loreHistory[0].Content != "资料库配置" {
-		t.Fatalf("lore history should stay scoped: %#v", loreHistory)
-	}
-	if err := application.ConfigManager().Clear(automationReq); err != nil {
-		t.Fatal(err)
-	}
-	loreHistory, err = application.ConfigManager().Messages(loreReq)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(loreHistory) != 1 || loreHistory[0].Content != "资料库配置" {
-		t.Fatalf("clearing automation should not clear lore history: %#v", loreHistory)
 	}
 }
 

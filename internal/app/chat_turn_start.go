@@ -139,7 +139,7 @@ func (s *ChatAppService) startTaskWithError(ctx context.Context, expectedSession
 		runtimeContexts.Stable,
 		runtimeContexts.DynamicTitle,
 		runtimeContexts.Dynamic,
-	).WithInputVisibility(req.InputVisibility)
+	).WithInputVisibility(req.InputVisibility).WithInputDisplayContent(req.DisplayMessage)
 	var verifiedMutations []agenttool.Mutation
 	var postRunVerification agenttool.Verification
 	mutationCallback := a.verifiedWorkspaceMutationCallback(

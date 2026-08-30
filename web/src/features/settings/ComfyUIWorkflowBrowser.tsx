@@ -196,7 +196,7 @@ export function ComfyUIWorkflowBrowser({ endpoint, profile, onChange }: ComfyUIW
     })
   }
   return (
-    <div className="overflow-hidden rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-1)] md:col-span-12">
+    <div className="overflow-hidden rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] md:col-span-12">
       <input
         ref={fileInputRef}
         type="file"

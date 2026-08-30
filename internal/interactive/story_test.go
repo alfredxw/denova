@@ -129,6 +129,32 @@ func TestCreateStoryPersistsCustomReplyTargetChars(t *testing.T) {
 	}
 }
 
+func TestStoryPlanningModeDefaultsDisabledAndRejectsInvalidExplicitValues(t *testing.T) {
+	store := NewStore(t.TempDir())
+	story, err := store.CreateStory(CreateStoryRequest{Title: "自由探索"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if story.PlanningMode != StoryPlanningModeDisabled {
+		t.Fatalf("storage default planning mode = %q, want disabled", story.PlanningMode)
+	}
+	if _, err := store.CreateStory(CreateStoryRequest{Title: "非法配置", PlanningMode: "sometimes"}); err == nil {
+		t.Fatal("create accepted an invalid explicit planning mode")
+	}
+	enabled := "ENABLED"
+	updated, err := store.UpdateStory(story.ID, UpdateStoryRequest{PlanningMode: &enabled})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.PlanningMode != StoryPlanningModeEnabled {
+		t.Fatalf("updated planning mode = %q, want enabled", updated.PlanningMode)
+	}
+	invalid := "sometimes"
+	if _, err := store.UpdateStory(story.ID, UpdateStoryRequest{PlanningMode: &invalid}); err == nil {
+		t.Fatal("update accepted an invalid explicit planning mode")
+	}
+}
+
 func TestCreateStoryPersistsStoryModuleOverrides(t *testing.T) {
 	store := NewStore(t.TempDir())
 	refs := StoryDirectorModuleRefs{
@@ -833,7 +859,6 @@ func newStoreWithStaminaTestDirector(t *testing.T) (*Store, StoryDirector) {
 			RuleSystemDisabled:     true,
 			ImagePresetDisabled:    true,
 		},
-		Strategy: StoryDirectorStrategy{Enabled: true},
 		ActorState: StoryDirectorActorStateSystem{
 			Templates: []ActorStateTemplate{{
 				ID:   "protagonist",

@@ -7,25 +7,52 @@ import type { AgentPanelProps, AgentPanelView } from '@/components/Chat/AgentPan
 import {
   AgentChatConversationTab,
   type AgentChatConversationHost,
+  type AgentChatPendingAction,
   type AgentChatConversationState,
 } from './AgentChatConversationTab'
 import {
   createAgentChatSession,
   deleteAgentChatSession,
+  AGENT_CHAT_PROJECT_UPDATED_EVENT,
   getAgentChatProjects,
   renameAgentChatSession,
   type AgentChatSession,
+  type AgentChatProjectType,
 } from './api'
+import { readAgentChatActiveSession, writeAgentChatActiveSession } from './session-preferences'
 import { WritingSessionRail } from './WritingSessionRail'
 
 export const WRITING_SESSION_RAIL_STORAGE_KEY = 'nova.writingAgent.sessionRailVisible.v1'
-const ACTIVE_SESSION_STORAGE_PREFIX = 'nova.writingAgent.activeSession.v1:'
 
 /**
  * Project-scoped Writing Agent host. Every mounted conversation owns an immutable transport,
  * so changing the visible session never aborts a background run in the same Book.
  */
-export interface WritingAgentWorkspaceProps extends AgentPanelProps {
+type RequiredWorkspaceProps = Pick<AgentPanelProps,
+  | 'projectId'
+  | 'workspace'
+  | 'composerSettings'
+  | 'tellers'
+  | 'selectedFile'
+  | 'references'
+  | 'loreReferences'
+  | 'loreReferenceLabels'
+  | 'loreSuggestions'
+  | 'styleScenes'
+  | 'textSelections'
+  | 'fileSuggestions'
+  | 'onReferenceRemove'
+  | 'onLoreReferenceRemove'
+  | 'onStyleSceneRemove'
+  | 'onTextSelectionRemove'
+>
+
+export type WritingAgentWorkspaceProps = RequiredWorkspaceProps & Partial<AgentPanelProps> & {
+  projectType?: AgentChatProjectType
+  pendingAction?: AgentChatPendingAction | null
+  onPendingActionConsumed?: (id: string) => void
+  messageTransform?: (message: string) => string
+  onSettled?: () => void
   onConversationStateChange?: (state: AgentChatConversationState) => void
 }
 
@@ -44,8 +71,7 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
   sessionsRef.current = sessions
 
   const storeActiveSession = useCallback((sessionId: string) => {
-    if (typeof window === 'undefined') return
-    window.localStorage.setItem(`${ACTIVE_SESSION_STORAGE_PREFIX}${props.projectId}`, sessionId)
+    writeAgentChatActiveSession(props.projectId, sessionId)
   }, [props.projectId])
 
   const selectSession = useCallback((sessionId: string) => {
@@ -63,7 +89,7 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
     const nextSessions = sortSessions(project.sessions)
     setSessions(nextSessions)
     setActiveSessionId((current) => {
-      const stored = readStoredActiveSession(props.projectId)
+      const stored = readAgentChatActiveSession(props.projectId)
       const next = firstAvailableSession(nextSessions, current, stored, props.activeSessionId)
       if (next) storeActiveSession(next)
       return next
@@ -71,7 +97,7 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
     setMountedSessionIds((current) => {
       const available = new Set(nextSessions.map((session) => session.id))
       const retained = current.filter((sessionId) => available.has(sessionId))
-      const selected = firstAvailableSession(nextSessions, activeSessionId, readStoredActiveSession(props.projectId), props.activeSessionId)
+      const selected = firstAvailableSession(nextSessions, activeSessionId, readAgentChatActiveSession(props.projectId), props.activeSessionId)
       return uniqueStrings([
         ...retained,
         ...nextSessions.filter((session) => session.running).map((session) => session.id),
@@ -103,6 +129,21 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
       })
     return () => { cancelled = true }
   }, [props.projectId]) // Project changes intentionally reset every mounted conversation transport.
+
+  useEffect(() => {
+    const onProjectUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<{ projectId?: string }>).detail
+      if (detail?.projectId !== props.projectId) return
+      void refreshSessions().catch((refreshError) => {
+        console.error(
+          `[features/agent-chat/WritingAgentWorkspace.tsx] refreshing externally updated conversation failed project_id=${props.projectId} error=${errorMessage(refreshError)}`,
+          refreshError,
+        )
+      })
+    }
+    window.addEventListener(AGENT_CHAT_PROJECT_UPDATED_EVENT, onProjectUpdated)
+    return () => window.removeEventListener(AGENT_CHAT_PROJECT_UPDATED_EVENT, onProjectUpdated)
+  }, [props.projectId, refreshSessions])
 
   const createSession = useCallback(async () => {
     if (sessionPending) return
@@ -158,6 +199,7 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
     sessionsRef.current = nextSessions
     setSessions(nextSessions)
     if (settled) {
+      props.onSettled?.()
       void refreshSessions().catch((refreshError) => {
         console.error(
           `[features/agent-chat/WritingAgentWorkspace.tsx] refreshing settled conversation failed project_id=${props.projectId} session_id=${sessionId} error=${errorMessage(refreshError)}`,
@@ -165,7 +207,7 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
         )
       })
     }
-  }, [props.projectId, refreshSessions])
+  }, [props.onSettled, props.projectId, refreshSessions])
 
   const setSessionRailVisible = useCallback((visible: boolean) => {
     if (props.onSessionRailVisibleChange) {
@@ -193,7 +235,7 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
   }, [props.projectId, refreshSessions])
 
   const host = useMemo<AgentChatConversationHost>(() => ({
-    chrome: 'panel',
+    chrome: props.chrome ?? 'panel',
     view,
     onViewChange: setView,
     sessions,
@@ -226,6 +268,7 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
   }), [
     createSession,
     deleteSession,
+    props.chrome,
     props.currentChapter,
     props.fileSuggestions,
     props.ideContext,
@@ -294,7 +337,7 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
             >
               <AgentChatConversationTab
                 projectId={props.projectId}
-                projectType="book"
+                projectType={props.projectType ?? 'book'}
                 workspace={props.workspace}
                 sessionId={session.id}
                 syncRevision={`${session.updated_at}:${session.message_count}:${session.running ? 'running' : 'idle'}`}
@@ -311,6 +354,9 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
                 onWorkspaceChanged={(_workspace, paths) => props.onWorkspaceChanged?.(paths)}
                 onRunningChange={handleRunningChange}
                 onConversationStateChange={active ? props.onConversationStateChange : undefined}
+                pendingAction={active ? props.pendingAction : null}
+                onPendingActionConsumed={active ? props.onPendingActionConsumed : undefined}
+                messageTransform={props.messageTransform}
                 host={host}
               />
             </section>
@@ -329,7 +375,7 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
   )
 }
 
-function firstAvailableSession(sessions: AgentChatSession[], ...preferredIds: string[]) {
+function firstAvailableSession(sessions: AgentChatSession[], ...preferredIds: Array<string | undefined>) {
   for (const preferredId of preferredIds) {
     if (preferredId && sessions.some((session) => session.id === preferredId)) return preferredId
   }
@@ -354,11 +400,6 @@ export function readWritingSessionRailVisibility() {
 export function writeWritingSessionRailVisibility(visible: boolean) {
   if (typeof window === 'undefined') return
   window.localStorage.setItem(WRITING_SESSION_RAIL_STORAGE_KEY, String(visible))
-}
-
-function readStoredActiveSession(projectId: string) {
-  if (typeof window === 'undefined') return ''
-  return window.localStorage.getItem(`${ACTIVE_SESSION_STORAGE_PREFIX}${projectId}`) || ''
 }
 
 function errorMessage(error: unknown) {

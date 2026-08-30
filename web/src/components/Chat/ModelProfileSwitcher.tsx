@@ -21,6 +21,7 @@ interface ModelProfileSwitcherProps {
   workspace?: string
   conversationConfig?: ConversationConfigController
   disabled?: boolean
+  runActive?: boolean
 }
 
 interface ModelProfileOption {
@@ -38,7 +39,7 @@ interface SavingSelection {
 // horizontally so ellipsis still works without cutting off glyphs vertically.
 const MODEL_LABEL_OVERFLOW_CLASS = 'min-w-0 overflow-x-clip overflow-y-visible text-ellipsis whitespace-nowrap'
 
-export function ModelProfileSwitcher({ agentKey, workspace, conversationConfig, disabled = false }: ModelProfileSwitcherProps) {
+export function ModelProfileSwitcher({ agentKey, workspace, conversationConfig, disabled = false, runActive = false }: ModelProfileSwitcherProps) {
   const selector = useModelProfileSelector({ agentKey, workspace, conversationConfig, disabled })
   const [open, setOpen] = useState(false)
 
@@ -69,6 +70,14 @@ export function ModelProfileSwitcher({ agentKey, workspace, conversationConfig, 
         aria-label={selector.t('chat.modelProfile.action')}
         className="w-60 border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-1.5 text-[var(--nova-text)]"
       >
+        {runActive ? (
+          <>
+            <div role="note" className="px-1.5 py-1 text-[11px] leading-4 text-[var(--nova-text-faint)]">
+              {selector.t('chat.input.changesApplyNextTurn')}
+            </div>
+            <DropdownMenuSeparator className="bg-[var(--nova-border-soft)]" />
+          </>
+        ) : null}
         <ModelProfileOptions
           selector={selector}
           onThinkingLevelSelect={(level) => {

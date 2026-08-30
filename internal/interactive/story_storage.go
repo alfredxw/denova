@@ -154,7 +154,8 @@ func storySummaryFromProjection(projection *storyJournalProjection) StorySummary
 	return normalizeStorySummary(StorySummary{
 		ID: meta.StoryID, Title: meta.Title, Origin: meta.Origin,
 		StoryTellerID: meta.StoryTellerID, StoryDirectorID: normalizedStoryDirectorID(meta.StoryDirectorID),
-		DirectorRunPolicy: cloneStoryDirectorRunPolicy(meta.DirectorRunPolicy), ModuleRefs: cloneStoryDirectorModuleRefs(meta.ModuleRefs),
+		ModuleRefs:       cloneStoryDirectorModuleRefs(meta.ModuleRefs),
+		PlanningMode:     meta.PlanningMode,
 		ReplyTargetChars: meta.ReplyTargetChars, ChoiceCount: meta.ChoiceCount,
 		Opening: meta.Opening, ImageSettings: meta.ImageSettings,
 		StateSchemaPolicy: cloneStoryStateSchemaPolicy(meta.StateSchemaPolicy),

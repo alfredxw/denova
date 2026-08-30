@@ -209,6 +209,34 @@ describe('useAgentChat', () => {
     })
   })
 
+  it('submits host-enriched input with a separate creator-facing projection', async () => {
+    writingAgentChatClient.fixedSessionId = ''
+    vi.mocked(getSessions).mockResolvedValue([
+      {
+        id: 'session-configuration',
+        title: 'configuration',
+        active: true,
+        message_count: 2,
+        created_at: '2026-08-30T00:00:00Z',
+        updated_at: '2026-08-30T00:00:00Z',
+      },
+    ])
+    chatMock.sendMessage.mockResolvedValue(undefined)
+    const { result } = renderHook(() => useAgentChat())
+    await act(async () => {
+      await result.current.loadSessions()
+      expect(await result.current.send('/configuration\n\nUpdate the preset.', {
+        displayMessage: 'Update the preset.',
+      })).toBe(true)
+    })
+
+    expect(chatMock.sendMessage.mock.calls.at(-1)?.[1]?.body).toMatchObject({
+      session_id: 'session-configuration',
+      message: '/configuration\n\nUpdate the preset.',
+      display_message: 'Update the preset.',
+    })
+  })
+
   it('refreshes session summaries after a completed turn', async () => {
     writingAgentChatClient.fixedSessionId = ''
     const stale = {

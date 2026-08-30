@@ -2,8 +2,6 @@ package interactiveapp
 
 import (
 	"context"
-	agentexecution "denova/internal/agents/execution"
-	agentinteractive "denova/internal/agents/interactive"
 	"fmt"
 	agent "github.com/alfredxw/denova/agent"
 	"log/slog"
@@ -17,7 +15,6 @@ import (
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 	novaskills "denova/internal/agents/skills"
-	"denova/internal/book"
 	"denova/internal/book/lore"
 	"denova/internal/interactive"
 )
@@ -32,7 +29,6 @@ type Conversation struct {
 	user                     string
 	inputVisibility          agentrun.InputVisibility
 	replyTargetChars         int
-	directorTask             string
 	modelContextAppendMu     sync.Mutex
 	turnCheckMu              sync.Mutex
 	mu                       sync.Mutex
@@ -51,12 +47,7 @@ type Conversation struct {
 	baseParentID             *string
 	replaceTurnID            string
 	pinParentAtExecution     bool
-	directorTasks            *DirectorTaskGroup
-	directorGenerator        DirectorGenerator
-	directorExecutionRuntime *agentexecution.Runtime
-	customDirectorGenerator  bool
 	agentCycleCommit         func(context.Context, agentrun.Outcome) error
-	agentCyclePrepare        func(context.Context) error
 	agentCycleIdentity       agentrun.CycleIdentity
 	pendingDomainCommit      *interactive.DomainCommitIntent
 	lastDomainReceipt        *interactive.DomainCommitReceipt
@@ -120,32 +111,6 @@ func (c *Conversation) WithAgentCycleCommit(commit func(context.Context, agentru
 		c.mu.Unlock()
 	}
 	return c
-}
-
-func (c *Conversation) WithAgentCyclePrepare(prepare func(context.Context) error) *Conversation {
-	if c != nil {
-		c.mu.Lock()
-		c.agentCyclePrepare = prepare
-		c.mu.Unlock()
-	}
-	return c
-}
-
-// PrepareAgentCycle implements agentrun.CyclePreparer. The durable
-// coordinator calls it after binding command/operation/cycle identity and
-// before any model or tool effect, so queued follow-ups cannot observe a stale
-// cross-domain projection.
-func (c *Conversation) PrepareAgentCycle(ctx context.Context) error {
-	if c == nil {
-		return nil
-	}
-	c.mu.Lock()
-	prepare := c.agentCyclePrepare
-	c.mu.Unlock()
-	if prepare == nil {
-		return nil
-	}
-	return prepare(ctx)
 }
 
 // CommitAgentCycle implements agentrun.CycleCommitter. The callback is
@@ -225,8 +190,6 @@ func (c *Conversation) LastAgentCycleCommitReceipt(stage agentrun.DomainCommitSt
 	}, true
 }
 
-type DirectorGenerator func(context.Context, *config.Config, *book.State, agentinteractive.InteractiveStoryToolContext, string) (string, error)
-
 func NewConversation(store *interactive.Store, novaDir, workspace, storyID, branchID, user string, replyTargetChars int, cfg *config.Config) *Conversation {
 	return &Conversation{store: store, novaDir: novaDir, workspace: workspace, cfg: cfg, storyID: storyID, branchID: branchID, user: user, replyTargetChars: replyTargetChars}
 }
@@ -238,53 +201,6 @@ func (c *Conversation) WithInputVisibility(visibility agentrun.InputVisibility) 
 		c.mu.Lock()
 		c.inputVisibility = visibility
 		c.mu.Unlock()
-	}
-	return c
-}
-
-func (c *Conversation) BindDirectorRuntime(tasks *DirectorTaskGroup, generator DirectorGenerator, executionRuntimes ...*agentexecution.Runtime) *Conversation {
-	if c != nil {
-		c.directorTasks = tasks
-		if len(executionRuntimes) > 0 {
-			c.directorExecutionRuntime = executionRuntimes[0]
-		}
-		if generator != nil {
-			c.directorGenerator = generator
-			c.customDirectorGenerator = true
-		} else if c.directorExecutionRuntime != nil {
-			service := c.directorExecutionRuntime
-			c.directorGenerator = func(ctx context.Context, cfg *config.Config, state *book.State, toolContext agentinteractive.InteractiveStoryToolContext, instruction string) (string, error) {
-				return agents.GenerateInteractiveDirectorWithTools(ctx, service, cfg, state, toolContext, instruction)
-			}
-			c.customDirectorGenerator = false
-		}
-	}
-	return c
-}
-
-// DirectorTasks returns the workspace-generation owner for background Director
-// projection work. A nil result means the conversation is not runtime-bound.
-func (c *Conversation) DirectorTasks() *DirectorTaskGroup {
-	if c == nil {
-		return nil
-	}
-	return c.directorTasks
-}
-
-func (c *Conversation) InheritDirectorRuntime(source *Conversation) *Conversation {
-	if c == nil || source == nil {
-		return c
-	}
-	c.directorTasks = source.directorTasks
-	c.directorGenerator = source.directorGenerator
-	c.directorExecutionRuntime = source.directorExecutionRuntime
-	c.customDirectorGenerator = source.customDirectorGenerator
-	return c
-}
-
-func (c *Conversation) WithDirectorTask(task string) *Conversation {
-	if c != nil {
-		c.directorTask = strings.TrimSpace(task)
 	}
 	return c
 }
@@ -449,20 +365,6 @@ func (c *Conversation) effectiveTurnState(storyCtx interactive.StoryContext) (in
 	return actorState, state, nil
 }
 
-func (c *Conversation) directorTaskHint() string {
-	if c == nil {
-		return ""
-	}
-	switch strings.TrimSpace(c.directorTask) {
-	case DirectorTaskOpeningPlan:
-		return "opening_plan: establish director.md, agent-brief.md, and lore-context.md before the first Game Agent turn; use the opening setup and lore-name roster for initial casting, scene setup, and branch planning."
-	case "director_plan_update":
-		return "director_plan_update: the Game Agent reported that this turn materially affects future planning; choose keep, patch, or replan. Routine updates patch only agent-brief.md by default. Change director.md only for major deviations and lore-context.md only when the lore working set changes."
-	default:
-		return "director_plan_update: inspect committed facts and choose keep, patch, or replan. Patch only Director Markdown files that actually changed; never rewrite historical Turn or Actor State."
-	}
-}
-
 type interactiveModelContextCommitState struct {
 	storyContext         interactive.StoryContext
 	baseParentID         *string
@@ -522,13 +424,13 @@ func (c *Conversation) AssembleModelContext(ctx context.Context, originalMessage
 	if activeCompaction != nil {
 		checkpointSummary = strings.TrimSpace(activeCompaction.Summary)
 	}
-	directorPlanVisible := ""
-	directorPlan := interactive.DirectorPlan{}
-	if storyCtx.Snapshot.DirectorPlan != nil {
-		directorPlan = *storyCtx.Snapshot.DirectorPlan
-		directorPlanVisible = interactive.DirectorPlanVisibleContext(directorPlan, StoryRuntimeContextMaxBytes)
+	branchPlan := ""
+	var activeBranchPlan *interactive.BranchPlan
+	if storyCtx.Meta.PlanningMode == interactive.StoryPlanningModeEnabled && storyCtx.Snapshot.BranchPlan != nil {
+		activeBranchPlan = storyCtx.Snapshot.BranchPlan
+		branchPlan = storyCtx.Snapshot.BranchPlan.Markdown
 	}
-	loreRuntime, err := buildInteractiveStoryLoreContext(c.workspace, directorPlan, input.UserMessage)
+	loreRuntime, err := buildInteractiveStoryLoreContext(c.workspace, activeBranchPlan, input.UserMessage)
 	if err != nil {
 		return agentcontext.ModelContextResult{}, err
 	}
@@ -554,22 +456,20 @@ func (c *Conversation) AssembleModelContext(ctx context.Context, originalMessage
 	ruleSummary := interactive.StoryDirectorRuleSummary(storyDirector, StoryRuntimeContextMaxBytes)
 	actorStateRuntime := interactive.ActorStateRuntimeContext(storyDirector.ActorState, storyCtx.Snapshot.State, StoryRuntimeContextMaxBytes, storyCtx.Meta.ChoiceCount)
 	stateSchemaInitialization := interactive.OpeningGameStateSchemaInstruction(storyCtx.Meta)
-	strategyPrompt := interactive.StoryDirectorStrategyPromptMarkdown(storyDirector)
 	runtimeContext := prompts.InteractiveStoryRuntimeContext(prompts.InteractiveStoryPromptInput{
-		Title:                       storyCtx.Meta.Title,
-		Origin:                      storyCtx.Meta.Origin,
-		StoryTellerID:               storyCtx.Meta.StoryTellerID,
-		StoryDirectorID:             storyCtx.Meta.StoryDirectorID,
-		BranchID:                    storyCtx.Snapshot.BranchID,
-		ReplyTargetChars:            c.replyTargetChars,
-		ChoiceCount:                 storyCtx.Meta.ChoiceCount,
-		DirectorPlanVisible:         directorPlanVisible,
-		StoryDirectorRules:          ruleSummary,
-		ActorState:                  actorStateRuntime,
-		StateSchemaInitialization:   stateSchemaInitialization,
-		StoryDirectorStrategyPrompt: strategyPrompt,
-		PreviousTurnsSummary:        turnHistory.PreviousSummary,
-		LoreContext:                 loreRuntime,
+		Title:                     storyCtx.Meta.Title,
+		Origin:                    storyCtx.Meta.Origin,
+		StoryTellerID:             storyCtx.Meta.StoryTellerID,
+		BranchID:                  storyCtx.Snapshot.BranchID,
+		ReplyTargetChars:          c.replyTargetChars,
+		ChoiceCount:               storyCtx.Meta.ChoiceCount,
+		BranchPlan:                branchPlan,
+		PlanningEnabled:           storyCtx.Meta.PlanningMode == interactive.StoryPlanningModeEnabled,
+		GamePresetRules:           ruleSummary,
+		ActorState:                actorStateRuntime,
+		StateSchemaInitialization: stateSchemaInitialization,
+		PreviousTurnsSummary:      turnHistory.PreviousSummary,
+		LoreContext:               loreRuntime,
 	})
 	cycleIdentity := c.AgentCycleIdentitySnapshot()
 	modelProjection, err := BuildModelContextProjection(
@@ -600,7 +500,7 @@ func (c *Conversation) AssembleModelContext(ctx context.Context, originalMessage
 	if strings.TrimSpace(runtimeContext) != "" {
 		fragments = append(fragments, agentcontext.Fragment{
 			ID: "interactive_runtime", Source: "interactive.runtime", Title: "Interactive Runtime Context for This Turn",
-			Purpose: "provide bounded story state, active lore, actor state, and turn policy",
+			Purpose: "provide bounded story state, branch plan, active lore, actor state, and turn policy",
 			Content: runtimeContext, Placement: agentcontext.PlacementFinalUserPrefix, Limit: StoryRuntimeContextMaxBytes, Included: true,
 		})
 	}
@@ -622,7 +522,7 @@ func (c *Conversation) AssembleModelContext(ctx context.Context, originalMessage
 			break
 		}
 	}
-	sourceParts := interactiveStoryContextSources(storyCtx.Meta.Title, storyCtx.Meta.Origin, teller, checkpointSummary, directorPlanVisible, residentVisible, loreRevision, loreRuntime, ruleSummary, actorStateRuntime, stateSchemaInitialization, strategyPrompt, turnHistory, input.UserMessage)
+	sourceParts := interactiveStoryContextSources(storyCtx.Meta.Title, storyCtx.Meta.Origin, teller, checkpointSummary, branchPlan, residentVisible, loreRevision, loreRuntime, ruleSummary, actorStateRuntime, stateSchemaInitialization, turnHistory, input.UserMessage)
 	for index, message := range pendingInputMessages {
 		sourceParts = append(sourceParts, interactiveContextSource{
 			Source: "InterruptedPlayerInput", Title: fmt.Sprintf("Accepted Player Input Without Narrative Output %d", index+1),
@@ -634,7 +534,7 @@ func (c *Conversation) AssembleModelContext(ctx context.Context, originalMessage
 	sourceSummary := interactiveContextSourceListSummary(sourceParts, assembled.Fragments)
 	contextLedgerParts := interactiveContextLedgerParts(sourceParts, history, c.ToolResultContextPolicy())
 	slog.InfoContext(ctx, fmt.Sprintf(
-		"[interactive-agent] context composition story_id=%s branch_id=%s story_title=%s origin=%s teller_id=%s story_director_id=%s teller_slots=%s teller_turn_context=%s history_checkpoint=%s director_plan=%s turns=%d model_turns=%d history=%s turn_instruction=%s sources=%s",
+		"[interactive-agent] context composition story_id=%s branch_id=%s story_title=%s origin=%s teller_id=%s game_preset_id=%s teller_slots=%s teller_turn_context=%s history_checkpoint=%s branch_plan=%s turns=%d model_turns=%d history=%s turn_instruction=%s sources=%s",
 		c.storyID,
 		storyCtx.Snapshot.BranchID,
 		PartSummary(storyCtx.Meta.Title),
@@ -644,7 +544,7 @@ func (c *Conversation) AssembleModelContext(ctx context.Context, originalMessage
 		interactiveTellerSlotSummary(teller, "turn_context"),
 		PartSummary(tellerTurnContextPrompt),
 		PartSummary(checkpointSummary),
-		PartSummary(directorPlanVisible),
+		PartSummary(branchPlan),
 		modelHistory.TotalTurns,
 		len(turnHistory.Turns),
 		interactiveMessageListSummary(history),
@@ -775,11 +675,7 @@ func (c *Conversation) RunTraceMetadata() agentrun.TraceMetadata {
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	metadata := agentrun.TraceMetadata{
-		StoryID:         c.storyID,
-		BranchID:        c.branchID,
-		MaintenanceTask: c.directorTask,
-	}
+	metadata := agentrun.TraceMetadata{StoryID: c.storyID, BranchID: c.branchID}
 	if c.lastTurn != nil {
 		metadata.BranchID = c.lastTurn.BranchID
 		metadata.TurnID = c.lastTurn.ID

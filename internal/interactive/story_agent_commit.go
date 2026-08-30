@@ -298,6 +298,23 @@ func (s *Store) AppendTurnWithState(storyID string, req AppendTurnWithStateReque
 	meta.Branches[branchID] = branch
 	meta.UpdatedAt = now
 	newEvents := []any{turn}
+	var committedPlanUpdate *string
+	if meta.PlanningMode == StoryPlanningModeEnabled && turn.TurnResult != nil {
+		committedPlanUpdate = cloneStringPointer(turn.TurnResult.PlanUpdate)
+		// Replacing the latest Turn first restores the branch projection to the
+		// target's parent. Omission means preserve the current plan, so attach
+		// that same content to the replacement Turn instead of losing it.
+		if committedPlanUpdate == nil && strings.TrimSpace(req.ReplaceTurnID) != "" && branchProjection.Plan != nil {
+			committedPlanUpdate = cloneStringPointer(&branchProjection.Plan.Markdown)
+		}
+	}
+	if committedPlanUpdate != nil {
+		newEvents = append(newEvents, BranchPlanUpdatedEvent{
+			V: schemaVersion, Type: StoryEventTypeBranchPlanUpdated, ID: newID("bpu"),
+			ParentID: turn.ID, BranchID: turn.BranchID, Ts: turn.Ts, TurnID: turn.ID,
+			Markdown: normalizeBranchPlanMarkdown(*committedPlanUpdate),
+		})
+	}
 	modelContinuationEvents, err := newModelContextProviderContinuationEvents(turn.ID, turn.BranchID, turn.Ts, turn.ModelContextMessages)
 	if err != nil {
 		return TurnEvent{}, nil, err
@@ -366,6 +383,7 @@ func agentTurnRequestHash(req AppendTurnWithStateRequest) (string, error) {
 		ActorOps             []ActorStateOp
 		RuleResolution       *RuleResolution
 		TurnResult           *TurnResult
+		PlanUpdate           *string
 		TerminalOutcome      *TerminalOutcome
 		StateSchemaProposal  *ActorStateSchemaProposal
 	}{
@@ -375,7 +393,7 @@ func agentTurnRequestHash(req AppendTurnWithStateRequest) (string, error) {
 		RunID: req.RunID, AgentKind: req.AgentKind, ProviderContinuation: req.ProviderContinuation,
 		DisplayEvents: req.DisplayEvents,
 		Ops:           req.Ops, ActorOps: req.ActorOps, RuleResolution: req.RuleResolution,
-		TurnResult: req.TurnResult, TerminalOutcome: req.TerminalOutcome,
+		TurnResult: req.TurnResult, PlanUpdate: planUpdateFromTurnResult(req.TurnResult), TerminalOutcome: req.TerminalOutcome,
 		StateSchemaProposal: req.StateSchemaProposal,
 	}
 	data, err := json.Marshal(payload)
@@ -384,6 +402,13 @@ func agentTurnRequestHash(req AppendTurnWithStateRequest) (string, error) {
 	}
 	sum := sha256.Sum256(data)
 	return fmt.Sprintf("sha256:%x", sum[:]), nil
+}
+
+func planUpdateFromTurnResult(result *TurnResult) *string {
+	if result == nil {
+		return nil
+	}
+	return cloneStringPointer(result.PlanUpdate)
 }
 
 func stateDeltaEventForCommittedTurn(turn TurnEvent) *StateDeltaEvent {

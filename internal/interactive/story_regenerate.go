@@ -43,6 +43,7 @@ func (s *Store) StoryContextAtTurnParent(storyID, branchID, turnID string) (Stor
 		if projection.Depth > 0 {
 			snapshot.TurnCount = projection.Depth - 1
 		}
+		snapshot.BranchPlan = cloneBranchPlan(projection.PlanBeforeLatest)
 	}
 	// This historical parent is a distinct canonical model-history revision.
 	// Reusing the live branch's monotonically accumulated counter would let
@@ -50,13 +51,9 @@ func (s *Store) StoryContextAtTurnParent(storyID, branchID, turnID string) (Stor
 	// retry. The projected prefix depth is stable for the same target and always
 	// advances once the replacement turn becomes the live branch.
 	snapshot.ContextRevision = uint64(snapshot.TurnCount)
-	// Director plan documents and token-usage telemetry are mutable branch
-	// sidecars, not events on the parent path. Attaching the latest sidecar here
-	// would leak facts learned after the regenerated turn into its replacement
-	// model call. Leave both unavailable in this historical projection; after
-	// the replacement commits, Director maintenance rebuilds from the new head.
-	snapshot.DirectorPlan = nil
-	snapshot.DirectorPlanStatus = nil
+	// Token-usage telemetry is mutable runtime data and is unavailable in this
+	// historical projection. BranchPlan is restored from its event checkpoint
+	// above so regeneration cannot see intent learned after the replaced turn.
 	snapshot.TokenUsageEvents = nil
 	return StoryContext{Meta: meta, Snapshot: snapshot}, nil
 }

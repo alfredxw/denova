@@ -26,10 +26,11 @@ import type {
 import type { SkillSummary } from '@/lib/api'
 
 type AgentKey = keyof AgentModelSettings
-export type VisibleAgentKey = Exclude<AgentKey, 'default'>
+// config_manager is a persistence tombstone for settings written by v0.3.3.
+export type VisibleAgentKey = Exclude<AgentKey, 'default' | 'config_manager'>
 export type ToolKey = AgentToolCapability
 type AgentCapabilityMode = 'tools' | 'built_in' | 'model_only'
-export type SubAgentParentKey = Extract<VisibleAgentKey, 'general' | 'ide' | 'interactive_story' | 'config_manager'>
+export type SubAgentParentKey = Extract<VisibleAgentKey, 'general' | 'ide' | 'interactive_story'>
 
 export interface AgentViewDefinition {
   key: VisibleAgentKey
@@ -71,28 +72,12 @@ export const AGENTS: AgentViewDefinition[] = [
     icon: PenLine,
   },
   {
-    key: 'config_manager',
-    titleKey: 'agents.configManager.title',
-    subtitleKey: 'agents.configManager.subtitle',
-    groupKey: 'agents.group.writing',
-    capabilityMode: 'tools',
-    icon: Settings2,
-  },
-  {
     key: 'interactive_story',
     titleKey: 'agents.interactiveStory.title',
     subtitleKey: 'agents.interactiveStory.subtitle',
     groupKey: 'agents.group.interactive',
     capabilityMode: 'tools',
     icon: MessageSquareText,
-  },
-  {
-    key: 'interactive_director',
-    titleKey: 'agents.interactiveDirector.title',
-    subtitleKey: 'agents.interactiveDirector.subtitle',
-    groupKey: 'agents.group.interactive',
-    capabilityMode: 'tools',
-    icon: FileText,
   },
   {
     key: 'image',
@@ -120,7 +105,7 @@ export const AGENTS: AgentViewDefinition[] = [
   },
 ]
 
-export const SUB_AGENT_PARENT_KEYS: SubAgentParentKey[] = ['general', 'ide', 'interactive_story', 'config_manager']
+export const SUB_AGENT_PARENT_KEYS: SubAgentParentKey[] = ['general', 'ide', 'interactive_story']
 
 const TOOL_ICONS: Partial<Record<AgentToolCapability, LucideIcon>> = {
   filesystem_read: Search,

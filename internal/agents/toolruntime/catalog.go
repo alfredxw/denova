@@ -15,10 +15,6 @@ import (
 	workspacechange "denova/internal/workspace/change"
 )
 
-const SubmitDirectorPlanUpdateToolName = producttools.SubmitDirectorPlanUpdateToolName
-
-type SubmitDirectorPlanUpdateInput = producttools.SubmitDirectorPlanUpdateInput
-
 // NewCatalog is the only bridge from Agent orchestration into concrete
 // tool construction. Runtime metadata is projected into a narrow callback so
 // the tools package never imports the agents package.
@@ -71,18 +67,13 @@ func ProjectInteractiveContext(contexts ...agentinteractive.InteractiveStoryTool
 	}
 	source := contexts[0]
 	return producttools.InteractiveContext{
-		Store:                     source.Store,
-		StoryID:                   source.StoryID,
-		BranchID:                  source.BranchID,
-		TurnID:                    source.TurnID,
-		MaintenanceTask:           source.MaintenanceTask,
-		OnLoreItemsRead:           source.OnLoreItemsRead,
-		SubmitStateSchemaBatch:    source.SubmitStateSchemaBatch,
-		SubmitDirectorPlanUpdate:  source.SubmitDirectorPlanUpdate,
-		RequestDirectorCompletion: agentinteractive.RequestDirectorPlanCompletion,
-		RequestTurnCompletion:     agentinteractive.RequestTurnCompletion,
-		PrepareTurn:               source.PrepareTurn,
-		SubmitTurnResult:          source.SubmitTurnResult,
+		Store:                  source.Store,
+		StoryID:                source.StoryID,
+		BranchID:               source.BranchID,
+		SubmitStateSchemaBatch: source.SubmitStateSchemaBatch,
+		RequestTurnCompletion:  agentinteractive.RequestTurnCompletion,
+		PrepareTurn:            source.PrepareTurn,
+		SubmitTurnResult:       source.SubmitTurnResult,
 	}
 }
 

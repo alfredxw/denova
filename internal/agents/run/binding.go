@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"denova/config"
-
 	agent "github.com/alfredxw/denova/agent"
 )
 
@@ -16,13 +14,11 @@ const (
 	bindingKindAutomation = "automation"
 	bindingKindUser       = "user"
 
-	bindingProfileWriting       = "writing"
-	bindingProfileAgentChat     = "agent_chat"
-	bindingProfileGame          = "game"
-	bindingProfileAutomation    = "automation"
-	bindingProfileConfigManager = "config_manager"
-	bindingProfileImage         = "image"
-	bindingProfileDirector      = "director"
+	bindingProfileWriting    = "writing"
+	bindingProfileAgentChat  = "agent_chat"
+	bindingProfileGame       = "game"
+	bindingProfileAutomation = "automation"
+	bindingProfileImage      = "image"
 
 	bindingLabelWorkspace = "workspace"
 	bindingLabelProject   = "project_id"
@@ -124,13 +120,6 @@ func (binding RuntimeBinding) identity() (bindingIdentity, error) {
 			kind: bindingKindGame, profile: bindingProfileGame,
 			id: projectID + ":" + attributes[bindingLabelStory] + ":" + attributes[bindingLabelBranch], attributes: attributes,
 		}
-	case AgentKindConfigManager:
-		if projectID == "" || attributes[bindingLabelSession] == "" ||
-			binding.StoryID != "" || binding.BranchID != "" || binding.TaskID != "" {
-			return invalid()
-		}
-		dropRuntimeWorkspace()
-		identity = bindingIdentity{kind: bindingKindWriting, profile: bindingProfileConfigManager, id: projectID + ":" + attributes[bindingLabelSession], attributes: attributes}
 	case AgentKindImage:
 		if projectID == "" || attributes[bindingLabelSession] == "" ||
 			binding.StoryID != "" || binding.BranchID != "" || binding.TaskID != "" {
@@ -144,16 +133,6 @@ func (binding RuntimeBinding) identity() (bindingIdentity, error) {
 		}
 		dropRuntimeWorkspace()
 		identity = bindingIdentity{kind: bindingKindAutomation, profile: bindingProfileAutomation, id: projectID + ":" + attributes[bindingLabelSession], attributes: attributes}
-	case config.AgentKindInteractiveDirector:
-		if projectID == "" || attributes[bindingLabelStory] == "" ||
-			attributes[bindingLabelBranch] == "" || binding.TaskID != "" {
-			return invalid()
-		}
-		dropRuntimeWorkspace()
-		identity = bindingIdentity{
-			kind: bindingKindGame, profile: bindingProfileDirector,
-			id: projectID + ":" + attributes[bindingLabelStory] + ":" + attributes[bindingLabelBranch], attributes: attributes,
-		}
 	default:
 		return bindingIdentity{}, fmt.Errorf("%w: unsupported agent profile %q", ErrInvalidBinding, binding.AgentKind)
 	}
@@ -187,14 +166,10 @@ func BindingSelector(agentKind, projectID string) (agent.SessionSelector, error)
 		kind, profile = bindingKindWriting, bindingProfileWriting
 	case AgentKindInteractiveStory:
 		kind, profile = bindingKindGame, bindingProfileGame
-	case AgentKindConfigManager:
-		kind, profile = bindingKindWriting, bindingProfileConfigManager
 	case AgentKindImage:
 		kind, profile = bindingKindWriting, bindingProfileImage
 	case AgentKindAutomation:
 		kind, profile = bindingKindAutomation, bindingProfileAutomation
-	case config.AgentKindInteractiveDirector:
-		kind, profile = bindingKindGame, bindingProfileDirector
 	default:
 		return agent.SessionSelector{}, fmt.Errorf("%w: unsupported agent profile %q", ErrInvalidBinding, agentKind)
 	}
@@ -227,7 +202,7 @@ func SessionBindingSelector(agentKind, projectID, sessionID string) (agent.Sessi
 }
 
 // StoryBindingSelector selects all story Sessions for an exact story or
-// branch scope. Callers add the game or Director namespace explicitly.
+// branch scope. Callers add the game namespace explicitly.
 func StoryBindingSelector(projectID, storyID, branchID string) (agent.SessionSelector, error) {
 	projectID, storyID, branchID = strings.TrimSpace(projectID), strings.TrimSpace(storyID), strings.TrimSpace(branchID)
 	if projectID == "" || storyID == "" {
@@ -250,10 +225,8 @@ func ForegroundProjectBindingSelectors(projectID string) ([]agent.SessionSelecto
 	}
 	profiles := []struct{ kind, profile string }{
 		{bindingKindWriting, bindingProfileWriting},
-		{bindingKindWriting, bindingProfileConfigManager},
 		{bindingKindWriting, bindingProfileImage},
 		{bindingKindGame, bindingProfileGame},
-		{bindingKindGame, bindingProfileDirector},
 		{bindingKindAutomation, bindingProfileAutomation},
 	}
 	selectors := make([]agent.SessionSelector, 0, len(profiles))

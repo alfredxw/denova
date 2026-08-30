@@ -106,7 +106,7 @@ type ActorStateSchemaAdaptationChange struct {
 }
 
 // StateSchemaInitializationStatus tracks the foreground opening handshake. It
-// never represents a background Director task because all branches share one
+// never represents a background planning task because all branches share one
 // schema that is frozen with the first committed turn.
 type StateSchemaInitializationStatus struct {
 	Mode            string                              `json:"mode"`

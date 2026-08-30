@@ -83,15 +83,6 @@ func (a *App) prepareChildDefinition(
 			return agent.Definition{}, err
 		}
 		return finalize(agentdelegation.ChildDefinition(cycle.definition, request.Child))
-	case agentrun.AgentKindConfigManager:
-		cycle, err := a.ConfigManager().PrepareCycle(ctx, agentexecution.CycleRestoreRequest{
-			Binding: binding, CommandID: agentrun.CommandID(parentRequest.CommandID), Request: parentRequest,
-			Options: agentrun.Options{RestoreData: turn.RestoreData},
-		}, binding)
-		if err != nil {
-			return agent.Definition{}, err
-		}
-		return finalize(agentdelegation.ChildDefinition(cycle.Definition, request.Child))
 	default:
 		return agent.Definition{}, fmt.Errorf("%w: Agent kind %q does not support delegation", agentexecution.ErrCyclePreparationUnavailable, binding.AgentKind)
 	}

@@ -61,7 +61,11 @@ func (s *Session) appendMessagesLocked(messages []*agent.Message, metadata []Mes
 			kind: kind, message: msg, messageMetadata: normalizedMetadata[index], createdAt: now,
 		})
 		if s.title == defaultSessionTitle && msg.Role == agent.User && strings.TrimSpace(msg.Content) != "" {
-			s.title = deriveTitle(msg.Content)
+			titleContent := normalizedMetadata[index].DisplayContent
+			if titleContent == "" {
+				titleContent = msg.Content
+			}
+			s.title = deriveTitle(titleContent)
 		}
 	}
 	s.contextRevision = normalizedMetadata[len(normalizedMetadata)-1].ContextRevision
@@ -82,6 +86,7 @@ func sanitizeMessageMetadata(metadata MessageMetadata) MessageMetadata {
 	metadata.RootAgentName = strings.TrimSpace(metadata.RootAgentName)
 	metadata.SubAgentSessionID = strings.TrimSpace(metadata.SubAgentSessionID)
 	metadata.SubAgentType = strings.TrimSpace(metadata.SubAgentType)
+	metadata.DisplayContent = truncateUTF8ByBytes(strings.TrimSpace(metadata.DisplayContent), maxDisplayContentBytes)
 	if len(metadata.RunPath) > 0 {
 		out := make([]string, 0, len(metadata.RunPath))
 		for _, step := range metadata.RunPath {
@@ -97,6 +102,7 @@ func sanitizeMessageMetadata(metadata MessageMetadata) MessageMetadata {
 }
 
 const (
+	maxDisplayContentBytes        = 256 * 1024
 	maxUserMessageReferences      = 256
 	maxUserReferenceLabelBytes    = 1024
 	maxUserReferenceDetailBytes   = 2048
@@ -265,11 +271,15 @@ func (s *Session) History() []HistoryEntry {
 					}
 				}
 			}
+			content := record.message.Content
+			if record.messageMetadata.DisplayContent != "" {
+				content = record.messageMetadata.DisplayContent
+			}
 			result = append(result, HistoryEntry{
 				Type:               historyTypeMessage,
 				ID:                 record.messageMetadata.MessageID,
 				Role:               string(record.message.Role),
-				Content:            record.message.Content,
+				Content:            content,
 				Attachments:        append([]agent.Attachment(nil), record.message.Attachments...),
 				Message:            record.message,
 				CreatedAt:          record.createdAt,

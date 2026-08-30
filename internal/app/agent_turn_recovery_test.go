@@ -65,11 +65,10 @@ func TestAppRestoresWritingAndGameQueuedTurnDependencies(t *testing.T) {
 func TestExecutionProfilesExposeOnlySupportedCapabilities(t *testing.T) {
 	application := newExecutionProfileTestApp(t)
 	want := map[agentexecution.ProfileID]bool{
-		agentexecution.ProfileWriting:       true,
-		agentexecution.ProfileAgentChat:     true,
-		agentexecution.ProfileGame:          true,
-		agentexecution.ProfileConfigManager: true,
-		agentexecution.ProfileImage:         true,
+		agentexecution.ProfileWriting:   true,
+		agentexecution.ProfileAgentChat: true,
+		agentexecution.ProfileGame:      true,
+		agentexecution.ProfileImage:     true,
 	}
 	profiles := application.executionProfiles()
 	if len(profiles) != len(want) {

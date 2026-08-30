@@ -415,7 +415,7 @@ func actorCreateAuditValue(patch ActorStatePatch) map[string]any {
 }
 
 func stateUpdateConflictsWithRuleResolution(options TurnStateUpdateCompileOptions, actorID, fieldID string) bool {
-	if options.RuleResolution == nil || normalizeRuleStateConsumptionMode(options.RuleStateConsumptionMode) == RuleStateConsumptionModeDirectorOnly {
+	if options.RuleResolution == nil || normalizeRuleStateConsumptionMode(options.RuleStateConsumptionMode) == RuleStateConsumptionModeSuggestionsOnly {
 		return false
 	}
 	for _, change := range normalizeTurnStateChanges(options.RuleResolution.Result.StateChanges) {

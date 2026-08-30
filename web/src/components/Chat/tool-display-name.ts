@@ -25,7 +25,6 @@ const TOOL_NAME_KEYS = {
   prepare_interactive_turn: 'chat.tool.name.prepareInteractiveTurn',
   submit_interactive_turn: 'chat.tool.name.submitInteractiveTurn',
   initialize_story_state_schema: 'chat.tool.name.initializeStoryStateSchema',
-  submit_director_plan_update: 'chat.tool.name.submitDirectorPlanUpdate',
 } as const
 
 /** Localizes built-in tool names while preserving custom tool identities verbatim. */

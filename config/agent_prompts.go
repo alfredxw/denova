@@ -4,16 +4,16 @@ import "strings"
 
 // AgentPromptSettings 保存各类 Agent 的自定义系统提示。
 type AgentPromptSettings struct {
-	Default             AgentPromptOverride `toml:"default,omitempty" json:"default,omitempty"`
-	General             AgentPromptOverride `toml:"general,omitempty" json:"general,omitempty"`
-	IDE                 AgentPromptOverride `toml:"ide,omitempty" json:"ide,omitempty"`
-	InteractiveStory    AgentPromptOverride `toml:"interactive_story,omitempty" json:"interactive_story,omitempty"`
-	ConfigManager       AgentPromptOverride `toml:"config_manager,omitempty" json:"config_manager,omitempty"`
-	InteractiveDirector AgentPromptOverride `toml:"interactive_director,omitempty" json:"interactive_director,omitempty"`
-	VersionSummary      AgentPromptOverride `toml:"version_summary,omitempty" json:"version_summary,omitempty"`
-	ToolAgent           AgentPromptOverride `toml:"tool_agent,omitempty" json:"tool_agent,omitempty"`
-	Image               AgentPromptOverride `toml:"image,omitempty" json:"image,omitempty"`
-	Automation          AgentPromptOverride `toml:"automation,omitempty" json:"automation,omitempty"`
+	Default          AgentPromptOverride `toml:"default,omitempty" json:"default,omitempty"`
+	General          AgentPromptOverride `toml:"general,omitempty" json:"general,omitempty"`
+	IDE              AgentPromptOverride `toml:"ide,omitempty" json:"ide,omitempty"`
+	InteractiveStory AgentPromptOverride `toml:"interactive_story,omitempty" json:"interactive_story,omitempty"`
+	// ConfigManager preserves retired v0.3.3 settings during unrelated writes.
+	ConfigManager  AgentPromptOverride `toml:"config_manager,omitempty" json:"config_manager,omitempty"`
+	VersionSummary AgentPromptOverride `toml:"version_summary,omitempty" json:"version_summary,omitempty"`
+	ToolAgent      AgentPromptOverride `toml:"tool_agent,omitempty" json:"tool_agent,omitempty"`
+	Image          AgentPromptOverride `toml:"image,omitempty" json:"image,omitempty"`
+	Automation     AgentPromptOverride `toml:"automation,omitempty" json:"automation,omitempty"`
 }
 
 type AgentPromptOverride struct {
@@ -22,16 +22,15 @@ type AgentPromptOverride struct {
 }
 
 type AgentPromptSourceSettings struct {
-	Default             AgentPromptSourceList `json:"default,omitempty"`
-	General             AgentPromptSourceList `json:"general,omitempty"`
-	IDE                 AgentPromptSourceList `json:"ide,omitempty"`
-	InteractiveStory    AgentPromptSourceList `json:"interactive_story,omitempty"`
-	ConfigManager       AgentPromptSourceList `json:"config_manager,omitempty"`
-	InteractiveDirector AgentPromptSourceList `json:"interactive_director,omitempty"`
-	VersionSummary      AgentPromptSourceList `json:"version_summary,omitempty"`
-	ToolAgent           AgentPromptSourceList `json:"tool_agent,omitempty"`
-	Image               AgentPromptSourceList `json:"image,omitempty"`
-	Automation          AgentPromptSourceList `json:"automation,omitempty"`
+	Default          AgentPromptSourceList `json:"default,omitempty"`
+	General          AgentPromptSourceList `json:"general,omitempty"`
+	IDE              AgentPromptSourceList `json:"ide,omitempty"`
+	InteractiveStory AgentPromptSourceList `json:"interactive_story,omitempty"`
+	ConfigManager    AgentPromptSourceList `json:"config_manager,omitempty"`
+	VersionSummary   AgentPromptSourceList `json:"version_summary,omitempty"`
+	ToolAgent        AgentPromptSourceList `json:"tool_agent,omitempty"`
+	Image            AgentPromptSourceList `json:"image,omitempty"`
+	Automation       AgentPromptSourceList `json:"automation,omitempty"`
 }
 
 type AgentPromptSourceList struct {
@@ -48,16 +47,15 @@ type AgentPromptSource struct {
 }
 
 type AgentPromptBlockSettings struct {
-	Default             AgentPromptBlocks `json:"default,omitempty"`
-	General             AgentPromptBlocks `json:"general,omitempty"`
-	IDE                 AgentPromptBlocks `json:"ide,omitempty"`
-	InteractiveStory    AgentPromptBlocks `json:"interactive_story,omitempty"`
-	ConfigManager       AgentPromptBlocks `json:"config_manager,omitempty"`
-	InteractiveDirector AgentPromptBlocks `json:"interactive_director,omitempty"`
-	VersionSummary      AgentPromptBlocks `json:"version_summary,omitempty"`
-	ToolAgent           AgentPromptBlocks `json:"tool_agent,omitempty"`
-	Image               AgentPromptBlocks `json:"image,omitempty"`
-	Automation          AgentPromptBlocks `json:"automation,omitempty"`
+	Default          AgentPromptBlocks `json:"default,omitempty"`
+	General          AgentPromptBlocks `json:"general,omitempty"`
+	IDE              AgentPromptBlocks `json:"ide,omitempty"`
+	InteractiveStory AgentPromptBlocks `json:"interactive_story,omitempty"`
+	ConfigManager    AgentPromptBlocks `json:"config_manager,omitempty"`
+	VersionSummary   AgentPromptBlocks `json:"version_summary,omitempty"`
+	ToolAgent        AgentPromptBlocks `json:"tool_agent,omitempty"`
+	Image            AgentPromptBlocks `json:"image,omitempty"`
+	Automation       AgentPromptBlocks `json:"automation,omitempty"`
 }
 
 type AgentPromptBlocks struct {
@@ -73,16 +71,15 @@ type ResolvedAgentPromptSettings struct {
 
 func MergeAgentPromptSettings(parent, child AgentPromptSettings) AgentPromptSettings {
 	return AgentPromptSettings{
-		Default:             mergeAgentPromptOverride(parent.Default, child.Default),
-		General:             mergeAgentPromptOverride(parent.General, child.General),
-		IDE:                 mergeAgentPromptOverride(parent.IDE, child.IDE),
-		InteractiveStory:    mergeAgentPromptOverride(parent.InteractiveStory, child.InteractiveStory),
-		ConfigManager:       mergeAgentPromptOverride(parent.ConfigManager, child.ConfigManager),
-		InteractiveDirector: mergeAgentPromptOverride(parent.InteractiveDirector, child.InteractiveDirector),
-		VersionSummary:      mergeAgentPromptOverride(parent.VersionSummary, child.VersionSummary),
-		ToolAgent:           mergeAgentPromptOverride(parent.ToolAgent, child.ToolAgent),
-		Image:               mergeAgentPromptOverride(parent.Image, child.Image),
-		Automation:          mergeAgentPromptOverride(parent.Automation, child.Automation),
+		Default:          mergeAgentPromptOverride(parent.Default, child.Default),
+		General:          mergeAgentPromptOverride(parent.General, child.General),
+		IDE:              mergeAgentPromptOverride(parent.IDE, child.IDE),
+		InteractiveStory: mergeAgentPromptOverride(parent.InteractiveStory, child.InteractiveStory),
+		ConfigManager:    mergeAgentPromptOverride(parent.ConfigManager, child.ConfigManager),
+		VersionSummary:   mergeAgentPromptOverride(parent.VersionSummary, child.VersionSummary),
+		ToolAgent:        mergeAgentPromptOverride(parent.ToolAgent, child.ToolAgent),
+		Image:            mergeAgentPromptOverride(parent.Image, child.Image),
+		Automation:       mergeAgentPromptOverride(parent.Automation, child.Automation),
 	}
 }
 
@@ -121,7 +118,6 @@ func sanitizeAgentPromptSettings(settings AgentPromptSettings) AgentPromptSettin
 	settings.IDE = sanitizeAgentPromptOverride(settings.IDE)
 	settings.InteractiveStory = sanitizeAgentPromptOverride(settings.InteractiveStory)
 	settings.ConfigManager = sanitizeAgentPromptOverride(settings.ConfigManager)
-	settings.InteractiveDirector = sanitizeAgentPromptOverride(settings.InteractiveDirector)
 	settings.VersionSummary = sanitizeAgentPromptOverride(settings.VersionSummary)
 	settings.ToolAgent = sanitizeAgentPromptOverride(settings.ToolAgent)
 	settings.Image = sanitizeAgentPromptOverride(settings.Image)

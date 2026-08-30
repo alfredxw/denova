@@ -1,4 +1,5 @@
-import { jsonHeaders, requestJSON } from '@/lib/api-client/client'
+import type { UIMessageChunk } from 'ai'
+import { fetchAPI, jsonHeaders, parseUIMessageStream, requestJSON, responseAPIError } from '@/lib/api-client/client'
 import { projectAPIPath } from '@/lib/api-client/project-scope'
 
 /** One conversation in the AgentChat project tree. */
@@ -50,12 +51,25 @@ export interface AgentChatActivityBinding {
   session_id: string
 }
 
+export interface AgentChatRunRequest {
+  command_id: string
+  session_id: string
+  message: string
+  display_message?: string
+}
+
 export interface HostDirectorySelection {
   path: string
   canceled: boolean
 }
 
 let projectsReadInFlight: Promise<AgentChatProject[]> | null = null
+export const AGENT_CHAT_PROJECT_UPDATED_EVENT = 'nova:agent-chat-project-updated'
+
+export function notifyAgentChatProjectUpdated(projectId: string) {
+  if (typeof window === 'undefined' || !projectId.trim()) return
+  window.dispatchEvent(new CustomEvent(AGENT_CHAT_PROJECT_UPDATED_EVENT, { detail: { projectId: projectId.trim() } }))
+}
 
 /** Read every project with its conversations. This never switches the open workspace. */
 export function getAgentChatProjects(): Promise<AgentChatProject[]> {
@@ -108,6 +122,18 @@ export async function createAgentChatSession(projectId: string, title = ''): Pro
     headers: jsonHeaders,
     body: JSON.stringify({ title }),
   })
+}
+
+/** Start a turn in an ordinary Project Agent conversation and return its UI stream. */
+export async function runAgentChatStream(projectId: string, request: AgentChatRunRequest): Promise<ReadableStream<UIMessageChunk>> {
+  const response = await fetchAPI(projectAPIPath(projectId, 'agent-chat/chat'), {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify(request),
+  })
+  if (!response.ok) throw await responseAPIError(response)
+  if (!response.body) throw new Error('Project Agent response has no body')
+  return parseUIMessageStream(response.body)
 }
 
 export async function renameAgentChatSession(projectId: string, sessionId: string, title: string): Promise<void> {

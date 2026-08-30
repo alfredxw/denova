@@ -18,11 +18,10 @@ import (
 type ProfileID string
 
 const (
-	ProfileWriting       ProfileID = "writing"
-	ProfileAgentChat     ProfileID = "agent_chat"
-	ProfileGame          ProfileID = "game"
-	ProfileConfigManager ProfileID = "config_manager"
-	ProfileImage         ProfileID = "image"
+	ProfileWriting   ProfileID = "writing"
+	ProfileAgentChat ProfileID = "agent_chat"
+	ProfileGame      ProfileID = "game"
+	ProfileImage     ProfileID = "image"
 )
 
 var (
@@ -98,7 +97,7 @@ func newProfileRegistry(profiles []Profile) (*profileRegistry, error) {
 
 func validProfileID(id ProfileID) bool {
 	switch id {
-	case ProfileWriting, ProfileAgentChat, ProfileGame, ProfileConfigManager, ProfileImage:
+	case ProfileWriting, ProfileAgentChat, ProfileGame, ProfileImage:
 		return true
 	default:
 		return false

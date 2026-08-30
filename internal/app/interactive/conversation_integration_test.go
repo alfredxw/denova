@@ -12,7 +12,6 @@ import (
 	agents "denova/internal/agents"
 	agentcontext "denova/internal/agents/context"
 	agentcompaction "denova/internal/agents/context/compaction"
-	"denova/internal/agents/prompts"
 	"denova/internal/agents/session"
 	"denova/internal/book/lore"
 	"denova/internal/interactive"
@@ -104,8 +103,8 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 		"list_lore_items",
 		"search_story_history",
 		"turn_id",
-		"Prose Agent Brief",
-		"source: agent-brief.md",
+		"Game Agent Planning",
+		"Status: disabled",
 		"bounded",
 		"# Actor State Handbook",
 		"Actor ID: `protagonist`",
@@ -148,8 +147,8 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 		"主角醒来发现世界已末日",
 		"StorytellerRule",
 		"本轮上下文",
-		"DirectorPlan",
-		"Prose Agent Brief",
+		"GamePreset",
+		"Game Preset Rule Catalog",
 	} {
 		if !strings.Contains(sources, want) {
 			t.Fatalf("context sources should include %q: %s", want, sources)
@@ -216,45 +215,6 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 	snapshot, err = store.Snapshot(story.ID, "")
 	if err != nil {
 		t.Fatal(err)
-	}
-	last = snapshot.Turns[1]
-	directorInstruction, err := conversation.BuildDirectorInstruction(last)
-	if err != nil {
-		t.Fatal(err)
-	}
-	directorContract := prompts.BuildInteractiveDirectorSystemInstruction() + "\n" + directorInstruction
-	for _, want := range []string{
-		"keep, patch, or replan",
-		"never rewrite Turn or Actor State",
-		"Prefer important existing lore",
-		"list_lore_items",
-		"Do not write story prose or choose the user's next action",
-	} {
-		if !strings.Contains(directorContract, want) {
-			t.Fatalf("director system plus turn instruction should include maintenance guidance %q: %s", want, directorContract)
-		}
-	}
-	if !strings.Contains(directorInstruction, "黄泉酒馆") || !strings.Contains(directorInstruction, "Non-resident Lore Name Roster") {
-		t.Fatalf("director turn instruction should include the bounded lore-name roster: %s", directorInstruction)
-	}
-	if strings.Contains(directorInstruction, "黄泉酒馆据点索引") || strings.Contains(directorInstruction, "黄泉酒馆完整设定") {
-		t.Fatalf("director lore-name roster should not preload briefs or bodies: %s", directorInstruction)
-	}
-	for _, want := range []string{
-		"Recent Story History",
-		"TurnResult / RuleResolution / StateDelta Audit JSON",
-		"turn_result",
-		"我在黄泉酒馆点燃火把",
-		"State System Schema",
-		"Current State Snapshot",
-		"director.md",
-	} {
-		if !strings.Contains(directorInstruction, want) {
-			t.Fatalf("director instruction should include maintenance context %q: %s", want, directorInstruction)
-		}
-	}
-	if strings.Contains(directorInstruction, "经典叙事者") || strings.Contains(directorInstruction, "Storyteller Rules for This Turn") {
-		t.Fatalf("director instruction should not include story-only teller rules: %s", directorInstruction)
 	}
 	onStage := snapshot.State["on_stage"].([]any)
 	if len(onStage) != 1 || onStage[0] != "林川" {
@@ -329,187 +289,45 @@ func TestInteractiveConversationRejectsAssistantWithoutTurnResult(t *testing.T) 
 	}
 }
 
-func TestInteractiveConversationInjectsStoryDirectorStrategyPrompt(t *testing.T) {
-	workspace := t.TempDir()
-	novaDir := t.TempDir()
+func TestGamePresetProjectsCreatorPlanningStyleWithoutBackendPacing(t *testing.T) {
 	prompt := "- 避免连续两回合使用同类型突发事件。\n- 伏笔回收前至少给一次可感知征兆。"
-	director, err := interactive.NewStoryDirectorLibrary(novaDir).Create(interactive.StoryDirector{
-		ID:          "custom-strategy",
-		Name:        "自定义策略导演",
-		Description: "测试 Markdown 策略提示注入",
-		Strategy: interactive.StoryDirectorStrategy{
-			Enabled:        true,
-			PromptMarkdown: prompt,
-		},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	store := interactive.NewStore(workspace)
-	story, err := store.CreateStory(interactive.CreateStoryRequest{
-		Title:            "策略测试",
-		Origin:           "主角进入旧城",
-		StoryTellerID:    "classic",
-		StoryDirectorID:  director.ID,
-		ReplyTargetChars: 800,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	turn, err := store.AppendTurn(story.ID, interactive.AppendTurnRequest{
-		User:      "我观察街角",
-		Narrative: "街角的灯忽明忽暗。",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	conversation := NewConversation(store, novaDir, workspace, story.ID, "", "我跟上灯影", story.ReplyTargetChars, nil)
-	history, err := assembleAndCommitInteractiveContextForTest(conversation, "我跟上灯影", "我跟上灯影")
-	if err != nil {
-		t.Fatal(err)
-	}
-	turnInstruction := history[len(history)-1].Content
-	for _, want := range []string{"Story Director Markdown Strategy Prompt", "source: StoryDirector.strategy.prompt_markdown", "bounded", "避免连续两回合", "伏笔回收前"} {
-		if !strings.Contains(turnInstruction, want) {
-			t.Fatalf("interactive turn instruction should include strategy prompt %q:\n%s", want, turnInstruction)
+	guide := interactive.StoryPlanningGuideMarkdown(interactive.StoryDirector{
+		ID: "custom-strategy", Name: "自定义游戏预设",
+		Strategy: interactive.StoryDirectorStrategy{PromptMarkdown: prompt},
+	}, StoryRuntimeContextMaxBytes)
+	for _, want := range []string{"Planning style", "避免连续两回合", "伏笔回收前"} {
+		if !strings.Contains(guide, want) {
+			t.Fatalf("planning guide should include creator-authored style %q:\n%s", want, guide)
 		}
 	}
-	sources := conversation.ContextSourceSummary()
-	for _, want := range []string{"StoryDirector.strategy.prompt_markdown", "Story Director Markdown Strategy Prompt", "bounded"} {
-		if !strings.Contains(sources, want) {
-			t.Fatalf("context sources should include strategy prompt %q:\n%s", want, sources)
-		}
-	}
-	directorInstruction, err := conversation.BuildDirectorInstruction(turn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, want := range []string{"Story Director Markdown Strategy Prompt", "source: StoryDirector.strategy.prompt_markdown", "bounded", "避免连续两回合", "伏笔回收前"} {
-		if !strings.Contains(directorInstruction, want) {
-			t.Fatalf("director instruction should include strategy prompt %q:\n%s", want, directorInstruction)
+	for _, forbidden := range []string{"pacing_curve", "event_frequency", "branch_planning_turns", "cadence"} {
+		if strings.Contains(guide, forbidden) {
+			t.Fatalf("planning guide should not contain backend pacing field %q:\n%s", forbidden, guide)
 		}
 	}
 }
 
-func TestInteractiveConversationKeepsEventCardsForDirectorOnly(t *testing.T) {
-	workspace := t.TempDir()
-	novaDir := t.TempDir()
-	eventPackage, err := interactive.NewEventPackageLibrary(novaDir).Create(interactive.EventPackageModule{
-		ID:   "academy-pack",
-		Name: "学院事件包",
-		Events: []interactive.EventCard{{
-			ID:                  "academy_trial",
-			TypeName:            "外门考核打脸",
-			DescriptionMarkdown: "## 触发场景\n外门考核中同门当众质疑主角。\n\n## 事件回收 / 后果\n以后续榜单与戒律回收。",
-			Enabled:             true,
-			Category:            "学院",
-		}},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	director, err := interactive.NewStoryDirectorLibrary(novaDir).Create(interactive.StoryDirector{
-		ID:          "event-card-director",
-		Name:        "事件卡导演",
-		Description: "测试事件系统只进入后台导演",
-		ModuleRefs:  interactive.StoryDirectorModuleRefs{EventPackageIDs: []string{eventPackage.ID}},
-		Strategy: interactive.StoryDirectorStrategy{
-			Enabled: true,
-		},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	store := interactive.NewStore(workspace)
-	story, err := store.CreateStory(interactive.CreateStoryRequest{
-		Title:           "事件卡上下文",
-		Origin:          "主角进入外门",
-		StoryTellerID:   "classic",
-		StoryDirectorID: director.ID,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	plan, err := store.DirectorPlan(story.ID, "main")
-	if err != nil {
-		t.Fatal(err)
-	}
-	docs := plan.Docs
-	docs.AgentBrief = strings.Replace(docs.AgentBrief, "说明当前场景、主角处境、直接目标，以及可观察、对话、调查、冒险、交易或保守应对的空间。", "公开压力升高，同门质疑逼近；玩家可以反证、迂回或调查。", 1)
-	if _, err := store.UpdateDirectorPlan(story.ID, interactive.UpdateDirectorPlanRequest{BranchID: "main", Docs: docs, BaseRevision: plan.Metadata.Revision}); err != nil {
-		t.Fatal(err)
-	}
-	turn, err := store.AppendTurn(story.ID, interactive.AppendTurnRequest{
-		User:      "我走进演武场",
-		Narrative: "演武场上的人声停了一瞬。",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	conversation := NewConversation(store, novaDir, workspace, story.ID, "", "我看向质疑我的同门", story.ReplyTargetChars, nil)
-	history, err := assembleAndCommitInteractiveContextForTest(conversation, "我看向质疑我的同门", "我看向质疑我的同门")
-	if err != nil {
-		t.Fatal(err)
-	}
-	turnInstruction := history[len(history)-1].Content
-	for _, want := range []string{"正文 Agent 简报", "公开压力升高", "同门质疑"} {
-		if !strings.Contains(turnInstruction, want) {
-			t.Fatalf("interactive turn instruction should include translated director plan %q:\n%s", want, turnInstruction)
-		}
-	}
-	for _, forbidden := range []string{"外门考核打脸", "触发场景", "事件回收 / 后果", "事件卡:"} {
-		if strings.Contains(turnInstruction, forbidden) {
-			t.Fatalf("interactive turn instruction should not include raw event card %q:\n%s", forbidden, turnInstruction)
-		}
-	}
-
-	directorInstruction, err := conversation.BuildDirectorInstruction(turn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, want := range []string{"Event Opportunity for This Turn", "cadence_not_due", "Event Runtime"} {
-		if !strings.Contains(directorInstruction, want) {
-			t.Fatalf("director instruction should include deterministic event context %q:\n%s", want, directorInstruction)
-		}
-	}
-	for _, forbidden := range []string{"外门考核打脸", "事件回收 / 后果", "可选事件卡紧凑索引"} {
-		if strings.Contains(directorInstruction, forbidden) {
-			t.Fatalf("director instruction should not inject event cards before an opportunity is due %q:\n%s", forbidden, directorInstruction)
-		}
-	}
-}
-
-func TestInteractiveDirectorEventCatalogIncludesConfiguredEventCards(t *testing.T) {
-	director := interactive.StoryDirector{
-		ID:         "catalog",
-		Name:       "事件目录",
-		ModuleRefs: interactive.StoryDirectorModuleRefs{EventPackageIDs: []string{"academy-pack"}},
+func TestGamePresetProjectsEnabledEventCardsIntoPlanningGuide(t *testing.T) {
+	preset := interactive.StoryDirector{
+		ID: "event-card-preset", Name: "事件素材预设",
 		EventPackages: []interactive.EventPackage{{
-			ID:      "academy-pack",
-			Enabled: true,
+			ID: "academy-pack", Name: "学院事件包", Enabled: true,
 			Events: []interactive.EventCard{{
-				ID:                  "academy_trial",
-				TypeName:            "外门考核打脸",
+				ID: "academy_trial", TypeName: "外门考核打脸", Enabled: true,
 				DescriptionMarkdown: "## 触发场景\n外门考核中同门当众质疑主角。\n\n## 事件回收 / 后果\n以后续榜单与戒律回收。",
-				Enabled:             true,
-				Category:            "学院",
 			}},
 		}},
 	}
-	catalog := interactiveDirectorEventCatalog(director)
-	found := false
-	for _, event := range catalog {
-		if event.ID == "academy-pack/academy_trial" {
-			found = true
-			if !strings.Contains(event.Template, "外门考核") || event.Category != "学院" {
-				t.Fatalf("event card catalog entry mismatch: %#v", event)
-			}
+	guide := interactive.StoryPlanningGuideMarkdown(preset, StoryRuntimeContextMaxBytes)
+	for _, want := range []string{"Optional event material", "学院事件包", "外门考核打脸", "同门当众质疑主角"} {
+		if !strings.Contains(guide, want) {
+			t.Fatalf("planning guide should include enabled event material %q:\n%s", want, guide)
 		}
 	}
-	if !found {
-		t.Fatalf("director catalog should include event card: %#v", catalog)
+	for _, forbidden := range []string{"cadence_not_due", "Event Runtime", "event_frequency"} {
+		if strings.Contains(guide, forbidden) {
+			t.Fatalf("planning guide should not include backend scheduling state %q:\n%s", forbidden, guide)
+		}
 	}
 }
 
@@ -630,7 +448,6 @@ func newInteractiveStoreWithHPTestDirector(t *testing.T, workspace, novaDir stri
 			ActorStateID:           actorState.ID,
 			ImagePresetDisabled:    true,
 		},
-		Strategy: interactive.StoryDirectorStrategy{Enabled: true},
 	})
 	if err != nil {
 		t.Fatalf("create hp test director failed: %v", err)
@@ -843,53 +660,6 @@ func TestInteractiveConversationUsesDefaultCompactionRetainedTurns(t *testing.T)
 	}
 	if history[1].Content != "第10次行动" || history[2].Content != "第10段剧情" {
 		t.Fatalf("history should use default retained tail after compaction: %#v", history)
-	}
-}
-
-func TestInteractiveDirectorInstructionUsesModelVisibleCompactedHistory(t *testing.T) {
-	workspace := t.TempDir()
-	novaDir := t.TempDir()
-	store := interactive.NewStore(workspace)
-	story, err := store.CreateStory(interactive.CreateStoryRequest{
-		Title:            "记忆压缩测试",
-		Origin:           "主角进入旧城",
-		StoryTellerID:    "classic",
-		ReplyTargetChars: 700,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	for i := 1; i <= 10; i++ {
-		if _, err := store.AppendTurn(story.ID, interactive.AppendTurnRequest{
-			User:      fmt.Sprintf("第%d次行动", i),
-			Narrative: fmt.Sprintf("第%d段剧情", i),
-		}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	conversation := NewConversation(store, novaDir, workspace, story.ID, "", "我继续探索", story.ReplyTargetChars, &config.Config{})
-	projection, err := conversation.PrepareAgentCompaction(context.Background(), agent.CompactionCompactRequest{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := conversation.BindAgentCompaction(&agent.CompactionState{
-		ID: "agent-compaction-director", Revision: 1,
-		Summary: "压缩摘要：主角已进入旧城。", ContextData: projection.ContextData,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	instruction, err := conversation.BuildDirectorInstruction(interactive.TurnEvent{User: "我继续探索", Narrative: "我发现新的石门"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(instruction, "[Denova Context Compaction]") || !strings.Contains(instruction, "压缩摘要：主角已进入旧城。") {
-		t.Fatalf("director instruction should include active compaction summary: %s", instruction)
-	}
-	if strings.Contains(instruction, "第1次行动") || strings.Contains(instruction, "第9次行动") {
-		t.Fatalf("director instruction should not include turns omitted by compaction: %s", instruction)
-	}
-	if !strings.Contains(instruction, "第10次行动") {
-		t.Fatalf("director instruction should include retained model-visible tail: %s", instruction)
 	}
 }
 

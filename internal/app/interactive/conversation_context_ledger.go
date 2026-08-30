@@ -55,7 +55,7 @@ func interactiveCompactionResultForMessages(result agentcompaction.Result, messa
 	return result
 }
 
-func interactiveStoryContextSources(title, origin string, teller teller.Definition, historyCheckpoint, directorPlanVisible, residentLore, loreRevision, loreRuntime, ruleSummary, actorStateRuntime, stateSchemaInitialization, strategyPrompt string, turnHistory interactiveTurnHistory, userAction string) []interactiveContextSource {
+func interactiveStoryContextSources(title, origin string, teller teller.Definition, historyCheckpoint, branchPlan, residentLore, loreRevision, loreRuntime, ruleSummary, actorStateRuntime, stateSchemaInitialization string, turnHistory interactiveTurnHistory, userAction string) []interactiveContextSource {
 	parts := []interactiveContextSource{
 		{Source: "InteractiveStory", Title: "Story Title", Content: title, Note: "metadata_only", MetadataOnly: true},
 		{Source: "InteractiveStory", Title: "Opening", Content: origin, Note: "metadata_only", MetadataOnly: true},
@@ -67,10 +67,10 @@ func interactiveStoryContextSources(title, origin string, teller teller.Definiti
 			Purpose: "rebuildable context projection", Note: "source=committed turns; bounded", Limit: StoryRuntimeContextMaxBytes,
 		})
 	}
-	if strings.TrimSpace(directorPlanVisible) != "" {
+	if strings.TrimSpace(branchPlan) != "" {
 		parts = append(parts, interactiveContextSource{
-			Source: "DirectorPlan", Title: "Prose Agent Brief", Content: directorPlanVisible,
-			Note: "source=agent-brief.md; bounded", Limit: StoryRuntimeContextMaxBytes,
+			Source: "BranchPlan", Title: "Current Branch Plan", Content: branchPlan,
+			Note: "source=branch_plan_updated event; bounded", Limit: StoryRuntimeContextMaxBytes,
 		})
 	}
 	if strings.TrimSpace(residentLore) != "" {
@@ -89,13 +89,13 @@ func interactiveStoryContextSources(title, origin string, teller teller.Definiti
 			Title:   "Current Branch Active Lore Working Set",
 			Purpose: "turn-scoped active lore context",
 			Content: loreRuntime,
-			Note:    "complete=true; source=lore-context.md active references",
+			Note:    "complete=true; source=branch-plan references and current user action",
 			Limit:   ResolvedLoreContextMaxBytes,
 		})
 	}
 	if strings.TrimSpace(ruleSummary) != "" {
 		parts = append(parts, interactiveContextSource{
-			Source: "StoryDirector", Title: "Story Director Rule Catalog", Content: ruleSummary,
+			Source: "GamePreset", Title: "Game Preset Rule Catalog", Content: ruleSummary,
 			Note: "bounded", Limit: StoryRuntimeContextMaxBytes,
 		})
 	}
@@ -109,12 +109,6 @@ func interactiveStoryContextSources(title, origin string, teller teller.Definiti
 		parts = append(parts, interactiveContextSource{
 			Source: "StoryMeta.state_schema_policy", Title: "Opening State Schema Contract", Purpose: "opening-only schema initialization protocol",
 			Content: stateSchemaInitialization, Note: "source=story policy + initialization status; bounded", Limit: StoryRuntimeContextMaxBytes,
-		})
-	}
-	if strings.TrimSpace(strategyPrompt) != "" {
-		parts = append(parts, interactiveContextSource{
-			Source: "StoryDirector.strategy.prompt_markdown", Title: "Story Director Markdown Strategy Prompt", Content: strategyPrompt,
-			Note: "bounded", Limit: StoryRuntimeContextMaxBytes,
 		})
 	}
 	if strings.TrimSpace(turnHistory.PreviousSummary) != "" {

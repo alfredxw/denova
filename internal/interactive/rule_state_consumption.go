@@ -7,9 +7,10 @@ import (
 )
 
 const (
-	DefaultRuleStateConsumptionMode      = RuleStateConsumptionModeHybridAuto
-	RuleStateConsumptionModeHybridAuto   = "hybrid_auto"
-	RuleStateConsumptionModeDirectorOnly = "director_only"
+	DefaultRuleStateConsumptionMode            = RuleStateConsumptionModeHybridAuto
+	RuleStateConsumptionModeHybridAuto         = "hybrid_auto"
+	RuleStateConsumptionModeSuggestionsOnly    = "suggestions_only"
+	legacyRuleStateConsumptionModeDirectorOnly = "director_only"
 
 	StateOpSourceRuleResolution = "rule_resolution"
 )
@@ -38,12 +39,12 @@ func applyRuleStateConsumptionV2(state map[string]any, system StoryDirectorActor
 		resolution.StateConsumption = &RuleStateConsumption{Status: "none", Mode: mode}
 		return nil, nil
 	}
-	if mode == RuleStateConsumptionModeDirectorOnly {
+	if mode == RuleStateConsumptionModeSuggestionsOnly {
 		resolution.StateConsumption = &RuleStateConsumption{
 			Status: "disabled",
 			Mode:   mode,
 			Warnings: []RuleStateConsumptionWarning{{
-				Reason: "规则状态自动消费已关闭；该检定结果将由后台导演按叙事上下文处理。",
+				Reason: "Automatic rule-state consumption is disabled; the Game Agent must reflect this outcome through narration and submitted state changes.",
 			}},
 		}
 		return nil, nil
@@ -168,8 +169,8 @@ func normalizeRuleStateConsumptionMode(mode string) string {
 	switch strings.TrimSpace(mode) {
 	case "", RuleStateConsumptionModeHybridAuto:
 		return RuleStateConsumptionModeHybridAuto
-	case RuleStateConsumptionModeDirectorOnly:
-		return RuleStateConsumptionModeDirectorOnly
+	case RuleStateConsumptionModeSuggestionsOnly, legacyRuleStateConsumptionModeDirectorOnly:
+		return RuleStateConsumptionModeSuggestionsOnly
 	default:
 		return RuleStateConsumptionModeHybridAuto
 	}

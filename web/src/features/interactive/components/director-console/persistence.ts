@@ -43,5 +43,5 @@ export function writeStoredDirectorConsoleTab(storyId: string | undefined, tab: 
 }
 
 function isDirectorConsoleTab(value: string | null): value is DirectorConsoleTab {
-  return value === 'changes' || value === 'actors' || value === 'world' || value === 'branches'
+  return value === 'changes' || value === 'actors' || value === 'world' || value === 'plan' || value === 'branches'
 }

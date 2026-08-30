@@ -18,8 +18,11 @@ type ChatRequest struct {
 	// agentrun.CommandID is the caller-owned idempotency key for a root turn. HTTP
 	// clients must retain it while acceptance is uncertain; server-side retry
 	// code must never replace it with a newly generated identity.
-	CommandID         string                   `json:"command_id"`
-	Message           string                   `json:"message"`
+	CommandID string `json:"command_id"`
+	Message   string `json:"message"`
+	// DisplayMessage is an optional user-facing projection of Message. The
+	// canonical Message remains model-visible and durable for recovery.
+	DisplayMessage    string                   `json:"display_message,omitempty"`
 	AttachmentUploads []agentattachment.Upload `json:"attachments,omitempty"`
 	AttachmentIDs     []string                 `json:"attachment_ids,omitempty"`
 	References        []string                 `json:"references"`
@@ -60,6 +63,7 @@ type ChatRequest struct {
 type CallerInput struct {
 	CommandID      string                `json:"command_id"`
 	Message        string                `json:"message"`
+	DisplayMessage string                `json:"display_message,omitempty"`
 	AttachmentIDs  []string              `json:"attachment_ids,omitempty"`
 	References     []string              `json:"references,omitempty"`
 	LoreReferences []string              `json:"lore_references,omitempty"`
@@ -82,7 +86,7 @@ func CaptureChatRequestCallerInput(req ChatRequest) ChatRequest {
 		return req
 	}
 	req.callerInput = &CallerInput{
-		CommandID: req.CommandID, Message: req.Message,
+		CommandID: req.CommandID, Message: req.Message, DisplayMessage: req.DisplayMessage,
 		AttachmentIDs: cloneStrings(req.AttachmentIDs),
 		References:    cloneStrings(req.References), LoreReferences: cloneStrings(req.LoreReferences),
 		StyleScenes: cloneStrings(req.StyleScenes), Selections: cloneTextSelectionRefs(req.Selections),

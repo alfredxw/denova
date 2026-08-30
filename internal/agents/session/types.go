@@ -122,6 +122,9 @@ type MessageMetadata struct {
 	SubAgentSessionID     string                       `json:"subagent_session_id,omitempty"`
 	SubAgentType          string                       `json:"subagent_type,omitempty"`
 	UserReferences        []agentcontext.UserReference `json:"user_references,omitempty"`
+	// DisplayContent overrides only the creator-facing transcript projection.
+	// The canonical Message content remains the model/recovery source of truth.
+	DisplayContent string `json:"display_content,omitempty"`
 	// ContextOnly keeps host-owned continuation instructions in model history
 	// without projecting them as user-authored chat messages.
 	ContextOnly bool `json:"context_only,omitempty"`

@@ -112,14 +112,15 @@ func prepareWriting(ctx context.Context, runtime Runtime, request agentchat.Chat
 func ProjectConversation(runtime Runtime, request agentchat.ChatRequest) *agentconversation.SessionConversation {
 	if runtime.AgentKind == agentrun.AgentKindGeneral || runtime.AgentKind == agentrun.AgentKindHarness {
 		return agentconversation.NewSessionConversationForAgent(runtime.Session, &runtime.Config, runtime.AgentKind).
-			WithInputVisibility(request.InputVisibility)
+			WithInputVisibility(request.InputVisibility).
+			WithInputDisplayContent(request.DisplayMessage)
 	}
 	runtimeContexts := prompts.IDEWorkspaceRuntimeContextsForContext(runtime.State, request.IDEContext)
 	return agentconversation.NewSessionConversationForAgentWithRuntimeContexts(
 		runtime.Session, &runtime.Config, config.AgentKindIDE,
 		runtimeContexts.StableTitle, runtimeContexts.Stable,
 		runtimeContexts.DynamicTitle, runtimeContexts.Dynamic,
-	).WithInputVisibility(request.InputVisibility)
+	).WithInputVisibility(request.InputVisibility).WithInputDisplayContent(request.DisplayMessage)
 }
 
 func BindReviewFeedback(options agentrun.Options, runtime Runtime, request agentchat.ChatRequest) agentrun.Options {

@@ -19,10 +19,8 @@ import (
 	appagentruntime "denova/internal/app/agentruntime"
 	automationapp "denova/internal/app/automation"
 	bookapp "denova/internal/app/book"
-	configmanagerapp "denova/internal/app/configmanager"
 	continuallearningapp "denova/internal/app/continuallearning"
 	imageapp "denova/internal/app/image"
-	interactiveapp "denova/internal/app/interactive"
 	loreapp "denova/internal/app/lore"
 	modelsapp "denova/internal/app/models"
 	projectbookapp "denova/internal/app/projectbook"
@@ -56,14 +54,12 @@ type App struct {
 	activeTask                      *apptask.Task
 	activeWritingRun                *writingTaskRun
 	activeInteractiveRun            *interactiveTaskRun
-	workspaceDirectorTasks          *interactiveapp.DirectorTaskGroup
 	workspaceTasks                  map[*apptask.Task]string
 	workspaceTaskLeases             map[*apptask.Task]*concurrency.Lease
 	workspaceTaskStops              map[*apptask.Task]func() bool
 	workspaceTaskReplayReservations map[*apptask.Task]*apptask.ReplayReservation
 	workspaceTransition             bool
 	workspaceTransitionTargets      map[string]struct{}
-	directorGenerator               interactiveapp.DirectorGenerator
 	versionSummaryGenerator         versionSummaryGeneratorFunc
 	workspaceFiles                  *filewatch.Service
 	rootScope                       *concurrency.Scope
@@ -87,7 +83,6 @@ type App struct {
 	agentChatApp      *agentchatapp.Service
 	interactiveApp    *InteractiveAppService
 	loreApp           *loreapp.Service
-	configApp         *configmanagerapp.Service
 	continualLearning *continuallearningapp.Service
 	automationApp     *automationapp.Service
 	activityApp       *activityapp.Service
@@ -285,7 +280,6 @@ func (a *App) ensureServices() {
 		}
 		a.agentChatApp = agentchatapp.NewService(agentChatHost{app: a}, a.projectRegistry)
 		a.interactiveApp = &InteractiveAppService{app: a}
-		a.configApp = configmanagerapp.NewService(configManagerHost{app: a})
 		a.continualLearning = continuallearningapp.NewService(continualLearningHost{app: a})
 		if a.automationApp == nil {
 			a.automationApp = automationapp.NewService(automationHost{app: a})
@@ -360,12 +354,6 @@ func (a *App) Images() *imageapp.Service {
 	return a.imageApp
 }
 
-// ConfigManager exposes scoped configuration conversations directly.
-func (a *App) ConfigManager() *configmanagerapp.Service {
-	a.ensureServices()
-	return a.configApp
-}
-
 // ContinualLearning exposes user-level Harness State and optimization.
 func (a *App) ContinualLearning() *continuallearningapp.Service {
 	a.ensureServices()
@@ -427,7 +415,6 @@ func (a *App) applyRuntime(runtime *runtimeState) {
 	a.activeTask = nil
 	a.activeWritingRun = nil
 	a.activeInteractiveRun = nil
-	a.workspaceDirectorTasks = interactiveapp.NewDirectorTaskGroup()
 }
 
 func (a *App) clearRuntime() {
@@ -444,37 +431,6 @@ func (a *App) clearRuntime() {
 	a.activeTask = nil
 	a.activeWritingRun = nil
 	a.activeInteractiveRun = nil
-}
-
-func (a *App) stopWorkspaceDirectorTasks() {
-	a.mu.Lock()
-	tasks := a.workspaceDirectorTasks
-	a.workspaceDirectorTasks = nil
-	a.mu.Unlock()
-	tasks.Close()
-}
-
-// restoreWorkspaceDirectorTasks reinstalls a fresh owner after a failed
-// runtime rebuild left the old workspace active. The stopped group is never
-// reused: conversations admitted after the transition bind to the new owner.
-func (a *App) restoreWorkspaceDirectorTasks(workspace string) {
-	if a == nil || strings.TrimSpace(workspace) == "" {
-		return
-	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.workspace == workspace && a.workspaceDirectorTasks == nil {
-		a.workspaceDirectorTasks = interactiveapp.NewDirectorTaskGroup()
-	}
-}
-
-func (a *App) directorTasksForWorkspace(workspace string) *interactiveapp.DirectorTaskGroup {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	if a.workspace != workspace {
-		return nil
-	}
-	return a.workspaceDirectorTasks
 }
 
 // Close stops background work owned by the current workspace runtime.
@@ -521,7 +477,6 @@ func (a *App) Close() {
 			a.projectFiles.Close()
 		}
 		a.abortOwnedAgentTasks(context.Background())
-		a.stopWorkspaceDirectorTasks()
 		if rootScope != nil {
 			if err := rootScope.Wait(context.Background()); err != nil {
 				slog.ErrorContext(context.Background(), fmt.Sprintf("[app] wait lifecycle scope failed: %v", err))

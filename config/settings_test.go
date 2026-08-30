@@ -79,8 +79,8 @@ func TestDefaultSettingsValues(t *testing.T) {
 	if s.AgentModels.IDE.ThinkingLevel != string(providers.ThinkingLevelMedium) {
 		t.Fatalf("IDE thinking level = %q, want medium", s.AgentModels.IDE.ThinkingLevel)
 	}
-	if s.AgentModels.ConfigManager.ThinkingLevel != string(providers.ThinkingLevelMedium) {
-		t.Fatalf("ConfigManager thinking level = %q, want medium", s.AgentModels.ConfigManager.ThinkingLevel)
+	if s.AgentModels.ConfigManager != (AgentModelOverride{}) {
+		t.Fatalf("ConfigManager defaults must stay empty for the retired persistence tombstone: %#v", s.AgentModels.ConfigManager)
 	}
 	if s.AgentModels.InteractiveStory.ThinkingLevel != string(providers.ThinkingLevelLow) {
 		t.Fatalf("InteractiveStory thinking level = %q, want low", s.AgentModels.InteractiveStory.ThinkingLevel)

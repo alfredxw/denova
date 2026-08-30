@@ -31,7 +31,6 @@ type agentRecoveryBinding int
 const (
 	agentRecoveryWriting agentRecoveryBinding = iota
 	agentRecoveryInteractive
-	agentRecoveryConfigManager
 )
 
 type agentRecoveryResponse struct {
@@ -110,8 +109,6 @@ func bindAgentRecoveryRequest(c *app.RequestContext, binding agentRecoveryBindin
 		if !ok {
 			return novaApp.AgentRuntimeRecoveryRequest{}, "", false
 		}
-	case agentRecoveryConfigManager:
-		// Config Manager identity comes from the project-scoped route/query.
 	}
 	return request, sessionID, true
 }

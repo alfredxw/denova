@@ -169,16 +169,22 @@ func (s *Store) RewindToTurnParent(storyID string, req RewindTurnRequest) error 
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	meta.UpdatedAt = now
 	stateCheckpoint := stateFromPath(pathToParent)
+	var planCheckpoint *BranchPlan
 	if turnID == latestLogicalTurnID(meta, lines, branchID) {
 		if projection, projectionErr := s.storyBranchProjectionLocked(storyID, branchID); projectionErr == nil {
 			stateCheckpoint = cloneStoryState(projection.StateBeforeLatest)
+			planCheckpoint = cloneBranchPlan(projection.PlanBeforeLatest)
+		}
+	} else if nextLatestTurnID != "" {
+		if checkpoint, checkpointErr := s.checkpointAtTurnLocked(storyID, nextLatestTurnID); checkpointErr == nil {
+			planCheckpoint = cloneBranchPlan(checkpoint.Plan)
 		}
 	}
 	event := BranchHeadMovedEvent{
 		V: schemaVersion, Type: StoryEventTypeBranchHeadMoved, ID: newID("bhm"),
 		ParentID: branch.Head, BranchID: branchID, Ts: now,
 		PreviousHead: previousHead, NextHead: branch.Head, NextLatestTurnID: nextLatestTurnID,
-		NextDepth: nextDepth, StateCheckpoint: stateCheckpoint, Reason: "rewind_to_turn_parent",
+		NextDepth: nextDepth, StateCheckpoint: stateCheckpoint, PlanCheckpoint: planCheckpoint, Reason: "rewind_to_turn_parent",
 	}
 	if err := s.appendStoryTransactionLocked(storyID, meta, event); err != nil {
 		return err

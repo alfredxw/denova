@@ -15,8 +15,8 @@ const actorStateRuntimeTruncatedNotice = "> Content was truncated at the context
 // contract; the model receives readable semantics, exact stable IDs, current
 // values, and examples.
 func ActorStateRuntimeContext(system StoryDirectorActorStateSystem, state map[string]any, limitBytes int, configuredChoiceCount ...int) string {
-	if limitBytes <= 0 || limitBytes > DirectorContextMaxBytes {
-		limitBytes = DirectorContextMaxBytes
+	if limitBytes <= 0 || limitBytes > StoryContextMaxBytes {
+		limitBytes = StoryContextMaxBytes
 	}
 	system = normalizeActorStateSystem(system)
 	state = ActorStateRuntimeProjection(system, state)

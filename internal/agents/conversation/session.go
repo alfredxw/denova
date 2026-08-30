@@ -27,6 +27,7 @@ type SessionConversation struct {
 	dynamicContext      string
 	lastContextSummary  string
 	inputVisibility     agentrun.InputVisibility
+	inputDisplayContent string
 
 	cycleMu            sync.Mutex
 	cycleIdentity      agentrun.CycleIdentity
@@ -41,6 +42,15 @@ type SessionConversation struct {
 func (c *SessionConversation) WithInputVisibility(visibility agentrun.InputVisibility) *SessionConversation {
 	if c != nil {
 		c.inputVisibility = visibility
+	}
+	return c
+}
+
+// WithInputDisplayContent binds an alternate creator-facing projection for
+// host-enriched user input while preserving the canonical model message.
+func (c *SessionConversation) WithInputDisplayContent(content string) *SessionConversation {
+	if c != nil {
+		c.inputDisplayContent = content
 	}
 	return c
 }

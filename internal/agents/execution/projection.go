@@ -2,7 +2,6 @@ package execution
 
 import (
 	"context"
-	"denova/config"
 	"denova/internal/agents/run"
 	"errors"
 
@@ -162,7 +161,7 @@ func (s *Runtime) forEachStorySelector(projectID, storyID, branchID string, appl
 	if err != nil {
 		return err
 	}
-	for _, kind := range []string{agentrun.AgentKindInteractiveStory, config.AgentKindInteractiveDirector} {
+	for _, kind := range []string{agentrun.AgentKindInteractiveStory} {
 		profile, err := agentrun.BindingSelector(kind, "")
 		if err != nil {
 			return err

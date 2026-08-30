@@ -455,6 +455,7 @@ func domainMessageHash(message agent.Message, metadata MessageMetadata) (string,
 			SubAgentSessionID     string                       `json:"subagent_session_id,omitempty"`
 			SubAgentType          string                       `json:"subagent_type,omitempty"`
 			UserReferences        []agentcontext.UserReference `json:"user_references,omitempty"`
+			DisplayContent        string                       `json:"display_content,omitempty"`
 			ContextOnly           bool                         `json:"context_only,omitempty"`
 			ResolveInterruptionID string                       `json:"resolve_interruption_id,omitempty"`
 		} `json:"metadata"`
@@ -468,6 +469,7 @@ func domainMessageHash(message agent.Message, metadata MessageMetadata) (string,
 	payload.Metadata.SubAgentSessionID = metadata.SubAgentSessionID
 	payload.Metadata.SubAgentType = metadata.SubAgentType
 	payload.Metadata.UserReferences = append([]agentcontext.UserReference(nil), metadata.UserReferences...)
+	payload.Metadata.DisplayContent = metadata.DisplayContent
 	payload.Metadata.ContextOnly = metadata.ContextOnly
 	payload.Metadata.ResolveInterruptionID = metadata.ResolveInterruptionID
 	data, err := json.Marshal(payload)

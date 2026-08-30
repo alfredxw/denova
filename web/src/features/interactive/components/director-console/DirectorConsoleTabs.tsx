@@ -1,4 +1,4 @@
-import { Activity, GitBranch, Sparkles, Users } from 'lucide-react'
+import { Activity, GitBranch, Map, Sparkles, Users } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { DirectorConsoleTab } from './types'
@@ -9,16 +9,18 @@ interface DirectorConsoleTabsProps {
   changesCount: number
   actorsCount: number
   worldCount: number
+  planCount: number
   branchesCount: number
 }
 
 /** Compact navigation for the state views and the story-bound branch preview. */
-export function DirectorConsoleTabs({ activeTab, onChange, changesCount, actorsCount, worldCount, branchesCount }: DirectorConsoleTabsProps) {
+export function DirectorConsoleTabs({ activeTab, onChange, changesCount, actorsCount, worldCount, planCount, branchesCount }: DirectorConsoleTabsProps) {
   const { t } = useTranslation()
   const items: Array<{ id: DirectorConsoleTab; label: string; icon: React.ReactNode; count: number }> = [
     { id: 'changes', label: t('directorPanel.stateTab.changes'), icon: <Activity className="h-3.5 w-3.5" />, count: changesCount },
     { id: 'actors', label: t('directorPanel.stateTab.actors'), icon: <Users className="h-3.5 w-3.5" />, count: actorsCount },
     { id: 'world', label: t('directorPanel.stateTab.world'), icon: <Sparkles className="h-3.5 w-3.5" />, count: worldCount },
+    { id: 'plan', label: t('directorPanel.stateTab.plan'), icon: <Map className="h-3.5 w-3.5" />, count: planCount },
     { id: 'branches', label: t('directorPanel.stateTab.branches'), icon: <GitBranch className="h-3.5 w-3.5" />, count: branchesCount },
   ]
 

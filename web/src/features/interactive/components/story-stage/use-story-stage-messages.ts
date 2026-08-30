@@ -11,7 +11,6 @@ import {
   parseAgentToolInput,
 } from '@/lib/agent-ui-message'
 import type { Snapshot, TurnDisplayEvent, TurnEvent } from '../../types'
-import { isDirectorDisplayEvent } from '../director-console/utils'
 import type { TurnNavigationItem } from '../TurnNavigator'
 import { sanitizeStoredNarrative } from '../../stream-parser'
 import {
@@ -142,7 +141,7 @@ function projectPersistedTurn(turn: TurnEvent, options: {
       ...(turn.attachments?.length ? { attachments: turn.attachments } : {}),
     },
   })]
-  const displayEvents = (turn.display_events || []).filter((event) => !isDirectorDisplayEvent(event))
+  const displayEvents = turn.display_events || []
   if (!displayEvents.some((event) => event.role === 'thinking') && turn.thinking?.trim()) {
     messages.push(createAgentReasoningMessage({
       id: `${turn.id}-thinking`,

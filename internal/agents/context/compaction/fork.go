@@ -449,8 +449,8 @@ func renderCacheSafeCompactionPrompt(
 	}
 	builder.WriteString("\nUse exactly this stable Markdown prompt schema (headings may be empty only when truly inapplicable):\n")
 	builder.WriteString(agentcontext.CompactionCheckpointSchema())
-	if policy.AgentKind == config.AgentKindInteractiveStory || policy.AgentKind == config.AgentKindInteractiveDirector {
-		builder.WriteString("\nGame-mode requirements: preserve event order and causality, source turn IDs, Actor State changes, Lore sources, DirectorPlan status, relationships, quests, foreshadowing, secrets, dangers, and countdowns. Treat current Actor State, Lore, and DirectorPlan as deterministic sources rather than inventing replacements.\n")
+	if policy.AgentKind == config.AgentKindInteractiveStory {
+		builder.WriteString("\nGame-mode requirements: preserve event order and causality, source turn IDs, Actor State changes, Lore sources, branch-plan status, relationships, quests, foreshadowing, secrets, dangers, and countdowns. Treat current Actor State, Lore, and the branch plan as deterministic sources rather than inventing replacements.\n")
 	} else {
 		builder.WriteString("\nWorkspace/writing requirements: preserve the user's objective and constraints, current draft or implementation state, file/artifact references, decisions and rationale, verified results, rejected approaches, unresolved risks, and dependency-ordered next actions.\n")
 	}

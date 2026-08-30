@@ -9,9 +9,9 @@ import (
 )
 
 const (
-	// Version 9 rebuilds sidecars with public Agent canonical hashes beside the
-	// existing product-domain hashes, preserving bounded exact reconciliation.
-	storyProjectionVersion      = 9
+	// Version 10 adds event-sourced branch-plan checkpoints maintained by the
+	// Game Agent in the same transaction as each owning Turn.
+	storyProjectionVersion      = 10
 	storyRecentTransactionLimit = 200
 	storyRecentCommitLimit      = 200
 	storyTurnAnchorEvery        = 256
@@ -42,6 +42,8 @@ type storyBranchProjection struct {
 	Depth                 int                        `json:"depth"`
 	State                 map[string]any             `json:"state"`
 	StateBeforeLatest     map[string]any             `json:"state_before_latest,omitempty"`
+	Plan                  *BranchPlan                `json:"plan,omitempty"`
+	PlanBeforeLatest      *BranchPlan                `json:"plan_before_latest,omitempty"`
 	PendingPlayerInputIDs []string                   `json:"pending_player_input_ids,omitempty"`
 	TailCursor            conversationjournal.Cursor `json:"tail_cursor,omitempty"`
 }
@@ -201,6 +203,7 @@ func (projection *storyJournalProjection) applyEvent(cursor conversationjournal.
 		if parentID == branch.Head || (branch.Head == "" && parentID == "") {
 			before := cloneStoryState(branch.State)
 			branch.StateBeforeLatest = cloneStoryState(before)
+			branch.PlanBeforeLatest = cloneBranchPlan(branch.Plan)
 			branch.State = cloneStoryState(before)
 			applyTurnState(branch.State, turn)
 			branch.Head = turn.ID
@@ -209,6 +212,7 @@ func (projection *storyJournalProjection) applyEvent(cursor conversationjournal.
 			branch.Depth++
 		} else if parentID == branch.LatestTurnParentID && branch.LatestTurnID != "" {
 			branch.State = cloneStoryState(branch.StateBeforeLatest)
+			branch.Plan = cloneBranchPlan(branch.PlanBeforeLatest)
 			applyTurnState(branch.State, turn)
 			branch.Head = turn.ID
 			branch.LatestTurnID = turn.ID
@@ -243,6 +247,14 @@ func (projection *storyJournalProjection) applyEvent(cursor conversationjournal.
 	case StoryEventTypeProviderContinuation, StoryEventTypeModelContextProviderContinuation:
 		// Opaque state is joined to its owner only by bounded model-history reads.
 		// It never changes branch state or public projections by itself.
+	case StoryEventTypeBranchPlanUpdated:
+		var event BranchPlanUpdatedEvent
+		if err := mapToStruct(record.Raw, &event); err != nil {
+			return err
+		}
+		if event.TurnID == branch.LatestTurnID && event.ParentID == event.TurnID {
+			branch.Plan = &BranchPlan{Markdown: event.Markdown, UpdatedTurnID: event.TurnID, UpdatedAt: event.Ts}
+		}
 	case StoryEventTypeTurnStateRevised:
 		var revision TurnStateRevisedEvent
 		if err := mapToStruct(record.Raw, &revision); err != nil {
@@ -269,6 +281,8 @@ func (projection *storyJournalProjection) applyEvent(cursor conversationjournal.
 		if event.StateCheckpoint != nil {
 			branch.State = cloneStoryState(event.StateCheckpoint)
 		}
+		branch.Plan = cloneBranchPlan(event.PlanCheckpoint)
+		branch.PlanBeforeLatest = nil
 	case StoryEventTypeBranchHeadMoved:
 		var event BranchHeadMovedEvent
 		if err := mapToStruct(record.Raw, &event); err != nil {
@@ -279,6 +293,8 @@ func (projection *storyJournalProjection) applyEvent(cursor conversationjournal.
 		branch.Depth = event.NextDepth
 		branch.State = cloneStoryState(event.StateCheckpoint)
 		branch.StateBeforeLatest = nil
+		branch.Plan = cloneBranchPlan(event.PlanCheckpoint)
+		branch.PlanBeforeLatest = nil
 	case StoryEventTypeTurnVersionSelected:
 		var event TurnVersionSelectionEvent
 		if err := mapToStruct(record.Raw, &event); err != nil {
@@ -291,6 +307,8 @@ func (projection *storyJournalProjection) applyEvent(cursor conversationjournal.
 			branch.State = cloneStoryState(event.CurrentState)
 		}
 		branch.StateBeforeLatest = nil
+		branch.Plan = cloneBranchPlan(event.CurrentPlan)
+		branch.PlanBeforeLatest = nil
 	case StoryEventTypeHotChoices,
 		StoryEventTypeTurnNarrativeRevised, StoryEventTypeTurnDisplayAppended,
 		StoryEventTypeStoryConfigUpdated, StoryEventTypeBranchSwitched, StoryEventTypeBranchArchived:

@@ -128,7 +128,7 @@ func (s *ChatAppService) prepareWritingCycle(
 		runtime.sess, &runtime.cfg, config.AgentKindIDE,
 		runtimeContexts.StableTitle, runtimeContexts.Stable,
 		runtimeContexts.DynamicTitle, runtimeContexts.Dynamic,
-	).WithInputVisibility(resolved.InputVisibility)
+	).WithInputVisibility(resolved.InputVisibility).WithInputDisplayContent(resolved.DisplayMessage)
 	options := runtime.agentOptions(taskID)
 	options.IdleTimeout = appagentruntime.IdleTimeout(runtime.cfg)
 	options.ToolResultMaxBytes = appagentruntime.ToolResultMaxBytes(runtime.cfg)
@@ -191,9 +191,6 @@ func (app *App) executionProfiles() []agentexecution.Profile {
 		profile(agentexecution.ProfileGame, func(ctx context.Context, request agentexecution.CycleRestoreRequest) (agentexecution.Cycle, error) {
 			return app.prepareInteractiveProfileCycle(ctx, request, request.Binding)
 		}, app.gameCanonicalInput),
-		profile(agentexecution.ProfileConfigManager, func(ctx context.Context, request agentexecution.CycleRestoreRequest) (agentexecution.Cycle, error) {
-			return app.ConfigManager().PrepareCycle(ctx, request, request.Binding)
-		}, app.sessionCanonicalInput),
 		profile(agentexecution.ProfileImage, func(ctx context.Context, request agentexecution.CycleRestoreRequest) (agentexecution.Cycle, error) {
 			return app.Images().PrepareCycle(ctx, request, request.Binding)
 		}, app.sessionCanonicalInput),

@@ -16,6 +16,7 @@ const gameAttachmentMarker = 'E2E_GAME_IMAGE_ATTACHMENT'
 const gameRegenerationMarker = 'E2E_GAME_REGENERATE_FAILURE'
 const gameFollowUpDelayMarker = 'E2E_GAME_FOLLOW_UP_DELAY'
 const gameFollowUpMarker = 'E2E_GAME_FOLLOW_UP_STEER'
+const gameBranchPlanMarker = 'E2E_GAME_BRANCH_PLAN'
 const generalProjectAlphaMarker = 'E2E_GENERAL_PROJECT_ALPHA_WRITE'
 const generalProjectBetaMarker = 'E2E_GENERAL_PROJECT_BETA_WRITE'
 const externalReadAskMarker = 'E2E_EXTERNAL_READ_ASK'
@@ -29,6 +30,7 @@ const gameAttachmentNarrative = '图像中的蓝色信标亮起，旧车站的�
 const originalRegenerationNarrative = '第一次生成的钟声从旧车站深处传来。'
 const regeneratedNarrative = '重试后，月台广播给出了全新的撤离路线。'
 const gameFollowUpNarrative = '你立即改变方向，沿着新发现的脚印进入旧车站。'
+const gameBranchPlanNarrative = '你在站台地图上发现一条通往钟楼的维护通道。'
 const externalSecret = 'DENOVA_E2E_EXTERNAL_SECRET'
 const externalSecretPath = path.resolve('test-results', 'runtime', 'e2e-external-secret.txt')
 const agentEditArguments = JSON.stringify({
@@ -41,6 +43,14 @@ const turnSubmission = JSON.stringify({
     { op: 'replace', actor_id: 'story', field_id: '当前事件', value: '石门已经开启，前方出现一座旧车站' },
   ],
   choices: ['走进旧车站', '留在门外观察'],
+})
+const planningTurnSubmission = JSON.stringify({
+  state_changes: [
+    { op: 'replace', actor_id: 'story', field_id: '当前详细地点', value: '旧车站站台' },
+    { op: 'replace', actor_id: 'story', field_id: '当前事件', value: '发现通往钟楼的维护通道' },
+  ],
+  choices: ['调查维护通道', '继续查看站台地图'],
+  plan_update: '## 当前意图\n\n围绕 [[旧车站]] 的钟楼信号展开，但保留玩家离开车站的自由。',
 })
 
 const delayedResponses = new Map([
@@ -94,10 +104,10 @@ function toolCompletionFrames(name, argumentsJSON, id) {
   ]
 }
 
-function chatCompletionFrames(content = narrative) {
+function chatCompletionFrames(content = narrative, submission = turnSubmission) {
   return [
     completionFrame({ role: 'assistant', content }),
-    ...toolCompletionFrames('submit_interactive_turn', turnSubmission, 'call-submit-interactive-turn'),
+    ...toolCompletionFrames('submit_interactive_turn', submission, 'call-submit-interactive-turn'),
   ]
 }
 
@@ -238,6 +248,11 @@ const server = createServer(async (request, response) => {
     return
   }
 
+  if (requestIncludesMarker(body, gameBranchPlanMarker) && requestIncludesTool(body, 'submit_interactive_turn')) {
+    recordRequest(gameBranchPlanMarker)
+    writeChatCompletion(response, chatCompletionFrames(gameBranchPlanNarrative, planningTurnSubmission))
+    return
+  }
   if (requestIncludesMarker(body, gameAttachmentMarker) && requestIncludesTool(body, 'submit_interactive_turn')) {
     recordRequest(gameAttachmentMarker)
     const content = requestIncludesImageAttachment(body, gameAttachmentName)

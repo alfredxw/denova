@@ -40,9 +40,6 @@ func TestProjectSystemPromptsAreStableAcrossDataDirectoryRoots(t *testing.T) {
 	gameB, gameBErr := ComposeInteractiveStoryInstruction(cfgB, stateB, InteractiveStorySystemInstructionInput{})
 	assertPortable("Game", gameA, gameB, gameAErr, gameBErr)
 
-	configA, configAErr := ComposeConfigManagerInstruction(cfgA, stateA)
-	configB, configBErr := ComposeConfigManagerInstruction(cfgB, stateB)
-	assertPortable("Configuration Manager", configA, configB, configAErr, configBErr)
 }
 
 func TestStandaloneInteractiveInstructionOmitsRuntimeRoot(t *testing.T) {

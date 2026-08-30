@@ -1,6 +1,5 @@
 import common from './zh-CN/common'
 import remoteAccess from './zh-CN/remoteAccess'
-import configManager from './zh-CN/configManager'
 import chat from './zh-CN/chat'
 import editor from './zh-CN/editor'
 import runtime from './zh-CN/runtime'
@@ -48,7 +47,6 @@ import trajectory from './zh-CN/trajectory'
 const zhCN = {
   ...common,
   ...remoteAccess,
-  ...configManager,
   ...chat,
   ...editor,
   ...runtime,

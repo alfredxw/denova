@@ -432,6 +432,7 @@ export function useAgentChat(options: ChatOptions = {}) {
         message: string
       }) as Record<string, unknown>
       body.message = prepared.message
+      if (sendOptions.displayMessage?.trim()) body.display_message = sendOptions.displayMessage
       body.session_id = targetSessionID
       const retryBody = { ...body, attachments: attachmentUploadsRetryIdentity(attachmentUploads) }
 
@@ -452,7 +453,7 @@ export function useAgentChat(options: ChatOptions = {}) {
           const receipt = await client.submitChatCommand(delivery, commandID, operationID, targetSessionID, body)
           retryCommandIDsRef.current.delete(retryKey)
           queuedComposerDraftsRef.current.set(commandID, {
-            message: prepared.message,
+            message: sendOptions.displayMessage || prepared.message,
             composerReferences: prepared.composerReferences,
             composerLoreReferences: prepared.composerLoreReferences,
             composerStyleScenes: prepared.composerStyleScenes,
@@ -472,7 +473,7 @@ export function useAgentChat(options: ChatOptions = {}) {
                 command_id: commandID,
                 operation_id: receipt.operation_id,
                 delivery,
-                message: prepared.message,
+                message: sendOptions.displayMessage || prepared.message,
               }),
             }
           })

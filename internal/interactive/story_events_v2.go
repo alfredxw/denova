@@ -90,5 +90,6 @@ type BranchHeadMovedEvent struct {
 	NextLatestTurnID string         `json:"next_latest_turn_id,omitempty"`
 	NextDepth        int            `json:"next_depth,omitempty"`
 	StateCheckpoint  map[string]any `json:"state_checkpoint"`
+	PlanCheckpoint   *BranchPlan    `json:"plan_checkpoint,omitempty"`
 	Reason           string         `json:"reason"`
 }

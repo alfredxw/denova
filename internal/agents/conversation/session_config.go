@@ -20,6 +20,11 @@ func IsReservedSessionID(id string) bool {
 	if id == "" {
 		return false
 	}
+	// Config Manager sessions remain on disk after the Agent's retirement, but
+	// must never appear as runnable Project Agent conversations.
+	if id == "config-manager-agent" || strings.HasPrefix(id, "config-manager-agent-") {
+		return true
+	}
 	for _, definition := range config.AgentKindDefinitions() {
 		if definition.SessionID == id || (definition.SessionID != "" && strings.HasPrefix(id, definition.SessionID+"-")) {
 			return true

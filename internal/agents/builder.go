@@ -79,15 +79,16 @@ func BuildGeneralDefinitionWithCompositionForHost(ctx context.Context, cfg *conf
 		return agent.Definition{}, prompts.SystemPromptComposition{}, err
 	}
 	assembly, err := buildAgentDefinitionWithComposition(ctx, cfg, agentBuildSpec{
-		Kind:            config.AgentKindGeneral,
-		Name:            "DenovaGeneralAgent",
-		Description:     "General-purpose project Agent",
-		Composition:     composition,
-		ProjectState:    state,
-		EnableSkills:    true,
-		InteractiveHost: host.Interactive,
-		ExtraTools:      host.RootTools,
-		ReadAdapters:    host.ReadAdapters,
+		Kind:              config.AgentKindGeneral,
+		Name:              "DenovaGeneralAgent",
+		Description:       "General-purpose project Agent",
+		Composition:       composition,
+		ProjectState:      state,
+		EnableSkills:      true,
+		InteractiveHost:   host.Interactive,
+		ExtraTools:        host.RootTools,
+		ExtraToolsFactory: agenttoolruntime.NewCatalog(cfg).Configuration(),
+		ReadAdapters:      host.ReadAdapters,
 	})
 	return assembly.Definition, assembly.Composition, err
 }
@@ -144,45 +145,6 @@ func BuildInteractiveStoryDefinitionWithCompositionForHost(
 		ExtraMiddlewares:  handlers,
 		ExtraToolsFactory: agenttoolruntime.NewCatalog(cfg).InteractiveStory(agenttoolruntime.ProjectInteractiveContext(toolContexts...)),
 		ModelOutputGuard:  outputGuard,
-	})
-	return assembly.Definition, assembly.Composition, err
-}
-
-func BuildInteractiveDirectorDefinitionWithComposition(ctx context.Context, cfg *config.Config, state *book.State, toolContexts ...agentinteractive.InteractiveStoryToolContext) (agent.Definition, prompts.SystemPromptComposition, error) {
-	composition, err := prompts.ComposeInteractiveDirectorInstruction(cfg, state)
-	if err != nil {
-		return agent.Definition{}, prompts.SystemPromptComposition{}, err
-	}
-	toolContext := agenttoolruntime.ProjectInteractiveContext(toolContexts...)
-	assembly, err := buildAgentDefinitionWithComposition(ctx, cfg, agentBuildSpec{
-		Kind:                config.AgentKindInteractiveDirector,
-		Name:                "DenovaInteractiveDirectorAgent",
-		Description:         "AI background director for interactive stories",
-		Composition:         composition,
-		ProjectState:        state,
-		EnableSkills:        false,
-		DisableWriteTodos:   true,
-		ExtraMiddlewares:    []agent.Middleware{agenttoolruntime.NewInteractiveDirectorPlanFileMiddleware()},
-		ReadAdaptersFactory: agenttoolruntime.NewCatalog(cfg).InteractiveDirectorRead(toolContext),
-		ExtraToolsFactory:   agenttoolruntime.NewCatalog(cfg).InteractiveDirector(toolContext),
-	})
-	return assembly.Definition, assembly.Composition, err
-}
-
-func BuildConfigManagerDefinitionWithCompositionForHost(ctx context.Context, cfg *config.Config, state *book.State, host AgentHostCapabilities, resourceSkills ...prompts.ConfigManagerResourceSkill) (agent.Definition, prompts.SystemPromptComposition, error) {
-	composition, err := prompts.ComposeConfigManagerInstruction(cfg, state, resourceSkills...)
-	if err != nil {
-		return agent.Definition{}, prompts.SystemPromptComposition{}, err
-	}
-	assembly, err := buildAgentDefinitionWithComposition(ctx, cfg, agentBuildSpec{
-		Kind:              config.AgentKindConfigManager,
-		Name:              "DenovaConfigManagerAgent",
-		Description:       "AI configuration and resource-management assistant",
-		Composition:       composition,
-		ProjectState:      state,
-		EnableSkills:      true,
-		InteractiveHost:   host.Interactive,
-		ExtraToolsFactory: agenttoolruntime.NewCatalog(cfg).ConfigManager(),
 	})
 	return assembly.Definition, assembly.Composition, err
 }
@@ -351,7 +313,7 @@ func buildAgentDefinitionWithComposition(ctx context.Context, cfg *config.Config
 		tools = append(tools, prepared...)
 		builtinToolsets = append(builtinToolsets, todoToolset.Identity())
 	}
-	if spec.InteractiveHost && toolSettings.Allows(config.AgentToolAsk) && (spec.Kind == config.AgentKindGeneral || spec.Kind == config.AgentKindIDE || spec.Kind == config.AgentKindConfigManager || spec.Kind == config.AgentKindHarness) {
+	if spec.InteractiveHost && toolSettings.Allows(config.AgentToolAsk) && (spec.Kind == config.AgentKindGeneral || spec.Kind == config.AgentKindIDE || spec.Kind == config.AgentKindHarness) {
 		askToolset := publictools.Ask()
 		prepared, err := askToolset.PrepareTools(ctx, agent.ToolRequest{})
 		if err != nil {

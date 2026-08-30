@@ -6,7 +6,7 @@ const agentApproval = {
   'agentApproval.mode.full_access.label': 'Full access',
   'agentApproval.mode.full_access.description': '除极高危操作外均自动执行；仍是执行前护栏，并非操作系统级隔离。',
   'agentApproval.input.section': 'Agent 安全模式',
-  'agentApproval.input.changeBlocked': '当前运行已锁定启动时的模式，结束后可切换。',
+  'agentApproval.input.appliesNextTurn': '已开始的模型轮次保持当前安全模式；修改从下一模型轮次生效。',
   'agentApproval.input.changeFailed': '安全模式切换失败',
   'agentApproval.approval.title': '需要你的确认',
   'agentApproval.approval.waiting': '等待决定',

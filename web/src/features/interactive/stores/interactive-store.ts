@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import type { AgentRuntimeActiveOutput, AgentRuntimeOpenTool, AgentRuntimeQueuedCommand } from '@/lib/api'
 import type { AgentUIMessage } from '@/lib/agent-ui'
-import type { BranchSummary, DirectorPlanStatus, InteractiveSubmode, InteractiveTurnPersistedEvent, Snapshot, StoryDirector, StorySummary, Teller, TurnEvent } from '../types'
+import type { BranchSummary, InteractiveSubmode, InteractiveTurnPersistedEvent, Snapshot, StoryDirector, StorySummary, Teller, TurnEvent } from '../types'
 
 const CURRENT_STORY_STORAGE_KEY = 'nova.interactive.current_story.v1'
 const CURRENT_BRANCH_STORAGE_KEY = 'nova.interactive.current_branch.v1'
@@ -47,7 +47,6 @@ interface InteractiveStore {
   setStoryDirectors: (directors: StoryDirector[]) => void
   setBranches: (branches: BranchSummary[]) => void
   setSnapshot: (snapshot: Snapshot | null) => void
-  setDirectorPlanStatus: (storyId: string, branchId: string, status: DirectorPlanStatus) => void
   applyTurnPersisted: (event: InteractiveTurnPersistedEvent) => Snapshot | null
   setStoryStageRun: (stageKey: string, updater: Partial<StoryStageRunState> | ((current: StoryStageRunState) => StoryStageRunState)) => void
   clearStoryStageRun: (stageKey: string) => void
@@ -136,7 +135,7 @@ function rememberSubmode(submode: InteractiveSubmode) {
 }
 
 function isInteractiveSubmode(value: unknown): value is InteractiveSubmode {
-  return value === 'story' || value === 'timeline' || value === 'director'
+  return value === 'story' || value === 'timeline'
 }
 
 export const useInteractiveStore = create<InteractiveStore>((set) => ({
@@ -177,14 +176,6 @@ export const useInteractiveStore = create<InteractiveStore>((set) => ({
       stories: snapshot ? storiesWithTurnCount(state.stories, snapshot.story_id, snapshot.turn_count) : state.stories,
       currentBranchId: snapshot?.branch_id || state.currentBranchId,
     }
-  }),
-  setDirectorPlanStatus: (storyId, branchId, status) => set((state) => {
-    const snapshot = state.snapshot
-    if (!snapshot || snapshot.story_id !== storyId || snapshot.branch_id !== branchId) return state
-    const currentUpdatedAt = Date.parse(snapshot.director_plan_status?.updated_at || '')
-    const nextUpdatedAt = Date.parse(status.updated_at || '')
-    if (Number.isFinite(currentUpdatedAt) && Number.isFinite(nextUpdatedAt) && nextUpdatedAt < currentUpdatedAt) return state
-    return { snapshot: { ...snapshot, director_plan_status: status } }
   }),
   applyTurnPersisted: (event) => {
     let appliedSnapshot: Snapshot | null = null
@@ -254,7 +245,7 @@ export function mergeInteractiveTurnPersistedSnapshot(current: Snapshot | null, 
     turn_count: event.turn_count,
     turns,
     current_turn: turn,
-    director_plan_status: event.director_plan_status || base.director_plan_status,
+    branch_plan: event.branch_plan || base.branch_plan,
     state: event.state || base.state || {},
     graph: event.graph || base.graph,
     context_compaction: event.context_compaction === undefined ? base.context_compaction : event.context_compaction,

@@ -7,15 +7,16 @@ import (
 )
 
 const (
-	AgentKindIDE                 = "ide"
-	AgentKindGeneral             = "general"
-	AgentKindHarness             = "harness"
-	AgentKindInteractiveStory    = "interactive_story"
-	AgentKindConfigManager       = "config_manager"
-	AgentKindInteractiveDirector = "interactive_director"
-	AgentKindVersionSummary      = "version_summary"
-	AgentKindToolAgent           = "tool_agent"
-	AgentKindImage               = "image"
+	AgentKindIDE              = "ide"
+	AgentKindGeneral          = "general"
+	AgentKindHarness          = "harness"
+	AgentKindInteractiveStory = "interactive_story"
+	// AgentKindConfigManager is retained only to decode Beta settings and
+	// journals. Configuration work now runs in General or IDE Project Agents.
+	AgentKindConfigManager  = "config_manager"
+	AgentKindVersionSummary = "version_summary"
+	AgentKindToolAgent      = "tool_agent"
+	AgentKindImage          = "image"
 	// AgentKindAutomation is retained only to decode Beta runtime journals.
 	// New automation turns always run as their owning Project Agent.
 	AgentKindAutomation = "automation"
@@ -46,6 +47,7 @@ var agentKindRegistry = []AgentKindDefinition{
 			AgentToolWebSearch, AgentToolWebFetch, AgentToolBrowser,
 			AgentToolAsk, AgentToolTodo, AgentToolSkills, AgentToolDelegation,
 			AgentToolScript, AgentToolHarnessState,
+			AgentToolConfigRead, AgentToolConfigApply,
 		},
 		ModelOverride:    func(settings AgentModelSettings) AgentModelOverride { return settings.General },
 		SetModelOverride: func(settings *AgentModelSettings, override AgentModelOverride) { settings.General = override },
@@ -79,6 +81,7 @@ var agentKindRegistry = []AgentKindDefinition{
 			AgentToolWebSearch, AgentToolWebFetch, AgentToolBrowser,
 			AgentToolAsk, AgentToolTodo, AgentToolSkills, AgentToolDelegation,
 			AgentToolScript, AgentToolHarnessState,
+			AgentToolConfigRead, AgentToolConfigApply,
 			AgentToolLoreRead, AgentToolLoreWrite, AgentToolImageGeneration,
 		},
 		ModelOverride:    func(settings AgentModelSettings) AgentModelOverride { return settings.IDE },
@@ -101,38 +104,6 @@ var agentKindRegistry = []AgentKindDefinition{
 		PromptOverride:   func(settings AgentPromptSettings) AgentPromptOverride { return settings.InteractiveStory },
 		SkillOverride:    func(settings AgentSkillSettings) AgentSkillOverride { return settings.InteractiveStory },
 		ContextOverride:  func(settings AgentContextSettings) AgentContextOverride { return settings.InteractiveStory },
-	},
-	{
-		Kind:      AgentKindConfigManager,
-		SessionID: "config-manager-agent",
-		ToolCapabilities: []string{
-			AgentToolFilesystemRead, AgentToolWorkspaceWrite, AgentToolShell,
-			AgentToolWebSearch, AgentToolWebFetch, AgentToolBrowser,
-			AgentToolAsk, AgentToolTodo, AgentToolSkills, AgentToolDelegation,
-			AgentToolConfigRead, AgentToolConfigApply, AgentToolLoreRead,
-			AgentToolImageGeneration,
-		},
-		ModelOverride:    func(settings AgentModelSettings) AgentModelOverride { return settings.ConfigManager },
-		SetModelOverride: func(settings *AgentModelSettings, override AgentModelOverride) { settings.ConfigManager = override },
-		ToolOverride:     func(settings AgentToolSettings) AgentToolOverride { return settings.ConfigManager },
-		PromptOverride:   func(settings AgentPromptSettings) AgentPromptOverride { return settings.ConfigManager },
-		SkillOverride:    func(settings AgentSkillSettings) AgentSkillOverride { return settings.ConfigManager },
-		ContextOverride:  func(settings AgentContextSettings) AgentContextOverride { return settings.ConfigManager },
-	},
-	{
-		Kind:      AgentKindInteractiveDirector,
-		SessionID: "interactive-director-agent",
-		ToolCapabilities: []string{
-			AgentToolEventRead, AgentToolLoreRead,
-		},
-		ModelOverride: func(settings AgentModelSettings) AgentModelOverride { return settings.InteractiveDirector },
-		SetModelOverride: func(settings *AgentModelSettings, override AgentModelOverride) {
-			settings.InteractiveDirector = override
-		},
-		ToolOverride:    func(settings AgentToolSettings) AgentToolOverride { return settings.InteractiveDirector },
-		PromptOverride:  func(settings AgentPromptSettings) AgentPromptOverride { return settings.InteractiveDirector },
-		SkillOverride:   func(settings AgentSkillSettings) AgentSkillOverride { return settings.InteractiveDirector },
-		ContextOverride: func(settings AgentContextSettings) AgentContextOverride { return settings.InteractiveDirector },
 	},
 	{
 		Kind:             AgentKindVersionSummary,

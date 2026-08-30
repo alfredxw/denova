@@ -33,13 +33,13 @@ func runToolForTest(ctx context.Context, candidate any, arguments string) (strin
 	return result.ModelContent, err
 }
 
-func TestConfigManagerExposesOnlyRegistryTools(t *testing.T) {
+func TestConfigurationToolFactoryExposesOnlyRegistryTools(t *testing.T) {
 	definitions, err := NewTools(&config.Config{NovaDir: t.TempDir(), Workspace: t.TempDir()}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got := configManagerToolNameSet(t, definitions); len(got) != 2 || !got["config_read"] || !got["config_apply"] {
-		t.Fatalf("config manager tools = %v, want only config_read/config_apply", got)
+		t.Fatalf("configuration tools = %v, want only config_read/config_apply", got)
 	}
 	for _, definition := range definitions {
 		info, infoErr := definition.Tool.Info(context.Background())
@@ -82,7 +82,7 @@ func TestConfigApplySchemaDocumentsAgentProfileRevisionAndDeleteKind(t *testing.
 		t.Fatalf("config_apply value schema = %#v", value)
 	}
 
-	referencePath := filepath.Join("..", "..", "..", "skills", "config-manager", "references", "agent-profile.md")
+	referencePath := filepath.Join("..", "..", "..", "skills", "configuration", "references", "agent-profile.md")
 	reference, err := os.ReadFile(referencePath)
 	if err != nil {
 		t.Fatalf("read agent-profile reference: %v", err)
@@ -555,7 +555,7 @@ func TestConfigApplyAgentProfileDeleteRequiresKindAndRoutesByKind(t *testing.T) 
 	}
 }
 
-func TestConfigApplyAgentProfileEnforcesConfigManagerToolCeiling(t *testing.T) {
+func TestConfigApplyAgentProfileEnforcesActiveAgentToolCeiling(t *testing.T) {
 	novaDir := t.TempDir()
 	workspace := filepath.Join(t.TempDir(), "workspace")
 	cfg := &config.Config{NovaDir: novaDir, Workspace: workspace}
@@ -578,51 +578,38 @@ func TestConfigApplyAgentProfileEnforcesConfigManagerToolCeiling(t *testing.T) {
 	userRevision := readRevision("user")
 	if _, err := runToolForTest(context.Background(), applyTool, mustJSON(t, map[string]any{
 		"operation": "update", "resource": "agent_profile", "scope": "user", "id": config.AgentKindConfigManager,
-		"revision": userRevision, "value": map[string]any{"kind": "agent", "tools": map[string]any{config.AgentToolShell: true}},
-	})); err == nil || !strings.Contains(err.Error(), config.AgentToolShell) {
-		t.Fatalf("Config Manager self-escalation should be rejected, got %v", err)
+		"revision": userRevision, "value": map[string]any{"kind": "agent", "tools": map[string]any{config.AgentToolConfigRead: true}},
+	})); err == nil || !strings.Contains(err.Error(), config.AgentKindConfigManager) {
+		t.Fatalf("retired Config Manager settings must not be actively editable, got %v", err)
+	}
+
+	if _, err := runToolForTest(context.Background(), applyTool, mustJSON(t, map[string]any{
+		"operation": "update", "resource": "agent_profile", "scope": "user", "id": config.AgentKindGeneral,
+		"revision": userRevision, "value": map[string]any{"kind": "agent", "tools": map[string]any{config.AgentToolEventRead: true}},
+	})); err == nil || !strings.Contains(err.Error(), config.AgentToolEventRead) {
+		t.Fatalf("capabilities outside the General Agent ceiling should be rejected, got %v", err)
 	}
 	if got, err := config.SettingsFileRevision(config.UserConfigPath(novaDir)); err != nil || got != userRevision {
 		t.Fatalf("rejected self-escalation changed user settings revision: got=%q want=%q err=%v", got, userRevision, err)
 	}
 
 	if _, err := runToolForTest(context.Background(), applyTool, mustJSON(t, map[string]any{
-		"operation": "update", "resource": "agent_profile", "scope": "user", "id": config.AgentKindConfigManager,
+		"operation": "update", "resource": "agent_profile", "scope": "user", "id": config.AgentKindGeneral,
 		"revision": userRevision, "value": map[string]any{"kind": "agent", "tools": map[string]any{"future_sensitive_capability": true}},
 	})); err == nil || !strings.Contains(err.Error(), "future_sensitive_capability") {
-		t.Fatalf("Config Manager should reject unknown enabled capabilities, got %v", err)
+		t.Fatalf("configuration should reject unknown enabled capabilities, got %v", err)
 	}
 
 	if _, err := runToolForTest(context.Background(), applyTool, mustJSON(t, map[string]any{
-		"operation": "update", "resource": "agent_profile", "scope": "user", "id": config.AgentKindConfigManager,
+		"operation": "update", "resource": "agent_profile", "scope": "user", "id": config.AgentKindGeneral,
 		"revision": userRevision, "value": map[string]any{"kind": "agent", "tools": map[string]any{
 			config.AgentToolFilesystemRead: true, config.AgentToolAsk: false, config.AgentToolSkills: true,
 			config.AgentToolConfigRead: true, config.AgentToolConfigApply: true,
 		}},
 	})); err != nil {
-		t.Fatalf("safe Config Manager tool override failed: %v", err)
+		t.Fatalf("safe General Agent tool override failed: %v", err)
 	}
 
-	if err := config.WriteSettingsFile(config.UserConfigPath(novaDir), config.Settings{
-		AgentTools: config.AgentToolSettings{ConfigManager: config.AgentToolOverride{config.AgentToolShell: true}},
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if err := config.WriteSettingsFile(config.WorkspaceConfigPath(workspace), config.Settings{
-		AgentTools: config.AgentToolSettings{ConfigManager: config.AgentToolOverride{config.AgentToolShell: false}},
-	}); err != nil {
-		t.Fatal(err)
-	}
-	workspaceRevision := readRevision("workspace")
-	if _, err := runToolForTest(context.Background(), applyTool, mustJSON(t, map[string]any{
-		"operation": "delete", "resource": "agent_profile", "scope": "workspace", "id": config.AgentKindConfigManager,
-		"revision": workspaceRevision, "value": map[string]any{"kind": "agent"},
-	})); err == nil || !strings.Contains(err.Error(), config.AgentToolShell) {
-		t.Fatalf("deleting a restrictive layer should not reveal inherited shell access, got %v", err)
-	}
-	if got, err := config.SettingsFileRevision(config.WorkspaceConfigPath(workspace)); err != nil || got != workspaceRevision {
-		t.Fatalf("rejected ceiling bypass changed workspace revision: got=%q want=%q err=%v", got, workspaceRevision, err)
-	}
 }
 
 func TestConfigSkillResourceMutatesOneReferencePerRevision(t *testing.T) {

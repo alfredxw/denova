@@ -1,10 +1,6 @@
 package agentrun
 
-import (
-	"fmt"
-
-	"denova/config"
-)
+import "fmt"
 
 const imageAgentSessionID = "image-agent"
 
@@ -31,8 +27,6 @@ func RuntimeBindingForOptions(options Options) (RuntimeBinding, error) {
 			AgentKind: options.AgentKind, ProjectID: options.ProjectID, Workspace: options.Workspace,
 			StoryID: options.StoryID, BranchID: options.BranchID,
 		}
-	case AgentKindConfigManager:
-		binding = RuntimeBinding{AgentKind: options.AgentKind, ProjectID: options.ProjectID, Workspace: options.Workspace, SessionID: options.SessionID}
 	case AgentKindImage:
 		sessionID := options.SessionID
 		if sessionID == "" {
@@ -47,11 +41,6 @@ func RuntimeBindingForOptions(options Options) (RuntimeBinding, error) {
 		binding = RuntimeBinding{
 			AgentKind: options.AgentKind, ProjectID: options.ProjectID, Workspace: options.Workspace,
 			SessionID: options.SessionID, TaskID: taskID,
-		}
-	case config.AgentKindInteractiveDirector:
-		binding = RuntimeBinding{
-			AgentKind: options.AgentKind, ProjectID: options.ProjectID, Workspace: options.Workspace,
-			StoryID: options.StoryID, BranchID: options.BranchID,
 		}
 	default:
 		return RuntimeBinding{}, fmt.Errorf("%w: unsupported agent profile %q", ErrInvalidBinding, options.AgentKind)

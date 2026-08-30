@@ -282,7 +282,6 @@ export interface AgentModelSettings {
   interactive_story?: AgentModelOverride
   image?: AgentModelOverride
   config_manager?: AgentModelOverride
-  interactive_director?: AgentModelOverride
   version_summary?: AgentModelOverride
   tool_agent?: AgentModelOverride
   automation?: AgentModelOverride
@@ -301,7 +300,6 @@ export interface AgentToolSettings {
   interactive_story?: AgentToolOverride
   image?: AgentToolOverride
   config_manager?: AgentToolOverride
-  interactive_director?: AgentToolOverride
   version_summary?: AgentToolOverride
   tool_agent?: AgentToolOverride
   automation?: AgentToolOverride
@@ -314,7 +312,6 @@ export interface AgentSkillSettings {
   interactive_story?: AgentSkillOverride
   image?: AgentSkillOverride
   config_manager?: AgentSkillOverride
-  interactive_director?: AgentSkillOverride
   version_summary?: AgentSkillOverride
   tool_agent?: AgentSkillOverride
   automation?: AgentSkillOverride
@@ -329,7 +326,6 @@ interface AgentContextSettings {
   interactive_story?: AgentContextOverride
   image?: AgentContextOverride
   config_manager?: AgentContextOverride
-  interactive_director?: AgentContextOverride
   version_summary?: AgentContextOverride
   tool_agent?: AgentContextOverride
   automation?: AgentContextOverride
@@ -439,7 +435,6 @@ interface AgentPromptSettings {
   interactive_story?: AgentPromptOverride
   image?: AgentPromptOverride
   config_manager?: AgentPromptOverride
-  interactive_director?: AgentPromptOverride
   version_summary?: AgentPromptOverride
   tool_agent?: AgentPromptOverride
   automation?: AgentPromptOverride
@@ -470,7 +465,6 @@ interface AgentPromptSourceSettings {
   interactive_story?: AgentPromptSourceList
   image?: AgentPromptSourceList
   config_manager?: AgentPromptSourceList
-  interactive_director?: AgentPromptSourceList
   version_summary?: AgentPromptSourceList
   tool_agent?: AgentPromptSourceList
   automation?: AgentPromptSourceList
@@ -489,7 +483,6 @@ interface AgentPromptBlockSettings {
   interactive_story?: AgentPromptBlocks
   image?: AgentPromptBlocks
   config_manager?: AgentPromptBlocks
-  interactive_director?: AgentPromptBlocks
   version_summary?: AgentPromptBlocks
   tool_agent?: AgentPromptBlocks
   automation?: AgentPromptBlocks

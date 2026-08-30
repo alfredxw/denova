@@ -9,11 +9,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/common/ut"
 
 	"denova/config"
-	agentinteractive "denova/internal/agents/interactive"
 	runtimeapp "denova/internal/app"
-	"denova/internal/book"
-	"denova/internal/interactive"
-	"denova/internal/interactive/director"
 )
 
 func newTestApplication(t *testing.T) *runtimeapp.App {
@@ -26,16 +22,6 @@ func newTestApplication(t *testing.T) *runtimeapp.App {
 		t.Fatal(err)
 	}
 	t.Cleanup(application.Close)
-	restoreDirector := application.SetInteractiveDirectorGeneratorForTest(func(callCtx context.Context, _ *config.Config, _ *book.State, toolContext agentinteractive.InteractiveStoryToolContext, _ string) (string, error) {
-		if toolContext.MaintenanceTask == "director_plan_update" || toolContext.MaintenanceTask == "opening_plan" {
-			_, err := toolContext.SubmitDirectorPlanUpdate(callCtx, interactive.DirectorPlanUpdateSubmission{
-				Decision: director.Decision{Mode: director.DecisionKeep, Reason: "测试初始化导演规划完成。"}, Finalize: true,
-			})
-			return "测试导演规划审查完成。", err
-		}
-		return "测试后台维护完成。", nil
-	})
-	t.Cleanup(restoreDirector)
 	return application
 }
 

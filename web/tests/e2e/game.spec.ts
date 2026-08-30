@@ -5,6 +5,7 @@ import { allowGameRegeneration, getModelStatus, releaseDelayedRequest } from '..
 const gameFollowUpDelayMarker = 'E2E_GAME_FOLLOW_UP_DELAY'
 const gameFollowUpMarker = 'E2E_GAME_FOLLOW_UP_STEER'
 const gameFollowUpNarrative = '你立即改变方向，沿着新发现的脚印进入旧车站。'
+const gameBranchPlanMarker = 'E2E_GAME_BRANCH_PLAN'
 
 test('submits, streams, and persists a complete Game turn', async ({ page, request }) => {
   await createAndOpenBook(request, 'Game E2E Book')
@@ -56,6 +57,35 @@ test('creates and switches to a branch from a persisted Game turn', async ({ pag
   await expect.poll(async () => getStoryBranches(request, story.id)).toContainEqual(
     expect.objectContaining({ title: 'E2E 支线', current: true }),
   )
+})
+
+test('lets the Game Agent maintain a branch plan and keeps planning user-controllable', async ({ page, request }) => {
+  await createAndOpenBook(request, 'Game Planning E2E Book')
+  const story = await createStory(request, 'Game Planning E2E Story', { planningMode: 'enabled' })
+
+  await page.goto('/')
+  await page.getByLabel('工作台侧边栏').getByRole('button', { name: '游戏', exact: true }).click()
+  const composer = page.getByPlaceholder(/你要做什么/)
+  await composer.fill(`查看站台地图 ${gameBranchPlanMarker}`)
+  await composer.press('Enter')
+
+  await expect(page.getByText('你在站台地图上发现一条通往钟楼的维护通道。', { exact: true })).toBeVisible()
+  await expect.poll(async () => (await getStorySnapshot(request, story.id)).branch_plan?.markdown).toContain('保留玩家离开车站的自由')
+
+  await page.getByRole('tab', { name: '规划', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '当前意图', exact: true })).toBeVisible()
+  await expect(page.getByText(/保留玩家离开车站的自由/)).toBeVisible()
+
+  const planningSwitch = page.getByRole('switch', { name: '切换 Game Agent 规划功能' })
+  await expect(planningSwitch).toBeChecked()
+  await planningSwitch.click()
+  await expect(planningSwitch).not.toBeChecked()
+  await expect(page.getByText('规划已关闭').first()).toBeVisible()
+
+  await page.reload()
+  await page.getByLabel('工作台侧边栏').getByRole('button', { name: '游戏', exact: true }).click()
+  await expect(page.getByRole('switch', { name: '切换 Game Agent 规划功能' })).not.toBeChecked()
+  await expect(page.getByText(/保留玩家离开车站的自由/)).toBeVisible()
 })
 
 test('preserves the settled turn after a failed regeneration and replaces it on retry', async ({ page, request }) => {

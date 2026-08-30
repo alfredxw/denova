@@ -4,8 +4,6 @@ import (
 	"reflect"
 	"testing"
 
-	"denova/config"
-
 	agent "github.com/alfredxw/denova/agent"
 )
 
@@ -16,10 +14,8 @@ func TestAgentSessionKeyRoundTripsEveryDenovaBinding(t *testing.T) {
 		{AgentKind: AgentKindGeneral, Mode: ModeAgentChat, ProjectID: "project", Workspace: "/mutable", SessionID: "general-chat"},
 		{AgentKind: AgentKindHarness, Mode: ModeAgentChat, ProjectID: "harness", Workspace: "/state", SessionID: "harness-chat"},
 		{AgentKind: AgentKindInteractiveStory, ProjectID: "project", Workspace: "/book", StoryID: "story", BranchID: "branch"},
-		{AgentKind: AgentKindConfigManager, ProjectID: "project", Workspace: "/book", SessionID: "config"},
 		{AgentKind: AgentKindImage, ProjectID: "project", Workspace: "/book", SessionID: "image"},
 		{AgentKind: AgentKindAutomation, ProjectID: "project", Workspace: "/book", SessionID: "automation", TaskID: "task"},
-		{AgentKind: config.AgentKindInteractiveDirector, ProjectID: "project", Workspace: "/book", StoryID: "story", BranchID: "branch"},
 	}
 	seen := make(map[string]RuntimeBinding, len(cases))
 	for _, original := range cases {
@@ -59,14 +55,13 @@ func TestDenovaSessionSelectorsMatchOnlyTheirOwnedLanes(t *testing.T) {
 	projectIDE := key(RuntimeBinding{AgentKind: AgentKindIDE, Mode: ModeAgentChat, ProjectID: "project", SessionID: "ide"})
 	projectGeneral := key(RuntimeBinding{AgentKind: AgentKindGeneral, Mode: ModeAgentChat, ProjectID: "project", SessionID: "general"})
 	game := key(RuntimeBinding{AgentKind: AgentKindInteractiveStory, ProjectID: "project", Workspace: "/book", StoryID: "story", BranchID: "main"})
-	director := key(RuntimeBinding{AgentKind: config.AgentKindInteractiveDirector, ProjectID: "project", Workspace: "/book", StoryID: "story", BranchID: "main"})
 	otherBranch := key(RuntimeBinding{AgentKind: AgentKindInteractiveStory, ProjectID: "project", Workspace: "/book", StoryID: "story", BranchID: "fork"})
 
 	foreground, err := ForegroundProjectBindingSelectors("project")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !matchesAnySelector(foreground, writing) || !matchesAnySelector(foreground, game) || !matchesAnySelector(foreground, director) {
+	if !matchesAnySelector(foreground, writing) || !matchesAnySelector(foreground, game) {
 		t.Fatalf("foreground selectors missed owned lanes: %#v", foreground)
 	}
 	if matchesAnySelector(foreground, projectIDE) {
@@ -84,7 +79,7 @@ func TestDenovaSessionSelectorsMatchOnlyTheirOwnedLanes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !story.Matches(game) || !story.Matches(director) || story.Matches(otherBranch) {
+	if !story.Matches(game) || story.Matches(otherBranch) {
 		t.Fatalf("story selector crossed branch boundary: %#v", story)
 	}
 }

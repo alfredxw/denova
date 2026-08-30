@@ -19,7 +19,7 @@ const automations = {
   'automations.group.running': '{{count}} 个运行中',
   'automations.view.config': '任务配置',
   'automations.view.inbox': '触发收件箱',
-  'automations.view.agent': '配置 Agent',
+  'automations.view.agent': '配置管理',
   'automations.field.name': '名称',
   'automations.field.project': '所属项目',
   'automations.field.enabled': '状态',

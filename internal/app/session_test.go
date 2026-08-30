@@ -10,7 +10,6 @@ import (
 	agentchat "denova/internal/agents/chat"
 	agentexecution "denova/internal/agents/execution"
 	"denova/internal/agents/session"
-	configmanagerapp "denova/internal/app/configmanager"
 )
 
 func TestWritingStartRejectsAStaleExplicitSessionBinding(t *testing.T) {
@@ -122,7 +121,7 @@ func TestAppDeleteActiveSessionSwitchesToRemainingSession(t *testing.T) {
 	}
 }
 
-func TestAppUserSessionsIgnoreFixedAgentSessions(t *testing.T) {
+func TestAppUserSessionsPreserveAndHideLegacyConfigManagerSessions(t *testing.T) {
 	store, err := session.NewStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -135,13 +134,17 @@ func TestAppUserSessionsIgnoreFixedAgentSessions(t *testing.T) {
 		t.Fatal(err)
 	}
 	app := &App{sessionStore: store, session: first}
-	if err := persistAgentCallInStore(store, config.AgentKindConfigManager, "配置输入", "配置输出"); err != nil {
-		t.Fatal(err)
-	}
-	scopedID, err := configmanagerapp.SessionID(configmanagerapp.Request{Origin: "automation", ResourceID: "daily-review"})
+	legacyFixed, err := store.GetOrCreate("config-manager-agent")
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := legacyFixed.Append(agents.UserMessage("配置输入")); err != nil {
+		t.Fatal(err)
+	}
+	if err := legacyFixed.Append(agents.AssistantMessage("配置输出", nil)); err != nil {
+		t.Fatal(err)
+	}
+	scopedID := "config-manager-agent-automation-resource-daily-review-0123456789ab"
 	scoped, err := store.GetOrCreate(scopedID)
 	if err != nil {
 		t.Fatal(err)
@@ -176,12 +179,9 @@ func TestAppUserSessionsIgnoreFixedAgentSessions(t *testing.T) {
 		t.Fatal("创作会话 API 不应读取配置管理 Agent scoped 会话")
 	}
 
-	history, err := app.AgentSessionMessages(config.AgentKindConfigManager)
-	if err != nil {
-		t.Fatal(err)
-	}
+	history := legacyFixed.History()
 	if len(history) != 2 || history[0].Content != "配置输入" || history[1].Content != "配置输出" {
-		t.Fatalf("配置管理 Agent 自己的会话应保持可读: %#v", history)
+		t.Fatalf("旧配置管理会话数据应原样保留在存储中: %#v", history)
 	}
 }
 
@@ -194,7 +194,11 @@ func TestActiveUserSessionOrCreateIgnoresFixedAgentActiveSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := persistAgentCallInStore(store, config.AgentKindConfigManager, "配置输入", "配置输出"); err != nil {
+	legacy, err := store.GetOrCreate("config-manager-agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := legacy.Append(agents.UserMessage("配置输入")); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.SetActiveID("config-manager-agent"); err != nil {

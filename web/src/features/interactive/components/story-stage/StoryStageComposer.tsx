@@ -1,6 +1,6 @@
 import { useRef, type CSSProperties, type Dispatch, type RefObject, type SetStateAction } from 'react'
 import type { TFunction } from 'i18next'
-import { Activity, Archive, BarChart3, ChevronDown, ChevronUp, Compass, List, Loader2, Paperclip, Pencil, Plus, RefreshCw, ScrollText, Sparkles, Target, X } from 'lucide-react'
+import { Activity, Archive, BarChart3, ChevronDown, ChevronUp, Compass, List, Paperclip, Pencil, Plus, RefreshCw, ScrollText, Sparkles, Target, X } from 'lucide-react'
 import { AgentComposerControls } from '@/components/Chat/AgentComposerControls'
 import { AgentComposerShell } from '@/components/Chat/AgentComposerShell'
 import { AgentGoalCard } from '@/components/Chat/AgentGoalCard'
@@ -21,7 +21,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import type { AgentRuntimeQueuedCommand, ContextAnalysis } from '@/lib/api'
 import type { AgentTokenUsageRecord } from '@/lib/agent-message-view'
-import type { DirectorPlanStatus, ImagePreset, StoryImageSettings, StorySummary } from '../../types'
+import type { ImagePreset, StoryImageSettings, StorySummary } from '../../types'
 import { EditInteractiveReplyDialog } from '../EditInteractiveReplyDialog'
 import { InteractiveImageSettingsMenu, StoryImagePresetMenu } from './ImageSettingsMenus'
 import type { StoryStageCommandItem } from './story-stage-commands'
@@ -69,11 +69,6 @@ interface StoryStageComposerProps {
     imagePresets: ImagePreset[]
     onImageSettingsChange?: (settings: StoryImageSettings) => void | Promise<void>
     branchTerminal: boolean
-    directorBlocking: boolean
-    directorPlanStatus?: DirectorPlanStatus
-    directorStatusVisible: boolean
-    directorRetrying: boolean
-    directorRetryError: string
     hotChoices: string[]
     hotChoicesExpanded: boolean
     showHotChoices: boolean
@@ -126,7 +121,6 @@ interface StoryStageComposerProps {
   }
   actions: {
     cancelEditing: () => void
-    retryDirectorPlanning: () => Promise<void>
     selectHotChoice: (choice: string) => void
     selectStyleScene: (scene: string) => void
     selectSkillCommand: (name: string) => void
@@ -148,13 +142,13 @@ interface StoryStageComposerProps {
 export function StoryStageComposer({ layout, editor, story, runtime, goal, dialogs, actions }: StoryStageComposerProps) {
   const { projectId, creatingStory, isMobile, keyboardInset, inputTextStyle, workspace, inputFloatRef, inputRef, t } = layout
   const { input, editingTurn, styleScenes, styleSceneQuery, styleSceneSuggestions, showSkillCommands, activeSkillCommandIndex, skillCommands, filteredSkillCommands, filteredBuiltInCommandItems, filteredSkillCommandItems, setStyleSceneQuery, setShowSkillCommands, setSkillCommandQuery, setActiveSkillCommandIndex } = editor
-  const { storyId, story: currentStory, imagePresets, onImageSettingsChange, branchTerminal, directorBlocking, directorPlanStatus, directorStatusVisible, directorRetrying, directorRetryError, hotChoices, hotChoicesExpanded, showHotChoices, canUseHotChoices, setHotChoicesExpanded } = story
+  const { storyId, story: currentStory, imagePresets, onImageSettingsChange, branchTerminal, hotChoices, hotChoicesExpanded, showHotChoices, canUseHotChoices, setHotChoicesExpanded } = story
   const { streaming, approvalReady, conversationConfig, abortPending, recoveryPaused, recoveryAbortAvailable, operationId, connection, commandSubmitting, queue, queueActionPendingCommandID } = runtime
   const { contextAnalysisOpen, contextAnalysisLoading, contextAnalysisError, contextAnalysis, tokenUsageOpen, tokenUsageMessages, traceOpen, selectedTraceRunId, replyEditTarget, setContextAnalysisOpen, setTokenUsageOpen, setTraceOpen, closeReplyEditor, saveReply } = dialogs
-  const { cancelEditing, retryDirectorPlanning, selectHotChoice, selectStyleScene, selectSkillCommand, handleInputChange, handleInputTriggerChange, handleTokenRemove, toggleHotChoices, openMobileNavigation, openContextAnalysis, removeContextCompaction, openTraceRun, send, steerQueuedCommand, deleteQueuedCommand, stop } = actions
+  const { cancelEditing, selectHotChoice, selectStyleScene, selectSkillCommand, handleInputChange, handleInputTriggerChange, handleTokenRemove, toggleHotChoices, openMobileNavigation, openContextAnalysis, removeContextCompaction, openTraceRun, send, steerQueuedCommand, deleteQueuedCommand, stop } = actions
   const activeControlsDisabled = streaming && (!operationId || connection !== 'connected')
   const attachments = useComposerAttachments(
-    !branchTerminal && !directorBlocking && approvalReady && !goal.pending,
+    !branchTerminal && approvalReady && !goal.pending,
     `game:${layout.attachmentDraftKey}`,
   )
   const stylePickerRef = useRef<FileReferencePickerHandle>(null)
@@ -199,26 +193,6 @@ export function StoryStageComposer({ layout, editor, story, runtime, goal, dialo
             </Button>
           </div>
         ) : null}
-        {directorStatusVisible && directorPlanStatus ? (
-          <div className="mb-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)]/90 px-3 py-2 text-xs text-[var(--nova-text-muted)] shadow-[var(--nova-shadow)] backdrop-blur-xl">
-            <div className="flex min-w-0 flex-wrap items-center gap-2">
-              {directorPlanStatus.status === 'running' ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-[var(--nova-text-faint)]" /> : <Sparkles className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />}
-              <span className="min-w-0 flex-1 font-medium text-[var(--nova-text)]">{t('storyStage.director.title')}</span>
-              <span className="shrink-0 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-0.5 text-[11px] text-[var(--nova-text-faint)]">
-                {t('storyStage.director.progress', { completed: directorPlanStatus.completed_docs, planned: directorPlanStatus.planned_docs })}
-              </span>
-              {directorPlanStatus.status === 'failed' ? (
-                <Button type="button" variant="outline" size="xs" className="h-7 gap-1.5 border-[var(--nova-border)] bg-[var(--nova-surface-2)]" disabled={directorRetrying || !storyId} onClick={() => void retryDirectorPlanning()}>
-                  {directorRetrying ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-                  {t('storyStage.director.retry')}
-                </Button>
-              ) : null}
-            </div>
-            <div className="mt-1 leading-5 text-[var(--nova-text-faint)]">
-              {directorRetryError || directorPlanStatus.error || directorPlanStatus.summary || t('storyStage.director.description')}
-            </div>
-          </div>
-        ) : null}
         {showHotChoices ? (
           <div className="mb-2 overflow-hidden rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)]">
             <div className="flex min-h-8 items-center gap-1.5 px-2 py-1 text-[11px] text-[var(--nova-text-muted)]">
@@ -253,7 +227,7 @@ export function StoryStageComposer({ layout, editor, story, runtime, goal, dialo
           <AgentGoalCard
             goal={goal.value}
             pending={goal.pending}
-            disabled={branchTerminal || directorBlocking || !approvalReady}
+            disabled={branchTerminal || !approvalReady}
             onEdit={goal.edit}
             onPause={goal.pause}
             onClear={goal.clear}
@@ -321,35 +295,35 @@ export function StoryStageComposer({ layout, editor, story, runtime, goal, dialo
               maxRows={isMobile ? 5 : 10}
               className="nova-agent-composer-textarea nova-agent-token-input min-h-[42px] resize-none border-0 bg-transparent px-1 py-[9px] text-sm leading-6 text-[var(--nova-text)] shadow-none placeholder:text-[var(--nova-text-faint)] focus-visible:border-transparent focus-visible:ring-0"
               style={inputTextStyle}
-              disabled={branchTerminal || directorBlocking || !approvalReady || goal.pending}
+              disabled={branchTerminal || !approvalReady || goal.pending}
               inputMode="text"
               enterKeyHint="send"
               autoCapitalize="sentences"
-              placeholder={branchTerminal ? t('storyStage.inputPlaceholderTerminal') : directorBlocking ? t('storyStage.director.inputBlocked') : goal.mode ? t('chat.goal.placeholder') : !isMobile && skillCommands.length > 0 ? t('storyStage.inputPlaceholderWithSkills') : t('storyStage.inputPlaceholder')}
+              placeholder={branchTerminal ? t('storyStage.inputPlaceholderTerminal') : goal.mode ? t('chat.goal.placeholder') : !isMobile && skillCommands.length > 0 ? t('storyStage.inputPlaceholderWithSkills') : t('storyStage.inputPlaceholder')}
             />}
             toolbarStart={<>
               <DropdownMenu>
-                <DropdownMenuTrigger asChild><Button type="button" variant="outline" size="icon-sm" className="nova-agent-composer-icon h-8 w-8 shrink-0 rounded-[10px] border border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] disabled:opacity-45" disabled={branchTerminal || directorBlocking || (!storyId && tokenUsageMessages.length === 0)} aria-label={t('chat.input.actions')}><List className="h-3.5 w-3.5" /></Button></DropdownMenuTrigger>
+                <DropdownMenuTrigger asChild><Button type="button" variant="outline" size="icon-sm" className="nova-agent-composer-icon h-8 w-8 shrink-0 rounded-[10px] border border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] disabled:opacity-45" disabled={branchTerminal || (!storyId && tokenUsageMessages.length === 0)} aria-label={t('chat.input.actions')}><List className="h-3.5 w-3.5" /></Button></DropdownMenuTrigger>
                 <DropdownMenuContent align="start" side="top" className="w-80 max-w-[calc(100vw-1rem)] border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 text-[var(--nova-text)]">
                   <DropdownMenuGroup>
                     <ComposerMenuItem
                       icon={Paperclip}
                       label={t('chat.attachment.add')}
-                      disabled={branchTerminal || directorBlocking || goal.pending}
+                      disabled={branchTerminal || goal.pending}
                       onSelect={attachments.openPicker}
                     />
                     <ComposerMenuItem
                       icon={Target}
                       label={t(goal.mode ? 'chat.goal.exitMode' : 'chat.goal.enterMode')}
-                      disabled={streaming || branchTerminal || directorBlocking || goal.pending}
+                      disabled={streaming || branchTerminal || goal.pending}
                       onSelect={goal.mode ? goal.exit : goal.enter}
                     />
                   </DropdownMenuGroup>
                   <AgentApprovalModeMenu runActive={streaming} presentation="submenu" conversationConfig={conversationConfig} />
-                  <ImageGenerationSettingsMenu projectId={projectId} disabled={streaming || directorBlocking}>
-                    <StoryImagePresetMenu story={currentStory} presets={imagePresets} disabled={!storyId || streaming || directorBlocking || !onImageSettingsChange} onChange={onImageSettingsChange} />
+                  <ImageGenerationSettingsMenu projectId={projectId} disabled={streaming}>
+                    <StoryImagePresetMenu story={currentStory} presets={imagePresets} disabled={!storyId || streaming || !onImageSettingsChange} onChange={onImageSettingsChange} />
                   </ImageGenerationSettingsMenu>
-                  <InteractiveImageSettingsMenu story={currentStory} disabled={!storyId || streaming || directorBlocking || !onImageSettingsChange} onChange={onImageSettingsChange} />
+                  <InteractiveImageSettingsMenu story={currentStory} disabled={!storyId || streaming || !onImageSettingsChange} onChange={onImageSettingsChange} />
                   <DropdownMenuGroup>
                     <ComposerMenuItem
                       icon={BarChart3}
@@ -361,7 +335,7 @@ export function StoryStageComposer({ layout, editor, story, runtime, goal, dialo
                     <ComposerMenuItem
                       icon={ScrollText}
                       label={t('chat.contextAnalysis.action')}
-                      disabled={!storyId || streaming || branchTerminal || directorBlocking}
+                      disabled={!storyId || streaming || branchTerminal}
                       onSelect={openContextAnalysis}
                     />
                   </DropdownMenuGroup>
@@ -371,11 +345,11 @@ export function StoryStageComposer({ layout, editor, story, runtime, goal, dialo
               {attachments.input}
             </>}
             toolbarEnd={<>
-              <ModelProfileSwitcher agentKey="interactive_story" workspace={workspace} conversationConfig={conversationConfig} disabled={streaming || directorBlocking || !approvalReady} />
+              <ModelProfileSwitcher agentKey="interactive_story" workspace={workspace} conversationConfig={conversationConfig} disabled={!approvalReady} runActive={streaming} />
               <Button type="button" variant="outline" className={`nova-agent-composer-pill h-8 shrink-0 rounded-[10px] border-[var(--nova-border)] bg-[var(--nova-surface)] px-2.5 text-[11px] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] ${hotChoicesExpanded ? 'text-[var(--nova-text)]' : ''}`} disabled={!canUseHotChoices} onMouseDown={(event) => event.preventDefault()} onClick={toggleHotChoices} aria-label={hotChoicesExpanded ? t('storyStage.hotChoices.collapse') : t('storyStage.hotChoices.get')}><Compass className="h-3.5 w-3.5" />{!isMobile ? t('storyStage.hotChoices.button') : null}</Button>
               {isMobile ? <Button type="button" variant="outline" className="nova-agent-composer-icon h-8 w-8 shrink-0 rounded-[10px] border-[var(--nova-border)] bg-[var(--nova-surface)] px-0 text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" onMouseDown={(event) => event.preventDefault()} onClick={openMobileNavigation} aria-label={t('workbench.mobile.navigationMenu')}><Plus className="h-3.5 w-3.5" /></Button> : null}
             </>}
-            submitControl={<AgentComposerControls generationActive={streaming} hasSendableContent={Boolean(input.trim() || attachments.files.length)} onStop={() => { void stop() }} onSend={() => { void submit() }} sendDisabled={!approvalReady || !storyId || (!input.trim() && attachments.files.length === 0) || goal.pending} disabled={branchTerminal || directorBlocking} abortPending={abortPending} actionPending={commandSubmitting || goal.pending} activeControlsDisabled={activeControlsDisabled} stopDisabled={streaming && !recoveryAbortAvailable && (recoveryPaused || !operationId || connection !== 'connected')} sendLabel={editingTurn ? t('storyStage.sendRegenerate') : undefined} sendIcon={editingTurn ? <RefreshCw /> : undefined} />}
+            submitControl={<AgentComposerControls generationActive={streaming} hasSendableContent={Boolean(input.trim() || attachments.files.length)} onStop={() => { void stop() }} onSend={() => { void submit() }} sendDisabled={!approvalReady || !storyId || (!input.trim() && attachments.files.length === 0) || goal.pending} disabled={branchTerminal} abortPending={abortPending} actionPending={commandSubmitting || goal.pending} activeControlsDisabled={activeControlsDisabled} stopDisabled={streaming && !recoveryAbortAvailable && (recoveryPaused || !operationId || connection !== 'connected')} sendLabel={editingTurn ? t('storyStage.sendRegenerate') : undefined} sendIcon={editingTurn ? <RefreshCw /> : undefined} />}
           />
         </div>
         <ContextAnalysisDialog open={contextAnalysisOpen} loading={contextAnalysisLoading} error={contextAnalysisError} analysis={contextAnalysis} onOpenChange={setContextAnalysisOpen} onRemoveCompaction={removeContextCompaction} />

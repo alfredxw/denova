@@ -45,9 +45,9 @@ func DecodeInteractiveTurnSubmissionInput(arguments string) TurnSubmissionInput 
 		return invalidUnifiedTurnSubmissionInput(TurnSubmissionDiagnosticInvalidTopLevel, "", "null", "Turn submission arguments must be an object.")
 	}
 	allowed := map[string]bool{
-		turnSubmissionStateChangesField:   true,
-		TurnSubmissionModuleChoices:       true,
-		turnSubmissionDirectorUpdateField: true,
+		turnSubmissionStateChangesField: true,
+		TurnSubmissionModuleChoices:     true,
+		TurnSubmissionModulePlanUpdate:  true,
 	}
 	unknown := make([]string, 0)
 	for key := range root {
@@ -61,7 +61,7 @@ func DecodeInteractiveTurnSubmissionInput(arguments string) TurnSubmissionInput 
 			TurnSubmissionDiagnosticInvalidTopLevel,
 			"",
 			strings.Join(unknown, ","),
-			"Turn submission arguments may only contain state_changes, choices, and optional director_update.",
+			"Turn submission arguments may only contain state_changes, choices, and optional plan_update.",
 		)
 	}
 
@@ -76,26 +76,21 @@ func DecodeInteractiveTurnSubmissionInput(arguments string) TurnSubmissionInput 
 	if raw, exists := root[TurnSubmissionModuleChoices]; exists {
 		choices, diagnostics := decodeChoicesModule(raw)
 		input.Diagnostics = append(input.Diagnostics, diagnostics...)
-		if rawHint, hintExists := root[turnSubmissionDirectorUpdateField]; hintExists {
-			hint, hintDiagnostics := decodeDirectorUpdateHint(rawHint)
-			input.Diagnostics = append(input.Diagnostics, hintDiagnostics...)
-			if len(hintDiagnostics) == 0 {
-				input.DirectorUpdate = hint
-			}
-		}
 		if !turnSubmissionHasDiagnostic(input.Diagnostics, TurnSubmissionModuleChoices) {
 			input.Choices = &choices
 		}
-	} else if _, hintExists := root[turnSubmissionDirectorUpdateField]; hintExists {
-		input.Diagnostics = append(input.Diagnostics, *newTurnSubmissionDiagnostic(
-			TurnSubmissionModuleChoices,
-			nil,
-			TurnSubmissionDiagnosticInvalidTopLevel,
-			"/director_update",
-			"director_update together with choices",
-			"choices missing",
-			"director_update may only be submitted together with choices.",
-		))
+	}
+	if raw, exists := root[TurnSubmissionModulePlanUpdate]; exists {
+		var plan string
+		if err := decodeStrictJSON(raw, &plan, false); err != nil {
+			input.Diagnostics = append(input.Diagnostics, *newTurnSubmissionDiagnostic(
+				TurnSubmissionModulePlanUpdate, nil, TurnSubmissionDiagnosticInvalidModule,
+				"/plan_update", "Markdown string", jsonValueKind(raw),
+				fmt.Sprintf("plan_update must be a string: %v", err),
+			))
+		} else {
+			input.PlanUpdate = &plan
+		}
 	}
 	return input
 }
@@ -258,7 +253,7 @@ func stateUpdateFromStructuredInput(change TurnStateChangeInput) (interactivesta
 
 func invalidUnifiedTurnSubmissionInput(code, path, actual, message string) TurnSubmissionInput {
 	diagnostics := make([]TurnSubmissionDiagnostic, 0, 2)
-	for _, module := range []string{TurnSubmissionModuleStateChanges, TurnSubmissionModuleChoices} {
+	for _, module := range []string{TurnSubmissionModuleStateChanges, TurnSubmissionModuleChoices, TurnSubmissionModulePlanUpdate} {
 		diagnostics = append(diagnostics, *newTurnSubmissionDiagnostic(
 			module,
 			nil,

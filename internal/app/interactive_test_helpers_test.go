@@ -81,7 +81,12 @@ func submitTestTurnResult(t *testing.T, store *interactive.Store, storyID, branc
 		)
 	}
 	choices := []string{"继续当前行动", "观察周围变化", "询问在场人物", "检查自身状态", "暂时等待"}
-	receipt, err := conversation.SubmitTurnResult(context.Background(), interactive.TurnSubmissionInput{StateUpdates: &updates, Choices: &choices})
+	input := interactive.TurnSubmissionInput{StateUpdates: &updates, Choices: &choices}
+	if storyContext.Meta.PlanningMode == interactive.StoryPlanningModeEnabled && storyContext.Snapshot.BranchPlan == nil {
+		plan := "Keep the current branch coherent while responding to the player's choices."
+		input.PlanUpdate = &plan
+	}
+	receipt, err := conversation.SubmitTurnResult(context.Background(), input)
 	if err != nil || !receipt.Ready {
 		t.Fatalf("SubmitTurnResult failed: receipt=%#v err=%v", receipt, err)
 	}

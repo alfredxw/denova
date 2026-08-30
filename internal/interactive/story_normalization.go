@@ -9,7 +9,6 @@ import (
 	"time"
 
 	imagepreset "denova/internal/image/preset"
-	"denova/internal/interactive/director"
 )
 
 func defaultStoryTitle(stories []StorySummary) string {
@@ -60,7 +59,7 @@ func validateStoryChoiceCount(value int) error {
 
 func normalizeStorySummary(story StorySummary) StorySummary {
 	story.StoryDirectorID = normalizedStoryDirectorID(story.StoryDirectorID)
-	story.DirectorRunPolicy = cloneStoryDirectorRunPolicy(story.DirectorRunPolicy)
+	story.PlanningMode = normalizeStoryPlanningMode(story.PlanningMode)
 	story.ReplyTargetChars = normalizeStoryReplyTargetChars(story.ReplyTargetChars)
 	story.ChoiceCount = normalizeStoryChoiceCount(story.ChoiceCount)
 	story.Opening = normalizeStoryOpeningConfig(story.Opening)
@@ -77,7 +76,7 @@ func normalizeStorySummary(story StorySummary) StorySummary {
 func normalizeStoryMeta(meta StoryMeta) StoryMeta {
 	legacyFixedSchema := meta.StateSchemaPolicy == nil
 	meta.StoryDirectorID = normalizedStoryDirectorID(meta.StoryDirectorID)
-	meta.DirectorRunPolicy = cloneStoryDirectorRunPolicy(meta.DirectorRunPolicy)
+	meta.PlanningMode = normalizeStoryPlanningMode(meta.PlanningMode)
 	meta.ReplyTargetChars = normalizeStoryReplyTargetChars(meta.ReplyTargetChars)
 	meta.ChoiceCount = normalizeStoryChoiceCount(meta.ChoiceCount)
 	meta.Opening = normalizeStoryOpeningConfig(meta.Opening)
@@ -108,14 +107,6 @@ func cloneStoryDirectorModuleRefs(refs *StoryDirectorModuleRefs) *StoryDirectorM
 	}
 	cloned := NormalizeStoryDirectorModuleRefs(*refs)
 	cloned.EventPackageIDs = append([]string(nil), cloned.EventPackageIDs...)
-	return &cloned
-}
-
-func cloneStoryDirectorRunPolicy(policy *director.RunPolicy) *director.RunPolicy {
-	if policy == nil {
-		return nil
-	}
-	cloned := director.NormalizeRunPolicy(*policy)
 	return &cloned
 }
 

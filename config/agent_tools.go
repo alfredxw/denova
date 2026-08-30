@@ -27,16 +27,16 @@ const (
 
 // AgentToolSettings stores capability overrides for every Agent kind.
 type AgentToolSettings struct {
-	Default             AgentToolOverride `toml:"default,omitempty" json:"default,omitempty"`
-	General             AgentToolOverride `toml:"general,omitempty" json:"general,omitempty"`
-	IDE                 AgentToolOverride `toml:"ide,omitempty" json:"ide,omitempty"`
-	InteractiveStory    AgentToolOverride `toml:"interactive_story,omitempty" json:"interactive_story,omitempty"`
-	ConfigManager       AgentToolOverride `toml:"config_manager,omitempty" json:"config_manager,omitempty"`
-	InteractiveDirector AgentToolOverride `toml:"interactive_director,omitempty" json:"interactive_director,omitempty"`
-	VersionSummary      AgentToolOverride `toml:"version_summary,omitempty" json:"version_summary,omitempty"`
-	ToolAgent           AgentToolOverride `toml:"tool_agent,omitempty" json:"tool_agent,omitempty"`
-	Image               AgentToolOverride `toml:"image,omitempty" json:"image,omitempty"`
-	Automation          AgentToolOverride `toml:"automation,omitempty" json:"automation,omitempty"`
+	Default          AgentToolOverride `toml:"default,omitempty" json:"default,omitempty"`
+	General          AgentToolOverride `toml:"general,omitempty" json:"general,omitempty"`
+	IDE              AgentToolOverride `toml:"ide,omitempty" json:"ide,omitempty"`
+	InteractiveStory AgentToolOverride `toml:"interactive_story,omitempty" json:"interactive_story,omitempty"`
+	// ConfigManager is an inactive persistence tombstone for v0.3.3 data.
+	ConfigManager  AgentToolOverride `toml:"config_manager,omitempty" json:"config_manager,omitempty"`
+	VersionSummary AgentToolOverride `toml:"version_summary,omitempty" json:"version_summary,omitempty"`
+	ToolAgent      AgentToolOverride `toml:"tool_agent,omitempty" json:"tool_agent,omitempty"`
+	Image          AgentToolOverride `toml:"image,omitempty" json:"image,omitempty"`
+	Automation     AgentToolOverride `toml:"automation,omitempty" json:"automation,omitempty"`
 }
 
 // AgentToolOverride is a sparse capability set. A missing key inherits from
@@ -91,7 +91,13 @@ func DefaultAgentToolSettings() AgentToolSettings {
 
 	return AgentToolSettings{
 		Default: defaults,
+		General: on(
+			AgentToolConfigRead,
+			AgentToolConfigApply,
+		),
 		IDE: on(
+			AgentToolConfigRead,
+			AgentToolConfigApply,
 			AgentToolImageGeneration,
 		),
 		InteractiveStory: off(
@@ -110,17 +116,6 @@ func DefaultAgentToolSettings() AgentToolSettings {
 			AgentToolConfigRead,
 			AgentToolConfigApply,
 		),
-		ConfigManager: mergeAgentToolOverride(noToolAgentOverride(), on(
-			AgentToolFilesystemRead,
-			AgentToolAsk,
-			AgentToolSkills,
-			AgentToolConfigRead,
-			AgentToolConfigApply,
-		)),
-		InteractiveDirector: mergeAgentToolOverride(noToolAgentOverride(), on(
-			AgentToolEventRead,
-			AgentToolLoreRead,
-		)),
 		VersionSummary: noToolAgentOverride(),
 		ToolAgent:      noToolAgentOverride(),
 		Image: mergeAgentToolOverride(noToolAgentOverride(), on(
@@ -151,16 +146,15 @@ func noToolAgentOverride() AgentToolOverride {
 
 func MergeAgentToolSettings(parent, child AgentToolSettings) AgentToolSettings {
 	return AgentToolSettings{
-		Default:             mergeAgentToolOverride(parent.Default, child.Default),
-		General:             mergeAgentToolOverride(parent.General, child.General),
-		IDE:                 mergeAgentToolOverride(parent.IDE, child.IDE),
-		InteractiveStory:    mergeAgentToolOverride(parent.InteractiveStory, child.InteractiveStory),
-		ConfigManager:       mergeAgentToolOverride(parent.ConfigManager, child.ConfigManager),
-		InteractiveDirector: mergeAgentToolOverride(parent.InteractiveDirector, child.InteractiveDirector),
-		VersionSummary:      mergeAgentToolOverride(parent.VersionSummary, child.VersionSummary),
-		ToolAgent:           mergeAgentToolOverride(parent.ToolAgent, child.ToolAgent),
-		Image:               mergeAgentToolOverride(parent.Image, child.Image),
-		Automation:          mergeAgentToolOverride(parent.Automation, child.Automation),
+		Default:          mergeAgentToolOverride(parent.Default, child.Default),
+		General:          mergeAgentToolOverride(parent.General, child.General),
+		IDE:              mergeAgentToolOverride(parent.IDE, child.IDE),
+		InteractiveStory: mergeAgentToolOverride(parent.InteractiveStory, child.InteractiveStory),
+		ConfigManager:    mergeAgentToolOverride(parent.ConfigManager, child.ConfigManager),
+		VersionSummary:   mergeAgentToolOverride(parent.VersionSummary, child.VersionSummary),
+		ToolAgent:        mergeAgentToolOverride(parent.ToolAgent, child.ToolAgent),
+		Image:            mergeAgentToolOverride(parent.Image, child.Image),
+		Automation:       mergeAgentToolOverride(parent.Automation, child.Automation),
 	}
 }
 

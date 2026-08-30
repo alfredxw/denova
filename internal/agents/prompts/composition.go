@@ -23,14 +23,6 @@ type IDEStoryTeller struct {
 	ImagePresetSystemPrompt string
 }
 
-// ConfigManagerResourceSkill is a bounded, already-resolved Skill body that
-// config_manager should treat as run-scoped schema/workflow guidance.
-type ConfigManagerResourceSkill struct {
-	Name        string
-	Description string
-	Content     string
-}
-
 // ComposeGeneralInstruction assembles the project-scoped contract for the
 // General Agent. The project directory is its working root; Denova's user data
 // directory receives no implicit privilege or restriction when explicitly
@@ -122,13 +114,21 @@ func ComposeInteractiveStoryInstruction(cfg *config.Config, state *book.State, t
 	}
 	builtIn := make([]SystemPromptFragment, 0, 3+len(teller.StyleRules))
 	builtIn = append(builtIn, tellerSystemPromptFragment(
-		"interactive_teller", "Director System Rules", teller.StoryTellerID, teller.StoryTellerName,
+		"interactive_teller", "Storyteller System Rules", teller.StoryTellerID, teller.StoryTellerName,
 		teller.StoryTellerDescription, teller.StoryTellerSystemPrompt,
 	))
 	builtIn = append(builtIn, styleRuleSystemPromptFragments(teller.StyleRules)...)
+	if planningGuide := strings.TrimSpace(teller.PlanningGuide); planningGuide != "" {
+		builtIn = append(builtIn, SystemPromptFragment{
+			ID: "game_planning_guide", Source: "Game preset", Title: "Game planning guide",
+			Purpose: "guide the optional Game Agent branch-planning capability",
+			Content: planningGuide, Prefix: "\n\n## Game Planning Guide\n\n", Overflow: SystemPromptOverflowTruncate,
+		})
+	}
 	baseInput := teller
 	baseInput.StoryTellerSystemPrompt = ""
 	baseInput.StyleRules = nil
+	baseInput.PlanningGuide = ""
 	baseInput.Workspace = workspace
 	if baseInput.ReplyTargetChars <= 0 && cfg != nil {
 		baseInput.ReplyTargetChars = cfg.InteractiveReplyTargetChars
@@ -150,74 +150,6 @@ func BuildInteractiveStoryInstructionComposition(cfg *config.Config, state *book
 			workspace = cfg.Workspace
 		}
 		return failedSystemPromptComposition("interactive", config.AgentKindInteractiveStory, workspace, err)
-	}
-	return composition
-}
-
-// ComposeInteractiveDirectorInstruction assembles the exact background
-// director instruction used by both execution and context analysis.
-func ComposeInteractiveDirectorInstruction(cfg *config.Config, state *book.State) (SystemPromptComposition, error) {
-	return ComposeBuiltinSystemInstruction(cfg, config.AgentKindInteractiveDirector, "interactive_director", workspaceForPrompt(cfg, state), "builtin_base", "Background Director system rules", "define the interactive director planning workflow", BuildInteractiveDirectorSystemInstruction())
-}
-
-// ComposeConfigManagerInstruction assembles the config manager prompt and
-// gives every auto-loaded Skill its own independently bounded source receipt.
-func ComposeConfigManagerInstruction(cfg *config.Config, state *book.State, resourceSkills ...ConfigManagerResourceSkill) (SystemPromptComposition, error) {
-	workspace := ""
-	if cfg != nil {
-		workspace = cfg.Workspace
-	}
-	if state != nil {
-		if workspace == "" {
-			workspace = state.Workspace()
-		}
-	}
-	builtIn := []SystemPromptFragment{{
-		ID: "builtin_base", Source: "Denova built-in", Title: "Config Manager built-in rules",
-		Purpose: "define resource configuration workflows and safety boundaries",
-		Content: configManagerFlowInstructionFor(workspace), Required: true, Overflow: SystemPromptOverflowReject,
-	}}
-	skillOrdinal := 0
-	skillOccurrences := make(map[string]int, len(resourceSkills))
-	for _, skill := range resourceSkills {
-		name := strings.TrimSpace(skill.Name)
-		content := strings.TrimSpace(skill.Content)
-		if name == "" || content == "" {
-			continue
-		}
-		skillOrdinal++
-		skillOccurrences[name]++
-		var skillContent strings.Builder
-		skillContent.WriteString("### /")
-		skillContent.WriteString(name)
-		skillContent.WriteString("\n\n")
-		if description := strings.TrimSpace(skill.Description); description != "" {
-			skillContent.WriteString("description: ")
-			skillContent.WriteString(description)
-			skillContent.WriteString("\n\n")
-		}
-		skillContent.WriteString(content)
-		prefix := "\n\n## Config Manager Skill\n\nUse the active Skill below for this run. Read only the references needed for the requested resource.\n\n"
-		if skillOrdinal > 1 {
-			prefix = "\n"
-		}
-		builtIn = append(builtIn, SystemPromptFragment{
-			ID: fmt.Sprintf("config_skill:%s:%03d", shortSystemPromptSHA(systemPromptSHA(name)), skillOccurrences[name]), Source: "configuration Skill",
-			Title: "/" + name, Purpose: "provide run-scoped configuration schema and workflow guidance",
-			Content: skillContent.String(), Prefix: prefix, Suffix: "\n", Overflow: SystemPromptOverflowTruncate,
-		})
-	}
-	return composeProtectedSystemInstruction(cfg, config.AgentKindConfigManager, "config_manager", workspace, builtIn)
-}
-
-func BuildConfigManagerInstructionComposition(cfg *config.Config, state *book.State, resourceSkills ...ConfigManagerResourceSkill) SystemPromptComposition {
-	composition, err := ComposeConfigManagerInstruction(cfg, state, resourceSkills...)
-	if err != nil {
-		workspace := ""
-		if cfg != nil {
-			workspace = cfg.Workspace
-		}
-		return failedSystemPromptComposition("config_manager", config.AgentKindConfigManager, workspace, err)
 	}
 	return composition
 }

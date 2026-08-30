@@ -18,7 +18,7 @@ import { useSkillCommands } from '@/hooks/useSkillCommands'
 import { useConversationConfig } from '@/features/conversation-config/use-conversation-config'
 import type { ConversationConfigBinding } from '@/features/conversation-config/types'
 import { useConversationGoal } from '@/features/agent-goal/use-conversation-goal'
-import { analyzeInteractiveContext, getInteractiveHistoryPage, removeInteractiveContextCompaction, runInteractiveDirector, switchInteractiveTurnVersion, updateInteractiveTurnNarrative } from '../api'
+import { analyzeInteractiveContext, getInteractiveHistoryPage, removeInteractiveContextCompaction, switchInteractiveTurnVersion, updateInteractiveTurnNarrative } from '../api'
 import { sanitizeStoredNarrative } from '../stream-parser'
 import { emptyStoryStageRun, useInteractiveStore } from '../stores/interactive-store'
 import type { StoryStageRunState } from '../stores/interactive-store'
@@ -113,8 +113,6 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
   const [selectedBookOpeningPresetId, setSelectedBookOpeningPresetId] = useState('')
   const [creatingStory, setCreatingStory] = useState(false)
   const [editingStorySetup, setEditingStorySetup] = useState(false)
-  const [directorRetrying, setDirectorRetrying] = useState(false)
-  const [directorRetryError, setDirectorRetryError] = useState('')
   const [contextAnalysisOpen, setContextAnalysisOpen] = useState(false)
   const [tokenUsageOpen, setTokenUsageOpen] = useState(false)
   const [traceOpen, setTraceOpen] = useState(false)
@@ -293,10 +291,7 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
         .filter(Boolean),
     [snapshot?.current_turn?.hot_state?.choices, snapshot?.current_turn?.turn_result?.choices],
   )
-  const directorPlanStatus = snapshot?.director_plan_status
-  const directorBlocking = false
-  const directorStatusVisible = Boolean(directorPlanStatus && directorBlocking)
-  const canUseHotChoices = hotChoices.length > 0 && !branchTerminal && !streaming && !editingTurn && !directorBlocking && Boolean(storyId)
+  const canUseHotChoices = hotChoices.length > 0 && !branchTerminal && !streaming && !editingTurn && Boolean(storyId)
   const showHotChoices = canUseHotChoices && hotChoicesExpanded
   const messageListBottomPadding = inputFloatHeight > 0 ? inputFloatHeight + keyboardInset + 20 : undefined
   const loadEarlierMessages = useCallback(async () => {
@@ -331,7 +326,7 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
 
   useLayoutEffect(() => {
     syncInputFloatHeight()
-  }, [conversationGoal.goal?.revision, directorRetryError, directorRetrying, directorStatusVisible, editingTurn, goalMode, hotChoices.length, input, showHotChoices, stageRun.runtime.queue.length, syncInputFloatHeight])
+  }, [conversationGoal.goal?.revision, editingTurn, goalMode, hotChoices.length, input, showHotChoices, stageRun.runtime.queue.length, syncInputFloatHeight])
 
   useEffect(() => {
     setSelectedBookOpeningPresetId((current) => {
@@ -339,10 +334,6 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
       return availableBookOpeningPresets[0]?.id || ''
     })
   }, [availableBookOpeningPresets])
-
-  useEffect(() => {
-    if (directorPlanStatus?.status !== 'failed') setDirectorRetryError('')
-  }, [directorPlanStatus?.status])
 
   useEffect(() => {
     const element = inputFloatRef.current
@@ -381,7 +372,7 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
     styleScenes,
     streaming,
     branchTerminal,
-    blocked: directorBlocking || !approvalReady,
+    blocked: !approvalReady,
     stageRun,
     liveTurnNavigationAnchorId,
     t,
@@ -507,21 +498,6 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
     if (!customText) return
     void send({ message: buildOpeningPrompt(story, t, { mode: 'custom', custom_text: customText }) })
     setCustomOpeningText('')
-  }
-
-  const retryDirectorPlanning = async () => {
-    if (!storyId || directorRetrying) return
-    setDirectorRetrying(true)
-    setDirectorRetryError('')
-    try {
-      await runInteractiveDirector(storyId, branchId || snapshot?.branch_id)
-      await onDone({ silent: true })
-    } catch (error) {
-      console.warn('[interactive-stage] retry director planning failed', error)
-      setDirectorRetryError(error instanceof Error ? error.message : t('storyStage.director.retryFailed'))
-    } finally {
-      setDirectorRetrying(false)
-    }
   }
 
   const switchMessageVersion = async (view: AgentMessageView, direction: -1 | 1) => {
@@ -820,11 +796,11 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
       <StoryStageComposer
         layout={{ projectId, creatingStory, isMobile, keyboardInset, inputTextStyle, workspace, inputFloatRef, inputRef, t, attachmentDraftKey: stageKey }}
         editor={{ input, editingTurn, styleScenes, styleSceneQuery, styleSceneSuggestions, showSkillCommands, activeSkillCommandIndex, skillCommands, filteredSkillCommands, filteredBuiltInCommandItems, filteredSkillCommandItems, setStyleSceneQuery, setShowSkillCommands, setSkillCommandQuery, setActiveSkillCommandIndex }}
-        story={{ storyId, story, imagePresets, onImageSettingsChange, branchTerminal, directorBlocking, directorPlanStatus, directorStatusVisible, directorRetrying, directorRetryError, hotChoices, hotChoicesExpanded, showHotChoices, canUseHotChoices, setHotChoicesExpanded }}
+        story={{ storyId, story, imagePresets, onImageSettingsChange, branchTerminal, hotChoices, hotChoicesExpanded, showHotChoices, canUseHotChoices, setHotChoicesExpanded }}
         runtime={{ streaming, approvalReady, conversationConfig, abortPending: stageRun.runtime.abortPending, recoveryPaused: stageRun.runtime.recoveryPaused, recoveryAbortAvailable: stageRun.runtime.recoveryAbortAvailable, operationId: stageRun.runtime.operationId, connection: stageRun.runtime.connection, commandSubmitting, queue: stageRun.runtime.queue, queueActionPendingCommandID }}
         goal={{ value: conversationGoal.goal, mode: goalMode, pending: conversationGoal.saving, enter: enterGoalMode, exit: () => setGoalMode(false), edit: editGoal, pause: pauseGoal, clear: clearGoal }}
         dialogs={{ contextAnalysisOpen, contextAnalysisLoading, contextAnalysisError, contextAnalysis, tokenUsageOpen, tokenUsageMessages, traceOpen, selectedTraceRunId, replyEditTarget, setContextAnalysisOpen, setTokenUsageOpen, setTraceOpen, closeReplyEditor: () => setReplyEditTarget(null), saveReply: saveEditedReply }}
-        actions={{ cancelEditing, retryDirectorPlanning, selectHotChoice, selectStyleScene, selectSkillCommand, handleInputChange, handleInputTriggerChange, handleTokenRemove, toggleHotChoices, openMobileNavigation, openContextAnalysis, removeContextCompaction, openTraceRun, send: submitComposer, steerQueuedCommand, deleteQueuedCommand, stop }}
+        actions={{ cancelEditing, selectHotChoice, selectStyleScene, selectSkillCommand, handleInputChange, handleInputTriggerChange, handleTokenRemove, toggleHotChoices, openMobileNavigation, openContextAnalysis, removeContextCompaction, openTraceRun, send: submitComposer, steerQueuedCommand, deleteQueuedCommand, stop }}
       />
     </main>
   )

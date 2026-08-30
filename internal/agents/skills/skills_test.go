@@ -541,37 +541,39 @@ func TestAgentBackendFiltersByAgentFrontmatterAndOverrides(t *testing.T) {
 	}
 }
 
-func TestAgentBackendExposesSingleConfigManagerSkill(t *testing.T) {
+func TestAgentBackendExposesConfigurationSkillToProjectAgents(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()
 	builtin := filepath.Join(root, "builtin")
 	workspace := filepath.Join(root, "workspace")
-	writeSkillFileForAgents(t, builtin, "config-manager", "config-manager", "all config resources", "config_manager")
+	writeSkillFileForAgents(t, builtin, "configuration", "configuration", "all config resources", "general,ide")
 	writeSkillFileForAgents(t, builtin, "ide-only", "ide-only", "ide only", "ide")
-	writeSkillFileForAgents(t, workspace, "config-manager", "config-manager", "workspace config routing", "config_manager")
+	writeSkillFileForAgents(t, workspace, "configuration", "configuration", "workspace config routing", "general,ide")
 
-	backend := NewAgentBackend([]Directory{
-		{Scope: ScopeBuiltin, Path: builtin},
-		{Scope: ScopeWorkspace, Path: workspace, Writable: true},
-	}, "config_manager", nil)
-	list, err := backend.List(ctx)
-	if err != nil {
-		t.Fatalf("List() error = %v", err)
-	}
-	got := skillNames(list)
-	if len(got) != 1 || !got["config-manager"] || got["ide-only"] {
-		t.Fatalf("config_manager skills = %#v", got)
-	}
-	skill, err := backend.Get(ctx, "config-manager")
-	if err != nil {
-		t.Fatalf("Get(config-manager) error = %v", err)
-	}
-	if skill.Description != "workspace config routing" {
-		t.Fatalf("active config-manager description = %q, want workspace override", skill.Description)
+	for _, agentKind := range []string{"general", "ide"} {
+		backend := NewAgentBackend([]Directory{
+			{Scope: ScopeBuiltin, Path: builtin},
+			{Scope: ScopeWorkspace, Path: workspace, Writable: true},
+		}, agentKind, nil)
+		list, err := backend.List(ctx)
+		if err != nil {
+			t.Fatalf("%s List() error = %v", agentKind, err)
+		}
+		got := skillNames(list)
+		if !got["configuration"] {
+			t.Fatalf("%s skills = %#v, want configuration", agentKind, got)
+		}
+		skill, err := backend.Get(ctx, "configuration")
+		if err != nil {
+			t.Fatalf("%s Get(configuration) error = %v", agentKind, err)
+		}
+		if skill.Description != "workspace config routing" {
+			t.Fatalf("%s active configuration description = %q, want workspace override", agentKind, skill.Description)
+		}
 	}
 
-	overrideBackend := NewAgentBackend([]Directory{{Scope: ScopeBuiltin, Path: builtin}}, "config_manager", map[string]bool{
-		"config-manager": false,
+	overrideBackend := NewAgentBackend([]Directory{{Scope: ScopeBuiltin, Path: builtin}}, "general", map[string]bool{
+		"configuration": false,
 	})
 	overrideList, err := overrideBackend.List(ctx)
 	if err != nil {
@@ -579,7 +581,7 @@ func TestAgentBackendExposesSingleConfigManagerSkill(t *testing.T) {
 	}
 	overrideGot := skillNames(overrideList)
 	if len(overrideGot) != 0 {
-		t.Fatalf("override config_manager skills = %#v", overrideGot)
+		t.Fatalf("override general skills = %#v", overrideGot)
 	}
 }
 

@@ -26,8 +26,10 @@ Denova records only major user-visible features, important compatibility or data
 - Added a General Agent and a stable Project-ID-based workbench. Books and arbitrary local directories can run chats and open Files, terminals, Reader, and Lore in parallel. v0.3.3 Project data is copy-migrated automatically while retaining the source files.
 - 写作页创作 Agent 支持同一本书的多个会话并行运行，并新增可隐藏的快捷会话栏；切换会话不会中断后台任务。
 - The Writing Agent now runs multiple conversations in the same Book concurrently, with an optional quick-session rail; switching conversations no longer stops background work.
-- 写作、游戏、工作台与配置对话支持运行中连续追加 Follow Up，刷新或重启后恢复任务，并按会话保存模型、思考强度与权限设置。
-- Writing, Game, Workspace, and configuration conversations now accept queued follow-ups during a run, recover after refresh or restart, and persist model, thinking, and permission settings per conversation.
+- 配置管理不再运行独立 Agent；通用与 IDE Project Agent 通过 `/configuration` Skill 承担完整配置能力，各配置页面保留复用 AgentChat 的右侧管理面板，并与主 Agent 共用会话、历史和恢复状态。
+- Configuration no longer runs a standalone Agent. General and IDE Project Agents provide the complete workflow through `/configuration`; configuration pages retain a right-side manager that reuses AgentChat and shares the main Agent's sessions, history, and recovery state.
+- 写作、游戏与 Project Agent 会话支持运行中连续追加 Follow Up，刷新或重启后恢复任务，并按会话保存模型、思考强度与权限设置。
+- Writing, Game, and Project Agent conversations now accept queued follow-ups during a run, recover after refresh or restart, and persist model, thinking, and permission settings per conversation.
 - 写作、游戏与通用 Agent 对话支持从现有输入菜单、拖拽或粘贴添加多个通用文件；Denova 保存独立副本供 Agent 使用，将图片作为原生视觉输入发送给模型，并在输入区与已发送消息中提供图片预览。
 - Writing, Game, and General Agent chats now accept multiple generic files from the existing input menu, drag-and-drop, or paste. Denova stores independent copies for the Agent, sends images as native vision input, and previews images in both the composer and sent messages.
 - Agent 回复现在会在生成过程中实时呈现 Markdown、数学公式与中日韩文本排版，并以平滑动画展示新增内容。
@@ -50,8 +52,10 @@ Denova records only major user-visible features, important compatibility or data
 - Writing now selects editors by file type: Markdown can switch between the document editor and Monaco source editing, images use preview, and other text such as JSON and JSONL uses Monaco with the same autosave and conflict protection.
 - 工作台改为统一且可自定义的一级导航：写作与游戏成为并列入口，菜单支持调整顺序和显隐；资料库、方案预设和版本管理不再按创作入口重复。方案预设统一展示全部类型，并标明通用、游戏专用或写作专用。
 - The workbench now uses unified, customizable top-level navigation: Writing and Game are peer destinations, menus can be reordered or hidden, and Lore, Presets, and Versions are no longer duplicated by creative context. Presets show every type with fixed Shared, Game-only, or Writing-only labels.
-- 游戏剧情支持从任意已保存 AI 回复就地创建分支，并在导演控制台集中预览、切换和管理故事线。
-- Game stories can branch directly from any persisted AI reply, with branch preview, switching, and management consolidated in the Director Console.
+- 游戏规划整合进 Game Agent：可按故事开启或关闭，并在每轮原子维护自由格式的分支计划；游戏控制台集中展示当前计划、Actor State 与分支路线。游戏预设只提供模块组合和自由规划风格，不再写死后台节奏或调度策略。
+- Game planning now belongs to the Game Agent. It can be enabled per story and atomically maintains a free-form branch plan each turn, while the Game Console combines the current plan, Actor State, and branch routes. Game Presets provide module composition and free-form planning guidance instead of fixed background pacing or scheduling policies.
+- 游戏剧情支持从任意已保存 AI 回复就地创建分支，并在游戏控制台集中预览、切换和管理故事线。
+- Game stories can branch directly from any persisted AI reply, with branch preview, switching, and management consolidated in the Game Console.
 - Developer Mode 新增跨 Project 的 Trajectory 与 Harness 工作区，用于查看运行轨迹、导出诊断数据和优化 Agent 行为；Harness 改动先保存为草稿，可按目标 Agent 调试、整体发布，并可随时停用自定义 State 而不删除数据。
 - Developer Mode adds cross-Project Trajectory and Harness workspaces for run inspection, diagnostic export, and Agent optimization. Harness changes are saved as a draft, can be debugged per target Agent, published together, and disabled without deleting custom State data.
 - 终端启动方式改为用户级可排序注册表，并新增 macOS/Linux 一键安装器和 Windows PowerShell 快速重启脚本。
@@ -59,6 +63,8 @@ Denova records only major user-visible features, important compatibility or data
 
 ### Incompatible data changes / 用户数据不兼容变更
 
+- v0.3.3 的独立 Config Manager 会话和专属设置会原样保留，但不再参与运行、展示或自动合并；后续配置对话直接写入对应 Project Agent 的普通会话。
+- Standalone v0.3.3 Config Manager sessions and dedicated settings remain untouched but no longer participate in runtime behavior, appear in the UI, or merge automatically; future configuration conversations use the corresponding Project Agent's ordinary sessions.
 - v0.3.3 的用户级全局 Automation 任务文件会保留，但不再展示、触发或执行；需要继续使用的任务须在对应 Project 下重新创建。
 - User-level global Automation task files from v0.3.3 are retained but are no longer displayed, triggered, or executed. Tasks that remain needed must be recreated under the relevant Project.
 - v0.3.3 中的 `enable_thinking`、`reasoning_effort`、`max_output_tokens`、`tool_result_retention_enabled` 和低层 Cleanup 参数不再生效；升级后需重新选择 `thinking_level` 与当前上下文选项，输出上限则改由模型能力决定。

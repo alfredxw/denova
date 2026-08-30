@@ -20,34 +20,7 @@ import (
 	appsettings "denova/internal/app/settings"
 	"denova/internal/book"
 	"denova/internal/interactive"
-	"denova/internal/interactive/director"
 )
-
-// SetInteractiveDirectorGeneratorForTest installs an App-scoped Director
-// generator so tests do not share mutable package-level state.
-func (a *App) SetInteractiveDirectorGeneratorForTest(generator interactiveapp.DirectorGenerator) func() {
-	if a == nil {
-		return func() {}
-	}
-	a.mu.Lock()
-	previous := a.directorGenerator
-	a.directorGenerator = generator
-	a.mu.Unlock()
-	return func() {
-		a.mu.Lock()
-		a.directorGenerator = previous
-		a.mu.Unlock()
-	}
-}
-
-func (a *App) interactiveDirectorGenerator() interactiveapp.DirectorGenerator {
-	if a == nil {
-		return nil
-	}
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	return a.directorGenerator
-}
 
 // interactiveAgentCycle is the complete, process-local adapter state for one
 // game model cycle. Durable commands retain only its bounded TurnSpecRef; the
@@ -148,6 +121,10 @@ func (s *InteractiveAppService) prepareInteractiveAgentCycle(ctx context.Context
 	styleRules := appagentruntime.StyleRules(cycle.novaDir, teller.StyleRefs, teller.StyleRules, request.StyleScenes)
 	cycle.tellerInput = interactiveapp.StoryTellerSystemInput(teller, styleRules)
 	cycle.tellerInput.ChoiceCount = storyContext.Meta.ChoiceCount
+	if storyContext.Meta.PlanningMode == interactive.StoryPlanningModeEnabled {
+		gamePreset := interactiveapp.LoadStoryDirectorForMeta(cycle.novaDir, storyContext.Meta)
+		cycle.tellerInput.PlanningGuide = interactive.StoryPlanningGuideMarkdown(gamePreset, interactiveapp.StoryRuntimeContextMaxBytes)
+	}
 	cycle.request = agentchat.ChatRequest{
 		Message: strings.TrimSpace(request.Message), StyleScenes: append([]string(nil), request.StyleScenes...),
 		AttachmentIDs: append([]string(nil), request.AttachmentIDs...),
@@ -157,8 +134,7 @@ func (s *InteractiveAppService) prepareInteractiveAgentCycle(ctx context.Context
 	cycle.conversation = interactiveapp.NewConversation(
 		cycle.store, cycle.novaDir, cycle.workspace, cycle.storyID, cycle.branchID,
 		cycle.request.Message, cycle.runtimeCfg.InteractiveReplyTargetChars, &cycle.runtimeCfg,
-	).WithInputVisibility(cycle.request.InputVisibility).BindDirectorRuntime(a.directorTasksForWorkspace(cycle.workspace), a.interactiveDirectorGenerator(), cycle.executionRuntime).WithBaseParentID(expectedHead).WithRegenerateTarget(regenerateTurnID).WithExecutionParentPinning().WithOpeningStateSchema(storyContext)
-	cycle.bindDerivedProjectionBarrier()
+	).WithInputVisibility(cycle.request.InputVisibility).WithBaseParentID(expectedHead).WithRegenerateTarget(regenerateTurnID).WithExecutionParentPinning().WithOpeningStateSchema(storyContext)
 
 	var submitOpeningStateSchema func(context.Context, interactive.ActorStateSchemaBatch) (interactive.ActorStateSchemaBatchResult, error)
 	if interactive.StoryStateSchemaPolicyUsesOpeningGameAgent(storyContext.Meta.StateSchemaPolicy) &&
@@ -220,147 +196,17 @@ func (c *interactiveAgentCycle) bindCommit(emit func(agentrun.Event)) {
 		if outcome.MaintenanceOnly {
 			return nil
 		}
-		turn, _, persisted := c.conversation.LastTurnForState()
+		_, _, persisted := c.conversation.LastTurnForState()
 		if !persisted {
 			if outcome.Status == agentrun.OutcomeCompleted {
 				return fmt.Errorf("interactive agent cycle completed without a persisted turn")
 			}
 			return nil
 		}
-		snapshot, err := emitInteractiveTurnPersistedResult(c.store, c.storyID, c.conversation, emit)
+		_, err := emitInteractiveTurnPersistedResult(c.store, c.storyID, c.conversation, emit)
 		if err != nil {
 			return err
 		}
-		c.scheduleDirectorMaintenance(turn, snapshot)
 		return nil
 	})
-}
-
-func (c *interactiveAgentCycle) scheduleDirectorMaintenance(turn interactive.TurnEvent, persistedSnapshot *interactive.Snapshot) <-chan struct{} {
-	storyDirector := c.conversation.StoryDirectorForMeta(c.storyContext.Meta)
-	policy := director.ResolveRunPolicy(c.storyContext.Meta.DirectorRunPolicy, storyDirector.Strategy.DirectorAgentMode)
-	if persistedSnapshot == nil {
-		loaded, err := c.store.Snapshot(c.storyID, turn.BranchID)
-		if err != nil {
-			slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-director-agent] load scheduling snapshot failed story_id=%s branch_id=%s turn_id=%s err=%v", c.storyID, turn.BranchID, turn.ID, err))
-		} else {
-			persistedSnapshot = &loaded
-		}
-	}
-	committedTurns := interactiveapp.SnapshotTurnCount(c.storyContext.Snapshot) + 1
-	planStatus := ""
-	if c.storyContext.Snapshot.DirectorPlanStatus != nil {
-		planStatus = c.storyContext.Snapshot.DirectorPlanStatus.Status
-	}
-	if persistedSnapshot != nil {
-		committedTurns = interactiveapp.SnapshotTurnCount(*persistedSnapshot)
-		if persistedSnapshot.DirectorPlanStatus != nil {
-			planStatus = persistedSnapshot.DirectorPlanStatus.Status
-		}
-	}
-	materialUpdate := turn.TurnResult != nil && turn.TurnResult.DirectorUpdate != nil && turn.TurnResult.DirectorUpdate.Needed
-	decision := director.DecideRunAfterTurn(storyDirector.Strategy.Enabled, policy, director.ScheduleContext{
-		CommittedTurns: committedTurns, PlanStatus: planStatus, MaterialUpdate: materialUpdate,
-	})
-	slog.InfoContext(context.Background(), fmt.Sprintf("[interactive-director-agent] maintenance decision story_id=%s branch_id=%s turn_id=%s policy_mode=%s interval_turns=%d committed_turns=%d plan_status=%s run_plan=%t reason=%s", c.storyID, turn.BranchID, turn.ID, policy.Mode, policy.IntervalTurns, committedTurns, planStatus, decision.ShouldRun, decision.Reason))
-	return interactiveapp.StartDirectorMaintenanceTask(&c.runtimeCfg, c.state, c.conversation, turn, c.sessionStore, decision.ShouldRun)
-}
-
-func (c *interactiveAgentCycle) bindDerivedProjectionBarrier() {
-	if c == nil || c.conversation == nil {
-		return
-	}
-	c.conversation.WithAgentCyclePrepare(func(ctx context.Context) error {
-		return c.reconcilePreviousAgentCommit(ctx)
-	})
-}
-
-// reconcilePreviousAgentCommit drains the canonical turn -> Director
-// projection outbox before the next model cycle begins. The canonical Agent
-// turn is the durable work item and DirectorPlanMetadata.DerivedThroughTurnID
-// is its receipt. This barrier also covers Steer/FollowUp specs prepared while
-// the preceding cycle was still running.
-func (c *interactiveAgentCycle) reconcilePreviousAgentCommit(ctx context.Context) error {
-	if c == nil || c.conversation == nil || c.store == nil {
-		return nil
-	}
-	storyContext, err := c.store.StoryContext(c.storyID, c.branchID)
-	if err != nil {
-		return fmt.Errorf("load canonical turn before Director projection barrier: %w", err)
-	}
-	c.storyContext = storyContext
-	turn := storyContext.Snapshot.CurrentTurn
-	if turn == nil || strings.TrimSpace(turn.AgentCommandID) == "" || strings.TrimSpace(turn.AgentOperationID) == "" || turn.AgentCycle <= 0 {
-		return nil
-	}
-	if directorProjectionAcknowledged(storyContext, turn.ID) {
-		return nil
-	}
-
-	key := interactiveapp.DerivedMaintenanceKey(c.conversation, turn.BranchID)
-	if tasks := c.conversation.DirectorTasks(); tasks != nil && tasks.HasKey(key) {
-		slog.InfoContext(ctx, fmt.Sprintf("[interactive-agent-cycle] wait live Director projection workspace=%s story_id=%s branch_id=%s turn_id=%s", c.workspace, c.storyID, turn.BranchID, turn.ID))
-		if err := tasks.WaitKey(ctx, key); err != nil {
-			return fmt.Errorf("wait live Director projection for turn %s: %w", turn.ID, err)
-		}
-		storyContext, err = c.store.StoryContext(c.storyID, turn.BranchID)
-		if err != nil {
-			return fmt.Errorf("reload Director projection receipt for turn %s: %w", turn.ID, err)
-		}
-		c.storyContext = storyContext
-		if directorProjectionAcknowledged(storyContext, turn.ID) {
-			return nil
-		}
-	}
-
-	// A successful run record is already a durable projection result. This can
-	// happen when the process stopped after writing it but before the explicit
-	// outbox receipt; acknowledge without repeating the model call. Failed and
-	// conflicting runs stay pending so a later cycle can repair them.
-	if directorProjectionSucceededForTurn(storyContext, turn.ID) {
-		if err := c.store.MarkDirectorTurnDerived(c.storyID, turn.BranchID, turn.ID); err != nil {
-			return fmt.Errorf("acknowledge terminal Director projection for turn %s: %w", turn.ID, err)
-		}
-		return nil
-	}
-
-	maintenanceConversation := interactiveapp.NewConversation(
-		c.store, c.novaDir, c.workspace, c.storyID, turn.BranchID,
-		turn.User, c.runtimeCfg.InteractiveReplyTargetChars, &c.runtimeCfg,
-	).InheritDirectorRuntime(c.conversation)
-	repair := *c
-	repair.conversation = maintenanceConversation
-	repair.storyContext = storyContext
-	slog.InfoContext(ctx, fmt.Sprintf("[interactive-agent-cycle] drain persisted Director outbox workspace=%s story_id=%s branch_id=%s turn_id=%s command_id=%s operation_id=%s cycle=%d", c.workspace, c.storyID, turn.BranchID, turn.ID, turn.AgentCommandID, turn.AgentOperationID, turn.AgentCycle))
-	done := repair.scheduleDirectorMaintenance(*turn, &storyContext.Snapshot)
-	select {
-	case <-done:
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-	storyContext, err = c.store.StoryContext(c.storyID, turn.BranchID)
-	if err != nil {
-		return fmt.Errorf("reload drained Director projection for turn %s: %w", turn.ID, err)
-	}
-	c.storyContext = storyContext
-	if directorProjectionAcknowledged(storyContext, turn.ID) {
-		return nil
-	}
-	if directorProjectionSucceededForTurn(storyContext, turn.ID) {
-		if err := c.store.MarkDirectorTurnDerived(c.storyID, turn.BranchID, turn.ID); err == nil {
-			return nil
-		}
-	}
-	return fmt.Errorf("Director projection for canonical turn %s finished without a durable receipt", turn.ID)
-}
-
-func directorProjectionAcknowledged(storyContext interactive.StoryContext, turnID string) bool {
-	return storyContext.Snapshot.DirectorPlan != nil &&
-		strings.TrimSpace(storyContext.Snapshot.DirectorPlan.Metadata.DerivedThroughTurnID) == strings.TrimSpace(turnID)
-}
-
-func directorProjectionSucceededForTurn(storyContext interactive.StoryContext, turnID string) bool {
-	status := storyContext.Snapshot.DirectorPlanStatus
-	return status != nil && strings.TrimSpace(status.SourceTurnID) == strings.TrimSpace(turnID) &&
-		(status.Status == director.PlanStatusReady || status.Status == director.PlanStatusSkipped)
 }

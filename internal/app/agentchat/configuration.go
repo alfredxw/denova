@@ -7,7 +7,6 @@ import (
 	"denova/config"
 	agentconversation "denova/internal/agents/conversation"
 	"denova/internal/agents/conversationconfig"
-	appagentruntime "denova/internal/app/agentruntime"
 )
 
 func (service *Service) ConversationConfig(ctx context.Context, binding Binding) (conversationconfig.Snapshot, error) {
@@ -31,9 +30,6 @@ func (service *Service) PatchConversationConfig(
 	resolved, project, runtimeCfg, err := service.conversationRuntime(ctx, binding)
 	if err != nil {
 		return conversationconfig.Snapshot{}, err
-	}
-	if active := service.activeRun(resolved); active != nil && active.task != nil && !active.task.Finished() {
-		return conversationconfig.Snapshot{}, appagentruntime.ErrOperationActive
 	}
 	if !project.store.Exists(resolved.SessionID) {
 		current, err := agentconversation.PreviewSession(project.store, resolved.SessionID, &runtimeCfg, resolved.agentKind)

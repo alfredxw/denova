@@ -14,6 +14,12 @@ export interface E2EStoryTurn {
   narrative?: string
 }
 
+export interface E2EBranchPlan {
+  markdown: string
+  updated_turn_id: string
+  updated_at: string
+}
+
 export interface E2EAgentChatProject {
   id: string
   type: 'book' | 'general' | 'harness'
@@ -100,13 +106,17 @@ export async function getProjectLoreItems(
   return body.items ?? []
 }
 
-export async function createStory(request: APIRequestContext, title: string): Promise<E2EStory> {
+export async function createStory(
+  request: APIRequestContext,
+  title: string,
+  options: { planningMode?: 'enabled' | 'disabled' } = {},
+): Promise<E2EStory> {
   const response = await request.post('/api/interactive/stories', {
     data: {
       title,
       origin: '一扇石门挡在旧车站入口。',
       choice_count: 2,
-      director_run_policy: { mode: 'manual' },
+      planning_mode: options.planningMode ?? 'disabled',
       state_schema_policy: { mode: 'fixed_template' },
     },
   })
@@ -118,12 +128,14 @@ export async function getStorySnapshot(
   request: APIRequestContext,
   storyId: string,
   branch = 'main',
-): Promise<{ turns: E2EStoryTurn[] }> {
+): Promise<{ turns: E2EStoryTurn[]; branch_plan?: E2EBranchPlan }> {
   const query = new URLSearchParams({ branch })
   const response = await request.get(`/api/interactive/stories/${encodeURIComponent(storyId)}/snapshot?${query}`)
   await expectSuccessful(response)
-  const body = await response.json() as { turns?: E2EStoryTurn[] }
-  return { turns: body.turns ?? [] }
+  const body = await response.json() as { turns?: E2EStoryTurn[]; branch_plan?: E2EBranchPlan }
+  return body.branch_plan
+    ? { turns: body.turns ?? [], branch_plan: body.branch_plan }
+    : { turns: body.turns ?? [] }
 }
 
 export async function getStoryBranches(

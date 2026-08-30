@@ -71,47 +71,9 @@ func (m *OrchestratorMiddleware) Configuration() OrchestratorConfig {
 }
 
 type interactiveStoryToolMiddleware struct{ *agent.BaseMiddleware }
-type interactiveDirectorPlanFileMiddleware struct{ *agent.BaseMiddleware }
 
 func NewInteractiveStoryMiddleware() agent.Middleware {
 	return &interactiveStoryToolMiddleware{BaseMiddleware: &agent.BaseMiddleware{}}
-}
-
-func NewInteractiveDirectorPlanFileMiddleware() agent.Middleware {
-	return &interactiveDirectorPlanFileMiddleware{BaseMiddleware: &agent.BaseMiddleware{}}
-}
-
-func (m *interactiveDirectorPlanFileMiddleware) WrapToolCall(
-	_ context.Context,
-	endpoint agent.ToolCallEndpoint,
-	toolCtx *agent.ToolContext,
-) (agent.ToolCallEndpoint, error) {
-	return func(ctx context.Context, args string, opts ...agent.ToolOption) (agent.ToolResult, error) {
-		if msg := m.blockedDirectorToolMessage(toolName(toolCtx), args); msg != "" {
-			return agent.SyntheticToolResult(agent.ToolResultBlocked, agent.ToolSyntheticPolicyBlocked, msg), nil
-		}
-		return endpoint(ctx, args, opts...)
-	}, nil
-}
-
-func (m *interactiveDirectorPlanFileMiddleware) blockedDirectorToolMessage(name, args string) string {
-	name = strings.ToLower(strings.TrimSpace(name))
-	switch name {
-	case "read":
-		path := strings.ToLower(strings.TrimSpace(toolresult.TargetFromArguments(args)))
-		if strings.HasPrefix(path, "event://") {
-			return ""
-		}
-		return fmt.Sprintf("[tool error] Director read access is limited to event:// cards in the current opportunity index. Planning documents are already present in context; submit a Markdown Patch with base_hash through %s.", SubmitDirectorPlanUpdateToolName)
-	case "list_lore_items", "read_lore_items", "search_story_history", SubmitDirectorPlanUpdateToolName:
-		return ""
-	case "write", "edit":
-		return fmt.Sprintf("[tool error] Director planning documents are already present in context. Submit a Markdown Patch with base_hash through %s. Blocked tool: %s", SubmitDirectorPlanUpdateToolName, name)
-	case "apply_actor_state_patch":
-		return fmt.Sprintf("[tool error] Director maintains ArcPlan only and cannot write Actor State. Blocked tool: %s", name)
-	default:
-		return fmt.Sprintf("[tool error] Director may use only %s, history search, read-only lore, and read(event://...). Blocked tool: %s", SubmitDirectorPlanUpdateToolName, name)
-	}
 }
 
 func (m *interactiveStoryToolMiddleware) WrapToolCall(

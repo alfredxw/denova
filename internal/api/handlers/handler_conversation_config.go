@@ -70,8 +70,6 @@ func writeConversationConfigError(c *app.RequestContext, err error) {
 	switch {
 	case appsvc.IsConversationConfigRevisionConflict(err):
 		writeErrorKey(c, consts.StatusConflict, "api.conversationConfig.revisionConflict")
-	case errors.Is(err, appsvc.ErrAgentOperationActive):
-		writeErrorKey(c, consts.StatusConflict, "api.conversationConfig.active")
 	case errors.Is(err, appsvc.ErrNoWorkspace), errors.Is(err, appsvc.ErrNoWorkspaceOpen):
 		writeErrorKey(c, consts.StatusBadRequest, "api.settings.workspaceMissing")
 	default:

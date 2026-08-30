@@ -1,7 +1,6 @@
 /** 方案预设目录的选中编排。 */
 import type { Dispatch, SetStateAction } from 'react'
 import type { PresetResourceKind } from '../../preset-ownership'
-import { TELLER_CONFIG_AGENT_ENTRY_ID } from './presetResources'
 import { parsePresetDirectoryEntryId } from './preset-directory-sections'
 
 /**
@@ -32,31 +31,24 @@ export function usePresetSelection({
       return
     }
     if (!(await flushPresetResourceAutoSave())) return
-    if (id !== TELLER_CONFIG_AGENT_ENTRY_ID) {
-      setPresetResourceKind('teller')
-    }
+    setPresetResourceKind('teller')
     setActiveTellerId(id)
     closeDirectory()
   }
 
   const selectPresetResource = async (kind: Exclude<PresetResourceKind, 'teller'>, id: string) => {
     const activeId = currentActivePresetId(kind)
-    if (presetResourceKind === kind && activeId === id && activeTellerId !== TELLER_CONFIG_AGENT_ENTRY_ID) {
+    if (presetResourceKind === kind && activeId === id) {
       closeDirectory()
       return
     }
     if (!(await flushPresetResourceAutoSave())) return
     setPresetResourceKind(kind)
-    setActiveTellerId((current) => current === TELLER_CONFIG_AGENT_ENTRY_ID ? '' : current)
     setActivePresetId(kind, id)
     closeDirectory()
   }
 
   const handleSelectDirectoryEntry = (id: string) => {
-    if (id === TELLER_CONFIG_AGENT_ENTRY_ID) {
-      void handleSelectTeller(id)
-      return
-    }
     const parsed = parsePresetDirectoryEntryId(id)
     if (!parsed) return
     if (parsed.kind === 'teller') {

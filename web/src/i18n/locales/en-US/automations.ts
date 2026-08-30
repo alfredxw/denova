@@ -19,7 +19,7 @@ const automations = {
   'automations.group.running': '{{count}} running',
   'automations.view.config': 'Task Config',
   'automations.view.inbox': 'Trigger Inbox',
-  'automations.view.agent': 'Config Agent',
+  'automations.view.agent': 'Configuration Manager',
   'automations.field.name': 'Name',
   'automations.field.project': 'Project',
   'automations.field.enabled': 'Status',

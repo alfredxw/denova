@@ -128,36 +128,27 @@ func (s *workspaceService) SwitchWorkspace(ctx context.Context, path string) (st
 		}
 		return "", err
 	}
-	// Director jobs write story/lore projections outside the foreground Task
-	// registry. Quiesce them before buildRuntime reads or initializes either the
-	// current or target workspace, including same-path runtime refreshes.
-	a.stopWorkspaceDirectorTasks()
 	if err := waitLifecycleScopes(context.Background(), scopes); err != nil {
 		a.restoreWorkspaceGenerationAfterFailedTransition(currentWorkspace, absPath)
-		a.restoreWorkspaceDirectorTasks(currentWorkspace)
 		return "", err
 	}
 	if err := a.closeWorkspaceRuntimeBindings(context.Background(), currentWorkspace, absPath); err != nil {
 		a.restoreWorkspaceGenerationAfterFailedTransition(currentWorkspace, absPath)
-		a.restoreWorkspaceDirectorTasks(currentWorkspace)
 		return "", err
 	}
 	projectRecord, err := a.projectRegistry.EnsureBook(absPath)
 	if err != nil {
 		a.restoreWorkspaceGenerationAfterFailedTransition(currentWorkspace, absPath)
-		a.restoreWorkspaceDirectorTasks(currentWorkspace)
 		return "", err
 	}
 	layout, err := a.projectRegistry.EnsureState(projectRecord)
 	if err != nil {
 		a.restoreWorkspaceGenerationAfterFailedTransition(currentWorkspace, absPath)
-		a.restoreWorkspaceDirectorTasks(currentWorkspace)
 		return "", err
 	}
 	runtime, err := buildRuntimeExclusively(ctx, a.cfg, layout)
 	if err != nil {
 		a.restoreWorkspaceGenerationAfterFailedTransition(currentWorkspace, absPath)
-		a.restoreWorkspaceDirectorTasks(currentWorkspace)
 		return "", err
 	}
 
@@ -165,7 +156,6 @@ func (s *workspaceService) SwitchWorkspace(ctx context.Context, path string) (st
 	if err := a.replaceWorkspaceScopeLocked(runtime.workspace); err != nil {
 		a.mu.Unlock()
 		a.restoreWorkspaceGenerationAfterFailedTransition(currentWorkspace, absPath)
-		a.restoreWorkspaceDirectorTasks(currentWorkspace)
 		return "", err
 	}
 	if oldKey := lifecycleWorkspaceKey(currentWorkspace); oldKey != "" && oldKey != lifecycleWorkspaceKey(runtime.workspace) {
@@ -259,15 +249,12 @@ func (s *workspaceService) activateFallbackWorkspaceExcluding(ctx context.Contex
 		}
 		return "", err
 	}
-	a.stopWorkspaceDirectorTasks()
 	if err := waitLifecycleScopes(context.Background(), scopes); err != nil {
 		a.restoreWorkspaceGenerationAfterFailedTransition(currentWorkspace)
-		a.restoreWorkspaceDirectorTasks(currentWorkspace)
 		return "", err
 	}
 	if err := a.closeWorkspaceRuntimeBindings(context.Background(), currentWorkspace); err != nil {
 		a.restoreWorkspaceGenerationAfterFailedTransition(currentWorkspace)
-		a.restoreWorkspaceDirectorTasks(currentWorkspace)
 		return "", err
 	}
 	a.mu.Lock()

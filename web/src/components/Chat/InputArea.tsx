@@ -11,7 +11,7 @@ import { AgentComposerShell } from './AgentComposerShell'
 import { ModelProfileSwitcher } from './ModelProfileSwitcher'
 import { ComposerTokenInput, type ComposerTokenInputHandle, type ComposerTokenSpec, type ComposerTrigger } from './composer-token-input'
 import { workspaceFileName } from '@/lib/workspace-path'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useKeyboardInset } from '@/hooks/useKeyboardInset'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { ReviewFeedbackTray, reviewFeedbackCommentCount, type ReviewFeedbackBatch, type ReviewFeedbackComment, type ReviewFeedbackSelection } from '@/features/changes/agent/ReviewFeedbackTray'
@@ -723,6 +723,14 @@ export function InputArea({
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" side="top" className="w-80 max-w-[calc(100vw-1rem)] border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 text-[var(--nova-text)]">
+                  {generationActive ? (
+                    <>
+                      <div role="note" className="px-2 py-1.5 text-[11px] leading-4 text-[var(--nova-text-faint)]">
+                        {t('chat.input.changesApplyNextTurn')}
+                      </div>
+                      <DropdownMenuSeparator className="bg-[var(--nova-border-soft)]" />
+                    </>
+                  ) : null}
                   {attachmentsEnabled || onGoalSubmit || onTogglePlanMode ? (
                     <DropdownMenuGroup>
                       {attachmentsEnabled ? (
@@ -748,7 +756,7 @@ export function InputArea({
                           label={t('chat.plan.short')}
                           detail={<ComposerMenuShortcut>Shift+Tab</ComposerMenuShortcut>}
                           checked={planMode}
-                          disabled={disabled || generationActive}
+                          disabled={disabled}
                           onCheckedChange={togglePlanModeExclusive}
                         />
                       ) : null}
@@ -778,7 +786,7 @@ export function InputArea({
                   icon={ClipboardList}
                   label={t('chat.plan.short')}
                   ariaLabel={t('chat.plan.exit')}
-                  disabled={disabled || generationActive}
+                  disabled={disabled}
                   onClose={() => {
                     togglePlanModeExclusive()
                     window.requestAnimationFrame(() => inputRef.current?.focus())
@@ -800,7 +808,7 @@ export function InputArea({
               {attachments.input}
             </>
           }
-          toolbarEnd={<ModelProfileSwitcher agentKey={agentKey} workspace={workspace} conversationConfig={conversationBinding ? conversationConfig : undefined} disabled={disabled || generationActive} />}
+          toolbarEnd={<ModelProfileSwitcher agentKey={agentKey} workspace={workspace} conversationConfig={conversationBinding ? conversationConfig : undefined} disabled={disabled} runActive={generationActive} />}
           submitControl={(
             <AgentComposerControls
               generationActive={generationActive}

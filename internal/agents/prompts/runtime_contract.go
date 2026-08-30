@@ -103,19 +103,12 @@ func outputProtocolForAgent(agentKind string) string {
 			"- Output only the story prose that can be shown on the story stage for this turn.",
 			"- Write only scenes, actions, dialogue, and consequences. Do not output plans, explanations, tool instructions, Markdown headings, XML wrappers, hidden state blocks, shortcut-choice blocks, or JSON.",
 		}, "\n")
-	case config.AgentKindInteractiveDirector:
-		return strings.Join([]string{
-			"- Submit incremental Markdown Patches with base_hash through submit_director_plan_update. Files are accepted or rejected independently; retry only retry_documents. Nothing is written to the workspace before finalize succeeds. Ordinary updates change agent-brief.md by default; keep uses empty updates; replan updates at least director.md and agent-brief.md.",
-			"- Do not continue story prose, write Actor State, or alter the state schema. Only the opening Game Agent initializes the schema under the story-level policy.",
-		}, "\n")
 	case config.AgentKindVersionSummary:
 		return "- Output exactly one Chinese release-summary sentence containing 10 to 30 Han characters. Do not include numbering, quotation marks, colons, terminal punctuation, or explanation."
 	case config.AgentKindToolAgent:
 		return "- Output only the JSON object required by the current call site. Do not output explanations, Markdown, code fences, or extra text."
 	case config.AgentKindImage:
 		return "- Call the image-generation tool to produce the image. The final response should briefly report the result without unrelated explanation or prose modifications."
-	case config.AgentKindConfigManager:
-		return "- There is no fixed JSON output protocol. Perform all lore, preset, automation, and Skills changes through their corresponding module tools."
 	case config.AgentKindAutomation:
 		return "- The final output must report what was actually completed, written paths, and items awaiting user confirmation. Writes remain subject to the task write policy and tool permissions."
 	case config.AgentKindIDE:
@@ -142,19 +135,7 @@ func agentRuntimeContract(agentKind string) string {
 	case config.AgentKindInteractiveStory:
 		return strings.Join([]string{
 			"- Game Mode is read-only for workspace files. Use only listed read-only references; persist prose, state, and choices through the Game Mode submission tools.",
-			"- The current story's per-turn target character count is the highest length constraint. Other built-in prompts, CREATOR.md chapter-length rules, Director guidance, and custom prompts must not require exceeding it.",
-		}, "\n")
-	case config.AgentKindConfigManager:
-		return "- Manage only Agents-page resources, using dedicated lore tools or config_read/config_apply. Do not edit backing configuration files or Settings-only options."
-	case config.AgentKindInteractiveDirector:
-		return strings.Join([]string{
-			"- Director creates or maintains director.md, agent-brief.md, and lore-context.md for the current branch only. It does not initialize or review the state schema.",
-			"- Director must not write, overwrite, or correct Actor State or alter a frozen state schema.",
-			"- Turn and StateDelta are the sole sources of truth for established events. Use search_story_history for older evidence and retain returned turn_id provenance. Actor State is the current projection, director.md contains future plans, and lore contains stable setting facts; do not mix these boundaries.",
-			"- Do not use file tools for director_plan_update or opening_plan. The backend injects snapshots and base_hash values for all three documents; stage only minimal Markdown Patches through submit_director_plan_update. Do not resend accepted files. The backend publishes atomically after finalize succeeds.",
-			"- Do not continue story prose, choose actions for the user, or use shell, todo, lore writes, or any workspace mutation.",
-			"- Planning should prioritize reusing important lore characters, factions, rules, locations, and established relationships. Serve future interaction through dense relationships, faction pressure, information reveals, high-impact crises, check costs, and branch arrangements.",
-			"- Put information safe for the prose Agent in agent-brief.md. Keep hidden truths, behind-the-scenes motives, and future reversals in director.md, which is not injected into prose generation.",
+			"- The current story's per-turn target character count is the highest length constraint. Other built-in prompts, CREATOR.md chapter-length rules, game-preset guidance, and custom prompts must not require exceeding it.",
 		}, "\n")
 	case config.AgentKindVersionSummary:
 		return "- Version Summary Agent must output exactly one release-summary sentence, with no explanation, numbering, Markdown, or multiple lines."

@@ -1,7 +1,9 @@
 import type { SSEEvent } from '@/lib/api'
 import type { ChatAttachment } from '@/lib/api-client/types'
 
-export type InteractiveSubmode = 'story' | 'timeline' | 'director'
+export type InteractiveSubmode = 'story' | 'timeline'
+
+export type StoryPlanningMode = 'enabled' | 'disabled'
 
 export interface StorySummary {
   id: string
@@ -9,7 +11,7 @@ export interface StorySummary {
   origin: string
   story_teller_id: string
   story_director_id: string
-  director_run_policy?: StoryDirectorRunPolicy
+  planning_mode?: StoryPlanningMode
   module_refs?: StoryDirectorModuleRefs
   reply_target_chars: number
   choice_count: number
@@ -27,13 +29,6 @@ export type StoryStateSchemaMode = 'adapt_template' | 'fixed_template' | 'genera
 
 export interface StoryStateSchemaPolicy {
   mode: StoryStateSchemaMode
-}
-
-export type StoryDirectorRunMode = 'on_demand' | 'manual' | 'interval'
-
-export interface StoryDirectorRunPolicy {
-  mode: StoryDirectorRunMode
-  interval_turns?: number
 }
 
 type StoryImageMode = 'manual' | 'interval'
@@ -196,16 +191,8 @@ export interface ActorStateModule {
 }
 
 interface StoryDirectorStrategy {
-  enabled: boolean
-  mainline_strength?: string
-  failure_policy?: string
-  pacing_curve?: string
-  event_frequency?: 'off' | 'sparse' | 'balanced' | 'frequent' | string
-  director_agent_mode?: 'triggered' | 'every_turn' | 'off' | string
-  rule_state_consumption_mode?: 'hybrid_auto' | 'director_only' | string
+  rule_state_consumption_mode?: 'hybrid_auto' | 'suggestions_only' | string
   rule_visibility_mode?: 'audit_only' | 'public_roll' | string
-  branch_planning_turns?: number
-  planning_templates?: DirectorPlanningTemplates
   prompt_markdown?: string
 }
 
@@ -391,7 +378,6 @@ export interface UpdateTurnNarrativeResult {
 export interface TurnResult {
   state_updates: Array<{ op: 'replace' | 'delta' | 'create' | string; path: string; value: unknown }>
   choices: string[]
-  director_update?: { needed: boolean; reason?: string }
 }
 
 export interface TurnDisplayEvent {
@@ -487,144 +473,10 @@ interface HotState {
   choices: string[]
 }
 
-export interface DirectorPlanDocs {
-  plan: string
-  agent_brief: string
-  lore_context: string
-}
-
-export interface DirectorPlanningTemplates {
-  plan: string
-  agent_brief: string
-}
-
-interface DirectorPlanVisibleDocs {
-  agent_brief?: string
-  lore_context?: string
-}
-
-interface DirectorPlanDocInfo {
-  path: string
-  bytes: number
-  hash: string
-  visible_bytes?: number
-}
-
-export interface DirectorPlanRunStatus {
-  status?: string
-  summary?: string
-  error?: string
-  source_turn_id?: string
+export interface BranchPlan {
+  markdown: string
+  updated_turn_id?: string
   updated_at?: string
-  planned_docs?: number
-  completed_docs?: number
-  start_ready?: boolean
-  blocking?: boolean
-	decision?: PlanDecision
-	event_opportunity?: EventOpportunity
-}
-
-export interface DirectorPlanStatus {
-  story_id: string
-  branch_id: string
-  status: string
-  summary?: string
-  error?: string
-  source_turn_id?: string
-  updated_at?: string
-  planned_docs: number
-  completed_docs: number
-  doc_bytes: number
-  visible_bytes: number
-  start_ready: boolean
-  blocking: boolean
-  revision?: string
-	decision?: PlanDecision
-	event_runtime?: DirectorEventRuntime
-	event_opportunity?: EventOpportunity
-}
-
-export interface PlanDecision {
-  mode: 'keep' | 'patch' | 'replan' | string
-  triggers?: string[]
-  scene_transition?: {
-    kind?: 'none' | 'exit' | 'enter' | 'replace' | string
-    from?: string
-    to?: string
-    evidence?: string[]
-  }
-  deviation?: {
-    level?: 'none' | 'minor' | 'major' | string
-    invalidated_plan_refs?: string[]
-    reason?: string
-  }
-  reason?: string
-	base_revision?: string
-	event_decision?: EventDecision
-}
-
-export interface EventDecision {
-	mode: 'none' | 'seed' | 'advance' | 'payoff' | 'resolve' | 'abandon' | string
-	event_ref?: string
-	summary?: string
-	reason?: string
-	evidence?: string[]
-	evidence_turn_ids?: string[]
-}
-
-export interface EventOpportunity {
-	due: boolean
-	kind: 'none' | 'new' | 'active' | string
-	reason?: string
-	turns_since_review?: number
-	review_interval?: number
-	active_event_ref?: string
-	forced?: boolean
-}
-
-export interface DirectorEventThread {
-	event_ref: string
-	summary?: string
-	stage?: string
-	seeded_turn_id?: string
-	updated_turn_id?: string
-}
-
-export interface DirectorEventRuntime {
-	active?: DirectorEventThread
-	last_opportunity_turn_id?: string
-	recent_decisions?: Array<{ id: string; source_turn_id: string; decision: EventDecision }>
-}
-
-export interface DirectorPlanMetadata {
-  version: number
-  story_id: string
-  branch_id: string
-  revision: string
-  branch_planning_turns: number
-  updated_at: string
-  source?: string
-  source_turn_id?: string
-  docs?: Record<string, DirectorPlanDocInfo>
-	last_run?: DirectorPlanRunStatus
-	event_runtime?: DirectorEventRuntime
-	lore_revision?: string
-}
-
-export interface DirectorPlan {
-  story_id: string
-  branch_id: string
-  docs: DirectorPlanDocs
-  visible_docs?: DirectorPlanVisibleDocs
-  metadata: DirectorPlanMetadata
-}
-
-export interface UpdateDirectorPlanInput {
-  branch_id?: string
-  docs: DirectorPlanDocs
-  base_revision?: string
-  source?: string
-  summary?: string
 }
 
 export interface RuleCheck {
@@ -800,7 +652,7 @@ interface RuleResult {
 
 interface RuleStateConsumption {
   status: 'none' | 'disabled' | 'applied' | 'partial' | 'skipped' | string
-  mode?: 'hybrid_auto' | 'director_only' | string
+  mode?: 'hybrid_auto' | 'suggestions_only' | string
   applied_ops?: StateOp[]
   applied_actor_ops?: ActorStateOp[]
   warnings?: RuleStateConsumptionWarning[]
@@ -859,10 +711,7 @@ export interface Snapshot {
   current_turn?: TurnEvent
   token_usage_events?: TokenUsageEvent[]
   context_compaction?: ContextCompactionProjection | null
-  // Client-only enrichment used by the Director workspace. The snapshot API
-  // never returns this field; it is loaded from the dedicated Director API.
-  director_plan?: DirectorPlan
-  director_plan_status?: DirectorPlanStatus
+  branch_plan?: BranchPlan
   state: Record<string, unknown>
   actor_state_schema?: ActorStateSchemaSnapshot
 	state_schema_initialization?: StateSchemaInitializationStatus
@@ -875,7 +724,7 @@ export interface Snapshot {
 
 // InteractiveSnapshotResponse mirrors internal/interactive.Snapshot exactly.
 // Keep this wire DTO separate from Snapshot because the UI also merges SSE
-// deltas and a client-only Director plan into its local projection.
+// deltas into its local projection.
 export interface InteractiveSnapshotResponse {
   story_id: string
   branch_id: string
@@ -886,7 +735,7 @@ export interface InteractiveSnapshotResponse {
   current_turn?: TurnEvent
   token_usage_events?: TokenUsageEvent[]
   context_compaction?: ContextCompactionProjection
-  director_plan_status?: DirectorPlanStatus
+  branch_plan?: BranchPlan
   state: Record<string, unknown>
   actor_state_schema?: ActorStateSchemaSnapshot
   state_schema_initialization?: StateSchemaInitializationStatus
@@ -1110,7 +959,7 @@ export interface InteractiveTurnPersistedEvent {
   branch_id: string
   turn_count: number
   turn: TurnEvent
-  director_plan_status?: DirectorPlanStatus
+  branch_plan?: BranchPlan
   state: Record<string, unknown>
   graph: StoryGraph
   branches: BranchSummary[]

@@ -6,7 +6,6 @@ import (
 
 	agentcontext "denova/internal/agents/context"
 	"denova/internal/agents/conversationconfig"
-	"denova/internal/interactive/director"
 )
 
 type CreateStoryRequest struct {
@@ -14,7 +13,7 @@ type CreateStoryRequest struct {
 	Origin                    string                            `json:"origin"`
 	StoryTellerID             string                            `json:"story_teller_id"`
 	StoryDirectorID           string                            `json:"story_director_id,omitempty"`
-	DirectorRunPolicy         *director.RunPolicy               `json:"director_run_policy,omitempty"`
+	PlanningMode              string                            `json:"planning_mode,omitempty"`
 	ModuleRefs                *StoryDirectorModuleRefs          `json:"module_refs,omitempty"`
 	ReplyTargetChars          int                               `json:"reply_target_chars"`
 	ChoiceCount               int                               `json:"choice_count"`
@@ -26,7 +25,6 @@ type CreateStoryRequest struct {
 	TRPGSystem                *StoryDirectorTRPGSystem          `json:"-"`
 	ActorStateAdaptation      *ActorStateSchemaAdaptationRecord `json:"-"`
 	InitialStateOps           []interactivestate.Op             `json:"-"`
-	DirectorPlanSeed          *DirectorPlanSeed                 `json:"-"`
 	StateSchemaInitialization *StateSchemaInitializationStatus  `json:"-"`
 	RuntimeConfig             *conversationconfig.Config        `json:"-"`
 }
@@ -126,7 +124,7 @@ type UpdateStoryRequest struct {
 	Origin                    *string                          `json:"origin,omitempty"`
 	StoryTellerID             string                           `json:"story_teller_id"`
 	StoryDirectorID           string                           `json:"story_director_id,omitempty"`
-	DirectorRunPolicy         *director.RunPolicy              `json:"director_run_policy,omitempty"`
+	PlanningMode              *string                          `json:"planning_mode,omitempty"`
 	ModuleRefs                *StoryDirectorModuleRefs         `json:"module_refs,omitempty"`
 	ReplyTargetChars          *int                             `json:"reply_target_chars,omitempty"`
 	ChoiceCount               *int                             `json:"choice_count,omitempty"`
@@ -155,7 +153,7 @@ type StorySummary struct {
 	Origin            string                   `json:"origin"`
 	StoryTellerID     string                   `json:"story_teller_id"`
 	StoryDirectorID   string                   `json:"story_director_id"`
-	DirectorRunPolicy *director.RunPolicy      `json:"director_run_policy,omitempty"`
+	PlanningMode      string                   `json:"planning_mode"`
 	ModuleRefs        *StoryDirectorModuleRefs `json:"module_refs,omitempty"`
 	ReplyTargetChars  int                      `json:"reply_target_chars"`
 	ChoiceCount       int                      `json:"choice_count"`
@@ -212,7 +210,7 @@ type StoryMeta struct {
 	Origin                    string                           `json:"origin"`
 	StoryTellerID             string                           `json:"story_teller_id"`
 	StoryDirectorID           string                           `json:"story_director_id,omitempty"`
-	DirectorRunPolicy         *director.RunPolicy              `json:"director_run_policy,omitempty"`
+	PlanningMode              string                           `json:"planning_mode"`
 	ModuleRefs                *StoryDirectorModuleRefs         `json:"module_refs,omitempty"`
 	ReplyTargetChars          int                              `json:"reply_target_chars"`
 	ChoiceCount               int                              `json:"choice_count"`
@@ -460,6 +458,7 @@ type TurnVersionSelectionEvent struct {
 	CurrentState    map[string]any          `json:"current_state,omitempty"`
 	CurrentTurnID   string                  `json:"current_turn_id,omitempty"`
 	CurrentDepth    int                     `json:"current_depth,omitempty"`
+	CurrentPlan     *BranchPlan             `json:"current_plan,omitempty"`
 }
 
 type BranchEvent struct {
@@ -474,6 +473,7 @@ type BranchEvent struct {
 	StateCheckpoint map[string]any `json:"state_checkpoint,omitempty"`
 	LatestTurnID    string         `json:"latest_turn_id,omitempty"`
 	Depth           int            `json:"depth,omitempty"`
+	PlanCheckpoint  *BranchPlan    `json:"plan_checkpoint,omitempty"`
 }
 
 type Snapshot struct {
@@ -486,8 +486,7 @@ type Snapshot struct {
 	CurrentTurn                *TurnEvent                       `json:"current_turn,omitempty"`
 	TokenUsageEvents           []TokenUsageEvent                `json:"token_usage_events,omitempty"`
 	ContextCompaction          *ContextCompactionProjection     `json:"context_compaction,omitempty"`
-	DirectorPlan               *DirectorPlan                    `json:"-"`
-	DirectorPlanStatus         *DirectorPlanStatus              `json:"director_plan_status,omitempty"`
+	BranchPlan                 *BranchPlan                      `json:"branch_plan,omitempty"`
 	State                      map[string]any                   `json:"state"`
 	ActorStateSchema           *ActorStateSchemaSnapshot        `json:"actor_state_schema,omitempty"`
 	StateSchemaInitialization  *StateSchemaInitializationStatus `json:"state_schema_initialization,omitempty"`

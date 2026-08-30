@@ -1,5 +1,4 @@
-import type { BranchSummary, Snapshot, StoryDirector, StorySummary } from '../types'
-import { useInteractiveStore } from '../stores/interactive-store'
+import type { BranchSummary, Snapshot, StoryDirector, StoryPlanningMode, StorySummary } from '../types'
 import { DirectorConsole } from './director-console/DirectorConsole'
 import { DEFAULT_STORY_STATE_DISPLAY, type StoryStateDisplayPreference } from './story-state/display-preference'
 
@@ -9,6 +8,7 @@ interface DirectorPanelProps {
   storyDirectors?: StoryDirector[]
   onDirectorChange?: (directorId: string) => void
   onReplyTargetCharsChange?: (replyTargetChars: number) => void | Promise<void>
+  onPlanningModeChange?: (mode: StoryPlanningMode) => void | Promise<void>
   branchId?: string
   branches: BranchSummary[]
   snapshot: Snapshot | null
@@ -18,8 +18,7 @@ interface DirectorPanelProps {
   onOpenBranchTimeline: () => void
 }
 
-export function DirectorPanel({ storyId, story, storyDirectors = [], onDirectorChange, onReplyTargetCharsChange, branchId, branches, snapshot, stateDisplayPreference = DEFAULT_STORY_STATE_DISPLAY, onStateDisplayPreferenceChange = noopStateDisplayPreferenceChange, onSwitchBranch, onOpenBranchTimeline }: DirectorPanelProps) {
-  const setSubmode = useInteractiveStore((state) => state.setSubmode)
+export function DirectorPanel({ storyId, story, storyDirectors = [], onDirectorChange, onReplyTargetCharsChange, onPlanningModeChange, branchId, branches, snapshot, stateDisplayPreference = DEFAULT_STORY_STATE_DISPLAY, onStateDisplayPreferenceChange = noopStateDisplayPreferenceChange, onSwitchBranch, onOpenBranchTimeline }: DirectorPanelProps) {
   const effectiveBranchId = branchId || snapshot?.branch_id || ''
 
   return (
@@ -29,14 +28,13 @@ export function DirectorPanel({ storyId, story, storyDirectors = [], onDirectorC
       storyDirectors={storyDirectors}
       onDirectorChange={onDirectorChange}
       onReplyTargetCharsChange={onReplyTargetCharsChange}
+      onPlanningModeChange={onPlanningModeChange}
       branchId={effectiveBranchId}
       branches={branches}
       snapshot={snapshot}
       stateError={snapshot?.current_turn?.state_error || ''}
       stateDisplayPreference={stateDisplayPreference}
       onStateDisplayPreferenceChange={onStateDisplayPreferenceChange}
-      directorStatus={snapshot?.director_plan_status}
-      onOpenBackstage={() => setSubmode('director')}
       onSwitchBranch={onSwitchBranch}
       onOpenBranchTimeline={onOpenBranchTimeline}
     />

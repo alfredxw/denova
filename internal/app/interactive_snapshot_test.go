@@ -43,3 +43,23 @@ func TestInteractiveSnapshotKeepsCanonicalStoryWhenAgentProjectionFails(t *testi
 		t.Fatalf("unavailable Agent metadata must be omitted: %#v", snapshot.ContextCompaction)
 	}
 }
+
+func TestInteractiveProductDefaultsEnableGameAgentPlanning(t *testing.T) {
+	service := &InteractiveAppService{app: &App{}}
+	req, err := service.withStoryDirectorDefaults(interactive.CreateStoryRequest{Title: "planning default"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if req.PlanningMode != interactive.StoryPlanningModeEnabled {
+		t.Fatalf("product planning default = %q, want enabled", req.PlanningMode)
+	}
+
+	explicit := interactive.CreateStoryRequest{Title: "free play", PlanningMode: interactive.StoryPlanningModeDisabled}
+	req, err = service.withStoryDirectorDefaults(explicit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if req.PlanningMode != interactive.StoryPlanningModeDisabled {
+		t.Fatalf("explicit disabled planning mode changed to %q", req.PlanningMode)
+	}
+}

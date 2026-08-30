@@ -6,7 +6,7 @@ const agentApproval = {
   'agentApproval.mode.full_access.label': 'Full access',
   'agentApproval.mode.full_access.description': 'Runs everything except critical operations. This remains a pre-execution guardrail, not OS-level isolation.',
   'agentApproval.input.section': 'Agent safety mode',
-  'agentApproval.input.changeBlocked': 'The active run keeps its starting mode. You can switch after it finishes.',
+  'agentApproval.input.appliesNextTurn': 'The model turn already in progress keeps its current safety mode. Changes apply from the next model turn.',
   'agentApproval.input.changeFailed': 'Failed to change the safety mode',
   'agentApproval.approval.title': 'Your approval is required',
   'agentApproval.approval.waiting': 'Waiting for a decision',

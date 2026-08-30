@@ -10,7 +10,6 @@ import (
 
 	interactiveapp "denova/internal/app/interactive"
 	"denova/internal/interactive"
-	"denova/internal/interactive/director"
 
 	agent "github.com/alfredxw/denova/agent"
 )
@@ -21,6 +20,7 @@ func TestEmitInteractiveTurnPersistedUsesCurrentSnapshot(t *testing.T) {
 	story, err := store.CreateStory(interactive.CreateStoryRequest{
 		Title:         "收尾事件",
 		StoryTellerID: "classic",
+		PlanningMode:  interactive.StoryPlanningModeEnabled,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -77,11 +77,8 @@ func TestEmitInteractiveTurnPersistedUsesCurrentSnapshot(t *testing.T) {
 	if payload.Turn.User != "继续前进" || payload.Turn.Narrative != "雾气在门外散开。" || payload.Turn.Thinking != "先确认场景。" {
 		t.Fatalf("payload turn mismatch: %#v", payload.Turn)
 	}
-	if payload.DirectorPlanStatus == nil || payload.DirectorPlanStatus.Status == "" {
-		t.Fatalf("payload director status should come from current snapshot: %#v", payload.DirectorPlanStatus)
-	}
-	if payload.DirectorPlanStatus.Status != director.PlanStatusWaitingOpening {
-		t.Fatalf("payload director status mismatch: %#v", payload.DirectorPlanStatus)
+	if payload.BranchPlan == nil || payload.BranchPlan.Markdown == "" {
+		t.Fatalf("payload branch plan should come from current snapshot: %#v", payload.BranchPlan)
 	}
 	if payload.ContextCompaction == nil || payload.ContextCompaction.ID != "agent-checkpoint" ||
 		payload.ContextCompaction.Summary != "bounded current story" {
@@ -95,8 +92,8 @@ func TestEmitInteractiveTurnPersistedUsesCurrentSnapshot(t *testing.T) {
 	if err := json.Unmarshal(encoded, &raw); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := raw["director_plan"]; ok {
-		t.Fatalf("persisted turn payload should not expose director plan docs: %s", string(encoded))
+	if _, ok := raw["director_plan_status"]; ok {
+		t.Fatalf("persisted turn payload should not expose removed Director runtime state: %s", string(encoded))
 	}
 	if _, ok := raw["visible_docs"]; ok {
 		t.Fatalf("persisted turn payload should not expose director visible docs: %s", string(encoded))

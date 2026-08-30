@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+import { cn } from '@/lib/utils'
 import { ApiKeyInput } from './ApiKeyInput'
 import { ComfyUIWorkflowBrowser } from './ComfyUIWorkflowBrowser'
 import { ImageProfilePingButton } from './ImageProfilePingButton'
@@ -137,6 +138,7 @@ export function ImageAPIProfilesEditor({
           return (
             <SettingsDisclosureCard
               key={endpointID || `image-endpoint-${endpointIndex}`}
+              level="connection"
               badge={t('settings.imageApi.endpointName', { index: endpointIndex + 1 })}
               title={imageAPIEndpointLabel(endpoint) || t('settings.imageApi.endpointUntitled')}
               subtitle={t('settings.imageApi.endpointSummary', {
@@ -146,7 +148,10 @@ export function ImageAPIProfilesEditor({
               defaultOpen={!endpoint.base_url?.trim() || endpointProfiles.length === 0}
               actions={<Button type="button" variant="ghost" size="icon-sm" disabled={endpointProfiles.length > 0} title={endpointProfiles.length > 0 ? t('settings.imageApi.endpointDeleteBlocked') : t('settings.imageApi.deleteEndpoint')} aria-label={t('settings.imageApi.deleteEndpoint')} onClick={() => onEndpointsChange(endpoints.filter((_, current) => current !== endpointIndex))}><Trash2 /></Button>}
             >
-              <div className="grid gap-2 p-2.5 md:grid-cols-12">
+              <div className="px-3 pt-2.5 text-[11px] font-medium text-[var(--nova-text-muted)]">
+                {t('settings.imageApi.endpointSettings')}
+              </div>
+              <div className="grid gap-2 p-3 pt-2 md:grid-cols-12">
                 <ProfileField label={t('settings.imageApi.endpointAliasLabel')} className="md:col-span-3">
                   <Input value={endpoint.name ?? ''} placeholder={t('settings.imageApi.endpointAliasPlaceholder')} onChange={(event) => updateEndpoint(endpointIndex, { name: event.target.value })} />
                 </ProfileField>
@@ -180,7 +185,7 @@ export function ImageAPIProfilesEditor({
 
               <div className="border-t border-[var(--nova-border)] p-2.5">
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-[11px] text-[var(--nova-text-faint)]">{t('settings.imageApi.endpointModels', { count: endpointProfiles.length })}</span>
+                  <span className="text-[11px] font-medium text-[var(--nova-text-muted)]">{t('settings.imageApi.endpointModels', { count: endpointProfiles.length })}</span>
                   <Button type="button" variant="outline" size="sm" onClick={() => {
                     const profile = newImageAPIProfile(provider, endpointID)
                     profile.id = uniqueImageProfileID(profile.model || `${provider}-image`, profiles, -1)
@@ -190,24 +195,32 @@ export function ImageAPIProfilesEditor({
                     <Plus data-icon="inline-start" />{t('settings.imageApi.addProfile')}
                   </Button>
                 </div>
-                <div className="flex flex-col gap-2">
+                <div className={cn(
+                  'flex flex-col gap-1.5',
+                  endpointProfiles.length > 0 && 'ml-1 border-l border-[var(--nova-border)] pl-2.5',
+                )}>
                   {endpointProfiles.length === 0 && <div className="rounded-md border border-dashed border-[var(--nova-border)] px-2.5 py-3 text-xs text-[var(--nova-text-faint)]">{t('settings.imageApi.endpointModelsEmpty')}</div>}
                   {endpointProfiles.map(({ profile, index }, childIndex) => {
                     const defaults = imageAPIProfileDefaults(provider)
                     const usesComfyUI = protocol === 'comfyui-workflow'
                     const profileKey = profileKeys[index]
                     const configured = usesComfyUI ? Boolean(profile.comfyui?.workflow) : Boolean(profile.model?.trim())
+                    const profileTitle = imageAPIProfileLabel(profile) || t('settings.imageApi.profileUntitled')
+                    const profileIdentity = (usesComfyUI ? profile.comfyui?.workflow_name?.trim() : profile.model?.trim()) ?? ''
                     return (
                       <SettingsDisclosureCard
                         key={profileKey}
+                        level="model"
                         badge={imageAPIProfileID(profile) === selectedDefaultProfileID ? t('settings.imageApi.defaultProfileName') : t('settings.imageApi.profileName', { index: childIndex + 1 })}
-                        title={imageAPIProfileLabel(profile) || t('settings.imageApi.profileUntitled')}
-                        subtitle={(usesComfyUI ? profile.comfyui?.workflow_name?.trim() : profile.model?.trim()) || t('settings.imageApi.profileModelMissing')}
+                        title={profileTitle}
+                        subtitle={imageProfileSummary(profileIdentity, endpoint, profileTitle, t('settings.imageApi.profileModelMissing'))}
                         defaultOpen={!configured}
-                        className="bg-[var(--nova-surface-1)]"
                         actions={<Button type="button" variant="ghost" size="icon-sm" onClick={() => removeProfile(index)} aria-label={t('settings.imageApi.deleteProfile')}><Trash2 /></Button>}
                       >
-                        <div className="grid gap-2 p-2.5 md:grid-cols-12">
+                        <div className="px-2.5 pt-2.5 text-[11px] font-medium text-[var(--nova-text-muted)]">
+                          {t('settings.imageApi.profileSettings')}
+                        </div>
+                        <div className="grid gap-2 p-2.5 pt-2 md:grid-cols-12">
                           {!usesComfyUI && (
                             <ProfileField label={t('settings.imageApi.profileModelLabel')} className="md:col-span-8">
                               <Input value={profile.model ?? ''} placeholder={defaults.model || t('settings.imageApi.profileModelPlaceholder')} onChange={(event) => updateModel(index, event.target.value)} />
@@ -225,7 +238,7 @@ export function ImageAPIProfilesEditor({
                             <span className="text-[11px] leading-4 text-[var(--nova-text-faint)]">{t('settings.imageApi.promptGuideHint')}</span>
                           </ProfileField>
                         </div>
-                        <div className="border-t border-[var(--nova-border)] px-2.5 py-2"><ImageProfilePingButton endpoint={endpoint} profile={profile} /></div>
+                        <div className="border-t border-[var(--nova-border-soft)] px-2.5 py-2"><ImageProfilePingButton endpoint={endpoint} profile={profile} /></div>
                       </SettingsDisclosureCard>
                     )
                   })}
@@ -318,6 +331,15 @@ function imageProfileOptions(localProfiles: ImageAPIProfileSettings[], effective
     options.push({ id, label: imageAPIProfileLabel(profile) || id })
   }
   return options
+}
+
+function imageProfileSummary(identity: string, endpoint: ImageAPIEndpointSettings, title: string, missingModel: string): string {
+  const connection = imageAPIEndpointLabel(endpoint)
+  const details: string[] = []
+  if (!identity) details.push(missingModel)
+  else if (identity !== title) details.push(identity)
+  if (connection && connection !== title && connection !== identity) details.push(connection)
+  return details.join(' · ') || identity || missingModel
 }
 
 function stableKeys(reference: MutableRefObject<string[]>, length: number): string[] {

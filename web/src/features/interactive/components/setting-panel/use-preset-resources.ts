@@ -5,7 +5,7 @@ import { rebaseJSONValue } from '@/lib/three-way-rebase'
 import { getActorStates, getEventPackages, getImagePresets, getInteractiveTellers, getRuleSystems, getStoryDirectors } from '../../api'
 import { PRESET_RESOURCE_SCOPE } from '../../preset-ownership'
 import type { ActorStateModule, EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, Teller } from '../../types'
-import { cloneActorState, cloneEventPackage, cloneImagePreset, cloneRuleSystem, cloneStoryDirector, cloneTeller, EMPTY_ACTOR_STATES, EMPTY_EVENT_PACKAGES, EMPTY_IMAGE_PRESETS, EMPTY_RULE_SYSTEMS, EMPTY_STORY_DIRECTORS, EMPTY_TELLERS, TELLER_CONFIG_AGENT_ENTRY_ID, type PresetDrafts } from './presetResources'
+import { cloneActorState, cloneEventPackage, cloneImagePreset, cloneRuleSystem, cloneStoryDirector, cloneTeller, EMPTY_ACTOR_STATES, EMPTY_EVENT_PACKAGES, EMPTY_IMAGE_PRESETS, EMPTY_RULE_SYSTEMS, EMPTY_STORY_DIRECTORS, EMPTY_TELLERS, type PresetDrafts } from './presetResources'
 import { presetResourceRevision } from './usePresetResourceAutosave'
 
 /** 外部传入列表优先；未传入时加载用户级全局预设目录。 */
@@ -25,7 +25,7 @@ export function usePresetResources({
   onImagePresetsChange?: (presets: ImagePreset[]) => void
 }) {
   const [tellers, setTellers] = useState<Teller[]>(externalTellers)
-  const [activeTellerId, setActiveTellerId] = useState(TELLER_CONFIG_AGENT_ENTRY_ID)
+  const [activeTellerId, setActiveTellerId] = useState(externalTellers[0]?.id || '')
   const [tellerDraft, setTellerDraft] = useState<Teller | null>(null)
   const [activeSlotId, setActiveSlotId] = useState('')
   const [storyDirectors, setStoryDirectors] = useState<StoryDirector[]>(externalStoryDirectors)
@@ -146,7 +146,6 @@ export function usePresetResources({
   useEffect(() => {
     setTellers(externalTellers)
     setActiveTellerId((current) => {
-      if (current === TELLER_CONFIG_AGENT_ENTRY_ID) return current
       if (current && externalTellers.some((teller) => teller.id === current)) return current
       return externalTellers[0]?.id || ''
     })
@@ -213,7 +212,6 @@ export function usePresetResources({
     onTellersChange?.(data)
     setActiveTellerId((current) => {
       if (nextActiveId) return nextActiveId
-      if (current === TELLER_CONFIG_AGENT_ENTRY_ID) return current
       if (current && data.some((teller) => teller.id === current)) return current
       return data[0]?.id || ''
     })
@@ -366,9 +364,7 @@ export function usePresetDraftSync(resources: PresetResources, autosaves: DraftS
     setActorStateDraft,
   } = resources
 
-  const teller = activeTellerId === TELLER_CONFIG_AGENT_ENTRY_ID
-    ? null
-    : tellers.find((entry) => entry.id === activeTellerId) || null
+  const teller = tellers.find((entry) => entry.id === activeTellerId) || null
   const director = storyDirectors.find((entry) => entry.id === activeStoryDirectorId) || null
   const imagePreset = imagePresets.find((entry) => entry.id === activeImagePresetId) || null
   const eventPackage = eventPackages.find((entry) => entry.id === activeEventPackageId) || null

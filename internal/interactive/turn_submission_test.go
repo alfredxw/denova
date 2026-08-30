@@ -223,43 +223,64 @@ func TestUnifiedTurnSubmissionDecodesActorArchiveAndRestore(t *testing.T) {
 	}
 }
 
-func TestChoicesSubmissionCarriesOptionalDirectorUpdateHint(t *testing.T) {
+func TestPlanningSubmissionRequiresOpeningPlanAndPreservesExistingPlanByOmission(t *testing.T) {
 	system, state := turnSubmissionTestState()
 	updates := []interactivestate.Update{}
-	choicesInput := DecodeInteractiveTurnSubmissionInput(`{"choices":["左路","右路","检查地图","询问同伴","原地观察"],"director_update":{"needed":true,"reason":"玩家公开了足以推翻当前阶段前提的证据"}}`)
-	if choicesInput.Choices == nil || choicesInput.DirectorUpdate == nil || !choicesInput.DirectorUpdate.Needed {
-		t.Fatalf("material Director hint was not decoded: %#v", choicesInput)
+	choicesInput := DecodeInteractiveTurnSubmissionInput(`{"choices":["左路","右路","检查地图","询问同伴","原地观察"],"plan_update":"先核实地图，再让同伴决定下一站。"}`)
+	if choicesInput.Choices == nil || choicesInput.PlanUpdate == nil {
+		t.Fatalf("branch plan was not decoded: %#v", choicesInput)
 	}
 	prepared, receipt := PrepareTurnSubmission(TurnSubmissionContext{
-		ActorState: system, CurrentState: state, ChoiceCount: 5,
+		ActorState: system, CurrentState: state, ChoiceCount: 5, PlanningMode: StoryPlanningModeEnabled,
 	}, nil, TurnSubmissionInput{StateUpdates: &updates})
-	if receipt.ModuleStatus.StateChanges != TurnSubmissionModuleAccepted {
-		t.Fatalf("state module was not staged first: %#v", receipt)
+	if receipt.ModuleStatus.StateChanges != TurnSubmissionModuleAccepted || receipt.ModuleStatus.PlanUpdate != TurnSubmissionModuleMissing {
+		t.Fatalf("opening plan should remain independently missing: %#v", receipt)
 	}
 	prepared, receipt = PrepareTurnSubmission(TurnSubmissionContext{
-		ActorState: system, CurrentState: state, ChoiceCount: 5,
+		ActorState: system, CurrentState: state, ChoiceCount: 5, PlanningMode: StoryPlanningModeEnabled,
 	}, prepared, choicesInput)
 	result := prepared.TurnResult()
-	if !receipt.Ready || result.DirectorUpdate == nil || result.DirectorUpdate.Reason != "玩家公开了足以推翻当前阶段前提的证据" {
-		t.Fatalf("Director hint did not survive module staging: receipt=%#v result=%#v", receipt, result)
+	if !receipt.Ready || result.PlanUpdate == nil || *result.PlanUpdate != "先核实地图，再让同伴决定下一站。" {
+		t.Fatalf("branch plan did not survive module staging: receipt=%#v result=%#v", receipt, result)
 	}
 
 	routine := DecodeInteractiveTurnSubmissionInput(`{"choices":["左路","右路","检查地图","询问同伴","原地观察"]}`)
 	prepared, receipt = PrepareTurnSubmission(TurnSubmissionContext{
-		ActorState: system, CurrentState: state, ChoiceCount: 5,
+		ActorState: system, CurrentState: state, ChoiceCount: 5, PlanningMode: StoryPlanningModeEnabled, CurrentPlan: &BranchPlan{Markdown: "已有计划"},
 	}, nil, TurnSubmissionInput{StateUpdates: &updates})
 	prepared, receipt = PrepareTurnSubmission(TurnSubmissionContext{
-		ActorState: system, CurrentState: state, ChoiceCount: 5,
+		ActorState: system, CurrentState: state, ChoiceCount: 5, PlanningMode: StoryPlanningModeEnabled, CurrentPlan: &BranchPlan{Markdown: "已有计划"},
 	}, prepared, routine)
-	if !receipt.Ready || prepared.TurnResult().DirectorUpdate != nil {
-		t.Fatalf("routine choices should omit the Director hint: %#v", prepared.TurnResult())
+	if !receipt.Ready || prepared.TurnResult().PlanUpdate != nil {
+		t.Fatalf("an existing plan should be preserved by omission: %#v", prepared.TurnResult())
 	}
 }
 
-func TestChoicesSubmissionRejectsUnexplainedDirectorUpdateHint(t *testing.T) {
-	input := DecodeInteractiveTurnSubmissionInput(`{"choices":["左路","右路","检查地图","询问同伴","原地观察"],"director_update":{"needed":true}}`)
-	if input.Choices != nil || input.DirectorUpdate != nil || len(input.Diagnostics) != 1 || input.Diagnostics[0].Module != TurnSubmissionModuleChoices {
-		t.Fatalf("an unexplained material hint should retry only choices: %#v", input)
+func TestPlanningSubmissionIgnoresPlanUpdateWhenPlanningIsDisabled(t *testing.T) {
+	system, state := turnSubmissionTestState()
+	input := DecodeInteractiveTurnSubmissionInput(`{"state_changes":[],"choices":["左路","右路","检查地图","询问同伴","原地观察"],"plan_update":"这段内容不应进入关闭规划的故事。"}`)
+	prepared, receipt := PrepareTurnSubmission(TurnSubmissionContext{
+		ActorState: system, CurrentState: state, ChoiceCount: 5, PlanningMode: StoryPlanningModeDisabled,
+	}, nil, input)
+	if !receipt.Ready || receipt.ModuleStatus.PlanUpdate != TurnSubmissionModuleAccepted {
+		t.Fatalf("disabled planning should ignore plan_update without blocking the turn: %#v", receipt)
+	}
+	if prepared.TurnResult().PlanUpdate != nil {
+		t.Fatalf("disabled planning must not retain plan_update: %#v", prepared.TurnResult())
+	}
+}
+
+func TestPlanningSubmissionRejectsMalformedReplacementIndependently(t *testing.T) {
+	system, state := turnSubmissionTestState()
+	input := DecodeInteractiveTurnSubmissionInput(`{"state_changes":[],"choices":["左路","右路","检查地图","询问同伴","原地观察"],"plan_update":""}`)
+	prepared, receipt := PrepareTurnSubmission(TurnSubmissionContext{
+		ActorState: system, CurrentState: state, ChoiceCount: 5, PlanningMode: StoryPlanningModeEnabled,
+	}, nil, input)
+	if prepared == nil || receipt.ModuleStatus.StateChanges != TurnSubmissionModuleAccepted || receipt.ModuleStatus.Choices != TurnSubmissionModuleAccepted || receipt.ModuleStatus.PlanUpdate != TurnSubmissionModuleRejected {
+		t.Fatalf("only malformed plan_update should be retried: %#v", receipt)
+	}
+	if len(receipt.RetryModules) != 1 || receipt.RetryModules[0] != TurnSubmissionModulePlanUpdate {
+		t.Fatalf("unexpected retry modules: %#v", receipt.RetryModules)
 	}
 }
 

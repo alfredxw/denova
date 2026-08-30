@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { BranchSummary, Snapshot, StoryDirector, StorySummary } from '../../types'
+import type { BranchSummary, Snapshot, StoryDirector, StoryPlanningMode, StorySummary } from '../../types'
 import { splitStoryStateFacts, stateChanges } from '../story-state/model'
 import { DirectorConsoleHeader } from './DirectorConsoleHeader'
 import { readStoredDirectorConsoleTab, writeStoredDirectorConsoleTab } from './persistence'
 import { DirectorConsoleTabs } from './DirectorConsoleTabs'
 import { BranchPreview } from './BranchPreview'
 import { StateView } from './StateView'
-import type { DirectorConsoleTab, DirectorStatusLike } from './types'
+import { BranchPlanView } from './BranchPlanView'
+import type { DirectorConsoleTab } from './types'
 import { stateEntries } from './utils'
 import type { StoryStateDisplayPreference } from '../story-state/display-preference'
 
@@ -16,14 +17,13 @@ export interface DirectorConsoleProps {
   storyDirectors?: StoryDirector[]
   onDirectorChange?: (directorId: string) => void
   onReplyTargetCharsChange?: (replyTargetChars: number) => void | Promise<void>
+  onPlanningModeChange?: (mode: StoryPlanningMode) => void | Promise<void>
   branchId: string
   branches: BranchSummary[]
   snapshot: Snapshot | null
 	stateError?: string
 	stateDisplayPreference: StoryStateDisplayPreference
 	onStateDisplayPreferenceChange: (value: StoryStateDisplayPreference) => void
-  directorStatus?: DirectorStatusLike
-  onOpenBackstage: () => void
   onSwitchBranch: (branchId: string) => void | Promise<void>
   onOpenBranchTimeline: () => void
 }
@@ -36,14 +36,13 @@ export function DirectorConsole({
   storyDirectors = [],
   onDirectorChange,
   onReplyTargetCharsChange,
+  onPlanningModeChange,
   branchId,
   branches,
   snapshot,
 	stateError,
 	stateDisplayPreference,
 	onStateDisplayPreferenceChange,
-  directorStatus,
-  onOpenBackstage,
   onSwitchBranch,
   onOpenBranchTimeline,
 }: DirectorConsoleProps) {
@@ -70,11 +69,15 @@ export function DirectorConsole({
 
   return (
     <aside className="director-console flex h-full min-h-0 flex-col border-l border-[var(--nova-border)] bg-[var(--director-canvas)] text-[var(--nova-text)]">
-      <DirectorConsoleHeader branchId={branchId} turnCount={(snapshot?.turns || []).length || (snapshot?.current_turn ? 1 : 0)} story={story} storyDirectors={storyDirectors} onDirectorChange={onDirectorChange} onReplyTargetCharsChange={onReplyTargetCharsChange} stateDisplayPreference={stateDisplayPreference} onStateDisplayPreferenceChange={onStateDisplayPreferenceChange} directorStatus={directorStatus} onOpenBackstage={onOpenBackstage} />
-      <DirectorConsoleTabs activeTab={activeTab} onChange={changeTab} changesCount={changesCount} actorsCount={actors.length + archivedActors.length} worldCount={worldFacts.length} branchesCount={branchesCount} />
+      <DirectorConsoleHeader branchId={branchId} turnCount={(snapshot?.turns || []).length || (snapshot?.current_turn ? 1 : 0)} story={story} storyDirectors={storyDirectors} onDirectorChange={onDirectorChange} onReplyTargetCharsChange={onReplyTargetCharsChange} onPlanningModeChange={onPlanningModeChange} stateDisplayPreference={stateDisplayPreference} onStateDisplayPreferenceChange={onStateDisplayPreferenceChange} />
+      <DirectorConsoleTabs activeTab={activeTab} onChange={changeTab} changesCount={changesCount} actorsCount={actors.length + archivedActors.length} worldCount={worldFacts.length} planCount={snapshot?.branch_plan?.markdown.trim() ? 1 : 0} branchesCount={branchesCount} />
       {activeTab === 'branches' ? (
         <div className="min-h-0 flex-1 overflow-hidden">
           <BranchPreview branches={branches} currentBranchId={branchId} snapshot={snapshot} onSwitchBranch={onSwitchBranch} onOpenTimeline={onOpenBranchTimeline} />
+        </div>
+      ) : activeTab === 'plan' ? (
+        <div className="min-h-0 flex-1 overflow-hidden">
+          <BranchPlanView plan={snapshot?.branch_plan} planningEnabled={story?.planning_mode === 'enabled'} />
         </div>
       ) : (
         <div className="min-h-0 flex-1 overflow-hidden px-4 py-4">

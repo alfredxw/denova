@@ -32,7 +32,7 @@ type configApplyInput struct {
 	Value     map[string]any `json:"value,omitempty" jsonschema_description:"Complete create/update value documented by the resource Skill reference; agent_profile delete requires value.kind."`
 }
 
-// NewTools constructs the Config Manager tools over the typed resource
+// NewTools constructs the shared configuration tools over the typed resource
 // registry. Capability filtering remains with the caller that owns the full
 // model-visible tool catalog.
 func NewTools(cfg *config.Config, maxResultBytes int) ([]agent.ToolDefinition, error) {
@@ -65,7 +65,7 @@ func NewTools(cfg *config.Config, maxResultBytes int) ([]agent.ToolDefinition, e
 	}
 	applyTool, err := agent.InferTool(
 		"config_apply",
-		"Create, update, or delete exactly one Denova configuration resource. Updates, deletes, and agent_profile SubAgent creates require the latest revision from config_read; agent_profile deletes require value.kind. Resource-specific value shapes live in the config-manager Skill references.",
+		"Create, update, or delete exactly one Denova configuration resource. Updates, deletes, and agent_profile SubAgent creates require the latest revision from config_read; agent_profile deletes require value.kind. Resource-specific value shapes live in the configuration Skill references.",
 		func(ctx context.Context, input configApplyInput) (agent.ToolResult, error) {
 			value, err := registry.Apply(ctx, Mutation{
 				Operation: input.Operation, Resource: input.Resource, ID: input.ID, Scope: input.Scope, Revision: input.Revision, Value: input.Value,
@@ -174,7 +174,7 @@ func configApplyResult(value any) (agent.ToolResult, error) {
 	}
 	// Mutation output stays receipt-only so a large, successfully persisted
 	// configuration cannot be followed by an invalid or truncated JSON echo.
-	// The Config Manager workflow always verifies the canonical value with get.
+	// The configuration workflow always verifies the canonical value with get.
 	result := agent.TextToolResult(string(details))
 	result.Details = details
 	result.Metadata.Target = receipt.ID

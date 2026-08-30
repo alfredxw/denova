@@ -91,7 +91,12 @@ func submitTestTurnResult(t *testing.T, conversation *Conversation, intent, goal
 			interactivestate.Update{Op: "replace", Path: "/story/当前事件", Value: event},
 		)
 	}
-	receipt, err := conversation.SubmitTurnResult(context.Background(), testTurnSubmissionInput(updates, true))
+	input := testTurnSubmissionInput(updates, true)
+	if storyContext.Meta.PlanningMode == interactive.StoryPlanningModeEnabled && storyContext.Snapshot.BranchPlan == nil {
+		plan := "Keep the current branch coherent while responding to the player's choices."
+		input.PlanUpdate = &plan
+	}
+	receipt, err := conversation.SubmitTurnResult(context.Background(), input)
 	if err != nil || !receipt.Ready {
 		t.Fatalf("SubmitTurnResult failed: receipt=%#v err=%v", receipt, err)
 	}

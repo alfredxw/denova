@@ -33,9 +33,10 @@ interface PresetDirectorySidebarProps {
   sections: ResourceDirectorySection[]
   activeId: string | null
   activeSectionId: PresetResourceKind
-  agentEntryId: string
+  agentOpen: boolean
   saving?: boolean
   onSelect: (id: string) => void
+  onToggleAgent: () => void
   onReorderItems: (sectionId: string, orderedItemIds: string[]) => void
 }
 
@@ -58,9 +59,10 @@ export function PresetDirectorySidebar({
   sections,
   activeId,
   activeSectionId,
-  agentEntryId,
+  agentOpen,
   saving = false,
   onSelect,
+  onToggleAgent,
   onReorderItems,
 }: PresetDirectorySidebarProps) {
   const { t } = useTranslation()
@@ -277,9 +279,9 @@ export function PresetDirectorySidebar({
           <Button
             type="button"
             size="sm"
-            variant={activeId === agentEntryId ? 'secondary' : 'outline'}
-            aria-pressed={activeId === agentEntryId}
-            onClick={() => onSelect(agentEntryId)}
+            variant={agentOpen ? 'secondary' : 'outline'}
+            aria-pressed={agentOpen}
+            onClick={onToggleAgent}
           >
             <Bot data-icon="inline-start" />
             {t('settingPanel.tellerAgent.title')}

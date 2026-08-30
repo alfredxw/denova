@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { StoryDirector, StorySummary } from '../types'
+import { gamePresetName } from '../game-preset'
 import { CompactResourcePicker } from './CompactResourcePicker'
 
 interface StoryDirectorPickerProps {
@@ -26,7 +27,7 @@ export function StoryDirectorPicker({ story, storyDirectors, onChange, layout = 
       items={normalizedDirectors}
       selectedId={selectedDirector?.id}
       getId={(director) => director.id}
-      getLabel={(director) => director.name || director.id}
+      getLabel={(director) => gamePresetName(director, t)}
       label={layout === 'sidebar' ? t('storyPicker.storyDirector') : t('storyPicker.directorLabel')}
       ariaLabel={t('storyPicker.chooseStoryDirector')}
       placeholder={t('storyPicker.chooseStoryDirector')}

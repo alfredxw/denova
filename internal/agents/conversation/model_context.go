@@ -197,7 +197,7 @@ func (c *SessionConversation) acceptedInputDomainCommitIntent(
 	return session.NewDomainCommitIntent(session.DomainCommitIdentity{
 		CommandID: string(identity.CommandID), OperationID: string(identity.OperationID), Cycle: identity.Cycle,
 	}, agent.UserMessageWithAttachments(message, attachments), session.MessageMetadata{
-		AgentKind: c.agentKind, UserReferences: userReferences,
+		AgentKind: c.agentKind, UserReferences: userReferences, DisplayContent: c.inputDisplayContent,
 		ContextOnly: c.inputVisibility == agentrun.InputModelOnly,
 	})
 }

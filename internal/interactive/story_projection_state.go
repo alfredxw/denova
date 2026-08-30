@@ -14,11 +14,6 @@ func (s *Store) StoryContext(storyID, branchID string) (StoryContext, error) {
 	if err != nil {
 		return StoryContext{}, err
 	}
-	if plan, planErr := s.readDirectorPlanLocked(storyID, snapshot.BranchID); planErr == nil {
-		snapshot.DirectorPlan = &plan
-		status := DirectorPlanStatusFromPlan(plan, snapshot.TurnCount > 0)
-		snapshot.DirectorPlanStatus = &status
-	}
 	usageEvents, err := s.readTokenUsageEventsLocked(storyID, snapshot.BranchID)
 	if err != nil {
 		return StoryContext{}, err
@@ -34,11 +29,6 @@ func (s *Store) Snapshot(storyID, branchID string) (Snapshot, error) {
 	_, snapshot, err := s.boundedStorySnapshotLocked(storyID, branchID)
 	if err != nil {
 		return Snapshot{}, err
-	}
-	if plan, planErr := s.readDirectorPlanLocked(storyID, snapshot.BranchID); planErr == nil {
-		snapshot.DirectorPlan = &plan
-		status := DirectorPlanStatusFromPlan(plan, snapshot.TurnCount > 0)
-		snapshot.DirectorPlanStatus = &status
 	}
 	usageEvents, err := s.readTokenUsageEventsLocked(storyID, snapshot.BranchID)
 	if err != nil {
@@ -100,6 +90,7 @@ func (s *Store) boundedStorySnapshotWithLimitLocked(storyID, branchID string, li
 	snapshot.StateSchemaInitialization = loaded.meta.StateSchemaInitialization
 	snapshot.ContextRevision = loaded.projection.ContextRevision
 	snapshot.State = cloneStoryState(loaded.projection.State)
+	snapshot.BranchPlan = cloneBranchPlan(loaded.projection.Plan)
 	initializeActors := true
 	if storyStateSchemaPolicyRequiresOpeningDraft(loaded.meta.StateSchemaPolicy) && loaded.meta.StateSchemaInitialization != nil && loaded.meta.StateSchemaInitialization.Status == StateSchemaInitializationWaitingOpening {
 		initializeActors = false

@@ -6,7 +6,6 @@ import (
 
 	agentcontext "denova/internal/agents/context"
 	"denova/internal/book"
-	"denova/internal/interactive"
 )
 
 const minimumCompleteAgentContextBytes = 128 * 1024
@@ -63,13 +62,7 @@ func TestExplicitFileReferenceTruncationIsUTF8SafeVisibleAndFenced(t *testing.T)
 }
 
 func TestImmediateAgentResultLimitsAreAbove128KB(t *testing.T) {
-	limits := map[string]int{
-		"explicit file reference":          ReferenceFileByteLimit,
-		"interactive director tool result": interactive.DirectorContextMaxBytes,
-	}
-	for name, limit := range limits {
-		if limit <= minimumCompleteAgentContextBytes {
-			t.Errorf("%s limit = %d bytes, want above %d", name, limit, minimumCompleteAgentContextBytes)
-		}
+	if ReferenceFileByteLimit <= minimumCompleteAgentContextBytes {
+		t.Errorf("explicit file reference limit = %d bytes, want above %d", ReferenceFileByteLimit, minimumCompleteAgentContextBytes)
 	}
 }

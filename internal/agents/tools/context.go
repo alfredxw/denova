@@ -10,17 +10,12 @@ import (
 // Agent lifecycle, conversation, and durable runtime collaborators are
 // intentionally excluded; the agents package owns those concerns.
 type InteractiveContext struct {
-	Store                     *interactive.Store
-	StoryID                   string
-	BranchID                  string
-	TurnID                    string
-	MaintenanceTask           string
-	MaxResultBytes            int
-	OnLoreItemsRead           func([]string)
-	SubmitStateSchemaBatch    func(context.Context, interactive.ActorStateSchemaBatch) (interactive.ActorStateSchemaBatchResult, error)
-	SubmitDirectorPlanUpdate  func(context.Context, interactive.DirectorPlanUpdateSubmission) (interactive.DirectorPlanUpdateReceipt, error)
-	RequestDirectorCompletion func(context.Context) bool
-	RequestTurnCompletion     func(context.Context) bool
-	PrepareTurn               func(context.Context, interactive.TurnCheckRequest) (interactive.RuleResolution, error)
-	SubmitTurnResult          func(context.Context, interactive.TurnSubmissionInput) (interactive.TurnSubmissionReceipt, error)
+	Store                  *interactive.Store
+	StoryID                string
+	BranchID               string
+	MaxResultBytes         int
+	SubmitStateSchemaBatch func(context.Context, interactive.ActorStateSchemaBatch) (interactive.ActorStateSchemaBatchResult, error)
+	RequestTurnCompletion  func(context.Context) bool
+	PrepareTurn            func(context.Context, interactive.TurnCheckRequest) (interactive.RuleResolution, error)
+	SubmitTurnResult       func(context.Context, interactive.TurnSubmissionInput) (interactive.TurnSubmissionReceipt, error)
 }

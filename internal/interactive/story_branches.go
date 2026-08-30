@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"os"
 	"strings"
 	"time"
 )
@@ -58,17 +57,14 @@ func (s *Store) CreateBranch(storyID string, req CreateBranchRequest) (BranchSum
 		V: schemaVersion, Type: StoryEventTypeBranch, ID: newID("ev"), ParentID: parentID,
 		BranchID: branchID, From: fromBranch, Ts: now, Title: title,
 		StateCheckpoint: cloneStoryState(checkpoint.State), LatestTurnID: checkpoint.LatestTurnID, Depth: checkpoint.Depth,
+		PlanCheckpoint: cloneBranchPlan(checkpoint.Plan),
 	}
 	switched := BranchSwitchedEvent{
 		V: schemaVersion, Type: StoryEventTypeBranchSwitched, ID: newID("bsw"),
 		ParentID: parentID, BranchID: branchID, Ts: now,
 		FromBranch: previousBranch, ToBranch: branchID,
 	}
-	if err := s.cloneDirectorPlanForBranchLocked(storyID, fromBranch, branchID, title); err != nil {
-		return BranchSummary{}, err
-	}
 	if err := s.appendStoryTransactionLocked(storyID, meta, event, switched); err != nil {
-		_ = os.RemoveAll(s.directorPlanBranchDir(storyID, branchID))
 		return BranchSummary{}, err
 	}
 	if err := s.syncStorySummaryLocked(storyID); err != nil {

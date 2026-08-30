@@ -44,7 +44,7 @@ export interface ResourceDirectorySection {
   reorderable?: boolean
 }
 
-/** 置顶固定条目（如 CREATOR.md、配置 Agent 等伪条目），渲染在搜索区下方 */
+/** Pinned fixed entries such as CREATOR.md, rendered below the search area. */
 export interface ResourceDirectoryPinnedEntry {
   id: string
   label: string

@@ -16,7 +16,13 @@ import {
 import { useAgentChat } from '@/hooks/useAgentChat'
 import { createProjectAgentChatClient } from '@/hooks/agent-chat-client'
 
-interface AgentChatConversationTabProps {
+export interface AgentChatPendingAction {
+  id: string
+  message: string
+  displayMessage: string
+}
+
+export interface AgentChatConversationTabProps {
   projectId: string
   projectType: 'book' | 'general' | 'harness'
   workspace: string
@@ -37,12 +43,10 @@ interface AgentChatConversationTabProps {
   onWorkspaceChanged?: (workspace: string, paths: string[], metadata: WorkspaceChangeMetadata) => void | Promise<void>
   onRunningChange?: (projectID: string, sessionId: string, running: boolean | null) => void
   onDraftCommitted?: (message: string) => void
-  pendingAction?: {
-    id: string
-    message: string
-    displayMessage: string
-  } | null
+  pendingAction?: AgentChatPendingAction | null
   onPendingActionConsumed?: (id: string) => void
+  /** Adds host-owned model context while keeping the user's message as the transcript projection. */
+  messageTransform?: (message: string) => string
   onConversationStateChange?: (state: AgentChatConversationState) => void
   host?: AgentChatConversationHost
 }
@@ -114,6 +118,7 @@ function AgentChatConversationTabComponent({
   onDraftCommitted,
   pendingAction,
   onPendingActionConsumed,
+  messageTransform,
   onConversationStateChange,
   host,
 }: AgentChatConversationTabProps) {
@@ -182,9 +187,11 @@ function AgentChatConversationTabComponent({
   }, [chat.isExecutionActive, draft, syncRevision, synchronize])
 
   const send = useCallback(
-    (message: string, options?: Parameters<typeof chat.send>[1]) =>
-      chat.send(message, {
+    (message: string, options?: Parameters<typeof chat.send>[1]) => {
+      const transformed = messageTransform?.(message) ?? message
+      return chat.send(transformed, {
         ...options,
+        displayMessage: options?.displayMessage ?? (transformed === message ? undefined : message),
         onSubmissionStart: () => {
           options?.onSubmissionStart?.()
           if (!draft || draftCommittedRef.current) return
@@ -194,16 +201,32 @@ function AgentChatConversationTabComponent({
           initializedRef.current = true
           onDraftCommitted?.(message)
         },
-      }),
-    [chat.send, draft, onDraftCommitted],
+      })
+    },
+    [chat.send, draft, messageTransform, onDraftCommitted],
   )
 
   useEffect(() => {
     if (!pendingAction || !initialContentReady || chat.isExecutionActive || submittedActionRef.current === pendingAction.id) return
     submittedActionRef.current = pendingAction.id
-    onPendingActionConsumed?.(pendingAction.id)
-    void send(pendingAction.message, { displayMessage: pendingAction.displayMessage })
-  }, [chat.isExecutionActive, initialContentReady, onPendingActionConsumed, pendingAction, send])
+    void Promise.resolve(send(pendingAction.message, { displayMessage: pendingAction.displayMessage }))
+      .then((accepted) => {
+        if (accepted) {
+          onPendingActionConsumed?.(pendingAction.id)
+          return
+        }
+        submittedActionRef.current = ''
+      })
+      .catch((error) => {
+        submittedActionRef.current = ''
+        console.error('[features/agent-chat/AgentChatConversationTab.tsx] pending action submission failed', {
+          projectId,
+          sessionId,
+          actionId: pendingAction.id,
+          error,
+        })
+      })
+  }, [chat.isExecutionActive, initialContentReady, onPendingActionConsumed, pendingAction, projectId, send, sessionId])
 
   useEffect(() => {
     onRunningChange?.(projectId, sessionId, chat.isExecutionActive)
@@ -327,7 +350,7 @@ function AgentChatConversationTabComponent({
       onCancelAsk={client.cancelSessionAsk}
       onRemoveContextCompaction={client.removeContextCompaction}
       onSend={send}
-      onAnalyzeContext={chat.analyzeContext}
+      onAnalyzeContext={(message, options) => chat.analyzeContext(messageTransform?.(message) ?? message, options)}
       ideContext={host?.ideContext}
       onStop={chat.stop}
       onSteerQueuedCommand={chat.steerQueuedCommand}

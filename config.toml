@@ -68,11 +68,6 @@ model = "deepseek-v4-pro"
 # [agent_models.ide]
 # profile_id = "gemini"
 # thinking_level = "low"
-#
-# [agent_models.config_manager]
-# profile_id = "gpt-4.1"
-# temperature = 0.2
-
 # 图像模型。内置 OpenAI、xAI/Grok、ComfyUI、火山 Seedream、Google Gemini；
 # 自定义端点可选择任一已支持协议。可配置多个 profile。
 # 生成结果会保存到当前工作区 assets/image/generated/。

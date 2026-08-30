@@ -26,6 +26,12 @@ func sampleTurnCheckRequest() TurnCheckRequest {
 	}
 }
 
+func TestLegacyDirectorOnlyRuleModeNormalizesToSuggestionsOnly(t *testing.T) {
+	if got := normalizeRuleStateConsumptionMode("director_only"); got != RuleStateConsumptionModeSuggestionsOnly {
+		t.Fatalf("legacy rule mode = %q, want %q", got, RuleStateConsumptionModeSuggestionsOnly)
+	}
+}
+
 func floatPtr(value float64) *float64 {
 	return &value
 }
@@ -475,7 +481,7 @@ func TestCreateStoryAppliesOpeningInitialStateOps(t *testing.T) {
 	}
 }
 
-func TestStorySnapshotSeedsDirectorPlanAndPersistsRuleAudit(t *testing.T) {
+func TestStorySnapshotPersistsRuleAuditWithoutSeedingBranchPlan(t *testing.T) {
 	store := NewStore(t.TempDir())
 	story, err := store.CreateStory(CreateStoryRequest{Title: "导演规划", StoryTellerID: "classic"})
 	if err != nil {
@@ -485,8 +491,8 @@ func TestStorySnapshotSeedsDirectorPlanAndPersistsRuleAudit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if snapshot.DirectorPlan == nil || snapshot.DirectorPlan.Metadata.LastRun == nil {
-		t.Fatalf("unexpected director plan: %#v", snapshot.DirectorPlan)
+	if snapshot.BranchPlan != nil {
+		t.Fatalf("a branch plan must be created by the Game Agent, got %#v", snapshot.BranchPlan)
 	}
 
 	request := sampleTurnCheckRequest()
@@ -520,7 +526,7 @@ func TestStorySnapshotSeedsDirectorPlanAndPersistsRuleAudit(t *testing.T) {
 	}
 }
 
-func TestLegacyStoryMetaDoesNotFabricateDirectorPlan(t *testing.T) {
+func TestLegacyStoryMetaDefaultsPlanningOffWithoutRewritingData(t *testing.T) {
 	root := t.TempDir()
 	store := NewStore(root)
 	now := time.Now().UTC().Format(time.RFC3339Nano)
@@ -552,15 +558,14 @@ func TestLegacyStoryMetaDoesNotFabricateDirectorPlan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if snapshot.DirectorPlan != nil {
-		t.Fatalf("legacy story without director docs should not fabricate director plan: %#v", snapshot.DirectorPlan)
+	if snapshot.BranchPlan != nil {
+		t.Fatalf("legacy story without plan events should not fabricate a branch plan: %#v", snapshot.BranchPlan)
 	}
 	data, err := os.ReadFile(store.storyPath("st_legacy_director"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	legacyDirectorField := strings.Join([]string{"director", "state"}, "_")
-	if strings.Contains(string(data), legacyDirectorField) {
+	if strings.Contains(string(data), "planning_mode") {
 		t.Fatalf("lazy initialization should not rewrite legacy story file: %s", string(data))
 	}
 }

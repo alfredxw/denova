@@ -1,10 +1,10 @@
 import { useMemo } from 'react'
-import type { AgentModelSettings, ResolvedAgentToolCapability } from '@/features/settings/types'
+import type { ResolvedAgentToolCapability } from '@/features/settings/types'
 import type { SkillSummary } from '@/lib/api'
-import { skillAvailableForAgent } from '@/features/agents/agent-registry'
+import { skillAvailableForAgent, type VisibleAgentKey } from '@/features/agents/agent-registry'
 import { useAgentSkillCatalog } from './useAgentSkillCatalog'
 
-type SkillAgentKey = Exclude<keyof AgentModelSettings, 'default'>
+type SkillAgentKey = VisibleAgentKey
 
 interface UseSkillCommandsOptions {
   agentKey: SkillAgentKey

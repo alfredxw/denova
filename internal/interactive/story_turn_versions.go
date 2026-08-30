@@ -102,6 +102,9 @@ func (s *Store) SwitchTurnVersion(storyID string, req SwitchTurnVersionRequest) 
 	selectionPath, _ := eventPath(projectedHead, selectionEvents)
 	selection.CurrentState = stateFromPath(selectionPath)
 	selection.CurrentTurnID = nearestTurnAncestor(projectedHead, selectionEvents)
+	if checkpoint, checkpointErr := s.checkpointAtTurnLocked(storyID, versionTurnID); checkpointErr == nil {
+		selection.CurrentPlan = cloneBranchPlan(checkpoint.Plan)
+	}
 	for _, record := range selectionPath {
 		if record.Envelope.Type == StoryEventTypeTurn {
 			selection.CurrentDepth++

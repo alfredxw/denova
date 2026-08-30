@@ -106,11 +106,8 @@ func newAgentProfileResource(cfg *config.Config) Adapter {
 				if err := applyAgentProfileMutation(&settings, layered, scope, kind, mutation, value); err != nil {
 					return config.Settings{}, err
 				}
-				if agentProfileMutationAffectsConfigManagerTools(kind, mutation, value) {
-					if err := validateConfigManagerRequestedToolOverride(mutation, value); err != nil {
-						return config.Settings{}, err
-					}
-					if err := validateConfigManagerToolCeiling(layered, scope, settings); err != nil {
+				if kind == agentProfileKindAgent && value.Tools != nil {
+					if err := validateAgentToolOverride(mutation.ID, *value.Tools); err != nil {
 						return config.Settings{}, err
 					}
 				}
@@ -254,69 +251,36 @@ func applyAgentProfileMutation(settings *config.Settings, layered config.Layered
 	}
 }
 
-var configManagerToolCeiling = map[string]struct{}{
-	config.AgentToolFilesystemRead: {},
-	config.AgentToolAsk:            {},
-	config.AgentToolSkills:         {},
-	config.AgentToolConfigRead:     {},
-	config.AgentToolConfigApply:    {},
-}
-
-func agentProfileMutationAffectsConfigManagerTools(kind string, mutation Mutation, value agentProfileConfigValue) bool {
-	if kind != agentProfileKindAgent {
-		return false
-	}
-	id := strings.TrimSpace(mutation.ID)
-	if id != "default" && id != config.AgentKindConfigManager {
-		return false
-	}
-	return mutation.Operation == ApplyDelete || value.Tools != nil
-}
-
-// validateConfigManagerRequestedToolOverride is intentionally fail-closed for
-// unknown capability names. Otherwise a dormant key written today could become
-// an escalation when a future release registers a capability with that name.
-func validateConfigManagerRequestedToolOverride(mutation Mutation, value agentProfileConfigValue) error {
-	if strings.TrimSpace(mutation.ID) != config.AgentKindConfigManager || value.Tools == nil {
-		return nil
-	}
-	for capability, enabled := range *value.Tools {
-		if !enabled {
-			continue
-		}
-		if _, allowed := configManagerToolCeiling[capability]; allowed {
-			continue
-		}
-		return fmt.Errorf("Config Manager cannot enable capability %q through agent_profile", capability)
-	}
-	return nil
-}
-
-// validateConfigManagerToolCeiling evaluates the post-mutation layered config,
-// not just the submitted map. This prevents deleting a restrictive workspace
-// override or replacing it with a sparse map from revealing a sensitive
-// capability inherited from another layer.
-func validateConfigManagerToolCeiling(layered config.LayeredSettings, scope string, nextLayer config.Settings) error {
-	user := layered.User
-	workspace := layered.Workspace
-	switch scope {
-	case "user":
-		user = nextLayer
-	case "workspace":
-		workspace = nextLayer
-	default:
-		return fmt.Errorf("agent_profile scope must be user or workspace")
-	}
-	effective := config.Merge(config.Merge(config.Merge(layered.Default, layered.Global), user), workspace)
-	resolved := config.ResolveAgentTools(&config.Config{AgentTools: effective.AgentTools}, config.AgentKindConfigManager)
+// validateAgentToolOverride rejects dormant capability names and capabilities
+// outside one fixed Agent's ceiling before they can be persisted. The runtime
+// ceiling remains authoritative after layering; this check keeps the editable
+// configuration explicit and safe across future capability additions.
+func validateAgentToolOverride(agentKind string, override config.AgentToolOverride) error {
+	known := make(map[string]struct{}, len(config.AgentToolCapabilities()))
 	for _, capability := range config.AgentToolCapabilities() {
-		if !resolved.Allows(capability.Source) {
-			continue
+		known[capability.Source] = struct{}{}
+	}
+	agentKind = strings.TrimSpace(agentKind)
+	var ceiling map[string]struct{}
+	if agentKind != "default" {
+		definition, ok := config.LookupAgentKind(agentKind)
+		if !ok {
+			return fmt.Errorf("invalid agent kind %q", agentKind)
 		}
-		if _, allowed := configManagerToolCeiling[capability.Source]; allowed {
-			continue
+		ceiling = make(map[string]struct{}, len(definition.ToolCapabilities))
+		for _, capability := range definition.ToolCapabilities {
+			ceiling[capability] = struct{}{}
 		}
-		return fmt.Errorf("Config Manager cannot enable capability %q through agent_profile", capability.Source)
+	}
+	for capability := range override {
+		if _, ok := known[capability]; !ok {
+			return fmt.Errorf("unknown Agent capability %q", capability)
+		}
+		if ceiling != nil {
+			if _, ok := ceiling[capability]; !ok {
+				return fmt.Errorf("Agent %q does not support capability %q", agentKind, capability)
+			}
+		}
 	}
 	return nil
 }

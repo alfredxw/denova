@@ -15,9 +15,6 @@ var generalAgentWorkflowAsset string
 //go:embed assets/harness-agent.md
 var harnessAgentWorkflowAsset string
 
-//go:embed assets/interactive-director.md
-var interactiveDirectorWorkflowAsset string
-
 //go:embed assets/context-compaction.md
 var contextCompactionWorkflowAsset string
 

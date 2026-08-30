@@ -24,7 +24,9 @@ type AgentGeneralSubAgentSettings struct {
 	General          *bool `toml:"general,omitempty" json:"general,omitempty"`
 	IDE              *bool `toml:"ide,omitempty" json:"ide,omitempty"`
 	InteractiveStory *bool `toml:"interactive_story,omitempty" json:"interactive_story,omitempty"`
-	ConfigManager    *bool `toml:"config_manager,omitempty" json:"config_manager,omitempty"`
+	// ConfigManager is retained only so unrelated settings writes preserve
+	// the retired v0.3.3 value. It is never resolved as an active parent.
+	ConfigManager *bool `toml:"config_manager,omitempty" json:"config_manager,omitempty"`
 }
 
 var subAgentParentKinds = []string{
@@ -32,7 +34,6 @@ var subAgentParentKinds = []string{
 	AgentKindHarness,
 	AgentKindIDE,
 	AgentKindInteractiveStory,
-	AgentKindConfigManager,
 }
 
 // SubAgentParentKinds returns the Agent kinds that support task delegation.
@@ -90,8 +91,6 @@ func generalSubAgentOverrideFor(settings AgentGeneralSubAgentSettings, parentKin
 		return settings.IDE
 	case AgentKindInteractiveStory:
 		return settings.InteractiveStory
-	case AgentKindConfigManager:
-		return settings.ConfigManager
 	default:
 		return nil
 	}
@@ -260,11 +259,15 @@ func sanitizeSubAgentParents(parents []string) []string {
 	seen := map[string]bool{}
 	for _, parent := range parents {
 		parent = strings.TrimSpace(parent)
-		if !IsSubAgentParentKind(parent) || seen[parent] {
+		if !isPersistedSubAgentParentKind(parent) || seen[parent] {
 			continue
 		}
 		seen[parent] = true
 		out = append(out, parent)
 	}
 	return out
+}
+
+func isPersistedSubAgentParentKind(kind string) bool {
+	return IsSubAgentParentKind(kind) || strings.TrimSpace(kind) == AgentKindConfigManager
 }

@@ -38,8 +38,9 @@ var (
 	ErrActorStateRevisionConflict   = errors.New("状态系统已被其他操作更新，请重新加载后再保存")
 )
 
-// StoryDirectorModuleRefs declares the reusable resources a story director
-// combines at runtime. Changing a referenced module affects future resolution.
+// StoryDirectorModuleRefs is the legacy storage type for the reusable resources
+// a Game Preset combines at runtime. Changing a referenced module affects
+// future resolution.
 type StoryDirectorModuleRefs struct {
 	NarrativeStyleID       string   `json:"narrative_style_id,omitempty"`
 	NarrativeStyleDisabled bool     `json:"narrative_style_disabled,omitempty"`
@@ -60,7 +61,7 @@ type StoryDirectorModuleWarning struct {
 }
 
 // StoryDirectorResolvedSnapshot is the last known-good expanded module graph.
-// It lets directors and stories keep working when a referenced module is
+// It lets presets and stories keep working when a referenced module is
 // deleted, renamed, or temporarily invalid.
 type StoryDirectorResolvedSnapshot struct {
 	Version          int                           `json:"version"`

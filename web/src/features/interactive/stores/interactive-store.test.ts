@@ -213,9 +213,11 @@ describe('interactive-store', () => {
     expect(next.turns.map((item) => item.id)).toEqual(['turn-1', 'turn-2'])
     expect(next.current_turn?.id).toBe('turn-2')
     expect(next.state).toEqual({ scene: { location: '门外' } })
-    expect(next.director_plan).toBeUndefined()
-    expect(next.director_plan_status?.status).toBe('running')
-    expect(next.director_plan_status?.completed_docs).toBe(1)
+    expect(next.branch_plan).toEqual({
+      markdown: 'Follow the light beyond the door.',
+      updated_turn_id: 'turn-2',
+      updated_at: '2026-06-28T00:00:00Z',
+    })
     expect(next.graph?.branches[0].head).toBe('turn-2')
   })
 
@@ -333,7 +335,11 @@ function persistedEvent(turnEvent: TurnEvent): InteractiveTurnPersistedEvent {
     branch_id: 'main',
     turn_count: 2,
     turn: turnEvent,
-    director_plan_status: directorPlanStatus(),
+    branch_plan: {
+      markdown: 'Follow the light beyond the door.',
+      updated_turn_id: turnEvent.id,
+      updated_at: '2026-06-28T00:00:00Z',
+    },
     state: { scene: { location: '门外' } },
     graph: {
       nodes: [{
@@ -353,22 +359,6 @@ function persistedEvent(turnEvent: TurnEvent): InteractiveTurnPersistedEvent {
   }
 }
 
-function directorPlanStatus() {
-  return {
-    story_id: 'story-1',
-    branch_id: 'main',
-    status: 'running',
-    summary: '后台导演正在规划开局。',
-    source_turn_id: 'turn-2',
-    updated_at: '2026-06-28T00:00:00Z',
-    planned_docs: 1,
-    completed_docs: 1,
-    doc_bytes: 1200,
-    visible_bytes: 320,
-    start_ready: false,
-    blocking: true,
-  }
-}
 
 function turn(id: string, parentID: string | null, user: string, narrative: string): TurnEvent {
   return {

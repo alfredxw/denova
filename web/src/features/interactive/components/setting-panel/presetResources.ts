@@ -2,8 +2,6 @@ import type { PresetResourceKind } from '../../preset-ownership'
 import type { ActorStateModule, EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, Teller } from '../../types'
 import { defaultRuleTemplates, normalizeTRPGSystem } from '../preset-config/ruleTemplates'
 
-export const TELLER_CONFIG_AGENT_ENTRY_ID = '__config_manager_teller__'
-
 export const EMPTY_TELLERS: Teller[] = []
 export const EMPTY_STORY_DIRECTORS: StoryDirector[] = []
 export const EMPTY_IMAGE_PRESETS: ImagePreset[] = []
@@ -157,8 +155,8 @@ export function newTellerDraft(t?: PresetDraftTranslator): Partial<Teller> {
 export function newStoryDirectorDraft(t?: PresetDraftTranslator): Partial<StoryDirector> {
   return {
     id: `custom-director-${Date.now()}`,
-    name: presetDraftText(t, 'settingPanel.presetDraft.director.name', '自定义故事导演'),
-    description: presetDraftText(t, 'settingPanel.presetDraft.director.description', '新的故事导演，组合叙事风格、事件包、TRPG 检定、状态系统和图像方案。'),
+    name: presetDraftText(t, 'settingPanel.presetDraft.director.name', '自定义游戏预设'),
+    description: presetDraftText(t, 'settingPanel.presetDraft.director.description', '新的游戏预设，组合叙事风格、事件包、TRPG 检定、状态系统、规划风格和图像方案。'),
     module_refs: {
       narrative_style_id: 'rhythm',
       event_package_ids: ['default'],
@@ -167,15 +165,8 @@ export function newStoryDirectorDraft(t?: PresetDraftTranslator): Partial<StoryD
       image_preset_id: 'game-cg',
     },
     strategy: {
-      enabled: true,
-      mainline_strength: 'balanced',
-      failure_policy: 'consequence',
-      pacing_curve: 'goal-pressure-payoff',
-			event_frequency: 'balanced',
-      director_agent_mode: 'triggered',
       rule_state_consumption_mode: 'hybrid_auto',
       rule_visibility_mode: 'audit_only',
-      branch_planning_turns: 5,
     },
     event_packages: [],
     trpg_system: {

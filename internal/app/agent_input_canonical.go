@@ -78,6 +78,7 @@ func sessionCanonicalInputIntent(
 	}, agent.UserMessageWithAttachments(request.Input.Text, request.Input.Attachments), session.MessageMetadata{
 		AgentKind:      request.Options.AgentKind,
 		UserReferences: cloneCanonicalUserReferences(agentchat.UserMessageReferencesForRequest(request.Request)),
+		DisplayContent: request.Request.DisplayMessage,
 		ContextOnly:    request.Request.InputVisibility == agentrun.InputModelOnly,
 	})
 	if err != nil {

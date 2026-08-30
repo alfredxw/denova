@@ -9,7 +9,6 @@ import type { InteractiveTurnPersistedEvent, Snapshot, StorySummary, TurnEvent }
 export interface StoryStageTestMocks {
   generateInteractiveImageMock: Mock
   getActiveInteractiveChatMock: Mock
-  runInteractiveDirectorMock: Mock
   sendInteractiveMessageMock: Mock
   streamActiveInteractiveChatMock: Mock
   submitInteractiveAgentCommandMock: Mock
@@ -25,7 +24,6 @@ function StoryStage(props: Omit<ComponentProps<typeof ProjectStoryStage>, 'proje
 export function resetStoryStageTestHarness({
   generateInteractiveImageMock,
   getActiveInteractiveChatMock,
-  runInteractiveDirectorMock,
   sendInteractiveMessageMock,
   streamActiveInteractiveChatMock,
   submitInteractiveAgentCommandMock,
@@ -38,8 +36,6 @@ export function resetStoryStageTestHarness({
   generateInteractiveImageMock.mockResolvedValue({ enabled: false, skipped: true })
   getActiveInteractiveChatMock.mockReset()
   getActiveInteractiveChatMock.mockResolvedValue({ active: false })
-  runInteractiveDirectorMock.mockReset()
-  runInteractiveDirectorMock.mockResolvedValue(directorStatus('running', { completed_docs: 1 }))
   sendInteractiveMessageMock.mockReset()
   streamActiveInteractiveChatMock.mockReset()
   submitInteractiveAgentCommandMock.mockReset()
@@ -196,25 +192,6 @@ export function persistedTurnEvent(): InteractiveTurnPersistedEvent {
   }
 }
 
-export function directorStatus(status: string, overrides: Partial<NonNullable<Snapshot['director_plan_status']>> = {}) {
-  return {
-    story_id: 'story-1',
-    branch_id: 'main',
-    status,
-    summary: status === 'running' ? '后台导演正在规划开局。' : '后台导演更新失败，已保留现有规划。',
-    error: '',
-    source_turn_id: 'turn-1',
-    updated_at: '2026-06-28T00:00:00Z',
-    planned_docs: 1,
-    completed_docs: status === 'ready' ? 1 : 0,
-    doc_bytes: 1200,
-    visible_bytes: 320,
-    start_ready: status === 'ready',
-    blocking: false,
-    ...overrides,
-  }
-}
-
 export function interactiveStream(events: Array<{ event: string; data: string }>) {
   return new ReadableStream({
     start(controller) {
@@ -305,10 +282,9 @@ export function storyDirector(ruleVisibilityMode: string) {
   return {
     version: 3,
     id: 'default',
-    name: '默认故事导演',
+    name: '默认游戏预设',
     description: '',
     strategy: {
-      enabled: true,
       rule_visibility_mode: ruleVisibilityMode,
 		},
 		trpg_system: { rule_templates: [] },

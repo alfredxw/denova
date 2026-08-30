@@ -99,7 +99,7 @@ export function AgentsView({ target, onClose, toolNavigationIntent }: { target: 
   const contextValue = draft.agent_context?.[activeAgent] ?? {}
   const resolvedContext = layered?.resolved_agent_contexts?.[activeAgent]
   const inheritedToolParallelism = resolveInheritedToolParallelism(layered, activeLayer)
-  const configManagerContext = useMemo(() => ({
+  const configurationContext = useMemo(() => ({
     active_settings_layer: activeLayer,
     active_agent: activeAgent,
     active_agent_title: t(selected.titleKey),
@@ -260,7 +260,7 @@ export function AgentsView({ target, onClose, toolNavigationIntent }: { target: 
                 projectId={projectId}
                 origin="agents"
                 resourceId={`${activeLayer}:${activeAgent}`}
-                context={configManagerContext}
+                context={configurationContext}
                 onMutated={reloadAfterAgentMutation}
               />
             </div>

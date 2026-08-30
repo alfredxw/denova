@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -99,14 +98,6 @@ func buildRuntime(ctx context.Context, cfg *config.Config, layout ProjectLayout)
 		return nil, fmt.Errorf("create conversation session: %w", err)
 	}
 	interactiveStore := interactive.NewStoreWithNovaDir(absWorkspace, runtimeCfg.DataDir())
-	interruptedDirectorRuns, directorRecoveryErr := interactiveStore.RecoverInterruptedDirectorRuns()
-	if directorRecoveryErr != nil {
-		// Recovery is branch-scoped and reports partial failures. A corrupt
-		// optional projection must not make the user's whole project unavailable.
-		slog.ErrorContext(ctx, fmt.Sprintf("[interactive-director] interrupted run recovery incomplete workspace=%s recovered=%d error=%v", absWorkspace, interruptedDirectorRuns, directorRecoveryErr))
-	} else if interruptedDirectorRuns > 0 {
-		slog.InfoContext(ctx, fmt.Sprintf("[interactive-director] recovered interrupted runs workspace=%s runs=%d", absWorkspace, interruptedDirectorRuns))
-	}
 	runtime := &runtimeState{
 		projectID:        layout.ProjectID,
 		projectStateRoot: layout.StateRoot,

@@ -2,7 +2,7 @@ import { createAgentCommandID, fetchAPI, jsonHeaders, parseSSEStream, requestJSO
 import type { AgentCommandReceipt, AgentRuntimeActiveOutput, AgentRuntimeOpenTool, AgentRuntimeOperation, AgentRuntimeQueuedCommand, AgentRuntimeRecoveryAction, AgentRuntimeRecoveryReceipt, ContextAnalysis, InteractiveImage } from '@/lib/api-client'
 import { isKnownAgentCommandOutcome } from '@/lib/agent-command'
 import type { ChatAttachmentDescriptor, ChatAttachmentUpload } from '@/lib/chat-attachments'
-import type { ActorStateModule, ActorTraitRollRequest, ActorTraitRollResult, BranchSummary, DirectorPlan, DirectorPlanStatus, EventPackageModule, ImagePreset, InitialActorTraitRoll, InteractiveSnapshotResponse, InteractiveSSEEvent, RuleResolution, RuleResolutionRerollInput, RuleSystemModule, StoryDirector, StoryDirectorModuleRefs, StoryDirectorRunPolicy, StoryHistoryPage, StoryStateSchemaPolicy, StyleReference, StyleReferenceFileDocument, StoryImageSettings, StoryIndex, StoryOpeningConfig, StorySummary, Teller, UpdateDirectorPlanInput, UpdateTurnNarrativeResult } from './types'
+import type { ActorStateModule, ActorTraitRollRequest, ActorTraitRollResult, BranchSummary, EventPackageModule, ImagePreset, InitialActorTraitRoll, InteractiveSnapshotResponse, InteractiveSSEEvent, RuleResolution, RuleResolutionRerollInput, RuleSystemModule, StoryDirector, StoryDirectorModuleRefs, StoryHistoryPage, StoryPlanningMode, StoryStateSchemaPolicy, StyleReference, StyleReferenceFileDocument, StoryImageSettings, StoryIndex, StoryOpeningConfig, StorySummary, Teller, UpdateTurnNarrativeResult } from './types'
 
 function presetMutationBody<T extends object>(input: T, baseRevision?: string) {
   return {
@@ -15,7 +15,7 @@ export function getInteractiveStories(): Promise<StoryIndex> {
   return requestJSON('/api/interactive/stories')
 }
 
-export function createInteractiveStory(input: { title: string; origin?: string; story_teller_id: string; story_director_id?: string; director_run_policy?: StoryDirectorRunPolicy; module_refs?: StoryDirectorModuleRefs; reply_target_chars?: number; choice_count?: number; image_settings?: StoryImageSettings; opening?: StoryOpeningConfig; initial_trait_rolls?: InitialActorTraitRoll[]; state_schema_policy?: StoryStateSchemaPolicy }): Promise<StorySummary> {
+export function createInteractiveStory(input: { title: string; origin?: string; story_teller_id: string; story_director_id?: string; planning_mode?: StoryPlanningMode; module_refs?: StoryDirectorModuleRefs; reply_target_chars?: number; choice_count?: number; image_settings?: StoryImageSettings; opening?: StoryOpeningConfig; initial_trait_rolls?: InitialActorTraitRoll[]; state_schema_policy?: StoryStateSchemaPolicy }): Promise<StorySummary> {
   return requestJSON('/api/interactive/stories', {
     method: 'POST',
     headers: jsonHeaders,
@@ -38,7 +38,7 @@ export function updateInteractiveStory(
     origin?: string
     story_teller_id?: string
     story_director_id?: string
-    director_run_policy?: StoryDirectorRunPolicy
+    planning_mode?: StoryPlanningMode
     module_refs?: StoryDirectorModuleRefs
     reply_target_chars?: number
     choice_count?: number
@@ -78,48 +78,6 @@ export function getInteractiveHistoryPage(storyId: string, branchId: string, bef
 
 export function rerollInteractiveRuleResolution(storyId: string, resolutionId: string, input: RuleResolutionRerollInput = {}): Promise<RuleResolution> {
   return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/rules/resolutions/${encodeURIComponent(resolutionId)}/reroll`, {
-    method: 'POST',
-    headers: jsonHeaders,
-    body: JSON.stringify(input),
-  })
-}
-
-export function getInteractiveDirector(storyId: string, branchId?: string): Promise<DirectorPlan> {
-  const query = branchId ? `?branch=${encodeURIComponent(branchId)}` : ''
-  return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/director${query}`)
-}
-
-export function getInteractiveDirectorStatus(storyId: string, branchId?: string): Promise<DirectorPlanStatus> {
-  const query = branchId ? `?branch=${encodeURIComponent(branchId)}` : ''
-  return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/director/status${query}`)
-}
-
-export function updateInteractiveDirector(storyId: string, input: UpdateDirectorPlanInput): Promise<DirectorPlan> {
-  return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/director`, {
-    method: 'PATCH',
-    headers: jsonHeaders,
-    body: JSON.stringify(input),
-  })
-}
-
-export function rebuildInteractiveDirector(storyId: string, branchId?: string, options: { resetEvents?: boolean } = {}): Promise<DirectorPlan> {
-  return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/director/rebuild`, {
-    method: 'POST',
-    headers: jsonHeaders,
-		body: JSON.stringify({ branch_id: branchId, ...(options.resetEvents ? { reset_events: true } : {}) }),
-  })
-}
-
-export function runInteractiveDirector(storyId: string, branchId?: string, options: { forceEventEvaluation?: boolean } = {}): Promise<DirectorPlanStatus> {
-  return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/director/run`, {
-    method: 'POST',
-    headers: jsonHeaders,
-		body: JSON.stringify({ branch_id: branchId, ...(options.forceEventEvaluation ? { force_event_evaluation: true } : {}) }),
-  })
-}
-
-export function analyzeInteractiveDirectorContext(storyId: string, input: { branch_id?: string; turn_id?: string } = {}): Promise<ContextAnalysis> {
-  return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/director/context-analysis`, {
     method: 'POST',
     headers: jsonHeaders,
     body: JSON.stringify(input),

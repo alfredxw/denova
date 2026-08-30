@@ -150,37 +150,6 @@ func BuildInteractiveInspectedContextAnalysis(
 	return analysis
 }
 
-// BuildInteractiveDirectorInspectedContextAnalysis annotates the exact public
-// Director request without rebuilding its resident Lore or current planning
-// instruction. The public Session remains the only history/maintenance view.
-func BuildInteractiveDirectorInspectedContextAnalysis(
-	cfg *config.Config,
-	composition prompts.SystemPromptComposition,
-	inspection agent.Inspection,
-) ContextAnalysis {
-	analysis := BuildInspectedContextAnalysis(
-		cfg, config.AgentKindInteractiveDirector, "interactive_director", composition, inspection,
-	)
-	if len(analysis.ContextMessages) == 0 {
-		return analysis
-	}
-	last := len(analysis.ContextMessages) - 1
-	for index := 0; index < last; index++ {
-		if analysis.ContextMessages[index].Source != "Stable context / 稳定上下文" {
-			continue
-		}
-		analysis.ContextMessages[index].Source = "Resident lore / 常驻资料"
-		analysis.ContextMessages[index].Title = "Enabled resident lore / 已启用常驻资料"
-	}
-	analysis.ContextMessages[last].Source = "Current Director task / 当前导演任务"
-	analysis.ContextMessages[last].Title = "Director maintenance instruction / 导演维护指令"
-	analysis.ContextMessages[last].Parts = buildInteractiveDirectorInstructionContextParts(
-		analysis.ContextMessages[last].Content,
-	)
-	analysis.ContextParts = append([]ContextAnalysisPart(nil), analysis.ContextMessages...)
-	return analysis
-}
-
 func inspectedSystemPrompt(
 	composition prompts.SystemPromptComposition,
 	messages []*agent.Message,

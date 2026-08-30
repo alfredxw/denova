@@ -14,7 +14,6 @@ import (
 	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 	agentchatapp "denova/internal/app/agentchat"
-	configmanagerapp "denova/internal/app/configmanager"
 	interactiveapp "denova/internal/app/interactive"
 	appsettings "denova/internal/app/settings"
 	"denova/internal/interactive"
@@ -24,10 +23,9 @@ import (
 )
 
 const (
-	ConversationModeWriting       = "writing"
-	ConversationModeAgentChat     = "agent_chat"
-	ConversationModeInteractive   = "interactive"
-	ConversationModeConfigManager = "config_manager"
+	ConversationModeWriting     = "writing"
+	ConversationModeAgentChat   = "agent_chat"
+	ConversationModeInteractive = "interactive"
 )
 
 // ConversationConfigBinding is the stable transport identity for every
@@ -243,8 +241,6 @@ func (a *App) ConversationConfig(ctx context.Context, binding ConversationConfig
 		return a.AgentChat().ConversationConfig(ctx, agentchatapp.Binding{
 			ProjectID: binding.ProjectID, SessionID: binding.SessionID,
 		})
-	case ConversationModeConfigManager:
-		return a.ConfigManager().ConversationConfig(configManagerConfigRequest(binding))
 	case ConversationModeInteractive:
 		if err := a.requireForegroundConversationProject(binding.ProjectID); err != nil {
 			return conversationconfig.Snapshot{}, err
@@ -274,8 +270,6 @@ func (a *App) PatchConversationConfig(ctx context.Context, binding ConversationC
 		return a.AgentChat().PatchConversationConfig(ctx, agentchatapp.Binding{
 			ProjectID: binding.ProjectID, SessionID: binding.SessionID,
 		}, change, baseRevision)
-	case ConversationModeConfigManager:
-		return a.ConfigManager().PatchConversationConfig(configManagerConfigRequest(binding), change, baseRevision)
 	case ConversationModeInteractive:
 		if err := a.requireForegroundConversationProject(binding.ProjectID); err != nil {
 			return conversationconfig.Snapshot{}, err
@@ -326,12 +320,6 @@ func (a *App) patchWritingConversationConfig(binding ConversationConfigBinding, 
 	if err != nil {
 		return conversationconfig.Snapshot{}, err
 	}
-	a.mu.RLock()
-	active := writingTaskForSessionLocked(a, a.workspace, sessionID)
-	a.mu.RUnlock()
-	if active != nil && !active.Finished() {
-		return conversationconfig.Snapshot{}, ErrAgentOperationActive
-	}
 	sess, err := store.Get(sessionID)
 	if err != nil {
 		return conversationconfig.Snapshot{}, err
@@ -345,13 +333,6 @@ func (a *App) patchWritingConversationConfig(binding ConversationConfigBinding, 
 		return conversationconfig.Snapshot{}, err
 	}
 	return sess.SetRuntimeConfig(next, baseRevision)
-}
-
-func configManagerConfigRequest(binding ConversationConfigBinding) configmanagerapp.Request {
-	return configmanagerapp.Request{
-		ProjectID: binding.ProjectID, Origin: binding.Origin, ResourceID: binding.ResourceID,
-		StoryID: binding.StoryID, BranchID: binding.BranchID,
-	}
 }
 
 func (a *App) interactiveConversationConfig(binding ConversationConfigBinding) (conversationconfig.Snapshot, error) {
@@ -372,9 +353,6 @@ func (a *App) patchInteractiveConversationConfig(binding ConversationConfigBindi
 	store, runtimeCfg, err := a.interactiveConversationRuntime(binding)
 	if err != nil {
 		return conversationconfig.Snapshot{}, err
-	}
-	if active, _ := service.ActiveInteractiveTaskFor(binding.StoryID, binding.BranchID); active != nil && !active.Finished() {
-		return conversationconfig.Snapshot{}, ErrAgentOperationActive
 	}
 	current, ok, err := store.BranchRuntimeConfig(binding.StoryID, binding.BranchID)
 	if err != nil {

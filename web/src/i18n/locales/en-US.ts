@@ -1,6 +1,5 @@
 import common from './en-US/common'
 import remoteAccess from './en-US/remoteAccess'
-import configManager from './en-US/configManager'
 import chat from './en-US/chat'
 import editor from './en-US/editor'
 import runtime from './en-US/runtime'
@@ -48,7 +47,6 @@ import trajectory from './en-US/trajectory'
 const enUS = {
   ...common,
   ...remoteAccess,
-  ...configManager,
   ...chat,
   ...editor,
   ...runtime,

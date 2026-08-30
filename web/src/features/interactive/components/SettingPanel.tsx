@@ -45,7 +45,6 @@ import type { ToolNavigationIntent } from '@/components/Chat/tool-navigation'
 
 const CREATOR_PATH = 'CREATOR.md'
 const CREATOR_ENTRY_ID = '__creator__'
-const LORE_CONFIG_AGENT_ENTRY_ID = '__config_manager_lore__'
 const UTF8_ENCODER = new TextEncoder()
 
 export type SettingPanelMode = 'lore' | 'creator' | 'teller'
@@ -164,6 +163,7 @@ function LoreSettingPanel({
   const [loreImageBatchInstruction, setLoreImageBatchInstruction] = useState('')
   const [loreImageBatchOverwrite, setLoreImageBatchOverwrite] = useState(false)
   const [pendingLoreImageTask, setPendingLoreImageTask] = useState<{ key: string; instruction: string } | null>(null)
+  const [agentOpen, setAgentOpen] = useState(false)
   const [deleteLoreTarget, setDeleteLoreTarget] = useState<LoreItem | null>(null)
   const [saving, setSaving] = useState(false)
   const loreDraftRef = useRef<LoreItem | null>(null)
@@ -204,8 +204,7 @@ function LoreSettingPanel({
     active: activeMode === 'lore'
       && Boolean(draft)
       && activeId !== CREATOR_ENTRY_ID
-      && activeId !== INTERACTIVE_OPENING_PRESET_ENTRY_ID
-      && activeId !== LORE_CONFIG_AGENT_ENTRY_ID,
+      && activeId !== INTERACTIVE_OPENING_PRESET_ENTRY_ID,
     projectId,
     onSaved: (item, submitted) => {
       setItems((current) => current.map((entry) => entry.id === item.id ? item : entry))
@@ -624,7 +623,7 @@ function LoreSettingPanel({
     // Preserve an existing selection, including virtual entries, then fall back to the first visible item.
     setActiveId((current) => {
       if (nextActiveId && data.some((item) => item.id === nextActiveId)) return nextActiveId
-      if (current === CREATOR_ENTRY_ID || current === INTERACTIVE_OPENING_PRESET_ENTRY_ID || current === LORE_CONFIG_AGENT_ENTRY_ID) return current
+      if (current === CREATOR_ENTRY_ID || current === INTERACTIVE_OPENING_PRESET_ENTRY_ID) return current
       if (current && data.some((item) => item.id === current)) return current
       return firstVisibleLoreItemId(data) ?? ''
     })
@@ -868,11 +867,10 @@ function LoreSettingPanel({
       }),
     })
     setLoreImageBatchOpen(false)
-    setActiveId(LORE_CONFIG_AGENT_ENTRY_ID)
+    setAgentOpen(true)
   }
 
   const isOpeningPresetActive = activeMode === 'lore' && activeId === INTERACTIVE_OPENING_PRESET_ENTRY_ID
-  const isLoreConfigAgentActive = activeMode === 'lore' && activeId === LORE_CONFIG_AGENT_ENTRY_ID
   const activeAutosaveStatus = isCreatorActive
     ? creatorAutosave.status
     : isOpeningPresetActive
@@ -883,17 +881,13 @@ function LoreSettingPanel({
     : isOpeningPresetActive
       ? openingPresetAutosave.error
       : loreAutosave.error
-  const editorHeaderIcon = isCreatorActive ? BookMarked : isOpeningPresetActive ? Sparkles : isLoreConfigAgentActive ? Bot : Database
-  const editorHeaderTitle = isLoreConfigAgentActive
-    ? t('settingPanel.loreAgent.title')
-    : isCreatorActive
+  const editorHeaderIcon = isCreatorActive ? BookMarked : isOpeningPresetActive ? Sparkles : Database
+  const editorHeaderTitle = isCreatorActive
       ? CREATOR_PATH
       : isOpeningPresetActive
         ? t('settingPanel.openingPreset.title')
         : editorTitle(activeMode, draft, t)
-  const editorHeaderSubtitle = isLoreConfigAgentActive
-    ? t('settingPanel.loreAgent.subtitle')
-    : isCreatorActive
+  const editorHeaderSubtitle = isCreatorActive
       ? t('settingPanel.editor.creatorSubtitle')
       : isOpeningPresetActive
         ? t('settingPanel.openingPreset.subtitle')
@@ -963,7 +957,6 @@ function LoreSettingPanel({
             onSelect={handleSelectLore}
             saving={saving}
             pinnedEntries={[
-              { id: LORE_CONFIG_AGENT_ENTRY_ID, label: t('settingPanel.loreAgent.title'), icon: Bot },
               { id: CREATOR_ENTRY_ID, label: CREATOR_PATH, icon: BookMarked },
               { id: INTERACTIVE_OPENING_PRESET_ENTRY_ID, label: t('settingPanel.openingPreset.title'), icon: Sparkles },
             ]}
@@ -992,6 +985,33 @@ function LoreSettingPanel({
           desktopClassName: 'min-h-0 border-r border-[var(--nova-border)]',
           mobileClassName: embedded ? 'w-[min(86vw,320px)]' : 'w-[min(90vw,360px)]',
         }}
+        right={agentOpen ? {
+          id: 'lore-config-manager',
+          title: t('settingPanel.loreAgent.title'),
+          side: 'right',
+          icon: <Bot className="h-4 w-4" />,
+          content: (
+            <ConfigManagerChat
+              projectId={projectId}
+              origin="lore"
+              resourceId={activeId || 'lore'}
+              context={{
+                active_lore_id: draft?.id || '',
+                active_lore_name: draft?.name || '',
+                item_count: String(items.length),
+              }}
+              initialInstruction={pendingLoreImageTask?.instruction}
+              initialInstructionKey={pendingLoreImageTask?.key}
+              onInitialInstructionAccepted={() => setPendingLoreImageTask(null)}
+              onMutated={() => {
+                void refreshItems()
+                notifyLoreUpdated({ projectId })
+              }}
+            />
+          ),
+          desktopClassName: 'min-h-0 border-l border-[var(--nova-border)]',
+          mobileClassName: 'w-[min(92vw,420px)]',
+        } : undefined}
         className="h-full"
         mainClassName="min-h-0 min-w-0"
         leftResize={{
@@ -1001,36 +1021,57 @@ function LoreSettingPanel({
           minSize: embedded ? '180px' : '220px',
           maxSize: '42%',
         }}
+        rightResize={{
+          layoutKey: embedded ? 'nova-embedded-lore-config-manager-layout' : 'nova-lore-config-manager-layout',
+          label: t('layout.resize.right'),
+          defaultSize: '420px',
+          minSize: '300px',
+          maxSize: '65%',
+          mainMinSize: '240px',
+        }}
       >
-        {({ isMobile, openLeft }) => (
+        {({ isMobile, openLeft, openRight }) => (
           <main className="flex h-full min-h-0 min-w-0 flex-1 flex-col bg-[var(--nova-surface-2)]">
             <FeaturePageShell
               icon={editorHeaderIcon}
               title={editorHeaderTitle}
               subtitle={editorHeaderSubtitle}
               leadingContent={isMobile ? (
-                <MobilePaneTrigger
-                  side="left"
-                  label={t('workbench.mobile.openSidePanel', { label: panelTitle(activeMode, t) })}
-                  onClick={openLeft}
-                />
+                <div className="flex items-center gap-1">
+                  <MobilePaneTrigger
+                    side="left"
+                    label={t('workbench.mobile.openSidePanel', { label: panelTitle(activeMode, t) })}
+                    onClick={openLeft}
+                  />
+                  {agentOpen ? (
+                    <MobilePaneTrigger
+                      side="right"
+                      label={t('workbench.mobile.openSidePanel', { label: t('settingPanel.loreAgent.title') })}
+                      onClick={openRight}
+                    />
+                  ) : null}
+                </div>
               ) : undefined}
-              onSaveShortcut={isLoreConfigAgentActive ? undefined : flushActiveAutosave}
+              onSaveShortcut={flushActiveAutosave}
               onClose={onClose ? () => void closePanel() : undefined}
               actions={(
                 <>
-                  {!isLoreConfigAgentActive && (isCreatorActive || isOpeningPresetActive || draft) ? (
+                  {isCreatorActive || isOpeningPresetActive || draft ? (
                     <AutosaveStatusIndicator
                       status={activeAutosaveStatus}
                       error={activeAutosaveError}
                       onRetry={flushActiveAutosave}
                     />
                   ) : null}
-                  {activeMode === 'lore' && !isLoreConfigAgentActive && !isCreatorActive && !isOpeningPresetActive && draft && (
+                  {activeMode === 'lore' && !isCreatorActive && !isOpeningPresetActive && draft && (
                     <Button className={iconActionClassName} variant="outline" size="icon" disabled={saving} onClick={handleDelete} aria-label={t('settingPanel.deleteLore')}>
                       <Trash2 data-icon="inline-start" />
                     </Button>
                   )}
+                  <Button type="button" variant={agentOpen ? 'secondary' : 'outline'} size="sm" aria-label={t('settingPanel.loreAgent.title')} aria-pressed={agentOpen} onClick={() => setAgentOpen((open) => !open)}>
+                    <Bot data-icon="inline-start" />
+                    <span className="hidden sm:inline">{t('settingPanel.loreAgent.title')}</span>
+                  </Button>
                 </>
               )}
               className="bg-[var(--nova-surface-2)] text-[var(--nova-text)]"
@@ -1047,20 +1088,6 @@ function LoreSettingPanel({
                       description={t('settingPanel.lore.emptyDescription')}
                       action={{ label: t('settingPanel.lore.emptyAction'), onClick: () => void handleCreateLore() }}
                       variant="page"
-                    />
-                  ) : activeId === LORE_CONFIG_AGENT_ENTRY_ID ? (
-                    <ConfigManagerChat
-                      projectId={projectId}
-                      origin="lore"
-                      resourceId={LORE_CONFIG_AGENT_ENTRY_ID}
-                      context={{ item_count: String(items.length) }}
-                      initialInstruction={pendingLoreImageTask?.instruction}
-                      initialInstructionKey={pendingLoreImageTask?.key}
-                      onInitialInstructionAccepted={() => setPendingLoreImageTask(null)}
-                      onMutated={() => {
-                        void refreshItems()
-                        notifyLoreUpdated({ projectId })
-                      }}
                     />
                   ) : activeId === CREATOR_ENTRY_ID ? (
                     <CreatorEditor content={creatorContent} setContent={setCreatorContent} onSave={flushActiveAutosave} />

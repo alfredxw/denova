@@ -71,29 +71,6 @@ func BuildInteractiveAgent(
 	return BuiltAgent{Definition: definition, Composition: composition}, nil
 }
 
-func BuildConfigManagerAgent(ctx context.Context, cfg *config.Config, state *book.State, resourceSkills ...prompts.ConfigManagerResourceSkill) (BuiltAgent, error) {
-	definition, composition, err := BuildConfigManagerDefinition(ctx, cfg, state, resourceSkills...)
-	if err != nil {
-		return BuiltAgent{}, err
-	}
-	return BuiltAgent{Definition: definition, Composition: composition}, nil
-}
-
-func BuildConfigManagerDefinition(
-	ctx context.Context,
-	cfg *config.Config,
-	state *book.State,
-	resourceSkills ...prompts.ConfigManagerResourceSkill,
-) (agents.Definition, prompts.SystemPromptComposition, error) {
-	definition, composition, err := agents.BuildConfigManagerDefinitionWithCompositionForHost(
-		ctx, cfg, state, agents.AgentHostCapabilities{Interactive: true}, resourceSkills...,
-	)
-	if err != nil {
-		return agents.Definition{}, prompts.SystemPromptComposition{}, fmt.Errorf("build Config Manager Agent Definition: %w", err)
-	}
-	return definition, composition, nil
-}
-
 func BuildImageAgent(ctx context.Context, cfg *config.Config, state *book.State, systemPrompt string) (BuiltAgent, error) {
 	definition, composition, err := BuildImageDefinition(ctx, cfg, state, systemPrompt)
 	if err != nil {

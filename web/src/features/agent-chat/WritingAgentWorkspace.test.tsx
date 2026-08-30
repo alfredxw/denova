@@ -11,6 +11,7 @@ import {
 import { WritingAgentWorkspace } from './WritingAgentWorkspace'
 
 vi.mock('./api', () => ({
+  AGENT_CHAT_PROJECT_UPDATED_EVENT: 'nova:agent-chat-project-updated',
   createAgentChatSession: vi.fn(),
   deleteAgentChatSession: vi.fn(),
   getAgentChatProjects: vi.fn(),

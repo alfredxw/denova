@@ -116,7 +116,7 @@ func newNarrativeStyleResource(novaDir string) Adapter {
 func newStoryDirectorResource(novaDir string) Adapter {
 	lib := interactive.NewStoryDirectorLibrary(novaDir)
 	return jsonConfigResource[interactive.StoryDirector]{
-		name: "story_director", description: "Game-mode story orchestration and reusable module references.", reference: "references/story-director.md",
+		name: "story_director", description: "Game Preset with reusable Game-mode modules and optional free-form planning guidance.", reference: "references/story-director.md",
 		leasePath: configResourceLeasePath(novaDir, "story_director"),
 		list:      lib.List, get: lib.Get, create: lib.Create, update: lib.Update, delete: lib.Delete,
 		id: func(value interactive.StoryDirector) string { return value.ID }, revision: func(value interactive.StoryDirector) string { return value.Revision },

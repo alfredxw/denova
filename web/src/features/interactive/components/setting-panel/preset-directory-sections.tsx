@@ -6,6 +6,7 @@ import type { ResourceDirectoryItem, ResourceDirectorySection } from '@/componen
 import type { PresetResourceKind } from '../../preset-ownership'
 import type { ActorStateModule, EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, Teller } from '../../types'
 import { narrativeStyleDescription, narrativeStyleName } from '../../narrative-style'
+import { gamePresetName } from '../../game-preset'
 import { presetStatusLabel } from '../preset-config/preset-status'
 import { enabledImagePresetSlotCount, normalizedImagePresetSlots } from './ImagePresetEditor'
 import { eventPackageSummaryCount, presetKindCreateLabel, presetKindDirectoryLabel, storyDirectorSummaryCount } from './editor-shared'
@@ -70,7 +71,7 @@ function presetDirectoryItemsForKind(kind: PresetResourceKind, lists: PresetDire
   if (kind === 'director') {
     return storyDirectors.map((director) => ({
       id: presetDirectoryEntryId('director', director.id),
-      title: director.name,
+      title: gamePresetName(director, t),
       summary: [
         `${presetStatusLabel(director, t)} · ${t('settingPanel.storyDirector.summaryCount', { count: storyDirectorSummaryCount(director) })}`,
         director.strategy?.prompt_markdown?.trim() ? t('settingPanel.storyDirector.strategyPromptEnabled') : '',

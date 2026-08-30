@@ -13,7 +13,6 @@ import (
 	"denova/config"
 	"denova/internal/agents/conversationconfig"
 	"denova/internal/agents/conversationjournal"
-	"denova/internal/interactive/director"
 	"denova/internal/style"
 )
 
@@ -67,21 +66,21 @@ func (s *Store) CreateStory(req CreateStoryRequest) (StorySummary, error) {
 	if title == "" {
 		title = defaultStoryTitle(index.Stories)
 	}
-	now := time.Now().UTC().Format(time.RFC3339Nano)
-	stateSchemaPolicy := cloneStoryStateSchemaPolicy(req.StateSchemaPolicy)
-	directorRunPolicy := cloneStoryDirectorRunPolicy(req.DirectorRunPolicy)
-	if directorRunPolicy != nil {
-		if err := director.ValidateRunPolicy(*directorRunPolicy); err != nil {
+	planningMode := strings.ToLower(strings.TrimSpace(req.PlanningMode))
+	if planningMode != "" {
+		if err := validateStoryPlanningMode(planningMode); err != nil {
 			return StorySummary{}, err
 		}
 	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	stateSchemaPolicy := cloneStoryStateSchemaPolicy(req.StateSchemaPolicy)
 	story := StorySummary{
 		ID:                newID("st"),
 		Title:             title,
 		Origin:            strings.TrimSpace(req.Origin),
 		StoryTellerID:     strings.TrimSpace(req.StoryTellerID),
 		StoryDirectorID:   NormalizeStoryDirectorID(req.StoryDirectorID),
-		DirectorRunPolicy: cloneStoryDirectorRunPolicy(directorRunPolicy),
+		PlanningMode:      normalizeStoryPlanningMode(planningMode),
 		ModuleRefs:        cloneStoryDirectorModuleRefs(req.ModuleRefs),
 		ReplyTargetChars:  normalizeStoryReplyTargetChars(req.ReplyTargetChars),
 		ChoiceCount:       normalizeStoryChoiceCount(req.ChoiceCount),
@@ -110,7 +109,7 @@ func (s *Store) CreateStory(req CreateStoryRequest) (StorySummary, error) {
 		Origin:            story.Origin,
 		StoryTellerID:     story.StoryTellerID,
 		StoryDirectorID:   story.StoryDirectorID,
-		DirectorRunPolicy: cloneStoryDirectorRunPolicy(story.DirectorRunPolicy),
+		PlanningMode:      story.PlanningMode,
 		ModuleRefs:        cloneStoryDirectorModuleRefs(story.ModuleRefs),
 		ReplyTargetChars:  story.ReplyTargetChars,
 		ChoiceCount:       story.ChoiceCount,
@@ -227,19 +226,6 @@ func (s *Store) CreateStory(req CreateStoryRequest) (StorySummary, error) {
 	if err := writeJSONL(s.storyPath(story.ID), events); err != nil {
 		return StorySummary{}, err
 	}
-	seed := DirectorPlanSeed{Templates: DefaultStoryDirectorPlanningTemplates(), BranchPlanningTurns: defaultBranchPlanningTurns, Source: "story_create"}
-	if req.DirectorPlanSeed != nil {
-		seed = *req.DirectorPlanSeed
-		if seed.Source == "" {
-			seed.Source = "story_create"
-		}
-	}
-	if err := s.seedDirectorPlanLocked(story.ID, "main", meta, seed); err != nil {
-		_ = os.Remove(s.storyPath(story.ID))
-		_ = os.RemoveAll(s.directorPlanBranchDir(story.ID, "main"))
-		return StorySummary{}, err
-	}
-
 	index.CurrentStoryID = story.ID
 	index.Stories = append(index.Stories, story)
 	if err := s.writeIndexLocked(index); err != nil {
@@ -278,12 +264,12 @@ func (s *Store) UpdateStory(storyID string, req UpdateStoryRequest) (StorySummar
 	} else if req.ModuleRefs != nil {
 		meta.ModuleRefs = cloneStoryDirectorModuleRefs(req.ModuleRefs)
 	}
-	if req.DirectorRunPolicy != nil {
-		policy := director.NormalizeRunPolicy(*req.DirectorRunPolicy)
-		if err := director.ValidateRunPolicy(policy); err != nil {
+	if req.PlanningMode != nil {
+		mode := strings.ToLower(strings.TrimSpace(*req.PlanningMode))
+		if err := validateStoryPlanningMode(mode); err != nil {
 			return StorySummary{}, err
 		}
-		meta.DirectorRunPolicy = &policy
+		meta.PlanningMode = mode
 	}
 	if req.ReplyTargetChars != nil {
 		if *req.ReplyTargetChars <= 0 {
@@ -392,8 +378,8 @@ func storyConfigUpdatedFields(req UpdateStoryRequest) []string {
 	if NormalizeStoryDirectorID(req.StoryDirectorID) != "" {
 		fields = append(fields, "story_director_id")
 	}
-	if req.DirectorRunPolicy != nil {
-		fields = append(fields, "director_run_policy")
+	if req.PlanningMode != nil {
+		fields = append(fields, "planning_mode")
 	}
 	if req.ModuleRefs != nil {
 		fields = append(fields, "module_refs")

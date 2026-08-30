@@ -91,6 +91,8 @@ func (c *Conversation) SubmitTurnResult(ctx context.Context, input interactive.T
 		RuleResolution:              c.ruleResolution,
 		RuleStateConsumptionMode:    director.Strategy.RuleStateConsumptionMode,
 		RequireCompleteInitialState: c.openingStateSchemaDraft != nil && SnapshotTurnCount(storyCtx.Snapshot) == 0,
+		PlanningMode:                storyCtx.Meta.PlanningMode,
+		CurrentPlan:                 storyCtx.Snapshot.BranchPlan,
 	}, current, input)
 	staged := c.turnProtocol.update(prepared)
 	c.mu.Unlock()
@@ -100,7 +102,7 @@ func (c *Conversation) SubmitTurnResult(ctx context.Context, input interactive.T
 		return receipt, nil
 	}
 	stagedResult := prepared.TurnResult()
-	slog.InfoContext(ctx, fmt.Sprintf("[interactive-agent] updated turn result draft story_id=%s branch_id=%s ready=%t state_updates=%d choices=%d state_changes_status=%s choices_status=%s diagnostics=%q", c.storyID, c.branchID, receipt.Ready, len(stagedResult.StateUpdates), len(stagedResult.Choices), receipt.ModuleStatus.StateChanges, receipt.ModuleStatus.Choices, interactiveTurnSubmissionDiagnosticSummary(receipt.Diagnostics)))
+	slog.InfoContext(ctx, fmt.Sprintf("[interactive-agent] updated turn result draft story_id=%s branch_id=%s ready=%t state_updates=%d choices=%d state_changes_status=%s choices_status=%s plan_update_status=%s diagnostics=%q", c.storyID, c.branchID, receipt.Ready, len(stagedResult.StateUpdates), len(stagedResult.Choices), receipt.ModuleStatus.StateChanges, receipt.ModuleStatus.Choices, receipt.ModuleStatus.PlanUpdate, interactiveTurnSubmissionDiagnosticSummary(receipt.Diagnostics)))
 	return receipt, nil
 }
 
@@ -509,6 +511,7 @@ func interactiveTurnResultAlreadyAcceptedReceipt() interactive.TurnSubmissionRec
 		ModuleStatus: interactive.TurnSubmissionModuleStatus{
 			StateChanges: interactive.TurnSubmissionModuleAccepted,
 			Choices:      interactive.TurnSubmissionModuleAccepted,
+			PlanUpdate:   interactive.TurnSubmissionModuleAccepted,
 		},
 		Diagnostics: []interactive.TurnSubmissionDiagnostic{{
 			Module:    "submission",

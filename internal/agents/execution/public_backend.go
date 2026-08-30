@@ -13,7 +13,6 @@ import (
 	agentchat "denova/internal/agents/chat"
 	agentconversation "denova/internal/agents/conversation"
 	agentdelegation "denova/internal/agents/delegation"
-	agentinteractive "denova/internal/agents/interactive"
 	agentlifecycle "denova/internal/agents/lifecycle"
 	agentrun "denova/internal/agents/run"
 	agenttool "denova/internal/agents/tool"
@@ -391,8 +390,6 @@ func (backend *publicBackend) preparedCycleCanonicalInput(
 			ApplyEffects: effectApplier,
 			InputEffect:  projectInputCommitEffect(options.InputCommitEffect, projector, options),
 		})
-	case *agentinteractive.DirectorConversation:
-		committer, err = newDirectorConversationCommitter(conversation, effectApplier)
 	case agentlifecycle.ConversationCommitterProvider:
 		committer, err = conversation.NewAgentConversationCommitter(options, effectApplier)
 	default:
@@ -641,8 +638,6 @@ func (backend *publicBackend) bindDefinition(
 			ApplyEffects: effectApplier,
 			InputEffect:  inputEffect,
 		})
-	case *agentinteractive.DirectorConversation:
-		committer, err = newDirectorConversationCommitter(conversation, effectApplier)
 	case agentlifecycle.ConversationCommitterProvider:
 		committer, err = conversation.NewAgentConversationCommitter(options, effectApplier)
 	default:

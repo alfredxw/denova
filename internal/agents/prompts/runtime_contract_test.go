@@ -90,16 +90,14 @@ func TestSubAgentParentRuntimeContractsIncludeDelegationProtocol(t *testing.T) {
 
 func TestRuntimeContractsCoverAllAgentKinds(t *testing.T) {
 	tests := map[string]string{
-		config.AgentKindGeneral:             "General Agent",
-		config.AgentKindHarness:             "live Harness State directory",
-		config.AgentKindIDE:                 "CREATOR.md",
-		config.AgentKindInteractiveStory:    "Output only the story prose",
-		config.AgentKindImage:               "Image Agent",
-		config.AgentKindConfigManager:       "Agents-page resources",
-		config.AgentKindInteractiveDirector: "does not initialize or review the state schema",
-		config.AgentKindVersionSummary:      "Version Summary Agent",
-		config.AgentKindToolAgent:           "model-only",
-		config.AgentKindAutomation:          "Automation Agent",
+		config.AgentKindGeneral:          "General Agent",
+		config.AgentKindHarness:          "live Harness State directory",
+		config.AgentKindIDE:              "CREATOR.md",
+		config.AgentKindInteractiveStory: "Output only the story prose",
+		config.AgentKindImage:            "Image Agent",
+		config.AgentKindVersionSummary:   "Version Summary Agent",
+		config.AgentKindToolAgent:        "model-only",
+		config.AgentKindAutomation:       "Automation Agent",
 	}
 	for _, definition := range config.AgentKindDefinitions() {
 		required, ok := tests[definition.Kind]
@@ -148,11 +146,9 @@ func TestBuiltinAgentPromptsDoNotMentionOtherAgentProducts(t *testing.T) {
 	prompts := BuiltinAgentPrompts(&config.Config{}, nil, IDEStoryTeller{})
 	values := map[string]string{
 		"general": prompts.General.SystemPrompt, "ide": prompts.IDE.SystemPrompt,
-		"interactive_story":    prompts.InteractiveStory.SystemPrompt,
-		"config_manager":       prompts.ConfigManager.SystemPrompt,
-		"interactive_director": prompts.InteractiveDirector.SystemPrompt,
-		"version_summary":      prompts.VersionSummary.SystemPrompt,
-		"tool_agent":           prompts.ToolAgent.SystemPrompt, "image": prompts.Image.SystemPrompt,
+		"interactive_story": prompts.InteractiveStory.SystemPrompt,
+		"version_summary":   prompts.VersionSummary.SystemPrompt,
+		"tool_agent":        prompts.ToolAgent.SystemPrompt, "image": prompts.Image.SystemPrompt,
 	}
 	productNames := []string{
 		"co" + "dex", "clau" + "de", "o" + "mp",
@@ -166,20 +162,6 @@ func TestBuiltinAgentPromptsDoNotMentionOtherAgentProducts(t *testing.T) {
 	for name, prompt := range values {
 		if match := competitor.FindString(prompt); match != "" {
 			t.Fatalf("built-in %s prompt mentions another Agent product %q:\n%s", name, match, prompt)
-		}
-	}
-}
-
-func TestInteractiveDirectorContractRejectsStateSchemaOwnership(t *testing.T) {
-	instruction := protectedSystemInstruction(&config.Config{}, config.AgentKindInteractiveDirector, "BUILT IN PROMPT")
-	for _, required := range []string{"does not initialize or review the state schema", "must not write, overwrite, or correct Actor State or alter a frozen state schema", "opening Game Agent"} {
-		if !strings.Contains(instruction, required) {
-			t.Fatalf("interactive Director boundary missing %q:\n%s", required, instruction)
-		}
-	}
-	for _, forbidden := range []string{"state_schema_initialization", "submit_state_schema_adaptation", "Batch actor_ops"} {
-		if strings.Contains(instruction, forbidden) {
-			t.Fatalf("interactive Director must not retain schema task %q:\n%s", forbidden, instruction)
 		}
 	}
 }

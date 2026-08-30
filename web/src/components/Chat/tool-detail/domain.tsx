@@ -217,7 +217,7 @@ function renderPrepareTurnOutput({ result, t }: ToolDetailRenderProps) {
 function renderSubmitTurnInput({ input, t }: ToolDetailRenderProps) {
   const changes = recordArray(input.state_changes)
   const choices = stringArray(input.choices)
-  const director = recordValue(input.director_update)
+  const planUpdate = stringValue(input.plan_update)
   return (
     <DetailStack>
       {input.state_changes !== undefined ? <DetailBlock title={t('chat.tool.detail.stateChanges')}><StateChangeList values={changes} empty={t('chat.tool.detail.none')} /></DetailBlock> : null}
@@ -226,7 +226,7 @@ function renderSubmitTurnInput({ input, t }: ToolDetailRenderProps) {
           {choices.length ? <ol className="m-0 list-decimal space-y-0.5 pl-4">{choices.map((choice, index) => <li key={`${choice}-${index}`}>{choice}</li>)}</ol> : <span className="text-[var(--nova-text-faint)]">{t('chat.tool.detail.none')}</span>}
         </DetailBlock>
       ) : null}
-      {Object.keys(director).length ? <DetailBlock title={t('chat.tool.detail.directorUpdate')}><DetailPre>{stringValue(director.reason) || formatValue(director)}</DetailPre></DetailBlock> : null}
+      {planUpdate ? <DetailBlock title={t('chat.tool.detail.planUpdate')}><DetailPre>{planUpdate}</DetailPre></DetailBlock> : null}
     </DetailStack>
   )
 }

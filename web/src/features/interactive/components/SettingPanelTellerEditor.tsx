@@ -2,7 +2,15 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Check, ChevronDown, Edit3, FileText, Loader2, Plus, Sparkles, Trash2, Upload } from 'lucide-react'
 import { readUIMessageStream } from 'ai'
 import { useTranslation } from 'react-i18next'
-import { createAgentCommandID, runConfigManagerStream } from '@/lib/api'
+import { createAgentCommandID } from '@/lib/api'
+import {
+  createAgentChatSession,
+  getAgentChatProjects,
+  notifyAgentChatProjectUpdated,
+  runAgentChatStream,
+} from '@/features/agent-chat/api'
+import { buildConfigurationAgentMessage } from '@/features/agent-chat/configuration-message'
+import { readAgentChatActiveSession } from '@/features/agent-chat/session-preferences'
 import { agentCommandRetryKey, isKnownAgentCommandOutcome, rememberAgentCommandID } from '@/lib/agent-command'
 import { rebaseTextWithRecovery } from '@/lib/autosave/rebase-with-recovery'
 import { isSaveShortcut } from '@/lib/keyboard'
@@ -542,7 +550,7 @@ function StyleReferenceControls({ projectId, references, refreshReferences, refs
     try {
       const request = normalizeStyleUploadDraft(uploadDraft)
       const targetPath = styleReferenceTargetPath(request)
-      retryKey = agentCommandRetryKey('config-manager:style-extraction', 'start', {
+      retryKey = agentCommandRetryKey('configuration:style-extraction', 'start', {
         targetPath,
         name: request.name,
         description: request.description,
@@ -553,19 +561,25 @@ function StyleReferenceControls({ projectId, references, refreshReferences, refs
         createAgentTextMessage({ role: 'user', text: `${t('settingPanel.style.extractSave')}: ${request.name}` }),
         createAgentTextMessage({ role: 'system', text: t('settingPanel.style.extractProgress.connecting') }),
       ])
-      const stream = await runConfigManagerStream(projectId, {
+      const sessionID = await resolveConfigurationSession(projectId)
+      const displayMessage = `${t('settingPanel.style.extractSave')}: ${request.name}`
+      const stream = await runAgentChatStream(projectId, {
         command_id: commandID,
-        origin: 'teller',
-        resource_id: '__style_reference_extract__',
-        instruction: buildStyleExtractionInstruction(request),
-        context: {
-          style_reference_target: targetPath,
-          style_reference_name: request.name,
-          style_reference_mode: 'extract_and_write_markdown',
-        },
+        session_id: sessionID,
+        display_message: displayMessage,
+        message: buildConfigurationAgentMessage(buildStyleExtractionInstruction(request), {
+          origin: 'teller',
+          resourceId: '__style_reference_extract__',
+          context: {
+            style_reference_target: targetPath,
+            style_reference_name: request.name,
+            style_reference_mode: 'extract_and_write_markdown',
+          },
+        }),
       })
       // A 2xx response proves that the backend durably admitted this start.
       extractionCommandIDsRef.current.delete(retryKey)
+      notifyAgentChatProjectUpdated(projectId)
       const toolArgsByKey: Record<string, { name: string; args: string }> = {}
       let generated = ''
       for await (const message of readUIMessageStream<AgentUIMessage>({ stream, terminateOnError: true })) {
@@ -611,6 +625,7 @@ function StyleReferenceControls({ projectId, references, refreshReferences, refs
         data: { content: err instanceof Error ? err.message : t('settingPanel.style.extractFailed') },
       })])
     } finally {
+      notifyAgentChatProjectUpdated(projectId)
       setUploading(null)
     }
   }
@@ -813,6 +828,18 @@ function StyleReferenceControls({ projectId, references, refreshReferences, refs
       </Dialog>
     </div>
   )
+}
+
+async function resolveConfigurationSession(projectId: string) {
+  const projects = await getAgentChatProjects()
+  const project = projects.find((candidate) => candidate.id === projectId)
+  if (!project) throw new Error(`Project Agent is unavailable: ${projectId}`)
+  const stored = readAgentChatActiveSession(projectId)
+  const session = project.sessions.find((candidate) => candidate.id === stored)
+    || project.sessions.find((candidate) => candidate.active)
+    || project.sessions[0]
+  if (session) return session.id
+  return (await createAgentChatSession(projectId)).id
 }
 
 interface StyleUploadDraft {

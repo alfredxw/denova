@@ -1,7 +1,7 @@
 import type { AgentApprovalMode } from '@/features/agent-approval/modes'
 import type { ThinkingLevel } from '@/features/settings/thinking-levels'
 
-export type ConversationConfigMode = 'writing' | 'agent_chat' | 'interactive' | 'config_manager' | 'automation'
+export type ConversationConfigMode = 'writing' | 'agent_chat' | 'interactive' | 'automation'
 
 /** Stable identity understood by the backend adapters for every conversation surface. */
 export interface ConversationConfigBinding {

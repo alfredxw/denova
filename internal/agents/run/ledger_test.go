@@ -145,7 +145,7 @@ func TestRunTraceReaderSummarizesLedger(t *testing.T) {
 		StoryID:         "story-1",
 		BranchID:        "main",
 		TurnID:          "turn-1",
-		MaintenanceTask: "director_plan_update",
+		MaintenanceTask: "test_maintenance",
 		Workspace:       workspace,
 		Mode:            "interactive",
 	})
@@ -159,7 +159,7 @@ func TestRunTraceReaderSummarizesLedger(t *testing.T) {
 		"story_id":         "story-1",
 		"branch_id":        "main",
 		"turn_id":          "turn-committed",
-		"maintenance_task": "director_plan_update",
+		"maintenance_task": "test_maintenance",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -233,7 +233,7 @@ func TestRunTraceReaderSummarizesLedger(t *testing.T) {
 	if len(summaries) != 1 || summaries[0].Status != "success" || summaries[0].Events != 1 || summaries[0].ContextParts != 1 {
 		t.Fatalf("unexpected trace summary: %#v", summaries)
 	}
-	if summaries[0].AgentKind != AgentKindInteractiveStory || summaries[0].TaskID != "task-1" || summaries[0].SessionID != "session-1" || summaries[0].StoryID != "story-1" || summaries[0].BranchID != "main" || summaries[0].TurnID != "turn-committed" || summaries[0].MaintenanceTask != "director_plan_update" || summaries[0].Mutations != 1 || summaries[0].VerificationStatus != "ok" {
+	if summaries[0].AgentKind != AgentKindInteractiveStory || summaries[0].TaskID != "task-1" || summaries[0].SessionID != "session-1" || summaries[0].StoryID != "story-1" || summaries[0].BranchID != "main" || summaries[0].TurnID != "turn-committed" || summaries[0].MaintenanceTask != "test_maintenance" || summaries[0].Mutations != 1 || summaries[0].VerificationStatus != "ok" {
 		t.Fatalf("trace summary should include durable run state: %#v", summaries[0])
 	}
 	if summaries[0].ToolCalls != 2 || summaries[0].ToolSuccesses != 1 || summaries[0].ToolBlocked != 1 || summaries[0].ToolTruncated != 1 || summaries[0].InvalidToolArgs != 1 {

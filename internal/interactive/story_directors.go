@@ -2,7 +2,6 @@ package interactive
 
 import (
 	"context"
-	"denova/internal/interactive/director"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -22,18 +21,13 @@ const (
 	storyDirectorVersion   = 5
 	DefaultStoryDirectorID = "default"
 
-	MaxStoryDirectorStrategyPromptBytes = DirectorContextMaxBytes
+	MaxStoryDirectorStrategyPromptBytes = StoryContextMaxBytes
 	DefaultRuleVisibilityMode           = RuleVisibilityModeAuditOnly
 	RuleVisibilityModeAuditOnly         = "audit_only"
 	RuleVisibilityModePublicRoll        = "public_roll"
-	EventFrequencyOff                   = "off"
-	EventFrequencySparse                = "sparse"
-	EventFrequencyBalanced              = "balanced"
-	EventFrequencyFrequent              = "frequent"
-	DefaultEventFrequency               = EventFrequencyBalanced
 )
 
-var ErrStoryDirectorRevisionConflict = errors.New("故事导演已被其他操作更新，请重新加载后再保存")
+var ErrStoryDirectorRevisionConflict = errors.New("游戏预设已被其他操作更新，请重新加载后再保存 / Game Preset changed elsewhere; reload before saving")
 
 type StoryDirectorLibrary struct {
 	novaDir string
@@ -61,17 +55,9 @@ type StoryDirector struct {
 }
 
 type StoryDirectorStrategy struct {
-	Enabled                  bool                           `json:"enabled"`
-	MainlineStrength         string                         `json:"mainline_strength,omitempty"`
-	FailurePolicy            string                         `json:"failure_policy,omitempty"`
-	PacingCurve              string                         `json:"pacing_curve,omitempty"`
-	EventFrequency           string                         `json:"event_frequency,omitempty"`
-	DirectorAgentMode        string                         `json:"director_agent_mode,omitempty"`
-	RuleStateConsumptionMode string                         `json:"rule_state_consumption_mode,omitempty"`
-	RuleVisibilityMode       string                         `json:"rule_visibility_mode,omitempty"`
-	PromptMarkdown           string                         `json:"prompt_markdown,omitempty"`
-	BranchPlanningTurns      int                            `json:"branch_planning_turns,omitempty"`
-	PlanningTemplates        StoryDirectorPlanningTemplates `json:"planning_templates,omitempty"`
+	RuleStateConsumptionMode string `json:"rule_state_consumption_mode,omitempty"`
+	RuleVisibilityMode       string `json:"rule_visibility_mode,omitempty"`
+	PromptMarkdown           string `json:"prompt_markdown,omitempty"`
 }
 
 type StoryDirectorTRPGSystem struct {
@@ -161,7 +147,7 @@ func (l *StoryDirectorLibrary) Create(director StoryDirector) (StoryDirector, er
 	director = ResolveStoryDirectorModules(l.novaDir, director)
 	document, err := storyDirectorFileStore(path).Create(context.Background(), director)
 	if errors.Is(err, revisionjson.ErrAlreadyExists) {
-		return StoryDirector{}, fmt.Errorf("故事导演已存在: %s", director.ID)
+		return StoryDirector{}, fmt.Errorf("游戏预设已存在 / Game Preset already exists: %s", director.ID)
 	}
 	if err != nil {
 		return StoryDirector{}, err
@@ -286,7 +272,7 @@ func storyDirectorFileStore(path string) revisionjson.Store[StoryDirector] {
 		Decode: func(data []byte) (StoryDirector, error) {
 			director, err := decodeStoryDirectorJSON(data)
 			if err != nil {
-				return StoryDirector{}, fmt.Errorf("解析故事导演 JSON 失败: %w", err)
+				return StoryDirector{}, fmt.Errorf("解析游戏预设 JSON 失败 / Failed to parse Game Preset JSON: %w", err)
 			}
 			director = normalizeStoryDirector(director)
 			return director, validatePersistedStoryDirector(director)
@@ -319,7 +305,7 @@ func persistResolvedStoryDirectorSnapshot(path string, director StoryDirector) S
 		return director, nil
 	})
 	if err != nil {
-		slog.Warn("persist resolved story director snapshot failed", "path", path, "error", err)
+		slog.Warn("persist resolved game preset snapshot failed", "path", path, "error", err)
 		if latest, readErr := parseStoryDirectorFile(path); readErr == nil {
 			return ResolveStoryDirectorModules(filepath.Dir(filepath.Dir(path)), latest)
 		}
@@ -368,20 +354,12 @@ func DefaultStoryDirector() StoryDirector {
 	return normalizeStoryDirector(StoryDirector{
 		Version:     storyDirectorVersion,
 		ID:          DefaultStoryDirectorID,
-		Name:        "默认故事导演",
-		Description: "通用互动故事导演，提供软主线、可逆失败、递进节奏、事件包、状态系统和图像方案。",
+		Name:        "默认游戏预设",
+		Description: "组合通用叙事风格、事件素材、规则、状态与图像方案，并允许创作者自由描述 Game Agent 的规划风格。",
 		ModuleRefs:  refs,
 		Strategy: StoryDirectorStrategy{
-			Enabled:                  true,
-			MainlineStrength:         "soft_guidance",
-			FailurePolicy:            "reversible",
-			PacingCurve:              "progressive",
-			EventFrequency:           DefaultEventFrequency,
-			DirectorAgentMode:        director.DefaultAgentMode,
 			RuleStateConsumptionMode: DefaultRuleStateConsumptionMode,
 			RuleVisibilityMode:       DefaultRuleVisibilityMode,
-			BranchPlanningTurns:      defaultBranchPlanningTurns,
-			PlanningTemplates:        DefaultStoryDirectorPlanningTemplates(),
 		},
 		EventPackages: []EventPackage{tellerEventPackageFromModule(DefaultEventPackageModule())},
 		TRPGSystem:    DefaultRuleSystemModule().TRPGSystem,
@@ -392,7 +370,7 @@ func DefaultStoryDirector() StoryDirector {
 func normalizeStoryDirector(director StoryDirector) StoryDirector {
 	director.Version = storyDirectorVersion
 	director.ID = NormalizeStoryDirectorID(director.ID)
-	director.Name = trimBytes(firstNonEmptyString(director.Name, director.ID, "故事导演"), 256)
+	director.Name = trimBytes(firstNonEmptyString(director.Name, director.ID, "游戏预设"), 256)
 	director.Description = trimBytes(director.Description, 1024)
 	director.ModuleRefs = NormalizeStoryDirectorModuleRefs(director.ModuleRefs)
 	if StoryDirectorModuleRefsEmpty(director.ModuleRefs) {
@@ -416,16 +394,9 @@ func NormalizeStoryDirectorStrategy(strategy StoryDirectorStrategy) StoryDirecto
 }
 
 func normalizeStoryDirectorStrategy(strategy StoryDirectorStrategy) StoryDirectorStrategy {
-	strategy.MainlineStrength = normalizeOrchestrationOption(strategy.MainlineStrength, "soft_guidance")
-	strategy.FailurePolicy = normalizeOrchestrationOption(strategy.FailurePolicy, "reversible")
-	strategy.PacingCurve = normalizeOrchestrationOption(strategy.PacingCurve, "progressive")
-	strategy.EventFrequency = normalizeEventFrequency(strategy.EventFrequency)
-	strategy.DirectorAgentMode = normalizeDirectorAgentMode(strategy.DirectorAgentMode)
 	strategy.RuleStateConsumptionMode = normalizeRuleStateConsumptionMode(strategy.RuleStateConsumptionMode)
 	strategy.RuleVisibilityMode = normalizeRuleVisibilityMode(strategy.RuleVisibilityMode)
 	strategy.PromptMarkdown = trimBytes(strategy.PromptMarkdown, MaxStoryDirectorStrategyPromptBytes)
-	strategy.BranchPlanningTurns = NormalizeBranchPlanningTurns(strategy.BranchPlanningTurns)
-	strategy.PlanningTemplates = NormalizeStoryDirectorPlanningTemplates(strategy.PlanningTemplates)
 	return strategy
 }
 
@@ -439,25 +410,7 @@ func validateStoryDirectorWriteBounds(director StoryDirector) error {
 	if len([]byte(strings.TrimSpace(director.Strategy.PromptMarkdown))) > MaxStoryDirectorStrategyPromptBytes {
 		return fmt.Errorf("strategy.prompt_markdown 超过 %d 字节 / exceeds %d bytes", MaxStoryDirectorStrategyPromptBytes, MaxStoryDirectorStrategyPromptBytes)
 	}
-	if len([]byte(strings.TrimSpace(director.Strategy.PlanningTemplates.Plan))) > maxDirectorPlanDocBytes {
-		return fmt.Errorf("strategy.planning_templates.plan 超过 %d 字节 / exceeds %d bytes", maxDirectorPlanDocBytes, maxDirectorPlanDocBytes)
-	}
-	if len([]byte(strings.TrimSpace(director.Strategy.PlanningTemplates.AgentBrief))) > maxDirectorPlanDocBytes {
-		return fmt.Errorf("strategy.planning_templates.agent_brief 超过 %d 字节 / exceeds %d bytes", maxDirectorPlanDocBytes, maxDirectorPlanDocBytes)
-	}
-	if turns := director.Strategy.BranchPlanningTurns; turns < 0 || turns > 12 {
-		return errors.New("strategy.branch_planning_turns 必须在 1 到 12 之间，或省略为 0 / must be between 1 and 12, or omitted as 0")
-	}
 	return nil
-}
-
-func normalizeEventFrequency(value string) string {
-	switch strings.TrimSpace(value) {
-	case EventFrequencyOff, EventFrequencySparse, EventFrequencyBalanced, EventFrequencyFrequent:
-		return strings.TrimSpace(value)
-	default:
-		return DefaultEventFrequency
-	}
 }
 
 func normalizeRuleVisibilityMode(mode string) string {
@@ -471,77 +424,53 @@ func normalizeRuleVisibilityMode(mode string) string {
 	}
 }
 
-func normalizeDirectorAgentMode(mode string) string {
-	switch strings.TrimSpace(mode) {
-	case director.AgentModeEveryTurn:
-		return director.AgentModeEveryTurn
-	case director.AgentModeOff:
-		return director.AgentModeOff
-	case director.AgentModeTriggered, "":
-		return director.AgentModeTriggered
-	default:
-		return director.AgentModeTriggered
-	}
-}
-
 func StoryDirectorStrategyPromptMarkdown(director StoryDirector) string {
 	director = normalizeStoryDirector(director)
 	return director.Strategy.PromptMarkdown
 }
 
-func DirectorEventCatalogFromStoryDirector(director StoryDirector) []DirectorEvent {
+// StoryPlanningGuideMarkdown projects only creator-authored planning style and
+// optional event material. Backend pacing fields and legacy Director runtime
+// policy are intentionally excluded: the Game Agent interprets this guide in
+// light of the current story and user instructions.
+func StoryPlanningGuideMarkdown(director StoryDirector, limitBytes int) string {
 	director = normalizeStoryDirector(director)
-	if !StoryDirectorEventPackagesEnabled(director) {
-		return []DirectorEvent{}
+	var sb strings.Builder
+	if prompt := strings.TrimSpace(director.Strategy.PromptMarkdown); prompt != "" {
+		sb.WriteString("### Planning style\n\n")
+		sb.WriteString(prompt)
 	}
-	events := []DirectorEvent{}
 	for _, pkg := range director.EventPackages {
 		if !pkg.Enabled {
 			continue
 		}
-		for _, eventCard := range pkg.Events {
-			if !eventCard.Enabled {
+		for _, card := range pkg.Events {
+			if !card.Enabled || strings.TrimSpace(card.DescriptionMarkdown) == "" {
 				continue
 			}
-			event := directorEventFromCard(eventCard)
-			event.ID = strings.Trim(strings.TrimSpace(pkg.ID), "/") + "/" + strings.Trim(strings.TrimSpace(eventCard.ID), "/")
-			events = upsertDirectorEvent(events, event)
+			if sb.Len() > 0 {
+				sb.WriteString("\n\n")
+			}
+			fmt.Fprintf(&sb, "### Optional event material: %s / %s\n\n%s", strings.TrimSpace(pkg.Name), strings.TrimSpace(card.TypeName), strings.TrimSpace(card.DescriptionMarkdown))
 		}
 	}
-	return events
+	return trimBytes(strings.TrimSpace(sb.String()), limitBytes)
 }
 
 func StoryDirectorRuleSummary(director StoryDirector, limitBytes int) string {
 	director = normalizeStoryDirector(director)
 	payload := map[string]any{
 		"source": map[string]string{
-			"kind":              "story_director_rule_summary",
-			"story_director_id": director.ID,
-			"name":              director.Name,
+			"kind":           "game_preset_rule_summary",
+			"game_preset_id": director.ID,
+			"name":           director.Name,
 		},
-		"limits":      map[string]int{"max_bytes": limitBytes},
-		"strategy":    storyDirectorStructuredStrategySummary(director.Strategy),
+		"limits": map[string]int{"max_bytes": limitBytes},
+		"rule_policy": map[string]string{
+			"state_consumption_mode": director.Strategy.RuleStateConsumptionMode,
+			"visibility_mode":        director.Strategy.RuleVisibilityMode,
+		},
 		"trpg_system": director.TRPGSystem,
-	}
-	data, err := json.MarshalIndent(payload, "", "  ")
-	if err != nil {
-		return ""
-	}
-	return trimBytes(string(data), limitBytes)
-}
-
-func StoryDirectorPlanningSummary(director StoryDirector, limitBytes int) string {
-	director = normalizeStoryDirector(director)
-	payload := map[string]any{
-		"source": map[string]string{
-			"kind":              "story_director_planning_summary",
-			"story_director_id": director.ID,
-			"name":              director.Name,
-		},
-		"limits":       map[string]int{"max_bytes": limitBytes},
-		"strategy":     storyDirectorStructuredStrategySummary(director.Strategy),
-		"state_system": storyDirectorActorStateSchemaSummary(director.ActorState),
-		"trpg_system":  director.TRPGSystem,
 	}
 	data, err := json.MarshalIndent(payload, "", "  ")
 	if err != nil {
@@ -564,32 +493,6 @@ func ActorStateSchemaContext(system StoryDirectorActorStateSystem, limitBytes in
 		return ""
 	}
 	return trimBytes(string(data), limitBytes)
-}
-
-type storyDirectorStructuredStrategy struct {
-	Enabled                  bool   `json:"enabled"`
-	MainlineStrength         string `json:"mainline_strength,omitempty"`
-	FailurePolicy            string `json:"failure_policy,omitempty"`
-	PacingCurve              string `json:"pacing_curve,omitempty"`
-	EventFrequency           string `json:"event_frequency,omitempty"`
-	DirectorAgentMode        string `json:"director_agent_mode,omitempty"`
-	RuleStateConsumptionMode string `json:"rule_state_consumption_mode,omitempty"`
-	RuleVisibilityMode       string `json:"rule_visibility_mode,omitempty"`
-	BranchPlanningTurns      int    `json:"branch_planning_turns,omitempty"`
-}
-
-func storyDirectorStructuredStrategySummary(strategy StoryDirectorStrategy) storyDirectorStructuredStrategy {
-	return storyDirectorStructuredStrategy{
-		Enabled:                  strategy.Enabled,
-		MainlineStrength:         strategy.MainlineStrength,
-		FailurePolicy:            strategy.FailurePolicy,
-		PacingCurve:              strategy.PacingCurve,
-		EventFrequency:           strategy.EventFrequency,
-		DirectorAgentMode:        strategy.DirectorAgentMode,
-		RuleStateConsumptionMode: strategy.RuleStateConsumptionMode,
-		RuleVisibilityMode:       strategy.RuleVisibilityMode,
-		BranchPlanningTurns:      strategy.BranchPlanningTurns,
-	}
 }
 
 func NormalizeStoryDirectorID(id string) string {
@@ -615,10 +518,10 @@ func NormalizeStoryDirectorID(id string) string {
 
 func validateStoryDirectorID(id string) error {
 	if id == "" {
-		return fmt.Errorf("故事导演 ID 不能为空")
+		return fmt.Errorf("游戏预设 ID 不能为空 / Game Preset ID is required")
 	}
 	if id != NormalizeStoryDirectorID(id) {
-		return fmt.Errorf("故事导演 ID 只能包含小写字母、数字和连字符: %s", id)
+		return fmt.Errorf("游戏预设 ID 只能包含小写字母、数字和连字符 / Game Preset ID may contain only lowercase letters, digits, and hyphens: %s", id)
 	}
 	return nil
 }
