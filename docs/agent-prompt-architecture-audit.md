@@ -579,7 +579,7 @@ current user request                     current instruction
 | 优先级 | 领域 | 现状 | 影响 | 建议 |
 | --- | --- | --- | --- | --- |
 | P0 | Context signal-to-noise | 部分 Agent 默认注入完整工作流、目录、状态、来源说明和重试协议，即使当前回合只使用其中很小一部分。 | 有效任务和当前状态被背景文字包围；输入成本、延迟和模型漏读概率同时上升。 | 每个 block 通过“会改变哪个当前决策”检查；不能通过的删除或延迟加载。优先选择当前状态、当前目标和必要约束，不按“可能有用”打包。 |
-| P1 | Project instruction boundary | `CREATOR.md` 被直接拼入 IDE、Interactive Story、Config Manager 和 Image 的 system composition。 | 用户拥有的项目规则与 Denova/Agent 内置定义耦合；同一项目指令跨 Agent 重复组装，role、revision 和生命周期边界不够直观。 | 复用现有 `ContextLeadingMessage`，以 User role 注入一个独立、attributed、低频稳定的 project-instruction fragment；从各 Agent system composition 中删除 Creator 副本，不保留双路径。 |
+| P1 | Project instruction boundary | `CREATOR.md` 被直接拼入 Writing Agent、Game Agent、Config Manager 和 Image Agent 的 system composition。 | 用户拥有的项目规则与 Denova/Agent 内置定义耦合；同一项目指令跨 Agent 重复组装，role、revision 和生命周期边界不够直观。 | 复用现有 `ContextLeadingMessage`，以 User role 注入一个独立、attributed、低频稳定的 project-instruction fragment；从各 Agent system composition 中删除 Creator 副本，不保留双路径。 |
 | P0 | 契约归属 | 文件操作、写作状态同步、游戏提交、导演 Patch、重试规则跨多个层重复。 | Token 多、注意力分散、文字与后端校验容易漂移。 | system 管行为与优先级；tool description 管选择和事务；Schema 管编码；tool result 管修复；Skill 管可选流程；turn prompt 只管当前任务。 |
 | P1 | Interactive Story | `InteractiveStoryTurnInstruction` 同时包含当前行动、判定策略、文风、提交、重试、choices、状态语义。 | 每回合重复大段稳定规则，最容易稀释模型对当前行动的关注。 | 把稳定协议移入 system/tool；回合消息只注入当前行动、动态上下文、当回合规则和完成要求。 |
 | P1 | Interactive Director | runtime、system、per-run prompt、提交工具重复文档边界、Patch、finalize、retry 和保密规则。 | 背景 Agent 上下文冗长，多个副本可能漂移。 | system 保留 source-of-truth 与职责边界；工具拥有 Patch/base_hash/finalize；per-run 只给模式、快照、Hash 和目标。 |
@@ -617,7 +617,7 @@ General Prompt 比较克制，已经清楚表达：Project root、就近读取�
 - 项目规则发现只保留一个权威版本，避免被 Skill/task 重复；
 - general-purpose 子 Agent 的路由 description 先补明确的 `Use when`；只有出现真实路由冲突时再增加非适用边界。
 
-### 6.2 IDE Writing Agent
+### 6.2 Writing Agent
 
 这是当前最大的维护热点。内置写作流程、CREATOR、导演、文风索引、Image preset、写作 Skill、文件工具 description 存在明显重叠。
 
@@ -632,7 +632,7 @@ General Prompt 比较克制，已经清楚表达：Project root、就近读取�
 
 `novel-lite` 和 `novel-standard` 是合理产品抽象，但两者都重复文件错误处理和状态同步机制。共通部分应有一个稳定 owner。
 
-### 6.3 Interactive Story Agent
+### 6.3 Game Agent
 
 这是最值得优先精简的 Prompt。现在“只输出剧情正文、状态通过工具提交”的方向正确，但状态模型被 runtime、system、turn prompt、handbook、tool description、Schema 和 retry feedback 多次解释。
 

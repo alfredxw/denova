@@ -55,6 +55,17 @@ describe('i18n', () => {
     expect(window.localStorage.getItem('nova.locale.configured')).toBe('en-US')
   })
 
+  it('uses the canonical Writing Agent and Game Agent names in both locales', () => {
+    expect(zhCN['agents.ide.title']).toBe('写作 Agent')
+    expect(zhCN['agents.interactiveStory.title']).toBe('游戏 Agent')
+    expect(zhCN['agents.subAgents.parent.ide']).toBe('写作')
+    expect(zhCN['agents.subAgents.parent.interactive_story']).toBe('游戏')
+    expect(enUS['agents.ide.title']).toBe('Writing Agent')
+    expect(enUS['agents.interactiveStory.title']).toBe('Game Agent')
+    expect(enUS['agents.subAgents.parent.ide']).toBe('Writing')
+    expect(enUS['agents.subAgents.parent.interactive_story']).toBe('Game')
+  })
+
   it('formats user-facing times with a 24-hour clock', async () => {
     vi.resetModules()
     const { formatDateTime, setConfiguredLocale } = await import('./index')

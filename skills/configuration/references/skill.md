@@ -54,7 +54,7 @@ config_apply({
 
 Keep the root actionable and concise. Put resource schemas, variants, and long examples in supporting files, then add a context pointer that says exactly when to read each one. References are not sub-Skills and never use a `sub_skill` argument.
 
-Use `capabilities: [writing-workflow]` only for a complete IDE writing workflow that can safely serve as the configured Writing Skill. Writing-related helpers such as polishing, continuity review, or research should use `category: writing` without that capability; they remain directly invocable but do not appear in the Writing Skill selector.
+Use `capabilities: [writing-workflow]` only for a complete Writing Agent workflow that can safely serve as the configured Writing Skill. Writing-related helpers such as polishing, continuity review, or research should use `category: writing` without that capability; they remain directly invocable but do not appear in the Writing Skill selector.
 
 ## Supporting reference lifecycle
 

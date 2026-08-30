@@ -25,7 +25,7 @@ describe('AgentList', () => {
     const shortcuts: Array<[string, CustomAgentBaseKind]> = [
       ['基于General Agent新建自定义 Agent', 'general'],
       ['基于写作 Agent新建自定义 Agent', 'ide'],
-      ['基于游戏叙事 Agent新建自定义 Agent', 'interactive_story'],
+      ['基于游戏 Agent新建自定义 Agent', 'interactive_story'],
       ['基于图像 Agent新建自定义 Agent', 'image'],
     ]
     for (const [name, baseKind] of shortcuts) {
@@ -47,6 +47,6 @@ describe('CreateCustomAgentDialog', () => {
       />,
     )
 
-    expect(screen.getByRole('combobox', { name: '运行时底座' })).toHaveTextContent('游戏叙事 Agent')
+    expect(screen.getByRole('combobox', { name: '运行时底座' })).toHaveTextContent('游戏 Agent')
   })
 })

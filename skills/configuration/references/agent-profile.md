@@ -139,7 +139,7 @@ If the snapshot already contains workspace `agent_skills.ide` keys, include all 
 
 ## General SubAgent switch examples
 
-Enable the built-in General SubAgent for the IDE Agent in workspace scope:
+Enable the built-in General SubAgent for the Writing Agent in workspace scope:
 
 ```text
 config_apply({

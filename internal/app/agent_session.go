@@ -127,7 +127,7 @@ func agentSessionID(agentKind string) (string, bool) {
 	return session.AgentSessionID(agentKind)
 }
 
-// AnswerSessionAsk answers the exact pending ask in a user IDE session. The
+// AnswerSessionAsk answers the exact pending ask in a user Writing Agent session. The
 // blocked tool call remains inside the same durable Agent task.
 func (a *App) AnswerSessionAsk(ctx context.Context, sessionID, askID string, answers []AgentAskAnswer) (AgentAskResolution, error) {
 	return a.resolveSessionAsk(ctx, sessionID, askID, session.AskAnswered, answers, "")
@@ -161,7 +161,7 @@ func (a *App) resolveSessionAsk(ctx context.Context, sessionID, askID, status st
 		sessionID = selected.ID
 	}
 	if isAgentSessionID(sessionID) {
-		return AgentAskResolution{}, fmt.Errorf("cannot resolve a fixed Agent ask through the IDE session endpoint: %s", sessionID)
+		return AgentAskResolution{}, fmt.Errorf("cannot resolve a fixed Agent ask through the Writing Agent session endpoint: %s", sessionID)
 	}
 	if _, err := store.Get(sessionID); err != nil {
 		return AgentAskResolution{}, err

@@ -66,7 +66,7 @@ func BuildInteractiveAgent(
 		ctx, cfg, state, teller, host, toolContexts...,
 	)
 	if err != nil {
-		return BuiltAgent{}, fmt.Errorf("build Interactive Story Agent Definition: %w", err)
+		return BuiltAgent{}, fmt.Errorf("build Game Agent Definition: %w", err)
 	}
 	return BuiltAgent{Definition: definition, Composition: composition}, nil
 }

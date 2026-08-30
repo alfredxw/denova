@@ -231,7 +231,7 @@ func BuiltinAgentPromptSources(cfg *config.Config, state *book.State, ideTeller 
 	return config.AgentPromptSourceSettings{
 		General: builtinPromptSourceList(promptCfg, config.AgentKindGeneral, generalAgentFlowInstruction(promptCfg)),
 		IDE: builtinPromptSourceList(promptCfg, config.AgentKindIDE, ideFlowInstruction(promptCfg, ideWorkspace),
-			readonlyPromptSource("teller", "Default IDE Storyteller Rules", ideTeller.ID, ideTeller.Prompt),
+			readonlyPromptSource("teller", "Default Writing Agent Narrative Rules", ideTeller.ID, ideTeller.Prompt),
 		),
 		InteractiveStory: builtinPromptSourceList(promptCfg, config.AgentKindInteractiveStory, interactiveStoryFlowInstruction(promptCfg, interactiveWorkspace)),
 		VersionSummary:   builtinPromptSourceList(promptCfg, config.AgentKindVersionSummary, versionSummarySystemInstruction),

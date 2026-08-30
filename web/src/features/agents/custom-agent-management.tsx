@@ -75,9 +75,14 @@ export function AgentList({
     }
   })
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="border-b border-[var(--nova-border)] p-2">
-        <Button type="button" variant="outline" size="sm" className="w-full justify-start" onClick={() => onCreate('ide')}>
+    <div className="nova-embedded-sidebar flex h-full min-h-0 flex-col bg-sidebar text-sidebar-foreground">
+      <div className="px-2 pt-2 pb-1">
+        <Button
+          type="button"
+          variant="ghost"
+          className="h-9 w-full justify-start rounded-md px-2 text-xs text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+          onClick={() => onCreate('ide')}
+        >
           <Plus data-icon="inline-start" />
           {t('agents.custom.create')}
         </Button>

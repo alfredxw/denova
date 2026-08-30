@@ -3,11 +3,13 @@ import { formatDateTime } from '@/i18n'
 import { cn } from '@/lib/utils'
 import type { SessionSummary } from '@/lib/api'
 import { formatCompactSessionTime, useSessionTimeNow } from '@/components/Chat/session-time'
+import { SessionRailToggle } from '@/components/Chat/SessionRailToggle'
 
 interface WritingSessionRailProps {
   sessions: SessionSummary[]
   activeSessionId: string
   onSwitch: (sessionId: string) => void | Promise<void>
+  onVisibleChange: (visible: boolean) => void
 }
 
 /** Persistent, readable navigation for conversations in the current Book. */
@@ -15,6 +17,7 @@ export function WritingSessionRail({
   sessions,
   activeSessionId,
   onSwitch,
+  onVisibleChange,
 }: WritingSessionRailProps) {
   const { t } = useTranslation()
   const now = useSessionTimeNow()
@@ -28,6 +31,7 @@ export function WritingSessionRail({
         <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-[var(--nova-text-muted)]">
           {t('chat.view.sessions')}
         </span>
+        <SessionRailToggle visible onVisibleChange={onVisibleChange} />
       </div>
 
       <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">

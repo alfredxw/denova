@@ -156,7 +156,7 @@ export DENOVA_FRONTEND_PORT="5173"
 
 Agent 的只读工具并发数可在设置页或 Agents 页配置，默认 8、范围 1–64；工作区值会覆盖用户值。该并发只作用于连续的只读工具，工作区写入和 child 工具仍按严格顺序执行。
 
-Agents 页按后端解析后的能力清单展示每类 Agent 的真实工具权限，不在前端维护另一份默认值。最终权限是 Agent kind 硬能力上限与配置覆盖的交集；`runtime_check` 表示条件能力，不保证本次运行一定注册具体工具。`shell` 会按平台暴露为 `bash` 或 `pwsh`；网页搜索与网页抓取可分别授权。配置管理由通用或 IDE Project Agent 通过 `/configuration` Skill 和 `config_read` / `config_apply` 完成；配置页面保留右侧配置管理面板并复用 AgentChat，与主 Project Agent 共用会话、历史和恢复状态。旧独立 Config Manager 数据原样保留，但不再参与运行或迁移。
+Agents 页按后端解析后的能力清单展示每类 Agent 的真实工具权限，不在前端维护另一份默认值。最终权限是 Agent kind 硬能力上限与配置覆盖的交集；`runtime_check` 表示条件能力，不保证本次运行一定注册具体工具。`shell` 会按平台暴露为 `bash` 或 `pwsh`；网页搜索与网页抓取可分别授权。配置管理由通用或写作 Agent 通过 `/configuration` Skill 和 `config_read` / `config_apply` 完成；配置页面保留右侧配置管理面板并复用 AgentChat，与主 Project Agent 共用会话、历史和恢复状态。旧独立 Config Manager 数据原样保留，但不再参与运行或迁移。
 
 ## 远程访问与手机使用
 

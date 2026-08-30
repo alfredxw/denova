@@ -74,8 +74,8 @@ func (s *Runtime) deleteRuntimeBindings(ctx context.Context, selector agent.Sess
 
 // CloseForegroundProjectBindings evicts bindings owned by the foreground
 // Project runtime while deliberately preserving user-level AgentChat runs.
-// AgentChat reuses the IDE implementation, but its distinct durable profile is
-// allowed to keep running when the title-bar book selection changes.
+// AgentChat reuses the Writing Agent implementation, but its distinct durable
+// profile is allowed to keep running when the title-bar book selection changes.
 func (s *Runtime) CloseForegroundProjectBindings(ctx context.Context, projectID string) error {
 	selectors, err := agentrun.ForegroundProjectBindingSelectors(projectID)
 	if err != nil {

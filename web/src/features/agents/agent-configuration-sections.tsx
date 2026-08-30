@@ -8,7 +8,7 @@ import type { AgentModelOverride, AgentPromptBlocks, AgentPromptOverride, AgentP
 import { normalizeThinkingLevel, THINKING_LEVELS } from '@/features/settings/thinking-levels'
 import type { SkillSummary } from '@/lib/api'
 import { Field, SectionTitle, SwitchWithInheritance } from './agent-form-controls'
-import { skillAgentFieldMatches, skillAvailableForAgent } from './agent-registry'
+import { AGENTS, skillAgentFieldMatches, skillAvailableForAgent } from './agent-registry'
 import type { AgentToolDefinition, ToolKey, VisibleAgentKey } from './agent-registry'
 
 export function AgentModelSection({ value, inherited, profiles, onChange }: {
@@ -323,6 +323,15 @@ export function AgentSkillSection({ agent, skills, value, effective, onChange }:
             const inherited = explicit === undefined
             const current = inherited ? skillAvailableForAgent(skill, agent, effective) : explicit
             const defaultAvailable = skillAgentFieldMatches(skill.agent, agent)
+            const targetAgents = (skill.agent || '')
+              .split(/[,\s;]+/)
+              .map((key) => key.trim())
+              .filter(Boolean)
+              .map((key) => {
+                const titleKey = AGENTS.find((candidate) => candidate.key === key)?.titleKey
+                return titleKey ? t(titleKey) : key
+              })
+              .join(', ')
             return (
               <div key={`${skill.scope}:${skill.name}`} className="flex min-h-16 min-w-0 flex-col items-stretch gap-3 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2 sm:flex-row sm:items-center">
                 <FolderOpen className="h-4 w-4 shrink-0 text-[var(--nova-text-muted)]" />
@@ -336,7 +345,7 @@ export function AgentSkillSection({ agent, skills, value, effective, onChange }:
                   <div className="mt-0.5 truncate text-[11px] text-[var(--nova-text-faint)]">{skill.description}</div>
                   <div className="mt-0.5 truncate text-[10px] text-[var(--nova-text-faint)]">
                     {defaultAvailable ? t('agents.skills.defaultAvailable') : t('agents.skills.defaultUnavailable')}
-                    {skill.agent ? ` · ${skill.agent}` : ''}
+                    {targetAgents ? ` · ${targetAgents}` : ''}
                   </div>
                 </div>
                 <SwitchWithInheritance

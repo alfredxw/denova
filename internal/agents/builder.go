@@ -50,7 +50,7 @@ type AgentHostCapabilities struct {
 }
 
 // BuildDefinitionWithCompositionForHost returns the complete public Agent
-// composition for a writing/IDE Project Session.
+// composition for a Writing Agent Project Session.
 func BuildDefinitionWithCompositionForHost(ctx context.Context, cfg *config.Config, state *book.State, teller prompts.IDEStoryTeller, host AgentHostCapabilities) (agent.Definition, prompts.SystemPromptComposition, error) {
 	composition, err := prompts.ComposeInstruction(cfg, state, teller)
 	if err != nil {

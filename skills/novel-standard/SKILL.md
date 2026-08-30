@@ -9,7 +9,7 @@ agent: ide
 
 # novel-standard
 
-Use this standard IDE Writing Agent workflow to balance quality and speed.
+Use this standard Writing Agent workflow to balance quality and speed.
 
 ## Determine the writing scope
 

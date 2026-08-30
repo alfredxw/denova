@@ -12,7 +12,7 @@ const (
 	AgentKindHarness          = "harness"
 	AgentKindInteractiveStory = "interactive_story"
 	// AgentKindConfigManager is retained only to decode Beta settings and
-	// journals. Configuration work now runs in General or IDE Project Agents.
+	// journals. Configuration work now runs in General or Writing Project Agents.
 	AgentKindConfigManager  = "config_manager"
 	AgentKindVersionSummary = "version_summary"
 	AgentKindToolAgent      = "tool_agent"

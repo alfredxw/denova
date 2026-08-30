@@ -29,9 +29,9 @@ const (
 	bindingLabelTask      = "task_id"
 )
 
-// ModeAgentChat identifies user-level project conversations that reuse an IDE
-// or General Agent implementation without inheriting foreground workspace
-// lifecycle.
+// ModeAgentChat identifies user-level project conversations that reuse a
+// Writing or General Agent implementation without inheriting foreground
+// workspace lifecycle.
 const ModeAgentChat = bindingProfileAgentChat
 
 // RuntimeBinding is Denova's product identity adapter for the reusable public
@@ -40,9 +40,9 @@ const ModeAgentChat = bindingProfileAgentChat
 type RuntimeBinding struct {
 	AgentKind string
 	ProjectID string
-	// Mode separates products that reuse the IDE Agent implementation but own
-	// different lifecycles. AgentChat conversations are user-level bindings and
-	// must survive switches of the foreground Writing workspace.
+	// Mode separates products that reuse the Writing Agent implementation but
+	// own different lifecycles. AgentChat conversations are user-level bindings
+	// and must survive switches of the foreground Writing workspace.
 	Mode      string
 	Workspace string
 	SessionID string

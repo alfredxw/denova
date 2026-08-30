@@ -9,7 +9,7 @@ agent: ide
 
 # novel-lite
 
-Use this Skill for fast prose generation by the IDE Writing Agent.
+Use this Skill for fast prose generation by the Writing Agent.
 
 ## Determine the writing scope
 

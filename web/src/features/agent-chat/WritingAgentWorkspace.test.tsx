@@ -46,13 +46,15 @@ vi.mock('./AgentChatConversationTab', () => ({
           {draft ? (
             <button type="button" onClick={() => onDraftCommitted?.('Configure this resource')}>commit draft</button>
           ) : null}
-          <button
-            type="button"
-            aria-pressed={host.sessionRailVisible}
-            onClick={() => host.onSessionRailVisibleChange(!host.sessionRailVisible)}
-          >
-            {host.sessionRailVisible ? '隐藏会话侧栏' : '显示会话侧栏'}
-          </button>
+          {!host.sessionRailVisible ? (
+            <button
+              type="button"
+              aria-pressed="false"
+              onClick={() => host.onSessionRailVisibleChange(true)}
+            >
+              显示会话侧栏
+            </button>
+          ) : null}
           <button type="button" onClick={() => void host.onCreateSession()}>新建会话</button>
         </>
       ) : null}
@@ -169,17 +171,24 @@ describe('WritingAgentWorkspace', () => {
     const user = userEvent.setup()
     renderWorkspace()
 
+    const rail = await screen.findByRole('navigation', { name: '快捷会话切换' })
     const hideRailButton = await screen.findByRole('button', { name: '隐藏会话侧栏' })
     expect(screen.getAllByRole('button', { name: '隐藏会话侧栏' })).toHaveLength(1)
+    expect(hideRailButton.closest('nav')).toBe(rail)
     await user.click(hideRailButton)
 
     expect(window.localStorage.getItem('nova.writingAgent.sessionRailVisible.v1')).toBe('false')
+    expect(screen.queryByRole('navigation', { name: '快捷会话切换' })).not.toBeInTheDocument()
     const showRailButton = screen.getByRole('button', { name: '显示会话侧栏' })
     expect(showRailButton).toHaveAttribute('aria-pressed', 'false')
+    expect(showRailButton.closest('nav')).toBeNull()
     await user.click(showRailButton)
 
     expect(window.localStorage.getItem('nova.writingAgent.sessionRailVisible.v1')).toBe('true')
-    expect(screen.getByRole('button', { name: '隐藏会话侧栏' })).toHaveAttribute('aria-pressed', 'true')
+    const reopenedRail = screen.getByRole('navigation', { name: '快捷会话切换' })
+    const reopenedHideButton = screen.getByRole('button', { name: '隐藏会话侧栏' })
+    expect(reopenedHideButton).toHaveAttribute('aria-pressed', 'true')
+    expect(reopenedHideButton.closest('nav')).toBe(reopenedRail)
   })
 
   it('projects independent running state for multiple conversations in the same Book', async () => {

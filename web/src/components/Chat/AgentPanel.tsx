@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Activity, ChevronLeft, FileText, PanelRight, PenLine, Plus, SearchCheck, Sparkles, WandSparkles } from 'lucide-react'
+import { Activity, ChevronLeft, FileText, PenLine, Plus, SearchCheck, Sparkles, WandSparkles } from 'lucide-react'
 import { motion } from 'motion/react'
 import { Group, Panel, Separator } from 'react-resizable-panels'
 import { createPortal } from 'react-dom'
@@ -38,6 +38,7 @@ import { AgentChatPane } from './AgentChatPane'
 import { LoadingState } from '@/components/common/LoadingState'
 import { SessionHistoryPopover } from './SessionHistoryPopover'
 import { SessionManagementPanel } from './SessionManagementPanel'
+import { SessionRailToggle } from './SessionRailToggle'
 import { AgentTracePanel } from './AgentTracePanel'
 import { AgentSubAgentSessionPanel } from './AgentSubAgentSessionPanel'
 import { CONTEXT_ANALYSIS_SIMULATED_MESSAGE, ContextAnalysisDialog } from './ContextAnalysisDialog'
@@ -702,8 +703,6 @@ function AgentPanelComponent({
     />
   )
   const chatPanePortal = view === 'chat' && chatPaneHost ? createPortal(chatPane, chatPaneHost, 'agent-chat-pane') : null
-  const sessionRailToggleLabel = t(sessionRailVisible ? 'chat.sessionRail.hide' : 'chat.sessionRail.show')
-
   return (
     <aside
       className={`nova-sidebar relative flex h-full min-h-0 flex-col overflow-hidden ${
@@ -777,17 +776,11 @@ function AgentPanelComponent({
             }}
           />
           <div className="min-w-0 flex-1" />
-          {onSessionRailVisibleChange ? (
-            <button
-              type="button"
-              onClick={() => onSessionRailVisibleChange(!sessionRailVisible)}
-              aria-label={sessionRailToggleLabel}
-              aria-pressed={sessionRailVisible}
-              title={sessionRailToggleLabel}
-              className={`nova-nav-item flex size-7 shrink-0 items-center justify-center rounded-[var(--nova-radius)] border transition-colors ${sessionRailVisible ? 'border-[var(--nova-border)] bg-[var(--nova-active)] text-[var(--nova-text)]' : 'border-transparent text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text-muted)]'}`}
-            >
-              <PanelRight aria-hidden="true" className="size-3.5" />
-            </button>
+          {onSessionRailVisibleChange && !sessionRailVisible ? (
+            <SessionRailToggle
+              visible={sessionRailVisible}
+              onVisibleChange={onSessionRailVisibleChange}
+            />
           ) : null}
         </div>
       )}

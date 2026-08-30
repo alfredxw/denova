@@ -454,6 +454,7 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
           sessions={sessions}
           activeSessionId={activeSessionId}
           onSwitch={selectSession}
+          onVisibleChange={setSessionRailVisible}
         />
       ) : null}
     </div>

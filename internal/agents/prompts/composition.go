@@ -59,7 +59,7 @@ func ComposeHarnessInstruction(cfg *config.Config) (SystemPromptComposition, err
 	)
 }
 
-// ComposeInstruction assembles and admits the exact IDE system instruction.
+// ComposeInstruction assembles and admits the exact Writing Agent system instruction.
 func ComposeInstruction(cfg *config.Config, state *book.State, teller IDEStoryTeller) (SystemPromptComposition, error) {
 	workspace := workspaceForPrompt(cfg, state)
 	builtIn := make([]SystemPromptFragment, 0, 3+len(teller.StyleRules))
