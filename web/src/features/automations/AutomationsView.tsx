@@ -10,6 +10,7 @@ import { FeaturePageShell } from '@/components/layout/feature-page-shell'
 import { MobilePaneTrigger } from '@/components/layout/mobile-pane-trigger'
 import { SidebarVisibilityToggle } from '@/components/layout/sidebar-visibility-toggle'
 import { ConfigManagerChat } from '@/components/Chat/ConfigManagerChat'
+import { ConfigManagerToggle } from '@/components/Chat/ConfigManagerToggle'
 import { Button } from '@/components/ui/button'
 import {
   createAutomation,
@@ -553,11 +554,9 @@ export function AutomationsView({
       projects={projects}
       activeRuns={catalogActiveRuns}
       activeId={activeId}
-      agentActive={agentOpen}
       onSelect={selectTask}
       onCreate={() => void createNew()}
       onCreateForProject={(project) => void createNew(project)}
-      onOpenAgent={() => setAgentOpen((open) => !open)}
     />
   )
 
@@ -638,6 +637,11 @@ export function AutomationsView({
               onRetry={flushAutomationAutosave}
             />
           ) : null}
+          <ConfigManagerToggle
+            open={agentOpen}
+            label={t('automations.view.agent')}
+            onToggle={() => setAgentOpen((open) => !open)}
+          />
           <Button type="button" size="sm" variant="outline" onClick={checkTriggers} disabled={!activeId || running || saving} className="nova-nav-item border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]" aria-label={t('automations.checkTriggers')}>
             <RefreshCw data-icon="inline-start" />
             <span className="hidden sm:inline">{t('automations.checkTriggers')}</span>

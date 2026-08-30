@@ -104,9 +104,9 @@ export const writingAgentChatClient: AgentChatClient = {
 }
 
 /** Build an immutable project/session API binding for one AgentChat conversation tab. */
-export function createProjectAgentChatClient(projectId: string, sessionId: string): AgentChatClient {
+export function createProjectAgentChatClient(projectId: string, sessionId: string, channel = ''): AgentChatClient {
   const basePath = projectAPIPath(projectId, 'agent-chat')
-  const scope = { session_id: sessionId }
+  const scope = { session_id: sessionId, ...(channel ? { channel } : {}) }
   const unsupportedSessionMutation = async (): Promise<never> => {
     throw new Error('AgentChat 对话由项目侧栏管理 / AgentChat conversations are managed from the project sidebar')
   }

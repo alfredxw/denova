@@ -7,6 +7,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
+	agentsession "denova/internal/agents/session"
 	appsvc "denova/internal/app"
 )
 
@@ -47,6 +48,7 @@ func (h *Handlers) HandleConversationConfigPatch(ctx context.Context, c *app.Req
 func conversationConfigBindingFromQuery(c *app.RequestContext) (appsvc.ConversationConfigBinding, bool) {
 	binding := appsvc.ConversationConfigBinding{
 		Mode: c.Query("mode"), ProjectID: c.Query("project_id"), SessionID: c.Query("session_id"),
+		Channel: agentsession.Channel(c.Query("channel")),
 		StoryID: c.Query("story_id"), BranchID: c.Query("branch_id"),
 		Origin: c.Query("origin"), ResourceID: c.Query("resource_id"), RunID: c.Query("run_id"),
 	}

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Bot, LoaderCircle, Plus } from 'lucide-react'
+import { nanoid } from 'nanoid'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -17,9 +18,11 @@ import {
   getAgentChatProjects,
   renameAgentChatSession,
   type AgentChatSession,
+  type AgentChatSessionChannel,
   type AgentChatProjectType,
 } from './api'
 import { readAgentChatActiveSession, writeAgentChatActiveSession } from './session-preferences'
+import { draftSessionTitle } from './tab-state'
 import { WritingSessionRail } from './WritingSessionRail'
 
 export const WRITING_SESSION_RAIL_STORAGE_KEY = 'nova.writingAgent.sessionRailVisible.v1'
@@ -49,6 +52,8 @@ type RequiredWorkspaceProps = Pick<AgentPanelProps,
 
 export type WritingAgentWorkspaceProps = RequiredWorkspaceProps & Partial<AgentPanelProps> & {
   projectType?: AgentChatProjectType
+  sessionChannel?: AgentChatSessionChannel
+  sessionCreation?: 'immediate' | 'on-first-message'
   pendingAction?: AgentChatPendingAction | null
   onPendingActionConsumed?: (id: string) => void
   messageTransform?: (message: string) => string
@@ -56,9 +61,13 @@ export type WritingAgentWorkspaceProps = RequiredWorkspaceProps & Partial<AgentP
   onConversationStateChange?: (state: AgentChatConversationState) => void
 }
 
+type WorkspaceSession = AgentChatSession & { draft?: boolean }
+
 export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
   const { t } = useTranslation()
-  const [sessions, setSessions] = useState<AgentChatSession[]>([])
+  const sessionChannel = props.sessionChannel ?? 'agent'
+  const sessionCreation = props.sessionCreation ?? 'immediate'
+  const [sessions, setSessions] = useState<WorkspaceSession[]>([])
   const [activeSessionId, setActiveSessionId] = useState('')
   const [mountedSessionIds, setMountedSessionIds] = useState<string[]>([])
   const [view, setView] = useState<AgentPanelView>('chat')
@@ -71,8 +80,8 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
   sessionsRef.current = sessions
 
   const storeActiveSession = useCallback((sessionId: string) => {
-    writeAgentChatActiveSession(props.projectId, sessionId)
-  }, [props.projectId])
+    writeAgentChatActiveSession(props.projectId, sessionId, sessionChannel)
+  }, [props.projectId, sessionChannel])
 
   const selectSession = useCallback((sessionId: string) => {
     if (!sessionId || !sessionsRef.current.some((session) => session.id === sessionId)) return
@@ -83,13 +92,16 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
   }, [storeActiveSession])
 
   const refreshSessions = useCallback(async () => {
-    const projects = await getAgentChatProjects()
+    const projects = await getAgentChatProjects(sessionChannel === 'agent' ? undefined : { channel: sessionChannel })
     const project = projects.find((candidate) => candidate.id === props.projectId)
     if (!project) throw new Error(`Writing Agent Project is unavailable: ${props.projectId}`)
-    const nextSessions = sortSessions(project.sessions)
+    const persistedIDs = new Set(project.sessions.map((session) => session.id))
+    const drafts = sessionsRef.current.filter((session) => session.draft && !persistedIDs.has(session.id))
+    const nextSessions = sortSessions([...drafts, ...project.sessions])
+    sessionsRef.current = nextSessions
     setSessions(nextSessions)
     setActiveSessionId((current) => {
-      const stored = readAgentChatActiveSession(props.projectId)
+      const stored = readAgentChatActiveSession(props.projectId, sessionChannel)
       const next = firstAvailableSession(nextSessions, current, stored, props.activeSessionId)
       if (next) storeActiveSession(next)
       return next
@@ -97,7 +109,7 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
     setMountedSessionIds((current) => {
       const available = new Set(nextSessions.map((session) => session.id))
       const retained = current.filter((sessionId) => available.has(sessionId))
-      const selected = firstAvailableSession(nextSessions, activeSessionId, readAgentChatActiveSession(props.projectId), props.activeSessionId)
+      const selected = firstAvailableSession(nextSessions, activeSessionId, readAgentChatActiveSession(props.projectId, sessionChannel), props.activeSessionId)
       return uniqueStrings([
         ...retained,
         ...nextSessions.filter((session) => session.running).map((session) => session.id),
@@ -105,17 +117,52 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
       ])
     })
     setError('')
-  }, [activeSessionId, props.activeSessionId, props.projectId, storeActiveSession])
+    return nextSessions
+  }, [activeSessionId, props.activeSessionId, props.projectId, sessionChannel, storeActiveSession])
+
+  const createDraftSession = useCallback((title = '') => {
+    const existing = sessionsRef.current.find((session) => session.draft)
+    if (existing) {
+      selectSession(existing.id)
+      return existing
+    }
+    const now = new Date().toISOString()
+    const draft: WorkspaceSession = {
+      id: `s-${nanoid()}`,
+      channel: sessionChannel,
+      title: title.trim() || t('chat.newSession'),
+      created_at: now,
+      updated_at: now,
+      message_count: 0,
+      running: false,
+      active: false,
+      draft: true,
+    }
+    const next = sortSessions([draft, ...sessionsRef.current])
+    sessionsRef.current = next
+    setSessions(next)
+    setActiveSessionId(draft.id)
+    setMountedSessionIds((current) => current.includes(draft.id) ? current : [...current, draft.id])
+    setView('chat')
+    storeActiveSession(draft.id)
+    return draft
+  }, [selectSession, sessionChannel, storeActiveSession, t])
 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
     setError('')
     setSessions([])
+    sessionsRef.current = []
     setActiveSessionId('')
     setMountedSessionIds([])
     if (!props.projectId.trim()) return () => { cancelled = true }
     void refreshSessions()
+      .then((nextSessions) => {
+        if (!cancelled && nextSessions.length === 0 && sessionCreation === 'on-first-message') {
+          createDraftSession()
+        }
+      })
       .catch((loadError) => {
         if (cancelled) return
         console.error(
@@ -128,7 +175,7 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
         if (!cancelled) setLoading(false)
       })
     return () => { cancelled = true }
-  }, [props.projectId]) // Project changes intentionally reset every mounted conversation transport.
+  }, [props.projectId, sessionChannel, sessionCreation]) // Project or list channel changes reset every mounted transport.
 
   useEffect(() => {
     const onProjectUpdated = (event: Event) => {
@@ -147,11 +194,21 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
 
   const createSession = useCallback(async (title?: string, customAgentId?: string) => {
     if (sessionPending) return
+    if (sessionCreation === 'on-first-message' && customAgentId === undefined) {
+      createDraftSession(title)
+      return
+    }
     setSessionPending(true)
     try {
-      const created = await createAgentChatSession(props.projectId, title ?? '', customAgentId)
-      setSessions((current) => sortSessions([created, ...current.filter((session) => session.id !== created.id)]))
-      sessionsRef.current = [created, ...sessionsRef.current.filter((session) => session.id !== created.id)]
+      const created = await createAgentChatSession(props.projectId, title ?? '', customAgentId, sessionChannel)
+      const next = sortSessions([
+        created,
+        ...sessionsRef.current.filter((session) => (
+          session.id !== created.id && !(session.draft && session.id === activeSessionId)
+        )),
+      ])
+      sessionsRef.current = next
+      setSessions(next)
       setActiveSessionId(created.id)
       setMountedSessionIds((current) => current.includes(created.id) ? current : [...current, created.id])
       setView('chat')
@@ -167,17 +224,26 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
     } finally {
       setSessionPending(false)
     }
-  }, [props.projectId, sessionPending, storeActiveSession, t])
+  }, [activeSessionId, createDraftSession, props.projectId, sessionChannel, sessionCreation, sessionPending, storeActiveSession, t])
 
   const renameSession = useCallback(async (sessionId: string, title: string) => {
+    const target = sessionsRef.current.find((session) => session.id === sessionId)
+    if (target?.draft) {
+      const next = sessionsRef.current.map((session) => session.id === sessionId ? { ...session, title } : session)
+      sessionsRef.current = next
+      setSessions(next)
+      return
+    }
     await renameAgentChatSession(props.projectId, sessionId, title)
-    setSessions((current) => current.map((session) => session.id === sessionId ? { ...session, title } : session))
+    const next = sessionsRef.current.map((session) => session.id === sessionId ? { ...session, title } : session)
+    sessionsRef.current = next
+    setSessions(next)
   }, [props.projectId])
 
   const deleteSession = useCallback(async (sessionId: string) => {
     const target = sessionsRef.current.find((session) => session.id === sessionId)
     if (!target || target.running || sessionsRef.current.length <= 1) return
-    await deleteAgentChatSession(props.projectId, sessionId)
+    if (!target.draft) await deleteAgentChatSession(props.projectId, sessionId)
     const remaining = sessionsRef.current.filter((session) => session.id !== sessionId)
     sessionsRef.current = remaining
     setSessions(remaining)
@@ -188,6 +254,22 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
       if (next) storeActiveSession(next)
     }
   }, [activeSessionId, props.projectId, storeActiveSession])
+
+  const commitDraftSession = useCallback((sessionId: string, message: string) => {
+    const now = new Date().toISOString()
+    const next = sessionsRef.current.map((session) => session.id === sessionId
+      ? {
+          ...session,
+          draft: undefined,
+          title: draftSessionTitle(message) || session.title,
+          updated_at: now,
+          message_count: Math.max(session.message_count, 1),
+        }
+      : session)
+    sessionsRef.current = next
+    setSessions(next)
+    storeActiveSession(sessionId)
+  }, [storeActiveSession])
 
   const handleRunningChange = useCallback((_projectId: string, sessionId: string, running: boolean | null) => {
     if (running === null) return
@@ -296,7 +378,7 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
 
   const mountedSessions = mountedSessionIds
     .map((sessionId) => sessions.find((session) => session.id === sessionId))
-    .filter((session): session is AgentChatSession => Boolean(session))
+    .filter((session): session is WorkspaceSession => Boolean(session))
 
   useEffect(() => {
     if (!activeSessionId) props.onConversationStateChange?.({ messages: [], isStreaming: false })
@@ -340,7 +422,9 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
                 projectType={props.projectType ?? 'book'}
                 workspace={props.workspace}
                 sessionId={session.id}
+                sessionChannel={session.channel}
                 syncRevision={`${session.updated_at}:${session.message_count}:${session.running ? 'running' : 'idle'}`}
+                draft={session.draft}
                 active={props.active !== false && active}
                 composerSettings={props.composerSettings}
                 tellers={props.tellers}
@@ -353,6 +437,7 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
                 onOpenChangeReview={props.onOpenChangeReview}
                 onWorkspaceChanged={(_workspace, paths) => props.onWorkspaceChanged?.(paths)}
                 onRunningChange={handleRunningChange}
+                onDraftCommitted={(message) => commitDraftSession(session.id, message)}
                 onConversationStateChange={active ? props.onConversationStateChange : undefined}
                 pendingAction={active ? props.pendingAction : null}
                 onPendingActionConsumed={active ? props.onPendingActionConsumed : undefined}
@@ -375,14 +460,14 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
   )
 }
 
-function firstAvailableSession(sessions: AgentChatSession[], ...preferredIds: Array<string | undefined>) {
+function firstAvailableSession(sessions: WorkspaceSession[], ...preferredIds: Array<string | undefined>) {
   for (const preferredId of preferredIds) {
     if (preferredId && sessions.some((session) => session.id === preferredId)) return preferredId
   }
   return sessions.find((session) => session.active)?.id || sessions[0]?.id || ''
 }
 
-function sortSessions(sessions: AgentChatSession[]) {
+function sortSessions(sessions: WorkspaceSession[]) {
   return [...sessions].sort((left, right) => {
     return Date.parse(right.updated_at || right.created_at || '') - Date.parse(left.updated_at || left.created_at || '')
   })

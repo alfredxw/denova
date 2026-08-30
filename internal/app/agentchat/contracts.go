@@ -38,7 +38,10 @@ type Host interface {
 type Binding struct {
 	ProjectID string `json:"project_id"`
 	SessionID string `json:"session_id"`
-	Workspace string `json:"-"`
+	// Channel is an optional immutable classification assertion. Runtime keys
+	// remain ProjectID + SessionID; omission preserves existing internal callers.
+	Channel   session.Channel `json:"channel,omitempty"`
+	Workspace string          `json:"-"`
 
 	agentKind string
 	stateRoot string
@@ -61,12 +64,13 @@ type ActiveView struct {
 }
 
 type Session struct {
-	ID            string    `json:"id"`
-	CustomAgentID string    `json:"custom_agent_id,omitempty"`
-	Title         string    `json:"title"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
-	MessageCount  int       `json:"message_count"`
+	ID            string          `json:"id"`
+	Channel       session.Channel `json:"channel"`
+	CustomAgentID string          `json:"custom_agent_id,omitempty"`
+	Title         string          `json:"title"`
+	CreatedAt     time.Time       `json:"created_at"`
+	UpdatedAt     time.Time       `json:"updated_at"`
+	MessageCount  int             `json:"message_count"`
 	// Active is retained by the transport contract. AgentChat has no singleton
 	// active session; Running is the exact scoped execution state.
 	Active  bool `json:"active"`
@@ -100,6 +104,7 @@ type HistoryPage struct {
 
 type HistoryQuery struct {
 	ProjectID string
+	Channel   session.Channel
 	Search    string
 	Offset    int
 	Limit     int

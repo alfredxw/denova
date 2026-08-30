@@ -8,6 +8,7 @@ import { rebaseJSONWithRecovery, rebaseTextWithRecovery } from '@/lib/autosave/r
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { ConfigManagerChat } from '@/components/Chat/ConfigManagerChat'
+import { ConfigManagerToggle } from '@/components/Chat/ConfigManagerToggle'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { EmptyState } from '@/components/common/EmptyState'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
@@ -1068,10 +1069,11 @@ function LoreSettingPanel({
                       <Trash2 data-icon="inline-start" />
                     </Button>
                   )}
-                  <Button type="button" variant={agentOpen ? 'secondary' : 'outline'} size="sm" aria-label={t('settingPanel.loreAgent.title')} aria-pressed={agentOpen} onClick={() => setAgentOpen((open) => !open)}>
-                    <Bot data-icon="inline-start" />
-                    <span className="hidden sm:inline">{t('settingPanel.loreAgent.title')}</span>
-                  </Button>
+                  <ConfigManagerToggle
+                    open={agentOpen}
+                    label={t('settingPanel.loreAgent.title')}
+                    onToggle={() => setAgentOpen((open) => !open)}
+                  />
                 </>
               )}
               className="bg-[var(--nova-surface-2)] text-[var(--nova-text)]"

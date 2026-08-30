@@ -26,8 +26,8 @@ Denova records only major user-visible features, important compatibility or data
 - Added a General Agent and a stable Project-ID-based workbench. Books and arbitrary local directories can run chats and open Files, terminals, Reader, and Lore in parallel. v0.3.3 Project data is copy-migrated automatically while retaining the source files.
 - 写作页创作 Agent 支持同一本书的多个会话并行运行，并新增可隐藏的快捷会话栏；切换会话不会中断后台任务。
 - The Writing Agent now runs multiple conversations in the same Book concurrently, with an optional quick-session rail; switching conversations no longer stops background work.
-- 配置管理不再运行独立 Agent；通用与 IDE Project Agent 通过 `/configuration` Skill 承担完整配置能力，各配置页面保留复用 AgentChat 的右侧管理面板，并与主 Agent 共用会话、历史和恢复状态。
-- Configuration no longer runs a standalone Agent. General and IDE Project Agents provide the complete workflow through `/configuration`; configuration pages retain a right-side manager that reuses AgentChat and shares the main Agent's sessions, history, and recovery state.
+- 配置管理不再运行独立 Agent；通用与 IDE Project Agent 通过 `/configuration` Skill 承担完整配置能力，各配置页面复用 AgentChat 的右侧管理面板、历史与恢复能力，同时按 Project 维护独立于普通 Agent 的配置会话列表。
+- Configuration no longer runs a standalone Agent. General and IDE Project Agents provide the complete workflow through `/configuration`; configuration pages reuse AgentChat's right-side manager, history, and recovery while keeping a separate configuration conversation list in each Project.
 - Agents 页面支持基于固定 General、IDE、Game 与 Image 运行时创建、配置和归档自定义 Agent；写作、通用对话、游戏故事/分支与图像生成可选择这些实例，已有历史继续绑定原 Agent。
 - The Agents page now creates, configures, and archives custom Agents backed by the fixed General, IDE, Game, and Image runtimes. Writing, General chats, Game stories/branches, and image generation can select these instances while existing history stays bound to its original Agent.
 - 写作、游戏与 Project Agent 会话支持运行中连续追加 Follow Up，刷新或重启后恢复任务，并按会话保存模型、思考强度与权限设置。
@@ -65,8 +65,8 @@ Denova records only major user-visible features, important compatibility or data
 
 ### Incompatible data changes / 用户数据不兼容变更
 
-- v0.3.3 的独立 Config Manager 会话和专属设置会原样保留，但不再参与运行、展示或自动合并；后续配置对话直接写入对应 Project Agent 的普通会话。
-- Standalone v0.3.3 Config Manager sessions and dedicated settings remain untouched but no longer participate in runtime behavior, appear in the UI, or merge automatically; future configuration conversations use the corresponding Project Agent's ordinary sessions.
+- v0.3.3 的独立 Config Manager 会话和专属设置会原样保留，但不再参与运行、展示或自动合并；后续配置对话写入对应 Project 的 Agent 会话存储，并显示在独立的配置会话列表中。
+- Standalone v0.3.3 Config Manager sessions and dedicated settings remain untouched but no longer participate in runtime behavior, appear in the UI, or merge automatically; future configuration conversations use the corresponding Project's Agent session storage and appear in a separate configuration list.
 - v0.3.3 的用户级全局 Automation 任务文件会保留，但不再展示、触发或执行；需要继续使用的任务须在对应 Project 下重新创建。
 - User-level global Automation task files from v0.3.3 are retained but are no longer displayed, triggered, or executed. Tasks that remain needed must be recreated under the relevant Project.
 - v0.3.3 中的 `enable_thinking`、`reasoning_effort`、`max_output_tokens`、`tool_result_retention_enabled` 和低层 Cleanup 参数不再生效；升级后需重新选择 `thinking_level` 与当前上下文选项，输出上限则改由模型能力决定。

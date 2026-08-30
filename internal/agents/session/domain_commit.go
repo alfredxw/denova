@@ -603,6 +603,7 @@ func (s *Session) replaceCanonicalStateLocked(recovered *Session) {
 		return
 	}
 	s.ID = recovered.ID
+	s.Channel = recovered.Channel
 	s.CreatedAt = recovered.CreatedAt
 	s.UpdatedAt = recovered.UpdatedAt
 	s.title = recovered.title

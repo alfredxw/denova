@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Bot, RefreshCw, Sparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { ConfigManagerChat } from '@/components/Chat/ConfigManagerChat'
+import { ConfigManagerToggle } from '@/components/Chat/ConfigManagerToggle'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { EmptyState } from '@/components/common/EmptyState'
 import { LoadingState } from '@/components/common/LoadingState'
@@ -620,6 +621,13 @@ export function SkillsView({ target, onClose, toolNavigationIntent }: SkillsView
             <RefreshCw data-icon="inline-start" className={loading ? 'animate-spin' : undefined} />
             {t('common.refresh')}
           </Button>
+          {agentAvailable && (
+            <ConfigManagerToggle
+              open={agentOpen}
+              label={t('skills.agent.button')}
+              onToggle={() => setAgentOpen((value) => !value)}
+            />
+          )}
         </>
       )}
     >
@@ -634,10 +642,7 @@ export function SkillsView({ target, onClose, toolNavigationIntent }: SkillsView
               snapshot={snapshot}
               selectedKey={selectedKey}
               loading={loading}
-              agentAvailable={agentAvailable}
-              agentOpen={agentOpen}
               mode={mode}
-              onToggleAgent={() => setAgentOpen((value) => !value)}
               onCreate={() => void openMode('create')}
               onInstall={() => void openMode('install')}
               onSelect={(key) => void selectSkill(key)}

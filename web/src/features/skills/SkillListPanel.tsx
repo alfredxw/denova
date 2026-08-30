@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Bot, ChevronDown, Download, FileText, Plus, Search, Tags } from 'lucide-react'
+import { ChevronDown, Download, FileText, Plus, Search, Tags } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { EmptyState } from '@/components/common/EmptyState'
 import { Button } from '@/components/ui/button'
@@ -8,7 +8,6 @@ import { EmbeddedSidebar } from '@/components/navigation/embedded-sidebar'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   SidebarContent,
-  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
@@ -30,10 +29,7 @@ interface SkillListPanelProps {
   snapshot: SkillSnapshot
   selectedKey: string | null
   loading: boolean
-  agentAvailable: boolean
-  agentOpen: boolean
   mode: SkillsMode
-  onToggleAgent: () => void
   onCreate: () => void
   onInstall: () => void
   onSelect: (key: string) => void
@@ -44,10 +40,7 @@ export function SkillListPanel({
   snapshot,
   selectedKey,
   loading,
-  agentAvailable,
-  agentOpen,
   mode,
-  onToggleAgent,
   onCreate,
   onInstall,
   onSelect,
@@ -221,23 +214,6 @@ export function SkillListPanel({
           })}
         </SidebarContent>
 
-        {agentAvailable && (
-          <>
-            <SidebarSeparator />
-            <SidebarFooter>
-              <Button
-                type="button"
-                size="sm"
-                variant={agentOpen ? 'secondary' : 'outline'}
-                aria-pressed={agentOpen}
-                onClick={onToggleAgent}
-              >
-                <Bot data-icon="inline-start" />
-                {t('skills.agent.button')}
-              </Button>
-            </SidebarFooter>
-          </>
-        )}
     </EmbeddedSidebar>
   )
 }

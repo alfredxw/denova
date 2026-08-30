@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	sessionProjectionVersion      = 17
+	sessionProjectionVersion      = 18
 	sessionRecentTransactionLimit = 200
 	sessionRecentCommitLimit      = 200
 	sessionHistoryAnchorEvery     = 256
@@ -67,6 +67,7 @@ type sessionJournalProjection struct {
 	Version               int                        `json:"version"`
 	SessionID             string                     `json:"session_id"`
 	Generation            string                     `json:"generation"`
+	Channel               Channel                    `json:"channel"`
 	Title                 string                     `json:"title"`
 	CreatedAt             time.Time                  `json:"created_at"`
 	UpdatedAt             time.Time                  `json:"updated_at"`
@@ -108,7 +109,7 @@ func (projection *sessionJournalProjection) Reset() error {
 	expectedGeneration := projection.expectedGeneration
 	*projection = sessionJournalProjection{
 		Version: sessionProjectionVersion, SessionID: expectedID, Generation: expectedGeneration,
-		Title: defaultSessionTitle, expectedID: expectedID, expectedGeneration: expectedGeneration,
+		Channel: ChannelAgent, Title: defaultSessionTitle, expectedID: expectedID, expectedGeneration: expectedGeneration,
 		assistantDigests: make(map[string]hash.Hash), assistantTargets: make(map[string]string), assistantSegments: make(map[string]hash.Hash),
 	}
 	return nil
@@ -127,6 +128,11 @@ func (projection *sessionJournalProjection) Restore(data json.RawMessage) error 
 	if strings.TrimSpace(restored.SessionID) != expectedID || strings.TrimSpace(restored.Generation) != expectedGeneration {
 		return fmt.Errorf("session projection identity mismatch")
 	}
+	channel, err := ParseChannel(string(restored.Channel))
+	if err != nil {
+		return fmt.Errorf("restore session channel: %w", err)
+	}
+	restored.Channel = channel
 	if err := validateRuntimeConfigState(restored.RuntimeConfig, restored.RuntimeConfigRevision, ""); err != nil {
 		return fmt.Errorf("restore session runtime config: %w", err)
 	}
@@ -292,6 +298,11 @@ func (projection *sessionJournalProjection) applyHeader(payload json.RawMessage)
 	}
 	projection.SessionID = header.ID
 	projection.Generation = generation
+	channel, err := ParseChannel(string(header.Channel))
+	if err != nil {
+		return fmt.Errorf("session header channel: %w", err)
+	}
+	projection.Channel = channel
 	projection.CreatedAt = header.CreatedAt
 	projection.UpdatedAt = header.UpdatedAt
 	if projection.UpdatedAt.IsZero() {

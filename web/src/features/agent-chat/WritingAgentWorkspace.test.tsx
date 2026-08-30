@@ -2,13 +2,12 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { TooltipProvider } from '@/components/ui/tooltip'
-import type { AgentPanelProps } from '@/components/Chat/AgentPanel'
 import {
   createAgentChatSession,
   getAgentChatProjects,
   type AgentChatProject,
 } from './api'
-import { WritingAgentWorkspace } from './WritingAgentWorkspace'
+import { WritingAgentWorkspace, type WritingAgentWorkspaceProps } from './WritingAgentWorkspace'
 
 vi.mock('./api', () => ({
   AGENT_CHAT_PROJECT_UPDATED_EVENT: 'nova:agent-chat-project-updated',
@@ -19,24 +18,34 @@ vi.mock('./api', () => ({
 }))
 
 vi.mock('./AgentChatConversationTab', () => ({
-  AgentChatConversationTab: ({ sessionId, active, host, onRunningChange, projectId }: {
+  AgentChatConversationTab: ({ sessionId, sessionChannel, draft, active, host, onRunningChange, onDraftCommitted, projectId }: {
     sessionId: string
+    sessionChannel: 'agent' | 'configuration'
+    draft?: boolean
     active: boolean
     projectId: string
     onRunningChange?: (projectId: string, sessionId: string, running: boolean) => void
+    onDraftCommitted?: (message: string) => void
     host?: {
       sessionRailVisible: boolean
       onSessionRailVisibleChange: (visible: boolean) => void
       onCreateSession: () => void | Promise<void>
     }
   }) => (
-    <div data-testid={`conversation:${sessionId}`}>
+    <div
+      data-testid={draft ? 'conversation:draft' : `conversation:${sessionId}`}
+      data-channel={sessionChannel}
+      data-draft={draft ? 'true' : 'false'}
+    >
       {active ? 'active' : 'hidden'}
       <button type="button" onClick={() => onRunningChange?.(projectId, sessionId, true)}>
         mark {sessionId} running
       </button>
       {active && host ? (
         <>
+          {draft ? (
+            <button type="button" onClick={() => onDraftCommitted?.('Configure this resource')}>commit draft</button>
+          ) : null}
           <button
             type="button"
             aria-pressed={host.sessionRailVisible}
@@ -63,6 +72,7 @@ function project(): AgentChatProject {
     sessions: [
       {
         id: 'session-a',
+        channel: 'agent',
         title: 'Running draft',
         created_at: '2026-08-26T10:00:00Z',
         updated_at: '2026-08-26T10:02:00Z',
@@ -72,6 +82,7 @@ function project(): AgentChatProject {
       },
       {
         id: 'session-b',
+        channel: 'agent',
         title: 'Character notes',
         created_at: '2026-08-26T09:00:00Z',
         updated_at: '2026-08-26T09:03:00Z',
@@ -83,7 +94,7 @@ function project(): AgentChatProject {
   }
 }
 
-function renderWorkspace(overrides: Partial<AgentPanelProps> = {}) {
+function renderWorkspace(overrides: Partial<WritingAgentWorkspaceProps> = {}) {
   const props = {
     projectId: 'book-a',
     workspace: '/books/a',
@@ -104,7 +115,7 @@ function renderWorkspace(overrides: Partial<AgentPanelProps> = {}) {
     onStyleSceneRemove: vi.fn(),
     onTextSelectionRemove: vi.fn(),
     ...overrides,
-  } as unknown as AgentPanelProps
+  } as unknown as WritingAgentWorkspaceProps
 
   return render(
     <TooltipProvider delayDuration={0}>
@@ -137,6 +148,7 @@ describe('WritingAgentWorkspace', () => {
     const user = userEvent.setup()
     vi.mocked(createAgentChatSession).mockResolvedValue({
       id: 'session-c',
+      channel: 'agent',
       title: 'New branch',
       created_at: '2026-08-26T11:00:00Z',
       updated_at: '2026-08-26T11:00:00Z',
@@ -148,7 +160,7 @@ describe('WritingAgentWorkspace', () => {
 
     await user.click(await screen.findByRole('button', { name: '新建会话' }))
 
-    await waitFor(() => expect(createAgentChatSession).toHaveBeenCalledWith('book-a', '', undefined))
+    await waitFor(() => expect(createAgentChatSession).toHaveBeenCalledWith('book-a', '', undefined, 'agent'))
     expect(screen.getByTestId('conversation:session-a')).toHaveTextContent('hidden')
     expect(screen.getByTestId('conversation:session-c')).toHaveTextContent('active')
   })
@@ -191,5 +203,31 @@ describe('WritingAgentWorkspace', () => {
 
     expect(await screen.findByText('暂无会话')).toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: '新建会话' }).length).toBeGreaterThan(0)
+  })
+
+  it('keeps a configuration conversation local until its first submission', async () => {
+    const user = userEvent.setup()
+    const empty = project()
+    empty.total = 0
+    empty.sessions = []
+    vi.mocked(getAgentChatProjects).mockResolvedValue([empty])
+
+    renderWorkspace({
+      sessionChannel: 'configuration',
+      sessionCreation: 'on-first-message',
+      sessionRailVisible: false,
+    })
+
+    const draft = await screen.findByTestId('conversation:draft')
+    expect(draft).toHaveAttribute('data-channel', 'configuration')
+    expect(getAgentChatProjects).toHaveBeenCalledWith({ channel: 'configuration' })
+    expect(createAgentChatSession).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: 'commit draft' }))
+
+    await waitFor(() => expect(screen.queryByTestId('conversation:draft')).not.toBeInTheDocument())
+    expect(createAgentChatSession).not.toHaveBeenCalled()
+    expect(window.localStorage.getItem('nova.writingAgent.activeSession.v1:book-a')).toBeNull()
+    expect(window.localStorage.getItem('nova.writingAgent.activeSession.v1:configuration:book-a')).toBeTruthy()
   })
 })

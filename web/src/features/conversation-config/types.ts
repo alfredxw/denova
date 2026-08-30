@@ -8,6 +8,7 @@ export interface ConversationConfigBinding {
   mode: ConversationConfigMode
   project_id?: string
   session_id?: string
+  channel?: 'agent' | 'configuration'
   story_id?: string
   branch_id?: string
   origin?: string

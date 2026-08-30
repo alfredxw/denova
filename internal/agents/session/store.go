@@ -55,18 +55,25 @@ func (s *Store) GetOrCreate(id string) (*Session, error) {
 
 // GetOrCreateWithRuntimeConfig creates a new session with an atomic initial
 // snapshot, or durably initializes a legacy session that predates this field.
-func (s *Store) GetOrCreateWithRuntimeConfig(id string, seed conversationconfig.Config) (*Session, error) {
+func (s *Store) GetOrCreateWithRuntimeConfig(id string, seed conversationconfig.Config, channel Channel) (*Session, error) {
 	if err := validateSessionID(id); err != nil {
 		return nil, err
 	}
 	if err := conversationconfig.ValidateShape(seed, seed.AgentKind); err != nil {
 		return nil, err
 	}
+	resolvedChannel, err := ParseChannel(string(channel))
+	if err != nil {
+		return nil, err
+	}
 	s.mu.Lock()
-	sess, err := s.getOrCreateLockedWithRuntimeConfig(id, &seed)
+	sess, err := s.getOrCreateLockedWithRuntimeConfig(id, &seed, resolvedChannel)
 	s.mu.Unlock()
 	if err != nil {
 		return nil, err
+	}
+	if sess.Channel != resolvedChannel {
+		return nil, fmt.Errorf("session channel mismatch: have=%q want=%q", sess.Channel, resolvedChannel)
 	}
 	if _, err := sess.EnsureRuntimeConfig(seed); err != nil {
 		return nil, err
@@ -96,19 +103,23 @@ func (s *Store) Exists(id string) bool {
 
 // Create 创建一个新的会话。
 func (s *Store) Create(title string) (*Session, error) {
-	return s.create(title, nil)
+	return s.create(title, nil, ChannelAgent)
 }
 
 // CreateWithRuntimeConfig persists the initial runtime snapshot in the
 // immutable header, so a newly returned session is never temporarily global.
-func (s *Store) CreateWithRuntimeConfig(title string, seed conversationconfig.Config) (*Session, error) {
+func (s *Store) CreateWithRuntimeConfig(title string, seed conversationconfig.Config, channel Channel) (*Session, error) {
 	if err := conversationconfig.ValidateShape(seed, seed.AgentKind); err != nil {
 		return nil, err
 	}
-	return s.create(title, &seed)
+	resolvedChannel, err := ParseChannel(string(channel))
+	if err != nil {
+		return nil, err
+	}
+	return s.create(title, &seed, resolvedChannel)
 }
 
-func (s *Store) create(title string, seed *conversationconfig.Config) (*Session, error) {
+func (s *Store) create(title string, seed *conversationconfig.Config, channel Channel) (*Session, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -118,7 +129,7 @@ func (s *Store) create(title string, seed *conversationconfig.Config) (*Session,
 		if _, err := os.Stat(filePath); err == nil {
 			continue
 		}
-		sess, err := createSessionWithRuntimeConfig(id, filePath, title, seed)
+		sess, err := createSessionWithRuntimeConfig(id, filePath, title, seed, channel)
 		if err != nil {
 			return nil, err
 		}
@@ -388,10 +399,10 @@ func (s *Store) activeIDUnlocked() (string, error) {
 }
 
 func (s *Store) getOrCreateLocked(id string) (*Session, error) {
-	return s.getOrCreateLockedWithRuntimeConfig(id, nil)
+	return s.getOrCreateLockedWithRuntimeConfig(id, nil, ChannelAgent)
 }
 
-func (s *Store) getOrCreateLockedWithRuntimeConfig(id string, seed *conversationconfig.Config) (*Session, error) {
+func (s *Store) getOrCreateLockedWithRuntimeConfig(id string, seed *conversationconfig.Config, channel Channel) (*Session, error) {
 	if sess, ok := s.cache[id]; ok {
 		s.touchSessionLocked(id)
 		return sess, nil
@@ -403,7 +414,7 @@ func (s *Store) getOrCreateLockedWithRuntimeConfig(id string, seed *conversation
 		err  error
 	)
 	if _, statErr := os.Stat(filePath); os.IsNotExist(statErr) {
-		sess, err = createSessionWithRuntimeConfig(id, filePath, defaultSessionTitle, seed)
+		sess, err = createSessionWithRuntimeConfig(id, filePath, defaultSessionTitle, seed, channel)
 		if errors.Is(err, os.ErrExist) {
 			// Another Store/process won deterministic session creation after our
 			// stat. Load its canonical header; EnsureRuntimeConfig below will

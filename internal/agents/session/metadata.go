@@ -79,7 +79,7 @@ func (s *Store) discardMissingMetadataLocked(visible map[string]struct{}) {
 
 func (s *Session) metadataLocked(activeID string) SessionMeta {
 	meta := SessionMeta{
-		ID: s.ID, Title: s.titleLocked(), CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt,
+		ID: s.ID, Channel: s.Channel, Title: s.titleLocked(), CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt,
 		Active: s.ID == activeID, MessageCount: s.visibleMessageCountLocked(),
 	}
 	if snapshot, ok := s.runtimeConfigLocked(); ok {
@@ -126,7 +126,7 @@ func loadSessionMetadata(filePath, activeID string) (SessionMeta, error) {
 		updatedAt = createdAt
 	}
 	meta := SessionMeta{
-		ID: id, Title: projection.Title, CreatedAt: createdAt, UpdatedAt: updatedAt,
+		ID: id, Channel: projection.Channel, Title: projection.Title, CreatedAt: createdAt, UpdatedAt: updatedAt,
 		Active: id == activeID, MessageCount: projection.VisibleMessageCount,
 	}
 	if projection.RuntimeConfig != nil && projection.RuntimeConfigRevision > 0 {

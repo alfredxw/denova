@@ -3,6 +3,7 @@ import { Bot, Compass, Database, Dice5, RotateCcw, ScrollText, SlidersHorizontal
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { ConfigManagerChat } from '@/components/Chat/ConfigManagerChat'
+import { ConfigManagerToggle } from '@/components/Chat/ConfigManagerToggle'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { AutosaveStatusIndicator } from '@/components/forms/autosave-status'
 import type { AutosaveStatus } from '@/components/forms/autosave-status'
@@ -611,10 +612,8 @@ export function PresetSettingsPanel({
       sections={presetDirectorySections}
       activeId={activeDirectoryId}
       activeSectionId={presetResourceKind}
-      agentOpen={agentOpen}
       saving={busy}
       onSelect={handleSelectDirectoryEntry}
-      onToggleAgent={() => setAgentOpen((open) => !open)}
       onReorderItems={(sectionId, orderedItemIds) => {
         const kind = sectionId as PresetResourceKind
         presetDirectoryOrder.reorderItems(kind, orderedItemIds, directoryItemIdsForKind(kind))
@@ -732,10 +731,11 @@ export function PresetSettingsPanel({
                       <Trash2 data-icon="inline-start" />
                     </Button>
                   ) : null}
-                  <Button type="button" variant={agentOpen ? 'secondary' : 'outline'} size="sm" aria-label={t('settingPanel.tellerAgent.title')} aria-pressed={agentOpen} onClick={() => setAgentOpen((open) => !open)}>
-                    <Bot data-icon="inline-start" />
-                    <span className="preset-action-label">{t('settingPanel.tellerAgent.title')}</span>
-                  </Button>
+                  <ConfigManagerToggle
+                    open={agentOpen}
+                    label={t('settingPanel.tellerAgent.title')}
+                    onToggle={() => setAgentOpen((open) => !open)}
+                  />
                 </>
               )}
               className="text-[var(--nova-text)]"

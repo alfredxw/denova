@@ -80,17 +80,37 @@ func EnsureSession(sess *session.Session, runtime *config.Config, agentKind stri
 
 // GetOrCreateSession resolves and durably initializes one conversation.
 func GetOrCreateSession(store *session.Store, sessionID string, runtime *config.Config, agentKind string) (*session.Session, conversationconfig.Snapshot, error) {
-	return resolveSession(store, sessionID, runtime, agentKind, true)
+	return GetOrCreateSessionWithChannel(store, sessionID, runtime, agentKind, session.ChannelAgent)
+}
+
+// GetOrCreateSessionWithChannel persists list classification only when the
+// caller materializes a new conversation. Existing Sessions retain their
+// immutable header value.
+func GetOrCreateSessionWithChannel(
+	store *session.Store,
+	sessionID string,
+	runtime *config.Config,
+	agentKind string,
+	channel session.Channel,
+) (*session.Session, conversationconfig.Snapshot, error) {
+	return resolveSession(store, sessionID, runtime, agentKind, channel, true)
 }
 
 // PreviewSession resolves what a new conversation would inherit without
 // persisting an empty draft.
 func PreviewSession(store *session.Store, sessionID string, runtime *config.Config, agentKind string) (conversationconfig.Snapshot, error) {
-	_, snapshot, err := resolveSession(store, sessionID, runtime, agentKind, false)
+	_, snapshot, err := resolveSession(store, sessionID, runtime, agentKind, session.ChannelAgent, false)
 	return snapshot, err
 }
 
-func resolveSession(store *session.Store, sessionID string, runtime *config.Config, agentKind string, create bool) (*session.Session, conversationconfig.Snapshot, error) {
+func resolveSession(
+	store *session.Store,
+	sessionID string,
+	runtime *config.Config,
+	agentKind string,
+	channel session.Channel,
+	create bool,
+) (*session.Session, conversationconfig.Snapshot, error) {
 	if store == nil {
 		return nil, conversationconfig.Snapshot{}, ErrSessionStoreUnavailable
 	}
@@ -109,7 +129,7 @@ func resolveSession(store *session.Store, sessionID string, runtime *config.Conf
 	if !create {
 		return nil, conversationconfig.Snapshot{Config: seed}, nil
 	}
-	sess, err := store.GetOrCreateWithRuntimeConfig(sessionID, seed)
+	sess, err := store.GetOrCreateWithRuntimeConfig(sessionID, seed, channel)
 	if err != nil {
 		return nil, conversationconfig.Snapshot{}, err
 	}

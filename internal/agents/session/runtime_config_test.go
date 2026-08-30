@@ -22,7 +22,7 @@ func TestRuntimeConfigPersistsWithCASAndMetadataProjection(t *testing.T) {
 		t.Fatal(err)
 	}
 	seed := testRuntimeConfig(config.AgentKindIDE)
-	sess, err := store.CreateWithRuntimeConfig("Configured conversation", seed)
+	sess, err := store.CreateWithRuntimeConfig("Configured conversation", seed, ChannelAgent)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +123,7 @@ func TestRuntimeConfigRefreshesAcrossOpenSessionHandles(t *testing.T) {
 		t.Fatal(err)
 	}
 	seed := testRuntimeConfig(config.AgentKindIDE)
-	first, err := firstStore.CreateWithRuntimeConfig("Shared conversation", seed)
+	first, err := firstStore.CreateWithRuntimeConfig("Shared conversation", seed, ChannelAgent)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -57,7 +57,7 @@ func (service *Service) ReorderProjects(ids []string) error {
 	return service.registry.Reorder(ids)
 }
 
-func (service *Service) Projects() []Project {
+func (service *Service) Projects(channel session.Channel) []Project {
 	if service == nil || service.registry == nil {
 		return nil
 	}
@@ -72,6 +72,9 @@ func (service *Service) Projects() []Project {
 		return []Project{}
 	}
 	runningBindings := service.runningBindingKeys()
+	if channel == "" {
+		channel = session.ChannelAgent
+	}
 	projects := make([]Project, 0, len(records))
 	for _, record := range records {
 		if record.Type == projectdomain.TypeHarness && !service.harnessProjectsEnabled() {
@@ -95,6 +98,7 @@ func (service *Service) Projects() []Project {
 			projects = append(projects, project)
 			continue
 		}
+		metas = sessionsInChannel(metas, channel)
 		project.Total = len(metas)
 		metas = visibleProjectSessions(metas, record.ID, runningBindings)
 		project.Sessions = make([]Session, 0, len(metas))
@@ -112,6 +116,16 @@ func (service *Service) Projects() []Project {
 		len(projects), totalSessions, time.Since(startedAt),
 	))
 	return projects
+}
+
+func sessionsInChannel(metas []session.SessionMeta, channel session.Channel) []session.SessionMeta {
+	filtered := make([]session.SessionMeta, 0, len(metas))
+	for _, meta := range metas {
+		if meta.Channel == channel {
+			filtered = append(filtered, meta)
+		}
+	}
+	return filtered
 }
 
 func visibleProjectSessions(metas []session.SessionMeta, projectID string, runningBindings map[string]struct{}) []session.SessionMeta {
@@ -138,7 +152,7 @@ func sessionFromMeta(meta session.SessionMeta, projectID string, runningBindings
 		customAgentID = meta.RuntimeConfig.CustomAgentID
 	}
 	return Session{
-		ID: meta.ID, Title: meta.Title, CreatedAt: meta.CreatedAt, UpdatedAt: meta.UpdatedAt,
+		ID: meta.ID, Channel: meta.Channel, Title: meta.Title, CreatedAt: meta.CreatedAt, UpdatedAt: meta.UpdatedAt,
 		MessageCount: meta.MessageCount, Running: sessionRunning(projectID, meta.ID, runningBindings), CustomAgentID: customAgentID,
 	}
 }
@@ -151,6 +165,10 @@ func (service *Service) History(query HistoryQuery) HistoryPage {
 	startedAt := time.Now()
 	normalizedQuery := strings.ToLower(strings.TrimSpace(query.Search))
 	projectID := strings.TrimSpace(query.ProjectID)
+	channel := query.Channel
+	if channel == "" {
+		channel = session.ChannelAgent
+	}
 	runningBindings := service.runningBindingKeys()
 	items := make([]HistoryItem, 0)
 	records, _ := service.registry.List(false)
@@ -172,6 +190,9 @@ func (service *Service) History(query HistoryQuery) HistoryPage {
 		}
 		projectSearchText := strings.ToLower(record.Name + " " + record.WorkspacePath)
 		for _, meta := range metas {
+			if meta.Channel != channel {
+				continue
+			}
 			if normalizedQuery != "" {
 				sessionSearchText := strings.ToLower(meta.Title + " " + meta.ID)
 				if !strings.Contains(sessionSearchText, normalizedQuery) && !strings.Contains(projectSearchText, normalizedQuery) {
@@ -234,7 +255,11 @@ func (service *Service) readProjectSessions(projectID, sessionsDir string) ([]se
 	return visible, nil
 }
 
-func (service *Service) CreateSession(projectID, title string, customAgentID *string) (Session, error) {
+func (service *Service) CreateSession(projectID, title string, customAgentID *string, channel session.Channel) (Session, error) {
+	channel, err := session.ParseChannel(string(channel))
+	if err != nil {
+		return Session{}, err
+	}
 	binding, err := service.ResolveBinding(Binding{ProjectID: projectID, SessionID: "draft"})
 	if err != nil {
 		return Session{}, err
@@ -256,16 +281,16 @@ func (service *Service) CreateSession(projectID, title string, customAgentID *st
 	if err != nil {
 		return Session{}, err
 	}
-	sess, err := project.store.CreateWithRuntimeConfig(title, seed)
+	sess, err := project.store.CreateWithRuntimeConfig(title, seed, channel)
 	if err != nil {
 		return Session{}, err
 	}
 	slog.InfoContext(context.Background(), fmt.Sprintf(
-		"[app/agentchat] created project session project_id=%s workspace=%q session_id=%s custom_agent_id=%q",
-		binding.ProjectID, binding.Workspace, sess.ID, seed.CustomAgentID,
+		"[app/agentchat] created project session project_id=%s workspace=%q session_id=%s channel=%s custom_agent_id=%q",
+		binding.ProjectID, binding.Workspace, sess.ID, channel, seed.CustomAgentID,
 	))
 	return Session{
-		ID: sess.ID, Title: sess.Title(), CreatedAt: sess.CreatedAt, UpdatedAt: sess.UpdatedAt,
+		ID: sess.ID, Channel: sess.Channel, Title: sess.Title(), CreatedAt: sess.CreatedAt, UpdatedAt: sess.UpdatedAt,
 		MessageCount: sess.MessageCount(), CustomAgentID: seed.CustomAgentID,
 	}, nil
 }

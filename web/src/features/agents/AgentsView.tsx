@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Bot } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { ConfigManagerChat } from '@/components/Chat/ConfigManagerChat'
+import { ConfigManagerToggle } from '@/components/Chat/ConfigManagerToggle'
 import { AutosaveStatusIndicator } from '@/components/forms/autosave-status'
 import { SettingsFieldRow } from '@/components/forms/settings-field-row'
 import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
@@ -305,16 +306,11 @@ export function AgentsView({ target, onClose, toolNavigationIntent }: { target: 
             onRetry={() => saveNow().catch(() => undefined)}
           />
           {agentAvailable && (
-            <Button
-              type="button"
-              onClick={() => setAgentChatOpen((value) => !value)}
-              variant={agentChatOpen ? 'secondary' : 'outline'}
-              size="sm"
-              aria-pressed={agentChatOpen}
-            >
-              <Bot data-icon="inline-start" />
-              {t('agents.configAgent.button')}
-            </Button>
+            <ConfigManagerToggle
+              open={agentChatOpen}
+              label={t('agents.configAgent.button')}
+              onToggle={() => setAgentChatOpen((value) => !value)}
+            />
           )}
         </>
       )}

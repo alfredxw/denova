@@ -2,7 +2,7 @@ import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, us
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { useEffect, useMemo, useState } from 'react'
-import { Bot, ChevronDown, ChevronsDownUp, ChevronsUpDown, FileText, Plus, Search } from 'lucide-react'
+import { ChevronDown, ChevronsDownUp, ChevronsUpDown, FileText, Plus, Search } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { ResourceDirectoryItem, ResourceDirectorySection } from '@/components/resource-directory/types'
 import { Badge } from '@/components/ui/badge'
@@ -12,7 +12,6 @@ import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empt
 import { EmbeddedSidebar } from '@/components/navigation/embedded-sidebar'
 import {
   SidebarContent,
-  SidebarFooter,
   SidebarGroup,
   SidebarGroupAction,
   SidebarGroupContent,
@@ -33,10 +32,8 @@ interface PresetDirectorySidebarProps {
   sections: ResourceDirectorySection[]
   activeId: string | null
   activeSectionId: PresetResourceKind
-  agentOpen: boolean
   saving?: boolean
   onSelect: (id: string) => void
-  onToggleAgent: () => void
   onReorderItems: (sectionId: string, orderedItemIds: string[]) => void
 }
 
@@ -59,10 +56,8 @@ export function PresetDirectorySidebar({
   sections,
   activeId,
   activeSectionId,
-  agentOpen,
   saving = false,
   onSelect,
-  onToggleAgent,
   onReorderItems,
 }: PresetDirectorySidebarProps) {
   const { t } = useTranslation()
@@ -274,19 +269,6 @@ export function PresetDirectorySidebar({
           )}
         </SidebarContent>
 
-        <SidebarSeparator />
-        <SidebarFooter>
-          <Button
-            type="button"
-            size="sm"
-            variant={agentOpen ? 'secondary' : 'outline'}
-            aria-pressed={agentOpen}
-            onClick={onToggleAgent}
-          >
-            <Bot data-icon="inline-start" />
-            {t('settingPanel.tellerAgent.title')}
-          </Button>
-        </SidebarFooter>
     </EmbeddedSidebar>
   )
 }

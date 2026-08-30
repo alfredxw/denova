@@ -198,16 +198,19 @@ func (service *Service) runningBindingKeys() map[string]struct{} {
 // Activity returns only the stable identities of running conversations. It is
 // intentionally independent from Project/session metadata so detached UI tabs
 // can observe completion without repeatedly scanning every journal.
-func (service *Service) Activity() []Binding {
-	keys := service.runningBindingKeys()
-	bindings := make([]Binding, 0, len(keys))
-	for key := range keys {
-		projectID, sessionID, ok := strings.Cut(key, "\x00")
-		if !ok {
+func (service *Service) Activity(channel session.Channel) []Binding {
+	if channel == "" {
+		channel = session.ChannelAgent
+	}
+	service.mu.RLock()
+	bindings := make([]Binding, 0, len(service.active))
+	for _, active := range service.active {
+		if active == nil || active.task == nil || active.task.Finished() || creationChannel(active.binding) != channel {
 			continue
 		}
-		bindings = append(bindings, Binding{ProjectID: projectID, SessionID: sessionID})
+		bindings = append(bindings, active.binding)
 	}
+	service.mu.RUnlock()
 	sort.Slice(bindings, func(i, j int) bool {
 		if bindings[i].ProjectID != bindings[j].ProjectID {
 			return bindings[i].ProjectID < bindings[j].ProjectID

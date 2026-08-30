@@ -179,6 +179,7 @@ export function project(path: string, name: string, sessionId: string, title: st
     sessions: [
       {
         id: sessionId,
+        channel: 'agent',
         title,
         active: false,
         running: false,

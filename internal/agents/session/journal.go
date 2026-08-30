@@ -47,6 +47,7 @@ type sessionHeader struct {
 	Type                  string                     `json:"type"`
 	Version               int                        `json:"version,omitempty"`
 	ID                    string                     `json:"id"`
+	Channel               Channel                    `json:"channel,omitempty"`
 	IncarnationID         string                     `json:"incarnation_id,omitempty"`
 	Title                 string                     `json:"title,omitempty"`
 	CreatedAt             time.Time                  `json:"created_at"`

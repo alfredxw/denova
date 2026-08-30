@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Bot, Clock3, FileText, Plus } from 'lucide-react'
+import { Clock3, FileText, Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { EmptyState } from '@/components/common/EmptyState'
 import { ResourceDirectory } from '@/components/resource-directory/ResourceDirectory'
@@ -15,11 +15,9 @@ interface AutomationTaskCatalogProps {
   projects: AutomationProjectOption[]
   activeRuns: AutomationActiveRun[]
   activeId: string
-  agentActive: boolean
   onSelect: (task: AutomationTask) => void
   onCreate: () => void
   onCreateForProject: (project: AutomationProjectOption) => void
-  onOpenAgent: () => void
 }
 
 /** Domain adapter that maps automation targets and run state onto the shared resource directory. */
@@ -28,11 +26,9 @@ export function AutomationTaskCatalog({
   projects,
   activeRuns,
   activeId,
-  agentActive,
   onSelect,
   onCreate,
   onCreateForProject,
-  onOpenAgent,
 }: AutomationTaskCatalogProps) {
   const { t } = useTranslation()
   const taskByKey = useMemo(() => new Map(tasks.map((task) => [automationTaskKey(task), task])), [tasks])
@@ -81,23 +77,13 @@ export function AutomationTaskCatalog({
         }}
         showSearch={false}
         headerContent={(
-          <div className="grid grid-cols-2 gap-2">
-            <Button
-              type="button"
-              size="sm"
-              variant={agentActive ? 'secondary' : 'outline'}
-              onClick={onOpenAgent}
-              className="nova-nav-item border-[var(--nova-border)]"
-            >
-              <Bot data-icon="inline-start" />
-              <span className="min-w-0 truncate">{t('automations.view.agent')}</span>
-            </Button>
+          <div>
             <Button
               type="button"
               size="sm"
               variant="secondary"
               onClick={onCreate}
-              className="nova-nav-item border border-[var(--nova-border)] bg-[var(--nova-active)]"
+              className="nova-nav-item w-full border border-[var(--nova-border)] bg-[var(--nova-active)]"
             >
               <Plus data-icon="inline-start" />
               <span className="min-w-0 truncate">{t('automations.newTask')}</span>

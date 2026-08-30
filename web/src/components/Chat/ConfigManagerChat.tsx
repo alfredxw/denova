@@ -31,7 +31,7 @@ const EMPTY_LABELS: Record<string, string> = {}
 
 /**
  * Keeps Configuration Manager as a visible page surface while every turn uses the
- * ordinary Project Agent session, transport, history, recovery, and settings.
+ * same Project Agent runtime, transport, history, recovery, and settings.
  */
 export function ConfigManagerChat({
   projectId,
@@ -50,6 +50,7 @@ export function ConfigManagerChat({
   const [project, setProject] = useState<AgentChatProject | null>(null)
   const [loading, setLoading] = useState(Boolean(projectId.trim()))
   const [error, setError] = useState('')
+  const [sessionRailVisible, setSessionRailVisible] = useState(false)
   const [acceptedInitialInstructionKey, setAcceptedInitialInstructionKey] = useState('')
   const composerSettings = usePersistedUserSettings({
     workspace: project?.path || '',
@@ -57,7 +58,7 @@ export function ConfigManagerChat({
   })
 
   const fetchProject = useCallback(async (): Promise<AgentChatProject> => {
-    const projects = await getAgentChatProjects()
+    const projects = await getAgentChatProjects({ channel: 'configuration' })
     const match = projects.find((candidate) => candidate.id === projectId)
     if (!match) throw new Error(`Project Agent is unavailable: ${projectId}`)
     return match
@@ -81,6 +82,7 @@ export function ConfigManagerChat({
   useEffect(() => {
     let cancelled = false
     setAcceptedInitialInstructionKey('')
+    setSessionRailVisible(false)
     setProject(null)
     setError('')
     setLoading(Boolean(projectId.trim()))
@@ -149,6 +151,8 @@ export function ConfigManagerChat({
       <WritingAgentWorkspace
         projectId={project.id}
         projectType={project.type}
+        sessionChannel="configuration"
+        sessionCreation="on-first-message"
         workspace={project.path}
         composerSettings={composerSettings}
         tellers={EMPTY_TELLERS}
@@ -165,7 +169,8 @@ export function ConfigManagerChat({
         onLoreReferenceRemove={noop}
         onStyleSceneRemove={noop}
         onTextSelectionRemove={noop}
-        sessionRailVisible={false}
+        sessionRailVisible={sessionRailVisible}
+        onSessionRailVisibleChange={setSessionRailVisible}
         pendingAction={pendingAction}
         onPendingActionConsumed={consumePendingAction}
         messageTransform={messageTransform}
