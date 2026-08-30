@@ -1070,12 +1070,12 @@ func TestAgentRuntimeFollowUpQueuesAndContinuesSamePublicRun(t *testing.T) {
 	}
 	receipt, err := runtime.SubmitCommand(ctx, CommandRequest{
 		Kind: CommandFollowUp, CommandID: "follow-command", OperationID: operation.Receipt().OperationID,
-		Request: agentchatRequest("follow-command", "second request"), Options: options, Emit: emit,
+		Request: agentchatRequest("", "second request"), Options: options, Emit: emit,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if receipt.OperationID != operation.Receipt().OperationID {
+	if receipt.CommandID != "follow-command" || receipt.OperationID != operation.Receipt().OperationID {
 		t.Fatalf("follow-up receipt=%#v, want same public Run", receipt)
 	}
 	close(model.release)
@@ -1089,6 +1089,9 @@ func TestAgentRuntimeFollowUpQueuesAndContinuesSamePublicRun(t *testing.T) {
 	if len(restored) != 1 || restored[0].Kind != CommandFollowUp || restored[0].CommandID != "follow-command" ||
 		restored[0].Request.CommandID != "follow-command" || restored[0].Request.Message != "second request" {
 		t.Fatalf("follow-up cycle restoration=%#v", restored)
+	}
+	if restored[0].Emit == nil {
+		t.Fatal("follow-up cycle restoration lost its event projection callback")
 	}
 	messages := sess.GetMessages()
 	if len(messages) != 4 || messages[0].Content != "first request" || messages[1].Content != "first answer" ||
@@ -1179,6 +1182,13 @@ func TestAgentRuntimeCancelQueuedRemovesAcceptedFollowUp(t *testing.T) {
 	}
 	if cancelled.CommandID != "cancel-queued-control" || cancelled.OperationID != operation.Receipt().OperationID {
 		t.Fatalf("cancel receipt = %#v", cancelled)
+	}
+	_, err = runtime.SubmitCommand(ctx, CommandRequest{
+		Kind: CommandCancelQueued, CommandID: "cancel-queued-again", OperationID: operation.Receipt().OperationID,
+		TargetCommandID: queued.CommandID, Reason: "already removed", Options: options,
+	})
+	if !errors.Is(err, agentrun.ErrQueueConflict) {
+		t.Fatalf("second queue cancellation error = %v, want queue conflict", err)
 	}
 	close(model.release)
 	outcome := operation.Wait(ctx)

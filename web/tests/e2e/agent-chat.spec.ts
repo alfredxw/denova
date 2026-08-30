@@ -7,6 +7,8 @@ import { getModelStatus, releaseDelayedRequest } from '../support/model'
 
 const sessionADelayMarker = 'E2E_SESSION_A_DELAY'
 const sessionBDelayMarker = 'E2E_SESSION_B_DELAY'
+const queueReloadDelayMarker = 'E2E_QUEUE_RELOAD_DELAY'
+const queueReloadFollowUpMarker = 'E2E_QUEUE_RELOAD_FOLLOW_UP'
 
 test('runs General Agent tools in ordinary directories without crossing Project boundaries', async ({ page, request }) => {
   const alphaPath = path.resolve('test-results', 'runtime', 'general-project-alpha')
@@ -85,6 +87,42 @@ test('keeps concurrent sessions independent and delivers Follow Up to its exact 
       releaseDelayedRequest(request, sessionADelayMarker),
       releaseDelayedRequest(request, sessionBDelayMarker),
     ])
+  }
+})
+
+test('restores an accepted Follow Up after reload and delivers it exactly once', async ({ page, request }) => {
+  const projectPath = path.resolve('test-results', 'runtime', 'queue-reload-project')
+  await mkdir(projectPath, { recursive: true })
+  const project = await registerAgentChatProject(request, projectPath)
+  const session = await createAgentChatSession(request, project.id, 'Queue Reload Session')
+
+  await page.goto('/')
+  await openAgentChatWorkbench(page)
+  let composer = await openAgentChatSession(page, project.id, session.title)
+  try {
+    await composer.fill(`Keep this run active across reload. ${queueReloadDelayMarker}`)
+    await composer.press('Enter')
+    await expect.poll(async () => (await getModelStatus(request)).delayed_waiting_by_marker[queueReloadDelayMarker] ?? 0)
+      .toBe(1)
+
+    await composer.fill(`Deliver this after reload. ${queueReloadFollowUpMarker}`)
+    await composer.press('Enter')
+    let queue = page.getByRole('region', { name: '排队中的指令' }).filter({ visible: true })
+    await expect(queue).toContainText(queueReloadFollowUpMarker)
+
+    await page.reload()
+    await openAgentChatWorkbench(page)
+    composer = await openAgentChatSession(page, project.id, session.title)
+    await expect(composer).toBeVisible()
+    queue = page.getByRole('region', { name: '排队中的指令' }).filter({ visible: true })
+    await expect(queue).toContainText(queueReloadFollowUpMarker)
+
+    await releaseDelayedRequest(request, queueReloadDelayMarker)
+    await expect(page.getByText('Reloaded queue initial response completed.', { exact: true }).filter({ visible: true })).toHaveCount(1)
+    await expect(page.getByText('Reloaded queued follow-up completed exactly once.', { exact: true }).filter({ visible: true })).toHaveCount(1)
+    await expect.poll(async () => (await getModelStatus(request)).request_counts[queueReloadFollowUpMarker] ?? 0).toBe(1)
+  } finally {
+    await releaseDelayedRequest(request, queueReloadDelayMarker)
   }
 })
 

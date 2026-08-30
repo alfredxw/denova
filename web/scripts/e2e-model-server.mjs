@@ -9,9 +9,13 @@ const delayedReplyMarker = 'E2E_DELAYED_AGENT_REPLY'
 const sessionADelayMarker = 'E2E_SESSION_A_DELAY'
 const sessionBDelayMarker = 'E2E_SESSION_B_DELAY'
 const sessionAFollowUpMarker = 'E2E_SESSION_A_FOLLOW_UP'
+const queueReloadDelayMarker = 'E2E_QUEUE_RELOAD_DELAY'
+const queueReloadFollowUpMarker = 'E2E_QUEUE_RELOAD_FOLLOW_UP'
 const writingAttachmentMarker = 'E2E_WRITING_IMAGE_ATTACHMENT'
 const gameAttachmentMarker = 'E2E_GAME_IMAGE_ATTACHMENT'
 const gameRegenerationMarker = 'E2E_GAME_REGENERATE_FAILURE'
+const gameFollowUpDelayMarker = 'E2E_GAME_FOLLOW_UP_DELAY'
+const gameFollowUpMarker = 'E2E_GAME_FOLLOW_UP_STEER'
 const generalProjectAlphaMarker = 'E2E_GENERAL_PROJECT_ALPHA_WRITE'
 const generalProjectBetaMarker = 'E2E_GENERAL_PROJECT_BETA_WRITE'
 const externalReadAskMarker = 'E2E_EXTERNAL_READ_ASK'
@@ -24,6 +28,7 @@ const gameAttachmentName = 'game-e2e.png'
 const gameAttachmentNarrative = '图像中的蓝色信标亮起，旧车站的侧门随之打开。'
 const originalRegenerationNarrative = '第一次生成的钟声从旧车站深处传来。'
 const regeneratedNarrative = '重试后，月台广播给出了全新的撤离路线。'
+const gameFollowUpNarrative = '你立即改变方向，沿着新发现的脚印进入旧车站。'
 const externalSecret = 'DENOVA_E2E_EXTERNAL_SECRET'
 const externalSecretPath = path.resolve('test-results', 'runtime', 'e2e-external-secret.txt')
 const agentEditArguments = JSON.stringify({
@@ -42,6 +47,7 @@ const delayedResponses = new Map([
   [delayedReplyMarker, 'Recovered response completed exactly once.'],
   [sessionADelayMarker, 'Session A initial response completed.'],
   [sessionBDelayMarker, 'Session B response completed independently.'],
+  [queueReloadDelayMarker, 'Reloaded queue initial response completed.'],
 ])
 const delayedWaiters = new Map()
 const requestCounts = new Map()
@@ -254,6 +260,17 @@ const server = createServer(async (request, response) => {
     writeChatCompletion(response, chatCompletionFrames(regeneratedNarrative))
     return
   }
+  if (requestIncludesMarker(body, gameFollowUpMarker) && requestIncludesTool(body, 'submit_interactive_turn')) {
+    recordRequest(gameFollowUpMarker)
+    writeChatCompletion(response, chatCompletionFrames(gameFollowUpNarrative))
+    return
+  }
+  if (requestIncludesMarker(body, gameFollowUpDelayMarker) && requestIncludesTool(body, 'submit_interactive_turn')) {
+    recordRequest(gameFollowUpDelayMarker)
+    await waitForDelayedRelease(gameFollowUpDelayMarker)
+    writeChatCompletion(response, chatCompletionFrames())
+    return
+  }
   if (requestIncludesTool(body, 'submit_interactive_turn')) {
     writeChatCompletion(response, chatCompletionFrames())
     return
@@ -261,6 +278,11 @@ const server = createServer(async (request, response) => {
   if (requestIncludesMarker(body, sessionAFollowUpMarker)) {
     recordRequest(sessionAFollowUpMarker)
     writeChatCompletion(response, textCompletionFrames('Session A follow-up reached only Session A.'))
+    return
+  }
+  if (requestIncludesMarker(body, queueReloadFollowUpMarker)) {
+    recordRequest(queueReloadFollowUpMarker)
+    writeChatCompletion(response, textCompletionFrames('Reloaded queued follow-up completed exactly once.'))
     return
   }
   for (const [marker, content] of delayedResponses) {

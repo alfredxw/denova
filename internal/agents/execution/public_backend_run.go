@@ -82,7 +82,6 @@ func syncCanonicalTranscript(
 }
 
 func (backend *publicBackend) submit(ctx context.Context, spec CommandRequest) (agentrun.CommandReceipt, error) {
-	spec.Request = agentchat.CaptureChatRequestCallerInput(spec.Request)
 	spec.Options = spec.Options.Normalize(spec.Options.Workspace)
 	key, err := agentrun.AgentSessionKeyForOptions(spec.Options)
 	if err != nil {
@@ -95,6 +94,8 @@ func (backend *publicBackend) submit(ctx context.Context, spec CommandRequest) (
 	if err := agentrun.ValidateCommandID(commandID); err != nil {
 		return agentrun.CommandReceipt{}, err
 	}
+	spec.Request.CommandID = commandID
+	spec.Request = agentchat.CaptureChatRequestCallerInput(spec.Request)
 	backend.mu.RLock()
 	target := backend.runs[string(spec.OperationID)]
 	if target == nil {
@@ -134,7 +135,7 @@ func (backend *publicBackend) submit(ctx context.Context, spec CommandRequest) (
 			return agentrun.CommandReceipt{}, queuedErr
 		}
 		if !found {
-			return agentrun.CommandReceipt{}, agent.ErrNoActiveRun
+			return agentrun.CommandReceipt{}, agentrun.ErrQueueConflict
 		}
 		control := agent.QueueControlRequest{IdempotencyKey: commandID, Reason: spec.Reason}
 		var receipt agent.CommandReceipt
@@ -148,7 +149,6 @@ func (backend *publicBackend) submit(ctx context.Context, spec CommandRequest) (
 		}
 		return mapPublicCommandReceipt(receipt), nil
 	}
-	spec.Request.CommandID = commandID
 	registration := &publicCycleRegistration{request: spec.Request, options: spec.Options, emit: spec.Emit, commandKind: spec.Kind}
 	backend.rememberRegistration(key, commandID, registration)
 	turnKind, err := publicTurnKind(spec.Kind)

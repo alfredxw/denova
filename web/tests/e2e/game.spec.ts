@@ -1,6 +1,10 @@
 import { expect, test } from '../support/fixtures'
 import { createAndOpenBook, createStory, getStoryBranches, getStorySnapshot } from '../support/api'
-import { allowGameRegeneration, getModelStatus } from '../support/model'
+import { allowGameRegeneration, getModelStatus, releaseDelayedRequest } from '../support/model'
+
+const gameFollowUpDelayMarker = 'E2E_GAME_FOLLOW_UP_DELAY'
+const gameFollowUpMarker = 'E2E_GAME_FOLLOW_UP_STEER'
+const gameFollowUpNarrative = '你立即改变方向，沿着新发现的脚印进入旧车站。'
 
 test('submits, streams, and persists a complete Game turn', async ({ page, request }) => {
   await createAndOpenBook(request, 'Game E2E Book')
@@ -84,4 +88,35 @@ test('preserves the settled turn after a failed regeneration and replaces it on 
       narrative: expect.stringContaining('重试后，月台广播给出了全新的撤离路线'),
     }),
   ])
+})
+
+test('queues a Game Follow Up and steers the active turn through the real runtime', async ({ page, request }) => {
+  await createAndOpenBook(request, 'Game Follow Up E2E Book')
+  const story = await createStory(request, 'Game Follow Up E2E Story')
+
+  await page.goto('/')
+  await page.getByLabel('工作台侧边栏').getByRole('button', { name: '游戏', exact: true }).click()
+  const composer = page.getByPlaceholder(/你要做什么/)
+  try {
+    await composer.fill(`先观察石门，等待下一步。${gameFollowUpDelayMarker}`)
+    await composer.press('Enter')
+    await expect.poll(async () => (await getModelStatus(request)).delayed_waiting_by_marker[gameFollowUpDelayMarker] ?? 0)
+      .toBe(1)
+
+    const followUp = `改为跟随脚印进入车站。${gameFollowUpMarker}`
+    await composer.fill(followUp)
+    await composer.press('Enter')
+    const queue = page.getByRole('region', { name: '排队中的指令' }).filter({ visible: true })
+    await expect(queue).toContainText(gameFollowUpMarker)
+    await queue.getByRole('button', { name: '立即转向', exact: true }).click()
+    await releaseDelayedRequest(request, gameFollowUpDelayMarker)
+
+    await expect(page.getByText(gameFollowUpNarrative, { exact: true })).toBeVisible()
+    await expect.poll(async () => (await getModelStatus(request)).request_counts[gameFollowUpMarker] ?? 0).toBe(1)
+    await expect.poll(async () => (await getStorySnapshot(request, story.id)).turns).toEqual([
+      expect.objectContaining({ user: followUp, narrative: expect.stringContaining(gameFollowUpNarrative) }),
+    ])
+  } finally {
+    await releaseDelayedRequest(request, gameFollowUpDelayMarker)
+  }
 })

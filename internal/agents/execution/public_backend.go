@@ -231,12 +231,14 @@ func (backend *publicBackend) resolveDefinition(
 	}
 	if cycle.Conversation == nil {
 		routedOptions := agentrun.Options{}
+		var routedEmit func(agentrun.Event)
 		if registration != nil {
 			registration.mu.RLock()
 			routedOptions = registration.options
+			routedEmit = registration.emit
 			registration.mu.RUnlock()
 		}
-		cycle, err = backend.restoreCycle(ctx, request.Binding, request.Agent, data, commandID, routedOptions)
+		cycle, err = backend.restoreCycle(ctx, request.Binding, request.Agent, data, commandID, routedOptions, routedEmit)
 		if err != nil {
 			return agent.Definition{}, err
 		}
@@ -495,6 +497,7 @@ func (backend *publicBackend) restoreCycle(
 	data agentlifecycle.TurnHostData,
 	commandID string,
 	routedOptions agentrun.Options,
+	emit func(agentrun.Event),
 ) (Cycle, error) {
 	profileID, err := binding.ProfileID()
 	if err != nil {
@@ -518,7 +521,7 @@ func (backend *publicBackend) restoreCycle(
 	return queued.PrepareCycle(ctx, CycleRestoreRequest{
 		Binding: binding, Kind: kind, CommandID: agentrun.CommandID(commandID),
 		OperationID: agentrun.OperationID(request.Run.ID), Request: chatRequest,
-		Options: options, Deferred: request.Reason != agent.TurnReasonStart,
+		Options: options, Deferred: request.Reason != agent.TurnReasonStart, Emit: emit,
 	})
 }
 
