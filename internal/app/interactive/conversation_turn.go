@@ -48,7 +48,7 @@ func (c *Conversation) PrepareInteractiveTurn(ctx context.Context, request inter
 	}
 	storyDirector := storyDirectorForSnapshot(c.StoryDirectorForMeta(storyCtx.Meta), storyCtx.Meta.ActorStateSchema)
 	storyDirector.ActorState = actorState
-	resolution, err := interactive.ResolveTurnRulesWithDirector(c.storyID, storyCtx.Snapshot.BranchID, currentState, storyDirector, request)
+	resolution, err := interactive.ResolveTurnRulesWithStorySettings(c.storyID, storyCtx.Snapshot.BranchID, currentState, storyDirector, storyCtx.Meta.CheckSettings, request)
 	if err != nil {
 		return interactive.RuleResolution{}, err
 	}

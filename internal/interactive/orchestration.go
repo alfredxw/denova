@@ -143,48 +143,54 @@ type RuleResolution struct {
 }
 
 type RuleResult struct {
-	ID           string            `json:"id,omitempty"`
-	Label        string            `json:"label,omitempty"`
-	Kind         string            `json:"kind,omitempty"`
-	Mode         string            `json:"mode,omitempty"`
-	Dice         string            `json:"dice,omitempty"`
-	Rolls        []int             `json:"rolls,omitempty"`
-	RollTotal    float64           `json:"roll_total,omitempty"`
-	Modifier     float64           `json:"modifier,omitempty"`
-	Difficulty   float64           `json:"difficulty,omitempty"`
-	Total        float64           `json:"total,omitempty"`
-	Outcome      string            `json:"outcome"`
-	Seed         int64             `json:"seed,omitempty"`
-	Constraints  []string          `json:"constraints,omitempty"`
-	Error        string            `json:"error,omitempty"`
-	RollMode     string            `json:"roll_mode,omitempty"`
-	KeptRoll     float64           `json:"kept_roll,omitempty"`
-	BonusTotal   float64           `json:"bonus_total,omitempty"`
-	BonusDetails []TurnCheckBonus  `json:"bonus_details,omitempty"`
-	BaseTarget   float64           `json:"base_target,omitempty"`
-	Target       float64           `json:"target,omitempty"`
-	Result       string            `json:"result,omitempty"`
-	StateChanges []TurnStateChange `json:"state_changes,omitempty"`
+	ID                  string            `json:"id,omitempty"`
+	Label               string            `json:"label,omitempty"`
+	Kind                string            `json:"kind,omitempty"`
+	Mode                string            `json:"mode,omitempty"`
+	Dice                string            `json:"dice,omitempty"`
+	Rolls               []int             `json:"rolls,omitempty"`
+	RollTotal           float64           `json:"roll_total,omitempty"`
+	Modifier            float64           `json:"modifier,omitempty"`
+	Difficulty          float64           `json:"difficulty,omitempty"`
+	Total               float64           `json:"total,omitempty"`
+	Outcome             string            `json:"outcome"`
+	Seed                int64             `json:"seed,omitempty"`
+	Constraints         []string          `json:"constraints,omitempty"`
+	Error               string            `json:"error,omitempty"`
+	RollMode            string            `json:"roll_mode,omitempty"`
+	KeptRoll            float64           `json:"kept_roll,omitempty"`
+	BonusTotal          float64           `json:"bonus_total,omitempty"`
+	BonusDetails        []TurnCheckBonus  `json:"bonus_details,omitempty"`
+	BaseTarget          float64           `json:"base_target,omitempty"`
+	Target              float64           `json:"target,omitempty"`
+	RequestedDifficulty string            `json:"requested_difficulty,omitempty"`
+	EffectiveDifficulty string            `json:"effective_difficulty,omitempty"`
+	DifficultyShift     int               `json:"difficulty_shift,omitempty"`
+	StoryRollModifier   int               `json:"story_roll_modifier,omitempty"`
+	Result              string            `json:"result,omitempty"`
+	StateChanges        []TurnStateChange `json:"state_changes,omitempty"`
 }
 
 type RuleResolutionToolOutput struct {
-	ResolutionID string            `json:"resolution_id"`
-	Label        string            `json:"label,omitempty"`
-	Dice         string            `json:"dice"`
-	RollMode     string            `json:"roll_mode"`
-	Rolls        []int             `json:"rolls"`
-	KeptRoll     int               `json:"kept_roll"`
-	BonusTotal   float64           `json:"bonus_total"`
-	BonusDetails []TurnCheckBonus  `json:"bonus_details,omitempty"`
-	BaseTarget   float64           `json:"base_target"`
-	Total        float64           `json:"total"`
-	Difficulty   string            `json:"difficulty"`
-	Target       float64           `json:"target"`
-	Outcome      string            `json:"outcome"`
-	Result       string            `json:"result"`
-	Cost         string            `json:"cost,omitempty"`
-	Stakes       string            `json:"stakes,omitempty"`
-	StateChanges []TurnStateChange `json:"state_changes,omitempty"`
+	ResolutionID        string            `json:"resolution_id"`
+	Label               string            `json:"label,omitempty"`
+	Dice                string            `json:"dice"`
+	RollMode            string            `json:"roll_mode"`
+	Rolls               []int             `json:"rolls"`
+	KeptRoll            int               `json:"kept_roll"`
+	BonusTotal          float64           `json:"bonus_total"`
+	BonusDetails        []TurnCheckBonus  `json:"bonus_details,omitempty"`
+	BaseTarget          float64           `json:"base_target"`
+	Total               float64           `json:"total"`
+	Difficulty          string            `json:"difficulty"`
+	RequestedDifficulty string            `json:"requested_difficulty,omitempty"`
+	DifficultyShift     int               `json:"difficulty_shift,omitempty"`
+	Target              float64           `json:"target"`
+	Outcome             string            `json:"outcome"`
+	Result              string            `json:"result"`
+	Cost                string            `json:"cost,omitempty"`
+	Stakes              string            `json:"stakes,omitempty"`
+	StateChanges        []TurnStateChange `json:"state_changes,omitempty"`
 }
 
 type TerminalCandidate struct {
@@ -320,11 +326,22 @@ func ResolveTurnRulesWithDirector(storyID, branchID string, state map[string]any
 	return resolveTurnRulesWithSeedAndDirector(storyID, branchID, state, director, req, 0)
 }
 
+// ResolveTurnRulesWithStorySettings applies story-owned tuning after the Game
+// Agent proposes a fictional difficulty and before the deterministic roll.
+func ResolveTurnRulesWithStorySettings(storyID, branchID string, state map[string]any, director StoryDirector, settings StoryCheckSettings, req TurnCheckRequest) (RuleResolution, error) {
+	return resolveTurnRulesWithSeedAndDirectorAndSettings(storyID, branchID, state, director, settings, req, 0)
+}
+
 func resolveTurnRulesWithSeedAndDirector(storyID, branchID string, state map[string]any, director StoryDirector, req TurnCheckRequest, seed int64) (RuleResolution, error) {
+	return resolveTurnRulesWithSeedAndDirectorAndSettings(storyID, branchID, state, director, StoryCheckSettings{}, req, seed)
+}
+
+func resolveTurnRulesWithSeedAndDirectorAndSettings(storyID, branchID string, state map[string]any, director StoryDirector, settings StoryCheckSettings, req TurnCheckRequest, seed int64) (RuleResolution, error) {
 	req = NormalizeTurnCheckRequest(req)
 	if err := ValidateTurnCheckRequest(req); err != nil {
 		return RuleResolution{}, err
 	}
+	settings = normalizeStoryCheckSettings(settings)
 	bindingAudit, err := resolveRuleStateBinding(state, director, req)
 	if err != nil {
 		return RuleResolution{}, err
@@ -348,7 +365,15 @@ func resolveTurnRulesWithSeedAndDirector(storyID, branchID string, state map[str
 		bonusDetails = append(bonusDetails, bindingAudit.BonusDetails...)
 	}
 	bonusTotal := manualBonusTotal + advantageTotal
-	baseTarget, _ := turnCheckDifficultyTarget(dice, req.Difficulty)
+	requestedDifficulty := req.Difficulty
+	effectiveDifficulty := storyCheckDifficulty(requestedDifficulty, settings.DifficultyShift)
+	baseTarget, _ := turnCheckDifficultyTarget(dice, effectiveDifficulty)
+	if settings.RollModifier != 0 {
+		bonusTotal += float64(settings.RollModifier)
+		bonusDetails = append(bonusDetails, TurnCheckBonus{
+			Kind: "story", Reason: "Story-wide roll modifier.", Value: float64(settings.RollModifier),
+		})
+	}
 	target := turnCheckTarget(dice, baseTarget, req.Rule.Modifier+resistanceTotal, bonusTotal)
 	total := turnCheckTotal(dice, keptRoll, bonusTotal)
 	outcomeName := resolveTurnCheckOutcome(dice, keptRoll, total, target)
@@ -367,27 +392,31 @@ func resolveTurnRulesWithSeedAndDirector(storyID, branchID string, state map[str
 	}
 	constraint := turnCheckConstraint(firstNonEmptyString(req.Challenge, req.Action), dice, outcomeName, total, target)
 	result := RuleResult{
-		ID:           "check_1",
-		Label:        firstNonEmptyString(req.Rule.Label, req.Challenge, req.Action),
-		Kind:         "dice_check",
-		Mode:         turnCheckMode(dice),
-		Dice:         dice,
-		Rolls:        rolls,
-		RollTotal:    float64(keptRoll),
-		Modifier:     req.Rule.Modifier + resistanceTotal,
-		Difficulty:   target,
-		Total:        total,
-		Outcome:      outcomeName,
-		Seed:         seed,
-		Constraints:  []string{constraint},
-		RollMode:     req.Rule.RollMode,
-		KeptRoll:     float64(keptRoll),
-		BonusTotal:   bonusTotal,
-		BonusDetails: bonusDetails,
-		BaseTarget:   baseTarget,
-		Target:       target,
-		Result:       outcome.Result,
-		StateChanges: resultStateChanges,
+		ID:                  "check_1",
+		Label:               firstNonEmptyString(req.Rule.Label, req.Challenge, req.Action),
+		Kind:                "dice_check",
+		Mode:                turnCheckMode(dice),
+		Dice:                dice,
+		Rolls:               rolls,
+		RollTotal:           float64(keptRoll),
+		Modifier:            req.Rule.Modifier + resistanceTotal,
+		Difficulty:          target,
+		Total:               total,
+		Outcome:             outcomeName,
+		Seed:                seed,
+		Constraints:         []string{constraint},
+		RollMode:            req.Rule.RollMode,
+		KeptRoll:            float64(keptRoll),
+		BonusTotal:          bonusTotal,
+		BonusDetails:        bonusDetails,
+		BaseTarget:          baseTarget,
+		Target:              target,
+		RequestedDifficulty: requestedDifficulty,
+		EffectiveDifficulty: effectiveDifficulty,
+		DifficultyShift:     settings.DifficultyShift,
+		StoryRollModifier:   settings.RollModifier,
+		Result:              outcome.Result,
+		StateChanges:        resultStateChanges,
 	}
 	resolution := RuleResolution{
 		ID:              newID("rr"),
@@ -428,23 +457,25 @@ func (resolution RuleResolution) ToolOutput() RuleResolutionToolOutput {
 		keptRoll = int(resolution.Result.RollTotal)
 	}
 	return RuleResolutionToolOutput{
-		ResolutionID: resolution.ID,
-		Label:        resolution.Result.Label,
-		Dice:         firstNonEmptyString(resolution.Result.Dice, "1d20"),
-		RollMode:     firstNonEmptyString(resolution.Result.RollMode, "normal"),
-		Rolls:        append([]int(nil), resolution.Result.Rolls...),
-		KeptRoll:     keptRoll,
-		BonusTotal:   resolution.Result.BonusTotal,
-		BonusDetails: append([]TurnCheckBonus(nil), resolution.Result.BonusDetails...),
-		BaseTarget:   resolution.Result.BaseTarget,
-		Total:        resolution.Result.Total,
-		Difficulty:   resolution.Request.Difficulty,
-		Target:       resolution.Result.Target,
-		Outcome:      resolution.Result.Outcome,
-		Result:       resolution.Result.Result,
-		Cost:         resolution.Request.Cost,
-		Stakes:       resolution.Request.Adjudication.Stakes,
-		StateChanges: append([]TurnStateChange(nil), resolution.Result.StateChanges...),
+		ResolutionID:        resolution.ID,
+		Label:               resolution.Result.Label,
+		Dice:                firstNonEmptyString(resolution.Result.Dice, "1d20"),
+		RollMode:            firstNonEmptyString(resolution.Result.RollMode, "normal"),
+		Rolls:               append([]int(nil), resolution.Result.Rolls...),
+		KeptRoll:            keptRoll,
+		BonusTotal:          resolution.Result.BonusTotal,
+		BonusDetails:        append([]TurnCheckBonus(nil), resolution.Result.BonusDetails...),
+		BaseTarget:          resolution.Result.BaseTarget,
+		Total:               resolution.Result.Total,
+		Difficulty:          firstNonEmptyString(resolution.Result.EffectiveDifficulty, resolution.Request.Difficulty),
+		RequestedDifficulty: resolution.Result.RequestedDifficulty,
+		DifficultyShift:     resolution.Result.DifficultyShift,
+		Target:              resolution.Result.Target,
+		Outcome:             resolution.Result.Outcome,
+		Result:              resolution.Result.Result,
+		Cost:                resolution.Request.Cost,
+		Stakes:              resolution.Request.Adjudication.Stakes,
+		StateChanges:        append([]TurnStateChange(nil), resolution.Result.StateChanges...),
 	}
 }
 

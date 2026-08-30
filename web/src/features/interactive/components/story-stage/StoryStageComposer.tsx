@@ -21,9 +21,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import type { AgentRuntimeQueuedCommand, ContextAnalysis } from '@/lib/api'
 import type { AgentTokenUsageRecord } from '@/lib/agent-message-view'
-import type { ImagePreset, StoryImageSettings, StorySummary } from '../../types'
 import { EditInteractiveReplyDialog } from '../EditInteractiveReplyDialog'
-import { InteractiveImageSettingsMenu, StoryImagePresetMenu } from './ImageSettingsMenus'
 import type { StoryStageCommandItem } from './story-stage-commands'
 import { isNativeComposingKeyboardEvent } from './utils'
 import type { ConversationConfigController } from '@/features/conversation-config/types'
@@ -65,9 +63,6 @@ interface StoryStageComposerProps {
   }
   story: {
     storyId: string
-    story?: StorySummary
-    imagePresets: ImagePreset[]
-    onImageSettingsChange?: (settings: StoryImageSettings) => void | Promise<void>
     branchTerminal: boolean
     hotChoices: string[]
     hotChoicesExpanded: boolean
@@ -143,7 +138,7 @@ interface StoryStageComposerProps {
 export function StoryStageComposer({ layout, editor, story, runtime, goal, dialogs, actions }: StoryStageComposerProps) {
   const { projectId, creatingStory, isMobile, keyboardInset, inputTextStyle, workspace, inputFloatRef, inputRef, t } = layout
   const { input, editingTurn, styleScenes, styleSceneQuery, styleSceneSuggestions, showSkillCommands, activeSkillCommandIndex, skillCommands, filteredSkillCommands, filteredBuiltInCommandItems, filteredSkillCommandItems, setStyleSceneQuery, setShowSkillCommands, setSkillCommandQuery, setActiveSkillCommandIndex } = editor
-  const { storyId, story: currentStory, imagePresets, onImageSettingsChange, branchTerminal, hotChoices, hotChoicesExpanded, showHotChoices, canUseHotChoices, setHotChoicesExpanded } = story
+  const { storyId, branchTerminal, hotChoices, hotChoicesExpanded, showHotChoices, canUseHotChoices, setHotChoicesExpanded } = story
   const { streaming, approvalReady, conversationConfig, abortPending, recoveryPaused, recoveryAbortAvailable, pendingInterruptionId, operationId, connection, commandSubmitting, queue, queueActionPendingCommandID } = runtime
   const { contextAnalysisOpen, contextAnalysisLoading, contextAnalysisError, contextAnalysis, tokenUsageOpen, tokenUsageMessages, traceOpen, selectedTraceRunId, replyEditTarget, setContextAnalysisOpen, setTokenUsageOpen, setTraceOpen, closeReplyEditor, saveReply } = dialogs
   const { cancelEditing, selectHotChoice, selectStyleScene, selectSkillCommand, handleInputChange, handleInputTriggerChange, handleTokenRemove, toggleHotChoices, openMobileNavigation, openContextAnalysis, removeContextCompaction, openTraceRun, send, steerQueuedCommand, deleteQueuedCommand, stop } = actions
@@ -322,10 +317,7 @@ export function StoryStageComposer({ layout, editor, story, runtime, goal, dialo
                     />
                   </DropdownMenuGroup>
                   <AgentApprovalModeMenu runActive={streaming} presentation="submenu" conversationConfig={conversationConfig} />
-                  <ImageGenerationSettingsMenu projectId={projectId} disabled={streaming}>
-                    <StoryImagePresetMenu story={currentStory} presets={imagePresets} disabled={!storyId || streaming || !onImageSettingsChange} onChange={onImageSettingsChange} />
-                  </ImageGenerationSettingsMenu>
-                  <InteractiveImageSettingsMenu story={currentStory} disabled={!storyId || streaming || !onImageSettingsChange} onChange={onImageSettingsChange} />
+                  <ImageGenerationSettingsMenu projectId={projectId} disabled={streaming}>{null}</ImageGenerationSettingsMenu>
                   <DropdownMenuGroup>
                     <ComposerMenuItem
                       icon={BarChart3}

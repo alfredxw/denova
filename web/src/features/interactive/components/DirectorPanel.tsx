@@ -1,4 +1,4 @@
-import type { BranchSummary, Snapshot, StoryDirector, StoryPlanningMode, StorySummary } from '../types'
+import type { BranchSummary, ImagePreset, InteractiveStoryUpdateInput, Snapshot, StoryDirector, StorySummary, Teller } from '../types'
 import { DirectorConsole } from './director-console/DirectorConsole'
 import { DEFAULT_STORY_STATE_DISPLAY, type StoryStateDisplayPreference } from './story-state/display-preference'
 
@@ -6,9 +6,11 @@ interface DirectorPanelProps {
   storyId?: string
   story?: StorySummary
   storyDirectors?: StoryDirector[]
-  onDirectorChange?: (directorId: string) => void
-  onReplyTargetCharsChange?: (replyTargetChars: number) => void | Promise<void>
-  onPlanningModeChange?: (mode: StoryPlanningMode) => void | Promise<void>
+  tellers?: Teller[]
+  imagePresets?: ImagePreset[]
+  onDirectorChange?: (directorId: string) => void | Promise<void>
+  onStoryUpdate?: (input: InteractiveStoryUpdateInput) => void | Promise<void>
+  onOpenPresets?: () => void
   branchId?: string
   branches: BranchSummary[]
   snapshot: Snapshot | null
@@ -18,18 +20,18 @@ interface DirectorPanelProps {
   onOpenBranchTimeline: () => void
 }
 
-export function DirectorPanel({ storyId, story, storyDirectors = [], onDirectorChange, onReplyTargetCharsChange, onPlanningModeChange, branchId, branches, snapshot, stateDisplayPreference = DEFAULT_STORY_STATE_DISPLAY, onStateDisplayPreferenceChange = noopStateDisplayPreferenceChange, onSwitchBranch, onOpenBranchTimeline }: DirectorPanelProps) {
-  const effectiveBranchId = branchId || snapshot?.branch_id || ''
-
+export function DirectorPanel({ storyId, story, storyDirectors = [], tellers = [], imagePresets = [], onDirectorChange, onStoryUpdate, onOpenPresets, branchId, branches, snapshot, stateDisplayPreference = DEFAULT_STORY_STATE_DISPLAY, onStateDisplayPreferenceChange = noopStateDisplayPreferenceChange, onSwitchBranch, onOpenBranchTimeline }: DirectorPanelProps) {
   return (
     <DirectorConsole
       storyId={storyId}
       story={story}
       storyDirectors={storyDirectors}
+      tellers={tellers}
+      imagePresets={imagePresets}
       onDirectorChange={onDirectorChange}
-      onReplyTargetCharsChange={onReplyTargetCharsChange}
-      onPlanningModeChange={onPlanningModeChange}
-      branchId={effectiveBranchId}
+      onStoryUpdate={onStoryUpdate}
+      onOpenPresets={onOpenPresets}
+      branchId={branchId || snapshot?.branch_id || ''}
       branches={branches}
       snapshot={snapshot}
       stateError={snapshot?.current_turn?.state_error || ''}

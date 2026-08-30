@@ -17,14 +17,14 @@ import {
 import { StateValue } from './shared'
 import { ActorArchiveList } from '../story-state/ActorArchiveList'
 import { resolveNumberMeter, type NumberMeterGeometry } from '../story-state/number-meter'
-import type { StatePanelTab } from './types'
+import type { StatePanelSection } from './types'
 
 const CHANGES_PREVIEW_COUNT = 3
 
 // 状态感知栏：只做「现在」的核心浏览，按 section 渲染一个分区——
 // 本回合变化 / 角色紧凑行（默认展开主角，行内可展开）/ 世界与场景。
 // 展示偏好设置在控制台 header 信息条；状态结构机械信息在主区导演台。
-export function StateView({ snapshot, stateFacts, syncError, section }: { snapshot: Snapshot | null; stateFacts: Array<[string, unknown]>; syncError?: string; section: StatePanelTab }) {
+export function StateView({ snapshot, stateFacts, syncError, section }: { snapshot: Snapshot | null; stateFacts: Array<[string, unknown]>; syncError?: string; section: StatePanelSection }) {
   const { t } = useTranslation()
   const turn = snapshot?.current_turn
   const { actors, archivedActors, worldFacts } = useMemo(() => splitStoryStateFacts(stateFacts), [stateFacts])
@@ -49,6 +49,8 @@ export function StateView({ snapshot, stateFacts, syncError, section }: { snapsh
     ...actors.map(([actorId, actor]) => [actorId, actorName(actorId, actor)] as const),
     ...archivedActors.map((entry) => [entry.actorId, entry.name] as const),
   ]), [actors, archivedActors])
+  const isOverview = section === 'overview'
+  const overviewEmpty = changes.length === 0 && actors.length === 0 && archivedActors.length === 0 && worldFacts.length === 0
 
   const toggleActor = (actorId: string) => {
     setExpandedActorIds((current) => current.includes(actorId) ? current.filter((id) => id !== actorId) : [...current, actorId])
@@ -62,7 +64,9 @@ export function StateView({ snapshot, stateFacts, syncError, section }: { snapsh
         </div>
       ) : null}
 
-      <div className={section === 'changes' ? '' : 'hidden'}>
+      {isOverview && overviewEmpty ? <StateEmpty /> : null}
+
+      <div className={section === 'changes' || (isOverview && changes.length > 0) ? '' : 'hidden'}>
         {changes.length > 0 ? (
           <section aria-labelledby="director-state-change-title">
             <SectionHeading id="director-state-change-title" icon={<Activity className="h-3.5 w-3.5" />} title={t('directorPanel.stateDelta')} hint={t('directorPanel.stateDeltaHint')} />
@@ -83,7 +87,7 @@ export function StateView({ snapshot, stateFacts, syncError, section }: { snapsh
         )}
       </div>
 
-      <div className={section === 'actors' ? '' : 'hidden'}>
+      <div className={section === 'actors' || (isOverview && (actors.length > 0 || archivedActors.length > 0)) ? '' : 'hidden'}>
         <section className="min-w-0">
           {actors.length === 0 && archivedActors.length === 0 ? (
             <StateEmpty />
@@ -115,7 +119,7 @@ export function StateView({ snapshot, stateFacts, syncError, section }: { snapsh
         </section>
       </div>
 
-      <div className={section === 'world' ? '' : 'hidden'}>
+      <div className={section === 'world' || (isOverview && worldFacts.length > 0) ? '' : 'hidden'}>
         {worldFacts.length > 0 ? (
           <section aria-labelledby="director-world-state-title">
             <SectionHeading id="director-world-state-title" icon={<Sparkles className="h-3.5 w-3.5" />} title={t('directorPanel.worldState')} hint={t('directorPanel.worldStateHint')} />

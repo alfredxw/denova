@@ -24,10 +24,11 @@ import { useIsMobile } from '@/hooks/useIsMobile'
 import { MobilePaneHost } from '@/components/layout/mobile-pane-host'
 import { CollapsiblePanelSeparator, CollapsibleResizablePanel, PanelMotionGroup } from '@/components/layout/panel-motion'
 import { usePersistedPanelLayout } from '@/components/layout/use-persisted-panel-layout'
-import type { ImagePreset, InteractiveTurnPersistedEvent, Snapshot, StoryDirector, StoryImageSettings, StoryPlanningMode, StorySummary, Teller } from '../types'
+import type { ImagePreset, InteractiveStoryUpdateInput, InteractiveTurnPersistedEvent, Snapshot, StoryDirector, StorySummary, Teller } from '../types'
 import { INTERACTIVE_OPENING_PRESET_PATH, INTERACTIVE_OPENING_PRESET_UPDATED_EVENT, LEGACY_INTERACTIVE_OPENING_PRESET_PATH, parseBookOpeningPresets, type BookOpeningPreset, type StoryCreateInput } from '../opening'
 import { DEFAULT_NARRATIVE_STYLE_ID, resolveNarrativeStyle } from '../narrative-style'
 import { LoadingState } from '@/components/common/LoadingState'
+import { rebaseStoryModuleRefsForPresetChange } from '../story-module-overrides'
 
 interface InteractiveLayoutProps {
   projectId?: string
@@ -320,36 +321,35 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
   const handleDirectorChange = async (directorId: string) => {
     if (!currentStoryId) return
     const director = storyDirectors.find((item) => item.id === directorId)
-    const narrativeStyleID = storyDirectorNarrativeStyleId(director, tellers, currentStory?.story_teller_id)
-    await updateInteractiveStory(currentStoryId, {
+    const previousDirector = storyDirectors.find((item) => item.id === currentStory?.story_director_id)
+    const nextRefs = rebaseStoryModuleRefsForPresetChange(currentStory, previousDirector?.module_refs, director?.module_refs, (currentStory?.turn_count || 0) > 0)
+    const narrativeStyleID = storyDirectorNarrativeStyleId(director ? { ...director, module_refs: nextRefs } : undefined, tellers, currentStory?.story_teller_id)
+    const input: InteractiveStoryUpdateInput = {
       story_director_id: directorId,
       story_teller_id: narrativeStyleID,
-    })
-    await reloadStories()
+      module_refs: nextRefs,
+    }
+    const nextImagePresetID = nextRefs.image_preset_id || currentStory?.image_settings?.preset_id
+    if (currentStory?.image_settings && nextImagePresetID) {
+      input.image_settings = { ...currentStory.image_settings, preset_id: nextImagePresetID }
+    }
+    if ((currentStory?.turn_count || 0) === 0) {
+      input.state_schema_policy = currentStory?.state_schema_policy
+    }
+    const updated = await updateInteractiveStory(currentStoryId, input)
+    setStories(mergePreferredStory(useInteractiveStore.getState().stories, updated), updated.id)
+    await reloadStories(updated)
     await reloadSnapshot(undefined, currentStoryId, { silent: true })
   }
 
-  const handleReplyTargetCharsChange = async (replyTargetChars: number) => {
+  const handleStoryUpdate = async (input: InteractiveStoryUpdateInput) => {
     if (!currentStoryId) return
-    await updateInteractiveStory(currentStoryId, {
-      reply_target_chars: replyTargetChars,
-    })
-    await reloadStories()
-  }
-
-  const handlePlanningModeChange = async (planningMode: StoryPlanningMode) => {
-    if (!currentStoryId) return
-    const updated = await updateInteractiveStory(currentStoryId, { planning_mode: planningMode })
+    const updated = await updateInteractiveStory(currentStoryId, input)
     setStories(mergePreferredStory(useInteractiveStore.getState().stories, updated), updated.id)
     await reloadStories(updated)
-  }
-
-  const handleImageSettingsChange = async (imageSettings: StoryImageSettings) => {
-    if (!currentStoryId) return
-    await updateInteractiveStory(currentStoryId, {
-      image_settings: imageSettings,
-    })
-    await reloadStories()
+    if (input.module_refs || input.state_schema_policy) {
+      await reloadSnapshot(undefined, currentStoryId, { silent: true })
+    }
   }
 
   const handleStoryStateDisplayPreferenceChange = useCallback((value: StoryStateDisplayPreference) => {
@@ -445,9 +445,6 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
       onStorySetupUpdate={handleStorySetupUpdate}
       onNarrativeStyleChange={onNarrativeStyleChange}
       onStoryDelete={handleDeleteStories}
-      onDirectorChange={handleDirectorChange}
-      onReplyTargetCharsChange={handleReplyTargetCharsChange}
-      onImageSettingsChange={handleImageSettingsChange}
       onRequestLoreInit={onRequestLoreInit}
       onOpenDirectorConfig={() => {
         onOpenPresets?.()
@@ -481,9 +478,11 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
                         storyId={currentStoryId}
                         story={currentStory}
                         storyDirectors={storyDirectors}
+                        tellers={tellers}
+                        imagePresets={imagePresets}
                         onDirectorChange={handleDirectorChange}
-                        onReplyTargetCharsChange={handleReplyTargetCharsChange}
-                        onPlanningModeChange={handlePlanningModeChange}
+                        onStoryUpdate={handleStoryUpdate}
+                        onOpenPresets={onOpenPresets}
                         branchId={currentBranchId}
                         branches={branches}
                         snapshot={displaySnapshot}
@@ -525,17 +524,19 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
                     visible={rightPanelVisible}
                     side="right"
                     defaultSize="320px"
-                    minSize="180px"
+                    minSize="240px"
                     maxSize="45%"
-                    className="min-w-[180px]"
+                    className="min-w-[240px]"
                   >
                     <DirectorPanel
                       storyId={currentStoryId}
                       story={currentStory}
                       storyDirectors={storyDirectors}
+                      tellers={tellers}
+                      imagePresets={imagePresets}
                       onDirectorChange={handleDirectorChange}
-                      onReplyTargetCharsChange={handleReplyTargetCharsChange}
-                      onPlanningModeChange={handlePlanningModeChange}
+                      onStoryUpdate={handleStoryUpdate}
+                      onOpenPresets={onOpenPresets}
                       branchId={currentBranchId}
                       branches={branches}
                       snapshot={displaySnapshot}

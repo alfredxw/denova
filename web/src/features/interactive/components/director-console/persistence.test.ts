@@ -17,16 +17,18 @@ describe('director-console persistence', () => {
 
   it('round-trips every console tab per story and rejects unknown values', () => {
     expect(readStoredDirectorConsoleTab('story-a')).toBeNull()
-    writeStoredDirectorConsoleTab('story-a', 'changes')
-    writeStoredDirectorConsoleTab('story-b', 'branches')
-    expect(readStoredDirectorConsoleTab('story-a')).toBe('changes')
-    expect(readStoredDirectorConsoleTab('story-b')).toBe('branches')
+    writeStoredDirectorConsoleTab('story-a', 'tuning')
+    writeStoredDirectorConsoleTab('story-b', 'routes')
+    expect(readStoredDirectorConsoleTab('story-a')).toBe('tuning')
+    expect(readStoredDirectorConsoleTab('story-b')).toBe('routes')
     window.localStorage.setItem('nova.directorConsole.tab.story-a', 'bogus')
     expect(readStoredDirectorConsoleTab('story-a')).toBeNull()
   })
 
-  it('reads the former state-tab preference when the new key is absent', () => {
+  it('migrates former state and branch tab preferences', () => {
     window.localStorage.setItem('nova.directorConsole.stateTab.story-a', 'world')
-    expect(readStoredDirectorConsoleTab('story-a')).toBe('world')
+    window.localStorage.setItem('nova.directorConsole.tab.story-b', 'branches')
+    expect(readStoredDirectorConsoleTab('story-a')).toBe('overview')
+    expect(readStoredDirectorConsoleTab('story-b')).toBe('routes')
   })
 })

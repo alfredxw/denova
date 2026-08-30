@@ -1,3 +1,4 @@
-// 右栏状态面板的分区 tab：本回合变化 / 角色 / 世界与场景。
+// StateView still owns these focused projections; the console combines them in overview.
 export type StatePanelTab = 'changes' | 'actors' | 'world'
-export type DirectorConsoleTab = StatePanelTab | 'plan' | 'branches'
+export type StatePanelSection = StatePanelTab | 'overview'
+export type DirectorConsoleTab = 'overview' | 'tuning' | 'routes'

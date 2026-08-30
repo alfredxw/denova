@@ -28,6 +28,9 @@ type InteractiveStoryPromptInput struct {
 	ChoiceCount               int
 	BranchPlan                string
 	PlanningEnabled           bool
+	RuleChecksEnabled         bool
+	CheckDifficultyShift      int
+	CheckRollModifier         int
 	GamePresetRules           string
 	ActorState                string
 	StateSchemaInitialization string
@@ -84,9 +87,10 @@ func BuildInteractiveStoryFlowInstruction(in InteractiveStorySystemInstructionIn
 	sb.WriteString("- " + interactiveLoreCharacterGroundingInstruction + "\n")
 	sb.WriteString("- Use search_story_history for committed turns on the current branch; every result includes its source turn_id. Turns are historical truth, Actor State is the current projection, the branch plan is future intent, and Lore is stable canon. Do not conflate them.\n")
 	sb.WriteString("- Before prose, use thinking only for brief intent planning: identify this turn's objective, constraints, required tools, critical state facts, and scene destination. Do not draft, outline paragraph by paragraph, restate, or fully review the prose in thinking, and do not pre-expand complete tool JSON. Produce player-visible prose once in the prose channel.\n")
-	sb.WriteString("- Follow this sequence every turn: understand the user action, current branch plan, and snapshot -> load lore or search turns when needed -> decide whether a fixed check is required -> call prepare_interactive_turn if required -> form prose and consistent state changes -> output the complete prose -> call submit_interactive_turn with state_changes, choices, and any required plan_update -> end once all required modules succeed.\n")
+	sb.WriteString("- Runtime context states whether fixed-rule checks are enabled. When disabled, never call prepare_interactive_turn; adjudicate consequences directly from established fiction and state.\n")
+	sb.WriteString("- Follow this sequence every turn: understand the user action, current branch plan, and snapshot -> load lore or search turns when needed -> if fixed-rule checks are enabled, decide whether one is required and call prepare_interactive_turn when required -> form prose and consistent state changes -> output the complete prose -> call submit_interactive_turn with state_changes, choices, and any required plan_update -> end once all required modules succeed.\n")
 	sb.WriteString("- Not every action needs a check. Directly adjudicate ordinary observation, dialogue, short movement, low-risk probing, and narrative continuation with no explicit cost.\n")
-	sb.WriteString("- Call prepare_interactive_turn only when a fixed-rule ruling is required because the action has explicit risk, resource/relationship/numeric changes, matches the current TRPG check configuration, has failure tiers, irreversible consequences, or a terminal candidate.\n")
+	sb.WriteString("- When fixed-rule checks are enabled, call prepare_interactive_turn only when a ruling is required because the action has explicit risk, resource/relationship/numeric changes, matches the current TRPG check configuration, has failure tiers, irreversible consequences, or a terminal candidate.\n")
 	sb.WriteString("- prepare_interactive_turn does not replace semantic interpretation, literary judgment, or event design. First determine the action, intent, challenge, cost, current state, pre-roll rationale, bonus and penalty sources, difficulty, and the critical-success/success/failure/critical-failure consequences. Then use the tool for the roll.\n")
 	sb.WriteString("- adjudication is required: explain why a fixed check is needed, the stakes, difficulty basis, and advantage/disadvantage basis. Reference state through state_refs with actor_id + field_id. This is DM audit information and must not appear in prose.\n")
 	sb.WriteString("- When the rule catalog provides trigger, must_check_examples, skip_check_examples, difficulty_guidance, and state_effect_guidance, use them together to decide whether to check, then choose difficulty/bonuses and four narrative outcomes. modifier is a template-level constant that belongs only in rule.modifier; it is not a temporary character bonus.\n")
@@ -107,7 +111,7 @@ func BuildInteractiveStoryFlowInstruction(in InteractiveStorySystemInstructionIn
 	sb.WriteString("## Interactive Narrator Principles\n")
 	sb.WriteString("- You are the narrator and referee of a prose RPG, not a generic continuation engine. Understand player actions, adjudicate world feedback, preserve character and rule consistency, and create meaningful new options each turn.\n")
 	sb.WriteString("- Internally complete this loop without exposing the analysis: identify the action -> determine relevant characters and world rules -> adjudicate consequences -> advance the scene -> update state -> open new choices -> check consistency.\n")
-	sb.WriteString("- When a fixed-rule check is genuinely required for state dimensions, numbers, resources, relationships, dice, traits, failure tiers, or a terminal candidate, call prepare_interactive_turn before prose and follow its outcome, result, and state_changes exactly.\n")
+	sb.WriteString("- When fixed-rule checks are enabled and a check is genuinely required for state dimensions, numbers, resources, relationships, dice, traits, failure tiers, or a terminal candidate, call prepare_interactive_turn before prose and follow its outcome, result, and state_changes exactly.\n")
 	sb.WriteString("- Treat user input primarily as the protagonist's intent or action. For a question, observation, probe, conversation, or plan, respond through in-scene feedback instead of plain Q&A.\n")
 	sb.WriteString("- The protagonist is not a static camera. Let them observe, move, probe, talk, touch objects, receive environmental feedback, and interact naturally with others within the turn.\n")
 	sb.WriteString("- Other characters have agency and respond from their personalities, relationships, goals, knowledge, and current risks. Do not leave them silent, idle, or mechanically cooperative.\n")
@@ -140,7 +144,13 @@ func InteractiveStoryRuntimeContext(in InteractiveStoryPromptInput) string {
 	} else {
 		sb.WriteString("\n## Game Agent Planning\n\nStatus: disabled. Do not submit plan_update.\n")
 	}
-	if strings.TrimSpace(in.GamePresetRules) != "" {
+	sb.WriteString("\n## Fixed-rule Checks\n\n")
+	if in.RuleChecksEnabled {
+		fmt.Fprintf(&sb, "Status: enabled. Story difficulty shift: %+d step(s). Story roll modifier: %+d. The backend applies both deterministically.\n", in.CheckDifficultyShift, in.CheckRollModifier)
+	} else {
+		sb.WriteString("Status: disabled. Do not call prepare_interactive_turn. Adjudicate this turn without dice.\n")
+	}
+	if in.RuleChecksEnabled && strings.TrimSpace(in.GamePresetRules) != "" {
 		writeBlock(&sb, "Game Preset Rule Catalog (source: game preset, bounded)", in.GamePresetRules)
 	}
 	if strings.TrimSpace(in.ActorState) != "" {

@@ -122,10 +122,11 @@ func (s *InteractiveAppService) prepareInteractiveAgentCycle(ctx context.Context
 	styleRules := appagentruntime.StyleRules(cycle.novaDir, teller.StyleRefs, teller.StyleRules, request.StyleScenes)
 	cycle.tellerInput = interactiveapp.StoryTellerSystemInput(teller, styleRules)
 	cycle.tellerInput.ChoiceCount = storyContext.Meta.ChoiceCount
+	gamePreset := interactiveapp.LoadStoryDirectorForMeta(cycle.novaDir, storyContext.Meta)
 	if storyContext.Meta.PlanningMode == interactive.StoryPlanningModeEnabled {
-		gamePreset := interactiveapp.LoadStoryDirectorForMeta(cycle.novaDir, storyContext.Meta)
 		cycle.tellerInput.PlanningGuide = interactive.StoryPlanningGuideMarkdown(gamePreset, interactiveapp.StoryRuntimeContextMaxBytes)
 	}
+	ruleChecksEnabled := !gamePreset.ModuleRefs.RuleSystemDisabled && len(gamePreset.TRPGSystem.RuleTemplates) > 0
 	cycle.request = agentchat.ChatRequest{
 		Message: strings.TrimSpace(request.Message), ResumeInterruptionID: strings.TrimSpace(request.ResumeInterruptionID),
 		StyleScenes:   append([]string(nil), request.StyleScenes...),
@@ -145,6 +146,10 @@ func (s *InteractiveAppService) prepareInteractiveAgentCycle(ctx context.Context
 		interactiveapp.SnapshotTurnCount(storyContext.Snapshot) == 0 {
 		submitOpeningStateSchema = cycle.conversation.SubmitOpeningStateSchemaBatch
 	}
+	var prepareTurn func(context.Context, interactive.TurnCheckRequest) (interactive.RuleResolution, error)
+	if ruleChecksEnabled {
+		prepareTurn = cycle.conversation.PrepareInteractiveTurn
+	}
 	agentHost, err := a.HarnessAgentHostCapabilities(ctx, &cycle.runtimeCfg, config.AgentKindInteractiveStory)
 	if err != nil {
 		return nil, err
@@ -154,7 +159,7 @@ func (s *InteractiveAppService) prepareInteractiveAgentCycle(ctx context.Context
 		StoryID:                cycle.storyID,
 		BranchID:               cycle.branchID,
 		SubmitStateSchemaBatch: submitOpeningStateSchema,
-		PrepareTurn:            cycle.conversation.PrepareInteractiveTurn,
+		PrepareTurn:            prepareTurn,
 		SubmitTurnResult:       cycle.conversation.SubmitTurnResult,
 		TurnResultReady:        cycle.conversation.InteractiveNarrativeReady,
 	})

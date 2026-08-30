@@ -72,6 +72,9 @@ func (s *Store) CreateStory(req CreateStoryRequest) (StorySummary, error) {
 			return StorySummary{}, err
 		}
 	}
+	if err := validateStoryCheckSettings(req.CheckSettings); err != nil {
+		return StorySummary{}, err
+	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	stateSchemaPolicy := cloneStoryStateSchemaPolicy(req.StateSchemaPolicy)
 	story := StorySummary{
@@ -86,6 +89,7 @@ func (s *Store) CreateStory(req CreateStoryRequest) (StorySummary, error) {
 		ChoiceCount:       normalizeStoryChoiceCount(req.ChoiceCount),
 		Opening:           normalizeStoryOpeningConfig(req.Opening),
 		ImageSettings:     normalizeStoryImageSettings(req.ImageSettings),
+		CheckSettings:     normalizeStoryCheckSettings(req.CheckSettings),
 		StateSchemaPolicy: cloneStoryStateSchemaPolicy(stateSchemaPolicy),
 		CreatedAt:         now,
 		UpdatedAt:         now,
@@ -115,6 +119,7 @@ func (s *Store) CreateStory(req CreateStoryRequest) (StorySummary, error) {
 		ChoiceCount:       story.ChoiceCount,
 		Opening:           story.Opening,
 		ImageSettings:     story.ImageSettings,
+		CheckSettings:     story.CheckSettings,
 		StateSchemaPolicy: cloneStoryStateSchemaPolicy(stateSchemaPolicy),
 		InitialTraitRolls: append([]InitialActorTraitRoll(nil), req.InitialTraitRolls...),
 		CurrentBranch:     "main",
@@ -289,6 +294,12 @@ func (s *Store) UpdateStory(storyID string, req UpdateStoryRequest) (StorySummar
 	if req.ImageSettings != nil {
 		meta.ImageSettings = normalizeStoryImageSettings(*req.ImageSettings)
 	}
+	if req.CheckSettings != nil {
+		if err := validateStoryCheckSettings(*req.CheckSettings); err != nil {
+			return StorySummary{}, err
+		}
+		meta.CheckSettings = normalizeStoryCheckSettings(*req.CheckSettings)
+	}
 	appendedEvents := []any(nil)
 	if req.StateSchemaPolicy != nil {
 		if snapshot.TurnCount > 0 {
@@ -395,6 +406,9 @@ func storyConfigUpdatedFields(req UpdateStoryRequest) []string {
 	}
 	if req.ImageSettings != nil {
 		fields = append(fields, "image_settings")
+	}
+	if req.CheckSettings != nil {
+		fields = append(fields, "check_settings")
 	}
 	if req.StateSchemaPolicy != nil {
 		fields = append(fields, "state_schema_policy", "actor_state_schema", "state_schema_initialization")

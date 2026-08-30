@@ -302,6 +302,9 @@ func validateStoryMeta(meta StoryMeta) error {
 	if meta.ImageSettings.IntervalTurns <= 0 {
 		return fmt.Errorf("互动图像间隔轮数无效: %d", meta.ImageSettings.IntervalTurns)
 	}
+	if err := validateStoryCheckSettings(meta.CheckSettings); err != nil {
+		return err
+	}
 	if strings.TrimSpace(meta.ImageSettings.PresetID) == "" {
 		return fmt.Errorf("互动图像方案不能为空")
 	}

@@ -118,6 +118,38 @@ func TestResolveTurnRulesSingleD20CheckSelectsOutcomeAndStateChanges(t *testing.
 	}
 }
 
+func TestResolveTurnRulesAppliesStoryCheckSettingsDeterministically(t *testing.T) {
+	req := sampleTurnCheckRequest()
+	seed := int64(17)
+	settings := StoryCheckSettings{DifficultyShift: 1, RollModifier: 2}
+
+	resolution, err := resolveTurnRulesWithSeedAndDirectorAndSettings(
+		"st_tuned", "main", initialStoryState(), StoryDirector{}, settings, req, seed,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolution.Result.RequestedDifficulty != "normal" || resolution.Result.EffectiveDifficulty != "hard" {
+		t.Fatalf("difficulty audit = requested %q effective %q", resolution.Result.RequestedDifficulty, resolution.Result.EffectiveDifficulty)
+	}
+	if resolution.Result.BaseTarget != 15 || resolution.Result.DifficultyShift != 1 {
+		t.Fatalf("difficulty tuning not applied: %#v", resolution.Result)
+	}
+	if resolution.Result.StoryRollModifier != 2 || resolution.Result.BonusTotal != 2 || resolution.Result.Total != resolution.Result.KeptRoll+2 {
+		t.Fatalf("roll modifier not applied to the check total: %#v", resolution.Result)
+	}
+	if details := resolution.Result.BonusDetails; len(details) != 1 || details[0].Kind != "story" || details[0].Value != 2 {
+		t.Fatalf("story modifier audit missing: %#v", details)
+	}
+	output := resolution.ToolOutput()
+	if output.Difficulty != "hard" || output.RequestedDifficulty != "normal" || output.DifficultyShift != 1 {
+		t.Fatalf("tool output lost story tuning: %#v", output)
+	}
+	if got := storyCheckDifficulty("very_hard", 2); got != "very_hard" {
+		t.Fatalf("difficulty shift must clamp at the upper tier, got %q", got)
+	}
+}
+
 func TestResolveTurnRulesRollModesAndDifficultyTargets(t *testing.T) {
 	for difficulty, target := range turnCheckD20DifficultyTargets {
 		req := sampleTurnCheckRequest()

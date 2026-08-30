@@ -37,7 +37,7 @@ func storyDirectorForSnapshot(preset interactive.StoryDirector, snapshot *intera
 		return preset
 	}
 	preset.ActorState = snapshot.System
-	if len(snapshot.TRPGSystem.RuleTemplates) > 0 {
+	if !preset.ModuleRefs.RuleSystemDisabled && len(snapshot.TRPGSystem.RuleTemplates) > 0 {
 		preset.TRPGSystem = snapshot.TRPGSystem
 	}
 	return preset

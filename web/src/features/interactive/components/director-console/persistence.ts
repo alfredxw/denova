@@ -35,13 +35,16 @@ export function writeStoredDirectorRevealed(storyId: string | undefined, reveale
 
 export function readStoredDirectorConsoleTab(storyId?: string): DirectorConsoleTab | null {
   const value = read(storageKey(CONSOLE_TAB_KEY_PREFIX, storyId)) || read(storageKey(LEGACY_STATE_TAB_KEY_PREFIX, storyId))
-  return isDirectorConsoleTab(value) ? value : null
+  return migrateDirectorConsoleTab(value)
 }
 
 export function writeStoredDirectorConsoleTab(storyId: string | undefined, tab: DirectorConsoleTab) {
   write(storageKey(CONSOLE_TAB_KEY_PREFIX, storyId), tab)
 }
 
-function isDirectorConsoleTab(value: string | null): value is DirectorConsoleTab {
-  return value === 'changes' || value === 'actors' || value === 'world' || value === 'plan' || value === 'branches'
+function migrateDirectorConsoleTab(value: string | null): DirectorConsoleTab | null {
+  if (value === 'overview' || value === 'tuning' || value === 'routes') return value
+  if (value === 'branches') return 'routes'
+  if (value === 'changes' || value === 'actors' || value === 'world' || value === 'plan') return 'overview'
+  return null
 }

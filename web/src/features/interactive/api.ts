@@ -2,7 +2,7 @@ import { createAgentCommandID, fetchAPI, jsonHeaders, parseSSEStream, requestJSO
 import type { AgentCommandReceipt, AgentRuntimeActiveOutput, AgentRuntimeOpenTool, AgentRuntimeOperation, AgentRuntimeQueuedCommand, AgentRuntimeRecoveryAction, AgentRuntimeRecoveryReceipt, ContextAnalysis, InteractiveImage } from '@/lib/api-client'
 import { isKnownAgentCommandOutcome } from '@/lib/agent-command'
 import type { ChatAttachmentDescriptor, ChatAttachmentUpload } from '@/lib/chat-attachments'
-import type { ActorStateModule, ActorTraitRollRequest, ActorTraitRollResult, BranchSummary, EventPackageModule, ImagePreset, InitialActorTraitRoll, InteractiveSnapshotResponse, InteractiveSSEEvent, RuleResolution, RuleResolutionRerollInput, RuleSystemModule, StoryDirector, StoryDirectorModuleRefs, StoryHistoryPage, StoryPlanningMode, StoryStateSchemaPolicy, StyleReference, StyleReferenceFileDocument, StoryImageSettings, StoryIndex, StoryOpeningConfig, StorySummary, Teller, UpdateTurnNarrativeResult } from './types'
+import type { ActorStateModule, ActorTraitRollRequest, ActorTraitRollResult, BranchSummary, EventPackageModule, ImagePreset, InitialActorTraitRoll, InteractiveSnapshotResponse, InteractiveSSEEvent, InteractiveStoryUpdateInput, RuleResolution, RuleResolutionRerollInput, RuleSystemModule, StoryDirector, StoryDirectorModuleRefs, StoryHistoryPage, StoryPlanningMode, StoryStateSchemaPolicy, StyleReference, StyleReferenceFileDocument, StoryImageSettings, StoryIndex, StoryOpeningConfig, StorySummary, Teller, UpdateTurnNarrativeResult } from './types'
 
 function presetMutationBody<T extends object>(input: T, baseRevision?: string) {
   return {
@@ -33,19 +33,7 @@ export function rollInteractiveActorTraits(input: ActorTraitRollRequest): Promis
 
 export function updateInteractiveStory(
   id: string,
-  input: {
-    title?: string
-    origin?: string
-    story_teller_id?: string
-    story_director_id?: string
-    planning_mode?: StoryPlanningMode
-    module_refs?: StoryDirectorModuleRefs
-    reply_target_chars?: number
-    choice_count?: number
-    image_settings?: StoryImageSettings
-    opening?: StoryOpeningConfig
-    state_schema_policy?: StoryStateSchemaPolicy
-  },
+  input: InteractiveStoryUpdateInput,
 ): Promise<StorySummary> {
   return requestJSON(`/api/interactive/stories/${encodeURIComponent(id)}`, {
     method: 'PATCH',

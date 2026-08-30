@@ -16,6 +16,7 @@ export interface StorySummary {
   reply_target_chars: number
   choice_count: number
   image_settings?: StoryImageSettings
+  check_settings?: StoryCheckSettings
   opening: StoryOpeningConfig
   state_schema_policy?: StoryStateSchemaPolicy
   created_at: string
@@ -194,6 +195,26 @@ interface StoryDirectorStrategy {
   rule_state_consumption_mode?: 'hybrid_auto' | 'suggestions_only' | string
   rule_visibility_mode?: 'audit_only' | 'public_roll' | string
   prompt_markdown?: string
+}
+
+export interface StoryCheckSettings {
+  difficulty_shift: number
+  roll_modifier: number
+}
+
+export interface InteractiveStoryUpdateInput {
+  title?: string
+  origin?: string
+  story_teller_id?: string
+  story_director_id?: string
+  planning_mode?: StoryPlanningMode
+  module_refs?: StoryDirectorModuleRefs
+  reply_target_chars?: number
+  choice_count?: number
+  image_settings?: StoryImageSettings
+  check_settings?: StoryCheckSettings
+  opening?: StoryOpeningConfig
+  state_schema_policy?: StoryStateSchemaPolicy
 }
 
 export interface StoryDirectorTRPGSystem {
@@ -646,6 +667,10 @@ interface RuleResult {
   bonus_details?: TurnCheckBonus[]
   base_target?: number
   target?: number
+  requested_difficulty?: string
+  effective_difficulty?: string
+  difficulty_shift?: number
+  story_roll_modifier?: number
   result?: string
   state_changes?: TurnStateChange[]
 }

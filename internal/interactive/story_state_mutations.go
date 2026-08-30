@@ -208,7 +208,7 @@ func (s *Store) RerollRuleResolution(storyID, resolutionID string, req RuleResol
 	director := s.storyDirectorForMeta(meta)
 	actorState := actorStateSystemFromSnapshot(meta.ActorStateSchema, director.ActorState)
 	applyLegacyActorStateAliases(state, meta.ActorStateSchema)
-	next, err := ResolveTurnRulesWithDirector(storyID, branchID, state, director, request)
+	next, err := ResolveTurnRulesWithStorySettings(storyID, branchID, state, director, meta.CheckSettings, request)
 	if err != nil {
 		return RuleResolution{}, err
 	}

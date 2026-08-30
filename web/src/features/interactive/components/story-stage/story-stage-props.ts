@@ -1,5 +1,5 @@
 import type { BookOpeningPreset, StoryCreateInput } from '../../opening'
-import type { ImagePreset, InteractiveTurnPersistedEvent, Snapshot, StoryDirector, StoryImageSettings, StorySummary, Teller } from '../../types'
+import type { ImagePreset, InteractiveTurnPersistedEvent, Snapshot, StoryDirector, StorySummary, Teller } from '../../types'
 import type { BranchCreationSource } from '../branching/model'
 import type { StoryStateDisplayPreference } from '../story-state/display-preference'
 
@@ -28,9 +28,6 @@ export interface StoryStageProps {
   onStorySetupUpdate?: (input: StoryCreateInput) => void | Promise<void>
   onNarrativeStyleChange?: (id: string) => void | Promise<unknown>
   onStoryDelete?: (storyIds: string[]) => void | Promise<void>
-  onDirectorChange?: (directorId: string) => void
-  onReplyTargetCharsChange?: (replyTargetChars: number) => void | Promise<void>
-  onImageSettingsChange?: (settings: StoryImageSettings) => void | Promise<void>
   onRequestLoreInit?: () => void
   onOpenDirectorConfig?: () => void
   onToggleDirectorPanel?: () => void

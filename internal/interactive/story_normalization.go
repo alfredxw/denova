@@ -64,6 +64,7 @@ func normalizeStorySummary(story StorySummary) StorySummary {
 	story.ChoiceCount = normalizeStoryChoiceCount(story.ChoiceCount)
 	story.Opening = normalizeStoryOpeningConfig(story.Opening)
 	story.ImageSettings = normalizeStoryImageSettings(story.ImageSettings)
+	story.CheckSettings = normalizeStoryCheckSettings(story.CheckSettings)
 	story.ModuleRefs = cloneStoryDirectorModuleRefs(story.ModuleRefs)
 	if story.StateSchemaPolicy == nil {
 		story.StateSchemaPolicy = fixedStoryStateSchemaPolicy()
@@ -81,6 +82,7 @@ func normalizeStoryMeta(meta StoryMeta) StoryMeta {
 	meta.ChoiceCount = normalizeStoryChoiceCount(meta.ChoiceCount)
 	meta.Opening = normalizeStoryOpeningConfig(meta.Opening)
 	meta.ImageSettings = normalizeStoryImageSettings(meta.ImageSettings)
+	meta.CheckSettings = normalizeStoryCheckSettings(meta.CheckSettings)
 	meta.ActorStateSchema = normalizeActorStateSchemaSnapshot(meta.ActorStateSchema)
 	meta.ModuleRefs = cloneStoryDirectorModuleRefs(meta.ModuleRefs)
 	if legacyFixedSchema {

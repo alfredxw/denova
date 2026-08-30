@@ -20,6 +20,7 @@ type CreateStoryRequest struct {
 	ChoiceCount               int                               `json:"choice_count"`
 	Opening                   StoryOpeningConfig                `json:"opening,omitempty"`
 	ImageSettings             StoryImageSettings                `json:"image_settings,omitempty"`
+	CheckSettings             StoryCheckSettings                `json:"check_settings,omitempty"`
 	InitialTraitRolls         []InitialActorTraitRoll           `json:"initial_trait_rolls,omitempty"`
 	StateSchemaPolicy         *StoryStateSchemaPolicy           `json:"state_schema_policy,omitempty"`
 	ActorState                *StoryDirectorActorStateSystem    `json:"-"`
@@ -131,6 +132,7 @@ type UpdateStoryRequest struct {
 	ChoiceCount               *int                             `json:"choice_count,omitempty"`
 	Opening                   *StoryOpeningConfig              `json:"opening,omitempty"`
 	ImageSettings             *StoryImageSettings              `json:"image_settings,omitempty"`
+	CheckSettings             *StoryCheckSettings              `json:"check_settings,omitempty"`
 	StateSchemaPolicy         *StoryStateSchemaPolicy          `json:"state_schema_policy,omitempty"`
 	ActorState                *StoryDirectorActorStateSystem   `json:"-"`
 	TRPGSystem                *StoryDirectorTRPGSystem         `json:"-"`
@@ -162,6 +164,7 @@ type StorySummary struct {
 	ChoiceCount       int                      `json:"choice_count"`
 	Opening           StoryOpeningConfig       `json:"opening"`
 	ImageSettings     StoryImageSettings       `json:"image_settings"`
+	CheckSettings     StoryCheckSettings       `json:"check_settings"`
 	StateSchemaPolicy *StoryStateSchemaPolicy  `json:"state_schema_policy,omitempty"`
 	CreatedAt         string                   `json:"created_at"`
 	UpdatedAt         string                   `json:"updated_at"`
@@ -219,6 +222,7 @@ type StoryMeta struct {
 	ChoiceCount               int                              `json:"choice_count"`
 	Opening                   StoryOpeningConfig               `json:"opening"`
 	ImageSettings             StoryImageSettings               `json:"image_settings"`
+	CheckSettings             StoryCheckSettings               `json:"check_settings,omitempty"`
 	StateSchemaPolicy         *StoryStateSchemaPolicy          `json:"state_schema_policy,omitempty"`
 	InitialTraitRolls         []InitialActorTraitRoll          `json:"initial_trait_rolls,omitempty"`
 	ActorStateSchema          *ActorStateSchemaSnapshot        `json:"actor_state_schema,omitempty"`

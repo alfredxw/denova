@@ -155,6 +155,44 @@ func TestStoryPlanningModeDefaultsDisabledAndRejectsInvalidExplicitValues(t *tes
 	}
 }
 
+func TestStoryCheckSettingsPersistAndRejectOutOfRangeValues(t *testing.T) {
+	store := NewStore(t.TempDir())
+	story, err := store.CreateStory(CreateStoryRequest{
+		Title:         "偏难冒险",
+		CheckSettings: StoryCheckSettings{DifficultyShift: 1, RollModifier: 2},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if story.CheckSettings.DifficultyShift != 1 || story.CheckSettings.RollModifier != 2 {
+		t.Fatalf("created check settings = %#v", story.CheckSettings)
+	}
+
+	settings := StoryCheckSettings{DifficultyShift: -1, RollModifier: -3}
+	updated, err := store.UpdateStory(story.ID, UpdateStoryRequest{CheckSettings: &settings})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.CheckSettings != settings {
+		t.Fatalf("updated check settings = %#v, want %#v", updated.CheckSettings, settings)
+	}
+	context, err := store.StoryContext(story.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if context.Meta.CheckSettings != settings {
+		t.Fatalf("persisted check settings = %#v, want %#v", context.Meta.CheckSettings, settings)
+	}
+
+	if _, err := store.CreateStory(CreateStoryRequest{Title: "非法难度", CheckSettings: StoryCheckSettings{DifficultyShift: 3}}); err == nil {
+		t.Fatal("create accepted an out-of-range difficulty shift")
+	}
+	invalid := StoryCheckSettings{RollModifier: MaxStoryCheckRollModifier + 1}
+	if _, err := store.UpdateStory(story.ID, UpdateStoryRequest{CheckSettings: &invalid}); err == nil {
+		t.Fatal("update accepted an out-of-range roll modifier")
+	}
+}
+
 func TestCreateStoryPersistsStoryModuleOverrides(t *testing.T) {
 	store := NewStore(t.TempDir())
 	refs := StoryDirectorModuleRefs{

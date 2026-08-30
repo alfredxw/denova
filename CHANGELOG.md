@@ -56,6 +56,8 @@ Denova records only major user-visible features, important compatibility or data
 - The workbench now uses unified, customizable top-level navigation: Writing and Game are peer destinations, menus can be reordered or hidden, and Lore, Presets, and Versions are no longer duplicated by creative context. Presets show every type with fixed Shared, Game-only, or Writing-only labels.
 - 游戏规划整合进 Game Agent：可按故事开启或关闭，并在每轮原子维护自由格式的分支计划；游戏控制台集中展示当前计划、Actor State 与分支路线。游戏预设只提供模块组合和自由规划风格，不再写死后台节奏或调度策略。
 - Game planning now belongs to the Game Agent. It can be enabled per story and atomically maintains a free-form branch plan each turn, while the Game Console combines the current plan, Actor State, and branch routes. Game Presets provide module composition and free-form planning guidance instead of fixed background pacing or scheduling policies.
+- 右侧故事控制台重组为总览、调校与路线；可为当前故事快速覆盖 Game Agent 叙事、导演规划、回合判定难度与骰点修正、互动图像和状态展示，并明确标注预设继承与故事覆盖。
+- The right-side Story Console is reorganized into Overview, Tuning, and Routes. Each story can quickly override Game Agent narrative behavior, director planning, check difficulty and roll modifiers, interactive images, and state display, with clear preset-versus-story provenance.
 - 游戏剧情支持从任意已保存 AI 回复就地创建分支，并在游戏控制台集中预览、切换和管理故事线。
 - Game stories can branch directly from any persisted AI reply, with branch preview, switching, and management consolidated in the Game Console.
 - Developer Mode 新增跨 Project 的 Trajectory 与 Harness 工作区，用于查看运行轨迹、导出诊断数据和优化 Agent 行为；Harness 改动先保存为草稿，可按目标 Agent 调试、整体发布，并可随时停用自定义 State 而不删除数据。

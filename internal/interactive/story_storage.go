@@ -157,7 +157,7 @@ func storySummaryFromProjection(projection *storyJournalProjection) StorySummary
 		ModuleRefs:       cloneStoryDirectorModuleRefs(meta.ModuleRefs),
 		PlanningMode:     meta.PlanningMode,
 		ReplyTargetChars: meta.ReplyTargetChars, ChoiceCount: meta.ChoiceCount,
-		Opening: meta.Opening, ImageSettings: meta.ImageSettings,
+		Opening: meta.Opening, ImageSettings: meta.ImageSettings, CheckSettings: meta.CheckSettings,
 		StateSchemaPolicy: cloneStoryStateSchemaPolicy(meta.StateSchemaPolicy),
 		CreatedAt:         meta.CreatedAt, UpdatedAt: meta.UpdatedAt,
 		Branches: len(meta.Branches), Events: projection.EventCount, TurnCount: turnCount,
