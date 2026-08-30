@@ -69,6 +69,8 @@ export function ToolExecutionBlock({ message, showAgentSource = true, onResolve,
     ? (commandDescription || fileResultSummary || resultPreview || t('chat.tool.done'))
     : status === 'error'
       ? buildPreview(resultBody, 160) || t('chat.tool.failed')
+      : status === 'cancelled'
+        ? t('chat.tool.result.cancelled')
       : summary
   const headerSummary = approvalPending ? t('agentApproval.approval.waiting') : displaySummary
   const hasDetail = Boolean(approvalInteraction || detailArgs || result)

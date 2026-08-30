@@ -20,6 +20,7 @@ import (
 // established Denova task/SSE and display transcript projection.
 type PublicEventProjector struct {
 	mu                      sync.Mutex
+	conversation            Conversation
 	request                 ChatRequest
 	options                 agentrun.Options
 	emit                    func(agentrun.Event)
@@ -69,7 +70,7 @@ func NewPublicEventProjector(
 	emit func(agentrun.Event),
 ) *PublicEventProjector {
 	projector := &PublicEventProjector{
-		request: request, options: options, emit: emit,
+		conversation: conversation, request: request, options: options, emit: emit,
 		toolInputs: make(map[string]publicToolInput), interactions: make(map[string]publicInteraction),
 		nestedContent: make(map[string]*strings.Builder), nestedThinking: make(map[string]*strings.Builder),
 	}
@@ -842,6 +843,9 @@ func (projector *PublicEventProjector) Finalize(status agent.ResultStatus, reaso
 		return
 	}
 	projector.terminal = true
+	if status == agent.ResultAborted && strings.TrimSpace(reason) == agentrun.AbortReasonUserRequested {
+		markInterruptionIfNeeded(projector.conversation, projector.request.Message, projector.content.String(), reason)
+	}
 	projector.emitExecutionSummaryLocked(status)
 	switch status {
 	case agent.ResultCompleted:

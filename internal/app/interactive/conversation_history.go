@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"denova/config"
@@ -20,15 +21,59 @@ import (
 )
 
 func (c *Conversation) MarkInterrupted(userMessage, assistantContent, reason string) error {
-	slog.WarnContext(context.Background(), fmt.Sprintf("[interactive-agent] interruption ignored story_id=%s branch_id=%s reason=%s", c.storyID, c.branchID, reason))
+	if c == nil || c.store == nil {
+		return fmt.Errorf("interactive conversation is unavailable")
+	}
+	c.mu.Lock()
+	playerInputID := c.acceptedPlayerInputID
+	c.mu.Unlock()
+	interruption, err := c.store.MarkTurnInterrupted(
+		c.storyID, c.branchID, playerInputID, userMessage, assistantContent, reason,
+	)
+	if err != nil {
+		return err
+	}
+	slog.InfoContext(context.Background(), fmt.Sprintf(
+		"[interactive-agent] persisted paused turn story_id=%s branch_id=%s interruption_id=%s player_input_id=%s partial_bytes=%d",
+		c.storyID, c.branchID, interruption.ID, playerInputID, len(assistantContent),
+	))
 	return nil
 }
 
 func (c *Conversation) PendingInterruption() *session.Interruption {
-	return nil
+	if c == nil || c.store == nil {
+		return nil
+	}
+	interruption, err := c.store.PendingTurnInterruption(c.storyID, c.branchID)
+	if err != nil {
+		slog.ErrorContext(context.Background(), fmt.Sprintf(
+			"[interactive-agent] load paused turn failed story_id=%s branch_id=%s err=%v",
+			c.storyID, c.branchID, err,
+		))
+		return nil
+	}
+	if interruption == nil {
+		return nil
+	}
+	createdAt, _ := time.Parse(time.RFC3339Nano, interruption.Ts)
+	return &session.Interruption{
+		ID: interruption.ID, Status: session.InterruptionPending,
+		UserMessage: interruption.UserMessage, AssistantContent: interruption.AssistantContent,
+		Reason: interruption.Reason, CreatedAt: createdAt,
+	}
 }
 
 func (c *Conversation) ResolveInterruption(id string) error {
+	if c == nil || c.store == nil {
+		return fmt.Errorf("interactive conversation is unavailable")
+	}
+	pending, err := c.store.PendingTurnInterruption(c.storyID, c.branchID)
+	if err != nil {
+		return err
+	}
+	if pending != nil && pending.ID != strings.TrimSpace(id) {
+		return fmt.Errorf("pending turn interruption changed: have=%s want=%s", pending.ID, strings.TrimSpace(id))
+	}
 	return nil
 }
 

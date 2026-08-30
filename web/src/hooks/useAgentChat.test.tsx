@@ -209,6 +209,33 @@ describe('useAgentChat', () => {
     })
   })
 
+  it('binds an empty resume action to the exact projected interruption', async () => {
+    vi.mocked(getActiveChatTask).mockResolvedValue({
+      active: false,
+      pending_interruption_id: 'interruption-7',
+    })
+    chatMock.sendMessage.mockResolvedValue(undefined)
+    const { result } = renderHook(() => useAgentChat())
+
+    await act(async () => result.current.resumeActiveChat())
+    await act(async () => {
+      expect(await result.current.send('')).toBe(true)
+    })
+
+    expect(chatMock.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        role: 'user',
+        parts: [{ type: 'text', text: '继续生成' }],
+      }),
+      expect.objectContaining({
+        body: expect.objectContaining({
+          message: 'Continue.',
+          resume_interruption_id: 'interruption-7',
+        }),
+      }),
+    )
+  })
+
   it('submits host-enriched input with a separate creator-facing projection', async () => {
     writingAgentChatClient.fixedSessionId = ''
     vi.mocked(getSessions).mockResolvedValue([
@@ -1186,7 +1213,7 @@ describe('useAgentChat', () => {
       name: 'abort',
       status: 'aborted',
       terminalReason: 'user_requested',
-      expectedContent: '已中断 AI 执行',
+      expectedContent: '已暂停，可随时继续',
     },
   ])(
     'reports an evicted Writing $name terminal as a transient toast after canonical rehydrate',

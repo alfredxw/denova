@@ -360,9 +360,13 @@ func (r *displayEventRecorder) Record(ev agentrun.Event) {
 		r.flushThinking()
 		r.flushAssistant()
 		r.finalizeRootAssistantSegments(session.DisplayPhasePartial)
+		status := "error"
+		if ev.Type == "aborted" && ev.DataString("reason") == agentrun.AbortReasonUserRequested {
+			status = "cancelled"
+		}
 		for id, name := range r.pendingToolIDs {
-			if err := r.appender.UpdateDisplayToolStatus(id, name, "error"); err != nil {
-				slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-run] persist display tool_error failed name=%s id=%s err=%v", name, id, err))
+			if err := r.appender.UpdateDisplayToolStatus(id, name, status); err != nil {
+				slog.ErrorContext(context.Background(), fmt.Sprintf("[agent-run] persist display tool terminal status failed name=%s id=%s status=%s err=%v", name, id, status, err))
 			}
 		}
 		r.pendingToolIDs = make(map[string]string)

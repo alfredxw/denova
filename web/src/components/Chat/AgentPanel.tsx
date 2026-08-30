@@ -617,6 +617,7 @@ function AgentPanelComponent({
     disabled: sessionTransitionPending,
     sendBlocked: persistedSettings.loading || sessionTransitionPending,
     generationActive: isStreaming,
+    resumeAvailable: !isStreaming && Boolean(runtimeProjection?.pending_interruption_id?.trim()),
     queuedCommands: runtimeProjection?.queue || [],
     queueActionPendingCommandID,
     onQueuedCommandSteer: onSteerQueuedCommand,

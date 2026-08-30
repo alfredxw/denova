@@ -44,7 +44,7 @@ func newTurnRuntimeEnvironment(workspace string) turnRuntimeEnvironment {
 
 func projectTurnInput(input turnContextProjectionInput) turnInputProjection {
 	resumeInterruption := input.PendingInterruption
-	if !shouldResumeInterruptedRequest(input.Request.Message) {
+	if !requestResumesInterruption(input.Request) {
 		resumeInterruption = nil
 	}
 	input.PendingInterruption = resumeInterruption

@@ -371,7 +371,11 @@ export function useAgentChat(options: ChatOptions = {}) {
           return false
         }
       }
-      const command = isStreaming || sendOptions.attachments?.length ? '' : agentBypassCommand(input)
+      const resumeInterruptionID = isStreaming ? '' : runtimeProjection?.pending_interruption_id?.trim() || ''
+      const resumeFromEmptyComposer = Boolean(resumeInterruptionID && !input.trim() && !sendOptions.attachments?.length)
+      const canonicalInput = resumeFromEmptyComposer ? 'Continue.' : input
+      const resumeDisplayMessage = resumeFromEmptyComposer ? t('chat.input.resume') : ''
+      const command = isStreaming || sendOptions.attachments?.length ? '' : agentBypassCommand(canonicalInput)
       if (command) {
         const result = await client.executeCommand(command)
         if (command === 'clear') {
@@ -387,7 +391,7 @@ export function useAgentChat(options: ChatOptions = {}) {
 
       let prepared: ReturnType<typeof prepareAgentRequest>
       try {
-        prepared = prepareAgentRequest(input, sendOptions.planMode)
+        prepared = prepareAgentRequest(canonicalInput, sendOptions.planMode)
       } catch (e) {
         toast.error((e as Error).message)
         return false
@@ -408,6 +412,7 @@ export function useAgentChat(options: ChatOptions = {}) {
 
       const body = buildAgentChatRequestBody({
         message: prepared.message,
+        resume_interruption_id: resumeInterruptionID || undefined,
         references: prepared.references,
         lore_references: prepared.loreReferences,
         style_scenes: prepared.styleScenes,
@@ -506,7 +511,7 @@ export function useAgentChat(options: ChatOptions = {}) {
               ...(userReferences.length ? { user_references: userReferences } : {}),
               ...(sendOptions.attachments?.length ? { attachments: attachmentDescriptors(sendOptions.attachments) } : {}),
             },
-            parts: [{ type: 'text', text: sendOptions.displayMessage || input }],
+            parts: [{ type: 'text', text: sendOptions.displayMessage || resumeDisplayMessage || canonicalInput }],
           },
           { body },
         )

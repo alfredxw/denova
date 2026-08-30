@@ -189,6 +189,8 @@ export interface ActiveChatTask {
   last_operation?: AgentRuntimeOperation
   /** Durable interaction shown even when the display stream must be reattached. */
   pending_ask?: AgentAskInteraction
+  /** Exact durable pause checkpoint available to the next idle turn. */
+  pending_interruption_id?: string
 }
 
 export interface AgentCommandReceipt {

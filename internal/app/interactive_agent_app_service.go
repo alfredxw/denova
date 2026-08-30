@@ -144,7 +144,8 @@ func (s *InteractiveAppService) startInteractiveTask(ctx context.Context, reques
 	cycle, err := s.prepareInteractiveAgentCycle(ctx, interactiveAgentCycleRequest{
 		CommandID: identity.request.CommandID,
 		StoryID:   identity.request.StoryID, BranchID: identity.request.BranchID, Message: identity.request.Message,
-		StyleScenes: identity.request.StyleScenes, Locale: identity.request.Locale,
+		ResumeInterruptionID: identity.request.ResumeInterruptionID,
+		StyleScenes:          identity.request.StyleScenes, Locale: identity.request.Locale,
 		RegenerateFromTurnID: identity.request.RegenerateFromTurnID,
 		AttachmentIDs:        identity.request.AttachmentIDs, AttachedFiles: identity.request.AttachedFiles,
 	})

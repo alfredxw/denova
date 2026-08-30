@@ -164,23 +164,27 @@ export const MessageItem = memo(function MessageItem({ projectId = '', message, 
       // A completed AI SDK dynamic-tool part contains both call and result
       // phases. Result refinement must win for interactive media when no richer
       // data part is available (for example after reopening Writing history).
-      if (message.status !== 'running' && toolResultRenderer(message) === 'interactive_media') {
+      if (message.status !== 'running' && message.status !== 'cancelled' && toolResultRenderer(message) === 'interactive_media') {
         return <InteractiveImageBlock message={message} projectId={projectId} />
       }
       const renderer = toolCallRenderer(message)
       switch (renderer) {
         case 'interactive_media':
-          return <InteractiveImageBlock message={message} projectId={projectId} />
+          return message.status === 'cancelled'
+            ? <ToolExecutionBlock message={message} showAgentSource={showAgentSource} onResolve={onResolveAsk} onLayoutChange={onInteractiveCardLayoutChange} />
+            : <InteractiveImageBlock message={message} projectId={projectId} />
         case 'image':
           return message.illustration
             ? <ChapterIllustrationBlock message={message} projectId={projectId} onInsert={onInsertIllustration} />
             : <ToolExecutionBlock message={message} showAgentSource={showAgentSource} onResolve={onResolveAsk} onLayoutChange={onInteractiveCardLayoutChange} />
         case 'todo':
-          return <TodoListBlock message={message} />
+          return message.status === 'cancelled'
+            ? <ToolExecutionBlock message={message} showAgentSource={showAgentSource} onResolve={onResolveAsk} onLayoutChange={onInteractiveCardLayoutChange} />
+            : <TodoListBlock message={message} />
         case 'interaction':
           // A failed interaction never produced durable Ask state. Keep it as a
           // diagnostic tool card instead of parsing its rejected input as pending.
-          if (message.status === 'error') {
+          if (message.status === 'error' || message.status === 'cancelled') {
             return <ToolExecutionBlock message={message} showAgentSource={showAgentSource} onResolve={onResolveAsk} onLayoutChange={onInteractiveCardLayoutChange} />
           }
           if (message.ask?.kind === 'tool_approval') return <ToolApprovalCard message={message} onResolve={onResolveAsk} />

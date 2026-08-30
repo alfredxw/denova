@@ -17,21 +17,23 @@ import (
 )
 
 type WritingAgentActiveView struct {
-	SessionID           string
-	Task                *apptask.Snapshot
-	Runtime             agentrun.RuntimeStatus
-	RuntimeProjectionOK bool
-	PendingAsk          *session.AskInteraction
+	SessionID             string
+	Task                  *apptask.Snapshot
+	Runtime               agentrun.RuntimeStatus
+	RuntimeProjectionOK   bool
+	PendingAsk            *session.AskInteraction
+	PendingInterruptionID string
 	// RecoveryActions can contain a process-local projection refresh action
 	// after the durable runtime has already settled to Idle.
 	RecoveryActions []agentexecution.RuntimeRecoveryAction
 }
 
 type InteractiveAgentActiveView struct {
-	Task                *apptask.Snapshot
-	Info                InteractiveTaskInfo
-	Runtime             agentrun.RuntimeStatus
-	RuntimeProjectionOK bool
+	Task                  *apptask.Snapshot
+	Info                  InteractiveTaskInfo
+	Runtime               agentrun.RuntimeStatus
+	RuntimeProjectionOK   bool
+	PendingInterruptionID string
 }
 
 // WritingAgentActiveView returns task metadata and durable runtime state from
@@ -85,6 +87,12 @@ func (a *App) WritingAgentActiveView(ctx context.Context) WritingAgentActiveView
 	if projected && len(runtimeSnapshot.PendingInteractions) > 0 {
 		pendingAsk = agentchat.ProjectPendingInteraction(runtimeSnapshot.PendingInteractions[0], runtimeSnapshot)
 	}
+	pendingInterruptionID := ""
+	if selectedSession != nil {
+		if pending := selectedSession.PendingInterruption(); pending != nil {
+			pendingInterruptionID = strings.TrimSpace(pending.ID)
+		}
+	}
 
 	a.mu.RLock()
 	if lifecycleWorkspaceKey(a.workspace) != lifecycleWorkspaceKey(workspace) || a.executionRuntime != executionRuntime || a.session != selectedSession || activeWritingTaskLocked(a) != task {
@@ -99,7 +107,7 @@ func (a *App) WritingAgentActiveView(ctx context.Context) WritingAgentActiveView
 	a.mu.RUnlock()
 	return WritingAgentActiveView{
 		SessionID: sessionID, Task: taskSnapshot, Runtime: runtimeSnapshot, RuntimeProjectionOK: projected,
-		RecoveryActions: recoveryActions, PendingAsk: pendingAsk,
+		RecoveryActions: recoveryActions, PendingAsk: pendingAsk, PendingInterruptionID: pendingInterruptionID,
 	}
 }
 
@@ -152,6 +160,15 @@ func (a *App) InteractiveAgentActiveView(ctx context.Context, storyID, branchID 
 			BranchID:  resolved,
 		})
 	}
+	pendingInterruptionID := ""
+	if resolved != "" && store != nil {
+		pending, pendingErr := store.PendingTurnInterruption(storyID, resolved)
+		if pendingErr != nil {
+			slog.ErrorContext(ctx, fmt.Sprintf("[agent-runtime-projection] load paused game turn failed workspace=%s story_id=%s branch_id=%s err=%v", workspace, storyID, resolved, pendingErr))
+		} else if pending != nil {
+			pendingInterruptionID = strings.TrimSpace(pending.ID)
+		}
+	}
 
 	a.mu.RLock()
 	currentTask, currentInfo := activeInteractiveTaskLocked(a, storyID, branchID)
@@ -165,7 +182,10 @@ func (a *App) InteractiveAgentActiveView(ctx context.Context, storyID, branchID 
 		taskSnapshot = &snapshot
 	}
 	a.mu.RUnlock()
-	return InteractiveAgentActiveView{Task: taskSnapshot, Info: info, Runtime: runtimeSnapshot, RuntimeProjectionOK: projected}
+	return InteractiveAgentActiveView{
+		Task: taskSnapshot, Info: info, Runtime: runtimeSnapshot, RuntimeProjectionOK: projected,
+		PendingInterruptionID: pendingInterruptionID,
+	}
 }
 
 func sameInteractiveTaskInfo(left, right InteractiveTaskInfo) bool {

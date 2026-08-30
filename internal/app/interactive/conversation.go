@@ -49,6 +49,7 @@ type Conversation struct {
 	pinParentAtExecution     bool
 	agentCycleCommit         func(context.Context, agentrun.Outcome) error
 	agentCycleIdentity       agentrun.CycleIdentity
+	acceptedPlayerInputID    string
 	pendingDomainCommit      *interactive.DomainCommitIntent
 	lastDomainReceipt        *interactive.DomainCommitReceipt
 	agentCompaction          *interactive.ContextCompactionProjection
@@ -87,7 +88,11 @@ func (c *Conversation) BindAgentCycleIdentity(identity agentrun.CycleIdentity) {
 	c.modelContextAppendMu.Lock()
 	defer c.modelContextAppendMu.Unlock()
 	c.mu.Lock()
+	sameCycle := c.agentCycleIdentity == identity
 	c.agentCycleIdentity = identity
+	if !sameCycle {
+		c.acceptedPlayerInputID = ""
+	}
 	c.modelContextMessages = nil
 	c.modelContextBatchOrdinal = 0
 	c.pendingDomainCommit = nil
@@ -634,7 +639,14 @@ func (c *Conversation) MaterializeAgentCanonicalInput(
 	if err != nil {
 		return interactive.PlayerInputReceipt{}, err
 	}
-	return c.store.CommitPlayerInput(c.storyID, intent)
+	receipt, err := c.store.CommitPlayerInput(c.storyID, intent)
+	if err != nil {
+		return interactive.PlayerInputReceipt{}, err
+	}
+	c.mu.Lock()
+	c.acceptedPlayerInputID = receipt.Event.ID
+	c.mu.Unlock()
+	return receipt, nil
 }
 
 func (c *Conversation) ContextSourceSummary() string {

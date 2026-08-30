@@ -163,7 +163,7 @@ const storyStage = {
   'storyStage.activity.persistenceMissing': 'This turn was not confirmed as persisted. The uncommitted response was discarded and the story was reloaded. Please retry.',
   'storyStage.activity.rehydrateRequired': 'Earlier live trace exceeded the display budget. Canonical story history was restored and the same game Agent run is still being observed.',
   'storyStage.activity.done': 'Done',
-  'storyStage.activity.aborted': 'Aborted',
+  'storyStage.activity.aborted': 'Paused. You can resume.',
   'storyStage.activity.runFailed': 'Game Agent execution failed',
   'storyStage.contextCompaction.done': 'Context compaction complete',
   'storyStage.contextCompaction.failed': 'Context compaction failed',

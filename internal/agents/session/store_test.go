@@ -1125,6 +1125,47 @@ func TestInterruptionPersistsPendingRecordAndCanResolve(t *testing.T) {
 	}
 }
 
+func TestMarkInterruptedSupersedesPreviousPendingRecord(t *testing.T) {
+	dir := t.TempDir()
+	store, err := NewStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := store.GetOrCreate("superseded-interruption")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.MarkInterrupted("first request", "first partial", "user_requested"); err != nil {
+		t.Fatal(err)
+	}
+	first := sess.PendingInterruption()
+	if first == nil {
+		t.Fatal("first interruption is missing")
+	}
+	if err := sess.MarkInterrupted("continued request", "new partial", "user_requested"); err != nil {
+		t.Fatal(err)
+	}
+	latest := sess.PendingInterruption()
+	if latest == nil || latest.ID == first.ID || latest.UserMessage != "continued request" {
+		t.Fatalf("latest interruption = %#v, first = %#v", latest, first)
+	}
+	if err := sess.ResolveInterruption(latest.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	coldStore, err := NewStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cold, err := coldStore.Get("superseded-interruption")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pending := cold.PendingInterruption(); pending != nil {
+		t.Fatalf("superseded interruption resurfaced after reload: %#v", pending)
+	}
+}
+
 func TestStoreBoundsResidentSessionsWithoutInvalidatingInFlightHandles(t *testing.T) {
 	store, err := NewStore(t.TempDir())
 	if err != nil {

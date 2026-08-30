@@ -160,6 +160,7 @@ func assistantDataMessage(entry appsvc.AgentSessionHistoryEntry, index int, data
 func toolPartFromHistory(entry appsvc.AgentSessionHistoryEntry) map[string]any {
 	input := parseJSONValue(entry.Args)
 	state := "input-available"
+	toolMetadata := map[string]any{}
 	part := map[string]any{
 		"type":       "dynamic-tool",
 		"toolName":   firstNonEmpty(entry.Name, "unknown_tool"),
@@ -172,13 +173,19 @@ func toolPartFromHistory(entry appsvc.AgentSessionHistoryEntry) map[string]any {
 		part["state"] = "output-error"
 		part["errorText"] = firstNonEmpty(entry.Result, entry.Content, "tool failed")
 		return part
+	case "cancelled":
+		part["state"] = "output-available"
+		toolMetadata["status"] = "cancelled"
 	}
 	if entry.Result != "" || entry.Status == "success" {
 		part["state"] = "output-available"
 		part["output"] = entry.Result
 	}
 	if entry.Illustration != nil {
-		part["toolMetadata"] = map[string]any{"illustration": entry.Illustration}
+		toolMetadata["illustration"] = entry.Illustration
+	}
+	if len(toolMetadata) > 0 {
+		part["toolMetadata"] = toolMetadata
 	}
 	return part
 }

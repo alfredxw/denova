@@ -23,6 +23,32 @@ describe('agent-ui', () => {
     })
   })
 
+  it('preserves an exact resume interruption id in the request body', () => {
+    expect(buildAgentChatRequestBody({ resume_interruption_id: '  interruption-7  ' })).toMatchObject({
+      resume_interruption_id: 'interruption-7',
+    })
+  })
+
+  it('renders a cancelled tool as terminal without classifying it as an error', () => {
+    const messages: AgentUIMessage[] = [{
+      id: 'tool-cancelled',
+      role: 'assistant',
+      parts: [{
+        type: 'dynamic-tool',
+        toolName: 'read',
+        toolCallId: 'tool-cancelled',
+        state: 'output-available',
+        input: {},
+        output: null,
+        toolMetadata: { status: 'cancelled' },
+      }],
+    }]
+    const view = buildAgentMessageViews(messages)[0]
+
+    expect(view.status).toBe('cancelled')
+    expect(agentViewToRenderMessage(view)).toMatchObject({ status: 'cancelled' })
+  })
+
   it('preserves transport attachments and renders attachment-only user messages', () => {
     const attachments = [{ name: 'notes.md', media_type: 'text/markdown', data_url: 'data:text/markdown;base64,aGVsbG8=' }]
     expect(buildAgentChatRequestBody({ attachments })).toMatchObject({ attachments })

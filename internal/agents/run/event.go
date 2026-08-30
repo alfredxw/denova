@@ -2,6 +2,10 @@ package agentrun
 
 import "fmt"
 
+// AbortReasonUserRequested identifies an expected pause initiated by the user.
+// Other abort reasons remain operational failures and must not become resumable.
+const AbortReasonUserRequested = "user_requested"
+
 // Event is the transport-independent output envelope of an Agent run.
 type Event struct {
 	Type string

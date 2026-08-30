@@ -186,7 +186,7 @@ func boundStoryRecentCacheRecords(meta StoryMeta, branchID string, records []Sto
 			continue
 		}
 		switch records[index].Envelope.Type {
-		case StoryEventTypePlayerInput, StoryEventTypeModelContextBatch:
+		case StoryEventTypePlayerInput, StoryEventTypeTurnInterrupted, StoryEventTypeModelContextBatch:
 			keep[index] = true
 			kept++
 			commitCount++
@@ -458,7 +458,7 @@ func storyHistoryProjectionRecords(pathNewestFirst, candidates []locatedStoryRec
 			include = pathIDs[storyRevisionTurnID(record)]
 		case StoryEventTypeHotChoices:
 			include = pathIDs[parentIDFromRaw(record.Raw)]
-		case StoryEventTypePlayerInput, StoryEventTypeModelContextBatch:
+		case StoryEventTypePlayerInput, StoryEventTypeTurnInterrupted, StoryEventTypeModelContextBatch:
 			parentID := parentIDFromRaw(record.Raw)
 			include = parentID == "" || pathIDs[parentID]
 		case StoryEventTypeProviderContinuation:
@@ -514,7 +514,7 @@ func storyRevisionTurnID(record StoryEventRecord) string {
 
 func isStoryHistorySideCandidate(eventType string) bool {
 	switch eventType {
-	case StoryEventTypeTurn, StoryEventTypePlayerInput, StoryEventTypeModelContextBatch, StoryEventTypeModelContextProviderContinuation, StoryEventTypeProviderContinuation, StoryEventTypeHotChoices,
+	case StoryEventTypeTurn, StoryEventTypePlayerInput, StoryEventTypeTurnInterrupted, StoryEventTypeModelContextBatch, StoryEventTypeModelContextProviderContinuation, StoryEventTypeProviderContinuation, StoryEventTypeHotChoices,
 		StoryEventTypeTurnNarrativeRevised, StoryEventTypeTurnDisplayAppended, StoryEventTypeTurnStateRevised:
 		return true
 	default:

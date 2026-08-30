@@ -104,6 +104,20 @@ func TestMessagesFromHistoryProjectsAttachmentMetadataWithoutLocalPath(t *testin
 	}
 }
 
+func TestMessagesFromHistoryProjectsCancelledToolAsNeutralTerminalState(t *testing.T) {
+	messages := MessagesFromHistory([]session.HistoryEntry{{
+		ID: "tool-cancelled", Role: "tool_call", Name: "read", Status: "cancelled",
+	}})
+	if len(messages) != 1 || len(messages[0].Parts) != 1 {
+		t.Fatalf("cancelled tool messages = %#v", messages)
+	}
+	part := messages[0].Parts[0]
+	metadata, _ := part["toolMetadata"].(map[string]any)
+	if part["state"] != "output-available" || metadata["status"] != "cancelled" {
+		t.Fatalf("cancelled tool part = %#v", part)
+	}
+}
+
 func TestMessagesFromHistoryPreservesDisplaySegmentIDsInTextMetadata(t *testing.T) {
 	messages := MessagesFromHistory([]session.HistoryEntry{
 		{ID: "run-1-display-001-thinking", DisplaySegmentID: "run-1-display-001-thinking", Role: "thinking", Content: "分析", RunID: "run-1"},

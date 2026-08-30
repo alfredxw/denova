@@ -72,6 +72,32 @@ beforeEach(() => {
 })
 
 describe('StoryStage active runtime commands', () => {
+  it('resumes an idle paused turn with the exact projected interruption', async () => {
+    const user = userEvent.setup()
+    const stream = controllableInteractiveStream()
+    getActiveInteractiveChatMock.mockResolvedValue({
+      active: false,
+      pending_interruption_id: 'turn-interruption-7',
+    })
+    sendInteractiveMessageMock.mockResolvedValue(stream.readable)
+    const { unmount } = render(<StoryStageHarness />)
+
+    try {
+      const resumeButton = await screen.findByRole('button', { name: '继续生成' })
+      expect(resumeButton).toBeEnabled()
+      await user.click(resumeButton)
+
+      await waitFor(() => expect(sendInteractiveMessageMock).toHaveBeenCalledWith(expect.objectContaining({
+        message: 'Continue.',
+        resume_interruption_id: 'turn-interruption-7',
+      })))
+      expect(screen.getByText('继续生成')).toBeInTheDocument()
+    } finally {
+      unmount()
+      stream.close()
+    }
+  })
+
   it('uses the contextual action to queue a follow-up and exposes manual steering', async () => {
     const user = userEvent.setup()
     const stream = controllableInteractiveStream()

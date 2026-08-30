@@ -6,6 +6,7 @@ import (
 	agentchat "denova/internal/agents/chat"
 	agentexecution "denova/internal/agents/execution"
 	agentrun "denova/internal/agents/run"
+	"denova/internal/agents/session"
 	apptask "denova/internal/app/task"
 	"encoding/hex"
 	"encoding/json"
@@ -25,6 +26,7 @@ type InteractiveAgentStartRequest struct {
 	StoryID              string
 	BranchID             string
 	Message              string
+	ResumeInterruptionID string
 	StyleScenes          []string
 	RegenerateFromTurnID string
 	Locale               string
@@ -170,6 +172,7 @@ func (s *InteractiveAppService) resolveInteractiveStart(request InteractiveAgent
 	request.StoryID = strings.TrimSpace(request.StoryID)
 	request.BranchID = strings.TrimSpace(request.BranchID)
 	request.Message = strings.TrimSpace(request.Message)
+	request.ResumeInterruptionID = strings.TrimSpace(request.ResumeInterruptionID)
 	request.RegenerateFromTurnID = strings.TrimSpace(request.RegenerateFromTurnID)
 	request.Locale = strings.TrimSpace(request.Locale)
 	request.StyleScenes = normalizeInteractiveStartStyleScenes(request.StyleScenes)
@@ -203,11 +206,25 @@ func (s *InteractiveAppService) resolveInteractiveStart(request InteractiveAgent
 	}
 	request.BranchID = branchID
 	chatRequest := agentchat.CaptureChatRequestCallerInput(agentchat.ChatRequest{
-		CommandID: request.CommandID, Message: request.Message,
+		CommandID: request.CommandID, Message: request.Message, ResumeInterruptionID: request.ResumeInterruptionID,
 		AttachmentIDs: append([]string(nil), request.AttachmentIDs...),
 		AttachedFiles: append([]agent.Attachment(nil), request.AttachedFiles...),
 		StyleScenes:   append([]string(nil), request.StyleScenes...), Locale: request.Locale,
 	})
+	if request.ResumeInterruptionID != "" {
+		var pendingInterruption *session.Interruption
+		if pending, pendingErr := store.PendingTurnInterruption(request.StoryID, branchID); pendingErr != nil {
+			return interactiveStartIdentity{}, pendingErr
+		} else if pending != nil {
+			pendingInterruption = &session.Interruption{
+				ID: pending.ID, Status: session.InterruptionPending,
+				UserMessage: pending.UserMessage, AssistantContent: pending.AssistantContent, Reason: pending.Reason,
+			}
+		}
+		if _, err := agentchat.ResolveRequestedInterruption(chatRequest, pendingInterruption); err != nil {
+			return interactiveStartIdentity{}, err
+		}
+	}
 	descriptor := struct {
 		ProjectID            string `json:"project_id"`
 		StoryID              string `json:"story_id"`

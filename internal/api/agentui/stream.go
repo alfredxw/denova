@@ -6,6 +6,7 @@ import (
 	"io"
 	"strings"
 
+	agentrun "denova/internal/agents/run"
 	appsvc "denova/internal/app"
 )
 
@@ -130,7 +131,11 @@ func (e *StreamEncoder) WriteEvent(ev appsvc.AgentEvent) error {
 		if err := e.closeOpenContent(); err != nil {
 			return err
 		}
-		return e.writeChunk(map[string]any{"type": "abort", "reason": firstNonEmpty(readString(data, "reason"), "user cancelled")})
+		reason := firstNonEmpty(readString(data, "reason"), "user cancelled")
+		if reason == agentrun.AbortReasonUserRequested {
+			return e.Finish("stop")
+		}
+		return e.writeChunk(map[string]any{"type": "abort", "reason": reason})
 	case "done":
 		return e.Finish("stop")
 	default:

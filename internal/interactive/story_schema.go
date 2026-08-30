@@ -13,6 +13,7 @@ import (
 const (
 	StoryEventTypeMeta                             = "meta"
 	StoryEventTypePlayerInput                      = "player_input_accepted"
+	StoryEventTypeTurnInterrupted                  = "turn_interrupted"
 	StoryEventTypeModelContextBatch                = "model_context_batch"
 	StoryEventTypeModelContextProviderContinuation = "model_context_provider_continuation"
 	StoryEventTypeProviderContinuation             = "turn_provider_continuation"
@@ -38,6 +39,7 @@ const (
 // both consult this table, so adding an event requires an explicit context decision.
 var persistedStoryEventModelContextChanges = map[string]bool{
 	StoryEventTypePlayerInput:       true,
+	StoryEventTypeTurnInterrupted:   true,
 	StoryEventTypeModelContextBatch: true,
 	// The owning Turn or model-context batch already changes model context.
 	StoryEventTypeModelContextProviderContinuation: false,
@@ -183,6 +185,15 @@ func mapToStoryEventRecord(raw map[string]any) (StoryEventRecord, error) {
 			return StoryEventRecord{}, err
 		}
 		if _, err := normalizePlayerInputAcceptedEvent(input); err != nil {
+			return StoryEventRecord{}, err
+		}
+	}
+	if envelope.Type == StoryEventTypeTurnInterrupted {
+		var interruption TurnInterruptedEvent
+		if err := mapToStruct(raw, &interruption); err != nil {
+			return StoryEventRecord{}, err
+		}
+		if err := validateTurnInterruptedEvent(interruption); err != nil {
 			return StoryEventRecord{}, err
 		}
 	}

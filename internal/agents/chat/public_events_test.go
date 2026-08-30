@@ -5,10 +5,82 @@ import (
 	"testing"
 	"time"
 
+	agentconversation "denova/internal/agents/conversation"
 	agentrun "denova/internal/agents/run"
+	"denova/internal/agents/session"
 
 	agent "github.com/alfredxw/denova/agent"
 )
+
+func TestPublicEventProjectorRecordsUserAbortAsResumableInterruption(t *testing.T) {
+	store, err := session.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := store.GetOrCreate("user-abort")
+	if err != nil {
+		t.Fatal(err)
+	}
+	conversation := agentconversation.NewSessionConversation(sess)
+	projector := NewPublicEventProjector(
+		conversation,
+		ChatRequest{Message: "Write the opening scene"},
+		agentrun.Options{},
+		func(agentrun.Event) {},
+	)
+	projector.Project(agent.Event{RunID: "run", Payload: agent.AssistantDelta{Delta: "The door opened"}})
+	projector.Project(agent.Event{RunID: "run", Payload: agent.ToolInputStarted{CallID: "call-1", Name: "read"}})
+	projector.Finalize(agent.ResultAborted, agentrun.AbortReasonUserRequested)
+
+	pending := sess.PendingInterruption()
+	if pending == nil {
+		t.Fatal("user-requested abort did not create a resumable interruption")
+	}
+	if pending.UserMessage != "Write the opening scene" || pending.AssistantContent != "The door opened" || pending.Reason != agentrun.AbortReasonUserRequested {
+		t.Fatalf("interruption = %#v", pending)
+	}
+	for _, entry := range sess.History() {
+		if entry.Role == "tool_call" && entry.ID == "call-1" {
+			if entry.Status != "cancelled" {
+				t.Fatalf("interrupted tool status = %q, want cancelled", entry.Status)
+			}
+			return
+		}
+	}
+	t.Fatal("interrupted tool call is missing from display history")
+}
+
+func TestPublicEventProjectorDoesNotPauseUnexpectedAbort(t *testing.T) {
+	store, err := session.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := store.GetOrCreate("unexpected-abort")
+	if err != nil {
+		t.Fatal(err)
+	}
+	projector := NewPublicEventProjector(
+		agentconversation.NewSessionConversation(sess),
+		ChatRequest{Message: "Write the opening scene"},
+		agentrun.Options{},
+		func(agentrun.Event) {},
+	)
+	projector.Project(agent.Event{RunID: "run", Payload: agent.ToolInputStarted{CallID: "call-1", Name: "read"}})
+	projector.Finalize(agent.ResultAborted, "runtime_shutdown")
+
+	if pending := sess.PendingInterruption(); pending != nil {
+		t.Fatalf("unexpected abort became resumable: %#v", pending)
+	}
+	for _, entry := range sess.History() {
+		if entry.Role == "tool_call" && entry.ID == "call-1" {
+			if entry.Status != "error" {
+				t.Fatalf("unexpected abort tool status = %q, want error", entry.Status)
+			}
+			return
+		}
+	}
+	t.Fatal("unexpected abort tool call is missing from display history")
+}
 
 type publicEventCompactionConversation struct {
 	Conversation

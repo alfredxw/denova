@@ -390,6 +390,53 @@ func TestAbortPreservesCallerReason(t *testing.T) {
 	}
 }
 
+type activeStreamingLifecycleModel struct {
+	started chan struct{}
+	once    sync.Once
+}
+
+func (*activeStreamingLifecycleModel) Generate(context.Context, []*Message, ...ModelOption) (*Message, error) {
+	return nil, errors.New("unexpected Generate")
+}
+
+func (model *activeStreamingLifecycleModel) Stream(ctx context.Context, _ []*Message, _ ...ModelOption) (*StreamReader[*Message], error) {
+	first := true
+	return &StreamReader[*Message]{recvFn: func() (*Message, error) {
+		if first {
+			first = false
+			model.once.Do(func() { close(model.started) })
+			return AssistantMessage("partial", nil), nil
+		}
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}}, nil
+}
+
+func TestAbortWhileStreamingPreservesCallerReason(t *testing.T) {
+	model := &activeStreamingLifecycleModel{started: make(chan struct{})}
+	owner, err := New(context.Background(), Definition{Name: "test", Model: model})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = owner.Close(context.Background()) })
+	session, err := owner.Session(context.Background(), NamedSession("abort-stream-reason"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, err := session.Run(context.Background(), Text("stream"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-model.started
+	if _, err := run.Abort(context.Background(), AbortRequest{Reason: "user_requested"}); err != nil {
+		t.Fatal(err)
+	}
+	result, err := run.Wait(context.Background())
+	if err != nil || result.Status != ResultAborted || result.Reason != "user_requested" {
+		t.Fatalf("result = %#v, err = %v", result, err)
+	}
+}
+
 func TestCancelledControlContextDoesNotMutateRun(t *testing.T) {
 	model := &gatedLifecycleModel{started: make(chan struct{}), release: make(chan struct{})}
 	owner, err := New(context.Background(), Definition{Name: "test", Model: model})

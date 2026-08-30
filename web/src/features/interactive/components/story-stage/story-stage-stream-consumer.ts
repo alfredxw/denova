@@ -93,7 +93,9 @@ export function createStoryStageStreamConsumer({
         next.streamFailed = true
         return next
       case 'aborted':
-        setMessages((current) => [...current, errorMessage(t('storyStage.activity.aborted'))])
+        if (!isUserRequestedAbort(next.terminalReason)) {
+          setMessages((current) => [...current, errorMessage(next.terminalReason || t('storyStage.activity.aborted'))])
+        }
         next.finishedNormally = false
         return next
       case 'running':
@@ -375,13 +377,15 @@ export function createStoryStageStreamConsumer({
           if (reset) liveAccumulator.resetAssistant()
           liveAccumulator.collapseNonNarrative()
           if (text) liveAccumulator.appendAssistant(text, liveTurnNavigationAnchorId, rootNarrativeMetadata)
-          liveAccumulator.finishMessages()
+          liveAccumulator.finishMessages(event.type === 'aborted' ? 'cancelled' : 'success')
           if (event.type === 'aborted') {
             const data = event.data
             terminalStatus = 'aborted'
             terminalReason =
               typeof data.reason === 'string' ? data.reason.trim() : typeof data.message === 'string' ? data.message.trim() : undefined
-            setMessages((current) => [...current, errorMessage(t('storyStage.activity.aborted'))])
+            if (!isUserRequestedAbort(terminalReason)) {
+              setMessages((current) => [...current, errorMessage(terminalReason || t('storyStage.activity.aborted'))])
+            }
           } else if (persistenceRequired && !streamFailed) {
             terminalStatus = 'done'
             streamFailed = true
@@ -443,6 +447,10 @@ export function createStoryStageStreamConsumer({
   }
 
   return { consume, initialOutcome, settleInactiveProjection }
+}
+
+function isUserRequestedAbort(reason?: string) {
+  return reason?.trim() === 'user_requested'
 }
 
 function assertNever(value: never): never {

@@ -10,6 +10,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
+	agentchat "denova/internal/agents/chat"
 	"denova/internal/api/sse"
 	novaApp "denova/internal/app"
 	workspacechange "denova/internal/workspace/change"
@@ -94,6 +95,10 @@ func (h *Handlers) writeChatPreparationError(c *app.RequestContext, err error) {
 	}
 	if errors.Is(err, novaApp.ErrAgentOperationActive) {
 		writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.busy", "已有 Agent 正在运行，请使用 Follow Up、Steer 或 Stop / An agent is already running; use Follow Up, Steer, or Stop", nil)
+		return
+	}
+	if errors.Is(err, agentchat.ErrInterruptionNotPending) {
+		writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.interruption_changed", "暂停点已变化，请刷新后重试 / The paused turn changed; refresh and try again", nil)
 		return
 	}
 	if errors.Is(err, novaApp.ErrWorkspaceTransition) || errors.Is(err, novaApp.ErrAgentContextChanged) {
@@ -199,6 +204,9 @@ func (h *Handlers) HandleChatActive(ctx context.Context, c *app.RequestContext) 
 		if view.PendingAsk != nil {
 			response["pending_ask"] = view.PendingAsk
 		}
+		if view.PendingInterruptionID != "" {
+			response["pending_interruption_id"] = view.PendingInterruptionID
+		}
 		addAgentRuntimeProjection(response, view.Runtime, agentRuntimeProjectionOptions{
 			Available: view.RuntimeProjectionOK, RecoveryActions: view.RecoveryActions,
 		})
@@ -213,6 +221,9 @@ func (h *Handlers) HandleChatActive(ctx context.Context, c *app.RequestContext) 
 	}
 	if view.PendingAsk != nil {
 		response["pending_ask"] = view.PendingAsk
+	}
+	if view.PendingInterruptionID != "" {
+		response["pending_interruption_id"] = view.PendingInterruptionID
 	}
 	addAgentRuntimeProjection(response, view.Runtime, agentRuntimeProjectionOptions{
 		Available: view.RuntimeProjectionOK, StreamAttached: true, RecoveryActions: view.RecoveryActions,

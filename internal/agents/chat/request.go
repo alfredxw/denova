@@ -20,6 +20,9 @@ type ChatRequest struct {
 	// code must never replace it with a newly generated identity.
 	CommandID string `json:"command_id"`
 	Message   string `json:"message"`
+	// ResumeInterruptionID binds this turn to one exact pending interruption.
+	// The current Message remains authoritative and may redirect the resumed work.
+	ResumeInterruptionID string `json:"resume_interruption_id,omitempty"`
 	// DisplayMessage is an optional user-facing projection of Message. The
 	// canonical Message remains model-visible and durable for recovery.
 	DisplayMessage    string                   `json:"display_message,omitempty"`
@@ -61,21 +64,22 @@ type ChatRequest struct {
 // durable execution. It is not model-visible context. Keep this list aligned with
 // the public caller-controlled ChatRequest fields.
 type CallerInput struct {
-	CommandID      string                `json:"command_id"`
-	Message        string                `json:"message"`
-	DisplayMessage string                `json:"display_message,omitempty"`
-	AttachmentIDs  []string              `json:"attachment_ids,omitempty"`
-	References     []string              `json:"references,omitempty"`
-	LoreReferences []string              `json:"lore_references,omitempty"`
-	StyleScenes    []string              `json:"style_scenes,omitempty"`
-	Selections     []TextSelectionRef    `json:"selections,omitempty"`
-	IDEContext     prompts.IDEContextRef `json:"ide_context,omitempty"`
-	ReviewFeedback agentreview.Refs      `json:"review_feedback,omitempty"`
-	PlanMode       bool                  `json:"plan_mode"`
-	WritingSkill   string                `json:"writing_skill,omitempty"`
-	ImagePresetID  string                `json:"image_preset_id,omitempty"`
-	TellerID       string                `json:"teller_id,omitempty"`
-	Locale         string                `json:"locale,omitempty"`
+	CommandID            string                `json:"command_id"`
+	Message              string                `json:"message"`
+	ResumeInterruptionID string                `json:"resume_interruption_id,omitempty"`
+	DisplayMessage       string                `json:"display_message,omitempty"`
+	AttachmentIDs        []string              `json:"attachment_ids,omitempty"`
+	References           []string              `json:"references,omitempty"`
+	LoreReferences       []string              `json:"lore_references,omitempty"`
+	StyleScenes          []string              `json:"style_scenes,omitempty"`
+	Selections           []TextSelectionRef    `json:"selections,omitempty"`
+	IDEContext           prompts.IDEContextRef `json:"ide_context,omitempty"`
+	ReviewFeedback       agentreview.Refs      `json:"review_feedback,omitempty"`
+	PlanMode             bool                  `json:"plan_mode"`
+	WritingSkill         string                `json:"writing_skill,omitempty"`
+	ImagePresetID        string                `json:"image_preset_id,omitempty"`
+	TellerID             string                `json:"teller_id,omitempty"`
+	Locale               string                `json:"locale,omitempty"`
 }
 
 // CaptureChatRequestCallerInput freezes a deep copy of caller-controlled
@@ -87,8 +91,9 @@ func CaptureChatRequestCallerInput(req ChatRequest) ChatRequest {
 	}
 	req.callerInput = &CallerInput{
 		CommandID: req.CommandID, Message: req.Message, DisplayMessage: req.DisplayMessage,
-		AttachmentIDs: cloneStrings(req.AttachmentIDs),
-		References:    cloneStrings(req.References), LoreReferences: cloneStrings(req.LoreReferences),
+		ResumeInterruptionID: req.ResumeInterruptionID,
+		AttachmentIDs:        cloneStrings(req.AttachmentIDs),
+		References:           cloneStrings(req.References), LoreReferences: cloneStrings(req.LoreReferences),
 		StyleScenes: cloneStrings(req.StyleScenes), Selections: cloneTextSelectionRefs(req.Selections),
 		IDEContext:     prompts.IDEContextRef{CurrentFile: req.IDEContext.CurrentFile, OpenFiles: cloneStrings(req.IDEContext.OpenFiles)},
 		ReviewFeedback: req.ReviewFeedback.Clone(),

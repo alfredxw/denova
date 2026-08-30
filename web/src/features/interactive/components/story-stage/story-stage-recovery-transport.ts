@@ -50,6 +50,7 @@ export function storyStageProjectionFingerprint(active: ActiveInteractiveChat) {
     active.task_id || '',
     active.active_operation_id || '',
     active.recovery_paused === true,
+    active.pending_interruption_id || '',
     active.recovery_actions || [],
   ])
 }

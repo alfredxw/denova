@@ -50,3 +50,37 @@ func TestCanonicalCommitterKeepsGameAttachmentsInStoryAndModelInput(t *testing.T
 		t.Fatalf("game model input lost attachments: %#v", last.Attachments)
 	}
 }
+
+func TestGameInterruptionSurvivesRepeatedBindingOfSameCycle(t *testing.T) {
+	workspace := t.TempDir()
+	store := interactive.NewStore(workspace)
+	story, err := store.CreateStory(interactive.CreateStoryRequest{Title: "Paused story", Origin: "Test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	conversation := NewConversation(store, t.TempDir(), workspace, story.ID, "main", "Wait by the door", story.ReplyTargetChars, nil)
+	identity := agentrun.CycleIdentity{CommandID: "pause-command", OperationID: "pause-operation", Cycle: 1}
+	conversation.BindAgentCycleIdentity(identity)
+	committer, err := NewCanonicalCommitter(CanonicalCommitterConfig{Conversation: conversation})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := committer.MaterializeInput(context.Background(), agent.InputCommitRequest{
+		Identity: agent.CommitIdentity{CommandID: "pause-command", RunID: "pause-operation", Cycle: 1, Stage: agent.CommitInput},
+		Hash:     "pause-input-hash",
+		Input:    agent.Input{Text: "Wait by the door"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Context materialization binds the same accepted cycle again before the
+	// stream can be interrupted. That idempotent bind must retain its input.
+	conversation.BindAgentCycleIdentity(identity)
+	if err := conversation.MarkInterrupted("Wait by the door", "The hallway", agentrun.AbortReasonUserRequested); err != nil {
+		t.Fatal(err)
+	}
+	pending := conversation.PendingInterruption()
+	if pending == nil || pending.UserMessage != "Wait by the door" || pending.AssistantContent != "The hallway" {
+		t.Fatalf("pending interruption = %#v", pending)
+	}
+}

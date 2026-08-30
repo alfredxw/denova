@@ -575,6 +575,7 @@ function writingRecoveryProjectionFingerprint(projection: ActiveChatTask | null)
     projection.active_operation_id || '',
     projection.cursor || 0,
     projection.recovery_paused === true,
+    projection.pending_interruption_id || '',
     projection.recovery_actions || [],
   ])
 }

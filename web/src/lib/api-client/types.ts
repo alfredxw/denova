@@ -2,9 +2,9 @@
 // this shape remains private to the presentation adapter. Role-specific payloads
 // are kept on a discriminated union so invalid message combinations fail during
 // development instead of silently reaching a renderer.
-export type ChatMessageStatus = 'running' | 'success' | 'error'
+export type ChatMessageStatus = 'running' | 'success' | 'error' | 'cancelled'
 export type ChatPlanAction = 'approved' | 'continue' | 'exited'
-export type InteractiveImageStatus = ChatMessageStatus
+export type InteractiveImageStatus = Exclude<ChatMessageStatus, 'cancelled'>
 
 export type ToolPresentationKind =
   | 'generic'

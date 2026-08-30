@@ -175,10 +175,10 @@ export function useLiveMessageAccumulator({ publicRuleRollVisible, setMessages }
     updateBatcher.enqueue((current) => current.map((message) => settleAgentMessage(promoteMessageTarget(message), false)))
   }, [updateBatcher])
 
-  const finishMessages = useCallback(() => {
+  const finishMessages = useCallback((toolStatus: 'success' | 'cancelled' = 'success') => {
     flush()
     nonNarrativeStreamingRef.current = false
-    setMessages((current) => current.map((message) => settleAgentMessage(promoteMessageTarget(message), true)))
+    setMessages((current) => current.map((message) => settleAgentMessage(promoteMessageTarget(message), true, toolStatus)))
   }, [flush, setMessages])
 
   const resetForCheckpoint = useCallback(() => {
@@ -258,7 +258,7 @@ export function useLiveMessageAccumulator({ publicRuleRollVisible, setMessages }
 
 export type LiveMessageAccumulator = ReturnType<typeof useLiveMessageAccumulator>
 
-function settleAgentMessage(message: AgentUIMessage, includeNarrative: boolean): AgentUIMessage {
+function settleAgentMessage(message: AgentUIMessage, includeNarrative: boolean, toolStatus: 'success' | 'cancelled' = 'success'): AgentUIMessage {
   let changed = false
   const parts = message.parts.map((part) => {
     if ((part.type === 'text' && includeNarrative) || part.type === 'reasoning') {
@@ -268,10 +268,14 @@ function settleAgentMessage(message: AgentUIMessage, includeNarrative: boolean):
     }
     if (part.type === 'dynamic-tool' && (part.state === 'input-streaming' || part.state === 'input-available')) {
       changed = true
+      const currentToolMetadata = 'toolMetadata' in part && part.toolMetadata && typeof part.toolMetadata === 'object'
+        ? part.toolMetadata
+        : {}
       return {
         ...part,
         input: typeof part.input === 'string' ? parseAgentToolInput(part.input) : part.input,
         state: 'output-available' as const,
+        ...(toolStatus === 'cancelled' ? { toolMetadata: { ...currentToolMetadata, status: 'cancelled' } } : {}),
       }
     }
     if (part.type === 'data-agent-context-compaction' && part.data.status === 'running') {

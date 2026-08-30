@@ -269,6 +269,7 @@ export function runtimeFromActiveInteractiveChat(
     phase: active.phase || (active.active ? 'running' : 'idle'),
     recoveryPaused: Boolean(active.recovery_paused),
     recoveryAbortAvailable: Boolean(active.recovery_actions?.some((action) => action.kind === 'abort')),
+    pendingInterruptionId: active.pending_interruption_id?.trim() || '',
     operationId: active.active_operation_id || '',
     cycle: active.active_cycle || 0,
     activeOutput: active.active_output,

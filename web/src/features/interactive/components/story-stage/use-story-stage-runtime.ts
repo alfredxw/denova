@@ -117,6 +117,7 @@ export function useStoryStageRuntime({
     branchId,
     isStreaming: () => Boolean(useInteractiveStore.getState().storyStageRuns[stageKey]?.streaming),
     onResume: resumeActiveStoryRun,
+    onProject: (active) => interactiveAgentCommands.project(active, 'disconnected'),
     onDetach: () =>
       updateStageRun((current) => ({
         ...current,
@@ -127,8 +128,13 @@ export function useStoryStageRuntime({
   })
 
   async function send(override?: { message?: string; rewindTurnId?: string; attachments?: File[] }) {
-    const message = (override?.message ?? input).trim()
+    const requestedMessage = (override?.message ?? input).trim()
     const files = override?.attachments || []
+    const rewindTurnId = override?.rewindTurnId ?? editingTurnId
+    const resumeInterruptionID = !streaming && !rewindTurnId ? readStageRuntime().pendingInterruptionId.trim() : ''
+    const resumeFromEmptyComposer = Boolean(resumeInterruptionID && !requestedMessage && files.length === 0)
+    const message = resumeFromEmptyComposer ? 'Continue.' : requestedMessage
+    const displayMessage = resumeFromEmptyComposer ? t('chat.input.resume') : requestedMessage
     if ((!message && files.length === 0) || !storyId || branchTerminal || blocked || commandSubmittingRef.current) return false
     let attachmentUploads: ChatAttachmentUpload[] = []
     if (files.length) {
@@ -148,13 +154,12 @@ export function useStoryStageRuntime({
       await compactCurrentContext()
       return true
     }
-    const rewindTurnId = override?.rewindTurnId ?? editingTurnId
     const inlineStyleScenes = parseInlineStyleScenes(message)
     const mergedStyleScenes = Array.from(new Set([...styleScenes, ...inlineStyleScenes]))
     clearComposer()
     commandSubmittingRef.current = true
     setCommandSubmitting(true)
-    prepareLiveRun(message, rewindTurnId, attachmentDescriptors(files))
+    prepareLiveRun(displayMessage, rewindTurnId, attachmentDescriptors(files))
     const abortController = new AbortController()
     registerStoryRunAbortController(stageKey, abortController)
     const request = {
@@ -162,6 +167,7 @@ export function useStoryStageRuntime({
       story_id: storyId,
       branch: branchId,
       message,
+      resume_interruption_id: resumeInterruptionID || undefined,
       attachments: attachmentUploads,
       style_scenes: mergedStyleScenes,
       regenerate_from_turn_id: rewindTurnId || undefined,
@@ -543,25 +549,31 @@ export function useStoryStageRuntime({
 
   async function completeStream({ finishedNormally, receivedPersistedTurn, persistedSnapshot }: StoryStageStreamOutcome) {
     let nextSnapshot: Snapshot | void = persistedSnapshot
-    if (persistedSnapshot) {
-      void Promise.resolve(onDone({ silent: true })).catch((error) => console.warn('[interactive-stage] Silent interactive snapshot refresh failed', error))
-    } else {
-      nextSnapshot = await onDone(receivedPersistedTurn ? { silent: true } : undefined)
+    try {
+      if (persistedSnapshot) {
+        void Promise.resolve(onDone({ silent: true })).catch((error) => console.warn('[interactive-stage] Silent interactive snapshot refresh failed', error))
+      } else {
+        nextSnapshot = await onDone(receivedPersistedTurn ? { silent: true } : undefined)
+      }
+    } finally {
+      try {
+        const projected = await getActiveInteractiveChat(storyId, branchId)
+        interactiveAgentCommands.project(projected, 'disconnected')
+      } catch (error) {
+        console.warn('[interactive-stage] Failed to refresh the settled game Agent projection', error)
+      }
     }
     if (finishedNormally) await storyImages.maybeGenerateAutomatically(nextSnapshot)
   }
 
   function handleStreamError(error: unknown) {
     liveAccumulator.flush()
-    liveAccumulator.finishMessages()
+    liveAccumulator.finishMessages(isAbortError(error) ? 'cancelled' : 'success')
     setActivity('')
+    if (isAbortError(error)) return
     setMessages((current) => [
       ...current,
-      errorMessage(isAbortError(error)
-        ? t('storyStage.activity.aborted')
-        : error instanceof Error
-          ? error.message
-          : t('storyStage.activity.runFailed')),
+      errorMessage(error instanceof Error ? error.message : t('storyStage.activity.runFailed')),
     ])
   }
 

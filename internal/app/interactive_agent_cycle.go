@@ -52,6 +52,7 @@ type interactiveAgentCycleRequest struct {
 	StoryID              string
 	BranchID             string
 	Message              string
+	ResumeInterruptionID string
 	StyleScenes          []string
 	Locale               string
 	InputVisibility      agentrun.InputVisibility
@@ -126,7 +127,8 @@ func (s *InteractiveAppService) prepareInteractiveAgentCycle(ctx context.Context
 		cycle.tellerInput.PlanningGuide = interactive.StoryPlanningGuideMarkdown(gamePreset, interactiveapp.StoryRuntimeContextMaxBytes)
 	}
 	cycle.request = agentchat.ChatRequest{
-		Message: strings.TrimSpace(request.Message), StyleScenes: append([]string(nil), request.StyleScenes...),
+		Message: strings.TrimSpace(request.Message), ResumeInterruptionID: strings.TrimSpace(request.ResumeInterruptionID),
+		StyleScenes:   append([]string(nil), request.StyleScenes...),
 		AttachmentIDs: append([]string(nil), request.AttachmentIDs...),
 		AttachedFiles: append([]agent.Attachment(nil), request.AttachedFiles...),
 		StyleRules:    styleRules, Locale: strings.TrimSpace(request.Locale), InputVisibility: request.InputVisibility,

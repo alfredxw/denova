@@ -117,6 +117,26 @@ func TestStreamEncoderMapsAgentEventsToUIStream(t *testing.T) {
 	assertDataChunksHaveStrictShape(t, chunks)
 }
 
+func TestStreamEncoderFinishesCleanlyWhenUserPauses(t *testing.T) {
+	var out bytes.Buffer
+	encoder := NewStreamEncoder(&out, "")
+
+	if err := encoder.WriteEvent(agentrun.Event{
+		Type: "aborted",
+		Data: map[string]any{"reason": agentrun.AbortReasonUserRequested},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	chunks, done := parseUIStreamChunks(t, out.String())
+	if !done {
+		t.Fatalf("user-requested pause did not finish the stream: %s", out.String())
+	}
+	if got := chunkTypes(chunks); !reflect.DeepEqual(got, []string{"start", "finish"}) {
+		t.Fatalf("chunk types = %v, want a clean finish without an abort chunk", got)
+	}
+}
+
 func assertChunkAgentPresentation(t *testing.T, chunks []map[string]any, chunkType, call, result string) {
 	t.Helper()
 	for _, chunk := range chunks {

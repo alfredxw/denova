@@ -39,7 +39,7 @@ export interface AgentMessageView {
   metadata: AgentMessageMetadata
   data: Record<string, unknown>
   content: string
-  status?: 'running' | 'success' | 'error'
+  status?: 'running' | 'success' | 'error' | 'cancelled'
   streaming: boolean
   toolName?: string
   input?: unknown
@@ -541,7 +541,8 @@ function buildAgentMessageView(message: AgentUIMessage, part: AgentUIMessage['pa
 
   if (type === 'dynamic-tool' || type.startsWith('tool-')) {
     const toolName = type === 'dynamic-tool' ? firstNonEmpty(readString(raw.toolName), 'unknown_tool') : type.replace(/^tool-/, '')
-    const status = toolStatus(readString(raw.state))
+    const projectedToolStatus = readString(objectData(raw.toolMetadata).status)
+    const status = projectedToolStatus === 'cancelled' ? 'cancelled' : toolStatus(readString(raw.state))
     // ask has a dedicated durable data part emitted only after pending state is
     // committed. Hide speculative and successful model frames to avoid duplicate
     // UI, but retain terminal failures because no durable interaction exists.
@@ -1009,7 +1010,7 @@ function toolStatus(state: string | undefined): AgentMessageView['status'] {
 
 function normalizeStatus(value: unknown): AgentMessageView['status'] {
   const status = readString(value)
-  return status === 'running' || status === 'error' || status === 'success' ? status : undefined
+  return status === 'running' || status === 'error' || status === 'success' || status === 'cancelled' ? status : undefined
 }
 
 function objectData(value: unknown): Record<string, unknown> {

@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Loader2, Square } from 'lucide-react'
 import type { ChatMessageStatus } from '@/lib/api'
 
 export function ToolStatusIcon({ status, warning = false }: { status?: ChatMessageStatus; warning?: boolean }) {
@@ -16,6 +16,13 @@ export function ToolStatusIcon({ status, warning = false }: { status?: ChatMessa
     return (
       <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-[var(--nova-accent-green)]/45 bg-[var(--nova-accent-green)]/10 text-[var(--nova-accent-green)]">
         <CheckCircle2 className="h-3.5 w-3.5" />
+      </span>
+    )
+  }
+  if (status === 'cancelled') {
+    return (
+      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-faint)]">
+        <Square className="h-2.5 w-2.5 fill-current" />
       </span>
     )
   }

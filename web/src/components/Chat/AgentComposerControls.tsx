@@ -1,4 +1,4 @@
-import { Send, Square } from 'lucide-react'
+import { Play, Send, Square } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
@@ -7,6 +7,8 @@ interface AgentComposerControlsProps {
   generationActive: boolean
   /** Keeps Send beside Stop when the user has drafted a follow-up during an active run. */
   hasSendableContent: boolean
+  /** Turns an empty idle Send action into an exact resume of the paused turn. */
+  resumeAvailable?: boolean
   onStop?: () => void
   onSend: () => void
   sendDisabled: boolean
@@ -23,6 +25,7 @@ interface AgentComposerControlsProps {
 export function AgentComposerControls({
   generationActive,
   hasSendableContent,
+  resumeAvailable = false,
   onStop,
   onSend,
   sendDisabled,
@@ -40,6 +43,8 @@ export function AgentComposerControls({
   const stopControlDisabled = disabled || (stopDisabled ?? activeControlsDisabled) || abortPending || actionPending
   const showStop = generationActive && Boolean(onStop)
   const showSend = !showStop || hasSendableContent
+  const resuming = !generationActive && resumeAvailable && !hasSendableContent
+  const actionLabel = resuming ? t('chat.input.resume') : resolvedSendLabel
 
   return (
     <div className="flex shrink-0 items-center gap-2" aria-busy={abortPending || actionPending || undefined}>
@@ -54,21 +59,22 @@ export function AgentComposerControls({
           className="nova-agent-composer-stop rounded-[10px]"
           aria-label={t('chat.input.stop')}
         >
-          <Square className="fill-current" />
+          <Square data-icon="inline-start" className="fill-current" />
         </Button>
       ) : null}
       {showSend ? (
         <Button
           type="button"
-          data-action="send"
+          data-action={resuming ? 'resume' : 'send'}
           onClick={onSend}
           disabled={commandControlsDisabled || sendDisabled}
           variant="default"
           size="icon-lg"
           className="nova-agent-composer-submit rounded-[10px] bg-[var(--nova-active)] text-[var(--nova-text)] shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] hover:bg-[var(--nova-hover)] disabled:bg-[var(--nova-active)]"
-          aria-label={resolvedSendLabel}
+          aria-label={actionLabel}
+          title={actionLabel}
         >
-          {sendIcon || <Send />}
+          {resuming ? <Play data-icon="inline-start" className="fill-current" /> : sendIcon || <Send data-icon="inline-start" />}
         </Button>
       ) : null}
     </div>

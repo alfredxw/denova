@@ -15,14 +15,15 @@ import (
 
 func (h *Handlers) HandleInteractiveChat(ctx context.Context, c *app.RequestContext) {
 	var body struct {
-		CommandID          string                          `json:"command_id"`
-		Mode               string                          `json:"mode"`
-		StoryID            string                          `json:"story_id"`
-		Branch             string                          `json:"branch"`
-		Message            string                          `json:"message"`
-		StyleScenes        []string                        `json:"style_scenes"`
-		RegenerateFromTurn string                          `json:"regenerate_from_turn_id"`
-		Attachments        []novaApp.AgentAttachmentUpload `json:"attachments,omitempty"`
+		CommandID            string                          `json:"command_id"`
+		Mode                 string                          `json:"mode"`
+		StoryID              string                          `json:"story_id"`
+		Branch               string                          `json:"branch"`
+		Message              string                          `json:"message"`
+		ResumeInterruptionID string                          `json:"resume_interruption_id,omitempty"`
+		StyleScenes          []string                        `json:"style_scenes"`
+		RegenerateFromTurn   string                          `json:"regenerate_from_turn_id"`
+		Attachments          []novaApp.AgentAttachmentUpload `json:"attachments,omitempty"`
 	}
 	if err := c.BindJSON(&body); err != nil {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
@@ -53,6 +54,7 @@ func (h *Handlers) HandleInteractiveChat(ctx context.Context, c *app.RequestCont
 	task, err := h.app.StartInteractiveTaskWithError(ctx, novaApp.InteractiveAgentStartRequest{
 		CommandID: body.CommandID, StoryID: body.StoryID, BranchID: body.Branch,
 		Message: body.Message, StyleScenes: body.StyleScenes,
+		ResumeInterruptionID: body.ResumeInterruptionID,
 		RegenerateFromTurnID: body.RegenerateFromTurn, Locale: requestLocale(c),
 		AttachmentIDs: chatRequest.AttachmentIDs, AttachedFiles: chatRequest.AttachedFiles,
 	})
@@ -130,6 +132,9 @@ func (h *Handlers) HandleInteractiveChatActive(ctx context.Context, c *app.Reque
 	view := h.app.InteractiveAgentActiveView(ctx, storyID, branchID)
 	if view.Task == nil {
 		response := map[string]any{"active": false}
+		if view.PendingInterruptionID != "" {
+			response["pending_interruption_id"] = view.PendingInterruptionID
+		}
 		addAgentRuntimeProjection(response, view.Runtime, agentRuntimeProjectionOptions{Available: view.RuntimeProjectionOK})
 		writeJSON(c, consts.StatusOK, response)
 		return
@@ -144,6 +149,9 @@ func (h *Handlers) HandleInteractiveChatActive(ctx context.Context, c *app.Reque
 		"branch_id":               view.Info.BranchID,
 		"message":                 view.Info.Message,
 		"regenerate_from_turn_id": view.Info.RegenerateFromTurnID,
+	}
+	if view.PendingInterruptionID != "" {
+		response["pending_interruption_id"] = view.PendingInterruptionID
 	}
 	if len(view.Info.Attachments) > 0 {
 		response["attachments"] = view.Info.Attachments

@@ -14,6 +14,7 @@ interface ActiveStoryRunRecoveryOptions {
   branchId: string
   isStreaming: () => boolean
   onResume: ResumeActiveStoryRun
+  onProject: (active: ActiveInteractiveChat) => void
   onDetach: () => void
 }
 
@@ -24,12 +25,14 @@ const STORY_RECOVERY_READY_EVENT = 'nova:interactive-agent-recovery-ready'
 // useActiveStoryRunRecovery owns only the view subscription. The backend task
 // remains alive when this component unmounts, so a later mount can reconnect
 // to the same buffered event stream without resubmitting the player's action.
-export function useActiveStoryRunRecovery({ stageKey, storyId, branchId, isStreaming, onResume, onDetach }: ActiveStoryRunRecoveryOptions) {
+export function useActiveStoryRunRecovery({ stageKey, storyId, branchId, isStreaming, onResume, onProject, onDetach }: ActiveStoryRunRecoveryOptions) {
   const isStreamingRef = useRef(isStreaming)
   const onResumeRef = useRef(onResume)
+  const onProjectRef = useRef(onProject)
   const onDetachRef = useRef(onDetach)
   isStreamingRef.current = isStreaming
   onResumeRef.current = onResume
+  onProjectRef.current = onProject
   onDetachRef.current = onDetach
 
   useEffect(() => {
@@ -53,7 +56,9 @@ export function useActiveStoryRunRecovery({ stageKey, storyId, branchId, isStrea
         try {
           const active = await getActiveInteractiveChat(storyId, branchId)
           projectionFingerprint = interactiveRecoveryProjectionFingerprint(active)
-          if (disposed || !isObservableInteractiveRuntime(active)) return
+          if (disposed) return
+          onProjectRef.current(active)
+          if (!isObservableInteractiveRuntime(active)) return
           if (!observationRegistered) {
             observationRegistered = true
             registerStoryRunAbortController(stageKey, abortController)
@@ -102,6 +107,7 @@ function interactiveRecoveryProjectionFingerprint(active: ActiveInteractiveChat)
     active.task_id || '',
     active.active_operation_id || '',
     active.recovery_paused === true,
+    active.pending_interruption_id || '',
     active.recovery_actions || [],
   ])
 }

@@ -9,9 +9,8 @@ import (
 )
 
 const (
-	// Version 10 adds event-sourced branch-plan checkpoints maintained by the
-	// Game Agent in the same transaction as each owning Turn.
-	storyProjectionVersion      = 10
+	// Version 11 adds durable interruption checkpoints for accepted Game turns.
+	storyProjectionVersion      = 11
 	storyRecentTransactionLimit = 200
 	storyRecentCommitLimit      = 200
 	storyTurnAnchorEvery        = 256
@@ -45,6 +44,7 @@ type storyBranchProjection struct {
 	Plan                  *BranchPlan                `json:"plan,omitempty"`
 	PlanBeforeLatest      *BranchPlan                `json:"plan_before_latest,omitempty"`
 	PendingPlayerInputIDs []string                   `json:"pending_player_input_ids,omitempty"`
+	PendingInterruption   *TurnInterruptedEvent      `json:"pending_interruption,omitempty"`
 	TailCursor            conversationjournal.Cursor `json:"tail_cursor,omitempty"`
 }
 
@@ -196,6 +196,9 @@ func (projection *storyJournalProjection) applyEvent(cursor conversationjournal.
 			return err
 		}
 		branch.consumePlayerInputs(turn.PlayerInputID, turn.ConsumedPlayerInputIDs)
+		if branch.PendingInterruption != nil && !branch.hasPendingPlayerInput(branch.PendingInterruption.PlayerInputID) {
+			branch.PendingInterruption = nil
+		}
 		if projection.TurnCount%storyTurnAnchorEvery == 0 {
 			projection.TurnAnchors = append(projection.TurnAnchors, storyTurnAnchor{Before: projection.TurnCount, Cursor: cursor})
 		}
@@ -234,6 +237,12 @@ func (projection *storyJournalProjection) applyEvent(cursor conversationjournal.
 		}
 		branch.rememberPendingPlayerInput(event.ID)
 		projection.rememberCommit(cursor, StoryEventTypePlayerInput, event.ID, event.BranchID, event.AgentCommandID, event.AgentOperationID, event.AgentCycle, event.AgentCommitHash, event.AgentCanonicalHash)
+	case StoryEventTypeTurnInterrupted:
+		var event TurnInterruptedEvent
+		if err := mapToStruct(record.Raw, &event); err != nil {
+			return err
+		}
+		branch.PendingInterruption = &event
 	case StoryEventTypeModelContextBatch:
 		var event ModelContextBatchEvent
 		if err := mapToStruct(record.Raw, &event); err != nil {
@@ -333,6 +342,19 @@ func (branch *storyBranchProjection) rememberPendingPlayerInput(playerInputID st
 		}
 	}
 	branch.PendingPlayerInputIDs = append(branch.PendingPlayerInputIDs, playerInputID)
+}
+
+func (branch *storyBranchProjection) hasPendingPlayerInput(playerInputID string) bool {
+	if branch == nil {
+		return false
+	}
+	playerInputID = strings.TrimSpace(playerInputID)
+	for _, pendingID := range branch.PendingPlayerInputIDs {
+		if pendingID == playerInputID {
+			return true
+		}
+	}
+	return false
 }
 
 func (branch *storyBranchProjection) consumePlayerInputs(currentPlayerInputID string, consumedPlayerInputIDs []string) {

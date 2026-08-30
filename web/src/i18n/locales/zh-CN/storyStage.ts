@@ -163,7 +163,7 @@ const storyStage = {
   'storyStage.activity.persistenceMissing': '本轮没有收到持久化确认，已丢弃未落盘的正文并重新加载故事。请重试。',
   'storyStage.activity.rehydrateRequired': '较早的实时轨迹已超出展示预算；已恢复规范故事历史，并继续观察同一次游戏 Agent 运行。',
   'storyStage.activity.done': '完成',
-  'storyStage.activity.aborted': '已中断',
+  'storyStage.activity.aborted': '已暂停，可继续',
   'storyStage.activity.runFailed': '游戏 Agent 执行失败',
   'storyStage.contextCompaction.done': '上下文压缩完成',
   'storyStage.contextCompaction.failed': '上下文压缩失败',

@@ -82,8 +82,13 @@ func prepareTurnContext(ctx context.Context, input turnContextPreparationInput) 
 		return preparedTurnContext{}, fmt.Errorf("conversation is required")
 	}
 	pending := input.PendingInterruption
-	if pending == nil && shouldResumeInterruptedRequest(input.Request.Message) {
+	if pending == nil && requestResumesInterruption(input.Request) {
 		pending = input.Conversation.PendingInterruption()
+	}
+	var err error
+	pending, err = ResolveRequestedInterruption(input.Request, pending)
+	if err != nil {
+		return preparedTurnContext{}, err
 	}
 	explicitSkills := []novaskills.Invocation(nil)
 	if resolver, ok := input.Conversation.(novaskills.ExplicitResolver); ok {

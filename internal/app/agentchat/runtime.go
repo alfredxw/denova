@@ -34,9 +34,17 @@ func (service *Service) ActiveView(ctx context.Context, binding Binding) ActiveV
 	if projected && len(runtime.PendingInteractions) > 0 {
 		pendingAsk = chatagent.ProjectPendingInteraction(runtime.PendingInteractions[0], runtime)
 	}
+	pendingInterruptionID := ""
+	if project, projectErr := service.projectRuntime(ctx, binding.ProjectID); projectErr == nil {
+		if conversation, sessionErr := project.store.Get(binding.SessionID); sessionErr == nil {
+			if pending := conversation.PendingInterruption(); pending != nil {
+				pendingInterruptionID = strings.TrimSpace(pending.ID)
+			}
+		}
+	}
 	return ActiveView{
 		Task: taskSnapshot, Runtime: runtime, RuntimeProjectionOK: projected,
-		StreamAttached: streamAttached, PendingAsk: pendingAsk,
+		StreamAttached: streamAttached, PendingAsk: pendingAsk, PendingInterruptionID: pendingInterruptionID,
 	}
 }
 

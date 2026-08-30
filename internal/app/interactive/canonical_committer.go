@@ -64,7 +64,7 @@ func (committer *canonicalConversationCommitter) ApplyPreparedContext(
 
 func (committer *canonicalConversationCommitter) CommitOutput(
 	ctx context.Context,
-	_ agentchat.AgentContextPreparation,
+	prepared agentchat.AgentContextPreparation,
 	request agent.OutputCommitRequest,
 ) (agent.OutputCommitReceipt, error) {
 	options := committer.config.Options
@@ -80,6 +80,11 @@ func (committer *canonicalConversationCommitter) CommitOutput(
 	)
 	if err != nil {
 		return agent.OutputCommitReceipt{}, err
+	}
+	if prepared.ResumeInterruption != nil {
+		if err := committer.config.Conversation.ResolveInterruption(prepared.ResumeInterruption.ID); err != nil {
+			return agent.OutputCommitReceipt{}, err
+		}
 	}
 	return agent.OutputCommitReceipt{
 		Revision: receipt.Revision,

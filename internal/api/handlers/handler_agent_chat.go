@@ -299,6 +299,9 @@ func (h *Handlers) HandleAgentChatActive(ctx context.Context, c *app.RequestCont
 	if view.PendingAsk != nil {
 		response["pending_ask"] = view.PendingAsk
 	}
+	if view.PendingInterruptionID != "" {
+		response["pending_interruption_id"] = view.PendingInterruptionID
+	}
 	addAgentRuntimeProjection(response, view.Runtime, agentRuntimeProjectionOptions{
 		Available: view.RuntimeProjectionOK, StreamAttached: view.StreamAttached,
 	})

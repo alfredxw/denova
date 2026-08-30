@@ -663,21 +663,14 @@ func (engine *definitionEngine) Run(
 		}
 		if event.Err != nil {
 			controls.stop()
-			if controlErr := control.err(); controlErr != nil {
-				return runstate.EngineResult{}, controlErr
+			if controlled, controlledErr, handled := engine.controlledLoopResult(controls, prepared, baseTranscript, emit); handled {
+				return controlled, controlledErr
 			}
-			switch control.kind() {
-			case runstate.EngineControlPreempt:
-				return engine.controlledResult(runstate.EnginePreempted, prepared, baseTranscript, emit)
-			case runstate.EngineControlAbort:
-				return engine.controlledResult(runstate.EngineAborted, prepared, baseTranscript, emit)
-			default:
-				var cancelErr *cancelError
-				if completion.requestedCompletion() && errors.As(event.Err, &cancelErr) && cancelErr.Info != nil && cancelErr.Info.Mode&cancelAfterTools != 0 {
-					goto loopControlsStopped
-				}
-				return runstate.EngineResult{}, event.Err
+			var cancelErr *cancelError
+			if completion.requestedCompletion() && errors.As(event.Err, &cancelErr) && cancelErr.Info != nil && cancelErr.Info.Mode&cancelAfterTools != 0 {
+				goto loopControlsStopped
 			}
+			return runstate.EngineResult{}, event.Err
 		}
 		if event.Output == nil {
 			continue
@@ -718,6 +711,9 @@ func (engine *definitionEngine) Run(
 			message, err := consumeMessageVariant(variant, source, !rootEvent, emit)
 			if err != nil {
 				controls.stop()
+				if controlled, controlledErr, handled := engine.controlledLoopResult(controls, prepared, baseTranscript, emit); handled {
+					return controlled, controlledErr
+				}
 				return runstate.EngineResult{}, err
 			}
 			if message == nil {
@@ -839,6 +835,30 @@ loopControlsStopped:
 		return runstate.EngineResult{}, err
 	}
 	return runstate.EngineResult{Status: runstate.EngineCompleted}, nil
+}
+
+// controlledLoopResult translates an error from either the loop event lane or
+// its public message stream only when a Run control actually caused it.
+// Provider and projection errors remain ordinary failures.
+func (engine *definitionEngine) controlledLoopResult(
+	controls *definitionEngineControls,
+	prepared preparedDefinition,
+	baseTranscript []*Message,
+	emit runstate.EngineEventSink,
+) (runstate.EngineResult, error, bool) {
+	if controlErr := controls.state.err(); controlErr != nil {
+		return runstate.EngineResult{}, controlErr, true
+	}
+	switch controls.state.kind() {
+	case runstate.EngineControlPreempt:
+		result, err := engine.controlledResult(runstate.EnginePreempted, prepared, baseTranscript, emit)
+		return result, err, true
+	case runstate.EngineControlAbort:
+		result, err := engine.controlledResult(runstate.EngineAborted, prepared, baseTranscript, emit)
+		return result, err, true
+	default:
+		return runstate.EngineResult{}, nil, false
+	}
 }
 
 // completionFinalAssistant turns the tool-call boundary that requested

@@ -129,6 +129,48 @@ func TestTurnInputProjectionProjectsEverySourceAsAuditableFragment(t *testing.T)
 	}
 }
 
+func TestPrepareTurnContextResumesExactPendingInterruption(t *testing.T) {
+	pending := &session.Interruption{
+		ID:               "interruption-7",
+		Status:           session.InterruptionPending,
+		UserMessage:      "Draft the ending",
+		AssistantContent: "The last door opened",
+		Reason:           agentrun.AbortReasonUserRequested,
+	}
+	turn, err := prepareTurnContext(context.Background(), turnContextPreparationInput{
+		Conversation:        pureTurnTestConversation{budget: agentcontext.DefaultBudget()},
+		Request:             ChatRequest{Message: "Continue.", ResumeInterruptionID: pending.ID},
+		PendingInterruption: pending,
+		Environment:         fixedTurnRuntimeEnvironment(nil),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if turn.ResumeInterruption == nil || turn.ResumeInterruption.ID != pending.ID {
+		t.Fatalf("resume interruption = %#v", turn.ResumeInterruption)
+	}
+	final := finalAssembledUserMessage(t, turn.ModelContext)
+	for _, content := range []string{"[Interrupted Run Recovery]", "Draft the ending", "The last door opened", "Continue."} {
+		if !strings.Contains(final, content) {
+			t.Fatalf("resumed model input missing %q:\n%s", content, final)
+		}
+	}
+}
+
+func TestPrepareTurnContextRejectsStaleInterruptionIdentity(t *testing.T) {
+	_, err := prepareTurnContext(context.Background(), turnContextPreparationInput{
+		Conversation: pureTurnTestConversation{budget: agentcontext.DefaultBudget()},
+		Request:      ChatRequest{Message: "Continue.", ResumeInterruptionID: "stale-interruption"},
+		PendingInterruption: &session.Interruption{
+			ID: "current-interruption", Status: session.InterruptionPending,
+		},
+		Environment: fixedTurnRuntimeEnvironment(nil),
+	})
+	if !errors.Is(err, ErrInterruptionNotPending) {
+		t.Fatalf("error = %v, want ErrInterruptionNotPending", err)
+	}
+}
+
 func TestTurnInputProjectionProvidesCurrentRuntimeEnvironment(t *testing.T) {
 	location := time.FixedZone("Asia/Shanghai", 8*60*60)
 	environment := turnRuntimeEnvironment{

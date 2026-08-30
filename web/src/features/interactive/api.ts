@@ -326,6 +326,7 @@ export interface InteractiveStartInput {
   story_id: string
   branch?: string
   message: string
+  resume_interruption_id?: string
   style_scenes?: string[]
   attachments?: ChatAttachmentUpload[]
   regenerate_from_turn_id?: string
@@ -369,6 +370,8 @@ export interface ActiveInteractiveChat {
   queue?: AgentRuntimeQueuedCommand[]
   open_tools?: AgentRuntimeOpenTool[]
   last_operation?: AgentRuntimeOperation
+  /** Exact durable pause checkpoint available to the next idle turn. */
+  pending_interruption_id?: string
 }
 
 interface InteractiveAgentCommandBase {

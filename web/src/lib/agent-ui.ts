@@ -63,6 +63,7 @@ export interface AgentChatTransportOptions {
 
 interface AgentChatRequestBody {
   command_id?: string
+  resume_interruption_id?: string
   references?: string[]
   lore_references?: string[]
   style_scenes?: string[]
@@ -189,6 +190,7 @@ export function buildAgentChatRequestBody(body: AgentChatRequestBody): AgentChat
   const reviewFeedback = normalizeReviewFeedbackRefs(body.review_feedback)
   return {
     ...(body.command_id?.trim() ? { command_id: body.command_id.trim() } : {}),
+    ...(body.resume_interruption_id?.trim() ? { resume_interruption_id: body.resume_interruption_id.trim() } : {}),
     references: body.references || [],
     lore_references: body.lore_references || [],
     style_scenes: body.style_scenes || [],

@@ -102,6 +102,9 @@ func (s *ChatAppService) startTaskWithError(ctx context.Context, expectedSession
 	if err != nil {
 		return nil, err
 	}
+	if _, err := agentchat.ResolveRequestedInterruption(req, runtime.sess.PendingInterruption()); err != nil {
+		return nil, err
+	}
 	a.mu.RLock()
 	transitioning := a.workspaceTransition
 	contextChanged := a.workspace != runtime.workspace || a.session != runtime.sess

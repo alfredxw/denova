@@ -23,6 +23,8 @@ export interface StoryStageRuntimeState {
   phase: string
   recoveryPaused: boolean
   recoveryAbortAvailable: boolean
+  /** Exact durable pause checkpoint projected by the server. */
+  pendingInterruptionId: string
   operationId: string
   cycle: number
   activeOutput?: AgentRuntimeActiveOutput
@@ -67,6 +69,7 @@ export function emptyStoryStageRun(): StoryStageRunState {
       phase: 'idle',
       recoveryPaused: false,
       recoveryAbortAvailable: false,
+      pendingInterruptionId: '',
       operationId: '',
       cycle: 0,
       queue: [],

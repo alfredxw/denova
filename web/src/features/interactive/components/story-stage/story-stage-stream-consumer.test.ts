@@ -51,6 +51,27 @@ function consumerFixture(initialMessages: AgentUIMessage[] = []) {
 }
 
 describe('story stage stream event contract', () => {
+  it('treats a user abort as a paused terminal state without an error message', async () => {
+    const fixture = consumerFixture()
+
+    const outcome = await fixture.consumer.consume(
+      eventStream([{
+        id: '1',
+        event: 'aborted',
+        data: JSON.stringify({ reason: 'user_requested' }),
+      }]),
+      fixture.consumer.initialOutcome(),
+    )
+
+    expect(buildAgentMessageViews(fixture.messages()).some((view) => view.kind === 'error')).toBe(false)
+    expect(outcome).toMatchObject({
+      finishedNormally: false,
+      streamFailed: false,
+      terminalStatus: 'aborted',
+      terminalEventReceived: true,
+    })
+  })
+
   it('surfaces unknown events instead of silently discarding them', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     const fixture = consumerFixture()

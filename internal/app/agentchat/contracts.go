@@ -52,11 +52,12 @@ type ProjectRuntime struct {
 }
 
 type ActiveView struct {
-	Task                *apptask.Snapshot
-	Runtime             agentrun.RuntimeStatus
-	RuntimeProjectionOK bool
-	StreamAttached      bool
-	PendingAsk          *session.AskInteraction
+	Task                  *apptask.Snapshot
+	Runtime               agentrun.RuntimeStatus
+	RuntimeProjectionOK   bool
+	StreamAttached        bool
+	PendingAsk            *session.AskInteraction
+	PendingInterruptionID string
 }
 
 type Session struct {

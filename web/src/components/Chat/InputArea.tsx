@@ -59,6 +59,8 @@ interface InputAreaProps {
   disabled: boolean
   /** Agent execution and editor availability are independent: active runs can still accept instructions. */
   generationActive: boolean
+  /** An idle empty composer can continue the exact durable interruption. */
+  resumeAvailable?: boolean
   queuedCommands?: AgentRuntimeQueuedCommand[]
   queueActionPendingCommandID?: string
   onQueuedCommandSteer?: (item: AgentRuntimeQueuedCommand) => boolean | void | Promise<boolean | void>
@@ -123,6 +125,7 @@ export function InputArea({
   onStop,
   disabled,
   generationActive,
+  resumeAvailable = false,
   queuedCommands = [],
   queueActionPendingCommandID = '',
   onQueuedCommandSteer,
@@ -250,6 +253,7 @@ export function InputArea({
     .map((command, index) => ({ command, index }))
     .filter(({ command }) => command.source === 'skill'), [filteredCommands])
   const hasReviewFeedback = Boolean(reviewFeedback && reviewFeedbackCommentCount(reviewFeedback) > 0)
+  const canResume = resumeAvailable && !goalMode
   const hasReferences = textSelections.length > 0 || hasReviewFeedback || attachments.items.length > 0
   const knownFileTokens = useMemo(() => Array.from(new Set([...fileSuggestions, ...referencedFiles])), [fileSuggestions, referencedFiles])
   const knownLoreTokens = useMemo(() => {
@@ -475,7 +479,7 @@ export function InputArea({
   /** 发送消息 */
   const handleSend = () => {
     const trimmed = value.trim()
-    if ((!trimmed && !hasReviewFeedback && attachments.files.length === 0) || disabled || !approvalReady || submittingRef.current) return
+    if ((!trimmed && !hasReviewFeedback && attachments.files.length === 0 && !canResume) || disabled || !approvalReady || submittingRef.current) return
     const submittedValue = value
     const submittedAttachments = attachments.files
     submittingRef.current = true
@@ -813,9 +817,10 @@ export function InputArea({
             <AgentComposerControls
               generationActive={generationActive}
               hasSendableContent={Boolean(value.trim() || hasReviewFeedback || attachments.files.length)}
+              resumeAvailable={canResume}
               onStop={onStop}
               onSend={handleSend}
-              sendDisabled={sendBlocked || !approvalReady || submitting || (!value.trim() && !hasReviewFeedback && attachments.files.length === 0)}
+              sendDisabled={sendBlocked || !approvalReady || submitting || (!value.trim() && !hasReviewFeedback && attachments.files.length === 0 && !canResume)}
               disabled={disabled}
               abortPending={abortPending}
               actionPending={commandSubmitting}
