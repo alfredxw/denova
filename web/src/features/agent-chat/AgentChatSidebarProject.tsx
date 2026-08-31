@@ -9,7 +9,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { cn } from '@/lib/utils'
 import { useQuery } from '@tanstack/react-query'
 import { projectSettingsTarget, settingsQueryOptions } from '@/features/settings/query'
-import { customAgentsForBase } from '@/features/agents/CustomAgentSelect'
+import { customAgentsForRuntime } from '@/features/agents/CustomAgentSelect'
 import { queryClient } from '@/lib/query-client'
 import type { AgentChatProject, AgentChatSession } from './api'
 import { AgentChatProjectDetailsCard } from './AgentChatProjectDetailsCard'
@@ -106,7 +106,7 @@ export function AgentChatSidebarProject({
   const managedProject = project.type === 'harness'
   const baseAgentKind = project.type === 'book' ? 'ide' : 'general'
   const settingsQuery = useQuery(settingsQueryOptions(projectSettingsTarget(project.id)), queryClient)
-  const customAgents = customAgentsForBase(settingsQuery.data?.effective.custom_agents, baseAgentKind)
+  const customAgents = customAgentsForRuntime(settingsQuery.data?.effective.custom_agents, baseAgentKind)
   let ProjectIcon = expanded ? FolderOpen : Folder
   if (project.type === 'general') ProjectIcon = Bot
   if (managedProject) ProjectIcon = Stethoscope

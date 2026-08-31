@@ -148,7 +148,7 @@ export function NewStorySetupPanel({ projectId, stories, tellers, directors, ima
           </div>
           {!story ? (
             <Field label={t('agents.custom.select')} hint={t('agents.custom.switchNote')}>
-              <CustomAgentSelect projectId={projectId} baseKind="interactive_story" value={customAgentId} onValueChange={(value) => setCustomAgentId(value ?? '')} className="nova-field h-8 w-full sm:max-w-sm" />
+              <CustomAgentSelect projectId={projectId} runtimeKind="interactive_story" value={customAgentId} onValueChange={(value) => setCustomAgentId(value ?? '')} className="nova-field h-8 w-full sm:max-w-sm" />
             </Field>
           ) : null}
           <Field label={t('storyPicker.setup.brief')} hint={t('storyPicker.setup.briefHint')}><Textarea autoResize value={origin} maxLength={4000} onChange={(event) => setOrigin(event.target.value)} className="nova-field min-h-20 resize-y" placeholder={t('storyPicker.originPlaceholder')} /></Field>

@@ -62,6 +62,7 @@ const continualLearning = {
   'continualLearning.script.agent.general': '通用',
   'continualLearning.script.agent.ide': '写作',
   'continualLearning.script.agent.interactive_story': '游戏',
+  'continualLearning.script.customAgent': '{{name}}（自定义）',
   'continualLearning.script.inputs': '字符串输入（可选）',
   'continualLearning.script.inputsHint': '用逗号分隔字段名；创建后可在编辑器里细化 JSON Schema。',
   'continualLearning.script.inputError': '无效输入字段：{{fields}}',

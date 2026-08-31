@@ -541,6 +541,29 @@ func TestAgentBackendFiltersByAgentFrontmatterAndOverrides(t *testing.T) {
 	}
 }
 
+func TestAgentBackendExplicitPolicyAdmitsOnlyPinnedSkills(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	writeSkillFileForAgents(t, root, "writing", "writing", "Writing", "ide")
+	writeSkillFileForAgents(t, root, "general", "general", "General", "")
+	writeSkillFileForAgents(t, root, "pinned", "pinned", "Pinned", "interactive_story")
+
+	backend := NewAgentBackendWithPolicy(
+		[]Directory{{Scope: ScopeUser, Path: root, Writable: true}},
+		"ide",
+		map[string]bool{"pinned": true, "general": false},
+		true,
+	)
+	list, err := backend.List(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := skillNames(list)
+	if len(got) != 1 || !got["pinned"] {
+		t.Fatalf("explicit-only Skills = %#v", got)
+	}
+}
+
 func TestAgentBackendExposesConfigurationSkillToProjectAgents(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()

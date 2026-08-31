@@ -8,14 +8,14 @@ import (
 )
 
 type agentConfigSnapshot struct {
-	Paths            config.SettingsPaths          `json:"paths"`
-	Agents           []agentConfigAgentDefinition  `json:"agents"`
-	CustomAgentBases []string                      `json:"custom_agent_bases"`
-	SubAgentParents  []string                      `json:"subagent_parents"`
-	ToolCapabilities []agentConfigToolCapability   `json:"tool_capabilities"`
-	Layers           agentConfigLayeredSnapshot    `json:"layers"`
-	SubAgentIndex    []agentConfigSubAgentIndexRow `json:"sub_agent_index"`
-	Notes            []string                      `json:"notes,omitempty"`
+	Paths            config.SettingsPaths             `json:"paths"`
+	Agents           []agentConfigAgentDefinition     `json:"agents"`
+	AgentContracts   []config.AgentContractDefinition `json:"agent_contracts"`
+	SubAgentParents  []string                         `json:"subagent_parents"`
+	ToolCapabilities []agentConfigToolCapability      `json:"tool_capabilities"`
+	Layers           agentConfigLayeredSnapshot       `json:"layers"`
+	SubAgentIndex    []agentConfigSubAgentIndexRow    `json:"sub_agent_index"`
+	Notes            []string                         `json:"notes,omitempty"`
 }
 
 type agentConfigAgentDefinition struct {

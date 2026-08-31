@@ -103,8 +103,8 @@ func parseScriptTool(
 		diagnostics = appendDiagnostic(diagnostics, "script_agents_missing", filePath, "Script Tool must target at least one Agent")
 	}
 	for _, kind := range metadata.Agents {
-		if kind != config.AgentKindGeneral && kind != config.AgentKindIDE && kind != config.AgentKindInteractiveStory {
-			diagnostics = appendDiagnostic(diagnostics, "script_agent_invalid", filePath, fmt.Sprintf("Script Tool targets unsupported Agent kind %q", kind))
+		if !validScriptToolTarget(kind) {
+			diagnostics = appendDiagnostic(diagnostics, "script_agent_invalid", filePath, fmt.Sprintf("Script Tool targets unsupported Agent or custom Agent ID %q", kind))
 		}
 	}
 	if strings.TrimSpace(body) == "" {
@@ -129,6 +129,21 @@ func parseScriptTool(
 		enabled: enabled, resource: filePath, inputSchema: schema, program: program,
 	}
 	return tool, diagnostics
+}
+
+// Script Tool audiences may name one supported fixed runtime or an exact
+// custom Agent ID. Custom IDs are syntax-validated but not cross-referenced so
+// archiving or deleting one Agent cannot invalidate the complete Harness.
+func validScriptToolTarget(target string) bool {
+	target = strings.TrimSpace(target)
+	switch target {
+	case config.AgentKindGeneral, config.AgentKindIDE, config.AgentKindInteractiveStory:
+		return true
+	}
+	if config.IsReservedAgentID(target) {
+		return false
+	}
+	return target != "" && config.NormalizeCustomAgentID(target) == target
 }
 
 func decodeScriptTool(filePath string, content []byte) (scriptToolFrontmatter, string, string, error) {

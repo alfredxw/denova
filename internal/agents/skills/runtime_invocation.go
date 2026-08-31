@@ -32,10 +32,12 @@ func ResolveConfiguredInvocations(ctx context.Context, cfg *config.Config, agent
 	if cfg == nil || !config.ResolveAgentTools(cfg, agentKind).Allows(config.AgentToolSkills) {
 		return nil, nil
 	}
-	backend := NewAgentBackend(
+	mode, overrides, _ := config.ResolveActiveAgentSkillPolicy(cfg, agentKind)
+	backend := NewAgentBackendWithPolicy(
 		NewDirectories(cfg.SkillsDir, cfg.DataDir(), cfg.Workspace),
 		agentKind,
-		config.ResolveAgentSkillOverrides(cfg, agentKind),
+		overrides,
+		mode == config.AgentSkillPolicyExplicit,
 	)
 	maxFragmentBytes := config.ResolveAgentContext(cfg, agentKind).MaxFragmentBytes
 	resolved := backend.ResolveExplicitInvocations(ctx, message)

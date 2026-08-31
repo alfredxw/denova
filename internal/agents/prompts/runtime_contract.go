@@ -36,10 +36,11 @@ func composeProtectedSystemInstruction(cfg *config.Config, agentKind, mode, work
 }
 
 func ComposeBuiltinSystemInstruction(cfg *config.Config, agentKind, mode, workspace, id, title, purpose, builtIn string) (SystemPromptComposition, error) {
-	return composeProtectedSystemInstruction(cfg, agentKind, mode, workspace, []SystemPromptFragment{{
+	fragments := []SystemPromptFragment{{
 		ID: id, Source: "Denova built-in", Title: title, Purpose: purpose, Content: builtIn,
 		Required: true, Overflow: SystemPromptOverflowReject,
-	}})
+	}}
+	return composeProtectedSystemInstruction(cfg, agentKind, mode, workspace, applyAgentPromptDefinition(cfg, agentKind, fragments))
 }
 
 func protectedSystemPromptFragments(agentKind string) []SystemPromptFragment {
@@ -61,7 +62,7 @@ func runtimeContractForAgent(agentKind string) string {
 		"- Follow the current user request, applicable project instructions, and this Agent's workflow.",
 		"- Use the available tools and their schemas; backend receipts determine which operations were accepted.",
 		"- If a tool call or permission is denied, adapt to the result instead of repeating the same request unchanged.",
-		"- Explicitly named /<skill-name> instructions may already be loaded in context. Use the skill tool only to load an additional Skill selected by description.",
+		"- Explicitly named /<skill-name> instructions may already be loaded in context. Use the skill tool to discover additional Skills and read only the exact instructions needed.",
 	}, "\n")
 	sections := []string{common}
 	if config.IsSubAgentParentKind(agentKind) {

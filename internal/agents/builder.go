@@ -14,6 +14,7 @@ import (
 	publictools "github.com/alfredxw/denova/agent/tools"
 
 	"denova/config"
+	"denova/internal/agents/agentprofile"
 	agentchat "denova/internal/agents/chat"
 	agentcompaction "denova/internal/agents/context/compaction"
 	agentconversation "denova/internal/agents/conversation"
@@ -212,7 +213,11 @@ func buildAgentDefinitionWithComposition(ctx context.Context, cfg *config.Config
 	if err != nil {
 		return agentDefinitionAssembly{}, fmt.Errorf("create project instructions context for Agent %s: %w", spec.Kind, err)
 	}
-	definitionContext, err := agent.CombineContextSources(projectContext, harness.ContextSource(cfg, spec.Kind))
+	definitionContext, err := agent.CombineContextSources(
+		projectContext,
+		harness.ContextSource(cfg, spec.Kind),
+		agentprofile.ContextSource(cfg, spec.Kind),
+	)
 	if err != nil {
 		return agentDefinitionAssembly{}, fmt.Errorf("compose ContextSource for Agent %s: %w", spec.Kind, err)
 	}
@@ -260,16 +265,22 @@ func buildAgentDefinitionWithComposition(ctx context.Context, cfg *config.Config
 	if err != nil {
 		return agentDefinitionAssembly{}, err
 	}
+	subAgentConfigs := harness.SubAgents()
+	if cfg != nil {
+		subAgentConfigs = config.MergeSubAgents(cfg.SubAgents, subAgentConfigs)
+	}
 	var taskAgents []agentdelegation.Child
 	if toolSettings.Allows(config.AgentToolDelegation) {
 		configuredSubAgents, err := buildConfiguredSubAgents(
-			ctx, cfg, childSpec, toolSettings, projectContext, harness.SubAgents(), savedScriptTools,
+			ctx, cfg, childSpec, toolSettings, projectContext,
+			agentprofile.FilterSubAgents(cfg, spec.Kind, subAgentConfigs),
+			savedScriptTools,
 		)
 		if err != nil {
 			return agentDefinitionAssembly{}, err
 		}
 		taskAgents = append(taskAgents, configuredSubAgents...)
-		if config.GeneralSubAgentEnabled(cfg, spec.Kind) {
+		if agentprofile.IncludeGeneralSubAgent(cfg, spec.Kind, config.GeneralSubAgentEnabled(cfg, spec.Kind)) {
 			generalAssembly, err := buildChatModelAgentAssembly(ctx, cfg, chatModelAgentAssemblySpec{
 				Kind:                  producttools.GeneralSubAgentName,
 				SystemPrompt:          childComposition,
@@ -322,12 +333,11 @@ func buildAgentDefinitionWithComposition(ctx context.Context, cfg *config.Config
 		tools = append(tools, prepared...)
 		builtinToolsets = append(builtinToolsets, askToolset.Identity())
 	}
-	if toolSettings.Allows(config.AgentToolDelegation) {
-		if len(taskAgents) == 0 {
-			return agentDefinitionAssembly{}, fmt.Errorf("delegation is enabled for %s but no child Agent is configured", spec.Kind)
-		}
-	}
 	tools = harness.ApplyToolDescriptions(tools)
+	tools, err = agentprofile.ApplyToolGuidance(ctx, cfg, spec.Kind, tools)
+	if err != nil {
+		return agentDefinitionAssembly{}, err
+	}
 	manifest := config.ResolveAgentToolManifestForGOOS(toolSettings, spec.Kind, "", toolresult.LimitBytes(cfg))
 	if err := producttools.ValidateAgainstManifest(ctx, tools, manifest); err != nil {
 		return agentDefinitionAssembly{}, err

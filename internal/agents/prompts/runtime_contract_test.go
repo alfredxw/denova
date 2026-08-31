@@ -37,6 +37,47 @@ func TestUserStatePromptFollowsContractAndBuiltInPrompt(t *testing.T) {
 	}
 }
 
+func TestCustomAgentOwnsWorkflowWithoutReplacingProtectedContracts(t *testing.T) {
+	cfg := &config.Config{CustomAgents: []config.CustomAgentConfig{{
+		ID: "writer", Name: "Writer", Contract: config.AgentContractWritingPrimary,
+		Instructions: "CUSTOM WORKFLOW",
+	}}}
+	if err := config.ApplyCustomAgent(cfg, config.AgentKindIDE, "writer"); err != nil {
+		t.Fatal(err)
+	}
+	composition, err := ComposeBuiltinSystemInstruction(
+		cfg, config.AgentKindIDE, "test", "", "builtin_base", "Writing workflow", "define workflow", "BUILTIN WORKFLOW",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	instruction := composition.Instruction()
+	for _, required := range []string{"Denova Runtime Contract", "Output Protocol", "CUSTOM WORKFLOW"} {
+		if !strings.Contains(instruction, required) {
+			t.Fatalf("custom Agent instruction missing %q:\n%s", required, instruction)
+		}
+	}
+	if strings.Contains(instruction, "BUILTIN WORKFLOW") {
+		t.Fatalf("custom Agent retained live built-in workflow:\n%s", instruction)
+	}
+}
+
+func TestBuiltInAgentFlowAndCustomRulesRemainSeparate(t *testing.T) {
+	cfg := &config.Config{AgentPrompts: config.AgentPromptSettings{IDE: config.AgentPromptOverride{
+		FlowPrompt: "CONFIGURED FLOW", SystemPrompt: "ADDITIONAL RULES",
+	}}}
+	composition, err := ComposeBuiltinSystemInstruction(
+		cfg, config.AgentKindIDE, "test", "", "builtin_base", "Writing workflow", "define workflow", "BUILTIN WORKFLOW",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	instruction := composition.Instruction()
+	if !strings.Contains(instruction, "CONFIGURED FLOW") || !strings.Contains(instruction, "ADDITIONAL RULES") || strings.Contains(instruction, "BUILTIN WORKFLOW") {
+		t.Fatalf("built-in Agent prompt resolution is incorrect:\n%s", instruction)
+	}
+}
+
 func TestProtectedSystemInstructionOmitsEmptyCustomPrompt(t *testing.T) {
 	instruction := protectedSystemInstruction(&config.Config{}, config.AgentKindIDE, "BUILT IN PROMPT")
 	if strings.Contains(instruction, "# 用户自定义系统提示") {

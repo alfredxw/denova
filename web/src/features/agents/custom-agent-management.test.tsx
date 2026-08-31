@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { TooltipProvider } from '@/components/ui/tooltip'
-import type { CustomAgentBaseKind } from '@/features/settings/types'
+import type { AgentRuntimeKind } from '@/features/settings/types'
 import { AgentList, CreateCustomAgentDialog } from './custom-agent-management'
 
 function renderWithTooltips(ui: ReactNode) {
@@ -13,7 +13,7 @@ function renderWithTooltips(ui: ReactNode) {
 describe('AgentList', () => {
   it('places the top-level create action before navigation and offers supported category shortcuts', async () => {
     const user = userEvent.setup()
-    const onCreate = vi.fn<(baseKind: CustomAgentBaseKind) => void>()
+    const onCreate = vi.fn<(runtimeKind: AgentRuntimeKind) => void>()
     renderWithTooltips(
       <AgentList active="ide" customAgents={[]} onSelect={vi.fn()} onCreate={onCreate} />,
     )
@@ -22,17 +22,17 @@ describe('AgentList', () => {
     const navigation = screen.getByRole('navigation')
     expect(createButton.compareDocumentPosition(navigation) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
 
-    const shortcuts: Array<[string, CustomAgentBaseKind]> = [
-      ['基于General Agent新建自定义 Agent', 'general'],
-      ['基于写作 Agent新建自定义 Agent', 'ide'],
-      ['基于游戏 Agent新建自定义 Agent', 'interactive_story'],
-      ['基于图像 Agent新建自定义 Agent', 'image'],
+    const shortcuts: Array<[string, AgentRuntimeKind]> = [
+      ['为General Agent新建自定义 Agent', 'general'],
+      ['为写作 Agent新建自定义 Agent', 'ide'],
+      ['为游戏 Agent新建自定义 Agent', 'interactive_story'],
+      ['为图像 Agent新建自定义 Agent', 'image'],
     ]
-    for (const [name, baseKind] of shortcuts) {
+    for (const [name, runtimeKind] of shortcuts) {
       await user.click(screen.getByRole('button', { name }))
-      expect(onCreate).toHaveBeenLastCalledWith(baseKind)
+      expect(onCreate).toHaveBeenLastCalledWith(runtimeKind)
     }
-    expect(screen.queryByRole('button', { name: /基于版本说明 Agent新建自定义 Agent/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /为版本说明 Agent新建自定义 Agent/ })).not.toBeInTheDocument()
   })
 })
 
@@ -41,12 +41,12 @@ describe('CreateCustomAgentDialog', () => {
     renderWithTooltips(
       <CreateCustomAgentDialog
         open
-        initialBaseKind="interactive_story"
+        initialRuntimeKind="interactive_story"
         onOpenChange={vi.fn()}
         onCreate={vi.fn()}
       />,
     )
 
-    expect(screen.getByRole('combobox', { name: '运行时底座' })).toHaveTextContent('游戏 Agent')
+    expect(screen.getByRole('combobox', { name: '运行契约' })).toHaveTextContent('游戏 Agent')
   })
 })

@@ -62,6 +62,7 @@ const continualLearning = {
   'continualLearning.script.agent.general': 'General',
   'continualLearning.script.agent.ide': 'Writing',
   'continualLearning.script.agent.interactive_story': 'Game',
+  'continualLearning.script.customAgent': '{{name}} (custom)',
   'continualLearning.script.inputs': 'String inputs (optional)',
   'continualLearning.script.inputsHint': 'Comma-separated field names. You can refine the generated JSON Schema in the editor.',
   'continualLearning.script.inputError': 'Invalid input fields: {{fields}}',

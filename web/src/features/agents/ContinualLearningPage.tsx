@@ -26,6 +26,7 @@ import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { VersionTimeline } from '@/features/versions/components/version-timeline'
 import type { VersionItem } from '@/features/versions/components/version-timeline'
+import type { CustomAgentConfig } from '@/features/settings/types'
 import { HarnessOptimizationSchedule } from './HarnessOptimizationSchedule'
 import type { HarnessOptimizationScheduleSettings } from './HarnessOptimizationSchedule'
 import { HarnessStateEditor } from './harness-state/HarnessStateEditor'
@@ -57,12 +58,14 @@ export type ContinualLearningScheduleSettings = HarnessOptimizationScheduleSetti
 
 export function ContinualLearningPage({
   refreshToken = 0,
+  customAgents,
   harnessStateEnabled,
   onHarnessStateEnabledChange,
   scheduleSettings,
   headerActions,
 }: {
   refreshToken?: number
+  customAgents: CustomAgentConfig[]
   harnessStateEnabled: boolean
   onHarnessStateEnabledChange: (enabled: boolean) => void
   scheduleSettings: ContinualLearningScheduleSettings
@@ -424,7 +427,7 @@ export function ContinualLearningPage({
                     </Badge>
                   )}
                   {selectedPath.endsWith('.js') && <Badge variant="outline" className="h-5 px-1.5 text-[9px]">{t('continualLearning.script.badge')}</Badge>}
-                  {selectedScriptTool?.agents.map(agent => <Badge key={agent} variant="outline" className="hidden h-5 px-1.5 text-[9px] lg:inline-flex">{t(`continualLearning.script.agent.${agent}`)}</Badge>)}
+                  {selectedScriptTool?.agents.map(agent => <Badge key={agent} variant="outline" className="hidden h-5 px-1.5 text-[9px] lg:inline-flex">{scriptAgentLabel(agent, customAgents, t)}</Badge>)}
                   {dirty && <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-label={t('continualLearning.unsaved')} />}
                   {selectedPath && snapshot?.files.some((file) => file.path === selectedPath) && (
                     <Button type="button" size="icon-xs" variant="ghost" disabled={saving} onClick={() => setPendingAction({ kind: 'delete', path: selectedPath })} aria-label={t('continualLearning.delete')}><Trash2 /></Button>
@@ -510,11 +513,19 @@ export function ContinualLearningPage({
       <NewScriptToolDialog
         open={scriptDialogOpen}
         existingPaths={snapshot?.files.map(file => file.path) || []}
+        customAgents={customAgents}
         onOpenChange={setScriptDialogOpen}
         onCreate={createScriptTool}
       />
     </div>
   )
+}
+
+function scriptAgentLabel(agentID: string, customAgents: CustomAgentConfig[], t: (key: string, options?: Record<string, unknown>) => string) {
+  const custom = customAgents.find((agent) => agent.id === agentID)
+  return custom?.name
+    ? t('continualLearning.script.customAgent', { name: custom.name })
+    : t(`continualLearning.script.agent.${agentID}`)
 }
 
 function groupFiles(paths: string[]) {

@@ -57,6 +57,7 @@ type Config struct {
 	ProjectStateDir             string                    `toml:"-"`
 	ActiveCustomAgentID         string                    `toml:"-"`
 	ActiveCustomAgentName       string                    `toml:"-"`
+	ActiveCustomAgentRevision   string                    `toml:"-"`
 	RuntimeWebPort              int                       `toml:"-"`
 	DevMode                     bool                      `toml:"-"`
 	LLMInputLogEnabled          bool                      `toml:"llm_input_log_enabled"`

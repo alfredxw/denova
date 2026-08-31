@@ -76,7 +76,7 @@ export function CreateBranchDialog({ projectId, source, onClose, onCreate }: Cre
           <Label>{t('agents.custom.select')}</Label>
           <CustomAgentSelect
             projectId={projectId}
-            baseKind="interactive_story"
+            runtimeKind="interactive_story"
             value={customAgentId}
             onValueChange={setCustomAgentId}
             inheritLabel={t('agents.custom.inheritCurrent')}

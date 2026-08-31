@@ -5,15 +5,15 @@ import (
 	"testing"
 )
 
-func TestMergeCustomAgentsPreservesIdentityAndMergesSparseOverrides(t *testing.T) {
+func TestMergeCustomAgentsReplacesCompleteDefinitionByIdentity(t *testing.T) {
 	disabled := false
 	parent := []CustomAgentConfig{{
-		ID: "focused-editor", Name: "Focused editor", Description: "Edit prose.", BaseKind: AgentKindIDE,
+		ID: "focused-editor", Name: "Focused editor", Description: "Edit prose.", Contract: AgentContractWritingPrimary,
 		Model: AgentModelOverride{ProfileID: "writer", ThinkingLevel: "medium"},
 		Tools: AgentToolOverride{AgentToolFilesystemRead: true, AgentToolWebSearch: true},
 	}}
 	child := []CustomAgentConfig{{
-		ID: "focused-editor", Name: "Workspace editor", BaseKind: AgentKindGeneral, Enabled: &disabled,
+		ID: "focused-editor", Name: "User editor", Contract: AgentContractWritingPrimary, Enabled: &disabled,
 		Tools: AgentToolOverride{AgentToolWebSearch: false},
 	}}
 
@@ -22,21 +22,21 @@ func TestMergeCustomAgentsPreservesIdentityAndMergesSparseOverrides(t *testing.T
 		t.Fatalf("merged custom Agents = %#v", got)
 	}
 	agent := got[0]
-	if agent.ID != "focused-editor" || agent.Name != "Workspace editor" || agent.BaseKind != AgentKindIDE {
+	if agent.ID != "focused-editor" || agent.Name != "User editor" || agent.Contract != AgentContractWritingPrimary {
 		t.Fatalf("merged identity = %#v", agent)
 	}
 	if CustomAgentEnabled(agent) {
 		t.Fatal("workspace archive override was not applied")
 	}
-	if agent.Model.ProfileID != "writer" || agent.Model.ThinkingLevel != "medium" {
-		t.Fatalf("inherited model override = %#v", agent.Model)
+	if agent.Model.ProfileID != "" || agent.Model.ThinkingLevel != "" {
+		t.Fatalf("parent model leaked into complete replacement = %#v", agent.Model)
 	}
-	if !agent.Tools[AgentToolFilesystemRead] || agent.Tools[AgentToolWebSearch] {
-		t.Fatalf("merged tool overrides = %#v", agent.Tools)
+	if agent.Tools[AgentToolFilesystemRead] || agent.Tools[AgentToolWebSearch] {
+		t.Fatalf("parent tools leaked into complete replacement = %#v", agent.Tools)
 	}
 }
 
-func TestApplyCustomAgentProjectsOntoFixedBase(t *testing.T) {
+func TestApplyCustomAgentProjectsIndependentDefinitionOntoContract(t *testing.T) {
 	cfg := &Config{
 		AgentModels: AgentModelSettings{IDE: AgentModelOverride{ProfileID: "base", ThinkingLevel: "low"}},
 		AgentTools: AgentToolSettings{IDE: AgentToolOverride{
@@ -44,10 +44,10 @@ func TestApplyCustomAgentProjectsOntoFixedBase(t *testing.T) {
 			AgentToolWebSearch:      true,
 		}},
 		CustomAgents: []CustomAgentConfig{{
-			ID: "focused-editor", Name: "Focused editor", BaseKind: AgentKindIDE,
-			Model:  AgentModelOverride{ProfileID: "custom", ThinkingLevel: "high"},
-			Tools:  AgentToolOverride{AgentToolWebSearch: false},
-			Prompt: AgentPromptOverride{SystemPrompt: "Preserve the author's voice."},
+			ID: "focused-editor", Name: "Focused editor", Contract: AgentContractWritingPrimary,
+			Instructions: "Preserve the author's voice.",
+			Model:        AgentModelOverride{ProfileID: "custom", ThinkingLevel: "high"},
+			Tools:        AgentToolOverride{AgentToolFilesystemRead: false, AgentToolWebSearch: false},
 		}},
 	}
 
@@ -60,14 +60,14 @@ func TestApplyCustomAgentProjectsOntoFixedBase(t *testing.T) {
 	if cfg.AgentModels.IDE.ProfileID != "custom" || cfg.AgentModels.IDE.ThinkingLevel != "high" {
 		t.Fatalf("projected model = %#v", cfg.AgentModels.IDE)
 	}
-	if !cfg.AgentTools.IDE[AgentToolFilesystemRead] || cfg.AgentTools.IDE[AgentToolWebSearch] {
+	if cfg.AgentTools.IDE[AgentToolFilesystemRead] || cfg.AgentTools.IDE[AgentToolWebSearch] {
 		t.Fatalf("projected tools = %#v", cfg.AgentTools.IDE)
 	}
-	if cfg.AgentPrompts.IDE.SystemPrompt != "Preserve the author's voice." {
+	if cfg.AgentPrompts.IDE.FlowPrompt != "Preserve the author's voice." {
 		t.Fatalf("projected prompt = %#v", cfg.AgentPrompts.IDE)
 	}
 	if err := ApplyCustomAgent(cfg, AgentKindGeneral, "focused-editor"); err == nil {
-		t.Fatal("custom Agent was accepted by a different fixed base kind")
+		t.Fatal("custom Agent was accepted by a different runtime contract")
 	}
 }
 
@@ -84,8 +84,8 @@ func TestDefaultSettingsShipWithoutCustomAgents(t *testing.T) {
 func TestArchivedCustomAgentRemainsAvailableOnlyToPersistedHistory(t *testing.T) {
 	disabled := false
 	cfg := &Config{CustomAgents: []CustomAgentConfig{{
-		ID: "retired-editor", Name: "Retired editor", BaseKind: AgentKindIDE, Enabled: &disabled,
-		Prompt: AgentPromptOverride{SystemPrompt: "Preserve prior behavior."},
+		ID: "retired-editor", Name: "Retired editor", Contract: AgentContractWritingPrimary, Enabled: &disabled,
+		Instructions: "Preserve prior behavior.",
 	}}}
 	if err := ApplyCustomAgent(cfg, AgentKindIDE, "retired-editor"); err == nil {
 		t.Fatal("archived custom Agent was available to a new selection")
@@ -93,22 +93,33 @@ func TestArchivedCustomAgentRemainsAvailableOnlyToPersistedHistory(t *testing.T)
 	if err := ApplyPersistedCustomAgent(cfg, AgentKindIDE, "retired-editor"); err != nil {
 		t.Fatalf("persisted history could not restore archived custom Agent: %v", err)
 	}
-	if cfg.AgentPrompts.IDE.SystemPrompt != "Preserve prior behavior." {
+	if cfg.AgentPrompts.IDE.FlowPrompt != "Preserve prior behavior." {
 		t.Fatalf("archived custom Agent prompt = %#v", cfg.AgentPrompts.IDE)
 	}
 }
 
-func TestWorkspaceCustomAgentPatchRejectsUserScopedSelections(t *testing.T) {
-	valid := json.RawMessage("{\"custom_agents\":[{\"id\":\"editor\",\"base_kind\":\"ide\",\"prompt\":{\"system_prompt\":\"Keep edits small.\"}}]}")
-	if err := ValidateWorkspaceSettingsPatch(valid); err != nil {
-		t.Fatalf("workspace behavior override was rejected: %v", err)
+func TestWorkspaceCustomAgentPatchIsRejectedAsUserScoped(t *testing.T) {
+	patch := json.RawMessage("{\"custom_agents\":[{\"id\":\"editor\",\"contract\":\"writing.primary.v1\"}]}")
+	if err := ValidateWorkspaceSettingsPatch(patch); err == nil {
+		t.Fatalf("workspace accepted user-scoped custom Agent library: %s", patch)
 	}
-	for _, patch := range []json.RawMessage{
-		json.RawMessage("{\"custom_agents\":[{\"id\":\"editor\",\"base_kind\":\"ide\",\"model\":{\"profile_id\":\"private-model\"}}]}"),
-		json.RawMessage("{\"custom_agents\":[{\"id\":\"artist\",\"base_kind\":\"image\",\"image_api_profile_id\":\"private-image\"}]}"),
-	} {
-		if err := ValidateWorkspaceSettingsPatch(patch); err == nil {
-			t.Fatalf("workspace accepted user-scoped custom Agent selection: %s", patch)
-		}
+}
+
+func TestSanitizeCustomAgentKeepsContextDraftAndSparseSkillExceptions(t *testing.T) {
+	agents := SanitizeCustomAgents([]CustomAgentConfig{{
+		ID: " Writer ", Name: " Writer ", Contract: AgentContractWritingPrimary,
+		SkillPolicy: AgentSkillPolicy{
+			Mode: AgentSkillPolicyExplicit, Pinned: []string{"outline", "outline", "blocked"}, Blocked: []string{"blocked"},
+		},
+		ContextBindings: []AgentContextBinding{{ID: " house style ", Content: ""}},
+	}})
+	if len(agents) != 1 || len(agents[0].ContextBindings) != 1 {
+		t.Fatalf("sanitized custom Agents = %#v", agents)
+	}
+	if agents[0].ContextBindings[0].ID != "house-style" || agents[0].ContextBindings[0].Content != "" {
+		t.Fatalf("context draft = %#v", agents[0].ContextBindings[0])
+	}
+	if len(agents[0].SkillPolicy.Pinned) != 1 || agents[0].SkillPolicy.Pinned[0] != "outline" || len(agents[0].SkillPolicy.Blocked) != 1 {
+		t.Fatalf("Skill policy = %#v", agents[0].SkillPolicy)
 	}
 }

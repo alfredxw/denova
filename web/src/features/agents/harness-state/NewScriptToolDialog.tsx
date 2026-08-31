@@ -11,18 +11,21 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import type { CustomAgentConfig } from '@/features/settings/types'
+import { runtimeKindForContract } from '../agent-contracts'
 
 interface NewScriptToolDialogProps {
   open: boolean
   existingPaths: string[]
+  customAgents: CustomAgentConfig[]
   onOpenChange: (open: boolean) => void
   onCreate: (file: { path: string; content: string }) => void
 }
 
-const targets = ['general', 'ide', 'interactive_story'] as const
+const builtInTargets = ['general', 'ide', 'interactive_story'] as const
 const namePattern = /^[a-z][a-z0-9_-]{0,63}$/
 
-export function NewScriptToolDialog({ open, existingPaths, onOpenChange, onCreate }: NewScriptToolDialogProps) {
+export function NewScriptToolDialog({ open, existingPaths, customAgents, onOpenChange, onCreate }: NewScriptToolDialogProps) {
   const { t } = useTranslation()
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
@@ -36,6 +39,12 @@ export function NewScriptToolDialog({ open, existingPaths, onOpenChange, onCreat
     setAgents(new Set(['general', 'ide']))
   }, [open])
   const fields = useMemo(() => normalizedInputFields(inputFields), [inputFields])
+  const targets = useMemo(() => [
+    ...builtInTargets.map(id => ({ id, label: t(`continualLearning.script.agent.${id}`) })),
+    ...customAgents
+      .filter(agent => agent.enabled !== false && agent.id && agent.name && runtimeKindForContract(agent.contract) !== 'image')
+      .map(agent => ({ id: agent.id!, label: t('continualLearning.script.customAgent', { name: agent.name }) })),
+  ], [customAgents, t])
   const normalizedName = name.trim()
   const path = `tools/${normalizedName}.js`
   let error = ''
@@ -76,9 +85,9 @@ export function NewScriptToolDialog({ open, existingPaths, onOpenChange, onCreat
           <div className="grid gap-1.5">
             <Label>{t('continualLearning.script.agents')}</Label>
             <div className="flex flex-wrap gap-2">
-              {targets.map(agent => (
-                <Button key={agent} type="button" size="xs" variant={agents.has(agent) ? 'default' : 'outline'} onClick={() => toggleAgent(agent)}>
-                  {t(`continualLearning.script.agent.${agent}`)}
+              {targets.map(target => (
+                <Button key={target.id} type="button" size="xs" variant={agents.has(target.id) ? 'default' : 'outline'} onClick={() => toggleAgent(target.id)}>
+                  {target.label}
                 </Button>
               ))}
             </div>

@@ -9,9 +9,10 @@ import (
 
 // Backend resolves the effective Skill catalog across all configured scopes.
 type Backend struct {
-	dirs      []Directory
-	agentKind string
-	overrides map[string]bool
+	dirs         []Directory
+	agentKind    string
+	overrides    map[string]bool
+	explicitOnly bool
 }
 
 func NewBackend(dirs []Directory) *Backend {
@@ -20,6 +21,15 @@ func NewBackend(dirs []Directory) *Backend {
 
 func NewAgentBackend(dirs []Directory, agentKind string, overrides map[string]bool) *Backend {
 	return &Backend{dirs: dedupeDirectories(dirs), agentKind: strings.TrimSpace(agentKind), overrides: normalizeOverrideMap(overrides)}
+}
+
+// NewAgentBackendWithPolicy supports an explicit-only catalog without
+// expanding settings into one boolean per installed Skill.
+func NewAgentBackendWithPolicy(dirs []Directory, agentKind string, overrides map[string]bool, explicitOnly bool) *Backend {
+	return &Backend{
+		dirs: dedupeDirectories(dirs), agentKind: strings.TrimSpace(agentKind),
+		overrides: normalizeOverrideMap(overrides), explicitOnly: explicitOnly,
+	}
 }
 
 func (b *Backend) List(ctx context.Context) ([]FrontMatter, error) {

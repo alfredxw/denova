@@ -21,11 +21,12 @@ var (
 // Config is a complete snapshot. A conversation never follows later Settings
 // changes implicitly after this value has been initialized.
 type Config struct {
-	AgentKind     string                   `json:"agent_kind"`
-	CustomAgentID string                   `json:"custom_agent_id,omitempty"`
-	ProfileID     string                   `json:"profile_id"`
-	ThinkingLevel string                   `json:"thinking_level"`
-	ApprovalMode  config.AgentApprovalMode `json:"approval_mode"`
+	AgentKind     string                    `json:"agent_kind"`
+	CustomAgentID string                    `json:"custom_agent_id,omitempty"`
+	CustomAgent   *config.CustomAgentConfig `json:"custom_agent,omitempty"`
+	ProfileID     string                    `json:"profile_id"`
+	ThinkingLevel string                    `json:"thinking_level"`
+	ApprovalMode  config.AgentApprovalMode  `json:"approval_mode"`
 }
 
 // Snapshot adds the compare-and-swap revision used by the UI mutation seam.
@@ -106,6 +107,14 @@ func Default(runtime *config.Config, agentKind string) Config {
 // snapshot and never follow later default-selection changes implicitly.
 func DefaultWithCustomAgent(runtime *config.Config, agentKind, customAgentID string) (Config, error) {
 	clone := cloneRuntimeConfig(runtime)
+	var customAgent *config.CustomAgentConfig
+	if normalized := config.NormalizeCustomAgentID(customAgentID); normalized != "" {
+		definition, ok := config.FindCustomAgent(&clone, normalized)
+		if !ok {
+			return Config{}, fmt.Errorf("%w: %s", config.ErrCustomAgentNotFound, normalized)
+		}
+		customAgent = cloneCustomAgent(definition)
+	}
 	if err := config.ApplyCustomAgent(&clone, agentKind, customAgentID); err != nil {
 		return Config{}, err
 	}
@@ -117,6 +126,7 @@ func DefaultWithCustomAgent(runtime *config.Config, agentKind, customAgentID str
 	return Config{
 		AgentKind:     strings.TrimSpace(agentKind),
 		CustomAgentID: config.NormalizeCustomAgentID(customAgentID),
+		CustomAgent:   customAgent,
 		ProfileID:     profileID,
 		ThinkingLevel: strings.TrimSpace(resolved.ThinkingLevel),
 		ApprovalMode:  config.NormalizeAgentApprovalMode(runtimeApprovalMode(runtime)),
@@ -135,6 +145,7 @@ func Merge(runtime *config.Config, base Config, patch Patch) (Config, error) {
 			}
 			next.ProfileID = defaults.ProfileID
 			next.ThinkingLevel = defaults.ThinkingLevel
+			next.CustomAgent = defaults.CustomAgent
 		}
 		next.CustomAgentID = customAgentID
 	}
@@ -175,11 +186,7 @@ func validate(runtime *config.Config, candidate Config, agentKind string, persis
 		return err
 	}
 	clone := cloneRuntimeConfig(runtime)
-	applyCustomAgent := config.ApplyCustomAgent
-	if persisted {
-		applyCustomAgent = config.ApplyPersistedCustomAgent
-	}
-	if err := applyCustomAgent(&clone, agentKind, candidate.CustomAgentID); err != nil {
+	if err := applyConversationCustomAgent(&clone, agentKind, candidate, persisted); err != nil {
 		return err
 	}
 	if err := config.ApplyAgentModelSelection(&clone, agentKind, candidate.ProfileID, candidate.ThinkingLevel); err != nil {
@@ -200,6 +207,17 @@ func ValidateShape(candidate Config, agentKind string) error {
 	}
 	if normalized := config.NormalizeCustomAgentID(candidate.CustomAgentID); normalized != strings.TrimSpace(candidate.CustomAgentID) {
 		return fmt.Errorf("invalid custom Agent ID %q", candidate.CustomAgentID)
+	}
+	if candidate.CustomAgentID == "" && candidate.CustomAgent != nil {
+		return errors.New("conversation custom Agent snapshot requires custom_agent_id")
+	}
+	if candidate.CustomAgent != nil {
+		if config.NormalizeCustomAgentID(candidate.CustomAgent.ID) != candidate.CustomAgentID {
+			return errors.New("conversation custom Agent snapshot ID does not match custom_agent_id")
+		}
+		if config.CustomAgentRuntimeKind(*candidate.CustomAgent) != agentKind {
+			return fmt.Errorf("conversation custom Agent snapshot does not satisfy Agent kind %q", agentKind)
+		}
 	}
 	if strings.TrimSpace(candidate.ProfileID) == "" {
 		return errors.New("conversation model profile is required")
@@ -222,7 +240,7 @@ func Apply(runtime *config.Config, selection Config) error {
 	if err := ValidatePersisted(runtime, selection, selection.AgentKind); err != nil {
 		return err
 	}
-	if err := config.ApplyPersistedCustomAgent(runtime, selection.AgentKind, selection.CustomAgentID); err != nil {
+	if err := applyConversationCustomAgent(runtime, selection.AgentKind, selection, true); err != nil {
 		return err
 	}
 	if err := config.ApplyAgentModelSelection(runtime, selection.AgentKind, selection.ProfileID, selection.ThinkingLevel); err != nil {
@@ -230,6 +248,29 @@ func Apply(runtime *config.Config, selection Config) error {
 	}
 	runtime.AgentApprovalMode = config.NormalizeAgentApprovalMode(selection.ApprovalMode)
 	return nil
+}
+
+func applyConversationCustomAgent(runtime *config.Config, agentKind string, selection Config, persisted bool) error {
+	if selection.CustomAgent != nil {
+		return config.ApplyCustomAgentDefinition(runtime, agentKind, *selection.CustomAgent, persisted)
+	}
+	if persisted {
+		return config.ApplyPersistedCustomAgent(runtime, agentKind, selection.CustomAgentID)
+	}
+	return config.ApplyCustomAgent(runtime, agentKind, selection.CustomAgentID)
+}
+
+func cloneCustomAgent(value config.CustomAgentConfig) *config.CustomAgentConfig {
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		clone := value
+		return &clone
+	}
+	var clone config.CustomAgentConfig
+	if err := json.Unmarshal(encoded, &clone); err != nil {
+		clone = value
+	}
+	return &clone
 }
 
 func runtimeApprovalMode(runtime *config.Config) config.AgentApprovalMode {

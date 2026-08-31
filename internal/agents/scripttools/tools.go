@@ -23,11 +23,18 @@ func Saved(
 	harness harnessstate.Harness,
 	agentKind string,
 ) ([]agent.ToolDefinition, error) {
+	if !config.ResolveAgentTools(cfg, agentKind).Allows(config.AgentToolScript) {
+		return nil, nil
+	}
 	scriptConfig, err := engineConfig(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("configure Script Tools: %w", err)
 	}
-	definitions, err := harness.ScriptToolDefinitions(agentKind, scriptConfig)
+	targets := []string{agentKind}
+	if definition, ok := config.FindActiveCustomAgent(cfg); ok && config.CustomAgentRuntimeKind(definition) == agentKind {
+		targets = append(targets, definition.ID)
+	}
+	definitions, err := harness.ScriptToolDefinitions(targets, scriptConfig)
 	if err != nil {
 		return nil, fmt.Errorf("materialize Script Tools for Agent %s: %w", agentKind, err)
 	}

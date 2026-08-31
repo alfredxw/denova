@@ -32,8 +32,8 @@ Denova records only major user-visible features, important compatibility or data
 - Configuration no longer runs a standalone Agent. General and Writing Agents provide the complete workflow through `/configuration`; configuration pages reuse AgentChat's right-side manager, history, and recovery while keeping a separate configuration conversation list in each Project.
 - 写作与各配置页面提供独立的快捷指令组；用户可调整内容、顺序和显隐，并为每条指令选择填入输入框或立即发送。
 - Writing and each configuration page now have independent quick-prompt groups whose content, order, visibility, and fill-or-send behavior can be customized.
-- Agents 页面支持基于固定 General、IDE、Game 与 Image 运行时创建、配置和归档自定义 Agent；写作、通用对话、游戏故事/分支与图像生成可选择这些实例，已有历史继续绑定原 Agent。
-- The Agents page now creates, configures, and archives custom Agents backed by the fixed General, IDE, Game, and Image runtimes. Writing, General chats, Game stories/branches, and image generation can select these instances while existing history stays bound to its original Agent.
+- Agents 页面支持基于稳定运行契约创建独立的自定义 Agent，可完整配置行为、模型与工具集、工具指导、稀疏 Skill 策略、上下文注入和委派策略；脚本工具可精确指定自定义 Agent，已有会话会固化完整定义并继续保持原行为。
+- The Agents page now creates independent custom Agents on stable runtime contracts, with complete behavior, model and toolset, tool guidance, sparse Skill policy, context injection, and delegation settings. Script tools can target an exact custom Agent, while existing conversations preserve a complete definition snapshot and retain their original behavior.
 - 写作、游戏与 Project Agent 会话支持运行中连续追加 Follow Up，刷新或重启后恢复任务，并按会话保存模型、思考强度与权限设置。
 - Writing, Game, and Project Agent conversations now accept queued follow-ups during a run, recover after refresh or restart, and persist model, thinking, and permission settings per conversation.
 - 写作、游戏与通用 Agent 对话支持从现有输入菜单、拖拽或粘贴添加多个通用文件；Denova 保存独立副本供 Agent 使用，将图片作为原生视觉输入发送给模型，并在输入区与已发送消息中提供图片预览。

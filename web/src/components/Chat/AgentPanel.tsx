@@ -792,7 +792,7 @@ function AgentPanelComponent({
           </div>
           <CustomAgentSelect
             projectId={projectId}
-            baseKind={generalAgent ? 'general' : 'ide'}
+            runtimeKind={generalAgent ? 'general' : 'ide'}
             value={agentSelectionConfig.snapshot?.custom_agent_id ?? ''}
             disabled={sessionControlsDisabled || agentSelectionConfig.loading}
             className="h-7 w-[min(11rem,28vw)] border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[11px]"

@@ -9,13 +9,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { SidebarGroupAction } from '@/components/ui/sidebar'
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import type { CustomAgentBaseKind, CustomAgentConfig, Settings } from '@/features/settings/types'
+import type { AgentRuntimeKind, CustomAgentConfig, Settings } from '@/features/settings/types'
 import { createAgentCommandID } from '@/lib/api'
 import { AGENTS, type AgentViewDefinition, type VisibleAgentKey } from './agent-registry'
+import { contractForRuntimeKind, runtimeKindForContract } from './agent-contracts'
 
 export type AgentSelectionID = VisibleAgentKey | `custom:${string}`
 
-const CUSTOM_AGENT_BASE_KINDS: CustomAgentBaseKind[] = ['general', 'ide', 'interactive_story', 'image']
+const CUSTOM_AGENT_RUNTIME_KINDS: AgentRuntimeKind[] = ['general', 'ide', 'interactive_story', 'image']
 
 export function AgentList({
   active,
@@ -26,7 +27,7 @@ export function AgentList({
   active: AgentSelectionID
   customAgents: CustomAgentConfig[]
   onSelect: (agent: AgentSelectionID) => void
-  onCreate: (baseKind: CustomAgentBaseKind) => void
+  onCreate: (runtimeKind: AgentRuntimeKind) => void
 }) {
   const { t } = useTranslation()
   const groups = new Map<string, Array<{ id: AgentSelectionID; agent: AgentViewDefinition; title: string; description: string }>>()
@@ -37,29 +38,30 @@ export function AgentList({
     else groups.set(agent.groupKey, [item])
   }
   for (const customAgent of customAgents) {
-    const base = AGENTS.find((agent) => agent.key === customAgent.base_kind)
+    const runtimeKind = runtimeKindForContract(customAgent.contract)
+    const base = AGENTS.find((agent) => agent.key === runtimeKind)
     if (!base || !customAgent.id) continue
     const group = groups.get(base.groupKey) ?? []
     group.push({
       id: `custom:${customAgent.id}`,
       agent: base,
       title: customAgent.name || customAgent.id,
-      description: customAgent.description || t('agents.custom.inherits', { agent: t(base.titleKey) }),
+      description: customAgent.description || t('agents.custom.contractValue', { agent: t(base.titleKey) }),
     })
     groups.set(base.groupKey, group)
   }
 
   const navigationGroups: SectionedNavigationGroup<AgentSelectionID>[] = Array.from(groups, ([group, agents]) => {
-    const baseKind = CUSTOM_AGENT_BASE_KINDS.find((kind) => AGENTS.find((agent) => agent.key === kind)?.groupKey === group)
-    const baseAgent = AGENTS.find((agent) => agent.key === baseKind)
+    const runtimeKind = CUSTOM_AGENT_RUNTIME_KINDS.find((kind) => AGENTS.find((agent) => agent.key === kind)?.groupKey === group)
+    const baseAgent = AGENTS.find((agent) => agent.key === runtimeKind)
     const createLabel = baseAgent ? t('agents.custom.createFor', { agent: t(baseAgent.titleKey) }) : ''
     return {
       id: group,
       title: t(group),
-      action: baseKind ? (
+      action: runtimeKind ? (
         <Tooltip>
           <TooltipTrigger asChild>
-            <SidebarGroupAction type="button" aria-label={createLabel} onClick={() => onCreate(baseKind)}>
+            <SidebarGroupAction type="button" aria-label={createLabel} onClick={() => onCreate(runtimeKind)}>
               <Plus aria-hidden="true" />
             </SidebarGroupAction>
           </TooltipTrigger>
@@ -114,7 +116,7 @@ export function AgentHeader({ agent, customAgent, onArchive }: { agent: AgentVie
           </Button>
         ) : null}
       </div>
-      {customAgent ? <div className="mt-3 text-[10px] uppercase tracking-[0.12em] text-[var(--nova-text-faint)]">{t('agents.custom.inherits', { agent: t(agent.titleKey) })} · {customAgent.id}</div> : null}
+      {customAgent ? <div className="mt-3 text-[10px] uppercase tracking-[0.12em] text-[var(--nova-text-faint)]">{t('agents.custom.contractValue', { agent: t(agent.titleKey) })} · {customAgent.id}</div> : null}
     </section>
   )
 }
@@ -142,7 +144,7 @@ export function CustomAgentIdentitySection({
       </label>
       <label className="grid gap-1.5 text-xs">
         <span className="font-medium">{t('agents.custom.baseKind')}</span>
-        <Input value={t(AGENTS.find((item) => item.key === agent.base_kind)?.titleKey ?? 'agents.ide.title')} disabled />
+        <Input value={t(AGENTS.find((item) => item.key === runtimeKindForContract(agent.contract))?.titleKey ?? 'agents.ide.title')} disabled />
       </label>
       <label className="grid gap-1.5 text-xs sm:col-span-2">
         <span className="font-medium">{t('agents.custom.description')}</span>
@@ -160,26 +162,26 @@ export function CustomAgentIdentitySection({
 
 export function CreateCustomAgentDialog({
   open,
-  initialBaseKind,
+  initialRuntimeKind,
   onOpenChange,
   onCreate,
 }: {
   open: boolean
-  initialBaseKind: CustomAgentBaseKind
+  initialRuntimeKind: AgentRuntimeKind
   onOpenChange: (open: boolean) => void
   onCreate: (agent: CustomAgentConfig & { id: string }) => void
 }) {
   const { t } = useTranslation()
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
-  const [baseKind, setBaseKind] = useState<CustomAgentBaseKind>('ide')
+  const [runtimeKind, setRuntimeKind] = useState<AgentRuntimeKind>('ide')
 
   useEffect(() => {
     if (!open) return
     setName('')
     setDescription('')
-    setBaseKind(initialBaseKind)
-  }, [initialBaseKind, open])
+    setRuntimeKind(initialRuntimeKind)
+  }, [initialRuntimeKind, open])
 
   const create = () => {
     const normalizedName = name.trim()
@@ -189,7 +191,7 @@ export function CreateCustomAgentDialog({
       id,
       name: normalizedName,
       description: description.trim() || t('agents.custom.defaultDescription'),
-      base_kind: baseKind,
+      contract: contractForRuntimeKind(runtimeKind),
       enabled: true,
     })
     onOpenChange(false)
@@ -205,10 +207,10 @@ export function CreateCustomAgentDialog({
         <div className="grid gap-4">
           <label className="grid gap-1.5 text-xs">
             <span className="font-medium">{t('agents.custom.baseKind')}</span>
-            <Select value={baseKind} onValueChange={(value) => setBaseKind(value as CustomAgentBaseKind)}>
+            <Select value={runtimeKind} onValueChange={(value) => setRuntimeKind(value as AgentRuntimeKind)}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                {(['general', 'ide', 'interactive_story', 'image'] as CustomAgentBaseKind[]).map((kind) => {
+                {CUSTOM_AGENT_RUNTIME_KINDS.map((kind) => {
                   const definition = AGENTS.find((agent) => agent.key === kind)
                   return definition ? <SelectItem key={kind} value={kind}>{t(definition.titleKey)}</SelectItem> : null
                 })}
@@ -245,12 +247,7 @@ export function updateCustomAgent(
 ): Settings {
   const agents = [...(settings.custom_agents ?? [])]
   const index = agents.findIndex((agent) => agent.id === effective.id)
-  const current = index >= 0 ? agents[index] : {
-    id: effective.id,
-    name: effective.name,
-    description: effective.description,
-    base_kind: effective.base_kind,
-  }
+  const current = index >= 0 ? agents[index] : { ...effective }
   const next = mutate(current)
   if (index >= 0) agents[index] = next
   else agents.push(next)
@@ -264,27 +261,11 @@ export function mergeCustomAgentViews(parent: CustomAgentConfig[] = [], child: C
   }
   for (const agent of child) {
     if (!agent.id) continue
-    const inherited = values.get(agent.id) ?? {}
-    values.set(agent.id, {
-      ...inherited,
-      ...agent,
-      name: agent.name?.trim() ? agent.name : inherited.name,
-      description: agent.description?.trim() ? agent.description : inherited.description,
-      enabled: agent.enabled ?? inherited.enabled,
-      model: { ...(inherited.model ?? {}), ...(agent.model ?? {}) },
-      tools: { ...(inherited.tools ?? {}), ...(agent.tools ?? {}) },
-      prompt: { ...(inherited.prompt ?? {}), ...(agent.prompt ?? {}) },
-      skills: { ...(inherited.skills ?? {}), ...(agent.skills ?? {}) },
-      context: { ...(inherited.context ?? {}), ...(agent.context ?? {}) },
-      base_kind: inherited.base_kind || agent.base_kind,
-      image_api_profile_id: agent.image_api_profile_id?.trim()
-        ? agent.image_api_profile_id
-        : inherited.image_api_profile_id,
-    })
+    values.set(agent.id, agent)
   }
   return Array.from(values.values())
 }
 
 export function isVisibleCustomAgent(agent: CustomAgentConfig) {
-  return Boolean(agent.id && agent.name && agent.base_kind && agent.enabled !== false)
+  return Boolean(agent.id && agent.name && runtimeKindForContract(agent.contract) && agent.enabled !== false)
 }

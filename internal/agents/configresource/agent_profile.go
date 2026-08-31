@@ -151,14 +151,14 @@ func readAgentProfiles(cfg *config.Config) (agentProfileReadResult, error) {
 		return agentProfileReadResult{}, err
 	}
 	snapshot := agentConfigSnapshot{
-		Paths: layered.Paths, Agents: agentConfigDefinitions(), CustomAgentBases: config.CustomizableAgentKinds(), SubAgentParents: config.SubAgentParentKinds(),
+		Paths: layered.Paths, Agents: agentConfigDefinitions(), AgentContracts: config.AgentContractDefinitions(), SubAgentParents: config.SubAgentParentKinds(),
 		ToolCapabilities: agentConfigToolCapabilities(),
 		Layers: agentConfigLayeredSnapshot{
 			User: agentConfigLayer(layered.User), Workspace: agentConfigLayer(layered.Workspace), Effective: agentConfigLayer(layered.Effective),
 		},
 		SubAgentIndex: agentConfigSubAgentIndex(layered),
 		Notes: []string{
-			"scope must be user or workspace; model overrides are user-only",
+			"custom Agents and model overrides are user-only; fixed Agent and SubAgent behavior may use user or workspace scope",
 			"API keys and other secrets are never returned by this resource",
 			"kind selects agent, custom_agent, general_sub_agent, or sub_agent",
 			"custom_agent and sub_agent create require the latest target-scope revision; fixed profiles use update",
@@ -211,6 +211,9 @@ func applyAgentProfileMutation(settings *config.Settings, layered config.Layered
 		}
 		return nil
 	case agentProfileKindCustomAgent:
+		if scope != "user" {
+			return fmt.Errorf("custom Agents are user-scoped")
+		}
 		return applyCustomAgentMutation(settings, layered, scope, id, mutation.Operation, value.CustomAgent)
 	case agentProfileKindGeneralSubAgent:
 		if !validGeneralSubAgentKey(id) {
@@ -296,26 +299,30 @@ func applyCustomAgentMutation(
 		if exists {
 			return fmt.Errorf("custom_agent %q already exists; use update", id)
 		}
-		if strings.TrimSpace(agent.Name) == "" || !config.IsCustomizableAgentKind(agent.BaseKind) {
-			return fmt.Errorf("invalid custom Agent: name and a base_kind from custom_agent_bases are required")
+		if strings.TrimSpace(agent.Name) == "" {
+			return fmt.Errorf("invalid custom Agent: name is required")
+		}
+		if _, ok := config.LookupAgentContract(agent.Contract); !ok {
+			return fmt.Errorf("invalid custom Agent: contract must match one entry from agent_contracts")
 		}
 	} else {
 		if !exists {
 			return fmt.Errorf("custom_agent %q does not exist; use create", id)
 		}
-		if strings.TrimSpace(agent.BaseKind) != "" && strings.TrimSpace(agent.BaseKind) != existing.BaseKind {
-			return fmt.Errorf("custom Agent base_kind is immutable: %q is based on %q", id, existing.BaseKind)
+		if strings.TrimSpace(agent.Contract) != "" && strings.TrimSpace(agent.Contract) != existing.Contract {
+			return fmt.Errorf("custom Agent contract is immutable: %q uses %q", id, existing.Contract)
 		}
 	}
 
-	baseKind := strings.TrimSpace(agent.BaseKind)
-	if baseKind == "" {
-		baseKind = existing.BaseKind
+	contractID := strings.TrimSpace(agent.Contract)
+	if contractID == "" {
+		contractID = existing.Contract
 	}
-	if scope == "workspace" && (hasAgentModelOverride(agent.Model) || strings.TrimSpace(agent.ImageAPIProfileID) != "") {
-		return fmt.Errorf("custom Agent model and image API profile overrides are user-scoped")
+	contract, ok := config.LookupAgentContract(contractID)
+	if !ok {
+		return fmt.Errorf("invalid custom Agent contract %q", contractID)
 	}
-	if err := validateAgentToolOverride(baseKind, agent.Tools); err != nil {
+	if err := validateAgentToolOverride(contract.RuntimeKind, agent.Tools); err != nil {
 		return err
 	}
 	sanitized := config.SanitizeCustomAgents([]config.CustomAgentConfig{agent})
@@ -324,10 +331,6 @@ func applyCustomAgentMutation(
 	}
 	settings.CustomAgents = upsertCustomAgent(settings.CustomAgents, sanitized[0])
 	return nil
-}
-
-func hasAgentModelOverride(value config.AgentModelOverride) bool {
-	return strings.TrimSpace(value.ProfileID) != "" || value.Temperature != nil || strings.TrimSpace(value.ThinkingLevel) != ""
 }
 
 func findCustomAgentByID(agents []config.CustomAgentConfig, id string) (config.CustomAgentConfig, bool) {

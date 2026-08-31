@@ -87,7 +87,7 @@ func ComposeInstruction(cfg *config.Config, state *book.State, teller IDEStoryTe
 			Content: content.String(), Overflow: SystemPromptOverflowTruncate,
 		})
 	}
-	return composeProtectedSystemInstruction(cfg, config.AgentKindIDE, "ide", workspace, builtIn)
+	return composeProtectedSystemInstruction(cfg, config.AgentKindIDE, "ide", workspace, applyAgentPromptDefinition(cfg, config.AgentKindIDE, builtIn))
 }
 
 // BuildInstructionComposition preserves the existing display API while
@@ -138,7 +138,7 @@ func ComposeInteractiveStoryInstruction(cfg *config.Config, state *book.State, t
 		Purpose: "define the built-in game narration workflow and output behavior",
 		Content: BuildInteractiveStoryFlowInstruction(baseInput), Required: true, Overflow: SystemPromptOverflowReject,
 	})
-	return composeProtectedSystemInstruction(cfg, config.AgentKindInteractiveStory, "interactive", workspace, builtIn)
+	return composeProtectedSystemInstruction(cfg, config.AgentKindInteractiveStory, "interactive", workspace, applyAgentPromptDefinition(cfg, config.AgentKindInteractiveStory, builtIn))
 }
 
 // BuildInteractiveStoryInstructionComposition preserves the display API.
@@ -167,7 +167,7 @@ func ComposeImageInstruction(cfg *config.Config, state *book.State, systemPrompt
 		Purpose: "constrain the current image generation request", Content: systemPrompt,
 		Prefix: "\n\n## Call-site System Prompt\n\n", Overflow: SystemPromptOverflowTruncate,
 	}}
-	return composeProtectedSystemInstruction(cfg, config.AgentKindImage, "image", workspace, builtIn)
+	return composeProtectedSystemInstruction(cfg, config.AgentKindImage, "image", workspace, applyAgentPromptDefinition(cfg, config.AgentKindImage, builtIn))
 }
 
 func BuildImageInstructionComposition(cfg *config.Config, state *book.State, systemPrompt string) SystemPromptComposition {

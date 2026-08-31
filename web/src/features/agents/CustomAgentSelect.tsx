@@ -2,14 +2,15 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { GLOBAL_SETTINGS_TARGET, projectSettingsTarget, settingsQueryOptions } from '@/features/settings/query'
-import type { CustomAgentBaseKind, CustomAgentConfig } from '@/features/settings/types'
+import type { AgentRuntimeKind, CustomAgentConfig } from '@/features/settings/types'
+import { runtimeKindForContract } from './agent-contracts'
 
 const BUILTIN_VALUE = '__builtin_agent__'
 const INHERIT_VALUE = '__inherit_agent__'
 
 interface CustomAgentSelectProps {
   projectId?: string
-  baseKind: CustomAgentBaseKind
+  runtimeKind: AgentRuntimeKind
   value?: string
   onValueChange: (customAgentId: string | undefined) => void
   inheritLabel?: string
@@ -18,16 +19,16 @@ interface CustomAgentSelectProps {
 }
 
 /** Selects one Agent instance without exposing runtime kinds as user-defined code. */
-export function CustomAgentSelect({ projectId = '', baseKind, value, onValueChange, inheritLabel, disabled = false, className }: CustomAgentSelectProps) {
+export function CustomAgentSelect({ projectId = '', runtimeKind, value, onValueChange, inheritLabel, disabled = false, className }: CustomAgentSelectProps) {
   const { t } = useTranslation()
   const target = projectId.trim() ? projectSettingsTarget(projectId) : GLOBAL_SETTINGS_TARGET
   const query = useQuery(settingsQueryOptions(target))
   const catalog = query.data?.effective.custom_agents
-  const agents = customAgentsForBase(catalog, baseKind)
+  const agents = customAgentsForRuntime(catalog, runtimeKind)
   const archivedSelection = value
-    ? catalog?.find((agent) => agent.id === value && agent.base_kind === baseKind && agent.enabled === false)
+    ? catalog?.find((agent) => agent.id === value && runtimeKindForContract(agent.contract) === runtimeKind && agent.enabled === false)
     : undefined
-  const baseTitle = t(baseAgentTitleKey(baseKind))
+  const baseTitle = t(runtimeAgentTitleKey(runtimeKind))
   let selectedValue = value || BUILTIN_VALUE
   if (value === undefined && inheritLabel) selectedValue = INHERIT_VALUE
 
@@ -62,17 +63,17 @@ export function CustomAgentSelect({ projectId = '', baseKind, value, onValueChan
   )
 }
 
-export function customAgentsForBase(agents: CustomAgentConfig[] | undefined, baseKind: CustomAgentBaseKind) {
+export function customAgentsForRuntime(agents: CustomAgentConfig[] | undefined, runtimeKind: AgentRuntimeKind) {
   return (agents ?? []).filter((agent) => (
     agent.enabled !== false
-    && agent.base_kind === baseKind
+    && runtimeKindForContract(agent.contract) === runtimeKind
     && Boolean(agent.id?.trim())
     && Boolean(agent.name?.trim())
   ))
 }
 
-function baseAgentTitleKey(baseKind: CustomAgentBaseKind) {
-  switch (baseKind) {
+function runtimeAgentTitleKey(runtimeKind: AgentRuntimeKind) {
+  switch (runtimeKind) {
     case 'general': return 'agents.general.title'
     case 'ide': return 'agents.ide.title'
     case 'interactive_story': return 'agents.interactiveStory.title'

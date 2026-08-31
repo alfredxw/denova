@@ -74,12 +74,12 @@ func (h Harness) ScriptToolMetadata() []ScriptToolMetadata {
 // ScriptToolDefinitions materializes target-matched saved scripts as ordinary
 // ToolDefinitions in stable name order.
 func (h Harness) ScriptToolDefinitions(
-	agentKind string,
+	agentTargets []string,
 	config publictools.ScriptConfig,
 ) ([]agent.ToolDefinition, error) {
 	definitions := make([]agent.ToolDefinition, 0, len(h.scriptTools))
 	for _, tool := range h.scriptTools {
-		if !tool.enabled || !contains(tool.agents, agentKind) {
+		if !tool.enabled || !containsAny(tool.agents, agentTargets) {
 			continue
 		}
 		definition, err := publictools.SavedScriptTool(config, publictools.SavedScriptToolSpec{
@@ -92,6 +92,15 @@ func (h Harness) ScriptToolDefinitions(
 		definitions = append(definitions, definition)
 	}
 	return definitions, nil
+}
+
+func containsAny(values, candidates []string) bool {
+	for _, candidate := range candidates {
+		if contains(values, candidate) {
+			return true
+		}
+	}
+	return false
 }
 
 type ContextFragment struct {

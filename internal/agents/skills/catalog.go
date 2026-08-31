@@ -49,7 +49,7 @@ func (b *Backend) activeRecords(ctx context.Context) []record {
 	}
 	out := make([]record, 0, len(active))
 	for _, rec := range active {
-		if !skillAllowedForAgent(rec, b.agentKind, b.overrides) {
+		if !skillAllowedForAgent(rec, b.agentKind, b.overrides, b.explicitOnly) {
 			continue
 		}
 		out = append(out, rec)
@@ -60,12 +60,15 @@ func (b *Backend) activeRecords(ctx context.Context) []record {
 	return out
 }
 
-func skillAllowedForAgent(rec record, agentKind string, overrides map[string]bool) bool {
+func skillAllowedForAgent(rec record, agentKind string, overrides map[string]bool, explicitOnly bool) bool {
 	if agentKind == "" {
 		return true
 	}
 	if enabled, ok := overrides[rec.skill.Name]; ok {
 		return enabled
+	}
+	if explicitOnly {
+		return false
 	}
 	return agentMatches(rec.skill.Agent, agentKind)
 }

@@ -87,7 +87,7 @@ func TestConfigApplySchemaDocumentsAgentProfileRevisionAndDeleteKind(t *testing.
 	if err != nil {
 		t.Fatalf("read agent-profile reference: %v", err)
 	}
-	if text := string(reference); !strings.Contains(text, "SubAgent create require the latest revision for the exact target scope") ||
+	if text := string(reference); !strings.Contains(text, "SubAgent create requires the latest revision for the exact target scope") ||
 		!strings.Contains(text, "Every delete must include `value.kind`") {
 		t.Fatalf("agent-profile reference does not document revision/delete routing contracts:\n%s", text)
 	}

@@ -73,21 +73,10 @@ func ValidateWorkspaceSettingsPatch(changes json.RawMessage) error {
 	for field := range fields {
 		switch field {
 		case "agent_tools", "agent_prompts", "agent_skills", "agent_context",
-			"general_sub_agents", "sub_agents", "custom_agents", "default_image_agent_id",
+			"general_sub_agents", "sub_agents", "default_image_agent_id",
 			"agent_tool_parallelism", "agent_subagent_parallelism":
 		default:
 			return fmt.Errorf("%w: field %q is not workspace-scoped", ErrInvalidSettingsPatch, field)
-		}
-	}
-	if raw, ok := fields["custom_agents"]; ok && !bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
-		var agents []CustomAgentConfig
-		if err := json.Unmarshal(raw, &agents); err != nil {
-			return fmt.Errorf("%w: invalid custom_agents: %v", ErrInvalidSettingsPatch, err)
-		}
-		for _, agent := range agents {
-			if agent.Model.ProfileID != "" || agent.Model.Temperature != nil || agent.Model.ThinkingLevel != "" || agent.ImageAPIProfileID != "" {
-				return fmt.Errorf("%w: custom Agent model and image API profile overrides are user-scoped", ErrInvalidSettingsPatch)
-			}
 		}
 	}
 	return nil

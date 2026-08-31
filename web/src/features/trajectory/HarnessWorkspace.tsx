@@ -41,6 +41,7 @@ export function HarnessWorkspace({ refreshToken }: HarnessWorkspaceProps) {
       {error ? <div className="shrink-0 border-b border-[var(--nova-border)] bg-red-500/5 px-4 py-2 text-xs text-red-400">{error}</div> : null}
       <ContinualLearningPage
         refreshToken={refreshToken}
+        customAgents={layered.effective.custom_agents ?? []}
         harnessStateEnabled={harnessStateEnabled}
         onHarnessStateEnabledChange={(enabled) => setLabField('harness_state_enabled', enabled)}
         scheduleSettings={{

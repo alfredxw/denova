@@ -362,7 +362,7 @@ frontmatter 是静态数据，后面全部是 function body。不使用 `defineT
 - 文件必须是 `tools/<name>.js` 的直接子项和有效 UTF-8。
 - `name` 与文件名一致，符合工具名规范；不强制 `user_` 前缀。
 - `description` 与 Schema description 使用英文。
-- `agents` 至少包含 `general`、`ide`、`interactive_story` 之一。
+- `agents` 至少包含 `general`、`ide`、`interactive_story` 或一个规范化的自定义 Agent ID；按运行时类别配置的脚本会服务该类别下的自定义 Agent，精确 ID 则只服务指定 Agent。
 - `enabled` 缺省为 `true`。
 - `input_schema` 必须是 object root，拒绝未知关键字和 `$ref`。
 - object 省略 `additionalProperties` 时规范化为 `false`。

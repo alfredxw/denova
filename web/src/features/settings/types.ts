@@ -444,22 +444,69 @@ export interface SubAgentConfig {
   tools?: AgentToolOverride
 }
 
-/** User-owned Agent instance backed by one fixed runtime Agent kind. */
+/** Complete user-owned Agent definition inside one stable runtime contract. */
 export interface CustomAgentConfig {
   id?: string
   name?: string
   description?: string
-  base_kind?: CustomAgentBaseKind
+  contract?: AgentContractID
   enabled?: boolean | null
+  instructions?: string
   model?: AgentModelOverride
   tools?: AgentToolOverride
-  prompt?: AgentPromptOverride
-  skills?: AgentSkillOverride
-  context?: AgentContextOverride
+  tool_guidance?: Record<string, string>
+  skill_policy?: AgentSkillPolicy
+  runtime_context?: AgentContextOverride
+  context_bindings?: AgentContextBinding[]
+  delegation?: AgentDelegationPolicy
   image_api_profile_id?: string
 }
 
-export type CustomAgentBaseKind = 'general' | 'ide' | 'interactive_story' | 'image'
+export type AgentRuntimeKind = 'general' | 'ide' | 'interactive_story' | 'image'
+export type AgentContractID = 'project.general.v1' | 'writing.primary.v1' | 'game.narrator.v1' | 'image.creator.v1'
+export type AgentSkillPolicyMode = 'managed' | 'explicit'
+export type AgentContextSlot = 'stable' | 'session' | 'turn'
+export type AgentDelegationMode = 'compatible' | 'selected' | 'disabled'
+
+export interface AgentContractDefinition {
+  id: AgentContractID
+  runtime_kind: AgentRuntimeKind
+  title_key: string
+  description_key: string
+}
+
+export interface AgentSkillPolicy {
+  mode?: AgentSkillPolicyMode
+  pinned?: string[]
+  blocked?: string[]
+}
+
+export interface AgentContextBinding {
+  id: string
+  name?: string
+  purpose?: string
+  slot?: AgentContextSlot
+  content: string
+  hard_limit_bytes?: number
+}
+
+export interface AgentDelegationPolicy {
+  mode?: AgentDelegationMode
+  agent_ids?: string[]
+}
+
+export interface ResolvedAgentDefinition {
+  id: string
+  name?: string
+  contract: AgentContractID
+  runtime_kind: AgentRuntimeKind
+  revision?: string
+  instructions?: string
+  tool_guidance?: Record<string, string>
+  skill_policy: AgentSkillPolicy
+  context_bindings?: AgentContextBinding[]
+  delegation: AgentDelegationPolicy
+}
 
 interface AgentPromptSettings {
   default?: AgentPromptOverride
@@ -557,9 +604,11 @@ export interface LayeredSettings {
   builtin_agent_prompts?: AgentPromptSettings
   builtin_agent_prompt_blocks?: AgentPromptBlockSettings
   builtin_agent_prompt_sources?: AgentPromptSourceSettings
+  agent_contracts?: AgentContractDefinition[]
   agent_tool_capabilities?: AgentToolCapabilityCatalogEntry[]
   resolved_agent_tool_manifests: Record<string, ResolvedAgentToolCapability[] | undefined>
   resolved_agent_contexts: Record<string, ResolvedAgentContextSettings | undefined>
+  resolved_agent_definitions?: Record<string, ResolvedAgentDefinition | undefined>
 }
 
 export type SettingsLayer = 'user' | 'workspace'

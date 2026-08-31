@@ -25,7 +25,7 @@ import {
   modelProfilesWithDefault,
 } from '@/features/settings/model-profiles'
 import type { LayeredSettings, Settings } from '@/features/settings/types'
-import { customAgentsForBase } from '@/features/agents/CustomAgentSelect'
+import { customAgentsForRuntime } from '@/features/agents/CustomAgentSelect'
 import { saveWithRevisionRecovery } from '@/lib/revision-conflict'
 import { PersistedSettingsMenuSub, type PersistedSettingsMenuOption } from './PersistedSettingsMenuSub'
 
@@ -265,7 +265,7 @@ function buildImageAgentOptions(
 ): ModelMenuOption[] {
   const builtinLabel = t('agents.custom.builtin', { agent: t('agents.image.title') })
   const options: ModelMenuOption[] = [{ id: BUILTIN_IMAGE_AGENT_ID, label: builtinLabel, currentLabel: builtinLabel }]
-  for (const agent of customAgentsForBase(settings?.effective.custom_agents, 'image')) {
+  for (const agent of customAgentsForRuntime(settings?.effective.custom_agents, 'image')) {
     if (!agent.id) continue
     options.push({
       id: agent.id,

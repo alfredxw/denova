@@ -45,3 +45,16 @@ func TestLoadRejectsInvalidUserContributionWithoutFailingAgentBuild(t *testing.T
 		t.Fatal("management inspection should preserve diagnostics for the invalid live State")
 	}
 }
+
+func TestValidScriptToolTargetAcceptsExactCustomAgentIDsWithoutCatalogCoupling(t *testing.T) {
+	for _, target := range []string{config.AgentKindGeneral, config.AgentKindIDE, config.AgentKindInteractiveStory, "focused-editor"} {
+		if !validScriptToolTarget(target) {
+			t.Fatalf("valid Script Tool target %q was rejected", target)
+		}
+	}
+	for _, target := range []string{"", config.AgentKindImage, config.AgentKindConfigManager, "Not Normalized"} {
+		if validScriptToolTarget(target) {
+			t.Fatalf("invalid Script Tool target %q was accepted", target)
+		}
+	}
+}

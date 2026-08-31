@@ -1,6 +1,6 @@
 # Agent profile (`agent_profile`)
 
-Agent profiles manage layered fixed Agent, custom Agent, model, capability, prompt, Skill, context, General SubAgent, and custom SubAgent settings in `user` or `workspace` scope.
+Agent profiles manage layered fixed Agent, model, capability, prompt, Skill, context, General SubAgent, and custom SubAgent settings. They also manage complete user-owned custom Agent definitions in `user` scope.
 
 This resource is a singleton registry snapshot. Reads do not accept `scope`: use `config_read(operation=get, resource=agent_profile, ids=["registry"])`. The singleton snapshot is returned as `items[0]`; it contains valid Agent kinds, SubAgent parents, capability names, safe model-profile IDs, user/workspace/effective layers, and separate revisions for both scopes.
 
@@ -13,39 +13,42 @@ Set `value.kind` to one of:
 | Kind | ID | Create | Update | Delete effect |
 | --- | --- | --- | --- | --- |
 | `agent` | `default` or an Agent kind from `snapshot.agents` | no | Replaces only supplied configuration sections in the selected layer | Clears all model/tool/prompt/Skill/context overrides for that Agent in the selected layer |
-| `custom_agent` | Stable custom Agent ID | yes | Replaces the selected layer's complete sparse custom Agent entry | Removes that layer's entry; an inherited same-ID custom Agent may remain effective |
+| `custom_agent` | Stable custom Agent ID | yes, user scope only | Replaces the complete independent Agent definition | Deletes the reusable definition; existing conversations keep their captured snapshot |
 | `general_sub_agent` | `default` or a parent from `snapshot.subagent_parents` | no | Sets `enabled` true/false for the selected layer | Removes that layer's switch so it inherits |
 | `sub_agent` | Stable custom SubAgent ID | yes | Replaces the selected layer's complete SubAgent entry | Removes that layer's entry; an inherited same-ID SubAgent may remain effective |
 
-`kind` defaults to `agent` for non-delete mutations. Every delete must include `value.kind` with exactly `agent`, `custom_agent`, `general_sub_agent`, or `sub_agent`; delete never infers it from `id`. SubAgent create require the latest revision for the exact target scope, as do custom Agent create, every update, and every delete.
+`kind` defaults to `agent` for non-delete mutations. Every delete must include `value.kind` with exactly `agent`, `custom_agent`, `general_sub_agent`, or `sub_agent`; delete never infers it from `id`. SubAgent create requires the latest revision for the exact target scope. Custom Agent create, update, and delete always require the latest user revision; every other update and delete requires the revision for its selected scope.
 
 ## Layering and update semantics
 
-- `user` supplies personal defaults; `workspace` overrides book-specific behavior.
+- `user` supplies personal defaults; `workspace` overrides book-specific fixed-Agent and SubAgent behavior.
 - Fixed Agent updates are sectional: omitted `model`, `tools`, `prompt`, `skills`, and `context` sections stay unchanged.
 - Each supplied section replaces that complete section in the target layer. Start from `snapshot.layers.<scope>`, preserve existing explicit keys in that section, and then make the requested change.
 - Missing map keys inherit from parent/default layers; explicit `false` disables a capability or Skill at that layer.
 - Deleting an override changes the selected layer only. Always inspect `layers.effective` afterward.
 - Capability settings are upper bounds. A SubAgent cannot gain a tool disabled on its parent, and fixed Agents cannot enable capabilities outside their registered ceilings.
-- A custom Agent always inherits one immutable base kind from `snapshot.custom_agent_bases`. It may narrow or tune that base, but cannot replace its protected runtime protocol or gain tools outside the base ceiling.
+- A custom Agent is a complete independent definition owned by the user. Its immutable `contract` selects only the stable runtime input/output boundary and capability ceiling from `snapshot.agent_contracts`; it is not a live inheritance link to a built-in Agent.
 
 ## Custom Agent fields
 
-Custom Agents are named user-owned instances of fixed runtime kinds. Denova ships no preset custom Agent; create one only when the user asks for a reusable configuration. Put the instance in `value.custom_agent`.
+Custom Agents are named user-owned definitions inside stable runtime contracts. Creation clones a built-in definition as a starting point, but later built-in changes do not alter the custom Agent. Custom Agent mutations always use `scope=user`; put the complete definition in `value.custom_agent`.
 
 | Field | Required | Meaning |
 | --- | --- | --- |
 | `id` | yes | Stable lowercase identifier normalized from letters/digits/`-`/`_`. Conversation and branch state persist this identity. |
 | `name` | yes on create | User-visible name. |
 | `description` | no | Short user-visible purpose. |
-| `base_kind` | yes on create | One value from `snapshot.custom_agent_bases`; immutable after creation. |
+| `contract` | yes on create | One ID from `snapshot.agent_contracts`; immutable after creation. It defines runtime input/output and the maximum capability set, not behavior. |
 | `enabled` | no | Defaults true. False archives the instance without changing existing history. |
 | `model` | no | Same model fields as a fixed Agent; user scope only. |
-| `tools` | no | Sparse capability booleans bounded by the base kind's ceiling. |
-| `prompt` | no | Additional system and flow guidance; protected runtime prompts remain in place. |
-| `skills` | no | Sparse Skill availability overrides. |
-| `context` | no | Same context policy overrides as a fixed Agent. |
-| `image_api_profile_id` | no | Image profile for an `image`-based custom Agent; user scope only. |
+| `tools` | no | Capability booleans bounded by the contract ceiling. |
+| `instructions` | no | Complete user-owned behavior and workflow instructions placed after protected runtime/output contracts. |
+| `tool_guidance` | no | Map of enabled concrete tool names to extra English guidance. Canonical names, schemas, implementations, permissions, and recovery behavior stay locked. |
+| `skill_policy` | no | `{mode, pinned, blocked}`. `managed` follows Skill audience metadata; `explicit` admits only pinned Skills; blocked always wins. |
+| `runtime_context` | no | Same compaction and context budget policy fields as a fixed Agent. |
+| `context_bindings` | no | User context fragments with stable IDs, `stable`/`session`/`turn` slots, purpose, content, and a byte hard limit. |
+| `delegation` | no | `{mode, agent_ids}` where mode is `compatible`, `selected`, or `disabled`; selected children come from the shared SubAgent registry. |
+| `image_api_profile_id` | no | Image profile for a custom Agent using the image contract. |
 
 Create example:
 
@@ -62,15 +65,26 @@ config_apply({
       "id": "focused-editor",
       "name": "Focused editor",
       "description": "Edit prose while preserving voice and intent.",
-      "base_kind": "ide",
-      "prompt": {"system_prompt": "Prefer small, reviewable edits and explain any change in meaning."},
-      "tools": {"web_search": false, "web_fetch": false}
+      "contract": "writing.primary.v1",
+      "instructions": "Edit prose while preserving voice and intent. Prefer small, reviewable edits and explain any change in meaning.",
+      "tools": {"filesystem_read": true, "workspace_write": true, "web_search": false, "web_fetch": false},
+      "tool_guidance": {"edit": "Prefer the smallest replacement that preserves surrounding prose."},
+      "skill_policy": {"mode": "managed", "pinned": ["continuity-review"], "blocked": []},
+      "context_bindings": [{
+        "id": "house-style",
+        "name": "House style",
+        "purpose": "apply the user's stable prose conventions",
+        "slot": "stable",
+        "content": "Use restrained prose and preserve point of view.",
+        "hard_limit_bytes": 262144
+      }],
+      "delegation": {"mode": "compatible"}
     }
   }
 })
 ```
 
-For update, preserve unrequested fields from the exact selected layer entry in the registry snapshot and submit the complete sparse entry. Set `enabled` to false to archive an instance while keeping existing conversations runnable. Deleting the final effective definition makes histories that reference it unavailable, so delete only a layer override unless that is intentional. To remove only the workspace override, delete with `value: {"kind": "custom_agent"}`. Selecting a different custom Agent for an existing conversation or game branch is intentionally not an update operation: create a new conversation or branch so durable history keeps one stable runtime identity.
+For update, start from the exact user definition in the registry snapshot, preserve every unrequested field, and submit the complete Agent definition. Never mutate `contract`; create a new Agent if the runtime boundary must change. Set `enabled` to false to archive it. Conversations and game branches capture the complete definition when created, so later edits or deletion do not rewrite existing history. Selecting another Agent still creates a new conversation or branch so one durable history keeps one stable identity and revision.
 
 ## Fixed Agent sections
 

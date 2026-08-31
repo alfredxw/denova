@@ -485,9 +485,11 @@ type LayeredSettings struct {
 	BuiltinAgentPrompts        AgentPromptSettings                      `json:"builtin_agent_prompts,omitempty"`
 	BuiltinAgentPromptBlocks   AgentPromptBlockSettings                 `json:"builtin_agent_prompt_blocks,omitempty"`
 	BuiltinAgentPromptSources  AgentPromptSourceSettings                `json:"builtin_agent_prompt_sources,omitempty"`
+	AgentContracts             []AgentContractDefinition                `json:"agent_contracts"`
 	AgentToolCapabilities      []AgentToolCapabilityCatalogEntry        `json:"agent_tool_capabilities"`
 	ResolvedAgentToolManifests map[string][]ResolvedAgentToolCapability `json:"resolved_agent_tool_manifests"`
 	ResolvedAgentContexts      map[string]ResolvedAgentContextSettings  `json:"resolved_agent_contexts"`
+	ResolvedAgentDefinitions   map[string]ResolvedAgentDefinition       `json:"resolved_agent_definitions"`
 }
 
 // SettingsInheritance contains the authoritative value below each writable
@@ -771,14 +773,18 @@ func LoadLayeredWithGlobalAt(novaDir, workspace, projectConfigPath string, globa
 	resolvedToolManifests := ResolveAgentToolManifestsForGOOS(catalogConfig, runtime.GOOS)
 	resolvedContexts := ResolveAgentContexts(catalogConfig)
 	for _, customAgent := range eff.CustomAgents {
+		runtimeKind := CustomAgentRuntimeKind(customAgent)
+		if runtimeKind == "" {
+			continue
+		}
 		customConfig := *catalogConfig
-		if err := ApplyCustomAgent(&customConfig, customAgent.BaseKind, customAgent.ID); err != nil {
+		if err := ApplyCustomAgent(&customConfig, runtimeKind, customAgent.ID); err != nil {
 			continue
 		}
 		resolvedToolManifests[customAgent.ID] = ResolveAgentToolManifestForGOOS(
-			ResolveAgentTools(&customConfig, customAgent.BaseKind), customAgent.BaseKind, runtime.GOOS,
+			ResolveAgentTools(&customConfig, runtimeKind), runtimeKind, runtime.GOOS,
 		)
-		resolvedContexts[customAgent.ID] = ResolveAgentContext(&customConfig, customAgent.BaseKind)
+		resolvedContexts[customAgent.ID] = ResolveAgentContext(&customConfig, runtimeKind)
 	}
 	backendPort := settingsInt(eff.BackendPort, 8080)
 	revisions := SettingsRevisions{}
@@ -814,9 +820,11 @@ func LoadLayeredWithGlobalAt(novaDir, workspace, projectConfigPath string, globa
 			LANURL:   LANHTTPURL(backendPort),
 		},
 		Runtime:                    SettingsRuntime{GOOS: runtime.GOOS},
+		AgentContracts:             AgentContractDefinitions(),
 		AgentToolCapabilities:      AgentToolCapabilityCatalogForGOOS(runtime.GOOS),
 		ResolvedAgentToolManifests: resolvedToolManifests,
 		ResolvedAgentContexts:      resolvedContexts,
+		ResolvedAgentDefinitions:   ResolveAgentDefinitions(eff.CustomAgents),
 	}, nil
 }
 
@@ -843,7 +851,6 @@ func PrepareWorkspaceAgentSettingsForWrite(existing, incoming Settings) Settings
 	existing.AgentContexts = scoped.AgentContexts
 	existing.GeneralSubAgents = scoped.GeneralSubAgents
 	existing.SubAgents = scoped.SubAgents
-	existing.CustomAgents = scoped.CustomAgents
 	existing.DefaultImageAgentID = scoped.DefaultImageAgentID
 	existing.AgentToolParallelism = scoped.AgentToolParallelism
 	existing.AgentSubAgentParallelism = scoped.AgentSubAgentParallelism
@@ -860,7 +867,6 @@ func workspaceAgentSettings(settings Settings) Settings {
 		AgentContexts:            settings.AgentContexts,
 		GeneralSubAgents:         settings.GeneralSubAgents,
 		SubAgents:                settings.SubAgents,
-		CustomAgents:             settings.CustomAgents,
 		DefaultImageAgentID:      settings.DefaultImageAgentID,
 		AgentToolParallelism:     settings.AgentToolParallelism,
 		AgentSubAgentParallelism: settings.AgentSubAgentParallelism,
