@@ -501,9 +501,12 @@ func TestConfigApplyAgentProfileDeleteRequiresKindAndRoutesByKind(t *testing.T) 
 	}); err != nil {
 		t.Fatal(err)
 	}
+	if err := config.EnsureAgentProfiles(novaDir); err != nil {
+		t.Fatal(err)
+	}
 	cfg := &config.Config{NovaDir: novaDir, Workspace: workspace}
 	applyTool := configManagerToolByName(t, cfg, "config_apply")
-	revision, err := config.SettingsFileRevision(userPath)
+	revision, err := config.UserSettingsRevision(novaDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -514,7 +517,7 @@ func TestConfigApplyAgentProfileDeleteRequiresKindAndRoutesByKind(t *testing.T) 
 	})); err == nil || !strings.Contains(err.Error(), "value.kind") {
 		t.Fatalf("agent_profile delete without value.kind should fail, got %v", err)
 	}
-	if got, err := config.SettingsFileRevision(userPath); err != nil || got != revision {
+	if got, err := config.UserSettingsRevision(novaDir); err != nil || got != revision {
 		t.Fatalf("rejected ambiguous delete changed revision: got=%q want=%q err=%v", got, revision, err)
 	}
 
@@ -526,7 +529,7 @@ func TestConfigApplyAgentProfileDeleteRequiresKindAndRoutesByKind(t *testing.T) 
 		t.Fatalf("delete General SubAgent override: %v", err)
 	}
 	generalReceipt := decodeConfigMutationReceipt(t, generalOutput)
-	afterGeneral, err := config.ReadSettingsFile(userPath)
+	afterGeneral, _, err := config.LoadAgentProfileSettings(novaDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -546,7 +549,7 @@ func TestConfigApplyAgentProfileDeleteRequiresKindAndRoutesByKind(t *testing.T) 
 	})); err != nil {
 		t.Fatalf("delete custom SubAgent: %v", err)
 	}
-	afterSubAgent, err := config.ReadSettingsFile(userPath)
+	afterSubAgent, _, err := config.LoadAgentProfileSettings(novaDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -589,7 +592,7 @@ func TestConfigApplyAgentProfileEnforcesActiveAgentToolCeiling(t *testing.T) {
 	})); err == nil || !strings.Contains(err.Error(), config.AgentToolEventRead) {
 		t.Fatalf("capabilities outside the General Agent ceiling should be rejected, got %v", err)
 	}
-	if got, err := config.SettingsFileRevision(config.UserConfigPath(novaDir)); err != nil || got != userRevision {
+	if got, err := config.UserSettingsRevision(novaDir); err != nil || got != userRevision {
 		t.Fatalf("rejected self-escalation changed user settings revision: got=%q want=%q err=%v", got, userRevision, err)
 	}
 

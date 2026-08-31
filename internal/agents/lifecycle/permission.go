@@ -223,7 +223,7 @@ func (policy *denovaPermissionPolicy) rulesForEvaluation(ctx context.Context) ([
 }
 
 func (policy *denovaPermissionPolicy) evaluate(request agent.PermissionRequest, rules []config.AgentApprovalRule) toolapproval.Decision {
-	if decision, matched := harnessStatePermission(request, policy.config.AgentKind); matched {
+	if decision, matched := trajectoryPermission(request); matched {
 		return decision
 	}
 	attachmentPaths := make([]string, 0, len(request.Attachments))
@@ -243,10 +243,10 @@ func (policy *denovaPermissionPolicy) evaluate(request agent.PermissionRequest, 
 	})
 }
 
-// harnessStatePermission is intentionally separate from workspace approval
-// rules. The Harness Project may inspect its own complete State; other Agents
-// need confirmation before reading global State contents.
-func harnessStatePermission(request agent.PermissionRequest, agentKind string) (toolapproval.Decision, bool) {
+// trajectoryPermission keeps the redacted read-only evidence projection out
+// of workspace approval prompts. Only the Agents Project receives this URI
+// adapter, so recognizing the scheme cannot grant another Agent a capability.
+func trajectoryPermission(request agent.PermissionRequest) (toolapproval.Decision, bool) {
 	toolName := strings.TrimSpace(request.Tool)
 	switch toolName {
 	case "read":
@@ -257,27 +257,15 @@ func harnessStatePermission(request agent.PermissionRequest, agentKind string) (
 			return toolapproval.Decision{}, false
 		}
 		path := strings.ToLower(strings.TrimSpace(input.Path))
-		if !strings.HasPrefix(path, "harness://state/") {
+		if !strings.HasPrefix(path, "trajectory://") {
 			return toolapproval.Decision{}, false
-		}
-		if path == "harness://state/current" {
-			return toolapproval.Decision{
-				Action: toolapproval.ActionAllow, Risk: toolapproval.RiskLow,
-				RuleID: "harness_state_manifest", Reason: "Harness State manifests are safe to inspect.",
-			}, true
 		}
 	default:
 		return toolapproval.Decision{}, false
 	}
-	if agentKind == config.AgentKindHarness {
-		return toolapproval.Decision{
-			Action: toolapproval.ActionAllow, Risk: toolapproval.RiskLow,
-			RuleID: "harness_project_read", Reason: "The Harness Project is authorized to inspect its own State resources.",
-		}, true
-	}
 	return toolapproval.Decision{
-		Action: toolapproval.ActionPrompt, Risk: toolapproval.RiskMedium,
-		RuleID: "harness_state_read", Reason: "该工具将读取所有项目共享的用户状态，需要你的确认。 / This tool will read User State shared by every Project and requires approval.",
+		Action: toolapproval.ActionAllow, Risk: toolapproval.RiskLow,
+		RuleID: "trajectory_read", Reason: "Trajectory resources are a redacted read-only evidence projection.",
 	}, true
 }
 

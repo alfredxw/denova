@@ -11,7 +11,6 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
-	agentsession "denova/internal/agents/session"
 	"denova/internal/api/agentui"
 	"denova/internal/api/sse"
 	appsvc "denova/internal/app"
@@ -22,7 +21,6 @@ import (
 type agentChatSessionCreateRequest struct {
 	Title         string  `json:"title"`
 	CustomAgentID *string `json:"custom_agent_id"`
-	Channel       string  `json:"channel"`
 }
 
 type agentChatSessionRequest struct {
@@ -36,7 +34,6 @@ type agentChatSessionRenameRequest struct {
 
 type agentChatTurnRequest struct {
 	SessionID string `json:"session_id"`
-	Channel   string `json:"channel"`
 	agentchatapp.ChatRequest
 }
 
@@ -58,35 +55,15 @@ func requireAgentChatBindingFromQuery(c *app.RequestContext) (agentchatapp.Bindi
 	return requireAgentChatBinding(c, c.Query("session_id"))
 }
 
-func bindAgentChatChannel(c *app.RequestContext, binding *agentchatapp.Binding, value string) bool {
-	channel, err := agentsession.ParseOptionalChannel(value)
-	if err != nil {
-		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
-		return false
-	}
-	binding.Channel = channel
-	return true
-}
-
 // HandleAgentChatProjects lists every project and never switches the open book.
 func (h *Handlers) HandleAgentChatProjects(_ context.Context, c *app.RequestContext) {
-	channel, err := agentsession.ParseChannel(c.Query("channel"))
-	if err != nil {
-		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidQuery")
-		return
-	}
-	writeJSON(c, consts.StatusOK, map[string]any{"projects": h.app.AgentChat().Projects(channel)})
+	writeJSON(c, consts.StatusOK, map[string]any{"projects": h.app.AgentChat().Projects()})
 }
 
 // HandleAgentChatActivity is the lightweight detached-task heartbeat. Project
 // metadata remains event/refocus driven and is refreshed only on transitions.
 func (h *Handlers) HandleAgentChatActivity(_ context.Context, c *app.RequestContext) {
-	channel, err := agentsession.ParseChannel(c.Query("channel"))
-	if err != nil {
-		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidQuery")
-		return
-	}
-	writeJSON(c, consts.StatusOK, map[string]any{"bindings": h.app.AgentChat().Activity(channel)})
+	writeJSON(c, consts.StatusOK, map[string]any{"bindings": h.app.AgentChat().Activity()})
 }
 
 func (h *Handlers) HandleAgentChatProjectCreate(_ context.Context, c *app.RequestContext) {
@@ -189,14 +166,8 @@ func (h *Handlers) HandleAgentChatHistory(_ context.Context, c *app.RequestConte
 		}
 		limit = min(limit, maxAgentChatHistoryPageSize)
 	}
-	channel, err := agentsession.ParseChannel(c.Query("channel"))
-	if err != nil {
-		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidQuery")
-		return
-	}
 	writeJSON(c, consts.StatusOK, h.app.AgentChat().History(agentchatapp.HistoryQuery{
 		ProjectID: c.Query("project_id"),
-		Channel:   channel,
 		Search:    c.Query("query"),
 		Offset:    offset,
 		Limit:     limit,
@@ -213,12 +184,7 @@ func (h *Handlers) HandleAgentChatSessionCreate(ctx context.Context, c *app.Requ
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidBody")
 		return
 	}
-	channel, err := agentsession.ParseChannel(req.Channel)
-	if err != nil {
-		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
-		return
-	}
-	sess, err := h.app.AgentChat().CreateSession(scope.ProjectID, strings.TrimSpace(req.Title), req.CustomAgentID, channel)
+	sess, err := h.app.AgentChat().CreateSession(scope.ProjectID, strings.TrimSpace(req.Title), req.CustomAgentID)
 	if err != nil {
 		slog.ErrorContext(ctx, fmt.Sprintf("[api/handlers/handler_agent_chat.go] creating session failed project_id=%q err=%v", scope.ProjectID, err))
 		writeError(c, consts.StatusBadRequest, err.Error())
@@ -284,9 +250,6 @@ func (h *Handlers) HandleAgentChat(ctx context.Context, c *app.RequestContext) {
 	req.Locale = requestLocale(c)
 	binding, ok := requireAgentChatBinding(c, req.SessionID)
 	if !ok {
-		return
-	}
-	if !bindAgentChatChannel(c, &binding, req.Channel) {
 		return
 	}
 	if err := h.app.AgentChat().MaterializeAttachments(ctx, binding, req.CommandID, &req.ChatRequest); err != nil {
@@ -434,9 +397,6 @@ func (h *Handlers) HandleAgentChatContextAnalysis(ctx context.Context, c *app.Re
 	req.Locale = requestLocale(c)
 	binding, ok := requireAgentChatBinding(c, req.SessionID)
 	if !ok {
-		return
-	}
-	if !bindAgentChatChannel(c, &binding, req.Channel) {
 		return
 	}
 	analysis, err := h.app.AgentChat().AnalyzeContext(ctx, binding, req.ChatRequest)

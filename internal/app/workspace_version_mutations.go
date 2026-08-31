@@ -14,11 +14,10 @@ import (
 	"denova/internal/book"
 )
 
-// ProjectFileBookMutationVersioning binds the shared Explorer's mutations to
-// the current Writing runtime without giving general projects version-history
-// semantics they do not expose in the UI.
-func (a *App) ProjectFileBookMutationVersioning(projectID, workspace, stateRoot string) projectfilesapp.BookMutationVersioning {
-	fallback := projectfilesapp.BookMutationVersioning{Settings: book.DefaultVersionAutoSettings()}
+// ProjectFileMutationVersioning binds Project file mutations to the shared
+// Writing scheduler when available and otherwise supplies Project settings.
+func (a *App) ProjectFileMutationVersioning(projectID, workspace, stateRoot string) projectfilesapp.MutationVersioning {
+	fallback := projectfilesapp.MutationVersioning{Settings: book.DefaultVersionAutoSettings()}
 	if a == nil {
 		return fallback
 	}
@@ -29,7 +28,7 @@ func (a *App) ProjectFileBookMutationVersioning(projectID, workspace, stateRoot 
 	}
 	cfg := *a.cfg
 	if a.versionService != nil && a.cfg.ProjectID == projectID && filepath.Clean(a.workspace) == filepath.Clean(workspace) {
-		versioning := projectfilesapp.BookMutationVersioning{
+		versioning := projectfilesapp.MutationVersioning{
 			Service:  a.versionService,
 			Settings: versionAutoSettingsForConfig(a.cfg),
 		}
@@ -47,7 +46,7 @@ func (a *App) ProjectFileBookMutationVersioning(projectID, workspace, stateRoot 
 		return fallback
 	}
 	cfg = refreshed
-	return projectfilesapp.BookMutationVersioning{
+	return projectfilesapp.MutationVersioning{
 		Settings: versionAutoSettingsForConfig(&cfg),
 	}
 }
@@ -296,7 +295,7 @@ func (a *App) RestoreProjectVersion(ctx context.Context, projectID, versionID st
 
 type projectVersionCreateRuntime struct {
 	operation        *ProjectOperation
-	resources        projectfilesapp.BookVersionResources
+	resources        projectfilesapp.VersionResources
 	cfg              config.Config
 	sessionStore     *session.Store
 	ownsSessionStore bool
@@ -311,7 +310,7 @@ func (a *App) acquireProjectVersionCreateRuntime(ctx context.Context, projectID 
 		operation.Release()
 		return nil, err
 	}
-	resources, err := a.ProjectFiles().BookVersions(operation.Layout().ProjectID)
+	resources, err := a.ProjectFiles().ProjectVersions(operation.Layout().ProjectID)
 	if err != nil {
 		return releaseWithError(err)
 	}

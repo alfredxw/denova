@@ -111,7 +111,7 @@ func (s *ChatAppService) prepareWritingCycle(
 	if err != nil {
 		return agentexecution.Cycle{}, ideChatRuntime{}, err
 	}
-	agentHost, err := s.app.HarnessAgentHostCapabilities(ctx, &runtime.cfg, agentrun.AgentKindIDE)
+	agentHost, err := s.app.AgentHostCapabilities(ctx, &runtime.cfg, agentrun.AgentKindIDE)
 	if err != nil {
 		return agentexecution.Cycle{}, ideChatRuntime{}, err
 	}

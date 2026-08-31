@@ -32,12 +32,11 @@ func StoryOpeningInstruction(meta StoryMeta) (string, error) {
 	if premise == "" {
 		premise = "No additional premise was provided."
 	}
-	parts := []string{
-		"[Source: story opening configuration; purpose: generate the first playable turn]",
-		"Story title: " + strings.TrimSpace(meta.Title),
-		"Story premise: " + premise,
-		source,
+	parts := []string{"[Source: story opening configuration; purpose: generate the first playable turn]"}
+	if meta.TitleSource != StoryTitleSourcePending {
+		parts = append(parts, "Story title: "+strings.TrimSpace(meta.Title))
 	}
+	parts = append(parts, "Story premise: "+premise, source)
 	if meta.Protagonist.Mode == StoryProtagonistModeDefault {
 		parts = append(parts, "No protagonist tag matched. Before writing prose, choose the best player-controlled protagonist from the provided enabled Lore character catalog and call select_story_protagonist with that character's exact Lore item ID. Every enabled Lore character is eligible; tags are recommendations, never restrictions.")
 	}

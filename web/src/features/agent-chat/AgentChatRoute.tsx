@@ -12,6 +12,7 @@ import { LoadingState } from '@/components/common/LoadingState'
 
 const LoreWorkspaceTab = lazy(() => import('@/features/lore/LoreWorkspaceTab').then((module) => ({ default: module.LoreWorkspaceTab })))
 const ChangeReviewWorkspace = lazy(() => import('@/features/changes/review/ChangeReviewWorkspace').then((module) => ({ default: module.ChangeReviewWorkspace })))
+const VersionPanel = lazy(() => import('@/components/Versions/VersionPanel').then((module) => ({ default: module.VersionPanel })))
 
 interface AgentChatRouteProps {
   /** Stable identity of the foreground Writing Book, used only for outer projection refresh. */
@@ -87,6 +88,15 @@ function AgentChatRouteComponent({
             toolNavigationIntent={context.toolNavigationIntent}
             refreshSignal={context.refreshSignal}
             onEditorFlushHandlerChange={context.onFlushHandlerChange}
+          />
+        )
+      case 'versions':
+        return (
+          <VersionPanel
+            projectId={projectId}
+            workspace={tabWorkspace}
+            refreshSignal={context.refreshSignal}
+            onWorkspaceChanged={(paths) => context.onWorkspaceChanged(paths, { impact: 'structure', origin: 'project-page' })}
           />
         )
     }

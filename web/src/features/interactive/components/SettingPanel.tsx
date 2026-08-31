@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { BookMarked, Bot, Database, Image as ImageIcon, Images, Search, SlidersHorizontal, Sparkles, Star, Tags, Trash2 } from 'lucide-react'
+import { BookMarked, Bot, Database, Image as ImageIcon, Images, Search, SlidersHorizontal, Sparkles, Tags, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { APIError, clearLoreItemImage, createAgentCommandID, createProjectLoreItem, deleteProjectLoreItem, generateLoreItemImage, getProjectLoreItems, projectFileAssetURL, readOptionalProjectFile, readProjectFile, uploadLoreItemImage, type LoreItem } from '@/lib/api'
@@ -13,7 +13,6 @@ import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { EmptyState } from '@/components/common/EmptyState'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 import { LoadingState } from '@/components/common/LoadingState'
-import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
 import { AutosaveStatusIndicator } from '@/components/forms/autosave-status'
 import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
 import { FeaturePageShell } from '@/components/layout/feature-page-shell'
@@ -36,7 +35,7 @@ import { LoreClassificationDialog } from './LoreClassificationDialog'
 import { presetActionButtonClassName as actionButtonClassName, presetIconActionClassName as iconActionClassName } from './preset-config/editor-styles'
 import { PresetSettingsPanel } from './setting-panel/PresetSettingsPanel'
 import { loreAutosaveDraft, useLoreItemAutosave, type LoreAutosaveDraft } from '@/features/lore/use-lore-item-autosave'
-import { hasLoreProtagonistTag, splitLoreTags, toggleLoreProtagonistTag } from '@/features/lore/tags'
+import { hasLoreProtagonistTag } from '@/features/lore/tags'
 import { LORE_UPDATED_EVENT, notifyLoreUpdated, type LoreUpdatedDetail } from '@/features/lore/events'
 import { useProjectFileAutosave } from './setting-panel/use-project-file-autosave'
 import { EMPTY_IMAGE_PRESETS, EMPTY_STORY_DIRECTORS, EMPTY_TELLERS } from './setting-panel/presetResources'
@@ -895,13 +894,6 @@ function LoreSettingPanel({
       : isOpeningPresetActive
         ? t('settingPanel.openingPreset.subtitle')
         : editorSubtitle(draft, t)
-  const protagonistTagActive = draft?.type === 'character' && hasLoreProtagonistTag(splitLoreTags(tagDraft))
-  const toggleProtagonistTag = () => {
-    if (!draft || draft.type !== 'character') return
-    const tags = toggleLoreProtagonistTag(splitLoreTags(tagDraft))
-    setDraft({ ...draft, tags })
-    setTagDraft(tags.join('，'))
-  }
   const loadModeFilterLabel = loadModeFilter === 'resident'
     ? t('settingPanel.lore.loadModeFilter.resident')
     : loadModeFilter === 'on_demand'
@@ -1072,22 +1064,6 @@ function LoreSettingPanel({
                       error={activeAutosaveError}
                       onRetry={flushActiveAutosave}
                     />
-                  ) : null}
-                  {activeMode === 'lore' && !isCreatorActive && !isOpeningPresetActive && draft?.type === 'character' ? (
-                    <TooltipIconButton
-                      label={t(protagonistTagActive ? 'loreWorkspace.unmarkProtagonist' : 'loreWorkspace.markProtagonist')}
-                      variant="outline"
-                      size="icon"
-                      tooltipSide="bottom"
-                      aria-pressed={protagonistTagActive}
-                      onClick={toggleProtagonistTag}
-                      className={cn(
-                        iconActionClassName,
-                        protagonistTagActive && 'border-[var(--nova-warning)] bg-[var(--nova-warning-bg)] text-[var(--nova-warning)] hover:bg-[var(--nova-warning-bg)] hover:text-[var(--nova-warning)]',
-                      )}
-                    >
-                      <Star data-icon="inline-start" className={protagonistTagActive ? 'fill-current' : undefined} />
-                    </TooltipIconButton>
                   ) : null}
                   {activeMode === 'lore' && !isCreatorActive && !isOpeningPresetActive && draft && (
                     <Button className={iconActionClassName} variant="outline" size="icon" disabled={saving} onClick={handleDelete} aria-label={t('settingPanel.deleteLore')}>

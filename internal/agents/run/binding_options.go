@@ -17,7 +17,7 @@ func RuntimeBindingForOptions(options Options) (RuntimeBinding, error) {
 			AgentKind: options.AgentKind, ProjectID: options.ProjectID, Mode: options.Mode,
 			Workspace: options.Workspace, SessionID: options.SessionID,
 		}
-	case AgentKindGeneral, AgentKindHarness:
+	case AgentKindGeneral:
 		binding = RuntimeBinding{
 			AgentKind: options.AgentKind, ProjectID: options.ProjectID, Mode: options.Mode,
 			Workspace: options.Workspace, SessionID: options.SessionID,

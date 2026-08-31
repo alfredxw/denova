@@ -82,8 +82,6 @@ var catalogZH = map[string]string{
 	"api.common.invalidBody":                  "无效请求体",
 	"api.common.messageRequired":              "消息不能为空",
 	"api.common.pathRequired":                 "请提供 path 参数",
-	"api.continualLearning.disabled":          "Harness 优化实验功能未开启",
-	"api.continualLearning.versionNotFound":   "Harness State 版本不存在",
 	"api.access.authRequired":                 "请先输入 Denova 远程访问用户名和密码",
 	"api.access.lanDisabled":                  "当前未开启局域网访问",
 	"api.access.localHostEffect":              "此系统操作只能从运行 Denova 的本机触发",
@@ -215,6 +213,8 @@ var catalogZH = map[string]string{
 	"api.settings.workspaceMissing":           "当前没有打开的工作区",
 	"api.settings.lanUsernameRequired":        "开启局域网访问时必须设置用户名",
 	"api.settings.lanPasswordRequired":        "开启局域网访问时必须设置密码",
+	"api.trajectory.disabled":                 "Trajectory 当前不可用",
+	"api.trajectory.invalidLimit":             "limit 必须是 1 到 500 的整数",
 }
 
 var catalogEN = map[string]string{
@@ -223,8 +223,6 @@ var catalogEN = map[string]string{
 	"api.common.invalidBody":                  "Invalid request body.",
 	"api.common.messageRequired":              "Message is required.",
 	"api.common.pathRequired":                 "Provide the path parameter.",
-	"api.continualLearning.disabled":          "Harness Optimization Lab is disabled.",
-	"api.continualLearning.versionNotFound":   "The Harness State version does not exist.",
 	"api.access.authRequired":                 "Enter the Denova remote access username and password first.",
 	"api.access.lanDisabled":                  "LAN access is not enabled.",
 	"api.access.localHostEffect":              "This system action can only be triggered from the machine running Denova.",
@@ -356,4 +354,6 @@ var catalogEN = map[string]string{
 	"api.settings.workspaceMissing":           "No workspace is open.",
 	"api.settings.lanUsernameRequired":        "Set a username before enabling LAN access.",
 	"api.settings.lanPasswordRequired":        "Set a password before enabling LAN access.",
+	"api.trajectory.disabled":                 "Trajectory is unavailable.",
+	"api.trajectory.invalidLimit":             "limit must be an integer from 1 to 500.",
 }

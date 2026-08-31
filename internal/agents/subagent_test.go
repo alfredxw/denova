@@ -8,11 +8,9 @@ import (
 
 	"denova/config"
 	agentdelegation "denova/internal/agents/delegation"
-	"denova/internal/agents/harnessstate"
 	agenttoolruntime "denova/internal/agents/toolruntime"
 
 	agent "github.com/alfredxw/denova/agent"
-	agentstate "github.com/alfredxw/denova/agent/state"
 )
 
 func TestConfigMaxIterationDefaultsToNativeUnlimited(t *testing.T) {
@@ -46,31 +44,10 @@ func TestBuildAgentExposesGeneralAndConfiguredSubAgentsThroughTask(t *testing.T)
 				config.AgentToolWebFetch:       false,
 			},
 		},
-	}
-	cfg.Labs.DeveloperMode = true
-	cfg.Labs.HarnessStateEnabled = true
-	manager, err := harnessstate.Open(cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	current, err := manager.Store().Current(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := manager.Store().Update(context.Background(), agentstate.ChangeSet{
-		BaseRevision: current.Revision,
-		Changes: []agentstate.Change{{Path: "subagents/researcher.md", Content: []byte(`---
-id: researcher
-name: Researcher
-description: Researches delegated context
-parents: [ide]
-model_profile: child-small
-tools: []
----
-
-Return concise findings.`)}},
-	}); err != nil {
-		t.Fatal(err)
+		SubAgents: []config.SubAgentConfig{{
+			ID: "researcher", Name: "Researcher", Description: "Researches delegated context",
+			Parents: []string{config.AgentKindIDE}, Model: config.AgentModelOverride{ProfileID: "child-small"}, SystemPrompt: "Return concise findings.",
+		}},
 	}
 	definition, err := buildAgentDefinition(context.Background(), cfg, agentBuildSpec{
 		Kind:        config.AgentKindIDE,

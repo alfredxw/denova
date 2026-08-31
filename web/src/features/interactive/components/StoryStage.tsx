@@ -50,7 +50,7 @@ import type { InputAreaSendOptions } from '@/components/Chat/InputArea'
 const DEFAULT_READING_FONT_SIZE = 18
 const EMPTY_STAGE_RUN = emptyStoryStageRun()
 
-export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], stories = [], story, tellers = [], storyDirectors = [], imagePresets = [], recentNarrativeStyleID = DEFAULT_NARRATIVE_STYLE_ID, narrativeStyleLoading = false, storyId, branchId, snapshot, snapshotLoading = false, loreItems = [], bookOpeningPresets = [], directorPanelVisible = true, stateDisplayPreference = DEFAULT_STORY_STATE_DISPLAY, onStorySelect = noop, onStoryCreate = noop, onStorySetupUpdate = noop, onNarrativeStyleChange, onStoryDelete = noop, onRequestLoreInit, onOpenDirectorConfig, onToggleDirectorPanel, onOpenDirectorState, onRequestCreateBranch, onStateDisplayPreferenceChange = noopStateDisplayPreferenceChange, onTurnPersisted = noopTurnPersisted, onDone }: StoryStageProps) {
+export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], stories = [], story, tellers = [], storyDirectors = [], imagePresets = [], recentNarrativeStyleID = DEFAULT_NARRATIVE_STYLE_ID, narrativeStyleLoading = false, storyId, branchId, snapshot, snapshotLoading = false, loreItems = [], bookOpeningPresets = [], directorPanelVisible = true, stateDisplayPreference = DEFAULT_STORY_STATE_DISPLAY, onStorySelect = noop, onStoryCreate = noop, onStorySetupUpdate = noop, onNarrativeStyleChange, onStoryDelete = noop, onStoryRename, onRequestLoreInit, onOpenDirectorConfig, onToggleDirectorPanel, onOpenDirectorState, onRequestCreateBranch, onStateDisplayPreferenceChange = noopStateDisplayPreferenceChange, onTurnPersisted = noopTurnPersisted, onDone }: StoryStageProps) {
   const { t } = useTranslation()
   const conversationBinding = useMemo<ConversationConfigBinding | undefined>(() => storyId ? {
     mode: 'interactive', project_id: projectId, story_id: storyId,
@@ -647,6 +647,7 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
           setCreatingStory(true)
         }}
         onDeleteStories={onStoryDelete}
+        onRenameStory={onStoryRename}
       />
       {onToggleDirectorPanel && (
         <Button type="button" variant="outline" size="sm" className={`h-7 gap-1.5 border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 text-[11px] hover:bg-[var(--nova-hover)] ${directorPanelVisible ? 'text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)]'}`} onClick={onToggleDirectorPanel} aria-label={directorPanelVisible ? t('storyStage.hideDirectorPanel') : t('storyStage.showDirectorPanel')}>
@@ -692,7 +693,6 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
               <NewStorySetupPanel
                 key={creatingStory ? 'new-story' : story?.id || 'new-story'}
                 projectId={projectId}
-                stories={stories}
                 tellers={tellers}
                 directors={storyDirectors}
                 imagePresets={imagePresets}

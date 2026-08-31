@@ -102,7 +102,7 @@ func (service *Service) AnalyzeContext(ctx context.Context, binding Binding, req
 		return chatagent.ContextAnalysis{}, err
 	}
 	mode := "ide"
-	if runtime.AgentKind == agentrun.AgentKindGeneral || runtime.AgentKind == agentrun.AgentKindHarness {
+	if runtime.AgentKind == agentrun.AgentKindGeneral {
 		mode = "general"
 	}
 	return chatagent.BuildInspectedContextAnalysis(
@@ -198,14 +198,11 @@ func (service *Service) runningBindingKeys() map[string]struct{} {
 // Activity returns only the stable identities of running conversations. It is
 // intentionally independent from Project/session metadata so detached UI tabs
 // can observe completion without repeatedly scanning every journal.
-func (service *Service) Activity(channel session.Channel) []Binding {
-	if channel == "" {
-		channel = session.ChannelAgent
-	}
+func (service *Service) Activity() []Binding {
 	service.mu.RLock()
 	bindings := make([]Binding, 0, len(service.active))
 	for _, active := range service.active {
-		if active == nil || active.task == nil || active.task.Finished() || creationChannel(active.binding) != channel {
+		if active == nil || active.task == nil || active.task.Finished() {
 			continue
 		}
 		bindings = append(bindings, active.binding)

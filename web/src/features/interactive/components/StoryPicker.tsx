@@ -1,8 +1,12 @@
-import { Check, ListChecks, Plus, Trash2 } from 'lucide-react'
-import { useState } from 'react'
+import { Check, ListChecks, PencilLine, Plus, Trash2 } from 'lucide-react'
+import { useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Field, FieldError, FieldLabel } from '@/components/ui/field'
+import { Input } from '@/components/ui/input'
+import { Spinner } from '@/components/ui/spinner'
 import { formatDateTime } from '@/i18n'
 import type { StorySummary } from '../types'
 import { CompactResourcePicker } from './CompactResourcePicker'
@@ -13,16 +17,22 @@ interface StoryPickerProps {
   onSelect: (storyId: string) => void
   onCreate: () => void
   onDeleteStories: (storyIds: string[]) => void | Promise<void>
+  onRenameStory?: (storyId: string, title: string) => void | Promise<void>
   layout?: 'inline' | 'sidebar'
   hideCreate?: boolean
 }
 
-export function StoryPicker({ stories, currentStoryId, onSelect, onCreate, onDeleteStories, layout = 'inline', hideCreate = false }: StoryPickerProps) {
+export function StoryPicker({ stories, currentStoryId, onSelect, onCreate, onDeleteStories, onRenameStory, layout = 'inline', hideCreate = false }: StoryPickerProps) {
   const { t } = useTranslation()
   const [selectingForDelete, setSelectingForDelete] = useState(false)
   const [deleteSelection, setDeleteSelection] = useState<Set<string>>(() => new Set())
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [renameStory, setRenameStory] = useState<StorySummary | null>(null)
+  const [renameTitle, setRenameTitle] = useState('')
+  const [renameError, setRenameError] = useState('')
+  const [renaming, setRenaming] = useState(false)
   const selectedStories = stories.filter((story) => deleteSelection.has(story.id))
+  const currentStory = stories.find((story) => story.id === currentStoryId)
   const allStoriesSelected = stories.length > 0 && selectedStories.length === stories.length
   const createButton = hideCreate ? null : <Button type="button" variant="ghost" size="xs" className="nova-nav-item" onClick={onCreate}><Plus data-icon="inline-start" />{t('chat.new')}</Button>
 
@@ -51,6 +61,39 @@ export function StoryPicker({ stories, currentStoryId, onSelect, onCreate, onDel
     if (storyIds.length === 0) return false
     await onDeleteStories(storyIds)
     cancelDeleteSelection()
+  }
+
+  const beginRename = (close: () => void) => {
+    if (!currentStory || !onRenameStory) return
+    close()
+    setRenameTitle(currentStory.title)
+    setRenameError('')
+    setRenameStory(currentStory)
+  }
+
+  const submitRename = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!renameStory || !onRenameStory || renaming) return
+    const title = renameTitle.trim()
+    if (!title) {
+      setRenameError(t('storyPicker.renameRequired'))
+      return
+    }
+    if (title === renameStory.title.trim()) {
+      setRenameStory(null)
+      return
+    }
+    setRenameError('')
+    setRenaming(true)
+    try {
+      await onRenameStory(renameStory.id, title)
+      setRenameStory(null)
+    } catch (error) {
+      console.error('[story-picker] Failed to rename story', { storyId: renameStory.id, error })
+      setRenameError(t('storyPicker.renameFailed'))
+    } finally {
+      setRenaming(false)
+    }
   }
 
   return (
@@ -146,7 +189,19 @@ export function StoryPicker({ stories, currentStoryId, onSelect, onCreate, onDel
             </div>
           </div>
         ) : (
-          <div className="sticky bottom-0 mt-1 border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] pt-1">
+          <div className="sticky bottom-0 mt-1 space-y-0.5 border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] pt-1">
+            {currentStory && onRenameStory ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="xs"
+                className="w-full justify-start gap-1.5 px-2 text-[var(--nova-text-muted)]"
+                onClick={() => beginRename(close)}
+              >
+                <PencilLine data-icon="inline-start" />
+                {t('storyPicker.renameCurrent')}
+              </Button>
+            ) : null}
             <Button
               type="button"
               variant="ghost"
@@ -171,6 +226,47 @@ export function StoryPicker({ stories, currentStoryId, onSelect, onCreate, onDel
         details={selectedStories.map((story) => story.title)}
         onConfirm={confirmDeleteStories}
       />
+      <Dialog
+        open={Boolean(renameStory)}
+        onOpenChange={(open) => {
+          if (!open && !renaming) {
+            setRenameStory(null)
+            setRenameError('')
+          }
+        }}
+      >
+        <DialogContent showCloseButton={false} className="max-w-md">
+          <form className="grid gap-4" onSubmit={(event) => void submitRename(event)}>
+            <DialogHeader>
+              <DialogTitle>{t('storyPicker.renameTitle')}</DialogTitle>
+              <DialogDescription>{t('storyPicker.renameDescription')}</DialogDescription>
+            </DialogHeader>
+            <Field data-invalid={Boolean(renameError)}>
+              <FieldLabel htmlFor="story-rename-title">{t('storyPicker.renameLabel')}</FieldLabel>
+              <Input
+                id="story-rename-title"
+                value={renameTitle}
+                maxLength={80}
+                autoFocus
+                aria-invalid={Boolean(renameError)}
+                disabled={renaming}
+                onChange={(event) => {
+                  setRenameTitle(event.target.value)
+                  if (renameError) setRenameError('')
+                }}
+              />
+              <FieldError>{renameError}</FieldError>
+            </Field>
+            <DialogFooter>
+              <Button type="button" variant="outline" disabled={renaming} onClick={() => setRenameStory(null)}>{t('common.cancel')}</Button>
+              <Button type="submit" disabled={renaming}>
+                {renaming ? <Spinner /> : <PencilLine data-icon="inline-start" />}
+                {renaming ? t('storyPicker.renameSaving') : t('storyPicker.renameSave')}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }

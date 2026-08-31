@@ -393,6 +393,42 @@ func TestServiceBookVersionHistoryFollowsStableProjectRelink(t *testing.T) {
 	}
 }
 
+func TestServiceVersionsAgentsProjectProfilesInProjectState(t *testing.T) {
+	root := t.TempDir()
+	dataDir := filepath.Join(root, "denova")
+	profiles := filepath.Join(dataDir, "agents")
+	if err := os.MkdirAll(filepath.Join(profiles, "main"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	registry := projectdomain.NewRegistry(dataDir)
+	record, err := registry.EnsureAgents(profiles)
+	if err != nil {
+		t.Fatal(err)
+	}
+	layout, err := registry.EnsureState(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := NewService(registry)
+	t.Cleanup(service.Close)
+	mustWriteProjectFile(t, profiles, "main/general.toml", "enabled = true\n")
+
+	created, err := service.CreateVersion(context.Background(), record.ID, "Initial profiles", book.VersionSourceManual)
+	if err != nil || created.Version == nil {
+		t.Fatalf("create Agents Project version: result=%#v err=%v", created, err)
+	}
+	history, err := service.VersionHistory(record.ID, 10)
+	if err != nil || len(history) != 1 || history[0].ID != created.Version.ID {
+		t.Fatalf("Agents Project version history=%#v err=%v", history, err)
+	}
+	if _, err := os.Stat(layout.VersionRepositoryDir()); err != nil {
+		t.Fatalf("Agents Project version repository missing: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(profiles, ".git")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("Agents profile workspace received a .git path: %v", err)
+	}
+}
+
 func TestServicePreviewsOnlySafeRasterAssets(t *testing.T) {
 	service, projectID, workspace := projectFilesTestService(t)
 	mustWriteProjectFile(t, workspace, "cover.png", "\x89PNG\r\n\x1a\n")

@@ -44,21 +44,6 @@ func ComposeGeneralInstruction(cfg *config.Config) (SystemPromptComposition, err
 	)
 }
 
-// ComposeHarnessInstruction assembles the system-managed Harness Project
-// Agent workflow. The live Harness State directory is its ordinary workspace.
-func ComposeHarnessInstruction(cfg *config.Config) (SystemPromptComposition, error) {
-	workspace := ""
-	if cfg != nil {
-		workspace = cfg.Workspace
-	}
-	return ComposeBuiltinSystemInstruction(
-		cfg, config.AgentKindHarness, "harness", workspace,
-		"harness_builtin", "Harness Agent workflow",
-		"inspect trajectory evidence and maintain the live Harness State workspace",
-		staticPromptAsset(harnessAgentWorkflowAsset),
-	)
-}
-
 // ComposeInstruction assembles and admits the exact Writing Agent system instruction.
 func ComposeInstruction(cfg *config.Config, state *book.State, teller IDEStoryTeller) (SystemPromptComposition, error) {
 	workspace := workspaceForPrompt(cfg, state)

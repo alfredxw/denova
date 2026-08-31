@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	harnessStateDirName        = "harness"
+	agentsStateDirName         = "Agents"
 	defaultStateDirName        = "Project"
 	maxStateDirectoryNameBytes = 128
 )
@@ -32,8 +32,8 @@ func (registry *Registry) assignReadableStateDirNames(data *registryData) error 
 	}
 	for index := range data.Projects {
 		record := &data.Projects[index]
-		if record.Type == TypeHarness || record.ID == HarnessProjectID {
-			record.StateDirName = harnessStateDirName
+		if record.Type == TypeAgents || record.ID == AgentsProjectID {
+			record.StateDirName = agentsStateDirName
 			continue
 		}
 		record.StateDirName = availableStateDirName(record.Name, used)
@@ -51,7 +51,7 @@ func (registry *Registry) nextStateDirName(name string, projects []Record) (stri
 }
 
 func (registry *Registry) usedStateDirNames(projects []Record) (map[string]bool, error) {
-	used := map[string]bool{stateDirNameKey(harnessStateDirName): true}
+	used := map[string]bool{stateDirNameKey(agentsStateDirName): true}
 	for _, record := range projects {
 		if record.StateDirName != "" {
 			used[stateDirNameKey(record.StateDirName)] = true
@@ -139,8 +139,8 @@ func validateStateDirNames(projects []Record) error {
 		if err := validateStateDirName(record.StateDirName); err != nil {
 			return fmt.Errorf("project %s: %w", record.ID, err)
 		}
-		if record.Type == TypeHarness && record.StateDirName != harnessStateDirName {
-			return fmt.Errorf("Harness project must use state directory %q", harnessStateDirName)
+		if record.Type == TypeAgents && record.StateDirName != agentsStateDirName {
+			return fmt.Errorf("Agents project must use state directory %q", agentsStateDirName)
 		}
 		key := stateDirNameKey(record.StateDirName)
 		if existing := seen[key]; existing != "" {

@@ -1,18 +1,15 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Activity, AlertTriangle, Download, ListTree, RefreshCw, Route, Settings2, Stethoscope } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Activity, AlertTriangle, Download, ListTree, RefreshCw, Route } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
 import { FeaturePageShell } from '@/components/layout/feature-page-shell'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { downloadAgentRunTrace, exportAgentRunTrace, getAgentRunTrace, getGlobalAgentRunTraces } from '@/lib/api'
 import type { AgentRunTrace, GlobalAgentRunTraceIssue, GlobalAgentRunTraceSummary } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import { HarnessAgentPanel } from './HarnessAgentPanel'
-import { HarnessRunPicker } from './HarnessRunPicker'
-import { HarnessWorkspace } from './HarnessWorkspace'
 import { TrajectoryRunList } from './TrajectoryRunList'
 import { TrajectoryTraceWorkspace } from './TrajectoryTraceWorkspace'
 import { useTrajectoryNavigation, type TrajectoryNavigationIntent } from './trajectory-navigation'
@@ -21,40 +18,36 @@ interface TrajectoryPageProps {
   onClose?: () => void
 }
 
-type DeveloperWorkspaceTab = 'trajectory' | 'harness'
-
-/** Global developer workspace for inspecting Runs and evolving Harness State. */
+/** Global read-only evidence workspace. Agent behavior is managed from Agents. */
 export function TrajectoryPage({ onClose }: TrajectoryPageProps) {
   const { t } = useTranslation()
   const trajectoryNavigation = useTrajectoryNavigation()
-  const [workspaceTab, setWorkspaceTab] = useState<DeveloperWorkspaceTab>('trajectory')
   const [runsOpen, setRunsOpen] = useState(true)
-  const [agentOpen, setAgentOpen] = useState(true)
-  const [stateRefreshToken, setStateRefreshToken] = useState(0)
   const [runs, setRuns] = useState<GlobalAgentRunTraceSummary[]>([])
   const [issues, setIssues] = useState<GlobalAgentRunTraceIssue[]>([])
   const [selectedRunURI, setSelectedRunURI] = useState('')
-  const [selectedEvidence, setSelectedEvidence] = useState<Set<string>>(new Set())
-  const selectedEvidenceRef = useRef<ReadonlySet<string>>(selectedEvidence)
+  const [agentFilter, setAgentFilter] = useState('all')
   const [trace, setTrace] = useState<AgentRunTrace | null>(null)
   const [loadingRuns, setLoadingRuns] = useState(false)
   const [loadingTrace, setLoadingTrace] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const agentOptions = useMemo(() => {
+    const values = new Set<string>()
+    for (const run of runs) {
+      const id = run.agent_kind?.trim()
+      if (id) values.add(id)
+    }
+    return [...values].sort((left, right) => left.localeCompare(right))
+  }, [runs])
+  const visibleRuns = useMemo(
+    () => agentFilter === 'all' ? runs : runs.filter((run) => run.agent_kind === agentFilter),
+    [agentFilter, runs],
+  )
   const selectedRun = useMemo(
     () => runs.find((run) => run.trajectory_uri === selectedRunURI) ?? null,
     [runs, selectedRunURI],
   )
-  const harnessEvidence = useMemo(() => {
-    if (workspaceTab === 'trajectory') return selectedRunURI ? [selectedRunURI] : undefined
-    const selected = runs
-      .filter((run) => selectedEvidence.has(run.trajectory_uri))
-      .map((run) => run.trajectory_uri)
-    return selected.length > 0 ? selected : undefined
-  }, [runs, selectedEvidence, selectedRunURI, workspaceTab])
-
-  useEffect(() => {
-    selectedEvidenceRef.current = selectedEvidence
-  }, [selectedEvidence])
 
   const loadRuns = useCallback(async (preferred?: { runURI?: string; target?: TrajectoryNavigationIntent }) => {
     setLoadingRuns(true)
@@ -64,19 +57,11 @@ export function TrajectoryPage({ onClose }: TrajectoryPageProps) {
       setRuns(catalog.runs)
       setIssues(catalog.issues ?? [])
       const validURIs = new Set(catalog.runs.map((run) => run.trajectory_uri))
-      const retainedEvidence = new Set([...selectedEvidenceRef.current].filter((uri) => validURIs.has(uri)))
-      const removedCount = selectedEvidenceRef.current.size - retainedEvidence.size
-      selectedEvidenceRef.current = retainedEvidence
-      setSelectedEvidence(retainedEvidence)
-      if (removedCount > 0) {
-        toast.warning(t('continualLearning.evidence.removed', { count: removedCount }))
-      }
       const target = preferred?.target
       const targetRun = target
         ? catalog.runs.find((run) => run.project_id === target.projectId && run.id === target.runId)
         : undefined
       if (target && !targetRun) {
-        setWorkspaceTab('trajectory')
         setSelectedRunURI('')
         setTrace(null)
         toast.warning(t('trajectory.navigation.notFound'))
@@ -84,7 +69,6 @@ export function TrajectoryPage({ onClose }: TrajectoryPageProps) {
       }
       const nextRunURI = targetRun?.trajectory_uri
         ?? (preferred?.runURI && validURIs.has(preferred.runURI) ? preferred.runURI : catalog.runs[0]?.trajectory_uri ?? '')
-      if (targetRun) setWorkspaceTab('trajectory')
       setSelectedRunURI(nextRunURI)
       if (!nextRunURI) setTrace(null)
     } catch (cause) {
@@ -102,6 +86,20 @@ export function TrajectoryPage({ onClose }: TrajectoryPageProps) {
   useEffect(() => {
     void loadRuns({ target: trajectoryNavigation.intent ?? undefined })
   }, [loadRuns, trajectoryNavigation.intent])
+
+  useEffect(() => {
+    if (agentFilter !== 'all' && !agentOptions.includes(agentFilter)) setAgentFilter('all')
+  }, [agentFilter, agentOptions])
+
+  useEffect(() => {
+    if (!visibleRuns.length) {
+      setSelectedRunURI('')
+      return
+    }
+    if (!visibleRuns.some((run) => run.trajectory_uri === selectedRunURI)) {
+      setSelectedRunURI(visibleRuns[0].trajectory_uri)
+    }
+  }, [selectedRunURI, visibleRuns])
 
   useEffect(() => {
     if (!selectedRun) {
@@ -147,206 +145,83 @@ export function TrajectoryPage({ onClose }: TrajectoryPageProps) {
     }
   }
 
-  const toggleEvidence = (trajectoryURI: string) => {
-    setSelectedEvidence((current) => {
-      const next = new Set(current)
-      if (next.has(trajectoryURI)) next.delete(trajectoryURI)
-      else next.add(trajectoryURI)
-      selectedEvidenceRef.current = next
-      return next
-    })
-  }
-
-  const clearEvidence = () => {
-    selectedEvidenceRef.current = new Set()
-    setSelectedEvidence(new Set())
-  }
-
-  const viewRun = (trajectoryURI: string) => {
-    setSelectedRunURI(trajectoryURI)
-    setWorkspaceTab('trajectory')
-  }
-
-  const handleAgentSettled = useCallback(() => {
-    setStateRefreshToken((value) => value + 1)
-  }, [])
-
   return (
-    <Tabs value={workspaceTab} onValueChange={(value) => setWorkspaceTab(value as DeveloperWorkspaceTab)} className="h-full min-h-0 gap-0">
-      <AdaptiveSurface
-        className="h-full min-h-0"
-        mainClassName="min-h-0 min-w-0"
-        collapseAt={1000}
-        mobilePaneScope="surface"
-        left={workspaceTab === 'trajectory' ? {
-          id: 'trajectory-runs',
-          title: t('trajectory.runs.title'),
-          side: 'left',
-          icon: <ListTree className="size-4" />,
-          enabled: true,
-          desktopVisible: runsOpen,
-          desktopClassName: 'min-h-0 border-r border-[var(--nova-border)] bg-[var(--nova-surface-2)]',
-          mobileClassName: 'w-[min(88vw,360px)] bg-[var(--nova-surface-2)]',
-          content: (
-            <TrajectoryRunList
-              runs={runs}
-              selectedRunURI={selectedRunURI}
-              onSelect={setSelectedRunURI}
-            />
-          ),
-        } : undefined}
-        leftResize={workspaceTab === 'trajectory' ? {
-          layoutKey: 'nova-trajectory-runs-layout',
-          label: t('layout.resize.left'),
-          defaultSize: '250px',
-          minSize: '210px',
-          maxSize: '40%',
-          mainMinSize: '300px',
-        } : undefined}
-        right={{
-          id: 'trajectory-harness-agent',
-          title: t('continualLearning.agent.title'),
-          side: 'right',
-          icon: <Stethoscope className="size-4" />,
-          enabled: true,
-          desktopVisible: agentOpen,
-          desktopClassName: 'min-h-0 border-l border-[var(--nova-border)] bg-[var(--nova-surface)]',
-          mobileClassName: 'w-[min(94vw,480px)] bg-[var(--nova-surface)]',
-          content: (
-            <HarnessAgentPanel
-              evidence={harnessEvidence}
-              evidenceControl={workspaceTab === 'harness' ? (
-                <HarnessRunPicker
-                  runs={runs}
-                  selected={selectedEvidence}
-                  loading={loadingRuns}
-                  onToggle={toggleEvidence}
-                  onClear={clearEvidence}
-                  onView={viewRun}
-                />
-              ) : undefined}
-              onSettled={handleAgentSettled}
-            />
-          ),
-        }}
-        rightResize={{
-          layoutKey: 'nova-trajectory-harness-agent-layout',
-          label: t('layout.resize.right'),
-          defaultSize: '440px',
-          minSize: '320px',
-          maxSize: '65%',
-          mainMinSize: '300px',
-        }}
-      >
-        {({ isMobile, openPaneId, togglePane }) => {
-          const runsVisible = isMobile ? openPaneId === 'trajectory-runs' : runsOpen
-          const agentVisible = isMobile ? openPaneId === 'trajectory-harness-agent' : agentOpen
-          return (
-            <FeaturePageShell
-              icon={Route}
-              title={t('trajectory.title')}
-              subtitle={t('trajectory.globalSubtitle')}
-              className="[&_button]:focus-visible:border-transparent [&_button]:focus-visible:bg-[var(--nova-hover)] [&_button]:focus-visible:outline-none [&_button]:focus-visible:ring-0"
-              onClose={onClose}
-              error={error}
-              leadingContent={(
-                <TabsList variant="line" className="h-7 gap-1">
-                  <TabsTrigger value="trajectory" className="px-2 text-[11px]"><Route />{t('trajectory.tab.trajectory')}</TabsTrigger>
-                  <TabsTrigger value="harness" className="px-2 text-[11px]"><Settings2 />{t('trajectory.tab.harness')}</TabsTrigger>
-                </TabsList>
-              )}
-              actions={(
-                <>
-                  <Badge variant="outline" className="hidden h-5 px-1.5 text-[9px] uppercase tracking-[0.12em] xl:inline-flex">{t('trajectory.developerBadge')}</Badge>
-                  {workspaceTab === 'trajectory' ? (
-                    <Button
-                      type="button"
-                      size="xs"
-                      variant={runsVisible ? 'secondary' : 'outline'}
-                      className="px-1.5 xl:px-2.5"
-                      aria-label={t('trajectory.runs.title')}
-                      aria-pressed={runsVisible}
-                      onClick={() => {
-                        if (isMobile) {
-                          togglePane('trajectory-runs')
-                          return
-                        }
-                        setRunsOpen((value) => !value)
-                      }}
-                    >
-                      <ListTree /><span className="hidden xl:inline">{t('trajectory.runs.title')}</span>
-                    </Button>
-                  ) : null}
-                  <Button
-                    type="button"
-                    size="icon-xs"
-                    variant="ghost"
-                    disabled={loadingRuns || loadingTrace}
-                    onClick={() => void loadRuns({ runURI: selectedRunURI })}
-                    aria-label={t('trajectory.refresh')}
-                  >
-                    <RefreshCw className={cn((loadingRuns || loadingTrace) && 'animate-spin')} />
-                  </Button>
-                  {workspaceTab === 'trajectory' ? (
-                    <Button
-                      type="button"
-                      size="xs"
-                      variant="ghost"
-                      className="px-1.5 xl:px-2.5"
-                      disabled={!selectedRun}
-                      onClick={() => void exportTrace()}
-                      aria-label={t('trajectory.export.action')}
-                    >
-                      <Download /><span className="hidden xl:inline">{t('trajectory.export.action')}</span>
-                    </Button>
-                  ) : null}
-                  <Button
-                    type="button"
-                    size="xs"
-                    variant={agentVisible ? 'secondary' : 'outline'}
-                    className="px-1.5 xl:px-2.5"
-                    aria-label={t('continualLearning.openAgent')}
-                    aria-pressed={agentVisible}
-                    onClick={() => {
-                      if (isMobile) {
-                        togglePane('trajectory-harness-agent')
-                        return
-                      }
-                      setAgentOpen((value) => !value)
-                    }}
-                  >
-                    <Stethoscope /><span className="hidden xl:inline">{t('continualLearning.openAgent')}</span>
-                  </Button>
-                </>
-              )}
-            >
-              <TabsContent value="trajectory" forceMount className="min-h-0 overflow-hidden data-[state=inactive]:hidden">
-                <TrajectoryRunWorkspace
-                  runs={runs}
-                  issues={issues}
-                  trace={trace}
-                  loadingRuns={loadingRuns}
-                  loadingTrace={loadingTrace}
-                />
-              </TabsContent>
-              <TabsContent value="harness" forceMount className="min-h-0 overflow-hidden data-[state=inactive]:hidden">
-                <HarnessWorkspace refreshToken={stateRefreshToken} />
-              </TabsContent>
-            </FeaturePageShell>
-          )
-        }}
-      </AdaptiveSurface>
-    </Tabs>
+    <AdaptiveSurface
+      className="h-full min-h-0"
+      mainClassName="min-h-0 min-w-0"
+      collapseAt={850}
+      mobilePaneScope="surface"
+      left={{
+        id: 'trajectory-runs',
+        title: t('trajectory.runs.title'),
+        side: 'left',
+        icon: <ListTree className="size-4" />,
+        desktopVisible: runsOpen,
+        desktopClassName: 'min-h-0 border-r border-[var(--nova-border)] bg-[var(--nova-surface-2)]',
+        mobileClassName: 'w-[min(88vw,360px)] bg-[var(--nova-surface-2)]',
+        content: <TrajectoryRunList runs={visibleRuns} selectedRunURI={selectedRunURI} onSelect={setSelectedRunURI} />,
+      }}
+      leftResize={{
+        layoutKey: 'nova-trajectory-runs-layout',
+        label: t('layout.resize.left'),
+        defaultSize: '250px',
+        minSize: '210px',
+        maxSize: '40%',
+        mainMinSize: '300px',
+      }}
+    >
+      {({ isMobile, openPaneId, togglePane }) => {
+        const runsVisible = isMobile ? openPaneId === 'trajectory-runs' : runsOpen
+        return (
+          <FeaturePageShell
+            icon={Route}
+            title={t('trajectory.title')}
+            subtitle={t('trajectory.globalSubtitle')}
+            className="[&_button]:focus-visible:border-transparent [&_button]:focus-visible:bg-[var(--nova-hover)] [&_button]:focus-visible:outline-none [&_button]:focus-visible:ring-0"
+            onClose={onClose}
+            error={error}
+            actions={(
+              <>
+                <Badge variant="outline" className="hidden h-5 px-1.5 text-[9px] uppercase tracking-[0.12em] xl:inline-flex">{t('trajectory.developerBadge')}</Badge>
+                <Select value={agentFilter} onValueChange={setAgentFilter}>
+                  <SelectTrigger size="sm" className="hidden h-7 w-40 text-[10px] sm:flex" aria-label={t('trajectory.agentFilter')}><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{t('trajectory.allAgents')}</SelectItem>
+                    {agentOptions.map((id) => <SelectItem key={id} value={id}>{id}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <Button
+                  type="button"
+                  size="xs"
+                  variant={runsVisible ? 'secondary' : 'outline'}
+                  className="px-1.5 xl:px-2.5"
+                  aria-label={t('trajectory.runs.title')}
+                  aria-pressed={runsVisible}
+                  onClick={() => {
+                    if (isMobile) togglePane('trajectory-runs')
+                    else setRunsOpen((value) => !value)
+                  }}
+                >
+                  <ListTree /><span className="hidden xl:inline">{t('trajectory.runs.title')}</span>
+                </Button>
+                <Button type="button" size="icon-xs" variant="ghost" disabled={loadingRuns || loadingTrace} onClick={() => void loadRuns({ runURI: selectedRunURI })} aria-label={t('trajectory.refresh')}>
+                  <RefreshCw className={cn((loadingRuns || loadingTrace) && 'animate-spin')} />
+                </Button>
+                <Button type="button" size="xs" variant="ghost" className="px-1.5 xl:px-2.5" disabled={!selectedRun} onClick={() => void exportTrace()} aria-label={t('trajectory.export.action')}>
+                  <Download /><span className="hidden xl:inline">{t('trajectory.export.action')}</span>
+                </Button>
+              </>
+            )}
+          >
+            <TrajectoryRunWorkspace runs={visibleRuns} issues={issues} trace={trace} loadingRuns={loadingRuns} loadingTrace={loadingTrace} />
+          </FeaturePageShell>
+        )
+      }}
+    </AdaptiveSurface>
   )
 }
 
-function TrajectoryRunWorkspace({
-  runs,
-  issues,
-  trace,
-  loadingRuns,
-  loadingTrace,
-}: {
+function TrajectoryRunWorkspace({ runs, issues, trace, loadingRuns, loadingTrace }: {
   runs: GlobalAgentRunTraceSummary[]
   issues: GlobalAgentRunTraceIssue[]
   trace: AgentRunTrace | null
@@ -368,9 +243,7 @@ function TrajectoryRunWorkspace({
         </div>
       ) : null}
       <section className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--nova-surface)]">
-        {trace ? (
-          <TrajectoryTraceWorkspace trace={trace} />
-        ) : (
+        {trace ? <TrajectoryTraceWorkspace trace={trace} /> : (
           <EmptyPage icon={Activity} title={loadingTrace ? t('common.loading') : t('trajectory.selectRun')} description={t('trajectory.selectRunDescription')} />
         )}
       </section>

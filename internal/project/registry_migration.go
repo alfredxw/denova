@@ -109,10 +109,10 @@ func (registry *Registry) assignLegacyProjectLocations(data *registryData) error
 	preferOwner := func(candidateIndex, ownerIndex int) bool {
 		candidate := data.Projects[candidateIndex]
 		owner := data.Projects[ownerIndex]
-		candidateHarness := candidate.ID == HarnessProjectID || candidate.Type == TypeHarness
-		ownerHarness := owner.ID == HarnessProjectID || owner.Type == TypeHarness
-		if candidateHarness != ownerHarness {
-			return candidateHarness
+		candidateAgents := candidate.ID == AgentsProjectID || candidate.Type == TypeAgents
+		ownerAgents := owner.ID == AgentsProjectID || owner.Type == TypeAgents
+		if candidateAgents != ownerAgents {
+			return candidateAgents
 		}
 		candidateCurrent := candidate.ID == data.CurrentBookID
 		ownerCurrent := owner.ID == data.CurrentBookID

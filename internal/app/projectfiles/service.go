@@ -54,10 +54,10 @@ var defaultIgnoredDirectories = map[string]struct{}{
 }
 
 type Service struct {
-	registry               *projectdomain.Registry
-	bookVersioningProvider BookMutationVersioningProvider
-	treeEntryLimit         int
-	versions               bookVersioningCache
+	registry           *projectdomain.Registry
+	versioningProvider MutationVersioningProvider
+	treeEntryLimit     int
+	versions           bookVersioningCache
 }
 
 // ServiceOption configures a project-file service without exposing its
@@ -73,17 +73,17 @@ func WithTreeEntryLimit(limit int) ServiceOption {
 	}
 }
 
-// BookMutationVersioning preserves Writing's version-history contract while
-// the project-scoped file service remains usable for non-Book projects.
-type BookMutationVersioning struct {
+// MutationVersioning binds a version-capable Project to its shared go-git
+// service and automatic-version settings.
+type MutationVersioning struct {
 	Service  *book.VersionService
 	Settings book.VersionAutoSettings
 }
 
-// BookMutationVersioningProvider resolves version behavior without coupling
+// MutationVersioningProvider resolves version behavior without coupling
 // this project-scoped service to the foreground App package.
-type BookMutationVersioningProvider interface {
-	ProjectFileBookMutationVersioning(projectID, workspace, stateRoot string) BookMutationVersioning
+type MutationVersioningProvider interface {
+	ProjectFileMutationVersioning(projectID, workspace, stateRoot string) MutationVersioning
 }
 
 type projectRuntime struct {
@@ -97,17 +97,17 @@ func NewService(registry *projectdomain.Registry, options ...ServiceOption) *Ser
 	return newRuntime(registry, nil, options...)
 }
 
-// NewServiceWithBookVersioning reuses a foreground Book scheduler when the host
-// has one and owns a scoped scheduler for every background Book it mutates.
-func NewServiceWithBookVersioning(registry *projectdomain.Registry, provider BookMutationVersioningProvider, options ...ServiceOption) *Service {
+// NewServiceWithVersioning reuses a foreground Writing scheduler when the host
+// has one and owns a scoped scheduler for every other version-capable Project.
+func NewServiceWithVersioning(registry *projectdomain.Registry, provider MutationVersioningProvider, options ...ServiceOption) *Service {
 	return newRuntime(registry, provider, options...)
 }
 
-func newRuntime(registry *projectdomain.Registry, provider BookMutationVersioningProvider, options ...ServiceOption) *Service {
+func newRuntime(registry *projectdomain.Registry, provider MutationVersioningProvider, options ...ServiceOption) *Service {
 	service := &Service{
-		registry:               registry,
-		bookVersioningProvider: provider,
-		treeEntryLimit:         DefaultTreeEntryLimit,
+		registry:           registry,
+		versioningProvider: provider,
+		treeEntryLimit:     DefaultTreeEntryLimit,
 	}
 	for _, option := range options {
 		if option != nil {
@@ -500,7 +500,7 @@ func (service *Service) SaveFile(ctx context.Context, projectID string, request 
 		return SaveResult{}, err
 	}
 	if saved.Changed {
-		versioning := service.bookMutationVersioning(runtime)
+		versioning := service.mutationVersioning(runtime)
 		if versioning.Service != nil {
 			versioning.Service.ScheduleAutoVersion(versioning.Settings)
 		}
@@ -520,7 +520,7 @@ func (service *Service) ApplyOperations(ctx context.Context, projectID string, o
 	if err != nil {
 		return nil, err
 	}
-	versioning := service.bookMutationVersioning(runtime)
+	versioning := service.mutationVersioning(runtime)
 	changed := false
 	results := make([]OperationResult, 0, len(operations))
 	for _, operation := range operations {
@@ -544,7 +544,7 @@ func (service *Service) ApplyOperations(ctx context.Context, projectID string, o
 func (service *Service) applyOperation(
 	ctx context.Context,
 	runtime projectRuntime,
-	versioning BookMutationVersioning,
+	versioning MutationVersioning,
 	operation Operation,
 ) (string, error) {
 	path, err := normalizeRelativePath(operation.Path, false)

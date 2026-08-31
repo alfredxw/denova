@@ -62,7 +62,7 @@ func loadSession(filePath string) (*Session, error) {
 		messageBase = priorMessageTransactions[0].Index
 	}
 	sess := &Session{
-		ID: id, Channel: projection.Channel, CreatedAt: createdAt, UpdatedAt: updatedAt,
+		ID: id, CreatedAt: createdAt, UpdatedAt: updatedAt,
 		filePath: filePath, title: projection.Title,
 		clearAfterIndex: projection.ClearAfter, contextRevision: projection.ContextRevision,
 		journalSize: stat.Size(), journalOffset: journal.Head().VerifiedBytes,
@@ -130,7 +130,6 @@ func loadSession(filePath string) (*Session, error) {
 	sess.clearAfterIndex = projection.ClearAfter
 	sess.contextRevision = projection.ContextRevision
 	sess.title = projection.Title
-	sess.Channel = projection.Channel
 	sess.CreatedAt = createdAt
 	sess.UpdatedAt = updatedAt
 	sess.journalOffset = journal.Head().VerifiedBytes
@@ -168,11 +167,6 @@ func appendFirstRecordLine(sess *Session, line []byte) error {
 		fallbackID := sess.ID
 		header.ID = firstNonEmpty(header.ID, fallbackID)
 		sess.ID = header.ID
-		channel, err := ParseChannel(string(header.Channel))
-		if err != nil {
-			return fmt.Errorf("session header channel: %w", err)
-		}
-		sess.Channel = channel
 		journalIncarnation := sessionHeaderIncarnation(header)
 		sess.CreatedAt = header.CreatedAt
 		if sess.CreatedAt.IsZero() {

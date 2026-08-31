@@ -2,7 +2,7 @@
 //
 // A Project is deliberately independent from its content directory. The ID is
 // stable across display-name changes and directory relinks, while Type selects
-// the product behavior (for example the Writing, General, or Harness Agent).
+// the product behavior (for example the Writing, General, or Agents Project).
 package project
 
 import (
@@ -26,11 +26,11 @@ type Type string
 const (
 	TypeBook    Type = "book"
 	TypeGeneral Type = "general"
-	TypeHarness Type = "harness"
+	TypeAgents  Type = "agents"
 )
 
 func (kind Type) Valid() bool {
-	return kind == TypeBook || kind == TypeGeneral || kind == TypeHarness
+	return kind == TypeBook || kind == TypeGeneral || kind == TypeAgents
 }
 
 type Status string

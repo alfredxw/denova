@@ -266,7 +266,7 @@ Playwright 的后端数据固定写入 `web/test-results/runtime`，每次启动
 | RESOURCE-04 | 检查 Project 指令、Skill 目录和配置管理工具 | 模型可见内容为英文且来源明确；Config Manager 受当前作用域和 revision 约束 |
 | RESOURCE-05 | 创建 Automation，手动运行、确认、取消并检查重启后的状态 | 定义和 Run 按 Project 隔离；确认幂等；不会永久卡在 running 或重复执行副作用 |
 | RESOURCE-06 | 生成单图与多图，并制造一个逐项失败 | 已成功图片继续返回并落盘；逐项失败明确；只有全部失败时整体失败；路径绑定正确 Project |
-| RESOURCE-07 | 如果改动 Trajectory/Harness，检查开关、详情、导出、草稿、发布和恢复 | 敏感数据只在启用时记录；trace 可审计；草稿与已发布状态隔离；失败可继续修复 |
+| RESOURCE-07 | 如果改动 Trajectory 或 Agents Project，检查开关、详情、导出、Profile 编辑、版本保存和恢复 | 敏感数据只在启用时记录；Trajectory 只读且可审计；Profile 变更可通过 Project Versions 检查和恢复 |
 
 ## 15. 数据、版本与恢复
 

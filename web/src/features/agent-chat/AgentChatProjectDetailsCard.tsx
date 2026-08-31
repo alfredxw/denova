@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react'
-import { Bot, Folder, Stethoscope } from 'lucide-react'
+import { Bot, Folder } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
 import { cn } from '@/lib/utils'
@@ -22,8 +22,7 @@ export function AgentChatProjectDetailsCard({
   const { t } = useTranslation()
   const name = project.name || project.path
   let Icon = Folder
-  if (project.type === 'general') Icon = Bot
-  if (project.type === 'harness') Icon = Stethoscope
+  if (project.type === 'general' || project.type === 'agents') Icon = Bot
 
   return (
     <HoverCard openDelay={800} closeDelay={150}>

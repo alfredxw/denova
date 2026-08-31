@@ -143,6 +143,14 @@ func (host settingsHost) ApplySettings(_ config.LayeredSettings, layer config.Se
 	if layer == config.SettingsLayerUser && versionService != nil {
 		versionService.ConfigureAutoVersion(autoSettings)
 	}
+	if layer == config.SettingsLayerUser {
+		if err := host.app.ProjectFiles().ScheduleAutoVersion(projectdomain.AgentsProjectID); err != nil {
+			slog.ErrorContext(context.Background(), "[internal/app/settings_host.go] schedule Agents Project version after user Agent settings mutation failed",
+				"project_id", projectdomain.AgentsProjectID,
+				"error", err,
+			)
+		}
+	}
 }
 
 func syncRuntimeDiagnostics(cfg *config.Config) {

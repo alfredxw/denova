@@ -26,7 +26,7 @@ func (h *Handlers) HandleGlobalAgentRunTraces(ctx context.Context, c *app.Reques
 	catalog, err := h.app.GlobalAgentRunTraces(ctx, limit, target)
 	if err != nil {
 		if errors.Is(err, appsvc.ErrDeveloperModeDisabled) {
-			writeErrorKey(c, consts.StatusNotFound, "api.continualLearning.disabled")
+			writeErrorKey(c, consts.StatusNotFound, "api.trajectory.disabled")
 			return
 		}
 		writeError(c, consts.StatusInternalServerError, err.Error())

@@ -37,7 +37,6 @@ func TestModelFacingSourceRejectsBilingualSplitLiterals(t *testing.T) {
 		"internal/agents/skillassembly",
 		"internal/agents/interactive",
 		"internal/app/configmanager",
-		"internal/app/continuallearning",
 		"internal/app/interactive/conversation.go",
 		"internal/app/interactive/conversation_history.go",
 		"internal/app/interactive/game_preset.go",

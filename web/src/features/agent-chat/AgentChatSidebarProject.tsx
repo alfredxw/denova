@@ -2,7 +2,7 @@ import { useEffect, useState, type CSSProperties } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { useTranslation } from 'react-i18next'
-import { CircleAlert, Bot, ChevronRight, Clock3, Folder, FolderOpen, MoreHorizontal, Pencil, Pin, PinOff, Plus, Stethoscope } from 'lucide-react'
+import { CircleAlert, Bot, ChevronRight, Clock3, Folder, FolderOpen, MoreHorizontal, Pencil, Pin, PinOff, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -103,13 +103,12 @@ export function AgentChatSidebarProject({
     transform: CSS.Transform.toString(transform),
     transition,
   }
-  const managedProject = project.type === 'harness'
+  const managedProject = project.type === 'agents'
   const baseAgentKind = project.type === 'book' ? 'ide' : 'general'
   const settingsQuery = useQuery(settingsQueryOptions(projectSettingsTarget(project.id)), queryClient)
   const customAgents = customAgentsForRuntime(settingsQuery.data?.effective.custom_agents, baseAgentKind)
   let ProjectIcon = expanded ? FolderOpen : Folder
-  if (project.type === 'general') ProjectIcon = Bot
-  if (managedProject) ProjectIcon = Stethoscope
+  if (project.type === 'general' || managedProject) ProjectIcon = Bot
 
   return (
     <div ref={setNodeRef} style={style} className={`mb-1 ${isDragging ? 'relative z-20 opacity-80' : ''}`}>

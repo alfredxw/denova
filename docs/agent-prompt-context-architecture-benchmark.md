@@ -40,7 +40,7 @@ Denova 不需要推翻现有提示词 Composer。当前实现已经具备几个�
 - Agent Engine 新增持久化 Context State snapshot。首次出现、内容更新、显式删除均追加独立 User-role 状态消息；未变化 section 零注入，不回写历史。
 - 同一状态注册表同时驱动自动压缩、手动压缩、只读 inspection、重试与恢复后的 rehydrate；状态更新和 removal tombstone 被压缩遮蔽时只恢复一次当前版本。
 - 写作模式的 workspace runtime snapshot 与游戏模式的 resident lore 已迁入共享 session-state 协议；本轮 focus、动态工作区信息和游戏 turn runtime 仍保持 turn-scoped。
-- general workflow、Harness Agent、Background Director 与 context compaction 四段长静态提示词已迁到 `internal/agents/prompts/assets/*.md`，继续通过 `SystemPromptComposition` 进行来源登记、预算准入、manifest 与 hash 认证。
+- general workflow 与 context compaction 两段长静态提示词已迁到 `internal/agents/prompts/assets/*.md`，继续通过 `SystemPromptComposition` 进行来源登记、预算准入、manifest 与 hash 认证。
 - 开发模型输入日志新增有序 system section、message、Context State 与 tool schema 指纹；同一 session / agent 相邻请求会记录首个分叉组件，并用同一 `call_id` 关联 provider 返回的 prompt tokens、cache read tokens、未命中 tokens 与命中比例。provider 未提供 cache write 时明确记录为 unknown，而不是推断。
 - 没有增加用户配置，也没有引入 provider 专属 cache 协议或第二套 Prompt Framework。
 

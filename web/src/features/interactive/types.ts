@@ -4,10 +4,12 @@ import type { ChatAttachment } from '@/lib/api-client/types'
 export type InteractiveSubmode = 'story' | 'timeline'
 
 export type StoryPlanningMode = 'enabled' | 'disabled'
+export type StoryTitleSource = 'pending' | 'generated' | 'user'
 
 export interface StorySummary {
   id: string
   title: string
+  title_source?: StoryTitleSource
   origin: string
   protagonist: StoryProtagonist
   story_teller_id: string

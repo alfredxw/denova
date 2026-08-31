@@ -58,6 +58,7 @@ func validateStoryChoiceCount(value int) error {
 }
 
 func normalizeStorySummary(story StorySummary) StorySummary {
+	story.TitleSource = normalizeStoryTitleSource(story.TitleSource)
 	story.StoryDirectorID = normalizedStoryDirectorID(story.StoryDirectorID)
 	story.PlanningMode = normalizeStoryPlanningMode(story.PlanningMode)
 	story.ReplyTargetChars = normalizeStoryReplyTargetChars(story.ReplyTargetChars)
@@ -77,6 +78,7 @@ func normalizeStorySummary(story StorySummary) StorySummary {
 
 func normalizeStoryMeta(meta StoryMeta) StoryMeta {
 	legacyFixedSchema := meta.StateSchemaPolicy == nil
+	meta.TitleSource = normalizeStoryTitleSource(meta.TitleSource)
 	meta.StoryDirectorID = normalizedStoryDirectorID(meta.StoryDirectorID)
 	meta.PlanningMode = normalizeStoryPlanningMode(meta.PlanningMode)
 	meta.ReplyTargetChars = normalizeStoryReplyTargetChars(meta.ReplyTargetChars)

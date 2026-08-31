@@ -9,7 +9,6 @@ import (
 const (
 	AgentKindIDE              = "ide"
 	AgentKindGeneral          = "general"
-	AgentKindHarness          = "harness"
 	AgentKindInteractiveStory = "interactive_story"
 	// AgentKindConfigManager is retained only to decode Beta settings and
 	// journals. Configuration work now runs in General or Writing Project Agents.
@@ -50,30 +49,8 @@ var agentKindRegistry = []AgentKindDefinition{
 			AgentToolFilesystemRead, AgentToolWorkspaceWrite, AgentToolShell,
 			AgentToolWebSearch, AgentToolWebFetch, AgentToolBrowser,
 			AgentToolAsk, AgentToolTodo, AgentToolSkills, AgentToolDelegation,
-			AgentToolScript, AgentToolHarnessState,
+			AgentToolScript, AgentToolTrajectory,
 			AgentToolConfigRead, AgentToolConfigApply,
-		},
-		ModelOverride:      func(settings AgentModelSettings) AgentModelOverride { return settings.General },
-		SetModelOverride:   func(settings *AgentModelSettings, override AgentModelOverride) { settings.General = override },
-		ToolOverride:       func(settings AgentToolSettings) AgentToolOverride { return settings.General },
-		SetToolOverride:    func(settings *AgentToolSettings, override AgentToolOverride) { settings.General = override },
-		PromptOverride:     func(settings AgentPromptSettings) AgentPromptOverride { return settings.General },
-		SetPromptOverride:  func(settings *AgentPromptSettings, override AgentPromptOverride) { settings.General = override },
-		SkillOverride:      func(settings AgentSkillSettings) AgentSkillOverride { return settings.General },
-		SetSkillOverride:   func(settings *AgentSkillSettings, override AgentSkillOverride) { settings.General = override },
-		ContextOverride:    func(settings AgentContextSettings) AgentContextOverride { return settings.General },
-		SetContextOverride: func(settings *AgentContextSettings, override AgentContextOverride) { settings.General = override },
-	},
-	{
-		Kind:      AgentKindHarness,
-		SessionID: "harness-scheduled",
-		// Harness is a real Project Agent. Its workspace is the editable Harness
-		// Draft directory, so ordinary file and shell tools remain available.
-		ToolCapabilities: []string{
-			AgentToolFilesystemRead, AgentToolWorkspaceWrite, AgentToolShell,
-			AgentToolWebSearch, AgentToolWebFetch, AgentToolBrowser,
-			AgentToolAsk, AgentToolTodo, AgentToolSkills, AgentToolDelegation,
-			AgentToolScript, AgentToolHarnessState,
 		},
 		ModelOverride:      func(settings AgentModelSettings) AgentModelOverride { return settings.General },
 		SetModelOverride:   func(settings *AgentModelSettings, override AgentModelOverride) { settings.General = override },
@@ -92,7 +69,7 @@ var agentKindRegistry = []AgentKindDefinition{
 			AgentToolFilesystemRead, AgentToolWorkspaceWrite, AgentToolShell,
 			AgentToolWebSearch, AgentToolWebFetch, AgentToolBrowser,
 			AgentToolAsk, AgentToolTodo, AgentToolSkills, AgentToolDelegation,
-			AgentToolScript, AgentToolHarnessState,
+			AgentToolScript,
 			AgentToolConfigRead, AgentToolConfigApply,
 			AgentToolLoreRead, AgentToolLoreWrite, AgentToolImageGeneration,
 		},
@@ -112,7 +89,7 @@ var agentKindRegistry = []AgentKindDefinition{
 		ToolCapabilities: []string{
 			AgentToolFilesystemRead, AgentToolWebSearch, AgentToolWebFetch, AgentToolBrowser,
 			AgentToolSkills, AgentToolDelegation, AgentToolLoreRead,
-			AgentToolScript, AgentToolHarnessState,
+			AgentToolScript,
 		},
 		ModelOverride:    func(settings AgentModelSettings) AgentModelOverride { return settings.InteractiveStory },
 		SetModelOverride: func(settings *AgentModelSettings, override AgentModelOverride) { settings.InteractiveStory = override },
@@ -255,7 +232,7 @@ var agentToolCapabilities = []AgentToolCapability{
 		agent.ToolRecoveryNonIdempotent, agent.SteeringFinishCurrent, agent.ToolPresentationScript,
 	), agent.ToolResultProtected))),
 	withRuntimeResultLimit(runtimeSubAgentUnavailableCapabilityDefinitionWithToolDescriptors(
-		AgentToolHarnessState, "agents.tool.harnessState.title", "agents.tool.harnessState.subtitle",
+		AgentToolTrajectory, "agents.tool.trajectory.title", "agents.tool.trajectory.subtitle",
 		[]string{"read"},
 		descriptorWithSource(readOnlyDescriptor(agent.ToolPresentationFile, agent.ToolResultRecoveryRead), agent.ToolSourceRead),
 		map[string]agent.ToolDescriptor{

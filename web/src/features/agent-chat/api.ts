@@ -2,12 +2,8 @@ import type { UIMessageChunk } from 'ai'
 import { fetchAPI, jsonHeaders, parseUIMessageStream, requestJSON, responseAPIError } from '@/lib/api-client/client'
 import { projectAPIPath } from '@/lib/api-client/project-scope'
 
-/** One conversation in the AgentChat project tree. */
-export type AgentChatSessionChannel = 'agent' | 'configuration'
-
 export interface AgentChatSession {
   id: string
-  channel: AgentChatSessionChannel
   custom_agent_id?: string
   title: string
   created_at: string
@@ -18,7 +14,7 @@ export interface AgentChatSession {
   active: boolean
 }
 
-export type AgentChatProjectType = 'book' | 'general' | 'harness'
+export type AgentChatProjectType = 'book' | 'general' | 'agents'
 export type AgentChatProjectStatus = 'available' | 'missing' | 'archived'
 
 /** One user-managed Project with its conversations. */
@@ -58,7 +54,6 @@ export interface AgentChatActivityBinding {
 export interface AgentChatRunRequest {
   command_id: string
   session_id: string
-  channel?: AgentChatSessionChannel
   message: string
   display_message?: string
 }
@@ -68,7 +63,7 @@ export interface HostDirectorySelection {
   canceled: boolean
 }
 
-const projectsReadInFlight = new Map<AgentChatSessionChannel, Promise<AgentChatProject[]>>()
+let projectsReadInFlight: Promise<AgentChatProject[]> | null = null
 export const AGENT_CHAT_PROJECT_UPDATED_EVENT = 'nova:agent-chat-project-updated'
 
 export function notifyAgentChatProjectUpdated(projectId: string) {
@@ -77,22 +72,19 @@ export function notifyAgentChatProjectUpdated(projectId: string) {
 }
 
 /** Read every project with its conversations. This never switches the open workspace. */
-export function getAgentChatProjects(options: { channel?: AgentChatSessionChannel } = {}): Promise<AgentChatProject[]> {
-  const channel = options.channel ?? 'agent'
-  const pending = projectsReadInFlight.get(channel)
-  if (pending) return pending
-  const suffix = channel === 'agent' ? '' : `?channel=${encodeURIComponent(channel)}`
-  const request = requestJSON<{ projects?: AgentChatProject[] }>(`/api/agent-chat/projects${suffix}`)
+export function getAgentChatProjects(): Promise<AgentChatProject[]> {
+  if (projectsReadInFlight) return projectsReadInFlight
+  const request = requestJSON<{ projects?: AgentChatProject[] }>('/api/agent-chat/projects')
     .then((data) =>
       (data.projects ?? []).map((project) => ({
         ...project,
-        sessions: (project.sessions ?? []).map((session) => ({ ...session, channel: session.channel || 'agent' })),
+        sessions: project.sessions ?? [],
       })),
     )
     .finally(() => {
-      projectsReadInFlight.delete(channel)
+      projectsReadInFlight = null
     })
-  projectsReadInFlight.set(channel, request)
+  projectsReadInFlight = request
   return request
 }
 
@@ -109,7 +101,6 @@ export function getAgentChatHistory(
     offset?: number
     limit?: number
     signal?: AbortSignal
-    channel?: AgentChatSessionChannel
   } = {},
 ): Promise<AgentChatHistoryPage> {
   const params = new URLSearchParams()
@@ -117,19 +108,12 @@ export function getAgentChatHistory(
   const projectId = options.projectId?.trim()
   if (query) params.set('query', query)
   if (projectId) params.set('project_id', projectId)
-  if (options.channel && options.channel !== 'agent') params.set('channel', options.channel)
   if (options.offset) params.set('offset', String(options.offset))
   if (options.limit) params.set('limit', String(options.limit))
   const suffix = params.size > 0 ? `?${params.toString()}` : ''
   return requestJSON<AgentChatHistoryPage>(`/api/agent-chat/history${suffix}`, {
     signal: options.signal,
-  }).then((page) => ({
-    ...page,
-    items: (page.items ?? []).map((item) => ({
-      ...item,
-      session: { ...item.session, channel: item.session.channel || 'agent' },
-    })),
-  }))
+  }).then((page) => ({ ...page, items: page.items ?? [] }))
 }
 
 /** Create a conversation inside any project, open or not. */
@@ -137,7 +121,6 @@ export async function createAgentChatSession(
   projectId: string,
   title = '',
   customAgentId?: string,
-  channel: AgentChatSessionChannel = 'agent',
 ): Promise<AgentChatSession> {
   return requestJSON<AgentChatSession>(projectAPIPath(projectId, 'agent-chat/sessions'), {
     method: 'POST',
@@ -145,9 +128,8 @@ export async function createAgentChatSession(
     body: JSON.stringify({
       title,
       ...(customAgentId !== undefined ? { custom_agent_id: customAgentId } : {}),
-      ...(channel !== 'agent' ? { channel } : {}),
     }),
-  }).then((session) => ({ ...session, channel: session.channel || channel }))
+  })
 }
 
 /** Start a turn in a Project Agent conversation and return its UI stream. */

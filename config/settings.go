@@ -733,7 +733,7 @@ func LoadLayeredWithGlobalAt(novaDir, workspace, projectConfigPath string, globa
 	global.AgentSubAgentParallelism = normalizeAgentSubAgentParallelism(global.AgentSubAgentParallelism)
 	global.AgentScriptTimeoutSeconds = normalizeAgentScriptTimeoutSeconds(global.AgentScriptTimeoutSeconds)
 	global.ProjectFileTreeEntryLimit = normalizeProjectFileTreeEntryLimit(global.ProjectFileTreeEntryLimit)
-	user, err := ReadSettingsFile(UserConfigPath(novaDir))
+	user, err := loadUserSettingsWithProfiles(novaDir)
 	if err != nil {
 		return LayeredSettings{}, err
 	}
@@ -789,7 +789,7 @@ func LoadLayeredWithGlobalAt(novaDir, workspace, projectConfigPath string, globa
 	backendPort := settingsInt(eff.BackendPort, 8080)
 	revisions := SettingsRevisions{}
 	userConfigPath := UserConfigPath(novaDir)
-	if rev, err := SettingsFileRevision(userConfigPath); err == nil {
+	if rev, err := UserSettingsRevision(novaDir); err == nil {
 		revisions.User = rev
 	} else {
 		return LayeredSettings{}, err
@@ -831,11 +831,7 @@ func LoadLayeredWithGlobalAt(novaDir, workspace, projectConfigPath string, globa
 func withResolvedLabs(settings Settings) Settings {
 	labs := ResolveLabs(settings.Labs)
 	settings.Labs = LabSettings{
-		DeveloperMode:                  boolPtr(labs.DeveloperMode),
-		HarnessStateEnabled:            boolPtr(labs.HarnessStateEnabled),
-		ContinualLearningSchedule:      boolPtr(labs.ContinualLearningSchedule),
-		ContinualLearningIntervalHours: intPtr(labs.ContinualLearningIntervalHours),
-		ContinualLearningTrajectoryCap: intPtr(labs.ContinualLearningTrajectoryCap),
+		DeveloperMode: boolPtr(labs.DeveloperMode),
 	}
 	return settings
 }

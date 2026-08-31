@@ -302,6 +302,14 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
     console.info('[interactive-layout] Stories deleted', { count: uniqueStoryIds.length })
   }
 
+  const handleRenameStory = async (storyId: string, title: string) => {
+    console.info('[interactive-layout] Renaming story', { storyId })
+    const updated = await updateInteractiveStory(storyId, { title })
+    setStories(mergePreferredStory(useInteractiveStore.getState().stories, updated), updated.id)
+    await reloadStories(updated)
+    console.info('[interactive-layout] Story renamed', { storyId })
+  }
+
   const handleStorySetupUpdate = async (input: StoryCreateInput) => {
     if (!currentStoryId) return
     await updateInteractiveStory(currentStoryId, {
@@ -376,8 +384,15 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
   }, [setSubmode])
 
   const handleTurnPersisted = useCallback((event: InteractiveTurnPersistedEvent) => {
-    return applyTurnPersisted(event) || undefined
-  }, [applyTurnPersisted])
+    const nextSnapshot = applyTurnPersisted(event) || undefined
+    const persistedStory = useInteractiveStore.getState().stories.find((story) => story.id === event.story_id)
+    if (persistedStory?.title_source === 'pending') {
+      void reloadStories().catch((error) => {
+        console.error('[interactive-layout] Failed to refresh the generated story title', { storyId: event.story_id, error })
+      })
+    }
+    return nextSnapshot
+  }, [applyTurnPersisted, reloadStories])
 
   const handleStoryStageDone = useCallback((options?: { silent?: boolean }) => {
     return reloadSnapshot(undefined, undefined, options)
@@ -451,6 +466,7 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
       onStorySetupUpdate={handleStorySetupUpdate}
       onNarrativeStyleChange={onNarrativeStyleChange}
       onStoryDelete={handleDeleteStories}
+      onStoryRename={handleRenameStory}
       onRequestLoreInit={onRequestLoreInit}
       onOpenDirectorConfig={() => {
         onOpenPresets?.()
@@ -471,7 +487,7 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
           <div className="flex min-w-0 flex-1 flex-col bg-[var(--nova-surface-2)]">
             <motion.div key={contentKey} variants={panelPresence} initial="initial" animate="animate" transition={{ duration: 0.2, ease: novaEase }} className="flex min-h-0 flex-1 flex-col">
               {submode === 'timeline' ? (
-                <BranchTimeline projectId={projectId} snapshot={displaySnapshot} branches={branches} currentBranchId={currentBranchId} onSwitchBranch={handleSwitchBranch} onCreateBranch={handleCreateBranch} onDeleteBranch={handleDeleteBranch} fill variant="workspace" onBackToStory={() => setSubmode('story')} headerControls={<StoryPicker stories={stories} currentStoryId={currentStoryId} onSelect={handleStorySelect} onCreate={() => undefined} onDeleteStories={handleDeleteStories} hideCreate />} />
+                <BranchTimeline projectId={projectId} snapshot={displaySnapshot} branches={branches} currentBranchId={currentBranchId} onSwitchBranch={handleSwitchBranch} onCreateBranch={handleCreateBranch} onDeleteBranch={handleDeleteBranch} fill variant="workspace" onBackToStory={() => setSubmode('story')} headerControls={<StoryPicker stories={stories} currentStoryId={currentStoryId} onSelect={handleStorySelect} onCreate={() => undefined} onDeleteStories={handleDeleteStories} onRenameStory={handleRenameStory} hideCreate />} />
               ) : isMobile ? (
                 <MobilePaneHost
                   panes={[{

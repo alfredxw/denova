@@ -86,6 +86,19 @@ func (service *Service) Snapshot(target Target) (config.LayeredSettings, error) 
 	return layered, nil
 }
 
+// Reload re-reads a persisted settings layer after an out-of-band file
+// mutation, then applies the canonical snapshot to the foreground runtime.
+// Ordinary API writes should continue to use Patch so revision checks and
+// presence-aware merge semantics remain enforced.
+func (service *Service) Reload(target Target, layer config.SettingsLayer) (config.LayeredSettings, error) {
+	switch layer {
+	case config.SettingsLayerUser, config.SettingsLayerWorkspace:
+		return service.refresh(target, layer)
+	default:
+		return config.LayeredSettings{}, fmt.Errorf("%w: %q", config.ErrUnsupportedSettingsLayer, layer)
+	}
+}
+
 // Patch applies a presence-aware partial mutation to exactly one persisted
 // settings layer, then refreshes the process-local runtime from the canonical
 // post-write snapshot.
@@ -105,7 +118,7 @@ func (service *Service) patchUser(target Target, changes json.RawMessage, baseRe
 		return config.LayeredSettings{}, err
 	}
 	path := config.UserConfigPath(runtime.Config.DataDir())
-	if _, err := config.MutateSettingsFile(path, baseRevision, func(existing config.Settings) (config.Settings, error) {
+	if _, err := config.MutateUserSettings(runtime.Config.DataDir(), baseRevision, func(existing config.Settings) (config.Settings, error) {
 		merged, err := config.ApplySettingsMergePatch(existing, changes)
 		if err != nil {
 			return config.Settings{}, err
@@ -160,7 +173,7 @@ func (service *Service) EnsureAgentApprovalRule(rule config.AgentApprovalRule) (
 	}
 	path := config.UserConfigPath(runtime.Config.DataDir())
 	created := false
-	if _, err := config.MutateSettingsFile(path, "", func(existing config.Settings) (config.Settings, error) {
+	if _, err := config.MutateUserSettings(runtime.Config.DataDir(), "", func(existing config.Settings) (config.Settings, error) {
 		existing.AgentApprovalRules = config.NormalizeAgentApprovalRules(existing.AgentApprovalRules)
 		for _, current := range existing.AgentApprovalRules {
 			if current.ID != rule.ID {
@@ -202,7 +215,7 @@ func (service *Service) RemoveAgentApprovalRule(id string) (bool, config.Layered
 	}
 	path := config.UserConfigPath(runtime.Config.DataDir())
 	removed := false
-	if _, err := config.MutateSettingsFile(path, "", func(existing config.Settings) (config.Settings, error) {
+	if _, err := config.MutateUserSettings(runtime.Config.DataDir(), "", func(existing config.Settings) (config.Settings, error) {
 		filtered := make([]config.AgentApprovalRule, 0, len(existing.AgentApprovalRules))
 		for _, rule := range existing.AgentApprovalRules {
 			if rule.ID == id {

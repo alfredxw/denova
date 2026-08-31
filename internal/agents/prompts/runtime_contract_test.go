@@ -8,35 +8,6 @@ import (
 	"denova/config"
 )
 
-func TestUserStatePromptFollowsContractAndBuiltInPrompt(t *testing.T) {
-	cfg := &config.Config{}
-	base, err := ComposeBuiltinSystemInstruction(cfg, config.AgentKindIDE, "test", "", "builtin", "Built in", "test", "BUILT IN PROMPT")
-	if err != nil {
-		t.Fatal(err)
-	}
-	composition, err := AppendUserStatePrompt(cfg, base, "USER STATE PROMPT")
-	if err != nil {
-		t.Fatal(err)
-	}
-	instruction := composition.Instruction()
-
-	contractIndex := strings.Index(instruction, "Denova Runtime Contract")
-	builtInIndex := strings.Index(instruction, "BUILT IN PROMPT")
-	stateIndex := strings.Index(instruction, "USER STATE PROMPT")
-	if contractIndex < 0 || builtInIndex < 0 || stateIndex < 0 {
-		t.Fatalf("instruction missing expected sections:\n%s", instruction)
-	}
-	if !(contractIndex < builtInIndex && builtInIndex < stateIndex) {
-		t.Fatalf("wrong system prompt order: contract=%d built_in=%d state=%d\n%s", contractIndex, builtInIndex, stateIndex, instruction)
-	}
-	if strings.Count(instruction, "# User State Prompt") != 1 || strings.Count(instruction, "USER STATE PROMPT") != 1 {
-		t.Fatalf("State prompt should be injected once without a repeated generic wrapper:\n%s", instruction)
-	}
-	if strings.Contains(instruction, "cannot override the runtime contract") {
-		t.Fatalf("State prompt should not repeat generic precedence language:\n%s", instruction)
-	}
-}
-
 func TestCustomAgentOwnsWorkflowWithoutReplacingProtectedContracts(t *testing.T) {
 	cfg := &config.Config{CustomAgents: []config.CustomAgentConfig{{
 		ID: "writer", Name: "Writer", Contract: config.AgentContractWritingPrimary,
@@ -140,7 +111,6 @@ func TestSubAgentParentRuntimeContractsIncludeDelegationProtocol(t *testing.T) {
 func TestRuntimeContractsCoverAllAgentKinds(t *testing.T) {
 	tests := map[string]string{
 		config.AgentKindGeneral:          "General Agent",
-		config.AgentKindHarness:          "live Harness State directory",
 		config.AgentKindIDE:              "CREATOR.md",
 		config.AgentKindInteractiveStory: "Output only the story prose",
 		config.AgentKindImage:            "Image Agent",

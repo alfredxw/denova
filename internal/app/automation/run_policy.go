@@ -20,7 +20,7 @@ func runtimeConfigForTask(snap *automationWorkspaceSnapshot, task automation.Tas
 		switch projectAgentKind(snap) {
 		case agentrun.AgentKindIDE:
 			runtimeCfg.AgentModels.IDE.ProfileID = profileID
-		case agentrun.AgentKindGeneral, agentrun.AgentKindHarness:
+		case agentrun.AgentKindGeneral:
 			runtimeCfg.AgentModels.General.ProfileID = profileID
 		}
 	}
@@ -34,10 +34,8 @@ func projectAgentKind(snap *automationWorkspaceSnapshot) string {
 	switch snap.projectType {
 	case projectdomain.TypeBook:
 		return agentrun.AgentKindIDE
-	case projectdomain.TypeGeneral:
+	case projectdomain.TypeGeneral, projectdomain.TypeAgents:
 		return agentrun.AgentKindGeneral
-	case projectdomain.TypeHarness:
-		return agentrun.AgentKindHarness
 	default:
 		return ""
 	}

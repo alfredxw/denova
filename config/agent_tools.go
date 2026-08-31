@@ -16,7 +16,7 @@ const (
 	AgentToolSkills          = "skills"
 	AgentToolDelegation      = "delegation"
 	AgentToolScript          = "script"
-	AgentToolHarnessState    = "harness_state"
+	AgentToolTrajectory      = "trajectory"
 	AgentToolConfigRead      = "config_read"
 	AgentToolConfigApply     = "config_apply"
 	AgentToolEventRead       = "event_read"
@@ -80,7 +80,6 @@ func DefaultAgentToolSettings() AgentToolSettings {
 		AgentToolSkills,
 		AgentToolDelegation,
 		AgentToolScript,
-		AgentToolHarnessState,
 		AgentToolLoreRead,
 		AgentToolLoreWrite,
 	)
@@ -94,6 +93,7 @@ func DefaultAgentToolSettings() AgentToolSettings {
 		General: on(
 			AgentToolConfigRead,
 			AgentToolConfigApply,
+			AgentToolTrajectory,
 		),
 		IDE: on(
 			AgentToolConfigRead,
@@ -110,7 +110,7 @@ func DefaultAgentToolSettings() AgentToolSettings {
 			AgentToolTodo,
 			AgentToolDelegation,
 			AgentToolScript,
-			AgentToolHarnessState,
+			AgentToolTrajectory,
 			AgentToolLoreWrite,
 			AgentToolImageGeneration,
 			AgentToolConfigRead,

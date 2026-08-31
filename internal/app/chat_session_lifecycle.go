@@ -100,7 +100,7 @@ func (s *ChatAppService) CreateSession(title string, customAgentID *string) (*se
 	if err != nil {
 		return nil, err
 	}
-	sess, err := fence.store.CreateWithRuntimeConfig(title, seed, session.ChannelAgent)
+	sess, err := fence.store.CreateWithRuntimeConfig(title, seed)
 	if err != nil {
 		return nil, err
 	}
@@ -355,7 +355,7 @@ func activeUserSessionOrCreate(store *session.Store, runtimeCfg *config.Config) 
 		if seedErr != nil {
 			return nil, seedErr
 		}
-		sess, err = store.GetOrCreateWithRuntimeConfig(activeID, seed, session.ChannelAgent)
+		sess, err = store.GetOrCreateWithRuntimeConfig(activeID, seed)
 	}
 	if err != nil {
 		return nil, err

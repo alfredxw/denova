@@ -566,7 +566,6 @@ function StyleReferenceControls({ projectId, references, refreshReferences, refs
       const stream = await runAgentChatStream(projectId, {
         command_id: commandID,
         session_id: sessionID,
-        channel: 'configuration',
         display_message: displayMessage,
         message: buildConfigurationAgentMessage(buildStyleExtractionInstruction(request), {
           origin: 'teller',
@@ -832,7 +831,7 @@ function StyleReferenceControls({ projectId, references, refreshReferences, refs
 }
 
 async function resolveConfigurationSession(projectId: string) {
-  const projects = await getAgentChatProjects({ channel: 'configuration' })
+  const projects = await getAgentChatProjects()
   const project = projects.find((candidate) => candidate.id === projectId)
   if (!project) throw new Error(`Project Agent is unavailable: ${projectId}`)
   const stored = readAgentChatActiveSession(projectId, 'configuration')
@@ -840,7 +839,7 @@ async function resolveConfigurationSession(projectId: string) {
     || project.sessions.find((candidate) => candidate.active)
     || project.sessions[0]
   if (session) return session.id
-  return (await createAgentChatSession(projectId, '', undefined, 'configuration')).id
+  return (await createAgentChatSession(projectId)).id
 }
 
 interface StyleUploadDraft {

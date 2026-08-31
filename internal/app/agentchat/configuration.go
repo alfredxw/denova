@@ -16,15 +16,6 @@ func (service *Service) ConversationConfig(ctx context.Context, binding Binding)
 	if err != nil {
 		return conversationconfig.Snapshot{}, err
 	}
-	if project.store.Exists(resolved.SessionID) {
-		sess, err := project.store.Get(resolved.SessionID)
-		if err != nil {
-			return conversationconfig.Snapshot{}, err
-		}
-		if err := requireSessionChannel(sess, resolved); err != nil {
-			return conversationconfig.Snapshot{}, err
-		}
-	}
 	return agentconversation.PreviewSession(project.store, resolved.SessionID, &runtimeCfg, resolved.agentKind)
 }
 
@@ -52,7 +43,7 @@ func (service *Service) PatchConversationConfig(
 		if err != nil {
 			return conversationconfig.Snapshot{}, err
 		}
-		sess, err := project.store.GetOrCreateWithRuntimeConfig(resolved.SessionID, next, creationChannel(resolved))
+		sess, err := project.store.GetOrCreateWithRuntimeConfig(resolved.SessionID, next)
 		if err != nil {
 			return conversationconfig.Snapshot{}, err
 		}
@@ -64,9 +55,6 @@ func (service *Service) PatchConversationConfig(
 	}
 	sess, current, err := agentconversation.GetOrCreateSession(project.store, resolved.SessionID, &runtimeCfg, resolved.agentKind)
 	if err != nil {
-		return conversationconfig.Snapshot{}, err
-	}
-	if err := requireSessionChannel(sess, resolved); err != nil {
 		return conversationconfig.Snapshot{}, err
 	}
 	next, err := conversationconfig.Merge(&runtimeCfg, current.Config, patch)

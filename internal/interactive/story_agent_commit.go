@@ -270,6 +270,7 @@ func (s *Store) AppendTurnWithState(storyID string, req AppendTurnWithStateReque
 		actorOps = append(actorOps, ruleActorOps...)
 	}
 	branch.Head = turn.ID
+	titleGenerated := generatePendingStoryTitle(&meta, turn.Narrative)
 
 	var delta *StateDeltaEvent
 	actorOps = normalizeActorStateOps(actorOps)
@@ -325,6 +326,9 @@ func (s *Store) AppendTurnWithState(storyID string, req AppendTurnWithStateReque
 	}
 	if appendErr := s.appendStoryTransactionLocked(storyID, meta, newEvents...); appendErr != nil {
 		return TurnEvent{}, nil, appendErr
+	}
+	if titleGenerated {
+		slog.InfoContext(context.Background(), fmt.Sprintf("[interactive-story] generated story title from first committed narrative story_id=%s", storyID))
 	}
 	s.syncStoryIndexProjectionLocked(storyID)
 	return turn, delta, nil

@@ -729,16 +729,6 @@ export function SettingsView({ onClose, visible = true }: { onClose?: () => void
             inherited={inherited.labs?.developer_mode}
             onChange={(value) => setLabField('developer_mode', value)}
           />
-          {(draft.labs?.developer_mode ?? inherited.labs?.developer_mode ?? false) && (
-            <Num
-              label={t('settings.labs.continualLearningTrajectoryCap')}
-              value={draft.labs?.continual_learning_trajectory_cap ?? null}
-              placeholder={String(inherited.labs?.continual_learning_trajectory_cap ?? 100)}
-              min={1}
-              max={500}
-              onChange={(value) => setLabField('continual_learning_trajectory_cap', value)}
-            />
-          )}
         </>
       ),
     },

@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"denova/internal/book"
-	projectdomain "denova/internal/project"
 	workspacechange "denova/internal/workspace/change"
 )
 
@@ -71,8 +70,8 @@ func (service *Service) Replace(ctx context.Context, projectID string, request R
 	if err != nil || !hasMatch {
 		return result, err
 	}
-	if runtime.record.Type == projectdomain.TypeBook {
-		versioning := service.bookMutationVersioning(runtime)
+	if supportsVersions(runtime.record.Type) {
+		versioning := service.mutationVersioning(runtime)
 		if versioning.Service != nil {
 			err = runtime.changes.WithConsistentWorkspaceSnapshot(ctx, func() error {
 				_, createErr := versioning.Service.Create("Backup before replace all / 全局替换前自动备份", book.VersionSourceManual, versioning.Settings)
@@ -122,7 +121,7 @@ func (service *Service) Replace(ctx context.Context, projectID string, request R
 		result.TotalReplacements += count
 	}
 	if len(result.Files) > 0 {
-		versioning := service.bookMutationVersioning(runtime)
+		versioning := service.mutationVersioning(runtime)
 		if versioning.Service != nil {
 			versioning.Service.ScheduleAutoVersion(versioning.Settings)
 		}

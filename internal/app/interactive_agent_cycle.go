@@ -157,7 +157,7 @@ func (s *InteractiveAppService) prepareInteractiveAgentCycle(ctx context.Context
 	if requireProtagonistSelection {
 		selectProtagonist = cycle.selectStoryProtagonist
 	}
-	agentHost, err := a.HarnessAgentHostCapabilities(ctx, &cycle.runtimeCfg, config.AgentKindInteractiveStory)
+	agentHost, err := a.AgentHostCapabilities(ctx, &cycle.runtimeCfg, config.AgentKindInteractiveStory)
 	if err != nil {
 		return nil, err
 	}

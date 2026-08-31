@@ -102,8 +102,6 @@ func outputProtocolForAgent(agentKind string) string {
 	switch agentKind {
 	case config.AgentKindGeneral:
 		return "- General Agent has no fixed JSON output protocol. Perform all file changes through enabled tools. Mutations must stay within the current Project root; explicitly requested external local sources may be read through read, glob, or grep subject to permission."
-	case config.AgentKindHarness:
-		return "- Harness Agent has no fixed JSON output protocol. Report the evidence inspected, files actually changed, current validation result, and any rejected Harness contribution."
 	case config.AgentKindInteractiveStory:
 		return strings.Join([]string{
 			"- Output only the story prose that can be shown on the story stage for this turn.",
@@ -128,14 +126,6 @@ func agentRuntimeContract(agentKind string) string {
 	switch agentKind {
 	case config.AgentKindGeneral:
 		return "- Keep all mutations within the current Project root. Discovery respects .gitignore; read, glob, and grep may inspect explicitly requested external local sources subject to permission. Shell commands retain native semantics. Modify .gitignore only when the user explicitly requests it."
-	case config.AgentKindHarness:
-		return strings.Join([]string{
-			"- The current Project root is the live Harness State directory. Inspect trajectory resources through read, and modify State with ordinary workspace file or shell tools.",
-			"- Writes are intentionally unrestricted by Harness schema validation. Consumers validate the complete snapshot and reject the entire user contribution when it is invalid, so inspect harness://state/current after edits and repair diagnostics before finishing.",
-			"- Never write Project-private content, complete trajectories, temporary tasks, user secrets, or model reasoning into global State.",
-			"- Read evidence first and distinguish generalizable preferences from one-off signals. Remain a no-op when evidence is insufficient, the improvement is unclear, or there is no valid Diff.",
-			"- Make only the smallest cohesive change. Existing Agent runs keep their current definition; valid State is consumed when later Agent definitions are built.",
-		}, "\n")
 	case config.AgentKindIDE:
 		return "- Writing Agent must respect file-tool safety and book-workspace boundaries. CREATOR.md and the user's explicit current request remain authoritative for book content."
 	case config.AgentKindInteractiveStory:

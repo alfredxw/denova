@@ -44,7 +44,7 @@ const versions = {
   'versions.firstVersionHint': 'Save the first version to view history and restore.',
   'versions.rollback': 'Rollback',
   'versions.rollbackConfirm': 'Confirm Rollback',
-  'versions.rollbackDescription': 'Rollback the whole book to version {{version}}. This will reset the current workspace to that version.',
+  'versions.rollbackDescription': 'Rollback the whole Project to version {{version}}. This will reset the current workspace to that version.',
   'versions.rollbackDisabled': 'The current workspace has unsaved changes. Create a version before rollback.',
   'versions.rollbackPickVersion': 'Choose a version to roll back.',
   'versions.rollbackTitle': 'Confirm version rollback?',

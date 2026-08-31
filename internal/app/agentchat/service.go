@@ -236,13 +236,8 @@ func (service *Service) ResolveBinding(binding Binding) (Binding, error) {
 	switch record.Type {
 	case projectdomain.TypeBook:
 		binding.agentKind = agentrun.AgentKindIDE
-	case projectdomain.TypeGeneral:
+	case projectdomain.TypeGeneral, projectdomain.TypeAgents:
 		binding.agentKind = agentrun.AgentKindGeneral
-	case projectdomain.TypeHarness:
-		if !service.harnessProjectsEnabled() {
-			return Binding{}, fmt.Errorf("Harness Project requires Developer Mode / Harness Project 需要开发者模式")
-		}
-		binding.agentKind = agentrun.AgentKindHarness
 	default:
 		return Binding{}, fmt.Errorf("unsupported project type %q", record.Type)
 	}
@@ -250,11 +245,6 @@ func (service *Service) ResolveBinding(binding Binding) (Binding, error) {
 	if binding.SessionID == "" {
 		return Binding{}, fmt.Errorf("AgentChat session is required / AgentChat 会话不能为空")
 	}
-	channel, err := session.ParseOptionalChannel(string(binding.Channel))
-	if err != nil {
-		return Binding{}, err
-	}
-	binding.Channel = channel
 	return binding, nil
 }
 
@@ -317,8 +307,12 @@ func (service *Service) projectRuntime(ctx context.Context, projectID string) (*
 		}
 	case projectdomain.TypeGeneral:
 		agentKind = agentrun.AgentKindGeneral
-	case projectdomain.TypeHarness:
-		agentKind = agentrun.AgentKindHarness
+	case projectdomain.TypeAgents:
+		agentKind = agentrun.AgentKindGeneral
+		versionService, err = service.host.ProjectVersionService(record.ID)
+		if err != nil {
+			return nil, fmt.Errorf("resolve shared Agents Project version service: %w", err)
+		}
 	default:
 		return nil, fmt.Errorf("unsupported project type %q", record.Type)
 	}
@@ -586,24 +580,6 @@ func getOrCreateConversation(project *projectRuntime, binding Binding) (*session
 		return nil, false, err
 	}
 	created := !project.store.Exists(binding.SessionID)
-	channel := creationChannel(binding)
-	sess, _, err := agentconversation.GetOrCreateSessionWithChannel(project.store, binding.SessionID, &runtimeCfg, binding.agentKind, channel)
-	if err == nil {
-		err = requireSessionChannel(sess, binding)
-	}
+	sess, _, err := agentconversation.GetOrCreateSession(project.store, binding.SessionID, &runtimeCfg, binding.agentKind)
 	return sess, created, err
-}
-
-func creationChannel(binding Binding) session.Channel {
-	if binding.Channel != "" {
-		return binding.Channel
-	}
-	return session.ChannelAgent
-}
-
-func requireSessionChannel(sess *session.Session, binding Binding) error {
-	if sess == nil || binding.Channel == "" || sess.Channel == binding.Channel {
-		return nil
-	}
-	return fmt.Errorf("AgentChat session channel mismatch: have=%q want=%q", sess.Channel, binding.Channel)
 }

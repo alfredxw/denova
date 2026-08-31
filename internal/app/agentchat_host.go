@@ -8,6 +8,7 @@ import (
 	agents "denova/internal/agents"
 	agentexecution "denova/internal/agents/execution"
 	agenttool "denova/internal/agents/tool"
+	appsettings "denova/internal/app/settings"
 	"denova/internal/book"
 	projectdomain "denova/internal/project"
 )
@@ -35,7 +36,7 @@ func (host agentChatHost) ProjectVersionService(projectID string) (*book.Version
 	if host.app == nil {
 		return nil, ErrNoWorkspace
 	}
-	resources, err := host.app.ProjectFiles().BookVersions(projectID)
+	resources, err := host.app.ProjectFiles().ProjectVersions(projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -60,10 +61,10 @@ func (host agentChatHost) ProjectAgentHostCapabilities(
 	if host.app == nil {
 		return agents.AgentHostCapabilities{}, nil
 	}
-	if projectType == projectdomain.TypeHarness {
-		return host.app.ContinualLearning().HarnessProjectAgentHostCapabilities(ctx, cfg, agentKind)
+	if projectType == projectdomain.TypeAgents {
+		return host.app.AgentsProjectAgentHostCapabilities(ctx, cfg, agentKind)
 	}
-	return host.app.HarnessAgentHostCapabilities(ctx, cfg, agentKind)
+	return host.app.AgentHostCapabilities(ctx, cfg, agentKind)
 }
 
 func (host agentChatHost) OnVerifiedMutations(
@@ -80,9 +81,12 @@ func (host agentChatHost) OnVerifiedMutations(
 	host.app.verifiedWorkspaceMutationCallback(
 		source, versionService, versionAutoSettingsForConfig(&cfg),
 	)(ctx, mutations, verification)
-	if cfg.ProjectID == projectdomain.HarnessProjectID && len(mutations) > 0 {
-		if err := host.app.ContinualLearning().RecordCurrentState(ctx, "Harness Agent update"); err != nil {
-			slog.WarnContext(ctx, "[harness-state] live Agent changes were not recorded as a valid version", "error", err)
+	if cfg.ProjectID == projectdomain.AgentsProjectID && len(mutations) > 0 {
+		if _, err := host.app.SettingsService().Reload(appsettings.Global(), config.SettingsLayerUser); err != nil {
+			slog.ErrorContext(ctx, "[internal/app/agentchat_host.go] reload Agent Profiles after Agents Project mutation failed",
+				"project_id", projectdomain.AgentsProjectID,
+				"error", err,
+			)
 		}
 	}
 }

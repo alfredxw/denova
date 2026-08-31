@@ -120,7 +120,7 @@ func (s *ChatAppService) startTaskWithError(ctx context.Context, expectedSession
 		return nil, ErrAgentOperationActive
 	}
 
-	agentHost, err := a.HarnessAgentHostCapabilities(ctx, &runtime.cfg, agentrun.AgentKindIDE)
+	agentHost, err := a.AgentHostCapabilities(ctx, &runtime.cfg, agentrun.AgentKindIDE)
 	if err != nil {
 		return nil, err
 	}

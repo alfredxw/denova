@@ -18,7 +18,7 @@ Denova 不需要推倒重写 Prompt 基础设施。现有 composition、context 
 - 工具按 Agent capability 和运行时可用性注册；
 - 多个批量工具支持逐项成功/失败，不会因为一个坏输入丢掉整个昂贵调用；
 - `submit_interactive_turn` 已经使用互斥的 `oneOf` 操作分支；
-- Skills 已经支持渐进式披露，Config Manager 的 reference 设计尤其合理。
+- Skills 已经支持渐进式披露，`/configuration` 的 reference 设计尤其合理。
 
 真正的问题不是“指令不够多”，而是：
 
@@ -39,9 +39,9 @@ Denova 不需要推倒重写 Prompt 基础设施。现有 composition、context 
 
 | 领域 | 已落地的设计 | 模型实际看到的变化 |
 | --- | --- | --- |
-| Project instructions | 新增通用 `CombineContextSources` 和统一 Project Instructions ContextSource；General、写作、游戏、后台 Director、Config Manager、Image 及其子 Agent 复用同一边界。 | 根目录 `AGENTS.md` 与 `CREATOR.md` 分别成为一个 User-role leading message；缺失文件跳过，两者都存在时按该顺序位于历史和当前请求前。 |
+| Project instructions | 新增通用 `CombineContextSources` 和统一 Project Instructions ContextSource；General、写作、游戏、后台 Director、Image 及其子 Agent 复用同一边界。 | 根目录 `AGENTS.md` 与 `CREATOR.md` 分别成为一个 User-role leading message；缺失文件跳过，两者都存在时按该顺序位于历史和当前请求前。 |
 | Cache boundary | ContextSource identity 由 Agent kind、workspace、resource 列表和注入上限构成；每个文件的正文 revision 在 materialize 时独立计算。 | 修改 `CREATOR.md` 不改变更早的 `AGENTS.md` message；配置或正文变化时只从对应边界开始旋转缓存。 |
-| Prompt ownership | 缩短通用 runtime contract、User State wrapper、SubAgent wrapper、Game turn prompt 和 Director per-run prompt；稳定规则留在 system/tool，本轮消息只保留当前动作和动态上下文。 | 不再每回合重复 difficulty enum、Actor/lore 生命周期、通用优先级声明和完整 Director 文档教程。 |
+| Prompt ownership | 缩短通用 runtime contract、session-state wrapper、SubAgent wrapper、Game turn prompt 和 Director per-run prompt；稳定规则留在 system/tool，本轮消息只保留当前动作和动态上下文。 | 不再每回合重复 difficulty enum、Actor/lore 生命周期、通用优先级声明和完整 Director 文档教程。 |
 | Tool Schema | `ask`、`task`、`skill`、`todo` 使用 provider-visible JSON Schema；action 分支改为关闭的 `oneOf`。 | 每个分支只显示合法字段、required、enum、数量与长度边界；`ask` 区分 free-text/choice，并表达唯一 recommended option。 |
 | Batch resilience | 保留 task/skill/todo 的逐项执行和逐项回执，没有因 Schema 变严而退回整批失败。 | 模型首次更容易构造合法输入；单个坏 item 仍不会丢掉其他成功结果。 |
 | Provider-visible verification | 复用 `Session.Inspect` 的真实组装管线，增加项目 Agent 集成断言和 ToolInfo Schema contract 测试。 | 测试直接检查最终 message 顺序、stable-prefix 计数、两个项目指令文件的唯一性和完整 `oneOf` Schema，不另造模拟 renderer。 |
@@ -568,7 +568,7 @@ turn-dynamic context                     current state/evidence
 current user request                     current instruction
 ```
 
-两个 fragment 都使用 User role 和稳定的短 framing，按 `AGENTS.md`、`CREATOR.md` 排序并位于历史与当前请求之前，因此可以与 system definition 一起形成长稳定前缀。General、写作、游戏、Harness Agent、Director、Config Manager、Image 及其项目子 Agent 使用同一来源。每个文件的 `Source`、`Purpose`、`Resource`、revision/hash 和硬上限分别保存在 host metadata；模型只看到对应短标题、正文和一句“较新的显式用户请求优先”。
+两个 fragment 都使用 User role 和稳定的短 framing，按 `AGENTS.md`、`CREATOR.md` 排序并位于历史与当前请求之前，因此可以与 system definition 一起形成长稳定前缀。General、写作、游戏、Director、Image 及其项目子 Agent 使用同一来源。每个文件的 `Source`、`Purpose`、`Resource`、revision/hash 和硬上限分别保存在 host metadata；模型只看到对应短标题、正文和一句“较新的显式用户请求优先”。
 
 这项调整的首要收益是让每份高相关项目指令各自只出现一次，并把 Agent 固有 Prompt 留给真正跨项目成立的行为；来源审计和跨 Agent 复用由 host 侧同时获得。它不是为了修复不存在的 steady-state cache 问题。
 
@@ -579,7 +579,7 @@ current user request                     current instruction
 | 优先级 | 领域 | 现状 | 影响 | 建议 |
 | --- | --- | --- | --- | --- |
 | P0 | Context signal-to-noise | 部分 Agent 默认注入完整工作流、目录、状态、来源说明和重试协议，即使当前回合只使用其中很小一部分。 | 有效任务和当前状态被背景文字包围；输入成本、延迟和模型漏读概率同时上升。 | 每个 block 通过“会改变哪个当前决策”检查；不能通过的删除或延迟加载。优先选择当前状态、当前目标和必要约束，不按“可能有用”打包。 |
-| P1 | Project instruction boundary | `CREATOR.md` 被直接拼入 Writing Agent、Game Agent、Config Manager 和 Image Agent 的 system composition。 | 用户拥有的项目规则与 Denova/Agent 内置定义耦合；同一项目指令跨 Agent 重复组装，role、revision 和生命周期边界不够直观。 | 复用现有 `ContextLeadingMessage`，以 User role 注入一个独立、attributed、低频稳定的 project-instruction fragment；从各 Agent system composition 中删除 Creator 副本，不保留双路径。 |
+| P1 | Project instruction boundary | `CREATOR.md` 被直接拼入 Writing Agent、Game Agent 和 Image Agent 的 system composition。 | 用户拥有的项目规则与 Denova/Agent 内置定义耦合；同一项目指令跨 Agent 重复组装，role、revision 和生命周期边界不够直观。 | 复用现有 `ContextLeadingMessage`，以 User role 注入一个独立、attributed、低频稳定的 project-instruction fragment；从各 Agent system composition 中删除 Creator 副本，不保留双路径。 |
 | P0 | 契约归属 | 文件操作、写作状态同步、游戏提交、导演 Patch、重试规则跨多个层重复。 | Token 多、注意力分散、文字与后端校验容易漂移。 | system 管行为与优先级；tool description 管选择和事务；Schema 管编码；tool result 管修复；Skill 管可选流程；turn prompt 只管当前任务。 |
 | P1 | Interactive Story | `InteractiveStoryTurnInstruction` 同时包含当前行动、判定策略、文风、提交、重试、choices、状态语义。 | 每回合重复大段稳定规则，最容易稀释模型对当前行动的关注。 | 把稳定协议移入 system/tool；回合消息只注入当前行动、动态上下文、当回合规则和完成要求。 |
 | P1 | Interactive Director | runtime、system、per-run prompt、提交工具重复文档边界、Patch、finalize、retry 和保密规则。 | 背景 Agent 上下文冗长，多个副本可能漂移。 | system 保留 source-of-truth 与职责边界；工具拥有 Patch/base_hash/finalize；per-run 只给模式、快照、Hash 和目标。 |
@@ -589,7 +589,7 @@ current user request                     current instruction
 | P1 | 完整请求审计 | 现有测试覆盖 admission、substring、Hash、placement、Schema 和 cache metrics，但没有每类 Agent 的完整模型请求快照。 | Code review 很难发现无效 context、语义重复或意外缓存破坏。 | 生成 minimal/full provider-visible snapshot：message role、section ID、字节/token、语义 owner、tool/description/schema Hash。 |
 | P2 | Context framing | 部分动态内容使用冗长 wrapper，部分使用 Markdown 标题直接串接。 | wrapper 本身消耗注意力；不同 block 的用途仍需从长段说明中判断。 | host 侧保留完整 provenance；模型侧只在用途确实不同且会影响处理方式时使用短、固定标签，如 `Current state`、`Evidence`、`Project instructions`。 |
 | P2 | Tool description | Browser/Interactive 顶层 description 很长并重复字段规则；部分公共工具字段又过于简略。 | 工具目录越来越大，但关键选择条件仍不突出。 | 顶层优先写一至三句：能力、何时选择、Schema 无法表达的一项事务语义；字段表示放 Schema，修复方式放 tool result。 |
-| P2 | Skills | 产品 Skills 整体不错，Config Manager 的 progressive disclosure 尤其好；`novel-standard` 仍重复基础写作契约；`.agents/skills/loop-verify`、`verify-by-browser` 仍是中文模型指令。 | 可选流程重新引入重复规则；仓库本地 Agent 指令不符合新的内部英文规范。 | Skill 只保留 workflow delta、触发条件和完成条件；仓库本地模型可见 Skills 也纳入英文 lint。 |
+| P2 | Skills | 产品 Skills 整体不错，`/configuration` 的 progressive disclosure 尤其好；`novel-standard` 仍重复基础写作契约；`.agents/skills/loop-verify`、`verify-by-browser` 仍是中文模型指令。 | 可选流程重新引入重复规则；仓库本地 Agent 指令不符合新的内部英文规范。 | Skill 只保留 workflow delta、触发条件和完成条件；仓库本地模型可见 Skills 也纳入英文 lint。 |
 | P2 | Telemetry | 现在记录 bytes、Hash、manifest 和缓存用量，但不能直接指出第一个发生变化的 Prompt/tool segment。 | 难以定位哪次改动造成 uncached input 增长。 | 记录有序 section fingerprint、首个差异位置、工具顺序和 Schema Hash；按 Agent kind 统计 cached-prefix bytes。 |
 
 关键代码证据：
@@ -613,7 +613,7 @@ General Prompt 比较克制，已经清楚表达：Project root、就近读取�
 
 可优化点：
 
-- 稳定 General workflow 与 User State、动态工具提示分层；
+- 稳定 General workflow 与按需 Trajectory evidence、动态工具提示分层；
 - 项目规则发现只保留一个权威版本，避免被 Skill/task 重复；
 - general-purpose 子 Agent 的路由 description 先补明确的 `Use when`；只有出现真实路由冲突时再增加非适用边界。
 
@@ -655,9 +655,9 @@ per-run message 只需要：
 - 哪些文档需要决策；
 - 当前规划目标。
 
-### 6.5 Config Manager Agent
+### 6.5 Configuration workflow
 
-Config Manager 是目前 progressive disclosure 最好的示例：
+配置工作流由普通 General 或 Writing Agent 加载 `/configuration` Skill 完成，是目前 progressive disclosure 最好的示例：
 
 - root Skill 只定义共通事务流程；
 - resource reference 按需读取；
@@ -665,11 +665,11 @@ Config Manager 是目前 progressive disclosure 最好的示例：
 - 批量读支持 partial success；
 - mutation receipt 紧凑。
 
-剩余问题是内置 Config Manager flow、自动加载 root Skill、`config_read`/`config_apply` description 之间仍有重复。资源 Schema 和 mutation semantics 应由 `describe` 与 reference 权威提供，不应全部复制进 system prompt。
+资源 Schema 和 mutation semantics 应由 `describe` 与 reference 权威提供，不应复制进 Agent system prompt。配置任务无需独立 runtime kind。
 
-### 6.6 Harness Agent
+### 6.6 Agents Project maintenance
 
-Prompt 紧凑、证据驱动，并明确允许 no-op。Harness 作为特殊 Project 后复用标准多会话与工作区指令；Agent Health 快捷操作应保持 diagnosis-only，实际修改由用户后续明确要求。维护型任务的完成条件可固定成四项：evidence、State Diff 或显式 no-op、validation、预期行为影响。
+Agent Profile 作为受管 Agents Project 中的普通文件，复用标准 General Agent、多会话、Files 与 Project Versions。Trajectory 不注入默认 Prompt；只有任务需要证据时才通过只读 `trajectory://` 资源按需读取。维护型任务的完成条件可固定成四项：evidence、Profile Diff 或显式 no-op、validation、预期行为影响。
 
 ### 6.7 Image Agent
 
@@ -807,7 +807,7 @@ project instructions (early User-role context)
   AGENTS.md、CREATOR.md、其他明确属于当前 Project 的长期用户规则
 
 other stable leading context
-  selected preset/director、User State、stable reference snapshot
+  selected preset/director、session state、stable reference snapshot
 
 conversation history / compaction checkpoint
 
@@ -817,7 +817,7 @@ turn-dynamic context
 current user request
 ```
 
-这里的 `stable` 只决定排序与缓存方式，不决定是否注入。preset、Director、User State 或 reference 仍必须与当前 Agent 和当前任务相关；否则即使内容完全稳定，也应省略或按需读取。
+这里的 `stable` 只决定排序与缓存方式，不决定是否注入。preset、Director、session state 或 reference 仍必须与当前 Agent 和当前任务相关；否则即使内容完全稳定，也应省略或按需读取。
 
 项目指令文件的目标 fragment contract：
 
@@ -871,7 +871,7 @@ System/context fragment 的完整 provenance、revision、budget 和截断状态
 
 ### Phase 0：建立基线（核心路径已复用现有真实组装管线）
 
-- General、写作、游戏、Director、Config Manager 和 Image 已通过真实 `Session.Inspect` 检查 provider-visible message 顺序与两个项目指令文件的唯一性；
+- General、写作、游戏、Director 和 Image 已通过真实 `Session.Inspect` 检查 provider-visible message 顺序与两个项目指令文件的唯一性；
 - 记录 system/context/tool 的 section bytes 与 token estimate；
 - 标记每段内容改变的模型决策、语义 owner 和是否可按需读取；
 - 统计完全重复和语义重复的规则；
@@ -883,7 +883,7 @@ System/context fragment 的完整 provenance、revision、budget 和截断状态
 - 从各 Agent system composition 中移除 inline `CREATOR.md`；
 - 通过现有 `ContextSource`/`ContextLeadingMessage` 分别注入根目录 `AGENTS.md` 与 `CREATOR.md`；host 保存逐文件 attribution、revision 和硬上限，模型侧使用短固定标题；
 - 固定 provider-visible wrapper、消息位置与字节顺序；
-- 统一覆盖 General、IDE、Interactive Story、Director、Image、Config Manager 及其项目子 Agent，不保留双路径；
+- 统一覆盖 General、IDE、Interactive Story、Director、Image 及其项目子 Agent，不保留双路径；
 - 明确 runtime contract、项目指令文件和当前用户请求的优先级；
 - 断言同一 workspace/session 未修改项目指令时 stable prefix 与 tool ordering 完全一致；
 - 同时测写作与游戏的行为 parity、cache ratio，以及单个项目指令文件修改后的局部 cache rotation。
@@ -979,7 +979,6 @@ Denova：
 - `internal/agents/prompts/chat.go`
 - `internal/agents/prompts/model_tasks.go`
 - `internal/agents/prompts/subagent.go`
-- `internal/agents/prompts/user_state.go`
 - `internal/agents/context/*`
 - `agent/definition.go`
 - `agent/definition_engine_context.go`
@@ -988,7 +987,7 @@ Denova：
 - `internal/agents/configresource/*`
 - `internal/automation/*`
 - `internal/app/image/*`
-- `skills/*/SKILL.md` 与 Config Manager references
+- `skills/*/SKILL.md` 与 configuration references
 - `.agents/skills/*/SKILL.md`
 - `config/agent_registry.go`
 - `internal/agents/builder.go`

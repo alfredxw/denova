@@ -241,7 +241,7 @@ func loadGlobalConfig() *Config {
 	cfg := &Config{
 		AgentIdleTimeoutSeconds: -1, AgentToolResultLimitKB: -1, AgentToolParallelism: -1, AgentSubAgentParallelism: -1,
 		AgentScriptTimeoutSeconds: -1,
-		Labs:                      ResolvedLabs{HarnessStateEnabled: true},
+		Labs:                      ResolvedLabs{},
 	}
 	for _, path := range globalConfigCandidates() {
 		data, err := os.ReadFile(path)
@@ -283,11 +283,7 @@ func settingsFromConfig(cfg *Config) Settings {
 		DefaultImageAgentID:      stringPtr(cfg.DefaultImageAgentID),
 		WebAccess:                settingsFromWebAccessConfig(cfg.WebAccess),
 		Labs: LabSettings{
-			DeveloperMode:                  boolPtr(cfg.Labs.DeveloperMode),
-			HarnessStateEnabled:            boolPtr(cfg.Labs.HarnessStateEnabled),
-			ContinualLearningSchedule:      boolPtr(cfg.Labs.ContinualLearningSchedule),
-			ContinualLearningIntervalHours: intPtr(cfg.Labs.ContinualLearningIntervalHours),
-			ContinualLearningTrajectoryCap: intPtr(cfg.Labs.ContinualLearningTrajectoryCap),
+			DeveloperMode: boolPtr(cfg.Labs.DeveloperMode),
 		},
 		SkillsDir:                cfg.SkillsDir,
 		DenovaDir:                firstNonEmpty(cfg.DenovaDir, cfg.NovaDir),

@@ -25,15 +25,6 @@ type ScriptConfig struct {
 	Timeout        time.Duration
 }
 
-// SavedScriptToolSpec is the already-validated, immutable contract materialized
-// from one User Harness State file.
-type SavedScriptToolSpec struct {
-	Name        string
-	Description string
-	InputSchema *jsonschema.Schema
-	Program     agentscript.Program
-}
-
 // Script constructs the immediate model-visible orchestration tool.
 func Script(config ScriptConfig) (agent.ToolDefinition, error) {
 	if err := validateScriptConfig(config); err != nil {
@@ -56,37 +47,13 @@ func Script(config ScriptConfig) (agent.ToolDefinition, error) {
 		description: "Execute a synchronous JavaScript function body that orchestrates the tools available to this Agent. " +
 			"Use ctx.tools.call(name, input) for one call and ctx.tools.parallel(calls) for an ordered batch. " +
 			"Each call returns {tool, ok, status, output, truncated, artifacts, reason}. " +
-			"Return one JSON-compatible value. Script and Harness State management are unavailable inside scripts.",
-		schema: schema, engine: config.Engine, timeout: config.Timeout, immediate: true,
+			"Return one JSON-compatible value. Scripts cannot invoke the script tool recursively.",
+		schema: schema, engine: config.Engine, timeout: config.Timeout,
 	}
 	return agent.ToolDefinition{
 		Tool: tool, Descriptor: scriptDescriptor(ScriptToolName, config.MaxResultBytes),
 		ImplementationIdentity: agent.CapabilityIdentity{
 			Kind: "tools.script", Version: agentscript.ContractVersion,
-		},
-	}, nil
-}
-
-// SavedScriptTool turns one validated Harness file into an ordinary
-// ToolDefinition. It has no special capability and uses the same Engine/Host
-// contract as the immediate script tool.
-func SavedScriptTool(config ScriptConfig, spec SavedScriptToolSpec) (agent.ToolDefinition, error) {
-	if err := validateScriptConfig(config); err != nil {
-		return agent.ToolDefinition{}, err
-	}
-	spec.Name = strings.TrimSpace(spec.Name)
-	spec.Description = strings.TrimSpace(spec.Description)
-	if spec.Name == "" || spec.Description == "" || spec.InputSchema == nil {
-		return agent.ToolDefinition{}, errors.New("saved Script Tool requires name, description, and input schema")
-	}
-	tool := &scriptTool{
-		name: spec.Name, description: spec.Description, schema: spec.InputSchema,
-		engine: config.Engine, program: spec.Program, timeout: config.Timeout,
-	}
-	return agent.ToolDefinition{
-		Tool: tool, Descriptor: scriptDescriptor("", config.MaxResultBytes),
-		ImplementationIdentity: agent.CapabilityIdentity{
-			Kind: "denova.script_tool", Version: agentscript.ContractVersion,
 		},
 	}, nil
 }
@@ -119,9 +86,7 @@ type scriptTool struct {
 	description string
 	schema      *jsonschema.Schema
 	engine      *agentscript.Engine
-	program     agentscript.Program
 	timeout     time.Duration
-	immediate   bool
 }
 
 func (tool *scriptTool) Info(context.Context) (*agent.ToolInfo, error) {
@@ -144,25 +109,19 @@ func (tool *scriptTool) Run(ctx context.Context, arguments string, _ ...agent.To
 		), nil
 	}
 	ctx = contextWithScriptTool(ctx, tool.name)
-	program := tool.program
-	input := json.RawMessage(arguments)
-	if tool.immediate {
-		var request struct {
-			Source string          `json:"source"`
-			Input  json.RawMessage `json:"input"`
-		}
-		if err := json.Unmarshal([]byte(arguments), &request); err != nil {
-			return agent.ToolResult{}, fmt.Errorf("decode script arguments: %w", err)
-		}
-		if len(request.Input) == 0 {
-			request.Input = json.RawMessage(`{}`)
-		}
-		var diagnostics []agentscript.Diagnostic
-		program, diagnostics = tool.engine.Compile(ctx, agentscript.Source{Name: "script.js", Code: request.Source})
-		if len(diagnostics) != 0 {
-			return scriptDiagnosticsResult(diagnostics), nil
-		}
-		input = request.Input
+	var request struct {
+		Source string          `json:"source"`
+		Input  json.RawMessage `json:"input"`
+	}
+	if err := json.Unmarshal([]byte(arguments), &request); err != nil {
+		return agent.ToolResult{}, fmt.Errorf("decode script arguments: %w", err)
+	}
+	if len(request.Input) == 0 {
+		request.Input = json.RawMessage(`{}`)
+	}
+	program, diagnostics := tool.engine.Compile(ctx, agentscript.Source{Name: "script.js", Code: request.Source})
+	if len(diagnostics) != 0 {
+		return scriptDiagnosticsResult(diagnostics), nil
 	}
 	runContext := ctx
 	stop := func() {}
@@ -171,7 +130,7 @@ func (tool *scriptTool) Run(ctx context.Context, arguments string, _ ...agent.To
 	}
 	defer stop()
 	host := &scriptHost{}
-	run, err := tool.engine.Run(runContext, program, host, input)
+	run, err := tool.engine.Run(runContext, program, host, request.Input)
 	if err != nil {
 		return agent.ToolResult{}, err
 	}
@@ -290,16 +249,8 @@ func (host *scriptHost) CallTools(ctx context.Context, calls []agentscript.Call)
 }
 
 func blockedScriptHostCall(call agentscript.Call) string {
-	switch strings.TrimSpace(call.Name) {
-	case ScriptToolName:
+	if strings.TrimSpace(call.Name) == ScriptToolName {
 		return "Scripts cannot invoke the immediate script tool."
-	case "read":
-		var input struct {
-			Path string `json:"path"`
-		}
-		if json.Unmarshal(call.Arguments, &input) == nil && strings.HasPrefix(strings.ToLower(strings.TrimSpace(input.Path)), "harness://") {
-			return "Scripts cannot read User Harness State resources."
-		}
 	}
 	return ""
 }

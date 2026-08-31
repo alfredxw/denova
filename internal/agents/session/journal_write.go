@@ -16,14 +16,10 @@ import (
 )
 
 func createSession(id, filePath, title string) (*Session, error) {
-	return createSessionWithRuntimeConfig(id, filePath, title, nil, ChannelAgent)
+	return createSessionWithRuntimeConfig(id, filePath, title, nil)
 }
 
-func createSessionWithRuntimeConfig(id, filePath, title string, runtimeConfig *conversationconfig.Config, channel Channel) (*Session, error) {
-	channel, err := ParseChannel(string(channel))
-	if err != nil {
-		return nil, err
-	}
+func createSessionWithRuntimeConfig(id, filePath, title string, runtimeConfig *conversationconfig.Config) (*Session, error) {
 	now := time.Now().UTC()
 	incarnationID := newSessionJournalIncarnationID()
 	if strings.TrimSpace(title) == "" {
@@ -33,7 +29,6 @@ func createSessionWithRuntimeConfig(id, filePath, title string, runtimeConfig *c
 		Type:          "session",
 		Version:       journalFormatVersion,
 		ID:            id,
-		Channel:       channel,
 		IncarnationID: incarnationID,
 		Title:         title,
 		CreatedAt:     now,

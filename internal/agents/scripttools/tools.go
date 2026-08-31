@@ -1,5 +1,5 @@
-// Package scripttools assembles Denova's immediate and saved Script Tool
-// definitions. JavaScript execution itself remains in the reusable agent module.
+// Package scripttools assembles Denova's immediate Script Tool definitions.
+// JavaScript execution itself remains in the reusable agent module.
 package scripttools
 
 import (
@@ -8,38 +8,12 @@ import (
 	"time"
 
 	"denova/config"
-	"denova/internal/agents/harnessstate"
 	"denova/internal/agents/toolresult"
 
 	agent "github.com/alfredxw/denova/agent"
 	agentscript "github.com/alfredxw/denova/agent/script"
 	publictools "github.com/alfredxw/denova/agent/tools"
 )
-
-// Saved materializes the current Harness contribution with the same Engine
-// policy used by the immediate script tool.
-func Saved(
-	cfg *config.Config,
-	harness harnessstate.Harness,
-	agentKind string,
-) ([]agent.ToolDefinition, error) {
-	if !config.ResolveAgentTools(cfg, agentKind).Allows(config.AgentToolScript) {
-		return nil, nil
-	}
-	scriptConfig, err := engineConfig(cfg)
-	if err != nil {
-		return nil, fmt.Errorf("configure Script Tools: %w", err)
-	}
-	targets := []string{agentKind}
-	if definition, ok := config.FindActiveCustomAgent(cfg); ok && config.CustomAgentRuntimeKind(definition) == agentKind {
-		targets = append(targets, definition.ID)
-	}
-	definitions, err := harness.ScriptToolDefinitions(targets, scriptConfig)
-	if err != nil {
-		return nil, fmt.Errorf("materialize Script Tools for Agent %s: %w", agentKind, err)
-	}
-	return definitions, nil
-}
 
 // Immediate constructs the model-visible script entry point.
 func Immediate(cfg *config.Config) (agent.ToolDefinition, error) {

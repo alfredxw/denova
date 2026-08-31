@@ -157,6 +157,7 @@ type Index struct {
 type StorySummary struct {
 	ID                string                   `json:"id"`
 	Title             string                   `json:"title"`
+	TitleSource       string                   `json:"title_source"`
 	Origin            string                   `json:"origin"`
 	Protagonist       StoryProtagonist         `json:"protagonist"`
 	StoryTellerID     string                   `json:"story_teller_id"`
@@ -227,6 +228,7 @@ type StoryMeta struct {
 	Type                      string                           `json:"type"`
 	StoryID                   string                           `json:"story_id"`
 	Title                     string                           `json:"title"`
+	TitleSource               string                           `json:"title_source"`
 	Origin                    string                           `json:"origin"`
 	Protagonist               StoryProtagonist                 `json:"protagonist"`
 	StoryTellerID             string                           `json:"story_teller_id"`

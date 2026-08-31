@@ -13,12 +13,12 @@ import (
 	workspacechange "denova/internal/workspace/change"
 )
 
-var ErrBookVersionsUnsupported = errors.New("project does not support Book versions")
+var ErrVersionsUnsupported = errors.New("project does not support versions")
 
-// BookVersionResources is the shared versioning projection for one stable
-// Book Project. Callers may inspect these dependencies, but visible workspace
+// VersionResources is the shared versioning projection for one stable
+// Project. Callers may inspect these dependencies, but visible workspace
 // mutations must still pass through the Project change boundary.
-type BookVersionResources struct {
+type VersionResources struct {
 	ProjectID      string
 	Workspace      string
 	StateRoot      string
@@ -27,31 +27,31 @@ type BookVersionResources struct {
 	Settings       book.VersionAutoSettings
 }
 
-// BookVersions resolves the one version service shared by file mutations,
+// ProjectVersions resolves the one version service shared by file mutations,
 // AgentChat runs, and version-management requests for a Project generation.
-func (service *Service) BookVersions(projectID string) (BookVersionResources, error) {
+func (service *Service) ProjectVersions(projectID string) (VersionResources, error) {
 	if service == nil {
-		return BookVersionResources{}, fmt.Errorf("project-file service is unavailable")
+		return VersionResources{}, fmt.Errorf("project-file service is unavailable")
 	}
 	runtime, err := service.resolve(strings.TrimSpace(projectID))
 	if err != nil {
-		return BookVersionResources{}, err
+		return VersionResources{}, err
 	}
-	if runtime.record.Type != projectdomain.TypeBook {
-		return BookVersionResources{}, ErrBookVersionsUnsupported
+	if !supportsVersions(runtime.record.Type) {
+		return VersionResources{}, ErrVersionsUnsupported
 	}
-	versioning := service.bookMutationVersioning(runtime)
+	versioning := service.mutationVersioning(runtime)
 	if versioning.Service == nil {
-		return BookVersionResources{}, fmt.Errorf("Book version service is unavailable")
+		return VersionResources{}, fmt.Errorf("Project version service is unavailable")
 	}
-	return BookVersionResources{
+	return VersionResources{
 		ProjectID: runtime.record.ID, Workspace: runtime.layout.ContentRoot, StateRoot: runtime.layout.StateRoot,
 		Files: runtime.files, VersionService: versioning.Service, Settings: versioning.Settings,
 	}, nil
 }
 
 func (service *Service) VersionStatus(ctx context.Context, projectID string) (book.VersionStatus, error) {
-	resources, changes, err := service.bookVersionOperation(projectID)
+	resources, changes, err := service.versionOperation(projectID)
 	if err != nil {
 		return book.VersionStatus{}, err
 	}
@@ -65,7 +65,7 @@ func (service *Service) VersionStatus(ctx context.Context, projectID string) (bo
 }
 
 func (service *Service) VersionHistory(projectID string, limit int) ([]book.VersionEntry, error) {
-	resources, err := service.BookVersions(projectID)
+	resources, err := service.ProjectVersions(projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +73,7 @@ func (service *Service) VersionHistory(projectID string, limit int) ([]book.Vers
 }
 
 func (service *Service) CreateVersion(ctx context.Context, projectID, message, source string) (book.VersionCommandResult, error) {
-	resources, changes, err := service.bookVersionOperation(projectID)
+	resources, changes, err := service.versionOperation(projectID)
 	if err != nil {
 		return book.VersionCommandResult{}, err
 	}
@@ -87,7 +87,7 @@ func (service *Service) CreateVersion(ctx context.Context, projectID, message, s
 }
 
 func (service *Service) VersionDiff(ctx context.Context, projectID, versionID, path string, comparison book.VersionDiffComparison) (book.VersionDiff, error) {
-	resources, changes, err := service.bookVersionOperation(projectID)
+	resources, changes, err := service.versionOperation(projectID)
 	if err != nil {
 		return book.VersionDiff{}, err
 	}
@@ -101,7 +101,7 @@ func (service *Service) VersionDiff(ctx context.Context, projectID, versionID, p
 }
 
 func (service *Service) VersionRestorePlan(ctx context.Context, projectID, versionID string, paths []string) (book.VersionRestorePlan, error) {
-	resources, changes, err := service.bookVersionOperation(projectID)
+	resources, changes, err := service.versionOperation(projectID)
 	if err != nil {
 		return book.VersionRestorePlan{}, err
 	}
@@ -115,7 +115,7 @@ func (service *Service) VersionRestorePlan(ctx context.Context, projectID, versi
 }
 
 func (service *Service) RestoreVersion(ctx context.Context, projectID, versionID string, paths []string) (book.VersionRestoreResult, error) {
-	resources, changes, err := service.bookVersionOperation(projectID)
+	resources, changes, err := service.versionOperation(projectID)
 	if err != nil {
 		return book.VersionRestoreResult{}, err
 	}
@@ -131,19 +131,18 @@ func (service *Service) RestoreVersion(ctx context.Context, projectID, versionID
 	return result, err
 }
 
-func (service *Service) bookVersionOperation(projectID string) (BookVersionResources, *workspacechange.Service, error) {
-	resources, err := service.BookVersions(projectID)
+func (service *Service) versionOperation(projectID string) (VersionResources, *workspacechange.Service, error) {
+	resources, err := service.ProjectVersions(projectID)
 	if err != nil {
-		return BookVersionResources{}, nil, err
+		return VersionResources{}, nil, err
 	}
 	changes, err := workspacechange.ForWorkspaceAt(resources.Workspace, resources.StateRoot)
 	return resources, changes, err
 }
 
-// ScheduleBookAutoVersion marks a Project Book dirty using the same scheduler
-// and layered settings as project-file writes. General projects intentionally
-// have no Book version history and are a no-op.
-func (service *Service) ScheduleBookAutoVersion(projectID string) error {
+// ScheduleAutoVersion marks a version-capable Project dirty using the same
+// scheduler and layered settings as project-file writes.
+func (service *Service) ScheduleAutoVersion(projectID string) error {
 	if service == nil {
 		return fmt.Errorf("project-file service is unavailable")
 	}
@@ -152,10 +151,10 @@ func (service *Service) ScheduleBookAutoVersion(projectID string) error {
 	if err != nil {
 		return err
 	}
-	if runtime.record.Type != projectdomain.TypeBook {
+	if !supportsVersions(runtime.record.Type) {
 		return nil
 	}
-	versioning := service.bookMutationVersioning(runtime)
+	versioning := service.mutationVersioning(runtime)
 	if versioning.Service != nil {
 		versioning.Service.ScheduleAutoVersion(versioning.Settings)
 	}
@@ -177,13 +176,17 @@ type cachedBookVersioning struct {
 	service    *book.VersionService
 }
 
-func (service *Service) bookMutationVersioning(runtime projectRuntime) BookMutationVersioning {
-	if runtime.record.Type != projectdomain.TypeBook {
-		return BookMutationVersioning{}
+func supportsVersions(projectType projectdomain.Type) bool {
+	return projectType == projectdomain.TypeBook || projectType == projectdomain.TypeAgents
+}
+
+func (service *Service) mutationVersioning(runtime projectRuntime) MutationVersioning {
+	if !supportsVersions(runtime.record.Type) {
+		return MutationVersioning{}
 	}
 	settings := book.DefaultVersionAutoSettings()
-	if service.bookVersioningProvider != nil {
-		hostVersioning := service.bookVersioningProvider.ProjectFileBookMutationVersioning(
+	if service.versioningProvider != nil {
+		hostVersioning := service.versioningProvider.ProjectFileMutationVersioning(
 			runtime.record.ID,
 			runtime.layout.ContentRoot,
 			runtime.layout.StateRoot,
@@ -193,7 +196,7 @@ func (service *Service) bookMutationVersioning(runtime projectRuntime) BookMutat
 			return hostVersioning
 		}
 	}
-	return BookMutationVersioning{
+	return MutationVersioning{
 		Service: service.versions.resolve(
 			runtime.record.ID,
 			runtime.layout.ContentRoot,

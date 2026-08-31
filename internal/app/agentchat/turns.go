@@ -211,7 +211,7 @@ func (service *Service) AcceptTurn(ctx context.Context, input TurnRequest) (*Acc
 	}
 	agentHost, err := service.host.ProjectAgentHostCapabilities(ctx, runtime.ProjectType, &runtime.Config, runtime.AgentKind)
 	if err != nil {
-		return nil, fmt.Errorf("build AgentChat Harness State capabilities: %w", err)
+		return nil, fmt.Errorf("build AgentChat host capabilities: %w", err)
 	}
 	builtAgent, err := appagentruntime.BuildConversationAgent(
 		ctx, &runtime.Config, runtime.State, runtime.IDETeller, runtime.AgentKind,
@@ -314,7 +314,7 @@ func applyTurnPolicy(runtime *conversationapp.Runtime, policy TurnPolicy) error 
 	switch runtime.AgentKind {
 	case agentrun.AgentKindIDE:
 		runtime.Config.AgentTools.IDE = override
-	case agentrun.AgentKindGeneral, agentrun.AgentKindHarness:
+	case agentrun.AgentKindGeneral:
 		runtime.Config.AgentTools.General = override
 	default:
 		return fmt.Errorf("unsupported project Agent kind %q", runtime.AgentKind)

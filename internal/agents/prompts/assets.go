@@ -12,9 +12,6 @@ import (
 //go:embed assets/general-agent.md
 var generalAgentWorkflowAsset string
 
-//go:embed assets/harness-agent.md
-var harnessAgentWorkflowAsset string
-
 //go:embed assets/context-compaction.md
 var contextCompactionWorkflowAsset string
 

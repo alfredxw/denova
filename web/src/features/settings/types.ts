@@ -83,10 +83,6 @@ export interface Settings {
 
 export interface LabSettings {
   developer_mode?: boolean | null
-  harness_state_enabled?: boolean | null
-  continual_learning_schedule?: boolean | null
-  continual_learning_interval_hours?: number | null
-  continual_learning_trajectory_cap?: number | null
 }
 
 export type ShellEnvironmentMode = 'auto' | 'process'
@@ -390,7 +386,7 @@ export type AgentToolCapability =
   | 'skills'
   | 'delegation'
   | 'script'
-  | 'harness_state'
+  | 'trajectory'
   | 'config_read'
   | 'config_apply'
   | 'event_read'

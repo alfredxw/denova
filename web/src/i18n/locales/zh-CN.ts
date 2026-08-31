@@ -41,7 +41,6 @@ import narrativeStyle from './zh-CN/narrativeStyle'
 import agentChat from './zh-CN/agentChat'
 import agentApproval from './zh-CN/agentApproval'
 import files from './zh-CN/files'
-import continualLearning from './zh-CN/continualLearning'
 import trajectory from './zh-CN/trajectory'
 
 const zhCN = {
@@ -88,7 +87,6 @@ const zhCN = {
   ...agentChat,
   ...agentApproval,
   ...files,
-  ...continualLearning,
   ...trajectory,
   'agents.tool.availability.runtimeCheck': '运行时检查',
 } as const

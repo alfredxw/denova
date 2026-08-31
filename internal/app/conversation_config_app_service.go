@@ -32,15 +32,14 @@ const (
 // creator-visible conversation surface. AgentKind is always derived server
 // side from the owning project/mode and is never caller-controlled.
 type ConversationConfigBinding struct {
-	Mode       string          `json:"mode"`
-	ProjectID  string          `json:"project_id,omitempty"`
-	SessionID  string          `json:"session_id,omitempty"`
-	Channel    session.Channel `json:"channel,omitempty"`
-	StoryID    string          `json:"story_id,omitempty"`
-	BranchID   string          `json:"branch_id,omitempty"`
-	Origin     string          `json:"origin,omitempty"`
-	ResourceID string          `json:"resource_id,omitempty"`
-	RunID      string          `json:"run_id,omitempty"`
+	Mode       string `json:"mode"`
+	ProjectID  string `json:"project_id,omitempty"`
+	SessionID  string `json:"session_id,omitempty"`
+	StoryID    string `json:"story_id,omitempty"`
+	BranchID   string `json:"branch_id,omitempty"`
+	Origin     string `json:"origin,omitempty"`
+	ResourceID string `json:"resource_id,omitempty"`
+	RunID      string `json:"run_id,omitempty"`
 }
 
 // ConversationConfigPatch is the application-facing mutation contract. The
@@ -82,7 +81,7 @@ func (a *App) ConversationGoal(ctx context.Context, binding ConversationConfigBi
 		}
 		return runtime.Goal(ctx, options)
 	case ConversationModeAgentChat:
-		return a.AgentChat().ConversationGoal(ctx, agentchatapp.Binding{ProjectID: binding.ProjectID, SessionID: binding.SessionID, Channel: binding.Channel})
+		return a.AgentChat().ConversationGoal(ctx, agentchatapp.Binding{ProjectID: binding.ProjectID, SessionID: binding.SessionID})
 	case ConversationModeInteractive:
 		if err := a.requireForegroundConversationProject(binding.ProjectID); err != nil {
 			return agent.GoalState{}, false, err
@@ -129,7 +128,7 @@ func (a *App) MutateConversationGoal(ctx context.Context, binding ConversationCo
 		}
 		return runtime.UpdateGoal(ctx, options, goalMutation)
 	case ConversationModeAgentChat:
-		return a.AgentChat().MutateConversationGoal(ctx, agentchatapp.Binding{ProjectID: binding.ProjectID, SessionID: binding.SessionID, Channel: binding.Channel}, action, mutation.Objective, mutation.ExpectedRevision)
+		return a.AgentChat().MutateConversationGoal(ctx, agentchatapp.Binding{ProjectID: binding.ProjectID, SessionID: binding.SessionID}, action, mutation.Objective, mutation.ExpectedRevision)
 	case ConversationModeInteractive:
 		if err := a.requireForegroundConversationProject(binding.ProjectID); err != nil {
 			return agent.GoalState{}, err
@@ -242,7 +241,7 @@ func (a *App) ConversationConfig(ctx context.Context, binding ConversationConfig
 		return a.writingConversationConfig(binding)
 	case ConversationModeAgentChat:
 		return a.AgentChat().ConversationConfig(ctx, agentchatapp.Binding{
-			ProjectID: binding.ProjectID, SessionID: binding.SessionID, Channel: binding.Channel,
+			ProjectID: binding.ProjectID, SessionID: binding.SessionID,
 		})
 	case ConversationModeInteractive:
 		if err := a.requireForegroundConversationProject(binding.ProjectID); err != nil {
@@ -272,7 +271,7 @@ func (a *App) PatchConversationConfig(ctx context.Context, binding ConversationC
 		return a.patchWritingConversationConfig(binding, change, baseRevision)
 	case ConversationModeAgentChat:
 		return a.AgentChat().PatchConversationConfig(ctx, agentchatapp.Binding{
-			ProjectID: binding.ProjectID, SessionID: binding.SessionID, Channel: binding.Channel,
+			ProjectID: binding.ProjectID, SessionID: binding.SessionID,
 		}, change, baseRevision)
 	case ConversationModeInteractive:
 		if err := a.requireForegroundConversationProject(binding.ProjectID); err != nil {

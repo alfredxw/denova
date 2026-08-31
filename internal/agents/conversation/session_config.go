@@ -80,26 +80,13 @@ func EnsureSession(sess *session.Session, runtime *config.Config, agentKind stri
 
 // GetOrCreateSession resolves and durably initializes one conversation.
 func GetOrCreateSession(store *session.Store, sessionID string, runtime *config.Config, agentKind string) (*session.Session, conversationconfig.Snapshot, error) {
-	return GetOrCreateSessionWithChannel(store, sessionID, runtime, agentKind, session.ChannelAgent)
-}
-
-// GetOrCreateSessionWithChannel persists list classification only when the
-// caller materializes a new conversation. Existing Sessions retain their
-// immutable header value.
-func GetOrCreateSessionWithChannel(
-	store *session.Store,
-	sessionID string,
-	runtime *config.Config,
-	agentKind string,
-	channel session.Channel,
-) (*session.Session, conversationconfig.Snapshot, error) {
-	return resolveSession(store, sessionID, runtime, agentKind, channel, true)
+	return resolveSession(store, sessionID, runtime, agentKind, true)
 }
 
 // PreviewSession resolves what a new conversation would inherit without
 // persisting an empty draft.
 func PreviewSession(store *session.Store, sessionID string, runtime *config.Config, agentKind string) (conversationconfig.Snapshot, error) {
-	_, snapshot, err := resolveSession(store, sessionID, runtime, agentKind, session.ChannelAgent, false)
+	_, snapshot, err := resolveSession(store, sessionID, runtime, agentKind, false)
 	return snapshot, err
 }
 
@@ -108,7 +95,6 @@ func resolveSession(
 	sessionID string,
 	runtime *config.Config,
 	agentKind string,
-	channel session.Channel,
 	create bool,
 ) (*session.Session, conversationconfig.Snapshot, error) {
 	if store == nil {
@@ -129,7 +115,7 @@ func resolveSession(
 	if !create {
 		return nil, conversationconfig.Snapshot{Config: seed}, nil
 	}
-	sess, err := store.GetOrCreateWithRuntimeConfig(sessionID, seed, channel)
+	sess, err := store.GetOrCreateWithRuntimeConfig(sessionID, seed)
 	if err != nil {
 		return nil, conversationconfig.Snapshot{}, err
 	}

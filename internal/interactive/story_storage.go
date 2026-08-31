@@ -152,7 +152,7 @@ func storySummaryFromProjection(projection *storyJournalProjection) StorySummary
 	}
 	meta := projection.Meta
 	return normalizeStorySummary(StorySummary{
-		ID: meta.StoryID, Title: meta.Title, Origin: meta.Origin,
+		ID: meta.StoryID, Title: meta.Title, TitleSource: meta.TitleSource, Origin: meta.Origin,
 		Protagonist:   meta.Protagonist,
 		StoryTellerID: meta.StoryTellerID, StoryDirectorID: normalizedStoryDirectorID(meta.StoryDirectorID),
 		ModuleRefs:       cloneStoryDirectorModuleRefs(meta.ModuleRefs),

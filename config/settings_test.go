@@ -27,9 +27,6 @@ func TestDefaultSettingsValues(t *testing.T) {
 	if s.AutoSaveEnabled == nil || *s.AutoSaveEnabled != true {
 		t.Fatalf("AutoSaveEnabled default")
 	}
-	if s.Labs.HarnessStateEnabled == nil || !*s.Labs.HarnessStateEnabled {
-		t.Fatalf("HarnessStateEnabled should default on")
-	}
 	if s.VersionTimedEnabled == nil || !*s.VersionTimedEnabled {
 		t.Fatalf("VersionTimedEnabled should default on")
 	}
@@ -672,13 +669,10 @@ func TestLoadLayeredKeepsGeneralSettingsUserScopedAndAppliesWorkspaceAgentOverri
 }
 
 func TestWithResolvedLabsNormalizesInheritedValues(t *testing.T) {
-	invalidCap := 0
-	resolved := withResolvedLabs(Settings{Labs: LabSettings{ContinualLearningTrajectoryCap: &invalidCap}})
-	if got := resolved.Labs.ContinualLearningTrajectoryCap; got == nil || *got != DefaultContinualLearningTrajectoryCap {
-		t.Fatalf("inherited trajectory cap = %v, want %d", got, DefaultContinualLearningTrajectoryCap)
-	}
-	if got := resolved.Labs.HarnessStateEnabled; got == nil || !*got {
-		t.Fatalf("Harness State should default on: %v", got)
+	enabled := true
+	resolved := withResolvedLabs(Settings{Labs: LabSettings{DeveloperMode: &enabled}})
+	if got := resolved.Labs.DeveloperMode; got == nil || !*got {
+		t.Fatalf("Developer Mode should remain enabled: %v", got)
 	}
 }
 

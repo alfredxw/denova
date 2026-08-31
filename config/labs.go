@@ -4,35 +4,16 @@ package config
 // fields preserve layered-settings inheritance; workspaces never override
 // these product capabilities.
 type LabSettings struct {
-	DeveloperMode                  *bool `toml:"developer_mode,omitempty" json:"developer_mode,omitempty"`
-	HarnessStateEnabled            *bool `toml:"harness_state_enabled,omitempty" json:"harness_state_enabled,omitempty"`
-	ContinualLearningSchedule      *bool `toml:"continual_learning_schedule,omitempty" json:"continual_learning_schedule,omitempty"`
-	ContinualLearningIntervalHours *int  `toml:"continual_learning_interval_hours,omitempty" json:"continual_learning_interval_hours,omitempty"`
-	ContinualLearningTrajectoryCap *int  `toml:"continual_learning_trajectory_cap,omitempty" json:"continual_learning_trajectory_cap,omitempty"`
+	DeveloperMode *bool `toml:"developer_mode,omitempty" json:"developer_mode,omitempty"`
 }
 
 type ResolvedLabs struct {
-	DeveloperMode                  bool `toml:"developer_mode" json:"developer_mode"`
-	HarnessStateEnabled            bool `toml:"harness_state_enabled" json:"harness_state_enabled"`
-	ContinualLearningSchedule      bool `toml:"continual_learning_schedule" json:"continual_learning_schedule"`
-	ContinualLearningIntervalHours int  `toml:"continual_learning_interval_hours" json:"continual_learning_interval_hours"`
-	ContinualLearningTrajectoryCap int  `toml:"continual_learning_trajectory_cap" json:"continual_learning_trajectory_cap"`
+	DeveloperMode bool `toml:"developer_mode" json:"developer_mode"`
 }
-
-const (
-	DefaultContinualLearningIntervalHours = 24
-	DefaultContinualLearningTrajectoryCap = 100
-	MaxContinualLearningIntervalHours     = 24 * 30
-	MaxContinualLearningTrajectoryCap     = 500
-)
 
 func DefaultLabSettings() LabSettings {
 	return LabSettings{
-		DeveloperMode:                  boolPtr(false),
-		HarnessStateEnabled:            boolPtr(true),
-		ContinualLearningSchedule:      boolPtr(false),
-		ContinualLearningIntervalHours: intPtr(DefaultContinualLearningIntervalHours),
-		ContinualLearningTrajectoryCap: intPtr(DefaultContinualLearningTrajectoryCap),
+		DeveloperMode: boolPtr(false),
 	}
 }
 
@@ -41,34 +22,11 @@ func MergeLabSettings(parent, child LabSettings) LabSettings {
 	if child.DeveloperMode != nil {
 		out.DeveloperMode = child.DeveloperMode
 	}
-	if child.HarnessStateEnabled != nil {
-		out.HarnessStateEnabled = child.HarnessStateEnabled
-	}
-	if child.ContinualLearningSchedule != nil {
-		out.ContinualLearningSchedule = child.ContinualLearningSchedule
-	}
-	if child.ContinualLearningIntervalHours != nil {
-		out.ContinualLearningIntervalHours = child.ContinualLearningIntervalHours
-	}
-	if child.ContinualLearningTrajectoryCap != nil {
-		out.ContinualLearningTrajectoryCap = child.ContinualLearningTrajectoryCap
-	}
 	return out
 }
 
 func ResolveLabs(settings LabSettings) ResolvedLabs {
 	return ResolvedLabs{
-		DeveloperMode:                  boolValue(settings.DeveloperMode, false),
-		HarnessStateEnabled:            boolValue(settings.HarnessStateEnabled, true),
-		ContinualLearningSchedule:      boolValue(settings.ContinualLearningSchedule, false),
-		ContinualLearningIntervalHours: boundedLabInt(settings.ContinualLearningIntervalHours, DefaultContinualLearningIntervalHours, 1, MaxContinualLearningIntervalHours),
-		ContinualLearningTrajectoryCap: boundedLabInt(settings.ContinualLearningTrajectoryCap, DefaultContinualLearningTrajectoryCap, 1, MaxContinualLearningTrajectoryCap),
+		DeveloperMode: boolValue(settings.DeveloperMode, false),
 	}
-}
-
-func boundedLabInt(value *int, fallback, minimum, maximum int) int {
-	if value == nil || *value < minimum || *value > maximum {
-		return fallback
-	}
-	return *value
 }

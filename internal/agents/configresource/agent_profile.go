@@ -106,7 +106,17 @@ func newAgentProfileResource(cfg *config.Config) Adapter {
 			if err != nil {
 				return nil, err
 			}
-			revision, err := config.MutateSettingsFile(path, mutation.Revision, func(settings config.Settings) (config.Settings, error) {
+			mutate := config.MutateSettingsFile
+			if scope == "user" {
+				mutate = func(_ string, revision string, apply func(config.Settings) (config.Settings, error)) (string, error) {
+					dataDir := ""
+					if cfg != nil {
+						dataDir = cfg.DataDir()
+					}
+					return config.MutateUserSettings(dataDir, revision, apply)
+				}
+			}
+			revision, err := mutate(path, mutation.Revision, func(settings config.Settings) (config.Settings, error) {
 				if err := applyAgentProfileMutation(&settings, layered, scope, kind, mutation, value); err != nil {
 					return config.Settings{}, err
 				}

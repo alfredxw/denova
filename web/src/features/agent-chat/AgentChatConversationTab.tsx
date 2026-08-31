@@ -15,7 +15,6 @@ import {
 } from '@/features/changes/types'
 import { useAgentChat } from '@/hooks/useAgentChat'
 import { createProjectAgentChatClient } from '@/hooks/agent-chat-client'
-import type { AgentChatSessionChannel } from './api'
 
 export interface AgentChatPendingAction {
   id: string
@@ -25,10 +24,9 @@ export interface AgentChatPendingAction {
 
 export interface AgentChatConversationTabProps {
   projectId: string
-  projectType: 'book' | 'general' | 'harness'
+  projectType: 'book' | 'general' | 'agents'
   workspace: string
   sessionId: string
-  sessionChannel?: AgentChatSessionChannel
   /** Changes when an external owner starts or settles a turn in this durable conversation. */
   syncRevision?: string
   draft?: boolean
@@ -105,7 +103,6 @@ function AgentChatConversationTabComponent({
   projectType,
   workspace,
   sessionId,
-  sessionChannel = 'agent',
   syncRevision = '',
   draft = false,
   active,
@@ -128,8 +125,8 @@ function AgentChatConversationTabComponent({
   host,
 }: AgentChatConversationTabProps) {
   const client = useMemo(
-    () => createProjectAgentChatClient(projectId, sessionId, sessionChannel === 'agent' ? '' : sessionChannel),
-    [projectId, sessionChannel, sessionId],
+    () => createProjectAgentChatClient(projectId, sessionId),
+    [projectId, sessionId],
   )
   const chat = useAgentChat({
     projectId,
@@ -332,7 +329,7 @@ function AgentChatConversationTabComponent({
       activeSessionId={chat.activeSessionId || sessionId}
       sessionDraft={draft}
       sessionTransitionPending={host?.sessionTransitionPending}
-      conversationBinding={{ mode: 'agent_chat', project_id: projectId, session_id: sessionId, channel: sessionChannel }}
+      conversationBinding={{ mode: 'agent_chat', project_id: projectId, session_id: sessionId }}
       isStreaming={chat.isStreaming}
       isExecutionActive={chat.isExecutionActive}
       runtimeProjection={chat.runtimeProjection}

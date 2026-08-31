@@ -142,18 +142,6 @@ export function LoreWorkspaceEditor({
           error={autosaveError}
           onRetry={() => void onFlush()}
         />
-        {draft.type === 'character' ? (
-          <TooltipIconButton
-            label={t(protagonistTagActive ? 'loreWorkspace.unmarkProtagonist' : 'loreWorkspace.markProtagonist')}
-            size="icon-sm"
-            tooltipSide="bottom"
-            aria-pressed={protagonistTagActive}
-            onClick={toggleProtagonistTag}
-            className={protagonistTagActive ? 'bg-[var(--nova-warning-bg)] text-[var(--nova-warning)] hover:bg-[var(--nova-warning-bg)] hover:text-[var(--nova-warning)]' : undefined}
-          >
-            <Star className={protagonistTagActive ? 'fill-current' : undefined} />
-          </TooltipIconButton>
-        ) : null}
         {onReferenceItem ? (
           <Button
             type="button"
@@ -311,13 +299,28 @@ export function LoreWorkspaceEditor({
             label={t('settingPanel.field.tags')}
             className="sm:col-span-2"
           >
-            <Input
-              aria-label={t('settingPanel.field.tags')}
-              className="nova-field h-8"
-              value={tagDraft}
-              onChange={(event) => onTagDraftChange(event.target.value)}
-              placeholder={t('settingPanel.placeholder.tags')}
-            />
+            <div className="flex min-w-0 items-center gap-1.5">
+              <Input
+                aria-label={t('settingPanel.field.tags')}
+                className="nova-field h-8 min-w-0 flex-1"
+                value={tagDraft}
+                onChange={(event) => onTagDraftChange(event.target.value)}
+                placeholder={t('settingPanel.placeholder.tags')}
+              />
+              {draft.type === 'character' ? (
+                <TooltipIconButton
+                  label={t(protagonistTagActive ? 'loreWorkspace.unmarkProtagonist' : 'loreWorkspace.markProtagonist')}
+                  variant="outline"
+                  size="icon"
+                  tooltipSide="bottom"
+                  aria-pressed={protagonistTagActive}
+                  onClick={toggleProtagonistTag}
+                  className={protagonistTagActive ? 'border-[var(--nova-warning)] bg-[var(--nova-warning-bg)] text-[var(--nova-warning)] hover:bg-[var(--nova-warning-bg)] hover:text-[var(--nova-warning)]' : undefined}
+                >
+                  <Star data-icon="inline-start" className={protagonistTagActive ? 'fill-current' : undefined} />
+                </TooltipIconButton>
+              ) : null}
+            </div>
           </MetadataField>
           <MetadataField
             label={t('settingPanel.field.brief')}

@@ -18,7 +18,6 @@ import {
   getAgentChatProjects,
   renameAgentChatSession,
   type AgentChatSession,
-  type AgentChatSessionChannel,
   type AgentChatProjectType,
 } from './api'
 import { readAgentChatActiveSession, writeAgentChatActiveSession } from './session-preferences'
@@ -52,7 +51,8 @@ type RequiredWorkspaceProps = Pick<AgentPanelProps,
 
 export type WritingAgentWorkspaceProps = RequiredWorkspaceProps & Partial<AgentPanelProps> & {
   projectType?: AgentChatProjectType
-  sessionChannel?: AgentChatSessionChannel
+  /** Keeps only this surface's selected conversation local; it does not partition Project sessions. */
+  activeSessionPreferenceScope?: string
   pendingAction?: AgentChatPendingAction | null
   onPendingActionConsumed?: (id: string) => void
   messageTransform?: (message: string) => string
@@ -64,7 +64,7 @@ type WorkspaceSession = AgentChatSession & { draft?: boolean }
 
 export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
   const { t } = useTranslation()
-  const sessionChannel = props.sessionChannel ?? 'agent'
+  const activeSessionPreferenceScope = props.activeSessionPreferenceScope ?? ''
   const [sessions, setSessions] = useState<WorkspaceSession[]>([])
   const [activeSessionId, setActiveSessionId] = useState('')
   const [mountedSessionIds, setMountedSessionIds] = useState<string[]>([])
@@ -78,8 +78,8 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
   sessionsRef.current = sessions
 
   const storeActiveSession = useCallback((sessionId: string) => {
-    writeAgentChatActiveSession(props.projectId, sessionId, sessionChannel)
-  }, [props.projectId, sessionChannel])
+    writeAgentChatActiveSession(props.projectId, sessionId, activeSessionPreferenceScope)
+  }, [activeSessionPreferenceScope, props.projectId])
 
   const selectSession = useCallback((sessionId: string) => {
     if (!sessionId || !sessionsRef.current.some((session) => session.id === sessionId)) return
@@ -90,7 +90,7 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
   }, [storeActiveSession])
 
   const refreshSessions = useCallback(async () => {
-    const projects = await getAgentChatProjects(sessionChannel === 'agent' ? undefined : { channel: sessionChannel })
+    const projects = await getAgentChatProjects()
     const project = projects.find((candidate) => candidate.id === props.projectId)
     if (!project) throw new Error(`Writing Agent Project is unavailable: ${props.projectId}`)
     const persistedIDs = new Set(project.sessions.map((session) => session.id))
@@ -99,7 +99,7 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
     sessionsRef.current = nextSessions
     setSessions(nextSessions)
     setActiveSessionId((current) => {
-      const stored = readAgentChatActiveSession(props.projectId, sessionChannel)
+      const stored = readAgentChatActiveSession(props.projectId, activeSessionPreferenceScope)
       const next = firstAvailableSession(nextSessions, current, stored, props.activeSessionId)
       if (next) storeActiveSession(next)
       return next
@@ -107,7 +107,7 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
     setMountedSessionIds((current) => {
       const available = new Set(nextSessions.map((session) => session.id))
       const retained = current.filter((sessionId) => available.has(sessionId))
-      const selected = firstAvailableSession(nextSessions, activeSessionId, readAgentChatActiveSession(props.projectId, sessionChannel), props.activeSessionId)
+      const selected = firstAvailableSession(nextSessions, activeSessionId, readAgentChatActiveSession(props.projectId, activeSessionPreferenceScope), props.activeSessionId)
       return uniqueStrings([
         ...retained,
         ...nextSessions.filter((session) => session.running).map((session) => session.id),
@@ -116,7 +116,7 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
     })
     setError('')
     return nextSessions
-  }, [activeSessionId, props.activeSessionId, props.projectId, sessionChannel, storeActiveSession])
+  }, [activeSessionId, activeSessionPreferenceScope, props.activeSessionId, props.projectId, storeActiveSession])
 
   const createDraftSession = useCallback((title = '') => {
     const existing = sessionsRef.current.find((session) => session.draft)
@@ -127,7 +127,6 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
     const now = new Date().toISOString()
     const draft: WorkspaceSession = {
       id: `s-${nanoid()}`,
-      channel: sessionChannel,
       title: title.trim() || t('chat.newSession'),
       created_at: now,
       updated_at: now,
@@ -144,7 +143,7 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
     setView('chat')
     storeActiveSession(draft.id)
     return draft
-  }, [selectSession, sessionChannel, storeActiveSession, t])
+  }, [selectSession, storeActiveSession, t])
 
   useEffect(() => {
     let cancelled = false
@@ -173,7 +172,7 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
         if (!cancelled) setLoading(false)
       })
     return () => { cancelled = true }
-  }, [props.projectId, sessionChannel]) // Project or list channel changes reset every mounted transport.
+  }, [activeSessionPreferenceScope, props.projectId]) // Project or surface preference changes reset mounted transports.
 
   useEffect(() => {
     const onProjectUpdated = (event: Event) => {
@@ -198,7 +197,7 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
     }
     setSessionPending(true)
     try {
-      const created = await createAgentChatSession(props.projectId, title ?? '', customAgentId, sessionChannel)
+      const created = await createAgentChatSession(props.projectId, title ?? '', customAgentId)
       const next = sortSessions([
         created,
         ...sessionsRef.current.filter((session) => (
@@ -222,7 +221,7 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
     } finally {
       setSessionPending(false)
     }
-  }, [activeSessionId, createDraftSession, props.projectId, sessionChannel, sessionPending, storeActiveSession, t])
+  }, [activeSessionId, createDraftSession, props.projectId, sessionPending, storeActiveSession, t])
 
   const renameSession = useCallback(async (sessionId: string, title: string) => {
     const target = sessionsRef.current.find((session) => session.id === sessionId)
@@ -424,7 +423,6 @@ export function WritingAgentWorkspace(props: WritingAgentWorkspaceProps) {
                 projectType={props.projectType ?? 'book'}
                 workspace={props.workspace}
                 sessionId={session.id}
-                sessionChannel={session.channel}
                 syncRevision={`${session.updated_at}:${session.message_count}:${session.running ? 'running' : 'idle'}`}
                 draft={session.draft}
                 active={props.active !== false && active}

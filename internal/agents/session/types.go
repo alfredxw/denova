@@ -325,7 +325,6 @@ type AskInteraction struct {
 // Session 保存单个会话的内存状态。
 type Session struct {
 	ID                    string
-	Channel               Channel
 	CreatedAt             time.Time
 	UpdatedAt             time.Time
 	runtimeConfig         *conversationconfig.Config
@@ -357,7 +356,6 @@ type Session struct {
 // SessionMeta 是会话列表摘要。
 type SessionMeta struct {
 	ID           string    `json:"id"`
-	Channel      Channel   `json:"channel"`
 	Title        string    `json:"title"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`

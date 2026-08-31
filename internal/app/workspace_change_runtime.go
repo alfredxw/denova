@@ -205,7 +205,7 @@ func (a *App) WithProjectChangeMutation(
 		return projectdomain.Layout{}, err
 	}
 	if hooks.ScheduleAutoVersion {
-		if err := a.ProjectFiles().ScheduleBookAutoVersion(layout.ProjectID); err != nil {
+		if err := a.ProjectFiles().ScheduleAutoVersion(layout.ProjectID); err != nil {
 			return projectdomain.Layout{}, err
 		}
 	}

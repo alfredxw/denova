@@ -15,13 +15,13 @@ describe('TrajectoryRunList', () => {
       run({ id: 'second-run', session_id: 'session-second', session_title: 'Continue the chapter', trajectory_uri: 'trajectory:second', agent_kind: 'writer' }),
       run({ id: 'no-session-one', session_id: undefined, session_title: undefined, trajectory_uri: 'trajectory:no-session-one' }),
       run({ id: 'no-session-two', session_id: undefined, session_title: undefined, trajectory_uri: 'trajectory:no-session-two' }),
-      run({ id: 'harness-run', project_id: 'harness', project_name: 'Harness', session_id: 'session-harness', session_title: 'Health check', trajectory_uri: 'trajectory:harness' }),
+      run({ id: 'agents-run', project_id: 'agents', project_name: 'Agents', session_id: 'session-agents', session_title: 'Profile review', trajectory_uri: 'trajectory:agents' }),
     ]
 
     render(<TrajectoryRunList runs={runs} selectedRunURI="trajectory:selected" onSelect={vi.fn()} />)
 
     expect(screen.getAllByText('TestBook')).toHaveLength(1)
-    expect(screen.getAllByText('Harness')).toHaveLength(1)
+    expect(screen.getAllByText('Agents')).toHaveLength(1)
     expect(screen.getByText('Read the outline')).toBeInTheDocument()
     expect(screen.getByText('Continue the chapter')).toBeInTheDocument()
     expect(screen.queryByText('session-first')).not.toBeInTheDocument()

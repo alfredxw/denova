@@ -54,7 +54,7 @@ func AgentContractForRuntimeKind(kind string) (AgentContractDefinition, bool) {
 // current or retained built-in runtime selector.
 func IsReservedAgentID(id string) bool {
 	switch strings.TrimSpace(id) {
-	case AgentKindIDE, AgentKindGeneral, AgentKindHarness, AgentKindInteractiveStory,
+	case AgentKindIDE, AgentKindGeneral, AgentKindInteractiveStory,
 		AgentKindConfigManager, AgentKindVersionSummary, AgentKindToolAgent, AgentKindImage, AgentKindAutomation:
 		return true
 	default:

@@ -1,11 +1,11 @@
-import { ChevronDown, Loader2, Play, SlidersHorizontal } from 'lucide-react'
+import { ChevronDown, Play, SlidersHorizontal } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { Input } from '@/components/ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Textarea } from '@/components/ui/textarea'
+import { Field, FieldDescription, FieldLabel } from '@/components/ui/field'
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Spinner } from '@/components/ui/spinner'
 import type { LoreItem } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { hasLoreProtagonistTag } from '@/features/lore/tags'
@@ -20,7 +20,6 @@ import { StorySetupAdvanced, type StorySetupSettings } from './story-setup/Story
 
 interface NewStorySetupPanelProps {
   projectId: string
-  stories: StorySummary[]
   tellers: Teller[]
   directors: StoryDirector[]
   imagePresets: ImagePreset[]
@@ -38,7 +37,6 @@ interface NewStorySetupPanelProps {
 
 export function NewStorySetupPanel({
   projectId,
-  stories,
   tellers,
   directors,
   imagePresets,
@@ -57,11 +55,9 @@ export function NewStorySetupPanel({
   const initialDirector = directors.find((item) => item.id === story?.story_director_id) || directors[0]
   const recentTeller = resolveNarrativeStyle(tellers, recentNarrativeStyleID)
   const initialProtagonist = story?.protagonist || defaultStoryProtagonist(loreItems)
-  const [title, setTitle] = useState(() => story?.title || defaultStoryTitle(stories, t))
-  const [origin, setOrigin] = useState(story?.origin || '')
   const [directorId, setDirectorId] = useState(initialDirector?.id || 'default')
   const [protagonist, setProtagonist] = useState<StoryProtagonist>(initialProtagonist)
-  const [opening, setOpening] = useState<StoryOpeningConfig>(() => story?.opening || { mode: 'ai' })
+  const [opening, setOpening] = useState<StoryOpeningConfig>(() => story?.opening || { mode: 'custom' })
   const [settings, setSettings] = useState<StorySetupSettings>(() => initialSettings(story, initialDirector, recentTeller?.id))
   const [advancedOpen, setAdvancedOpen] = useState(true)
   const [creating, setCreating] = useState(false)
@@ -127,9 +123,9 @@ export function NewStorySetupPanel({
       const protagonistInput = protagonistForSubmit(protagonist)
       const includeProtagonist = !story || !sameProtagonist(protagonist, initialProtagonistRef.current)
       await onCreate({
-        title: title.trim() || defaultStoryTitle(stories, t),
+        title: story?.title_source === 'pending' ? '' : story?.title || '',
         ...(!story && settings.customAgentId ? { custom_agent_id: settings.customAgentId } : {}),
-        origin: origin.trim(),
+        origin: story?.origin || '',
         ...(includeProtagonist ? { protagonist: protagonistInput } : {}),
         story_teller_id: tellerID,
         story_director_id: directorId,
@@ -155,20 +151,10 @@ export function NewStorySetupPanel({
         <section className="mx-auto w-full max-w-5xl" aria-labelledby="new-story-title">
           <header className="mb-4">
             <h2 id="new-story-title" className="text-xl font-semibold tracking-[-0.02em] text-foreground sm:text-2xl">{story ? t('storyPicker.setup.resumeTitle') : t('storyPicker.setup.title')}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">{t('storyPicker.setup.description')}</p>
           </header>
 
           <div className="space-y-4">
-            <section className="grid gap-3 rounded-xl border border-border bg-card p-4 sm:grid-cols-2 sm:p-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_minmax(12rem,0.7fr)]">
-              <Field label={t('storyPicker.setup.name')}><Input value={title} maxLength={80} className="bg-background" onChange={(event) => setTitle(event.target.value)} /></Field>
-              <Field label={t('storyPicker.setup.brief')} hint={t('storyPicker.setup.briefHint')}><Textarea autoResize value={origin} maxLength={4000} className="min-h-20 resize-y bg-background" placeholder={t('storyPicker.originPlaceholder')} onChange={(event) => setOrigin(event.target.value)} /></Field>
-              <Field label={t('storyPicker.storyDirector')} hint={t('storyPicker.setup.presetHint', { director: directorName })}>
-                <Select value={directorId} onValueChange={selectDirector}>
-                  <SelectTrigger className="w-full bg-background"><SelectValue /></SelectTrigger>
-                  <SelectContent position="popper">{directors.map((item) => <SelectItem key={item.id} value={item.id}>{gamePresetName(item, t)}</SelectItem>)}</SelectContent>
-                </Select>
-              </Field>
-            </section>
-
             <div className="grid items-start gap-4 lg:grid-cols-[minmax(20rem,0.92fr)_minmax(0,1.08fr)]">
               <StoryProtagonistSelector projectId={projectId} value={protagonist} loreItems={loreItems} onChange={changeProtagonist} onRequestLoreInit={onRequestLoreInit} />
               <StoryOpeningSelector value={opening} presets={bookOpeningPresets} onChange={setOpening} />
@@ -186,6 +172,16 @@ export function NewStorySetupPanel({
                 </button>
               </CollapsibleTrigger>
               <CollapsibleContent className="border-t border-border bg-muted/20 p-3 sm:p-4">
+                <Field className="mb-3 rounded-lg border border-border bg-background p-3 sm:max-w-xl">
+                  <FieldLabel htmlFor="story-setup-director">{t('storyPicker.storyDirector')}</FieldLabel>
+                  <Select value={directorId} onValueChange={selectDirector}>
+                    <SelectTrigger id="story-setup-director" className="w-full bg-background"><SelectValue /></SelectTrigger>
+                    <SelectContent position="popper">
+                      <SelectGroup>{directors.map((item) => <SelectItem key={item.id} value={item.id}>{gamePresetName(item, t)}</SelectItem>)}</SelectGroup>
+                    </SelectContent>
+                  </Select>
+                  <FieldDescription className="text-xs">{t('storyPicker.setup.presetHint', { director: directorName })}</FieldDescription>
+                </Field>
                 <StorySetupAdvanced projectId={projectId} newStory={!story} director={director} tellers={tellers} imagePresets={imagePresets} value={settings} onChange={setSettings} onNarrativeStyleChange={(id) => { narrativeStyleSelectionLockedRef.current = true; return onNarrativeStyleChange?.(id) }} onOpenPresets={onOpenPresets} />
               </CollapsibleContent>
             </Collapsible>
@@ -198,17 +194,13 @@ export function NewStorySetupPanel({
         <div className="mx-auto flex w-full max-w-5xl items-center justify-end gap-2">
           {!story ? <Button type="button" variant="ghost" disabled={creating} onClick={onCancel}>{t('common.cancel')}</Button> : null}
           <Button type="button" disabled={creating || narrativeStyleLoading} onClick={() => void submit()}>
-            {creating || narrativeStyleLoading ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}
+            {creating || narrativeStyleLoading ? <Spinner /> : <Play data-icon="inline-start" />}
             {creating ? t('storyPicker.setup.starting') : narrativeStyleLoading ? t('common.loading') : t('storyPicker.setup.start')}
           </Button>
         </div>
       </footer>
     </div>
   )
-}
-
-function Field({ label, hint, className, children }: { label: string; hint?: string; className?: string; children: React.ReactNode }) {
-  return <label className={cn('block text-xs text-muted-foreground', className)}><span className="mb-1 block font-medium text-foreground">{label}</span>{children}{hint ? <span className="mt-1 block text-[11px] leading-4 text-muted-foreground">{hint}</span> : null}</label>
 }
 
 function initialSettings(story: StorySummary | undefined, director: StoryDirector | undefined, recentTellerID?: string): StorySetupSettings {
@@ -232,7 +224,6 @@ function validateDraft(protagonist: StoryProtagonist, opening: StoryOpeningConfi
   if (protagonist.mode === 'lore' && !protagonist.source_lore_item_id?.trim()) return t('storyPicker.setup.protagonist.lore.required')
   if (protagonist.mode === 'default' && !loreItems.some((item) => item.enabled && item.type === 'character')) return t('storyPicker.setup.protagonist.lore.emptyRequired')
   if (opening.mode === 'preset' && !opening.preset_text?.trim()) return t('storyPicker.setup.opening.presetRequired')
-  if (opening.mode === 'custom' && !opening.custom_text?.trim()) return t('storyPicker.setup.opening.customRequired')
   return ''
 }
 
@@ -256,14 +247,13 @@ function protagonistForSubmit(protagonist: StoryProtagonist): StoryProtagonist {
 
 function openingForSubmit(opening: StoryOpeningConfig): StoryOpeningConfig {
   if (opening.mode === 'preset') return { mode: 'preset', preset_id: opening.preset_id?.trim(), preset_text: truncateStoryOpeningText(opening.preset_text || '') }
-  if (opening.mode === 'custom') return { mode: 'custom', custom_text: truncateStoryOpeningText(opening.custom_text || '') }
+  if (opening.mode === 'custom') {
+    const customText = truncateStoryOpeningText(opening.custom_text || '')
+    return customText ? { mode: 'custom', custom_text: customText } : { mode: 'ai' }
+  }
   return { mode: 'ai' }
 }
 
 function sameProtagonist(left: StoryProtagonist, right: StoryProtagonist): boolean {
   return JSON.stringify(protagonistForSubmit(left)) === JSON.stringify(protagonistForSubmit(right))
-}
-
-function defaultStoryTitle(stories: StorySummary[], t: (key: string, options?: Record<string, unknown>) => string) {
-  return stories.length === 0 ? t('storyPicker.firstTitle') : t('storyPicker.numberedTitle', { number: stories.length + 1 })
 }

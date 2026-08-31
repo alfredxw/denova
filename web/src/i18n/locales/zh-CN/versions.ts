@@ -44,7 +44,7 @@ const versions = {
   'versions.firstVersionHint': '保存第一个版本后即可查看历史和恢复。',
   'versions.rollback': '回滚',
   'versions.rollbackConfirm': '确认回滚',
-  'versions.rollbackDescription': '将整本书回滚到版本 {{version}}。此操作会重置当前工作区到该版本。',
+  'versions.rollbackDescription': '将整个项目回滚到版本 {{version}}。此操作会把当前工作区重置到该版本。',
   'versions.rollbackDisabled': '当前工作区有未提交变更，请先创建版本后再回滚',
   'versions.rollbackPickVersion': '请选择要回滚的版本。',
   'versions.rollbackTitle': '确认回滚版本？',

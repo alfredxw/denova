@@ -12,7 +12,7 @@ func TestAgentSessionKeyRoundTripsEveryDenovaBinding(t *testing.T) {
 		{AgentKind: AgentKindIDE, ProjectID: "project", Workspace: "/book", SessionID: "writing"},
 		{AgentKind: AgentKindIDE, Mode: ModeAgentChat, ProjectID: "project", Workspace: "/mutable", SessionID: "ide-chat"},
 		{AgentKind: AgentKindGeneral, Mode: ModeAgentChat, ProjectID: "project", Workspace: "/mutable", SessionID: "general-chat"},
-		{AgentKind: AgentKindHarness, Mode: ModeAgentChat, ProjectID: "harness", Workspace: "/state", SessionID: "harness-chat"},
+		{AgentKind: AgentKindGeneral, Mode: ModeAgentChat, ProjectID: "agents", Workspace: "/agents", SessionID: "agents-chat"},
 		{AgentKind: AgentKindInteractiveStory, ProjectID: "project", Workspace: "/book", StoryID: "story", BranchID: "branch"},
 		{AgentKind: AgentKindImage, ProjectID: "project", Workspace: "/book", SessionID: "image"},
 		{AgentKind: AgentKindAutomation, ProjectID: "project", Workspace: "/book", SessionID: "automation", TaskID: "task"},

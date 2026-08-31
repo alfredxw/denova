@@ -34,9 +34,12 @@ func TestConfigApplyAgentProfileCreatesCustomAgentWithinContractCeiling(t *testi
 	if created.ID != "focused-editor" || created.Revision == "" {
 		t.Fatalf("custom Agent receipt = %#v", created)
 	}
-	settings, err := config.ReadSettingsFile(config.UserConfigPath(novaDir))
+	settings, ready, err := config.LoadAgentProfileSettings(novaDir)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if !ready {
+		t.Fatal("Agent Profile store is not initialized")
 	}
 	custom, ok := findCustomAgentByID(settings.CustomAgents, "focused-editor")
 	if !ok || custom.Name != "Focused editor" || custom.Contract != config.AgentContractWritingPrimary || custom.Tools[config.AgentToolWebSearch] {

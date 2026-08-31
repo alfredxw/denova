@@ -48,7 +48,7 @@ func (a *App) prepareChildDefinition(
 		return definition, nil
 	}
 	switch binding.AgentKind {
-	case agentrun.AgentKindGeneral, agentrun.AgentKindHarness:
+	case agentrun.AgentKindGeneral:
 		return finalize(a.AgentChat().PrepareChildDefinition(ctx, binding, request.Child, parentRequest))
 	case agentrun.AgentKindIDE:
 		if binding.Mode == agentrun.ModeAgentChat {
@@ -61,7 +61,7 @@ func (a *App) prepareChildDefinition(
 		if runtime.projectID != strings.TrimSpace(binding.ProjectID) || runtime.sess == nil || runtime.sess.ID != strings.TrimSpace(binding.SessionID) {
 			return agent.Definition{}, fmt.Errorf("%w: delegated Writing parent is not the active Session", agentexecution.ErrCyclePreparationUnavailable)
 		}
-		agentHost, err := a.HarnessAgentHostCapabilities(ctx, &runtime.cfg, config.AgentKindIDE)
+		agentHost, err := a.AgentHostCapabilities(ctx, &runtime.cfg, config.AgentKindIDE)
 		if err != nil {
 			return agent.Definition{}, err
 		}

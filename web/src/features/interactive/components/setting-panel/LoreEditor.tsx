@@ -1,5 +1,5 @@
-import { useRef, useState } from 'react'
-import { Loader2, Sparkles, Trash2, Upload } from 'lucide-react'
+import { useId, useRef, useState } from 'react'
+import { Loader2, Sparkles, Star, Trash2, Upload } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectVa
 import { Textarea } from '@/components/ui/textarea'
 import { ImagePreviewDialog } from '@/components/common/ImagePreviewDialog'
 import { SearchHighlightTextarea } from '@/components/common/SearchHighlightTextarea'
+import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
 import { projectFileAssetURL, type LoreItem } from '@/lib/api'
 import type { ImagePreset } from '../../types'
 import { presetActionButtonClassName as actionButtonClassName, presetIconActionClassName as iconActionClassName, presetInputClassName as inputClassName, presetSelectClassName as selectClassName } from '../preset-config/editor-styles'
@@ -20,6 +21,7 @@ import { IMPORTANCE_OPTIONS, LOAD_MODE_OPTIONS, loadModeDescription, LORE_RESIDE
 import type { DocumentReviewController, DocumentReviewNavigationIntent } from '@/features/document-review/controller'
 import type { DocumentReviewSnapshot } from '@/components/Editor/documentReviewAnchors'
 import { LoreContentEditor } from '@/features/lore/LoreContentEditor'
+import { hasLoreProtagonistTag, splitLoreTags, toggleLoreProtagonistTag } from '@/features/lore/tags'
 
 export function LoreEditor({
   projectId,
@@ -70,6 +72,7 @@ export function LoreEditor({
 }) {
   const { t } = useTranslation()
   const [imageDialogOpen, setImageDialogOpen] = useState(false)
+  const tagInputId = useId()
   if (!draft) {
     return <EmptyState title={t('settingPanel.editor.noLoreSelected')} description={t('settingPanel.editor.noLoreSelectedDesc')} />
   }
@@ -81,6 +84,12 @@ export function LoreEditor({
   const validImagePresets = imagePresets.filter((preset) => !preset.invalid)
   const selectedImagePresetId = imagePresetId || validImagePresets[0]?.id || 'game-cg'
   const openGenerateLabel = imagePath ? t('settingPanel.loreImage.openRegenerate') : t('settingPanel.loreImage.openGenerate')
+  const protagonistTagActive = draft.type === 'character' && hasLoreProtagonistTag(splitLoreTags(tagDraft))
+  const toggleProtagonistTag = () => {
+    const tags = toggleLoreProtagonistTag(splitLoreTags(tagDraft))
+    setDraft({ ...draft, tags })
+    setTagDraft(tags.join('，'))
+  }
   const topGridClassName = cn(
     'grid shrink-0 items-stretch gap-2 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2.5 sm:px-4',
     hasImage && 'lg:grid-cols-[15rem_minmax(0,1fr)] 2xl:grid-cols-[18rem_minmax(0,1fr)]',
@@ -180,8 +189,26 @@ export function LoreEditor({
                 </Field>
               </div>
               <div data-slot="lore-secondary-fields" className="grid min-w-0 items-start gap-2 md:grid-cols-[minmax(10rem,0.8fr)_minmax(0,1.2fr)]">
-                <Field label={t('settingPanel.field.tags')}>
-                  <Input className={inputClassName} value={tagDraft} onChange={(event) => setTagDraft(event.target.value)} placeholder={t('settingPanel.placeholder.tags')} />
+                <Field label={t('settingPanel.field.tags')} htmlFor={tagInputId}>
+                  <div className="flex min-w-0 items-center gap-1.5">
+                    <Input id={tagInputId} className={cn(inputClassName, 'min-w-0 flex-1')} value={tagDraft} onChange={(event) => setTagDraft(event.target.value)} placeholder={t('settingPanel.placeholder.tags')} />
+                    {draft.type === 'character' ? (
+                      <TooltipIconButton
+                        label={t(protagonistTagActive ? 'loreWorkspace.unmarkProtagonist' : 'loreWorkspace.markProtagonist')}
+                        variant="outline"
+                        size="icon"
+                        tooltipSide="bottom"
+                        aria-pressed={protagonistTagActive}
+                        onClick={toggleProtagonistTag}
+                        className={cn(
+                          iconActionClassName,
+                          protagonistTagActive && 'border-[var(--nova-warning)] bg-[var(--nova-warning-bg)] text-[var(--nova-warning)] hover:bg-[var(--nova-warning-bg)] hover:text-[var(--nova-warning)]',
+                        )}
+                      >
+                        <Star data-icon="inline-start" className={protagonistTagActive ? 'fill-current' : undefined} />
+                      </TooltipIconButton>
+                    ) : null}
+                  </div>
                 </Field>
                 <Field label={t('settingPanel.field.brief')}>
                   <SearchHighlightTextarea

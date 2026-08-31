@@ -63,8 +63,10 @@ func (s *Store) CreateStory(req CreateStoryRequest) (StorySummary, error) {
 		return StorySummary{}, err
 	}
 	title := strings.TrimSpace(req.Title)
+	titleSource := StoryTitleSourceUser
 	if title == "" {
 		title = defaultStoryTitle(index.Stories)
+		titleSource = StoryTitleSourcePending
 	}
 	planningMode := strings.ToLower(strings.TrimSpace(req.PlanningMode))
 	if planningMode != "" {
@@ -84,6 +86,7 @@ func (s *Store) CreateStory(req CreateStoryRequest) (StorySummary, error) {
 	story := StorySummary{
 		ID:                newID("st"),
 		Title:             title,
+		TitleSource:       titleSource,
 		Origin:            strings.TrimSpace(req.Origin),
 		Protagonist:       protagonist,
 		StoryTellerID:     strings.TrimSpace(req.StoryTellerID),
@@ -115,6 +118,7 @@ func (s *Store) CreateStory(req CreateStoryRequest) (StorySummary, error) {
 		Type:              StoryEventTypeMeta,
 		StoryID:           story.ID,
 		Title:             story.Title,
+		TitleSource:       story.TitleSource,
 		Origin:            story.Origin,
 		Protagonist:       story.Protagonist,
 		StoryTellerID:     story.StoryTellerID,
@@ -264,6 +268,7 @@ func (s *Store) UpdateStory(storyID string, req UpdateStoryRequest) (StorySummar
 	protagonistStateOps := []interactivestate.Op(nil)
 	if title := strings.TrimSpace(req.Title); title != "" {
 		meta.Title = title
+		meta.TitleSource = StoryTitleSourceUser
 	}
 	if req.Origin != nil {
 		meta.Origin = strings.TrimSpace(*req.Origin)
@@ -412,9 +417,9 @@ func (s *Store) UpdateStory(storyID string, req UpdateStoryRequest) (StorySummar
 }
 
 func storyConfigUpdatedFields(req UpdateStoryRequest) []string {
-	fields := make([]string, 0, 12)
+	fields := make([]string, 0, 13)
 	if strings.TrimSpace(req.Title) != "" {
-		fields = append(fields, "title")
+		fields = append(fields, "title", "title_source")
 	}
 	if req.Origin != nil {
 		fields = append(fields, "origin")

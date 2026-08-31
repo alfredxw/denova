@@ -37,18 +37,17 @@ type OutcomeStore struct {
 	lock *flock.Flock
 }
 
-func NewOutcomeStore(dataDir string) (*OutcomeStore, error) {
-	dataDir = strings.TrimSpace(dataDir)
-	if dataDir == "" {
-		return nil, errors.New("trajectory outcome data directory is required")
+func NewOutcomeStore(stateRoot string) (*OutcomeStore, error) {
+	stateRoot = strings.TrimSpace(stateRoot)
+	if stateRoot == "" {
+		return nil, errors.New("trajectory outcome Project State directory is required")
 	}
-	directory := filepath.Join(dataDir, "continual-learning")
-	if err := os.MkdirAll(directory, 0o700); err != nil {
+	if err := os.MkdirAll(stateRoot, 0o700); err != nil {
 		return nil, fmt.Errorf("create trajectory outcome directory: %w", err)
 	}
 	return &OutcomeStore{
-		path: filepath.Join(directory, "outcomes.jsonl"),
-		lock: flock.New(filepath.Join(directory, "outcomes.lock")),
+		path: filepath.Join(stateRoot, "outcomes.jsonl"),
+		lock: flock.New(filepath.Join(stateRoot, "outcomes.lock")),
 	}, nil
 }
 

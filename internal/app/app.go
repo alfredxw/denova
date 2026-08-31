@@ -14,12 +14,12 @@ import (
 
 	"denova/config"
 	"denova/internal/agents/session"
+	"denova/internal/agents/trajectory"
 	activityapp "denova/internal/app/activity"
 	agentchatapp "denova/internal/app/agentchat"
 	appagentruntime "denova/internal/app/agentruntime"
 	automationapp "denova/internal/app/automation"
 	bookapp "denova/internal/app/book"
-	continuallearningapp "denova/internal/app/continuallearning"
 	imageapp "denova/internal/app/image"
 	loreapp "denova/internal/app/lore"
 	modelsapp "denova/internal/app/models"
@@ -78,22 +78,22 @@ type App struct {
 	// the workspace: each session keeps its own cwd, so switching books never kills a running command.
 	terminals *terminal.Manager
 
-	workspaceApp      *workspaceService
-	chatApp           *ChatAppService
-	agentChatApp      *agentchatapp.Service
-	interactiveApp    *InteractiveAppService
-	loreApp           *loreapp.Service
-	continualLearning *continuallearningapp.Service
-	automationApp     *automationapp.Service
-	activityApp       *activityapp.Service
-	bookApp           *bookapp.Service
-	resourceCatalog   *resourcecatalogapp.Service
-	settingsApp       *settingsapp.Service
-	modelsApp         *modelsapp.Service
-	imageApp          *imageapp.Service
-	projectBook       *projectbookapp.Service
-	projectFiles      *projectfilesapp.Service
-	servicesOnce      sync.Once
+	workspaceApp       *workspaceService
+	chatApp            *ChatAppService
+	agentChatApp       *agentchatapp.Service
+	interactiveApp     *InteractiveAppService
+	loreApp            *loreapp.Service
+	trajectoryOutcomes *trajectory.OutcomeStore
+	automationApp      *automationapp.Service
+	activityApp        *activityapp.Service
+	bookApp            *bookapp.Service
+	resourceCatalog    *resourcecatalogapp.Service
+	settingsApp        *settingsapp.Service
+	modelsApp          *modelsapp.Service
+	imageApp           *imageapp.Service
+	projectBook        *projectbookapp.Service
+	projectFiles       *projectfilesapp.Service
+	servicesOnce       sync.Once
 
 	mu sync.RWMutex
 }
@@ -127,13 +127,21 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("prepare portable Denova data migration: %w", err)
 	}
-	registry := projectdomain.NewRegistry(dataDir)
-	harnessRoot := filepath.Join(dataDir, "state")
-	if err := os.MkdirAll(harnessRoot, 0o700); err != nil {
-		return nil, fmt.Errorf("initialize Harness Project directory: %w", err)
+	if err := config.EnsureAgentProfiles(dataDir); err != nil {
+		return nil, fmt.Errorf("initialize Agents Project profiles: %w", err)
 	}
-	if _, err := registry.EnsureHarness(harnessRoot); err != nil {
-		return nil, fmt.Errorf("register Harness Project: %w", err)
+	registry := projectdomain.NewRegistry(dataDir)
+	agentsRecord, err := registry.EnsureAgents(config.AgentProfilesRoot(dataDir))
+	if err != nil {
+		return nil, fmt.Errorf("register Agents Project: %w", err)
+	}
+	agentsLayout, err := registry.EnsureState(agentsRecord)
+	if err != nil {
+		return nil, fmt.Errorf("initialize Agents Project State: %w", err)
+	}
+	trajectoryOutcomes, err := trajectory.NewOutcomeStore(agentsLayout.StateRoot)
+	if err != nil {
+		return nil, fmt.Errorf("initialize trajectory outcomes: %w", err)
 	}
 	bookMetaStore := book.NewMetaStore(dataDir)
 	registeredProjects, err := registry.List(true)
@@ -162,11 +170,12 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 		return nil, fmt.Errorf("complete portable Denova data migration: %w", err)
 	}
 	app := &App{
-		cfg:             cfg,
-		projectRegistry: registry,
-		bookMetaStore:   bookMetaStore,
-		workspaceFiles:  filewatch.NewService(),
-		terminals:       terminal.NewManager(terminalConfigFromAppConfig(cfg)),
+		cfg:                cfg,
+		projectRegistry:    registry,
+		bookMetaStore:      bookMetaStore,
+		trajectoryOutcomes: trajectoryOutcomes,
+		workspaceFiles:     filewatch.NewService(),
+		terminals:          terminal.NewManager(terminalConfigFromAppConfig(cfg)),
 	}
 	app.automationApp = automationapp.NewService(automationHost{app: app})
 	executionRuntime, err := agentexecution.NewAgentRuntime(
@@ -214,7 +223,6 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 		slog.InfoContext(ctx, "[app] No workspace or previously opened book at startup; waiting for frontend selection")
 		cfg.Workspace = ""
 		app.Automation().StartScheduler(ctx)
-		app.ContinualLearning().StartScheduler(ctx)
 		return app, nil
 	}
 
@@ -245,7 +253,6 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 	app.applyRuntime(runtime)
 	app.mu.Unlock()
 	app.Automation().StartScheduler(ctx)
-	app.ContinualLearning().StartScheduler(ctx)
 	return app, nil
 }
 
@@ -280,7 +287,6 @@ func (a *App) ensureServices() {
 		}
 		a.agentChatApp = agentchatapp.NewService(agentChatHost{app: a}, a.projectRegistry)
 		a.interactiveApp = &InteractiveAppService{app: a}
-		a.continualLearning = continuallearningapp.NewService(continualLearningHost{app: a})
 		if a.automationApp == nil {
 			a.automationApp = automationapp.NewService(automationHost{app: a})
 		}
@@ -303,7 +309,7 @@ func (a *App) ensureServices() {
 		if a.cfg != nil {
 			projectFileOptions = append(projectFileOptions, projectfilesapp.WithTreeEntryLimit(a.cfg.ProjectFileTreeEntryLimit))
 		}
-		a.projectFiles = projectfilesapp.NewServiceWithBookVersioning(a.projectRegistry, a, projectFileOptions...)
+		a.projectFiles = projectfilesapp.NewServiceWithVersioning(a.projectRegistry, a, projectFileOptions...)
 	})
 }
 
@@ -354,11 +360,9 @@ func (a *App) Images() *imageapp.Service {
 	return a.imageApp
 }
 
-// ContinualLearning exposes user-level Harness State and optimization.
-func (a *App) ContinualLearning() *continuallearningapp.Service {
-	a.ensureServices()
-	return a.continualLearning
-}
+// TrajectoryOutcomes returns the read-only evidence feedback store owned by
+// Agents Project State. Profile content and feedback never share a directory.
+func (a *App) TrajectoryOutcomes() *trajectory.OutcomeStore { return a.trajectoryOutcomes }
 
 // Automation exposes the automation domain service without duplicating its API
 // on the root composition type.
@@ -463,11 +467,6 @@ func (a *App) Close() {
 		if a.automationApp != nil {
 			if err := a.automationApp.Close(context.Background()); err != nil {
 				slog.ErrorContext(context.Background(), fmt.Sprintf("[app] close automation service failed: %v", err))
-			}
-		}
-		if a.continualLearning != nil {
-			if err := a.continualLearning.Close(context.Background()); err != nil {
-				slog.ErrorContext(context.Background(), fmt.Sprintf("[app] close continual learning service failed: %v", err))
 			}
 		}
 		if a.agentChatApp != nil {

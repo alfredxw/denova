@@ -50,6 +50,7 @@ func (s *Store) AppendTurn(storyID string, req AppendTurnRequest) (TurnEvent, er
 		Flags:                map[string]bool{"pinned": false, "locked": false},
 	}
 	branch.Head = event.ID
+	generatePendingStoryTitle(&meta, event.Narrative)
 	meta.Branches[branchID] = branch
 	meta.UpdatedAt = now
 	continuationEvents, err := newModelContextProviderContinuationEvents(event.ID, event.BranchID, event.Ts, event.ModelContextMessages)

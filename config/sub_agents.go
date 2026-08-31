@@ -31,7 +31,6 @@ type AgentGeneralSubAgentSettings struct {
 
 var subAgentParentKinds = []string{
 	AgentKindGeneral,
-	AgentKindHarness,
 	AgentKindIDE,
 	AgentKindInteractiveStory,
 }
@@ -85,7 +84,7 @@ func GeneralSubAgentEnabled(cfg *Config, parentKind string) bool {
 
 func generalSubAgentOverrideFor(settings AgentGeneralSubAgentSettings, parentKind string) *bool {
 	switch parentKind {
-	case AgentKindGeneral, AgentKindHarness:
+	case AgentKindGeneral:
 		return settings.General
 	case AgentKindIDE:
 		return settings.IDE

@@ -99,7 +99,7 @@ func (binding RuntimeBinding) identity() (bindingIdentity, error) {
 			break
 		}
 		identity = bindingIdentity{kind: bindingKindWriting, profile: profile, id: projectID + ":" + attributes[bindingLabelSession], attributes: attributes}
-	case AgentKindGeneral, AgentKindHarness:
+	case AgentKindGeneral:
 		if strings.TrimSpace(binding.Mode) != bindingProfileAgentChat || projectID == "" ||
 			attributes[bindingLabelSession] == "" || binding.StoryID != "" || binding.BranchID != "" || binding.TaskID != "" {
 			return invalid()
@@ -160,7 +160,7 @@ func BindingSelector(agentKind, projectID string) (agent.SessionSelector, error)
 	var kind, profile string
 	switch strings.TrimSpace(agentKind) {
 	case "":
-	case AgentKindGeneral, AgentKindHarness:
+	case AgentKindGeneral:
 		kind, profile = bindingKindProject, bindingProfileAgentChat
 	case AgentKindIDE:
 		kind, profile = bindingKindWriting, bindingProfileWriting

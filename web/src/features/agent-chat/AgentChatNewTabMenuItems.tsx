@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import {
   Database,
   FolderTree,
+  History,
   MessageCirclePlus,
   PenLine,
   TerminalSquare,
@@ -19,6 +20,7 @@ import {
 export const AGENT_CHAT_PAGE_ICONS: Record<AgentChatPageId, ReactNode> = {
   reader: <PenLine className="size-3.5" />,
   lore: <Database className="size-3.5" />,
+  versions: <History className="size-3.5" />,
 }
 
 interface AgentChatNewTabMenuItemsProps {
@@ -75,6 +77,12 @@ export function AgentChatNewTabMenuItems({
         <DropdownMenuItem onSelect={() => onOpenPage(group, 'lore')}>
           {AGENT_CHAT_PAGE_ICONS.lore}
           {t('agentChat.page.lore')}
+        </DropdownMenuItem>
+      ) : null}
+      {pageIds.includes('versions') ? (
+        <DropdownMenuItem onSelect={() => onOpenPage(group, 'versions')}>
+          {AGENT_CHAT_PAGE_ICONS.versions}
+          {t('agentChat.page.versions')}
         </DropdownMenuItem>
       ) : null}
     </>

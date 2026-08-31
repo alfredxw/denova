@@ -48,11 +48,11 @@ export function AgentsView({ target, onClose, toolNavigationIntent }: { target: 
     [projectId, targetKind],
   )
   const targetKey = resourceTargetKey(resourceTarget)
-  const agentAvailable = targetKind === 'project'
   const [activeSelection, setActiveSelection] = useState<AgentSelectionID>('ide')
   const [selectedLayer, setActiveLayer] = useState<SettingsLayer>('user')
   const customSelection = activeSelectionIDIsCustom(activeSelection)
   const activeLayer: SettingsLayer = customSelection ? 'user' : (targetKind === 'project' ? selectedLayer : 'user')
+  const agentAvailable = activeLayer === 'user' || targetKind === 'project'
   const { layered, draft, setDraft, error, autosaveStatus, autosaveError, reload, saveNow } = useLayeredSettingsDraft({
     target: resourceTarget,
     layer: activeLayer,
@@ -157,7 +157,7 @@ export function AgentsView({ target, onClose, toolNavigationIntent }: { target: 
   const reloadAfterAgentMutation = useCallback(() => {
     void saveNow()
       .then(async () => {
-        await reload()
+        await reload(true)
       })
       .catch(() => undefined)
   }, [reload, saveNow])
@@ -391,7 +391,7 @@ export function AgentsView({ target, onClose, toolNavigationIntent }: { target: 
           content: (
             <div className="h-full min-h-0 bg-[var(--nova-surface)]">
               <ConfigManagerChat
-                projectId={projectId}
+                projectId={activeLayer === 'user' ? 'agents' : projectId}
                 origin="agents"
                 resourceId={`${activeLayer}:${activeAgent}`}
                 context={configurationContext}

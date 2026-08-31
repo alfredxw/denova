@@ -354,7 +354,7 @@ func workspaceToolsFactory(workspace, projectStateRoot string, metadata Workspac
 				agenttools.WithCapability(readCapability),
 				agenttools.WithMaxResultBytes(maxResultBytes),
 			}
-			if readCapability == config.AgentToolHarnessState {
+			if readCapability == config.AgentToolTrajectory {
 				options = append(options, agenttools.WithPresentation(agent.ToolPresentationFile))
 			}
 			readDefinition, err := agenttools.Read(readAdapters, options...)

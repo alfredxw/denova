@@ -18,9 +18,8 @@ vi.mock('./api', () => ({
 }))
 
 vi.mock('./AgentChatConversationTab', () => ({
-  AgentChatConversationTab: ({ sessionId, sessionChannel, draft, active, host, onRunningChange, onDraftCommitted, projectId }: {
+  AgentChatConversationTab: ({ sessionId, draft, active, host, onRunningChange, onDraftCommitted, projectId }: {
     sessionId: string
-    sessionChannel: 'agent' | 'configuration'
     draft?: boolean
     active: boolean
     projectId: string
@@ -34,7 +33,6 @@ vi.mock('./AgentChatConversationTab', () => ({
   }) => (
     <div
       data-testid={draft ? 'conversation:draft' : `conversation:${sessionId}`}
-      data-channel={sessionChannel}
       data-draft={draft ? 'true' : 'false'}
     >
       {active ? 'active' : 'hidden'}
@@ -75,7 +73,6 @@ function project(): AgentChatProject {
     sessions: [
       {
         id: 'session-a',
-        channel: 'agent',
         title: 'Running draft',
         created_at: '2026-08-26T10:00:00Z',
         updated_at: '2026-08-26T10:02:00Z',
@@ -85,7 +82,6 @@ function project(): AgentChatProject {
       },
       {
         id: 'session-b',
-        channel: 'agent',
         title: 'Character notes',
         created_at: '2026-08-26T09:00:00Z',
         updated_at: '2026-08-26T09:03:00Z',
@@ -162,7 +158,6 @@ describe('WritingAgentWorkspace', () => {
     const user = userEvent.setup()
     vi.mocked(createAgentChatSession).mockResolvedValue({
       id: 'session-c',
-      channel: 'agent',
       custom_agent_id: 'focused-editor',
       title: 'Focused editor',
       created_at: '2026-08-26T11:00:00Z',
@@ -175,7 +170,7 @@ describe('WritingAgentWorkspace', () => {
 
     await user.click(await screen.findByRole('button', { name: '切换自定义 Agent' }))
 
-    await waitFor(() => expect(createAgentChatSession).toHaveBeenCalledWith('book-a', '', 'focused-editor', 'agent'))
+    await waitFor(() => expect(createAgentChatSession).toHaveBeenCalledWith('book-a', '', 'focused-editor'))
     expect(screen.getByTestId('conversation:session-c')).toHaveTextContent('active')
   })
 
@@ -222,33 +217,23 @@ describe('WritingAgentWorkspace', () => {
 
     renderWorkspace()
 
-    expect(await screen.findByTestId('conversation:draft')).toHaveAttribute('data-channel', 'agent')
+    expect(await screen.findByTestId('conversation:draft')).toHaveAttribute('data-draft', 'true')
     expect(screen.queryByText('暂无会话')).not.toBeInTheDocument()
     expect(createAgentChatSession).not.toHaveBeenCalled()
   })
 
-  it('keeps a configuration conversation local until its first submission', async () => {
-    const user = userEvent.setup()
-    const empty = project()
-    empty.total = 0
-    empty.sessions = []
-    vi.mocked(getAgentChatProjects).mockResolvedValue([empty])
-
+  it('shares Project conversations while keeping a surface-local active selection', async () => {
+    window.localStorage.setItem('nova.writingAgent.activeSession.v1:book-a', 'session-a')
+    window.localStorage.setItem('nova.writingAgent.activeSession.v1:configuration:book-a', 'session-b')
     renderWorkspace({
-      sessionChannel: 'configuration',
+      activeSessionPreferenceScope: 'configuration',
       sessionRailVisible: false,
     })
 
-    const draft = await screen.findByTestId('conversation:draft')
-    expect(draft).toHaveAttribute('data-channel', 'configuration')
-    expect(getAgentChatProjects).toHaveBeenCalledWith({ channel: 'configuration' })
-    expect(createAgentChatSession).not.toHaveBeenCalled()
-
-    await user.click(screen.getByRole('button', { name: 'commit draft' }))
-
-    await waitFor(() => expect(screen.queryByTestId('conversation:draft')).not.toBeInTheDocument())
-    expect(createAgentChatSession).not.toHaveBeenCalled()
-    expect(window.localStorage.getItem('nova.writingAgent.activeSession.v1:book-a')).toBeNull()
-    expect(window.localStorage.getItem('nova.writingAgent.activeSession.v1:configuration:book-a')).toBeTruthy()
+    expect(await screen.findByTestId('conversation:session-b')).toHaveTextContent('active')
+    expect(screen.getByTestId('conversation:session-a')).toHaveTextContent('hidden')
+    expect(getAgentChatProjects).toHaveBeenCalledWith()
+    expect(window.localStorage.getItem('nova.writingAgent.activeSession.v1:book-a')).toBe('session-a')
+    expect(window.localStorage.getItem('nova.writingAgent.activeSession.v1:configuration:book-a')).toBe('session-b')
   })
 })

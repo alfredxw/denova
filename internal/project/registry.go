@@ -19,10 +19,10 @@ import (
 
 const registryVersion = 4
 
-// HarnessProjectID is the stable identity of the single user-level Harness
-// Project. Its content directory is managed by Denova while its Sessions and
-// runtime state use the same Project layout as every creator-owned Project.
-const HarnessProjectID = "harness"
+// AgentsProjectID is the stable identity of the single system-managed Agents
+// Project. Its editable content contains user Agent Profiles, while Sessions,
+// Runs, Outcomes, Automations, and Git history live in ordinary Project State.
+const AgentsProjectID = "agents"
 
 type registryData struct {
 	Version       int      `json:"version"`
@@ -255,9 +255,9 @@ func (registry *Registry) EnsureBook(path string) (Record, error) {
 	return projectStatus(record), nil
 }
 
-// EnsureHarness registers the one system-managed Harness Project without
-// teaching ordinary directory discovery to classify user folders as Harness.
-func (registry *Registry) EnsureHarness(path string) (Record, error) {
+// EnsureAgents registers the one system-managed Agents Project without
+// teaching ordinary directory discovery to classify user folders as Agents.
+func (registry *Registry) EnsureAgents(path string) (Record, error) {
 	canonical, err := canonicalDirectory(path, true)
 	if err != nil {
 		return Record{}, err
@@ -271,13 +271,13 @@ func (registry *Registry) EnsureHarness(path string) (Record, error) {
 	now := time.Now().UTC()
 	for index := range data.Projects {
 		record := &data.Projects[index]
-		if record.ID != HarnessProjectID && record.Type != TypeHarness && !samePath(record.WorkspacePath, canonical) {
+		if record.ID != AgentsProjectID && record.Type != TypeAgents && !samePath(record.WorkspacePath, canonical) {
 			continue
 		}
-		if record.ID != HarnessProjectID || record.Type != TypeHarness {
-			return Record{}, fmt.Errorf("Harness project identity or directory is already registered")
+		if record.ID != AgentsProjectID || record.Type != TypeAgents {
+			return Record{}, fmt.Errorf("Agents project identity or directory is already registered")
 		}
-		if samePath(record.WorkspacePath, canonical) && record.Name == "Harness" && record.ArchivedAt == nil {
+		if samePath(record.WorkspacePath, canonical) && record.Name == "Agents" && record.ArchivedAt == nil {
 			return projectStatus(*record), nil
 		}
 		location, locationErr := registry.locationForWorkspace(canonical)
@@ -286,7 +286,7 @@ func (registry *Registry) EnsureHarness(path string) (Record, error) {
 		}
 		record.Location = location
 		record.WorkspacePath = canonical
-		record.Name = "Harness"
+		record.Name = "Agents"
 		record.ArchivedAt = nil
 		record.UpdatedAt = now
 		if err := registry.saveLocked(data); err != nil {
@@ -299,7 +299,7 @@ func (registry *Registry) EnsureHarness(path string) (Record, error) {
 		return Record{}, err
 	}
 	record := Record{
-		ID: HarnessProjectID, Type: TypeHarness, Name: "Harness", StateDirName: harnessStateDirName,
+		ID: AgentsProjectID, Type: TypeAgents, Name: "Agents", StateDirName: agentsStateDirName,
 		Location: location, WorkspacePath: canonical,
 		Status: StatusAvailable, CreatedAt: now, UpdatedAt: now,
 	}
@@ -363,8 +363,8 @@ func (registry *Registry) Rename(id, name string) (Record, error) {
 		return Record{}, fmt.Errorf("project ID and name are required")
 	}
 	return registry.updateRecord(id, func(record *Record, now time.Time) error {
-		if record.Type == TypeHarness {
-			return errors.New("the Harness project name is managed by Denova")
+		if record.Type == TypeAgents {
+			return errors.New("the Agents project name is managed by Denova")
 		}
 		record.Name = name
 		record.UpdatedAt = now
@@ -374,8 +374,8 @@ func (registry *Registry) Rename(id, name string) (Record, error) {
 
 func (registry *Registry) Archive(id string) (Record, error) {
 	return registry.updateRecord(id, func(record *Record, now time.Time) error {
-		if record.Type == TypeHarness {
-			return errors.New("the Harness project cannot be archived")
+		if record.Type == TypeAgents {
+			return errors.New("the Agents project cannot be archived")
 		}
 		if record.ArchivedAt == nil {
 			record.ArchivedAt = &now
@@ -413,8 +413,8 @@ func (registry *Registry) Relink(id, path string) (Record, error) {
 		if data.Projects[index].ID != id {
 			continue
 		}
-		if data.Projects[index].Type == TypeHarness {
-			return Record{}, errors.New("the Harness project directory is managed by Denova")
+		if data.Projects[index].Type == TypeAgents {
+			return Record{}, errors.New("the Agents project directory is managed by Denova")
 		}
 		data.Projects[index].Location = location
 		data.Projects[index].WorkspacePath = canonical

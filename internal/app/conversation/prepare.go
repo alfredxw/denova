@@ -24,7 +24,7 @@ import (
 
 func Prepare(ctx context.Context, runtime Runtime, request agentchat.ChatRequest) (Runtime, agentchat.ChatRequest, error) {
 	switch runtime.ProjectType {
-	case projectdomain.TypeGeneral, projectdomain.TypeHarness:
+	case projectdomain.TypeGeneral, projectdomain.TypeAgents:
 		return prepareGeneral(ctx, runtime, request)
 	case projectdomain.TypeBook:
 		return prepareWriting(ctx, runtime, request)
@@ -110,7 +110,7 @@ func prepareWriting(ctx context.Context, runtime Runtime, request agentchat.Chat
 }
 
 func ProjectConversation(runtime Runtime, request agentchat.ChatRequest) *agentconversation.SessionConversation {
-	if runtime.AgentKind == agentrun.AgentKindGeneral || runtime.AgentKind == agentrun.AgentKindHarness {
+	if runtime.AgentKind == agentrun.AgentKindGeneral {
 		return agentconversation.NewSessionConversationForAgent(runtime.Session, &runtime.Config, runtime.AgentKind).
 			WithInputVisibility(request.InputVisibility).
 			WithInputDisplayContent(request.DisplayMessage)

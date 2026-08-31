@@ -194,29 +194,29 @@ func TestRegistryAllocatesReadableUniqueStateDirectories(t *testing.T) {
 	}
 }
 
-func TestEnsureHarnessRegistersOneManagedProject(t *testing.T) {
+func TestEnsureAgentsRegistersOneManagedProject(t *testing.T) {
 	denovaDir := t.TempDir()
-	harnessRoot := filepath.Join(denovaDir, "state")
-	if err := os.MkdirAll(harnessRoot, 0o700); err != nil {
+	agentsRoot := filepath.Join(denovaDir, "agents")
+	if err := os.MkdirAll(agentsRoot, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	registry := NewRegistry(denovaDir)
-	first, err := registry.EnsureHarness(harnessRoot)
+	first, err := registry.EnsureAgents(agentsRoot)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := registry.EnsureHarness(harnessRoot)
+	second, err := registry.EnsureAgents(agentsRoot)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first.ID != HarnessProjectID || second.ID != first.ID || second.Type != TypeHarness || second.Name != "Harness" {
-		t.Fatalf("unexpected Harness Project: first=%#v second=%#v", first, second)
+	if first.ID != AgentsProjectID || second.ID != first.ID || second.Type != TypeAgents || second.Name != "Agents" {
+		t.Fatalf("unexpected Agents Project: first=%#v second=%#v", first, second)
 	}
 	if _, err := registry.Rename(first.ID, "Renamed"); err == nil {
-		t.Fatal("managed Harness Project should not be renamed")
+		t.Fatal("managed Agents Project should not be renamed")
 	}
 	if _, err := registry.Archive(first.ID); err == nil {
-		t.Fatal("managed Harness Project should not be archived")
+		t.Fatal("managed Agents Project should not be archived")
 	}
 }
 

@@ -39,7 +39,7 @@ func TestRunResourcePaginatesAndReconstructsLLMInputs(t *testing.T) {
 		map[string]any{"role": "user", "content": "Continue diagnosis."},
 	}
 	writeTestRunTrace(t, stateRoot, runID, []agentrun.RunTraceRecord{
-		testRunRecord(runID, createdAt, "run_created", map[string]any{"task_id": "task-1", "agent_kind": "harness"}),
+		testRunRecord(runID, createdAt, "run_created", map[string]any{"task_id": "task-1", "agent_kind": "general"}),
 		testLLMInputRecord(runID, createdAt.Add(time.Second), "call-1", firstMessages, tools),
 		testLLMInputRecord(runID, createdAt.Add(2*time.Second), "call-2", secondMessages, tools),
 		testLLMInputRecord(runID, createdAt.Add(3*time.Second), "call-3", resetMessages, tools),

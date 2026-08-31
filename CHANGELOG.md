@@ -28,12 +28,12 @@ Denova records only major user-visible features, important compatibility or data
 - Added a General Agent and a stable Project-ID-based workbench. Books and arbitrary local directories can run chats and open Files, terminals, Reader, and Lore in parallel. v0.3.3 Project data is copy-migrated automatically while retaining the source files.
 - 写作页创作 Agent 支持同一本书的多个会话并行运行，并新增可隐藏的快捷会话栏；切换会话不会中断后台任务。
 - The Writing Agent now runs multiple conversations in the same Book concurrently, with an optional quick-session rail; switching conversations no longer stops background work.
-- 配置管理不再运行独立 Agent；通用与写作 Agent 通过 `/configuration` Skill 承担完整配置能力，各配置页面复用 AgentChat 的右侧管理面板、历史与恢复能力，同时按 Project 维护独立于普通 Agent 的配置会话列表。
-- Configuration no longer runs a standalone Agent. General and Writing Agents provide the complete workflow through `/configuration`; configuration pages reuse AgentChat's right-side manager, history, and recovery while keeping a separate configuration conversation list in each Project.
+- 配置管理不再运行独立 Agent；通用与写作 Agent 通过 `/configuration` Skill 承担完整配置能力，各配置页面复用 AgentChat 的右侧管理面板、历史与恢复能力，并与工作台共享每个 Project 的同一会话列表和历史。
+- Configuration no longer runs a standalone Agent. General and Writing Agents provide the complete workflow through `/configuration`; configuration pages reuse AgentChat's right-side manager, history, and recovery while sharing the same Project conversation list and history with the workbench.
 - 写作与各配置页面提供独立的快捷指令组；用户可调整内容、顺序和显隐，并为每条指令选择填入输入框或立即发送。
 - Writing and each configuration page now have independent quick-prompt groups whose content, order, visibility, and fill-or-send behavior can be customized.
-- Agents 页面支持基于稳定运行契约创建独立的自定义 Agent，可完整配置行为、模型与工具集、工具指导、稀疏 Skill 策略、上下文注入和委派策略；脚本工具可精确指定自定义 Agent，已有会话会固化完整定义并继续保持原行为。
-- The Agents page now creates independent custom Agents on stable runtime contracts, with complete behavior, model and toolset, tool guidance, sparse Skill policy, context injection, and delegation settings. Script tools can target an exact custom Agent, while existing conversations preserve a complete definition snapshot and retain their original behavior.
+- Agents 页面支持基于稳定运行契约创建独立的自定义主 Agent，可完整配置行为、模型与工具集、工具指导、稀疏 Skill 策略、上下文注入和委派策略；SubAgent 继续作为父 Agent 的独立委派能力，已有会话会固化完整定义并保持原行为。
+- The Agents page now creates independent custom main Agents on stable runtime contracts, with complete behavior, model and toolset, tool guidance, sparse Skill policy, context injection, and delegation settings. SubAgents remain a distinct delegated capability of parent Agents, while existing conversations preserve a complete definition snapshot and retain their original behavior.
 - 写作、游戏与 Project Agent 会话支持运行中连续追加 Follow Up，刷新或重启后恢复任务，并按会话保存模型、思考强度与权限设置。
 - Writing, Game, and Project Agent conversations now accept queued follow-ups during a run, recover after refresh or restart, and persist model, thinking, and permission settings per conversation.
 - 写作、游戏与通用 Agent 对话支持从现有输入菜单、拖拽或粘贴添加多个通用文件；Denova 保存独立副本供 Agent 使用，将图片作为原生视觉输入发送给模型，并在输入区与已发送消息中提供图片预览。
@@ -66,21 +66,21 @@ Denova records only major user-visible features, important compatibility or data
 - The right-side Story Console is reorganized into Overview, Tuning, and Routes. Each story can quickly override Game Agent narrative behavior, director planning, check difficulty and roll modifiers, interactive images, and state display, with clear preset-versus-story provenance.
 - 游戏剧情支持从任意已保存 AI 回复就地创建分支，并在游戏控制台集中预览、切换和管理故事线。
 - Game stories can branch directly from any persisted AI reply, with branch preview, switching, and management consolidated in the Game Console.
-- Developer Mode 新增跨 Project 的 Trajectory 与 Harness 工作区，用于查看运行轨迹、导出诊断数据和优化 Agent 行为；Harness 改动先保存为草稿，可按目标 Agent 调试、整体发布，并可随时停用自定义 State 而不删除数据。
-- Developer Mode adds cross-Project Trajectory and Harness workspaces for run inspection, diagnostic export, and Agent optimization. Harness changes are saved as a draft, can be debugged per target Agent, published together, and disabled without deleting custom State data.
+- Agent 配置迁入受管 Agents Project，并复用普通 Project 的对话、Files 与版本历史；Agents 页保留原有按 runtime 分组的主 Agent、Custom Agent 与独立 SubAgent 管理，General Agent 可按需读取跨 Project 的只读 Trajectory 证据来维护 Profile。Developer Mode 继续提供 Trajectory 查看与诊断导出。
+- Agent configuration now lives in a managed Agents Project and reuses ordinary Project chats, Files, and version history. The Agents page retains its runtime-grouped main Agents, Custom Agents, and distinct SubAgent management, while its General Agent can read cross-Project, read-only Trajectory evidence on demand when maintaining Profiles. Developer Mode continues to provide Trajectory inspection and diagnostic export.
 - 终端启动方式改为用户级可排序注册表，并新增 macOS/Linux 一键安装器和 Windows PowerShell 快速重启脚本。
 - Terminal launchers now use a user-level ordered registry, with a macOS/Linux installer and a native Windows PowerShell quick-restart script.
 
 ### Incompatible data changes / 用户数据不兼容变更
 
-- v0.3.3 的独立 Config Manager 会话和专属设置会原样保留，但不再参与运行、展示或自动合并；后续配置对话写入对应 Project 的 Agent 会话存储，并显示在独立的配置会话列表中。
-- Standalone v0.3.3 Config Manager sessions and dedicated settings remain untouched but no longer participate in runtime behavior, appear in the UI, or merge automatically; future configuration conversations use the corresponding Project's Agent session storage and appear in a separate configuration list.
+- v0.3.3 的独立 Config Manager 会话和专属设置会原样保留，但不再参与运行、展示或自动合并；后续配置对话写入对应 Project 的 Agent 会话存储，并显示在该 Project 的统一会话列表中。
+- Standalone v0.3.3 Config Manager sessions and dedicated settings remain untouched but no longer participate in runtime behavior, appear in the UI, or merge automatically; future configuration conversations use the corresponding Project's Agent session storage and appear in that Project's shared conversation list.
 - v0.3.3 的用户级全局 Automation 任务文件会保留，但不再展示、触发或执行；需要继续使用的任务须在对应 Project 下重新创建。
 - User-level global Automation task files from v0.3.3 are retained but are no longer displayed, triggered, or executed. Tasks that remain needed must be recreated under the relevant Project.
 - v0.3.3 中的 `enable_thinking`、`reasoning_effort`、`max_output_tokens`、`tool_result_retention_enabled` 和低层 Cleanup 参数不再生效；升级后需重新选择 `thinking_level` 与当前上下文选项，输出上限则改由模型能力决定。
 - The v0.3.3 `enable_thinking`, `reasoning_effort`, `max_output_tokens`, `tool_result_retention_enabled`, and low-level Cleanup settings no longer take effect. Select `thinking_level` and the current context options again after upgrading; model capabilities now determine output limits.
-- v0.3.3 的 `labs.continual_learning` 开关不再生效；已有 Harness State 与历史仍会保留，需要启用 Developer Mode 才会加载。
-- The v0.3.3 `labs.continual_learning` switch no longer takes effect. Existing Harness State and history remain intact but load only when Developer Mode is enabled.
+- v0.3.3 的 `labs.continual_learning` 开关不再生效；用户级有效 Agent 设置会先备份原配置，再迁入 `.denova/agents` Profile 文件，Project 覆盖仍保留在对应 Project State 中。
+- The v0.3.3 `labs.continual_learning` switch no longer takes effect. Active user-level Agent settings are backed up before migration into `.denova/agents` Profile files, while Project overrides remain in their corresponding Project State.
 
 ### Major fixes / 重要修复
 

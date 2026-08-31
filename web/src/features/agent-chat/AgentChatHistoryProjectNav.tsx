@@ -1,4 +1,4 @@
-import { Bot, Folder, PanelLeftClose, Stethoscope } from 'lucide-react'
+import { Bot, Folder, PanelLeftClose } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -43,8 +43,7 @@ export function AgentChatHistoryProjectSidebar({
           const current = project.id === currentProjectId
           const name = project.name || project.path
           let Icon = Folder
-          if (project.type === 'general') Icon = Bot
-          if (project.type === 'harness') Icon = Stethoscope
+          if (project.type === 'general' || project.type === 'agents') Icon = Bot
           return (
             <button
               key={project.id}

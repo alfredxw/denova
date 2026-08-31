@@ -30,6 +30,7 @@ export interface StoryStageProps {
   onStorySetupUpdate?: (input: StoryCreateInput) => void | Promise<void>
   onNarrativeStyleChange?: (id: string) => void | Promise<unknown>
   onStoryDelete?: (storyIds: string[]) => void | Promise<void>
+  onStoryRename?: (storyId: string, title: string) => void | Promise<void>
   onRequestLoreInit?: () => void
   onOpenDirectorConfig?: () => void
   onToggleDirectorPanel?: () => void

@@ -19,7 +19,6 @@ import (
 	agentcompaction "denova/internal/agents/context/compaction"
 	agentconversation "denova/internal/agents/conversation"
 	agentdelegation "denova/internal/agents/delegation"
-	"denova/internal/agents/harnessstate"
 	agentinteractive "denova/internal/agents/interactive"
 	agentlifecycle "denova/internal/agents/lifecycle"
 	"denova/internal/agents/modelio"
@@ -90,26 +89,6 @@ func BuildGeneralDefinitionWithCompositionForHost(ctx context.Context, cfg *conf
 		ExtraTools:        host.RootTools,
 		ExtraToolsFactory: agenttoolruntime.NewCatalog(cfg).Configuration(),
 		ReadAdapters:      host.ReadAdapters,
-	})
-	return assembly.Definition, assembly.Composition, err
-}
-
-// BuildHarnessDefinitionWithCompositionForHost assembles the system-managed
-// Harness Project Agent with ordinary workspace tools and trajectory adapters.
-func BuildHarnessDefinitionWithCompositionForHost(ctx context.Context, cfg *config.Config, host AgentHostCapabilities) (agent.Definition, prompts.SystemPromptComposition, error) {
-	composition, err := prompts.ComposeHarnessInstruction(cfg)
-	if err != nil {
-		return agent.Definition{}, prompts.SystemPromptComposition{}, err
-	}
-	assembly, err := buildAgentDefinitionWithComposition(ctx, cfg, agentBuildSpec{
-		Kind:            config.AgentKindHarness,
-		Name:            "DenovaHarnessAgent",
-		Description:     "Maintains user-level Harness State from trajectory evidence",
-		Composition:     composition,
-		EnableSkills:    true,
-		InteractiveHost: host.Interactive,
-		ExtraTools:      host.RootTools,
-		ReadAdapters:    host.ReadAdapters,
 	})
 	return assembly.Definition, assembly.Composition, err
 }
@@ -205,28 +184,19 @@ func buildAgentDefinitionWithComposition(ctx context.Context, cfg *config.Config
 	if err != nil {
 		return agentDefinitionAssembly{}, err
 	}
-	harness, err := harnessstate.Load(ctx, cfg)
-	if err != nil {
-		return agentDefinitionAssembly{}, fmt.Errorf("load Harness State for Agent %s: %w", spec.Kind, err)
-	}
 	projectContext, err := agentlifecycle.NewProjectInstructionsContextSource(cfg, spec.Kind, spec.ProjectState)
 	if err != nil {
 		return agentDefinitionAssembly{}, fmt.Errorf("create project instructions context for Agent %s: %w", spec.Kind, err)
 	}
 	definitionContext, err := agent.CombineContextSources(
 		projectContext,
-		harness.ContextSource(cfg, spec.Kind),
 		agentprofile.ContextSource(cfg, spec.Kind),
 	)
 	if err != nil {
 		return agentDefinitionAssembly{}, fmt.Errorf("compose ContextSource for Agent %s: %w", spec.Kind, err)
 	}
-	childComposition, err := prompts.AppendUserStatePrompt(cfg, composition, harness.Prompt(spec.Kind))
-	if err != nil {
-		return agentDefinitionAssembly{}, fmt.Errorf("compose Harness State prompt for child Agents of %s: %w", spec.Kind, err)
-	}
 	childSpec := spec
-	childSpec.Composition = childComposition
+	childSpec.Composition = composition
 	modelCfg, err := modelio.ConfigForAgent(cfg, spec.Kind)
 	if err != nil {
 		return agentDefinitionAssembly{}, fmt.Errorf("resolve model configuration: %w", err)
@@ -261,20 +231,15 @@ func buildAgentDefinitionWithComposition(ctx context.Context, cfg *config.Config
 	if err != nil {
 		return agentDefinitionAssembly{}, err
 	}
-	savedScriptTools, err := scripttools.Saved(cfg, harness, spec.Kind)
-	if err != nil {
-		return agentDefinitionAssembly{}, err
-	}
-	subAgentConfigs := harness.SubAgents()
+	var subAgentConfigs []config.SubAgentConfig
 	if cfg != nil {
-		subAgentConfigs = config.MergeSubAgents(cfg.SubAgents, subAgentConfigs)
+		subAgentConfigs = cfg.SubAgents
 	}
 	var taskAgents []agentdelegation.Child
 	if toolSettings.Allows(config.AgentToolDelegation) {
 		configuredSubAgents, err := buildConfiguredSubAgents(
 			ctx, cfg, childSpec, toolSettings, projectContext,
 			agentprofile.FilterSubAgents(cfg, spec.Kind, subAgentConfigs),
-			savedScriptTools,
 		)
 		if err != nil {
 			return agentDefinitionAssembly{}, err
@@ -283,7 +248,7 @@ func buildAgentDefinitionWithComposition(ctx context.Context, cfg *config.Config
 		if agentprofile.IncludeGeneralSubAgent(cfg, spec.Kind, config.GeneralSubAgentEnabled(cfg, spec.Kind)) {
 			generalAssembly, err := buildChatModelAgentAssembly(ctx, cfg, chatModelAgentAssemblySpec{
 				Kind:                  producttools.GeneralSubAgentName,
-				SystemPrompt:          childComposition,
+				SystemPrompt:          composition,
 				ToolPolicyKind:        spec.Kind,
 				ModelCfg:              modelCfg,
 				ToolSettings:          toolSettings,
@@ -313,7 +278,6 @@ func buildAgentDefinitionWithComposition(ctx context.Context, cfg *config.Config
 	}
 
 	tools := append([]agent.ToolDefinition(nil), assembly.Tools...)
-	tools = append(tools, savedScriptTools...)
 	var builtinToolsets []agent.CapabilityIdentity
 	if !spec.DisableWriteTodos && toolSettings.Allows(config.AgentToolTodo) {
 		todoToolset := publictools.Todo()
@@ -324,7 +288,7 @@ func buildAgentDefinitionWithComposition(ctx context.Context, cfg *config.Config
 		tools = append(tools, prepared...)
 		builtinToolsets = append(builtinToolsets, todoToolset.Identity())
 	}
-	if spec.InteractiveHost && toolSettings.Allows(config.AgentToolAsk) && (spec.Kind == config.AgentKindGeneral || spec.Kind == config.AgentKindIDE || spec.Kind == config.AgentKindHarness) {
+	if spec.InteractiveHost && toolSettings.Allows(config.AgentToolAsk) && (spec.Kind == config.AgentKindGeneral || spec.Kind == config.AgentKindIDE) {
 		askToolset := publictools.Ask()
 		prepared, err := askToolset.PrepareTools(ctx, agent.ToolRequest{})
 		if err != nil {
@@ -333,7 +297,6 @@ func buildAgentDefinitionWithComposition(ctx context.Context, cfg *config.Config
 		tools = append(tools, prepared...)
 		builtinToolsets = append(builtinToolsets, askToolset.Identity())
 	}
-	tools = harness.ApplyToolDescriptions(tools)
 	tools, err = agentprofile.ApplyToolGuidance(ctx, cfg, spec.Kind, tools)
 	if err != nil {
 		return agentDefinitionAssembly{}, err
@@ -365,7 +328,7 @@ func buildAgentDefinitionWithComposition(ctx context.Context, cfg *config.Config
 	}
 	var goalManager agent.GoalManager
 	switch spec.Kind {
-	case config.AgentKindGeneral, config.AgentKindHarness, config.AgentKindIDE, config.AgentKindInteractiveStory:
+	case config.AgentKindGeneral, config.AgentKindIDE, config.AgentKindInteractiveStory:
 		goalManager = agentlifecycle.NewGoalManager()
 	}
 	rootTools, err := agent.StaticToolsIdentified(denovaCapabilityIdentity("denova.tools", struct {
@@ -384,10 +347,9 @@ func buildAgentDefinitionWithComposition(ctx context.Context, cfg *config.Config
 		if validationErr != nil {
 			return agentDefinitionAssembly{}, fmt.Errorf("identify Agent tool manifest kind=%s: %w", spec.Kind, validationErr)
 		}
-		taskDescription := harness.ToolDescriptions()["task"]
 		catalog, err := agentdelegation.NewCatalog(rootTools, agentdelegation.Config{
 			Capability:         config.AgentToolDelegation,
-			Description:        taskDescription,
+			Description:        "Delegate an independently scoped task to a configured SubAgent.",
 			MaxResultBytes:     toolresult.LimitBytes(cfg),
 			Parallelism:        configSubAgentParallelism(cfg),
 			ValidationIdentity: validationIdentity,
@@ -578,7 +540,6 @@ func buildConfiguredSubAgents(
 	parentTools config.ResolvedAgentToolSettings,
 	projectContext agent.ContextSource,
 	subConfigs []config.SubAgentConfig,
-	savedScriptTools []agent.ToolDefinition,
 ) ([]agentdelegation.Child, error) {
 	if cfg == nil || !config.IsSubAgentParentKind(parent.Kind) {
 		return nil, nil
@@ -592,7 +553,7 @@ func buildConfiguredSubAgents(
 		if !config.SubAgentAllowedForParent(sub, parent.Kind) {
 			continue
 		}
-		subAgent, err := buildConfiguredSubAgent(ctx, cfg, parent, parentTools, projectContext, sub, savedScriptTools)
+		subAgent, err := buildConfiguredSubAgent(ctx, cfg, parent, parentTools, projectContext, sub)
 		if err != nil {
 			return nil, err
 		}
@@ -608,7 +569,6 @@ func buildConfiguredSubAgent(
 	parentTools config.ResolvedAgentToolSettings,
 	projectContext agent.ContextSource,
 	sub config.SubAgentConfig,
-	savedScriptTools []agent.ToolDefinition,
 ) (agentdelegation.Child, error) {
 	composition, err := composeSubAgentInstruction(cfg, parent, sub)
 	if err != nil {
@@ -638,11 +598,6 @@ func buildConfiguredSubAgent(
 	if err != nil {
 		return agentdelegation.Child{}, err
 	}
-	selectedScriptTools, err := scripttools.ForSubAgent(ctx, savedScriptTools, sub.Tools)
-	if err != nil {
-		return agentdelegation.Child{}, fmt.Errorf("select Script Tools for sub Agent %s: %w", sub.ID, err)
-	}
-	assembly.Tools = append(assembly.Tools, selectedScriptTools...)
 	modelIdentity, err := providers.ModelIdentity(modelCfg)
 	if err != nil {
 		return agentdelegation.Child{}, fmt.Errorf("resolve sub Agent model identity id=%s: %w", sub.ID, err)

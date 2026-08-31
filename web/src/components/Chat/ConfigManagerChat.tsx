@@ -71,7 +71,7 @@ export function ConfigManagerChat({
   })
 
   const fetchProject = useCallback(async (): Promise<AgentChatProject> => {
-    const projects = await getAgentChatProjects({ channel: 'configuration' })
+    const projects = await getAgentChatProjects()
     const match = projects.find((candidate) => candidate.id === projectId)
     if (!match) throw new Error(`Project Agent is unavailable: ${projectId}`)
     return match
@@ -171,7 +171,7 @@ export function ConfigManagerChat({
       <WritingAgentWorkspace
         projectId={project.id}
         projectType={project.type}
-        sessionChannel="configuration"
+        activeSessionPreferenceScope="configuration"
         quickPromptScope={quickPromptScope}
         composerDraftScope={composerDraftScope}
         workspace={project.path}

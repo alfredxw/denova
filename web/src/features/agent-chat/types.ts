@@ -16,15 +16,19 @@ import type { ToolNavigationIntent } from '@/components/Chat/tool-navigation'
  */
 
 /** Project pages adapted for hosting inside an AgentChat workbench tab. */
-export type AgentChatPageId = 'reader' | 'lore'
+export type AgentChatPageId = 'reader' | 'lore' | 'versions'
 
-export const AGENT_CHAT_PAGE_IDS: readonly AgentChatPageId[] = ['reader', 'lore']
+export const AGENT_CHAT_PAGE_IDS: readonly AgentChatPageId[] = ['reader', 'lore', 'versions']
 
+const BOOK_PROJECT_PAGE_IDS: readonly AgentChatPageId[] = ['reader', 'lore']
+const AGENTS_PROJECT_PAGE_IDS: readonly AgentChatPageId[] = ['versions']
 const GENERAL_PROJECT_PAGE_IDS: readonly AgentChatPageId[] = []
 
 /** Declares page availability independently from tab-menu presentation. */
 export function agentChatPageIdsForProjectType(projectType: AgentChatProjectType): readonly AgentChatPageId[] {
-  return projectType === 'book' ? AGENT_CHAT_PAGE_IDS : GENERAL_PROJECT_PAGE_IDS
+  if (projectType === 'book') return BOOK_PROJECT_PAGE_IDS
+  if (projectType === 'agents') return AGENTS_PROJECT_PAGE_IDS
+  return GENERAL_PROJECT_PAGE_IDS
 }
 
 /** A persisted review target plus a nonce for revealing it inside an AgentChat project page. */

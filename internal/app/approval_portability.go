@@ -122,7 +122,7 @@ func migratePortableApprovalSettings(dataDir string, registry *projectdomain.Reg
 	if err != nil {
 		return err
 	}
-	if _, err := config.MutateSettingsFile(settingsPath, "", func(current config.Settings) (config.Settings, error) {
+	if _, err := config.MutateUserSettings(dataDir, "", func(current config.Settings) (config.Settings, error) {
 		migrated, _ := portableApprovalRules(records, current.AgentApprovalRules)
 		current.AgentApprovalRules = migrated
 		return config.PrepareUserSettingsForWrite(current, current)

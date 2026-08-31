@@ -82,7 +82,7 @@ func (s *Session) reloadCanonicalLocked() error {
 
 func cloneSessionForTailReplay(source *Session) *Session {
 	result := &Session{
-		ID: source.ID, Channel: source.Channel, CreatedAt: source.CreatedAt, UpdatedAt: source.UpdatedAt,
+		ID: source.ID, CreatedAt: source.CreatedAt, UpdatedAt: source.UpdatedAt,
 		filePath: source.filePath, title: source.title,
 		clearAfterIndex: source.clearAfterIndex, contextRevision: source.contextRevision,
 		journalSize: source.journalSize, journalOffset: source.journalOffset,
