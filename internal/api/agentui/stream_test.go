@@ -224,6 +224,52 @@ func TestStreamEncoderUsesPersistedDisplaySegmentIDs(t *testing.T) {
 	assertChunkAgentMetadata(t, chunks, "reasoning-start", "display_segment_id", "run-order-display-002-thinking")
 }
 
+func TestStreamEncoderKeepsInterleavedSubAgentContentSegmentsIndependent(t *testing.T) {
+	var out bytes.Buffer
+	encoder := NewStreamEncoder(&out, "")
+	events := []agentrun.Event{
+		{Type: "thinking", Data: map[string]any{"content": "Alpha one. ", "run_id": "root", "subagent": true, "subagent_session_id": "alpha", "display_segment_id": "alpha-thinking"}},
+		{Type: "thinking", Data: map[string]any{"content": "Beta one. ", "run_id": "root", "subagent": true, "subagent_session_id": "beta", "display_segment_id": "beta-thinking"}},
+		{Type: "thinking", Data: map[string]any{"content": "Alpha two.", "run_id": "root", "subagent": true, "subagent_session_id": "alpha", "display_segment_id": "alpha-thinking"}},
+		{Type: "thinking", Data: map[string]any{"content": "Beta two.", "run_id": "root", "subagent": true, "subagent_session_id": "beta", "display_segment_id": "beta-thinking"}},
+		{Type: "chunk", Data: map[string]any{"content": "Alpha result. ", "run_id": "root", "subagent": true, "subagent_session_id": "alpha", "display_segment_id": "alpha-text"}},
+		{Type: "chunk", Data: map[string]any{"content": "Beta result. ", "run_id": "root", "subagent": true, "subagent_session_id": "beta", "display_segment_id": "beta-text"}},
+		{Type: "chunk", Data: map[string]any{"content": "done", "run_id": "root", "subagent": true, "subagent_session_id": "alpha", "display_segment_id": "alpha-text"}},
+		{Type: "chunk", Data: map[string]any{"content": "done", "run_id": "root", "subagent": true, "subagent_session_id": "beta", "display_segment_id": "beta-text"}},
+		{Type: "done", Data: map[string]any{}},
+	}
+	for _, event := range events {
+		if err := encoder.WriteEvent(event); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	chunks, _ := parseUIStreamChunks(t, out.String())
+	for id, want := range map[string]string{
+		"alpha-thinking": "Alpha one. Alpha two.",
+		"beta-thinking":  "Beta one. Beta two.",
+		"alpha-text":     "Alpha result. done",
+		"beta-text":      "Beta result. done",
+	} {
+		starts := 0
+		var content strings.Builder
+		for _, chunk := range chunks {
+			if chunk["id"] != id {
+				continue
+			}
+			if chunk["type"] == "text-start" || chunk["type"] == "reasoning-start" {
+				starts++
+			}
+			if delta, ok := chunk["delta"].(string); ok {
+				content.WriteString(delta)
+			}
+		}
+		if starts != 1 || content.String() != want {
+			t.Fatalf("segment %s starts=%d content=%q, want one start and %q", id, starts, content.String(), want)
+		}
+	}
+}
+
 func TestStreamEncoderPreservesFailedAndIncompleteToolStates(t *testing.T) {
 	var out bytes.Buffer
 	encoder := NewStreamEncoder(&out, "")

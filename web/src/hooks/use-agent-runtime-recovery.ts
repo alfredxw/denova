@@ -23,6 +23,7 @@ interface WritingAgentRuntimeRecoveryOptions {
   onDisplayRehydrated: () => void
   onDisplayTerminalRestored: (request: WritingDisplayRehydrateRequest) => void
   onSettled: () => void
+  prepareStreamResumeBoundary: () => void
   runtimeRecoverySignal: number
   resumeStream: () => Promise<void>
   transport: AgentChatTransport
@@ -43,6 +44,7 @@ export function useWritingAgentRuntimeRecovery({
   onDisplayRehydrated,
   onDisplayTerminalRestored,
   onSettled,
+  prepareStreamResumeBoundary,
   runtimeRecoverySignal,
   resumeStream,
   transport,
@@ -125,6 +127,7 @@ export function useWritingAgentRuntimeRecovery({
         await loadHistoryAuthoritative(sessionID)
         if (activeSessionIdRef.current !== sessionID) return false
         if (displayOmissionActiveRef.current) onDisplayRehydrated()
+        prepareStreamResumeBoundary()
         beforeResume?.()
         await Promise.resolve(resumeStream())
         // AI SDK resolves resumeStream on an HTTP/reconnect failure and reports
@@ -143,7 +146,7 @@ export function useWritingAgentRuntimeRecovery({
         return false
       }
     },
-    [loadHistoryAuthoritative, markRecoveryRetry, onDisplayRehydrated, resumeStream],
+    [loadHistoryAuthoritative, markRecoveryRetry, onDisplayRehydrated, prepareStreamResumeBoundary, resumeStream],
   )
 
   const inspectAndAttach = useCallback(

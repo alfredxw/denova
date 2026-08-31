@@ -80,19 +80,22 @@ export function TuningSelect({
   value,
   options,
   label,
+  triggerLabel,
   disabled,
   onChange,
 }: {
   value: string
   options: TuningSelectOption[]
   label: string
+  triggerLabel?: string
   disabled?: boolean
   onChange: (value: string) => void
 }) {
+  const selectedLabel = triggerLabel ?? options.find((option) => option.id === value)?.label
   return (
     <Select value={value} disabled={disabled} onValueChange={onChange}>
-      <SelectTrigger size="sm" aria-label={label} className="director-control-select w-32 min-w-0 max-w-full shrink-0 bg-background text-xs text-foreground">
-        <SelectValue />
+      <SelectTrigger size="sm" aria-label={label} title={selectedLabel} className="director-control-select w-[min(10rem,60cqw)] min-w-0 max-w-full shrink-0 bg-background text-xs text-foreground">
+        {triggerLabel ? <SelectValue>{triggerLabel}</SelectValue> : <SelectValue />}
       </SelectTrigger>
       <SelectContent position="popper">
         <SelectGroup>
@@ -142,7 +145,7 @@ export function NumberSettingInput({
         disabled={disabled}
         aria-label={label}
         aria-invalid={!valid}
-        className="h-7 w-16 bg-background text-right text-xs text-foreground tabular-nums"
+        className="h-7 w-20 bg-background text-right text-xs text-foreground tabular-nums"
         onChange={(event) => setDraft(event.target.value)}
         onBlur={commit}
         onKeyDown={(event) => {

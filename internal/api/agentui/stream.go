@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 
 	agentrun "denova/internal/agents/run"
@@ -20,9 +21,11 @@ type StreamEncoder struct {
 	started  bool
 	finished bool
 
-	textID        string
+	// Root and SubAgent content can interleave while task_wait is active. Each
+	// source therefore owns its open AI SDK content segments independently.
+	textIDs       map[string]string
 	textSeq       int
-	reasonID      string
+	reasonIDs     map[string]string
 	reasonSeq     int
 	toolSeq       int
 	toolInputs    map[string]string
@@ -34,6 +37,8 @@ func NewStreamEncoder(w io.Writer, requestID string) *StreamEncoder {
 	return &StreamEncoder{
 		w:             w,
 		requestID:     strings.TrimSpace(requestID),
+		textIDs:       make(map[string]string),
+		reasonIDs:     make(map[string]string),
 		toolInputs:    make(map[string]string),
 		startedTool:   make(map[string]string),
 		availableTool: make(map[string]bool),
@@ -49,32 +54,33 @@ func (e *StreamEncoder) WriteEvent(ev appsvc.AgentEvent) error {
 	}
 	data := eventDataMap(ev.Data)
 	meta := providerMetadataFromData(data)
+	contentSource := contentSourceKey(data)
 
 	switch ev.Type {
 	case "chunk":
-		if err := e.closeReasoning(); err != nil {
+		if err := e.closeReasoning(contentSource); err != nil {
 			return err
 		}
-		return e.writeTextDelta(readString(data, "content"), meta, readString(data, "display_segment_id"))
+		return e.writeTextDelta(readString(data, "content"), meta, readString(data, "display_segment_id"), contentSource)
 	case "thinking":
-		if err := e.closeText(); err != nil {
+		if err := e.closeText(contentSource); err != nil {
 			return err
 		}
-		return e.writeReasoningDelta(readString(data, "content"), meta, readString(data, "display_segment_id"))
+		return e.writeReasoningDelta(readString(data, "content"), meta, readString(data, "display_segment_id"), contentSource)
 	case "tool_call":
-		if err := e.closeOpenContent(); err != nil {
+		if err := e.closeOpenContentFor(contentSource); err != nil {
 			return err
 		}
 		return e.writeToolCall(data, meta)
 	case "tool_args_delta":
 		return e.writeToolArgsDelta(data)
 	case "tool_started":
-		if err := e.closeOpenContent(); err != nil {
+		if err := e.closeOpenContentFor(contentSource); err != nil {
 			return err
 		}
 		return e.writeToolStarted(data, meta)
 	case "tool_result":
-		if err := e.closeOpenContent(); err != nil {
+		if err := e.closeOpenContentFor(contentSource); err != nil {
 			return err
 		}
 		if err := e.writeToolResult(data, meta); err != nil {
@@ -85,39 +91,39 @@ func (e *StreamEncoder) WriteEvent(ev appsvc.AgentEvent) error {
 		}
 		return nil
 	case "ask_pending", "ask_resolved":
-		if err := e.closeOpenContent(); err != nil {
+		if err := e.closeOpenContentFor(contentSource); err != nil {
 			return err
 		}
 		return e.writeData(DataTypeAsk, eventID(data, "ask"), data)
 	case "workspace_change":
-		if err := e.closeOpenContent(); err != nil {
+		if err := e.closeOpenContentFor(contentSource); err != nil {
 			return err
 		}
 		return e.writeData(DataTypeWorkspaceChange, eventID(data, "workspace-change"), data)
 	case "context_compaction":
-		if err := e.closeOpenContent(); err != nil {
+		if err := e.closeOpenContentFor(contentSource); err != nil {
 			return err
 		}
 		return e.writeData(DataTypeContextCompaction, eventID(data, "context-compaction"), data)
 	case "interactive_image":
-		if err := e.closeOpenContent(); err != nil {
+		if err := e.closeOpenContentFor(contentSource); err != nil {
 			return err
 		}
 		return e.writeData(DataTypeInteractiveImage, eventID(data, "interactive-image"), data)
 	case "proposed_plan":
-		if err := e.closeOpenContent(); err != nil {
+		if err := e.closeOpenContentFor(contentSource); err != nil {
 			return err
 		}
 		return e.writeData(DataTypeProposedPlan, eventID(data, "proposed-plan"), data)
 	case "rule_roll":
-		if err := e.closeOpenContent(); err != nil {
+		if err := e.closeOpenContentFor(contentSource); err != nil {
 			return err
 		}
 		return e.writeData(DataTypeRuleRoll, eventID(data, "rule-roll"), data)
 	case "token_usage":
 		return e.writeData(DataTypeTokenUsage, eventID(data, "token-usage"), data)
 	case "execution_summary":
-		if err := e.closeOpenContent(); err != nil {
+		if err := e.closeOpenContentFor(contentSource); err != nil {
 			return err
 		}
 		return e.writeData(DataTypeExecutionSummary, eventID(data, "execution-summary"), data)
@@ -139,7 +145,7 @@ func (e *StreamEncoder) WriteEvent(ev appsvc.AgentEvent) error {
 	case "done":
 		return e.Finish("stop")
 	default:
-		if err := e.closeOpenContent(); err != nil {
+		if err := e.closeOpenContentFor(contentSource); err != nil {
 			return err
 		}
 		payload := cloneMap(data)
@@ -195,23 +201,23 @@ func (e *StreamEncoder) ensureStarted(ev appsvc.AgentEvent) error {
 	return e.writeChunk(start)
 }
 
-func (e *StreamEncoder) writeTextDelta(delta string, providerMetadata map[string]any, segmentID string) error {
+func (e *StreamEncoder) writeTextDelta(delta string, providerMetadata map[string]any, segmentID, source string) error {
 	if delta == "" {
 		return nil
 	}
-	if e.textID != "" && segmentID != "" && e.textID != segmentID {
-		if err := e.closeText(); err != nil {
+	if current := e.textIDs[source]; current != "" && segmentID != "" && current != segmentID {
+		if err := e.closeText(source); err != nil {
 			return err
 		}
 	}
-	if e.textID == "" {
+	if e.textIDs[source] == "" {
 		if segmentID != "" {
-			e.textID = segmentID
+			e.textIDs[source] = segmentID
 		} else {
 			e.textSeq++
-			e.textID = fmt.Sprintf("text-%d", e.textSeq)
+			e.textIDs[source] = fmt.Sprintf("text-%d", e.textSeq)
 		}
-		start := map[string]any{"type": "text-start", "id": e.textID}
+		start := map[string]any{"type": "text-start", "id": e.textIDs[source]}
 		if len(providerMetadata) > 0 {
 			start["providerMetadata"] = providerMetadata
 		}
@@ -219,30 +225,30 @@ func (e *StreamEncoder) writeTextDelta(delta string, providerMetadata map[string
 			return err
 		}
 	}
-	chunk := map[string]any{"type": "text-delta", "id": e.textID, "delta": delta}
+	chunk := map[string]any{"type": "text-delta", "id": e.textIDs[source], "delta": delta}
 	if len(providerMetadata) > 0 {
 		chunk["providerMetadata"] = providerMetadata
 	}
 	return e.writeChunk(chunk)
 }
 
-func (e *StreamEncoder) writeReasoningDelta(delta string, providerMetadata map[string]any, segmentID string) error {
+func (e *StreamEncoder) writeReasoningDelta(delta string, providerMetadata map[string]any, segmentID, source string) error {
 	if delta == "" {
 		return nil
 	}
-	if e.reasonID != "" && segmentID != "" && e.reasonID != segmentID {
-		if err := e.closeReasoning(); err != nil {
+	if current := e.reasonIDs[source]; current != "" && segmentID != "" && current != segmentID {
+		if err := e.closeReasoning(source); err != nil {
 			return err
 		}
 	}
-	if e.reasonID == "" {
+	if e.reasonIDs[source] == "" {
 		if segmentID != "" {
-			e.reasonID = segmentID
+			e.reasonIDs[source] = segmentID
 		} else {
 			e.reasonSeq++
-			e.reasonID = fmt.Sprintf("reasoning-%d", e.reasonSeq)
+			e.reasonIDs[source] = fmt.Sprintf("reasoning-%d", e.reasonSeq)
 		}
-		start := map[string]any{"type": "reasoning-start", "id": e.reasonID}
+		start := map[string]any{"type": "reasoning-start", "id": e.reasonIDs[source]}
 		if len(providerMetadata) > 0 {
 			start["providerMetadata"] = providerMetadata
 		}
@@ -250,7 +256,7 @@ func (e *StreamEncoder) writeReasoningDelta(delta string, providerMetadata map[s
 			return err
 		}
 	}
-	chunk := map[string]any{"type": "reasoning-delta", "id": e.reasonID, "delta": delta}
+	chunk := map[string]any{"type": "reasoning-delta", "id": e.reasonIDs[source], "delta": delta}
 	if len(providerMetadata) > 0 {
 		chunk["providerMetadata"] = providerMetadata
 	}
@@ -258,28 +264,66 @@ func (e *StreamEncoder) writeReasoningDelta(delta string, providerMetadata map[s
 }
 
 func (e *StreamEncoder) closeOpenContent() error {
-	if err := e.closeText(); err != nil {
-		return err
+	for _, source := range sortedContentSources(e.textIDs) {
+		if err := e.closeText(source); err != nil {
+			return err
+		}
 	}
-	return e.closeReasoning()
+	for _, source := range sortedContentSources(e.reasonIDs) {
+		if err := e.closeReasoning(source); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
-func (e *StreamEncoder) closeText() error {
-	if e.textID == "" {
+func (e *StreamEncoder) closeOpenContentFor(source string) error {
+	if source == "default" {
+		return e.closeOpenContent()
+	}
+	if err := e.closeText(source); err != nil {
+		return err
+	}
+	return e.closeReasoning(source)
+}
+
+func (e *StreamEncoder) closeText(source string) error {
+	id := e.textIDs[source]
+	if id == "" {
 		return nil
 	}
-	id := e.textID
-	e.textID = ""
+	delete(e.textIDs, source)
 	return e.writeChunk(map[string]any{"type": "text-end", "id": id})
 }
 
-func (e *StreamEncoder) closeReasoning() error {
-	if e.reasonID == "" {
+func (e *StreamEncoder) closeReasoning(source string) error {
+	id := e.reasonIDs[source]
+	if id == "" {
 		return nil
 	}
-	id := e.reasonID
-	e.reasonID = ""
+	delete(e.reasonIDs, source)
 	return e.writeChunk(map[string]any{"type": "reasoning-end", "id": id})
+}
+
+func sortedContentSources(streams map[string]string) []string {
+	sources := make([]string, 0, len(streams))
+	for source := range streams {
+		sources = append(sources, source)
+	}
+	sort.Strings(sources)
+	return sources
+}
+
+func contentSourceKey(data map[string]any) string {
+	if sessionID := readString(data, "subagent_session_id"); sessionID != "" {
+		return "subagent:" + sessionID
+	}
+	runID := readString(data, "run_id")
+	agentName := readString(data, "agent_name")
+	if runID != "" || agentName != "" {
+		return "agent:" + runID + ":" + agentName
+	}
+	return "default"
 }
 
 func (e *StreamEncoder) writeToolCall(data map[string]any, providerMetadata map[string]any) error {

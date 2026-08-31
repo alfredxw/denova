@@ -12,8 +12,27 @@ export interface E2EModelStatus {
   external_secret_path: string
 }
 
+export interface E2EModelRequest {
+  messages: Array<{
+    role: string
+    content?: unknown
+  }>
+}
+
 export async function getModelStatus(request: APIRequestContext): Promise<E2EModelStatus> {
   const response = await request.get(`${modelControlURL}/control/status`)
+  await expectControlSuccess(response)
+  return response.json()
+}
+
+export async function getCapturedModelRequest(
+  request: APIRequestContext,
+  marker: string,
+): Promise<E2EModelRequest | null> {
+  const response = await request.get(
+    `${modelControlURL}/control/captured-request?marker=${encodeURIComponent(marker)}`,
+  )
+  if (response.status() === 404) return null
   await expectControlSuccess(response)
   return response.json()
 }

@@ -34,6 +34,8 @@ const directorPanel = {
   'directorPanel.tuning.agent.narrativeStyle': '叙事风格',
   'directorPanel.tuning.agent.events': '事件包',
   'directorPanel.tuning.agent.replyLength': '每回合目标字数',
+  'directorPanel.tuning.agent.replyLengthPresets': '常用字数',
+  'directorPanel.tuning.agent.replyLengthCustom': '自定义字数',
   'directorPanel.tuning.agent.choiceCount': '候选行动数',
   'directorPanel.tuning.check.title': '回合判定',
   'directorPanel.tuning.check.enabled': '启用固定规则判定',

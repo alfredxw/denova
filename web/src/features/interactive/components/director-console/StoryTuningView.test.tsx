@@ -73,6 +73,25 @@ describe('StoryTuningView', () => {
     await waitFor(() => expect(onUpdate).toHaveBeenCalledWith({ planning_mode: 'enabled' }))
   })
 
+  it('shows complete compact values and saves reply-length presets or custom values', async () => {
+    render(<StoryTuningView story={story()} directors={[director]} tellers={[teller]} imagePresets={[]} stateDisplayPreference="preview" onStateDisplayPreferenceChange={vi.fn()} onUpdate={onUpdate} />)
+
+    expect(screen.getByLabelText('叙事风格')).toHaveTextContent('电影化')
+    const replyLength = screen.getByRole('button', { name: '每回合目标字数' })
+    expect(replyLength).toHaveTextContent('2000')
+
+    fireEvent.click(replyLength)
+    fireEvent.click(screen.getByRole('radio', { name: '600' }))
+    await waitFor(() => expect(onUpdate).toHaveBeenCalledWith({ reply_target_chars: 600 }))
+
+    onUpdate.mockClear()
+    await waitFor(() => expect(replyLength).not.toBeDisabled())
+    fireEvent.click(replyLength)
+    fireEvent.change(screen.getByLabelText('自定义字数'), { target: { value: '1750' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(onUpdate).toHaveBeenCalledWith({ reply_target_chars: 1750 }))
+  })
+
   it('locks structural rule selection after the first turn but leaves checks configurable', async () => {
     render(<StoryTuningView story={story(1)} directors={[director]} tellers={[teller]} imagePresets={[]} stateDisplayPreference="preview" onStateDisplayPreferenceChange={vi.fn()} onUpdate={onUpdate} />)
 

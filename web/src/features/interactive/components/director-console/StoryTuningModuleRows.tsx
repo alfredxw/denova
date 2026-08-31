@@ -39,6 +39,7 @@ export function ModuleSelectRow({ label, value, baseValue, moduleDisabled, optio
         value={selectValue || PRESET_VALUE}
         options={[{ id: PRESET_VALUE, label: t('directorPanel.tuning.usePreset', { value: baseLabel }) }, ...visibleOptions]}
         label={label}
+        triggerLabel={selectValue === PRESET_VALUE ? baseLabel : undefined}
         disabled={disabled}
         onChange={onChange}
       />
@@ -68,7 +69,7 @@ export function EventPackagesRow({ refs, presetRefs, options, busy, disabled, on
     <TuningRow title={t('directorPanel.tuning.agent.events')} source={source} busy={busy} disabled={disabled}>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button type="button" variant="outline" size="sm" disabled={disabled} className="director-control-select w-32 min-w-0 max-w-full justify-between bg-background text-xs font-normal text-foreground">
+          <Button type="button" variant="outline" size="sm" disabled={disabled} title={summary} className="director-control-select w-[min(10rem,60cqw)] min-w-0 max-w-full justify-between bg-background text-xs font-normal text-foreground">
             <span className="truncate">{summary}</span>
             <ChevronDown data-icon="inline-end" />
           </Button>

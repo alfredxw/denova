@@ -1064,6 +1064,19 @@ describe('useAgentChat', () => {
     expect(getMessagesPage).toHaveBeenCalledTimes(1)
     expect(vi.mocked(getMessagesPage).mock.invocationCallOrder[0]).toBeLessThan(chatMock.resumeStream.mock.invocationCallOrder[0])
     expect(chatMock.setMessages).toHaveBeenCalledWith(canonicalMessages)
+    const prepareResumeBoundary = chatMock.setMessages.mock.calls.at(-1)?.[0] as (messages: typeof canonicalMessages) => Array<{
+      id?: string
+      role?: string
+      parts?: unknown[]
+    }>
+    expect(prepareResumeBoundary(canonicalMessages)).toEqual([
+      ...canonicalMessages,
+      {
+        id: 'agent-stream-resume-boundary:canonical-assistant',
+        role: 'system',
+        parts: [],
+      },
+    ])
     expect(result.current.isStreaming).toBe(true)
   })
 
@@ -1169,16 +1182,20 @@ describe('useAgentChat', () => {
     await waitFor(() => expect(chatMock.resumeStream).toHaveBeenCalledTimes(2))
 
     expect(chatMock.setMessages).toHaveBeenNthCalledWith(1, canonicalMessages)
-    const restoreOmission = chatMock.setMessages.mock.calls.at(-1)?.[0] as (messages: typeof canonicalMessages) => Array<{
+    const restored = chatMock.setMessages.mock.calls.reduce<Array<{
+      id?: string
+      role?: string
       parts?: Array<{ type?: string; data?: { content?: string } }>
-    }>
-    const restored = restoreOmission(canonicalMessages)
-    expect(restored.at(-1)?.parts?.[0]).toMatchObject({
+    }>>((messages, [update]) => (
+      typeof update === 'function' ? update(messages) : update
+    ), [])
+    expect(restored.at(-2)?.parts?.[0]).toMatchObject({
       type: 'data-agent-system',
       data: {
         content: '较早的实时轨迹已超出展示预算；已恢复规范历史，并继续观察同一次 Agent 运行。',
       },
     })
+    expect(restored.at(-1)).toMatchObject({ role: 'system', parts: [] })
 
     chatMock.setMessages.mockClear()
     vi.mocked(getMessagesPage).mockClear()

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 
 	runstate "github.com/alfredxw/denova/agent/internal/runstate"
 	agentsession "github.com/alfredxw/denova/agent/session"
@@ -364,6 +365,25 @@ func TestRunStartedAtBeginsOnlyWhenAQueuedRunActivates(t *testing.T) {
 		}
 	}
 	t.Fatal("queued Run did not publish RunStarted")
+}
+
+func TestInspectUsesUTCStartedAtLikeAdmittedRuns(t *testing.T) {
+	owner, err := New(context.Background(), Definition{Name: "test", Model: &lifecycleModel{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = owner.Close(context.Background()) })
+	session, err := owner.Session(context.Background(), NamedSession("inspection-started-at"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	inspection, err := session.Inspect(context.Background(), Text("inspect"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inspection.Run.StartedAt.Location() != time.UTC {
+		t.Fatalf("inspection StartedAt location = %s, want UTC", inspection.Run.StartedAt.Location())
+	}
 }
 
 func TestAbortingPendingRunDoesNotStartItsSuccessor(t *testing.T) {

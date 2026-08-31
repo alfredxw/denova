@@ -24,6 +24,7 @@ import type {
 } from '../../types'
 import { StateDisplayPreferenceMenu } from '../story-state/StateDisplayPreferenceMenu'
 import type { StoryStateDisplayPreference } from '../story-state/display-preference'
+import { ReplyLengthSetting } from './ReplyLengthSetting'
 import {
   ControlSection,
   NumberSettingInput,
@@ -207,7 +208,7 @@ export function StoryTuningView({
             onChange={(event_package_ids, event_packages_disabled) => void save('events', { module_refs: { ...cloneRefs(refs), event_package_ids, event_packages_disabled } })}
           />
           <TuningRow title={t('directorPanel.tuning.agent.replyLength')} busy={savingKey === 'reply-length'}>
-            <NumberSettingInput value={story?.reply_target_chars || 2000} min={1} label={t('directorPanel.tuning.agent.replyLength')} disabled={disabled} onCommit={(reply_target_chars) => void save('reply-length', { reply_target_chars })} />
+            <ReplyLengthSetting value={story?.reply_target_chars || 2000} label={t('directorPanel.tuning.agent.replyLength')} disabled={disabled} onCommit={(reply_target_chars) => void save('reply-length', { reply_target_chars })} />
           </TuningRow>
           <TuningRow title={t('directorPanel.tuning.agent.choiceCount')} busy={savingKey === 'choice-count'}>
             <NumberSettingInput value={story?.choice_count || 5} min={MIN_INTERACTIVE_CHOICE_COUNT} max={MAX_INTERACTIVE_CHOICE_COUNT} label={t('directorPanel.tuning.agent.choiceCount')} disabled={disabled} onCommit={(choice_count) => void save('choice-count', { choice_count })} />

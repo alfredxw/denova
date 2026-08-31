@@ -34,6 +34,8 @@ const directorPanel = {
   'directorPanel.tuning.agent.narrativeStyle': 'Narrative style',
   'directorPanel.tuning.agent.events': 'Event packages',
   'directorPanel.tuning.agent.replyLength': 'Target characters per turn',
+  'directorPanel.tuning.agent.replyLengthPresets': 'Common lengths',
+  'directorPanel.tuning.agent.replyLengthCustom': 'Custom length',
   'directorPanel.tuning.agent.choiceCount': 'Suggested actions',
   'directorPanel.tuning.check.title': 'Turn checks',
   'directorPanel.tuning.check.enabled': 'Use fixed-rule checks',

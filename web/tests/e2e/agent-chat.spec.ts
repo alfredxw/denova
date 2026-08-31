@@ -1,7 +1,7 @@
 import { access, mkdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
-import { expect, test } from '../support/fixtures'
-import { createAgentChatSession, registerAgentChatProject } from '../support/api'
+import { expect, test, type Page } from '../support/fixtures'
+import { createAgentChatSession, registerAgentChatProject, setAgentChatApprovalMode } from '../support/api'
 import { openAgentChatSession, openAgentChatWorkbench } from '../support/agent-chat'
 import { getModelStatus, releaseDelayedRequest } from '../support/model'
 
@@ -9,6 +9,12 @@ const sessionADelayMarker = 'E2E_SESSION_A_DELAY'
 const sessionBDelayMarker = 'E2E_SESSION_B_DELAY'
 const queueReloadDelayMarker = 'E2E_QUEUE_RELOAD_DELAY'
 const queueReloadFollowUpMarker = 'E2E_QUEUE_RELOAD_FOLLOW_UP'
+const multiAgentDisplayMarker = 'E2E_MULTI_AGENT_DISPLAY'
+const multiAgentExpectations = [
+  { marker: 'E2E_MULTI_AGENT_ALPHA', output: 'Alpha stream started.', reasoning: 'Alpha reasoning one. Alpha reasoning two.' },
+  { marker: 'E2E_MULTI_AGENT_BETA', output: 'Beta stream started.', reasoning: 'Beta reasoning one. Beta reasoning two.' },
+  { marker: 'E2E_MULTI_AGENT_GAMMA', output: 'Gamma stream started.', reasoning: 'Gamma reasoning one. Gamma reasoning two.' },
+]
 
 test('runs General Agent tools in ordinary directories without crossing Project boundaries', async ({ page, request }) => {
   const alphaPath = path.resolve('test-results', 'runtime', 'general-project-alpha')
@@ -90,6 +96,54 @@ test('keeps concurrent sessions independent and delivers Follow Up to its exact 
   }
 })
 
+test('keeps three interleaved SubAgent streams responsive, isolated, and restorable', async ({ page, request }) => {
+  const projectPath = path.resolve('test-results', 'runtime', 'multi-agent-display-project')
+  await mkdir(projectPath, { recursive: true })
+  const project = await registerAgentChatProject(request, projectPath)
+  const session = await createAgentChatSession(request, project.id, 'Multi-Agent Display Session')
+  await setAgentChatApprovalMode(request, project.id, session.id, 'full_access')
+
+  await page.goto('/')
+  await openAgentChatWorkbench(page)
+  let composer = await openAgentChatSession(page, project.id, session.title)
+  let released = false
+  try {
+    await composer.fill(`Delegate this test to three agents and wait for all results. ${multiAgentDisplayMarker}`)
+    await composer.press('Enter')
+    await expect.poll(async () => {
+      const status = await getModelStatus(request)
+      return multiAgentExpectations.map(item => status.delayed_waiting_by_marker[item.marker] ?? 0)
+    }).toEqual([1, 1, 1])
+
+    await expectIsolatedSubAgentSessions(page)
+
+    await page.reload()
+    await openAgentChatWorkbench(page)
+    composer = await openAgentChatSession(page, project.id, session.title)
+    await expectIsolatedSubAgentSessions(page)
+
+    await Promise.all(multiAgentExpectations.map(item => releaseDelayedRequest(request, item.marker)))
+    released = true
+    await expect.poll(async () => {
+      const status = await getModelStatus(request)
+      return multiAgentExpectations.map(item => status.delayed_waiting_by_marker[item.marker] ?? 0)
+    }).toEqual([0, 0, 0])
+    await expect(page.getByText('All three delegated results completed.', { exact: true }).filter({ visible: true })).toHaveCount(1)
+    const process = page.locator('[data-agent-execution-process]').filter({ hasText: 'SubAgent' }).last()
+    await expect(process.locator('[data-slot="collapsible-trigger"]').first()).toContainText('执行过程')
+    await expect(composer).toBeVisible()
+
+    await page.reload()
+    await openAgentChatWorkbench(page)
+    composer = await openAgentChatSession(page, project.id, session.title)
+    await expectIsolatedSubAgentSessions(page)
+  } finally {
+    if (!released) {
+      await Promise.allSettled(multiAgentExpectations.map(item => releaseDelayedRequest(request, item.marker)))
+    }
+  }
+})
+
 test('restores an accepted Follow Up after reload and delivers it exactly once', async ({ page, request }) => {
   const projectPath = path.resolve('test-results', 'runtime', 'queue-reload-project')
   await mkdir(projectPath, { recursive: true })
@@ -133,4 +187,39 @@ async function fileExists(filePath: string): Promise<boolean> {
   } catch {
     return false
   }
+}
+
+async function expectIsolatedSubAgentSessions(page: Page): Promise<void> {
+  const process = page.locator('[data-agent-execution-process]').filter({ hasText: 'SubAgent' }).last()
+  await expect(process).toBeVisible()
+  const trigger = process.locator('[data-slot="collapsible-trigger"]').first()
+  if (await trigger.getAttribute('aria-expanded') !== 'true') await trigger.click()
+
+  const cards = process.getByRole('button', { name: 'general-purpose 输出', exact: true })
+  await expect(cards).toHaveCount(3)
+  const seen = new Set<string>()
+  for (let index = 0; index < 3; index += 1) {
+    await cards.nth(index).click()
+    const panel = page.getByRole('region', { name: 'general-purpose 子会话', exact: true }).filter({ visible: true })
+    await expect(panel).toBeVisible()
+    const panelText = await panel.innerText()
+    const matches = multiAgentExpectations.filter(item => panelText.includes(item.output))
+    expect(matches, `SubAgent detail ${index + 1} should contain exactly one child stream`).toHaveLength(1)
+    const matched = matches[0]
+    seen.add(matched.marker)
+
+    const collapsedThinking = panel.getByRole('button', { name: '展开思考', exact: true })
+    const expandedThinking = panel.getByRole('button', { name: '收起思考', exact: true })
+    await expect(collapsedThinking.or(expandedThinking)).toHaveCount(1)
+    if (await collapsedThinking.count()) await collapsedThinking.click()
+    const thinking = panel.getByRole('region', { name: '思考内容', exact: true })
+    await expect(thinking).toHaveCount(1)
+    await expect(thinking).toContainText(matched.reasoning)
+    for (const other of multiAgentExpectations.filter(item => item.marker !== matched.marker)) {
+      await expect(panel).not.toContainText(other.output)
+      await expect(panel).not.toContainText(other.reasoning)
+    }
+    await panel.getByRole('button', { name: '关闭 SubAgent 详情', exact: true }).click()
+  }
+  expect([...seen].sort()).toEqual(multiAgentExpectations.map(item => item.marker).sort())
 }

@@ -2970,10 +2970,6 @@ html[data-nova-motion="off"] .nova-change-review-layer {
     padding-inline: 0.5rem;
   }
 
-  .director-control-select {
-    width: 7rem;
-  }
-
   .director-control-section__action-button {
     width: 1.5rem;
     padding-inline: 0;

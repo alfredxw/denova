@@ -75,7 +75,7 @@ func (session *Session) Inspect(ctx context.Context, input Input) (Inspection, e
 	// therefore grants no lifecycle control authority.
 	runView := RunView{
 		ID: commandID, CommandID: commandID, Cycle: 1,
-		StartedAt: time.Now(), Delivery: TurnDeliveryStart,
+		StartedAt: time.Now().UTC(), Delivery: TurnDeliveryStart,
 	}
 	prepareRequest := PrepareRequest{
 		Session:    sessionView,
