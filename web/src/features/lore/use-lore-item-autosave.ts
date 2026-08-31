@@ -5,6 +5,7 @@ import { getProjectLoreItems, updateProjectLoreItem } from '@/lib/api'
 import type { LoreItem, LoreItemInput } from '@/lib/api'
 import { rebaseJSONWithRecovery } from '@/lib/autosave/rebase-with-recovery'
 import { isRevisionConflict } from '@/lib/revision-conflict'
+import { splitLoreTags } from './tags'
 
 export interface LoreAutosaveDraft extends LoreItem {
   tag_draft: string
@@ -146,11 +147,4 @@ export function loreResourceSignature(
         : item.content,
     tags: tagDraft === undefined ? item.tags || [] : splitLoreTags(tagDraft),
   })
-}
-
-function splitLoreTags(value: string) {
-  return value
-    .split(/[，,]/)
-    .map((tag) => tag.trim())
-    .filter(Boolean)
 }

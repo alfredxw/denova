@@ -1,8 +1,6 @@
 const storyPicker = {
-  'storyPicker.setup.eyebrow': '故事起点',
-  'storyPicker.setup.title': '新建故事线',
+  'storyPicker.setup.title': '新故事线',
   'storyPicker.setup.editTitle': '编辑故事线配置',
-  'storyPicker.setup.description': '选择主角、开局与游戏预设；需要时再展开完整初始化设置。',
   'storyPicker.setup.resumeTitle': '开始这条故事线',
   'storyPicker.setup.name': '故事线名称',
   'storyPicker.setup.brief': '故事简介（可选）',

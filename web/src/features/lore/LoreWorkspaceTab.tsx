@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
 import { ResourceDirectory } from '@/components/resource-directory/ResourceDirectory'
 import type {
+  ResourceDirectoryBadge,
   ResourceDirectoryItem,
   ResourceDirectorySection,
 } from '@/components/resource-directory/types'
@@ -20,6 +21,7 @@ import { KNOWLEDGE_SECTIONS, sectionItems } from './knowledge-sections'
 import { loreLoadModeLabel } from './options'
 import { LoreWorkspaceEditor } from './LoreWorkspaceEditor'
 import { useLoreWorkspace } from './use-lore-workspace'
+import { hasLoreProtagonistTag } from './tags'
 import { LoadingState } from '@/components/common/LoadingState'
 import type { ToolNavigationIntent } from '@/components/Chat/tool-navigation'
 
@@ -266,6 +268,17 @@ function loreDirectoryItem(
   t: (key: string) => string,
 ): ResourceDirectoryItem {
   const imagePath = item.image?.image_path || ''
+  const badges: ResourceDirectoryBadge[] = [{
+    label:
+      item.load_mode === 'resident'
+        ? t('settingPanel.lore.loadModeBadge.resident')
+        : t('settingPanel.lore.loadModeBadge.onDemand'),
+    title: loreLoadModeLabel(item.load_mode, t),
+    tone: item.load_mode === 'resident' ? 'default' : 'outline',
+  }]
+  if (item.type === 'character' && hasLoreProtagonistTag(item.tags || [])) {
+    badges.unshift({ label: t('loreWorkspace.protagonistTag'), tone: 'warning' })
+  }
   return {
     id: item.id,
     title: item.name,
@@ -273,15 +286,6 @@ function loreDirectoryItem(
     thumbnailUrl: imagePath ? projectFileAssetURL(projectId, imagePath) : null,
     disabled: item.enabled === false,
     searchText: `${(item.tags || []).join(' ')} ${(item.keywords || []).join(' ')} ${item.content || ''}`,
-    badges: [
-      {
-        label:
-          item.load_mode === 'resident'
-            ? t('settingPanel.lore.loadModeBadge.resident')
-            : t('settingPanel.lore.loadModeBadge.onDemand'),
-        title: loreLoadModeLabel(item.load_mode, t),
-        tone: item.load_mode === 'resident' ? 'default' : 'outline',
-      },
-    ],
+    badges,
   }
 }

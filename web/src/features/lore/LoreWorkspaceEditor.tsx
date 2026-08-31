@@ -5,6 +5,7 @@ import {
   ChevronDown,
   LibraryBig,
   SlidersHorizontal,
+  Star,
   Trash2,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -12,6 +13,7 @@ import type { LoreItem } from '@/lib/api'
 import { SearchHighlightTextarea } from '@/components/common/SearchHighlightTextarea'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
+import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
 import {
   Collapsible,
   CollapsibleContent,
@@ -45,6 +47,7 @@ import {
   TYPE_OPTIONS,
 } from './options'
 import { LoreContentEditor } from './LoreContentEditor'
+import { hasLoreProtagonistTag, splitLoreTags, toggleLoreProtagonistTag } from './tags'
 
 interface LoreWorkspaceEditorProps {
   projectId: string
@@ -98,6 +101,12 @@ export function LoreWorkspaceEditor({
     }),
     [draft.id],
   )
+  const protagonistTagActive = draft.type === 'character' && hasLoreProtagonistTag(splitLoreTags(tagDraft))
+  const toggleProtagonistTag = () => {
+    const tags = toggleLoreProtagonistTag(splitLoreTags(tagDraft))
+    onDraftChange({ ...draft, tags })
+    onTagDraftChange(tags.join('，'))
+  }
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col bg-[var(--nova-bg)] text-[var(--nova-text)]">
@@ -133,6 +142,18 @@ export function LoreWorkspaceEditor({
           error={autosaveError}
           onRetry={() => void onFlush()}
         />
+        {draft.type === 'character' ? (
+          <TooltipIconButton
+            label={t(protagonistTagActive ? 'loreWorkspace.unmarkProtagonist' : 'loreWorkspace.markProtagonist')}
+            size="icon-sm"
+            tooltipSide="bottom"
+            aria-pressed={protagonistTagActive}
+            onClick={toggleProtagonistTag}
+            className={protagonistTagActive ? 'bg-[var(--nova-warning-bg)] text-[var(--nova-warning)] hover:bg-[var(--nova-warning-bg)] hover:text-[var(--nova-warning)]' : undefined}
+          >
+            <Star className={protagonistTagActive ? 'fill-current' : undefined} />
+          </TooltipIconButton>
+        ) : null}
         {onReferenceItem ? (
           <Button
             type="button"

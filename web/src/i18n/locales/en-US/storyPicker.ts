@@ -1,8 +1,6 @@
 const storyPicker = {
-  'storyPicker.setup.eyebrow': 'Story Origin',
-  'storyPicker.setup.title': 'New Story Line',
+  'storyPicker.setup.title': 'New Story',
   'storyPicker.setup.editTitle': 'Edit Story Setup',
-  'storyPicker.setup.description': 'Choose the protagonist, opening, and Game Preset. Expand the full initialization settings only when needed.',
   'storyPicker.setup.resumeTitle': 'Start This Story Line',
   'storyPicker.setup.name': 'Story line name',
   'storyPicker.setup.brief': 'Story brief (optional)',

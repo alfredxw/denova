@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea'
 import type { LoreItem } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { hasLoreProtagonistTag } from '@/features/lore/tags'
 import { gamePresetName } from '../game-preset'
 import { normalizeStoryImageSettings } from '../image-settings'
 import { DEFAULT_NARRATIVE_STYLE_ID, resolveNarrativeStyle } from '../narrative-style'
@@ -153,11 +154,7 @@ export function NewStorySetupPanel({
       <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6 pt-5 sm:px-7 lg:px-10">
         <section className="mx-auto w-full max-w-5xl" aria-labelledby="new-story-title">
           <header className="mb-4">
-            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-              <span className="flex items-center gap-2 text-[11px] font-medium tracking-[0.12em] text-muted-foreground"><span className="h-px w-5 bg-primary/70" />{t('storyPicker.setup.eyebrow')}</span>
-              <h2 id="new-story-title" className="text-xl font-semibold tracking-[-0.02em] text-foreground sm:text-2xl">{story ? t('storyPicker.setup.resumeTitle') : t('storyPicker.setup.title')}</h2>
-            </div>
-            <p className="mt-1 max-w-2xl text-xs leading-5 text-muted-foreground sm:text-sm">{t('storyPicker.setup.description')}</p>
+            <h2 id="new-story-title" className="text-xl font-semibold tracking-[-0.02em] text-foreground sm:text-2xl">{story ? t('storyPicker.setup.resumeTitle') : t('storyPicker.setup.title')}</h2>
           </header>
 
           <div className="space-y-4">
@@ -240,10 +237,7 @@ function validateDraft(protagonist: StoryProtagonist, opening: StoryOpeningConfi
 }
 
 function defaultStoryProtagonist(loreItems: LoreItem[]): StoryProtagonist {
-  const tagged = loreItems.find((item) => item.enabled && item.type === 'character' && item.tags.some((tag) => {
-    const normalized = tag.trim().toLowerCase()
-    return normalized === '主角' || normalized === 'protagonist'
-  }))
+  const tagged = loreItems.find((item) => item.enabled && item.type === 'character' && hasLoreProtagonistTag(item.tags))
   if (!tagged) return { mode: 'default' }
   return {
     mode: 'lore',
