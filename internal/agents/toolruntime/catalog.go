@@ -73,6 +73,7 @@ func ProjectInteractiveContext(contexts ...agentinteractive.InteractiveStoryTool
 		SubmitStateSchemaBatch: source.SubmitStateSchemaBatch,
 		RequestTurnCompletion:  agentinteractive.RequestTurnCompletion,
 		PrepareTurn:            source.PrepareTurn,
+		SelectStoryProtagonist: source.SelectProtagonist,
 		SubmitTurnResult:       source.SubmitTurnResult,
 	}
 }

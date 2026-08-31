@@ -13,12 +13,8 @@ import (
 // The story never depends on the Lore item after this boundary.
 func (s *InteractiveAppService) resolveStoryProtagonist(ctx context.Context, selection interactive.StoryProtagonist) (interactive.StoryProtagonist, error) {
 	mode := strings.ToLower(strings.TrimSpace(selection.Mode))
-	if mode != interactive.StoryProtagonistModeLore {
+	if mode != interactive.StoryProtagonistModeDefault && mode != interactive.StoryProtagonistModeLore {
 		return selection, nil
-	}
-	sourceID := strings.TrimSpace(selection.SourceLoreItemID)
-	if sourceID == "" {
-		return interactive.StoryProtagonist{}, fmt.Errorf("请选择资料库角色 / Select a Lore character")
 	}
 	if s == nil || s.app == nil {
 		return interactive.StoryProtagonist{}, ErrNoWorkspace
@@ -32,11 +28,45 @@ func (s *InteractiveAppService) resolveStoryProtagonist(ctx context.Context, sel
 	if err := ctx.Err(); err != nil {
 		return interactive.StoryProtagonist{}, err
 	}
-	item, err := booklore.NewStore(workspace).ReadAny(sourceID)
+	loreStore := booklore.NewStore(workspace)
+	if mode == interactive.StoryProtagonistModeDefault {
+		items, err := loreStore.List()
+		if err != nil {
+			return interactive.StoryProtagonist{}, fmt.Errorf("读取资料库角色失败 / Failed to read Lore characters: %w", err)
+		}
+		item, ok := defaultTaggedLoreProtagonist(items)
+		if !ok {
+			return interactive.StoryProtagonist{Mode: interactive.StoryProtagonistModeDefault}, nil
+		}
+		return storyProtagonistSnapshotFromLoreItem(item)
+	}
+
+	sourceID := strings.TrimSpace(selection.SourceLoreItemID)
+	if sourceID == "" {
+		return interactive.StoryProtagonist{}, fmt.Errorf("请选择资料库角色 / Select a Lore character")
+	}
+	item, err := loreStore.ReadAny(sourceID)
 	if err != nil {
 		return interactive.StoryProtagonist{}, fmt.Errorf("读取资料库角色失败 / Failed to read Lore character: %w", err)
 	}
 	return storyProtagonistSnapshotFromLoreItem(item)
+}
+
+// defaultTaggedLoreProtagonist returns only the default recommendation. The
+// complete enabled character list remains eligible for explicit selection.
+func defaultTaggedLoreProtagonist(items []booklore.Item) (booklore.Item, bool) {
+	for _, item := range items {
+		if !item.Enabled || strings.TrimSpace(item.Type) != "character" {
+			continue
+		}
+		for _, tag := range item.Tags {
+			tag = strings.ToLower(strings.TrimSpace(tag))
+			if tag == "主角" || tag == "protagonist" {
+				return item, true
+			}
+		}
+	}
+	return booklore.Item{}, false
 }
 
 func storyProtagonistSnapshotFromLoreItem(item booklore.Item) (interactive.StoryProtagonist, error) {

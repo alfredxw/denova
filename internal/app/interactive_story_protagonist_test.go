@@ -31,3 +31,19 @@ func TestStoryProtagonistSnapshotRejectsUnavailableLore(t *testing.T) {
 		}
 	}
 }
+
+func TestDefaultTaggedLoreProtagonistUsesTagOnlyAsRecommendation(t *testing.T) {
+	items := []booklore.Item{
+		{ID: "companion", Enabled: true, Type: "character", Name: "顾岚", Tags: []string{"同伴"}},
+		{ID: "hero", Enabled: true, Type: "character", Name: "林川", Tags: []string{"Protagonist"}},
+		{ID: "place", Enabled: true, Type: "location", Name: "雾港", Tags: []string{"主角"}},
+	}
+	selected, ok := defaultTaggedLoreProtagonist(items)
+	if !ok || selected.ID != "hero" {
+		t.Fatalf("tagged character should be the default recommendation: ok=%t selected=%#v", ok, selected)
+	}
+
+	if _, ok := defaultTaggedLoreProtagonist([]booklore.Item{items[0]}); ok {
+		t.Fatal("an untagged character should remain selectable without becoming the default")
+	}
+}

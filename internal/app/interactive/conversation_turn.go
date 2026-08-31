@@ -77,6 +77,12 @@ func (c *Conversation) SubmitTurnResult(ctx context.Context, input interactive.T
 	if err != nil {
 		return interactive.TurnSubmissionReceipt{}, err
 	}
+	c.mu.Lock()
+	requireProtagonistSelection := c.requireProtagonistSelection
+	c.mu.Unlock()
+	if requireProtagonistSelection && storyCtx.Meta.Protagonist.Mode == interactive.StoryProtagonistModeDefault {
+		return interactive.TurnSubmissionReceipt{}, fmt.Errorf("select_story_protagonist must succeed before submitting the opening turn")
+	}
 	actorState, currentState, err := c.effectiveTurnState(storyCtx)
 	if err != nil {
 		return interactive.TurnSubmissionReceipt{}, err

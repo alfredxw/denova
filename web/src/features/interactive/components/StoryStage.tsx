@@ -660,11 +660,19 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
     window.dispatchEvent(new Event(MOBILE_NAVIGATION_OPEN_EVENT))
   }
   const waitingToStartOpening = pendingOpeningStoryId === storyId
+  const committedTurnCount = Math.max(story?.turn_count || 0, snapshot?.turn_count || 0, snapshot?.turns?.length || 0)
+  const openingRuntimeActive = streaming
+    || Boolean(stageRun.runtime.operationId)
+    || Boolean(stageRun.runtime.pendingInterruptionId)
+    || stageRun.runtime.recoveryPaused
+    || stageRun.runtime.queue.length > 0
+    || Boolean(stageRun.retryMessage)
+    || liveMessages.length > 0
   const storySetupVisible = creatingStory || (
     !waitingToStartOpening
     && !snapshotLoading
-    && agentMessages.length === 0
-    && !streaming
+    && committedTurnCount === 0
+    && !openingRuntimeActive
   )
 
   return (

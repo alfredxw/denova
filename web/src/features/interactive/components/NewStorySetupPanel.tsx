@@ -55,16 +55,18 @@ export function NewStorySetupPanel({
   const { t } = useTranslation()
   const initialDirector = directors.find((item) => item.id === story?.story_director_id) || directors[0]
   const recentTeller = resolveNarrativeStyle(tellers, recentNarrativeStyleID)
+  const initialProtagonist = story?.protagonist || defaultStoryProtagonist(loreItems)
   const [title, setTitle] = useState(() => story?.title || defaultStoryTitle(stories, t))
   const [origin, setOrigin] = useState(story?.origin || '')
   const [directorId, setDirectorId] = useState(initialDirector?.id || 'default')
-  const [protagonist, setProtagonist] = useState<StoryProtagonist>(() => story?.protagonist || { mode: 'default' })
+  const [protagonist, setProtagonist] = useState<StoryProtagonist>(initialProtagonist)
   const [opening, setOpening] = useState<StoryOpeningConfig>(() => story?.opening || { mode: 'ai' })
   const [settings, setSettings] = useState<StorySetupSettings>(() => initialSettings(story, initialDirector, recentTeller?.id))
-  const [advancedOpen, setAdvancedOpen] = useState(false)
+  const [advancedOpen, setAdvancedOpen] = useState(true)
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState('')
-  const initialProtagonistRef = useRef<StoryProtagonist>(story?.protagonist || { mode: 'default' })
+  const initialProtagonistRef = useRef<StoryProtagonist>(initialProtagonist)
+  const protagonistSelectionTouchedRef = useRef(false)
   const narrativeStyleSelectionLockedRef = useRef(Boolean(story))
   const director = directors.find((item) => item.id === directorId) || directors[0]
   const directorName = director ? gamePresetName(director, t) : directorId
@@ -82,6 +84,17 @@ export function NewStorySetupPanel({
     }))
   }, [recentTeller, story])
 
+  useEffect(() => {
+    if (protagonistSelectionTouchedRef.current || protagonist.mode !== 'default') return
+    const tagged = defaultStoryProtagonist(loreItems)
+    if (tagged.mode === 'lore') setProtagonist(tagged)
+  }, [loreItems, protagonist.mode])
+
+  const changeProtagonist = (next: StoryProtagonist) => {
+    protagonistSelectionTouchedRef.current = true
+    setProtagonist(next)
+  }
+
   const selectDirector = (id: string) => {
     const next = directors.find((item) => item.id === id)
     const moduleRefs = { ...(next?.module_refs || {}) }
@@ -97,7 +110,7 @@ export function NewStorySetupPanel({
   const submit = async () => {
     if (creating) return
     setError('')
-    const validationError = validateDraft(protagonist, opening, t)
+    const validationError = validateDraft(protagonist, opening, loreItems, t)
     if (validationError) {
       setError(validationError)
       return
@@ -136,59 +149,63 @@ export function NewStorySetupPanel({
   }
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto bg-[var(--nova-surface-2)] px-4 pb-8 pt-5 sm:px-7 lg:px-10">
-      <section className="mx-auto w-full max-w-5xl" aria-labelledby="new-story-title">
-        <header className="mb-4">
-          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            <span className="flex items-center gap-2 text-[11px] font-medium tracking-[0.12em] text-muted-foreground"><span className="h-px w-5 bg-primary/70" />{t('storyPicker.setup.eyebrow')}</span>
-            <h2 id="new-story-title" className="text-xl font-semibold tracking-[-0.02em] text-foreground sm:text-2xl">{story ? t('storyPicker.setup.resumeTitle') : t('storyPicker.setup.title')}</h2>
+    <div className="flex min-h-0 flex-1 flex-col bg-[var(--nova-surface-2)]">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6 pt-5 sm:px-7 lg:px-10">
+        <section className="mx-auto w-full max-w-5xl" aria-labelledby="new-story-title">
+          <header className="mb-4">
+            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <span className="flex items-center gap-2 text-[11px] font-medium tracking-[0.12em] text-muted-foreground"><span className="h-px w-5 bg-primary/70" />{t('storyPicker.setup.eyebrow')}</span>
+              <h2 id="new-story-title" className="text-xl font-semibold tracking-[-0.02em] text-foreground sm:text-2xl">{story ? t('storyPicker.setup.resumeTitle') : t('storyPicker.setup.title')}</h2>
+            </div>
+            <p className="mt-1 max-w-2xl text-xs leading-5 text-muted-foreground sm:text-sm">{t('storyPicker.setup.description')}</p>
+          </header>
+
+          <div className="space-y-4">
+            <section className="grid gap-3 rounded-xl border border-border bg-card p-4 sm:grid-cols-2 sm:p-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_minmax(12rem,0.7fr)]">
+              <Field label={t('storyPicker.setup.name')}><Input value={title} maxLength={80} className="bg-background" onChange={(event) => setTitle(event.target.value)} /></Field>
+              <Field label={t('storyPicker.setup.brief')} hint={t('storyPicker.setup.briefHint')}><Textarea autoResize value={origin} maxLength={4000} className="min-h-20 resize-y bg-background" placeholder={t('storyPicker.originPlaceholder')} onChange={(event) => setOrigin(event.target.value)} /></Field>
+              <Field label={t('storyPicker.storyDirector')} hint={t('storyPicker.setup.presetHint', { director: directorName })}>
+                <Select value={directorId} onValueChange={selectDirector}>
+                  <SelectTrigger className="w-full bg-background"><SelectValue /></SelectTrigger>
+                  <SelectContent position="popper">{directors.map((item) => <SelectItem key={item.id} value={item.id}>{gamePresetName(item, t)}</SelectItem>)}</SelectContent>
+                </Select>
+              </Field>
+            </section>
+
+            <div className="grid items-start gap-4 lg:grid-cols-[minmax(20rem,0.92fr)_minmax(0,1.08fr)]">
+              <StoryProtagonistSelector projectId={projectId} value={protagonist} loreItems={loreItems} onChange={changeProtagonist} onRequestLoreInit={onRequestLoreInit} />
+              <StoryOpeningSelector value={opening} presets={bookOpeningPresets} onChange={setOpening} />
+            </div>
+
+            <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen} className="overflow-hidden rounded-xl border border-border bg-card">
+              <CollapsibleTrigger asChild>
+                <button type="button" className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/50 sm:px-5" aria-label={t('storyPicker.setup.advanced.title')}>
+                  <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-background text-primary"><SlidersHorizontal className="size-4" /></span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-medium text-foreground">{t('storyPicker.setup.advanced.title')}</span>
+                    <span className="mt-0.5 block truncate text-xs text-muted-foreground">{advancedSummary}</span>
+                  </span>
+                  <ChevronDown className={cn('size-4 shrink-0 text-muted-foreground transition-transform', advancedOpen && 'rotate-180')} />
+                </button>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="border-t border-border bg-muted/20 p-3 sm:p-4">
+                <StorySetupAdvanced projectId={projectId} newStory={!story} director={director} tellers={tellers} imagePresets={imagePresets} value={settings} onChange={setSettings} onNarrativeStyleChange={(id) => { narrativeStyleSelectionLockedRef.current = true; return onNarrativeStyleChange?.(id) }} onOpenPresets={onOpenPresets} />
+              </CollapsibleContent>
+            </Collapsible>
           </div>
-          <p className="mt-1 max-w-2xl text-xs leading-5 text-muted-foreground sm:text-sm">{t('storyPicker.setup.description')}</p>
-        </header>
 
-        <div className="space-y-4">
-          <section className="grid gap-3 rounded-xl border border-border bg-card p-4 sm:grid-cols-2 sm:p-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_minmax(12rem,0.7fr)]">
-            <Field label={t('storyPicker.setup.name')}><Input value={title} maxLength={80} className="bg-background" onChange={(event) => setTitle(event.target.value)} /></Field>
-            <Field label={t('storyPicker.setup.brief')} hint={t('storyPicker.setup.briefHint')}><Textarea autoResize value={origin} maxLength={4000} className="min-h-20 resize-y bg-background" placeholder={t('storyPicker.originPlaceholder')} onChange={(event) => setOrigin(event.target.value)} /></Field>
-            <Field label={t('storyPicker.storyDirector')} hint={t('storyPicker.setup.presetHint', { director: directorName })}>
-              <Select value={directorId} onValueChange={selectDirector}>
-                <SelectTrigger className="w-full bg-background"><SelectValue /></SelectTrigger>
-                <SelectContent position="popper">{directors.map((item) => <SelectItem key={item.id} value={item.id}>{gamePresetName(item, t)}</SelectItem>)}</SelectContent>
-              </Select>
-            </Field>
-          </section>
-
-          <div className="grid items-start gap-4 lg:grid-cols-[minmax(20rem,0.92fr)_minmax(0,1.08fr)]">
-            <StoryProtagonistSelector projectId={projectId} value={protagonist} loreItems={loreItems} onChange={setProtagonist} onRequestLoreInit={onRequestLoreInit} />
-            <StoryOpeningSelector value={opening} presets={bookOpeningPresets} onChange={setOpening} />
-          </div>
-
-          <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen} className="overflow-hidden rounded-xl border border-border bg-card">
-            <CollapsibleTrigger asChild>
-              <button type="button" className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/50 sm:px-5" aria-label={t('storyPicker.setup.advanced.title')}>
-                <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-background text-primary"><SlidersHorizontal className="size-4" /></span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-medium text-foreground">{t('storyPicker.setup.advanced.title')}</span>
-                  <span className="mt-0.5 block truncate text-xs text-muted-foreground">{advancedSummary}</span>
-                </span>
-                <ChevronDown className={cn('size-4 shrink-0 text-muted-foreground transition-transform', advancedOpen && 'rotate-180')} />
-              </button>
-            </CollapsibleTrigger>
-            <CollapsibleContent className="border-t border-border bg-muted/20 p-3 sm:p-4">
-              <StorySetupAdvanced projectId={projectId} newStory={!story} director={director} tellers={tellers} imagePresets={imagePresets} value={settings} onChange={setSettings} onNarrativeStyleChange={(id) => { narrativeStyleSelectionLockedRef.current = true; return onNarrativeStyleChange?.(id) }} onOpenPresets={onOpenPresets} />
-            </CollapsibleContent>
-          </Collapsible>
-        </div>
-
-        {error ? <div role="alert" className="mt-4 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</div> : null}
-        <footer className="sticky bottom-0 z-10 mt-5 flex items-center justify-end gap-2 border-t border-border bg-[var(--nova-surface-2)]/95 pb-1 pt-3 backdrop-blur">
+          {error ? <div role="alert" className="mt-4 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</div> : null}
+        </section>
+      </div>
+      <footer data-testid="story-setup-footer" className="shrink-0 border-t border-border bg-[var(--nova-surface-2)] px-4 py-3 sm:px-7 lg:px-10">
+        <div className="mx-auto flex w-full max-w-5xl items-center justify-end gap-2">
           {!story ? <Button type="button" variant="ghost" disabled={creating} onClick={onCancel}>{t('common.cancel')}</Button> : null}
           <Button type="button" disabled={creating || narrativeStyleLoading} onClick={() => void submit()}>
             {creating || narrativeStyleLoading ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}
             {creating ? t('storyPicker.setup.starting') : narrativeStyleLoading ? t('common.loading') : t('storyPicker.setup.start')}
           </Button>
-        </footer>
-      </section>
+        </div>
+      </footer>
     </div>
   )
 }
@@ -213,12 +230,28 @@ function initialSettings(story: StorySummary | undefined, director: StoryDirecto
   }
 }
 
-function validateDraft(protagonist: StoryProtagonist, opening: StoryOpeningConfig, t: ReturnType<typeof useTranslation>['t']): string {
+function validateDraft(protagonist: StoryProtagonist, opening: StoryOpeningConfig, loreItems: LoreItem[], t: ReturnType<typeof useTranslation>['t']): string {
   if (protagonist.mode === 'custom' && !protagonist.name?.trim()) return t('storyPicker.setup.protagonist.custom.nameRequired')
   if (protagonist.mode === 'lore' && !protagonist.source_lore_item_id?.trim()) return t('storyPicker.setup.protagonist.lore.required')
+  if (protagonist.mode === 'default' && !loreItems.some((item) => item.enabled && item.type === 'character')) return t('storyPicker.setup.protagonist.lore.emptyRequired')
   if (opening.mode === 'preset' && !opening.preset_text?.trim()) return t('storyPicker.setup.opening.presetRequired')
   if (opening.mode === 'custom' && !opening.custom_text?.trim()) return t('storyPicker.setup.opening.customRequired')
   return ''
+}
+
+function defaultStoryProtagonist(loreItems: LoreItem[]): StoryProtagonist {
+  const tagged = loreItems.find((item) => item.enabled && item.type === 'character' && item.tags.some((tag) => {
+    const normalized = tag.trim().toLowerCase()
+    return normalized === '主角' || normalized === 'protagonist'
+  }))
+  if (!tagged) return { mode: 'default' }
+  return {
+    mode: 'lore',
+    name: tagged.name,
+    profile: tagged.content || tagged.brief_description,
+    source_lore_item_id: tagged.id,
+    source_lore_updated_at: tagged.updated_at,
+  }
 }
 
 function protagonistForSubmit(protagonist: StoryProtagonist): StoryProtagonist {

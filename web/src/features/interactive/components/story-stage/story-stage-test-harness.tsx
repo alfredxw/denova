@@ -275,7 +275,7 @@ export function story(): StorySummary {
     updated_at: '2026-06-27T00:00:00Z',
     branches: 1,
     events: 0,
-    turn_count: 0,
+    turn_count: 1,
   }
 }
 

@@ -265,6 +265,22 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 	}
 }
 
+func TestInteractiveOpeningRequiresAutomaticProtagonistSelectionBeforeTurnSubmission(t *testing.T) {
+	store := interactive.NewStore(t.TempDir())
+	story, err := store.CreateStory(interactive.CreateStoryRequest{Title: "雾港"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	conversation := NewConversation(store, t.TempDir(), t.TempDir(), story.ID, "", "open", 800, nil).
+		WithRequiredProtagonistSelection(true)
+	updates := []interactivestate.Update{}
+	choices := []string{"一", "二", "三", "四", "五"}
+	_, err = conversation.SubmitTurnResult(context.Background(), interactive.TurnSubmissionInput{StateUpdates: &updates, Choices: &choices})
+	if err == nil || !strings.Contains(err.Error(), "select_story_protagonist") {
+		t.Fatalf("expected automatic protagonist selection guard, got %v", err)
+	}
+}
+
 func TestInteractiveConversationRejectsAssistantWithoutTurnResult(t *testing.T) {
 	workspace := t.TempDir()
 	store := interactive.NewStore(workspace)

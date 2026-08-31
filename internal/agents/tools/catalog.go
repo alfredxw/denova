@@ -255,12 +255,17 @@ func interactiveStoryToolsFactory(cfg *config.Config, toolContexts ...Interactiv
 		if err != nil {
 			return nil, err
 		}
+		protagonist, err := newInteractiveProtagonistTools(toolContext)
+		if err != nil {
+			return nil, err
+		}
 		turn, err := newInteractiveTurnTools(toolContext)
 		if err != nil {
 			return nil, err
 		}
 		definitions = append(definitions, history...)
 		definitions = append(definitions, stateSchema...)
+		definitions = append(definitions, protagonist...)
 		definitions = append(definitions, turn...)
 		return definitions, nil
 	}

@@ -343,6 +343,36 @@ func TestUpdateStoryRejectsProtagonistChangeAfterFirstTurn(t *testing.T) {
 	}
 }
 
+func TestUpdateStoryProtagonistRenamesFrozenAndInitializedActor(t *testing.T) {
+	store := NewStore(t.TempDir())
+	actorState := defaultActorStateSystem()
+	story, err := store.CreateStory(CreateStoryRequest{Title: "开局", ActorState: &actorState})
+	if err != nil {
+		t.Fatal(err)
+	}
+	selected := StoryProtagonist{
+		Mode: StoryProtagonistModeLore, Name: "林川", Profile: "失忆的领航员。", SourceLoreItemID: "hero",
+	}
+	if _, err := store.UpdateStory(story.ID, UpdateStoryRequest{Protagonist: &selected}); err != nil {
+		t.Fatal(err)
+	}
+
+	storyCtx, err := store.StoryContext(story.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	index := actorStateInitialActorIndex(storyCtx.Meta.ActorStateSchema.System.InitialActors, DefaultActorID)
+	if index < 0 || storyCtx.Meta.ActorStateSchema.System.InitialActors[index].Name != "林川" {
+		t.Fatalf("frozen protagonist Actor was not renamed: %#v", storyCtx.Meta.ActorStateSchema.System.InitialActors)
+	}
+	if got := getPath(storyCtx.Snapshot.State, "actors.protagonist.name"); got != "林川" {
+		t.Fatalf("initialized protagonist Actor name = %#v, want 林川", got)
+	}
+	if storyCtx.Snapshot.TurnCount != 0 {
+		t.Fatalf("protagonist selection must not create a story turn: %d", storyCtx.Snapshot.TurnCount)
+	}
+}
+
 func TestStoryOpeningInstructionUsesEnglishModelOnlyContract(t *testing.T) {
 	meta := normalizeStoryMeta(StoryMeta{
 		Title:  "雾港",
@@ -359,6 +389,20 @@ func TestStoryOpeningInstructionUsesEnglishModelOnlyContract(t *testing.T) {
 	for _, expected := range []string{"Source: story opening configuration", "Story title: 雾港", "Story premise: 寻找失踪的领航员", "钟声响起时"} {
 		if !strings.Contains(instruction, expected) {
 			t.Fatalf("opening instruction missing %q: %s", expected, instruction)
+		}
+	}
+}
+
+func TestStoryOpeningInstructionRequiresAutomaticLoreSelection(t *testing.T) {
+	instruction, err := StoryOpeningInstruction(normalizeStoryMeta(StoryMeta{
+		Title: "雾港", Protagonist: StoryProtagonist{Mode: StoryProtagonistModeDefault}, Opening: StoryOpeningConfig{Mode: StoryOpeningModeAI},
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []string{"select_story_protagonist", "Before writing prose", "enabled Lore character"} {
+		if !strings.Contains(instruction, expected) {
+			t.Fatalf("automatic protagonist instruction missing %q: %s", expected, instruction)
 		}
 	}
 }

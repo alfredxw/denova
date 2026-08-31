@@ -261,6 +261,7 @@ func (s *Store) UpdateStory(storyID string, req UpdateStoryRequest) (StorySummar
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	updatedFields := storyConfigUpdatedFields(req)
+	protagonistStateOps := []interactivestate.Op(nil)
 	if title := strings.TrimSpace(req.Title); title != "" {
 		meta.Title = title
 	}
@@ -276,6 +277,15 @@ func (s *Store) UpdateStory(storyID string, req UpdateStoryRequest) (StorySummar
 			return StorySummary{}, err
 		}
 		meta.Protagonist = protagonist
+		if meta.ActorStateSchema != nil {
+			meta.ActorStateSchema = normalizeActorStateSchemaSnapshot(meta.ActorStateSchema)
+			meta.ActorStateSchema.System = applyStoryProtagonistToActorState(meta.ActorStateSchema.System, protagonist)
+		}
+		if req.StateSchemaPolicy == nil && protagonist.Name != "" && getPath(snapshot.State, actorStateActorPath(DefaultActorID, "id")) != nil {
+			protagonistStateOps = []interactivestate.Op{{
+				Op: "set", Path: actorStateActorPath(DefaultActorID, "name"), Value: trimBytes(protagonist.Name, 128), Reason: "story protagonist selected",
+			}}
+		}
 	}
 	if tellerID := strings.TrimSpace(req.StoryTellerID); tellerID != "" {
 		meta.StoryTellerID = tellerID
@@ -318,6 +328,14 @@ func (s *Store) UpdateStory(storyID string, req UpdateStoryRequest) (StorySummar
 		meta.CheckSettings = normalizeStoryCheckSettings(*req.CheckSettings)
 	}
 	appendedEvents := []any(nil)
+	if len(protagonistStateOps) > 0 {
+		branch := meta.Branches[meta.CurrentBranch]
+		previousHead := branch.Head
+		deltaID := newID("sd")
+		branch.Head = deltaID
+		meta.Branches[meta.CurrentBranch] = branch
+		appendedEvents = append(appendedEvents, newStateDeltaEvent(deltaID, previousHead, meta.CurrentBranch, now, protagonistStateOps))
+	}
 	if req.StateSchemaPolicy != nil {
 		if snapshot.TurnCount > 0 {
 			return StorySummary{}, fmt.Errorf("首回合提交后不能修改状态结构初始化策略")

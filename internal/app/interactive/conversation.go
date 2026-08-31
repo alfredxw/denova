@@ -20,43 +20,44 @@ import (
 )
 
 type Conversation struct {
-	store                    *interactive.Store
-	novaDir                  string
-	workspace                string
-	cfg                      *config.Config
-	storyID                  string
-	branchID                 string
-	user                     string
-	inputVisibility          agentrun.InputVisibility
-	replyTargetChars         int
-	modelContextAppendMu     sync.Mutex
-	turnCheckMu              sync.Mutex
-	mu                       sync.Mutex
-	lastTurn                 *interactive.TurnEvent
-	lastStateReady           bool
-	lastSources              string
-	lastContextSources       []interactiveContextSource
-	lastContextLedgerParts   []agentcontext.AuditPart
-	stableLeadingMessage     string
-	assistantMetadata        session.MessageMetadata
-	displayEvents            []interactive.DisplayEvent
-	modelContextMessages     []interactive.ModelContextMessage
-	modelContextBatchOrdinal int
-	ruleResolution           *interactive.RuleResolution
-	turnProtocol             interactiveTurnProtocol
-	baseParentID             *string
-	replaceTurnID            string
-	pinParentAtExecution     bool
-	agentCycleCommit         func(context.Context, agentrun.Outcome) error
-	agentCycleIdentity       agentrun.CycleIdentity
-	acceptedPlayerInputID    string
-	pendingDomainCommit      *interactive.DomainCommitIntent
-	lastDomainReceipt        *interactive.DomainCommitReceipt
-	agentCompaction          *interactive.ContextCompactionProjection
-	modelHistoryKey          string
-	modelHistory             *interactive.StoryModelHistory
-	openingStateSchemaDraft  *interactive.ActorStateSchemaBatchDraft
-	openingStateSchemaAudit  interactive.ActorStateSchemaBatchAudit
+	store                       *interactive.Store
+	novaDir                     string
+	workspace                   string
+	cfg                         *config.Config
+	storyID                     string
+	branchID                    string
+	user                        string
+	inputVisibility             agentrun.InputVisibility
+	replyTargetChars            int
+	modelContextAppendMu        sync.Mutex
+	turnCheckMu                 sync.Mutex
+	mu                          sync.Mutex
+	lastTurn                    *interactive.TurnEvent
+	lastStateReady              bool
+	lastSources                 string
+	lastContextSources          []interactiveContextSource
+	lastContextLedgerParts      []agentcontext.AuditPart
+	stableLeadingMessage        string
+	assistantMetadata           session.MessageMetadata
+	displayEvents               []interactive.DisplayEvent
+	modelContextMessages        []interactive.ModelContextMessage
+	modelContextBatchOrdinal    int
+	ruleResolution              *interactive.RuleResolution
+	turnProtocol                interactiveTurnProtocol
+	baseParentID                *string
+	replaceTurnID               string
+	pinParentAtExecution        bool
+	agentCycleCommit            func(context.Context, agentrun.Outcome) error
+	agentCycleIdentity          agentrun.CycleIdentity
+	acceptedPlayerInputID       string
+	pendingDomainCommit         *interactive.DomainCommitIntent
+	lastDomainReceipt           *interactive.DomainCommitReceipt
+	agentCompaction             *interactive.ContextCompactionProjection
+	modelHistoryKey             string
+	modelHistory                *interactive.StoryModelHistory
+	openingStateSchemaDraft     *interactive.ActorStateSchemaBatchDraft
+	openingStateSchemaAudit     interactive.ActorStateSchemaBatchAudit
+	requireProtagonistSelection bool
 }
 
 var _ novaskills.ExplicitResolver = (*Conversation)(nil)
@@ -205,6 +206,17 @@ func (c *Conversation) WithInputVisibility(visibility agentrun.InputVisibility) 
 	if c != nil {
 		c.mu.Lock()
 		c.inputVisibility = visibility
+		c.mu.Unlock()
+	}
+	return c
+}
+
+// WithRequiredProtagonistSelection guards only an unresolved autonomous
+// opening. Ordinary legacy/default stories retain their existing turn flow.
+func (c *Conversation) WithRequiredProtagonistSelection(required bool) *Conversation {
+	if c != nil {
+		c.mu.Lock()
+		c.requireProtagonistSelection = required
 		c.mu.Unlock()
 	}
 	return c

@@ -17,5 +17,6 @@ type InteractiveContext struct {
 	SubmitStateSchemaBatch func(context.Context, interactive.ActorStateSchemaBatch) (interactive.ActorStateSchemaBatchResult, error)
 	RequestTurnCompletion  func(context.Context) bool
 	PrepareTurn            func(context.Context, interactive.TurnCheckRequest) (interactive.RuleResolution, error)
+	SelectStoryProtagonist func(context.Context, string) (interactive.StoryProtagonist, error)
 	SubmitTurnResult       func(context.Context, interactive.TurnSubmissionInput) (interactive.TurnSubmissionReceipt, error)
 }

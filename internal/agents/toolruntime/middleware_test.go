@@ -86,6 +86,9 @@ func TestInteractiveStoryToolMiddlewareAllowsDomainWorkflowMutations(t *testing.
 		SubmitStateSchemaBatch: func(context.Context, interactive.ActorStateSchemaBatch) (interactive.ActorStateSchemaBatchResult, error) {
 			return interactive.ActorStateSchemaBatchResult{}, nil
 		},
+		SelectProtagonist: func(context.Context, string) (interactive.StoryProtagonist, error) {
+			return interactive.StoryProtagonist{}, nil
+		},
 	}))(config.ResolvedAgentToolSettings{})
 	if err != nil {
 		t.Fatal(err)
@@ -95,6 +98,7 @@ func TestInteractiveStoryToolMiddlewareAllowsDomainWorkflowMutations(t *testing.
 		"prepare_interactive_turn":      false,
 		"submit_interactive_turn":       false,
 		"initialize_story_state_schema": false,
+		"select_story_protagonist":      false,
 	}
 	middleware := NewInteractiveStoryMiddleware()
 	for _, definition := range definitions {

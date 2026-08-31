@@ -134,10 +134,13 @@ func (s *InteractiveAppService) prepareInteractiveAgentCycle(ctx context.Context
 		AttachedFiles: append([]agent.Attachment(nil), request.AttachedFiles...),
 		StyleRules:    styleRules, Locale: strings.TrimSpace(request.Locale), InputVisibility: request.InputVisibility,
 	}
+	requireProtagonistSelection := request.InputVisibility == agentrun.InputModelOnly &&
+		storyContext.Meta.Protagonist.Mode == interactive.StoryProtagonistModeDefault &&
+		interactiveapp.SnapshotTurnCount(storyContext.Snapshot) == 0
 	cycle.conversation = interactiveapp.NewConversation(
 		cycle.store, cycle.novaDir, cycle.workspace, cycle.storyID, cycle.branchID,
 		cycle.request.Message, cycle.runtimeCfg.InteractiveReplyTargetChars, &cycle.runtimeCfg,
-	).WithInputVisibility(cycle.request.InputVisibility).WithBaseParentID(expectedHead).WithRegenerateTarget(regenerateTurnID).WithExecutionParentPinning().WithOpeningStateSchema(storyContext)
+	).WithInputVisibility(cycle.request.InputVisibility).WithBaseParentID(expectedHead).WithRegenerateTarget(regenerateTurnID).WithExecutionParentPinning().WithOpeningStateSchema(storyContext).WithRequiredProtagonistSelection(requireProtagonistSelection)
 
 	var submitOpeningStateSchema func(context.Context, interactive.ActorStateSchemaBatch) (interactive.ActorStateSchemaBatchResult, error)
 	if interactive.StoryStateSchemaPolicyUsesOpeningGameAgent(storyContext.Meta.StateSchemaPolicy) &&
@@ -150,6 +153,10 @@ func (s *InteractiveAppService) prepareInteractiveAgentCycle(ctx context.Context
 	if ruleChecksEnabled {
 		prepareTurn = cycle.conversation.PrepareInteractiveTurn
 	}
+	var selectProtagonist func(context.Context, string) (interactive.StoryProtagonist, error)
+	if requireProtagonistSelection {
+		selectProtagonist = cycle.selectStoryProtagonist
+	}
 	agentHost, err := a.HarnessAgentHostCapabilities(ctx, &cycle.runtimeCfg, config.AgentKindInteractiveStory)
 	if err != nil {
 		return nil, err
@@ -160,6 +167,7 @@ func (s *InteractiveAppService) prepareInteractiveAgentCycle(ctx context.Context
 		BranchID:               cycle.branchID,
 		SubmitStateSchemaBatch: submitOpeningStateSchema,
 		PrepareTurn:            prepareTurn,
+		SelectProtagonist:      selectProtagonist,
 		SubmitTurnResult:       cycle.conversation.SubmitTurnResult,
 		TurnResultReady:        cycle.conversation.InteractiveNarrativeReady,
 	})

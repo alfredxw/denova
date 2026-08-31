@@ -1,4 +1,4 @@
-import { BookUser, Library, UserRound } from 'lucide-react'
+import { BookUser, Library } from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
@@ -9,7 +9,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Textarea } from '@/components/ui/textarea'
 import { projectFileAssetURL, type LoreItem } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import type { StoryProtagonist, StoryProtagonistMode } from '../../types'
+import type { StoryProtagonist } from '../../types'
 
 interface StoryProtagonistSelectorProps {
   projectId: string
@@ -19,29 +19,29 @@ interface StoryProtagonistSelectorProps {
   onRequestLoreInit?: () => void
 }
 
-const modes: Array<{ mode: StoryProtagonistMode; icon: typeof UserRound }> = [
-  { mode: 'default', icon: UserRound },
-  { mode: 'custom', icon: BookUser },
+type ProtagonistChoice = 'lore' | 'custom'
+
+const modes: Array<{ mode: ProtagonistChoice; icon: typeof BookUser }> = [
   { mode: 'lore', icon: Library },
+  { mode: 'custom', icon: BookUser },
 ]
 
 export function StoryProtagonistSelector({ projectId, value, loreItems, onChange, onRequestLoreInit }: StoryProtagonistSelectorProps) {
   const { t } = useTranslation()
   const [pickerOpen, setPickerOpen] = useState(false)
   const customDraftRef = useRef<StoryProtagonist>(value.mode === 'custom' ? value : { mode: 'custom', name: '', profile: '' })
-  const loreDraftRef = useRef<StoryProtagonist>(value.mode === 'lore' ? value : { mode: 'lore' })
+  const loreDraftRef = useRef<StoryProtagonist>(value.mode !== 'custom' ? value : { mode: 'default' })
   if (value.mode === 'custom') customDraftRef.current = value
-  if (value.mode === 'lore') loreDraftRef.current = value
+  if (value.mode !== 'custom') loreDraftRef.current = value
   const characters = useMemo(() => loreItems.filter((item) => item.enabled && item.type === 'character'), [loreItems])
   const selected = characters.find((item) => item.id === value.source_lore_item_id)
   const selectedName = selected?.name || value.name || ''
   const selectedDescription = selected?.brief_description || value.profile || ''
 
-  const selectMode = (mode: StoryProtagonistMode) => {
-    if (mode === value.mode) return
-    if (mode === 'default') onChange({ mode })
-    else if (mode === 'custom') onChange(customDraftRef.current)
-    else onChange(loreDraftRef.current)
+  const selectedChoice: ProtagonistChoice = value.mode === 'custom' ? 'custom' : 'lore'
+  const selectMode = (mode: ProtagonistChoice) => {
+    if (mode === selectedChoice) return
+    onChange(mode === 'custom' ? customDraftRef.current : loreDraftRef.current)
   }
 
   const selectLoreCharacter = (item: LoreItem) => {
@@ -64,9 +64,9 @@ export function StoryProtagonistSelector({ projectId, value, loreItems, onChange
         <p className="text-xs text-muted-foreground">{t('storyPicker.setup.protagonist.description')}</p>
       </div>
 
-      <RadioGroup value={value.mode} onValueChange={(mode) => selectMode(mode as StoryProtagonistMode)} className="mt-3 grid gap-2 sm:grid-cols-3" aria-label={t('storyPicker.setup.protagonist.title')}>
+      <RadioGroup value={selectedChoice} onValueChange={(mode) => selectMode(mode as ProtagonistChoice)} className="mt-3 grid gap-2 sm:grid-cols-2" aria-label={t('storyPicker.setup.protagonist.title')}>
         {modes.map(({ mode, icon: Icon }) => {
-          const active = value.mode === mode
+          const active = selectedChoice === mode
           return (
             <label key={mode} htmlFor={`protagonist-${mode}`} className={cn('flex cursor-pointer items-start gap-2.5 rounded-lg border p-3 transition-colors', active ? 'border-primary/55 bg-primary/5' : 'border-border bg-background hover:bg-muted/50')}>
               <RadioGroupItem id={`protagonist-${mode}`} value={mode} aria-label={t(`storyPicker.setup.protagonist.${mode}.title`)} className="mt-0.5" />
@@ -92,7 +92,7 @@ export function StoryProtagonistSelector({ projectId, value, loreItems, onChange
         </div>
       ) : null}
 
-      {value.mode === 'lore' ? (
+      {value.mode !== 'custom' ? (
         <div className="mt-3 border-t border-border pt-3">
           {selectedName ? (
             <div className="flex min-w-0 items-center gap-3 rounded-lg border border-border bg-background p-3">
@@ -106,7 +106,7 @@ export function StoryProtagonistSelector({ projectId, value, loreItems, onChange
             </div>
           ) : (
             <div className="flex flex-col items-start justify-between gap-3 rounded-lg border border-dashed border-border bg-background p-3 sm:flex-row sm:items-center">
-              <p className="text-xs leading-5 text-muted-foreground">{characters.length > 0 ? t('storyPicker.setup.protagonist.lore.chooseHint') : t('storyPicker.setup.protagonist.lore.empty')}</p>
+              <p className="text-xs leading-5 text-muted-foreground">{characters.length > 0 ? t('storyPicker.setup.protagonist.lore.autoIdentify') : t('storyPicker.setup.protagonist.lore.empty')}</p>
               <div className="flex shrink-0 gap-2">
                 {characters.length === 0 && onRequestLoreInit ? <Button type="button" variant="ghost" size="sm" onClick={onRequestLoreInit}>{t('storyPicker.setup.protagonist.lore.openLore')}</Button> : null}
                 <Button type="button" variant="outline" size="sm" aria-label={t('storyPicker.setup.protagonist.lore.choose')} disabled={characters.length === 0} onClick={() => setPickerOpen(true)}>{t('storyPicker.setup.protagonist.lore.choose')}</Button>
