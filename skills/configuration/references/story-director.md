@@ -1,6 +1,6 @@
 # Game Preset (`story_director`)
 
-Game Presets select reusable narrative, event, rule, state, and image modules and optionally add free-form planning guidance. They do not duplicate module content. Planning itself belongs to the Game Agent and is enabled or disabled per story, not by this resource.
+Game Presets select reusable narrative, event, rule, state, and image modules and optionally define the Markdown template used for long-, mid-, and near-horizon Game Agent planning. They do not duplicate module content. Planning itself belongs to the Game Agent and is enabled or disabled per story, not by this resource.
 
 This resource uses `user` scope and complete editable-resource replacement. Update/delete require the latest content-addressed `revision` returned by `get`; `updated_at` is display metadata and is not a concurrency token.
 
@@ -12,7 +12,7 @@ This resource uses `user` scope and complete editable-resource replacement. Upda
 | `name` | string | yes | User-visible preset name, up to 256 bytes. |
 | `description` | string | no | Composition summary, up to 1024 bytes. |
 | `module_refs` | object | yes | IDs and explicit disabled switches for composed modules. |
-| `strategy` | object | yes | Rule handling and optional creator-authored planning guidance. |
+| `strategy` | object | yes | Rule handling and the optional creator-authored planning template. |
 
 ### `module_refs`
 
@@ -32,7 +32,9 @@ Resolve every non-disabled ID with `config_read` before applying. To disable a m
 | --- | --- | --- |
 | `rule_state_consumption_mode` | `hybrid_auto`, `suggestions_only` | Whether valid rule-produced state changes are applied automatically or retained only as suggestions. |
 | `rule_visibility_mode` | `audit_only`, `public_roll` | Whether checks stay audit-only or expose a public roll. |
-| `prompt_markdown` | string | Free-form creator guidance for how the Game Agent should plan this kind of story, at most 256 KiB. It may express preferred freedom, momentum, tone, clue handling, or taboos without a fixed template. Never place canon or future prose here. |
+| `prompt_markdown` | string | Creator-authored branch-planning template, at most 256 KiB. Leave it empty to use the built-in long-horizon template. Use unique ATX H2 (`##`) headings for independently editable modules; H3 and deeper headings belong inside a module. Never place story-specific canon or future prose here. |
+
+At runtime the template is a stable Game Agent system-prompt fragment, while the current branch plan is mutable runtime context. The opening plan and structural replans replace the complete document. Routine turns can replace only the bodies of existing unique H2 sections. Adding, removing, renaming, or reordering H2 modules requires a complete document replacement.
 
 `event_packages`, `trpg_system`, `actor_state`, and `resolved_snapshot` are expanded inspection data. `version`, `path`, ownership flags, validation fields, and timestamps are also host-owned. Make composition decisions only through `module_refs` and `strategy`.
 
@@ -64,7 +66,7 @@ config_apply({
     "strategy": {
       "rule_state_consumption_mode": "hybrid_auto",
       "rule_visibility_mode": "audit_only",
-      "prompt_markdown": "Keep clues legible, respect player-led detours, and let consequences create new options instead of forcing a fixed route."
+      "prompt_markdown": "## Long-term direction\n\nTrack the central mystery and several player-chosen end states.\n\n## Mid-term arcs\n\nEscalate through evidence, competing suspects, and reversible alliances.\n\n## Near-term beats\n\nKeep clues legible and let consequences create new options.\n\n## Character deployment\n\nRotate investigators, witnesses, and rivals according to motive and location.\n\n## Threads and payoffs\n\nPrepare every major reveal with perceptible evidence."
     }
   }
 })
@@ -72,7 +74,7 @@ config_apply({
 
 ## Complete update example
 
-This example disables events and changes only the planning style. It preserves the event-package ID and every other module and strategy field:
+This example disables events and changes only the planning template. It preserves the event-package ID and every other module and strategy field:
 
 ```text
 config_apply({
@@ -100,10 +102,10 @@ config_apply({
     "strategy": {
       "rule_state_consumption_mode": "hybrid_auto",
       "rule_visibility_mode": "audit_only",
-      "prompt_markdown": "Favor a slow-burn mystery, but let the player abandon prepared clues and pursue their own priorities."
+      "prompt_markdown": "## Long-term direction\n\nPreserve multiple plausible resolutions and let the player redefine what justice means.\n\n## Mid-term arcs\n\nUse slow-burn investigations with exits for player-led detours.\n\n## Near-term beats\n\nOffer one legible clue, one pressure source, and one meaningful choice at a time.\n\n## Character deployment\n\nEvery recurring character acts from private goals and incomplete knowledge.\n\n## Threads and payoffs\n\nPrepare reveals early and retire clues that no longer serve a live possibility."
     }
   }
 })
 ```
 
-Read the Game Preset again. Verify the requested values, every preserved reference, `resolved_snapshot.status`, and any warnings. Updating a built-in ID creates an override; deleting that override restores the built-in preset. Future plans are maintained by the Game Agent in each branch, stable canon belongs in Lore, current facts in Actor State, and committed history in Turns.
+Read the Game Preset again. Verify the requested values, every preserved reference, unique H2 template modules, `resolved_snapshot.status`, and any warnings. Updating a built-in ID creates an override; deleting that override restores the built-in preset. Future plans are maintained by the Game Agent in each branch, stable canon belongs in Lore, current facts in Actor State, and committed history in Turns.

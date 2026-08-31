@@ -57,7 +57,7 @@ describe('rebaseStoryModuleRefsForPresetChange', () => {
 
 function storyWith(moduleRefs: StoryDirectorModuleRefs): StorySummary {
   return {
-    id: 'story-1', title: '', origin: '', story_teller_id: 'old-style', story_director_id: 'old',
+    id: 'story-1', title: '', origin: '', protagonist: { mode: 'default' }, story_teller_id: 'old-style', story_director_id: 'old',
     module_refs: { ...moduleRefs, event_package_ids: [...(moduleRefs.event_package_ids || [])] },
     reply_target_chars: 2000, choice_count: 5, opening: { mode: 'ai' }, created_at: '', updated_at: '',
     branches: 1, events: 0, turn_count: 0,

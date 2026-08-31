@@ -30,9 +30,10 @@ type TurnStateChangeInput struct {
 	Reason       string         `json:"reason,omitempty" jsonschema_description:"Required for archive/restore. Briefly state the factual basis for archiving or restoring the Actor."`
 }
 
-// DecodeInteractiveTurnSubmissionInput independently decodes state_changes
-// and choices from one model-facing tool call. A malformed module does not
-// discard a valid sibling module, and later calls may provide only retry_modules.
+// DecodeInteractiveTurnSubmissionInput independently decodes state_changes,
+// choices, and plan_update from one model-facing tool call. A malformed module
+// does not discard valid siblings; valid plan sections also survive malformed
+// siblings so later calls can provide only retry_modules and retry_sections.
 func DecodeInteractiveTurnSubmissionInput(arguments string) TurnSubmissionInput {
 	if len([]byte(arguments)) > maxTurnSubmissionArgumentsBytes {
 		return invalidUnifiedTurnSubmissionInput("submission_too_large", "", fmt.Sprintf("%d bytes", len([]byte(arguments))), fmt.Sprintf("Tool arguments exceed %d bytes.", maxTurnSubmissionArgumentsBytes))
@@ -81,18 +82,150 @@ func DecodeInteractiveTurnSubmissionInput(arguments string) TurnSubmissionInput 
 		}
 	}
 	if raw, exists := root[TurnSubmissionModulePlanUpdate]; exists {
-		var plan string
-		if err := decodeStrictJSON(raw, &plan, false); err != nil {
-			input.Diagnostics = append(input.Diagnostics, *newTurnSubmissionDiagnostic(
-				TurnSubmissionModulePlanUpdate, nil, TurnSubmissionDiagnosticInvalidModule,
-				"/plan_update", "Markdown string", jsonValueKind(raw),
-				fmt.Sprintf("plan_update must be a string: %v", err),
-			))
-		} else {
-			input.PlanUpdate = &plan
-		}
+		plan, diagnostics := decodeTurnPlanUpdate(raw)
+		input.Diagnostics = append(input.Diagnostics, diagnostics...)
+		input.PlanUpdate = plan
 	}
 	return input
+}
+
+func decodeTurnPlanUpdate(raw json.RawMessage) (*TurnPlanUpdateInput, []TurnSubmissionDiagnostic) {
+	// Tolerate the immediately preceding model contract as a full replacement.
+	// Persisted plans are unaffected; this only avoids an expensive retry when a
+	// provider replays an older tool shape during a resumed run.
+	if jsonValueKind(raw) == "string" {
+		var markdown string
+		if err := decodeStrictJSON(raw, &markdown, false); err == nil {
+			slog.InfoContext(context.Background(), "[interactive-turn-submission] accepted legacy string plan_update as replace_document location=internal/interactive/turn_submission_decode.go")
+			return &TurnPlanUpdateInput{Mode: TurnPlanUpdateModeReplaceDocument, Markdown: markdown}, nil
+		}
+	}
+
+	var root map[string]json.RawMessage
+	if err := decodeStrictJSON(raw, &root, false); err != nil || root == nil {
+		return nil, []TurnSubmissionDiagnostic{*newTurnSubmissionDiagnostic(
+			TurnSubmissionModulePlanUpdate, nil, TurnSubmissionDiagnosticInvalidModule,
+			"/plan_update", "plan update object", jsonValueKind(raw), "plan_update must be an object with mode and matching content.",
+		)}
+	}
+	allowed := map[string]bool{"mode": true, "markdown": true, "sections": true}
+	unknown := make([]string, 0)
+	for key := range root {
+		if !allowed[key] {
+			unknown = append(unknown, key)
+		}
+	}
+	if len(unknown) > 0 {
+		sort.Strings(unknown)
+		return nil, []TurnSubmissionDiagnostic{*newTurnSubmissionDiagnostic(
+			TurnSubmissionModulePlanUpdate, nil, TurnSubmissionDiagnosticInvalidModule,
+			"/plan_update", "only mode, markdown, and sections", strings.Join(unknown, ","), "plan_update contains unsupported fields.",
+		)}
+	}
+
+	var mode string
+	modeRaw, hasMode := root["mode"]
+	if !hasMode || decodeStrictJSON(modeRaw, &mode, false) != nil {
+		return nil, []TurnSubmissionDiagnostic{*newTurnSubmissionDiagnostic(
+			TurnSubmissionModulePlanUpdate, nil, TurnSubmissionDiagnosticInvalidPlanMode,
+			"/plan_update/mode", "replace_document or replace_sections", jsonValueKind(modeRaw), "plan_update.mode is required and must be a string.",
+		)}
+	}
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	update := &TurnPlanUpdateInput{Mode: mode}
+	switch mode {
+	case TurnPlanUpdateModeReplaceDocument:
+		if _, hasSections := root["sections"]; hasSections {
+			return nil, []TurnSubmissionDiagnostic{*newTurnSubmissionDiagnostic(
+				TurnSubmissionModulePlanUpdate, nil, TurnSubmissionDiagnosticInvalidModule,
+				"/plan_update/sections", "omitted for replace_document", "present", "replace_document accepts markdown only.",
+			)}
+		}
+		markdownRaw, exists := root["markdown"]
+		if !exists || decodeStrictJSON(markdownRaw, &update.Markdown, false) != nil {
+			return nil, []TurnSubmissionDiagnostic{*newTurnSubmissionDiagnostic(
+				TurnSubmissionModulePlanUpdate, nil, TurnSubmissionDiagnosticInvalidModule,
+				"/plan_update/markdown", "complete Markdown string", jsonValueKind(markdownRaw), "replace_document requires a Markdown string.",
+			)}
+		}
+		return update, nil
+
+	case TurnPlanUpdateModeReplaceSections:
+		if _, hasMarkdown := root["markdown"]; hasMarkdown {
+			return nil, []TurnSubmissionDiagnostic{*newTurnSubmissionDiagnostic(
+				TurnSubmissionModulePlanUpdate, nil, TurnSubmissionDiagnosticInvalidModule,
+				"/plan_update/markdown", "omitted for replace_sections", "present", "replace_sections accepts sections only.",
+			)}
+		}
+		sectionsRaw, exists := root["sections"]
+		if !exists {
+			return update, []TurnSubmissionDiagnostic{*newTurnSubmissionDiagnostic(
+				TurnSubmissionModulePlanUpdate, nil, TurnSubmissionDiagnosticInvalidModule,
+				"/plan_update/sections", "non-empty array", "missing", "replace_sections requires at least one section update.",
+			)}
+		}
+		var items []json.RawMessage
+		if err := decodeStrictJSON(sectionsRaw, &items, false); err != nil || items == nil {
+			return update, []TurnSubmissionDiagnostic{*newTurnSubmissionDiagnostic(
+				TurnSubmissionModulePlanUpdate, nil, TurnSubmissionDiagnosticInvalidModule,
+				"/plan_update/sections", "non-empty array", jsonValueKind(sectionsRaw), "replace_sections.sections must be a native array.",
+			)}
+		}
+		if len(items) == 0 {
+			return update, []TurnSubmissionDiagnostic{*newTurnSubmissionDiagnostic(
+				TurnSubmissionModulePlanUpdate, nil, TurnSubmissionDiagnosticInvalidModule,
+				"/plan_update/sections", "non-empty array", "empty array", "replace_sections requires at least one section update.",
+			)}
+		}
+		diagnostics := make([]TurnSubmissionDiagnostic, 0)
+		for index, item := range items {
+			section, diagnostic := decodeTurnPlanSectionUpdate(item, index)
+			if diagnostic != nil {
+				diagnostics = append(diagnostics, *diagnostic)
+				continue
+			}
+			update.Sections = append(update.Sections, section)
+		}
+		return update, diagnostics
+
+	default:
+		return update, []TurnSubmissionDiagnostic{*newTurnSubmissionDiagnostic(
+			TurnSubmissionModulePlanUpdate, nil, TurnSubmissionDiagnosticInvalidPlanMode,
+			"/plan_update/mode", "replace_document or replace_sections", mode, "plan_update.mode is not supported.",
+		)}
+	}
+}
+
+func decodeTurnPlanSectionUpdate(raw json.RawMessage, index int) (TurnPlanSectionUpdate, *TurnSubmissionDiagnostic) {
+	var root map[string]json.RawMessage
+	path := fmt.Sprintf("/plan_update/sections/%d", index)
+	if err := decodeStrictJSON(raw, &root, false); err != nil || root == nil {
+		return TurnPlanSectionUpdate{}, newTurnSubmissionDiagnostic(
+			TurnSubmissionModulePlanUpdate, intPointer(index), TurnSubmissionDiagnosticInvalidModule,
+			path, "object with heading and markdown", jsonValueKind(raw), "Each plan section update must be an object.",
+		)
+	}
+	if len(root) != 2 || root["heading"] == nil || root["markdown"] == nil {
+		return TurnPlanSectionUpdate{}, newTurnSubmissionDiagnostic(
+			TurnSubmissionModulePlanUpdate, intPointer(index), TurnSubmissionDiagnosticInvalidModule,
+			path, "exactly heading and markdown", "missing or unsupported fields", "Each plan section update accepts exactly heading and markdown.",
+		)
+	}
+	var section TurnPlanSectionUpdate
+	if err := decodeStrictJSON(root["heading"], &section.Heading, false); err != nil {
+		return TurnPlanSectionUpdate{}, newTurnSubmissionDiagnostic(
+			TurnSubmissionModulePlanUpdate, intPointer(index), TurnSubmissionDiagnosticInvalidModule,
+			path+"/heading", "string", jsonValueKind(root["heading"]), "Plan section heading must be a string.",
+		)
+	}
+	if err := decodeStrictJSON(root["markdown"], &section.Markdown, false); err != nil {
+		return TurnPlanSectionUpdate{}, newTurnSubmissionDiagnostic(
+			TurnSubmissionModulePlanUpdate, intPointer(index), TurnSubmissionDiagnosticInvalidModule,
+			path+"/markdown", "string", jsonValueKind(root["markdown"]), "Plan section markdown must be a string.",
+		)
+	}
+	section.sourceIndex = intPointer(index)
+	return section, nil
 }
 
 func decodeStructuredStateChangesModule(raw json.RawMessage) ([]interactivestate.Update, []TurnSubmissionDiagnostic) {

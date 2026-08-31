@@ -738,6 +738,7 @@ export function ModeRouter(props: ModeRouterProps) {
             onNarrativeStyleChange={persistNarrativeStyle}
             imagePresets={imagePresets}
             loreEmpty={loreEmpty}
+            loreItems={loreItems}
             onRequestLoreInit={requestLoreInit}
             onOpenPresets={() => onSetMode('presets')}
             rightPanelVisible={interactiveRightVisible}

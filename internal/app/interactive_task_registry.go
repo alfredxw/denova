@@ -30,6 +30,7 @@ type InteractiveAgentStartRequest struct {
 	StyleScenes          []string
 	RegenerateFromTurnID string
 	Locale               string
+	InputVisibility      agentrun.InputVisibility
 	AttachmentIDs        []string
 	AttachedFiles        []agent.Attachment
 }
@@ -175,6 +176,9 @@ func (s *InteractiveAppService) resolveInteractiveStart(request InteractiveAgent
 	request.ResumeInterruptionID = strings.TrimSpace(request.ResumeInterruptionID)
 	request.RegenerateFromTurnID = strings.TrimSpace(request.RegenerateFromTurnID)
 	request.Locale = strings.TrimSpace(request.Locale)
+	if request.InputVisibility != agentrun.InputModelOnly {
+		request.InputVisibility = agentrun.InputVisible
+	}
 	request.StyleScenes = normalizeInteractiveStartStyleScenes(request.StyleScenes)
 	if request.CommandID == "" {
 		return interactiveStartIdentity{}, ErrAgentCommandIDRequired
@@ -210,6 +214,7 @@ func (s *InteractiveAppService) resolveInteractiveStart(request InteractiveAgent
 		AttachmentIDs: append([]string(nil), request.AttachmentIDs...),
 		AttachedFiles: append([]agent.Attachment(nil), request.AttachedFiles...),
 		StyleScenes:   append([]string(nil), request.StyleScenes...), Locale: request.Locale,
+		InputVisibility: request.InputVisibility,
 	})
 	if request.ResumeInterruptionID != "" {
 		var pendingInterruption *session.Interruption
@@ -271,10 +276,14 @@ func (identity interactiveStartIdentity) options(taskID string) agentrun.Options
 }
 
 func (identity interactiveStartIdentity) taskInfo(taskID string) InteractiveTaskInfo {
+	displayMessage := identity.request.Message
+	if identity.request.InputVisibility == agentrun.InputModelOnly {
+		displayMessage = ""
+	}
 	return InteractiveTaskInfo{
 		TaskID: strings.TrimSpace(taskID), CommandID: identity.request.CommandID,
 		ProjectID: identity.projectID, Workspace: identity.workspace, StoryID: identity.request.StoryID,
-		BranchID: identity.request.BranchID, Message: identity.request.Message,
+		BranchID: identity.request.BranchID, Message: displayMessage,
 		RegenerateFromTurnID: identity.request.RegenerateFromTurnID,
 		Attachments:          attachmentDescriptors(identity.request.AttachedFiles),
 	}

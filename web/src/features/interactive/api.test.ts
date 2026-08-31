@@ -52,6 +52,25 @@ describe('interactive agent command API', () => {
     })).rejects.toMatchObject({ status: 503, message: 'temporary failure' })
   })
 
+  it('starts a persisted story opening without a client-authored model prompt', async () => {
+    vi.mocked(fetchAPI).mockResolvedValue(new Response('', { status: 200 }))
+
+    await sendInteractiveMessage({
+      command_id: 'game-opening-1',
+      mode: 'story',
+      story_id: 'story-1',
+      start_opening: true,
+    })
+
+    const init = vi.mocked(fetchAPI).mock.calls[0]?.[1]
+    expect(JSON.parse(String(init?.body))).toEqual({
+      command_id: 'game-opening-1',
+      mode: 'story',
+      story_id: 'story-1',
+      start_opening: true,
+    })
+  })
+
   it('does not attach an input object to abort', async () => {
     await submitInteractiveAgentCommand({
       type: 'abort',

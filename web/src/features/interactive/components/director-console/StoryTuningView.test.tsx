@@ -40,6 +40,7 @@ function story(turnCount = 0): StorySummary {
     id: 'story-1',
     title: '测试故事',
     origin: '',
+    protagonist: { mode: 'default' },
     story_teller_id: teller.id,
     story_director_id: director.id,
     planning_mode: 'disabled',

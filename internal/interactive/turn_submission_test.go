@@ -3,6 +3,7 @@ package interactive
 import (
 	interactivestate "denova/internal/interactive/state"
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -281,6 +282,95 @@ func TestPlanningSubmissionRejectsMalformedReplacementIndependently(t *testing.T
 	}
 	if len(receipt.RetryModules) != 1 || receipt.RetryModules[0] != TurnSubmissionModulePlanUpdate {
 		t.Fatalf("unexpected retry modules: %#v", receipt.RetryModules)
+	}
+}
+
+func TestPlanningSubmissionAcceptsStructuredDocumentReplacement(t *testing.T) {
+	system, state := turnSubmissionTestState()
+	input := DecodeInteractiveTurnSubmissionInput(`{
+		"state_changes":[],
+		"choices":["左路","右路","检查地图","询问同伴","原地观察"],
+		"plan_update":{"mode":"replace_document","markdown":"# 分支规划\n\n## 长期方向\n\n找到失踪者。\n\n## 近期节奏\n\n先核实地图。"}
+	}`)
+	prepared, receipt := PrepareTurnSubmission(TurnSubmissionContext{
+		ActorState: system, CurrentState: state, ChoiceCount: 5, PlanningMode: StoryPlanningModeEnabled,
+	}, nil, input)
+	result := prepared.TurnResult()
+	if !receipt.Ready || result.PlanUpdate == nil || !strings.Contains(*result.PlanUpdate, "## 长期方向") {
+		t.Fatalf("structured full replacement should initialize the plan: receipt=%#v result=%#v", receipt, result)
+	}
+	if receipt.PlanUpdateDetail == nil || receipt.PlanUpdateDetail.Mode != TurnPlanUpdateModeReplaceDocument {
+		t.Fatalf("full replacement receipt should identify its mode: %#v", receipt.PlanUpdateDetail)
+	}
+}
+
+func TestPlanningSubmissionRetainsValidSectionEditsAcrossTargetedRetry(t *testing.T) {
+	system, state := turnSubmissionTestState()
+	currentPlan := &BranchPlan{Markdown: "# 分支规划\n\n## 长期方向\n\n旧长期目标。\n\n## 近期节奏\n\n旧近期安排。"}
+	input := DecodeInteractiveTurnSubmissionInput(`{
+		"state_changes":[],
+		"choices":["左路","右路","检查地图","询问同伴","原地观察"],
+		"plan_update":{"mode":"replace_sections","sections":[
+			{"heading":"长期方向","markdown":"新长期目标。\n\n### 成功条件\n\n失踪者安全归来。"},
+			{"heading":"近期节奏","markdown":"## 非法新增模块\n\n错误内容"}
+		]}
+	}`)
+	validation := TurnSubmissionContext{
+		ActorState: system, CurrentState: state, ChoiceCount: 5,
+		PlanningMode: StoryPlanningModeEnabled, CurrentPlan: currentPlan,
+	}
+	prepared, receipt := PrepareTurnSubmission(validation, nil, input)
+	if receipt.Ready || receipt.ModuleStatus.PlanUpdate != TurnSubmissionModuleRejected {
+		t.Fatalf("one invalid section should reject only the plan module: %#v", receipt)
+	}
+	if receipt.PlanUpdateDetail == nil || !receipt.PlanUpdateDetail.RetainedDraft || !reflect.DeepEqual(receipt.PlanUpdateDetail.AcceptedSections, []string{"长期方向"}) || !reflect.DeepEqual(receipt.PlanUpdateDetail.RetrySections, []string{"近期节奏"}) {
+		t.Fatalf("receipt should expose retained and retryable sections: %#v", receipt.PlanUpdateDetail)
+	}
+	draft := prepared.TurnResult().PlanUpdate
+	if draft == nil || !strings.Contains(*draft, "新长期目标") || !strings.Contains(*draft, "旧近期安排") {
+		t.Fatalf("valid sibling edit should survive in the run-local draft: %#v", draft)
+	}
+
+	prepared, omitted := PrepareTurnSubmission(validation, prepared, TurnSubmissionInput{})
+	if omitted.ModuleStatus.PlanUpdate != TurnSubmissionModuleMissing || prepared.Ready() {
+		t.Fatalf("omission must not commit a partially repaired plan: %#v", omitted)
+	}
+
+	retry := DecodeInteractiveTurnSubmissionInput(`{"plan_update":{"mode":"replace_sections","sections":[{"heading":"近期节奏","markdown":"下一回合核实地图，并让同伴表态。"}]}}`)
+	prepared, receipt = PrepareTurnSubmission(validation, prepared, retry)
+	result := prepared.TurnResult()
+	if !receipt.Ready || result.PlanUpdate == nil || !strings.Contains(*result.PlanUpdate, "新长期目标") || !strings.Contains(*result.PlanUpdate, "下一回合核实地图") {
+		t.Fatalf("targeted retry should compose one complete final plan: receipt=%#v result=%#v", receipt, result)
+	}
+	if strings.Contains(*result.PlanUpdate, "旧长期目标") || strings.Contains(*result.PlanUpdate, "旧近期安排") {
+		t.Fatalf("final plan should contain both accepted replacements: %s", *result.PlanUpdate)
+	}
+}
+
+func TestPlanningSubmissionPartiallyAcceptsDecodableSectionItems(t *testing.T) {
+	system, state := turnSubmissionTestState()
+	currentPlan := &BranchPlan{Markdown: "## 长期方向\n\n旧目标。\n\n## 近期节奏\n\n旧安排。"}
+	input := DecodeInteractiveTurnSubmissionInput(`{
+		"state_changes":[],
+		"choices":["左路","右路","检查地图","询问同伴","原地观察"],
+		"plan_update":{"mode":"replace_sections","sections":[
+			{"heading":42,"markdown":"错误"},
+			{"heading":"近期节奏","markdown":"有效的新安排。"}
+		]}
+	}`)
+	prepared, receipt := PrepareTurnSubmission(TurnSubmissionContext{
+		ActorState: system, CurrentState: state, ChoiceCount: 5,
+		PlanningMode: StoryPlanningModeEnabled, CurrentPlan: currentPlan,
+	}, nil, input)
+	if receipt.ModuleStatus.PlanUpdate != TurnSubmissionModuleRejected || receipt.PlanUpdateDetail == nil || !receipt.PlanUpdateDetail.RetainedDraft {
+		t.Fatalf("malformed section item should not discard a valid sibling: %#v", receipt)
+	}
+	if len(receipt.Diagnostics) != 1 || receipt.Diagnostics[0].Index == nil || *receipt.Diagnostics[0].Index != 0 {
+		t.Fatalf("malformed section diagnostic should retain its source index: %#v", receipt.Diagnostics)
+	}
+	plan := prepared.TurnResult().PlanUpdate
+	if plan == nil || !strings.Contains(*plan, "有效的新安排") || !strings.Contains(*plan, "旧目标") {
+		t.Fatalf("decodable sibling should be retained: %#v", plan)
 	}
 }
 

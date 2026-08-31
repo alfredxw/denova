@@ -489,6 +489,16 @@ func (c *Conversation) AssembleModelContext(ctx context.Context, originalMessage
 	history := modelProjection.Messages
 	pendingInputMessages := modelProjection.PendingInputMessages
 	fragments := append([]agentcontext.Fragment(nil), input.Fragments...)
+	protagonistContext := interactive.StoryProtagonistContext(storyCtx.Meta.Protagonist)
+	if strings.TrimSpace(protagonistContext) != "" {
+		fragments = append(fragments, agentcontext.Fragment{
+			ID: "interactive_story_protagonist", Source: "story.protagonist", Title: "Story Protagonist Profile",
+			Purpose: "provide the immutable story-owned protagonist identity and backstory",
+			Content: protagonistContext, Placement: agentcontext.PlacementLeadingMessage, Limit: StoryRuntimeContextMaxBytes, Included: true,
+			Stability: agent.ContextStablePrefix,
+			Note:      "source=StoryMeta.protagonist; lifecycle=immutable after first turn; actor_id=protagonist",
+		})
+	}
 	if strings.TrimSpace(residentLore) != "" {
 		fragments = append(fragments, agentcontext.Fragment{
 			ID: "interactive_resident_lore", Source: "interactive.resident_lore", Title: "Resident Lore",
@@ -530,7 +540,7 @@ func (c *Conversation) AssembleModelContext(ctx context.Context, originalMessage
 			break
 		}
 	}
-	sourceParts := interactiveStoryContextSources(storyCtx.Meta.Title, storyCtx.Meta.Origin, teller, checkpointSummary, branchPlan, residentVisible, loreRevision, loreRuntime, ruleSummary, actorStateRuntime, stateSchemaInitialization, turnHistory, input.UserMessage)
+	sourceParts := interactiveStoryContextSources(storyCtx.Meta.Title, storyCtx.Meta.Origin, protagonistContext, teller, checkpointSummary, branchPlan, residentVisible, loreRevision, loreRuntime, ruleSummary, actorStateRuntime, stateSchemaInitialization, turnHistory, input.UserMessage)
 	for index, message := range pendingInputMessages {
 		sourceParts = append(sourceParts, interactiveContextSource{
 			Source: "InterruptedPlayerInput", Title: fmt.Sprintf("Accepted Player Input Without Narrative Output %d", index+1),

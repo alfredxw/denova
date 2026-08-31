@@ -146,6 +146,7 @@ func (s *InteractiveAppService) startInteractiveTask(ctx context.Context, reques
 		StoryID:   identity.request.StoryID, BranchID: identity.request.BranchID, Message: identity.request.Message,
 		ResumeInterruptionID: identity.request.ResumeInterruptionID,
 		StyleScenes:          identity.request.StyleScenes, Locale: identity.request.Locale,
+		InputVisibility:      identity.request.InputVisibility,
 		RegenerateFromTurnID: identity.request.RegenerateFromTurnID,
 		AttachmentIDs:        identity.request.AttachmentIDs, AttachedFiles: identity.request.AttachedFiles,
 	})

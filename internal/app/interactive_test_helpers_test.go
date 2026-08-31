@@ -84,7 +84,7 @@ func submitTestTurnResult(t *testing.T, store *interactive.Store, storyID, branc
 	input := interactive.TurnSubmissionInput{StateUpdates: &updates, Choices: &choices}
 	if storyContext.Meta.PlanningMode == interactive.StoryPlanningModeEnabled && storyContext.Snapshot.BranchPlan == nil {
 		plan := "Keep the current branch coherent while responding to the player's choices."
-		input.PlanUpdate = &plan
+		input.PlanUpdate = &interactive.TurnPlanUpdateInput{Mode: interactive.TurnPlanUpdateModeReplaceDocument, Markdown: plan}
 	}
 	receipt, err := conversation.SubmitTurnResult(context.Background(), input)
 	if err != nil || !receipt.Ready {

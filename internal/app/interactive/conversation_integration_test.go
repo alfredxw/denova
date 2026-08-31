@@ -295,7 +295,7 @@ func TestGamePresetProjectsCreatorPlanningStyleWithoutBackendPacing(t *testing.T
 		ID: "custom-strategy", Name: "自定义游戏预设",
 		Strategy: interactive.StoryDirectorStrategy{PromptMarkdown: prompt},
 	}, StoryRuntimeContextMaxBytes)
-	for _, want := range []string{"Planning style", "避免连续两回合", "伏笔回收前"} {
+	for _, want := range []string{"Planning document template", "unique ATX H2", "避免连续两回合", "伏笔回收前"} {
 		if !strings.Contains(guide, want) {
 			t.Fatalf("planning guide should include creator-authored style %q:\n%s", want, guide)
 		}

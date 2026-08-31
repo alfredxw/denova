@@ -127,15 +127,16 @@ export function useStoryStageRuntime({
       })),
   })
 
-  async function send(override?: { message?: string; rewindTurnId?: string; attachments?: File[] }) {
+  async function send(override?: { message?: string; rewindTurnId?: string; attachments?: File[]; startOpening?: boolean }) {
+    const startOpening = override?.startOpening === true
     const requestedMessage = (override?.message ?? input).trim()
     const files = override?.attachments || []
     const rewindTurnId = override?.rewindTurnId ?? editingTurnId
-    const resumeInterruptionID = !streaming && !rewindTurnId ? readStageRuntime().pendingInterruptionId.trim() : ''
-    const resumeFromEmptyComposer = Boolean(resumeInterruptionID && !requestedMessage && files.length === 0)
+    const resumeInterruptionID = !startOpening && !streaming && !rewindTurnId ? readStageRuntime().pendingInterruptionId.trim() : ''
+    const resumeFromEmptyComposer = Boolean(!startOpening && resumeInterruptionID && !requestedMessage && files.length === 0)
     const message = resumeFromEmptyComposer ? 'Continue.' : requestedMessage
-    const displayMessage = resumeFromEmptyComposer ? t('chat.input.resume') : requestedMessage
-    if ((!message && files.length === 0) || !storyId || branchTerminal || blocked || commandSubmittingRef.current) return false
+    const displayMessage = startOpening ? '' : resumeFromEmptyComposer ? t('chat.input.resume') : requestedMessage
+    if ((!message && files.length === 0 && !startOpening) || !storyId || branchTerminal || blocked || commandSubmittingRef.current) return false
     let attachmentUploads: ChatAttachmentUpload[] = []
     if (files.length) {
       try {
@@ -154,19 +155,19 @@ export function useStoryStageRuntime({
       await compactCurrentContext()
       return true
     }
-    const inlineStyleScenes = parseInlineStyleScenes(message)
+    const inlineStyleScenes = startOpening ? [] : parseInlineStyleScenes(message)
     const mergedStyleScenes = Array.from(new Set([...styleScenes, ...inlineStyleScenes]))
     clearComposer()
     commandSubmittingRef.current = true
     setCommandSubmitting(true)
-    prepareLiveRun(displayMessage, rewindTurnId, attachmentDescriptors(files))
+    prepareLiveRun(displayMessage, rewindTurnId, attachmentDescriptors(files), startOpening)
     const abortController = new AbortController()
     registerStoryRunAbortController(stageKey, abortController)
     const request = {
       mode: 'story' as const,
       story_id: storyId,
       branch: branchId,
-      message,
+      ...(startOpening ? { start_opening: true } : { message }),
       resume_interruption_id: resumeInterruptionID || undefined,
       attachments: attachmentUploads,
       style_scenes: mergedStyleScenes,
@@ -518,8 +519,8 @@ export function useStoryStageRuntime({
     return progress
   }
 
-  function prepareLiveRun(message: string, rewindTurnId?: string, attachments: ChatAttachmentDescriptor[] = []) {
-    setActivity(message ? t('storyStage.activity.thinking') : t('storyStage.activity.recovering'))
+  function prepareLiveRun(message: string, rewindTurnId?: string, attachments: ChatAttachmentDescriptor[] = [], modelOnly = false) {
+    setActivity(message || modelOnly ? t('storyStage.activity.thinking') : t('storyStage.activity.recovering'))
     if (message || attachments.length > 0) {
       liveAccumulator.prepareTurn(message, liveTurnNavigationAnchorId, 'replace', attachments)
       updateStageRun({

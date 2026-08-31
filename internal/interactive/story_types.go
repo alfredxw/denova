@@ -12,6 +12,7 @@ type CreateStoryRequest struct {
 	Title                     string                            `json:"title"`
 	CustomAgentID             *string                           `json:"custom_agent_id,omitempty"`
 	Origin                    string                            `json:"origin"`
+	Protagonist               StoryProtagonist                  `json:"protagonist,omitempty"`
 	StoryTellerID             string                            `json:"story_teller_id"`
 	StoryDirectorID           string                            `json:"story_director_id,omitempty"`
 	PlanningMode              string                            `json:"planning_mode,omitempty"`
@@ -124,6 +125,7 @@ type MarkStateFailedRequest struct {
 type UpdateStoryRequest struct {
 	Title                     string                           `json:"title"`
 	Origin                    *string                          `json:"origin,omitempty"`
+	Protagonist               *StoryProtagonist                `json:"protagonist,omitempty"`
 	StoryTellerID             string                           `json:"story_teller_id"`
 	StoryDirectorID           string                           `json:"story_director_id,omitempty"`
 	PlanningMode              *string                          `json:"planning_mode,omitempty"`
@@ -156,6 +158,7 @@ type StorySummary struct {
 	ID                string                   `json:"id"`
 	Title             string                   `json:"title"`
 	Origin            string                   `json:"origin"`
+	Protagonist       StoryProtagonist         `json:"protagonist"`
 	StoryTellerID     string                   `json:"story_teller_id"`
 	StoryDirectorID   string                   `json:"story_director_id"`
 	PlanningMode      string                   `json:"planning_mode"`
@@ -180,6 +183,17 @@ type StoryOpeningConfig struct {
 	PresetID   string `json:"preset_id,omitempty"`
 	PresetText string `json:"preset_text,omitempty"`
 	CustomText string `json:"custom_text,omitempty"`
+}
+
+// StoryProtagonist is the story-owned snapshot of the player character.
+// Actor identity remains the reserved "protagonist" ID; Lore identity is
+// provenance only and must never replace the runtime Actor ID.
+type StoryProtagonist struct {
+	Mode                string `json:"mode"`
+	Name                string `json:"name,omitempty"`
+	Profile             string `json:"profile,omitempty"`
+	SourceLoreItemID    string `json:"source_lore_item_id,omitempty"`
+	SourceLoreUpdatedAt string `json:"source_lore_updated_at,omitempty"`
 }
 
 type StoryImageSettings struct {
@@ -214,6 +228,7 @@ type StoryMeta struct {
 	StoryID                   string                           `json:"story_id"`
 	Title                     string                           `json:"title"`
 	Origin                    string                           `json:"origin"`
+	Protagonist               StoryProtagonist                 `json:"protagonist"`
 	StoryTellerID             string                           `json:"story_teller_id"`
 	StoryDirectorID           string                           `json:"story_director_id,omitempty"`
 	PlanningMode              string                           `json:"planning_mode"`

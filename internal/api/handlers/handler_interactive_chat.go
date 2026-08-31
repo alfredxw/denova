@@ -9,6 +9,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
+	agentrun "denova/internal/agents/run"
 	"denova/internal/api/sse"
 	novaApp "denova/internal/app"
 )
@@ -20,6 +21,7 @@ func (h *Handlers) HandleInteractiveChat(ctx context.Context, c *app.RequestCont
 		StoryID              string                          `json:"story_id"`
 		Branch               string                          `json:"branch"`
 		Message              string                          `json:"message"`
+		StartOpening         bool                            `json:"start_opening,omitempty"`
 		ResumeInterruptionID string                          `json:"resume_interruption_id,omitempty"`
 		StyleScenes          []string                        `json:"style_scenes"`
 		RegenerateFromTurn   string                          `json:"regenerate_from_turn_id"`
@@ -29,7 +31,7 @@ func (h *Handlers) HandleInteractiveChat(ctx context.Context, c *app.RequestCont
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
-	if strings.TrimSpace(body.Message) == "" && len(body.Attachments) == 0 {
+	if !body.StartOpening && strings.TrimSpace(body.Message) == "" && len(body.Attachments) == 0 {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.messageRequired")
 		return
 	}
@@ -45,6 +47,20 @@ func (h *Handlers) HandleInteractiveChat(ctx context.Context, c *app.RequestCont
 		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "缺少 command_id，无法安全重试请求 / command_id is required for safe request retries", nil)
 		return
 	}
+	inputVisibility := agentrun.InputVisible
+	if body.StartOpening {
+		if strings.TrimSpace(body.Message) != "" || len(body.Attachments) > 0 || strings.TrimSpace(body.ResumeInterruptionID) != "" || strings.TrimSpace(body.RegenerateFromTurn) != "" {
+			writeError(c, consts.StatusBadRequest, "开局请求不能包含玩家输入或附件 / Story opening cannot include player input or attachments")
+			return
+		}
+		openingInstruction, err := h.app.InteractiveStoryOpeningInstruction(body.StoryID, body.Branch)
+		if err != nil {
+			writeError(c, consts.StatusConflict, err.Error())
+			return
+		}
+		body.Message = openingInstruction
+		inputVisibility = agentrun.InputModelOnly
+	}
 	chatRequest := novaApp.AgentChatRequest{CommandID: body.CommandID, Message: body.Message, AttachmentUploads: body.Attachments}
 	if err := h.app.MaterializeInteractiveAttachments(body.StoryID, body.CommandID, &chatRequest); err != nil {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
@@ -56,7 +72,8 @@ func (h *Handlers) HandleInteractiveChat(ctx context.Context, c *app.RequestCont
 		Message: body.Message, StyleScenes: body.StyleScenes,
 		ResumeInterruptionID: body.ResumeInterruptionID,
 		RegenerateFromTurnID: body.RegenerateFromTurn, Locale: requestLocale(c),
-		AttachmentIDs: chatRequest.AttachmentIDs, AttachedFiles: chatRequest.AttachedFiles,
+		InputVisibility: inputVisibility,
+		AttachmentIDs:   chatRequest.AttachmentIDs, AttachedFiles: chatRequest.AttachedFiles,
 	})
 	if err != nil {
 		h.writeChatPreparationError(c, err)

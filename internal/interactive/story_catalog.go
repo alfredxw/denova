@@ -75,12 +75,17 @@ func (s *Store) CreateStory(req CreateStoryRequest) (StorySummary, error) {
 	if err := validateStoryCheckSettings(req.CheckSettings); err != nil {
 		return StorySummary{}, err
 	}
+	protagonist := normalizeStoryProtagonist(req.Protagonist)
+	if err := validateStoryProtagonist(protagonist); err != nil {
+		return StorySummary{}, err
+	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	stateSchemaPolicy := cloneStoryStateSchemaPolicy(req.StateSchemaPolicy)
 	story := StorySummary{
 		ID:                newID("st"),
 		Title:             title,
 		Origin:            strings.TrimSpace(req.Origin),
+		Protagonist:       protagonist,
 		StoryTellerID:     strings.TrimSpace(req.StoryTellerID),
 		StoryDirectorID:   NormalizeStoryDirectorID(req.StoryDirectorID),
 		PlanningMode:      normalizeStoryPlanningMode(planningMode),
@@ -111,6 +116,7 @@ func (s *Store) CreateStory(req CreateStoryRequest) (StorySummary, error) {
 		StoryID:           story.ID,
 		Title:             story.Title,
 		Origin:            story.Origin,
+		Protagonist:       story.Protagonist,
 		StoryTellerID:     story.StoryTellerID,
 		StoryDirectorID:   story.StoryDirectorID,
 		PlanningMode:      story.PlanningMode,
@@ -177,6 +183,7 @@ func (s *Store) CreateStory(req CreateStoryRequest) (StorySummary, error) {
 		trpgSystem = *req.TRPGSystem
 	}
 	if !actorStateEmpty(actorState) {
+		actorState = applyStoryProtagonistToActorState(actorState, protagonist)
 		if err := validateActorStateSystem(actorState); err != nil {
 			return StorySummary{}, fmt.Errorf("创建故事的状态系统无效 / Invalid state system for story creation: %w", err)
 		}
@@ -260,6 +267,16 @@ func (s *Store) UpdateStory(storyID string, req UpdateStoryRequest) (StorySummar
 	if req.Origin != nil {
 		meta.Origin = strings.TrimSpace(*req.Origin)
 	}
+	if req.Protagonist != nil {
+		if snapshot.TurnCount > 0 {
+			return StorySummary{}, fmt.Errorf("首回合提交后不能修改主角 / The protagonist cannot be changed after the first turn")
+		}
+		protagonist := normalizeStoryProtagonist(*req.Protagonist)
+		if err := validateStoryProtagonist(protagonist); err != nil {
+			return StorySummary{}, err
+		}
+		meta.Protagonist = protagonist
+	}
 	if tellerID := strings.TrimSpace(req.StoryTellerID); tellerID != "" {
 		meta.StoryTellerID = tellerID
 	}
@@ -323,7 +340,8 @@ func (s *Store) UpdateStory(storyID string, req UpdateStoryRequest) (StorySummar
 			if err := validateActorStateSystem(*req.ActorState); err != nil {
 				return StorySummary{}, fmt.Errorf("更新故事的状态系统无效 / Invalid state system for story update: %w", err)
 			}
-			meta.ActorStateSchema = FreezeActorStateSchemaWithRules(*req.ActorState, trpgSystem, false)
+			actorState := applyStoryProtagonistToActorState(*req.ActorState, meta.Protagonist)
+			meta.ActorStateSchema = FreezeActorStateSchemaWithRules(actorState, trpgSystem, false)
 		}
 		if req.StateSchemaInitialization != nil {
 			initialization := *req.StateSchemaInitialization
@@ -382,6 +400,9 @@ func storyConfigUpdatedFields(req UpdateStoryRequest) []string {
 	}
 	if req.Origin != nil {
 		fields = append(fields, "origin")
+	}
+	if req.Protagonist != nil {
+		fields = append(fields, "protagonist")
 	}
 	if strings.TrimSpace(req.StoryTellerID) != "" {
 		fields = append(fields, "story_teller_id")

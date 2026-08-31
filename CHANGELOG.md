@@ -58,8 +58,10 @@ Denova records only major user-visible features, important compatibility or data
 - Writing now selects editors by file type: Markdown can switch between the document editor and Monaco source editing, images use preview, and other text such as JSON and JSONL uses Monaco with the same autosave and conflict protection.
 - 工作台改为统一且可自定义的一级导航：写作与游戏成为并列入口，菜单支持调整顺序和显隐；资料库、方案预设和版本管理不再按创作入口重复。方案预设统一展示全部类型，并标明通用、游戏专用或写作专用。
 - The workbench now uses unified, customizable top-level navigation: Writing and Game are peer destinations, menus can be reordered or hidden, and Lore, Presets, and Versions are no longer duplicated by creative context. Presets show every type with fixed Shared, Game-only, or Writing-only labels.
-- 游戏规划整合进 Game Agent：可按故事开启或关闭，并在每轮原子维护自由格式的分支计划；游戏控制台集中展示当前计划、Actor State 与分支路线。游戏预设只提供模块组合和自由规划风格，不再写死后台节奏或调度策略。
-- Game planning now belongs to the Game Agent. It can be enabled per story and atomically maintains a free-form branch plan each turn, while the Game Console combines the current plan, Actor State, and branch routes. Game Presets provide module composition and free-form planning guidance instead of fixed background pacing or scheduling policies.
+- 游戏规划整合进 Game Agent：可按故事开启或关闭，并依据可自定义的 Markdown 模板统筹长短期节奏、角色安排与伏笔回收；日常回合可只更新受影响的计划模块，最终计划仍与正文、Actor State 原子提交。游戏控制台集中展示当前计划、状态与分支路线。
+- Game planning now belongs to the Game Agent and can be enabled per story. A customizable Markdown template coordinates long- and short-horizon pacing, cast deployment, and payoffs; routine turns can update only affected plan modules, while the final plan remains atomically committed with prose and Actor State. The Game Console combines the current plan, state, and branch routes.
+- 新故事线采用单页开局流程，可选择默认主角、自定义角色或资料库角色快照，并在开始前统一配置开场来源、游戏预设及完整初始化选项；首回合由服务端根据已保存配置直接生成，不再显示伪装成玩家输入的开场提示。
+- New Game stories use a single-page start flow for choosing a default protagonist, custom character, or Lore character snapshot, together with the opening source, Game Preset, and full initialization options. The server now generates the first turn directly from saved setup instead of showing a synthetic player prompt.
 - 右侧故事控制台重组为总览、调校与路线；可为当前故事快速覆盖 Game Agent 叙事、导演规划、回合判定难度与骰点修正、互动图像和状态展示，并明确标注预设继承与故事覆盖。
 - The right-side Story Console is reorganized into Overview, Tuning, and Routes. Each story can quickly override Game Agent narrative behavior, director planning, check difficulty and roll modifiers, interactive images, and state display, with clear preset-versus-story provenance.
 - 游戏剧情支持从任意已保存 AI 回复就地创建分支，并在游戏控制台集中预览、切换和管理故事线。

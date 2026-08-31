@@ -5,7 +5,7 @@ import { motion } from 'motion/react'
 import { Panel } from 'react-resizable-panels'
 import { toast } from 'sonner'
 import { useShallow } from 'zustand/react/shallow'
-import { readOptionalProjectFile } from '@/lib/api'
+import { readOptionalProjectFile, type LoreItem } from '@/lib/api'
 import { createInteractiveBranch, createInteractiveStory, deleteInteractiveBranch, deleteInteractiveStory, getInteractiveBranches, getInteractiveSnapshot, getInteractiveStories, getInteractiveTellers, getStoryDirectors, selectInteractiveStory, switchInteractiveBranch, updateInteractiveStory } from '../api'
 import { useInteractiveStore } from '../stores/interactive-store'
 import { BranchTimeline } from './BranchTimeline'
@@ -39,6 +39,7 @@ interface InteractiveLayoutProps {
   onNarrativeStyleChange?: (id: string) => void | Promise<unknown>
   imagePresets?: ImagePreset[]
   loreEmpty?: boolean
+  loreItems?: LoreItem[]
   onRequestLoreInit?: () => void
   onOpenPresets?: () => void
   rightPanelVisible?: boolean
@@ -47,7 +48,7 @@ interface InteractiveLayoutProps {
 
 const SNAPSHOT_POLL_INTERVAL_MS = 1000
 
-export function InteractiveLayout({ projectId = '', workspace, active = true, recentNarrativeStyleID = DEFAULT_NARRATIVE_STYLE_ID, narrativeStyleLoading = false, onNarrativeStyleChange, imagePresets = [], loreEmpty = false, onRequestLoreInit, onOpenPresets, rightPanelVisible = true, onToggleRightPanel }: InteractiveLayoutProps) {
+export function InteractiveLayout({ projectId = '', workspace, active = true, recentNarrativeStyleID = DEFAULT_NARRATIVE_STYLE_ID, narrativeStyleLoading = false, onNarrativeStyleChange, imagePresets = [], loreEmpty = false, loreItems = [], onRequestLoreInit, onOpenPresets, rightPanelVisible = true, onToggleRightPanel }: InteractiveLayoutProps) {
   const { t } = useTranslation()
   const isMobile = useIsMobile()
   const {
@@ -270,6 +271,7 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
     setCurrentStoryId(story.id)
     setStories(mergePreferredStory(useInteractiveStore.getState().stories, story), story.id)
     await reloadStories(story)
+    return story
   }
 
   const handleStorySelect = useCallback((storyId: string) => {
@@ -305,6 +307,7 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
     await updateInteractiveStory(currentStoryId, {
       title: input.title,
       origin: input.origin,
+      protagonist: input.protagonist,
       story_teller_id: input.story_teller_id,
       story_director_id: input.story_director_id,
       planning_mode: input.planning_mode,
@@ -312,6 +315,8 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
       reply_target_chars: input.reply_target_chars,
       choice_count: input.choice_count,
       image_settings: input.image_settings,
+      check_settings: input.check_settings,
+      opening: input.opening,
       state_schema_policy: input.state_schema_policy,
     })
     await reloadStories()
@@ -437,6 +442,7 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
       snapshot={displaySnapshot}
       snapshotLoading={snapshotPending}
       loreEmpty={loreEmpty}
+      loreItems={loreItems}
       bookOpeningPresets={bookOpeningPresets}
       directorPanelVisible={directorPanelVisible}
       stateDisplayPreference={storyStateDisplayPreference}

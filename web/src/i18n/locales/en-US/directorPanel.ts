@@ -69,7 +69,7 @@ const directorPanel = {
   'directorPanel.planning.toggle': 'Toggle Game Agent planning',
   'directorPanel.planning.updateFailed': 'Failed to update planning mode',
   'directorPanel.plan.title': 'Current branch plan',
-  'directorPanel.plan.description': 'The Game Agent maintains this free-form plan as the story changes.',
+  'directorPanel.plan.description': 'The Game Agent maintains this modular long- and short-horizon plan as the story changes.',
   'directorPanel.plan.disabledDescription': 'Planning is off. The retained plan is not sent to the Game Agent until planning is enabled again.',
   'directorPanel.plan.empty': 'No branch plan yet',
   'directorPanel.plan.emptyHint': 'When planning is on, the Game Agent creates the first plan with the next completed turn.',

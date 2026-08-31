@@ -55,10 +55,17 @@ func interactiveCompactionResultForMessages(result agentcompaction.Result, messa
 	return result
 }
 
-func interactiveStoryContextSources(title, origin string, teller teller.Definition, historyCheckpoint, branchPlan, residentLore, loreRevision, loreRuntime, ruleSummary, actorStateRuntime, stateSchemaInitialization string, turnHistory interactiveTurnHistory, userAction string) []interactiveContextSource {
+func interactiveStoryContextSources(title, origin, protagonist string, teller teller.Definition, historyCheckpoint, branchPlan, residentLore, loreRevision, loreRuntime, ruleSummary, actorStateRuntime, stateSchemaInitialization string, turnHistory interactiveTurnHistory, userAction string) []interactiveContextSource {
 	parts := []interactiveContextSource{
 		{Source: "InteractiveStory", Title: "Story Title", Content: title, Note: "metadata_only", MetadataOnly: true},
 		{Source: "InteractiveStory", Title: "Opening", Content: origin, Note: "metadata_only", MetadataOnly: true},
+	}
+	if strings.TrimSpace(protagonist) != "" {
+		parts = append(parts, interactiveContextSource{
+			Source: "StoryMeta.protagonist", Title: "Story Protagonist Profile",
+			Purpose: "stable leading story identity", Content: protagonist,
+			Note: "source=story-owned snapshot; actor_id=protagonist; immutable after first turn", Limit: StoryRuntimeContextMaxBytes,
+		})
 	}
 	parts = append(parts, interactiveTellerSlotSources(teller, "turn_context")...)
 	if strings.TrimSpace(historyCheckpoint) != "" {

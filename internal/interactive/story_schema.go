@@ -294,6 +294,9 @@ func validateStoryMeta(meta StoryMeta) error {
 	if err := validateStoryPlanningMode(meta.PlanningMode); err != nil {
 		return err
 	}
+	if err := validateStoryProtagonist(meta.Protagonist); err != nil {
+		return err
+	}
 	switch meta.ImageSettings.Mode {
 	case StoryImageModeManual, StoryImageModeInterval:
 	default:

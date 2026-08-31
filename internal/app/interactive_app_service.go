@@ -86,6 +86,10 @@ func (s *InteractiveAppService) CreateInteractiveStoryContext(ctx context.Contex
 		return interactive.StorySummary{}, ErrNoWorkspace
 	}
 	var err error
+	req.Protagonist, err = s.resolveStoryProtagonist(ctx, req.Protagonist)
+	if err != nil {
+		return interactive.StorySummary{}, err
+	}
 	req, err = s.withStoryDirectorDefaults(req)
 	if err != nil {
 		return interactive.StorySummary{}, err
@@ -224,6 +228,13 @@ func (s *InteractiveAppService) UpdateInteractiveStory(storyID string, req inter
 	store := s.store()
 	if store == nil {
 		return interactive.StorySummary{}, ErrNoWorkspace
+	}
+	if req.Protagonist != nil {
+		protagonist, err := s.resolveStoryProtagonist(context.Background(), *req.Protagonist)
+		if err != nil {
+			return interactive.StorySummary{}, err
+		}
+		req.Protagonist = &protagonist
 	}
 	if req.StateSchemaPolicy != nil {
 		var err error

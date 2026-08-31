@@ -281,6 +281,88 @@ func TestCreateStoryPersistsOpeningConfig(t *testing.T) {
 	}
 }
 
+func TestCreateStoryPersistsProtagonistSnapshot(t *testing.T) {
+	store := NewStore(t.TempDir())
+	actorState := defaultActorStateSystem()
+	story, err := store.CreateStory(CreateStoryRequest{
+		Title: "雾港",
+		Protagonist: StoryProtagonist{
+			Mode:                StoryProtagonistModeLore,
+			Name:                "林川",
+			Profile:             "失去记忆的航海士。",
+			SourceLoreItemID:    "hero",
+			SourceLoreUpdatedAt: "2026-08-31T00:00:00Z",
+		},
+		ActorState: &actorState,
+	})
+	if err != nil {
+		t.Fatalf("CreateStory failed: %v", err)
+	}
+	if story.Protagonist.Mode != StoryProtagonistModeLore || story.Protagonist.Name != "林川" || story.Protagonist.SourceLoreItemID != "hero" {
+		t.Fatalf("unexpected story protagonist: %#v", story.Protagonist)
+	}
+
+	ctx, err := store.StoryContext(story.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ctx.Meta.Protagonist.Profile != "失去记忆的航海士。" || ctx.Meta.Protagonist.SourceLoreUpdatedAt == "" {
+		t.Fatalf("unexpected protagonist snapshot: %#v", ctx.Meta.Protagonist)
+	}
+	protagonistIndex := actorStateInitialActorIndex(ctx.Meta.ActorStateSchema.System.InitialActors, DefaultActorID)
+	if protagonistIndex < 0 || ctx.Meta.ActorStateSchema.System.InitialActors[protagonistIndex].Name != "林川" {
+		t.Fatalf("protagonist Actor should use the selected display name: %#v", ctx.Meta.ActorStateSchema.System.InitialActors)
+	}
+}
+
+func TestCreateStoryRejectsUnknownProtagonistMode(t *testing.T) {
+	store := NewStore(t.TempDir())
+	if _, err := store.CreateStory(CreateStoryRequest{
+		Title:       "雾港",
+		Protagonist: StoryProtagonist{Mode: "library", Name: "林川"},
+	}); err == nil || !strings.Contains(err.Error(), "Invalid protagonist mode") {
+		t.Fatalf("expected invalid protagonist mode error, got %v", err)
+	}
+}
+
+func TestUpdateStoryRejectsProtagonistChangeAfterFirstTurn(t *testing.T) {
+	store := NewStore(t.TempDir())
+	story, err := store.CreateStory(CreateStoryRequest{Title: "开局"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.AppendTurn(story.ID, AppendTurnRequest{BranchID: "main", User: "向前走", Narrative: "你走进雾里。"}); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = store.UpdateStory(story.ID, UpdateStoryRequest{
+		Protagonist: &StoryProtagonist{Mode: StoryProtagonistModeCustom, Name: "另一位主角", Profile: "不应生效"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "首回合") {
+		t.Fatalf("expected protagonist lock error, got %v", err)
+	}
+}
+
+func TestStoryOpeningInstructionUsesEnglishModelOnlyContract(t *testing.T) {
+	meta := normalizeStoryMeta(StoryMeta{
+		Title:  "雾港",
+		Origin: "寻找失踪的领航员",
+		Opening: StoryOpeningConfig{
+			Mode:       StoryOpeningModeCustom,
+			CustomText: "钟声响起时，港口的灯全部熄灭。",
+		},
+	})
+	instruction, err := StoryOpeningInstruction(meta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []string{"Source: story opening configuration", "Story title: 雾港", "Story premise: 寻找失踪的领航员", "钟声响起时"} {
+		if !strings.Contains(instruction, expected) {
+			t.Fatalf("opening instruction missing %q: %s", expected, instruction)
+		}
+	}
+}
+
 func TestUpdateStoryRejectsEmptyCustomOpening(t *testing.T) {
 	store := NewStore(t.TempDir())
 	story, err := store.CreateStory(CreateStoryRequest{Title: "开局", StoryTellerID: "classic"})
@@ -331,12 +413,18 @@ func TestOldStoryWithoutOpeningDefaultsToAI(t *testing.T) {
 	if index.Stories[0].Opening.Mode != StoryOpeningModeAI {
 		t.Fatalf("legacy index opening = %#v, want ai", index.Stories[0].Opening)
 	}
+	if index.Stories[0].Protagonist.Mode != StoryProtagonistModeDefault {
+		t.Fatalf("legacy index protagonist = %#v, want default", index.Stories[0].Protagonist)
+	}
 	ctx, err := store.StoryContext("st_legacy", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if ctx.Meta.Opening.Mode != StoryOpeningModeAI {
 		t.Fatalf("legacy meta opening = %#v, want ai", ctx.Meta.Opening)
+	}
+	if ctx.Meta.Protagonist.Mode != StoryProtagonistModeDefault {
+		t.Fatalf("legacy meta protagonist = %#v, want default", ctx.Meta.Protagonist)
 	}
 }
 

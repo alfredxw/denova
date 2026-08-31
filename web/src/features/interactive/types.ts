@@ -9,6 +9,7 @@ export interface StorySummary {
   id: string
   title: string
   origin: string
+  protagonist: StoryProtagonist
   story_teller_id: string
   story_director_id: string
   planning_mode?: StoryPlanningMode
@@ -197,6 +198,16 @@ interface StoryDirectorStrategy {
   prompt_markdown?: string
 }
 
+export type StoryProtagonistMode = 'default' | 'custom' | 'lore'
+
+export interface StoryProtagonist {
+  mode: StoryProtagonistMode
+  name?: string
+  profile?: string
+  source_lore_item_id?: string
+  source_lore_updated_at?: string
+}
+
 export interface StoryCheckSettings {
   difficulty_shift: number
   roll_modifier: number
@@ -205,6 +216,7 @@ export interface StoryCheckSettings {
 export interface InteractiveStoryUpdateInput {
   title?: string
   origin?: string
+  protagonist?: StoryProtagonist
   story_teller_id?: string
   story_director_id?: string
   planning_mode?: StoryPlanningMode

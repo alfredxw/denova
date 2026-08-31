@@ -172,7 +172,7 @@ export function StoryDirectorEditor({
           <Field label={t('settingPanel.storyDirector.planningStyle')} className="mt-4">
             <Textarea
               autoResize={false}
-              className="nova-field min-h-40 resize-y text-xs focus-visible:ring-0"
+              className="nova-field min-h-64 resize-y font-mono text-xs leading-5 focus-visible:ring-0"
               value={strategyPrompt}
               onChange={(event) => updateStrategy({ prompt_markdown: event.target.value })}
               placeholder={t('settingPanel.storyDirector.planningStylePlaceholder')}

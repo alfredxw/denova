@@ -145,7 +145,7 @@ func newInteractiveTurnTools(ctx InteractiveContext) ([]agent.ToolDefinition, er
 			"Every turn must replace story_context actor_id=story, field_id=当前事件. Also replace 当前详细地点 when it is uninitialized or prose establishes a location change. Do not write empty values to unchanged fields.",
 			"choices must match the prose ending and contain exactly the number of distinct suggestions configured for the current story. Submit an empty array only for a terminal turn whose prepare_interactive_turn result has terminal_candidate.",
 			"When a module is rejected, repair the same intended state facts. Do not bypass validation by deleting an important character, ability, item, location, or situation already established in prose. You may merge a new Actor's initial_state or compress redundant descriptions.",
-			fmt.Sprintf("When planning is enabled, plan_update is a complete replacement for the current branch plan, written as free-form Markdown up to %d bytes. A branch with no current plan requires one on this turn. Otherwise omit plan_update while the current plan remains useful, or replace it when future intent should change. Follow the injected planning guide and user instructions; no headings or pacing scheme are prescribed by the backend. When planning is disabled, omit plan_update.", 64*1024),
+			fmt.Sprintf("When planning is enabled, plan_update maintains private future intent as Markdown up to %d bytes. If no plan exists, initialize it with mode=replace_document and follow the injected planning template. For routine changes to an existing modular plan, prefer mode=replace_sections and send only changed section bodies; headings must copy existing unique H2 text exactly. Use replace_document for major replans or any heading, order, or module change. Otherwise omit plan_update while the plan remains useful. Valid sibling section edits are retained when another section is rejected, so retry only retry_sections. When planning is disabled, omit plan_update.", 64*1024),
 			"Use the current turn's Actor State Handbook as the authority for the complete parameter template, available IDs, field types, and the number of choices placeholders matching this story's choice_count.",
 		}, "\n")
 		submitTool, err := newSubmitInteractiveTurnTool(desc, ctx.SubmitTurnResult, ctx.RequestTurnCompletion)
@@ -170,7 +170,17 @@ func NewInteractiveTurn(ctx InteractiveContext) ([]agent.ToolDefinition, error) 
 type submitInteractiveTurnToolSchema struct {
 	StateChanges []interactive.TurnStateChangeInput `json:"state_changes,omitempty" jsonschema_description:"Incremental Actor state changes established by this turn's prose. Submit a native JSON array, never a serialized string. Submit an empty array when nothing changed."`
 	Choices      []string                           `json:"choices,omitempty" jsonschema_description:"The configured number of distinct next-action suggestions. Use an empty array only when RuleResolution declared terminal_candidate."`
-	PlanUpdate   *string                            `json:"plan_update,omitempty" jsonschema_description:"Only when Game Agent planning is enabled: a complete free-form Markdown replacement for the current branch plan. Required when no plan exists; otherwise omit while the current plan remains useful. Never send when planning is disabled."`
+	PlanUpdate   *interactive.TurnPlanUpdateInput   `json:"plan_update,omitempty" jsonschema_description:"Only when Game Agent planning is enabled. Initialize or restructure with replace_document; routinely update existing unique H2 bodies with replace_sections. Omit while the current plan remains useful."`
+}
+
+type submitInteractiveTurnReplaceDocumentPlanSchema struct {
+	Mode     string `json:"mode" jsonschema:"required,enum=replace_document" jsonschema_description:"Always replace_document."`
+	Markdown string `json:"markdown" jsonschema:"required" jsonschema_description:"Complete non-empty branch-plan Markdown following the injected planning template. This replaces the entire current document."`
+}
+
+type submitInteractiveTurnReplaceSectionsPlanSchema struct {
+	Mode     string                              `json:"mode" jsonschema:"required,enum=replace_sections" jsonschema_description:"Always replace_sections."`
+	Sections []interactive.TurnPlanSectionUpdate `json:"sections" jsonschema:"required,minItems=1" jsonschema_description:"Only changed existing H2 section bodies. Each item is accepted or rejected independently; retry only failed headings."`
 }
 
 const recommendedTurnStateChangesPerSubmission = 24
@@ -271,6 +281,20 @@ func newSubmitInteractiveTurnTool(
 		OneOf:       []*jsonschema.Schema{replaceVariant, deltaVariant, createVariant, archiveVariant, restoreVariant},
 		Description: "Choose exactly one of replace, delta, create, archive, or restore. Never mix fields from different operations.",
 	}
+	planUpdate, ok := parameters.Properties.Get("plan_update")
+	if !ok || planUpdate == nil {
+		return nil, fmt.Errorf("submit_interactive_turn schema missing plan_update")
+	}
+	replaceDocumentPlan, err := turnToolParameterSchema[submitInteractiveTurnReplaceDocumentPlanSchema]()
+	if err != nil {
+		return nil, err
+	}
+	replaceSectionsPlan, err := turnToolParameterSchema[submitInteractiveTurnReplaceSectionsPlanSchema]()
+	if err != nil {
+		return nil, err
+	}
+	planUpdate.OneOf = []*jsonschema.Schema{replaceDocumentPlan, replaceSectionsPlan}
+	planUpdate.Description = "Choose replace_document to initialize or restructure the plan, or replace_sections to update only existing unique H2 bodies. Omit plan_update when no planning change is needed."
 	info.ParamsOneOf = agent.NewParamsOneOfByJSONSchema(parameters)
 	return &submitInteractiveTurnTool{info: info, submit: submit, requestCompletion: requestCompletion}, nil
 }

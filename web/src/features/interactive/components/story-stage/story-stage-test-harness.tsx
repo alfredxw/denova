@@ -264,6 +264,7 @@ export function story(): StorySummary {
     id: 'story-1',
     title: '故事',
     origin: '',
+    protagonist: { mode: 'default' },
     story_teller_id: 'classic',
     story_director_id: 'default',
     choice_count: 5,

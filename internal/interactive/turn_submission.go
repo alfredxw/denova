@@ -27,6 +27,7 @@ const (
 	TurnSubmissionDiagnosticEmptyChoice            = "empty_choice"
 	TurnSubmissionDiagnosticStoryContextRequired   = "story_context_required"
 	TurnSubmissionDiagnosticInitialStateIncomplete = "initial_state_incomplete"
+	TurnSubmissionDiagnosticInvalidPlanMode        = "invalid_plan_update_mode"
 
 	turnSubmissionSeverityError = "error"
 
@@ -66,14 +67,26 @@ type TurnSubmissionReceipt struct {
 	RetryModules         []string                   `json:"retry_modules,omitempty"`
 	MissingModules       []string                   `json:"missing_modules,omitempty"`
 	DiagnosticsTruncated bool                       `json:"diagnostics_truncated,omitempty"`
+	PlanUpdateDetail     *TurnPlanUpdateReceipt     `json:"plan_update_detail,omitempty"`
 }
 
-// TurnSubmissionInput holds independently retryable fields decoded from one
-// submit_interactive_turn call. Either field may be absent on a targeted retry.
+// TurnPlanUpdateReceipt makes section-level partial success explicit to the
+// model. Accepted section edits are retained in the run-local draft even when
+// another section must be retried.
+type TurnPlanUpdateReceipt struct {
+	Mode             string   `json:"mode"`
+	AcceptedSections []string `json:"accepted_sections,omitempty"`
+	RejectedSections []string `json:"rejected_sections,omitempty"`
+	RetrySections    []string `json:"retry_sections,omitempty"`
+	RetainedDraft    bool     `json:"retained_draft,omitempty"`
+}
+
+// TurnSubmissionInput holds independently retryable modules decoded from one
+// submit_interactive_turn call. Any module may be absent on a targeted retry.
 type TurnSubmissionInput struct {
 	StateUpdates *[]interactivestate.Update
 	Choices      *[]string
-	PlanUpdate   *string
+	PlanUpdate   *TurnPlanUpdateInput
 	Diagnostics  []TurnSubmissionDiagnostic
 }
 
@@ -97,6 +110,7 @@ type PreparedTurnSubmission struct {
 	stateUpdatesAccepted bool
 	choicesAccepted      bool
 	planUpdateAccepted   bool
+	planUpdateStarted    bool
 }
 
 func (s *PreparedTurnSubmission) TurnResult() TurnResult {
@@ -121,6 +135,8 @@ func PrepareTurnSubmission(validation TurnSubmissionContext, current *PreparedTu
 	planningEnabled := normalizeStoryPlanningMode(validation.PlanningMode) == StoryPlanningModeEnabled
 	diagnostics := make([]TurnSubmissionDiagnostic, 0, len(input.Diagnostics))
 	rejected := map[string]bool{}
+	planDiagnostics := false
+	planFatalDiagnostic := false
 	for _, diagnostic := range input.Diagnostics {
 		if diagnostic.Module == TurnSubmissionModulePlanUpdate && !planningEnabled {
 			continue
@@ -131,7 +147,15 @@ func PrepareTurnSubmission(validation TurnSubmissionContext, current *PreparedTu
 			continue
 		}
 		diagnostics = append(diagnostics, diagnostic)
-		if diagnostic.Module == TurnSubmissionModuleStateChanges || diagnostic.Module == TurnSubmissionModuleChoices || diagnostic.Module == TurnSubmissionModulePlanUpdate {
+		if diagnostic.Module == TurnSubmissionModulePlanUpdate {
+			planDiagnostics = true
+			prepared.planUpdateStarted = true
+			if diagnostic.Index == nil {
+				planFatalDiagnostic = true
+			}
+			continue
+		}
+		if diagnostic.Module == TurnSubmissionModuleStateChanges || diagnostic.Module == TurnSubmissionModuleChoices {
 			rejected[diagnostic.Module] = true
 		}
 	}
@@ -188,26 +212,132 @@ func PrepareTurnSubmission(validation TurnSubmissionContext, current *PreparedTu
 		// retained for a story whose planning feature is disabled.
 		prepared.result.PlanUpdate = nil
 		prepared.planUpdateAccepted = true
-	} else if input.PlanUpdate != nil && !prepared.planUpdateAccepted && !rejected[TurnSubmissionModulePlanUpdate] {
-		value := normalizeBranchPlanMarkdown(*input.PlanUpdate)
-		if err := validateBranchPlanMarkdown(value); err != nil {
-			diagnostics = append(diagnostics, *newTurnSubmissionDiagnostic(
-				TurnSubmissionModulePlanUpdate, nil, TurnSubmissionDiagnosticInvalidModule,
-				"/plan_update", fmt.Sprintf("non-empty Markdown up to %d bytes", maxBranchPlanBytes),
-				fmt.Sprintf("%d bytes", len([]byte(value))), err.Error(),
-			))
-			rejected[TurnSubmissionModulePlanUpdate] = true
-		} else {
-			prepared.result.PlanUpdate = &value
-			prepared.planUpdateAccepted = true
-		}
+		prepared.planUpdateStarted = false
+	} else if input.PlanUpdate != nil && !prepared.planUpdateAccepted {
+		prepared.planUpdateStarted = true
 	}
-	if planningEnabled && !prepared.planUpdateAccepted && !rejected[TurnSubmissionModulePlanUpdate] && input.PlanUpdate == nil && validation.CurrentPlan != nil {
+
+	diagnosticsBeforePlanApply := len(diagnostics)
+	planDetail := applyTurnSubmissionPlanUpdate(validation, prepared, input.PlanUpdate, planFatalDiagnostic, &diagnostics)
+	if planDiagnostics {
+		prepared.planUpdateAccepted = false
+		planDetail = addDecodedPlanSectionFailures(planDetail, input.Diagnostics)
+	}
+	if planDetail != nil && len(planDetail.RejectedSections) > 0 && prepared.result.PlanUpdate != nil {
+		planDetail.RetainedDraft = true
+	}
+	if planDiagnostics || len(diagnostics) > diagnosticsBeforePlanApply || (planDetail != nil && len(planDetail.RejectedSections) > 0) {
+		rejected[TurnSubmissionModulePlanUpdate] = true
+	}
+	if planningEnabled && !prepared.planUpdateAccepted && !prepared.planUpdateStarted && input.PlanUpdate == nil && validation.CurrentPlan != nil {
 		prepared.planUpdateAccepted = true
 	}
 
 	receipt := buildTurnSubmissionReceipt(prepared, rejected, diagnostics)
+	receipt.PlanUpdateDetail = planDetail
 	return prepared, receipt
+}
+
+func addDecodedPlanSectionFailures(detail *TurnPlanUpdateReceipt, diagnostics []TurnSubmissionDiagnostic) *TurnPlanUpdateReceipt {
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Module != TurnSubmissionModulePlanUpdate || diagnostic.Index == nil {
+			continue
+		}
+		if detail == nil {
+			detail = &TurnPlanUpdateReceipt{Mode: TurnPlanUpdateModeReplaceSections}
+		}
+		label := fmt.Sprintf("sections[%d]", *diagnostic.Index)
+		if !stringSliceContains(detail.RejectedSections, label) {
+			detail.RejectedSections = append(detail.RejectedSections, label)
+			detail.RetrySections = append(detail.RetrySections, label)
+		}
+	}
+	if detail != nil && len(detail.AcceptedSections) > 0 && len(detail.RejectedSections) > 0 {
+		detail.RetainedDraft = true
+	}
+	return detail
+}
+
+func stringSliceContains(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
+}
+
+func applyTurnSubmissionPlanUpdate(validation TurnSubmissionContext, prepared *PreparedTurnSubmission, update *TurnPlanUpdateInput, blocked bool, diagnostics *[]TurnSubmissionDiagnostic) *TurnPlanUpdateReceipt {
+	if normalizeStoryPlanningMode(validation.PlanningMode) != StoryPlanningModeEnabled || update == nil || prepared.planUpdateAccepted {
+		return nil
+	}
+	detail := &TurnPlanUpdateReceipt{Mode: update.Mode}
+	if blocked {
+		return detail
+	}
+
+	switch update.Mode {
+	case TurnPlanUpdateModeReplaceDocument:
+		value := normalizeBranchPlanMarkdown(update.Markdown)
+		if err := validateBranchPlanMarkdown(value); err != nil {
+			*diagnostics = append(*diagnostics, *newTurnSubmissionDiagnostic(
+				TurnSubmissionModulePlanUpdate, nil, TurnSubmissionDiagnosticInvalidModule,
+				"/plan_update/markdown", fmt.Sprintf("non-empty Markdown up to %d bytes", maxBranchPlanBytes),
+				fmt.Sprintf("%d bytes", len([]byte(value))), err.Error(),
+			))
+			return detail
+		}
+		prepared.result.PlanUpdate = &value
+		prepared.planUpdateAccepted = true
+		return detail
+
+	case TurnPlanUpdateModeReplaceSections:
+		baseline := ""
+		if prepared.result.PlanUpdate != nil {
+			baseline = *prepared.result.PlanUpdate
+		} else if validation.CurrentPlan != nil {
+			baseline = validation.CurrentPlan.Markdown
+		}
+		draft, accepted, sectionErrors, err := applyBranchPlanSectionUpdates(baseline, update.Sections)
+		detail.AcceptedSections = accepted
+		if len(accepted) > 0 {
+			prepared.result.PlanUpdate = &draft
+		}
+		if err != nil {
+			*diagnostics = append(*diagnostics, *newTurnSubmissionDiagnostic(
+				TurnSubmissionModulePlanUpdate, nil, TurnSubmissionDiagnosticInvalidModule,
+				"/plan_update/sections", "existing branch plan with unique ATX H2 sections", "uneditable plan structure", err.Error(),
+			))
+			return detail
+		}
+		for _, sectionError := range sectionErrors {
+			index := sectionError.Index
+			*diagnostics = append(*diagnostics, *newTurnSubmissionDiagnostic(
+				TurnSubmissionModulePlanUpdate, &index, sectionError.Code,
+				fmt.Sprintf("/plan_update/sections/%d", index), sectionError.Expected, sectionError.Actual, sectionError.Message,
+			))
+			label := sectionError.Heading
+			if label == "" {
+				label = fmt.Sprintf("sections[%d]", index)
+			}
+			if !stringSliceContains(detail.RejectedSections, label) {
+				detail.RejectedSections = append(detail.RejectedSections, label)
+			}
+		}
+		detail.RetrySections = append(detail.RetrySections, detail.RejectedSections...)
+		detail.RetainedDraft = len(accepted) > 0 && len(detail.RejectedSections) > 0
+		if len(sectionErrors) == 0 && len(update.Sections) > 0 {
+			prepared.planUpdateAccepted = true
+		}
+		return detail
+
+	default:
+		*diagnostics = append(*diagnostics, *newTurnSubmissionDiagnostic(
+			TurnSubmissionModulePlanUpdate, nil, TurnSubmissionDiagnosticInvalidPlanMode,
+			"/plan_update/mode", "replace_document or replace_sections", update.Mode, "plan_update.mode is not supported.",
+		))
+		return detail
+	}
 }
 
 func clonePreparedTurnSubmission(current *PreparedTurnSubmission) *PreparedTurnSubmission {
@@ -223,6 +353,7 @@ func clonePreparedTurnSubmission(current *PreparedTurnSubmission) *PreparedTurnS
 		stateUpdatesAccepted: current.stateUpdatesAccepted,
 		choicesAccepted:      current.choicesAccepted,
 		planUpdateAccepted:   current.planUpdateAccepted,
+		planUpdateStarted:    current.planUpdateStarted,
 	}
 }
 

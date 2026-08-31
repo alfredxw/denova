@@ -1,10 +1,10 @@
-import type { TFunction } from 'i18next'
-import type { InitialActorTraitRoll, StoryDirectorModuleRefs, StoryImageSettings, StoryOpeningConfig, StoryPlanningMode, StoryStateSchemaPolicy, StorySummary } from './types'
+import type { InitialActorTraitRoll, StoryCheckSettings, StoryDirectorModuleRefs, StoryImageSettings, StoryOpeningConfig, StoryPlanningMode, StoryProtagonist, StoryStateSchemaPolicy } from './types'
 
 export interface StoryCreateInput {
   title: string
   custom_agent_id?: string
   origin: string
+  protagonist?: StoryProtagonist
   story_teller_id: string
   story_director_id: string
   planning_mode: StoryPlanningMode
@@ -12,6 +12,7 @@ export interface StoryCreateInput {
   reply_target_chars: number
   choice_count: number
   image_settings?: StoryImageSettings
+  check_settings?: StoryCheckSettings
   opening?: StoryOpeningConfig
   initial_trait_rolls?: InitialActorTraitRoll[]
   state_schema_policy?: StoryStateSchemaPolicy
@@ -36,70 +37,6 @@ export interface BookOpeningPreset {
 interface BookOpeningPresetFile {
   version: number
   presets: BookOpeningPreset[]
-}
-
-const STORY_OPENING_PRESETS = [
-  {
-    id: 'arrival',
-    zh: '夜雨把旧城的招牌洗得发亮。你在一间还未打烊的小店门前停下，掌心里那枚陌生的钥匙正变得滚烫。',
-    en: 'Rain polishes the old city signs. You stop outside a shop that has not closed, while the unfamiliar key in your palm grows warm.',
-  },
-  {
-    id: 'wake-up',
-    zh: '你在陌生房间醒来，窗外没有太阳，只有一轮低悬的红月。床头的纸条写着：别相信第一个敲门的人。',
-    en: 'You wake in an unfamiliar room. There is no sun outside, only a low red moon. A note by the bed says: do not trust the first knock.',
-  },
-  {
-    id: 'invitation',
-    zh: '午夜十二点，一封没有署名的邀请函从门缝滑进来。信纸上只有一行字：如果你还想知道真相，就独自来钟楼。',
-    en: 'At midnight, an unsigned invitation slides under the door. It contains one line: if you still want the truth, come to the clock tower alone.',
-  },
-] as const
-
-function defaultStoryOpening(): StoryOpeningConfig {
-  return { mode: 'ai' }
-}
-
-function normalizeStoryOpening(opening?: Partial<StoryOpeningConfig> | null): StoryOpeningConfig {
-  const mode = opening?.mode === 'preset' || opening?.mode === 'custom' ? opening.mode : 'ai'
-  if (mode === 'preset') {
-    return {
-      mode,
-      preset_id: opening?.preset_id?.trim() || STORY_OPENING_PRESETS[0].id,
-      preset_text: truncateStoryOpeningText(opening?.preset_text || STORY_OPENING_PRESETS[0].zh),
-    }
-  }
-  if (mode === 'custom') {
-    return {
-      mode,
-      custom_text: truncateStoryOpeningText(opening?.custom_text || ''),
-    }
-  }
-  return defaultStoryOpening()
-}
-
-function storyOpeningSourceText(opening: StoryOpeningConfig | undefined) {
-  const normalized = normalizeStoryOpening(opening)
-  if (normalized.mode === 'preset') return normalized.preset_text?.trim() || ''
-  if (normalized.mode === 'custom') return normalized.custom_text?.trim() || ''
-  return ''
-}
-
-export function buildOpeningPrompt(story: StorySummary | undefined, t: TFunction, sourceOpening?: Partial<StoryOpeningConfig>, source: 'story' | 'book_preset' = 'story') {
-  const opening = normalizeStoryOpening(sourceOpening || story?.opening)
-  const title = story?.title?.trim() || t('storyStage.opening.untitledStory')
-  const origin = story?.origin?.trim()
-  const sourceText = storyOpeningSourceText(opening)
-  if (opening.mode === 'preset') {
-    if (source === 'book_preset') {
-      return t('storyStage.opening.promptBookPreset', { title, origin: origin || t('storyStage.opening.noOrigin'), opening: sourceText })
-    }
-    return t('storyStage.opening.promptPreset', { title, origin: origin || t('storyStage.opening.noOrigin'), opening: sourceText })
-  }
-  if (opening.mode === 'custom') {
-    return t('storyStage.opening.promptCustom', { title, origin: origin || t('storyStage.opening.noOrigin'), opening: sourceText })
-  }
-  return t('storyStage.opening.promptAI', { title, origin: origin || t('storyStage.opening.noOrigin') })
 }
 
 export function parseBookOpeningPresets(content: string): BookOpeningPreset[] {

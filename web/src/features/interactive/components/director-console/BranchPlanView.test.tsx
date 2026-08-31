@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { BranchPlanSummary } from './BranchPlanView'
 
 describe('BranchPlanSummary', () => {
-  it('renders the current free-form plan without imposing a schema', () => {
+  it('renders the current modular plan without exposing the update protocol', () => {
     render(<BranchPlanSummary planningEnabled plan={{
       markdown: '## 下一步\n\n让 [[沈凝]] 自己决定是否进入旧车站。',
       updated_turn_id: 'turn-1',

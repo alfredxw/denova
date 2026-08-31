@@ -23,11 +23,9 @@ import { sanitizeStoredNarrative } from '../stream-parser'
 import { emptyStoryStageRun, useInteractiveStore } from '../stores/interactive-store'
 import type { StoryStageRunState } from '../stores/interactive-store'
 import { useInteractiveAgentCommands, type StoryStageRuntimeUpdater } from '../use-interactive-agent-commands'
-import { buildOpeningPrompt, truncateStoryOpeningText } from '../opening'
 import { DEFAULT_NARRATIVE_STYLE_ID } from '../narrative-style'
 import { StoryPicker } from './StoryPicker'
 import { NewStorySetupPanel } from './NewStorySetupPanel'
-import { StoryOpeningPanel } from './StoryOpeningPanel'
 import { TurnNavigator } from './TurnNavigator'
 import { DEFAULT_STORY_STATE_DISPLAY, type StoryStateDisplayPreference } from './story-state/display-preference'
 import { StoryStateLedger } from './story-state/StoryStateLedger'
@@ -52,7 +50,7 @@ import type { InputAreaSendOptions } from '@/components/Chat/InputArea'
 const DEFAULT_READING_FONT_SIZE = 18
 const EMPTY_STAGE_RUN = emptyStoryStageRun()
 
-export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], stories = [], story, tellers = [], storyDirectors = [], imagePresets = [], recentNarrativeStyleID = DEFAULT_NARRATIVE_STYLE_ID, narrativeStyleLoading = false, storyId, branchId, snapshot, snapshotLoading = false, loreEmpty = false, bookOpeningPresets = [], directorPanelVisible = true, stateDisplayPreference = DEFAULT_STORY_STATE_DISPLAY, onStorySelect = noop, onStoryCreate = noop, onStorySetupUpdate = noop, onNarrativeStyleChange, onStoryDelete = noop, onRequestLoreInit, onOpenDirectorConfig, onToggleDirectorPanel, onOpenDirectorState, onRequestCreateBranch, onStateDisplayPreferenceChange = noopStateDisplayPreferenceChange, onTurnPersisted = noopTurnPersisted, onDone }: StoryStageProps) {
+export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], stories = [], story, tellers = [], storyDirectors = [], imagePresets = [], recentNarrativeStyleID = DEFAULT_NARRATIVE_STYLE_ID, narrativeStyleLoading = false, storyId, branchId, snapshot, snapshotLoading = false, loreItems = [], bookOpeningPresets = [], directorPanelVisible = true, stateDisplayPreference = DEFAULT_STORY_STATE_DISPLAY, onStorySelect = noop, onStoryCreate = noop, onStorySetupUpdate = noop, onNarrativeStyleChange, onStoryDelete = noop, onRequestLoreInit, onOpenDirectorConfig, onToggleDirectorPanel, onOpenDirectorState, onRequestCreateBranch, onStateDisplayPreferenceChange = noopStateDisplayPreferenceChange, onTurnPersisted = noopTurnPersisted, onDone }: StoryStageProps) {
   const { t } = useTranslation()
   const conversationBinding = useMemo<ConversationConfigBinding | undefined>(() => storyId ? {
     mode: 'interactive', project_id: projectId, story_id: storyId,
@@ -107,10 +105,8 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
   } | null>(null)
   const [switchingVersionTurnId, setSwitchingVersionTurnId] = useState<string | null>(null)
   const [hotChoicesExpanded, setHotChoicesExpanded] = useState(false)
-  const [customOpeningText, setCustomOpeningText] = useState('')
-  const [selectedBookOpeningPresetId, setSelectedBookOpeningPresetId] = useState('')
   const [creatingStory, setCreatingStory] = useState(false)
-  const [editingStorySetup, setEditingStorySetup] = useState(false)
+  const [pendingOpeningStoryId, setPendingOpeningStoryId] = useState('')
   const [contextAnalysisOpen, setContextAnalysisOpen] = useState(false)
   const [tokenUsageOpen, setTokenUsageOpen] = useState(false)
   const [traceOpen, setTraceOpen] = useState(false)
@@ -310,11 +306,6 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
     const turnID = view.metadata.turn_id
     return !turnID || !latestTurnID || turnID === latestTurnID
   }, [latestTurnID])
-  const availableBookOpeningPresets = useMemo(() => bookOpeningPresets.filter((preset) => preset.content.trim()), [bookOpeningPresets])
-  const selectedBookOpeningPreset = useMemo(
-    () => availableBookOpeningPresets.find((preset) => preset.id === selectedBookOpeningPresetId) || availableBookOpeningPresets[0] || null,
-    [availableBookOpeningPresets, selectedBookOpeningPresetId],
-  )
   const syncInputFloatHeight = useCallback(() => {
     const element = inputFloatRef.current
     if (!element) return
@@ -325,13 +316,6 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
   useLayoutEffect(() => {
     syncInputFloatHeight()
   }, [conversationGoal.goal?.revision, editingTurn, goalMode, hotChoices.length, input, showHotChoices, stageRun.runtime.queue.length, syncInputFloatHeight])
-
-  useEffect(() => {
-    setSelectedBookOpeningPresetId((current) => {
-      if (current && availableBookOpeningPresets.some((preset) => preset.id === current)) return current
-      return availableBookOpeningPresets[0]?.id || ''
-    })
-  }, [availableBookOpeningPresets])
 
   useEffect(() => {
     const element = inputFloatRef.current
@@ -387,6 +371,19 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
     onTurnPersisted,
     onDone,
   })
+
+  useEffect(() => {
+    if (!pendingOpeningStoryId || pendingOpeningStoryId !== storyId) return
+    if (snapshot?.story_id !== storyId || snapshotLoading || streaming || !approvalReady) return
+    if ((snapshot.turn_count || 0) > 0 || agentMessages.length > 0) {
+      setPendingOpeningStoryId('')
+      return
+    }
+    void send({ startOpening: true }).then((started) => {
+      if (!started) console.warn('[story-setup] Story was created but opening generation did not start', { storyId })
+      setPendingOpeningStoryId('')
+    })
+  }, [agentMessages.length, approvalReady, pendingOpeningStoryId, send, snapshot?.story_id, snapshot?.turn_count, snapshotLoading, storyId, streaming])
 
   const enterGoalMode = () => {
     setEditingTurn(null)
@@ -466,36 +463,6 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
     await removeInteractiveContextCompaction(storyId, branchId)
     await onDone()
     await analyzeCurrentContext(CONTEXT_ANALYSIS_SIMULATED_MESSAGE)
-  }
-
-  const startBookPresetOpening = () => {
-    if (!storyId || streaming) return
-    if (!selectedBookOpeningPreset?.content.trim()) return
-    void send({
-      message: buildOpeningPrompt(
-        story,
-        t,
-        {
-          mode: 'preset',
-          preset_id: selectedBookOpeningPreset.id,
-          preset_text: truncateStoryOpeningText(selectedBookOpeningPreset.content),
-        },
-        'book_preset',
-      ),
-    })
-  }
-
-  const startAIOpening = () => {
-    if (!storyId || streaming) return
-    void send({ message: buildOpeningPrompt(story, t, { mode: 'ai' }) })
-  }
-
-  const startOpening = () => {
-    if (!storyId || streaming) return
-    const customText = truncateStoryOpeningText(customOpeningText)
-    if (!customText) return
-    void send({ message: buildOpeningPrompt(story, t, { mode: 'custom', custom_text: customText }) })
-    setCustomOpeningText('')
   }
 
   const switchMessageVersion = async (view: AgentMessageView, direction: -1 | 1) => {
@@ -665,7 +632,22 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
 
   const stageControls = (
     <>
-      <StoryPicker stories={stories} currentStoryId={storyId} onSelect={(id) => { setStageControlsOpen(false); setCreatingStory(false); setEditingStorySetup(false); onStorySelect(id) }} onCreate={() => { setStageControlsOpen(false); setEditingStorySetup(false); setCreatingStory(true) }} onDeleteStories={onStoryDelete} />
+      <StoryPicker
+        stories={stories}
+        currentStoryId={storyId}
+        onSelect={(id) => {
+          setStageControlsOpen(false)
+          setCreatingStory(false)
+          setPendingOpeningStoryId('')
+          onStorySelect(id)
+        }}
+        onCreate={() => {
+          setStageControlsOpen(false)
+          setPendingOpeningStoryId('')
+          setCreatingStory(true)
+        }}
+        onDeleteStories={onStoryDelete}
+      />
       {onToggleDirectorPanel && (
         <Button type="button" variant="outline" size="sm" className={`h-7 gap-1.5 border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 text-[11px] hover:bg-[var(--nova-hover)] ${directorPanelVisible ? 'text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)]'}`} onClick={onToggleDirectorPanel} aria-label={directorPanelVisible ? t('storyStage.hideDirectorPanel') : t('storyStage.showDirectorPanel')}>
           <PanelRight className="h-3.5 w-3.5" />
@@ -677,6 +659,13 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
   const openMobileNavigation = () => {
     window.dispatchEvent(new Event(MOBILE_NAVIGATION_OPEN_EVENT))
   }
+  const waitingToStartOpening = pendingOpeningStoryId === storyId
+  const storySetupVisible = creatingStory || (
+    !waitingToStartOpening
+    && !snapshotLoading
+    && agentMessages.length === 0
+    && !streaming
+  )
 
   return (
     <main className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--nova-surface-2)]">
@@ -691,49 +680,41 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
                 {t('storyStage.history.backToLatest')}
               </Button>
             ) : null}
-            {creatingStory ? (
+            {storySetupVisible ? (
               <NewStorySetupPanel
+                key={creatingStory ? 'new-story' : story?.id || 'new-story'}
                 projectId={projectId}
                 stories={stories}
                 tellers={tellers}
                 directors={storyDirectors}
                 imagePresets={imagePresets}
+                loreItems={loreItems}
+                bookOpeningPresets={bookOpeningPresets}
                 recentNarrativeStyleID={recentNarrativeStyleID}
                 narrativeStyleLoading={narrativeStyleLoading}
-                story={editingStorySetup ? story : undefined}
+                story={creatingStory ? undefined : story}
                 onNarrativeStyleChange={onNarrativeStyleChange}
-                onCancel={() => { setCreatingStory(false); setEditingStorySetup(false) }}
+                onRequestLoreInit={onRequestLoreInit}
+                onOpenPresets={onOpenDirectorConfig}
+                onCancel={() => setCreatingStory(false)}
                 onCreate={async (input) => {
-                  if (editingStorySetup) await onStorySetupUpdate(input)
-                  else await onStoryCreate(input)
+                  if (story && !creatingStory) {
+                    await onStorySetupUpdate(input)
+                    const started = await send({ startOpening: true })
+                    if (!started) throw new Error(t('storyPicker.setup.startFailed'))
+                  } else {
+                    const created = await onStoryCreate(input)
+                    if (!created?.id) throw new Error(t('storyPicker.setup.startFailed'))
+                    setPendingOpeningStoryId(created.id)
+                  }
                   setCreatingStory(false)
-                  setEditingStorySetup(false)
                 }}
               />
-            ) : snapshotLoading && agentMessages.length === 0 && !streaming ? (
+            ) : (snapshotLoading || waitingToStartOpening) && agentMessages.length === 0 && !streaming ? (
               <LoadingState
                 label={t('common.loading')}
                 layout="conversation"
                 className="h-full min-h-0 flex-1 bg-[var(--nova-surface-2)]"
-              />
-            ) : agentMessages.length === 0 && !streaming ? (
-              <StoryOpeningPanel
-                story={story}
-                storyId={storyId}
-                streaming={streaming}
-                presets={availableBookOpeningPresets}
-                selectedPreset={selectedBookOpeningPreset}
-                customText={customOpeningText}
-                bottomInset={inputFloatHeight}
-                loreEmpty={loreEmpty}
-                onSelectPreset={setSelectedBookOpeningPresetId}
-                onCustomTextChange={setCustomOpeningText}
-                onStartAI={startAIOpening}
-                onStartPreset={startBookPresetOpening}
-                onStartCustom={startOpening}
-                onConfigureDirector={onOpenDirectorConfig}
-                onRequestLoreInit={onRequestLoreInit}
-                onBackToSetup={() => { setEditingStorySetup(true); setCreatingStory(true) }}
               />
             ) : (
               <MessageList
@@ -791,7 +772,7 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
         </div>
       </div>
       <StoryStageComposer
-        layout={{ projectId, creatingStory, isMobile, keyboardInset, inputTextStyle, workspace, inputFloatRef, inputRef, t, attachmentDraftKey: stageKey }}
+        layout={{ projectId, creatingStory: storySetupVisible || waitingToStartOpening, isMobile, keyboardInset, inputTextStyle, workspace, inputFloatRef, inputRef, t, attachmentDraftKey: stageKey }}
         editor={{ input, editingTurn, styleScenes, styleSceneQuery, styleSceneSuggestions, showSkillCommands, activeSkillCommandIndex, skillCommands, filteredSkillCommands, filteredBuiltInCommandItems, filteredSkillCommandItems, setStyleSceneQuery, setShowSkillCommands, setSkillCommandQuery, setActiveSkillCommandIndex }}
         story={{ storyId, branchTerminal, hotChoices, hotChoicesExpanded, showHotChoices, canUseHotChoices, setHotChoicesExpanded }}
         runtime={{ streaming, approvalReady, conversationConfig, abortPending: stageRun.runtime.abortPending, recoveryPaused: stageRun.runtime.recoveryPaused, recoveryAbortAvailable: stageRun.runtime.recoveryAbortAvailable, pendingInterruptionId: stageRun.runtime.pendingInterruptionId, operationId: stageRun.runtime.operationId, connection: stageRun.runtime.connection, commandSubmitting, queue: stageRun.runtime.queue, queueActionPendingCommandID }}

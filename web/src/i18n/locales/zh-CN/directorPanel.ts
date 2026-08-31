@@ -69,7 +69,7 @@ const directorPanel = {
   'directorPanel.planning.toggle': '切换 Game Agent 规划功能',
   'directorPanel.planning.updateFailed': '更新规划开关失败',
   'directorPanel.plan.title': '当前分支规划',
-  'directorPanel.plan.description': 'Game Agent 会随剧情变化维护这份自由格式的完整规划。',
+  'directorPanel.plan.description': 'Game Agent 会随剧情变化维护这份兼顾长短期节奏的模块化规划。',
   'directorPanel.plan.disabledDescription': '规划已关闭。现有规划会保留，但重新开启前不会注入 Game Agent。',
   'directorPanel.plan.empty': '当前还没有分支规划',
   'directorPanel.plan.emptyHint': '开启规划后，Game Agent 会在下一次完成回合时建立首份规划。',

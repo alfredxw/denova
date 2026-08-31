@@ -156,7 +156,7 @@ export function newStoryDirectorDraft(t?: PresetDraftTranslator): Partial<StoryD
   return {
     id: `custom-director-${Date.now()}`,
     name: presetDraftText(t, 'settingPanel.presetDraft.director.name', '自定义游戏预设'),
-    description: presetDraftText(t, 'settingPanel.presetDraft.director.description', '新的游戏预设，组合叙事风格、事件包、TRPG 检定、状态系统、规划风格和图像方案。'),
+    description: presetDraftText(t, 'settingPanel.presetDraft.director.description', '新的游戏预设，组合叙事风格、事件包、TRPG 检定、状态系统、规划模板和图像方案。'),
     module_refs: {
       narrative_style_id: 'rhythm',
       event_package_ids: ['default'],

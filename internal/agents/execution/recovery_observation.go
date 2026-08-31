@@ -92,8 +92,12 @@ func (r *RecoveryObservation) DisplayMetadata(ctx context.Context, action Runtim
 	if err != nil {
 		return RuntimeRecoveryDisplayMetadata{Message: input.Text, Attachments: publicAttachmentDescriptors(input.Attachments)}, nil
 	}
+	displayMessage := strings.TrimSpace(data.Caller.DisplayMessage)
+	if displayMessage == "" && data.InputVisibility != agentrun.InputModelOnly {
+		displayMessage = strings.TrimSpace(data.Caller.Message)
+	}
 	return RuntimeRecoveryDisplayMetadata{
-		Message: strings.TrimSpace(data.Caller.Message), RegenerateFromTurnID: data.TurnID,
+		Message: displayMessage, RegenerateFromTurnID: data.TurnID,
 		Attachments: publicAttachmentDescriptors(input.Attachments),
 	}, nil
 }

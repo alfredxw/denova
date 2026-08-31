@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	storyDirectorVersion   = 5
+	storyDirectorVersion   = 6
 	DefaultStoryDirectorID = "default"
 
 	MaxStoryDirectorStrategyPromptBytes = StoryContextMaxBytes
@@ -355,16 +355,50 @@ func DefaultStoryDirector() StoryDirector {
 		Version:     storyDirectorVersion,
 		ID:          DefaultStoryDirectorID,
 		Name:        "默认游戏预设",
-		Description: "组合通用叙事风格、事件素材、规则、状态与图像方案，并允许创作者自由描述 Game Agent 的规划风格。",
+		Description: "组合叙事、事件、规则、状态、图像与可自定义的 Game Agent 长短期规划模板。",
 		ModuleRefs:  refs,
 		Strategy: StoryDirectorStrategy{
 			RuleStateConsumptionMode: DefaultRuleStateConsumptionMode,
 			RuleVisibilityMode:       DefaultRuleVisibilityMode,
+			PromptMarkdown:           DefaultStoryPlanningTemplateMarkdown(),
 		},
 		EventPackages: []EventPackage{tellerEventPackageFromModule(DefaultEventPackageModule())},
 		TRPGSystem:    DefaultRuleSystemModule().TRPGSystem,
 		ActorState:    defaultActorState.ActorState,
 	})
+}
+
+// DefaultStoryPlanningTemplateMarkdown is stable model-visible scaffolding for
+// branch-plan initialization. Custom presets can replace it with any Markdown;
+// unique ATX H2 headings make routine section updates possible.
+func DefaultStoryPlanningTemplateMarkdown() string {
+	return strings.TrimSpace(`## Long-term direction
+
+Define the likely end states, irreversible transformations, central dramatic question, and what must remain open to player choice. Plan possibilities rather than a fixed script.
+
+## Mid-term arcs
+
+Track the next major arcs, their prerequisites, escalation, turning points, and possible exits. Explain how each arc advances or complicates the long-term direction.
+
+## Near-term beats
+
+Plan the next few meaningful beats with purpose, pressure, information, consequences, and a return point for player agency. Vary intensity and leave room for detours.
+
+## Character deployment
+
+Assign active, resting, entering, and exiting characters. Track each important character's current motive, agency, relationship movement, and next useful collision. Avoid crowding every beat with the same cast.
+
+## Threads and payoffs
+
+Track open promises, clues, mysteries, threats, debts, setups, and expected payoff windows. Give important payoffs perceptible preparation and retire threads that no longer serve the story.
+
+## Branch possibilities
+
+Preserve distinct responses to the player's plausible directions. State what can change, what remains invariant, and how abandoned preparation can be recycled without forcing the player back onto a route.
+
+## Continuity and replanning
+
+Record constraints from committed history, Actor State, Lore, and user intent. State the triggers that require a local adjustment or a full replan. Wrap an exact Lore name in double brackets only when that character is likely to need full context in the next few turns; use plain text for distant cast.`)
 }
 
 func normalizeStoryDirector(director StoryDirector) StoryDirector {
@@ -429,17 +463,19 @@ func StoryDirectorStrategyPromptMarkdown(director StoryDirector) string {
 	return director.Strategy.PromptMarkdown
 }
 
-// StoryPlanningGuideMarkdown projects only creator-authored planning style and
-// optional event material. Backend pacing fields and legacy Director runtime
-// policy are intentionally excluded: the Game Agent interprets this guide in
-// light of the current story and user instructions.
+// StoryPlanningGuideMarkdown projects a stable creator-authored planning
+// template and optional event material. An empty custom template uses the
+// built-in template at runtime without rewriting the user's preset.
 func StoryPlanningGuideMarkdown(director StoryDirector, limitBytes int) string {
 	director = normalizeStoryDirector(director)
 	var sb strings.Builder
-	if prompt := strings.TrimSpace(director.Strategy.PromptMarkdown); prompt != "" {
-		sb.WriteString("### Planning style\n\n")
-		sb.WriteString(prompt)
+	prompt := strings.TrimSpace(director.Strategy.PromptMarkdown)
+	if prompt == "" {
+		prompt = DefaultStoryPlanningTemplateMarkdown()
 	}
+	sb.WriteString("### Planning document template\n\n")
+	sb.WriteString("Use the creator-authored Markdown below to initialize the branch plan and decide which long-, mid-, and near-horizon modules need attention. Preserve its unique ATX H2 headings so routine turns can update section bodies independently. The template guides planning quality; it is not established canon or a fixed plot.\n\n")
+	sb.WriteString(prompt)
 	for _, pkg := range director.EventPackages {
 		if !pkg.Enabled {
 			continue
