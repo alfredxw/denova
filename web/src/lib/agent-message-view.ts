@@ -300,59 +300,61 @@ export function agentSubAgentSessionKey(view: AgentMessageView) {
 
 export interface AgentSubAgentTimelineGroup {
   key: string
-  nextIndex: number
-  sessionKeys: string[]
   startIndex: number
+  viewIndexes: number[]
   views: AgentMessageView[]
 }
 
-/**
- * Projects one delegated invocation into one card while preserving its first
- * timeline position. Older sessions may have a new numeric session ID after
- * every child tool loop; matching ancestry keeps those adjacent legacy slices
- * together without crossing a root-Agent event or a different SubAgent path.
- */
+/** Projects each delegated invocation into one card at its first timeline position. */
 export function buildAgentSubAgentTimelineGroups(views: AgentMessageView[]): AgentSubAgentTimelineGroup[] {
+  const groupsByKey = new Map<string, AgentSubAgentTimelineGroup>()
   const groups: AgentSubAgentTimelineGroup[] = []
-  for (let startIndex = 0; startIndex < views.length; startIndex += 1) {
-    const first = views[startIndex]
-    if (!isAgentSubAgentTimelineView(first)) continue
-
-    const groupedViews: AgentMessageView[] = []
-    const sessionKeys = new Set<string>()
-    let nextIndex = startIndex
-    while (nextIndex < views.length) {
-      const candidate = views[nextIndex]
-      if (isAgentRunMetadataView(candidate) && candidate.metadata.run_id === first.metadata.run_id) {
-        nextIndex += 1
-        continue
+  views.forEach((view, index) => {
+    if (isAgentSubAgentTimelineView(view)) {
+      const key = agentSubAgentSessionKey(view)
+      let group = groupsByKey.get(key)
+      if (!group) {
+        group = { key, startIndex: index, viewIndexes: [], views: [] }
+        groupsByKey.set(key, group)
+        groups.push(group)
       }
-      if (isAgentSubAgentTimelineView(candidate) && sameSubAgentTimelineGroup(first, candidate)) {
-        groupedViews.push(candidate)
-        sessionKeys.add(agentSubAgentSessionKey(candidate))
-        nextIndex += 1
-        continue
-      }
-      // Historical approval records did not carry SubAgent metadata. Once
-      // resolved, a tool-call link still proves that the interaction belongs
-      // to this delegated timeline and must not split its card.
-      if (isAgentSubAgentTimelineBridgeView(candidate, groupedViews)) {
-        groupedViews.push(candidate)
-        nextIndex += 1
-        continue
-      }
-      break
+      group.viewIndexes.push(index)
+      appendSubAgentTimelineView(group, view)
+      return
     }
-    groups.push({
-      key: agentSubAgentSessionKey(first),
-      nextIndex,
-      sessionKeys: Array.from(sessionKeys),
-      startIndex,
-      views: groupedViews,
-    })
-    startIndex = nextIndex - 1
-  }
+
+    // Historical approval records did not carry SubAgent metadata. A resolved
+    // tool-call link still identifies the delegated invocation that owns it.
+    for (const group of groups) {
+      if (isAgentSubAgentTimelineBridgeView(view, group.views)) {
+        group.viewIndexes.push(index)
+        group.views.push(view)
+        break
+      }
+    }
+  })
   return groups
+}
+
+// Completed histories from the former scalar recorder can contain one text
+// view per streamed token. Once isolated by session, adjacent text of the same
+// role is one presentation block and can be reconstructed without data loss.
+function appendSubAgentTimelineView(group: AgentSubAgentTimelineGroup, view: AgentMessageView) {
+  const previous = group.views[group.views.length - 1]
+  if (
+    previous &&
+    !previous.streaming &&
+    !view.streaming &&
+    (view.kind === 'assistant' || view.kind === 'reasoning') &&
+    previous.kind === view.kind
+  ) {
+    group.views[group.views.length - 1] = {
+      ...previous,
+      content: agentViewContent(previous) + agentViewContent(view),
+    }
+    return
+  }
+  group.views.push(view)
 }
 
 export function isAgentSubAgentTimelineBridgeView(candidate: AgentMessageView, groupedViews: AgentMessageView[]) {
@@ -360,22 +362,6 @@ export function isAgentSubAgentTimelineBridgeView(candidate: AgentMessageView, g
   const toolCallID = readString(candidate.data.tool_call_id)
   if (!toolCallID) return false
   return groupedViews.some(view => isAgentSubAgentTimelineView(view) && view.kind === 'tool' && view.partId === toolCallID)
-}
-
-function sameSubAgentTimelineGroup(first: AgentMessageView, candidate: AgentMessageView) {
-  const firstSession = agentSubAgentSessionKey(first)
-  if (firstSession && firstSession === agentSubAgentSessionKey(candidate)) return true
-  const firstSource = legacySubAgentSourceKey(first)
-  return Boolean(firstSource && firstSource === legacySubAgentSourceKey(candidate))
-}
-
-function legacySubAgentSourceKey(view: AgentMessageView) {
-  const metadata = view.metadata
-  const runID = metadata.run_id?.trim() || ''
-  const agentName = metadata.agent_name?.trim() || metadata.subagent_type?.trim() || ''
-  if (!runID || !agentName) return ''
-  const path = metadata.run_path?.map(step => step.trim()).filter(Boolean).join('\u0000') || ''
-  return [runID, metadata.root_agent_name?.trim() || '', agentName, path].join('\u001f')
 }
 
 export function agentViewStableKey(view: AgentMessageView) {

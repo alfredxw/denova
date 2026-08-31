@@ -84,9 +84,9 @@ export function AgentExecutionProcess({
   const renderProcessItems = (nodes: AgentProcessNode[], depth = 0) => {
     const processItems: ReactNode[] = []
     const nodeViews = nodes.map(node => node.view)
-    const subAgentGroupsByStart = new Map(
-      (onOpenSubAgentSession ? buildAgentSubAgentTimelineGroups(nodeViews) : []).map(group => [group.startIndex, group]),
-    )
+    const subAgentGroups = onOpenSubAgentSession ? buildAgentSubAgentTimelineGroups(nodeViews) : []
+    const subAgentGroupsByStart = new Map(subAgentGroups.map(group => [group.startIndex, group]))
+    const groupedSubAgentIndexes = new Set(subAgentGroups.flatMap(group => group.viewIndexes))
     for (let index = 0; index < nodes.length; index += 1) {
       const node = nodes[index]
       const view = node.view
@@ -106,7 +106,6 @@ export function AgentExecutionProcess({
               onResolveAsk={onResolveAsk}
             />,
           )
-          index = subAgentGroup.nextIndex - 1
           continue
         }
         const progress = buildSubAgentProgressMessage(subAgentGroup.views.map(item => agentViewToRenderMessage(item)).filter((item): item is ChatMessage => Boolean(item)))
@@ -123,10 +122,10 @@ export function AgentExecutionProcess({
               onOpenTrace={onOpenTrace}
             />,
           )
-          index = subAgentGroup.nextIndex - 1
           continue
         }
       }
+      if (groupedSubAgentIndexes.has(index)) continue
       if (view.kind === 'reasoning' && !view.streaming && !agentViewContent(view).trim()) continue
       processItems.push(
         <div key={agentViewStableKey(view) || index} data-tool-call-depth={depth} className="min-w-0">

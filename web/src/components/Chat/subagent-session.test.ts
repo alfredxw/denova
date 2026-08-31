@@ -1,23 +1,22 @@
 import { describe, expect, it } from 'vitest'
 import type { ChatMessage } from '@/lib/api'
-import type { AgentMessageView, AgentMessageViewKind } from '@/lib/agent-message-view'
+import { buildAgentSubAgentTimelineGroups, type AgentMessageView, type AgentMessageViewKind } from '@/lib/agent-message-view'
 import { buildSubAgentProgressMessage, selectSubAgentSessionViews, subAgentStatusFromViews } from './subagent-session'
 
 describe('selectSubAgentSessionViews', () => {
-  it('projects every contiguous slice of one legacy delegated invocation', () => {
-    const first = subAgentView('first', 'child-session-1')
-    const second = subAgentView('second', 'child-session-2')
-    const other = subAgentView('other', 'other-session', { agentName: 'reviewer' })
+  it('isolates interleaved concurrent sessions of the same SubAgent type', () => {
+    const firstA = subAgentView('first-a', 'child-session-a', { content: 'A thinks ', kind: 'reasoning' })
+    const firstB = subAgentView('first-b', 'child-session-b', { content: 'B answer ' })
+    const secondA = subAgentView('second-a', 'child-session-a', { content: 'again', kind: 'reasoning' })
+    const secondB = subAgentView('second-b', 'child-session-b', { content: 'done' })
+    const views = [firstA, firstB, secondA, secondB]
 
-    expect(selectSubAgentSessionViews([first, second, other], 'child-session-2')).toEqual([first, second])
-  })
-
-  it('does not cross a root Agent event when matching an older ancestry key', () => {
-    const first = subAgentView('first', 'child-session-1')
-    const root = subAgentView('root', '', { subagent: false })
-    const second = subAgentView('second', 'child-session-2')
-
-    expect(selectSubAgentSessionViews([first, root, second], 'child-session-2')).toEqual([second])
+    expect(selectSubAgentSessionViews(views, 'child-session-a')).toEqual([{ ...firstA, content: 'A thinks again' }])
+    expect(selectSubAgentSessionViews(views, 'child-session-b')).toEqual([{ ...firstB, content: 'B answer done' }])
+    expect(buildAgentSubAgentTimelineGroups(views).map(group => ({ key: group.key, indexes: group.viewIndexes, content: group.views.map(view => view.content) }))).toEqual([
+      { key: 'child-session-a', indexes: [0, 2], content: ['A thinks again'] },
+      { key: 'child-session-b', indexes: [1, 3], content: ['B answer done'] },
+    ])
   })
 
   it('retains the exact terminal status in the shared SubAgent card projection', () => {
@@ -33,13 +32,14 @@ describe('selectSubAgentSessionViews', () => {
   })
 })
 
-function subAgentView(id: string, sessionID: string, options: { agentName?: string; subagent?: boolean; kind?: AgentMessageViewKind } = {}) {
+function subAgentView(id: string, sessionID: string, options: { agentName?: string; content?: string; subagent?: boolean; kind?: AgentMessageViewKind } = {}) {
   const subagent = options.subagent ?? true
   return {
     key: id,
     kind: options.kind ?? 'assistant',
     messageId: id,
     partId: id,
+    content: options.content ?? id,
     metadata: {
       run_id: 'run-1',
       agent_name: options.agentName ?? 'researcher',

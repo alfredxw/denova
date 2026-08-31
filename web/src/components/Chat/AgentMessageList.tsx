@@ -660,9 +660,9 @@ function buildAgentChatListItems({ views, isStreaming, isExecutionActive, visibl
     items.push({ kind: 'empty', key: 'empty' })
     return items
   }
-  const subAgentGroupsByStart = new Map(
-    (groupSubAgentTimeline ? buildAgentSubAgentTimelineGroups(views) : []).map(group => [group.startIndex, group]),
-  )
+  const subAgentGroups = groupSubAgentTimeline ? buildAgentSubAgentTimelineGroups(views) : []
+  const subAgentGroupsByStart = new Map(subAgentGroups.map(group => [group.startIndex, group]))
+  const groupedSubAgentIndexes = new Set(subAgentGroups.flatMap(group => group.viewIndexes))
 
   for (let index = 0; index < views.length; index += 1) {
     const view = views[index]
@@ -677,17 +677,16 @@ function buildAgentChatListItems({ views, isStreaming, isExecutionActive, visibl
             kind: 'legacy-message', key: `subagent-approval-${subAgentGroup.key || index}`,
             message: approvalMessage, sourceIndex: index, openView: pendingApprovalView,
           })
-          index = subAgentGroup.nextIndex - 1
           continue
         }
       }
       const progress = buildSubAgentProgressMessage(subAgentGroup.views.map(item => agentViewToRenderMessage(item)).filter((item): item is ChatMessage => Boolean(item)))
       if (progress) {
         items.push({ kind: 'legacy-message', key: `subagent-${subAgentGroup.key || index}`, message: progress, sourceIndex: index, openView: subAgentGroup.views[0] })
-        index = subAgentGroup.nextIndex - 1
         continue
       }
     }
+    if (groupedSubAgentIndexes.has(index)) continue
     if (collapseTraceGroups) {
       const run = buildAgentRunPresentation(views, index, isExecutionActive)
       if (run) {

@@ -123,16 +123,6 @@ func eventMetadataFromData(data interface{}) agentEventMetadata {
 	return meta
 }
 
-func (m agentEventMetadata) sameSource(other agentEventMetadata) bool {
-	return m.RunID == other.RunID &&
-		m.AgentName == other.AgentName &&
-		m.RootAgentName == other.RootAgentName &&
-		m.SubAgent == other.SubAgent &&
-		m.SubAgentSessionID == other.SubAgentSessionID &&
-		m.ParentCallID == other.ParentCallID &&
-		strings.Join(m.RunPath, "\x00") == strings.Join(other.RunPath, "\x00")
-}
-
 func stringSliceFromAny(value interface{}) []string {
 	switch typed := value.(type) {
 	case []string:

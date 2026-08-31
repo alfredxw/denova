@@ -9,7 +9,7 @@ import {
 /** Projects one delegated invocation from the parent conversation timeline. */
 export function selectSubAgentSessionViews(views: AgentMessageView[], sessionKey: string) {
   const group = buildAgentSubAgentTimelineGroups(views)
-    .find(candidate => candidate.sessionKeys.includes(sessionKey))
+    .find(candidate => candidate.key === sessionKey)
   if (group) return group.views
   return views.filter(view => agentSubAgentSessionKey(view) === sessionKey && view.kind !== 'token-usage')
 }
