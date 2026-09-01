@@ -225,6 +225,33 @@ func TestCompactionForkAndColdFallbackShareCheckpointSchema(t *testing.T) {
 	}
 }
 
+func TestCheckpointGuidanceIsAppendedToPrimaryAndColdCompactionRequests(t *testing.T) {
+	guidance := "Preserve rejected approaches and exact verification evidence."
+	policy := Policy{
+		AgentKind: config.AgentKindIDE, RetainedTurns: 1,
+		CheckpointGuidance: guidance, TargetMinRatio: 0.05, TargetMaxRatio: 0.20,
+	}
+	primary := buildCacheSafeCompactionPrompt(policy, "", "", 100, 1000, []int{0, 1}, nil)
+	cold := buildContextCompactionTranscript([]*agent.Message{agent.UserMessage("source")}, "", "", 100, 1000, policy)
+	for name, prompt := range map[string]string{"primary": primary, "cold": cold} {
+		if strings.Count(prompt, guidance) != 1 || strings.Count(prompt, "<checkpoint_guidance>") != 1 {
+			t.Fatalf("%s compaction prompt did not include guidance exactly once:\n%s", name, prompt)
+		}
+		if !strings.Contains(prompt, compactionGuidancePrecedence) {
+			t.Fatalf("%s compaction prompt omitted guidance precedence", name)
+		}
+	}
+
+	sources := BuiltinPromptSources()
+	if len(sources.IDE.Sources) != 3 || len(sources.InteractiveStory.Sources) != 3 {
+		t.Fatalf("read-only compaction prompt sources are incomplete: IDE=%#v Game=%#v", sources.IDE, sources.InteractiveStory)
+	}
+	if !strings.Contains(sources.IDE.Sources[2].Content, "Workspace/writing requirements") ||
+		!strings.Contains(sources.InteractiveStory.Sources[2].Content, "Game-mode requirements") {
+		t.Fatalf("Agent-specific compaction sources are incorrect: IDE=%q Game=%q", sources.IDE.Sources[2].Content, sources.InteractiveStory.Sources[2].Content)
+	}
+}
+
 func TestAutomaticCompactionForkPromptFitsDeclaredReserve(t *testing.T) {
 	locators := make([]string, 200)
 	positions := make([]int, len(locators))
@@ -232,15 +259,40 @@ func TestAutomaticCompactionForkPromptFitsDeclaredReserve(t *testing.T) {
 		positions[index] = index
 		locators[index] = "[source path=" + strings.Repeat("very-long-segment/", 200) + "]"
 	}
-	prompt := buildCacheSafeCompactionPrompt(
-		Policy{AgentKind: config.AgentKindIDE, RetainedTurns: 1},
-		"", "", 100_000, 400_000, positions, locators,
-	)
-	if tokens := agentcontext.EstimateStringTokens(prompt); tokens > ForkPromptReserve {
-		t.Fatalf("automatic Compaction fork prompt = %d tokens, exceeds declared reserve %d", tokens, ForkPromptReserve)
+	for _, agentKind := range []string{config.AgentKindIDE, config.AgentKindInteractiveStory} {
+		prompt := buildCacheSafeCompactionPrompt(
+			Policy{
+				AgentKind: agentKind, RetainedTurns: 1,
+				CheckpointGuidance: strings.Repeat("界", config.MaxCheckpointGuidanceRunes),
+			},
+			"", "", 100_000, 400_000, positions, locators,
+		)
+		if tokens := agentcontext.EstimateStringTokens(prompt); tokens > ForkPromptReserve {
+			t.Fatalf("%s automatic Compaction fork prompt = %d tokens, exceeds declared reserve %d", agentKind, tokens, ForkPromptReserve)
+		}
+		if !strings.Contains(prompt, agentcontext.CompactionCheckpointSchema()) {
+			t.Fatalf("%s bounded fork prompt lost the checkpoint schema", agentKind)
+		}
 	}
-	if !strings.Contains(prompt, agentcontext.CompactionCheckpointSchema()) {
-		t.Fatal("bounded fork prompt lost the checkpoint schema")
+}
+
+func TestContextCompactionForkRejectsPromptBeyondDeclaredReserve(t *testing.T) {
+	model := &compactionForkCaptureModel{response: agent.AssistantMessage("unused", nil)}
+	primary := []*agent.Message{agent.SystemMessage("system"), agent.UserMessage("source"), agent.UserMessage("current")}
+	call := &agent.ModelCall{Model: model, Messages: primary}
+	_, _, execution, attempted, err := summarizeContextWithPrimaryFork(
+		context.Background(), &config.Config{}, config.AgentKindIDE, "", primary[1:2], primary[1:2], "", 10,
+		Policy{
+			AgentKind: config.AgentKindIDE, ContextWindowTokens: 100_000, RetainedTurns: 1,
+			CheckpointGuidance: strings.Repeat("界", ForkPromptReserve),
+		},
+		call.Snapshot(), "", nil,
+	)
+	if !attempted || err == nil || !strings.Contains(err.Error(), "fork prompt requires") {
+		t.Fatalf("oversized fork prompt = attempted:%t execution:%#v err:%v", attempted, execution, err)
+	}
+	if model.requests != 0 {
+		t.Fatalf("oversized fork prompt reached the model %d time(s)", model.requests)
 	}
 }
 

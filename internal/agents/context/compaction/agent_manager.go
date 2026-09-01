@@ -134,11 +134,13 @@ func (manager *denovaManager) Compact(
 }
 
 func (summarizer denovaSummarizer) Identity() agent.CapabilityIdentity {
+	checkpointGuidance := config.ResolveAgentContext(summarizer.cfg, summarizer.agentKind).CheckpointGuidance
 	return capabilityIdentity("denova.compaction.summarizer", struct {
 		Model               agent.CapabilityIdentity
 		AgentKind           string
 		ContextWindowTokens int
-	}{summarizer.modelIdentity, summarizer.agentKind, summarizer.contextWindowTokens})
+		CheckpointGuidance  string
+	}{summarizer.modelIdentity, summarizer.agentKind, summarizer.contextWindowTokens, checkpointGuidance})
 }
 
 func (summarizer denovaSummarizer) Summarize(

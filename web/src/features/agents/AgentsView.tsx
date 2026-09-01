@@ -15,6 +15,7 @@ import { useLayeredSettingsDraft } from '@/features/settings/use-layered-setting
 import { getSkills, resourceTargetKey } from '@/lib/api'
 import type { ResourceTarget, SkillSummary } from '@/lib/api'
 import { AgentRuntimeContextSection } from './AgentRuntimeContextSection'
+import { AgentCheckpointSection } from './AgentCheckpointSection'
 import { AgentBuiltInCapabilitySection, AgentContextSection, AgentImageModelSection, AgentModelSection, AgentPromptSection, AgentToolSection, mergeAgentModelOverride, mergeAgentPromptOverride } from './agent-configuration-sections'
 import { AgentConfigurationDisclosure } from './agent-configuration-disclosure'
 import { AGENTS, toolDefinitionsFromManifest } from './agent-registry'
@@ -127,6 +128,7 @@ export function AgentsView({ target, onClose, toolNavigationIntent }: { target: 
   const resolvedContext = layered?.resolved_agent_contexts?.[selectedCustomAgent?.id ?? activeAgent]
     ?? layered?.resolved_agent_contexts?.[activeAgent]
   const promptSources = layered?.builtin_agent_prompt_sources?.[activeAgent]?.sources
+  const compactionSources = layered?.builtin_agent_compaction_sources?.[activeAgent]?.sources
   const runtimeContract = promptSources?.find((source) => source.id === 'runtime_contract')?.content
   const outputProtocol = promptSources?.find((source) => source.id === 'output_protocol')?.content
   const customSkillPolicy = layerCustomAgent?.skill_policy ?? selectedCustomAgent?.skill_policy ?? { mode: 'managed' }
@@ -513,6 +515,7 @@ export function AgentsView({ target, onClose, toolNavigationIntent }: { target: 
                 summary={contextSummary}
               >
                 {resolvedContext ? <AgentRuntimeContextSection value={contextValue} resolved={resolvedContext} onChange={setAgentContext} /> : null}
+                {resolvedContext ? <AgentCheckpointSection value={contextValue} resolved={resolvedContext} sources={compactionSources} onChange={setAgentContext} /> : null}
                 {selectedCustomAgent ? <AgentContextBindingsSection value={customContextBindings} onChange={(context_bindings) => updateSelectedCustomAgent((agent) => ({ ...agent, context_bindings }))} /> : null}
                 <AgentContextSection agent={selected.key} effective={effective} resolved={resolvedContext} />
               </AgentConfigurationDisclosure>

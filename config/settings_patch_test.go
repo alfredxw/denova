@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -60,6 +61,20 @@ func TestApplySettingsMergePatchRejectsUnknownFields(t *testing.T) {
 		_, err := ApplySettingsMergePatch(Settings{}, json.RawMessage(patch))
 		if !errors.Is(err, ErrInvalidSettingsPatch) {
 			t.Fatalf("expected strict patch error for %s, got %v", patch, err)
+		}
+	}
+}
+
+func TestApplySettingsMergePatchRejectsOversizedCheckpointGuidance(t *testing.T) {
+	tooLong := strings.Repeat("界", MaxCheckpointGuidanceRunes+1)
+	patches := []string{
+		`{"agent_context":{"ide":{"checkpoint_guidance":"` + tooLong + `"}}}`,
+		`{"custom_agents":[{"id":"editor","contract":"writing.primary.v1","runtime_context":{"checkpoint_guidance":"` + tooLong + `"}}]}`,
+	}
+	for _, patch := range patches {
+		_, err := ApplySettingsMergePatch(Settings{}, json.RawMessage(patch))
+		if !errors.Is(err, ErrInvalidSettingsPatch) || !strings.Contains(err.Error(), "maximum is 1000") {
+			t.Fatalf("oversized checkpoint guidance error = %v", err)
 		}
 	}
 }

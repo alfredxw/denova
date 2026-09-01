@@ -346,6 +346,7 @@ interface AgentContextSettings {
 export interface AgentContextOverride {
   compaction_enabled?: boolean | null
   compaction_threshold?: number | null
+  checkpoint_guidance?: string | null
   tool_result_context_enabled?: boolean | null
   max_fragment_bytes?: number | null
   max_total_injected_bytes?: number | null
@@ -357,6 +358,7 @@ export interface AgentContextOverride {
 export interface ResolvedAgentContextSettings {
   compaction_enabled: boolean
   compaction_threshold: number
+  checkpoint_guidance?: string
   tool_result_context_enabled: boolean
   max_fragment_bytes: number
   max_total_injected_bytes: number
@@ -600,6 +602,7 @@ export interface LayeredSettings {
   builtin_agent_prompts?: AgentPromptSettings
   builtin_agent_prompt_blocks?: AgentPromptBlockSettings
   builtin_agent_prompt_sources?: AgentPromptSourceSettings
+  builtin_agent_compaction_sources?: AgentPromptSourceSettings
   agent_contracts?: AgentContractDefinition[]
   agent_tool_capabilities?: AgentToolCapabilityCatalogEntry[]
   resolved_agent_tool_manifests: Record<string, ResolvedAgentToolCapability[] | undefined>

@@ -728,10 +728,15 @@ func TestLoadLayeredPublishesCanonicalResolvedAgentContexts(t *testing.T) {
 	novaDir := t.TempDir()
 	lowThreshold := 0.20
 	disableToolContext := false
+	defaultGuidance := "Preserve rejected approaches and verification evidence."
+	clearGuidance := ""
 	if err := WriteSettingsFile(UserConfigPath(novaDir), Settings{
 		AgentContexts: AgentContextSettings{
-			Default: AgentContextOverride{CompactionThreshold: &lowThreshold},
-			IDE:     AgentContextOverride{ToolResultContextEnabled: &disableToolContext},
+			Default: AgentContextOverride{CompactionThreshold: &lowThreshold, CheckpointGuidance: &defaultGuidance},
+			IDE: AgentContextOverride{
+				ToolResultContextEnabled: &disableToolContext,
+				CheckpointGuidance:       &clearGuidance,
+			},
 		},
 	}); err != nil {
 		t.Fatal(err)
@@ -745,8 +750,11 @@ func TestLoadLayeredPublishesCanonicalResolvedAgentContexts(t *testing.T) {
 	if !found {
 		t.Fatalf("resolved IDE context is missing: %#v", layered.ResolvedAgentContexts)
 	}
-	if ide.CompactionThreshold != 0.50 || ide.ToolResultContextEnabled {
+	if ide.CompactionThreshold != 0.50 || ide.ToolResultContextEnabled || ide.CheckpointGuidance != "" {
 		t.Fatalf("resolved IDE context = %#v", ide)
+	}
+	if general := layered.ResolvedAgentContexts[AgentKindGeneral]; general.CheckpointGuidance != defaultGuidance {
+		t.Fatalf("resolved General checkpoint guidance = %q", general.CheckpointGuidance)
 	}
 	for _, definition := range AgentKindDefinitions() {
 		if _, ok := layered.ResolvedAgentContexts[definition.Kind]; !ok {

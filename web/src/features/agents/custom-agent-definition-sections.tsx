@@ -15,6 +15,7 @@ import type {
 import type { SkillSummary } from '@/lib/api'
 import { SectionTitle } from './agent-form-controls'
 import type { AgentToolDefinition } from './agent-registry'
+import { ReadonlyPromptSourceBlock } from './readonly-prompt-source-block'
 
 export function CustomAgentBehaviorSection({ instructions, runtimeContract, outputProtocol, onChange }: {
   instructions: string
@@ -37,24 +38,9 @@ export function CustomAgentBehaviorSection({ instructions, runtimeContract, outp
           className="min-h-64 resize-y font-mono text-xs leading-5"
         />
       </label>
-      <ReadonlyContractBlock title={t('agents.prompt.source.runtime_contract')} content={runtimeContract} />
-      <ReadonlyContractBlock title={t('agents.prompt.source.output_protocol')} content={outputProtocol} />
+      <ReadonlyPromptSourceBlock title={t('agents.prompt.source.runtime_contract')} content={runtimeContract} />
+      <ReadonlyPromptSourceBlock title={t('agents.prompt.source.output_protocol')} content={outputProtocol} />
     </section>
-  )
-}
-
-function ReadonlyContractBlock({ title, content = '' }: { title: string; content?: string }) {
-  const { t } = useTranslation()
-  const [open, setOpen] = useState(false)
-  return (
-    <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)]">
-      <button type="button" onClick={() => setOpen((value) => !value)} className="flex w-full items-center gap-2 px-3 py-2 text-left" aria-expanded={open}>
-        {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-        <span className="flex-1 text-[11px] font-medium">{title}</span>
-        <span className="rounded border border-[var(--nova-border)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-faint)]">{t('agents.prompt.badge.readonly')}</span>
-      </button>
-      {open ? <pre className="max-h-64 overflow-auto whitespace-pre-wrap border-t border-[var(--nova-border)] p-3 text-[11px] leading-5 text-[var(--nova-text-faint)]">{content || '—'}</pre> : null}
-    </div>
   )
 }
 

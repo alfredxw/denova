@@ -91,6 +91,7 @@ export function cloneBuiltInAgent(
     runtime_context: context ? {
       compaction_enabled: context.compaction_enabled,
       compaction_threshold: context.compaction_threshold,
+      checkpoint_guidance: context.checkpoint_guidance,
       tool_result_context_enabled: context.tool_result_context_enabled,
       max_fragment_bytes: context.max_fragment_bytes,
       max_total_injected_bytes: context.max_total_injected_bytes,

@@ -118,12 +118,17 @@ func summarizeContextWithPrimaryFork(
 	// the captured primary request. Re-embedding them in the appended prompt
 	// would duplicate tokens, shrink fork headroom, and weaken prefix-cache reuse.
 	prompt := buildCacheSafeCompactionPrompt(policy, "", "", sourceTokens, inputChars, positions, locators, outputReserve)
+	promptTokens := agentcontext.EstimateStringTokens(prompt)
+	if promptTokens > ForkPromptReserve {
+		return "", inputChars, contextCompactionSummaryExecution{PromptTokens: promptTokens}, true,
+			fmt.Errorf("context compaction fork prompt requires %d tokens; maximum is %d", promptTokens, ForkPromptReserve)
+	}
 	fork := snapshot.Append(agent.UserMessage(prompt))
 	execution := contextCompactionSummaryExecution{
 		Mode:                       ExecutionCacheSafeFork,
 		CacheIdentityStatus:        CacheIdentityExact,
 		InputTokens:                agentcontext.EstimateTokens(fork.Messages(), tools),
-		PromptTokens:               agentcontext.EstimateStringTokens(prompt),
+		PromptTokens:               promptTokens,
 		ExpectedCachedPrefixTokens: agentcontext.EstimateTokens(messages, tools),
 		LayerCount:                 1,
 		CheckpointOutputReserve:    outputReserve,
@@ -425,9 +430,11 @@ func renderCacheSafeCompactionPrompt(
 	}
 	var builder strings.Builder
 	builder.WriteString("[Denova runtime context compaction request]\n")
-	builder.WriteString("This is a one-turn checkpoint side fork. Do not call tools. Return only the Markdown checkpoint; do not discuss these instructions.\n")
+	builder.WriteString(compactionForkContract)
+	builder.WriteByte('\n')
 	builder.WriteString(fmt.Sprintf("Source agent kind: %s. Canonical source messages map to provider messages %d through %d (%d messages, approximately %d tokens).\n", firstNonEmpty(strings.TrimSpace(policy.AgentKind), "unknown"), firstPosition, lastPosition, len(positions), sourceTokens))
-	builder.WriteString(fmt.Sprintf("Keep the most recent %d complete user turn(s) as a verbatim convenience tail in the primary context. The checkpoint must still cover durable facts from the entire canonical source range, including that retained tail, because a later compaction can age those turns out. Summarize those facts concisely instead of copying the tail verbatim.\n", policy.RetainedTurns))
+	builder.WriteString(compactionRetentionRequirements(policy.RetainedTurns))
+	builder.WriteByte('\n')
 	builder.WriteString(fmt.Sprintf("Target checkpoint length: %d-%d characters (%s of the bounded source inputs); preserve facts over hitting a ratio exactly.\n", minChars, maxChars, compactionTargetRange(policy)))
 	if len(locators) > 0 {
 		builder.WriteString("Canonical source locators (these labels belong to the matching provider messages above):\n")
@@ -449,11 +456,11 @@ func renderCacheSafeCompactionPrompt(
 	}
 	builder.WriteString("\nUse exactly this stable Markdown prompt schema (headings may be empty only when truly inapplicable):\n")
 	builder.WriteString(agentcontext.CompactionCheckpointSchema())
-	if policy.AgentKind == config.AgentKindInteractiveStory {
-		builder.WriteString("\nGame-mode requirements: preserve event order and causality, source turn IDs, Actor State changes, Lore sources, branch-plan status, relationships, quests, foreshadowing, secrets, dangers, and countdowns. Treat current Actor State, Lore, and the branch plan as deterministic sources rather than inventing replacements.\n")
-	} else {
-		builder.WriteString("\nWorkspace/writing requirements: preserve the user's objective and constraints, current draft or implementation state, file/artifact references, decisions and rationale, verified results, rejected approaches, unresolved risks, and dependency-ordered next actions.\n")
-	}
-	builder.WriteString("Never invent missing evidence. Exclude private reasoning, UI-only logs, streaming fragments, and transport noise.\n")
+	builder.WriteByte('\n')
+	builder.WriteString(compactionDomainRequirements(policy.AgentKind))
+	builder.WriteByte('\n')
+	appendCheckpointGuidance(&builder, policy.CheckpointGuidance)
+	builder.WriteString(compactionEvidenceRequirements)
+	builder.WriteByte('\n')
 	return builder.String()
 }

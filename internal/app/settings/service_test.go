@@ -3,6 +3,7 @@ package settings
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"denova/config"
@@ -19,6 +20,26 @@ func (host *reloadTestHost) SettingsRuntime(Target) (Runtime, error) { return ho
 func (host *reloadTestHost) ApplySettings(settings config.LayeredSettings, layer config.SettingsLayer) {
 	host.applied = settings
 	host.layer = layer
+}
+
+func TestSnapshotPublishesReadonlyCompactionPromptSources(t *testing.T) {
+	dataDir := t.TempDir()
+	if err := config.EnsureAgentProfiles(dataDir); err != nil {
+		t.Fatal(err)
+	}
+	service := NewService(&reloadTestHost{runtime: Runtime{Config: config.Config{DenovaDir: dataDir, NovaDir: dataDir}}})
+
+	layered, err := service.Snapshot(Global())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(layered.BuiltinCompactionSources.IDE.Sources) != 3 ||
+		!strings.Contains(layered.BuiltinCompactionSources.IDE.Sources[2].Content, "Workspace/writing requirements") {
+		t.Fatalf("Writing Agent compaction sources = %#v", layered.BuiltinCompactionSources.IDE)
+	}
+	if !strings.Contains(layered.BuiltinCompactionSources.InteractiveStory.Sources[2].Content, "Game-mode requirements") {
+		t.Fatalf("Game Agent compaction sources = %#v", layered.BuiltinCompactionSources.InteractiveStory)
+	}
 }
 
 func TestReloadAppliesOutOfBandAgentProfileMutation(t *testing.T) {

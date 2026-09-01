@@ -485,6 +485,7 @@ type LayeredSettings struct {
 	BuiltinAgentPrompts        AgentPromptSettings                      `json:"builtin_agent_prompts,omitempty"`
 	BuiltinAgentPromptBlocks   AgentPromptBlockSettings                 `json:"builtin_agent_prompt_blocks,omitempty"`
 	BuiltinAgentPromptSources  AgentPromptSourceSettings                `json:"builtin_agent_prompt_sources,omitempty"`
+	BuiltinCompactionSources   AgentPromptSourceSettings                `json:"builtin_agent_compaction_sources,omitempty"`
 	AgentContracts             []AgentContractDefinition                `json:"agent_contracts"`
 	AgentToolCapabilities      []AgentToolCapabilityCatalogEntry        `json:"agent_tool_capabilities"`
 	ResolvedAgentToolManifests map[string][]ResolvedAgentToolCapability `json:"resolved_agent_tool_manifests"`

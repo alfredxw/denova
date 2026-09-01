@@ -85,6 +85,7 @@ const agents = {
   'agents.section.skills': 'Skills 可用范围',
   'agents.section.builtIn': '内置能力',
   'agents.section.runtimeContext': '上下文窗口',
+  'agents.section.checkpoint': 'Checkpoint 压缩',
   'agents.section.context': '上下文',
   'agents.section.subAgents': 'SubAgents',
   'agents.field.modelProfile': '模型配置',
@@ -100,6 +101,7 @@ const agents = {
   'agents.thinkingLevel.max': '最大',
   'agents.field.compactionEnabled': '自动压缩',
   'agents.field.compactionThreshold': '触发阈值 (%)',
+  'agents.field.checkpointGuidance': 'Checkpoint 保留偏好',
   'agents.field.toolResultContext': '工具结果上下文',
   'agents.field.maxFragmentKB': '单片段上限 (KB)',
   'agents.field.maxInjectedKB': '本轮注入总上限 (KB)',
@@ -182,6 +184,12 @@ const agents = {
   'agents.context.sessionContextValue': '当前会话有效历史',
   'agents.context.compactionValue': '{{threshold}}% 自动压缩；未触发压缩时使用当前有效对话链。',
   'agents.context.compactionNote': '自动压缩会在达到所设模型上下文占比时启动；恢复余量与缓存安全清理水位由后端作为一套策略统一派生。',
+  'agents.checkpoint.protocolNote': '以下是模型实际遵循的只读压缩协议。来源范围、长度预算、最近轮次和来源定位会在每次压缩时动态加入。',
+  'agents.checkpoint.guidancePlaceholder': 'Prioritize rejected approaches and their reasons. Preserve file paths, commands, test results, and explicitly uncertain assumptions.',
+  'agents.checkpoint.guidanceNote': '请使用英文。偏好只追加到未来的 checkpoint fork，不能覆盖只读协议；已有 checkpoint 不会自动重建。',
+  'agents.checkpoint.source.runtime_contract': '运行时压缩协议',
+  'agents.checkpoint.source.checkpoint_schema': 'Checkpoint 输出结构',
+  'agents.checkpoint.source.domain_rules': 'Agent 领域规则',
   'agents.context.toolResultContextNote':
     '开启后，可恢复的工具结果会保持模型可见；达到后端管理的压力水位时，符合条件的旧正文才会替换成可追踪收据，不影响可见工具卡片。',
   'agents.context.assemblyBudgetNote':

@@ -56,6 +56,18 @@ func TestAgentManagerForModelSeparatesPolicyKindFromConcreteModelWindow(t *testi
 	}
 }
 
+func TestCompactionSummarizerIdentityIncludesCheckpointGuidance(t *testing.T) {
+	guidance := "Preserve verification evidence."
+	base := denovaSummarizer{agentKind: config.AgentKindIDE, contextWindowTokens: 100_000}
+	configured := base
+	configured.cfg = &config.Config{AgentContexts: config.AgentContextSettings{
+		IDE: config.AgentContextOverride{CheckpointGuidance: &guidance},
+	}}
+	if base.Identity() == configured.Identity() {
+		t.Fatal("checkpoint guidance did not change the compaction summarizer identity")
+	}
+}
+
 func TestAgentManagerAdvancesBeforeCacheSafeForkCapacityIsExhausted(t *testing.T) {
 	cfg := &config.Config{OpenAIContextWindowTokens: 100_000}
 	manager, err := NewAgentManager(

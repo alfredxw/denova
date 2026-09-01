@@ -1,5 +1,11 @@
 package config
 
+import (
+	"fmt"
+	"strings"
+	"unicode/utf8"
+)
+
 const (
 	// Context maintenance policy is intentionally internal to the backend. The
 	// user controls when compaction starts and whether recoverable tool results
@@ -19,6 +25,9 @@ const (
 	DefaultContextCompactionThreshold              = 0.85
 	DefaultContextCompactionRecoveryBand           = 0.80
 	DefaultContextCompactionMaxConsecutiveFailures = 3
+	// MaxCheckpointGuidanceRunes keeps the user-authored fork suffix inside
+	// the fixed cache-safe compaction prompt reserve.
+	MaxCheckpointGuidanceRunes = 1000
 
 	// Context assembly defaults are deliberately generous for creative work.
 	// They are injection limits, not transcript limits: persisted conversation
@@ -58,6 +67,7 @@ type AgentContextSettings struct {
 type AgentContextOverride struct {
 	CompactionEnabled        *bool    `toml:"compaction_enabled,omitempty" json:"compaction_enabled,omitempty"`
 	CompactionThreshold      *float64 `toml:"compaction_threshold,omitempty" json:"compaction_threshold,omitempty"`
+	CheckpointGuidance       *string  `toml:"checkpoint_guidance,omitempty" json:"checkpoint_guidance,omitempty"`
 	ToolResultContextEnabled *bool    `toml:"tool_result_context_enabled,omitempty" json:"tool_result_context_enabled,omitempty"`
 	MaxFragmentBytes         *int     `toml:"max_fragment_bytes,omitempty" json:"max_fragment_bytes,omitempty"`
 	MaxTotalInjectedBytes    *int     `toml:"max_total_injected_bytes,omitempty" json:"max_total_injected_bytes,omitempty"`
@@ -71,6 +81,7 @@ type AgentContextOverride struct {
 type ResolvedAgentContextSettings struct {
 	CompactionEnabled        bool    `json:"compaction_enabled"`
 	CompactionThreshold      float64 `json:"compaction_threshold"`
+	CheckpointGuidance       string  `json:"checkpoint_guidance"`
 	ToolResultContextEnabled bool    `json:"tool_result_context_enabled"`
 	MaxFragmentBytes         int     `json:"max_fragment_bytes"`
 	MaxTotalInjectedBytes    int     `json:"max_total_injected_bytes"`
@@ -127,6 +138,7 @@ func ResolveAgentContext(cfg *Config, agentKind string) ResolvedAgentContextSett
 	return ResolvedAgentContextSettings{
 		CompactionEnabled:        compactionEnabled,
 		CompactionThreshold:      compactionThreshold,
+		CheckpointGuidance:       resolvedCheckpointGuidance(override.CheckpointGuidance),
 		ToolResultContextEnabled: toolResultContextEnabled,
 		MaxFragmentBytes:         resolvedPositiveLimit(override.MaxFragmentBytes, DefaultAgentContextMaxFragmentBytes, MaxAgentContextFragmentBytes),
 		MaxTotalInjectedBytes:    resolvedPositiveLimit(override.MaxTotalInjectedBytes, DefaultAgentContextMaxTotalInjectedBytes, MaxAgentContextTotalInjectedBytes),
@@ -154,6 +166,9 @@ func mergeAgentContextOverride(parent, child AgentContextOverride) AgentContextO
 	}
 	if child.CompactionThreshold != nil {
 		out.CompactionThreshold = child.CompactionThreshold
+	}
+	if child.CheckpointGuidance != nil {
+		out.CheckpointGuidance = child.CheckpointGuidance
 	}
 	if child.ToolResultContextEnabled != nil {
 		out.ToolResultContextEnabled = child.ToolResultContextEnabled
@@ -200,12 +215,63 @@ func sanitizeAgentContextOverride(override AgentContextOverride) AgentContextOve
 	if override.CompactionThreshold != nil {
 		*override.CompactionThreshold = normalizedCompactionThreshold(override.CompactionThreshold)
 	}
+	if override.CheckpointGuidance != nil {
+		guidance := strings.TrimSpace(*override.CheckpointGuidance)
+		override.CheckpointGuidance = &guidance
+	}
 	sanitizePositiveLimit(override.MaxFragmentBytes, DefaultAgentContextMaxFragmentBytes, MaxAgentContextFragmentBytes)
 	sanitizePositiveLimit(override.MaxTotalInjectedBytes, DefaultAgentContextMaxTotalInjectedBytes, MaxAgentContextTotalInjectedBytes)
 	sanitizePositiveLimit(override.MaxFragments, DefaultAgentContextMaxFragments, MaxAgentContextFragments)
 	sanitizePositiveLimit(override.MaxMetadataFieldBytes, DefaultAgentContextMaxMetadataFieldBytes, MaxAgentContextMetadataFieldBytes)
 	sanitizePositiveLimit(override.MaxProviderInputBytes, DefaultAgentContextMaxProviderInputBytes, MaxAgentContextProviderInputBytes)
 	return override
+}
+
+func resolvedCheckpointGuidance(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return strings.TrimSpace(*value)
+}
+
+// validateSettingsCheckpointGuidance protects the cache-safe fork prompt
+// budget for API and settings mutations without truncating user instructions.
+func validateSettingsCheckpointGuidance(settings Settings) error {
+	overrides := []struct {
+		name  string
+		value AgentContextOverride
+	}{
+		{"default", settings.AgentContexts.Default},
+		{"general", settings.AgentContexts.General},
+		{"ide", settings.AgentContexts.IDE},
+		{"interactive_story", settings.AgentContexts.InteractiveStory},
+		{"config_manager", settings.AgentContexts.ConfigManager},
+		{"version_summary", settings.AgentContexts.VersionSummary},
+		{"tool_agent", settings.AgentContexts.ToolAgent},
+		{"image", settings.AgentContexts.Image},
+		{"automation", settings.AgentContexts.Automation},
+	}
+	for _, override := range overrides {
+		if err := validateCheckpointGuidance(override.name, override.value.CheckpointGuidance); err != nil {
+			return err
+		}
+	}
+	for _, customAgent := range settings.CustomAgents {
+		if err := validateCheckpointGuidance("custom Agent "+customAgent.ID, customAgent.RuntimeContext.CheckpointGuidance); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateCheckpointGuidance(scope string, value *string) error {
+	if value == nil {
+		return nil
+	}
+	if count := utf8.RuneCountInString(strings.TrimSpace(*value)); count > MaxCheckpointGuidanceRunes {
+		return fmt.Errorf("Agent context %s checkpoint_guidance has %d characters; maximum is %d", scope, count, MaxCheckpointGuidanceRunes)
+	}
+	return nil
 }
 
 func normalizedCompactionThreshold(value *float64) float64 {

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"denova/config"
+	contextcompaction "denova/internal/agents/context/compaction"
 	"denova/internal/agents/prompts"
 	appagentruntime "denova/internal/app/agentruntime"
 	"denova/internal/book"
@@ -83,6 +84,7 @@ func (service *Service) Snapshot(target Target) (config.LayeredSettings, error) 
 	layered.BuiltinAgentPrompts = prompts.BuiltinAgentPrompts(&promptConfig, runtime.BookState, teller)
 	layered.BuiltinAgentPromptBlocks = prompts.BuiltinAgentPromptBlocks(&promptConfig, runtime.BookState, teller)
 	layered.BuiltinAgentPromptSources = prompts.BuiltinAgentPromptSources(&promptConfig, runtime.BookState, teller)
+	layered.BuiltinCompactionSources = contextcompaction.BuiltinPromptSources()
 	return layered, nil
 }
 

@@ -85,6 +85,7 @@ const agents = {
   'agents.section.skills': 'Skill Availability',
   'agents.section.builtIn': 'Built-in Capabilities',
   'agents.section.runtimeContext': 'Context Window',
+  'agents.section.checkpoint': 'Checkpoint Compaction',
   'agents.section.context': 'Context',
   'agents.section.subAgents': 'SubAgents',
   'agents.field.modelProfile': 'Model Profile',
@@ -100,6 +101,7 @@ const agents = {
   'agents.thinkingLevel.max': 'Maximum',
   'agents.field.compactionEnabled': 'Auto Compaction',
   'agents.field.compactionThreshold': 'Trigger Threshold (%)',
+  'agents.field.checkpointGuidance': 'Checkpoint Retention Preferences',
   'agents.field.toolResultContext': 'Tool Result Context',
   'agents.field.maxFragmentKB': 'Per-fragment Limit (KB)',
   'agents.field.maxInjectedKB': 'Turn Injection Limit (KB)',
@@ -187,6 +189,12 @@ const agents = {
   'agents.context.compactionValue': '{{threshold}}% auto compaction; before compaction, use the current effective transcript.',
   'agents.context.compactionNote':
     'Auto compaction starts at the configured share of the model context window. Denova derives recovery headroom and cache-safe cleanup watermarks as one backend policy.',
+  'agents.checkpoint.protocolNote': 'These read-only blocks are the protocol the model follows. Source ranges, length targets, recent turns, and source locators are added dynamically for each compaction.',
+  'agents.checkpoint.guidancePlaceholder': 'Prioritize rejected approaches and their reasons. Preserve file paths, commands, test results, and explicitly uncertain assumptions.',
+  'agents.checkpoint.guidanceNote': 'Write preferences in English. They are appended only to future checkpoint forks and cannot override the read-only protocol. Existing checkpoints are not rebuilt automatically.',
+  'agents.checkpoint.source.runtime_contract': 'Runtime Compaction Protocol',
+  'agents.checkpoint.source.checkpoint_schema': 'Checkpoint Output Schema',
+  'agents.checkpoint.source.domain_rules': 'Agent Domain Rules',
   'agents.context.toolResultContextNote':
     'When enabled, recoverable tool results remain model-visible until backend-managed pressure cleanup replaces eligible old bodies with traceable receipts. Visible tool cards are unchanged.',
   'agents.context.assemblyBudgetNote':

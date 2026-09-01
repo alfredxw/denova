@@ -60,6 +60,9 @@ func ApplySettingsMergePatch(existing Settings, changes json.RawMessage) (Settin
 	if err := ensureSettingsJSONEOF(decoder); err != nil {
 		return Settings{}, fmt.Errorf("%w: %v", ErrInvalidSettingsPatch, err)
 	}
+	if err := validateSettingsCheckpointGuidance(next); err != nil {
+		return Settings{}, fmt.Errorf("%w: %v", ErrInvalidSettingsPatch, err)
+	}
 	return next, nil
 }
 

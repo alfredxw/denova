@@ -47,6 +47,7 @@ describe('cloneBuiltInAgent', () => {
         ide: {
           compaction_enabled: true,
           compaction_threshold: 0.8,
+          checkpoint_guidance: 'Preserve verification evidence.',
           tool_result_context_enabled: true,
           max_fragment_bytes: 262144,
           max_total_injected_bytes: 4194304,
@@ -65,7 +66,11 @@ describe('cloneBuiltInAgent', () => {
       model: { profile_id: 'writer', thinking_level: 'medium' },
       tools: { filesystem_read: true },
       skill_policy: { mode: 'managed', pinned: ['shared'], blocked: ['blocked'] },
-      runtime_context: { compaction_enabled: true, max_fragment_bytes: 262144 },
+      runtime_context: {
+        compaction_enabled: true,
+        checkpoint_guidance: 'Preserve verification evidence.',
+        max_fragment_bytes: 262144,
+      },
       context_bindings: [],
       delegation: { mode: 'compatible', agent_ids: [] },
     })

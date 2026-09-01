@@ -28,6 +28,7 @@ type Policy struct {
 	AgentKind               string
 	Enabled                 bool
 	Strategy                string
+	CheckpointGuidance      string
 	ContextWindowTokens     int
 	Threshold               float64
 	RecoveryBand            float64
@@ -235,6 +236,7 @@ func ResolvePolicy(cfg *config.Config, agentKind string) Policy {
 		AgentKind:              agentKind,
 		Enabled:                contextSettings.CompactionEnabled,
 		Strategy:               config.AgentContextCompactionStrategyCheckpointFork,
+		CheckpointGuidance:     contextSettings.CheckpointGuidance,
 		ContextWindowTokens:    modelSettings.ContextWindowTokens,
 		Threshold:              contextSettings.CompactionThreshold,
 		RecoveryBand:           config.DefaultContextCompactionRecoveryBand,
@@ -592,6 +594,7 @@ func buildContextCompactionTranscript(messages []*agent.Message, existingCheckpo
 	sb.WriteString("Incrementally compile the following Denova context checkpoint according to the system instructions.\n")
 	sb.WriteString(fmt.Sprintf("Source agent kind: %s. Apply the domain rules for this source and use the single Markdown checkpoint schema from the system message exactly.\n", firstNonEmpty(strings.TrimSpace(policy.AgentKind), "unknown")))
 	sb.WriteString(fmt.Sprintf("Estimated new context tokens: %d. Input characters across existing checkpoint, reference context, and new context: %d. Target summary length: %d-%d characters (%s of input characters). Do not go below the lower bound; use the upper half of the range when information density is high.\n\n", sourceTokens, inputChars, minChars, maxChars, compactionTargetRange(policy)))
+	appendCheckpointGuidance(&sb, policy.CheckpointGuidance)
 	sb.WriteString("<existing_checkpoint>\n")
 	if existingCheckpoint = strings.TrimSpace(existingCheckpoint); existingCheckpoint != "" {
 		sb.WriteString(existingCheckpoint)

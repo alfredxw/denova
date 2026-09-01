@@ -71,6 +71,9 @@ func LANAddress() string {
 // existing password hash.
 func PrepareUserSettingsForWrite(existing, incoming Settings) (Settings, error) {
 	out := preserveTerminalCommandRegistryPresence(incoming)
+	if err := validateSettingsCheckpointGuidance(out); err != nil {
+		return Settings{}, err
+	}
 	out.AgentQuickPrompts = normalizeAgentQuickPrompts(out.AgentQuickPrompts)
 	out.AgentApprovalRules = NormalizeAgentApprovalRules(out.AgentApprovalRules)
 	if err := ValidateAgentApprovalRules(out.AgentApprovalRules); err != nil {
