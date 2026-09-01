@@ -244,6 +244,25 @@ func (h *Handlers) HandleInteractiveTurnNarrativeUpdate(ctx context.Context, c *
 	writeJSON(c, consts.StatusOK, result)
 }
 
+func (h *Handlers) HandleInteractiveBranchPlanUpdate(ctx context.Context, c *app.RequestContext) {
+	var body interactive.UpdateBranchPlanRequest
+	if err := c.BindJSON(&body); err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
+		return
+	}
+	body.BranchID = c.Param("branch")
+	if strings.TrimSpace(body.Markdown) == "" {
+		writeError(c, consts.StatusBadRequest, "规划文档不能为空 / Branch plan cannot be empty")
+		return
+	}
+	result, err := h.app.UpdateInteractiveBranchPlan(c.Param("id"), body)
+	if err != nil {
+		writeError(c, consts.StatusConflict, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, result)
+}
+
 func (h *Handlers) HandleInteractiveContextCompaction(ctx context.Context, c *app.RequestContext) {
 	var body struct {
 		CommandID string `json:"command_id"`

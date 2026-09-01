@@ -143,6 +143,47 @@ func (s *InteractiveAppService) UpdateInteractiveTurnNarrative(storyID string, r
 	return result, nil
 }
 
+func (a *App) UpdateInteractiveBranchPlan(storyID string, req interactive.UpdateBranchPlanRequest) (interactive.UpdateBranchPlanResult, error) {
+	return a.interactiveService().UpdateInteractiveBranchPlan(storyID, req)
+}
+
+func (s *InteractiveAppService) UpdateInteractiveBranchPlan(storyID string, req interactive.UpdateBranchPlanRequest) (interactive.UpdateBranchPlanResult, error) {
+	s.admission.Lock()
+	defer s.admission.Unlock()
+	store := s.store()
+	if store == nil {
+		return interactive.UpdateBranchPlanResult{}, ErrNoWorkspace
+	}
+	storyCtx, err := store.StoryContext(storyID, req.BranchID)
+	if err != nil {
+		return interactive.UpdateBranchPlanResult{}, err
+	}
+	fence, err := s.drainInteractiveBinding(context.Background(), storyID, storyCtx.Snapshot.BranchID)
+	if err != nil {
+		return interactive.UpdateBranchPlanResult{}, err
+	}
+	a := s.app
+	a.mu.Lock()
+	if err := fence.validateLocked(a); err != nil {
+		a.mu.Unlock()
+		return interactive.UpdateBranchPlanResult{}, err
+	}
+	result, err := store.UpdateBranchPlan(storyID, req)
+	a.mu.Unlock()
+	if err != nil {
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-branch-plan-edit] update failed story_id=%s branch_id=%s err=%v", storyID, req.BranchID, err))
+		return interactive.UpdateBranchPlanResult{}, err
+	}
+	slog.InfoContext(context.Background(), fmt.Sprintf(
+		"[interactive-branch-plan-edit] plan updated story_id=%s branch_id=%s revision=%s markdown_bytes=%d",
+		storyID,
+		storyCtx.Snapshot.BranchID,
+		result.BranchPlan.Revision,
+		len([]byte(result.BranchPlan.Markdown)),
+	))
+	return result, nil
+}
+
 func (a *App) DeleteInteractiveBranch(storyID, branchID string) error {
 	return a.interactiveService().DeleteInteractiveBranch(storyID, branchID)
 }

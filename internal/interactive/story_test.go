@@ -264,11 +264,11 @@ func TestUpdateStoryPlanningTemplateLeavesModuleSelectionsUnchanged(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	updated, err := store.UpdateStory(story.ID, UpdateStoryRequest{PlanningTemplateID: "mystery-investigation"})
+	updated, err := store.UpdateStory(story.ID, UpdateStoryRequest{PlanningTemplateID: "directed-longform"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if updated.PlanningTemplateID != "mystery-investigation" {
+	if updated.PlanningTemplateID != "directed-longform" {
 		t.Fatalf("planning template = %q", updated.PlanningTemplateID)
 	}
 	if updated.ModuleRefs == nil ||

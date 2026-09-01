@@ -13,9 +13,11 @@ interface OverviewViewProps {
   stateError?: string
   plan?: BranchPlan
   planningEnabled: boolean
+  branchPlanEditingDisabled?: boolean
+  onBranchPlanUpdate?: (markdown: string, baseRevision: string) => void | Promise<void>
 }
 
-export function OverviewView({ snapshot, stateError, plan, planningEnabled }: OverviewViewProps) {
+export function OverviewView({ snapshot, stateError, plan, planningEnabled, branchPlanEditingDisabled = false, onBranchPlanUpdate }: OverviewViewProps) {
   const { t } = useTranslation()
   const model = useMemo(() => buildStoryStateModel(snapshot), [snapshot])
   const actors = useMemo<ActorStateEntry[]>(() => [
@@ -27,7 +29,12 @@ export function OverviewView({ snapshot, stateError, plan, planningEnabled }: Ov
   return (
     <div className="director-console__scroll h-full min-h-0 overflow-y-auto px-3 py-3">
       <div className="flex flex-col gap-3">
-        <BranchPlanSummary plan={plan} planningEnabled={planningEnabled} />
+        <BranchPlanSummary
+          plan={plan}
+          planningEnabled={planningEnabled}
+          editingDisabled={branchPlanEditingDisabled}
+          onUpdate={onBranchPlanUpdate}
+        />
         {error ? <InlineErrorNotice message={error} /> : null}
         <section className="story-state-ledger overflow-hidden rounded-xl border border-[var(--nova-border)] bg-[var(--director-panel)]">
           {model.changes.length > 0 ? (

@@ -348,7 +348,7 @@ func GamePlanningGuideMarkdown(item GamePlanningTemplate, eventPackages []EventP
 	}
 	var sb strings.Builder
 	sb.WriteString("### Planning document template\n\n")
-	sb.WriteString("Use the ordered outline below to initialize and maintain the current branch plan. Preserve every ATX H2 heading so routine turns can update section bodies independently. Section descriptions are planning guidance, not established canon or a fixed plot.\n\n")
+	sb.WriteString("Use the ordered outline below as a mutable adventure blueprint for the current branch. Preserve every ATX H2 heading so routine turns can update section bodies independently. Plan future direction, setups, entrances, exits, event windows, likely responses, and payoffs; give the active arc and next few candidate scenes more detail than distant material. Use committed history, Actor State, Lore, and user intent only as constraints, never as content to summarize. Remove completed or invalid material instead of archiving it here. Do not duplicate exact state values or action-choice labels. Section descriptions are planning guidance, not established canon or a fixed plot.\n\n")
 	sb.WriteString(RenderGamePlanningTemplateMarkdown(item))
 	for _, pkg := range eventPackages {
 		if !pkg.Enabled {

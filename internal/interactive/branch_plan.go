@@ -1,6 +1,7 @@
 package interactive
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -18,6 +19,8 @@ const (
 	StoryContextMaxBytes = 256 * 1024
 )
 
+var ErrBranchPlanRevisionConflict = errors.New("branch plan changed elsewhere; reload before saving")
+
 // BranchPlan is the Game Agent's current future-facing intent for one branch.
 // Persistence always stores one complete Markdown document. The model-facing
 // turn protocol may compose that document from independently retryable H2
@@ -26,6 +29,22 @@ type BranchPlan struct {
 	Markdown      string `json:"markdown"`
 	UpdatedTurnID string `json:"updated_turn_id"`
 	UpdatedAt     string `json:"updated_at"`
+	Revision      string `json:"revision,omitempty"`
+}
+
+// UpdateBranchPlanRequest replaces the creator-editable plan document for one
+// branch. BaseRevision is a compare-and-swap token from the latest snapshot.
+type UpdateBranchPlanRequest struct {
+	BranchID     string `json:"-"`
+	Markdown     string `json:"markdown"`
+	BaseRevision string `json:"base_revision"`
+}
+
+// UpdateBranchPlanResult lets the client patch both the visible document and
+// the model-context revision without waiting for snapshot polling.
+type UpdateBranchPlanResult struct {
+	BranchPlan      BranchPlan `json:"branch_plan"`
+	ContextRevision uint64     `json:"context_revision"`
 }
 
 // TurnPlanUpdateInput is the model-facing branch-plan mutation. A document
@@ -46,8 +65,9 @@ type TurnPlanSectionUpdate struct {
 	sourceIndex *int
 }
 
-// BranchPlanUpdatedEvent persists a complete replacement beside the Turn that
-// produced it. It is not part of the public Turn result or historical chat.
+// BranchPlanUpdatedEvent persists a complete replacement. Agent-produced
+// updates remain side events owned by their Turn; creator revisions use their
+// own canonical event type and advance the branch head without adding a Turn.
 type BranchPlanUpdatedEvent struct {
 	V        int    `json:"v"`
 	Type     string `json:"type"`
@@ -80,6 +100,8 @@ func validateStoryPlanningMode(mode string) error {
 }
 
 func normalizeBranchPlanMarkdown(markdown string) string {
+	markdown = strings.ReplaceAll(markdown, "\r\n", "\n")
+	markdown = strings.ReplaceAll(markdown, "\r", "\n")
 	return strings.TrimSpace(markdown)
 }
 
@@ -90,6 +112,16 @@ func validateBranchPlanMarkdown(markdown string) error {
 	}
 	if len([]byte(markdown)) > maxBranchPlanBytes {
 		return fmt.Errorf("plan_update exceeds %d bytes", maxBranchPlanBytes)
+	}
+	return nil
+}
+
+func validateEditableBranchPlanMarkdown(markdown string) error {
+	if err := validateBranchPlanMarkdown(markdown); err != nil {
+		return err
+	}
+	if _, err := parseBranchPlanSections(normalizeBranchPlanMarkdown(markdown)); err != nil {
+		return fmt.Errorf("branch plan must keep a modular H2 structure: %w", err)
 	}
 	return nil
 }

@@ -14,10 +14,14 @@ func TestGamePlanningTemplateLibraryProvidesDistinctBuiltins(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(items) < 4 {
-		t.Fatalf("builtin planning templates = %d, want at least 4", len(items))
+	wantIDs := []string{"default", "directed-longform", "character-relationships", "mystery-dread", "episodic-emergent"}
+	if len(items) != len(wantIDs) {
+		t.Fatalf("builtin planning templates = %d, want %d", len(items), len(wantIDs))
 	}
-	for _, item := range items {
+	for index, item := range items {
+		if item.ID != wantIDs[index] {
+			t.Fatalf("builtin[%d] ID = %q, want %q", index, item.ID, wantIDs[index])
+		}
 		if item.Custom {
 			t.Fatalf("builtin %q unexpectedly marked custom", item.ID)
 		}
@@ -26,6 +30,27 @@ func TestGamePlanningTemplateLibraryProvidesDistinctBuiltins(t *testing.T) {
 		}
 		if err := validateGamePlanningTemplate(item); err != nil {
 			t.Fatalf("builtin %q invalid: %v", item.ID, err)
+		}
+		rendered := strings.ToLower(RenderGamePlanningTemplateMarkdown(item))
+		for _, forbidden := range []string{"recommended choices", "exact state values", "completed-event summary"} {
+			if strings.Contains(rendered, forbidden) {
+				t.Fatalf("builtin %q crosses the planning boundary with %q", item.ID, forbidden)
+			}
+		}
+	}
+}
+
+func TestGamePlanningGuideDefinesFutureBlueprintBoundary(t *testing.T) {
+	guide := GamePlanningGuideMarkdown(DefaultGamePlanningTemplate(), nil, StoryContextMaxBytes)
+	for _, required := range []string{
+		"mutable adventure blueprint",
+		"next few candidate scenes",
+		"only as constraints, never as content to summarize",
+		"Remove completed or invalid material",
+		"Do not duplicate exact state values or action-choice labels",
+	} {
+		if !strings.Contains(guide, required) {
+			t.Fatalf("planning guide missing %q:\n%s", required, guide)
 		}
 	}
 }

@@ -29,6 +29,8 @@ export interface DirectorConsoleProps {
   branchId: string
   branches: BranchSummary[]
   snapshot: Snapshot | null
+  branchPlanEditingDisabled?: boolean
+  onBranchPlanUpdate?: (markdown: string, baseRevision: string) => void | Promise<void>
   stateError?: string
   stateDisplayPreference: StoryStateDisplayPreference
   onStateDisplayPreferenceChange: (value: StoryStateDisplayPreference) => void
@@ -48,6 +50,8 @@ export function DirectorConsole({
   branchId,
   branches,
   snapshot,
+  branchPlanEditingDisabled = false,
+  onBranchPlanUpdate,
   stateError,
   stateDisplayPreference,
   onStateDisplayPreferenceChange,
@@ -99,10 +103,13 @@ export function DirectorConsole({
   } else {
     activeView = (
       <OverviewView
+        key={branchId}
         snapshot={snapshot}
         stateError={stateError}
         plan={snapshot?.branch_plan}
         planningEnabled={story?.planning_mode === 'enabled'}
+        branchPlanEditingDisabled={branchPlanEditingDisabled}
+        onBranchPlanUpdate={onBranchPlanUpdate}
       />
     )
   }

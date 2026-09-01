@@ -89,9 +89,9 @@ func snapshotFromLines(storyID, branchID string, meta StoryMeta, lines []StoryEv
 			for _, op := range delta.ActorOps {
 				applyActorStateOp(state, op)
 			}
-		case StoryEventTypePlayerInput, StoryEventTypeTurnInterrupted, StoryEventTypeModelContextBatch, StoryEventTypeModelContextProviderContinuation, StoryEventTypeProviderContinuation, StoryEventTypeBranch, StoryEventTypeHotChoices, StoryEventTypeTurnVersionSelected:
-			// These are side/audit events. They are projected separately or are
-			// intentionally absent from model-visible turn/state history.
+		case StoryEventTypePlayerInput, StoryEventTypeTurnInterrupted, StoryEventTypeModelContextBatch, StoryEventTypeModelContextProviderContinuation, StoryEventTypeProviderContinuation, StoryEventTypeBranch, StoryEventTypeHotChoices, StoryEventTypeTurnVersionSelected, StoryEventTypeBranchPlanUpdated, StoryEventTypeBranchPlanRevised:
+			// These records are projected separately or are intentionally absent
+			// from model-visible turn/state history.
 		}
 	}
 	initializeActors := true

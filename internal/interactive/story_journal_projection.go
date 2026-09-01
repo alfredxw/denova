@@ -9,8 +9,8 @@ import (
 )
 
 const (
-	// Version 11 adds durable interruption checkpoints for accepted Game turns.
-	storyProjectionVersion      = 11
+	// Version 12 projects creator-authored branch-plan events and revision tokens.
+	storyProjectionVersion      = 12
 	storyRecentTransactionLimit = 200
 	storyRecentCommitLimit      = 200
 	storyTurnAnchorEvery        = 256
@@ -262,7 +262,16 @@ func (projection *storyJournalProjection) applyEvent(cursor conversationjournal.
 			return err
 		}
 		if event.TurnID == branch.LatestTurnID && event.ParentID == event.TurnID {
-			branch.Plan = &BranchPlan{Markdown: event.Markdown, UpdatedTurnID: event.TurnID, UpdatedAt: event.Ts}
+			branch.Plan = &BranchPlan{Markdown: event.Markdown, UpdatedTurnID: event.TurnID, UpdatedAt: event.Ts, Revision: event.ID}
+		}
+	case StoryEventTypeBranchPlanRevised:
+		var event BranchPlanUpdatedEvent
+		if err := mapToStruct(record.Raw, &event); err != nil {
+			return err
+		}
+		if event.TurnID == branch.LatestTurnID && event.ParentID == branch.Head {
+			branch.Plan = &BranchPlan{Markdown: event.Markdown, UpdatedTurnID: event.TurnID, UpdatedAt: event.Ts, Revision: event.ID}
+			branch.Head = event.ID
 		}
 	case StoryEventTypeTurnStateRevised:
 		var revision TurnStateRevisedEvent

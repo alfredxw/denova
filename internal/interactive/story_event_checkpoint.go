@@ -90,6 +90,12 @@ func (s *Store) checkpointAtTurnLocked(storyID, turnID string) (storyEventCheckp
 		if planErr != nil {
 			return storyEventCheckpoint{}, planErr
 		}
+		// A creator can revise the plan after the latest Turn without adding a
+		// new Turn. Forking that current Turn should inherit the live revision;
+		// forks from older Turns must keep their historical checkpoint instead.
+		if branch := handle.projection.Branches[pathBranchID]; branch != nil && branch.LatestTurnID == turnID {
+			plan = cloneBranchPlan(branch.Plan)
+		}
 		return storyEventCheckpoint{
 			SourceBranchID: sourceBranchID,
 			LatestTurnID:   turnID,
@@ -104,15 +110,19 @@ func (s *Store) checkpointAtTurnLocked(storyID, turnID string) (storyEventCheckp
 func (s *Store) planForStoryAncestorsLocked(handle *storyJournalHandle, ancestorIDs map[string]bool) (*BranchPlan, error) {
 	var plan *BranchPlan
 	if err := scanStoryEventsLocked(handle, func(record StoryEventRecord) error {
-		if record.Envelope.Type != StoryEventTypeBranchPlanUpdated {
+		if record.Envelope.Type != StoryEventTypeBranchPlanUpdated && record.Envelope.Type != StoryEventTypeBranchPlanRevised {
 			return nil
 		}
 		var event BranchPlanUpdatedEvent
 		if err := mapToStruct(record.Raw, &event); err != nil {
 			return err
 		}
-		if ancestorIDs[event.TurnID] {
-			plan = &BranchPlan{Markdown: event.Markdown, UpdatedTurnID: event.TurnID, UpdatedAt: event.Ts}
+		belongsToPath := ancestorIDs[event.TurnID]
+		if record.Envelope.Type == StoryEventTypeBranchPlanRevised {
+			belongsToPath = ancestorIDs[event.ID]
+		}
+		if belongsToPath {
+			plan = &BranchPlan{Markdown: event.Markdown, UpdatedTurnID: event.TurnID, UpdatedAt: event.Ts, Revision: event.ID}
 		}
 		return nil
 	}); err != nil {

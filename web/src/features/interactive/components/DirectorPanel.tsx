@@ -22,6 +22,8 @@ interface DirectorPanelProps {
   branchId?: string
   branches: BranchSummary[]
   snapshot: Snapshot | null
+  branchPlanEditingDisabled?: boolean
+  onBranchPlanUpdate?: (markdown: string, baseRevision: string) => void | Promise<void>
   stateDisplayPreference?: StoryStateDisplayPreference
   onStateDisplayPreferenceChange?: (value: StoryStateDisplayPreference) => void
   onSwitchBranch: (branchId: string) => void | Promise<void>
@@ -40,6 +42,8 @@ export function DirectorPanel({
   branchId,
   branches,
   snapshot,
+  branchPlanEditingDisabled = false,
+  onBranchPlanUpdate,
   stateDisplayPreference = DEFAULT_STORY_STATE_DISPLAY,
   onStateDisplayPreferenceChange = noopStateDisplayPreferenceChange,
   onSwitchBranch,
@@ -58,6 +62,8 @@ export function DirectorPanel({
       branchId={branchId || snapshot?.branch_id || ''}
       branches={branches}
       snapshot={snapshot}
+      branchPlanEditingDisabled={branchPlanEditingDisabled}
+      onBranchPlanUpdate={onBranchPlanUpdate}
       stateError={snapshot?.current_turn?.state_error || ''}
       stateDisplayPreference={stateDisplayPreference}
       onStateDisplayPreferenceChange={onStateDisplayPreferenceChange}

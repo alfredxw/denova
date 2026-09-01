@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fetchAPI, requestJSON } from '@/lib/api-client'
-import { recoverInteractiveAgentRuntime, sendInteractiveMessage, streamActiveInteractiveChat, submitInteractiveAgentCommand } from './api'
+import { recoverInteractiveAgentRuntime, sendInteractiveMessage, streamActiveInteractiveChat, submitInteractiveAgentCommand, updateInteractiveBranchPlan } from './api'
 
 vi.mock('@/lib/api-client', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/lib/api-client')>(),
@@ -89,6 +89,21 @@ describe('interactive agent command API', () => {
       story_id: 'story-1',
       branch_id: 'main',
       reason: 'user_requested',
+    })
+  })
+
+  it('replaces one branch plan with its compare-and-swap revision', async () => {
+    await updateInteractiveBranchPlan('story/1', 'route alpha', {
+      markdown: '## Direction\n\nCross the river.',
+      base_revision: 'bpu-1',
+    })
+
+    expect(vi.mocked(requestJSON).mock.calls[0]?.[0]).toBe('/api/interactive/stories/story%2F1/branches/route%20alpha/plan')
+    const init = vi.mocked(requestJSON).mock.calls[0]?.[1]
+    expect(init?.method).toBe('PUT')
+    expect(JSON.parse(String(init?.body))).toEqual({
+      markdown: '## Direction\n\nCross the river.',
+      base_revision: 'bpu-1',
     })
   })
 

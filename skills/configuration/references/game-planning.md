@@ -1,6 +1,6 @@
 # Game Planning (`game_planning`)
 
-Game Planning templates are reusable ordered outlines for the mutable current plan of a game story. A template owns only its name, description, and planning sections. Narrative style, event packages, rule system, state system, image preset, rule handling, and all story facts belong to each story and are not inherited from this resource.
+Game Planning templates are reusable ordered outlines for the mutable future blueprint of a game-story branch. The resulting plan should behave like an adventure module or a long-form outline: distant direction stays concise, while the active arc and next candidate scenes carry enough detail to guide character entrances, exits, events, setups, and payoffs. Completed turns do not belong in the plan, and exact Actor State values or recommended action labels must not be duplicated there. A template owns only its name, description, and planning sections. Narrative style, event packages, rule system, state system, image preset, rule handling, and all story facts belong to each story and are not inherited from this resource.
 
 This resource uses `user` scope and complete editable-resource replacement. Update/delete require the latest content-addressed `revision` returned by `get`; `updated_at` is display metadata and is not a concurrency token. Built-in templates are read-only. To customize one, read it and create a new custom template with a new ID.
 
@@ -21,7 +21,7 @@ Each section has:
 | `title` | string | yes | Unique section heading, up to 256 bytes. |
 | `description` | string | no | Guidance for the section body, up to 16 KiB. Markdown is allowed. |
 
-The host renders sections as ordered ATX H2 Markdown headings. Section IDs never enter model context. Descriptions guide planning but must not contain story-specific canon, promised future prose, or module configuration.
+The host renders sections as ordered ATX H2 Markdown headings. Section IDs never enter model context. Descriptions guide future planning but must not contain story-specific canon, promised future prose, completed-event summaries, exact state projections, recommended action labels, or module configuration.
 
 ## Create example
 

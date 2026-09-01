@@ -2,7 +2,7 @@ import { createAgentCommandID, fetchAPI, jsonHeaders, parseSSEStream, requestJSO
 import type { AgentCommandReceipt, AgentRuntimeActiveOutput, AgentRuntimeOpenTool, AgentRuntimeOperation, AgentRuntimeQueuedCommand, AgentRuntimeRecoveryAction, AgentRuntimeRecoveryReceipt, ContextAnalysis, InteractiveImage } from '@/lib/api-client'
 import { isKnownAgentCommandOutcome } from '@/lib/agent-command'
 import type { ChatAttachmentDescriptor, ChatAttachmentUpload } from '@/lib/chat-attachments'
-import type { ActorStateModule, ActorTraitRollRequest, ActorTraitRollResult, BranchSummary, EventPackageModule, GamePlanningTemplate, ImagePreset, InitialActorTraitRoll, InteractiveSnapshotResponse, InteractiveSSEEvent, InteractiveStoryUpdateInput, RuleResolution, RuleResolutionRerollInput, RuleSystemModule, StoryCheckSettings, StoryDirectorModuleRefs, StoryHistoryPage, StoryPlanningMode, StoryProtagonist, StoryStateSchemaPolicy, StyleReference, StyleReferenceFileDocument, StoryImageSettings, StoryIndex, StoryOpeningConfig, StorySummary, Teller, UpdateTurnNarrativeResult } from './types'
+import type { ActorStateModule, ActorTraitRollRequest, ActorTraitRollResult, BranchSummary, EventPackageModule, GamePlanningTemplate, ImagePreset, InitialActorTraitRoll, InteractiveSnapshotResponse, InteractiveSSEEvent, InteractiveStoryUpdateInput, RuleResolution, RuleResolutionRerollInput, RuleSystemModule, StoryCheckSettings, StoryDirectorModuleRefs, StoryHistoryPage, StoryPlanningMode, StoryProtagonist, StoryStateSchemaPolicy, StyleReference, StyleReferenceFileDocument, StoryImageSettings, StoryIndex, StoryOpeningConfig, StorySummary, Teller, UpdateBranchPlanResult, UpdateTurnNarrativeResult } from './types'
 
 function presetMutationBody<T extends object>(input: T, baseRevision?: string) {
   return {
@@ -274,6 +274,14 @@ export function createInteractiveBranch(storyId: string, input: { parent_event_i
 
 export function deleteInteractiveBranch(storyId: string, branchId: string): Promise<void> {
   return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/branches/${encodeURIComponent(branchId)}`, { method: 'DELETE' })
+}
+
+export function updateInteractiveBranchPlan(storyId: string, branchId: string, input: { markdown: string; base_revision: string }): Promise<UpdateBranchPlanResult> {
+  return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/branches/${encodeURIComponent(branchId)}/plan`, {
+    method: 'PUT',
+    headers: jsonHeaders,
+    body: JSON.stringify(input),
+  })
 }
 
 export function switchInteractiveBranch(storyId: string, branchId: string): Promise<void> {

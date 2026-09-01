@@ -8,7 +8,7 @@ import { GamePlanningEditor } from './GamePlanningEditor'
 const builtInTemplate: GamePlanningTemplate = {
   version: 1,
   id: 'default',
-  name: 'Balanced story planning',
+  name: 'Classic adventure',
   description: 'Built-in description',
   sections: [
     {
@@ -27,7 +27,7 @@ describe('GamePlanningEditor', () => {
 
     renderEditor(builtInTemplate, onCopy)
 
-    expect(screen.getByLabelText('名称')).toHaveValue('通用故事规划')
+    expect(screen.getByLabelText('名称')).toHaveValue('经典冒险')
     expect(screen.getByLabelText('名称')).toBeDisabled()
     expect(screen.getByLabelText('小标题')).toHaveValue('长期方向')
     expect(screen.getByLabelText('小标题')).toBeDisabled()

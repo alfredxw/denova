@@ -6,7 +6,8 @@ import { Panel } from 'react-resizable-panels'
 import { toast } from 'sonner'
 import { useShallow } from 'zustand/react/shallow'
 import { readOptionalProjectFile, type LoreItem } from '@/lib/api'
-import { createInteractiveBranch, createInteractiveStory, deleteInteractiveBranch, deleteInteractiveStory, getGamePlanningTemplates, getInteractiveBranches, getInteractiveSnapshot, getInteractiveStories, getInteractiveTellers, selectInteractiveStory, switchInteractiveBranch, updateInteractiveStory } from '../api'
+import { createInteractiveBranch, createInteractiveStory, deleteInteractiveBranch, deleteInteractiveStory, getGamePlanningTemplates, getInteractiveBranches, getInteractiveSnapshot, getInteractiveStories, getInteractiveTellers, selectInteractiveStory, switchInteractiveBranch, updateInteractiveBranchPlan, updateInteractiveStory } from '../api'
+import { branchPlanSnapshotAfterUpdate } from '../branch-plan-snapshot'
 import { useInteractiveStore } from '../stores/interactive-store'
 import { BranchTimeline } from './BranchTimeline'
 import { DirectorPanel } from './DirectorPanel'
@@ -116,6 +117,12 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
   const fallbackSnapshot = lastStableSnapshotRef.current?.story_id === currentStoryId ? lastStableSnapshotRef.current : null
   const snapshotPending = !snapshotLoadFailed && Boolean(currentStoryId) && !currentBranchSnapshot && (snapshotLoading || !snapshot || snapshot.story_id !== currentStoryId || snapshot.branch_id !== currentBranchId)
   const displaySnapshot = currentBranchSnapshot ?? (snapshotPending ? fallbackSnapshot : null)
+  const currentStageKey = `${workspace || 'current'}:${currentStoryId || 'none'}:${currentBranchId || displaySnapshot?.branch_id || 'main'}`
+  const branchPlanRunActive = useInteractiveStore((state) => {
+    const run = state.storyStageRuns[currentStageKey]
+    return Boolean(run && (run.streaming || run.runtime.phase !== 'idle'))
+  })
+  const branchPlanEditingDisabled = !currentBranchSnapshot || branchPlanRunActive
 
   useEffect(() => {
     snapshotStoryIdRef.current = snapshot?.story_id || ''
@@ -352,6 +359,39 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
     }
   }
 
+  const handleBranchPlanUpdate = useCallback(async (markdown: string, baseRevision: string) => {
+    const storyId = currentStoryId || useInteractiveStore.getState().currentStoryId
+    const branchId = currentBranchId || useInteractiveStore.getState().currentBranchId
+    if (!storyId || !branchId) throw new Error(t('directorPanel.plan.missingContext'))
+    console.info('[interactive-layout] Updating branch plan', { storyId, branchId, baseRevision })
+    const result = await updateInteractiveBranchPlan(storyId, branchId, {
+      markdown,
+      base_revision: baseRevision,
+    })
+    const currentState = useInteractiveStore.getState()
+    const nextSnapshot = branchPlanSnapshotAfterUpdate({
+      currentStoryId: currentState.currentStoryId,
+      currentBranchId: currentState.currentBranchId,
+      snapshot: currentState.snapshot,
+      updatedStoryId: storyId,
+      updatedBranchId: branchId,
+      result,
+    })
+    if (nextSnapshot) {
+      // Supersede an older snapshot request only while this branch is still
+      // selected. A save response from the branch we just left must never
+      // cancel the new branch's in-flight snapshot.
+      snapshotRequestSeqRef.current += 1
+      setSnapshotLoading(false)
+      setSnapshot(nextSnapshot)
+    }
+    console.info('[interactive-layout] Branch plan updated', {
+      storyId,
+      branchId,
+      revision: result.branch_plan.revision,
+    })
+  }, [currentBranchId, currentStoryId, setSnapshot, t])
+
   const handleStoryStateDisplayPreferenceChange = useCallback((value: StoryStateDisplayPreference) => {
     setStoryStateDisplayPreference(value)
     writeStoryStateDisplayPreference(value)
@@ -495,6 +535,8 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
                         branchId={currentBranchId}
                         branches={branches}
                         snapshot={displaySnapshot}
+                        branchPlanEditingDisabled={branchPlanEditingDisabled}
+                        onBranchPlanUpdate={handleBranchPlanUpdate}
                         stateDisplayPreference={storyStateDisplayPreference}
                         onStateDisplayPreferenceChange={handleStoryStateDisplayPreferenceChange}
                         onSwitchBranch={handleSwitchBranch}
@@ -549,6 +591,8 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
                       branchId={currentBranchId}
                       branches={branches}
                       snapshot={displaySnapshot}
+                      branchPlanEditingDisabled={branchPlanEditingDisabled}
+                      onBranchPlanUpdate={handleBranchPlanUpdate}
                       stateDisplayPreference={storyStateDisplayPreference}
                       onStateDisplayPreferenceChange={handleStoryStateDisplayPreferenceChange}
                       onSwitchBranch={handleSwitchBranch}

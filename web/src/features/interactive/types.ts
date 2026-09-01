@@ -387,6 +387,11 @@ export interface UpdateTurnNarrativeResult {
   turn: TurnEvent
 }
 
+export interface UpdateBranchPlanResult {
+  branch_plan: BranchPlan
+  context_revision: number
+}
+
 export interface TurnResult {
   state_updates: Array<{ op: 'replace' | 'delta' | 'create' | string; path: string; value: unknown }>
   choices: string[]
@@ -489,6 +494,7 @@ export interface BranchPlan {
   markdown: string
   updated_turn_id?: string
   updated_at?: string
+  revision?: string
 }
 
 export interface RuleCheck {
