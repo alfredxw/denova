@@ -46,7 +46,7 @@ func (c *Conversation) PrepareInteractiveTurn(ctx context.Context, request inter
 	if err != nil {
 		return interactive.RuleResolution{}, err
 	}
-	storyDirector := storyDirectorForSnapshot(c.StoryDirectorForMeta(storyCtx.Meta), storyCtx.Meta.ActorStateSchema)
+	storyDirector := storyDirectorForSnapshot(c.StoryRuntimeForMeta(storyCtx.Meta), storyCtx.Meta.ActorStateSchema)
 	storyDirector.ActorState = actorState
 	resolution, err := interactive.ResolveTurnRulesWithStorySettings(c.storyID, storyCtx.Snapshot.BranchID, currentState, storyDirector, storyCtx.Meta.CheckSettings, request)
 	if err != nil {
@@ -87,7 +87,7 @@ func (c *Conversation) SubmitTurnResult(ctx context.Context, input interactive.T
 	if err != nil {
 		return interactive.TurnSubmissionReceipt{}, err
 	}
-	director := c.StoryDirectorForMeta(storyCtx.Meta)
+	director := c.StoryRuntimeForMeta(storyCtx.Meta)
 	c.mu.Lock()
 	current := c.turnProtocol.draft()
 	prepared, receipt := interactive.PrepareTurnSubmission(interactive.TurnSubmissionContext{

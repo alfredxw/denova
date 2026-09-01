@@ -351,7 +351,7 @@ export function ModeRouter(props: ModeRouterProps) {
         return
       case 'style_reference':
       case 'narrative_style':
-      case 'story_director':
+	case 'game_planning':
       case 'event_package':
       case 'rule_system':
       case 'state_system':

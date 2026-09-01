@@ -26,7 +26,7 @@ import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { getImagePresets } from '../api'
 import { INTERACTIVE_OPENING_PRESET_PATH, INTERACTIVE_OPENING_PRESET_UPDATED_EVENT, INTERACTIVE_OPENING_PRESET_ENTRY_ID, LEGACY_INTERACTIVE_OPENING_PRESET_PATH, parseBookOpeningPresets, serializeBookOpeningPresets, type BookOpeningPreset } from '../opening'
-import type { ImagePreset, StoryDirector, Teller } from '../types'
+import type { GamePlanningTemplate, ImagePreset, Teller } from '../types'
 import { CreatorDirectory, CreatorEditor } from './setting-panel/CreatorEditor'
 import { LoreEditor } from './setting-panel/LoreEditor'
 import { OpeningPresetEditor } from './setting-panel/OpeningPresetEditor'
@@ -58,10 +58,10 @@ interface SettingPanelProps {
   mode?: SettingPanelMode
   projectId: string
   tellers?: Teller[]
-  storyDirectors?: StoryDirector[]
+  storyDirectors?: GamePlanningTemplate[]
   imagePresets?: ImagePreset[]
   onTellersChange?: (tellers: Teller[]) => void
-  onStoryDirectorsChange?: (directors: StoryDirector[]) => void
+  onStoryDirectorsChange?: (directors: GamePlanningTemplate[]) => void
   onImagePresetsChange?: (presets: ImagePreset[]) => void
   documentReview?: DocumentReviewController
   documentReviewNavigationIntent?: DocumentReviewNavigationIntent | null

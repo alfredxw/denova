@@ -59,6 +59,14 @@ func (s *Store) openStoryJournalLocked(storyID string) (*storyJournalHandle, err
 		s.storyJournals = make(map[string]*storyJournalHandle)
 	}
 	s.storyJournals[storyID] = handle
+	if strings.TrimSpace(handle.projection.Meta.StoryDirectorID) != "" {
+		meta := handle.projection.Meta
+		if err := s.migrateReleasedGamePresetLocked(storyID, &meta); err != nil {
+			delete(s.storyJournals, storyID)
+			_ = journal.Close()
+			return nil, err
+		}
+	}
 	return handle, nil
 }
 

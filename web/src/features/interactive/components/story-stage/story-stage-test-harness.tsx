@@ -266,7 +266,7 @@ export function story(): StorySummary {
     origin: '',
     protagonist: { mode: 'default' },
     story_teller_id: 'classic',
-    story_director_id: 'default',
+	planning_template_id: 'default',
     choice_count: 5,
     reply_target_chars: 2000,
     image_settings: { mode: 'manual', interval_turns: 3 },
@@ -283,7 +283,7 @@ export function storyDirector(ruleVisibilityMode: string) {
   return {
     version: 3,
     id: 'default',
-    name: '默认游戏预设',
+	name: '默认规划模板',
     description: '',
     strategy: {
       rule_visibility_mode: ruleVisibilityMode,

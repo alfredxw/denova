@@ -1,21 +1,8 @@
 import type { PresetResourceKind } from '../../preset-ownership'
-import type { EventPackageModule, StoryDirector, TellerEventPackage } from '../../types'
+import type { EventPackageModule, GamePlanningTemplate } from '../../types'
 
-export function storyDirectorSummaryCount(director: StoryDirector) {
-  return directorEventCardCount(directorResolvedEventPackages(director))
-    + (director.trpg_system?.rule_templates?.length || 0)
-}
-
-function directorResolvedEventPackages(director: StoryDirector): TellerEventPackage[] {
-  return director.event_packages?.length
-    ? director.event_packages
-    : director.resolved_snapshot?.event_packages?.length
-      ? director.resolved_snapshot.event_packages
-      : []
-}
-
-function directorEventCardCount(eventPackages: TellerEventPackage[] | undefined) {
-  return (eventPackages || []).reduce((total, pkg) => total + (pkg.events?.length || 0), 0)
+export function storyDirectorSummaryCount(director: GamePlanningTemplate) {
+	return director.sections?.length || 0
 }
 
 export function eventPackageSummaryCount(item: EventPackageModule) {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Bot } from 'lucide-react'
+import { Bot, Brain, FolderOpen, ScrollText, Wrench } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { ConfigManagerChat } from '@/components/Chat/ConfigManagerChat'
 import { ConfigManagerToggle } from '@/components/Chat/ConfigManagerToggle'
@@ -10,20 +10,19 @@ import { MobilePaneTrigger } from '@/components/layout/mobile-pane-trigger'
 import { SidebarVisibilityToggle } from '@/components/layout/sidebar-visibility-toggle'
 import { Button } from '@/components/ui/button'
 import { LoadingState } from '@/components/common/LoadingState'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { AgentContextOverride, AgentDelegationPolicy, AgentModelOverride, AgentPromptOverride, AgentRuntimeKind, AgentSkillOverride, AgentSkillPolicy, AgentToolOverride, CustomAgentConfig, Settings, SettingsLayer } from '@/features/settings/types'
 import { useLayeredSettingsDraft } from '@/features/settings/use-layered-settings-draft'
 import { getSkills, resourceTargetKey } from '@/lib/api'
 import type { ResourceTarget, SkillSummary } from '@/lib/api'
 import { AgentRuntimeContextSection } from './AgentRuntimeContextSection'
-import { AgentBuiltInCapabilitySection, AgentContextSection, AgentImageModelSection, AgentModelOnlySection, AgentModelSection, AgentPromptSection, AgentToolSection, mergeAgentModelOverride, mergeAgentPromptOverride } from './agent-configuration-sections'
+import { AgentBuiltInCapabilitySection, AgentContextSection, AgentImageModelSection, AgentModelSection, AgentPromptSection, AgentToolSection, mergeAgentModelOverride, mergeAgentPromptOverride } from './agent-configuration-sections'
+import { AgentConfigurationDisclosure } from './agent-configuration-disclosure'
 import { AGENTS, toolDefinitionsFromManifest } from './agent-registry'
 import type { SubAgentParentKey, ToolKey, VisibleAgentKey } from './agent-registry'
 import { AgentSubAgentSection } from './agent-subagent-section'
-import { contractForRuntimeKind, runtimeKindForContract } from './agent-contracts'
-import { buildImageProfileOptions, buildProfileOptions, cloneBuiltInAgent, resolveInheritedImageProfileID, resolveInheritedSubAgentParallelism, resolveInheritedToolParallelism, skillOverrideToPolicy } from './agent-definition-state'
-import { AgentToolSchedulingSection } from './agent-tool-scheduling-section'
-import { AgentContextBindingsSection, AgentDelegationPolicySection, AgentSkillPolicySection, AgentToolGuidanceSection, CustomAgentBehaviorSection, ResolvedAgentSection } from './custom-agent-definition-sections'
+import { runtimeKindForContract } from './agent-contracts'
+import { buildImageProfileOptions, buildProfileOptions, cloneBuiltInAgent, resolveInheritedImageProfileID, skillOverrideToPolicy } from './agent-definition-state'
+import { AgentContextBindingsSection, AgentDelegationPolicySection, AgentSkillPolicySection, AgentToolGuidanceSection, CustomAgentBehaviorSection } from './custom-agent-definition-sections'
 import {
   AgentHeader,
   AgentList,
@@ -38,7 +37,6 @@ import {
 import type { ToolNavigationIntent } from '@/components/Chat/tool-navigation'
 
 const tabCls = 'nova-nav-item rounded-[var(--nova-radius)] px-2.5 py-1 text-xs'
-type AgentSection = 'overview' | 'behavior' | 'capabilities' | 'context' | 'resolved'
 export function AgentsView({ target, onClose, toolNavigationIntent }: { target: ResourceTarget; onClose?: () => void; toolNavigationIntent?: ToolNavigationIntent | null }) {
   const { t } = useTranslation()
   const targetKind = target.kind
@@ -63,7 +61,6 @@ export function AgentsView({ target, onClose, toolNavigationIntent }: { target: 
   const [skills, setSkills] = useState<SkillSummary[]>([])
   const [agentChatOpen, setAgentChatOpen] = useState(false)
   const [sidebarVisible, setSidebarVisible] = useState(true)
-  const [activeSection, setActiveSection] = useState<AgentSection>('overview')
   const toolNavigationNonceRef = useRef(0)
 
   useEffect(() => {
@@ -101,8 +98,6 @@ export function AgentsView({ target, onClose, toolNavigationIntent }: { target: 
     }
   }, [resourceTarget, targetKey])
 
-  useEffect(() => setActiveSection('overview'), [activeSelection])
-
   const effective = layered?.effective ?? {}
   const customAgentID = activeSelection.startsWith('custom:') ? activeSelection.slice('custom:'.length) : ''
   const effectiveCustomAgents = mergeCustomAgentViews(effective.custom_agents, draft.custom_agents).filter(isVisibleCustomAgent)
@@ -131,7 +126,6 @@ export function AgentsView({ target, onClose, toolNavigationIntent }: { target: 
   const contextValue = selectedCustomAgent ? layerCustomAgent?.runtime_context ?? selectedCustomAgent.runtime_context ?? {} : draft.agent_context?.[activeAgent] ?? {}
   const resolvedContext = layered?.resolved_agent_contexts?.[selectedCustomAgent?.id ?? activeAgent]
     ?? layered?.resolved_agent_contexts?.[activeAgent]
-  const resolvedDefinition = layered?.resolved_agent_definitions?.[selectedCustomAgent?.id ?? activeAgent]
   const promptSources = layered?.builtin_agent_prompt_sources?.[activeAgent]?.sources
   const runtimeContract = promptSources?.find((source) => source.id === 'runtime_contract')?.content
   const outputProtocol = promptSources?.find((source) => source.id === 'output_protocol')?.content
@@ -143,9 +137,20 @@ export function AgentsView({ target, onClose, toolNavigationIntent }: { target: 
   const inheritedImageProfileID = selectedCustomAgent
     ? inheritedCustomAgent?.image_api_profile_id || resolveInheritedImageProfileID(layered, activeLayer)
     : resolveInheritedImageProfileID(layered, activeLayer)
-  const inheritedToolParallelism = resolveInheritedToolParallelism(layered, activeLayer)
-  const inheritedSubAgentParallelism = resolveInheritedSubAgentParallelism(layered, activeLayer)
   const activeAgentTitle = selectedCustomAgent?.name || t(selected.titleKey)
+  const showModelConfiguration = Boolean(selectedCustomAgent) || isStandaloneModelAgent(activeAgent)
+  const enabledToolCount = configuredToolRows.filter((tool) => tool.allowed).length
+  const modelProfileID = modelValue.profile_id || inheritedModel.profile_id || 'default'
+  const modelSummary = profileOptions.find((profile) => profile.id === modelProfileID)?.label ?? modelProfileID
+  const capabilitySummary = selected.capabilityMode === 'tools'
+    ? t('agents.module.capabilitiesSummary', { count: enabledToolCount })
+    : t('agents.module.builtInCapabilitiesSummary')
+  const contextSummary = resolvedContext
+    ? t('agents.module.contextSummary', {
+        threshold: Math.round(resolvedContext.compaction_threshold * 100),
+        toolResults: t(resolvedContext.tool_result_context_enabled ? 'agents.option.on' : 'agents.option.off'),
+      })
+    : t('agents.module.contextFallbackSummary')
   const configurationContext = useMemo(() => ({
     active_settings_layer: activeLayer,
     active_agent: selectedCustomAgent?.id ?? activeAgent,
@@ -220,10 +225,6 @@ export function AgentsView({ target, onClose, toolNavigationIntent }: { target: 
     }))
   }
 
-  const setToolParallelism = (value: number | null) => {
-    setDraft((current) => ({ ...current, agent_tool_parallelism: value }))
-  }
-
   const selectAgent = (selection: AgentSelectionID) => {
     if (activeLayer === 'workspace' && activeSelectionIDIsCustom(selection)) {
       void saveNow().then(() => {
@@ -246,10 +247,6 @@ export function AgentsView({ target, onClose, toolNavigationIntent }: { target: 
       return
     }
     open()
-  }
-
-  const setSubAgentParallelism = (value: number | null) => {
-    setDraft((current) => ({ ...current, agent_subagent_parallelism: value }))
   }
 
   const setImageProfile = (profileID: string) => {
@@ -433,24 +430,16 @@ export function AgentsView({ target, onClose, toolNavigationIntent }: { target: 
             )}
             <div className="mx-auto flex w-full min-w-0 max-w-5xl flex-col gap-5 px-4 py-5 sm:px-6">
               <AgentHeader agent={selected} customAgent={selectedCustomAgent} onArchive={selectedCustomAgent ? archiveCustomAgent : undefined} />
-              <Tabs value={activeSection} onValueChange={(value) => setActiveSection(value as AgentSection)} className="min-w-0 gap-5">
-                <div className="overflow-x-auto border-b border-[var(--nova-border)]">
-                  <TabsList variant="line" className="h-9 min-w-max">
-                    {(['overview', 'behavior', 'capabilities', 'context', 'resolved'] as AgentSection[]).map((section) => (
-                      <TabsTrigger key={section} value={section} className="px-3 text-xs">{t(`agents.tab.${section}`)}</TabsTrigger>
-                    ))}
-                  </TabsList>
-                </div>
-                <TabsContent value="overview" className="flex flex-col gap-5">
-                  {selectedCustomAgent ? <CustomAgentIdentitySection agent={selectedCustomAgent} value={layerCustomAgent} onChange={setCustomIdentity} /> : null}
-                  <AgentToolSchedulingSection
-                    toolValue={draft.agent_tool_parallelism ?? null}
-                    inheritedToolValue={inheritedToolParallelism}
-                    onToolChange={setToolParallelism}
-                    subAgentValue={draft.agent_subagent_parallelism ?? null}
-                    inheritedSubAgentValue={inheritedSubAgentParallelism}
-                    onSubAgentChange={setSubAgentParallelism}
-                  />
+              {selectedCustomAgent ? <CustomAgentIdentitySection agent={selectedCustomAgent} value={layerCustomAgent} onChange={setCustomIdentity} /> : null}
+              {showModelConfiguration ? (
+                <AgentConfigurationDisclosure
+                  key={`model:${activeSelection}`}
+                  id="model"
+                  icon={Brain}
+                  title={t('agents.module.model')}
+                  summary={modelSummary}
+                  defaultOpen={!selectedCustomAgent}
+                >
                   {activeLayer === 'user' ? <AgentModelSection value={modelValue} inherited={inheritedModel} profiles={profileOptions} onChange={setAgentModel} /> : (
                     <section className="border-b border-[var(--nova-border)] pb-5 text-xs text-[var(--nova-text-muted)]">{t('agents.model.userScoped')}</section>
                   )}
@@ -460,23 +449,38 @@ export function AgentsView({ target, onClose, toolNavigationIntent }: { target: 
                     profiles={imageProfileOptions}
                     onChange={setImageProfile}
                   /> : null}
-                </TabsContent>
-                <TabsContent value="behavior" className="flex flex-col gap-5">
-                  {selectedCustomAgent ? <CustomAgentBehaviorSection
-                    instructions={layerCustomAgent?.instructions ?? selectedCustomAgent.instructions ?? ''}
-                    runtimeContract={runtimeContract}
-                    outputProtocol={outputProtocol}
-                    onChange={(instructions) => updateSelectedCustomAgent((agent) => ({ ...agent, instructions }))}
-                  /> : <AgentPromptSection
-                    value={promptValue}
-                    inherited={inheritedPrompt}
-                    builtin={layered.builtin_agent_prompts?.[activeAgent]?.system_prompt ?? ''}
-                    blocks={layered.builtin_agent_prompt_blocks?.[activeAgent]}
-                    sources={promptSources}
-                    onChange={setAgentPrompt}
-                  />}
-                </TabsContent>
-                <TabsContent value="capabilities" className="flex flex-col gap-5">
+                </AgentConfigurationDisclosure>
+              ) : null}
+              <AgentConfigurationDisclosure
+                key={`behavior:${activeSelection}`}
+                id="behavior"
+                icon={ScrollText}
+                title={t('agents.module.behavior')}
+                summary={t('agents.module.behaviorSummary')}
+                defaultOpen={!isStandaloneModelAgent(activeAgent)}
+              >
+                {selectedCustomAgent ? <CustomAgentBehaviorSection
+                  instructions={layerCustomAgent?.instructions ?? selectedCustomAgent.instructions ?? ''}
+                  runtimeContract={runtimeContract}
+                  outputProtocol={outputProtocol}
+                  onChange={(instructions) => updateSelectedCustomAgent((agent) => ({ ...agent, instructions }))}
+                /> : <AgentPromptSection
+                  value={promptValue}
+                  inherited={inheritedPrompt}
+                  builtin={layered.builtin_agent_prompts?.[activeAgent]?.system_prompt ?? ''}
+                  blocks={layered.builtin_agent_prompt_blocks?.[activeAgent]}
+                  sources={promptSources}
+                  onChange={setAgentPrompt}
+                />}
+              </AgentConfigurationDisclosure>
+              {selected.capabilityMode !== 'model_only' ? (
+                <AgentConfigurationDisclosure
+                  key={`capabilities:${activeSelection}`}
+                  id="capabilities"
+                  icon={Wrench}
+                  title={t('agents.module.capabilities')}
+                  summary={capabilitySummary}
+                >
                   {selected.capabilityMode === 'tools' ? <>
                     <AgentToolSection value={toolValue} rows={configuredToolRows} onChange={setAgentTool} />
                     {selectedCustomAgent ? <AgentToolGuidanceSection rows={configuredToolRows} value={customToolGuidance} onChange={(tool_guidance) => updateSelectedCustomAgent((agent) => ({ ...agent, tool_guidance }))} /> : null}
@@ -498,21 +502,20 @@ export function AgentsView({ target, onClose, toolNavigationIntent }: { target: 
                       onGeneralChange={setGeneralSubAgent}
                       onChange={setSubAgents}
                     /> : null}
-                  </> : selected.capabilityMode === 'built_in' ? <AgentBuiltInCapabilitySection agent={selected.key} /> : <AgentModelOnlySection />}
-                </TabsContent>
-                <TabsContent value="context" className="flex flex-col gap-5">
-                  {resolvedContext ? <AgentRuntimeContextSection value={contextValue} resolved={resolvedContext} onChange={setAgentContext} /> : null}
-                  {selectedCustomAgent ? <AgentContextBindingsSection value={customContextBindings} onChange={(context_bindings) => updateSelectedCustomAgent((agent) => ({ ...agent, context_bindings }))} /> : null}
-                  <AgentContextSection agent={selected.key} effective={effective} resolved={resolvedContext} />
-                </TabsContent>
-                <TabsContent value="resolved" className="flex flex-col gap-5">
-                  {(selectedCustomAgent || isCustomizableRuntimeKind(activeAgent)) ? <ResolvedAgentSection
-                    agent={selectedCustomAgent ?? { id: activeAgent, contract: contractForRuntimeKind(activeAgent as AgentRuntimeKind) }}
-                    resolved={resolvedDefinition}
-                    tools={configuredToolRows}
-                  /> : <AgentModelOnlySection />}
-                </TabsContent>
-              </Tabs>
+                  </> : <AgentBuiltInCapabilitySection agent={selected.key} />}
+                </AgentConfigurationDisclosure>
+              ) : null}
+              <AgentConfigurationDisclosure
+                key={`context:${activeSelection}`}
+                id="context"
+                icon={FolderOpen}
+                title={t('agents.module.context')}
+                summary={contextSummary}
+              >
+                {resolvedContext ? <AgentRuntimeContextSection value={contextValue} resolved={resolvedContext} onChange={setAgentContext} /> : null}
+                {selectedCustomAgent ? <AgentContextBindingsSection value={customContextBindings} onChange={(context_bindings) => updateSelectedCustomAgent((agent) => ({ ...agent, context_bindings }))} /> : null}
+                <AgentContextSection agent={selected.key} effective={effective} resolved={resolvedContext} />
+              </AgentConfigurationDisclosure>
             </div>
           </main>
         )}
@@ -541,6 +544,6 @@ function isSubAgentParent(agent: VisibleAgentKey): agent is SubAgentParentKey {
   return agent === 'general' || agent === 'ide' || agent === 'interactive_story'
 }
 
-function isCustomizableRuntimeKind(agent: VisibleAgentKey): agent is AgentRuntimeKind {
-  return agent === 'general' || agent === 'ide' || agent === 'interactive_story' || agent === 'image'
+function isStandaloneModelAgent(agent: VisibleAgentKey): boolean {
+  return agent === 'image' || agent === 'version_summary' || agent === 'tool_agent'
 }

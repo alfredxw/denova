@@ -600,7 +600,7 @@ const chat = {
   'chat.quick.scope.preset-event': 'Event Packages',
   'chat.quick.scope.preset-rule': 'Rule Systems',
   'chat.quick.scope.preset-actor-state': 'Actor State',
-  'chat.quick.scope.preset-director': 'Story Directors',
+  'chat.quick.scope.preset-director': 'Game Planning',
   'chat.quick.scope.preset-image': 'Image Presets',
   'chat.quick.settings.open': 'Manage {{scope}} quick prompts',
   'chat.quick.settings.title': 'Quick Prompts · {{scope}}',

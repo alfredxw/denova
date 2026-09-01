@@ -1,10 +1,8 @@
 import type { PublicRuleRoll } from '@/lib/api'
-import type { RuleResolution, StoryDirector, StorySummary } from '../../types'
+import type { RuleResolution, StorySummary } from '../../types'
 
-export function storyRuleVisibilityMode(story: StorySummary | undefined, directors: StoryDirector[]) {
-  const directorID = story?.story_director_id || 'default'
-  const director = directors.find((item) => item.id === directorID) || directors.find((item) => item.id === 'default')
-  return director?.strategy?.rule_visibility_mode || 'audit_only'
+export function storyRuleVisibilityMode(story: StorySummary | undefined) {
+	return story?.check_settings?.rule_visibility_mode || 'audit_only'
 }
 
 export function publicRuleRollFromResolution(resolution?: RuleResolution): PublicRuleRoll | null {

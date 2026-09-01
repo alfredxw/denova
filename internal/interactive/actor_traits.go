@@ -21,19 +21,19 @@ type ActorTraitSelection struct {
 }
 
 type ActorTraitRollRequest struct {
-	StoryDirectorID string                `json:"story_director_id,omitempty"`
-	ActorID         string                `json:"actor_id"`
-	TemplateID      string                `json:"template_id"`
-	Selections      []ActorTraitSelection `json:"selections,omitempty"`
-	Seed            int64                 `json:"seed,omitempty"`
+	ActorStateID string                `json:"actor_state_id,omitempty"`
+	ActorID      string                `json:"actor_id"`
+	TemplateID   string                `json:"template_id"`
+	Selections   []ActorTraitSelection `json:"selections,omitempty"`
+	Seed         int64                 `json:"seed,omitempty"`
 }
 
 type ActorTraitRollResult struct {
-	StoryDirectorID string               `json:"story_director_id,omitempty"`
-	ActorID         string               `json:"actor_id"`
-	TemplateID      string               `json:"template_id"`
-	Seed            int64                `json:"seed"`
-	Traits          []ActorTraitInstance `json:"traits"`
+	ActorStateID string               `json:"actor_state_id,omitempty"`
+	ActorID      string               `json:"actor_id"`
+	TemplateID   string               `json:"template_id"`
+	Seed         int64                `json:"seed"`
+	Traits       []ActorTraitInstance `json:"traits"`
 }
 
 type InitialActorTraitRoll struct {
@@ -194,11 +194,11 @@ func rollActorTraits(system StoryDirectorActorStateSystem, req ActorTraitRollReq
 		}
 	}
 	return ActorTraitRollResult{
-		StoryDirectorID: NormalizeStoryDirectorID(req.StoryDirectorID),
-		ActorID:         req.ActorID,
-		TemplateID:      template.ID,
-		Seed:            seed,
-		Traits:          traits,
+		ActorStateID: normalizeDirectorModuleID(req.ActorStateID),
+		ActorID:      req.ActorID,
+		TemplateID:   template.ID,
+		Seed:         seed,
+		Traits:       traits,
 	}, nil
 }
 

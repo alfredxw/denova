@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import type { LoreItem } from '@/lib/api'
-import type { StoryDirector, StorySummary, Teller } from '../types'
+import type { GamePlanningTemplate, StorySummary, Teller } from '../types'
 import { NewStorySetupPanel } from './NewStorySetupPanel'
 
 vi.mock('../api', () => ({
@@ -15,19 +15,12 @@ vi.mock('@/features/agents/CustomAgentSelect', () => ({
   CustomAgentSelect: () => <div data-testid="custom-agent-select" />,
 }))
 
-const director: StoryDirector = {
+const planningTemplate: GamePlanningTemplate = {
   version: 1,
   id: 'adventure',
   name: '冒险',
   description: '',
-  module_refs: {
-    narrative_style_id: 'cinematic',
-    rule_system_id: 'd20',
-    actor_state_id: 'state-basic',
-    image_preset_id: 'game-cg',
-  },
-  strategy: {},
-  trpg_system: {},
+  sections: [{ id: 'direction', title: '方向', description: '规划方向。' }],
   custom: false,
 }
 
@@ -74,7 +67,7 @@ describe('NewStorySetupPanel', () => {
       <NewStorySetupPanel
         projectId="project-1"
         tellers={[teller]}
-        directors={[director]}
+        planningTemplates={[planningTemplate]}
         imagePresets={[{ version: 1, id: 'game-cg', name: 'Game CG', description: '', custom: false }]}
         loreItems={[loreCharacter, alternateCharacter]}
         bookOpeningPresets={[{ id: 'harbor', title: '雾港来信', content: '港口的灯逐盏熄灭。' }]}
@@ -99,8 +92,9 @@ describe('NewStorySetupPanel', () => {
       title: '',
       origin: '',
       protagonist: { mode: 'lore', source_lore_item_id: 'companion' },
+      planning_template_id: planningTemplate.id,
       opening: { mode: 'preset', preset_id: 'harbor', preset_text: '港口的灯逐盏熄灭。' },
-      check_settings: { difficulty_shift: 0, roll_modifier: 0 },
+      check_settings: { difficulty_shift: 0, roll_modifier: 0, rule_state_consumption_mode: 'hybrid_auto', rule_visibility_mode: 'audit_only' },
       image_settings: { mode: 'manual', interval_turns: 3, preset_id: 'game-cg' },
     })
   })
@@ -112,7 +106,7 @@ describe('NewStorySetupPanel', () => {
       <NewStorySetupPanel
         projectId="project-1"
         tellers={[teller]}
-        directors={[director]}
+        planningTemplates={[planningTemplate]}
         imagePresets={[]}
         loreItems={[alternateCharacter]}
         onCancel={vi.fn()}
@@ -137,7 +131,7 @@ describe('NewStorySetupPanel', () => {
       <NewStorySetupPanel
         projectId="project-1"
         tellers={[teller]}
-        directors={[director]}
+        planningTemplates={[planningTemplate]}
         imagePresets={[]}
         loreItems={[]}
         bookOpeningPresets={[]}
@@ -147,7 +141,7 @@ describe('NewStorySetupPanel', () => {
     )
 
     expect(await screen.findByRole('heading', { name: 'Game Agent' })).toBeInTheDocument()
-    expect(screen.getByText('游戏预设')).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: '游戏规划' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: '回合判定' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: '互动图像' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: '状态面板' })).toBeInTheDocument()
@@ -167,7 +161,7 @@ describe('NewStorySetupPanel', () => {
       origin: '必须保留的旧故事设想。',
       protagonist: { mode: 'lore', name: '林川', profile: loreCharacter.content, source_lore_item_id: loreCharacter.id },
       story_teller_id: teller.id,
-      story_director_id: director.id,
+      planning_template_id: planningTemplate.id,
       planning_mode: 'enabled',
       reply_target_chars: 2000,
       choice_count: 5,
@@ -184,7 +178,7 @@ describe('NewStorySetupPanel', () => {
         projectId="project-1"
         story={story}
         tellers={[teller]}
-        directors={[director]}
+        planningTemplates={[planningTemplate]}
         imagePresets={[]}
         loreItems={[loreCharacter]}
         onCancel={vi.fn()}

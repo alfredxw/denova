@@ -147,8 +147,8 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 		"主角醒来发现世界已末日",
 		"StorytellerRule",
 		"本轮上下文",
-		"GamePreset",
-		"Game Preset Rule Catalog",
+		"StoryRuleSystem",
+		"Story Rule Catalog",
 	} {
 		if !strings.Contains(sources, want) {
 			t.Fatalf("context sources should include %q: %s", want, sources)
@@ -305,7 +305,7 @@ func TestInteractiveConversationRejectsAssistantWithoutTurnResult(t *testing.T) 
 	}
 }
 
-func TestGamePresetProjectsCreatorPlanningStyleWithoutBackendPacing(t *testing.T) {
+func TestGamePlanningProjectsCreatorPlanningStyleWithoutBackendPacing(t *testing.T) {
 	prompt := "- 避免连续两回合使用同类型突发事件。\n- 伏笔回收前至少给一次可感知征兆。"
 	guide := interactive.StoryPlanningGuideMarkdown(interactive.StoryDirector{
 		ID: "custom-strategy", Name: "自定义游戏预设",
@@ -323,7 +323,7 @@ func TestGamePresetProjectsCreatorPlanningStyleWithoutBackendPacing(t *testing.T
 	}
 }
 
-func TestGamePresetProjectsEnabledEventCardsIntoPlanningGuide(t *testing.T) {
+func TestGamePlanningProjectsEnabledEventCardsIntoPlanningGuide(t *testing.T) {
 	preset := interactive.StoryDirector{
 		ID: "event-card-preset", Name: "事件素材预设",
 		EventPackages: []interactive.EventPackage{{
@@ -350,13 +350,19 @@ func TestGamePresetProjectsEnabledEventCardsIntoPlanningGuide(t *testing.T) {
 func TestInteractiveConversationPersistsRuleResolution(t *testing.T) {
 	workspace := t.TempDir()
 	novaDir := filepath.Join(workspace, ".nova")
-	store, director := newInteractiveStoreWithHPTestDirector(t, workspace, novaDir)
+	store, actorState := newInteractiveStoreWithHPTestActorState(t, workspace, novaDir)
 	story, err := store.CreateStory(interactive.CreateStoryRequest{
-		Title:           "规则审计",
-		Origin:          "主角站在秘境入口",
-		StoryTellerID:   "classic",
-		StoryDirectorID: director.ID,
-		ActorState:      &director.ActorState,
+		Title:         "规则审计",
+		Origin:        "主角站在秘境入口",
+		StoryTellerID: "classic",
+		ModuleRefs: &interactive.StoryDirectorModuleRefs{
+			NarrativeStyleDisabled: true,
+			EventPackagesDisabled:  true,
+			RuleSystemDisabled:     true,
+			ActorStateID:           actorState.ID,
+			ImagePresetDisabled:    true,
+		},
+		ActorState: &actorState.ActorState,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -423,7 +429,7 @@ func TestInteractiveConversationPersistsRuleResolution(t *testing.T) {
 	}
 }
 
-func newInteractiveStoreWithHPTestDirector(t *testing.T, workspace, novaDir string) (*interactive.Store, interactive.StoryDirector) {
+func newInteractiveStoreWithHPTestActorState(t *testing.T, workspace, novaDir string) (*interactive.Store, interactive.ActorStateModule) {
 	t.Helper()
 	hpMin, hpMax := 0.0, 10.0
 	actorState, err := interactive.NewActorStateLibrary(novaDir).Create(interactive.ActorStateModule{
@@ -454,21 +460,7 @@ func newInteractiveStoreWithHPTestDirector(t *testing.T, workspace, novaDir stri
 	if err != nil {
 		t.Fatalf("create hp actor state failed: %v", err)
 	}
-	director, err := interactive.NewStoryDirectorLibrary(novaDir).Create(interactive.StoryDirector{
-		ID:   "hp-test-director",
-		Name: "生命测试导演",
-		ModuleRefs: interactive.StoryDirectorModuleRefs{
-			NarrativeStyleDisabled: true,
-			EventPackagesDisabled:  true,
-			RuleSystemDisabled:     true,
-			ActorStateID:           actorState.ID,
-			ImagePresetDisabled:    true,
-		},
-	})
-	if err != nil {
-		t.Fatalf("create hp test director failed: %v", err)
-	}
-	return interactive.NewStoreWithNovaDir(workspace, novaDir), director
+	return interactive.NewStoreWithNovaDir(workspace, novaDir), actorState
 }
 
 func TestInteractiveConversationPersistsDisplayEventTimeline(t *testing.T) {

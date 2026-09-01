@@ -347,61 +347,61 @@ func (h *Handlers) HandleInteractiveTellerDelete(ctx context.Context, c *app.Req
 	writeJSON(c, consts.StatusOK, map[string]string{"status": "ok"})
 }
 
-func (h *Handlers) HandleStoryDirectors(ctx context.Context, c *app.RequestContext) {
-	directors, err := h.app.ResourceCatalog().StoryDirectors()
+func (h *Handlers) HandleGamePlanningTemplates(ctx context.Context, c *app.RequestContext) {
+	items, err := h.app.ResourceCatalog().GamePlanningTemplates()
 	if err != nil {
 		writeError(c, consts.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(c, consts.StatusOK, map[string]any{"directors": directors})
+	writeJSON(c, consts.StatusOK, map[string]any{"game_planning_templates": items})
 }
 
-func (h *Handlers) HandleStoryDirector(ctx context.Context, c *app.RequestContext) {
-	director, err := h.app.ResourceCatalog().StoryDirector(c.Param("id"))
+func (h *Handlers) HandleGamePlanningTemplate(ctx context.Context, c *app.RequestContext) {
+	item, err := h.app.ResourceCatalog().GamePlanningTemplate(c.Param("id"))
 	if err != nil {
 		writeError(c, consts.StatusNotFound, err.Error())
 		return
 	}
-	writeJSON(c, consts.StatusOK, director)
+	writeJSON(c, consts.StatusOK, item)
 }
 
-func (h *Handlers) HandleStoryDirectorCreate(ctx context.Context, c *app.RequestContext) {
-	var body interactive.StoryDirector
+func (h *Handlers) HandleGamePlanningTemplateCreate(ctx context.Context, c *app.RequestContext) {
+	var body interactive.GamePlanningTemplate
 	if err := c.BindJSON(&body); err != nil {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
-	director, err := h.app.ResourceCatalog().CreateStoryDirector(body)
+	item, err := h.app.ResourceCatalog().CreateGamePlanningTemplate(body)
 	if err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
 	}
-	writeJSON(c, consts.StatusOK, director)
+	writeJSON(c, consts.StatusOK, item)
 }
 
-func (h *Handlers) HandleStoryDirectorUpdate(ctx context.Context, c *app.RequestContext) {
+func (h *Handlers) HandleGamePlanningTemplateUpdate(ctx context.Context, c *app.RequestContext) {
 	var body struct {
-		interactive.StoryDirector
+		interactive.GamePlanningTemplate
 		BaseRevision string `json:"base_revision"`
 	}
 	if err := c.BindJSON(&body); err != nil {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
-	director, err := h.app.ResourceCatalog().UpdateStoryDirector(c.Param("id"), body.StoryDirector, body.BaseRevision)
+	item, err := h.app.ResourceCatalog().UpdateGamePlanningTemplate(c.Param("id"), body.GamePlanningTemplate, body.BaseRevision)
 	if err != nil {
-		if errors.Is(err, interactive.ErrStoryDirectorRevisionConflict) {
+		if errors.Is(err, interactive.ErrGamePlanningTemplateRevisionConflict) {
 			writeErrorKey(c, consts.StatusConflict, "api.resource.revisionConflict")
 			return
 		}
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
 	}
-	writeJSON(c, consts.StatusOK, director)
+	writeJSON(c, consts.StatusOK, item)
 }
 
-func (h *Handlers) HandleStoryDirectorDelete(ctx context.Context, c *app.RequestContext) {
-	if err := h.app.ResourceCatalog().DeleteStoryDirector(c.Param("id")); err != nil {
+func (h *Handlers) HandleGamePlanningTemplateDelete(ctx context.Context, c *app.RequestContext) {
+	if err := h.app.ResourceCatalog().DeleteGamePlanningTemplate(c.Param("id")); err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
 	}

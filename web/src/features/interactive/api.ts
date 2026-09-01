@@ -2,7 +2,7 @@ import { createAgentCommandID, fetchAPI, jsonHeaders, parseSSEStream, requestJSO
 import type { AgentCommandReceipt, AgentRuntimeActiveOutput, AgentRuntimeOpenTool, AgentRuntimeOperation, AgentRuntimeQueuedCommand, AgentRuntimeRecoveryAction, AgentRuntimeRecoveryReceipt, ContextAnalysis, InteractiveImage } from '@/lib/api-client'
 import { isKnownAgentCommandOutcome } from '@/lib/agent-command'
 import type { ChatAttachmentDescriptor, ChatAttachmentUpload } from '@/lib/chat-attachments'
-import type { ActorStateModule, ActorTraitRollRequest, ActorTraitRollResult, BranchSummary, EventPackageModule, ImagePreset, InitialActorTraitRoll, InteractiveSnapshotResponse, InteractiveSSEEvent, InteractiveStoryUpdateInput, RuleResolution, RuleResolutionRerollInput, RuleSystemModule, StoryCheckSettings, StoryDirector, StoryDirectorModuleRefs, StoryHistoryPage, StoryPlanningMode, StoryProtagonist, StoryStateSchemaPolicy, StyleReference, StyleReferenceFileDocument, StoryImageSettings, StoryIndex, StoryOpeningConfig, StorySummary, Teller, UpdateTurnNarrativeResult } from './types'
+import type { ActorStateModule, ActorTraitRollRequest, ActorTraitRollResult, BranchSummary, EventPackageModule, GamePlanningTemplate, ImagePreset, InitialActorTraitRoll, InteractiveSnapshotResponse, InteractiveSSEEvent, InteractiveStoryUpdateInput, RuleResolution, RuleResolutionRerollInput, RuleSystemModule, StoryCheckSettings, StoryDirectorModuleRefs, StoryHistoryPage, StoryPlanningMode, StoryProtagonist, StoryStateSchemaPolicy, StyleReference, StyleReferenceFileDocument, StoryImageSettings, StoryIndex, StoryOpeningConfig, StorySummary, Teller, UpdateTurnNarrativeResult } from './types'
 
 function presetMutationBody<T extends object>(input: T, baseRevision?: string) {
   return {
@@ -15,7 +15,7 @@ export function getInteractiveStories(): Promise<StoryIndex> {
   return requestJSON('/api/interactive/stories')
 }
 
-export function createInteractiveStory(input: { title: string; custom_agent_id?: string; origin?: string; protagonist?: StoryProtagonist; story_teller_id: string; story_director_id?: string; planning_mode?: StoryPlanningMode; module_refs?: StoryDirectorModuleRefs; reply_target_chars?: number; choice_count?: number; image_settings?: StoryImageSettings; check_settings?: StoryCheckSettings; opening?: StoryOpeningConfig; initial_trait_rolls?: InitialActorTraitRoll[]; state_schema_policy?: StoryStateSchemaPolicy }): Promise<StorySummary> {
+export function createInteractiveStory(input: { title: string; custom_agent_id?: string; origin?: string; protagonist?: StoryProtagonist; story_teller_id: string; planning_template_id?: string; planning_mode?: StoryPlanningMode; module_refs?: StoryDirectorModuleRefs; reply_target_chars?: number; choice_count?: number; image_settings?: StoryImageSettings; check_settings?: StoryCheckSettings; opening?: StoryOpeningConfig; initial_trait_rolls?: InitialActorTraitRoll[]; state_schema_policy?: StoryStateSchemaPolicy }): Promise<StorySummary> {
   return requestJSON('/api/interactive/stories', {
     method: 'POST',
     headers: jsonHeaders,
@@ -124,29 +124,29 @@ export function updateStyleReferenceFile(input: { path: string; content: string;
   })
 }
 
-export async function getStoryDirectors(): Promise<StoryDirector[]> {
-  const data = await requestJSON<{ directors: StoryDirector[] }>('/api/story-directors')
-  return data.directors || []
+export async function getGamePlanningTemplates(): Promise<GamePlanningTemplate[]> {
+  const data = await requestJSON<{ game_planning_templates: GamePlanningTemplate[] }>('/api/game-planning-templates')
+  return data.game_planning_templates || []
 }
 
-export function createStoryDirector(input: Partial<StoryDirector>): Promise<StoryDirector> {
-  return requestJSON('/api/story-directors', {
+export function createGamePlanningTemplate(input: Partial<GamePlanningTemplate>): Promise<GamePlanningTemplate> {
+  return requestJSON('/api/game-planning-templates', {
     method: 'POST',
     headers: jsonHeaders,
     body: JSON.stringify(input),
   })
 }
 
-export function updateStoryDirector(id: string, input: Partial<StoryDirector>, baseRevision?: string): Promise<StoryDirector> {
-  return requestJSON(`/api/story-directors/${encodeURIComponent(id)}`, {
+export function updateGamePlanningTemplate(id: string, input: Partial<GamePlanningTemplate>, baseRevision?: string): Promise<GamePlanningTemplate> {
+  return requestJSON(`/api/game-planning-templates/${encodeURIComponent(id)}`, {
     method: 'PATCH',
     headers: jsonHeaders,
     body: JSON.stringify(presetMutationBody(input, baseRevision)),
   })
 }
 
-export function deleteStoryDirector(id: string): Promise<void> {
-  return requestJSON(`/api/story-directors/${encodeURIComponent(id)}`, {
+export function deleteGamePlanningTemplate(id: string): Promise<void> {
+  return requestJSON(`/api/game-planning-templates/${encodeURIComponent(id)}`, {
     method: 'DELETE',
   })
 }

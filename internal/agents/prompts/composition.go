@@ -105,7 +105,7 @@ func ComposeInteractiveStoryInstruction(cfg *config.Config, state *book.State, t
 	builtIn = append(builtIn, styleRuleSystemPromptFragments(teller.StyleRules)...)
 	if planningGuide := strings.TrimSpace(teller.PlanningGuide); planningGuide != "" {
 		builtIn = append(builtIn, SystemPromptFragment{
-			ID: "game_planning_guide", Source: "Game preset", Title: "Game planning guide",
+			ID: "game_planning_guide", Source: "Game planning template", Title: "Game planning guide",
 			Purpose: "guide the optional Game Agent branch-planning capability",
 			Content: planningGuide, Prefix: "\n\n## Game Planning Guide\n\n", Overflow: SystemPromptOverflowTruncate,
 		})

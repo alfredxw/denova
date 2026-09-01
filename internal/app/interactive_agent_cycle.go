@@ -122,11 +122,12 @@ func (s *InteractiveAppService) prepareInteractiveAgentCycle(ctx context.Context
 	styleRules := appagentruntime.StyleRules(cycle.novaDir, teller.StyleRefs, teller.StyleRules, request.StyleScenes)
 	cycle.tellerInput = interactiveapp.StoryTellerSystemInput(teller, styleRules)
 	cycle.tellerInput.ChoiceCount = storyContext.Meta.ChoiceCount
-	gamePreset := interactiveapp.LoadStoryDirectorForMeta(cycle.novaDir, storyContext.Meta)
+	storyRuntime := interactiveapp.LoadStoryRuntimeForMeta(cycle.novaDir, storyContext.Meta)
 	if storyContext.Meta.PlanningMode == interactive.StoryPlanningModeEnabled {
-		cycle.tellerInput.PlanningGuide = interactive.StoryPlanningGuideMarkdown(gamePreset, interactiveapp.StoryRuntimeContextMaxBytes)
+		planningTemplate := interactiveapp.LoadGamePlanningTemplateForMeta(cycle.novaDir, storyContext.Meta)
+		cycle.tellerInput.PlanningGuide = interactive.GamePlanningGuideMarkdown(planningTemplate, storyRuntime.EventPackages, interactiveapp.StoryRuntimeContextMaxBytes)
 	}
-	ruleChecksEnabled := !gamePreset.ModuleRefs.RuleSystemDisabled && len(gamePreset.TRPGSystem.RuleTemplates) > 0
+	ruleChecksEnabled := !storyRuntime.ModuleRefs.RuleSystemDisabled && len(storyRuntime.TRPGSystem.RuleTemplates) > 0
 	cycle.request = agentchat.ChatRequest{
 		Message: strings.TrimSpace(request.Message), ResumeInterruptionID: strings.TrimSpace(request.ResumeInterruptionID),
 		StyleScenes:   append([]string(nil), request.StyleScenes...),

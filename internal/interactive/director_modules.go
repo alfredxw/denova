@@ -39,7 +39,7 @@ var (
 )
 
 // StoryDirectorModuleRefs is the legacy storage type for the reusable resources
-// a Game Preset combines at runtime. Changing a referenced module affects
+// a story combines at runtime. Changing a referenced module affects
 // future resolution.
 type StoryDirectorModuleRefs struct {
 	NarrativeStyleID       string   `json:"narrative_style_id,omitempty"`
@@ -432,6 +432,22 @@ func ResolveStoryDirectorModules(novaDir string, director StoryDirector) StoryDi
 	snapshot := normalizeStoryDirectorResolvedSnapshot(director.ResolvedSnapshot)
 	effective := director
 	effective.ModuleRefs = refs
+	// Some pure in-memory callers intentionally have no .denova directory. In
+	// that case the director already carries its built-in or frozen resources;
+	// avoid materializing resource libraries relative to the process cwd.
+	if strings.TrimSpace(novaDir) == "" {
+		if refs.EventPackagesDisabled {
+			effective.EventPackages = []EventPackage{}
+		}
+		if refs.RuleSystemDisabled {
+			effective.TRPGSystem = StoryDirectorTRPGSystem{RuleTemplates: []RuleCheck{}}
+		}
+		if refs.ActorStateDisabled {
+			effective.ActorState = StoryDirectorActorStateSystem{Templates: []ActorStateTemplate{}, InitialActors: []ActorStateInitialActor{}}
+		}
+		effective.ResolvedSnapshot = snapshotFromEffectiveDirector(effective, refs, warnings)
+		return normalizeStoryDirector(effective)
+	}
 
 	if refs.EventPackagesDisabled {
 		effective.EventPackages = []EventPackage{}

@@ -17,14 +17,6 @@ import { mergeAgentModelOverride, mergeAgentPromptOverride } from './agent-confi
 type Translate = (key: string, options?: Record<string, unknown>) => string
 type ProfileOption = { id: string; label: string }
 
-export function resolveInheritedToolParallelism(layered: LayeredSettings | null, layer: SettingsLayer): number {
-  return resolveInheritedNumber(layered, layer, 'agent_tool_parallelism', 8, 64)
-}
-
-export function resolveInheritedSubAgentParallelism(layered: LayeredSettings | null, layer: SettingsLayer): number {
-  return resolveInheritedNumber(layered, layer, 'agent_subagent_parallelism', 4, 32)
-}
-
 export function resolveInheritedImageProfileID(layered: LayeredSettings | null, layer: SettingsLayer): string {
   let value = 'default'
   for (const settings of inheritedLayers(layered, layer)) {
@@ -116,22 +108,6 @@ function inheritedLayers(layered: LayeredSettings | null, layer: SettingsLayer):
   return layer === 'workspace'
     ? [layered?.default, layered?.global, layered?.user]
     : [layered?.default, layered?.global]
-}
-
-function resolveInheritedNumber(
-  layered: LayeredSettings | null,
-  layer: SettingsLayer,
-  field: 'agent_tool_parallelism' | 'agent_subagent_parallelism',
-  defaultValue: number,
-  maximum: number,
-): number {
-  let value = defaultValue
-  for (const settings of inheritedLayers(layered, layer)) {
-    const candidate = settings?.[field]
-    if (candidate === null || candidate === undefined) continue
-    value = candidate <= 0 ? defaultValue : Math.min(maximum, Math.trunc(candidate))
-  }
-  return value
 }
 
 function formatProfileOptions(profiles: Map<string, string>, t: Translate): ProfileOption[] {

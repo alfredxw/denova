@@ -50,7 +50,7 @@ type SkillDirectorySource interface {
 type Service struct {
 	initErr         error
 	tellers         *teller.Library
-	directors       *interactive.StoryDirectorLibrary
+	planning        *interactive.GamePlanningTemplateLibrary
 	eventPackages   *interactive.EventPackageLibrary
 	ruleSystems     *interactive.RuleSystemLibrary
 	actorStates     *interactive.ActorStateLibrary
@@ -69,7 +69,7 @@ func NewService(dataDir string, skillSource SkillDirectorySource) *Service {
 	}
 	return &Service{
 		tellers:         teller.NewLibrary(dataDir),
-		directors:       interactive.NewStoryDirectorLibrary(dataDir),
+		planning:        interactive.NewGamePlanningTemplateLibrary(dataDir),
 		eventPackages:   interactive.NewEventPackageLibrary(dataDir),
 		ruleSystems:     interactive.NewRuleSystemLibrary(dataDir),
 		actorStates:     interactive.NewActorStateLibrary(dataDir),

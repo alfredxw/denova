@@ -169,19 +169,25 @@ func TestStoryCheckSettingsPersistAndRejectOutOfRangeValues(t *testing.T) {
 	}
 
 	settings := StoryCheckSettings{DifficultyShift: -1, RollModifier: -3}
+	expectedSettings := StoryCheckSettings{
+		DifficultyShift:          -1,
+		RollModifier:             -3,
+		RuleStateConsumptionMode: DefaultRuleStateConsumptionMode,
+		RuleVisibilityMode:       DefaultRuleVisibilityMode,
+	}
 	updated, err := store.UpdateStory(story.ID, UpdateStoryRequest{CheckSettings: &settings})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if updated.CheckSettings != settings {
-		t.Fatalf("updated check settings = %#v, want %#v", updated.CheckSettings, settings)
+	if updated.CheckSettings != expectedSettings {
+		t.Fatalf("updated check settings = %#v, want %#v", updated.CheckSettings, expectedSettings)
 	}
 	context, err := store.StoryContext(story.ID, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if context.Meta.CheckSettings != settings {
-		t.Fatalf("persisted check settings = %#v, want %#v", context.Meta.CheckSettings, settings)
+	if context.Meta.CheckSettings != expectedSettings {
+		t.Fatalf("persisted check settings = %#v, want %#v", context.Meta.CheckSettings, expectedSettings)
 	}
 
 	if _, err := store.CreateStory(CreateStoryRequest{Title: "非法难度", CheckSettings: StoryCheckSettings{DifficultyShift: 3}}); err == nil {
@@ -193,7 +199,7 @@ func TestStoryCheckSettingsPersistAndRejectOutOfRangeValues(t *testing.T) {
 	}
 }
 
-func TestCreateStoryPersistsStoryModuleOverrides(t *testing.T) {
+func TestCreateStoryPersistsStoryModuleSelections(t *testing.T) {
 	store := NewStore(t.TempDir())
 	refs := StoryDirectorModuleRefs{
 		NarrativeStyleID:      "noir",
@@ -203,7 +209,7 @@ func TestCreateStoryPersistsStoryModuleOverrides(t *testing.T) {
 		ImagePresetID:         "film-noir",
 		EventPackagesDisabled: false,
 	}
-	story, err := store.CreateStory(CreateStoryRequest{Title: "雾都", StoryDirectorID: "default", ModuleRefs: &refs})
+	story, err := store.CreateStory(CreateStoryRequest{Title: "雾都", PlanningTemplateID: "default", ModuleRefs: &refs})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -220,25 +226,57 @@ func TestCreateStoryPersistsStoryModuleOverrides(t *testing.T) {
 	}
 }
 
-func TestUpdateStorySetupPersistsOriginAndModuleOverrides(t *testing.T) {
+func TestUpdateStorySetupPersistsOriginAndModuleSelections(t *testing.T) {
 	store := NewStore(t.TempDir())
-	story, err := store.CreateStory(CreateStoryRequest{Title: "旧标题", StoryDirectorID: "default"})
+	story, err := store.CreateStory(CreateStoryRequest{Title: "旧标题", PlanningTemplateID: "default"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	origin := "新的故事简介"
 	refs := StoryDirectorModuleRefs{NarrativeStyleID: "noir", RuleSystemID: "mystery"}
 	updated, err := store.UpdateStory(story.ID, UpdateStoryRequest{
-		Title:           "新标题",
-		Origin:          &origin,
-		StoryDirectorID: "default",
-		ModuleRefs:      &refs,
+		Title:              "新标题",
+		Origin:             &origin,
+		PlanningTemplateID: "default",
+		ModuleRefs:         &refs,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if updated.Origin != origin || updated.ModuleRefs == nil || updated.ModuleRefs.RuleSystemID != "mystery" {
 		t.Fatalf("updated setup not persisted: %#v", updated)
+	}
+}
+
+func TestUpdateStoryPlanningTemplateLeavesModuleSelectionsUnchanged(t *testing.T) {
+	store := NewStore(t.TempDir())
+	refs := StoryDirectorModuleRefs{
+		NarrativeStyleID: "noir",
+		RuleSystemID:     "mystery",
+		ActorStateID:     "detective-state",
+		ImagePresetID:    "film-noir",
+	}
+	story, err := store.CreateStory(CreateStoryRequest{
+		Title:              "雾都",
+		PlanningTemplateID: "default",
+		ModuleRefs:         &refs,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated, err := store.UpdateStory(story.ID, UpdateStoryRequest{PlanningTemplateID: "mystery-investigation"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.PlanningTemplateID != "mystery-investigation" {
+		t.Fatalf("planning template = %q", updated.PlanningTemplateID)
+	}
+	if updated.ModuleRefs == nil ||
+		updated.ModuleRefs.NarrativeStyleID != refs.NarrativeStyleID ||
+		updated.ModuleRefs.RuleSystemID != refs.RuleSystemID ||
+		updated.ModuleRefs.ActorStateID != refs.ActorStateID ||
+		updated.ModuleRefs.ImagePresetID != refs.ImagePresetID {
+		t.Fatalf("planning template change altered module selections: %#v", updated.ModuleRefs)
 	}
 }
 
@@ -877,11 +915,11 @@ func TestAppendTurnWithStatePersistsTurnAndDeltaAtomically(t *testing.T) {
 }
 
 func TestAppendTurnWithStateConsumesRuleStateChanges(t *testing.T) {
-	store, director := newStoreWithStaminaTestDirector(t)
+	store, actorState := newStoreWithStaminaTestActorState(t)
 	story, err := store.CreateStory(CreateStoryRequest{
-		StoryDirectorID: director.ID,
-		Title:           "规则状态",
-		ActorState:      &director.ActorState,
+		Title:      "规则状态",
+		ModuleRefs: staminaTestModuleRefs(actorState.ID),
+		ActorState: &actorState.ActorState,
 	})
 	if err != nil {
 		t.Fatalf("CreateStory failed: %v", err)
@@ -963,11 +1001,11 @@ func TestAppendTurnWithStateSkipsUnknownRuleStateChanges(t *testing.T) {
 }
 
 func TestRerollRuleResolutionReplacesAutomaticRuleStateOps(t *testing.T) {
-	store, director := newStoreWithStaminaTestDirector(t)
+	store, actorState := newStoreWithStaminaTestActorState(t)
 	story, err := store.CreateStory(CreateStoryRequest{
-		StoryDirectorID: director.ID,
-		Title:           "规则重抽",
-		ActorState:      &director.ActorState,
+		Title:      "规则重抽",
+		ModuleRefs: staminaTestModuleRefs(actorState.ID),
+		ActorState: &actorState.ActorState,
 	})
 	if err != nil {
 		t.Fatalf("CreateStory failed: %v", err)
@@ -1015,20 +1053,14 @@ func TestRerollRuleResolutionReplacesAutomaticRuleStateOps(t *testing.T) {
 	}
 }
 
-func newStoreWithStaminaTestDirector(t *testing.T) (*Store, StoryDirector) {
+func newStoreWithStaminaTestActorState(t *testing.T) (*Store, ActorStateModule) {
 	t.Helper()
 	root := t.TempDir()
 	novaDir := filepath.Join(root, ".nova")
 	staminaMin, staminaMax := 0.0, 5.0
-	director, err := NewStoryDirectorLibrary(novaDir).Create(StoryDirector{
-		ID:   "stamina-test-director",
-		Name: "体力测试导演",
-		ModuleRefs: StoryDirectorModuleRefs{
-			NarrativeStyleDisabled: true,
-			EventPackagesDisabled:  true,
-			RuleSystemDisabled:     true,
-			ImagePresetDisabled:    true,
-		},
+	actorState, err := NewActorStateLibrary(novaDir).Create(ActorStateModule{
+		ID:   "stamina-test-state",
+		Name: "体力测试状态",
 		ActorState: StoryDirectorActorStateSystem{
 			Templates: []ActorStateTemplate{{
 				ID:   "protagonist",
@@ -1052,9 +1084,19 @@ func newStoreWithStaminaTestDirector(t *testing.T) (*Store, StoryDirector) {
 		},
 	})
 	if err != nil {
-		t.Fatalf("create stamina test director failed: %v", err)
+		t.Fatalf("create stamina test actor state failed: %v", err)
 	}
-	return NewStoreWithNovaDir(root, novaDir), director
+	return NewStoreWithNovaDir(root, novaDir), actorState
+}
+
+func staminaTestModuleRefs(actorStateID string) *StoryDirectorModuleRefs {
+	return &StoryDirectorModuleRefs{
+		NarrativeStyleDisabled: true,
+		EventPackagesDisabled:  true,
+		RuleSystemDisabled:     true,
+		ActorStateID:           actorStateID,
+		ImagePresetDisabled:    true,
+	}
 }
 
 func TestAppendTurnWithStatePersistsDisplayEventTimelineDetails(t *testing.T) {

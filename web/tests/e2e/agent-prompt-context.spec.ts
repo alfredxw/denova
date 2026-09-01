@@ -68,7 +68,6 @@ async function configureAgentPrompt(
 ): Promise<PromptConfiguration> {
   await page.getByRole('button', { name: new RegExp(`^${agentTitle}`) }).click()
   await expect(page.getByRole('heading', { name: agentTitle, exact: true })).toBeVisible()
-  await page.getByRole('tab', { name: '行为', exact: true }).click()
 
   return {
     flow_prompt: await appendPromptMarker(page, '流程规则', flowMarker),

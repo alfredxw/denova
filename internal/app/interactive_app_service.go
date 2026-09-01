@@ -17,7 +17,7 @@ import (
 	"denova/internal/interactive"
 )
 
-// InteractiveAppService owns stories, branches, Game Presets, and Game Agent tasks.
+// InteractiveAppService owns stories, branches, Game Planning, and Game Agent tasks.
 type InteractiveAppService struct {
 	app       *App
 	admission sync.RWMutex
@@ -90,7 +90,7 @@ func (s *InteractiveAppService) CreateInteractiveStoryContext(ctx context.Contex
 	if err != nil {
 		return interactive.StorySummary{}, err
 	}
-	req, err = s.withStoryDirectorDefaults(req)
+	req, err = s.withStoryCreationDefaults(req)
 	if err != nil {
 		return interactive.StorySummary{}, err
 	}
@@ -139,19 +139,19 @@ func (s *InteractiveAppService) RollInteractiveActorTraits(req interactive.Actor
 	if cfg == nil || cfg.DataDir() == "" {
 		return interactive.ActorTraitRollResult{}, ErrNoWorkspace
 	}
-	directorID := interactive.NormalizeStoryDirectorID(req.StoryDirectorID)
-	if directorID == "" {
-		directorID = interactive.DefaultStoryDirectorID
+	actorStateID := strings.TrimSpace(req.ActorStateID)
+	if actorStateID == "" {
+		actorStateID = interactive.DefaultActorStateModuleID
 	}
-	storyDirector, err := interactive.NewStoryDirectorLibrary(cfg.DataDir()).Get(directorID)
+	actorState, err := interactive.NewActorStateLibrary(cfg.DataDir()).Get(actorStateID)
 	if err != nil {
 		return interactive.ActorTraitRollResult{}, err
 	}
-	req.StoryDirectorID = directorID
-	return interactive.RollActorTraits(storyDirector.ActorState, req)
+	req.ActorStateID = actorStateID
+	return interactive.RollActorTraits(actorState.ActorState, req)
 }
 
-func (s *InteractiveAppService) withStoryDirectorDefaults(req interactive.CreateStoryRequest) (interactive.CreateStoryRequest, error) {
+func (s *InteractiveAppService) withStoryCreationDefaults(req interactive.CreateStoryRequest) (interactive.CreateStoryRequest, error) {
 	if strings.TrimSpace(req.PlanningMode) == "" {
 		req.PlanningMode = interactive.StoryPlanningModeEnabled
 	}
@@ -159,35 +159,37 @@ func (s *InteractiveAppService) withStoryDirectorDefaults(req interactive.Create
 	if cfg == nil || cfg.DataDir() == "" {
 		return req, nil
 	}
-	directorID := interactive.NormalizeStoryDirectorID(req.StoryDirectorID)
-	if directorID == "" {
-		directorID = interactive.DefaultStoryDirectorID
+	templateID := interactive.NormalizeGamePlanningTemplateID(req.PlanningTemplateID)
+	if templateID == "" {
+		templateID = interactive.DefaultGamePlanningTemplateID
 	}
-	req.StoryDirectorID = directorID
-	storyDirector, err := interactive.NewStoryDirectorLibrary(cfg.DataDir()).Get(directorID)
-	if err != nil {
-		slog.ErrorContext(context.Background(), fmt.Sprintf("[game-preset] load preset failed story_director_id=%s err=%v", directorID, err))
-		return req, nil
+	req.PlanningTemplateID = templateID
+	if _, err := interactive.NewGamePlanningTemplateLibrary(cfg.DataDir()).Get(templateID); err != nil {
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[game-planning] load template failed planning_template_id=%s err=%v", templateID, err))
+		req.PlanningTemplateID = interactive.DefaultGamePlanningTemplateID
 	}
+	refs := interactive.DefaultStoryDirectorModuleRefs()
 	if req.ModuleRefs != nil {
-		storyDirector.ModuleRefs = interactive.NormalizeStoryDirectorModuleRefs(*req.ModuleRefs)
-		storyDirector.ResolvedSnapshot = interactive.StoryDirectorResolvedSnapshot{}
-		storyDirector = interactive.ResolveStoryDirectorModules(cfg.DataDir(), storyDirector)
-		normalized := interactive.NormalizeStoryDirectorModuleRefs(storyDirector.ModuleRefs)
-		req.ModuleRefs = &normalized
+		refs = interactive.NormalizeStoryDirectorModuleRefs(*req.ModuleRefs)
 	}
-	if interactive.StoryDirectorNarrativeStyleEnabled(storyDirector) && strings.TrimSpace(req.StoryTellerID) == "" && strings.TrimSpace(storyDirector.ModuleRefs.NarrativeStyleID) != "" {
-		req.StoryTellerID = strings.TrimSpace(storyDirector.ModuleRefs.NarrativeStyleID)
+	runtime := interactive.DefaultStoryDirector()
+	runtime.ModuleRefs = refs
+	runtime.ResolvedSnapshot = interactive.StoryDirectorResolvedSnapshot{}
+	runtime = interactive.ResolveStoryDirectorModules(cfg.DataDir(), runtime)
+	normalized := interactive.NormalizeStoryDirectorModuleRefs(runtime.ModuleRefs)
+	req.ModuleRefs = &normalized
+	if interactive.StoryDirectorNarrativeStyleEnabled(runtime) && strings.TrimSpace(req.StoryTellerID) == "" && strings.TrimSpace(runtime.ModuleRefs.NarrativeStyleID) != "" {
+		req.StoryTellerID = strings.TrimSpace(runtime.ModuleRefs.NarrativeStyleID)
 	}
-	if interactive.StoryDirectorImagePresetEnabled(storyDirector) && strings.TrimSpace(req.ImageSettings.PresetID) == "" && strings.TrimSpace(storyDirector.ModuleRefs.ImagePresetID) != "" {
-		req.ImageSettings.PresetID = strings.TrimSpace(storyDirector.ModuleRefs.ImagePresetID)
+	if interactive.StoryDirectorImagePresetEnabled(runtime) && strings.TrimSpace(req.ImageSettings.PresetID) == "" && strings.TrimSpace(runtime.ModuleRefs.ImagePresetID) != "" {
+		req.ImageSettings.PresetID = strings.TrimSpace(runtime.ModuleRefs.ImagePresetID)
 	}
 	policy := interactive.StoryStateSchemaPolicy{Mode: interactive.StoryStateSchemaModeAdaptTemplate}
 	if req.StateSchemaPolicy != nil {
 		policy = interactive.NormalizeStoryStateSchemaPolicy(*req.StateSchemaPolicy)
 	}
 	req.StateSchemaPolicy = &policy
-	actorState := storyDirector.ActorState
+	actorState := runtime.ActorState
 	if policy.Mode == interactive.StoryStateSchemaModeGenerate {
 		actorState = interactive.GeneratedStoryActorStateCore()
 	}
@@ -199,7 +201,7 @@ func (s *InteractiveAppService) withStoryDirectorDefaults(req interactive.Create
 	} else {
 		req.ActorState = nil
 	}
-	req.TRPGSystem = &storyDirector.TRPGSystem
+	req.TRPGSystem = &runtime.TRPGSystem
 	status := interactive.StateSchemaInitializationWaitingOpening
 	outcome := ""
 	if policy.Mode == interactive.StoryStateSchemaModeFixedTemplate {
@@ -275,23 +277,18 @@ func (s *InteractiveAppService) withStoryStateSchemaUpdateDefaults(req interacti
 	if cfg == nil || cfg.DataDir() == "" || req.StateSchemaPolicy == nil {
 		return req, nil
 	}
-	directorID := interactive.NormalizeStoryDirectorID(req.StoryDirectorID)
-	if directorID == "" {
-		directorID = interactive.DefaultStoryDirectorID
-	}
-	director, err := interactive.NewStoryDirectorLibrary(cfg.DataDir()).Get(directorID)
-	if err != nil {
-		return req, fmt.Errorf("读取游戏预设失败 / Failed to load Game Preset: %w", err)
-	}
+	refs := interactive.DefaultStoryDirectorModuleRefs()
 	if req.ModuleRefs != nil {
-		director.ModuleRefs = interactive.NormalizeStoryDirectorModuleRefs(*req.ModuleRefs)
-		director.ResolvedSnapshot = interactive.StoryDirectorResolvedSnapshot{}
-		director = interactive.ResolveStoryDirectorModules(cfg.DataDir(), director)
-		normalized := interactive.NormalizeStoryDirectorModuleRefs(director.ModuleRefs)
-		req.ModuleRefs = &normalized
+		refs = interactive.NormalizeStoryDirectorModuleRefs(*req.ModuleRefs)
 	}
+	runtime := interactive.DefaultStoryDirector()
+	runtime.ModuleRefs = refs
+	runtime.ResolvedSnapshot = interactive.StoryDirectorResolvedSnapshot{}
+	runtime = interactive.ResolveStoryDirectorModules(cfg.DataDir(), runtime)
+	normalized := interactive.NormalizeStoryDirectorModuleRefs(runtime.ModuleRefs)
+	req.ModuleRefs = &normalized
 	policy := interactive.NormalizeStoryStateSchemaPolicy(*req.StateSchemaPolicy)
-	actorState := director.ActorState
+	actorState := runtime.ActorState
 	if policy.Mode == interactive.StoryStateSchemaModeGenerate {
 		actorState = interactive.GeneratedStoryActorStateCore()
 	}
@@ -304,7 +301,7 @@ func (s *InteractiveAppService) withStoryStateSchemaUpdateDefaults(req interacti
 	} else {
 		req.ActorState = nil
 	}
-	req.TRPGSystem = &director.TRPGSystem
+	req.TRPGSystem = &runtime.TRPGSystem
 	status := interactive.StateSchemaInitializationWaitingOpening
 	outcome := ""
 	if policy.Mode == interactive.StoryStateSchemaModeFixedTemplate {

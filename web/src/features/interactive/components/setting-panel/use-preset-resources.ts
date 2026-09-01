@@ -2,9 +2,9 @@
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { rebaseJSONWithRecovery } from '@/lib/autosave/rebase-with-recovery'
 import { rebaseJSONValue } from '@/lib/three-way-rebase'
-import { getActorStates, getEventPackages, getImagePresets, getInteractiveTellers, getRuleSystems, getStoryDirectors } from '../../api'
+import { getActorStates, getEventPackages, getGamePlanningTemplates, getImagePresets, getInteractiveTellers, getRuleSystems } from '../../api'
 import { PRESET_RESOURCE_SCOPE } from '../../preset-ownership'
-import type { ActorStateModule, EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, Teller } from '../../types'
+import type { ActorStateModule, EventPackageModule, GamePlanningTemplate, ImagePreset, RuleSystemModule, Teller } from '../../types'
 import { cloneActorState, cloneEventPackage, cloneImagePreset, cloneRuleSystem, cloneStoryDirector, cloneTeller, EMPTY_ACTOR_STATES, EMPTY_EVENT_PACKAGES, EMPTY_IMAGE_PRESETS, EMPTY_RULE_SYSTEMS, EMPTY_STORY_DIRECTORS, EMPTY_TELLERS, type PresetDrafts } from './presetResources'
 import { presetResourceRevision } from './usePresetResourceAutosave'
 
@@ -18,19 +18,19 @@ export function usePresetResources({
   onImagePresetsChange,
 }: {
   externalTellers?: Teller[]
-  externalStoryDirectors?: StoryDirector[]
+  externalStoryDirectors?: GamePlanningTemplate[]
   externalImagePresets?: ImagePreset[]
   onTellersChange?: (tellers: Teller[]) => void
-  onStoryDirectorsChange?: (directors: StoryDirector[]) => void
+  onStoryDirectorsChange?: (directors: GamePlanningTemplate[]) => void
   onImagePresetsChange?: (presets: ImagePreset[]) => void
 }) {
   const [tellers, setTellers] = useState<Teller[]>(externalTellers)
   const [activeTellerId, setActiveTellerId] = useState(externalTellers[0]?.id || '')
   const [tellerDraft, setTellerDraft] = useState<Teller | null>(null)
   const [activeSlotId, setActiveSlotId] = useState('')
-  const [storyDirectors, setStoryDirectors] = useState<StoryDirector[]>(externalStoryDirectors)
+  const [storyDirectors, setStoryDirectors] = useState<GamePlanningTemplate[]>(externalStoryDirectors)
   const [activeStoryDirectorId, setActiveStoryDirectorId] = useState('')
-  const [storyDirectorDraft, setStoryDirectorDraft] = useState<StoryDirector | null>(null)
+  const [storyDirectorDraft, setStoryDirectorDraft] = useState<GamePlanningTemplate | null>(null)
   const [imagePresets, setImagePresets] = useState<ImagePreset[]>(externalImagePresets)
   const [activeImagePresetId, setActiveImagePresetId] = useState('')
   const [imagePresetDraft, setImagePresetDraft] = useState<ImagePreset | null>(null)
@@ -64,7 +64,7 @@ export function usePresetResources({
   useEffect(() => {
     if (onStoryDirectorsChange || externalStoryDirectors.length > 0) return
     let cancelled = false
-    getStoryDirectors()
+    getGamePlanningTemplates()
       .then((data) => {
         if (cancelled) return
         setStoryDirectors(data)
@@ -182,7 +182,7 @@ export function usePresetResources({
     onTellersChange?.(next)
   }
 
-  const mergeSavedStoryDirector = (director: StoryDirector) => {
+  const mergeSavedStoryDirector = (director: GamePlanningTemplate) => {
     const next = storyDirectors.map((entry) => (entry.id === director.id ? director : entry))
     setStoryDirectors(next)
     onStoryDirectorsChange?.(next)
@@ -218,7 +218,7 @@ export function usePresetResources({
   }
 
   const refreshStoryDirectors = async (nextActiveId?: string) => {
-    const data = await getStoryDirectors()
+    const data = await getGamePlanningTemplates()
     setStoryDirectors(data)
     onStoryDirectorsChange?.(data)
     setActiveStoryDirectorId((current) => {
@@ -322,7 +322,7 @@ export type PresetResources = ReturnType<typeof usePresetResources>
 
 interface DraftSyncAutosaves {
   teller: DraftSyncAutosave<Teller>
-  director: DraftSyncAutosave<StoryDirector>
+  director: DraftSyncAutosave<GamePlanningTemplate>
   image: DraftSyncAutosave<ImagePreset>
   event: DraftSyncAutosave<EventPackageModule>
   rule: DraftSyncAutosave<RuleSystemModule>
@@ -372,7 +372,15 @@ export function usePresetDraftSync(resources: PresetResources, autosaves: DraftS
   const actorState = actorStates.find((entry) => entry.id === activeActorStateId) || null
 
   useRebasedPresetDraft({ resource: 'teller', scopeKey: PRESET_RESOURCE_SCOPE, baseline: teller, draft: tellerDraft, setDraft: setTellerDraft, clone: cloneTeller, ...autosaves.teller })
-  useRebasedPresetDraft({ resource: 'story_director', scopeKey: PRESET_RESOURCE_SCOPE, baseline: director, draft: storyDirectorDraft, setDraft: setStoryDirectorDraft, clone: cloneStoryDirector, ...autosaves.director })
+  useRebasedPresetDraft({
+    resource: 'game_planning',
+    scopeKey: PRESET_RESOURCE_SCOPE,
+    baseline: director,
+    draft: storyDirectorDraft,
+    setDraft: setStoryDirectorDraft,
+    clone: cloneStoryDirector,
+    ...autosaves.director,
+  })
   useRebasedPresetDraft({ resource: 'image_preset', scopeKey: PRESET_RESOURCE_SCOPE, baseline: imagePreset, draft: imagePresetDraft, setDraft: setImagePresetDraft, clone: cloneImagePreset, ...autosaves.image })
   useRebasedPresetDraft({ resource: 'event_package', scopeKey: PRESET_RESOURCE_SCOPE, baseline: eventPackage, draft: eventPackageDraft, setDraft: setEventPackageDraft, clone: cloneEventPackage, ...autosaves.event })
   useRebasedPresetDraft({ resource: 'rule_system', scopeKey: PRESET_RESOURCE_SCOPE, baseline: ruleSystem, draft: ruleSystemDraft, setDraft: setRuleSystemDraft, clone: cloneRuleSystem, ...autosaves.rule })

@@ -56,6 +56,17 @@ function Find-RepoViteProcessIds {
     } | ForEach-Object { [int]$_.ProcessId })
 }
 
+function Test-DenovaGoRunProcess {
+    param(
+        [Parameter(Mandatory)]
+        [object]$Process
+    )
+
+    return $Process.Name -eq 'go.exe' -and
+        $Process.CommandLine -and
+        $Process.CommandLine -match '(?i)(?:^|\s)run\s+(?:"[^"]*[\\/]|[^\s"]*[\\/])?cmd[\\/]denova(?:"?)(?:\s|$)'
+}
+
 function Get-RepoDevStateRecords {
     if (-not (Test-Path -LiteralPath $stateDirectory)) {
         return @()
@@ -90,23 +101,50 @@ function Find-RepoDevProcessIds {
     )
 
     $roots = [System.Collections.Generic.HashSet[int]]::new()
+    $processById = @{}
+    foreach ($process in $Snapshot) {
+        $processById[[int]$process.ProcessId] = $process
+    }
 
     foreach ($record in $StateRecords) {
-        $recorded = $Snapshot | Where-Object { $_.ProcessId -eq [int]$record.State.process_id } | Select-Object -First 1
-        if ($recorded -and $recorded.Name -eq 'go.exe' -and $recorded.CommandLine -match 'run\s+\.?[\\/]cmd[\\/]denova') {
+        $recorded = $processById[[int]$record.State.process_id]
+        if ($recorded -and (Test-DenovaGoRunProcess -Process $recorded)) {
             [void]$roots.Add([int]$recorded.ProcessId)
         }
     }
 
-    $viteProcessIds = @(Find-RepoViteProcessIds -Snapshot $Snapshot)
-    foreach ($viteProcessId in $viteProcessIds) {
-        $vite = $Snapshot | Where-Object { $_.ProcessId -eq $viteProcessId } | Select-Object -First 1
-        $current = $vite
+    # A live backend plus its go run parent identifies backend-only bootstrap
+    # trees that have neither a state file nor a Vite child.
+    foreach ($backend in $Snapshot | Where-Object {
+        $_.Name -eq 'denova.exe' -and
+        $_.CommandLine -and
+        $_.CommandLine -match '(?i)(?:^|\s)--dev-mode(?:\s|$)'
+    }) {
+        $root = $null
+        $current = $processById[[int]$backend.ParentProcessId]
+        while ($current -and (Test-DenovaGoRunProcess -Process $current)) {
+            $root = $current
+            $current = $processById[[int]$current.ParentProcessId]
+        }
+        if ($root) {
+            [void]$roots.Add([int]$root.ProcessId)
+        }
+    }
+
+    foreach ($viteProcessId in Find-RepoViteProcessIds -Snapshot $Snapshot) {
+        $current = $processById[[int]$viteProcessId]
+        $root = $null
         while ($current) {
             if ($current.Name -in @('denova.exe', 'go.exe')) {
-                [void]$roots.Add([int]$current.ProcessId)
+                $root = $current
             }
-            $current = $Snapshot | Where-Object { $_.ProcessId -eq $current.ParentProcessId } | Select-Object -First 1
+            $current = $processById[[int]$current.ParentProcessId]
+        }
+        if ($root) {
+            [void]$roots.Add([int]$root.ProcessId)
+        }
+        else {
+            [void]$roots.Add([int]$viteProcessId)
         }
     }
 
@@ -116,16 +154,14 @@ function Find-RepoDevProcessIds {
 function Stop-RepoDevProcesses {
     $snapshot = Get-ProcessSnapshot
     $stateRecords = @(Get-RepoDevStateRecords)
-    $backendProcessIds = @(Find-RepoDevProcessIds -Snapshot $snapshot -StateRecords $stateRecords)
-    $viteProcessIds = @(Find-RepoViteProcessIds -Snapshot $snapshot)
-    $rootProcessIds = @($backendProcessIds + $viteProcessIds | Select-Object -Unique)
+    $rootProcessIds = @(Find-RepoDevProcessIds -Snapshot $snapshot -StateRecords $stateRecords)
     if ($rootProcessIds.Count -eq 0) {
         Write-Host 'No running Windows development instance found.'
         return
     }
 
     $allProcessIds = @(Get-DescendantProcessIds -RootProcessIds $rootProcessIds -Snapshot $snapshot)
-    Write-Host "Stopping the current Windows development instance (PID: $($rootProcessIds -join ', '))."
+    Write-Host "Stopping Denova development process trees (root PID: $($rootProcessIds -join ', '))."
     foreach ($record in $stateRecords) {
         try {
             $record.State | Add-Member -NotePropertyName stop_requested -NotePropertyValue $true -Force
@@ -135,8 +171,16 @@ function Stop-RepoDevProcesses {
             Write-Warning "Could not mark the previous development instance as intentionally stopped: $($record.Path)"
         }
     }
+    $stoppedProcesses = @()
     foreach ($processId in $allProcessIds | Sort-Object -Descending) {
-        Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
+        $process = Get-Process -Id $processId -ErrorAction SilentlyContinue
+        if ($process) {
+            Stop-Process -InputObject $process -Force
+            $stoppedProcesses += $process
+        }
+    }
+    if ($stoppedProcesses.Count -gt 0) {
+        $stoppedProcesses | Wait-Process -ErrorAction SilentlyContinue
     }
 }
 

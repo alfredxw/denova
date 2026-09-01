@@ -113,13 +113,13 @@ func newNarrativeStyleResource(novaDir string) Adapter {
 	}.adapter()
 }
 
-func newStoryDirectorResource(novaDir string) Adapter {
-	lib := interactive.NewStoryDirectorLibrary(novaDir)
-	return jsonConfigResource[interactive.StoryDirector]{
-		name: "story_director", description: "Game Preset with reusable Game-mode modules and an optional Markdown planning template.", reference: "references/story-director.md",
-		leasePath: configResourceLeasePath(novaDir, "story_director"),
+func newGamePlanningResource(novaDir string) Adapter {
+	lib := interactive.NewGamePlanningTemplateLibrary(novaDir)
+	return jsonConfigResource[interactive.GamePlanningTemplate]{
+		name: "game_planning", description: "Reusable ordered planning outline. Story-owned narrative, event, rule, state, and image selections are configured separately.", reference: "references/game-planning.md",
+		leasePath: configResourceLeasePath(novaDir, "game_planning"),
 		list:      lib.List, get: lib.Get, create: lib.Create, update: lib.Update, delete: lib.Delete,
-		id: func(value interactive.StoryDirector) string { return value.ID }, revision: func(value interactive.StoryDirector) string { return value.Revision },
+		id: func(value interactive.GamePlanningTemplate) string { return value.ID }, revision: func(value interactive.GamePlanningTemplate) string { return value.Revision },
 	}.adapter()
 }
 

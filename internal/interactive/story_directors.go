@@ -496,23 +496,24 @@ func StoryPlanningGuideMarkdown(director StoryDirector, limitBytes int) string {
 func StoryDirectorRuleSummary(director StoryDirector, limitBytes int) string {
 	director = normalizeStoryDirector(director)
 	payload := map[string]any{
-		"source": map[string]string{
-			"kind":           "game_preset_rule_summary",
-			"game_preset_id": director.ID,
-			"name":           director.Name,
-		},
+		"source": map[string]string{"kind": "story_rule_summary"},
 		"limits": map[string]int{"max_bytes": limitBytes},
 		"rule_policy": map[string]string{
 			"state_consumption_mode": director.Strategy.RuleStateConsumptionMode,
 			"visibility_mode":        director.Strategy.RuleVisibilityMode,
 		},
-		"trpg_system": director.TRPGSystem,
+		"rule_system_id": director.ModuleRefs.RuleSystemID,
+		"trpg_system":    director.TRPGSystem,
 	}
 	data, err := json.MarshalIndent(payload, "", "  ")
 	if err != nil {
 		return ""
 	}
 	return trimBytes(string(data), limitBytes)
+}
+
+func StoryRuleSummary(runtime StoryDirector, limitBytes int) string {
+	return StoryDirectorRuleSummary(runtime, limitBytes)
 }
 
 func storyDirectorActorStateSchemaSummary(system StoryDirectorActorStateSystem) StoryDirectorActorStateSystem {

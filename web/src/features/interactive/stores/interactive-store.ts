@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import type { AgentRuntimeActiveOutput, AgentRuntimeOpenTool, AgentRuntimeQueuedCommand } from '@/lib/api'
 import type { AgentUIMessage } from '@/lib/agent-ui'
-import type { BranchSummary, InteractiveSubmode, InteractiveTurnPersistedEvent, Snapshot, StoryDirector, StorySummary, Teller, TurnEvent } from '../types'
+import type { BranchSummary, GamePlanningTemplate, InteractiveSubmode, InteractiveTurnPersistedEvent, Snapshot, StorySummary, Teller, TurnEvent } from '../types'
 
 const CURRENT_STORY_STORAGE_KEY = 'nova.interactive.current_story.v1'
 const CURRENT_BRANCH_STORAGE_KEY = 'nova.interactive.current_branch.v1'
@@ -37,7 +37,7 @@ export interface StoryStageRuntimeState {
 interface InteractiveStore {
   stories: StorySummary[]
   tellers: Teller[]
-  storyDirectors: StoryDirector[]
+  planningTemplates: GamePlanningTemplate[]
   branches: BranchSummary[]
   snapshot: Snapshot | null
   storyStageRuns: Record<string, StoryStageRunState>
@@ -46,7 +46,7 @@ interface InteractiveStore {
   submode: InteractiveSubmode
   setStories: (stories: StorySummary[], currentStoryId?: string) => void
   setTellers: (tellers: Teller[]) => void
-  setStoryDirectors: (directors: StoryDirector[]) => void
+  setPlanningTemplates: (templates: GamePlanningTemplate[]) => void
   setBranches: (branches: BranchSummary[]) => void
   setSnapshot: (snapshot: Snapshot | null) => void
   applyTurnPersisted: (event: InteractiveTurnPersistedEvent) => Snapshot | null
@@ -144,7 +144,7 @@ function isInteractiveSubmode(value: unknown): value is InteractiveSubmode {
 export const useInteractiveStore = create<InteractiveStore>((set) => ({
   stories: [],
   tellers: [],
-  storyDirectors: [],
+  planningTemplates: [],
   branches: [],
   snapshot: null,
   storyStageRuns: {},
@@ -163,7 +163,7 @@ export const useInteractiveStore = create<InteractiveStore>((set) => ({
     }
   }),
   setTellers: (tellers) => set({ tellers }),
-  setStoryDirectors: (storyDirectors) => set({ storyDirectors }),
+  setPlanningTemplates: (planningTemplates) => set({ planningTemplates }),
   setBranches: (branches) => set((state) => {
     const branchId = rememberedBranchFor(state.currentStoryId, branches) || branches.find(branch => branch.current)?.id || (branches.some(branch => branch.id === state.currentBranchId) ? state.currentBranchId : 'main')
     rememberCurrentBranch(state.currentStoryId, branchId)
@@ -226,7 +226,7 @@ export const useInteractiveStore = create<InteractiveStore>((set) => ({
   resetWorkspaceState: () => set({
     stories: [],
     tellers: [],
-    storyDirectors: [],
+    planningTemplates: [],
     branches: [],
     snapshot: null,
     storyStageRuns: {},

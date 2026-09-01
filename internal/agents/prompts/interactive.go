@@ -31,7 +31,7 @@ type InteractiveStoryPromptInput struct {
 	RuleChecksEnabled         bool
 	CheckDifficultyShift      int
 	CheckRollModifier         int
-	GamePresetRules           string
+	StoryRuleCatalog          string
 	ActorState                string
 	StateSchemaInitialization string
 	PreviousTurnsSummary      string
@@ -150,8 +150,8 @@ func InteractiveStoryRuntimeContext(in InteractiveStoryPromptInput) string {
 	} else {
 		sb.WriteString("Status: disabled. Do not call prepare_interactive_turn. Adjudicate this turn without dice.\n")
 	}
-	if in.RuleChecksEnabled && strings.TrimSpace(in.GamePresetRules) != "" {
-		writeBlock(&sb, "Game Preset Rule Catalog (source: game preset, bounded)", in.GamePresetRules)
+	if in.RuleChecksEnabled && strings.TrimSpace(in.StoryRuleCatalog) != "" {
+		writeBlock(&sb, "Story Rule Catalog (source: story-selected rule system, bounded)", in.StoryRuleCatalog)
 	}
 	if strings.TrimSpace(in.ActorState) != "" {
 		writeBlock(&sb, "Actor State Handbook (source: Snapshot.State.actors + effective Actor schema, bounded Markdown)", in.ActorState)

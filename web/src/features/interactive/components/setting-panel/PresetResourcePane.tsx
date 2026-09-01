@@ -1,8 +1,8 @@
-/** 按资源类型路由到对应预设编辑器的主体区域。 */
+/** Routes each preset resource to its editor body. */
 import type { PresetResourceKind } from '../../preset-ownership'
-import type { ActorStateModule, EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, Teller } from '../../types'
+import type { ActorStateModule, EventPackageModule, GamePlanningTemplate, ImagePreset, RuleSystemModule, Teller } from '../../types'
 import { TellerEditor } from '../SettingPanelTellerEditor'
-import { StoryDirectorEditor } from '../story-director/StoryDirectorEditor'
+import { GamePlanningEditor } from '../game-planning/GamePlanningEditor'
 import { ActorStateEditor } from './ActorStateEditor'
 import { EventPackageEditor } from './EventPackageEditor'
 import { ImagePresetEditor } from './ImagePresetEditor'
@@ -11,18 +11,15 @@ import { RuleSystemEditor } from './RuleSystemEditor'
 interface PresetResourcePaneProps {
   kind: PresetResourceKind
   projectId: string
-  tellers: Teller[]
-  storyDirectors: StoryDirector[]
-  imagePresets: ImagePreset[]
-  eventPackages: EventPackageModule[]
   ruleSystems: RuleSystemModule[]
   actorStates: ActorStateModule[]
   tellerDraft: Teller | null
   setTellerDraft: (draft: Teller | null) => void
   activeSlotId: string
   setActiveSlotId: (value: string) => void
-  storyDirectorDraft: StoryDirector | null
-  setStoryDirectorDraft: (draft: StoryDirector | null) => void
+  storyDirectorDraft: GamePlanningTemplate | null
+  setStoryDirectorDraft: (draft: GamePlanningTemplate | null) => void
+  onCopyPlanningTemplate: (template: GamePlanningTemplate) => void | Promise<void>
   imagePresetDraft: ImagePreset | null
   setImagePresetDraft: (draft: ImagePreset | null) => void
   eventPackageDraft: EventPackageModule | null
@@ -44,15 +41,10 @@ export function PresetResourcePane(props: PresetResourcePaneProps) {
   if (props.kind === 'actor-state') return <ActorStatePane draft={props.actorStateDraft} ruleSystems={props.ruleSystems} setDraft={props.setActorStateDraft} onOpenRuleSystem={props.onOpenRuleSystem} onSave={props.onSave} onValidityChange={props.onValidityChange} />
   if (props.kind === 'director') {
     return (
-      <StoryDirectorPane
+      <GamePlanningPane
         draft={props.storyDirectorDraft}
-        tellers={props.tellers}
-        eventPackages={props.eventPackages}
-        ruleSystems={props.ruleSystems}
-        actorStates={props.actorStates}
-        imagePresets={props.imagePresets}
         setDraft={props.setStoryDirectorDraft}
-        onSave={props.onSave}
+        onCopy={props.onCopyPlanningTemplate}
         onValidityChange={props.onValidityChange}
       />
     )
@@ -80,6 +72,6 @@ function ActorStatePane(props: { draft: ActorStateModule | null; ruleSystems: Ru
   return <ActorStateEditor {...props} />
 }
 
-function StoryDirectorPane(props: { draft: StoryDirector | null; tellers: Teller[]; eventPackages: EventPackageModule[]; ruleSystems: RuleSystemModule[]; actorStates: ActorStateModule[]; imagePresets: ImagePreset[]; setDraft: (draft: StoryDirector | null) => void; onSave: () => void; onValidityChange: (valid: boolean) => void }) {
-  return <StoryDirectorEditor {...props} />
+function GamePlanningPane(props: { draft: GamePlanningTemplate | null; setDraft: (draft: GamePlanningTemplate | null) => void; onCopy: (template: GamePlanningTemplate) => void | Promise<void>; onValidityChange: (valid: boolean) => void }) {
+  return <GamePlanningEditor {...props} />
 }

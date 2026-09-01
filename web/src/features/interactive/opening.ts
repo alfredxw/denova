@@ -6,7 +6,7 @@ export interface StoryCreateInput {
   origin: string
   protagonist?: StoryProtagonist
   story_teller_id: string
-  story_director_id: string
+  planning_template_id: string
   planning_mode: StoryPlanningMode
   module_refs?: StoryDirectorModuleRefs
   reply_target_chars: number

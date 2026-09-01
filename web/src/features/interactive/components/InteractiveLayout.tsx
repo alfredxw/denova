@@ -6,7 +6,7 @@ import { Panel } from 'react-resizable-panels'
 import { toast } from 'sonner'
 import { useShallow } from 'zustand/react/shallow'
 import { readOptionalProjectFile, type LoreItem } from '@/lib/api'
-import { createInteractiveBranch, createInteractiveStory, deleteInteractiveBranch, deleteInteractiveStory, getInteractiveBranches, getInteractiveSnapshot, getInteractiveStories, getInteractiveTellers, getStoryDirectors, selectInteractiveStory, switchInteractiveBranch, updateInteractiveStory } from '../api'
+import { createInteractiveBranch, createInteractiveStory, deleteInteractiveBranch, deleteInteractiveStory, getGamePlanningTemplates, getInteractiveBranches, getInteractiveSnapshot, getInteractiveStories, getInteractiveTellers, selectInteractiveStory, switchInteractiveBranch, updateInteractiveStory } from '../api'
 import { useInteractiveStore } from '../stores/interactive-store'
 import { BranchTimeline } from './BranchTimeline'
 import { DirectorPanel } from './DirectorPanel'
@@ -24,11 +24,10 @@ import { useIsMobile } from '@/hooks/useIsMobile'
 import { MobilePaneHost } from '@/components/layout/mobile-pane-host'
 import { CollapsiblePanelSeparator, CollapsibleResizablePanel, PanelMotionGroup } from '@/components/layout/panel-motion'
 import { usePersistedPanelLayout } from '@/components/layout/use-persisted-panel-layout'
-import type { ImagePreset, InteractiveStoryUpdateInput, InteractiveTurnPersistedEvent, Snapshot, StoryDirector, StorySummary, Teller } from '../types'
+import type { ImagePreset, InteractiveStoryUpdateInput, InteractiveTurnPersistedEvent, Snapshot, StorySummary } from '../types'
 import { INTERACTIVE_OPENING_PRESET_PATH, INTERACTIVE_OPENING_PRESET_UPDATED_EVENT, LEGACY_INTERACTIVE_OPENING_PRESET_PATH, parseBookOpeningPresets, type BookOpeningPreset, type StoryCreateInput } from '../opening'
 import { DEFAULT_NARRATIVE_STYLE_ID, resolveNarrativeStyle } from '../narrative-style'
 import { LoadingState } from '@/components/common/LoadingState'
-import { rebaseStoryModuleRefsForPresetChange } from '../story-module-overrides'
 
 interface InteractiveLayoutProps {
   projectId?: string
@@ -54,7 +53,7 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
   const {
     stories,
     tellers,
-    storyDirectors,
+    planningTemplates,
     branches,
     snapshot,
     currentStoryId,
@@ -62,7 +61,7 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
     submode,
     setStories,
     setTellers,
-    setStoryDirectors,
+    setPlanningTemplates,
     setBranches,
     setSnapshot,
     applyTurnPersisted,
@@ -73,7 +72,7 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
   } = useInteractiveStore(useShallow((state) => ({
     stories: state.stories,
     tellers: state.tellers,
-    storyDirectors: state.storyDirectors,
+    planningTemplates: state.planningTemplates,
     branches: state.branches,
     snapshot: state.snapshot,
     currentStoryId: state.currentStoryId,
@@ -81,7 +80,7 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
     submode: state.submode,
     setStories: state.setStories,
     setTellers: state.setTellers,
-    setStoryDirectors: state.setStoryDirectors,
+    setPlanningTemplates: state.setPlanningTemplates,
     setBranches: state.setBranches,
     setSnapshot: state.setSnapshot,
     applyTurnPersisted: state.applyTurnPersisted,
@@ -207,7 +206,11 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
       }
     }
     setStoryIndexLoading(true)
-    void Promise.all([reloadStories(), getInteractiveTellers().then(setTellers), getStoryDirectors().then(setStoryDirectors)])
+    void Promise.all([
+      reloadStories(),
+      getInteractiveTellers().then(setTellers),
+      getGamePlanningTemplates().then(setPlanningTemplates),
+    ])
       .catch((error) => {
         if (!cancelled) console.error('[InteractiveLayout.tsx] failed to load the interactive workspace index', { workspace, error })
       })
@@ -215,7 +218,7 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
         if (!cancelled) setStoryIndexLoading(false)
       })
     return () => { cancelled = true }
-  }, [reloadStories, resetWorkspaceState, setStoryDirectors, setTellers, workspace])
+  }, [reloadStories, resetWorkspaceState, setPlanningTemplates, setTellers, workspace])
 
   useEffect(() => {
     void reloadBookOpeningPreset()
@@ -317,7 +320,7 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
       origin: input.origin,
       protagonist: input.protagonist,
       story_teller_id: input.story_teller_id,
-      story_director_id: input.story_director_id,
+      planning_template_id: input.planning_template_id,
       planning_mode: input.planning_mode,
       module_refs: input.module_refs,
       reply_target_chars: input.reply_target_chars,
@@ -331,25 +334,9 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
     await reloadSnapshot(undefined, currentStoryId, { silent: true })
   }
 
-  const handleDirectorChange = async (directorId: string) => {
+  const handlePlanningTemplateChange = async (templateId: string) => {
     if (!currentStoryId) return
-    const director = storyDirectors.find((item) => item.id === directorId)
-    const previousDirector = storyDirectors.find((item) => item.id === currentStory?.story_director_id)
-    const nextRefs = rebaseStoryModuleRefsForPresetChange(currentStory, previousDirector?.module_refs, director?.module_refs, (currentStory?.turn_count || 0) > 0)
-    const narrativeStyleID = storyDirectorNarrativeStyleId(director ? { ...director, module_refs: nextRefs } : undefined, tellers, currentStory?.story_teller_id)
-    const input: InteractiveStoryUpdateInput = {
-      story_director_id: directorId,
-      story_teller_id: narrativeStyleID,
-      module_refs: nextRefs,
-    }
-    const nextImagePresetID = nextRefs.image_preset_id || currentStory?.image_settings?.preset_id
-    if (currentStory?.image_settings && nextImagePresetID) {
-      input.image_settings = { ...currentStory.image_settings, preset_id: nextImagePresetID }
-    }
-    if ((currentStory?.turn_count || 0) === 0) {
-      input.state_schema_policy = currentStory?.state_schema_policy
-    }
-    const updated = await updateInteractiveStory(currentStoryId, input)
+    const updated = await updateInteractiveStory(currentStoryId, { planning_template_id: templateId })
     setStories(mergePreferredStory(useInteractiveStore.getState().stories, updated), updated.id)
     await reloadStories(updated)
     await reloadSnapshot(undefined, currentStoryId, { silent: true })
@@ -448,7 +435,7 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
       stories={stories}
       story={currentStory}
       tellers={tellers}
-      storyDirectors={storyDirectors}
+      planningTemplates={planningTemplates}
       imagePresets={imagePresets}
       recentNarrativeStyleID={recentNarrativeStyleID}
       narrativeStyleLoading={narrativeStyleLoading}
@@ -499,10 +486,10 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
                       <DirectorPanel
                         storyId={currentStoryId}
                         story={currentStory}
-                        storyDirectors={storyDirectors}
+                        planningTemplates={planningTemplates}
                         tellers={tellers}
                         imagePresets={imagePresets}
-                        onDirectorChange={handleDirectorChange}
+                        onPlanningTemplateChange={handlePlanningTemplateChange}
                         onStoryUpdate={handleStoryUpdate}
                         onOpenPresets={onOpenPresets}
                         branchId={currentBranchId}
@@ -553,10 +540,10 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
                     <DirectorPanel
                       storyId={currentStoryId}
                       story={currentStory}
-                      storyDirectors={storyDirectors}
+                      planningTemplates={planningTemplates}
                       tellers={tellers}
                       imagePresets={imagePresets}
-                      onDirectorChange={handleDirectorChange}
+                      onPlanningTemplateChange={handlePlanningTemplateChange}
                       onStoryUpdate={handleStoryUpdate}
                       onOpenPresets={onOpenPresets}
                       branchId={currentBranchId}
@@ -587,15 +574,6 @@ export function InteractiveLayout({ projectId = '', workspace, active = true, re
 function isGlobalStyleSceneName(scene: string) {
   const normalized = scene.trim().toLowerCase()
   return normalized === '全局' || normalized === 'global'
-}
-
-function storyDirectorNarrativeStyleId(director: StoryDirector | undefined, tellers: Teller[], fallbackTellerId = '') {
-  const available = tellers
-  const directorTellerID = director?.module_refs?.narrative_style_disabled !== true ? director?.module_refs?.narrative_style_id : ''
-  return available.find((teller) => teller.id === directorTellerID)?.id
-    || available.find((teller) => teller.id === fallbackTellerId)?.id
-    || resolveNarrativeStyle(available, DEFAULT_NARRATIVE_STYLE_ID)?.id
-    || DEFAULT_NARRATIVE_STYLE_ID
 }
 
 function mergePreferredStory(stories: StorySummary[], preferredStory?: StorySummary) {

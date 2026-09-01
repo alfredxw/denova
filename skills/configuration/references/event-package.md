@@ -1,6 +1,6 @@
 # Event package (`event_package`)
 
-An event package is a reusable Game-mode catalog of flexible event cards. A Game Preset references package IDs; editing a package affects future Game Agent planning without turning cards into a fixed chapter outline.
+An event package is a reusable Game-mode catalog of flexible event cards. Stories reference package IDs directly; editing a package affects future Game Agent planning without turning cards into a fixed chapter outline.
 
 This resource uses `user` scope and complete editable-resource replacement. Update/delete require the latest content-addressed `revision` returned by `get`; `updated_at` is display metadata and is not a concurrency token.
 

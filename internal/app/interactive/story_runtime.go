@@ -15,21 +15,32 @@ func (c *Conversation) teller(tellerID string) teller.Definition {
 	return LoadGameTeller(c.novaDir, tellerID)
 }
 
-func (c *Conversation) StoryDirectorForMeta(meta interactive.StoryMeta) interactive.StoryDirector {
-	return LoadStoryDirectorForMeta(c.novaDir, meta)
+func (c *Conversation) StoryRuntimeForMeta(meta interactive.StoryMeta) interactive.StoryDirector {
+	return LoadStoryRuntimeForMeta(c.novaDir, meta)
 }
 
-// LoadStoryDirectorForMeta resolves the legacy storage name as the current
-// game preset. The preset supplies rules, state, narrative style, images, and
-// optional planning guidance; it no longer represents a separate Agent.
-func LoadStoryDirectorForMeta(novaDir string, meta interactive.StoryMeta) interactive.StoryDirector {
-	preset := loadGamePreset(novaDir, meta.StoryDirectorID)
-	if meta.ModuleRefs == nil {
-		return preset
+// LoadStoryRuntimeForMeta assembles runtime resources from the story's own
+// module selections and its independently selected planning outline.
+func LoadStoryRuntimeForMeta(novaDir string, meta interactive.StoryMeta) interactive.StoryDirector {
+	runtime := interactive.DefaultStoryDirector()
+	template := LoadGamePlanningTemplateForMeta(novaDir, meta)
+	runtime.ID = template.ID
+	runtime.Name = template.Name
+	runtime.Description = template.Description
+	runtime.Strategy.PromptMarkdown = interactive.RenderGamePlanningTemplateMarkdown(template)
+	runtime.Strategy.RuleStateConsumptionMode = meta.CheckSettings.RuleStateConsumptionMode
+	runtime.Strategy.RuleVisibilityMode = meta.CheckSettings.RuleVisibilityMode
+	refs := interactive.DefaultStoryDirectorModuleRefs()
+	if meta.ModuleRefs != nil {
+		refs = interactive.NormalizeStoryDirectorModuleRefs(*meta.ModuleRefs)
 	}
-	preset.ModuleRefs = interactive.NormalizeStoryDirectorModuleRefs(*meta.ModuleRefs)
-	preset.ResolvedSnapshot = interactive.StoryDirectorResolvedSnapshot{}
-	return interactive.ResolveStoryDirectorModules(novaDir, preset)
+	runtime.ModuleRefs = refs
+	runtime.ResolvedSnapshot = interactive.StoryDirectorResolvedSnapshot{}
+	return interactive.ResolveStoryDirectorModules(novaDir, runtime)
+}
+
+func LoadGamePlanningTemplateForMeta(novaDir string, meta interactive.StoryMeta) interactive.GamePlanningTemplate {
+	return loadGamePlanningTemplate(novaDir, meta.PlanningTemplateID)
 }
 
 func storyDirectorForSnapshot(preset interactive.StoryDirector, snapshot *interactive.ActorStateSchemaSnapshot) interactive.StoryDirector {
@@ -69,19 +80,19 @@ func loadInteractiveTeller(novaDir, tellerID string) teller.Definition {
 	return fallback
 }
 
-func loadGamePreset(novaDir, presetID string) interactive.StoryDirector {
+func loadGamePlanningTemplate(novaDir, templateID string) interactive.GamePlanningTemplate {
 	if novaDir == "" {
-		return interactive.DefaultStoryDirector()
+		return interactive.DefaultGamePlanningTemplate()
 	}
-	preset, err := interactive.NewStoryDirectorLibrary(novaDir).Get(presetID)
+	item, err := interactive.NewGamePlanningTemplateLibrary(novaDir).Get(templateID)
 	if err == nil {
-		return preset
+		return item
 	}
-	slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-agent] load game preset failed id=%s err=%v", presetID, err))
-	fallback, fallbackErr := interactive.NewStoryDirectorLibrary(novaDir).Get(interactive.DefaultStoryDirectorID)
+	slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-agent] load planning template failed id=%s err=%v", templateID, err))
+	fallback, fallbackErr := interactive.NewGamePlanningTemplateLibrary(novaDir).Get(interactive.DefaultGamePlanningTemplateID)
 	if fallbackErr != nil {
-		slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-agent] load fallback game preset failed err=%v", fallbackErr))
-		return interactive.DefaultStoryDirector()
+		slog.ErrorContext(context.Background(), fmt.Sprintf("[interactive-agent] load fallback planning template failed err=%v", fallbackErr))
+		return interactive.DefaultGamePlanningTemplate()
 	}
 	return fallback
 }

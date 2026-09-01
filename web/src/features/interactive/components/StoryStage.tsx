@@ -50,7 +50,7 @@ import type { InputAreaSendOptions } from '@/components/Chat/InputArea'
 const DEFAULT_READING_FONT_SIZE = 18
 const EMPTY_STAGE_RUN = emptyStoryStageRun()
 
-export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], stories = [], story, tellers = [], storyDirectors = [], imagePresets = [], recentNarrativeStyleID = DEFAULT_NARRATIVE_STYLE_ID, narrativeStyleLoading = false, storyId, branchId, snapshot, snapshotLoading = false, loreItems = [], bookOpeningPresets = [], directorPanelVisible = true, stateDisplayPreference = DEFAULT_STORY_STATE_DISPLAY, onStorySelect = noop, onStoryCreate = noop, onStorySetupUpdate = noop, onNarrativeStyleChange, onStoryDelete = noop, onStoryRename, onRequestLoreInit, onOpenDirectorConfig, onToggleDirectorPanel, onOpenDirectorState, onRequestCreateBranch, onStateDisplayPreferenceChange = noopStateDisplayPreferenceChange, onTurnPersisted = noopTurnPersisted, onDone }: StoryStageProps) {
+export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], stories = [], story, tellers = [], planningTemplates = [], imagePresets = [], recentNarrativeStyleID = DEFAULT_NARRATIVE_STYLE_ID, narrativeStyleLoading = false, storyId, branchId, snapshot, snapshotLoading = false, loreItems = [], bookOpeningPresets = [], directorPanelVisible = true, stateDisplayPreference = DEFAULT_STORY_STATE_DISPLAY, onStorySelect = noop, onStoryCreate = noop, onStorySetupUpdate = noop, onNarrativeStyleChange, onStoryDelete = noop, onStoryRename, onRequestLoreInit, onOpenDirectorConfig, onToggleDirectorPanel, onOpenDirectorState, onRequestCreateBranch, onStateDisplayPreferenceChange = noopStateDisplayPreferenceChange, onTurnPersisted = noopTurnPersisted, onDone }: StoryStageProps) {
   const { t } = useTranslation()
   const conversationBinding = useMemo<ConversationConfigBinding | undefined>(() => storyId ? {
     mode: 'interactive', project_id: projectId, story_id: storyId,
@@ -90,8 +90,8 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
   const rewindTurnId = stageRun.rewindTurnId
   const branchTerminal = snapshot?.current_turn?.terminal_outcome?.terminal === true
   const publicRuleRollVisible = useMemo(
-    () => storyRuleVisibilityMode(story, storyDirectors) === 'public_roll',
-    [story, storyDirectors],
+	() => storyRuleVisibilityMode(story) === 'public_roll',
+	[story],
   )
   const [replyEditTarget, setReplyEditTarget] = useState<{
     turnId: string
@@ -694,7 +694,7 @@ export function StoryStage({ projectId, workspace, styleSceneSuggestions = [], s
                 key={creatingStory ? 'new-story' : story?.id || 'new-story'}
                 projectId={projectId}
                 tellers={tellers}
-                directors={storyDirectors}
+				planningTemplates={planningTemplates}
                 imagePresets={imagePresets}
                 loreItems={loreItems}
                 bookOpeningPresets={bookOpeningPresets}

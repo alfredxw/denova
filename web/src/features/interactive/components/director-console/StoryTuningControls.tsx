@@ -7,7 +7,7 @@ import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldTit
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
-export type TuningSource = 'preset' | 'story' | 'off' | 'locked'
+export type TuningSource = 'story' | 'off' | 'locked'
 
 export function ControlSection({
   icon,
@@ -52,7 +52,7 @@ export function TuningRow({
       <FieldContent className="min-w-0 overflow-hidden">
         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
           <FieldTitle className="max-w-full truncate whitespace-nowrap text-xs" title={title}>{title}</FieldTitle>
-          {source && source !== 'preset' ? <TuningSourceBadge source={source} /> : null}
+          {source ? <TuningSourceBadge source={source} /> : null}
           {busy ? <Loader2 className="size-3 animate-spin text-muted-foreground" aria-label={title} /> : null}
         </div>
         {description ? <FieldDescription className="text-[10px] leading-4">{description}</FieldDescription> : null}

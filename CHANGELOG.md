@@ -58,12 +58,12 @@ Denova records only major user-visible features, important compatibility or data
 - Writing now selects editors by file type: Markdown can switch between the document editor and Monaco source editing, images use preview, and other text such as JSON and JSONL uses Monaco with the same autosave and conflict protection.
 - 工作台改为统一且可自定义的一级导航：写作与游戏成为并列入口，菜单支持调整顺序和显隐；资料库、方案预设和版本管理不再按创作入口重复。方案预设统一展示全部类型，并标明通用、游戏专用或写作专用。
 - The workbench now uses unified, customizable top-level navigation: Writing and Game are peer destinations, menus can be reordered or hidden, and Lore, Presets, and Versions are no longer duplicated by creative context. Presets show every type with fixed Shared, Game-only, or Writing-only labels.
-- 游戏规划整合进 Game Agent：可按故事开启或关闭，并依据可自定义的 Markdown 模板统筹长短期节奏、角色安排与伏笔回收；日常回合可只更新受影响的计划模块，最终计划仍与正文、Actor State 原子提交。游戏控制台集中展示当前计划、状态与分支路线。
-- Game planning now belongs to the Game Agent and can be enabled per story. A customizable Markdown template coordinates long- and short-horizon pacing, cast deployment, and payoffs; routine turns can update only affected plan modules, while the final plan remains atomically committed with prose and Actor State. The Game Console combines the current plan, state, and branch routes.
-- 新故事线采用单页开局流程，可从资料库全部角色中选择主角（“主角”标签只作默认推荐，未命中时由 Game Agent 开局识别）或自定义角色，并统一配置开场来源、游戏预设及完整初始化选项；首回合由服务端根据已保存配置直接生成，不再显示伪装成玩家输入的开场提示。
-- New Game stories use a single-page start flow for choosing any Lore character as the protagonist (the protagonist tag is only the default recommendation, with opening-time Game Agent identification when none matches) or defining a custom character, together with the opening source, Game Preset, and full initialization options. The server generates the first turn directly from saved setup instead of showing a synthetic player prompt.
-- 右侧故事控制台重组为总览、调校与路线；可为当前故事快速覆盖 Game Agent 叙事、导演规划、回合判定难度与骰点修正、互动图像和状态展示，并明确标注预设继承与故事覆盖。
-- The right-side Story Console is reorganized into Overview, Tuning, and Routes. Each story can quickly override Game Agent narrative behavior, director planning, check difficulty and roll modifiers, interactive images, and state display, with clear preset-versus-story provenance.
+- 新增“游戏规划”：提供多套内置规划模板，也可复制后通过有序的“小标题 + 说明”表单维护自定义模板；模板稳定渲染为 Markdown 二级标题，Game Agent 可按故事开关规划并只更新受影响章节，最终计划仍与正文和 Actor State 原子提交。
+- Added Game Planning with multiple built-in Planning Templates. Creators can copy a template and maintain its ordered section titles and guidance through a structured form; templates render to stable Markdown H2 headings, planning remains optional per story, and the final plan is still committed atomically with prose and Actor State.
+- 新故事线采用单页开局流程，可从资料库全部角色中选择主角（“主角”标签只作默认推荐，未命中时由 Game Agent 开局识别）或自定义角色，并统一配置开场来源、规划模板及完整初始化选项；叙事风格、事件包、TRPG 检定、状态系统和图像方案由故事直接选择，不再由组合预设继承。
+- New Game stories use a single-page start flow for choosing any Lore character as the protagonist (the protagonist tag is only the default recommendation, with opening-time Game Agent identification when none matches) or defining a custom character, together with the opening source, Planning Template, and full initialization options. Stories now select narrative style, event packages, TRPG Checks, State Systems, and image presets directly instead of inheriting them from a composition preset.
+- 右侧故事控制台重组为总览、调校与路线；可为当前故事直接调整规划模板、Game Agent 叙事、回合判定与规则展示、互动图像和状态系统，并集中查看当前计划、状态与分支路线。
+- The right-side Story Console is reorganized into Overview, Tuning, and Routes. Each story can directly adjust its Planning Template, Game Agent narrative style, checks and rule visibility, interactive images, and State System while keeping the current plan, state, and branch routes together.
 - 游戏剧情支持从任意已保存 AI 回复就地创建分支，并在游戏控制台集中预览、切换和管理故事线。
 - Game stories can branch directly from any persisted AI reply, with branch preview, switching, and management consolidated in the Game Console.
 - Agent 配置迁入受管 Agents Project，并复用普通 Project 的对话、Files 与版本历史；Agents 页保留原有按 runtime 分组的主 Agent、Custom Agent 与独立 SubAgent 管理，General Agent 可按需读取跨 Project 的只读 Trajectory 证据来维护 Profile。Developer Mode 继续提供 Trajectory 查看与诊断导出。
@@ -73,6 +73,8 @@ Denova records only major user-visible features, important compatibility or data
 
 ### Incompatible data changes / 用户数据不兼容变更
 
+- v0.3.3 的游戏预设不再作为运行时组合配置。故事首次打开时会先备份原故事日志和引用的旧预设，再保留当时实际生效的叙事、事件、检定、状态、图像及规则展示配置，并切换到默认规划模板；旧预设中的自定义规划 Markdown 不自动转换，原内容保留在迁移备份中。
+- v0.3.3 Game Presets no longer act as runtime composition settings. When a story is first opened, Denova backs up its journal and referenced legacy preset, preserves the effective narrative, event, check, state, image, and rule-visibility selections on the story, and selects the default Planning Template. Custom planning Markdown is not converted automatically and remains available in the migration backup.
 - v0.3.3 的独立 Config Manager 会话和专属设置会原样保留，但不再参与运行、展示或自动合并；后续配置对话写入对应 Project 的 Agent 会话存储，并显示在该 Project 的统一会话列表中。
 - Standalone v0.3.3 Config Manager sessions and dedicated settings remain untouched but no longer participate in runtime behavior, appear in the UI, or merge automatically; future configuration conversations use the corresponding Project's Agent session storage and appear in that Project's shared conversation list.
 - v0.3.3 的用户级全局 Automation 任务文件会保留，但不再展示、触发或执行；需要继续使用的任务须在对应 Project 下重新创建。

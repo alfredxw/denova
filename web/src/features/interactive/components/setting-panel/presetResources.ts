@@ -1,9 +1,11 @@
+import type { TFunction } from 'i18next'
 import type { PresetResourceKind } from '../../preset-ownership'
-import type { ActorStateModule, EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, Teller } from '../../types'
+import type { ActorStateModule, EventPackageModule, GamePlanningTemplate, ImagePreset, RuleSystemModule, Teller } from '../../types'
+import { gamePlanningTemplateDescription, gamePlanningTemplateName } from '../../game-planning'
 import { defaultRuleTemplates, normalizeTRPGSystem } from '../preset-config/ruleTemplates'
 
 export const EMPTY_TELLERS: Teller[] = []
-export const EMPTY_STORY_DIRECTORS: StoryDirector[] = []
+export const EMPTY_STORY_DIRECTORS: GamePlanningTemplate[] = []
 export const EMPTY_IMAGE_PRESETS: ImagePreset[] = []
 export const EMPTY_EVENT_PACKAGES: EventPackageModule[] = []
 export const EMPTY_RULE_SYSTEMS: RuleSystemModule[] = []
@@ -28,7 +30,7 @@ export interface PresetDeleteTarget {
 
 export interface PresetDrafts {
   teller: Teller | null
-  director: StoryDirector | null
+  director: GamePlanningTemplate | null
   image: ImagePreset | null
   event: EventPackageModule | null
   rule: RuleSystemModule | null
@@ -59,7 +61,7 @@ export function cloneImagePreset(preset: ImagePreset): ImagePreset {
   return { ...preset }
 }
 
-export function cloneStoryDirector(director: StoryDirector): StoryDirector {
+export function cloneStoryDirector(director: GamePlanningTemplate): GamePlanningTemplate {
   return cloneJSON(director)
 }
 
@@ -89,18 +91,18 @@ export function makeImagePresetPayload(draft: ImagePreset): Partial<ImagePreset>
   }
 }
 
-export function makeStoryDirectorPayload(draft: StoryDirector): Partial<StoryDirector> {
+export function makeStoryDirectorPayload(draft: GamePlanningTemplate): Partial<GamePlanningTemplate> {
   return cloneStoryDirector({
-		...draft,
-		id: draft.id,
-	})
+    ...draft,
+    id: draft.id,
+  })
 }
 
 export function makeEventPackagePayload(draft: EventPackageModule): Partial<EventPackageModule> {
-	return cloneEventPackage({
-		...draft,
-		id: draft.id,
-	})
+  return cloneEventPackage({
+    ...draft,
+    id: draft.id,
+  })
 }
 
 export function makeRuleSystemPayload(draft: RuleSystemModule): Partial<RuleSystemModule> {
@@ -152,31 +154,27 @@ export function newTellerDraft(t?: PresetDraftTranslator): Partial<Teller> {
   }
 }
 
-export function newStoryDirectorDraft(t?: PresetDraftTranslator): Partial<StoryDirector> {
+export function newStoryDirectorDraft(t?: PresetDraftTranslator): Partial<GamePlanningTemplate> {
   return {
-    id: `custom-director-${Date.now()}`,
-    name: presetDraftText(t, 'settingPanel.presetDraft.director.name', '自定义游戏预设'),
-    description: presetDraftText(t, 'settingPanel.presetDraft.director.description', '新的游戏预设，组合叙事风格、事件包、TRPG 检定、状态系统、规划模板和图像方案。'),
-    module_refs: {
-      narrative_style_id: 'rhythm',
-      event_package_ids: ['default'],
-      rule_system_id: 'default',
-      actor_state_id: 'default',
-      image_preset_id: 'game-cg',
-    },
-    strategy: {
-      rule_state_consumption_mode: 'hybrid_auto',
-      rule_visibility_mode: 'audit_only',
-    },
-    event_packages: [],
-    trpg_system: {
-      rule_templates: [],
-    },
-    actor_state: {
-      templates: [],
-      initial_actors: [],
-    },
-    version: 2,
+    id: `custom-planning-${Date.now()}`,
+    name: presetDraftText(t, 'settingPanel.presetDraft.director.name', '自定义规划模板'),
+    description: presetDraftText(
+      t,
+      'settingPanel.presetDraft.director.description',
+      '用有序章节定义当前规划需要持续维护的内容。',
+    ),
+    sections: [
+      {
+        id: 'long-term-direction',
+        title: presetDraftText(t, 'settingPanel.presetDraft.director.sectionTitle', '长期方向'),
+        description: presetDraftText(
+          t,
+          'settingPanel.presetDraft.director.sectionDescription',
+          '记录长期可能性、关键转变与必须留给玩家的选择空间。',
+        ),
+      },
+    ],
+    version: 1,
     custom: true,
   }
 }
@@ -245,7 +243,7 @@ export function isPresetConfigResourceKind(kind: PresetResourceKind) {
 }
 
 export function currentPresetBuiltinOverridden(kind: PresetResourceKind, drafts: PresetDrafts) {
-  if (kind === 'director') return Boolean(drafts.director?.builtin_overridden)
+  if (kind === 'director') return false
   if (kind === 'image') return Boolean(drafts.image?.builtin_overridden)
   if (kind === 'event') return Boolean(drafts.event?.builtin_overridden)
   if (kind === 'rule') return Boolean(drafts.rule?.builtin_overridden)
@@ -253,18 +251,26 @@ export function currentPresetBuiltinOverridden(kind: PresetResourceKind, drafts:
   return Boolean(drafts.teller?.builtin_overridden)
 }
 
-export function presetEditorTitle(kind: PresetResourceKind, drafts: PresetDrafts, t: (key: string) => string) {
+export function presetEditorTitle(kind: PresetResourceKind, drafts: PresetDrafts, t: TFunction) {
   if (kind === 'image') return drafts.image?.name || t('settingPanel.editor.defaultImagePreset')
-  if (kind === 'director') return drafts.director?.name || t('settingPanel.editor.defaultStoryDirector')
+  if (kind === 'director') {
+    return drafts.director
+      ? gamePlanningTemplateName(drafts.director, t)
+      : t('settingPanel.editor.defaultStoryDirector')
+  }
   if (kind === 'event') return drafts.event?.name || t('settingPanel.editor.defaultEventPackage')
   if (kind === 'rule') return drafts.rule?.name || t('settingPanel.editor.defaultRuleSystem')
   if (kind === 'actor-state') return drafts.actorState?.name || t('settingPanel.editor.defaultActorState')
   return drafts.teller?.name || t('settingPanel.editor.defaultTeller')
 }
 
-export function presetEditorSubtitle(kind: PresetResourceKind, drafts: PresetDrafts, t: (key: string) => string) {
+export function presetEditorSubtitle(kind: PresetResourceKind, drafts: PresetDrafts, t: TFunction) {
   if (kind === 'image') return drafts.image?.description || t('settingPanel.editor.imagePresetSubtitle')
-  if (kind === 'director') return drafts.director?.description || t('settingPanel.editor.storyDirectorSubtitle')
+  if (kind === 'director') {
+    return drafts.director
+      ? gamePlanningTemplateDescription(drafts.director, t)
+      : t('settingPanel.editor.storyDirectorSubtitle')
+  }
   if (kind === 'event') return drafts.event?.description || t('settingPanel.editor.eventPackageSubtitle')
   if (kind === 'rule') return drafts.rule?.description || t('settingPanel.editor.ruleSystemSubtitle')
   if (kind === 'actor-state') return drafts.actorState?.description || t('settingPanel.editor.actorStateSubtitle')

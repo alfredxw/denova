@@ -319,34 +319,19 @@ function SubAgentEditor({ id, agent, subAgent, toolRows, profiles, onChange }: {
           className="min-h-28 resize-y text-xs leading-5"
         />
       </Field>
-      <div className="grid gap-3 md:grid-cols-2">
-        <Field label="Temperature">
-          <Input
-            type="number"
-            aria-label="Temperature"
-            min={0}
-            max={2}
-            step={0.1}
-            value={model.temperature ?? ''}
-            placeholder={t('agents.option.inherit')}
-            onChange={(e) => setModel({ temperature: e.target.value === '' ? null : Number(e.target.value) })}
-            className="h-7 text-xs"
-          />
-        </Field>
-        <Field label={t('agents.field.thinkingLevel')}>
-          <Select value={model.thinking_level || '__inherit__'} onValueChange={(level) => setModel({ thinking_level: level === '__inherit__' ? '' : level })}>
-            <SelectTrigger size="sm" className="w-full" aria-label={t('agents.field.thinkingLevel')}><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                <SelectItem value="__inherit__">{t('agents.option.inherit')}</SelectItem>
-                {THINKING_LEVELS.map((level) => (
-                  <SelectItem key={level} value={level}>{t(`agents.thinkingLevel.${level}`)}</SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-        </Field>
-      </div>
+      <Field label={t('agents.field.thinkingLevel')}>
+        <Select value={model.thinking_level || '__inherit__'} onValueChange={(level) => setModel({ thinking_level: level === '__inherit__' ? '' : level })}>
+          <SelectTrigger size="sm" className="w-full" aria-label={t('agents.field.thinkingLevel')}><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              <SelectItem value="__inherit__">{t('agents.option.inherit')}</SelectItem>
+              {THINKING_LEVELS.map((level) => (
+                <SelectItem key={level} value={level}>{t(`agents.thinkingLevel.${level}`)}</SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+      </Field>
       <div>
         <div className="mb-1.5 text-[var(--nova-text-muted)]">{t('agents.subAgents.parents')}</div>
         <div className="flex flex-wrap gap-2">

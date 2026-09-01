@@ -1,14 +1,22 @@
-import type { BranchSummary, ImagePreset, InteractiveStoryUpdateInput, Snapshot, StoryDirector, StorySummary, Teller } from '../types'
+import type {
+  BranchSummary,
+  GamePlanningTemplate,
+  ImagePreset,
+  InteractiveStoryUpdateInput,
+  Snapshot,
+  StorySummary,
+  Teller,
+} from '../types'
 import { DirectorConsole } from './director-console/DirectorConsole'
 import { DEFAULT_STORY_STATE_DISPLAY, type StoryStateDisplayPreference } from './story-state/display-preference'
 
 interface DirectorPanelProps {
   storyId?: string
   story?: StorySummary
-  storyDirectors?: StoryDirector[]
+  planningTemplates?: GamePlanningTemplate[]
   tellers?: Teller[]
   imagePresets?: ImagePreset[]
-  onDirectorChange?: (directorId: string) => void | Promise<void>
+  onPlanningTemplateChange?: (templateId: string) => void | Promise<void>
   onStoryUpdate?: (input: InteractiveStoryUpdateInput) => void | Promise<void>
   onOpenPresets?: () => void
   branchId?: string
@@ -20,15 +28,31 @@ interface DirectorPanelProps {
   onOpenBranchTimeline: () => void
 }
 
-export function DirectorPanel({ storyId, story, storyDirectors = [], tellers = [], imagePresets = [], onDirectorChange, onStoryUpdate, onOpenPresets, branchId, branches, snapshot, stateDisplayPreference = DEFAULT_STORY_STATE_DISPLAY, onStateDisplayPreferenceChange = noopStateDisplayPreferenceChange, onSwitchBranch, onOpenBranchTimeline }: DirectorPanelProps) {
+export function DirectorPanel({
+  storyId,
+  story,
+  planningTemplates = [],
+  tellers = [],
+  imagePresets = [],
+  onPlanningTemplateChange,
+  onStoryUpdate,
+  onOpenPresets,
+  branchId,
+  branches,
+  snapshot,
+  stateDisplayPreference = DEFAULT_STORY_STATE_DISPLAY,
+  onStateDisplayPreferenceChange = noopStateDisplayPreferenceChange,
+  onSwitchBranch,
+  onOpenBranchTimeline,
+}: DirectorPanelProps) {
   return (
     <DirectorConsole
       storyId={storyId}
       story={story}
-      storyDirectors={storyDirectors}
+      planningTemplates={planningTemplates}
       tellers={tellers}
       imagePresets={imagePresets}
-      onDirectorChange={onDirectorChange}
+      onPlanningTemplateChange={onPlanningTemplateChange}
       onStoryUpdate={onStoryUpdate}
       onOpenPresets={onOpenPresets}
       branchId={branchId || snapshot?.branch_id || ''}

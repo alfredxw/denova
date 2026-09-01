@@ -9,11 +9,11 @@ import { Spinner } from '@/components/ui/spinner'
 import type { LoreItem } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { hasLoreProtagonistTag } from '@/features/lore/tags'
-import { gamePresetName } from '../game-preset'
+import { gamePlanningTemplateName } from '../game-planning'
 import { normalizeStoryImageSettings } from '../image-settings'
 import { DEFAULT_NARRATIVE_STYLE_ID, resolveNarrativeStyle } from '../narrative-style'
 import { DEFAULT_INTERACTIVE_CHOICE_COUNT, DEFAULT_INTERACTIVE_REPLY_TARGET_CHARS, truncateStoryOpeningText, type BookOpeningPreset, type StoryCreateInput } from '../opening'
-import type { ImagePreset, StoryDirector, StoryOpeningConfig, StoryProtagonist, StorySummary, Teller } from '../types'
+import type { GamePlanningTemplate, ImagePreset, StoryOpeningConfig, StoryProtagonist, StorySummary, Teller } from '../types'
 import { StoryOpeningSelector } from './story-setup/StoryOpeningSelector'
 import { StoryProtagonistSelector } from './story-setup/StoryProtagonistSelector'
 import { StorySetupAdvanced, type StorySetupSettings } from './story-setup/StorySetupAdvanced'
@@ -21,7 +21,7 @@ import { StorySetupAdvanced, type StorySetupSettings } from './story-setup/Story
 interface NewStorySetupPanelProps {
   projectId: string
   tellers: Teller[]
-  directors: StoryDirector[]
+  planningTemplates: GamePlanningTemplate[]
   imagePresets: ImagePreset[]
   loreItems?: LoreItem[]
   bookOpeningPresets?: BookOpeningPreset[]
@@ -38,7 +38,7 @@ interface NewStorySetupPanelProps {
 export function NewStorySetupPanel({
   projectId,
   tellers,
-  directors,
+  planningTemplates,
   imagePresets,
   loreItems = [],
   bookOpeningPresets = [],
@@ -52,21 +52,21 @@ export function NewStorySetupPanel({
   onCreate,
 }: NewStorySetupPanelProps) {
   const { t } = useTranslation()
-  const initialDirector = directors.find((item) => item.id === story?.story_director_id) || directors[0]
+  const initialTemplate = planningTemplates.find((item) => item.id === story?.planning_template_id) || planningTemplates[0]
   const recentTeller = resolveNarrativeStyle(tellers, recentNarrativeStyleID)
   const initialProtagonist = story?.protagonist || defaultStoryProtagonist(loreItems)
-  const [directorId, setDirectorId] = useState(initialDirector?.id || 'default')
+  const [planningTemplateId, setPlanningTemplateId] = useState(initialTemplate?.id || 'default')
   const [protagonist, setProtagonist] = useState<StoryProtagonist>(initialProtagonist)
   const [opening, setOpening] = useState<StoryOpeningConfig>(() => story?.opening || { mode: 'custom' })
-  const [settings, setSettings] = useState<StorySetupSettings>(() => initialSettings(story, initialDirector, recentTeller?.id))
+  const [settings, setSettings] = useState<StorySetupSettings>(() => initialSettings(story, recentTeller?.id))
   const [advancedOpen, setAdvancedOpen] = useState(true)
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState('')
   const initialProtagonistRef = useRef<StoryProtagonist>(initialProtagonist)
   const protagonistSelectionTouchedRef = useRef(false)
   const narrativeStyleSelectionLockedRef = useRef(Boolean(story))
-  const director = directors.find((item) => item.id === directorId) || directors[0]
-  const directorName = director ? gamePresetName(director, t) : directorId
+  const planningTemplate = planningTemplates.find((item) => item.id === planningTemplateId) || planningTemplates[0]
+  const planningTemplateName = planningTemplate ? gamePlanningTemplateName(planningTemplate, t) : planningTemplateId
   const advancedSummary = useMemo(() => t('storyPicker.setup.advanced.summary', {
     planning: settings.planningEnabled ? t('storyPicker.setup.advanced.planningOn') : t('storyPicker.setup.advanced.planningOff'),
     checks: settings.moduleRefs.rule_system_disabled ? t('storyPicker.setup.advanced.checksOff') : t('storyPicker.setup.advanced.checksOn'),
@@ -92,18 +92,6 @@ export function NewStorySetupPanel({
     setProtagonist(next)
   }
 
-  const selectDirector = (id: string) => {
-    const next = directors.find((item) => item.id === id)
-    const moduleRefs = { ...(next?.module_refs || {}) }
-    setDirectorId(id)
-    narrativeStyleSelectionLockedRef.current = true
-    setSettings((current) => ({
-      ...current,
-      moduleRefs,
-      imageSettings: { ...current.imageSettings, preset_id: moduleRefs.image_preset_id || current.imageSettings.preset_id },
-    }))
-  }
-
   const submit = async () => {
     if (creating) return
     setError('')
@@ -117,7 +105,7 @@ export function NewStorySetupPanel({
       const tellerID = resolveNarrativeStyle(tellers, settings.moduleRefs.narrative_style_id || recentNarrativeStyleID)?.id || DEFAULT_NARRATIVE_STYLE_ID
       const moduleRefs = {
         ...settings.moduleRefs,
-        actor_state_id: settings.moduleRefs.actor_state_id || director?.module_refs?.actor_state_id,
+        actor_state_id: settings.moduleRefs.actor_state_id || 'default',
         actor_state_disabled: settings.stateSchemaMode === 'generate',
       }
       const protagonistInput = protagonistForSubmit(protagonist)
@@ -128,7 +116,7 @@ export function NewStorySetupPanel({
         origin: story?.origin || '',
         ...(includeProtagonist ? { protagonist: protagonistInput } : {}),
         story_teller_id: tellerID,
-        story_director_id: directorId,
+        planning_template_id: planningTemplateId,
         planning_mode: settings.planningEnabled ? 'enabled' : 'disabled',
         module_refs: moduleRefs,
         reply_target_chars: settings.replyTargetChars,
@@ -154,7 +142,7 @@ export function NewStorySetupPanel({
             <p className="mt-1 text-sm text-muted-foreground">{t('storyPicker.setup.description')}</p>
           </header>
 
-          <div className="space-y-4">
+          <div className="flex flex-col gap-4">
             <div className="grid items-start gap-4 lg:grid-cols-[minmax(20rem,0.92fr)_minmax(0,1.08fr)]">
               <StoryProtagonistSelector projectId={projectId} value={protagonist} loreItems={loreItems} onChange={changeProtagonist} onRequestLoreInit={onRequestLoreInit} />
               <StoryOpeningSelector value={opening} presets={bookOpeningPresets} onChange={setOpening} />
@@ -173,16 +161,38 @@ export function NewStorySetupPanel({
               </CollapsibleTrigger>
               <CollapsibleContent className="border-t border-border bg-muted/20 p-3 sm:p-4">
                 <Field className="mb-3 rounded-lg border border-border bg-background p-3 sm:max-w-xl">
-                  <FieldLabel htmlFor="story-setup-director">{t('storyPicker.storyDirector')}</FieldLabel>
-                  <Select value={directorId} onValueChange={selectDirector}>
-                    <SelectTrigger id="story-setup-director" className="w-full bg-background"><SelectValue /></SelectTrigger>
+                  <FieldLabel htmlFor="story-setup-planning-template">{t('storyPicker.gamePlanning')}</FieldLabel>
+                  <Select value={planningTemplateId} onValueChange={setPlanningTemplateId}>
+                    <SelectTrigger id="story-setup-planning-template" className="w-full bg-background">
+                      <SelectValue />
+                    </SelectTrigger>
                     <SelectContent position="popper">
-                      <SelectGroup>{directors.map((item) => <SelectItem key={item.id} value={item.id}>{gamePresetName(item, t)}</SelectItem>)}</SelectGroup>
+                      <SelectGroup>
+                        {planningTemplates.map((item) => (
+                          <SelectItem key={item.id} value={item.id}>
+                            {gamePlanningTemplateName(item, t)}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
                     </SelectContent>
                   </Select>
-                  <FieldDescription className="text-xs">{t('storyPicker.setup.presetHint', { director: directorName })}</FieldDescription>
+                  <FieldDescription className="text-xs">
+                    {t('storyPicker.setup.planningTemplateHint', { template: planningTemplateName })}
+                  </FieldDescription>
                 </Field>
-                <StorySetupAdvanced projectId={projectId} newStory={!story} director={director} tellers={tellers} imagePresets={imagePresets} value={settings} onChange={setSettings} onNarrativeStyleChange={(id) => { narrativeStyleSelectionLockedRef.current = true; return onNarrativeStyleChange?.(id) }} onOpenPresets={onOpenPresets} />
+                <StorySetupAdvanced
+                  projectId={projectId}
+                  newStory={!story}
+                  tellers={tellers}
+                  imagePresets={imagePresets}
+                  value={settings}
+                  onChange={setSettings}
+                  onNarrativeStyleChange={(id) => {
+                    narrativeStyleSelectionLockedRef.current = true
+                    return onNarrativeStyleChange?.(id)
+                  }}
+                  onOpenPresets={onOpenPresets}
+                />
               </CollapsibleContent>
             </Collapsible>
           </div>
@@ -203,8 +213,15 @@ export function NewStorySetupPanel({
   )
 }
 
-function initialSettings(story: StorySummary | undefined, director: StoryDirector | undefined, recentTellerID?: string): StorySetupSettings {
-  const moduleRefs = { ...(story?.module_refs || director?.module_refs || {}) }
+function initialSettings(story: StorySummary | undefined, recentTellerID?: string): StorySetupSettings {
+  const moduleRefs = {
+    narrative_style_id: 'rhythm',
+    event_package_ids: ['default'],
+    rule_system_id: 'default',
+    actor_state_id: 'default',
+    image_preset_id: 'game-cg',
+    ...(story?.module_refs || {}),
+  }
   if (!story && recentTellerID) moduleRefs.narrative_style_id = recentTellerID
   const imageSettings = normalizeStoryImageSettings(story?.image_settings || { mode: 'manual', interval_turns: 3, preset_id: moduleRefs.image_preset_id || 'game-cg' })
   return {
@@ -214,7 +231,12 @@ function initialSettings(story: StorySummary | undefined, director: StoryDirecto
     replyTargetChars: story?.reply_target_chars || DEFAULT_INTERACTIVE_REPLY_TARGET_CHARS,
     choiceCount: story?.choice_count || DEFAULT_INTERACTIVE_CHOICE_COUNT,
     imageSettings,
-    checkSettings: story?.check_settings || { difficulty_shift: 0, roll_modifier: 0 },
+    checkSettings: story?.check_settings || {
+      difficulty_shift: 0,
+      roll_modifier: 0,
+      rule_state_consumption_mode: 'hybrid_auto',
+      rule_visibility_mode: 'audit_only',
+    },
     stateSchemaMode: story?.state_schema_policy?.mode || 'adapt_template',
   }
 }

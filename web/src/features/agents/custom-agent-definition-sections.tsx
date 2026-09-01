@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { Bot, ChevronDown, ChevronRight, Database, Pin, Plus, ScrollText, Shield, Trash2, Wrench } from 'lucide-react'
+import { Bot, ChevronDown, ChevronRight, Database, Pin, Plus, ScrollText, Trash2, Wrench } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -10,8 +10,6 @@ import type {
   AgentContextBinding,
   AgentDelegationPolicy,
   AgentSkillPolicy,
-  CustomAgentConfig,
-  ResolvedAgentDefinition,
   SubAgentConfig,
 } from '@/features/settings/types'
 import type { SkillSummary } from '@/lib/api'
@@ -28,8 +26,6 @@ export function CustomAgentBehaviorSection({ instructions, runtimeContract, outp
   return (
     <section className="flex flex-col gap-3 pb-5">
       <SectionTitle icon={ScrollText} title={t('agents.section.behavior')} />
-      <ReadonlyContractBlock title={t('agents.prompt.source.runtime_contract')} content={runtimeContract} />
-      <ReadonlyContractBlock title={t('agents.prompt.source.output_protocol')} content={outputProtocol} />
       <label className="grid gap-1.5 text-xs">
         <span className="font-medium text-[var(--nova-text)]">{t('agents.custom.instructions')}</span>
         <span className="text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('agents.custom.instructionsDescription')}</span>
@@ -41,6 +37,8 @@ export function CustomAgentBehaviorSection({ instructions, runtimeContract, outp
           className="min-h-64 resize-y font-mono text-xs leading-5"
         />
       </label>
+      <ReadonlyContractBlock title={t('agents.prompt.source.runtime_contract')} content={runtimeContract} />
+      <ReadonlyContractBlock title={t('agents.prompt.source.output_protocol')} content={outputProtocol} />
     </section>
   )
 }
@@ -232,38 +230,6 @@ export function AgentContextBindingsSection({ value, onChange }: {
       })}
     </section>
   )
-}
-
-export function ResolvedAgentSection({ agent, resolved, tools }: {
-  agent: CustomAgentConfig
-  resolved?: ResolvedAgentDefinition
-  tools?: AgentToolDefinition[]
-}) {
-  const { t } = useTranslation()
-  const allowedTools = Array.from(new Set(tools?.filter((item) => item.allowed).flatMap((item) => item.toolNames) ?? [])).sort()
-  const policy = agent.skill_policy ?? resolved?.skill_policy ?? {}
-  const bindings = agent.context_bindings ?? resolved?.context_bindings ?? []
-  return (
-    <section className="flex flex-col gap-3 pb-5">
-      <SectionTitle icon={Shield} title={t('agents.section.resolved')} />
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-        <ResolvedCard label={t('agents.resolved.contract')} value={resolved?.contract || agent.contract || '—'} />
-        <ResolvedCard label={t('agents.resolved.revision')} value={(resolved?.revision || '—').slice(0, 12)} mono />
-        <ResolvedCard label={t('agents.resolved.instructions')} value={t('agents.resolved.bytes', { count: new Blob([agent.instructions ?? resolved?.instructions ?? '']).size })} />
-        <ResolvedCard label={t('agents.resolved.tools')} value={String(allowedTools.length)} />
-        <ResolvedCard label={t('agents.resolved.skills')} value={`${policy.mode ?? 'managed'} · +${policy.pinned?.length ?? 0} / −${policy.blocked?.length ?? 0}`} />
-        <ResolvedCard label={t('agents.resolved.context')} value={String(bindings.length)} />
-      </div>
-      <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-3">
-        <div className="mb-2 text-[10px] uppercase tracking-[0.12em] text-[var(--nova-text-faint)]">{t('agents.resolved.toolNames')}</div>
-        <div className="flex flex-wrap gap-1.5">{allowedTools.length ? allowedTools.map((name) => <span key={name} className="rounded border border-[var(--nova-border)] px-1.5 py-0.5 font-mono text-[10px]">{name}</span>) : '—'}</div>
-      </div>
-    </section>
-  )
-}
-
-function ResolvedCard({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
-  return <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] px-3 py-2"><div className="text-[10px] uppercase text-[var(--nova-text-faint)]">{label}</div><div className={`mt-1 truncate text-xs ${mono ? 'font-mono' : ''}`}>{value}</div></div>
 }
 
 function EmptyHint({ children }: { children: ReactNode }) {

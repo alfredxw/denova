@@ -46,7 +46,7 @@ func TestInteractiveSnapshotKeepsCanonicalStoryWhenAgentProjectionFails(t *testi
 
 func TestInteractiveProductDefaultsEnableGameAgentPlanning(t *testing.T) {
 	service := &InteractiveAppService{app: &App{}}
-	req, err := service.withStoryDirectorDefaults(interactive.CreateStoryRequest{Title: "planning default"})
+	req, err := service.withStoryCreationDefaults(interactive.CreateStoryRequest{Title: "planning default"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +55,7 @@ func TestInteractiveProductDefaultsEnableGameAgentPlanning(t *testing.T) {
 	}
 
 	explicit := interactive.CreateStoryRequest{Title: "free play", PlanningMode: interactive.StoryPlanningModeDisabled}
-	req, err = service.withStoryDirectorDefaults(explicit)
+	req, err = service.withStoryCreationDefaults(explicit)
 	if err != nil {
 		t.Fatal(err)
 	}

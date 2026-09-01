@@ -11,7 +11,7 @@ const story: StorySummary = {
   origin: '',
   protagonist: { mode: 'custom', name: '林川' },
   story_teller_id: 'classic',
-  story_director_id: 'default',
+	planning_template_id: 'default',
   planning_mode: 'enabled',
   reply_target_chars: 2000,
   choice_count: 5,

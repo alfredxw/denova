@@ -14,7 +14,7 @@ type CreateStoryRequest struct {
 	Origin                    string                            `json:"origin"`
 	Protagonist               StoryProtagonist                  `json:"protagonist,omitempty"`
 	StoryTellerID             string                            `json:"story_teller_id"`
-	StoryDirectorID           string                            `json:"story_director_id,omitempty"`
+	PlanningTemplateID        string                            `json:"planning_template_id,omitempty"`
 	PlanningMode              string                            `json:"planning_mode,omitempty"`
 	ModuleRefs                *StoryDirectorModuleRefs          `json:"module_refs,omitempty"`
 	ReplyTargetChars          int                               `json:"reply_target_chars"`
@@ -127,7 +127,7 @@ type UpdateStoryRequest struct {
 	Origin                    *string                          `json:"origin,omitempty"`
 	Protagonist               *StoryProtagonist                `json:"protagonist,omitempty"`
 	StoryTellerID             string                           `json:"story_teller_id"`
-	StoryDirectorID           string                           `json:"story_director_id,omitempty"`
+	PlanningTemplateID        string                           `json:"planning_template_id,omitempty"`
 	PlanningMode              *string                          `json:"planning_mode,omitempty"`
 	ModuleRefs                *StoryDirectorModuleRefs         `json:"module_refs,omitempty"`
 	ReplyTargetChars          *int                             `json:"reply_target_chars,omitempty"`
@@ -155,25 +155,26 @@ type Index struct {
 }
 
 type StorySummary struct {
-	ID                string                   `json:"id"`
-	Title             string                   `json:"title"`
-	TitleSource       string                   `json:"title_source"`
-	Origin            string                   `json:"origin"`
-	Protagonist       StoryProtagonist         `json:"protagonist"`
-	StoryTellerID     string                   `json:"story_teller_id"`
-	StoryDirectorID   string                   `json:"story_director_id"`
-	PlanningMode      string                   `json:"planning_mode"`
-	ModuleRefs        *StoryDirectorModuleRefs `json:"module_refs,omitempty"`
-	ReplyTargetChars  int                      `json:"reply_target_chars"`
-	ChoiceCount       int                      `json:"choice_count"`
-	Opening           StoryOpeningConfig       `json:"opening"`
-	ImageSettings     StoryImageSettings       `json:"image_settings"`
-	CheckSettings     StoryCheckSettings       `json:"check_settings"`
-	StateSchemaPolicy *StoryStateSchemaPolicy  `json:"state_schema_policy,omitempty"`
-	CreatedAt         string                   `json:"created_at"`
-	UpdatedAt         string                   `json:"updated_at"`
-	Branches          int                      `json:"branches"`
-	Events            int                      `json:"events"`
+	ID                    string                   `json:"id"`
+	Title                 string                   `json:"title"`
+	TitleSource           string                   `json:"title_source"`
+	Origin                string                   `json:"origin"`
+	Protagonist           StoryProtagonist         `json:"protagonist"`
+	StoryTellerID         string                   `json:"story_teller_id"`
+	PlanningTemplateID    string                   `json:"planning_template_id"`
+	LegacyStoryDirectorID string                   `json:"story_director_id,omitempty"`
+	PlanningMode          string                   `json:"planning_mode"`
+	ModuleRefs            *StoryDirectorModuleRefs `json:"module_refs,omitempty"`
+	ReplyTargetChars      int                      `json:"reply_target_chars"`
+	ChoiceCount           int                      `json:"choice_count"`
+	Opening               StoryOpeningConfig       `json:"opening"`
+	ImageSettings         StoryImageSettings       `json:"image_settings"`
+	CheckSettings         StoryCheckSettings       `json:"check_settings"`
+	StateSchemaPolicy     *StoryStateSchemaPolicy  `json:"state_schema_policy,omitempty"`
+	CreatedAt             string                   `json:"created_at"`
+	UpdatedAt             string                   `json:"updated_at"`
+	Branches              int                      `json:"branches"`
+	Events                int                      `json:"events"`
 	// TurnCount is the canonical depth of the story's current branch. Journal
 	// side events and turns that only exist on another branch are excluded.
 	TurnCount int `json:"turn_count"`
@@ -232,6 +233,7 @@ type StoryMeta struct {
 	Origin                    string                           `json:"origin"`
 	Protagonist               StoryProtagonist                 `json:"protagonist"`
 	StoryTellerID             string                           `json:"story_teller_id"`
+	PlanningTemplateID        string                           `json:"planning_template_id,omitempty"`
 	StoryDirectorID           string                           `json:"story_director_id,omitempty"`
 	PlanningMode              string                           `json:"planning_mode"`
 	ModuleRefs                *StoryDirectorModuleRefs         `json:"module_refs,omitempty"`

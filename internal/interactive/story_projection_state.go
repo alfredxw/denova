@@ -224,19 +224,26 @@ func stateBeforeTurn(path []StoryEventRecord, turnID string) map[string]any {
 }
 
 func (s *Store) storyDirectorForMeta(meta StoryMeta) StoryDirector {
-	if strings.TrimSpace(s.novaDir) == "" {
-		return DefaultStoryDirector()
+	runtime := DefaultStoryDirector()
+	template := DefaultGamePlanningTemplate()
+	if strings.TrimSpace(s.novaDir) != "" {
+		if selected, err := NewGamePlanningTemplateLibrary(s.novaDir).Get(meta.PlanningTemplateID); err == nil {
+			template = selected
+		}
 	}
-	directorID := normalizedStoryDirectorID(meta.StoryDirectorID)
-	director, err := NewStoryDirectorLibrary(s.novaDir).Get(directorID)
-	if err == nil {
-		return director
+	runtime.ID = template.ID
+	runtime.Name = template.Name
+	runtime.Description = template.Description
+	runtime.Strategy.PromptMarkdown = RenderGamePlanningTemplateMarkdown(template)
+	runtime.Strategy.RuleStateConsumptionMode = meta.CheckSettings.RuleStateConsumptionMode
+	runtime.Strategy.RuleVisibilityMode = meta.CheckSettings.RuleVisibilityMode
+	refs := DefaultStoryDirectorModuleRefs()
+	if meta.ModuleRefs != nil {
+		refs = NormalizeStoryDirectorModuleRefs(*meta.ModuleRefs)
 	}
-	fallback, fallbackErr := NewStoryDirectorLibrary(s.novaDir).Get(DefaultStoryDirectorID)
-	if fallbackErr == nil {
-		return fallback
-	}
-	return DefaultStoryDirector()
+	runtime.ModuleRefs = refs
+	runtime.ResolvedSnapshot = StoryDirectorResolvedSnapshot{}
+	return ResolveStoryDirectorModules(s.novaDir, runtime)
 }
 
 func terminalOutcomeFromRuleResolution(resolution RuleResolution, turnID, narrative string) *TerminalOutcome {

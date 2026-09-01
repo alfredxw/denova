@@ -13,7 +13,7 @@ export interface StorySummary {
   origin: string
   protagonist: StoryProtagonist
   story_teller_id: string
-  story_director_id: string
+  planning_template_id: string
   planning_mode?: StoryPlanningMode
   module_refs?: StoryDirectorModuleRefs
   reply_target_chars: number
@@ -92,20 +92,20 @@ export interface ImagePreset {
   revision?: string
 }
 
-export interface StoryDirector {
+export interface GamePlanningSection {
+  id: string
+  title: string
+  description: string
+}
+
+export interface GamePlanningTemplate {
   version: number
   id: string
   name: string
   description: string
-  module_refs?: StoryDirectorModuleRefs
-  strategy: StoryDirectorStrategy
-  event_packages?: TellerEventPackage[]
-  trpg_system: StoryDirectorTRPGSystem
-  actor_state?: StoryDirectorActorStateSystem
-  resolved_snapshot?: StoryDirectorResolvedSnapshot
+  sections: GamePlanningSection[]
   path?: string
   custom: boolean
-  builtin_overridden?: boolean
   invalid?: boolean
   error?: string
   created_at?: string
@@ -124,25 +124,6 @@ export interface StoryDirectorModuleRefs {
   actor_state_disabled?: boolean
   image_preset_id?: string
   image_preset_disabled?: boolean
-}
-
-interface StoryDirectorModuleWarning {
-  module: string
-  id?: string
-  message: string
-}
-
-interface StoryDirectorResolvedSnapshot {
-  version: number
-  resolved_at?: string
-  status?: string
-  warnings?: StoryDirectorModuleWarning[]
-  module_refs?: StoryDirectorModuleRefs
-  narrative_style_id?: string
-  image_preset_id?: string
-  event_packages?: TellerEventPackage[]
-  trpg_system?: StoryDirectorTRPGSystem
-  actor_state?: StoryDirectorActorStateSystem
 }
 
 export interface EventPackageModule {
@@ -194,12 +175,6 @@ export interface ActorStateModule {
   revision?: string
 }
 
-interface StoryDirectorStrategy {
-  rule_state_consumption_mode?: 'hybrid_auto' | 'suggestions_only' | string
-  rule_visibility_mode?: 'audit_only' | 'public_roll' | string
-  prompt_markdown?: string
-}
-
 export type StoryProtagonistMode = 'default' | 'custom' | 'lore'
 
 export interface StoryProtagonist {
@@ -213,6 +188,8 @@ export interface StoryProtagonist {
 export interface StoryCheckSettings {
   difficulty_shift: number
   roll_modifier: number
+  rule_state_consumption_mode?: 'hybrid_auto' | 'suggestions_only'
+  rule_visibility_mode?: 'audit_only' | 'public_roll'
 }
 
 export interface InteractiveStoryUpdateInput {
@@ -220,7 +197,7 @@ export interface InteractiveStoryUpdateInput {
   origin?: string
   protagonist?: StoryProtagonist
   story_teller_id?: string
-  story_director_id?: string
+  planning_template_id?: string
   planning_mode?: StoryPlanningMode
   module_refs?: StoryDirectorModuleRefs
   reply_target_chars?: number
@@ -720,7 +697,7 @@ export interface TerminalOutcome {
 }
 
 export interface ActorTraitRollRequest {
-  story_director_id?: string
+  actor_state_id?: string
   actor_id: string
   template_id: string
   selections?: ActorTraitSelection[]
@@ -728,7 +705,7 @@ export interface ActorTraitRollRequest {
 }
 
 export interface ActorTraitRollResult {
-  story_director_id?: string
+  actor_state_id?: string
   actor_id: string
   template_id: string
   seed: number

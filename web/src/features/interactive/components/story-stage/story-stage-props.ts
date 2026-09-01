@@ -1,5 +1,5 @@
 import type { BookOpeningPreset, StoryCreateInput } from '../../opening'
-import type { ImagePreset, InteractiveTurnPersistedEvent, Snapshot, StoryDirector, StorySummary, Teller } from '../../types'
+import type { GamePlanningTemplate, ImagePreset, InteractiveTurnPersistedEvent, Snapshot, StorySummary, Teller } from '../../types'
 import type { LoreItem } from '@/lib/api'
 import type { BranchCreationSource } from '../branching/model'
 import type { StoryStateDisplayPreference } from '../story-state/display-preference'
@@ -12,7 +12,7 @@ export interface StoryStageProps {
   stories?: StorySummary[]
   story?: StorySummary
   tellers?: Teller[]
-  storyDirectors?: StoryDirector[]
+	planningTemplates?: GamePlanningTemplate[]
   imagePresets?: ImagePreset[]
   recentNarrativeStyleID?: string
   narrativeStyleLoading?: boolean

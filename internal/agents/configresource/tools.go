@@ -104,7 +104,7 @@ func newConfigResourceRegistry(cfg *config.Config) (*Registry, error) {
 	return New(
 		newStyleReferenceResource(novaDir),
 		newNarrativeStyleResource(novaDir),
-		newStoryDirectorResource(novaDir),
+		newGamePlanningResource(novaDir),
 		newEventPackageResource(novaDir),
 		newRuleSystemResource(novaDir),
 		newStateSystemResource(novaDir),

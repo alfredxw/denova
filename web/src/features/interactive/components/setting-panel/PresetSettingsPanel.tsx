@@ -11,9 +11,40 @@ import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
 import { FeaturePageShell } from '@/components/layout/feature-page-shell'
 import { MobilePaneTrigger } from '@/components/layout/mobile-pane-trigger'
 import { Button } from '@/components/ui/button'
-import { createActorState, createEventPackage, createImagePreset, createInteractiveTeller, createRuleSystem, createStoryDirector, deleteActorState, deleteEventPackage, deleteImagePreset, deleteInteractiveTeller, deleteRuleSystem, deleteStoryDirector, getActorStates, getEventPackages, getImagePresets, getInteractiveTellers, getRuleSystems, getStoryDirectors, updateActorState, updateEventPackage, updateImagePreset, updateInteractiveTeller, updateRuleSystem, updateStoryDirector } from '../../api'
+import {
+  createActorState,
+  createEventPackage,
+  createGamePlanningTemplate,
+  createImagePreset,
+  createInteractiveTeller,
+  createRuleSystem,
+  deleteActorState,
+  deleteEventPackage,
+  deleteGamePlanningTemplate,
+  deleteImagePreset,
+  deleteInteractiveTeller,
+  deleteRuleSystem,
+  getActorStates,
+  getEventPackages,
+  getGamePlanningTemplates,
+  getImagePresets,
+  getInteractiveTellers,
+  getRuleSystems,
+  updateActorState,
+  updateEventPackage,
+  updateGamePlanningTemplate,
+  updateImagePreset,
+  updateInteractiveTeller,
+  updateRuleSystem,
+} from '../../api'
+import {
+  gamePlanningSectionDescription,
+  gamePlanningSectionTitle,
+  gamePlanningTemplateDescription,
+  gamePlanningTemplateName,
+} from '../../game-planning'
 import { PRESET_RESOURCE_SCOPE, type PresetResourceKind } from '../../preset-ownership'
-import type { ActorStateModule, EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, Teller } from '../../types'
+import type { ActorStateModule, EventPackageModule, GamePlanningTemplate, ImagePreset, RuleSystemModule, Teller } from '../../types'
 import { PresetResourcePane } from './PresetResourcePane'
 import { PresetDirectorySidebar } from './PresetDirectorySidebar'
 import { buildPresetDirectorySections, presetDirectoryEntryId } from './preset-directory-sections'
@@ -27,10 +58,10 @@ import type { ToolNavigationIntent } from '@/components/Chat/tool-navigation'
 interface PresetSettingsPanelProps {
   projectId: string
   tellers?: Teller[]
-  storyDirectors?: StoryDirector[]
+  storyDirectors?: GamePlanningTemplate[]
   imagePresets?: ImagePreset[]
   onTellersChange?: (tellers: Teller[]) => void
-  onStoryDirectorsChange?: (directors: StoryDirector[]) => void
+  onStoryDirectorsChange?: (directors: GamePlanningTemplate[]) => void
   onImagePresetsChange?: (presets: ImagePreset[]) => void
   embedded?: boolean
   onClose?: () => void
@@ -158,26 +189,32 @@ export function PresetSettingsPanel({
     onFlushError: (err) => console.warn('[teller-editor] Failed to autosave narrative style before selection change', err),
   })
 
-  const storyDirectorAutosave = usePresetResourceAutosave<StoryDirector, Partial<StoryDirector>, StoryDirector>({
+  const storyDirectorAutosave = usePresetResourceAutosave<
+    GamePlanningTemplate,
+    Partial<GamePlanningTemplate>,
+    GamePlanningTemplate
+  >({
     draft: storyDirectorDraft,
     scopeKey: PRESET_RESOURCE_SCOPE,
-    active: presetResourceKind === 'director',
+    active: presetResourceKind === 'director' && Boolean(storyDirectorDraft?.custom),
     valid: presetConfigValid,
     makePayload: makeStoryDirectorPayload,
     baselineFromSaved: (saved) => saved,
     signature: presetResourceDraftSignature,
-    save: (id, payload, baseRevision) => updateStoryDirector(id, payload, baseRevision),
+    save: (id, payload, baseRevision) => updateGamePlanningTemplate(id, payload, baseRevision),
     resolveConflict: createPresetConflictResolver(
-      getStoryDirectors,
+      getGamePlanningTemplates,
       makeStoryDirectorPayload,
-      { resource: 'story_director', scope: PRESET_RESOURCE_SCOPE },
+      { resource: 'game_planning', scope: PRESET_RESOURCE_SCOPE },
     ),
     onSaved: mergeSavedStoryDirector,
     onAutoSaveError: (err) => {
-      console.warn('[game-preset-editor] Failed to autosave Game Preset', err)
+      console.warn('[game-planning-editor] Failed to autosave Planning Template', err)
       toast.error((err as Error).message || t('editor.saveFailed'))
     },
-    onFlushError: (err) => console.warn('[game-preset-editor] Failed to autosave Game Preset before selection change', err),
+    onFlushError: (err) => {
+      console.warn('[game-planning-editor] Failed to autosave Planning Template before selection change', err)
+    },
   })
 
   const imagePresetAutosave = usePresetResourceAutosave<ImagePreset, Partial<ImagePreset>, ImagePreset>({
@@ -405,10 +442,39 @@ export function PresetSettingsPanel({
     if (!(await flushPresetResourceAutoSave())) return
     setSaving(true)
     try {
-      const director = await createStoryDirector(newStoryDirectorDraft(t))
+      const director = await createGamePlanningTemplate(newStoryDirectorDraft(t))
       setPresetResourceKind('director')
       await refreshStoryDirectors(director.id)
       closeDirectoryRef.current()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleCopyPlanningTemplate = async (source: GamePlanningTemplate) => {
+    if (!(await flushPresetResourceAutoSave())) return
+    setSaving(true)
+    try {
+      const stamp = Date.now()
+      const created = await createGamePlanningTemplate({
+        ...source,
+        id: `custom-planning-${stamp}`,
+        name: t('settingPanel.gamePlanning.copyName', { name: gamePlanningTemplateName(source, t) }),
+        description: gamePlanningTemplateDescription(source, t),
+        sections: source.sections.map((section, index) => ({
+          ...section,
+          id: `${section.id || 'section'}-${stamp}-${index + 1}`,
+          title: gamePlanningSectionTitle(source, section, t),
+          description: gamePlanningSectionDescription(source, section, t),
+        })),
+        custom: true,
+        revision: undefined,
+        path: undefined,
+        created_at: undefined,
+        updated_at: undefined,
+      })
+      setPresetResourceKind('director')
+      await refreshStoryDirectors(created.id)
     } finally {
       setSaving(false)
     }
@@ -508,7 +574,7 @@ export function PresetSettingsPanel({
         await deleteActorState(deletePresetTarget.id)
         await refreshActorStates()
       } else if (deletePresetTarget.kind === 'director') {
-        await deleteStoryDirector(deletePresetTarget.id)
+        await deleteGamePlanningTemplate(deletePresetTarget.id)
         await refreshStoryDirectors()
       } else {
         await deleteInteractiveTeller(deletePresetTarget.id)
@@ -538,7 +604,7 @@ export function PresetSettingsPanel({
         await deleteActorState(actorStateDraft.id)
         await refreshActorStates(actorStateDraft.id)
       } else if (presetResourceKind === 'director' && storyDirectorDraft) {
-        await deleteStoryDirector(storyDirectorDraft.id)
+        await deleteGamePlanningTemplate(storyDirectorDraft.id)
         await refreshStoryDirectors(storyDirectorDraft.id)
       } else if (tellerDraft) {
         await deleteInteractiveTeller(tellerDraft.id)
@@ -650,7 +716,7 @@ export function PresetSettingsPanel({
                 event_package_count: String(eventPackages.length),
                 rule_system_count: String(ruleSystems.length),
                 actor_state_count: String(actorStates.length),
-                story_director_count: String(storyDirectors.length),
+                game_planning_count: String(storyDirectors.length),
                 image_preset_count: String(imagePresets.length),
               }}
               onMutated={() => {
@@ -742,31 +808,28 @@ export function PresetSettingsPanel({
               topbarClassName="preset-workspace-toolbar"
             >
               <PresetResourcePane
-                  kind={presetResourceKind}
-                  projectId={projectId}
-                  tellers={tellers}
-                  storyDirectors={storyDirectors}
-                  imagePresets={imagePresets}
-                  eventPackages={eventPackages}
-                  ruleSystems={ruleSystems}
-                  actorStates={actorStates}
-                  tellerDraft={tellerDraft}
-                  setTellerDraft={setTellerDraft}
-                  activeSlotId={activeSlotId}
-                  setActiveSlotId={setActiveSlotId}
-                  storyDirectorDraft={storyDirectorDraft}
-                  setStoryDirectorDraft={setStoryDirectorDraft}
-                  imagePresetDraft={imagePresetDraft}
-                  setImagePresetDraft={setImagePresetDraft}
-                  eventPackageDraft={eventPackageDraft}
-                  setEventPackageDraft={setEventPackageDraft}
-                  ruleSystemDraft={ruleSystemDraft}
-                  setRuleSystemDraft={setRuleSystemDraft}
-                  actorStateDraft={actorStateDraft}
-                  setActorStateDraft={setActorStateDraft}
-                  onOpenActorState={(id) => selectPresetResource('actor-state', id)}
-                  onOpenRuleSystem={(id) => selectPresetResource('rule', id)}
-                  onSave={flushActivePresetAutosave}
+                kind={presetResourceKind}
+                projectId={projectId}
+                ruleSystems={ruleSystems}
+                actorStates={actorStates}
+                tellerDraft={tellerDraft}
+                setTellerDraft={setTellerDraft}
+                activeSlotId={activeSlotId}
+                setActiveSlotId={setActiveSlotId}
+                storyDirectorDraft={storyDirectorDraft}
+                setStoryDirectorDraft={setStoryDirectorDraft}
+                onCopyPlanningTemplate={handleCopyPlanningTemplate}
+                imagePresetDraft={imagePresetDraft}
+                setImagePresetDraft={setImagePresetDraft}
+                eventPackageDraft={eventPackageDraft}
+                setEventPackageDraft={setEventPackageDraft}
+                ruleSystemDraft={ruleSystemDraft}
+                setRuleSystemDraft={setRuleSystemDraft}
+                actorStateDraft={actorStateDraft}
+                setActorStateDraft={setActorStateDraft}
+                onOpenActorState={(id) => selectPresetResource('actor-state', id)}
+                onOpenRuleSystem={(id) => selectPresetResource('rule', id)}
+                onSave={flushActivePresetAutosave}
                   onValidityChange={setPresetConfigValid}
               />
             </FeaturePageShell>
@@ -794,7 +857,7 @@ function presetKindForConfigResource(resource: string): PresetResourceKind | nul
     case 'style_reference':
     case 'narrative_style':
       return 'teller'
-    case 'story_director':
+    case 'game_planning':
       return 'director'
     case 'event_package':
       return 'event'

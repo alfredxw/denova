@@ -1,21 +1,19 @@
 import { Clapperboard } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { Badge } from '@/components/ui/badge'
-import { gamePresetName } from '../../game-preset'
-import type { StoryDirector, StorySummary } from '../../types'
+import { gamePlanningTemplateName } from '../../game-planning'
+import type { GamePlanningTemplate, StorySummary } from '../../types'
 
 interface DirectorConsoleHeaderProps {
   branchId: string
   turnCount: number
   story?: StorySummary
-  storyDirectors: StoryDirector[]
-  overrideCount: number
+  planningTemplates: GamePlanningTemplate[]
 }
 
 /** Identity and scope only; editable controls live in the tuning view. */
-export function DirectorConsoleHeader({ branchId, turnCount, story, storyDirectors, overrideCount }: DirectorConsoleHeaderProps) {
+export function DirectorConsoleHeader({ branchId, turnCount, story, planningTemplates }: DirectorConsoleHeaderProps) {
   const { t } = useTranslation()
-  const director = storyDirectors.find((item) => item.id === story?.story_director_id)
+  const planningTemplate = planningTemplates.find((item) => item.id === story?.planning_template_id)
 
   return (
     <header className="shrink-0 border-b border-[var(--nova-border)] bg-[color-mix(in_srgb,var(--director-canvas)_92%,transparent)] px-4 py-3.5 backdrop-blur-xl">
@@ -27,9 +25,12 @@ export function DirectorConsoleHeader({ branchId, turnCount, story, storyDirecto
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-2">
             <h2 className="director-console__display truncate text-sm font-semibold leading-5 text-[var(--nova-text)]">{t('directorPanel.consoleTitle')}</h2>
-            {overrideCount > 0 ? <Badge variant="secondary" className="h-4 shrink-0 px-1.5 text-[9px]">{t('directorPanel.overrideCount', { count: overrideCount })}</Badge> : null}
           </div>
-          <p className="mt-0.5 truncate text-[10px] text-[var(--nova-text-muted)]">{director ? gamePresetName(director, t) : t('directorPanel.noPreset')}</p>
+          <p className="mt-0.5 truncate text-[10px] text-[var(--nova-text-muted)]">
+            {planningTemplate
+              ? gamePlanningTemplateName(planningTemplate, t)
+              : t('directorPanel.noPlanningTemplate')}
+          </p>
           <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[9px] text-[var(--nova-text-faint)]">
             <span className="truncate">{t('directorPanel.branch', { branch: branchId || 'main' })}</span>
             <span aria-hidden="true">/</span>

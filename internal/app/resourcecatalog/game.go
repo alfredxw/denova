@@ -2,39 +2,39 @@ package resourcecatalog
 
 import "denova/internal/interactive"
 
-func (s *Service) StoryDirectors() ([]interactive.StoryDirector, error) {
+func (s *Service) GamePlanningTemplates() ([]interactive.GamePlanningTemplate, error) {
 	if err := s.ready(); err != nil {
 		return nil, err
 	}
-	return s.directors.List()
+	return s.planning.List()
 }
 
-func (s *Service) StoryDirector(id string) (interactive.StoryDirector, error) {
+func (s *Service) GamePlanningTemplate(id string) (interactive.GamePlanningTemplate, error) {
 	if err := s.ready(); err != nil {
-		return interactive.StoryDirector{}, err
+		return interactive.GamePlanningTemplate{}, err
 	}
-	return s.directors.Get(id)
+	return s.planning.Get(id)
 }
 
-func (s *Service) CreateStoryDirector(director interactive.StoryDirector) (interactive.StoryDirector, error) {
+func (s *Service) CreateGamePlanningTemplate(item interactive.GamePlanningTemplate) (interactive.GamePlanningTemplate, error) {
 	if err := s.ready(); err != nil {
-		return interactive.StoryDirector{}, err
+		return interactive.GamePlanningTemplate{}, err
 	}
-	return s.directors.Create(director)
+	return s.planning.Create(item)
 }
 
-func (s *Service) UpdateStoryDirector(id string, director interactive.StoryDirector, baseRevision string) (interactive.StoryDirector, error) {
+func (s *Service) UpdateGamePlanningTemplate(id string, item interactive.GamePlanningTemplate, baseRevision string) (interactive.GamePlanningTemplate, error) {
 	if err := s.ready(); err != nil {
-		return interactive.StoryDirector{}, err
+		return interactive.GamePlanningTemplate{}, err
 	}
-	return s.directors.Update(id, director, baseRevision)
+	return s.planning.Update(id, item, baseRevision)
 }
 
-func (s *Service) DeleteStoryDirector(id string) error {
+func (s *Service) DeleteGamePlanningTemplate(id string) error {
 	if err := s.ready(); err != nil {
 		return err
 	}
-	return s.directors.Delete(id)
+	return s.planning.Delete(id)
 }
 
 func (s *Service) EventPackages() ([]interactive.EventPackageModule, error) {

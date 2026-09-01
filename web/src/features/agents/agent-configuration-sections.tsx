@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { Brain, Check, ChevronDown, ChevronRight, FolderOpen, ImagePlus, ScrollText, Wrench } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import type { AgentModelOverride, AgentPromptBlocks, AgentPromptOverride, AgentPromptSource, AgentSkillOverride, AgentToolOverride, ResolvedAgentContextSettings, Settings } from '@/features/settings/types'
@@ -19,10 +18,8 @@ export function AgentModelSection({ value, inherited, profiles, onChange }: {
 }) {
   const { t } = useTranslation()
   const hasProfile = hasTextOverride(value.profile_id)
-  const hasTemperature = value.temperature !== undefined && value.temperature !== null
   const hasThinkingLevel = hasTextOverride(value.thinking_level)
   const effectiveProfile = hasProfile ? value.profile_id || 'default' : inherited.profile_id || 'default'
-  const effectiveTemperature = hasTemperature ? value.temperature : inherited.temperature
   const effectiveThinkingLevel = normalizeThinkingLevel(hasThinkingLevel ? value.thinking_level : inherited.thinking_level) ?? 'default'
 
   return (
@@ -40,19 +37,6 @@ export function AgentModelSection({ value, inherited, profiles, onChange }: {
               </SelectGroup>
             </SelectContent>
           </Select>
-        </Field>
-        <Field label="Temperature" inherited={!hasTemperature} onReset={hasTemperature ? () => onChange({ temperature: null }) : undefined}>
-          <Input
-            type="number"
-            aria-label="Temperature"
-            step={0.1}
-            min={0}
-            max={2}
-            value={effectiveTemperature ?? ''}
-            placeholder={t('agents.option.platformDefault')}
-            onChange={(e) => onChange({ temperature: e.target.value === '' ? null : Number(e.target.value) })}
-            className="h-7 flex-1 text-xs"
-          />
         </Field>
         <Field label={t('agents.field.thinkingLevel')} inherited={!hasThinkingLevel} onReset={hasThinkingLevel ? () => onChange({ thinking_level: '' }) : undefined}>
           <Select value={effectiveThinkingLevel} onValueChange={(level) => onChange({ thinking_level: level })}>
@@ -120,7 +104,8 @@ export function AgentPromptSection({ value, inherited, builtin, blocks, sources,
   onChange: (patch: Partial<AgentPromptOverride>) => void
 }) {
   const { t } = useTranslation()
-  const promptSources = sources?.length ? sources : fallbackPromptSources(blocks, builtin)
+  const promptSources = [...(sources?.length ? sources : fallbackPromptSources(blocks, builtin))]
+    .sort((left, right) => Number(Boolean(right.editable)) - Number(Boolean(left.editable)))
   return (
     <section className="flex flex-col gap-3 border-b border-[var(--nova-border)] pb-5">
       <SectionTitle icon={ScrollText} title={t('agents.section.systemPrompt')} />
@@ -149,7 +134,7 @@ function PromptSourceBlock({ source, value, inherited, onChange }: {
   onChange: (patch: Partial<AgentPromptOverride>) => void
 }) {
   const { t } = useTranslation()
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(Boolean(source.editable))
   const editableField = source.editable ? source.field : undefined
   const hasOverride = editableField ? hasPromptOverride(value[editableField]) : false
   const inheritedText = editableField ? inherited[editableField] : undefined
@@ -383,18 +368,6 @@ export function AgentBuiltInCapabilitySection({ agent }: { agent: VisibleAgentKe
       </div>
       <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-[11px] leading-5 text-[var(--nova-text-faint)]">
         {t('agents.builtIn.note')}
-      </div>
-    </section>
-  )
-}
-
-export function AgentModelOnlySection() {
-  const { t } = useTranslation()
-  return (
-    <section className="flex flex-col gap-3 border-b border-[var(--nova-border)] pb-5">
-      <SectionTitle icon={Wrench} title={t('agents.section.tools')} />
-      <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2 text-[11px] leading-5 text-[var(--nova-text-faint)]">
-        {t('agents.modelOnly.note')}
       </div>
     </section>
   )

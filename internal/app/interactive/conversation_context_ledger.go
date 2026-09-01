@@ -102,7 +102,7 @@ func interactiveStoryContextSources(title, origin, protagonist string, teller te
 	}
 	if strings.TrimSpace(ruleSummary) != "" {
 		parts = append(parts, interactiveContextSource{
-			Source: "GamePreset", Title: "Game Preset Rule Catalog", Content: ruleSummary,
+			Source: "StoryRuleSystem", Title: "Story Rule Catalog", Content: ruleSummary,
 			Note: "bounded", Limit: StoryRuntimeContextMaxBytes,
 		})
 	}

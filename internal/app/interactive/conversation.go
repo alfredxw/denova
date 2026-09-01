@@ -345,7 +345,7 @@ func (c *Conversation) effectiveTurnState(storyCtx interactive.StoryContext) (in
 	if storyCtx.Meta.ActorStateSchema != nil {
 		actorState = storyCtx.Meta.ActorStateSchema.System
 	} else {
-		actorState = c.StoryDirectorForMeta(storyCtx.Meta).ActorState
+		actorState = c.StoryRuntimeForMeta(storyCtx.Meta).ActorState
 	}
 	state := storyCtx.Snapshot.State
 	c.mu.Lock()
@@ -430,7 +430,7 @@ func (c *Conversation) AssembleModelContext(ctx context.Context, originalMessage
 		baseParentID = &parent
 	}
 	teller := c.teller(storyCtx.Meta.StoryTellerID)
-	storyDirector := storyDirectorForSnapshot(c.StoryDirectorForMeta(storyCtx.Meta), storyCtx.Meta.ActorStateSchema)
+	storyDirector := storyDirectorForSnapshot(c.StoryRuntimeForMeta(storyCtx.Meta), storyCtx.Meta.ActorStateSchema)
 	tellerTurnContextPrompt := teller.PromptForTargets("turn_context")
 	modelHistory, activeCompaction, err := c.modelHistoryForCycle(storyCtx)
 	if err != nil {
@@ -470,7 +470,7 @@ func (c *Conversation) AssembleModelContext(ctx context.Context, originalMessage
 	if err != nil {
 		return agentcontext.ModelContextResult{}, fmt.Errorf("读取资料库 revision 失败: %w", err)
 	}
-	ruleSummary := interactive.StoryDirectorRuleSummary(storyDirector, StoryRuntimeContextMaxBytes)
+	ruleSummary := interactive.StoryRuleSummary(storyDirector, StoryRuntimeContextMaxBytes)
 	actorStateRuntime := interactive.ActorStateRuntimeContext(storyDirector.ActorState, storyCtx.Snapshot.State, StoryRuntimeContextMaxBytes, storyCtx.Meta.ChoiceCount)
 	stateSchemaInitialization := interactive.OpeningGameStateSchemaInstruction(storyCtx.Meta)
 	runtimeContext := prompts.InteractiveStoryRuntimeContext(prompts.InteractiveStoryPromptInput{
@@ -485,7 +485,7 @@ func (c *Conversation) AssembleModelContext(ctx context.Context, originalMessage
 		RuleChecksEnabled:         !storyDirector.ModuleRefs.RuleSystemDisabled && len(storyDirector.TRPGSystem.RuleTemplates) > 0,
 		CheckDifficultyShift:      storyCtx.Meta.CheckSettings.DifficultyShift,
 		CheckRollModifier:         storyCtx.Meta.CheckSettings.RollModifier,
-		GamePresetRules:           ruleSummary,
+		StoryRuleCatalog:          ruleSummary,
 		ActorState:                actorStateRuntime,
 		StateSchemaInitialization: stateSchemaInitialization,
 		PreviousTurnsSummary:      turnHistory.PreviousSummary,
@@ -564,13 +564,13 @@ func (c *Conversation) AssembleModelContext(ctx context.Context, originalMessage
 	sourceSummary := interactiveContextSourceListSummary(sourceParts, assembled.Fragments)
 	contextLedgerParts := interactiveContextLedgerParts(sourceParts, history, c.ToolResultContextPolicy())
 	slog.InfoContext(ctx, fmt.Sprintf(
-		"[interactive-agent] context composition story_id=%s branch_id=%s story_title=%s origin=%s teller_id=%s game_preset_id=%s teller_slots=%s teller_turn_context=%s history_checkpoint=%s branch_plan=%s turns=%d model_turns=%d history=%s turn_instruction=%s sources=%s",
+		"[interactive-agent] context composition story_id=%s branch_id=%s story_title=%s origin=%s teller_id=%s planning_template_id=%s teller_slots=%s teller_turn_context=%s history_checkpoint=%s branch_plan=%s turns=%d model_turns=%d history=%s turn_instruction=%s sources=%s",
 		c.storyID,
 		storyCtx.Snapshot.BranchID,
 		PartSummary(storyCtx.Meta.Title),
 		PartSummary(storyCtx.Meta.Origin),
 		storyCtx.Meta.StoryTellerID,
-		storyCtx.Meta.StoryDirectorID,
+		storyCtx.Meta.PlanningTemplateID,
 		interactiveTellerSlotSummary(teller, "turn_context"),
 		PartSummary(tellerTurnContextPrompt),
 		PartSummary(checkpointSummary),

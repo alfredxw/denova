@@ -100,7 +100,7 @@ func TestConfigReadDescribesEveryResourceIncludingRuleSystem(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, name := range []string{
-		"style_reference", "narrative_style", "story_director", "event_package", "rule_system",
+		"style_reference", "narrative_style", "game_planning", "event_package", "rule_system",
 		"state_system", "image_preset", "automation", "skill", "agent_profile",
 	} {
 		if !strings.Contains(output, `"name":"`+name+`"`) {
@@ -674,9 +674,9 @@ func TestConfigResourceAdaptersShareCRUDAndRevisionContract(t *testing.T) {
 			update: map[string]any{"id": "contract-narrative", "name": "Updated narrative", "slots": []any{map[string]any{"id": "identity", "name": "Identity", "target": "system", "enabled": true, "content": "Stay concise."}}},
 		},
 		{
-			resource: "story_director", id: "contract-director",
-			create: map[string]any{"id": "contract-director", "name": "Contract director"},
-			update: map[string]any{"id": "contract-director", "name": "Updated director"},
+			resource: "game_planning", id: "contract-planning",
+			create: map[string]any{"id": "contract-planning", "name": "Contract planning", "sections": []any{map[string]any{"id": "direction", "title": "Direction", "description": "Track the direction."}}},
+			update: map[string]any{"id": "contract-planning", "name": "Updated planning", "sections": []any{map[string]any{"id": "direction", "title": "Direction", "description": "Track the updated direction."}}},
 		},
 		{
 			resource: "event_package", id: "contract-events",

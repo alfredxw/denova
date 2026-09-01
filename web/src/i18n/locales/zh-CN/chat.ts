@@ -600,7 +600,7 @@ const chat = {
   'chat.quick.scope.preset-event': '事件包',
   'chat.quick.scope.preset-rule': '规则系统',
   'chat.quick.scope.preset-actor-state': 'Actor State',
-  'chat.quick.scope.preset-director': '故事导演',
+  'chat.quick.scope.preset-director': '游戏规划',
   'chat.quick.scope.preset-image': '图像预设',
   'chat.quick.settings.open': '管理{{scope}}快捷指令',
   'chat.quick.settings.title': '快捷指令 · {{scope}}',

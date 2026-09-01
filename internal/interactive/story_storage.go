@@ -154,7 +154,7 @@ func storySummaryFromProjection(projection *storyJournalProjection) StorySummary
 	return normalizeStorySummary(StorySummary{
 		ID: meta.StoryID, Title: meta.Title, TitleSource: meta.TitleSource, Origin: meta.Origin,
 		Protagonist:   meta.Protagonist,
-		StoryTellerID: meta.StoryTellerID, StoryDirectorID: normalizedStoryDirectorID(meta.StoryDirectorID),
+		StoryTellerID: meta.StoryTellerID, PlanningTemplateID: normalizedGamePlanningTemplateID(meta.PlanningTemplateID),
 		ModuleRefs:       cloneStoryDirectorModuleRefs(meta.ModuleRefs),
 		PlanningMode:     meta.PlanningMode,
 		ReplyTargetChars: meta.ReplyTargetChars, ChoiceCount: meta.ChoiceCount,
@@ -175,6 +175,15 @@ func (s *Store) readStoryLocked(storyID string) (StoryMeta, []StoryEventRecord, 
 	if err != nil {
 		return StoryMeta{}, nil, err
 	}
+	if strings.TrimSpace(meta.StoryDirectorID) != "" {
+		if err := s.migrateReleasedGamePresetLocked(storyID, &meta); err != nil {
+			return StoryMeta{}, nil, err
+		}
+		meta, lines, err = s.readStoryJournalWithRepairLocked(storyID, true)
+		if err != nil {
+			return StoryMeta{}, nil, err
+		}
+	}
 	if err := s.freezeLegacyActorStateSchemaLocked(storyID, &meta, lines); err != nil {
 		return StoryMeta{}, nil, err
 	}
@@ -183,6 +192,95 @@ func (s *Store) readStoryLocked(storyID string) (StoryMeta, []StoryEventRecord, 
 	// actual frozen schema without changing the schema itself.
 	normalizeFixedStoryStateSchemaInitialization(&meta)
 	return meta, lines, nil
+}
+
+// migrateReleasedGamePresetLocked performs the one intentionally small
+// v0.3.3 migration. Old presets and structured planning templates do not have
+// equivalent semantics, so only the story's effective module/rule selections
+// are retained. The old planning Markdown remains in the raw backup.
+func (s *Store) migrateReleasedGamePresetLocked(storyID string, meta *StoryMeta) error {
+	if meta == nil || strings.TrimSpace(meta.StoryDirectorID) == "" {
+		return nil
+	}
+	legacyID := NormalizeStoryDirectorID(meta.StoryDirectorID)
+	refs := DefaultStoryDirectorModuleRefs()
+	if meta.ModuleRefs != nil {
+		refs = NormalizeStoryDirectorModuleRefs(*meta.ModuleRefs)
+	}
+	settings := normalizeStoryCheckSettings(meta.CheckSettings)
+	var legacyPresetPath string
+	if strings.TrimSpace(s.novaDir) != "" && legacyID != "" {
+		legacyPresetPath = filepath.Join(s.novaDir, "story-directors", legacyID+".json")
+	}
+	if err := s.backupReleasedGamePresetStory(storyID, legacyID, legacyPresetPath); err != nil {
+		return err
+	}
+	legacy := StoryDirector{}
+	legacyErr := os.ErrNotExist
+	if legacyPresetPath != "" {
+		legacy, legacyErr = parseStoryDirectorFile(legacyPresetPath)
+	}
+	if os.IsNotExist(legacyErr) && legacyID == DefaultStoryDirectorID {
+		legacy, legacyErr = DefaultStoryDirector(), nil
+	}
+	if legacyErr == nil {
+		if meta.ModuleRefs == nil {
+			refs = NormalizeStoryDirectorModuleRefs(legacy.ModuleRefs)
+		}
+		settings.RuleStateConsumptionMode = legacy.Strategy.RuleStateConsumptionMode
+		settings.RuleVisibilityMode = legacy.Strategy.RuleVisibilityMode
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	meta.PlanningTemplateID = DefaultGamePlanningTemplateID
+	meta.StoryDirectorID = ""
+	meta.ModuleRefs = &refs
+	meta.CheckSettings = normalizeStoryCheckSettings(settings)
+	meta.UpdatedAt = now
+	parentID := ""
+	if branch, ok := meta.Branches[meta.CurrentBranch]; ok {
+		parentID = branch.Head
+	}
+	event := StoryConfigUpdatedEvent{
+		V: schemaVersion, Type: StoryEventTypeStoryConfigUpdated, ID: newID("scu"),
+		ParentID: parentID, BranchID: meta.CurrentBranch, Ts: now,
+		Fields: []string{"planning_template_id", "module_refs", "check_settings"},
+	}
+	if err := s.appendStoryTransactionLocked(storyID, *meta, event); err != nil {
+		return fmt.Errorf("migrate released Game Preset story %s: %w", storyID, err)
+	}
+	slog.InfoContext(context.Background(), fmt.Sprintf("[interactive-story] migrated v0.3.3 game preset story_id=%s legacy_preset_id=%s", storyID, legacyID))
+	return nil
+}
+
+func (s *Store) backupReleasedGamePresetStory(storyID, legacyID, legacyPresetPath string) error {
+	backupDir := filepath.Join(s.storyDir(), "migrations", "v0.3.3-game-planning")
+	if err := os.MkdirAll(backupDir, 0o755); err != nil {
+		return err
+	}
+	copyOnce := func(source, destination string) error {
+		if _, err := os.Stat(destination); err == nil {
+			return nil
+		} else if !os.IsNotExist(err) {
+			return err
+		}
+		data, err := os.ReadFile(source)
+		if err != nil {
+			return err
+		}
+		return writeAtomicBytes(destination, data, 0o600)
+	}
+	if err := copyOnce(s.storyPath(storyID), filepath.Join(backupDir, "story-"+storyID+".jsonl.bak")); err != nil {
+		return err
+	}
+	if strings.TrimSpace(legacyPresetPath) == "" {
+		return nil
+	}
+	if _, err := os.Stat(legacyPresetPath); os.IsNotExist(err) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	return copyOnce(legacyPresetPath, filepath.Join(backupDir, "game-preset-"+firstNonEmptyString(legacyID, "unknown")+".json.bak"))
 }
 
 // readStoryJournalLocked is the read-only half of story loading. Receipt

@@ -1,6 +1,9 @@
 package interactive
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 const (
 	MinStoryCheckDifficultyShift = -2
@@ -9,11 +12,13 @@ const (
 	MaxStoryCheckRollModifier    = 20
 )
 
-// StoryCheckSettings tunes fixed-rule checks for one story without mutating
-// the reusable Rule System selected by its Game Preset.
+// StoryCheckSettings tunes fixed-rule checks and their story-specific handling
+// without mutating the reusable Rule System.
 type StoryCheckSettings struct {
-	DifficultyShift int `json:"difficulty_shift,omitempty"`
-	RollModifier    int `json:"roll_modifier,omitempty"`
+	DifficultyShift          int    `json:"difficulty_shift,omitempty"`
+	RollModifier             int    `json:"roll_modifier,omitempty"`
+	RuleStateConsumptionMode string `json:"rule_state_consumption_mode,omitempty"`
+	RuleVisibilityMode       string `json:"rule_visibility_mode,omitempty"`
 }
 
 func normalizeStoryCheckSettings(settings StoryCheckSettings) StoryCheckSettings {
@@ -29,6 +34,8 @@ func normalizeStoryCheckSettings(settings StoryCheckSettings) StoryCheckSettings
 	if settings.RollModifier > MaxStoryCheckRollModifier {
 		settings.RollModifier = MaxStoryCheckRollModifier
 	}
+	settings.RuleStateConsumptionMode = normalizeRuleStateConsumptionMode(settings.RuleStateConsumptionMode)
+	settings.RuleVisibilityMode = normalizeRuleVisibilityMode(settings.RuleVisibilityMode)
 	return settings
 }
 
@@ -38,6 +45,12 @@ func validateStoryCheckSettings(settings StoryCheckSettings) error {
 	}
 	if settings.RollModifier < MinStoryCheckRollModifier || settings.RollModifier > MaxStoryCheckRollModifier {
 		return fmt.Errorf("story check roll modifier must be between %d and %d", MinStoryCheckRollModifier, MaxStoryCheckRollModifier)
+	}
+	if normalized := normalizeRuleStateConsumptionMode(settings.RuleStateConsumptionMode); strings.TrimSpace(settings.RuleStateConsumptionMode) != "" && normalized != strings.TrimSpace(settings.RuleStateConsumptionMode) {
+		return fmt.Errorf("unsupported rule state consumption mode: %q", settings.RuleStateConsumptionMode)
+	}
+	if normalized := normalizeRuleVisibilityMode(settings.RuleVisibilityMode); strings.TrimSpace(settings.RuleVisibilityMode) != "" && normalized != strings.TrimSpace(settings.RuleVisibilityMode) {
+		return fmt.Errorf("unsupported rule visibility mode: %q", settings.RuleVisibilityMode)
 	}
 	return nil
 }

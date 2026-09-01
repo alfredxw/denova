@@ -84,24 +84,24 @@ func (s *Store) CreateStory(req CreateStoryRequest) (StorySummary, error) {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	stateSchemaPolicy := cloneStoryStateSchemaPolicy(req.StateSchemaPolicy)
 	story := StorySummary{
-		ID:                newID("st"),
-		Title:             title,
-		TitleSource:       titleSource,
-		Origin:            strings.TrimSpace(req.Origin),
-		Protagonist:       protagonist,
-		StoryTellerID:     strings.TrimSpace(req.StoryTellerID),
-		StoryDirectorID:   NormalizeStoryDirectorID(req.StoryDirectorID),
-		PlanningMode:      normalizeStoryPlanningMode(planningMode),
-		ModuleRefs:        cloneStoryDirectorModuleRefs(req.ModuleRefs),
-		ReplyTargetChars:  normalizeStoryReplyTargetChars(req.ReplyTargetChars),
-		ChoiceCount:       normalizeStoryChoiceCount(req.ChoiceCount),
-		Opening:           normalizeStoryOpeningConfig(req.Opening),
-		ImageSettings:     normalizeStoryImageSettings(req.ImageSettings),
-		CheckSettings:     normalizeStoryCheckSettings(req.CheckSettings),
-		StateSchemaPolicy: cloneStoryStateSchemaPolicy(stateSchemaPolicy),
-		CreatedAt:         now,
-		UpdatedAt:         now,
-		Branches:          1,
+		ID:                 newID("st"),
+		Title:              title,
+		TitleSource:        titleSource,
+		Origin:             strings.TrimSpace(req.Origin),
+		Protagonist:        protagonist,
+		StoryTellerID:      strings.TrimSpace(req.StoryTellerID),
+		PlanningTemplateID: NormalizeGamePlanningTemplateID(req.PlanningTemplateID),
+		PlanningMode:       normalizeStoryPlanningMode(planningMode),
+		ModuleRefs:         cloneStoryDirectorModuleRefs(req.ModuleRefs),
+		ReplyTargetChars:   normalizeStoryReplyTargetChars(req.ReplyTargetChars),
+		ChoiceCount:        normalizeStoryChoiceCount(req.ChoiceCount),
+		Opening:            normalizeStoryOpeningConfig(req.Opening),
+		ImageSettings:      normalizeStoryImageSettings(req.ImageSettings),
+		CheckSettings:      normalizeStoryCheckSettings(req.CheckSettings),
+		StateSchemaPolicy:  cloneStoryStateSchemaPolicy(stateSchemaPolicy),
+		CreatedAt:          now,
+		UpdatedAt:          now,
+		Branches:           1,
 	}
 	if err := validateStoryChoiceCount(story.ChoiceCount); err != nil {
 		return StorySummary{}, err
@@ -109,30 +109,34 @@ func (s *Store) CreateStory(req CreateStoryRequest) (StorySummary, error) {
 	if story.StoryTellerID == "" {
 		story.StoryTellerID = style.DefaultID
 	}
-	if story.StoryDirectorID == "" {
-		story.StoryDirectorID = DefaultStoryDirectorID
+	if story.PlanningTemplateID == "" {
+		story.PlanningTemplateID = DefaultGamePlanningTemplateID
+	}
+	if story.ModuleRefs == nil {
+		refs := DefaultStoryDirectorModuleRefs()
+		story.ModuleRefs = &refs
 	}
 
 	meta := StoryMeta{
-		V:                 schemaVersion,
-		Type:              StoryEventTypeMeta,
-		StoryID:           story.ID,
-		Title:             story.Title,
-		TitleSource:       story.TitleSource,
-		Origin:            story.Origin,
-		Protagonist:       story.Protagonist,
-		StoryTellerID:     story.StoryTellerID,
-		StoryDirectorID:   story.StoryDirectorID,
-		PlanningMode:      story.PlanningMode,
-		ModuleRefs:        cloneStoryDirectorModuleRefs(story.ModuleRefs),
-		ReplyTargetChars:  story.ReplyTargetChars,
-		ChoiceCount:       story.ChoiceCount,
-		Opening:           story.Opening,
-		ImageSettings:     story.ImageSettings,
-		CheckSettings:     story.CheckSettings,
-		StateSchemaPolicy: cloneStoryStateSchemaPolicy(stateSchemaPolicy),
-		InitialTraitRolls: append([]InitialActorTraitRoll(nil), req.InitialTraitRolls...),
-		CurrentBranch:     "main",
+		V:                  schemaVersion,
+		Type:               StoryEventTypeMeta,
+		StoryID:            story.ID,
+		Title:              story.Title,
+		TitleSource:        story.TitleSource,
+		Origin:             story.Origin,
+		Protagonist:        story.Protagonist,
+		StoryTellerID:      story.StoryTellerID,
+		PlanningTemplateID: story.PlanningTemplateID,
+		PlanningMode:       story.PlanningMode,
+		ModuleRefs:         cloneStoryDirectorModuleRefs(story.ModuleRefs),
+		ReplyTargetChars:   story.ReplyTargetChars,
+		ChoiceCount:        story.ChoiceCount,
+		Opening:            story.Opening,
+		ImageSettings:      story.ImageSettings,
+		CheckSettings:      story.CheckSettings,
+		StateSchemaPolicy:  cloneStoryStateSchemaPolicy(stateSchemaPolicy),
+		InitialTraitRolls:  append([]InitialActorTraitRoll(nil), req.InitialTraitRolls...),
+		CurrentBranch:      "main",
 		Branches: map[string]BranchMeta{
 			"main": {CreatedAt: now},
 		},
@@ -295,10 +299,10 @@ func (s *Store) UpdateStory(storyID string, req UpdateStoryRequest) (StorySummar
 	if tellerID := strings.TrimSpace(req.StoryTellerID); tellerID != "" {
 		meta.StoryTellerID = tellerID
 	}
-	if directorID := NormalizeStoryDirectorID(req.StoryDirectorID); directorID != "" {
-		meta.StoryDirectorID = directorID
-		meta.ModuleRefs = cloneStoryDirectorModuleRefs(req.ModuleRefs)
-	} else if req.ModuleRefs != nil {
+	if templateID := NormalizeGamePlanningTemplateID(req.PlanningTemplateID); templateID != "" {
+		meta.PlanningTemplateID = templateID
+	}
+	if req.ModuleRefs != nil {
 		meta.ModuleRefs = cloneStoryDirectorModuleRefs(req.ModuleRefs)
 	}
 	if req.PlanningMode != nil {
@@ -430,8 +434,8 @@ func storyConfigUpdatedFields(req UpdateStoryRequest) []string {
 	if strings.TrimSpace(req.StoryTellerID) != "" {
 		fields = append(fields, "story_teller_id")
 	}
-	if NormalizeStoryDirectorID(req.StoryDirectorID) != "" {
-		fields = append(fields, "story_director_id")
+	if NormalizeGamePlanningTemplateID(req.PlanningTemplateID) != "" {
+		fields = append(fields, "planning_template_id")
 	}
 	if req.PlanningMode != nil {
 		fields = append(fields, "planning_mode")

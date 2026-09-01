@@ -69,7 +69,7 @@ func submitTestTurnResult(t *testing.T, conversation *Conversation, intent, goal
 	}
 	actors, _ := storyContext.Snapshot.State["actors"].(map[string]any)
 	_, hasStoryContext := actors[interactive.DefaultStoryContextActorID]
-	actorState := conversation.StoryDirectorForMeta(storyContext.Meta).ActorState
+	actorState := conversation.StoryRuntimeForMeta(storyContext.Meta).ActorState
 	if storyContext.Meta.ActorStateSchema != nil {
 		actorState = storyContext.Meta.ActorStateSchema.System
 	}

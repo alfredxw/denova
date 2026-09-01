@@ -59,7 +59,8 @@ func validateStoryChoiceCount(value int) error {
 
 func normalizeStorySummary(story StorySummary) StorySummary {
 	story.TitleSource = normalizeStoryTitleSource(story.TitleSource)
-	story.StoryDirectorID = normalizedStoryDirectorID(story.StoryDirectorID)
+	story.PlanningTemplateID = normalizedGamePlanningTemplateID(story.PlanningTemplateID)
+	story.LegacyStoryDirectorID = ""
 	story.PlanningMode = normalizeStoryPlanningMode(story.PlanningMode)
 	story.ReplyTargetChars = normalizeStoryReplyTargetChars(story.ReplyTargetChars)
 	story.ChoiceCount = normalizeStoryChoiceCount(story.ChoiceCount)
@@ -79,7 +80,7 @@ func normalizeStorySummary(story StorySummary) StorySummary {
 func normalizeStoryMeta(meta StoryMeta) StoryMeta {
 	legacyFixedSchema := meta.StateSchemaPolicy == nil
 	meta.TitleSource = normalizeStoryTitleSource(meta.TitleSource)
-	meta.StoryDirectorID = normalizedStoryDirectorID(meta.StoryDirectorID)
+	meta.PlanningTemplateID = normalizedGamePlanningTemplateID(firstNonEmptyString(meta.PlanningTemplateID, meta.StoryDirectorID))
 	meta.PlanningMode = normalizeStoryPlanningMode(meta.PlanningMode)
 	meta.ReplyTargetChars = normalizeStoryReplyTargetChars(meta.ReplyTargetChars)
 	meta.ChoiceCount = normalizeStoryChoiceCount(meta.ChoiceCount)
@@ -116,11 +117,11 @@ func cloneStoryDirectorModuleRefs(refs *StoryDirectorModuleRefs) *StoryDirectorM
 	return &cloned
 }
 
-func normalizedStoryDirectorID(id string) string {
-	if id = NormalizeStoryDirectorID(id); id != "" {
+func normalizedGamePlanningTemplateID(id string) string {
+	if id = NormalizeGamePlanningTemplateID(id); id != "" {
 		return id
 	}
-	return DefaultStoryDirectorID
+	return DefaultGamePlanningTemplateID
 }
 
 func normalizeStoryOpeningConfig(config StoryOpeningConfig) StoryOpeningConfig {

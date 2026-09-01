@@ -4,9 +4,9 @@ import type { LucideIcon } from 'lucide-react'
 import type { TFunction } from 'i18next'
 import type { ResourceDirectoryItem, ResourceDirectorySection } from '@/components/resource-directory/types'
 import type { PresetResourceKind } from '../../preset-ownership'
-import type { ActorStateModule, EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, Teller } from '../../types'
+import type { ActorStateModule, EventPackageModule, GamePlanningTemplate, ImagePreset, RuleSystemModule, Teller } from '../../types'
 import { narrativeStyleDescription, narrativeStyleName } from '../../narrative-style'
-import { gamePresetName } from '../../game-preset'
+import { gamePlanningTemplateDescription, gamePlanningTemplateName } from '../../game-planning'
 import { presetStatusLabel } from '../preset-config/preset-status'
 import { enabledImagePresetSlotCount, normalizedImagePresetSlots } from './ImagePresetEditor'
 import { eventPackageSummaryCount, presetKindCreateLabel, presetKindDirectoryLabel, storyDirectorSummaryCount } from './editor-shared'
@@ -36,7 +36,7 @@ export function parsePresetDirectoryEntryId(entryId: string): { kind: PresetReso
 
 interface PresetDirectoryLists {
   tellers: Teller[]
-  storyDirectors: StoryDirector[]
+  storyDirectors: GamePlanningTemplate[]
   imagePresets: ImagePreset[]
   eventPackages: EventPackageModule[]
   ruleSystems: RuleSystemModule[]
@@ -71,12 +71,9 @@ function presetDirectoryItemsForKind(kind: PresetResourceKind, lists: PresetDire
   if (kind === 'director') {
     return storyDirectors.map((director) => ({
       id: presetDirectoryEntryId('director', director.id),
-      title: gamePresetName(director, t),
-      summary: [
-        `${presetStatusLabel(director, t)} · ${t('settingPanel.storyDirector.summaryCount', { count: storyDirectorSummaryCount(director) })}`,
-        director.strategy?.prompt_markdown?.trim() ? t('settingPanel.storyDirector.strategyPromptEnabled') : '',
-      ].filter(Boolean).join(' · '),
-      searchText: director.description || '',
+      title: gamePlanningTemplateName(director, t),
+      summary: `${presetStatusLabel(director, t)} · ${t('settingPanel.gamePlanning.summaryCount', { count: storyDirectorSummaryCount(director) })}`,
+      searchText: gamePlanningTemplateDescription(director, t),
     }))
   }
   if (kind === 'teller') {

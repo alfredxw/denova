@@ -8,14 +8,14 @@ import (
 func TestInteractiveStoryRuntimeContextDescribesStoryCheckSettings(t *testing.T) {
 	enabled := InteractiveStoryRuntimeContext(InteractiveStoryPromptInput{
 		ChoiceCount: 5, RuleChecksEnabled: true, CheckDifficultyShift: 1, CheckRollModifier: -2,
-		GamePresetRules: "rule catalog",
+		StoryRuleCatalog: "rule catalog",
 	})
 	for _, want := range []string{
 		"## Fixed-rule Checks",
 		"Status: enabled",
 		"difficulty shift: +1",
 		"roll modifier: -2",
-		"Game Preset Rule Catalog",
+		"Story Rule Catalog",
 	} {
 		if !strings.Contains(enabled, want) {
 			t.Fatalf("enabled runtime context missing %q:\n%s", want, enabled)
@@ -23,7 +23,7 @@ func TestInteractiveStoryRuntimeContextDescribesStoryCheckSettings(t *testing.T)
 	}
 
 	disabled := InteractiveStoryRuntimeContext(InteractiveStoryPromptInput{
-		ChoiceCount: 5, RuleChecksEnabled: false, GamePresetRules: "must stay hidden",
+		ChoiceCount: 5, RuleChecksEnabled: false, StoryRuleCatalog: "must stay hidden",
 	})
 	if !strings.Contains(disabled, "Status: disabled. Do not call prepare_interactive_turn") {
 		t.Fatalf("disabled runtime context lacks the tool boundary:\n%s", disabled)
