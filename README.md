@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <strong>Denova 一个面向小说创作与 AI 角色扮演游戏的 AI 创作平台，内置支持 AI Agents、Skills、Subagent Workflows、自动化、图像自动生成与项目版本管理等核心能力</strong>
+  <strong>Denova 是一个面向小说写作与 AI 角色扮演游戏的一体化 AI 创作平台，内置 AI Agents、Skills、SubAgent 协作、自动化、图像生成与项目版本管理</strong>
 </p>
 
 <p align="center">
@@ -19,7 +19,7 @@
 </p>
 
 <p align="center">
-  当前版本：<strong>v0.3.3</strong>（2026-07-25） · Beta
+  当前状态：<strong>Beta</strong> · <a href="https://github.com/alfredxw/denova/releases">下载最新版本</a>
 </p>
 
 ![Denova 写作](./img/ide.png)
@@ -47,60 +47,50 @@
 
 ## 为什么选择 Denova
 
-Denova 面向长期创作项目和互动娱乐，把写作 IDE、互动故事、结构化资料库、Agent 工具调用、图像生成、自动化和本地版本管理放在同一个项目工作区里，让创作过程可以反复迭代、回溯和沉淀。
+Denova 把小说写作、互动故事、结构化资料库、AI Agent、图像生成、自动化和本地版本管理放进同一个工作区，适合需要长期维护设定、反复修改并持续积累内容的创作项目。
 
-你可以从原创灵感开始，也可以导入已有小说做同人、改编或续写；还可以导入 AI 酒馆角色卡，快速搭建互动文字冒险。模型上下文会按来源、用途和大小上限组织，避免把完整历史、日志或全部设定无界塞进下一轮对话。
+你可以从一个灵感开始新书，导入已有小说继续创作，也可以使用角色卡和资料库搭建可分支的文字冒险。Agent 能读取项目内容、调用工具并修改文件，所有重要变更仍可检查、撤销和恢复。
 
 ## 核心能力
 
-- **写作**：面向小说创作，支持 Markdown 编辑、多 Tab、正则查找与替换、带自动备份的工作区全局替换、章节统计、大纲、章节组细纲、进度追踪、正文评论、Change Review 和现有小说导入。
-- **创作 Agent**：可读取选区、文件、资料库和可信审阅意见，调用工具生成或修改章节，并通过 Skills / SubAgents 适配不同写作任务、文风和工作流；通用工具采用 `read / write / edit / glob / grep / bash|pwsh / web_search / web_fetch / browser / todo / ask / skill / task` 的小接口。写入仍进入累计 Diff，可审阅、评论与撤销。
-- **游戏**：运行互动文字冒险，支持玩家输入、剧情分支、故事线切换、可按故事开关的 Game Agent 分支规划、行动建议、已保存 AI 回复修正、可检索回合历史、可归档恢复的 Actor State 与自定义状态布局；游戏控制台集中展示当前规划、角色与世界状态和分支路线。
-- **资料库与预设**：沉淀角色、世界观、地点、势力、规则、物品等稳定设定；方案预设在一个目录中展示全部类型，并按通用、游戏专用或写作专用标明固定适用范围。叙事风格负责文风、提示词槽位和场景风格；游戏规划提供多套内置规划模板，也可复制后用有序的“小标题 + 说明”表单修改。叙事风格、事件包、TRPG 检定、状态系统和图像方案由每条故事线直接组合或关闭。
-- **图像创作**：支持章节插画、互动图像和书籍封面生成，复用 OpenAI 兼容图像模型配置，并在界面中预览和管理结果。
-- **上下文管理**：渐进式组织模型可见上下文，支持上下文来源展开与一键复制、带回合来源的历史检查点、缓存优化和有界工具结果，降低长篇创作的上下文噪音与 token 成本。
-- **版本与恢复**：基于本地 Git 保存版本、查看 Diff、恢复历史，并通过工作区变更账本提供跨重启的 Agent 修改 Undo/Redo，以及定时和 Agent 大量输出后的自动保存。
-- **自动化**：支持定时任务、Review、自动续写和自定义 Prompt 工作流。
-- **产品化体验**：中英文界面、浅色/深色主题、OpenAI 兼容模型配置、远程访问、PWA 手机使用，以及 Windows / macOS / Linux 全平台支持。
+- **小说写作**：Markdown 文档与源码编辑、多文档 Tab、查找替换、大纲与章节细纲、进度追踪、正文评论、修改审阅和现有小说导入。
+- **创作 Agent**：结合当前选区、项目文件和资料库进行创作，可通过 Skills 扩展工作流，并支持多个会话和按需的 SubAgent 协作。
+- **互动游戏**：通过玩家输入推进故事，支持剧情分支、故事线切换、行动建议、角色与世界状态、规则检定以及可调整的剧情规划。
+- **资料库与方案预设**：统一管理角色、地点、势力、世界规则和叙事风格，让稳定设定同时服务写作与游戏。
+- **图像创作**：生成章节插画、互动图像和书籍封面，并在界面中预览和管理结果。
+- **版本与恢复**：保存本地版本、查看差异、恢复历史文件，并审阅或撤销 Agent 对工作区的修改。
+- **自动化**：按计划运行审阅、续写和自定义创作任务。
+- **跨平台体验**：支持中文与英文、浅色与深色主题、Windows / macOS / Linux、远程访问和添加到手机主屏幕。
 
 ## 写作与游戏
 
-写作和游戏都是工作台中的一级入口，不再需要额外切换全局模式。写作关注小说生产线：构思、设定、大纲、章节细纲、正文和进度；游戏关注可游玩的互动叙事：玩家行动、剧情分支、回合历史、Actor State、故事线和选择推进。资料库、方案预设、版本管理等共通能力各自只有一个共享入口。
+写作和游戏是工作台中并列的一级入口。写作侧重构思、设定、大纲、章节和进度；游戏侧重玩家行动、剧情分支、角色状态和故事线推进。
 
-Game Agent 可以在生成正文与状态变化的同一回合中维护当前分支规划，让未来意图始终与真正落盘的剧情一致，减少长期目标漂移和推进失焦。规划按故事单独开关：开启后，Agent 会结合开局、当前分支、Actor State、资料库和玩家选择，按所选规划模板统筹长期方向、中期剧情弧、近期节拍、角色安排与伏笔回收。规划模板在设置页以有序章节表单维护，运行时稳定渲染为 `##` 模块；开局或大幅重规划时整篇初始化，日常回合只更新受影响模块。关闭后不注入计划，也不额外引导玩家。创作者可以随时在游戏控制台切换模板，并查看当前分支计划。
-
-创作者可以为每条故事线自由组合叙事风格、事件包、TRPG 检定、状态系统和图像方案，也可以关闭不需要的模块。事件包只向 Game Agent 提供可选剧情素材，不规定触发频率、节奏曲线或固定章节；这些偏好由规划模板、Skills 和用户指令表达。状态系统会从真实开局中适配需要长期追踪的属性、资源、关系、伤势与词条，TRPG 检定支持固定 d20 规则和状态加成。历史事实以已提交 Turn 为真源，当前可计算事实归 Actor State，稳定设定归资料库，未来意图归当前分支计划；计划的小节编辑先在本轮草稿中独立校验，最终仍以完整文档与所属回合原子提交，并随分支、回退和版本选择正确投影。Agent 可通过有界回合历史检索找回早期事实，游戏控制台持续呈现计划、角色、世界与分支变化；已保存的 AI 回复也可以直接修正，而无需重新生成回合。
-
-两类创作流程共享适合长期复用的资产，例如资料库、方案预设、模型与 Agent 配置、Skills、版本管理和基础设置。写作进度、章节细纲等生产状态不会自动进入游戏；如果互动故事需要引用某段正文或当前进度，建议先把稳定信息沉淀进资料库，或在输入中明确引用。
-
-## 欢迎交流
-
-Denova 仍在快速迭代中，欢迎反馈问题、分享用法或一起讨论创作工作流。
-
-<p align="center">
-  <img src="./img/wechat.jpg" alt="微信交流" width="240">
-</p>
-
-[Discord 社区](https://discord.gg/QuHu2aPya)
-
+资料库、方案预设、Skills 和版本管理由两类流程共享；章节进度和游戏状态则各自独立，避免一个入口的临时状态干扰另一个入口。
 
 ## 快速开始
 
-macOS / Linux 一键安装：
+### 安装发布版
+
+macOS / Linux 可以使用一键安装脚本：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/alfredxw/denova/master/scripts/install.sh | sh
 ```
 
-安装完成后运行 `denova`。
+安装完成后运行 `denova`。Windows 用户以及希望手动安装的用户，可以从 [GitHub Releases](https://github.com/alfredxw/denova/releases) 下载对应平台的压缩包；Windows 运行 `denova.exe`。
 
-也可以从 [GitHub Releases](https://github.com/alfredxw/denova/releases) 手动下载对应平台的安装包。脚本仅支持 macOS 和 Linux，Windows 需要手动下载并运行 `denova.exe`。
+稳定使用建议选择 Release；`master` 分支可能包含尚未发布的改动。
 
-Release 包已内置经过 SHA-256 校验的 ripgrep，无需单独安装；Denova 的 `grep` 工具会优先使用包内版本。
+### 第一次使用
+
+1. 按启动引导添加语言模型的 API Key 和模型名。
+2. 创建或导入一本书，也可以直接打开已有项目目录。
+3. 从「写作」开始创作，或从「游戏」创建一条互动故事线；需要生成图片时再配置图像模型。
 
 ### 从源码运行
 
-开发启动需要 Go 1.26.6+、Node.js 20+、pnpm 和 PATH 中可用的 ripgrep；`scripts/build.sh` 生成的可分发目录会自动下载并内置固定版本。
+需要 Go 1.26.6+、Node.js 20+、pnpm、ripgrep 和 Bash。Windows 请在 Git Bash 或 WSL 中运行以下命令。
 
 ```bash
 git clone https://github.com/alfredxw/denova.git
@@ -116,98 +106,37 @@ corepack enable
 
 ## 模型与配置
 
-Denova 的语言模型将 provider 与 API 协议分开配置：provider 从内置服务商目录选择，协议统一为 OpenAI Chat Completions、OpenAI Responses 或 Anthropic Messages。自定义端点选择「兼容 / 自定义端点」服务商，再设置协议与 Base URL；Gemini 使用 Google 官方的 OpenAI 兼容入口。OpenAI 默认使用 Responses API，DeepSeek 同时提供 Chat Completions、Responses 与 Anthropic 路由，MiniMax 默认使用能完整续传 thinking block 的 Anthropic 路由。设置页会按当前协议通过 OpenAI-compatible 或 Anthropic `/models` 获取模型候选，但模型名始终可自定义；也可直接用当前未保存配置发送一次最小生成请求来测试连接。旧 `model_profiles` 的 `openai_*` 字段和下面的 `OPENAI_*` 环境变量会继续按 Chat Completions 兼容读取。
-
-图像模型支持 OpenAI、xAI/Grok、ComfyUI、火山引擎 Seedream、Google Gemini Image，以及可选择上述任一协议的自定义端点。ComfyUI 默认发现当前服务中用户保存的工作流；保存后运行一次即可解析 API Graph，也可导入从 ComfyUI 导出的 API Format JSON。Denova 只绑定提示词、图片数量和尺寸，模型、采样器、CFG 等静态参数始终沿用工作流。旧版 `image_api_*` 和图像 Profile 的 `openai_api_*` 配置会在首次读取时自动迁移，原文件会先保存为带内容摘要的 `.bak` 备份。推荐先在设置页配置语言模型、图像模型、Agent 参数、默认写作 Skill、编辑器、游戏模式、版本管理、语言、主题和字体。
-
-需要脚本化启动或部署时，也可以用环境变量覆盖模型配置：
-
-```bash
-export OPENAI_API_KEY="your-api-key"
-export OPENAI_BASE_URL="https://api.deepseek.com"
-export OPENAI_MODEL="deepseek-v4-pro"
-export DENOVA_IMAGE_PROVIDER="openai"
-export DENOVA_IMAGE_PROTOCOL="openai-images"
-export DENOVA_IMAGE_API_KEY="your-image-api-key"
-export DENOVA_IMAGE_BASE_URL="https://api.openai.com/v1"
-export DENOVA_IMAGE_MODEL="gpt-image-2"
-```
-
-旧 `OPENAI_IMAGE_API_KEY`、`OPENAI_IMAGE_BASE_URL`、`OPENAI_IMAGE_MODEL` 仍可作为 OpenAI 图像路由的兼容别名；同名新配置存在时始终以 `DENOVA_IMAGE_*` 为准。
-
-可选 Denova 启动环境变量：
-
-```bash
-export DENOVA_WORKSPACE="/path/to/your-workspace"
-export DENOVA_DIR="./.denova"
-export DENOVA_SKILLS_DIR="./skills"
-export DENOVA_WEB_DIR="./web"
-export DENOVA_BACKEND_PORT="8080"
-export DENOVA_FRONTEND_PORT="5173"
-```
-
-配置优先级：
-
-```text
-内置默认值 < 全局 config.toml < 用户级配置 < 环境变量
-```
-
-设置页中的通用、写作与游戏偏好统一保存为用户配置。工作区 `.denova/config.toml` 只承载 Agent 页明确提供的工作区定制；旧文件中的其他字段会保留，但不再覆盖用户设置。旧环境变量仍会兼容读取；新配置建议使用 `.denova` / `DENOVA_*`。
-
-Agent 的只读工具并发数可在设置页或 Agents 页配置，默认 8、范围 1–64；工作区值会覆盖用户值。该并发只作用于连续的只读工具，工作区写入和 child 工具仍按严格顺序执行。
-
-Agents 页按后端解析后的能力清单展示每类 Agent 的真实工具权限，不在前端维护另一份默认值。最终权限是 Agent kind 硬能力上限与配置覆盖的交集；`runtime_check` 表示条件能力，不保证本次运行一定注册具体工具。`shell` 会按平台暴露为 `bash` 或 `pwsh`；网页搜索与网页抓取可分别授权。配置管理由通用或写作 Agent 通过 `/configuration` Skill 和 `config_read` / `config_apply` 完成；配置页面保留右侧配置管理面板并复用 AgentChat，与主 Project Agent 共用会话、历史和恢复状态。旧独立 Config Manager 数据原样保留，但不再参与运行或迁移。
+推荐在设置页完成模型配置：先添加服务商连接，再选择或填写模型并测试连接。同一连接可以复用于多个模型。语言模型支持内置服务商和自定义兼容端点；图像模型支持 OpenAI、xAI/Grok、火山引擎 Seedream、Google Gemini Image、ComfyUI Workflow 和自定义端点。
 
 ## 远程访问与手机使用
 
-Denova 可以在本机、局域网或自托管服务器上使用。Release 包已包含前端资源；从源码部署时可先构建前端：
+在 **设置 → 远程访问** 中开启局域网访问并设置用户名和密码后，其他设备可以使用页面显示的地址访问 Denova。手机浏览器可以将页面添加到主屏幕。
 
-```bash
-pnpm --dir web build
-```
-
-在 **设置页 → 远程访问** 开启「允许局域网访问」并设置用户名和密码后，其他设备可以打开设置页展示的访问地址。手机浏览器登录后可添加到主屏幕，以接近独立应用的方式使用。
-
-如果要通过公网或域名访问，建议使用 Caddy / Nginx 等反向代理提供 HTTPS，避免凭据明文传输，并确保浏览器剪贴板、PWA 等能力正常工作。
-
-Caddy 示例：
-
-```text
-denova.example.com {
-    reverse_proxy 127.0.0.1:8080
-}
-```
+通过公网或域名部署时，请使用 Caddy、Nginx 等反向代理提供 HTTPS，避免明文传输登录凭据。
 
 ## 开发
 
-启动前后端：
-
-```bash
-./scripts/bootstrap.sh
-```
-
-分开启动前端或后端：
+贡献代码前请先阅读 [CONTRIBUTING.md](./CONTRIBUTING.md)。常用命令：
 
 ```bash
 ./scripts/bootstrap.sh fe
 ./scripts/bootstrap.sh be
+./scripts/build.sh
 ```
 
-停止当前仓库中运行的 Denova 后端并以前台方式重启：
+## 欢迎交流
 
-```bash
-./scripts/restart-backend.sh
-```
+Denova 仍在快速迭代中，欢迎反馈问题、分享用法或讨论创作工作流。
 
-允许局域网设备访问前端开发服务：
+[Discord 社区](https://discord.gg/QuHu2aPya)
 
-```bash
-./scripts/bootstrap.sh fe --lan
-```
+<p align="center">
+  <img src="./img/wechat.jpg" alt="微信交流" width="240">
+</p>
 
 ## 赞助项目
 
-> 给项目冲点token，帮助这个项目持续迭代，持续开源，你的支持真的很重要！非常感谢！
+> 给项目冲点 token，帮助 Denova 持续迭代和开源。感谢你的支持！
 
 <p align="center">
   <img src="./img/donate.png" alt="捐赠" width="240">
