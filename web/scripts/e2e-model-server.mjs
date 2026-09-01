@@ -59,7 +59,10 @@ const planningTurnSubmission = JSON.stringify({
     { op: 'replace', actor_id: 'story', field_id: '当前事件', value: '发现通往钟楼的维护通道' },
   ],
   choices: ['调查维护通道', '继续查看站台地图'],
-  plan_update: '## 当前意图\n\n围绕 [[旧车站]] 的钟楼信号展开，但保留玩家离开车站的自由。',
+  plan_update: {
+    mode: 'replace_document',
+    markdown: '## 当前意图\n\n围绕 [[旧车站]] 的钟楼信号展开，但保留玩家离开车站的自由。',
+  },
 })
 
 const delayedResponses = new Map([

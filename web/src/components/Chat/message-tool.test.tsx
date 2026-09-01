@@ -94,4 +94,25 @@ describe('ToolExecutionBlock', () => {
     expect(screen.queryByText(/Narrow the resource path/)).not.toBeInTheDocument()
     expect(container.querySelector('.lucide-triangle-alert')).not.toBeInTheDocument()
   })
+
+  it('shows both offsets required to continue a truncated line', () => {
+    const metadata = JSON.stringify({
+      schema: 'resource.read.v1',
+      status: 'partial',
+      source: { kind: 'file', path: 'long.txt' },
+      limits: { truncated: true, next_offset: 1, next_byte_offset: 65536 },
+    })
+
+    render(<ToolExecutionBlock
+      message={{
+        role: 'tool_call',
+        name: 'read',
+        args: JSON.stringify({ path: 'long.txt' }),
+        result: `${metadata}\nlong line fragment`,
+        status: 'success',
+      }}
+    />)
+
+    expect(screen.getByText(/offset=1、byte_offset=65536/)).toBeInTheDocument()
+  })
 })

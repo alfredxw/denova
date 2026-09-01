@@ -227,7 +227,7 @@ func TestUnifiedTurnSubmissionDecodesActorArchiveAndRestore(t *testing.T) {
 func TestPlanningSubmissionRequiresOpeningPlanAndPreservesExistingPlanByOmission(t *testing.T) {
 	system, state := turnSubmissionTestState()
 	updates := []interactivestate.Update{}
-	choicesInput := DecodeInteractiveTurnSubmissionInput(`{"choices":["左路","右路","检查地图","询问同伴","原地观察"],"plan_update":"先核实地图，再让同伴决定下一站。"}`)
+	choicesInput := DecodeInteractiveTurnSubmissionInput(`{"choices":["左路","右路","检查地图","询问同伴","原地观察"],"plan_update":{"mode":"replace_document","markdown":"先核实地图，再让同伴决定下一站。"}}`)
 	if choicesInput.Choices == nil || choicesInput.PlanUpdate == nil {
 		t.Fatalf("branch plan was not decoded: %#v", choicesInput)
 	}
@@ -259,7 +259,7 @@ func TestPlanningSubmissionRequiresOpeningPlanAndPreservesExistingPlanByOmission
 
 func TestPlanningSubmissionIgnoresPlanUpdateWhenPlanningIsDisabled(t *testing.T) {
 	system, state := turnSubmissionTestState()
-	input := DecodeInteractiveTurnSubmissionInput(`{"state_changes":[],"choices":["左路","右路","检查地图","询问同伴","原地观察"],"plan_update":"这段内容不应进入关闭规划的故事。"}`)
+	input := DecodeInteractiveTurnSubmissionInput(`{"state_changes":[],"choices":["左路","右路","检查地图","询问同伴","原地观察"],"plan_update":{"mode":"replace_document","markdown":"这段内容不应进入关闭规划的故事。"}}`)
 	prepared, receipt := PrepareTurnSubmission(TurnSubmissionContext{
 		ActorState: system, CurrentState: state, ChoiceCount: 5, PlanningMode: StoryPlanningModeDisabled,
 	}, nil, input)
@@ -273,7 +273,7 @@ func TestPlanningSubmissionIgnoresPlanUpdateWhenPlanningIsDisabled(t *testing.T)
 
 func TestPlanningSubmissionRejectsMalformedReplacementIndependently(t *testing.T) {
 	system, state := turnSubmissionTestState()
-	input := DecodeInteractiveTurnSubmissionInput(`{"state_changes":[],"choices":["左路","右路","检查地图","询问同伴","原地观察"],"plan_update":""}`)
+	input := DecodeInteractiveTurnSubmissionInput(`{"state_changes":[],"choices":["左路","右路","检查地图","询问同伴","原地观察"],"plan_update":"旧格式不再接受。"}`)
 	prepared, receipt := PrepareTurnSubmission(TurnSubmissionContext{
 		ActorState: system, CurrentState: state, ChoiceCount: 5, PlanningMode: StoryPlanningModeEnabled,
 	}, nil, input)

@@ -322,11 +322,18 @@ function buildToolResultEnvelopeSummary(t: ReturnType<typeof useTranslation>['t'
   }
   if (!headline && result.severity !== 'success') headline = result.status
 
-  const continuation = result.continuation
-    ? t(result.continuation.kind === 'offset' ? 'chat.tool.result.moreOffset' : 'chat.tool.result.moreCursor', {
-        value: result.continuation.kind === 'cursor' ? buildPreview(result.continuation.value, 72) : result.continuation.value,
-      })
-    : ''
+  let continuation = ''
+  if (result.continuation?.kind === 'offset') {
+    const messageKey = result.continuation.byteOffset
+      ? 'chat.tool.result.moreOffsetWithByteOffset'
+      : 'chat.tool.result.moreOffset'
+    continuation = t(messageKey, {
+      value: result.continuation.value,
+      byteOffset: result.continuation.byteOffset,
+    })
+  } else if (result.continuation?.kind === 'cursor') {
+    continuation = t('chat.tool.result.moreCursor', { value: buildPreview(result.continuation.value, 72) })
+  }
   // Web recovery strategies already have localized, actionable labels. Avoid
   // duplicating the provider's often bilingual suggested_action beside them.
   // Continuations already state the next page, while a process non-zero exit

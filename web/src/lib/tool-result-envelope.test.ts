@@ -19,6 +19,16 @@ describe('decodeToolResultEnvelope', () => {
     })
   })
 
+  it('keeps both offsets required to continue a truncated line', () => {
+    const result = decodeToolResultEnvelope(JSON.stringify({
+      schema: 'resource.read.v1',
+      status: 'partial',
+      limits: { truncated: true, next_offset: 1, next_byte_offset: 65536 },
+    }))
+
+    expect(result?.continuation).toEqual({ kind: 'offset', value: '1', byteOffset: '65536' })
+  })
+
   it('keeps an incomplete search without continuation as a warning', () => {
     const result = decodeToolResultEnvelope(JSON.stringify({
       schema: 'workspace.search.v1',

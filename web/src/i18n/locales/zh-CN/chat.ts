@@ -271,6 +271,7 @@ const chat = {
   'chat.tool.result.partial': '结果不完整',
   'chat.tool.result.truncated': '输出已截断',
   'chat.tool.result.moreOffset': '后续内容可从 offset={{value}} 读取',
+  'chat.tool.result.moreOffsetWithByteOffset': '后续内容可从 offset={{value}}、byte_offset={{byteOffset}} 读取',
   'chat.tool.result.moreCursor': '后续结果可从 next_cursor={{value}} 继续',
   'chat.tool.noReturn': '无返回内容',
   'chat.tool.runningTitle': '正在执行工具',

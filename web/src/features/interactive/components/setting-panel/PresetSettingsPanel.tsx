@@ -11,6 +11,7 @@ import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
 import { FeaturePageShell } from '@/components/layout/feature-page-shell'
 import { MobilePaneTrigger } from '@/components/layout/mobile-pane-trigger'
 import { Button } from '@/components/ui/button'
+import { withErrorLogID } from '@/lib/api-client'
 import {
   createActorState,
   createEventPackage,
@@ -73,7 +74,6 @@ interface AutosaveController {
   flushPending: () => Promise<unknown> | null
   saveNow: (mode: 'manual' | 'auto') => Promise<unknown>
   status: AutosaveStatus
-  error: string | null
 }
 
 const actionButtonClassName = 'gap-1.5 border-[var(--preset-line)] bg-[var(--preset-raised)] text-[var(--nova-text-muted)] shadow-none hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
@@ -160,6 +160,22 @@ export function PresetSettingsPanel({
   } = resources
   const presetDirectoryOrder = usePresetDirectoryOrder()
 
+  function reportPresetError(scope: string, fallback: string, error: unknown): void {
+    console.warn(scope, error)
+    toast.error(withErrorLogID(fallback, error))
+  }
+
+  async function runPresetMutation(scope: string, fallback: string, mutation: () => Promise<void>): Promise<void> {
+    setSaving(true)
+    try {
+      await mutation()
+    } catch (error) {
+      reportPresetError(scope, fallback, error)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   useEffect(() => {
     presetConfigValidRef.current = presetConfigValid
   }, [presetConfigValid])
@@ -182,10 +198,7 @@ export function PresetSettingsPanel({
       { resource: 'interactive_teller', scope: PRESET_RESOURCE_SCOPE },
     ),
     onSaved: mergeSavedTeller,
-    onAutoSaveError: (err) => {
-      console.warn('[teller-editor] Failed to autosave narrative style', err)
-      toast.error((err as Error).message || t('editor.saveFailed'))
-    },
+    onAutoSaveError: (err) => reportPresetError('[teller-editor] Failed to autosave narrative style', t('editor.saveFailed'), err),
     onFlushError: (err) => console.warn('[teller-editor] Failed to autosave narrative style before selection change', err),
   })
 
@@ -208,10 +221,7 @@ export function PresetSettingsPanel({
       { resource: 'game_planning', scope: PRESET_RESOURCE_SCOPE },
     ),
     onSaved: mergeSavedStoryDirector,
-    onAutoSaveError: (err) => {
-      console.warn('[game-planning-editor] Failed to autosave Planning Template', err)
-      toast.error((err as Error).message || t('editor.saveFailed'))
-    },
+    onAutoSaveError: (err) => reportPresetError('[game-planning-editor] Failed to autosave Planning Template', t('editor.saveFailed'), err),
     onFlushError: (err) => {
       console.warn('[game-planning-editor] Failed to autosave Planning Template before selection change', err)
     },
@@ -231,10 +241,7 @@ export function PresetSettingsPanel({
       { resource: 'image_preset', scope: PRESET_RESOURCE_SCOPE },
     ),
     onSaved: mergeSavedImagePreset,
-    onAutoSaveError: (err) => {
-      console.warn('[image-preset-editor] Failed to autosave image preset', err)
-      toast.error((err as Error).message || t('editor.saveFailed'))
-    },
+    onAutoSaveError: (err) => reportPresetError('[image-preset-editor] Failed to autosave image preset', t('editor.saveFailed'), err),
     onFlushError: (err) => console.warn('[image-preset-editor] Failed to autosave image preset before selection change', err),
   })
 
@@ -253,10 +260,7 @@ export function PresetSettingsPanel({
       { resource: 'event_package', scope: PRESET_RESOURCE_SCOPE },
     ),
     onSaved: mergeSavedEventPackage,
-    onAutoSaveError: (err) => {
-      console.warn('[event-package-editor] Failed to autosave event package', err)
-      toast.error((err as Error).message || t('editor.saveFailed'))
-    },
+    onAutoSaveError: (err) => reportPresetError('[event-package-editor] Failed to autosave event package', t('editor.saveFailed'), err),
     onFlushError: (err) => console.warn('[event-package-editor] Failed to autosave event package before selection change', err),
   })
 
@@ -275,10 +279,7 @@ export function PresetSettingsPanel({
       { resource: 'rule_system', scope: PRESET_RESOURCE_SCOPE },
     ),
     onSaved: mergeSavedRuleSystem,
-    onAutoSaveError: (err) => {
-      console.warn('[rule-system-editor] Failed to autosave TRPG rules', err)
-      toast.error((err as Error).message || t('editor.saveFailed'))
-    },
+    onAutoSaveError: (err) => reportPresetError('[rule-system-editor] Failed to autosave TRPG rules', t('editor.saveFailed'), err),
     onFlushError: (err) => console.warn('[rule-system-editor] Failed to autosave TRPG rules before selection change', err),
   })
 
@@ -297,10 +298,7 @@ export function PresetSettingsPanel({
       { resource: 'actor_state', scope: PRESET_RESOURCE_SCOPE },
     ),
     onSaved: mergeSavedActorState,
-    onAutoSaveError: (err) => {
-      console.warn('[actor-state-editor] Failed to autosave actor state system', err)
-      toast.error((err as Error).message || t('editor.saveFailed'))
-    },
+    onAutoSaveError: (err) => reportPresetError('[actor-state-editor] Failed to autosave actor state system', t('editor.saveFailed'), err),
     onFlushError: (err) => console.warn('[actor-state-editor] Failed to autosave actor state system before selection change', err),
   })
 
@@ -361,8 +359,7 @@ export function PresetSettingsPanel({
       await save
       return true
     } catch (err) {
-      console.warn('[preset-settings] Save before resource switch failed; preserving the current editor', err)
-      toast.error((err as Error).message || t('editor.saveFailed'))
+      reportPresetError('[preset-settings] Save before resource switch failed; preserving the current editor', t('editor.saveFailed'), err)
       return false
     } finally {
       setTransitioning(false)
@@ -427,34 +424,27 @@ export function PresetSettingsPanel({
 
   const handleCreateTeller = async () => {
     if (!(await flushPresetResourceAutoSave())) return
-    setSaving(true)
-    try {
+    await runPresetMutation('[preset-settings] Failed to create narrative style', t('settingPanel.presetCreateFailed'), async () => {
       const teller = await createInteractiveTeller(newTellerDraft(t))
       setPresetResourceKind('teller')
       await refreshTellers(teller.id)
       closeDirectoryRef.current()
-    } finally {
-      setSaving(false)
-    }
+    })
   }
 
   const handleCreateStoryDirector = async () => {
     if (!(await flushPresetResourceAutoSave())) return
-    setSaving(true)
-    try {
+    await runPresetMutation('[preset-settings] Failed to create Planning Template', t('settingPanel.presetCreateFailed'), async () => {
       const director = await createGamePlanningTemplate(newStoryDirectorDraft(t))
       setPresetResourceKind('director')
       await refreshStoryDirectors(director.id)
       closeDirectoryRef.current()
-    } finally {
-      setSaving(false)
-    }
+    })
   }
 
   const handleCopyPlanningTemplate = async (source: GamePlanningTemplate) => {
     if (!(await flushPresetResourceAutoSave())) return
-    setSaving(true)
-    try {
+    await runPresetMutation('[preset-settings] Failed to copy Planning Template', t('settingPanel.presetCreateFailed'), async () => {
       const stamp = Date.now()
       const created = await createGamePlanningTemplate({
         ...source,
@@ -475,61 +465,47 @@ export function PresetSettingsPanel({
       })
       setPresetResourceKind('director')
       await refreshStoryDirectors(created.id)
-    } finally {
-      setSaving(false)
-    }
+    })
   }
 
   const handleCreateEventPackage = async () => {
     if (!(await flushPresetResourceAutoSave())) return
-    setSaving(true)
-    try {
+    await runPresetMutation('[preset-settings] Failed to create event package', t('settingPanel.presetCreateFailed'), async () => {
       const item = await createEventPackage(newEventPackageDraft(t))
       setPresetResourceKind('event')
       await refreshEventPackages(item.id)
       closeDirectoryRef.current()
-    } finally {
-      setSaving(false)
-    }
+    })
   }
 
   const handleCreateRuleSystem = async () => {
     if (!(await flushPresetResourceAutoSave())) return
-    setSaving(true)
-    try {
+    await runPresetMutation('[preset-settings] Failed to create TRPG checks', t('settingPanel.presetCreateFailed'), async () => {
       const item = await createRuleSystem(newRuleSystemDraft(t))
       setPresetResourceKind('rule')
       await refreshRuleSystems(item.id)
       closeDirectoryRef.current()
-    } finally {
-      setSaving(false)
-    }
+    })
   }
 
   const handleCreateActorState = async () => {
     if (!(await flushPresetResourceAutoSave())) return
-    setSaving(true)
-    try {
+    await runPresetMutation('[preset-settings] Failed to create State System', t('settingPanel.presetCreateFailed'), async () => {
       const item = await createActorState(newActorStateDraft(t))
       setPresetResourceKind('actor-state')
       await refreshActorStates(item.id)
       closeDirectoryRef.current()
-    } finally {
-      setSaving(false)
-    }
+    })
   }
 
   const handleCreateImagePreset = async () => {
     if (!(await flushPresetResourceAutoSave())) return
-    setSaving(true)
-    try {
+    await runPresetMutation('[preset-settings] Failed to create image preset', t('settingPanel.presetCreateFailed'), async () => {
       const preset = await createImagePreset(newImagePresetDraft(t))
       setPresetResourceKind('image')
       await refreshImagePresets(preset.id)
       closeDirectoryRef.current()
-    } finally {
-      setSaving(false)
-    }
+    })
   }
 
   const createPresetResource = (kind: PresetResourceKind) => {
@@ -557,39 +533,36 @@ export function PresetSettingsPanel({
   }
 
   const confirmDeletePresetTarget = async () => {
-    if (!deletePresetTarget) return
-    setSaving(true)
-    try {
-      autosaveForKind(deletePresetTarget.kind).cancelPending()
-      if (deletePresetTarget.kind === 'image') {
-        await deleteImagePreset(deletePresetTarget.id)
+    const target = deletePresetTarget
+    if (!target) return
+    await runPresetMutation('[preset-settings] Failed to delete preset', t('settingPanel.presetDeleteFailed'), async () => {
+      autosaveForKind(target.kind).cancelPending()
+      if (target.kind === 'image') {
+        await deleteImagePreset(target.id)
         await refreshImagePresets()
-      } else if (deletePresetTarget.kind === 'event') {
-        await deleteEventPackage(deletePresetTarget.id)
+      } else if (target.kind === 'event') {
+        await deleteEventPackage(target.id)
         await refreshEventPackages()
-      } else if (deletePresetTarget.kind === 'rule') {
-        await deleteRuleSystem(deletePresetTarget.id)
+      } else if (target.kind === 'rule') {
+        await deleteRuleSystem(target.id)
         await refreshRuleSystems()
-      } else if (deletePresetTarget.kind === 'actor-state') {
-        await deleteActorState(deletePresetTarget.id)
+      } else if (target.kind === 'actor-state') {
+        await deleteActorState(target.id)
         await refreshActorStates()
-      } else if (deletePresetTarget.kind === 'director') {
-        await deleteGamePlanningTemplate(deletePresetTarget.id)
+      } else if (target.kind === 'director') {
+        await deleteGamePlanningTemplate(target.id)
         await refreshStoryDirectors()
       } else {
-        await deleteInteractiveTeller(deletePresetTarget.id)
+        await deleteInteractiveTeller(target.id)
         await refreshTellers()
       }
       setDeletePresetTarget(null)
-    } finally {
-      setSaving(false)
-    }
+    })
   }
 
   async function handleRestoreBuiltinPreset() {
     if (!currentPresetBuiltinOverridden(presetResourceKind, presetDrafts)) return
-    setSaving(true)
-    try {
+    await runPresetMutation('[preset-settings] Failed to restore built-in preset', t('settingPanel.restoreBuiltinFailed'), async () => {
       autosaveForKind(presetResourceKind).cancelPending()
       if (presetResourceKind === 'image' && imagePresetDraft) {
         await deleteImagePreset(imagePresetDraft.id)
@@ -612,11 +585,7 @@ export function PresetSettingsPanel({
       }
       toast.dismiss(PRESET_CONFIG_INVALID_TOAST_ID)
       toast.success(t('settingPanel.restoreBuiltinDone'))
-    } catch (err) {
-      toast.error((err as Error).message || t('settingPanel.restoreBuiltinFailed'))
-    } finally {
-      setSaving(false)
-    }
+    })
   }
 
   const flushActivePresetAutosave = async () => {
@@ -624,14 +593,9 @@ export function PresetSettingsPanel({
       showInvalidPresetConfigNotice()
       return
     }
-    setSaving(true)
-    try {
+    await runPresetMutation('[preset-settings] Failed to save preset', t('editor.saveFailed'), async () => {
       await autosaveForKind(presetResourceKind).saveNow('manual')
-    } catch (err) {
-      toast.error((err as Error).message || t('editor.saveFailed'))
-    } finally {
-      setSaving(false)
-    }
+    })
   }
 
   const closePanel = async () => {
@@ -782,7 +746,6 @@ export function PresetSettingsPanel({
                   {activeDraft ? (
                     <AutosaveStatusIndicator
                       status={activeAutosave.status}
-                      error={activeAutosave.error}
                       onRetry={flushActivePresetAutosave}
                     />
                   ) : null}

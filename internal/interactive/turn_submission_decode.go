@@ -90,17 +90,6 @@ func DecodeInteractiveTurnSubmissionInput(arguments string) TurnSubmissionInput 
 }
 
 func decodeTurnPlanUpdate(raw json.RawMessage) (*TurnPlanUpdateInput, []TurnSubmissionDiagnostic) {
-	// Tolerate the immediately preceding model contract as a full replacement.
-	// Persisted plans are unaffected; this only avoids an expensive retry when a
-	// provider replays an older tool shape during a resumed run.
-	if jsonValueKind(raw) == "string" {
-		var markdown string
-		if err := decodeStrictJSON(raw, &markdown, false); err == nil {
-			slog.InfoContext(context.Background(), "[interactive-turn-submission] accepted legacy string plan_update as replace_document location=internal/interactive/turn_submission_decode.go")
-			return &TurnPlanUpdateInput{Mode: TurnPlanUpdateModeReplaceDocument, Markdown: markdown}, nil
-		}
-	}
-
 	var root map[string]json.RawMessage
 	if err := decodeStrictJSON(raw, &root, false); err != nil || root == nil {
 		return nil, []TurnSubmissionDiagnostic{*newTurnSubmissionDiagnostic(

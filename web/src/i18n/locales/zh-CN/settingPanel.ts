@@ -69,6 +69,8 @@ const settingPanel = {
   'settingPanel.restoreBuiltin': '恢复内置',
   'settingPanel.restoreBuiltinDone': '已恢复内置预设',
   'settingPanel.restoreBuiltinFailed': '恢复内置失败',
+  'settingPanel.presetCreateFailed': '创建方案预设失败',
+  'settingPanel.presetDeleteFailed': '删除方案预设失败',
   'settingPanel.invalid': '无效',
   'settingPanel.enabledRules': '{{count}} 条启用规则',
   'settingPanel.eventPackage.summaryCount': '{{count}} 张事件卡',

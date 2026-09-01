@@ -1,9 +1,8 @@
 export type ToolResultSeverity = 'success' | 'warning' | 'error'
 
-export interface ToolResultContinuation {
-  kind: 'offset' | 'cursor'
-  value: string
-}
+export type ToolResultContinuation =
+  | { kind: 'offset'; value: string; byteOffset?: string }
+  | { kind: 'cursor'; value: string }
 
 export interface ToolResultEnvelope {
   schema: string
@@ -85,6 +84,10 @@ function parseRecord(value: string): Record<string, unknown> | null {
 
 function continuationFrom(limits: Record<string, unknown>): ToolResultContinuation | undefined {
   const nextOffset = finiteNumber(limits.next_offset)
+  const nextByteOffset = finiteNumber(limits.next_byte_offset)
+  if (nextOffset !== undefined && nextByteOffset !== undefined) {
+    return { kind: 'offset', value: String(nextOffset), byteOffset: String(nextByteOffset) }
+  }
   if (nextOffset !== undefined) return { kind: 'offset', value: String(nextOffset) }
   const nextCursor = stringValue(limits.next_cursor)
   if (nextCursor) return { kind: 'cursor', value: nextCursor }

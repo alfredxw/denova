@@ -69,6 +69,8 @@ const settingPanel = {
   'settingPanel.restoreBuiltin': 'Restore Built-in',
   'settingPanel.restoreBuiltinDone': 'Built-in preset restored',
   'settingPanel.restoreBuiltinFailed': 'Failed to restore built-in preset',
+  'settingPanel.presetCreateFailed': 'Failed to create preset',
+  'settingPanel.presetDeleteFailed': 'Failed to delete preset',
   'settingPanel.invalid': 'Invalid',
   'settingPanel.enabledRules': '{{count}} enabled rules',
   'settingPanel.eventPackage.summaryCount': '{{count}} event cards',

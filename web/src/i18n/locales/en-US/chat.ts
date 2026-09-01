@@ -271,6 +271,7 @@ const chat = {
   'chat.tool.result.partial': 'Result is incomplete',
   'chat.tool.result.truncated': 'Output was truncated',
   'chat.tool.result.moreOffset': 'More content is available from offset={{value}}',
+  'chat.tool.result.moreOffsetWithByteOffset': 'More content is available from offset={{value}} and byte_offset={{byteOffset}}',
   'chat.tool.result.moreCursor': 'More results are available from next_cursor={{value}}',
   'chat.tool.noReturn': 'No return content',
   'chat.tool.runningTitle': 'Running tool',
