@@ -293,6 +293,122 @@ func TestInteractiveSuccessfulTurnConsumesDurableToolBatchWithoutDuplicate(t *te
 	}
 }
 
+func TestInteractiveReplacementTurnReanchorsResolvedInputToReplacementSlot(t *testing.T) {
+	workspace := t.TempDir()
+	store := interactive.NewStore(workspace)
+	story, err := store.CreateStory(interactive.CreateStoryRequest{Title: "replacement input boundary", StoryTellerID: "classic"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	baseline, _, err := store.AppendTurnWithState(story.ID, interactive.AppendTurnWithStateRequest{
+		BranchID: "main", User: "enter", Narrative: "baseline answer",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, _, err := store.AppendTurnWithState(story.ID, interactive.AppendTurnWithStateRequest{
+		BranchID: "main", User: "inspect", Narrative: "answer to replace",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	interruptedIdentity := interactive.DomainCommitIdentity{
+		CommandID: "interrupted-replacement-command", OperationID: "interrupted-replacement-operation", Cycle: 1,
+	}
+	interruptedIntent, err := interactive.NewPlayerInputIntent(interruptedIdentity, "main", "interrupted replacement input")
+	if err != nil {
+		t.Fatal(err)
+	}
+	interrupted, err := store.CommitPlayerInput(story.ID, interruptedIntent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if interrupted.Event.AcceptedTurnCount != 2 {
+		t.Fatalf("interrupted input boundary = %d, want 2", interrupted.Event.AcceptedTurnCount)
+	}
+
+	replacementIdentity := interactive.DomainCommitIdentity{
+		CommandID: "replacement-command", OperationID: "replacement-operation", Cycle: 1,
+	}
+	replacementIntent, err := interactive.NewPlayerInputIntent(replacementIdentity, "main", "current replacement request")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CommitPlayerInput(story.ID, replacementIntent); err != nil {
+		t.Fatal(err)
+	}
+	expectedHead := target.ID
+	replacement, _, err := store.AppendTurnWithState(story.ID, interactive.AppendTurnWithStateRequest{
+		BranchID: "main", ExpectedParentID: &expectedHead, ReplaceTurnID: target.ID,
+		User: "current replacement request", Narrative: "replacement answer",
+		AgentCommandID: replacementIdentity.CommandID, AgentOperationID: replacementIdentity.OperationID, AgentCycle: replacementIdentity.Cycle,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parent := replacement.ParentID; parent != baseline.ID {
+		t.Fatalf("replacement parent = %v, want %s", parent, baseline.ID)
+	}
+	if len(replacement.ResolvedPlayerInputContexts) != 1 || replacement.ResolvedPlayerInputContexts[0].Input.ID != interrupted.Event.ID {
+		t.Fatalf("replacement resolved inputs = %#v, want interrupted input", replacement.ResolvedPlayerInputContexts)
+	}
+
+	history, err := store.ReadModelHistory(story.ID, interactive.StoryModelHistoryQuery{
+		BranchID: "main", StartTurn: 0, EndTurn: 2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := store.Snapshot(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	projection, err := BuildModelContextProjection(
+		history, nil, snapshot, toolresult.ContextPolicy{Enabled: true}, agentrun.CycleIdentity{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if projection.SourceTurnCount != 2 {
+		t.Fatalf("replacement compactable boundary = %d, want 2", projection.SourceTurnCount)
+	}
+	visibleText := joinedInteractiveMessageContent(projection.Messages)
+	baselineAt := strings.Index(visibleText, "baseline answer")
+	interruptedAt := strings.Index(visibleText, "interrupted replacement input")
+	replacementAt := strings.Index(visibleText, "current replacement request")
+	if baselineAt < 0 || interruptedAt < baselineAt || replacementAt < interruptedAt {
+		t.Fatalf("replacement projection order changed: %q", visibleText)
+	}
+	if sourceText := joinedInteractiveMessageContent(projection.SourceMessages); !strings.Contains(sourceText, "interrupted replacement input") || !strings.Contains(sourceText, "replacement answer") {
+		t.Fatalf("replacement compaction source lost resolved context: %q", sourceText)
+	}
+}
+
+func TestInteractiveProjectionRejectsResolvedInputBeyondReplacementBoundary(t *testing.T) {
+	history := interactive.StoryModelHistory{
+		StartTurn:  0,
+		EndTurn:    3,
+		TotalTurns: 3,
+		Turns: []interactive.StoryModelTurn{
+			{
+				ID: "owner", BranchID: "main", User: "owner input", Narrative: "owner answer",
+				ResolvedPlayerInputContexts: []interactive.ResolvedPlayerInputContext{{
+					Input: interactive.PlayerInputAcceptedEvent{ID: "invalid-future-input", AcceptedTurnCount: 2},
+				}},
+			},
+			{ID: "second", BranchID: "main", User: "second input", Narrative: "second answer"},
+			{ID: "third", BranchID: "main", User: "third input", Narrative: "third answer"},
+		},
+	}
+	_, err := BuildModelContextProjection(
+		history, nil, interactive.Snapshot{}, toolresult.ContextPolicy{Enabled: true}, agentrun.CycleIdentity{},
+	)
+	if err == nil || !strings.Contains(err.Error(), "accepted after its owner Turn: accepted=2 owner=0") {
+		t.Fatalf("invalid resolved boundary error = %v", err)
+	}
+}
+
 func durableInteractiveToolBatchFixture() []*agents.Message {
 	assistant := agents.AssistantMessage("I will fetch the gate record.", []agents.ToolCall{{
 		ID: "call-fetch", Type: "function",
@@ -304,4 +420,15 @@ func durableInteractiveToolBatchFixture() []*agents.Message {
 		Artifacts: []agent.ToolArtifactRef{{ReadablePath: ".denova/artifacts/game/fetch.txt", EstimatedBytes: 4096, Complete: true}},
 	}
 	return []*agents.Message{assistant, result}
+}
+
+func joinedInteractiveMessageContent(messages []*agents.Message) string {
+	var result strings.Builder
+	for _, message := range messages {
+		if message != nil {
+			result.WriteString(message.Content)
+			result.WriteByte('\n')
+		}
+	}
+	return result.String()
 }

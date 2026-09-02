@@ -31,13 +31,15 @@ type interactiveProjectedTurn struct {
 }
 
 // interactiveResolvedContext is an interrupted input made durable by the Turn
-// that eventually closed it. displayBoundary restores the original transcript
-// order. A valid checkpoint never bisects the interval between acceptance and
-// the owner Turn.
+// that eventually closed it. acceptedBoundary preserves the durable audit
+// position. activeBoundary restores the input on the current branch path; an
+// exact latest-Turn replacement anchors inputs accepted after the old version
+// to the replacement slot. A valid checkpoint never bisects that active
+// interval and its owner Turn.
 type interactiveResolvedContext struct {
 	context          interactive.ResolvedPlayerInputContext
 	acceptedBoundary int
-	displayBoundary  int
+	activeBoundary   int
 	ownerTurn        int
 	messages         []*agents.Message
 }
@@ -102,7 +104,7 @@ func BuildModelContextProjection(
 	projection.Messages = append(projection.Messages, checkpointMessages...)
 	resolvedAt := make(map[int][]*agents.Message, len(resolved))
 	for _, entry := range resolved {
-		resolvedAt[entry.displayBoundary] = append(resolvedAt[entry.displayBoundary], entry.messages...)
+		resolvedAt[entry.activeBoundary] = append(resolvedAt[entry.activeBoundary], entry.messages...)
 	}
 	pendingAt := make(map[int][]*agents.Message, len(pending))
 	for _, entry := range pending {
@@ -127,13 +129,13 @@ func BuildModelContextProjection(
 	}
 
 	// Build checkpoint source independently from the display projection. This
-	// keeps resolved inputs at their acceptance position while enforcing that a
-	// source either includes the entire acceptance -> owner interval or none of
-	// it. Pending inputs have already shortened SourceTurnCount above.
+	// keeps resolved inputs at their active-branch position while enforcing that
+	// a source either includes the entire input -> owner interval or none of it.
+	// Pending inputs have already shortened SourceTurnCount above.
 	resolvedSourceAt := make(map[int][]interactiveResolvedContext, len(resolved))
 	for _, entry := range resolved {
-		if entry.acceptedBoundary < projection.SourceTurnCount && entry.ownerTurn < projection.SourceTurnCount {
-			resolvedSourceAt[entry.acceptedBoundary] = append(resolvedSourceAt[entry.acceptedBoundary], entry)
+		if entry.activeBoundary < projection.SourceTurnCount && entry.ownerTurn < projection.SourceTurnCount {
+			resolvedSourceAt[entry.activeBoundary] = append(resolvedSourceAt[entry.activeBoundary], entry)
 		}
 	}
 	for boundary := sourceStart; boundary < projection.SourceTurnCount; boundary++ {
@@ -180,27 +182,33 @@ func projectInteractiveCompletedContext(
 			if ownerTurn < sourceStart {
 				continue
 			}
-			boundary, err := interactivePlayerInputTurnBoundary(history, context.Input)
+			acceptedBoundary, err := interactivePlayerInputTurnBoundary(history, context.Input)
 			if err != nil {
 				return nil, nil, nil, err
 			}
-			if boundary > ownerTurn {
+			activeBoundary := acceptedBoundary
+			if acceptedBoundary == ownerTurn+1 {
+				// Regenerating the latest Turn removes the version that was visible
+				// when interrupted inputs were accepted. The replacement occupies
+				// that same logical slot.
+				activeBoundary = ownerTurn
+			} else if acceptedBoundary > ownerTurn {
 				return nil, nil, nil, fmt.Errorf(
 					"resolved player input %s was accepted after its owner Turn: accepted=%d owner=%d",
-					context.Input.ID, boundary, ownerTurn,
+					context.Input.ID, acceptedBoundary, ownerTurn,
 				)
 			}
-			if boundary < sourceStart {
+			if activeBoundary < sourceStart {
 				return nil, nil, nil, fmt.Errorf(
 					"Game checkpoint bisects resolved player input %s: accepted=%d checkpoint=%d owner=%d",
-					context.Input.ID, boundary, sourceStart, ownerTurn,
+					context.Input.ID, acceptedBoundary, sourceStart, ownerTurn,
 				)
 			}
 			resolved = append(resolved, interactiveResolvedContext{
-				context: context, acceptedBoundary: boundary, displayBoundary: boundary,
+				context: context, acceptedBoundary: acceptedBoundary, activeBoundary: activeBoundary,
 				ownerTurn: ownerTurn, messages: interactivePlayerInputContextMessages(context.Input, context.ModelContextBatches),
 			})
-			resolvedAt[boundary] = append(resolvedAt[boundary], len(resolved)-1)
+			resolvedAt[activeBoundary] = append(resolvedAt[activeBoundary], len(resolved)-1)
 		}
 	}
 	resolvedSpans := make([]messageSpan, len(resolved))
@@ -313,7 +321,7 @@ func interactiveAtomicSourceTurnCount(
 	for {
 		next := sourceEnd
 		for _, entry := range resolved {
-			boundary := entry.acceptedBoundary
+			boundary := entry.activeBoundary
 			if sourceEnd <= boundary || sourceEnd > entry.ownerTurn {
 				continue
 			}
