@@ -38,17 +38,17 @@ func floatPtr(value float64) *float64 {
 
 func seedForTurnCheckOutcome(t *testing.T, dice, mode, difficulty string, modifier, bonus float64, want string) int64 {
 	t.Helper()
-	baseTarget, ok := turnCheckDifficultyTarget(dice, difficulty)
+	baseTarget, ok := turnCheckDifficultyTarget(difficulty)
 	if !ok {
 		t.Fatalf("invalid difficulty %q for %s", difficulty, dice)
 	}
-	target := turnCheckTarget(dice, baseTarget, modifier, bonus)
+	target := turnCheckTarget(baseTarget, modifier)
 	for seed := int64(1); seed < 10000; seed++ {
 		_, keptRoll, err := rollTurnCheck(seed, dice, mode)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := resolveTurnCheckOutcome(dice, keptRoll, turnCheckTotal(dice, keptRoll, bonus), target); got == want {
+		if got := resolveTurnCheckOutcome(keptRoll, turnCheckTotal(keptRoll, bonus), target); got == want {
 			return seed
 		}
 	}
@@ -147,6 +147,43 @@ func TestResolveTurnRulesAppliesStoryCheckSettingsDeterministically(t *testing.T
 	}
 	if got := storyCheckDifficulty("very_hard", 2); got != "very_hard" {
 		t.Fatalf("difficulty shift must clamp at the upper tier, got %q", got)
+	}
+}
+
+func TestResolveTurnRulesUsesAuthoritativeTemplateModifier(t *testing.T) {
+	req := sampleTurnCheckRequest()
+	req.Rule.TemplateID = "locked-template"
+	req.Rule.Label = "Agent-provided label"
+	req.Rule.FailurePolicy = "fail_forward"
+	director := StoryDirector{TRPGSystem: StoryDirectorTRPGSystem{RuleTemplates: []RuleCheck{{
+		ID: "locked-template", Label: "Configured check", Dice: "1d20", Modifier: 3, FailurePolicy: "blocked",
+	}}}}
+
+	resolution, err := resolveTurnRulesWithSeedAndDirectorAndSettings(
+		"st_template_modifier", "main", initialStoryState(), director, StoryCheckSettings{RollModifier: 10}, req, 17,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolution.Result.BaseTarget != 10 || resolution.Result.Target != 13 || resolution.Result.Modifier != 3 {
+		t.Fatalf("template modifier must affect only the target: %#v", resolution.Result)
+	}
+	if resolution.Result.BonusTotal != 10 || resolution.Result.Total != resolution.Result.KeptRoll+10 {
+		t.Fatalf("story modifier must affect only the roll total: %#v", resolution.Result)
+	}
+	if resolution.Request.Rule.Label != "Configured check" || resolution.Request.Rule.FailurePolicy != "blocked" {
+		t.Fatalf("template audit metadata must come from configuration: %#v", resolution.Request.Rule)
+	}
+
+	req.Rule.TemplateID = "mistyped-template"
+	autoResolved, err := resolveTurnRulesWithSeedAndDirector(
+		"st_template_modifier", "main", initialStoryState(), director, req, 17,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if autoResolved.Request.Rule.TemplateID != "locked-template" || autoResolved.Result.Modifier != 3 {
+		t.Fatalf("sole template should be resolved without a retry: %#v", autoResolved)
 	}
 }
 
@@ -446,7 +483,7 @@ func TestNormalizeRuleCheckKeepsAllRulesAndTriggerExamples(t *testing.T) {
 	}
 }
 
-func TestResolveTurnCheckOutcomeCriticalThresholds(t *testing.T) {
+func TestResolveTurnCheckOutcomeUsesNaturalCriticalsOnly(t *testing.T) {
 	tests := []struct {
 		name     string
 		keptRoll int
@@ -456,14 +493,14 @@ func TestResolveTurnCheckOutcomeCriticalThresholds(t *testing.T) {
 	}{
 		{name: "natural 20", keptRoll: 20, total: 20, target: 25, want: "critical_success"},
 		{name: "natural 1", keptRoll: 1, total: 16, target: 5, want: "critical_failure"},
-		{name: "margin critical success", keptRoll: 15, total: 25, target: 15, want: "critical_success"},
-		{name: "margin critical failure", keptRoll: 5, total: 5, target: 15, want: "critical_failure"},
+		{name: "large success margin", keptRoll: 15, total: 25, target: 15, want: "success"},
+		{name: "large failure margin", keptRoll: 5, total: 5, target: 15, want: "failure"},
 		{name: "success", keptRoll: 15, total: 15, target: 15, want: "success"},
 		{name: "failure", keptRoll: 10, total: 10, target: 15, want: "failure"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := resolveTurnCheckOutcome("1d20", tt.keptRoll, tt.total, tt.target); got != tt.want {
+			if got := resolveTurnCheckOutcome(tt.keptRoll, tt.total, tt.target); got != tt.want {
 				t.Fatalf("resolveTurnCheckOutcome() = %s, want %s", got, tt.want)
 			}
 		})

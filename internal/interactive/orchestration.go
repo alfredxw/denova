@@ -71,7 +71,7 @@ type TurnCheckRequest struct {
 	Cost         string                `json:"cost" jsonschema_description:"Potential consequences such as failure, exposure, resource loss, or relationship damage."`
 	State        string                `json:"state" jsonschema_description:"Only visible state, resources, position, relationships, or restrictions directly relevant to this check."`
 	Adjudication TurnCheckAdjudication `json:"adjudication,omitempty" jsonschema_description:"Pre-roll adjudication: why a check is required, the stakes, the difficulty basis, and the advantage/disadvantage basis. Reference state with actor_id and field_id."`
-	Rule         TurnCheckRule         `json:"rule,omitempty" jsonschema_description:"Optional rule settings. Defaults are template=dice_check, roll_mode=normal, and modifier=0. For a TRPG template, include template_id, label, and failure_policy. For a state binding, include binding_id, actor_id, and target_actor_id when required."`
+	Rule         TurnCheckRule         `json:"rule,omitempty" jsonschema_description:"Optional rule settings. Defaults are template=dice_check and roll_mode=normal. For a TRPG template, include template_id, label, and failure_policy; the backend applies template constants. For a state binding, include binding_id, actor_id, and target_actor_id when required."`
 	Bonuses      []TurnCheckBonus      `json:"bonuses,omitempty" jsonschema_description:"Runtime bonuses and penalties. Positive values are favorable and negative values are unfavorable; both are added to the fixed d20 total."`
 	Difficulty   string                `json:"difficulty" jsonschema:"enum=very_easy,enum=easy,enum=normal,enum=hard,enum=very_hard" jsonschema_description:"Use exactly one of very_easy/easy/normal/hard/very_hard. Use normal for ordinary difficulty, never medium or moderate."`
 	Outcomes     TurnCheckOutcomes     `json:"outcomes" jsonschema_description:"Define result for all four tiers: critical_success, success, failure, and critical_failure. Optional state_changes are returned only for the selected outcome."`
@@ -92,15 +92,14 @@ type ActorStateRef struct {
 }
 
 type TurnCheckRule struct {
-	Template      string  `json:"template,omitempty" jsonschema:"enum=dice_check" jsonschema_description:"Optional rule template; when present it must be dice_check."`
-	TemplateID    string  `json:"template_id,omitempty" jsonschema_description:"Matched TRPG check configuration ID for auditing."`
-	Label         string  `json:"label,omitempty" jsonschema_description:"Matched TRPG check configuration label for auditing."`
-	FailurePolicy string  `json:"failure_policy,omitempty" jsonschema:"enum=fail_forward,enum=success_at_cost,enum=blocked,enum=hard_failure" jsonschema_description:"Failure policy from the matched template for auditing."`
-	RollMode      string  `json:"roll_mode,omitempty" jsonschema:"enum=normal,enum=advantage,enum=disadvantage" jsonschema_description:"Optional roll mode. normal rolls once; advantage keeps the higher roll; disadvantage keeps the lower roll."`
-	Modifier      float64 `json:"modifier,omitempty" jsonschema_description:"Template difficulty modifier. Positive values are harder and negative values are easier; under fixed d20 this adjusts the target upward or downward."`
-	BindingID     string  `json:"binding_id,omitempty" jsonschema_description:"Optional State Binding scenario ID. When set, the tool reads state and computes modifiers from the TRPG configuration."`
-	ActorID       string  `json:"actor_id,omitempty" jsonschema_description:"Acting Actor ID for State Binding; required when binding_id is set."`
-	TargetActorID string  `json:"target_actor_id,omitempty" jsonschema_description:"Target Actor ID for State Binding; required when the binding defines target_template_id."`
+	Template      string `json:"template,omitempty" jsonschema:"enum=dice_check" jsonschema_description:"Optional rule template; when present it must be dice_check."`
+	TemplateID    string `json:"template_id,omitempty" jsonschema_description:"Matched TRPG check configuration ID for auditing."`
+	Label         string `json:"label,omitempty" jsonschema_description:"Matched TRPG check configuration label for auditing."`
+	FailurePolicy string `json:"failure_policy,omitempty" jsonschema:"enum=fail_forward,enum=success_at_cost,enum=blocked,enum=hard_failure" jsonschema_description:"Failure policy from the matched template for auditing."`
+	RollMode      string `json:"roll_mode,omitempty" jsonschema:"enum=normal,enum=advantage,enum=disadvantage" jsonschema_description:"Optional roll mode. normal rolls once; advantage keeps the higher roll; disadvantage keeps the lower roll."`
+	BindingID     string `json:"binding_id,omitempty" jsonschema_description:"Optional State Binding scenario ID. When set, the tool reads state and computes modifiers from the TRPG configuration."`
+	ActorID       string `json:"actor_id,omitempty" jsonschema_description:"Acting Actor ID for State Binding; required when binding_id is set."`
+	TargetActorID string `json:"target_actor_id,omitempty" jsonschema_description:"Target Actor ID for State Binding; required when the binding defines target_template_id."`
 }
 
 type TurnCheckBonus struct {
@@ -112,10 +111,10 @@ type TurnCheckBonus struct {
 }
 
 type TurnCheckOutcomes struct {
-	CriticalSuccess TurnCheckOutcome `json:"critical_success" jsonschema_description:"Critical-success consequence, selected on a natural 20 or when the total exceeds the target by at least 10."`
+	CriticalSuccess TurnCheckOutcome `json:"critical_success" jsonschema_description:"Critical-success consequence, selected only on a natural 20."`
 	Success         TurnCheckOutcome `json:"success" jsonschema_description:"Success consequence, selected when the d20 total reaches the target."`
 	Failure         TurnCheckOutcome `json:"failure" jsonschema_description:"Failure consequence, selected when neither success nor critical failure applies."`
-	CriticalFailure TurnCheckOutcome `json:"critical_failure" jsonschema_description:"Critical-failure consequence, selected on a natural 1 or when the total is at least 10 below the target."`
+	CriticalFailure TurnCheckOutcome `json:"critical_failure" jsonschema_description:"Critical-failure consequence, selected only on a natural 1."`
 }
 
 type TurnCheckOutcome struct {
@@ -191,6 +190,17 @@ type RuleResolutionToolOutput struct {
 	Cost                string            `json:"cost,omitempty"`
 	Stakes              string            `json:"stakes,omitempty"`
 	StateChanges        []TurnStateChange `json:"state_changes,omitempty"`
+}
+
+// RuleResolutionModelOutput contains only the ruling the Game Agent must
+// follow. Roll math stays in the creator-facing audit projection so hidden
+// story tuning cannot be reconstructed from model-visible tool results.
+type RuleResolutionModelOutput struct {
+	ResolutionID      string             `json:"resolution_id"`
+	Outcome           string             `json:"outcome"`
+	Result            string             `json:"result"`
+	StateChanges      []TurnStateChange  `json:"state_changes,omitempty"`
+	TerminalCandidate *TerminalCandidate `json:"terminal_candidate,omitempty"`
 }
 
 type TerminalCandidate struct {
@@ -293,7 +303,7 @@ func ValidateTurnCheckRequest(req TurnCheckRequest) error {
 	if req.Rule.FailurePolicy != "" && !validRuleCheckFailurePolicy(req.Rule.FailurePolicy) {
 		return fmt.Errorf("prepare_interactive_turn rule.failure_policy 无效: %s", req.Rule.FailurePolicy)
 	}
-	if _, ok := turnCheckDifficultyTarget("1d20", req.Difficulty); !ok {
+	if _, ok := turnCheckDifficultyTarget(req.Difficulty); !ok {
 		return fmt.Errorf("prepare_interactive_turn difficulty 无效: %s，合法值: %s", req.Difficulty, turnCheckAllowedDifficulties)
 	}
 	for name, outcome := range map[string]TurnCheckOutcome{
@@ -342,6 +352,11 @@ func resolveTurnRulesWithSeedAndDirectorAndSettings(storyID, branchID string, st
 		return RuleResolution{}, err
 	}
 	settings = normalizeStoryCheckSettings(settings)
+	director = normalizeStoryDirector(director)
+	templateModifier, err := applyTurnCheckTemplate(&req, director.TRPGSystem.RuleTemplates)
+	if err != nil {
+		return RuleResolution{}, err
+	}
 	bindingAudit, err := resolveRuleStateBinding(state, director, req)
 	if err != nil {
 		return RuleResolution{}, err
@@ -367,16 +382,16 @@ func resolveTurnRulesWithSeedAndDirectorAndSettings(storyID, branchID string, st
 	bonusTotal := manualBonusTotal + advantageTotal
 	requestedDifficulty := req.Difficulty
 	effectiveDifficulty := storyCheckDifficulty(requestedDifficulty, settings.DifficultyShift)
-	baseTarget, _ := turnCheckDifficultyTarget(dice, effectiveDifficulty)
+	baseTarget, _ := turnCheckDifficultyTarget(effectiveDifficulty)
 	if settings.RollModifier != 0 {
 		bonusTotal += float64(settings.RollModifier)
 		bonusDetails = append(bonusDetails, TurnCheckBonus{
 			Kind: "story", Reason: "Story-wide roll modifier.", Value: float64(settings.RollModifier),
 		})
 	}
-	target := turnCheckTarget(dice, baseTarget, req.Rule.Modifier+resistanceTotal, bonusTotal)
-	total := turnCheckTotal(dice, keptRoll, bonusTotal)
-	outcomeName := resolveTurnCheckOutcome(dice, keptRoll, total, target)
+	target := turnCheckTarget(baseTarget, templateModifier+resistanceTotal)
+	total := turnCheckTotal(keptRoll, bonusTotal)
+	outcomeName := resolveTurnCheckOutcome(keptRoll, total, target)
 	outcome := req.outcomeByName(outcomeName)
 	resultStateChanges := normalizeTurnStateChanges(outcome.StateChanges)
 	if bindingAudit != nil {
@@ -395,11 +410,11 @@ func resolveTurnRulesWithSeedAndDirectorAndSettings(storyID, branchID string, st
 		ID:                  "check_1",
 		Label:               firstNonEmptyString(req.Rule.Label, req.Challenge, req.Action),
 		Kind:                "dice_check",
-		Mode:                turnCheckMode(dice),
+		Mode:                turnCheckMode(),
 		Dice:                dice,
 		Rolls:               rolls,
 		RollTotal:           float64(keptRoll),
-		Modifier:            req.Rule.Modifier + resistanceTotal,
+		Modifier:            templateModifier + resistanceTotal,
 		Difficulty:          target,
 		Total:               total,
 		Outcome:             outcomeName,
@@ -477,6 +492,46 @@ func (resolution RuleResolution) ToolOutput() RuleResolutionToolOutput {
 		Stakes:              resolution.Request.Adjudication.Stakes,
 		StateChanges:        append([]TurnStateChange(nil), resolution.Result.StateChanges...),
 	}
+}
+
+func (resolution RuleResolution) ModelToolOutput() RuleResolutionModelOutput {
+	return RuleResolutionModelOutput{
+		ResolutionID:      resolution.ID,
+		Outcome:           resolution.Result.Outcome,
+		Result:            resolution.Result.Result,
+		StateChanges:      append([]TurnStateChange(nil), resolution.Result.StateChanges...),
+		TerminalCandidate: resolution.TerminalCandidate,
+	}
+}
+
+func applyTurnCheckTemplate(req *TurnCheckRequest, checks []RuleCheck) (float64, error) {
+	if len(checks) == 0 {
+		return 0, nil
+	}
+	if len(checks) == 1 {
+		// A sole active template is unambiguous even when the Agent omits or
+		// mistypes its ID, so resolve it without an expensive tool retry.
+		check := checks[0]
+		req.Rule.TemplateID = check.ID
+		req.Rule.Label = check.Label
+		req.Rule.FailurePolicy = check.FailurePolicy
+		return check.Modifier, nil
+	}
+	for _, check := range checks {
+		if check.ID != req.Rule.TemplateID {
+			continue
+		}
+		// Template-owned values are authoritative. The Agent supplies the ID
+		// and cannot override the fixed modifier or its audit metadata.
+		req.Rule.Label = check.Label
+		req.Rule.FailurePolicy = check.FailurePolicy
+		return check.Modifier, nil
+	}
+	available := make([]string, 0, len(checks))
+	for _, check := range checks {
+		available = append(available, check.ID)
+	}
+	return 0, fmt.Errorf("prepare_interactive_turn rule.template_id must match one of: %s", strings.Join(available, ", "))
 }
 
 func normalizeTurnCheckOutcome(outcome TurnCheckOutcome) TurnCheckOutcome {
@@ -649,21 +704,21 @@ func turnCheckBonusTotal(bonuses []TurnCheckBonus) float64 {
 	return total
 }
 
-func turnCheckDifficultyTarget(dice string, difficulty string) (float64, bool) {
+func turnCheckDifficultyTarget(difficulty string) (float64, bool) {
 	normalizedDifficulty := normalizeTurnCheckDifficulty(difficulty)
 	target, ok := turnCheckD20DifficultyTargets[normalizedDifficulty]
 	return target, ok
 }
 
-func turnCheckTarget(dice string, baseTarget, modifier, bonusTotal float64) float64 {
+func turnCheckTarget(baseTarget, modifier float64) float64 {
 	return baseTarget + modifier
 }
 
-func turnCheckTotal(dice string, keptRoll int, bonusTotal float64) float64 {
+func turnCheckTotal(keptRoll int, bonusTotal float64) float64 {
 	return float64(keptRoll) + bonusTotal
 }
 
-func turnCheckMode(dice string) string {
+func turnCheckMode() string {
 	return "d20_dc"
 }
 
@@ -671,21 +726,15 @@ func turnCheckConstraint(challenge, dice, outcome string, total, target float64)
 	return fmt.Sprintf("%s：%s，总值 %.0f / 目标 %.0f。", challenge, turnCheckOutcomeText(outcome), total, target)
 }
 
-func resolveTurnCheckOutcome(dice string, keptRoll int, total, target float64) string {
+func resolveTurnCheckOutcome(keptRoll int, total, target float64) string {
 	if keptRoll == 20 {
 		return "critical_success"
 	}
 	if keptRoll == 1 {
 		return "critical_failure"
 	}
-	if total >= target+10 {
-		return "critical_success"
-	}
 	if total >= target {
 		return "success"
-	}
-	if total <= target-10 {
-		return "critical_failure"
 	}
 	return "failure"
 }

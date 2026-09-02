@@ -111,21 +111,30 @@ func newInteractiveTurnTools(ctx InteractiveContext) ([]agent.ToolDefinition, er
 	if ctx.PrepareTurn != nil {
 		desc := strings.Join([]string{
 			"Execute one fixed d20 rule check for this turn. The Interactive Agent provides the action, intent, challenge, cost, relevant current state, pre-roll adjudication, runtime bonus sources and values, difficulty, and critical-success/success/failure/critical-failure consequences. This tool rolls, applies advantage or disadvantage, computes the target, resolves the tier, and returns the selected final consequence.",
-			"Protocol: difficulty is very_easy/easy/normal/hard/very_hard; use normal for ordinary difficulty, never medium/moderate. adjudication explains why a check is required, the stakes, the difficulty basis, and the advantage/disadvantage basis. State references use actor_id + field_id in state_refs. rule is optional; when present, template is dice_check, roll_mode is normal/advantage/disadvantage, and positive modifier values make the template harder. For a TRPG template, provide template_id, label, and failure_policy.",
+			"Protocol: difficulty is very_easy/easy/normal/hard/very_hard; use normal for ordinary difficulty, never medium/moderate. adjudication explains why a check is required, the stakes, the difficulty basis, and the advantage/disadvantage basis. State references use actor_id + field_id in state_refs. rule is optional; when present, template is dice_check and roll_mode is normal/advantage/disadvantage. When a TRPG rule catalog is available, provide its exact template_id; the backend resolves fixed template values and audit metadata.",
 			"When context provides a TRPG check configuration, first use trigger, must_check_examples, and skip_check_examples to decide whether to check, then use difficulty_guidance for difficulty/bonuses. The four outcomes describe narrative consequences only and do not include state operations.",
 			"When state_bindings are available, choose binding_id and provide actor_id plus target_actor_id when needed. The tool reads Actor State to calculate binding modifiers and outcome_state_changes; do not calculate them again. narrative_state_refs only help write the four outcomes.*.result values before the roll.",
-			`Minimal example: {"action":"pick the lock","intent":"enter the warehouse","challenge":"open it before the patrol arrives","cost":"failure reveals the intrusion","state":"The protagonist has simple tools.","adjudication":{"reason":"Time pressure and failure would change the alert state.","stakes":"Failure brings the patrol closer.","difficulty_reason":"The old lock is simple but a patrol is nearby, so use normal difficulty.","roll_mode_reason":"The tools fit but the environment is tense, so roll normally.","state_refs":[{"actor_id":"protagonist","field_id":"stamina"}]},"rule":{"template_id":"dm-osr-player-skill","label":"OSR player-skill priority","failure_policy":"blocked","modifier":0},"bonuses":[{"kind":"equipment","reason":"Simple lock-picking tools","value":2}],"difficulty":"normal","outcomes":{"critical_success":{"result":"Open it silently and find an extra clue."},"success":{"result":"Open it, but lose time."},"failure":{"result":"The lock stays shut and the patrol draws closer."},"critical_failure":{"result":"The tool breaks and alerts the patrol."}}}`,
+			`Minimal example: {"action":"pick the lock","intent":"enter the warehouse","challenge":"open it before the patrol arrives","cost":"failure reveals the intrusion","state":"The protagonist has simple tools.","adjudication":{"reason":"Time pressure and failure would change the alert state.","stakes":"Failure brings the patrol closer.","difficulty_reason":"The old lock is simple but a patrol is nearby, so use normal difficulty.","roll_mode_reason":"The tools fit but the environment is tense, so roll normally.","state_refs":[{"actor_id":"protagonist","field_id":"stamina"}]},"rule":{"template_id":"dm-osr-player-skill","label":"OSR player-skill priority","failure_policy":"blocked"},"bonuses":[{"kind":"equipment","reason":"Simple lock-picking tools","value":2}],"difficulty":"normal","outcomes":{"critical_success":{"result":"Open it silently and find an extra clue."},"success":{"result":"Open it, but lose time."},"failure":{"result":"The lock stays shut and the patrol draws closer."},"critical_failure":{"result":"The tool breaks and alerts the patrol."}}}`,
 		}, "\n")
-		prepareTool, err := agent.InferTool("prepare_interactive_turn", desc, func(callCtx context.Context, input interactiveTurnCheckToolInput) (string, error) {
+		prepareTool, err := agent.InferTool("prepare_interactive_turn", desc, func(callCtx context.Context, input interactiveTurnCheckToolInput) (agent.ToolResult, error) {
 			resolution, err := ctx.PrepareTurn(callCtx, input.request())
 			if err != nil {
-				return "", err
+				return agent.ToolResult{}, err
 			}
-			data, err := json.MarshalIndent(resolution.ToolOutput(), "", "  ")
+			modelData, err := json.MarshalIndent(resolution.ModelToolOutput(), "", "  ")
 			if err != nil {
-				return "", err
+				return agent.ToolResult{}, err
 			}
-			return string(data), nil
+			displayData, err := json.MarshalIndent(resolution.ToolOutput(), "", "  ")
+			if err != nil {
+				return agent.ToolResult{}, err
+			}
+			return agent.ToolResult{
+				ModelContent:   string(modelData),
+				DisplayContent: string(displayData),
+				Details:        json.RawMessage(displayData),
+				Status:         agent.ToolResultSuccess,
+			}, nil
 		})
 		if err != nil {
 			return nil, err

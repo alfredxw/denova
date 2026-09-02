@@ -5,20 +5,22 @@ import (
 	"testing"
 )
 
-func TestInteractiveStoryRuntimeContextDescribesStoryCheckSettings(t *testing.T) {
+func TestInteractiveStoryRuntimeContextHidesStoryCheckSettings(t *testing.T) {
 	enabled := InteractiveStoryRuntimeContext(InteractiveStoryPromptInput{
-		ChoiceCount: 5, RuleChecksEnabled: true, CheckDifficultyShift: 1, CheckRollModifier: -2,
-		StoryRuleCatalog: "rule catalog",
+		ChoiceCount: 5, RuleChecksEnabled: true, StoryRuleCatalog: "rule catalog",
 	})
 	for _, want := range []string{
 		"## Fixed-rule Checks",
 		"Status: enabled",
-		"difficulty shift: +1",
-		"roll modifier: -2",
 		"Story Rule Catalog",
 	} {
 		if !strings.Contains(enabled, want) {
 			t.Fatalf("enabled runtime context missing %q:\n%s", want, enabled)
+		}
+	}
+	for _, hidden := range []string{"difficulty shift", "roll modifier"} {
+		if strings.Contains(strings.ToLower(enabled), hidden) {
+			t.Fatalf("enabled runtime context exposed %q:\n%s", hidden, enabled)
 		}
 	}
 

@@ -29,8 +29,6 @@ type InteractiveStoryPromptInput struct {
 	BranchPlan                string
 	PlanningEnabled           bool
 	RuleChecksEnabled         bool
-	CheckDifficultyShift      int
-	CheckRollModifier         int
 	StoryRuleCatalog          string
 	ActorState                string
 	StateSchemaInitialization string
@@ -93,7 +91,7 @@ func BuildInteractiveStoryFlowInstruction(in InteractiveStorySystemInstructionIn
 	sb.WriteString("- When fixed-rule checks are enabled, call prepare_interactive_turn only when a ruling is required because the action has explicit risk, resource/relationship/numeric changes, matches the current TRPG check configuration, has failure tiers, irreversible consequences, or a terminal candidate.\n")
 	sb.WriteString("- prepare_interactive_turn does not replace semantic interpretation, literary judgment, or event design. First determine the action, intent, challenge, cost, current state, pre-roll rationale, bonus and penalty sources, difficulty, and the critical-success/success/failure/critical-failure consequences. Then use the tool for the roll.\n")
 	sb.WriteString("- adjudication is required: explain why a fixed check is needed, the stakes, difficulty basis, and advantage/disadvantage basis. Reference state through state_refs with actor_id + field_id. This is DM audit information and must not appear in prose.\n")
-	sb.WriteString("- When the rule catalog provides trigger, must_check_examples, skip_check_examples, difficulty_guidance, and state_effect_guidance, use them together to decide whether to check, then choose difficulty/bonuses and four narrative outcomes. modifier is a template-level constant that belongs only in rule.modifier; it is not a temporary character bonus.\n")
+	sb.WriteString("- When the rule catalog provides trigger, must_check_examples, skip_check_examples, difficulty_guidance, and state_effect_guidance, use them together to decide whether to check, then choose difficulty/bonuses and four narrative outcomes. Supply the exact template_id; the backend resolves fixed template values.\n")
 	sb.WriteString("- When state_bindings are available, choose binding_id before the roll and provide actor_id plus target_actor_id when needed. The tool reads state to compute modifiers and outcome_state_changes; do not duplicate the calculation. narrative_state_refs only help write outcomes.*.result before the roll.\n")
 	sb.WriteString("- Give bonuses a kind whenever possible. State-backed sources use actor_id + field_id and distinguish attribute, state, equipment, environment, help, or other. When no structured source exists, provide a clear reason.\n")
 	sb.WriteString("- Each prepare_interactive_turn outcome accepts only result, not state_changes. The backend computes deterministic State Binding changes; submit all other changes afterward through submit_interactive_turn.state_changes.\n")
@@ -146,7 +144,7 @@ func InteractiveStoryRuntimeContext(in InteractiveStoryPromptInput) string {
 	}
 	sb.WriteString("\n## Fixed-rule Checks\n\n")
 	if in.RuleChecksEnabled {
-		fmt.Fprintf(&sb, "Status: enabled. Story difficulty shift: %+d step(s). Story roll modifier: %+d. The backend applies both deterministically.\n", in.CheckDifficultyShift, in.CheckRollModifier)
+		sb.WriteString("Status: enabled. The backend applies story-owned tuning deterministically after adjudication.\n")
 	} else {
 		sb.WriteString("Status: disabled. Do not call prepare_interactive_turn. Adjudicate this turn without dice.\n")
 	}

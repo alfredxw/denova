@@ -530,8 +530,6 @@ func (c *Conversation) AssembleModelContext(ctx context.Context, originalMessage
 		BranchPlan:                branchPlan,
 		PlanningEnabled:           storyCtx.Meta.PlanningMode == interactive.StoryPlanningModeEnabled,
 		RuleChecksEnabled:         !storyDirector.ModuleRefs.RuleSystemDisabled && len(storyDirector.TRPGSystem.RuleTemplates) > 0,
-		CheckDifficultyShift:      storyCtx.Meta.CheckSettings.DifficultyShift,
-		CheckRollModifier:         storyCtx.Meta.CheckSettings.RollModifier,
 		StoryRuleCatalog:          ruleSummary,
 		ActorState:                actorStateRuntime,
 		StateSchemaInitialization: stateSchemaInitialization,

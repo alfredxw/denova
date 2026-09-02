@@ -88,6 +88,8 @@ Denova records only major user-visible features, important compatibility or data
 
 ### Major fixes / 重要修复
 
+- 修复游戏检定因 Agent 重复回传故事骰点修正而错误抬高 `target` 的问题；规则模板 `modifier` 改由后端按 `template_id` 读取，故事调校不再暴露给 Game Agent，大成功与大失败仅由自然 20/1 触发。
+- Fixed Game checks incorrectly raising `target` when the Agent repeated story roll tuning. Rule-template `modifier` values are now resolved by the backend from `template_id`, story tuning is hidden from the Game Agent, and critical success or failure triggers only on a natural 20/1.
 - 修复数据目录绝对路径参与 Project 与会话身份，导致重启或搬迁后历史看似消失、受管 Project 被重复识别的问题。
 - Fixed absolute data-directory paths participating in Project and session identity, which could make history appear missing or register duplicate managed Projects after restart or relocation.
 - 修复跨轮、工具调用边界或重启后丢失推理上下文的问题；写作与游戏现在会安全保留并复用完整的 provider continuation。

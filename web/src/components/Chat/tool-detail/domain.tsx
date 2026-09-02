@@ -176,7 +176,6 @@ function renderPrepareTurnInput({ input, t }: ToolDetailRenderProps) {
       <MetaLine items={[
         stringValue(input.difficulty),
         stringValue(rule.roll_mode),
-        rule.modifier === undefined ? '' : `modifier=${rule.modifier}`,
         bonuses.length ? t('chat.tool.detail.bonusCount', { count: bonuses.length }) : '',
       ]} />
       {bonuses.map((bonus, index) => (

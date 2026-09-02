@@ -603,7 +603,6 @@ interface TurnCheckRule {
   label?: string
   failure_policy?: string
   roll_mode?: 'normal' | 'advantage' | 'disadvantage' | string
-  modifier?: number
   binding_id?: string
   actor_id?: string
   target_actor_id?: string
