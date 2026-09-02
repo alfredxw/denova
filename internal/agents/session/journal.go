@@ -13,6 +13,7 @@ const (
 	historyTypeSessionPatch      = "session_patch"
 	historyTypeDisplayPatch      = "display_patch"
 	historyTypeInterruptionPatch = "interruption_patch"
+	historyTypeContextBatch      = "context_batch"
 
 	retiredHistoryTypeAsk               = "ask"
 	retiredHistoryTypeAskPatch          = "ask_patch"
@@ -104,4 +105,50 @@ type interruptionPatchRecord struct {
 	Status     string     `json:"status"`
 	ResolvedAt *time.Time `json:"resolved_at,omitempty"`
 	UpdatedAt  time.Time  `json:"updated_at"`
+}
+
+type contextBatchRecord struct {
+	Type            string               `json:"type"`
+	CreatedAt       time.Time            `json:"created_at"`
+	Identity        DomainCommitIdentity `json:"identity"`
+	Kind            string               `json:"kind"`
+	Ordinal         int                  `json:"ordinal"`
+	Hash            string               `json:"hash"`
+	ContextRevision uint64               `json:"context_revision"`
+	Messages        []agent.Message      `json:"messages"`
+}
+
+// releasedContextCompactionRecord is the exact v0.3.3 Product Session
+// checkpoint schema. It is retained only long enough to project the released
+// record into Agent's versioned capability lane in this same journal.
+type releasedContextCompactionRecord struct {
+	Type                string    `json:"type"`
+	ID                  string    `json:"id"`
+	AgentKind           string    `json:"agent_kind,omitempty"`
+	Epoch               int       `json:"epoch"`
+	Summary             string    `json:"summary"`
+	SourceStartIndex    int       `json:"source_start_index"`
+	SourceEndIndex      int       `json:"source_end_index"`
+	SourceMessageCount  int       `json:"source_message_count"`
+	RetainedTurns       int       `json:"retained_turns"`
+	TokensBefore        int       `json:"tokens_before"`
+	TokensAfter         int       `json:"tokens_after"`
+	TargetRatio         float64   `json:"target_ratio,omitempty"`
+	ContextWindowTokens int       `json:"context_window_tokens"`
+	Strategy            string    `json:"strategy,omitempty"`
+	Threshold           float64   `json:"threshold"`
+	Reason              string    `json:"reason,omitempty"`
+	Phase               string    `json:"phase,omitempty"`
+	CreatedAt           time.Time `json:"created_at"`
+}
+
+type releasedContextCompactionRemovalRecord struct {
+	Type             string    `json:"type"`
+	ID               string    `json:"id"`
+	AgentKind        string    `json:"agent_kind,omitempty"`
+	CompactionID     string    `json:"compaction_id,omitempty"`
+	SourceStartIndex int       `json:"source_start_index"`
+	SourceEndIndex   int       `json:"source_end_index"`
+	Reason           string    `json:"reason,omitempty"`
+	CreatedAt        time.Time `json:"created_at"`
 }

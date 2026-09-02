@@ -31,7 +31,7 @@ result, err := run.Wait(ctx)
 - `Snapshot` returns transcript-independent UI state: active Run, output, queue, open tools, recent settlements, interactions, and capability projections.
 - `Observe` returns a snapshot plus live events after a process-local cursor.
 - `AttachRun` reattaches only to a Run owned by the current process.
-- `Clear`, Cleanup, Compaction, Goal, Todo, State, and transcript synchronization share the same serial Session lane.
+- `Clear`, Cleanup, Compaction, Goal, Todo, State, and canonical-message refresh share the same serial Session lane.
 
 ### Run
 
@@ -59,7 +59,9 @@ type Log interface {
 }
 ```
 
-The Store persists only transcript and Agent capability records. A custom database adapter does not need to implement checkpoints, indexes, recovery actions, or runtime schemas.
+The Store persists one logical Session stream. A standalone Agent stream contains its provider-neutral messages, versioned capability updates, and turn settlements. A host-canonical stream can implement `CanonicalMessageLog`: the host journal owns the messages, while the Agent records in that same journal contain only message checkpoints, `capability_set` / `capability_delete`, and turn settlements. Sidecar indexes are rebuildable and never own recovery state.
+
+A custom database adapter does not need to implement indexes, recovery actions, or runtime schemas. After restart, unfinished turns are projected as interrupted; Agent does not resume a partial model call or tool execution.
 
 ## Canonical product writes
 
@@ -70,9 +72,13 @@ type CanonicalAdapter interface {
     CommitOutput(context.Context, OutputCommitRequest) (OutputCommitReceipt, error)
     ApplyEffects(context.Context, []EffectRequest) ([]EffectResult, error)
 }
+
+type CanonicalContextAdapter interface {
+    CommitContext(context.Context, ContextCommitRequest) (CommitReceipt, error)
+}
 ```
 
-Calls are direct. Implementations must be idempotent for the supplied identity. `ApplyEffects` returns one result per request so a tool batch can report partial item failures without rejecting unrelated items. There is no Agent-owned reconcile callback or host-effect outbox.
+Calls are direct. Implementations must be idempotent for the supplied identity. Hosts that own the canonical conversation implement `CanonicalContextAdapter` so Context State, complete tool-call/result batches, and child-task completion messages enter the same message lane. `ApplyEffects` returns one result per request so a tool batch can report partial item failures without rejecting unrelated items. There is no Agent-owned reconcile callback or host-effect outbox.
 
 ## Events and snapshots
 
@@ -86,7 +92,7 @@ The snapshot intentionally excludes tool arguments, raw tool results, full promp
 - Removed public limits and file-store tuning options.
 - Removed exact replay, cold recovery actions, reconcile callbacks, runtime checkpoints, command indexes, and host-effect receipts.
 - Removed recovery-specific event types and task observation fields.
-- File persistence now uses `agent-transcripts`; unreleased `agent-sessions` data is not migrated.
+- Standalone file persistence uses one self-contained Session JSONL. Denova embeds root Agent records in the owning Product Session or Story JSONL and keeps persistent child Sessions below the same Project Store; no Denova-wide Agent transcript root is created.
 - Unfinished work after restart becomes interrupted and must be retried as a new Run.
 
 These are intentional Beta changes. Workspace content and product-owned Writing/Game conversation data are not deleted or rewritten.

@@ -546,12 +546,6 @@ func (projector *PublicEventProjector) projectLocked(event agent.Event, inherite
 		}, payload.Metrics))})
 	case agent.SessionCleared:
 		// Clear commands are initiated by Denova endpoints, which own UI refresh.
-	case agent.TranscriptSynchronized:
-		if meta.SubAgent {
-			projector.emitEvent(agentrun.Event{Type: "subagent_transcript_synchronized", Data: meta.appendTo(map[string]any{
-				"source_revision": payload.State.SourceRevision, "source_hash": payload.State.SourceHash,
-			})})
-		}
 	case agent.ContextLimitReached:
 		// The following RunSettled result carries the terminal, user-visible
 		// error without publishing two competing terminal events.

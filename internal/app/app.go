@@ -2,8 +2,6 @@ package app
 
 import (
 	"context"
-	agentexecution "denova/internal/agents/execution"
-	apptask "denova/internal/app/task"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -13,6 +11,8 @@ import (
 	"sync"
 
 	"denova/config"
+	"denova/internal/agents/canonicalstore"
+	agentexecution "denova/internal/agents/execution"
 	"denova/internal/agents/session"
 	"denova/internal/agents/trajectory"
 	activityapp "denova/internal/app/activity"
@@ -27,6 +27,7 @@ import (
 	projectfilesapp "denova/internal/app/projectfiles"
 	resourcecatalogapp "denova/internal/app/resourcecatalog"
 	settingsapp "denova/internal/app/settings"
+	apptask "denova/internal/app/task"
 	"denova/internal/book"
 	"denova/internal/concurrency"
 	"denova/internal/interactive"
@@ -123,6 +124,9 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 	if err := portablepath.PreflightTree(dataDir); err != nil {
 		return nil, fmt.Errorf("Denova data directory is not portable across Windows, WSL, Linux, and macOS: %w", err)
 	}
+	if _, err := backupUnreleasedAgentTranscripts(dataDir); err != nil {
+		return nil, err
+	}
 	migrationBackups, err := preparePortableDataMigration(dataDir)
 	if err != nil {
 		return nil, fmt.Errorf("prepare portable Denova data migration: %w", err)
@@ -181,10 +185,15 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 		terminals:          terminal.NewManager(terminalConfigFromAppConfig(cfg)),
 	}
 	app.automationApp = automationapp.NewService(automationHost{app: app})
+	canonicalSessions, err := canonicalstore.New(dataDir, registry)
+	if err != nil {
+		return nil, fmt.Errorf("initialize canonical Agent Session Store: %w", err)
+	}
 	executionRuntime, err := agentexecution.NewAgentRuntime(
 		ctx,
 		dataDir,
 		agentexecution.WithProfiles(app.executionProfiles()...),
+		agentexecution.WithSessionStore(canonicalSessions),
 		agentexecution.WithChildDefinitionResolver(agentexecution.ChildDefinitionResolverFunc(app.prepareChildDefinition)),
 		agentexecution.WithToolMutationApplier(app.automationApp.ApplyToolMutation),
 		agentexecution.WithPermissionRuleStore(agentexecution.PermissionRuleStore{

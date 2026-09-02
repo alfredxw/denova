@@ -161,8 +161,6 @@ func encodeEventPayload(payload EventPayload) (string, json.RawMessage, error) {
 		kind = "cleanup_committed"
 	case SessionCleared:
 		kind = "session_cleared"
-	case TranscriptSynchronized:
-		kind = "transcript_synchronized"
 	case ContextLimitReached:
 		kind = "context_limit_reached"
 	case RunSettled:
@@ -246,8 +244,6 @@ func decodeEventPayload(kind string, data json.RawMessage) (EventPayload, error)
 		target = &CleanupCommitted{}
 	case "session_cleared":
 		target = &SessionCleared{}
-	case "transcript_synchronized":
-		target = &TranscriptSynchronized{}
 	case "context_limit_reached":
 		target = &ContextLimitReached{}
 	case "run_settled":
@@ -322,8 +318,6 @@ func dereferenceEventPayload(payload EventPayload) EventPayload {
 	case *CleanupCommitted:
 		return *value
 	case *SessionCleared:
-		return *value
-	case *TranscriptSynchronized:
 		return *value
 	case *ContextLimitReached:
 		return *value

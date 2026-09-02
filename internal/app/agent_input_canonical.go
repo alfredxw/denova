@@ -42,7 +42,7 @@ func (a *App) sessionCanonicalInput(
 	return agent.CanonicalAdapterFuncs{
 		CapabilityIdentity: request.Identity,
 		MaterializeInputFn: func(ctx context.Context, input agent.InputCommitRequest) (agent.CommitReceipt, error) {
-			intent, err := sessionCanonicalInputIntent(request, input.Hash)
+			intent, err := sessionCanonicalInputIntent(request)
 			if err != nil {
 				return agent.CommitReceipt{}, err
 			}
@@ -68,7 +68,6 @@ func canonicalInputEffectRequest(identity agent.CommitIdentity, hash string) age
 
 func sessionCanonicalInputIntent(
 	request agentexecution.CanonicalInputRequest,
-	agentHash string,
 ) (session.DomainCommitIntent, error) {
 	if request.Input.Text != agentchat.CallerView(request.Request).Message {
 		return session.DomainCommitIntent{}, errors.New("accepted Session input changed after admission")
@@ -84,7 +83,7 @@ func sessionCanonicalInputIntent(
 	if err != nil {
 		return session.DomainCommitIntent{}, err
 	}
-	return intent.WithAgentCanonicalHash(agentHash)
+	return intent, nil
 }
 
 func cloneCanonicalUserReferences(references []agentcontext.UserReference) []agentcontext.UserReference {
@@ -145,10 +144,6 @@ func (a *App) gameCanonicalInput(
 				if err != nil {
 					return agent.CommitReceipt{}, err
 				}
-			}
-			intent, err = intent.WithAgentCanonicalHash(input.Hash)
-			if err != nil {
-				return agent.CommitReceipt{}, err
 			}
 			receipt, err := interactive.NewStore(layout.ContentRoot).CommitPlayerInput(request.Binding.StoryID, intent)
 			if err != nil {

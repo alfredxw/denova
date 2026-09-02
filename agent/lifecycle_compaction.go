@@ -258,7 +258,7 @@ func (session *Session) compactionRef(cursor runstate.Cursor, descriptor json.Ra
 		return runstate.ContextCompactionRef{}, err
 	}
 	return runstate.ContextCompactionRef{
-		SpecRef: spec, Source: "agent.session.transcript", Purpose: purpose, Resource: resource,
+		SpecRef: spec, Source: "agent.session.messages", Purpose: purpose, Resource: resource,
 		ExpectedRevision: fmt.Sprintf("cursor:%d", cursor), CompactionID: id,
 		Envelope: append(json.RawMessage(nil), descriptor...),
 	}, nil

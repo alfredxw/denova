@@ -190,21 +190,30 @@ func (session *Session) commitTaskCompletionCheckpoint(
 			return fmt.Errorf("task completion %q is no longer pending", id)
 		}
 	}
-	transcript, err := json.Marshal(persistedSessionTranscript{
-		EngineState: append(json.RawMessage(nil), state...),
-	})
-	if err != nil {
-		return fmt.Errorf("encode Agent Session transcript: %w", err)
-	}
-	delivery, err := json.Marshal(persistedTaskCompletionDelivery{IDs: append([]string(nil), unique...)})
-	if err != nil {
-		return fmt.Errorf("encode Agent task completion delivery: %w", err)
-	}
-	if err := session.appendRecordsLocked(ctx,
-		agentsession.Record{Kind: sessionTranscriptRecord, Version: sessionRecordVersion, Data: transcript},
-		agentsession.Record{Kind: sessionTaskCompletionDeliveryRecord, Version: sessionRecordVersion, Data: delivery},
-	); err != nil {
-		return err
+	if session.canonicalMessages {
+		previous := session.engineState
+		session.engineState = append(json.RawMessage(nil), state...)
+		if err := session.persistTranscriptLocked(ctx); err != nil {
+			session.engineState = previous
+			return err
+		}
+	} else {
+		transcript, err := json.Marshal(persistedSessionTranscript{
+			EngineState: append(json.RawMessage(nil), state...),
+		})
+		if err != nil {
+			return fmt.Errorf("encode Agent Session transcript: %w", err)
+		}
+		delivery, err := json.Marshal(persistedTaskCompletionDelivery{IDs: append([]string(nil), unique...)})
+		if err != nil {
+			return fmt.Errorf("encode Agent task completion delivery: %w", err)
+		}
+		if err := session.appendRecordsLocked(ctx,
+			agentsession.Record{Kind: sessionTranscriptRecord, Version: sessionRecordVersion, Data: transcript},
+			agentsession.Record{Kind: sessionTaskCompletionDeliveryRecord, Version: sessionRecordVersion, Data: delivery},
+		); err != nil {
+			return err
+		}
 	}
 
 	session.engineState = append(json.RawMessage(nil), state...)

@@ -92,6 +92,9 @@ func NewAgentRuntime(ctx context.Context, dataDir string, options ...Option) (*R
 	if resolved.toolMutationApplier == nil {
 		return nil, errors.New("Agent runtime requires a Tool mutation applier")
 	}
+	if resolved.sessionStore == nil {
+		resolved.sessionStore = agentsession.Memory()
+	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -110,7 +113,7 @@ func NewAgentRuntime(ctx context.Context, dataDir string, options ...Option) (*R
 		return nil, err
 	}
 	owner, err := agentlifecycle.New(lifecycle, source, agentlifecycle.Config{
-		StoreRoot: root + "/agent-transcripts", CacheKeyGenerator: denovaProviderCacheKey,
+		Store: resolved.sessionStore, CacheKeyGenerator: denovaProviderCacheKey,
 	})
 	if err != nil {
 		cancel()

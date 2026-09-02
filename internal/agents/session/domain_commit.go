@@ -61,11 +61,10 @@ type DomainCommitIntent struct {
 // DomainCommitReceipt proves the exact canonical message and context revision
 // written for an authorized Agent cycle.
 type DomainCommitReceipt struct {
-	Identity           DomainCommitIdentity `json:"identity"`
-	MessageID          string               `json:"message_id"`
-	Hash               string               `json:"hash"`
-	AgentCanonicalHash string               `json:"agent_canonical_hash,omitempty"`
-	ContextRevision    uint64               `json:"context_revision"`
+	Identity        DomainCommitIdentity `json:"identity"`
+	MessageID       string               `json:"message_id"`
+	Hash            string               `json:"hash"`
+	ContextRevision uint64               `json:"context_revision"`
 }
 
 func NewDomainCommitIntent(identity DomainCommitIdentity, message *agent.Message, metadata MessageMetadata) (DomainCommitIntent, error) {
@@ -86,7 +85,6 @@ func NewDomainCommitIntent(identity DomainCommitIdentity, message *agent.Message
 	metadata.AgentCommandID = identity.CommandID
 	metadata.AgentOperationID = identity.OperationID
 	metadata.AgentCycle = identity.Cycle
-	metadata.DomainCommitHash = hash
 	return DomainCommitIntent{Identity: identity, Message: messageCopy, Metadata: metadata, Hash: hash}, nil
 }
 
@@ -95,18 +93,6 @@ func NewDomainCommitIntent(identity DomainCommitIdentity, message *agent.Message
 func (i DomainCommitIntent) WithExpectedContextCursor(cursor ContextCursor) DomainCommitIntent {
 	i.ExpectedCursor = &cursor
 	return i
-}
-
-// WithAgentCanonicalHash binds the product-domain write to the exact hash
-// journaled by the public Agent lifecycle. The domain payload hash remains
-// independent so Denova can reject richer product-state drift as well.
-func (i DomainCommitIntent) WithAgentCanonicalHash(hash string) (DomainCommitIntent, error) {
-	hash = strings.TrimSpace(hash)
-	if hash == "" {
-		return DomainCommitIntent{}, fmt.Errorf("%w: Agent canonical hash is required", ErrDomainCommitIdentityConflict)
-	}
-	i.Metadata.AgentCanonicalHash = hash
-	return i, nil
 }
 
 // CommitDomainMessage performs canonical idempotent publication. Exact retries
@@ -126,7 +112,6 @@ func (s *Session) CommitDomainMessageContext(ctx context.Context, intent DomainC
 			return err
 		}
 		intent.Metadata = sanitizeMessageMetadata(intent.Metadata)
-		canonicalHash := intent.Metadata.AgentCanonicalHash
 		actualHash, err := domainMessageHash(intent.Message, intent.Metadata)
 		if err != nil {
 			return err
@@ -134,7 +119,7 @@ func (s *Session) CommitDomainMessageContext(ctx context.Context, intent DomainC
 		if strings.TrimSpace(intent.Hash) == "" || actualHash != strings.TrimSpace(intent.Hash) {
 			return fmt.Errorf("%w: intent hash does not match message", ErrDomainCommitIdentityConflict)
 		}
-		existing, found, err := s.findDomainCommitLocked(identity, intent.Message.Role, actualHash, canonicalHash)
+		existing, found, err := s.findDomainCommitLocked(identity, intent.Message.Role, actualHash)
 		if err != nil || found {
 			receipt = existing
 			return err
@@ -149,7 +134,6 @@ func (s *Session) CommitDomainMessageContext(ctx context.Context, intent DomainC
 		metadata.AgentCommandID = identity.CommandID
 		metadata.AgentOperationID = identity.OperationID
 		metadata.AgentCycle = identity.Cycle
-		metadata.DomainCommitHash = actualHash
 		message := intent.Message
 		kind := historyTypeMessage
 		if metadata.ContextOnly {
@@ -158,7 +142,7 @@ func (s *Session) CommitDomainMessageContext(ctx context.Context, intent DomainC
 		if err := s.appendDomainMessageLocked(&message, metadata, kind); err != nil {
 			recoveryErr := s.refreshCanonicalTailLocked()
 			if recoveryErr == nil {
-				reconciled, found, reconcileErr := s.findDomainCommitLocked(identity, intent.Message.Role, actualHash, canonicalHash)
+				reconciled, found, reconcileErr := s.findDomainCommitLocked(identity, intent.Message.Role, actualHash)
 				if reconcileErr != nil {
 					return errors.Join(err, reconcileErr)
 				}
@@ -173,7 +157,7 @@ func (s *Session) CommitDomainMessageContext(ctx context.Context, intent DomainC
 			return err
 		}
 		metadata.ContextRevision = s.contextRevision
-		receipt = domainCommitReceipt(identity, metadata)
+		receipt = domainCommitReceipt(identity, metadata, actualHash)
 		return nil
 	})
 	return receipt, resultErr
@@ -292,32 +276,7 @@ func (s *Session) FindDomainCommit(identity DomainCommitIdentity, role agent.Rol
 	if err := s.refreshCanonicalTailLocked(); err != nil {
 		return DomainCommitReceipt{}, false, fmt.Errorf("refresh session before domain commit lookup: %w", err)
 	}
-	return s.findDomainCommitLocked(identity, role, hash, "")
-}
-
-// FindAgentCanonicalCommit proves that the exact public Agent stage hash was
-// published in the same journal transaction as the product message.
-func (s *Session) FindAgentCanonicalCommit(identity DomainCommitIdentity, role agent.RoleType, hash string) (DomainCommitReceipt, bool, error) {
-	if s == nil {
-		return DomainCommitReceipt{}, false, fmt.Errorf("session is nil")
-	}
-	identity = normalizeDomainCommitIdentity(identity)
-	if err := validateDomainCommitIdentity(identity); err != nil {
-		return DomainCommitReceipt{}, false, err
-	}
-	if role != agent.User && role != agent.Assistant {
-		return DomainCommitReceipt{}, false, fmt.Errorf("%w: unsupported message role %q", ErrDomainCommitIdentityConflict, role)
-	}
-	hash = strings.TrimSpace(hash)
-	if hash == "" {
-		return DomainCommitReceipt{}, false, fmt.Errorf("%w: Agent canonical hash is required", ErrDomainCommitIdentityConflict)
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if err := s.refreshCanonicalTailLocked(); err != nil {
-		return DomainCommitReceipt{}, false, fmt.Errorf("refresh session before Agent canonical lookup: %w", err)
-	}
-	return s.findAgentCanonicalCommitLocked(identity, role, hash)
+	return s.findDomainCommitLocked(identity, role, hash)
 }
 
 func (s *Session) ContextCursor() ContextCursor {
@@ -374,7 +333,7 @@ func (s *Session) SnapshotContextForDomainCommit(
 	if err != nil {
 		return ContextSnapshot{}, 0, false, err
 	}
-	messageIndex, receipt, found, err := s.findDomainCommitMessageIndexLocked(identity, role, strings.TrimSpace(hash), "")
+	messageIndex, receipt, found, err := s.findDomainCommitMessageIndexLocked(identity, role, strings.TrimSpace(hash))
 	if err != nil || !found {
 		return snapshot, 0, false, err
 	}
@@ -485,23 +444,23 @@ func deterministicDomainMessageID(identity DomainCommitIdentity, role agent.Role
 	return "agent-message-" + hex.EncodeToString(sum[:16])
 }
 
-func domainCommitReceipt(identity DomainCommitIdentity, metadata MessageMetadata) DomainCommitReceipt {
+func domainCommitReceipt(identity DomainCommitIdentity, metadata MessageMetadata, hash string) DomainCommitReceipt {
 	return DomainCommitReceipt{
 		Identity: identity, MessageID: metadata.MessageID,
-		Hash: metadata.DomainCommitHash, AgentCanonicalHash: metadata.AgentCanonicalHash,
+		Hash:            hash,
 		ContextRevision: metadata.ContextRevision,
 	}
 }
 
-func (s *Session) findDomainCommitLocked(identity DomainCommitIdentity, role agent.RoleType, hash, canonicalHash string) (DomainCommitReceipt, bool, error) {
-	_, receipt, found, err := s.findDomainCommitMessageIndexLocked(identity, role, hash, canonicalHash)
+func (s *Session) findDomainCommitLocked(identity DomainCommitIdentity, role agent.RoleType, hash string) (DomainCommitReceipt, bool, error) {
+	_, receipt, found, err := s.findDomainCommitMessageIndexLocked(identity, role, hash)
 	return receipt, found, err
 }
 
 func (s *Session) findDomainCommitMessageIndexLocked(
 	identity DomainCommitIdentity,
 	role agent.RoleType,
-	hash, canonicalHash string,
+	hash string,
 ) (int, DomainCommitReceipt, bool, error) {
 	wantedMessageID := deterministicDomainMessageID(identity, role)
 	messageIndex := s.messageBaseIndex
@@ -521,13 +480,14 @@ func (s *Session) findDomainCommitMessageIndexLocked(
 			messageIndex++
 			continue
 		}
-		if metadata.DomainCommitHash != hash {
+		existingHash, err := domainMessageHash(*record.message, metadata)
+		if err != nil {
+			return 0, DomainCommitReceipt{}, false, err
+		}
+		if existingHash != hash {
 			return 0, DomainCommitReceipt{}, false, fmt.Errorf("%w: command_id=%q operation_id=%q cycle=%d", ErrDomainCommitIdentityConflict, identity.CommandID, identity.OperationID, identity.Cycle)
 		}
-		if canonicalHash != "" && metadata.AgentCanonicalHash != canonicalHash {
-			return 0, DomainCommitReceipt{}, false, fmt.Errorf("%w: Agent canonical hash changed for command_id=%q operation_id=%q cycle=%d", ErrDomainCommitIdentityConflict, identity.CommandID, identity.OperationID, identity.Cycle)
-		}
-		return messageIndex, domainCommitReceipt(identity, metadata), true, nil
+		return messageIndex, domainCommitReceipt(identity, metadata, existingHash), true, nil
 	}
 	if s.projection != nil {
 		wantedMessageID := deterministicDomainMessageID(identity, role)
@@ -543,59 +503,13 @@ func (s *Session) findDomainCommitMessageIndexLocked(
 			if commit.Role != role || metadata.MessageID != wantedMessageID {
 				continue
 			}
-			if metadata.DomainCommitHash != hash {
+			if commit.Hash != hash {
 				return 0, DomainCommitReceipt{}, false, fmt.Errorf("%w: command_id=%q operation_id=%q cycle=%d", ErrDomainCommitIdentityConflict, identity.CommandID, identity.OperationID, identity.Cycle)
 			}
-			if canonicalHash != "" && metadata.AgentCanonicalHash != canonicalHash {
-				return 0, DomainCommitReceipt{}, false, fmt.Errorf("%w: Agent canonical hash changed for command_id=%q operation_id=%q cycle=%d", ErrDomainCommitIdentityConflict, identity.CommandID, identity.OperationID, identity.Cycle)
-			}
-			return commit.MessageIndex, domainCommitReceipt(identity, metadata), true, nil
+			return commit.MessageIndex, domainCommitReceipt(identity, metadata, commit.Hash), true, nil
 		}
 	}
 	return 0, DomainCommitReceipt{}, false, nil
-}
-
-func (s *Session) findAgentCanonicalCommitLocked(identity DomainCommitIdentity, role agent.RoleType, hash string) (DomainCommitReceipt, bool, error) {
-	wantedMessageID := deterministicDomainMessageID(identity, role)
-	for _, record := range s.records {
-		if record.message == nil {
-			continue
-		}
-		metadata := record.messageMetadata
-		if metadata.AgentCommandID != identity.CommandID {
-			continue
-		}
-		if metadata.AgentOperationID != identity.OperationID || metadata.AgentCycle != identity.Cycle {
-			return DomainCommitReceipt{}, false, fmt.Errorf("%w: Agent canonical commit does not match command_id=%q operation_id=%q cycle=%d", ErrDomainCommitIdentityConflict, identity.CommandID, identity.OperationID, identity.Cycle)
-		}
-		if metadata.MessageID != wantedMessageID {
-			continue
-		}
-		if metadata.AgentCanonicalHash != hash {
-			return DomainCommitReceipt{}, false, fmt.Errorf("%w: Agent canonical hash changed for command_id=%q operation_id=%q cycle=%d", ErrDomainCommitIdentityConflict, identity.CommandID, identity.OperationID, identity.Cycle)
-		}
-		return domainCommitReceipt(identity, metadata), true, nil
-	}
-	if s.projection != nil {
-		for index := len(s.projection.RecentCommits) - 1; index >= 0; index-- {
-			commit := s.projection.RecentCommits[index]
-			metadata := commit.Metadata
-			if metadata.AgentCommandID != identity.CommandID {
-				continue
-			}
-			if metadata.AgentOperationID != identity.OperationID || metadata.AgentCycle != identity.Cycle {
-				return DomainCommitReceipt{}, false, fmt.Errorf("%w: Agent canonical commit does not match command_id=%q operation_id=%q cycle=%d", ErrDomainCommitIdentityConflict, identity.CommandID, identity.OperationID, identity.Cycle)
-			}
-			if commit.Role != role || metadata.MessageID != wantedMessageID {
-				continue
-			}
-			if metadata.AgentCanonicalHash != hash {
-				return DomainCommitReceipt{}, false, fmt.Errorf("%w: Agent canonical hash changed for command_id=%q operation_id=%q cycle=%d", ErrDomainCommitIdentityConflict, identity.CommandID, identity.OperationID, identity.Cycle)
-			}
-			return domainCommitReceipt(identity, metadata), true, nil
-		}
-	}
-	return DomainCommitReceipt{}, false, nil
 }
 
 func (s *Session) replaceCanonicalStateLocked(recovered *Session) {

@@ -54,7 +54,7 @@ func (s *Runtime) Inspect(ctx context.Context, cycle Cycle) (agent.Inspection, e
 	if err != nil {
 		return agent.Inspection{}, err
 	}
-	if err := syncCanonicalTranscript(ctx, session, cycle.Conversation); err != nil {
+	if err := loadCanonicalMessages(ctx, session, cycle.Conversation); err != nil {
 		return agent.Inspection{}, err
 	}
 	registration := &publicCycleRegistration{

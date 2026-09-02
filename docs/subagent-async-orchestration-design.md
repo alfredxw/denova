@@ -14,7 +14,7 @@
 2. SubAgent 结束时，先将终态和最终输出写入自己的 Session；该终态记录是唯一事实源。
 3. 终态写入成功后，运行时向父 Session 的内存 Mailbox 投递一次有界 `TASK_RESULT` 完成消息，但不启动或 steer 父 Agent。
 4. 父 Agent 若仍在执行，只在下一次模型调用前的安全 loop 边界消费 Mailbox。工具调用及其结果必须先完整配对，完成消息才进入模型上下文。
-5. 完成消息写入父 transcript 时，同一 Session Log 事务同时写入 delivery receipt；只有事务成功后才从 Mailbox 移除。
+5. 完成消息作为带 `CompletionID` 的 typed context message 写入父 Session 的 canonical journal；只有事务成功后才从 Mailbox 移除。
 6. `task_wait` 保留为可中断的同步点，等待相关 Mailbox/status 活动，但不再承担结果传输。
 
 主 Agent 的委派策略不变：只有当前用户明确要求多 Agent 协作，或已加载 Skill 明确要求委派时，才允许启动 SubAgent。普通任务仍由主 Agent 自己处理，不因并行、复核、调研或节省时间而自动委派。
@@ -33,8 +33,8 @@
 1. **事实源唯一**：SubAgent Session 的 terminal Run record 是结果事实源；Mailbox 只是通知与唤醒信号。
 2. **不主动唤醒**：投递完成消息不得创建 Run、追加 Follow Up 或模拟用户 steer。
 3. **安全边界注入**：只在模型调用前注入；不得插入未配对的 assistant tool call 与 tool result 之间。
-4. **原子投递**：父 transcript checkpoint 与 completion delivery receipt 必须在同一日志事务提交。
-5. **可恢复**：进程重启后从父 Session 的 delivery receipts 和子 Session terminal records 重建尚未投递的 Mailbox 项。
+4. **原子投递**：父 Session 的 typed completion message 必须作为一个完整 canonical context batch 提交；不得另存可竞争的 delivery 快照。
+5. **可恢复**：进程重启后从父 canonical history 中的 `CompletionID` 和子 Session terminal records 重建尚未投递的 Mailbox 项。
 6. **稳定去重**：Completion ID 由完整 `TaskRef` 稳定派生；pending、重复 watcher 和恢复扫描均不得造成重复注入。
 7. **等待独立**：`task_wait` 只同步 readiness；结果正文通过 `TASK_RESULT` 消息进入模型，或由 `task.observe` 显式读取。
 8. **无隐式超时**：任务与等待默认不限时；仅用户输入、任务活动或显式取消改变等待状态。
@@ -70,7 +70,7 @@ Payload:
 每个父 Session 维护：
 
 - 按到达顺序排列的 pending completion；
-- 已持久化 delivery receipt 的 Completion ID 集合；
+- 已出现在父 canonical history 中的 Completion ID 集合；
 - level check + activity channel 组成的通知边界。
 
 入队不会写父日志，也不会启动父 Run。父日志只在模型真正接收完成消息时写入，避免把“已到达”误记成“已投递”。
@@ -89,11 +89,11 @@ Payload:
 
 1. 取得当前 pending 快照，但不移除。
 2. 将完成消息追加到低层模型状态，并向 Definition lifecycle 发出带 acknowledgement 的内部 boundary event。
-3. Definition lifecycle 按事件顺序先接收此前所有 assistant/tool 消息，再把完成消息追加到 raw transcript。
-4. lifecycle 编码 active transcript，并请求 Session 原子写入 transcript record 与 delivery receipt record。
+3. Definition lifecycle 按事件顺序先接收此前所有 assistant/tool 消息，再把完成消息追加到模型历史。
+4. Denova 将整批 typed completion messages 原子追加到 Product Session 或 Story 的 canonical journal；Public Agent 的独立文件 Store 则在自身 journal 内原子写入 transcript 和 delivery record。
 5. 提交成功后清除对应 pending，回执 loop，随后才允许 middleware、上下文维护和 provider 调用继续。
 
-这条 acknowledgement 边界避免异步事件队列出现“模型已经看到结果，但父 transcript 尚未记录”或“receipt 已写入但正文丢失”的竞态。
+这条 acknowledgement 边界避免异步事件队列出现“模型已经看到结果，但父 canonical history 尚未记录”的竞态。
 
 到达时机按以下规则处理：
 
@@ -129,10 +129,10 @@ Payload:
 ## 7. 恢复与失败边界
 
 - SubAgent 的 `Run.Wait` 只有在 terminal record 落盘并关闭 done 后才触发 completion watcher。
-- watcher 投递失败不会改变子任务终态；下一次父 Definition 构建会扫描与该父 Session 关联的子 Session，并重新构造未 receipt 的完成消息。
+- watcher 投递失败不会改变子任务终态；下一次父 Definition 构建会扫描与该父 Session 关联的子 Session，并重新构造父 canonical history 中尚无 `CompletionID` 的完成消息。
 - 应用重启不会恢复正在执行的模型调用；未完成的子 Run 按既有规则落为 `incomplete`，随后可作为终态结果恢复投递。
-- 父 transcript 与 delivery receipt 使用同一个 Session Log transaction。提交失败时 pending 保留，父 provider 不会继续执行。
-- delivery receipt 随父 Session 持久化；清空对话可移除历史正文，但旧任务结果不会因此再次投递。
+- 父 canonical context batch 提交失败时 pending 保留，父 provider 不会继续执行。
+- 已投递身份由 typed message 中的 `CompletionID` 直接推导；不再维护 Denova 根 Session 的独立 delivery 快照。
 
 ## 8. 并发、权限与上下文
 
@@ -144,7 +144,7 @@ Payload:
 
 ## 9. 兼容性与非目标
 
-- v0.3.3 没有该 delivery record，不需要用户数据迁移；缺失记录自然表示尚无已投递 completion。
+- v0.3.3 没有 typed completion message，不需要用户数据迁移；缺失记录自然表示尚无已投递 completion。
 - TaskRef、子 Session terminal record 和现有会话数据继续使用；内部未发布的 `task_wait` 结果形态直接收敛为同步状态。
 - 本阶段不实现通用 Agent 消息总线、点对点聊天、DAG、优先级队列、自动任务拆分、多工作树隔离或跨进程恢复正在执行的模型调用。
 - SubAgent 仍不因该 Mailbox 获得递归委派能力。
@@ -154,7 +154,7 @@ Payload:
 - 不调用 `task_wait` 时，终态 SubAgent 结果仍能在父 Agent 的后续安全模型边界进入上下文。
 - `task_wait` 能由 pending-before-subscribe 和 activity-after-subscribe 两条路径唤醒，且只返回同步状态。
 - 多个完成结果按入队顺序注入，每个 Completion ID 最多投递一次。
-- transcript 与 receipt 原子落盘；重启后不会漏投或重复注入。
+- typed completion batch 原子落入父 canonical journal；重启后可由 `CompletionID` 避免重复注入。
 - 完成消息在父 final answer 生成期间到达时，本轮不会额外发起模型调用。
 - 父 Session idle 时不会被 completion 自动唤醒。
 - 用户打断等待不终止子任务，显式 `abort` 仍按原契约终止。

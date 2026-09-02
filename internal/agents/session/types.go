@@ -90,24 +90,16 @@ type HistoryEntry struct {
 	AgentCommandID       string                       `json:"agent_command_id,omitempty"`
 	AgentOperationID     string                       `json:"agent_operation_id,omitempty"`
 	AgentCycle           int                          `json:"agent_cycle,omitempty"`
-	DomainCommitHash     string                       `json:"domain_commit_hash,omitempty"`
-	AgentCanonicalHash   string                       `json:"agent_canonical_hash,omitempty"`
 	ContextRevision      uint64                       `json:"context_revision,omitempty"`
 }
 
 type MessageMetadata struct {
-	// MessageID and the coordinator identity form the stable cross-domain key
-	// for one Agent cycle. They are model-invisible but survive journal replay.
+	// MessageID and the coordinator identity form the stable canonical key for
+	// one Agent cycle. They are model-invisible but survive journal replay.
 	MessageID        string `json:"message_id,omitempty"`
 	AgentCommandID   string `json:"agent_command_id,omitempty"`
 	AgentOperationID string `json:"agent_operation_id,omitempty"`
 	AgentCycle       int    `json:"agent_cycle,omitempty"`
-	DomainCommitHash string `json:"domain_commit_hash,omitempty"`
-	// AgentCanonicalHash is the public Agent package's exact stage hash. It is
-	// stored atomically with the product message, while DomainCommitHash guards
-	// the richer Denova payload. Recovery must query this value, never infer a
-	// successful Agent commit from cycle identity alone.
-	AgentCanonicalHash string `json:"agent_canonical_hash,omitempty"`
 	// ResolveInterruptionID is committed in the same journal transaction as
 	// the canonical assistant output. It closes the crash window where output
 	// was visible but its recovery marker remained pending.

@@ -168,6 +168,42 @@ func (engine *definitionEngine) commitCanonicalOutput(
 	return effective, nil
 }
 
+func (engine *definitionEngine) commitCanonicalContext(
+	ctx context.Context,
+	request runstate.EngineRequest,
+	adapter CanonicalAdapter,
+	kind ContextCommitKind,
+	ordinal int,
+	messages []*Message,
+) error {
+	contextAdapter, ok := adapter.(CanonicalContextAdapter)
+	if !ok || len(messages) == 0 {
+		return nil
+	}
+	hash, err := canonicalContextHash(kind, ordinal, messages, adapter.Identity())
+	if err != nil {
+		return err
+	}
+	values := make([]Message, len(messages))
+	for index, message := range messages {
+		if message == nil {
+			return fmt.Errorf("canonical context message %d is nil", index)
+		}
+		values[index] = *message.Clone()
+	}
+	receipt, err := contextAdapter.CommitContext(ctx, ContextCommitRequest{
+		Identity: canonicalCommitIdentity(engine.key, request.Snapshot, CommitContext),
+		Kind:     kind, Ordinal: ordinal, Hash: hash, Messages: values,
+	})
+	if err != nil {
+		return fmt.Errorf("commit canonical Agent context: %w", err)
+	}
+	if strings.TrimSpace(receipt.Revision) == "" {
+		return errors.New("commit canonical Agent context returned an empty revision")
+	}
+	return nil
+}
+
 func canonicalCommitIdentity(key SessionKey, snapshot runstate.TurnSnapshot, stage CommitStage) CommitIdentity {
 	return CommitIdentity{
 		Session: key, CommandID: string(snapshot.CommandID), RunID: string(snapshot.OperationID),

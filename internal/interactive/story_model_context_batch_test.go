@@ -393,6 +393,75 @@ func durableModelContextBatchFixture() []ModelContextMessage {
 	return durableModelContextBatchFixtureForCall("call-fetch", "The gate was opened recently.")
 }
 
+func TestTurnAbsorbsMixedAgentContextKindsFromCanonicalBatches(t *testing.T) {
+	store := NewStore(t.TempDir())
+	story, err := store.CreateStory(CreateStoryRequest{Title: "mixed context", StoryTellerID: "classic"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity := DomainCommitIdentity{CommandID: "command-mixed", OperationID: "operation-mixed", Cycle: 1}
+	input, err := NewPlayerInputIntent(identity, "main", "继续")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CommitPlayerInput(story.ID, input); err != nil {
+		t.Fatal(err)
+	}
+	state := agent.UserMessage("current state")
+	state.Extra = map[string]any{
+		"agent.context_state":             "v1",
+		"agent.context_state.operation":   "upsert",
+		"agent.context_state.id":          "workspace",
+		"agent.context_state.source":      "test.workspace",
+		"agent.context_state.purpose":     "provide current state",
+		"agent.context_state.resource":    "workspace",
+		"agent.context_state.revision":    "revision-1",
+		"agent.context_state.fingerprint": strings.Repeat("a", 64),
+	}
+	completion := agent.UserMessage("child result")
+	completion.TaskCompletion = &agent.TaskCompletionMessageMeta{
+		CompletionID: "completion-mixed", Author: "researcher", Recipient: "parent",
+	}
+	batches := []struct {
+		kind     string
+		messages []ModelContextMessage
+	}{
+		{kind: ModelContextBatchKindState, messages: []ModelContextMessage{ModelContextMessageFromAgent(state, nil)}},
+		{kind: ModelContextBatchKindTool, messages: durableModelContextBatchFixture()},
+		{kind: ModelContextBatchKindTaskCompletion, messages: []ModelContextMessage{ModelContextMessageFromAgent(completion, nil)}},
+	}
+	var expected []ModelContextMessage
+	for ordinal, batch := range batches {
+		intent, err := NewAgentContextBatchIntent(identity, "main", batch.kind, ordinal, batch.messages)
+		if err != nil {
+			t.Fatal(err)
+		}
+		receipt, err := store.AppendModelContextBatch(story.ID, intent)
+		if err != nil {
+			t.Fatal(err)
+		}
+		expected = append(expected, receipt.Event.Messages...)
+	}
+	turn, _, err := store.AppendTurnWithState(story.ID, AppendTurnWithStateRequest{
+		BranchID: "main", User: "继续", Narrative: "继续前进。",
+		AgentCommandID: identity.CommandID, AgentOperationID: identity.OperationID, AgentCycle: identity.Cycle,
+		ModelContextMessages: expected,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(turn.ModelContextMessages, expected) {
+		t.Fatalf("mixed canonical context changed:\nwant=%#v\ngot=%#v", expected, turn.ModelContextMessages)
+	}
+	history, err := NewStore(store.root).ReadModelHistory(story.ID, StoryModelHistoryQuery{BranchID: "main", StartTurn: 0, EndTurn: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(history.Turns) != 1 || !reflect.DeepEqual(history.Turns[0].ModelContextMessages, expected) {
+		t.Fatalf("cold mixed context=%#v", history.Turns)
+	}
+}
+
 func durableModelContextBatchFixtureForCall(callID, evidence string) []ModelContextMessage {
 	callIndex := 0
 	return []ModelContextMessage{

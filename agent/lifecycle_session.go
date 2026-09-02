@@ -1,10 +1,12 @@
 package agent
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -15,7 +17,9 @@ import (
 
 const (
 	sessionTranscriptRecord             = "session.transcript"
-	sessionCapabilitiesRecord           = "session.capabilities"
+	sessionMessageCheckpointRecord      = "session.message_checkpoint"
+	sessionCapabilitySetRecord          = "session.capability_set"
+	sessionCapabilityDeleteRecord       = "session.capability_delete"
 	sessionTaskCompletionDeliveryRecord = "session.task_completion_delivery"
 	turnStartedRecord                   = "turn.started"
 	turnFinishedRecord                  = "turn.finished"
@@ -36,8 +40,14 @@ type persistedSessionTranscript struct {
 	EngineState json.RawMessage `json:"engine_state,omitempty"`
 }
 
-type persistedSessionCapabilities struct {
-	Capabilities map[string]json.RawMessage `json:"capabilities,omitempty"`
+type persistedMessageCheckpoint struct {
+	Hash         string `json:"hash"`
+	MessageCount int    `json:"message_count"`
+}
+
+type persistedCapability struct {
+	Capability string          `json:"capability"`
+	State      json.RawMessage `json:"state,omitempty"`
 }
 
 type persistedTaskCompletionDelivery struct {
@@ -59,9 +69,9 @@ type sessionObserver struct {
 	drops  eventDropState
 }
 
-// Session serializes Runs for one conversation. Only transcript and
-// capability snapshots cross process boundaries; all live coordination is
-// intentionally kept here in memory.
+// Session serializes Runs for one conversation. Canonical messages, versioned
+// capability updates, and settled turn records may cross process boundaries;
+// all live coordination is intentionally kept here in memory.
 type Session struct {
 	agent   *Agent
 	key     SessionKey
@@ -69,21 +79,24 @@ type Session struct {
 	engine  runstate.Engine
 	log     agentsession.Log
 
-	mu              sync.RWMutex
-	closed          bool
-	revision        agentsession.Revision
-	engineState     json.RawMessage
-	capabilities    map[string]json.RawMessage
-	active          *Run
-	maintenance     bool
-	pending         []*Run
-	runs            map[string]*Run
-	recent          []RunSummary
-	cursor          Cursor
-	history         []Event
-	observers       map[uint64]*sessionObserver
-	nextObserver    uint64
-	taskCompletions taskCompletionMailbox
+	mu                  sync.RWMutex
+	closed              bool
+	revision            agentsession.Revision
+	engineState         json.RawMessage
+	capabilities        map[string]json.RawMessage
+	durableCapabilities map[string]json.RawMessage
+	canonicalMessages   bool
+	messageCheckpoint   persistedMessageCheckpoint
+	active              *Run
+	maintenance         bool
+	pending             []*Run
+	runs                map[string]*Run
+	recent              []RunSummary
+	cursor              Cursor
+	history             []Event
+	observers           map[uint64]*sessionObserver
+	nextObserver        uint64
+	taskCompletions     taskCompletionMailbox
 }
 
 func (session *Session) Key() SessionKey {
@@ -106,12 +119,35 @@ func (session *Session) replay(ctx context.Context) error {
 				return fmt.Errorf("decode Agent Session transcript at revision %d: %w", record.Revision, err)
 			}
 			session.engineState = append(json.RawMessage(nil), transcript.EngineState...)
-		case sessionCapabilitiesRecord:
-			var capabilities persistedSessionCapabilities
-			if err := json.Unmarshal(record.Data, &capabilities); err != nil {
-				return fmt.Errorf("decode Agent Session capabilities at revision %d: %w", record.Revision, err)
+		case sessionMessageCheckpointRecord:
+			var checkpoint persistedMessageCheckpoint
+			if err := json.Unmarshal(record.Data, &checkpoint); err != nil {
+				return fmt.Errorf("decode Agent Session message checkpoint at revision %d: %w", record.Revision, err)
 			}
-			session.capabilities = cloneRawStateMap(capabilities.Capabilities)
+			if checkpoint.Hash == "" || checkpoint.MessageCount < 0 {
+				return fmt.Errorf("decode Agent Session message checkpoint at revision %d: invalid checkpoint", record.Revision)
+			}
+			session.messageCheckpoint = checkpoint
+		case sessionCapabilitySetRecord:
+			var capability persistedCapability
+			if err := json.Unmarshal(record.Data, &capability); err != nil {
+				return fmt.Errorf("decode Agent Session capability set at revision %d: %w", record.Revision, err)
+			}
+			if strings.TrimSpace(capability.Capability) == "" || !json.Valid(capability.State) {
+				return fmt.Errorf("decode Agent Session capability set at revision %d: invalid capability", record.Revision)
+			}
+			session.capabilities[capability.Capability] = append(json.RawMessage(nil), capability.State...)
+			session.durableCapabilities[capability.Capability] = append(json.RawMessage(nil), capability.State...)
+		case sessionCapabilityDeleteRecord:
+			var capability persistedCapability
+			if err := json.Unmarshal(record.Data, &capability); err != nil {
+				return fmt.Errorf("decode Agent Session capability delete at revision %d: %w", record.Revision, err)
+			}
+			if strings.TrimSpace(capability.Capability) == "" {
+				return fmt.Errorf("decode Agent Session capability delete at revision %d: invalid capability", record.Revision)
+			}
+			delete(session.capabilities, capability.Capability)
+			delete(session.durableCapabilities, capability.Capability)
 		case sessionTaskCompletionDeliveryRecord:
 			var delivery persistedTaskCompletionDelivery
 			if err := json.Unmarshal(record.Data, &delivery); err != nil {
@@ -416,9 +452,6 @@ func (session *Session) snapshotLocked() SessionSnapshot {
 	if compactionPresent && !compaction.Removed {
 		snapshot.Compaction = &compaction
 	}
-	if state, ok, _ := transcriptSyncStateFrom(session.capabilities); ok {
-		snapshot.TranscriptSync = &state
-	}
 	if clearPresent {
 		snapshot.ClearRevision = clear.Revision
 	}
@@ -564,34 +597,70 @@ func (session *Session) appendRecordsLocked(ctx context.Context, records ...agen
 }
 
 func (session *Session) persistTranscriptLocked(ctx context.Context) error {
+	if session.canonicalMessages {
+		state, err := decodeEngineTranscript(session.engineState)
+		if err != nil {
+			return err
+		}
+		hash, err := hashCanonical(state.Messages)
+		if err != nil {
+			return fmt.Errorf("hash canonical Agent messages: %w", err)
+		}
+		checkpoint := persistedMessageCheckpoint{Hash: hash, MessageCount: len(state.Messages)}
+		if checkpoint == session.messageCheckpoint {
+			return nil
+		}
+		if err := session.appendRecordLocked(ctx, sessionMessageCheckpointRecord, checkpoint); err != nil {
+			return err
+		}
+		session.messageCheckpoint = checkpoint
+		return nil
+	}
 	return session.appendRecordLocked(ctx, sessionTranscriptRecord, persistedSessionTranscript{
 		EngineState: append(json.RawMessage(nil), session.engineState...),
 	})
 }
 
 func (session *Session) persistCapabilitiesLocked(ctx context.Context) error {
-	return session.appendRecordLocked(ctx, sessionCapabilitiesRecord, persistedSessionCapabilities{
-		Capabilities: cloneRawStateMap(session.capabilities),
-	})
-}
-
-func (session *Session) persistStateLocked(ctx context.Context) error {
-	transcript, err := json.Marshal(persistedSessionTranscript{
-		EngineState: append(json.RawMessage(nil), session.engineState...),
-	})
-	if err != nil {
-		return fmt.Errorf("encode Agent Session transcript: %w", err)
+	keys := make(map[string]struct{}, len(session.capabilities)+len(session.durableCapabilities))
+	for capability := range session.capabilities {
+		keys[capability] = struct{}{}
 	}
-	capabilities, err := json.Marshal(persistedSessionCapabilities{
-		Capabilities: cloneRawStateMap(session.capabilities),
-	})
-	if err != nil {
-		return fmt.Errorf("encode Agent Session capabilities: %w", err)
+	for capability := range session.durableCapabilities {
+		keys[capability] = struct{}{}
 	}
-	return session.appendRecordsLocked(ctx,
-		agentsession.Record{Kind: sessionTranscriptRecord, Version: sessionRecordVersion, Data: transcript},
-		agentsession.Record{Kind: sessionCapabilitiesRecord, Version: sessionRecordVersion, Data: capabilities},
-	)
+	ordered := make([]string, 0, len(keys))
+	for capability := range keys {
+		ordered = append(ordered, capability)
+	}
+	sort.Strings(ordered)
+	records := make([]agentsession.Record, 0, len(ordered))
+	for _, capability := range ordered {
+		current, present := session.capabilities[capability]
+		durable, persisted := session.durableCapabilities[capability]
+		if present && persisted && bytes.Equal(current, durable) {
+			continue
+		}
+		value := persistedCapability{Capability: capability}
+		kind := sessionCapabilityDeleteRecord
+		if present {
+			kind = sessionCapabilitySetRecord
+			value.State = append(json.RawMessage(nil), current...)
+		}
+		data, err := json.Marshal(value)
+		if err != nil {
+			return fmt.Errorf("encode Agent Session capability %q: %w", capability, err)
+		}
+		records = append(records, agentsession.Record{Kind: kind, Version: sessionRecordVersion, Data: data})
+	}
+	if len(records) == 0 {
+		return nil
+	}
+	if err := session.appendRecordsLocked(ctx, records...); err != nil {
+		return err
+	}
+	session.durableCapabilities = cloneRawStateMap(session.capabilities)
+	return nil
 }
 
 func (session *Session) publishLocked(event Event) {

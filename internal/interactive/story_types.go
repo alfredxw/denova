@@ -1,6 +1,8 @@
 package interactive
 
 import (
+	"encoding/json"
+
 	interactivestate "denova/internal/interactive/state"
 	agent "github.com/alfredxw/denova/agent"
 
@@ -44,18 +46,17 @@ type AppendTurnRequest struct {
 }
 
 type AppendTurnWithStateRequest struct {
-	BranchID           string  `json:"branch_id"`
-	ExpectedParentID   *string `json:"expected_parent_id,omitempty"`
-	ReplaceTurnID      string  `json:"replace_turn_id,omitempty"`
-	User               string  `json:"user"`
-	Narrative          string  `json:"narrative"`
-	Thinking           string  `json:"thinking,omitempty"`
-	RunID              string  `json:"run_id,omitempty"`
-	AgentKind          string  `json:"agent_kind,omitempty"`
-	AgentCommandID     string  `json:"agent_command_id,omitempty"`
-	AgentOperationID   string  `json:"agent_operation_id,omitempty"`
-	AgentCycle         int     `json:"agent_cycle,omitempty"`
-	AgentCanonicalHash string  `json:"agent_canonical_hash,omitempty"`
+	BranchID         string  `json:"branch_id"`
+	ExpectedParentID *string `json:"expected_parent_id,omitempty"`
+	ReplaceTurnID    string  `json:"replace_turn_id,omitempty"`
+	User             string  `json:"user"`
+	Narrative        string  `json:"narrative"`
+	Thinking         string  `json:"thinking,omitempty"`
+	RunID            string  `json:"run_id,omitempty"`
+	AgentKind        string  `json:"agent_kind,omitempty"`
+	AgentCommandID   string  `json:"agent_command_id,omitempty"`
+	AgentOperationID string  `json:"agent_operation_id,omitempty"`
+	AgentCycle       int     `json:"agent_cycle,omitempty"`
 	// ProviderContinuation is opaque model-visible state from the exact final
 	// assistant output. Story persistence retains it without exposing it in UI
 	// projections or interpreting provider-owned payloads.
@@ -97,8 +98,8 @@ type UpdateTurnNarrativeRequest struct {
 }
 
 // UpdateTurnNarrativeResult reports the durable edited turn. Public Agent
-// transcript synchronization observes ContextRevision and atomically rebuilds
-// its derived history before the next turn.
+// reloads the canonical Story history before the next turn and invalidates
+// only projections whose source prefix changed.
 type UpdateTurnNarrativeResult struct {
 	Turn TurnEvent `json:"turn"`
 }
@@ -265,16 +266,15 @@ type TurnEvent struct {
 	Attachments []agent.Attachment `json:"attachments,omitempty"`
 	// UserContextOnly keeps host-owned autonomous instructions available to
 	// future model turns while hiding them from the player-authored timeline.
-	UserContextOnly    bool   `json:"user_context_only,omitempty"`
-	Narrative          string `json:"narrative"`
-	Thinking           string `json:"thinking,omitempty"`
-	RunID              string `json:"run_id,omitempty"`
-	AgentKind          string `json:"agent_kind,omitempty"`
-	AgentCommandID     string `json:"agent_command_id,omitempty"`
-	AgentOperationID   string `json:"agent_operation_id,omitempty"`
-	AgentCycle         int    `json:"agent_cycle,omitempty"`
-	AgentCommitHash    string `json:"agent_commit_hash,omitempty"`
-	AgentCanonicalHash string `json:"agent_canonical_hash,omitempty"`
+	UserContextOnly  bool   `json:"user_context_only,omitempty"`
+	Narrative        string `json:"narrative"`
+	Thinking         string `json:"thinking,omitempty"`
+	RunID            string `json:"run_id,omitempty"`
+	AgentKind        string `json:"agent_kind,omitempty"`
+	AgentCommandID   string `json:"agent_command_id,omitempty"`
+	AgentOperationID string `json:"agent_operation_id,omitempty"`
+	AgentCycle       int    `json:"agent_cycle,omitempty"`
+	AgentCommitHash  string `json:"agent_commit_hash,omitempty"`
 	// ProviderContinuation is hydrated from a private side event for model
 	// history only. It is deliberately absent from public Game JSON.
 	ProviderContinuation map[string]any `json:"-"`
@@ -340,17 +340,26 @@ type DisplayEvent struct {
 }
 
 // ModelContextMessage is model-visible turn evidence hidden from the chat UI.
-// It stores assistant tool calls, tool results, and only the provider-owned
-// opaque continuation needed to replay a tool boundary. Raw thinking and
-// unrelated response metadata are never persisted here.
+// It losslessly stores every Agent Message field needed to reconstruct future
+// model input. Provider continuation remains in its private side event so it
+// is not exposed by ordinary Game API projections.
 type ModelContextMessage struct {
-	Role       string                   `json:"role"`
-	Content    string                   `json:"content,omitempty"`
-	Name       string                   `json:"name,omitempty"`
-	ToolCalls  []ModelContextToolCall   `json:"tool_calls,omitempty"`
-	ToolCallID string                   `json:"tool_call_id,omitempty"`
-	ToolName   string                   `json:"tool_name,omitempty"`
-	ToolResult *agent.ToolResultSummary `json:"tool_result,omitempty"`
+	Role                     string                           `json:"role"`
+	Content                  string                           `json:"content,omitempty"`
+	Attachments              []agent.Attachment               `json:"attachments,omitempty"`
+	MultiContent             []json.RawMessage                `json:"multi_content,omitempty"`
+	UserInputMultiContent    []json.RawMessage                `json:"user_input_multi_content,omitempty"`
+	AssistantGenMultiContent []json.RawMessage                `json:"assistant_output_multi_content,omitempty"`
+	Name                     string                           `json:"name,omitempty"`
+	ToolCalls                []ModelContextToolCall           `json:"tool_calls,omitempty"`
+	ToolCallID               string                           `json:"tool_call_id,omitempty"`
+	ToolName                 string                           `json:"tool_name,omitempty"`
+	ToolResult               *agent.ToolResultSummary         `json:"tool_result,omitempty"`
+	ResponseMeta             *agent.ResponseMeta              `json:"response_meta,omitempty"`
+	AgentMeta                *agent.AgentMessageMeta          `json:"agent_meta,omitempty"`
+	TaskCompletion           *agent.TaskCompletionMessageMeta `json:"task_completion,omitempty"`
+	ReasoningContent         string                           `json:"reasoning_content,omitempty"`
+	Extra                    map[string]any                   `json:"extra,omitempty"`
 	// ProviderContinuation is persisted through a private side event and is
 	// hydrated only for model-history projections.
 	ProviderContinuation map[string]any `json:"-"`

@@ -487,7 +487,7 @@ func (service *Service) CloseProject(ctx context.Context, projectID string) erro
 	if service.host != nil {
 		_, executionRuntime := service.host.BaseRuntime()
 		if executionRuntime != nil {
-			return executionRuntime.DeleteProjectBindings(ctx, projectID)
+			return executionRuntime.CloseProjectBindings(ctx, projectID)
 		}
 	}
 	return nil

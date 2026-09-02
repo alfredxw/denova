@@ -78,8 +78,6 @@ func sanitizeMessageMetadata(metadata MessageMetadata) MessageMetadata {
 	metadata.MessageID = strings.TrimSpace(metadata.MessageID)
 	metadata.AgentCommandID = strings.TrimSpace(metadata.AgentCommandID)
 	metadata.AgentOperationID = strings.TrimSpace(metadata.AgentOperationID)
-	metadata.DomainCommitHash = strings.TrimSpace(metadata.DomainCommitHash)
-	metadata.AgentCanonicalHash = strings.TrimSpace(metadata.AgentCanonicalHash)
 	metadata.ResolveInterruptionID = strings.TrimSpace(metadata.ResolveInterruptionID)
 	metadata.AgentKind = strings.TrimSpace(metadata.AgentKind)
 	metadata.AgentName = strings.TrimSpace(metadata.AgentName)
@@ -276,28 +274,26 @@ func (s *Session) History() []HistoryEntry {
 				content = record.messageMetadata.DisplayContent
 			}
 			result = append(result, HistoryEntry{
-				Type:               historyTypeMessage,
-				ID:                 record.messageMetadata.MessageID,
-				Role:               string(record.message.Role),
-				Content:            content,
-				Attachments:        append([]agent.Attachment(nil), record.message.Attachments...),
-				Message:            record.message,
-				CreatedAt:          record.createdAt,
-				RunID:              record.messageMetadata.RunID,
-				AgentKind:          record.messageMetadata.AgentKind,
-				AgentName:          record.messageMetadata.AgentName,
-				RootAgentName:      record.messageMetadata.RootAgentName,
-				RunPath:            append([]string(nil), record.messageMetadata.RunPath...),
-				SubAgent:           record.messageMetadata.SubAgent,
-				SubAgentSessionID:  record.messageMetadata.SubAgentSessionID,
-				SubAgentType:       record.messageMetadata.SubAgentType,
-				UserReferences:     append([]agentcontext.UserReference(nil), record.messageMetadata.UserReferences...),
-				AgentCommandID:     record.messageMetadata.AgentCommandID,
-				AgentOperationID:   record.messageMetadata.AgentOperationID,
-				AgentCycle:         record.messageMetadata.AgentCycle,
-				DomainCommitHash:   record.messageMetadata.DomainCommitHash,
-				AgentCanonicalHash: record.messageMetadata.AgentCanonicalHash,
-				ContextRevision:    record.messageMetadata.ContextRevision,
+				Type:              historyTypeMessage,
+				ID:                record.messageMetadata.MessageID,
+				Role:              string(record.message.Role),
+				Content:           content,
+				Attachments:       append([]agent.Attachment(nil), record.message.Attachments...),
+				Message:           record.message,
+				CreatedAt:         record.createdAt,
+				RunID:             record.messageMetadata.RunID,
+				AgentKind:         record.messageMetadata.AgentKind,
+				AgentName:         record.messageMetadata.AgentName,
+				RootAgentName:     record.messageMetadata.RootAgentName,
+				RunPath:           append([]string(nil), record.messageMetadata.RunPath...),
+				SubAgent:          record.messageMetadata.SubAgent,
+				SubAgentSessionID: record.messageMetadata.SubAgentSessionID,
+				SubAgentType:      record.messageMetadata.SubAgentType,
+				UserReferences:    append([]agentcontext.UserReference(nil), record.messageMetadata.UserReferences...),
+				AgentCommandID:    record.messageMetadata.AgentCommandID,
+				AgentOperationID:  record.messageMetadata.AgentOperationID,
+				AgentCycle:        record.messageMetadata.AgentCycle,
+				ContextRevision:   record.messageMetadata.ContextRevision,
 			})
 		case historyTypeDisplay:
 			if record.display == nil {

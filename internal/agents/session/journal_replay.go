@@ -12,6 +12,7 @@ import (
 	agent "github.com/alfredxw/denova/agent"
 
 	"denova/internal/agents/conversationjournal"
+	"denova/internal/agents/sessionjournal"
 )
 
 func loadSession(filePath string) (*Session, error) {
@@ -218,12 +219,16 @@ func appendRecordLine(sess *Session, line []byte, lineNumber int) error {
 		return appendDisplayRecordLine(sess, line, lineNumber)
 	case historyTypeMessage, historyTypeContextMessage:
 		return appendMessageRecordLine(sess, line, typed.Type)
+	case historyTypeContextBatch:
+		return appendContextBatchRecordLine(sess, line)
 	case historyTypeSessionPatch:
 		return applySessionPatchLine(sess, line)
 	case historyTypeDisplayPatch:
 		return applyDisplayPatchLine(sess, line)
 	case historyTypeInterruptionPatch:
 		return applyInterruptionPatchLine(sess, line)
+	case sessionjournal.RecordType:
+		return nil
 	case "":
 		return appendLegacyMessageLine(sess, line)
 	case "session":

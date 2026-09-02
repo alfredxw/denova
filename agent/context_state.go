@@ -10,10 +10,15 @@ import (
 )
 
 const (
-	contextStateMessageExtraKey = "agent.context_state"
-	contextStateMessageVersion  = "v1"
-	contextStateOperationExtra  = "agent.context_state.operation"
-	contextStateIDExtra         = "agent.context_state.id"
+	contextStateMessageExtraKey  = "agent.context_state"
+	contextStateMessageVersion   = "v1"
+	contextStateOperationExtra   = "agent.context_state.operation"
+	contextStateIDExtra          = "agent.context_state.id"
+	contextStateSourceExtra      = "agent.context_state.source"
+	contextStatePurposeExtra     = "agent.context_state.purpose"
+	contextStateResourceExtra    = "agent.context_state.resource"
+	contextStateRevisionExtra    = "agent.context_state.revision"
+	contextStateFingerprintExtra = "agent.context_state.fingerprint"
 )
 
 type contextStateSnapshot struct {
@@ -84,7 +89,7 @@ func advanceContextState(
 	appended := make([]*Message, 0)
 	appendUpsert := func(fragment ContextFragment, fingerprint, operation, previousRevision string) {
 		index := len(raw) + len(appended)
-		appended = append(appended, newContextStateMessage(fragment, operation, previousRevision))
+		appended = append(appended, newContextStateMessage(fragment, fingerprint, operation, previousRevision))
 		next.Sections[fragment.StateID] = contextStateSection{
 			StateID: fragment.StateID, Source: fragment.Source, Purpose: fragment.Purpose,
 			Resource: fragment.Resource, Revision: fragment.Revision,
@@ -166,7 +171,7 @@ func contextStateFragmentFingerprint(fragment ContextFragment) (string, error) {
 	})
 }
 
-func newContextStateMessage(fragment ContextFragment, operation, previousRevision string) *Message {
+func newContextStateMessage(fragment ContextFragment, fingerprint, operation, previousRevision string) *Message {
 	contentHash := sha256.Sum256([]byte(fragment.Content))
 	metadata := []string{
 		"# Context state update",
@@ -190,9 +195,14 @@ func newContextStateMessage(fragment ContextFragment, operation, previousRevisio
 	)
 	message := UserMessage(strings.Join(metadata, "\n"))
 	message.Extra = map[string]any{
-		contextStateMessageExtraKey: contextStateMessageVersion,
-		contextStateOperationExtra:  "upsert",
-		contextStateIDExtra:         fragment.StateID,
+		contextStateMessageExtraKey:  contextStateMessageVersion,
+		contextStateOperationExtra:   "upsert",
+		contextStateIDExtra:          fragment.StateID,
+		contextStateSourceExtra:      fragment.Source,
+		contextStatePurposeExtra:     fragment.Purpose,
+		contextStateResourceExtra:    fragment.Resource,
+		contextStateRevisionExtra:    fragment.Revision,
+		contextStateFingerprintExtra: fingerprint,
 	}
 	return message
 }
@@ -211,11 +221,46 @@ func newContextStateRemovalMessage(section contextStateSection) *Message {
 	}, "\n")
 	message := UserMessage(content)
 	message.Extra = map[string]any{
-		contextStateMessageExtraKey: contextStateMessageVersion,
-		contextStateOperationExtra:  "remove",
-		contextStateIDExtra:         section.StateID,
+		contextStateMessageExtraKey:  contextStateMessageVersion,
+		contextStateOperationExtra:   "remove",
+		contextStateIDExtra:          section.StateID,
+		contextStateSourceExtra:      section.Source,
+		contextStatePurposeExtra:     section.Purpose,
+		contextStateResourceExtra:    section.Resource,
+		contextStateRevisionExtra:    section.Revision,
+		contextStateFingerprintExtra: section.Fingerprint,
 	}
 	return message
+}
+
+func rebuildContextStateSnapshot(messages []*Message) (contextStateSnapshot, error) {
+	state := contextStateSnapshot{Sections: make(map[string]contextStateSection)}
+	for index, message := range messages {
+		if !IsContextStateMessage(message) {
+			continue
+		}
+		id, _ := message.Extra[contextStateIDExtra].(string)
+		operation, _ := message.Extra[contextStateOperationExtra].(string)
+		source, _ := message.Extra[contextStateSourceExtra].(string)
+		purpose, _ := message.Extra[contextStatePurposeExtra].(string)
+		resource, _ := message.Extra[contextStateResourceExtra].(string)
+		revision, _ := message.Extra[contextStateRevisionExtra].(string)
+		fingerprint, _ := message.Extra[contextStateFingerprintExtra].(string)
+		if strings.TrimSpace(id) == "" || strings.TrimSpace(source) == "" || strings.TrimSpace(purpose) == "" ||
+			strings.TrimSpace(resource) == "" || len(fingerprint) != 64 || (operation != "upsert" && operation != "remove") {
+			return contextStateSnapshot{}, fmt.Errorf("canonical Context State message %d is incomplete", index)
+		}
+		state.Generation++
+		state.Sections[id] = contextStateSection{
+			StateID: id, Source: source, Purpose: purpose, Resource: resource,
+			Revision: revision, Fingerprint: fingerprint, MessageIndex: index,
+			Removed: operation == "remove",
+		}
+	}
+	if len(state.Sections) == 0 {
+		state.Sections = nil
+	}
+	return state, validateContextStateSnapshot(state, messages)
 }
 
 func validateContextStateSnapshot(state contextStateSnapshot, messages []*Message) error {

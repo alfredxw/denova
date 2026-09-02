@@ -3,14 +3,16 @@ package interactive
 import (
 	"context"
 	"crypto/sha256"
-	interactivestate "denova/internal/interactive/state"
 	"encoding/json"
 	"errors"
 	"fmt"
-	agent "github.com/alfredxw/denova/agent"
 	"log/slog"
 	"strings"
 	"time"
+
+	agent "github.com/alfredxw/denova/agent"
+
+	interactivestate "denova/internal/interactive/state"
 )
 
 // ErrAgentTurnIdentityConflict means one durable Agent command attempted to
@@ -34,12 +36,11 @@ type DomainCommitIntent struct {
 }
 
 type DomainCommitReceipt struct {
-	Identity           DomainCommitIdentity `json:"identity"`
-	Hash               string               `json:"hash"`
-	AgentCanonicalHash string               `json:"agent_canonical_hash,omitempty"`
-	Revision           string               `json:"revision"`
-	Turn               TurnEvent            `json:"turn"`
-	Delta              *StateDeltaEvent     `json:"delta,omitempty"`
+	Identity DomainCommitIdentity `json:"identity"`
+	Hash     string               `json:"hash"`
+	Revision string               `json:"revision"`
+	Turn     TurnEvent            `json:"turn"`
+	Delta    *StateDeltaEvent     `json:"delta,omitempty"`
 }
 
 func NewDomainCommitIntent(req AppendTurnWithStateRequest) (DomainCommitIntent, error) {
@@ -79,8 +80,7 @@ func (s *Store) CommitDomainTurn(storyID string, intent DomainCommitIntent) (Dom
 	}
 	return DomainCommitReceipt{
 		Identity: canonical.Identity, Hash: canonical.Hash,
-		AgentCanonicalHash: strings.TrimSpace(turn.AgentCanonicalHash), Revision: turn.ID,
-		Turn: turn, Delta: delta,
+		Revision: turn.ID, Turn: turn, Delta: delta,
 	}, nil
 }
 
@@ -223,7 +223,6 @@ func (s *Store) AppendTurnWithState(storyID string, req AppendTurnWithStateReque
 		AgentOperationID:            strings.TrimSpace(req.AgentOperationID),
 		AgentCycle:                  req.AgentCycle,
 		AgentCommitHash:             agentCommitHash,
-		AgentCanonicalHash:          strings.TrimSpace(req.AgentCanonicalHash),
 		PlayerInputID:               playerInput.ID,
 		PlayerInputHash:             playerInput.AgentCommitHash,
 		ConsumedPlayerInputIDs:      append([]string(nil), consumedPlayerInputIDs...),
@@ -359,8 +358,7 @@ func committedAgentTurnForRequest(lines []StoryEventRecord, branchID string, req
 		if strings.TrimSpace(turn.AgentCommandID) != commandID {
 			continue
 		}
-		if turn.BranchID != branchID || strings.TrimSpace(turn.AgentOperationID) != operationID || turn.AgentCycle != req.AgentCycle || strings.TrimSpace(turn.AgentCommitHash) == "" || turn.AgentCommitHash != commitHash ||
-			strings.TrimSpace(req.AgentCanonicalHash) != "" && turn.AgentCanonicalHash != strings.TrimSpace(req.AgentCanonicalHash) {
+		if turn.BranchID != branchID || strings.TrimSpace(turn.AgentOperationID) != operationID || turn.AgentCycle != req.AgentCycle || strings.TrimSpace(turn.AgentCommitHash) == "" || turn.AgentCommitHash != commitHash {
 			return TurnEvent{}, nil, false, fmt.Errorf("%w: command_id=%q existing_operation=%q requested_operation=%q existing_cycle=%d requested_cycle=%d", ErrAgentTurnIdentityConflict, commandID, turn.AgentOperationID, operationID, turn.AgentCycle, req.AgentCycle)
 		}
 		return turn, stateDeltaEventForCommittedTurn(turn), true, nil

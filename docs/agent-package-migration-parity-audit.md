@@ -16,7 +16,7 @@ Denova previously combined a Session actor, command envelopes, journal reducer, 
 
 ## Decision
 
-Adopt an in-process `Agent → Session → Run` coordinator and persist only the provider-neutral transcript plus Agent capability snapshots.
+Adopt an in-process `Agent → Session → Run` coordinator. Persist one canonical provider-neutral message lane per logical Session, plus versioned capability updates and settled turn records in that same journal.
 
 | Concern | Previous design | Current design |
 |---|---|---|
@@ -26,7 +26,7 @@ Adopt an in-process `Agent → Session → Run` coordinator and persist only the
 | Canonical writes | Intent/receipt/outbox/reconcile | Direct idempotent Adapter call |
 | Tool recovery | Persisted open-tool/retry state | Live open-tool snapshot only |
 | Interactions | Durable waiter reconstruction | In-process waiter |
-| File storage | Journal + checkpoints + indexes | Manifest + checksummed JSONL + lease |
+| File storage | Separate runtime journal + product history | One canonical JSONL + rebuildable index + lease |
 | Limits | Runtime-wide safety budget graph | Existing context/tool-specific limits |
 
 ## User-visible comparison
@@ -46,7 +46,7 @@ The observable difference occurs only when the backend process exits during an a
 - before: the UI attempted to expose ordered recovery actions and reconstruct accepted work;
 - now: the unfinished turn is shown as interrupted, its partial live stream is not authoritative, and the user retries as a new Run.
 
-Completed conversation content remains. Product files, Writing sessions, Game turns, and committed tool effects remain in their own stores. The new behavior may repeat external work if a non-idempotent tool completed immediately before a crash but its final UI event was lost; Denova accepts this lower guarantee because the event is rare and the previous generic reconciliation system carried disproportionate complexity.
+Completed conversation content remains. Product files and committed tool effects remain in their domain stores, while Writing messages or Game turns and their Agent recovery records share the owning canonical journal. The new behavior may repeat external work if a non-idempotent tool completed immediately before a crash but its final UI event was lost; Denova accepts this lower guarantee because the event is rare and the previous generic reconciliation system carried disproportionate complexity.
 
 ## Why the subtraction is reasonable
 
@@ -74,4 +74,4 @@ Completed conversation content remains. Product files, Writing sessions, Game tu
 - Persisting only selected actor events would retain reducer/order coupling without delivering exact recovery.
 - Rebuilding tool stacks from conversation text would be ambiguous and unsafe.
 
-No compatibility layer or migration is provided for the unreleased Agent runtime store. The clean boundary is the product's existing canonical conversation data plus new `agent-transcripts` state.
+No compatibility reader is provided for the unreleased Agent runtime store. Denova backs up that development-only directory once and then uses the Product Session JSONL for Writing/Chat/Image/Automation, the Story JSONL for Game, and one self-contained child journal below the same Project Store for each persistent delegated Session. Capability records live inside those journals; projection indexes and Run traces are never recovery authorities.

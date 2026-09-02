@@ -2,18 +2,21 @@ package execution
 
 import (
 	"context"
-	"denova/config"
-	agenttoolruntime "denova/internal/agents/toolruntime"
 	"errors"
 	"fmt"
+
+	"denova/config"
+	agenttoolruntime "denova/internal/agents/toolruntime"
+
+	agentsession "github.com/alfredxw/denova/agent/session"
 )
 
 // ErrUnavailable reports that a Runtime has no live public Agent backend.
 var ErrUnavailable = errors.New("Agent execution runtime is unavailable")
 
 // Runtime adapts Denova product cycles to the public Agent -> Session -> Run
-// lifecycle. Agent owns in-process ordering plus transcript and capability
-// persistence; Denova owns canonical conversations and product effects.
+// lifecycle. Agent owns in-process ordering and the capability protocol;
+// Denova journals own canonical conversations and durable root state.
 type Runtime struct {
 	public *publicBackend
 }
@@ -26,6 +29,19 @@ type runtimeOptions struct {
 	toolMutationApplier agenttoolruntime.ToolMutationApplier
 	permissionRuleStore PermissionRuleStore
 	childDefinitions    ChildDefinitionResolver
+	sessionStore        agentsession.Store
+}
+
+// WithSessionStore installs Denova's canonical Project-journal router. Tests
+// and standalone compositions may omit it and receive an in-memory Store.
+func WithSessionStore(store agentsession.Store) Option {
+	return func(options *runtimeOptions) error {
+		if store == nil {
+			return fmt.Errorf("Agent execution Session Store is nil")
+		}
+		options.sessionStore = store
+		return nil
+	}
 }
 
 // PermissionRuleStore is the process-owned durable authorization catalog.

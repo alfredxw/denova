@@ -183,8 +183,6 @@ func taskEventType(payload agent.EventPayload) string {
 		return "cleanup_committed"
 	case agent.SessionCleared:
 		return "session_cleared"
-	case agent.TranscriptSynchronized:
-		return "transcript_synchronized"
 	case agent.ContextLimitReached:
 		return "context_limit_reached"
 	case agent.RunSettled:

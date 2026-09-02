@@ -40,7 +40,7 @@ func (backend *publicBackend) start(ctx context.Context, request StartRequest) (
 	if err != nil {
 		return nil, err
 	}
-	if err := syncCanonicalTranscript(ctx, sessionHandle, cycle.Conversation); err != nil {
+	if err := loadCanonicalMessages(ctx, sessionHandle, cycle.Conversation); err != nil {
 		return nil, err
 	}
 	registration := &publicCycleRegistration{
@@ -64,21 +64,20 @@ func (backend *publicBackend) start(ctx context.Context, request StartRequest) (
 	}, nil
 }
 
-func syncCanonicalTranscript(
+func loadCanonicalMessages(
 	ctx context.Context,
 	session *agent.Session,
 	conversation agentchat.Conversation,
 ) error {
-	synchronizer, ok := conversation.(CanonicalTranscriptSynchronizer)
+	source, ok := conversation.(CanonicalMessageSource)
 	if !ok {
 		return nil
 	}
-	request, err := synchronizer.CanonicalTranscript(ctx)
+	messages, err := source.CanonicalMessages(ctx)
 	if err != nil {
 		return err
 	}
-	_, err = session.SyncTranscript(ctx, request)
-	return err
+	return session.LoadCanonicalMessages(ctx, messages)
 }
 
 func (backend *publicBackend) submit(ctx context.Context, spec CommandRequest) (agentrun.CommandReceipt, error) {

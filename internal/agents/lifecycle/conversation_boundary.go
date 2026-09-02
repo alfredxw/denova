@@ -30,6 +30,12 @@ type ConversationCommitter interface {
 	ApplyEffects(context.Context, []agent.EffectRequest) ([]agent.EffectResult, error)
 }
 
+// ConversationContextCommitter is implemented by product journals that own
+// Agent's UI-hidden protocol messages as well as visible input/output.
+type ConversationContextCommitter interface {
+	CommitContext(context.Context, agent.ContextCommitRequest) (agent.CommitReceipt, error)
+}
+
 // ConversationCommitterProvider is implemented by Denova-owned conversation
 // types whose product store cannot be imported by the generic execution host.
 // It keeps game/lore persistence in the application package while exposing
@@ -70,6 +76,7 @@ type ConversationBoundary struct {
 
 type conversationBoundaryContext struct{ boundary *ConversationBoundary }
 type conversationBoundaryCanonical struct{ boundary *ConversationBoundary }
+type conversationBoundaryCanonicalContext struct{ conversationBoundaryCanonical }
 
 // NewConversationBoundary creates the paired ContextSource and
 // CanonicalAdapter used by a Definition. Successful preparation is cached for
@@ -106,7 +113,11 @@ func (boundary *ConversationBoundary) ContextSource() agent.ContextSource {
 }
 
 func (boundary *ConversationBoundary) CanonicalAdapter() agent.CanonicalAdapter {
-	return conversationBoundaryCanonical{boundary: boundary}
+	base := conversationBoundaryCanonical{boundary: boundary}
+	if _, ok := boundary.config.Committer.(ConversationContextCommitter); ok {
+		return conversationBoundaryCanonicalContext{conversationBoundaryCanonical: base}
+	}
+	return base
 }
 
 func (source conversationBoundaryContext) Identity() agent.CapabilityIdentity {
@@ -130,6 +141,10 @@ func (adapter conversationBoundaryCanonical) MaterializeInput(ctx context.Contex
 
 func (adapter conversationBoundaryCanonical) CommitOutput(ctx context.Context, request agent.OutputCommitRequest) (agent.OutputCommitReceipt, error) {
 	return adapter.boundary.commitOutput(ctx, request)
+}
+
+func (adapter conversationBoundaryCanonicalContext) CommitContext(ctx context.Context, request agent.ContextCommitRequest) (agent.CommitReceipt, error) {
+	return adapter.boundary.commitContext(ctx, request)
 }
 
 func (adapter conversationBoundaryCanonical) ApplyEffects(ctx context.Context, requests []agent.EffectRequest) ([]agent.EffectResult, error) {
@@ -194,6 +209,24 @@ func (boundary *ConversationBoundary) commitOutput(ctx context.Context, request 
 	return receipt, nil
 }
 
+func (boundary *ConversationBoundary) commitContext(ctx context.Context, request agent.ContextCommitRequest) (agent.CommitReceipt, error) {
+	if request.Identity.Stage != agent.CommitContext {
+		return agent.CommitReceipt{}, errors.New("Denova Conversation Boundary received a non-context commit")
+	}
+	if err := agent.ValidateContextCommit(request, boundary.config.CanonicalIdentity); err != nil {
+		return agent.CommitReceipt{}, err
+	}
+	run := agent.RunView{ID: request.Identity.RunID, CommandID: request.Identity.CommandID, Cycle: request.Identity.Cycle}
+	if err := bindConversationCycle(boundary.config.Conversation, boundary.config.Options.AgentKind, run); err != nil {
+		return agent.CommitReceipt{}, err
+	}
+	committer, ok := boundary.config.Committer.(ConversationContextCommitter)
+	if !ok {
+		return agent.CommitReceipt{}, agent.ErrCapabilityUnsupported
+	}
+	return committer.CommitContext(ctx, request)
+}
+
 func (boundary *ConversationBoundary) prepare(
 	ctx context.Context,
 	run agent.RunView,
@@ -253,3 +286,4 @@ func compactionContextRevision(state *agent.CompactionState) string {
 
 var _ agent.ContextSource = conversationBoundaryContext{}
 var _ agent.CanonicalAdapter = conversationBoundaryCanonical{}
+var _ agent.CanonicalContextAdapter = conversationBoundaryCanonicalContext{}

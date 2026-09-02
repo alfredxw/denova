@@ -68,10 +68,6 @@ func (committer interactiveReplayConversationCommitter) MaterializeInput(
 	if err != nil {
 		return agent.CommitReceipt{}, err
 	}
-	intent, err = intent.WithAgentCanonicalHash(request.Hash)
-	if err != nil {
-		return agent.CommitReceipt{}, err
-	}
 	receipt, err := conversation.store.CommitPlayerInput(conversation.storyID, intent)
 	if err != nil {
 		return agent.CommitReceipt{}, err

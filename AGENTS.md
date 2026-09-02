@@ -81,6 +81,7 @@
 - Denova 创建的 `.denova` 内文件名必须符合 Windows、WSL、Linux、macOS 的共同规则；业务数据不得包含符号链接、特殊文件或大小写折叠后冲突的路径。
 - 宿主专属 shell 或工具路径在当前系统不可用时，应回退到当前宿主默认值，不能阻止数据目录加载。
 - `.denova` 格式变更只为最近一个 Release 提供小而明确、可重试且先备份的迁移；不要为此增加 dual-write、旧根目录 rebasing 或通用 VFS / StorageRef 抽象。
+- 一个逻辑 Agent Session 只能有一份 canonical journal：Writing/Chat/Image/Automation 使用其 Product Session JSONL，Game 使用其 Story JSONL，持久子 Agent 在同一 Project Store 下各自使用一份自包含 journal。Goal、Todo、Clear、Cleanup、Compaction 等恢复状态必须以版本化记录写入该 journal；`.idx.json` 和 `runs` 只能是可重建索引与诊断数据，不能成为恢复事实源。
 
 # 测试与验证
 

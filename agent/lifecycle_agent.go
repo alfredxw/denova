@@ -65,8 +65,8 @@ func WithCacheKeyGenerator(generate CacheKeyGenerator) Option {
 }
 
 // Agent owns a small set of in-process Sessions. Session stores contain only
-// transcript/capability snapshots; live Runs, event cursors, queues, and
-// interactions deliberately remain process-local.
+// canonical messages, capability updates, and settled turns; live Runs, event
+// cursors, queues, and interactions deliberately remain process-local.
 type Agent struct {
 	ctx       context.Context
 	cancel    context.CancelFunc
@@ -212,9 +212,13 @@ func (agent *Agent) Session(ctx context.Context, key SessionKey) (*Session, erro
 	}
 	session := &Session{
 		agent: agent, key: key, binding: binding, engine: engine, log: log,
-		capabilities: make(map[string]json.RawMessage), runs: make(map[string]*Run),
+		capabilities: make(map[string]json.RawMessage), durableCapabilities: make(map[string]json.RawMessage),
+		runs:            make(map[string]*Run),
 		observers:       make(map[uint64]*sessionObserver),
 		taskCompletions: newTaskCompletionMailbox(),
+	}
+	if canonical, ok := log.(agentsession.CanonicalMessageLog); ok {
+		session.canonicalMessages = canonical.CanonicalMessages()
 	}
 	if err := session.replay(ctx); err != nil {
 		_ = log.Close()

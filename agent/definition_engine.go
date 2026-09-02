@@ -44,8 +44,8 @@ type engineTranscript struct {
 	// ActiveModelUser is the model-only rendering of the accepted raw user
 	// message while a tool batch or interaction is still active.
 	// Messages remains the canonical raw transcript. Once the cycle settles,
-	// this transient projection is discarded so product transcript sync and
-	// maintenance always address stable raw messages.
+	// this transient projection is discarded so canonical maintenance always
+	// addresses stable raw messages.
 	ActiveModelUser *Message  `json:"active_model_user,omitempty"`
 	ActiveUserIndex int       `json:"active_user_index,omitempty"`
 	HostData        *HostData `json:"host_data,omitempty"`
@@ -234,6 +234,15 @@ func (engine *definitionEngine) Run(
 	)
 	if err != nil {
 		return runstate.EngineResult{}, err
+	}
+	contextOrdinal := 0
+	if len(stateMessages) > 0 {
+		if err := engine.commitCanonicalContext(
+			ctx, request, prepared.definition.Canonical, ContextCommitState, contextOrdinal, stateMessages,
+		); err != nil {
+			return runstate.EngineResult{}, err
+		}
+		contextOrdinal++
 	}
 	prepared.contextState = nextContextState
 	cycleStateTranscript := append(cloneMessages(state.Messages), cloneMessages(stateMessages)...)
@@ -659,6 +668,8 @@ func (engine *definitionEngine) Run(
 	}, runOption)
 	startedTools := make(map[string]bool)
 	var final *Message
+	var pendingToolMessages []*Message
+	var pendingToolCalls map[string]struct{}
 	for {
 		event, ok := iterator.Next()
 		if !ok {
@@ -691,6 +702,14 @@ func (engine *definitionEngine) Run(
 				return runstate.EngineResult{}, err
 			}
 			ids, messages := boundary.snapshot()
+			if err := engine.commitCanonicalContext(
+				ctx, request, prepared.definition.Canonical, ContextCommitTaskCompletion, contextOrdinal, messages,
+			); err != nil {
+				boundary.acknowledge(err)
+				controls.stop()
+				return runstate.EngineResult{}, err
+			}
+			contextOrdinal++
 			transcript = append(transcript, cloneMessages(messages)...)
 			taskCompletionMessages = append(taskCompletionMessages, cloneMessages(messages)...)
 			checkpoint, checkpointErr := encodeActiveEngineTranscript(
@@ -780,6 +799,27 @@ func (engine *definitionEngine) Run(
 				}
 			}
 			transcript = append(transcript, CloneMessage(message))
+			if message.Role == Assistant && len(message.ToolCalls) > 0 {
+				pendingToolMessages = []*Message{message.Clone()}
+				pendingToolCalls = make(map[string]struct{}, len(message.ToolCalls))
+				for _, call := range message.ToolCalls {
+					pendingToolCalls[strings.TrimSpace(call.ID)] = struct{}{}
+				}
+			} else if message.Role == ToolRole && len(pendingToolMessages) > 0 {
+				pendingToolMessages = append(pendingToolMessages, message.Clone())
+				delete(pendingToolCalls, strings.TrimSpace(message.ToolCallID))
+				if len(pendingToolCalls) == 0 {
+					if err := engine.commitCanonicalContext(
+						ctx, request, prepared.definition.Canonical, ContextCommitToolBatch, contextOrdinal, pendingToolMessages,
+					); err != nil {
+						controls.stop()
+						return runstate.EngineResult{}, err
+					}
+					contextOrdinal++
+					pendingToolMessages = nil
+					pendingToolCalls = nil
+				}
+			}
 			if message.Role == Assistant {
 				final = CloneMessage(message)
 				if len(message.ToolCalls) > 0 {

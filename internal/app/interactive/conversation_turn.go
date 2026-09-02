@@ -2,21 +2,21 @@ package interactiveapp
 
 import (
 	"context"
-	agentcontext "denova/internal/agents/context"
-	agentrun "denova/internal/agents/run"
-	"denova/internal/agents/toolresult"
 	"fmt"
 	"log/slog"
 	"strings"
 
-	"denova/config"
-	agents "denova/internal/agents"
-	agentcompaction "denova/internal/agents/context/compaction"
-	"denova/internal/agents/session"
-	"denova/internal/interactive"
-
 	agent "github.com/alfredxw/denova/agent"
 	"github.com/alfredxw/denova/agent/providers"
+
+	"denova/config"
+	agents "denova/internal/agents"
+	agentcontext "denova/internal/agents/context"
+	agentcompaction "denova/internal/agents/context/compaction"
+	agentrun "denova/internal/agents/run"
+	"denova/internal/agents/session"
+	"denova/internal/agents/toolresult"
+	"denova/internal/interactive"
 )
 
 func (c *Conversation) PrepareInteractiveTurn(ctx context.Context, request interactive.TurnCheckRequest) (interactive.RuleResolution, error) {
@@ -158,30 +158,29 @@ func interactiveContextMessageFromSchema(msg *agents.Message) (interactive.Model
 		return interactive.ModelContextMessage{}, false
 	}
 	cloned := msg.Clone()
+	continuation := providers.ContinuationExtra(cloned.Extra)
+	if cloned.Extra != nil {
+		delete(cloned.Extra, providers.ExtraKeyContinuation)
+		if len(cloned.Extra) == 0 {
+			cloned.Extra = nil
+		}
+	}
 	switch cloned.Role {
 	case agents.RoleAssistant:
-		calls := interactiveToolCallsFromSchema(cloned.ToolCalls)
-		if len(calls) == 0 {
+		if len(cloned.ToolCalls) == 0 {
 			return interactive.ModelContextMessage{}, false
 		}
-		return interactive.ModelContextMessage{
-			Role:                 string(agents.RoleAssistant),
-			Content:              cloned.Content,
-			ToolCalls:            calls,
-			ProviderContinuation: providers.ContinuationExtra(cloned.Extra),
-		}, true
+		return interactive.ModelContextMessageFromAgent(cloned, continuation), true
 	case agents.RoleTool:
 		if strings.TrimSpace(cloned.ToolCallID) == "" && strings.TrimSpace(cloned.ToolName) == "" {
 			return interactive.ModelContextMessage{}, false
 		}
-		return interactive.ModelContextMessage{
-			Role:       string(agents.RoleTool),
-			Content:    cloned.Content,
-			Name:       cloned.Name,
-			ToolCallID: cloned.ToolCallID,
-			ToolName:   cloned.ToolName,
-			ToolResult: cloned.ToolResult,
-		}, true
+		return interactive.ModelContextMessageFromAgent(cloned, continuation), true
+	case agents.RoleUser:
+		if cloned.TaskCompletion == nil && !agent.IsContextStateMessage(cloned) {
+			return interactive.ModelContextMessage{}, false
+		}
+		return interactive.ModelContextMessageFromAgent(cloned, continuation), true
 	default:
 		return interactive.ModelContextMessage{}, false
 	}
@@ -216,26 +215,20 @@ func schemaMessagesFromInteractiveContext(messages []interactive.ModelContextMes
 	}
 	result := make([]*agents.Message, 0, len(messages))
 	for _, msg := range messages {
-		switch strings.TrimSpace(msg.Role) {
-		case string(agents.RoleAssistant):
-			calls := schemaToolCallsFromInteractive(msg.ToolCalls)
-			if len(calls) > 0 {
-				assistant := agents.AssistantMessage(msg.Content, calls)
-				assistant.Extra = providers.ContinuationExtra(msg.ProviderContinuation)
-				result = append(result, assistant.Clone())
+		message := interactive.AgentMessageFromModelContext(msg)
+		if message == nil {
+			continue
+		}
+		continuation := providers.ContinuationExtra(msg.ProviderContinuation)
+		if len(continuation) > 0 {
+			if message.Extra == nil {
+				message.Extra = make(map[string]any)
 			}
-		case string(agents.RoleTool):
-			if strings.TrimSpace(msg.ToolCallID) != "" || strings.TrimSpace(msg.ToolName) != "" {
-				result = append(result, (&agents.Message{
-					Role:       agents.RoleTool,
-					Content:    msg.Content,
-					Name:       msg.Name,
-					ToolCallID: msg.ToolCallID,
-					ToolName:   msg.ToolName,
-					ToolResult: msg.ToolResult,
-				}).Clone())
+			for key, value := range continuation {
+				message.Extra[key] = value
 			}
 		}
+		result = append(result, message)
 	}
 	return result
 }
@@ -369,6 +362,62 @@ func (c *Conversation) AppendContextMessages(messages ...*agents.Message) error 
 	return nil
 }
 
+// CommitAgentCanonicalContext persists an exact Agent-owned hidden batch in
+// the Story journal. The batch remains side evidence until the final Turn
+// absorbs it, and exact retries do not duplicate the in-memory suffix.
+func (c *Conversation) CommitAgentCanonicalContext(ctx context.Context, request agent.ContextCommitRequest) (string, error) {
+	if c == nil || c.store == nil {
+		return "", fmt.Errorf("game conversation is unavailable")
+	}
+	converted := make([]interactive.ModelContextMessage, 0, len(request.Messages))
+	for index := range request.Messages {
+		message := request.Messages[index].Clone()
+		stored, ok := interactiveContextMessageFromSchema(message)
+		if !ok {
+			return "", fmt.Errorf("Agent context message %d cannot be stored by Game", index)
+		}
+		converted = append(converted, stored)
+	}
+	c.modelContextAppendMu.Lock()
+	defer c.modelContextAppendMu.Unlock()
+	c.mu.Lock()
+	identity := c.agentCycleIdentity
+	branchID := c.branchID
+	currentOrdinal := c.modelContextBatchOrdinal
+	c.mu.Unlock()
+	if request.Identity.CommandID != string(identity.CommandID) || request.Identity.RunID != string(identity.OperationID) ||
+		request.Identity.Cycle != identity.Cycle {
+		return "", fmt.Errorf("Agent context batch does not match the active Game cycle")
+	}
+	if strings.TrimSpace(branchID) == "" {
+		storyContext, err := c.store.StoryContext(c.storyID, "")
+		if err != nil {
+			return "", err
+		}
+		branchID = storyContext.Snapshot.BranchID
+	}
+	intent, err := interactive.NewAgentContextBatchIntent(
+		interactive.DomainCommitIdentity{
+			CommandID: request.Identity.CommandID, OperationID: request.Identity.RunID, Cycle: request.Identity.Cycle,
+		},
+		branchID, string(request.Kind), request.Ordinal, converted,
+	)
+	if err != nil {
+		return "", err
+	}
+	receipt, err := c.store.AppendModelContextBatch(c.storyID, intent)
+	if err != nil {
+		return "", err
+	}
+	if request.Ordinal >= currentOrdinal {
+		c.mu.Lock()
+		c.modelContextMessages = append(c.modelContextMessages, interactive.CloneModelContextMessages(receipt.Event.Messages)...)
+		c.modelContextBatchOrdinal = request.Ordinal + 1
+		c.mu.Unlock()
+	}
+	return receipt.Revision, nil
+}
+
 func (c *Conversation) ToolResultContextPolicy() toolresult.ContextPolicy {
 	return toolresult.ResolveContextPolicy(c.cfg, config.AgentKindInteractiveStory)
 }
@@ -378,10 +427,10 @@ func (c *Conversation) AppendAssistantWithThinking(content, thinking string) err
 }
 
 func (c *Conversation) AppendAssistantWithMetadata(content, thinking string, metadata session.MessageMetadata) error {
-	return c.stageAssistantOutput(content, thinking, metadata, "")
+	return c.stageAssistantOutput(content, thinking, metadata)
 }
 
-func (c *Conversation) stageAssistantOutput(content, thinking string, metadata session.MessageMetadata, agentCanonicalHash string) error {
+func (c *Conversation) stageAssistantOutput(content, thinking string, metadata session.MessageMetadata) error {
 	if c == nil || c.store == nil {
 		return fmt.Errorf("互动故事不存在")
 	}
@@ -418,7 +467,6 @@ func (c *Conversation) stageAssistantOutput(content, thinking string, metadata s
 		AgentCommandID:       string(cycleIdentity.CommandID),
 		AgentOperationID:     string(cycleIdentity.OperationID),
 		AgentCycle:           cycleIdentity.Cycle,
-		AgentCanonicalHash:   strings.TrimSpace(agentCanonicalHash),
 		ProviderContinuation: providers.ContinuationExtra(assistantMetadata.ProviderContinuation),
 		DisplayEvents:        withInteractiveNarrativeAnchor(c.DisplayEventsSnapshot()),
 		ModelContextMessages: c.modelContextMessagesSnapshot(),
@@ -450,13 +498,12 @@ func (c *Conversation) CommitAgentCanonicalOutput(
 	ctx context.Context,
 	message *agents.Message,
 	metadata session.MessageMetadata,
-	agentCanonicalHash string,
 ) (interactive.DomainCommitReceipt, error) {
 	if message == nil || message.Role != agent.Assistant || len(message.ToolCalls) != 0 {
 		return interactive.DomainCommitReceipt{}, fmt.Errorf("canonical game output requires a final assistant message")
 	}
 	metadata.ProviderContinuation = providers.ContinuationExtra(message.Extra)
-	if err := c.stageAssistantOutput(message.Content, message.ReasoningContent, metadata, agentCanonicalHash); err != nil {
+	if err := c.stageAssistantOutput(message.Content, message.ReasoningContent, metadata); err != nil {
 		return interactive.DomainCommitReceipt{}, err
 	}
 	if err := c.CommitAgentCycleStage(ctx, agentrun.DomainCommitOutput, agentrun.Outcome{Status: agentrun.OutcomeCompleted}); err != nil {

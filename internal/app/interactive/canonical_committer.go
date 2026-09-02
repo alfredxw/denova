@@ -47,7 +47,6 @@ func (committer *canonicalConversationCommitter) MaterializeInput(
 		ctx,
 		request.Input.Text,
 		request.Input.Attachments,
-		request.Hash,
 	)
 	if err != nil {
 		return agent.CommitReceipt{}, err
@@ -60,6 +59,17 @@ func (committer *canonicalConversationCommitter) ApplyPreparedContext(
 	prepared agentchat.AgentContextPreparation,
 ) error {
 	return committer.config.Conversation.CommitModelInput(ctx, prepared.OriginalMessage, prepared.ModelContext)
+}
+
+func (committer *canonicalConversationCommitter) CommitContext(
+	ctx context.Context,
+	request agent.ContextCommitRequest,
+) (agent.CommitReceipt, error) {
+	revision, err := committer.config.Conversation.CommitAgentCanonicalContext(ctx, request)
+	if err != nil {
+		return agent.CommitReceipt{}, err
+	}
+	return agent.CommitReceipt{Revision: revision}, nil
 }
 
 func (committer *canonicalConversationCommitter) CommitOutput(
@@ -76,7 +86,7 @@ func (committer *canonicalConversationCommitter) CommitOutput(
 		metadata.RunPath = []string{options.RootAgentName}
 	}
 	receipt, err := committer.config.Conversation.CommitAgentCanonicalOutput(
-		ctx, request.Message.Clone(), metadata, request.Hash,
+		ctx, request.Message.Clone(), metadata,
 	)
 	if err != nil {
 		return agent.OutputCommitReceipt{}, err
@@ -108,3 +118,4 @@ func (committer *canonicalConversationCommitter) ApplyEffects(
 }
 
 var _ agentlifecycle.ConversationCommitter = (*canonicalConversationCommitter)(nil)
+var _ agentlifecycle.ConversationContextCommitter = (*canonicalConversationCommitter)(nil)

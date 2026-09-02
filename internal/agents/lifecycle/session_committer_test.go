@@ -79,7 +79,6 @@ func TestSessionConversationBoundaryCommitsPublicHashesIdempotently(t *testing.T
 	}
 	history := sess.History()
 	if len(history) != 2 || history[0].Content != "first request" || history[1].Content != "answer" ||
-		history[0].AgentCanonicalHash != "public-input-hash" || history[1].AgentCanonicalHash != "public-output-hash" ||
 		len(history[0].Attachments) != 1 || history[0].Attachments[0] != attachment {
 		t.Fatalf("session history=%#v", history)
 	}

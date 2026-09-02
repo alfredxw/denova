@@ -375,10 +375,6 @@ type SessionCleared struct{ Revision uint64 }
 
 func (SessionCleared) eventPayload() {}
 
-type TranscriptSynchronized struct{ State TranscriptSyncState }
-
-func (TranscriptSynchronized) eventPayload() {}
-
 type ContextLimitReached struct {
 	Scope string
 	Limit int64
@@ -433,7 +429,6 @@ type SessionSnapshot struct {
 	Todo                *TodoState
 	Cleanup             *CleanupState
 	Compaction          *CompactionState
-	TranscriptSync      *TranscriptSyncState
 	ClearRevision       uint64
 	PendingInteractions []InteractionRequest
 	MessagesTruncated   bool

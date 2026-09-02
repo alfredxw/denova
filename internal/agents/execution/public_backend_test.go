@@ -27,6 +27,7 @@ import (
 	agent "github.com/alfredxw/denova/agent"
 	agentpermission "github.com/alfredxw/denova/agent/permission"
 	"github.com/alfredxw/denova/agent/providers"
+	agentsessionfile "github.com/alfredxw/denova/agent/session/file"
 	publictools "github.com/alfredxw/denova/agent/tools"
 )
 
@@ -1409,9 +1410,13 @@ func TestAgentRuntimeRestartMarksUnfinishedRunInterrupted(t *testing.T) {
 		AgentKind: agentrun.AgentKindIDE, ProjectID: "project-test", SessionID: sess.ID, Workspace: workspace,
 		TaskID: "cold-recovery-task", RootAgentName: "root",
 	}
+	liveAgentStore, err := agentsessionfile.New(filepath.Join(liveDataDir, "test-agent-sessions"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	first, err := NewAgentRuntime(ctx, liveDataDir, WithToolMutationApplier(
 		func(context.Context, agenttoolruntime.CommittedToolMutation) error { return nil },
-	))
+	), WithSessionStore(liveAgentStore))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1465,9 +1470,13 @@ func TestAgentRuntimeRestartMarksUnfinishedRunInterrupted(t *testing.T) {
 			Request:      request.Request, Options: request.Options,
 		}, nil
 	}, canonical: publicBackendTestSessionCanonical(sess)}
+	recoveredAgentStore, err := agentsessionfile.New(filepath.Join(recoveredDataDir, "test-agent-sessions"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	second, err := NewAgentRuntime(ctx, recoveredDataDir, WithProfiles(profile), WithToolMutationApplier(
 		func(context.Context, agenttoolruntime.CommittedToolMutation) error { return nil },
-	))
+	), WithSessionStore(recoveredAgentStore))
 	if err != nil {
 		t.Fatal(err)
 	}

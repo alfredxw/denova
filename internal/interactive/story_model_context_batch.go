@@ -9,9 +9,17 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	agent "github.com/alfredxw/denova/agent"
 )
 
 var ErrModelContextBatchIdentityConflict = errors.New("model context batch identity conflict")
+
+const (
+	ModelContextBatchKindTool           = "tool_batch"
+	ModelContextBatchKindState          = "context_state"
+	ModelContextBatchKindTaskCompletion = "task_completion"
+)
 
 // ModelContextBatchIntent is one complete assistant tool-call batch staged
 // after its player input and before the final narrative exists. Ordinal is
@@ -21,6 +29,7 @@ type ModelContextBatchIntent struct {
 	BranchID      string                `json:"branch_id"`
 	PlayerInputID string                `json:"player_input_id"`
 	Ordinal       int                   `json:"ordinal"`
+	Kind          string                `json:"kind,omitempty"`
 	Messages      []ModelContextMessage `json:"messages"`
 	Hash          string                `json:"hash"`
 }
@@ -40,6 +49,7 @@ type ModelContextBatchEvent struct {
 	AgentOperationID string                `json:"agent_operation_id"`
 	AgentCycle       int                   `json:"agent_cycle"`
 	BatchOrdinal     int                   `json:"batch_ordinal"`
+	Kind             string                `json:"kind,omitempty"`
 	BatchHash        string                `json:"batch_hash"`
 	Messages         []ModelContextMessage `json:"messages"`
 }
@@ -86,21 +96,87 @@ func newCanonicalModelContextBatchIntent(
 	ordinal int,
 	messages []ModelContextMessage,
 ) (ModelContextBatchIntent, error) {
+	return newAgentContextBatchIntent(identity, branchID, ModelContextBatchKindTool, ordinal, messages)
+}
+
+// NewAgentContextBatchIntent creates one exact canonical batch for context
+// state, tool protocol, or delegated task completion messages.
+func NewAgentContextBatchIntent(
+	identity DomainCommitIdentity,
+	branchID string,
+	kind string,
+	ordinal int,
+	messages []ModelContextMessage,
+) (ModelContextBatchIntent, error) {
+	return newAgentContextBatchIntent(identity, branchID, kind, ordinal, messages)
+}
+
+func newAgentContextBatchIntent(
+	identity DomainCommitIdentity,
+	branchID string,
+	kind string,
+	ordinal int,
+	messages []ModelContextMessage,
+) (ModelContextBatchIntent, error) {
+	identity = normalizeDomainCommitIdentity(identity)
+	branchID, kind = strings.TrimSpace(branchID), strings.TrimSpace(kind)
+	messages = sanitizeModelContextMessages(messages)
+	if identity.CommandID == "" || identity.OperationID == "" || identity.Cycle <= 0 || branchID == "" || ordinal < 0 || len(messages) == 0 {
+		return ModelContextBatchIntent{}, fmt.Errorf("%w: invalid Agent context batch identity", ErrModelContextBatchIdentityConflict)
+	}
+	if err := validateAgentContextMessages(kind, messages); err != nil {
+		return ModelContextBatchIntent{}, err
+	}
 	playerInputID := deterministicPlayerInputID(identity)
-	payload, err := json.Marshal(struct {
+	payloadValue := struct {
 		BranchID      string                `json:"branch_id"`
 		PlayerInputID string                `json:"player_input_id"`
 		Ordinal       int                   `json:"ordinal"`
+		Kind          string                `json:"kind,omitempty"`
 		Messages      []ModelContextMessage `json:"messages"`
-	}{BranchID: branchID, PlayerInputID: playerInputID, Ordinal: ordinal, Messages: messages})
+	}{BranchID: branchID, PlayerInputID: playerInputID, Ordinal: ordinal, Messages: messages}
+	// Preserve the released tool-batch hash shape. New kinds include their kind
+	// so the same ordinal cannot be reinterpreted after a crash.
+	if kind != ModelContextBatchKindTool {
+		payloadValue.Kind = kind
+	}
+	payload, err := json.Marshal(payloadValue)
 	if err != nil {
 		return ModelContextBatchIntent{}, err
 	}
 	sum := sha256.Sum256(payload)
 	return ModelContextBatchIntent{
 		Identity: identity, BranchID: branchID, PlayerInputID: playerInputID,
-		Ordinal: ordinal, Messages: messages, Hash: "sha256:" + hex.EncodeToString(sum[:]),
+		Ordinal: ordinal, Kind: kind, Messages: messages, Hash: "sha256:" + hex.EncodeToString(sum[:]),
 	}, nil
+}
+
+func validateAgentContextMessages(kind string, messages []ModelContextMessage) error {
+	switch kind {
+	case ModelContextBatchKindTool:
+		batches, err := splitCanonicalModelContextBatches(messages)
+		if err != nil || len(batches) != 1 {
+			if err != nil {
+				return err
+			}
+			return fmt.Errorf("%w: tool context commit must contain exactly one batch", ErrModelContextBatchIdentityConflict)
+		}
+	case ModelContextBatchKindState:
+		for _, value := range messages {
+			if message := AgentMessageFromModelContext(value); message == nil || !agent.IsContextStateMessage(message) {
+				return fmt.Errorf("%w: context-state batch contains a non-state message", ErrModelContextBatchIdentityConflict)
+			}
+		}
+	case ModelContextBatchKindTaskCompletion:
+		for _, value := range messages {
+			if message := AgentMessageFromModelContext(value); message == nil || message.Role != agent.User || message.TaskCompletion == nil {
+				return fmt.Errorf("%w: task-completion batch contains an invalid message", ErrModelContextBatchIdentityConflict)
+			}
+		}
+	default:
+		return fmt.Errorf("%w: unsupported context batch kind %q", ErrModelContextBatchIdentityConflict, kind)
+	}
+	return nil
 }
 
 func splitCanonicalModelContextBatches(messages []ModelContextMessage) ([][]ModelContextMessage, error) {
@@ -147,14 +223,14 @@ func splitCanonicalModelContextBatches(messages []ModelContextMessage) ([][]Mode
 // AppendModelContextBatch durably publishes one complete tool batch without
 // advancing the story branch. Exact retries return the original receipt.
 func (s *Store) AppendModelContextBatch(storyID string, intent ModelContextBatchIntent) (ModelContextBatchReceipt, error) {
-	canonicalIntents, err := NewModelContextBatchIntents(intent.Identity, intent.BranchID, intent.Ordinal, intent.Messages)
-	if err != nil || len(canonicalIntents) != 1 {
-		if err == nil {
-			err = fmt.Errorf("%w: one append must contain exactly one batch", ErrModelContextBatchIdentityConflict)
-		}
+	kind := strings.TrimSpace(intent.Kind)
+	if kind == "" {
+		kind = ModelContextBatchKindTool
+	}
+	canonical, err := newAgentContextBatchIntent(intent.Identity, intent.BranchID, kind, intent.Ordinal, intent.Messages)
+	if err != nil {
 		return ModelContextBatchReceipt{}, err
 	}
-	canonical := canonicalIntents[0]
 	if canonical.PlayerInputID != strings.TrimSpace(intent.PlayerInputID) || canonical.Hash != strings.TrimSpace(intent.Hash) {
 		return ModelContextBatchReceipt{}, fmt.Errorf("%w: staged model context batch changed", ErrModelContextBatchIdentityConflict)
 	}
@@ -198,8 +274,11 @@ func (s *Store) AppendModelContextBatch(storyID string, intent ModelContextBatch
 		ID: deterministicModelContextBatchID(canonical.Identity, canonical.Ordinal), ParentID: playerInput.ParentID,
 		BranchID: canonical.BranchID, Ts: now, PlayerInputID: canonical.PlayerInputID,
 		AgentCommandID: canonical.Identity.CommandID, AgentOperationID: canonical.Identity.OperationID,
-		AgentCycle: canonical.Identity.Cycle, BatchOrdinal: canonical.Ordinal,
+		AgentCycle: canonical.Identity.Cycle, BatchOrdinal: canonical.Ordinal, Kind: canonical.Kind,
 		BatchHash: canonical.Hash, Messages: canonical.Messages,
+	}
+	if canonical.Kind == ModelContextBatchKindTool {
+		event.Kind = ""
 	}
 	continuationEvents, err := newModelContextProviderContinuationEvents(event.ID, event.BranchID, event.Ts, event.Messages)
 	if err != nil {
@@ -301,14 +380,14 @@ func normalizeModelContextBatchEvent(event ModelContextBatchEvent) (ModelContext
 	identity := normalizeDomainCommitIdentity(DomainCommitIdentity{
 		CommandID: event.AgentCommandID, OperationID: event.AgentOperationID, Cycle: event.AgentCycle,
 	})
-	intents, err := NewModelContextBatchIntents(identity, event.BranchID, event.BatchOrdinal, event.Messages)
-	if err != nil || len(intents) != 1 {
-		if err == nil {
-			err = fmt.Errorf("%w: persisted event contains more than one batch", ErrModelContextBatchIdentityConflict)
-		}
+	kind := strings.TrimSpace(event.Kind)
+	if kind == "" {
+		kind = ModelContextBatchKindTool
+	}
+	intent, err := newAgentContextBatchIntent(identity, event.BranchID, kind, event.BatchOrdinal, event.Messages)
+	if err != nil {
 		return ModelContextBatchEvent{}, err
 	}
-	intent := intents[0]
 	if strings.TrimSpace(event.ID) != deterministicModelContextBatchID(identity, event.BatchOrdinal) ||
 		strings.TrimSpace(event.PlayerInputID) != intent.PlayerInputID || strings.TrimSpace(event.BatchHash) != intent.Hash {
 		return ModelContextBatchEvent{}, fmt.Errorf("%w: persisted batch identity or hash changed", ErrModelContextBatchIdentityConflict)
@@ -320,6 +399,11 @@ func normalizeModelContextBatchEvent(event ModelContextBatchEvent) (ModelContext
 	event.PlayerInputID = intent.PlayerInputID
 	event.AgentCommandID = identity.CommandID
 	event.AgentOperationID = identity.OperationID
+	if intent.Kind == ModelContextBatchKindTool {
+		event.Kind = ""
+	} else {
+		event.Kind = intent.Kind
+	}
 	event.BatchHash = intent.Hash
 	event.Messages = intent.Messages
 	return event, nil
@@ -389,25 +473,15 @@ func mergeModelContextBatchesForPlayerInput(
 		return sanitizeModelContextMessages(requested), nil
 	}
 	result := make([]ModelContextMessage, 0, len(requested))
-	durableCounts := make(map[string]int, len(durable))
 	for _, batch := range durable {
 		result = append(result, batch.Messages...)
-		durableCounts[modelContextBatchMessagesKey(batch.Messages)]++
 	}
 	if len(requested) == 0 {
 		return result, nil
 	}
-	requestedBatches, err := splitCanonicalModelContextBatches(requested)
-	if err != nil {
-		return nil, err
-	}
-	for _, batch := range requestedBatches {
-		key := modelContextBatchMessagesKey(batch)
-		if durableCounts[key] > 0 {
-			durableCounts[key]--
-			continue
-		}
-		result = append(result, batch...)
+	sanitized := sanitizeModelContextMessages(requested)
+	if len(sanitized) != len(requested) || modelContextBatchMessagesKey(sanitized) != modelContextBatchMessagesKey(result) {
+		return nil, fmt.Errorf("%w: completed Turn context differs from its durable batches", ErrModelContextBatchIdentityConflict)
 	}
 	return result, nil
 }

@@ -676,7 +676,6 @@ func (c *Conversation) MaterializeAgentCanonicalInput(
 	ctx context.Context,
 	message string,
 	attachments []agent.Attachment,
-	agentCanonicalHash string,
 ) (interactive.PlayerInputReceipt, error) {
 	if c == nil || c.store == nil {
 		return interactive.PlayerInputReceipt{}, fmt.Errorf("互动故事不存在")
@@ -706,10 +705,6 @@ func (c *Conversation) MaterializeAgentCanonicalInput(
 		if err != nil {
 			return interactive.PlayerInputReceipt{}, err
 		}
-	}
-	intent, err = intent.WithAgentCanonicalHash(agentCanonicalHash)
-	if err != nil {
-		return interactive.PlayerInputReceipt{}, err
 	}
 	receipt, err := c.store.CommitPlayerInput(c.storyID, intent)
 	if err != nil {

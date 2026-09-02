@@ -353,31 +353,18 @@ func TestGameCanonicalTranscriptRetainsRichToolHistoryOutsideModelVisibilityPoli
 	disabledConfig := &config.Config{Workspace: workspace, AgentContexts: config.AgentContextSettings{
 		InteractiveStory: config.AgentContextOverride{ToolResultContextEnabled: &disabled},
 	}}
-	initialCanonical, err := NewConversation(store, "", workspace, story.ID, "main", "", 800, disabledConfig).CanonicalTranscript(ctx)
+	initialCanonical, err := NewConversation(store, "", workspace, story.ID, "main", "", 800, disabledConfig).CanonicalMessages(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !containsMessageContent(initialCanonical.Messages, rich) {
-		t.Fatal("canonical Game raw projection omitted rich tool history before public Session sync")
-	}
-	initialHash, err := agent.TranscriptHash(initialCanonical.Messages)
-	if err != nil {
-		t.Fatal(err)
+	if !containsMessageContent(initialCanonical, rich) {
+		t.Fatal("canonical Game journal omitted rich tool history")
 	}
 	hiddenModel := &publicGameHistoryModel{narrative: "第一轮继续。"}
 	runPublicGameTurn(t, runtime, store, story.ID, "main", workspace, disabledConfig, hiddenModel, nil, nil, "game-hidden-tool-history", "继续但不展示旧工具")
 	if containsMessageContent(hiddenModel.lastInput(t), rich) {
 		t.Fatal("disabled Game tool-context policy leaked rich historical tool output to the provider")
 	}
-	status, err := runtime.RuntimeStatusProjection(ctx, publicGameOptions(workspace, story.ID, "main"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if status.TranscriptSync == nil || status.TranscriptSync.MessageCount != len(initialCanonical.Messages) ||
-		status.TranscriptSync.SourceHash != initialHash {
-		t.Fatalf("public Game raw transcript provenance lost rich tool history: status=%#v canonical=%#v", status.TranscriptSync, initialCanonical.Messages)
-	}
-
 	enabled := true
 	enabledConfig := &config.Config{Workspace: workspace, AgentContexts: config.AgentContextSettings{
 		InteractiveStory: config.AgentContextOverride{ToolResultContextEnabled: &enabled},
@@ -531,12 +518,12 @@ func TestGamePublicCleanupCompactionRemovalAndColdReopenRestoreRichHistory(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	if status.Cleanup != nil || status.Compaction != nil || status.TranscriptSync == nil {
-		t.Fatalf("maintenance cutoff/cold projection is wrong: cleanup=%#v compaction=%#v sync=%#v", status.Cleanup, status.Compaction, status.TranscriptSync)
+	if status.Cleanup != nil || status.Compaction != nil {
+		t.Fatalf("maintenance cutoff/cold projection is wrong: cleanup=%#v compaction=%#v", status.Cleanup, status.Compaction)
 	}
 }
 
-func TestGameTranscriptSyncRebuildsEditedAndRegeneratedBranchWithoutPollutingFork(t *testing.T) {
+func TestGameCanonicalJournalRebuildsEditedAndRegeneratedBranchWithoutPollutingFork(t *testing.T) {
 	ctx := context.Background()
 	workspace := t.TempDir()
 	store := interactive.NewStore(workspace)
@@ -583,7 +570,7 @@ func TestGameTranscriptSyncRebuildsEditedAndRegeneratedBranchWithoutPollutingFor
 		t.Fatal("main branch bootstrap omitted its canonical second turn")
 	}
 	mainBeforeEdit, err := runtime.RuntimeStatusProjection(ctx, publicGameOptions(workspace, story.ID, "main"))
-	if err != nil || mainBeforeEdit.TranscriptSync == nil || mainBeforeEdit.Cleanup == nil {
+	if err != nil || mainBeforeEdit.Cleanup == nil {
 		t.Fatalf("main bootstrap status=%#v err=%v", mainBeforeEdit, err)
 	}
 	compacted, err := runtime.ExecuteStructuralOperation(ctx, agentstructural.Spec{
@@ -600,14 +587,6 @@ func TestGameTranscriptSyncRebuildsEditedAndRegeneratedBranchWithoutPollutingFor
 	if !containsMessageContent(forkInput, rich) || containsMessageContent(forkInput, second.Narrative) || containsMessageContent(forkInput, mainModel.narrative) {
 		t.Fatalf("fork imported a sibling suffix or lost its inherited prefix: %#v", forkInput)
 	}
-	forkStatus, err := runtime.RuntimeStatusProjection(ctx, publicGameOptions(workspace, story.ID, fork.ID))
-	if err != nil || forkStatus.TranscriptSync == nil {
-		t.Fatalf("fork sync status=%#v err=%v", forkStatus.TranscriptSync, err)
-	}
-	if forkStatus.TranscriptSync.Source == mainBeforeEdit.TranscriptSync.Source {
-		t.Fatal("fork and main share one transcript source identity")
-	}
-
 	mainSnapshot, err := store.Snapshot(story.ID, "main")
 	if err != nil || mainSnapshot.CurrentTurn == nil {
 		t.Fatalf("main snapshot=%#v err=%v", mainSnapshot.CurrentTurn, err)
@@ -626,12 +605,10 @@ func TestGameTranscriptSyncRebuildsEditedAndRegeneratedBranchWithoutPollutingFor
 		t.Fatal("edited canonical narrative did not rebuild the public raw transcript")
 	}
 	mainAfterEdit, err := runtime.RuntimeStatusProjection(ctx, publicGameOptions(workspace, story.ID, "main"))
-	if err != nil || mainAfterEdit.TranscriptSync == nil {
+	if err != nil {
 		t.Fatalf("post-edit status=%#v err=%v", mainAfterEdit, err)
 	}
-	if mainAfterEdit.TranscriptSync.SourceRevision <= mainBeforeEdit.TranscriptSync.SourceRevision ||
-		mainAfterEdit.TranscriptSync.SourceHash == mainBeforeEdit.TranscriptSync.SourceHash ||
-		mainAfterEdit.Cleanup != nil || mainAfterEdit.Compaction != nil {
+	if mainAfterEdit.Cleanup != nil || mainAfterEdit.Compaction != nil {
 		t.Fatalf("edit did not atomically rebuild maintenance generation: before=%#v after=%#v", mainBeforeEdit, mainAfterEdit)
 	}
 
@@ -647,8 +624,8 @@ func TestGameTranscriptSyncRebuildsEditedAndRegeneratedBranchWithoutPollutingFor
 		t.Fatalf("regeneration did not import exactly the target parent: %#v", regenerationInput)
 	}
 	mainAfterRegenerate, err := runtime.RuntimeStatusProjection(ctx, publicGameOptions(workspace, story.ID, "main"))
-	if err != nil || mainAfterRegenerate.TranscriptSync == nil || mainAfterRegenerate.TranscriptSync.SourceRevision <= mainAfterEdit.TranscriptSync.SourceRevision {
-		t.Fatalf("regenerate historical sync did not advance monotonically: edit=%#v regenerate=%#v err=%v", mainAfterEdit.TranscriptSync, mainAfterRegenerate.TranscriptSync, err)
+	if err != nil || mainAfterRegenerate.Cleanup != nil || mainAfterRegenerate.Compaction != nil {
+		t.Fatalf("regenerate did not invalidate historical maintenance: edit=%#v regenerate=%#v err=%v", mainAfterEdit, mainAfterRegenerate, err)
 	}
 
 	if err := runtime.Close(ctx); err != nil {
@@ -662,11 +639,6 @@ func TestGameTranscriptSyncRebuildsEditedAndRegeneratedBranchWithoutPollutingFor
 	if !containsMessageContent(coldMainInput, regeneratedModel.narrative) || containsMessageContent(coldMainInput, regenerateTarget.Narrative) {
 		t.Fatalf("cold main transcript resurrected the replaced version: %#v", coldMainInput)
 	}
-	coldMainStatus, err := runtime.RuntimeStatusProjection(ctx, publicGameOptions(workspace, story.ID, "main"))
-	if err != nil || coldMainStatus.TranscriptSync == nil || coldMainStatus.TranscriptSync.SourceRevision <= mainAfterRegenerate.TranscriptSync.SourceRevision {
-		t.Fatalf("cold post-regenerate sync did not return to the live branch generation: %#v err=%v", coldMainStatus.TranscriptSync, err)
-	}
-
 	coldForkModel := &publicGameHistoryModel{narrative: "冷重开后的分支。"}
 	runPublicGameTurn(t, runtime, store, story.ID, fork.ID, workspace, cfg, coldForkModel, nil, nil, "game-fork-cold", "继续分支")
 	coldForkInput := coldForkModel.lastInput(t)

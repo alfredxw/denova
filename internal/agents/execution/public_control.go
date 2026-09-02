@@ -128,10 +128,6 @@ func publicRuntimeStatus(binding agentrun.RuntimeBinding, snapshot agent.Session
 		projected.Replacements = append([]agent.CleanupReplacement(nil), snapshot.Cleanup.Replacements...)
 		status.Cleanup = &projected
 	}
-	if snapshot.TranscriptSync != nil {
-		projected := *snapshot.TranscriptSync
-		status.TranscriptSync = &projected
-	}
 	status.PendingInteractions = append([]agent.InteractionRequest(nil), snapshot.PendingInteractions...)
 	return status
 }

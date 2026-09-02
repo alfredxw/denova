@@ -2,18 +2,18 @@ package app
 
 import (
 	"context"
-	agentattachment "denova/internal/agents/attachment"
-	agentrun "denova/internal/agents/run"
-	apptask "denova/internal/app/task"
 	"fmt"
 	"log/slog"
 	"strings"
 	"sync"
 
 	"denova/config"
+	agentattachment "denova/internal/agents/attachment"
 	"denova/internal/agents/conversationconfig"
+	agentrun "denova/internal/agents/run"
 	interactiveapp "denova/internal/app/interactive"
 	appsettings "denova/internal/app/settings"
+	apptask "denova/internal/app/task"
 	"denova/internal/interactive"
 )
 
@@ -415,8 +415,8 @@ func (s *InteractiveAppService) InteractiveSnapshot(storyID, branchID string) (i
 	executionRuntime := s.app.executionRuntime
 	s.app.mu.RUnlock()
 	// Story Store owns every user-visible game fact. Agent Session contributes
-	// optional runtime metadata, so an unavailable or unreadable Agent transcript
-	// must never hide already committed turns and state from the user.
+	// an optional runtime projection from that same journal, so an unavailable
+	// projection must never hide already committed turns and state from the user.
 	snapshot.ContextCompaction = nil
 	if executionRuntime == nil {
 		redactInteractiveSnapshotAttachmentPaths(&snapshot)

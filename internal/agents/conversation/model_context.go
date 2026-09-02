@@ -132,7 +132,6 @@ func (c *SessionConversation) MaterializeAgentCanonicalInput(
 	message string,
 	attachments []agent.Attachment,
 	references []agentcontext.UserReference,
-	agentCanonicalHash string,
 ) (session.DomainCommitReceipt, error) {
 	if c == nil || c.session == nil {
 		return session.DomainCommitReceipt{}, fmt.Errorf("会话不存在")
@@ -141,10 +140,6 @@ func (c *SessionConversation) MaterializeAgentCanonicalInput(
 		return session.DomainCommitReceipt{}, err
 	}
 	intent, err := c.acceptedInputDomainCommitIntent(message, attachments, references)
-	if err != nil {
-		return session.DomainCommitReceipt{}, err
-	}
-	intent, err = intent.WithAgentCanonicalHash(agentCanonicalHash)
 	if err != nil {
 		return session.DomainCommitReceipt{}, err
 	}
@@ -176,6 +171,43 @@ func (c *SessionConversation) ApplyAgentPreparedContext(assembled agentcontext.M
 	c.cycleMu.Unlock()
 	c.rememberContextAssembly(assembled.Context)
 	return nil
+}
+
+// CommitAgentCanonicalContext appends one hidden protocol batch to the same
+// Product Session journal and advances the cycle CAS cursor.
+func (c *SessionConversation) CommitAgentCanonicalContext(
+	ctx context.Context,
+	request agent.ContextCommitRequest,
+) (session.ContextBatchReceipt, error) {
+	if c == nil || c.session == nil {
+		return session.ContextBatchReceipt{}, fmt.Errorf("session conversation is unavailable")
+	}
+	identity := c.agentCycleIdentitySnapshot()
+	if !agentrun.ValidCycleIdentity(identity) || request.Identity.CommandID != string(identity.CommandID) ||
+		request.Identity.RunID != string(identity.OperationID) || request.Identity.Cycle != identity.Cycle {
+		return session.ContextBatchReceipt{}, ErrMissingAgentCycleIdentity
+	}
+	messages := make([]*agent.Message, len(request.Messages))
+	for index := range request.Messages {
+		messages[index] = request.Messages[index].Clone()
+	}
+	c.cycleMu.Lock()
+	cursor := c.cycleCursor
+	c.cycleMu.Unlock()
+	receipt, err := c.session.CommitContextBatch(
+		ctx, cursor,
+		session.DomainCommitIdentity{
+			CommandID: request.Identity.CommandID, OperationID: request.Identity.RunID, Cycle: request.Identity.Cycle,
+		},
+		string(request.Kind), request.Ordinal, request.Hash, messages,
+	)
+	if err != nil {
+		return session.ContextBatchReceipt{}, err
+	}
+	c.cycleMu.Lock()
+	c.cycleCursor = receipt.Cursor
+	c.cycleMu.Unlock()
+	return receipt, nil
 }
 
 func (c *SessionConversation) acceptedInputDomainCommitIntent(

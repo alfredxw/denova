@@ -6,11 +6,12 @@ import (
 	"strings"
 
 	"denova/internal/agents/conversationjournal"
+	"denova/internal/agents/sessionjournal"
 )
 
 const (
 	// Version 12 projects creator-authored branch-plan events and revision tokens.
-	storyProjectionVersion      = 12
+	storyProjectionVersion      = 13
 	storyRecentTransactionLimit = 200
 	storyRecentCommitLimit      = 200
 	storyTurnAnchorEvery        = 256
@@ -22,15 +23,14 @@ type storyTurnAnchor struct {
 }
 
 type storyCommitLocator struct {
-	CommandID          string                     `json:"command_id"`
-	OperationID        string                     `json:"operation_id"`
-	Cycle              int                        `json:"cycle"`
-	BranchID           string                     `json:"branch_id"`
-	Hash               string                     `json:"hash"`
-	AgentCanonicalHash string                     `json:"agent_canonical_hash,omitempty"`
-	EventID            string                     `json:"event_id"`
-	EventType          string                     `json:"event_type"`
-	Cursor             conversationjournal.Cursor `json:"cursor"`
+	CommandID   string                     `json:"command_id"`
+	OperationID string                     `json:"operation_id"`
+	Cycle       int                        `json:"cycle"`
+	BranchID    string                     `json:"branch_id"`
+	Hash        string                     `json:"hash"`
+	EventID     string                     `json:"event_id"`
+	EventType   string                     `json:"event_type"`
+	Cursor      conversationjournal.Cursor `json:"cursor"`
 }
 
 type storyBranchProjection struct {
@@ -62,6 +62,7 @@ type storyJournalProjection struct {
 	TurnAnchors   []storyTurnAnchor                 `json:"turn_anchors,omitempty"`
 	RecentCommits []storyCommitLocator              `json:"recent_commits,omitempty"`
 	Branches      map[string]*storyBranchProjection `json:"branches"`
+	AgentSessions sessionjournal.Projection         `json:"agent_sessions,omitempty"`
 
 	expectedID         string
 	expectedGeneration string
@@ -81,6 +82,7 @@ func (projection *storyJournalProjection) Reset() error {
 		Version: storyProjectionVersion, StoryID: expectedID, Generation: expectedGeneration,
 		Branches: make(map[string]*storyBranchProjection), expectedID: expectedID, expectedGeneration: expectedGeneration,
 	}
+	projection.AgentSessions.Reset()
 	return nil
 }
 
@@ -102,6 +104,9 @@ func (projection *storyJournalProjection) Restore(data json.RawMessage) error {
 	}
 	restored.expectedID = expectedID
 	restored.expectedGeneration = expectedGeneration
+	if err := restored.AgentSessions.Normalize(); err != nil {
+		return err
+	}
 	if len(restored.RecentCursors) > 0 {
 		restored.lastCursor = restored.RecentCursors[len(restored.RecentCursors)-1]
 	}
@@ -115,6 +120,9 @@ func (projection *storyJournalProjection) Checkpoint() (json.RawMessage, error) 
 
 func (projection *storyJournalProjection) Apply(record conversationjournal.Record) error {
 	projection.rememberCursor(record.Location.Cursor)
+	if handled, err := projection.AgentSessions.Apply(record.Payload); handled || err != nil {
+		return err
+	}
 	meta, events, err := decodeStoryProjectionPayload(record.Payload)
 	if err != nil {
 		return err
@@ -145,6 +153,9 @@ func decodeStoryProjectionPayload(payload json.RawMessage) (StoryMeta, []StoryEv
 			return StoryMeta{}, nil, err
 		}
 		return meta, nil, nil
+	}
+	if typed.Type == sessionjournal.RecordType {
+		return StoryMeta{}, nil, nil
 	}
 	event, err := decodeStoryEventRecord(payload)
 	if err != nil {
@@ -220,7 +231,7 @@ func (projection *storyJournalProjection) applyEvent(cursor conversationjournal.
 			branch.Head = turn.ID
 			branch.LatestTurnID = turn.ID
 		}
-		projection.rememberCommit(cursor, StoryEventTypeTurn, turn.ID, turn.BranchID, turn.AgentCommandID, turn.AgentOperationID, turn.AgentCycle, turn.AgentCommitHash, turn.AgentCanonicalHash)
+		projection.rememberCommit(cursor, StoryEventTypeTurn, turn.ID, turn.BranchID, turn.AgentCommandID, turn.AgentOperationID, turn.AgentCycle, turn.AgentCommitHash)
 	case StoryEventTypeStateDelta:
 		var delta StateDeltaEvent
 		if err := mapToStruct(record.Raw, &delta); err != nil {
@@ -236,7 +247,7 @@ func (projection *storyJournalProjection) applyEvent(cursor conversationjournal.
 			return err
 		}
 		branch.rememberPendingPlayerInput(event.ID)
-		projection.rememberCommit(cursor, StoryEventTypePlayerInput, event.ID, event.BranchID, event.AgentCommandID, event.AgentOperationID, event.AgentCycle, event.AgentCommitHash, event.AgentCanonicalHash)
+		projection.rememberCommit(cursor, StoryEventTypePlayerInput, event.ID, event.BranchID, event.AgentCommandID, event.AgentOperationID, event.AgentCycle, event.AgentCommitHash)
 	case StoryEventTypeTurnInterrupted:
 		var event TurnInterruptedEvent
 		if err := mapToStruct(record.Raw, &event); err != nil {
@@ -252,7 +263,7 @@ func (projection *storyJournalProjection) applyEvent(cursor conversationjournal.
 		if err != nil {
 			return err
 		}
-		projection.rememberCommit(cursor, StoryEventTypeModelContextBatch, normalized.ID, normalized.BranchID, normalized.AgentCommandID, normalized.AgentOperationID, normalized.AgentCycle, normalized.BatchHash, "")
+		projection.rememberCommit(cursor, StoryEventTypeModelContextBatch, normalized.ID, normalized.BranchID, normalized.AgentCommandID, normalized.AgentOperationID, normalized.AgentCycle, normalized.BatchHash)
 	case StoryEventTypeProviderContinuation, StoryEventTypeModelContextProviderContinuation:
 		// Opaque state is joined to its owner only by bounded model-history reads.
 		// It never changes branch state or public projections by itself.
@@ -419,13 +430,13 @@ func (projection *storyJournalProjection) rememberCursor(cursor conversationjour
 	}
 }
 
-func (projection *storyJournalProjection) rememberCommit(cursor conversationjournal.Cursor, eventType, eventID, branchID, commandID, operationID string, cycle int, hash, agentCanonicalHash string) {
+func (projection *storyJournalProjection) rememberCommit(cursor conversationjournal.Cursor, eventType, eventID, branchID, commandID, operationID string, cycle int, hash string) {
 	if strings.TrimSpace(commandID) == "" {
 		return
 	}
 	projection.RecentCommits = append(projection.RecentCommits, storyCommitLocator{
 		CommandID: strings.TrimSpace(commandID), OperationID: strings.TrimSpace(operationID), Cycle: cycle,
-		BranchID: branchID, Hash: strings.TrimSpace(hash), AgentCanonicalHash: strings.TrimSpace(agentCanonicalHash),
+		BranchID: branchID, Hash: strings.TrimSpace(hash),
 		EventID: eventID, EventType: eventType, Cursor: cursor,
 	})
 	if overflow := len(projection.RecentCommits) - storyRecentCommitLimit; overflow > 0 {

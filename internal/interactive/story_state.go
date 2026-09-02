@@ -2,13 +2,14 @@ package interactive
 
 import (
 	"context"
-	interactivestate "denova/internal/interactive/state"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
 
 	agent "github.com/alfredxw/denova/agent"
+
+	interactivestate "denova/internal/interactive/state"
 )
 
 func sanitizeDisplayEvents(events []DisplayEvent) []DisplayEvent {
@@ -100,39 +101,83 @@ func sanitizeModelContextMessages(messages []ModelContextMessage) []ModelContext
 	}
 	result := make([]ModelContextMessage, 0, len(messages))
 	for _, msg := range messages {
-		role := strings.TrimSpace(msg.Role)
-		switch role {
-		case "assistant":
-			calls := sanitizeModelContextToolCalls(msg.ToolCalls)
-			if len(calls) == 0 {
-				continue
-			}
-			result = append(result, ModelContextMessage{
-				Role:                 role,
-				Content:              msg.Content,
-				ToolCalls:            calls,
-				ProviderContinuation: cloneProviderContinuation(msg.ProviderContinuation),
-			})
-		case "tool":
-			toolCallID := strings.TrimSpace(msg.ToolCallID)
-			toolName := strings.TrimSpace(msg.ToolName)
-			if toolCallID == "" && toolName == "" {
-				continue
-			}
-			result = append(result, ModelContextMessage{
-				Role:       role,
-				Content:    msg.Content,
-				Name:       strings.TrimSpace(msg.Name),
-				ToolCallID: toolCallID,
-				ToolName:   toolName,
-				ToolResult: cloneModelContextToolResult(msg.ToolResult),
-			})
+		message := AgentMessageFromModelContext(msg)
+		if message == nil {
+			continue
 		}
+		switch message.Role {
+		case agent.Assistant:
+			if len(message.ToolCalls) == 0 {
+				continue
+			}
+		case agent.ToolRole:
+			if strings.TrimSpace(message.ToolCallID) == "" && strings.TrimSpace(message.ToolName) == "" {
+				continue
+			}
+		case agent.User:
+			if message.TaskCompletion == nil && !agent.IsContextStateMessage(message) {
+				continue
+			}
+		default:
+			continue
+		}
+		result = append(result, ModelContextMessageFromAgent(message, msg.ProviderContinuation))
 	}
 	if len(result) == 0 {
 		return nil
 	}
 	return result
+}
+
+// AgentMessageFromModelContext reconstructs the complete provider-neutral
+// Agent message stored by a Game context event.
+func AgentMessageFromModelContext(msg ModelContextMessage) *agent.Message {
+	calls := sanitizeModelContextToolCalls(msg.ToolCalls)
+	var toolCalls []agent.ToolCall
+	if len(calls) > 0 {
+		toolCalls = make([]agent.ToolCall, len(calls))
+	}
+	for index, call := range calls {
+		toolCalls[index] = agent.ToolCall{
+			Index: call.Index, ID: call.ID, Type: call.Type,
+			Function: agent.FunctionCall{Name: call.Function.Name, Arguments: call.Function.Arguments},
+			Extra:    call.Extra,
+		}
+	}
+	return (&agent.Message{
+		Role: agent.RoleType(strings.TrimSpace(msg.Role)), Content: msg.Content,
+		Attachments: msg.Attachments, MultiContent: msg.MultiContent,
+		UserInputMultiContent: msg.UserInputMultiContent, AssistantGenMultiContent: msg.AssistantGenMultiContent,
+		Name: strings.TrimSpace(msg.Name), ToolCalls: toolCalls,
+		ToolCallID: strings.TrimSpace(msg.ToolCallID), ToolName: strings.TrimSpace(msg.ToolName), ToolResult: msg.ToolResult,
+		ResponseMeta: msg.ResponseMeta, AgentMeta: msg.AgentMeta, TaskCompletion: msg.TaskCompletion,
+		ReasoningContent: msg.ReasoningContent, Extra: msg.Extra,
+	}).Clone()
+}
+
+// ModelContextMessageFromAgent stores all provider-neutral Agent fields while
+// keeping provider continuation in the existing private side-event lane.
+func ModelContextMessageFromAgent(message *agent.Message, continuation map[string]any) ModelContextMessage {
+	cloned := message.Clone()
+	var calls []ModelContextToolCall
+	if len(cloned.ToolCalls) > 0 {
+		calls = make([]ModelContextToolCall, len(cloned.ToolCalls))
+	}
+	for index, call := range cloned.ToolCalls {
+		calls[index] = ModelContextToolCall{
+			Index: call.Index, ID: call.ID, Type: call.Type,
+			Function: ModelContextFunctionCall{Name: call.Function.Name, Arguments: call.Function.Arguments}, Extra: call.Extra,
+		}
+	}
+	return ModelContextMessage{
+		Role: string(cloned.Role), Content: cloned.Content, Attachments: cloned.Attachments,
+		MultiContent: cloned.MultiContent, UserInputMultiContent: cloned.UserInputMultiContent,
+		AssistantGenMultiContent: cloned.AssistantGenMultiContent, Name: cloned.Name,
+		ToolCalls: calls, ToolCallID: cloned.ToolCallID, ToolName: cloned.ToolName, ToolResult: cloned.ToolResult,
+		ResponseMeta: cloned.ResponseMeta, AgentMeta: cloned.AgentMeta, TaskCompletion: cloned.TaskCompletion,
+		ReasoningContent: cloned.ReasoningContent, Extra: cloned.Extra,
+		ProviderContinuation: cloneProviderContinuation(continuation),
+	}
 }
 
 // CloneModelContextMessages returns the same bounded model-only projection used

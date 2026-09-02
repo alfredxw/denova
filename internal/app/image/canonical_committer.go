@@ -69,5 +69,17 @@ func (committer *imageAgentConversationCommitter) ApplyPreparedContext(
 	return nil
 }
 
+func (committer *imageAgentConversationCommitter) CommitContext(
+	ctx context.Context,
+	request agent.ContextCommitRequest,
+) (agent.CommitReceipt, error) {
+	delegate, ok := committer.ConversationCommitter.(agentlifecycle.ConversationContextCommitter)
+	if !ok {
+		return agent.CommitReceipt{}, agent.ErrCapabilityUnsupported
+	}
+	return delegate.CommitContext(ctx, request)
+}
+
 var _ agentlifecycle.ConversationCommitterProvider = (*imageAgentConversation)(nil)
 var _ agentlifecycle.ConversationCommitter = (*imageAgentConversationCommitter)(nil)
+var _ agentlifecycle.ConversationContextCommitter = (*imageAgentConversationCommitter)(nil)

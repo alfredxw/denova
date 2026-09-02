@@ -180,6 +180,17 @@ type Log interface {
 	Close() error
 }
 
+// CanonicalMessageLog marks a host journal whose conversation messages are
+// committed by the host itself. Agent still appends capability and turn
+// records to the same log, but it must not persist a second message snapshot.
+//
+// The marker is intentionally optional: Agent's built-in memory and file
+// stores remain self-contained for standalone embedding.
+type CanonicalMessageLog interface {
+	Log
+	CanonicalMessages() bool
+}
+
 type RevisionConflictError struct {
 	Expected Revision
 	Actual   Revision

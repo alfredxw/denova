@@ -5,13 +5,11 @@ package lifecycle
 import (
 	"context"
 	"errors"
-	"path/filepath"
-	"strings"
 
 	agentrun "denova/internal/agents/run"
 
 	agent "github.com/alfredxw/denova/agent"
-	sessionfile "github.com/alfredxw/denova/agent/session/file"
+	agentsession "github.com/alfredxw/denova/agent/session"
 )
 
 // Lifecycle-facing aliases keep application packages on Denova's adapter
@@ -35,12 +33,13 @@ type OutputCommitRequest = agent.OutputCommitRequest
 type CommitReceipt = agent.CommitReceipt
 type OutputCommitReceipt = agent.OutputCommitReceipt
 type OutputProjection = agent.OutputProjection
+type ContextCommitRequest = agent.ContextCommitRequest
 type EffectRequest = agent.EffectRequest
 type EffectResult = agent.EffectResult
 
-// Config declares Denova-owned transcript storage and optional integrations.
+// Config declares Denova-owned Session storage and optional integrations.
 type Config struct {
-	StoreRoot         string
+	Store             agentsession.Store
 	Trace             agent.TraceSink
 	RunIDGenerator    agent.RunIDGenerator
 	CacheKeyGenerator agent.CacheKeyGenerator
@@ -53,23 +52,18 @@ func DefaultRunIDGenerator(agent.RunIDRequest) (string, error) {
 }
 
 func New(ctx context.Context, source agent.Source, config Config) (*Agent, error) {
-	root := strings.TrimSpace(config.StoreRoot)
-	if root == "" {
-		return nil, errors.New("Denova Agent lifecycle StoreRoot is required")
+	if config.Store == nil {
+		return nil, errors.New("Denova Agent lifecycle Store is required")
 	}
 	if source == nil {
 		return nil, errors.New("Denova Agent lifecycle Source is required")
-	}
-	store, err := sessionfile.New(filepath.Clean(root))
-	if err != nil {
-		return nil, err
 	}
 	runIDs := config.RunIDGenerator
 	if runIDs == nil {
 		runIDs = DefaultRunIDGenerator
 	}
 	options := []agent.Option{
-		agent.WithSessionStore(store), agent.WithRunIDGenerator(runIDs),
+		agent.WithSessionStore(config.Store), agent.WithRunIDGenerator(runIDs),
 	}
 	if config.CacheKeyGenerator != nil {
 		options = append(options, agent.WithCacheKeyGenerator(config.CacheKeyGenerator))

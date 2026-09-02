@@ -95,7 +95,7 @@ import (
 
 func continueConversation(ctx context.Context, definition agent.Definition) error {
     owner, err := agent.New(ctx, definition,
-        agent.WithSessionStore(sessionfile.New("./data/agent-transcripts")),
+        agent.WithSessionStore(sessionfile.New("./data/agent-sessions")),
     )
     if err != nil {
         return err
@@ -277,7 +277,7 @@ owner, err := agent.New(ctx, agent.Definition{
         // MaxIterations=0 and IdleTimeout=0 mean unlimited.
     },
 },
-    agent.WithSessionStore(sessionfile.New("/var/lib/myapp/agent-transcripts")),
+    agent.WithSessionStore(sessionfile.New("/var/lib/myapp/agent-sessions")),
     agent.WithTrace(agent.TraceFunc(recordTrace)),
 )
 if err != nil {

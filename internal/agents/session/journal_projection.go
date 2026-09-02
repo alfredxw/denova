@@ -15,10 +15,11 @@ import (
 
 	"denova/internal/agents/conversationconfig"
 	"denova/internal/agents/conversationjournal"
+	"denova/internal/agents/sessionjournal"
 )
 
 const (
-	sessionProjectionVersion      = 18
+	sessionProjectionVersion      = 22
 	sessionRecentTransactionLimit = 200
 	sessionRecentCommitLimit      = 200
 	sessionHistoryAnchorEvery     = 256
@@ -43,6 +44,24 @@ type domainCommitLocator struct {
 	Cursor       conversationjournal.Cursor `json:"cursor"`
 	Role         agent.RoleType             `json:"role"`
 	Metadata     MessageMetadata            `json:"metadata"`
+	Hash         string                     `json:"hash"`
+}
+
+type contextBatchLocator struct {
+	Identity        DomainCommitIdentity       `json:"identity"`
+	Kind            string                     `json:"kind"`
+	Ordinal         int                        `json:"ordinal"`
+	Hash            string                     `json:"hash"`
+	ContextRevision uint64                     `json:"context_revision"`
+	ResultCursor    ContextCursor              `json:"result_cursor"`
+	Cursor          conversationjournal.Cursor `json:"cursor"`
+}
+
+type releasedContextCompactionProjection struct {
+	Cursor      conversationjournal.Cursor              `json:"cursor"`
+	RecordIndex int                                     `json:"record_index,omitempty"`
+	Compaction  *releasedContextCompactionRecord        `json:"compaction,omitempty"`
+	Removal     *releasedContextCompactionRemovalRecord `json:"removal,omitempty"`
 }
 
 // assistantRunCheckpoint stores only a resumable SHA-256 state. It lets an
@@ -79,15 +98,18 @@ type sessionJournalProjection struct {
 	RuntimeConfig         *conversationconfig.Config `json:"runtime_config,omitempty"`
 	RuntimeConfigRevision uint64                     `json:"runtime_config_revision,omitempty"`
 
-	RecentCursors              []conversationjournal.Cursor `json:"recent_cursors,omitempty"`
-	MessageLocators            []messageLocator             `json:"message_locators,omitempty"`
-	MessageTransactionLocators []messageLocator             `json:"message_transaction_locators,omitempty"`
-	HistoryAnchors             []historyAnchor              `json:"history_anchors,omitempty"`
-	RecentCommits              []domainCommitLocator        `json:"recent_commits,omitempty"`
-	PendingInterrupt           *Interruption                `json:"pending_interrupt,omitempty"`
-	PendingInterruptCursor     conversationjournal.Cursor   `json:"pending_interrupt_cursor,omitempty"`
-	AssistantRuns              []assistantRunCheckpoint     `json:"active_assistant_runs,omitempty"`
-	AssistantTargets           []assistantTargetCheckpoint  `json:"active_assistant_targets,omitempty"`
+	RecentCursors              []conversationjournal.Cursor                   `json:"recent_cursors,omitempty"`
+	MessageLocators            []messageLocator                               `json:"message_locators,omitempty"`
+	MessageTransactionLocators []messageLocator                               `json:"message_transaction_locators,omitempty"`
+	HistoryAnchors             []historyAnchor                                `json:"history_anchors,omitempty"`
+	RecentCommits              []domainCommitLocator                          `json:"recent_commits,omitempty"`
+	RecentContextBatches       []contextBatchLocator                          `json:"recent_context_batches,omitempty"`
+	PendingInterrupt           *Interruption                                  `json:"pending_interrupt,omitempty"`
+	PendingInterruptCursor     conversationjournal.Cursor                     `json:"pending_interrupt_cursor,omitempty"`
+	AssistantRuns              []assistantRunCheckpoint                       `json:"active_assistant_runs,omitempty"`
+	AssistantTargets           []assistantTargetCheckpoint                    `json:"active_assistant_targets,omitempty"`
+	AgentSessions              sessionjournal.Projection                      `json:"agent_sessions,omitempty"`
+	ReleasedContextCompactions map[string]releasedContextCompactionProjection `json:"released_context_compactions,omitempty"`
 
 	expectedID         string
 	expectedGeneration string
@@ -110,7 +132,9 @@ func (projection *sessionJournalProjection) Reset() error {
 		Version: sessionProjectionVersion, SessionID: expectedID, Generation: expectedGeneration,
 		Title: defaultSessionTitle, expectedID: expectedID, expectedGeneration: expectedGeneration,
 		assistantDigests: make(map[string]hash.Hash), assistantTargets: make(map[string]string), assistantSegments: make(map[string]hash.Hash),
+		ReleasedContextCompactions: make(map[string]releasedContextCompactionProjection),
 	}
+	projection.AgentSessions.Reset()
 	return nil
 }
 
@@ -138,6 +162,17 @@ func (projection *sessionJournalProjection) Restore(data json.RawMessage) error 
 	if err := restored.restoreAssistantDigests(); err != nil {
 		return err
 	}
+	if err := restored.AgentSessions.Normalize(); err != nil {
+		return err
+	}
+	if restored.ReleasedContextCompactions == nil {
+		restored.ReleasedContextCompactions = make(map[string]releasedContextCompactionProjection)
+	}
+	for agentKind, legacy := range restored.ReleasedContextCompactions {
+		if strings.TrimSpace(agentKind) != agentKind || (legacy.Compaction == nil) == (legacy.Removal == nil) {
+			return fmt.Errorf("released context Compaction projection is invalid")
+		}
+	}
 	*projection = restored
 	return nil
 }
@@ -159,6 +194,9 @@ func (projection *sessionJournalProjection) Checkpoint() (json.RawMessage, error
 
 func (projection *sessionJournalProjection) Apply(record conversationjournal.Record) error {
 	projection.rememberCursor(record.Location.Cursor)
+	if handled, err := projection.AgentSessions.Apply(record.Payload); handled || err != nil {
+		return err
+	}
 	var typed struct {
 		Type string `json:"type"`
 	}
@@ -173,6 +211,8 @@ func (projection *sessionJournalProjection) Apply(record conversationjournal.Rec
 		return projection.applyLegacyMessage(record)
 	case historyTypeMessage, historyTypeContextMessage:
 		return projection.applyMessage(record, typed.Type)
+	case historyTypeContextBatch:
+		return projection.applyContextBatch(record)
 	case historyTypeClear:
 		var marker clearRecord
 		if err := json.Unmarshal(record.Payload, &marker); err != nil {
@@ -182,6 +222,7 @@ func (projection *sessionJournalProjection) Apply(record conversationjournal.Rec
 		projection.rememberHistoryRow(record.Location.Cursor, true)
 		projection.ClearAfter = projection.MessageCount
 		projection.ClearCursor = record.Location.Cursor
+		clear(projection.ReleasedContextCompactions)
 		projection.advanceRevision(marker.ContextRevision)
 		projection.advanceUpdatedAt(marker.CreatedAt)
 		return nil
@@ -229,6 +270,34 @@ func (projection *sessionJournalProjection) Apply(record conversationjournal.Rec
 		}
 		projection.advanceUpdatedAt(patch.UpdatedAt)
 		return nil
+	case retiredHistoryTypeCompaction:
+		var legacy releasedContextCompactionRecord
+		if err := json.Unmarshal(record.Payload, &legacy); err != nil {
+			return err
+		}
+		if legacy.SourceStartIndex < 0 || legacy.SourceEndIndex < legacy.SourceStartIndex {
+			return fmt.Errorf("released context Compaction record is invalid")
+		}
+		agentKind := strings.TrimSpace(legacy.AgentKind)
+		legacy.AgentKind = agentKind
+		projection.ReleasedContextCompactions[agentKind] = releasedContextCompactionProjection{
+			Cursor: record.Location.Cursor, RecordIndex: record.Location.RecordIndex, Compaction: &legacy,
+		}
+		return nil
+	case retiredHistoryTypeCompactionRemoved:
+		var legacy releasedContextCompactionRemovalRecord
+		if err := json.Unmarshal(record.Payload, &legacy); err != nil {
+			return err
+		}
+		if legacy.SourceStartIndex < 0 || legacy.SourceEndIndex < legacy.SourceStartIndex {
+			return fmt.Errorf("released context Compaction removal record is invalid")
+		}
+		agentKind := strings.TrimSpace(legacy.AgentKind)
+		legacy.AgentKind = agentKind
+		projection.ReleasedContextCompactions[agentKind] = releasedContextCompactionProjection{
+			Cursor: record.Location.Cursor, RecordIndex: record.Location.RecordIndex, Removal: &legacy,
+		}
+		return nil
 	case historyTypeDisplayPatch:
 		var patch displayPatchRecord
 		if err := json.Unmarshal(record.Payload, &patch); err != nil {
@@ -275,6 +344,36 @@ func (projection *sessionJournalProjection) Apply(record conversationjournal.Rec
 		}
 		return fmt.Errorf("unknown session journal record type %q", typed.Type)
 	}
+}
+
+func (projection *sessionJournalProjection) applyContextBatch(record conversationjournal.Record) error {
+	var batch contextBatchRecord
+	if err := json.Unmarshal(record.Payload, &batch); err != nil {
+		return err
+	}
+	if err := validateContextBatchRecord(batch); err != nil {
+		return err
+	}
+	if batch.ContextRevision != projection.ContextRevision+uint64(len(batch.Messages)) {
+		return fmt.Errorf("session context batch revision is not contiguous")
+	}
+	for index := range batch.Messages {
+		projection.rememberMessage(record.Location, batch.Messages[index].Role, MessageMetadata{}, "")
+	}
+	projection.RecentContextBatches = append(projection.RecentContextBatches, contextBatchLocator{
+		Identity: batch.Identity, Kind: batch.Kind, Ordinal: batch.Ordinal, Hash: batch.Hash,
+		ContextRevision: batch.ContextRevision,
+		ResultCursor: ContextCursor{
+			Revision: batch.ContextRevision, MessageCount: projection.MessageCount, ClearAfterIndex: projection.ClearAfter,
+		},
+		Cursor: record.Location.Cursor,
+	})
+	if overflow := len(projection.RecentContextBatches) - sessionRecentCommitLimit; overflow > 0 {
+		projection.RecentContextBatches = append([]contextBatchLocator(nil), projection.RecentContextBatches[overflow:]...)
+	}
+	projection.advanceRevision(batch.ContextRevision)
+	projection.advanceUpdatedAt(batch.CreatedAt)
+	return nil
 }
 
 func (projection *sessionJournalProjection) applyHeader(payload json.RawMessage) error {
@@ -325,7 +424,15 @@ func (projection *sessionJournalProjection) applyMessage(record conversationjour
 		return fmt.Errorf("message record is empty")
 	}
 	metadata := sanitizeMessageMetadata(message.MessageMetadata)
-	projection.rememberMessage(record.Location, message.Message.Role, metadata)
+	commitHash := ""
+	if metadata.AgentCommandID != "" {
+		var err error
+		commitHash, err = domainMessageHash(message.Message, metadata)
+		if err != nil {
+			return err
+		}
+	}
+	projection.rememberMessage(record.Location, message.Message.Role, metadata, commitHash)
 	if kind == historyTypeMessage {
 		projection.VisibleMessageCount++
 		visible := true
@@ -355,7 +462,7 @@ func (projection *sessionJournalProjection) applyLegacyMessage(record conversati
 	if message.Role == "" && message.Content == "" && len(message.ToolCalls) == 0 {
 		return fmt.Errorf("legacy session message is empty")
 	}
-	projection.rememberMessage(record.Location, message.Role, MessageMetadata{})
+	projection.rememberMessage(record.Location, message.Role, MessageMetadata{}, "")
 	projection.VisibleMessageCount++
 	safeBoundary := message.Role == agent.User
 	if safeBoundary {
@@ -380,7 +487,7 @@ func (projection *sessionJournalProjection) rememberCursor(cursor conversationjo
 	}
 }
 
-func (projection *sessionJournalProjection) rememberMessage(location conversationjournal.Location, role agent.RoleType, metadata MessageMetadata) {
+func (projection *sessionJournalProjection) rememberMessage(location conversationjournal.Location, role agent.RoleType, metadata MessageMetadata, hash string) {
 	index := projection.MessageCount
 	projection.MessageCount++
 	locator := messageLocator{Index: index, Cursor: location.Cursor, RecordIndex: location.RecordIndex}
@@ -398,7 +505,7 @@ func (projection *sessionJournalProjection) rememberMessage(location conversatio
 		return
 	}
 	projection.RecentCommits = append(projection.RecentCommits, domainCommitLocator{
-		MessageIndex: index, Cursor: location.Cursor, Role: role, Metadata: metadata,
+		MessageIndex: index, Cursor: location.Cursor, Role: role, Metadata: metadata, Hash: hash,
 	})
 	if overflow := len(projection.RecentCommits) - sessionRecentCommitLimit; overflow > 0 {
 		projection.RecentCommits = append([]domainCommitLocator(nil), projection.RecentCommits[overflow:]...)

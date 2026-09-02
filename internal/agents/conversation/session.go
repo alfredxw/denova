@@ -2,8 +2,6 @@ package conversation
 
 import (
 	"context"
-	agentrun "denova/internal/agents/run"
-	"denova/internal/agents/toolresult"
 	"fmt"
 	"strconv"
 	"strings"
@@ -13,8 +11,10 @@ import (
 	"github.com/alfredxw/denova/agent/providers"
 
 	"denova/config"
+	agentrun "denova/internal/agents/run"
 	"denova/internal/agents/session"
 	novaskills "denova/internal/agents/skills"
+	"denova/internal/agents/toolresult"
 )
 
 type SessionConversation struct {
@@ -182,13 +182,12 @@ func (c *SessionConversation) AppendAssistantWithMetadata(content, _ string, met
 }
 
 // CommitAgentCanonicalOutput writes the final provider-neutral assistant
-// message and public Agent hash atomically. Product projections may choose a
-// different transcript view, but recovery always proves this exact raw output.
+// message atomically. Product projections may choose a different transcript
+// view, but recovery always uses this exact raw output.
 func (c *SessionConversation) CommitAgentCanonicalOutput(
 	ctx context.Context,
 	message *agent.Message,
 	metadata session.MessageMetadata,
-	agentCanonicalHash string,
 ) (session.DomainCommitReceipt, error) {
 	if c == nil || c.session == nil {
 		return session.DomainCommitReceipt{}, fmt.Errorf("会话不存在")
@@ -203,10 +202,6 @@ func (c *SessionConversation) CommitAgentCanonicalOutput(
 	intent, err := session.NewDomainCommitIntent(session.DomainCommitIdentity{
 		CommandID: string(identity.CommandID), OperationID: string(identity.OperationID), Cycle: identity.Cycle,
 	}, message, metadata)
-	if err != nil {
-		return session.DomainCommitReceipt{}, err
-	}
-	intent, err = intent.WithAgentCanonicalHash(agentCanonicalHash)
 	if err != nil {
 		return session.DomainCommitReceipt{}, err
 	}

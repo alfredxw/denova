@@ -1,7 +1,9 @@
 package session
 
 import (
+	"bytes"
 	"errors"
+	"os"
 	"testing"
 
 	agent "github.com/alfredxw/denova/agent"
@@ -57,6 +59,13 @@ func TestCommitDomainMessageIsIdempotentAndPersistsCoordinatorIdentity(t *testin
 	if len(history) != 1 || history[0].ID != first.MessageID || history[0].AgentCommandID != "command-1" || history[0].AgentOperationID != "operation-1" || history[0].AgentCycle != 1 {
 		t.Fatalf("history identity was not restored: %+v", history)
 	}
+	journal, err := os.ReadFile(sess.filePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(journal, []byte("domain_commit_hash")) {
+		t.Fatalf("canonical journal retained the removed cross-store hash:\n%s", journal)
+	}
 }
 
 func TestCommitDomainMessageRejectsIdentityReuseWithDifferentPayload(t *testing.T) {
@@ -108,49 +117,6 @@ func TestCommitDomainMessageRejectsSameContentWithDifferentSemanticMetadata(t *t
 	}
 }
 
-func TestAgentCanonicalHashPersistsAtomicallyAndReconcilesExactly(t *testing.T) {
-	store, err := NewStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	sess, err := store.GetOrCreate("agent-canonical-hash")
-	if err != nil {
-		t.Fatal(err)
-	}
-	identity := DomainCommitIdentity{CommandID: "command-1", OperationID: "operation-1", Cycle: 1}
-	intent, err := NewDomainCommitIntent(identity, agent.AssistantMessage("answer", nil), MessageMetadata{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	intent, err = intent.WithAgentCanonicalHash("agent-output-hash")
-	if err != nil {
-		t.Fatal(err)
-	}
-	receipt, err := sess.CommitDomainMessage(intent)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if receipt.AgentCanonicalHash != "agent-output-hash" {
-		t.Fatalf("receipt canonical hash=%q", receipt.AgentCanonicalHash)
-	}
-	reopened, err := loadSession(sess.filePath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	found, ok, err := reopened.FindAgentCanonicalCommit(identity, agent.Assistant, "agent-output-hash")
-	if err != nil || !ok || found.MessageID != receipt.MessageID {
-		t.Fatalf("canonical lookup receipt=%#v found=%t error=%v", found, ok, err)
-	}
-	if _, _, err := reopened.FindAgentCanonicalCommit(identity, agent.Assistant, "different-hash"); !errors.Is(err, ErrDomainCommitIdentityConflict) {
-		t.Fatalf("mismatched canonical lookup error=%v", err)
-	}
-	conflict := intent
-	conflict.Metadata.AgentCanonicalHash = "different-hash"
-	if _, err := reopened.CommitDomainMessage(conflict); !errors.Is(err, ErrDomainCommitIdentityConflict) {
-		t.Fatalf("mismatched canonical retry error=%v", err)
-	}
-}
-
 func TestCanonicalOutputAtomicallyResolvesInterruption(t *testing.T) {
 	store, err := NewStore(t.TempDir())
 	if err != nil {
@@ -174,10 +140,6 @@ func TestCanonicalOutputAtomicallyResolvesInterruption(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	intent, err = intent.WithAgentCanonicalHash("output-hash")
-	if err != nil {
-		t.Fatal(err)
-	}
 	if _, err := sess.CommitDomainMessage(intent); err != nil {
 		t.Fatal(err)
 	}
@@ -191,7 +153,7 @@ func TestCanonicalOutputAtomicallyResolvesInterruption(t *testing.T) {
 	if got := reopened.PendingInterruption(); got != nil {
 		t.Fatalf("reopened interruption remained pending: %#v", got)
 	}
-	if _, found, err := reopened.FindAgentCanonicalCommit(identity, agent.Assistant, "output-hash"); err != nil || !found {
+	if _, found, err := reopened.FindDomainCommit(identity, agent.Assistant, intent.Hash); err != nil || !found {
 		t.Fatalf("canonical output not recoverable found=%t err=%v", found, err)
 	}
 }

@@ -7,7 +7,11 @@ import (
 )
 
 const (
-	compactionCapability       = "agent.compaction"
+	// CompactionCapability identifies the durable Compaction projection in a
+	// Session journal. It is exported for hosts that must migrate a released
+	// canonical journal into Agent's current capability schema.
+	CompactionCapability       = "agent.compaction"
+	compactionCapability       = CompactionCapability
 	compactionHealthCapability = "agent.compaction_health"
 
 	defaultMaxAutomaticCompactionFailures = 3

@@ -156,11 +156,10 @@ type RuntimeStatus struct {
 	OpenToolCalls            []OpenToolCall
 	LastOperation            *OperationSummary
 	RecentOperations         []OperationSummary
-	// Cleanup and TranscriptSync are read-only projections of the public Agent
+	// Cleanup and Compaction are read-only projections of the public Agent
 	// Session capabilities. Product stores may display them, but must never
-	// persist a competing maintenance or canonical-history authority.
+	// persist competing maintenance state.
 	Cleanup             *agent.CleanupState
-	TranscriptSync      *agent.TranscriptSyncState
 	Compaction          *AgentCompactionState
 	PendingInteractions []agent.InteractionRequest
 }
